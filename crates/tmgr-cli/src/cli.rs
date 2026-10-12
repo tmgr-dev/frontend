@@ -1,3 +1,4 @@
+use crate::cli_agent::{AgentCommand, AlarmArgs, HookCmd, NotifyArgs};
 use clap::{Args, Parser, Subcommand};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -107,6 +108,22 @@ pub enum Command {
         #[command(subcommand)]
         command: PageCommand,
     },
+    /// Agent work runs (start, update, finish)
+    Agent {
+        #[command(subcommand)]
+        command: AgentCommand,
+    },
+    /// Hooks for Claude Code and Codex, and their installation
+    Hook {
+        #[command(subcommand)]
+        command: HookCmd,
+    },
+    /// Send a push notification to your phone
+    Notify(NotifyArgs),
+    /// Raise a phone alarm (push, then a voice call), or check one
+    Alarm(AlarmArgs),
+    /// Run the MCP server over stdio (notify_user, alarm, alarm_status, tmgr_cli)
+    Mcp,
     #[command(
         about = "How task references are written",
         long_about = REFS_HELP,

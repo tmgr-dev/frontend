@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/notify_result.json",
+  "title": "tmgr.v1 notify_result",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "status",
+        "channels"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

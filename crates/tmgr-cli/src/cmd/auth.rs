@@ -261,6 +261,7 @@ pub fn logout(ctx: &Ctx) -> Result<Output> {
             Some(ctx.store()?),
             ctx.verbose,
         )?;
+        crate::cmd::notifyenv::revoke_on_logout(ctx, Some(&client));
         let result = client.logout();
         for w in client.take_warnings() {
             ctx.warn(&w.code, w.message);
@@ -275,6 +276,9 @@ pub fn logout(ctx: &Ctx) -> Result<Output> {
                 ),
             ),
         }
+    }
+    if loaded.is_none() {
+        crate::cmd::notifyenv::revoke_on_logout(ctx, None);
     }
     store.delete()?;
     let was_logged_in = loaded.is_some();

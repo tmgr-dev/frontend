@@ -65,6 +65,17 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 ## JSON schemas
 
 `crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `today`, `run_list`, `run` (one NDJSON line of `log --follow --json`), `routine_list`, `routine_done`, `page_ref` (`note`), `page_sync` (`page pull|push`) and `page_status`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
+## Agent mode, hooks and notifications
+
+- `tmgr agent start|update|finish` drive an Agent work run (`POST /api/tasks/{id}/agent-work`, `PATCH /api/agent-work/{run}`, `POST /api/agent-work/{run}/finish`, scope `agent-work:write`). Runs are remembered in `$XDG_STATE_HOME/tmgr/runs.json` (`~/.local/state/tmgr`, mode 0600, schema `tmgr.runs.v1`) keyed by task, branch and repository.
+- `tmgr hook claude <event>` / `tmgr hook codex notify` never fail the agent: exit 0 always, no stdout, no shell, payload size bounded, 1.5 s watchdog. They use an existing notify token and login only; they never mint a token or refresh a session (a kill in the middle would lose a rotated refresh token), so an expired login silently skips the run update until the next `tmgr` command refreshes it.
+- `tmgr hook install claude|codex` edits `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` is honoured), `.claude/settings.json` with `--project`, or `~/.codex/config.toml` (`CODEX_HOME` is honoured). Hook commands call this binary by absolute path; `--project` writes that path into a file you may commit, so it warns.
+- `tmgr notify`, `tmgr alarm`, `tmgr mcp` use a notify token (`tmgrn_...`), never the login token. Order: `TMGR_NOTIFY_TOKEN` (server `TMGR_URL`, else the configured one), the legacy `~/.config/tmgr-notify/env` (ignored unless mode 0600 and owned by you), the credential store entry `<server>:default:notify`, else mint through `POST /api/notify-tokens` (scope `notify:send`) and store it. `tmgr logout` calls `DELETE /api/notify-tokens/{id}`.
+- Alarms exit 0 only when acknowledged, 1 for any other final status (the status is still printed).
+
+## JSON schemas
+
+`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `agent_run`, `notify_result` and `alarm`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
 
 ## Exit codes
 

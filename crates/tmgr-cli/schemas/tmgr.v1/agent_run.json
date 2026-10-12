@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/agent_run.json",
+  "title": "tmgr.v1 agent_run",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "task_id",
+        "task_ref",
+        "status",
+        "agent",
+        "model",
+        "branch",
+        "pr_url",
+        "commits",
+        "duration_s",
+        "disabled"
+      ],
+      "properties": {
+        "run_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "task_id": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "task_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "agent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pr_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "commits": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "duration_s": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "disabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

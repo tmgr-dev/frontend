@@ -7,6 +7,7 @@ use tmgr_core::{Envelope, ErrorEnvelope};
 pub struct Output {
     pub data: Value,
     pub human: String,
+    pub exit: i32,
 }
 
 impl Output {
@@ -14,7 +15,13 @@ impl Output {
         Self {
             data: serde_json::to_value(data).expect("output serializes"),
             human: human.into(),
+            exit: 0,
         }
+    }
+
+    pub fn exit(mut self, code: i32) -> Self {
+        self.exit = code;
+        self
     }
 }
 
@@ -101,7 +108,7 @@ pub fn emit(ctx: &Ctx, out: Output) -> i32 {
             "{}",
             serde_json::to_string(&env).expect("envelope serializes")
         );
-        return 0;
+        return out.exit;
     }
     if !out.human.is_empty() {
         println!("{}", out.human.trim_end_matches('\n'));
@@ -115,7 +122,7 @@ pub fn emit(ctx: &Ctx, out: Output) -> i32 {
             );
         }
     }
-    0
+    out.exit
 }
 
 pub fn print_error(json: bool, verbose: bool, style: Style, err: &Error) -> i32 {

@@ -1,4 +1,5 @@
 mod cli;
+mod cli_agent;
 mod cmd;
 mod ctx;
 mod gitx;
@@ -8,6 +9,7 @@ mod out;
 use clap::error::ErrorKind;
 use clap::Parser;
 use cli::{AuthCommand, Cli, Command, GitCommand, HookCommand, VERSION};
+use cli_agent::HookCmd;
 use ctx::Ctx;
 use out::Output;
 use serde_json::json;
@@ -51,11 +53,27 @@ fn standalone(cli: &Cli) -> Option<i32> {
                     command: HookCommand::CommitMsg { file },
                 },
         }) => Some(cmd::githook::commit_msg(file)),
+        Some(Command::Hook {
+            command: HookCmd::Claude { event, .. },
+        }) => Some(cmd::hook::claude(event, cli.server.clone())),
+        Some(Command::Hook {
+            command: HookCmd::Codex { args },
+        }) => Some(cmd::hook::codex(args, cli.server.clone())),
+        Some(Command::Mcp) => Some(cmd::mcp::run(cli.server.clone(), cli.verbose)),
         _ => None,
     }
 }
 
+fn is_agent_hook_invocation() -> bool {
+    let mut args = std::env::args().skip(1).filter(|a| !a.starts_with('-'));
+    args.next().as_deref() == Some("hook")
+        && matches!(args.next().as_deref(), Some("claude" | "codex"))
+}
+
 fn usage_exit(e: clap::Error) -> i32 {
+    if is_agent_hook_invocation() {
+        return 0;
+    }
     match e.kind() {
         ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
             let _ = e.print();
@@ -108,6 +126,17 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Project { command }) => cmd::project::run(ctx, command),
         Some(Command::Git { command }) => cmd::githook::run(ctx, command),
         Some(Command::Init(args)) => cmd::init::run(ctx, args),
+        Some(Command::Agent { command }) => cmd::agent::run(ctx, command),
+        Some(Command::Hook { command }) => match command {
+            HookCmd::Install(a) => cmd::hookinstall::run(ctx, a, false),
+            HookCmd::Uninstall(a) => cmd::hookinstall::run(ctx, a, true),
+            HookCmd::Claude { .. } | HookCmd::Codex { .. } => {
+                Err(Error::internal("handled before the session starts"))
+            }
+        },
+        Some(Command::Notify(args)) => cmd::notify::notify(ctx, args),
+        Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
+        Some(Command::Mcp) => Err(Error::internal("handled before the session starts")),
         Some(Command::Prompt(_)) | Some(Command::Statusline { .. }) => {
             Err(Error::internal("handled before the session starts"))
         }
