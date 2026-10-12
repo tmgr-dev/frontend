@@ -2,7 +2,7 @@ use std::path::Path;
 
 use rusqlite::types::{Value as Sql, ValueRef};
 use rusqlite::{Connection, OpenFlags};
-use serde_json::{Map, Number, Value};
+use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 
@@ -24,6 +24,41 @@ pub fn open_read(database: &Path) -> Result<Connection> {
     )?;
     check_schema(&conn)?;
     Ok(conn)
+}
+
+/// A write handle with the desktop's pragmas. Every write request runs in one `BEGIN IMMEDIATE` transaction.
+pub fn open_write(database: &Path) -> Result<Connection> {
+    open_write_with(database, 5000)
+}
+
+pub(crate) fn open_write_with(database: &Path, busy_ms: u32) -> Result<Connection> {
+    if !database.is_file() {
+        return Err(Error::NotFound(format!("database {}", database.display())));
+    }
+    let conn = Connection::open_with_flags(
+        database,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    conn.execute_batch(&format!(
+        "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = {busy_ms};"
+    ))?;
+    let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
+    check_schema(&conn)?;
+    Ok(conn)
+}
+
+pub(crate) struct Executed {
+    pub changes: usize,
+    pub last_id: i64,
+}
+
+pub(crate) fn execute(conn: &Connection, sql: &str, params: &[Sql]) -> Result<Executed> {
+    let mut stmt = conn.prepare_cached(sql)?;
+    let changes = stmt.execute(rusqlite::params_from_iter(params.iter()))?;
+    Ok(Executed {
+        changes,
+        last_id: conn.last_insert_rowid(),
+    })
 }
 
 pub(crate) fn schema_version(conn: &Connection) -> Result<u32> {
@@ -61,7 +96,7 @@ fn to_json(value: ValueRef<'_>) -> Value {
     match value {
         ValueRef::Null => Value::Null,
         ValueRef::Integer(i) => Value::Number(i.into()),
-        ValueRef::Real(f) => Number::from_f64(f).map_or(Value::Null, Value::Number),
+        ValueRef::Real(f) => crate::js::float_json(f),
         ValueRef::Text(t) | ValueRef::Blob(t) => {
             Value::String(String::from_utf8_lossy(t).into_owned())
         }
@@ -122,6 +157,25 @@ mod tests {
         assert_eq!(open_read(&older).unwrap_err(), Error::SchemaTooOld(11));
         let (_d3, empty) = file_db("CREATE TABLE x (a)");
         assert_eq!(open_read(&empty).unwrap_err(), Error::SchemaTooOld(0));
+    }
+
+    #[test]
+    fn a_write_waits_for_a_desktop_transaction_then_reports_busy_without_writing() {
+        let (_dir, path) = file_db(&crate::testing::schema());
+        let desktop = open_write(&path).unwrap();
+        desktop
+            .execute_batch("BEGIN IMMEDIATE; INSERT INTO meta VALUES ('desktop', '1');")
+            .unwrap();
+        let cli = open_write_with(&path, 50).unwrap();
+        let ctx = crate::testing::ctx("2026-10-13T12:00:00.000Z");
+        let err = crate::dispatch(&cli, &ctx, "POST", "tasks/1/countdown", None).unwrap_err();
+        assert_eq!(err, Error::Busy);
+        desktop.execute_batch("COMMIT").unwrap();
+        let journal: String = cli
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(journal, "wal");
+        assert!(cli.is_autocommit());
     }
 
     #[test]

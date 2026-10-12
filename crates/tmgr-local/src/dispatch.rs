@@ -2,8 +2,12 @@ use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use rusqlite::types::Value as Sql;
+
 use crate::context::Context;
-use crate::error::{Error, Result};
+use crate::db::execute;
+use crate::error::Result;
+use crate::persona::check_access;
 use crate::router::{normalize_path, Outcome, Query, Request};
 use crate::routes;
 
@@ -15,18 +19,15 @@ pub struct Response {
 
 /// One request against the local API, answered with the JSON the desktop's local API returns.
 /// `Ok(None)` when no local route matches: the caller decides what that means, it never goes to a server.
+/// A write runs in one `BEGIN IMMEDIATE` transaction: a refusal or an error leaves nothing behind but
+/// its journal row, so a desktop statement can only land between whole requests.
 pub fn dispatch(
     conn: &Connection,
     ctx: &Context,
     method: &str,
     url: &str,
-    _body: Option<&Value>,
+    body: Option<&Value>,
 ) -> Result<Option<Response>> {
-    if ctx.actor.as_ref().is_some_and(|a| a.kind == "persona") {
-        return Err(Error::Unsupported(
-            "persona actors are not supported by the local API in tmgr yet".into(),
-        ));
-    }
     let method = method.to_ascii_uppercase();
     let path = normalize_path(url);
     let Some((route, params)) = routes::table()
@@ -36,22 +37,154 @@ pub fn dispatch(
     else {
         return Ok(None);
     };
-    let query = Query::parse(url.split_once('?').map_or("", |(_, q)| q));
     let req = Request {
         conn,
         ctx,
         params,
-        query,
+        query: Query::parse(url.split_once('?').map_or("", |(_, q)| q)),
+        body: parse_body(body),
     };
-    match (route.handler)(&req) {
-        Ok(data) => Ok(Some(Response {
-            status: route.status,
-            data: envelope(data),
-        })),
-        Err(Outcome::Http { status, body }) => Ok(Some(Response { status, data: body })),
+    let tx = if method == "GET" {
+        None
+    } else {
+        Some(Tx::begin(conn)?)
+    };
+    let result =
+        check_access(conn, ctx, &method, route.pattern).and_then(|()| (route.handler)(&req));
+    match result {
+        Ok(data) => {
+            if journal_worthy(ctx, &method, route.status) {
+                let entity_id = entity_id(&req, &method, Some(&data));
+                if journal(&req, &method, route.pattern, entity_id, route.status).is_err() {
+                    return Ok(Some(Response {
+                        status: 500,
+                        data: json!({ "message": "Audit failed" }),
+                    }));
+                }
+            }
+            if let Some(tx) = tx {
+                tx.commit()?;
+            }
+            Ok(Some(Response {
+                status: route.status,
+                data: envelope(data),
+            }))
+        }
+        Err(Outcome::Http { status, body }) => {
+            if let Some(tx) = &tx {
+                tx.undo_request()?;
+            }
+            if journal_worthy(ctx, &method, status) {
+                let entity_id = entity_id(&req, &method, None);
+                let _ = journal(&req, &method, route.pattern, entity_id, status);
+            }
+            if let Some(tx) = tx {
+                tx.commit()?;
+            }
+            Ok(Some(Response { status, data: body }))
+        }
         Err(Outcome::Failed(e)) => Err(e),
         Err(Outcome::Unrouted) => Ok(None),
     }
+}
+
+/// `BEGIN IMMEDIATE` with a savepoint around the handler; dropped without `commit` it rolls everything back.
+struct Tx<'a> {
+    conn: &'a Connection,
+    open: bool,
+}
+
+impl<'a> Tx<'a> {
+    fn begin(conn: &'a Connection) -> Result<Self> {
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        let tx = Tx { conn, open: true };
+        conn.execute_batch("SAVEPOINT request")?;
+        Ok(tx)
+    }
+
+    fn undo_request(&self) -> Result<()> {
+        Ok(self
+            .conn
+            .execute_batch("ROLLBACK TO request; RELEASE request")?)
+    }
+
+    fn commit(mut self) -> Result<()> {
+        self.conn.execute_batch("COMMIT")?;
+        self.open = false;
+        Ok(())
+    }
+}
+
+impl Drop for Tx<'_> {
+    fn drop(&mut self) {
+        if self.open {
+            let _ = self.conn.execute_batch("ROLLBACK");
+        }
+    }
+}
+
+fn parse_body(body: Option<&Value>) -> Value {
+    match body {
+        None | Some(Value::Null) => json!({}),
+        Some(Value::String(s)) => serde_json::from_str(s).unwrap_or_else(|_| json!({})),
+        Some(v) => v.clone(),
+    }
+}
+
+/// Journaled: any non-GET by a persona or plugin, and a persona refusal (401/403) even on a GET.
+fn journal_worthy(ctx: &Context, method: &str, status: u16) -> bool {
+    match ctx.actor.as_ref().map(|a| a.kind.as_str()) {
+        Some("persona") => method != "GET" || status == 401 || status == 403,
+        Some("plugin") => method != "GET",
+        _ => false,
+    }
+}
+
+/// The first numeric path parameter, or the id a create answered with.
+fn entity_id(req: &Request<'_>, method: &str, data: Option<&Value>) -> Option<String> {
+    let from_path = req
+        .params
+        .iter()
+        .find(|(_, v)| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()))
+        .map(|(_, v)| v.clone());
+    if from_path.is_some() || method != "POST" {
+        return from_path;
+    }
+    match data?.get("id")? {
+        Value::Null => None,
+        id => Some(crate::js::string(id)),
+    }
+}
+
+fn journal(
+    req: &Request<'_>,
+    method: &str,
+    pattern: &str,
+    entity_id: Option<String>,
+    status: u16,
+) -> Result<()> {
+    let Some(actor) = &req.ctx.actor else {
+        return Ok(());
+    };
+    let entity = pattern.split('/').next().filter(|e| !e.is_empty());
+    let opt = |v: Option<&str>| v.map_or(Sql::Null, |s| Sql::Text(s.to_string()));
+    execute(
+        req.conn,
+        "INSERT INTO activity_log (at, actor_kind, actor_id, actor_name, method, route, entity, entity_id, status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        &[
+            Sql::Text(req.ctx.iso_now()),
+            Sql::Text(actor.kind.clone()),
+            Sql::Text(actor.id.clone()),
+            Sql::Text(actor.name.clone()),
+            Sql::Text(method.to_string()),
+            Sql::Text(pattern.to_string()),
+            opt(entity),
+            opt(entity_id.as_deref()),
+            Sql::Integer(status as i64),
+        ],
+    )?;
+    Ok(())
 }
 
 /// Same rule as the Java envelope filter: wrap unless the body is an object that already carries `data`.
@@ -107,8 +240,9 @@ mod tests {
     }
 
     #[test]
-    fn refuses_persona_actors() {
+    fn an_unknown_persona_is_refused_and_journaled() {
         let conn = db("");
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
         let mut c = ctx("2026-10-13T12:00:00.000Z");
         c.actor = Some(Actor {
             kind: "persona".into(),
@@ -116,9 +250,16 @@ mod tests {
             name: "P".into(),
             owner_id: None,
         });
-        assert!(matches!(
-            dispatch(&conn, &c, "GET", "tasks", None),
-            Err(Error::Unsupported(_))
-        ));
+        let r = dispatch(&conn, &c, "GET", "tasks", None).unwrap().unwrap();
+        assert_eq!(r.status, 401);
+        assert_eq!(r.data["code"], "PERSONA_UNKNOWN");
+        let logged: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM activity_log WHERE status = 401 AND route = 'tasks'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(logged, 1);
     }
 }

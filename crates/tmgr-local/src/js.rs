@@ -55,13 +55,43 @@ pub(crate) fn truthy(value: &Value) -> bool {
     }
 }
 
-/// `String(value)` for a value that is a number or a string.
+/// JavaScript `String(value)`.
 pub(crate) fn string(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Null => "null".into(),
+        Value::Array(items) => items
+            .iter()
+            .map(|v| {
+                if v.is_null() {
+                    String::new()
+                } else {
+                    string(v)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        Value::Object(_) => "[object Object]".into(),
         other => other.to_string(),
     }
+}
+
+/// `String(value ?? '')`.
+pub(crate) fn string_or_empty(value: Option<&Value>) -> String {
+    match value {
+        None | Some(Value::Null) => String::new(),
+        Some(v) => string(v),
+    }
+}
+
+/// Length in UTF-16 code units, as JavaScript's `.length`.
+pub(crate) fn length(s: &str) -> usize {
+    s.encode_utf16().count()
+}
+
+/// `JSON.stringify` of a value built by a handler (compact, keys in insertion order).
+pub(crate) fn stringify(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_default()
 }
 
 /// `parseJson(raw, fallback)` from the TS serializer: bad or empty JSON yields the fallback.

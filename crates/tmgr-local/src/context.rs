@@ -29,6 +29,11 @@ pub struct Context {
 }
 
 impl Context {
+    pub(crate) fn iso_now(&self) -> String {
+        self.now
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+    }
+
     pub(crate) fn local_now(&self) -> DateTime<FixedOffset> {
         self.now.with_timezone(&self.local_offset)
     }

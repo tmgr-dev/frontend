@@ -8,9 +8,9 @@ use serde_json::{json, Value};
 
 use super::{int, text};
 use crate::context::Context;
-use crate::db::{select, select_one, Row};
+use crate::db::{execute, select, select_one, Row};
 use crate::js;
-use crate::router::{http, sql, Handled, Outcome, Request};
+use crate::router::{coded, http, not_found, sql, Handled, Outcome, Request};
 use crate::serialize::{col, task_key};
 
 const DEFAULT_LIMIT: i64 = 50;
@@ -303,6 +303,261 @@ pub(super) fn for_workspace(req: &Request<'_>) -> Handled {
         _ => Value::Null,
     };
     Ok(json!({ "runs": runs, "next_cursor": next_cursor }))
+}
+
+fn limited_or_null(value: &Value, max: usize) -> Result<Option<String>, Outcome> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    let s = js::string(value);
+    let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if js::length(trimmed) > max {
+        return Err(http(422, format!("must be at most {max} characters")));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn opt_text(v: Option<String>) -> Sql {
+    v.map_or(Sql::Null, Sql::Text)
+}
+
+fn http_url(value: &Value) -> Result<String, Outcome> {
+    let s = js::string_or_empty(Some(value));
+    let trimmed = s.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let rest = lower
+        .strip_prefix("https://")
+        .or_else(|| lower.strip_prefix("http://"));
+    let host = rest.map(|r| r.split(['/', '?', '#']).next().unwrap_or(""));
+    let ok = js::length(trimmed) <= 512
+        && host.is_some_and(|h| !h.is_empty() && !h.contains(char::is_whitespace))
+        && !trimmed.contains(char::is_whitespace);
+    if ok {
+        Ok(trimmed.to_string())
+    } else {
+        Err(http(422, "pr_url must be an http(s) url"))
+    }
+}
+
+const MAX_COMMITS: usize = 200;
+
+fn valid_commits(value: &Value) -> Result<Value, Outcome> {
+    let Some(items) = value.as_array().filter(|a| a.len() <= MAX_COMMITS) else {
+        return Err(http(422, format!("at most {MAX_COMMITS} commits per run")));
+    };
+    let mut out = Vec::new();
+    for commit in items {
+        let Some(sha) = commit.get("sha").and_then(Value::as_str) else {
+            continue;
+        };
+        if sha.trim().is_empty() {
+            continue;
+        }
+        let sha = limited_or_null(&json!(sha), 64)?.unwrap_or_default();
+        let message = limited_or_null(commit.get("message").unwrap_or(&Value::Null), 500)?;
+        out.push(json!({ "sha": sha, "message": message }));
+    }
+    Ok(Value::Array(out))
+}
+
+fn valid_tests(value: &Value) -> Result<Value, Outcome> {
+    let get = |k: &str| value.get(k).filter(|v| !v.is_null());
+    let num = |v: &Value| match v {
+        Value::Bool(b) => *b as i64 as f64,
+        Value::Number(n) => n.as_f64().unwrap_or(f64::NAN),
+        Value::String(s) => js::parse_number(s),
+        _ => f64::NAN,
+    };
+    if get("passed").is_some_and(|v| num(v) < 0.0) || get("failed").is_some_and(|v| num(v) < 0.0) {
+        return Err(http(422, "test counts cannot be negative"));
+    }
+    Ok(json!({
+        "passed": get("passed").map_or(Value::Null, |v| js::float_json(num(v))),
+        "failed": get("failed").map_or(Value::Null, |v| js::float_json(num(v))),
+        "command": limited_or_null(value.get("command").unwrap_or(&Value::Null), 500)?,
+    }))
+}
+
+/// Column assignments of a progress update, in the TS order.
+fn progress(body: &Value, include_branch: bool) -> Result<(Vec<&'static str>, Vec<Sql>), Outcome> {
+    let mut sets = Vec::new();
+    let mut values = Vec::new();
+    let present = |k: &str| body.get(k).filter(|v| !v.is_null());
+    if include_branch {
+        if let Some(v) = present("branch") {
+            sets.push("branch = ?");
+            values.push(opt_text(limited_or_null(v, 255)?));
+        }
+    }
+    if let Some(v) = present("summary") {
+        sets.push("summary = ?");
+        values.push(opt_text(limited_or_null(v, 10_000)?));
+    }
+    if let Some(v) = present("pr_url") {
+        sets.push("pr_url = ?");
+        values.push(Sql::Text(http_url(v)?));
+    }
+    if let Some(v) = present("commits") {
+        sets.push("commits = ?");
+        values.push(Sql::Text(js::stringify(&valid_commits(v)?)));
+    }
+    if let Some(v) = present("tests") {
+        sets.push("tests = ?");
+        values.push(Sql::Text(js::stringify(&valid_tests(v)?)));
+    }
+    Ok((sets, values))
+}
+
+fn load_run(req: &Request<'_>, id: i64) -> Handled {
+    let row = sql(select_one(
+        req.conn,
+        "SELECT * FROM agent_work_runs WHERE id = ?",
+        &[int(id)],
+    ))?
+    .unwrap_or_default();
+    let names = persona_names(req, std::slice::from_ref(&row))?;
+    Ok(run_json(&row, req.ctx, &names))
+}
+
+/// Only the run's own starting actor may change it, and never after it finished.
+fn own_running_run(req: &Request<'_>, id: i64) -> Result<Row, Outcome> {
+    let row = sql(select_one(
+        req.conn,
+        "SELECT * FROM agent_work_runs WHERE id = ?",
+        &[int(id)],
+    ))?
+    .ok_or_else(|| not_found("Agent work run"))?;
+    let actor = req.ctx.acting();
+    let same_actor = col(&row, "actor_kind").as_str() == Some(actor.kind.as_str())
+        && js::string(col(&row, "actor_id")) == actor.owner();
+    let agent = js::string(col(&row, "agent"));
+    let namespace = format!("plugin:{}", actor.id);
+    let same_namespace =
+        actor.kind != "plugin" || agent == namespace || agent.starts_with(&format!("{namespace}/"));
+    if !same_actor || !same_namespace {
+        return Err(coded(
+            403,
+            "Only the user the agent works for can change this run",
+            "NOT_OWN",
+        ));
+    }
+    let status = js::string(col(&row, "status"));
+    if status != "running" {
+        return Err(http(409, format!("Agent work run is already {status}")));
+    }
+    Ok(row)
+}
+
+pub(super) fn start(req: &Request<'_>) -> Handled {
+    require_agent_work(req)?;
+    let task_id = req.id("id");
+    let body = &req.body;
+    let none = Value::Null;
+    let agent = normalize_agent(&js::string_or_empty(body.get("agent")))?;
+    let model = limited_or_null(body.get("model").unwrap_or(&none), 128)?;
+    let session = limited_or_null(body.get("session_id").unwrap_or(&none), 191)?;
+    let branch = limited_or_null(body.get("branch").unwrap_or(&none), 255)?;
+    let actor = req.ctx.acting();
+    let now = req.ctx.iso_now();
+    sql(execute(
+        req.conn,
+        "UPDATE agent_work_runs SET status = 'abandoned', ended_at = COALESCE(updated_at, started_at),
+					duration_seconds = CAST((julianday(COALESCE(updated_at, started_at)) - julianday(started_at)) * 86400 AS INTEGER),
+					version = version + 1, updated_at = ?
+				 WHERE task_id = ? AND actor_kind = ? AND actor_id = ? AND agent = ? AND status = 'running'",
+        &[text(&now), int(task_id), text(&actor.kind), text(actor.owner()), text(&agent)],
+    ))?;
+    let inserted = sql(execute(
+        req.conn,
+        "INSERT INTO agent_work_runs
+					(task_id, agent, model, session_id, branch, status, started_at, actor_kind, actor_id, version, created_at, updated_at)
+				 SELECT ?, ?, ?, ?, ?, 'running', ?, ?, ?, 1, ?, ?
+				 WHERE EXISTS (SELECT 1 FROM tasks WHERE id = ? AND deleted_at IS NULL)",
+        &[
+            int(task_id),
+            text(&agent),
+            opt_text(model),
+            opt_text(session),
+            opt_text(branch),
+            text(&now),
+            text(&actor.kind),
+            text(actor.owner()),
+            text(&now),
+            text(&now),
+            int(task_id),
+        ],
+    ))?;
+    if inserted.changes == 0 {
+        return Err(not_found("Task"));
+    }
+    load_run(req, inserted.last_id)
+}
+
+pub(super) fn update(req: &Request<'_>) -> Handled {
+    require_agent_work(req)?;
+    let run = own_running_run(req, req.id("id"))?;
+    let (mut sets, mut values) = progress(&req.body, true)?;
+    sets.extend(["version = version + 1", "updated_at = ?"]);
+    values.push(text(&req.ctx.iso_now()));
+    let id = col(&run, "id").as_i64().unwrap_or(0);
+    values.push(int(id));
+    sql(execute(
+        req.conn,
+        &format!(
+            "UPDATE agent_work_runs SET {} WHERE id = ?",
+            sets.join(", ")
+        ),
+        &values,
+    ))?;
+    load_run(req, id)
+}
+
+pub(super) fn finish(req: &Request<'_>) -> Handled {
+    require_agent_work(req)?;
+    let run = own_running_run(req, req.id("id"))?;
+    let status = js::string_or_empty(req.body.get("status"))
+        .trim()
+        .to_lowercase();
+    if !["succeeded", "failed", "cancelled"].contains(&status.as_str()) {
+        return Err(http(
+            422,
+            "status must be one of succeeded, failed, cancelled",
+        ));
+    }
+    let (mut sets, mut values) = progress(&req.body, false)?;
+    let now = req.ctx.now;
+    let started = DateTime::parse_from_rfc3339(col(&run, "started_at").as_str().unwrap_or(""))
+        .map(|d| d.with_timezone(&chrono::Utc))
+        .unwrap_or(now);
+    let end = if now < started { started } else { now };
+    let duration = ((end - started).num_milliseconds() as f64 / 1000.0).round() as i64;
+    sets.extend([
+        "status = ?",
+        "ended_at = ?",
+        "duration_seconds = ?",
+        "version = version + 1",
+        "updated_at = ?",
+    ]);
+    values.extend([
+        text(&status),
+        text(&end.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)),
+        int(duration),
+        text(&req.ctx.iso_now()),
+    ]);
+    let id = col(&run, "id").as_i64().unwrap_or(0);
+    values.push(int(id));
+    sql(execute(
+        req.conn,
+        &format!(
+            "UPDATE agent_work_runs SET {} WHERE id = ?",
+            sets.join(", ")
+        ),
+        &values,
+    ))?;
+    load_run(req, id)
 }
 
 #[cfg(test)]

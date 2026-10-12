@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use rusqlite::types::Value as Sql;
 use serde_json::{json, Map, Value};
 
-use super::int;
+use super::{int, text};
 use crate::context::Context;
-use crate::db::{select, select_one, Row};
+use crate::db::{execute, select, select_one, Row};
 use crate::js;
 use crate::router::{not_found, sql, Handled, Outcome, Request};
 use crate::serialize::{col, paginate, task_json, TASK_SELECT};
@@ -111,6 +111,34 @@ pub(super) fn relations(req: &Request<'_>) -> Handled {
     let id = req.id("id");
     require_task(req, id)?;
     task_relations(req, id)
+}
+
+pub(super) fn start_timer(req: &Request<'_>) -> Handled {
+    let id = req.id("id");
+    sql(execute(
+        req.conn,
+        "UPDATE tasks SET start_time = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL AND start_time = 0",
+        &[int(req.ctx.epoch()), text(&req.ctx.iso_now()), int(id)],
+    ))?;
+    load_task(req, id)
+}
+
+pub(super) fn stop_timer_route(req: &Request<'_>) -> Handled {
+    let id = req.id("id");
+    stop_timer(req, id)?;
+    load_task(req, id)
+}
+
+pub(crate) fn stop_timer(req: &Request<'_>, id: i64) -> Result<(), Outcome> {
+    let now = req.ctx.epoch();
+    sql(execute(
+        req.conn,
+        "UPDATE tasks SET common_time = common_time + MAX(0, ? - start_time), start_time = 0, end_time = ?,
+			updated_at = ?
+		 WHERE id = ? AND start_time > 0",
+        &[int(now), int(now), text(&req.ctx.iso_now()), int(id)],
+    ))?;
+    Ok(())
 }
 
 pub(crate) fn load_task(req: &Request<'_>, id: i64) -> Handled {

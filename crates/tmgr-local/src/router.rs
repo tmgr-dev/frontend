@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use percent_encoding::percent_decode_str;
 use serde_json::Value;
 
@@ -9,13 +7,20 @@ use crate::error::Error;
 pub(crate) struct Request<'a> {
     pub conn: &'a rusqlite::Connection,
     pub ctx: &'a Context,
-    pub params: HashMap<String, String>,
+    pub params: Params,
     pub query: Query,
+    pub body: Value,
 }
+
+/// Path parameters in pattern order (the journal takes the first numeric one).
+pub(crate) type Params = Vec<(String, String)>;
 
 impl Request<'_> {
     pub fn param(&self, key: &str) -> &str {
-        self.params.get(key).map_or("", String::as_str)
+        self.params
+            .iter()
+            .find(|(k, _)| k == key)
+            .map_or("", |(_, v)| v.as_str())
     }
 
     pub fn id(&self, key: &str) -> i64 {
@@ -51,6 +56,13 @@ pub(crate) fn http(status: u16, message: impl Into<String>) -> Outcome {
     Outcome::Http {
         status,
         body: serde_json::json!({ "message": message.into() }),
+    }
+}
+
+pub(crate) fn coded(status: u16, message: &str, code: &str) -> Outcome {
+    Outcome::Http {
+        status,
+        body: serde_json::json!({ "message": message, "code": code }),
     }
 }
 
@@ -100,6 +112,7 @@ enum Segment {
 
 pub(crate) struct Route {
     pub method: &'static str,
+    pub pattern: &'static str,
     pub status: u16,
     pub handler: Handler,
     segments: Vec<Segment>,
@@ -119,29 +132,35 @@ impl Route {
             .collect();
         Route {
             method,
+            pattern,
             status: 200,
             handler,
             segments,
         }
     }
 
-    pub fn matches(&self, path: &str) -> Option<HashMap<String, String>> {
+    pub fn created(mut self) -> Self {
+        self.status = 201;
+        self
+    }
+
+    pub fn matches(&self, path: &str) -> Option<Params> {
         let parts: Vec<&str> = path.split('/').collect();
         if parts.len() != self.segments.len() {
             return None;
         }
-        let mut params = HashMap::new();
+        let mut params = Vec::new();
         for (segment, part) in self.segments.iter().zip(parts) {
             match segment {
                 Segment::Literal(lit) if *lit == part => {}
                 Segment::Literal(_) => return None,
                 Segment::Any(name) if !part.is_empty() => {
-                    params.insert(name.to_string(), decode(part));
+                    params.push((name.to_string(), decode(part)));
                 }
                 Segment::Digits(name)
                     if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) =>
                 {
-                    params.insert(name.to_string(), decode(part));
+                    params.push((name.to_string(), decode(part)));
                 }
                 _ => return None,
             }
@@ -187,12 +206,15 @@ mod tests {
     #[test]
     fn digit_segments_only_match_digits() {
         let route = Route::new("GET", "tasks/:id(\\d+)", noop);
-        assert_eq!(route.matches("tasks/42").unwrap()["id"], "42");
+        assert_eq!(
+            route.matches("tasks/42").unwrap(),
+            [("id".to_string(), "42".to_string())]
+        );
         assert!(route.matches("tasks/runned").is_none());
         assert!(route.matches("tasks/42/comments").is_none());
         let any = Route::new("GET", "tasks/status/:status", noop);
         assert_eq!(
-            any.matches("tasks/status/In%20work").unwrap()["status"],
+            any.matches("tasks/status/In%20work").unwrap()[0].1,
             "In work"
         );
     }

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::types::{Value as Sql, ValueRef};
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use tmgr_local::{dispatch, Context, LocalWorkspace, Manifest, User};
+use tmgr_local::{dispatch, Actor, Context, LocalWorkspace, Manifest, User};
 
 fn dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/parity")
@@ -82,21 +82,21 @@ fn dump(conn: &Connection) -> Value {
         let mut stmt = conn
             .prepare(&format!("SELECT * FROM \"{name}\" ORDER BY rowid"))
             .unwrap();
-        let width = stmt.column_count();
+        let columns: Vec<String> = stmt.column_names().iter().map(|c| c.to_string()).collect();
         let rows: Vec<Value> = stmt
             .query_map([], |r| {
-                Ok(Value::Array(
-                    (0..width)
-                        .map(|i| match r.get_ref(i).unwrap() {
-                            ValueRef::Null => Value::Null,
-                            ValueRef::Integer(n) => json!(n),
-                            ValueRef::Real(f) => json!(f),
-                            ValueRef::Text(t) | ValueRef::Blob(t) => {
-                                json!(String::from_utf8_lossy(t))
-                            }
-                        })
-                        .collect(),
-                ))
+                let mut row = serde_json::Map::new();
+                for (i, column) in columns.iter().enumerate() {
+                    let value = match r.get_ref(i).unwrap() {
+                        ValueRef::Null => Value::Null,
+                        ValueRef::Integer(n) => json!(n),
+                        ValueRef::Real(f) if f.fract() == 0.0 && f.abs() < 9e15 => json!(f as i64),
+                        ValueRef::Real(f) => json!(f),
+                        ValueRef::Text(t) | ValueRef::Blob(t) => json!(String::from_utf8_lossy(t)),
+                    };
+                    row.insert(column.clone(), value);
+                }
+                Ok(Value::Object(row))
             })
             .unwrap()
             .map(Result::unwrap)
@@ -109,10 +109,6 @@ fn dump(conn: &Connection) -> Value {
 fn context(scenario: &Value) -> Context {
     let ws = &scenario["workspace"];
     let user = &scenario["user"];
-    assert!(
-        scenario["actor"].is_null(),
-        "actors are not supported by the runner yet"
-    );
     Context {
         workspace: LocalWorkspace {
             manifest: Manifest {
@@ -134,8 +130,19 @@ fn context(scenario: &Value) -> Context {
             .unwrap()
             .with_timezone(&Utc),
         local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
-        actor: None,
+        actor: actor(&scenario["actor"]),
     }
+}
+
+fn actor(value: &Value) -> Option<Actor> {
+    let a = value.as_object()?;
+    let text = |k: &str| a.get(k).and_then(Value::as_str).map(str::to_string);
+    Some(Actor {
+        kind: text("kind")?,
+        id: text("id")?,
+        name: text("name").unwrap_or_default(),
+        owner_id: text("ownerId"),
+    })
 }
 
 /// Routes only the Rust crate has; the TS golden answers them with "no route".
@@ -147,18 +154,19 @@ fn rust_only(url: &str) -> bool {
 }
 
 /// Route families the crate does not answer yet; any other unanswered request is a failure.
-fn not_ported_yet(url: &str) -> bool {
-    matches!(
-        segments(url).as_slice(),
-        ["pages", ..]
-            | ["tasks", _, "pages" | "files"]
-            | ["daily-routines", ..]
-            | ["files", ..]
-            | ["plugins", ..]
-            | ["graph", ..]
-            | ["workspaces", "context"]
-            | ["workspaces", _, "modules" | "settings" | "files"]
-    )
+fn not_ported_yet(method: &str, url: &str) -> bool {
+    method != "GET"
+        || matches!(
+            segments(url).as_slice(),
+            ["pages", ..]
+                | ["tasks", _, "pages" | "files"]
+                | ["daily-routines", ..]
+                | ["files", ..]
+                | ["plugins", ..]
+                | ["graph", ..]
+                | ["workspaces", "context"]
+                | ["workspaces", _, "modules" | "settings" | "files"]
+        )
 }
 
 fn segments(url: &str) -> Vec<&str> {
@@ -172,6 +180,9 @@ struct Outcome {
     passed: usize,
     unported: Vec<String>,
     failed: Vec<String>,
+    after_unported: Vec<String>,
+    tables_matched: usize,
+    tables_skipped: Vec<String>,
 }
 
 fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
@@ -190,8 +201,8 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         .unwrap_or_else(|e| panic!("{name} seed: {e}"));
     }
     let before = dump(&conn);
-    conn.execute_batch("PRAGMA query_only = ON").unwrap();
-    let ctx = context(&scenario);
+    let base = context(&scenario);
+    let mut skipped = false;
     let expected = golden["responses"].as_array().unwrap();
     let requests = scenario["requests"].as_array().unwrap();
     assert_eq!(requests.len(), expected.len(), "{name}: golden length");
@@ -203,10 +214,20 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         if *want == not_found && rust_only(url) {
             continue;
         }
+        let mut ctx = base.clone();
+        if let Some(now) = request.get("now").and_then(Value::as_str) {
+            ctx.now = DateTime::parse_from_rfc3339(now)
+                .unwrap()
+                .with_timezone(&Utc);
+        }
+        if let Some(a) = request.get("actor") {
+            ctx.actor = actor(a);
+        }
         let got = match dispatch(&conn, &ctx, method, url, request.get("body")) {
             Ok(Some(r)) => json!({ "status": r.status, "data": r.data }),
-            Ok(None) if *want != not_found && not_ported_yet(url) => {
+            Ok(None) if *want != not_found && not_ported_yet(method, url) => {
                 outcome.unported.push(label);
+                skipped = true;
                 continue;
             }
             Ok(None) => not_found,
@@ -214,6 +235,8 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
         };
         if got == *want {
             outcome.passed += 1;
+        } else if skipped {
+            outcome.after_unported.push(label);
         } else {
             outcome.failed.push(format!(
                 "{label}\n  want {}\n  got  {}",
@@ -222,8 +245,48 @@ fn run(name: &str, schema: &Value, outcome: &mut Outcome) {
             ));
         }
     }
-    conn.execute_batch("PRAGMA query_only = OFF").unwrap();
-    assert_eq!(dump(&conn), before, "{name}: a read changed the database");
+    let after = dump(&conn);
+    let mut changed = serde_json::Map::new();
+    for (table, rows) in after.as_object().unwrap() {
+        if before.get(table) != Some(rows) {
+            changed.insert(table.clone(), rows.clone());
+        }
+    }
+    let changed = Value::Object(changed);
+    let all_get = requests
+        .iter()
+        .all(|r| r["method"].as_str().unwrap().eq_ignore_ascii_case("GET"));
+    if all_get {
+        assert_eq!(changed, json!({}), "{name}: a read changed the database");
+    }
+    let want = golden.get("tables").cloned().unwrap_or_else(|| json!({}));
+    if skipped {
+        outcome.tables_skipped.push(name.to_string());
+    } else if changed == want {
+        outcome.tables_matched += 1;
+    } else {
+        outcome.failed.push(table_diff(name, &want, &changed));
+    }
+}
+
+fn table_diff(name: &str, want: &Value, got: &Value) -> String {
+    let mut lines = vec![format!("{name}: tables differ")];
+    let empty = serde_json::Map::new();
+    let w = want.as_object().unwrap_or(&empty);
+    let g = got.as_object().unwrap_or(&empty);
+    let mut names: Vec<&String> = w.keys().chain(g.keys()).collect();
+    names.sort();
+    names.dedup();
+    for t in names {
+        if w.get(t) != g.get(t) {
+            lines.push(format!(
+                "  {t}\n    want {}\n    got  {}",
+                w.get(t).map_or("-".into(), |v| v.to_string()),
+                g.get(t).map_or("-".into(), |v| v.to_string())
+            ));
+        }
+    }
+    lines.join("\n")
 }
 
 #[test]
@@ -257,10 +320,15 @@ fn scenarios_match_the_ts_goldens() {
         run(name, &schema, &mut outcome);
     }
     eprintln!(
-        "parity: {} requests match, {} on routes not ported yet",
+        "parity: {} requests match, {} on routes not ported yet; table state matches in {} scenarios, not compared in {:?}",
         outcome.passed,
-        outcome.unported.len()
+        outcome.unported.len(),
+        outcome.tables_matched,
+        outcome.tables_skipped
     );
+    for label in &outcome.after_unported {
+        eprintln!("  differs after a not-ported write: {label}");
+    }
     for label in &outcome.unported {
         eprintln!("  not ported: {label}");
     }

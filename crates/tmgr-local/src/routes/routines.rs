@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use chrono::{Datelike, Days, Months, NaiveDate};
 use serde_json::{json, Value};
 
-use super::text;
-use crate::db::{select, Row};
+use rusqlite::types::Value as Sql;
+
+use super::{int, text};
+use crate::db::{execute, select, select_one, Row};
 use crate::js;
-use crate::router::{http, sql, Handled, Request};
+use crate::router::{http, sql, Handled, Outcome, Request};
 use crate::serialize::col;
 
 const PATTERN_SQL: &str = "
@@ -326,6 +328,220 @@ pub(super) fn expand(req: &Request<'_>) -> Handled {
         key(a).cmp(&key(b))
     });
     Ok(Value::Array(results))
+}
+
+fn require_active(req: &Request<'_>, id: i64) -> Result<Row, Outcome> {
+    sql(select_one(
+        req.conn,
+        "SELECT * FROM routines WHERE id = ? AND deleted_at IS NULL AND archived_at IS NULL",
+        &[int(id)],
+    ))?
+    .ok_or_else(|| http(404, "Routine task not found"))
+}
+
+fn instance_json(row: &Row) -> Value {
+    let scheduled = js::string(col(row, "scheduled_for"));
+    json!({
+        "id": col(row, "id"),
+        "task_id": col(row, "routine_id"),
+        "scheduled_for": format!("{scheduled}Z"),
+        "status": col(row, "status"),
+        "completed_at": col(row, "completed_at"),
+        "skipped_at": col(row, "skipped_at"),
+        "created_at": col(row, "created_at"),
+        "updated_at": col(row, "updated_at"),
+        "scheduled_date": scheduled.chars().take(10).collect::<String>(),
+        "scheduled_time": scheduled.chars().skip(11).collect::<String>(),
+    })
+}
+
+fn instance(req: &Request<'_>, id: i64) -> Result<Row, Outcome> {
+    Ok(sql(select_one(
+        req.conn,
+        "SELECT * FROM routine_instances WHERE id = ?",
+        &[int(id)],
+    ))?
+    .unwrap_or_default())
+}
+
+/// JavaScript `Date.parse` in milliseconds for the forms the local store holds.
+fn parse_ms(req: &Request<'_>, v: &Value) -> Option<i64> {
+    let s = v.as_str()?;
+    if let Ok(d) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(d.timestamp_millis());
+    }
+    if let Ok(d) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f") {
+        return d
+            .and_local_timezone(req.ctx.local_offset)
+            .single()
+            .map(|d| d.timestamp_millis());
+    }
+    NaiveDate::parse_from_str(s, "%Y-%m-%d").ok().map(|d| {
+        d.and_hms_opt(0, 0, 0)
+            .unwrap_or_default()
+            .and_utc()
+            .timestamp_millis()
+    })
+}
+
+/// Toggles the instance of a day between completed and pending, like the TS `completeForDate`.
+fn complete_for_date(req: &Request<'_>, routine_id: i64, date: &str) -> Result<Row, Outcome> {
+    let day_start = format!("{date}T00:00:00");
+    let day_end = format!("{}T00:00:00", add_days(date, 1));
+    let now = req.ctx.iso_now();
+    let existing = sql(select_one(
+        req.conn,
+        "SELECT * FROM routine_instances WHERE routine_id = ? AND scheduled_for >= ? AND scheduled_for < ?",
+        &[int(routine_id), text(&day_start), text(&day_end)],
+    ))?;
+    let row = match existing {
+        Some(row) => row,
+        None => {
+            let inserted = sql(execute(
+                req.conn,
+                "INSERT INTO routine_instances (routine_id, scheduled_for, status, created_at, updated_at) VALUES (?, ?, 'PENDING', ?, ?)",
+                &[int(routine_id), text(&day_start), text(&now), text(&now)],
+            ))?;
+            instance(req, inserted.last_id)?
+        }
+    };
+    let was_completed = col(&row, "status").as_str() == Some("COMPLETED");
+    let id = col(&row, "id").as_i64().unwrap_or(0);
+    if was_completed {
+        let n = sql(select_one(
+            req.conn,
+            "SELECT COUNT(*) AS n FROM routine_instances WHERE routine_id = ?",
+            &[int(routine_id)],
+        ))?
+        .and_then(|r| col(&r, "n").as_i64())
+        .unwrap_or(0);
+        let pattern = sql(select_one(
+            req.conn,
+            "SELECT frequency FROM routine_patterns WHERE routine_id = ? AND frequency IS NOT NULL AND frequency NOT IN ('', 'NONE')",
+            &[int(routine_id)],
+        ))?;
+        let routine = sql(select_one(
+            req.conn,
+            "SELECT created_at FROM routines WHERE id = ?",
+            &[int(routine_id)],
+        ))?;
+        let gap = |a: &Value, b: &Value| match (parse_ms(req, a), parse_ms(req, b)) {
+            (Some(a), Some(b)) => Some((a - b).abs()),
+            _ => None,
+        };
+        let by_completion =
+            gap(col(&row, "created_at"), col(&row, "completed_at")).is_some_and(|g| g <= 60_000);
+        let with_routine = routine.as_ref().is_some_and(|r| {
+            let created = col(r, "created_at");
+            let day_of_creation = js::string(created).chars().take(10).collect::<String>();
+            gap(col(&row, "created_at"), created).is_some_and(|g| g <= 60_000)
+                && gap(
+                    &json!(format!("{date}T00:00:00Z")),
+                    &json!(format!("{day_of_creation}T00:00:00Z")),
+                )
+                .is_some_and(|g| g <= 86_400_000)
+        });
+        let midnight = js::string(col(&row, "scheduled_for")).get(11..19) == Some("00:00:00");
+        if pattern.is_none() && n == 1 && midnight && (by_completion || with_routine) {
+            sql(execute(
+                req.conn,
+                "DELETE FROM routine_instances WHERE id = ?",
+                &[int(id)],
+            ))?;
+            let mut gone = row.clone();
+            gone.insert("id".into(), Value::Null);
+            gone.insert("status".into(), json!("PENDING"));
+            gone.insert("completed_at".into(), Value::Null);
+            gone.insert("skipped_at".into(), Value::Null);
+            gone.insert("updated_at".into(), json!(now));
+            return Ok(gone);
+        }
+    }
+    let status = if was_completed {
+        "PENDING"
+    } else {
+        "COMPLETED"
+    };
+    sql(execute(
+        req.conn,
+        "UPDATE routine_instances SET status = ?, completed_at = ?, skipped_at = NULL, updated_at = ? WHERE id = ?",
+        &[
+            text(status),
+            if was_completed { Sql::Null } else { text(&now) },
+            text(&now),
+            int(id),
+        ],
+    ))?;
+    instance(req, id)
+}
+
+fn today(req: &Request<'_>) -> String {
+    req.ctx.local_now().format("%Y-%m-%d").to_string()
+}
+
+pub(super) fn complete(req: &Request<'_>) -> Handled {
+    let row = require_active(req, req.id("id"))?;
+    let id = col(&row, "id").as_i64().unwrap_or(0);
+    Ok(instance_json(&complete_for_date(req, id, &today(req))?))
+}
+
+pub(super) fn complete_on(req: &Request<'_>) -> Handled {
+    let row = require_active(req, req.id("id"))?;
+    let id = col(&row, "id").as_i64().unwrap_or(0);
+    let from_body = req
+        .body
+        .get("date")
+        .filter(|v| js::truthy(v))
+        .map(js::string);
+    let date = req
+        .query
+        .filled("date")
+        .map(str::to_string)
+        .or(from_body)
+        .unwrap_or_else(|| today(req));
+    let instance = complete_for_date(req, id, &date)?;
+    let status = col(&instance, "status").clone();
+    Ok(json!({
+        "instance_id": col(&instance, "id"),
+        "task_id": id,
+        "date": date,
+        "completed": status == "COMPLETED",
+        "status": status,
+    }))
+}
+
+fn set_instance_status(req: &Request<'_>, status: &str) -> Handled {
+    let row = require_active(req, req.id("id"))?;
+    let routine_id = col(&row, "id").as_i64().unwrap_or(0);
+    let instance_id = req.id("instanceId");
+    sql(select_one(
+        req.conn,
+        "SELECT id FROM routine_instances WHERE id = ? AND routine_id = ?",
+        &[int(instance_id), int(routine_id)],
+    ))?
+    .ok_or_else(|| http(404, "Task instance not found for routine"))?;
+    let now = req.ctx.iso_now();
+    let stamp = |when: &str| {
+        if status == when {
+            text(&now)
+        } else {
+            Sql::Null
+        }
+    };
+    sql(execute(
+        req.conn,
+        "UPDATE routine_instances SET status = ?, completed_at = ?, skipped_at = ?, updated_at = ? WHERE id = ?",
+        &[text(status), stamp("COMPLETED"), stamp("SKIPPED"), text(&now), int(instance_id)],
+    ))?;
+    Ok(instance_json(&instance(req, instance_id)?))
+}
+
+pub(super) fn complete_instance(req: &Request<'_>) -> Handled {
+    set_instance_status(req, "COMPLETED")
+}
+
+pub(super) fn skip_instance(req: &Request<'_>) -> Handled {
+    set_instance_status(req, "SKIPPED")
 }
 
 #[cfg(test)]
