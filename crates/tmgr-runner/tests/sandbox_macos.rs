@@ -98,4 +98,12 @@ fn other_terminals_are_unreachable_but_own_pty_works() {
         "{}",
         o.stdout
     );
+    if std::path::Path::new("/dev/ttyp0").exists() {
+        let o = f.run(
+            "perl -e 'use Fcntl; if (sysopen(F, \"/dev/ttyp0\", O_RDONLY|O_NONBLOCK|O_NOCTTY)) { print qq(opened\\n) } else { print qq(errno=).($!+0).qq(\\n) }'",
+        );
+        assert_eq!(o.stdout.trim(), "errno=1", "{} {}", o.stdout, o.stderr);
+    } else {
+        println!("note: /dev/ttyp0 does not exist, legacy slave assertion skipped");
+    }
 }

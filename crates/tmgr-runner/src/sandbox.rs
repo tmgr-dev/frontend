@@ -426,6 +426,7 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
     ));
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/ttys[0-9]+$\"))\n");
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/pty[p-w][0-9a-f]$\"))\n");
+    s.push_str("(deny file-read-data file-write* (regex #\"^/dev/tty[p-w][0-9a-f]$\"))\n");
     Ok(s)
 }
 
@@ -1003,8 +1004,11 @@ mod tests {
         let pty = s
             .find("(deny file-read-data file-write* (regex #\"^/dev/pty[p-w]")
             .unwrap();
+        let legacy = s
+            .find("(deny file-read-data file-write* (regex #\"^/dev/tty[p-w]")
+            .unwrap();
         let last_allow = s.rfind("(allow ").unwrap();
-        assert!(tty > last_allow && pty > last_allow);
+        assert!(tty > last_allow && pty > last_allow && legacy > last_allow);
         assert!(s.contains("(literal \"/dev/tty\")"));
     }
 
