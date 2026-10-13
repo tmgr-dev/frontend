@@ -153,10 +153,21 @@ impl ServerMsg {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToShim {
-    Adopt { nonce_r: String },
-    AdoptAuth { proof_r: String },
-    Resize { cols: u16, rows: u16 },
-    Signal { sig: i32 },
+    Adopt {
+        nonce_r: String,
+    },
+    AdoptAuth {
+        proof_r: String,
+    },
+    Resize {
+        cols: u16,
+        rows: u16,
+    },
+    Signal {
+        sig: i32,
+        #[serde(default)]
+        id: u64,
+    },
     Reap,
 }
 
@@ -173,6 +184,10 @@ pub struct ShimHello {
     pub started_at_ms: u64,
     #[serde(default)]
     pub exit: Option<ExitInfo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd_dev: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd_ino: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -187,12 +202,22 @@ pub struct Stat {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum FromShim {
-    AdoptChallenge { nonce_sh: String, proof_sh: String },
+    AdoptChallenge {
+        nonce_sh: String,
+        proof_sh: String,
+    },
     Hello(ShimHello),
     Stat(Stat),
     Exited(ExitInfo),
-    InputDropped { bytes: u64 },
-    SignalAck { sig: i32, delivered: bool },
+    InputDropped {
+        bytes: u64,
+    },
+    SignalAck {
+        sig: i32,
+        delivered: bool,
+        #[serde(default)]
+        id: u64,
+    },
 }
 
 #[cfg(test)]
@@ -242,12 +267,14 @@ mod tests {
         .unwrap();
         assert_eq!(v, json!({"type": "response", "id": 3, "ok": {"a": 1}}));
         let m: ToShim = serde_json::from_value(json!({"type": "signal", "sig": 15})).unwrap();
-        assert_eq!(m, ToShim::Signal { sig: 15 });
+        assert_eq!(m, ToShim::Signal { sig: 15, id: 0 });
         let h = FromShim::Hello(ShimHello {
             pid: 1,
             child_pid: 2,
             started_at_ms: 3,
             exit: None,
+            cwd_dev: Some(4),
+            cwd_ino: None,
         });
         let back: FromShim = serde_json::from_value(serde_json::to_value(&h).unwrap()).unwrap();
         assert_eq!(back, h);

@@ -311,7 +311,21 @@ fn method_params_and_results() {
             generation: 7,
         },
     );
-    golden("origin_revoked", &OriginRevoked { killed: 2 });
+    golden(
+        "origin_revoked",
+        &OriginRevoked {
+            killed: 2,
+            pending: 1,
+        },
+    );
+    let old: OriginRevoked = serde_json::from_value(json!({"killed": 2})).unwrap();
+    assert_eq!(
+        old,
+        OriginRevoked {
+            killed: 2,
+            pending: 0
+        }
+    );
     golden("run_bundle", &bundle());
     golden(
         "session_info_notask",

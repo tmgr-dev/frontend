@@ -98,6 +98,8 @@ pub struct OriginRevokeParams {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OriginRevoked {
     pub killed: u32,
+    #[serde(default)]
+    pub pending: u32,
 }
 
 /// Identity (`stat` device and inode) of the folder a human approved.

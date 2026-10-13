@@ -174,6 +174,7 @@ struct Shim {
     child_pid: i32,
     child: ChildGuard,
     started_ms: u64,
+    cwd_id: (u64, u64),
     endpoint: Endpoint,
     dir: PathBuf,
     st: Mutex<State>,
@@ -244,6 +245,8 @@ impl Shim {
                 child_pid: self.child_pid as u32,
                 started_at_ms: self.started_ms,
                 exit: st.exit.clone(),
+                cwd_dev: report_cwd_id().then_some(self.cwd_id.0),
+                cwd_ino: report_cwd_id().then_some(self.cwd_id.1),
             });
             let replay = Frame::Bin(BinFrame {
                 tag: TAG_REPLAY,
@@ -308,10 +311,10 @@ impl Shim {
                             pixel_height: 0,
                         });
                     }
-                    Ok(ToShim::Signal { sig }) => {
+                    Ok(ToShim::Signal { sig, id }) => {
                         let delivered = self.signal(sig);
                         let mut st = lock(&self.st);
-                        self.send(&mut st, &FromShim::SignalAck { sig, delivered });
+                        self.send(&mut st, &FromShim::SignalAck { sig, delivered, id });
                     }
                     Ok(ToShim::Reap) => {
                         self.cleanup();
@@ -362,7 +365,17 @@ pub fn shim_main(dir: &Path, id: &str) -> i32 {
     }
 }
 
-fn enter_launch_dir() -> io::Result<()> {
+#[cfg(debug_assertions)]
+fn report_cwd_id() -> bool {
+    std::env::var_os("TMGR_TEST_SHIM_NO_CWD_ID").is_none()
+}
+
+#[cfg(not(debug_assertions))]
+fn report_cwd_id() -> bool {
+    true
+}
+
+fn enter_launch_dir() -> io::Result<(u64, u64)> {
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(SHIM_CWD_FD, &mut st) } != 0
         || st.st_mode & libc::S_IFMT != libc::S_IFDIR
@@ -375,11 +388,11 @@ fn enter_launch_dir() -> io::Result<()> {
     if res != 0 {
         return Err(err);
     }
-    Ok(())
+    Ok((st.st_dev as u64, st.st_ino as u64))
 }
 
 fn run(dir: &Path, id: &str) -> io::Result<()> {
-    enter_launch_dir()?;
+    let cwd_id = enter_launch_dir()?;
     let sdir = dir.join("sessions").join(id);
     let launch_path = sdir.join("launch.json");
     let launch_bytes = fs::read(&launch_path)?;
@@ -424,6 +437,7 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
         child_pid,
         child: ChildGuard::new(child_pid),
         started_ms: now_ms(),
+        cwd_id,
         endpoint,
         dir: dir.to_path_buf(),
         st: Mutex::new(State {

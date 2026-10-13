@@ -124,7 +124,7 @@ missing params) and `internal`.
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
 | `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
-| `origin.revoke` | `{link, generation}` | `{killed}` | `forbidden` | `client: "cli"` only |
+| `origin.revoke` | `{link, generation}` | `{killed, pending}` | `forbidden` | `client: "cli"` only |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -214,7 +214,12 @@ owner calls it from `tmgr link revoke`). Under the create lock it records
 `link -> generation` in `revoked.json` (mode 0600, in the runner directory, so it
 survives restarts), then sends SIGKILL to the process group of every session
 that is not exited and whose origin is that link with a generation up to the
-given one. The result is `{"killed":n}`. It is idempotent; a later call keeps the
+given one. A session counts as `killed` only when its shim reports the exit
+within a per-session wait; otherwise it is `pending`: it stays not exited (state
+detail `revoking`), keeps its directory reserved, and the runner retries the
+kill every second (re-adopting the shim if needed) until the exit is reported.
+The revocation is incomplete while `pending` is above 0. The result is
+`{"killed":n,"pending":m}`. It is idempotent; a later call keeps the
 highest generation. After it, `runs.create` for that link and a generation up to
 the recorded one is `forbidden`; a newly trusted link has a higher generation.
 

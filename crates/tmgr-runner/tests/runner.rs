@@ -1929,6 +1929,64 @@ fn origin_revoke_kills_that_links_runs_only_and_blocks_new_ones_across_restarts(
     assert!(fx.worker().create_run(fx.req("a", 5)).is_ok());
 }
 
+struct Resume(i32);
+
+impl Drop for Resume {
+    fn drop(&mut self) {
+        unsafe { libc::kill(self.0, libc::SIGCONT) };
+    }
+}
+
+#[test]
+fn a_revocation_the_shim_cannot_confirm_stays_pending_and_reserved_until_the_retry_lands() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 3);
+    let b = link_entry("b", 2, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a, b]));
+    fx.h.start(5000);
+    let a1 = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let stalled = a1.shim_pid as i32;
+    unsafe { libc::kill(stalled, libc::SIGSTOP) };
+    let _resume = Resume(stalled);
+    let mut cli = fx.h.client();
+    let done: OriginRevoked = serde_json::from_value(
+        cli.call(
+            method::ORIGIN_REVOKE,
+            serde_json::to_value(OriginRevokeParams {
+                link: "a".into(),
+                generation: 1,
+            })
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!((done.killed, done.pending), (0, 1));
+    let s = cli
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == a1.id)
+        .unwrap();
+    assert_ne!(s.state.kind, StateKind::Exited, "{s:?}");
+    assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
+    let e = err_text(fx.h.client().create_run(fx.h.bundled("fake")));
+    assert!(e.starts_with("busy: "), "{e}");
+    unsafe { libc::kill(stalled, libc::SIGCONT) };
+    let s = wait_state(&mut cli, &a1.id, 15, |s| s.kind == StateKind::Exited);
+    assert_eq!(s.state.kind, StateKind::Exited, "{s:?}");
+    assert_eq!(s.state.detail.as_deref(), Some("revoked"), "{s:?}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(a1.child_pid) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!alive(a1.child_pid));
+    assert!(fx.worker().create_run(fx.req("b", 2)).is_ok());
+}
+
 #[test]
 fn a_restart_finishes_an_interrupted_revocation_for_adopted_link_runs() {
     if !sessions_available() {
@@ -1983,10 +2041,10 @@ fn an_adopted_session_with_old_metadata_still_reserves_its_directory() {
     drop(w);
     h.kill_runner();
     downgrade_meta_to_old_format(&h, &first.id);
-    h.start(5000);
     let renamed = h.tmp.path().join("renamed");
     let work = fs::canonicalize(&h.work).unwrap();
     fs::rename(&work, &renamed).unwrap();
+    h.start(5000);
     let e = err_text(h.client().create_run(h.bundled_at("fake", &renamed)));
     assert!(e.starts_with("busy: "), "{e}");
     let mut plain = h.req(&["/bin/sh", "-c", "sleep 5"]);
@@ -2001,6 +2059,7 @@ fn an_adopted_session_with_old_metadata_and_a_vanished_directory_reserves_its_pa
         return;
     }
     let mut h = Harness::new();
+    h.env.push(("TMGR_TEST_SHIM_NO_CWD_ID".into(), "1".into()));
     h.bundle_runner();
     let first = h.client().create_run(h.bundled("fake")).unwrap();
     let mut w = Watch::new(h.client(), &[&first.id]);
@@ -2019,6 +2078,30 @@ fn an_adopted_session_with_old_metadata_and_a_vanished_directory_reserves_its_pa
     plain.cwd = work.display().to_string();
     let e = err_text(h.client().create(plain));
     assert!(e.starts_with("busy: "), "{e}");
+}
+
+#[test]
+fn bundled_runs_are_refused_while_an_adopted_session_has_an_unknown_identity() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.env.push(("TMGR_TEST_SHIM_NO_CWD_ID".into(), "1".into()));
+    h.bundle_runner();
+    let first = h.client().create_run(h.bundled("fake")).unwrap();
+    let mut w = Watch::new(h.client(), &[&first.id]);
+    assert!(w.wait(30, |w| w.has_line(&first.id, "ready")));
+    drop(w);
+    h.kill_runner();
+    downgrade_meta_to_old_format(&h, &first.id);
+    h.start(5000);
+    let other = h.tmp.path().join("other");
+    fs::create_dir(&other).unwrap();
+    let e = err_text(h.client().create_run(h.bundled_at("fake", &other)));
+    assert!(
+        e.starts_with("busy: ") && e.contains("unknown directory identity"),
+        "{e}"
+    );
 }
 
 #[test]

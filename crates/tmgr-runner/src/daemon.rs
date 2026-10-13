@@ -18,7 +18,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::unix::fs::OpenOptionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -306,7 +306,9 @@ struct Session {
     drop_logged: AtomicBool,
     input_dropped: AtomicBool,
     meta_lock: Mutex<()>,
-    sig_acks: AtomicU64,
+    sig_seq: AtomicU64,
+    sig_acks: Mutex<HashMap<u64, bool>>,
+    revoking: AtomicBool,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -317,9 +319,17 @@ fn write_meta(dir: &Path, meta: &Meta) {
 
 const REVOKE_WAIT: Duration = Duration::from_secs(2);
 
-fn terminate(s: &Session, deadline: Instant) -> bool {
-    let confirmed = s.kill_via_shim(deadline);
-    s.mark_revoked();
+fn terminate(s: &Session) -> bool {
+    s.revoking.store(true, Ordering::SeqCst);
+    let confirmed = s.kill_via_shim(Instant::now() + REVOKE_WAIT);
+    if confirmed {
+        s.mark_revoked();
+    } else {
+        log(&format!(
+            "session {} revocation pending: the shim did not confirm the exit",
+            s.id
+        ));
+    }
     confirmed
 }
 
@@ -333,9 +343,21 @@ fn interrupted_state() -> State {
 }
 
 impl Session {
+    fn effective(&self, i: &Inner) -> State {
+        let s = i.fixed.clone().unwrap_or_else(|| i.det.state().clone());
+        if s.kind != StateKind::Exited && self.revoking.load(Ordering::SeqCst) {
+            State {
+                detail: Some("revoking".into()),
+                ..s
+            }
+        } else {
+            s
+        }
+    }
+
     fn state(&self) -> State {
         let i = lock(&self.inner);
-        i.fixed.clone().unwrap_or_else(|| i.det.state().clone())
+        self.effective(&i)
     }
 
     fn info(&self) -> SessionInfo {
@@ -347,7 +369,7 @@ impl Session {
             argv: m.argv.clone(),
             cwd: m.cwd.clone(),
             profile: m.profile.clone(),
-            state: i.fixed.clone().unwrap_or_else(|| i.det.state().clone()),
+            state: self.effective(&i),
             created_ms: m.created_ms,
             cols: m.cols,
             rows: m.rows,
@@ -361,11 +383,7 @@ impl Session {
 
     fn holds_cwd(&self, id: (u64, u64), path: &Path) -> Option<bool> {
         let i = lock(&self.inner);
-        let held = i
-            .meta
-            .cwd_id
-            .or_else(|| fs::metadata(&i.meta.cwd).ok().map(|m| (m.dev(), m.ino())));
-        let same = match held {
+        let same = match i.meta.cwd_id {
             Some(h) => h == id,
             None => Path::new(&i.meta.cwd) == path,
         };
@@ -378,11 +396,19 @@ impl Session {
             if i.meta.bundle_sha256.is_some() {
                 i.meta.bundled = true;
             }
-            if i.meta.cwd_id.is_none() {
-                i.meta.cwd_id = fs::metadata(&i.meta.cwd).ok().map(|m| (m.dev(), m.ino()));
-            }
         }
         self.persist();
+    }
+
+    fn identity_unknown(&self) -> bool {
+        !self.is_exited() && lock(&self.inner).meta.cwd_id.is_none()
+    }
+
+    fn adopt_cwd_id(&self, hello: &ShimHello) {
+        if let (Some(dev), Some(ino)) = (hello.cwd_dev, hello.cwd_ino) {
+            lock(&self.inner).meta.cwd_id = Some((dev, ino));
+            self.persist();
+        }
     }
 
     fn is_exited(&self) -> bool {
@@ -437,7 +463,7 @@ impl Session {
         };
         let frame = Frame::Json(v);
         match msg {
-            ToShim::Resize { .. } => {
+            ToShim::Resize { .. } | ToShim::Signal { .. } => {
                 let _ = tx.try_send(frame);
             }
             _ => {
@@ -582,12 +608,17 @@ impl Session {
         }
         if let Some(e) = &hello.exit {
             self.on_exited(e);
+            if self.revoking.load(Ordering::SeqCst) {
+                self.mark_revoked();
+            }
         }
         let me = self.clone();
         thread::spawn(move || {
             me.read_shim(&stream, fresh);
             *lock(&me.shim) = None;
-            me.interrupt();
+            if !me.revoking.load(Ordering::SeqCst) {
+                me.interrupt();
+            }
         });
     }
 
@@ -597,9 +628,18 @@ impl Session {
                 Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
                     Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
-                    Ok(FromShim::Exited(e)) => self.on_exited(&e),
-                    Ok(FromShim::SignalAck { .. }) => {
-                        self.sig_acks.fetch_add(1, Ordering::SeqCst);
+                    Ok(FromShim::Exited(e)) => {
+                        self.on_exited(&e);
+                        if self.revoking.load(Ordering::SeqCst) {
+                            self.mark_revoked();
+                        }
+                    }
+                    Ok(FromShim::SignalAck { id, delivered, .. }) => {
+                        let mut acks = lock(&self.sig_acks);
+                        if acks.len() >= 64 {
+                            acks.clear();
+                        }
+                        acks.insert(id, delivered);
                     }
                     Ok(FromShim::InputDropped { bytes }) => {
                         self.input_dropped.store(true, Ordering::SeqCst);
@@ -616,19 +656,39 @@ impl Session {
         }
     }
 
-    fn kill_via_shim(&self, deadline: Instant) -> bool {
+    fn send_kill(&self) -> Option<u64> {
         if !self.has_shim() {
-            return false;
+            return None;
         }
-        let before = self.sig_acks.load(Ordering::SeqCst);
-        self.shim_msg(&ToShim::Signal { sig: libc::SIGKILL });
+        let id = self.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        self.shim_msg(&ToShim::Signal {
+            sig: libc::SIGKILL,
+            id,
+        });
+        Some(id)
+    }
+
+    fn kill_via_shim(&self, deadline: Instant) -> bool {
+        if self.is_exited() {
+            return true;
+        }
+        let Some(id) = self.send_kill() else {
+            return false;
+        };
         while Instant::now() < deadline {
-            if self.sig_acks.load(Ordering::SeqCst) > before || self.is_exited() {
+            if self.is_exited() {
                 return true;
             }
             thread::sleep(Duration::from_millis(10));
         }
-        self.sig_acks.load(Ordering::SeqCst) > before || self.is_exited()
+        let ack = lock(&self.sig_acks).remove(&id);
+        if ack == Some(false) {
+            log(&format!(
+                "session {} signal {id} was not delivered",
+                self.id
+            ));
+        }
+        self.is_exited()
     }
 
     fn mark_revoked(&self) {
@@ -650,6 +710,16 @@ impl Session {
             s
         };
         self.publish(vec![state]);
+    }
+
+    fn settle_without_shim(&self) {
+        let pid = lock(&self.inner).meta.child_pid as i32;
+        let gone = pid > 0
+            && unsafe { libc::kill(-pid, 0) } != 0
+            && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+        if gone {
+            self.mark_revoked();
+        }
     }
 
     fn nudge(&self) {
@@ -913,7 +983,8 @@ impl Runner {
                         "signal must be term, kill, int or hup",
                     )
                 })?;
-                s.shim_msg(&ToShim::Signal { sig });
+                let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+                s.shim_msg(&ToShim::Signal { sig, id });
                 Ok(Value::Null)
             }
             method::SESSIONS_SEND => {
@@ -1121,9 +1192,20 @@ impl Runner {
                         .is_some_and(|o| o.link == p.link && o.generation <= p.generation)
             })
             .collect();
-        let deadline = Instant::now() + REVOKE_WAIT;
-        let killed = victims.iter().filter(|s| terminate(s, deadline)).count() as u32;
-        Ok(OriginRevoked { killed })
+        let killed = thread::scope(|scope| {
+            let jobs: Vec<_> = victims
+                .iter()
+                .map(|s| scope.spawn(|| terminate(s)))
+                .collect();
+            jobs.into_iter()
+                .map(|j| j.join().unwrap_or(false))
+                .filter(|ok| *ok)
+                .count() as u32
+        });
+        Ok(OriginRevoked {
+            killed,
+            pending: victims.len() as u32 - killed,
+        })
     }
 
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
@@ -1227,6 +1309,13 @@ impl Runner {
             let sessions = lock(&self.sessions);
             if sessions.len() >= self.cfg.max_sessions {
                 return Err(api(ErrorCode::Limit, "too many sessions"));
+            }
+            if bundle.is_some() && sessions.values().any(|s| s.identity_unknown()) {
+                return Err(api(
+                    ErrorCode::Busy,
+                    "a session from an older runner has an unknown directory identity; \
+                     bundled runs are refused until it exits",
+                ));
             }
             let id = dir.id();
             if sessions.values().any(|s| {
@@ -1450,7 +1539,9 @@ impl Runner {
             drop_logged: AtomicBool::new(false),
             input_dropped: AtomicBool::new(false),
             meta_lock: Mutex::new(()),
-            sig_acks: AtomicU64::new(0),
+            sig_seq: AtomicU64::new(0),
+            sig_acks: Mutex::new(HashMap::new()),
+            revoking: AtomicBool::new(false),
         })
     }
 
@@ -1518,10 +1609,14 @@ impl Runner {
         };
         match adopted {
             Ok((stream, hello)) => {
+                session.adopt_cwd_id(&hello);
                 session.attach_shim(stream, hello, false);
                 if self.origin_is_revoked(&session) {
-                    terminate(&session, Instant::now() + REVOKE_WAIT);
-                    log(&format!("session {id} adopted and revoked"));
+                    let done = terminate(&session);
+                    log(&format!(
+                        "session {id} adopted and revoked ({})",
+                        if done { "terminated" } else { "pending" }
+                    ));
                 }
                 let s = session.clone();
                 thread::spawn(move || {
@@ -1537,6 +1632,41 @@ impl Runner {
         }
         lock(&self.sessions).insert(id.to_string(), session);
         Ok(())
+    }
+
+    fn retry_revocations(&self) {
+        for s in self.all() {
+            if !s.revoking.load(Ordering::SeqCst) || s.is_exited() {
+                continue;
+            }
+            if s.has_shim() {
+                s.send_kill();
+                continue;
+            }
+            let sdir = self.sdir(&s.id);
+            let pid = fs::read_to_string(sdir.join("shim.pid"))
+                .ok()
+                .and_then(|p| p.trim().parse::<u32>().ok());
+            let Some(pid) = pid else {
+                s.settle_without_shim();
+                continue;
+            };
+            let Ok(sec) = secret::read(&sdir.join("adopt.secret")) else {
+                continue;
+            };
+            match adopt_shim(&self.cfg.dir, &s.id, &sec, Some(pid)) {
+                Ok((stream, hello)) => s.attach_shim(stream, hello, false),
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+                    ) =>
+                {
+                    s.settle_without_shim()
+                }
+                Err(_) => {}
+            }
+        }
     }
 
     fn watch_list(&self, p: &Value) -> Result<Vec<String>, ApiErr> {
@@ -1884,6 +2014,14 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         }
     });
 
+    let revoker = rt.clone();
+    thread::spawn(move || {
+        while !revoker.stop.load(Ordering::SeqCst) {
+            thread::sleep(Duration::from_secs(1));
+            revoker.retry_revocations();
+        }
+    });
+
     while !rt.stop.load(Ordering::SeqCst) {
         match listener.accept() {
             Ok((stream, _)) => {
@@ -2028,6 +2166,8 @@ mod tests {
                         child_pid: 2,
                         started_at_ms: 3,
                         exit: None,
+                        cwd_dev: None,
+                        cwd_ino: None,
                     });
                     write_json(&mut s, &hello).unwrap();
                     return b"ok".to_vec();
