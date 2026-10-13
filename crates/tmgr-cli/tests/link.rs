@@ -499,18 +499,18 @@ fn list_on_a_fresh_machine_prints_one_hint() {
 }
 
 #[test]
-fn link_and_worker_are_marked_experimental_in_help() {
+fn link_and_worker_are_hidden_from_help_but_documented_as_experimental() {
     let f = fx();
     let out = f.tmgr().arg("--help").output().unwrap();
     let text = String::from_utf8_lossy(&out.stdout);
-    for line in text
+    assert!(!text
         .lines()
-        .filter(|l| l.trim_start().starts_with("link ") || l.trim_start().starts_with("worker "))
-    {
-        assert!(line.contains("experimental"), "{line}");
+        .any(|l| l.trim_start().starts_with("link ") || l.trim_start().starts_with("worker ")));
+    for cmd in ["link", "worker"] {
+        let out = f.tmgr().args([cmd, "--help"]).output().unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains("experimental"), "{cmd}: {text}");
     }
-    assert!(text.contains("link"));
-    assert!(text.contains("worker"));
 }
 
 #[test]

@@ -126,11 +126,13 @@ pub enum Command {
     /// Run the MCP server over stdio (notify_user, alarm, alarm_status, tmgr_cli)
     Mcp,
     /// Leader and follower links over SSH (experimental)
+    #[command(hide = true)]
     Link {
         #[command(subcommand)]
         command: LinkCommand,
     },
     /// Forced command for a follower, started by sshd only (experimental)
+    #[command(hide = true)]
     Worker(WorkerArgs),
     #[command(
         about = "How task references are written",
