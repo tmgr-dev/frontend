@@ -59,6 +59,27 @@ describe('member page reused across query changes (TM-543)', () => {
 		scope.stop();
 	});
 
+	it('hides the tasks panel when the new tab fails to load', async () => {
+		const scope = effectScope();
+		const page = scope.run(() =>
+			useMemberPage(
+				() => 1,
+				() => 2,
+			),
+		)!;
+		await page.refresh();
+		(getMemberTasks as jest.Mock).mockResolvedValue({
+			success: false,
+			error: { message: 'Tasks offline' },
+		});
+		mockRoute.query = { window: '30d', tab: 'assigned' };
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(page.tasksError.value).toBe('Tasks offline');
+		expect(page.tasksLoaded.value).toBe(false);
+		scope.stop();
+	});
+
 	it('falls back to the default tab for a bogus or missing tab without reloading stats', async () => {
 		const scope = effectScope();
 		const page = scope.run(() =>

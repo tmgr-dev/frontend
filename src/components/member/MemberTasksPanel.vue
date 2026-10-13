@@ -22,7 +22,9 @@
 				@click="emit('tab-change', option.key)"
 			>
 				{{ option.label }}
-				<span v-if="option.key === tab"> · {{ total }}</span>
+				<span v-if="option.key === tab && !(loading && !tasks.length)">
+					· {{ total }}</span
+				>
 			</button>
 		</div>
 
