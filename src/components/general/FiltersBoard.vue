@@ -241,7 +241,7 @@
 			<MenuItem>
 				<div class="flex items-center px-3 py-2 text-sm text-ink">
 					<input
-						class="h-4 w-4 cursor-pointer rounded focus:outline-none"
+						class="h-4 w-4 cursor-pointer rounded"
 						type="checkbox"
 						id="checkbox"
 						@change="

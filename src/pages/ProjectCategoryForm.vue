@@ -150,7 +150,7 @@
 
 					<div class="mt-8 flex flex-wrap items-center gap-3">
 						<button
-							class="h-10 rounded-pill bg-brand px-5 text-sm font-semibold text-white shadow-tmgr-xs transition-opacity hover:opacity-90 focus:outline-none"
+							class="h-10 rounded-pill bg-brand px-5 text-sm font-semibold text-white shadow-tmgr-xs transition-opacity hover:opacity-90"
 							type="button"
 							@click.prevent="create"
 						>
@@ -159,7 +159,7 @@
 
 						<button
 							v-if="isCreate"
-							class="hover:bg-brand/10 h-10 rounded-pill border border-brand bg-brand-bg px-5 text-sm font-semibold text-brand-fg transition-colors focus:outline-none"
+							class="hover:bg-brand/10 h-10 rounded-pill border border-brand bg-brand-bg px-5 text-sm font-semibold text-brand-fg transition-colors"
 							type="button"
 							@click.prevent="create(false)"
 						>
@@ -169,7 +169,7 @@
 						<router-link
 							v-if="!isCreate"
 							:to="`/projects-categories/${form.id}/children`"
-							class="flex h-10 items-center rounded-pill border border-line bg-surface px-5 text-sm font-semibold text-ink hover:bg-surface-hover focus:outline-none"
+							class="flex h-10 items-center rounded-pill border border-line bg-surface px-5 text-sm font-semibold text-ink hover:bg-surface-hover"
 							type="button"
 						>
 							Cancel

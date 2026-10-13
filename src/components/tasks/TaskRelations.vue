@@ -166,7 +166,7 @@
 							v-model="taskSearchQuery"
 							type="text"
 							placeholder="Search…"
-							class="flex h-10 w-full rounded-md border border-line bg-surface-sunken px-3 pl-9 text-sm text-ink placeholder:text-ink-subtle focus-visible:border-line-strong focus-visible:outline-none"
+							class="flex h-10 w-full rounded-md border border-line bg-surface-sunken px-3 pl-9 text-sm text-ink placeholder:text-ink-subtle focus-visible:border-line-strong"
 							@input="
 								handleTaskSearch(
 									($event.target as HTMLInputElement)?.value || '',
@@ -205,7 +205,7 @@
 					<div class="relative">
 						<select
 							v-model="newRelation.typeId"
-							class="flex h-10 w-full appearance-none rounded-md border border-line bg-surface-sunken px-3 text-sm text-ink focus:border-line-strong focus:outline-none"
+							class="flex h-10 w-full appearance-none rounded-md border border-line bg-surface-sunken px-3 text-sm text-ink focus:border-line-strong"
 						>
 							<option value="">Select…</option>
 							<option

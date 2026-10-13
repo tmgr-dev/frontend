@@ -88,3 +88,24 @@ body {
 .sortable-chosen {
 	cursor: grabbing !important;
 }
+
+/* Keyboard focus: one indicator for the whole app (TM-540). Kept last and more
+   specific than `outline-none` so utilities can't cancel it. Text entry shows
+   focus with its border; [tabindex='-1'] targets are only focused by script;
+   menu items and options use their background highlight; nothing is drawn
+   right after a pointer interaction (see utils/focusSource.ts). */
+$focus-text-entry: "input:not([type='button'], [type='checkbox'], [type='color'], [type='file'], [type='image'], [type='radio'], [type='range'], [type='reset'], [type='submit']), textarea, [contenteditable]";
+
+:focus-visible {
+	outline: none;
+}
+
+html:not([data-focus-source='pointer'])
+	:focus-visible:not([tabindex='-1']):not(#{$focus-text-entry}):not(
+		[role^='menuitem'],
+		[role='option']
+	),
+.focus-ring {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+}

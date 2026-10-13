@@ -150,7 +150,6 @@ module.exports = {
 				'tmgr-sm': 'var(--shadow-sm)',
 				'tmgr-md': 'var(--shadow-md)',
 				'tmgr-lg': 'var(--shadow-lg)',
-				'tmgr-focus': 'var(--shadow-focus)',
 			},
 			fontSize: {
 				'2xs': ['var(--text-2xs)', { lineHeight: 'var(--leading-tight)' }],

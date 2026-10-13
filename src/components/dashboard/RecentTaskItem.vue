@@ -305,8 +305,7 @@
 		return cn(
 			'p-3 rounded-lg border border-gray-200 dark:border-gray-700',
 			'hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150',
-			'cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400',
-			'focus:ring-offset-2 dark:focus:ring-offset-gray-800',
+			'cursor-pointer',
 			props.task.is_overdue &&
 				'border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10',
 			isTimeExceeded.value &&

@@ -210,14 +210,6 @@ html.dark .tour-ring {
   background: var(--bg-hover);
 }
 
-.tour-btn:focus-visible,
-.tour-link:focus-visible,
-.tour-menu__item:focus-visible,
-.tour-pill:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
 .tour-btn--primary {
   background: var(--brand-color);
   border-color: transparent;
@@ -295,7 +287,8 @@ html.dark .tour-ring {
   cursor: pointer;
 }
 
-.tour-menu__item:hover {
+.tour-menu__item:hover,
+.tour-menu__item:focus-visible {
   background: var(--bg-hover);
 }
 

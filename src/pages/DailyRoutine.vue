@@ -43,7 +43,7 @@
 									class="flex items-center gap-2 rounded-card border bg-surface px-3 py-1.5 shadow-tmgr-xs transition-colors"
 									:class="
 										quickFocused
-											? 'ring-brand/30 border-brand ring-2'
+											? 'border-line-strong'
 											: 'border-line'
 									"
 								>
@@ -403,7 +403,7 @@
 
 					<button
 						type="button"
-						class="focus:ring-brand/40 fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover focus:outline-none focus:ring-2 md:bottom-6 md:right-6 md:h-14 md:w-14"
+						class="fixed bottom-20 right-4 z-20 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white shadow-tmgr-md transition-transform hover:scale-105 hover:bg-brand-hover md:bottom-6 md:right-6 md:h-14 md:w-14"
 						title="New routine (N)"
 						aria-label="New routine"
 						data-tour="routines.add"

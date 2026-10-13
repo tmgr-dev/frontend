@@ -60,7 +60,7 @@
 			<button
 				v-if="retry"
 				type="button"
-				class="mt-2 rounded border border-line px-3 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand disabled:opacity-50"
+				class="mt-2 rounded border border-line px-3 py-1.5 disabled:opacity-50"
 				:disabled="pending"
 				@click="retry"
 			>

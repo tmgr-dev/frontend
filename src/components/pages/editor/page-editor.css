@@ -618,7 +618,7 @@
 }
 
 .page-editor .milkdown .milkdown-code-block .search-box:has(input:focus) {
-	outline: 2px solid var(--pe-accent);
+	outline: 1px solid var(--pe-subtle);
 }
 
 .page-editor .tok-keyword,

@@ -51,7 +51,7 @@
 								@input="onBranchSearch"
 								type="text"
 								placeholder="Search branches..."
-								class="mb-2 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong focus:outline-none"
+								class="mb-2 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
 							/>
 							<div
 								v-if="loadingBranches"
@@ -66,7 +66,7 @@
 								<select
 									v-model="selectedBranch"
 									:size="Math.min(branches.length, 8)"
-									class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-line-strong focus:outline-none"
+									class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-line-strong"
 								>
 									<option
 										v-for="branch in branches"
@@ -276,7 +276,7 @@
 								v-model="followUpPrompt"
 								type="text"
 								placeholder="Type additional instructions..."
-								class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong focus:outline-none"
+								class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
 								@keyup.enter="sendFollowUpToAgent(agent.id)"
 							/>
 							<button
