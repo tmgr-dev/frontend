@@ -11,13 +11,6 @@ pub struct Prepared {
   pub sha256: String,
 }
 
-impl Prepared {
-  pub fn summary(&self) -> String {
-    let n = self.bundle.comments.len();
-    format!("{}, {n} comment{}", &self.sha256[..12], if n == 1 { "" } else { "s" })
-  }
-}
-
 fn author_id(id: Option<&str>) -> Option<String> {
   let ok = |c: char| c.is_ascii_alphanumeric() || "._:@-".contains(c);
   id.filter(|i| !i.is_empty() && i.chars().count() <= 64 && i.chars().all(ok)).map(str::to_owned)
@@ -69,7 +62,6 @@ mod tests {
       message: format!("{i}{}", "x".repeat(size)),
     };
     TaskInfo {
-      workspace: "W".into(),
       title: "T".into(),
       description: "B".into(),
       comments: (0..comments).map(comment).collect(),
@@ -100,7 +92,6 @@ mod tests {
     let canonical = canonical_json(&serde_json::to_value(b).unwrap());
     assert_eq!(p.sha256, sha256_hex(b.canonical().as_bytes()));
     assert_eq!(p.sha256, sha256_hex(canonical.as_bytes()));
-    assert!(p.summary().starts_with(&p.sha256[..12]) && p.summary().ends_with(", 2 comments"));
   }
 
   #[test]
@@ -134,10 +125,5 @@ mod tests {
     let mut t = info(1, 0);
     t.comments[0].created_at = "yesterday".into();
     assert!(prepare(&t, -1, 1, "codex", "/w").unwrap_err().contains("RFC 3339"));
-  }
-
-  #[test]
-  fn summary_is_singular_for_one_comment() {
-    assert!(prepare(&info(1, 0), -1, 1, "codex", "/w").unwrap().summary().ends_with(", 1 comment"));
   }
 }

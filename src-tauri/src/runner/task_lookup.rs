@@ -18,7 +18,6 @@ pub struct CommentInfo {
 }
 
 pub struct TaskInfo {
-  pub workspace: String,
   pub title: String,
   pub description: String,
   pub comments: Vec<CommentInfo>,
@@ -32,7 +31,7 @@ fn db(_: rusqlite::Error) -> String {
   "Could not read the task from the local workspace".to_owned()
 }
 
-fn read_task(conn: &Connection, workspace: String, task_id: i64) -> Result<Option<TaskInfo>, String> {
+fn read_task(conn: &Connection, task_id: i64) -> Result<Option<TaskInfo>, String> {
   let tx = conn.unchecked_transaction().map_err(db)?;
   let sizes: Option<(i64, i64)> = tx
     .query_row("SELECT length(title), COALESCE(length(CAST(description AS BLOB)), 0) FROM tasks WHERE id = ?1", [task_id], |r| {
@@ -83,7 +82,7 @@ fn read_task(conn: &Connection, workspace: String, task_id: i64) -> Result<Optio
     })
     .collect::<Result<Vec<_>, _>>()?;
   drop(stmt);
-  Ok(Some(TaskInfo { workspace, title, description: description.unwrap_or_default(), comments }))
+  Ok(Some(TaskInfo { title, description: description.unwrap_or_default(), comments }))
 }
 
 pub fn lookup_in(root: &Path, workspace_id: i64, task_id: i64) -> Result<TaskInfo, String> {
@@ -91,7 +90,7 @@ pub fn lookup_in(root: &Path, workspace_id: i64, task_id: i64) -> Result<TaskInf
   let ws = list_in(root).into_iter().find(|w| w.manifest.id == workspace_id).ok_or_else(not_found)?;
   let conn = Connection::open_with_flags(&ws.database, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
     .map_err(|_| not_found())?;
-  read_task(&conn, ws.manifest.name, task_id)?.ok_or_else(not_found)
+  read_task(&conn, task_id)?.ok_or_else(not_found)
 }
 
 #[cfg(test)]
@@ -126,7 +125,7 @@ mod tests {
   fn title_comes_from_the_workspace_database() {
     let (root, id) = seeded();
     let info = lookup_in(root.path(), id, 7).unwrap();
-    assert_eq!((info.workspace.as_str(), info.title.as_str()), ("Personal", "Real title"));
+    assert_eq!(info.title, "Real title");
   }
 
   #[test]

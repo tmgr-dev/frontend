@@ -164,6 +164,11 @@ impl Runner {
     }
   }
 
+  pub fn caps(&self) -> Result<Vec<String>, String> {
+    self.gate()?;
+    Ok(self.connect()?.1.caps)
+  }
+
   pub fn profiles(&self) -> Result<Vec<Value>, String> {
     self.gate()?;
     Ok(api::PROFILES.iter().map(|(id, label)| json!({"id": id, "label": label})).collect())
@@ -438,7 +443,7 @@ mod tests {
     assert_eq!(r.status().state, "disabled");
     assert_eq!(r.profiles().unwrap_err(), "disabled");
     assert_eq!(r.sessions().unwrap_err(), "disabled");
-    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into(), cwd: "/work/project".into(), name: "t".into(), cwd_pin: None, bundle: None };
+    let run = api::test_start(-1, 1, "codex");
     assert_eq!(r.start_run(&run).unwrap_err(), "disabled");
     assert_eq!(r.kill(SID).unwrap_err(), "disabled");
     assert_eq!(r.session_exists(SID).unwrap_err(), "disabled");
@@ -487,42 +492,74 @@ mod tests {
     let (r, _d) = runner_with_caps(&["sessions.v1", "attach.v1"]);
     let st = r.status();
     assert_eq!((st.state, st.message.as_deref()), ("incompatible", Some("Update the TMGR runner")));
-    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into(), cwd: "/work/project".into(), name: "t".into(), cwd_pin: None, bundle: None };
+    let run = api::test_start(-1, 1, "codex");
     assert_eq!(r.start_run(&run).unwrap_err(), "Update the TMGR runner");
     assert!(r.sessions().unwrap().is_empty());
-    let (ok, _d2) = runner_with_caps(&["runs.create.v1"]);
-    assert_eq!(ok.status().state, "ready");
+    let (old, _d2) = runner_with_caps(&["runs.create.v1"]);
+    assert_eq!(old.status().state, "ready");
+    assert_eq!(old.start_run(&run).unwrap_err(), "Update the TMGR runner");
+    let (ok, _d3) = runner_with_caps(&["runs.create.v1", "cwd_pin.v1", "run_bundle.v1"]);
     assert_eq!(ok.start_run(&run).unwrap().task, Some(TaskRef { workspace_id: -1, task_id: 1 }));
   }
 
+  fn counting_runner(first: Vec<String>, later: Vec<String>) -> (Runner, Arc<Mutex<Vec<std::thread::JoinHandle<mock::Log>>>>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let servers = Arc::new(Mutex::new(Vec::new()));
+    let (s, calls) = (servers.clone(), Arc::new(AtomicUsize::new(0)));
+    let connector: Connector = Arc::new(move || {
+      let (a, b) = UnixStream::pair().unwrap();
+      let mut m = Mock::new("secret");
+      m.caps = Some(if calls.fetch_add(1, Ordering::SeqCst) == 0 { first.clone() } else { later.clone() });
+      m.folder_id = Some((16, 99));
+      s.lock().unwrap().push(mock::spawn(b, m));
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    r.set_enabled(true).unwrap();
+    (r, servers, dir)
+  }
+
+  fn created(servers: &Arc<Mutex<Vec<std::thread::JoinHandle<mock::Log>>>>) -> usize {
+    let handles: Vec<_> = servers.lock().unwrap().drain(..).collect();
+    handles.into_iter().map(|h| h.join().unwrap()).flat_map(|l| l.requests).filter(|q| q["method"] == "runs.create").count()
+  }
+
+  fn caps_vec(c: &[&str]) -> Vec<String> {
+    c.iter().map(|c| c.to_string()).collect()
+  }
+
   #[test]
-  fn start_run_sends_pin_only_with_the_cap() {
-    let log = |caps: &[&str]| {
-      let dir = tempfile::tempdir().unwrap();
-      let servers = Arc::new(Mutex::new(Vec::new()));
-      let (c, s) = (caps.iter().map(|c| c.to_string()).collect::<Vec<_>>(), servers.clone());
-      let connector: Connector = Arc::new(move || {
-        let (a, b) = UnixStream::pair().unwrap();
-        let mut m = Mock::new("secret");
-        m.caps = Some(c.clone());
-        m.folder_id = Some((1, 2));
-        s.lock().unwrap().push(mock::spawn(b, m));
-        Conn::handshake(a, "secret", "desktop")
-      });
-      let r = Runner::new(dir.path().join("runner.json"), connector);
-      r.set_enabled(true).unwrap();
-      let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into(), cwd: "/work/project".into(), name: "t".into(), cwd_pin: Some((1, 3)), bundle: None };
-      let result = r.start_run(&run);
-      drop(r);
-      let logs: Vec<_> = servers.lock().unwrap().drain(..).map(|h| h.join().unwrap()).collect();
-      (result, logs)
-    };
-    let (ok, logs) = log(&["runs.create.v1"]);
-    assert!(ok.is_ok());
-    let sent = logs.iter().flat_map(|l| &l.requests).find(|q| q["method"] == "runs.create").unwrap();
-    assert!(sent["params"].get("cwd_pin").is_none());
-    let (rejected, _) = log(&["runs.create.v1", "cwd_pin.v1"]);
-    assert_eq!(rejected.unwrap_err(), "invalid_params: approved folder changed");
+  fn caps_present_at_status_but_missing_on_the_create_connection_refuse_the_run() {
+    let (r, servers, _d) = counting_runner(caps_vec(&["runs.create.v1", "cwd_pin.v1", "run_bundle.v1"]), caps_vec(&["runs.create.v1", "cwd_pin.v1"]));
+    let caps = r.caps().unwrap();
+    api::require_caps(&caps).unwrap();
+    assert_eq!(r.start_run(&api::test_start(-1, 1, "codex")).unwrap_err(), "Update the TMGR runner");
+    drop(r);
+    assert_eq!(created(&servers), 0);
+  }
+
+  #[test]
+  fn a_matching_create_connection_creates_and_a_wrong_pin_is_rejected() {
+    let full = caps_vec(&["runs.create.v1", "cwd_pin.v1", "run_bundle.v1"]);
+    let (r, servers, _d) = counting_runner(full.clone(), full);
+    assert!(r.start_run(&api::test_start(-1, 1, "codex")).is_ok());
+    let wrong = StartRun { cwd_pin: (16, 100), ..api::test_start(-1, 1, "codex") };
+    assert_eq!(r.start_run(&wrong).unwrap_err(), "invalid_params: approved folder changed");
+    drop(r);
+    assert_eq!(created(&servers), 2);
+  }
+
+  #[test]
+  fn caps_surfaces_status_failures_instead_of_empty_caps() {
+    let dir = tempfile::tempdir().unwrap();
+    let connector: Connector = Arc::new(|| Err(ConnError::Absent("Agent runner is not running".into())));
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    assert_eq!(r.caps().unwrap_err(), "disabled");
+    r.set_enabled(true).unwrap();
+    assert_eq!(r.caps().unwrap_err(), "Agent runner is not running");
+    let connector: Connector = Arc::new(|| Err(ConnError::Incompatible("proto".into())));
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    assert_eq!(r.caps().unwrap_err(), "proto");
   }
 
   #[test]

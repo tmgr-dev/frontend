@@ -134,16 +134,14 @@ impl Drop for Stand {
   }
 }
 
-fn run_req(profile: &str, task_id: i64, project: &Path) -> StartRun {
-  StartRun {
-    workspace_id: -3,
-    task_id,
-    profile: profile.into(),
-    cwd: project.display().to_string(),
-    name: format!("live task {task_id}"),
-    cwd_pin: None,
-    bundle: None,
-  }
+fn run_req(runner: &Runner, profile: &str, task_id: i64, project: &Path) -> StartRun {
+  use super::api::build_start;
+  use super::folder::Snapshot;
+  use super::task_lookup::TaskInfo;
+
+  let task = TaskInfo { title: format!("live task {task_id}"), description: "do the thing".into(), comments: Vec::new() };
+  let snapshot = Snapshot::capture(project, None).unwrap();
+  build_start(&task, (-3, task_id), profile, snapshot.path(), snapshot.pin(), &runner.caps().unwrap()).unwrap()
 }
 
 struct Screen {
@@ -191,7 +189,7 @@ fn live_runner_end_to_end() {
 
   let status = runner.status();
   assert_eq!(status.state, "ready", "{status:?}");
-  for cap in ["sessions.v1", "attach.v1", "runs.create.v1", "task_ref.v1"] {
+  for cap in ["sessions.v1", "attach.v1", "runs.create.v1", "task_ref.v1", "cwd_pin.v1", "run_bundle.v1"] {
     assert!(status.caps.iter().any(|c| c == cap), "{cap} in {:?}", status.caps);
   }
   println!("runner version {:?}, caps {:?}", status.version, status.caps);
@@ -199,7 +197,7 @@ fn live_runner_end_to_end() {
   let (tx, events) = mpsc::channel();
   let watch = runner.watch(move |ev| tx.send(ev).is_ok()).unwrap();
 
-  let created = runner.start_run(&run_req("fake", 412, &stand.project)).unwrap();
+  let created = runner.start_run(&run_req(&runner, "fake", 412, &stand.project)).unwrap();
   assert_eq!(created.profile.as_deref(), Some("fake"));
   assert_eq!(created.name, "live task 412");
   assert_eq!((created.task.unwrap().workspace_id, created.task.unwrap().task_id), (-3, 412));
@@ -238,22 +236,22 @@ fn live_runner_end_to_end() {
   assert!(saw_exit_with_task, "watch never reported the exit with its task");
   runner.unwatch(watch);
 
-  let second = runner.start_run(&run_req("sleeper", 413, &stand.project)).unwrap();
+  let second = runner.start_run(&run_req(&runner, "sleeper", 413, &stand.project)).unwrap();
   wait_session(&runner, &second.id, StateKind::Working);
   assert!(runner.session_exists(&second.id).unwrap());
   runner.kill(&second.id).unwrap();
   let killed = wait_session(&runner, &second.id, StateKind::Exited);
   println!("killed session ended with {:?}", killed.state);
 
-  assert!(runner.start_run(&run_req("no-such-profile", 414, &stand.project)).unwrap_err().starts_with("unknown_profile: "));
-  let bad_cwd = StartRun { cwd: "/".into(), ..run_req("fake", 415, &stand.project) };
+  assert!(runner.start_run(&run_req(&runner, "no-such-profile", 414, &stand.project)).unwrap_err().starts_with("unknown_profile: "));
+  let bad_cwd = StartRun { cwd: "/".into(), ..run_req(&runner, "fake", 415, &stand.project) };
   assert!(runner.start_run(&bad_cwd).unwrap_err().starts_with("invalid_params: "));
 }
 
 #[test]
 #[ignore = "starts a real tmgr-runner-host; run explicitly with --ignored live"]
 fn live_runner_pin_and_bundle() {
-  use super::api::attach_approval;
+  use super::api::{build_start, confirm_run_message};
   use super::folder::Snapshot;
   use super::task_lookup::{CommentInfo, TaskInfo};
 
@@ -264,7 +262,6 @@ fn live_runner_pin_and_bundle() {
     assert!(status.caps.iter().any(|c| c == cap), "{cap} in {:?}", status.caps);
   }
   let task = TaskInfo {
-    workspace: "Live".into(),
     title: "Pinned task".into(),
     description: "do the thing".into(),
     comments: vec![CommentInfo {
@@ -275,11 +272,12 @@ fn live_runner_pin_and_bundle() {
     }],
   };
   let snapshot = Snapshot::capture(&stand.project, None).unwrap();
-  let mut req = StartRun { cwd: snapshot.path().to_owned(), ..run_req("fake", 420, &stand.project) };
-  attach_approval(&mut req, &task, snapshot.pin(), &status.caps).unwrap();
-  let sha = req.bundle.as_ref().unwrap().sha256.clone();
+  let req = build_start(&task, (-3, 420), "fake", snapshot.path(), snapshot.pin(), &status.caps).unwrap();
+  let sha = req.bundle.sha256.clone();
+  let message = confirm_run_message(&req);
+  assert!(message.contains("Description: do the thing") && message.contains("Comments: 1 (0 by agents, 1 other)"), "{message}");
 
-  let wrong = StartRun { cwd_pin: Some((snapshot.pin().0, snapshot.pin().1 + 1)), bundle: None, ..run_req("fake", 420, &stand.project) };
+  let wrong = StartRun { cwd_pin: (snapshot.pin().0, snapshot.pin().1 + 1), ..build_start(&task, (-3, 420), "fake", snapshot.path(), snapshot.pin(), &status.caps).unwrap() };
   assert!(runner.start_run(&wrong).unwrap_err().contains("approved folder changed"));
 
   let created = runner.start_run(&req).unwrap();

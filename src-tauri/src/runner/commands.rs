@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager, Runtime, State, WebviewUrl, WebviewWindow, Webvi
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
-use super::api::{self, attach_approval, confirm_run_message, run_name, session_from_label, validate_start, RunnerSession, StartRun};
+use super::api::{self, build_start, confirm_run_message, require_caps, session_from_label, validate_start, RunnerSession};
 use super::folder;
 use super::task_lookup::lookup_in;
 use super::pump::{TermFrame, WatchEvent};
@@ -141,11 +141,15 @@ pub async fn runner_start_run<R: Runtime>(
   if !runner.enabled() {
     return Err("disabled".to_owned());
   }
-  let mut req = StartRun { workspace_id, task_id, profile, cwd: String::new(), name: String::new(), cwd_pin: None, bundle: None };
-  validate_start(&req)?;
+  validate_start(workspace_id, task_id, &profile)?;
   let code = local_workspace_code(&app, workspace_id)?;
   let root = crate::local_workspaces::root(&app)?;
   let info = blocking(move || lookup_in(&root, workspace_id, task_id)).await?;
+  let caps = {
+    let runner = runner.clone();
+    blocking(move || runner.caps()).await?
+  };
+  require_caps(&caps)?;
   let chosen = match stored_folder(&app, &runner, code.clone()).await {
     Some(folder) => folder,
     None => pick_folder(&app, &runner, code).await?.ok_or_else(|| "cancelled".to_owned())?,
@@ -153,16 +157,8 @@ pub async fn runner_start_run<R: Runtime>(
   let home = app.path().home_dir().ok();
   let h = home.clone();
   let snapshot = blocking(move || folder::Snapshot::capture(Path::new(&chosen), h.as_deref())).await?;
-  req.cwd = snapshot.path().to_owned();
-  req.name = run_name(&info.title, task_id);
-  let caps = {
-    let runner = runner.clone();
-    blocking(move || Ok(runner.status().caps)).await?
-  };
-  attach_approval(&mut req, &info, snapshot.pin(), &caps)?;
-  let summary = req.bundle.as_ref().map(|b| b.summary());
-  let message = confirm_run_message(&info.workspace, task_id, &info.title, &req.cwd, &req.profile, summary.as_deref());
-  if !confirm(&app, "Run with agent", message, "Run").await {
+  let req = build_start(&info, (workspace_id, task_id), &profile, snapshot.path(), snapshot.pin(), &caps)?;
+  if !confirm(&app, "Run with agent", confirm_run_message(&req), "Run").await {
     return Err("cancelled".to_owned());
   }
   blocking(move || {
