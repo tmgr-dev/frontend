@@ -106,6 +106,22 @@ fn outside_process_environment_is_unreadable() {
 }
 
 #[test]
+fn another_sandboxed_sessions_environment_is_unreadable() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    let first = f.run("sleep 30 >/dev/null 2>&1 & echo $!");
+    assert!(first.ok(), "{}", first.stderr);
+    let pid = first.stdout.trim().to_string();
+    let alive = f.run(&format!("test -d /proc/{pid}"));
+    assert!(alive.ok(), "sibling is not running: {}", alive.stderr);
+    let o = f.run(&format!("cat /proc/{pid}/environ"));
+    assert!(!o.ok() && !o.stdout.contains(SID), "{}", o.stdout);
+    let _ = Command::new("kill").arg(&pid).status();
+}
+
+#[test]
 fn writes_only_in_cwd_home_and_tmp() {
     let f = fx();
     if !landlock_usable(&f) {
@@ -266,3 +282,4 @@ fn swapped_root_is_refused() {
     );
     assert!(!marker.exists());
 }
+

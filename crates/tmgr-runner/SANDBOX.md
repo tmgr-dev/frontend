@@ -100,9 +100,17 @@ command (exec failure: exit 127).
 - Linux, kernels with Landlock ABI < 9 (for example 6.17 is ABI 7): pathname unix sockets elsewhere (user ssh-agent,
   D-Bus, gpg-agent under `/run/user/<uid>`) stay reachable if the agent guesses the path; only the environment hints
   are removed. Abstract sockets are blocked entirely, including the runner's own per-session socket if it is abstract.
-- Linux does not restrict `/proc/<pid>` metadata and `/sys` reads beyond ptrace rules; `/etc` is readable.
+- Linux does not restrict `/proc/<pid>` metadata and `/sys` reads beyond ptrace rules; `/proc/<pid>/environ` of a process
+  in another Landlock domain (another session) or outside any domain is unreadable because Landlock denies ptrace-mode
+  access to non-descendant domains; `/etc` is readable.
 - macOS: reads outside the real home are not restricted (system files, other volumes); process listing and
-  `sysctl` process info of other processes are not blocked; Mach/XPC services are reachable (default allow);
+  `sysctl` process info of other processes are not blocked. In particular `sysctl(KERN_PROCARGS2)` returns the
+  environment of any same-user process that lacks the `restrict` code-signing flag, so a session can read the
+  environment (including profile-granted tokens) of another running session or runner-launched agent. Seatbelt
+  cannot gate this call: tested on macOS 26 with `sysctl-read` name and prefix filters, `process-info*`, `sysctl*`
+  and a default-deny profile, none of which stop it, and `syscall-number` filters have no effect. Hardened runtime
+  does not help; only a `restrict` signature does. Treat a token passed to one macOS session as readable by every
+  other session of the same user; Mach/XPC services are reachable (default allow);
   Seatbelt is deprecated by Apple but still enforced.
 - macOS tools that cache under `/var/folders` (clang module caches and similar) fail to write there; only the `xcrun_db` cache is allowed.
 - Git worktrees whose `.git` points outside the working dir cannot write the shared object store; the caller must put
