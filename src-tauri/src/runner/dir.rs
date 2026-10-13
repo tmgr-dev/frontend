@@ -20,6 +20,9 @@ impl Sock {
   pub fn set_read_timeout(&self, _d: Option<std::time::Duration>) -> io::Result<()> {
     Ok(())
   }
+  pub fn set_write_timeout(&self, _d: Option<std::time::Duration>) -> io::Result<()> {
+    Ok(())
+  }
 }
 
 #[cfg(not(unix))]

@@ -141,7 +141,7 @@ pub async fn runner_open_terminal<R: Runtime>(app: AppHandle<R>, runner: State<'
     .background_throttling(BackgroundThrottlingPolicy::Disabled)
     .center();
   let window = builder
-    .on_navigation(|url| is_terminal_url(url))
+    .on_navigation(is_terminal_url)
     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
     .build()
     .map_err(|e| e.to_string())?;
@@ -185,7 +185,8 @@ pub async fn runner_term_ack<R: Runtime>(window: WebviewWindow<R>, runner: State
 
 #[tauri::command]
 pub async fn runner_term_input<R: Runtime>(window: WebviewWindow<R>, runner: State<'_, Runner>, data: String) -> Result<(), String> {
-  runner.term_input(&term_session(&window)?, &data)
+  let (runner, sid) = (runner.inner().clone(), term_session(&window)?);
+  blocking(move || runner.term_input(&sid, &data)).await
 }
 
 #[tauri::command]
@@ -195,12 +196,14 @@ pub async fn runner_term_resize<R: Runtime>(
   cols: u32,
   rows: u32,
 ) -> Result<(), String> {
-  runner.term_resize(&term_session(&window)?, cols, rows)
+  let (runner, sid) = (runner.inner().clone(), term_session(&window)?);
+  blocking(move || runner.term_resize(&sid, cols, rows)).await
 }
 
 #[tauri::command]
 pub async fn runner_term_scroll<R: Runtime>(window: WebviewWindow<R>, runner: State<'_, Runner>, offset: u32) -> Result<(), String> {
-  runner.term_scroll(&term_session(&window)?, offset)
+  let (runner, sid) = (runner.inner().clone(), term_session(&window)?);
+  blocking(move || runner.term_scroll(&sid, offset)).await
 }
 
 #[tauri::command]
@@ -211,7 +214,15 @@ pub async fn runner_term_detach<R: Runtime>(window: WebviewWindow<R>, runner: St
 }
 
 pub fn is_terminal_url(url: &url::Url) -> bool {
-  crate::is_app_url(url) && matches!(url.scheme(), "tauri" | "http" | "https") && url.path() == "/runner-terminal.html"
+  if url.path() != "/runner-terminal.html" || !url.username().is_empty() || url.password().is_some() {
+    return false;
+  }
+  let dev = cfg!(debug_assertions) && matches!((url.scheme(), url.host_str(), url.port()), ("http", Some("localhost"), Some(5173)));
+  dev
+    || matches!(
+      (url.scheme(), url.host_str(), url.port()),
+      ("tauri", Some("localhost"), None) | ("http" | "https", Some("tauri.localhost"), None)
+    )
 }
 
 pub fn validate_link(raw: &str) -> Result<url::Url, String> {
@@ -238,10 +249,25 @@ mod tests {
 
   #[test]
   fn terminal_window_stays_on_its_page() {
-    for ok in ["tauri://localhost/runner-terminal.html", "http://tauri.localhost/runner-terminal.html", "http://localhost:5173/runner-terminal.html"] {
+    for ok in ["tauri://localhost/runner-terminal.html", "http://tauri.localhost/runner-terminal.html", "https://tauri.localhost/runner-terminal.html"] {
       assert!(is_terminal_url(&url::Url::parse(ok).unwrap()), "{ok}");
     }
-    for bad in ["tauri://localhost/index.html", "http://localhost:5173/", "https://example.com/runner-terminal.html", "data:text/html,x", "about:blank"] {
+    let dev = url::Url::parse("http://localhost:5173/runner-terminal.html").unwrap();
+    assert_eq!(is_terminal_url(&dev), cfg!(debug_assertions));
+    for bad in [
+      "tauri://localhost/index.html",
+      "http://localhost:5173/",
+      "http://localhost/runner-terminal.html",
+      "http://localhost:8080/runner-terminal.html",
+      "https://localhost:5173/runner-terminal.html",
+      "http://tauri.localhost:8080/runner-terminal.html",
+      "http://user@tauri.localhost/runner-terminal.html",
+      "https://example.com/runner-terminal.html",
+      "http://tauri.localhost.evil.com/runner-terminal.html",
+      "blob:http://tauri.localhost/runner-terminal.html",
+      "data:text/html,x",
+      "about:blank",
+    ] {
       assert!(!is_terminal_url(&url::Url::parse(bad).unwrap()), "{bad}");
     }
   }

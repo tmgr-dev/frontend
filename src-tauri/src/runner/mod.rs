@@ -15,7 +15,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -24,13 +24,15 @@ use api::{find_session, list_sessions, session_from_value, state_from_value, Det
 use conn::{input_frame, write_frame, write_json, Conn, ConnError, Welcome, MAX_INPUT};
 use dir::Sock;
 use flag::Flag;
-use pump::{run_attach, run_watch, Shared, TermFrame, WatchEvent};
+use pump::{run_attach, run_watch, Coalescer, Shared, TermFrame, WatchEvent};
 
 pub type Connector = Arc<dyn Fn() -> Result<(Conn<Sock>, Welcome), ConnError> + Send + Sync>;
 
 const MAX_COLS: u32 = 500;
 const MAX_ROWS: u32 = 200;
 const LIST_THROTTLE: Duration = Duration::from_millis(500);
+const WATCH_FLUSH: Duration = Duration::from_millis(100);
+const TERM_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct RunnerStatus {
@@ -68,6 +70,8 @@ struct Inner {
   watchers: Mutex<HashMap<u64, WatchHandle>>,
   terms: Mutex<HashMap<String, Arc<TermHandle>>>,
   next_watch: AtomicU64,
+  disable_gen: AtomicU64,
+  closes: Mutex<HashMap<String, u64>>,
 }
 
 #[derive(Clone)]
@@ -93,6 +97,8 @@ impl Runner {
       watchers: Mutex::new(HashMap::new()),
       terms: Mutex::new(HashMap::new()),
       next_watch: AtomicU64::new(1),
+      disable_gen: AtomicU64::new(0),
+      closes: Mutex::new(HashMap::new()),
     }))
   }
 
@@ -115,7 +121,23 @@ impl Runner {
   pub fn set_enabled(&self, on: bool) -> Result<(), String> {
     self.0.flag.set(on).map_err(|e| e.to_string())?;
     if !on {
+      self.0.disable_gen.fetch_add(1, Ordering::SeqCst);
       self.stop_all();
+    }
+    Ok(())
+  }
+
+  fn generation(&self, sid: Option<&str>) -> (u64, u64) {
+    let closes = sid.map_or(0, |s| lock(&self.0.closes).get(s).copied().unwrap_or(0));
+    (self.0.disable_gen.load(Ordering::SeqCst), closes)
+  }
+
+  fn still_current(&self, sid: Option<&str>, g: (u64, u64)) -> Result<(), String> {
+    if !self.enabled() || self.0.disable_gen.load(Ordering::SeqCst) != g.0 {
+      return Err("disabled".to_owned());
+    }
+    if sid.is_some_and(|s| lock(&self.0.closes).get(s).copied().unwrap_or(0) != g.1) {
+      return Err("detached".to_owned());
     }
     Ok(())
   }
@@ -165,6 +187,7 @@ impl Runner {
 
   pub fn watch(&self, sink: impl Fn(WatchEvent) -> bool + Send + Sync + 'static) -> Result<u64, String> {
     self.gate()?;
+    let generation = self.generation(None);
     let (mut conn, _) = self.connect()?;
     conn.call("attach.open", json!({"sessions": []})).map_err(err)?;
     let _ = conn.stream.set_read_timeout(None);
@@ -172,31 +195,52 @@ impl Runner {
     let id = self.0.next_watch.fetch_add(1, Ordering::SeqCst);
     let stop = Arc::new(AtomicBool::new(false));
     let pending = Arc::new(AtomicBool::new(false));
+    let co = Arc::new(Coalescer::default());
     let sink = Arc::new(sink);
-    lock(&self.0.watchers).insert(id, WatchHandle { stop: stop.clone(), sock });
+    {
+      let mut watchers = lock(&self.0.watchers);
+      if let Err(e) = self.still_current(None, generation) {
+        drop(watchers);
+        stop.store(true, Ordering::SeqCst);
+        let _ = sock.shutdown(std::net::Shutdown::Both);
+        return Err(e);
+      }
+      watchers.insert(id, WatchHandle { stop: stop.clone(), sock });
+    }
 
-    let (s, p, k, me) = (sink.clone(), pending.clone(), stop.clone(), self.clone());
+    let (s, p, k, c, me) = (sink.clone(), pending.clone(), stop.clone(), co.clone(), self.clone());
     let mut reader = conn.stream;
     let spawned = std::thread::Builder::new().name("runner-watch".into()).spawn(move || {
-      run_watch(&mut reader, &*s, &p, &k);
+      run_watch(&mut reader, &*s, &c, &p, &k);
       k.store(true, Ordering::SeqCst);
       lock(&me.0.watchers).remove(&id);
     });
     if spawned.is_err() {
-      lock(&self.0.watchers).remove(&id);
+      self.unwatch(id);
       return Err("could not start watcher".to_owned());
     }
 
     let me = self.clone();
-    let lister = std::thread::Builder::new().name("runner-watch-list".into()).spawn(move || loop {
-      std::thread::sleep(LIST_THROTTLE);
-      if stop.load(Ordering::SeqCst) || !me.enabled() {
-        break;
-      }
-      if pending.swap(false, Ordering::SeqCst) {
-        if let Ok(sessions) = me.sessions() {
-          if !sink(WatchEvent::Sessions { sessions }) {
-            break;
+    let lister = std::thread::Builder::new().name("runner-watch-list".into()).spawn(move || {
+      let mut last_list = Instant::now();
+      loop {
+        std::thread::sleep(WATCH_FLUSH);
+        if stop.load(Ordering::SeqCst) || !me.enabled() {
+          break;
+        }
+        for ev in co.drain() {
+          if !sink(ev) {
+            me.unwatch(id);
+            return;
+          }
+        }
+        if last_list.elapsed() >= LIST_THROTTLE && pending.swap(false, Ordering::SeqCst) {
+          last_list = Instant::now();
+          if let Ok(sessions) = me.sessions() {
+            if !sink(WatchEvent::Sessions { sessions }) {
+              me.unwatch(id);
+              return;
+            }
           }
         }
       }
@@ -224,6 +268,7 @@ impl Runner {
   ) -> Result<TermInfo, String> {
     self.gate()?;
     api::check_session_id(sid)?;
+    let generation = self.generation(Some(sid));
     let found = find_session(&mut self.connect()?.0, sid).map_err(err)?.ok_or_else(|| "session not found".to_owned())?;
     let session = session_from_value(&found).ok_or_else(|| "session not found".to_owned())?;
     let state = state_from_value(&found["state"], Detail::Text).unwrap_or(session.state.clone());
@@ -231,6 +276,7 @@ impl Runner {
     let (mut conn, _) = self.connect()?;
     conn.call("attach.open", json!({"sessions": [sid]})).map_err(err)?;
     let _ = conn.stream.set_read_timeout(None);
+    conn.stream.set_write_timeout(Some(TERM_WRITE_TIMEOUT)).map_err(|e| e.to_string())?;
     let (cols, rows) = clamp_size(cols, rows);
     write_json(&mut conn.stream, &json!({"type": "resize", "session": sid, "cols": cols, "rows": rows}))
       .map_err(|e| e.to_string())?;
@@ -239,7 +285,15 @@ impl Runner {
       writer: Mutex::new(conn.stream.try_clone().map_err(|e| e.to_string())?),
       sock: conn.stream.try_clone().map_err(|e| e.to_string())?,
     });
-    let old = lock(&self.0.terms).insert(sid.to_owned(), handle.clone());
+    let old = {
+      let mut terms = lock(&self.0.terms);
+      if let Err(e) = self.still_current(Some(sid), generation) {
+        drop(terms);
+        Self::close_term(&handle);
+        return Err(e);
+      }
+      terms.insert(sid.to_owned(), handle.clone())
+    };
     if let Some(old) = old {
       Self::close_term(&old);
     }
@@ -262,7 +316,9 @@ impl Runner {
 
   fn close_term(t: &TermHandle) {
     t.shared.stopped.store(true, Ordering::SeqCst);
-    let _ = Self::send(t, &json!({"type": "detach"}));
+    if let Ok(mut w) = t.writer.try_lock() {
+      let _ = write_json(&mut *w, &json!({"type": "detach"}));
+    }
     let _ = t.sock.shutdown(std::net::Shutdown::Both);
   }
 
@@ -303,6 +359,7 @@ impl Runner {
   }
 
   pub fn term_detach(&self, sid: &str) {
+    *lock(&self.0.closes).entry(sid.to_owned()).or_insert(0) += 1;
     if let Some(t) = lock(&self.0.terms).remove(sid) {
       Self::close_term(&t);
     }
@@ -457,6 +514,82 @@ mod tests {
     assert_eq!(r.term_ack(SID, 1).unwrap_err(), "disabled");
     assert!(lock(&r.0.terms).is_empty() && lock(&r.0.watchers).is_empty());
     assert_eq!(frames.lock().unwrap()[0], TermFrame::Closed { reason: "disabled".into() });
+  }
+
+  fn slow_runner() -> (Runner, Arc<AtomicU64>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let delay = Arc::new(AtomicU64::new(0));
+    let d = delay.clone();
+    let connector: Connector = Arc::new(move || {
+      std::thread::sleep(Duration::from_millis(d.load(Ordering::SeqCst)));
+      let (a, b) = UnixStream::pair().unwrap();
+      a.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+      let mut m = Mock::new("secret");
+      m.sessions = vec![session(SID, json!({"kind": "working", "since_ms": 1, "detail": null}))];
+      mock::spawn(b, m);
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let runner = Runner::new(dir.path().join("runner.json"), connector);
+    runner.set_enabled(true).unwrap();
+    (runner, delay, dir)
+  }
+
+  #[test]
+  fn disabling_during_a_delayed_attach_leaves_no_handle() {
+    let (r, delay, _d) = slow_runner();
+    delay.store(300, Ordering::SeqCst);
+    let me = r.clone();
+    let attach = std::thread::spawn(move || me.term_attach(SID, 80, 24, |_| true));
+    std::thread::sleep(Duration::from_millis(100));
+    r.set_enabled(false).unwrap();
+    assert_eq!(attach.join().unwrap().unwrap_err(), "disabled");
+    assert!(lock(&r.0.terms).is_empty());
+  }
+
+  #[test]
+  fn closing_the_window_during_a_delayed_attach_leaves_no_handle() {
+    let (r, delay, _d) = slow_runner();
+    delay.store(300, Ordering::SeqCst);
+    let me = r.clone();
+    let attach = std::thread::spawn(move || me.term_attach(SID, 80, 24, |_| true));
+    std::thread::sleep(Duration::from_millis(100));
+    r.window_destroyed(&format!("runner-{SID}"));
+    assert_eq!(attach.join().unwrap().unwrap_err(), "detached");
+    assert!(lock(&r.0.terms).is_empty());
+    delay.store(0, Ordering::SeqCst);
+    r.term_attach(SID, 80, 24, |_| true).unwrap();
+    assert_eq!(lock(&r.0.terms).len(), 1);
+  }
+
+  #[test]
+  fn disabling_during_a_delayed_watch_leaves_no_handle() {
+    let (r, delay, _d) = slow_runner();
+    delay.store(300, Ordering::SeqCst);
+    let me = r.clone();
+    let watch = std::thread::spawn(move || me.watch(|_| true));
+    std::thread::sleep(Duration::from_millis(100));
+    r.set_enabled(false).unwrap();
+    assert_eq!(watch.join().unwrap().unwrap_err(), "disabled");
+    assert!(lock(&r.0.watchers).is_empty());
+  }
+
+  #[test]
+  fn detach_does_not_wait_for_a_busy_writer_and_attach_sets_a_write_timeout() {
+    let (r, _delay, _d) = slow_runner();
+    r.term_attach(SID, 80, 24, |_| true).unwrap();
+    let t = r.term(SID).unwrap();
+    assert_eq!(t.sock.write_timeout().unwrap(), Some(TERM_WRITE_TIMEOUT));
+    let busy = lock(&t.writer);
+    let me = r.clone();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+      me.term_detach(SID);
+      tx.send(()).unwrap();
+    });
+    rx.recv_timeout(Duration::from_secs(2)).expect("detach blocked on the writer");
+    drop(busy);
+    assert!(t.shared.stopped.load(Ordering::SeqCst));
+    assert_eq!(r.term_input(SID, "x").unwrap_err(), "not attached");
   }
 
   #[test]
