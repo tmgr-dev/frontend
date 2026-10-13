@@ -69,6 +69,7 @@ impl Fx {
             models: vec![],
             max: 2,
             from: vec![],
+            allow_attach_input: false,
         }
     }
 
@@ -227,7 +228,9 @@ fn revoke_is_always_allowed_and_audited() {
     assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
     assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
     let audit = Audit::new(&f.paths.audit_dir());
-    assert_eq!(audit.tail(1).unwrap()[0]["event"], "link.revoke");
+    let tail = audit.tail(2).unwrap();
+    assert_eq!(tail[0]["event"], "link.revoke");
+    assert_eq!(tail[1]["event"], "link.revoke.contain");
     let again = f
         .tmgr()
         .args(["link", "revoke", "laptop"])
@@ -307,47 +310,54 @@ fn leader_talks_to_the_worker_over_a_pipe_pair() {
     assert_eq!(hello["role"], "follower");
     assert_eq!(
         hello["methods"],
-        json!(["hello", "runs.list", "runs.get", "runs.create", "runs.halt"])
+        json!([
+            "hello",
+            "runs.list",
+            "runs.get",
+            "runs.create",
+            "runs.halt",
+            "attach.open"
+        ])
     );
 
     let repo = f.repo.to_str().unwrap();
     let ok = c
         .call(
             "runs.create",
-            json!({"task":"TM-512","repo":repo,"agent":"codex"}),
+            json!({"task":"w1:512","repo":repo,"agent":"codex"}),
         )
         .unwrap();
     assert_eq!(
         reply_err(ok),
-        ("not_available".into(), "runner not installed".into())
+        ("not_available".into(), "runner not running".into())
     );
     let listed = c.call("runs.list", Value::Null).unwrap();
     assert_eq!(reply_err(listed).0, "not_available");
     let wrong_agent = c
         .call(
             "runs.create",
-            json!({"task":"TM-512","repo":repo,"agent":"claude-code"}),
+            json!({"task":"w1:512","repo":repo,"agent":"claude-code"}),
         )
         .unwrap();
     assert_eq!(reply_err(wrong_agent).0, "forbidden");
     let outside = c
         .call(
             "runs.create",
-            json!({"task":"TM-512","repo":"/","agent":"codex"}),
+            json!({"task":"w1:512","repo":"/","agent":"codex"}),
         )
         .unwrap();
     assert_eq!(reply_err(outside).0, "forbidden");
     let bypass = c
         .call(
             "runs.create",
-            json!({"task":"TM-530","repo":repo,"agent":"codex","mode":"bypass"}),
+            json!({"task":"w1:530","repo":repo,"agent":"codex","mode":"bypass"}),
         )
         .unwrap();
     assert_eq!(reply_err(bypass).1, "bypass not allowed");
     let on = c
         .call(
             "runs.create",
-            json!({"task":"TM-530","repo":repo,"agent":"codex","on":"spark"}),
+            json!({"task":"w1:530","repo":repo,"agent":"codex","on":"spark"}),
         )
         .unwrap();
     assert_eq!(reply_err(on).0, "forbidden");
@@ -361,8 +371,8 @@ fn leader_talks_to_the_worker_over_a_pipe_pair() {
         let r = c.call(method, json!({"cmd":"id"})).unwrap();
         assert_eq!(reply_err(r).0, "unknown_method", "{method}");
     }
-    let still_alive = c.call("runs.halt", json!({"run":"r-1"})).unwrap();
-    assert_eq!(reply_err(still_alive).0, "not_available");
+    let unknown_run = c.call("runs.halt", json!({"run":"r-1"})).unwrap();
+    assert_eq!(reply_err(unknown_run).0, "not_found");
     drop(c);
 
     let audit = Audit::new(&f.paths.audit_dir());
@@ -370,7 +380,7 @@ fn leader_talks_to_the_worker_over_a_pipe_pair() {
     assert_eq!(log[0]["event"], "worker.connect");
     assert_eq!(log[0]["client"], "192.0.2.5");
     let accepted = log.iter().filter(|e| e["decision"] == "accepted").count();
-    assert_eq!(accepted, 4);
+    assert_eq!(accepted, 3);
     assert!(audit.verify().unwrap().is_ok());
 
     let out = f
@@ -404,8 +414,10 @@ fn a_revoked_link_stops_answering_on_the_next_request() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0));
-    let r = c.call("runs.list", Value::Null).unwrap();
-    assert_eq!(reply_err(r).0, "revoked");
+    match c.call("runs.list", Value::Null) {
+        Ok(r) => assert_eq!(reply_err(r).0, "revoked"),
+        Err(e) => assert_eq!(e.exit_code(), 9),
+    }
     assert!(c.call("hello", json!({})).is_err());
 }
 

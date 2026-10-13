@@ -1,13 +1,19 @@
+pub mod attach;
 pub mod audit;
 pub mod authkeys;
 pub mod follower;
 pub mod grammar;
 pub mod leader;
+pub mod ownership;
 pub mod privileged;
 pub mod proto;
+pub mod registry;
+pub mod runner;
+pub mod runs;
 pub mod scope;
 pub mod sshd;
 pub mod store;
+pub mod taskref;
 pub mod worker;
 
 use tmgr_core::error::{Error, Kind};

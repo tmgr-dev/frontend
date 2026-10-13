@@ -3982,6 +3982,7 @@ dependencies = [
  "ssh-key",
  "tempfile",
  "tmgr-core",
+ "tmgr-ipc",
  "toml",
 ]
 

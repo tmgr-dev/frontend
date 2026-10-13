@@ -13,7 +13,7 @@ pub enum LinkCommand {
     /// Show or change what a leader may do (widening needs a terminal)
     Scope(ScopeArgs),
     /// Remove a leader's access immediately (always allowed)
-    Revoke { name: String },
+    Revoke(RevokeArgs),
     /// Forget a follower (leader side)
     Remove { name: String },
     /// Connect to a follower and run the handshake
@@ -67,6 +67,9 @@ pub struct TrustArgs {
     /// Only accept connections from these CIDRs
     #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "CIDR")]
     pub from: Vec<String>,
+    /// Let the leader type into attached runs (default: view only)
+    #[arg(long)]
+    pub allow_attach_input: bool,
 }
 
 #[derive(Args)]
@@ -83,6 +86,17 @@ pub struct ScopeArgs {
     /// CIDRs, or `any` to accept every address
     #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "CIDR")]
     pub from: Option<Vec<String>>,
+    /// Let the leader type into attached runs (widening needs a terminal)
+    #[arg(long, value_name = "BOOL", action = clap::ArgAction::Set, num_args = 0..=1, default_missing_value = "true")]
+    pub allow_attach_input: Option<bool>,
+}
+
+#[derive(Args)]
+pub struct RevokeArgs {
+    pub name: String,
+    /// Also stop the runs this leader started (default: they keep running)
+    #[arg(long)]
+    pub halt_runs: bool,
 }
 
 #[derive(Args)]

@@ -3,7 +3,14 @@ use std::io::{Read, Write};
 
 pub const MAX_FRAME: usize = 1 << 20;
 pub const PROTOCOL: u32 = 1;
-pub const METHODS: [&str; 5] = ["hello", "runs.list", "runs.get", "runs.create", "runs.halt"];
+pub const METHODS: [&str; 6] = [
+    "hello",
+    "runs.list",
+    "runs.get",
+    "runs.create",
+    "runs.halt",
+    "attach.open",
+];
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum FrameError {
@@ -30,9 +37,25 @@ fn io_err(e: std::io::Error) -> FrameError {
     FrameError::Io(format!("{:?}", e.kind()))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum Poll {
+    Frame(Vec<u8>),
+    Idle,
+    Closed,
+}
+
 pub trait Channel {
     fn recv(&mut self) -> Result<Option<Vec<u8>>, FrameError>;
     fn send(&mut self, payload: &[u8]) -> Result<(), FrameError>;
+
+    fn poll(&mut self, _wait: std::time::Duration) -> Result<Poll, FrameError> {
+        Ok(match self.recv()? {
+            Some(f) => Poll::Frame(f),
+            None => Poll::Closed,
+        })
+    }
+
+    fn extend_deadline(&mut self, _total: std::time::Duration) {}
 }
 
 pub struct Framed<R, W> {
@@ -52,6 +75,10 @@ impl<R: Read, W: Write> Framed<R, W> {
             writer,
             max,
         }
+    }
+
+    pub fn into_parts(self) -> (R, W) {
+        (self.reader, self.writer)
     }
 }
 
@@ -125,6 +152,24 @@ impl Timed {
 }
 
 impl Channel for Timed {
+    fn poll(&mut self, wait: std::time::Duration) -> Result<Poll, FrameError> {
+        let left = self.remaining().ok_or(FrameError::Timeout)?;
+        match self.inbox.recv_timeout(wait.min(left)) {
+            Ok(Ok(Some(frame))) => Ok(Poll::Frame(frame)),
+            Ok(Ok(None)) => Ok(Poll::Closed),
+            Ok(Err(e)) => Err(e),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Ok(Poll::Idle),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(Poll::Closed),
+        }
+    }
+
+    fn extend_deadline(&mut self, total: std::time::Duration) {
+        let to = std::time::Instant::now() + total;
+        if to > self.deadline {
+            self.deadline = to;
+        }
+    }
+
     fn recv(&mut self) -> Result<Option<Vec<u8>>, FrameError> {
         let wait = self.remaining().ok_or(FrameError::Timeout)?.min(self.idle);
         match self.inbox.recv_timeout(wait) {

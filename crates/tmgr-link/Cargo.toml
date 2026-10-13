@@ -16,6 +16,7 @@ chrono.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
 tmgr-core.workspace = true
+tmgr-ipc.workspace = true
 ssh-key = { version = "0.6", default-features = false, features = ["std", "ed25519", "rand_core"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 libc.workspace = true

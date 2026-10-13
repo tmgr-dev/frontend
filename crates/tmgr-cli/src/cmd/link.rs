@@ -1,4 +1,6 @@
-use crate::cli_link::{AddArgs, AuditArgs, InitArgs, LinkCommand, ScopeArgs, TrustArgs};
+use crate::cli_link::{
+    AddArgs, AuditArgs, InitArgs, LinkCommand, RevokeArgs, ScopeArgs, TrustArgs,
+};
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
 use serde_json::{json, Value};
@@ -23,7 +25,7 @@ pub fn run(ctx: &Ctx, cmd: &LinkCommand) -> Result<Output> {
         LinkCommand::Trust(a) => trust(&paths, a),
         LinkCommand::List => list(ctx, &paths),
         LinkCommand::Scope(a) => scope(ctx, &paths, a),
-        LinkCommand::Revoke { name } => revoke(&paths, name),
+        LinkCommand::Revoke(a) => revoke(&paths, a),
         LinkCommand::Remove { name } => remove(&paths, name),
         LinkCommand::Test { name } => test(ctx, &paths, name),
         LinkCommand::Audit(a) => audit(ctx, &paths, a),
@@ -146,7 +148,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
 }
 
 fn scope_json(s: &Scope) -> Value {
-    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_bypass": false})
+    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_attach_input": s.allow_attach_input, "allow_bypass": false})
 }
 
 fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
@@ -173,6 +175,7 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
             },
             max: a.max,
             from: Some(a.from.clone()),
+            allow_attach_input: a.allow_attach_input.then_some(true),
         },
     };
     let plan = follower::plan_trust(paths, &input, &bin, check)?;
@@ -304,13 +307,15 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
         models: a.models.clone(),
         max: a.max,
         from,
+        allow_attach_input: a.allow_attach_input,
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
     let changes = a.repos.is_some()
         || a.agents.is_some()
         || a.models.is_some()
         || a.max.is_some()
-        || a.from.is_some();
+        || a.from.is_some()
+        || a.allow_attach_input.is_some();
     if !changes {
         return Ok(Output::new(
             json!({"link": plan.name, "scope": scope_json(&plan.new)}),
@@ -347,16 +352,65 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     ))
 }
 
-fn revoke(paths: &Paths, name: &str) -> Result<Output> {
-    let r = follower::revoke(paths, name)?;
-    let removed = if r.keys_removed > 0 {
-        "key removed from authorized_keys"
+fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
+    let name = a.name.as_str();
+    let revoked = follower::revoke(paths, name);
+    let mut runner = if a.halt_runs {
+        tmgr_link::runner::RunnerClient::connect_default().ok()
     } else {
-        "no authorized_keys line found"
+        None
+    };
+    let contained = follower::contain(
+        paths,
+        name,
+        runner
+            .as_mut()
+            .map(|c| c as &mut dyn tmgr_link::runner::Backend),
+    )?;
+    let nothing_else = contained.workers.signalled + contained.workers.stale + contained.runs_known;
+    let r = match revoked {
+        Ok(r) => Some(r),
+        Err(e) if e.exit_code() == 3 && nothing_else > 0 => None,
+        Err(e) => return Err(e),
+    };
+    if a.halt_runs && runner.is_none() && contained.runs_known > 0 {
+        return Err(Error::new(
+            tmgr_core::error::Kind::Offline,
+            "revoked and workers stopped, but the runner is not reachable so the runs were not halted",
+        )
+        .hint(format!("tmgr runner start, then tmgr link revoke {name} --halt-runs")));
+    }
+    let keys_removed = r.as_ref().map_or(0, |r| r.keys_removed);
+    let removed = if r.is_none() {
+        "already revoked".to_string()
+    } else if keys_removed > 0 {
+        "key removed from authorized_keys, trust dropped".to_string()
+    } else {
+        "no authorized_keys line found, trust dropped".to_string()
+    };
+    let kept = contained.runs_known.saturating_sub(contained.runs_halted);
+    let runs = if a.halt_runs {
+        format!("{} run(s) halted", contained.runs_halted)
+    } else if kept > 0 {
+        format!("{kept} run(s) keep going (shown as origin: link:{name} (revoked); --halt-runs stops them)")
+    } else {
+        "no runs of this link".to_string()
     };
     Ok(Output::new(
-        json!({"link": name, "keys_removed": r.keys_removed, "backup": r.backup.as_ref().map(|b| b.display().to_string())}),
-        format!("✓ revoked: {removed}, trust dropped, audit kept (open sessions are refused at their next request)"),
+        json!({
+            "link": name,
+            "keys_removed": keys_removed,
+            "backup": r.as_ref().and_then(|r| r.backup.as_ref()).map(|b| b.display().to_string()),
+            "workers_stopped": contained.workers.signalled,
+            "workers_surviving": contained.workers.survivors,
+            "runs_halted": contained.runs_halted,
+            "runs_known": contained.runs_known,
+            "halt_failed": contained.halt_failed,
+        }),
+        format!(
+            "✓ revoked: {removed}, {} worker(s) stopped, {runs}, audit kept",
+            contained.workers.signalled
+        ),
     ))
 }
 

@@ -308,10 +308,10 @@ type Pipe = Framed<ChildStdout, ChildStdin>;
 
 pub struct Client {
     child: Arc<Mutex<Child>>,
-    chan: Pipe,
+    chan: Option<Pipe>,
     stderr: Arc<Mutex<Vec<u8>>>,
     timed_out: Arc<Mutex<bool>>,
-    _cancel: mpsc::Sender<()>,
+    cancel: Option<mpsc::Sender<()>>,
     next_id: u64,
 }
 
@@ -357,12 +357,24 @@ impl Client {
         });
         Ok(Client {
             child,
-            chan: Framed::new(stdout, stdin),
+            chan: Some(Framed::new(stdout, stdin)),
             stderr,
             timed_out,
-            _cancel: cancel,
+            cancel: Some(cancel),
             next_id: 1,
         })
+    }
+
+    pub fn disarm(&mut self) {
+        self.cancel = None;
+    }
+
+    pub fn take_stream(&mut self) -> Result<(ChildStdout, ChildStdin)> {
+        self.disarm();
+        self.chan
+            .take()
+            .map(Framed::into_parts)
+            .ok_or_else(|| crate::link_err("the connection was already taken"))
     }
 
     pub fn connect(
@@ -392,10 +404,13 @@ impl Client {
     pub fn call(&mut self, method: &str, params: Value) -> Result<Reply> {
         let id = self.next_id;
         self.next_id += 1;
-        if self.chan.send(&proto::request(id, method, params)).is_err() {
+        let Some(chan) = self.chan.as_mut() else {
+            return Err(crate::link_err("the connection is in streaming mode"));
+        };
+        if chan.send(&proto::request(id, method, params)).is_err() {
             return Err(self.failure());
         }
-        match self.chan.recv() {
+        match chan.recv() {
             Ok(Some(bytes)) => proto::parse_reply(&bytes, id)
                 .map_err(|why| crate::link_err(format!("bad reply from the follower: {why}"))),
             Ok(None) | Err(_) => Err(self.failure()),

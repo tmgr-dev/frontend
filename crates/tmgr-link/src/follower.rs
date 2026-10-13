@@ -17,6 +17,7 @@ pub struct ScopeInput {
     pub models: Option<Vec<String>>,
     pub max: Option<u32>,
     pub from: Option<Vec<String>>,
+    pub allow_attach_input: Option<bool>,
 }
 
 fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
@@ -68,6 +69,9 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
     }
     if let Some(from) = &input.from {
         scope.from = grammar::parse_cidr_list(from)?;
+    }
+    if let Some(allow) = input.allow_attach_input {
+        scope.allow_attach_input = allow;
     }
     Ok(scope)
 }
@@ -419,6 +423,55 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     })
 }
 
+#[derive(Debug, Default)]
+pub struct Contained {
+    pub workers: crate::registry::Terminated,
+    pub runs_halted: usize,
+    pub runs_known: usize,
+    pub halt_failed: usize,
+}
+
+pub fn contain(
+    paths: &Paths,
+    name: &str,
+    halt: Option<&mut dyn crate::runner::Backend>,
+) -> Result<Contained> {
+    grammar::link_name(name)?;
+    let runs = crate::ownership::Runs::lock(paths)?;
+    let workers = crate::registry::terminate(paths, name, std::time::Duration::from_secs(3))?;
+    let records: Vec<String> = runs
+        .of_link(name)
+        .into_iter()
+        .map(|r| r.run.clone())
+        .collect();
+    let mut out = Contained {
+        workers,
+        runs_known: records.len(),
+        ..Contained::default()
+    };
+    if let Some(backend) = halt {
+        for run in &records {
+            match crate::runs::stop_run(backend, run) {
+                Ok(_) => out.runs_halted += 1,
+                Err(_) => out.halt_failed += 1,
+            }
+        }
+    }
+    Audit::new(&paths.audit_dir()).append(
+        "link.revoke.contain",
+        json!({
+            "link": name,
+            "workers_signalled": out.workers.signalled,
+            "workers_stale": out.workers.stale,
+            "workers_surviving": out.workers.survivors,
+            "runs_known": out.runs_known,
+            "runs_halted": out.runs_halted,
+            "halt_failed": out.halt_failed,
+        }),
+    )?;
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,6 +526,7 @@ mod tests {
                 models: None,
                 max: Some(3),
                 from: None,
+                allow_attach_input: None,
             },
         }
     }

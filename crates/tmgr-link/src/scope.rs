@@ -15,6 +15,8 @@ pub struct Scope {
     pub max: u32,
     #[serde(default)]
     pub from: Vec<String>,
+    #[serde(default)]
+    pub allow_attach_input: bool,
 }
 
 impl Scope {
@@ -32,7 +34,8 @@ impl Scope {
                     .any(|f| !old.from.iter().any(|o| cidr_within(f, o))));
         let models = !old.models.is_empty()
             && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
-        repos || agents || models || self.max > old.max || from
+        let input = self.allow_attach_input && !old.allow_attach_input;
+        repos || agents || models || self.max > old.max || from || input
     }
 
     pub fn summary(&self) -> String {
@@ -56,8 +59,13 @@ impl Scope {
         } else {
             format!("from {}", self.from.join(", "))
         };
+        let input = if self.allow_attach_input {
+            "attach input: allowed"
+        } else {
+            "attach input: forbidden"
+        };
         format!(
-            "{repos} · {agents} · {models} · max {} running · {from} · bypass-permissions: forbidden",
+            "{repos} · {agents} · {models} · max {} running · {from} · {input} · bypass-permissions: forbidden",
             self.max
         )
     }
@@ -191,12 +199,52 @@ pub fn validate_run_method(
             }
         }
         "runs.create" => validate_create(&obj, scope, live_runs),
+        "attach.open" => validate_attach(&obj),
         _ => Err(Reject::bad("not a run method")),
     }
 }
 
+fn validate_attach(obj: &Map<String, Value>) -> Result<Accepted, Reject> {
+    only_keys(obj, &["run", "read_only", "cols", "rows"])?;
+    let run = required(obj, "run")?;
+    if !grammar::token(run, 64) || run.contains('/') {
+        return Err(Reject::bad("invalid run id"));
+    }
+    if obj.get("read_only").is_some_and(|v| !v.is_boolean()) {
+        return Err(Reject::bad("read_only must be a boolean"));
+    }
+    for (key, max) in [("cols", 500u64), ("rows", 200u64)] {
+        if let Some(v) = obj.get(key) {
+            if !v.as_u64().is_some_and(|n| (1..=max).contains(&n)) {
+                return Err(Reject::bad(format!("{key} must be between 1 and {max}")));
+            }
+        }
+    }
+    Ok(Accepted::default())
+}
+
 fn validate_create(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result<Accepted, Reject> {
-    only_keys(obj, &["task", "repo", "agent", "persona", "model", "mode"])?;
+    only_keys(
+        obj,
+        &[
+            "task",
+            "task_hash",
+            "repo",
+            "agent",
+            "persona",
+            "model",
+            "mode",
+        ],
+    )?;
+    if let Some(h) = string(obj, "task_hash")? {
+        if h.len() != 64
+            || !h
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(Reject::bad("task_hash must be 64 lowercase hex characters"));
+        }
+    }
     let task = required(obj, "task")?;
     if !grammar::token(task, 64) || task.contains('/') {
         return Err(Reject::bad("invalid task reference"));
@@ -253,6 +301,7 @@ mod tests {
             models: vec![],
             max: 2,
             from: vec![],
+            allow_attach_input: false,
         }
     }
 
@@ -396,6 +445,7 @@ mod tests {
             models: vec!["m1".into()],
             max: 2,
             from: vec!["192.0.2.0/24".into()],
+            allow_attach_input: false,
         };
         assert!(!base.widens(&base));
         let mut narrower = base.clone();

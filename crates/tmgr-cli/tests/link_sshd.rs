@@ -73,6 +73,7 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
                     models: vec![],
                     max: 1,
                     from: vec!["127.0.0.1".into()],
+                    allow_attach_input: false,
                 },
             },
         );
@@ -130,14 +131,14 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
     let r = client
         .call(
             "runs.create",
-            json!({"task":"TM-1","repo":repo.to_str().unwrap(),"agent":"codex"}),
+            json!({"task":"w1:1","repo":repo.to_str().unwrap(),"agent":"codex"}),
         )
         .unwrap();
     assert_eq!(
         r,
         Reply::Err {
             code: "not_available".into(),
-            message: "runner not installed".into()
+            message: "runner not running".into()
         }
     );
     drop(client);

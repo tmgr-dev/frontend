@@ -1,9 +1,11 @@
 use crate::audit::Audit;
 use crate::grammar;
 use crate::proto::{self, Channel, FrameError};
-use crate::scope::{self, Scope};
+use crate::runner::{Backend, BackendError};
+use crate::scope::Scope;
 use crate::sha256_hex;
 use crate::store::{Paths, Store};
+use crate::taskref::{LocalRefs, TaskResolver};
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::net::IpAddr;
@@ -26,6 +28,26 @@ impl Default for Limits {
             max_requests: MAX_REQUESTS,
             per_minute: REQUESTS_PER_MINUTE,
             max_workers: MAX_WORKERS,
+        }
+    }
+}
+
+pub type Connector<'a> = &'a (dyn Fn() -> std::result::Result<Box<dyn Backend>, BackendError> + 'a);
+
+pub struct Runtime<'a> {
+    pub connect: Connector<'a>,
+    pub resolver: &'a dyn TaskResolver,
+}
+
+fn no_runner() -> std::result::Result<Box<dyn Backend>, BackendError> {
+    Err(BackendError::Unavailable("runner not installed".into()))
+}
+
+impl Runtime<'static> {
+    pub fn none() -> Runtime<'static> {
+        Runtime {
+            connect: &no_runner,
+            resolver: &LocalRefs,
         }
     }
 }
@@ -133,17 +155,24 @@ pub struct Outcome {
     pub requests: u32,
 }
 
-struct Conn<'a> {
-    paths: &'a Paths,
-    audit: Audit,
-    name: &'a str,
-    enrollment: &'a str,
+pub(crate) struct Conn<'a> {
+    pub(crate) paths: &'a Paths,
+    pub(crate) audit: Audit,
+    pub(crate) name: &'a str,
+    pub(crate) enrollment: &'a str,
     client: IpAddr,
-    fingerprint: String,
+    pub(crate) fingerprint: String,
+    pub(crate) rt: &'a Runtime<'a>,
 }
 
 impl Conn<'_> {
-    fn record(&self, method: &str, args: Value, decision: &str, reason: &str) -> Result<()> {
+    pub(crate) fn record(
+        &self,
+        method: &str,
+        args: Value,
+        decision: &str,
+        reason: &str,
+    ) -> Result<()> {
         self.audit.append(
             "worker.request",
             json!({
@@ -157,7 +186,7 @@ impl Conn<'_> {
         )
     }
 
-    fn current(&self) -> Result<std::result::Result<Scope, &'static str>> {
+    pub(crate) fn current(&self) -> Result<std::result::Result<Scope, &'static str>> {
         let store = Store::load(self.paths)?;
         if crate::follower::is_pending(self.paths, self.name) {
             return Ok(Err("link blocked after a failed rollback"));
@@ -181,7 +210,7 @@ impl Conn<'_> {
     }
 }
 
-fn say(chan: &mut dyn Channel, payload: Vec<u8>) -> bool {
+pub(crate) fn say(chan: &mut dyn Channel, payload: Vec<u8>) -> bool {
     chan.send(&payload).is_ok()
 }
 
@@ -192,6 +221,18 @@ pub fn serve(
     env: &Env,
     chan: &mut dyn Channel,
     limits: &Limits,
+) -> Result<Outcome> {
+    serve_with(paths, name, enrollment, env, chan, limits, &Runtime::none())
+}
+
+pub fn serve_with(
+    paths: &Paths,
+    name: &str,
+    enrollment: &str,
+    env: &Env,
+    chan: &mut dyn Channel,
+    limits: &Limits,
+    rt: &Runtime,
 ) -> Result<Outcome> {
     grammar::link_name(name)?;
     let refused = || crate::forbidden("refused");
@@ -232,6 +273,13 @@ pub fn serve(
         );
         return Err(refused());
     };
+    let Ok(_registered) = crate::registry::register(paths, name, enrollment) else {
+        let _ = audit.append(
+            "worker.refused",
+            json!({"link": name, "fp": leader.fingerprint, "reason": "cannot register the worker process"}),
+        );
+        return Err(refused());
+    };
     let conn = Conn {
         paths,
         audit,
@@ -239,7 +287,9 @@ pub fn serve(
         enrollment,
         client,
         fingerprint: leader.fingerprint.clone(),
+        rt,
     };
+    let mut state = State { backend: None };
     let max_requests = limits.max_requests;
     let mut recent: std::collections::VecDeque<std::time::Instant> = Default::default();
     let original = env.original_command.as_deref();
@@ -304,7 +354,7 @@ pub fn serve(
             requests -= 1;
             break;
         }
-        match handle(&conn, &frame) {
+        match handle(&conn, &mut state, chan, &frame) {
             Step::Reply(r) => {
                 if !say(chan, r) {
                     break;
@@ -314,17 +364,23 @@ pub fn serve(
                 say(chan, r);
                 break;
             }
+            Step::Done => break,
         }
     }
     Ok(Outcome { requests })
 }
 
-enum Step {
+pub(crate) enum Step {
     Reply(Vec<u8>),
     Close(Vec<u8>),
+    Done,
 }
 
-fn handle(conn: &Conn, frame: &[u8]) -> Step {
+pub(crate) struct State {
+    pub(crate) backend: Option<Box<dyn Backend>>,
+}
+
+fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) -> Step {
     let audit_down = || Step::Close(proto::error(None, "audit_unavailable", "request refused"));
     let req = match proto::parse_request(frame) {
         Ok(r) => r,
@@ -379,31 +435,8 @@ fn handle(conn: &Conn, frame: &[u8]) -> Step {
                 }),
             ))
         }
-        "runs.list" | "runs.get" | "runs.create" | "runs.halt" => {
-            let mut args = scope::audit_args(&req.params);
-            match scope::validate_run_method(method, &req.params, &scope, 0) {
-                Ok(accepted) => {
-                    if let (Some(repo), Some(obj)) = (accepted.repo, args.as_object_mut()) {
-                        obj.insert("repo_canonical".into(), Value::String(repo));
-                    }
-                    if conn
-                        .record(method, args, "accepted", "runner not installed")
-                        .is_err()
-                    {
-                        return audit_down();
-                    }
-                    Step::Reply(proto::error(id, "not_available", "runner not installed"))
-                }
-                Err(reject) => {
-                    if conn
-                        .record(method, args, "rejected", &reject.reason)
-                        .is_err()
-                    {
-                        return audit_down();
-                    }
-                    Step::Reply(proto::error(id, reject.code, &reject.reason))
-                }
-            }
+        "runs.list" | "runs.get" | "runs.create" | "runs.halt" | "attach.open" => {
+            crate::runs::run_method(conn, state, chan, &req, &scope)
         }
         other => {
             let shown = tmgr_core::text::truncate_chars(
@@ -572,6 +605,7 @@ mod tests {
                         models: vec![],
                         max: 2,
                         from: vec![],
+                        allow_attach_input: false,
                     },
                     enrollment: ENR.into(),
                     authorized_keys: String::new(),
@@ -635,9 +669,9 @@ mod tests {
     #[test]
     fn run_methods_are_validated_audited_and_not_available() {
         let f = fx();
-        let ok = json!({"id":2,"method":"runs.create","params":{"task":"TM-512","repo":f.repo,"agent":"codex"}});
-        let bad_agent = json!({"id":3,"method":"runs.create","params":{"task":"TM-512","repo":f.repo,"agent":"claude-code"}});
-        let bypass = json!({"id":4,"method":"runs.create","params":{"task":"TM-530","repo":f.repo,"agent":"codex","mode":"bypass"}});
+        let ok = json!({"id":2,"method":"runs.create","params":{"task":"w1:512","repo":f.repo,"agent":"codex"}});
+        let bad_agent = json!({"id":3,"method":"runs.create","params":{"task":"w1:512","repo":f.repo,"agent":"claude-code"}});
+        let bypass = json!({"id":4,"method":"runs.create","params":{"task":"w1:530","repo":f.repo,"agent":"codex","mode":"bypass"}});
         let list = json!({"id":5,"method":"runs.list"});
         let (_, replies) = run(&f, frames(&[ok, bad_agent, bypass, list]), 10);
         assert_eq!(replies[0]["error"], "not_available");
@@ -651,9 +685,12 @@ mod tests {
             .filter(|e| e["event"] == "worker.request")
             .map(|e| e["decision"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(decisions, ["accepted", "rejected", "rejected", "accepted"]);
+        assert_eq!(
+            decisions,
+            ["accepted", "failed", "rejected", "rejected", "accepted", "failed"]
+        );
         assert_eq!(ev[1]["fp"], "SHA256:test");
-        assert_eq!(ev[1]["args"]["task"], "TM-512");
+        assert_eq!(ev[1]["args"]["task"], "w1:512");
         assert!(Audit::new(&f.paths.audit_dir()).verify().unwrap().is_ok());
     }
 
@@ -667,7 +704,6 @@ mod tests {
             "link.trust",
             "queue.add",
             "runs.send",
-            "attach.open",
             "events.subscribe",
             "",
             "hello\u{1b}[2J",
@@ -958,7 +994,7 @@ mod tests {
     fn the_canonical_repo_is_audited() {
         let f = fx();
         let dotted = format!("{}/../repo", f.repo);
-        let req = json!({"id":1,"method":"runs.create","params":{"task":"TM-1","repo":dotted,"agent":"codex"}});
+        let req = json!({"id":1,"method":"runs.create","params":{"task":"w1:1","repo":dotted,"agent":"codex"}});
         let _ = run(&f, frames(&[req]), 5);
         let ev = events(&f)
             .into_iter()

@@ -199,6 +199,7 @@ mod tests {
                 agents: vec!["codex".into()],
                 max: 2,
                 from: vec!["192.0.2.0/24".into()],
+                allow_attach_input: false,
                 models: vec![],
             },
             enrollment: "ab".repeat(16),
