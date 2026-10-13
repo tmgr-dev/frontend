@@ -2234,3 +2234,34 @@ fn a_directory_is_reserved_by_identity_across_renames_and_both_create_paths() {
     assert_eq!(h.client().list().unwrap().len(), 2);
     assert_ne!(first.id, h.client().list().unwrap()[1].id);
 }
+
+#[test]
+fn a_session_cannot_sit_where_a_relocated_trust_store_lives() {
+    let mut h = Harness::new();
+    let proj = h.tmp.path().join("proj");
+    fs::create_dir_all(&proj).unwrap();
+    h.cfg = proj.join("config");
+    fs::create_dir_all(&h.cfg).unwrap();
+    h.start(5000);
+    let mut r = h.req(&["/bin/sh"]);
+    r.cwd = proj.display().to_string();
+    let e = err_text(h.client().create(r));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("protected"),
+        "{e}"
+    );
+    let mut r = h.req(&["/bin/sh"]);
+    r.cwd = h.work.display().to_string();
+    assert!(h.client().create(r).is_ok());
+}
+
+#[test]
+fn an_overflowing_profile_directory_refuses_sessions() {
+    let mut h = Harness::new();
+    for i in 0..101 {
+        fs::write(h.agents.join(format!("p{i}.toml")), "").unwrap();
+    }
+    h.start(5000);
+    let e = err_text(h.client().create(h.req(&["/bin/sh"])));
+    assert!(e.contains("more than"), "{e}");
+}

@@ -209,17 +209,32 @@ pub fn secrets_declarations(dir: Option<&Path>) -> Result<Vec<String>, String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
         Err(e) => return Err(format!("cannot read {}: {e}", dir.display())),
     };
-    let mut paths: Vec<PathBuf> = entries
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|x| x == "toml"))
-        .collect();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    for entry in entries {
+        let path = entry
+            .map_err(|e| format!("cannot list {}: {e}", dir.display()))?
+            .path();
+        if path.extension().is_some_and(|x| x == "toml") {
+            paths.push(path);
+        }
+    }
+    if paths.len() > MAX_PROFILE_FILES {
+        return Err(format!(
+            "{} has more than {MAX_PROFILE_FILES} profile files",
+            dir.display()
+        ));
+    }
     paths.sort();
-    paths.truncate(MAX_PROFILE_FILES);
     for path in paths {
         let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
-        if !meta.file_type().is_file() || meta.len() > MAX_PROFILE_BYTES {
+        if !meta.file_type().is_file() {
             continue;
+        }
+        if meta.len() > MAX_PROFILE_BYTES {
+            return Err(format!(
+                "{} is larger than {MAX_PROFILE_BYTES} bytes, its secrets location cannot be established",
+                path.display()
+            ));
         }
         let text = std::fs::read_to_string(&path)
             .map_err(|e| format!("cannot read {}: {e}", path.display()))?;

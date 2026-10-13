@@ -80,7 +80,26 @@ fn profile_protected_paths() -> Result<Vec<PathBuf>, ApiErr> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default();
-    Ok(login::profile_protected(dir.as_deref(), &decls, &home))
+    let mut out = login::profile_protected(dir.as_deref(), &decls, &home).map_err(|e| {
+        api(
+            ErrorCode::Sandbox,
+            format!("cannot establish the protected paths of the agent profiles, no session starts: {e}"),
+        )
+    })?;
+    if let Ok(store) = trust::store_dir() {
+        let chain = login::path_chain(&store).map_err(|e| {
+            api(
+                ErrorCode::Sandbox,
+                format!("cannot establish the protected trust store path, no session starts: {e}"),
+            )
+        })?;
+        for p in chain {
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    Ok(out)
 }
 
 #[derive(Clone)]

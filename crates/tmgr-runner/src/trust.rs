@@ -43,7 +43,7 @@ struct StoreRec {
     generations: BTreeMap<String, u64>,
 }
 
-fn links_toml() -> Result<PathBuf, String> {
+pub fn store_dir() -> Result<PathBuf, String> {
     let abs = |k: &str| {
         std::env::var_os(k)
             .map(PathBuf::from)
@@ -56,7 +56,11 @@ fn links_toml() -> Result<PathBuf, String> {
             .join(".config")
             .join("tmgr"),
     };
-    Ok(dir.join("links.toml"))
+    Ok(dir)
+}
+
+fn links_toml() -> Result<PathBuf, String> {
+    Ok(store_dir()?.join("links.toml"))
 }
 
 pub fn read(link: &str) -> Result<Option<LinkTrust>, String> {
