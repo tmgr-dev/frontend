@@ -85,15 +85,6 @@ dark.addEventListener('change', (event) => {
 	term.options.theme = event.matches ? DARK : LIGHT;
 });
 
-const closeWindow = async () => {
-	try {
-		const { getCurrentWindow } = await import('@tauri-apps/api/window');
-		await getCurrentWindow().close();
-	} catch {
-		window.close();
-	}
-};
-
 const controller = createController({
 	term,
 	api: {
@@ -122,7 +113,7 @@ const controller = createController({
 			overlay.hidden = true;
 		},
 		closeWindow() {
-			void closeWindow();
+			window.close();
 		},
 	},
 });

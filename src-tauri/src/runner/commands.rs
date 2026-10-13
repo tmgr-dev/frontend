@@ -141,7 +141,11 @@ pub async fn runner_open_terminal<R: Runtime>(app: AppHandle<R>, runner: State<'
     .disable_drag_drop_handler()
     .background_throttling(BackgroundThrottlingPolicy::Disabled)
     .center();
-  let window = crate::with_app_webview_handlers(builder, &app).build().map_err(|e| e.to_string())?;
+  let window = builder
+    .on_navigation(|url| is_terminal_url(url))
+    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
+    .build()
+    .map_err(|e| e.to_string())?;
   let _ = window.show();
   let _ = window.set_focus();
   Ok(())
@@ -203,7 +207,12 @@ pub async fn runner_term_scroll<R: Runtime>(window: WebviewWindow<R>, runner: St
 #[tauri::command]
 pub async fn runner_term_detach<R: Runtime>(window: WebviewWindow<R>, runner: State<'_, Runner>) -> Result<(), String> {
   runner.term_detach(&term_session(&window)?);
+  let _ = window.close();
   Ok(())
+}
+
+pub fn is_terminal_url(url: &url::Url) -> bool {
+  crate::is_app_url(url) && matches!(url.scheme(), "tauri" | "http" | "https") && url.path() == "/runner-terminal.html"
 }
 
 pub fn validate_link(raw: &str) -> Result<url::Url, String> {
@@ -226,7 +235,17 @@ pub async fn runner_term_open_link<R: Runtime>(window: WebviewWindow<R>, app: Ap
 
 #[cfg(test)]
 mod tests {
-  use super::validate_link;
+  use super::{is_terminal_url, validate_link};
+
+  #[test]
+  fn terminal_window_stays_on_its_page() {
+    for ok in ["tauri://localhost/runner-terminal.html", "http://tauri.localhost/runner-terminal.html", "http://localhost:5173/runner-terminal.html"] {
+      assert!(is_terminal_url(&url::Url::parse(ok).unwrap()), "{ok}");
+    }
+    for bad in ["tauri://localhost/index.html", "http://localhost:5173/", "https://example.com/runner-terminal.html", "data:text/html,x", "about:blank"] {
+      assert!(!is_terminal_url(&url::Url::parse(bad).unwrap()), "{bad}");
+    }
+  }
 
   #[test]
   fn only_http_links_open() {
