@@ -504,7 +504,9 @@ for (const [width, height] of [
 
       await openTask(page, 'Pricing page copy');
       await page.getByTestId('agent-run-button').click();
+      await expect(page.getByTestId('agent-run-popover')).toBeVisible();
       await expect(page.getByTestId('agent-profile')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
       await page.waitForTimeout(400);
       await page.screenshot({
         path: join(screensDir, `task-run-popover-${tag}.png`),
