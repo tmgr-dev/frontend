@@ -93,3 +93,17 @@ pub fn spawn(mut s: UnixStream, mock: Mock) -> JoinHandle<Log> {
     log
   })
 }
+
+pub fn spawn_scripted(mut s: UnixStream, secret: &str, script: impl FnOnce(&mut UnixStream) + Send + 'static) -> JoinHandle<()> {
+  let secret = secret.to_owned();
+  thread::spawn(move || {
+    let Ok(Some(Frame::Json(hello))) = read_frame(&mut s) else { return };
+    let nonce_c = hello["nonce_c"].as_str().unwrap_or_default().to_owned();
+    let nonce_s = "ab".repeat(32);
+    let proof_s = proof(&secret, "tmgr-runner-server", &nonce_c, &nonce_s);
+    let _ = write_json(&mut s, &json!({"type": "challenge", "nonce_s": nonce_s, "proof_s": proof_s}));
+    let Ok(Some(Frame::Json(_))) = read_frame(&mut s) else { return };
+    let _ = write_json(&mut s, &json!({"type": "welcome", "proto": 1, "runner_version": "0.1.0", "caps": []}));
+    script(&mut s);
+  })
+}

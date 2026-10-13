@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::conn::{valid_session_id, Conn, ConnError};
+use super::conn::{valid_session_id, Conn, ConnError, Timed};
 use super::sanitize;
 
 pub const PROFILES: &[(&str, &str)] = &[("claude-code", "Claude Code"), ("codex", "Codex")];
@@ -121,11 +121,11 @@ pub fn sessions_from_value(v: &Value) -> Result<Vec<RunnerSession>, ConnError> {
   Ok(arr.iter().filter_map(session_from_value).collect())
 }
 
-pub fn list_sessions<S: Read + Write>(conn: &mut Conn<S>) -> Result<Vec<RunnerSession>, ConnError> {
+pub fn list_sessions<S: Read + Write + Timed>(conn: &mut Conn<S>) -> Result<Vec<RunnerSession>, ConnError> {
   sessions_from_value(&conn.call("sessions.list", Value::Null)?)
 }
 
-pub fn find_session<S: Read + Write>(conn: &mut Conn<S>, id: &str) -> Result<Option<Value>, ConnError> {
+pub fn find_session<S: Read + Write + Timed>(conn: &mut Conn<S>, id: &str) -> Result<Option<Value>, ConnError> {
   let v = conn.call("sessions.list", Value::Null)?;
   Ok(v.as_array().and_then(|a| a.iter().find(|s| s["id"] == id).cloned()))
 }
@@ -166,7 +166,7 @@ pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, profile: 
   )
 }
 
-pub fn create_run<S: Read + Write>(conn: &mut Conn<S>, r: &StartRun) -> Result<RunnerSession, ConnError> {
+pub fn create_run<S: Read + Write + Timed>(conn: &mut Conn<S>, r: &StartRun) -> Result<RunnerSession, ConnError> {
   let params = json!({
     "task": {"workspace_id": r.workspace_id, "task_id": r.task_id},
     "profile": r.profile,
@@ -177,7 +177,7 @@ pub fn create_run<S: Read + Write>(conn: &mut Conn<S>, r: &StartRun) -> Result<R
   session_from_value(&v).ok_or_else(|| ConnError::Failed("unexpected reply from runner".to_owned()))
 }
 
-pub fn kill_session<S: Read + Write>(conn: &mut Conn<S>, id: &str) -> Result<(), ConnError> {
+pub fn kill_session<S: Read + Write + Timed>(conn: &mut Conn<S>, id: &str) -> Result<(), ConnError> {
   conn.call("sessions.kill", json!({"id": id, "signal": "TERM"})).map(drop)
 }
 

@@ -1,4 +1,5 @@
 use std::io::{self, Read, Write};
+use std::time::{Duration, Instant};
 
 use hmac::{Hmac, Mac};
 use serde_json::{json, Value};
@@ -14,6 +15,43 @@ const KIND_JSON: u8 = 0;
 const KIND_BIN: u8 = 1;
 const SERVER: &str = "tmgr-runner-server";
 const CLIENT: &str = "tmgr-runner-client";
+pub const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(5);
+pub const CALL_DEADLINE: Duration = Duration::from_secs(10);
+pub const MAX_UNRELATED_FRAMES: usize = 256;
+
+pub trait Timed {
+  fn set_read_deadline(&self, d: Option<Duration>) -> io::Result<()>;
+}
+
+#[cfg(unix)]
+impl Timed for std::os::unix::net::UnixStream {
+  fn set_read_deadline(&self, d: Option<Duration>) -> io::Result<()> {
+    self.set_read_timeout(d)
+  }
+}
+
+#[cfg(not(unix))]
+impl Timed for super::dir::Sock {
+  fn set_read_deadline(&self, d: Option<Duration>) -> io::Result<()> {
+    self.set_read_timeout(d)
+  }
+}
+
+struct Deadline<'a, S> {
+  stream: &'a mut S,
+  end: Instant,
+}
+
+impl<S: Read + Timed> Read for Deadline<'_, S> {
+  fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+    let left = self.end.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+      return Err(io::ErrorKind::TimedOut.into());
+    }
+    let _ = self.stream.set_read_deadline(Some(left)); // macOS rejects setsockopt once the peer has closed
+    self.stream.read(buf)
+  }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BinFrame {
@@ -179,8 +217,8 @@ fn nonce() -> Result<String, ConnError> {
   Ok(hex(&b))
 }
 
-fn read_json<S: Read>(s: &mut S) -> Result<Value, ConnError> {
-  match read_frame(s)? {
+fn read_json<S: Read + Timed>(s: &mut S, end: Instant) -> Result<Value, ConnError> {
+  match read_frame(&mut Deadline { stream: s, end })? {
     Some(Frame::Json(v)) => Ok(v),
     Some(Frame::Bin(_)) => Err(ConnError::Failed("unexpected binary frame".to_owned())),
     None => Err(ConnError::Failed("Agent runner closed the connection".to_owned())),
@@ -207,10 +245,16 @@ pub struct Welcome {
 pub struct Conn<S> {
   pub stream: S,
   next_id: u64,
+  call_deadline: Duration,
 }
 
-impl<S: Read + Write> Conn<S> {
-  pub fn handshake(mut stream: S, secret: &str, client: &str) -> Result<(Conn<S>, Welcome), ConnError> {
+impl<S: Read + Write + Timed> Conn<S> {
+  pub fn handshake(stream: S, secret: &str, client: &str) -> Result<(Conn<S>, Welcome), ConnError> {
+    Self::handshake_within(stream, secret, client, HANDSHAKE_DEADLINE)
+  }
+
+  pub fn handshake_within(mut stream: S, secret: &str, client: &str, within: Duration) -> Result<(Conn<S>, Welcome), ConnError> {
+    let end = Instant::now() + within;
     let nonce_c = nonce()?;
     let hello = json!({
       "type": "hello",
@@ -221,7 +265,7 @@ impl<S: Read + Write> Conn<S> {
       "nonce_c": nonce_c,
     });
     write_json(&mut stream, &hello)?;
-    let challenge = read_json(&mut stream)?;
+    let challenge = read_json(&mut stream, end)?;
     match challenge.get("type").and_then(Value::as_str) {
       Some("challenge") => {}
       Some("error") => return Err(remote_error(&challenge)),
@@ -234,7 +278,7 @@ impl<S: Read + Write> Conn<S> {
     }
     let proof_c = proof(secret, CLIENT, nonce_s, &nonce_c);
     write_json(&mut stream, &json!({"type": "auth", "proof_c": proof_c}))?;
-    let reply = read_json(&mut stream)?;
+    let reply = read_json(&mut stream, end)?;
     match reply.get("type").and_then(Value::as_str) {
       Some("welcome") => {
         if reply.get("proto").and_then(Value::as_u64) != Some(PROTO_VERSION) {
@@ -248,7 +292,7 @@ impl<S: Read + Write> Conn<S> {
             .map(|a| a.iter().filter_map(Value::as_str).map(|c| super::sanitize::text(c, 40)).collect())
             .unwrap_or_default(),
         };
-        Ok((Conn { stream, next_id: 1 }, welcome))
+        Ok((Conn { stream, next_id: 1, call_deadline: CALL_DEADLINE }, welcome))
       }
       Some("error") => Err(remote_error(&reply)),
       _ => Err(ConnError::Failed("unexpected handshake message".to_owned())),
@@ -258,12 +302,20 @@ impl<S: Read + Write> Conn<S> {
   pub fn call(&mut self, method: &str, params: Value) -> Result<Value, ConnError> {
     let id = self.next_id;
     self.next_id += 1;
+    let end = Instant::now() + self.call_deadline;
     write_json(&mut self.stream, &json!({"type": "request", "id": id, "method": method, "params": params}))?;
+    let mut unrelated = 0;
     loop {
-      let Some(frame) = read_frame(&mut self.stream)? else {
+      let Some(frame) = read_frame(&mut Deadline { stream: &mut self.stream, end })? else {
         return Err(ConnError::Failed("Agent runner closed the connection".to_owned()));
       };
-      let Frame::Json(v) = frame else { continue };
+      let Frame::Json(v) = frame else {
+        unrelated += 1;
+        if unrelated > MAX_UNRELATED_FRAMES {
+          return Err(ConnError::Failed("Agent runner sent too many unrelated messages".to_owned()));
+        }
+        continue;
+      };
       match v.get("type").and_then(Value::as_str) {
         Some("response") if v.get("id").and_then(Value::as_u64) == Some(id) => {
           if let Some(err) = v.get("err").filter(|e| !e.is_null()) {
@@ -277,7 +329,12 @@ impl<S: Read + Write> Conn<S> {
           let reason = super::sanitize::text(v.get("reason").and_then(Value::as_str).unwrap_or("closed"), 200);
           return Err(ConnError::Failed(reason));
         }
-        _ => {}
+        _ => {
+          unrelated += 1;
+          if unrelated > MAX_UNRELATED_FRAMES {
+            return Err(ConnError::Failed("Agent runner sent too many unrelated messages".to_owned()));
+          }
+        }
       }
     }
   }
@@ -428,10 +485,68 @@ mod tests {
   }
 
   #[test]
+  fn dripping_server_hits_the_absolute_handshake_deadline() {
+    let (c, mut s) = pair();
+    let drip = std::thread::spawn(move || {
+      let frame = encode_frame(&Frame::Json(json!({"type": "challenge", "nonce_s": "x", "proof_s": "y"}))).unwrap();
+      for b in frame {
+        if s.write_all(&[b]).is_err() {
+          break;
+        }
+        std::thread::sleep(Duration::from_millis(60));
+      }
+    });
+    let started = Instant::now();
+    let err = Conn::handshake_within(c, "secret", "desktop", Duration::from_millis(300)).unwrap_err();
+    assert!(started.elapsed() < Duration::from_millis(900), "{:?}", started.elapsed());
+    assert!(matches!(err, ConnError::Failed(ref m) if m.contains("in time")), "{err:?}");
+    drop(drip);
+  }
+
+  #[test]
+  fn call_stops_after_the_unrelated_frame_budget() {
+    let (c, s) = pair();
+    let server = mock::spawn_scripted(s, "secret", |s| {
+      let _ = read_frame(s);
+      for _ in 0..1000 {
+        if write_json(s, &json!({"type": "event", "session": SID})).is_err() {
+          break;
+        }
+      }
+    });
+    let (mut conn, _) = Conn::handshake(c, "secret", "desktop").unwrap();
+    let err = conn.call("runner.status", Value::Null).unwrap_err();
+    assert!(matches!(err, ConnError::Failed(ref m) if m.contains("too many")), "{err:?}");
+    drop(conn);
+    server.join().unwrap();
+  }
+
+  #[test]
+  fn call_deadline_is_absolute() {
+    let (c, s) = pair();
+    let server = mock::spawn_scripted(s, "secret", |s| {
+      let _ = read_frame(s);
+      for _ in 0..40 {
+        if write_json(s, &json!({"type": "event"})).is_err() {
+          break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+      }
+    });
+    let (mut conn, _) = Conn::handshake(c, "secret", "desktop").unwrap();
+    conn.call_deadline = Duration::from_millis(300);
+    let started = Instant::now();
+    let err = conn.call("runner.status", Value::Null).unwrap_err();
+    assert!(started.elapsed() < Duration::from_millis(900), "{:?}", started.elapsed());
+    assert!(matches!(err, ConnError::Failed(ref m) if m.contains("in time")), "{err:?}");
+    drop(conn);
+    server.join().unwrap();
+  }
+
+  #[test]
   fn silent_server_times_out() {
     let (c, _s) = pair();
-    c.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
-    let err = Conn::handshake(c, "secret", "desktop").unwrap_err();
+    let err = Conn::handshake_within(c, "secret", "desktop", Duration::from_millis(100)).unwrap_err();
     assert!(matches!(err, ConnError::Failed(ref m) if m.contains("in time")), "{err:?}");
   }
 }
