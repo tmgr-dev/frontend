@@ -2076,14 +2076,25 @@ fn a_directory_is_reserved_by_identity_across_renames_and_both_create_paths() {
     let mut h = Harness::new();
     h.bundle_runner();
     let first = h.client().create_run(h.bundled("fake")).unwrap();
-    let mut c = h.client();
-    wait_state(&mut c, &first.id, 30, |s| s.kind == StateKind::Working);
+    let mut w = Watch::new(h.client(), &[&first.id]);
+    assert!(
+        w.wait(30, |w| w.has_line(&first.id, "ready")),
+        "the agent never started: {:?}",
+        w.text(&first.id)
+    );
+    let up = h.client().list().unwrap().remove(0);
+    assert_ne!(up.state.kind, StateKind::Exited, "first session: {up:?}");
     let work = fs::canonicalize(&h.work).unwrap();
     let renamed = h.tmp.path().join("renamed");
     fs::rename(&work, &renamed).unwrap();
 
     let again = h.bundled_at("fake", &renamed);
-    let e = err_text(h.client().create_run(again));
+    let second = h.client().create_run(again);
+    let now = h.client().list().unwrap();
+    let e = second.as_ref().map_or_else(
+        |e| e.to_string(),
+        |s| format!("created {s:?}; sessions now: {now:?}"),
+    );
     assert!(e.starts_with("busy: "), "{e}");
     let mut plain = h.req(&["/bin/sh", "-c", "sleep 5"]);
     plain.cwd = renamed.display().to_string();
