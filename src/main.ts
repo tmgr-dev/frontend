@@ -31,6 +31,7 @@ import '@fontsource/exo-2/600.css';
 import '@fontsource/exo-2/700.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
+import { startRunnerStore } from '@/runner/store';
 import { installTours } from '@/tours/boot';
 import { installTourTelemetry } from '@/tours/telemetryAdapter';
 import { installOnboardingFlow } from '@/onboarding/boot';
@@ -184,6 +185,7 @@ app.use(Selectable);
 const start = async () => {
 	await profileReady;
 	if (isDesktopApp() && desktopWindowLabel() === 'main') {
+		void startRunnerStore();
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {
