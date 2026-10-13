@@ -1,5 +1,7 @@
-use crate::profile::{Profile, ProfileSet};
-use crate::sandbox::{canon_lossy, env_name_refused, home_deny_paths, overlaps, Grants};
+use crate::profile::Profile;
+use crate::sandbox::{
+    canon_lossy, env_name_refused, home_deny_paths, overlaps, protected_forms, Grants,
+};
 use std::collections::BTreeMap;
 use std::ffi::{CString, OsStr};
 use std::fs::{DirBuilder, File, OpenOptions};
@@ -95,7 +97,11 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
     check_env(p)?;
     let home = canon_lossy(real_home);
     let mut deny = home_deny_paths(real_home);
-    deny.extend(protected.iter().map(|d| canon_lossy(d)));
+    for d in protected {
+        for f in protected_forms(d) {
+            push_new(&mut deny, f);
+        }
+    }
     let allowed = |what: &str, decl: &str| -> Result<PathBuf, String> {
         let path = under_home(what, decl, &home)?;
         match deny.iter().find(|d| overlaps(&path, d)) {
@@ -141,23 +147,56 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
     Ok(out)
 }
 
-pub fn profile_protected(dir: Option<&Path>, set: &ProfileSet, real_home: &Path) -> Vec<PathBuf> {
+fn push_new(out: &mut Vec<PathBuf>, p: PathBuf) {
+    if !out.contains(&p) {
+        out.push(p);
+    }
+}
+
+fn own_symlink(p: &Path) -> bool {
+    std::fs::symlink_metadata(p)
+        .is_ok_and(|m| m.file_type().is_symlink() && m.uid() == unsafe { libc::geteuid() })
+}
+
+fn push_symlink_prefixes(out: &mut Vec<PathBuf>, base: &Path, rel: &Path) {
+    let mut cur = base.to_path_buf();
+    for c in rel.components() {
+        cur.push(c);
+        if own_symlink(&cur) {
+            if let (Some(parent), Some(name)) = (cur.parent(), cur.file_name()) {
+                push_new(out, canon_lossy(parent).join(name));
+            }
+        }
+    }
+}
+
+pub fn profile_protected(
+    dir: Option<&Path>,
+    secret_decls: &[String],
+    real_home: &Path,
+) -> Vec<PathBuf> {
     let home = canon_lossy(real_home);
-    let mut out: Vec<PathBuf> = dir.map(canon_lossy).into_iter().collect();
-    for p in set.list() {
-        let Some(decl) = &p.secrets.file else {
-            continue;
-        };
+    let mut out = Vec::new();
+    if let Some(dir) = dir {
+        let abs = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf());
+        push_new(&mut out, canon_lossy(&abs));
+        push_symlink_prefixes(&mut out, Path::new("/"), &abs);
+    }
+    for decl in secret_decls {
         let Ok(file) = under_home("secrets file", decl, &home) else {
             continue;
         };
+        if let Some(rel) = decl.strip_prefix("~/") {
+            push_symlink_prefixes(&mut out, real_home, Path::new(rel));
+            if home != real_home {
+                push_symlink_prefixes(&mut out, &home, Path::new(rel));
+            }
+        }
         let guard = match file.parent() {
             Some(parent) if !home.starts_with(parent) => parent.to_path_buf(),
             _ => file,
         };
-        if !out.contains(&guard) {
-            out.push(guard);
-        }
+        push_new(&mut out, guard);
     }
     out
 }
@@ -551,6 +590,60 @@ file = "~/.config/tmgr/agents/p.env"
         for extra in cases {
             assert!(resolve(&profile(extra), &h.path, &[]).is_err(), "{extra}");
         }
+    }
+
+    #[test]
+    fn a_symlinked_profile_dir_is_protected_by_its_configured_path_too() {
+        let h = home();
+        let proj = h.path.join("proj");
+        let private = h.path.join(".private-agents");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&private).unwrap();
+        symlink(&private, proj.join("agents")).unwrap();
+        let p = profile_protected(Some(&proj.join("agents")), &[], &h.path);
+        assert!(p.contains(&private), "{p:?}");
+        assert!(p.contains(&proj.join("agents")), "{p:?}");
+        assert!(!p.contains(&PathBuf::from("/")));
+    }
+
+    #[test]
+    fn a_symlinked_secrets_directory_is_protected_by_its_configured_path_too() {
+        let h = home();
+        let proj = h.path.join("proj");
+        let private = h.path.join(".private");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&private).unwrap();
+        symlink(&private, proj.join("vault")).unwrap();
+        let p = profile_protected(None, &["~/proj/vault/p.env".into()], &h.path);
+        assert!(p.contains(&private), "{p:?}");
+        assert!(p.contains(&proj.join("vault")), "{p:?}");
+    }
+
+    #[test]
+    fn a_rejected_profile_still_protects_its_secrets_location() {
+        let h = home();
+        let agents = h.path.join("agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(
+            agents.join("p.toml"),
+            "id = \"p\"\nname = \"P\"\ncommand = [\"p\"]\n[sandbox]\nread = [\"/etc\"]\n[secrets]\nfile = \"~/vault/p.env\"\n",
+        )
+        .unwrap();
+        let (set, _) = ProfileSet::load(Some(&agents));
+        assert!(set.get("p").is_none());
+        let decls = crate::profile::secrets_declarations(Some(&agents)).unwrap();
+        let protected = profile_protected(Some(&agents), &decls, &h.path);
+        assert!(protected.contains(&h.path.join("vault")), "{protected:?}");
+        let q = profile("[sandbox]\nread = [\"~/vault\"]");
+        assert!(resolve(&q, &h.path, &protected).is_err());
+    }
+
+    #[test]
+    fn an_unparseable_profile_file_fails_the_inventory_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("broken.toml"), "id = [").unwrap();
+        assert!(crate::profile::secrets_declarations(Some(dir.path())).is_err());
+        assert!(crate::profile::secrets_declarations(Some(&dir.path().join("none"))).is_ok());
     }
 
     #[test]

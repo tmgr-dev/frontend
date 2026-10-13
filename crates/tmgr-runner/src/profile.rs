@@ -190,6 +190,44 @@ fn load_user(
     }
 }
 
+fn secrets_file_of(text: &str) -> Result<Option<String>, String> {
+    let v: toml::Value = toml::from_str(text).map_err(|e| e.to_string())?;
+    Ok(v.get("secrets")
+        .and_then(|s| s.get("file"))
+        .and_then(|f| f.as_str())
+        .map(str::to_string))
+}
+
+pub fn secrets_declarations(dir: Option<&Path>) -> Result<Vec<String>, String> {
+    let mut out = Vec::new();
+    for text in BUILTINS {
+        out.extend(secrets_file_of(text)?);
+    }
+    let Some(dir) = dir else { return Ok(out) };
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(out),
+        Err(e) => return Err(format!("cannot read {}: {e}", dir.display())),
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "toml"))
+        .collect();
+    paths.sort();
+    paths.truncate(MAX_PROFILE_FILES);
+    for path in paths {
+        let meta = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+        if !meta.file_type().is_file() || meta.len() > MAX_PROFILE_BYTES {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        out.extend(secrets_file_of(&text).map_err(|e| format!("{}: {e}", path.display()))?);
+    }
+    Ok(out)
+}
+
 fn read_user_profile(path: &Path, home: Option<&Path>) -> Result<Profile, String> {
     let meta = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     if !meta.file_type().is_file() {

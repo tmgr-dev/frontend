@@ -234,7 +234,10 @@ fn exclude_from_git(cwd_fd: i32) {
 
 fn append_tmgr(f: &mut File) {
     let mut cur = String::new();
-    match Read::by_ref(f).take(MAX_EXCLUDE + 1).read_to_string(&mut cur) {
+    match Read::by_ref(f)
+        .take(MAX_EXCLUDE + 1)
+        .read_to_string(&mut cur)
+    {
         Ok(n) if n as u64 <= MAX_EXCLUDE && !cur.lines().any(|l| l == ".tmgr/") => {}
         _ => return,
     }

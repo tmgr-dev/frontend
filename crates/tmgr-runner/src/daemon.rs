@@ -68,13 +68,18 @@ const PROTECTED_IN_HOME: [&str; 10] = [
     "Library/Application Support/Firefox",
 ];
 
-fn profile_protected_paths() -> Vec<PathBuf> {
+fn profile_protected_paths() -> Result<Vec<PathBuf>, ApiErr> {
     let dir = profile::user_dir();
-    let (set, _) = ProfileSet::load(dir.as_deref());
+    let decls = profile::secrets_declarations(dir.as_deref()).map_err(|e| {
+        api(
+            ErrorCode::Sandbox,
+            format!("cannot establish the protected paths of the agent profiles, no session starts: {e}"),
+        )
+    })?;
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_default();
-    login::profile_protected(dir.as_deref(), &set, &home)
+    Ok(login::profile_protected(dir.as_deref(), &decls, &home))
 }
 
 #[derive(Clone)]
@@ -895,26 +900,26 @@ impl Runner {
                     "cwd must be an existing directory",
                 )
             })?;
-        if cwd == Path::new("/") || self.protected_overlap(&cwd) {
+        if cwd == Path::new("/") || self.protected_overlap(&cwd)? {
             return bad("cwd must not be /, the home directory or overlap protected paths (including the agent profile directory and secrets files)");
         }
         Ok(cwd)
     }
 
-    fn protected_overlap(&self, cwd: &Path) -> bool {
+    fn protected_overlap(&self, cwd: &Path) -> Result<bool, ApiErr> {
         let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         let mut denied = vec![canon(&self.cfg.dir), canon(&self.cfg.homes)];
-        denied.extend(profile_protected_paths());
+        denied.extend(profile_protected_paths()?);
         let mut home = None;
         if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
             let h = canon(&h);
             denied.extend(PROTECTED_IN_HOME.iter().map(|sub| h.join(sub)));
             home = Some(h);
         }
-        home.is_some_and(|h| h.starts_with(cwd))
+        Ok(home.is_some_and(|h| h.starts_with(cwd))
             || denied
                 .iter()
-                .any(|p| cwd.starts_with(p) || p.starts_with(cwd))
+                .any(|p| cwd.starts_with(p) || p.starts_with(cwd)))
     }
 
     fn revoked_path(&self) -> PathBuf {
@@ -1142,7 +1147,7 @@ impl Runner {
             .map(PathBuf::from)
             .unwrap_or_default();
         let mut base = base_env();
-        let profile_protected = profile_protected_paths();
+        let profile_protected = profile_protected_paths()?;
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         if let Some(pid) = &req.profile {

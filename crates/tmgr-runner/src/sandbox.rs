@@ -196,6 +196,15 @@ fn path_str(p: &Path) -> Result<String, String> {
     }
 }
 
+pub fn protected_forms(d: &Path) -> Vec<PathBuf> {
+    let link = std::fs::symlink_metadata(d).is_ok_and(|m| m.file_type().is_symlink());
+    let mut out = vec![d.to_path_buf()];
+    if !link {
+        out.push(canon_lossy(d));
+    }
+    out
+}
+
 pub fn canon_lossy(p: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut cur = p.to_path_buf();
@@ -326,7 +335,9 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
     push_unique(&mut deny, runner_dir.clone());
     push_unique(&mut deny, homes_dir);
     for d in &spec.grants.deny {
-        push_unique(&mut deny, canon_lossy(d));
+        for f in protected_forms(d) {
+            push_unique(&mut deny, f);
+        }
     }
     for d in &deny {
         if cwd.starts_with(d) || d.starts_with(&cwd) {

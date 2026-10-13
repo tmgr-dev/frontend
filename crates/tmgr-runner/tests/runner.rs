@@ -1886,3 +1886,58 @@ fn origin_revoke_kills_that_links_runs_only_and_blocks_new_ones_across_restarts(
     fx.h.trust(&store_text(&[a]));
     assert!(fx.worker().create_run(fx.req("a", 5)).is_ok());
 }
+
+#[test]
+fn a_session_cannot_sit_where_a_symlinked_profile_dir_could_be_replaced() {
+    let mut h = Harness::new();
+    let proj = h.tmp.path().join("proj");
+    let private = h.tmp.path().join("private-agents");
+    fs::create_dir_all(&proj).unwrap();
+    fs::create_dir_all(&private).unwrap();
+    std::os::unix::fs::symlink(&private, proj.join("agents")).unwrap();
+    h.agents = proj.join("agents");
+    h.start(5000);
+    let mut r = h.req(&["/bin/sh"]);
+    r.cwd = proj.display().to_string();
+    let e = err_text(h.client().create(r));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("protected"),
+        "{e}"
+    );
+}
+
+#[test]
+fn a_rejected_profile_keeps_its_secrets_directory_protected() {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir_all(home.join("vault")).unwrap();
+    fs::create_dir_all(home.join(".ssh")).unwrap();
+    fs::create_dir_all(home.join("proj")).unwrap();
+    std::os::unix::fs::symlink(home.join(".ssh"), home.join("proj/link")).unwrap();
+    fs::write(
+        h.agents.join("p.toml"),
+        "id = \"p\"\nname = \"P\"\ncommand = [\"/bin/sh\"]\n[sandbox]\nread = [\"~/proj/link\"]\n[secrets]\nfile = \"~/vault/p.env\"\n",
+    )
+    .unwrap();
+    fs::write(
+        h.agents.join("q.toml"),
+        "id = \"q\"\nname = \"Q\"\ncommand = [\"/bin/sh\"]\n[sandbox]\nread = [\"~/vault\"]\n",
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    h.start(5000);
+    let mut r = h.req(&["/bin/sh"]);
+    r.cwd = home.join("vault").display().to_string();
+    let e = err_text(h.client().create(r));
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("protected"),
+        "{e}"
+    );
+    if !sessions_available() {
+        return;
+    }
+    let mut run = h.run_req("q");
+    run.cwd = home.join("proj").display().to_string();
+    let e = err_text(h.client().create_run(run));
+    assert!(e.contains("overlaps the protected path"), "{e}");
+}
