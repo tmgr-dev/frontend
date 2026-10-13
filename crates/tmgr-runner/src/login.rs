@@ -155,6 +155,24 @@ fn push_new(out: &mut Vec<PathBuf>, p: PathBuf) {
 
 const MAX_LINKS: u32 = 40;
 
+fn link_is_unlinkable(
+    parent: Option<&std::fs::Metadata>,
+    link: &std::fs::Metadata,
+    euid: u32,
+) -> bool {
+    let Some(parent) = parent else { return true };
+    link_unlinkable_by(parent.mode(), parent.uid(), link.uid(), euid)
+}
+
+fn link_unlinkable_by(parent_mode: u32, parent_uid: u32, link_uid: u32, euid: u32) -> bool {
+    let writable = parent_mode & 0o022 != 0 || (parent_uid == euid && parent_mode & 0o200 != 0);
+    if !writable {
+        return false;
+    }
+    let sticky = parent_mode & 0o1000 != 0;
+    !sticky || link_uid == euid || parent_uid == euid
+}
+
 fn push_chain(out: &mut Vec<PathBuf>, path: &Path) -> Result<(), String> {
     let mut links = MAX_LINKS;
     let mut cur = PathBuf::from("/");
@@ -200,7 +218,8 @@ fn push_chain(out: &mut Vec<PathBuf>, path: &Path) -> Result<(), String> {
                 ));
             }
             links -= 1;
-            if meta.uid() == unsafe { libc::geteuid() } {
+            let parent_meta = cur.parent().and_then(|d| std::fs::metadata(d).ok());
+            if link_is_unlinkable(parent_meta.as_ref(), &meta, unsafe { libc::geteuid() }) {
                 push_new(out, cur.clone());
             }
             let target = std::fs::read_link(&cur)
@@ -691,6 +710,29 @@ file = "~/.config/tmgr/agents/p.env"
         std::fs::write(dir.path().join("broken.toml"), "id = [").unwrap();
         assert!(crate::profile::secrets_declarations(Some(dir.path())).is_err());
         assert!(crate::profile::secrets_declarations(Some(&dir.path().join("none"))).is_ok());
+    }
+
+    #[test]
+    fn symlinks_are_protected_by_who_can_unlink_them() {
+        let me = 501;
+        assert!(!link_unlinkable_by(0o40755, 0, 0, me));
+        assert!(link_unlinkable_by(0o40777, 0, 0, me));
+        assert!(link_unlinkable_by(0o40755, me, 99, me));
+        assert!(!link_unlinkable_by(0o41777, 0, 99, me));
+        assert!(link_unlinkable_by(0o41777, 0, me, me));
+        assert!(link_unlinkable_by(0o41777, me, 99, me));
+        assert!(!link_unlinkable_by(0o40555, me, me, me));
+    }
+
+    #[test]
+    fn a_symlink_in_a_user_writable_dir_is_in_the_chain() {
+        let t = tempfile::tempdir().unwrap();
+        let base = t.path().canonicalize().unwrap();
+        let real = base.join("real");
+        std::fs::create_dir(&real).unwrap();
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        assert!(path_chain(&link.join("x")).unwrap().contains(&link));
     }
 
     #[test]
