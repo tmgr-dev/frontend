@@ -589,6 +589,42 @@ mod tests {
         assert!(!dir.exists());
     }
 
+    #[test]
+    fn the_link_key_and_the_login_token_do_not_disturb_each_other() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        let login = CredentialStore::with_keychain(
+            &paths.config,
+            "example.com:default",
+            Some(Backend::File),
+            Box::new(NoKeychain),
+        );
+        let tokens = |s: &str| tmgr_core::creds::Tokens {
+            access: Secret::new(s),
+            refresh: None,
+            expires_at: None,
+        };
+        login.save(&tokens("login-token")).unwrap();
+        login.finalize(Backend::File);
+        let link = CredentialStore::with_keychain(
+            &paths.config,
+            KEY_ACCOUNT,
+            Some(Backend::File),
+            Box::new(NoKeychain),
+        );
+        init(&paths, &link).unwrap();
+        assert_eq!(
+            login.load().unwrap().unwrap().0.access.expose(),
+            "login-token"
+        );
+        assert!(link.load().unwrap().is_some());
+        login.delete().unwrap();
+        assert!(link.load().unwrap().is_some());
+        assert!(login.load().unwrap().is_none());
+        link.delete().unwrap();
+        assert!(link.load().unwrap().is_none());
+    }
+
     struct NoKeychain;
     impl tmgr_core::creds::Keychain for NoKeychain {
         fn get(&self, _: &str) -> keyring::Result<String> {

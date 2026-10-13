@@ -31,14 +31,14 @@ pub fn evaluate(output: &str) -> Vec<String> {
 }
 
 fn find_sshd() -> Option<std::path::PathBuf> {
-    let from_path = std::env::var_os("PATH")
-        .into_iter()
-        .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>());
     let fixed = ["/usr/sbin", "/usr/local/sbin", "/sbin"]
         .into_iter()
         .map(std::path::PathBuf::from);
-    from_path
-        .chain(fixed)
+    let from_path = std::env::var_os("PATH")
+        .into_iter()
+        .flat_map(|p| std::env::split_paths(&p).collect::<Vec<_>>());
+    fixed
+        .chain(from_path)
         .map(|d| d.join("sshd"))
         .find(|p| p.is_file())
 }

@@ -82,6 +82,13 @@ pub fn parse_pubkey(input: &str) -> Result<PubKey> {
     if key.algorithm() != ssh_key::Algorithm::Ed25519 {
         return Err(bad("not an ed25519 key"));
     }
+    let canonical = key
+        .to_openssh()
+        .map_err(|_| bad("the key cannot be re-encoded"))?;
+    let blob = canonical
+        .split_whitespace()
+        .nth(1)
+        .ok_or_else(|| bad("the key cannot be re-encoded"))?;
     Ok(PubKey {
         blob: blob.to_string(),
         fingerprint: key.fingerprint(ssh_key::HashAlg::Sha256).to_string(),
