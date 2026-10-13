@@ -24,6 +24,7 @@ struct Harness {
     homes: tempfile::TempDir,
     work: PathBuf,
     agents: PathBuf,
+    real_home: Option<PathBuf>,
     runner: Option<Child>,
 }
 
@@ -61,13 +62,18 @@ impl Harness {
             homes,
             work,
             agents,
+            real_home: None,
             runner: None,
         }
     }
 
     fn start(&mut self, quiet_ms: u64) {
         let err = fs::File::create(self.tmp.path().join("runner.err")).unwrap();
-        let child = Command::new(HOST)
+        let mut cmd = Command::new(HOST);
+        if let Some(home) = &self.real_home {
+            cmd.env("HOME", home);
+        }
+        let child = cmd
             .args(["runner", "serve"])
             .env("TMGR_RUNNER_DIR", &self.run)
             .env("TMGR_RUNNER_HOMES", self.homes.path())
@@ -1164,4 +1170,134 @@ fn runs_create_never_writes_through_a_planted_tmgr_symlink() {
     let e = err_text(h.client().create_run(h.bundled("fake")));
     assert!(e.starts_with("invalid_params: "), "{e}");
     assert_eq!(fs::read_to_string(&victim).unwrap(), "keep");
+
+struct LoginFx {
+    h: Harness,
+    home: PathBuf,
+}
+
+fn login_fx(secrets_mode: u32) -> LoginFx {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(
+        home.join(".agent.json"),
+        r#"{"theme":"dark","oauthAccount":{"id":"u"},"mcpServers":{"evil":1},"projects":{"p":1}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(home.join(".ssh")).unwrap();
+    fs::write(home.join(".ssh/id"), "private-key").unwrap();
+    fs::create_dir_all(home.join("tool")).unwrap();
+    fs::write(home.join("tool/file.txt"), "tool-data").unwrap();
+    let cfg = home.join(".config/tmgr/agents");
+    fs::create_dir_all(&cfg).unwrap();
+    let secrets = cfg.join("fake.env");
+    fs::write(&secrets, "FAKE_TOKEN=s3cr3t-value\n").unwrap();
+    fs::set_permissions(&secrets, fs::Permissions::from_mode(secrets_mode)).unwrap();
+    let hp = home.display();
+    let script = h.script(
+        "login-agent.sh",
+        &format!(
+            "cat \"$HOME/.agent.json\" > \"$HOME/r_json\"\n\
+             cat {hp}/tool/file.txt > \"$HOME/r_read\" 2>&1\n\
+             (echo x > {hp}/tool/new) 2>/dev/null; echo $? > \"$HOME/r_write_rc\"\n\
+             cat {hp}/.ssh/id > \"$HOME/r_ssh\" 2>/dev/null; echo $? > \"$HOME/r_ssh_rc\"\n\
+             printf '%s' \"$FAKE_TOKEN\" > \"$HOME/r_token\"\n\
+             printf '%s' \"$FAKE_FLAG\" > \"$HOME/r_flag\"\n\
+             printf '%s' \"$UNLISTED_TOKEN\" > \"$HOME/r_unlisted\"\n\
+             echo done > \"$HOME/done\"\n\
+             while true; do sleep 0.2; done\n"
+        ),
+    );
+    fs::write(
+        h.agents.join("fake.toml"),
+        format!(
+            "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             env_pass = [\"FAKE_TOKEN\"]\n\
+             [env]\nFAKE_FLAG = \"on\"\n\
+             [secrets]\nfile = \"~/.config/tmgr/agents/fake.env\"\n\
+             [sandbox]\nread = [\"~/tool\", \"~/missing\"]\n\
+             [[sandbox.seed]]\nfrom = \"~/.agent.json\"\nto = \".agent.json\"\n\
+             json_keys = [\"theme\", \"oauthAccount\"]\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    LoginFx { h, home }
+}
+
+#[test]
+fn profile_login_files_reach_the_sandboxed_session_and_nothing_else() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = login_fx(0o600);
+    fx.h.start(5000);
+    let info = Client::connect_as(&fx.h.run, "desktop")
+        .unwrap()
+        .create_run(fx.h.run_req("fake"))
+        .unwrap();
+    let rhome = fx.h.homes.path().join(&info.id);
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !rhome.join("done").exists() {
+        assert!(Instant::now() < deadline, "agent script did not finish");
+        thread::sleep(Duration::from_millis(50));
+    }
+    let read = |n: &str| fs::read_to_string(rhome.join(n)).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&read("r_json")).unwrap();
+    assert_eq!(json, json!({"theme": "dark", "oauthAccount": {"id": "u"}}));
+    assert_eq!(
+        fs::metadata(rhome.join(".agent.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+    assert_eq!(read("r_read"), "tool-data");
+    assert_ne!(read("r_write_rc").trim(), "0");
+    assert!(!fx.home.join("tool/new").exists());
+    assert_ne!(read("r_ssh_rc").trim(), "0");
+    assert_eq!(read("r_ssh"), "");
+    assert_eq!(read("r_token"), "s3cr3t-value");
+    assert_eq!(read("r_flag"), "on");
+    assert_eq!(read("r_unlisted"), "");
+
+    assert!(!fx
+        .h
+        .run
+        .join("sessions")
+        .join(&info.id)
+        .join("launch.json")
+        .exists());
+    for log in ["runner.log", "sessions/{id}/shim.log"] {
+        let path = fx.h.run.join(log.replace("{id}", &info.id));
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        assert!(!text.contains("s3cr3t-value"), "{log}");
+    }
+
+    fx.h.kill_runner();
+    fx.h.start(5000);
+    let list = fx.h.client().list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, info.id);
+    assert_ne!(list[0].state.kind, StateKind::Exited);
+}
+
+#[test]
+fn a_world_readable_secrets_file_refuses_the_session_with_a_chmod_hint() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = login_fx(0o644);
+    fx.h.start(5000);
+    let e = err_text(
+        Client::connect_as(&fx.h.run, "desktop")
+            .unwrap()
+            .create_run(fx.h.run_req("fake")),
+    );
+    assert!(e.contains("chmod 600") && e.contains("fake.env"), "{e}");
+    assert!(!e.contains("s3cr3t-value"));
+    assert!(fx.h.client().list().unwrap().is_empty());
 }
