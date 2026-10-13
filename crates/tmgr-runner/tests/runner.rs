@@ -1978,6 +1978,9 @@ fn an_adopted_session_with_old_metadata_still_reserves_its_directory() {
     let mut h = Harness::new();
     h.bundle_runner();
     let first = h.client().create_run(h.bundled("fake")).unwrap();
+    let mut w = Watch::new(h.client(), &[&first.id]);
+    assert!(w.wait(30, |w| w.has_line(&first.id, "ready")));
+    drop(w);
     h.kill_runner();
     downgrade_meta_to_old_format(&h, &first.id);
     h.start(5000);
@@ -2000,6 +2003,9 @@ fn an_adopted_session_with_old_metadata_and_a_vanished_directory_reserves_its_pa
     let mut h = Harness::new();
     h.bundle_runner();
     let first = h.client().create_run(h.bundled("fake")).unwrap();
+    let mut w = Watch::new(h.client(), &[&first.id]);
+    assert!(w.wait(30, |w| w.has_line(&first.id, "ready")));
+    drop(w);
     h.kill_runner();
     downgrade_meta_to_old_format(&h, &first.id);
     let work = fs::canonicalize(&h.work).unwrap();
