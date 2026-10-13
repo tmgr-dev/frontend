@@ -43,6 +43,36 @@ struct StoreRec {
     generations: BTreeMap<String, u64>,
 }
 
+const FENCE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+// Held shared through the spawn so a trust change cannot land between the generation check and the spawn.
+pub fn fence_shared() -> Result<Option<std::fs::File>, String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let dir = store_dir()?.join("link");
+    if !dir.is_dir() {
+        return Ok(None);
+    }
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(dir.join("links.lock"))
+        .map_err(|e| format!("cannot open the trust fence: {e}"))?;
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&f);
+    let deadline = std::time::Instant::now() + FENCE_WAIT;
+    loop {
+        if unsafe { libc::flock(fd, libc::LOCK_SH | libc::LOCK_NB) } == 0 {
+            return Ok(Some(f));
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err("the link trust store is being changed; retry".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
 pub fn store_dir() -> Result<PathBuf, String> {
     let abs = |k: &str| {
         std::env::var_os(k)

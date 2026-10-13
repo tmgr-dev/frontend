@@ -1937,7 +1937,7 @@ fn a_revocation_the_shim_cannot_confirm_stays_pending_and_reserved_until_the_ret
         .unwrap(),
     )
     .unwrap();
-    assert_eq!((done.killed, done.pending), (0, 1));
+    assert_eq!((done.killed, done.unconfirmed.len()), (0, 1));
     let s = cli
         .list()
         .unwrap()
@@ -2013,7 +2013,7 @@ fn a_restart_keeps_an_unconfirmed_revocation_pending_and_reserved_until_the_shim
     let _resume = Resume(stalled);
     let mut cli = fx.h.client();
     let done = revoke_link(&mut cli, "a", 1);
-    assert_eq!((done.killed, done.pending), (0, 1));
+    assert_eq!((done.killed, done.unconfirmed.len()), (0, 1));
     fx.h.kill_runner();
     fx.h.start(5000);
     let mut cli = fx.h.client();
@@ -2047,7 +2047,7 @@ fn a_lost_shim_link_is_not_a_confirmed_exit_for_a_revoked_run() {
     unsafe { libc::kill(a1.shim_pid as i32, libc::SIGKILL) };
     wait_interrupted(&mut cli, &a1.id);
     let done = revoke_link(&mut cli, "a", 1);
-    assert_eq!((done.killed, done.pending), (0, 1));
+    assert_eq!((done.killed, done.unconfirmed.len()), (0, 1));
     let s = info_of(&mut cli, &a1.id);
     assert_ne!(s.state.kind, StateKind::Exited, "{s:?}");
     assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
@@ -2073,7 +2073,7 @@ fn one_frozen_shim_does_not_hold_back_the_other_pending_revocations() {
     unsafe { libc::kill(stalled, libc::SIGSTOP) };
     let _resume = Resume(stalled);
     let done = revoke_link(&mut cli, "a", 1);
-    assert_eq!((done.killed, done.pending), (0, 2));
+    assert_eq!((done.killed, done.unconfirmed.len()), (0, 2));
     let started = Instant::now();
     settle_when_group_dies(&mut cli, &lost);
     assert!(
@@ -2448,4 +2448,32 @@ fn an_overflowing_profile_directory_refuses_sessions() {
     h.start(5000);
     let e = err_text(h.client().create(h.req(&["/bin/sh"])));
     assert!(e.contains("more than"), "{e}");
+}
+
+#[test]
+fn a_link_run_waits_for_the_trust_fence_and_gives_up_while_it_is_held() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    let link_dir = fx.h.cfg.join("tmgr/link");
+    fs::create_dir_all(&link_dir).unwrap();
+    let fence = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(link_dir.join("links.lock"))
+        .unwrap();
+    fx.h.start(5000);
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&fence);
+    assert_eq!(unsafe { libc::flock(fd, libc::LOCK_EX) }, 0);
+    let started = Instant::now();
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 3)));
+    assert!(e.starts_with("busy: "), "{e}");
+    assert!(started.elapsed() >= Duration::from_secs(4));
+    assert!(fx.h.client().list().unwrap().is_empty());
+    assert_eq!(unsafe { libc::flock(fd, libc::LOCK_UN) }, 0);
+    assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
 }

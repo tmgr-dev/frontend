@@ -315,7 +315,7 @@ fn method_params_and_results() {
         "origin_revoked",
         &OriginRevoked {
             killed: 2,
-            pending: 1,
+            unconfirmed: vec!["s_abcdefghij".into()],
         },
     );
     let old: OriginRevoked = serde_json::from_value(json!({"killed": 2})).unwrap();
@@ -323,7 +323,7 @@ fn method_params_and_results() {
         old,
         OriginRevoked {
             killed: 2,
-            pending: 0
+            unconfirmed: Vec::new()
         }
     );
     golden("run_bundle", &bundle());

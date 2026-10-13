@@ -1252,19 +1252,24 @@ impl Runner {
                         .is_some_and(|o| o.link == p.link && o.generation <= p.generation)
             })
             .collect();
-        let killed = thread::scope(|scope| {
+        let confirmed: Vec<bool> = thread::scope(|scope| {
             let jobs: Vec<_> = victims
                 .iter()
                 .map(|s| scope.spawn(|| terminate(s)))
                 .collect();
             jobs.into_iter()
                 .map(|j| j.join().unwrap_or(false))
-                .filter(|ok| *ok)
-                .count() as u32
+                .collect()
         });
+        let unconfirmed: Vec<String> = victims
+            .iter()
+            .zip(&confirmed)
+            .filter(|(_, ok)| !**ok)
+            .map(|(s, _)| s.info().id)
+            .collect();
         Ok(OriginRevoked {
-            killed,
-            pending: victims.len() as u32 - killed,
+            killed: (victims.len() - unconfirmed.len()) as u32,
+            unconfirmed,
         })
     }
 
@@ -1362,6 +1367,10 @@ impl Runner {
             }
         };
         let _g = lock(&self.create_lock);
+        let _fence = match origin {
+            Some(_) => Some(trust::fence_shared().map_err(|e| api(ErrorCode::Busy, e))?),
+            None => None,
+        };
         if let Some((o, model)) = origin {
             self.check_origin(o, model, &req, Some(dir))?;
         }

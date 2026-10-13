@@ -99,7 +99,7 @@ pub struct OriginRevokeParams {
 pub struct OriginRevoked {
     pub killed: u32,
     #[serde(default)]
-    pub pending: u32,
+    pub unconfirmed: Vec<String>,
 }
 
 /// Identity (`stat` device and inode) of the folder a human approved.
