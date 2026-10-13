@@ -67,4 +67,30 @@ mod tests {
             t.path().join("./agent")
         );
     }
+
+    #[test]
+    fn relative_and_empty_path_entries_are_skipped() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::create_dir(t.path().join("bin")).unwrap();
+        script(&t.path().join("bin"), "agent", 0o755);
+        let exe = script(t.path(), "agent", 0o755);
+        for raw in ["./bin", "bin", ""] {
+            let path = std::ffi::OsString::from(raw);
+            assert!(
+                resolve_exe("agent", &path, Some(t.path())).is_err(),
+                "{raw}"
+            );
+        }
+        for raw in ["./bin:", ":"] {
+            let path = std::ffi::OsString::from(raw);
+            assert!(
+                resolve_exe("agent", &path, Some(t.path())).is_err(),
+                "{raw}"
+            );
+        }
+        let mixed = format!("./bin::{}", t.path().display());
+        let found = resolve_exe("agent", OsStr::new(&mixed), Some(t.path())).unwrap();
+        assert_eq!(found, exe);
+        assert!(found.is_absolute());
+    }
 }
