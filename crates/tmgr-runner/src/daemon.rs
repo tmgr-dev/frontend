@@ -340,13 +340,30 @@ impl Session {
         }
     }
 
-    fn holds_cwd(&self, id: (u64, u64)) -> Option<bool> {
+    fn holds_cwd(&self, id: (u64, u64), path: &Path) -> Option<bool> {
         let i = lock(&self.inner);
         let held = i
             .meta
             .cwd_id
             .or_else(|| fs::metadata(&i.meta.cwd).ok().map(|m| (m.dev(), m.ino())));
-        (held == Some(id)).then_some(i.meta.bundled)
+        let same = match held {
+            Some(h) => h == id,
+            None => Path::new(&i.meta.cwd) == path,
+        };
+        same.then_some(i.meta.bundled)
+    }
+
+    fn recover_old_meta(&self) {
+        {
+            let mut i = lock(&self.inner);
+            if i.meta.bundle_sha256.is_some() {
+                i.meta.bundled = true;
+            }
+            if i.meta.cwd_id.is_none() {
+                i.meta.cwd_id = fs::metadata(&i.meta.cwd).ok().map(|m| (m.dev(), m.ino()));
+            }
+        }
+        self.persist();
     }
 
     fn is_exited(&self) -> bool {
@@ -1195,7 +1212,7 @@ impl Runner {
             let id = dir.id();
             if sessions.values().any(|s| {
                 !s.is_exited()
-                    && s.holds_cwd(id)
+                    && s.holds_cwd(id, &dir.path)
                         .is_some_and(|their_bundle| bundle.is_some() || their_bundle)
             }) {
                 return Err(api(
@@ -1468,6 +1485,7 @@ impl Runner {
             set.get(pid).and_then(|p| Matcher::new(p).ok())
         });
         let session = self.new_session(meta, matcher, &sdir);
+        session.recover_old_meta();
         let shim_pid = fs::read_to_string(sdir.join("shim.pid"))
             .ok()
             .and_then(|s| s.trim().parse::<u32>().ok());

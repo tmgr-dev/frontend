@@ -1927,6 +1927,59 @@ fn a_restart_finishes_an_interrupted_revocation_for_adopted_link_runs() {
     assert_ne!(other.state.kind, StateKind::Exited, "{other:?}");
 }
 
+fn downgrade_meta_to_old_format(h: &Harness, id: &str) {
+    let path = h.run.join("sessions").join(id).join("meta.json");
+    let mut meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let o = meta.as_object_mut().unwrap();
+    assert!(o.remove("cwd_id").is_some() && o.remove("bundled").is_some());
+    fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
+}
+
+#[test]
+fn an_adopted_session_with_old_metadata_still_reserves_its_directory() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.bundle_runner();
+    let first = h.client().create_run(h.bundled("fake")).unwrap();
+    h.kill_runner();
+    downgrade_meta_to_old_format(&h, &first.id);
+    h.start(5000);
+    let renamed = h.tmp.path().join("renamed");
+    let work = fs::canonicalize(&h.work).unwrap();
+    fs::rename(&work, &renamed).unwrap();
+    let e = err_text(h.client().create_run(h.bundled_at("fake", &renamed)));
+    assert!(e.starts_with("busy: "), "{e}");
+    let mut plain = h.req(&["/bin/sh", "-c", "sleep 5"]);
+    plain.cwd = renamed.display().to_string();
+    let e = err_text(h.client().create(plain));
+    assert!(e.starts_with("busy: "), "{e}");
+}
+
+#[test]
+fn an_adopted_session_with_old_metadata_and_a_vanished_directory_reserves_its_path() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.bundle_runner();
+    let first = h.client().create_run(h.bundled("fake")).unwrap();
+    h.kill_runner();
+    downgrade_meta_to_old_format(&h, &first.id);
+    let work = fs::canonicalize(&h.work).unwrap();
+    let moved = h.tmp.path().join("moved");
+    fs::rename(&work, &moved).unwrap();
+    h.start(5000);
+    fs::create_dir(&work).unwrap();
+    let e = err_text(h.client().create_run(h.bundled_at("fake", &work)));
+    assert!(e.starts_with("busy: "), "{e}");
+    let mut plain = h.req(&["/bin/sh", "-c", "sleep 5"]);
+    plain.cwd = work.display().to_string();
+    let e = err_text(h.client().create(plain));
+    assert!(e.starts_with("busy: "), "{e}");
+}
+
 #[test]
 fn a_session_cannot_sit_where_a_symlinked_profile_dir_could_be_replaced() {
     let mut h = Harness::new();
