@@ -154,6 +154,48 @@ describe('runner store', () => {
 		expect(useRunner().status.value?.state).toBe('ready');
 	});
 
+	it('reconnects the watch once the runner is back after down', async () => {
+		jest.useFakeTimers();
+		try {
+			await startRunnerStore();
+			mocked.runnerStatus.mockResolvedValue({
+				state: 'absent',
+				caps: [],
+				message: 'away',
+			});
+			handler({ type: 'down', message: 'gone' });
+			expect(mocked.runnerUnwatch).toHaveBeenCalledWith(5);
+			await jest.advanceTimersByTimeAsync(3000);
+			expect(mocked.runnerWatch).toHaveBeenCalledTimes(1);
+			mocked.runnerStatus.mockResolvedValue({
+				state: 'ready',
+				version: '0.1.0',
+				caps: [],
+			});
+			await jest.advanceTimersByTimeAsync(3000);
+			expect(mocked.runnerWatch).toHaveBeenCalledTimes(2);
+			expect(useRunner().status.value?.state).toBe('ready');
+			expect(useRunner().sessions.value).toHaveLength(1);
+		} finally {
+			resetRunnerStore();
+			jest.useRealTimers();
+		}
+	});
+
+	it('stops reconnecting when the runner is disabled', async () => {
+		jest.useFakeTimers();
+		try {
+			await startRunnerStore();
+			handler({ type: 'down', message: 'gone' });
+			await setRunnerEnabled(false);
+			await jest.advanceTimersByTimeAsync(10000);
+			expect(mocked.runnerWatch).toHaveBeenCalledTimes(1);
+		} finally {
+			resetRunnerStore();
+			jest.useRealTimers();
+		}
+	});
+
 	it('refreshRunnerStatus reports a failed call as absent', async () => {
 		await startRunnerStore();
 		mocked.runnerStatus.mockRejectedValue(new Error('boom'));

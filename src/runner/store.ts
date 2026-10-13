@@ -20,6 +20,14 @@ const sessions = ref<RunnerSession[]>([]);
 let watchId: number | null = null;
 let generation = 0;
 let watching: Promise<void> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+const RECONNECT_MS = 3000;
+
+const stopReconnect = (): void => {
+	if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+	reconnectTimer = null;
+};
 
 export const taskKey = (workspaceId: number, taskId: number): string =>
 	`${workspaceId}:${taskId}`;
@@ -50,6 +58,26 @@ export const refreshRunnerStatus = async (): Promise<void> => {
 	}
 };
 
+const scheduleReconnect = (): void => {
+	stopReconnect();
+	const mine = generation;
+	reconnectTimer = setTimeout(async () => {
+		reconnectTimer = null;
+		if (mine !== generation || !enabled.value) return;
+		try {
+			const next = await runnerStatus();
+			if (mine !== generation || !enabled.value) return;
+			if (next.state === 'ready') {
+				await beginWatch();
+				return;
+			}
+		} catch {
+			// the runner is still away
+		}
+		if (mine === generation && enabled.value) scheduleReconnect();
+	}, RECONNECT_MS);
+};
+
 const onEvent = (event: WatchEvent): void => {
 	switch (event.type) {
 		case 'state':
@@ -66,6 +94,9 @@ const onEvent = (event: WatchEvent): void => {
 		case 'down':
 			status.value = { state: 'absent', caps: [], message: event.message };
 			sessions.value = [];
+			if (watchId !== null) void runnerUnwatch(watchId).catch(() => {});
+			watchId = null;
+			scheduleReconnect();
 			break;
 	}
 };
@@ -94,6 +125,7 @@ const beginWatch = async (): Promise<void> => {
 
 const endWatch = async (): Promise<void> => {
 	generation++;
+	stopReconnect();
 	const id = watchId;
 	watchId = null;
 	status.value = null;
@@ -120,6 +152,7 @@ export const setRunnerEnabled = async (value: boolean): Promise<void> => {
 
 export const resetRunnerStore = (): void => {
 	generation++;
+	stopReconnect();
 	watchId = null;
 	watching = null;
 	enabled.value = false;
