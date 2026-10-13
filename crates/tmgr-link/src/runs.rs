@@ -17,11 +17,10 @@ const TICK: Duration = Duration::from_secs(1);
 const INPUT_MSGS_PER_SEC: u32 = 100;
 const INPUT_BYTES_PER_SEC: usize = 64 * 1024;
 const DEFAULT_SIZE: (u16, u16) = (120, 40);
-pub const BUSY_BUDGET: Duration = Duration::from_secs(12);
+pub const BUSY_BUDGET: Duration = Duration::from_secs(10);
 pub const BUSY_PAUSE: Duration = Duration::from_millis(500);
 pub const BUSY_ATTEMPT_MAX: Duration = Duration::from_secs(6);
 const BUSY_MARGIN: Duration = Duration::from_millis(500);
-const CALL_CAP: Duration = Duration::from_secs(15);
 const HALT_STEP: Duration = Duration::from_secs(3);
 
 fn audit_down() -> Step {
@@ -75,15 +74,17 @@ fn with_backend<T>(
     conn: &Conn,
     st: &mut State,
     retry: bool,
+    deadline: Option<Instant>,
     mut f: impl FnMut(&mut dyn Backend) -> Result<T, BackendError>,
 ) -> Result<T, BackendError> {
     for attempt in 0..2 {
         if st.backend.is_none() {
-            st.backend = Some((conn.rt.connect)()?);
+            st.backend = Some((conn.rt.connect)(deadline)?);
         }
         let Some(b) = st.backend.as_mut() else {
             continue;
         };
+        b.set_deadline(deadline);
         match f(b.as_mut()) {
             Err(BackendError::Unavailable(_)) if retry && attempt == 0 => st.backend = None,
             other => {
@@ -169,7 +170,7 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
     let Ok(mut runs) = Runs::lock(conn.paths) else {
         return Step::Close(proto::error(id, "unavailable", "request refused"));
     };
-    let listed = match with_backend(conn, st, true, |b| b.list()) {
+    let listed = match with_backend(conn, st, true, None, |b| b.list()) {
         Ok(l) => l,
         Err(e) => return failed(conn, "runs.list", args, id, &e),
     };
@@ -226,7 +227,7 @@ fn get(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, run: &str) -> 
     {
         return audit_down();
     }
-    match with_backend(conn, st, true, |b| b.list()) {
+    match with_backend(conn, st, true, None, |b| b.list()) {
         Err(e) => failed(conn, "runs.get", args, id, &e),
         Ok(list) => match list.iter().find(|s| s.id == run) {
             None => Step::Reply(proto::error(id, "not_found", "no such run")),
@@ -287,7 +288,7 @@ fn halt(conn: &Conn, st: &mut State, id: Option<u64>, args: Value, run: &str) ->
     {
         return audit_down();
     }
-    match with_backend(conn, st, false, |b| stop_run(b, run)) {
+    match with_backend(conn, st, false, None, |b| stop_run(b, run)) {
         Ok(signal) => {
             if conn
                 .audit
@@ -328,7 +329,7 @@ fn create(
     scope: &Scope,
 ) -> Step {
     let method = "runs.create";
-    let deadline = Instant::now() + BUSY_BUDGET;
+    let deadline = Instant::now() + BUSY_BUDGET - BUSY_MARGIN;
     let (Some(repo), Some(task_text), Some(agent)) = (
         repo,
         params.get("task").and_then(Value::as_str),
@@ -403,7 +404,7 @@ fn create(
             "the scope changed, try again",
         ));
     }
-    let mut listed = match with_backend(conn, st, true, |b| b.list()) {
+    let mut listed = match with_backend(conn, st, true, Some(deadline), |b| b.list()) {
         Ok(l) => l,
         Err(e) => return failed(conn, method, args, id, &e),
     };
@@ -418,7 +419,7 @@ fn create(
         .map(|s| s.id.clone())
         .collect();
     for rid in exited {
-        if with_backend(conn, st, false, |b| b.remove(&rid)).is_ok() {
+        if with_backend(conn, st, false, Some(deadline), |b| b.remove(&rid)).is_ok() {
             let _ = runs.forget(&rid);
             listed.retain(|s| s.id != rid);
         }
@@ -445,16 +446,10 @@ fn create(
     };
     let mut generation = generation;
     let call = |st: &mut State, req: &RunCreateReq| -> Result<SessionInfo, BackendError> {
-        let left = deadline
-            .saturating_duration_since(Instant::now())
-            .saturating_sub(BUSY_MARGIN);
-        if left.is_zero() {
+        if Instant::now() >= deadline {
             return Err(BackendError::Busy);
         }
-        with_backend(conn, st, false, |b| {
-            b.set_call_timeout(left.min(CALL_CAP));
-            b.create_run(req)
-        })
+        with_backend(conn, st, false, Some(deadline), |b| b.create_run(req))
     };
     let mut result = call(st, &req);
     if matches!(&result, Err(BackendError::Refused { message, .. }) if message.contains("link changed"))
@@ -494,7 +489,7 @@ fn create(
         Err(e) => return failed(conn, method, args, id, &e),
     };
     let kill = |st: &mut State| {
-        let _ = with_backend(conn, st, false, |b| b.kill(&info.id, "kill"));
+        let _ = with_backend(conn, st, false, None, |b| b.kill(&info.id, "kill"));
     };
     let record = RunRecord {
         run: info.id.clone(),
@@ -595,8 +590,9 @@ fn attach_open(
     if let Value::Object(m) = &mut args {
         m.insert("mode".into(), json!(mode));
     }
-    let mut session = match with_backend(conn, st, true, |b| b.attach(&run, input.then_some(size)))
-    {
+    let mut session = match with_backend(conn, st, true, None, |b| {
+        b.attach(&run, input.then_some(size))
+    }) {
         Ok(s) => s,
         Err(e) => return failed(conn, method, args, id, &e),
     };
@@ -800,7 +796,7 @@ fn attach_loop(
                             );
                             continue;
                         }
-                        match with_backend(conn, st, false, |b| b.send(run, &text)) {
+                        match with_backend(conn, st, false, None, |b| b.send(run, &text)) {
                             Ok(()) => {
                                 stats.msgs += 1;
                                 stats.bytes += text.len() as u64;

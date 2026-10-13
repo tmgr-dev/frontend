@@ -29,7 +29,9 @@ pub fn run() -> i32 {
         SESSION,
         MAX_FRAME,
     );
-    let connect = || RunnerClient::connect_default().map(|c| Box::new(c) as Box<dyn Backend>);
+    let connect = |deadline| {
+        RunnerClient::connect_default_until(deadline).map(|c| Box::new(c) as Box<dyn Backend>)
+    };
     let rt = Runtime {
         connect: &connect,
         resolver: &LocalRefs,

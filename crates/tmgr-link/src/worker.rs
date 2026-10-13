@@ -32,14 +32,17 @@ impl Default for Limits {
     }
 }
 
-pub type Connector<'a> = &'a (dyn Fn() -> std::result::Result<Box<dyn Backend>, BackendError> + 'a);
+pub type Connector<'a> = &'a (dyn Fn(Option<std::time::Instant>) -> std::result::Result<Box<dyn Backend>, BackendError>
+         + 'a);
 
 pub struct Runtime<'a> {
     pub connect: Connector<'a>,
     pub resolver: &'a dyn TaskResolver,
 }
 
-fn no_runner() -> std::result::Result<Box<dyn Backend>, BackendError> {
+fn no_runner(
+    _deadline: Option<std::time::Instant>,
+) -> std::result::Result<Box<dyn Backend>, BackendError> {
     Err(BackendError::Unavailable("runner not installed".into()))
 }
 

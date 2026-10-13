@@ -3,7 +3,7 @@ use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     caps, limits, method, AttachParams, ErrorCode, IdParams, KillParams, OriginRevokeParams,
     RunCreateReq, SendParams, SessionInfo,
@@ -77,7 +77,7 @@ pub trait AttachSession: Send {
 }
 
 pub trait Backend: Send {
-    fn set_call_timeout(&mut self, _limit: Duration) {}
+    fn set_deadline(&mut self, _deadline: Option<Instant>) {}
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError>;
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError>;
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
@@ -95,14 +95,54 @@ pub struct RunnerClient {
     dir: PathBuf,
     stream: UnixStream,
     next_id: u64,
+    deadline: Option<Instant>,
 }
 
-fn open(dir: &Path, client: &str, required: &[&str]) -> Result<UnixStream, BackendError> {
+const HANDSHAKE_CAP: Duration = Duration::from_secs(5);
+
+fn arm(stream: &UnixStream, deadline: Option<Instant>) -> Result<(), BackendError> {
+    let mut limit = IO_TIMEOUT;
+    if let Some(d) = deadline {
+        let left = d.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(BackendError::Unavailable("deadline reached".into()));
+        }
+        limit = limit.min(left);
+    }
+    stream.set_read_timeout(Some(limit)).map_err(unavailable)?;
+    stream.set_write_timeout(Some(limit)).map_err(unavailable)
+}
+
+fn open(
+    dir: &Path,
+    client: &str,
+    required: &[&str],
+    deadline: Option<Instant>,
+) -> Result<UnixStream, BackendError> {
     dirs::check_private_dir(dir).map_err(unavailable)?;
     let secret = secret::read(&dir.join("client.secret")).map_err(unavailable)?;
     let ep = endpoint::Endpoint::load_runner(dir).map_err(unavailable)?;
     let stream = endpoint::connect(&ep).map_err(unavailable)?;
-    let welcome = server::handshake_client(&stream, client, &secret).map_err(unavailable)?;
+    let wait = deadline.map_or(HANDSHAKE_CAP, |d| {
+        d.saturating_duration_since(Instant::now())
+            .min(HANDSHAKE_CAP)
+    });
+    if wait.is_zero() {
+        return Err(BackendError::Unavailable("deadline reached".into()));
+    }
+    let shaking = stream.try_clone().map_err(unavailable)?;
+    let (tx, rx) = mpsc::channel();
+    let name = client.to_string();
+    std::thread::spawn(move || {
+        let _ = tx.send(server::handshake_client(&shaking, &name, &secret));
+    });
+    let welcome = match rx.recv_timeout(wait) {
+        Ok(r) => r.map_err(unavailable)?,
+        Err(_) => {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+            return Err(BackendError::Unavailable("handshake timed out".into()));
+        }
+    };
     for cap in required {
         if !welcome.caps.iter().any(|c| c == cap) {
             return Err(BackendError::Unavailable(format!(
@@ -110,12 +150,7 @@ fn open(dir: &Path, client: &str, required: &[&str]) -> Result<UnixStream, Backe
             )));
         }
     }
-    stream
-        .set_read_timeout(Some(IO_TIMEOUT))
-        .map_err(unavailable)?;
-    stream
-        .set_write_timeout(Some(IO_TIMEOUT))
-        .map_err(unavailable)?;
+    arm(&stream, deadline)?;
     Ok(stream)
 }
 
@@ -125,6 +160,14 @@ impl RunnerClient {
     }
 
     pub fn connect_as(dir: &Path, client: &str) -> Result<RunnerClient, BackendError> {
+        RunnerClient::connect_until(dir, client, None)
+    }
+
+    pub fn connect_until(
+        dir: &Path,
+        client: &str,
+        deadline: Option<Instant>,
+    ) -> Result<RunnerClient, BackendError> {
         let stream = open(
             dir,
             client,
@@ -134,11 +177,13 @@ impl RunnerClient {
                 caps::TASK_REF_V1,
                 caps::LINK_ORIGIN_V1,
             ],
+            deadline,
         )?;
         Ok(RunnerClient {
             dir: dir.to_path_buf(),
             stream,
             next_id: 1,
+            deadline,
         })
     }
 
@@ -147,13 +192,24 @@ impl RunnerClient {
         RunnerClient::connect(&dir)
     }
 
+    pub fn connect_default_until(deadline: Option<Instant>) -> Result<RunnerClient, BackendError> {
+        let dir = dirs::runner_dir().map_err(unavailable)?;
+        RunnerClient::connect_until(&dir, CLIENT_NAME, deadline)
+    }
+
     pub fn connect_default_as(client: &str) -> Result<RunnerClient, BackendError> {
         let dir = dirs::runner_dir().map_err(unavailable)?;
         RunnerClient::connect_as(&dir, client)
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value, BackendError> {
-        call_on(&mut self.stream, &mut self.next_id, method, params)
+        call_on(
+            &mut self.stream,
+            &mut self.next_id,
+            method,
+            params,
+            self.deadline,
+        )
     }
 }
 
@@ -162,6 +218,7 @@ fn call_on(
     next_id: &mut u64,
     method: &str,
     params: Value,
+    deadline: Option<Instant>,
 ) -> Result<Value, BackendError> {
     let id = *next_id;
     *next_id += 1;
@@ -170,8 +227,10 @@ fn call_on(
         method: method.into(),
         params,
     });
+    arm(stream, deadline)?;
     write_json(stream, &msg).map_err(unavailable)?;
     loop {
+        arm(stream, deadline)?;
         let frame = read_frame(stream)
             .map_err(unavailable)?
             .ok_or_else(|| BackendError::Unavailable("the runner closed the connection".into()))?;
@@ -211,10 +270,8 @@ fn params<T: serde::Serialize>(v: &T) -> Result<Value, BackendError> {
 }
 
 impl Backend for RunnerClient {
-    fn set_call_timeout(&mut self, limit: Duration) {
-        let limit = limit.max(Duration::from_millis(100));
-        let _ = self.stream.set_read_timeout(Some(limit));
-        let _ = self.stream.set_write_timeout(Some(limit));
+    fn set_deadline(&mut self, deadline: Option<Instant>) {
+        self.deadline = deadline;
     }
 
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError> {
@@ -273,6 +330,7 @@ impl Backend for RunnerClient {
             &self.dir,
             CLIENT_NAME,
             &[caps::ATTACH_V1, caps::SESSIONS_V1],
+            None,
         )?;
         let mut next = 1u64;
         let mut p = AttachParams {
@@ -282,7 +340,13 @@ impl Backend for RunnerClient {
         if let Some(size) = size {
             p.sizes.insert(id.to_string(), size);
         }
-        call_on(&mut stream, &mut next, method::ATTACH_OPEN, params(&p)?)?;
+        call_on(
+            &mut stream,
+            &mut next,
+            method::ATTACH_OPEN,
+            params(&p)?,
+            None,
+        )?;
         stream.set_read_timeout(None).map_err(unavailable)?;
         let writer = stream.try_clone().map_err(unavailable)?;
         let (tx, rx) = mpsc::sync_channel(ATTACH_QUEUE);

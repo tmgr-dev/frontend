@@ -230,6 +230,11 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
     if store.version != plan.store_version {
         return Err(changed_meanwhile());
     }
+    store.bump_generation(
+        &plan.name,
+        &plan.enrollment,
+        &crate::ownership::referenced_generations(paths, &plan.name),
+    )?;
     let audit = Audit::new(&paths.audit_dir());
     audit.append(
         "link.trust.intent",
@@ -240,11 +245,6 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
         }),
     )?;
     let edit = authkeys::upsert(&plan.target, &plan.name, &plan.line, &plan.key)?;
-    store.bump_generation(
-        &plan.name,
-        &plan.enrollment,
-        &crate::ownership::referenced_generations(paths, &plan.name),
-    )?;
     store.leaders.insert(
         plan.name.clone(),
         Leader {
@@ -924,6 +924,54 @@ mod tests {
         assert!(!std::fs::read_to_string(f.paths.authorized_keys())
             .unwrap()
             .contains("tmgr-link:laptop"));
+    }
+
+    #[test]
+    fn a_refused_generation_bump_leaves_authorized_keys_untouched() {
+        let f = fx();
+        trust(&f, "laptop");
+        let hard = 1024u64;
+        Store::update(&f.paths, |s| {
+            s.generation_enrollments.insert(
+                "laptop".into(),
+                (1..=hard)
+                    .map(|g| crate::store::GenEnrollment {
+                        generation: g,
+                        enrollment: "e".into(),
+                    })
+                    .collect(),
+            );
+            Ok(())
+        })
+        .unwrap();
+        let records: Vec<serde_json::Value> = (1..=hard)
+            .map(|g| {
+                json!({"run": format!("s_{g}"), "link": "laptop", "enrollment": "e",
+                       "task": "w1:1", "agent": "codex",
+                       "created": "2026-10-13T00:00:00Z", "generation": g})
+            })
+            .collect();
+        tmgr_core::config::ensure_private_dir(&f.paths.link_dir()).unwrap();
+        tmgr_core::config::write_atomic(
+            &f.paths.link_dir().join("runs.json"),
+            json!({"runs": records}).to_string().as_bytes(),
+            0o600,
+        )
+        .unwrap();
+        revoke(&f.paths, "laptop").unwrap();
+        let before = std::fs::read_to_string(f.paths.authorized_keys()).unwrap_or_default();
+        let k = testkeys::generate();
+        let plan = plan_trust(&f.paths, &input(&f, "laptop", &k), &f.bin, chk(&f)).unwrap();
+        let err = apply_trust(&f.paths, &plan).unwrap_err();
+        assert!(err.message.contains("still referenced"), "{}", err.message);
+        assert_eq!(
+            std::fs::read_to_string(f.paths.authorized_keys()).unwrap_or_default(),
+            before
+        );
+        assert!(!Store::load(&f.paths)
+            .unwrap()
+            .leaders
+            .contains_key("laptop"));
     }
 
     #[test]

@@ -190,7 +190,9 @@ fn the_worker_speaks_to_the_runner_as_worker_and_never_calls_sessions_create() {
     let r = runner("the-secret", "the-secret");
     let w = world();
     let dir = r.dir.clone();
-    let connect = move || RunnerClient::connect(&dir).map(|c| Box::new(c) as Box<dyn Backend>);
+    let connect = move |_d: Option<std::time::Instant>| {
+        RunnerClient::connect(&dir).map(|c| Box::new(c) as Box<dyn Backend>)
+    };
     let rt = Runtime {
         connect: &connect,
         resolver: &LocalRefs,
@@ -293,4 +295,65 @@ fn attach_goes_through_attach_open_and_the_screen_is_cleaned_by_the_worker() {
         .unwrap()
         .methods
         .contains(&"attach.open".to_string()));
+}
+
+fn silent_runner(shake: bool) -> (tempfile::TempDir, PathBuf) {
+    let t = tempfile::Builder::new()
+        .prefix("tr")
+        .tempdir_in("/tmp")
+        .unwrap();
+    std::fs::set_permissions(
+        t.path(),
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+    )
+    .unwrap();
+    let dir = t.path().join("r");
+    let ep = Endpoint::new_runner(&dir).unwrap();
+    let listener = bind(&ep).unwrap();
+    std::fs::write(dir.join("client.secret"), "s3cret").unwrap();
+    std::fs::set_permissions(
+        dir.join("client.secret"),
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o600),
+    )
+    .unwrap();
+    std::thread::spawn(move || {
+        while let Ok((stream, _)) = listener.accept() {
+            std::thread::spawn(move || {
+                if shake {
+                    let _ = server::handshake_server(&stream, "s3cret", "9.9.9");
+                }
+                std::thread::sleep(std::time::Duration::from_secs(8));
+            });
+        }
+    });
+    (t, dir)
+}
+
+#[test]
+fn a_stalled_handshake_and_a_stalled_call_both_stop_at_the_deadline() {
+    use std::time::{Duration, Instant};
+    let (_t, dir) = silent_runner(false);
+    let started = Instant::now();
+    let err = RunnerClient::connect_until(
+        &dir,
+        "worker",
+        Some(Instant::now() + Duration::from_secs(1)),
+    );
+    assert!(err.is_err());
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
+
+    let (_t2, dir2) = silent_runner(true);
+    let mut c = RunnerClient::connect(&dir2).unwrap();
+    c.set_deadline(Some(Instant::now() + Duration::from_secs(1)));
+    let started = Instant::now();
+    assert!(c.list().is_err());
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "{:?}",
+        started.elapsed()
+    );
 }

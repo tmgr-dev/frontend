@@ -35,7 +35,8 @@ struct FakeState {
     unconfirmed: Vec<String>,
     busy_creates: u32,
     fence_wait_ms: Option<u64>,
-    call_timeout: Option<Duration>,
+    deadline: Option<Instant>,
+    list_delay_ms: u64,
     create_delay_ms: u64,
     bump_on_changed: Option<Paths>,
     fence_free_during_revoke: Option<bool>,
@@ -95,13 +96,23 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
 }
 
 impl Backend for Fake {
-    fn set_call_timeout(&mut self, limit: Duration) {
-        self.0.lock().unwrap().call_timeout = Some(limit);
+    fn set_deadline(&mut self, deadline: Option<Instant>) {
+        self.0.lock().unwrap().deadline = deadline;
     }
 
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("sessions.list".into());
+        if s.list_delay_ms > 0 {
+            let delay = Duration::from_millis(s.list_delay_ms);
+            let limit = s.deadline.map_or(Duration::from_secs(3600), |d| {
+                d.saturating_duration_since(Instant::now())
+            });
+            std::thread::sleep(delay.min(limit));
+            if delay > limit {
+                return Err(BackendError::Unavailable("timed out".into()));
+            }
+        }
         Ok(s.sessions.clone())
     }
 
@@ -130,7 +141,9 @@ impl Backend for Fake {
         }
         if s.create_delay_ms > 0 {
             let delay = Duration::from_millis(s.create_delay_ms);
-            let limit = s.call_timeout.unwrap_or(Duration::from_secs(3600));
+            let limit = s.deadline.map_or(Duration::from_secs(3600), |d| {
+                d.saturating_duration_since(Instant::now())
+            });
             std::thread::sleep(delay.min(limit));
             if delay > limit {
                 return Err(BackendError::Unavailable("timed out".into()));
@@ -353,7 +366,7 @@ fn frames(items: &[Value]) -> Vec<u8> {
 fn session(w: &World, name: &str, enr: &str, fake: &Fake, items: &[Value]) -> Vec<Value> {
     let mut out = Vec::new();
     {
-        let connect = || Ok(Box::new(fake.clone()) as Box<dyn Backend>);
+        let connect = |_d: Option<Instant>| Ok(Box::new(fake.clone()) as Box<dyn Backend>);
         let rt = Runtime {
             connect: &connect,
             resolver: &LocalRefs,
@@ -691,7 +704,7 @@ fn live(w: &World, name: &'static str, enr: &'static str, fake: &Fake) -> Live {
     let paths = w.paths.clone();
     let fake = fake.clone();
     let worker = std::thread::spawn(move || {
-        let connect = || Ok(Box::new(fake.clone()) as Box<dyn Backend>);
+        let connect = |_d: Option<Instant>| Ok(Box::new(fake.clone()) as Box<dyn Backend>);
         let rt = Runtime {
             connect: &connect,
             resolver: &LocalRefs,
@@ -1441,4 +1454,43 @@ fn the_generation_of_the_request_that_succeeded_is_recorded() {
     assert_eq!(sent.generation, 9);
     let runs = tmgr_link::ownership::Runs::lock(&w.paths).unwrap();
     assert_eq!(runs.get(&id).unwrap().generation, Some(9));
+}
+
+#[test]
+fn a_slow_handshake_and_a_slow_list_still_answer_inside_the_deadline() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().list_delay_ms = 60_000;
+    let mut out = Vec::new();
+    let started = Instant::now();
+    {
+        let connect = |d: Option<Instant>| {
+            let left = d.map_or(Duration::from_secs(3600), |d| {
+                d.saturating_duration_since(Instant::now())
+            });
+            std::thread::sleep(Duration::from_secs(6).min(left));
+            Ok(Box::new(fake.clone()) as Box<dyn Backend>)
+        };
+        let rt = Runtime {
+            connect: &connect,
+            resolver: &LocalRefs,
+        };
+        let mut chan = Framed::new(Cursor::new(frames(&[create(&w, json!({}))])), &mut out);
+        let _ = serve_with(
+            &w.paths,
+            "laptop",
+            E1,
+            &env(),
+            &mut chan,
+            &Limits::default(),
+            &rt,
+        );
+    }
+    let took = started.elapsed();
+    let mut cur = Cursor::new(out);
+    let frame = proto::read_frame(&mut cur, MAX_FRAME).unwrap().unwrap();
+    let reply: Value = serde_json::from_slice(&frame).unwrap();
+    assert!(reply["error"].is_string(), "{reply}");
+    assert!(took < tmgr_link::runs::BUSY_BUDGET, "{took:?}");
+    assert_eq!(fake.called("runs.create"), 0);
 }
