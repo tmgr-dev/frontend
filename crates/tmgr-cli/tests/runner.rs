@@ -25,6 +25,26 @@ fn private_dir(path: &Path) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o700)).unwrap();
 }
 
+fn run_bounded(mut cmd: Command, limit: Duration) -> Output {
+    let child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let pid = child.id() as i32;
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    match rx.recv_timeout(limit) {
+        Ok(out) => out.unwrap(),
+        Err(_) => {
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+            panic!("command did not finish within {limit:?}");
+        }
+    }
+}
+
 fn sandbox_usable() -> bool {
     let abi = tmgr_runner::daemon::landlock_abi();
     if abi >= 6 {
@@ -88,7 +108,7 @@ impl Env {
     }
 
     fn tmgr(&self, args: &[&str]) -> Output {
-        self.cmd(args).output().unwrap()
+        run_bounded(self.cmd(args), Duration::from_secs(60))
     }
 
     fn data(&self, args: &[&str]) -> Value {
@@ -151,21 +171,42 @@ impl Env {
 
 impl Drop for Env {
     fn drop(&mut self) {
-        let _ = self.tmgr(&["runner", "stop"]);
-        let Ok(rd) = fs::read_dir(self.run.join("sessions")) else {
-            return;
-        };
-        for e in rd.flatten() {
-            let meta = fs::read(e.path().join("meta.json")).unwrap_or_default();
-            let v: Value = serde_json::from_slice(&meta).unwrap_or_default();
-            for k in ["child_pid", "shim_pid"] {
-                if let Some(p) = v[k].as_i64().filter(|p| *p > 1) {
-                    unsafe {
-                        libc::kill(-(p as i32), libc::SIGKILL);
-                        libc::kill(p as i32, libc::SIGKILL);
-                    }
-                }
+        kill_tree(&self.run);
+    }
+}
+
+fn kill_tree(run: &Path) {
+    let kill = |pid: i64| {
+        if pid > 1 {
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
+                libc::kill(pid as i32, libc::SIGKILL);
             }
+        }
+    };
+    let pid_file = |p: PathBuf| {
+        fs::read_to_string(p)
+            .ok()
+            .and_then(|s| s.trim().parse::<i64>().ok())
+    };
+    if let Some(pid) = pid_file(run.join("runner.pid")) {
+        kill(pid);
+    }
+    let Ok(rd) = fs::read_dir(run.join("sessions")) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let meta: Value = fs::read(e.path().join("meta.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        for k in ["child_pid", "shim_pid"] {
+            if let Some(p) = meta[k].as_i64() {
+                kill(p);
+            }
+        }
+        if let Some(p) = pid_file(e.path().join("shim.pid")) {
+            kill(p);
         }
     }
 }
@@ -175,6 +216,12 @@ struct Pty {
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
     _master: Box<dyn portable_pty::MasterPty + Send>,
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
 }
 
 impl Pty {
@@ -506,7 +553,11 @@ fn agents_login_file_creates_a_private_template_and_never_overwrites() {
     let home = env.tmp.path().join("fakehome");
     private_dir(&home);
     let file = home.join(".config/tmgr/agents/claude-code.env");
-    let run = |args: &[&str]| env.cmd(args).env("HOME", &home).output().unwrap();
+    let run = |args: &[&str]| {
+        let mut c = env.cmd(args);
+        c.env("HOME", &home);
+        run_bounded(c, Duration::from_secs(60))
+    };
 
     let out = run(&["agents", "login-file", "claude-code", "--json"]);
     assert!(

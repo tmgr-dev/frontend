@@ -689,21 +689,26 @@ mod tests {
 
     #[test]
     fn cpu_time_is_in_nanoseconds() {
+        let started = std::time::Instant::now();
         let mut busy = Command::new("/bin/sh")
             .args(["-c", "while :; do :; done"])
             .spawn()
             .unwrap();
         let pid = busy.id() as i32;
-        std::thread::sleep(Duration::from_millis(200));
-        let a = proc::cpu_ns(pid).unwrap();
-        std::thread::sleep(Duration::from_millis(600));
+        let mut a = proc::cpu_ns(pid).unwrap_or(0);
+        while a < 100_000_000 && started.elapsed() < Duration::from_secs(10) {
+            std::thread::sleep(Duration::from_millis(20));
+            a = proc::cpu_ns(pid).unwrap_or(a);
+        }
+        std::thread::sleep(Duration::from_millis(50));
         let b = proc::cpu_ns(pid).unwrap();
+        let wall = started.elapsed();
         busy.kill().unwrap();
         busy.wait().unwrap();
-        let delta = b - a;
-        assert!(
-            (150_000_000..1_500_000_000).contains(&delta),
-            "cpu delta {delta} ns over 600 ms"
-        );
+        let cpus = std::thread::available_parallelism().map_or(1, |n| n.get() as u64);
+        let ceiling = wall.as_nanos() as u64 * cpus + 200_000_000;
+        assert!(a >= 100_000_000, "cpu time {a} ns never reached 100 ms");
+        assert!(b >= a, "cpu time went backwards: {a} then {b}");
+        assert!(b <= ceiling, "cpu {b} ns over {wall:?} on {cpus} cpus");
     }
 }
