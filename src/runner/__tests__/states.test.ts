@@ -1,4 +1,4 @@
-import { describeState, sanitizeState } from '../states';
+import { describeState, exitCodeLabel, sanitizeState } from '../states';
 
 const state = (kind: string, detail: unknown = null) =>
 	({ kind, sinceMs: 1, detail } as any);
@@ -38,5 +38,34 @@ describe('sanitizeState', () => {
 			sanitizeState(state('blocked', 'secret question')).detail,
 		).toBeNull();
 		expect(sanitizeState(state('exited', 'weird')).detail).toBeNull();
+	});
+});
+
+describe('exit code', () => {
+	const exited = (detail: unknown, exitCode: unknown) =>
+		({ kind: 'exited', sinceMs: 1, detail, exitCode } as any);
+
+	it('is kept and labelled only for failed exits', () => {
+		expect(sanitizeState(exited('failed', 2)).exitCode).toBe(2);
+		expect(exitCodeLabel(sanitizeState(exited('failed', 2)))).toBe(
+			'Exited (code 2)',
+		);
+		expect(sanitizeState(exited('done', 0))).not.toHaveProperty('exitCode');
+		expect(exitCodeLabel(exited('done', 0))).toBeNull();
+		expect(exitCodeLabel(exited('interrupted', 130))).toBeNull();
+	});
+
+	it('drops non-integer codes', () => {
+		expect(sanitizeState(exited('failed', 'oops'))).not.toHaveProperty(
+			'exitCode',
+		);
+		expect(exitCodeLabel(exited('failed', null))).toBeNull();
+		expect(exitCodeLabel(exited('failed', undefined))).toBeNull();
+	});
+
+	it('is not kept for non-exited states', () => {
+		expect(
+			sanitizeState({ kind: 'working', sinceMs: 1, detail: null, exitCode: 1 }),
+		).not.toHaveProperty('exitCode');
 	});
 });

@@ -27,6 +27,12 @@
 				:data-session="session.id"
 			>
 				<AgentStateChip :state="session.state" />
+				<span
+					v-if="exitCodeLabel(session.state)"
+					class="text-xs text-ink-subtle"
+					data-testid="agent-exit-code"
+					>{{ exitCodeLabel(session.state) }}</span
+				>
 				<span class="min-w-0 flex-1 truncate font-medium text-ink">{{
 					session.name
 				}}</span>
@@ -66,8 +72,11 @@
 	import AgentStateChip from '@/components/runner/AgentStateChip.vue';
 	import { Button } from '@/components/ui/button';
 	import { runnerHalt, runnerOpenTerminal } from '@/runner/api';
+	import { describeRunnerError } from '@/runner/errors';
 	import { formatAge } from '@/runner/format';
 	import { ABSENT_TOOLTIP } from '@/runner/runButton';
+	import { exitCodeLabel } from '@/runner/states';
+	import { statusDetail } from '@/runner/statusLine';
 	import { useRunner } from '@/runner/store';
 	import {
 		computed,
@@ -117,18 +126,21 @@
 			const unavailable = computed(() => {
 				const state = runner.status.value?.state;
 				if (state === 'incompatible')
-					return 'The TMGR runner version is not compatible with this app. Update the CLI.';
+					return statusDetail(runner.status.value) ?? '';
 				if (state && state !== 'ready') return ABSENT_TOOLTIP;
 				return '';
 			});
 
-			const guarded = async (action: () => Promise<void>) => {
+			const guarded = async (
+				action: () => Promise<void>,
+				kind: 'stop' | 'open',
+			) => {
 				actionError.value = '';
 				try {
 					await action();
 				} catch (error) {
-					const text = String((error as any)?.message ?? error);
-					if (text !== 'cancelled') actionError.value = text;
+					const view = describeRunnerError(error, kind);
+					if (!view.cancelled) actionError.value = view.text;
 				}
 			};
 
@@ -138,9 +150,11 @@
 				now,
 				actionError,
 				formatAge,
+				exitCodeLabel,
 				profileLabel: (id: string) => profileLabels[id] ?? id,
-				openTerminal: (id: string) => guarded(() => runnerOpenTerminal(id)),
-				stop: (id: string) => guarded(() => runnerHalt(id)),
+				openTerminal: (id: string) =>
+					guarded(() => runnerOpenTerminal(id), 'open'),
+				stop: (id: string) => guarded(() => runnerHalt(id), 'stop'),
 			};
 		},
 	});

@@ -14,13 +14,14 @@ export interface RunnerState {
 	kind: RunnerStateKind;
 	sinceMs: number;
 	detail: RunnerExitDetail | null;
+	exitCode?: number | null;
 }
 
 export interface RunnerSession {
 	id: string;
 	name: string;
 	profile: string | null;
-	task: { workspaceId: number; taskId: number } | null;
+	task?: { workspaceId: number; taskId: number } | null;
 	state: RunnerState;
 	createdMs: number;
 }
@@ -87,6 +88,14 @@ export const runnerStatus = (): Promise<RunnerStatus> =>
 
 export const runnerProfiles = (): Promise<RunnerProfile[]> =>
 	invoke<RunnerProfile[]>('runner_profiles');
+
+export const runnerProjectFolder = (
+	workspaceId: number,
+): Promise<string | null> =>
+	invoke<string | null>('runner_project_folder', { workspaceId });
+
+export const runnerPickFolder = (workspaceId: number): Promise<string | null> =>
+	invoke<string | null>('runner_pick_folder', { workspaceId });
 
 export const runnerSessions = (): Promise<RunnerSession[]> =>
 	invoke<RunnerSession[]>('runner_sessions');

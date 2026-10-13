@@ -94,6 +94,7 @@ describe('runner store', () => {
 				session('s_new', { createdMs: 20 }),
 				session('s_other', { task: { workspaceId: -1000, taskId: 8 } }),
 				session('s_none', { task: null }),
+				session('s_absent', { task: undefined }),
 			],
 		});
 		const runner = useRunner();

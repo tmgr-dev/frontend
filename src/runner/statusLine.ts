@@ -1,4 +1,5 @@
 import type { RunnerStatus } from './api';
+import { sanitizeMessage } from './errors';
 
 export const statusLine = (status: RunnerStatus | null): string => {
 	switch (status?.state) {
@@ -11,4 +12,12 @@ export const statusLine = (status: RunnerStatus | null): string => {
 		default:
 			return 'Checking…';
 	}
+};
+
+export const INCOMPATIBLE_DEFAULT = 'Update the TMGR runner';
+
+export const statusDetail = (status: RunnerStatus | null): string | null => {
+	if (status?.state !== 'incompatible') return null;
+	const text = sanitizeMessage(status.message ?? '');
+	return text || INCOMPATIBLE_DEFAULT;
 };

@@ -17,7 +17,7 @@
 					/>
 				</SettingsRow>
 				<template v-if="runner.enabled.value">
-					<SettingsRow label="Runner status">
+					<SettingsRow label="Runner status" :description="detail ?? undefined">
 						<span class="text-sm text-ink" data-testid="runner-status">{{
 							statusLine(runner.status.value)
 						}}</span>
@@ -70,7 +70,7 @@
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { bypassAvailable } from '@/runner/bypass';
-	import { statusLine } from '@/runner/statusLine';
+	import { statusDetail, statusLine } from '@/runner/statusLine';
 	import {
 		refreshRunnerStatus,
 		setRunnerEnabled,
@@ -97,6 +97,8 @@
 				bypassAvailable(runner.status.value),
 			);
 
+			const detail = computed(() => statusDetail(runner.status.value));
+
 			onMounted(() => void refreshRunnerStatus());
 
 			const toggle = async (value: boolean) => {
@@ -117,6 +119,7 @@
 				error,
 				bypassOpen,
 				bypassOffered,
+				detail,
 				toggle,
 				statusLine,
 			};

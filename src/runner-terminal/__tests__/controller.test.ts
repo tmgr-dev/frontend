@@ -18,6 +18,7 @@ const setup = () => {
 	const view = {
 		setHeader: jest.fn(),
 		setScrollText: jest.fn(),
+		setNotice: jest.fn(),
 		showClosed: jest.fn(),
 		hideClosed: jest.fn(),
 		closeWindow: jest.fn(),
@@ -80,6 +81,27 @@ describe('terminal controller', () => {
 		expect(view.hideClosed).toHaveBeenCalled();
 		controller.onInput('x');
 		expect(api.input).toHaveBeenCalledWith('x');
+	});
+
+	it('shows a readable notice when input fails, silent on cancel', async () => {
+		const { controller, view, api } = setup();
+		api.input.mockRejectedValueOnce('busy');
+		controller.onInput('x');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(view.setNotice).toHaveBeenLastCalledWith(
+			'The agent is busy, try again in a moment.',
+		);
+		api.input.mockRejectedValueOnce('cancelled');
+		view.setNotice.mockClear();
+		controller.onInput('y');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(view.setNotice).not.toHaveBeenCalled();
+		controller.onInput('z');
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(view.setNotice).toHaveBeenLastCalledWith(null);
 	});
 
 	it('scrolls with the wheel, clamped to the known range', () => {

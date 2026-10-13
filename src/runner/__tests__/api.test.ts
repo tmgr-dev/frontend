@@ -21,6 +21,13 @@ describe('runner api wrappers', () => {
 		['runnerStatus', [], 'runner_status', undefined],
 		['runnerProfiles', [], 'runner_profiles', undefined],
 		['runnerSessions', [], 'runner_sessions', undefined],
+		[
+			'runnerProjectFolder',
+			[-1000],
+			'runner_project_folder',
+			{ workspaceId: -1000 },
+		],
+		['runnerPickFolder', [-1000], 'runner_pick_folder', { workspaceId: -1000 }],
 		['runnerHalt', ['s_a'], 'runner_halt', { session: 's_a' }],
 		['runnerOpenTerminal', ['s_a'], 'runner_open_terminal', { session: 's_a' }],
 		['runnerUnwatch', [3], 'runner_unwatch', { id: 3 }],

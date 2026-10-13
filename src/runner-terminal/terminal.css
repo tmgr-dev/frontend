@@ -107,6 +107,18 @@ body,
 	display: none;
 }
 
+.notice {
+	color: #dc2626;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	min-width: 0;
+}
+
+.notice[hidden] {
+	display: none;
+}
+
 button {
 	font: inherit;
 	color: var(--fg);

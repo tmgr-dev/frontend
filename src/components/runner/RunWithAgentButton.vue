@@ -50,6 +50,28 @@
 							</option>
 						</select>
 					</label>
+					<div class="flex flex-col gap-1 text-xs">
+						<span class="font-medium text-ink">Project folder</span>
+						<span
+							class="folder-path block overflow-hidden text-ellipsis whitespace-nowrap"
+							:class="folder.chosen ? 'text-ink' : 'text-ink-subtle'"
+							dir="rtl"
+							:title="folder.title"
+							data-testid="agent-project-folder"
+							><bdi>{{ folder.text }}</bdi></span
+						>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							class="self-start"
+							:disabled="picking || starting"
+							data-testid="agent-change-folder"
+							@click="changeFolder"
+						>
+							Change folder
+						</Button>
+					</div>
 					<p
 						class="text-xs text-ink-subtle"
 						data-testid="agent-permission-note"
@@ -78,9 +100,13 @@
 	import {
 		isRunnerSupported,
 		runnerOpenTerminal,
+		runnerPickFolder,
 		runnerProfiles,
+		runnerProjectFolder,
 		type RunnerProfile,
 	} from '@/runner/api';
+	import { describeRunnerError } from '@/runner/errors';
+	import { afterPick, folderLine } from '@/runner/folder';
 	import { runButtonModel, startRunForTask } from '@/runner/runButton';
 	import { refreshRunnerStatus, useRunner } from '@/runner/store';
 	import { Bot, SquareTerminal } from 'lucide-vue-next';
@@ -109,6 +135,9 @@
 			const profile = ref('');
 			const starting = ref(false);
 			const error = ref('');
+			const projectFolder = ref<string | null>(null);
+			const picking = ref(false);
+			const folder = computed(() => folderLine(projectFolder.value));
 
 			const workspaceId = computed(() =>
 				props.workspaceId == null ? null : Number(props.workspaceId),
@@ -129,16 +158,43 @@
 				}),
 			);
 
+			const loadFolder = async () => {
+				if (workspaceId.value === null) return;
+				try {
+					projectFolder.value = await runnerProjectFolder(workspaceId.value);
+				} catch {
+					projectFolder.value = null;
+				}
+			};
+
+			const changeFolder = async () => {
+				if (workspaceId.value === null) return;
+				picking.value = true;
+				error.value = '';
+				try {
+					projectFolder.value = afterPick(
+						projectFolder.value,
+						await runnerPickFolder(workspaceId.value),
+					);
+				} catch (failure) {
+					const view = describeRunnerError(failure, 'start');
+					if (!view.cancelled) error.value = view.text;
+				} finally {
+					picking.value = false;
+				}
+			};
+
 			watch(open, async (value) => {
 				if (!value) return;
 				error.value = '';
 				void refreshRunnerStatus();
+				void loadFolder();
 				try {
 					profiles.value = await runnerProfiles();
 					if (!profiles.value.some((item) => item.id === profile.value))
 						profile.value = profiles.value[0]?.id ?? '';
 				} catch (failure) {
-					error.value = String(failure);
+					error.value = describeRunnerError(failure, 'start').text;
 				}
 			});
 
@@ -157,6 +213,7 @@
 					profile: profile.value,
 				});
 				starting.value = false;
+				void loadFolder();
 				if (result.ok) open.value = false;
 				else if (!result.cancelled) error.value = result.error;
 			};
@@ -172,6 +229,9 @@
 				profile,
 				starting,
 				error,
+				folder,
+				picking,
+				changeFolder,
 				run,
 				openTerminal,
 			};

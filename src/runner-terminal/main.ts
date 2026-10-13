@@ -45,10 +45,13 @@ const chip = el('span', 'chip', 'Connecting');
 const detail = el('span', 'detail');
 const scrollNote = el('span', 'scroll');
 scrollNote.hidden = true;
+const notice = el('span', 'notice');
+notice.hidden = true;
+notice.setAttribute('role', 'alert');
 const spacer = el('span', 'spacer');
 const detachButton = el('button', undefined, 'Detach');
 detachButton.type = 'button';
-bar.append(name, chip, detail, scrollNote, spacer, detachButton);
+bar.append(name, chip, detail, scrollNote, notice, spacer, detachButton);
 
 const host = el('div');
 host.id = 'term';
@@ -104,6 +107,10 @@ const controller = createController({
 		setScrollText(text) {
 			scrollNote.hidden = text === null;
 			scrollNote.textContent = text ?? '';
+		},
+		setNotice(text) {
+			notice.hidden = text === null;
+			notice.textContent = text ?? '';
 		},
 		showClosed(reason) {
 			overlayText.textContent = `Session ended: ${reason}`;

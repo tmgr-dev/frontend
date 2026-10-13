@@ -1,4 +1,5 @@
 import type { RunnerState, TermFrame } from '@/runner/api';
+import { describeRunnerError } from '@/runner/errors';
 import { describeState, sanitizeState, type StateView } from '@/runner/states';
 
 export interface TermLike {
@@ -21,6 +22,7 @@ export interface HeaderState extends StateView {
 export interface TermView {
 	setHeader(header: HeaderState): void;
 	setScrollText(text: string | null): void;
+	setNotice(text: string | null): void;
 	showClosed(reason: string): void;
 	hideClosed(): void;
 	closeWindow(): void;
@@ -73,7 +75,14 @@ export const createController = (deps: {
 			}
 		},
 		onInput(data: string) {
-			if (!closed) void api.input(data);
+			if (closed) return;
+			Promise.resolve(api.input(data)).then(
+				() => view.setNotice(null),
+				(error) => {
+					const failure = describeRunnerError(error, 'input');
+					if (!failure.cancelled) view.setNotice(failure.text);
+				},
+			);
 		},
 		wheel(deltaY: number) {
 			if (deltaY === 0) return;
@@ -108,6 +117,7 @@ export const createController = (deps: {
 			max = 0;
 			view.hideClosed();
 			view.setScrollText(null);
+			view.setNotice(null);
 		},
 	};
 };

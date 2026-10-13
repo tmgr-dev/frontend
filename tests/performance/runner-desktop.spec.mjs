@@ -30,6 +30,10 @@ const makeRunner = (page, init = {}) => {
     status: init.status ?? READY,
     sessions: init.sessions ?? [],
     cancelStart: init.cancelStart ?? false,
+    startError: init.startError ?? null,
+    haltError: init.haltError ?? null,
+    folder: init.folder ?? null,
+    pickResult: init.pickResult ?? null,
     calls: [],
     watchChannels: [],
     frameChannel: null,
@@ -79,8 +83,17 @@ const makeRunner = (page, init = {}) => {
         return 1;
       case 'runner_unwatch':
         return null;
+      case 'runner_project_folder':
+        return st.folder;
+      case 'runner_pick_folder':
+        if (st.pickResult) st.folder = st.pickResult;
+        return st.pickResult;
+      case 'runner_halt':
+        if (st.haltError) throw st.haltError;
+        return null;
       case 'runner_start_run': {
         if (st.cancelStart) throw 'cancelled';
+        if (st.startError) throw st.startError;
         const created = session(
           `s_new${st.sessions.length}`,
           args.taskId,
@@ -283,15 +296,54 @@ test('board chips, Needs input highlight, task view run flow', async ({
     'Permission prompts: on',
   );
   await page.getByTestId('agent-profile').selectOption('codex');
+  await expect(page.getByTestId('agent-project-folder')).toHaveText(
+    'Not chosen yet — you will pick it when you run',
+  );
+  runner.pickResult = '/work/clients/acme/storefront';
+  await page.getByTestId('agent-change-folder').click();
+  await expect(page.getByTestId('agent-project-folder')).toHaveText(
+    '/work/clients/acme/storefront',
+  );
+  await expect(page.getByTestId('agent-project-folder')).toHaveAttribute(
+    'title',
+    '/work/clients/acme/storefront',
+  );
+  expect(runner.named('runner_pick_folder')[0].args).toEqual({
+    workspaceId: WS,
+  });
+  runner.pickResult = null;
+  await page.getByTestId('agent-change-folder').click();
+  await expect.poll(() => runner.named('runner_pick_folder').length).toBe(2);
+  await expect(page.getByTestId('agent-project-folder')).toHaveText(
+    '/work/clients/acme/storefront',
+  );
+  await expect(page.getByRole('alert')).toHaveCount(0);
+
+  runner.startError = 'busy';
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'The agent is busy, try again in a moment.',
+  );
+  runner.startError = 'unknown_profile';
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'This agent profile is not available. Pick another profile.',
+  );
+  runner.startError = null;
+  const attempts = runner.named('runner_start_run').length;
   runner.cancelStart = true;
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect.poll(() => runner.named('runner_start_run').length).toBe(1);
+  await expect
+    .poll(() => runner.named('runner_start_run').length)
+    .toBe(attempts + 1);
   await expect(page.getByRole('alert')).toHaveCount(0);
   await expect(page.getByTestId('agent-run-popover')).toBeVisible();
   runner.cancelStart = false;
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect.poll(() => runner.named('runner_start_run').length).toBe(2);
-  expect(runner.named('runner_start_run')[1].args).toEqual({
+  await expect
+    .poll(() => runner.named('runner_start_run').length)
+    .toBe(attempts + 2);
+  expect(runner.named('runner_start_run')[attempts + 1].args).toEqual({
     workspaceId: WS,
     taskId: d,
     profile: 'codex',
@@ -310,6 +362,63 @@ test('board chips, Needs input highlight, task view run flow', async ({
   await expect(
     page.locator('[data-session="s_done"]').getByTestId('agent-stop'),
   ).toHaveCount(0);
+});
+
+test('sessions panel: no-task session, failed exit code, halt error', async ({
+  page,
+}) => {
+  const { runner } = await setup(page);
+  runner.sessions = [
+    session('s_ext', 0, 'working', null, { name: 'Started from terminal', task: null }),
+    session('s_fail', 0, 'exited', 'failed', {
+      name: 'Broken run',
+      task: null,
+      state: { kind: 'exited', sinceMs: Date.now(), detail: 'failed', exitCode: 2 },
+    }),
+    session('s_ok', 0, 'exited', 'done', {
+      name: 'Fine run',
+      task: null,
+      state: { kind: 'exited', sinceMs: Date.now(), detail: 'done', exitCode: 0 },
+    }),
+  ];
+  await page.goto('/settings?tab=experimental');
+  await runner.pushSessions();
+  await expect(page.locator('[data-session]')).toHaveCount(3);
+  await expect(page.getByText('Started from terminal')).toBeVisible();
+  await expect(
+    page.locator('[data-session="s_fail"]').getByTestId('agent-exit-code'),
+  ).toHaveText('Exited (code 2)');
+  await expect(page.getByTestId('agent-exit-code')).toHaveCount(1);
+  runner.haltError = 'busy';
+  await page.locator('[data-session="s_ext"]').getByTestId('agent-stop').click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'The agent is busy, try again in a moment.',
+  );
+});
+
+test('incompatible runner: message in settings and as the button tooltip', async ({
+  page,
+}) => {
+  await setup(page, {
+    runner: {
+      status: {
+        state: 'incompatible',
+        caps: [],
+        message: 'Update the TMGR runner',
+      },
+    },
+  });
+  await seedTasks(page, ['Old runner task']);
+  await openTask(page, 'Old runner task');
+  const run = page.getByTestId('agent-run-button');
+  await expect(run).toHaveAttribute('aria-disabled', 'true');
+  await expect(run).toHaveAttribute('title', 'Update the TMGR runner');
+  await page.keyboard.press('Escape');
+  await page.goto('/settings?tab=experimental');
+  await expect(page.getByTestId('runner-status')).toHaveText(
+    'Incompatible version',
+  );
+  await expect(page.getByText('Update the TMGR runner').first()).toBeVisible();
 });
 
 test('runner absent: button disabled with the start hint', async ({ page }) => {
@@ -502,8 +611,10 @@ for (const [width, height] of [
         path: join(screensDir, `board-chips-${tag}.png`),
       });
 
+      runner.folder = '/work/clients/acme/storefront-redesign/web';
       await openTask(page, 'Pricing page copy');
       await page.getByTestId('agent-run-button').click();
+      await expect(page.getByTestId('agent-project-folder')).toBeVisible();
       await expect(page.getByTestId('agent-run-popover')).toBeVisible();
       await expect(page.getByTestId('agent-profile')).toBeVisible();
       await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
@@ -522,8 +633,27 @@ for (const [width, height] of [
         path: join(screensDir, `task-view-sessions-${tag}.png`),
       });
 
+      runner.sessions = [
+        ...runner.sessions,
+        session('s_fail', c, 'exited', 'failed', {
+          name: 'Footer links audit (retry)',
+          createdMs: Date.now() - 50 * 60_000,
+          state: {
+            kind: 'exited',
+            sinceMs: Date.now(),
+            detail: 'failed',
+            exitCode: 2,
+          },
+        }),
+        session('s_ext', 0, 'waiting', null, {
+          name: 'Started from the terminal',
+          task: null,
+          createdMs: Date.now() - 5 * 60_000,
+        }),
+      ];
       await page.goto('/settings?tab=experimental');
-      await expect(page.locator('[data-session]')).toHaveCount(3);
+      await runner.pushSessions();
+      await expect(page.locator('[data-session]')).toHaveCount(5);
       await page.screenshot({
         path: join(screensDir, `settings-experimental-${tag}.png`),
       });

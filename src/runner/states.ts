@@ -40,15 +40,28 @@ export const describeState = (state: RunnerState): StateView => {
 	}
 };
 
-export const sanitizeState = (state: RunnerState): RunnerState => ({
-	kind: state.kind,
-	sinceMs: state.sinceMs,
-	detail:
+export const sanitizeState = (state: RunnerState): RunnerState => {
+	const detail =
 		state.kind === 'exited' &&
 		EXIT_DETAILS.includes(state.detail as RunnerExitDetail)
 			? state.detail
-			: null,
-});
+			: null;
+	const clean: RunnerState = {
+		kind: state.kind,
+		sinceMs: state.sinceMs,
+		detail,
+	};
+	if (detail === 'failed' && Number.isInteger(state.exitCode))
+		clean.exitCode = state.exitCode;
+	return clean;
+};
+
+export const exitCodeLabel = (state: RunnerState): string | null =>
+	state.kind === 'exited' &&
+	state.detail === 'failed' &&
+	Number.isInteger(state.exitCode)
+		? `Exited (code ${state.exitCode})`
+		: null;
 
 export const TONE_CLASS: Record<StateTone, string> = {
 	info: 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',

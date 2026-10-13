@@ -51,6 +51,23 @@ describe('runButtonModel', () => {
 		).toBe('TMGR runner is not running. Start it with `tmgr runner start`.');
 	});
 
+	it('uses the runner message as the incompatible tooltip', () => {
+		const status = {
+			state: 'incompatible',
+			caps: [],
+			message: 'Update the TMGR runner',
+		} as any;
+		expect(runButtonModel({ ...base, status }).tooltip).toBe(
+			'Update the TMGR runner',
+		);
+		expect(
+			runButtonModel({
+				...base,
+				status: { state: 'incompatible', caps: [] } as any,
+			}).tooltip,
+		).toBe('Update the TMGR runner');
+	});
+
 	it('switches to Open terminal when a session exists', () => {
 		expect(runButtonModel({ ...base, hasSession: true })).toMatchObject({
 			mode: 'open',
@@ -86,12 +103,18 @@ describe('startRunForTask', () => {
 		},
 	);
 
-	it('reports other errors', async () => {
+	it('reports other errors in readable form', async () => {
 		mocked.runnerStartRun.mockRejectedValue('disabled');
 		await expect(startRunForTask(args)).resolves.toEqual({
 			ok: false,
 			cancelled: false,
-			error: 'disabled',
+			error: 'Could not start the agent: disabled',
+		});
+		mocked.runnerStartRun.mockRejectedValue('busy');
+		await expect(startRunForTask(args)).resolves.toEqual({
+			ok: false,
+			cancelled: false,
+			error: 'The agent is busy, try again in a moment.',
 		});
 	});
 });
