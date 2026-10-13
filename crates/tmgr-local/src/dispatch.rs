@@ -100,6 +100,7 @@ impl<'a> Tx<'a> {
     fn begin(conn: &'a Connection) -> Result<Self> {
         conn.execute_batch("BEGIN IMMEDIATE")?;
         let tx = Tx { conn, open: true };
+        crate::db::check_schema(conn)?;
         conn.execute_batch("SAVEPOINT request")?;
         Ok(tx)
     }
@@ -291,6 +292,32 @@ mod tests {
     fn count(conn: &Connection, table: &str) -> i64 {
         conn.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
             .unwrap()
+    }
+
+    #[test]
+    fn a_write_is_refused_when_the_desktop_moved_the_schema_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("workspace.db");
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch(&crate::testing::schema())
+            .unwrap();
+        let cli = crate::open_write(&path).unwrap();
+        Connection::open(&path)
+            .unwrap()
+            .execute_batch("UPDATE meta SET value = '13' WHERE key = 'schema_version'")
+            .unwrap();
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        let body = json!({ "title": "late" });
+        assert_eq!(
+            dispatch(&cli, &c, "POST", "tasks", Some(&body)).unwrap_err(),
+            crate::Error::SchemaTooNew(13)
+        );
+        assert!(cli.is_autocommit());
+        let count: i64 = cli
+            .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 
     #[test]

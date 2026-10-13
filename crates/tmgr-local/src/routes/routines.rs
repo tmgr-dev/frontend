@@ -499,6 +499,10 @@ pub(super) fn complete_on(req: &Request<'_>) -> Handled {
         .map(str::to_string)
         .or(from_body)
         .unwrap_or_else(|| today(req));
+    let valid = date.len() == 10 && NaiveDate::parse_from_str(&date, "%Y-%m-%d").is_ok();
+    if !valid {
+        return Err(http(422, "date must be YYYY-MM-DD"));
+    }
     let instance = complete_for_date(req, id, &date)?;
     let status = col(&instance, "status").clone();
     Ok(json!({
@@ -611,5 +615,30 @@ mod tests {
             get(&conn, &c, "daily-routines/expand?from=2026-10-01").0,
             422
         );
+    }
+
+    #[test]
+    fn complete_on_refuses_a_date_that_is_not_a_day() {
+        let conn = db(
+            "INSERT INTO routines (id, title, created_at, updated_at) VALUES (1, 'R', 'x', 'x');",
+        );
+        conn.execute_batch("PRAGMA query_only = OFF").unwrap();
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        for date in ["2026-13-01", "tomorrow", "2026-10-1"] {
+            let r = crate::dispatch(
+                &conn,
+                &c,
+                "POST",
+                "daily-routines/tasks/1/complete-on",
+                Some(&json!({ "date": date })),
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(r.status, 422, "{date}");
+        }
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM routine_instances", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
     }
 }

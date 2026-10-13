@@ -15,14 +15,14 @@ use crate::markdown::{
     append_under_heading, autolink_task_keys, contains_section_marker, exceeds_limit,
     extract_links, find_section, is_chronicle_heading, is_known_type, non_human_violation,
     replace_section, structure_error, system_section_violation, task_key_candidates, template_body,
-    valid_section_id, writable_by, AGENTS_OWNER, CONTEXT, MEETING, PERSON, PROMISES_SECTION,
+    valid_section_id, writable_by, AGENTS_OWNER, CONTEXT, MAX_LINKS, MEETING, PERSON,
+    PROMISES_SECTION,
 };
 use crate::router::{sql, Handled, Outcome, Request};
 use crate::serialize::{col, task_key};
 
 const MAX_TITLE: usize = 255;
 const MAX_SUMMARY: usize = 255;
-const MAX_LINKS: usize = 1000;
 const MAX_SLUG_ATTEMPTS: usize = 6;
 const LAST_CONTACT_AT: &str = "last_contact_at";
 const ANALYST_SETTING: &str = "pages.analyst_persona_id";

@@ -7,6 +7,7 @@ use regex::Regex;
 
 pub(crate) const MAX_BODY_BYTES: usize = 1_048_576;
 pub(crate) const MAX_TASK_KEYS: usize = 50;
+pub(crate) const MAX_LINKS: usize = 1000;
 pub(crate) const AGENTS_OWNER: &str = "agents";
 pub(crate) const SYSTEM_OWNER: &str = "system";
 pub(crate) const SECTION_CLOSE: &str = "<!-- /tmgr:section -->";
@@ -177,29 +178,44 @@ fn next_of(bytes: &[u8], from: usize, ch: u8) -> Option<usize> {
         .map(|p| from + p)
 }
 
+/// For each position, the next position at or after it holding `ch` (precomputed, like the TS `nextOf`).
+fn next_table(bytes: &[u8], ch: u8) -> Vec<Option<usize>> {
+    let mut next = vec![None; bytes.len() + 2];
+    for i in (0..bytes.len()).rev() {
+        next[i] = if bytes[i] == ch { Some(i) } else { next[i + 1] };
+    }
+    next
+}
+
 fn mask_markdown_links(body: &str, skip: &mut [bool]) {
     let bytes = body.as_bytes();
+    if !bytes.contains(&b'[') {
+        return;
+    }
     let n = bytes.len();
+    let newline = next_table(bytes, b'\n');
+    let bracket = next_table(bytes, b']');
+    let paren = next_table(bytes, b')');
     let mut i = 0;
     while i < n {
         if bytes[i] != b'[' {
             i += 1;
             continue;
         }
-        let Some(close) = next_of(bytes, i + 1, b']') else {
+        let Some(close) = bracket[i + 1] else {
             i += 1;
             continue;
         };
-        let newline_before = next_of(bytes, i + 1, b'\n').is_some_and(|nl| nl < close);
+        let newline_before = newline[i + 1].is_some_and(|nl| nl < close);
         if newline_before || close + 1 >= n || bytes[close + 1] != b'(' {
             i += 1;
             continue;
         }
-        let Some(end) = next_of(bytes, close + 2, b')') else {
+        let Some(end) = paren[close + 2] else {
             i += 1;
             continue;
         };
-        if next_of(bytes, close + 2, b'\n').is_some_and(|nl| nl < end) {
+        if newline[close + 2].is_some_and(|nl| nl < end) {
             i += 1;
             continue;
         }
@@ -259,10 +275,16 @@ fn mask(body: &str, include_links: bool) -> Vec<bool> {
 }
 
 /// `tmgr://kind/id` links outside code and comments, first occurrence of each, in order.
+/// `tmgr://kind/id` links outside code and comments, first occurrence of each, in order; at most
+/// `MAX_LINKS`, the number a page write considers.
 pub(crate) fn extract_links(body: &str) -> Vec<(String, i64)> {
     let skip = mask(body, false);
+    let mut seen = std::collections::HashSet::new();
     let mut out: Vec<(String, i64)> = Vec::new();
     for c in res()[2].captures_iter(body) {
+        if out.len() >= MAX_LINKS {
+            break;
+        }
         let m = c.get(0).unwrap();
         if skip[m.start()] {
             continue;
@@ -274,7 +296,7 @@ pub(crate) fn extract_links(body: &str) -> Vec<(String, i64)> {
             continue;
         }
         let link = (c[1].to_string(), id);
-        if !out.contains(&link) {
+        if seen.insert(link.clone()) {
             out.push(link);
         }
     }
@@ -936,5 +958,15 @@ mod tests {
         let _ = system_section_violation(body, "");
         assert_eq!(substring("abcdef", 4, 1), "bcd");
         assert_eq!(substring("abc", 2, 99), "c");
+    }
+
+    #[test]
+    fn pathological_bodies_stay_linear() {
+        let brackets = "[".repeat(200_000);
+        let started = std::time::Instant::now();
+        assert!(task_key_candidates(&brackets).is_empty());
+        let links: String = (0..5000).map(|i| format!("tmgr://task/{i} ")).collect();
+        assert_eq!(extract_links(&links).len(), MAX_LINKS);
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 }

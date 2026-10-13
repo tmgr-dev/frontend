@@ -42,8 +42,8 @@ pub(crate) fn open_write_with(database: &Path, busy_ms: u32) -> Result<Connectio
     conn.execute_batch(&format!(
         "PRAGMA foreign_keys = ON; PRAGMA busy_timeout = {busy_ms};"
     ))?;
-    let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
     check_schema(&conn)?;
+    let _: String = conn.query_row("PRAGMA journal_mode = WAL", [], |r| r.get(0))?;
     Ok(conn)
 }
 
@@ -176,6 +176,19 @@ mod tests {
             .unwrap();
         assert_eq!(journal, "wal");
         assert!(cli.is_autocommit());
+    }
+
+    #[test]
+    fn a_refused_database_is_left_untouched() {
+        let (_dir, path) = file_db(
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '13');",
+        );
+        assert_eq!(open_write(&path).unwrap_err(), Error::SchemaTooNew(13));
+        let mode: String = Connection::open(&path)
+            .unwrap()
+            .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(mode, "delete");
     }
 
     #[test]
