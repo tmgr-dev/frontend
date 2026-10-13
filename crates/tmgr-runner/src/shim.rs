@@ -23,6 +23,7 @@ const REAP_AFTER: Duration = Duration::from_secs(24 * 3600);
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_PENDING: usize = 4;
 const INPUT_CAP: usize = 1 << 20;
+const INPUT_FRAMES: usize = 1024;
 
 #[derive(Default)]
 struct InputQueue {
@@ -33,8 +34,11 @@ struct InputQueue {
 
 impl InputQueue {
     fn push(&self, data: Vec<u8>) {
+        if data.is_empty() {
+            return;
+        }
         let mut g = lock(&self.q);
-        if g.1 + data.len() > INPUT_CAP {
+        if g.1 + data.len() > INPUT_CAP || g.0.len() >= INPUT_FRAMES {
             self.dropped.fetch_add(data.len() as u64, Ordering::SeqCst);
             return;
         }
@@ -602,7 +606,7 @@ mod proc {
 
 #[cfg(test)]
 mod tests {
-    use super::{proc, ChildGuard, InputQueue, INPUT_CAP};
+    use super::{proc, ChildGuard, InputQueue, INPUT_CAP, INPUT_FRAMES};
     use std::io::{BufRead, BufReader};
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
@@ -664,6 +668,20 @@ mod tests {
         q.done(d.len());
         q.push(vec![0; 10]);
         assert_eq!(q.dropped.load(Ordering::SeqCst), 10);
+    }
+
+    #[test]
+    fn input_queue_ignores_empty_frames_and_caps_the_count() {
+        let q = InputQueue::default();
+        for _ in 0..INPUT_FRAMES * 2 {
+            q.push(Vec::new());
+        }
+        assert_eq!(q.q.lock().unwrap().0.len(), 0);
+        for _ in 0..INPUT_FRAMES + 5 {
+            q.push(vec![1]);
+        }
+        assert_eq!(q.q.lock().unwrap().0.len(), INPUT_FRAMES);
+        assert_eq!(q.dropped.load(Ordering::SeqCst), 5);
     }
 
     #[test]
