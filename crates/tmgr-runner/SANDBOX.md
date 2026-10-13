@@ -39,7 +39,9 @@ Rules, checked when the profile loads and again at session start (a violation dr
   `~/.config/tmgr` and the rest of the list below can be granted or seeded. The Keychain is never opened.
 - `read` paths that do not exist are skipped with a log line. They become read-only roots (macOS: `file-read-data`
   allow before the deny rules; Linux: Landlock read+execute rule).
-- a seed source must be a regular file of at most 1 MiB opened without following symlinks (a symlink is refused); a
+- a seed source must be a regular file of at most 1 MiB. The runner opens it from the real home one component at a time
+  (`openat` with `O_NOFOLLOW`), so a symlink in the final component or in any parent is refused, also if it appears after
+  the profile was validated; a
   missing source is skipped. `to` is a plain relative path (no `..`). With `json_keys` the source must be a JSON object and
   only those keys are written (compact JSON). Seeds are written 0600 into the per-run home.
 - the secrets file is read by the runner, never by the sandbox (it lives under the denied `~/.config/tmgr`). It must be a

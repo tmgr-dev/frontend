@@ -356,6 +356,12 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
     }
     for extra in &spec.grants.extra_read {
         let c = canon_lossy(extra);
+        if !c.starts_with(&real_home) {
+            return Err(format!(
+                "profile read path {} is outside the home directory",
+                c.display()
+            ));
+        }
         if let Some(d) = deny.iter().find(|d| overlaps(&c, d)) {
             return Err(format!(
                 "profile read path {} overlaps the protected path {}",
@@ -962,6 +968,15 @@ mod tests {
         let mut f = fx();
         f.spec.grants.extra_read = vec![f.spec.real_home.join(".ssh/x")];
         assert!(refusal(&f).contains("protected"));
+    }
+
+    #[test]
+    fn read_roots_outside_the_home_are_refused() {
+        let mut f = fx();
+        let elsewhere = f.spec.cwd.parent().unwrap().join("elsewhere");
+        fs::create_dir_all(&elsewhere).unwrap();
+        f.spec.grants.extra_read = vec![elsewhere];
+        assert!(refusal(&f).contains("outside the home"));
     }
 
     fn refusal(f: &Fx) -> String {

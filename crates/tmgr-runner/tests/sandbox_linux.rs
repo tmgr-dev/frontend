@@ -282,4 +282,3 @@ fn swapped_root_is_refused() {
     );
     assert!(!marker.exists());
 }
-

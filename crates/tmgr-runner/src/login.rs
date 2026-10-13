@@ -1,8 +1,11 @@
 use crate::profile::Profile;
 use crate::sandbox::{canon_lossy, env_name_refused, home_deny_paths, overlaps, Grants};
 use std::collections::BTreeMap;
+use std::ffi::{CString, OsStr};
 use std::fs::{DirBuilder, File, OpenOptions};
 use std::io::{Read, Write};
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
 
@@ -11,6 +14,7 @@ const MAX_SECRETS_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSeed {
+    pub root: PathBuf,
     pub from: PathBuf,
     pub to: PathBuf,
     pub json_keys: Option<Vec<String>>,
@@ -125,6 +129,7 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
         let to = PathBuf::from(&s.to);
         plain_relative("seed destination", &to)?;
         out.seeds.push(ResolvedSeed {
+            root: home.clone(),
             from,
             to,
             json_keys: s.json_keys.clone(),
@@ -143,8 +148,42 @@ fn open_nofollow(path: &Path) -> std::io::Result<File> {
         .open(path)
 }
 
+fn openat_nofollow(dir: RawFd, name: &OsStr, flags: libc::c_int) -> std::io::Result<File> {
+    let c = CString::new(name.as_bytes())
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    let fd = unsafe { libc::openat(dir, c.as_ptr(), flags | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
+    let names: Vec<&OsStr> = match path.strip_prefix(root) {
+        Ok(rel) => rel
+            .components()
+            .map(|c| match c {
+                Component::Normal(n) => Ok(n),
+                _ => Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)),
+            })
+            .collect::<Result<_, _>>()?,
+        Err(_) => return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)),
+    };
+    let Some((last, dirs)) = names.split_last() else {
+        return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+    };
+    let mut dir = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(root)?;
+    for name in dirs {
+        dir = openat_nofollow(dir.as_raw_fd(), name, libc::O_RDONLY | libc::O_DIRECTORY)?;
+    }
+    openat_nofollow(dir.as_raw_fd(), last, libc::O_RDONLY | libc::O_NONBLOCK)
+}
+
 fn is_symlink_error(e: &std::io::Error) -> bool {
-    e.raw_os_error() == Some(libc::ELOOP)
+    matches!(e.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR))
 }
 
 fn private_file_problem(path: &Path, meta: &std::fs::Metadata) -> Option<String> {
@@ -261,12 +300,12 @@ pub fn prepare(
 }
 
 fn seed_bytes(seed: &ResolvedSeed) -> Result<Option<Vec<u8>>, String> {
-    let mut f = match open_nofollow(&seed.from) {
+    let mut f = match open_below(&seed.root, &seed.from) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) if is_symlink_error(&e) => {
             return Err(format!(
-                "seed source {} is a symlink, refusing to copy it",
+                "seed source {} is or passes through a symlink, refusing to copy it",
                 seed.from.display()
             ))
         }
@@ -281,6 +320,12 @@ fn seed_bytes(seed: &ResolvedSeed) -> Result<Option<Vec<u8>>, String> {
     if !meta.is_file() {
         return Err(format!(
             "seed source {} is not a regular file",
+            seed.from.display()
+        ));
+    }
+    if meta.len() > MAX_SEED_BYTES {
+        return Err(format!(
+            "seed source {} is larger than {MAX_SEED_BYTES} bytes",
             seed.from.display()
         ));
     }
@@ -579,6 +624,37 @@ file = "~/.config/tmgr/agents/p.env"
             assert!(apply_seeds(&r.seeds, &run_home).is_err(), "{name}");
         }
         assert!(!run_home.join("out").exists());
+    }
+
+    #[test]
+    fn seed_source_with_a_parent_swapped_for_a_symlink_is_refused() {
+        let h = home();
+        put(&h.path.join("repo/config/token"), "fine", 0o600);
+        put(&h.path.join("denied/token"), "TOPSECRET", 0o600);
+        let run_home = h.path.join("run");
+        std::fs::create_dir(&run_home).unwrap();
+        let p = profile("[[sandbox.seed]]\nfrom = \"~/repo/config/token\"\nto = \"out\"\n");
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        std::fs::remove_dir_all(h.path.join("repo/config")).unwrap();
+        symlink(h.path.join("denied"), h.path.join("repo/config")).unwrap();
+        let e = apply_seeds(&r.seeds, &run_home).unwrap_err();
+        assert!(e.contains("symlink"), "{e}");
+        assert!(!run_home.join("out").exists());
+    }
+
+    #[test]
+    fn regular_seed_source_below_directories_is_copied() {
+        let h = home();
+        put(&h.path.join("repo/config/token"), "fine", 0o600);
+        let run_home = h.path.join("run");
+        std::fs::create_dir(&run_home).unwrap();
+        let p = profile("[[sandbox.seed]]\nfrom = \"~/repo/config/token\"\nto = \"out\"\n");
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        apply_seeds(&r.seeds, &run_home).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(run_home.join("out")).unwrap(),
+            "fine"
+        );
     }
 
     #[test]
