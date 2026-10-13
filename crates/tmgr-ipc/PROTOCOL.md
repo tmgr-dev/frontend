@@ -172,9 +172,9 @@ approved (cap `cwd_pin.v1`). The runner opens the canonical `cwd` once with
 pin and refuses with `invalid_params` ("approved folder changed") when they
 differ. It checks the same identity again right before it starts the agent
 (`invalid_params`, nothing is written to the folder or launched). Without a pin
-the identity is still fixed at the first open and re-checked before the start,
-so the folder cannot be swapped between those two steps. A pin works with and
-without a bundle.
+the identity is still fixed at the first open and the agent starts in that
+opened directory (see the bundle section), so the folder cannot be swapped
+between the check and the start. A pin works with and without a bundle.
 
 ### Link-originated runs
 
@@ -293,16 +293,25 @@ The runner refuses the request with `invalid_params` when:
 - `cwd` is not the directory that was approved by the time the agent starts
   (for example a symlink was swapped after the check).
 
-The runner opens the canonical `cwd` once, launches in that same canonical
-path, writes `.tmgr` only relative to the opened directory and refuses with
-`invalid_params`, before anything starts, when the path no longer names the
-same directory.
+The runner opens the canonical `cwd` once, writes `.tmgr` only relative to the
+opened directory and hands that open directory to the process that starts the
+agent, which changes into it by descriptor. The agent therefore starts in the
+exact directory object that was opened, also when the path is renamed or
+replaced after the check; the path is not looked up again. A path that no
+longer names the same directory before the hand-over is refused with
+`invalid_params`, before anything starts.
 
-A bundled `runs.create` is refused with `busy` ("another session is running in
-this directory") while another session that has not exited uses the same
-canonical `cwd`, so one run can never replace the context file of another. All
-other validation (profile, secrets, sandbox) happens before `task.md` is
-written, so a launch that fails leaves an existing `task.md` untouched.
+`busy` ("another session is running in this directory") is decided by the
+identity (`st_dev`, `st_ino`) of the opened directory, not by its path, and
+holds until the session exits or is removed, on `runs.create` and on
+`sessions.create`: a bundled run is refused while any session that has not
+exited uses that directory, and a session without a bundle is refused while a
+bundled one does. A renamed directory is still the same directory; a new
+directory at an old path is not. One run can never replace the context file of
+another. All other validation (profile, secrets, sandbox) happens before
+`task.md` is written. If the launch still fails after `task.md` was written
+(for example the shim does not start), the previous content is restored, or the
+new file is removed when there was none.
 
 A canonical bundle over 1 MiB is refused with `limit`.
 

@@ -1,7 +1,7 @@
 use crate::wire::write_atomic;
 use std::ffi::CString;
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::{self, Read, Seek, Write};
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -10,6 +10,7 @@ use tmgr_ipc::api::{CwdPin, ErrorCode, RunBundle, RunCreateReq};
 pub type Refusal = (ErrorCode, String);
 
 const MAX_EXCLUDE: u64 = 1 << 20;
+const MAX_CONTEXT: u64 = 1 << 20;
 
 #[derive(Debug)]
 pub struct Dir {
@@ -68,6 +69,14 @@ pub fn check(req: &RunCreateReq, max: usize) -> Result<Option<Checked>, Refusal>
 const MAX_WALK: usize = 256;
 
 impl Dir {
+    pub fn id(&self) -> (u64, u64) {
+        (self.dev, self.ino)
+    }
+
+    pub fn raw_fd(&self) -> i32 {
+        self.file.as_raw_fd()
+    }
+
     pub fn is_beneath_any(&self, roots: &[String]) -> bool {
         let mut ids = Vec::new();
         for r in roots {
@@ -113,21 +122,30 @@ pub fn open_dir(req: &RunCreateReq) -> Result<Dir, Refusal> {
         return Err(bad_cwd());
     }
     let path = fs::canonicalize(&req.cwd).map_err(|_| bad_cwd())?;
-    let file = open_at(libc::AT_FDCWD, &path, libc::O_RDONLY | libc::O_DIRECTORY)
-        .map_err(|_| bad_cwd())?;
-    let meta = file.metadata().map_err(io_err)?;
-    let dir = Dir {
-        path,
-        file,
-        dev: meta.dev(),
-        ino: meta.ino(),
-    };
+    let dir = open_path(path)?;
     if let Some(CwdPin { dev, ino }) = req.cwd_pin {
-        if (dev, ino) != (dir.dev, dir.ino) {
+        if (dev, ino) != dir.id() {
             return refuse("approved folder changed");
         }
     }
     Ok(dir)
+}
+
+pub fn open_path(path: PathBuf) -> Result<Dir, Refusal> {
+    let file =
+        open_at(libc::AT_FDCWD, &path, libc::O_RDONLY | libc::O_DIRECTORY).map_err(|_| {
+            (
+                ErrorCode::InvalidParams,
+                "cwd must be an existing directory".to_string(),
+            )
+        })?;
+    let meta = file.metadata().map_err(io_err)?;
+    Ok(Dir {
+        path,
+        file,
+        dev: meta.dev(),
+        ino: meta.ino(),
+    })
 }
 
 fn io_err(e: io::Error) -> Refusal {
@@ -163,7 +181,13 @@ pub fn verify_cwd(dir: &Dir) -> Result<(), Refusal> {
     }
 }
 
-pub fn install(sdir: &Path, checked: &Checked) -> Result<(), Refusal> {
+#[derive(Debug)]
+pub enum Prior {
+    Created,
+    Existing(Vec<u8>),
+}
+
+pub fn install(sdir: &Path, checked: &Checked) -> Result<Prior, Refusal> {
     let stored = sdir.join("bundle.json");
     write_atomic(&stored, checked.canonical.as_bytes()).map_err(io_err)?;
     let mut text = String::new();
@@ -172,12 +196,16 @@ pub fn install(sdir: &Path, checked: &Checked) -> Result<(), Refusal> {
         .map_err(io_err)?;
     let bundle: RunBundle = serde_json::from_str(&text).map_err(|e| io_err(e.into()))?;
     let cwd_fd = checked.dir.file.as_raw_fd();
-    write_context(cwd_fd, &render(&bundle, &checked.sha256))?;
+    let prior = write_context(cwd_fd, &render(&bundle, &checked.sha256))?;
     exclude_from_git(cwd_fd);
-    Ok(())
+    Ok(prior)
 }
 
-fn write_context(cwd_fd: i32, text: &str) -> Result<(), Refusal> {
+fn open_tmgr(cwd_fd: i32) -> io::Result<File> {
+    open_at(cwd_fd, ".tmgr", libc::O_RDONLY | libc::O_DIRECTORY)
+}
+
+fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
     let name = CString::new(".tmgr").expect("no NUL");
     if unsafe { libc::mkdirat(cwd_fd, name.as_ptr(), 0o777) } < 0 {
         let e = io::Error::last_os_error();
@@ -185,30 +213,71 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<(), Refusal> {
             return Err(io_err(e));
         }
     }
-    let dir_file = open_at(cwd_fd, ".tmgr", libc::O_RDONLY | libc::O_DIRECTORY).map_err(|_| {
+    let dir_file = open_tmgr(cwd_fd).map_err(|_| {
         (
             ErrorCode::InvalidParams,
             ".tmgr is not a plain directory".to_string(),
         )
     })?;
-    let mut f = match openat_mode(
-        dir_file.as_raw_fd(),
+    let dir_fd = dir_file.as_raw_fd();
+    let created = openat_mode(
+        dir_fd,
         "task.md",
-        libc::O_WRONLY | libc::O_CREAT | libc::O_NONBLOCK,
+        libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NONBLOCK,
         0o644,
-    ) {
-        Ok(f) => f,
-        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
-            return refuse(".tmgr/task.md is a symlink")
+    );
+    let (mut f, prior) = match created {
+        Ok(f) => (f, Prior::Created),
+        Err(e) if e.raw_os_error() == Some(libc::EEXIST) => {
+            let mut f = match openat_mode(dir_fd, "task.md", libc::O_RDWR | libc::O_NONBLOCK, 0) {
+                Ok(f) => f,
+                Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+                    return refuse(".tmgr/task.md is a symlink")
+                }
+                Err(e) => return Err(io_err(e)),
+            };
+            let meta = f.metadata().map_err(io_err)?;
+            if !meta.is_file() || meta.nlink() > 1 {
+                return refuse(".tmgr/task.md is not a plain file");
+            }
+            let mut old = Vec::new();
+            Read::by_ref(&mut f)
+                .take(MAX_CONTEXT + 1)
+                .read_to_end(&mut old)
+                .map_err(io_err)?;
+            if old.len() as u64 > MAX_CONTEXT {
+                return refuse(".tmgr/task.md is too large to replace");
+            }
+            (f, Prior::Existing(old))
         }
         Err(e) => return Err(io_err(e)),
     };
-    let meta = f.metadata().map_err(io_err)?;
-    if !meta.is_file() || meta.nlink() > 1 {
-        return refuse(".tmgr/task.md is not a plain file");
+    let written = f
+        .set_len(0)
+        .and_then(|()| f.rewind())
+        .and_then(|()| f.write_all(text.as_bytes()))
+        .map_err(io_err);
+    if let Err(e) = written {
+        restore(cwd_fd, &prior);
+        return Err(e);
     }
-    f.set_len(0).map_err(io_err)?;
-    f.write_all(text.as_bytes()).map_err(io_err)
+    Ok(prior)
+}
+
+pub fn restore(cwd_fd: i32, prior: &Prior) {
+    let Ok(dir) = open_tmgr(cwd_fd) else { return };
+    match prior {
+        Prior::Created => {
+            let name = CString::new("task.md").expect("no NUL");
+            unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) };
+        }
+        Prior::Existing(old) => {
+            let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NONBLOCK;
+            if let Ok(mut f) = openat_mode(dir.as_raw_fd(), "task.md", flags, 0o644) {
+                let _ = f.write_all(old);
+            }
+        }
+    }
 }
 
 fn exclude_from_git(cwd_fd: i32) {
@@ -428,6 +497,24 @@ mod tests {
         install(&sdir, &checked).unwrap();
         assert!(moved.join(".tmgr/task.md").exists());
         assert!(!work.join(".tmgr").exists());
+    }
+
+    #[test]
+    fn restore_brings_back_the_previous_context_or_removes_the_new_one() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        let task = d.path().join(".tmgr/task.md");
+        let prior = write_context(dir.raw_fd(), "new").unwrap();
+        assert!(matches!(prior, Prior::Created));
+        assert_eq!(fs::read_to_string(&task).unwrap(), "new");
+        restore(dir.raw_fd(), &prior);
+        assert!(!task.exists());
+
+        fs::write(&task, "keep").unwrap();
+        let prior = write_context(dir.raw_fd(), "new").unwrap();
+        assert_eq!(fs::read_to_string(&task).unwrap(), "new");
+        restore(dir.raw_fd(), &prior);
+        assert_eq!(fs::read_to_string(&task).unwrap(), "keep");
     }
 
     #[test]

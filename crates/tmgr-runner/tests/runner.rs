@@ -63,6 +63,7 @@ struct Harness {
     agents: PathBuf,
     cfg: PathBuf,
     real_home: Option<PathBuf>,
+    env: Vec<(String, String)>,
     runner: Option<Child>,
 }
 
@@ -104,6 +105,7 @@ impl Harness {
             agents,
             cfg,
             real_home: None,
+            env: Vec::new(),
             runner: None,
         }
     }
@@ -114,6 +116,7 @@ impl Harness {
         if let Some(home) = &self.real_home {
             cmd.env("HOME", home);
         }
+        cmd.envs(self.env.iter().cloned());
         let child = cmd
             .args(["runner", "serve"])
             .env("TMGR_RUNNER_DIR", &self.run)
@@ -1028,7 +1031,11 @@ const BUNDLE_TASK: TaskRef = TaskRef {
 
 impl Harness {
     fn bundled(&self, profile: &str) -> RunCreateReq {
-        let cwd = fs::canonicalize(&self.work).unwrap().display().to_string();
+        self.bundled_at(profile, &self.work)
+    }
+
+    fn bundled_at(&self, profile: &str, dir: &Path) -> RunCreateReq {
+        let cwd = fs::canonicalize(dir).unwrap().display().to_string();
         let bundle = RunBundle {
             v: 1,
             task: BUNDLE_TASK,
@@ -1940,4 +1947,150 @@ fn a_rejected_profile_keeps_its_secrets_directory_protected() {
     run.cwd = home.join("proj").display().to_string();
     let e = err_text(h.client().create_run(run));
     assert!(e.contains("overlaps the protected path"), "{e}");
+}
+
+fn create_held<T: Send + 'static>(
+    h: &Harness,
+    hold: &Path,
+    call: impl FnOnce(Client) -> T + Send + 'static,
+    meanwhile: impl FnOnce(),
+) -> T {
+    let reached = hold.with_extension("reached");
+    let _ = fs::remove_file(hold);
+    let _ = fs::remove_file(&reached);
+    let c = h.client();
+    let t = thread::spawn(move || call(c));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !reached.exists() {
+        assert!(
+            Instant::now() < deadline,
+            "the runner never reached the hold point"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+    meanwhile();
+    fs::write(hold, "").unwrap();
+    t.join().unwrap()
+}
+
+#[test]
+fn the_agent_starts_in_the_approved_directory_even_if_another_takes_its_path() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let hold = h.tmp.path().join("hold");
+    h.env.push((
+        "TMGR_TEST_HOLD_BEFORE_SPAWN".into(),
+        hold.display().to_string(),
+    ));
+    h.start(5000);
+    let approved = fs::canonicalize(&h.work).unwrap();
+    let away = h.tmp.path().join("a-away");
+    let mut r = h.req(&[
+        "/bin/sh",
+        "-c",
+        "printf 'PWD=%s\\n' \"$(pwd -P)\"; sleep 20",
+    ]);
+    r.cwd = approved.display().to_string();
+    let (from, to) = (approved.clone(), away.clone());
+    let info = create_held(
+        &h,
+        &hold,
+        move |mut c| c.create(r),
+        move || {
+            fs::rename(&from, &to).unwrap();
+            fs::create_dir(&from).unwrap();
+            fs::write(from.join("imposter"), "").unwrap();
+        },
+    );
+    match info {
+        Ok(info) => {
+            let mut w = Watch::new(h.client(), &[&info.id]);
+            w.wait(8, |w| {
+                w.has_line(&info.id, "PWD=") || w.has_line(&info.id, "denied")
+            });
+            let lines = w.text(&info.id);
+            let pwd = lines
+                .iter()
+                .find(|l| l.starts_with("PWD="))
+                .expect("no PWD");
+            let canon = fs::canonicalize(&away).unwrap();
+            assert_eq!(
+                pwd.trim_end(),
+                format!("PWD={}", canon.display()),
+                "{lines:?}"
+            );
+        }
+        Err(e) => assert!(e.to_string().contains("changed"), "{e}"),
+    }
+    assert!(!away.join("imposter").exists());
+}
+
+#[test]
+fn a_late_launch_failure_restores_the_previous_context() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.bundle_runner();
+    let hold = h.tmp.path().join("hold");
+    h.env.push((
+        "TMGR_TEST_HOLD_BEFORE_SPAWN".into(),
+        hold.display().to_string(),
+    ));
+    h.kill_runner();
+    h.start(5000);
+    let task = h.work.join(".tmgr/task.md");
+    let sessions = h.run.join("sessions");
+    let break_launch = move || {
+        for e in fs::read_dir(&sessions).unwrap().flatten() {
+            let _ = fs::remove_file(e.path().join("launch.json"));
+        }
+    };
+
+    let req = h.bundled("fake");
+    let failed = create_held(
+        &h,
+        &hold,
+        move |mut c| c.create_run(req),
+        break_launch.clone(),
+    );
+    assert!(failed.is_err());
+    assert!(!task.exists());
+    assert!(h.client().list().unwrap().is_empty());
+
+    fs::create_dir_all(h.work.join(".tmgr")).unwrap();
+    fs::write(&task, "keep").unwrap();
+    let req = h.bundled("fake");
+    let failed = create_held(&h, &hold, move |mut c| c.create_run(req), break_launch);
+    assert!(failed.is_err());
+    assert_eq!(fs::read_to_string(&task).unwrap(), "keep");
+}
+
+#[test]
+fn a_directory_is_reserved_by_identity_across_renames_and_both_create_paths() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.bundle_runner();
+    let first = h.client().create_run(h.bundled("fake")).unwrap();
+    let work = fs::canonicalize(&h.work).unwrap();
+    let renamed = h.tmp.path().join("renamed");
+    fs::rename(&work, &renamed).unwrap();
+
+    let again = h.bundled_at("fake", &renamed);
+    let e = err_text(h.client().create_run(again));
+    assert!(e.starts_with("busy: "), "{e}");
+    let mut plain = h.req(&["/bin/sh", "-c", "sleep 5"]);
+    plain.cwd = renamed.display().to_string();
+    let e = err_text(h.client().create(plain));
+    assert!(e.starts_with("busy: "), "{e}");
+
+    fs::create_dir(&work).unwrap();
+    fs::copy(renamed.join("fake-agent.sh"), work.join("fake-agent.sh")).unwrap();
+    h.client().create_run(h.bundled("fake")).unwrap();
+    assert_eq!(h.client().list().unwrap().len(), 2);
+    assert_ne!(first.id, h.client().list().unwrap()[1].id);
 }

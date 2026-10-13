@@ -65,6 +65,8 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     res
 }
 
+pub const SHIM_CWD_FD: i32 = 3;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LaunchFile {
     pub argv: Vec<String>,

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs::DirBuilder;
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 
 pub struct SandboxSpec {
@@ -14,6 +14,7 @@ pub struct SandboxSpec {
     pub env_pass: Vec<String>,
     pub base_env: Vec<(String, String)>,
     pub grants: Grants,
+    pub cwd_id: Option<(u64, u64)>,
 }
 
 #[derive(Default)]
@@ -28,6 +29,7 @@ pub struct Launch {
     pub argv: Vec<String>,
     pub env: Vec<(String, String)>,
     pub cwd: PathBuf,
+    pub notes: Vec<String>,
 }
 
 const ENV_COPY: &[&str] = &[
@@ -140,6 +142,27 @@ pub fn home_deny_paths(real_home: &Path) -> Vec<PathBuf> {
 
 pub fn overlaps(a: &Path, b: &Path) -> bool {
     a.starts_with(b) || b.starts_with(a)
+}
+
+pub fn drop_overlapping(
+    grants: Vec<PathBuf>,
+    deny: &[PathBuf],
+    notes: &mut Vec<String>,
+) -> Vec<PathBuf> {
+    grants
+        .into_iter()
+        .filter(|g| match deny.iter().find(|d| overlaps(g, d)) {
+            Some(d) => {
+                notes.push(format!(
+                    "implicit read grant {} dropped: it overlaps the protected path {}",
+                    g.display(),
+                    d.display()
+                ));
+                false
+            }
+            None => true,
+        })
+        .collect()
 }
 
 fn env_name_valid(name: &str) -> bool {
@@ -260,6 +283,9 @@ fn xcrun_cache_prefix() -> Option<String> {
 
 struct Plan {
     cwd: PathBuf,
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    cwd_id: (u64, u64),
+    notes: Vec<String>,
     paths: PolicyPaths,
     env: Vec<(String, String)>,
 }
@@ -301,8 +327,18 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
         .cwd
         .canonicalize()
         .map_err(|e| format!("cwd {} is not usable: {e}", spec.cwd.display()))?;
-    if !cwd.is_dir() {
+    let cwd_meta = cwd
+        .metadata()
+        .map_err(|e| format!("cwd {} is not usable: {e}", cwd.display()))?;
+    if !cwd_meta.is_dir() {
         return Err(format!("cwd {} is not a directory", cwd.display()));
+    }
+    let cwd_id = (cwd_meta.dev(), cwd_meta.ino());
+    if spec.cwd_id.is_some_and(|id| id != cwd_id) {
+        return Err(format!(
+            "cwd {} changed after validation; the run does not start",
+            cwd.display()
+        ));
     }
     let real_home = canon_lossy(&spec.real_home);
     let runner_dir = canon_lossy(&spec.runner_dir);
@@ -364,10 +400,13 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
     let tmp = home.join("tmp");
 
     let mut read = vec![cwd.clone(), home.clone()];
-    for rel in HOME_READ {
-        if let Ok(c) = real_home.join(rel).canonicalize() {
-            push_unique(&mut read, c);
-        }
+    let mut notes = Vec::new();
+    let toolchains = HOME_READ
+        .iter()
+        .filter_map(|rel| real_home.join(rel).canonicalize().ok())
+        .collect();
+    for c in drop_overlapping(toolchains, &deny, &mut notes) {
+        push_unique(&mut read, c);
     }
     for extra in &spec.grants.extra_read {
         let c = canon_lossy(extra);
@@ -400,6 +439,8 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
     let env = build_env(spec, &home, &tmp)?;
     Ok(Plan {
         cwd,
+        cwd_id,
+        notes,
         paths: PolicyPaths {
             real_home,
             runner_dir,
@@ -548,6 +589,7 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
         argv,
         env: plan.env,
         cwd: plan.cwd,
+        notes: plan.notes,
     })
 }
 
@@ -558,7 +600,15 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
     if !tmgr_ipc::proto::valid_session_id(&spec.session_id) {
         return Err("invalid session id".into());
     }
-    let plan = plan(spec)?;
+    let mut plan = plan(spec)?;
+    let system_read = drop_overlapping(
+        linux::SYSTEM_READ
+            .iter()
+            .filter_map(|p| Path::new(p).canonicalize().ok())
+            .collect(),
+        &plan.paths.deny,
+        &mut plan.notes,
+    );
     let dir = plan
         .paths
         .runner_dir
@@ -568,8 +618,12 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
     let policy = dir.join("sandbox.json");
     let body = serde_json::json!({
         "cwd": plan.cwd,
+        "cwd_dev": plan.cwd_id.0,
+        "cwd_ino": plan.cwd_id.1,
         "read": plan.paths.read,
         "write": plan.paths.write,
+        "system_read": system_read,
+        "deny": plan.paths.deny,
     });
     let mut f = std::fs::OpenOptions::new()
         .write(true)
@@ -591,6 +645,7 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
         argv,
         env: plan.env,
         cwd: plan.cwd,
+        notes: plan.notes,
     })
 }
 
@@ -607,12 +662,12 @@ mod linux {
         RulesetCreatedAttr, RulesetStatus, Scope, ABI,
     };
     use serde::Deserialize;
-    use std::os::fd::{AsFd, AsRawFd, RawFd};
+    use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
     use std::os::unix::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
 
-    const SYSTEM_READ: &[&str] = &[
+    pub(super) const SYSTEM_READ: &[&str] = &[
         "/usr",
         "/bin",
         "/sbin",
@@ -642,8 +697,12 @@ mod linux {
     #[derive(Deserialize)]
     struct Policy {
         cwd: String,
+        cwd_dev: u64,
+        cwd_ino: u64,
         read: Vec<String>,
         write: Vec<String>,
+        system_read: Vec<String>,
+        deny: Vec<String>,
     }
 
     fn open_exact(p: &Path) -> Result<PathFd, String> {
@@ -690,7 +749,7 @@ mod linux {
         v.clamp(0, i32::MAX as libc::c_long) as i32
     }
 
-    fn restrict(policy: &Policy, tier: LandlockTier) -> Result<(), String> {
+    fn restrict(policy: &Policy, tier: LandlockTier, cwd_fd: &OwnedFd) -> Result<(), String> {
         let abi = match tier {
             LandlockTier::V6 => ABI::V6,
             LandlockTier::V9 => ABI::V9,
@@ -707,11 +766,16 @@ mod linux {
             .map_err(|e| err(&e))?
             .create()
             .map_err(|e| err(&e))?;
-        let grants = SYSTEM_READ
+        rs = rs
+            .add_rule(PathBeneath::new(cwd_fd, all))
+            .map_err(|e| err(&e))?;
+        let grants = policy
+            .system_read
             .iter()
-            .map(|p| (p.to_string(), read, false))
+            .map(|p| (p.clone(), read, false))
             .chain(policy.read.iter().map(|p| (p.clone(), read, true)))
             .chain(policy.write.iter().map(|p| (p.clone(), all, true)))
+            .filter(|(p, _, _)| *p != policy.cwd)
             .chain(DEV_RW.iter().map(|p| (p.to_string(), all, false)));
         for (path, rights, exact) in grants {
             let p = Path::new(&path);
@@ -744,15 +808,43 @@ mod linux {
         Ok(())
     }
 
-    fn enter_cwd(cwd: &str) -> Result<(), String> {
+    fn open_cwd(policy: &Policy) -> Result<OwnedFd, String> {
         let err = |e: &dyn std::fmt::Display| format!("tmgr: sandbox setup failed: {e}");
-        std::env::set_current_dir(cwd).map_err(|e| err(&e))?;
-        let got = std::env::current_dir().map_err(|e| err(&e))?;
-        if got != Path::new(cwd) {
+        let fd = unsafe {
+            libc::open(
+                c".".as_ptr(),
+                libc::O_PATH | libc::O_DIRECTORY | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            return Err(err(&std::io::Error::last_os_error()));
+        }
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        if unsafe { libc::fstat(fd.as_raw_fd(), &mut st) } != 0 {
+            return Err(err(&std::io::Error::last_os_error()));
+        }
+        if (st.st_dev, st.st_ino) != (policy.cwd_dev, policy.cwd_ino) {
             return Err(format!(
-                "tmgr: sandbox setup failed: working directory {cwd} resolves to {}; the path changed after validation, the run does not start",
-                got.display()
+                "tmgr: sandbox setup failed: the working directory is not {}; it changed after validation, the run does not start",
+                policy.cwd
             ));
+        }
+        Ok(fd)
+    }
+
+    fn refuse_granted_deny_roots(policy: &Policy) -> Result<(), String> {
+        let roots = policy
+            .read
+            .iter()
+            .chain(&policy.write)
+            .chain(&policy.system_read);
+        for root in roots {
+            if let Some(d) = policy.deny.iter().find(|d| Path::new(d).starts_with(root)) {
+                return Err(format!(
+                    "tmgr: sandbox setup failed: granted root {root} contains the protected path {d}; the run does not start"
+                ));
+            }
         }
         Ok(())
     }
@@ -775,11 +867,17 @@ mod linux {
                 return 78;
             }
         };
-        if let Err(m) = enter_cwd(&policy.cwd) {
-            eprintln!("{m}");
-            return 78;
-        }
-        if let Err(m) = restrict(&policy, tier) {
+        let cwd_fd = match open_cwd(&policy).and_then(|fd| {
+            refuse_granted_deny_roots(&policy)?;
+            Ok(fd)
+        }) {
+            Ok(fd) => fd,
+            Err(m) => {
+                eprintln!("{m}");
+                return 78;
+            }
+        };
+        if let Err(m) = restrict(&policy, tier, &cwd_fd) {
             eprintln!("{m}");
             return 78;
         }
@@ -850,6 +948,7 @@ mod tests {
             env_pass: vec![],
             base_env: vec![],
             grants: Default::default(),
+            cwd_id: None,
         };
         Fx { _t: t, spec }
     }
@@ -983,6 +1082,48 @@ mod tests {
         let mut f = fx();
         f.spec.grants.extra_read = vec![f.spec.real_home.join(".ssh/x")];
         assert!(refusal(&f).contains("protected"));
+    }
+
+    #[test]
+    fn overlapping_implicit_grants_are_dropped_and_reported() {
+        let mut notes = Vec::new();
+        let grants = vec![
+            PathBuf::from("/h/.local/share/mise"),
+            PathBuf::from("/h/.cargo/bin"),
+            PathBuf::from("/h/.rustup"),
+        ];
+        let deny = vec![
+            PathBuf::from("/h/.local/share/mise/private"),
+            PathBuf::from("/h"),
+            PathBuf::from("/other"),
+        ];
+        let kept = drop_overlapping(grants, &deny[..1], &mut notes);
+        assert_eq!(
+            kept,
+            vec![PathBuf::from("/h/.cargo/bin"), PathBuf::from("/h/.rustup")]
+        );
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("/h/.local/share/mise"), "{notes:?}");
+        assert!(drop_overlapping(vec![PathBuf::from("/h/.rustup")], &deny, &mut notes).is_empty());
+    }
+
+    #[test]
+    fn a_secrets_directory_inside_a_toolchain_root_drops_that_grant() {
+        let mut f = fx();
+        let home = f.spec.real_home.clone();
+        let mise = home.join(".local/share/mise");
+        let cargo = home.join(".cargo/bin");
+        fs::create_dir_all(mise.join("private")).unwrap();
+        fs::create_dir_all(&cargo).unwrap();
+        f.spec.grants.deny = vec![mise.join("private")];
+        let pl = plan(&f.spec).unwrap();
+        assert!(!pl.paths.read.contains(&mise.canonicalize().unwrap()));
+        assert!(pl.paths.read.contains(&cargo.canonicalize().unwrap()));
+        assert!(
+            pl.notes.iter().any(|n| n.contains("mise")),
+            "{:?}",
+            pl.notes
+        );
     }
 
     #[test]
@@ -1210,6 +1351,20 @@ mod tests {
         assert_eq!(fs::metadata(pol).unwrap().mode() & 0o777, 0o600);
         let v: serde_json::Value = serde_json::from_slice(&fs::read(pol).unwrap()).unwrap();
         assert_eq!(v["write"].as_array().unwrap().len(), 2);
+        assert!(v["deny"].as_array().unwrap().len() >= 2);
+        assert!(v["cwd_ino"].as_u64().unwrap() > 0);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_policy_drops_system_roots_that_contain_a_protected_path() {
+        let mut f = fx();
+        f.spec.grants.deny = vec![PathBuf::from("/usr/share/tmgr-protected")];
+        let l = prepare(&f.spec).unwrap();
+        assert!(l.notes.iter().any(|n| n.contains("/usr")), "{:?}", l.notes);
+        let v: serde_json::Value = serde_json::from_slice(&fs::read(&l.argv[2]).unwrap()).unwrap();
+        let sys = v["system_read"].as_array().unwrap();
+        assert!(!sys.iter().any(|p| p == "/usr"), "{sys:?}");
     }
 
     #[cfg(target_os = "linux")]

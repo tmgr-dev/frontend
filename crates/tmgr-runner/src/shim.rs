@@ -1,4 +1,4 @@
-use crate::wire::{now_ms, LaunchFile, Slot};
+use crate::wire::{now_ms, LaunchFile, Slot, SHIM_CWD_FD};
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize};
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -360,7 +360,24 @@ pub fn shim_main(dir: &Path, id: &str) -> i32 {
     }
 }
 
+fn enter_launch_dir() -> io::Result<()> {
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstat(SHIM_CWD_FD, &mut st) } != 0
+        || st.st_mode & libc::S_IFMT != libc::S_IFDIR
+    {
+        return Err(io::Error::other("the launch directory was not handed over"));
+    }
+    let res = unsafe { libc::fchdir(SHIM_CWD_FD) };
+    let err = io::Error::last_os_error();
+    unsafe { libc::close(SHIM_CWD_FD) };
+    if res != 0 {
+        return Err(err);
+    }
+    Ok(())
+}
+
 fn run(dir: &Path, id: &str) -> io::Result<()> {
+    enter_launch_dir()?;
     let sdir = dir.join("sessions").join(id);
     let launch_path = sdir.join("launch.json");
     let launch_bytes = fs::read(&launch_path)?;
@@ -383,7 +400,7 @@ fn run(dir: &Path, id: &str) -> io::Result<()> {
     for (k, v) in &launch.env {
         cmd.env(k, v);
     }
-    cmd.cwd(&launch.cwd);
+    cmd.cwd(".");
     let child = pair.slave.spawn_command(cmd).map_err(io::Error::other)?;
     drop(pair.slave);
     let child_pid = child

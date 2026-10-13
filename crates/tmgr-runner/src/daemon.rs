@@ -9,6 +9,7 @@ use crate::t0::{self, Detector};
 use crate::trust;
 use crate::wire::{
     clamp_size, now_ms, screen_pushes, write_atomic, LaunchFile, Slot, MAX_INPUT, SCROLLBACK,
+    SHIM_CWD_FD,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -16,8 +17,8 @@ use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
-use std::os::fd::{AsRawFd, RawFd};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -125,6 +126,21 @@ pub fn landlock_abi() -> i32 {
     i32::MAX
 }
 
+#[cfg(debug_assertions)]
+fn hold_before_spawn() {
+    let Some(go) = std::env::var_os("TMGR_TEST_HOLD_BEFORE_SPAWN").map(PathBuf::from) else {
+        return;
+    };
+    let _ = fs::write(go.with_extension("reached"), "");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !go.exists() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn hold_before_spawn() {}
+
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -201,6 +217,10 @@ struct Meta {
     bundle_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     origin: Option<Origin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    cwd_id: Option<(u64, u64)>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    bundled: bool,
 }
 
 struct Inner {
@@ -309,6 +329,15 @@ impl Session {
             bundle_sha256: m.bundle_sha256.clone(),
             origin: m.origin.clone(),
         }
+    }
+
+    fn holds_cwd(&self, id: (u64, u64)) -> Option<bool> {
+        let i = lock(&self.inner);
+        let held = i
+            .meta
+            .cwd_id
+            .or_else(|| fs::metadata(&i.meta.cwd).ok().map(|m| (m.dev(), m.ino())));
+        (held == Some(id)).then_some(i.meta.bundled)
     }
 
     fn is_exited(&self) -> bool {
@@ -1088,21 +1117,29 @@ impl Runner {
                 "cwd changed after the bundle was checked",
             ));
         }
+        let opened;
+        let dir = match dir {
+            Some(d) => d,
+            None => {
+                opened = bundle::open_path(cwd.clone()).map_err(|(code, m)| api(code, m))?;
+                &opened
+            }
+        };
         let _g = lock(&self.create_lock);
         if let Some((o, model)) = origin {
-            self.check_origin(o, model, &req, dir)?;
+            self.check_origin(o, model, &req, Some(dir))?;
         }
         {
             let sessions = lock(&self.sessions);
             if sessions.len() >= self.cfg.max_sessions {
                 return Err(api(ErrorCode::Limit, "too many sessions"));
             }
-            let want = cwd.display().to_string();
-            if bundle.is_some()
-                && sessions
-                    .values()
-                    .any(|s| !s.is_exited() && s.info().cwd == want)
-            {
+            let id = dir.id();
+            if sessions.values().any(|s| {
+                !s.is_exited()
+                    && s.holds_cwd(id)
+                        .is_some_and(|their_bundle| bundle.is_some() || their_bundle)
+            }) {
                 return Err(api(
                     ErrorCode::Busy,
                     "another session is running in this directory",
@@ -1112,15 +1149,19 @@ impl Runner {
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
+        let mut installed = None;
         let result = self.spawn_session(
             &req,
             &cwd,
             matcher,
             &id,
             (&sdir, &home),
-            (bundle, dir, origin.map(|(o, _)| o)),
+            (bundle, dir, origin.map(|(o, _)| o), &mut installed),
         );
         if result.is_err() {
+            if let Some(prior) = &installed {
+                bundle::restore(dir.raw_fd(), prior);
+            }
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
         }
@@ -1134,10 +1175,11 @@ impl Runner {
         matcher: Option<Matcher>,
         id: &str,
         (sdir, home): (&Path, &Path),
-        (bundle, dir, origin): (
+        (bundle, dir, origin, installed): (
             Option<&bundle::Checked>,
-            Option<&bundle::Dir>,
+            &bundle::Dir,
             Option<&Origin>,
+            &mut Option<bundle::Prior>,
         ),
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
@@ -1183,8 +1225,12 @@ impl Runner {
             env_pass: req.env_pass.clone(),
             base_env: base,
             grants,
+            cwd_id: Some(dir.id()),
         })
         .map_err(|e| api(ErrorCode::Sandbox, e))?;
+        for n in &launch.notes {
+            log(&format!("session {id}: {n}"));
+        }
         login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
@@ -1197,27 +1243,42 @@ impl Runner {
         let bytes = serde_json::to_vec(&lf).map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         write_atomic(&sdir.join("launch.json"), &bytes).map_err(internal)?;
         let adopt_secret = secret::write_new(&sdir.join("adopt.secret")).map_err(internal)?;
-        if let Some(d) = dir {
-            bundle::verify_cwd(d).map_err(|(code, m)| api(code, m))?;
-        }
+        bundle::verify_cwd(dir).map_err(|(code, m)| api(code, m))?;
         if let Some(b) = bundle {
-            bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?;
+            *installed = Some(bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?);
         }
+        hold_before_spawn();
         let log_file = OpenOptions::new()
             .create(true)
             .append(true)
             .mode(0o600)
             .open(sdir.join("shim.log"))
             .map_err(internal)?;
-        let mut child = Command::new(&self.cfg.self_exe)
+        let handover = unsafe { libc::fcntl(dir.raw_fd(), libc::F_DUPFD_CLOEXEC, 10) };
+        if handover < 0 {
+            return Err(internal(io::Error::last_os_error()));
+        }
+        let handover = unsafe { File::from_raw_fd(handover) };
+        let src = handover.as_raw_fd();
+        let mut shim_cmd = Command::new(&self.cfg.self_exe);
+        shim_cmd
             .arg("__shim")
             .arg(&self.cfg.dir)
             .arg(id)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(log_file)
-            .spawn()
-            .map_err(internal)?;
+            .stderr(log_file);
+        unsafe {
+            shim_cmd.pre_exec(move || {
+                if libc::dup2(src, SHIM_CWD_FD) < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            })
+        };
+        let spawned = shim_cmd.spawn();
+        drop(handover);
+        let mut child = spawned.map_err(internal)?;
         let shim_pid = child.id();
         let deadline = Instant::now() + Duration::from_secs(3);
         let adopted = loop {
@@ -1261,6 +1322,8 @@ impl Runner {
             task: req.task,
             bundle_sha256: bundle.map(|b| b.sha256.clone()),
             origin: origin.cloned(),
+            cwd_id: Some(dir.id()),
+            bundled: bundle.is_some(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

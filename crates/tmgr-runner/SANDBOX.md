@@ -46,8 +46,17 @@ Rules, checked when the profile loads and again at session start (a violation dr
   only those keys are written (compact JSON). Seeds are written 0600 into the per-run home.
 - the directory the agent profiles are loaded from (`TMGR_AGENTS_DIR`, `$XDG_CONFIG_HOME/tmgr/agents` or the default) and
   the directory of each profile's secrets file are protected like `~/.config/tmgr`: a session working directory that
-  contains or sits inside one is refused, and every session's sandbox denies them. Read grants must stay under the real
-  home; the Linux helper re-opens each root and refuses it if its path changed since validation.
+  contains or sits inside one is refused, and every session's sandbox denies them. The configured path counts as well
+  as its destination: every symlink you own on the way (a `TMGR_AGENTS_DIR` that is a symlink, a symlinked secrets
+  directory) is protected under its own name, so a session cannot sit where it could be replaced. The secrets locations
+  come from every profile file, also from one that is rejected for an invalid read root or seed, so rejecting a profile
+  never lifts the protection of its secrets. If a profile file cannot be parsed the inventory cannot be built and no
+  session starts until it is fixed. Read grants must stay under the real home; the Linux helper re-opens each root and
+  refuses it if its path changed since validation.
+- implicit read grants (the toolchain directories below and, on Linux, the system roots) that contain or overlap a
+  protected path are dropped and logged, because a read grant also covers everything below it; an explicit profile read
+  path that overlaps one is refused. The Linux helper gets the protected paths too and refuses to start if a granted
+  root contains one.
 - the secrets file is read by the runner, never by the sandbox (it lives under the denied `~/.config/tmgr`). It must be a
   regular file owned by the user, mode 0600 or stricter, not a symlink, at most 64 KiB, `NAME=VALUE` lines with `#`
   comments; empty values are ignored. Otherwise the session is refused with a `chmod 600` hint. Values are never logged,
@@ -124,6 +133,8 @@ command (exec failure: exit 127).
 - Toolchain directories are read-only: `cargo fetch`, `npm install -g` and similar that write there fail.
 - Terminals: the agent reaches its own PTY through inherited fds 0/1/2 and `/dev/tty`. Opening any other terminal device by path is denied (macOS: explicit deny on `/dev/ttys*`, `/dev/pty[p-w]*` and `/dev/tty[p-w]*`; Linux: no `/dev/pts` grant except the session's own slave). Consequence: PTYs the agent creates itself (`openpty`, `script`, `tmux`, pexpect) cannot open their slave by path and fail.
 - Private directories: the runner directory is trusted only if it, its canonical ancestors and every symlink component of the given path live in directories owned by root or the user that are not group/other-writable (unless sticky); there is no group-name exception, so on Ubuntu with umask 002 the fallback `~/.local/state/tmgr/run` is refused until `chmod g-w` or `TMGR_RUNNER_DIR` is set. The homes directory holds no secrets, so it gets only the final-directory checks (owner, 0700, not a symlink).
-- Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory must resolve to the policy `cwd`; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
+- Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory (handed over by the shim as a descriptor, not looked up by path) must be the directory with the
+  `st_dev`/`st_ino` the runner approved, and the Landlock rule for it is created from that same descriptor; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
+- macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).
 - The `tmgr` binary (`self_exe`) must not live inside the working dir or the per-run home; the run is refused otherwise.
 - Windows: not supported; `prepare` returns an error.

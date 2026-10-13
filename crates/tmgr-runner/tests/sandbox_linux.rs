@@ -211,6 +211,7 @@ fn launch_with(f: &Fx, script: &str, edit: impl FnOnce(&mut serde_json::Value)) 
         env_pass: vec![],
         base_env: vec![("PATH".into(), "/usr/bin:/bin".into())],
         grants: Default::default(),
+        cwd_id: None,
     };
     let l = prepare(&spec).expect("prepare");
     let pol = std::path::Path::new(&l.argv[2]);
@@ -221,7 +222,7 @@ fn launch_with(f: &Fx, script: &str, edit: impl FnOnce(&mut serde_json::Value)) 
         .args(&l.argv[1..])
         .env_clear()
         .envs(l.env.iter().cloned())
-        .current_dir(&f.cwd)
+        .current_dir(&spec.cwd)
         .stdin(Stdio::null())
         .output()
         .unwrap();
@@ -300,4 +301,55 @@ fn profile_directory_is_neither_readable_nor_writable() {
     assert!(!o.ok());
     assert_eq!(fs::read_to_string(agents.join("p.toml")).unwrap(), SECRET);
     assert!(!agents.join("new.toml").exists());
+}
+
+#[test]
+fn starting_in_another_directory_than_the_approved_one_is_refused() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    let sub = f.cwd.join("sub");
+    let other = f.cwd.join("other");
+    fs::create_dir_all(&sub).unwrap();
+    fs::create_dir_all(&other).unwrap();
+    let marker = f.cwd.join("marker");
+    let script = format!("echo ran > {}", f.path(&marker));
+    let o = launch_with(&f, &script, |v| {
+        let st = fs::metadata(&other).unwrap();
+        use std::os::unix::fs::MetadataExt;
+        v["cwd_ino"] = st.ino().into();
+        v["cwd_dev"] = st.dev().into();
+    });
+    assert_eq!(o.code, Some(78), "{} {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr.contains("changed after validation"),
+        "{}",
+        o.stderr
+    );
+    assert!(!marker.exists());
+}
+
+#[test]
+fn a_granted_root_that_contains_a_protected_path_refuses_to_start() {
+    let f = fx();
+    if !landlock_usable(&f) {
+        return;
+    }
+    fs::create_dir_all(f.cwd.join("sub")).unwrap();
+    let marker = f.cwd.join("marker");
+    let script = format!("echo ran > {}", f.path(&marker));
+    let secret_dir = f.real_home.join(".ssh").display().to_string();
+    let root = f.real_home.display().to_string();
+    let o = launch_with(&f, &script, |v| {
+        v["read"].as_array_mut().unwrap().push(root.into());
+        v["deny"].as_array_mut().unwrap().push(secret_dir.into());
+    });
+    assert_eq!(o.code, Some(78), "{} {}", o.stdout, o.stderr);
+    assert!(
+        o.stderr.contains("contains the protected path"),
+        "{}",
+        o.stderr
+    );
+    assert!(!marker.exists());
 }

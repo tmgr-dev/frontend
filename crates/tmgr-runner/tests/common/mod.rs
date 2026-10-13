@@ -90,6 +90,7 @@ impl Fx {
                 deny: self.deny.clone(),
                 ..Default::default()
             },
+            cwd_id: None,
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])
@@ -122,6 +123,7 @@ impl Fx {
                 deny: self.deny.clone(),
                 ..Default::default()
             },
+            cwd_id: None,
         };
         let l = prepare(&spec).expect("prepare");
         let pair = native_pty_system().openpty(pty_size()).unwrap();
