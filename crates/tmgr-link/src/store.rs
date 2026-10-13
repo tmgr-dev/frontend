@@ -86,6 +86,14 @@ pub struct Follower {
     pub added: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenEnrollment {
+    pub generation: u64,
+    pub enrollment: String,
+}
+
+const MAX_HISTORY: usize = 64;
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Store {
@@ -95,6 +103,8 @@ pub struct Store {
     pub generation_seq: u64,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub generations: BTreeMap<String, u64>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub generation_enrollments: BTreeMap<String, Vec<GenEnrollment>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub leaders: BTreeMap<String, Leader>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -150,11 +160,36 @@ impl Store {
         Ok(out)
     }
 
-    pub(crate) fn bump_generation(&mut self, link: &str) -> u64 {
+    pub(crate) fn bump_generation(&mut self, link: &str, enrollment: &str) -> u64 {
         self.generation_seq += 1;
         self.generations
             .insert(link.to_string(), self.generation_seq);
+        let history = self
+            .generation_enrollments
+            .entry(link.to_string())
+            .or_default();
+        history.push(GenEnrollment {
+            generation: self.generation_seq,
+            enrollment: enrollment.to_string(),
+        });
+        if history.len() > MAX_HISTORY {
+            let drop = history.len() - MAX_HISTORY;
+            history.drain(..drop);
+        }
         self.generation_seq
+    }
+
+    pub fn enrollment_of(&self, link: &str, generation: u64) -> Option<String> {
+        if let Some(e) = self
+            .generation_enrollments
+            .get(link)
+            .and_then(|h| h.iter().find(|g| g.generation == generation))
+        {
+            return Some(e.enrollment.clone());
+        }
+        (generation == self.generation(link))
+            .then(|| self.leaders.get(link).map(|l| l.enrollment.clone()))
+            .flatten()
     }
 
     pub fn generation(&self, link: &str) -> u64 {
@@ -248,7 +283,7 @@ mod tests {
         let paths = Paths::under(d.path());
         Store::update(&paths, |s| {
             s.leaders.insert("laptop".into(), leader());
-            s.bump_generation("laptop");
+            s.bump_generation("laptop", "e1");
             Ok(())
         })
         .unwrap();

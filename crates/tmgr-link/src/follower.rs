@@ -239,7 +239,7 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
         }),
     )?;
     let edit = authkeys::upsert(&plan.target, &plan.name, &plan.line, &plan.key)?;
-    store.bump_generation(&plan.name);
+    store.bump_generation(&plan.name, &plan.enrollment);
     store.leaders.insert(
         plan.name.clone(),
         Leader {
@@ -351,7 +351,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Err(Error::not_found(format!("no leader named {}", plan.name)));
     };
     leader.scope = plan.new.clone();
-    store.bump_generation(&plan.name);
+    store.bump_generation(&plan.name, &plan.enrollment);
     if let Err(e) = store.save(paths) {
         let rolled = rollback(paths, &plan.name, edit.as_ref(), true);
         return Err(rolled.err().unwrap_or(e));
@@ -362,7 +362,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
             if let Some(l) = store.leaders.get_mut(&plan.name) {
                 l.scope = plan.old.clone();
             }
-            store.bump_generation(&plan.name);
+            store.bump_generation(&plan.name, &plan.enrollment);
             let saved = store.save(paths);
             let rolled = rollback(paths, &plan.name, edit.as_ref(), saved.is_ok());
             return Err(rolled.err().unwrap_or(e));
@@ -382,6 +382,9 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     let _lock = crate::store::lock_links(paths)?;
     let mut store = Store::load(paths)?;
     let pending = is_pending(paths, name);
+    if let Some(l) = store.leaders.get(name) {
+        crate::tombstone::record(paths, name, &l.enrollment, store.generation(name))?;
+    }
     store.generations.remove(name);
     let leader = match store.leaders.remove(name) {
         Some(l) => Some(l),
@@ -429,12 +432,37 @@ pub struct Contained {
     pub runs_halted: usize,
     pub runs_known: usize,
     pub halt_failed: usize,
+    pub runs_surviving: usize,
     pub runs_unreadable: bool,
+    pub tombstones: usize,
 }
 
 impl Contained {
     pub fn incomplete(&self) -> bool {
-        self.halt_failed > 0 || self.workers.survivors > 0 || self.runs_unreadable
+        self.halt_failed > 0
+            || self.runs_surviving > 0
+            || self.workers.survivors > 0
+            || self.runs_unreadable
+    }
+}
+
+fn survivors(backend: &mut dyn crate::runner::Backend, link: &str, cutoff: u64) -> Option<usize> {
+    let end = std::time::Instant::now() + std::time::Duration::from_secs(3);
+    loop {
+        let listed = backend.list().ok()?;
+        let alive = listed
+            .iter()
+            .filter(|s| {
+                s.state.kind != tmgr_ipc::api::StateKind::Exited
+                    && s.origin
+                        .as_ref()
+                        .is_some_and(|o| o.link == link && o.generation <= cutoff)
+            })
+            .count();
+        if alive == 0 || std::time::Instant::now() >= end {
+            return Some(alive);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -445,41 +473,76 @@ pub fn contain(
     halt: bool,
 ) -> Result<Contained> {
     grammar::link_name(name)?;
+    let tombs = crate::tombstone::for_link(paths, name)?;
+    let revoked: Vec<String> = tombs.iter().map(|t| t.enrollment.clone()).collect();
+    let cutoff = tombs.iter().map(|t| t.generation).max();
+    let current = Store::load(paths)?
+        .leaders
+        .get(name)
+        .map(|l| l.enrollment.clone());
+    let ours = |enrollment: &str| {
+        if revoked.is_empty() {
+            current.as_deref() != Some(enrollment)
+        } else {
+            revoked.iter().any(|e| e == enrollment)
+        }
+    };
     let runs = crate::ownership::Runs::lock_lenient(paths)?;
-    let workers = crate::registry::terminate(paths, name, std::time::Duration::from_secs(3))?;
+    let workers =
+        crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours)?;
     let records: Vec<String> = runs
         .of_link(name)
         .into_iter()
+        .filter(|r| ours(&r.enrollment))
         .map(|r| r.run.clone())
         .collect();
     let mut out = Contained {
         workers,
         runs_known: records.len(),
         runs_unreadable: runs.is_damaged(),
+        tombstones: tombs.len(),
         ..Contained::default()
     };
-    if let (Some(backend), true) = (backend, halt) {
-        let generation = Store::load(paths).map_or(u64::MAX, |s| s.generation_seq);
-        match backend.origin_revoke(name, generation) {
-            Ok(killed) => out.runs_halted += killed as usize,
-            Err(_) => out.halt_failed += 1,
-        }
-        if !out.runs_unreadable {
-            match backend.list() {
-                Ok(listed) => {
-                    for run in &records {
-                        let without_origin =
-                            listed.iter().any(|s| s.id == *run && s.origin.is_none());
-                        if without_origin {
-                            match crate::runs::stop_run(backend, run) {
-                                Ok("already") => {}
-                                Ok(_) => out.runs_halted += 1,
-                                Err(_) => out.halt_failed += 1,
+    if halt {
+        match backend {
+            None => out.halt_failed += 1,
+            Some(backend) => {
+                let mut revoked_ok = cutoff.is_none();
+                if let Some(cutoff) = cutoff {
+                    match backend.origin_revoke(name, cutoff) {
+                        Ok(killed) => {
+                            out.runs_halted += killed as usize;
+                            revoked_ok = true;
+                            match survivors(backend, name, cutoff) {
+                                Some(n) => out.runs_surviving = n,
+                                None => out.halt_failed += 1,
                             }
                         }
+                        Err(_) => out.halt_failed += 1,
                     }
                 }
-                Err(_) => out.halt_failed += 1,
+                if !out.runs_unreadable {
+                    match backend.list() {
+                        Ok(listed) => {
+                            for run in &records {
+                                let uncovered = listed.iter().any(|s| {
+                                    s.id == *run && (s.origin.is_none() || cutoff.is_none())
+                                });
+                                if uncovered {
+                                    match crate::runs::stop_run(backend, run) {
+                                        Ok("already") => {}
+                                        Ok(_) => out.runs_halted += 1,
+                                        Err(_) => out.halt_failed += 1,
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => out.halt_failed += 1,
+                    }
+                }
+                if revoked_ok && !out.incomplete() && !revoked.is_empty() {
+                    crate::tombstone::retire(paths, name, &revoked)?;
+                }
             }
         }
     }
@@ -493,7 +556,9 @@ pub fn contain(
             "runs_known": out.runs_known,
             "runs_halted": out.runs_halted,
             "halt_failed": out.halt_failed,
+            "runs_surviving": out.runs_surviving,
             "runs_unreadable": out.runs_unreadable,
+            "cutoff_generation": cutoff,
         }),
     )?;
     Ok(out)

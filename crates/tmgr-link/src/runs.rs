@@ -168,8 +168,8 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
         Ok(l) => l,
         Err(e) => return failed(conn, "runs.list", args, id, &e),
     };
-    if let Ok(Ok((_, generation))) = conn.current_gen() {
-        adopt(conn, &mut runs, &listed, generation);
+    if let Ok(store) = crate::store::Store::load(conn.paths) {
+        adopt(conn, &mut runs, &listed, &store);
     }
     let existing: Vec<String> = listed.iter().map(|s| s.id.clone()).collect();
     let _ = runs.retain_existing(&existing);
@@ -181,10 +181,11 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
     Step::Reply(proto::ok(id, json!({"runs": mine})))
 }
 
-fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], generation: u64) {
+fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], store: &crate::store::Store) {
     for s in listed {
         let ours = s.origin.as_ref().is_some_and(|o| {
-            o.link == conn.name && o.generation == generation && s.state.kind != StateKind::Exited
+            o.link == conn.name
+                && store.enrollment_of(&o.link, o.generation).as_deref() == Some(conn.enrollment)
         });
         if ours && !runs.recorded(&s.id) {
             let _ = runs.record(RunRecord {
@@ -399,7 +400,9 @@ fn create(
         Ok(l) => l,
         Err(e) => return failed(conn, method, args, id, &e),
     };
-    adopt(conn, &mut runs, &listed, generation);
+    if let Ok(store) = crate::store::Store::load(conn.paths) {
+        adopt(conn, &mut runs, &listed, &store);
+    }
     let exited: Vec<String> = listed
         .iter()
         .filter(|s| {

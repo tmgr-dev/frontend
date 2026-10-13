@@ -307,7 +307,25 @@ fn revoke_is_always_allowed_and_audited() {
         .args(["link", "revoke", "laptop"])
         .output()
         .unwrap();
-    assert_eq!(again.status.code(), Some(3));
+    assert_eq!(again.status.code(), Some(0), "{}", err_text(&again));
+    let unknown = f
+        .tmgr()
+        .args(["link", "revoke", "never-trusted"])
+        .output()
+        .unwrap();
+    assert_eq!(unknown.status.code(), Some(3));
+    let retry_halt = f
+        .tmgr()
+        .args(["link", "revoke", "laptop", "--halt-runs"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        retry_halt.status.code(),
+        Some(1),
+        "{}",
+        err_text(&retry_halt)
+    );
+    assert!(err_text(&retry_halt).contains("containment incomplete"));
     let bad = f
         .tmgr()
         .args(["link", "revoke", "Bad Name"])

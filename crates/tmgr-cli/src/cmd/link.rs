@@ -364,7 +364,10 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             .map(|c| c as &mut dyn tmgr_link::runner::Backend),
         a.halt_runs,
     )?;
-    let nothing_else = contained.workers.signalled + contained.workers.stale + contained.runs_known;
+    let nothing_else = contained.workers.signalled
+        + contained.workers.stale
+        + contained.runs_known
+        + contained.tombstones;
     let r = match revoked {
         Ok(r) => Some(r),
         Err(e) if e.exit_code() == 3 && nothing_else > 0 => None,
@@ -381,13 +384,18 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
         problems
             .push("the link runs file is unreadable, so its runs could not be checked".to_string());
     }
-    if a.halt_runs && runner.is_none() && contained.runs_known > 0 {
-        problems.push("the runner is not reachable, so the runs were not halted".to_string());
-    }
-    if contained.halt_failed > 0 {
+    if a.halt_runs && runner.is_none() {
+        problems.push("the runner is not reachable, so its runs were not halted".to_string());
+    } else if contained.halt_failed > 0 {
         problems.push(format!(
             "{} run(s) could not be halted",
             contained.halt_failed
+        ));
+    }
+    if contained.runs_surviving > 0 {
+        problems.push(format!(
+            "{} run(s) of this link are still running after origin.revoke",
+            contained.runs_surviving
         ));
     }
     if !problems.is_empty() {
@@ -425,6 +433,7 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             "runs_halted": contained.runs_halted,
             "runs_known": contained.runs_known,
             "halt_failed": contained.halt_failed,
+            "runs_surviving": contained.runs_surviving,
             "runs_unreadable": contained.runs_unreadable,
         }),
         format!(

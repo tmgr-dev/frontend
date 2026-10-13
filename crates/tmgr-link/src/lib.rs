@@ -15,6 +15,7 @@ pub mod scope;
 pub mod sshd;
 pub mod store;
 pub mod taskref;
+pub mod tombstone;
 pub mod worker;
 
 use tmgr_core::error::{Error, Kind};

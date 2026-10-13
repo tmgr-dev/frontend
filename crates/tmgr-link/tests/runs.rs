@@ -31,6 +31,8 @@ struct FakeState {
     exit_on: Option<&'static str>,
     lose_create_reply: bool,
     link_changed_once: bool,
+    revoke_fails: bool,
+    revoke_noop: bool,
     revokes: Vec<(String, u64)>,
     refuse_create: Option<&'static str>,
     next: u32,
@@ -131,6 +133,12 @@ impl Backend for Fake {
         let mut s = self.0.lock().unwrap();
         s.calls.push("origin.revoke".into());
         s.revokes.push((link.to_string(), generation));
+        if s.revoke_fails {
+            return Err(BackendError::Unavailable("gone".into()));
+        }
+        if s.revoke_noop {
+            return Ok(0);
+        }
         let mut killed = 0;
         for sess in s.sessions.iter_mut() {
             let hit = sess
@@ -840,6 +848,7 @@ fn contain_halts_the_runs_of_that_link_only_and_keeps_others() {
     let a = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
     let b = session(&w, "phone", E2, &fake, &[create(&w, json!({}))]);
     let (a, b) = (run_id(&a[0]), run_id(&b[0]));
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
     let mut backend = fake.clone();
     let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
     assert_eq!(out.runs_halted, 1);
@@ -854,7 +863,6 @@ fn contain_halts_the_runs_of_that_link_only_and_keeps_others() {
         .collect();
     assert_eq!(live, std::slice::from_ref(&b));
     assert_ne!(a, b);
-    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
     let labels = tmgr_link::ownership::origin_labels(&w.paths);
     assert_eq!(labels[&a], "link:laptop (revoked)");
     assert_eq!(labels[&b], "link:phone");
@@ -978,6 +986,7 @@ fn contain_with_halt_asks_the_runner_to_kill_by_origin() {
     let a = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
     let b = session(&w, "phone", E2, &fake, &[create(&w, json!({}))]);
     let (a, b) = (run_id(&a[0]), run_id(&b[0]));
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
     let mut backend = fake.clone();
     let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
     assert_eq!(out.runs_halted, 1);
@@ -1037,4 +1046,153 @@ fn resizing_after_the_scope_narrowed_closes_the_stream() {
     assert!(matches!(l.next(&id), Some(Incoming::Closed(_))));
     l.finish();
     assert!(fake.0.lock().unwrap().attach_resizes.is_empty());
+}
+
+#[test]
+fn revoke_fixes_the_cutoff_and_a_retry_never_touches_a_re_trusted_link() {
+    let w = world();
+    Store::update(&w.paths, |s| {
+        s.generations.insert("laptop".into(), 5);
+        Ok(())
+    })
+    .unwrap();
+    let fake = Fake::default();
+    let old = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let old = run_id(&old[0]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let tombs = tmgr_link::tombstone::for_link(&w.paths, "laptop").unwrap();
+    assert_eq!((tombs[0].enrollment.as_str(), tombs[0].generation), (E1, 5));
+    Store::update(&w.paths, |s| {
+        let mut l = Leader {
+            key: "AAAA".into(),
+            fingerprint: "SHA256:again".into(),
+            added: "2026-10-13T00:00:00Z".into(),
+            scope: scope(&w.repo, false),
+            enrollment: E3.into(),
+            authorized_keys: String::new(),
+        };
+        l.scope.max = 2;
+        s.leaders.insert("laptop".into(), l);
+        s.generations.insert("laptop".into(), 40);
+        Ok(())
+    })
+    .unwrap();
+    let fresh = session(
+        &w,
+        "laptop",
+        E3,
+        &fake,
+        &[create(&w, json!({"task": "w1:9"}))],
+    );
+    let fresh = run_id(&fresh[0]);
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert!(!out.incomplete(), "{out:?}");
+    assert_eq!(fake.0.lock().unwrap().revokes, [("laptop".to_string(), 5)]);
+    let alive: Vec<String> = fake
+        .0
+        .lock()
+        .unwrap()
+        .sessions
+        .iter()
+        .filter(|s| s.state.kind != StateKind::Exited)
+        .map(|s| s.id.clone())
+        .collect();
+    assert_eq!(alive, std::slice::from_ref(&fresh));
+    assert_ne!(old, fresh);
+    assert!(tmgr_link::tombstone::for_link(&w.paths, "laptop")
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn a_failed_or_missing_origin_revoke_is_incomplete_and_keeps_the_tombstone() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let none = tmgr_link::follower::contain(&w.paths, "laptop", None, true).unwrap();
+    assert!(none.incomplete() && none.halt_failed == 1);
+    fake.0.lock().unwrap().revoke_fails = true;
+    let mut backend = fake.clone();
+    let failed =
+        tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert!(failed.incomplete());
+    fake.0.lock().unwrap().revoke_fails = false;
+    fake.0.lock().unwrap().revoke_noop = true;
+    let mut backend = fake.clone();
+    let alive = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(alive.runs_surviving, 1);
+    assert!(alive.incomplete());
+    assert_eq!(
+        tmgr_link::tombstone::for_link(&w.paths, "laptop")
+            .unwrap()
+            .len(),
+        1
+    );
+    fake.0.lock().unwrap().revoke_noop = false;
+    let mut backend = fake.clone();
+    let done = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert!(!done.incomplete());
+    assert!(tmgr_link::tombstone::for_link(&w.paths, "laptop")
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn a_damaged_trust_store_aborts_containment() {
+    let w = world();
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    tmgr_core::config::write_atomic(&w.paths.links_toml(), b"\x00 bad", 0o600).unwrap();
+    let mut backend = Fake::default();
+    assert!(tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).is_err());
+    assert!(backend.0.lock().unwrap().revokes.is_empty());
+}
+
+#[test]
+fn adoption_follows_the_generation_history_through_scope_edits_and_takes_exited_runs() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().lose_create_reply = true;
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    fake.0.lock().unwrap().lose_create_reply = false;
+    let lost = fake.0.lock().unwrap().sessions[0].id.clone();
+    fake.exit(&lost);
+    Store::update(&w.paths, |s| {
+        s.generations.insert("laptop".into(), 12);
+        s.generation_enrollments.insert(
+            "laptop".into(),
+            vec![
+                tmgr_link::store::GenEnrollment {
+                    generation: 0,
+                    enrollment: E1.into(),
+                },
+                tmgr_link::store::GenEnrollment {
+                    generation: 12,
+                    enrollment: E1.into(),
+                },
+            ],
+        );
+        Ok(())
+    })
+    .unwrap();
+    let phone = session(
+        &w,
+        "phone",
+        E2,
+        &fake,
+        &[json!({"id":1,"method":"runs.list"})],
+    );
+    assert_eq!(phone[0]["result"]["runs"].as_array().unwrap().len(), 0);
+    let list = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.list"})],
+    );
+    assert_eq!(list[0]["result"]["runs"][0]["id"], json!(lost));
+    let again = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert!(again[0]["result"]["id"].is_string());
+    assert_eq!(fake.called("sessions.remove"), 1);
 }

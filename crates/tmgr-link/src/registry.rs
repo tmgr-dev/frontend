@@ -109,7 +109,12 @@ fn wait_gone(pid: u32, start: &str, limit: Duration) -> bool {
     !alive(pid, start)
 }
 
-pub fn terminate(paths: &Paths, name: &str, grace: Duration) -> Result<Terminated> {
+pub fn terminate(
+    paths: &Paths,
+    name: &str,
+    grace: Duration,
+    select: &dyn Fn(&str) -> bool,
+) -> Result<Terminated> {
     let mut out = Terminated::default();
     let Ok(entries) = std::fs::read_dir(dir(paths)) else {
         return Ok(out);
@@ -128,6 +133,9 @@ pub fn terminate(paths: &Paths, name: &str, grace: Duration) -> Result<Terminate
         let rec: Option<Rec> = std::fs::read(e.path())
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok());
+        if rec.as_ref().is_some_and(|r| !select(&r.enrollment)) {
+            continue;
+        }
         match rec {
             Some(r) if !r.start.is_empty() && alive(r.pid, &r.start) => live.push((e.path(), r)),
             _ => {
@@ -205,7 +213,7 @@ mod tests {
             let st = mine.wait().unwrap();
             (mine, st)
         });
-        let t = terminate(&paths, "laptop", Duration::from_secs(5)).unwrap();
+        let t = terminate(&paths, "laptop", Duration::from_secs(5), &|_| true).unwrap();
         assert_eq!(t.signalled, 1);
         assert_eq!(t.survivors, 0);
         let (_mine, status) = reaper.join().unwrap();
@@ -237,12 +245,45 @@ mod tests {
     }
 
     #[test]
+    fn only_the_selected_enrollments_are_terminated() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        let mut old = sleeper();
+        let mut current = sleeper();
+        for (child, enrollment) in [(&old, "old"), (&current, "new")] {
+            ensure_private_dir(&paths.config).unwrap();
+            ensure_private_dir(&paths.link_dir()).unwrap();
+            ensure_private_dir(&dir(&paths)).unwrap();
+            let rec = Rec {
+                pid: child.id(),
+                start: process_start(child.id()).unwrap(),
+                enrollment: enrollment.into(),
+            };
+            write_atomic(
+                &file(&paths, "laptop", child.id()),
+                &serde_json::to_vec(&rec).unwrap(),
+                0o600,
+            )
+            .unwrap();
+        }
+        let reaper = std::thread::spawn(move || {
+            old.wait().unwrap();
+        });
+        let t = terminate(&paths, "laptop", Duration::from_secs(5), &|e| e == "old").unwrap();
+        assert_eq!(t.signalled, 1);
+        reaper.join().unwrap();
+        assert!(current.try_wait().unwrap().is_none());
+        current.kill().unwrap();
+        current.wait().unwrap();
+    }
+
+    #[test]
     fn a_recycled_pid_is_never_signalled() {
         let d = tempfile::tempdir().unwrap();
         let paths = Paths::under(d.path());
         let mut bystander = sleeper();
         fake_worker(&paths, "laptop", &bystander, "not-its-start-time".into());
-        let t = terminate(&paths, "laptop", Duration::from_millis(200)).unwrap();
+        let t = terminate(&paths, "laptop", Duration::from_millis(200), &|_| true).unwrap();
         assert_eq!(t.signalled, 0);
         assert_eq!(t.stale, 1);
         assert!(bystander.try_wait().unwrap().is_none());
