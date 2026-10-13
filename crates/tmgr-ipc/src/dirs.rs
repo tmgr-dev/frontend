@@ -1,7 +1,7 @@
 use std::fs::{self, DirBuilder};
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 fn env_path(name: &str) -> Option<PathBuf> {
     std::env::var_os(name)
@@ -61,7 +61,7 @@ fn denied(msg: String) -> io::Error {
     io::Error::new(io::ErrorKind::PermissionDenied, msg)
 }
 
-pub fn check_private_dir(path: &Path) -> io::Result<()> {
+fn check_leaf(path: &Path) -> io::Result<()> {
     let meta = fs::symlink_metadata(path)?;
     let shown = path.display();
     if meta.file_type().is_symlink() {
@@ -79,56 +79,73 @@ pub fn check_private_dir(path: &Path) -> io::Result<()> {
             meta.mode() & 0o777
         )));
     }
+    Ok(())
+}
+
+pub fn check_private_dir(path: &Path) -> io::Result<()> {
+    check_leaf(path)?;
+    check_components(path)?;
     check_ancestors(&fs::canonicalize(path)?)
 }
 
-fn own_private_group(gid: u32) -> bool {
-    let mut buf = vec![0 as libc::c_char; 4096];
-    let mut grp: libc::group = unsafe { std::mem::zeroed() };
-    let mut pw: libc::passwd = unsafe { std::mem::zeroed() };
-    let mut gres: *mut libc::group = std::ptr::null_mut();
-    let mut pres: *mut libc::passwd = std::ptr::null_mut();
-    let mut pbuf = vec![0 as libc::c_char; 4096];
-    unsafe {
-        if libc::getgrgid_r(gid, &mut grp, buf.as_mut_ptr(), buf.len(), &mut gres) != 0
-            || gres.is_null()
-            || libc::getpwuid_r(
-                crate::euid(),
-                &mut pw,
-                pbuf.as_mut_ptr(),
-                pbuf.len(),
-                &mut pres,
-            ) != 0
-            || pres.is_null()
-        {
-            return false;
-        }
-        std::ffi::CStr::from_ptr(grp.gr_name) == std::ffi::CStr::from_ptr(pw.pw_name)
-            && libc::getegid() == gid
+fn check_trusted_dir(dir: &Path, what: &str) -> io::Result<()> {
+    let meta = fs::metadata(dir)?;
+    let shown = dir.display();
+    if meta.uid() != 0 && meta.uid() != crate::euid() {
+        return Err(denied(format!("{what} {shown} is owned by another user")));
     }
-}
-
-fn check_ancestors(canon: &Path) -> io::Result<()> {
-    for anc in canon.ancestors().skip(1) {
-        let meta = fs::metadata(anc)?;
-        let shown = anc.display();
-        if meta.uid() != 0 && meta.uid() != crate::euid() {
-            return Err(denied(format!("ancestor {shown} is owned by another user")));
-        }
-        let group_ok = meta.mode() & 0o002 == 0
-            && meta.uid() == crate::euid()
-            && own_private_group(meta.gid());
-        if meta.mode() & 0o022 != 0 && meta.mode() & 0o1000 == 0 && !group_ok {
-            return Err(denied(format!(
-                "ancestor {shown} is writable by group or others without the sticky bit (mode {:o})",
-                meta.mode() & 0o7777
-            )));
-        }
+    if meta.mode() & 0o022 != 0 && meta.mode() & 0o1000 == 0 {
+        return Err(denied(format!(
+            "{what} {shown} is writable by group or others without the sticky bit (mode {:o}); \
+             run `chmod g-w,o-w {shown}` or set TMGR_RUNNER_DIR to a path under a private parent",
+            meta.mode() & 0o7777
+        )));
     }
     Ok(())
 }
 
-pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
+fn check_components(path: &Path) -> io::Result<()> {
+    let mut cur = PathBuf::new();
+    for comp in path.components() {
+        cur.push(comp);
+        if matches!(
+            comp,
+            Component::RootDir | Component::Prefix(_) | Component::CurDir
+        ) {
+            continue;
+        }
+        let meta = fs::symlink_metadata(&cur)?;
+        if !meta.file_type().is_symlink() {
+            continue;
+        }
+        if meta.uid() != 0 && meta.uid() != crate::euid() {
+            return Err(denied(format!(
+                "symlink {} is owned by another user",
+                cur.display()
+            )));
+        }
+        let parent = match cur.parent().filter(|p| !p.as_os_str().is_empty()) {
+            Some(p) => p,
+            None => Path::new("."),
+        };
+        check_trusted_dir(parent, "directory holding a symlink in the path:")?;
+    }
+    Ok(())
+}
+
+fn check_ancestors(canon: &Path) -> io::Result<()> {
+    for anc in canon.ancestors().skip(1) {
+        check_trusted_dir(anc, "ancestor")?;
+    }
+    Ok(())
+}
+
+pub fn ensure_private_leaf(path: &Path) -> io::Result<()> {
+    create_private(path)?;
+    check_leaf(path)
+}
+
+fn create_private(path: &Path) -> io::Result<()> {
     if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
         DirBuilder::new()
             .recursive(true)
@@ -140,6 +157,11 @@ pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
         Err(e) => return Err(e),
     }
+    Ok(())
+}
+
+pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
+    create_private(path)?;
     check_private_dir(path)
 }
 
@@ -194,6 +216,50 @@ mod tests {
         assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
         assert!(e.to_string().contains("loose"), "{e}");
         assert!(check_private_dir(&d).is_err());
+    }
+
+    #[test]
+    fn refuses_group_writable_non_sticky_ancestor() {
+        let t = tempfile::tempdir().unwrap();
+        let shared = t.path().join("shared");
+        mkdir(&shared, 0o770);
+        let e = ensure_private_dir(&shared.join("priv")).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+        assert!(e.to_string().contains("shared"), "{e}");
+        assert!(e.to_string().contains("chmod"), "{e}");
+    }
+
+    #[test]
+    fn refuses_symlink_component_held_in_a_writable_directory() {
+        let t = tempfile::tempdir().unwrap();
+        let real = t.path().join("real");
+        ensure_private_dir(&real.join("run")).unwrap();
+        let loose = t.path().join("loose");
+        mkdir(&loose, 0o777);
+        symlink(&real, loose.join("link")).unwrap();
+        let e = check_private_dir(&loose.join("link/run")).unwrap_err();
+        assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
+        assert!(e.to_string().contains("loose"), "{e}");
+    }
+
+    #[test]
+    fn accepts_symlink_component_held_in_a_private_directory() {
+        let t = tempfile::tempdir().unwrap();
+        let real = t.path().join("real");
+        ensure_private_dir(&real.join("run")).unwrap();
+        let mine = t.path().join("mine");
+        mkdir(&mine, 0o700);
+        symlink(&real, mine.join("link")).unwrap();
+        check_private_dir(&mine.join("link/run")).unwrap();
+    }
+
+    #[test]
+    fn leaf_check_ignores_ancestor_modes() {
+        let t = tempfile::tempdir().unwrap();
+        let loose = t.path().join("loose");
+        mkdir(&loose, 0o777);
+        ensure_private_leaf(&loose.join("homes")).unwrap();
+        assert!(ensure_private_dir(&loose.join("homes")).is_err());
     }
 
     #[test]
