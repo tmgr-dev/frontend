@@ -25,7 +25,6 @@ fn author_id(id: Option<&str>) -> Option<String> {
 
 fn comment(c: &CommentInfo) -> BundleComment {
   let kind = match c.author_kind.as_str() {
-    "user" => AuthorKind::Human,
     "persona" | "agent" => AuthorKind::Agent,
     _ => AuthorKind::Other,
   };
@@ -94,7 +93,7 @@ mod tests {
     assert_eq!(
       got,
       [
-        ("first", AuthorKind::Human, Some("1"), "2026-10-13T09:30:00.000Z"),
+        ("first", AuthorKind::Other, Some("1"), "2026-10-13T09:30:00.000Z"),
         ("second", AuthorKind::Agent, Some("p-1"), "2026-10-13T09:31:00.000Z")
       ]
     );
@@ -111,6 +110,16 @@ mod tests {
     t.comments[0].author_id = Some("a b".into());
     let c = &prepare(&t, -1, 1, "codex", "/w").unwrap().bundle.comments[0];
     assert_eq!((c.author.kind, c.author.id.clone()), (AuthorKind::Other, None));
+  }
+
+  #[test]
+  fn user_comments_are_never_human_and_agents_stay_agents() {
+    let mut t = info(3, 0);
+    for (c, kind) in t.comments.iter_mut().zip(["user", "agent", "persona"]) {
+      c.author_kind = kind.into();
+    }
+    let kinds: Vec<_> = prepare(&t, -1, 1, "codex", "/w").unwrap().bundle.comments.iter().map(|c| c.author.kind).collect();
+    assert_eq!(kinds, [AuthorKind::Other, AuthorKind::Agent, AuthorKind::Agent]);
   }
 
   #[test]
