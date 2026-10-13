@@ -72,19 +72,25 @@ pub fn comment_for(name: &str) -> String {
     format!("tmgr-link:{name}")
 }
 
-pub fn command_for(bin: &Path, name: &str) -> String {
-    format!("{} worker --link {name}", bin.display())
-}
-
 pub fn is_ours(entry: &Entry, name: &str) -> bool {
     entry.comment == comment_for(name)
         && entry.options.as_deref().is_some_and(|o| {
-            o.starts_with("restrict,command=\"") && o.contains(&format!(" worker --link {name}\""))
+            o.starts_with("restrict,")
+                && o.contains(&format!(" worker --link {name} --enrollment "))
         })
 }
 
-pub fn build_line(bin: &Path, name: &str, from: &[String], key: &PubKey) -> Result<String> {
+pub fn build_line(
+    bin: &Path,
+    name: &str,
+    enrollment: &str,
+    from: &[String],
+    key: &PubKey,
+) -> Result<String> {
     grammar::link_name(name)?;
+    if !grammar::enrollment_id(enrollment) {
+        return Err(Error::internal("invalid enrollment id"));
+    }
     let bin_str = bin
         .to_str()
         .filter(|s| {
@@ -99,7 +105,9 @@ pub fn build_line(bin: &Path, name: &str, from: &[String], key: &PubKey) -> Resu
             )
             .hint("install tmgr in a plain absolute path such as /usr/local/bin")
         })?;
-    let mut opts = format!("restrict,command=\"{bin_str} worker --link {name}\"");
+    let mut opts = format!(
+        "restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc,command=\"{bin_str} worker --link {name} --enrollment {enrollment}\""
+    );
     if !from.is_empty() {
         opts.push_str(&format!(",from=\"{}\"", from.join(",")));
     }
@@ -151,6 +159,25 @@ pub struct Edit {
     pub changed: bool,
     pub removed: usize,
     pub backup: Option<PathBuf>,
+    pub original: Vec<u8>,
+    pub existed: bool,
+    pub mode: Option<u32>,
+    pub path: PathBuf,
+}
+
+pub fn restore(edit: &Edit) -> Result<()> {
+    if !edit.changed {
+        return Ok(());
+    }
+    if edit.existed {
+        write_atomic(&edit.path, &edit.original, edit.mode.unwrap_or(0o600))
+    } else {
+        match std::fs::remove_file(&edit.path) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 fn read_existing(path: &Path) -> Result<(Vec<u8>, Option<u32>)> {
@@ -234,6 +261,10 @@ fn commit(path: &Path, original: &[u8], mode: Option<u32>, updated: Vec<u8>) -> 
         changed: true,
         removed: 0,
         backup,
+        original: original.to_vec(),
+        existed: mode.is_some(),
+        mode,
+        path: path.to_path_buf(),
     })
 }
 
@@ -288,12 +319,18 @@ pub fn remove(path: &Path, name: &str) -> Result<Edit> {
     Ok(edit)
 }
 
-pub fn find_foreign(path: &Path, key: &PubKey, name: &str) -> Result<bool> {
-    let (bytes, _) = read_existing(&resolve(path))?;
-    Ok(lines_of(&bytes).into_iter().any(|raw| {
-        parse_entry(&String::from_utf8_lossy(raw))
-            .is_some_and(|e| e.blob == key.blob && !is_ours(&e, name))
-    }))
+pub fn find_foreign(paths: &[PathBuf], key: &PubKey, name: &str) -> Result<Option<PathBuf>> {
+    for path in paths {
+        let (bytes, _) = read_existing(&resolve(path))?;
+        let hit = lines_of(&bytes).into_iter().any(|raw| {
+            parse_entry(&String::from_utf8_lossy(raw))
+                .is_some_and(|e| e.blob == key.blob && !is_ours(&e, name))
+        });
+        if hit {
+            return Ok(Some(path.clone()));
+        }
+    }
+    Ok(None)
 }
 
 #[cfg(unix)]
@@ -326,8 +363,10 @@ mod tests {
         (d, ak)
     }
 
+    const ENR: &str = "0123456789abcdef0123456789abcdef";
+
     fn line_for(key: &PubKey, name: &str) -> String {
-        build_line(Path::new("/usr/local/bin/tmgr"), name, &[], key).unwrap()
+        build_line(Path::new("/usr/local/bin/tmgr"), name, ENR, &[], key).unwrap()
     }
 
     fn backups(ak: &Path) -> Vec<PathBuf> {
@@ -345,6 +384,7 @@ mod tests {
         let l = build_line(
             Path::new("/usr/local/bin/tmgr"),
             "laptop",
+            ENR,
             &["192.0.2.0/24".into(), "198.51.100.7".into()],
             &key,
         )
@@ -352,7 +392,7 @@ mod tests {
         assert_eq!(
             l,
             format!(
-                "restrict,command=\"/usr/local/bin/tmgr worker --link laptop\",from=\"192.0.2.0/24,198.51.100.7\" ssh-ed25519 {} tmgr-link:laptop",
+                "restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc,command=\"/usr/local/bin/tmgr worker --link laptop --enrollment {ENR}\",from=\"192.0.2.0/24,198.51.100.7\" ssh-ed25519 {} tmgr-link:laptop",
                 key.blob
             )
         );
@@ -374,9 +414,13 @@ mod tests {
             "/opt/a\nb/tmgr",
             "/opt/a'b/tmgr",
         ] {
-            assert!(build_line(Path::new(bad), "x", &[], &key).is_err(), "{bad}");
+            assert!(
+                build_line(Path::new(bad), "x", ENR, &[], &key).is_err(),
+                "{bad}"
+            );
         }
-        assert!(build_line(Path::new("/usr/bin/tmgr"), "x\" y", &[], &key).is_err());
+        assert!(build_line(Path::new("/usr/bin/tmgr"), "x\" y", ENR, &[], &key).is_err());
+        assert!(build_line(Path::new("/usr/bin/tmgr"), "x", "short", &[], &key).is_err());
     }
 
     #[test]
@@ -439,6 +483,36 @@ mod tests {
     }
 
     #[test]
+    fn the_line_carries_explicit_no_forwarding_options_next_to_restrict() {
+        let l = line_for(&testkeys::key(), "x");
+        for o in [
+            "restrict",
+            "no-pty",
+            "no-port-forwarding",
+            "no-agent-forwarding",
+            "no-X11-forwarding",
+            "no-user-rc",
+        ] {
+            assert!(l.contains(o), "{o}");
+        }
+    }
+
+    #[test]
+    fn restore_undoes_an_edit() {
+        let (_d, ak) = setup();
+        let key = testkeys::key();
+        let first = upsert(&ak, "a", &line_for(&key, "a"), &key).unwrap();
+        restore(&first).unwrap();
+        assert!(!ak.exists());
+        std::fs::create_dir_all(ak.parent().unwrap()).unwrap();
+        std::fs::write(&ak, "ssh-rsa AAAA keep\n").unwrap();
+        let edit = upsert(&ak, "a", &line_for(&key, "a"), &key).unwrap();
+        assert_ne!(std::fs::read_to_string(&ak).unwrap(), "ssh-rsa AAAA keep\n");
+        restore(&edit).unwrap();
+        assert_eq!(std::fs::read_to_string(&ak).unwrap(), "ssh-rsa AAAA keep\n");
+    }
+
+    #[test]
     fn upsert_is_idempotent() {
         let (_d, ak) = setup();
         let key = testkeys::key();
@@ -461,6 +535,7 @@ mod tests {
         let wider = build_line(
             Path::new("/usr/local/bin/tmgr"),
             "a",
+            ENR,
             &["192.0.2.1".into()],
             &k1,
         )
@@ -482,7 +557,10 @@ mod tests {
         let e = upsert(&ak, "laptop", &line_for(&key, "laptop"), &key).unwrap_err();
         assert_eq!(e.exit_code(), 6);
         assert_eq!(std::fs::read_to_string(&ak).unwrap(), foreign);
-        assert!(find_foreign(&ak, &key, "laptop").unwrap());
+        assert_eq!(
+            find_foreign(std::slice::from_ref(&ak), &key, "laptop").unwrap(),
+            Some(ak.clone())
+        );
         let optioned = format!("command=\"/bin/sh\" ssh-ed25519 {} x\n", key.blob);
         std::fs::write(&ak, optioned).unwrap();
         assert!(upsert(&ak, "laptop", &line_for(&key, "laptop"), &key).is_err());

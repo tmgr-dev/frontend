@@ -63,6 +63,10 @@ pub struct Leader {
     pub added: String,
     #[serde(default)]
     pub scope: Scope,
+    #[serde(default)]
+    pub enrollment: String,
+    #[serde(default)]
+    pub authorized_keys: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +81,8 @@ pub struct Follower {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Store {
+    #[serde(default)]
+    pub version: u64,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub leaders: BTreeMap<String, Leader>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -133,11 +139,17 @@ impl Store {
         Ok(out)
     }
 
-    fn save(&self, paths: &Paths) -> Result<()> {
+    pub(crate) fn save(&mut self, paths: &Paths) -> Result<()> {
+        self.version += 1;
         let text = toml::to_string_pretty(self)
             .map_err(|_| Error::internal("cannot serialize links.toml"))?;
         write_atomic(&paths.links_toml(), text.as_bytes(), 0o600)
     }
+}
+
+pub(crate) fn lock_links(paths: &Paths) -> Result<Lock> {
+    ensure_private_dir(&paths.config)?;
+    lock(&paths.config.join("links.lock"))
 }
 
 pub(crate) struct Lock(#[allow(dead_code)] std::fs::File);
@@ -168,7 +180,10 @@ mod tests {
                 agents: vec!["codex".into()],
                 max: 2,
                 from: vec!["192.0.2.0/24".into()],
+                models: vec![],
             },
+            enrollment: "ab".repeat(16),
+            authorized_keys: "/home/u/.ssh/authorized_keys".into(),
         }
     }
 
@@ -195,6 +210,7 @@ mod tests {
         .unwrap();
         let loaded = Store::load(&paths).unwrap();
         assert_eq!(loaded.leaders["laptop"], leader());
+        assert_eq!(loaded.version, 1);
         assert_eq!(loaded.followers["spark"].port, 2222);
         let file = std::fs::metadata(paths.links_toml()).unwrap();
         assert_eq!(file.permissions().mode() & 0o777, 0o600);

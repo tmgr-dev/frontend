@@ -30,11 +30,16 @@ pub struct Identity {
     pub warning: Option<String>,
 }
 
-pub fn init(paths: &Paths, cred: &CredentialStore) -> Result<Identity> {
-    if paths.public_key().exists() {
+pub fn has_identity(paths: &Paths, cred: &CredentialStore) -> Result<bool> {
+    Ok(paths.public_key().exists() || cred.load()?.is_some())
+}
+
+pub fn init(paths: &Paths, cred: &CredentialStore, rotate: bool) -> Result<Identity> {
+    let existing = has_identity(paths, cred)?;
+    if existing && !rotate {
         return Err(
             Error::conflict("this machine already has a link identity").hint(
-                "tmgr link list shows it; the public key is in link_key.pub next to links.toml",
+                "tmgr link list shows it; `tmgr link init --rotate` replaces it and every follower must trust the new key",
             ),
         );
     }
@@ -65,7 +70,7 @@ pub fn init(paths: &Paths, cred: &CredentialStore) -> Result<Identity> {
         0o644,
     )?;
     Audit::new(&paths.audit_dir()).append(
-        "link.init",
+        if existing { "link.rotate" } else { "link.init" },
         json!({"fingerprint": fingerprint, "backend": saved.backend.as_str()}),
     )?;
     Ok(Identity {
@@ -555,7 +560,7 @@ mod tests {
             Some(Backend::File),
             Box::new(NoKeychain),
         );
-        let id = init(&paths, &cred).unwrap();
+        let id = init(&paths, &cred, false).unwrap();
         assert!(id.public.starts_with("ssh-ed25519 ") && id.public.ends_with(" tmgr-link"));
         assert!(id.fingerprint.starts_with("SHA256:"));
         assert_eq!(id.backend, Backend::File);
@@ -568,7 +573,16 @@ mod tests {
             .unwrap()
             .contains("PRIVATE"));
         assert_eq!(identity(&paths).unwrap().unwrap().1, id.fingerprint);
-        assert_eq!(init(&paths, &cred).unwrap_err().exit_code(), 6);
+        assert_eq!(init(&paths, &cred, false).unwrap_err().exit_code(), 6);
+        std::fs::remove_file(paths.public_key()).unwrap();
+        assert_eq!(
+            init(&paths, &cred, false).unwrap_err().exit_code(),
+            6,
+            "a key in the credential store counts even without the public file"
+        );
+        let rotated = init(&paths, &cred, true).unwrap();
+        assert_ne!(rotated.fingerprint, id.fingerprint);
+        assert_eq!(identity(&paths).unwrap().unwrap().1, rotated.fingerprint);
         let key = materialise(&cred).unwrap();
         assert_eq!(
             std::fs::metadata(&key.path).unwrap().permissions().mode() & 0o777,
@@ -612,7 +626,7 @@ mod tests {
             Some(Backend::File),
             Box::new(NoKeychain),
         );
-        init(&paths, &link).unwrap();
+        init(&paths, &link, false).unwrap();
         assert_eq!(
             login.load().unwrap().unwrap().0.access.expose(),
             "login-token"

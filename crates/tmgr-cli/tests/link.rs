@@ -8,6 +8,8 @@ use tmgr_link::proto::Reply;
 use tmgr_link::scope::Scope;
 use tmgr_link::store::{Leader, Paths, Store};
 
+const ENR: &str = "0123456789abcdef0123456789abcdef";
+
 struct Fx {
     _tmp: tempfile::TempDir,
     home: PathBuf,
@@ -45,6 +47,8 @@ impl Fx {
                     fingerprint: "SHA256:fixture".into(),
                     added: "2026-10-13T00:00:00Z".into(),
                     scope,
+                    enrollment: ENR.into(),
+                    authorized_keys: String::new(),
                 },
             );
             Ok(())
@@ -52,10 +56,17 @@ impl Fx {
         .unwrap();
     }
 
+    fn init_identity(&self) -> tmgr_link::leader::Identity {
+        let cred =
+            tmgr_link::leader::credential_store(&self.paths, Some(tmgr_core::creds::Backend::File));
+        tmgr_link::leader::init(&self.paths, &cred, false).unwrap()
+    }
+
     fn scope(&self) -> Scope {
         Scope {
             repos: vec![self.repo.to_str().unwrap().into()],
             agents: vec!["codex".into()],
+            models: vec![],
             max: 2,
             from: vec![],
         }
@@ -75,7 +86,7 @@ impl Fx {
 
     fn worker(&self, name: &str) -> std::process::Command {
         let mut c = std::process::Command::new(assert_cmd::cargo::cargo_bin("tmgr"));
-        c.args(["worker", "--link", name])
+        c.args(["worker", "--link", name, "--enrollment", ENR])
             .env("HOME", &self.home)
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("XDG_STATE_HOME")
@@ -231,10 +242,12 @@ fn worker_refuses_everything_but_the_exact_shape() {
     let f = fx();
     f.trust_leader("laptop", f.scope());
     let cases: Vec<Vec<&str>> = vec![
-        vec!["worker", "--link", "laptop", "--json"],
-        vec!["--json", "worker", "--link", "laptop"],
-        vec!["worker", "--link=laptop"],
-        vec!["worker", "--link", "Laptop"],
+        vec!["worker", "--link", "laptop", "--enrollment", ENR, "--json"],
+        vec!["--json", "worker", "--link", "laptop", "--enrollment", ENR],
+        vec!["worker", "--link=laptop", "--enrollment", ENR],
+        vec!["worker", "--link", "Laptop", "--enrollment", ENR],
+        vec!["worker", "--enrollment", ENR, "--link", "laptop"],
+        vec!["worker", "--link", "laptop", "--enrollment", "short"],
     ];
     for args in cases {
         let out = f
@@ -256,7 +269,7 @@ fn worker_needs_ssh_connection_and_a_trusted_link() {
     f.trust_leader("laptop", f.scope());
     let out = f
         .tmgr()
-        .args(["worker", "--link", "laptop"])
+        .args(["worker", "--link", "laptop", "--enrollment", ENR])
         .env_remove("SSH_CONNECTION")
         .output()
         .unwrap();
@@ -265,7 +278,7 @@ fn worker_needs_ssh_connection_and_a_trusted_link() {
     assert!(err_text(&out).trim() == "tmgr worker: refused");
     let out = f
         .tmgr()
-        .args(["worker", "--link", "stranger"])
+        .args(["worker", "--link", "stranger", "--enrollment", ENR])
         .env("SSH_CONNECTION", "192.0.2.5 5555 192.0.2.1 22")
         .output()
         .unwrap();
@@ -451,29 +464,30 @@ fn audit_verify_detects_tampering_through_the_cli() {
 }
 
 #[test]
-fn init_creates_one_identity_and_never_prints_the_private_key() {
+fn init_is_privileged_and_the_identity_never_shows_the_private_key() {
     let f = fx();
-    let out = f.tmgr().args(["link", "init", "--json"]).output().unwrap();
-    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
-    let text = String::from_utf8_lossy(&out.stdout).to_string();
-    assert!(!text.contains("PRIVATE") && !text.contains("BEGIN"));
-    let v: Value = serde_json::from_str(&text).unwrap();
-    assert!(v["data"]["public_key"]
-        .as_str()
-        .unwrap()
-        .starts_with("ssh-ed25519 "));
-    assert!(v["data"]["fingerprint"]
-        .as_str()
-        .unwrap()
-        .starts_with("SHA256:"));
-    let again = f.tmgr().args(["link", "init"]).output().unwrap();
-    assert_eq!(again.status.code(), Some(6));
+    let out = f.tmgr().args(["link", "init", "--yes"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(10));
+    let out = f
+        .tmgr()
+        .env("TMGR_RUN_TOKEN", "x")
+        .args(["link", "init"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(5));
+    assert!(!f.paths.public_key().exists());
+    let id = f.init_identity();
     let list = f.tmgr().args(["link", "list", "--json"]).output().unwrap();
-    let l: Value = serde_json::from_slice(&list.stdout).unwrap();
-    assert_eq!(
-        l["data"]["identity"]["fingerprint"],
-        v["data"]["fingerprint"]
-    );
+    let text = String::from_utf8_lossy(&list.stdout).to_string();
+    assert!(!text.contains("PRIVATE") && !text.contains("BEGIN"));
+    let l: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(l["data"]["identity"]["fingerprint"], id.fingerprint);
+    let rotate = f
+        .tmgr()
+        .args(["link", "init", "--rotate"])
+        .output()
+        .unwrap();
+    assert_eq!(rotate.status.code(), Some(10));
 }
 
 #[test]
@@ -503,7 +517,7 @@ fn link_and_worker_are_marked_experimental_in_help() {
 fn files_written_by_the_cli_are_private() {
     use std::os::unix::fs::PermissionsExt;
     let f = fx();
-    f.tmgr().args(["link", "init"]).output().unwrap();
+    f.init_identity();
     f.trust_leader("laptop", f.scope());
     let mut c = f.client("laptop");
     c.hello().unwrap();

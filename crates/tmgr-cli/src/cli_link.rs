@@ -2,8 +2,8 @@ use clap::{Args, Subcommand};
 
 #[derive(Subcommand)]
 pub enum LinkCommand {
-    /// Create this machine's link identity (leader side)
-    Init,
+    /// Create this machine's link identity (leader side, interactive)
+    Init(InitArgs),
     /// Pin a follower's SSH host key and add it (leader side, interactive)
     Add(AddArgs),
     /// Trust a leader's public key on this machine (follower side, interactive)
@@ -20,6 +20,13 @@ pub enum LinkCommand {
     Test { name: String },
     /// Show the local link audit log, or verify its hash chain
     Audit(AuditArgs),
+}
+
+#[derive(Args)]
+pub struct InitArgs {
+    /// Replace an existing identity; every follower must then trust the new key
+    #[arg(long)]
+    pub rotate: bool,
 }
 
 #[derive(Args)]
@@ -51,6 +58,9 @@ pub struct TrustArgs {
     /// Agents the leader may start, e.g. claude-code,codex
     #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "AGENT")]
     pub agents: Vec<String>,
+    /// Models the leader may ask for (default: any)
+    #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "MODEL")]
+    pub models: Vec<String>,
     /// Concurrent runs the leader may have (default 1)
     #[arg(long, value_name = "N")]
     pub max: Option<u32>,
@@ -66,6 +76,8 @@ pub struct ScopeArgs {
     pub repos: Option<Vec<String>>,
     #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "AGENT")]
     pub agents: Option<Vec<String>>,
+    #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "MODEL")]
+    pub models: Option<Vec<String>>,
     #[arg(long, value_name = "N")]
     pub max: Option<u32>,
     /// CIDRs, or `any` to accept every address
@@ -85,7 +97,9 @@ pub struct AuditArgs {
 
 #[derive(Args)]
 pub struct WorkerArgs {
-    /// Link name (the only accepted form is: tmgr worker --link NAME)
+    /// Link name (the only accepted form is: tmgr worker --link NAME --enrollment ID)
     #[arg(long, value_name = "NAME")]
     pub link: String,
+    #[arg(long, value_name = "ID")]
+    pub enrollment: String,
 }

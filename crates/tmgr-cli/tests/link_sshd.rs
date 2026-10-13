@@ -9,6 +9,8 @@ use tmgr_link::proto::Reply;
 use tmgr_link::scope::Scope;
 use tmgr_link::store::{Follower, Leader, Paths, Store};
 
+const ENR: &str = "0123456789abcdef0123456789abcdef";
+
 struct Sshd(Child);
 
 impl Drop for Sshd {
@@ -50,11 +52,11 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
     std::fs::create_dir_all(&repo).unwrap();
 
     let cred = leader::credential_store(&leader_paths, Some(Backend::File));
-    let id = leader::init(&leader_paths, &cred).unwrap();
+    let id = leader::init(&leader_paths, &cred, false).unwrap();
     let key = grammar::parse_pubkey(&id.public).unwrap();
 
     let bin = std::fs::canonicalize(assert_cmd::cargo::cargo_bin("tmgr")).unwrap();
-    let line = authkeys::build_line(&bin, "laptop", &["127.0.0.1".to_string()], &key).unwrap();
+    let line = authkeys::build_line(&bin, "laptop", ENR, &["127.0.0.1".to_string()], &key).unwrap();
     authkeys::upsert(&follower.authorized_keys(), "laptop", &line, &key).unwrap();
     Store::update(&follower, |s| {
         s.leaders.insert(
@@ -63,9 +65,12 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
                 key: key.blob.clone(),
                 fingerprint: key.fingerprint.clone(),
                 added: "2026-10-13T00:00:00Z".into(),
+                enrollment: ENR.into(),
+                authorized_keys: String::new(),
                 scope: Scope {
                     repos: vec![repo.to_str().unwrap().into()],
                     agents: vec!["codex".into()],
+                    models: vec![],
                     max: 1,
                     from: vec!["127.0.0.1".into()],
                 },

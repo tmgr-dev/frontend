@@ -10,6 +10,8 @@ pub struct Scope {
     #[serde(default)]
     pub agents: Vec<String>,
     #[serde(default)]
+    pub models: Vec<String>,
+    #[serde(default)]
     pub max: u32,
     #[serde(default)]
     pub from: Vec<String>,
@@ -24,7 +26,9 @@ impl Scope {
         let agents = self.agents.iter().any(|a| !old.agents.contains(a));
         let from = !old.from.is_empty()
             && (self.from.is_empty() || self.from.iter().any(|f| !old.from.contains(f)));
-        repos || agents || self.max > old.max || from
+        let models = !old.models.is_empty()
+            && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
+        repos || agents || models || self.max > old.max || from
     }
 
     pub fn summary(&self) -> String {
@@ -38,13 +42,18 @@ impl Scope {
         } else {
             format!("agents {}", self.agents.join(", "))
         };
+        let models = if self.models.is_empty() {
+            "any model".to_string()
+        } else {
+            format!("models {}", self.models.join(", "))
+        };
         let from = if self.from.is_empty() {
             "from any address".to_string()
         } else {
             format!("from {}", self.from.join(", "))
         };
         format!(
-            "{repos} · {agents} · max {} running · {from} · bypass-permissions: forbidden",
+            "{repos} · {agents} · {models} · max {} running · {from} · bypass-permissions: forbidden",
             self.max
         )
     }
@@ -85,6 +94,11 @@ impl Reject {
             reason: reason.into(),
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Accepted {
+    pub repo: Option<String>,
 }
 
 pub fn audit_args(params: &Value) -> Value {
@@ -140,15 +154,15 @@ pub fn validate_run_method(
     params: &Value,
     scope: &Scope,
     live_runs: u32,
-) -> Result<(), Reject> {
+) -> Result<Accepted, Reject> {
     let obj = object(params)?;
     match method {
-        "runs.list" => only_keys(&obj, &[]),
+        "runs.list" => only_keys(&obj, &[]).map(|_| Accepted::default()),
         "runs.get" | "runs.halt" => {
             only_keys(&obj, &["run"])?;
             let run = required(&obj, "run")?;
             if grammar::token(run, 64) && !run.contains('/') {
-                Ok(())
+                Ok(Accepted::default())
             } else {
                 Err(Reject::bad("invalid run id"))
             }
@@ -158,7 +172,7 @@ pub fn validate_run_method(
     }
 }
 
-fn validate_create(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result<(), Reject> {
+fn validate_create(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result<Accepted, Reject> {
     only_keys(obj, &["task", "repo", "agent", "persona", "model", "mode"])?;
     let task = required(obj, "task")?;
     if !grammar::token(task, 64) || task.contains('/') {
@@ -166,11 +180,15 @@ fn validate_create(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result
     }
     let agent = required(obj, "agent")?;
     grammar::agent_name(agent).map_err(|_| Reject::bad("invalid agent name"))?;
-    for key in ["persona", "model"] {
-        if let Some(v) = string(obj, key)? {
-            if !grammar::token(v, 64) {
-                return Err(Reject::bad(format!("invalid {key}")));
-            }
+    if let Some(v) = string(obj, "persona")? {
+        if !grammar::persona_name(v) {
+            return Err(Reject::bad("invalid persona"));
+        }
+    }
+    let model = string(obj, "model")?;
+    if let Some(v) = model {
+        if !grammar::model_name(v) {
+            return Err(Reject::bad("invalid model"));
         }
     }
     match string(obj, "mode")? {
@@ -187,10 +205,17 @@ fn validate_create(obj: &Map<String, Value>, scope: &Scope, live: u32) -> Result
     if !scope.agents.iter().any(|a| a == agent) {
         return Err(Reject::forbidden("agent is not allowed"));
     }
+    if !scope.models.is_empty() {
+        match model {
+            Some(m) if scope.models.iter().any(|a| a == m) => {}
+            Some(_) => return Err(Reject::forbidden("model is not allowed")),
+            None => return Err(Reject::forbidden("a model from the allowlist is required")),
+        }
+    }
     if live >= scope.max {
         return Err(Reject::forbidden("max running runs reached"));
     }
-    Ok(())
+    Ok(Accepted { repo: Some(canon) })
 }
 
 #[cfg(test)]
@@ -202,6 +227,7 @@ mod tests {
         Scope {
             repos: vec![repo.to_string()],
             agents: vec!["claude-code".into(), "codex".into()],
+            models: vec![],
             max: 2,
             from: vec![],
         }
@@ -285,6 +311,49 @@ mod tests {
     }
 
     #[test]
+    fn the_canonical_repo_is_passed_on() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let s = scope(&repo);
+        let dotted = format!(
+            "{repo}/../{}",
+            Path::new(&repo).file_name().unwrap().to_str().unwrap()
+        );
+        let ok = validate_run_method("runs.create", &create(&dotted), &s, 0).unwrap();
+        assert_eq!(ok.repo.as_deref(), Some(repo.as_str()));
+    }
+
+    #[test]
+    fn models_are_an_allowlist_and_personas_cannot_be_paths() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
+        let mut s = scope(&repo);
+        s.models = vec!["claude-opus-4".into()];
+        let with = |k: &str, v: &str| {
+            let mut p = create(&repo);
+            p[k] = json!(v);
+            p
+        };
+        assert!(validate_run_method("runs.create", &with("model", "claude-opus-4"), &s, 0).is_ok());
+        assert_eq!(
+            validate_run_method("runs.create", &with("model", "other"), &s, 0)
+                .unwrap_err()
+                .reason,
+            "model is not allowed"
+        );
+        assert!(validate_run_method("runs.create", &create(&repo), &s, 0).is_err());
+        assert!(validate_run_method("runs.create", &create(&repo), &scope(&repo), 0).is_ok());
+        let free = scope(&repo);
+        for bad in ["../x", "/etc/passwd", "a/b", ".hidden"] {
+            assert!(
+                validate_run_method("runs.create", &with("persona", bad), &free, 0).is_err(),
+                "{bad}"
+            );
+        }
+        assert!(validate_run_method("runs.create", &with("persona", "Builder"), &free, 0).is_ok());
+    }
+
+    #[test]
     fn parameter_shapes_are_strict() {
         let s = Scope::default();
         assert!(validate_run_method("runs.list", &Value::Null, &s, 0).is_ok());
@@ -301,6 +370,7 @@ mod tests {
         let base = Scope {
             repos: vec!["/srv/a".into()],
             agents: vec!["codex".into()],
+            models: vec!["m1".into()],
             max: 2,
             from: vec!["192.0.2.0/24".into()],
         };
@@ -315,6 +385,8 @@ mod tests {
             |s: &mut Scope| s.repos = vec!["/srv".into()],
             |s: &mut Scope| s.agents.push("claude-code".into()),
             |s: &mut Scope| s.max = 3,
+            |s: &mut Scope| s.models.clear(),
+            |s: &mut Scope| s.models.push("m2".into()),
             |s: &mut Scope| s.from.clear(),
             |s: &mut Scope| s.from.push("198.51.100.1".into()),
         ] {

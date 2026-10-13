@@ -31,6 +31,24 @@ pub fn agent_name(s: &str) -> Result<&str> {
     }
 }
 
+pub fn persona_name(s: &str) -> bool {
+    let mut chars = s.chars();
+    (1..=64).contains(&s.len())
+        && chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+        && !s.contains("..")
+}
+
+pub fn model_name(s: &str) -> bool {
+    token(s, 64) && !s.starts_with(['-', '.']) && !s.contains("..")
+}
+
+pub fn enrollment_id(s: &str) -> bool {
+    s.len() == 32
+        && s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
 pub fn token(s: &str, max: usize) -> bool {
     !s.is_empty()
         && s.len() <= max
@@ -304,6 +322,34 @@ mod tests {
         ] {
             assert!(parse_target(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn personas_models_and_enrollment_ids_are_strict() {
+        assert!(persona_name("Builder"));
+        assert!(persona_name("code-reviewer_2"));
+        for bad in [
+            "",
+            "../x",
+            "/etc/passwd",
+            "a/b",
+            ".hidden",
+            "a..b",
+            "-x",
+            "a b",
+            "a:b",
+        ] {
+            assert!(!persona_name(bad), "{bad}");
+        }
+        assert!(model_name("claude-opus-4"));
+        assert!(model_name("gpt-5.1-codex"));
+        assert!(!model_name("-x") && !model_name("..") && !model_name("a b") && !model_name(""));
+        assert!(enrollment_id(&"a1".repeat(16)));
+        assert!(
+            !enrollment_id("short")
+                && !enrollment_id(&"A1".repeat(16))
+                && !enrollment_id(&"g".repeat(32))
+        );
     }
 
     #[test]

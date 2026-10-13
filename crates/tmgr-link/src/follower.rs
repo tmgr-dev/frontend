@@ -2,7 +2,7 @@ use crate::audit::Audit;
 use crate::authkeys;
 use crate::grammar::{self, PubKey};
 use crate::scope::{canonical_repo, Scope};
-use crate::sshd::Verdict;
+use crate::sshd::{Check, Verdict};
 use crate::store::{Leader, Paths, Store};
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -14,6 +14,7 @@ pub const MAX_RUNS_LIMIT: u32 = 64;
 pub struct ScopeInput {
     pub repos: Option<Vec<String>>,
     pub agents: Option<Vec<String>>,
+    pub models: Option<Vec<String>>,
     pub max: Option<u32>,
     pub from: Option<Vec<String>>,
 }
@@ -45,6 +46,20 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
         }
         scope.agents = out;
     }
+    if let Some(models) = &input.models {
+        let mut out: Vec<String> = Vec::new();
+        for raw in models {
+            for m in raw.split(',') {
+                if !grammar::model_name(m.trim()) {
+                    return Err(Error::usage(format!("invalid model name: {m:?}")));
+                }
+                if !out.iter().any(|x| x == m.trim()) {
+                    out.push(m.trim().to_string());
+                }
+            }
+        }
+        scope.models = out;
+    }
     if let Some(max) = input.max {
         if !(1..=MAX_RUNS_LIMIT).contains(&max) {
             return Err(Error::usage("--max must be between 1 and 64"));
@@ -55,6 +70,13 @@ fn build_scope(base: &Scope, input: &ScopeInput) -> Result<Scope> {
         scope.from = grammar::parse_cidr_list(from)?;
     }
     Ok(scope)
+}
+
+pub fn new_enrollment() -> String {
+    use rand_core::RngCore;
+    let mut bytes = [0u8; 16];
+    rand_core::OsRng.fill_bytes(&mut bytes);
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[derive(Debug)]
@@ -70,26 +92,40 @@ pub struct TrustPlan {
     pub key: PubKey,
     pub scope: Scope,
     pub line: String,
+    pub enrollment: String,
     pub sshd: Verdict,
+    pub target: PathBuf,
+    pub store_version: u64,
 }
 
 pub fn plan_trust(
     paths: &Paths,
     input: &TrustInput,
     bin: &Path,
-    sshd: Verdict,
+    check: Check,
 ) -> Result<TrustPlan> {
     let name = grammar::link_name(&input.name)?.to_string();
     let key = grammar::parse_pubkey(&input.pubkey)?;
     let mut scope_input = input.scope.clone();
     scope_input.max.get_or_insert(1);
     let scope = build_scope(&Scope::default(), &scope_input)?;
-    if let Verdict::Violations(v) = &sshd {
+    let Check {
+        verdict,
+        authorized_keys_files,
+    } = check;
+    if let Verdict::Violations(v) = &verdict {
         return Err(crate::forbidden(format!(
             "sshd configuration is unsafe for a restricted key: {}",
             v.join("; ")
         ))
-        .hint("fix sshd_config (PermitUserEnvironment no, no ForceCommand or AuthorizedKeysCommand for this user)"));
+        .hint("fix sshd_config (PermitUserEnvironment no, PermitTunnel no, a minimal AcceptEnv, no ForceCommand or AuthorizedKeysCommand for this user)"));
+    }
+    let target = paths.authorized_keys();
+    if matches!(verdict, Verdict::Verified) && !authorized_keys_files.contains(&target) {
+        return Err(crate::forbidden(format!(
+            "sshd does not read {} (AuthorizedKeysFile points elsewhere)",
+            target.display()
+        )));
     }
     let bin = authkeys::check_binary(bin)?;
     if let Ok(own) = std::fs::read_to_string(paths.public_key()) {
@@ -111,54 +147,83 @@ pub fn plan_trust(
             "this key is already trusted as {other}"
         )));
     }
-    if authkeys::find_foreign(&paths.authorized_keys(), &key, &name)? {
-        return Err(Error::conflict(
-            "this public key is already in authorized_keys without tmgr's restrictions",
-        )
+    let mut inspect = authorized_keys_files;
+    if !inspect.contains(&target) {
+        inspect.push(target.clone());
+    }
+    if let Some(file) = authkeys::find_foreign(&inspect, &key, &name)? {
+        return Err(Error::conflict(format!(
+            "this public key is already in {} without tmgr's restrictions",
+            file.display()
+        ))
         .hint("remove that line first, or use a dedicated link key"));
     }
-    let line = authkeys::build_line(&bin, &name, &scope.from, &key)?;
+    let enrollment = new_enrollment();
+    let line = authkeys::build_line(&bin, &name, &enrollment, &scope.from, &key)?;
     Ok(TrustPlan {
         name,
         key,
         scope,
         line,
-        sshd,
+        enrollment,
+        sshd: verdict,
+        target,
+        store_version: store.version,
     })
 }
 
+fn changed_meanwhile() -> Error {
+    Error::conflict("links.toml changed while you were confirming").hint("run the command again")
+}
+
 pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
-    Store::update(paths, |s| {
-        s.leaders.insert(
-            plan.name.clone(),
-            Leader {
-                key: plan.key.blob.clone(),
-                fingerprint: plan.key.fingerprint.clone(),
-                added: crate::now_rfc3339(),
-                scope: plan.scope.clone(),
-            },
-        );
-        Ok(())
-    })?;
-    let edit = match authkeys::upsert(&paths.authorized_keys(), &plan.name, &plan.line, &plan.key) {
-        Ok(e) => e,
-        Err(e) => {
-            let _ = Store::update(paths, |s| {
-                s.leaders.remove(&plan.name);
-                Ok(())
-            });
-            return Err(e);
-        }
-    };
-    Audit::new(&paths.audit_dir()).append(
+    let _lock = crate::store::lock_links(paths)?;
+    let mut store = Store::load(paths)?;
+    if store.version != plan.store_version {
+        return Err(changed_meanwhile());
+    }
+    let audit = Audit::new(&paths.audit_dir());
+    audit.append(
+        "link.trust.intent",
+        json!({
+            "link": plan.name,
+            "fingerprint": plan.key.fingerprint,
+            "scope": plan.scope.summary(),
+        }),
+    )?;
+    let edit = authkeys::upsert(&plan.target, &plan.name, &plan.line, &plan.key)?;
+    store.leaders.insert(
+        plan.name.clone(),
+        Leader {
+            key: plan.key.blob.clone(),
+            fingerprint: plan.key.fingerprint.clone(),
+            added: crate::now_rfc3339(),
+            scope: plan.scope.clone(),
+            enrollment: plan.enrollment.clone(),
+            authorized_keys: plan.target.display().to_string(),
+        },
+    );
+    if let Err(e) = store.save(paths) {
+        let _ = authkeys::restore(&edit);
+        let _ = audit.append("link.trust.aborted", json!({"link": plan.name}));
+        return Err(e);
+    }
+    let done = audit.append(
         "link.trust",
         json!({
             "link": plan.name,
             "fingerprint": plan.key.fingerprint,
             "scope": plan.scope.summary(),
+            "enrollment": plan.enrollment,
             "sshd": match &plan.sshd { Verdict::Verified => "verified", _ => "unverified" },
         }),
-    )?;
+    );
+    if let Err(e) = done {
+        store.leaders.remove(&plan.name);
+        let _ = store.save(paths);
+        let _ = authkeys::restore(&edit);
+        return Err(e);
+    }
     Ok(edit)
 }
 
@@ -169,6 +234,9 @@ pub struct ScopePlan {
     pub new: Scope,
     pub widening: bool,
     pub key_blob: String,
+    pub enrollment: String,
+    pub authorized_keys: PathBuf,
+    pub store_version: u64,
 }
 
 pub fn plan_scope(paths: &Paths, name: &str, input: &ScopeInput) -> Result<ScopePlan> {
@@ -184,46 +252,77 @@ pub fn plan_scope(paths: &Paths, name: &str, input: &ScopeInput) -> Result<Scope
         old: leader.scope.clone(),
         new,
         key_blob: leader.key.clone(),
+        enrollment: leader.enrollment.clone(),
+        authorized_keys: leader_keys_path(paths, leader),
+        store_version: store.version,
     })
+}
+
+fn leader_keys_path(paths: &Paths, leader: &Leader) -> PathBuf {
+    if leader.authorized_keys.is_empty() {
+        paths.authorized_keys()
+    } else {
+        PathBuf::from(&leader.authorized_keys)
+    }
 }
 
 pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
     if plan.old == plan.new {
         return Ok(());
     }
-    let from_changed = plan.old.from != plan.new.from;
-    let key = grammar::parse_pubkey(&format!("ssh-ed25519 {}", plan.key_blob));
-    let line = if from_changed {
+    let _lock = crate::store::lock_links(paths)?;
+    let mut store = Store::load(paths)?;
+    if store.version != plan.store_version {
+        return Err(changed_meanwhile());
+    }
+    let audit = Audit::new(&paths.audit_dir());
+    let fields = json!({
+        "link": plan.name,
+        "widening": plan.widening,
+        "from": plan.old.summary(),
+        "to": plan.new.summary(),
+    });
+    if plan.widening {
+        audit.append("link.scope.intent", fields.clone())?;
+    }
+    let edit = if plan.old.from != plan.new.from {
+        let key = grammar::parse_pubkey(&format!("ssh-ed25519 {}", plan.key_blob))?;
         let bin = authkeys::check_binary(bin)?;
-        Some(authkeys::build_line(
-            &bin,
+        let line = authkeys::build_line(&bin, &plan.name, &plan.enrollment, &plan.new.from, &key)?;
+        Some(authkeys::upsert(
+            &plan.authorized_keys,
             &plan.name,
-            &plan.new.from,
-            key.as_ref().map_err(|e| Error::usage(e.message.clone()))?,
+            &line,
+            &key,
         )?)
     } else {
         None
     };
-    Store::update(paths, |s| {
-        let leader = s
-            .leaders
-            .get_mut(&plan.name)
-            .ok_or_else(|| Error::not_found(format!("no leader named {}", plan.name)))?;
-        leader.scope = plan.new.clone();
-        Ok(())
-    })?;
-    if let Some(line) = line {
-        authkeys::upsert(&paths.authorized_keys(), &plan.name, &line, &key?)?;
+    let rollback = |edit: &Option<authkeys::Edit>| {
+        if let Some(e) = edit {
+            let _ = authkeys::restore(e);
+        }
+    };
+    let Some(leader) = store.leaders.get_mut(&plan.name) else {
+        rollback(&edit);
+        return Err(Error::not_found(format!("no leader named {}", plan.name)));
+    };
+    leader.scope = plan.new.clone();
+    if let Err(e) = store.save(paths) {
+        rollback(&edit);
+        return Err(e);
     }
-    Audit::new(&paths.audit_dir()).append(
-        "link.scope",
-        json!({
-            "link": plan.name,
-            "widening": plan.widening,
-            "from": plan.old.summary(),
-            "to": plan.new.summary(),
-        }),
-    )?;
+    let done = audit.append("link.scope", fields);
+    if plan.widening {
+        if let Err(e) = done {
+            if let Some(l) = store.leaders.get_mut(&plan.name) {
+                l.scope = plan.old.clone();
+            }
+            let _ = store.save(paths);
+            rollback(&edit);
+            return Err(e);
+        }
+    }
     Ok(())
 }
 
@@ -235,24 +334,27 @@ pub struct Revoked {
 
 pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     grammar::link_name(name)?;
-    let leader = Store::update(paths, |s| {
-        s.leaders.remove(name).ok_or_else(|| {
-            Error::not_found(format!("no leader named {name}")).hint("tmgr link list")
-        })
+    let _lock = crate::store::lock_links(paths)?;
+    let mut store = Store::load(paths)?;
+    let leader = store.leaders.remove(name).ok_or_else(|| {
+        Error::not_found(format!("no leader named {name}")).hint("tmgr link list")
     })?;
+    let saved = store.save(paths);
     let audit = Audit::new(&paths.audit_dir());
-    let edit = authkeys::remove(&paths.authorized_keys(), name);
-    let audit_result = audit.append(
+    let edit = authkeys::remove(&leader_keys_path(paths, &leader), name);
+    let audited = audit.append(
         "link.revoke",
         json!({
             "link": name,
             "fingerprint": leader.fingerprint,
             "keys_removed": edit.as_ref().map_or(0, |e| e.removed),
             "authorized_keys_error": edit.is_err(),
+            "store_error": saved.is_err(),
         }),
     );
+    saved?;
     let edit = edit?;
-    audit_result?;
+    audited?;
     Ok(Revoked {
         keys_removed: edit.removed,
         backup: edit.backup,
@@ -292,6 +394,17 @@ mod tests {
         }
     }
 
+    fn chk_with(f: &Fx, verdict: Verdict) -> Check {
+        Check {
+            verdict,
+            authorized_keys_files: vec![f.paths.authorized_keys()],
+        }
+    }
+
+    fn chk(f: &Fx) -> Check {
+        chk_with(f, Verdict::Verified)
+    }
+
     fn input(f: &Fx, name: &str, key: &str) -> TrustInput {
         TrustInput {
             name: name.into(),
@@ -299,6 +412,7 @@ mod tests {
             scope: ScopeInput {
                 repos: Some(vec![f.repo.clone()]),
                 agents: Some(vec!["claude-code,codex".into()]),
+                models: None,
                 max: Some(3),
                 from: None,
             },
@@ -307,7 +421,7 @@ mod tests {
 
     fn trust(f: &Fx, name: &str) -> (TrustPlan, PubKey) {
         let k = testkeys::generate();
-        let plan = plan_trust(&f.paths, &input(f, name, &k), &f.bin, Verdict::Verified).unwrap();
+        let plan = plan_trust(&f.paths, &input(f, name, &k), &f.bin, chk(f)).unwrap();
         let key = plan.key.clone();
         apply_trust(&f.paths, &plan).unwrap();
         (plan, key)
@@ -327,8 +441,9 @@ mod tests {
         let ak = std::fs::read_to_string(f.paths.authorized_keys()).unwrap();
         assert_eq!(ak.trim_end(), plan.line);
         assert!(ak.starts_with(&format!(
-            "restrict,command=\"{} worker --link laptop\"",
-            f.bin.display()
+            "restrict,no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-user-rc,command=\"{} worker --link laptop --enrollment {}\"",
+            f.bin.display(),
+            plan.enrollment
         )));
         let audit = Audit::new(&f.paths.audit_dir());
         assert_eq!(audit.tail(1).unwrap()[0]["event"], "link.trust");
@@ -343,20 +458,19 @@ mod tests {
             &f.paths,
             &input(&f, "laptop", &testkeys::generate()),
             &f.bin,
-            Verdict::Verified,
+            chk(&f),
         );
         assert_eq!(again.unwrap_err().exit_code(), 6);
         let same_key = plan_trust(
             &f.paths,
             &input(&f, "other", &key.openssh()),
             &f.bin,
-            Verdict::Verified,
+            chk(&f),
         );
         assert_eq!(same_key.unwrap_err().exit_code(), 6);
         let own = testkeys::generate();
         std::fs::write(f.paths.public_key(), &own).unwrap();
-        let e =
-            plan_trust(&f.paths, &input(&f, "me", &own), &f.bin, Verdict::Verified).unwrap_err();
+        let e = plan_trust(&f.paths, &input(&f, "me", &own), &f.bin, chk(&f)).unwrap_err();
         assert!(e.message.contains("own link identity"));
     }
 
@@ -365,21 +479,21 @@ mod tests {
         let f = fx();
         let k = testkeys::generate();
         let mut bad_name = input(&f, "Laptop", &k);
-        assert!(plan_trust(&f.paths, &bad_name, &f.bin, Verdict::Verified).is_err());
+        assert!(plan_trust(&f.paths, &bad_name, &f.bin, chk(&f)).is_err());
         bad_name.name = "ok".into();
         bad_name.scope.repos = Some(vec!["/definitely/not/here".into()]);
-        assert!(plan_trust(&f.paths, &bad_name, &f.bin, Verdict::Verified).is_err());
+        assert!(plan_trust(&f.paths, &bad_name, &f.bin, chk(&f)).is_err());
         let mut rel = input(&f, "ok", &k);
         rel.scope.repos = Some(vec!["relative".into()]);
-        assert!(plan_trust(&f.paths, &rel, &f.bin, Verdict::Verified).is_err());
+        assert!(plan_trust(&f.paths, &rel, &f.bin, chk(&f)).is_err());
         let mut from = input(&f, "ok", &k);
         from.scope.from = Some(vec!["not-a-cidr".into()]);
-        assert!(plan_trust(&f.paths, &from, &f.bin, Verdict::Verified).is_err());
+        assert!(plan_trust(&f.paths, &from, &f.bin, chk(&f)).is_err());
         let mut max = input(&f, "ok", &k);
         max.scope.max = Some(0);
-        assert!(plan_trust(&f.paths, &max, &f.bin, Verdict::Verified).is_err());
+        assert!(plan_trust(&f.paths, &max, &f.bin, chk(&f)).is_err());
         let rsa = input(&f, "ok", "ssh-rsa AAAA");
-        assert!(plan_trust(&f.paths, &rsa, &f.bin, Verdict::Verified).is_err());
+        assert!(plan_trust(&f.paths, &rsa, &f.bin, chk(&f)).is_err());
         assert!(!f.paths.links_toml().exists());
         assert!(!f.paths.authorized_keys().exists());
     }
@@ -389,13 +503,13 @@ mod tests {
         let f = fx();
         let k = testkeys::generate();
         let v = Verdict::Violations(vec!["PermitUserEnvironment is \"yes\"".into()]);
-        let e = plan_trust(&f.paths, &input(&f, "a", &k), &f.bin, v).unwrap_err();
+        let e = plan_trust(&f.paths, &input(&f, "a", &k), &f.bin, chk_with(&f, v)).unwrap_err();
         assert_eq!(e.exit_code(), 5);
         let p = plan_trust(
             &f.paths,
             &input(&f, "a", &k),
             &f.bin,
-            Verdict::Unverified("x".into()),
+            chk_with(&f, Verdict::Unverified("x".into())),
         )
         .unwrap();
         assert!(matches!(p.sshd, Verdict::Unverified(_)));
@@ -408,8 +522,152 @@ mod tests {
         let key = grammar::parse_pubkey(&k).unwrap();
         std::fs::create_dir_all(f.paths.authorized_keys().parent().unwrap()).unwrap();
         std::fs::write(f.paths.authorized_keys(), format!("{}\n", key.openssh())).unwrap();
-        let e = plan_trust(&f.paths, &input(&f, "a", &k), &f.bin, Verdict::Verified).unwrap_err();
+        let e = plan_trust(&f.paths, &input(&f, "a", &k), &f.bin, chk(&f)).unwrap_err();
         assert_eq!(e.exit_code(), 6);
+    }
+
+    #[test]
+    fn every_effective_authorized_keys_file_is_inspected() {
+        let f = fx();
+        let k = testkeys::generate();
+        let key = grammar::parse_pubkey(&k).unwrap();
+        let other = f.paths.home.join("elsewhere_keys");
+        std::fs::create_dir_all(&f.paths.home).unwrap();
+        std::fs::write(&other, format!("{}\n", key.openssh())).unwrap();
+        let check = Check {
+            verdict: Verdict::Verified,
+            authorized_keys_files: vec![f.paths.authorized_keys(), other.clone()],
+        };
+        let e = plan_trust(&f.paths, &input(&f, "a", &k), &f.bin, check).unwrap_err();
+        assert_eq!(e.exit_code(), 6);
+        assert!(e.message.contains("elsewhere_keys"));
+    }
+
+    #[test]
+    fn a_verified_sshd_that_does_not_read_our_file_is_refused() {
+        let f = fx();
+        let check = Check {
+            verdict: Verdict::Verified,
+            authorized_keys_files: vec![f.paths.home.join("other_keys")],
+        };
+        let e = plan_trust(
+            &f.paths,
+            &input(&f, "a", &testkeys::generate()),
+            &f.bin,
+            check,
+        )
+        .unwrap_err();
+        assert_eq!(e.exit_code(), 5);
+    }
+
+    #[test]
+    fn the_enrollment_id_is_in_the_forced_command_and_the_store() {
+        let f = fx();
+        let (plan, _) = trust(&f, "laptop");
+        assert!(grammar::enrollment_id(&plan.enrollment));
+        assert!(plan.line.contains(&format!(
+            "worker --link laptop --enrollment {}",
+            plan.enrollment
+        )));
+        let l = &Store::load(&f.paths).unwrap().leaders["laptop"];
+        assert_eq!(l.enrollment, plan.enrollment);
+        assert_eq!(
+            l.authorized_keys,
+            f.paths.authorized_keys().display().to_string()
+        );
+        revoke(&f.paths, "laptop").unwrap();
+        let (again, _) = trust(&f, "laptop");
+        assert_ne!(again.enrollment, plan.enrollment);
+    }
+
+    #[test]
+    fn a_stale_plan_is_refused_under_the_lock() {
+        let f = fx();
+        trust(&f, "laptop");
+        let widen = plan_scope(
+            &f.paths,
+            "laptop",
+            &ScopeInput {
+                max: Some(9),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(widen.widening);
+        let narrow = plan_scope(
+            &f.paths,
+            "laptop",
+            &ScopeInput {
+                max: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        apply_scope(&f.paths, &narrow, &f.bin).unwrap();
+        let e = apply_scope(&f.paths, &widen, &f.bin).unwrap_err();
+        assert_eq!(e.exit_code(), 6);
+        assert_eq!(
+            Store::load(&f.paths).unwrap().leaders["laptop"].scope.max,
+            1
+        );
+    }
+
+    #[test]
+    fn a_failing_intent_audit_blocks_trust_and_widening_but_not_revoke() {
+        let f = fx();
+        trust(&f, "laptop");
+        let widen = plan_scope(
+            &f.paths,
+            "laptop",
+            &ScopeInput {
+                max: Some(9),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let k = testkeys::generate();
+        let plan = plan_trust(&f.paths, &input(&f, "second", &k), &f.bin, chk(&f)).unwrap();
+        let dir = f.paths.audit_dir();
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::write(&dir, "not a directory").unwrap();
+        let before = std::fs::read_to_string(f.paths.authorized_keys()).unwrap();
+        assert!(apply_trust(&f.paths, &plan).is_err());
+        assert!(apply_scope(&f.paths, &widen, &f.bin).is_err());
+        assert_eq!(
+            std::fs::read_to_string(f.paths.authorized_keys()).unwrap(),
+            before
+        );
+        let store = Store::load(&f.paths).unwrap();
+        assert!(!store.leaders.contains_key("second"));
+        assert_eq!(store.leaders["laptop"].scope.max, 3);
+        let err = revoke(&f.paths, "laptop").unwrap_err();
+        assert!(err.message.contains("I/O") || !err.message.is_empty());
+        let after = Store::load(&f.paths).unwrap();
+        assert!(!after.leaders.contains_key("laptop"));
+        assert!(!std::fs::read_to_string(f.paths.authorized_keys())
+            .unwrap()
+            .contains("tmgr-link:laptop"));
+    }
+
+    #[test]
+    fn trust_rolls_back_authorized_keys_when_the_store_cannot_be_written() {
+        let f = fx();
+        Store::update(&f.paths, |_| Ok(())).unwrap();
+        std::fs::create_dir_all(f.paths.authorized_keys().parent().unwrap()).unwrap();
+        std::fs::write(f.paths.authorized_keys(), "ssh-rsa AAAA keep\n").unwrap();
+        let k = testkeys::generate();
+        let plan = plan_trust(&f.paths, &input(&f, "a", &k), &f.bin, chk(&f)).unwrap();
+        let blocker = f
+            .paths
+            .config
+            .join(format!(".links.toml.{}.tmp", std::process::id()));
+        std::fs::create_dir(&blocker).unwrap();
+        assert!(apply_trust(&f.paths, &plan).is_err());
+        assert_eq!(
+            std::fs::read_to_string(f.paths.authorized_keys()).unwrap(),
+            "ssh-rsa AAAA keep\n"
+        );
+        assert!(!Store::load(&f.paths).unwrap().leaders.contains_key("a"));
     }
 
     #[test]
@@ -519,7 +777,16 @@ mod tests {
             .iter()
             .map(|e| e["event"].as_str().unwrap().to_string())
             .collect();
-        assert_eq!(events, ["link.trust", "link.trust", "link.revoke"]);
+        assert_eq!(
+            events,
+            [
+                "link.trust.intent",
+                "link.trust",
+                "link.trust.intent",
+                "link.trust",
+                "link.revoke"
+            ]
+        );
         assert!(audit.verify().unwrap().is_ok());
         assert_eq!(revoke(&f.paths, "laptop").unwrap_err().exit_code(), 3);
     }

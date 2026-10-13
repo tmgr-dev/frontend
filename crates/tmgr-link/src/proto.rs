@@ -10,6 +10,7 @@ pub enum FrameError {
     Oversize(u64),
     Truncated,
     Empty,
+    Timeout,
     Io(String),
 }
 
@@ -19,6 +20,7 @@ impl std::fmt::Display for FrameError {
             FrameError::Oversize(n) => write!(f, "frame of {n} bytes exceeds the limit"),
             FrameError::Truncated => f.write_str("the stream ended inside a frame"),
             FrameError::Empty => f.write_str("empty frame"),
+            FrameError::Timeout => f.write_str("timed out"),
             FrameError::Io(e) => write!(f, "I/O error: {e}"),
         }
     }
@@ -60,6 +62,87 @@ impl<R: Read, W: Write> Channel for Framed<R, W> {
 
     fn send(&mut self, payload: &[u8]) -> Result<(), FrameError> {
         write_frame(&mut self.writer, payload, self.max)
+    }
+}
+
+type Inbox = std::sync::mpsc::Receiver<Result<Option<Vec<u8>>, FrameError>>;
+type Outbox = std::sync::mpsc::SyncSender<Vec<u8>>;
+
+pub struct Timed {
+    inbox: Inbox,
+    outbox: Outbox,
+    acks: std::sync::mpsc::Receiver<Result<(), FrameError>>,
+    idle: std::time::Duration,
+    deadline: std::time::Instant,
+}
+
+impl Timed {
+    pub fn spawn<R, W>(
+        mut reader: R,
+        mut writer: W,
+        idle: std::time::Duration,
+        session: std::time::Duration,
+        max: usize,
+    ) -> Timed
+    where
+        R: Read + Send + 'static,
+        W: Write + Send + 'static,
+    {
+        let (tx, inbox) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || loop {
+            let frame = read_frame(&mut reader, max);
+            let last = !matches!(frame, Ok(Some(_)));
+            if tx.send(frame).is_err() || last {
+                break;
+            }
+        });
+        let (outbox, out_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(1);
+        let (ack_tx, acks) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            while let Ok(payload) = out_rx.recv() {
+                if ack_tx
+                    .send(write_frame(&mut writer, &payload, max))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        Timed {
+            inbox,
+            outbox,
+            acks,
+            idle,
+            deadline: std::time::Instant::now() + session,
+        }
+    }
+
+    fn remaining(&self) -> Option<std::time::Duration> {
+        self.deadline
+            .checked_duration_since(std::time::Instant::now())
+            .filter(|d| !d.is_zero())
+    }
+}
+
+impl Channel for Timed {
+    fn recv(&mut self) -> Result<Option<Vec<u8>>, FrameError> {
+        let wait = self.remaining().ok_or(FrameError::Timeout)?.min(self.idle);
+        match self.inbox.recv_timeout(wait) {
+            Ok(frame) => frame,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(FrameError::Timeout),
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Ok(None),
+        }
+    }
+
+    fn send(&mut self, payload: &[u8]) -> Result<(), FrameError> {
+        let wait = self.remaining().ok_or(FrameError::Timeout)?.min(self.idle);
+        self.outbox
+            .send(payload.to_vec())
+            .map_err(|_| FrameError::Io("closed".into()))?;
+        match self.acks.recv_timeout(wait) {
+            Ok(r) => r,
+            Err(_) => Err(FrameError::Timeout),
+        }
     }
 }
 
@@ -187,6 +270,7 @@ pub fn parse_reply(bytes: &[u8], expect_id: u64) -> Result<Reply, &'static str> 
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::time::Duration;
 
     fn framed(payload: &[u8]) -> Vec<u8> {
         let mut v = (payload.len() as u32).to_be_bytes().to_vec();
@@ -229,6 +313,93 @@ mod tests {
             Err(FrameError::Oversize(11))
         );
         assert!(sink.is_empty());
+    }
+
+    #[test]
+    fn a_silent_peer_times_out() {
+        let (r, _w) = std::io::pipe().unwrap();
+        let (_r2, w2) = std::io::pipe().unwrap();
+        let mut t = Timed::spawn(
+            r,
+            w2,
+            Duration::from_millis(100),
+            Duration::from_secs(5),
+            MAX_FRAME,
+        );
+        let started = std::time::Instant::now();
+        assert_eq!(t.recv(), Err(FrameError::Timeout));
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
+    #[test]
+    fn a_half_sent_frame_times_out_and_whole_frames_pass() {
+        let (r, mut w) = std::io::pipe().unwrap();
+        let (_r2, w2) = std::io::pipe().unwrap();
+        let mut t = Timed::spawn(
+            r,
+            w2,
+            Duration::from_millis(150),
+            Duration::from_secs(5),
+            MAX_FRAME,
+        );
+        w.write_all(&framed(b"{}")).unwrap();
+        assert_eq!(t.recv().unwrap().unwrap(), b"{}");
+        w.write_all(&[0, 0, 0, 9, b'x']).unwrap();
+        assert_eq!(t.recv(), Err(FrameError::Timeout));
+    }
+
+    #[test]
+    fn the_session_deadline_ends_an_active_connection() {
+        let (r, mut w) = std::io::pipe().unwrap();
+        let (_r2, w2) = std::io::pipe().unwrap();
+        let mut t = Timed::spawn(
+            r,
+            w2,
+            Duration::from_secs(5),
+            Duration::from_millis(300),
+            MAX_FRAME,
+        );
+        let feeder = std::thread::spawn(move || {
+            for _ in 0..20 {
+                if w.write_all(&framed(b"{}")).is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let mut got = 0;
+        loop {
+            match t.recv() {
+                Ok(Some(_)) => got += 1,
+                Err(FrameError::Timeout) => break,
+                other => panic!("{other:?}"),
+            }
+        }
+        assert!((2..20).contains(&got));
+        drop(t);
+        let _ = feeder.join();
+    }
+
+    #[test]
+    fn a_writer_that_never_drains_times_out() {
+        let (r, _w) = std::io::pipe().unwrap();
+        let (_r2, w2) = std::io::pipe().unwrap();
+        let mut t = Timed::spawn(
+            r,
+            w2,
+            Duration::from_millis(200),
+            Duration::from_secs(5),
+            MAX_FRAME,
+        );
+        let big = vec![b'x'; 512 * 1024];
+        let mut result = Ok(());
+        for _ in 0..4 {
+            result = t.send(&big);
+            if result.is_err() {
+                break;
+            }
+        }
+        assert_eq!(result, Err(FrameError::Timeout));
     }
 
     #[test]

@@ -6,13 +6,15 @@ use tmgr_core::config::ensure_private_dir;
 use tmgr_core::error::{Error, Result};
 
 pub const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-pub const ROTATE_AT: u64 = 1 << 20;
+pub const ROTATE_AT: u64 = 10 << 20;
+pub const MAX_FILES: usize = 10;
 const MAX_LINE: usize = 8 * 1024;
 const MAX_STR: usize = 256;
 
 pub struct Audit {
     dir: PathBuf,
     rotate_at: u64,
+    max_files: usize,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -66,14 +68,24 @@ impl Audit {
         Audit {
             dir: dir.to_path_buf(),
             rotate_at: ROTATE_AT,
+            max_files: MAX_FILES,
         }
     }
 
     pub fn with_rotation(dir: &Path, rotate_at: u64) -> Audit {
+        Self::with_limits(dir, rotate_at, MAX_FILES)
+    }
+
+    pub fn with_limits(dir: &Path, rotate_at: u64, max_files: usize) -> Audit {
         Audit {
             dir: dir.to_path_buf(),
             rotate_at,
+            max_files,
         }
+    }
+
+    fn anchor_path(&self) -> PathBuf {
+        self.dir.join("audit.anchor")
     }
 
     pub fn current(&self) -> PathBuf {
@@ -141,6 +153,12 @@ impl Audit {
         let tip = self.tip()?;
         let cur = self.current();
         if std::fs::metadata(&cur).is_ok_and(|m| m.len() >= self.rotate_at) {
+            if self.rotated().len() + 2 > self.max_files {
+                return Err(
+                    Error::internal("the audit log is full, refusing new requests")
+                        .hint("archive the files in the audit directory, then retry"),
+                );
+            }
             std::fs::rename(&cur, self.dir.join(format!("audit.{}.jsonl", tip.seq)))?;
         }
         let mut entry = Map::new();
@@ -168,6 +186,9 @@ impl Audit {
         let mut f = open_append(&cur)?;
         f.write_all(&line)?;
         f.sync_data()?;
+        let body = &line[..line.len() - 1];
+        let anchor = json!({"seq": tip.seq + 1, "hash": sha256_hex(body)});
+        tmgr_core::config::write_atomic(&self.anchor_path(), anchor.to_string().as_bytes(), 0o600)?;
         Ok(())
     }
 
@@ -184,6 +205,7 @@ impl Audit {
         let mut prev_hash = GENESIS.to_string();
         let mut prev_seq = 0u64;
         let mut entries = 0u64;
+        let mut before_hash = GENESIS.to_string();
         for path in &files {
             let name = path
                 .file_name()
@@ -220,9 +242,40 @@ impl Audit {
                 if prev != prev_hash {
                     return fail(n, "hash chain broken: the previous entry was changed");
                 }
+                before_hash = prev_hash;
                 prev_hash = sha256_hex(raw);
                 prev_seq = seq;
                 entries += 1;
+            }
+        }
+        let anchor_fail = |reason: &str| {
+            Ok(Err(Tampered {
+                file: "audit.anchor".into(),
+                line: 0,
+                reason: reason.to_string(),
+            }))
+        };
+        match std::fs::read_to_string(self.anchor_path())
+            .ok()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        {
+            None if entries == 0 && !self.anchor_path().exists() => {}
+            None => return anchor_fail("the anchor file is missing or unreadable"),
+            Some(a) => {
+                let seq = a.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
+                let hash = a.get("hash").and_then(Value::as_str).unwrap_or("");
+                if seq > prev_seq {
+                    return anchor_fail("the log was truncated: the anchor expects more entries");
+                }
+                if seq == prev_seq && hash != prev_hash {
+                    return anchor_fail("the last entry does not match the anchor");
+                }
+                if seq + 1 == prev_seq && hash != before_hash {
+                    return anchor_fail("the last entries do not match the anchor");
+                }
+                if seq + 1 < prev_seq {
+                    return anchor_fail("entries were appended without the anchor");
+                }
             }
         }
         Ok(Ok(Verified {
@@ -379,6 +432,70 @@ mod tests {
         l[1] = "not json".into();
         write_lines(&b, &l);
         assert_eq!(b.verify().unwrap().unwrap_err().line, 2);
+    }
+
+    #[test]
+    fn truncating_the_tail_is_detected_by_the_anchor() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 5);
+        let anchor = d.path().join("audit.anchor");
+        assert_eq!(
+            std::fs::metadata(&anchor).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let mut l = lines(&a);
+        l.pop();
+        write_lines(&a, &l);
+        let t = a.verify().unwrap().unwrap_err();
+        assert_eq!(t.file, "audit.anchor");
+        assert!(t.reason.contains("truncated"));
+    }
+
+    #[test]
+    fn editing_the_last_entry_or_dropping_the_anchor_is_detected() {
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 3);
+        let mut l = lines(&a);
+        l[2] = l[2].replace("runs.list", "runs.gett");
+        write_lines(&a, &l);
+        assert!(a.verify().unwrap().unwrap_err().reason.contains("anchor"));
+        let b = filled(&d.path().join("b"), 3);
+        std::fs::remove_file(d.path().join("b").join("audit.anchor")).unwrap();
+        assert!(b.verify().unwrap().unwrap_err().reason.contains("anchor"));
+    }
+
+    #[test]
+    fn an_anchor_one_entry_behind_is_a_crash_not_tampering() {
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 3);
+        let l = lines(&a);
+        let prev: Value = serde_json::from_str(&l[1]).unwrap();
+        let hash = sha256_hex(l[1].as_bytes());
+        std::fs::write(
+            d.path().join("audit.anchor"),
+            json!({"seq": prev["seq"], "hash": hash}).to_string(),
+        )
+        .unwrap();
+        assert!(a.verify().unwrap().is_ok());
+    }
+
+    #[test]
+    fn a_full_log_refuses_new_entries_and_keeps_the_old_ones() {
+        let d = tempfile::tempdir().unwrap();
+        let a = Audit::with_limits(d.path(), 300, 3);
+        let mut refused = false;
+        for i in 0..40 {
+            if a.append("e", json!({"i": i.to_string()})).is_err() {
+                refused = true;
+                break;
+            }
+        }
+        assert!(refused);
+        assert!(a.rotated().len() < 3);
+        let v = a.verify().unwrap().unwrap();
+        assert!(v.entries > 3);
+        assert!(a.append("e", json!({})).is_err());
     }
 
     #[test]

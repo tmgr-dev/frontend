@@ -10,15 +10,61 @@ use std::net::IpAddr;
 use tmgr_core::error::Result;
 
 pub const MAX_REQUESTS: u32 = 256;
+pub const REQUESTS_PER_MINUTE: u32 = 120;
+pub const MAX_WORKERS: usize = 4;
 
-pub fn check_argv(args: &[OsString]) -> Result<String> {
-    let bad = || crate::forbidden("tmgr worker accepts exactly: tmgr worker --link NAME");
-    if args.len() != 4 || args[1] != "worker" || args[2] != "--link" {
+#[derive(Debug, Clone)]
+pub struct Limits {
+    pub max_requests: u32,
+    pub per_minute: u32,
+    pub max_workers: usize,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Limits {
+            max_requests: MAX_REQUESTS,
+            per_minute: REQUESTS_PER_MINUTE,
+            max_workers: MAX_WORKERS,
+        }
+    }
+}
+
+pub fn check_argv(args: &[OsString]) -> Result<(String, String)> {
+    let bad =
+        || crate::forbidden("tmgr worker accepts exactly: tmgr worker --link NAME --enrollment ID");
+    if args.len() != 6 || args[1] != "worker" || args[2] != "--link" || args[4] != "--enrollment" {
         return Err(bad());
     }
     let name = args[3].to_str().ok_or_else(bad)?;
     grammar::link_name(name).map_err(|_| bad())?;
-    Ok(name.to_string())
+    let enrollment = args[5].to_str().ok_or_else(bad)?;
+    if !grammar::enrollment_id(enrollment) {
+        return Err(bad());
+    }
+    Ok((name.to_string(), enrollment.to_string()))
+}
+
+pub struct Slot(#[allow(dead_code)] std::fs::File);
+
+impl Slot {
+    pub fn acquire(paths: &Paths, name: &str, max: usize) -> Result<Option<Slot>> {
+        use std::os::unix::fs::OpenOptionsExt;
+        let dir = paths.state.join("link-slots");
+        tmgr_core::config::ensure_private_dir(&dir)?;
+        for i in 0..max {
+            let f = std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .mode(0o600)
+                .open(dir.join(format!("{name}.{i}.lock")))?;
+            if f.try_lock().is_ok() {
+                return Ok(Some(Slot(f)));
+            }
+        }
+        Ok(None)
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -79,6 +125,8 @@ struct Conn<'a> {
     paths: &'a Paths,
     audit: Audit,
     name: &'a str,
+    enrollment: &'a str,
+    client: IpAddr,
     fingerprint: String,
 }
 
@@ -97,11 +145,24 @@ impl Conn<'_> {
         )
     }
 
-    fn scope(&self) -> Result<Option<Scope>> {
-        Ok(Store::load(self.paths)?
-            .leaders
-            .get(self.name)
-            .map(|l| l.scope.clone()))
+    fn current(&self) -> Result<std::result::Result<Scope, &'static str>> {
+        let store = Store::load(self.paths)?;
+        let Some(leader) = store.leaders.get(self.name) else {
+            return Ok(Err("link revoked"));
+        };
+        if leader.enrollment != self.enrollment {
+            return Ok(Err("link re-enrolled"));
+        }
+        if !leader.scope.from.is_empty()
+            && !leader
+                .scope
+                .from
+                .iter()
+                .any(|c| cidr_contains(c, self.client))
+        {
+            return Ok(Err("client address outside from"));
+        }
+        Ok(Ok(leader.scope.clone()))
     }
 }
 
@@ -112,17 +173,28 @@ fn say(chan: &mut dyn Channel, payload: Vec<u8>) -> bool {
 pub fn serve(
     paths: &Paths,
     name: &str,
+    enrollment: &str,
     env: &Env,
     chan: &mut dyn Channel,
-    max_requests: u32,
+    limits: &Limits,
 ) -> Result<Outcome> {
     grammar::link_name(name)?;
     let refused = || crate::forbidden("refused");
+    if !grammar::enrollment_id(enrollment) {
+        return Err(refused());
+    }
     let ssh_connection = env.ssh_connection.as_deref().ok_or_else(refused)?;
     let client = client_ip(ssh_connection).ok_or_else(refused)?;
     let store = Store::load(paths)?;
     let leader = store.leaders.get(name).ok_or_else(refused)?;
     let audit = Audit::new(&paths.audit_dir());
+    if leader.enrollment != enrollment {
+        let _ = audit.append(
+            "worker.refused",
+            json!({"link": name, "fp": leader.fingerprint, "reason": "enrollment mismatch"}),
+        );
+        return Err(refused());
+    }
     if !leader.scope.from.is_empty() && !leader.scope.from.iter().any(|c| cidr_contains(c, client))
     {
         let _ = audit.append(
@@ -131,12 +203,23 @@ pub fn serve(
         );
         return Err(refused());
     }
+    let Some(_slot) = Slot::acquire(paths, name, limits.max_workers)? else {
+        let _ = audit.append(
+            "worker.busy",
+            json!({"link": name, "fp": leader.fingerprint, "max_workers": limits.max_workers}),
+        );
+        return Err(refused());
+    };
     let conn = Conn {
         paths,
         audit,
         name,
+        enrollment,
+        client,
         fingerprint: leader.fingerprint.clone(),
     };
+    let max_requests = limits.max_requests;
+    let mut recent: std::collections::VecDeque<std::time::Instant> = Default::default();
     let original = env.original_command.as_deref();
     conn.audit.append(
         "worker.connect",
@@ -156,6 +239,7 @@ pub fn serve(
             Err(e) => {
                 let code = match e {
                     FrameError::Oversize(_) => "frame_too_large",
+                    FrameError::Timeout => "timeout",
                     _ => "bad_frame",
                 };
                 let _ = conn.audit.append(
@@ -166,6 +250,25 @@ pub fn serve(
                 break;
             }
         };
+        let now = std::time::Instant::now();
+        while recent
+            .front()
+            .is_some_and(|t| now.duration_since(*t) >= std::time::Duration::from_secs(60))
+        {
+            recent.pop_front();
+        }
+        if recent.len() >= limits.per_minute as usize {
+            let _ = conn.audit.append(
+                "worker.rate_limited",
+                json!({"link": name, "fp": conn.fingerprint, "per_minute": limits.per_minute}),
+            );
+            say(
+                chan,
+                proto::error(None, "rate_limited", "too many requests"),
+            );
+            break;
+        }
+        recent.push_back(now);
         requests += 1;
         if requests > max_requests {
             let _ = conn.audit.append(
@@ -211,15 +314,16 @@ fn handle(conn: &Conn, frame: &[u8]) -> Step {
         }
     };
     let id = Some(req.id);
-    let scope = match conn.scope() {
-        Ok(Some(s)) => s,
-        Ok(None) => {
-            let _ = conn.record(&req.method, json!({}), "rejected", "link revoked");
-            return Step::Close(proto::error(
-                id,
-                "revoked",
-                "this link is no longer trusted",
-            ));
+    let scope = match conn.current() {
+        Ok(Ok(s)) => s,
+        Ok(Err(reason)) => {
+            let _ = conn.record(&req.method, json!({}), "rejected", reason);
+            let code = if reason == "client address outside from" {
+                "forbidden"
+            } else {
+                "revoked"
+            };
+            return Step::Close(proto::error(id, code, "this link is no longer trusted"));
         }
         Err(_) => return Step::Close(proto::error(id, "unavailable", "request refused")),
     };
@@ -254,9 +358,12 @@ fn handle(conn: &Conn, frame: &[u8]) -> Step {
             ))
         }
         "runs.list" | "runs.get" | "runs.create" | "runs.halt" => {
-            let args = scope::audit_args(&req.params);
+            let mut args = scope::audit_args(&req.params);
             match scope::validate_run_method(method, &req.params, &scope, 0) {
-                Ok(()) => {
+                Ok(accepted) => {
+                    if let (Some(repo), Some(obj)) = (accepted.repo, args.as_object_mut()) {
+                        obj.insert("repo_canonical".into(), Value::String(repo));
+                    }
                     if conn
                         .record(method, args, "accepted", "runner not installed")
                         .is_err()
@@ -303,6 +410,15 @@ mod tests {
     use crate::store::Leader;
     use std::io::Cursor;
 
+    const ENR: &str = "0123456789abcdef0123456789abcdef";
+
+    fn lim(n: u32) -> Limits {
+        Limits {
+            max_requests: n,
+            ..Limits::default()
+        }
+    }
+
     fn args(v: &[&str]) -> Vec<OsString> {
         v.iter().map(OsString::from).collect()
     }
@@ -310,20 +426,63 @@ mod tests {
     #[test]
     fn argv_must_have_the_exact_shape() {
         assert_eq!(
-            check_argv(&args(&["/x/tmgr", "worker", "--link", "laptop"])).unwrap(),
-            "laptop"
+            check_argv(&args(&[
+                "/x/tmgr",
+                "worker",
+                "--link",
+                "laptop",
+                "--enrollment",
+                ENR
+            ]))
+            .unwrap(),
+            ("laptop".to_string(), ENR.to_string())
         );
         for bad in [
             vec!["tmgr", "worker"],
             vec!["tmgr", "worker", "--link"],
-            vec!["tmgr", "worker", "--link", "laptop", "--json"],
-            vec!["tmgr", "--json", "worker", "--link", "laptop"],
+            vec!["tmgr", "worker", "--link", "laptop"],
+            vec!["tmgr", "worker", "--link", "laptop", "--enrollment"],
+            vec![
+                "tmgr",
+                "worker",
+                "--link",
+                "laptop",
+                "--enrollment",
+                "short",
+            ],
+            vec![
+                "tmgr",
+                "worker",
+                "--link",
+                "laptop",
+                "--enrollment",
+                &"A".repeat(32),
+            ],
+            vec!["tmgr", "worker", "--enrollment", ENR, "--link", "laptop"],
+            vec![
+                "tmgr",
+                "worker",
+                "--link",
+                "laptop",
+                "--enrollment",
+                ENR,
+                "--json",
+            ],
+            vec![
+                "tmgr",
+                "--json",
+                "worker",
+                "--link",
+                "laptop",
+                "--enrollment",
+                ENR,
+            ],
             vec!["tmgr", "worker", "--link=laptop", "x"],
             vec!["tmgr", "worker", "-l", "laptop"],
-            vec!["tmgr", "worker", "--link", "Laptop"],
-            vec!["tmgr", "worker", "--link", "a b"],
-            vec!["tmgr", "worker", "--link", "-x"],
-            vec!["tmgr", "link", "--link", "laptop"],
+            vec!["tmgr", "worker", "--link", "Laptop", "--enrollment", ENR],
+            vec!["tmgr", "worker", "--link", "a b", "--enrollment", ENR],
+            vec!["tmgr", "worker", "--link", "-x", "--enrollment", ENR],
+            vec!["tmgr", "link", "--link", "laptop", "--enrollment", ENR],
         ] {
             assert_eq!(
                 check_argv(&args(&bad)).unwrap_err().exit_code(),
@@ -388,9 +547,12 @@ mod tests {
                     scope: Scope {
                         repos: vec![repo.clone()],
                         agents: vec!["codex".into()],
+                        models: vec![],
                         max: 2,
                         from: vec![],
                     },
+                    enrollment: ENR.into(),
+                    authorized_keys: String::new(),
                 },
             );
             Ok(())
@@ -420,7 +582,7 @@ mod tests {
         let mut out = Vec::new();
         let result = {
             let mut chan = Framed::new(Cursor::new(input), &mut out);
-            serve(&f.paths, "laptop", &env(), &mut chan, cap)
+            serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(cap))
         };
         let mut replies = Vec::new();
         let mut cur = Cursor::new(out);
@@ -568,7 +730,7 @@ mod tests {
         let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
         let no_env = Env::default();
         assert_eq!(
-            serve(&f.paths, "laptop", &no_env, &mut chan, 5)
+            serve(&f.paths, "laptop", ENR, &no_env, &mut chan, &lim(5))
                 .unwrap_err()
                 .exit_code(),
             5
@@ -577,9 +739,9 @@ mod tests {
             ssh_connection: Some("nonsense".into()),
             original_command: None,
         };
-        assert!(serve(&f.paths, "laptop", &bogus, &mut chan, 5).is_err());
-        assert!(serve(&f.paths, "stranger", &env(), &mut chan, 5).is_err());
-        assert!(serve(&f.paths, "Bad Name", &env(), &mut chan, 5).is_err());
+        assert!(serve(&f.paths, "laptop", ENR, &bogus, &mut chan, &lim(5)).is_err());
+        assert!(serve(&f.paths, "stranger", ENR, &env(), &mut chan, &lim(5)).is_err());
+        assert!(serve(&f.paths, "Bad Name", ENR, &env(), &mut chan, &lim(5)).is_err());
         assert!(sink.is_empty());
         assert!(events(&f).is_empty());
     }
@@ -594,7 +756,7 @@ mod tests {
         .unwrap();
         let mut sink = Vec::new();
         let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
-        assert!(serve(&f.paths, "laptop", &env(), &mut chan, 5).is_err());
+        assert!(serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(5)).is_err());
         assert_eq!(events(&f)[0]["event"], "worker.refused");
     }
 
@@ -605,7 +767,7 @@ mod tests {
         e.original_command = Some(b"cat /etc/passwd".to_vec());
         let mut sink = Vec::new();
         let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
-        serve(&f.paths, "laptop", &e, &mut chan, 5).unwrap();
+        serve(&f.paths, "laptop", ENR, &e, &mut chan, &lim(5)).unwrap();
         let ev = &events(&f)[0];
         assert_eq!(ev["event"], "worker.connect");
         assert_eq!(ev["orig_cmd_len"], 15);
@@ -643,9 +805,143 @@ mod tests {
             serde_json::to_vec(&json!({"id":2,"method":"runs.list"})).unwrap(),
         ];
         let mut chan = Revoking(&f.paths, reqs);
-        let out = serve(&f.paths, "laptop", &env(), &mut chan, 10).unwrap();
+        let out = serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(10)).unwrap();
         assert_eq!(out.requests, 2);
         let last = events(&f).pop().unwrap();
         assert_eq!(last["reason"], "link revoked");
+    }
+
+    #[test]
+    fn a_different_enrollment_is_refused_and_a_re_trust_kills_old_sessions() {
+        let f = fx();
+        let mut sink = Vec::new();
+        let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
+        let other = "f".repeat(32);
+        assert!(serve(&f.paths, "laptop", &other, &env(), &mut chan, &lim(5)).is_err());
+        assert_eq!(events(&f)[0]["reason"], "enrollment mismatch");
+        struct Retrust<'a>(&'a Paths, Vec<Vec<u8>>);
+        impl Channel for Retrust<'_> {
+            fn recv(&mut self) -> std::result::Result<Option<Vec<u8>>, FrameError> {
+                Ok(if self.1.is_empty() {
+                    None
+                } else {
+                    Some(self.1.remove(0))
+                })
+            }
+            fn send(&mut self, payload: &[u8]) -> std::result::Result<(), FrameError> {
+                if payload.windows(6).any(|w| w == b"\"role\"") {
+                    Store::update(self.0, |s| {
+                        s.leaders.get_mut("laptop").unwrap().enrollment = "e".repeat(32);
+                        Ok(())
+                    })
+                    .unwrap();
+                }
+                Ok(())
+            }
+        }
+        let reqs = vec![
+            serde_json::to_vec(&json!({"id":1,"method":"hello"})).unwrap(),
+            serde_json::to_vec(&json!({"id":2,"method":"runs.list"})).unwrap(),
+        ];
+        let mut chan = Retrust(&f.paths, reqs);
+        serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(10)).unwrap();
+        assert_eq!(events(&f).pop().unwrap()["reason"], "link re-enrolled");
+    }
+
+    #[test]
+    fn from_is_rechecked_on_every_request() {
+        let f = fx();
+        struct Narrow<'a>(&'a Paths, Vec<Vec<u8>>);
+        impl Channel for Narrow<'_> {
+            fn recv(&mut self) -> std::result::Result<Option<Vec<u8>>, FrameError> {
+                Ok(if self.1.is_empty() {
+                    None
+                } else {
+                    Some(self.1.remove(0))
+                })
+            }
+            fn send(&mut self, payload: &[u8]) -> std::result::Result<(), FrameError> {
+                if payload.windows(6).any(|w| w == b"\"role\"") {
+                    Store::update(self.0, |s| {
+                        s.leaders.get_mut("laptop").unwrap().scope.from =
+                            vec!["198.51.100.0/24".into()];
+                        Ok(())
+                    })
+                    .unwrap();
+                }
+                Ok(())
+            }
+        }
+        let reqs = vec![
+            serde_json::to_vec(&json!({"id":1,"method":"hello"})).unwrap(),
+            serde_json::to_vec(&json!({"id":2,"method":"runs.list"})).unwrap(),
+        ];
+        let mut chan = Narrow(&f.paths, reqs);
+        serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(10)).unwrap();
+        assert_eq!(
+            events(&f).pop().unwrap()["reason"],
+            "client address outside from"
+        );
+    }
+
+    #[test]
+    fn the_per_minute_rate_limit_disconnects_with_one_audited_entry() {
+        let f = fx();
+        let items: Vec<Value> = (0..6).map(|i| json!({"id":i,"method":"hello"})).collect();
+        let limits = Limits {
+            per_minute: 3,
+            ..Limits::default()
+        };
+        let mut out = Vec::new();
+        let result = {
+            let mut chan = Framed::new(Cursor::new(frames(&items)), &mut out);
+            serve(&f.paths, "laptop", ENR, &env(), &mut chan, &limits)
+        };
+        assert_eq!(result.unwrap().requests, 3);
+        let mut cur = Cursor::new(out);
+        let mut replies = Vec::new();
+        while let Ok(Some(fr)) = proto::read_frame(&mut cur, proto::MAX_FRAME) {
+            replies.push(serde_json::from_slice::<Value>(&fr).unwrap());
+        }
+        assert_eq!(replies.len(), 4);
+        assert_eq!(replies[3]["error"], "rate_limited");
+        let n = events(&f)
+            .iter()
+            .filter(|e| e["event"] == "worker.rate_limited")
+            .count();
+        assert_eq!(n, 1);
+    }
+
+    #[test]
+    fn concurrent_workers_per_link_are_capped() {
+        let f = fx();
+        let first = Slot::acquire(&f.paths, "laptop", 2).unwrap().unwrap();
+        let second = Slot::acquire(&f.paths, "laptop", 2).unwrap().unwrap();
+        assert!(Slot::acquire(&f.paths, "laptop", 2).unwrap().is_none());
+        let limits = Limits {
+            max_workers: 2,
+            ..Limits::default()
+        };
+        let mut sink = Vec::new();
+        let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
+        assert!(serve(&f.paths, "laptop", ENR, &env(), &mut chan, &limits).is_err());
+        assert!(events(&f).iter().any(|e| e["event"] == "worker.busy"));
+        drop(first);
+        assert!(Slot::acquire(&f.paths, "laptop", 2).unwrap().is_some());
+        drop(second);
+        assert!(Slot::acquire(&f.paths, "other", 1).unwrap().is_some());
+    }
+
+    #[test]
+    fn the_canonical_repo_is_audited() {
+        let f = fx();
+        let dotted = format!("{}/../repo", f.repo);
+        let req = json!({"id":1,"method":"runs.create","params":{"task":"TM-1","repo":dotted,"agent":"codex"}});
+        let _ = run(&f, frames(&[req]), 5);
+        let ev = events(&f)
+            .into_iter()
+            .find(|e| e["event"] == "worker.request")
+            .unwrap();
+        assert_eq!(ev["args"]["repo_canonical"], f.repo);
     }
 }

@@ -1,4 +1,4 @@
-use crate::cli_link::{AddArgs, AuditArgs, LinkCommand, ScopeArgs, TrustArgs};
+use crate::cli_link::{AddArgs, AuditArgs, InitArgs, LinkCommand, ScopeArgs, TrustArgs};
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
 use serde_json::{json, Value};
@@ -18,7 +18,7 @@ use tmgr_link::store::{Follower, Paths, Store};
 pub fn run(ctx: &Ctx, cmd: &LinkCommand) -> Result<Output> {
     let paths = Paths::from_env()?;
     match cmd {
-        LinkCommand::Init => init(ctx, &paths),
+        LinkCommand::Init(a) => init(ctx, &paths, a),
         LinkCommand::Add(a) => add(ctx, &paths, a),
         LinkCommand::Trust(a) => trust(&paths, a),
         LinkCommand::List => list(ctx, &paths),
@@ -45,8 +45,14 @@ fn short_fp(fp: &str) -> String {
     format!("{head}…{tail}")
 }
 
-fn init(ctx: &Ctx, paths: &Paths) -> Result<Output> {
-    let id = leader::init(paths, &cred(ctx, paths))?;
+fn init(ctx: &Ctx, paths: &Paths, a: &InitArgs) -> Result<Output> {
+    privileged::guard()?;
+    let store = cred(ctx, paths);
+    if a.rotate && leader::has_identity(paths, &store)? {
+        eprintln!("This replaces the link identity: every follower must trust the new key, the old one stops working.");
+        privileged::confirm_typed_stdio("rotate", "Type rotate to continue:")?;
+    }
+    let id = leader::init(paths, &store, a.rotate)?;
     if let Some(w) = &id.warning {
         ctx.warn("credential_store_file", w.clone());
     }
@@ -140,15 +146,19 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
 }
 
 fn scope_json(s: &Scope) -> Value {
-    json!({"repos": s.repos, "agents": s.agents, "max": s.max, "from": s.from, "allow_bypass": false})
+    json!({"repos": s.repos, "agents": s.agents, "models": s.models, "max": s.max, "from": s.from, "allow_bypass": false})
 }
 
 fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
     privileged::guard()?;
     let bin = std::env::current_exe()?;
-    let verdict = match std::env::var("USER").ok().filter(|u| !u.is_empty()) {
-        Some(user) => sshd::check(&user),
-        None => Verdict::Unverified("USER is not set".into()),
+    let from = grammar::parse_cidr_list(&a.from)?;
+    let check = match std::env::var("USER").ok().filter(|u| !u.is_empty()) {
+        Some(user) => sshd::check(&user, &paths.home, &from),
+        None => sshd::Check {
+            verdict: Verdict::Unverified("USER is not set".into()),
+            authorized_keys_files: sshd::default_files(&paths.home),
+        },
     };
     let input = TrustInput {
         name: a.name.clone(),
@@ -156,11 +166,16 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
         scope: ScopeInput {
             repos: Some(a.repos.clone()),
             agents: Some(a.agents.clone()),
+            models: if a.models.is_empty() {
+                None
+            } else {
+                Some(a.models.clone())
+            },
             max: a.max,
             from: Some(a.from.clone()),
         },
     };
-    let plan = follower::plan_trust(paths, &input, &bin, verdict)?;
+    let plan = follower::plan_trust(paths, &input, &bin, check)?;
     eprintln!(
         "key fingerprint {} (confirm it matches the leader)",
         plan.key.fingerprint
@@ -175,8 +190,8 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
         eprintln!("note: the scope has no repos or no agents, so every run will be refused");
     }
     if let Verdict::Unverified(why) = &plan.sshd {
-        eprintln!("warning: the sshd configuration could not be verified: {why}");
-        eprintln!("PermitUserEnvironment, ForceCommand and AuthorizedKeysCommand may weaken the restriction.");
+        eprintln!("warning: the sshd configuration could not be fully verified: {why}");
+        eprintln!("PermitUserEnvironment, AcceptEnv, ForceCommand, AuthorizedKeysCommand, PermitTunnel or a Match block may weaken the restriction.");
         privileged::confirm_typed_stdio("unverified", "Type unverified to continue anyway:")?;
     }
     privileged::confirm_typed_stdio(
@@ -286,11 +301,16 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
     let input = ScopeInput {
         repos: a.repos.clone(),
         agents: a.agents.clone(),
+        models: a.models.clone(),
         max: a.max,
         from,
     };
     let plan = follower::plan_scope(paths, &a.name, &input)?;
-    let changes = a.repos.is_some() || a.agents.is_some() || a.max.is_some() || a.from.is_some();
+    let changes = a.repos.is_some()
+        || a.agents.is_some()
+        || a.models.is_some()
+        || a.max.is_some()
+        || a.from.is_some();
     if !changes {
         return Ok(Output::new(
             json!({"link": plan.name, "scope": scope_json(&plan.new)}),
