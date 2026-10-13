@@ -1,0 +1,61 @@
+//! The typed, versioned contract of the TMGR runner (see `PROTOCOL.md`).
+//!
+//! Compatibility rules: the major version is `PROTO_VERSION`; a mismatch is a
+//! `proto_mismatch` error and the connection is closed. Additive changes (new
+//! optional fields, methods, push types) keep the major and add a capability
+//! string to `Welcome.caps`. Clients ignore unknown fields and unknown push
+//! `type`s; servers answer unknown methods with `unknown_method`.
+
+mod error;
+mod screen;
+mod types;
+
+pub use error::ErrorCode;
+pub use screen::*;
+pub use types::*;
+
+pub use crate::proto::{
+    Auth, Challenge, ClientMsg, ErrorBody, Focus, Handshake, Hello, Request, Resize, Response,
+    Scroll, ServerMsg, Welcome, PROTO_VERSION,
+};
+
+pub mod caps {
+    pub const SESSIONS_V1: &str = "sessions.v1";
+    pub const ATTACH_V1: &str = "attach.v1";
+    pub const RUNS_CREATE_V1: &str = "runs.create.v1";
+    pub const TASK_REF_V1: &str = "task_ref.v1";
+    pub const LAYOUT_V1: &str = "layout.v1";
+
+    pub const ALL: [&str; 5] = [
+        SESSIONS_V1,
+        ATTACH_V1,
+        RUNS_CREATE_V1,
+        TASK_REF_V1,
+        LAYOUT_V1,
+    ];
+}
+
+pub mod method {
+    pub const RUNNER_STATUS: &str = "runner.status";
+    pub const RUNNER_STOP: &str = "runner.stop";
+    pub const SESSIONS_LIST: &str = "sessions.list";
+    pub const SESSIONS_CREATE: &str = "sessions.create";
+    pub const SESSIONS_KILL: &str = "sessions.kill";
+    pub const SESSIONS_SEND: &str = "sessions.send";
+    pub const SESSIONS_REMOVE: &str = "sessions.remove";
+    pub const RUNS_CREATE: &str = "runs.create";
+    pub const LAYOUT_GET: &str = "layout.get";
+    pub const LAYOUT_SET: &str = "layout.set";
+    pub const ATTACH_OPEN: &str = "attach.open";
+    pub const ATTACH_SET: &str = "attach.set";
+}
+
+pub mod limits {
+    pub const MAX_COLS: u16 = 500;
+    pub const MAX_ROWS: u16 = 200;
+    pub const MAX_INPUT: usize = 64 << 10;
+    pub const MAX_PUSH: usize = 256 << 10;
+}
+
+/// The only `Hello.client` value allowed to call `sessions.create`.
+pub const CLIENT_CLI: &str = "cli";

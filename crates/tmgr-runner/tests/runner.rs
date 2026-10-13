@@ -8,10 +8,9 @@ use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
+use tmgr_ipc::api::{caps, CreateReq, RunCreateReq, SessionInfo, State, StateKind, TaskRef};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
-use tmgr_runner::t0::{State, StateKind};
-use tmgr_runner::wire::{CreateReq, SessionInfo};
 
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 const PY: &str = "/usr/bin/python3";
@@ -21,6 +20,7 @@ struct Harness {
     run: PathBuf,
     homes: tempfile::TempDir,
     work: PathBuf,
+    agents: PathBuf,
     runner: Option<Child>,
 }
 
@@ -35,6 +35,8 @@ impl Harness {
         fs::set_permissions(&run, fs::Permissions::from_mode(0o700)).unwrap();
         let work = tmp.path().join("w");
         fs::create_dir(&work).unwrap();
+        let agents = tmp.path().join("a");
+        fs::create_dir(&agents).unwrap();
         let homes = tempfile::Builder::new()
             .prefix("th")
             .tempdir_in("/tmp")
@@ -45,6 +47,7 @@ impl Harness {
             run,
             homes,
             work,
+            agents,
             runner: None,
         }
     }
@@ -55,6 +58,7 @@ impl Harness {
             .args(["runner", "serve"])
             .env("TMGR_RUNNER_DIR", &self.run)
             .env("TMGR_RUNNER_HOMES", self.homes.path())
+            .env("TMGR_AGENTS_DIR", &self.agents)
             .env("TMGR_T0_QUIET_MS", quiet_ms.to_string())
             .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500")
             .stdin(Stdio::null())
@@ -100,6 +104,28 @@ impl Harness {
             cols: 80,
             rows: 24,
             env_pass: Vec::new(),
+            task: None,
+        }
+    }
+
+    fn profile(&self, id: &str, command: &[&str]) {
+        let words: Vec<String> = command.iter().map(|c| format!("{c:?}")).collect();
+        let text = format!(
+            "id = {id:?}\nname = {id:?}\ncommand = [{}]\n",
+            words.join(", ")
+        );
+        fs::write(self.agents.join(format!("{id}.toml")), text).unwrap();
+    }
+
+    fn run_req(&self, profile: &str) -> RunCreateReq {
+        RunCreateReq {
+            profile: profile.into(),
+            task: None,
+            cwd: self.work.display().to_string(),
+            name: None,
+            model: None,
+            cols: 80,
+            rows: 24,
         }
     }
 
@@ -822,4 +848,101 @@ fn create_is_refused_without_a_usable_sandbox() {
     let e = err_text(h.client().create(h.req(&["/bin/sleep", "30"])));
     assert!(e.contains("sandbox unavailable"), "{e}");
     assert!(h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn welcome_lists_every_contract_capability() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let c = h.client();
+    for cap in [
+        "sessions.v1",
+        "attach.v1",
+        "runs.create.v1",
+        "task_ref.v1",
+        "layout.v1",
+    ] {
+        assert!(c.welcome().caps.iter().any(|x| x == cap), "{cap}");
+    }
+    assert_eq!(c.welcome().caps.len(), caps::ALL.len());
+}
+
+#[test]
+fn raw_argv_is_refused_for_clients_other_than_the_cli() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut desktop = Client::connect_as(&h.run, "desktop").unwrap();
+    let e = err_text(desktop.create(h.req(&["/bin/true"])));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(e.contains("runs.create"), "{e}");
+    assert!(desktop.list().unwrap().is_empty());
+}
+
+#[test]
+fn runs_create_rejects_unknown_profiles_and_missing_executables() {
+    let mut h = Harness::new();
+    h.profile("ghost", &["tmgr-no-such-agent-binary"]);
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let e = err_text(c.create_run(h.run_req("nope")));
+    assert!(e.starts_with("unknown_profile: "), "{e}");
+    let e = err_text(c.create_run(h.run_req("ghost")));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(e.contains("tmgr-no-such-agent-binary"), "{e}");
+    let mut bad_model = h.run_req("ghost");
+    bad_model.model = Some("bad model!".into());
+    assert!(err_text(c.create_run(bad_model)).starts_with("invalid_params: "));
+}
+
+#[test]
+fn runs_create_starts_a_profile_and_the_task_survives_a_runner_restart() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let script = h.script(
+        "fake-agent.sh",
+        "echo ready\nwhile true; do sleep 0.2; done\n",
+    );
+    h.profile("fake", &["/bin/sh", &script]);
+    h.start(5000);
+    let task = TaskRef {
+        workspace_id: -3,
+        task_id: 412,
+    };
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let mut req = h.run_req("fake");
+    req.task = Some(task);
+    req.name = Some("fix login".into());
+    let info = c.create_run(req).unwrap();
+    assert_eq!(info.profile.as_deref(), Some("fake"));
+    assert_eq!(info.task, Some(task));
+    assert_eq!(info.name, "fix login");
+    assert_eq!(info.argv, ["/bin/sh".to_string(), script.clone()]);
+
+    let mut stream = h.client().attach(std::slice::from_ref(&info.id)).unwrap();
+    let mut seen = None;
+    for _ in 0..20 {
+        let Some(msg) = stream.recv().unwrap() else {
+            break;
+        };
+        if let Some(ev) = msg.event() {
+            seen = Some(ev);
+            break;
+        }
+    }
+    let ev = seen.expect("an event push");
+    assert_eq!(
+        (ev.session.as_str(), ev.task),
+        (info.id.as_str(), Some(task))
+    );
+    drop(stream);
+    drop(c);
+
+    h.kill_runner();
+    h.start(5000);
+    let list = h.client().list().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].task, Some(task));
+    assert_eq!(list[0].profile.as_deref(), Some("fake"));
 }

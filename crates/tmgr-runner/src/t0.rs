@@ -1,26 +1,8 @@
-use serde::{Deserialize, Serialize};
+use tmgr_ipc::api::{State, StateKind};
 
 pub const DEFAULT_QUIET_MS: u64 = 5000;
 const QUIET_MIN: u64 = 100;
 const QUIET_MAX: u64 = 600_000;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StateKind {
-    Starting,
-    Working,
-    Waiting,
-    Blocked,
-    Exited,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct State {
-    pub kind: StateKind,
-    pub since_ms: u64,
-    pub detail: Option<String>,
-    pub exit_code: Option<i32>,
-}
 
 fn parse_quiet(raw: Option<&str>) -> u64 {
     raw.and_then(|v| v.trim().parse::<u64>().ok())

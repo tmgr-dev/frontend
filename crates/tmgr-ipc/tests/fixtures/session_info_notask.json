@@ -1,0 +1,1 @@
+{"id":"s_abcdefghij","name":"sh","argv":["/bin/sh"],"cwd":"/work/project","profile":null,"state":{"kind":"exited","since_ms":1760000005000,"detail":null,"exit_code":0},"created_ms":1759999990000,"cols":80,"rows":24,"shim_pid":501,"child_pid":502}

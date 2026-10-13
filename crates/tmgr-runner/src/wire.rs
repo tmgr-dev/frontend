@@ -1,16 +1,13 @@
-use crate::screen::{changed_lines, Line, Modes, Snapshot};
-use crate::t0::State;
+use crate::screen::changed_lines;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tmgr_ipc::api::{Line, ScreenPush, Snapshot};
 
 pub const SCROLLBACK: usize = 5000;
-pub const MAX_COLS: u16 = 500;
-pub const MAX_ROWS: u16 = 200;
-pub const MAX_INPUT: usize = 64 << 10;
-pub const MAX_PUSH: usize = 256 << 10;
+pub use tmgr_ipc::api::limits::{MAX_COLS, MAX_INPUT, MAX_PUSH, MAX_ROWS};
 
 pub fn now_ms() -> u64 {
     SystemTime::now()
@@ -75,78 +72,6 @@ pub struct LaunchFile {
     pub cwd: String,
     pub cols: u16,
     pub rows: u16,
-}
-
-fn default_cols() -> u16 {
-    80
-}
-
-fn default_rows() -> u16 {
-    24
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CreateReq {
-    pub argv: Vec<String>,
-    pub cwd: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub profile: Option<String>,
-    #[serde(default = "default_cols")]
-    pub cols: u16,
-    #[serde(default = "default_rows")]
-    pub rows: u16,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub env_pass: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SessionInfo {
-    pub id: String,
-    pub name: String,
-    pub argv: Vec<String>,
-    pub cwd: String,
-    pub profile: Option<String>,
-    pub state: State,
-    pub created_ms: u64,
-    pub cols: u16,
-    pub rows: u16,
-    pub shim_pid: u32,
-    pub child_pid: u32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StatusInfo {
-    pub pid: u32,
-    pub version: String,
-    pub proto: u32,
-    pub uptime_s: u64,
-    pub sessions: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EventMsg {
-    pub session: String,
-    pub state: State,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScreenPush {
-    pub session: String,
-    pub full: bool,
-    #[serde(default)]
-    pub snapshot: Option<Snapshot>,
-    #[serde(default)]
-    pub lines: Vec<(usize, Line)>,
-    #[serde(default)]
-    pub cursor: Option<(u16, u16)>,
-    #[serde(default)]
-    pub modes: Option<Modes>,
-    #[serde(default)]
-    pub scroll_offset: usize,
-    #[serde(default)]
-    pub scroll_max: usize,
 }
 
 fn json_len<T: Serialize>(v: &T) -> usize {
@@ -224,8 +149,8 @@ pub fn screen_pushes(id: &str, prev: Option<&Snapshot>, snap: &Snapshot) -> Vec<
 mod tests {
     use super::*;
     use crate::client::ScreenCache;
-    use crate::screen::{Attr, Color, Span};
     use std::os::unix::fs::{symlink, PermissionsExt};
+    use tmgr_ipc::api::{Attr, Color, Modes, Span};
     use tmgr_ipc::proto::ServerMsg;
 
     const SID: &str = "s_abcdefghij";

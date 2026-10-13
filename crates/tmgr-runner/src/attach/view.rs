@@ -1,7 +1,7 @@
 use super::keys::{Cmd, ScrollKey};
-use crate::t0::State;
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
+use tmgr_ipc::api::State;
 
 pub const SIDEBAR_WIDTH: u16 = 24;
 pub const WIDE_COLS: u16 = 100;

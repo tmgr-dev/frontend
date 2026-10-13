@@ -3,16 +3,15 @@ use super::{AttachArgs, HaltArgs, RmArgs, RunnerCommands, SendArgs};
 use crate::out::table;
 use serde_json::json;
 use std::io::IsTerminal;
-use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result};
+use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
-use tmgr_runner::profile::{self, ProfileSet};
-use tmgr_runner::t0::StateKind;
-use tmgr_runner::wire::{now_ms, CreateReq, SessionInfo};
+use tmgr_runner::exe;
+use tmgr_runner::wire::now_ms;
 
 pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
     match cmd {
@@ -73,48 +72,12 @@ fn status(o: &Opts) -> Result<i32> {
     Ok(emit(o, st, human))
 }
 
-fn executable(p: &Path) -> bool {
-    p.metadata()
-        .is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
-}
-
 fn resolve_exe(name: &str) -> Result<String> {
-    let found = if name.contains('/') {
-        std::path::absolute(name).ok().filter(|p| executable(p))
-    } else {
-        let path = std::env::var_os("PATH").unwrap_or_default();
-        std::env::split_paths(&path)
-            .map(|d| d.join(name))
-            .find(|p| executable(p))
-    };
-    found
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let base = std::env::current_dir().ok();
+    exe::resolve_exe(name, &path, base.as_deref())
         .map(|p| p.display().to_string())
-        .ok_or_else(|| Error::not_found(format!("command not found or not executable: {name}")))
-}
-
-fn build_argv(a: &RunArgs, o: &Opts) -> Result<(Vec<String>, Option<String>)> {
-    if let Some(line) = &a.agent_cmd {
-        let words = shell_words::split(line)
-            .map_err(|e| Error::usage(format!("cannot parse --agent-cmd: {e}")))?;
-        if words.is_empty() {
-            return Err(Error::usage("--agent-cmd is empty"));
-        }
-        return Ok((words, None));
-    }
-    let id = a.agent.clone().unwrap_or_default();
-    let (set, warnings) = ProfileSet::load(profile::user_dir().as_deref());
-    if !o.quiet {
-        for w in warnings {
-            eprintln!("warning: {}", tmgr_core::text::sanitize_line(&w));
-        }
-    }
-    let Some(prof) = set.get(&id) else {
-        let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
-        return Err(Error::usage(format!("unknown agent profile {id:?}"))
-            .hint(format!("known profiles: {}", known.join(", "))));
-    };
-    let argv = prof.argv(a.model.as_deref()).map_err(Error::usage)?;
-    Ok((argv, Some(id)))
+        .map_err(Error::not_found)
 }
 
 fn terminal_size() -> (u16, u16) {
@@ -127,30 +90,60 @@ fn terminal_size() -> (u16, u16) {
 }
 
 fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
-    let (mut argv, profile) = build_argv(a, o)?;
-    argv[0] = resolve_exe(&argv[0])?;
     let cwd = match &a.cwd {
         Some(p) => std::path::absolute(p),
         None => std::env::current_dir(),
     }
     .map_err(|e| Error::usage(format!("bad --cwd: {e}")))?;
+    let cwd_str = cwd.display().to_string();
+    let (cols, rows) = terminal_size();
+    let raw = match &a.agent_cmd {
+        Some(line) => {
+            let mut argv = shell_words::split(line)
+                .map_err(|e| Error::usage(format!("cannot parse --agent-cmd: {e}")))?;
+            if argv.is_empty() {
+                return Err(Error::usage("--agent-cmd is empty"));
+            }
+            argv[0] = resolve_exe(&argv[0])?;
+            Some(argv)
+        }
+        None => None,
+    };
     if !o.json && !o.quiet {
-        eprintln!("starting {} in {}", argv[0], cwd.display());
+        match &raw {
+            Some(argv) => eprintln!("starting {} in {}", argv[0], cwd.display()),
+            None => eprintln!(
+                "starting agent {} in {}",
+                a.agent.as_deref().unwrap_or_default(),
+                cwd.display()
+            ),
+        }
     }
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
-    let (cols, rows) = terminal_size();
-    let info = connect(&cfg)?
-        .create(CreateReq {
+    let mut client = connect(&cfg)?;
+    let info = match raw {
+        Some(argv) => client.create(CreateReq {
             argv,
-            cwd: cwd.display().to_string(),
+            cwd: cwd_str,
             name: a.name.clone(),
-            profile,
+            profile: None,
             cols,
             rows,
             env_pass: Vec::new(),
-        })
-        .map_err(rerr)?;
+            task: None,
+        }),
+        None => client.create_run(RunCreateReq {
+            profile: a.agent.clone().unwrap_or_default(),
+            task: None,
+            cwd: cwd_str,
+            name: a.name.clone(),
+            model: a.model.clone(),
+            cols,
+            rows,
+        }),
+    }
+    .map_err(rerr)?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }

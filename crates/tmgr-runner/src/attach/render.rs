@@ -1,13 +1,13 @@
 use super::view::{layout, Layout, PaneRect, SessionRow, ViewState, WIDE_COLS};
 use crate::sanitize::sanitize_text;
-use crate::screen::{Attr, Color as Col, Snapshot, BOLD, DIM, INVERSE, ITALIC, UNDERLINE};
-use crate::t0::StateKind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use ratatui::Frame;
+use tmgr_ipc::api::StateKind;
+use tmgr_ipc::api::{Attr, Color as Col, Snapshot, BOLD, DIM, INVERSE, ITALIC, UNDERLINE};
 use unicode_width::UnicodeWidthStr;
 
 pub trait ScreenSource {

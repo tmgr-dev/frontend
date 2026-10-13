@@ -1,3 +1,4 @@
+use crate::api::{ErrorCode, EventMsg, ScreenPush};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -23,9 +24,13 @@ pub fn valid_session_id(s: &str) -> bool {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Hello {
     pub proto: u32,
+    #[serde(default)]
     pub client: String,
+    #[serde(default)]
     pub version: String,
+    #[serde(default)]
     pub pid: u32,
+    #[serde(default)]
     pub nonce_c: String,
 }
 
@@ -44,12 +49,13 @@ pub struct Auth {
 pub struct Welcome {
     pub proto: u32,
     pub runner_version: String,
+    #[serde(default)]
     pub caps: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ErrorBody {
-    pub code: String,
+    pub code: ErrorCode,
     pub message: String,
 }
 
@@ -111,16 +117,36 @@ pub enum ClientMsg {
     Detach,
 }
 
-/// Server to client JSON messages. `Screen` and `Event` carry free-form JSON
-/// objects (a non-object payload cannot be serialized); screen data may also
-/// travel as binary frames.
+/// Server to client JSON messages. `Screen` and `Event` carry JSON objects
+/// (`ScreenPush`, `EventMsg`); a `type` this build does not know decodes to
+/// `Unknown` and must be ignored.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMsg {
     Response(Response),
     Screen(Value),
     Event(Value),
-    Closed { reason: String },
+    Closed {
+        reason: String,
+    },
+    #[serde(other)]
+    Unknown,
+}
+
+impl ServerMsg {
+    pub fn event(&self) -> Option<EventMsg> {
+        match self {
+            ServerMsg::Event(v) => serde_json::from_value(v.clone()).ok(),
+            _ => None,
+        }
+    }
+
+    pub fn screen(&self) -> Option<ScreenPush> {
+        match self {
+            ServerMsg::Screen(v) => serde_json::from_value(v.clone()).ok(),
+            _ => None,
+        }
+    }
 }
 
 /// Runner to shim JSON messages. Input is a binary frame with `TAG_INPUT`.

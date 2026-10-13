@@ -1,4 +1,4 @@
-use crate::screen::Modes;
+use tmgr_ipc::api::Modes;
 
 fn app_cursor(on: bool) -> &'static [u8] {
     if on {

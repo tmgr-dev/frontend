@@ -169,7 +169,7 @@ pub fn rerr(e: io::Error) -> Error {
     let kind = match code {
         "not_found" => Kind::NotFound,
         "invalid_params" | "unknown_profile" => Kind::Usage,
-        "sandbox" => Kind::Forbidden,
+        "sandbox" | "forbidden" => Kind::Forbidden,
         "busy" | "not_running" | "limit" => Kind::Conflict,
         _ => return Error::internal(msg),
     };

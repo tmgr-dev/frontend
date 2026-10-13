@@ -1,11 +1,14 @@
-use crate::screen::{Line, Snapshot};
-use crate::wire::{CreateReq, EventMsg, ScreenPush, SessionInfo, StatusInfo, MAX_INPUT};
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use tmgr_ipc::api::limits::MAX_INPUT;
+use tmgr_ipc::api::{
+    method, AttachParams, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line,
+    RunCreateReq, ScreenPush, SendParams, SessionInfo, Snapshot, StatusInfo, Welcome, CLIENT_CLI,
+};
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
 use tmgr_ipc::proto::{ClientMsg, Focus, Request, Resize, Scroll, ServerMsg};
@@ -19,22 +22,50 @@ fn from_value<T: serde::de::DeserializeOwned>(v: Value) -> io::Result<T> {
     serde_json::from_value(v).map_err(|e| bad(format!("bad reply: {e}")))
 }
 
+fn to_params<T: serde::Serialize>(v: &T) -> io::Result<Value> {
+    serde_json::to_value(v).map_err(io::Error::other)
+}
+
+fn attach_params(ids: &[String]) -> AttachParams {
+    AttachParams {
+        sessions: ids.to_vec(),
+        ..AttachParams::default()
+    }
+}
+
 pub struct Client {
     stream: UnixStream,
     next_id: u64,
+    welcome: Welcome,
 }
 
 impl Client {
     pub fn connect(dir: &Path) -> io::Result<Client> {
+        Client::connect_as(dir, CLIENT_CLI)
+    }
+
+    pub fn connect_as(dir: &Path, client: &str) -> io::Result<Client> {
         let secret = secret::read(&dir.join("client.secret"))?;
-        Client::connect_with(dir, &secret)
+        Client::connect_with_as(dir, &secret, client)
     }
 
     pub fn connect_with(dir: &Path, secret: &str) -> io::Result<Client> {
+        Client::connect_with_as(dir, secret, CLIENT_CLI)
+    }
+
+    pub fn connect_with_as(dir: &Path, secret: &str, client: &str) -> io::Result<Client> {
         let ep = Endpoint::load_runner(dir)?;
         let stream = endpoint::connect(&ep)?;
-        server::handshake_client(&stream, "cli", secret)?;
-        Ok(Client { stream, next_id: 1 })
+        let welcome = server::handshake_client(&stream, client, secret)?;
+        Ok(Client {
+            stream,
+            next_id: 1,
+            welcome,
+        })
+    }
+
+    pub fn welcome(&self) -> &Welcome {
+        &self.welcome
     }
 
     pub fn call(&mut self, method: &str, params: Value) -> io::Result<Value> {
@@ -70,47 +101,63 @@ impl Client {
     }
 
     pub fn status(&mut self) -> io::Result<StatusInfo> {
-        from_value(self.call("runner.status", Value::Null)?)
+        from_value(self.call(method::RUNNER_STATUS, Value::Null)?)
     }
 
     pub fn list(&mut self) -> io::Result<Vec<SessionInfo>> {
-        from_value(self.call("sessions.list", Value::Null)?)
+        from_value(self.call(method::SESSIONS_LIST, Value::Null)?)
     }
 
     pub fn create(&mut self, req: CreateReq) -> io::Result<SessionInfo> {
         let params = serde_json::to_value(req).map_err(io::Error::other)?;
-        from_value(self.call("sessions.create", params)?)
+        from_value(self.call(method::SESSIONS_CREATE, params)?)
+    }
+
+    pub fn create_run(&mut self, req: RunCreateReq) -> io::Result<SessionInfo> {
+        let params = serde_json::to_value(req).map_err(io::Error::other)?;
+        from_value(self.call(method::RUNS_CREATE, params)?)
     }
 
     pub fn kill(&mut self, id: &str, signal: &str) -> io::Result<()> {
-        self.call("sessions.kill", json!({"id": id, "signal": signal}))
+        let params = KillParams {
+            id: id.into(),
+            signal: signal.into(),
+        };
+        self.call(method::SESSIONS_KILL, to_params(&params)?)
             .map(drop)
     }
 
     pub fn send(&mut self, id: &str, text: &str) -> io::Result<()> {
-        self.call("sessions.send", json!({"id": id, "text": text}))
+        let params = SendParams {
+            id: id.into(),
+            text: text.into(),
+        };
+        self.call(method::SESSIONS_SEND, to_params(&params)?)
             .map(drop)
     }
 
     pub fn remove(&mut self, id: &str) -> io::Result<()> {
-        self.call("sessions.remove", json!({"id": id})).map(drop)
+        let params = IdParams { id: id.into() };
+        self.call(method::SESSIONS_REMOVE, to_params(&params)?)
+            .map(drop)
     }
 
     pub fn stop(&mut self) -> io::Result<()> {
-        self.call("runner.stop", Value::Null).map(drop)
+        self.call(method::RUNNER_STOP, Value::Null).map(drop)
     }
 
     pub fn layout_get(&mut self) -> io::Result<Value> {
-        self.call("layout.get", Value::Null)
+        self.call(method::LAYOUT_GET, Value::Null)
     }
 
     pub fn layout_set(&mut self, layout: Value) -> io::Result<()> {
-        self.call("layout.set", json!({"layout": layout})).map(drop)
+        self.call(method::LAYOUT_SET, to_params(&LayoutSetParams { layout })?)
+            .map(drop)
     }
 
     /// Turns this connection into an attach stream; open another `Client` for further calls.
     pub fn attach(mut self, ids: &[String]) -> io::Result<AttachStream> {
-        self.call("attach.open", json!({"sessions": ids}))?;
+        self.call(method::ATTACH_OPEN, to_params(&attach_params(ids))?)?;
         let writer = AttachWriter {
             inner: Arc::new(Mutex::new(WriterState {
                 stream: self.stream.try_clone()?,
@@ -198,8 +245,8 @@ impl AttachWriter {
             st.next_id += 1;
             let msg = ClientMsg::Request(Request {
                 id: st.next_id,
-                method: "attach.set".into(),
-                params: json!({"sessions": ids}),
+                method: method::ATTACH_SET.into(),
+                params: to_params(&attach_params(ids))?,
             });
             write_json(&mut st.stream, &msg)
         })
@@ -250,10 +297,7 @@ impl AttachStream {
 }
 
 pub fn parse_event(msg: &ServerMsg) -> Option<EventMsg> {
-    match msg {
-        ServerMsg::Event(v) => serde_json::from_value(v.clone()).ok(),
-        _ => None,
-    }
+    msg.event()
 }
 
 #[derive(Default)]

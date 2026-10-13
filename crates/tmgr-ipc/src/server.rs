@@ -1,3 +1,4 @@
+use crate::api::{caps, ErrorCode};
 use crate::auth;
 use crate::frame::{read_frame, write_json, Frame};
 use crate::peer::{peer_cred, PeerCred};
@@ -55,9 +56,9 @@ fn read_handshake(stream: &UnixStream, deadline: Instant) -> io::Result<Handshak
     }
 }
 
-fn reject(stream: &UnixStream, kind: io::ErrorKind, code: &str, message: &str) -> io::Error {
+fn reject(stream: &UnixStream, kind: io::ErrorKind, code: ErrorCode, message: &str) -> io::Error {
     let body = ErrorBody {
-        code: code.into(),
+        code: code.clone(),
         message: message.into(),
     };
     let _ = write_json(&mut &*stream, &Handshake::Error(body));
@@ -78,7 +79,7 @@ pub fn handshake_server(
         return Err(reject(
             stream,
             io::ErrorKind::InvalidData,
-            "proto_mismatch",
+            ErrorCode::ProtoMismatch,
             &format!(
                 "server speaks protocol {PROTO_VERSION}, client {}",
                 hello.proto
@@ -104,14 +105,14 @@ pub fn handshake_server(
         return Err(reject(
             stream,
             io::ErrorKind::PermissionDenied,
-            "unauthorized",
+            ErrorCode::Unauthorized,
             "bad proof",
         ));
     }
     let welcome = Welcome {
         proto: PROTO_VERSION,
         runner_version: runner_version.into(),
-        caps: Vec::new(),
+        caps: caps::ALL.map(String::from).to_vec(),
     };
     write_json(&mut &*stream, &Handshake::Welcome(welcome))?;
     let _ = stream.set_write_timeout(None);
@@ -131,7 +132,7 @@ pub fn handshake_client(stream: &UnixStream, client: &str, secret: &str) -> io::
     };
     write_json(&mut &*stream, &Handshake::Hello(hello))?;
     let remote_error = |e: ErrorBody| {
-        let kind = if e.code == "unauthorized" {
+        let kind = if e.code == ErrorCode::Unauthorized {
             io::ErrorKind::PermissionDenied
         } else {
             io::ErrorKind::InvalidData

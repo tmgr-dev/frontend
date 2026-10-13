@@ -1,11 +1,11 @@
 use crate::client::Client;
+use crate::exe::resolve_exe;
 use crate::profile::{self, Matcher, ProfileSet};
 use crate::sandbox::{self, SandboxSpec};
-use crate::screen::{ScreenModel, Snapshot};
-use crate::t0::{self, Detector, State, StateKind};
+use crate::screen::ScreenModel;
+use crate::t0::{self, Detector};
 use crate::wire::{
-    clamp_size, now_ms, screen_pushes, write_atomic, CreateReq, EventMsg, LaunchFile, SessionInfo,
-    Slot, StatusInfo, MAX_INPUT, SCROLLBACK,
+    clamp_size, now_ms, screen_pushes, write_atomic, LaunchFile, Slot, MAX_INPUT, SCROLLBACK,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,10 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
+use tmgr_ipc::api::{
+    method, CreateReq, ErrorCode, EventMsg, RunCreateReq, SessionInfo, Snapshot, State, StateKind,
+    StatusInfo, TaskRef, CLIENT_CLI,
+};
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{
@@ -112,11 +116,11 @@ fn log(msg: &str) {
 }
 
 struct ApiErr {
-    code: &'static str,
+    code: ErrorCode,
     msg: String,
 }
 
-fn api(code: &'static str, msg: impl Into<String>) -> ApiErr {
+fn api(code: ErrorCode, msg: impl Into<String>) -> ApiErr {
     ApiErr {
         code,
         msg: msg.into(),
@@ -124,7 +128,7 @@ fn api(code: &'static str, msg: impl Into<String>) -> ApiErr {
 }
 
 fn params<T: DeserializeOwned>(v: &Value) -> Result<T, ApiErr> {
-    serde_json::from_value(v.clone()).map_err(|e| api("invalid_params", e.to_string()))
+    serde_json::from_value(v.clone()).map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))
 }
 
 fn to_json<T: Serialize>(v: &T) -> Value {
@@ -171,6 +175,8 @@ struct Meta {
     child_pid: u32,
     #[serde(default)]
     last_state: Option<State>,
+    #[serde(default)]
+    task: Option<TaskRef>,
 }
 
 struct Inner {
@@ -274,6 +280,7 @@ impl Session {
             rows: m.rows,
             shim_pid: m.shim_pid,
             child_pid: m.child_pid,
+            task: m.task,
         }
     }
 
@@ -291,12 +298,17 @@ impl Session {
         let Some(last) = states.last().cloned() else {
             return;
         };
-        lock(&self.inner).meta.last_state = Some(last);
+        let task = {
+            let mut i = lock(&self.inner);
+            i.meta.last_state = Some(last);
+            i.meta.task
+        };
         self.persist();
         for state in states {
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
                 state,
+                task,
             }));
         }
     }
@@ -579,6 +591,7 @@ struct Conn {
     sizes: Mutex<HashMap<String, (u16, u16)>>,
     closed: AtomicBool,
     attached: AtomicBool,
+    client: String,
     pending_rx: Mutex<Option<Receiver<Value>>>,
 }
 
@@ -643,11 +656,11 @@ fn session_id_param(v: &Value) -> Result<String, ApiErr> {
     let id = v
         .get("id")
         .and_then(Value::as_str)
-        .ok_or_else(|| api("invalid_params", "id is required"))?;
+        .ok_or_else(|| api(ErrorCode::InvalidParams, "id is required"))?;
     if valid_session_id(id) {
         Ok(id.to_string())
     } else {
-        Err(api("invalid_params", "invalid session id"))
+        Err(api(ErrorCode::InvalidParams, "invalid session id"))
     }
 }
 
@@ -675,7 +688,7 @@ impl Runner {
                 id: req.id,
                 ok: None,
                 err: Some(ErrorBody {
-                    code: e.code.into(),
+                    code: e.code,
                     message: e.msg,
                 }),
             },
@@ -685,56 +698,68 @@ impl Runner {
     fn dispatch(self: &Arc<Self>, conn: &Arc<Conn>, req: &Request) -> Result<Value, ApiErr> {
         let p = &req.params;
         match req.method.as_str() {
-            "runner.status" => Ok(to_json(&StatusInfo {
+            method::RUNNER_STATUS => Ok(to_json(&StatusInfo {
                 pid: std::process::id(),
                 version: self.cfg.version.clone(),
                 proto: PROTO_VERSION,
                 uptime_s: self.started.elapsed().as_secs(),
                 sessions: lock(&self.sessions).len(),
             })),
-            "runner.stop" => Ok(Value::Null),
-            "sessions.list" => {
+            method::RUNNER_STOP => Ok(Value::Null),
+            method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
                 list.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
                 Ok(to_json(&list))
             }
-            "sessions.create" => self.create(params(p)?).map(|i| to_json(&i)),
-            "sessions.kill" => {
+            method::SESSIONS_CREATE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "raw commands are accepted only from the tmgr CLI; use runs.create with a profile",
+                    ));
+                }
+                self.create(params(p)?).map(|i| to_json(&i))
+            }
+            method::RUNS_CREATE => self.create_run(params(p)?).map(|i| to_json(&i)),
+            method::SESSIONS_KILL => {
                 let s = self.live(&session_id_param(p)?)?;
                 let name = p.get("signal").and_then(Value::as_str).unwrap_or("");
                 let sig = signal_number(name).ok_or_else(|| {
-                    api("invalid_params", "signal must be term, kill, int or hup")
+                    api(
+                        ErrorCode::InvalidParams,
+                        "signal must be term, kill, int or hup",
+                    )
                 })?;
                 s.shim_msg(&ToShim::Signal { sig });
                 Ok(Value::Null)
             }
-            "sessions.send" => {
+            method::SESSIONS_SEND => {
                 let s = self.live(&session_id_param(p)?)?;
                 let text = p
                     .get("text")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| api("invalid_params", "text is required"))?;
+                    .ok_or_else(|| api(ErrorCode::InvalidParams, "text is required"))?;
                 if text.len() > MAX_INPUT {
-                    return Err(api("invalid_params", "text is too large"));
+                    return Err(api(ErrorCode::InvalidParams, "text is too large"));
                 }
                 s.input(text.as_bytes());
                 Ok(Value::Null)
             }
-            "sessions.remove" => self.remove(&session_id_param(p)?).map(|_| Value::Null),
-            "layout.get" => Ok(self.layout_get()),
-            "layout.set" => self.layout_set(p).map(|_| Value::Null),
-            "attach.open" => self.attach_open(conn, p),
-            "attach.set" => self.attach_set(conn, p),
-            m => Err(api("unknown_method", format!("unknown method {m}"))),
+            method::SESSIONS_REMOVE => self.remove(&session_id_param(p)?).map(|_| Value::Null),
+            method::LAYOUT_GET => Ok(self.layout_get()),
+            method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
+            method::ATTACH_OPEN => self.attach_open(conn, p),
+            method::ATTACH_SET => self.attach_set(conn, p),
+            m => Err(api(ErrorCode::UnknownMethod, format!("unknown method {m}"))),
         }
     }
 
     fn live(&self, id: &str) -> Result<Arc<Session>, ApiErr> {
         let s = self
             .session(id)
-            .ok_or_else(|| api("not_found", "no such session"))?;
+            .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
         if s.is_exited() || !s.has_shim() {
-            return Err(api("not_running", "session is not running"));
+            return Err(api(ErrorCode::NotRunning, "session is not running"));
         }
         Ok(s)
     }
@@ -754,17 +779,19 @@ impl Runner {
     fn layout_set(&self, p: &Value) -> Result<(), ApiErr> {
         let layout = p
             .get("layout")
-            .ok_or_else(|| api("invalid_params", "layout is required"))?;
-        let bytes = serde_json::to_vec(layout).map_err(|e| api("invalid_params", e.to_string()))?;
+            .ok_or_else(|| api(ErrorCode::InvalidParams, "layout is required"))?;
+        let bytes =
+            serde_json::to_vec(layout).map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
         if bytes.len() > MAX_LAYOUT {
-            return Err(api("invalid_params", "layout is too large"));
+            return Err(api(ErrorCode::InvalidParams, "layout is too large"));
         }
         let _g = lock(&self.layout_lock);
-        write_atomic(&self.layout_path(), &bytes).map_err(|e| api("internal", e.to_string()))
+        write_atomic(&self.layout_path(), &bytes)
+            .map_err(|e| api(ErrorCode::Internal, e.to_string()))
     }
 
     fn validate(&self, r: &CreateReq) -> Result<PathBuf, ApiErr> {
-        let bad = |m: &str| Err(api("invalid_params", m));
+        let bad = |m: &str| Err(api(ErrorCode::InvalidParams, m));
         if r.argv.is_empty() || r.argv.len() > 64 {
             return bad("argv must have 1 to 64 entries");
         }
@@ -789,7 +816,12 @@ impl Runner {
         let cwd = fs::canonicalize(cwd)
             .ok()
             .filter(|p| p.is_dir())
-            .ok_or_else(|| api("invalid_params", "cwd must be an existing directory"))?;
+            .ok_or_else(|| {
+                api(
+                    ErrorCode::InvalidParams,
+                    "cwd must be an existing directory",
+                )
+            })?;
         if cwd == Path::new("/") || self.protected_overlap(&cwd) {
             return bad("cwd must not be /, the home directory or overlap protected paths");
         }
@@ -811,22 +843,58 @@ impl Runner {
                 .any(|p| cwd.starts_with(p) || p.starts_with(cwd))
     }
 
+    fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        let prof = set.get(&req.profile).ok_or_else(|| {
+            let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
+            api(
+                ErrorCode::UnknownProfile,
+                format!(
+                    "unknown agent profile {:?}; known profiles: {}",
+                    req.profile,
+                    known.join(", ")
+                ),
+            )
+        })?;
+        let mut argv = prof
+            .argv(req.model.as_deref())
+            .map_err(|e| api(ErrorCode::InvalidParams, e))?;
+        if argv.is_empty() {
+            return Err(api(ErrorCode::InvalidParams, "profile has no command"));
+        }
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        argv[0] = resolve_exe(&argv[0], &path, None)
+            .map_err(|e| api(ErrorCode::InvalidParams, e))?
+            .display()
+            .to_string();
+        self.create(CreateReq {
+            argv,
+            cwd: req.cwd,
+            name: req.name,
+            profile: Some(req.profile),
+            cols: req.cols,
+            rows: req.rows,
+            env_pass: Vec::new(),
+            task: req.task,
+        })
+    }
+
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
-        sandbox::landlock_tier(landlock_abi()).map_err(|e| api("sandbox", e))?;
+        sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
         let matcher = match &req.profile {
             None => None,
             Some(pid) => {
                 let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-                let prof = set
-                    .get(pid)
-                    .ok_or_else(|| api("unknown_profile", format!("unknown profile {pid}")))?;
-                Some(Matcher::new(prof).map_err(|e| api("unknown_profile", e))?)
+                let prof = set.get(pid).ok_or_else(|| {
+                    api(ErrorCode::UnknownProfile, format!("unknown profile {pid}"))
+                })?;
+                Some(Matcher::new(prof).map_err(|e| api(ErrorCode::UnknownProfile, e))?)
             }
         };
         let _g = lock(&self.create_lock);
         if lock(&self.sessions).len() >= self.cfg.max_sessions {
-            return Err(api("limit", "too many sessions"));
+            return Err(api(ErrorCode::Limit, "too many sessions"));
         }
         let id = new_session_id();
         let sdir = self.sdir(&id);
@@ -848,7 +916,7 @@ impl Runner {
         sdir: &Path,
         home: &Path,
     ) -> Result<SessionInfo, ApiErr> {
-        let internal = |e: io::Error| api("internal", e.to_string());
+        let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
         let mut env_pass = req.env_pass.clone();
@@ -871,7 +939,7 @@ impl Runner {
             env_pass,
             base_env: base_env(),
         })
-        .map_err(|e| api("sandbox", e))?;
+        .map_err(|e| api(ErrorCode::Sandbox, e))?;
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
             argv: launch.argv,
@@ -880,7 +948,7 @@ impl Runner {
             cols,
             rows,
         };
-        let bytes = serde_json::to_vec(&lf).map_err(|e| api("internal", e.to_string()))?;
+        let bytes = serde_json::to_vec(&lf).map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         write_atomic(&sdir.join("launch.json"), &bytes).map_err(internal)?;
         let adopt_secret = secret::write_new(&sdir.join("adopt.secret")).map_err(internal)?;
         let log_file = OpenOptions::new()
@@ -905,12 +973,15 @@ impl Runner {
                 Ok(r) => break Ok(r),
                 Err(e) => {
                     if let Ok(Some(st)) = child.try_wait() {
-                        break Err(api("internal", format!("shim exited early ({st})")));
+                        break Err(api(
+                            ErrorCode::Internal,
+                            format!("shim exited early ({st})"),
+                        ));
                     }
                     if Instant::now() >= deadline {
                         unsafe { libc::kill(shim_pid as i32, libc::SIGKILL) };
                         let _ = child.wait();
-                        break Err(api("internal", format!("shim did not start: {e}")));
+                        break Err(api(ErrorCode::Internal, format!("shim did not start: {e}")));
                     }
                     thread::sleep(Duration::from_millis(30));
                 }
@@ -936,6 +1007,7 @@ impl Runner {
             shim_pid,
             child_pid: hello.child_pid,
             last_state: None,
+            task: req.task,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -973,9 +1045,9 @@ impl Runner {
     fn remove(&self, id: &str) -> Result<(), ApiErr> {
         let s = self
             .session(id)
-            .ok_or_else(|| api("not_found", "no such session"))?;
+            .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
         if !s.is_exited() {
-            return Err(api("busy", "only exited sessions can be removed"));
+            return Err(api(ErrorCode::Busy, "only exited sessions can be removed"));
         }
         s.shim_msg(&ToShim::Reap);
         lock(&self.sessions).remove(id);
@@ -1053,18 +1125,18 @@ impl Runner {
     fn watch_list(&self, p: &Value) -> Result<Vec<String>, ApiErr> {
         let ids: Vec<String> = match p.get("sessions") {
             Some(v) => serde_json::from_value(v.clone())
-                .map_err(|_| api("invalid_params", "sessions must be a list of ids"))?,
+                .map_err(|_| api(ErrorCode::InvalidParams, "sessions must be a list of ids"))?,
             None => Vec::new(),
         };
         if ids.len() > MAX_WATCHED {
-            return Err(api("invalid_params", "too many sessions"));
+            return Err(api(ErrorCode::InvalidParams, "too many sessions"));
         }
         for id in &ids {
             if !valid_session_id(id) {
-                return Err(api("invalid_params", "invalid session id"));
+                return Err(api(ErrorCode::InvalidParams, "invalid session id"));
             }
             if self.session(id).is_none() {
-                return Err(api("not_found", format!("no such session {id}")));
+                return Err(api(ErrorCode::NotFound, format!("no such session {id}")));
             }
         }
         Ok(ids)
@@ -1146,6 +1218,7 @@ impl Runner {
                     let ev = EventMsg {
                         session: id.clone(),
                         state: s.state(),
+                        task: lock(&s.inner).meta.task,
                     };
                     if conn.write(&ServerMsg::Event(to_json(&ev))).is_err() {
                         return fail(conn);
@@ -1207,10 +1280,13 @@ impl Runner {
 
     fn serve_conn(self: &Arc<Self>, stream: UnixStream, conn_slot: Slot, pending: Slot) {
         let _slot = conn_slot;
-        if let Err(e) = server::handshake_server(&stream, &self.secret, &self.cfg.version) {
-            self.log_reject(&e.to_string());
-            return;
-        }
+        let hello = match server::handshake_server(&stream, &self.secret, &self.cfg.version) {
+            Ok(h) => h,
+            Err(e) => {
+                self.log_reject(&e.to_string());
+                return;
+            }
+        };
         drop(pending);
         let _ = stream.set_write_timeout(Some(write_timeout()));
         let Ok(w) = stream.try_clone() else { return };
@@ -1222,6 +1298,7 @@ impl Runner {
             sizes: Mutex::new(HashMap::new()),
             closed: AtomicBool::new(false),
             attached: AtomicBool::new(false),
+            client: hello.client,
             pending_rx: Mutex::new(None),
         });
         let closed = |reason: &str| {
@@ -1240,7 +1317,7 @@ impl Runner {
                 }
                 Frame::Json(v) => match serde_json::from_value::<ClientMsg>(v) {
                     Ok(ClientMsg::Request(req)) => {
-                        let stop = req.method == "runner.stop";
+                        let stop = req.method == method::RUNNER_STOP;
                         let resp = self.respond(&conn, req);
                         if conn.write(&ServerMsg::Response(resp)).is_err() {
                             break;

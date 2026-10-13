@@ -1,0 +1,158 @@
+use super::screen::{Line, Modes, Snapshot};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::collections::BTreeMap;
+
+fn default_cols() -> u16 {
+    80
+}
+
+fn default_rows() -> u16 {
+    24
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StateKind {
+    Starting,
+    Working,
+    Waiting,
+    Blocked,
+    Exited,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct State {
+    pub kind: StateKind,
+    pub since_ms: u64,
+    pub detail: Option<String>,
+    pub exit_code: Option<i32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskRef {
+    pub workspace_id: i64,
+    pub task_id: i64,
+}
+
+/// Params of `sessions.create` (raw argv, `client: "cli"` only).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CreateReq {
+    pub argv: Vec<String>,
+    pub cwd: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    #[serde(default = "default_cols")]
+    pub cols: u16,
+    #[serde(default = "default_rows")]
+    pub rows: u16,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub env_pass: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<TaskRef>,
+}
+
+/// Params of `runs.create` (the runner resolves argv from the profile).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RunCreateReq {
+    pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<TaskRef>,
+    pub cwd: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(default = "default_cols")]
+    pub cols: u16,
+    #[serde(default = "default_rows")]
+    pub rows: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SessionInfo {
+    pub id: String,
+    pub name: String,
+    pub argv: Vec<String>,
+    pub cwd: String,
+    pub profile: Option<String>,
+    pub state: State,
+    pub created_ms: u64,
+    pub cols: u16,
+    pub rows: u16,
+    pub shim_pid: u32,
+    pub child_pid: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<TaskRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StatusInfo {
+    pub pid: u32,
+    pub version: String,
+    pub proto: u32,
+    pub uptime_s: u64,
+    pub sessions: usize,
+}
+
+/// Payload of an `Event` push (a session state change).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EventMsg {
+    pub session: String,
+    pub state: State,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<TaskRef>,
+}
+
+/// Payload of a `Screen` push; `full` carries `snapshot`, otherwise `lines` are changed rows.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScreenPush {
+    pub session: String,
+    pub full: bool,
+    #[serde(default)]
+    pub snapshot: Option<Snapshot>,
+    #[serde(default)]
+    pub lines: Vec<(usize, Line)>,
+    #[serde(default)]
+    pub cursor: Option<(u16, u16)>,
+    #[serde(default)]
+    pub modes: Option<Modes>,
+    #[serde(default)]
+    pub scroll_offset: usize,
+    #[serde(default)]
+    pub scroll_max: usize,
+}
+
+/// Params of `sessions.remove`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdParams {
+    pub id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KillParams {
+    pub id: String,
+    pub signal: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SendParams {
+    pub id: String,
+    pub text: String,
+}
+
+/// Params of `attach.open` and `attach.set`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AttachParams {
+    #[serde(default)]
+    pub sessions: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sizes: BTreeMap<String, (u16, u16)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayoutSetParams {
+    pub layout: Value,
+}

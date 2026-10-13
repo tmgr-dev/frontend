@@ -16,6 +16,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
+use tmgr_ipc::api::{Modes, SessionInfo, Snapshot};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, layout, mode_changes, render, reset_modes, Action, Cmd, InputSplitter, LayoutPrefs,
@@ -23,8 +24,7 @@ use tmgr_runner::attach::{
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
-use tmgr_runner::screen::{Modes, Snapshot};
-use tmgr_runner::wire::{now_ms, SessionInfo};
+use tmgr_runner::wire::now_ms;
 
 const TICK: Duration = Duration::from_millis(16);
 const FRAME: Duration = Duration::from_millis(33);

@@ -1,10 +1,10 @@
 use super::*;
-use crate::screen::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
-use crate::t0::{State, StateKind};
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
 use ratatui::Terminal;
 use std::collections::HashMap;
+use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
+use tmgr_ipc::api::{State, StateKind};
 
 fn forward(b: &[u8]) -> Action {
     Action::Forward(b.to_vec())
