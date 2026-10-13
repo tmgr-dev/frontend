@@ -2,11 +2,11 @@ use crate::ctx::Ctx;
 use crate::out::Style;
 use chrono::{Local, NaiveDate};
 use tmgr_core::api::Client;
-use tmgr_core::error::{Error, Result};
-use tmgr_core::models::ApiTask;
+use tmgr_core::error::{Error, Kind, Result};
+use tmgr_core::models::{ApiTask, Workspace};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::runs::RunView;
-use tmgr_core::text::format_duration;
+use tmgr_core::text::{format_duration, sanitize_line};
 
 pub fn resolve_task(ctx: &Ctx, client: &Client, reference: &str) -> Result<ApiTask> {
     let not_found = |e: Error| {
@@ -18,11 +18,70 @@ pub fn resolve_task(ctx: &Ctx, client: &Client, reference: &str) -> Result<ApiTa
         }
     };
     match parse_task_ref(reference)? {
-        TaskRef::Key(key) => {
-            let ws = ctx.workspace(client)?;
-            client.task_by_key(&key, ws.id).map_err(not_found)
-        }
+        TaskRef::Key(key) => task_by_key(ctx, client, &key).map_err(not_found),
         TaskRef::Id(id) => client.task_by_id(id).map_err(not_found),
+    }
+}
+
+const MAX_SEARCHED_WORKSPACES: usize = 20;
+
+pub fn task_by_key(ctx: &Ctx, client: &Client, key: &str) -> Result<ApiTask> {
+    let ws = ctx.workspace(client)?;
+    match client.task_by_key(key, ws.id) {
+        Err(e) if e.kind == Kind::NotFound && ctx.ws.is_none() => {
+            find_in_other_workspaces(ctx, client, key, &ws, e)
+        }
+        other => other,
+    }
+}
+
+fn find_in_other_workspaces(
+    ctx: &Ctx,
+    client: &Client,
+    key: &str,
+    current: &Workspace,
+    not_found: Error,
+) -> Result<ApiTask> {
+    let others: Vec<Workspace> = ctx
+        .workspaces(client)?
+        .iter()
+        .filter(|w| w.id != current.id)
+        .take(MAX_SEARCHED_WORKSPACES)
+        .cloned()
+        .collect();
+    let mut found = Vec::new();
+    for w in others {
+        match client.task_by_key(key, w.id) {
+            Ok(task) => found.push((w, task)),
+            Err(e) if matches!(e.kind, Kind::NotFound | Kind::Forbidden) => {}
+            Err(e) => return Err(e),
+        }
+    }
+    match found.len() {
+        0 => Err(not_found),
+        1 => {
+            let (w, task) = found.remove(0);
+            let message = format!(
+                "using workspace {} ({key} is not in {})",
+                sanitize_line(&w.code),
+                sanitize_line(&current.code)
+            );
+            if ctx.json {
+                ctx.warn("workspace_switched", message);
+            } else if !ctx.quiet {
+                eprintln!("{}", ctx.err_style.muted(&message));
+            }
+            ctx.switch_workspace(w);
+            Ok(task)
+        }
+        _ => {
+            let codes: Vec<String> = found.iter().map(|(w, _)| sanitize_line(&w.code)).collect();
+            Err(Error::conflict(format!(
+                "{key} exists in several workspaces: {}",
+                codes.join(", ")
+            ))
+            .hint("add --ws CODE"))
+        }
     }
 }
 

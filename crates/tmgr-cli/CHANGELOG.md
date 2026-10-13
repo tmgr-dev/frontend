@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A task key (`TM-537`) that is not in the default workspace is looked up in your other workspaces (at most 20) when `--ws` is not given. One match: the command runs against that workspace and prints `using workspace CODE (KEY is not in DEFAULT)` to stderr (`--json`: warning `workspace_switched`); several matches: exit 6 with the hint `add --ws CODE`; none: exit 3 as before. An explicit `--ws` never searches, and the configured default workspace is not changed.
+- Argument errors use the `error:` / `hint:` format (exit 2, the JSON envelope with `--json`): `--ws` without a value, `--list` (suggests `tmgr ws list` or `tmgr task list`), and unknown subcommands or flags with clap's "did you mean" suggestion.
+- `tmgr ws` alone runs `tmgr ws list`. `tmgr ws use` without a code asks for a number or code in a terminal; without one it exits 2 with the hint `tmgr ws use <code>`.
 - `tmgr today` and the `TODAY` line of `tmgr status` read tracked time from the per-day endpoint `GET /api/workspaces/{id}/time/daily` (time zone from `TZ`, else the system IANA zone, else UTC with the warning `timezone_unknown`). Tracked time is now yours by default (`mine=true`: "you" in the you/agents split); previously it was workspace-wide. Status and project come from the same response, so the per-task lookups and the warnings `status_partial` and `human_time_workspace_wide` are gone. An older server without the endpoint falls back to the time summary with the warning `daily_time_unavailable`.
 - `today --json`: new `tz`, and per task `url` and `users` (`id`, `name`, `human_s`). `status --json`: `today.human_s` is filled, `today.agent_s` stays null.
 

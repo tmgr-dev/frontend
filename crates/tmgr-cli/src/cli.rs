@@ -49,7 +49,7 @@ pub enum Command {
     /// List and select workspaces
     Ws {
         #[command(subcommand)]
-        command: WsCommand,
+        command: Option<WsCommand>,
     },
     /// Active task and today's time (default command)
     Status,
@@ -209,7 +209,10 @@ pub enum WsCommand {
     /// List workspaces
     List,
     /// Make a workspace the default
-    Use { code: String },
+    Use {
+        /// Workspace code (asked for in a terminal when omitted)
+        code: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

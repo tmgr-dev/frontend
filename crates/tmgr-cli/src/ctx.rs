@@ -24,6 +24,7 @@ pub struct Ctx {
     client: OnceCell<Client>,
     backend: Cell<Option<Backend>>,
     workspaces: OnceCell<Vec<Workspace>>,
+    switched: RefCell<Option<Workspace>>,
 }
 
 impl Ctx {
@@ -45,6 +46,7 @@ impl Ctx {
             client: OnceCell::new(),
             backend: Cell::new(None),
             workspaces: OnceCell::new(),
+            switched: RefCell::new(None),
         })
     }
 
@@ -140,7 +142,14 @@ impl Ctx {
         }
     }
 
+    pub fn switch_workspace(&self, ws: Workspace) {
+        *self.switched.borrow_mut() = Some(ws);
+    }
+
     pub fn workspace(&self, client: &Client) -> Result<Workspace> {
+        if let Some(ws) = self.switched.borrow().clone() {
+            return Ok(ws);
+        }
         let list = self.workspaces(client)?;
         match self.wanted_workspace()? {
             Some(code) => list

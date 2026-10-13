@@ -56,12 +56,8 @@ fn show(ctx: &Ctx, reference: &str, comments_n: usize, max_desc: &str) -> Result
     let comments_n = comments_n.min(MAX_COMMENTS);
     let client = ctx.client()?;
     let task = match &tref {
-        TaskRef::Key(key) => {
-            let ws = ctx.workspace(client)?;
-            client
-                .task_by_key(key, ws.id)
-                .map_err(|e| not_found_for(e, reference, "check --ws, or tmgr task list -p CODE"))?
-        }
+        TaskRef::Key(key) => super::shared::task_by_key(ctx, client, key)
+            .map_err(|e| not_found_for(e, reference, "check --ws, or tmgr task list -p CODE"))?,
         TaskRef::Id(id) => client
             .task_by_id(*id)
             .map_err(|e| not_found_for(e, reference, "tmgr task list"))?,

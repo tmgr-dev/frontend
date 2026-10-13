@@ -59,10 +59,7 @@ fn resolve(ctx: &Ctx, client: &Client, reference: &str) -> Result<Resolved> {
         }
     };
     let task = match &tref {
-        TaskRef::Key(key) => {
-            let ws = ctx.workspace(client)?;
-            client.task_by_key(key, ws.id).map_err(not_found)?
-        }
+        TaskRef::Key(key) => super::shared::task_by_key(ctx, client, key).map_err(not_found)?,
         TaskRef::Id(id) => client.task_by_id(*id).map_err(not_found)?,
     };
     let ws_id = match task.workspace_id {

@@ -5,6 +5,7 @@ mod ctx;
 mod gitx;
 mod interact;
 mod out;
+mod usage;
 
 use clap::error::ErrorKind;
 use clap::Parser;
@@ -78,21 +79,20 @@ fn usage_exit(e: clap::Error) -> i32 {
         }
         _ if is_agent_hook_invocation() => 0,
         _ => {
-            let json = std::env::args().any(|a| a == "--json");
-            if json {
-                let rendered = e.to_string();
-                let first = rendered
-                    .lines()
-                    .next()
-                    .unwrap_or("invalid usage")
-                    .trim_start_matches("error: ")
-                    .to_string();
-                let err = Error::usage(first).hint("tmgr --help");
-                out::print_error(true, false, out::Style::off(), &err)
-            } else {
+            if e.kind() == ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand {
                 let _ = e.print();
-                2
+                return 2;
             }
+            let argv: Vec<String> = std::env::args().skip(1).collect();
+            let json = argv.iter().any(|a| a == "--json");
+            let no_color = argv.iter().any(|a| a == "--no-color");
+            let err = usage::friendly(&e);
+            let style = if json {
+                out::Style::off()
+            } else {
+                out::stderr_style(no_color)
+            };
+            out::print_error(json, false, style, &err)
         }
     }
 }
