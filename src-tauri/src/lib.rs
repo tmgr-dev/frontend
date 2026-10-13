@@ -287,6 +287,8 @@ pub fn run() {
       runner::commands::runner_profiles,
       runner::commands::runner_sessions,
       runner::commands::runner_start_run,
+      runner::commands::runner_project_folder,
+      runner::commands::runner_pick_folder,
       runner::commands::runner_halt,
       runner::commands::runner_open_terminal,
       runner::commands::runner_watch,

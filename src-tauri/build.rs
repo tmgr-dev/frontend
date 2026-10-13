@@ -84,6 +84,8 @@ const APP_COMMANDS: &[&str] = &[
   "runner_profiles",
   "runner_sessions",
   "runner_start_run",
+  "runner_project_folder",
+  "runner_pick_folder",
   "runner_halt",
   "runner_open_terminal",
   "runner_watch",

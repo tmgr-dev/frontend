@@ -1,53 +1,19 @@
-use std::io::{Read, Write};
+use serde::Serialize;
+use serde_json::Value;
+use tmgr_ipc::api::{method, limits, RunCreateReq, SessionInfo, State};
 
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+pub use tmgr_ipc::api::StateKind;
 
-use super::conn::{valid_session_id, Conn, ConnError, Timed};
+use super::conn::{valid_session_id, Conn, ConnError};
 use super::sanitize;
 
 pub const PROFILES: &[(&str, &str)] = &[("claude-code", "Claude Code"), ("codex", "Codex")];
 const TITLE_MAX: usize = 120;
 const NAME_MAX: usize = 120;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum StateKind {
-  Starting,
-  Working,
-  Waiting,
-  Blocked,
-  Exited,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct WireState {
-  kind: StateKind,
-  #[serde(default)]
-  since_ms: u64,
-  #[serde(default)]
-  detail: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct WireTask {
-  workspace_id: i64,
-  task_id: i64,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct WireSession {
-  id: String,
-  #[serde(default)]
-  name: String,
-  #[serde(default)]
-  profile: Option<String>,
-  #[serde(default)]
-  task: Option<WireTask>,
-  state: WireState,
-  #[serde(default)]
-  created_ms: u64,
-}
+const RUN_NAME_MAX: usize = 64;
+const FOLDER_MAX: usize = 400;
+const RUN_COLS: u16 = 120;
+const RUN_ROWS: u16 = 32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,13 +21,21 @@ pub struct RunnerState {
   pub kind: StateKind,
   pub since_ms: u64,
   pub detail: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub exit_code: Option<i32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskRef {
   pub workspace_id: i64,
   pub task_id: i64,
+}
+
+impl From<tmgr_ipc::api::TaskRef> for TaskRef {
+  fn from(t: tmgr_ipc::api::TaskRef) -> Self {
+    TaskRef { workspace_id: t.workspace_id, task_id: t.task_id }
+  }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -81,17 +55,18 @@ pub enum Detail {
   Text,
 }
 
-fn state_from_wire(s: &WireState, detail: Detail) -> RunnerState {
+pub fn state_from_ipc(s: &State, detail: Detail) -> RunnerState {
   let detail = s.detail.as_deref().and_then(|d| match detail {
     Detail::ExitOnly => ["done", "failed", "interrupted"].contains(&d).then(|| d.to_owned()),
     Detail::Text => Some(sanitize::text(d, 200)).filter(|d| !d.is_empty()),
   });
-  RunnerState { kind: s.kind, since_ms: s.since_ms, detail }
+  let exit_code = s.exit_code.filter(|_| s.kind == StateKind::Exited);
+  RunnerState { kind: s.kind, since_ms: s.since_ms, detail, exit_code }
 }
 
 pub fn state_from_value(v: &Value, detail: Detail) -> Option<RunnerState> {
-  let s: WireState = serde_json::from_value(v.clone()).ok()?;
-  Some(state_from_wire(&s, detail))
+  let s: State = serde_json::from_value(v.clone()).ok()?;
+  Some(state_from_ipc(&s, detail))
 }
 
 pub fn valid_profile(p: &str) -> bool {
@@ -101,19 +76,22 @@ pub fn valid_profile(p: &str) -> bool {
     && b.iter().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-')
 }
 
-pub fn session_from_value(v: &Value) -> Option<RunnerSession> {
-  let w: WireSession = serde_json::from_value(v.clone()).ok()?;
+pub fn session_from_info(w: SessionInfo) -> Option<RunnerSession> {
   if !valid_session_id(&w.id) {
     return None;
   }
   Some(RunnerSession {
     name: sanitize::text(&w.name, NAME_MAX),
     profile: w.profile.filter(|p| valid_profile(p)),
-    task: w.task.map(|t| TaskRef { workspace_id: t.workspace_id, task_id: t.task_id }),
-    state: state_from_wire(&w.state, Detail::ExitOnly),
+    task: w.task.map(TaskRef::from),
+    state: state_from_ipc(&w.state, Detail::ExitOnly),
     created_ms: w.created_ms,
     id: w.id,
   })
+}
+
+pub fn session_from_value(v: &Value) -> Option<RunnerSession> {
+  session_from_info(serde_json::from_value(v.clone()).ok()?)
 }
 
 pub fn sessions_from_value(v: &Value) -> Result<Vec<RunnerSession>, ConnError> {
@@ -121,12 +99,12 @@ pub fn sessions_from_value(v: &Value) -> Result<Vec<RunnerSession>, ConnError> {
   Ok(arr.iter().filter_map(session_from_value).collect())
 }
 
-pub fn list_sessions<S: Read + Write + Timed>(conn: &mut Conn<S>) -> Result<Vec<RunnerSession>, ConnError> {
-  sessions_from_value(&conn.call("sessions.list", Value::Null)?)
+pub fn list_sessions(conn: &mut Conn) -> Result<Vec<RunnerSession>, ConnError> {
+  sessions_from_value(&conn.call(method::SESSIONS_LIST, Value::Null)?)
 }
 
-pub fn find_session<S: Read + Write + Timed>(conn: &mut Conn<S>, id: &str) -> Result<Option<Value>, ConnError> {
-  let v = conn.call("sessions.list", Value::Null)?;
+pub fn find_session(conn: &mut Conn, id: &str) -> Result<Option<Value>, ConnError> {
+  let v = conn.call(method::SESSIONS_LIST, Value::Null)?;
   Ok(v.as_array().and_then(|a| a.iter().find(|s| s["id"] == id).cloned()))
 }
 
@@ -134,6 +112,17 @@ pub struct StartRun {
   pub workspace_id: i64,
   pub task_id: i64,
   pub profile: String,
+  pub cwd: String,
+  pub name: String,
+}
+
+pub fn run_name(title: &str, task_id: i64) -> String {
+  let name = sanitize::text(title, RUN_NAME_MAX);
+  if name.is_empty() {
+    format!("Task {task_id}")
+  } else {
+    name
+  }
 }
 
 pub fn validate_start(r: &StartRun) -> Result<(), String> {
@@ -157,28 +146,33 @@ pub fn display_text(s: &str) -> String {
   sanitize::text(s, TITLE_MAX)
 }
 
-pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, profile: &str) -> String {
+pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, folder: &str, profile: &str) -> String {
   format!(
-    "Workspace: {}\nTask #{task_id}: {}\nAgent: {}\nPermission prompts: on",
+    "Workspace: {}\nTask #{task_id}: {}\nProject folder: {}\nAgent: {}\nPermission prompts: on",
     display_text(workspace),
     display_text(title),
+    sanitize::text(folder, FOLDER_MAX),
     profile_label(profile)
   )
 }
 
-pub fn create_run<S: Read + Write + Timed>(conn: &mut Conn<S>, r: &StartRun) -> Result<RunnerSession, ConnError> {
-  let params = json!({
-    "task": {"workspace_id": r.workspace_id, "task_id": r.task_id},
-    "profile": r.profile,
-    "cols": 120,
-    "rows": 32,
-  });
-  let v = conn.call("runs.create", params)?;
+pub fn create_run(conn: &mut Conn, r: &StartRun) -> Result<RunnerSession, ConnError> {
+  let req = RunCreateReq {
+    profile: r.profile.clone(),
+    task: Some(tmgr_ipc::api::TaskRef { workspace_id: r.workspace_id, task_id: r.task_id }),
+    cwd: r.cwd.clone(),
+    name: Some(r.name.clone()),
+    model: None,
+    cols: RUN_COLS.min(limits::MAX_COLS),
+    rows: RUN_ROWS.min(limits::MAX_ROWS),
+  };
+  let params = serde_json::to_value(&req).map_err(|e| ConnError::Failed(e.to_string()))?;
+  let v = conn.call(method::RUNS_CREATE, params)?;
   session_from_value(&v).ok_or_else(|| ConnError::Failed("unexpected reply from runner".to_owned()))
 }
 
-pub fn kill_session<S: Read + Write + Timed>(conn: &mut Conn<S>, id: &str) -> Result<(), ConnError> {
-  conn.call("sessions.kill", json!({"id": id, "signal": "TERM"})).map(drop)
+pub fn kill_session(conn: &mut Conn, id: &str) -> Result<(), ConnError> {
+  conn.call(method::SESSIONS_KILL, serde_json::json!({"id": id, "signal": "term"})).map(drop)
 }
 
 pub fn check_session_id(id: &str) -> Result<(), String> {
@@ -199,15 +193,16 @@ pub fn session_from_label(label: &str) -> Result<String, String> {
 mod tests {
   use super::*;
   use crate::runner::mock::{self, session, Mock};
+  use serde_json::json;
   use std::os::unix::net::UnixStream;
 
   const SID: &str = "s_abcdefghij";
 
   fn start(ws: i64, task: i64, profile: &str) -> StartRun {
-    StartRun { workspace_id: ws, task_id: task, profile: profile.into() }
+    StartRun { workspace_id: ws, task_id: task, profile: profile.into(), cwd: "/work/project".into(), name: "fix login".into() }
   }
 
-  fn connected(mock: Mock) -> (Conn<UnixStream>, std::thread::JoinHandle<mock::Log>) {
+  fn connected(mock: Mock) -> (Conn, std::thread::JoinHandle<mock::Log>) {
     let (c, s) = UnixStream::pair().unwrap();
     let secret = mock.secret.clone();
     let h = mock::spawn(s, mock);
@@ -249,7 +244,7 @@ mod tests {
   #[test]
   fn main_window_state_detail_is_whitelisted() {
     let mk = |kind: &str, detail: Value| {
-      session_from_value(&session(SID, json!({"kind": kind, "since_ms": 4, "detail": detail, "exit_code": 0}))).unwrap()
+      session_from_value(&session(SID, json!({"kind": kind, "since_ms": 4, "detail": detail, "exit_code": null}))).unwrap()
     };
     assert_eq!(mk("exited", json!("done")).state.detail.as_deref(), Some("done"));
     assert_eq!(mk("exited", json!("interrupted")).state.detail.as_deref(), Some("interrupted"));
@@ -282,6 +277,12 @@ mod tests {
     assert_eq!(v["createdMs"], 1000);
     assert_eq!(v["task"], json!({"workspaceId": -1, "taskId": 7}));
     assert_eq!(v["state"], json!({"kind": "exited", "sinceMs": 4, "detail": "done"}));
+    let mut with_code = session(SID, json!({"kind": "exited", "since_ms": 4, "detail": "failed", "exit_code": 3}));
+    with_code["state"]["exit_code"] = json!(3);
+    let v = serde_json::to_value(session_from_value(&with_code).unwrap()).unwrap();
+    assert_eq!(v["state"]["exitCode"], 3);
+    let running = session(SID, json!({"kind": "working", "since_ms": 4, "detail": null, "exit_code": 9}));
+    assert_eq!(session_from_value(&running).unwrap().state.exit_code, None);
   }
 
   #[test]
@@ -303,20 +304,67 @@ mod tests {
     let create = log.requests.iter().find(|r| r["method"] == "runs.create").unwrap();
     assert_eq!(
       create["params"],
-      json!({"task": {"workspace_id": -2, "task_id": 9}, "profile": "codex", "cols": 120, "rows": 32})
+      json!({"profile": "codex", "task": {"workspace_id": -2, "task_id": 9}, "cwd": "/work/project", "name": "fix login", "cols": 120, "rows": 32})
     );
     let kill = log.requests.iter().find(|r| r["method"] == "sessions.kill").unwrap();
-    assert_eq!(kill["params"], json!({"id": SID, "signal": "TERM"}));
+    assert_eq!(kill["params"], json!({"id": SID, "signal": "term"}));
   }
 
   #[test]
   fn confirm_message_shows_what_will_run() {
-    let m = confirm_run_message("Work\u{202e}space", 7, &format!("Fix\x1b[2J bug {}", "t".repeat(200)), "claude-code");
+    let m = confirm_run_message(
+      "Work\u{202e}space",
+      7,
+      &format!("Fix\x1b[2J bug {}", "t".repeat(200)),
+      "/work/project\x1b[2J",
+      "claude-code",
+    );
     assert!(m.starts_with("Workspace: Workspace\n"));
     assert!(m.contains("Task #7: Fix[2J bug"));
+    assert!(m.contains("\nProject folder: /work/project[2J\n"));
     assert!(m.contains("Agent: Claude Code"));
     assert!(m.ends_with("Permission prompts: on"));
     assert!(!m.contains('\x1b'));
     assert!(m.lines().nth(1).unwrap().chars().count() < 160);
+  }
+
+  #[test]
+  fn run_name_is_a_short_printable_title() {
+    assert_eq!(run_name("Fix the login", 7), "Fix the login");
+    assert_eq!(run_name("  \x1b[31m\u{202e}  ", 7), "[31m");
+    assert_eq!(run_name("\x07\n", 7), "Task 7");
+    assert_eq!(run_name(&"é".repeat(200), 7).chars().count(), 64);
+  }
+
+  #[test]
+  fn busy_is_a_retryable_string_and_other_errors_keep_their_code() {
+    let mut m = Mock::new("secret");
+    m.busy = true;
+    let (mut conn, server) = connected(m);
+    assert_eq!(conn.call("sessions.send", json!({"id": SID, "text": "x"})).unwrap_err(), ConnError::Failed("busy".into()));
+    assert_eq!(conn.call("sessions.remove", json!({"id": SID})).unwrap_err().message(), "busy");
+    assert!(conn.call("nope", Value::Null).unwrap_err().message().starts_with("unknown_method: "));
+    drop(conn);
+    server.join().unwrap();
+  }
+
+  #[test]
+  fn runs_create_without_a_cwd_is_invalid_params_on_the_runner() {
+    let (mut conn, server) = connected(Mock::new("secret"));
+    let e = conn.call("runs.create", json!({"profile": "codex"})).unwrap_err();
+    assert!(e.message().starts_with("invalid_params: "), "{e:?}");
+    drop(conn);
+    server.join().unwrap();
+  }
+
+  #[test]
+  fn golden_session_info_and_event_parse() {
+    let v: Value = serde_json::from_str(include_str!("../../../crates/tmgr-ipc/tests/fixtures/session_info.json")).unwrap();
+    let s = session_from_value(&v).unwrap();
+    assert_eq!((s.id.as_str(), s.name.as_str(), s.profile.as_deref()), ("s_abcdefghij", "fix login", Some("codex")));
+    assert_eq!(s.task, Some(TaskRef { workspace_id: -3, task_id: 412 }));
+    assert_eq!(s.state.kind, StateKind::Working);
+    let notask: Value = serde_json::from_str(include_str!("../../../crates/tmgr-ipc/tests/fixtures/session_info_notask.json")).unwrap();
+    assert_eq!(session_from_value(&notask).unwrap().task, None);
   }
 }

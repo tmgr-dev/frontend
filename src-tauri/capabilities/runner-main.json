@@ -12,6 +12,8 @@
     "allow-runner-profiles",
     "allow-runner-sessions",
     "allow-runner-start-run",
+    "allow-runner-project-folder",
+    "allow-runner-pick-folder",
     "allow-runner-halt",
     "allow-runner-open-terminal",
     "allow-runner-watch",

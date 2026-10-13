@@ -3,6 +3,9 @@ pub(crate) mod commands;
 mod conn;
 mod dir;
 mod flag;
+mod folder;
+#[cfg(all(test, unix))]
+mod live;
 #[cfg(all(test, unix))]
 mod mock;
 mod pump;
@@ -19,17 +22,18 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
+use tmgr_ipc::api::{method, ClientMsg, Resize, Scroll};
 
 use api::{find_session, list_sessions, session_from_value, state_from_value, Detail, RunnerSession, RunnerState, StartRun, TaskRef};
-use conn::{input_frame, write_frame, write_json, Conn, ConnError, Welcome, MAX_INPUT};
+use conn::{input_frame, write_frame, write_json, Conn, ConnError, Welcome, MAX_INPUT, UPDATE_RUNNER};
 use dir::Sock;
 use flag::Flag;
 use pump::{run_attach, run_watch, Coalescer, Shared, TermFrame, WatchEvent};
 
-pub type Connector = Arc<dyn Fn() -> Result<(Conn<Sock>, Welcome), ConnError> + Send + Sync>;
+pub type Connector = Arc<dyn Fn() -> Result<(Conn, Welcome), ConnError> + Send + Sync>;
 
-const MAX_COLS: u32 = 500;
-const MAX_ROWS: u32 = 200;
+const MAX_COLS: u32 = tmgr_ipc::api::limits::MAX_COLS as u32;
+const MAX_ROWS: u32 = tmgr_ipc::api::limits::MAX_ROWS as u32;
 const LIST_THROTTLE: Duration = Duration::from_millis(500);
 const WATCH_FLUSH: Duration = Duration::from_millis(100);
 const TERM_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -142,7 +146,7 @@ impl Runner {
     Ok(())
   }
 
-  fn connect(&self) -> Result<(Conn<Sock>, Welcome), String> {
+  fn connect(&self) -> Result<(Conn, Welcome), String> {
     (self.0.connector)().map_err(err)
   }
 
@@ -152,6 +156,7 @@ impl Runner {
       return status("disabled", None, Vec::new(), None);
     }
     match (self.0.connector)() {
+      Ok((_, w)) if !w.can_create_runs() => status("incompatible", Some(w.runner_version), w.caps, Some(UPDATE_RUNNER.to_owned())),
       Ok((_, w)) => status("ready", Some(w.runner_version), w.caps, None),
       Err(ConnError::Incompatible(m)) => status("incompatible", None, Vec::new(), Some(m)),
       Err(e) => status("absent", None, Vec::new(), Some(e.message().to_owned())),
@@ -170,7 +175,15 @@ impl Runner {
 
   pub fn start_run(&self, r: &StartRun) -> Result<RunnerSession, String> {
     self.gate()?;
-    api::create_run(&mut self.connect()?.0, r).map_err(err)
+    let (mut conn, welcome) = self.connect()?;
+    if !welcome.can_create_runs() {
+      return Err(UPDATE_RUNNER.to_owned());
+    }
+    api::create_run(&mut conn, r).map_err(err)
+  }
+
+  pub fn config_path(&self) -> &std::path::Path {
+    self.0.flag.path()
   }
 
   pub fn kill(&self, sid: &str) -> Result<(), String> {
@@ -189,7 +202,7 @@ impl Runner {
     self.gate()?;
     let generation = self.generation(None);
     let (mut conn, _) = self.connect()?;
-    conn.call("attach.open", json!({"sessions": []})).map_err(err)?;
+    conn.call(method::ATTACH_OPEN, json!({"sessions": []})).map_err(err)?;
     let _ = conn.stream.set_read_timeout(None);
     let sock = conn.stream.try_clone().map_err(|e| e.to_string())?;
     let id = self.0.next_watch.fetch_add(1, Ordering::SeqCst);
@@ -274,12 +287,11 @@ impl Runner {
     let state = state_from_value(&found["state"], Detail::Text).unwrap_or(session.state.clone());
 
     let (mut conn, _) = self.connect()?;
-    conn.call("attach.open", json!({"sessions": [sid]})).map_err(err)?;
+    conn.call(method::ATTACH_OPEN, json!({"sessions": [sid]})).map_err(err)?;
     let _ = conn.stream.set_read_timeout(None);
     conn.stream.set_write_timeout(Some(TERM_WRITE_TIMEOUT)).map_err(|e| e.to_string())?;
     let (cols, rows) = clamp_size(cols, rows);
-    write_json(&mut conn.stream, &json!({"type": "resize", "session": sid, "cols": cols, "rows": rows}))
-      .map_err(|e| e.to_string())?;
+    write_json(&mut conn.stream, &ClientMsg::Resize(Resize { session: sid.to_owned(), cols, rows })).map_err(|e| e.to_string())?;
     let handle = Arc::new(TermHandle {
       shared: Arc::new(Shared::new(sink)),
       writer: Mutex::new(conn.stream.try_clone().map_err(|e| e.to_string())?),
@@ -317,7 +329,7 @@ impl Runner {
   fn close_term(t: &TermHandle) {
     t.shared.stopped.store(true, Ordering::SeqCst);
     if let Ok(mut w) = t.writer.try_lock() {
-      let _ = write_json(&mut *w, &json!({"type": "detach"}));
+      let _ = write_json(&mut *w, &ClientMsg::Detach);
     }
     let _ = t.sock.shutdown(std::net::Shutdown::Both);
   }
@@ -345,17 +357,17 @@ impl Runner {
   pub fn term_resize(&self, sid: &str, cols: u32, rows: u32) -> Result<(), String> {
     let t = self.term(sid)?;
     let (cols, rows) = clamp_size(cols, rows);
-    Self::send(&t, &json!({"type": "resize", "session": sid, "cols": cols, "rows": rows}))
+    Self::send(&t, &ClientMsg::Resize(Resize { session: sid.to_owned(), cols, rows }))
   }
 
-  fn send(t: &TermHandle, msg: &Value) -> Result<(), String> {
+  fn send(t: &TermHandle, msg: &ClientMsg) -> Result<(), String> {
     let mut w = lock(&t.writer);
     write_json(&mut *w, msg).map_err(|e| e.to_string())
   }
 
   pub fn term_scroll(&self, sid: &str, offset: u32) -> Result<(), String> {
     let t = self.term(sid)?;
-    Self::send(&t, &json!({"type": "scroll", "session": sid, "offset": offset}))
+    Self::send(&t, &ClientMsg::Scroll(Scroll { session: sid.to_owned(), offset }))
   }
 
   pub fn term_detach(&self, sid: &str) {
@@ -425,7 +437,7 @@ mod tests {
     assert_eq!(r.status().state, "disabled");
     assert_eq!(r.profiles().unwrap_err(), "disabled");
     assert_eq!(r.sessions().unwrap_err(), "disabled");
-    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into() };
+    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into(), cwd: "/work/project".into(), name: "t".into() };
     assert_eq!(r.start_run(&run).unwrap_err(), "disabled");
     assert_eq!(r.kill(SID).unwrap_err(), "disabled");
     assert_eq!(r.session_exists(SID).unwrap_err(), "disabled");
@@ -441,7 +453,7 @@ mod tests {
     let (r, calls, servers, _d) = mock_runner(true);
     let st = r.status();
     assert_eq!((st.state, st.version.as_deref()), ("ready", Some("0.1.0")));
-    assert_eq!(st.caps, vec!["runs.create".to_owned()]);
+    assert!(st.caps.iter().any(|c| c == "runs.create.v1"));
     assert_eq!(r.profiles().unwrap().len(), 2);
     assert_eq!(r.sessions().unwrap()[0].id, SID);
     r.kill(SID).unwrap();
@@ -452,6 +464,34 @@ mod tests {
       logs.push(h.join().unwrap());
     }
     assert!(logs.iter().any(|l| l.requests.iter().any(|q| q["method"] == "sessions.kill")));
+  }
+
+  fn runner_with_caps(caps: &[&str]) -> (Runner, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let caps: Vec<String> = caps.iter().map(|c| c.to_string()).collect();
+    let connector: Connector = Arc::new(move || {
+      let (a, b) = UnixStream::pair().unwrap();
+      let mut m = Mock::new("secret");
+      m.caps = Some(caps.clone());
+      mock::spawn(b, m);
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    r.set_enabled(true).unwrap();
+    (r, dir)
+  }
+
+  #[test]
+  fn a_runner_without_runs_create_is_incompatible_and_refuses_runs() {
+    let (r, _d) = runner_with_caps(&["sessions.v1", "attach.v1"]);
+    let st = r.status();
+    assert_eq!((st.state, st.message.as_deref()), ("incompatible", Some("Update the TMGR runner")));
+    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into(), cwd: "/work/project".into(), name: "t".into() };
+    assert_eq!(r.start_run(&run).unwrap_err(), "Update the TMGR runner");
+    assert!(r.sessions().unwrap().is_empty());
+    let (ok, _d2) = runner_with_caps(&["runs.create.v1"]);
+    assert_eq!(ok.status().state, "ready");
+    assert_eq!(ok.start_run(&run).unwrap().task, Some(TaskRef { workspace_id: -1, task_id: 1 }));
   }
 
   #[test]

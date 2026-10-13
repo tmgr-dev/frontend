@@ -3,20 +3,27 @@ use std::os::unix::net::UnixStream;
 use std::thread::{self, JoinHandle};
 
 use serde_json::{json, Value};
-
-use super::conn::{proof, read_frame, write_json, Frame};
+use tmgr_ipc::api::{caps, Challenge, ErrorBody, ErrorCode, Handshake, Response, RunCreateReq, ServerMsg, Welcome};
+use tmgr_ipc::frame::{read_frame, write_json, Frame};
+use tmgr_ipc::{auth, server};
 
 pub struct Mock {
   pub secret: String,
   pub bad_server_proof: bool,
   pub reject_proto: bool,
-  pub welcome_proto: u64,
+  pub welcome_proto: u32,
+  pub caps: Option<Vec<String>>,
+  pub busy: bool,
   pub sessions: Vec<Value>,
 }
 
 impl Mock {
   pub fn new(secret: &str) -> Mock {
-    Mock { secret: secret.into(), bad_server_proof: false, reject_proto: false, welcome_proto: 1, sessions: Vec::new() }
+    Mock { secret: secret.into(), bad_server_proof: false, reject_proto: false, welcome_proto: 1, caps: None, busy: false, sessions: Vec::new() }
+  }
+
+  fn standard(&self) -> bool {
+    !self.bad_server_proof && !self.reject_proto && self.welcome_proto == 1 && self.caps.is_none()
   }
 }
 
@@ -35,53 +42,81 @@ pub fn session(id: &str, state: Value) -> Value {
   })
 }
 
+fn handshake(s: &mut UnixStream, mock: &Mock) -> Option<Value> {
+  if mock.standard() {
+    let hello = server::handshake_server(s, &mock.secret, "0.1.0").ok()?;
+    return serde_json::to_value(hello).ok();
+  }
+  let Ok(Some(Frame::Json(hello))) = read_frame(s) else { return None };
+  if mock.reject_proto {
+    let body = ErrorBody { code: ErrorCode::ProtoMismatch, message: "server speaks protocol 2".into() };
+    let _ = write_json(s, &Handshake::Error(body));
+    return Some(hello);
+  }
+  let nonce_c = hello["nonce_c"].as_str().unwrap_or_default().to_owned();
+  let nonce_s = "ab".repeat(32);
+  let mut proof_s = auth::proof(&mock.secret, auth::SERVER, &nonce_c, &nonce_s);
+  if mock.bad_server_proof {
+    proof_s = "00".repeat(32);
+  }
+  let _ = write_json(s, &Handshake::Challenge(Challenge { nonce_s: nonce_s.clone(), proof_s }));
+  let Ok(Some(Frame::Json(auth_msg))) = read_frame(s) else { return None };
+  if auth_msg["proof_c"].as_str() != Some(&auth::proof(&mock.secret, auth::CLIENT, &nonce_s, &nonce_c)) {
+    let body = ErrorBody { code: ErrorCode::Unauthorized, message: "bad proof".into() };
+    let _ = write_json(s, &Handshake::Error(body));
+    return None;
+  }
+  let caps = mock.caps.clone().unwrap_or_else(|| caps::ALL.map(String::from).to_vec());
+  let _ = write_json(s, &Handshake::Welcome(Welcome { proto: mock.welcome_proto, runner_version: "0.1.0".into(), caps }));
+  Some(hello)
+}
+
+fn err(code: ErrorCode, message: &str) -> ErrorBody {
+  ErrorBody { code, message: message.into() }
+}
+
+fn handle(mock: &Mock, method: &str, params: &Value) -> Result<Value, ErrorBody> {
+  match method {
+    "runner.status" => Ok(json!({"pid": 1, "version": "0.1.0", "proto": 1, "uptime_s": 3, "sessions": mock.sessions.len()})),
+    "sessions.list" => Ok(Value::Array(mock.sessions.clone())),
+    "runs.create" => {
+      let req: RunCreateReq = serde_json::from_value(params.clone()).map_err(|e| err(ErrorCode::InvalidParams, &e.to_string()))?;
+      let mut sess = session("s_newsessio2", json!({"kind": "starting", "since_ms": 1, "detail": null, "exit_code": null}));
+      sess["profile"] = json!(req.profile);
+      sess["cwd"] = json!(req.cwd);
+      sess["name"] = json!(req.name.unwrap_or_default());
+      sess["task"] = serde_json::to_value(req.task).unwrap_or(Value::Null);
+      Ok(sess)
+    }
+    "sessions.kill" => match params["signal"].as_str() {
+      Some("term" | "kill" | "int" | "hup") => Ok(Value::Null),
+      _ => Err(err(ErrorCode::InvalidParams, "bad signal")),
+    },
+    "sessions.send" | "sessions.remove" if mock.busy => Err(err(ErrorCode::Busy, "input queue is full")),
+    "attach.open" | "attach.set" => Ok(Value::Null),
+    other => Err(err(ErrorCode::UnknownMethod, other)),
+  }
+}
+
 pub fn spawn(mut s: UnixStream, mock: Mock) -> JoinHandle<Log> {
   thread::spawn(move || {
     let mut log = Log::default();
-    let Ok(Some(Frame::Json(hello))) = read_frame(&mut s) else { return log };
-    log.hello = hello.clone();
+    let Some(hello) = handshake(&mut s, &mock) else { return log };
+    log.hello = hello;
     if mock.reject_proto {
-      let _ = write_json(&mut s, &json!({"type": "error", "code": "proto_mismatch", "message": "server speaks protocol 2"}));
       return log;
     }
-    let nonce_c = hello["nonce_c"].as_str().unwrap_or_default().to_owned();
-    let nonce_s = "ab".repeat(32);
-    let mut proof_s = proof(&mock.secret, "tmgr-runner-server", &nonce_c, &nonce_s);
-    if mock.bad_server_proof {
-      proof_s = "00".repeat(32);
-    }
-    let _ = write_json(&mut s, &json!({"type": "challenge", "nonce_s": nonce_s, "proof_s": proof_s}));
-    let Ok(Some(Frame::Json(auth))) = read_frame(&mut s) else { return log };
-    if auth["proof_c"].as_str() != Some(&proof(&mock.secret, "tmgr-runner-client", &nonce_s, &nonce_c)) {
-      let _ = write_json(&mut s, &json!({"type": "error", "code": "unauthorized", "message": "bad proof"}));
-      return log;
-    }
-    let _ = write_json(
-      &mut s,
-      &json!({"type": "welcome", "proto": mock.welcome_proto, "runner_version": "0.1.0", "caps": ["runs.create"]}),
-    );
     loop {
       match read_frame(&mut s) {
         Ok(Some(Frame::Json(v))) if v["type"] == "request" => {
           log.requests.push(v.clone());
-          let id = v["id"].clone();
-          let reply = match v["method"].as_str().unwrap_or_default() {
-            "runner.status" => Ok(json!({"pid": 1, "version": "0.1.0", "proto": 1, "uptime_s": 3, "sessions": mock.sessions.len()})),
-            "sessions.list" => Ok(Value::Array(mock.sessions.clone())),
-            "runs.create" => {
-              let mut sess = session("s_newsessio2", json!({"kind": "starting", "since_ms": 1, "detail": null, "exit_code": null}));
-              sess["task"] = json!({"workspace_id": v["params"]["task"]["workspace_id"], "task_id": v["params"]["task"]["task_id"]});
-              sess["profile"] = v["params"]["profile"].clone();
-              Ok(sess)
-            }
-            "sessions.kill" | "attach.open" | "attach.set" => Ok(Value::Null),
-            other => Err(json!({"code": "unknown_method", "message": other})),
+          let id = v["id"].as_u64().unwrap_or_default();
+          let reply = handle(&mock, v["method"].as_str().unwrap_or_default(), &v["params"]);
+          let (ok, err) = match reply {
+            Ok(ok) => (Some(ok), None),
+            Err(e) => (None, Some(e)),
           };
-          let msg = match reply {
-            Ok(ok) => json!({"type": "response", "id": id, "ok": ok}),
-            Err(err) => json!({"type": "response", "id": id, "err": err}),
-          };
-          if write_json(&mut s, &msg).is_err() {
+          if write_json(&mut s, &ServerMsg::Response(Response { id, ok, err })).is_err() {
             break;
           }
         }
@@ -97,13 +132,9 @@ pub fn spawn(mut s: UnixStream, mock: Mock) -> JoinHandle<Log> {
 pub fn spawn_scripted(mut s: UnixStream, secret: &str, script: impl FnOnce(&mut UnixStream) + Send + 'static) -> JoinHandle<()> {
   let secret = secret.to_owned();
   thread::spawn(move || {
-    let Ok(Some(Frame::Json(hello))) = read_frame(&mut s) else { return };
-    let nonce_c = hello["nonce_c"].as_str().unwrap_or_default().to_owned();
-    let nonce_s = "ab".repeat(32);
-    let proof_s = proof(&secret, "tmgr-runner-server", &nonce_c, &nonce_s);
-    let _ = write_json(&mut s, &json!({"type": "challenge", "nonce_s": nonce_s, "proof_s": proof_s}));
-    let Ok(Some(Frame::Json(_))) = read_frame(&mut s) else { return };
-    let _ = write_json(&mut s, &json!({"type": "welcome", "proto": 1, "runner_version": "0.1.0", "caps": []}));
+    if server::handshake_server(&s, &secret, "0.1.0").is_err() {
+      return;
+    }
     script(&mut s);
   })
 }

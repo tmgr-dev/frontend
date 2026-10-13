@@ -5,7 +5,8 @@ use tauri::{AppHandle, Manager, Runtime, State, WebviewUrl, WebviewWindow, Webvi
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
-use super::api::{self, confirm_run_message, session_from_label, validate_start, RunnerSession, StartRun};
+use super::api::{self, confirm_run_message, run_name, session_from_label, validate_start, RunnerSession, StartRun};
+use super::folder;
 use super::task_lookup::lookup_in;
 use super::pump::{TermFrame, WatchEvent};
 use super::{Runner, RunnerStatus, TermInfo};
@@ -76,6 +77,56 @@ pub async fn runner_sessions(runner: State<'_, Runner>) -> Result<Vec<RunnerSess
   blocking(move || runner.sessions()).await
 }
 
+fn local_workspace_code<R: Runtime>(app: &AppHandle<R>, workspace_id: i64) -> Result<String, String> {
+  if workspace_id >= 0 {
+    return Err("Agent runs are available only for local workspaces".to_owned());
+  }
+  let root = crate::local_workspaces::root(app)?;
+  crate::local_workspaces::list_in(&root)
+    .into_iter()
+    .find(|w| w.manifest.id == workspace_id)
+    .map(|w| w.manifest.code)
+    .ok_or_else(|| "workspace not found".to_owned())
+}
+
+async fn stored_folder<R: Runtime>(app: &AppHandle<R>, runner: &Runner, code: String) -> Option<String> {
+  let (config, home) = (runner.config_path().to_path_buf(), app.path().home_dir().ok());
+  blocking(move || Ok(folder::get(&config, &code, home.as_deref()))).await.ok().flatten()
+}
+
+async fn pick_folder<R: Runtime>(app: &AppHandle<R>, runner: &Runner, code: String) -> Result<Option<String>, String> {
+  let handle = app.clone();
+  let picked = tauri::async_runtime::spawn_blocking(move || {
+    handle.dialog().file().set_title("Choose the project folder for the agent").blocking_pick_folder()
+  })
+  .await
+  .map_err(|e| e.to_string())?;
+  let Some(picked) = picked else { return Ok(None) };
+  let path = picked.into_path().map_err(|_| "The selected folder is not a local path".to_owned())?;
+  let (config, home) = (runner.config_path().to_path_buf(), app.path().home_dir().ok());
+  blocking(move || folder::set(&config, &code, &path, home.as_deref())).await.map(Some)
+}
+
+#[tauri::command]
+pub async fn runner_project_folder<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner>, workspace_id: i64) -> Result<Option<String>, String> {
+  let runner = runner.inner().clone();
+  if !runner.enabled() {
+    return Err("disabled".to_owned());
+  }
+  let code = local_workspace_code(&app, workspace_id)?;
+  Ok(stored_folder(&app, &runner, code).await)
+}
+
+#[tauri::command]
+pub async fn runner_pick_folder<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner>, workspace_id: i64) -> Result<Option<String>, String> {
+  let runner = runner.inner().clone();
+  if !runner.enabled() {
+    return Err("disabled".to_owned());
+  }
+  let code = local_workspace_code(&app, workspace_id)?;
+  pick_folder(&app, &runner, code).await
+}
+
 #[tauri::command]
 pub async fn runner_start_run<R: Runtime>(
   app: AppHandle<R>,
@@ -88,11 +139,17 @@ pub async fn runner_start_run<R: Runtime>(
   if !runner.enabled() {
     return Err("disabled".to_owned());
   }
-  let req = StartRun { workspace_id, task_id, profile };
+  let mut req = StartRun { workspace_id, task_id, profile, cwd: String::new(), name: String::new() };
   validate_start(&req)?;
+  let code = local_workspace_code(&app, workspace_id)?;
   let root = crate::local_workspaces::root(&app)?;
   let info = blocking(move || lookup_in(&root, workspace_id, task_id)).await?;
-  let message = confirm_run_message(&info.workspace, task_id, &info.title, &req.profile);
+  req.cwd = match stored_folder(&app, &runner, code.clone()).await {
+    Some(folder) => folder,
+    None => pick_folder(&app, &runner, code).await?.ok_or_else(|| "cancelled".to_owned())?,
+  };
+  req.name = run_name(&info.title, task_id);
+  let message = confirm_run_message(&info.workspace, task_id, &info.title, &req.cwd, &req.profile);
   if !confirm(&app, "Run with agent", message, "Run").await {
     return Err("cancelled".to_owned());
   }

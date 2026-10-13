@@ -45,6 +45,7 @@ getrandom = "0.3"
 flate2 = "1.1"
 unicode-width = "0.2"
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
+tmgr-ipc = { path = "../crates/tmgr-ipc" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
