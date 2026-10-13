@@ -19,24 +19,54 @@ use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 const PY: &str = "/usr/bin/python3";
 
-fn kill_tree(run: &Path) {
-    let kill = |pid: i64| {
-        if pid > 1 {
-            unsafe {
-                libc::kill(-(pid as i32), libc::SIGKILL);
-                libc::kill(pid as i32, libc::SIGKILL);
-            }
+fn pid_of(pid: i64) -> Option<i32> {
+    i32::try_from(pid).ok().filter(|p| *p > 1)
+}
+
+fn ps_field(pid: i32, field: &str, environ: bool) -> String {
+    let mut cmd = Command::new("ps");
+    if environ {
+        cmd.arg("eww");
+    }
+    let out = cmd
+        .args(["-o", field, "-p", &pid.to_string()])
+        .output()
+        .ok();
+    out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
+}
+
+fn kill_ours(pid: i64, tag: &str, parent: Option<i32>) {
+    let Some(pid) = pid_of(pid) else { return };
+    let ours = ps_field(pid, "command=", true).contains(tag)
+        || parent.is_some_and(|p| ps_field(pid, "ppid=", false) == p.to_string());
+    if ours {
+        unsafe {
+            libc::kill(-pid, libc::SIGKILL);
+            libc::kill(pid, libc::SIGKILL);
         }
-    };
+    }
+}
+
+fn tag_of(run: &Path) -> String {
+    run.parent()
+        .and_then(Path::file_name)
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|t| t.len() > 4)
+        .unwrap_or_else(|| "\u{0}no-tag".into())
+}
+
+fn kill_tree(run: &Path) {
+    let tag = tag_of(run);
     let pid_file = |p: PathBuf| {
         fs::read_to_string(p)
             .ok()
             .and_then(|s| s.trim().parse::<i64>().ok())
     };
-    if let Some(pid) = pid_file(run.join("runner.pid")) {
-        kill(pid);
-    }
     let Ok(rd) = fs::read_dir(run.join("sessions")) else {
+        if let Some(pid) = pid_file(run.join("runner.pid")) {
+            kill_ours(pid, &tag, None);
+        }
         return;
     };
     for e in rd.flatten() {
@@ -44,14 +74,19 @@ fn kill_tree(run: &Path) {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .unwrap_or_default();
-        for k in ["child_pid", "shim_pid"] {
-            if let Some(p) = meta[k].as_i64() {
-                kill(p);
-            }
+        let shim = pid_file(e.path().join("shim.pid")).or(meta["shim_pid"].as_i64());
+        let shim_ok = shim
+            .and_then(pid_of)
+            .filter(|p| ps_field(*p, "command=", true).contains(&tag));
+        if let Some(p) = meta["child_pid"].as_i64() {
+            kill_ours(p, &tag, shim_ok);
         }
-        if let Some(p) = pid_file(e.path().join("shim.pid")) {
-            kill(p);
+        if let Some(p) = shim {
+            kill_ours(p, &tag, None);
         }
+    }
+    if let Some(pid) = pid_file(run.join("runner.pid")) {
+        kill_ours(pid, &tag, None);
     }
 }
 
@@ -325,7 +360,7 @@ fn sessions_available() -> bool {
 }
 
 fn alive(pid: u32) -> bool {
-    unsafe { libc::kill(pid as i32, 0) == 0 }
+    pid_of(pid as i64).is_some_and(|p| unsafe { libc::kill(p, 0) == 0 })
 }
 
 fn err_text(r: std::io::Result<impl std::fmt::Debug>) -> String {
@@ -664,7 +699,7 @@ fn start_background_is_idempotent() {
         .unwrap()
         .permissions()
         .mode();
-    unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    kill_ours(pid as i64, &tag_of(&h.run), None);
     assert_eq!(again.unwrap(), pid);
     assert_eq!(status.pid, pid);
     assert_eq!(log_mode & 0o777, 0o600);
@@ -720,7 +755,7 @@ fn start_background_replaces_a_squatted_runner_address() {
     };
     let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
     let status = h.client().status().unwrap();
-    unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    kill_ours(pid as i64, &tag_of(&h.run), None);
     assert_eq!(status.pid, pid);
 }
 
