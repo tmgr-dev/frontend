@@ -38,6 +38,11 @@ pub fn fixture(self_exe: &str) -> Fx {
         .prefix("sb")
         .tempdir_in("/tmp")
         .unwrap();
+    std::fs::set_permissions(
+        t.path(),
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+    )
+    .unwrap();
     let root = t.path().canonicalize().unwrap();
     let real_home = root.join("fakehome");
     let runner_dir = root.join("runner");

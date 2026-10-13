@@ -30,6 +30,11 @@ impl Harness {
             .prefix("tr")
             .tempdir_in("/tmp")
             .unwrap();
+        std::fs::set_permissions(
+            tmp.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .unwrap();
         let run = tmp.path().join("r");
         fs::create_dir(&run).unwrap();
         fs::set_permissions(&run, fs::Permissions::from_mode(0o700)).unwrap();
@@ -41,6 +46,11 @@ impl Harness {
             .prefix("th")
             .tempdir_in("/tmp")
             .unwrap();
+        std::fs::set_permissions(
+            homes.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .unwrap();
         fs::set_permissions(homes.path(), fs::Permissions::from_mode(0o700)).unwrap();
         Harness {
             tmp,
@@ -625,11 +635,11 @@ fn large_input_is_chunked_and_first_screen_arrives() {
     h.start(5000);
     let mut c = h.client();
     let info = c
-        .create(h.sh("stty raw -echo; head -c 200000 | wc -c; sleep 5\n"))
+        .create(h.sh("stty raw -echo; echo READY; head -c 200000 | wc -c; sleep 5\n"))
         .unwrap();
     let w = Watch::new(h.client(), &[&info.id]);
     let mut w = w;
-    assert!(w.wait(5, |w| w.cache.snapshot(&info.id).is_some()));
+    assert!(w.wait(10, |w| w.has_line(&info.id, "READY")));
     w.writer.input(&info.id, &vec![b'a'; 200_000]).unwrap();
     assert!(
         w.wait(10, |w| w.has_line(&info.id, "200000")),

@@ -40,6 +40,11 @@ impl Env {
             .prefix("tr")
             .tempdir_in("/tmp")
             .unwrap();
+        std::fs::set_permissions(
+            tmp.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .unwrap();
         let run = tmp.path().join("r");
         private_dir(&run);
         let proj = tmp.path().join("p");
@@ -49,6 +54,11 @@ impl Env {
             .prefix("th")
             .tempdir_in("/tmp")
             .unwrap();
+        std::fs::set_permissions(
+            homes.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .unwrap();
         private_dir(homes.path());
         Env {
             tmp,

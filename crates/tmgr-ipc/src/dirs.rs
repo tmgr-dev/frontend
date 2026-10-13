@@ -167,12 +167,22 @@ pub fn ensure_private_dir(path: &Path) -> io::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    fn private_tmp() -> tempfile::TempDir {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            t.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .unwrap();
+        t
+    }
+
     use super::*;
     use std::os::unix::fs::{symlink, PermissionsExt};
 
     #[test]
     fn creates_private_dir_with_parents() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let d = t.path().join("a/b");
         ensure_private_dir(&d).unwrap();
         assert_eq!(fs::metadata(&d).unwrap().mode() & 0o777, 0o700);
@@ -181,7 +191,7 @@ mod tests {
 
     #[test]
     fn refuses_symlink() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let real = t.path().join("real");
         ensure_private_dir(&real).unwrap();
         let link = t.path().join("link");
@@ -193,7 +203,7 @@ mod tests {
 
     #[test]
     fn refuses_open_mode() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let d = t.path().join("open");
         fs::create_dir(&d).unwrap();
         fs::set_permissions(&d, fs::Permissions::from_mode(0o755)).unwrap();
@@ -208,7 +218,7 @@ mod tests {
 
     #[test]
     fn refuses_writable_non_sticky_ancestor() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let loose = t.path().join("loose");
         mkdir(&loose, 0o777);
         let d = loose.join("mid/priv");
@@ -220,7 +230,7 @@ mod tests {
 
     #[test]
     fn refuses_group_writable_non_sticky_ancestor() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let shared = t.path().join("shared");
         mkdir(&shared, 0o770);
         let e = ensure_private_dir(&shared.join("priv")).unwrap_err();
@@ -231,7 +241,7 @@ mod tests {
 
     #[test]
     fn refuses_symlink_component_held_in_a_writable_directory() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let real = t.path().join("real");
         ensure_private_dir(&real.join("run")).unwrap();
         let loose = t.path().join("loose");
@@ -244,7 +254,7 @@ mod tests {
 
     #[test]
     fn accepts_symlink_component_held_in_a_private_directory() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let real = t.path().join("real");
         ensure_private_dir(&real.join("run")).unwrap();
         let mine = t.path().join("mine");
@@ -255,7 +265,7 @@ mod tests {
 
     #[test]
     fn leaf_check_ignores_ancestor_modes() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let loose = t.path().join("loose");
         mkdir(&loose, 0o777);
         ensure_private_leaf(&loose.join("homes")).unwrap();
@@ -268,6 +278,11 @@ mod tests {
             .prefix("dirs")
             .tempdir_in("/tmp")
             .unwrap();
+        std::fs::set_permissions(
+            t.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .unwrap();
         ensure_private_dir(&t.path().join("a")).unwrap();
         let sticky = t.path().join("sticky");
         mkdir(&sticky, 0o1777);
@@ -276,7 +291,7 @@ mod tests {
 
     #[test]
     fn refuses_file_and_missing() {
-        let t = tempfile::tempdir().unwrap();
+        let t = private_tmp();
         let f = t.path().join("f");
         fs::write(&f, "x").unwrap();
         assert!(check_private_dir(&f).is_err());

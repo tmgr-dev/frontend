@@ -27,6 +27,11 @@ fn short_dir() -> Dir {
         .prefix("tr")
         .tempdir_in("/tmp")
         .unwrap();
+    std::fs::set_permissions(
+        t.path(),
+        <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+    )
+    .unwrap();
     let path = t.path().join("r");
     Dir { _t: t, path }
 }
