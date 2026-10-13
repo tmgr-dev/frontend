@@ -5,6 +5,21 @@ use serde_json::{Map, Value};
 use super::flag::{read_object, update_object};
 
 const KEY: &str = "folders";
+const MAX_PATH_BYTES: usize = 1024;
+pub const HIDDEN_CHARS: &str = "Choose a folder whose path has no hidden or control characters (max 1024 characters)";
+pub const CHANGED: &str = "The project folder changed; run again";
+
+fn displayable(path: &Path) -> Result<&str, String> {
+  let text = path.to_str().ok_or_else(|| HIDDEN_CHARS.to_owned())?;
+  let odd_component = path.components().any(|c| {
+    let part = c.as_os_str().to_str().unwrap_or_default();
+    part.trim() != part
+  });
+  if text.len() > MAX_PATH_BYTES || odd_component || text.chars().any(super::sanitize::unsafe_char) {
+    return Err(HIDDEN_CHARS.to_owned());
+  }
+  Ok(text)
+}
 
 pub fn validate(path: &Path, home: Option<&Path>) -> Result<PathBuf, String> {
   if !path.is_absolute() {
@@ -14,6 +29,7 @@ pub fn validate(path: &Path, home: Option<&Path>) -> Result<PathBuf, String> {
   if !canon.is_dir() {
     return Err("The project folder is not a directory".to_owned());
   }
+  displayable(&canon)?;
   if canon.parent().is_none() {
     return Err("Choose a project folder, not the filesystem root".to_owned());
   }
@@ -23,6 +39,37 @@ pub fn validate(path: &Path, home: Option<&Path>) -> Result<PathBuf, String> {
   Ok(canon)
 }
 
+pub struct Snapshot {
+  path: PathBuf,
+  dev: u64,
+  ino: u64,
+}
+
+impl Snapshot {
+  pub fn capture(path: &Path, home: Option<&Path>) -> Result<Snapshot, String> {
+    use std::os::unix::fs::MetadataExt;
+    let canon = validate(path, home)?;
+    let meta = std::fs::symlink_metadata(&canon).map_err(|_| CHANGED.to_owned())?;
+    if !meta.is_dir() {
+      return Err(CHANGED.to_owned());
+    }
+    Ok(Snapshot { path: canon, dev: meta.dev(), ino: meta.ino() })
+  }
+
+  pub fn path(&self) -> &str {
+    self.path.to_str().unwrap_or_default()
+  }
+
+  pub fn verify(&self, home: Option<&Path>) -> Result<(), String> {
+    let now = Snapshot::capture(&self.path, home).map_err(|_| CHANGED.to_owned())?;
+    if now.path == self.path && now.dev == self.dev && now.ino == self.ino {
+      Ok(())
+    } else {
+      Err(CHANGED.to_owned())
+    }
+  }
+}
+
 pub fn get(config: &Path, code: &str, home: Option<&Path>) -> Option<String> {
   let stored = read_object(config).get(KEY)?.get(code)?.as_str()?.to_owned();
   validate(Path::new(&stored), home).ok().map(|p| p.to_string_lossy().into_owned())
@@ -30,7 +77,7 @@ pub fn get(config: &Path, code: &str, home: Option<&Path>) -> Option<String> {
 
 pub fn set(config: &Path, code: &str, path: &Path, home: Option<&Path>) -> Result<String, String> {
   let canon = validate(path, home)?;
-  let text = canon.to_str().ok_or_else(|| "The project folder path is not valid UTF-8".to_owned())?.to_owned();
+  let text = displayable(&canon)?.to_owned();
   update_object(config, |o| {
     let folders = o.entry(KEY).or_insert_with(|| Value::Object(Map::new()));
     if !folders.is_object() {
@@ -70,6 +117,56 @@ mod tests {
     std::fs::write(&file, b"x").unwrap();
     assert!(validate(&file, Some(&home)).is_err());
     drop(t);
+  }
+
+  #[test]
+  fn rejects_paths_that_cannot_be_shown_losslessly() {
+    let t = tempfile::tempdir().unwrap();
+    let base = t.path().canonicalize().unwrap();
+    for name in ["a\x1bb", "a\u{202e}b", "a\u{200b}b", "a\nb", "a\u{feff}b", " lead", "trail ", "a\tb"] {
+      let dir = base.join(name);
+      std::fs::create_dir(&dir).unwrap();
+      assert_eq!(validate(&dir, None).unwrap_err(), HIDDEN_CHARS, "{name:?}");
+    }
+    let outer = base.join("outer ");
+    std::fs::create_dir_all(outer.join("inner")).unwrap();
+    assert_eq!(validate(&outer.join("inner"), None).unwrap_err(), HIDDEN_CHARS);
+    assert_eq!(displayable(Path::new(&format!("/{}", "x".repeat(1024)))).unwrap_err(), HIDDEN_CHARS);
+    assert!(displayable(Path::new(&format!("/{}", "x".repeat(1023)))).is_ok());
+    let edge = base.join("é-ok");
+    std::fs::create_dir(&edge).unwrap();
+    assert!(validate(&edge, None).is_ok());
+  }
+
+  #[test]
+  fn rejects_invalid_utf8_paths() {
+    use std::os::unix::ffi::OsStrExt;
+    let bad = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/bad\xff"));
+    assert_eq!(displayable(bad).unwrap_err(), HIDDEN_CHARS);
+  }
+
+  #[test]
+  fn an_unchanged_folder_verifies() {
+    let (_t, home, project) = dirs();
+    let snap = Snapshot::capture(&project, Some(&home)).unwrap();
+    assert_eq!(snap.path(), project.to_str().unwrap());
+    assert!(snap.verify(Some(&home)).is_ok());
+  }
+
+  #[test]
+  fn a_folder_swapped_for_a_symlink_or_another_directory_fails_verification() {
+    let (_t, home, project) = dirs();
+    let other = home.join("other");
+    std::fs::create_dir(&other).unwrap();
+    let snap = Snapshot::capture(&project, Some(&home)).unwrap();
+    std::fs::rename(&project, home.join("moved")).unwrap();
+    std::os::unix::fs::symlink(&other, &project).unwrap();
+    assert_eq!(snap.verify(Some(&home)).unwrap_err(), CHANGED);
+    std::fs::remove_file(&project).unwrap();
+    std::fs::create_dir(&project).unwrap();
+    assert_eq!(snap.verify(Some(&home)).unwrap_err(), CHANGED);
+    std::fs::remove_dir(&project).unwrap();
+    assert_eq!(snap.verify(Some(&home)).unwrap_err(), CHANGED);
   }
 
   #[test]

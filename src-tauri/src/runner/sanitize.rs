@@ -1,4 +1,4 @@
-fn unsafe_char(c: char) -> bool {
+pub fn unsafe_char(c: char) -> bool {
   c.is_control() || matches!(c, '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')
 }
 

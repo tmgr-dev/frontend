@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use serde_json::Value;
 use tauri::ipc::Channel;
 use tauri::utils::config::BackgroundThrottlingPolicy;
@@ -144,16 +146,24 @@ pub async fn runner_start_run<R: Runtime>(
   let code = local_workspace_code(&app, workspace_id)?;
   let root = crate::local_workspaces::root(&app)?;
   let info = blocking(move || lookup_in(&root, workspace_id, task_id)).await?;
-  req.cwd = match stored_folder(&app, &runner, code.clone()).await {
+  let chosen = match stored_folder(&app, &runner, code.clone()).await {
     Some(folder) => folder,
     None => pick_folder(&app, &runner, code).await?.ok_or_else(|| "cancelled".to_owned())?,
   };
+  let home = app.path().home_dir().ok();
+  let h = home.clone();
+  let snapshot = blocking(move || folder::Snapshot::capture(Path::new(&chosen), h.as_deref())).await?;
+  req.cwd = snapshot.path().to_owned();
   req.name = run_name(&info.title, task_id);
   let message = confirm_run_message(&info.workspace, task_id, &info.title, &req.cwd, &req.profile);
   if !confirm(&app, "Run with agent", message, "Run").await {
     return Err("cancelled".to_owned());
   }
-  blocking(move || runner.start_run(&req)).await
+  blocking(move || {
+    snapshot.verify(home.as_deref())?;
+    runner.start_run(&req)
+  })
+  .await
 }
 
 #[tauri::command]

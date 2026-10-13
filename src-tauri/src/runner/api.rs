@@ -11,7 +11,6 @@ pub const PROFILES: &[(&str, &str)] = &[("claude-code", "Claude Code"), ("codex"
 const TITLE_MAX: usize = 120;
 const NAME_MAX: usize = 120;
 const RUN_NAME_MAX: usize = 64;
-const FOLDER_MAX: usize = 400;
 const RUN_COLS: u16 = 120;
 const RUN_ROWS: u16 = 32;
 
@@ -148,10 +147,10 @@ pub fn display_text(s: &str) -> String {
 
 pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, folder: &str, profile: &str) -> String {
   format!(
-    "Workspace: {}\nTask #{task_id}: {}\nProject folder: {}\nAgent: {}\nPermission prompts: on",
+    "Workspace: {}\nTask #{task_id}: {}\nProject folder: \"{}\"\nAgent: {}\nPermission prompts: on",
     display_text(workspace),
     display_text(title),
-    sanitize::text(folder, FOLDER_MAX),
+    folder,
     profile_label(profile)
   )
 }
@@ -311,17 +310,24 @@ mod tests {
   }
 
   #[test]
+  fn confirm_message_shows_the_full_folder_quoted() {
+    let folder = format!("/{}", "d".repeat(900));
+    let m = confirm_run_message("W", 1, "T", &folder, "codex");
+    assert!(m.contains(&format!("\nProject folder: \"{folder}\"\n")));
+  }
+
+  #[test]
   fn confirm_message_shows_what_will_run() {
     let m = confirm_run_message(
       "Work\u{202e}space",
       7,
       &format!("Fix\x1b[2J bug {}", "t".repeat(200)),
-      "/work/project\x1b[2J",
+      "/work/project",
       "claude-code",
     );
     assert!(m.starts_with("Workspace: Workspace\n"));
     assert!(m.contains("Task #7: Fix[2J bug"));
-    assert!(m.contains("\nProject folder: /work/project[2J\n"));
+    assert!(m.contains("\nProject folder: \"/work/project\"\n"));
     assert!(m.contains("Agent: Claude Code"));
     assert!(m.ends_with("Permission prompts: on"));
     assert!(!m.contains('\x1b'));

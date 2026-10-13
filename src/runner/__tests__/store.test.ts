@@ -145,13 +145,12 @@ describe('runner store', () => {
 		expect(runner.sessions.value).toEqual([]);
 	});
 
-	it('recovers status when sessions arrive after down', async () => {
+	it('ignores events that arrive after down from the dead watch', async () => {
 		await startRunnerStore();
 		handler({ type: 'down', message: 'gone' });
 		handler({ type: 'sessions', sessions: [session('s_a')] });
-		await Promise.resolve();
-		await Promise.resolve();
-		expect(useRunner().status.value?.state).toBe('ready');
+		expect(useRunner().status.value?.state).toBe('absent');
+		expect(useRunner().sessions.value).toEqual([]);
 	});
 
 	it('reconnects the watch once the runner is back after down', async () => {
@@ -217,5 +216,62 @@ describe('runner store', () => {
 		release(9);
 		await enabling;
 		expect(mocked.runnerUnwatch).toHaveBeenCalledWith(9);
+	});
+
+	it('unwatches a stale attempt that resolves after down and watches again on the next ready poll', async () => {
+		jest.useFakeTimers();
+		try {
+			mocked.runnerEnabled.mockResolvedValue(true);
+			let release: (id: number) => void = () => {};
+			let firstHandler: (event: api.WatchEvent) => void = () => {};
+			mocked.runnerWatch.mockImplementationOnce(
+				(cb) =>
+					new Promise<number>((resolve) => {
+						firstHandler = cb;
+						release = resolve;
+					}),
+			);
+			const starting = startRunnerStore();
+			await jest.advanceTimersByTimeAsync(0);
+			firstHandler({ type: 'down', message: 'gone' });
+			release(11);
+			await starting;
+			expect(mocked.runnerUnwatch).toHaveBeenCalledWith(11);
+			expect(useRunner().sessions.value).toEqual([]);
+			mocked.runnerWatch.mockImplementation(async (cb) => {
+				handler = cb;
+				return 12;
+			});
+			await jest.advanceTimersByTimeAsync(3000);
+			expect(mocked.runnerWatch).toHaveBeenCalledTimes(2);
+			expect(useRunner().status.value?.state).toBe('ready');
+			expect(useRunner().sessions.value).toHaveLength(1);
+			handler({ type: 'down', message: 'again' });
+			expect(mocked.runnerUnwatch).toHaveBeenCalledWith(12);
+		} finally {
+			resetRunnerStore();
+			jest.useRealTimers();
+		}
+	});
+
+	it('ignores events from an invalidated attempt', async () => {
+		jest.useFakeTimers();
+		try {
+			await startRunnerStore();
+			const old = handler;
+			old({ type: 'down', message: 'gone' });
+			mocked.runnerWatch.mockImplementation(async (cb) => {
+				handler = cb;
+				return 6;
+			});
+			await jest.advanceTimersByTimeAsync(3000);
+			expect(mocked.runnerWatch).toHaveBeenCalledTimes(2);
+			old({ type: 'down', message: 'late' });
+			expect(useRunner().status.value?.state).toBe('ready');
+			expect(mocked.runnerUnwatch).not.toHaveBeenCalledWith(6);
+		} finally {
+			resetRunnerStore();
+			jest.useRealTimers();
+		}
 	});
 });

@@ -19,6 +19,7 @@ const sessions = ref<RunnerSession[]>([]);
 
 let watchId: number | null = null;
 let generation = 0;
+let attempt = 0;
 let watching: Promise<void> | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -78,7 +79,8 @@ const scheduleReconnect = (): void => {
 	}, RECONNECT_MS);
 };
 
-const onEvent = (event: WatchEvent): void => {
+const onEvent = (token: number, event: WatchEvent): void => {
+	if (token !== attempt) return;
 	switch (event.type) {
 		case 'state':
 			sessions.value = sessions.value.map((session) =>
@@ -92,6 +94,8 @@ const onEvent = (event: WatchEvent): void => {
 			if (status.value?.state !== 'ready') void refreshRunnerStatus();
 			break;
 		case 'down':
+			attempt++;
+			watching = null;
 			status.value = { state: 'absent', caps: [], message: event.message };
 			sessions.value = [];
 			if (watchId !== null) void runnerUnwatch(watchId).catch(() => {});
@@ -103,10 +107,10 @@ const onEvent = (event: WatchEvent): void => {
 
 const beginWatch = async (): Promise<void> => {
 	if (watchId !== null || watching) return watching ?? undefined;
-	const mine = generation;
-	watching = (async () => {
-		const id = await runnerWatch(onEvent);
-		if (mine !== generation || !enabled.value) {
+	const token = ++attempt;
+	const run = (async () => {
+		const id = await runnerWatch((event) => onEvent(token, event));
+		if (token !== attempt || !enabled.value) {
 			await runnerUnwatch(id).catch(() => {});
 			return;
 		}
@@ -118,13 +122,16 @@ const beginWatch = async (): Promise<void> => {
 			sessions.value = [];
 		}
 	})().finally(() => {
-		watching = null;
+		if (watching === run) watching = null;
 	});
-	return watching;
+	watching = run;
+	return run;
 };
 
 const endWatch = async (): Promise<void> => {
 	generation++;
+	attempt++;
+	watching = null;
 	stopReconnect();
 	const id = watchId;
 	watchId = null;
@@ -152,6 +159,7 @@ export const setRunnerEnabled = async (value: boolean): Promise<void> => {
 
 export const resetRunnerStore = (): void => {
 	generation++;
+	attempt++;
 	stopReconnect();
 	watchId = null;
 	watching = null;
