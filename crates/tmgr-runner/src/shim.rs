@@ -552,12 +552,36 @@ mod proc {
         if n != size {
             return None;
         }
+        let (numer, denom) = timebase()?;
+        let ticks = info.pti_total_user as u128 + info.pti_total_system as u128;
+        Some((ticks * numer as u128 / denom as u128) as u64)
+    }
+
+    fn timebase() -> Option<(u32, u32)> {
+        // Under Rosetta mach_timebase_info says 1/1, but task times stay in native Apple Silicon ticks.
+        if translated() {
+            return Some((125, 3));
+        }
         let mut tb = libc::mach_timebase_info { numer: 0, denom: 0 };
         if unsafe { libc::mach_timebase_info(&mut tb) } != 0 || tb.denom == 0 {
             return None;
         }
-        let ticks = info.pti_total_user as u128 + info.pti_total_system as u128;
-        Some((ticks * tb.numer as u128 / tb.denom as u128) as u64)
+        Some((tb.numer, tb.denom))
+    }
+
+    fn translated() -> bool {
+        let mut v: libc::c_int = 0;
+        let mut len = std::mem::size_of::<libc::c_int>();
+        let rc = unsafe {
+            libc::sysctlbyname(
+                c"sysctl.proc_translated".as_ptr(),
+                (&mut v as *mut libc::c_int).cast(),
+                &mut len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        rc == 0 && v == 1
     }
 
     pub fn waiting_tty(_pid: i32) -> Option<bool> {
