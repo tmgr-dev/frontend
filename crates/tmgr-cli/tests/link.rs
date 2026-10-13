@@ -414,6 +414,22 @@ fn a_revoked_link_stops_answering_on_the_next_request() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(0));
+    let json_out = f
+        .tmgr()
+        .args(["link", "audit", "--tail", "5", "--json"])
+        .output()
+        .unwrap();
+    let audit: Value = serde_json::from_slice(&json_out.stdout).unwrap();
+    let contain = audit["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["event"] == "link.revoke.contain")
+        .unwrap();
+    assert_eq!(contain["workers_signalled"], 1);
+    assert_eq!(contain["workers_surviving"], 0);
+    let left = std::fs::read_dir(f.paths.state.join("link-workers")).map_or(0, |d| d.count());
+    assert_eq!(left, 0);
     match c.call("runs.list", Value::Null) {
         Ok(r) => assert_eq!(reply_err(r).0, "revoked"),
         Err(e) => assert_eq!(e.exit_code(), 9),

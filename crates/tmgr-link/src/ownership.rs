@@ -111,6 +111,9 @@ impl Runs {
 }
 
 pub fn origin_label(paths: &Paths, run: &str) -> Option<String> {
+    if !map_path(paths).exists() {
+        return None;
+    }
     let runs = Runs::lock(paths).ok()?;
     let rec = runs.get(run)?;
     let store = crate::store::Store::load(paths).ok()?;
@@ -127,6 +130,9 @@ pub fn origin_label(paths: &Paths, run: &str) -> Option<String> {
 
 pub fn origin_labels(paths: &Paths) -> std::collections::BTreeMap<String, String> {
     let mut out = std::collections::BTreeMap::new();
+    if !map_path(paths).exists() {
+        return out;
+    }
     let (Ok(runs), Ok(store)) = (Runs::lock(paths), crate::store::Store::load(paths)) else {
         return out;
     };

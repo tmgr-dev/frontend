@@ -43,6 +43,10 @@ extern "C" fn on_signal(sig: libc::c_int) {
     SIGNAL.store(sig, Ordering::SeqCst);
 }
 
+pub(super) fn pending_signal() -> i32 {
+    SIGNAL.load(Ordering::SeqCst)
+}
+
 fn restore() {
     if ACTIVE.swap(false, Ordering::SeqCst) {
         let mut out = io::stdout();
@@ -53,10 +57,10 @@ fn restore() {
     }
 }
 
-struct Guard;
+pub(super) struct Guard;
 
 impl Guard {
-    fn enter() -> io::Result<Guard> {
+    pub(super) fn enter() -> io::Result<Guard> {
         enable_raw_mode()?;
         ACTIVE.store(true, Ordering::SeqCst);
         let guard = Guard;

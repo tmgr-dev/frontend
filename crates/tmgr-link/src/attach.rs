@@ -25,6 +25,25 @@ pub fn clean_text(s: &str) -> String {
         .collect()
 }
 
+pub fn clean_value(v: &mut Value) {
+    match v {
+        Value::String(s) => *s = clean_text(s),
+        Value::Array(a) => a.iter_mut().for_each(clean_value),
+        Value::Object(m) => {
+            let keys: Vec<String> = m.keys().cloned().collect();
+            let mut cleaned = serde_json::Map::new();
+            for k in keys {
+                if let Some(mut child) = m.remove(&k) {
+                    clean_value(&mut child);
+                    cleaned.insert(clean_text(&k), child);
+                }
+            }
+            *m = cleaned;
+        }
+        _ => {}
+    }
+}
+
 fn clean_short(s: &str, max: usize) -> String {
     clean_text(&tmgr_core::text::truncate_chars(s, max).0)
 }
@@ -464,6 +483,13 @@ mod tests {
         assert_eq!(snap.lines[0].spans[0].a.flags, FLAGS);
         assert_eq!(snap.cursor, None);
         assert_eq!(snap.scroll_max, MAX_SCROLL);
+    }
+
+    #[test]
+    fn json_replies_are_cleaned_in_keys_and_values() {
+        let mut v = json!({"a\u{1b}b": ["x\u{9b}1m", {"n": "ok\u{7}"}], "num": 3});
+        clean_value(&mut v);
+        assert_eq!(v, json!({"a?b": ["x?1m", {"n": "ok?"}], "num": 3}));
     }
 
     #[test]

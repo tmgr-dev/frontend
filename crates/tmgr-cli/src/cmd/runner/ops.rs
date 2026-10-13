@@ -1,5 +1,7 @@
 use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
-use super::{AgentsArgs, AgentsCmd, AttachArgs, HaltArgs, RmArgs, RunnerCommands, SendArgs};
+use super::{
+    remote, AgentsArgs, AgentsCmd, AttachArgs, HaltArgs, RmArgs, RunnerCommands, SendArgs,
+};
 use crate::out::table;
 use serde_json::json;
 use std::io::IsTerminal;
@@ -24,14 +26,27 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Status => status(o),
             RunnerCmd::Serve => serve(),
         },
-        RunnerCommands::Run(a) => run(o, a),
+        RunnerCommands::Run(a) => match &a.on {
+            Some(link) => remote::run(o, link, a),
+            None => run(o, a),
+        },
         RunnerCommands::Agents(AgentsArgs {
             command: Some(AgentsCmd::LoginFile { profile }),
+            ..
         }) => login_file(o, profile),
-        RunnerCommands::Agents(_) => agents(o),
-        RunnerCommands::Attach(a) => attach_cmd(a),
+        RunnerCommands::Agents(a) => match &a.host {
+            Some(link) => remote::agents(o, link),
+            None => agents(o),
+        },
+        RunnerCommands::Attach(a) => match &a.on {
+            Some(link) => remote::attach(link, a),
+            None => attach_cmd(a),
+        },
         RunnerCommands::Send(a) => send(o, a),
-        RunnerCommands::Halt(a) => halt(o, a),
+        RunnerCommands::Halt(a) => match &a.on {
+            Some(link) => remote::halt(o, link, a),
+            None => halt(o, a),
+        },
         RunnerCommands::Rm(a) => rm(o, a),
     }
 }
@@ -294,6 +309,9 @@ fn login_file(o: &Opts, profile: &str) -> Result<i32> {
 fn agents(o: &Opts) -> Result<i32> {
     let cfg = runner_config()?;
     let sessions = list_or_empty(&cfg)?;
+    let origins = tmgr_link::store::Paths::from_env()
+        .map(|p| tmgr_link::ownership::origin_labels(&p))
+        .unwrap_or_default();
     let count = |k: &[StateKind]| {
         sessions
             .iter()
@@ -307,30 +325,46 @@ fn agents(o: &Opts) -> Result<i32> {
         "exited": count(&[StateKind::Exited]),
     });
     if o.json {
-        return Ok(emit(
-            o,
-            json!({"sessions": sessions, "summary": summary}),
-            "",
-        ));
+        let tagged: Vec<serde_json::Value> = sessions
+            .iter()
+            .map(|s| {
+                let mut v = serde_json::to_value(s).unwrap_or_default();
+                if let (Some(origin), Some(m)) = (origins.get(&s.id), v.as_object_mut()) {
+                    m.insert("origin".into(), json!(origin));
+                }
+                v
+            })
+            .collect();
+        return Ok(emit(o, json!({"sessions": tagged, "summary": summary}), ""));
     }
+    let show_origin = sessions.iter().any(|s| origins.contains_key(&s.id));
     if sessions.is_empty() {
         println!("No agent sessions yet. Start one with: tmgr run --agent <profile>");
         return Ok(0);
     }
     let now = now_ms();
-    let mut rows = vec![["", "NAME", "STATE", "ID", "COMMAND", "CWD"]
+    let mut head = vec!["", "NAME", "STATE", "ID", "COMMAND", "CWD"]
+        .into_iter()
         .map(String::from)
-        .to_vec()];
+        .collect::<Vec<_>>();
+    if show_origin {
+        head.push("ORIGIN".into());
+    }
+    let mut rows = vec![head];
     for s in &sessions {
         let since = span(now.saturating_sub(s.state.since_ms) / 1000);
-        rows.push(vec![
+        let mut row = vec![
             badge(s).to_string(),
             tmgr_core::text::sanitize_line(&s.name),
             format!("{} {since}", state_label(s)),
             clean(&s.id),
             command_line(s),
             tmgr_core::text::sanitize_line(&short_cwd(&s.cwd)),
-        ]);
+        ];
+        if show_origin {
+            row.push(origins.get(&s.id).map_or("-".into(), |o| clean(o)));
+        }
+        rows.push(row);
     }
     for (i, line) in table(&rows).lines().enumerate() {
         match i.checked_sub(1).map(|k| &sessions[k]) {

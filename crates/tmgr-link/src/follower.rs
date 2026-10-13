@@ -452,6 +452,7 @@ pub fn contain(
     if let Some(backend) = halt {
         for run in &records {
             match crate::runs::stop_run(backend, run) {
+                Ok("already") => {}
                 Ok(_) => out.runs_halted += 1,
                 Err(_) => out.halt_failed += 1,
             }

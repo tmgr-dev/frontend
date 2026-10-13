@@ -1,5 +1,7 @@
 mod attach;
 mod ops;
+mod remote;
+mod remote_attach;
 
 use crate::cli::Cli;
 use crate::out::{self, Style};
@@ -47,6 +49,24 @@ pub enum RunnerCmd {
 #[derive(Args)]
 #[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent"])))]
 pub struct RunArgs {
+    /// [experimental] Task of the follower's local workspace, written w<workspace>:<task> (with --on)
+    #[arg(value_name = "REF", requires = "on", hide = true)]
+    pub task: Option<String>,
+    /// [experimental] Run on this follower (a pinned link) through its own runner
+    #[arg(
+        long,
+        value_name = "LINK",
+        requires = "task",
+        conflicts_with_all = ["agent_cmd", "no_attach"],
+        hide = true
+    )]
+    pub on: Option<String>,
+    /// [experimental] Persona to record with the run (with --on)
+    #[arg(long, value_name = "PERSONA", requires = "on", hide = true)]
+    pub persona: Option<String>,
+    /// [experimental] SHA-256 of the task text the leader saw (with --on)
+    #[arg(long, value_name = "HASH", requires = "on", hide = true)]
+    pub task_hash: Option<String>,
     /// Command line to run (split into words, no shell)
     #[arg(long, value_name = "COMMAND")]
     pub agent_cmd: Option<String>,
@@ -71,6 +91,9 @@ pub struct RunArgs {
 pub struct AgentsArgs {
     #[command(subcommand)]
     pub command: Option<AgentsCmd>,
+    /// [experimental] List the runs this leader started on a follower
+    #[arg(long, value_name = "LINK", hide = true)]
+    pub host: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -86,6 +109,12 @@ pub enum AgentsCmd {
 pub struct AttachArgs {
     /// Session id or name (default: the newest running session)
     pub session: Option<String>,
+    /// [experimental] Attach to a run on a follower (read-only unless the follower allows input)
+    #[arg(long, value_name = "LINK", hide = true)]
+    pub on: Option<String>,
+    /// [experimental] Never type into the remote run (with --on)
+    #[arg(long, requires = "on", hide = true)]
+    pub read_only: bool,
 }
 
 #[derive(Args)]
@@ -104,8 +133,11 @@ pub struct HaltArgs {
     /// Session id or name
     pub session: String,
     /// Kill immediately instead of asking politely first
-    #[arg(long)]
+    #[arg(long, conflicts_with = "on")]
     pub kill: bool,
+    /// [experimental] Stop a run this leader started on a follower
+    #[arg(long, value_name = "LINK", hide = true)]
+    pub on: Option<String>,
 }
 
 #[derive(Args)]
