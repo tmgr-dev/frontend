@@ -237,6 +237,17 @@ impl Pty {
         panic!("attach did not exit; screen:\n{}", self.text());
     }
 
+    fn wait_exit_quiet(&mut self, within: Duration) -> bool {
+        let end = Instant::now() + within;
+        while Instant::now() < end {
+            if self.child.try_wait().unwrap().is_some() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
     fn detach(&mut self) {
         self.type_bytes(b"\x1d");
         self.type_bytes(b"d");
@@ -381,6 +392,45 @@ fn bad_run_requests_are_refused() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("home directory"), "{err}");
     assert!(env.sessions().is_empty());
+}
+
+#[test]
+fn run_output_never_carries_control_sequences_from_file_names() {
+    let env = Env::new();
+    let script = env.script("evil\x1b]0;pwned\x07.sh", "sleep 5\n");
+    let cwd = env.proj.display().to_string();
+    let out = env.tmgr(&["run", "--agent-cmd", &script, "--cwd", &cwd, "--no-attach"]);
+    for stream in [&out.stdout, &out.stderr] {
+        assert!(
+            !stream.iter().any(|b| *b == 0x1b || *b == 0x07),
+            "{}",
+            String::from_utf8_lossy(stream)
+        );
+    }
+    assert!(String::from_utf8_lossy(&out.stderr).contains("evil?]0;pwned?.sh"));
+}
+
+#[test]
+fn detach_returns_and_restores_the_terminal_while_the_runner_is_frozen() {
+    let env = Env::new();
+    let script = env.script("echo-agent.sh", ECHO_AGENT);
+    let Some(id) = env.start(&script, "echoer") else {
+        return;
+    };
+    let mut pty = env.pty(&["attach", &id]);
+    pty.wait_for("READY");
+    let pid = env.data(&["runner", "status", "--json"])["pid"]
+        .as_i64()
+        .unwrap() as i32;
+    unsafe { libc::kill(pid, libc::SIGSTOP) };
+    let started = Instant::now();
+    pty.type_bytes(b"\x1d");
+    pty.type_bytes(b"d");
+    let exited = pty.wait_exit_quiet(Duration::from_secs(4));
+    unsafe { libc::kill(pid, libc::SIGCONT) };
+    assert!(exited, "attach hung on a frozen runner");
+    assert!(started.elapsed() < Duration::from_secs(4));
+    assert!(pty.text().contains("detached from"), "{}", pty.text());
 }
 
 #[test]

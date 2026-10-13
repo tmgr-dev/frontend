@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::io::{self, IsTerminal, Read, Write};
 use std::panic;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
@@ -24,6 +24,7 @@ use tmgr_runner::attach::{
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
+use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::wire::now_ms;
 
 const TICK: Duration = Duration::from_millis(16);
@@ -31,6 +32,9 @@ const FRAME: Duration = Duration::from_millis(33);
 const LIST_EVERY: Duration = Duration::from_secs(1);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
+const QUEUE: usize = 256;
+const RPC_TIMEOUT: Duration = Duration::from_secs(5);
+const CLEANUP_WAIT: Duration = Duration::from_secs(1);
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static SIGNAL: AtomicI32 = AtomicI32::new(0);
@@ -62,7 +66,7 @@ impl Guard {
             restore();
             previous(info);
         }));
-        for sig in [libc::SIGTERM, libc::SIGHUP] {
+        for sig in [libc::SIGINT, libc::SIGTERM, libc::SIGHUP] {
             unsafe { libc::signal(sig, on_signal as *const () as libc::sighandler_t) };
         }
         Ok(guard)
@@ -367,7 +371,11 @@ fn event_loop(
     }
 }
 
-fn poller(mut ctl: tmgr_runner::client::Client, tx: Sender<Msg>, layouts: mpsc::Receiver<Value>) {
+fn poller(
+    mut ctl: tmgr_runner::client::Client,
+    tx: SyncSender<Msg>,
+    layouts: mpsc::Receiver<Value>,
+) {
     let mut next_list = Instant::now() + LIST_EVERY;
     loop {
         match layouts.recv_timeout(next_list.saturating_duration_since(Instant::now())) {
@@ -415,7 +423,7 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
         view.focus = view.panes.iter().position(|p| p == initial).unwrap_or(0);
     }
     let (reader, writer) = connect(cfg)?.attach(&view.panes).map_err(rerr)?.split();
-    let (tx, rx) = mpsc::channel();
+    let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
@@ -455,6 +463,7 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
             }
         }
     });
+    let _ = ctl.set_timeouts(RPC_TIMEOUT);
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -479,15 +488,22 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
         .view
         .focused_row()
         .map(|r| (r.name.clone(), r.id.clone()));
-    let _ = app.writer.detach();
-    drop(app);
-    let _ = poll.join();
     drop(terminal);
     drop(guard);
+    drop(rx);
+    let (done_tx, done_rx) = mpsc::channel();
+    thread::spawn(move || {
+        let _ = app.writer.detach();
+        drop(app);
+        let _ = poll.join();
+        let _ = done_tx.send(());
+    });
+    let _ = done_rx.recv_timeout(CLEANUP_WAIT);
 
     match exit {
         Exit::Detached => {
             let (name, id) = target.unwrap_or_else(|| (initial.to_string(), initial.to_string()));
+            let (name, id) = (sanitize_text(&name), sanitize_text(&id));
             let _ = writeln!(
                 io::stdout(),
                 "detached from {name} ({id}) — it keeps running; reattach with: tmgr attach {id}"

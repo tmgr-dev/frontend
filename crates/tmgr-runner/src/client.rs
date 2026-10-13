@@ -64,6 +64,11 @@ impl Client {
         })
     }
 
+    pub fn set_timeouts(&self, d: std::time::Duration) -> io::Result<()> {
+        self.stream.set_read_timeout(Some(d))?;
+        self.stream.set_write_timeout(Some(d))
+    }
+
     pub fn welcome(&self) -> &Welcome {
         &self.welcome
     }
