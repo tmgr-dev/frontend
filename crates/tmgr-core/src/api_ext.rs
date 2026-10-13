@@ -335,11 +335,15 @@ pub fn parse_daily_time(body: Value, date: &str) -> Result<DailyTime> {
 impl Client {
     pub fn time_daily(
         &self,
-        workspace_id: u64,
+        workspace_id: i64,
         date: &str,
         tz: &str,
         mine: bool,
     ) -> Result<Option<DailyTime>> {
+        // Local workspaces have no per-day endpoint; callers fall back to the time summary.
+        if self.local().is_some() {
+            return Ok(None);
+        }
         let (status, body) = self.request_status(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/time/daily"),

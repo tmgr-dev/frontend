@@ -85,7 +85,7 @@ pub fn run(ctx: &Ctx, args: &BoardArgs) -> Result<Output> {
         None => None,
     };
     let me = if args.mine {
-        client.current_device()?.user.id
+        client.current_user_id()?
     } else {
         None
     };

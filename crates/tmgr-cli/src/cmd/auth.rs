@@ -296,7 +296,7 @@ pub fn logout(ctx: &Ctx) -> Result<Output> {
 
 pub fn whoami(ctx: &Ctx) -> Result<Output> {
     let server = ctx.server()?;
-    let client = ctx.client()?;
+    let client = ctx.cloud_client()?;
     let backend = ctx.backend().ok_or_else(Error::not_logged_in)?;
     let info = client.current_device()?;
     let expires = client.token_expires_at();

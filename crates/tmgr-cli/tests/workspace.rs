@@ -50,6 +50,8 @@ async fn ws_use_unknown_or_malformed_codes() {
     let out = env.cmd().args(["ws", "use", "../x"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     let out = env.cmd().args(["ws", "use", "local:x"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    let out = env.cmd().args(["ws", "use", "local:a/b"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
 

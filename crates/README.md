@@ -43,6 +43,14 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 - Tokens are stored in the OS credential store under service `dev.tmgr.cli`, account `<server host>:default` (macOS Keychain; Linux Secret Service through a pure Rust client, no libdbus). Without a store they go to `$XDG_CONFIG_HOME/tmgr/credentials.json` (file mode 0600, directory 0700) and a warning is printed. A file readable by other users is refused. `TMGR_CREDENTIAL_STORE=file` forces the file store (used by the tests, so they never touch a real keychain).
 - Tokens are never printed, logged or put into `--json` output or error messages. Redirects are not followed, so the bearer token cannot be forwarded to another host. Plain `http` is accepted only for localhost.
 
+## Local workspaces
+
+`--ws local:<code>` (or `tmgr ws use local:<code>`) works on a workspace of the desktop app in `~/.tmgr.dev/workspaces/<code>` (`TMGR_LOCAL_ROOT` overrides the folder) through `tmgr-local`: no login and no network. `tmgr ws list` shows local workspaces next to the cloud ones, also when you are logged out. Login, logout, whoami, notify and alarms always use the cloud. Local tasks have no web link (`url` is null).
+
+Identity: the CLI acts as the desktop's local account, id -1 with the name from `~/.tmgr.dev/profile.json`. The desktop keeps the id of a signed-in account only in the app's memory and web storage, so when the desktop is signed in, set `tmgr config set local_user_id <id>` to act as that user. Otherwise agent runs started by the CLI cannot be updated in the desktop and the other way round, personas owned by the account cannot be assigned from the CLI, and comments and runs carry author id -1.
+
+Reads open the database read-only; a write takes the desktop's write lock for one request and fails with a conflict (exit 6) when the desktop holds it for more than 5 seconds. A workspace with another schema than 12 is refused (open it in the desktop to upgrade it). A request the local API does not answer fails with "... is not supported for local workspaces yet" (exit 2).
+
 ## Timer, git and prompt
 
 - `tmgr start|stop|switch|done` drive the timer, the task status, a branch named from `branch_template` and the PR comment. They call only `GET` task/status routes, `PUT /api/tasks/{id}/{statusId}`, `GET /api/tasks/runned`, `POST|DELETE /api/tasks/{id}/countdown` and `POST /api/tasks/{id}/comments`. The branch key is the key in the task title (`TM-509: ...`), never `category_tasks_sequence_id`.

@@ -9,6 +9,8 @@ pub struct Workspace {
     pub code: String,
     #[serde(default)]
     pub is_default: bool,
+    #[serde(default)]
+    pub local: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

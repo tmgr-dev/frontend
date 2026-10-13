@@ -33,7 +33,10 @@
           "type": "string"
         },
         "url": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "title": {
           "type": "string"

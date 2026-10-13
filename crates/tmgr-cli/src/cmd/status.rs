@@ -5,7 +5,7 @@ use tmgr_core::api::Client;
 use tmgr_core::error::Result;
 use tmgr_core::models::ApiTask;
 use tmgr_core::text::{format_duration, sanitize_line};
-use tmgr_core::view::{display_title, task_ref, task_url, CategoryView, StatusView};
+use tmgr_core::view::{display_title, task_ref, CategoryView, StatusView};
 
 pub fn run(ctx: &Ctx) -> Result<Output> {
     let client = ctx.client()?;
@@ -22,10 +22,12 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
     )? {
         Some(Some(d)) => Some(d.total_s),
         Some(None) => {
-            ctx.warn(
-                "daily_time_unavailable",
-                "this server has no per-day time endpoint; using the time summary",
-            );
+            if client.local().is_none() {
+                ctx.warn(
+                    "daily_time_unavailable",
+                    "this server has no per-day time endpoint; using the time summary",
+                );
+            }
             ctx.soft(
                 client.time_summary_total(ws.id, &today, &today),
                 "time_summary_unavailable",
@@ -97,9 +99,9 @@ fn active_view(ctx: &Ctx, client: &Client, task: &ApiTask) -> Result<(serde_json
             .find(|w| w.id == id)
             .map(|w| sanitize_line(&w.code))
     });
-    let url = match (&ws_code, ctx.web_base()) {
-        (Some(code), Ok(base)) => Some(task_url(&base, code, task.id)),
-        _ => None,
+    let url = match &ws_code {
+        Some(code) => ctx.task_link(code, task.id).ok().flatten(),
+        None => None,
     };
     let statuses = match task.workspace_id {
         Some(w) => ctx

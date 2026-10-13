@@ -6,6 +6,7 @@ use tmgr_core::api::{Client, Warning};
 use tmgr_core::config::{self, Config, DEFAULT_PROFILE};
 use tmgr_core::creds::{Backend, CredentialStore};
 use tmgr_core::error::{Error, Kind, Result};
+use tmgr_core::local;
 use tmgr_core::models::Workspace;
 use tmgr_core::refs::is_workspace_code;
 
@@ -22,6 +23,7 @@ pub struct Ctx {
     server_override: Option<String>,
     warnings: RefCell<Vec<Warning>>,
     client: OnceCell<Client>,
+    cloud: OnceCell<Client>,
     backend: Cell<Option<Backend>>,
     workspaces: OnceCell<Vec<Workspace>>,
     switched: RefCell<Option<Workspace>>,
@@ -44,6 +46,7 @@ impl Ctx {
             server_override: cli.server.clone(),
             warnings: RefCell::new(Vec::new()),
             client: OnceCell::new(),
+            cloud: OnceCell::new(),
             backend: Cell::new(None),
             workspaces: OnceCell::new(),
             switched: RefCell::new(None),
@@ -60,7 +63,7 @@ impl Ctx {
 
     pub fn take_warnings(&self) -> Vec<Warning> {
         let mut all = std::mem::take(&mut *self.warnings.borrow_mut());
-        if let Some(c) = self.client.get() {
+        for c in [self.client.get(), self.cloud.get()].into_iter().flatten() {
             all.extend(c.take_warnings());
         }
         all
@@ -84,8 +87,31 @@ impl Ctx {
         Ok(CredentialStore::new(&self.dir, &account, preferred))
     }
 
+    /// The client for the selected workspace: a local one for `local:<code>` (no login), else the cloud.
     pub fn client(&self) -> Result<&Client> {
         if let Some(c) = self.client.get() {
+            return Ok(c);
+        }
+        if let Some(code) = self
+            .wanted_workspace()?
+            .as_deref()
+            .and_then(local::local_code)
+        {
+            let workspace = local::find(code)?;
+            let user = local::identity(&local::root()?, self.cfg.local_user_id);
+            let client = Client::for_local(
+                local::Local::new(workspace, user),
+                &Self::user_agent(),
+                self.verbose,
+            )?;
+            return Ok(self.client.get_or_init(|| client));
+        }
+        self.cloud_client()
+    }
+
+    /// The logged-in cloud client, whatever workspace is selected (auth and notifications).
+    pub fn cloud_client(&self) -> Result<&Client> {
+        if let Some(c) = self.cloud.get() {
             return Ok(c);
         }
         let store = self.store()?;
@@ -98,7 +124,7 @@ impl Ctx {
             Some(store),
             self.verbose,
         )?;
-        Ok(self.client.get_or_init(|| client))
+        Ok(self.cloud.get_or_init(|| client))
     }
 
     pub fn backend(&self) -> Option<Backend> {
@@ -126,17 +152,30 @@ impl Ctx {
         if let Some(w) = self.workspaces.get() {
             return Ok(w);
         }
-        let list = client.workspaces()?;
+        let list = match client.local() {
+            Some(_) => local_workspaces()?,
+            None => client.workspaces()?,
+        };
         Ok(self.workspaces.get_or_init(|| list))
+    }
+
+    /// The web link of a task; local workspaces have none.
+    pub fn task_link(&self, workspace_code: &str, id: u64) -> Result<Option<String>> {
+        if workspace_code.starts_with(local::PREFIX) {
+            return Ok(None);
+        }
+        Ok(Some(tmgr_core::view::task_url(
+            &self.web_base()?,
+            workspace_code,
+            id,
+        )))
     }
 
     pub fn wanted_workspace(&self) -> Result<Option<String>> {
         match self.ws.as_deref().or(self.cfg.default_workspace.as_deref()) {
             None => Ok(None),
             Some(code) if is_workspace_code(code) => Ok(Some(code.to_string())),
-            Some(code) if code.starts_with("local:") => Err(Error::usage(
-                "local workspaces are not supported by this version",
-            )),
+            Some(code) if local::local_code(code).is_some() => Ok(Some(code.to_string())),
             Some(_) => Err(Error::usage("invalid workspace code")
                 .hint("a workspace code has letters, digits, - and _")),
         }
@@ -161,7 +200,7 @@ impl Ctx {
                 }),
             None => list
                 .iter()
-                .find(|w| w.is_default)
+                .find(|w| w.is_default && !w.local)
                 .or_else(|| list.first())
                 .cloned()
                 .ok_or_else(|| Error::not_found("no workspaces available")),
@@ -178,4 +217,18 @@ impl Ctx {
             Err(e) => Err(e),
         }
     }
+}
+
+/// Local workspaces as `local:<code>` entries of the workspace list.
+pub fn local_workspaces() -> Result<Vec<Workspace>> {
+    Ok(local::list()?
+        .into_iter()
+        .map(|w| Workspace {
+            id: w.manifest.id,
+            name: w.manifest.name,
+            code: format!("{}{}", local::PREFIX, w.manifest.code),
+            is_default: false,
+            local: true,
+        })
+        .collect())
 }

@@ -13,7 +13,7 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::models::{ApiTask, Status};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::text::{format_duration, sanitize, sanitize_line, truncate_chars};
-use tmgr_core::view::{display_title, task_ref, task_url, StatusView};
+use tmgr_core::view::{display_title, task_ref, StatusView};
 
 const GH_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_COMMENT_CHARS: usize = 2000;
@@ -25,7 +25,7 @@ struct Resolved {
     key: String,
     title: String,
     ws_code: String,
-    url: String,
+    url: Option<String>,
     statuses: Vec<Status>,
     status: StatusView,
 }
@@ -74,7 +74,7 @@ fn resolve(ctx: &Ctx, client: &Client, reference: &str) -> Result<Resolved> {
         .ok_or_else(|| Error::not_found("the task's workspace is not available"))?;
     let statuses = client.statuses(ws_id)?;
     let status = StatusView::resolve(&task, &statuses);
-    let url = task_url(&ctx.web_base()?, &ws_code, task.id);
+    let url = ctx.task_link(&ws_code, task.id)?;
     Ok(Resolved {
         key: task_ref(&task),
         title: display_title(&task.title),
@@ -335,7 +335,7 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
         id: r.task.id,
         key: r.key.clone(),
         title: r.title.clone(),
-        url: Some(r.url.clone()),
+        url: r.url.clone(),
     });
     state.workspace = Some(r.ws_code.clone());
     state.timer_started_at = started_at.map(rfc3339);

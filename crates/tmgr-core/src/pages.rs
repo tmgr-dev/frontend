@@ -1,5 +1,5 @@
 use crate::error::{Error, Result};
-use crate::refs::is_workspace_code;
+use crate::local::is_workspace_ref;
 use rustix::fs::{AtFlags, Mode, OFlags};
 use rustix::io::Errno;
 use serde::{Deserialize, Serialize};
@@ -155,7 +155,7 @@ pub fn split(content: &str) -> Result<(FrontMatter, &str)> {
             "page_id" => page_id = value.parse::<u64>().ok().filter(|v| *v > 0),
             "version" => version = value.parse::<i64>().ok().filter(|v| *v >= 0),
             "updated_at" if safe_value(value) => updated_at = Some(value.to_string()),
-            "workspace" if is_workspace_code(value) => workspace = Some(value.to_string()),
+            "workspace" if is_workspace_ref(value) => workspace = Some(value.to_string()),
             _ => {}
         }
     }
@@ -206,7 +206,7 @@ impl Index {
         let bad = || Error::usage(format!("{INDEX_FILE} is damaged"));
         let index: Index = serde_json::from_slice(bytes).map_err(|_| bad())?;
         if index.schema != INDEX_SCHEMA
-            || !is_workspace_code(&index.workspace)
+            || !is_workspace_ref(&index.workspace)
             || index
                 .pages
                 .iter()

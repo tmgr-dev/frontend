@@ -7,13 +7,14 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 6] = [
+pub const KEYS: [&str; 7] = [
     "server",
     "default_workspace",
     "web_url",
     "branch_template",
     "review_status",
     "upload_status",
+    "local_user_id",
 ];
 pub const DEFAULT_REVIEW_STATUS: &str = "Review";
 
@@ -33,6 +34,9 @@ pub struct Config {
     pub upload_status: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_store: Option<String>,
+    /// The user id the CLI acts as in local workspaces, when the desktop is signed in to an account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_user_id: Option<i64>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub projects: BTreeMap<String, String>,
 }
@@ -90,6 +94,7 @@ impl Config {
             "branch_template" => self.branch_template.clone(),
             "review_status" => self.review_status.clone(),
             "upload_status" => Some(self.upload_status().to_string()),
+            "local_user_id" => self.local_user_id.map(|id| id.to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -107,7 +112,9 @@ impl Config {
                 Ok(v)
             }
             "default_workspace" => {
-                if !crate::refs::is_workspace_code(value) {
+                if !crate::refs::is_workspace_code(value)
+                    && crate::local::local_code(value).is_none()
+                {
                     return Err(Error::usage("invalid workspace code")
                         .hint("a workspace code has letters, digits, - and _"));
                 }
@@ -134,6 +141,14 @@ impl Config {
                 })?;
                 self.upload_status = Some(v);
                 Ok(v.to_string())
+            }
+            "local_user_id" => {
+                let id: i64 = value.trim().parse().map_err(|_| {
+                    Error::usage("local_user_id must be an integer")
+                        .hint("-1 is the desktop's local account")
+                })?;
+                self.local_user_id = Some(id);
+                Ok(id.to_string())
             }
             _ => Err(unknown_key(key)),
         }

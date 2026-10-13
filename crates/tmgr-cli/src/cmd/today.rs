@@ -91,10 +91,12 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
     let summary = match daily {
         Some(Some(d)) => Some(Summary::Daily(d)),
         Some(None) => {
-            ctx.warn(
-                "daily_time_unavailable",
-                "this server has no per-day time endpoint; using the time summary",
-            );
+            if client.local().is_none() {
+                ctx.warn(
+                    "daily_time_unavailable",
+                    "this server has no per-day time endpoint; using the time summary",
+                );
+            }
             ctx.soft(
                 client.time_summary(ws.id, &ds, &ds),
                 "time_summary_unavailable",
@@ -134,7 +136,7 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
         }
     }
     if args.mine {
-        let me = client.current_device()?.user.id;
+        let me = client.current_user_id()?;
         runs.retain(|r| r.user_id.is_some() && r.user_id == me);
     }
     let routines = ctx

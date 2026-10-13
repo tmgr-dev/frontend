@@ -10,8 +10,13 @@ pub struct Cli {
     /// Machine-readable output (schema tmgr.v1)
     #[arg(long, global = true)]
     pub json: bool,
-    /// Workspace code (default: `tmgr ws use`)
-    #[arg(long, global = true, value_name = "CODE")]
+    /// Workspace code, or local:<code> for a desktop workspace (default: `tmgr ws use`)
+    #[arg(
+        long,
+        global = true,
+        value_name = "CODE",
+        long_help = "Workspace code (default: `tmgr ws use`).\n\nlocal:<code> selects a local workspace of the desktop app (~/.tmgr.dev/workspaces/<code>, or $TMGR_LOCAL_ROOT): no login and no network. The CLI acts as the desktop's local account (id -1, name from ~/.tmgr.dev/profile.json); when the desktop is signed in to an account, set `tmgr config set local_user_id <id>` to act as that user. Agent runs can only be updated by the user who started them, and only personas of that user or of the local account can be assigned."
+    )]
     pub ws: Option<String>,
     /// Never use colours
     #[arg(long, global = true)]
