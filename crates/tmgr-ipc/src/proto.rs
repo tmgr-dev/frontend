@@ -192,6 +192,7 @@ pub enum FromShim {
     Stat(Stat),
     Exited(ExitInfo),
     InputDropped { bytes: u64 },
+    SignalAck { sig: i32, delivered: bool },
 }
 
 #[cfg(test)]

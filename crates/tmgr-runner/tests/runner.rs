@@ -1895,6 +1895,39 @@ fn origin_revoke_kills_that_links_runs_only_and_blocks_new_ones_across_restarts(
 }
 
 #[test]
+fn a_restart_finishes_an_interrupted_revocation_for_adopted_link_runs() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 3);
+    let b = link_entry("b", 2, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a, b]));
+    fx.h.start(5000);
+    let a1 = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let b1 = fx.worker().create_run(fx.req("b", 2)).unwrap();
+    fx.h.kill_runner();
+    fs::write(fx.h.run.join("revoked.json"), r#"{"a":1}"#).unwrap();
+    fx.h.start(5000);
+    let mut cli = fx.h.client();
+    let s = wait_state(&mut cli, &a1.id, 10, |s| s.kind == StateKind::Exited);
+    assert_eq!(s.state.kind, StateKind::Exited, "{s:?}");
+    assert_eq!(s.state.detail.as_deref(), Some("revoked"), "{s:?}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(a1.child_pid) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!alive(a1.child_pid));
+    let other = cli
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.id == b1.id)
+        .unwrap();
+    assert_ne!(other.state.kind, StateKind::Exited, "{other:?}");
+}
+
+#[test]
 fn a_session_cannot_sit_where_a_symlinked_profile_dir_could_be_replaced() {
     let mut h = Harness::new();
     let proj = h.tmp.path().join("proj");

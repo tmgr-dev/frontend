@@ -287,12 +287,21 @@ struct Session {
     drop_logged: AtomicBool,
     input_dropped: AtomicBool,
     meta_lock: Mutex<()>,
+    sig_acks: AtomicU64,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
     if let Ok(bytes) = serde_json::to_vec(meta) {
         let _ = write_atomic(&dir.join("meta.json"), &bytes);
     }
+}
+
+const REVOKE_WAIT: Duration = Duration::from_secs(2);
+
+fn terminate(s: &Session, deadline: Instant) -> bool {
+    let confirmed = s.kill_via_shim(deadline);
+    s.mark_revoked();
+    confirmed
 }
 
 fn interrupted_state() -> State {
@@ -553,6 +562,9 @@ impl Session {
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
                     Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
                     Ok(FromShim::Exited(e)) => self.on_exited(&e),
+                    Ok(FromShim::SignalAck { .. }) => {
+                        self.sig_acks.fetch_add(1, Ordering::SeqCst);
+                    }
                     Ok(FromShim::InputDropped { bytes }) => {
                         self.input_dropped.store(true, Ordering::SeqCst);
                         if !self.drop_logged.swap(true, Ordering::SeqCst) {
@@ -566,6 +578,42 @@ impl Session {
                 },
             }
         }
+    }
+
+    fn kill_via_shim(&self, deadline: Instant) -> bool {
+        if !self.has_shim() {
+            return false;
+        }
+        let before = self.sig_acks.load(Ordering::SeqCst);
+        self.shim_msg(&ToShim::Signal { sig: libc::SIGKILL });
+        while Instant::now() < deadline {
+            if self.sig_acks.load(Ordering::SeqCst) > before || self.is_exited() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        self.sig_acks.load(Ordering::SeqCst) > before || self.is_exited()
+    }
+
+    fn mark_revoked(&self) {
+        let state = {
+            let mut i = lock(&self.inner);
+            if i.fixed
+                .as_ref()
+                .is_some_and(|f| f.kind == StateKind::Exited)
+            {
+                return;
+            }
+            let s = State {
+                kind: StateKind::Exited,
+                since_ms: now_ms(),
+                detail: Some("revoked".into()),
+                exit_code: i.det.state().exit_code,
+            };
+            i.fixed = Some(s.clone());
+            s
+        };
+        self.publish(vec![state]);
     }
 
     fn nudge(&self) {
@@ -964,6 +1012,14 @@ impl Runner {
         }
     }
 
+    fn origin_is_revoked(&self, s: &Session) -> bool {
+        let Some(o) = s.info().origin else {
+            return false;
+        };
+        self.revoked()
+            .map_or(true, |r| r.get(&o.link).is_some_and(|g| o.generation <= *g))
+    }
+
     fn check_origin(
         &self,
         origin: &Origin,
@@ -1019,16 +1075,18 @@ impl Runner {
             serde_json::to_vec(&revoked).map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         write_atomic(&self.revoked_path(), &bytes)
             .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
-        let mut killed = 0;
-        for s in self.all() {
-            let i = s.info();
-            let Some(o) = i.origin else { continue };
-            if o.link == p.link && o.generation <= p.generation && !s.is_exited() && i.child_pid > 1
-            {
-                unsafe { libc::killpg(i.child_pid as i32, libc::SIGKILL) };
-                killed += 1;
-            }
-        }
+        let victims: Vec<Arc<Session>> = self
+            .all()
+            .into_iter()
+            .filter(|s| {
+                !s.is_exited()
+                    && s.info()
+                        .origin
+                        .is_some_and(|o| o.link == p.link && o.generation <= p.generation)
+            })
+            .collect();
+        let deadline = Instant::now() + REVOKE_WAIT;
+        let killed = victims.iter().filter(|s| terminate(s, deadline)).count() as u32;
         Ok(OriginRevoked { killed })
     }
 
@@ -1356,6 +1414,7 @@ impl Runner {
             drop_logged: AtomicBool::new(false),
             input_dropped: AtomicBool::new(false),
             meta_lock: Mutex::new(()),
+            sig_acks: AtomicU64::new(0),
         })
     }
 
@@ -1423,6 +1482,10 @@ impl Runner {
         match adopted {
             Ok((stream, hello)) => {
                 session.attach_shim(stream, hello, false);
+                if self.origin_is_revoked(&session) {
+                    terminate(&session, Instant::now() + REVOKE_WAIT);
+                    log(&format!("session {id} adopted and revoked"));
+                }
                 let s = session.clone();
                 thread::spawn(move || {
                     thread::sleep(Duration::from_millis(150));

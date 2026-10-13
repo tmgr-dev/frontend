@@ -308,7 +308,11 @@ impl Shim {
                             pixel_height: 0,
                         });
                     }
-                    Ok(ToShim::Signal { sig }) => self.signal(sig),
+                    Ok(ToShim::Signal { sig }) => {
+                        let delivered = self.signal(sig);
+                        let mut st = lock(&self.st);
+                        self.send(&mut st, &FromShim::SignalAck { sig, delivered });
+                    }
                     Ok(ToShim::Reap) => {
                         self.cleanup();
                         std::process::exit(0);
@@ -320,10 +324,8 @@ impl Shim {
         }
     }
 
-    fn signal(&self, sig: i32) {
-        if (1..=31).contains(&sig) {
-            self.child.signal(sig);
-        }
+    fn signal(&self, sig: i32) -> bool {
+        (1..=31).contains(&sig) && self.child.signal(sig)
     }
 }
 
