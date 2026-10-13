@@ -35,6 +35,9 @@ struct FakeState {
     unconfirmed: Vec<String>,
     busy_creates: u32,
     fence_wait_ms: Option<u64>,
+    call_timeout: Option<Duration>,
+    create_delay_ms: u64,
+    bump_on_changed: Option<Paths>,
     fence_free_during_revoke: Option<bool>,
     fence_path: Option<std::path::PathBuf>,
     revoke_noop: bool,
@@ -92,6 +95,10 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
 }
 
 impl Backend for Fake {
+    fn set_call_timeout(&mut self, limit: Duration) {
+        self.0.lock().unwrap().call_timeout = Some(limit);
+    }
+
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("sessions.list".into());
@@ -121,7 +128,22 @@ impl Backend for Fake {
             s.busy_creates -= 1;
             return Err(BackendError::Busy);
         }
+        if s.create_delay_ms > 0 {
+            let delay = Duration::from_millis(s.create_delay_ms);
+            let limit = s.call_timeout.unwrap_or(Duration::from_secs(3600));
+            std::thread::sleep(delay.min(limit));
+            if delay > limit {
+                return Err(BackendError::Unavailable("timed out".into()));
+            }
+        }
         if std::mem::take(&mut s.link_changed_once) {
+            if let Some(paths) = s.bump_on_changed.clone() {
+                Store::update(&paths, |st| {
+                    st.generations.insert("laptop".into(), 9);
+                    Ok(())
+                })
+                .unwrap();
+            }
             return Err(BackendError::Refused {
                 code: "forbidden".into(),
                 message: "link changed; re-request".into(),
@@ -1384,4 +1406,39 @@ fn a_lost_reply_run_is_adopted_after_a_scope_edit_on_a_pre_upgrade_store() {
         &[json!({"id":1,"method":"runs.list"})],
     );
     assert_eq!(list[0]["result"]["runs"][0]["id"], json!(lost));
+}
+
+#[test]
+fn a_runner_slower_than_the_budget_is_answered_before_the_deadline() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().create_delay_ms = 60_000;
+    let started = Instant::now();
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let took = started.elapsed();
+    assert!(r[0]["error"].is_string(), "{:?}", r[0]);
+    assert!(took < tmgr_link::runs::BUSY_BUDGET, "{took:?}");
+    assert_eq!(fake.called("runs.create"), 1);
+}
+
+#[test]
+fn the_generation_of_the_request_that_succeeded_is_recorded() {
+    let w = world();
+    Store::update(&w.paths, |s| {
+        s.generations.insert("laptop".into(), 7);
+        Ok(())
+    })
+    .unwrap();
+    let fake = Fake::default();
+    {
+        let mut s = fake.0.lock().unwrap();
+        s.link_changed_once = true;
+        s.bump_on_changed = Some(w.paths.clone());
+    }
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let id = run_id(&r[0]);
+    let sent = fake.0.lock().unwrap().creates[0].origin.clone().unwrap();
+    assert_eq!(sent.generation, 9);
+    let runs = tmgr_link::ownership::Runs::lock(&w.paths).unwrap();
+    assert_eq!(runs.get(&id).unwrap().generation, Some(9));
 }

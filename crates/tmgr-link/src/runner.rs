@@ -77,6 +77,7 @@ pub trait AttachSession: Send {
 }
 
 pub trait Backend: Send {
+    fn set_call_timeout(&mut self, _limit: Duration) {}
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError>;
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError>;
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
@@ -210,6 +211,12 @@ fn params<T: serde::Serialize>(v: &T) -> Result<Value, BackendError> {
 }
 
 impl Backend for RunnerClient {
+    fn set_call_timeout(&mut self, limit: Duration) {
+        let limit = limit.max(Duration::from_millis(100));
+        let _ = self.stream.set_read_timeout(Some(limit));
+        let _ = self.stream.set_write_timeout(Some(limit));
+    }
+
     fn list(&mut self) -> Result<Vec<SessionInfo>, BackendError> {
         typed(self.call(method::SESSIONS_LIST, Value::Null)?)
     }

@@ -20,6 +20,8 @@ const DEFAULT_SIZE: (u16, u16) = (120, 40);
 pub const BUSY_BUDGET: Duration = Duration::from_secs(12);
 pub const BUSY_PAUSE: Duration = Duration::from_millis(500);
 pub const BUSY_ATTEMPT_MAX: Duration = Duration::from_secs(6);
+const BUSY_MARGIN: Duration = Duration::from_millis(500);
+const CALL_CAP: Duration = Duration::from_secs(15);
 const HALT_STEP: Duration = Duration::from_secs(3);
 
 fn audit_down() -> Step {
@@ -326,6 +328,7 @@ fn create(
     scope: &Scope,
 ) -> Step {
     let method = "runs.create";
+    let deadline = Instant::now() + BUSY_BUDGET;
     let (Some(repo), Some(task_text), Some(agent)) = (
         repo,
         params.get("task").and_then(Value::as_str),
@@ -440,25 +443,38 @@ fn create(
             generation,
         }),
     };
-    let attempt_started = Instant::now();
-    let mut result = with_backend(conn, st, false, |b| b.create_run(&req));
+    let mut generation = generation;
+    let call = |st: &mut State, req: &RunCreateReq| -> Result<SessionInfo, BackendError> {
+        let left = deadline
+            .saturating_duration_since(Instant::now())
+            .saturating_sub(BUSY_MARGIN);
+        if left.is_zero() {
+            return Err(BackendError::Busy);
+        }
+        with_backend(conn, st, false, |b| {
+            b.set_call_timeout(left.min(CALL_CAP));
+            b.create_run(req)
+        })
+    };
+    let mut result = call(st, &req);
     if matches!(&result, Err(BackendError::Refused { message, .. }) if message.contains("link changed"))
     {
-        if let Ok(Ok((again, generation))) = conn.current_gen() {
+        if let Ok(Ok((again, newer))) = conn.current_gen() {
             if again == fresh {
+                generation = newer;
                 req.origin = Some(Origin {
                     link: conn.name.to_string(),
                     generation,
                 });
-                result = with_backend(conn, st, false, |b| b.create_run(&req));
+                result = call(st, &req);
             }
         }
     }
     if matches!(result, Err(BackendError::Busy))
-        && attempt_started.elapsed() + BUSY_PAUSE + BUSY_ATTEMPT_MAX <= BUSY_BUDGET
+        && deadline.saturating_duration_since(Instant::now()) >= BUSY_PAUSE + BUSY_ATTEMPT_MAX
     {
         std::thread::sleep(BUSY_PAUSE);
-        result = with_backend(conn, st, false, |b| b.create_run(&req));
+        result = call(st, &req);
     }
     let info = match result {
         Ok(i) => i,

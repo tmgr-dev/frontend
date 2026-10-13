@@ -244,7 +244,7 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
         &plan.name,
         &plan.enrollment,
         &crate::ownership::referenced_generations(paths, &plan.name),
-    );
+    )?;
     store.leaders.insert(
         plan.name.clone(),
         Leader {
@@ -357,11 +357,14 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Err(Error::not_found(format!("no leader named {}", plan.name)));
     };
     leader.scope = plan.new.clone();
-    store.bump_generation(
+    if let Err(e) = store.bump_generation(
         &plan.name,
         &plan.enrollment,
         &crate::ownership::referenced_generations(paths, &plan.name),
-    );
+    ) {
+        rollback(paths, &plan.name, edit.as_ref(), true)?;
+        return Err(e);
+    }
     if let Err(e) = store.save(paths) {
         let rolled = rollback(paths, &plan.name, edit.as_ref(), true);
         return Err(rolled.err().unwrap_or(e));
@@ -372,7 +375,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
             if let Some(l) = store.leaders.get_mut(&plan.name) {
                 l.scope = plan.old.clone();
             }
-            store.bump_generation(
+            let _ = store.bump_generation(
                 &plan.name,
                 &plan.enrollment,
                 &crate::ownership::referenced_generations(paths, &plan.name),

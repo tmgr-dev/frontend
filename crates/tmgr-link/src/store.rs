@@ -166,11 +166,20 @@ impl Store {
         link: &str,
         enrollment: &str,
         referenced: &std::collections::BTreeSet<u64>,
-    ) -> u64 {
+    ) -> Result<u64> {
         let previous = self
             .leaders
             .get(link)
             .map(|l| (self.generation(link), l.enrollment.clone()));
+        let full = self.generation_enrollments.get(link).is_some_and(|h| {
+            h.len() >= HARD_HISTORY && h.iter().all(|g| referenced.contains(&g.generation))
+        });
+        if full {
+            return Err(crate::forbidden(
+                "too many scope changes are still referenced by runs of this link",
+            )
+            .hint("let its runs finish or halt them, then retry"));
+        }
         self.generation_seq += 1;
         self.generations
             .insert(link.to_string(), self.generation_seq);
@@ -199,13 +208,10 @@ impl Store {
                 Some(i) => {
                     history.remove(i);
                 }
-                None if history.len() > HARD_HISTORY => {
-                    history.remove(0);
-                }
                 None => break,
             }
         }
-        self.generation_seq
+        Ok(self.generation_seq)
     }
 
     #[doc(hidden)]
@@ -216,6 +222,7 @@ impl Store {
             .map(|l| l.enrollment.clone())
             .unwrap_or_default();
         self.bump_generation(link, &enrollment, &Default::default())
+            .unwrap_or(0)
     }
 
     pub fn enrollment_of(&self, link: &str, generation: u64) -> Option<String> {
@@ -299,13 +306,14 @@ mod tests {
             s.enrollment_of("laptop", 7).as_deref(),
             Some(leader().enrollment.as_str())
         );
-        s.bump_generation("laptop", &leader().enrollment, &Default::default());
+        s.bump_generation("laptop", &leader().enrollment, &Default::default())
+            .unwrap();
         assert_eq!(s.generation("laptop"), 8);
         assert_eq!(s.enrollment_of("laptop", 7), Some(leader().enrollment));
         assert_eq!(s.enrollment_of("laptop", 8), Some(leader().enrollment));
         let keep: std::collections::BTreeSet<u64> = [7].into();
         for _ in 0..(SOFT_HISTORY + 20) {
-            s.bump_generation("laptop", "x", &keep);
+            s.bump_generation("laptop", "x", &keep).unwrap();
         }
         let h = &s.generation_enrollments["laptop"];
         assert!(
@@ -314,6 +322,28 @@ mod tests {
         );
         assert!(h.len() <= SOFT_HISTORY);
         assert_eq!(h.last().unwrap().generation, s.generation_seq);
+    }
+
+    #[test]
+    fn at_the_hard_cap_a_fully_referenced_history_refuses_the_bump() {
+        let mut s = Store::default();
+        s.leaders.insert("laptop".into(), leader());
+        let history: Vec<GenEnrollment> = (1..=HARD_HISTORY as u64)
+            .map(|g| GenEnrollment {
+                generation: g,
+                enrollment: "e1".into(),
+            })
+            .collect();
+        s.generation_enrollments.insert("laptop".into(), history);
+        s.generation_seq = HARD_HISTORY as u64;
+        s.generations.insert("laptop".into(), HARD_HISTORY as u64);
+        let all: std::collections::BTreeSet<u64> = (1..=HARD_HISTORY as u64).collect();
+        let before = s.clone();
+        assert!(s.bump_generation("laptop", "e1", &all).is_err());
+        assert_eq!(s, before);
+        assert!(s
+            .bump_generation("laptop", "e1", &Default::default())
+            .is_ok());
     }
 
     #[test]
@@ -353,7 +383,8 @@ mod tests {
         let paths = Paths::under(d.path());
         Store::update(&paths, |s| {
             s.leaders.insert("laptop".into(), leader());
-            s.bump_generation("laptop", "e1", &Default::default());
+            s.bump_generation("laptop", "e1", &Default::default())
+                .unwrap();
             Ok(())
         })
         .unwrap();
