@@ -373,6 +373,12 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
         Err(e) if e.exit_code() == 3 && nothing_else > 0 => None,
         Err(e) => return Err(e),
     };
+    if a.halt_runs && contained.runs_unreadable {
+        return Err(Error::internal(
+            "revoked and workers stopped, but link-runs.json is unreadable so the runs were not halted",
+        )
+        .hint("fix or remove ~/.local/state/tmgr/link-runs.json, then halt the runs with tmgr halt"));
+    }
     if a.halt_runs && runner.is_none() && contained.runs_known > 0 {
         return Err(Error::new(
             tmgr_core::error::Kind::Offline,
@@ -406,6 +412,7 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             "runs_halted": contained.runs_halted,
             "runs_known": contained.runs_known,
             "halt_failed": contained.halt_failed,
+            "runs_unreadable": contained.runs_unreadable,
         }),
         format!(
             "✓ revoked: {removed}, {} worker(s) stopped, {runs}, audit kept",

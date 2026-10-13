@@ -477,6 +477,8 @@ fn a_leader_runs_attaches_and_is_cut_off_through_a_real_sshd_and_a_real_runner()
         .collect();
     assert_eq!(ids, [run.as_str()], "the leader must not see local runs");
 
+    let table = rig.tmgr(Side::Leader, &["agents", "--host", "spark"]);
+    eprintln!("$ tmgr agents --host spark\n{}", text(&table));
     let mine = rig.data(Side::Follower, &["agents", "--json"]);
     let origin = |id: &str| {
         mine["sessions"]
@@ -562,6 +564,7 @@ fn a_leader_runs_attaches_and_is_cut_off_through_a_real_sshd_and_a_real_runner()
         Side::Follower,
         &["link", "revoke", "laptop", "--halt-runs", "--json"],
     );
+    eprintln!("$ tmgr link revoke laptop --halt-runs --json (follower)\n{revoke}");
     assert!(revoke["workers_stopped"].as_u64().unwrap() >= 1, "{revoke}");
     assert_eq!(revoke["runs_halted"], 1);
     assert!(
@@ -571,6 +574,11 @@ fn a_leader_runs_attaches_and_is_cut_off_through_a_real_sshd_and_a_real_runner()
     );
 
     let cut = rig.tmgr(Side::Leader, &["agents", "--host", "spark"]);
+    eprintln!(
+        "$ tmgr agents --host spark (after the revoke) -> exit {}\n{}",
+        code(&cut),
+        text(&cut)
+    );
     assert_eq!(code(&cut), 9, "{}", text(&cut));
     let after = rig.data(Side::Follower, &["agents", "--json"]);
     let state = |id: &str| {

@@ -488,7 +488,8 @@ fn attach_open(
     if let Value::Object(m) = &mut args {
         m.insert("mode".into(), json!(mode));
     }
-    let mut session = match with_backend(conn, st, true, |b| b.attach(&run, size)) {
+    let mut session = match with_backend(conn, st, true, |b| b.attach(&run, input.then_some(size)))
+    {
         Ok(s) => s,
         Err(e) => return failed(conn, method, args, id, &e),
     };

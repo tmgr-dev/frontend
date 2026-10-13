@@ -89,12 +89,13 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
     std::fs::write(
         &cfg,
         format!(
-            "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nPidFile {}\nAuthorizedKeysFile {}\nStrictModes no\nUsePAM no\nPermitUserEnvironment no\nAllowUsers {me}\nPubkeyAuthentication yes\nPasswordAuthentication no\nSetEnv XDG_CONFIG_HOME={} XDG_STATE_HOME={}\n",
+            "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nPidFile {}\nAuthorizedKeysFile {}\nStrictModes no\nUsePAM no\nPermitUserEnvironment no\nAllowUsers {me}\nPubkeyAuthentication yes\nPasswordAuthentication no\nSetEnv XDG_CONFIG_HOME={} XDG_STATE_HOME={} TMGR_RUNNER_DIR={}\n",
             host_key.display(),
             root.join("sshd.pid").display(),
             follower.authorized_keys().display(),
             follower.config.parent().unwrap().join("xdg-config").display(),
             follower.config.parent().unwrap().join("xdg-state").display(),
+            root.join("no-runner").display(),
         ),
     )
     .unwrap();

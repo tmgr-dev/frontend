@@ -30,6 +30,7 @@ struct File {
 pub struct Runs {
     paths: Paths,
     file: File,
+    damaged: bool,
     _lock: Lock,
 }
 
@@ -39,26 +40,40 @@ fn map_path(paths: &Paths) -> PathBuf {
 
 impl Runs {
     pub fn lock(paths: &Paths) -> Result<Runs> {
+        let runs = Runs::lock_lenient(paths)?;
+        if runs.damaged {
+            return Err(Error::internal("link-runs.json is damaged")
+                .hint(format!("fix or remove {}", map_path(paths).display())));
+        }
+        Ok(runs)
+    }
+
+    pub fn lock_lenient(paths: &Paths) -> Result<Runs> {
         ensure_private_dir(&paths.state)?;
         let guard = lock(&paths.state.join("link-runs.lock"))?;
         let path = map_path(paths);
-        let file = match std::fs::symlink_metadata(&path) {
-            Ok(meta) if meta.is_file() => {
-                let text = std::fs::read_to_string(&path)?;
-                serde_json::from_str(&text).map_err(|_| {
-                    Error::internal("link-runs.json is damaged")
-                        .hint(format!("fix or remove {}", path.display()))
-                })?
-            }
-            Ok(_) => return Err(crate::forbidden("link-runs.json is not a regular file")),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => File::default(),
+        let (file, damaged) = match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.is_file() => match std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|t| serde_json::from_str(&t).ok())
+            {
+                Some(f) => (f, false),
+                None => (File::default(), true),
+            },
+            Ok(_) => (File::default(), true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => (File::default(), false),
             Err(e) => return Err(e.into()),
         };
         Ok(Runs {
             paths: paths.clone(),
             file,
+            damaged,
             _lock: guard,
         })
+    }
+
+    pub fn is_damaged(&self) -> bool {
+        self.damaged
     }
 
     pub fn owned_by(&self, link: &str, enrollment: &str) -> Vec<&RunRecord> {

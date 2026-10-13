@@ -271,7 +271,7 @@ fn a_secret_file_open_to_others_is_refused() {
 fn attach_goes_through_attach_open_and_the_screen_is_cleaned_by_the_worker() {
     let r = runner("the-secret", "the-secret");
     let mut c = RunnerClient::connect(&r.dir).unwrap();
-    let mut a = c.attach(SID, (80, 24)).unwrap();
+    let mut a = c.attach(SID, Some((80, 24))).unwrap();
     let got = loop {
         match a.recv(std::time::Duration::from_secs(5)) {
             tmgr_link::runner::AttachRecv::Msg(m) => break *m,

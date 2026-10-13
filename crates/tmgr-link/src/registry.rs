@@ -212,6 +212,26 @@ mod tests {
     }
 
     #[test]
+    fn contain_kills_workers_even_when_the_runs_file_is_damaged() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        ensure_private_dir(&paths.state).unwrap();
+        write_atomic(&paths.state.join("link-runs.json"), b"\x00 not json", 0o600).unwrap();
+        let mut worker = sleeper();
+        fake_worker(
+            &paths,
+            "laptop",
+            &worker,
+            process_start(worker.id()).unwrap(),
+        );
+        let reaper = std::thread::spawn(move || worker.wait().unwrap());
+        let out = crate::follower::contain(&paths, "laptop", None).unwrap();
+        assert!(out.runs_unreadable);
+        assert_eq!(out.workers.signalled, 1);
+        assert!(!reaper.join().unwrap().success());
+    }
+
+    #[test]
     fn a_recycled_pid_is_never_signalled() {
         let d = tempfile::tempdir().unwrap();
         let paths = Paths::under(d.path());

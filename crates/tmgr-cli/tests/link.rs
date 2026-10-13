@@ -82,6 +82,7 @@ impl Fx {
             .env_remove("TMGR_RUNNER_DIR")
             .env_remove("TMGR_RUN_TOKEN")
             .env_remove("TMGR_RUN_ID")
+            .env("TMGR_RUNNER_DIR", self.home.join("no-runner"))
             .env("TMGR_CREDENTIAL_STORE", "file")
             .env("NO_COLOR", "1");
         c
@@ -95,7 +96,7 @@ impl Fx {
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("XDG_STATE_HOME")
             .env_remove("XDG_RUNTIME_DIR")
-            .env_remove("TMGR_RUNNER_DIR")
+            .env("TMGR_RUNNER_DIR", self.home.join("no-runner"))
             .env("SSH_CONNECTION", "192.0.2.5 5555 192.0.2.1 22");
         c
     }
@@ -213,6 +214,54 @@ fn widening_a_scope_needs_a_terminal_but_narrowing_does_not() {
     );
     let shown = f.tmgr().args(["link", "scope", "laptop"]).output().unwrap();
     assert!(String::from_utf8_lossy(&shown.stdout).contains("max 1 running"));
+}
+
+#[test]
+fn attach_input_is_a_widening_that_needs_a_terminal() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    let input = |f: &Fx| {
+        Store::load(&f.paths).unwrap().leaders["laptop"]
+            .scope
+            .allow_attach_input
+    };
+    for extra in [
+        &["--allow-attach-input"][..],
+        &["--allow-attach-input", "true", "--yes"][..],
+        &["--allow-attach-input=true"][..],
+    ] {
+        let mut args = vec!["link", "scope", "laptop"];
+        args.extend_from_slice(extra);
+        let out = f.tmgr().args(&args).output().unwrap();
+        assert_eq!(out.status.code(), Some(10), "{extra:?}: {}", err_text(&out));
+        assert!(!input(&f));
+    }
+    let out = f
+        .tmgr()
+        .env("TMGR_RUN_TOKEN", "x")
+        .args(["link", "scope", "laptop", "--allow-attach-input"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(5));
+    assert!(!input(&f));
+    let shown = f.tmgr().args(["link", "scope", "laptop"]).output().unwrap();
+    assert!(String::from_utf8_lossy(&shown.stdout).contains("attach input: forbidden"));
+
+    f.trust_leader(
+        "laptop",
+        Scope {
+            allow_attach_input: true,
+            ..f.scope()
+        },
+    );
+    let out = f
+        .tmgr()
+        .env("TMGR_RUN_TOKEN", "x")
+        .args(["link", "scope", "laptop", "--allow-attach-input", "false"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", err_text(&out));
+    assert!(!input(&f));
 }
 
 #[test]

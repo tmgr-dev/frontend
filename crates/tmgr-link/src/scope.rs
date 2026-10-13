@@ -462,11 +462,15 @@ mod tests {
             |s: &mut Scope| s.models.push("m2".into()),
             |s: &mut Scope| s.from.clear(),
             |s: &mut Scope| s.from.push("198.51.100.1".into()),
+            |s: &mut Scope| s.allow_attach_input = true,
         ] {
             let mut wider = base.clone();
             f(&mut wider);
             assert!(wider.widens(&base));
         }
+        let mut input_on = base.clone();
+        input_on.allow_attach_input = true;
+        assert!(!base.widens(&input_on));
         let mut any_to_cidr = base.clone();
         any_to_cidr.from.clear();
         assert!(!base.widens(&any_to_cidr));

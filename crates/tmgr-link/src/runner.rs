@@ -78,7 +78,7 @@ pub trait Backend: Send {
     fn attach(
         &mut self,
         id: &str,
-        size: (u16, u16),
+        size: Option<(u16, u16)>,
     ) -> Result<Box<dyn AttachSession>, BackendError>;
 }
 
@@ -210,7 +210,7 @@ impl Backend for RunnerClient {
     fn attach(
         &mut self,
         id: &str,
-        size: (u16, u16),
+        size: Option<(u16, u16)>,
     ) -> Result<Box<dyn AttachSession>, BackendError> {
         let mut stream = open(&self.dir, &[caps::ATTACH_V1, caps::SESSIONS_V1])?;
         let mut next = 1u64;
@@ -218,7 +218,9 @@ impl Backend for RunnerClient {
             sessions: vec![id.to_string()],
             ..AttachParams::default()
         };
-        p.sizes.insert(id.to_string(), size);
+        if let Some(size) = size {
+            p.sizes.insert(id.to_string(), size);
+        }
         call_on(&mut stream, &mut next, method::ATTACH_OPEN, params(&p)?)?;
         stream.set_read_timeout(None).map_err(unavailable)?;
         let writer = stream.try_clone().map_err(unavailable)?;

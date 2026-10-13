@@ -27,6 +27,7 @@ struct FakeState {
     busy: bool,
     attach: VecDeque<ServerMsg>,
     attach_resizes: Vec<(u16, u16)>,
+    attach_sizes: Vec<Option<(u16, u16)>>,
     exit_on: Option<&'static str>,
     next: u32,
 }
@@ -118,9 +119,12 @@ impl Backend for Fake {
     fn attach(
         &mut self,
         _id: &str,
-        _size: (u16, u16),
+        size: Option<(u16, u16)>,
     ) -> Result<Box<dyn AttachSession>, BackendError> {
-        self.0.lock().unwrap().calls.push("attach.open".into());
+        let mut s = self.0.lock().unwrap();
+        s.calls.push("attach.open".into());
+        s.attach_sizes.push(size);
+        drop(s);
         Ok(Box::new(FakeAttach(self.0.clone())))
     }
 }
@@ -662,6 +666,7 @@ fn a_read_only_attach_streams_sanitised_screens_and_hides_other_sessions() {
     let (mut l, id) = started(&w, &fake);
     let r = l.call(1, "attach.open", json!({"run": id, "cols": 80, "rows": 24}));
     assert_eq!(r["result"]["input"], false);
+    assert_eq!(fake.0.lock().unwrap().attach_sizes, [None]);
     fake.push(ServerMsg::Event(json!({
         "session": "s_zzzzzzzzzz",
         "state": {"kind":"blocked","since_ms":1,"detail":"someone else","exit_code":null}
@@ -703,6 +708,7 @@ fn input_flows_only_with_the_scope_flag_and_busy_becomes_a_notice() {
     let (mut l, id) = started(&w, &fake);
     let r = l.call(1, "attach.open", json!({"run": id}));
     assert_eq!(r["result"]["input"], true);
+    assert_eq!(fake.0.lock().unwrap().attach_sizes, [Some((120, 40))]);
     l.say(Outgoing::Input("ls\r".into()));
     l.say(Outgoing::Ping);
     assert_eq!(l.next(&id), Some(Incoming::Pong));

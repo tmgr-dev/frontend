@@ -429,6 +429,7 @@ pub struct Contained {
     pub runs_halted: usize,
     pub runs_known: usize,
     pub halt_failed: usize,
+    pub runs_unreadable: bool,
 }
 
 pub fn contain(
@@ -437,7 +438,7 @@ pub fn contain(
     halt: Option<&mut dyn crate::runner::Backend>,
 ) -> Result<Contained> {
     grammar::link_name(name)?;
-    let runs = crate::ownership::Runs::lock(paths)?;
+    let runs = crate::ownership::Runs::lock_lenient(paths)?;
     let workers = crate::registry::terminate(paths, name, std::time::Duration::from_secs(3))?;
     let records: Vec<String> = runs
         .of_link(name)
@@ -447,9 +448,10 @@ pub fn contain(
     let mut out = Contained {
         workers,
         runs_known: records.len(),
+        runs_unreadable: runs.is_damaged(),
         ..Contained::default()
     };
-    if let Some(backend) = halt {
+    if let Some(backend) = halt.filter(|_| !out.runs_unreadable) {
         for run in &records {
             match crate::runs::stop_run(backend, run) {
                 Ok("already") => {}
@@ -468,6 +470,7 @@ pub fn contain(
             "runs_known": out.runs_known,
             "runs_halted": out.runs_halted,
             "halt_failed": out.halt_failed,
+            "runs_unreadable": out.runs_unreadable,
         }),
     )?;
     Ok(out)
