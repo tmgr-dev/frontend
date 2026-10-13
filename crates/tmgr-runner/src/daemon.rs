@@ -605,6 +605,13 @@ impl Session {
         });
     }
 
+    fn on_exit_report(&self, e: &ExitInfo) {
+        if self.revoking.load(Ordering::SeqCst) {
+            self.mark_revoked_with(e.code.or(e.signal.map(|sig| 128 + sig)));
+        }
+        self.on_exited(e);
+    }
+
     fn tick(&self) {
         self.change(|i, now, out| out.extend(i.det.tick(now)));
     }
@@ -627,10 +634,7 @@ impl Session {
             *lock(&self.shim) = Some(link);
         }
         if let Some(e) = &hello.exit {
-            self.on_exited(e);
-            if self.revoking.load(Ordering::SeqCst) {
-                self.mark_revoked();
-            }
+            self.on_exit_report(e);
         }
         let me = self.clone();
         thread::spawn(move || {
@@ -648,12 +652,7 @@ impl Session {
                 Frame::Bin(b) => self.feed(&b.data, answer_replay || b.tag != TAG_REPLAY),
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
                     Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
-                    Ok(FromShim::Exited(e)) => {
-                        self.on_exited(&e);
-                        if self.revoking.load(Ordering::SeqCst) {
-                            self.mark_revoked();
-                        }
-                    }
+                    Ok(FromShim::Exited(e)) => self.on_exit_report(&e),
                     Ok(FromShim::SignalAck { id, delivered, .. }) => {
                         let mut acks = lock(&self.sig_acks);
                         if acks.len() >= 64 {
@@ -712,6 +711,10 @@ impl Session {
     }
 
     fn mark_revoked(&self) {
+        self.mark_revoked_with(None)
+    }
+
+    fn mark_revoked_with(&self, code: Option<i32>) {
         let state = {
             let mut i = lock(&self.inner);
             if i.fixed
@@ -724,7 +727,7 @@ impl Session {
                 kind: StateKind::Exited,
                 since_ms: now_ms(),
                 detail: Some("revoked".into()),
-                exit_code: i.det.state().exit_code,
+                exit_code: code.or(i.det.state().exit_code),
             };
             i.fixed = Some(s.clone());
             s
@@ -1452,12 +1455,17 @@ impl Runner {
                     home.parent().unwrap_or(home).to_path_buf(),
                 ];
                 protected.extend(profile_protected.iter().cloned());
-                let prep = login::prepare(p, &real_home, &protected, |n| {
-                    std::env::var(n).ok().filter(|v| !v.is_empty())
-                })
-                .map_err(|e| api(ErrorCode::Sandbox, e))?;
+                let prep = login::prepare(p, &real_home, &protected, |_| None)
+                    .map_err(|e| api(ErrorCode::Sandbox, e))?;
                 for w in &prep.warnings {
                     log(&format!("profile {pid}: {w}"));
+                }
+                for n in &p.env_pass {
+                    if !prep.pass_values.iter().any(|(k, _)| k == n) {
+                        log(&format!(
+                            "profile {pid}: {n} has no value in the profile's secrets file; the agent starts without it"
+                        ));
+                    }
                 }
                 base.retain(|(k, _)| !prep.pass_values.iter().any(|(n, _)| n == k));
                 base.extend(prep.pass_values);
@@ -2132,6 +2140,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
 }
 
 // Same-user processes can read each other's initial environment on macOS, so the runner and shims start from an allowlist.
+pub const ENV_CLEAN: &str = "TMGR_RUNNER_ENV_CLEAN";
+
 pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     const KEEP: &[&str] = &[
         "HOME",
@@ -2143,14 +2153,24 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         "TMPDIR",
         "COLORTERM",
         "TERM_PROGRAM",
+        "XDG_CONFIG_HOME",
+        "XDG_STATE_HOME",
+        "XDG_DATA_HOME",
+        "XDG_CACHE_HOME",
+        "XDG_RUNTIME_DIR",
+        "TMGR_RUNNER_DIR",
+        "TMGR_RUNNER_HOMES",
+        "TMGR_T0_QUIET_MS",
+        "TMGR_AGENTS_DIR",
+        "TMGR_RUNNER_WRITE_TIMEOUT_MS",
+        "TMGR_TEST_HOLD_BEFORE_SPAWN",
+        "TMGR_TEST_SHIM_NO_CWD_ID",
+        ENV_CLEAN,
     ];
     std::env::vars_os()
         .filter(|(k, _)| {
-            let Some(k) = k.to_str() else { return false };
-            KEEP.contains(&k)
-                || k.starts_with("LC_")
-                || k.starts_with("XDG_")
-                || (k.starts_with("TMGR_") && k != "TMGR_RUN_TOKEN")
+            k.to_str()
+                .is_some_and(|k| KEEP.contains(&k) || k.starts_with("LC_"))
         })
         .collect()
 }
@@ -2169,6 +2189,7 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
     cmd.args(["runner", "serve"])
         .env_clear()
         .envs(daemon_env())
+        .env(ENV_CLEAN, "1")
         .env("TMGR_RUNNER_DIR", &cfg.dir)
         .env("TMGR_RUNNER_HOMES", &cfg.homes)
         .env("TMGR_T0_QUIET_MS", cfg.quiet_ms.to_string())

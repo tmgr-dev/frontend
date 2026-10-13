@@ -20,7 +20,7 @@ and similar names stay refused (the profile is rejected at load). The profile's 
 An agent profile (trusted local data, see the design doc 6.10) may declare, all relative to the real home as `~/...`:
 
 ```toml
-env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]      # values: [secrets] file first, then the runner's (allowlisted) environment
+env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]      # values come only from the [secrets] file; a missing value is logged
 [env]
 DISABLE_AUTOUPDATER = "1"                   # literal, non-secret
 [secrets]

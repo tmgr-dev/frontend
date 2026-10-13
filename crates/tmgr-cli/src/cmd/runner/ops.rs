@@ -41,7 +41,18 @@ fn clean(s: &str) -> String {
 }
 
 fn serve() -> Result<i32> {
-    daemon::serve(runner_config()?).map_err(|e| Error::internal(format!("runner: {e}")))?;
+    let cfg = runner_config()?;
+    if std::env::var_os(daemon::ENV_CLEAN).is_none() {
+        use std::os::unix::process::CommandExt;
+        let err = std::process::Command::new(&cfg.self_exe)
+            .args(std::env::args_os().skip(1))
+            .env_clear()
+            .envs(daemon::daemon_env())
+            .env(daemon::ENV_CLEAN, "1")
+            .exec();
+        return Err(Error::internal(format!("runner: {err}")));
+    }
+    daemon::serve(cfg).map_err(|e| Error::internal(format!("runner: {e}")))?;
     Ok(0)
 }
 

@@ -627,3 +627,29 @@ fn agents_login_file_creates_a_private_template_and_never_overwrites() {
 
     assert!(!run(&["agents", "login-file", "no-such"]).status.success());
 }
+
+#[test]
+fn runner_serve_started_directly_drops_the_shell_environment() {
+    let env = Env::new();
+    let mut c = env.cmd(&["runner", "serve"]);
+    c.env("SHELL_EXPORTED_TOKEN_FOR_TEST", "s3cr3t-shell-value")
+        .env("TMGR_NOTIFY_TOKEN", "s3cr3t-notify-value")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    let mut child = c.spawn().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !env.run.join("runner.pid").exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let out = Command::new("ps")
+        .args(["eww", "-o", "command=", "-p", &child.id().to_string()])
+        .output()
+        .unwrap();
+    let seen = String::from_utf8_lossy(&out.stdout).into_owned();
+    let _ = env.tmgr(&["runner", "stop"]);
+    let _ = child.kill();
+    let _ = child.wait();
+    assert!(seen.contains("TMGR_RUNNER_DIR"), "{seen}");
+    assert!(!seen.contains("s3cr3t-shell-value"), "{seen}");
+    assert!(!seen.contains("s3cr3t-notify-value"), "{seen}");
+}

@@ -676,6 +676,7 @@ fn the_runner_and_its_shims_do_not_inherit_the_starting_shell_environment() {
         max_sessions: 16,
     };
     std::env::set_var("SHELL_EXPORTED_TOKEN_FOR_TEST", "s3cr3t-shell-value");
+    std::env::set_var("TMGR_NOTIFY_TOKEN", "s3cr3t-notify-value");
     let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
     let mut c = h.client();
     let info = c.create(h.req(&["/bin/sh", "-c", "sleep 30"])).unwrap();
@@ -686,6 +687,8 @@ fn the_runner_and_its_shims_do_not_inherit_the_starting_shell_environment() {
     assert!(runner_env.contains("TMGR_RUNNER_DIR"), "{runner_env}");
     assert!(!runner_env.contains("s3cr3t-shell-value"), "{runner_env}");
     assert!(!shim_env.contains("s3cr3t-shell-value"), "{shim_env}");
+    assert!(!runner_env.contains("s3cr3t-notify-value"), "{runner_env}");
+    assert!(!shim_env.contains("s3cr3t-notify-value"), "{shim_env}");
 }
 
 #[test]
