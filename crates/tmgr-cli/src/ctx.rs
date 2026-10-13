@@ -109,6 +109,30 @@ impl Ctx {
         self.cloud_client()
     }
 
+    /// `local:<code>` when the selected workspace is local.
+    pub fn local_tag(&self) -> Result<Option<String>> {
+        Ok(self
+            .wanted_workspace()?
+            .filter(|w| local::local_code(w).is_some()))
+    }
+
+    /// The client for a run recorded in `workspace` (`local:<code>`, or none for the cloud), which
+    /// need not be the selected workspace.
+    pub fn client_for_run(&self, workspace: Option<&str>) -> Result<RunClient<'_>> {
+        if workspace == self.local_tag()?.as_deref() {
+            return self.client().map(RunClient::Shared);
+        }
+        match workspace.and_then(local::local_code) {
+            Some(code) => Ok(RunClient::Own(Box::new(local::client(
+                code,
+                self.cfg.local_user_id,
+                &Self::user_agent(),
+                self.verbose,
+            )?))),
+            None => self.cloud_client().map(RunClient::Shared),
+        }
+    }
+
     /// The logged-in cloud client, whatever workspace is selected (auth and notifications).
     pub fn cloud_client(&self) -> Result<&Client> {
         if let Some(c) = self.cloud.get() {
@@ -231,4 +255,20 @@ pub fn local_workspaces() -> Result<Vec<Workspace>> {
             local: true,
         })
         .collect())
+}
+
+pub enum RunClient<'a> {
+    Shared(&'a Client),
+    Own(Box<Client>),
+}
+
+impl std::ops::Deref for RunClient<'_> {
+    type Target = Client;
+
+    fn deref(&self) -> &Client {
+        match self {
+            RunClient::Shared(c) => c,
+            RunClient::Own(c) => c,
+        }
+    }
 }

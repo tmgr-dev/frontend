@@ -3989,6 +3989,7 @@ dependencies = [
  "tmgr-core",
  "tmgr-ipc",
  "tmgr-link",
+ "tmgr-local",
  "tmgr-runner",
  "tokio",
  "toml_edit 0.22.27",

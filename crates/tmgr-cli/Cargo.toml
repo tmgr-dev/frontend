@@ -43,3 +43,4 @@ sha2.workspace = true
 portable-pty.workspace = true
 vt100.workspace = true
 rusqlite.workspace = true
+tmgr-local = { path = "../tmgr-local" }

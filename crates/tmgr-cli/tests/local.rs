@@ -1,7 +1,7 @@
 mod common;
 
 use assert_cmd::Command;
-use common::{assert_valid, dead_server, stdout_json, text};
+use common::{assert_valid, dead_server, git, init_repo, path_with, stdout_json, text};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -219,10 +219,11 @@ fn routines_are_listed_and_completed() {
              VALUES (1, 'DAILY', 1, '2026-01-01', 'x', 'x');",
         )
         .unwrap();
-    let list = local.json(&["routine", "list", "--date", "2026-10-13"]);
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let list = local.json(&["routine", "list", "--date", &today]);
     assert_valid("routine_list", &list);
     assert_eq!(list["data"]["routines"][0]["title"], "Stretch");
-    let done = local.json(&["routine", "done", "1", "--date", "2026-10-13"]);
+    let done = local.json(&["routine", "done", "1", "--date", &today]);
     assert_valid("routine_done", &done);
     let status: String = local
         .db("personal")
@@ -285,4 +286,54 @@ fn a_newer_schema_is_refused_and_auth_stays_with_the_cloud() {
 
     let out = local.run(&["whoami"]);
     assert_eq!(out.status.code(), Some(4), "{}", text(&out.stderr));
+}
+
+#[test]
+fn a_hook_reports_commits_to_the_run_of_a_local_workspace_without_a_login() {
+    let local = Local::new();
+    let used = local
+        .cmd()
+        .args(["ws", "use", "local:personal"])
+        .output()
+        .unwrap();
+    assert!(used.status.success(), "{}", text(&used.stderr));
+    local.json(&["add", "Hooked", "-p", "WK"]);
+    let repo = init_repo(&local.tmp.path().join("repo"));
+    git(&repo, &["checkout", "-q", "-b", "wk-1-hooked"]);
+    let started = local
+        .cmd()
+        .current_dir(&repo)
+        .env("PATH", path_with(None))
+        .args(["agent", "start", "WK-1", "--agent", "claude-code"])
+        .output()
+        .unwrap();
+    assert!(started.status.success(), "{}", text(&started.stderr));
+    std::fs::write(repo.join("a.txt"), "a").unwrap();
+    git(&repo, &["add", "a.txt"]);
+    git(&repo, &["commit", "-q", "-m", "feat: local change"]);
+
+    let stop = json!({ "session_id": "s1", "cwd": repo.display().to_string() }).to_string();
+    let out = local
+        .cmd()
+        .env("PATH", path_with(None))
+        .env("TMGR_HOOK_DEBUG", "1")
+        .env("TMGR_HOOK_BUDGET_MS", "5000")
+        .args(["hook", "claude", "stop"])
+        .write_stdin(stop)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let commits: String = local
+        .db("personal")
+        .query_row(
+            "SELECT commits FROM agent_work_runs WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(
+        commits.contains("feat: local change"),
+        "{commits} / {}",
+        text(&out.stderr)
+    );
 }

@@ -31,6 +31,9 @@ pub struct Run {
     pub commits: Vec<String>,
     #[serde(default)]
     pub last_sent: i64,
+    /// `local:<code>` for a run in a local workspace; none for the cloud.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -50,13 +53,19 @@ impl Runs {
         })
     }
 
-    pub fn find_run(&self, run_id: u64) -> Option<&Run> {
-        self.runs.iter().find(|r| r.run_id == run_id)
+    /// A run by id, preferring the one of `workspace` since local and cloud ids can collide.
+    pub fn find_run(&self, run_id: u64, workspace: Option<&str>) -> Option<&Run> {
+        let mut matches = self.runs.iter().filter(|r| r.run_id == run_id);
+        let first = matches.clone().next();
+        matches
+            .find(|r| r.workspace.as_deref() == workspace)
+            .or(first)
     }
 
     pub fn upsert(&mut self, run: Run) {
-        self.runs
-            .retain(|r| r.run_id != run.run_id && r.task_id != run.task_id);
+        self.runs.retain(|r| {
+            r.workspace != run.workspace || (r.run_id != run.run_id && r.task_id != run.task_id)
+        });
         self.runs.push(run);
         if self.runs.len() > MAX_RUNS {
             let drop = self.runs.len() - MAX_RUNS;
@@ -64,8 +73,9 @@ impl Runs {
         }
     }
 
-    pub fn remove(&mut self, run_id: u64) {
-        self.runs.retain(|r| r.run_id != run_id);
+    pub fn remove(&mut self, run_id: u64, workspace: Option<&str>) {
+        self.runs
+            .retain(|r| r.run_id != run_id || r.workspace.as_deref() != workspace);
     }
 }
 
@@ -190,7 +200,28 @@ mod tests {
             started_at: "2026-10-12T10:00:00Z".into(),
             commits: vec![],
             last_sent: 0,
+            workspace: None,
         }
+    }
+
+    #[test]
+    fn local_and_cloud_runs_with_the_same_id_are_kept_apart() {
+        let mut runs = Runs::default();
+        runs.upsert(run(1, 10, "a"));
+        let mut local = run(1, 10, "b");
+        local.workspace = Some("local:personal".into());
+        runs.upsert(local);
+        assert_eq!(runs.runs.len(), 2);
+        assert_eq!(
+            runs.find_run(1, Some("local:personal"))
+                .unwrap()
+                .branch
+                .as_deref(),
+            Some("b")
+        );
+        assert_eq!(runs.find_run(1, None).unwrap().branch.as_deref(), Some("a"));
+        runs.remove(1, Some("local:personal"));
+        assert_eq!(runs.runs.len(), 1);
     }
 
     #[test]
@@ -241,7 +272,7 @@ mod tests {
         assert_eq!(mode, 0o600);
         let runs = load_from(&path);
         assert_eq!(runs.runs.len(), 2);
-        assert!(runs.find_run(1).is_none());
+        assert!(runs.find_run(1, None).is_none());
         assert_eq!(
             runs.find_branch(Some("/work/api"), "tm-11-y", None)
                 .unwrap()

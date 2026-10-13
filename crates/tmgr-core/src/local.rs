@@ -59,6 +59,18 @@ pub fn identity(root: &Path, configured_id: Option<i64>) -> User {
     }
 }
 
+/// A client of the local workspace `code`, acting as the local identity.
+pub fn client(
+    code: &str,
+    local_user_id: Option<i64>,
+    user_agent: &str,
+    verbose: bool,
+) -> Result<crate::api::Client> {
+    let workspace = find(code)?;
+    let user = identity(&root()?, local_user_id);
+    crate::api::Client::for_local(Local::new(workspace, user), user_agent, verbose)
+}
+
 pub struct Local {
     workspace: LocalWorkspace,
     user: User,

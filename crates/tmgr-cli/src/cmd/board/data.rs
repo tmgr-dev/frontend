@@ -356,4 +356,77 @@ mod tests {
             ("codex ", 5, "u")
         );
     }
+
+    fn local_client(dir: &std::path::Path) -> Client {
+        let ws = dir.join("personal");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::write(
+            ws.join("workspace.json"),
+            r#"{"id":1,"name":"P","code":"personal","schema_version":12,"created_at":"x"}"#,
+        )
+        .unwrap();
+        let golden: Value = serde_json::from_str(include_str!(
+            "../../../../tmgr-local/tests/parity/golden/schema.json"
+        ))
+        .unwrap();
+        let conn = rusqlite::Connection::open(ws.join("workspace.db")).unwrap();
+        for object in golden["sqlite_master"].as_array().unwrap() {
+            if let Some(ddl) = object["sql"].as_str() {
+                conn.execute_batch(ddl).unwrap();
+            }
+        }
+        conn.execute_batch(
+            "INSERT INTO meta VALUES ('schema_version', '12');
+             INSERT INTO statuses (id, name, type, sort_order, created_at, updated_at)
+             VALUES (1, 'Backlog', 'default', 1, 'x', 'x'), (2, 'Doing', 'active', 2, 'x', 'x'),
+                    (3, 'Archived', 'archived', 3, 'x', 'x');
+             INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (1, 'Local card', 1, 'x', 'x');",
+        )
+        .unwrap();
+        let workspace = tmgr_local::find(dir, "personal").unwrap();
+        let user = tmgr_core::local::identity(dir, None);
+        Client::for_local(
+            tmgr_core::local::Local::new(workspace, user),
+            "tmgr-test",
+            false,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn the_board_works_on_a_local_workspace() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = local_client(dir.path());
+        let ws = client.local().unwrap().workspace().manifest.id;
+        let snapshot = fetch(&client, ws, None).unwrap();
+        assert_eq!(snapshot.statuses.len(), 3);
+        assert_eq!(snapshot.tasks.len(), 1);
+        assert!(matches!(
+            exec(&client, ws, None, Effect::Move { id: 1, to: 2 }),
+            Msg::MoveDone(1, Ok(()))
+        ));
+        assert!(matches!(
+            exec(&client, ws, None, Effect::Timer { id: 1, start: true }),
+            Msg::TimerDone(1, true, Ok(()))
+        ));
+        assert!(matches!(
+            exec(
+                &client,
+                ws,
+                None,
+                Effect::Comment {
+                    id: 1,
+                    text: "from the board".into()
+                }
+            ),
+            Msg::CommentDone(1, Ok(()))
+        ));
+        match exec(&client, ws, None, Effect::LoadDetail(1)) {
+            Msg::Detail(1, detail) => {
+                let detail = (*detail).unwrap_or_else(|_| panic!("detail failed"));
+                assert_eq!(detail.comments.len(), 1);
+            }
+            _ => panic!("unexpected message"),
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use crate::cli_agent::{
     AgentCommand, AgentFinishArgs, AgentStartArgs, AgentUpdateArgs, ProgressArgs,
 };
-use crate::ctx::Ctx;
+use crate::ctx::{Ctx, RunClient};
 use crate::gitx::{self, Git};
 use crate::out::Output;
 use serde_json::{json, Value};
@@ -173,6 +173,7 @@ fn start(ctx: &Ctx, args: &AgentStartArgs) -> Result<Output> {
                 started_at: rfc3339(now_s()),
                 commits: Vec::new(),
                 last_sent: now_s(),
+                workspace: ctx.local_tag()?,
             };
             save_state(ctx, |r| r.upsert(entry));
             let human = format!(
@@ -190,10 +191,10 @@ fn start(ctx: &Ctx, args: &AgentStartArgs) -> Result<Output> {
     }
 }
 
-fn find_run(run: Option<u64>) -> Result<(u64, Option<Run>)> {
+fn find_run(ctx: &Ctx, run: Option<u64>) -> Result<(u64, Option<Run>)> {
     let state = runstate::load();
     if let Some(id) = run {
-        return Ok((id, state.find_run(id).cloned()));
+        return Ok((id, state.find_run(id, ctx.local_tag()?.as_deref()).cloned()));
     }
     let git = gitx::cwd_repo();
     let branch = git.as_ref().and_then(Git::current_branch);
@@ -229,9 +230,17 @@ fn progress_of(
     Ok((progress, merged))
 }
 
+fn run_client<'a>(ctx: &'a Ctx, known: Option<&Run>) -> Result<RunClient<'a>> {
+    match known {
+        Some(run) => ctx.client_for_run(run.workspace.as_deref()),
+        None => ctx.client().map(RunClient::Shared),
+    }
+}
+
 fn update(ctx: &Ctx, args: &AgentUpdateArgs) -> Result<Output> {
-    let client = ctx.client()?;
-    let (run_id, known) = find_run(args.run)?;
+    let (run_id, known) = find_run(ctx, args.run)?;
+    let client = &*run_client(ctx, known.as_ref())?;
+    let workspace = known.as_ref().and_then(|r| r.workspace.clone());
     let sent = sent_commits(ctx, client, run_id, known.as_ref(), &args.progress)?;
     let (progress, merged) = progress_of(&args.progress, args.branch.clone(), &sent)?;
     let key = known.as_ref().map(|r| r.task_key.clone());
@@ -244,7 +253,11 @@ fn update(ctx: &Ctx, args: &AgentUpdateArgs) -> Result<Output> {
         Outcome::Run(view) => {
             if known.is_some() {
                 save_state(ctx, |r| {
-                    if let Some(e) = r.runs.iter_mut().find(|e| e.run_id == run_id) {
+                    if let Some(e) = r
+                        .runs
+                        .iter_mut()
+                        .find(|e| e.run_id == run_id && e.workspace == workspace)
+                    {
                         if let Some(c) = merged {
                             e.commits = c;
                         }
@@ -271,8 +284,9 @@ fn update(ctx: &Ctx, args: &AgentUpdateArgs) -> Result<Output> {
 }
 
 fn finish(ctx: &Ctx, args: &AgentFinishArgs) -> Result<Output> {
-    let client = ctx.client()?;
-    let (run_id, known) = find_run(args.run)?;
+    let (run_id, known) = find_run(ctx, args.run)?;
+    let client = &*run_client(ctx, known.as_ref())?;
+    let workspace = known.as_ref().and_then(|r| r.workspace.clone());
     let sent = sent_commits(ctx, client, run_id, known.as_ref(), &args.progress)?;
     let (progress, _) = progress_of(&args.progress, None, &sent)?;
     let key = known.as_ref().map(|r| r.task_key.clone());
@@ -280,7 +294,7 @@ fn finish(ctx: &Ctx, args: &AgentFinishArgs) -> Result<Output> {
     let result = agentwork::finish(client, run_id, args.status.as_str(), &progress);
     let stale = matches!(&result, Err(e) if matches!(e.kind, Kind::NotFound | Kind::Conflict));
     if known.is_some() && (stale || result.is_ok()) {
-        save_state(ctx, |r| r.remove(run_id));
+        save_state(ctx, |r| r.remove(run_id, workspace.as_deref()));
     }
     match result? {
         Outcome::Disabled => Ok(disabled(ctx, task_id, key.as_deref())),
