@@ -10,6 +10,8 @@ use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use tmgr_ipc::api::StateKind;
+use tmgr_runner::client::Client;
 
 const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
 
@@ -26,24 +28,48 @@ fn private_dir(path: &Path) {
 }
 
 fn run_bounded(mut cmd: Command, limit: Duration) -> Output {
-    let child = cmd
+    let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let pid = pid_of(child.id() as i64);
-    let (tx, rx) = std::sync::mpsc::channel();
-    thread::spawn(move || {
-        let _ = tx.send(child.wait_with_output());
-    });
-    match rx.recv_timeout(limit) {
-        Ok(out) => out.unwrap(),
-        Err(_) => {
-            if let Some(pid) = pid {
-                unsafe { libc::kill(pid, libc::SIGKILL) };
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
             }
+            buf
+        })
+    };
+    let out = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let deadline = Instant::now() + limit;
+    let status = loop {
+        if let Some(st) = child.try_wait().unwrap() {
+            break st;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
             panic!("command did not finish within {limit:?}");
         }
+        thread::sleep(Duration::from_millis(20));
+    };
+    Output {
+        status,
+        stdout: out.join().unwrap(),
+        stderr: err.join().unwrap(),
     }
 }
 
@@ -173,7 +199,7 @@ impl Env {
 
 impl Drop for Env {
     fn drop(&mut self) {
-        kill_tree(&self.run);
+        shutdown_runner(&self.run);
     }
 }
 
@@ -181,67 +207,32 @@ fn pid_of(pid: i64) -> Option<i32> {
     i32::try_from(pid).ok().filter(|p| *p > 1)
 }
 
-fn ps_field(pid: i32, field: &str, environ: bool) -> String {
-    let mut cmd = Command::new("ps");
-    if environ {
-        cmd.arg("eww");
-    }
-    let out = cmd
-        .args(["-o", field, "-p", &pid.to_string()])
-        .output()
-        .ok();
-    out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default()
-}
-
-fn kill_ours(pid: i64, tag: &str, parent: Option<i32>) {
-    let Some(pid) = pid_of(pid) else { return };
-    let ours = ps_field(pid, "command=", true).contains(tag)
-        || parent.is_some_and(|p| ps_field(pid, "ppid=", false) == p.to_string());
-    if ours {
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-            libc::kill(pid, libc::SIGKILL);
-        }
-    }
-}
-
-fn kill_tree(run: &Path) {
-    let tag = run
-        .parent()
-        .and_then(Path::file_name)
-        .map(|n| n.to_string_lossy().into_owned())
-        .filter(|t| t.len() > 4)
-        .unwrap_or_else(|| "\u{0}no-tag".into());
-    let pid_file = |p: PathBuf| {
-        fs::read_to_string(p)
-            .ok()
-            .and_then(|s| s.trim().parse::<i64>().ok())
-    };
-    let Ok(rd) = fs::read_dir(run.join("sessions")) else {
-        if let Some(pid) = pid_file(run.join("runner.pid")) {
-            kill_ours(pid, &tag, None);
-        }
+fn shutdown_runner(run: &Path) {
+    let Ok(mut c) = Client::connect(run) else {
         return;
     };
-    for e in rd.flatten() {
-        let meta: Value = fs::read(e.path().join("meta.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
-        let shim = pid_file(e.path().join("shim.pid")).or(meta["shim_pid"].as_i64());
-        let shim_ok = shim
-            .and_then(pid_of)
-            .filter(|p| ps_field(*p, "command=", true).contains(&tag));
-        if let Some(p) = meta["child_pid"].as_i64() {
-            kill_ours(p, &tag, shim_ok);
+    let _ = c.set_timeouts(Duration::from_secs(5));
+    if let Ok(list) = c.list() {
+        for s in list.iter().filter(|s| s.state.kind != StateKind::Exited) {
+            let _ = c.kill(&s.id, "kill");
         }
-        if let Some(p) = shim {
-            kill_ours(p, &tag, None);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match c.list() {
+                Ok(l) if l.iter().any(|s| s.state.kind != StateKind::Exited) => {
+                    thread::sleep(Duration::from_millis(50))
+                }
+                _ => break,
+            }
+        }
+        for s in &list {
+            let _ = c.remove(&s.id);
         }
     }
-    if let Some(pid) = pid_file(run.join("runner.pid")) {
-        kill_ours(pid, &tag, None);
+    let _ = c.stop();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Client::connect(run).is_ok() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
     }
 }
 

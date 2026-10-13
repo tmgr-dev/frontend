@@ -23,70 +23,32 @@ fn pid_of(pid: i64) -> Option<i32> {
     i32::try_from(pid).ok().filter(|p| *p > 1)
 }
 
-fn ps_field(pid: i32, field: &str, environ: bool) -> String {
-    let mut cmd = Command::new("ps");
-    if environ {
-        cmd.arg("eww");
-    }
-    let out = cmd
-        .args(["-o", field, "-p", &pid.to_string()])
-        .output()
-        .ok();
-    out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default()
-}
-
-fn kill_ours(pid: i64, tag: &str, parent: Option<i32>) {
-    let Some(pid) = pid_of(pid) else { return };
-    let ours = ps_field(pid, "command=", true).contains(tag)
-        || parent.is_some_and(|p| ps_field(pid, "ppid=", false) == p.to_string());
-    if ours {
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-            libc::kill(pid, libc::SIGKILL);
-        }
-    }
-}
-
-fn tag_of(run: &Path) -> String {
-    run.parent()
-        .and_then(Path::file_name)
-        .map(|n| n.to_string_lossy().into_owned())
-        .filter(|t| t.len() > 4)
-        .unwrap_or_else(|| "\u{0}no-tag".into())
-}
-
-fn kill_tree(run: &Path) {
-    let tag = tag_of(run);
-    let pid_file = |p: PathBuf| {
-        fs::read_to_string(p)
-            .ok()
-            .and_then(|s| s.trim().parse::<i64>().ok())
-    };
-    let Ok(rd) = fs::read_dir(run.join("sessions")) else {
-        if let Some(pid) = pid_file(run.join("runner.pid")) {
-            kill_ours(pid, &tag, None);
-        }
+fn shutdown_runner(run: &Path) {
+    let Ok(mut c) = Client::connect(run) else {
         return;
     };
-    for e in rd.flatten() {
-        let meta: serde_json::Value = fs::read(e.path().join("meta.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
-        let shim = pid_file(e.path().join("shim.pid")).or(meta["shim_pid"].as_i64());
-        let shim_ok = shim
-            .and_then(pid_of)
-            .filter(|p| ps_field(*p, "command=", true).contains(&tag));
-        if let Some(p) = meta["child_pid"].as_i64() {
-            kill_ours(p, &tag, shim_ok);
+    let _ = c.set_timeouts(Duration::from_secs(5));
+    if let Ok(list) = c.list() {
+        for s in list.iter().filter(|s| s.state.kind != StateKind::Exited) {
+            let _ = c.kill(&s.id, "kill");
         }
-        if let Some(p) = shim {
-            kill_ours(p, &tag, None);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            match c.list() {
+                Ok(l) if l.iter().any(|s| s.state.kind != StateKind::Exited) => {
+                    thread::sleep(Duration::from_millis(50))
+                }
+                _ => break,
+            }
+        }
+        for s in &list {
+            let _ = c.remove(&s.id);
         }
     }
-    if let Some(pid) = pid_file(run.join("runner.pid")) {
-        kill_ours(pid, &tag, None);
+    let _ = c.stop();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Client::connect(run).is_ok() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -145,15 +107,14 @@ impl Harness {
         }
     }
 
-    fn start(&mut self, quiet_ms: u64) {
+    fn spawn_runner(&self, quiet_ms: u64) -> Child {
         let err = fs::File::create(self.tmp.path().join("runner.err")).unwrap();
         let mut cmd = Command::new(HOST);
         if let Some(home) = &self.real_home {
             cmd.env("HOME", home);
         }
         cmd.envs(self.env.iter().cloned());
-        let child = cmd
-            .args(["runner", "serve"])
+        cmd.args(["runner", "serve"])
             .env("TMGR_RUNNER_DIR", &self.run)
             .env("TMGR_RUNNER_HOMES", self.homes.path())
             .env("TMGR_AGENTS_DIR", &self.agents)
@@ -164,8 +125,11 @@ impl Harness {
             .stdout(Stdio::null())
             .stderr(err)
             .spawn()
-            .unwrap();
-        self.runner = Some(child);
+            .unwrap()
+    }
+
+    fn start(&mut self, quiet_ms: u64) {
+        self.runner = Some(self.spawn_runner(quiet_ms));
         let deadline = Instant::now() + Duration::from_secs(10);
         while let Err(e) = Client::connect(&self.run) {
             assert!(
@@ -250,8 +214,17 @@ impl Harness {
 
 impl Drop for Harness {
     fn drop(&mut self) {
+        let has_sessions =
+            fs::read_dir(self.run.join("sessions")).is_ok_and(|mut d| d.next().is_some());
+        if self.runner.is_none() && has_sessions && Client::connect(&self.run).is_err() {
+            self.runner = Some(self.spawn_runner(5000));
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Client::connect(&self.run).is_err() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+        shutdown_runner(&self.run);
         self.kill_runner();
-        kill_tree(&self.run);
     }
 }
 
@@ -699,7 +672,7 @@ fn start_background_is_idempotent() {
         .unwrap()
         .permissions()
         .mode();
-    kill_ours(pid as i64, &tag_of(&h.run), None);
+    let _ = c.stop();
     assert_eq!(again.unwrap(), pid);
     assert_eq!(status.pid, pid);
     assert_eq!(log_mode & 0o777, 0o600);
@@ -755,7 +728,7 @@ fn start_background_replaces_a_squatted_runner_address() {
     };
     let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
     let status = h.client().status().unwrap();
-    kill_ours(pid as i64, &tag_of(&h.run), None);
+    let _ = h.client().stop();
     assert_eq!(status.pid, pid);
 }
 
