@@ -38,11 +38,27 @@ const desktopWithoutAnalytics = (): Plugin => {
 	};
 };
 
+const runnerTerminalDevCsp = (): Plugin => ({
+	name: 'runner-terminal-dev-csp',
+	apply: 'serve',
+	transformIndexHtml: {
+		order: 'pre',
+		handler: (html, ctx) =>
+			ctx.path === '/runner-terminal.html'
+				? html.replace(
+						'connect-src ipc: http://ipc.localhost',
+						'connect-src ipc: http://ipc.localhost ws://localhost:* ws://127.0.0.1:*',
+					)
+				: html,
+	},
+});
+
 export default defineConfig({
 	define: { __APP_VERSION__: JSON.stringify(appVersion) },
 	plugins: [
 		vue(),
 		desktopWithoutAnalytics(),
+		runnerTerminalDevCsp(),
 		VitePWA({
 			disable: Boolean(process.env.TAURI_ENV_PLATFORM),
 			registerType: 'autoUpdate',
@@ -129,6 +145,12 @@ export default defineConfig({
 			},
 		},
 		rolldownOptions: {
+			input: {
+				main: fileURLToPath(new URL('./index.html', import.meta.url)),
+				'runner-terminal': fileURLToPath(
+					new URL('./runner-terminal.html', import.meta.url),
+				),
+			},
 			output: {
 				// Vite 8 builds with rolldown: the object form of manualChunks is gone and the
 				// function form is deprecated, so the same package -> chunk map is expressed as
