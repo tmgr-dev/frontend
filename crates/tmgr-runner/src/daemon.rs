@@ -24,7 +24,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
-use tmgr_ipc::dirs::{self, ensure_private_dir};
+use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{
     read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT, TAG_REPLAY,
@@ -850,7 +850,7 @@ impl Runner {
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api("internal", e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
-        ensure_private_dir(home).map_err(internal)?;
+        ensure_private_leaf(home).map_err(internal)?;
         let mut env_pass = req.env_pass.clone();
         if let Some(pid) = &req.profile {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
@@ -1346,7 +1346,7 @@ fn load_client_secret(dir: &Path) -> io::Result<String> {
 pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     ensure_private_dir(&cfg.dir)?;
     ensure_private_dir(&cfg.dir.join("sessions"))?;
-    ensure_private_dir(&cfg.homes)?;
+    ensure_private_leaf(&cfg.homes)?;
     let _lock = take_lock(&cfg.dir)?;
     write_atomic(
         &cfg.dir.join("runner.pid"),
