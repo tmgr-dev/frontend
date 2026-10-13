@@ -2076,6 +2076,8 @@ fn a_directory_is_reserved_by_identity_across_renames_and_both_create_paths() {
     let mut h = Harness::new();
     h.bundle_runner();
     let first = h.client().create_run(h.bundled("fake")).unwrap();
+    let mut c = h.client();
+    wait_state(&mut c, &first.id, 30, |s| s.kind == StateKind::Working);
     let work = fs::canonicalize(&h.work).unwrap();
     let renamed = h.tmp.path().join("renamed");
     fs::rename(&work, &renamed).unwrap();
