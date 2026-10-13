@@ -106,6 +106,8 @@ impl Rig {
         c.args(args)
             .env_remove("TMGR_RUN_TOKEN")
             .env_remove("TMGR_RUN_ID")
+            .env_remove("XDG_RUNTIME_DIR")
+            .env_remove("TMGR_RUNNER_DIR")
             .stdin(Stdio::null());
         for (k, v) in self.env(side) {
             c.env(k, v);
@@ -143,6 +145,11 @@ impl Drop for Rig {
     fn drop(&mut self) {
         let mut c = Command::new(BIN);
         c.args(["runner", "stop"])
+            .env_remove("XDG_RUNTIME_DIR")
+            .env("HOME", self.root.join("fhome"))
+            .env("XDG_CONFIG_HOME", self.root.join("fcfg"))
+            .env("XDG_STATE_HOME", self.root.join("fstate"))
+            .env("TMGR_CREDENTIAL_STORE", "file")
             .env("TMGR_RUNNER_DIR", &self.run_dir)
             .stdin(Stdio::null());
         let _ = c.output();
@@ -184,6 +191,8 @@ impl Pty {
             .unwrap();
         let mut cmd = CommandBuilder::new(BIN);
         cmd.args(args);
+        cmd.env_remove("XDG_RUNTIME_DIR");
+        cmd.env_remove("TMGR_RUNNER_DIR");
         for (k, v) in env {
             cmd.env(k, v);
         }
@@ -397,6 +406,10 @@ fn rig() -> Option<Rig> {
     let mut runner_cmd = Command::new(BIN);
     runner_cmd
         .args(["runner", "serve"])
+        .env_remove("XDG_RUNTIME_DIR")
+        .env("XDG_CONFIG_HOME", root.join("fcfg"))
+        .env("XDG_STATE_HOME", root.join("fstate"))
+        .env("TMGR_CREDENTIAL_STORE", "file")
         .env("TMGR_RUNNER_DIR", &run_dir)
         .env("TMGR_RUNNER_HOMES", root.join("homes"))
         .env("TMGR_AGENTS_DIR", root.join("agents"))
@@ -596,6 +609,7 @@ fn a_leader_runs_attaches_and_is_cut_off_through_a_real_sshd_and_a_real_runner()
     assert_eq!(left, 0);
     let audit = Command::new(BIN)
         .args(["link", "audit", "--tail", "200", "--json"])
+        .env_remove("XDG_RUNTIME_DIR")
         .envs(rig.env(Side::Follower))
         .output()
         .unwrap();
