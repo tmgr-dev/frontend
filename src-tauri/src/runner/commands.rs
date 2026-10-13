@@ -197,8 +197,9 @@ pub async fn runner_open_terminal<R: Runtime>(app: AppHandle<R>, runner: State<'
     .disable_drag_drop_handler()
     .background_throttling(BackgroundThrottlingPolicy::Disabled)
     .center();
+  let dev = app.config().build.dev_url.clone().filter(|_| cfg!(debug_assertions));
   let window = builder
-    .on_navigation(is_terminal_url)
+    .on_navigation(move |url| is_terminal_url(url, dev.as_ref()))
     .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
     .build()
     .map_err(|e| e.to_string())?;
@@ -270,11 +271,11 @@ pub async fn runner_term_detach<R: Runtime>(window: WebviewWindow<R>, runner: St
   Ok(())
 }
 
-pub fn is_terminal_url(url: &url::Url) -> bool {
+pub fn is_terminal_url(url: &url::Url, dev: Option<&url::Url>) -> bool {
   if url.path() != "/runner-terminal.html" || !url.username().is_empty() || url.password().is_some() {
     return false;
   }
-  let dev = cfg!(debug_assertions) && matches!((url.scheme(), url.host_str(), url.port()), ("http", Some("localhost"), Some(5173)));
+  let dev = dev.is_some_and(|d| d.scheme() == "http" && d.host_str() == Some("localhost") && d.port().is_some() && (d.scheme(), d.host_str(), d.port()) == (url.scheme(), url.host_str(), url.port()));
   dev
     || matches!(
       (url.scheme(), url.host_str(), url.port()),
@@ -307,10 +308,14 @@ mod tests {
   #[test]
   fn terminal_window_stays_on_its_page() {
     for ok in ["tauri://localhost/runner-terminal.html", "http://tauri.localhost/runner-terminal.html", "https://tauri.localhost/runner-terminal.html"] {
-      assert!(is_terminal_url(&url::Url::parse(ok).unwrap()), "{ok}");
+      assert!(is_terminal_url(&url::Url::parse(ok).unwrap(), None), "{ok}");
     }
-    let dev = url::Url::parse("http://localhost:5173/runner-terminal.html").unwrap();
-    assert_eq!(is_terminal_url(&dev), cfg!(debug_assertions));
+    let page = url::Url::parse("http://localhost:5191/runner-terminal.html").unwrap();
+    let dev = url::Url::parse("http://localhost:5191/").unwrap();
+    assert!(is_terminal_url(&page, Some(&dev)));
+    assert!(!is_terminal_url(&page, None));
+    assert!(!is_terminal_url(&page, Some(&url::Url::parse("http://localhost:5173/").unwrap())));
+    assert!(!is_terminal_url(&page, Some(&url::Url::parse("https://localhost:5191/").unwrap())));
     for bad in [
       "tauri://localhost/index.html",
       "http://localhost:5173/",
@@ -325,7 +330,7 @@ mod tests {
       "data:text/html,x",
       "about:blank",
     ] {
-      assert!(!is_terminal_url(&url::Url::parse(bad).unwrap()), "{bad}");
+      assert!(!is_terminal_url(&url::Url::parse(bad).unwrap(), Some(&dev)), "{bad}");
     }
   }
 
