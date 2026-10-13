@@ -78,6 +78,23 @@ const APP_COMMANDS: &[&str] = &[
   "local_access_set_enabled",
   "local_access_ready",
   "local_access_reply",
+  "runner_enabled",
+  "runner_set_enabled",
+  "runner_status",
+  "runner_profiles",
+  "runner_sessions",
+  "runner_start_run",
+  "runner_halt",
+  "runner_open_terminal",
+  "runner_watch",
+  "runner_unwatch",
+  "runner_term_attach",
+  "runner_term_ack",
+  "runner_term_input",
+  "runner_term_resize",
+  "runner_term_scroll",
+  "runner_term_detach",
+  "runner_term_open_link",
 ];
 
 fn main() {
