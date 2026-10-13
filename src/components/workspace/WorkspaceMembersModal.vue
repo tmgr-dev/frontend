@@ -22,9 +22,15 @@
 				<div
 					v-for="member in members"
 					:key="member.id"
-					class="flex items-center justify-between rounded-lg border border-border p-3 transition-colors hover:bg-muted/50"
+					class="flex cursor-pointer items-center justify-between rounded-lg border border-border transition-colors hover:bg-muted/50"
+					@click="openMember(member)"
 				>
-					<div class="flex flex-1 items-center gap-3">
+					<button
+						type="button"
+						:aria-label="`Open ${member.name}`"
+						class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand dark:focus-visible:ring-brand"
+						@click.stop="openMember(member)"
+					>
 						<UserAvatar
 							:user-id="member.id"
 							:name="member.name"
@@ -32,36 +38,37 @@
 							:size="40"
 						/>
 
-						<div class="flex-1">
-							<div class="flex items-center gap-2">
-								<p class="font-medium text-ink">{{ member.name }}</p>
+						<span class="block min-w-0 flex-1">
+							<span class="flex items-center gap-2">
+								<span class="font-medium text-ink">{{ member.name }}</span>
 								<span
 									v-if="member.id === ownerId"
 									class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold uppercase text-muted-foreground"
 								>
 									Owner
 								</span>
-							</div>
-							<p v-if="member.email" class="text-sm text-ink-subtle">
+							</span>
+							<span v-if="member.email" class="block text-sm text-ink-subtle">
 								{{ member.email }}
-							</p>
-						</div>
-					</div>
+							</span>
+						</span>
+					</button>
 
-					<Button
-						v-if="canRemoveMember(member)"
-						@click="handleRemoveMember(member)"
-						variant="destructive"
-						size="sm"
-						:disabled="removing"
-					>
-						<Loader
-							v-if="removingMemberId === member.id"
-							is-mini
-							class="mr-2"
-						/>
-						Remove
-					</Button>
+					<div v-if="canRemoveMember(member)" class="mr-3" @click.stop>
+						<Button
+							@click="handleRemoveMember(member)"
+							variant="destructive"
+							size="sm"
+							:disabled="removing"
+						>
+							<Loader
+								v-if="removingMemberId === member.id"
+								is-mini
+								class="mr-2"
+							/>
+							Remove
+						</Button>
+					</div>
 				</div>
 
 				<div v-if="members.length === 0" class="py-8 text-center text-sm text-ink-subtle">
@@ -238,6 +245,18 @@
 			removingMemberId.value = null;
 			memberToRemove.value = null;
 		}
+	};
+
+	const openMember = (member: ExtendedWorkspaceMember) => {
+		const workspaceCode =
+			store.getters.workspaceById(props.workspaceId)?.code ||
+			store.getters.currentWorkspace?.code;
+		if (!workspaceCode) return;
+		emit('update:modelValue', false);
+		router.push({
+			name: 'WorkspaceMember',
+			params: { workspace_code: workspaceCode, user_id: member.id },
+		});
 	};
 
 	const openWorkspaceSettings = () => {
