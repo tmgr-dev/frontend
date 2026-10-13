@@ -74,6 +74,15 @@ pub struct RunCreateReq {
     pub bundle: Option<RunBundle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd_pin: Option<CwdPin>,
+}
+
+/// Identity (`stat` device and inode) of the folder a human approved.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CwdPin {
+    pub dev: u64,
+    pub ino: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

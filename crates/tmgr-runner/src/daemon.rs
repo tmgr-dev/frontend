@@ -894,6 +894,11 @@ impl Runner {
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
+        let pinned = match (&checked, req.cwd_pin) {
+            (None, Some(_)) => Some(bundle::open_dir(&req).map_err(|(code, m)| api(code, m))?),
+            _ => None,
+        };
+        let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = set.get(&req.profile).ok_or_else(|| {
             let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
@@ -920,7 +925,9 @@ impl Runner {
         self.create_with(
             CreateReq {
                 argv,
-                cwd: req.cwd,
+                cwd: dir
+                    .as_ref()
+                    .map_or(req.cwd, |d| d.path.display().to_string()),
                 name: req.name,
                 profile: Some(req.profile),
                 cols: req.cols,
@@ -928,18 +935,18 @@ impl Runner {
                 env_pass: Vec::new(),
                 task: req.task,
             },
-            checked.as_ref(),
+            (checked.as_ref(), dir),
         )
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_with(req, None)
+        self.create_with(req, (None, None))
     }
 
     fn create_with(
         self: &Arc<Self>,
         req: CreateReq,
-        bundle: Option<&bundle::Checked>,
+        (bundle, dir): (Option<&bundle::Checked>, Option<&bundle::Dir>),
     ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
         sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
@@ -953,14 +960,34 @@ impl Runner {
                 Some(Matcher::new(prof).map_err(|e| api(ErrorCode::UnknownProfile, e))?)
             }
         };
+        if dir.is_some_and(|d| d.path != cwd) {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "cwd changed after the bundle was checked",
+            ));
+        }
         let _g = lock(&self.create_lock);
-        if lock(&self.sessions).len() >= self.cfg.max_sessions {
-            return Err(api(ErrorCode::Limit, "too many sessions"));
+        {
+            let sessions = lock(&self.sessions);
+            if sessions.len() >= self.cfg.max_sessions {
+                return Err(api(ErrorCode::Limit, "too many sessions"));
+            }
+            let want = cwd.display().to_string();
+            if bundle.is_some()
+                && sessions
+                    .values()
+                    .any(|s| !s.is_exited() && s.info().cwd == want)
+            {
+                return Err(api(
+                    ErrorCode::Busy,
+                    "another session is running in this directory",
+                ));
+            }
         }
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
-        let result = self.spawn_session(&req, &cwd, matcher, &id, (&sdir, &home), bundle);
+        let result = self.spawn_session(&req, &cwd, matcher, &id, (&sdir, &home), (bundle, dir));
         if result.is_err() {
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
@@ -975,14 +1002,11 @@ impl Runner {
         matcher: Option<Matcher>,
         id: &str,
         (sdir, home): (&Path, &Path),
-        bundle: Option<&bundle::Checked>,
+        (bundle, dir): (Option<&bundle::Checked>, Option<&bundle::Dir>),
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
-        if let Some(b) = bundle {
-            bundle::install(sdir, cwd, b).map_err(|(code, m)| api(code, m))?;
-        }
         let real_home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_default();
@@ -1037,6 +1061,12 @@ impl Runner {
         let bytes = serde_json::to_vec(&lf).map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
         write_atomic(&sdir.join("launch.json"), &bytes).map_err(internal)?;
         let adopt_secret = secret::write_new(&sdir.join("adopt.secret")).map_err(internal)?;
+        if let Some(d) = dir {
+            bundle::verify_cwd(d).map_err(|(code, m)| api(code, m))?;
+        }
+        if let Some(b) = bundle {
+            bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?;
+        }
         let log_file = OpenOptions::new()
             .create(true)
             .append(true)

@@ -28,14 +28,16 @@ pub mod caps {
     pub const TASK_REF_V1: &str = "task_ref.v1";
     pub const LAYOUT_V1: &str = "layout.v1";
     pub const RUN_BUNDLE_V1: &str = "run_bundle.v1";
+    pub const CWD_PIN_V1: &str = "cwd_pin.v1";
 
-    pub const ALL: [&str; 6] = [
+    pub const ALL: [&str; 7] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
         TASK_REF_V1,
         LAYOUT_V1,
         RUN_BUNDLE_V1,
+        CWD_PIN_V1,
     ];
 }
 

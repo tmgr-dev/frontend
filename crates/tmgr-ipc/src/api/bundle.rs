@@ -81,6 +81,88 @@ impl RunBundle {
     pub fn sha256(&self) -> String {
         sha256_hex(self.canonical().as_bytes())
     }
+
+    pub fn validate(&self) -> Result<(), String> {
+        valid_author("author.id", &self.author)?;
+        for c in &self.comments {
+            valid_author("comments[].author.id", &c.author)?;
+            if !valid_rfc3339(&c.at) {
+                return Err("comments[].at must be an RFC 3339 timestamp".into());
+            }
+        }
+        if let Some(p) = &self.persona {
+            let n = p.name.chars().count();
+            if !(1..=64).contains(&n) || p.name.chars().any(char::is_control) {
+                return Err(
+                    "persona.name must be 1 to 64 characters without control characters".into(),
+                );
+            }
+            let hex = |c: u8| c.is_ascii_digit() || (b'a'..=b'f').contains(&c);
+            if p.instructions_sha256.len() != 64 || !p.instructions_sha256.bytes().all(hex) {
+                return Err(
+                    "persona.instructions_sha256 must be 64 lowercase hex characters".into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+fn valid_author(field: &str, a: &BundleAuthor) -> Result<(), String> {
+    let ok = |c: char| c.is_ascii_alphanumeric() || "._:@-".contains(c);
+    match &a.id {
+        Some(id) if id.chars().count() > 64 || !id.chars().all(ok) => Err(format!(
+            "{field} must be at most 64 characters of A-Za-z0-9._:@-"
+        )),
+        _ => Ok(()),
+    }
+}
+
+fn valid_rfc3339(s: &str) -> bool {
+    let b = s.as_bytes();
+    let digits =
+        |r: std::ops::Range<usize>| b.get(r).is_some_and(|d| d.iter().all(u8::is_ascii_digit));
+    let num = |r: std::ops::Range<usize>| s[r].parse::<u32>().unwrap_or(u32::MAX);
+    let shape = digits(0..4)
+        && digits(5..7)
+        && digits(8..10)
+        && digits(11..13)
+        && digits(14..16)
+        && digits(17..19);
+    if !(s.is_ascii() && shape) || [b[4], b[7], b[10], b[13], b[16]] != *b"--T::" {
+        return false;
+    }
+    if !(1..=12).contains(&num(5..7))
+        || !(1..=31).contains(&num(8..10))
+        || num(11..13) > 23
+        || num(14..16) > 59
+        || num(17..19) > 60
+    {
+        return false;
+    }
+    let mut i = 19;
+    if b.get(i) == Some(&b'.') {
+        let start = i + 1;
+        i = start;
+        while b.get(i).is_some_and(u8::is_ascii_digit) {
+            i += 1;
+        }
+        if !(1..=9).contains(&(i - start)) {
+            return false;
+        }
+    }
+    match &b[i..] {
+        b"Z" => true,
+        [b'+' | b'-', ..] => {
+            b.len() == i + 6
+                && digits(i + 1..i + 3)
+                && b[i + 3] == b':'
+                && digits(i + 4..i + 6)
+                && num(i + 1..i + 3) <= 23
+                && num(i + 4..i + 6) <= 59
+        }
+        _ => false,
+    }
 }
 
 pub fn sha256_hex(bytes: &[u8]) -> String {

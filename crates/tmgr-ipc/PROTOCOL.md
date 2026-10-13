@@ -75,7 +75,7 @@ Both sides must finish within 5 seconds. A refusal is
 
 ```json
 {"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"0011...eeff"}
-{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1"]}
+{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1"]}
 ```
 
 ## 4. Versions and capabilities
@@ -97,6 +97,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `task_ref.v1` | `task` on create params, `SessionInfo` and `Event` |
 | `layout.v1` | `layout.get`, `layout.set` |
 | `run_bundle.v1` | `bundle`, `bundle_sha256` on `runs.create`; `bundle_sha256` on `SessionInfo` (section 5, "Run bundles") |
+| `cwd_pin.v1` | `cwd_pin` on `runs.create` (section 5, "Pinning the folder") |
 
 ## 5. Messages after the handshake
 
@@ -121,7 +122,7 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params` | any |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy` | any |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -159,6 +160,19 @@ of `starting`, `working`, `waiting`, `blocked`, `exited`.
 `AttachParams`: `{sessions:[id] (at most 64), sizes?: {id: [cols, rows]}}`. It
 replaces the watched list; ids must exist. `attach.open` also turns the
 connection into a push stream (once). An empty list gives state events only.
+
+### Pinning the folder
+
+`RunCreateReq.cwd_pin` is optional: `{"dev":16777234,"ino":8812345}`, the
+`st_dev` and `st_ino` that the client read with `stat` on the folder the human
+approved (cap `cwd_pin.v1`). The runner opens the canonical `cwd` once with
+`O_DIRECTORY | O_NOFOLLOW`, compares the opened directory's identity with the
+pin and refuses with `invalid_params` ("approved folder changed") when they
+differ. It checks the same identity again right before it starts the agent
+(`invalid_params`, nothing is written to the folder or launched). Without a pin
+the identity is still fixed at the first open and re-checked before the start,
+so the folder cannot be swapped between those two steps. A pin works with and
+without a bundle.
 
 ### Run bundles
 
@@ -222,8 +236,29 @@ The runner refuses the request with `invalid_params` when:
   `profile`, `model` or `task`, or `launch.cwd` is not the canonical (symlinks
   resolved) path of the request's `cwd`. An approved hash therefore cannot be
   replayed with other parameters;
+- a metadata field is malformed. These fields are rendered outside the data
+  blocks or identify who wrote what, so they are checked and the message names
+  the field: `persona.instructions_sha256` is exactly 64 lowercase hex
+  characters; `persona.name` is 1 to 64 characters without control characters;
+  every `comments[].at` is `YYYY-MM-DDTHH:MM:SS`, an optional `.` and 1 to 9
+  digits, then `Z` or `+HH:MM` / `-HH:MM` (upper-case `T` and `Z`, no other
+  text); `author.id` and `comments[].author.id`, when present, are at most 64
+  characters of `A-Za-z0-9._:@-`;
 - `<cwd>/.tmgr` is a symlink or not a directory, or `<cwd>/.tmgr/task.md` is a
-  symlink.
+  symlink;
+- `cwd` is not the directory that was approved by the time the agent starts
+  (for example a symlink was swapped after the check).
+
+The runner opens the canonical `cwd` once, launches in that same canonical
+path, writes `.tmgr` only relative to the opened directory and refuses with
+`invalid_params`, before anything starts, when the path no longer names the
+same directory.
+
+A bundled `runs.create` is refused with `busy` ("another session is running in
+this directory") while another session that has not exited uses the same
+canonical `cwd`, so one run can never replace the context file of another. All
+other validation (profile, secrets, sandbox) happens before `task.md` is
+written, so a launch that fails leaves an existing `task.md` untouched.
 
 A canonical bundle over 1 MiB is refused with `limit`.
 
@@ -234,8 +269,10 @@ that stored copy only, never fetches task data from anywhere and never puts
 bundle text into the agent's argv or environment. `task.md` holds a fixed
 instruction header, then the title, body, comments and pages, each inside
 `<<<task data (untrusted, from <author kind>)>>>` ... `<<<end of task data>>>`
-markers, and ends with `bundle sha256: <hash>`. If `<cwd>/.git` is a directory,
-`.tmgr/` is added to `.git/info/exclude`. `SessionInfo.bundle_sha256` echoes
+markers (the persona name and page titles are inside blocks too), and ends with
+`bundle sha256: <hash>`. If `<cwd>/.git` is a directory, `.tmgr/` is added to
+`.git/info/exclude`, unless that file is not a plain single-link file of at most
+1 MiB (then it is left alone). `SessionInfo.bundle_sha256` echoes
 the hash (kept in `meta.json`, so it survives runner restarts).
 
 What it does not guarantee: whether a human approved the bundle. The runner
