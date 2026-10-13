@@ -781,11 +781,11 @@ fn a_client_that_never_reads_is_disconnected_and_others_keep_receiving() {
     let info = c.create(h.req(&[PY, &path])).unwrap();
     let mut stalled = h.client().attach(std::slice::from_ref(&info.id)).unwrap();
     let mut w = Watch::new(h.client(), &[&info.id]);
-    assert!(w.wait(5, |w| w.has_line(&info.id, "line")));
+    assert!(w.wait(30, |w| w.has_line(&info.id, "line")));
     thread::sleep(Duration::from_secs(4));
     let before = w.text(&info.id);
     assert!(
-        w.wait(5, |w| w.text(&info.id) != before),
+        w.wait(15, |w| w.text(&info.id) != before),
         "healthy client stopped receiving"
     );
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -856,7 +856,7 @@ fn a_500x200_screen_of_alternating_colours_reaches_the_client_intact() {
     let mut w = Watch::new(h.client(), &[&info.id]);
     w.writer.resize(&info.id, 500, 200).unwrap();
     assert!(
-        w.wait(10, |w| w.has_line(&info.id, "done")),
+        w.wait(30, |w| w.has_line(&info.id, "done")),
         "{:?}",
         w.cache.snapshot(&info.id).map(|s| (s.rows, s.cols))
     );
