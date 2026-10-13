@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Local workspaces of the desktop app: `--ws local:<code>`, `tmgr ws use local:<code>` and `default_workspace = "local:<code>"` work offline and without a login, through the `tmgr-local` crate, which reads and writes the desktop's `workspace.db` directly. `tmgr ws list` shows local workspaces (`local: true`, negative ids) next to the cloud ones. A route the local mode does not support yet fails with exit 2 ("not supported for local workspaces yet"). The local user is `local_user_id` from the config, else the desktop profile (id -1).
+- JSON schemas `start`, `done` and `task_created`: `url` may be `null`, as in `task`, `task_list`, `status` and `stop`; it is `null` for tasks of local workspaces (`--ws local:<code>`), which have no web link. Cloud output is unchanged.
+
 ## 0.6.0
 
 - `tmgr agent status set <session-id> --state S [--task REF] [--profile ID]`, `tmgr agent status clear <session-id>` and `tmgr agent status list [--ws CODE]`: opt-in agent status upload (metadata only: task, state, agent profile id, timestamps, the device's host label; never terminal content). `set` and `clear` need `tmgr config set upload_status true` (off by default) and the login scope `agent-status:write`; a rate-limited request exits 6 with the retry time.
