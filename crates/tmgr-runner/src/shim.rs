@@ -375,6 +375,7 @@ fn report_cwd_id() -> bool {
     true
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn enter_launch_dir() -> io::Result<(u64, u64)> {
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(SHIM_CWD_FD, &mut st) } != 0
