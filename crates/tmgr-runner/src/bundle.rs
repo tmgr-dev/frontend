@@ -326,9 +326,45 @@ fn unlinkat(dir_fd: i32, name: &str) {
     }
 }
 
+fn rename_noreplace(dir_fd: i32, from: &str, to: &str) -> io::Result<()> {
+    let (f, t) = (
+        CString::new(from).expect("no NUL"),
+        CString::new(to).expect("no NUL"),
+    );
+    #[cfg(target_os = "macos")]
+    let rc =
+        unsafe { libc::renameatx_np(dir_fd, f.as_ptr(), dir_fd, t.as_ptr(), libc::RENAME_EXCL) };
+    #[cfg(not(target_os = "macos"))]
+    let rc = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            dir_fd,
+            f.as_ptr(),
+            dir_fd,
+            t.as_ptr(),
+            1u32,
+        )
+    } as i32;
+    if rc < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+fn quarantine(dir_fd: i32) -> io::Result<String> {
+    for n in 0..16u32 {
+        let name = format!(".task.md.q.{}.{n}", std::process::id());
+        match rename_noreplace(dir_fd, "task.md", &name) {
+            Err(e) if e.raw_os_error() == Some(libc::EEXIST) => continue,
+            r => return r.map(|()| name),
+        }
+    }
+    Err(io::Error::from(io::ErrorKind::AlreadyExists))
+}
+
 #[allow(clippy::unnecessary_cast)]
-fn still_published(dir_fd: i32, id: (u64, u64)) -> bool {
-    let name = CString::new("task.md").expect("no NUL");
+fn is_published(dir_fd: i32, name: &str, id: (u64, u64)) -> bool {
+    let name = CString::new(name).expect("no NUL");
     let mut st: libc::stat = unsafe { std::mem::zeroed() };
     let rc = unsafe { libc::fstatat(dir_fd, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) };
     rc == 0
@@ -339,25 +375,42 @@ fn still_published(dir_fd: i32, id: (u64, u64)) -> bool {
 
 pub fn restore(prior: &Prior) {
     let dir_fd = prior.dir.as_raw_fd();
-    if !still_published(dir_fd, prior.published) {
-        eprintln!("tmgr-runner: .tmgr/task.md changed during the launch, left as it is");
+    let staged = match &prior.before {
+        Before::Created => None,
+        Before::Existing(old, mode) => match stage_previous(dir_fd, old, *mode) {
+            Ok(t) => Some(t),
+            Err(_) => return,
+        },
+    };
+    let drop_staged = || {
+        if let Some(t) = &staged {
+            unlinkat(dir_fd, t);
+        }
+    };
+    let q = match quarantine(dir_fd) {
+        Ok(q) => q,
+        Err(_) => {
+            eprintln!("tmgr-runner: .tmgr/task.md is gone or busy, left as it is");
+            drop_staged();
+            return;
+        }
+    };
+    if !is_published(dir_fd, &q, prior.published) {
+        if rename_noreplace(dir_fd, &q, "task.md").is_err() {
+            eprintln!("tmgr-runner: a foreign .tmgr/task.md was set aside as {q}");
+        } else {
+            eprintln!("tmgr-runner: .tmgr/task.md changed during the launch, left as it is");
+        }
+        drop_staged();
         return;
     }
-    match &prior.before {
-        Before::Created => unlinkat(dir_fd, "task.md"),
-        Before::Existing(old, mode) => {
-            let Ok(tmp) = stage_previous(dir_fd, old, *mode) else {
-                return;
-            };
-            let (from, to) = (
-                CString::new(tmp.as_str()).expect("no NUL"),
-                CString::new("task.md").expect("no NUL"),
-            );
-            if unsafe { libc::renameat(dir_fd, from.as_ptr(), dir_fd, to.as_ptr()) } < 0 {
-                unlinkat(dir_fd, &tmp);
-            }
+    if let Some(t) = &staged {
+        if rename_noreplace(dir_fd, t, "task.md").is_err() {
+            eprintln!("tmgr-runner: .tmgr/task.md reappeared during the rollback, left as it is");
+            unlinkat(dir_fd, t);
         }
     }
+    unlinkat(dir_fd, &q);
 }
 
 fn exclude_from_git(cwd_fd: i32) {
@@ -612,6 +665,52 @@ mod tests {
         restore(&prior);
         assert_eq!(fs::read_to_string(&victim).unwrap(), "precious");
         assert_eq!(fs::read_to_string(&task).unwrap(), "precious");
+    }
+
+    #[test]
+    fn a_file_swapped_in_after_publishing_survives_the_rollback_and_is_not_quarantined() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        let task = d.path().join(".tmgr/task.md");
+        fs::create_dir(d.path().join(".tmgr")).unwrap();
+        fs::write(&task, "keep").unwrap();
+        let prior = write_context(dir.raw_fd(), "new").unwrap();
+        fs::remove_file(&task).unwrap();
+        fs::write(&task, "theirs").unwrap();
+        restore(&prior);
+        assert_eq!(fs::read_to_string(&task).unwrap(), "theirs");
+        let names: Vec<_> = fs::read_dir(d.path().join(".tmgr"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names.len(), 1, "{names:?}");
+    }
+
+    #[test]
+    fn a_missing_task_file_is_not_recreated_by_the_rollback() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        let task = d.path().join(".tmgr/task.md");
+        fs::create_dir(d.path().join(".tmgr")).unwrap();
+        fs::write(&task, "keep").unwrap();
+        let prior = write_context(dir.raw_fd(), "new").unwrap();
+        fs::remove_file(&task).unwrap();
+        restore(&prior);
+        assert!(!task.exists());
+        assert_eq!(fs::read_dir(d.path().join(".tmgr")).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn no_replace_rename_refuses_an_existing_target() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        fs::write(d.path().join("a"), "a").unwrap();
+        fs::write(d.path().join("b"), "b").unwrap();
+        let e = rename_noreplace(dir.raw_fd(), "a", "b").unwrap_err();
+        assert_eq!(e.raw_os_error(), Some(libc::EEXIST));
+        assert_eq!(fs::read_to_string(d.path().join("b")).unwrap(), "b");
+        rename_noreplace(dir.raw_fd(), "a", "c").unwrap();
+        assert!(d.path().join("c").exists());
     }
 
     #[test]
