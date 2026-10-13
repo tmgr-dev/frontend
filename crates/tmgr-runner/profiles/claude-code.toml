@@ -19,10 +19,11 @@ from = "~/.claude.json"
 to = ".claude.json"
 json_keys = ["hasCompletedOnboarding", "theme", "oauthAccount"]
 
-# Illustrative approval-prompt shapes; not verified against a real session.
+# Folder trust checked against a recorded Claude Code 2.1 screen (profiles/screens); tool-approval shapes still unverified.
 [status]
 blocked = [
   '(?i)do you want to (proceed|allow|make this edit)',
   '(?i)\ballow .+\?',
+  '(?i)trust this folder',
 ]
 idle = []
