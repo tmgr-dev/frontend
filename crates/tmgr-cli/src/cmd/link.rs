@@ -392,6 +392,12 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             contained.halt_failed
         ));
     }
+    if !contained.unconfirmed.is_empty() {
+        problems.push(format!(
+            "the runner could not confirm the kill of: {}",
+            contained.unconfirmed.join(", ")
+        ));
+    }
     if contained.runs_surviving > 0 {
         problems.push(format!(
             "{} run(s) of this link are still running after origin.revoke",
@@ -434,6 +440,7 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             "runs_known": contained.runs_known,
             "halt_failed": contained.halt_failed,
             "runs_surviving": contained.runs_surviving,
+            "unconfirmed": contained.unconfirmed,
             "runs_unreadable": contained.runs_unreadable,
         }),
         format!(

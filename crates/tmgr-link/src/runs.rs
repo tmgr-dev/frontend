@@ -449,8 +449,28 @@ fn create(
             }
         }
     }
+    for pause in [250u64, 500, 1000] {
+        if !matches!(result, Err(BackendError::Busy)) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(pause));
+        result = with_backend(conn, st, false, |b| b.create_run(&req));
+    }
     let info = match result {
         Ok(i) => i,
+        Err(BackendError::Busy) => {
+            if conn
+                .record(method, args, "failed", "the runner stayed busy")
+                .is_err()
+            {
+                return audit_down();
+            }
+            return Step::Reply(proto::error(
+                id,
+                "busy",
+                "the follower's runner is busy (the folder is in use or its trust store is changing); try again",
+            ));
+        }
         Err(e) => return failed(conn, method, args, id, &e),
     };
     let kill = |st: &mut State| {

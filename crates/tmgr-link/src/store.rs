@@ -206,6 +206,10 @@ impl Store {
 
 pub(crate) fn lock_links(paths: &Paths) -> Result<Lock> {
     ensure_private_dir(&paths.config)?;
+    let old = paths.config.join("links.lock");
+    if std::fs::symlink_metadata(&old).is_ok_and(|m| m.is_file()) {
+        let _ = std::fs::remove_file(&old);
+    }
     ensure_private_dir(&paths.link_dir())?;
     lock(&crate::fence::path(paths))
 }

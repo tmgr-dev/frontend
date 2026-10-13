@@ -63,6 +63,12 @@ pub enum AttachRecv {
     Closed,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OriginKilled {
+    pub killed: u32,
+    pub unconfirmed: Vec<String>,
+}
+
 pub trait AttachSession: Send {
     fn recv(&mut self, wait: Duration) -> AttachRecv;
     fn resize(&mut self, cols: u16, rows: u16) -> Result<(), BackendError>;
@@ -76,7 +82,7 @@ pub trait Backend: Send {
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
     fn send(&mut self, id: &str, text: &str) -> Result<(), BackendError>;
     fn remove(&mut self, id: &str) -> Result<(), BackendError>;
-    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<u32, BackendError>;
+    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<OriginKilled, BackendError>;
     fn attach(
         &mut self,
         id: &str,
@@ -191,6 +197,10 @@ fn call_on(
     }
 }
 
+fn attach_clean(s: &str) -> String {
+    crate::attach::clean_text(&tmgr_core::text::truncate_chars(s, 40).0)
+}
+
 fn typed<T: serde::de::DeserializeOwned>(v: Value) -> Result<T, BackendError> {
     serde_json::from_value(v).map_err(|e| BackendError::Protocol(e.to_string()))
 }
@@ -224,14 +234,22 @@ impl Backend for RunnerClient {
         self.call(method::SESSIONS_SEND, params(&p)?).map(drop)
     }
 
-    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<u32, BackendError> {
+    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<OriginKilled, BackendError> {
         let p = OriginRevokeParams {
             link: link.into(),
             generation,
         };
         let v: tmgr_ipc::api::OriginRevoked =
             typed(self.call(method::ORIGIN_REVOKE, params(&p)?)?)?;
-        Ok(v.killed)
+        Ok(OriginKilled {
+            killed: v.killed,
+            unconfirmed: v
+                .unconfirmed
+                .iter()
+                .take(64)
+                .map(|id| attach_clean(id))
+                .collect(),
+        })
     }
 
     fn remove(&mut self, id: &str) -> Result<(), BackendError> {

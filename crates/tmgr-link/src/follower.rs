@@ -433,6 +433,7 @@ pub struct Contained {
     pub runs_known: usize,
     pub halt_failed: usize,
     pub runs_surviving: usize,
+    pub unconfirmed: Vec<String>,
     pub runs_unreadable: bool,
     pub tombstones: usize,
 }
@@ -441,6 +442,7 @@ impl Contained {
     pub fn incomplete(&self) -> bool {
         self.halt_failed > 0
             || self.runs_surviving > 0
+            || !self.unconfirmed.is_empty()
             || self.workers.survivors > 0
             || self.runs_unreadable
     }
@@ -510,8 +512,9 @@ pub fn contain(
                 let mut revoked_ok = cutoff.is_none();
                 if let Some(cutoff) = cutoff {
                     match backend.origin_revoke(name, cutoff) {
-                        Ok(killed) => {
-                            out.runs_halted += killed as usize;
+                        Ok(done) => {
+                            out.runs_halted += done.killed as usize;
+                            out.unconfirmed = done.unconfirmed;
                             revoked_ok = true;
                             match survivors(backend, name, cutoff) {
                                 Some(n) => out.runs_surviving = n,
@@ -557,6 +560,7 @@ pub fn contain(
             "runs_halted": out.runs_halted,
             "halt_failed": out.halt_failed,
             "runs_surviving": out.runs_surviving,
+            "unconfirmed": out.unconfirmed,
             "runs_unreadable": out.runs_unreadable,
             "cutoff_generation": cutoff,
         }),

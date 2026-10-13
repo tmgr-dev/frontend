@@ -8,7 +8,7 @@ use tmgr_ipc::proto::ServerMsg;
 use tmgr_link::attach::{self, Incoming, Outgoing};
 use tmgr_link::audit::Audit;
 use tmgr_link::proto::{self, Channel, Framed, Timed, MAX_FRAME};
-use tmgr_link::runner::{AttachRecv, AttachSession, Backend, BackendError};
+use tmgr_link::runner::{AttachRecv, AttachSession, Backend, BackendError, OriginKilled};
 use tmgr_link::scope::Scope;
 use tmgr_link::store::{Leader, Paths, Store};
 use tmgr_link::taskref::LocalRefs;
@@ -32,6 +32,10 @@ struct FakeState {
     lose_create_reply: bool,
     link_changed_once: bool,
     revoke_fails: bool,
+    unconfirmed: Vec<String>,
+    busy_creates: u32,
+    fence_free_during_revoke: Option<bool>,
+    fence_path: Option<std::path::PathBuf>,
     revoke_noop: bool,
     revokes: Vec<(String, u64)>,
     refuse_create: Option<&'static str>,
@@ -96,6 +100,10 @@ impl Backend for Fake {
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("runs.create".into());
+        if s.busy_creates > 0 {
+            s.busy_creates -= 1;
+            return Err(BackendError::Busy);
+        }
         if std::mem::take(&mut s.link_changed_once) {
             return Err(BackendError::Refused {
                 code: "forbidden".into(),
@@ -129,15 +137,25 @@ impl Backend for Fake {
         Ok(())
     }
 
-    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<u32, BackendError> {
+    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<OriginKilled, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("origin.revoke".into());
+        if let Some(path) = s.fence_path.clone() {
+            let f = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)
+                .unwrap();
+            s.fence_free_during_revoke = Some(f.try_lock_shared().is_ok());
+        }
         s.revokes.push((link.to_string(), generation));
         if s.revoke_fails {
             return Err(BackendError::Unavailable("gone".into()));
         }
         if s.revoke_noop {
-            return Ok(0);
+            return Ok(OriginKilled::default());
         }
         let mut killed = 0;
         for sess in s.sessions.iter_mut() {
@@ -150,7 +168,10 @@ impl Backend for Fake {
                 killed += 1;
             }
         }
-        Ok(killed)
+        Ok(OriginKilled {
+            killed,
+            unconfirmed: s.unconfirmed.clone(),
+        })
     }
 
     fn remove(&mut self, id: &str) -> Result<(), BackendError> {
@@ -1195,4 +1216,62 @@ fn adoption_follows_the_generation_history_through_scope_edits_and_takes_exited_
     let again = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
     assert!(again[0]["result"]["id"].is_string());
     assert_eq!(fake.called("sessions.remove"), 1);
+}
+
+#[test]
+fn the_exclusive_fence_is_free_while_the_runner_is_asked_to_revoke() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    fake.0.lock().unwrap().fence_path = Some(tmgr_link::fence::path(&w.paths));
+    let mut backend = fake.clone();
+    tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(fake.0.lock().unwrap().fence_free_during_revoke, Some(true));
+}
+
+#[test]
+fn unconfirmed_kills_make_containment_incomplete_and_keep_the_tombstone() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    fake.0.lock().unwrap().unconfirmed = vec!["s_stuck".into()];
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(out.unconfirmed, ["s_stuck"]);
+    assert!(out.incomplete());
+    assert_eq!(
+        tmgr_link::tombstone::for_link(&w.paths, "laptop")
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn a_busy_runner_is_retried_and_then_reported_clearly() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().busy_creates = 2;
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert!(r[0]["result"]["id"].is_string(), "{:?}", r[0]);
+    assert_eq!(fake.called("runs.create"), 3);
+    let w2 = world();
+    let stuck = Fake::default();
+    stuck.0.lock().unwrap().busy_creates = 100;
+    let r = session(&w2, "laptop", E1, &stuck, &[create(&w2, json!({}))]);
+    assert_eq!(r[0]["error"], "busy");
+    assert!(r[0]["message"].as_str().unwrap().contains("try again"));
+    assert_eq!(stuck.called("runs.create"), 4);
+}
+
+#[test]
+fn the_old_lock_file_is_removed_and_nothing_recreates_it() {
+    let w = world();
+    let old = w.paths.config.join("links.lock");
+    std::fs::write(&old, b"").unwrap();
+    Store::update(&w.paths, |_| Ok(())).unwrap();
+    assert!(!old.exists());
+    assert!(tmgr_link::fence::path(&w.paths).exists());
 }
