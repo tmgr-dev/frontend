@@ -46,12 +46,14 @@ struct StoreRec {
 const FENCE_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 // Held shared through the spawn so a trust change cannot land between the generation check and the spawn.
-pub fn fence_shared() -> Result<Option<std::fs::File>, String> {
-    use std::os::unix::fs::OpenOptionsExt;
+pub fn fence_shared() -> Result<std::fs::File, String> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
     let dir = store_dir()?.join("link");
-    if !dir.is_dir() {
-        return Ok(None);
-    }
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&dir)
+        .map_err(|e| format!("cannot create the trust fence directory: {e}"))?;
     let f = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -64,7 +66,7 @@ pub fn fence_shared() -> Result<Option<std::fs::File>, String> {
     let deadline = std::time::Instant::now() + FENCE_WAIT;
     loop {
         if unsafe { libc::flock(fd, libc::LOCK_SH | libc::LOCK_NB) } == 0 {
-            return Ok(Some(f));
+            return Ok(f);
         }
         if std::time::Instant::now() >= deadline {
             return Err("the link trust store is being changed; retry".into());

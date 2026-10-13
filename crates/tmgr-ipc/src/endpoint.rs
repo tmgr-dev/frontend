@@ -244,7 +244,8 @@ pub fn connect_within(ep: &Endpoint, timeout: Duration) -> io::Result<UnixStream
     for (d, s) in sa.sun_path.iter_mut().zip(&name) {
         *d = *s as _;
     }
-    let len = (std::mem::size_of::<libc::sockaddr_un>() - sa.sun_path.len() + name.len() + 1)
+    let nul = usize::from(matches!(ep, Endpoint::Path(_)));
+    let len = (std::mem::size_of::<libc::sockaddr_un>() - sa.sun_path.len() + name.len() + nul)
         as libc::socklen_t;
     let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
     if fd < 0 {
