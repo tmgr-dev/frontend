@@ -9,11 +9,13 @@ env_pass = []
 from = "~/.codex/auth.json"
 to = ".codex/auth.json"
 
-# Checked against recorded Codex 0.157 screens in profiles/screens (approval prompt, folder trust).
+# Checked against recorded Codex 0.157 screens in profiles/screens; the approval UI lines are stable, the "Reason" text is model-written.
 [status]
 blocked = [
   '(?i)(approve|allow) (this|the) (command|change|edit)',
   '(?i)\ballow .+\?',
   '(?i)trust this folder',
+  '(?i)would you like to run the following command\?',
+  '(?i)press enter to confirm or esc to cancel',
 ]
 idle = []

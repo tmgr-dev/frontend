@@ -35,6 +35,12 @@ fn codex_approval_prompt_is_blocked() {
 }
 
 #[test]
+fn codex_approval_with_reworded_reason_is_blocked() {
+    let screen = include_str!("../profiles/screens/codex-approval-reworded.txt");
+    assert!(blocked("codex", screen).is_some());
+}
+
+#[test]
 fn codex_folder_trust_is_blocked() {
     assert!(blocked("codex", include_str!("../profiles/screens/codex-trust.txt")).is_some());
 }
