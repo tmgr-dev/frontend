@@ -12,7 +12,6 @@
 			<RunWithAgentButton
 				:workspace-id="workspaceId"
 				:task-id="taskId"
-				:task-title="taskTitle"
 			/>
 		</div>
 		<AgentSessionsPanel
@@ -38,7 +37,6 @@
 				default: null,
 			},
 			taskId: { type: [Number, String], required: true },
-			taskTitle: { type: String, default: '' },
 		},
 		setup(props) {
 			const runner = useRunner();

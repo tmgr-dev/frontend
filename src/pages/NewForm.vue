@@ -2977,7 +2977,6 @@
 						v-if="isDesktopApp() && (taskId || form.id)"
 						:task-id="Number(taskId || form.id)"
 						:workspace-id="form.workspace_id"
-						:task-title="form.title ?? ''"
 					/>
 
 					<TaskAgentWork

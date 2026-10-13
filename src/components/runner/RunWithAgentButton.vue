@@ -101,7 +101,6 @@
 		props: {
 			workspaceId: { type: [Number, String] as PropType<Id>, default: null },
 			taskId: { type: [Number, String] as PropType<Id>, default: null },
-			taskTitle: { type: String, default: '' },
 		},
 		setup(props) {
 			const runner = useRunner();
@@ -155,7 +154,6 @@
 				const result = await startRunForTask({
 					workspaceId: workspaceId.value,
 					taskId: Number(props.taskId),
-					taskTitle: props.taskTitle,
 					profile: profile.value,
 				});
 				starting.value = false;

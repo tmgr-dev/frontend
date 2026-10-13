@@ -86,7 +86,7 @@ const makeRunner = (page, init = {}) => {
           args.taskId,
           'starting',
           null,
-          { name: args.taskTitle, profile: args.profile, createdMs: Date.now() },
+          { name: `Task ${args.taskId}`, profile: args.profile, createdMs: Date.now() },
         );
         st.sessions = [...st.sessions, created];
         return created;
@@ -294,7 +294,6 @@ test('board chips, Needs input highlight, task view run flow', async ({
   expect(runner.named('runner_start_run')[1].args).toEqual({
     workspaceId: WS,
     taskId: d,
-    taskTitle: 'Fresh task',
     profile: 'codex',
   });
   await runner.pushSessions();

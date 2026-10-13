@@ -51,7 +51,6 @@ describe('runner api wrappers', () => {
 		const args = {
 			workspaceId: -1000,
 			taskId: 7,
-			taskTitle: 'T',
 			profile: 'codex',
 		};
 		await api.runnerStartRun(args);

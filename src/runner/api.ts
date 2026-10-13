@@ -51,10 +51,7 @@ export type WatchEvent =
 export interface StartRunArgs {
 	workspaceId: number;
 	taskId: number;
-	taskTitle: string;
 	profile: string;
-	personaId?: number;
-	personaName?: string;
 }
 
 export interface TermState {

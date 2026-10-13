@@ -63,7 +63,6 @@ describe('startRunForTask', () => {
 	const args = {
 		workspaceId: -1000,
 		taskId: 7,
-		taskTitle: 'Fix it',
 		profile: 'codex',
 	};
 

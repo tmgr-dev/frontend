@@ -134,7 +134,6 @@ pub struct StartRun {
   pub workspace_id: i64,
   pub task_id: i64,
   pub profile: String,
-  pub persona_id: Option<i64>,
 }
 
 pub fn validate_start(r: &StartRun) -> Result<(), String> {
@@ -147,9 +146,6 @@ pub fn validate_start(r: &StartRun) -> Result<(), String> {
   if !valid_profile(&r.profile) {
     return Err("invalid agent profile".to_owned());
   }
-  if r.persona_id.is_some_and(|p| p <= 0) {
-    return Err("invalid persona".to_owned());
-  }
   Ok(())
 }
 
@@ -161,25 +157,22 @@ pub fn display_text(s: &str) -> String {
   sanitize::text(s, TITLE_MAX)
 }
 
-pub fn confirm_run_message(task_id: i64, title: &str, profile: &str, persona: Option<&str>) -> String {
-  let mut m = format!("Task #{task_id}: {}\nAgent: {}\n", display_text(title), profile_label(profile));
-  if let Some(p) = persona.map(display_text).filter(|p| !p.is_empty()) {
-    m.push_str(&format!("Persona: {p}\n"));
-  }
-  m.push_str("Permission prompts: on");
-  m
+pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, profile: &str) -> String {
+  format!(
+    "Workspace: {}\nTask #{task_id}: {}\nAgent: {}\nPermission prompts: on",
+    display_text(workspace),
+    display_text(title),
+    profile_label(profile)
+  )
 }
 
 pub fn create_run<S: Read + Write>(conn: &mut Conn<S>, r: &StartRun) -> Result<RunnerSession, ConnError> {
-  let mut params = json!({
+  let params = json!({
     "task": {"workspace_id": r.workspace_id, "task_id": r.task_id},
     "profile": r.profile,
     "cols": 120,
     "rows": 32,
   });
-  if let Some(p) = r.persona_id {
-    params["persona_id"] = json!(p);
-  }
   let v = conn.call("runs.create", params)?;
   session_from_value(&v).ok_or_else(|| ConnError::Failed("unexpected reply from runner".to_owned()))
 }
@@ -210,8 +203,8 @@ mod tests {
 
   const SID: &str = "s_abcdefghij";
 
-  fn start(ws: i64, task: i64, profile: &str, persona: Option<i64>) -> StartRun {
-    StartRun { workspace_id: ws, task_id: task, profile: profile.into(), persona_id: persona }
+  fn start(ws: i64, task: i64, profile: &str) -> StartRun {
+    StartRun { workspace_id: ws, task_id: task, profile: profile.into() }
   }
 
   fn connected(mock: Mock) -> (Conn<UnixStream>, std::thread::JoinHandle<mock::Log>) {
@@ -223,15 +216,14 @@ mod tests {
 
   #[test]
   fn start_validation() {
-    assert!(validate_start(&start(-1, 5, "claude-code", None)).is_ok());
-    assert!(validate_start(&start(-3, 5, "codex", Some(2))).is_ok());
-    assert_eq!(validate_start(&start(12, 5, "codex", None)).unwrap_err(), "Agent runs are available only for local workspaces");
-    assert!(validate_start(&start(0, 5, "codex", None)).is_err());
-    assert!(validate_start(&start(-1, 0, "codex", None)).is_err());
-    assert!(validate_start(&start(-1, -4, "codex", None)).is_err());
-    assert!(validate_start(&start(-1, 5, "codex", Some(0))).is_err());
+    assert!(validate_start(&start(-1, 5, "claude-code")).is_ok());
+    assert!(validate_start(&start(-3, 5, "codex")).is_ok());
+    assert_eq!(validate_start(&start(12, 5, "codex")).unwrap_err(), "Agent runs are available only for local workspaces");
+    assert!(validate_start(&start(0, 5, "codex")).is_err());
+    assert!(validate_start(&start(-1, 0, "codex")).is_err());
+    assert!(validate_start(&start(-1, -4, "codex")).is_err());
     for bad in ["", "Codex", "-x", "a b", "a/b", "../x", "a;rm", "x".repeat(33).as_str(), "é"] {
-      assert!(validate_start(&start(-1, 5, bad, None)).is_err(), "{bad}");
+      assert!(validate_start(&start(-1, 5, bad)).is_err(), "{bad}");
     }
     assert!(valid_profile(&"a".repeat(32)));
     assert!(valid_profile("0day-x"));
@@ -302,7 +294,7 @@ mod tests {
     assert_eq!(list[0].id, SID);
     assert!(find_session(&mut conn, SID).unwrap().is_some());
     assert!(find_session(&mut conn, "s_zzzzzzzzzz").unwrap().is_none());
-    let created = create_run(&mut conn, &start(-2, 9, "codex", Some(3))).unwrap();
+    let created = create_run(&mut conn, &start(-2, 9, "codex")).unwrap();
     assert_eq!(created.task, Some(TaskRef { workspace_id: -2, task_id: 9 }));
     assert_eq!(created.profile.as_deref(), Some("codex"));
     kill_session(&mut conn, SID).unwrap();
@@ -311,7 +303,7 @@ mod tests {
     let create = log.requests.iter().find(|r| r["method"] == "runs.create").unwrap();
     assert_eq!(
       create["params"],
-      json!({"task": {"workspace_id": -2, "task_id": 9}, "profile": "codex", "persona_id": 3, "cols": 120, "rows": 32})
+      json!({"task": {"workspace_id": -2, "task_id": 9}, "profile": "codex", "cols": 120, "rows": 32})
     );
     let kill = log.requests.iter().find(|r| r["method"] == "sessions.kill").unwrap();
     assert_eq!(kill["params"], json!({"id": SID, "signal": "TERM"}));
@@ -319,11 +311,12 @@ mod tests {
 
   #[test]
   fn confirm_message_shows_what_will_run() {
-    let m = confirm_run_message(7, &format!("Fix\x1b[2J bug {}", "t".repeat(200)), "claude-code", Some("Reviewer"));
+    let m = confirm_run_message("Work\u{202e}space", 7, &format!("Fix\x1b[2J bug {}", "t".repeat(200)), "claude-code");
+    assert!(m.starts_with("Workspace: Workspace\n"));
+    assert!(m.contains("Task #7: Fix[2J bug"));
     assert!(m.contains("Agent: Claude Code"));
-    assert!(m.contains("Persona: Reviewer"));
     assert!(m.ends_with("Permission prompts: on"));
     assert!(!m.contains('\x1b'));
-    assert!(m.lines().next().unwrap().chars().count() < 160);
+    assert!(m.lines().nth(1).unwrap().chars().count() < 160);
   }
 }

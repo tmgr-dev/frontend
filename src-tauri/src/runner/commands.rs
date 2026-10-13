@@ -6,6 +6,7 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tauri_plugin_opener::OpenerExt;
 
 use super::api::{self, confirm_run_message, session_from_label, validate_start, RunnerSession, StartRun};
+use super::task_lookup::lookup_in;
 use super::pump::{TermFrame, WatchEvent};
 use super::{Runner, RunnerStatus, TermInfo};
 
@@ -76,24 +77,22 @@ pub async fn runner_sessions(runner: State<'_, Runner>) -> Result<Vec<RunnerSess
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn runner_start_run<R: Runtime>(
   app: AppHandle<R>,
   runner: State<'_, Runner>,
   workspace_id: i64,
   task_id: i64,
-  task_title: String,
   profile: String,
-  persona_id: Option<i64>,
-  persona_name: Option<String>,
 ) -> Result<RunnerSession, String> {
   let runner = runner.inner().clone();
   if !runner.enabled() {
     return Err("disabled".to_owned());
   }
-  let req = StartRun { workspace_id, task_id, profile, persona_id };
+  let req = StartRun { workspace_id, task_id, profile };
   validate_start(&req)?;
-  let message = confirm_run_message(task_id, &task_title, &req.profile, persona_name.as_deref());
+  let root = crate::local_workspaces::root(&app)?;
+  let info = blocking(move || lookup_in(&root, workspace_id, task_id)).await?;
+  let message = confirm_run_message(&info.workspace, task_id, &info.title, &req.profile);
   if !confirm(&app, "Run with agent", message, "Run").await {
     return Err("cancelled".to_owned());
   }

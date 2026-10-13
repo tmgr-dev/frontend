@@ -8,6 +8,7 @@ mod mock;
 mod pump;
 mod render;
 mod sanitize;
+mod task_lookup;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -367,7 +368,7 @@ mod tests {
     assert_eq!(r.status().state, "disabled");
     assert_eq!(r.profiles().unwrap_err(), "disabled");
     assert_eq!(r.sessions().unwrap_err(), "disabled");
-    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into(), persona_id: None };
+    let run = StartRun { workspace_id: -1, task_id: 1, profile: "codex".into() };
     assert_eq!(r.start_run(&run).unwrap_err(), "disabled");
     assert_eq!(r.kill(SID).unwrap_err(), "disabled");
     assert_eq!(r.session_exists(SID).unwrap_err(), "disabled");
