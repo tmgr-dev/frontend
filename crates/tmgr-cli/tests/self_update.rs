@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 
 fn tmgr(home: &std::path::Path) -> Command {
-    let mut c = Command::cargo_bin("tmgr").unwrap();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_tmgr"));
     c.env_clear()
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("xdg"))

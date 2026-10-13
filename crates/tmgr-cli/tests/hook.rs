@@ -38,8 +38,10 @@ fn run_hook(
 fn warm_up() {
     static ONCE: std::sync::Once = std::sync::Once::new();
     ONCE.call_once(|| {
-        let _ = std::process::Command::new(assert_cmd::cargo::cargo_bin("tmgr"))
+        let home = tempfile::tempdir().unwrap();
+        let _ = std::process::Command::new(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr")))
             .env_clear()
+            .env("HOME", home.path())
             .arg("version")
             .output();
     });

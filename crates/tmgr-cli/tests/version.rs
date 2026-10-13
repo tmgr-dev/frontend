@@ -1,7 +1,15 @@
 use assert_cmd::Command;
 
 fn tmgr() -> Command {
-    Command::cargo_bin("tmgr").unwrap()
+    static HOME: std::sync::OnceLock<tempfile::TempDir> = std::sync::OnceLock::new();
+    let home = HOME.get_or_init(|| tempfile::tempdir().unwrap()).path();
+    let mut c = Command::new(env!("CARGO_BIN_EXE_tmgr"));
+    c.env_clear()
+        .env("HOME", home)
+        .env("XDG_CONFIG_HOME", home.join("xdg"))
+        .env("XDG_STATE_HOME", home.join("state"))
+        .env("TMGR_CREDENTIAL_STORE", "file");
+    c
 }
 
 #[test]

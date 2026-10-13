@@ -39,7 +39,7 @@ impl Env {
     }
 
     pub fn cmd_for(&self, server: &str) -> Command {
-        let mut c = Command::cargo_bin("tmgr").unwrap();
+        let mut c = Command::new(env!("CARGO_BIN_EXE_tmgr"));
         c.env_clear()
             .env("HOME", self.tmp.path())
             .env("XDG_CONFIG_HOME", self.xdg())
@@ -50,7 +50,8 @@ impl Env {
     }
 
     pub fn std_cmd(&self) -> std::process::Command {
-        let mut c = std::process::Command::new(assert_cmd::cargo::cargo_bin("tmgr"));
+        let mut c =
+            std::process::Command::new(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr")));
         c.env_clear()
             .env("HOME", self.tmp.path())
             .env("XDG_CONFIG_HOME", self.xdg())

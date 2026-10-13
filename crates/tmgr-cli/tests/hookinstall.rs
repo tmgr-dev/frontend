@@ -20,7 +20,7 @@ fn commands(v: &Value, event: &str) -> Vec<String> {
 }
 
 fn exe() -> String {
-    std::fs::canonicalize(assert_cmd::cargo::cargo_bin("tmgr"))
+    std::fs::canonicalize(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr")))
         .unwrap()
         .display()
         .to_string()

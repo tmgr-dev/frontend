@@ -9,8 +9,12 @@ fn runner_commands_do_not_exist_without_the_feature() {
         ["agents", "--help"],
         ["attach", "--help"],
     ] {
-        let out = Command::cargo_bin("tmgr")
-            .unwrap()
+        let home = tempfile::tempdir().unwrap();
+        let out = Command::new(env!("CARGO_BIN_EXE_tmgr"))
+            .env_clear()
+            .env("HOME", home.path())
+            .env("XDG_CONFIG_HOME", home.path().join("xdg"))
+            .env("TMGR_CREDENTIAL_STORE", "file")
             .args(args)
             .output()
             .unwrap();

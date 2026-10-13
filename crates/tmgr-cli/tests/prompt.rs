@@ -169,7 +169,7 @@ async fn statusline_claude_reads_bounded_stdin_and_prints_the_timer_part() {
 async fn prompt_is_fast() {
     let env = Env::new().await;
     env.seed_active(active(Some(now_s()), "TM-512"));
-    let mut cmd = std::process::Command::new(assert_cmd::cargo::cargo_bin("tmgr"));
+    let mut cmd = std::process::Command::new(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr")));
     cmd.env_clear()
         .env("HOME", env.tmp.path())
         .env("XDG_CONFIG_HOME", env.xdg())

@@ -73,10 +73,12 @@ impl Fx {
     }
 
     fn tmgr(&self) -> Command {
-        let mut c = Command::cargo_bin("tmgr").unwrap();
+        let mut c = Command::new(env!("CARGO_BIN_EXE_tmgr"));
         c.env("HOME", &self.home)
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("XDG_STATE_HOME")
+            .env_remove("XDG_RUNTIME_DIR")
+            .env_remove("TMGR_RUNNER_DIR")
             .env_remove("TMGR_RUN_TOKEN")
             .env_remove("TMGR_RUN_ID")
             .env("TMGR_CREDENTIAL_STORE", "file")
@@ -85,11 +87,14 @@ impl Fx {
     }
 
     fn worker(&self, name: &str) -> std::process::Command {
-        let mut c = std::process::Command::new(assert_cmd::cargo::cargo_bin("tmgr"));
+        let mut c =
+            std::process::Command::new(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr")));
         c.args(["worker", "--link", name, "--enrollment", ENR])
             .env("HOME", &self.home)
             .env_remove("XDG_CONFIG_HOME")
             .env_remove("XDG_STATE_HOME")
+            .env_remove("XDG_RUNTIME_DIR")
+            .env_remove("TMGR_RUNNER_DIR")
             .env("SSH_CONNECTION", "192.0.2.5 5555 192.0.2.1 22");
         c
     }

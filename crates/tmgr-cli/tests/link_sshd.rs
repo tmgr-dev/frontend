@@ -55,7 +55,7 @@ fn leader_reaches_a_real_sshd_through_the_isolated_transport() {
     let id = leader::init(&leader_paths, &cred, false).unwrap();
     let key = grammar::parse_pubkey(&id.public).unwrap();
 
-    let bin = std::fs::canonicalize(assert_cmd::cargo::cargo_bin("tmgr")).unwrap();
+    let bin = std::fs::canonicalize(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr"))).unwrap();
     let line = authkeys::build_line(&bin, "laptop", ENR, &["127.0.0.1".to_string()], &key).unwrap();
     authkeys::upsert(&follower.authorized_keys(), "laptop", &line, &key).unwrap();
     Store::update(&follower, |s| {

@@ -322,7 +322,7 @@ async fn ctrl_c_during_the_device_flow_exits_130() {
         }})))
         .mount(&env.server)
         .await;
-    let mut child = Command::new(assert_cmd::cargo::cargo_bin("tmgr"))
+    let mut child = Command::new(std::path::PathBuf::from(env!("CARGO_BIN_EXE_tmgr")))
         .args(["login", "--no-browser"])
         .env_clear()
         .env("HOME", env.tmp.path())
