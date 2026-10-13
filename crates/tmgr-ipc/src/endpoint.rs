@@ -73,7 +73,7 @@ impl Endpoint {
     pub fn load_runner(dir: &Path) -> io::Result<Endpoint> {
         #[cfg(target_os = "linux")]
         {
-            secret::read(&dir.join("runner.addr")).map(Endpoint::Abstract)
+            secret::read_addr(&dir.join("runner.addr")).map(Endpoint::Abstract)
         }
         #[cfg(not(target_os = "linux"))]
         {
@@ -107,7 +107,7 @@ impl Endpoint {
         let sdir = dir.join("s");
         #[cfg(target_os = "linux")]
         {
-            secret::read(&sdir.join(format!("{id}.addr"))).map(Endpoint::Abstract)
+            secret::read_addr(&sdir.join(format!("{id}.addr"))).map(Endpoint::Abstract)
         }
         #[cfg(not(target_os = "linux"))]
         {

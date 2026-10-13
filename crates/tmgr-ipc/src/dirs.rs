@@ -140,6 +140,33 @@ fn check_ancestors(canon: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Stricter than `check_private_dir`: no symlink at all between `home` (or `/` when `dir` is not under it) and `dir`.
+pub fn check_no_symlink_ancestors(dir: &Path, home: Option<&Path>) -> io::Result<()> {
+    if !dir.is_absolute()
+        || dir
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+    {
+        return Err(denied(
+            "runner directory path must be absolute and normalized".into(),
+        ));
+    }
+    let (mut cur, rest) = match home.filter(|h| h.is_absolute() && dir.starts_with(h)) {
+        Some(h) => (h.to_path_buf(), dir.strip_prefix(h).unwrap_or(dir)),
+        None => (PathBuf::from("/"), dir.strip_prefix("/").unwrap_or(dir)),
+    };
+    for part in rest.components() {
+        cur.push(part);
+        if cur != dir && fs::symlink_metadata(&cur)?.file_type().is_symlink() {
+            return Err(denied(format!(
+                "a parent of the runner directory is a symlink: {}",
+                cur.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub fn ensure_private_leaf(path: &Path) -> io::Result<()> {
     create_private(path)?;
     check_leaf(path)
@@ -287,6 +314,31 @@ mod tests {
         let sticky = t.path().join("sticky");
         mkdir(&sticky, 0o1777);
         ensure_private_dir(&sticky.join("priv")).unwrap();
+    }
+
+    #[test]
+    fn no_symlink_ancestors_between_home_and_dir() {
+        let t = private_tmp();
+        let base = fs::canonicalize(t.path()).unwrap();
+        let real = base.join("real");
+        mkdir(&real, 0o700);
+        mkdir(&real.join("run"), 0o700);
+        let link = base.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let run = real.join("run");
+        assert!(check_no_symlink_ancestors(&run, Some(&base)).is_ok());
+        assert!(check_no_symlink_ancestors(&run, None).is_ok());
+        let via = link.join("run");
+        assert_eq!(
+            check_no_symlink_ancestors(&via, Some(&base))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::PermissionDenied
+        );
+        assert!(check_no_symlink_ancestors(&via, None).is_err());
+        assert!(check_no_symlink_ancestors(&via, Some(&link)).is_ok());
+        assert!(check_no_symlink_ancestors(&run.join("..").join("run"), None).is_err());
+        assert!(check_no_symlink_ancestors(Path::new("relative/run"), None).is_err());
     }
 
     #[test]
