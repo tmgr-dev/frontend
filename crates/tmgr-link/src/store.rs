@@ -87,6 +87,10 @@ pub struct Follower {
 pub struct Store {
     #[serde(default)]
     pub version: u64,
+    #[serde(default)]
+    pub generation_seq: u64,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub generations: BTreeMap<String, u64>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub leaders: BTreeMap<String, Leader>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -141,6 +145,17 @@ impl Store {
         let out = change(&mut store)?;
         store.save(paths)?;
         Ok(out)
+    }
+
+    pub(crate) fn bump_generation(&mut self, link: &str) -> u64 {
+        self.generation_seq += 1;
+        self.generations
+            .insert(link.to_string(), self.generation_seq);
+        self.generation_seq
+    }
+
+    pub fn generation(&self, link: &str) -> u64 {
+        self.generations.get(link).copied().unwrap_or(0)
     }
 
     pub(crate) fn save(&mut self, paths: &Paths) -> Result<()> {
@@ -220,6 +235,26 @@ mod tests {
         assert_eq!(file.permissions().mode() & 0o777, 0o600);
         let dir = std::fs::metadata(&paths.config).unwrap();
         assert_eq!(dir.permissions().mode() & 0o777, 0o700);
+    }
+
+    #[test]
+    fn the_runner_reads_these_keys() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        Store::update(&paths, |s| {
+            s.leaders.insert("laptop".into(), leader());
+            s.bump_generation("laptop");
+            Ok(())
+        })
+        .unwrap();
+        let v: toml::Value =
+            toml::from_str(&std::fs::read_to_string(paths.links_toml()).unwrap()).unwrap();
+        assert_eq!(v["generations"]["laptop"].as_integer(), Some(1));
+        let scope = &v["leaders"]["laptop"]["scope"];
+        assert_eq!(scope["repos"][0].as_str(), Some("/srv/a"));
+        assert_eq!(scope["agents"][0].as_str(), Some("codex"));
+        assert_eq!(scope["max"].as_integer(), Some(2));
+        assert!(scope["models"].as_array().unwrap().is_empty());
     }
 
     #[test]

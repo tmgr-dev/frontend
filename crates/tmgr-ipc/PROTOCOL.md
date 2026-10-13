@@ -98,6 +98,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `layout.v1` | `layout.get`, `layout.set` |
 | `run_bundle.v1` | `bundle`, `bundle_sha256` on `runs.create`; `bundle_sha256` on `SessionInfo` (section 5, "Run bundles") |
 | `cwd_pin.v1` | `cwd_pin` on `runs.create` (section 5, "Pinning the folder") |
+| `link_origin.v1` | `origin` on `runs.create`, `SessionInfo` and `Event`; `origin.revoke` (section 5, "Link-originated runs") |
 
 ## 5. Messages after the handshake
 
@@ -122,7 +123,8 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy` | any |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
+| `origin.revoke` | `{link, generation}` | `{killed}` | `forbidden` | `client: "cli"` only |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -135,7 +137,7 @@ missing params) and `internal`.
 argv has 1 to 64 entries, each at most 4096 bytes; argv[0] is an absolute path.
 `sessions.send` answers `busy` when the input queue is full or the shim dropped earlier input; retry later.
 
-`RunCreateReq`: `{profile, task?, cwd, name?, model?, cols=80, rows=24, bundle?, bundle_sha256?}`. The
+`RunCreateReq`: `{profile, task?, cwd, name?, model?, cols=80, rows=24, bundle?, bundle_sha256?, cwd_pin?, origin?}`. The
 runner loads the agent profile (built-in or the user's `agents` directory),
 builds argv, resolves argv[0] through its own `PATH` and then follows the exact
 same validation, sandbox and creation path as `sessions.create`. A missing
@@ -146,7 +148,7 @@ protected path); `name` is 1 to 64 printable characters; `cols`/`rows` are
 clamped to 1..500 and 1..200.
 
 `SessionInfo`: `{id, name, argv, cwd, profile: str|null, state, created_ms,
-cols, rows, shim_pid, child_pid, task?, bundle_sha256?}`. `task` and `bundle_sha256` are absent when not set.
+cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?}`. `task`, `bundle_sha256` and `origin` are absent when not set.
 
 `TaskRef`: `{workspace_id: i64, task_id: i64}`. Local workspaces have negative
 ids. The runner treats it as opaque, stores it in the session's `meta.json` (it
@@ -173,6 +175,48 @@ differ. It checks the same identity again right before it starts the agent
 the identity is still fixed at the first open and re-checked before the start,
 so the folder cannot be swapped between those two steps. A pin works with and
 without a bundle.
+
+### Link-originated runs
+
+A run that comes over a leader to follower link names its origin (cap
+`link_origin.v1`): `"origin":{"link":"laptop","generation":7}` on `runs.create`.
+The runner records it in the session's `meta.json` (it survives restarts) and
+echoes it as an optional `origin` in `SessionInfo` and `Event`; local runs have none.
+
+Who may send it: only a connection whose hello `client` is `"worker"` may send
+`origin`, and a `worker` must send it on every `runs.create`; any other
+combination is `forbidden`. `sessions.create` stays `cli` only. The client kind
+is self-declared by whoever holds `client.secret` (the same user), so this is a
+guardrail against mistakes, not a boundary. The authority for a link's scope is
+the follower's own trust store (`links.toml` in the config directory, which must
+be a private regular file), which the runner reads itself on every request; the
+worker is not trusted to have checked it, and there is no bypass field.
+
+Checks, all under the runner's create lock before anything is written. Each
+failure is `forbidden` unless noted:
+
+- the link exists in the trust store (a revoked or removed link does not) and
+  `generation` equals the link's current generation, else "link changed;
+  re-request". The generation is bumped on every trust or scope change;
+- `generation` is above the highest generation passed to `origin.revoke` for the link;
+- `profile` is in the scope's agent profiles and, when the scope lists models,
+  `model` is one of them;
+- `cwd` is opened once (`O_DIRECTORY | O_NOFOLLOW` after canonicalisation) and
+  its directory identity walked upwards with `..` (bounded depth) until it
+  equals one of the scope's repository roots, each opened as a descriptor. No
+  string prefix is compared, so symlinks and `..` cannot leave a root. The same
+  descriptor is re-checked right before the agent starts, as for `cwd_pin`;
+- fewer than the scope's `max` sessions that are not exited carry the same
+  `origin.link`, else `limit`.
+
+`origin.revoke` `{link, generation}` (caller `client: "cli"` only; the follower's
+owner calls it from `tmgr link revoke`). Under the create lock it records
+`link -> generation` in `revoked.json` (mode 0600, in the runner directory, so it
+survives restarts), then sends SIGKILL to the process group of every session
+that is not exited and whose origin is that link with a generation up to the
+given one. The result is `{"killed":n}`. It is idempotent; a later call keeps the
+highest generation. After it, `runs.create` for that link and a generation up to
+the recorded one is `forbidden`; a newly trusted link has a higher generation.
 
 ### Run bundles
 
@@ -285,9 +329,10 @@ the bundle and sends it only after the human confirms.
 
 ## 6. Who may call what
 
-`hello.client` is declared by the client. The runner uses it for one rule:
-`sessions.create` (raw argv) is accepted only from `cli`; other clients get
-`forbidden`. This is a guardrail so well-behaved clients cannot start arbitrary
+`hello.client` is declared by the client. The runner uses it for these rules:
+`sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
+`origin` on `runs.create` is accepted only from, and required of, `worker`
+(section 5, "Link-originated runs"); other clients get `forbidden`. This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user
 can claim to be `cli`. The real boundary is that agents run in a sandbox that

@@ -235,6 +235,7 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
         }),
     )?;
     let edit = authkeys::upsert(&plan.target, &plan.name, &plan.line, &plan.key)?;
+    store.bump_generation(&plan.name);
     store.leaders.insert(
         plan.name.clone(),
         Leader {
@@ -346,6 +347,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Err(Error::not_found(format!("no leader named {}", plan.name)));
     };
     leader.scope = plan.new.clone();
+    store.bump_generation(&plan.name);
     if let Err(e) = store.save(paths) {
         let rolled = rollback(paths, &plan.name, edit.as_ref(), true);
         return Err(rolled.err().unwrap_or(e));
@@ -356,6 +358,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
             if let Some(l) = store.leaders.get_mut(&plan.name) {
                 l.scope = plan.old.clone();
             }
+            store.bump_generation(&plan.name);
             let saved = store.save(paths);
             let rolled = rollback(paths, &plan.name, edit.as_ref(), saved.is_ok());
             return Err(rolled.err().unwrap_or(e));
@@ -375,6 +378,7 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     let _lock = crate::store::lock_links(paths)?;
     let mut store = Store::load(paths)?;
     let pending = is_pending(paths, name);
+    store.generations.remove(name);
     let leader = match store.leaders.remove(name) {
         Some(l) => Some(l),
         None if pending => None,
@@ -479,6 +483,33 @@ mod tests {
         let key = plan.key.clone();
         apply_trust(&f.paths, &plan).unwrap();
         (plan, key)
+    }
+
+    #[test]
+    fn generations_change_on_trust_and_scope_changes_and_are_never_reused() {
+        let f = fx();
+        trust(&f, "laptop");
+        trust(&f, "second");
+        let gen = |n: &str| Store::load(&f.paths).unwrap().generation(n);
+        let (g1, g2) = (gen("laptop"), gen("second"));
+        assert!(g1 > 0 && g2 > g1);
+        let narrow = plan_scope(
+            &f.paths,
+            "laptop",
+            &ScopeInput {
+                max: Some(1),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        apply_scope(&f.paths, &narrow, &f.bin).unwrap();
+        assert!(gen("laptop") > g2);
+        assert_eq!(gen("second"), g2);
+        let before = gen("laptop");
+        revoke(&f.paths, "laptop").unwrap();
+        assert_eq!(gen("laptop"), 0);
+        trust(&f, "laptop");
+        assert!(gen("laptop") > before);
     }
 
     #[test]

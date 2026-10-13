@@ -6,13 +6,14 @@ use crate::profile::{self, Matcher, ProfileSet};
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
 use crate::t0::{self, Detector};
+use crate::trust;
 use crate::wire::{
     clamp_size, now_ms, screen_pushes, write_atomic, LaunchFile, Slot, MAX_INPUT, SCROLLBACK,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom};
 use std::os::fd::{AsRawFd, RawFd};
@@ -27,8 +28,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    method, CreateReq, ErrorCode, EventMsg, RunCreateReq, SessionInfo, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, CLIENT_CLI,
+    method, CreateReq, ErrorCode, EventMsg, Origin, OriginRevokeParams, OriginRevoked,
+    RunCreateReq, SessionInfo, Snapshot, State, StateKind, StatusInfo, TaskRef, CLIENT_CLI,
+    CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -172,6 +174,8 @@ fn write_timeout() -> Duration {
         .map_or(Duration::from_secs(10), Duration::from_millis)
 }
 
+type OriginArg<'a> = (&'a Origin, Option<&'a str>);
+
 #[derive(Serialize, Deserialize, Clone)]
 struct Meta {
     id: String,
@@ -190,6 +194,8 @@ struct Meta {
     task: Option<TaskRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     bundle_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    origin: Option<Origin>,
 }
 
 struct Inner {
@@ -296,6 +302,7 @@ impl Session {
             child_pid: m.child_pid,
             task: m.task,
             bundle_sha256: m.bundle_sha256.clone(),
+            origin: m.origin.clone(),
         }
     }
 
@@ -313,10 +320,10 @@ impl Session {
         let Some(last) = states.last().cloned() else {
             return;
         };
-        let task = {
+        let (task, origin) = {
             let mut i = lock(&self.inner);
             i.meta.last_state = Some(last);
-            i.meta.task
+            (i.meta.task, i.meta.origin.clone())
         };
         self.persist();
         for state in states {
@@ -324,6 +331,7 @@ impl Session {
                 session: self.id.clone(),
                 state,
                 task,
+                origin: origin.clone(),
             }));
         }
     }
@@ -759,7 +767,25 @@ impl Runner {
                 }
                 self.create(params(p)?).map(|i| to_json(&i))
             }
-            method::RUNS_CREATE => self.create_run(params(p)?).map(|i| to_json(&i)),
+            method::RUNS_CREATE => {
+                let req: RunCreateReq = params(p)?;
+                if req.origin.is_some() != (conn.client == CLIENT_WORKER) {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "runs for a link come only from the worker and must name their origin",
+                    ));
+                }
+                self.create_run(req).map(|i| to_json(&i))
+            }
+            method::ORIGIN_REVOKE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "origin.revoke is accepted only from the tmgr CLI",
+                    ));
+                }
+                self.origin_revoke(params(p)?).map(|r| to_json(&r))
+            }
             method::SESSIONS_KILL => {
                 let s = self.live(&session_id_param(p)?)?;
                 let name = p.get("signal").and_then(Value::as_str).unwrap_or("");
@@ -891,11 +917,94 @@ impl Runner {
                 .any(|p| cwd.starts_with(p) || p.starts_with(cwd))
     }
 
+    fn revoked_path(&self) -> PathBuf {
+        self.cfg.dir.join("revoked.json")
+    }
+
+    fn revoked(&self) -> Result<BTreeMap<String, u64>, ApiErr> {
+        match fs::read(self.revoked_path()) {
+            Ok(b) => serde_json::from_slice(&b)
+                .map_err(|_| api(ErrorCode::Internal, "revoked.json is damaged")),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(e) => Err(api(ErrorCode::Internal, e.to_string())),
+        }
+    }
+
+    fn check_origin(
+        &self,
+        origin: &Origin,
+        model: Option<&str>,
+        req: &CreateReq,
+        dir: Option<&bundle::Dir>,
+    ) -> Result<(), ApiErr> {
+        let denied = |m: &str| api(ErrorCode::Forbidden, m);
+        if self
+            .revoked()?
+            .get(&origin.link)
+            .is_some_and(|g| origin.generation <= *g)
+        {
+            return Err(denied("link revoked"));
+        }
+        let trust = trust::read(&origin.link)
+            .map_err(|e| denied(&e))?
+            .ok_or_else(|| denied("unknown or revoked link"))?;
+        if trust.generation != origin.generation {
+            return Err(denied("link changed; re-request"));
+        }
+        let scope = &trust.scope;
+        let profile = req.profile.as_deref().unwrap_or("");
+        if !scope.agents.iter().any(|a| a == profile) {
+            return Err(denied("agent profile is outside the link's scope"));
+        }
+        if !scope.models.is_empty() && !model.is_some_and(|m| scope.models.iter().any(|a| a == m)) {
+            return Err(denied("model is outside the link's scope"));
+        }
+        let dir = dir.ok_or_else(|| api(ErrorCode::Internal, "cwd was not opened"))?;
+        if !dir.is_beneath_any(&scope.repos) {
+            return Err(denied("folder is outside the link's repositories"));
+        }
+        let live = lock(&self.sessions)
+            .values()
+            .filter(|s| !s.is_exited() && s.info().origin.is_some_and(|o| o.link == origin.link))
+            .count();
+        if live >= scope.max as usize {
+            return Err(api(
+                ErrorCode::Limit,
+                "the link's concurrent run limit is reached",
+            ));
+        }
+        Ok(())
+    }
+
+    fn origin_revoke(&self, p: OriginRevokeParams) -> Result<OriginRevoked, ApiErr> {
+        let _g = lock(&self.create_lock);
+        let mut revoked = self.revoked()?;
+        let at = revoked.entry(p.link.clone()).or_insert(0);
+        *at = (*at).max(p.generation);
+        let bytes =
+            serde_json::to_vec(&revoked).map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
+        write_atomic(&self.revoked_path(), &bytes)
+            .map_err(|e| api(ErrorCode::Internal, e.to_string()))?;
+        let mut killed = 0;
+        for s in self.all() {
+            let i = s.info();
+            let Some(o) = i.origin else { continue };
+            if o.link == p.link && o.generation <= p.generation && !s.is_exited() && i.child_pid > 1
+            {
+                unsafe { libc::killpg(i.child_pid as i32, libc::SIGKILL) };
+                killed += 1;
+            }
+        }
+        Ok(OriginRevoked { killed })
+    }
+
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
-        let pinned = match (&checked, req.cwd_pin) {
-            (None, Some(_)) => Some(bundle::open_dir(&req).map_err(|(code, m)| api(code, m))?),
+        let pinned = match (&checked, req.cwd_pin, &req.origin) {
+            (None, Some(_), _) | (None, _, Some(_)) => {
+                Some(bundle::open_dir(&req).map_err(|(code, m)| api(code, m))?)
+            }
             _ => None,
         };
         let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
@@ -935,18 +1044,26 @@ impl Runner {
                 env_pass: Vec::new(),
                 task: req.task,
             },
-            (checked.as_ref(), dir),
+            (
+                checked.as_ref(),
+                dir,
+                req.origin.as_ref().map(|o| (o, req.model.as_deref())),
+            ),
         )
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_with(req, (None, None))
+        self.create_with(req, (None, None, None))
     }
 
     fn create_with(
         self: &Arc<Self>,
         req: CreateReq,
-        (bundle, dir): (Option<&bundle::Checked>, Option<&bundle::Dir>),
+        (bundle, dir, origin): (
+            Option<&bundle::Checked>,
+            Option<&bundle::Dir>,
+            Option<OriginArg<'_>>,
+        ),
     ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
         sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
@@ -967,6 +1084,9 @@ impl Runner {
             ));
         }
         let _g = lock(&self.create_lock);
+        if let Some((o, model)) = origin {
+            self.check_origin(o, model, &req, dir)?;
+        }
         {
             let sessions = lock(&self.sessions);
             if sessions.len() >= self.cfg.max_sessions {
@@ -987,7 +1107,14 @@ impl Runner {
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
-        let result = self.spawn_session(&req, &cwd, matcher, &id, (&sdir, &home), (bundle, dir));
+        let result = self.spawn_session(
+            &req,
+            &cwd,
+            matcher,
+            &id,
+            (&sdir, &home),
+            (bundle, dir, origin.map(|(o, _)| o)),
+        );
         if result.is_err() {
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
@@ -1002,7 +1129,11 @@ impl Runner {
         matcher: Option<Matcher>,
         id: &str,
         (sdir, home): (&Path, &Path),
-        (bundle, dir): (Option<&bundle::Checked>, Option<&bundle::Dir>),
+        (bundle, dir, origin): (
+            Option<&bundle::Checked>,
+            Option<&bundle::Dir>,
+            Option<&Origin>,
+        ),
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
@@ -1124,6 +1255,7 @@ impl Runner {
             last_state: None,
             task: req.task,
             bundle_sha256: bundle.map(|b| b.sha256.clone()),
+            origin: origin.cloned(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -1332,10 +1464,16 @@ impl Runner {
                         continue;
                     }
                 } else {
+                    let state = s.state();
+                    let (task, origin) = {
+                        let i = lock(&s.inner);
+                        (i.meta.task, i.meta.origin.clone())
+                    };
                     let ev = EventMsg {
                         session: id.clone(),
-                        state: s.state(),
-                        task: lock(&s.inner).meta.task,
+                        state,
+                        task,
+                        origin,
                     };
                     if conn.write(&ServerMsg::Event(to_json(&ev))).is_err() {
                         return fail(conn);

@@ -76,6 +76,28 @@ pub struct RunCreateReq {
     pub bundle_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cwd_pin: Option<CwdPin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
+}
+
+/// The leader to follower link a run was started for, and the link's generation at that time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Origin {
+    pub link: String,
+    pub generation: u64,
+}
+
+/// Params of `origin.revoke`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OriginRevokeParams {
+    pub link: String,
+    pub generation: u64,
+}
+
+/// Result of `origin.revoke`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OriginRevoked {
+    pub killed: u32,
 }
 
 /// Identity (`stat` device and inode) of the folder a human approved.
@@ -102,6 +124,8 @@ pub struct SessionInfo {
     pub task: Option<TaskRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -120,6 +144,8 @@ pub struct EventMsg {
     pub state: State,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<TaskRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<Origin>,
 }
 
 /// Payload of a `Screen` push; `full` carries `snapshot`, otherwise `lines` are changed rows.

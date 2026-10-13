@@ -29,8 +29,9 @@ pub mod caps {
     pub const LAYOUT_V1: &str = "layout.v1";
     pub const RUN_BUNDLE_V1: &str = "run_bundle.v1";
     pub const CWD_PIN_V1: &str = "cwd_pin.v1";
+    pub const LINK_ORIGIN_V1: &str = "link_origin.v1";
 
-    pub const ALL: [&str; 7] = [
+    pub const ALL: [&str; 8] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -38,6 +39,7 @@ pub mod caps {
         LAYOUT_V1,
         RUN_BUNDLE_V1,
         CWD_PIN_V1,
+        LINK_ORIGIN_V1,
     ];
 }
 
@@ -54,6 +56,7 @@ pub mod method {
     pub const LAYOUT_SET: &str = "layout.set";
     pub const ATTACH_OPEN: &str = "attach.open";
     pub const ATTACH_SET: &str = "attach.set";
+    pub const ORIGIN_REVOKE: &str = "origin.revoke";
 }
 
 pub mod limits {
@@ -66,3 +69,6 @@ pub mod limits {
 
 /// The only `Hello.client` value allowed to call `sessions.create`.
 pub const CLIENT_CLI: &str = "cli";
+
+/// The only `Hello.client` value allowed to call `runs.create` for a link (and it must).
+pub const CLIENT_WORKER: &str = "worker";

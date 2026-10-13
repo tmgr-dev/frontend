@@ -9,8 +9,9 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    caps, AuthorKind, BundleAuthor, BundleComment, BundleLaunch, BundlePage, BundlePersona,
-    CreateReq, CwdPin, RunBundle, RunCreateReq, SessionInfo, State, StateKind, TaskRef,
+    caps, method, AuthorKind, BundleAuthor, BundleComment, BundleLaunch, BundlePage, BundlePersona,
+    CreateReq, CwdPin, Origin, OriginRevokeParams, OriginRevoked, RunBundle, RunCreateReq,
+    SessionInfo, State, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
@@ -18,12 +19,49 @@ use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 const PY: &str = "/usr/bin/python3";
 
+fn kill_tree(run: &Path) {
+    let kill = |pid: i64| {
+        if pid > 1 {
+            unsafe {
+                libc::kill(-(pid as i32), libc::SIGKILL);
+                libc::kill(pid as i32, libc::SIGKILL);
+            }
+        }
+    };
+    let pid_file = |p: PathBuf| {
+        fs::read_to_string(p)
+            .ok()
+            .and_then(|s| s.trim().parse::<i64>().ok())
+    };
+    if let Some(pid) = pid_file(run.join("runner.pid")) {
+        kill(pid);
+    }
+    let Ok(rd) = fs::read_dir(run.join("sessions")) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let meta: serde_json::Value = fs::read(e.path().join("meta.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        for k in ["child_pid", "shim_pid"] {
+            if let Some(p) = meta[k].as_i64() {
+                kill(p);
+            }
+        }
+        if let Some(p) = pid_file(e.path().join("shim.pid")) {
+            kill(p);
+        }
+    }
+}
+
 struct Harness {
     tmp: tempfile::TempDir,
     run: PathBuf,
     homes: tempfile::TempDir,
     work: PathBuf,
     agents: PathBuf,
+    cfg: PathBuf,
     real_home: Option<PathBuf>,
     runner: Option<Child>,
 }
@@ -46,6 +84,8 @@ impl Harness {
         fs::create_dir(&work).unwrap();
         let agents = tmp.path().join("a");
         fs::create_dir(&agents).unwrap();
+        let cfg = tmp.path().join("c");
+        fs::create_dir(&cfg).unwrap();
         let homes = tempfile::Builder::new()
             .prefix("th")
             .tempdir_in("/tmp")
@@ -62,6 +102,7 @@ impl Harness {
             homes,
             work,
             agents,
+            cfg,
             real_home: None,
             runner: None,
         }
@@ -78,6 +119,7 @@ impl Harness {
             .env("TMGR_RUNNER_DIR", &self.run)
             .env("TMGR_RUNNER_HOMES", self.homes.path())
             .env("TMGR_AGENTS_DIR", &self.agents)
+            .env("XDG_CONFIG_HOME", &self.cfg)
             .env("TMGR_T0_QUIET_MS", quiet_ms.to_string())
             .env("TMGR_RUNNER_WRITE_TIMEOUT_MS", "1500")
             .stdin(Stdio::null())
@@ -98,13 +140,15 @@ impl Harness {
     }
 
     fn client(&self) -> Client {
-        Client::connect(&self.run).unwrap()
+        let c = Client::connect(&self.run).unwrap();
+        c.set_timeouts(Duration::from_secs(60)).unwrap();
+        c
     }
 
     fn kill_runner(&mut self) {
         if let Some(mut r) = self.runner.take() {
-            r.kill().unwrap();
-            r.wait().unwrap();
+            let _ = r.kill();
+            let _ = r.wait();
         }
     }
 
@@ -136,6 +180,14 @@ impl Harness {
         fs::write(self.agents.join(format!("{id}.toml")), text).unwrap();
     }
 
+    fn trust(&self, text: &str) {
+        let dir = self.cfg.join("tmgr");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("links.toml");
+        fs::write(&path, text).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
             profile: profile.into(),
@@ -148,6 +200,7 @@ impl Harness {
             bundle: None,
             bundle_sha256: None,
             cwd_pin: None,
+            origin: None,
         }
     }
 
@@ -155,36 +208,12 @@ impl Harness {
         let path = self.script("agent.sh", body);
         self.req(&["/bin/sh", &path])
     }
-
-    fn pids(&self) -> Vec<i32> {
-        let mut pids = Vec::new();
-        let Ok(rd) = fs::read_dir(self.run.join("sessions")) else {
-            return pids;
-        };
-        for e in rd.flatten() {
-            let Ok(bytes) = fs::read(e.path().join("meta.json")) else {
-                continue;
-            };
-            let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
-            for k in ["child_pid", "shim_pid"] {
-                if let Some(p) = v[k].as_i64().filter(|p| *p > 1) {
-                    pids.push(p as i32);
-                }
-            }
-        }
-        pids
-    }
 }
 
 impl Drop for Harness {
     fn drop(&mut self) {
-        for p in self.pids() {
-            unsafe {
-                libc::kill(-p, libc::SIGKILL);
-                libc::kill(p, libc::SIGKILL);
-            }
-        }
         self.kill_runner();
+        kill_tree(&self.run);
     }
 }
 
@@ -1554,4 +1583,306 @@ fn a_secrets_file_directory_inside_the_session_cwd_refuses_the_session() {
     r.cwd = project.display().to_string();
     let e = err_text(h.client().create(r));
     assert!(e.contains("invalid_params") && e.contains("secrets"), "{e}");
+}
+
+struct LinkFx {
+    h: Harness,
+    root: PathBuf,
+}
+
+fn link_entry(
+    name: &str,
+    generation: u64,
+    repos: &[&Path],
+    agents: &[&str],
+    models: &[&str],
+    max: u32,
+) -> (String, String) {
+    let list = |v: Vec<String>| {
+        format!(
+            "[{}]",
+            v.iter()
+                .map(|x| format!("{x:?}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    };
+    let repos = list(repos.iter().map(|p| p.display().to_string()).collect());
+    let agents = list(agents.iter().map(|a| a.to_string()).collect());
+    let models = list(models.iter().map(|a| a.to_string()).collect());
+    (
+        format!("{name} = {generation}\n"),
+        format!(
+            "[leaders.{name}]\nkey = \"AAAA\"\nfingerprint = \"SHA256:x\"\nadded = \"2026-10-13T00:00:00Z\"\nenrollment = \"ab\"\n\n[leaders.{name}.scope]\nrepos = {repos}\nagents = {agents}\nmodels = {models}\nmax = {max}\n\n"
+        ),
+    )
+}
+
+fn store_text(entries: &[(String, String)]) -> String {
+    let gens: String = entries.iter().map(|e| e.0.clone()).collect();
+    let leaders: String = entries.iter().map(|e| e.1.clone()).collect();
+    format!("generation_seq = 9\n\n[generations]\n{gens}\n{leaders}")
+}
+
+fn link_fx() -> LinkFx {
+    let h = Harness::new();
+    let script = h.script("agent.sh", "while true; do sleep 0.2; done\n");
+    let toml = format!(
+        "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", {script:?}]\nmodel_arg = [\"-m\", \"{{model}}\"]\n"
+    );
+    fs::write(h.agents.join("fake.toml"), toml).unwrap();
+    let root = fs::canonicalize(&h.work).unwrap();
+    LinkFx { h, root }
+}
+
+impl LinkFx {
+    fn trust_one(&self, generation: u64, agents: &[&str], models: &[&str], max: u32) {
+        let e = link_entry("laptop", generation, &[&self.root], agents, models, max);
+        self.h.trust(&store_text(&[e]));
+    }
+
+    fn worker(&self) -> Client {
+        Client::connect_as(&self.h.run, "worker").unwrap()
+    }
+
+    fn req(&self, link: &str, generation: u64) -> RunCreateReq {
+        RunCreateReq {
+            origin: Some(Origin {
+                link: link.into(),
+                generation,
+            }),
+            ..self.h.run_req("fake")
+        }
+    }
+}
+
+#[test]
+fn link_runs_are_attributed_and_the_origin_survives_a_runner_restart() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    fx.h.start(5000);
+    let info = fx.worker().create_run(fx.req("laptop", 3)).unwrap();
+    let want = Some(Origin {
+        link: "laptop".into(),
+        generation: 3,
+    });
+    assert_eq!(info.origin, want);
+    let mut cli = fx.h.client();
+    assert_eq!(cli.list().unwrap()[0].origin, want);
+    let meta: serde_json::Value = serde_json::from_slice(
+        &fs::read(fx.h.run.join("sessions").join(&info.id).join("meta.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(meta["origin"], json!({"link": "laptop", "generation": 3}));
+    fx.h.kill_runner();
+    fx.h.start(5000);
+    let list = fx.h.client().list().unwrap();
+    assert_eq!(list[0].origin, want);
+    let mut local = fx.h.client().create_run(fx.h.run_req("fake"));
+    assert!(local.is_ok());
+    assert_eq!(local.as_mut().unwrap().origin, None);
+}
+
+#[test]
+fn only_the_worker_may_name_an_origin_and_the_worker_must() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    fx.h.start(5000);
+    for client in ["cli", "desktop"] {
+        let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+        let e = err_text(c.create_run(fx.req("laptop", 3)));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    let e = err_text(fx.worker().create_run(fx.h.run_req("fake")));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    let e = err_text(fx.worker().create(fx.h.req(&["/bin/true"])));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn stale_generation_unknown_link_and_a_dropped_link_are_forbidden() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.trust_one(3, &["fake"], &[], 2);
+    fx.h.start(5000);
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 2)));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("link changed"),
+        "{e}"
+    );
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 4)));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("link changed"),
+        "{e}"
+    );
+    let e = err_text(fx.worker().create_run(fx.req("other", 3)));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    fx.h.trust("");
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 3)));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    fx.trust_one(3, &["fake"], &[], 2);
+    assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
+    fs::set_permissions(
+        fx.h.cfg.join("tmgr/links.toml"),
+        fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 3)));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert_eq!(fx.h.client().list().unwrap().len(), 1);
+}
+
+#[test]
+fn the_profile_and_model_must_be_in_the_links_scope() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    fx.h.start(5000);
+    fx.trust_one(3, &["other"], &[], 2);
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 3)));
+    assert!(
+        e.starts_with("forbidden: ") && e.contains("agent profile"),
+        "{e}"
+    );
+    fx.trust_one(3, &["fake"], &["m1"], 2);
+    let mut r = fx.req("laptop", 3);
+    r.model = Some("m2".into());
+    let e = err_text(fx.worker().create_run(r));
+    assert!(e.starts_with("forbidden: ") && e.contains("model"), "{e}");
+    let e = err_text(fx.worker().create_run(fx.req("laptop", 3)));
+    assert!(e.starts_with("forbidden: ") && e.contains("model"), "{e}");
+    let mut r = fx.req("laptop", 3);
+    r.model = Some("m1".into());
+    assert!(fx.worker().create_run(r).is_ok());
+}
+
+#[test]
+fn the_folder_must_lie_beneath_a_root_even_through_symlinks_and_dotdot() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    let allowed = fx.root.join("allowed");
+    let inner = allowed.join("inner");
+    let outside = fx.root.join("outside");
+    fs::create_dir_all(&inner).unwrap();
+    fs::create_dir_all(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, allowed.join("escape")).unwrap();
+    let e = link_entry("laptop", 3, &[&allowed], &["fake"], &[], 5);
+    fx.h.trust(&store_text(&[e]));
+    fx.h.start(5000);
+    let cwd = |p: &Path| RunCreateReq {
+        cwd: p.display().to_string(),
+        ..fx.req("laptop", 3)
+    };
+    for bad in [
+        fx.root.clone(),
+        outside.clone(),
+        allowed.join("escape"),
+        allowed.join("../outside"),
+        allowed.join("inner/../../outside"),
+    ] {
+        let e = err_text(fx.worker().create_run(cwd(&bad)));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("outside"),
+            "{}: {e}",
+            bad.display()
+        );
+    }
+    assert!(fx.worker().create_run(cwd(&allowed)).is_ok());
+    assert!(fx.worker().create_run(cwd(&inner)).is_ok());
+}
+
+#[test]
+fn concurrent_runs_per_link_are_capped_and_exited_ones_do_not_count() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 1);
+    let b = link_entry("b", 2, &[&fx.root], &["fake"], &[], 1);
+    fx.h.trust(&store_text(&[a, b]));
+    fx.h.start(5000);
+    let first = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let e = err_text(fx.worker().create_run(fx.req("a", 1)));
+    assert!(e.starts_with("limit: "), "{e}");
+    assert!(fx.worker().create_run(fx.req("b", 2)).is_ok());
+    let mut cli = fx.h.client();
+    cli.kill(&first.id, "kill").unwrap();
+    wait_state(&mut cli, &first.id, 10, |s| s.kind == StateKind::Exited);
+    assert!(fx.worker().create_run(fx.req("a", 1)).is_ok());
+}
+
+#[test]
+fn origin_revoke_kills_that_links_runs_only_and_blocks_new_ones_across_restarts() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 3);
+    let b = link_entry("b", 2, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a, b]));
+    fx.h.start(5000);
+    let a1 = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let a2 = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let b1 = fx.worker().create_run(fx.req("b", 2)).unwrap();
+    let local = fx.h.client().create_run(fx.h.run_req("fake")).unwrap();
+    let revoke = |c: &mut Client, link: &str, generation: u64| {
+        c.call(
+            method::ORIGIN_REVOKE,
+            serde_json::to_value(OriginRevokeParams {
+                link: link.into(),
+                generation,
+            })
+            .unwrap(),
+        )
+    };
+    for client in ["worker", "desktop"] {
+        let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+        let e = err_text(revoke(&mut c, "a", 1));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    let mut cli = fx.h.client();
+    let done: OriginRevoked = serde_json::from_value(revoke(&mut cli, "a", 1).unwrap()).unwrap();
+    assert_eq!(done.killed, 2);
+    for id in [&a1.id, &a2.id] {
+        let s = wait_state(&mut cli, id, 10, |s| s.kind == StateKind::Exited);
+        assert_eq!(s.state.kind, StateKind::Exited, "{id}");
+    }
+    for id in [&b1.id, &local.id] {
+        let s = cli
+            .list()
+            .unwrap()
+            .into_iter()
+            .find(|s| &s.id == id)
+            .unwrap();
+        assert_ne!(s.state.kind, StateKind::Exited, "{id}");
+    }
+    let again: OriginRevoked = serde_json::from_value(revoke(&mut cli, "a", 1).unwrap()).unwrap();
+    assert_eq!(again.killed, 0);
+    let e = err_text(fx.worker().create_run(fx.req("a", 1)));
+    assert!(e.starts_with("forbidden: ") && e.contains("revoked"), "{e}");
+    assert!(fx.worker().create_run(fx.req("b", 2)).is_ok());
+    let mode = fs::metadata(fx.h.run.join("revoked.json"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+    fx.h.kill_runner();
+    fx.h.start(5000);
+    let e = err_text(fx.worker().create_run(fx.req("a", 1)));
+    assert!(e.starts_with("forbidden: ") && e.contains("revoked"), "{e}");
+    let a = link_entry("a", 5, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a]));
+    assert!(fx.worker().create_run(fx.req("a", 5)).is_ok());
 }

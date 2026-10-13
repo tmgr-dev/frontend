@@ -121,6 +121,13 @@ fn bundle() -> RunBundle {
 
 const BUNDLE_SHA256: &str = "e60cccd72a81bef205b9173f8fcbc6a8a7ef1608122a3662495f4b775c1bbf76";
 
+fn origin() -> Origin {
+    Origin {
+        link: "laptop".into(),
+        generation: 7,
+    }
+}
+
 fn session_info() -> SessionInfo {
     SessionInfo {
         id: SID.into(),
@@ -140,6 +147,7 @@ fn session_info() -> SessionInfo {
         child_pid: 502,
         task: Some(TASK),
         bundle_sha256: None,
+        origin: None,
     }
 }
 
@@ -198,6 +206,7 @@ fn requests_and_responses() {
         bundle: None,
         bundle_sha256: None,
         cwd_pin: None,
+        origin: None,
     };
     golden("run_create_req", &run);
     golden(
@@ -215,6 +224,13 @@ fn requests_and_responses() {
                 dev: 16777234,
                 ino: 8812345,
             }),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_origin",
+        &RunCreateReq {
+            origin: Some(origin()),
             ..run.clone()
         },
     );
@@ -281,6 +297,21 @@ fn method_params_and_results() {
             ..session_info()
         },
     );
+    golden(
+        "session_info_origin",
+        &SessionInfo {
+            origin: Some(origin()),
+            ..session_info()
+        },
+    );
+    golden(
+        "origin_revoke_params",
+        &OriginRevokeParams {
+            link: "laptop".into(),
+            generation: 7,
+        },
+    );
+    golden("origin_revoked", &OriginRevoked { killed: 2 });
     golden("run_bundle", &bundle());
     golden(
         "session_info_notask",
@@ -298,6 +329,7 @@ fn method_params_and_results() {
             child_pid: 502,
             task: None,
             bundle_sha256: None,
+            origin: None,
         },
     );
     golden(
@@ -351,14 +383,23 @@ fn pushes_and_stream_messages() {
             1_760_000_001_000,
         ),
         task: Some(TASK),
+        origin: None,
     };
     golden("event_msg", &event);
+    golden(
+        "event_msg_origin",
+        &EventMsg {
+            origin: Some(origin()),
+            ..event.clone()
+        },
+    );
     golden(
         "event_msg_notask",
         &EventMsg {
             session: SID.into(),
             state: state(StateKind::Waiting, None, None, 1_760_000_001_000),
             task: None,
+            origin: None,
         },
     );
     golden("snapshot", &snapshot());
@@ -417,6 +458,7 @@ fn pushes_and_stream_messages() {
                 session: SID.into(),
                 state: state(StateKind::Starting, None, None, 1_760_000_000_000),
                 task: None,
+                origin: None,
             })
             .unwrap(),
         ),
@@ -502,7 +544,8 @@ fn constants_are_pinned() {
             "task_ref.v1",
             "layout.v1",
             "run_bundle.v1",
-            "cwd_pin.v1"
+            "cwd_pin.v1",
+            "link_origin.v1"
         ]
     );
     let methods = [
@@ -518,6 +561,7 @@ fn constants_are_pinned() {
         method::LAYOUT_SET,
         method::ATTACH_OPEN,
         method::ATTACH_SET,
+        method::ORIGIN_REVOKE,
     ];
     assert_eq!(
         methods,
@@ -534,9 +578,11 @@ fn constants_are_pinned() {
             "layout.set",
             "attach.open",
             "attach.set",
+            "origin.revoke",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
+    assert_eq!(CLIENT_WORKER, "worker");
 }
 
 #[test]
@@ -555,7 +601,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 7);
+    assert_eq!(w.caps.len(), 8);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

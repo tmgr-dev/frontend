@@ -158,6 +158,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             bundle: None,
             bundle_sha256: None,
             cwd_pin: None,
+            origin: None,
         }),
     }
     .map_err(rerr)?;

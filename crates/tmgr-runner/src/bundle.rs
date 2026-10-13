@@ -65,6 +65,43 @@ pub fn check(req: &RunCreateReq, max: usize) -> Result<Option<Checked>, Refusal>
     }))
 }
 
+const MAX_WALK: usize = 256;
+
+impl Dir {
+    pub fn is_beneath_any(&self, roots: &[String]) -> bool {
+        let mut ids = Vec::new();
+        for r in roots {
+            let flags = libc::O_RDONLY | libc::O_DIRECTORY;
+            if let Some(m) = open_at(libc::AT_FDCWD, r, flags)
+                .ok()
+                .and_then(|f| f.metadata().ok())
+            {
+                ids.push((m.dev(), m.ino()));
+            }
+        }
+        let Ok(mut cur) = self.file.try_clone() else {
+            return false;
+        };
+        for _ in 0..MAX_WALK {
+            let Ok(m) = cur.metadata() else {
+                return false;
+            };
+            let here = (m.dev(), m.ino());
+            if ids.contains(&here) {
+                return true;
+            }
+            let Ok(up) = open_at(cur.as_raw_fd(), "..", libc::O_RDONLY | libc::O_DIRECTORY) else {
+                return false;
+            };
+            match up.metadata() {
+                Ok(u) if (u.dev(), u.ino()) != here => cur = up,
+                _ => return false,
+            }
+        }
+        false
+    }
+}
+
 pub fn open_dir(req: &RunCreateReq) -> Result<Dir, Refusal> {
     let bad_cwd = || {
         (
@@ -283,6 +320,7 @@ mod tests {
             cols: 80,
             rows: 24,
             cwd_pin: None,
+            origin: None,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }

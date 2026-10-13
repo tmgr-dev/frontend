@@ -17,4 +17,6 @@ pub mod daemon;
 #[cfg(unix)]
 pub mod shim;
 #[cfg(unix)]
+pub mod trust;
+#[cfg(unix)]
 pub mod wire;
