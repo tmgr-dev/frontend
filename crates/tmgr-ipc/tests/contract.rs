@@ -83,6 +83,44 @@ fn snapshot() -> Snapshot {
     }
 }
 
+fn bundle() -> RunBundle {
+    RunBundle {
+        v: 1,
+        task: TASK,
+        title: "Fix \"login\" é中".into(),
+        body: "line1\nline2\ttab\\ \u{1} \u{1F600} </x>".into(),
+        author: BundleAuthor {
+            kind: AuthorKind::Human,
+            id: Some("u_7".into()),
+        },
+        comments: vec![BundleComment {
+            author: BundleAuthor {
+                kind: AuthorKind::Agent,
+                id: None,
+            },
+            at: "2026-10-13T09:30:00Z".into(),
+            body: "ok".into(),
+        }],
+        pages: vec![BundlePage {
+            id: 9,
+            revision: 3,
+            title: "Spec".into(),
+            body: "# Spec".into(),
+        }],
+        persona: Some(BundlePersona {
+            name: "reviewer".into(),
+            instructions_sha256: "0".repeat(64),
+        }),
+        launch: BundleLaunch {
+            profile: "codex".into(),
+            model: Some("gpt-5".into()),
+            cwd: "/work/project".into(),
+        },
+    }
+}
+
+const BUNDLE_SHA256: &str = "e60cccd72a81bef205b9173f8fcbc6a8a7ef1608122a3662495f4b775c1bbf76";
+
 fn session_info() -> SessionInfo {
     SessionInfo {
         id: SID.into(),
@@ -101,6 +139,7 @@ fn session_info() -> SessionInfo {
         shim_pid: 501,
         child_pid: 502,
         task: Some(TASK),
+        bundle_sha256: None,
     }
 }
 
@@ -156,8 +195,18 @@ fn requests_and_responses() {
         model: Some("gpt-5".into()),
         cols: 120,
         rows: 40,
+        bundle: None,
+        bundle_sha256: None,
     };
     golden("run_create_req", &run);
+    golden(
+        "run_create_req_bundle",
+        &RunCreateReq {
+            bundle: Some(bundle()),
+            bundle_sha256: Some(BUNDLE_SHA256.into()),
+            ..run.clone()
+        },
+    );
     golden(
         "request_runs_create",
         &ClientMsg::Request(Request {
@@ -215,6 +264,14 @@ fn method_params_and_results() {
     );
     golden("session_info", &session_info());
     golden(
+        "session_info_bundle",
+        &SessionInfo {
+            bundle_sha256: Some(BUNDLE_SHA256.into()),
+            ..session_info()
+        },
+    );
+    golden("run_bundle", &bundle());
+    golden(
         "session_info_notask",
         &SessionInfo {
             id: SID.into(),
@@ -229,6 +286,7 @@ fn method_params_and_results() {
             shim_pid: 501,
             child_pid: 502,
             task: None,
+            bundle_sha256: None,
         },
     );
     golden(
@@ -431,7 +489,8 @@ fn constants_are_pinned() {
             "attach.v1",
             "runs.create.v1",
             "task_ref.v1",
-            "layout.v1"
+            "layout.v1",
+            "run_bundle.v1"
         ]
     );
     let methods = [
@@ -484,7 +543,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 5);
+    assert_eq!(w.caps.len(), 6);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -589,4 +648,42 @@ mod handshake {
         drop(a);
         assert!(srv.join().unwrap().is_err());
     }
+}
+
+#[test]
+fn bundle_canonical_form_and_hash_are_pinned() {
+    let want = std::fs::read_to_string(format!(
+        "{}/tests/fixtures/run_bundle.canonical.json",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    assert_eq!(bundle().canonical(), want);
+    assert_eq!(bundle().sha256(), BUNDLE_SHA256);
+}
+
+#[test]
+fn canonical_json_sorts_keys_by_utf16_and_escapes_minimally() {
+    let v = json!({
+        "b": [1, -2, true, null],
+        "a": {"z": "x", "\u{e9}": 1, "\u{1F600}": 2, "\u{ffee}": 3},
+        "s": "\u{8}\u{c}\n\r\t\u{1f}\u{7f}\u{2028}/\"\\"
+    });
+    assert_eq!(
+        canonical_json(&v),
+        "{\"a\":{\"z\":\"x\",\"\u{e9}\":1,\"\u{1F600}\":2,\"\u{ffee}\":3},\"b\":[1,-2,true,null],\"s\":\"\\b\\f\\n\\r\\t\\u001f\u{7f}\u{2028}/\\\"\\\\\"}"
+    );
+    assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+}
+
+#[test]
+fn bundle_ignores_unknown_fields_and_optional_ones() {
+    let mut b = fixture("run_bundle");
+    b["future"] = json!(1);
+    b["launch"]["future"] = json!(1);
+    assert_eq!(serde_json::from_value::<RunBundle>(b).unwrap(), bundle());
+    let mut req = fixture("run_create_req");
+    assert!(serde_json::from_value::<RunCreateReq>(req.take())
+        .unwrap()
+        .bundle
+        .is_none());
 }

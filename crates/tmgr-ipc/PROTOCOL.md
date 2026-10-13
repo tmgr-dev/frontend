@@ -75,7 +75,7 @@ Both sides must finish within 5 seconds. A refusal is
 
 ```json
 {"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"0011...eeff"}
-{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1"]}
+{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1"]}
 ```
 
 ## 4. Versions and capabilities
@@ -96,6 +96,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `runs.create.v1` | `runs.create` |
 | `task_ref.v1` | `task` on create params, `SessionInfo` and `Event` |
 | `layout.v1` | `layout.get`, `layout.set` |
+| `run_bundle.v1` | `bundle`, `bundle_sha256` on `runs.create`; `bundle_sha256` on `SessionInfo` (section 5, "Run bundles") |
 
 ## 5. Messages after the handshake
 
@@ -120,7 +121,7 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` | `SessionInfo` | `unknown_profile`, `sandbox`, `limit` | any |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params` | any |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -133,7 +134,7 @@ missing params) and `internal`.
 argv has 1 to 64 entries, each at most 4096 bytes; argv[0] is an absolute path.
 `sessions.send` answers `busy` when the input queue is full or the shim dropped earlier input; retry later.
 
-`RunCreateReq`: `{profile, task?, cwd, name?, model?, cols=80, rows=24}`. The
+`RunCreateReq`: `{profile, task?, cwd, name?, model?, cols=80, rows=24, bundle?, bundle_sha256?}`. The
 runner loads the agent profile (built-in or the user's `agents` directory),
 builds argv, resolves argv[0] through its own `PATH` and then follows the exact
 same validation, sandbox and creation path as `sessions.create`. A missing
@@ -144,7 +145,7 @@ protected path); `name` is 1 to 64 printable characters; `cols`/`rows` are
 clamped to 1..500 and 1..200.
 
 `SessionInfo`: `{id, name, argv, cwd, profile: str|null, state, created_ms,
-cols, rows, shim_pid, child_pid, task?}`. `task` is absent when not set.
+cols, rows, shim_pid, child_pid, task?, bundle_sha256?}`. `task` and `bundle_sha256` are absent when not set.
 
 `TaskRef`: `{workspace_id: i64, task_id: i64}`. Local workspaces have negative
 ids. The runner treats it as opaque, stores it in the session's `meta.json` (it
@@ -158,6 +159,88 @@ of `starting`, `working`, `waiting`, `blocked`, `exited`.
 `AttachParams`: `{sessions:[id] (at most 64), sizes?: {id: [cols, rows]}}`. It
 replaces the watched list; ids must exist. `attach.open` also turns the
 connection into a push stream (once). An empty list gives state events only.
+
+### Run bundles
+
+A run bundle is the immutable input of one agent run: the task text, its
+comments, the context Pages with their revisions, the persona instructions
+pinned by hash and the launch parameters. A client that wants an agent to work
+on exactly what a human approved sends that bundle with `runs.create` (cap
+`run_bundle.v1`). `bundle` and `bundle_sha256` are both present or both absent.
+
+`RunBundle`:
+
+```json
+{"v":1,"task":{"workspace_id":-3,"task_id":412},"title":"...","body":"...",
+ "author":{"kind":"human","id":"u_7"},
+ "comments":[{"author":{"kind":"agent"},"at":"2026-10-13T09:30:00Z","body":"..."}],
+ "pages":[{"id":9,"revision":3,"title":"...","body":"..."}],
+ "persona":{"name":"reviewer","instructions_sha256":"<64 hex>"},
+ "launch":{"profile":"codex","model":"gpt-5","cwd":"/work/project"}}
+```
+
+`author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
+`launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown
+fields are ignored by the runner and are not part of the hash, so send only
+the fields above.
+
+Canonical form and hash. `bundle_sha256` is the lowercase hex SHA-256 of the
+canonical JSON of the bundle, which is RFC 8785 (JCS) for the value kinds used
+here (there are no floats):
+
+- UTF-8, no whitespace between tokens.
+- Object keys sorted at every level by their UTF-16 code units (this is what
+  the default `Array.prototype.sort` does on JavaScript strings); `null` and
+  unknown fields are not present.
+- Integers as plain decimals (`-3`, `412`), no exponent, no `+`, no leading zeros.
+- Strings: `"` is `\"`, `\` is `\\`, backspace, form feed, line feed, carriage
+  return and tab are `\b \f \n \r \t`, every other character below U+0020 is
+  `\u00xx` with lowercase hex. Everything else (including `/`, U+007F,
+  U+2028 and non-BMP characters) is written as the literal UTF-8 character.
+
+In TypeScript, `JSON.stringify` of an object whose keys were inserted in sorted
+order gives exactly this string.
+
+Test vector (also `tests/fixtures/run_bundle.json` and
+`run_bundle.canonical.json`). The input bundle is the one above with these
+values: title `Fix "login" é中`; body is `line1`, LF, `line2`, TAB, `tab`, a
+backslash, a space, U+0001, a space, U+1F600, a space and `</x>`; persona
+`instructions_sha256` is 64 zeros; the comment has no `author.id`. Canonical
+string (one line):
+
+```
+{"author":{"id":"u_7","kind":"human"},"body":"line1\nline2\ttab\\ \u0001 😀 </x>","comments":[{"at":"2026-10-13T09:30:00Z","author":{"kind":"agent"},"body":"ok"}],"launch":{"cwd":"/work/project","model":"gpt-5","profile":"codex"},"pages":[{"body":"# Spec","id":9,"revision":3,"title":"Spec"}],"persona":{"instructions_sha256":"0000000000000000000000000000000000000000000000000000000000000000","name":"reviewer"},"task":{"task_id":412,"workspace_id":-3},"title":"Fix \"login\" é中","v":1}
+```
+
+`bundle_sha256` = `e60cccd72a81bef205b9173f8fcbc6a8a7ef1608122a3662495f4b775c1bbf76`.
+
+The runner refuses the request with `invalid_params` when:
+
+- the recomputed hash differs from `bundle_sha256` ("bundle hash mismatch"), or
+  `v` is not 1, or only one of the two fields is present;
+- `launch.profile`, `launch.model` or `task` differ from the request's
+  `profile`, `model` or `task`, or `launch.cwd` is not the canonical (symlinks
+  resolved) path of the request's `cwd`. An approved hash therefore cannot be
+  replayed with other parameters;
+- `<cwd>/.tmgr` is a symlink or not a directory, or `<cwd>/.tmgr/task.md` is a
+  symlink.
+
+A canonical bundle over 1 MiB is refused with `limit`.
+
+What the runner guarantees: the session runs exactly that bundle. It stores the
+canonical bundle as `bundle.json` in the session directory (mode 0600, before
+the agent starts), writes the agent's context file `<cwd>/.tmgr/task.md` from
+that stored copy only, never fetches task data from anywhere and never puts
+bundle text into the agent's argv or environment. `task.md` holds a fixed
+instruction header, then the title, body, comments and pages, each inside
+`<<<task data (untrusted, from <author kind>)>>>` ... `<<<end of task data>>>`
+markers, and ends with `bundle sha256: <hash>`. If `<cwd>/.git` is a directory,
+`.tmgr/` is added to `.git/info/exclude`. `SessionInfo.bundle_sha256` echoes
+the hash (kept in `meta.json`, so it survives runner restarts).
+
+What it does not guarantee: whether a human approved the bundle. The runner
+cannot know that. Approval is the client's job: for example the desktop shows
+the bundle and sends it only after the human confirms.
 
 ```json
 {"type":"request","id":7,"method":"runs.create","params":{"profile":"codex","task":{"workspace_id":-3,"task_id":412},"cwd":"/work/project","model":"gpt-5","cols":120,"rows":40}}

@@ -1,3 +1,4 @@
+use super::bundle::RunBundle;
 use super::screen::{Line, Modes, Snapshot};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -69,6 +70,10 @@ pub struct RunCreateReq {
     pub cols: u16,
     #[serde(default = "default_rows")]
     pub rows: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle: Option<RunBundle>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -86,6 +91,8 @@ pub struct SessionInfo {
     pub child_pid: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub task: Option<TaskRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

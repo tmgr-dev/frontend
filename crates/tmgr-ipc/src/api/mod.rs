@@ -6,10 +6,12 @@
 //! string to `Welcome.caps`. Clients ignore unknown fields and unknown push
 //! `type`s; servers answer unknown methods with `unknown_method`.
 
+mod bundle;
 mod error;
 mod screen;
 mod types;
 
+pub use bundle::*;
 pub use error::ErrorCode;
 pub use screen::*;
 pub use types::*;
@@ -25,13 +27,15 @@ pub mod caps {
     pub const RUNS_CREATE_V1: &str = "runs.create.v1";
     pub const TASK_REF_V1: &str = "task_ref.v1";
     pub const LAYOUT_V1: &str = "layout.v1";
+    pub const RUN_BUNDLE_V1: &str = "run_bundle.v1";
 
-    pub const ALL: [&str; 5] = [
+    pub const ALL: [&str; 6] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
         TASK_REF_V1,
         LAYOUT_V1,
+        RUN_BUNDLE_V1,
     ];
 }
 
@@ -55,6 +59,7 @@ pub mod limits {
     pub const MAX_ROWS: u16 = 200;
     pub const MAX_INPUT: usize = 64 << 10;
     pub const MAX_PUSH: usize = 256 << 10;
+    pub const MAX_BUNDLE: usize = 1 << 20;
 }
 
 /// The only `Hello.client` value allowed to call `sessions.create`.
