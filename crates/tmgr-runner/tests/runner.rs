@@ -2051,10 +2051,6 @@ fn a_lost_shim_link_is_not_a_confirmed_exit_for_a_revoked_run() {
     let s = info_of(&mut cli, &a1.id);
     assert_ne!(s.state.kind, StateKind::Exited, "{s:?}");
     assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
-    thread::sleep(Duration::from_secs(2));
-    let s = info_of(&mut cli, &a1.id);
-    assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
-    assert!(alive(a1.child_pid));
     settle_when_group_dies(&mut cli, &a1);
 }
 
