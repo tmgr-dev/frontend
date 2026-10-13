@@ -1,7 +1,10 @@
 use serde::Deserialize;
+use unicode_width::UnicodeWidthChar;
 
 pub const MAX_ROWS: usize = 200;
 pub const MAX_COLS: usize = 500;
+pub const MAX_SPANS: usize = 500;
+pub const MAX_LINE_CHARS: usize = 500;
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
@@ -70,7 +73,26 @@ pub struct ScreenPush {
 }
 
 fn allowed(c: char) -> bool {
-  !c.is_control()
+  !c.is_control() && !matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+pub fn cap_line(l: &Line) -> Line {
+  let mut left = MAX_LINE_CHARS;
+  let mut spans = Vec::new();
+  for span in l.spans.iter().take(MAX_SPANS) {
+    if left == 0 {
+      break;
+    }
+    let t: String = span.t.chars().take(left).collect();
+    left -= t.chars().count();
+    spans.push(Span { a: span.a.clone(), t });
+  }
+  Line { spans }
+}
+
+pub fn cap_snapshot(s: &Snapshot) -> Snapshot {
+  let rows = (s.r as usize).min(MAX_ROWS);
+  Snapshot { r: s.r.min(MAX_ROWS as u16), c: s.c, l: s.l.iter().take(rows).map(cap_line).collect(), cu: s.cu, m: s.m, so: s.so, sm: s.sm }
 }
 
 fn color(out: &mut String, c: &Color, base: u8) {
@@ -100,11 +122,28 @@ fn line(out: &mut String, l: &Line, cols: usize) {
     if left == 0 {
       break;
     }
-    let text: String = span.t.chars().filter(|c| allowed(*c)).take(left).collect();
+    let mut text = String::new();
+    let mut used = 0;
+    let mut clipped = false;
+    for c in span.t.chars().filter(|c| allowed(*c)) {
+      let w = c.width().unwrap_or(0);
+      if used + w > left {
+        clipped = true;
+        break;
+      }
+      used += w;
+      text.push(c);
+    }
     if text.is_empty() {
+      if clipped {
+        break;
+      }
       continue;
     }
-    left -= text.chars().count();
+    left -= used;
+    if clipped {
+      left = 0;
+    }
     out.push_str(&sgr(&span.a));
     out.push_str(&text);
   }
@@ -272,6 +311,38 @@ mod tests {
     assert!(out.ends_with("\x1b[200;500H\x1b[?25h"));
     let diff = render_diff(&[(500, Line::default())], None, None, 24, 80);
     assert_eq!(diff, "\x1b[?25l");
+  }
+
+  #[test]
+  fn wide_chars_are_clipped_by_cell_width() {
+    let mut s = snap(vec![vec![span(&"界".repeat(10))]]);
+    s.c = 10;
+    assert_eq!(render_full(&s).matches('界').count(), 5);
+    s.c = 9;
+    assert_eq!(render_full(&s).matches('界').count(), 4);
+    s.c = 1;
+    assert_eq!(render_full(&s).matches('界').count(), 0);
+    s.c = 3;
+    let mixed = snap(vec![vec![span("a界"), span("b"), span("c")]]);
+    let out = render_diff(&[(0, mixed.l[0].clone())], None, None, 1, 3);
+    assert!(out.contains("a界") && !out.contains('b'), "{out:?}");
+    let zero = render_diff(&[(0, Line { spans: vec![span("a\u{200b}\u{301}b")] })], None, None, 1, 2);
+    assert!(zero.contains("a\u{200b}\u{301}b"), "{zero:?}");
+  }
+
+  #[test]
+  fn bidi_controls_are_stripped() {
+    let out = render_full(&snap(vec![vec![span("a\u{202e}b\u{200f}c\u{2066}d\u{2069}e\u{200e}f\u{202a}g")]]));
+    assert!(out.contains("abcdefg"), "{out:?}");
+  }
+
+  #[test]
+  fn lines_are_capped_before_retention() {
+    let long = "x".repeat(900 * 1024);
+    let capped = cap_line(&Line { spans: vec![span(&long), span(&long)] });
+    assert_eq!(capped.spans.iter().map(|s| s.t.chars().count()).sum::<usize>(), MAX_LINE_CHARS);
+    let many = cap_line(&Line { spans: (0..2000).map(|_| span("a")).collect() });
+    assert_eq!(many.spans.len(), MAX_SPANS);
   }
 
   #[test]
