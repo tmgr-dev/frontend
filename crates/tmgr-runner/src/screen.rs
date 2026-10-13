@@ -112,12 +112,22 @@ enum StrKind {
     Other,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DcsSub {
+    Entry,
+    Param,
+    Inter,
+    Ignore,
+}
+
 #[derive(Default)]
 enum ScanState {
     #[default]
     Ground,
     Esc,
+    EscInter,
     Csi(Vec<u8>),
+    DcsHeader(DcsSub),
     Str {
         kind: StrKind,
         len: usize,
@@ -146,22 +156,25 @@ impl Scanner {
                     }
                 }
                 ScanState::Esc => match b {
+                    0x18 | 0x1a => ScanState::Ground,
+                    0x20..=0x2f => ScanState::EscInter,
                     b'[' => ScanState::Csi(Vec::new()),
                     b']' => ScanState::Str {
                         kind: StrKind::Osc,
                         len: 0,
                     },
-                    b'P' => ScanState::Str {
-                        kind: StrKind::Dcs,
-                        len: 0,
-                    },
+                    b'P' => ScanState::DcsHeader(DcsSub::Entry),
                     b'X' | b'^' | b'_' => ScanState::Str {
                         kind: StrKind::Other,
                         len: 0,
                     },
+                    0x30..=0x7e => ScanState::Ground,
+                    _ => ScanState::Esc,
+                },
+                ScanState::EscInter => match b {
                     0x1b => ScanState::Esc,
-                    0x18 | 0x1a => ScanState::Ground,
-                    _ => ScanState::Ground,
+                    0x18 | 0x1a | 0x30..=0x7e => ScanState::Ground,
+                    _ => ScanState::EscInter,
                 },
                 ScanState::Csi(mut buf) => match b {
                     0x1b => ScanState::Esc,
@@ -179,6 +192,25 @@ impl Scanner {
                         ScanState::Ground
                     }
                     _ => ScanState::Csi(buf),
+                },
+                ScanState::DcsHeader(sub) => match (b, sub) {
+                    (0x1b, _) => ScanState::Esc,
+                    (0x18 | 0x1a, _) => ScanState::Ground,
+                    (0x40..=0x7e, DcsSub::Ignore) => ScanState::DcsHeader(sub),
+                    (0x40..=0x7e, _) => ScanState::Str {
+                        kind: StrKind::Dcs,
+                        len: 0,
+                    },
+                    (0x20..=0x2f, DcsSub::Ignore) => ScanState::DcsHeader(sub),
+                    (0x20..=0x2f, _) => ScanState::DcsHeader(DcsSub::Inter),
+                    (0x30..=0x3b, DcsSub::Entry | DcsSub::Param) => {
+                        ScanState::DcsHeader(DcsSub::Param)
+                    }
+                    (0x3c..=0x3f, DcsSub::Entry) => ScanState::DcsHeader(DcsSub::Param),
+                    (0x30..=0x3f, DcsSub::Param | DcsSub::Inter) => {
+                        ScanState::DcsHeader(DcsSub::Ignore)
+                    }
+                    _ => ScanState::DcsHeader(sub),
                 },
                 ScanState::Str { kind, len } => match b {
                     0x1b => ScanState::Esc,
@@ -720,5 +752,135 @@ mod tests {
         let r = m.feed(b"\x1b]9;hi\x07");
         assert!(r.notify);
         assert!(m.feed(b"\x1b[6n").replies.len() == 1);
+    }
+
+    #[test]
+    fn endless_osc_after_esc_c0_is_cut() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1b\x00]0;", b"\x07");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn endless_osc_after_double_esc_is_cut() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1b\x1b]0;", b"\x07");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn endless_dcs_with_c0_in_entry_is_cut() {
+        let mut m = model();
+        feed_endless(&mut m, b"\x1bP\x00\x01q", b"\x1b\\");
+        assert_hello_and_bounded(&mut m);
+    }
+
+    #[test]
+    fn can_and_sub_cancel_a_pending_escape() {
+        for cancel in [0x18u8, 0x1a] {
+            let mut m = model();
+            let mut head = vec![0x1b, cancel];
+            head.extend_from_slice(b"]0;");
+            m.feed(&head);
+            m.feed(&vec![b'a'; MAX_STRING * 4]);
+            assert_eq!(m.dropped_string_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn can_ends_a_string_and_following_osc_is_cut_again() {
+        let mut m = model();
+        let mut v = b"\x1b]0;x\x18".to_vec();
+        v.extend_from_slice(b"\x1b]0;");
+        v.extend(std::iter::repeat_n(b'a', MAX_STRING * 4));
+        m.feed(&v);
+        assert!(m.dropped_string_bytes() >= (MAX_STRING * 3) as u64);
+    }
+
+    #[derive(Default)]
+    struct Recorder {
+        osc_bytes: usize,
+        puts: usize,
+        max_in_string: usize,
+        queries: usize,
+    }
+
+    impl vte::Perform for Recorder {
+        fn osc_dispatch(&mut self, params: &[&[u8]], _: bool) {
+            let n: usize = params.iter().map(|p| p.len()).sum();
+            self.osc_bytes = self.osc_bytes.max(n);
+            self.max_in_string = self.max_in_string.max(n);
+        }
+        fn hook(&mut self, _: &vte::Params, _: &[u8], _: bool, _: char) {
+            self.puts = 0;
+        }
+        fn put(&mut self, _: u8) {
+            self.puts += 1;
+            self.max_in_string = self.max_in_string.max(self.puts);
+        }
+        fn csi_dispatch(&mut self, params: &vte::Params, inter: &[u8], ignore: bool, action: char) {
+            let p: Vec<Vec<u16>> = params.iter().map(|g| g.to_vec()).collect();
+            let hit = !ignore
+                && (matches!(
+                    (inter, p.as_slice(), action),
+                    ([], [x], 'n') if x == &[6] || x == &[5]
+                ) || matches!((inter, p.as_slice(), action), ([] | [b'>'], [x], 'c') if x == &[0]));
+            if hit {
+                self.queries += 1;
+            }
+        }
+    }
+
+    struct Xorshift(u64);
+
+    impl Xorshift {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+    }
+
+    #[test]
+    fn filter_bounds_strings_as_seen_by_an_independent_vte() {
+        const DANGEROUS: &[u8] = b"\x1b[]PX^_\\\x07\x00\x18\x1a\x9c\x90 0123;a\x7f!?";
+        let mut rng = Xorshift(0x9e37_79b9_7f4a_7c15);
+        let run = vec![b'a'; 1024 * 1024];
+        for _ in 0..300 {
+            let n = 1 + (rng.next() % 10) as usize;
+            let mut head: Vec<u8> = (0..n)
+                .map(|_| DANGEROUS[(rng.next() % DANGEROUS.len() as u64) as usize])
+                .collect();
+            head.extend_from_slice(&run);
+            head.extend_from_slice(b"\x07\x1b\\");
+            let mut scanner = Scanner::default();
+            let (kept, _) = scanner.scan(&head);
+            let mut rec = Recorder::default();
+            let mut parser = vte::Parser::new();
+            parser.advance(&mut rec, &kept);
+            assert!(
+                rec.max_in_string <= MAX_STRING + 16,
+                "{:?}: {}",
+                &head[..n],
+                rec.max_in_string
+            );
+        }
+    }
+
+    #[test]
+    fn query_detection_agrees_with_an_independent_vte() {
+        const ALPHA: &[u8] = b"\x1b[]PX^_\\\x07\x00\x18\x1a\x9c\x90 0156;>?ncA\x7f";
+        let mut rng = Xorshift(0x1234_5678_9abc_def1);
+        for _ in 0..20000 {
+            let n = 1 + (rng.next() % 24) as usize;
+            let v: Vec<u8> = (0..n)
+                .map(|_| ALPHA[(rng.next() % ALPHA.len() as u64) as usize])
+                .collect();
+            let (_, found) = Scanner::default().scan(&v);
+            let mut rec = Recorder::default();
+            vte::Parser::new().advance(&mut rec, &v);
+            assert_eq!(found.len(), rec.queries, "{v:?}");
+        }
     }
 }

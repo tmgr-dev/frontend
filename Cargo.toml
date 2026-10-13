@@ -38,6 +38,7 @@ tmgr-ipc = { path = "crates/tmgr-ipc" }
 tmgr-runner = { path = "crates/tmgr-runner" }
 portable-pty = "0.9"
 vt100 = "0.16"
+vte = "0.15"
 crossterm = "0.29"
 regex = "1"
 base64 = "0.22"

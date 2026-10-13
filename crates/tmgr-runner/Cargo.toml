@@ -29,3 +29,4 @@ landlock.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+vte.workspace = true
