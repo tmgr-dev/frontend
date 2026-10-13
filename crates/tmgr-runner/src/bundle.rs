@@ -80,11 +80,7 @@ impl Dir {
     pub fn is_beneath_any(&self, roots: &[String]) -> bool {
         let mut ids = Vec::new();
         for r in roots {
-            let flags = libc::O_RDONLY | libc::O_DIRECTORY;
-            if let Some(m) = open_at(libc::AT_FDCWD, r, flags)
-                .ok()
-                .and_then(|f| f.metadata().ok())
-            {
+            if let Some(m) = open_root(Path::new(r)).ok().and_then(|f| f.metadata().ok()) {
                 ids.push((m.dev(), m.ino()));
             }
         }
@@ -109,6 +105,23 @@ impl Dir {
         }
         false
     }
+}
+
+fn open_root(path: &Path) -> io::Result<File> {
+    use std::path::Component;
+    let flags = libc::O_RDONLY | libc::O_DIRECTORY;
+    let mut comps = path.components();
+    if comps.next() != Some(Component::RootDir) {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    }
+    let mut cur = open_at(libc::AT_FDCWD, "/", flags)?;
+    for c in comps {
+        let Component::Normal(n) = c else {
+            return Err(io::Error::from(io::ErrorKind::InvalidInput));
+        };
+        cur = open_at(cur.as_raw_fd(), n, flags)?;
+    }
+    Ok(cur)
 }
 
 pub fn open_dir(req: &RunCreateReq) -> Result<Dir, Refusal> {
@@ -182,9 +195,16 @@ pub fn verify_cwd(dir: &Dir) -> Result<(), Refusal> {
 }
 
 #[derive(Debug)]
-pub enum Prior {
+enum Before {
     Created,
-    Existing(Vec<u8>),
+    Existing(Vec<u8>, u32),
+}
+
+#[derive(Debug)]
+pub struct Prior {
+    before: Before,
+    dir: File,
+    published: (u64, u64),
 }
 
 pub fn install(sdir: &Path, checked: &Checked) -> Result<Prior, Refusal> {
@@ -226,8 +246,8 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
         libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NONBLOCK,
         0o644,
     );
-    let (mut f, prior) = match created {
-        Ok(f) => (f, Prior::Created),
+    let (mut f, before) = match created {
+        Ok(f) => (f, Before::Created),
         Err(e) if e.raw_os_error() == Some(libc::EEXIST) => {
             let mut f = match openat_mode(dir_fd, "task.md", libc::O_RDWR | libc::O_NONBLOCK, 0) {
                 Ok(f) => f,
@@ -248,7 +268,7 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
             if old.len() as u64 > MAX_CONTEXT {
                 return refuse(".tmgr/task.md is too large to replace");
             }
-            (f, Prior::Existing(old))
+            (f, Before::Existing(old, meta.mode() & 0o7777))
         }
         Err(e) => return Err(io_err(e)),
     };
@@ -256,25 +276,85 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
         .set_len(0)
         .and_then(|()| f.rewind())
         .and_then(|()| f.write_all(text.as_bytes()))
+        .and_then(|()| f.metadata())
         .map_err(io_err);
-    if let Err(e) = written {
-        restore(cwd_fd, &prior);
-        return Err(e);
-    }
-    Ok(prior)
+    let published = match written {
+        Ok(m) => (m.dev(), m.ino()),
+        Err(e) => {
+            if let Ok(m) = f.metadata() {
+                let prior = Prior {
+                    before,
+                    dir: dir_file,
+                    published: (m.dev(), m.ino()),
+                };
+                restore(&prior);
+            }
+            return Err(e);
+        }
+    };
+    Ok(Prior {
+        before,
+        dir: dir_file,
+        published,
+    })
 }
 
-pub fn restore(cwd_fd: i32, prior: &Prior) {
-    let Ok(dir) = open_tmgr(cwd_fd) else { return };
-    match prior {
-        Prior::Created => {
-            let name = CString::new("task.md").expect("no NUL");
-            unsafe { libc::unlinkat(dir.as_raw_fd(), name.as_ptr(), 0) };
+fn stage_previous(dir_fd: i32, old: &[u8], mode: u32) -> io::Result<String> {
+    for n in 0..16u32 {
+        let name = format!(".task.md.{}.{n}", std::process::id());
+        let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL;
+        let mut f = match openat_mode(dir_fd, &name, flags, 0o600) {
+            Ok(f) => f,
+            Err(e) if e.raw_os_error() == Some(libc::EEXIST) => continue,
+            Err(e) => return Err(e),
+        };
+        let done = f
+            .write_all(old)
+            .and_then(|()| f.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(mode)));
+        if let Err(e) = done {
+            unlinkat(dir_fd, &name);
+            return Err(e);
         }
-        Prior::Existing(old) => {
-            let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_TRUNC | libc::O_NONBLOCK;
-            if let Ok(mut f) = openat_mode(dir.as_raw_fd(), "task.md", flags, 0o644) {
-                let _ = f.write_all(old);
+        return Ok(name);
+    }
+    Err(io::Error::from(io::ErrorKind::AlreadyExists))
+}
+
+fn unlinkat(dir_fd: i32, name: &str) {
+    if let Ok(c) = CString::new(name) {
+        unsafe { libc::unlinkat(dir_fd, c.as_ptr(), 0) };
+    }
+}
+
+#[allow(clippy::unnecessary_cast)]
+fn still_published(dir_fd: i32, id: (u64, u64)) -> bool {
+    let name = CString::new("task.md").expect("no NUL");
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::fstatat(dir_fd, name.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) };
+    rc == 0
+        && st.st_mode & libc::S_IFMT == libc::S_IFREG
+        && st.st_nlink == 1
+        && (st.st_dev as u64, st.st_ino as u64) == id
+}
+
+pub fn restore(prior: &Prior) {
+    let dir_fd = prior.dir.as_raw_fd();
+    if !still_published(dir_fd, prior.published) {
+        eprintln!("tmgr-runner: .tmgr/task.md changed during the launch, left as it is");
+        return;
+    }
+    match &prior.before {
+        Before::Created => unlinkat(dir_fd, "task.md"),
+        Before::Existing(old, mode) => {
+            let Ok(tmp) = stage_previous(dir_fd, old, *mode) else {
+                return;
+            };
+            let (from, to) = (
+                CString::new(tmp.as_str()).expect("no NUL"),
+                CString::new("task.md").expect("no NUL"),
+            );
+            if unsafe { libc::renameat(dir_fd, from.as_ptr(), dir_fd, to.as_ptr()) } < 0 {
+                unlinkat(dir_fd, &tmp);
             }
         }
     }
@@ -505,16 +585,48 @@ mod tests {
         let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
         let task = d.path().join(".tmgr/task.md");
         let prior = write_context(dir.raw_fd(), "new").unwrap();
-        assert!(matches!(prior, Prior::Created));
+        assert!(matches!(prior.before, Before::Created));
         assert_eq!(fs::read_to_string(&task).unwrap(), "new");
-        restore(dir.raw_fd(), &prior);
+        restore(&prior);
         assert!(!task.exists());
 
         fs::write(&task, "keep").unwrap();
         let prior = write_context(dir.raw_fd(), "new").unwrap();
         assert_eq!(fs::read_to_string(&task).unwrap(), "new");
-        restore(dir.raw_fd(), &prior);
+        restore(&prior);
         assert_eq!(fs::read_to_string(&task).unwrap(), "keep");
+    }
+
+    #[test]
+    fn a_substituted_task_file_is_never_truncated_by_the_rollback() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        let task = d.path().join(".tmgr/task.md");
+        let victim = d.path().join("victim");
+        fs::write(&victim, "precious").unwrap();
+        fs::create_dir(d.path().join(".tmgr")).unwrap();
+        fs::write(&task, "keep").unwrap();
+        let prior = write_context(dir.raw_fd(), "new").unwrap();
+        fs::remove_file(&task).unwrap();
+        fs::hard_link(&victim, &task).unwrap();
+        restore(&prior);
+        assert_eq!(fs::read_to_string(&victim).unwrap(), "precious");
+        assert_eq!(fs::read_to_string(&task).unwrap(), "precious");
+    }
+
+    #[test]
+    fn a_link_root_behind_a_symlinked_component_is_not_trusted() {
+        let d = tempfile::tempdir().unwrap();
+        let base = fs::canonicalize(d.path()).unwrap();
+        let real = base.join("a/b/root");
+        fs::create_dir_all(real.join("work")).unwrap();
+        let dir = open_path(real.join("work")).unwrap();
+        let root = real.display().to_string();
+        assert!(dir.is_beneath_any(std::slice::from_ref(&root)));
+        fs::rename(base.join("a/b"), base.join("moved")).unwrap();
+        std::os::unix::fs::symlink(base.join("moved"), base.join("a/b")).unwrap();
+        assert!(!dir.is_beneath_any(&[root]));
+        assert!(!dir.is_beneath_any(&["relative".to_string()]));
     }
 
     #[test]

@@ -1254,7 +1254,7 @@ impl Runner {
         );
         if result.is_err() {
             if let Some(prior) = &installed {
-                bundle::restore(dir.raw_fd(), prior);
+                bundle::restore(prior);
             }
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
