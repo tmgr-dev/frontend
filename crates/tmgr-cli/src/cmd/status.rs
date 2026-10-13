@@ -15,19 +15,26 @@ pub fn run(ctx: &Ctx) -> Result<Output> {
         .format("%Y-%m-%d")
         .to_string();
     let tz = crate::cmd::today::detect_tz(ctx);
-    let total = match ctx.soft(
-        client.time_daily(ws.id, &today, &tz, true),
-        "time_summary_unavailable",
-        "today's time",
-    )? {
+    let daily = if client.local().is_some() {
+        ctx.warn(
+            crate::cmd::today::LOCAL_TIME,
+            crate::cmd::today::LOCAL_TIME_WHY,
+        );
+        None
+    } else {
+        ctx.soft(
+            client.time_daily(ws.id, &today, &tz, true),
+            "time_summary_unavailable",
+            "today's time",
+        )?
+    };
+    let total = match daily {
         Some(Some(d)) => Some(d.total_s),
         Some(None) => {
-            if client.local().is_none() {
-                ctx.warn(
-                    "daily_time_unavailable",
-                    "this server has no per-day time endpoint; using the time summary",
-                );
-            }
+            ctx.warn(
+                "daily_time_unavailable",
+                "this server has no per-day time endpoint; using the time summary",
+            );
             ctx.soft(
                 client.time_summary_total(ws.id, &today, &today),
                 "time_summary_unavailable",

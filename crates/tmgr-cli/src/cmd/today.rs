@@ -75,6 +75,10 @@ fn pick_date(args: &TodayArgs) -> Result<NaiveDate> {
         .unwrap_or_else(|| Ok(today_local()))
 }
 
+pub(crate) const LOCAL_TIME: &str = "local_time_unavailable";
+/// Local workspaces keep only each task's total time, not when it was tracked.
+pub(crate) const LOCAL_TIME_WHY: &str = "tracked time per day is not recorded in local workspaces";
+
 pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
     let date = pick_date(args)?;
     let ds = date.format("%Y-%m-%d").to_string();
@@ -83,20 +87,23 @@ pub fn run(ctx: &Ctx, args: &TodayArgs) -> Result<Output> {
     let (day_start, day_end) = day_bounds(&Local, date);
     let now = Utc::now();
     let tz = detect_tz(ctx);
-    let daily = ctx.soft(
-        client.time_daily(ws.id, &ds, &tz, true),
-        "time_summary_unavailable",
-        "tracked time",
-    )?;
+    let daily = if client.local().is_some() {
+        ctx.warn(LOCAL_TIME, LOCAL_TIME_WHY);
+        None
+    } else {
+        ctx.soft(
+            client.time_daily(ws.id, &ds, &tz, true),
+            "time_summary_unavailable",
+            "tracked time",
+        )?
+    };
     let summary = match daily {
         Some(Some(d)) => Some(Summary::Daily(d)),
         Some(None) => {
-            if client.local().is_none() {
-                ctx.warn(
-                    "daily_time_unavailable",
-                    "this server has no per-day time endpoint; using the time summary",
-                );
-            }
+            ctx.warn(
+                "daily_time_unavailable",
+                "this server has no per-day time endpoint; using the time summary",
+            );
             ctx.soft(
                 client.time_summary(ws.id, &ds, &ds),
                 "time_summary_unavailable",

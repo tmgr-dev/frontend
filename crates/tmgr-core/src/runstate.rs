@@ -45,21 +45,38 @@ pub struct Runs {
 }
 
 impl Runs {
+    /// The run of a branch: an exact repository match first, then a run whose repository is not
+    /// recorded; else the only run of the task key (none when several runs carry it).
     pub fn find_branch(&self, repo: Option<&str>, branch: &str, key: Option<&str>) -> Option<&Run> {
-        self.runs.iter().rev().find(|r| {
-            let same_branch = r.branch.as_deref() == Some(branch)
-                && (repo.is_none() || r.repo.is_none() || r.repo.as_deref() == repo);
-            same_branch || key.is_some_and(|k| r.task_key == k)
-        })
+        let on_branch = |r: &&Run| r.branch.as_deref() == Some(branch);
+        let exact = repo.and_then(|repo| {
+            self.runs
+                .iter()
+                .rev()
+                .filter(on_branch)
+                .find(|r| r.repo.as_deref() == Some(repo))
+        });
+        let same_repo = |r: &&Run| repo.is_none() || r.repo.is_none() || r.repo.as_deref() == repo;
+        if let Some(run) =
+            exact.or_else(|| self.runs.iter().rev().filter(on_branch).find(same_repo))
+        {
+            return Some(run);
+        }
+        let key = key?;
+        let mut by_key = self
+            .runs
+            .iter()
+            .filter(|r| r.task_key == key)
+            .filter(same_repo);
+        let only = by_key.next()?;
+        by_key.next().is_none().then_some(only)
     }
 
-    /// A run by id, preferring the one of `workspace` since local and cloud ids can collide.
+    /// A run by id in exactly `workspace` (`local:<code>`, or none for the cloud).
     pub fn find_run(&self, run_id: u64, workspace: Option<&str>) -> Option<&Run> {
-        let mut matches = self.runs.iter().filter(|r| r.run_id == run_id);
-        let first = matches.clone().next();
-        matches
-            .find(|r| r.workspace.as_deref() == workspace)
-            .or(first)
+        self.runs
+            .iter()
+            .find(|r| r.run_id == run_id && r.workspace.as_deref() == workspace)
     }
 
     pub fn upsert(&mut self, run: Run) {
@@ -220,6 +237,7 @@ mod tests {
             Some("b")
         );
         assert_eq!(runs.find_run(1, None).unwrap().branch.as_deref(), Some("a"));
+        assert!(runs.find_run(1, Some("local:other")).is_none());
         runs.remove(1, Some("local:personal"));
         assert_eq!(runs.runs.len(), 1);
     }
@@ -299,5 +317,35 @@ mod tests {
         fs::write(&p, vec![b' '; 300_000]).unwrap();
         assert!(load_from(&p).runs.is_empty());
         assert!(load_from(&dir.path().join("missing.json")).runs.is_empty());
+    }
+
+    #[test]
+    fn a_key_fallback_never_guesses_between_runs() {
+        let mut runs = Runs::default();
+        runs.runs.push(run(1, 10, "tm-10-a"));
+        let mut local = run(2, 10, "tm-10-b");
+        local.workspace = Some("local:personal".into());
+        runs.runs.push(local);
+        assert!(runs
+            .find_branch(Some("/work/api"), "main", Some("TM-10"))
+            .is_none());
+        assert_eq!(
+            runs.find_branch(Some("/work/api"), "tm-10-b", Some("TM-10"))
+                .unwrap()
+                .run_id,
+            2
+        );
+        let mut exact = run(3, 11, "shared");
+        exact.repo = Some("/work/exact".into());
+        runs.runs.insert(0, exact);
+        let mut loose = run(4, 12, "shared");
+        loose.repo = None;
+        runs.runs.push(loose);
+        assert_eq!(
+            runs.find_branch(Some("/work/exact"), "shared", None)
+                .unwrap()
+                .run_id,
+            3
+        );
     }
 }

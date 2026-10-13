@@ -116,8 +116,8 @@ impl Ctx {
             .filter(|w| local::local_code(w).is_some()))
     }
 
-    /// The client for a run recorded in `workspace` (`local:<code>`, or none for the cloud), which
-    /// need not be the selected workspace.
+    /// The client for something recorded in `workspace` (`local:<code>`, a cloud code, or none for
+    /// the cloud), which need not be the selected workspace.
     pub fn client_for_run(&self, workspace: Option<&str>) -> Result<RunClient<'_>> {
         if workspace == self.local_tag()?.as_deref() {
             return self.client().map(RunClient::Shared);
@@ -172,15 +172,17 @@ impl Ctx {
         ))
     }
 
-    pub fn workspaces(&self, client: &Client) -> Result<&[Workspace]> {
-        if let Some(w) = self.workspaces.get() {
-            return Ok(w);
+    /// The workspaces `client` can reach: the cloud list, or for a local client only the workspace
+    /// whose database it is bound to.
+    pub fn workspaces(&self, client: &Client) -> Result<Vec<Workspace>> {
+        if let Some(local) = client.local() {
+            return Ok(vec![local_entry(local.workspace())]);
         }
-        let list = match client.local() {
-            Some(_) => local_workspaces()?,
-            None => client.workspaces()?,
-        };
-        Ok(self.workspaces.get_or_init(|| list))
+        if let Some(w) = self.workspaces.get() {
+            return Ok(w.clone());
+        }
+        let list = client.workspaces()?;
+        Ok(self.workspaces.get_or_init(|| list).clone())
     }
 
     /// The web link of a task; local workspaces have none.
@@ -212,6 +214,9 @@ impl Ctx {
     pub fn workspace(&self, client: &Client) -> Result<Workspace> {
         if let Some(ws) = self.switched.borrow().clone() {
             return Ok(ws);
+        }
+        if let Some(local) = client.local() {
+            return Ok(local_entry(local.workspace()));
         }
         let list = self.workspaces(client)?;
         match self.wanted_workspace()? {
@@ -245,16 +250,26 @@ impl Ctx {
 
 /// Local workspaces as `local:<code>` entries of the workspace list.
 pub fn local_workspaces() -> Result<Vec<Workspace>> {
-    Ok(local::list()?
-        .into_iter()
-        .map(|w| Workspace {
-            id: w.manifest.id,
-            name: w.manifest.name,
-            code: format!("{}{}", local::PREFIX, w.manifest.code),
-            is_default: false,
-            local: true,
-        })
-        .collect())
+    Ok(local::list()?.iter().map(local_entry).collect())
+}
+
+fn local_entry(w: &local::LocalWorkspace) -> Workspace {
+    Workspace {
+        id: w.manifest.id,
+        name: w.manifest.name.clone(),
+        code: format!("{}{}", local::PREFIX, w.manifest.code),
+        is_default: false,
+        local: true,
+    }
+}
+
+/// Whether a stored workspace (`local:<code>`, a cloud code, or none from before local
+/// workspaces) is `code`.
+pub fn same_workspace(stored: Option<&str>, code: &str) -> bool {
+    match stored {
+        Some(w) => w.eq_ignore_ascii_case(code),
+        None => local::local_code(code).is_none(),
+    }
 }
 
 pub enum RunClient<'a> {

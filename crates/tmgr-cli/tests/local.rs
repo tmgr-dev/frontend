@@ -373,3 +373,149 @@ fn a_key_missing_from_the_local_default_is_not_searched_in_other_workspaces() {
         .unwrap();
     assert_eq!(count, 0);
 }
+
+fn set_default_workspace(local: &Local, code: &str) {
+    let dir = local.tmp.path().join("xdg/tmgr");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("config.toml"),
+        format!("default_workspace = \"{code}\"\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn stop_and_done_follow_the_workspace_of_the_active_timer() {
+    let local = Local::new();
+    local.json(&["add", "Timed", "-p", "WK"]);
+    local.json(&["start", "WK-1", "--no-branch"]);
+    set_default_workspace(&local, "work");
+    let out = local.cmd().args(["--json", "stop"]).output().unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        text(&out.stderr),
+        text(&out.stdout)
+    );
+    assert_eq!(stdout_json(&out)["data"]["stopped"], true);
+    let running: i64 = local
+        .db("personal")
+        .query_row("SELECT start_time FROM tasks WHERE id = 1", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(running, 0);
+    let out = local
+        .cmd()
+        .args(["--json", "done", "--no-pr"])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}{}",
+        text(&out.stderr),
+        text(&out.stdout)
+    );
+    let kind: String = local
+        .db("personal")
+        .query_row(
+            "SELECT s.type FROM tasks t JOIN statuses s ON s.id = t.status_id WHERE t.id = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(kind, "completed");
+}
+
+#[test]
+fn an_explicit_run_id_never_reaches_another_workspace() {
+    let local = Local::new();
+    local.workspace("other", "Other", 12);
+    local.json(&["add", "Agent task", "-p", "WK"]);
+    local.json(&["agent", "start", "WK-1", "--agent", "codex"]);
+    let out = local
+        .cmd()
+        .args([
+            "--ws",
+            "local:other",
+            "agent",
+            "update",
+            "--run",
+            "1",
+            "--task",
+            "WK-1",
+            "--summary",
+            "wrong place",
+        ])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    let summary: Option<String> = local
+        .db("personal")
+        .query_row(
+            "SELECT summary FROM agent_work_runs WHERE id = 1",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(summary, None);
+}
+
+#[test]
+fn pages_pulled_from_one_local_workspace_are_not_pushed_into_another() {
+    let local = Local::new();
+    local.workspace("other", "Other", 12);
+    local
+        .db("personal")
+        .execute_batch(
+            "INSERT INTO pages (id, title, slug, body, author_id, author_kind, author_ref, updated_by_id, updated_by_kind, updated_by_ref, created_at, updated_at)
+             VALUES (1, 'Mine', 'mine', 'original', -1, 'user', '-1', -1, 'user', '-1', 'x', 'x');",
+        )
+        .unwrap();
+    local
+        .db("other")
+        .execute_batch(
+            "INSERT INTO pages (id, title, slug, body, author_id, author_kind, author_ref, updated_by_id, updated_by_kind, updated_by_ref, created_at, updated_at)
+             VALUES (1, 'Theirs', 'theirs', 'untouched', -1, 'user', '-1', -1, 'user', '-1', 'x', 'x');",
+        )
+        .unwrap();
+    let dir = local.tmp.path().join("pages");
+    local.json(&["page", "pull", dir.to_str().unwrap()]);
+    let file = dir.join("mine.md");
+    let text_now = std::fs::read_to_string(&file).unwrap();
+    std::fs::write(&file, text_now.replace("original", "edited")).unwrap();
+    set_default_workspace(&local, "local:other");
+    let out = local
+        .cmd()
+        .args(["page", "push", dir.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(!out.status.success(), "{}", text(&out.stdout));
+    let theirs: String = local
+        .db("other")
+        .query_row("SELECT body FROM pages WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(theirs, "untouched");
+}
+
+#[test]
+fn local_tracked_time_is_reported_as_unavailable() {
+    let local = Local::new();
+    local.json(&["add", "Long one", "-p", "WK"]);
+    local
+        .db("personal")
+        .execute_batch("UPDATE tasks SET common_time = 144000")
+        .unwrap();
+    for args in [&["today"][..], &["status"][..]] {
+        let v = local.json(args);
+        let codes: Vec<&str> = v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|w| w["code"].as_str())
+            .collect();
+        assert!(codes.contains(&"local_time_unavailable"), "{args:?}: {v}");
+    }
+    let status = local.json(&["status"]);
+    assert_eq!(status["data"]["today"], Value::Null);
+}

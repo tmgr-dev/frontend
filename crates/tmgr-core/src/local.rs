@@ -7,7 +7,8 @@ use std::path::{Path, PathBuf};
 use chrono::{Offset, Utc};
 use rusqlite::Connection;
 use serde_json::Value;
-use tmgr_local::{Context, LocalWorkspace, User};
+use tmgr_local::Context;
+pub use tmgr_local::{LocalWorkspace, User};
 
 use crate::error::{Error, Kind, Result};
 
@@ -150,7 +151,7 @@ impl Local {
 
 fn local_error(e: tmgr_local::Error) -> Error {
     match e {
-        tmgr_local::Error::Busy => Error::new(Kind::Conflict, e.to_string())
+        tmgr_local::Error::Busy => Error::new(Kind::Offline, e.to_string())
             .hint("the desktop app is writing to this workspace; try again"),
         tmgr_local::Error::NotFound(_) => Error::not_found(e.to_string()),
         tmgr_local::Error::SchemaTooNew(_)
@@ -242,6 +243,13 @@ mod tests {
             (status, &body["meta"]["per_page"]),
             (200, &serde_json::json!(5))
         );
+    }
+
+    #[test]
+    fn a_busy_desktop_is_retryable_not_a_stale_run() {
+        let e = local_error(tmgr_local::Error::Busy);
+        assert_eq!(e.kind, Kind::Offline);
+        assert!(e.hint.is_some());
     }
 
     #[test]

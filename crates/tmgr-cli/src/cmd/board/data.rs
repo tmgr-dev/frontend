@@ -152,6 +152,41 @@ pub fn exec(client: &Client, ws_id: i64, category: Option<u64>, effect: Effect) 
     }
 }
 
+/// A local workspace `personal` under `dir` with three statuses and one task.
+#[cfg(test)]
+pub(super) fn local_fixture(
+    dir: &std::path::Path,
+) -> (tmgr_local::LocalWorkspace, tmgr_local::User) {
+    let ws = dir.join("personal");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("workspace.json"),
+        r#"{"id":1,"name":"P","code":"personal","schema_version":12,"created_at":"x"}"#,
+    )
+    .unwrap();
+    let golden: Value = serde_json::from_str(include_str!(
+        "../../../../tmgr-local/tests/parity/golden/schema.json"
+    ))
+    .unwrap();
+    let conn = rusqlite::Connection::open(ws.join("workspace.db")).unwrap();
+    for object in golden["sqlite_master"].as_array().unwrap() {
+        if let Some(ddl) = object["sql"].as_str() {
+            conn.execute_batch(ddl).unwrap();
+        }
+    }
+    conn.execute_batch(
+        "INSERT INTO meta VALUES ('schema_version', '12');
+         INSERT INTO statuses (id, name, type, sort_order, created_at, updated_at)
+         VALUES (1, 'Backlog', 'default', 1, 'x', 'x'), (2, 'Doing', 'active', 2, 'x', 'x'),
+                (3, 'Archived', 'archived', 3, 'x', 'x');
+         INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (1, 'Local card', 1, 'x', 'x');",
+    )
+    .unwrap();
+    let workspace = tmgr_local::find(dir, "personal").unwrap();
+    let user = tmgr_core::local::identity(dir, None);
+    (workspace, user)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,33 +393,7 @@ mod tests {
     }
 
     fn local_client(dir: &std::path::Path) -> Client {
-        let ws = dir.join("personal");
-        std::fs::create_dir_all(&ws).unwrap();
-        std::fs::write(
-            ws.join("workspace.json"),
-            r#"{"id":1,"name":"P","code":"personal","schema_version":12,"created_at":"x"}"#,
-        )
-        .unwrap();
-        let golden: Value = serde_json::from_str(include_str!(
-            "../../../../tmgr-local/tests/parity/golden/schema.json"
-        ))
-        .unwrap();
-        let conn = rusqlite::Connection::open(ws.join("workspace.db")).unwrap();
-        for object in golden["sqlite_master"].as_array().unwrap() {
-            if let Some(ddl) = object["sql"].as_str() {
-                conn.execute_batch(ddl).unwrap();
-            }
-        }
-        conn.execute_batch(
-            "INSERT INTO meta VALUES ('schema_version', '12');
-             INSERT INTO statuses (id, name, type, sort_order, created_at, updated_at)
-             VALUES (1, 'Backlog', 'default', 1, 'x', 'x'), (2, 'Doing', 'active', 2, 'x', 'x'),
-                    (3, 'Archived', 'archived', 3, 'x', 'x');
-             INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (1, 'Local card', 1, 'x', 'x');",
-        )
-        .unwrap();
-        let workspace = tmgr_local::find(dir, "personal").unwrap();
-        let user = tmgr_core::local::identity(dir, None);
+        let (workspace, user) = local_fixture(dir);
         Client::for_local(
             tmgr_core::local::Local::new(workspace, user),
             "tmgr-test",

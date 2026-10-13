@@ -23,10 +23,7 @@ pub fn run(ctx: &Ctx, cmd: &Option<WsCommand>) -> Result<Output> {
 fn all_workspaces(ctx: &Ctx) -> Result<(Vec<Workspace>, Option<String>)> {
     let mut all: Vec<Workspace> = Vec::new();
     let locals = local_workspaces()?;
-    match ctx
-        .cloud_client()
-        .and_then(|client| ctx.workspaces(client).map(<[_]>::to_vec))
-    {
+    match ctx.cloud_client().and_then(|client| ctx.workspaces(client)) {
         Ok(cloud) => all.extend(cloud),
         Err(e) if locals.is_empty() => return Err(e),
         Err(e) if e.kind == Kind::Auth => {}

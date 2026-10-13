@@ -1,5 +1,5 @@
 use crate::cli::{DoneArgs, StartArgs};
-use crate::ctx::Ctx;
+use crate::ctx::{same_workspace, Ctx, RunClient};
 use crate::gitx::{self, Git};
 use crate::interact;
 use crate::out::Output;
@@ -260,7 +260,11 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
                 .map(|t| (t.id, task_ref(t)))
                 .collect(),
             None => active::load()
-                .filter(|a| a.timer_running() && a.task.id != r.task.id)
+                .filter(|a| {
+                    a.timer_running()
+                        && !(a.task.id == r.task.id
+                            && same_workspace(a.workspace.as_deref(), &r.ws_code))
+                })
                 .map(|a| vec![(a.task.id, a.task.key)])
                 .unwrap_or_default(),
         }
@@ -457,7 +461,7 @@ pub fn stop(ctx: &Ctx) -> Result<Output> {
             )),
         ));
     };
-    let client = ctx.client()?;
+    let client = &*ctx.client_for_run(state.workspace.as_deref())?;
     let tracked = match client.stop_countdown(state.task.id) {
         Ok(t) => t.common_time,
         Err(e) if e.kind == Kind::NotFound => {
@@ -534,9 +538,15 @@ pub fn done(ctx: &Ctx, args: &DoneArgs) -> Result<Output> {
             )
         }
     };
-    let client = ctx.client()?;
+    let client = match (&args.reference, &active_state) {
+        (None, Some(a)) => ctx.client_for_run(a.workspace.as_deref())?,
+        _ => RunClient::Shared(ctx.client()?),
+    };
+    let client = &*client;
     let r = resolve(ctx, client, &reference)?;
-    let same_as_active = active_state.as_ref().filter(|a| a.task.id == r.task.id);
+    let same_as_active = active_state
+        .as_ref()
+        .filter(|a| a.task.id == r.task.id && same_workspace(a.workspace.as_deref(), &r.ws_code));
 
     let git = match same_as_active
         .and_then(|a| a.repo.as_deref())
