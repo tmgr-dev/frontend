@@ -1,4 +1,5 @@
 use crate::cli_agent::{AgentCommand, AlarmArgs, HookCmd, NotifyArgs};
+use crate::cli_link::{LinkCommand, WorkerArgs};
 use clap::{Args, Parser, Subcommand};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -124,6 +125,13 @@ pub enum Command {
     Alarm(AlarmArgs),
     /// Run the MCP server over stdio (notify_user, alarm, alarm_status, tmgr_cli)
     Mcp,
+    /// Leader and follower links over SSH (experimental)
+    Link {
+        #[command(subcommand)]
+        command: LinkCommand,
+    },
+    /// Forced command for a follower, started by sshd only (experimental)
+    Worker(WorkerArgs),
     #[command(
         about = "How task references are written",
         long_about = REFS_HELP,

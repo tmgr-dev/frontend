@@ -17,6 +17,7 @@ clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tmgr-core.workspace = true
+tmgr-link.workspace = true
 ctrlc.workspace = true
 rpassword.workspace = true
 chrono.workspace = true
