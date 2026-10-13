@@ -33,6 +33,7 @@ unicode-width = "0.2"
 toml_edit = "0.22"
 libc = "0.2"
 tmgr-core = { path = "crates/tmgr-core" }
+tmgr-link = { path = "crates/tmgr-link" }
 
 [profile.release]
 lto = true
