@@ -23,6 +23,7 @@ const RULES: Array<[RegExp, string]> = [
 	[/^telegram(\/|$)/, 'telegram'],
 	[/^agent(\/|$)/, 'ai.assistant'],
 	[/^tasks\/[^/]+\/agent-work$/, 'agent_work'],
+	[/^workspaces\/[^/]+\/agent-status$/, 'agent_work'],
 	[/^user\/alarm-phone(\/|$)/, 'alerts'],
 	[/^notify-tokens(\/|$)/, 'alerts'],
 	[/^pages(\/|$)/, 'pages'],
