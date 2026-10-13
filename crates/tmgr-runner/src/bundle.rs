@@ -205,6 +205,8 @@ pub struct Prior {
     before: Before,
     dir: File,
     published: (u64, u64),
+    // Kept open so the published inode number cannot be reused by a replacement file.
+    _held: File,
 }
 
 pub fn install(sdir: &Path, checked: &Checked) -> Result<Prior, Refusal> {
@@ -294,6 +296,7 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
                     before,
                     dir: dir_file,
                     published: (m.dev(), m.ino()),
+                    _held: f,
                 };
                 restore(&prior);
             }
@@ -304,6 +307,7 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
         before,
         dir: dir_file,
         published,
+        _held: f,
     })
 }
 
