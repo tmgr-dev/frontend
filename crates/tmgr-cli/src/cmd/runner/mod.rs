@@ -21,7 +21,7 @@ pub enum RunnerCommands {
     /// [experimental] Start an agent in a managed terminal session
     Run(RunArgs),
     /// [experimental] List sessions and what each agent is doing
-    Agents,
+    Agents(AgentsArgs),
     /// [experimental] Open the live full-screen view of sessions
     Attach(AttachArgs),
     /// [experimental] Type a line of text into a session
@@ -65,6 +65,21 @@ pub struct RunArgs {
     /// Start the session without opening the live view
     #[arg(long)]
     pub no_attach: bool,
+}
+
+#[derive(Args)]
+pub struct AgentsArgs {
+    #[command(subcommand)]
+    pub command: Option<AgentsCmd>,
+}
+
+#[derive(Subcommand)]
+pub enum AgentsCmd {
+    /// [experimental] Create the file that holds an agent profile's login token
+    LoginFile {
+        /// Agent profile id
+        profile: String,
+    },
 }
 
 #[derive(Args)]

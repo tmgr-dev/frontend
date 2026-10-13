@@ -1,5 +1,5 @@
 use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
-use super::{AttachArgs, HaltArgs, RmArgs, RunnerCommands, SendArgs};
+use super::{AgentsArgs, AgentsCmd, AttachArgs, HaltArgs, RmArgs, RunnerCommands, SendArgs};
 use crate::out::table;
 use serde_json::json;
 use std::io::IsTerminal;
@@ -11,6 +11,8 @@ use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
+use tmgr_runner::login;
+use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::wire::now_ms;
 
@@ -23,7 +25,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Serve => serve(),
         },
         RunnerCommands::Run(a) => run(o, a),
-        RunnerCommands::Agents => agents(o),
+        RunnerCommands::Agents(AgentsArgs {
+            command: Some(AgentsCmd::LoginFile { profile }),
+        }) => login_file(o, profile),
+        RunnerCommands::Agents(_) => agents(o),
         RunnerCommands::Attach(a) => attach_cmd(a),
         RunnerCommands::Send(a) => send(o, a),
         RunnerCommands::Halt(a) => halt(o, a),
@@ -242,6 +247,35 @@ fn command_line(s: &SessionInfo) -> String {
         .join(" ");
     let (cut, more) = tmgr_core::text::truncate_chars(&full, 40);
     tmgr_core::text::sanitize_line(&if more { format!("{cut}…") } else { cut })
+}
+
+fn login_file(o: &Opts, profile: &str) -> Result<i32> {
+    let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+    let p = set.get(profile).ok_or_else(|| {
+        Error::not_found(format!("no agent profile {profile:?}")).hint("tmgr agents")
+    })?;
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .ok_or_else(|| Error::usage("HOME is not set"))?;
+    let f = login::ensure_login_file(p, &home).map_err(Error::usage)?;
+    let path = f.path.display().to_string();
+    let names = f.names.join(", ");
+    let human = if !f.created && !f.private {
+        format!(
+            "{path} exists but is not private; run: chmod 600 {path}\nSessions refuse to start until it is."
+        )
+    } else if f.created {
+        format!(
+            "Created {path} (mode 600).\nPut the value for {names} after the = in that file. For Claude Code run `claude setup-token` and paste the token there."
+        )
+    } else {
+        format!("{path} already exists (permissions OK); it was not changed.")
+    };
+    Ok(emit(
+        o,
+        json!({"path": path, "created": f.created, "private": f.private, "names": f.names}),
+        human,
+    ))
 }
 
 fn agents(o: &Opts) -> Result<i32> {

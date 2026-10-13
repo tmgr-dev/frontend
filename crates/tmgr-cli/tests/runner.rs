@@ -499,3 +499,52 @@ fn run_is_refused_without_a_usable_sandbox() {
     assert!(text.contains("sandbox unavailable"), "{text}");
     assert!(env.sessions().is_empty());
 }
+
+#[test]
+fn agents_login_file_creates_a_private_template_and_never_overwrites() {
+    let env = Env::new();
+    let home = env.tmp.path().join("fakehome");
+    private_dir(&home);
+    let file = home.join(".config/tmgr/agents/claude-code.env");
+    let run = |args: &[&str]| env.cmd(args).env("HOME", &home).output().unwrap();
+
+    let out = run(&["agents", "login-file", "claude-code", "--json"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["data"]["created"], true);
+    assert!(v["data"]["path"]
+        .as_str()
+        .unwrap()
+        .ends_with("fakehome/.config/tmgr/agents/claude-code.env"));
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "CLAUDE_CODE_OAUTH_TOKEN=\n"
+    );
+    assert_eq!(
+        fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    fs::write(&file, "CLAUDE_CODE_OAUTH_TOKEN=keep-me\n").unwrap();
+    let out = run(&["agents", "login-file", "claude-code"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success() && text.contains("already exists"),
+        "{text}"
+    );
+    assert!(!text.contains("keep-me"));
+    assert_eq!(
+        fs::read_to_string(&file).unwrap(),
+        "CLAUDE_CODE_OAUTH_TOKEN=keep-me\n"
+    );
+
+    fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
+    let out = run(&["agents", "login-file", "claude-code"]);
+    assert!(String::from_utf8_lossy(&out.stdout).contains("chmod 600"));
+
+    assert!(!run(&["agents", "login-file", "no-such"]).status.success());
+}
