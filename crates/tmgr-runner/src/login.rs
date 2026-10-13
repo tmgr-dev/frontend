@@ -165,7 +165,7 @@ fn link_is_unlinkable(
 }
 
 fn link_unlinkable_by(parent_mode: u32, parent_uid: u32, link_uid: u32, euid: u32) -> bool {
-    let writable = parent_mode & 0o022 != 0 || (parent_uid == euid && parent_mode & 0o200 != 0);
+    let writable = parent_mode & 0o022 != 0 || parent_uid == euid;
     if !writable {
         return false;
     }
@@ -721,7 +721,9 @@ file = "~/.config/tmgr/agents/p.env"
         assert!(!link_unlinkable_by(0o41777, 0, 99, me));
         assert!(link_unlinkable_by(0o41777, 0, me, me));
         assert!(link_unlinkable_by(0o41777, me, 99, me));
-        assert!(!link_unlinkable_by(0o40555, me, me, me));
+        assert!(link_unlinkable_by(0o40555, me, me, me));
+        assert!(link_unlinkable_by(0o40500, me, 99, me));
+        assert!(!link_unlinkable_by(0o40555, 0, 0, me));
     }
 
     #[test]
