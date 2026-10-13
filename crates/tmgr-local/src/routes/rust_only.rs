@@ -74,7 +74,7 @@ pub(super) fn task_by_key(req: &Request<'_>) -> Handled {
     let id_of = |r: &crate::db::Row| col(r, "id").as_i64().unwrap_or(0);
     let found = by_prefix
         .iter()
-        .find(|r| task_key(&title_of(r), None, None, id_of(r)) == wanted)
+        .find(|r| task_key(&title_of(r), None, None, id_of(r)).eq_ignore_ascii_case(&wanted))
         .map(id_of);
     let found = match found {
         Some(id) => Some(id),
@@ -93,7 +93,8 @@ pub(super) fn task_by_key(req: &Request<'_>) -> Handled {
                 col(r, "code").as_str(),
                 col(r, "seq").as_i64(),
                 id_of(r),
-            ) == wanted
+            )
+            .eq_ignore_ascii_case(&wanted)
         })
         .map(id_of),
     };
@@ -220,6 +221,18 @@ mod tests {
         assert_eq!(get(&conn, &c, "tasks/by-key/WK-2").1["data"]["id"], 2);
         assert_eq!(get(&conn, &c, "tasks/by-key/WK-1").0, 404);
         assert_eq!(get(&conn, &c, "tasks/by-key/nope").0, 404);
+    }
+
+    #[test]
+    fn a_lowercase_category_code_still_resolves_its_key() {
+        let conn = db("
+            INSERT INTO categories (id, title, code, created_at, updated_at) VALUES (2, 'Backend', 'be', 'x', 'x');
+            INSERT INTO tasks (id, title, project_category_id, category_tasks_sequence_id, created_at, updated_at)
+            VALUES (7, 'Lower', 2, 1, 'x', 'x');
+        ");
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        assert_eq!(get(&conn, &c, "tasks/by-key/BE-1").1["data"]["id"], 7);
+        assert_eq!(get(&conn, &c, "tasks/by-key/be-1").1["data"]["id"], 7);
     }
 
     #[test]

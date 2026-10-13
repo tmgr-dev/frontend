@@ -417,7 +417,7 @@ pub(crate) fn list_tasks(
     if !all {
         query.push_str(" LIMIT ? OFFSET ?");
         bound.push(int(per_page));
-        bound.push(int((page - 1) * per_page));
+        bound.push(int((page - 1).saturating_mul(per_page)));
     }
     let rows = sql(select(req.conn, &query, &bound))?;
     let total = col(&totals, "n").as_i64().unwrap_or(0);

@@ -105,11 +105,16 @@ pub(crate) fn paginate(
     path: &str,
     extra: Map<String, Value>,
 ) -> Value {
-    let last_page = ((total + per_page - 1) / per_page).max(1);
+    let per_page = per_page.max(1);
+    let last_page = if total > 0 {
+        (total - 1) / per_page + 1
+    } else {
+        1
+    };
     let (from, to) = if total > 0 {
         (
-            json!((page - 1) * per_page + 1),
-            json!((page * per_page).min(total)),
+            json!((page - 1).saturating_mul(per_page).saturating_add(1)),
+            json!(page.saturating_mul(per_page).min(total)),
         )
     } else {
         (Value::Null, Value::Null)

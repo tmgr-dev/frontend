@@ -77,6 +77,24 @@ mod tests {
     }
 
     #[test]
+    fn huge_page_numbers_answer_an_empty_page_instead_of_panicking() {
+        let conn = db(
+            "INSERT INTO categories (id, title, created_at, updated_at) VALUES (1, 'P', 'x', 'x');",
+        );
+        let c = ctx("2026-10-13T12:00:00.000Z");
+        for url in [
+            "project_categories/children/1?page=500000000000000000",
+            "project_categories/children/1?per_page=1e300&page=1e300",
+            "tasks?page=500000000000000000&per_page=900000000000000000",
+            "tasks/status/1?page=1e400",
+        ] {
+            let r = dispatch(&conn, &c, "GET", url, None).unwrap().unwrap();
+            assert_eq!(r.status, 200, "{url}");
+            assert_eq!(r.data["data"], json!([]), "{url}");
+        }
+    }
+
+    #[test]
     fn wraps_bodies_without_data_and_passes_pages_through() {
         let conn = db("");
         let c = ctx("2026-10-13T12:00:00.000Z");

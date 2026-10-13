@@ -102,8 +102,8 @@ pub(super) fn child_categories(req: &Request<'_>) -> Handled {
     let per_page = crate::js::positive_or(req.query.get("per_page"), 20);
     let page = crate::js::positive_or(req.query.get("page"), 1);
     let total = all.len() as i64;
-    let start = ((page - 1) * per_page).min(total) as usize;
-    let end = (page * per_page).min(total) as usize;
+    let start = (page - 1).saturating_mul(per_page).min(total) as usize;
+    let end = page.saturating_mul(per_page).min(total) as usize;
     Ok(paginate(
         all[start..end].to_vec(),
         total,

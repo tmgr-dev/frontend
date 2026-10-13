@@ -244,10 +244,12 @@ fn scenarios_match_the_ts_goldens() {
         .unwrap_or_default();
     names.sort();
     let schema_file = dir().join("golden/schema.json");
-    if names.is_empty() || !schema_file.exists() {
-        eprintln!("no parity scenarios or schema golden yet; skipping");
-        return;
-    }
+    assert!(
+        !names.is_empty(),
+        "no parity scenarios in {}",
+        scenarios.display()
+    );
+    assert!(schema_file.exists(), "missing {}", schema_file.display());
     let schema = read(&schema_file);
     assert_eq!(schema["schema_version"], json!(tmgr_local::SCHEMA_VERSION));
     let mut outcome = Outcome::default();

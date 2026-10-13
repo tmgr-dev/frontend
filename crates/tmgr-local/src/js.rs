@@ -38,8 +38,11 @@ pub(crate) fn positive_or(raw: Option<&str>, fallback: i64) -> i64 {
     } else {
         n
     };
-    n.max(1.0).trunc() as i64
+    n.clamp(1.0, MAX_SAFE).trunc() as i64
 }
+
+/// `Number.MAX_SAFE_INTEGER`: paging values above it lose precision in JavaScript anyway.
+const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
 
 /// JavaScript truthiness of a SQLite value.
 pub(crate) fn truthy(value: &Value) -> bool {

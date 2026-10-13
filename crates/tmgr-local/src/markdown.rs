@@ -11,6 +11,14 @@ pub(crate) struct Section {
     pub heading: Option<String>,
 }
 
+/// JavaScript `substring`: clamped to the text and with the bounds swapped when reversed, so
+/// overlapping markers never panic.
+pub(crate) fn substring(text: &str, a: usize, b: usize) -> &str {
+    let (a, b) = (a.min(text.len()), b.min(text.len()));
+    let (from, to) = if a <= b { (a, b) } else { (b, a) };
+    text.get(from..to).unwrap_or("")
+}
+
 fn fence_of(line: &str) -> Option<&str> {
     let spaces = line.bytes().take(3).take_while(|b| *b == b' ').count();
     let rest = &line[spaces..];
@@ -192,7 +200,7 @@ pub(crate) fn sections(body: &str) -> Vec<Section> {
                     out.push(Section {
                         id,
                         owner,
-                        heading: first_heading(&body[inner_start..start]),
+                        heading: first_heading(substring(body, inner_start, start)),
                     });
                 }
             }
@@ -245,5 +253,14 @@ mod tests {
         assert_eq!(parse_heading("#NoSpace"), None);
         assert_eq!(parse_heading("    # four spaces"), None);
         assert_eq!(parse_heading("####### seven"), None);
+    }
+
+    #[test]
+    fn overlapping_markers_never_panic() {
+        let body = "<!-- tmgr:section id=\"a<!-- /tmgr:section -->\" owner=\"o\" -->\n# H\n<!-- /tmgr:section -->";
+        let found = sections(body);
+        assert!(found.iter().all(|s| !s.id.is_empty()));
+        assert_eq!(substring("abcdef", 4, 1), "bcd");
+        assert_eq!(substring("abc", 2, 99), "c");
     }
 }
