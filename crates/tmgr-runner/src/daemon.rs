@@ -1514,6 +1514,8 @@ impl Runner {
         let src = handover.as_raw_fd();
         let mut shim_cmd = Command::new(&self.cfg.self_exe);
         shim_cmd
+            .env_clear()
+            .envs(daemon_env())
             .arg("__shim")
             .arg(&self.cfg.dir)
             .arg(id)
@@ -2129,6 +2131,30 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     Ok(())
 }
 
+// Same-user processes can read each other's initial environment on macOS, so the runner and shims start from an allowlist.
+pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    const KEEP: &[&str] = &[
+        "HOME",
+        "PATH",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "LANG",
+        "TMPDIR",
+        "COLORTERM",
+        "TERM_PROGRAM",
+    ];
+    std::env::vars_os()
+        .filter(|(k, _)| {
+            let Some(k) = k.to_str() else { return false };
+            KEEP.contains(&k)
+                || k.starts_with("LC_")
+                || k.starts_with("XDG_")
+                || (k.starts_with("TMGR_") && k != "TMGR_RUN_TOKEN")
+        })
+        .collect()
+}
+
 pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
     if let Ok(mut c) = Client::connect(&cfg.dir) {
         return Ok(c.status()?.pid);
@@ -2141,6 +2167,8 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
         .open(cfg.dir.join("runner.log"))?;
     let mut cmd = Command::new(&cfg.self_exe);
     cmd.args(["runner", "serve"])
+        .env_clear()
+        .envs(daemon_env())
         .env("TMGR_RUNNER_DIR", &cfg.dir)
         .env("TMGR_RUNNER_HOMES", &cfg.homes)
         .env("TMGR_T0_QUIET_MS", cfg.quiet_ms.to_string())

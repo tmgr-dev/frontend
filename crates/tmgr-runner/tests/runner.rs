@@ -653,6 +653,41 @@ fn send_reports_a_full_input_queue() {
     assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
 }
 
+fn env_of(pid: u32) -> String {
+    let out = std::process::Command::new("ps")
+        .args(["eww", "-o", "command=", "-p", &pid.to_string()])
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+#[test]
+fn the_runner_and_its_shims_do_not_inherit_the_starting_shell_environment() {
+    if !sessions_available() {
+        return;
+    }
+    let h = Harness::new();
+    let cfg = tmgr_runner::daemon::RunnerConfig {
+        dir: h.run.clone(),
+        homes: h.homes.path().to_path_buf(),
+        self_exe: PathBuf::from(HOST),
+        quiet_ms: 5000,
+        version: "test".into(),
+        max_sessions: 16,
+    };
+    std::env::set_var("SHELL_EXPORTED_TOKEN_FOR_TEST", "s3cr3t-shell-value");
+    let pid = tmgr_runner::daemon::start_background(&cfg).unwrap();
+    let mut c = h.client();
+    let info = c.create(h.req(&["/bin/sh", "-c", "sleep 30"])).unwrap();
+    let runner_env = env_of(pid);
+    let shim_env = env_of(info.shim_pid);
+    let _ = c.kill(&info.id, "kill");
+    let _ = c.stop();
+    assert!(runner_env.contains("TMGR_RUNNER_DIR"), "{runner_env}");
+    assert!(!runner_env.contains("s3cr3t-shell-value"), "{runner_env}");
+    assert!(!shim_env.contains("s3cr3t-shell-value"), "{shim_env}");
+}
+
 #[test]
 fn start_background_is_idempotent() {
     let h = Harness::new();

@@ -20,7 +20,7 @@ and similar names stay refused (the profile is rejected at load). The profile's 
 An agent profile (trusted local data, see the design doc 6.10) may declare, all relative to the real home as `~/...`:
 
 ```toml
-env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]      # values: [secrets] file first, then the runner's environment
+env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]      # values: [secrets] file first, then the runner's (allowlisted) environment
 [env]
 DISABLE_AUTOUPDATER = "1"                   # literal, non-secret
 [secrets]
@@ -125,7 +125,10 @@ command (exec failure: exit 127).
   cannot gate this call: tested on macOS 26 with `sysctl-read` name and prefix filters, `process-info*`, `sysctl*`
   and a default-deny profile, none of which stop it, and `syscall-number` filters have no effect. Hardened runtime
   does not help; only a `restrict` signature does. Treat a token passed to one macOS session as readable by every
-  other session of the same user; Mach/XPC services are reachable (default allow);
+  other session of the same user. The same call also reaches the user's other non-`restrict`-signed processes (shells,
+  editors, `tmgr attach`), so anything exported there is readable from a session. The runner and its shims start
+  from an allowlisted environment (`HOME PATH USER LOGNAME SHELL LANG LC_* TMPDIR COLORTERM TERM_PROGRAM XDG_* TMGR_*`)
+  so they do not carry the starting shell's secrets; Mach/XPC services are reachable (default allow);
   Seatbelt is deprecated by Apple but still enforced.
 - macOS tools that cache under `/var/folders` (clang module caches and similar) fail to write there; only the `xcrun_db` cache is allowed.
 - Git worktrees whose `.git` points outside the working dir cannot write the shared object store; the caller must put
