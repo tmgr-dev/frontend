@@ -949,7 +949,7 @@ impl Runner {
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
-        let result = self.spawn_session(&req, &cwd, matcher, &id, &sdir, &home, bundle);
+        let result = self.spawn_session(&req, &cwd, matcher, &id, (&sdir, &home), bundle);
         if result.is_err() {
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
@@ -963,8 +963,7 @@ impl Runner {
         cwd: &Path,
         matcher: Option<Matcher>,
         id: &str,
-        sdir: &Path,
-        home: &Path,
+        (sdir, home): (&Path, &Path),
         bundle: Option<&bundle::Checked>,
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
