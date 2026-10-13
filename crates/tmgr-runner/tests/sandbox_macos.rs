@@ -119,3 +119,20 @@ fn home_parent_is_stat_able_but_not_listable() {
     let o = f.run(&format!("cat {}", f.path(&f.other_home.join("notes.txt"))));
     assert!(!o.ok() && !o.stdout.contains(SECRET));
 }
+
+#[test]
+fn profile_directory_is_neither_readable_nor_writable() {
+    let mut f = fx();
+    let agents = f.root.join("agents");
+    fs::create_dir_all(&agents).unwrap();
+    fs::write(agents.join("p.toml"), SECRET).unwrap();
+    f.deny = vec![agents.clone()];
+
+    let a = f.path(&agents);
+    let o = f.run(&format!("cat {a}/p.toml"));
+    assert!(!o.ok() && !o.stdout.contains(SECRET), "{}", o.stdout);
+    let o = f.run(&format!("echo x > {a}/p.toml; echo y > {a}/new.toml"));
+    assert!(!o.ok());
+    assert_eq!(fs::read_to_string(agents.join("p.toml")).unwrap(), SECRET);
+    assert!(!agents.join("new.toml").exists());
+}

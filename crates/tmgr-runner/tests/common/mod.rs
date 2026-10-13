@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use tmgr_runner::sandbox::{prepare, SandboxSpec};
+use tmgr_runner::sandbox::{prepare, Grants, SandboxSpec};
 
 pub const SECRET: &str = "TOPSECRET-4711";
 pub const SID: &str = "s_abcdefghij";
@@ -19,6 +19,7 @@ pub struct Fx {
     pub home: PathBuf,
     pub other_home: PathBuf,
     pub self_exe: PathBuf,
+    pub deny: Vec<PathBuf>,
 }
 
 pub struct Out {
@@ -69,6 +70,7 @@ pub fn fixture(self_exe: &str) -> Fx {
         cwd,
         other_home,
         self_exe: PathBuf::from(self_exe),
+        deny: Vec::new(),
     }
 }
 
@@ -84,7 +86,10 @@ impl Fx {
             self_exe: self.self_exe.clone(),
             env_pass: vec![],
             base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
-            grants: Default::default(),
+            grants: Grants {
+                deny: self.deny.clone(),
+                ..Default::default()
+            },
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])
@@ -113,7 +118,10 @@ impl Fx {
             self_exe: self.self_exe.clone(),
             env_pass: vec![],
             base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
-            grants: Default::default(),
+            grants: Grants {
+                deny: self.deny.clone(),
+                ..Default::default()
+            },
         };
         let l = prepare(&spec).expect("prepare");
         let pair = native_pty_system().openpty(pty_size()).unwrap();

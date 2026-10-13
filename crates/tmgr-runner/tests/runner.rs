@@ -1302,3 +1302,42 @@ fn a_world_readable_secrets_file_refuses_the_session_with_a_chmod_hint() {
     assert!(!e.contains("s3cr3t-value"));
     assert!(fx.h.client().list().unwrap().is_empty());
 }
+
+#[test]
+fn a_profile_directory_inside_the_session_cwd_refuses_the_session() {
+    let mut h = Harness::new();
+    h.agents = h.work.join("agents");
+    fs::create_dir(&h.agents).unwrap();
+    h.start(5000);
+    let mut c = h.client();
+    for cwd in [h.work.clone(), h.agents.clone()] {
+        let mut r = h.req(&["/bin/true"]);
+        r.cwd = cwd.display().to_string();
+        let e = err_text(c.create(r));
+        assert!(
+            e.contains("invalid_params") && e.contains("profile directory"),
+            "{e}"
+        );
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn a_secrets_file_directory_inside_the_session_cwd_refuses_the_session() {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    let project = home.join("proj");
+    fs::create_dir_all(project.join("sec")).unwrap();
+    fs::write(
+        h.agents.join("fake.toml"),
+        "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/true\"]\n\
+         [secrets]\nfile = \"~/proj/sec/fake.env\"\n",
+    )
+    .unwrap();
+    h.real_home = Some(home);
+    h.start(5000);
+    let mut r = h.req(&["/bin/true"]);
+    r.cwd = project.display().to_string();
+    let e = err_text(h.client().create(r));
+    assert!(e.contains("invalid_params") && e.contains("secrets"), "{e}");
+}

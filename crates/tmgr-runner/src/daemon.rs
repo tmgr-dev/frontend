@@ -66,6 +66,15 @@ const PROTECTED_IN_HOME: [&str; 10] = [
     "Library/Application Support/Firefox",
 ];
 
+fn profile_protected_paths() -> Vec<PathBuf> {
+    let dir = profile::user_dir();
+    let (set, _) = ProfileSet::load(dir.as_deref());
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    login::profile_protected(dir.as_deref(), &set, &home)
+}
+
 #[derive(Clone)]
 pub struct RunnerConfig {
     pub dir: PathBuf,
@@ -861,7 +870,7 @@ impl Runner {
                 )
             })?;
         if cwd == Path::new("/") || self.protected_overlap(&cwd) {
-            return bad("cwd must not be /, the home directory or overlap protected paths");
+            return bad("cwd must not be /, the home directory or overlap protected paths (including the agent profile directory and secrets files)");
         }
         Ok(cwd)
     }
@@ -869,6 +878,7 @@ impl Runner {
     fn protected_overlap(&self, cwd: &Path) -> bool {
         let canon = |p: &Path| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
         let mut denied = vec![canon(&self.cfg.dir), canon(&self.cfg.homes)];
+        denied.extend(profile_protected_paths());
         let mut home = None;
         if let Some(h) = std::env::var_os("HOME").map(PathBuf::from) {
             let h = canon(&h);
@@ -977,15 +987,17 @@ impl Runner {
             .map(PathBuf::from)
             .unwrap_or_default();
         let mut base = base_env();
+        let profile_protected = profile_protected_paths();
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         if let Some(pid) = &req.profile {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
             if let Some(p) = set.get(pid) {
-                let protected = [
+                let mut protected = vec![
                     self.cfg.dir.clone(),
                     home.parent().unwrap_or(home).to_path_buf(),
                 ];
+                protected.extend(profile_protected.iter().cloned());
                 let prep = login::prepare(p, &real_home, &protected, |n| {
                     std::env::var(n).ok().filter(|v| !v.is_empty())
                 })
@@ -999,6 +1011,7 @@ impl Runner {
                 seeds = prep.seeds;
             }
         }
+        grants.deny = profile_protected;
         let launch = sandbox::prepare(&SandboxSpec {
             session_id: id.to_string(),
             argv: req.argv.clone(),

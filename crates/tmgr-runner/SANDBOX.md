@@ -44,6 +44,10 @@ Rules, checked when the profile loads and again at session start (a violation dr
   the profile was validated; a
   missing source is skipped. `to` is a plain relative path (no `..`). With `json_keys` the source must be a JSON object and
   only those keys are written (compact JSON). Seeds are written 0600 into the per-run home.
+- the directory the agent profiles are loaded from (`TMGR_AGENTS_DIR`, `$XDG_CONFIG_HOME/tmgr/agents` or the default) and
+  the directory of each profile's secrets file are protected like `~/.config/tmgr`: a session working directory that
+  contains or sits inside one is refused, and every session's sandbox denies them. Read grants must stay under the real
+  home; the Linux helper re-opens each root and refuses it if its path changed since validation.
 - the secrets file is read by the runner, never by the sandbox (it lives under the denied `~/.config/tmgr`). It must be a
   regular file owned by the user, mode 0600 or stricter, not a symlink, at most 64 KiB, `NAME=VALUE` lines with `#`
   comments; empty values are ignored. Otherwise the session is refused with a `chmod 600` hint. Values are never logged,

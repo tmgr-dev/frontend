@@ -19,6 +19,7 @@ pub struct SandboxSpec {
 #[derive(Default)]
 pub struct Grants {
     pub extra_read: Vec<PathBuf>,
+    pub deny: Vec<PathBuf>,
     pub trusted_env_pass: Vec<String>,
     pub env: Vec<(String, String)>,
 }
@@ -324,6 +325,9 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
     let mut deny = home_deny_paths(&spec.real_home);
     push_unique(&mut deny, runner_dir.clone());
     push_unique(&mut deny, homes_dir);
+    for d in &spec.grants.deny {
+        push_unique(&mut deny, canon_lossy(d));
+    }
     for d in &deny {
         if cwd.starts_with(d) || d.starts_with(&cwd) {
             return Err(format!(
@@ -977,6 +981,21 @@ mod tests {
         fs::create_dir_all(&elsewhere).unwrap();
         f.spec.grants.extra_read = vec![elsewhere];
         assert!(refusal(&f).contains("outside the home"));
+    }
+
+    #[test]
+    fn granted_deny_paths_protect_like_the_builtin_list() {
+        let mut f = fx();
+        let agents = f.spec.cwd.join("agents");
+        fs::create_dir_all(&agents).unwrap();
+        f.spec.grants.deny = vec![agents.clone()];
+        assert!(refusal(&f).contains("protected"));
+
+        let mut f = fx();
+        let agents = f.spec.cwd.parent().unwrap().join("agents");
+        f.spec.grants.deny = vec![agents.clone()];
+        let pl = plan(&f.spec).unwrap();
+        assert!(pl.paths.deny.contains(&agents));
     }
 
     fn refusal(f: &Fx) -> String {

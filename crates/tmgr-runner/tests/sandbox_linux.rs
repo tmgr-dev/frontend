@@ -282,3 +282,22 @@ fn swapped_root_is_refused() {
     );
     assert!(!marker.exists());
 }
+
+#[test]
+fn profile_directory_is_neither_readable_nor_writable() {
+    let mut f = fx();
+    let agents = f.root.join("agents");
+    fs::create_dir_all(&agents).unwrap();
+    fs::write(agents.join("p.toml"), SECRET).unwrap();
+    f.deny = vec![agents.clone()];
+    if !landlock_usable(&f) {
+        return;
+    }
+    let a = f.path(&agents);
+    let o = f.run(&format!("cat {a}/p.toml"));
+    assert!(!o.ok() && !o.stdout.contains(SECRET), "{}", o.stdout);
+    let o = f.run(&format!("echo x > {a}/p.toml; echo y > {a}/new.toml"));
+    assert!(!o.ok());
+    assert_eq!(fs::read_to_string(agents.join("p.toml")).unwrap(), SECRET);
+    assert!(!agents.join("new.toml").exists());
+}

@@ -1,4 +1,4 @@
-use crate::profile::Profile;
+use crate::profile::{Profile, ProfileSet};
 use crate::sandbox::{canon_lossy, env_name_refused, home_deny_paths, overlaps, Grants};
 use std::collections::BTreeMap;
 use std::ffi::{CString, OsStr};
@@ -139,6 +139,27 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
         out.secrets = Some(under_home("secrets file", f, &home)?);
     }
     Ok(out)
+}
+
+pub fn profile_protected(dir: Option<&Path>, set: &ProfileSet, real_home: &Path) -> Vec<PathBuf> {
+    let home = canon_lossy(real_home);
+    let mut out: Vec<PathBuf> = dir.map(canon_lossy).into_iter().collect();
+    for p in set.list() {
+        let Some(decl) = &p.secrets.file else {
+            continue;
+        };
+        let Ok(file) = under_home("secrets file", decl, &home) else {
+            continue;
+        };
+        let guard = match file.parent() {
+            Some(parent) if !home.starts_with(parent) => parent.to_path_buf(),
+            _ => file,
+        };
+        if !out.contains(&guard) {
+            out.push(guard);
+        }
+    }
+    out
 }
 
 fn open_nofollow(path: &Path) -> std::io::Result<File> {
@@ -290,6 +311,7 @@ pub fn prepare(
     Ok(Prepared {
         grants: Grants {
             extra_read: r.read,
+            deny: Vec::new(),
             trusted_env_pass: p.env_pass.clone(),
             env: p.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         },
