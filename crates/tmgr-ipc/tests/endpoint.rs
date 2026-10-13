@@ -4,7 +4,7 @@ use std::io;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::thread;
-use tmgr_ipc::endpoint::{bind, connect, Endpoint};
+use tmgr_ipc::endpoint::{bind, connect, connect_within, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_json, Frame};
 use tmgr_ipc::peer::peer_cred;
 use tmgr_ipc::server::{accept_check, handshake_client, handshake_server};
@@ -59,6 +59,22 @@ fn handshake_ok() {
     assert_eq!(w.runner_version, "9.9.9");
     assert_eq!(w.proto, 1);
     h.join().unwrap().unwrap();
+}
+
+#[test]
+fn bounded_connect_reaches_a_server_and_reports_a_missing_one() {
+    let t = short_dir();
+    let ep = runner(t.path());
+    let h = serve_once(&ep, "right");
+    let s = connect_within(&ep, std::time::Duration::from_secs(2)).unwrap();
+    handshake_client(&s, "cli", "right").unwrap();
+    h.join().unwrap().unwrap();
+    let gone = Endpoint::Path(t.path().join("nope.sock"));
+    let e = connect_within(&gone, std::time::Duration::from_secs(1)).unwrap_err();
+    assert!(matches!(
+        e.kind(),
+        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+    ));
 }
 
 #[test]

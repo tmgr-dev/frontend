@@ -309,6 +309,7 @@ struct Session {
     sig_seq: AtomicU64,
     sig_acks: Mutex<HashMap<u64, bool>>,
     revoking: AtomicBool,
+    retrying: AtomicBool,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -317,10 +318,11 @@ fn write_meta(dir: &Path, meta: &Meta) {
     }
 }
 
+const REVOKING_MARK: &str = "revoking";
 const REVOKE_WAIT: Duration = Duration::from_secs(2);
 
 fn terminate(s: &Session) -> bool {
-    s.revoking.store(true, Ordering::SeqCst);
+    s.mark_revoking();
     let confirmed = s.kill_via_shim(Instant::now() + REVOKE_WAIT);
     if confirmed {
         s.mark_revoked();
@@ -331,6 +333,10 @@ fn terminate(s: &Session) -> bool {
         ));
     }
     confirmed
+}
+
+fn is_interrupted(s: &State) -> bool {
+    s.kind == StateKind::Exited && s.detail.as_deref() == Some("interrupted")
 }
 
 fn interrupted_state() -> State {
@@ -345,7 +351,15 @@ fn interrupted_state() -> State {
 impl Session {
     fn effective(&self, i: &Inner) -> State {
         let s = i.fixed.clone().unwrap_or_else(|| i.det.state().clone());
-        if s.kind != StateKind::Exited && self.revoking.load(Ordering::SeqCst) {
+        if !self.revoking.load(Ordering::SeqCst) {
+            return s;
+        }
+        let s = if is_interrupted(&s) {
+            i.det.state().clone()
+        } else {
+            s
+        };
+        if s.kind != StateKind::Exited {
             State {
                 detail: Some("revoking".into()),
                 ..s
@@ -409,6 +423,12 @@ impl Session {
             lock(&self.inner).meta.cwd_id = Some((dev, ino));
             self.persist();
         }
+    }
+
+    fn awaiting_exit(&self) -> bool {
+        let i = lock(&self.inner);
+        let s = i.fixed.clone().unwrap_or_else(|| i.det.state().clone());
+        s.kind != StateKind::Exited || is_interrupted(&s)
     }
 
     fn is_exited(&self) -> bool {
@@ -696,7 +716,7 @@ impl Session {
             let mut i = lock(&self.inner);
             if i.fixed
                 .as_ref()
-                .is_some_and(|f| f.kind == StateKind::Exited)
+                .is_some_and(|f| f.kind == StateKind::Exited && !is_interrupted(f))
             {
                 return;
             }
@@ -710,6 +730,17 @@ impl Session {
             s
         };
         self.publish(vec![state]);
+        let _ = fs::remove_file(self.dir.join(REVOKING_MARK));
+    }
+
+    fn mark_revoking(&self) {
+        self.revoking.store(true, Ordering::SeqCst);
+        if let Err(e) = write_atomic(&self.dir.join(REVOKING_MARK), b"1") {
+            log(&format!(
+                "session {} revocation not persisted: {e}",
+                self.id
+            ));
+        }
     }
 
     fn settle_without_shim(&self) {
@@ -758,7 +789,8 @@ fn adopt_shim(
     adopt_secret: &str,
     expect_pid: Option<u32>,
 ) -> io::Result<(UnixStream, ShimHello)> {
-    let stream = endpoint::connect(&Endpoint::load_session(dir, id)?)?;
+    let stream =
+        endpoint::connect_within(&Endpoint::load_session(dir, id)?, server::HANDSHAKE_TIMEOUT)?;
     let cred = server::accept_check(&stream)?;
     if let Some(p) = expect_pid {
         if cred.pid != Some(p as i32) {
@@ -801,6 +833,34 @@ fn adopt_shim(
     };
     let _ = stream.set_write_timeout(None);
     Ok((stream, hello))
+}
+
+fn retry_revocation(dir: &Path, sdir: &Path, s: &Arc<Session>) {
+    let pid = fs::read_to_string(sdir.join("shim.pid"))
+        .ok()
+        .and_then(|p| p.trim().parse::<u32>().ok());
+    let Some(pid) = pid else {
+        s.settle_without_shim();
+        return;
+    };
+    let Ok(sec) = secret::read(&sdir.join("adopt.secret")) else {
+        return;
+    };
+    match adopt_shim(dir, &s.id, &sec, Some(pid)) {
+        Ok((stream, hello)) => {
+            s.attach_shim(stream, hello, false);
+            s.send_kill();
+        }
+        Err(e)
+            if matches!(
+                e.kind(),
+                io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
+            ) =>
+        {
+            s.settle_without_shim()
+        }
+        Err(_) => {}
+    }
 }
 
 struct Conn {
@@ -1186,7 +1246,7 @@ impl Runner {
             .all()
             .into_iter()
             .filter(|s| {
-                !s.is_exited()
+                s.awaiting_exit()
                     && s.info()
                         .origin
                         .is_some_and(|o| o.link == p.link && o.generation <= p.generation)
@@ -1542,6 +1602,7 @@ impl Runner {
             sig_seq: AtomicU64::new(0),
             sig_acks: Mutex::new(HashMap::new()),
             revoking: AtomicBool::new(false),
+            retrying: AtomicBool::new(false),
         })
     }
 
@@ -1594,7 +1655,14 @@ impl Runner {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
             set.get(pid).and_then(|p| Matcher::new(p).ok())
         });
+        let confirmed = meta
+            .last_state
+            .as_ref()
+            .is_some_and(|s| s.kind == StateKind::Exited && !is_interrupted(s));
         let session = self.new_session(meta, matcher, &sdir);
+        if sdir.join(REVOKING_MARK).exists() || (!confirmed && self.origin_is_revoked(&session)) {
+            session.mark_revoking();
+        }
         session.recover_old_meta();
         let shim_pid = fs::read_to_string(sdir.join("shim.pid"))
             .ok()
@@ -1611,7 +1679,7 @@ impl Runner {
             Ok((stream, hello)) => {
                 session.adopt_cwd_id(&hello);
                 session.attach_shim(stream, hello, false);
-                if self.origin_is_revoked(&session) {
+                if session.revoking.load(Ordering::SeqCst) {
                     let done = terminate(&session);
                     log(&format!(
                         "session {id} adopted and revoked ({})",
@@ -1643,29 +1711,14 @@ impl Runner {
                 s.send_kill();
                 continue;
             }
-            let sdir = self.sdir(&s.id);
-            let pid = fs::read_to_string(sdir.join("shim.pid"))
-                .ok()
-                .and_then(|p| p.trim().parse::<u32>().ok());
-            let Some(pid) = pid else {
-                s.settle_without_shim();
+            if s.retrying.swap(true, Ordering::SeqCst) {
                 continue;
-            };
-            let Ok(sec) = secret::read(&sdir.join("adopt.secret")) else {
-                continue;
-            };
-            match adopt_shim(&self.cfg.dir, &s.id, &sec, Some(pid)) {
-                Ok((stream, hello)) => s.attach_shim(stream, hello, false),
-                Err(e)
-                    if matches!(
-                        e.kind(),
-                        io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused
-                    ) =>
-                {
-                    s.settle_without_shim()
-                }
-                Err(_) => {}
             }
+            let (dir, sdir) = (self.cfg.dir.clone(), self.sdir(&s.id));
+            thread::spawn(move || {
+                retry_revocation(&dir, &sdir, &s);
+                s.retrying.store(false, Ordering::SeqCst);
+            });
         }
     }
 

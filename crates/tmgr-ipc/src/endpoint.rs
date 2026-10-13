@@ -5,9 +5,11 @@ use crate::proto::valid_session_id;
 use crate::secret;
 use std::fs;
 use std::io;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 const MAX_SUN_PATH: usize = 103;
 
@@ -201,6 +203,10 @@ pub fn connect(ep: &Endpoint) -> io::Result<UnixStream> {
             ))
         }
     };
+    check_owner(stream)
+}
+
+fn check_owner(stream: UnixStream) -> io::Result<UnixStream> {
     if peer_cred(&stream)?.uid != crate::euid() {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
@@ -208,4 +214,61 @@ pub fn connect(ep: &Endpoint) -> io::Result<UnixStream> {
         ));
     }
     Ok(stream)
+}
+
+pub fn connect_within(ep: &Endpoint, timeout: Duration) -> io::Result<UnixStream> {
+    use std::os::fd::FromRawFd;
+    let name: Vec<u8> = match ep {
+        Endpoint::Path(p) => {
+            check_path_len(p)?;
+            if let Some(parent) = p.parent() {
+                check_private_dir(parent)?;
+            }
+            p.as_os_str().as_bytes().to_vec()
+        }
+        #[cfg(target_os = "linux")]
+        Endpoint::Abstract(n) => [&[0u8][..], n.as_bytes()].concat(),
+        #[cfg(not(target_os = "linux"))]
+        Endpoint::Abstract(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "abstract sockets are only available on Linux",
+            ))
+        }
+    };
+    let mut sa: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    if name.len() >= sa.sun_path.len() {
+        return Err(invalid("socket name is too long"));
+    }
+    sa.sun_family = libc::AF_UNIX as _;
+    for (d, s) in sa.sun_path.iter_mut().zip(&name) {
+        *d = *s as _;
+    }
+    let len = (std::mem::size_of::<libc::sockaddr_un>() - sa.sun_path.len() + name.len() + 1)
+        as libc::socklen_t;
+    let fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let stream = unsafe { UnixStream::from_raw_fd(fd) };
+    unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    stream.set_nonblocking(true)?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        let rc = unsafe { libc::connect(fd, (&raw const sa).cast(), len) };
+        if rc == 0 {
+            break;
+        }
+        let e = io::Error::last_os_error();
+        match e.raw_os_error() {
+            Some(libc::EINTR) => {}
+            Some(libc::EAGAIN) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Some(libc::EAGAIN) => return Err(io::ErrorKind::TimedOut.into()),
+            _ => return Err(e),
+        }
+    }
+    stream.set_nonblocking(false)?;
+    check_owner(stream)
 }

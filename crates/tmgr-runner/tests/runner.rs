@@ -1960,6 +1960,138 @@ fn a_revocation_the_shim_cannot_confirm_stays_pending_and_reserved_until_the_ret
     assert!(fx.worker().create_run(fx.req("b", 2)).is_ok());
 }
 
+fn revoke_link(c: &mut Client, link: &str, generation: u64) -> OriginRevoked {
+    serde_json::from_value(
+        c.call(
+            method::ORIGIN_REVOKE,
+            serde_json::to_value(OriginRevokeParams {
+                link: link.into(),
+                generation,
+            })
+            .unwrap(),
+        )
+        .unwrap(),
+    )
+    .unwrap()
+}
+
+fn info_of(c: &mut Client, id: &str) -> SessionInfo {
+    c.list().unwrap().into_iter().find(|s| s.id == id).unwrap()
+}
+
+fn hup_proof_agent(fx: &LinkFx) {
+    let script =
+        fx.h.script("hup.sh", "trap '' HUP\nwhile true; do sleep 0.2; done\n");
+    let toml = format!(
+        "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", {script:?}]\nmodel_arg = [\"-m\", \"{{model}}\"]\n"
+    );
+    fs::write(fx.h.agents.join("fake.toml"), toml).unwrap();
+}
+
+fn wait_interrupted(c: &mut Client, id: &str) {
+    wait_state(c, id, 10, |s| s.kind == StateKind::Exited);
+}
+
+fn settle_when_group_dies(c: &mut Client, s: &SessionInfo) {
+    unsafe { libc::kill(-(s.child_pid as i32), libc::SIGKILL) };
+    let done = wait_state(c, &s.id, 15, |st| st.kind == StateKind::Exited);
+    assert_eq!(done.state.detail.as_deref(), Some("revoked"), "{done:?}");
+}
+
+#[test]
+fn a_restart_keeps_an_unconfirmed_revocation_pending_and_reserved_until_the_shim_confirms() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a]));
+    fx.h.start(5000);
+    let a1 = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let stalled = a1.shim_pid as i32;
+    unsafe { libc::kill(stalled, libc::SIGSTOP) };
+    let _resume = Resume(stalled);
+    let mut cli = fx.h.client();
+    let done = revoke_link(&mut cli, "a", 1);
+    assert_eq!((done.killed, done.pending), (0, 1));
+    fx.h.kill_runner();
+    fx.h.start(5000);
+    let mut cli = fx.h.client();
+    let s = info_of(&mut cli, &a1.id);
+    assert_ne!(s.state.kind, StateKind::Exited, "{s:?}");
+    assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
+    let e = err_text(fx.h.client().create_run(fx.h.bundled("fake")));
+    assert!(e.starts_with("busy: "), "{e}");
+    unsafe { libc::kill(stalled, libc::SIGCONT) };
+    let s = wait_state(&mut cli, &a1.id, 20, |s| s.kind == StateKind::Exited);
+    assert_eq!(s.state.detail.as_deref(), Some("revoked"), "{s:?}");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while alive(a1.child_pid) && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(!alive(a1.child_pid));
+}
+
+#[test]
+fn a_lost_shim_link_is_not_a_confirmed_exit_for_a_revoked_run() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    hup_proof_agent(&fx);
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a]));
+    fx.h.start(5000);
+    let a1 = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let mut cli = fx.h.client();
+    unsafe { libc::kill(a1.shim_pid as i32, libc::SIGKILL) };
+    wait_interrupted(&mut cli, &a1.id);
+    let done = revoke_link(&mut cli, "a", 1);
+    assert_eq!((done.killed, done.pending), (0, 1));
+    let s = info_of(&mut cli, &a1.id);
+    assert_ne!(s.state.kind, StateKind::Exited, "{s:?}");
+    assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
+    thread::sleep(Duration::from_secs(2));
+    let s = info_of(&mut cli, &a1.id);
+    assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
+    assert!(alive(a1.child_pid));
+    settle_when_group_dies(&mut cli, &a1);
+}
+
+#[test]
+fn one_frozen_shim_does_not_hold_back_the_other_pending_revocations() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = link_fx();
+    hup_proof_agent(&fx);
+    let a = link_entry("a", 1, &[&fx.root], &["fake"], &[], 3);
+    fx.h.trust(&store_text(&[a]));
+    fx.h.start(5000);
+    let frozen = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let lost = fx.worker().create_run(fx.req("a", 1)).unwrap();
+    let mut cli = fx.h.client();
+    unsafe { libc::kill(lost.shim_pid as i32, libc::SIGKILL) };
+    wait_interrupted(&mut cli, &lost.id);
+    let stalled = frozen.shim_pid as i32;
+    unsafe { libc::kill(stalled, libc::SIGSTOP) };
+    let _resume = Resume(stalled);
+    let done = revoke_link(&mut cli, "a", 1);
+    assert_eq!((done.killed, done.pending), (0, 2));
+    let started = Instant::now();
+    settle_when_group_dies(&mut cli, &lost);
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "{:?}",
+        started.elapsed()
+    );
+    let s = info_of(&mut cli, &frozen.id);
+    assert_eq!(s.state.detail.as_deref(), Some("revoking"), "{s:?}");
+    unsafe { libc::kill(stalled, libc::SIGCONT) };
+    let s = wait_state(&mut cli, &frozen.id, 20, |s| s.kind == StateKind::Exited);
+    assert_eq!(s.state.detail.as_deref(), Some("revoked"), "{s:?}");
+}
+
 #[test]
 fn a_restart_finishes_an_interrupted_revocation_for_adopted_link_runs() {
     if !sessions_available() {
