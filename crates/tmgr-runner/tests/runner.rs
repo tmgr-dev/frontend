@@ -455,6 +455,8 @@ fn rejects_unauthorized_and_invalid_requests() {
     }
     assert!(err_text(c.create(h.req(&["/bin/echo", "a\0b"]))).contains("invalid_params"));
     assert!(err_text(c.create(h.req(&[]))).contains("invalid_params"));
+    assert!(err_text(c.create(h.req(&["./agent"]))).contains("invalid_params"));
+    assert!(err_text(c.create(h.req(&["sh"]))).contains("invalid_params"));
     let mut unknown = h.req(&["/bin/true"]);
     unknown.profile = Some("no-such-profile".into());
     assert!(err_text(c.create(unknown)).contains("unknown_profile"));
@@ -566,6 +568,27 @@ fn send_kill_layout_and_stop() {
     }
     assert!(alive(live.child_pid) && alive(live.shim_pid));
     let _: &Path = &h.run;
+}
+
+#[test]
+fn send_reports_a_full_input_queue() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    let chunk = "xxxxxxx\n".repeat(8 * 1024);
+    let mut refused = None;
+    for _ in 0..200 {
+        if let Err(e) = c.send(&info.id, &chunk) {
+            refused = Some(e.to_string());
+            break;
+        }
+    }
+    let e = refused.expect("a stalled agent must make sessions.send fail");
+    assert!(e.contains("busy") && e.contains("input queue full"), "{e}");
 }
 
 #[test]

@@ -122,7 +122,7 @@ missing params) and `internal`.
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
 | `runs.create` | `RunCreateReq` | `SessionInfo` | `unknown_profile`, `sandbox`, `limit` | any |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
-| `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running` | any |
+| `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
 | `layout.get` | none | the stored JSON value or `null` | | any |
 | `layout.set` | `{layout}` (any JSON, at most 64 KiB serialized) | `null` | | any |
@@ -130,7 +130,8 @@ missing params) and `internal`.
 | `attach.set` | `AttachParams` | `null` | `not_found` | any |
 
 `CreateReq`: `{argv:[str], cwd, name?, profile?, cols=80, rows=24, env_pass?:[str], task?}`.
-argv has 1 to 64 entries, each at most 4096 bytes.
+argv has 1 to 64 entries, each at most 4096 bytes; argv[0] is an absolute path.
+`sessions.send` answers `busy` when the input queue is full or the shim dropped earlier input; retry later.
 
 `RunCreateReq`: `{profile, task?, cwd, name?, model?, cols=80, rows=24}`. The
 runner loads the agent profile (built-in or the user's `agents` directory),

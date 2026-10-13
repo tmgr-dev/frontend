@@ -241,6 +241,7 @@ struct Session {
     shim: Mutex<Option<ShimLink>>,
     replies: Mutex<ReplyBudget>,
     drop_logged: AtomicBool,
+    input_dropped: AtomicBool,
     meta_lock: Mutex<()>,
 }
 
@@ -344,13 +345,16 @@ impl Session {
         }
     }
 
-    fn shim_input(&self, bytes: &[u8]) {
+    fn shim_input(&self, bytes: &[u8]) -> bool {
+        if bytes.is_empty() {
+            return true;
+        }
         let g = lock(&self.shim);
-        let Some(link) = g.as_ref() else { return };
+        let Some(link) = g.as_ref() else { return false };
         if link.queued_bytes.load(Ordering::SeqCst) + bytes.len() > SHIM_INPUT_CAP
             || link.queued_frames.load(Ordering::SeqCst) >= SHIM_INPUT_FRAMES
         {
-            return;
+            return false;
         }
         link.queued_bytes.fetch_add(bytes.len(), Ordering::SeqCst);
         link.queued_frames.fetch_add(1, Ordering::SeqCst);
@@ -362,7 +366,9 @@ impl Session {
         if link.tx.try_send(frame).is_err() {
             link.queued_bytes.fetch_sub(bytes.len(), Ordering::SeqCst);
             link.queued_frames.fetch_sub(1, Ordering::SeqCst);
+            return false;
         }
+        true
     }
 
     fn reply_allowed(&self) -> bool {
@@ -404,14 +410,17 @@ impl Session {
         self.version.fetch_add(1, Ordering::SeqCst);
         for reply in replies {
             if self.reply_allowed() {
-                self.shim_input(&reply);
+                let _ = self.shim_input(&reply);
             }
         }
     }
 
-    fn input(&self, bytes: &[u8]) {
-        self.shim_input(bytes);
-        self.change(|i, now, out| out.extend(i.det.on_input(now)));
+    fn input(&self, bytes: &[u8]) -> bool {
+        let accepted = self.shim_input(bytes);
+        if accepted && !bytes.is_empty() {
+            self.change(|i, now, out| out.extend(i.det.on_input(now)));
+        }
+        accepted
     }
 
     fn resize(&self, cols: u16, rows: u16, owner: Option<u64>) {
@@ -488,13 +497,14 @@ impl Session {
                 Frame::Json(v) => match serde_json::from_value::<FromShim>(v) {
                     Ok(FromShim::Stat(s)) => self.on_stat(s.fg_cpu_ns, s.fg_waiting_tty),
                     Ok(FromShim::Exited(e)) => self.on_exited(&e),
-                    Ok(FromShim::InputDropped { bytes })
-                        if !self.drop_logged.swap(true, Ordering::SeqCst) =>
-                    {
-                        log(&format!(
-                            "session {} dropped {bytes} bytes of input",
-                            self.id
-                        ));
+                    Ok(FromShim::InputDropped { bytes }) => {
+                        self.input_dropped.store(true, Ordering::SeqCst);
+                        if !self.drop_logged.swap(true, Ordering::SeqCst) {
+                            log(&format!(
+                                "session {} dropped {bytes} bytes of input",
+                                self.id
+                            ));
+                        }
                     }
                     _ => {}
                 },
@@ -622,6 +632,21 @@ struct Runner {
     next_conn: AtomicU64,
 }
 
+fn default_name(argv0: &str) -> String {
+    let base = Path::new(argv0)
+        .file_name()
+        .map_or_else(|| argv0.to_string(), |n| n.to_string_lossy().into_owned());
+    let name: String = crate::sanitize::sanitize_text(&base)
+        .chars()
+        .take(64)
+        .collect();
+    if name.is_empty() {
+        "session".into()
+    } else {
+        name
+    }
+}
+
 fn valid_env_name(n: &str) -> bool {
     let b = n.as_bytes();
     !b.is_empty()
@@ -742,7 +767,12 @@ impl Runner {
                 if text.len() > MAX_INPUT {
                     return Err(api(ErrorCode::InvalidParams, "text is too large"));
                 }
-                s.input(text.as_bytes());
+                if s.input_dropped.swap(false, Ordering::SeqCst) || !s.input(text.as_bytes()) {
+                    return Err(api(
+                        ErrorCode::Busy,
+                        "input queue full; the agent is not reading its input",
+                    ));
+                }
                 Ok(Value::Null)
             }
             method::SESSIONS_REMOVE => self.remove(&session_id_param(p)?).map(|_| Value::Null),
@@ -800,6 +830,9 @@ impl Runner {
         }
         if r.argv[0].is_empty() {
             return bad("argv[0] must not be empty");
+        }
+        if !Path::new(&r.argv[0]).is_absolute() {
+            return bad("argv[0] must be an absolute path");
         }
         if let Some(n) = &r.name {
             if n.is_empty() || n.chars().count() > 64 || n.chars().any(char::is_control) {
@@ -993,11 +1026,10 @@ impl Runner {
         let (stream, hello) = adopted?;
         let meta = Meta {
             id: id.to_string(),
-            name: req.name.clone().unwrap_or_else(|| {
-                Path::new(&req.argv[0])
-                    .file_name()
-                    .map_or_else(|| req.argv[0].clone(), |n| n.to_string_lossy().into_owned())
-            }),
+            name: req
+                .name
+                .clone()
+                .unwrap_or_else(|| default_name(&req.argv[0])),
             argv: req.argv.clone(),
             cwd: cwd.display().to_string(),
             profile: req.profile.clone(),
@@ -1038,6 +1070,7 @@ impl Runner {
                 used: 0,
             }),
             drop_logged: AtomicBool::new(false),
+            input_dropped: AtomicBool::new(false),
             meta_lock: Mutex::new(()),
         })
     }
@@ -1252,7 +1285,7 @@ impl Runner {
                 s.resize(cols, rows, Some(conn.id));
             }
         }
-        s.input(data);
+        let _ = s.input(data);
     }
 
     fn client_resize(&self, conn: &Conn, id: &str, cols: u16, rows: u16) {
@@ -1563,6 +1596,15 @@ mod tests {
     use super::*;
     use std::io::Read;
     use std::thread::JoinHandle;
+
+    #[test]
+    fn default_names_are_sanitized_and_bounded() {
+        assert_eq!(default_name("/usr/bin/claude"), "claude");
+        assert_eq!(default_name("/tmp/a\u{1b}]0;x\u{7}b"), "a?]0;x?b");
+        assert_eq!(default_name(&format!("/tmp/{}", "n".repeat(200))).len(), 64);
+        assert_eq!(default_name("/"), "/");
+        assert_eq!(default_name(""), "session");
+    }
 
     const ID: &str = "s_abcdefghij";
     const REAL: &str = "feedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedfacefeedface";
