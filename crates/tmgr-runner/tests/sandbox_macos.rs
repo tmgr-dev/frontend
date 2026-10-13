@@ -107,3 +107,15 @@ fn other_terminals_are_unreachable_but_own_pty_works() {
         println!("note: /dev/ttyp0 does not exist, legacy slave assertion skipped");
     }
 }
+
+#[test]
+fn home_parent_is_stat_able_but_not_listable() {
+    let f = fx();
+    let parent = f.path(f.home.parent().unwrap());
+    let o = f.run(&format!("stat -f %p {parent} >/dev/null && echo statted"));
+    assert!(o.stdout.contains("statted"), "{}", o.stderr);
+    let o = f.run(&format!("ls {parent}"));
+    assert!(!o.ok() && !o.stdout.contains("s_"), "{}", o.stdout);
+    let o = f.run(&format!("cat {}", f.path(&f.other_home.join("notes.txt"))));
+    assert!(!o.ok() && !o.stdout.contains(SECRET));
+}

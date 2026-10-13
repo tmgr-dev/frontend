@@ -411,6 +411,24 @@ fn sbpl_quote(p: &Path) -> Result<String, String> {
     Ok(out)
 }
 
+// Path resolvers lstat every component, so allowed roots need their denied ancestors stat-able.
+fn denied_ancestors(p: &PolicyPaths) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    let roots = p
+        .read
+        .iter()
+        .chain(p.write.iter())
+        .chain(std::iter::once(&p.home));
+    for root in roots {
+        for a in root.ancestors().skip(1) {
+            if p.deny.iter().any(|d| a.starts_with(d)) && !out.iter().any(|o| o == a) {
+                out.push(a.to_path_buf());
+            }
+        }
+    }
+    out
+}
+
 pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
     let mut s = String::new();
     s.push_str("(version 1)\n(allow default)\n");
@@ -461,6 +479,12 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
     s.push_str(&format!(
         "(allow network-outbound (remote unix-socket (subpath {home})))\n"
     ));
+    for a in denied_ancestors(p) {
+        s.push_str(&format!(
+            "(allow file-read-metadata (literal {}))\n",
+            sbpl_quote(&a)?
+        ));
+    }
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/ttys[0-9]+$\"))\n");
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/pty[p-w][0-9a-f]$\"))\n");
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/tty[p-w][0-9a-f]$\"))\n");
