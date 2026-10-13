@@ -267,7 +267,6 @@ fn live_runner_pin_and_bundle() {
     workspace: "Live".into(),
     title: "Pinned task".into(),
     description: "do the thing".into(),
-    agent_touched: false,
     comments: vec![CommentInfo {
       author_kind: "user".into(),
       author_id: Some("1".into()),

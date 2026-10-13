@@ -36,13 +36,12 @@ pub fn prepare(task: &TaskInfo, workspace_id: i64, task_id: i64, profile: &str, 
   if task.comments.len() > MAX_COMMENTS {
     return Err(format!("The task has {} comments; the agent bundle allows at most {MAX_COMMENTS}", task.comments.len()));
   }
-  let kind = if task.agent_touched { AuthorKind::Other } else { AuthorKind::Human };
   let bundle = RunBundle {
     v: 1,
     task: TaskRef { workspace_id, task_id },
     title: task.title.clone(),
     body: task.description.clone(),
-    author: BundleAuthor { kind, id: None },
+    author: BundleAuthor { kind: AuthorKind::Other, id: None },
     comments: task.comments.iter().map(comment).collect(),
     pages: Vec::new(),
     persona: None,
@@ -74,7 +73,6 @@ mod tests {
       workspace: "W".into(),
       title: "T".into(),
       description: "B".into(),
-      agent_touched: false,
       comments: (0..comments).map(comment).collect(),
     }
   }
@@ -89,7 +87,7 @@ mod tests {
     let b = &p.bundle;
     assert_eq!((b.v, b.title.as_str(), b.body.as_str()), (1, "Real title", "Real body"));
     assert_eq!(b.task, TaskRef { workspace_id: ws.manifest.id, task_id: 7 });
-    assert_eq!(b.author, BundleAuthor { kind: AuthorKind::Human, id: None });
+    assert_eq!(b.author, BundleAuthor { kind: AuthorKind::Other, id: None });
     assert!(b.pages.is_empty() && b.persona.is_none());
     assert_eq!(b.launch, BundleLaunch { profile: "codex".into(), model: None, cwd: "/work/project".into() });
     let got: Vec<_> = b.comments.iter().map(|c| (c.body.as_str(), c.author.kind, c.author.id.as_deref(), c.at.as_str())).collect();
@@ -104,13 +102,6 @@ mod tests {
     assert_eq!(p.sha256, sha256_hex(b.canonical().as_bytes()));
     assert_eq!(p.sha256, sha256_hex(canonical.as_bytes()));
     assert!(p.summary().starts_with(&p.sha256[..12]) && p.summary().ends_with(", 2 comments"));
-  }
-
-  #[test]
-  fn an_agent_touched_task_is_not_labelled_human() {
-    let mut t = info(0, 0);
-    t.agent_touched = true;
-    assert_eq!(prepare(&t, -1, 1, "codex", "/w").unwrap().bundle.author.kind, AuthorKind::Other);
   }
 
   #[test]

@@ -227,7 +227,7 @@ mod tests {
   fn prepared() -> Prepared {
     use crate::runner::bundle::prepare;
     use crate::runner::task_lookup::TaskInfo;
-    let task = TaskInfo { workspace: "W".into(), title: "Fix login".into(), description: "body".into(), agent_touched: false, comments: Vec::new() };
+    let task = TaskInfo { workspace: "W".into(), title: "Fix login".into(), description: "body".into(), comments: Vec::new() };
     prepare(&task, -2, 9, "codex", "/work/project").unwrap()
   }
 
@@ -245,7 +245,7 @@ mod tests {
 
   #[test]
   fn approval_attaches_only_what_the_runner_understands() {
-    let task = TaskInfo { workspace: "W".into(), title: "T".into(), description: "b".into(), agent_touched: false, comments: Vec::new() };
+    let task = TaskInfo { workspace: "W".into(), title: "T".into(), description: "b".into(), comments: Vec::new() };
     let caps = |c: &[&str]| c.iter().map(|c| c.to_string()).collect::<Vec<_>>();
     let mut r = start(-2, 9, "codex");
     attach_approval(&mut r, &task, (1, 2), &caps(&["runs.create.v1"])).unwrap();
