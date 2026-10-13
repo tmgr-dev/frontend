@@ -87,7 +87,12 @@ fn pick_ws(ctx: &Ctx) -> Result<Output> {
         .enumerate()
         .map(|(i, w)| {
             vec![
-                if current.as_deref() == Some(w.code.as_str()) { "*" } else { " " }.to_string(),
+                if current.as_deref() == Some(w.code.as_str()) {
+                    "*"
+                } else {
+                    " "
+                }
+                .to_string(),
                 (i + 1).to_string(),
                 sanitize_line(&w.code),
                 sanitize_line(&w.name),

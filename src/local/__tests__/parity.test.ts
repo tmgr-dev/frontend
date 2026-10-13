@@ -9,7 +9,10 @@ import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
 
-const PARITY_DIR = path.resolve(__dirname, '../../../crates/tmgr-local/tests/parity');
+const PARITY_DIR = path.resolve(
+	__dirname,
+	'../../../crates/tmgr-local/tests/parity',
+);
 const SCENARIOS = path.join(PARITY_DIR, 'scenarios');
 const GOLDEN = path.join(PARITY_DIR, 'golden');
 const UPDATE = process.env.UPDATE_PARITY_GOLDEN === '1';
@@ -43,7 +46,12 @@ const sortKeys = (value: unknown): unknown => {
 	return value;
 };
 
-const stable = (value: unknown): string => JSON.stringify(sortKeys(JSON.parse(JSON.stringify(value ?? null))), null, '\t') + '\n';
+const stable = (value: unknown): string =>
+	JSON.stringify(
+		sortKeys(JSON.parse(JSON.stringify(value ?? null))),
+		null,
+		'\t',
+	) + '\n';
 
 const buildContext = (db: LocalDb, scenario: ParityScenario): LocalContext => ({
 	db,
@@ -69,7 +77,8 @@ const dumpTables = async (db: LocalDb) => {
 		`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'pages_fts%' ORDER BY name`,
 	);
 	const out: Record<string, unknown[]> = {};
-	for (const { name } of tables) out[name] = await db.select(`SELECT * FROM "${name}" ORDER BY rowid`);
+	for (const { name } of tables)
+		out[name] = await db.select(`SELECT * FROM "${name}" ORDER BY rowid`);
 	return out;
 };
 
@@ -77,7 +86,8 @@ const runScenario = async (scenario: ParityScenario) => {
 	const db = memoryDb();
 	const ctx = buildContext(db, scenario);
 	await migrate(db, scenario.now);
-	for (const { sql, params } of scenario.seed) await db.execute(sql, params as any[]);
+	for (const { sql, params } of scenario.seed)
+		await db.execute(sql, params as any[]);
 	const before = await dumpTables(db);
 	const api = createLocalApi();
 	const responses: unknown[] = [];
@@ -87,14 +97,23 @@ const runScenario = async (scenario: ParityScenario) => {
 			now: () => new Date(request.now ?? scenario.now),
 			actor: 'actor' in request ? request.actor ?? undefined : ctx.actor,
 		};
-		const res = await dispatchLocal(api, requestCtx, request.method, request.url, request.body ?? undefined);
+		const res = await dispatchLocal(
+			api,
+			requestCtx,
+			request.method,
+			request.url,
+			request.body ?? undefined,
+		);
 		responses.push(res ?? { status: 404, data: null });
 	}
 	const after = await dumpTables(db);
 	const tables = Object.fromEntries(
-		Object.entries(after).filter(([name, rows]) => JSON.stringify(rows) !== JSON.stringify(before[name])),
+		Object.entries(after).filter(
+			([name, rows]) => JSON.stringify(rows) !== JSON.stringify(before[name]),
+		),
 	);
-	if (scenario.requests.every((r) => r.method.toUpperCase() === 'GET')) expect(tables).toEqual({});
+	if (scenario.requests.every((r) => r.method.toUpperCase() === 'GET'))
+		expect(tables).toEqual({});
 	return Object.keys(tables).length ? { responses, tables } : { responses };
 };
 
@@ -121,7 +140,9 @@ describeSqlite('tmgr-local parity goldens', () => {
 	});
 
 	it.each(names)('scenario %s matches its golden', async (name) => {
-		const actual = JSON.parse(stable(await runScenario(readJson(path.join(SCENARIOS, `${name}.json`)))));
+		const actual = JSON.parse(
+			stable(await runScenario(readJson(path.join(SCENARIOS, `${name}.json`)))),
+		);
 		const file = path.join(GOLDEN, `${name}.json`);
 		if (UPDATE) fs.writeFileSync(file, stable(actual));
 		expect(actual).toEqual(readJson(file));
@@ -139,7 +160,9 @@ describeSqlite('tmgr-local parity goldens', () => {
 				),
 				meta: await db.select(`SELECT key, value FROM meta ORDER BY key`),
 				statuses: await db.select(`SELECT * FROM statuses ORDER BY id`),
-				task_relation_types: await db.select(`SELECT * FROM task_relation_types ORDER BY id`),
+				task_relation_types: await db.select(
+					`SELECT * FROM task_relation_types ORDER BY id`,
+				),
 			}),
 		);
 		const file = path.join(GOLDEN, 'schema.json');

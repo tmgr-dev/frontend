@@ -337,3 +337,39 @@ fn a_hook_reports_commits_to_the_run_of_a_local_workspace_without_a_login() {
         text(&out.stderr)
     );
 }
+
+#[test]
+fn a_key_missing_from_the_local_default_is_not_searched_in_other_workspaces() {
+    let local = Local::new();
+    local.workspace("team", "Team", 12);
+    let used = local
+        .cmd()
+        .args(["ws", "use", "local:personal"])
+        .output()
+        .unwrap();
+    assert!(used.status.success(), "{}", text(&used.stderr));
+    let created = local
+        .cmd()
+        .args([
+            "--json",
+            "--ws",
+            "local:team",
+            "add",
+            "Team task",
+            "-p",
+            "WK",
+        ])
+        .output()
+        .unwrap();
+    assert!(created.status.success(), "{}", text(&created.stderr));
+
+    // The local client is bound to one workspace.db, so searching "other"
+    // workspaces through it would find the key in the wrong database.
+    let shown = local.cmd().args(["task", "show", "WK-1"]).output().unwrap();
+    assert_eq!(shown.status.code(), Some(3), "{}", text(&shown.stderr));
+    let count: i64 = local
+        .db("personal")
+        .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 0);
+}
