@@ -84,6 +84,7 @@ impl Fx {
             self_exe: self.self_exe.clone(),
             env_pass: vec![],
             base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
+            grants: Default::default(),
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])
@@ -112,6 +113,7 @@ impl Fx {
             self_exe: self.self_exe.clone(),
             env_pass: vec![],
             base_env: vec![("PATH".into(), "/usr/bin:/bin:/usr/sbin:/sbin".into())],
+            grants: Default::default(),
         };
         let l = prepare(&spec).expect("prepare");
         let pair = native_pty_system().openpty(pty_size()).unwrap();

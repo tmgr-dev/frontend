@@ -1,6 +1,7 @@
 pub mod attach;
 #[cfg(unix)]
 pub mod exe;
+pub mod login;
 pub mod profile;
 pub mod sandbox;
 pub mod sanitize;

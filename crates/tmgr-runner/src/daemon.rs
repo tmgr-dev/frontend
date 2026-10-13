@@ -1,6 +1,7 @@
 use crate::bundle;
 use crate::client::Client;
 use crate::exe::resolve_exe;
+use crate::login;
 use crate::profile::{self, Matcher, ProfileSet};
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
@@ -972,11 +973,30 @@ impl Runner {
         if let Some(b) = bundle {
             bundle::install(sdir, cwd, b).map_err(|(code, m)| api(code, m))?;
         }
-        let mut env_pass = req.env_pass.clone();
+        let real_home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_default();
+        let mut base = base_env();
+        let mut grants = sandbox::Grants::default();
+        let mut seeds = Vec::new();
         if let Some(pid) = &req.profile {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
             if let Some(p) = set.get(pid) {
-                env_pass.extend(p.env_pass.iter().cloned());
+                let protected = [
+                    self.cfg.dir.clone(),
+                    home.parent().unwrap_or(home).to_path_buf(),
+                ];
+                let prep = login::prepare(p, &real_home, &protected, |n| {
+                    std::env::var(n).ok().filter(|v| !v.is_empty())
+                })
+                .map_err(|e| api(ErrorCode::Sandbox, e))?;
+                for w in &prep.warnings {
+                    log(&format!("profile {pid}: {w}"));
+                }
+                base.retain(|(k, _)| !prep.pass_values.iter().any(|(n, _)| n == k));
+                base.extend(prep.pass_values);
+                grants = prep.grants;
+                seeds = prep.seeds;
             }
         }
         let launch = sandbox::prepare(&SandboxSpec {
@@ -984,15 +1004,15 @@ impl Runner {
             argv: req.argv.clone(),
             cwd: cwd.to_path_buf(),
             home: home.to_path_buf(),
-            real_home: std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default(),
+            real_home,
             runner_dir: self.cfg.dir.clone(),
             self_exe: self.cfg.self_exe.clone(),
-            env_pass,
-            base_env: base_env(),
+            env_pass: req.env_pass.clone(),
+            base_env: base,
+            grants,
         })
         .map_err(|e| api(ErrorCode::Sandbox, e))?;
+        login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
             argv: launch.argv,

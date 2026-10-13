@@ -22,6 +22,28 @@ pub struct StatusRules {
     pub idle: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct Seed {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub json_keys: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct SandboxDecl {
+    #[serde(default)]
+    pub read: Vec<String>,
+    #[serde(default)]
+    pub seed: Vec<Seed>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct SecretsDecl {
+    #[serde(default)]
+    pub file: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
@@ -33,6 +55,12 @@ pub struct Profile {
     pub model_arg: Vec<String>,
     #[serde(default)]
     pub env_pass: Vec<String>,
+    #[serde(default)]
+    pub env: BTreeMap<String, String>,
+    #[serde(default)]
+    pub sandbox: SandboxDecl,
+    #[serde(default)]
+    pub secrets: SecretsDecl,
     #[serde(default)]
     pub status: StatusRules,
     #[serde(skip)]
@@ -96,8 +124,14 @@ impl ProfileSet {
     pub fn load(user_dir: Option<&Path>) -> (ProfileSet, Vec<String>) {
         let mut warnings = Vec::new();
         let mut profiles = BTreeMap::new();
+        let home = std::env::var_os("HOME")
+            .filter(|h| !h.is_empty())
+            .map(PathBuf::from);
         for text in BUILTINS {
-            match toml::from_str::<Profile>(text) {
+            match toml::from_str::<Profile>(text)
+                .map_err(|e| e.to_string())
+                .and_then(|p| check_declarations(&p, home.as_deref()).map(|()| p))
+            {
                 Ok(p) => {
                     profiles.insert(p.id.clone(), p);
                 }
@@ -105,7 +139,7 @@ impl ProfileSet {
             }
         }
         if let Some(dir) = user_dir {
-            load_user(dir, &mut profiles, &mut warnings);
+            load_user(dir, home.as_deref(), &mut profiles, &mut warnings);
         }
         (ProfileSet { profiles }, warnings)
     }
@@ -119,7 +153,12 @@ impl ProfileSet {
     }
 }
 
-fn load_user(dir: &Path, profiles: &mut BTreeMap<String, Profile>, warnings: &mut Vec<String>) {
+fn load_user(
+    dir: &Path,
+    home: Option<&Path>,
+    profiles: &mut BTreeMap<String, Profile>,
+    warnings: &mut Vec<String>,
+) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
@@ -142,7 +181,7 @@ fn load_user(dir: &Path, profiles: &mut BTreeMap<String, Profile>, warnings: &mu
         paths.truncate(MAX_PROFILE_FILES);
     }
     for path in paths {
-        match read_user_profile(&path) {
+        match read_user_profile(&path, home) {
             Ok(p) => {
                 profiles.insert(p.id.clone(), p);
             }
@@ -151,7 +190,7 @@ fn load_user(dir: &Path, profiles: &mut BTreeMap<String, Profile>, warnings: &mu
     }
 }
 
-fn read_user_profile(path: &Path) -> Result<Profile, String> {
+fn read_user_profile(path: &Path, home: Option<&Path>) -> Result<Profile, String> {
     let meta = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
     if !meta.file_type().is_file() {
         return Err("not a regular file, skipped".into());
@@ -174,8 +213,16 @@ fn read_user_profile(path: &Path) -> Result<Profile, String> {
     if profile.command.is_empty() {
         return Err("command must not be empty".into());
     }
+    check_declarations(&profile, home)?;
     profile.source = Source::User(path.to_path_buf());
     Ok(profile)
+}
+
+fn check_declarations(p: &Profile, home: Option<&Path>) -> Result<(), String> {
+    match home {
+        Some(h) => crate::login::resolve(p, h, &[]).map(|_| ()),
+        None => crate::login::check_env(p),
+    }
 }
 
 pub struct Matcher {

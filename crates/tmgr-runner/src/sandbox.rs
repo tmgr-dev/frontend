@@ -13,6 +13,14 @@ pub struct SandboxSpec {
     pub self_exe: PathBuf,
     pub env_pass: Vec<String>,
     pub base_env: Vec<(String, String)>,
+    pub grants: Grants,
+}
+
+#[derive(Default)]
+pub struct Grants {
+    pub extra_read: Vec<PathBuf>,
+    pub trusted_env_pass: Vec<String>,
+    pub env: Vec<(String, String)>,
 }
 
 pub struct Launch {
@@ -61,18 +69,11 @@ const ENV_BLOCK_EXACT: &[&str] = &[
     "GIT_PROXY_COMMAND",
 ];
 
-const ENV_BLOCK_PREFIX: &[&str] = &[
-    "AWS_",
-    "GH_",
-    "LD_",
-    "DYLD_",
-    "TMGR_",
-    "XDG_",
-    "GIT_CONFIG",
-    "GIT_SSH",
-];
+const ENV_REFUSE_PREFIX: &[&str] = &["LD_", "DYLD_", "TMGR_", "XDG_", "GIT_CONFIG", "GIT_SSH"];
 
-const ENV_BLOCK_CONTAINS: &[&str] = &["TOKEN", "SECRET", "KEY", "PASSWORD"];
+const ENV_OPT_IN_PREFIX: &[&str] = &["AWS_", "GH_"];
+
+const ENV_OPT_IN_CONTAINS: &[&str] = &["TOKEN", "SECRET", "KEY", "PASSWORD"];
 
 const HOME_DENY: &[&str] = &[
     ".ssh",
@@ -114,11 +115,30 @@ const HOME_READ: &[&str] = &[
     ".npm",
 ];
 
+pub fn env_name_refused(name: &str) -> bool {
+    let up = name.to_ascii_uppercase();
+    ENV_BLOCK_EXACT.contains(&up.as_str()) || ENV_REFUSE_PREFIX.iter().any(|p| up.starts_with(p))
+}
+
 pub fn env_name_blocked(name: &str) -> bool {
     let up = name.to_ascii_uppercase();
-    ENV_BLOCK_EXACT.contains(&up.as_str())
-        || ENV_BLOCK_PREFIX.iter().any(|p| up.starts_with(p))
-        || ENV_BLOCK_CONTAINS.iter().any(|c| up.contains(c))
+    env_name_refused(name)
+        || ENV_OPT_IN_PREFIX.iter().any(|p| up.starts_with(p))
+        || ENV_OPT_IN_CONTAINS.iter().any(|c| up.contains(c))
+}
+
+pub fn home_deny_paths(real_home: &Path) -> Vec<PathBuf> {
+    let canon = canon_lossy(real_home);
+    let mut deny = Vec::new();
+    for rel in HOME_DENY {
+        push_unique(&mut deny, canon_lossy(&canon.join(rel)));
+        push_unique(&mut deny, canon_lossy(&real_home.join(rel)));
+    }
+    deny
+}
+
+pub fn overlaps(a: &Path, b: &Path) -> bool {
+    a.starts_with(b) || b.starts_with(a)
 }
 
 fn env_name_valid(name: &str) -> bool {
@@ -133,14 +153,25 @@ fn build_env(spec: &SandboxSpec, home: &Path, tmp: &Path) -> Result<Vec<(String,
             env.insert(k.clone(), v.clone());
         }
     }
-    for name in &spec.env_pass {
-        if !env_name_valid(name) || env_name_blocked(name) {
+    let passes = spec.env_pass.iter().filter(|n| !env_name_blocked(n)).chain(
+        spec.grants
+            .trusted_env_pass
+            .iter()
+            .filter(|n| !env_name_refused(n)),
+    );
+    for name in passes {
+        if !env_name_valid(name) {
             continue;
         }
         if let Some((_, v)) = spec.base_env.iter().find(|(k, _)| k == name) {
             if !v.contains('\0') {
                 env.insert(name.clone(), v.clone());
             }
+        }
+    }
+    for (k, v) in &spec.grants.env {
+        if env_name_valid(k) && !env_name_refused(k) && !v.contains('\0') {
+            env.insert(k.clone(), v.clone());
         }
     }
     let h = path_str(home)?;
@@ -164,7 +195,7 @@ fn path_str(p: &Path) -> Result<String, String> {
     }
 }
 
-fn canon_lossy(p: &Path) -> PathBuf {
+pub fn canon_lossy(p: &Path) -> PathBuf {
     let mut rest = Vec::new();
     let mut cur = p.to_path_buf();
     loop {
@@ -290,12 +321,7 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
         ));
     }
 
-    let mut deny = Vec::new();
-    for rel in HOME_DENY {
-        let joined = spec.real_home.join(rel);
-        push_unique(&mut deny, canon_lossy(&real_home.join(rel)));
-        push_unique(&mut deny, canon_lossy(&joined));
-    }
+    let mut deny = home_deny_paths(&spec.real_home);
     push_unique(&mut deny, runner_dir.clone());
     push_unique(&mut deny, homes_dir);
     for d in &deny {
@@ -327,6 +353,17 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
         if let Ok(c) = real_home.join(rel).canonicalize() {
             push_unique(&mut read, c);
         }
+    }
+    for extra in &spec.grants.extra_read {
+        let c = canon_lossy(extra);
+        if let Some(d) = deny.iter().find(|d| overlaps(&c, d)) {
+            return Err(format!(
+                "profile read path {} overlaps the protected path {}",
+                c.display(),
+                d.display()
+            ));
+        }
+        push_unique(&mut read, c);
     }
     let write = vec![cwd.clone(), home.clone()];
     let self_exe = canon_lossy(&spec.self_exe);
@@ -767,6 +804,7 @@ mod tests {
             self_exe: PathBuf::from("/usr/bin/tmgr"),
             env_pass: vec![],
             base_env: vec![],
+            grants: Default::default(),
         };
         Fx { _t: t, spec }
     }
@@ -858,6 +896,48 @@ mod tests {
         let e = env_of(&f.spec);
         assert!(e.contains_key("EDITOR"));
         assert!(!e.contains_key("PAGER"));
+    }
+
+    #[test]
+    fn trusted_env_pass_opts_in_secret_names_but_never_loader_vars() {
+        let mut f = fx();
+        f.spec.base_env = vec![
+            kv("A_TOKEN", "t"),
+            kv("B_TOKEN", "u"),
+            kv("AWS_REGION", "r"),
+            kv("LD_PRELOAD", "x"),
+            kv("NODE_OPTIONS", "y"),
+        ];
+        f.spec.env_pass = vec!["B_TOKEN".into()];
+        f.spec.grants.trusted_env_pass = vec![
+            "A_TOKEN".into(),
+            "AWS_REGION".into(),
+            "LD_PRELOAD".into(),
+            "NODE_OPTIONS".into(),
+        ];
+        f.spec.grants.env = vec![kv("DISABLE_X", "1"), kv("DYLD_INSERT_LIBRARIES", "z")];
+        let e = env_of(&f.spec);
+        assert_eq!(e.get("A_TOKEN").map(String::as_str), Some("t"));
+        assert!(e.contains_key("AWS_REGION"));
+        assert!(!e.contains_key("B_TOKEN"));
+        assert!(!e.contains_key("LD_PRELOAD") && !e.contains_key("NODE_OPTIONS"));
+        assert_eq!(e.get("DISABLE_X").map(String::as_str), Some("1"));
+        assert!(!e.contains_key("DYLD_INSERT_LIBRARIES"));
+    }
+
+    #[test]
+    fn extra_read_roots_become_read_only_and_cannot_touch_the_deny_list() {
+        let mut f = fx();
+        let tool = f.spec.real_home.join(".local/share/tool");
+        fs::create_dir_all(&tool).unwrap();
+        f.spec.grants.extra_read = vec![tool.clone()];
+        let pl = plan(&f.spec).unwrap();
+        assert!(pl.paths.read.contains(&tool));
+        assert!(!pl.paths.write.contains(&tool));
+
+        let mut f = fx();
+        f.spec.grants.extra_read = vec![f.spec.real_home.join(".ssh/x")];
+        assert!(refusal(&f).contains("protected"));
     }
 
     fn refusal(f: &Fx) -> String {

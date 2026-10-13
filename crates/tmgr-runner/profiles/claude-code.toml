@@ -3,7 +3,21 @@ name = "Claude Code"
 command = ["claude"]
 args = []
 model_arg = ["--model", "{model}"]
-env_pass = []
+env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]
+
+[env]
+DISABLE_AUTOUPDATER = "1"
+
+[secrets]
+file = "~/.config/tmgr/agents/claude-code.env"
+
+[sandbox]
+read = ["~/.local/share/claude"]
+
+[[sandbox.seed]]
+from = "~/.claude.json"
+to = ".claude.json"
+json_keys = ["hasCompletedOnboarding", "theme", "oauthAccount"]
 
 # Illustrative approval-prompt shapes; not verified against a real session.
 [status]

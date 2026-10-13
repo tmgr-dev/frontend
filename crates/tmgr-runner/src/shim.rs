@@ -362,7 +362,10 @@ pub fn shim_main(dir: &Path, id: &str) -> i32 {
 
 fn run(dir: &Path, id: &str) -> io::Result<()> {
     let sdir = dir.join("sessions").join(id);
-    let launch: LaunchFile = serde_json::from_slice(&fs::read(sdir.join("launch.json"))?)
+    let launch_path = sdir.join("launch.json");
+    let launch_bytes = fs::read(&launch_path)?;
+    fs::remove_file(&launch_path)?;
+    let launch: LaunchFile = serde_json::from_slice(&launch_bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("launch.json: {e}")))?;
     let adopt_secret = read_secret(dir, id)?;
     let (cols, rows) = crate::wire::clamp_size(launch.cols, launch.rows);

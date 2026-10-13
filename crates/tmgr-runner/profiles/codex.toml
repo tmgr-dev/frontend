@@ -5,6 +5,10 @@ args = []
 model_arg = ["--model", "{model}"]
 env_pass = []
 
+[[sandbox.seed]]
+from = "~/.codex/auth.json"
+to = ".codex/auth.json"
+
 # Illustrative approval-prompt shapes; not verified against a real session.
 [status]
 blocked = [
