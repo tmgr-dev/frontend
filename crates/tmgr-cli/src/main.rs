@@ -1,5 +1,6 @@
 mod cli;
 mod cli_agent;
+mod cli_link;
 mod cmd;
 mod ctx;
 mod gitx;
@@ -67,6 +68,7 @@ fn standalone(cli: &Cli) -> Option<i32> {
             command: HookCmd::Codex { args },
         }) => Some(cmd::hook::codex(args, cli.server.clone())),
         Some(Command::Mcp) => Some(cmd::mcp::run(cli.server.clone(), cli.verbose)),
+        Some(Command::Worker(_)) => Some(cmd::worker::run()),
         _ => None,
     }
 }
@@ -143,6 +145,8 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         #[cfg(feature = "runner")]
         Some(Command::Runner(_)) => Err(Error::internal("handled before the session starts")),
         Some(Command::Mcp) => Err(Error::internal("handled before the session starts")),
+        Some(Command::Worker(_)) => Err(Error::internal("handled before the session starts")),
+        Some(Command::Link { command }) => cmd::link::run(ctx, command),
         Some(Command::Prompt(_)) | Some(Command::Statusline { .. }) => {
             Err(Error::internal("handled before the session starts"))
         }

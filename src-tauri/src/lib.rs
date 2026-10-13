@@ -26,6 +26,7 @@ mod plugin_selftest;
 mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
+mod runner;
 mod page_windows;
 mod task_windows;
 mod tray;
@@ -279,9 +280,27 @@ pub fn run() {
       local_access::local_access_set_enabled,
       local_access::local_access_ready,
       local_access::local_access_reply,
-      local_access::local_access_event
+      local_access::local_access_event,
+      runner::commands::runner_enabled,
+      runner::commands::runner_set_enabled,
+      runner::commands::runner_status,
+      runner::commands::runner_profiles,
+      runner::commands::runner_sessions,
+      runner::commands::runner_start_run,
+      runner::commands::runner_halt,
+      runner::commands::runner_open_terminal,
+      runner::commands::runner_watch,
+      runner::commands::runner_unwatch,
+      runner::commands::runner_term_attach,
+      runner::commands::runner_term_ack,
+      runner::commands::runner_term_input,
+      runner::commands::runner_term_resize,
+      runner::commands::runner_term_scroll,
+      runner::commands::runner_term_detach,
+      runner::commands::runner_term_open_link
     ])
     .on_window_event(|window, event| {
+      runner::commands::on_window_event(window, event);
       if let WindowEvent::Focused(false) = event {
         if window.label() == quick_add::LABEL {
           let _ = window.hide();
@@ -357,6 +376,7 @@ pub fn run() {
       idle::start(app.handle());
       local_backups::start(app.handle());
       plugin_tick::start(app.handle());
+      runner::commands::setup(app.handle());
       if let Err(error) = local_access::setup(app.handle()) {
         log::error!("[local-access] failed to start: {error}");
       }

@@ -10,6 +10,7 @@ pub enum Kind {
     Forbidden,
     Conflict,
     Offline,
+    Link,
     NeedsConfirmation,
     Interrupted,
 }
@@ -24,6 +25,7 @@ impl Kind {
             Kind::Forbidden => 5,
             Kind::Conflict => 6,
             Kind::Offline => 7,
+            Kind::Link => 9,
             Kind::NeedsConfirmation => 10,
             Kind::Interrupted => 130,
         }
@@ -38,6 +40,7 @@ impl Kind {
             Kind::Forbidden => "forbidden",
             Kind::Conflict => "conflict",
             Kind::Offline => "offline",
+            Kind::Link => "link",
             Kind::NeedsConfirmation => "needs_confirmation",
             Kind::Interrupted => "interrupted",
         }
@@ -146,6 +149,7 @@ mod tests {
             (Kind::Forbidden, 5, "forbidden"),
             (Kind::Conflict, 6, "conflict"),
             (Kind::Offline, 7, "offline"),
+            (Kind::Link, 9, "link"),
             (Kind::NeedsConfirmation, 10, "needs_confirmation"),
             (Kind::Interrupted, 130, "interrupted"),
         ];

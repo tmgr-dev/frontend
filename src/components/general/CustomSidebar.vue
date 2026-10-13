@@ -3,6 +3,7 @@
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
 	import WindowControls from '@/components/desktop/WindowControls.vue';
+	import { isRunnerSupported } from '@/runner/api';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import {
 		hasNativeTitleBar,
@@ -116,6 +117,7 @@
 		LogOut,
 		Package,
 		PackageOpen,
+		FlaskConical,
 		Keyboard,
 		LifeBuoy,
 		Info,
@@ -1195,6 +1197,14 @@
 										>
 											<Keyboard />
 											Shortcuts
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="isRunnerSupported()"
+											@click="$router.push('/settings?tab=experimental')"
+											class="cursor-pointer"
+										>
+											<FlaskConical />
+											Experimental
 										</DropdownMenuItem>
 										<DropdownMenuItem>
 											<DarkMode />

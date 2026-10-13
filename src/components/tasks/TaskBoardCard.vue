@@ -70,6 +70,12 @@
 
 			<span class="flex-1"></span>
 
+			<TaskCardAgentChip
+				v-if="isDesktop"
+				:workspace-id="task.workspace_id"
+				:task-id="task.id"
+			/>
+
 			<PersonaAssigneeChips
 				v-if="
 					isFeatureEnabled('task.assignees') && isFeatureEnabled('personas')
@@ -321,6 +327,7 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import Loader from '@/components/loaders/Loader.vue';
+	import TaskCardAgentChip from '@/components/runner/TaskCardAgentChip.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
 		Command,
@@ -353,6 +360,7 @@
 		personaAssigneesOf,
 		visibleHumanAssignees,
 	} from '@/utils/personas';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		ArchiveIcon,
@@ -379,9 +387,10 @@
 		inject: { pluginBadges: { default: () => ({}) } },
 		setup() {
 			const { isFeatureEnabled, showSurface } = useFeatureToggles();
-			return { isFeatureEnabled, showSurface };
+			return { isFeatureEnabled, showSurface, isDesktop: isDesktopApp() };
 		},
 		components: {
+			TaskCardAgentChip,
 			TaskTimeInfo,
 			Confirm,
 			SettingsComponent,

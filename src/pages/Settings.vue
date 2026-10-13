@@ -65,6 +65,8 @@
 							<DesktopShortcutsSettings />
 						</SettingsSection>
 
+						<RunnerExperimentalSettings v-if="isExperimental" />
+
 						<div v-if="isAbout" class="flex flex-col gap-6">
 							<SettingsSection title="TMGR">
 								<div class="flex flex-col gap-2 text-sm">
@@ -343,6 +345,7 @@
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
 	import PromotionsList from '@/components/promotions/PromotionsList.vue';
+	import RunnerExperimentalSettings from '@/components/runner/RunnerExperimentalSettings.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import LocalAccountSection from '@/components/desktop/LocalAccountSection.vue';
 	import LocalDataSettings from '@/components/desktop/LocalDataSettings.vue';
@@ -363,6 +366,7 @@
 	import { Switch } from '@/components/ui/switch';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import Profile from '@/pages/Profile.vue';
+	import { isRunnerSupported } from '@/runner/api';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { hasSmartDeviceToken, smartDeviceTokenState } from '@/utils/smartDeviceToken';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
@@ -379,6 +383,7 @@
 			Confirm,
 			NotificationSettingsForm,
 			DesktopShortcutsSettings,
+			RunnerExperimentalSettings,
 			LocalAccountSection,
 			LocalDataSettings,
 			LocalProfileSettings,
@@ -414,6 +419,7 @@
 			isDevice: false,
 			isTheme: false,
 			isDesktopSection: false,
+			isExperimental: false,
 			isLocalData: false,
 			isAbout: false,
 			isPrivacy: false,
@@ -452,6 +458,7 @@
 				if (this.isDevice) return 'Smart devices';
 				if (this.isNotification) return 'Notifications';
 				if (this.isTheme) return 'Theme';
+				if (this.isExperimental) return 'Experimental';
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
 				if (this.isLocalData) return 'Local data';
 				if (this.isPrivacy) return 'Privacy';
@@ -579,6 +586,9 @@
 						case 'desktop':
 							this.showDesktopSettings();
 							break;
+						case 'experimental':
+							if (isRunnerSupported()) this.showExperimentalSettings();
+							break;
 						case 'data':
 							this.showLocalDataSettings();
 							break;
@@ -601,6 +611,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.updateQueryParam('notification');
 			},
 
@@ -617,6 +628,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.updateQueryParam('profile');
 			},
 
@@ -629,6 +641,7 @@
 				this.isDevice = true;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.updateQueryParam('device');
 			},
 
@@ -641,6 +654,7 @@
 				this.isDevice = false;
 				this.isTheme = true;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.updateQueryParam('theme');
 			},
 
@@ -653,7 +667,21 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = true;
+				this.isExperimental = false;
 				this.updateQueryParam('desktop');
+			},
+
+			showExperimentalSettings() {
+				this.isLocalData = false;
+				this.isPrivacy = false;
+				this.isAbout = false;
+				this.isNotification = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = false;
+				this.isExperimental = true;
+				this.updateQueryParam('experimental');
 			},
 
 			showLocalDataSettings() {
@@ -662,6 +690,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.isLocalData = true;
 				this.isPrivacy = false;
 				this.isAbout = false;
@@ -684,6 +713,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.isLocalData = false;
 				this.isAbout = false;
 				this.isPrivacy = true;
@@ -697,6 +727,7 @@
 				this.isDevice = false;
 				this.isTheme = false;
 				this.isDesktopSection = false;
+				this.isExperimental = false;
 				this.isLocalData = false;
 				this.isPrivacy = false;
 				this.isAbout = true;

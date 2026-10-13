@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "runner-terminal",
+  "description": "Agent terminal windows: only the terminal commands, session taken from the window label.",
+  "windows": [
+    "runner-*"
+  ],
+  "permissions": [
+    "allow-runner-term-attach",
+    "allow-runner-term-ack",
+    "allow-runner-term-input",
+    "allow-runner-term-resize",
+    "allow-runner-term-scroll",
+    "allow-runner-term-detach",
+    "allow-runner-term-open-link"
+  ]
+}

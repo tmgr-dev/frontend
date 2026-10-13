@@ -70,6 +70,7 @@
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
+	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
 	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
@@ -2971,6 +2972,12 @@
 							No time logged yet — click “Add entry” to log what you worked on.
 						</div>
 					</section>
+
+					<TaskAgentRunner
+						v-if="isDesktopApp() && (taskId || form.id)"
+						:task-id="Number(taskId || form.id)"
+						:workspace-id="form.workspace_id"
+					/>
 
 					<TaskAgentWork
 						v-if="(taskId || form.id) && isFeatureEnabled('agent_work')"
