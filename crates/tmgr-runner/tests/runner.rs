@@ -1170,6 +1170,7 @@ fn runs_create_never_writes_through_a_planted_tmgr_symlink() {
     let e = err_text(h.client().create_run(h.bundled("fake")));
     assert!(e.starts_with("invalid_params: "), "{e}");
     assert_eq!(fs::read_to_string(&victim).unwrap(), "keep");
+}
 
 struct LoginFx {
     h: Harness,
