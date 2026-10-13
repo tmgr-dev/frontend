@@ -11,6 +11,7 @@ use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
+use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::wire::now_ms;
 
 pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
@@ -28,6 +29,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Halt(a) => halt(o, a),
         RunnerCommands::Rm(a) => rm(o, a),
     }
+}
+
+fn clean(s: &str) -> String {
+    sanitize_text(s).into_owned()
 }
 
 fn serve() -> Result<i32> {
@@ -64,7 +69,7 @@ fn status(o: &Opts) -> Result<i32> {
     let human = format!(
         "runner is up (pid {}, version {}, up {}, {} session{})",
         st.pid,
-        st.version,
+        clean(&st.version),
         span(st.uptime_s),
         st.sessions,
         if st.sessions == 1 { "" } else { "s" }
@@ -111,11 +116,15 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     };
     if !o.json && !o.quiet {
         match &raw {
-            Some(argv) => eprintln!("starting {} in {}", argv[0], cwd.display()),
+            Some(argv) => eprintln!(
+                "starting {} in {}",
+                clean(&argv[0]),
+                clean(&cwd.display().to_string())
+            ),
             None => eprintln!(
                 "starting agent {} in {}",
-                a.agent.as_deref().unwrap_or_default(),
-                cwd.display()
+                clean(a.agent.as_deref().unwrap_or_default()),
+                clean(&cwd.display().to_string())
             ),
         }
     }
@@ -149,7 +158,9 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     }
     let human = format!(
         "started {} ({}); attach with: tmgr attach {}",
-        info.name, info.id, info.id
+        clean(&info.name),
+        clean(&info.id),
+        clean(&info.id)
     );
     Ok(emit(o, &info, human))
 }
@@ -267,7 +278,7 @@ fn agents(o: &Opts) -> Result<i32> {
             badge(s).to_string(),
             tmgr_core::text::sanitize_line(&s.name),
             format!("{} {since}", state_label(s)),
-            s.id.clone(),
+            clean(&s.id),
             command_line(s),
             tmgr_core::text::sanitize_line(&short_cwd(&s.cwd)),
         ]);
@@ -343,7 +354,11 @@ fn send(o: &Opts, a: &SendArgs) -> Result<i32> {
         text.push('\r');
     }
     c.send(&s.id, &text).map_err(rerr)?;
-    Ok(emit(o, json!({"id": s.id}), format!("sent to {}", s.name)))
+    Ok(emit(
+        o,
+        json!({"id": s.id}),
+        format!("sent to {}", clean(&s.name)),
+    ))
 }
 
 fn wait_exit(c: &mut Client, id: &str, limit: Duration) -> Result<bool> {
@@ -370,7 +385,7 @@ fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
         return Ok(emit(
             o,
             json!({"id": s.id, "signal": null, "exited": true}),
-            format!("{} has already exited", s.name),
+            format!("{} has already exited", clean(&s.name)),
         ));
     }
     let mut signal = if a.kill { "kill" } else { "int" };
@@ -383,18 +398,23 @@ fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
     }
     if !exited {
         return Err(
-            Error::conflict(format!("{} is still running", s.name)).hint("tmgr halt --kill")
+            Error::conflict(format!("{} is still running", clean(&s.name)))
+                .hint("tmgr halt --kill"),
         );
     }
     Ok(emit(
         o,
         json!({"id": s.id, "signal": signal, "exited": true}),
-        format!("{} stopped", s.name),
+        format!("{} stopped", clean(&s.name)),
     ))
 }
 
 fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
     let (mut c, s) = with_session(&a.session)?;
     c.remove(&s.id).map_err(rerr)?;
-    Ok(emit(o, json!({"id": s.id}), format!("removed {}", s.name)))
+    Ok(emit(
+        o,
+        json!({"id": s.id}),
+        format!("removed {}", clean(&s.name)),
+    ))
 }
