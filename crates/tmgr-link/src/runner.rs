@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 use tmgr_ipc::api::{
-    caps, limits, method, AttachParams, ErrorCode, KillParams, RunCreateReq, SendParams,
+    caps, limits, method, AttachParams, ErrorCode, IdParams, KillParams, RunCreateReq, SendParams,
     SessionInfo,
 };
 use tmgr_ipc::frame::{read_frame, write_json, Frame};
@@ -75,6 +75,7 @@ pub trait Backend: Send {
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError>;
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
     fn send(&mut self, id: &str, text: &str) -> Result<(), BackendError>;
+    fn remove(&mut self, id: &str) -> Result<(), BackendError>;
     fn attach(
         &mut self,
         id: &str,
@@ -205,6 +206,11 @@ impl Backend for RunnerClient {
             text: text.into(),
         };
         self.call(method::SESSIONS_SEND, params(&p)?).map(drop)
+    }
+
+    fn remove(&mut self, id: &str) -> Result<(), BackendError> {
+        let p = IdParams { id: id.into() };
+        self.call(method::SESSIONS_REMOVE, params(&p)?).map(drop)
     }
 
     fn attach(

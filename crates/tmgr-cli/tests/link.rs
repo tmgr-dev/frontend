@@ -265,6 +265,36 @@ fn attach_input_is_a_widening_that_needs_a_terminal() {
 }
 
 #[test]
+fn revoke_with_an_unresolved_create_exits_1_and_says_so() {
+    let f = fx();
+    f.trust_leader("laptop", f.scope());
+    {
+        let mut runs = tmgr_link::ownership::Runs::lock(&f.paths).unwrap();
+        runs.add_pending(tmgr_link::ownership::Pending {
+            id: "p1".into(),
+            link: "laptop".into(),
+            enrollment: ENR.into(),
+            task: "w1:1".into(),
+            agent: "codex".into(),
+            cwd: f.repo.display().to_string(),
+            started_ms: tmgr_link::ownership::now_ms(),
+            unknown_origin: vec![],
+        })
+        .unwrap();
+    }
+    let out = f
+        .tmgr()
+        .args(["link", "revoke", "laptop", "--json"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
+    let text = String::from_utf8_lossy(&out.stdout).to_string() + &err_text(&out);
+    assert!(text.contains("containment incomplete"), "{text}");
+    assert!(text.contains("retry") || text.contains("tmgr link revoke laptop --halt-runs"));
+    assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
+}
+
+#[test]
 fn revoke_is_always_allowed_and_audited() {
     let f = fx();
     f.trust_leader("laptop", f.scope());
@@ -477,7 +507,7 @@ fn a_revoked_link_stops_answering_on_the_next_request() {
         .unwrap();
     assert_eq!(contain["workers_signalled"], 1);
     assert_eq!(contain["workers_surviving"], 0);
-    let left = std::fs::read_dir(f.paths.state.join("link-workers")).map_or(0, |d| d.count());
+    let left = std::fs::read_dir(f.paths.link_dir().join("workers")).map_or(0, |d| d.count());
     assert_eq!(left, 0);
     match c.call("runs.list", Value::Null) {
         Ok(r) => assert_eq!(reply_err(r).0, "revoked"),

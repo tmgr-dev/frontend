@@ -1,10 +1,16 @@
+use crate::runner::{Backend, BackendError};
 use crate::store::{lock, Lock, Paths};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tmgr_core::config::{ensure_private_dir, write_atomic};
 use tmgr_core::error::{Error, Result};
+use tmgr_ipc::api::StateKind;
 
 const MAX_RECORDS: usize = 1024;
+const MAX_PENDING: usize = 64;
+pub const PRUNE_GRACE_SECS: i64 = 120;
+const PENDING_GIVE_UP_MS: u64 = 120_000;
+const WINDOW_SLACK_MS: u64 = 5_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunRecord {
@@ -20,11 +26,30 @@ pub struct RunRecord {
     pub created: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Pending {
+    pub id: String,
+    pub link: String,
+    pub enrollment: String,
+    pub task: String,
+    pub agent: String,
+    pub cwd: String,
+    pub started_ms: u64,
+    #[serde(default)]
+    pub unknown_origin: Vec<String>,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct File {
     #[serde(default)]
     runs: Vec<RunRecord>,
+    #[serde(default)]
+    pending: Vec<Pending>,
+}
+
+pub fn now_ms() -> u64 {
+    chrono::Utc::now().timestamp_millis().max(0) as u64
 }
 
 pub struct Runs {
@@ -35,7 +60,30 @@ pub struct Runs {
 }
 
 fn map_path(paths: &Paths) -> PathBuf {
+    paths.link_dir().join("runs.json")
+}
+
+fn legacy_path(paths: &Paths) -> PathBuf {
     paths.state.join("link-runs.json")
+}
+
+fn ensure_dir(paths: &Paths) -> Result<()> {
+    ensure_private_dir(&paths.config)?;
+    ensure_private_dir(&paths.link_dir())
+}
+
+fn migrate(paths: &Paths) -> Result<()> {
+    let old = legacy_path(paths);
+    let new = map_path(paths);
+    if new.exists() || !old.is_file() {
+        return Ok(());
+    }
+    let bytes = std::fs::read(&old)?;
+    if serde_json::from_slice::<File>(&bytes).is_ok() {
+        write_atomic(&new, &bytes, 0o600)?;
+    }
+    let _ = std::fs::remove_file(&old);
+    Ok(())
 }
 
 impl Runs {
@@ -49,8 +97,9 @@ impl Runs {
     }
 
     pub fn lock_lenient(paths: &Paths) -> Result<Runs> {
-        ensure_private_dir(&paths.state)?;
-        let guard = lock(&paths.state.join("link-runs.lock"))?;
+        ensure_dir(paths)?;
+        let guard = lock(&paths.link_dir().join("runs.lock"))?;
+        migrate(paths)?;
         let path = map_path(paths);
         let (file, damaged) = match std::fs::symlink_metadata(&path) {
             Ok(meta) if meta.is_file() => match std::fs::read_to_string(&path)
@@ -109,9 +158,55 @@ impl Runs {
         self.save()
     }
 
+    pub fn pending_of(&self, link: &str) -> Vec<Pending> {
+        self.file
+            .pending
+            .iter()
+            .filter(|p| p.link == link)
+            .cloned()
+            .collect()
+    }
+
+    pub fn recorded(&self, run: &str) -> bool {
+        self.file.runs.iter().any(|r| r.run == run)
+    }
+
+    pub fn add_pending(&mut self, p: Pending) -> Result<()> {
+        if self.file.pending.len() >= MAX_PENDING {
+            return Err(crate::forbidden("too many unresolved creates"));
+        }
+        self.file.pending.push(p);
+        self.save()
+    }
+
+    pub fn clear_pending(&mut self, id: &str) -> Result<()> {
+        let before = self.file.pending.len();
+        self.file.pending.retain(|p| p.id != id);
+        if self.file.pending.len() != before {
+            self.save()?;
+        }
+        Ok(())
+    }
+
+    pub fn resolve(&mut self, pending_id: &str, rec: RunRecord) -> Result<()> {
+        self.file.pending.retain(|p| p.id != pending_id);
+        self.record(rec)
+    }
+
+    pub fn forget(&mut self, run: &str) -> Result<()> {
+        self.file.runs.retain(|r| r.run != run);
+        self.save()
+    }
+
     pub fn retain_existing(&mut self, existing: &[String]) -> Result<()> {
         let before = self.file.runs.len();
-        self.file.runs.retain(|r| existing.contains(&r.run));
+        let now = chrono::Utc::now();
+        self.file.runs.retain(|r| {
+            existing.contains(&r.run)
+                || chrono::DateTime::parse_from_rfc3339(&r.created)
+                    .map(|t| (now - t.with_timezone(&chrono::Utc)).num_seconds() < PRUNE_GRACE_SECS)
+                    .unwrap_or(true)
+        });
         if self.file.runs.len() != before {
             self.save()?;
         }
@@ -123,6 +218,68 @@ impl Runs {
             .map_err(|_| Error::internal("cannot serialize link-runs.json"))?;
         write_atomic(&map_path(&self.paths), &bytes, 0o600)
     }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Reconciled {
+    pub cleared: usize,
+    pub remaining: usize,
+    pub unknown_origin: Vec<String>,
+}
+
+pub fn reconcile_pending(
+    runs: &mut Runs,
+    link: &str,
+    backend: &mut dyn Backend,
+) -> std::result::Result<Reconciled, BackendError> {
+    let mut out = Reconciled::default();
+    let pendings = runs.pending_of(link);
+    if pendings.is_empty() {
+        return Ok(out);
+    }
+    let listed = backend.list()?;
+    let now = now_ms();
+    for p in pendings {
+        let found: Vec<String> = listed
+            .iter()
+            .filter(|s| {
+                s.profile.as_deref() == Some(p.agent.as_str())
+                    && s.cwd == p.cwd
+                    && s.task.as_ref().map(crate::taskref::format_ref).as_deref()
+                        == Some(p.task.as_str())
+                    && s.created_ms + WINDOW_SLACK_MS >= p.started_ms
+                    && s.state.kind != StateKind::Exited
+                    && !runs.recorded(&s.id)
+            })
+            .map(|s| s.id.clone())
+            .collect();
+        if found.is_empty() {
+            if now.saturating_sub(p.started_ms) > PENDING_GIVE_UP_MS {
+                runs.clear_pending(&p.id)
+                    .map_err(|e| BackendError::Protocol(e.message))?;
+                out.cleared += 1;
+            } else {
+                out.remaining += 1;
+            }
+            continue;
+        }
+        if let Some(slot) = runs.file.pending.iter_mut().find(|q| q.id == p.id) {
+            slot.unknown_origin = found.clone();
+        }
+        runs.save().map_err(|e| BackendError::Protocol(e.message))?;
+        out.unknown_origin.extend(found);
+        out.remaining += 1;
+    }
+    Ok(out)
+}
+
+pub fn has_pending(paths: &Paths, link: &str) -> bool {
+    if !map_path(paths).exists() {
+        return false;
+    }
+    Runs::lock_lenient(paths)
+        .map(|r| !r.pending_of(link).is_empty())
+        .unwrap_or(false)
 }
 
 pub fn origin_label(paths: &Paths, run: &str) -> Option<String> {
@@ -221,10 +378,44 @@ mod tests {
     }
 
     #[test]
-    fn garbage_is_refused_not_ignored() {
+    fn young_records_survive_pruning_and_old_ones_do_not() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        let mut runs = Runs::lock(&paths).unwrap();
+        let mut old = rec("s_old", "laptop", "e1");
+        old.created = (chrono::Utc::now() - chrono::Duration::hours(2))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let mut young = rec("s_young", "laptop", "e1");
+        young.created = crate::now_rfc3339();
+        runs.record(old).unwrap();
+        runs.record(young).unwrap();
+        runs.retain_existing(&[]).unwrap();
+        assert!(!runs.owns("laptop", "e1", "s_old"));
+        assert!(runs.owns("laptop", "e1", "s_young"));
+    }
+
+    #[test]
+    fn the_map_lives_in_the_private_config_link_dir_and_the_old_file_moves() {
+        use std::os::unix::fs::PermissionsExt;
         let d = tempfile::tempdir().unwrap();
         let paths = Paths::under(d.path());
         ensure_private_dir(&paths.state).unwrap();
+        let legacy = serde_json::json!({"runs": [rec("s_a", "laptop", "e1")]});
+        write_atomic(&legacy_path(&paths), legacy.to_string().as_bytes(), 0o600).unwrap();
+        let runs = Runs::lock(&paths).unwrap();
+        assert!(runs.owns("laptop", "e1", "s_a"));
+        assert!(!legacy_path(&paths).exists());
+        drop(runs);
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&paths.link_dir()), 0o700);
+        assert_eq!(mode(&map_path(&paths)), 0o600);
+    }
+
+    #[test]
+    fn garbage_is_refused_not_ignored() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        ensure_dir(&paths).unwrap();
         write_atomic(&map_path(&paths), b"not json", 0o600).unwrap();
         assert!(Runs::lock(&paths).is_err());
     }

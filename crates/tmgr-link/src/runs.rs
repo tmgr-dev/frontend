@@ -1,5 +1,5 @@
 use crate::attach::{self, Outgoing};
-use crate::ownership::{RunRecord, Runs};
+use crate::ownership::{now_ms, Pending, RunRecord, Runs};
 use crate::proto::{self, Channel, Poll, Request};
 use crate::runner::{AttachRecv, AttachSession, Backend, BackendError};
 use crate::scope::{self, canonical_repo, Scope};
@@ -39,6 +39,11 @@ fn backend_reply(id: Option<u64>, e: &BackendError) -> Vec<u8> {
         BackendError::NotFound => proto::error(id, "not_found", "no such run"),
         BackendError::NotRunning => proto::error(id, "not_running", "the run is not running"),
         BackendError::Busy => proto::error(id, "busy", "the agent is not reading its input"),
+        BackendError::Refused { code, .. } if code == "limit" => proto::error(
+            id,
+            "limit",
+            "runner session limit reached; clean up exited runs on the follower",
+        ),
         BackendError::Refused { code, message } => {
             let code = if code.bytes().all(|b| b.is_ascii_lowercase() || b == b'_') {
                 code.as_str()
@@ -156,12 +161,12 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
     {
         return audit_down();
     }
+    let Ok(mut runs) = Runs::lock(conn.paths) else {
+        return Step::Close(proto::error(id, "unavailable", "request refused"));
+    };
     let listed = match with_backend(conn, st, true, |b| b.list()) {
         Ok(l) => l,
         Err(e) => return failed(conn, "runs.list", args, id, &e),
-    };
-    let Ok(mut runs) = Runs::lock(conn.paths) else {
-        return Step::Close(proto::error(id, "unavailable", "request refused"));
     };
     let existing: Vec<String> = listed.iter().map(|s| s.id.clone()).collect();
     let _ = runs.retain_existing(&existing);
@@ -367,10 +372,23 @@ fn create(
             "the scope changed, try again",
         ));
     }
-    let listed = match with_backend(conn, st, true, |b| b.list()) {
+    let mut listed = match with_backend(conn, st, true, |b| b.list()) {
         Ok(l) => l,
         Err(e) => return failed(conn, method, args, id, &e),
     };
+    let exited: Vec<String> = listed
+        .iter()
+        .filter(|s| {
+            s.state.kind == StateKind::Exited && runs.owns(conn.name, conn.enrollment, &s.id)
+        })
+        .map(|s| s.id.clone())
+        .collect();
+    for rid in exited {
+        if with_backend(conn, st, false, |b| b.remove(&rid)).is_ok() {
+            let _ = runs.forget(&rid);
+            listed.retain(|s| s.id != rid);
+        }
+    }
     let live = live_count(&listed, &runs, conn.name, conn.enrollment);
     if let Err(r) = scope::validate_run_method(method, params, &fresh, live) {
         return deny(conn, method, args, id, r.code, &r.reason);
@@ -384,18 +402,58 @@ fn create(
         cols: DEFAULT_SIZE.0,
         rows: DEFAULT_SIZE.1,
     };
+    let pending_id = crate::follower::new_enrollment();
+    let pending = Pending {
+        id: pending_id.clone(),
+        link: conn.name.to_string(),
+        enrollment: conn.enrollment.to_string(),
+        task: format_ref(&task),
+        agent: agent.to_string(),
+        cwd: req.cwd.clone(),
+        started_ms: now_ms(),
+        unknown_origin: Vec::new(),
+    };
+    if let Err(e) = runs.add_pending(pending) {
+        return deny(conn, method, args, id, "forbidden", &e.message);
+    }
     let info = match with_backend(conn, st, false, |b| b.create_run(&req)) {
         Ok(i) => i,
-        Err(e) => return failed(conn, method, args, id, &e),
+        Err(e) => {
+            if matches!(
+                e,
+                BackendError::Refused { .. }
+                    | BackendError::NotFound
+                    | BackendError::NotRunning
+                    | BackendError::Busy
+            ) {
+                let _ = runs.clear_pending(&pending_id);
+            }
+            return failed(conn, method, args, id, &e);
+        }
     };
     let kill = |st: &mut State| {
         let _ = with_backend(conn, st, false, |b| b.kill(&info.id, "kill"));
     };
+    let record = RunRecord {
+        run: info.id.clone(),
+        link: conn.name.to_string(),
+        enrollment: conn.enrollment.to_string(),
+        task: format_ref(&task),
+        agent: agent.to_string(),
+        persona,
+        model,
+        created: crate::now_rfc3339(),
+    };
+    if runs.resolve(&pending_id, record.clone()).is_err() {
+        kill(st);
+        return Step::Close(proto::error(id, "internal", "could not record the run"));
+    }
     let inside = canonical_repo(&info.cwd)
         .map(|c| fresh.repos.iter().any(|r| Path::new(&c).starts_with(r)))
         .unwrap_or(false);
     if !inside {
         kill(st);
+        let _ = runs.forget(&info.id);
         let _ = conn.record(
             method,
             args,
@@ -407,20 +465,6 @@ fn create(
             "forbidden",
             "repo is outside the allowed repos",
         ));
-    }
-    let record = RunRecord {
-        run: info.id.clone(),
-        link: conn.name.to_string(),
-        enrollment: conn.enrollment.to_string(),
-        task: format_ref(&task),
-        agent: agent.to_string(),
-        persona,
-        model,
-        created: crate::now_rfc3339(),
-    };
-    if runs.record(record.clone()).is_err() {
-        kill(st);
-        return Step::Close(proto::error(id, "internal", "could not record the run"));
     }
     if conn
         .audit
@@ -542,6 +586,10 @@ fn forward(chan: &mut dyn Channel, run: &str, msg: ServerMsg) -> Result<bool, St
     }
 }
 
+fn input_still_allowed(conn: &Conn) -> bool {
+    matches!(conn.current(), Ok(Ok(s)) if s.allow_attach_input)
+}
+
 fn attach_loop(
     conn: &Conn,
     st: &mut State,
@@ -629,8 +677,24 @@ fn attach_loop(
                         }
                     }
                     Ok(Outgoing::Resize { cols, rows }) => {
-                        if input_allowed && session.resize(cols, rows).is_err() {
-                            return end(chan, "the runner went away", &mut pending, stats);
+                        if input_allowed {
+                            if !input_still_allowed(conn) {
+                                let _ = conn.record(
+                                    "attach.resize",
+                                    json!({"run": run}),
+                                    "rejected",
+                                    "attach input is no longer allowed",
+                                );
+                                return end(
+                                    chan,
+                                    "attach input is no longer allowed",
+                                    &mut pending,
+                                    stats,
+                                );
+                            }
+                            if session.resize(cols, rows).is_err() {
+                                return end(chan, "the runner went away", &mut pending, stats);
+                            }
                         }
                     }
                     Ok(Outgoing::Input(text)) => {

@@ -430,15 +430,28 @@ pub struct Contained {
     pub runs_known: usize,
     pub halt_failed: usize,
     pub runs_unreadable: bool,
+    pub pending_remaining: usize,
+    pub pending_cleared: usize,
+    pub unknown_origin: Vec<String>,
+}
+
+impl Contained {
+    pub fn incomplete(&self) -> bool {
+        self.halt_failed > 0
+            || self.workers.survivors > 0
+            || self.pending_remaining > 0
+            || self.runs_unreadable
+    }
 }
 
 pub fn contain(
     paths: &Paths,
     name: &str,
-    halt: Option<&mut dyn crate::runner::Backend>,
+    backend: Option<&mut dyn crate::runner::Backend>,
+    halt: bool,
 ) -> Result<Contained> {
     grammar::link_name(name)?;
-    let runs = crate::ownership::Runs::lock_lenient(paths)?;
+    let mut runs = crate::ownership::Runs::lock_lenient(paths)?;
     let workers = crate::registry::terminate(paths, name, std::time::Duration::from_secs(3))?;
     let records: Vec<String> = runs
         .of_link(name)
@@ -451,12 +464,20 @@ pub fn contain(
         runs_unreadable: runs.is_damaged(),
         ..Contained::default()
     };
-    if let Some(backend) = halt.filter(|_| !out.runs_unreadable) {
-        for run in &records {
-            match crate::runs::stop_run(backend, run) {
-                Ok("already") => {}
-                Ok(_) => out.runs_halted += 1,
-                Err(_) => out.halt_failed += 1,
+    out.pending_remaining = runs.pending_of(name).len();
+    if let Some(backend) = backend.filter(|_| !out.runs_unreadable) {
+        if let Ok(r) = crate::ownership::reconcile_pending(&mut runs, name, backend) {
+            out.pending_remaining = r.remaining;
+            out.pending_cleared = r.cleared;
+            out.unknown_origin = r.unknown_origin;
+        }
+        if halt {
+            for run in &records {
+                match crate::runs::stop_run(backend, run) {
+                    Ok("already") => {}
+                    Ok(_) => out.runs_halted += 1,
+                    Err(_) => out.halt_failed += 1,
+                }
             }
         }
     }
@@ -471,6 +492,9 @@ pub fn contain(
             "runs_halted": out.runs_halted,
             "halt_failed": out.halt_failed,
             "runs_unreadable": out.runs_unreadable,
+            "pending_remaining": out.pending_remaining,
+            "pending_cleared": out.pending_cleared,
+            "unknown_origin": out.unknown_origin,
         }),
     )?;
     Ok(out)

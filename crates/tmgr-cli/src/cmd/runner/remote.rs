@@ -16,6 +16,8 @@ use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::wire::now_ms;
 
 const MAX_RUNS: usize = 1024;
+const MAX_FIELD: usize = 64;
+const MAX_ROWS: usize = 200;
 
 #[derive(Debug, Clone, Deserialize)]
 pub(super) struct RunView {
@@ -31,6 +33,16 @@ pub(super) struct RunView {
 
 fn clean(s: &str) -> String {
     sanitize_text(s).into_owned()
+}
+
+fn cell(s: &str) -> String {
+    let (cut, more) =
+        tmgr_core::text::truncate_chars(&tmgr_core::text::sanitize_line(s), MAX_FIELD);
+    if more {
+        format!("{cut}…")
+    } else {
+        cut
+    }
 }
 
 pub(super) fn dial(link: &str) -> Result<(Client, KeyFile)> {
@@ -169,17 +181,20 @@ pub fn agents(o: &Opts, link: &str) -> Result<i32> {
     let mut rows = vec![["NAME", "STATE", "ID", "AGENT", "TASK"]
         .map(String::from)
         .to_vec()];
-    for r in &runs {
+    for r in runs.iter().take(MAX_ROWS) {
         let since = super::ops::span(now.saturating_sub(r.state.since_ms) / 1000);
         rows.push(vec![
-            tmgr_core::text::sanitize_line(&r.name),
+            cell(&r.name),
             format!("{} {since}", label(r)),
-            clean(&r.id),
-            clean(r.agent.as_deref().unwrap_or("")),
-            clean(r.task.as_deref().unwrap_or("")),
+            cell(&r.id),
+            cell(r.agent.as_deref().unwrap_or("")),
+            cell(r.task.as_deref().unwrap_or("")),
         ]);
     }
     println!("{}", table(&rows));
+    if runs.len() > MAX_ROWS {
+        println!("… {} more", runs.len() - MAX_ROWS);
+    }
     Ok(0)
 }
 

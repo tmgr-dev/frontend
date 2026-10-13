@@ -13,7 +13,7 @@ struct Rec {
 }
 
 fn dir(paths: &Paths) -> PathBuf {
-    paths.state.join("link-workers")
+    paths.link_dir().join("workers")
 }
 
 fn file(paths: &Paths, name: &str, pid: u32) -> PathBuf {
@@ -74,6 +74,8 @@ impl Drop for WorkerGuard {
 }
 
 pub fn register(paths: &Paths, name: &str, enrollment: &str) -> Result<WorkerGuard> {
+    ensure_private_dir(&paths.config)?;
+    ensure_private_dir(&paths.link_dir())?;
     ensure_private_dir(&dir(paths))?;
     let pid = std::process::id();
     let start = process_start(pid).unwrap_or_default();
@@ -167,6 +169,8 @@ mod tests {
     }
 
     fn fake_worker(paths: &Paths, name: &str, child: &std::process::Child, start: String) {
+        ensure_private_dir(&paths.config).unwrap();
+        ensure_private_dir(&paths.link_dir()).unwrap();
         ensure_private_dir(&dir(paths)).unwrap();
         let rec = Rec {
             pid: child.id(),
@@ -215,8 +219,9 @@ mod tests {
     fn contain_kills_workers_even_when_the_runs_file_is_damaged() {
         let d = tempfile::tempdir().unwrap();
         let paths = Paths::under(d.path());
-        ensure_private_dir(&paths.state).unwrap();
-        write_atomic(&paths.state.join("link-runs.json"), b"\x00 not json", 0o600).unwrap();
+        ensure_private_dir(&paths.config).unwrap();
+        ensure_private_dir(&paths.link_dir()).unwrap();
+        write_atomic(&paths.link_dir().join("runs.json"), b"\x00 not json", 0o600).unwrap();
         let mut worker = sleeper();
         fake_worker(
             &paths,
@@ -225,7 +230,7 @@ mod tests {
             process_start(worker.id()).unwrap(),
         );
         let reaper = std::thread::spawn(move || worker.wait().unwrap());
-        let out = crate::follower::contain(&paths, "laptop", None).unwrap();
+        let out = crate::follower::contain(&paths, "laptop", None, false).unwrap();
         assert!(out.runs_unreadable);
         assert_eq!(out.workers.signalled, 1);
         assert!(!reaper.join().unwrap().success());

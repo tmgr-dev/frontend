@@ -290,6 +290,26 @@ pub fn serve_with(
         rt,
     };
     let mut state = State { backend: None };
+    if crate::ownership::has_pending(paths, name) {
+        if let Ok(mut backend) = (rt.connect)() {
+            if let Ok(mut runs) = crate::ownership::Runs::lock(paths) {
+                if let Ok(r) =
+                    crate::ownership::reconcile_pending(&mut runs, name, backend.as_mut())
+                {
+                    let _ = conn.audit.append(
+                        "worker.reconcile",
+                        json!({
+                            "link": name,
+                            "cleared": r.cleared,
+                            "remaining": r.remaining,
+                            "unknown_origin": r.unknown_origin,
+                        }),
+                    );
+                }
+            }
+            state.backend = Some(backend);
+        }
+    }
     let max_requests = limits.max_requests;
     let mut recent: std::collections::VecDeque<std::time::Instant> = Default::default();
     let original = env.original_command.as_deref();

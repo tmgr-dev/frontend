@@ -29,6 +29,8 @@ struct FakeState {
     attach_resizes: Vec<(u16, u16)>,
     attach_sizes: Vec<Option<(u16, u16)>>,
     exit_on: Option<&'static str>,
+    lose_create_reply: bool,
+    refuse_create: Option<&'static str>,
     next: u32,
 }
 
@@ -69,7 +71,7 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
             detail: None,
             exit_code: None,
         },
-        created_ms: 5,
+        created_ms: tmgr_link::ownership::now_ms(),
         cols: req.cols,
         rows: req.rows,
         shim_pid: 4242,
@@ -88,10 +90,19 @@ impl Backend for Fake {
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("runs.create".into());
+        if let Some(code) = s.refuse_create {
+            return Err(BackendError::Refused {
+                code: code.into(),
+                message: "no".into(),
+            });
+        }
         s.creates.push(req.clone());
         s.next += 1;
         let i = info(&format!("s_run{:06}", s.next), req);
         s.sessions.push(i.clone());
+        if s.lose_create_reply {
+            return Err(BackendError::Unavailable("connection lost".into()));
+        }
         Ok(i)
     }
 
@@ -103,6 +114,13 @@ impl Backend for Fake {
                 sess.state.kind = StateKind::Exited;
             }
         }
+        Ok(())
+    }
+
+    fn remove(&mut self, id: &str) -> Result<(), BackendError> {
+        let mut s = self.0.lock().unwrap();
+        s.calls.push("sessions.remove".into());
+        s.sessions.retain(|x| x.id != id);
         Ok(())
     }
 
@@ -795,7 +813,7 @@ fn contain_halts_the_runs_of_that_link_only_and_keeps_others() {
     let b = session(&w, "phone", E2, &fake, &[create(&w, json!({}))]);
     let (a, b) = (run_id(&a[0]), run_id(&b[0]));
     let mut backend = fake.clone();
-    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend)).unwrap();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
     assert_eq!(out.runs_halted, 1);
     let live: Vec<_> = fake
         .0
@@ -825,11 +843,147 @@ fn runs_that_keep_going_after_a_revoke_are_labelled() {
         Some("link:laptop")
     );
     tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
-    let out = tmgr_link::follower::contain(&w.paths, "laptop", None).unwrap();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", None, false).unwrap();
     assert_eq!((out.runs_known, out.runs_halted), (1, 0));
     assert_eq!(fake.called("sessions.kill"), 0);
     assert_eq!(
         tmgr_link::ownership::origin_label(&w.paths, &a).as_deref(),
         Some("link:laptop (revoked)")
     );
+}
+
+fn pending_count(w: &World, link: &str) -> usize {
+    tmgr_link::ownership::Runs::lock(&w.paths)
+        .unwrap()
+        .pending_of(link)
+        .len()
+}
+
+#[test]
+fn a_create_whose_reply_is_lost_stays_pending_and_is_reported_not_claimed() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().lose_create_reply = true;
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert_eq!(r[0]["error"], "not_available");
+    assert_eq!(pending_count(&w, "laptop"), 1);
+    fake.0.lock().unwrap().lose_create_reply = false;
+    let lost = fake.0.lock().unwrap().sessions[0].id.clone();
+    let list = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.list"})],
+    );
+    assert_eq!(list[0]["result"]["runs"].as_array().unwrap().len(), 0);
+    tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert_eq!(out.pending_remaining, 1);
+    assert_eq!(out.unknown_origin, std::slice::from_ref(&lost));
+    assert!(out.incomplete());
+    assert_eq!(out.runs_halted, 0);
+    assert!(tmgr_link::ownership::origin_label(&w.paths, &lost).is_none());
+}
+
+#[test]
+fn a_definitive_refusal_leaves_no_pending_record() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().refuse_create = Some("limit");
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert_eq!(r[0]["error"], "limit");
+    assert!(r[0]["message"]
+        .as_str()
+        .unwrap()
+        .contains("clean up exited runs"));
+    assert_eq!(pending_count(&w, "laptop"), 0);
+}
+
+#[test]
+fn old_pendings_with_no_matching_run_are_cleared_and_fresh_ones_wait() {
+    let w = world();
+    let fake = Fake::default();
+    {
+        let mut runs = tmgr_link::ownership::Runs::lock(&w.paths).unwrap();
+        for (id, age) in [("old", 600_000u64), ("new", 1_000)] {
+            runs.add_pending(tmgr_link::ownership::Pending {
+                id: id.into(),
+                link: "laptop".into(),
+                enrollment: E1.into(),
+                task: "w1:7".into(),
+                agent: "codex".into(),
+                cwd: w.repo.clone(),
+                started_ms: tmgr_link::ownership::now_ms() - age,
+                unknown_origin: vec![],
+            })
+            .unwrap();
+        }
+    }
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), false).unwrap();
+    assert_eq!((out.pending_cleared, out.pending_remaining), (1, 1));
+}
+
+#[test]
+fn the_next_worker_reconciles_pending_creates() {
+    let w = world();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().lose_create_reply = true;
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    fake.0.lock().unwrap().lose_create_reply = false;
+    session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"hello","params":{"protocol":1}})],
+    );
+    let ev = w.audit();
+    let rec = ev
+        .iter()
+        .find(|e| e["event"] == "worker.reconcile")
+        .unwrap();
+    assert_eq!(rec["remaining"], 1);
+    assert_eq!(rec["unknown_origin"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn exited_runs_of_the_link_are_reaped_before_the_next_create() {
+    let w = world();
+    let fake = Fake::default();
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let first = run_id(&r[0]);
+    let mine_only = session(&w, "phone", E2, &fake, &[create(&w, json!({}))]);
+    let theirs = run_id(&mine_only[0]);
+    fake.exit(&first);
+    fake.exit(&theirs);
+    let again = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert!(again[0]["result"]["id"].is_string());
+    let ids: Vec<String> = fake
+        .0
+        .lock()
+        .unwrap()
+        .sessions
+        .iter()
+        .map(|s| s.id.clone())
+        .collect();
+    assert!(!ids.contains(&first), "own exited run is removed");
+    assert!(ids.contains(&theirs), "another link's exited run stays");
+    assert_eq!(fake.called("sessions.remove"), 1);
+}
+
+#[test]
+fn resizing_after_the_scope_narrowed_closes_the_stream() {
+    let w = world();
+    w.set_scope("laptop", |s| s.allow_attach_input = true);
+    let fake = Fake::default();
+    let (mut l, id) = started(&w, &fake);
+    l.call(1, "attach.open", json!({"run": id}));
+    w.set_scope("laptop", |s| s.allow_attach_input = false);
+    l.say(Outgoing::Resize { cols: 50, rows: 20 });
+    assert!(matches!(l.next(&id), Some(Incoming::Closed(_))));
+    l.finish();
+    assert!(fake.0.lock().unwrap().attach_resizes.is_empty());
 }

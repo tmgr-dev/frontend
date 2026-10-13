@@ -591,7 +591,7 @@ fn a_leader_runs_attaches_and_is_cut_off_through_a_real_sshd_and_a_real_runner()
     };
     assert_eq!(state(&run).as_deref(), Some("exited"));
     assert_ne!(state(&local_id).as_deref(), Some("exited"));
-    let workers = rig.fp.state.join("link-workers");
+    let workers = rig.fp.link_dir().join("workers");
     let left = fs::read_dir(&workers).map_or(0, |d| d.count());
     assert_eq!(left, 0);
     let audit = Command::new(BIN)

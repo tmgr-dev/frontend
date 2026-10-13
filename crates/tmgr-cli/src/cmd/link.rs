@@ -355,36 +355,74 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
 fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
     let name = a.name.as_str();
     let revoked = follower::revoke(paths, name);
-    let mut runner = if a.halt_runs {
-        tmgr_link::runner::RunnerClient::connect_default().ok()
-    } else {
-        None
-    };
+    let mut runner = tmgr_link::runner::RunnerClient::connect_default().ok();
     let contained = follower::contain(
         paths,
         name,
         runner
             .as_mut()
             .map(|c| c as &mut dyn tmgr_link::runner::Backend),
+        a.halt_runs,
     )?;
-    let nothing_else = contained.workers.signalled + contained.workers.stale + contained.runs_known;
+    let nothing_else = contained.workers.signalled
+        + contained.workers.stale
+        + contained.runs_known
+        + contained.pending_remaining
+        + contained.pending_cleared;
     let r = match revoked {
         Ok(r) => Some(r),
         Err(e) if e.exit_code() == 3 && nothing_else > 0 => None,
         Err(e) => return Err(e),
     };
-    if a.halt_runs && contained.runs_unreadable {
-        return Err(Error::internal(
-            "revoked and workers stopped, but link-runs.json is unreadable so the runs were not halted",
-        )
-        .hint("fix or remove ~/.local/state/tmgr/link-runs.json, then halt the runs with tmgr halt"));
+    let mut problems = Vec::new();
+    if contained.workers.survivors > 0 {
+        problems.push(format!(
+            "{} worker process(es) did not stop",
+            contained.workers.survivors
+        ));
+    }
+    if contained.runs_unreadable {
+        problems.push(
+            "the link runs file is unreadable, so runs and pending creates could not be checked"
+                .to_string(),
+        );
     }
     if a.halt_runs && runner.is_none() && contained.runs_known > 0 {
-        return Err(Error::new(
-            tmgr_core::error::Kind::Offline,
-            "revoked and workers stopped, but the runner is not reachable so the runs were not halted",
-        )
-        .hint(format!("tmgr runner start, then tmgr link revoke {name} --halt-runs")));
+        problems.push("the runner is not reachable, so the runs were not halted".to_string());
+    }
+    if contained.halt_failed > 0 {
+        problems.push(format!(
+            "{} run(s) could not be halted",
+            contained.halt_failed
+        ));
+    }
+    if contained.pending_remaining > 0 {
+        let unknown = if contained.unknown_origin.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " (possible runs of unknown origin: {})",
+                contained
+                    .unknown_origin
+                    .iter()
+                    .map(|id| tmgr_core::text::sanitize_line(id))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+        problems.push(format!(
+            "{} create request(s) could not be matched to a run{unknown}",
+            contained.pending_remaining
+        ));
+    }
+    if !problems.is_empty() {
+        return Err(Error::internal(format!(
+            "containment incomplete after revoking {name}: {}",
+            problems.join("; ")
+        ))
+        .hint(format!(
+            "start the runner if needed and retry: tmgr runner start; tmgr link revoke {name} --halt-runs"
+        )));
     }
     let keys_removed = r.as_ref().map_or(0, |r| r.keys_removed);
     let removed = if r.is_none() {
@@ -413,6 +451,8 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             "runs_known": contained.runs_known,
             "halt_failed": contained.halt_failed,
             "runs_unreadable": contained.runs_unreadable,
+            "pending_remaining": contained.pending_remaining,
+            "pending_cleared": contained.pending_cleared,
         }),
         format!(
             "✓ revoked: {removed}, {} worker(s) stopped, {runs}, audit kept",

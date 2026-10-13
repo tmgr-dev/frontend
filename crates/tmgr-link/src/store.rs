@@ -51,6 +51,10 @@ impl Paths {
         self.config.join("link-pending").join(name)
     }
 
+    pub fn link_dir(&self) -> PathBuf {
+        self.config.join("link")
+    }
+
     pub fn audit_dir(&self) -> PathBuf {
         self.state.join("link-audit")
     }
