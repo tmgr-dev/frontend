@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::time::Duration;
 use tmgr_ipc::api::{
-    caps, limits, method, AttachParams, ErrorCode, IdParams, KillParams, RunCreateReq, SendParams,
-    SessionInfo,
+    caps, limits, method, AttachParams, ErrorCode, IdParams, KillParams, OriginRevokeParams,
+    RunCreateReq, SendParams, SessionInfo,
 };
 use tmgr_ipc::frame::{read_frame, write_json, Frame};
 use tmgr_ipc::proto::{ClientMsg, Request, Resize, Scroll, ServerMsg};
@@ -76,6 +76,7 @@ pub trait Backend: Send {
     fn kill(&mut self, id: &str, signal: &str) -> Result<(), BackendError>;
     fn send(&mut self, id: &str, text: &str) -> Result<(), BackendError>;
     fn remove(&mut self, id: &str) -> Result<(), BackendError>;
+    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<u32, BackendError>;
     fn attach(
         &mut self,
         id: &str,
@@ -89,12 +90,12 @@ pub struct RunnerClient {
     next_id: u64,
 }
 
-fn open(dir: &Path, required: &[&str]) -> Result<UnixStream, BackendError> {
+fn open(dir: &Path, client: &str, required: &[&str]) -> Result<UnixStream, BackendError> {
     dirs::check_private_dir(dir).map_err(unavailable)?;
     let secret = secret::read(&dir.join("client.secret")).map_err(unavailable)?;
     let ep = endpoint::Endpoint::load_runner(dir).map_err(unavailable)?;
     let stream = endpoint::connect(&ep).map_err(unavailable)?;
-    let welcome = server::handshake_client(&stream, CLIENT_NAME, &secret).map_err(unavailable)?;
+    let welcome = server::handshake_client(&stream, client, &secret).map_err(unavailable)?;
     for cap in required {
         if !welcome.caps.iter().any(|c| c == cap) {
             return Err(BackendError::Unavailable(format!(
@@ -113,9 +114,19 @@ fn open(dir: &Path, required: &[&str]) -> Result<UnixStream, BackendError> {
 
 impl RunnerClient {
     pub fn connect(dir: &Path) -> Result<RunnerClient, BackendError> {
+        RunnerClient::connect_as(dir, CLIENT_NAME)
+    }
+
+    pub fn connect_as(dir: &Path, client: &str) -> Result<RunnerClient, BackendError> {
         let stream = open(
             dir,
-            &[caps::SESSIONS_V1, caps::RUNS_CREATE_V1, caps::TASK_REF_V1],
+            client,
+            &[
+                caps::SESSIONS_V1,
+                caps::RUNS_CREATE_V1,
+                caps::TASK_REF_V1,
+                caps::LINK_ORIGIN_V1,
+            ],
         )?;
         Ok(RunnerClient {
             dir: dir.to_path_buf(),
@@ -127,6 +138,11 @@ impl RunnerClient {
     pub fn connect_default() -> Result<RunnerClient, BackendError> {
         let dir = dirs::runner_dir().map_err(unavailable)?;
         RunnerClient::connect(&dir)
+    }
+
+    pub fn connect_default_as(client: &str) -> Result<RunnerClient, BackendError> {
+        let dir = dirs::runner_dir().map_err(unavailable)?;
+        RunnerClient::connect_as(&dir, client)
     }
 
     fn call(&mut self, method: &str, params: Value) -> Result<Value, BackendError> {
@@ -208,6 +224,16 @@ impl Backend for RunnerClient {
         self.call(method::SESSIONS_SEND, params(&p)?).map(drop)
     }
 
+    fn origin_revoke(&mut self, link: &str, generation: u64) -> Result<u32, BackendError> {
+        let p = OriginRevokeParams {
+            link: link.into(),
+            generation,
+        };
+        let v: tmgr_ipc::api::OriginRevoked =
+            typed(self.call(method::ORIGIN_REVOKE, params(&p)?)?)?;
+        Ok(v.killed)
+    }
+
     fn remove(&mut self, id: &str) -> Result<(), BackendError> {
         let p = IdParams { id: id.into() };
         self.call(method::SESSIONS_REMOVE, params(&p)?).map(drop)
@@ -218,7 +244,11 @@ impl Backend for RunnerClient {
         id: &str,
         size: Option<(u16, u16)>,
     ) -> Result<Box<dyn AttachSession>, BackendError> {
-        let mut stream = open(&self.dir, &[caps::ATTACH_V1, caps::SESSIONS_V1])?;
+        let mut stream = open(
+            &self.dir,
+            CLIENT_NAME,
+            &[caps::ATTACH_V1, caps::SESSIONS_V1],
+        )?;
         let mut next = 1u64;
         let mut p = AttachParams {
             sessions: vec![id.to_string()],

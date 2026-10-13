@@ -1,5 +1,5 @@
 use crate::attach::{self, Outgoing};
-use crate::ownership::{now_ms, Pending, RunRecord, Runs};
+use crate::ownership::{RunRecord, Runs};
 use crate::proto::{self, Channel, Poll, Request};
 use crate::runner::{AttachRecv, AttachSession, Backend, BackendError};
 use crate::scope::{self, canonical_repo, Scope};
@@ -8,7 +8,7 @@ use crate::worker::{say, Conn, State, Step};
 use serde_json::{json, Value};
 use std::path::Path;
 use std::time::{Duration, Instant};
-use tmgr_ipc::api::{EventMsg, RunCreateReq, ScreenPush, SessionInfo, StateKind};
+use tmgr_ipc::api::{EventMsg, Origin, RunCreateReq, ScreenPush, SessionInfo, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 
 pub const ATTACH_MAX: Duration = Duration::from_secs(3600);
@@ -168,6 +168,9 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
         Ok(l) => l,
         Err(e) => return failed(conn, "runs.list", args, id, &e),
     };
+    if let Ok(Ok((_, generation))) = conn.current_gen() {
+        adopt(conn, &mut runs, &listed, generation);
+    }
     let existing: Vec<String> = listed.iter().map(|s| s.id.clone()).collect();
     let _ = runs.retain_existing(&existing);
     let mine: Vec<Value> = listed
@@ -176,6 +179,26 @@ fn list(conn: &Conn, st: &mut State, id: Option<u64>, args: Value) -> Step {
         .map(|s| view(s, runs.get(&s.id)))
         .collect();
     Step::Reply(proto::ok(id, json!({"runs": mine})))
+}
+
+fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], generation: u64) {
+    for s in listed {
+        let ours = s.origin.as_ref().is_some_and(|o| {
+            o.link == conn.name && o.generation == generation && s.state.kind != StateKind::Exited
+        });
+        if ours && !runs.recorded(&s.id) {
+            let _ = runs.record(RunRecord {
+                run: s.id.clone(),
+                link: conn.name.to_string(),
+                enrollment: conn.enrollment.to_string(),
+                task: s.task.as_ref().map(format_ref).unwrap_or_default(),
+                agent: s.profile.clone().unwrap_or_default(),
+                persona: None,
+                model: None,
+                created: crate::now_rfc3339(),
+            });
+        }
+    }
 }
 
 fn owned(conn: &Conn, run: &str) -> Option<bool> {
@@ -352,8 +375,8 @@ fn create(
     let Ok(mut runs) = Runs::lock(conn.paths) else {
         return Step::Close(proto::error(id, "unavailable", "request refused"));
     };
-    let fresh = match conn.current() {
-        Ok(Ok(s)) => s,
+    let (fresh, generation) = match conn.current_gen() {
+        Ok(Ok(v)) => v,
         Ok(Err(reason)) => {
             let _ = conn.record(method, args, "rejected", reason);
             return Step::Close(proto::error(
@@ -376,6 +399,7 @@ fn create(
         Ok(l) => l,
         Err(e) => return failed(conn, method, args, id, &e),
     };
+    adopt(conn, &mut runs, &listed, generation);
     let exited: Vec<String> = listed
         .iter()
         .filter(|s| {
@@ -393,7 +417,7 @@ fn create(
     if let Err(r) = scope::validate_run_method(method, params, &fresh, live) {
         return deny(conn, method, args, id, r.code, &r.reason);
     }
-    let req = RunCreateReq {
+    let mut req = RunCreateReq {
         profile: agent.to_string(),
         task: Some(task),
         cwd: repo,
@@ -401,35 +425,30 @@ fn create(
         model: model.clone(),
         cols: DEFAULT_SIZE.0,
         rows: DEFAULT_SIZE.1,
+        bundle: None,
+        bundle_sha256: None,
+        cwd_pin: None,
+        origin: Some(Origin {
+            link: conn.name.to_string(),
+            generation,
+        }),
     };
-    let pending_id = crate::follower::new_enrollment();
-    let pending = Pending {
-        id: pending_id.clone(),
-        link: conn.name.to_string(),
-        enrollment: conn.enrollment.to_string(),
-        task: format_ref(&task),
-        agent: agent.to_string(),
-        cwd: req.cwd.clone(),
-        started_ms: now_ms(),
-        unknown_origin: Vec::new(),
-    };
-    if let Err(e) = runs.add_pending(pending) {
-        return deny(conn, method, args, id, "forbidden", &e.message);
-    }
-    let info = match with_backend(conn, st, false, |b| b.create_run(&req)) {
-        Ok(i) => i,
-        Err(e) => {
-            if matches!(
-                e,
-                BackendError::Refused { .. }
-                    | BackendError::NotFound
-                    | BackendError::NotRunning
-                    | BackendError::Busy
-            ) {
-                let _ = runs.clear_pending(&pending_id);
+    let mut result = with_backend(conn, st, false, |b| b.create_run(&req));
+    if matches!(&result, Err(BackendError::Refused { message, .. }) if message.contains("link changed"))
+    {
+        if let Ok(Ok((again, generation))) = conn.current_gen() {
+            if again == fresh {
+                req.origin = Some(Origin {
+                    link: conn.name.to_string(),
+                    generation,
+                });
+                result = with_backend(conn, st, false, |b| b.create_run(&req));
             }
-            return failed(conn, method, args, id, &e);
         }
+    }
+    let info = match result {
+        Ok(i) => i,
+        Err(e) => return failed(conn, method, args, id, &e),
     };
     let kill = |st: &mut State| {
         let _ = with_backend(conn, st, false, |b| b.kill(&info.id, "kill"));
@@ -444,7 +463,7 @@ fn create(
         model,
         created: crate::now_rfc3339(),
     };
-    if runs.resolve(&pending_id, record.clone()).is_err() {
+    if runs.record(record.clone()).is_err() {
         kill(st);
         return Step::Close(proto::error(id, "internal", "could not record the run"));
     }

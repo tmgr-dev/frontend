@@ -187,6 +187,10 @@ impl Conn<'_> {
     }
 
     pub(crate) fn current(&self) -> Result<std::result::Result<Scope, &'static str>> {
+        Ok(self.current_gen()?.map(|(scope, _)| scope))
+    }
+
+    pub(crate) fn current_gen(&self) -> Result<std::result::Result<(Scope, u64), &'static str>> {
         let store = Store::load(self.paths)?;
         if crate::follower::is_pending(self.paths, self.name) {
             return Ok(Err("link blocked after a failed rollback"));
@@ -206,7 +210,7 @@ impl Conn<'_> {
         {
             return Ok(Err("client address outside from"));
         }
-        Ok(Ok(leader.scope.clone()))
+        Ok(Ok((leader.scope.clone(), store.generation(self.name))))
     }
 }
 
@@ -290,26 +294,6 @@ pub fn serve_with(
         rt,
     };
     let mut state = State { backend: None };
-    if crate::ownership::has_pending(paths, name) {
-        if let Ok(mut backend) = (rt.connect)() {
-            if let Ok(mut runs) = crate::ownership::Runs::lock(paths) {
-                if let Ok(r) =
-                    crate::ownership::reconcile_pending(&mut runs, name, backend.as_mut())
-                {
-                    let _ = conn.audit.append(
-                        "worker.reconcile",
-                        json!({
-                            "link": name,
-                            "cleared": r.cleared,
-                            "remaining": r.remaining,
-                            "unknown_origin": r.unknown_origin,
-                        }),
-                    );
-                }
-            }
-            state.backend = Some(backend);
-        }
-    }
     let max_requests = limits.max_requests;
     let mut recent: std::collections::VecDeque<std::time::Instant> = Default::default();
     let original = env.original_command.as_deref();

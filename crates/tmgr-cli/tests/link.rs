@@ -265,23 +265,12 @@ fn attach_input_is_a_widening_that_needs_a_terminal() {
 }
 
 #[test]
-fn revoke_with_an_unresolved_create_exits_1_and_says_so() {
+fn revoke_with_an_unreadable_runs_file_exits_1_and_says_so() {
     let f = fx();
     f.trust_leader("laptop", f.scope());
-    {
-        let mut runs = tmgr_link::ownership::Runs::lock(&f.paths).unwrap();
-        runs.add_pending(tmgr_link::ownership::Pending {
-            id: "p1".into(),
-            link: "laptop".into(),
-            enrollment: ENR.into(),
-            task: "w1:1".into(),
-            agent: "codex".into(),
-            cwd: f.repo.display().to_string(),
-            started_ms: tmgr_link::ownership::now_ms(),
-            unknown_origin: vec![],
-        })
-        .unwrap();
-    }
+    let dir = f.paths.link_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    tmgr_core::config::write_atomic(&dir.join("runs.json"), b"\x00 not json", 0o600).unwrap();
     let out = f
         .tmgr()
         .args(["link", "revoke", "laptop", "--json"])
@@ -290,7 +279,10 @@ fn revoke_with_an_unresolved_create_exits_1_and_says_so() {
     assert_eq!(out.status.code(), Some(1), "{}", err_text(&out));
     let text = String::from_utf8_lossy(&out.stdout).to_string() + &err_text(&out);
     assert!(text.contains("containment incomplete"), "{text}");
-    assert!(text.contains("retry") || text.contains("tmgr link revoke laptop --halt-runs"));
+    assert!(
+        text.contains("tmgr link revoke laptop --halt-runs"),
+        "{text}"
+    );
     assert!(Store::load(&f.paths).unwrap().leaders.is_empty());
 }
 

@@ -143,8 +143,7 @@ impl Store {
     }
 
     pub fn update<T>(paths: &Paths, change: impl FnOnce(&mut Store) -> Result<T>) -> Result<T> {
-        ensure_private_dir(&paths.config)?;
-        let _lock = lock(&paths.config.join("links.lock"))?;
+        let _lock = lock_links(paths)?;
         let mut store = Store::load(paths)?;
         let out = change(&mut store)?;
         store.save(paths)?;
@@ -172,7 +171,8 @@ impl Store {
 
 pub(crate) fn lock_links(paths: &Paths) -> Result<Lock> {
     ensure_private_dir(&paths.config)?;
-    lock(&paths.config.join("links.lock"))
+    ensure_private_dir(&paths.link_dir())?;
+    lock(&crate::fence::path(paths))
 }
 
 pub(crate) struct Lock(#[allow(dead_code)] std::fs::File);

@@ -465,6 +465,7 @@ mod tests {
                 exit_code: None,
             },
             task: None,
+            origin: None,
         };
         assert!(guard_event(ev, SID).is_none());
     }
@@ -503,6 +504,7 @@ mod tests {
                 exit_code: None,
             },
             task: None,
+            origin: None,
         };
         let got = guard_event(ev, SID).unwrap();
         assert_eq!(got.state.detail.as_deref(), Some("Allow??[2J"));

@@ -207,7 +207,7 @@ fn is_pin_for(line: &str, name: &str) -> bool {
 
 fn rewrite_known_hosts(paths: &Paths, name: &str, add: Option<String>) -> Result<()> {
     tmgr_core::config::ensure_private_dir(&paths.config)?;
-    let _lock = crate::store::lock(&paths.config.join("links.lock"))?;
+    let _lock = crate::store::lock(&paths.config.join("known-hosts.lock"))?;
     let path = paths.known_hosts();
     let existing = match std::fs::read_to_string(&path) {
         Ok(t) => t,

@@ -1,6 +1,7 @@
 pub mod attach;
 pub mod audit;
 pub mod authkeys;
+pub mod fence;
 pub mod follower;
 pub mod grammar;
 pub mod leader;

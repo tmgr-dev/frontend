@@ -355,7 +355,7 @@ fn scope(ctx: &Ctx, paths: &Paths, a: &ScopeArgs) -> Result<Output> {
 fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
     let name = a.name.as_str();
     let revoked = follower::revoke(paths, name);
-    let mut runner = tmgr_link::runner::RunnerClient::connect_default().ok();
+    let mut runner = tmgr_link::runner::RunnerClient::connect_default_as("cli").ok();
     let contained = follower::contain(
         paths,
         name,
@@ -364,11 +364,7 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             .map(|c| c as &mut dyn tmgr_link::runner::Backend),
         a.halt_runs,
     )?;
-    let nothing_else = contained.workers.signalled
-        + contained.workers.stale
-        + contained.runs_known
-        + contained.pending_remaining
-        + contained.pending_cleared;
+    let nothing_else = contained.workers.signalled + contained.workers.stale + contained.runs_known;
     let r = match revoked {
         Ok(r) => Some(r),
         Err(e) if e.exit_code() == 3 && nothing_else > 0 => None,
@@ -382,10 +378,8 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
         ));
     }
     if contained.runs_unreadable {
-        problems.push(
-            "the link runs file is unreadable, so runs and pending creates could not be checked"
-                .to_string(),
-        );
+        problems
+            .push("the link runs file is unreadable, so its runs could not be checked".to_string());
     }
     if a.halt_runs && runner.is_none() && contained.runs_known > 0 {
         problems.push("the runner is not reachable, so the runs were not halted".to_string());
@@ -394,25 +388,6 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
         problems.push(format!(
             "{} run(s) could not be halted",
             contained.halt_failed
-        ));
-    }
-    if contained.pending_remaining > 0 {
-        let unknown = if contained.unknown_origin.is_empty() {
-            String::new()
-        } else {
-            format!(
-                " (possible runs of unknown origin: {})",
-                contained
-                    .unknown_origin
-                    .iter()
-                    .map(|id| tmgr_core::text::sanitize_line(id))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
-        problems.push(format!(
-            "{} create request(s) could not be matched to a run{unknown}",
-            contained.pending_remaining
         ));
     }
     if !problems.is_empty() {
@@ -451,8 +426,6 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
             "runs_known": contained.runs_known,
             "halt_failed": contained.halt_failed,
             "runs_unreadable": contained.runs_unreadable,
-            "pending_remaining": contained.pending_remaining,
-            "pending_cleared": contained.pending_cleared,
         }),
         format!(
             "✓ revoked: {removed}, {} worker(s) stopped, {runs}, audit kept",
