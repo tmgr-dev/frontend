@@ -237,6 +237,7 @@ mod tests {
             &worker,
             process_start(worker.id()).unwrap(),
         );
+        crate::tombstone::record(&paths, "laptop", "e", 1).unwrap();
         let reaper = std::thread::spawn(move || worker.wait().unwrap());
         let out = crate::follower::contain(&paths, "laptop", None, false).unwrap();
         assert!(out.runs_unreadable);

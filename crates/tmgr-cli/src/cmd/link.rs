@@ -356,13 +356,15 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
     let name = a.name.as_str();
     let revoked = follower::revoke(paths, name);
     let mut runner = tmgr_link::runner::RunnerClient::connect_default_as("cli").ok();
-    let contained = follower::contain(
+    let carried = revoked.as_ref().ok().and_then(|r| r.tombstone.clone());
+    let contained = follower::contain_revoked(
         paths,
         name,
         runner
             .as_mut()
             .map(|c| c as &mut dyn tmgr_link::runner::Backend),
         a.halt_runs,
+        carried,
     )?;
     let nothing_else = contained.workers.signalled
         + contained.workers.stale

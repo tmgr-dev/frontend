@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use tmgr_core::config::{ensure_private_dir, write_atomic};
 use tmgr_core::error::{Error, Result};
 
-const MAX_TOMBSTONES: usize = 64;
+pub const MAX_UNRESOLVED: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tombstone {
@@ -52,21 +52,36 @@ fn with<T>(paths: &Paths, f: impl FnOnce(&mut File) -> T) -> Result<T> {
     Ok(out)
 }
 
-pub fn record(paths: &Paths, link: &str, enrollment: &str, generation: u64) -> Result<()> {
+pub fn record(paths: &Paths, link: &str, enrollment: &str, generation: u64) -> Result<Tombstone> {
+    let t = Tombstone {
+        link: link.to_string(),
+        enrollment: enrollment.to_string(),
+        generation,
+        at: crate::now_rfc3339(),
+    };
+    let kept = t.clone();
     with(paths, |f| {
         f.revoked
-            .retain(|t| !(t.link == link && t.enrollment == enrollment));
-        f.revoked.push(Tombstone {
-            link: link.to_string(),
-            enrollment: enrollment.to_string(),
-            generation,
-            at: crate::now_rfc3339(),
-        });
-        if f.revoked.len() > MAX_TOMBSTONES {
-            let drop = f.revoked.len() - MAX_TOMBSTONES;
-            f.revoked.drain(..drop);
-        }
-    })
+            .retain(|x| !(x.link == link && x.enrollment == enrollment));
+        f.revoked.push(t);
+    })?;
+    Ok(kept)
+}
+
+pub fn check_capacity(paths: &Paths) -> Result<()> {
+    if !file_path(paths).exists() {
+        return Ok(());
+    }
+    ensure_private_dir(&paths.link_dir())?;
+    let _guard = lock(&paths.link_dir().join("revoked.lock"))?;
+    let n = load(paths)?.revoked.len();
+    if n >= MAX_UNRESOLVED {
+        return Err(
+            crate::forbidden(format!("{n} revoked links still await containment"))
+                .hint("finish them first: tmgr link revoke NAME --halt-runs"),
+        );
+    }
+    Ok(())
 }
 
 pub fn for_link(paths: &Paths, link: &str) -> Result<Vec<Tombstone>> {
@@ -113,6 +128,22 @@ mod tests {
             .permissions()
             .mode();
         assert_eq!(mode & 0o777, 0o600);
+    }
+
+    #[test]
+    fn unresolved_tombstones_are_never_evicted_and_a_full_file_blocks_trust_changes() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::under(d.path());
+        for i in 0..(MAX_UNRESOLVED + 5) {
+            record(&paths, &format!("l{i}"), "e", i as u64).unwrap();
+        }
+        assert_eq!(for_link(&paths, "l0").unwrap().len(), 1);
+        assert!(check_capacity(&paths).is_err());
+        retire(&paths, "l0", &["e".to_string()]).unwrap();
+        for i in 1..6 {
+            retire(&paths, &format!("l{i}"), &["e".to_string()]).unwrap();
+        }
+        check_capacity(&paths).unwrap();
     }
 
     #[test]

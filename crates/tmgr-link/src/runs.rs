@@ -17,6 +17,9 @@ const TICK: Duration = Duration::from_secs(1);
 const INPUT_MSGS_PER_SEC: u32 = 100;
 const INPUT_BYTES_PER_SEC: usize = 64 * 1024;
 const DEFAULT_SIZE: (u16, u16) = (120, 40);
+pub const BUSY_BUDGET: Duration = Duration::from_secs(12);
+pub const BUSY_PAUSE: Duration = Duration::from_millis(500);
+pub const BUSY_ATTEMPT_MAX: Duration = Duration::from_secs(6);
 const HALT_STEP: Duration = Duration::from_secs(3);
 
 fn audit_down() -> Step {
@@ -197,6 +200,7 @@ fn adopt(conn: &Conn, runs: &mut Runs, listed: &[SessionInfo], store: &crate::st
                 persona: None,
                 model: None,
                 created: crate::now_rfc3339(),
+                generation: s.origin.as_ref().map(|o| o.generation),
             });
         }
     }
@@ -436,6 +440,7 @@ fn create(
             generation,
         }),
     };
+    let attempt_started = Instant::now();
     let mut result = with_backend(conn, st, false, |b| b.create_run(&req));
     if matches!(&result, Err(BackendError::Refused { message, .. }) if message.contains("link changed"))
     {
@@ -449,11 +454,10 @@ fn create(
             }
         }
     }
-    for pause in [250u64, 500, 1000] {
-        if !matches!(result, Err(BackendError::Busy)) {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(pause));
+    if matches!(result, Err(BackendError::Busy))
+        && attempt_started.elapsed() + BUSY_PAUSE + BUSY_ATTEMPT_MAX <= BUSY_BUDGET
+    {
+        std::thread::sleep(BUSY_PAUSE);
         result = with_backend(conn, st, false, |b| b.create_run(&req));
     }
     let info = match result {
@@ -485,6 +489,7 @@ fn create(
         persona,
         model,
         created: crate::now_rfc3339(),
+        generation: Some(generation),
     };
     if runs.record(record.clone()).is_err() {
         kill(st);

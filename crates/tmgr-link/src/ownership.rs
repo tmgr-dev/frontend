@@ -19,6 +19,8 @@ pub struct RunRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub created: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation: Option<u64>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -169,6 +171,19 @@ impl Runs {
     }
 }
 
+pub fn referenced_generations(paths: &Paths, link: &str) -> std::collections::BTreeSet<u64> {
+    let text = std::fs::read_to_string(map_path(paths)).unwrap_or_default();
+    serde_json::from_str::<File>(&text)
+        .map(|f| {
+            f.runs
+                .iter()
+                .filter(|r| r.link == link)
+                .filter_map(|r| r.generation)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn origin_label(paths: &Paths, run: &str) -> Option<String> {
     if !map_path(paths).exists() {
         return None;
@@ -226,6 +241,7 @@ mod tests {
             persona: None,
             model: None,
             created: "2026-10-13T00:00:00Z".into(),
+            generation: None,
         }
     }
 

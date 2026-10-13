@@ -225,6 +225,7 @@ fn changed_meanwhile() -> Error {
 
 pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
     let _lock = crate::store::lock_links(paths)?;
+    crate::tombstone::check_capacity(paths)?;
     let mut store = Store::load(paths)?;
     if store.version != plan.store_version {
         return Err(changed_meanwhile());
@@ -239,7 +240,11 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
         }),
     )?;
     let edit = authkeys::upsert(&plan.target, &plan.name, &plan.line, &plan.key)?;
-    store.bump_generation(&plan.name, &plan.enrollment);
+    store.bump_generation(
+        &plan.name,
+        &plan.enrollment,
+        &crate::ownership::referenced_generations(paths, &plan.name),
+    );
     store.leaders.insert(
         plan.name.clone(),
         Leader {
@@ -319,6 +324,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Ok(());
     }
     let _lock = crate::store::lock_links(paths)?;
+    crate::tombstone::check_capacity(paths)?;
     let mut store = Store::load(paths)?;
     if store.version != plan.store_version {
         return Err(changed_meanwhile());
@@ -351,7 +357,11 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
         return Err(Error::not_found(format!("no leader named {}", plan.name)));
     };
     leader.scope = plan.new.clone();
-    store.bump_generation(&plan.name, &plan.enrollment);
+    store.bump_generation(
+        &plan.name,
+        &plan.enrollment,
+        &crate::ownership::referenced_generations(paths, &plan.name),
+    );
     if let Err(e) = store.save(paths) {
         let rolled = rollback(paths, &plan.name, edit.as_ref(), true);
         return Err(rolled.err().unwrap_or(e));
@@ -362,7 +372,11 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
             if let Some(l) = store.leaders.get_mut(&plan.name) {
                 l.scope = plan.old.clone();
             }
-            store.bump_generation(&plan.name, &plan.enrollment);
+            store.bump_generation(
+                &plan.name,
+                &plan.enrollment,
+                &crate::ownership::referenced_generations(paths, &plan.name),
+            );
             let saved = store.save(paths);
             let rolled = rollback(paths, &plan.name, edit.as_ref(), saved.is_ok());
             return Err(rolled.err().unwrap_or(e));
@@ -373,6 +387,7 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
 
 #[derive(Debug)]
 pub struct Revoked {
+    pub tombstone: Option<crate::tombstone::Tombstone>,
     pub keys_removed: usize,
     pub backup: Option<PathBuf>,
 }
@@ -382,9 +397,15 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     let _lock = crate::store::lock_links(paths)?;
     let mut store = Store::load(paths)?;
     let pending = is_pending(paths, name);
-    if let Some(l) = store.leaders.get(name) {
-        crate::tombstone::record(paths, name, &l.enrollment, store.generation(name))?;
-    }
+    let tombstone = match store.leaders.get(name) {
+        Some(l) => Some(crate::tombstone::record(
+            paths,
+            name,
+            &l.enrollment,
+            store.generation(name),
+        )?),
+        None => None,
+    };
     store.generations.remove(name);
     let leader = match store.leaders.remove(name) {
         Some(l) => Some(l),
@@ -421,6 +442,7 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     let edit = edit?;
     audited?;
     Ok(Revoked {
+        tombstone,
         keys_removed: edit.removed,
         backup: edit.backup,
     })
@@ -436,6 +458,7 @@ pub struct Contained {
     pub unconfirmed: Vec<String>,
     pub runs_unreadable: bool,
     pub tombstones: usize,
+    pub nothing_to_contain: bool,
 }
 
 impl Contained {
@@ -474,21 +497,37 @@ pub fn contain(
     backend: Option<&mut dyn crate::runner::Backend>,
     halt: bool,
 ) -> Result<Contained> {
+    contain_revoked(paths, name, backend, halt, None)
+}
+
+pub fn contain_revoked(
+    paths: &Paths,
+    name: &str,
+    backend: Option<&mut dyn crate::runner::Backend>,
+    halt: bool,
+    carried: Option<crate::tombstone::Tombstone>,
+) -> Result<Contained> {
     grammar::link_name(name)?;
-    let tombs = crate::tombstone::for_link(paths, name)?;
+    let mut tombs = crate::tombstone::for_link(paths, name)?;
+    if let Some(c) = carried {
+        tombs.retain(|t| t.enrollment != c.enrollment);
+        tombs.push(c);
+    }
+    if tombs.is_empty() {
+        let out = Contained {
+            nothing_to_contain: true,
+            ..Contained::default()
+        };
+        Audit::new(&paths.audit_dir()).append(
+            "link.revoke.contain",
+            json!({"link": name, "nothing_to_contain": true}),
+        )?;
+        return Ok(out);
+    }
+    Store::load(paths)?;
     let revoked: Vec<String> = tombs.iter().map(|t| t.enrollment.clone()).collect();
     let cutoff = tombs.iter().map(|t| t.generation).max();
-    let current = Store::load(paths)?
-        .leaders
-        .get(name)
-        .map(|l| l.enrollment.clone());
-    let ours = |enrollment: &str| {
-        if revoked.is_empty() {
-            current.as_deref() != Some(enrollment)
-        } else {
-            revoked.iter().any(|e| e == enrollment)
-        }
-    };
+    let ours = |enrollment: &str| revoked.iter().any(|e| e == enrollment);
     let runs = crate::ownership::Runs::lock_lenient(paths)?;
     let workers =
         crate::registry::terminate(paths, name, std::time::Duration::from_secs(3), &ours)?;

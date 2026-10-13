@@ -34,6 +34,7 @@ struct FakeState {
     revoke_fails: bool,
     unconfirmed: Vec<String>,
     busy_creates: u32,
+    fence_wait_ms: Option<u64>,
     fence_free_during_revoke: Option<bool>,
     fence_path: Option<std::path::PathBuf>,
     revoke_noop: bool,
@@ -100,6 +101,22 @@ impl Backend for Fake {
     fn create_run(&mut self, req: &RunCreateReq) -> Result<SessionInfo, BackendError> {
         let mut s = self.0.lock().unwrap();
         s.calls.push("runs.create".into());
+        if let (Some(ms), Some(path)) = (s.fence_wait_ms, s.fence_path.clone()) {
+            let f = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)
+                .unwrap();
+            let end = std::time::Instant::now() + Duration::from_millis(ms);
+            while f.try_lock_shared().is_err() {
+                if std::time::Instant::now() >= end {
+                    return Err(BackendError::Busy);
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
         if s.busy_creates > 0 {
             s.busy_creates -= 1;
             return Err(BackendError::Busy);
@@ -1250,20 +1267,52 @@ fn unconfirmed_kills_make_containment_incomplete_and_keep_the_tombstone() {
 }
 
 #[test]
-fn a_busy_runner_is_retried_and_then_reported_clearly() {
+fn a_busy_runner_is_retried_once_and_then_reported_clearly() {
     let w = world();
     let fake = Fake::default();
-    fake.0.lock().unwrap().busy_creates = 2;
+    fake.0.lock().unwrap().busy_creates = 1;
     let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
     assert!(r[0]["result"]["id"].is_string(), "{:?}", r[0]);
-    assert_eq!(fake.called("runs.create"), 3);
+    assert_eq!(fake.called("runs.create"), 2);
     let w2 = world();
     let stuck = Fake::default();
     stuck.0.lock().unwrap().busy_creates = 100;
     let r = session(&w2, "laptop", E1, &stuck, &[create(&w2, json!({}))]);
     assert_eq!(r[0]["error"], "busy");
     assert!(r[0]["message"].as_str().unwrap().contains("try again"));
-    assert_eq!(stuck.called("runs.create"), 4);
+    assert_eq!(stuck.called("runs.create"), 2);
+}
+
+#[test]
+fn contention_on_the_fence_ends_inside_the_budget_and_clears_afterwards() {
+    use std::time::Instant;
+    let w = world();
+    let fence = tmgr_link::fence::path(&w.paths);
+    std::fs::create_dir_all(fence.parent().unwrap()).unwrap();
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&fence)
+        .unwrap();
+    held.lock().unwrap();
+    let fake = Fake::default();
+    {
+        let mut s = fake.0.lock().unwrap();
+        s.fence_wait_ms = Some(1000);
+        s.fence_path = Some(fence.clone());
+    }
+    let started = Instant::now();
+    let r = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let took = started.elapsed();
+    assert_eq!(r[0]["error"], "busy", "{:?}", r[0]);
+    assert!(took < tmgr_link::runs::BUSY_BUDGET, "{took:?}");
+    assert_eq!(fake.called("runs.create"), 2);
+    assert_eq!(fake.0.lock().unwrap().sessions.len(), 0);
+    held.unlock().unwrap();
+    let ok = session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    assert!(ok[0]["result"]["id"].is_string(), "{:?}", ok[0]);
 }
 
 #[test]
@@ -1274,4 +1323,65 @@ fn the_old_lock_file_is_removed_and_nothing_recreates_it() {
     Store::update(&w.paths, |_| Ok(())).unwrap();
     assert!(!old.exists());
     assert!(tmgr_link::fence::path(&w.paths).exists());
+}
+
+#[test]
+fn without_a_revoked_enrollment_containment_touches_nothing() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain(&w.paths, "laptop", Some(&mut backend), true).unwrap();
+    assert!(out.nothing_to_contain && !out.incomplete());
+    assert_eq!(fake.called("origin.revoke"), 0);
+    assert_eq!(fake.called("sessions.kill"), 0);
+}
+
+#[test]
+fn the_carried_tombstone_is_used_even_if_the_file_lost_it() {
+    let w = world();
+    let fake = Fake::default();
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    let revoked = tmgr_link::follower::revoke(&w.paths, "laptop").unwrap();
+    let carried = revoked.tombstone.clone().unwrap();
+    tmgr_link::tombstone::retire(&w.paths, "laptop", &[E1.to_string()]).unwrap();
+    let mut backend = fake.clone();
+    let out = tmgr_link::follower::contain_revoked(
+        &w.paths,
+        "laptop",
+        Some(&mut backend),
+        true,
+        Some(carried),
+    )
+    .unwrap();
+    assert_eq!(out.runs_halted, 1);
+}
+
+#[test]
+fn a_lost_reply_run_is_adopted_after_a_scope_edit_on_a_pre_upgrade_store() {
+    let w = world();
+    Store::update(&w.paths, |s| {
+        s.generations.insert("laptop".into(), 7);
+        s.generation_seq = 7;
+        Ok(())
+    })
+    .unwrap();
+    let fake = Fake::default();
+    fake.0.lock().unwrap().lose_create_reply = true;
+    session(&w, "laptop", E1, &fake, &[create(&w, json!({}))]);
+    fake.0.lock().unwrap().lose_create_reply = false;
+    let lost = fake.0.lock().unwrap().sessions[0].id.clone();
+    Store::update(&w.paths, |s| {
+        s.bump_generation_for_test("laptop");
+        Ok(())
+    })
+    .unwrap();
+    let list = session(
+        &w,
+        "laptop",
+        E1,
+        &fake,
+        &[json!({"id":1,"method":"runs.list"})],
+    );
+    assert_eq!(list[0]["result"]["runs"][0]["id"], json!(lost));
 }

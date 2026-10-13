@@ -92,7 +92,8 @@ pub struct GenEnrollment {
     pub enrollment: String,
 }
 
-const MAX_HISTORY: usize = 64;
+const SOFT_HISTORY: usize = 256;
+const HARD_HISTORY: usize = 1024;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -160,7 +161,16 @@ impl Store {
         Ok(out)
     }
 
-    pub(crate) fn bump_generation(&mut self, link: &str, enrollment: &str) -> u64 {
+    pub(crate) fn bump_generation(
+        &mut self,
+        link: &str,
+        enrollment: &str,
+        referenced: &std::collections::BTreeSet<u64>,
+    ) -> u64 {
+        let previous = self
+            .leaders
+            .get(link)
+            .map(|l| (self.generation(link), l.enrollment.clone()));
         self.generation_seq += 1;
         self.generations
             .insert(link.to_string(), self.generation_seq);
@@ -168,15 +178,44 @@ impl Store {
             .generation_enrollments
             .entry(link.to_string())
             .or_default();
+        if history.is_empty() {
+            if let Some((generation, enrollment)) = previous {
+                history.push(GenEnrollment {
+                    generation,
+                    enrollment,
+                });
+            }
+        }
         history.push(GenEnrollment {
             generation: self.generation_seq,
             enrollment: enrollment.to_string(),
         });
-        if history.len() > MAX_HISTORY {
-            let drop = history.len() - MAX_HISTORY;
-            history.drain(..drop);
+        while history.len() > SOFT_HISTORY {
+            let current = self.generation_seq;
+            match history
+                .iter()
+                .position(|g| g.generation != current && !referenced.contains(&g.generation))
+            {
+                Some(i) => {
+                    history.remove(i);
+                }
+                None if history.len() > HARD_HISTORY => {
+                    history.remove(0);
+                }
+                None => break,
+            }
         }
         self.generation_seq
+    }
+
+    #[doc(hidden)]
+    pub fn bump_generation_for_test(&mut self, link: &str) -> u64 {
+        let enrollment = self
+            .leaders
+            .get(link)
+            .map(|l| l.enrollment.clone())
+            .unwrap_or_default();
+        self.bump_generation(link, &enrollment, &Default::default())
     }
 
     pub fn enrollment_of(&self, link: &str, generation: u64) -> Option<String> {
@@ -251,6 +290,33 @@ mod tests {
     }
 
     #[test]
+    fn history_is_seeded_from_a_pre_upgrade_store_and_keeps_referenced_entries() {
+        let mut s = Store::default();
+        s.leaders.insert("laptop".into(), leader());
+        s.generations.insert("laptop".into(), 7);
+        s.generation_seq = 7;
+        assert_eq!(
+            s.enrollment_of("laptop", 7).as_deref(),
+            Some(leader().enrollment.as_str())
+        );
+        s.bump_generation("laptop", &leader().enrollment, &Default::default());
+        assert_eq!(s.generation("laptop"), 8);
+        assert_eq!(s.enrollment_of("laptop", 7), Some(leader().enrollment));
+        assert_eq!(s.enrollment_of("laptop", 8), Some(leader().enrollment));
+        let keep: std::collections::BTreeSet<u64> = [7].into();
+        for _ in 0..(SOFT_HISTORY + 20) {
+            s.bump_generation("laptop", "x", &keep);
+        }
+        let h = &s.generation_enrollments["laptop"];
+        assert!(
+            h.iter().any(|g| g.generation == 7),
+            "a referenced entry survives"
+        );
+        assert!(h.len() <= SOFT_HISTORY);
+        assert_eq!(h.last().unwrap().generation, s.generation_seq);
+    }
+
+    #[test]
     fn store_round_trips_with_private_modes() {
         use std::os::unix::fs::PermissionsExt;
         let d = tempfile::tempdir().unwrap();
@@ -287,7 +353,7 @@ mod tests {
         let paths = Paths::under(d.path());
         Store::update(&paths, |s| {
             s.leaders.insert("laptop".into(), leader());
-            s.bump_generation("laptop", "e1");
+            s.bump_generation("laptop", "e1", &Default::default());
             Ok(())
         })
         .unwrap();
