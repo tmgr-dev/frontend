@@ -149,7 +149,6 @@ export function useMemberPage(
 		tab,
 		() => {
 			tasks.value = [];
-			tasksLoaded.value = false;
 			tasksTotal.value = 0;
 			tasksPage.value = 1;
 			void loadTasks(1);
