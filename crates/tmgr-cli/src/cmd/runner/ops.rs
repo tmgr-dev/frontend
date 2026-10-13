@@ -150,6 +150,8 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             model: a.model.clone(),
             cols,
             rows,
+            bundle: None,
+            bundle_sha256: None,
         }),
     }
     .map_err(rerr)?;

@@ -1,3 +1,4 @@
+use crate::bundle;
 use crate::client::Client;
 use crate::exe::resolve_exe;
 use crate::profile::{self, Matcher, ProfileSet};
@@ -177,6 +178,8 @@ struct Meta {
     last_state: Option<State>,
     #[serde(default)]
     task: Option<TaskRef>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    bundle_sha256: Option<String>,
 }
 
 struct Inner {
@@ -282,6 +285,7 @@ impl Session {
             shim_pid: m.shim_pid,
             child_pid: m.child_pid,
             task: m.task,
+            bundle_sha256: m.bundle_sha256.clone(),
         }
     }
 
@@ -877,6 +881,8 @@ impl Runner {
     }
 
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
+        let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
+            .map_err(|(code, m)| api(code, m))?;
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = set.get(&req.profile).ok_or_else(|| {
             let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
@@ -900,19 +906,30 @@ impl Runner {
             .map_err(|e| api(ErrorCode::InvalidParams, e))?
             .display()
             .to_string();
-        self.create(CreateReq {
-            argv,
-            cwd: req.cwd,
-            name: req.name,
-            profile: Some(req.profile),
-            cols: req.cols,
-            rows: req.rows,
-            env_pass: Vec::new(),
-            task: req.task,
-        })
+        self.create_with(
+            CreateReq {
+                argv,
+                cwd: req.cwd,
+                name: req.name,
+                profile: Some(req.profile),
+                cols: req.cols,
+                rows: req.rows,
+                env_pass: Vec::new(),
+                task: req.task,
+            },
+            checked.as_ref(),
+        )
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
+        self.create_with(req, None)
+    }
+
+    fn create_with(
+        self: &Arc<Self>,
+        req: CreateReq,
+        bundle: Option<&bundle::Checked>,
+    ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
         sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
         let matcher = match &req.profile {
@@ -932,7 +949,7 @@ impl Runner {
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
-        let result = self.spawn_session(&req, &cwd, matcher, &id, &sdir, &home);
+        let result = self.spawn_session(&req, &cwd, matcher, &id, &sdir, &home, bundle);
         if result.is_err() {
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
@@ -948,10 +965,14 @@ impl Runner {
         id: &str,
         sdir: &Path,
         home: &Path,
+        bundle: Option<&bundle::Checked>,
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
+        if let Some(b) = bundle {
+            bundle::install(sdir, cwd, b).map_err(|(code, m)| api(code, m))?;
+        }
         let mut env_pass = req.env_pass.clone();
         if let Some(pid) = &req.profile {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
@@ -1040,6 +1061,7 @@ impl Runner {
             child_pid: hello.child_pid,
             last_state: None,
             task: req.task,
+            bundle_sha256: bundle.map(|b| b.sha256.clone()),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

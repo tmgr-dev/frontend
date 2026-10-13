@@ -672,7 +672,10 @@ fn canonical_json_sorts_keys_by_utf16_and_escapes_minimally() {
         canonical_json(&v),
         "{\"a\":{\"z\":\"x\",\"\u{e9}\":1,\"\u{1F600}\":2,\"\u{ffee}\":3},\"b\":[1,-2,true,null],\"s\":\"\\b\\f\\n\\r\\t\\u001f\u{7f}\u{2028}/\\\"\\\\\"}"
     );
-    assert_eq!(sha256_hex(b"abc"), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    assert_eq!(
+        sha256_hex(b"abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    );
 }
 
 #[test]
