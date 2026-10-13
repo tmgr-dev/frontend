@@ -103,7 +103,7 @@ test('the privacy page opens for a guest with every section', async ({ page }) =
   ]) {
     await expect(page.locator(`#${id}`)).toHaveCount(1);
   }
-  await expect(page.getByText('Last updated: 12 October 2026')).toBeVisible();
+  await expect(page.getByText('Last updated: 13 October 2026')).toBeVisible();
   await expect(page.locator('[data-todo="controller-name"]')).toBeVisible();
   await expect(page.locator('#contact [data-todo="contact-email"]')).toBeVisible();
 

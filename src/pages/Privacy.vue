@@ -2,7 +2,7 @@
 	<BaseLayout width="narrow" title="Privacy policy">
 		<template #body>
 			<article class="privacy-policy space-y-10 pb-10 text-sm leading-relaxed text-ink">
-				<p class="text-ink-subtle">Last updated: 12 October 2026</p>
+				<p class="text-ink-subtle">Last updated: 13 October 2026</p>
 
 				<section id="summary">
 					<h2>Summary</h2>
@@ -152,7 +152,6 @@
 								<tr><td>GitHub</td><td>The GitHub integration, if you install it, and desktop app updates</td><td>Repository data you link; your IP address when the desktop app checks for updates</td></tr>
 								<tr><td>Telegram</td><td>The Telegram bot, if you connect it</td><td>Your chat id and the messages the bot sends and receives</td></tr>
 								<tr><td>Cursor</td><td>Starting Cursor agents, if you add your Cursor API key</td><td>The task prompt and repository details you send</td></tr>
-								<tr><td>Pusher</td><td>A script loaded by the web app's service worker</td><td>Your IP address and browser details when the script loads</td></tr>
 								<tr><td>jsDelivr</td><td>Stylesheet for code highlighting</td><td>Your IP address and browser details when it loads</td></tr>
 								<tr><td>Google Analytics</td><td>Web analytics, only if you allow it</td><td>See above</td></tr>
 							</tbody>
