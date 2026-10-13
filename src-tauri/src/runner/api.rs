@@ -1,10 +1,12 @@
 use serde::Serialize;
 use serde_json::Value;
-use tmgr_ipc::api::{method, limits, RunCreateReq, SessionInfo, State};
+use tmgr_ipc::api::{caps, method, limits, CwdPin, RunCreateReq, SessionInfo, State};
 
 pub use tmgr_ipc::api::StateKind;
 
-use super::conn::{valid_session_id, Conn, ConnError};
+use super::bundle::{self, Prepared};
+use super::task_lookup::TaskInfo;
+use super::conn::{valid_session_id, Conn, ConnError, Welcome, UPDATE_RUNNER};
 use super::sanitize;
 
 pub const PROFILES: &[(&str, &str)] = &[("claude-code", "Claude Code"), ("codex", "Codex")];
@@ -113,6 +115,8 @@ pub struct StartRun {
   pub profile: String,
   pub cwd: String,
   pub name: String,
+  pub cwd_pin: Option<(u64, u64)>,
+  pub bundle: Option<Prepared>,
 }
 
 pub fn run_name(title: &str, task_id: i64) -> String {
@@ -137,6 +141,13 @@ pub fn validate_start(r: &StartRun) -> Result<(), String> {
   Ok(())
 }
 
+pub fn attach_approval(r: &mut StartRun, task: &TaskInfo, folder_id: (u64, u64), runner_caps: &[String]) -> Result<(), String> {
+  let has = |cap: &str| runner_caps.iter().any(|c| c == cap);
+  r.cwd_pin = has(caps::CWD_PIN_V1).then_some(folder_id);
+  r.bundle = if has(caps::RUN_BUNDLE_V1) { Some(bundle::prepare(task, r.workspace_id, r.task_id, &r.profile, &r.cwd)?) } else { None };
+  Ok(())
+}
+
 pub fn profile_label(id: &str) -> &str {
   PROFILES.iter().find(|(p, _)| *p == id).map_or(id, |(_, l)| l)
 }
@@ -145,9 +156,10 @@ pub fn display_text(s: &str) -> String {
   sanitize::text(s, TITLE_MAX)
 }
 
-pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, folder: &str, profile: &str) -> String {
+pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, folder: &str, profile: &str, bundle: Option<&str>) -> String {
+  let bundle = bundle.map(|b| format!("\nRun bundle: {b}")).unwrap_or_default();
   format!(
-    "Workspace: {}\nTask #{task_id}: {}\nProject folder: \"{}\"\nAgent: {}\nPermission prompts: on",
+    "Workspace: {}\nTask #{task_id}: {}\nProject folder: \"{}\"\nAgent: {}{bundle}\nPermission prompts: on",
     display_text(workspace),
     display_text(title),
     folder,
@@ -155,7 +167,10 @@ pub fn confirm_run_message(workspace: &str, task_id: i64, title: &str, folder: &
   )
 }
 
-pub fn create_run(conn: &mut Conn, r: &StartRun) -> Result<RunnerSession, ConnError> {
+pub fn create_run(conn: &mut Conn, r: &StartRun, welcome: &Welcome) -> Result<RunnerSession, ConnError> {
+  if r.bundle.is_some() && !welcome.has(caps::RUN_BUNDLE_V1) {
+    return Err(ConnError::Failed(UPDATE_RUNNER.to_owned()));
+  }
   let req = RunCreateReq {
     profile: r.profile.clone(),
     task: Some(tmgr_ipc::api::TaskRef { workspace_id: r.workspace_id, task_id: r.task_id }),
@@ -164,6 +179,10 @@ pub fn create_run(conn: &mut Conn, r: &StartRun) -> Result<RunnerSession, ConnEr
     model: None,
     cols: RUN_COLS.min(limits::MAX_COLS),
     rows: RUN_ROWS.min(limits::MAX_ROWS),
+    bundle: r.bundle.as_ref().map(|p| p.bundle.clone()),
+    bundle_sha256: r.bundle.as_ref().map(|p| p.sha256.clone()),
+    cwd_pin: r.cwd_pin.filter(|_| welcome.has(caps::CWD_PIN_V1)).map(|(dev, ino)| CwdPin { dev, ino }),
+    origin: None,
   };
   let params = serde_json::to_value(&req).map_err(|e| ConnError::Failed(e.to_string()))?;
   let v = conn.call(method::RUNS_CREATE, params)?;
@@ -198,7 +217,82 @@ mod tests {
   const SID: &str = "s_abcdefghij";
 
   fn start(ws: i64, task: i64, profile: &str) -> StartRun {
-    StartRun { workspace_id: ws, task_id: task, profile: profile.into(), cwd: "/work/project".into(), name: "fix login".into() }
+    StartRun { workspace_id: ws, task_id: task, profile: profile.into(), cwd: "/work/project".into(), name: "fix login".into(), cwd_pin: None, bundle: None }
+  }
+
+  fn all_caps() -> Welcome {
+    Welcome { runner_version: "0.1.0".into(), caps: caps::ALL.map(String::from).to_vec() }
+  }
+
+  fn prepared() -> Prepared {
+    use crate::runner::bundle::prepare;
+    use crate::runner::task_lookup::TaskInfo;
+    let task = TaskInfo { workspace: "W".into(), title: "Fix login".into(), description: "body".into(), agent_touched: false, comments: Vec::new() };
+    prepare(&task, -2, 9, "codex", "/work/project").unwrap()
+  }
+
+  fn run_request(welcome: &Welcome, mut m: Mock, run: StartRun) -> (Result<RunnerSession, ConnError>, mock::Log) {
+    m.folder_id = Some((16, 99));
+    let (mut conn, server) = connected(m);
+    let r = create_run(&mut conn, &run, welcome);
+    drop(conn);
+    (r, server.join().unwrap())
+  }
+
+  fn sent(log: &mock::Log) -> Value {
+    log.requests.iter().find(|r| r["method"] == "runs.create").unwrap()["params"].clone()
+  }
+
+  #[test]
+  fn approval_attaches_only_what_the_runner_understands() {
+    let task = TaskInfo { workspace: "W".into(), title: "T".into(), description: "b".into(), agent_touched: false, comments: Vec::new() };
+    let caps = |c: &[&str]| c.iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    let mut r = start(-2, 9, "codex");
+    attach_approval(&mut r, &task, (1, 2), &caps(&["runs.create.v1"])).unwrap();
+    assert!(r.cwd_pin.is_none() && r.bundle.is_none());
+    attach_approval(&mut r, &task, (1, 2), &caps(&["cwd_pin.v1"])).unwrap();
+    assert!(r.cwd_pin == Some((1, 2)) && r.bundle.is_none());
+    attach_approval(&mut r, &task, (1, 2), &caps(&["run_bundle.v1"])).unwrap();
+    assert!(r.cwd_pin.is_none());
+    let b = r.bundle.unwrap();
+    assert_eq!((b.bundle.launch.cwd.as_str(), b.bundle.launch.profile.as_str()), ("/work/project", "codex"));
+    assert_eq!(b.bundle.task, tmgr_ipc::api::TaskRef { workspace_id: -2, task_id: 9 });
+  }
+
+  #[test]
+  fn pin_and_bundle_are_sent_when_the_runner_advertises_them() {
+    let p = prepared();
+    let run = StartRun { cwd_pin: Some((16, 99)), bundle: Some(p.clone()), ..start(-2, 9, "codex") };
+    let (created, log) = run_request(&all_caps(), Mock::new("secret"), run);
+    let params = sent(&log);
+    assert_eq!(params["cwd_pin"], json!({"dev": 16, "ino": 99}));
+    assert_eq!(params["bundle_sha256"], json!(p.sha256));
+    assert_eq!(params["bundle"], serde_json::to_value(&p.bundle).unwrap());
+    assert!(params.get("origin").is_none());
+    created.unwrap();
+  }
+
+  #[test]
+  fn without_the_caps_no_pin_is_sent_and_a_bundle_is_refused() {
+    let none = Welcome { runner_version: "0.1.0".into(), caps: vec!["runs.create.v1".into()] };
+    let run = StartRun { cwd_pin: Some((16, 99)), ..start(-2, 9, "codex") };
+    let (created, log) = run_request(&none, Mock::new("secret"), run);
+    created.unwrap();
+    let params = sent(&log);
+    for key in ["cwd_pin", "bundle", "bundle_sha256", "origin"] {
+      assert!(params.get(key).is_none(), "{key}");
+    }
+    let run = StartRun { bundle: Some(prepared()), ..start(-2, 9, "codex") };
+    let (refused, log) = run_request(&none, Mock::new("secret"), run);
+    assert_eq!(refused.unwrap_err().message(), UPDATE_RUNNER);
+    assert!(log.requests.iter().all(|r| r["method"] != "runs.create"));
+  }
+
+  #[test]
+  fn a_mismatched_pin_is_rejected_by_the_runner() {
+    let run = StartRun { cwd_pin: Some((16, 100)), ..start(-2, 9, "codex") };
+    let (created, _) = run_request(&all_caps(), Mock::new("secret"), run);
+    assert_eq!(created.unwrap_err().message(), "invalid_params: approved folder changed");
   }
 
   fn connected(mock: Mock) -> (Conn, std::thread::JoinHandle<mock::Log>) {
@@ -294,7 +388,7 @@ mod tests {
     assert_eq!(list[0].id, SID);
     assert!(find_session(&mut conn, SID).unwrap().is_some());
     assert!(find_session(&mut conn, "s_zzzzzzzzzz").unwrap().is_none());
-    let created = create_run(&mut conn, &start(-2, 9, "codex")).unwrap();
+    let created = create_run(&mut conn, &start(-2, 9, "codex"), &all_caps()).unwrap();
     assert_eq!(created.task, Some(TaskRef { workspace_id: -2, task_id: 9 }));
     assert_eq!(created.profile.as_deref(), Some("codex"));
     kill_session(&mut conn, SID).unwrap();
@@ -312,7 +406,7 @@ mod tests {
   #[test]
   fn confirm_message_shows_the_full_folder_quoted() {
     let folder = format!("/{}", "d".repeat(900));
-    let m = confirm_run_message("W", 1, "T", &folder, "codex");
+    let m = confirm_run_message("W", 1, "T", &folder, "codex", None);
     assert!(m.contains(&format!("\nProject folder: \"{folder}\"\n")));
   }
 
@@ -324,12 +418,15 @@ mod tests {
       &format!("Fix\x1b[2J bug {}", "t".repeat(200)),
       "/work/project",
       "claude-code",
+      Some("0123456789ab, 3 comments"),
     );
     assert!(m.starts_with("Workspace: Workspace\n"));
     assert!(m.contains("Task #7: Fix[2J bug"));
     assert!(m.contains("\nProject folder: \"/work/project\"\n"));
     assert!(m.contains("Agent: Claude Code"));
+    assert!(m.contains("\nAgent: Claude Code\nRun bundle: 0123456789ab, 3 comments\nPermission prompts: on"));
     assert!(m.ends_with("Permission prompts: on"));
+    assert!(!confirm_run_message("W", 1, "T", "/f", "codex", None).contains("Run bundle"));
     assert!(!m.contains('\x1b'));
     assert!(m.lines().nth(1).unwrap().chars().count() < 160);
   }

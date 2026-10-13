@@ -108,6 +108,10 @@ impl Welcome {
   pub fn can_create_runs(&self) -> bool {
     self.caps.iter().any(|c| c == caps::RUNS_CREATE_V1)
   }
+
+  pub fn has(&self, cap: &str) -> bool {
+    self.caps.iter().any(|c| c == cap)
+  }
 }
 
 #[derive(Debug)]

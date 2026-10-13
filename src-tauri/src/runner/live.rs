@@ -141,6 +141,8 @@ fn run_req(profile: &str, task_id: i64, project: &Path) -> StartRun {
     profile: profile.into(),
     cwd: project.display().to_string(),
     name: format!("live task {task_id}"),
+    cwd_pin: None,
+    bundle: None,
   }
 }
 
@@ -246,4 +248,46 @@ fn live_runner_end_to_end() {
   assert!(runner.start_run(&run_req("no-such-profile", 414, &stand.project)).unwrap_err().starts_with("unknown_profile: "));
   let bad_cwd = StartRun { cwd: "/".into(), ..run_req("fake", 415, &stand.project) };
   assert!(runner.start_run(&bad_cwd).unwrap_err().starts_with("invalid_params: "));
+}
+
+#[test]
+#[ignore = "starts a real tmgr-runner-host; run explicitly with --ignored live"]
+fn live_runner_pin_and_bundle() {
+  use super::api::attach_approval;
+  use super::folder::Snapshot;
+  use super::task_lookup::{CommentInfo, TaskInfo};
+
+  let stand = Stand::start();
+  let runner = stand.runner();
+  let status = runner.status();
+  for cap in ["cwd_pin.v1", "run_bundle.v1"] {
+    assert!(status.caps.iter().any(|c| c == cap), "{cap} in {:?}", status.caps);
+  }
+  let task = TaskInfo {
+    workspace: "Live".into(),
+    title: "Pinned task".into(),
+    description: "do the thing".into(),
+    agent_touched: false,
+    comments: vec![CommentInfo {
+      author_kind: "user".into(),
+      author_id: Some("1".into()),
+      created_at: "2026-10-13T09:30:00.000Z".into(),
+      message: "mind the tests".into(),
+    }],
+  };
+  let snapshot = Snapshot::capture(&stand.project, None).unwrap();
+  let mut req = StartRun { cwd: snapshot.path().to_owned(), ..run_req("fake", 420, &stand.project) };
+  attach_approval(&mut req, &task, snapshot.pin(), &status.caps).unwrap();
+  let sha = req.bundle.as_ref().unwrap().sha256.clone();
+
+  let wrong = StartRun { cwd_pin: Some((snapshot.pin().0, snapshot.pin().1 + 1)), bundle: None, ..run_req("fake", 420, &stand.project) };
+  assert!(runner.start_run(&wrong).unwrap_err().contains("approved folder changed"));
+
+  let created = runner.start_run(&req).unwrap();
+  let (mut conn, _) = stand.connect().unwrap();
+  let listed = conn.call("sessions.list", Value::Null).unwrap();
+  let mine = listed.as_array().unwrap().iter().find(|s| s["id"] == created.id.as_str()).unwrap();
+  assert_eq!(mine["bundle_sha256"], sha.as_str());
+  let context = fs::read_to_string(stand.project.join(".tmgr/task.md")).unwrap();
+  assert!(context.contains("mind the tests") && context.trim_end().ends_with(&format!("bundle sha256: {sha}")), "{context}");
 }

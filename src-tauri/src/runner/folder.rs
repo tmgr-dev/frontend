@@ -60,6 +60,10 @@ impl Snapshot {
     self.path.to_str().unwrap_or_default()
   }
 
+  pub fn pin(&self) -> (u64, u64) {
+    (self.dev, self.ino)
+  }
+
   pub fn verify(&self, home: Option<&Path>) -> Result<(), String> {
     let now = Snapshot::capture(&self.path, home).map_err(|_| CHANGED.to_owned())?;
     if now.path == self.path && now.dev == self.dev && now.ino == self.ino {

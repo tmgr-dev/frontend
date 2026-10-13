@@ -14,12 +14,13 @@ pub struct Mock {
   pub welcome_proto: u32,
   pub caps: Option<Vec<String>>,
   pub busy: bool,
+  pub folder_id: Option<(u64, u64)>,
   pub sessions: Vec<Value>,
 }
 
 impl Mock {
   pub fn new(secret: &str) -> Mock {
-    Mock { secret: secret.into(), bad_server_proof: false, reject_proto: false, welcome_proto: 1, caps: None, busy: false, sessions: Vec::new() }
+    Mock { secret: secret.into(), bad_server_proof: false, reject_proto: false, welcome_proto: 1, caps: None, busy: false, folder_id: None, sessions: Vec::new() }
   }
 
   fn standard(&self) -> bool {
@@ -81,11 +82,30 @@ fn handle(mock: &Mock, method: &str, params: &Value) -> Result<Value, ErrorBody>
     "sessions.list" => Ok(Value::Array(mock.sessions.clone())),
     "runs.create" => {
       let req: RunCreateReq = serde_json::from_value(params.clone()).map_err(|e| err(ErrorCode::InvalidParams, &e.to_string()))?;
+      if let (Some(pin), Some(actual)) = (req.cwd_pin, mock.folder_id) {
+        if (pin.dev, pin.ino) != actual {
+          return Err(err(ErrorCode::InvalidParams, "approved folder changed"));
+        }
+      }
+      if req.bundle.is_some() != req.bundle_sha256.is_some() {
+        return Err(err(ErrorCode::InvalidParams, "bundle and bundle_sha256 go together"));
+      }
+      if let (Some(b), Some(hash)) = (&req.bundle, &req.bundle_sha256) {
+        if b.sha256() != *hash {
+          return Err(err(ErrorCode::InvalidParams, "bundle hash mismatch"));
+        }
+        if b.launch.profile != req.profile || Some(b.task) != req.task || b.launch.cwd != req.cwd {
+          return Err(err(ErrorCode::InvalidParams, "bundle launch differs from the request"));
+        }
+      }
       let mut sess = session("s_newsessio2", json!({"kind": "starting", "since_ms": 1, "detail": null, "exit_code": null}));
       sess["profile"] = json!(req.profile);
       sess["cwd"] = json!(req.cwd);
       sess["name"] = json!(req.name.unwrap_or_default());
       sess["task"] = serde_json::to_value(req.task).unwrap_or(Value::Null);
+      if let Some(hash) = req.bundle_sha256 {
+        sess["bundle_sha256"] = json!(hash);
+      }
       Ok(sess)
     }
     "sessions.kill" => match params["signal"].as_str() {
