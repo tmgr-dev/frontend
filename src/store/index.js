@@ -429,8 +429,6 @@ const mutations = {
 
 const actions = {
 	logout({ commit, state }) {
-		// TEMP diagnostics: who triggers logout on hard reload (remove once found)
-		console.warn('[auth] logout called', new Error().stack);
 		// Only the session dies: UI prefs (colorScheme, sidebarExpanded,
 		// preferred_editor, …) survive, but per-user data must not leak to
 		// the next account on a shared browser.
