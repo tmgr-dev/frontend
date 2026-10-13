@@ -62,63 +62,86 @@
 	</div>
 </template>
 
-<script setup lang="ts">
-	import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+<script lang="ts">
 	import AgentStateChip from '@/components/runner/AgentStateChip.vue';
 	import { Button } from '@/components/ui/button';
 	import { runnerHalt, runnerOpenTerminal } from '@/runner/api';
 	import { formatAge } from '@/runner/format';
 	import { ABSENT_TOOLTIP } from '@/runner/runButton';
 	import { useRunner } from '@/runner/store';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+		type PropType,
+	} from 'vue';
 
-	const props = defineProps<{
-		workspaceId?: number | string | null;
-		taskId?: number | string | null;
-	}>();
+	type Id = number | string | null | undefined;
 
 	const profileLabels: Record<string, string> = {
 		'claude-code': 'Claude Code',
 		codex: 'Codex',
 	};
-	const profileLabel = (id: string) => profileLabels[id] ?? id;
 
-	const runner = useRunner();
-	const now = ref(Date.now());
-	const actionError = ref('');
-	let timer: ReturnType<typeof setInterval> | undefined;
+	export default defineComponent({
+		name: 'AgentSessionsPanel',
+		components: { AgentStateChip, Button },
+		props: {
+			workspaceId: { type: [Number, String] as PropType<Id>, default: null },
+			taskId: { type: [Number, String] as PropType<Id>, default: null },
+		},
+		setup(props) {
+			const runner = useRunner();
+			const now = ref(Date.now());
+			const actionError = ref('');
+			let timer: ReturnType<typeof setInterval> | undefined;
 
-	onMounted(() => {
-		timer = setInterval(() => (now.value = Date.now()), 30_000);
+			onMounted(() => {
+				timer = setInterval(() => (now.value = Date.now()), 30_000);
+			});
+			onBeforeUnmount(() => clearInterval(timer));
+
+			const list = computed(() => {
+				if (props.workspaceId != null && props.taskId != null)
+					return runner.sessionsForTask(
+						Number(props.workspaceId),
+						Number(props.taskId),
+					);
+				return [...runner.sessions.value].sort(
+					(a, b) => b.createdMs - a.createdMs,
+				);
+			});
+
+			const unavailable = computed(() => {
+				const state = runner.status.value?.state;
+				if (state === 'incompatible')
+					return 'The TMGR runner version is not compatible with this app. Update the CLI.';
+				if (state && state !== 'ready') return ABSENT_TOOLTIP;
+				return '';
+			});
+
+			const guarded = async (action: () => Promise<void>) => {
+				actionError.value = '';
+				try {
+					await action();
+				} catch (error) {
+					const text = String((error as any)?.message ?? error);
+					if (text !== 'cancelled') actionError.value = text;
+				}
+			};
+
+			return {
+				list,
+				unavailable,
+				now,
+				actionError,
+				formatAge,
+				profileLabel: (id: string) => profileLabels[id] ?? id,
+				openTerminal: (id: string) => guarded(() => runnerOpenTerminal(id)),
+				stop: (id: string) => guarded(() => runnerHalt(id)),
+			};
+		},
 	});
-	onBeforeUnmount(() => clearInterval(timer));
-
-	const list = computed(() => {
-		if (props.workspaceId != null && props.taskId != null)
-			return runner.sessionsForTask(
-				Number(props.workspaceId),
-				Number(props.taskId),
-			);
-		return [...runner.sessions.value].sort((a, b) => b.createdMs - a.createdMs);
-	});
-
-	const unavailable = computed(() => {
-		const state = runner.status.value?.state;
-		if (state === 'incompatible')
-			return 'The TMGR runner version is not compatible with this app. Update the CLI.';
-		if (state && state !== 'ready') return ABSENT_TOOLTIP;
-		return '';
-	});
-
-	const guarded = async (action: () => Promise<void>) => {
-		actionError.value = '';
-		try {
-			await action();
-		} catch (error) {
-			const text = String((error as any)?.message ?? error);
-			if (text !== 'cancelled') actionError.value = text;
-		}
-	};
-
-	const openTerminal = (id: string) => guarded(() => runnerOpenTerminal(id));
-	const stop = (id: string) => guarded(() => runnerHalt(id));
 </script>

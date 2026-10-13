@@ -16,13 +16,21 @@
 	</span>
 </template>
 
-<script setup lang="ts">
-	import { computed } from 'vue';
+<script lang="ts">
 	import type { RunnerState } from '@/runner/api';
 	import { describeState, TONE_CLASS } from '@/runner/states';
+	import { computed, defineComponent, type PropType } from 'vue';
 
-	const props = defineProps<{ state: RunnerState }>();
-	const view = computed(() => describeState(props.state));
+	export default defineComponent({
+		name: 'AgentStateChip',
+		props: {
+			state: { type: Object as PropType<RunnerState>, required: true },
+		},
+		setup(props) {
+			const view = computed(() => describeState(props.state));
+			return { view, TONE_CLASS };
+		},
+	});
 </script>
 
 <style scoped>

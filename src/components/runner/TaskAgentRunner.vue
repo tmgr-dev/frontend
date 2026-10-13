@@ -23,22 +23,34 @@
 	</section>
 </template>
 
-<script setup lang="ts">
-	import { computed } from 'vue';
+<script lang="ts">
 	import AgentSessionsPanel from '@/components/runner/AgentSessionsPanel.vue';
 	import RunWithAgentButton from '@/components/runner/RunWithAgentButton.vue';
 	import { useRunner } from '@/runner/store';
+	import { computed, defineComponent, type PropType } from 'vue';
 
-	const props = defineProps<{
-		workspaceId: number | string | null | undefined;
-		taskId: number | string;
-		taskTitle: string;
-	}>();
-
-	const runner = useRunner();
-	const latest = computed(() =>
-		props.workspaceId == null
-			? null
-			: runner.sessionForTask(Number(props.workspaceId), Number(props.taskId)),
-	);
+	export default defineComponent({
+		name: 'TaskAgentRunner',
+		components: { AgentSessionsPanel, RunWithAgentButton },
+		props: {
+			workspaceId: {
+				type: [Number, String] as PropType<number | string | null | undefined>,
+				default: null,
+			},
+			taskId: { type: [Number, String], required: true },
+			taskTitle: { type: String, default: '' },
+		},
+		setup(props) {
+			const runner = useRunner();
+			const latest = computed(() =>
+				props.workspaceId == null
+					? null
+					: runner.sessionForTask(
+							Number(props.workspaceId),
+							Number(props.taskId),
+					  ),
+			);
+			return { runner, latest };
+		},
+	});
 </script>

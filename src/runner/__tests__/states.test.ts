@@ -1,7 +1,7 @@
 import { describeState, sanitizeState } from '../states';
 
 const state = (kind: string, detail: unknown = null) =>
-	({ kind, sinceMs: 1, detail }) as any;
+	({ kind, sinceMs: 1, detail } as any);
 
 describe('describeState', () => {
 	it.each([
@@ -34,7 +34,9 @@ describe('describeState', () => {
 describe('sanitizeState', () => {
 	it('keeps only the known exit details', () => {
 		expect(sanitizeState(state('exited', 'failed')).detail).toBe('failed');
-		expect(sanitizeState(state('blocked', 'secret question')).detail).toBeNull();
+		expect(
+			sanitizeState(state('blocked', 'secret question')).detail,
+		).toBeNull();
 		expect(sanitizeState(state('exited', 'weird')).detail).toBeNull();
 	});
 });

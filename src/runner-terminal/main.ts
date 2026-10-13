@@ -1,7 +1,3 @@
-import { FitAddon } from '@xterm/addon-fit';
-import { WebLinksAddon } from '@xterm/addon-web-links';
-import { Terminal } from '@xterm/xterm';
-import '@xterm/xterm/css/xterm.css';
 import {
 	runnerTermAck,
 	runnerTermAttach,
@@ -11,6 +7,10 @@ import {
 	runnerTermResize,
 	runnerTermScroll,
 } from '@/runner/api';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import { Terminal } from '@xterm/xterm';
+import '@xterm/xterm/css/xterm.css';
 import { createController, type HeaderState } from './controller';
 import './terminal.css';
 
@@ -157,7 +157,9 @@ detachButton.addEventListener('click', () => void controller.detach());
 reattachButton.addEventListener('click', () => {
 	controller.reopened();
 	term.reset();
-	void attach().catch((error) => controller.handleFrame({ type: 'closed', reason: String(error) }));
+	void attach().catch((error) =>
+		controller.handleFrame({ type: 'closed', reason: String(error) }),
+	);
 });
 
 term.open(host);

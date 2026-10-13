@@ -36,7 +36,8 @@ const byTask = computed(() => {
 		const key = taskKey(session.task.workspaceId, session.task.taskId);
 		map.set(key, [...(map.get(key) ?? []), session]);
 	}
-	for (const list of map.values()) list.sort((a, b) => b.createdMs - a.createdMs);
+	for (const list of map.values())
+		list.sort((a, b) => b.createdMs - a.createdMs);
 	return map;
 });
 

@@ -1,5 +1,5 @@
-import { Channel, invoke } from '@tauri-apps/api/core';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
+import { Channel, invoke } from '@tauri-apps/api/core';
 
 export type RunnerStateKind =
 	| 'starting'

@@ -101,12 +101,16 @@ describe('terminal controller', () => {
 		expect(controller.handleKey({ key: 'PageUp', shiftKey: true })).toBe(true);
 		expect(api.scroll).toHaveBeenLastCalledWith(29);
 		controller.handleFrame({ type: 'scroll', offset: 29, max: 200 });
-		expect(controller.handleKey({ key: 'PageDown', shiftKey: true })).toBe(true);
+		expect(controller.handleKey({ key: 'PageDown', shiftKey: true })).toBe(
+			true,
+		);
 		expect(api.scroll).toHaveBeenLastCalledWith(0);
 		controller.handleFrame({ type: 'scroll', offset: 10, max: 200 });
 		expect(controller.handleKey({ key: 'End', shiftKey: false })).toBe(true);
 		expect(api.scroll).toHaveBeenLastCalledWith(0);
-		expect(controller.handleKey({ key: 'PageUp', shiftKey: false })).toBe(false);
+		expect(controller.handleKey({ key: 'PageUp', shiftKey: false })).toBe(
+			false,
+		);
 		expect(controller.handleKey({ key: 'a', shiftKey: true })).toBe(false);
 	});
 

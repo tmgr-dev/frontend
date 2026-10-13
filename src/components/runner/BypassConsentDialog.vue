@@ -2,7 +2,7 @@
 	<Dialog
 		v-if="available"
 		:open="open"
-		@update:open="(value: boolean) => emit('update:open', value)"
+		@update:open="(value) => $emit('update:open', value)"
 	>
 		<DialogContent data-testid="bypass-consent">
 			<DialogHeader>
@@ -18,14 +18,14 @@
 				<Input v-model="typed" data-testid="bypass-phrase" autocomplete="off" />
 			</label>
 			<DialogFooter>
-				<Button variant="outline" @click="emit('update:open', false)">
+				<Button variant="outline" @click="$emit('update:open', false)">
 					Cancel
 				</Button>
 				<Button
 					variant="destructive"
 					:disabled="!isBypassPhrase(typed)"
 					data-testid="bypass-confirm"
-					@click="emit('confirm')"
+					@click="$emit('confirm')"
 				>
 					Enable bypass mode
 				</Button>
@@ -34,8 +34,7 @@
 	</Dialog>
 </template>
 
-<script setup lang="ts">
-	import { computed, ref, watch } from 'vue';
+<script lang="ts">
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -46,20 +45,37 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
-	import { BYPASS_PHRASE, bypassAvailable, isBypassPhrase } from '@/runner/bypass';
+	import {
+		BYPASS_PHRASE,
+		bypassAvailable,
+		isBypassPhrase,
+	} from '@/runner/bypass';
 	import { useRunner } from '@/runner/store';
+	import { computed, defineComponent, ref, watch } from 'vue';
 
-	const props = defineProps<{ open: boolean }>();
-	const emit = defineEmits<{
-		(e: 'update:open', value: boolean): void;
-		(e: 'confirm'): void;
-	}>();
-
-	const runner = useRunner();
-	const available = computed(() => bypassAvailable(runner.status.value));
-	const typed = ref('');
-	watch(
-		() => props.open,
-		() => (typed.value = ''),
-	);
+	export default defineComponent({
+		name: 'BypassConsentDialog',
+		components: {
+			Button,
+			Dialog,
+			DialogContent,
+			DialogDescription,
+			DialogFooter,
+			DialogHeader,
+			DialogTitle,
+			Input,
+		},
+		props: { open: { type: Boolean, default: false } },
+		emits: ['update:open', 'confirm'],
+		setup(props) {
+			const runner = useRunner();
+			const available = computed(() => bypassAvailable(runner.status.value));
+			const typed = ref('');
+			watch(
+				() => props.open,
+				() => (typed.value = ''),
+			);
+			return { available, typed, BYPASS_PHRASE, isBypassPhrase };
+		},
+	});
 </script>

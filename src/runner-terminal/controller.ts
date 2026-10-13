@@ -29,7 +29,9 @@ export interface TermView {
 const WHEEL_STEP = 3;
 
 export const scrollIndicatorText = (offset: number): string =>
-	`Scrolled back ${offset} ${offset === 1 ? 'line' : 'lines'} — press End to return`;
+	`Scrolled back ${offset} ${
+		offset === 1 ? 'line' : 'lines'
+	} — press End to return`;
 
 export const createController = (deps: {
 	term: TermLike;
