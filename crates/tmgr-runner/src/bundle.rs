@@ -260,6 +260,14 @@ fn write_context(cwd_fd: i32, text: &str) -> Result<Prior, Refusal> {
             if !meta.is_file() || meta.nlink() > 1 {
                 return refuse(".tmgr/task.md is not a plain file");
             }
+            probe_noreplace(dir_fd, &rename_noreplace).map_err(|e| {
+                (
+                    ErrorCode::Internal,
+                    format!(
+                        "this filesystem does not support no-replace rename, so the existing .tmgr/task.md cannot be replaced safely: {e}"
+                    ),
+                )
+            })?;
             let mut old = Vec::new();
             Read::by_ref(&mut f)
                 .take(MAX_CONTEXT + 1)
@@ -351,10 +359,27 @@ fn rename_noreplace(dir_fd: i32, from: &str, to: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn quarantine(dir_fd: i32) -> io::Result<String> {
+type Rename = dyn Fn(i32, &str, &str) -> io::Result<()>;
+
+fn probe_noreplace(dir_fd: i32, rename: &Rename) -> io::Result<()> {
+    let flags = libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL;
+    let (a, b) = (
+        format!(".task.md.p.{}.a", std::process::id()),
+        format!(".task.md.p.{}.b", std::process::id()),
+    );
+    unlinkat(dir_fd, &a);
+    unlinkat(dir_fd, &b);
+    openat_mode(dir_fd, &a, flags, 0o600)?;
+    let r = rename(dir_fd, &a, &b);
+    unlinkat(dir_fd, &a);
+    unlinkat(dir_fd, &b);
+    r
+}
+
+fn quarantine(dir_fd: i32, rename: &Rename) -> io::Result<String> {
     for n in 0..16u32 {
         let name = format!(".task.md.q.{}.{n}", std::process::id());
-        match rename_noreplace(dir_fd, "task.md", &name) {
+        match rename(dir_fd, "task.md", &name) {
             Err(e) if e.raw_os_error() == Some(libc::EEXIST) => continue,
             r => return r.map(|()| name),
         }
@@ -374,6 +399,10 @@ fn is_published(dir_fd: i32, name: &str, id: (u64, u64)) -> bool {
 }
 
 pub fn restore(prior: &Prior) {
+    restore_with(prior, &rename_noreplace)
+}
+
+fn restore_with(prior: &Prior, rename: &Rename) {
     let dir_fd = prior.dir.as_raw_fd();
     let staged = match &prior.before {
         Before::Created => None,
@@ -387,16 +416,25 @@ pub fn restore(prior: &Prior) {
             unlinkat(dir_fd, t);
         }
     };
-    let q = match quarantine(dir_fd) {
+    let q = match quarantine(dir_fd, rename) {
         Ok(q) => q,
-        Err(_) => {
-            eprintln!("tmgr-runner: .tmgr/task.md is gone or busy, left as it is");
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            eprintln!("tmgr-runner: .tmgr/task.md is gone, left as it is");
             drop_staged();
+            return;
+        }
+        Err(_) => {
+            match &staged {
+                Some(t) => eprintln!(
+                    "tmgr-runner: .tmgr/task.md could not be set aside; the previous content is kept as .tmgr/{t}"
+                ),
+                None => eprintln!("tmgr-runner: .tmgr/task.md could not be set aside, left as it is"),
+            }
             return;
         }
     };
     if !is_published(dir_fd, &q, prior.published) {
-        if rename_noreplace(dir_fd, &q, "task.md").is_err() {
+        if rename(dir_fd, &q, "task.md").is_err() {
             eprintln!("tmgr-runner: a foreign .tmgr/task.md was set aside as {q}");
         } else {
             eprintln!("tmgr-runner: .tmgr/task.md changed during the launch, left as it is");
@@ -405,7 +443,7 @@ pub fn restore(prior: &Prior) {
         return;
     }
     if let Some(t) = &staged {
-        if rename_noreplace(dir_fd, t, "task.md").is_err() {
+        if rename(dir_fd, t, "task.md").is_err() {
             eprintln!("tmgr-runner: .tmgr/task.md reappeared during the rollback, left as it is");
             unlinkat(dir_fd, t);
         }
@@ -648,6 +686,36 @@ mod tests {
         assert_eq!(fs::read_to_string(&task).unwrap(), "new");
         restore(&prior);
         assert_eq!(fs::read_to_string(&task).unwrap(), "keep");
+    }
+
+    #[test]
+    fn a_failed_quarantine_keeps_the_staged_backup() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        let task = d.path().join(".tmgr/task.md");
+        fs::create_dir(d.path().join(".tmgr")).unwrap();
+        fs::write(&task, "keep").unwrap();
+        let prior = write_context(dir.raw_fd(), "new").unwrap();
+        restore_with(&prior, &|_, _, _| {
+            Err(io::Error::from_raw_os_error(libc::EINVAL))
+        });
+        let kept: Vec<_> = fs::read_dir(d.path().join(".tmgr"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".task.md."))
+            .collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(fs::read_to_string(kept[0].path()).unwrap(), "keep");
+    }
+
+    #[test]
+    fn the_noreplace_probe_reports_an_unsupported_filesystem_and_cleans_up() {
+        let d = tempfile::tempdir().unwrap();
+        let dir = open_path(fs::canonicalize(d.path()).unwrap()).unwrap();
+        let bad = |_: i32, _: &str, _: &str| Err(io::Error::from_raw_os_error(libc::EINVAL));
+        assert!(probe_noreplace(dir.raw_fd(), &bad).is_err());
+        assert!(probe_noreplace(dir.raw_fd(), &rename_noreplace).is_ok());
+        assert_eq!(fs::read_dir(d.path()).unwrap().count(), 0);
     }
 
     #[test]
