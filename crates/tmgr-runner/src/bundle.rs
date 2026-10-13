@@ -229,9 +229,14 @@ fn exclude_from_git(cwd_fd: i32) {
         Ok(m) if m.is_file() && m.nlink() == 1 && m.len() <= MAX_EXCLUDE => {}
         _ => return,
     }
+    append_tmgr(&mut f);
+}
+
+fn append_tmgr(f: &mut File) {
     let mut cur = String::new();
-    if f.read_to_string(&mut cur).is_err() || cur.lines().any(|l| l == ".tmgr/") {
-        return;
+    match Read::by_ref(f).take(MAX_EXCLUDE + 1).read_to_string(&mut cur) {
+        Ok(n) if n as u64 <= MAX_EXCLUDE && !cur.lines().any(|l| l == ".tmgr/") => {}
+        _ => return,
     }
     let sep = if cur.is_empty() || cur.ends_with('\n') {
         ""
@@ -285,6 +290,7 @@ pub fn render(b: &RunBundle, sha256: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::OpenOptions;
     use tmgr_ipc::api::*;
 
     fn req(dir: &Path) -> RunCreateReq {
@@ -324,6 +330,29 @@ mod tests {
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }
+    }
+
+    #[test]
+    fn exclude_that_grew_past_the_limit_is_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exclude");
+        let big = "x\n".repeat(MAX_EXCLUDE as usize / 2 + 8);
+        fs::write(&path, &big).unwrap();
+        let mut f = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        append_tmgr(&mut f);
+        assert_eq!(fs::read_to_string(&path).unwrap(), big);
+        fs::write(&path, "a").unwrap();
+        let mut f = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&path)
+            .unwrap();
+        append_tmgr(&mut f);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "a\n.tmgr/\n");
     }
 
     #[test]
