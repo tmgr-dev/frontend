@@ -404,6 +404,11 @@ fn audit(ctx: &Ctx, paths: &Paths, a: &AuditArgs) -> Result<Output> {
     let log = Audit::new(&paths.audit_dir());
     if a.verify {
         return match log.verify()? {
+            Ok(v) if v.incomplete => Err(Error::internal(format!(
+                "audit chain intact over {} entries, but the newest entry is not anchored yet (incomplete)",
+                v.entries
+            ))
+            .hint("run it again after the next entry; a crash between append and anchor causes this")),
             Ok(v) => Ok(Output::new(
                 json!({"ok": true, "entries": v.entries, "files": v.files}),
                 format!(

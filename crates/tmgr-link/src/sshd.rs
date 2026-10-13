@@ -116,11 +116,121 @@ pub fn expand_token(token: &str, home: &Path, user: &str, uid: u32) -> Option<Pa
     Some(if p.is_absolute() { p } else { home.join(p) })
 }
 
+pub fn ambiguous(raw: &str, expanded: &Path) -> Option<String> {
+    let bad = |s: &str| s.contains(['*', '?', '[', '"', '\'', '\\']);
+    if bad(raw) || expanded.to_str().is_none_or(bad) {
+        Some(format!(
+            "AuthorizedKeysFile entry {raw:?} has glob or quoting characters and cannot be inspected reliably"
+        ))
+    } else {
+        None
+    }
+}
+
 pub fn default_files(home: &Path) -> Vec<PathBuf> {
     vec![
         home.join(".ssh").join("authorized_keys"),
         home.join(".ssh").join("authorized_keys2"),
     ]
+}
+
+const MAX_INCLUDE_DEPTH: usize = 8;
+
+fn wildcard(pattern: &[u8], name: &[u8]) -> bool {
+    match pattern.split_first() {
+        None => name.is_empty(),
+        Some((b'*', rest)) => (0..=name.len()).any(|i| wildcard(rest, &name[i..])),
+        Some((b'?', rest)) => !name.is_empty() && wildcard(rest, &name[1..]),
+        Some((c, rest)) => name.first() == Some(c) && wildcard(rest, &name[1..]),
+    }
+}
+
+pub fn expand_glob(pattern: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut paths = vec![PathBuf::from("/")];
+    for comp in pattern.components().skip(1) {
+        let s = comp
+            .as_os_str()
+            .to_str()
+            .ok_or("an Include path is not valid UTF-8")?;
+        if s.contains('[') || s.contains('"') {
+            return Err(format!("the Include pattern {s:?} is not supported"));
+        }
+        let mut next = Vec::new();
+        for base in &paths {
+            if s.contains(['*', '?']) {
+                let entries = match std::fs::read_dir(base) {
+                    Ok(e) => e,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(_) => return Err(format!("cannot list {}", base.display())),
+                };
+                for entry in entries.flatten() {
+                    if let Some(n) = entry.file_name().to_str() {
+                        if wildcard(s.as_bytes(), n.as_bytes()) {
+                            next.push(base.join(n));
+                        }
+                    }
+                }
+            } else {
+                next.push(base.join(s));
+            }
+        }
+        paths = next;
+    }
+    paths.retain(|p| p.exists());
+    paths.sort();
+    Ok(paths)
+}
+
+pub fn read_config_tree(root: &Path, base: &Path) -> Result<String, String> {
+    fn walk(
+        path: &Path,
+        base: &Path,
+        depth: usize,
+        seen: &mut Vec<PathBuf>,
+        out: &mut String,
+    ) -> Result<(), String> {
+        if depth > MAX_INCLUDE_DEPTH {
+            return Err("sshd_config Include nesting is too deep".into());
+        }
+        let canon =
+            std::fs::canonicalize(path).map_err(|_| format!("cannot read {}", path.display()))?;
+        if seen.contains(&canon) {
+            return Err("sshd_config has an Include cycle".into());
+        }
+        let text = std::fs::read_to_string(&canon)
+            .map_err(|_| format!("cannot read {}", canon.display()))?;
+        seen.push(canon);
+        out.push_str(&text);
+        out.push('\n');
+        for line in text.lines() {
+            let t = line.trim_start();
+            let mut words = t.split_whitespace();
+            if !words
+                .next()
+                .is_some_and(|k| k.eq_ignore_ascii_case("include"))
+            {
+                continue;
+            }
+            for pattern in words.take_while(|w| !w.starts_with('#')) {
+                let p = Path::new(pattern);
+                let full = if p.is_absolute() {
+                    p.to_path_buf()
+                } else {
+                    base.join(p)
+                };
+                for file in expand_glob(&full)? {
+                    if file.is_file() {
+                        walk(&file, base, depth + 1, seen, out)?;
+                    }
+                }
+            }
+        }
+        seen.pop();
+        Ok(())
+    }
+    let mut out = String::new();
+    walk(root, base, 0, &mut Vec::new(), &mut out)?;
+    Ok(out)
 }
 
 pub fn has_match_blocks(config: &str) -> bool {
@@ -133,7 +243,7 @@ pub fn has_match_blocks(config: &str) -> bool {
 
 pub trait Runner {
     fn effective(&self, user: &str, addr: &str) -> Result<String, String>;
-    fn config_text(&self) -> Option<String>;
+    fn config_text(&self) -> Result<String, String>;
 }
 
 pub fn contexts(from: &[String]) -> Vec<String> {
@@ -159,6 +269,7 @@ pub fn check_with(
         authorized_keys_files: default_files(home),
     };
     let mut violations: Vec<String> = Vec::new();
+    let mut doubts: Vec<String> = Vec::new();
     let mut files: Option<Vec<PathBuf>> = None;
     for addr in contexts(from) {
         let output = match runner.effective(user, &addr) {
@@ -173,7 +284,14 @@ pub fn check_with(
         let mut expanded = Vec::new();
         for token in authorized_keys_tokens(&output) {
             match expand_token(&token, home, user, uid) {
-                Some(p) => expanded.push(p),
+                Some(p) => {
+                    if let Some(why) = ambiguous(&token, &p) {
+                        if !doubts.contains(&why) {
+                            doubts.push(why);
+                        }
+                    }
+                    expanded.push(p)
+                }
                 None => violations.push(format!(
                     "AuthorizedKeysFile token {token:?} cannot be expanded and inspected"
                 )),
@@ -189,10 +307,17 @@ pub fn check_with(
     let authorized_keys_files = files.unwrap_or_else(|| default_files(home));
     let verdict = if !violations.is_empty() {
         Verdict::Violations(violations)
-    } else if runner.config_text().is_some_and(|t| has_match_blocks(&t)) {
-        Verdict::Unverified(MATCH_WARNING.to_string())
     } else {
-        Verdict::Verified
+        match runner.config_text() {
+            Err(why) => doubts.insert(0, why),
+            Ok(t) if has_match_blocks(&t) => doubts.push(MATCH_WARNING.to_string()),
+            Ok(_) => {}
+        }
+        if doubts.is_empty() {
+            Verdict::Verified
+        } else {
+            Verdict::Unverified(doubts.join("; "))
+        }
     };
     Check {
         verdict,
@@ -231,17 +356,8 @@ impl Runner for Real {
         }
     }
 
-    fn config_text(&self) -> Option<String> {
-        let mut text = std::fs::read_to_string("/etc/ssh/sshd_config").ok()?;
-        if let Ok(dir) = std::fs::read_dir("/etc/ssh/sshd_config.d") {
-            for entry in dir.flatten() {
-                if let Ok(t) = std::fs::read_to_string(entry.path()) {
-                    text.push('\n');
-                    text.push_str(&t);
-                }
-            }
-        }
-        Some(text)
+    fn config_text(&self) -> Result<String, String> {
+        read_config_tree(Path::new("/etc/ssh/sshd_config"), Path::new("/etc/ssh"))
     }
 }
 
@@ -362,7 +478,7 @@ mod tests {
 
     struct Fake {
         outputs: Vec<(String, Result<String, String>)>,
-        config: Option<String>,
+        config: Result<String, String>,
         asked: std::cell::RefCell<Vec<String>>,
     }
 
@@ -376,7 +492,7 @@ mod tests {
                 .unwrap()
         }
 
-        fn config_text(&self) -> Option<String> {
+        fn config_text(&self) -> Result<String, String> {
             self.config.clone()
         }
     }
@@ -391,7 +507,9 @@ mod tests {
                     Err("no root".into())
                 },
             )],
-            config: config.map(str::to_string),
+            config: config
+                .map(str::to_string)
+                .ok_or_else(|| "cannot read sshd_config".to_string()),
             asked: Default::default(),
         }
     }
@@ -407,7 +525,7 @@ mod tests {
                 ),
                 ("198.51.100.7".into(), Ok(GOOD.to_string())),
             ],
-            config: None,
+            config: Ok(String::new()),
             asked: Default::default(),
         };
         let c = check_with(
@@ -463,10 +581,122 @@ mod tests {
         let out = GOOD.replace(".ssh/authorized_keys .ssh/authorized_keys2", "/x/%z");
         let f = Fake {
             outputs: vec![("*".into(), Ok(out))],
-            config: None,
+            config: Ok(String::new()),
             asked: Default::default(),
         };
         let c = check_with(&f, "u", Path::new("/home/u"), 1, &[]);
         assert!(matches!(c.verdict, Verdict::Violations(_)));
+    }
+
+    #[test]
+    fn an_unreadable_config_never_verifies_even_when_sshd_t_worked() {
+        let c = check_with(&fake(true, None), "u", Path::new("/home/u"), 1, &[]);
+        assert!(matches!(c.verdict, Verdict::Unverified(ref w) if w.contains("cannot read")));
+    }
+
+    #[test]
+    fn glob_or_quoted_authorized_keys_entries_are_unverified() {
+        for raw in [
+            "/etc/keys/*",
+            "/etc/keys/a?",
+            "/etc/[ab]",
+            "\"/x y\"",
+            "/a\\ b",
+        ] {
+            let out = GOOD.replace(".ssh/authorized_keys .ssh/authorized_keys2", raw);
+            let f = Fake {
+                outputs: vec![("*".into(), Ok(out))],
+                config: Ok(String::new()),
+                asked: Default::default(),
+            };
+            let c = check_with(&f, "u", Path::new("/home/u"), 1, &[]);
+            assert!(
+                matches!(c.verdict, Verdict::Unverified(ref w) if w.contains("cannot be inspected")),
+                "{raw}: {:?}",
+                c.verdict
+            );
+        }
+        let f = Fake {
+            outputs: vec![("*".into(), Ok(GOOD.to_string()))],
+            config: Ok(String::new()),
+            asked: Default::default(),
+        };
+        assert_eq!(
+            check_with(&f, "u", Path::new("/home/u"), 1, &[]).verdict,
+            Verdict::Verified
+        );
+    }
+
+    fn tree() -> (tempfile::TempDir, PathBuf) {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        (d, root)
+    }
+
+    #[test]
+    fn includes_are_followed_with_globs_relative_to_the_base() {
+        let (_d, root) = tree();
+        std::fs::create_dir(root.join("conf.d")).unwrap();
+        std::fs::write(
+            root.join("sshd_config"),
+            "Port 22\nInclude conf.d/*.conf extra?.conf\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("conf.d/10.conf"), "X11Forwarding no\n").unwrap();
+        std::fs::write(
+            root.join("conf.d/20.conf"),
+            "Include conf.d/sub/deep.conf\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("conf.d/skip.txt"), "Match User nobody\n").unwrap();
+        std::fs::create_dir(root.join("conf.d/sub")).unwrap();
+        std::fs::write(
+            root.join("conf.d/sub/deep.conf"),
+            "Match Address 10.0.0.0/8\n",
+        )
+        .unwrap();
+        std::fs::write(root.join("extra1.conf"), "# nothing\n").unwrap();
+        let text = read_config_tree(&root.join("sshd_config"), &root).unwrap();
+        assert!(has_match_blocks(&text));
+        assert!(text.contains("X11Forwarding no") && !text.contains("nobody"));
+    }
+
+    #[test]
+    fn include_cycles_depth_and_missing_roots_are_errors() {
+        let (_d, root) = tree();
+        std::fs::write(root.join("a"), "Include b\n").unwrap();
+        std::fs::write(root.join("b"), "Include a\n").unwrap();
+        assert!(read_config_tree(&root.join("a"), &root)
+            .unwrap_err()
+            .contains("cycle"));
+        for i in 0..12 {
+            std::fs::write(root.join(format!("n{i}")), format!("Include n{}\n", i + 1)).unwrap();
+        }
+        std::fs::write(root.join("n12"), "Port 22\n").unwrap();
+        assert!(read_config_tree(&root.join("n0"), &root)
+            .unwrap_err()
+            .contains("deep"));
+        assert!(read_config_tree(&root.join("missing"), &root).is_err());
+        std::fs::write(root.join("c"), "Include [ab].conf\n").unwrap();
+        assert!(read_config_tree(&root.join("c"), &root).is_err());
+        std::fs::write(root.join("ok"), "Include nomatch*.conf\nPort 22\n").unwrap();
+        assert!(read_config_tree(&root.join("ok"), &root).is_ok());
+    }
+
+    #[test]
+    fn an_unreadable_include_is_an_error() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let (_d, root) = tree();
+        std::fs::write(root.join("main"), "Include secret.conf\n").unwrap();
+        std::fs::write(root.join("secret.conf"), "Match User x\n").unwrap();
+        std::fs::set_permissions(
+            root.join("secret.conf"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+        assert!(read_config_tree(&root.join("main"), &root).is_err());
     }
 }

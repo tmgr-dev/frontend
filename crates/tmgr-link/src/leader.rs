@@ -35,6 +35,8 @@ pub fn has_identity(paths: &Paths, cred: &CredentialStore) -> Result<bool> {
 }
 
 pub fn init(paths: &Paths, cred: &CredentialStore, rotate: bool) -> Result<Identity> {
+    tmgr_core::config::ensure_private_dir(&paths.config)?;
+    let _identity_lock = crate::store::lock(&paths.config.join("identity.lock"))?;
     let existing = has_identity(paths, cred)?;
     if existing && !rotate {
         return Err(
@@ -601,6 +603,41 @@ mod tests {
         let dir = key.path.parent().unwrap().to_path_buf();
         drop(key);
         assert!(!dir.exists());
+    }
+
+    #[test]
+    fn concurrent_inits_create_exactly_one_identity() {
+        let d = tempfile::tempdir().unwrap();
+        let root = d.path().to_path_buf();
+        let handles: Vec<_> = (0..6)
+            .map(|_| {
+                let root = root.clone();
+                std::thread::spawn(move || {
+                    let paths = Paths::under(&root);
+                    let cred = CredentialStore::with_keychain(
+                        &paths.config,
+                        KEY_ACCOUNT,
+                        Some(Backend::File),
+                        Box::new(NoKeychain),
+                    );
+                    init(&paths, &cred, false).is_ok()
+                })
+            })
+            .collect();
+        let ok = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|r| *r)
+            .count();
+        assert_eq!(ok, 1);
+        let paths = Paths::under(&root);
+        let events = crate::audit::Audit::new(&paths.audit_dir())
+            .tail(20)
+            .unwrap();
+        assert_eq!(
+            events.iter().filter(|e| e["event"] == "link.init").count(),
+            1
+        );
     }
 
     #[test]

@@ -28,6 +28,19 @@ pub struct Tampered {
 pub struct Verified {
     pub entries: u64,
     pub files: usize,
+    pub incomplete: bool,
+}
+
+struct Anchor {
+    seq: u64,
+    hash: String,
+    broken_at: Option<u64>,
+}
+
+enum AnchorState {
+    Missing,
+    Garbled,
+    Found(Anchor),
 }
 
 struct Tip {
@@ -92,19 +105,30 @@ impl Audit {
         self.dir.join("audit.jsonl")
     }
 
-    fn rotated(&self) -> Vec<(u64, PathBuf)> {
-        let mut out: Vec<(u64, PathBuf)> = std::fs::read_dir(&self.dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter_map(|e| {
-                let name = e.file_name().into_string().ok()?;
-                let n = name.strip_prefix("audit.")?.strip_suffix(".jsonl")?;
-                Some((n.parse::<u64>().ok()?, e.path()))
-            })
-            .collect();
+    fn rotated(&self) -> Result<Vec<(u64, PathBuf)>> {
+        let entries = match std::fs::read_dir(&self.dir) {
+            Ok(e) => e,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(e.into()),
+        };
+        let mut out: Vec<(u64, PathBuf)> = Vec::new();
+        for entry in entries {
+            let entry = entry?;
+            let Ok(name) = entry.file_name().into_string() else {
+                continue;
+            };
+            let Some(n) = name
+                .strip_prefix("audit.")
+                .and_then(|n| n.strip_suffix(".jsonl"))
+            else {
+                continue;
+            };
+            if let Ok(n) = n.parse::<u64>() {
+                out.push((n, entry.path()));
+            }
+        }
         out.sort();
-        out
+        Ok(out)
     }
 
     fn tip_of(path: &Path) -> Result<Option<Tip>> {
@@ -136,7 +160,7 @@ impl Audit {
         if let Some(t) = Self::tip_of(&self.current())? {
             return Ok(t);
         }
-        for (_, p) in self.rotated().into_iter().rev() {
+        for (_, p) in self.rotated()?.into_iter().rev() {
             if let Some(t) = Self::tip_of(&p)? {
                 return Ok(t);
             }
@@ -147,13 +171,56 @@ impl Audit {
         })
     }
 
-    pub fn append(&self, event: &str, fields: Value) -> Result<()> {
-        ensure_private_dir(&self.dir)?;
-        let _lock = crate::store::lock(&self.dir.join("audit.lock"))?;
-        let tip = self.tip()?;
+    fn read_anchor(&self) -> Result<AnchorState> {
+        let text = match std::fs::read_to_string(self.anchor_path()) {
+            Ok(t) => t,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(AnchorState::Missing),
+            Err(e) => return Err(e.into()),
+        };
+        let Ok(v) = serde_json::from_str::<Value>(&text) else {
+            return Ok(AnchorState::Garbled);
+        };
+        let (Some(seq), Some(hash)) = (
+            v.get("seq").and_then(Value::as_u64),
+            v.get("hash").and_then(Value::as_str),
+        ) else {
+            return Ok(AnchorState::Garbled);
+        };
+        Ok(AnchorState::Found(Anchor {
+            seq,
+            hash: hash.to_string(),
+            broken_at: v.get("broken_at").and_then(Value::as_u64),
+        }))
+    }
+
+    fn light_check(&self, tip: &Tip, anchor: &AnchorState) -> Option<String> {
+        match anchor {
+            AnchorState::Missing if tip.seq > 0 => Some("the anchor file is missing".into()),
+            AnchorState::Missing => None,
+            AnchorState::Garbled => Some("the anchor file is unreadable".into()),
+            AnchorState::Found(a) if a.seq > tip.seq => {
+                Some("the log was truncated: the anchor expects more entries".into())
+            }
+            AnchorState::Found(a) if a.seq == tip.seq && a.hash != tip.hash => {
+                Some("the last entry does not match the anchor".into())
+            }
+            AnchorState::Found(a) if a.seq + 1 < tip.seq => {
+                Some("entries were appended without the anchor".into())
+            }
+            AnchorState::Found(_) => None,
+        }
+    }
+
+    fn write_entry(
+        &self,
+        tip: &Tip,
+        event: &str,
+        fields: Value,
+        broken_at: Option<u64>,
+    ) -> Result<Tip> {
         let cur = self.current();
         if std::fs::metadata(&cur).is_ok_and(|m| m.len() >= self.rotate_at) {
-            if self.rotated().len() + 2 > self.max_files {
+            if self.rotated()?.len() + 2 > self.max_files {
                 return Err(
                     Error::internal("the audit log is full, refusing new requests")
                         .hint("archive the files in the audit directory, then retry"),
@@ -187,21 +254,64 @@ impl Audit {
         f.write_all(&line)?;
         f.sync_data()?;
         let body = &line[..line.len() - 1];
-        let anchor = json!({"seq": tip.seq + 1, "hash": sha256_hex(body)});
+        let hash = sha256_hex(body);
+        let mut anchor = json!({"seq": tip.seq + 1, "hash": hash});
+        if let Some(b) = broken_at {
+            anchor["broken_at"] = json!(b);
+        }
         tmgr_core::config::write_atomic(&self.anchor_path(), anchor.to_string().as_bytes(), 0o600)?;
+        Ok(Tip {
+            seq: tip.seq + 1,
+            hash,
+        })
+    }
+
+    pub fn append(&self, event: &str, fields: Value) -> Result<()> {
+        ensure_private_dir(&self.dir)?;
+        let _lock = crate::store::lock(&self.dir.join("audit.lock"))?;
+        let mut tip = self.tip()?;
+        let anchor = self.read_anchor()?;
+        let mut broken_at = match &anchor {
+            AnchorState::Found(a) => a.broken_at,
+            _ => None,
+        };
+        if let Some(reason) = self.light_check(&tip, &anchor) {
+            tip = self.write_entry(
+                &tip,
+                "chain_broken",
+                json!({"reason": reason}),
+                Some(tip.seq + 1),
+            )?;
+            broken_at = Some(tip.seq);
+        }
+        self.write_entry(&tip, event, fields, broken_at)?;
         Ok(())
     }
 
-    fn chain_files(&self) -> Vec<PathBuf> {
-        let mut files: Vec<PathBuf> = self.rotated().into_iter().map(|(_, p)| p).collect();
-        if self.current().exists() {
-            files.push(self.current());
+    fn chain_files(&self) -> Result<Vec<PathBuf>> {
+        let mut files: Vec<PathBuf> = self.rotated()?.into_iter().map(|(_, p)| p).collect();
+        match std::fs::symlink_metadata(self.current()) {
+            Ok(_) => files.push(self.current()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
         }
-        files
+        Ok(files)
     }
 
     pub fn verify(&self) -> Result<std::result::Result<Verified, Tampered>> {
-        let files = self.chain_files();
+        match std::fs::metadata(&self.dir) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Ok(Verified {
+                    entries: 0,
+                    files: 0,
+                    incomplete: false,
+                }))
+            }
+            Err(e) => return Err(e.into()),
+        }
+        let _lock = crate::store::lock(&self.dir.join("audit.lock"))?;
+        let files = self.chain_files()?;
         let mut prev_hash = GENESIS.to_string();
         let mut prev_seq = 0u64;
         let mut entries = 0u64;
@@ -255,25 +365,30 @@ impl Audit {
                 reason: reason.to_string(),
             }))
         };
-        match std::fs::read_to_string(self.anchor_path())
-            .ok()
-            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        {
-            None if entries == 0 && !self.anchor_path().exists() => {}
-            None => return anchor_fail("the anchor file is missing or unreadable"),
-            Some(a) => {
-                let seq = a.get("seq").and_then(Value::as_u64).unwrap_or(u64::MAX);
-                let hash = a.get("hash").and_then(Value::as_str).unwrap_or("");
-                if seq > prev_seq {
+        let mut incomplete = false;
+        match self.read_anchor()? {
+            AnchorState::Missing if entries == 0 => {}
+            AnchorState::Missing => return anchor_fail("the anchor file is missing"),
+            AnchorState::Garbled => return anchor_fail("the anchor file is unreadable"),
+            AnchorState::Found(a) => {
+                if let Some(b) = a.broken_at {
+                    return anchor_fail(&format!(
+                        "the log was reported broken at entry {b} (see its chain_broken entry)"
+                    ));
+                }
+                if a.seq > prev_seq {
                     return anchor_fail("the log was truncated: the anchor expects more entries");
                 }
-                if seq == prev_seq && hash != prev_hash {
+                if a.seq == prev_seq && a.hash != prev_hash {
                     return anchor_fail("the last entry does not match the anchor");
                 }
-                if seq + 1 == prev_seq && hash != before_hash {
-                    return anchor_fail("the last entries do not match the anchor");
+                if a.seq + 1 == prev_seq {
+                    if a.hash != before_hash {
+                        return anchor_fail("the last entries do not match the anchor");
+                    }
+                    incomplete = true;
                 }
-                if seq + 1 < prev_seq {
+                if a.seq + 1 < prev_seq {
                     return anchor_fail("entries were appended without the anchor");
                 }
             }
@@ -281,12 +396,13 @@ impl Audit {
         Ok(Ok(Verified {
             entries,
             files: files.len(),
+            incomplete,
         }))
     }
 
     pub fn tail(&self, n: usize) -> Result<Vec<Value>> {
         let mut out: Vec<Value> = Vec::new();
-        for path in self.chain_files().into_iter().rev() {
+        for path in self.chain_files()?.into_iter().rev() {
             let text = std::fs::read_to_string(&path)?;
             let mut lines: Vec<Value> = text
                 .lines()
@@ -351,7 +467,8 @@ mod tests {
             a.verify().unwrap(),
             Ok(Verified {
                 entries: 5,
-                files: 1
+                files: 1,
+                incomplete: false
             })
         );
         let first: Value = serde_json::from_str(&lines(&a)[0]).unwrap();
@@ -370,7 +487,8 @@ mod tests {
             a.verify().unwrap(),
             Ok(Verified {
                 entries: 0,
-                files: 0
+                files: 0,
+                incomplete: false
             })
         );
     }
@@ -477,7 +595,8 @@ mod tests {
             json!({"seq": prev["seq"], "hash": hash}).to_string(),
         )
         .unwrap();
-        assert!(a.verify().unwrap().is_ok());
+        let v = a.verify().unwrap().unwrap();
+        assert!(v.incomplete);
     }
 
     #[test]
@@ -492,7 +611,7 @@ mod tests {
             }
         }
         assert!(refused);
-        assert!(a.rotated().len() < 3);
+        assert!(a.rotated().unwrap().len() < 3);
         let v = a.verify().unwrap().unwrap();
         assert!(v.entries > 3);
         assert!(a.append("e", json!({})).is_err());
@@ -510,7 +629,7 @@ mod tests {
         assert!(v.files > 1, "{v:?}");
         let first_of_new: Value = serde_json::from_str(&lines(&a)[0]).unwrap();
         assert_ne!(first_of_new["prev"], GENESIS);
-        let rotated = a.rotated();
+        let rotated = a.rotated().unwrap();
         std::fs::remove_file(&rotated[0].1).unwrap();
         assert!(a.verify().unwrap().is_err());
     }
@@ -545,5 +664,99 @@ mod tests {
             (Some(1), Some("e"))
         );
         assert!(a.verify().unwrap().is_ok());
+    }
+
+    #[test]
+    fn appending_to_a_truncated_log_records_the_break_and_verify_keeps_reporting_it() {
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 4);
+        let mut l = lines(&a);
+        l.pop();
+        write_lines(&a, &l);
+        a.append("worker.request", json!({"link":"laptop"}))
+            .unwrap();
+        let log = a.tail(10).unwrap();
+        let broken: Vec<_> = log
+            .iter()
+            .filter(|e| e["event"] == "chain_broken")
+            .collect();
+        assert_eq!(broken.len(), 1);
+        assert!(broken[0]["reason"].as_str().unwrap().contains("truncated"));
+        let t = a.verify().unwrap().unwrap_err();
+        assert_eq!(t.file, "audit.anchor");
+        assert!(t.reason.contains("reported broken"));
+        a.append("worker.request", json!({"link":"laptop"}))
+            .unwrap();
+        assert_eq!(
+            a.tail(20)
+                .unwrap()
+                .iter()
+                .filter(|e| e["event"] == "chain_broken")
+                .count(),
+            1
+        );
+        assert!(a.verify().unwrap().is_err());
+    }
+
+    #[test]
+    fn a_missing_anchor_is_recorded_as_a_break_on_the_next_append() {
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 2);
+        std::fs::remove_file(d.path().join("audit.anchor")).unwrap();
+        a.append("e", json!({})).unwrap();
+        assert!(a
+            .tail(5)
+            .unwrap()
+            .iter()
+            .any(|e| e["event"] == "chain_broken"));
+        assert!(a.verify().unwrap().is_err());
+    }
+
+    #[test]
+    fn an_unreadable_log_fails_verification_instead_of_looking_empty() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            return;
+        }
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 2);
+        std::fs::set_permissions(a.current(), std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(a.verify().is_err());
+        std::fs::set_permissions(a.current(), std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::set_permissions(
+            d.path().join("audit.anchor"),
+            std::fs::Permissions::from_mode(0o000),
+        )
+        .unwrap();
+        assert!(a.verify().is_err());
+        std::fs::set_permissions(
+            d.path().join("audit.anchor"),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
+        assert!(a.verify().unwrap().is_ok());
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o000)).unwrap();
+        let denied = a.verify().is_err();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(denied);
+    }
+
+    #[test]
+    fn verify_holds_the_audit_lock_for_its_whole_run() {
+        let d = tempfile::tempdir().unwrap();
+        let a = filled(d.path(), 2);
+        let guard = crate::store::lock(&d.path().join("audit.lock")).unwrap();
+        let dir = d.path().to_path_buf();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let r = Audit::new(&dir).verify().unwrap().is_ok();
+            tx.send(r).unwrap();
+        });
+        assert!(rx
+            .recv_timeout(std::time::Duration::from_millis(300))
+            .is_err());
+        drop(guard);
+        assert!(rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap());
+        drop(a);
     }
 }

@@ -1,10 +1,11 @@
 use std::time::Duration;
 use tmgr_link::proto::{Timed, MAX_FRAME};
 use tmgr_link::store::Paths;
-use tmgr_link::worker::{check_argv, serve, Env, Limits};
+use tmgr_link::worker::{check_argv, serve, watchdog, Env, Limits};
 
 const IDLE: Duration = Duration::from_secs(30);
 const SESSION: Duration = Duration::from_secs(600);
+const GRACE: Duration = Duration::from_secs(10);
 
 pub fn run() -> i32 {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
@@ -16,6 +17,7 @@ pub fn run() -> i32 {
         eprintln!("tmgr worker: refused");
         return 1;
     };
+    let _watchdog = watchdog(SESSION + GRACE, || std::process::exit(1));
     let mut chan = Timed::spawn(
         std::io::stdin(),
         std::io::stdout(),

@@ -47,6 +47,10 @@ impl Paths {
         self.config.join("link_key.pub")
     }
 
+    pub fn pending_marker(&self, name: &str) -> PathBuf {
+        self.config.join("link-pending").join(name)
+    }
+
     pub fn audit_dir(&self) -> PathBuf {
         self.state.join("link-audit")
     }

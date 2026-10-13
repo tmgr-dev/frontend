@@ -135,6 +135,12 @@ pub fn plan_trust(
             ));
         }
     }
+    if is_pending(paths, &name) {
+        return Err(Error::conflict(format!(
+            "a previous change of {name} could not be rolled back"
+        ))
+        .hint(format!("tmgr link revoke {name}")));
+    }
     let store = Store::load(paths)?;
     if store.leaders.contains_key(&name) {
         return Err(
@@ -172,6 +178,43 @@ pub fn plan_trust(
     })
 }
 
+pub fn is_pending(paths: &Paths, name: &str) -> bool {
+    paths.pending_marker(name).exists()
+}
+
+fn mark_pending(paths: &Paths, name: &str) -> Result<()> {
+    let marker = paths.pending_marker(name);
+    if let Some(dir) = marker.parent() {
+        tmgr_core::config::ensure_private_dir(dir)?;
+    }
+    tmgr_core::config::write_atomic(&marker, b"pending\n", 0o600)
+}
+
+fn rollback(
+    paths: &Paths,
+    name: &str,
+    edit: Option<&authkeys::Edit>,
+    store_reverted: bool,
+) -> Result<()> {
+    let restored = match edit {
+        Some(e) => authkeys::restore(e),
+        None => Ok(()),
+    };
+    if restored.is_ok() && store_reverted {
+        return Ok(());
+    }
+    let marked = mark_pending(paths, name);
+    let note = if marked.is_ok() {
+        "the link is blocked until it is revoked"
+    } else {
+        "the link could not even be marked as blocked"
+    };
+    Err(
+        Error::internal(format!("rollback failed for {name}: {note}"))
+            .hint(format!("tmgr link revoke {name}")),
+    )
+}
+
 fn changed_meanwhile() -> Error {
     Error::conflict("links.toml changed while you were confirming").hint("run the command again")
 }
@@ -204,9 +247,9 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
         },
     );
     if let Err(e) = store.save(paths) {
-        let _ = authkeys::restore(&edit);
+        let rolled = rollback(paths, &plan.name, Some(&edit), true);
         let _ = audit.append("link.trust.aborted", json!({"link": plan.name}));
-        return Err(e);
+        return Err(rolled.err().unwrap_or(e));
     }
     let done = audit.append(
         "link.trust",
@@ -220,9 +263,9 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
     );
     if let Err(e) = done {
         store.leaders.remove(&plan.name);
-        let _ = store.save(paths);
-        let _ = authkeys::restore(&edit);
-        return Err(e);
+        let saved = store.save(paths);
+        let rolled = rollback(paths, &plan.name, Some(&edit), saved.is_ok());
+        return Err(rolled.err().unwrap_or(e));
     }
     Ok(edit)
 }
@@ -298,19 +341,14 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
     } else {
         None
     };
-    let rollback = |edit: &Option<authkeys::Edit>| {
-        if let Some(e) = edit {
-            let _ = authkeys::restore(e);
-        }
-    };
     let Some(leader) = store.leaders.get_mut(&plan.name) else {
-        rollback(&edit);
+        rollback(paths, &plan.name, edit.as_ref(), true)?;
         return Err(Error::not_found(format!("no leader named {}", plan.name)));
     };
     leader.scope = plan.new.clone();
     if let Err(e) = store.save(paths) {
-        rollback(&edit);
-        return Err(e);
+        let rolled = rollback(paths, &plan.name, edit.as_ref(), true);
+        return Err(rolled.err().unwrap_or(e));
     }
     let done = audit.append("link.scope", fields);
     if plan.widening {
@@ -318,9 +356,9 @@ pub fn apply_scope(paths: &Paths, plan: &ScopePlan, bin: &Path) -> Result<()> {
             if let Some(l) = store.leaders.get_mut(&plan.name) {
                 l.scope = plan.old.clone();
             }
-            let _ = store.save(paths);
-            rollback(&edit);
-            return Err(e);
+            let saved = store.save(paths);
+            let rolled = rollback(paths, &plan.name, edit.as_ref(), saved.is_ok());
+            return Err(rolled.err().unwrap_or(e));
         }
     }
     Ok(())
@@ -336,20 +374,36 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
     grammar::link_name(name)?;
     let _lock = crate::store::lock_links(paths)?;
     let mut store = Store::load(paths)?;
-    let leader = store.leaders.remove(name).ok_or_else(|| {
-        Error::not_found(format!("no leader named {name}")).hint("tmgr link list")
-    })?;
-    let saved = store.save(paths);
+    let pending = is_pending(paths, name);
+    let leader = match store.leaders.remove(name) {
+        Some(l) => Some(l),
+        None if pending => None,
+        None => {
+            return Err(Error::not_found(format!("no leader named {name}")).hint("tmgr link list"))
+        }
+    };
+    let saved = if leader.is_some() {
+        store.save(paths)
+    } else {
+        Ok(())
+    };
     let audit = Audit::new(&paths.audit_dir());
-    let edit = authkeys::remove(&leader_keys_path(paths, &leader), name);
+    let keys_path = leader
+        .as_ref()
+        .map_or_else(|| paths.authorized_keys(), |l| leader_keys_path(paths, l));
+    let edit = authkeys::remove(&keys_path, name);
+    if saved.is_ok() && edit.is_ok() {
+        let _ = std::fs::remove_file(paths.pending_marker(name));
+    }
     let audited = audit.append(
         "link.revoke",
         json!({
             "link": name,
-            "fingerprint": leader.fingerprint,
+            "fingerprint": leader.as_ref().map(|l| l.fingerprint.clone()),
             "keys_removed": edit.as_ref().map_or(0, |e| e.removed),
             "authorized_keys_error": edit.is_err(),
             "store_error": saved.is_err(),
+            "pending_cleanup": pending,
         }),
     );
     saved?;
@@ -789,6 +843,41 @@ mod tests {
         );
         assert!(audit.verify().unwrap().is_ok());
         assert_eq!(revoke(&f.paths, "laptop").unwrap_err().exit_code(), 3);
+    }
+
+    #[test]
+    fn a_failed_rollback_blocks_the_link_until_it_is_revoked() {
+        let f = fx();
+        let (_, key) = trust(&f, "laptop");
+        let gone = authkeys::Edit {
+            changed: true,
+            existed: true,
+            original: b"x".to_vec(),
+            mode: Some(0o600),
+            path: f.paths.home.join("no-such-dir").join("authorized_keys"),
+            ..Default::default()
+        };
+        let e = rollback(&f.paths, "laptop", Some(&gone), true).unwrap_err();
+        assert_eq!(e.exit_code(), 1);
+        assert_eq!(e.hint.as_deref(), Some("tmgr link revoke laptop"));
+        assert!(is_pending(&f.paths, "laptop"));
+        let again = plan_trust(
+            &f.paths,
+            &input(&f, "laptop", &key.openssh()),
+            &f.bin,
+            chk(&f),
+        )
+        .unwrap_err();
+        assert_eq!(again.exit_code(), 6);
+        revoke(&f.paths, "laptop").unwrap();
+        assert!(!is_pending(&f.paths, "laptop"));
+        assert!(rollback(&f.paths, "laptop", None, true).is_ok());
+        assert!(!is_pending(&f.paths, "laptop"));
+        assert!(rollback(&f.paths, "laptop", None, false).is_err());
+        assert!(is_pending(&f.paths, "laptop"));
+        let r = revoke(&f.paths, "laptop").unwrap();
+        assert_eq!(r.keys_removed, 0);
+        assert!(!is_pending(&f.paths, "laptop"));
     }
 
     #[test]

@@ -25,7 +25,11 @@ impl Scope {
             .any(|r| !old.repos.iter().any(|o| Path::new(r).starts_with(o)));
         let agents = self.agents.iter().any(|a| !old.agents.contains(a));
         let from = !old.from.is_empty()
-            && (self.from.is_empty() || self.from.iter().any(|f| !old.from.contains(f)));
+            && (self.from.is_empty()
+                || self
+                    .from
+                    .iter()
+                    .any(|f| !old.from.iter().any(|o| cidr_within(f, o))));
         let models = !old.models.is_empty()
             && (self.models.is_empty() || self.models.iter().any(|m| !old.models.contains(m)));
         repos || agents || models || self.max > old.max || from
@@ -57,6 +61,25 @@ impl Scope {
             self.max
         )
     }
+}
+
+fn split_cidr(c: &str) -> Option<(std::net::IpAddr, u32)> {
+    let (addr, prefix) = match c.split_once('/') {
+        Some((a, p)) => (a, Some(p.parse::<u32>().ok()?)),
+        None => (c, None),
+    };
+    let ip: std::net::IpAddr = addr.parse().ok()?;
+    let bits = if ip.is_ipv4() { 32 } else { 128 };
+    let prefix = prefix.unwrap_or(bits);
+    (prefix <= bits).then_some((ip, prefix))
+}
+
+pub fn cidr_within(inner: &str, outer: &str) -> bool {
+    let (Some((ip, ip_prefix)), Some((_, outer_prefix))) = (split_cidr(inner), split_cidr(outer))
+    else {
+        return false;
+    };
+    ip_prefix >= outer_prefix && crate::worker::cidr_contains(outer, ip)
 }
 
 pub fn canonical_repo(raw: &str) -> Result<String, String> {
@@ -397,6 +420,33 @@ mod tests {
         let mut any_to_cidr = base.clone();
         any_to_cidr.from.clear();
         assert!(!base.widens(&any_to_cidr));
+    }
+
+    #[test]
+    fn cidrs_are_compared_by_containment() {
+        assert!(cidr_within("192.0.2.0/25", "192.0.2.0/24"));
+        assert!(cidr_within("192.0.2.77", "192.0.2.0/24"));
+        assert!(cidr_within("192.0.2.0/24", "192.0.2.0/24"));
+        assert!(!cidr_within("192.0.2.0/24", "192.0.2.0/25"));
+        assert!(!cidr_within("192.0.2.0/23", "192.0.2.0/24"));
+        assert!(!cidr_within("198.51.100.0/24", "192.0.2.0/24"));
+        assert!(!cidr_within("2001:db8::/48", "192.0.2.0/24"));
+        assert!(cidr_within("2001:db8:1::/48", "2001:db8::/32"));
+        assert!(!cidr_within("nonsense", "192.0.2.0/24"));
+        let old = Scope {
+            from: vec!["192.0.2.0/24".into()],
+            ..Scope::default()
+        };
+        let narrower = Scope {
+            from: vec!["192.0.2.128/25".into(), "192.0.2.5".into()],
+            ..Scope::default()
+        };
+        let wider = Scope {
+            from: vec!["192.0.0.0/16".into()],
+            ..Scope::default()
+        };
+        assert!(!narrower.widens(&old));
+        assert!(wider.widens(&old));
     }
 
     #[test]

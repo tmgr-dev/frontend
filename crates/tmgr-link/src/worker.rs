@@ -45,6 +45,18 @@ pub fn check_argv(args: &[OsString]) -> Result<(String, String)> {
     Ok((name.to_string(), enrollment.to_string()))
 }
 
+pub struct Watchdog(#[allow(dead_code)] std::sync::mpsc::Sender<()>);
+
+pub fn watchdog(after: std::time::Duration, on_expire: impl FnOnce() + Send + 'static) -> Watchdog {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        if let Err(std::sync::mpsc::RecvTimeoutError::Timeout) = rx.recv_timeout(after) {
+            on_expire();
+        }
+    });
+    Watchdog(tx)
+}
+
 pub struct Slot(#[allow(dead_code)] std::fs::File);
 
 impl Slot {
@@ -147,6 +159,9 @@ impl Conn<'_> {
 
     fn current(&self) -> Result<std::result::Result<Scope, &'static str>> {
         let store = Store::load(self.paths)?;
+        if crate::follower::is_pending(self.paths, self.name) {
+            return Ok(Err("link blocked after a failed rollback"));
+        }
         let Some(leader) = store.leaders.get(self.name) else {
             return Ok(Err("link revoked"));
         };
@@ -188,6 +203,13 @@ pub fn serve(
     let store = Store::load(paths)?;
     let leader = store.leaders.get(name).ok_or_else(refused)?;
     let audit = Audit::new(&paths.audit_dir());
+    if crate::follower::is_pending(paths, name) {
+        let _ = audit.append(
+            "worker.refused",
+            json!({"link": name, "fp": leader.fingerprint, "reason": "link blocked after a failed rollback"}),
+        );
+        return Err(refused());
+    }
     if leader.enrollment != enrollment {
         let _ = audit.append(
             "worker.refused",
@@ -943,5 +965,69 @@ mod tests {
             .find(|e| e["event"] == "worker.request")
             .unwrap();
         assert_eq!(ev["args"]["repo_canonical"], f.repo);
+    }
+
+    #[test]
+    fn the_watchdog_fires_after_the_lifetime_and_can_be_cancelled() {
+        let fired = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let f = std::sync::Arc::clone(&fired);
+        let wd = watchdog(std::time::Duration::from_millis(100), move || {
+            f.store(true, std::sync::atomic::Ordering::SeqCst)
+        });
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert!(fired.load(std::sync::atomic::Ordering::SeqCst));
+        drop(wd);
+        let fired2 = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let f2 = std::sync::Arc::clone(&fired2);
+        let wd = watchdog(std::time::Duration::from_millis(200), move || {
+            f2.store(true, std::sync::atomic::Ordering::SeqCst)
+        });
+        drop(wd);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert!(!fired2.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn a_pending_link_is_refused_at_connect_and_mid_session() {
+        let f = fx();
+        let marker = f.paths.pending_marker("laptop");
+        std::fs::create_dir_all(marker.parent().unwrap()).unwrap();
+        std::fs::write(&marker, "pending").unwrap();
+        let mut sink = Vec::new();
+        let mut chan = Framed::new(Cursor::new(vec![]), &mut sink);
+        assert!(serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(5)).is_err());
+        assert_eq!(
+            events(&f)[0]["reason"],
+            "link blocked after a failed rollback"
+        );
+        std::fs::remove_file(&marker).unwrap();
+        struct Block<'a>(&'a Paths, Vec<Vec<u8>>);
+        impl Channel for Block<'_> {
+            fn recv(&mut self) -> std::result::Result<Option<Vec<u8>>, FrameError> {
+                Ok(if self.1.is_empty() {
+                    None
+                } else {
+                    Some(self.1.remove(0))
+                })
+            }
+            fn send(&mut self, payload: &[u8]) -> std::result::Result<(), FrameError> {
+                if payload.windows(6).any(|w| w == b"\"role\"") {
+                    let m = self.0.pending_marker("laptop");
+                    std::fs::create_dir_all(m.parent().unwrap()).unwrap();
+                    std::fs::write(m, "pending").unwrap();
+                }
+                Ok(())
+            }
+        }
+        let reqs = vec![
+            serde_json::to_vec(&json!({"id":1,"method":"hello"})).unwrap(),
+            serde_json::to_vec(&json!({"id":2,"method":"runs.list"})).unwrap(),
+        ];
+        let mut chan = Block(&f.paths, reqs);
+        serve(&f.paths, "laptop", ENR, &env(), &mut chan, &lim(10)).unwrap();
+        assert_eq!(
+            events(&f).pop().unwrap()["reason"],
+            "link blocked after a failed rollback"
+        );
     }
 }
