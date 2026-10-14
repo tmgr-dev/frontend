@@ -684,11 +684,26 @@ fn the_runner_and_its_shims_do_not_inherit_the_starting_shell_environment() {
     let shim_env = env_of(info.shim_pid);
     let _ = c.kill(&info.id, "kill");
     let _ = c.stop();
-    assert!(runner_env.contains("TMGR_RUNNER_DIR"), "{runner_env}");
-    assert!(!runner_env.contains("s3cr3t-shell-value"), "{runner_env}");
-    assert!(!shim_env.contains("s3cr3t-shell-value"), "{shim_env}");
-    assert!(!runner_env.contains("s3cr3t-notify-value"), "{runner_env}");
-    assert!(!shim_env.contains("s3cr3t-notify-value"), "{shim_env}");
+    assert!(
+        runner_env.contains("TMGR_RUNNER_DIR"),
+        "runner env lacks TMGR_RUNNER_DIR"
+    );
+    assert!(
+        !runner_env.contains("s3cr3t-shell-value"),
+        "shell variable reached the runner"
+    );
+    assert!(
+        !shim_env.contains("s3cr3t-shell-value"),
+        "shell variable reached the shim"
+    );
+    assert!(
+        !runner_env.contains("s3cr3t-notify-value"),
+        "notify token reached the runner"
+    );
+    assert!(
+        !shim_env.contains("s3cr3t-notify-value"),
+        "notify token reached the shim"
+    );
 }
 
 #[test]
