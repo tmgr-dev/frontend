@@ -253,6 +253,9 @@ const installProbe = () => {
           el.isContentEditable,
         isActive: el === document.activeElement,
         focusVisible: el.matches(':focus-visible'),
+        noBand: el.matches(
+          "[type='checkbox'], [type='radio'], [role='switch']",
+        ),
         outlineStyle: cs.outlineStyle,
         outlineWidth: parseFloat(cs.outlineWidth),
         outlineColor: cs.outlineColor,
@@ -525,13 +528,23 @@ function expectKeyboardStops(stops, ref, label, { min = 4 } = {}) {
       `${label}: outline not inset (D-002)`,
     )
     .toEqual([]);
-  if (controls.length)
+  const banded = controls.filter((s) => !s.noBand);
+  if (banded.length)
     expect
       .soft(
-        [...new Set(controls.map((s) => firstLayer(s.ownShadow)))],
+        [...new Set(banded.map((s) => firstLayer(s.ownShadow)))],
         `${label}: one inner band (first box-shadow layer) on every Tab stop (D-010)`,
       )
       .toEqual([ref.band]);
+  // Checkbox, radio and switch get the outline only, so checked fills stay visible.
+  expect
+    .soft(
+      controls
+        .filter((s) => s.noBand && /4px inset$/.test(firstLayer(s.ownShadow)))
+        .map((s) => fmt(s, s.ownShadow)),
+      `${label}: checkbox/radio/switch draw no inner band`,
+    )
+    .toEqual([]);
   expect
     .soft(
       stops
