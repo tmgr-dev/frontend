@@ -10,7 +10,7 @@
 				<input
 					v-model="settings.round_hours_up"
 					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
+					class="h-4 w-4 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
 					@change="emitSettings"
 				/>
 				<span>Round hours up</span>
@@ -21,7 +21,7 @@
 				<input
 					v-model="settings.zero_expected_weekends"
 					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
+					class="h-4 w-4 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
 					@change="emitSettings"
 				/>
 				<span>Zero expected hours on off-days</span>
@@ -43,7 +43,7 @@
 								settings.weekend_days.length === 1 &&
 								settings.weekend_days.includes(day.value)
 							"
-							class="h-3.5 w-3.5 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
+							class="h-3.5 w-3.5 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
 							@change="toggleWeekendDay(day.value)"
 						/>
 						<span class="text-xs">{{ day.label }}</span>
@@ -92,7 +92,7 @@
 				<input
 					v-model="settings.parse_date_from_title"
 					type="checkbox"
-					class="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800"
+					class="h-4 w-4 rounded border-gray-300 text-green-600 dark:border-gray-600 dark:bg-gray-800"
 					@change="emitSettings"
 				/>
 				<span>Parse date from task title</span>

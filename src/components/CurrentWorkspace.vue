@@ -139,7 +139,7 @@
 						@click="createNewWorkspaceInvitation()"
 						:disabled="flags.isLoading"
 						:class="{ 'bg-neutral-400 hover:bg-neutral-400': flags.isLoading }"
-						class="mr-5 mt-5 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+						class="mr-5 mt-5 w-full rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 sm:mb-0"
 						type="button"
 					>
 						{{ flags.isLoading ? 'Creating...' : 'Send Invitation' }}

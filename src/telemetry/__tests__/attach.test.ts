@@ -1,11 +1,22 @@
 /** @jest-environment jsdom */
-import { attachTelemetry } from '../attach';
+import { attachTelemetry, onMainWindowClose } from '../attach';
 import { createUsageConsent, USAGE_KEY } from '../consent';
 import { makeMeta, telemetryBaseUrl } from '../env';
 import { IDENTITY_KEY } from '../identity';
 import { FakeChannel, makeTab, setConsent, tick } from './harness';
 
+const listen = jest.fn();
+let windowLabel = 'main';
+jest.mock('@tauri-apps/api/window', () => ({
+	getCurrentWindow: () => ({
+		label: windowLabel,
+		listen: (...args: unknown[]) => listen(...args),
+	}),
+}));
+
 beforeEach(() => {
+	listen.mockReset();
+	windowLabel = 'main';
 	localStorage.clear();
 	FakeChannel.all = [];
 });
@@ -96,4 +107,21 @@ describe('environment', () => {
 		expect(telemetryBaseUrl('/api', 'https://tmgr.dev')).toBe('https://tmgr.dev/api/');
 		expect(telemetryBaseUrl(undefined, 'https://tmgr.dev')).toBe('https://tmgr.dev/api/');
 	});
+});
+
+describe('desktop close hook', () => {
+	it('listens for close only in the main window, which hides instead of closing', async () => {
+		const handler = () => {};
+		await onMainWindowClose(handler);
+		expect(listen).toHaveBeenCalledWith('tauri://close-requested', handler);
+	});
+
+	it.each(['page-ws-1', 'task-ws-1', 'quick-add'])(
+		'leaves %s closable: a close-requested listener would make Tauri block the close',
+		async (label) => {
+			windowLabel = label;
+			await onMainWindowClose(() => {});
+			expect(listen).not.toHaveBeenCalled();
+		},
+	);
 });

@@ -3076,7 +3076,7 @@
 					</div>
 					<div
 						v-if="isModal && form.id && showSurface('comments.composer')"
-						class="mb-1.5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
+						class="mb-1.5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 						@mousedown.stop
 					>
 						<input
@@ -3278,7 +3278,7 @@
 						>
 					</div>
 					<div
-						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
+						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 					>
 						<input
 							v-model="newComment"

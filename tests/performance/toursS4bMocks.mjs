@@ -188,18 +188,25 @@ export const mockGraph = async (page) => {
   );
 };
 
-const category = { id: 9, title: 'Fixture', code: 'FIX', workspace_id: 1, deleted_at: null, settings: [], parent_id: null };
+const category = { id: 9, title: 'Fixture', code: 'FIX', workspace_id: 1, deleted_at: null, settings: [], project_category_id: null };
 
 export const mockMisc = async (page, calls, { timers = false } = {}) => {
+  const categories = [{ ...category }];
   await page.route('**/api/project_categories**', (route) => {
     const request = route.request();
-    if (request.method() === 'POST') {
+    const path = new URL(request.url()).pathname.replace(/^.*\/api\//, '');
+    if (request.method() === 'POST' && path === 'project_categories') {
       calls.push('POST project_categories');
-      return route.fulfill({ json: { data: category } });
+      const body = request.postDataJSON();
+      const created = { ...category, id: 10, title: body.title, code: body.code };
+      categories.push(created);
+      return route.fulfill({ json: { data: created } });
     }
-    if (request.method() === 'GET' && /project_categories\/children\/?(\?|$)/.test(request.url())) {
+    if (request.method() === 'GET' && path === 'project_categories') return route.fulfill({ json: { data: categories } });
+    if (request.method() === 'GET' && path === 'project_categories/settings') return route.fulfill({ json: { data: [] } });
+    if (request.method() === 'GET' && /^project_categories\/children\/?$/.test(path)) {
       return route.fulfill({
-        json: { data: [{ ...category, children_count: 0 }], meta: { current_page: 1, per_page: 15, last_page: 1, total: 1 }, links: {} },
+        json: { data: categories.map((c) => ({ ...c, children_count: 0 })), meta: { current_page: 1, per_page: 15, last_page: 1, total: categories.length }, links: {} },
       });
     }
     return route.fallback();

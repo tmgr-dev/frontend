@@ -22,6 +22,7 @@ import $axios from '@/plugins/axios';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
 import { installFileDropGuard } from '@/utils/fileDrag';
+import { installFocusSource } from '@/utils/focusSource';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import '@fontsource/instrument-serif/400-italic.css';
 import '@fontsource/instrument-serif/400.css';
@@ -203,6 +204,7 @@ const start = async () => {
 
 	if (isDesktopApp()) installDesktopDiagnostics(app, router, store);
 
+	installFocusSource(document);
 	app.mount('#app');
 	startPrivacy();
 	void import('@/telemetry/start').then(({ startTelemetry }) =>

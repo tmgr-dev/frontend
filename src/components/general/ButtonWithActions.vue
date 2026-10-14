@@ -1,6 +1,6 @@
 <template>
 	<div
-		:class="`relative rounded font-bold text-white shadow-md hover:rounded focus:outline-none ${buttonClass} w-full`"
+		:class="`relative rounded font-bold text-white shadow-md hover:rounded ${buttonClass} w-full`"
 	>
 		<button
 			:class="`h-full px-4`"

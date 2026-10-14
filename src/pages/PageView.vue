@@ -66,7 +66,7 @@
 						<input
 							v-model="form.title"
 							type="text"
-							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] font-bold leading-tight tracking-tight text-ink placeholder-gray-400 focus:outline-none focus:ring-0 dark:placeholder-gray-500 md:text-[2.25rem]"
+							class="w-full min-w-0 truncate border-0 bg-transparent p-0 text-[1.75rem] font-bold leading-tight tracking-tight text-ink placeholder-gray-400 dark:placeholder-gray-500 md:text-[2.25rem]"
 							placeholder="Untitled"
 							:title="form.title"
 							maxlength="255"

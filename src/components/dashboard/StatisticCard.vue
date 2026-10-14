@@ -1,15 +1,5 @@
 <template>
-	<div
-		:class="cardClasses"
-		@click="handleClick"
-		@keydown.enter="handleClick"
-		@keydown.space.prevent="handleClick"
-		tabindex="0"
-		role="button"
-		:aria-label="`${title}: ${displayValue}. ${
-			description || ''
-		} Click to view details.`"
-	>
+	<div :class="cardClasses" @click="handleClick">
 		<div class="flex items-start gap-3">
 			<div :class="iconClasses">
 				<component :is="iconComponent" class="h-5 w-5" />
@@ -117,7 +107,6 @@
 		return cn(
 			'rounded-card border border-line bg-surface p-4 min-h-28 shadow-tmgr-xs',
 			'hover:shadow-tmgr-md hover:border-line-strong transition-all duration-150',
-			'cursor-pointer focus:outline-none focus:shadow-tmgr-focus',
 			props.loading && 'animate-pulse',
 		);
 	});

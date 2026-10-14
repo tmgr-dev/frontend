@@ -38,6 +38,20 @@ describe('titlePatternHandler date masks', () => {
 		);
 	});
 
+	it('keeps words before and after a date token', () => {
+		expect(titlePatternHandler('Report {dts#dd.mm#dte}')).toBe('Report 19.02');
+		expect(titlePatternHandler('Sprint {dts#dd#dte} done')).toBe(
+			'Sprint 19 done',
+		);
+	});
+
+	it('leaves an unfinished or unformattable token as typed', () => {
+		expect(titlePatternHandler('Sprint {dts#dd')).toBe('Sprint {dts#dd');
+		expect(titlePatternHandler('{dts#note#dte} x')).toBe(
+			'{dts#note#dte} x',
+		);
+	});
+
 	it('substitutes index placeholders', () => {
 		expect(
 			titlePatternHandler('task {index#category}', new Map([['category', 3]])),

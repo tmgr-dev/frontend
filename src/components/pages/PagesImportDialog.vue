@@ -111,7 +111,7 @@
 					When a title already exists
 					<select
 						v-model="flow.policy.value"
-						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring"
+						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none"
 						data-testid="pages-import-policy"
 					>
 						<option value="rename">Rename (adds (2))</option>

@@ -28,7 +28,7 @@
 				<div class="mt-4 flex items-center gap-2">
 					<select
 						v-model="selectedAction"
-						class="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+						class="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 outline-none dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
 					>
 						<optgroup v-if="simpleMode" label="Update tasks">
 							<option
@@ -79,7 +79,7 @@
 					</select>
 					<button
 						data-tour="export.download"
-						class="flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+						class="flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700"
 						:disabled="isLoading"
 						@click="executeAction"
 					>

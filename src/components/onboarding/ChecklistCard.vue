@@ -45,7 +45,7 @@
 						<button
 							type="button"
 							role="menuitem"
-							class="block min-h-[44px] w-full px-3 text-left text-sm text-ink hover:bg-surface-hover sm:min-h-[32px]"
+							class="block min-h-[44px] w-full px-3 text-left text-sm text-ink hover:bg-surface-hover focus-visible:bg-surface-hover sm:min-h-[32px]"
 							data-testid="checklist-hide"
 							:disabled="busy"
 							@click="setHidden(true)"

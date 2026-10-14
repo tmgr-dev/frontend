@@ -85,10 +85,11 @@
 											@loadTasks="retryBoard"
 											@loadColumns="loadColumns"
 										>
-											<template #actions-start>
+											<template #actions-start="{ active }">
 												<a
 													href="#"
 													class="block px-4 py-2 text-sm text-ink hover:bg-surface-hover"
+													:class="active ? 'bg-surface-hover' : ''"
 													@click.prevent="openCreateStatusModal"
 												>
 													Add status
@@ -385,7 +386,7 @@
 																	creatingTaskColumnId !== column.status.id
 																"
 																type="button"
-																class="mx-1 mt-2 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-line px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:border-brand hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+																class="mx-1 mt-2 flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed border-line px-3 py-2.5 text-sm font-medium text-ink-muted transition-colors hover:border-brand hover:bg-surface-hover hover:text-ink"
 																@click="startCreatingTask(column)"
 															>
 																<span class="material-icons text-base"
@@ -439,7 +440,7 @@
 															>
 																<button
 																	type="button"
-																	class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+																	class="board-add-task mx-1 mt-1 flex w-[calc(100%-0.5rem)] items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
 																	@click="startCreatingTask(column)"
 																>
 																	<span class="material-icons text-sm"
@@ -464,7 +465,7 @@
 																			@keyup.esc="cancelCreatingTask"
 																			@blur="handleInputBlur"
 																			placeholder="Enter task title..."
-																			class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:shadow-tmgr-focus focus:outline-none"
+																			class="task-title-input w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
 																		/>
 																		<div class="flex gap-2">
 																			<button

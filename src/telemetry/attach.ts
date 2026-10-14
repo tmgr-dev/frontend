@@ -26,3 +26,11 @@ export const attachTelemetry = (
 		win.document.removeEventListener('visibilitychange', onVisibility);
 	};
 };
+
+// Any JS close-requested listener makes Tauri block the native close; only `main` hides instead of closing.
+export const onMainWindowClose = async (handler: () => void): Promise<void> => {
+	const { getCurrentWindow } = await import('@tauri-apps/api/window');
+	const win = getCurrentWindow();
+	if (win.label !== 'main') return;
+	await win.listen('tauri://close-requested', handler);
+};

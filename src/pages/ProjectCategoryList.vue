@@ -562,7 +562,7 @@
 									() => {
 										if (workspaceCode) {
 											router.push(
-												`/${workspaceCode}/categories/${category.id}`,
+												`/${workspaceCode}/categories?category=${category.id}`,
 											);
 										} else {
 											router.push(`/projects-categories/${category.id}`);
@@ -580,9 +580,7 @@
 									() => {
 										if (workspaceCode) {
 											router.push(
-												`/${workspaceCode}/categories/${
-													route.params.id ? `${route.params.id}/` : ''
-												}create`,
+												`/${workspaceCode}/categories?create=${route.params.id || 'top'}`,
 											);
 										} else {
 											router.push(
@@ -719,7 +717,7 @@
 															() => {
 																if (workspaceCode) {
 																	router.push(
-																		`/${workspaceCode}/categories/${category.id}`,
+																		`/${workspaceCode}/categories?category=${category.id}`,
 																	);
 																} else {
 																	router.push(

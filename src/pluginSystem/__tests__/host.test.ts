@@ -116,6 +116,21 @@ const setup = (
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 50));
 
+jest.setTimeout(15_000);
+
+afterEach(() => jest.useRealTimers());
+
+const until = async (predicate: () => unknown, message?: string) => {
+	const deadline = Date.now() + 5000;
+	while (!predicate()) {
+		if (Date.now() > deadline)
+			throw new Error(
+				`until: ${message ?? 'condition'} not met within 5000 ms`,
+			);
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+};
+
 it('runs enabled built-in plugins in a local workspace only, and folder plugins only when enabled', async () => {
 	const { host, state } = setup([
 		pkg(
@@ -188,7 +203,7 @@ it('delivers workspace events to subscribers, but not their own writes or other 
 	events.emit(event({ taskId: 2, workspaceId: 56 }));
 	events.emit(event({ taskId: 3, actor: 'plugin:tmgr.watch' }));
 	events.emit(event({ taskId: 4, actor: 'plugin:tmgr.other' }));
-	await flush();
+	await until(() => stored.length >= 2, 'event 4 stored');
 	expect(stored).toEqual([
 		['last', '1'],
 		['last', '4'],
@@ -218,7 +233,7 @@ it('delivers routine events normalized, and a converted task id only with tasks:
 		routine: { id: 1_000_000_001, title: 'Note', description: null, user: { id: 7 }, settings: [], created_at: 'a', updated_at: 'b' },
 	});
 	events.emit({ type: 'routine.deleted', workspaceId: LOCAL.id, routineId: 1_000_000_001, taskId: 77 });
-	await flush();
+	await until(() => stored.length >= 2, 'both routine events stored');
 	const byKey = Object.fromEntries(stored.map(([key, json]) => [key, JSON.parse(json)]));
 	expect(byKey.created.routine).toEqual({
 		id: 1_000_000_001,
@@ -245,7 +260,10 @@ it('shows status bar items while the plugin runs and badges it provides', async 
 	]);
 	await host.load();
 	await host.activate(LOCAL);
-	await flush();
+	await until(
+		() => Object.keys(state.statusBar).length > 0,
+		'status bar item set',
+	);
 	expect(Object.values(state.statusBar)).toEqual([
 		{
 			pluginId: 'tmgr.bar',
@@ -313,7 +331,7 @@ it('refuses runCommand for a command not declared in the manifest or not registe
 });
 
 it('accepts several badges per task, caps at 5 per plugin in total across its providers, and sorts by priority', async () => {
-	const { host } = setup([
+	const { host, state } = setup([
 		pkg(
 			'tmgr.multi',
 			`tmgr.ui.provideBadges('m', () => ({
@@ -332,7 +350,10 @@ it('accepts several badges per task, caps at 5 per plugin in total across its pr
 	]);
 	await host.load();
 	await host.activate(LOCAL);
-	await flush();
+	await until(
+		() => state.plugins['tmgr.multi'].status === 'running',
+		'tmgr.multi running',
+	);
 	const result = await host.badges([{ id: 5 }]);
 	expect(result[5].map((b) => b.text)).toEqual(['high', 'mid', '4', '5', 'low']);
 	expect(result[5][0]).toMatchObject({ text: 'high', priority: 5, key: undefined });
@@ -345,7 +366,7 @@ it('accepts several badges per task, caps at 5 per plugin in total across its pr
 });
 
 it('caps badges at 5 per plugin even when it registers several providers, and clamps priority', async () => {
-	const { host } = setup([
+	const { host, state } = setup([
 		pkg(
 			'tmgr.two',
 			`tmgr.ui.provideBadges('a', () => ({ 5: [
@@ -360,7 +381,10 @@ it('caps badges at 5 per plugin even when it registers several providers, and cl
 	]);
 	await host.load();
 	await host.activate(LOCAL);
-	await flush();
+	await until(
+		() => state.plugins['tmgr.two'].status === 'running',
+		'tmgr.two running',
+	);
 	const result = await host.badges([{ id: 5 }]);
 	expect(result[5]).toHaveLength(5);
 	expect(result[5].every((b) => b.pluginId === 'tmgr.two')).toBe(true);
@@ -444,7 +468,7 @@ describe('openLink', () => {
 });
 
 it('renders declared pages through the sanitiser', async () => {
-	const { host } = setup([
+	const { host, state } = setup([
 		pkg(
 			'tmgr.page',
 			`tmgr.ui.providePage('report', () => ({ type: 'stack', children: [{ type: 'heading', text: 'Report' }, { type: 'script', src: 'x' }] }));`,
@@ -454,7 +478,10 @@ it('renders declared pages through the sanitiser', async () => {
 	]);
 	await host.load();
 	await host.activate(LOCAL);
-	await flush();
+	await until(
+		() => state.plugins['tmgr.page'].status === 'running',
+		'tmgr.page running',
+	);
 	expect(host.pages()).toEqual([
 		{ pluginId: 'tmgr.page', id: 'report', title: 'Report' },
 	]);
@@ -480,13 +507,19 @@ it('renders a link node only for a plugin allowed to open that domain', async ()
 		code: `tmgr.ui.providePage('report', () => ({ type: 'link', url: 'https://a.example.com/x', text: 'Open' }));`,
 		source: 'builtin' as const,
 	});
-	const { host } = setup([
+	const { host, state } = setup([
 		page('tmgr.allowed', ['a.example.com'], ['links:open']),
 		page('tmgr.blocked', [], []),
 	]);
 	await host.load();
 	await host.activate(LOCAL);
-	await flush();
+	await until(
+		() =>
+			['tmgr.allowed', 'tmgr.blocked'].every(
+				(id) => state.plugins[id].status === 'running',
+			),
+		'both page plugins running',
+	);
 	expect(await host.renderPage('tmgr.allowed', 'report')).toEqual({
 		type: 'link',
 		url: 'https://a.example.com/x',
@@ -515,7 +548,10 @@ it('turns a plugin off after three timeouts and tells the user', async () => {
 	await host.load();
 	await host.activate(LOCAL);
 	for (let i = 0; i < 3; i++) {
-		while (state.plugins['tmgr.spin'].status === 'starting') await flush();
+		await until(
+			() => ['running', 'crashed'].includes(state.plugins['tmgr.spin'].status),
+			'tmgr.spin started',
+		);
 		await host.runCommand('tmgr.spin', 'tmgr.spin.go').catch(() => undefined);
 	}
 	expect(state.plugins['tmgr.spin'].status).toBe('crashed');
@@ -593,7 +629,7 @@ it('gives task snapshots in events only to plugins with tasks:read', async () =>
 		taskId: 1,
 		task: { title: 'Secret' },
 	} as DomainEvent);
-	await flush();
+	await until(() => seen.length >= 1, 'event stored');
 	expect(seen).toEqual([
 		{ type: 'timer.stopped', workspaceId: LOCAL.id, taskId: 1 },
 	]);
@@ -628,7 +664,7 @@ it('strips relationTypeWithTask from event task snapshots unless relations:read 
 		taskId: 1,
 		task: { title: 'Secret', relationTypeWithTask: [{ id: 9 }] },
 	} as DomainEvent);
-	await flush();
+	await until(() => seen.length >= 2, 'both events stored');
 	expect(seen).toEqual(
 		expect.arrayContaining([
 			{ type: 'task.updated', workspaceId: LOCAL.id, taskId: 1, task: { title: 'Secret', key: null } },
@@ -666,7 +702,7 @@ it('drops actor-relative reacted/users from the broadcast comment.reactionChange
 		commentId: 5,
 		reactions: [{ emoji: '👍', count: 2, reacted: true, users: [{ id: 7, name: 'Yurij' }] }],
 	} as DomainEvent);
-	await flush();
+	await until(() => seen.length >= 1, 'event stored');
 	expect(seen).toEqual([
 		{
 			type: 'comment.reactionChanged',
@@ -692,8 +728,11 @@ it('coalesces a flood of refresh requests into one redraw', async () => {
 	]);
 	await host.load();
 	await host.activate(LOCAL);
+	jest.useFakeTimers({
+		doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+	});
 	await host.runCommand('tmgr.chatty', 'tmgr.chatty.go');
-	await new Promise((resolve) => setTimeout(resolve, 600));
+	jest.advanceTimersByTime(500);
 	expect(state.revisions['tmgr.chatty']).toBe(1);
 	host.dispose();
 });
@@ -885,7 +924,12 @@ describe('plugin runs', () => {
 		await host.activate(LOCAL);
 		const before = host.generationOf('tmgr.run');
 		await host.runCommand('tmgr.run', 'tmgr.run.spin').catch(() => undefined);
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await until(
+			() =>
+				state.plugins['tmgr.run'].status === 'running' &&
+				host.generationOf('tmgr.run') !== before,
+			'tmgr.run relaunched after the timeout',
+		);
 		expect(state.plugins['tmgr.run'].status).toBe('running');
 		expect(host.generationOf('tmgr.run')).not.toBe(before);
 		host.dispose();
@@ -916,7 +960,10 @@ it('never runs a blocked plugin and stops one the blocklist catches while it run
 
 	delete blocked['tmgr.good'];
 	host.applyBlocklist();
-	await flush();
+	await until(
+		() => state.plugins['tmgr.good'].status === 'running',
+		'tmgr.good running again',
+	);
 	expect(state.plugins['tmgr.good'].status).toBe('running');
 	host.dispose();
 });
@@ -1110,7 +1157,7 @@ describe('alarms', () => {
 		});
 		clock += 5 * 60_000;
 		host.tick();
-		await flush();
+		await until(() => rows.length >= 1, 'alarm fired');
 		expect(rows).toHaveLength(1);
 		expect(rows[0]).toEqual(['fired', { name: 'p', scheduledAt: new Date(1_000_000 + 5 * 60_000).toISOString() }]);
 		const list = (await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})) as { name: string; scheduledAt: string }[];
@@ -1127,7 +1174,7 @@ describe('alarms', () => {
 		await host.runCommand('tmgr.alarm', 'tmgr.alarm.create', { name: 'once', opts: { delayMinutes: 1 } });
 		clock += 60_000;
 		host.tick();
-		await flush();
+		await until(() => rows.length >= 1, 'alarm fired');
 		expect(rows).toHaveLength(1);
 		expect(await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {})).toEqual([]);
 		host.dispose();
@@ -1145,7 +1192,8 @@ describe('alarms', () => {
 		});
 		clock += 60 * 60_000;
 		host.tick();
-		await flush();
+		await until(() => rows.length >= 1, 'alarm fired');
+		await host.runCommand('tmgr.alarm', 'tmgr.alarm.list', {});
 		expect(rows).toHaveLength(1);
 		host.dispose();
 	});
@@ -1180,7 +1228,7 @@ describe('alarms', () => {
 		await second.load();
 		await second.activate(LOCAL);
 		second.tick();
-		await flush();
+		await until(() => rows.length >= 1, 'alarm fired');
 		expect(rows).toHaveLength(1);
 		second.dispose();
 		host.dispose();
@@ -1202,7 +1250,10 @@ describe('start events', () => {
 		});
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => rows.some(([k]) => k === 'started'),
+			'app.started stored',
+		);
 		expect(rows.filter(([k]) => k === 'started')).toHaveLength(1);
 		await host.setEnabled('tmgr.start', false);
 		await host.setEnabled('tmgr.start', true);
@@ -1222,11 +1273,17 @@ describe('start events', () => {
 		);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => rows.some(([k]) => k === 'started'),
+			'app.started stored',
+		);
 		expect(rows.filter(([k]) => k === 'switched')).toHaveLength(0);
 		leave();
 		await host.activate(CLOUD);
-		await flush();
+		await until(
+			() => rows.some(([k]) => k === 'switched'),
+			'workspace.switched stored',
+		);
 		expect(rows.filter(([k]) => k === 'switched')).toEqual([
 			['switched', { from: LOCAL.id, to: CLOUD.id }],
 		]);
@@ -1316,7 +1373,7 @@ describe('notifications', () => {
 		const token = notifications[0].token;
 		expect(token).toEqual(expect.any(String));
 		expect(await host.resolveNotificationClick(token)).toEqual({ type: 'command' });
-		await flush();
+		await until(() => stored.length >= 1, 'clicked command stored');
 		expect(stored).toEqual([['acted', { x: 1 }]]);
 
 		await host.runCommand('tmgr.notif', 'tmgr.notif.send', { command: 'tmgr.notif.act' });
@@ -1380,13 +1437,16 @@ describe('tray', () => {
 		});
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => state.trayItems['tmgr.tray:menu'] !== undefined,
+			'tray item set',
+		);
 		const entry = state.trayItems['tmgr.tray:menu'];
 		expect(entry.title).toBe('Menu');
 		expect(entry.pluginName).toBe('tmgr.tray');
 		const [actItem, openItem] = entry.items;
 		expect(await host.resolveTrayClick(actItem.id)).toEqual({ type: 'command' });
-		await flush();
+		await until(() => stored.length >= 1, 'clicked command stored');
 		expect(stored).toEqual([['acted', { x: 1 }]]);
 		expect(await host.resolveTrayClick(openItem.id)).toEqual({
 			type: 'task',
@@ -1405,7 +1465,10 @@ describe('tray', () => {
 		const { host, state } = setup([trayPlugin]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => state.trayItems['tmgr.tray:menu'] !== undefined,
+			'tray item set',
+		);
 		const [, openItem] = state.trayItems['tmgr.tray:menu'].items;
 		const result = await host.resolveTrayClick(openItem.id);
 		expect(result?.type).toBe('task');
@@ -1425,7 +1488,13 @@ describe('tray', () => {
 		});
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() =>
+				state.plugins['tmgr.tray'].log.some((l) =>
+					l.message.includes('ui.setTrayItem'),
+				),
+			'tray item refusal logged',
+		);
 		expect(state.trayItems).toEqual({});
 		expect(state.plugins['tmgr.tray'].status).toBe('running');
 		host.dispose();
@@ -1570,7 +1639,13 @@ describe('view badges', () => {
 		const crashed = await start();
 		await set(crashed.host, { count: 5 });
 		for (let i = 0; i < 3; i++) {
-			while (crashed.state.plugins['tmgr.badge'].status === 'starting') await flush();
+			await until(
+				() =>
+					['running', 'crashed'].includes(
+						crashed.state.plugins['tmgr.badge'].status,
+					),
+				'tmgr.badge started',
+			);
 			if (crashed.state.plugins['tmgr.badge'].status === 'crashed') break;
 			await crashed.host.runCommand('tmgr.badge', 'tmgr.badge.spin').catch(() => undefined);
 		}
@@ -1615,10 +1690,13 @@ describe('setTrayItem during a page render', () => {
 		],
 	];
 	it.each(cases)('%s', async (_, call, extra) => {
-		const { host } = setup([renderPlugin(call)], {}, {}, {}, extra);
+		const { host, state } = setup([renderPlugin(call)], {}, {}, {}, extra);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => state.plugins['tmgr.render'].status === 'running',
+			'tmgr.render running',
+		);
 		expect(await host.renderPage('tmgr.render', 'main')).toEqual({
 			type: 'heading',
 			text: 'ok',
@@ -1693,7 +1771,10 @@ describe('deep links', () => {
 		const { host } = setup([linkPlugin()]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkCommand('tmgr.link', 'tmgr.link.go') !== null,
+			'deep-link command available',
+		);
 		expect(host.deepLinkView('tmgr.link', 'report')).toEqual({
 			id: 'report',
 			title: 'Report',
@@ -1718,7 +1799,10 @@ describe('deep links', () => {
 		const { host } = setup([linkPlugin()]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkCommand('tmgr.link', 'tmgr.link.go') !== null,
+			'deep-link command available',
+		);
 		await expect(
 			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', { a: '1' }),
 		).resolves.toBe(true);
@@ -1732,10 +1816,16 @@ describe('deep links', () => {
 		const { host } = setup([linkPlugin()]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkCommand('tmgr.link', 'tmgr.link.go') !== null,
+			'deep-link command available',
+		);
 		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
 		await host.restart('tmgr.link');
-		await flush();
+		await until(
+			() => host.deepLinkCommand('tmgr.link', 'tmgr.link.go') !== null,
+			'deep-link command available after restart',
+		);
 		await expect(
 			host.runDeepLinkCommand('tmgr.link', 'tmgr.link.go', {}, expected),
 		).resolves.toBe(false);
@@ -1750,7 +1840,10 @@ describe('deep links', () => {
 		const { host, leave } = setup([linkPlugin()]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkCommand('tmgr.link', 'tmgr.link.go') !== null,
+			'deep-link command available',
+		);
 		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
 		leave();
 		await expect(
@@ -1775,7 +1868,10 @@ describe('deep links', () => {
 		);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkView('tmgr.linkui', 'board') !== null,
+			'deep-link view available',
+		);
 		const expected = { generation: host.generationOf('tmgr.linkui'), workspaceId: LOCAL.id };
 		leave();
 		expect(await host.openDeepLinkView('tmgr.linkui', 'board', undefined, expected)).toBeNull();
@@ -1792,7 +1888,10 @@ describe('deep links', () => {
 		);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkView('tmgr.linkui', 'board') !== null,
+			'deep-link view available',
+		);
 		const expected = { generation: host.generationOf('tmgr.linkui'), workspaceId: LOCAL.id };
 		const result = await host.openDeepLinkView('tmgr.linkui', 'board', undefined, expected);
 		expect(result).toEqual({ view: { id: 'board', title: 'Board', ui: 'ui/board.html' } });
@@ -1804,7 +1903,10 @@ describe('deep links', () => {
 		const { host } = setup([linkPlugin()]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(
+			() => host.deepLinkView('tmgr.link', 'report') !== null,
+			'deep-link view available',
+		);
 		const expected = { generation: host.generationOf('tmgr.link'), workspaceId: LOCAL.id };
 		expect(await host.openDeepLinkView('tmgr.link', 'report', undefined, expected)).toEqual({
 			view: { id: 'report', title: 'Report' },
@@ -1816,7 +1918,7 @@ describe('deep links', () => {
 		const { host } = setup([linkPlugin([])]);
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(() => host.commands().length > 0, 'tmgr.link.go registered');
 		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
 		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
 		host.dispose();
@@ -1828,7 +1930,7 @@ describe('deep links', () => {
 		});
 		await host.load();
 		await host.activate(LOCAL);
-		await flush();
+		await until(() => host.commands().length > 0, 'tmgr.link.go registered');
 		expect(host.deepLinkView('tmgr.link', 'report')).toBeNull();
 		expect(host.deepLinkCommand('tmgr.link', 'tmgr.link.go')).toBeNull();
 		host.dispose();
@@ -1957,7 +2059,7 @@ it('delivers page events with changed sections to pages:read plugins, never back
 		actor: 'plugin:tmgr.dossier',
 	});
 	events.emit({ type: 'page.updated', workspaceId: 56, pageId: 9, page: page('', 1) });
-	await flush();
+	await until(() => stored.length >= 1, 'page.updated stored');
 	expect(stored.map(([key, json]) => [key, JSON.parse(json)])).toEqual([
 		[
 			'seen',
@@ -2092,10 +2194,13 @@ describe('task menu items', () => {
 	});
 
 	it('bumps the plugin revision when a menu command registers, not for other commands', async () => {
+		jest.useFakeTimers({
+			doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+		});
 		const withMenu = setup([menuPkg(code)]);
 		await withMenu.host.load();
 		await withMenu.host.activate(LOCAL);
-		await new Promise((resolve) => setTimeout(resolve, 600));
+		jest.advanceTimersByTime(500);
 		expect(withMenu.state.revisions['tmgr.menu']).toBeGreaterThan(0);
 		withMenu.host.dispose();
 		const without = setup([
@@ -2103,7 +2208,7 @@ describe('task menu items', () => {
 		]);
 		await without.host.load();
 		await without.host.activate(LOCAL);
-		await new Promise((resolve) => setTimeout(resolve, 600));
+		jest.advanceTimersByTime(500);
 		expect(without.state.revisions['tmgr.menu']).toBeUndefined();
 		without.host.dispose();
 	});

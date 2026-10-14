@@ -206,10 +206,19 @@ describe('cluster placement', () => {
 
 	it('bounds the placement work for very many clusters', () => {
 		const counts = Array.from({ length: 1000 }, (_, i) => 1 + (i % 40));
-		const started = Date.now();
-		const places = placeClusters(counts);
-		expect(places).toHaveLength(1000);
-		expect(Date.now() - started).toBeLessThan(2000);
+		const hypot = Math.hypot;
+		let pairChecks = 0;
+		Math.hypot = (...values: number[]) => {
+			pairChecks += 1;
+			return hypot(...values);
+		};
+		try {
+			expect(placeClusters(counts)).toHaveLength(1000);
+		} finally {
+			Math.hypot = hypot;
+		}
+		expect(pairChecks).toBeGreaterThan(0);
+		expect(pairChecks).toBeLessThanOrEqual(2_000_000);
 	});
 
 	it('handles one and zero clusters', () => {

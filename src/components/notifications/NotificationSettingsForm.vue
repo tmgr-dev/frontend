@@ -33,7 +33,7 @@
 							type="checkbox"
 							:value="type.id"
 							v-model="formData.web_types"
-							class="h-4 w-4 rounded border-border accent-primary focus:ring-ring"
+							class="h-4 w-4 rounded border-border accent-primary"
 						/>
 						{{ type.label }}
 					</label>
@@ -71,7 +71,7 @@
 							type="checkbox"
 							:value="type.id"
 							v-model="formData.telegram_types"
-							class="h-4 w-4 rounded border-border accent-primary focus:ring-ring"
+							class="h-4 w-4 rounded border-border accent-primary"
 						/>
 						{{ type.label }}
 					</label>
@@ -101,7 +101,7 @@
 							type="checkbox"
 							:value="type.id"
 							v-model="formData.email_types"
-							class="h-4 w-4 rounded border-border accent-primary focus:ring-ring"
+							class="h-4 w-4 rounded border-border accent-primary"
 						/>
 						{{ type.label }}
 					</label>

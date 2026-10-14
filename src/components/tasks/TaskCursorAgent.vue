@@ -51,7 +51,7 @@
 								@input="onBranchSearch"
 								type="text"
 								placeholder="Search branches..."
-								class="mb-2 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong focus:outline-none"
+								class="mb-2 w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
 							/>
 							<div
 								v-if="loadingBranches"
@@ -66,7 +66,7 @@
 								<select
 									v-model="selectedBranch"
 									:size="Math.min(branches.length, 8)"
-									class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-line-strong focus:outline-none"
+									class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
 								>
 									<option
 										v-for="branch in branches"
@@ -276,7 +276,7 @@
 								v-model="followUpPrompt"
 								type="text"
 								placeholder="Type additional instructions..."
-								class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong focus:outline-none"
+								class="flex-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle focus:border-line-strong"
 								@keyup.enter="sendFollowUpToAgent(agent.id)"
 							/>
 							<button
@@ -309,6 +309,7 @@
 		sendFollowUp,
 		stopCursorAgent,
 	} from '@/actions/tmgr/cursor';
+	import { apiErrorText } from '@/utils/apiErrorText';
 	import { createPollingLoop } from '@/utils/pollingLoop';
 	import { defineComponent } from 'vue';
 
@@ -425,8 +426,10 @@
 					}
 				} catch (e) {
 					console.error('Failed to load branches:', e);
-					this.branchesError =
-						e.response?.data?.error || 'Failed to load branches from GitHub';
+					this.branchesError = apiErrorText(
+						e,
+						'Failed to load branches from GitHub',
+					);
 				} finally {
 					this.loadingBranches = false;
 				}
@@ -453,7 +456,7 @@
 					this.$emit('launched', agent);
 				} catch (e) {
 					console.error('Failed to launch agent:', e);
-					this.error = e.response?.data?.error || 'Failed to launch agent';
+					this.error = apiErrorText(e, 'Failed to launch agent');
 				} finally {
 					this.launching = false;
 				}
@@ -466,7 +469,7 @@
 					this.$emit('stopped');
 				} catch (e) {
 					console.error('Failed to stop agent:', e);
-					this.error = e.response?.data?.error || 'Failed to stop agent';
+					this.error = apiErrorText(e, 'Failed to stop agent');
 				} finally {
 					this.stopping = false;
 				}
@@ -481,7 +484,7 @@
 					this.$emit('followup-sent');
 				} catch (e) {
 					console.error('Failed to send follow-up:', e);
-					this.error = e.response?.data?.error || 'Failed to send follow-up';
+					this.error = apiErrorText(e, 'Failed to send follow-up');
 				} finally {
 					this.sendingFollowUp = false;
 				}

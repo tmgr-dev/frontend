@@ -57,15 +57,26 @@
 <style scoped>
 	.map-range {
 		appearance: none;
+		height: 22px;
+		padding: 0 6px;
+		border-radius: 999px;
+		background: transparent;
+	}
+	.map-range::-webkit-slider-runnable-track {
 		height: 4px;
 		border-radius: 999px;
 		background: var(--line-strong-color);
-		outline: none;
+	}
+	.map-range::-moz-range-track {
+		height: 4px;
+		border-radius: 999px;
+		background: var(--line-strong-color);
 	}
 	.map-range::-webkit-slider-thumb {
 		appearance: none;
 		width: 14px;
 		height: 14px;
+		margin-top: -5px;
 		border-radius: 999px;
 		background: var(--fg);
 		border: 2px solid var(--bg-raised);

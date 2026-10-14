@@ -3,7 +3,7 @@
 		<select
 			v-model.number="workspaceId"
 			aria-label="Workspace"
-			class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
+			class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink"
 			@change="loadCategories"
 		>
 			<option v-for="w in workspaceOptions" :key="w.id" :value="w.id">
@@ -13,7 +13,7 @@
 		<select
 			v-model="categoryId"
 			aria-label="Category"
-			class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink focus:outline-none"
+			class="w-full rounded-md border border-line bg-surface-sunken px-3 py-2 text-sm text-ink"
 		>
 			<option :value="null">No category</option>
 			<option v-for="c in categories" :key="c.id" :value="c.id">

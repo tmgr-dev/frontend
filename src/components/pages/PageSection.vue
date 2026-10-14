@@ -40,7 +40,7 @@
 			<textarea
 				v-model="draft"
 				rows="8"
-				class="w-full rounded-md border border-gray-300 bg-white p-2 font-mono text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+				class="w-full rounded-md border border-gray-300 bg-white p-2 font-mono text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
 				data-testid="section-textarea"
 			></textarea>
 			<div class="mt-2 flex justify-end gap-2">

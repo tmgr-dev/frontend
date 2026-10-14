@@ -211,7 +211,7 @@
 		return cn(
 			'p-3 rounded-card border border-line bg-surface',
 			'hover:bg-surface-hover hover:border-line-strong transition-colors duration-150',
-			'cursor-pointer focus:outline-none focus:shadow-tmgr-focus',
+			'cursor-pointer',
 			props.member.is_online && 'border-status-done/40',
 		);
 	});

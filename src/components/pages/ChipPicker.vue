@@ -38,7 +38,7 @@
 					ref="inputRef"
 					v-model="query"
 					type="text"
-					class="w-48 rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
+					class="w-48 rounded border border-gray-300 bg-white px-2 py-0.5 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100"
 					:placeholder="placeholder"
 					data-testid="chip-picker-input"
 					@input="runSearch"
