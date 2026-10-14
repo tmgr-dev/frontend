@@ -395,6 +395,26 @@ export const MIGRATIONS: Migration[] = [
 			`UPDATE pages SET title = 'Workspace context' WHERE type = 'context' AND title = 'Контекст воркспейса'`,
 		],
 	},
+	{
+		version: 13,
+		statements: [
+			`CREATE TABLE IF NOT EXISTS edit_journal (
+				seq INTEGER PRIMARY KEY,
+				at TEXT NOT NULL,
+				entity TEXT NOT NULL,
+				entity_id TEXT NOT NULL,
+				task_id TEXT NOT NULL,
+				field TEXT NOT NULL,
+				author_kind TEXT NOT NULL,
+				source TEXT NOT NULL,
+				actor_id TEXT NOT NULL,
+				content_sha256 TEXT NOT NULL,
+				prev_hash TEXT NOT NULL,
+				hash TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS edit_journal_task_idx ON edit_journal (task_id, seq)`,
+		],
+	},
 ];
 
 export const LATEST_SCHEMA = MIGRATIONS[MIGRATIONS.length - 1].version;

@@ -1,0 +1,280 @@
+{
+	"name": "mixed-writers",
+	"seed": [
+		"INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 7, 'Owner', 'Scribe', 'x')",
+		"INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:read\",\"tasks:write\",\"comments:read\",\"comments:write\"]', 'x')"
+	],
+	"ops": [
+		{
+			"at": "2026-10-14T11:00:01.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Desktop task",
+				"description": "d1"
+			}
+		},
+		{
+			"writer": "rust",
+			"origin": "cli_tty",
+			"at": "2026-10-14T11:00:02.000Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": "d2 from a terminal"
+			},
+			"effects": [
+				"UPDATE tasks SET description = 'd2 from a terminal' WHERE id = 1"
+			],
+			"rows": [
+				{
+					"seq": 3,
+					"at": "2026-10-14T11:00:02.000Z",
+					"entity": "task",
+					"entity_id": "1",
+					"task_id": "1",
+					"field": "description",
+					"author_kind": "human",
+					"source": "cli_tty",
+					"actor_id": "7",
+					"content_sha256": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
+					"prev_hash": "ce962b54c6e07f8b791f4a5a5c2d703a46b8086ed270be13dbd43b7a5254deaf",
+					"hash": "959dcebcb57cd7a153ea264b957701e6912c861a64fb647d960bbdc721dad9b7"
+				}
+			]
+		},
+		{
+			"at": "2026-10-14T11:00:03.000Z",
+			"method": "POST",
+			"url": "tasks/1/comments",
+			"body": {
+				"message": "desktop comment"
+			}
+		},
+		{
+			"writer": "rust",
+			"origin": "cli",
+			"at": "2026-10-14T11:00:04.000Z",
+			"method": "POST",
+			"url": "tasks/1/comments",
+			"body": {
+				"message": "script comment"
+			},
+			"effects": [
+				"INSERT INTO comments (id, task_id, message, author_kind, author_id, author_name, created_at, updated_at) VALUES (2, 1, 'script comment', 'user', '7', 'Owner', 'x', 'x')"
+			],
+			"rows": [
+				{
+					"seq": 5,
+					"at": "2026-10-14T11:00:04.000Z",
+					"entity": "comment",
+					"entity_id": "2",
+					"task_id": "1",
+					"field": "comment",
+					"author_kind": "unattended",
+					"source": "cli",
+					"actor_id": "7",
+					"content_sha256": "ec1d377fb253010cbd998b7caaa9e7b1944817367d070b114aed3d0ccc0e9b10",
+					"prev_hash": "b6a9bd51d32fa3eaaebc1e69b0ee9cba29da7ef960072fcfd80a7c8da3e8fc56",
+					"hash": "f59752cab8b914e18d6418aa07808d86d08c3037115fd7c671549dda458d51b6"
+				}
+			]
+		},
+		{
+			"at": "2026-10-14T11:00:05.000Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"title": "Desktop retitled"
+			}
+		},
+		{
+			"writer": "rust",
+			"origin": "cli_tty",
+			"at": "2026-10-14T11:00:06.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Created in a terminal"
+			},
+			"effects": [
+				"INSERT INTO tasks (id, title, created_at, updated_at) VALUES (2, 'Created in a terminal', 'x', 'x')"
+			],
+			"rows": [
+				{
+					"seq": 7,
+					"at": "2026-10-14T11:00:06.000Z",
+					"entity": "task",
+					"entity_id": "2",
+					"task_id": "2",
+					"field": "create",
+					"author_kind": "human",
+					"source": "cli_tty",
+					"actor_id": "7",
+					"content_sha256": "13f976df41f105ea6038c2e8239e2c311f0a3cbaf126f0287e3c55d150131bcf",
+					"prev_hash": "de093cd5a9e8b7e3fb33039b9018af0969b340ddbdbd1ae2867d214400fc33f9",
+					"hash": "704cfbe9bb778b326344ef414e6b6046339d5a3ef577ef76490715c02824b452"
+				}
+			]
+		},
+		{
+			"at": "2026-10-14T11:00:07.000Z",
+			"method": "PATCH",
+			"url": "tasks/2",
+			"body": {
+				"description": "added by the desktop"
+			}
+		}
+	],
+	"provenance_for": [
+		1,
+		2
+	],
+	"expect": {
+		"journal": [
+			{
+				"seq": 1,
+				"at": "2026-10-14T11:00:01.000Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "859b5d83a4169f1e5860e4bb3ce2aa9716e5844689b17285e5fca80b11fe28bb",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"hash": "60bf6ddc327dab1d97dfb0f960d5fb716983153bddab89d4b203539a8b061279"
+			},
+			{
+				"seq": 2,
+				"at": "2026-10-14T11:00:01.000Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "8b53639f152c8fc6ef30802fde462ba0be9cf085f7580dc69efd72e002abbb35",
+				"prev_hash": "60bf6ddc327dab1d97dfb0f960d5fb716983153bddab89d4b203539a8b061279",
+				"hash": "ce962b54c6e07f8b791f4a5a5c2d703a46b8086ed270be13dbd43b7a5254deaf"
+			},
+			{
+				"seq": 3,
+				"at": "2026-10-14T11:00:02.000Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "cli_tty",
+				"actor_id": "7",
+				"content_sha256": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
+				"prev_hash": "ce962b54c6e07f8b791f4a5a5c2d703a46b8086ed270be13dbd43b7a5254deaf",
+				"hash": "959dcebcb57cd7a153ea264b957701e6912c861a64fb647d960bbdc721dad9b7"
+			},
+			{
+				"seq": 4,
+				"at": "2026-10-14T11:00:03.000Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "73c2fb9fd13e7f3191c2ba77f9d7f57c914ffce7cfdc37c32d71b338706a9257",
+				"prev_hash": "959dcebcb57cd7a153ea264b957701e6912c861a64fb647d960bbdc721dad9b7",
+				"hash": "b6a9bd51d32fa3eaaebc1e69b0ee9cba29da7ef960072fcfd80a7c8da3e8fc56"
+			},
+			{
+				"seq": 5,
+				"at": "2026-10-14T11:00:04.000Z",
+				"entity": "comment",
+				"entity_id": "2",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "unattended",
+				"source": "cli",
+				"actor_id": "7",
+				"content_sha256": "ec1d377fb253010cbd998b7caaa9e7b1944817367d070b114aed3d0ccc0e9b10",
+				"prev_hash": "b6a9bd51d32fa3eaaebc1e69b0ee9cba29da7ef960072fcfd80a7c8da3e8fc56",
+				"hash": "f59752cab8b914e18d6418aa07808d86d08c3037115fd7c671549dda458d51b6"
+			},
+			{
+				"seq": 6,
+				"at": "2026-10-14T11:00:05.000Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "title",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "1329d985705ecce16f25a96ed4aef3fce74801afd0a67596836cace14e805a62",
+				"prev_hash": "f59752cab8b914e18d6418aa07808d86d08c3037115fd7c671549dda458d51b6",
+				"hash": "de093cd5a9e8b7e3fb33039b9018af0969b340ddbdbd1ae2867d214400fc33f9"
+			},
+			{
+				"seq": 7,
+				"at": "2026-10-14T11:00:06.000Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "create",
+				"author_kind": "human",
+				"source": "cli_tty",
+				"actor_id": "7",
+				"content_sha256": "13f976df41f105ea6038c2e8239e2c311f0a3cbaf126f0287e3c55d150131bcf",
+				"prev_hash": "de093cd5a9e8b7e3fb33039b9018af0969b340ddbdbd1ae2867d214400fc33f9",
+				"hash": "704cfbe9bb778b326344ef414e6b6046339d5a3ef577ef76490715c02824b452"
+			},
+			{
+				"seq": 8,
+				"at": "2026-10-14T11:00:07.000Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "900e95352571f2167558501fada21195f0d2fb6c694a4555ded97d8ca9c51416",
+				"prev_hash": "704cfbe9bb778b326344ef414e6b6046339d5a3ef577ef76490715c02824b452",
+				"hash": "e473315af54ff7395dca2b818e149f9d7ae560855ad030393fbd876ff5eef409"
+			}
+		],
+		"chain": {
+			"ok": true,
+			"broken_at": null,
+			"rows": 8
+		},
+		"provenance": {
+			"1": {
+				"created_by": "human",
+				"last_human_seq": 6,
+				"last_human_content": {
+					"title_sha": "1329d985705ecce16f25a96ed4aef3fce74801afd0a67596836cace14e805a62",
+					"description_sha": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
+					"comments_sha": "99dc18ad8a59d3e9c5a0384cf2bb34aa6bf0decfdbcf7ffc7fc30eb007e48e48"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			},
+			"2": {
+				"created_by": "human",
+				"last_human_seq": 8,
+				"last_human_content": {
+					"title_sha": "13f976df41f105ea6038c2e8239e2c311f0a3cbaf126f0287e3c55d150131bcf",
+					"description_sha": "900e95352571f2167558501fada21195f0d2fb6c694a4555ded97d8ca9c51416",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			}
+		}
+	}
+}

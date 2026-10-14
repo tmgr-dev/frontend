@@ -1,0 +1,270 @@
+{
+	"name": "edge-strings",
+	"seed": [
+		"INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 7, 'Owner', 'Scribe', 'x')",
+		"INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:read\",\"tasks:write\",\"comments:read\",\"comments:write\"]', 'x')"
+	],
+	"ops": [
+		{
+			"at": "2026-10-14T10:03:21.437Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Quote \" backslash \\ slash / tab \t",
+				"description": "line\r\nline\rlone cr\nlf"
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:22.474Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Emoji 😀 Привет ü   sep \u0001 ctl  del"
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:23.511Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Plugin with a quote in its id"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "a\"b\\c",
+				"name": "x",
+				"ownerId": "own\"er "
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:24.548Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"clear_description": true
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:25.585Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": ""
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:26.622Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": "\r\n"
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:27.659Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": "\n"
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:28.696Z",
+			"method": "PATCH",
+			"url": "tasks/2",
+			"body": {
+				"description": "Emoji body 😀\r\n\r\n"
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:29.733Z",
+			"method": "POST",
+			"url": "tasks/2/comments",
+			"body": {
+				"message": "quote \" \\ 😀  "
+			}
+		},
+		{
+			"at": "2026-10-14T10:03:30.770Z",
+			"method": "PATCH",
+			"url": "tasks/2",
+			"body": {
+				"description_json": "{\"type\":\"doc\"}"
+			}
+		}
+	],
+	"provenance_for": [
+		1,
+		2,
+		3
+	],
+	"expect": {
+		"journal": [
+			{
+				"seq": 1,
+				"at": "2026-10-14T10:03:21.437Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "f91e16cae3121f68c62af4950edd4c53e348b6e17d29b27c7cb907fbf148110b",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"hash": "02066cc37977321d2b6da8d0f05b217cfdc972f3a3148a1fcadfdd3349617323"
+			},
+			{
+				"seq": 2,
+				"at": "2026-10-14T10:03:21.437Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "7e69eca0836f566cff9ff6034f0a1f9f80ef11ba0128e656696bbfa5977e4b64",
+				"prev_hash": "02066cc37977321d2b6da8d0f05b217cfdc972f3a3148a1fcadfdd3349617323",
+				"hash": "e170cf6ed4f503e99f05103b82f1c99970a436d47fac1abc929df1a421ac75ef"
+			},
+			{
+				"seq": 3,
+				"at": "2026-10-14T10:03:22.474Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "f1631bb158f6ce0d044f28a14a883698a028d216fc34f37debeeeea0566d3f53",
+				"prev_hash": "e170cf6ed4f503e99f05103b82f1c99970a436d47fac1abc929df1a421ac75ef",
+				"hash": "07081996d960b1746b1f11055ec1b0037c70af8ee48e6b25d54ea79712aaf0f3"
+			},
+			{
+				"seq": 4,
+				"at": "2026-10-14T10:03:23.511Z",
+				"entity": "task",
+				"entity_id": "3",
+				"task_id": "3",
+				"field": "create",
+				"author_kind": "plugin",
+				"source": "plugin",
+				"actor_id": "own\"er ",
+				"content_sha256": "86affcc58dfde25b92a1428e46a34b7acb914ebf3ce668a322c73d31743cac6f",
+				"prev_hash": "07081996d960b1746b1f11055ec1b0037c70af8ee48e6b25d54ea79712aaf0f3",
+				"hash": "50976572303f52831d31d9e6defed3afd929009f352bfce4bb2319989db64dd7"
+			},
+			{
+				"seq": 5,
+				"at": "2026-10-14T10:03:24.548Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+				"prev_hash": "50976572303f52831d31d9e6defed3afd929009f352bfce4bb2319989db64dd7",
+				"hash": "05e04fa24187845b6bdaa0c478386f0a625c1b1065f1ade82a2d93d515cfd044"
+			},
+			{
+				"seq": 6,
+				"at": "2026-10-14T10:03:26.622Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+				"prev_hash": "05e04fa24187845b6bdaa0c478386f0a625c1b1065f1ade82a2d93d515cfd044",
+				"hash": "a295682fc7f286fe6d1369afa0ef57c1f3fa6737029383b492b9357ae5251365"
+			},
+			{
+				"seq": 7,
+				"at": "2026-10-14T10:03:28.696Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "c3bf963167dbdcb23083646fbdd0f295cac57c58cb6ee0ea7b49517dcfd31691",
+				"prev_hash": "a295682fc7f286fe6d1369afa0ef57c1f3fa6737029383b492b9357ae5251365",
+				"hash": "db5aefa3b361568f05235e464adc5e729cb1f7c1544b1a054452e89b85ccc805"
+			},
+			{
+				"seq": 8,
+				"at": "2026-10-14T10:03:29.733Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "2",
+				"field": "comment",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "e120ba17aaf0e1c29245198bd930869d32ff1a5752d34900192def63fe8d5db9",
+				"prev_hash": "db5aefa3b361568f05235e464adc5e729cb1f7c1544b1a054452e89b85ccc805",
+				"hash": "f8e1c99af46729e7d4b21d3b315d9724ea716a95fd20b0ff6b5dc1a1ad04dc4c"
+			},
+			{
+				"seq": 9,
+				"at": "2026-10-14T10:03:30.770Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "c3bf963167dbdcb23083646fbdd0f295cac57c58cb6ee0ea7b49517dcfd31691",
+				"prev_hash": "f8e1c99af46729e7d4b21d3b315d9724ea716a95fd20b0ff6b5dc1a1ad04dc4c",
+				"hash": "57433ef4cdbf4c9b49f9a58fde023b3939e400a41486ae6c334f9f6c0595e62e"
+			}
+		],
+		"chain": {
+			"ok": true,
+			"broken_at": null,
+			"rows": 9
+		},
+		"provenance": {
+			"1": {
+				"created_by": "human",
+				"last_human_seq": 6,
+				"last_human_content": {
+					"title_sha": "f91e16cae3121f68c62af4950edd4c53e348b6e17d29b27c7cb907fbf148110b",
+					"description_sha": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			},
+			"2": {
+				"created_by": "human",
+				"last_human_seq": 9,
+				"last_human_content": {
+					"title_sha": "f1631bb158f6ce0d044f28a14a883698a028d216fc34f37debeeeea0566d3f53",
+					"description_sha": "c3bf963167dbdcb23083646fbdd0f295cac57c58cb6ee0ea7b49517dcfd31691",
+					"comments_sha": "a5a7bc6a08d4188e1644db480c4bb833a5974fb612dd5894d49e3e083aa0af3a"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			},
+			"3": {
+				"created_by": "plugin",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"chain_ok": true,
+				"content_matches": false
+			}
+		}
+	}
+}

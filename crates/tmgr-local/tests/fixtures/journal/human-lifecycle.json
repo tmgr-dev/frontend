@@ -1,0 +1,296 @@
+{
+	"name": "human-lifecycle",
+	"seed": [
+		"INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 7, 'Owner', 'Scribe', 'x')",
+		"INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:read\",\"tasks:write\",\"comments:read\",\"comments:write\"]', 'x')"
+	],
+	"ops": [
+		{
+			"at": "2026-10-14T10:00:01.037Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Write the docs",
+				"description": "First line\r\nSecond line"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:02.074Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Kept task"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:03.111Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"title": "Write the docs v2"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:04.148Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"title": "Write the docs v2",
+				"priority": "high"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:05.185Z",
+			"method": "PUT",
+			"url": "tasks/1",
+			"body": {
+				"title": "Write the docs v2",
+				"description": "First line\nSecond line"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:06.222Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": "Rewritten"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:07.259Z",
+			"method": "POST",
+			"url": "tasks/1/comments",
+			"body": {
+				"message": "  First comment  "
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:08.296Z",
+			"method": "POST",
+			"url": "tasks/2/comments",
+			"body": {
+				"message": "On the kept task"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:09.333Z",
+			"method": "PUT",
+			"url": "comments/1",
+			"body": {
+				"message": "First comment, edited"
+			}
+		},
+		{
+			"at": "2026-10-14T10:00:10.370Z",
+			"method": "DELETE",
+			"url": "comments/1"
+		},
+		{
+			"at": "2026-10-14T10:00:11.407Z",
+			"method": "DELETE",
+			"url": "comments/1"
+		},
+		{
+			"at": "2026-10-14T10:00:12.444Z",
+			"method": "PATCH",
+			"url": "tasks/99",
+			"body": {
+				"title": "missing"
+			},
+			"status": 404
+		},
+		{
+			"at": "2026-10-14T10:00:13.481Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": ""
+			},
+			"status": 422
+		},
+		{
+			"at": "2026-10-14T10:00:14.518Z",
+			"method": "DELETE",
+			"url": "tasks/1"
+		}
+	],
+	"provenance_for": [
+		1,
+		2
+	],
+	"expect": {
+		"journal": [
+			{
+				"seq": 1,
+				"at": "2026-10-14T10:00:01.037Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "2607ae9adbc2354f3908f867ddddafd414c14afe75081928cf915e5dab18ce7b",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"hash": "c65c5d56c50002c2214cbf21a6ab7e6a57c989d7b1641b32a7bd74d1341ae0c0"
+			},
+			{
+				"seq": 2,
+				"at": "2026-10-14T10:00:01.037Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "4e8e15379de9fe002455b64e6151cdfad38d0b9512a05fc32205a0ce86bea308",
+				"prev_hash": "c65c5d56c50002c2214cbf21a6ab7e6a57c989d7b1641b32a7bd74d1341ae0c0",
+				"hash": "f139c3ce6348616f4904d5f2ce232d5ba36ae35c12e184e297009442ed63f31a"
+			},
+			{
+				"seq": 3,
+				"at": "2026-10-14T10:00:02.074Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "4a2f00c5b97455e354787dd05c565f6c037c5f8b47a31244cd30fa950b134753",
+				"prev_hash": "f139c3ce6348616f4904d5f2ce232d5ba36ae35c12e184e297009442ed63f31a",
+				"hash": "caeab5295e7df3bd03db83e2c7e344ff89a5fd0e79ced6a2c09846495767f72f"
+			},
+			{
+				"seq": 4,
+				"at": "2026-10-14T10:00:03.111Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "title",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "bc0c644fe3386857d007e60c1ec2dd81d420014063457649b8187ab1576f4b78",
+				"prev_hash": "caeab5295e7df3bd03db83e2c7e344ff89a5fd0e79ced6a2c09846495767f72f",
+				"hash": "ee544de3070e966c9aee9ea946c088d0629f99f0d97e7962c410bbe3e50c701f"
+			},
+			{
+				"seq": 5,
+				"at": "2026-10-14T10:00:06.222Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "82ca798c1f1352b7e08c9942e0bbed526ed4be68e8a1e5cb54fbd92c579a5f7b",
+				"prev_hash": "ee544de3070e966c9aee9ea946c088d0629f99f0d97e7962c410bbe3e50c701f",
+				"hash": "8026efb83441598225920b573a2720fd0dea8ec68c866962116e8122eb525c75"
+			},
+			{
+				"seq": 6,
+				"at": "2026-10-14T10:00:07.259Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "f80a181689f1c652cb1240ab36084ef1f76c7ae4aa42baf051bd47c7e0bfeb2c",
+				"prev_hash": "8026efb83441598225920b573a2720fd0dea8ec68c866962116e8122eb525c75",
+				"hash": "05592751399671407aa9ebb2821dac2382e52a54bf9f2193f574139c051de846"
+			},
+			{
+				"seq": 7,
+				"at": "2026-10-14T10:00:08.296Z",
+				"entity": "comment",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "comment",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "55e0aa72d864181693ab5da7f85f10b9878ab775fff6916d807ac9df93cefc77",
+				"prev_hash": "05592751399671407aa9ebb2821dac2382e52a54bf9f2193f574139c051de846",
+				"hash": "15edae2979cefd3804bd10704d1836f37c198876f311afbd70923b1021d7925b"
+			},
+			{
+				"seq": 8,
+				"at": "2026-10-14T10:00:09.333Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "b7ef4598007e0e3f8d966dc0b4dbf01d520764c3697b955208ea19ecff0be1e6",
+				"prev_hash": "15edae2979cefd3804bd10704d1836f37c198876f311afbd70923b1021d7925b",
+				"hash": "93ce13f7e26f8e62c3ed4e4706c93548c9c7de5b1baa1cbd3cac886b24168a23"
+			},
+			{
+				"seq": 9,
+				"at": "2026-10-14T10:00:10.370Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "delete",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "",
+				"prev_hash": "93ce13f7e26f8e62c3ed4e4706c93548c9c7de5b1baa1cbd3cac886b24168a23",
+				"hash": "8c0203f6cedaccf02549fd2d3bca0b2979383b72cc6c870292f1a38b448e5934"
+			},
+			{
+				"seq": 10,
+				"at": "2026-10-14T10:00:14.518Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "delete",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "",
+				"prev_hash": "8c0203f6cedaccf02549fd2d3bca0b2979383b72cc6c870292f1a38b448e5934",
+				"hash": "18ce1ad0d72372ca04e0be8a1f1832c6154c356a30dbcae1fecbac0fc4796c6e"
+			}
+		],
+		"chain": {
+			"ok": true,
+			"broken_at": null,
+			"rows": 10
+		},
+		"provenance": {
+			"1": {
+				"created_by": "human",
+				"last_human_seq": 10,
+				"last_human_content": {
+					"title_sha": "bc0c644fe3386857d007e60c1ec2dd81d420014063457649b8187ab1576f4b78",
+					"description_sha": "82ca798c1f1352b7e08c9942e0bbed526ed4be68e8a1e5cb54fbd92c579a5f7b",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": false
+			},
+			"2": {
+				"created_by": "human",
+				"last_human_seq": 7,
+				"last_human_content": {
+					"title_sha": "4a2f00c5b97455e354787dd05c565f6c037c5f8b47a31244cd30fa950b134753",
+					"description_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"comments_sha": "37ee89e6736def9e98434b1752706445c7b99434a25df198dece3dc53d8690e4"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			}
+		}
+	}
+}

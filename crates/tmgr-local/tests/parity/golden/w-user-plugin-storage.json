@@ -155,7 +155,7 @@
 		"meta": [
 			{
 				"key": "schema_version",
-				"value": "12"
+				"value": "13"
 			},
 			{
 				"key": "feature.pages",

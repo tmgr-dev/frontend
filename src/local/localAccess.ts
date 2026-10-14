@@ -222,7 +222,8 @@ export const handleLocalAccessRequest = async (
 			return errorReply(404, 'Not found', 'NOT_FOUND');
 		}
 		if (normalized === 'mcp') {
-			const ctx = await buildCtx();
+			const base = await buildCtx();
+			const ctx: LocalContext = base.actor ? { ...base, actor: { ...base.actor, via: 'mcp' } } : base;
 			const router = withLiveWrites(localApi, {
 				workspaceId: workspace.id,
 				personaUuid: payload.personaUuid,

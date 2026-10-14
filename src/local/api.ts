@@ -25,6 +25,7 @@ import {
 	taskJson,
 	toJson,
 } from './serialize';
+import { journaledBatch, journaledCreate, type JournalEntry } from './journal';
 import { LocalHttpError, LocalRaw, type LocalActor, type LocalContext, type LocalRequest } from './types';
 
 const iso = (ctx: LocalContext) => ctx.now().toISOString();
@@ -331,6 +332,35 @@ export const noteStatusChange = async (ctx: LocalContext, taskId: number) => {
 	}
 };
 
+const textOf = (value: unknown): string => (value === null || value === undefined ? '' : String(value));
+
+const sameText = (a: unknown, b: unknown) => textOf(a).replace(/\r\n/g, '\n') === textOf(b).replace(/\r\n/g, '\n');
+
+/** Journal rows for the title/description a write changes; a description_json-only change counts as a description edit. */
+const taskEditEntries = async (
+	ctx: LocalContext,
+	id: number,
+	fields: Record<string, any>,
+): Promise<JournalEntry[]> => {
+	if (!('title' in fields) && !('description' in fields) && !('description_json' in fields)) return [];
+	const [before] = await ctx.db.select<any>(
+		`SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL`,
+		[id],
+	);
+	if (!before) return [];
+	const entries: JournalEntry[] = [];
+	if ('title' in fields && !sameText(fields.title, before.title)) {
+		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'title', content: textOf(fields.title) });
+	}
+	const descriptionChanged = 'description' in fields && !sameText(fields.description, before.description);
+	const jsonChanged = 'description_json' in fields && textOf(fields.description_json) !== textOf(before.description_json);
+	if (descriptionChanged || jsonChanged) {
+		const after = 'description' in fields ? fields.description : before.description;
+		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description', content: textOf(after) });
+	}
+	return entries;
+};
+
 const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, any>) => {
 	let statusBefore: number | null | undefined;
 	if ('status_id' in fields) {
@@ -355,11 +385,15 @@ const updateTask = async (ctx: LocalContext, id: number, fields: Record<string, 
 		END`);
 		values.push(fields.project_category_id, fields.project_category_id, fields.project_category_id);
 	}
-	const result = await ctx.db.execute(
-		`UPDATE tasks SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`,
-		[...values, id],
-	);
-	if (!result.rowsAffected) throw notFound('Task');
+	const updateSql = `UPDATE tasks SET ${sets.join(', ')} WHERE id = ? AND deleted_at IS NULL`;
+	const entries = await taskEditEntries(ctx, id, fields);
+	if (entries.length) {
+		const batch = await journaledBatch(ctx, [{ sql: updateSql, params: [...values, id], expectChanges: true }], entries);
+		if (batch.failedAt !== null) throw notFound('Task');
+	} else {
+		const result = await ctx.db.execute(updateSql, [...values, id]);
+		if (!result.rowsAffected) throw notFound('Task');
+	}
 	if (statusBefore !== undefined && fields.status_id != null && fields.status_id !== statusBefore) {
 		await noteStatusChange(ctx, id);
 	}
@@ -617,16 +651,35 @@ export const createLocalApi = () => {
 			fields.status_id = fields.status_id ?? (await defaultStatusId(ctx));
 			const now = iso(ctx);
 			const keys = Object.keys(fields);
-			// One statement, so the per-category ticket number is atomic with the insert.
-			const result = await ctx.db.execute(
-				`INSERT INTO tasks (${keys.join(', ')}, category_tasks_sequence_id, created_at, updated_at)
-				 SELECT ${keys.map(() => '?').join(', ')},
+			const id = await journaledCreate(ctx, 'tasks', (taskId) => {
+				const entries: JournalEntry[] = [
+					{ entity: 'task', entityId: taskId, taskId, field: 'create', content: textOf(fields.title) },
+				];
+				if (textOf(fields.description) !== '') {
+					entries.push({ entity: 'task', entityId: taskId, taskId, field: 'description', content: textOf(fields.description) });
+				}
+				return {
+					// One statement, so the per-category ticket number is atomic with the insert.
+					statements: [
+						{
+							sql: `INSERT INTO tasks (id, ${keys.join(', ')}, category_tasks_sequence_id, created_at, updated_at)
+				 SELECT ?, ${keys.map(() => '?').join(', ')},
 					CASE WHEN ? IS NULL THEN NULL ELSE
 						(SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?)
 					END, ?, ?`,
-				[...keys.map((k) => fields[k]), fields.project_category_id ?? null, fields.project_category_id ?? null, now, now],
-			);
-			const id = Number(result.lastInsertId);
+							params: [
+								taskId,
+								...keys.map((k) => fields[k]),
+								fields.project_category_id ?? null,
+								fields.project_category_id ?? null,
+								now,
+								now,
+							],
+						},
+					],
+					entries,
+				};
+			});
 			if (personaIds !== null) await setTaskPersonas(ctx, id, personaIds);
 			await syncTaskMentions(ctx, id);
 			return loadTask(ctx, id);
@@ -662,11 +715,18 @@ export const createLocalApi = () => {
 		.add('DELETE', 'tasks/:id(\\d+)', async ({ ctx, params }) => {
 			const id = Number(params.id);
 			await stopTimer(ctx, id);
-			const result = await ctx.db.execute(
-				`UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
-				[iso(ctx), iso(ctx), id],
+			const deleted = await journaledBatch(
+				ctx,
+				[
+					{
+						sql: `UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+						params: [iso(ctx), iso(ctx), id],
+						expectChanges: true,
+					},
+				],
+				[{ entity: 'task', entityId: id, taskId: id, field: 'delete', content: null }],
 			);
-			if (!result.rowsAffected) throw notFound('Task');
+			if (deleted.failedAt !== null) throw notFound('Task');
 			// Soft-deleted, so the ON DELETE CASCADE on task_id never fires: clean these up explicitly.
 			await ctx.db.execute(`DELETE FROM plugin_task_data WHERE task_id = ?`, [id]);
 			await ctx.db.execute(`DELETE FROM agent_work_runs WHERE task_id = ?`, [id]);
@@ -718,12 +778,18 @@ export const createLocalApi = () => {
 			await loadTask(ctx, Number(params.id));
 			const actor = actorOf(ctx);
 			const now = iso(ctx);
-			const result = await ctx.db.execute(
-				`INSERT INTO comments (task_id, message, author_kind, author_id, author_name, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-				[Number(params.id), message, actor.kind, actor.id, actor.name, now, now],
-			);
-			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [Number(result.lastInsertId)]);
+			const taskId = Number(params.id);
+			const commentId = await journaledCreate(ctx, 'comments', (id) => ({
+				statements: [
+					{
+						sql: `INSERT INTO comments (id, task_id, message, author_kind, author_id, author_name, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+						params: [id, taskId, message, actor.kind, actor.id, actor.name, now, now],
+					},
+				],
+				entries: [{ entity: 'comment', entityId: id, taskId, field: 'comment', content: message }],
+			}));
+			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [commentId]);
 			await syncTaskMentions(ctx, Number(params.id));
 			return { ...commentJson(row, ctx), reactions: [] };
 		}, 201)
@@ -737,14 +803,25 @@ export const createLocalApi = () => {
 			const message = String(body?.message ?? body?.content ?? '').trim();
 			if (!message) throw new LocalHttpError(422, 'message is required');
 			const now = iso(ctx);
-			await ctx.db.execute(`UPDATE comments SET message = ?, updated_at = ? WHERE id = ?`, [message, now, id]);
+			const edited = await journaledBatch(
+				ctx,
+				[
+					{
+						sql: `UPDATE comments SET message = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`,
+						params: [message, now, id],
+						expectChanges: true,
+					},
+				],
+				[{ entity: 'comment', entityId: id, taskId: comment.task_id, field: 'comment', content: message }],
+			);
+			if (edited.failedAt !== null) throw notFound('Comment');
 			const [row] = await ctx.db.select(`SELECT * FROM comments WHERE id = ?`, [id]);
 			await syncTaskMentions(ctx, comment.task_id);
 			const reactions = (await reactionsFor(ctx, [id])).get(id) ?? [];
 			return { ...commentJson(row, ctx), reactions };
 		})
 		.add('DELETE', 'comments/:id(\\d+)', async ({ ctx, params }) => {
-			const [comment] = await ctx.db.select<any>(`SELECT task_id, author_kind, author_id FROM comments WHERE id = ?`, [
+			const [comment] = await ctx.db.select<any>(`SELECT task_id, author_kind, author_id, deleted_at FROM comments WHERE id = ?`, [
 				Number(params.id),
 			]);
 			if (ctx.actor?.kind === 'persona') {
@@ -753,7 +830,20 @@ export const createLocalApi = () => {
 					throw new LocalHttpError(403, 'A persona may only delete its own comments', 'NOT_OWN');
 				}
 			}
-			await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
+			if (comment && comment.deleted_at == null) {
+				await journaledBatch(
+					ctx,
+					[
+						{
+							sql: `UPDATE comments SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+							params: [iso(ctx), Number(params.id)],
+						},
+					],
+					[{ entity: 'comment', entityId: Number(params.id), taskId: comment.task_id, field: 'delete', content: null }],
+				);
+			} else {
+				await ctx.db.execute(`UPDATE comments SET deleted_at = ? WHERE id = ?`, [iso(ctx), Number(params.id)]);
+			}
 			if (comment?.task_id != null) await syncTaskMentions(ctx, comment.task_id);
 			return { success: true, task_id: comment?.task_id };
 		})

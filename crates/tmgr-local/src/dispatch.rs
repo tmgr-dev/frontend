@@ -324,13 +324,13 @@ mod tests {
         let cli = crate::open_write(&path).unwrap();
         Connection::open(&path)
             .unwrap()
-            .execute_batch("UPDATE meta SET value = '13' WHERE key = 'schema_version'")
+            .execute_batch("UPDATE meta SET value = '14' WHERE key = 'schema_version'")
             .unwrap();
         let c = ctx("2026-10-13T12:00:00.000Z");
         let body = json!({ "title": "late" });
         assert_eq!(
             dispatch(&cli, &c, "POST", "tasks", Some(&body)).unwrap_err(),
-            crate::Error::SchemaTooNew(13)
+            crate::Error::SchemaTooNew(14)
         );
         assert!(cli.is_autocommit());
         let count: i64 = cli

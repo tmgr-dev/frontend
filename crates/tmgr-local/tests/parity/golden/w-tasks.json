@@ -1095,10 +1095,110 @@
 		}
 	],
 	"tables": {
+		"edit_journal": [
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "15e0ee9bc6575a8b0dc9e304bb6790145af825cd71c44878d441ad34c2a6fc50",
+				"entity": "task",
+				"entity_id": "9",
+				"field": "create",
+				"hash": "3889d4167b6c48444e30249ac17758b943db8ed731f011928d77885d9061fb7a",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"seq": 1,
+				"source": "desktop_ui",
+				"task_id": "9"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "751f5ed0ea11344a2dc5444c7832fc8cd1d7d7eca20330ae8ee5ee7bb4afe98e",
+				"entity": "task",
+				"entity_id": "9",
+				"field": "description",
+				"hash": "ae79e5663f3d97a0f3cbd6acaef30eb8674b2bce39355612b368c66388dd7318",
+				"prev_hash": "3889d4167b6c48444e30249ac17758b943db8ed731f011928d77885d9061fb7a",
+				"seq": 2,
+				"source": "desktop_ui",
+				"task_id": "9"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "7efbd8a2d42dc2b64add508302efb9976cf71875289841a13444c82c44e7c83f",
+				"entity": "task",
+				"entity_id": "10",
+				"field": "create",
+				"hash": "d58627c4ed726c60904e0056aa34d46bf556d90b529e20e272fe71390b9e49f5",
+				"prev_hash": "ae79e5663f3d97a0f3cbd6acaef30eb8674b2bce39355612b368c66388dd7318",
+				"seq": 3,
+				"source": "desktop_ui",
+				"task_id": "10"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "3e88984e23245e7df9cde5087d063d60083b4d4442336c91d76e8317de80d03c",
+				"entity": "task",
+				"entity_id": "1",
+				"field": "title",
+				"hash": "613ce40abd882562175447092f674510a652920acb98bb11f20a9af7d72c1939",
+				"prev_hash": "d58627c4ed726c60904e0056aa34d46bf556d90b529e20e272fe71390b9e49f5",
+				"seq": 4,
+				"source": "desktop_ui",
+				"task_id": "1"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "7117f0807129493fd1f4d6942340d55e82980ef0a82bf629871829666824c7b3",
+				"entity": "task",
+				"entity_id": "1",
+				"field": "description",
+				"hash": "f4cf04d028a516cd92825c889167c101f7f793957802405fbc30fd7a9b847777",
+				"prev_hash": "613ce40abd882562175447092f674510a652920acb98bb11f20a9af7d72c1939",
+				"seq": 5,
+				"source": "desktop_ui",
+				"task_id": "1"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "4283942b24b5d2df5cccdcb7943550f1b2f89ed2f6cac627d5647a0015207618",
+				"entity": "task",
+				"entity_id": "2",
+				"field": "title",
+				"hash": "7714f930eee313e5c75dee0c164ae0ed0b7ba879abcf9cd37aa84771018368ee",
+				"prev_hash": "f4cf04d028a516cd92825c889167c101f7f793957802405fbc30fd7a9b847777",
+				"seq": 6,
+				"source": "desktop_ui",
+				"task_id": "2"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "",
+				"entity": "task",
+				"entity_id": "7",
+				"field": "delete",
+				"hash": "d05c634ed752285a516606048d8d5b3e8ce6a6c3c08215a3349c8e7350499951",
+				"prev_hash": "7714f930eee313e5c75dee0c164ae0ed0b7ba879abcf9cd37aa84771018368ee",
+				"seq": 7,
+				"source": "desktop_ui",
+				"task_id": "7"
+			}
+		],
 		"meta": [
 			{
 				"key": "schema_version",
-				"value": "12"
+				"value": "13"
 			},
 			{
 				"key": "onboarding:board_move:1",

@@ -8,7 +8,7 @@ use chrono::{Offset, Utc};
 use rusqlite::Connection;
 use serde_json::Value;
 use tmgr_local::Context;
-pub use tmgr_local::{LocalWorkspace, User};
+pub use tmgr_local::{LocalWorkspace, User, WriteOrigin};
 
 use crate::error::{Error, Kind, Result};
 
@@ -75,6 +75,7 @@ pub fn client(
 pub struct Local {
     workspace: LocalWorkspace,
     user: User,
+    origin: WriteOrigin,
     read: RefCell<Option<Connection>>,
     write: RefCell<Option<Connection>>,
 }
@@ -84,9 +85,17 @@ impl Local {
         Local {
             workspace,
             user,
+            origin: WriteOrigin::default(),
             read: RefCell::new(None),
             write: RefCell::new(None),
         }
+    }
+
+    /// Where this client's requests come from. The default is `WriteOrigin::Cli`, which the edit journal
+    /// never counts as the owner's own typing; only the interactive CLI opts into `CliTty`.
+    pub fn with_origin(mut self, origin: WriteOrigin) -> Local {
+        self.origin = origin;
+        self
     }
 
     pub fn workspace(&self) -> &LocalWorkspace {
@@ -120,6 +129,7 @@ impl Local {
             now,
             local_offset: now.with_timezone(&chrono::Local).offset().fix(),
             actor: None,
+            origin: self.origin,
         };
         let cell = if method.eq_ignore_ascii_case("GET") {
             &self.read

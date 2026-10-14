@@ -58,7 +58,8 @@ impl Conn {
                 Client::new(server, &Ctx::user_agent(), Some(tokens), Some(store), false)
             }
             Conn::Local { workspace, user } => Client::for_local(
-                tmgr_core::local::Local::new(workspace.clone(), user.clone()),
+                tmgr_core::local::Local::new(workspace.clone(), user.clone())
+                    .with_origin(tmgr_core::local::WriteOrigin::detect()),
                 &Ctx::user_agent(),
                 false,
             ),

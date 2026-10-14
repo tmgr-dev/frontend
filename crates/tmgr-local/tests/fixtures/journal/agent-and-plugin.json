@@ -1,0 +1,510 @@
+{
+	"name": "agent-and-plugin",
+	"seed": [
+		"INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 7, 'Owner', 'Scribe', 'x')",
+		"INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:read\",\"tasks:write\",\"comments:read\",\"comments:write\"]', 'x')"
+	],
+	"ops": [
+		{
+			"at": "2026-10-14T10:01:41.737Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Mine",
+				"description": "Owner text"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:42.774Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Agent created",
+				"description": "Agent text",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7"
+			},
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:43.811Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Plugin created",
+				"author_kind": "human"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "tmgr.estimate",
+				"name": "Estimate",
+				"ownerId": "tmgr.estimate"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:44.848Z",
+			"method": "POST",
+			"url": "tasks/1/comments",
+			"body": {
+				"message": "agent note",
+				"author_kind": "human",
+				"source": "cli_tty"
+			},
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:45.885Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": "Agent rewrite",
+				"actor": {
+					"kind": "user",
+					"id": "7"
+				}
+			},
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:46.922Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Mine, then confirmed",
+				"description": "v1"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:47.959Z",
+			"method": "PATCH",
+			"url": "tasks/4",
+			"body": {
+				"description": "agent edit"
+			},
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:48.996Z",
+			"method": "PATCH",
+			"url": "tasks/4",
+			"body": {
+				"description": "human confirms"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:49.033Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Mine, comment by plugin"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:50.070Z",
+			"method": "POST",
+			"url": "tasks/5/comments",
+			"body": {
+				"message": "plugin comment"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "tmgr.estimate",
+				"name": "Estimate",
+				"ownerId": "tmgr.estimate"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:51.107Z",
+			"method": "PUT",
+			"url": "comments/1",
+			"body": {
+				"message": "agent edits its own"
+			},
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:52.144Z",
+			"method": "PATCH",
+			"url": "tasks/3",
+			"body": {
+				"title": "Plugin retitled"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "tmgr.estimate",
+				"name": "Estimate",
+				"ownerId": "tmgr.estimate"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:53.181Z",
+			"method": "PATCH",
+			"url": "tasks/5",
+			"body": {
+				"title": "Mine, renamed by me"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:54.218Z",
+			"method": "DELETE",
+			"url": "comments/1",
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
+		},
+		{
+			"at": "2026-10-14T10:01:55.255Z",
+			"method": "DELETE",
+			"url": "tasks/2"
+		}
+	],
+	"provenance_for": [
+		1,
+		2,
+		3,
+		4,
+		5
+	],
+	"expect": {
+		"journal": [
+			{
+				"seq": 1,
+				"at": "2026-10-14T10:01:41.737Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "f57afb7d275a26df0de0e933b28c16f2462e84c09ad605945a4c6163f2be3baa",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"hash": "2d550e523716a44f3dc08cd57d920e0f484647461ae8986584e7eb43877f0312"
+			},
+			{
+				"seq": 2,
+				"at": "2026-10-14T10:01:41.737Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "4eab7816ea3cb5eb3f9d66d4138e52d32bdd7497fe4c07dd647544c9c279096d",
+				"prev_hash": "2d550e523716a44f3dc08cd57d920e0f484647461ae8986584e7eb43877f0312",
+				"hash": "9052b8a0d33956c3d72a4773b7b1a02f805e666f5c5632d9de2e2bf3f01eb8ee"
+			},
+			{
+				"seq": 3,
+				"at": "2026-10-14T10:01:42.774Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "create",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "2d32a05d6aef64edbfc678c638c76a418822ef1e8dd6b03af07b5a2e9422b22e",
+				"prev_hash": "9052b8a0d33956c3d72a4773b7b1a02f805e666f5c5632d9de2e2bf3f01eb8ee",
+				"hash": "bde4d63385d70dc4ea4fcfc336e17ca18aa6b012faeae317f027625222366c09"
+			},
+			{
+				"seq": 4,
+				"at": "2026-10-14T10:01:42.774Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "description",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "18444f57aea2e74c0193172f734659cece53e8493942da9b7e79d744211392f1",
+				"prev_hash": "bde4d63385d70dc4ea4fcfc336e17ca18aa6b012faeae317f027625222366c09",
+				"hash": "9b37bfa5ed1c994f117844ca6f2fbda9e874ea1c6200b5f8bc1fcb73345148f4"
+			},
+			{
+				"seq": 5,
+				"at": "2026-10-14T10:01:43.811Z",
+				"entity": "task",
+				"entity_id": "3",
+				"task_id": "3",
+				"field": "create",
+				"author_kind": "plugin",
+				"source": "plugin",
+				"actor_id": "tmgr.estimate",
+				"content_sha256": "5843420cf7e6d5548873fd696aeaa2b868aab1a91e0148a341a1da72ca12429e",
+				"prev_hash": "9b37bfa5ed1c994f117844ca6f2fbda9e874ea1c6200b5f8bc1fcb73345148f4",
+				"hash": "04f9ec0457caa7f2876563bb158774be3be5b12bc4831ad1a3b50fc44bdb9c8f"
+			},
+			{
+				"seq": 6,
+				"at": "2026-10-14T10:01:44.848Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "9b0a4d5bad5e0b8d9f8191587f8dde1e23d538350535daa9a13665a181650a09",
+				"prev_hash": "04f9ec0457caa7f2876563bb158774be3be5b12bc4831ad1a3b50fc44bdb9c8f",
+				"hash": "64352a3889b60dceb038b6b9aeed5d8b2256cfdf884792a358ef1686aa4bef2f"
+			},
+			{
+				"seq": 7,
+				"at": "2026-10-14T10:01:45.885Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "db3df7c28f1bae49ad57025dd82aea48cc479691822c574a556a8e5b267e77ae",
+				"prev_hash": "64352a3889b60dceb038b6b9aeed5d8b2256cfdf884792a358ef1686aa4bef2f",
+				"hash": "a4dc2cdb67c7d82568a5b406d93f3f7d2352019fdb6903b09ca52c06781d2d06"
+			},
+			{
+				"seq": 8,
+				"at": "2026-10-14T10:01:46.922Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "7fc1539806a982faca69b69eb69067371018f90a73de3fa5ebf2dfe7ee325ee2",
+				"prev_hash": "a4dc2cdb67c7d82568a5b406d93f3f7d2352019fdb6903b09ca52c06781d2d06",
+				"hash": "7907583cabdf6234a7a316579106b32bcb188dec57aac7d97d13564d27cfb523"
+			},
+			{
+				"seq": 9,
+				"at": "2026-10-14T10:01:46.922Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "3bfc269594ef649228e9a74bab00f042efc91d5acc6fbee31a382e80d42388fe",
+				"prev_hash": "7907583cabdf6234a7a316579106b32bcb188dec57aac7d97d13564d27cfb523",
+				"hash": "6048696e180f7f0b2141b42a902307da3454201b4e24e4af0c142c26e0bc522d"
+			},
+			{
+				"seq": 10,
+				"at": "2026-10-14T10:01:47.959Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "description",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "a868716ab9a9b3ab752e3116ca644b9452c48e0a04a866796f466ae070a2fff1",
+				"prev_hash": "6048696e180f7f0b2141b42a902307da3454201b4e24e4af0c142c26e0bc522d",
+				"hash": "6f18be935e89fcd1bfec98ba7c97f85839e466471f8ad560509f8e51a024671c"
+			},
+			{
+				"seq": 11,
+				"at": "2026-10-14T10:01:48.996Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "description",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "2f08a559d0e15b5ba28ea190eb0139d5df1cec394507cb5ecae9001c5dd16c53",
+				"prev_hash": "6f18be935e89fcd1bfec98ba7c97f85839e466471f8ad560509f8e51a024671c",
+				"hash": "10b1d8b799ca91ae39f2226addf2d21e6f6dfc449b4e1f550b3966d2dfb96e6f"
+			},
+			{
+				"seq": 12,
+				"at": "2026-10-14T10:01:49.033Z",
+				"entity": "task",
+				"entity_id": "5",
+				"task_id": "5",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "08aeea102106448ddde33680553325b0ba470bbd7d2764e149b4148a672ab195",
+				"prev_hash": "10b1d8b799ca91ae39f2226addf2d21e6f6dfc449b4e1f550b3966d2dfb96e6f",
+				"hash": "e40ccdf69b5efe28d1002047ad914e8a29dcccf122ae9249be792e4f6112f5c1"
+			},
+			{
+				"seq": 13,
+				"at": "2026-10-14T10:01:50.070Z",
+				"entity": "comment",
+				"entity_id": "2",
+				"task_id": "5",
+				"field": "comment",
+				"author_kind": "plugin",
+				"source": "plugin",
+				"actor_id": "tmgr.estimate",
+				"content_sha256": "106cb2aecaacf0f9dd9b77722eb6aee7f0ebeef94391469c408422916788ee93",
+				"prev_hash": "e40ccdf69b5efe28d1002047ad914e8a29dcccf122ae9249be792e4f6112f5c1",
+				"hash": "10202bdba1ad5bade072c1ef39c49e49067e9aafc8b18e502a5038676e858d91"
+			},
+			{
+				"seq": 14,
+				"at": "2026-10-14T10:01:51.107Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "1bf7e93f5954de0a02c7cfdc65956030e1cf3f3ea796437399388b60e4c36f46",
+				"prev_hash": "10202bdba1ad5bade072c1ef39c49e49067e9aafc8b18e502a5038676e858d91",
+				"hash": "1fa01724c9b23312d4f317020a3dfa779a8c3dc9d0c09cfcc0274ddf89f703d3"
+			},
+			{
+				"seq": 15,
+				"at": "2026-10-14T10:01:52.144Z",
+				"entity": "task",
+				"entity_id": "3",
+				"task_id": "3",
+				"field": "title",
+				"author_kind": "plugin",
+				"source": "plugin",
+				"actor_id": "tmgr.estimate",
+				"content_sha256": "4310082bf1b6bc2dbfee18a7d50a7233d11b4ef6d20a867e4c8763294c3acbba",
+				"prev_hash": "1fa01724c9b23312d4f317020a3dfa779a8c3dc9d0c09cfcc0274ddf89f703d3",
+				"hash": "bc315d3fdd22b7044d0d204e0f639ba05844609aa704a4d079047d2ba216e4b6"
+			},
+			{
+				"seq": 16,
+				"at": "2026-10-14T10:01:53.181Z",
+				"entity": "task",
+				"entity_id": "5",
+				"task_id": "5",
+				"field": "title",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "7c94370fbe1017bc1eabedc8c37edefab2034b1a3466f96eb44e09738a5c8024",
+				"prev_hash": "bc315d3fdd22b7044d0d204e0f639ba05844609aa704a4d079047d2ba216e4b6",
+				"hash": "68d945c9fc50e4580755b75f1823d871ca09387d15eea4bd31d1a3b4b550fd42"
+			},
+			{
+				"seq": 17,
+				"at": "2026-10-14T10:01:54.218Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "delete",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "",
+				"prev_hash": "68d945c9fc50e4580755b75f1823d871ca09387d15eea4bd31d1a3b4b550fd42",
+				"hash": "f7631227a3f32aec1068eec1a5cb65d60b0eb1aba6ddded91d9ab0b8b199e9da"
+			},
+			{
+				"seq": 18,
+				"at": "2026-10-14T10:01:55.255Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "delete",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "",
+				"prev_hash": "f7631227a3f32aec1068eec1a5cb65d60b0eb1aba6ddded91d9ab0b8b199e9da",
+				"hash": "362cbce22dff9431f380fad70f67455800233456bdeaa6fb14554dd1ef8ed20c"
+			}
+		],
+		"chain": {
+			"ok": true,
+			"broken_at": null,
+			"rows": 18
+		},
+		"provenance": {
+			"1": {
+				"created_by": "human",
+				"last_human_seq": 2,
+				"last_human_content": {
+					"title_sha": "f57afb7d275a26df0de0e933b28c16f2462e84c09ad605945a4c6163f2be3baa",
+					"description_sha": "4eab7816ea3cb5eb3f9d66d4138e52d32bdd7497fe4c07dd647544c9c279096d",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": true,
+				"chain_ok": true,
+				"content_matches": false
+			},
+			"2": {
+				"created_by": "agent",
+				"last_human_seq": 18,
+				"last_human_content": {
+					"title_sha": "2d32a05d6aef64edbfc678c638c76a418822ef1e8dd6b03af07b5a2e9422b22e",
+					"description_sha": "18444f57aea2e74c0193172f734659cece53e8493942da9b7e79d744211392f1",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": false
+			},
+			"3": {
+				"created_by": "plugin",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"chain_ok": true,
+				"content_matches": false
+			},
+			"4": {
+				"created_by": "human",
+				"last_human_seq": 11,
+				"last_human_content": {
+					"title_sha": "7fc1539806a982faca69b69eb69067371018f90a73de3fa5ebf2dfe7ee325ee2",
+					"description_sha": "2f08a559d0e15b5ba28ea190eb0139d5df1cec394507cb5ecae9001c5dd16c53",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			},
+			"5": {
+				"created_by": "human",
+				"last_human_seq": 16,
+				"last_human_content": {
+					"title_sha": "7c94370fbe1017bc1eabedc8c37edefab2034b1a3466f96eb44e09738a5c8024",
+					"description_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"comments_sha": "2bbde9ddd07c5b73a5a1af322b5499227425d813303c7258bfeeeb661b8e0056"
+				},
+				"modified_by_non_human_since": false,
+				"chain_ok": true,
+				"content_matches": true
+			}
+		}
+	}
+}

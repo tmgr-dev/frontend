@@ -1,5 +1,6 @@
 use chrono::{DateTime, FixedOffset, Utc};
 
+use crate::journal::WriteOrigin;
 use crate::workspace::LocalWorkspace;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +27,8 @@ pub struct Context {
     /// The user's UTC offset at `now`: "today" of a routine is a local date.
     pub local_offset: FixedOffset,
     pub actor: Option<Actor>,
+    /// Where a request without an actor comes from; it decides whether the journal may call it human.
+    pub origin: WriteOrigin,
 }
 
 impl Context {

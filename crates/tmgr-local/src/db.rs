@@ -6,7 +6,9 @@ use serde_json::{Map, Value};
 
 use crate::error::{Error, Result};
 
-pub const SCHEMA_VERSION: u32 = 12;
+/// The newest schema this crate knows; it also accepts every version down to `MIN_SCHEMA_VERSION` and never migrates.
+pub const SCHEMA_VERSION: u32 = 13;
+pub const MIN_SCHEMA_VERSION: u32 = 12;
 
 pub(crate) type Row = Map<String, Value>;
 
@@ -86,7 +88,7 @@ pub(crate) fn schema_version(conn: &Connection) -> Result<u32> {
 
 pub(crate) fn check_schema(conn: &Connection) -> Result<()> {
     match schema_version(conn)? {
-        SCHEMA_VERSION => Ok(()),
+        MIN_SCHEMA_VERSION..=SCHEMA_VERSION => Ok(()),
         v if v > SCHEMA_VERSION => Err(Error::SchemaTooNew(v)),
         v => Err(Error::SchemaTooOld(v)),
     }
@@ -148,9 +150,9 @@ mod tests {
     #[test]
     fn refuses_newer_and_older_schemas() {
         let (_d1, newer) = file_db(
-            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '13');",
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '14');",
         );
-        assert_eq!(open_read(&newer).unwrap_err(), Error::SchemaTooNew(13));
+        assert_eq!(open_read(&newer).unwrap_err(), Error::SchemaTooNew(14));
         let (_d2, older) = file_db(
             "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '11');",
         );
@@ -181,9 +183,9 @@ mod tests {
     #[test]
     fn a_refused_database_is_left_untouched() {
         let (_dir, path) = file_db(
-            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '13');",
+            "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); INSERT INTO meta VALUES ('schema_version', '14');",
         );
-        assert_eq!(open_write(&path).unwrap_err(), Error::SchemaTooNew(13));
+        assert_eq!(open_write(&path).unwrap_err(), Error::SchemaTooNew(14));
         let mode: String = Connection::open(&path)
             .unwrap()
             .query_row("PRAGMA journal_mode", [], |r| r.get(0))

@@ -54,6 +54,8 @@ export interface LocalActor {
 	name: string;
 	/** Set from the plugin's storage id header: distinguishes repos that reuse the same plugin id. */
 	ownerId?: string;
+	/** Set by the local socket for requests that arrived over MCP; journal provenance only. */
+	via?: 'mcp';
 }
 
 export interface LocalContext {

@@ -2,10 +2,10 @@
 	"meta": [
 		{
 			"key": "schema_version",
-			"value": "12"
+			"value": "13"
 		}
 	],
-	"schema_version": 12,
+	"schema_version": 13,
 	"sqlite_master": [
 		{
 			"name": "meta",
@@ -275,6 +275,18 @@
 			"name": "plugin_page_data_plugin_key_idx",
 			"sql": "CREATE INDEX plugin_page_data_plugin_key_idx ON plugin_page_data (plugin_id, key)",
 			"tbl_name": "plugin_page_data",
+			"type": "index"
+		},
+		{
+			"name": "edit_journal",
+			"sql": "CREATE TABLE edit_journal (\n\t\t\t\tseq INTEGER PRIMARY KEY,\n\t\t\t\tat TEXT NOT NULL,\n\t\t\t\tentity TEXT NOT NULL,\n\t\t\t\tentity_id TEXT NOT NULL,\n\t\t\t\ttask_id TEXT NOT NULL,\n\t\t\t\tfield TEXT NOT NULL,\n\t\t\t\tauthor_kind TEXT NOT NULL,\n\t\t\t\tsource TEXT NOT NULL,\n\t\t\t\tactor_id TEXT NOT NULL,\n\t\t\t\tcontent_sha256 TEXT NOT NULL,\n\t\t\t\tprev_hash TEXT NOT NULL,\n\t\t\t\thash TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "edit_journal",
+			"type": "table"
+		},
+		{
+			"name": "edit_journal_task_idx",
+			"sql": "CREATE INDEX edit_journal_task_idx ON edit_journal (task_id, seq)",
+			"tbl_name": "edit_journal",
 			"type": "index"
 		}
 	],

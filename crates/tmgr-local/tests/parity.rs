@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::types::{Value as Sql, ValueRef};
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use tmgr_local::{dispatch, Actor, Context, LocalWorkspace, Manifest, User};
+use tmgr_local::{dispatch, Actor, Context, LocalWorkspace, Manifest, User, WriteOrigin};
 
 fn dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/parity")
@@ -131,6 +131,7 @@ fn context(scenario: &Value) -> Context {
             .with_timezone(&Utc),
         local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
         actor: actor(&scenario["actor"]),
+        origin: WriteOrigin::DesktopUi,
     }
 }
 

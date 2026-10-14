@@ -1288,6 +1288,50 @@
 				"updated_at": "2026-10-13T12:00:00.000Z"
 			}
 		],
+		"edit_journal": [
+			{
+				"actor_id": "11111111-1111-4111-8111-111111111111",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "agent",
+				"content_sha256": "f755da3843535c26c557f240f349ee4dd1a01cc05c89a0e919a252314290c77c",
+				"entity": "task",
+				"entity_id": "9",
+				"field": "create",
+				"hash": "fc0169b5ecb5ed82a23547ed4c8bd5f89bd6a0e5186beee7d7d537a5f9491fbf",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"seq": 1,
+				"source": "local_access",
+				"task_id": "9"
+			},
+			{
+				"actor_id": "11111111-1111-4111-8111-111111111111",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "agent",
+				"content_sha256": "1ca291d8f3cbfc9e59d123193dcddb736d52bd7fcdf1f6ca6628c41996263af0",
+				"entity": "task",
+				"entity_id": "1",
+				"field": "title",
+				"hash": "c5a35b7288297a95fad8a4c52f6422427f1ceb1b5ecc8d77c596f8326b7f8c45",
+				"prev_hash": "fc0169b5ecb5ed82a23547ed4c8bd5f89bd6a0e5186beee7d7d537a5f9491fbf",
+				"seq": 2,
+				"source": "local_access",
+				"task_id": "1"
+			},
+			{
+				"actor_id": "11111111-1111-4111-8111-111111111111",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "agent",
+				"content_sha256": "4329f240e869274ac7ee383a61e0c442bdc265f0abf8a1130c7e3a4430f1652b",
+				"entity": "comment",
+				"entity_id": "5",
+				"field": "comment",
+				"hash": "7305341d722c77ae1cf36aa21444dcfe811d435752a6a3c5bbcbb9a487cf2566",
+				"prev_hash": "c5a35b7288297a95fad8a4c52f6422427f1ceb1b5ecc8d77c596f8326b7f8c45",
+				"seq": 3,
+				"source": "local_access",
+				"task_id": "1"
+			}
+		],
 		"page_links": [
 			{
 				"page_id": 2,

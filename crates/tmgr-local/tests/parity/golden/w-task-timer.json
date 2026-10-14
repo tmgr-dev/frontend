@@ -848,7 +848,7 @@
 		"meta": [
 			{
 				"key": "schema_version",
-				"value": "12"
+				"value": "13"
 			},
 			{
 				"key": "onboarding:board_move:2",

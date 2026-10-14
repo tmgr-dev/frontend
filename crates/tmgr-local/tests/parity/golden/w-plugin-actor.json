@@ -553,6 +553,36 @@
 				"updated_at": "2026-10-13T12:00:00.000Z"
 			}
 		],
+		"edit_journal": [
+			{
+				"actor_id": "tmgr.estimate",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "plugin",
+				"content_sha256": "5843420cf7e6d5548873fd696aeaa2b868aab1a91e0148a341a1da72ca12429e",
+				"entity": "task",
+				"entity_id": "9",
+				"field": "create",
+				"hash": "85d99ee5209257260591eabce5ce60f59b0b3d52113d177a955363f2d90d082f",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"seq": 1,
+				"source": "plugin",
+				"task_id": "9"
+			},
+			{
+				"actor_id": "tmgr.estimate",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "plugin",
+				"content_sha256": "881d8be589382c3d026b8d37b401877b58a25b0729fb3ea5e760d6b626e1d364",
+				"entity": "comment",
+				"entity_id": "5",
+				"field": "comment",
+				"hash": "c145068764b6fe7a0955d67dfd73e525e61e846ecea6d2e1d8ab311d23f6e6df",
+				"prev_hash": "85d99ee5209257260591eabce5ce60f59b0b3d52113d177a955363f2d90d082f",
+				"seq": 2,
+				"source": "plugin",
+				"task_id": "1"
+			}
+		],
 		"plugin_kv": [
 			{
 				"key": "last run",

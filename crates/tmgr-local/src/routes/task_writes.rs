@@ -9,6 +9,7 @@ use super::page_writes::sync_task_mentions;
 use super::tasks::{load_task, persona_view, stop_timer};
 use super::{int, text};
 use crate::db::{execute, select, select_one, Row};
+use crate::journal::{self, Entry};
 use crate::js;
 use crate::persona::LOCAL_OWNER_ID;
 use crate::router::{coded, http, not_found, sql, Handled, Outcome, Request};
@@ -228,6 +229,54 @@ fn default_status_id(req: &Request<'_>) -> Result<Sql, Outcome> {
     Ok(pick.map_or(Sql::Null, |r| json_sql(col(r, "id"))))
 }
 
+fn sql_text(value: &Sql) -> String {
+    match value {
+        Sql::Null | Sql::Blob(_) => String::new(),
+        Sql::Text(s) => s.clone(),
+        Sql::Integer(i) => i.to_string(),
+        Sql::Real(f) => js::string(&js::float_json(*f)),
+    }
+}
+
+fn same_text(a: &str, b: &str) -> bool {
+    a.replace("\r\n", "\n") == b.replace("\r\n", "\n")
+}
+
+/// Journal entries for the title and description a write changes; a description_json-only change counts
+/// as a description edit.
+fn task_edit_entries(
+    req: &Request<'_>,
+    id: i64,
+    fields: &[(&'static str, Sql)],
+) -> Result<Vec<Entry>, Outcome> {
+    let title = field(fields, "title");
+    let description = field(fields, "description");
+    let description_json = field(fields, "description_json");
+    if title.is_none() && description.is_none() && description_json.is_none() {
+        return Ok(Vec::new());
+    }
+    let Some(before) = sql(select_one(
+        req.conn,
+        "SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL",
+        &[int(id)],
+    ))?
+    else {
+        return Ok(Vec::new());
+    };
+    let was = |key: &str| js::string_or_empty(before.get(key));
+    let mut entries = Vec::new();
+    if let Some(title) = title.map(sql_text).filter(|t| !same_text(t, &was("title"))) {
+        entries.push(Entry::task(id, "title", Some(title)));
+    }
+    let description_changed = description.is_some_and(|d| !same_text(&sql_text(d), &was("description")));
+    let json_changed = description_json.is_some_and(|d| sql_text(d) != was("description_json"));
+    if description_changed || json_changed {
+        let after = description.map_or_else(|| was("description"), sql_text);
+        entries.push(Entry::task(id, "description", Some(after)));
+    }
+    Ok(entries)
+}
+
 pub(super) fn note_status_change(req: &Request<'_>, task_id: i64) {
     if req.ctx.actor.as_ref().is_some_and(|a| a.kind != "user") {
         return;
@@ -284,6 +333,11 @@ pub(super) fn create(req: &Request<'_>) -> Handled {
         &params,
     ))?;
     let id = inserted.last_id;
+    let mut entries = vec![Entry::task(id, "create", field(&fields, "title").map(sql_text))];
+    if let Some(description) = field(&fields, "description").map(sql_text).filter(|d| !d.is_empty()) {
+        entries.push(Entry::task(id, "description", Some(description)));
+    }
+    sql(journal::append(req.conn, req.ctx, &entries))?;
     if let Some(wanted) = personas {
         set_task_personas(req, id, wanted)?;
     }
@@ -330,6 +384,7 @@ fn update_task(req: &Request<'_>, id: i64, fields: Vec<(&'static str, Sql)>) -> 
         values.extend([category.clone(), category.clone(), category.clone()]);
     }
     values.push(int(id));
+    let entries = task_edit_entries(req, id, &fields)?;
     let updated = sql(execute(
         req.conn,
         &format!(
@@ -341,6 +396,7 @@ fn update_task(req: &Request<'_>, id: i64, fields: Vec<(&'static str, Sql)>) -> 
     if updated.changes == 0 {
         return Err(not_found("Task"));
     }
+    sql(journal::append(req.conn, req.ctx, &entries))?;
     if let (Some(Some(before)), Some(after)) = (&before, &status) {
         let changed = match after {
             Sql::Null => false,
@@ -394,6 +450,7 @@ pub(super) fn delete(req: &Request<'_>) -> Handled {
     if deleted.changes == 0 {
         return Err(not_found("Task"));
     }
+    sql(journal::append(req.conn, req.ctx, &[Entry::task(id, "delete", None)]))?;
     for statement in [
         "DELETE FROM plugin_task_data WHERE task_id = ?",
         "DELETE FROM agent_work_runs WHERE task_id = ?",
@@ -502,6 +559,11 @@ pub(super) fn add_comment(req: &Request<'_>) -> Handled {
             text(&now),
         ],
     ))?;
+    sql(journal::append(
+        req.conn,
+        req.ctx,
+        &[Entry::comment(inserted.last_id, task_id, "comment", Some(message.clone()))],
+    ))?;
     let row = sql(select_one(
         req.conn,
         "SELECT * FROM comments WHERE id = ?",
@@ -546,6 +608,11 @@ pub(super) fn edit_comment(req: &Request<'_>) -> Handled {
         &[text(&message), text(&req.ctx.iso_now()), int(id)],
     ))?;
     let task_id = col(&comment, "task_id").as_i64().unwrap_or(0);
+    sql(journal::append(
+        req.conn,
+        req.ctx,
+        &[Entry::comment(id, task_id, "comment", Some(message))],
+    ))?;
     sync_task_mentions(req, task_id)?;
     comment_with_reactions(req, id)
 }
@@ -554,7 +621,7 @@ pub(super) fn delete_comment(req: &Request<'_>) -> Handled {
     let id = req.id("id");
     let comment = sql(select_one(
         req.conn,
-        "SELECT task_id, author_kind, author_id FROM comments WHERE id = ?",
+        "SELECT task_id, author_kind, author_id, deleted_at FROM comments WHERE id = ?",
         &[int(id)],
     ))?;
     if req.ctx.actor.as_ref().is_some_and(|a| a.kind == "persona") {
@@ -567,6 +634,14 @@ pub(super) fn delete_comment(req: &Request<'_>) -> Handled {
         &[text(&req.ctx.iso_now()), int(id)],
     ))?;
     let task_id = comment.as_ref().map(|c| col(c, "task_id").clone());
+    if let Some(live) = comment.as_ref().filter(|c| col(c, "deleted_at").is_null()) {
+        let task = col(live, "task_id").as_i64().unwrap_or(0);
+        sql(journal::append(
+            req.conn,
+            req.ctx,
+            &[Entry::comment(id, task, "delete", None)],
+        ))?;
+    }
     if let Some(t) = task_id.as_ref().and_then(Value::as_i64) {
         sync_task_mentions(req, t)?;
     }

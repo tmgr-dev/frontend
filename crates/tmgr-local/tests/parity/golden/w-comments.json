@@ -455,6 +455,64 @@
 				"updated_at": "2026-10-13T12:00:00.000Z"
 			}
 		],
+		"edit_journal": [
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "4e47826698bb4630fb4451010062fadbf85d61427cbdfaed7ad0f23f239bed89",
+				"entity": "comment",
+				"entity_id": "5",
+				"field": "comment",
+				"hash": "13a55de94b06935e068a0ecf610dc92ee28f546674e9e5e4806e0352974b12b9",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"seq": 1,
+				"source": "desktop_ui",
+				"task_id": "1"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "c4595210898daba70778e44388020b5abed668eb476fabad14f194ce76967a98",
+				"entity": "comment",
+				"entity_id": "6",
+				"field": "comment",
+				"hash": "5244452ddc34ac5e2cd55d4ee87202b7953c750cd66a85cda1fd8369820034ea",
+				"prev_hash": "13a55de94b06935e068a0ecf610dc92ee28f546674e9e5e4806e0352974b12b9",
+				"seq": 2,
+				"source": "desktop_ui",
+				"task_id": "1"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:30:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "ac33aef07f4e66fbac6dbfbc668298229d51f94db8644a254fcb20d290fba37f",
+				"entity": "comment",
+				"entity_id": "1",
+				"field": "comment",
+				"hash": "587b2ef17c350872ff2cfdeccfc59e3deb2d98837a94bbe968d02fd70251963c",
+				"prev_hash": "5244452ddc34ac5e2cd55d4ee87202b7953c750cd66a85cda1fd8369820034ea",
+				"seq": 3,
+				"source": "desktop_ui",
+				"task_id": "1"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "",
+				"entity": "comment",
+				"entity_id": "4",
+				"field": "delete",
+				"hash": "9ab33c384a76a41cafd81058302bcf958999ef8f785ec288bebad10d32a10938",
+				"prev_hash": "587b2ef17c350872ff2cfdeccfc59e3deb2d98837a94bbe968d02fd70251963c",
+				"seq": 4,
+				"source": "desktop_ui",
+				"task_id": "2"
+			}
+		],
 		"task_page_mentions": []
 	}
 }
