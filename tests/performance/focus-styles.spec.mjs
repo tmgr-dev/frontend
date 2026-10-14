@@ -274,12 +274,17 @@ const installProbe = () => {
         .findIndex((e, i) => focused[i].border !== blurred[i].border);
       res.focusBorder =
         changed < 0 ? null : `${name(els[changed])} ${focused[changed].border}`;
+      res.focusBorderColor = changed < 0 ? null : focused[changed].border;
+      // D-010: the element's own focus box-shadow (the inner band) is checked
+      // per kind by the callers; ancestors must not change.
+      res.ownShadow =
+        focused[0].boxShadow !== blurred[0].boxShadow
+          ? focused[0].boxShadow
+          : null;
       els.forEach((e, i) => {
-        if (focused[i].boxShadow !== blurred[i].boxShadow)
+        if (i && focused[i].boxShadow !== blurred[i].boxShadow)
           res.decorations.push(
-            `${i ? 'ancestor ' : ''}${name(e)} box-shadow on focus: ${
-              focused[i].boxShadow
-            }`,
+            `ancestor ${name(e)} box-shadow on focus: ${focused[i].boxShadow}`,
           );
         if (i && focused[i].outline !== blurred[i].outline)
           res.decorations.push(
@@ -297,13 +302,18 @@ const installProbe = () => {
       b.focus();
       await settle([b]);
       const cs = getComputedStyle(b);
+      const d = document.createElement('div');
+      d.style.border = '1px solid var(--focus-border)';
+      b.after(d);
       const res = {
         focusVisible: b.matches(':focus-visible'),
         tuple: `${cs.outlineColor} ${cs.outlineWidth} ${cs.outlineOffset}`,
         outlineStyle: cs.outlineStyle,
         boxShadow: cs.boxShadow,
+        focusBorder: getComputedStyle(d).borderColor,
       };
       b.remove();
+      d.remove();
       return res;
     },
   };
@@ -311,6 +321,11 @@ const installProbe = () => {
 
 const tupleOf = (s) =>
   `${s.outlineColor} ${s.outlineWidth}px ${s.outlineOffset}px`;
+
+const firstLayer = (shadow) =>
+  shadow && shadow !== 'none' ? shadow.split(/,(?![^(]*\))/)[0].trim() : null;
+const layerColor = (layer) =>
+  layer?.match(/^(rgba?\([^)]*\)|color\([^)]*\))/)?.[1] ?? null;
 
 async function setup(
   page,
@@ -434,6 +449,10 @@ async function reference(page) {
   expect
     .soft(ref.focusVisible, 'reference button matches :focus-visible')
     .toBe(true);
+  ref.band = firstLayer(ref.boxShadow);
+  expect
+    .soft(ref.band, 'reference ring has an inner 4px band (D-010)')
+    .toMatch(/ 0px 0px 0px 4px inset$/);
   return ref;
 }
 
@@ -491,12 +510,13 @@ function expectKeyboardStops(stops, ref, label, { min = 4 } = {}) {
       `${label}: Tab stops without a visible outline`,
     )
     .toEqual([]);
-  expect
-    .soft(
-      [...new Set(controls.map(tupleOf))],
-      `${label}: one focus tuple (color width offset) on every Tab stop, equal to the global rule`,
-    )
-    .toEqual([ref.tuple]);
+  if (controls.length)
+    expect
+      .soft(
+        [...new Set(controls.map(tupleOf))],
+        `${label}: one focus tuple (color width offset) on every Tab stop, equal to the global rule`,
+      )
+      .toEqual([ref.tuple]);
   expect
     .soft(
       controls
@@ -505,10 +525,25 @@ function expectKeyboardStops(stops, ref, label, { min = 4 } = {}) {
       `${label}: outline not inset (D-002)`,
     )
     .toEqual([]);
+  if (controls.length)
+    expect
+      .soft(
+        [...new Set(controls.map((s) => firstLayer(s.ownShadow)))],
+        `${label}: one inner band (first box-shadow layer) on every Tab stop (D-010)`,
+      )
+      .toEqual([ref.band]);
+  expect
+    .soft(
+      stops
+        .filter((s) => s.kind !== 'control' && s.ownShadow)
+        .map((s) => fmt(s, `${s.kind} box-shadow=${s.ownShadow}`)),
+      `${label}: inputs/editors/menu items draw no focus box-shadow`,
+    )
+    .toEqual([]);
   expect
     .soft(
       stops.flatMap((s) => s.decorations.map((d) => `${s.el}: ${d}`)),
-      `${label}: extra focus box-shadow/ring (element or ancestor)`,
+      `${label}: extra focus box-shadow/ring on an ancestor`,
     )
     .toEqual([]);
   expect
@@ -527,9 +562,27 @@ function expectKeyboardStops(stops, ref, label, { min = 4 } = {}) {
       `${label}: text inputs show focus by a border change on the input or its wrapper (D-003)`,
     )
     .toEqual([]);
+  expect
+    .soft(
+      stops
+        .filter(
+          (s) =>
+            s.kind === 'text' &&
+            s.focusBorder &&
+            s.focusBorderColor !== ref.focusBorder,
+        )
+        .map((s) => fmt(s, s.focusBorder)),
+      `${label}: focus border is --focus-border (D-011)`,
+    )
+    .toEqual([]);
 }
 
-async function mouseProbe(page, locator, label, { stops = [], file } = {}) {
+async function mouseProbe(
+  page,
+  locator,
+  label,
+  { stops = [], file, ref } = {},
+) {
   const box = await locator
     .scrollIntoViewIfNeeded()
     .then(() => locator.boundingBox())
@@ -566,6 +619,12 @@ async function mouseProbe(page, locator, label, { stops = [], file } = {}) {
       `${label}: mouse click draws no focus box-shadow/ring`,
     )
     .toEqual([]);
+  expect
+    .soft(
+      all.filter((s) => s.ownShadow).map((s) => `${s.el} ${s.ownShadow}`),
+      `${label}: mouse click draws no inner band`,
+    )
+    .toEqual([]);
   if (down?.kind === 'text') {
     expect
       .soft(
@@ -573,6 +632,13 @@ async function mouseProbe(page, locator, label, { stops = [], file } = {}) {
         `${label}: input or its wrapper border changes on click (D-003)`,
       )
       .not.toBeNull();
+    if (ref)
+      expect
+        .soft(
+          down.focusBorderColor,
+          `${label}: click border is --focus-border (D-011)`,
+        )
+        .toBe(ref.focusBorder);
     const viaTab = stops.find((s) => s.qaId === down.qaId);
     if (viaTab)
       expect
@@ -751,6 +817,7 @@ for (const scheme of ['light', 'dark']) {
       for (const [label, locate, file, after] of pg.clicks) {
         await mouseProbe(page, locate(page), `${tag} ${label}`, {
           stops,
+          ref,
           file: file && `${tag}-${file}`,
         });
         if (after) {
@@ -844,7 +911,7 @@ for (const scheme of ['light', 'dark']) {
       page,
       textInput(form),
       `task-modal-${scheme} title input`,
-      { stops, file: `task-modal-${scheme}-click-input` },
+      { stops, ref, file: `task-modal-${scheme}-click-input` },
     );
     await mouseProbe(
       page,
@@ -1008,7 +1075,10 @@ for (const scheme of ['light', 'dark']) {
         .soft(s?.outlineDrawn, `${heading}: section draws no outline (D-004)`)
         .toBe(false);
       expect
-        .soft(s?.decorations ?? [], `${heading}: section has no focus ring`)
+        .soft(
+          [...(s?.decorations ?? []), s?.ownShadow].filter(Boolean),
+          `${heading}: section has no focus ring or band`,
+        )
         .toEqual([]);
     }
     expect
@@ -1090,7 +1160,7 @@ for (const scheme of ['light', 'dark']) {
     );
   });
 
-  test(`map timeline ${scheme}: Tab onto the scrubber shows the one style, click shows none`, async ({
+  test(`map timeline ${scheme}: Tab onto Play and the scrubber shows the one style, click shows none`, async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -1106,16 +1176,184 @@ for (const scheme of ['light', 'dark']) {
       await expect(page.locator('html')).toHaveClass(/\bdark\b/);
     else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
     const ref = await reference(page);
+    const play = page.getByTestId('map-play');
     const scrubber = page.getByTestId('map-scrubber');
-    await page.getByTestId('map-play').focus();
+    await scrubber.focus();
+    await page.keyboard.press('Shift+Tab');
+    await expect(play).toBeFocused();
+    await shot(page, `map-${scheme}-tab-play`);
+    const p = await page.evaluate(() => window.__qaFocus.probe());
+    // D-010: on the ink-filled Play button the outline matches the fill, so
+    // the inner band must differ from the background to keep the ring visible.
+    const band = layerColor(firstLayer(p?.ownShadow));
+    expect.soft(band, `map-${scheme}: Play has the inner band`).not.toBeNull();
+    expect
+      .soft(band, `map-${scheme}: band color differs from the Play fill`)
+      .not.toBe(p?.background);
     await page.keyboard.press('Tab');
     await expect(scrubber).toBeFocused();
-    await scrubber.evaluate((el) => (el.dataset.qaShot = 'tab-scrubber'));
     await shot(page, `map-${scheme}-tab-scrubber`);
     const s = await page.evaluate(() => window.__qaFocus.probe());
     await mouseProbe(page, scrubber, `map-${scheme} scrubber`, {
       file: `map-${scheme}-click-scrubber`,
     });
-    expectKeyboardStops([s].filter(Boolean), ref, `map-${scheme}`, { min: 1 });
+    await mouseProbe(page, play, `map-${scheme} play`, {
+      file: `map-${scheme}-click-play`,
+    });
+    expectKeyboardStops([p, s].filter(Boolean), ref, `map-${scheme}`, {
+      min: 2,
+    });
   });
+
+  for (const [menuName, locate] of [
+    [
+      'board column menu',
+      (p) =>
+        p
+          .locator('div:not([data-tour="statuses.editor"]) > div > button', {
+            hasText: 'Open options',
+          })
+          .first(),
+    ],
+    [
+      'board actions menu',
+      (p) =>
+        p.locator('[data-tour="statuses.editor"] button', {
+          hasText: 'Open options',
+        }),
+    ],
+  ])
+    test(`${menuName} ${scheme}: keyboard-opened Headless UI panel draws no outline, the active item is highlighted`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      await setup(page, scheme);
+      await open(
+        page,
+        '/demo/board',
+        (p) => p.locator('[data-task-id="1"]').first(),
+        scheme,
+      );
+      const ref = await reference(page);
+      const trigger = locate(page);
+      await expect(trigger).toHaveCount(1);
+      await trigger.focus();
+      const t = await page.evaluate(() => window.__qaFocus.probe());
+      await page.keyboard.press('Enter');
+      const menu = page.getByRole('menu');
+      await expect(menu).toBeVisible();
+      await page.keyboard.press('ArrowDown');
+      await page.waitForTimeout(300);
+      await shot(page, `${menuName}-${scheme}-keyboard-item`);
+      const panel = await page.evaluate(() => window.__qaFocus.probe());
+      expect
+        .soft(panel?.role, `${menuName}-${scheme}: focus is on the menu panel`)
+        .toBe('menu');
+      expect
+        .soft(
+          [
+            panel?.outlineDrawn && `outline ${tupleOf(panel)}`,
+            panel?.ownShadow && `box-shadow ${panel.ownShadow}`,
+            ...(panel?.decorations ?? []),
+          ].filter(Boolean),
+          `${menuName}-${scheme}: [role=menu] panel draws no ring (D-012)`,
+        )
+        .toEqual([]);
+      const highlight = await menu.evaluate((m) => {
+        const id = m.getAttribute('aria-activedescendant');
+        const items = [...m.querySelectorAll('[role=menuitem]')];
+        const bg = (e) => getComputedStyle(e).backgroundColor;
+        const active = items.find((e) => e.id === id);
+        return {
+          active: active ? bg(active) : null,
+          others: items.filter((e) => e !== active).map(bg),
+        };
+      });
+      expect
+        .soft(highlight.active, `${menuName}-${scheme}: an item is active`)
+        .not.toBeNull();
+      expect
+        .soft(
+          highlight.others,
+          `${menuName}-${scheme}: active item background differs from the others (D-005)`,
+        )
+        .not.toContain(highlight.active);
+      await escape(page);
+      await expect(menu).toBeHidden();
+      await page.waitForTimeout(300);
+      const back = await page.evaluate(() => window.__qaFocus.probe());
+      expectKeyboardStops(
+        [t, back].filter(Boolean),
+        ref,
+        `${menuName}-${scheme}`,
+        { min: 2 },
+      );
+    });
+
+  for (const palette of scheme === 'dark' ? [null, 'nord'] : [null])
+    test(`global search ${
+      palette ?? scheme
+    }: Tab and click give the input the --focus-border color`, async ({
+      page,
+    }) => {
+      test.setTimeout(180_000);
+      await setup(page, scheme);
+      await open(
+        page,
+        '/demo/list',
+        (p) => p.locator('[data-task-id="1"]').first(),
+        scheme,
+      );
+      if (palette)
+        expect(
+          await page.evaluate((c) => {
+            const fg = () =>
+              getComputedStyle(document.documentElement).getPropertyValue(
+                '--fg',
+              );
+            const before = fg();
+            document.documentElement.classList.add(c);
+            return before !== fg();
+          }, `theme-${palette}`),
+          `theme-${palette} repaints --fg`,
+        ).toBe(true);
+      const tag = `global-search-${palette ?? scheme}`;
+      const ref = await reference(page);
+      await page
+        .getByRole('button', { name: 'Search', exact: true })
+        .first()
+        .click();
+      const dialog = page.getByRole('dialog', { name: 'Search' });
+      await expect(dialog).toBeVisible();
+      await dialog.evaluate((el) =>
+        Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)),
+      );
+      const input = dialog.locator('input').first();
+      await input.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(input).toBeFocused();
+      await shot(page, `${tag}-tab-input`);
+      const s = await page.evaluate(() => window.__qaFocus.probe());
+      if (palette) {
+        expect
+          .soft(
+            await page.evaluate(
+              (c) => document.documentElement.classList.contains(c),
+              `theme-${palette}`,
+            ),
+            `${tag}: palette applied`,
+          )
+          .toBe(true);
+        expect
+          .soft(s?.focusBorderColor, `${tag}: focus border differs from rest`)
+          .not.toBe(s?.blurredBorder);
+      }
+      await mouseProbe(page, input, tag, {
+        stops: [s].filter(Boolean),
+        ref,
+        file: `${tag}-click-input`,
+      });
+      expectKeyboardStops([s].filter(Boolean), ref, tag, { min: 1 });
+    });
 }
