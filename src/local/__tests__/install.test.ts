@@ -34,10 +34,11 @@ jest.mock('../runtime', () => ({
 		active = w;
 	},
 	localWorkspaceById: async (id: number) => (id === LOCAL.id ? LOCAL : null),
-	localContext: async (workspace: LocalWorkspace, user: any) => ({
+	localContext: async (workspace: LocalWorkspace, user: any, actor?: any) => ({
 		db,
 		workspace,
 		user,
+		actor,
 		now: () => new Date('2026-09-26T10:00:00Z'),
 		files: { url: (key: string) => key, read: async () => new Blob([]), remove: async () => {} },
 	}),
@@ -130,6 +131,7 @@ describeSqlite('installLocalWorkspaces', () => {
 
 	it('a pinned client stays in its local workspace whatever the app switches to', async () => {
 		const pinned = pinnedLocalClient(LOCAL.id, () => ({ id: 7, name: 'Yurij', email: '' }));
+		pinned.defaults.headers.common['X-TMGR-Plugin'] = 'tmgr.x';
 		active = null;
 		const created = await pinned.post('tasks', { title: 'Written by a plugin' });
 		expect(created.data.data.workspace_id).toBe(LOCAL.id);
@@ -138,6 +140,22 @@ describeSqlite('installLocalWorkspaces', () => {
 		const gone = pinnedLocalClient(-999, () => ({ id: 7, name: '', email: '' }));
 		await expect(gone.get('tasks')).rejects.toMatchObject({ response: { status: 409 } });
 		await expect(pinned.post('agent/conversations', {})).rejects.toMatchObject({ response: { status: 501 } });
+		expect(sent).toEqual([]);
+	});
+
+	it('a pinned client writes only as a plugin, never as the human', async () => {
+		const pinned = pinnedLocalClient(LOCAL.id, () => ({ id: 7, name: 'Yurij', email: '' }));
+		const before = await db!.select<any>(`SELECT COUNT(*) AS n FROM edit_journal`);
+		await expect(pinned.post('tasks', { title: 'No plugin id' })).rejects.toMatchObject({ response: { status: 403 } });
+		await expect(pinned.get('tasks')).rejects.toMatchObject({ response: { status: 403 } });
+		expect(await db!.select<any>(`SELECT COUNT(*) AS n FROM edit_journal`)).toEqual(before);
+
+		const created = await pinned.post('tasks', { title: 'By plugin' }, { headers: { 'X-TMGR-Plugin': 'runner' } });
+		const journal = await db!.select<any>(`SELECT author_kind, source, actor_id FROM edit_journal WHERE task_id = ?`, [
+			String(created.data.data.id),
+		]);
+		expect(journal.length).toBeGreaterThan(0);
+		expect(journal.every((r: any) => r.author_kind === 'plugin' && r.source === 'plugin' && r.actor_id === 'runner')).toBe(true);
 		expect(sent).toEqual([]);
 	});
 
