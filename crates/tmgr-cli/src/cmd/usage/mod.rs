@@ -17,7 +17,7 @@ use tmgr_core::error::{Error, Result};
 use tmgr_usage::collector::Collector;
 use tmgr_usage::error::UsageError;
 use tmgr_usage::paths::{self, Env};
-use tmgr_usage::{scan_account, Account, PriceBook, Store, Tool};
+use tmgr_usage::{scan_account, Account, PriceBook, Store, Tool, Tz};
 
 pub use statusline::statusline_hook;
 
@@ -72,6 +72,8 @@ pub struct ScanTotals {
     pub events_new: u64,
     pub events_updated: u64,
     pub errors: u64,
+    pub bad_lines: u64,
+    pub skipped_before_floor: u64,
 }
 
 fn first_scan_is_big(u: &Usage, accounts: &[Account]) -> bool {
@@ -106,6 +108,8 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>) -> Result<ScanTotals> 
                 totals.events_new += r.events_new;
                 totals.events_updated += r.events_updated;
                 totals.errors += r.errors;
+                totals.bad_lines += r.bad_lines + r.skipped_oversized;
+                totals.skipped_before_floor += r.skipped_before_floor;
             }
             Err(_) => {
                 totals.errors += 1;
@@ -122,8 +126,26 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>) -> Result<ScanTotals> 
             format!("{} log files could not be read", totals.errors),
         );
     }
+    if totals.bad_lines > 0 {
+        ctx.warn(
+            "usage_scan_bad_lines",
+            format!(
+                "{} log lines could not be parsed or were too long and were skipped",
+                totals.bad_lines
+            ),
+        );
+    }
+    if totals.skipped_before_floor > 0 {
+        ctx.warn(
+            "usage_history_dropped",
+            format!(
+                "{} events are older than the {RETENTION_DAYS} days of kept history and were not stored",
+                totals.skipped_before_floor
+            ),
+        );
+    }
     ingest_statusline(u, &accounts);
-    let _ = u.store.prune(RETENTION_DAYS, now);
+    let _ = u.store.prune_with_tz(RETENTION_DAYS, now, Tz::Local);
     tmgr_usage::statusline::prune_snapshots(&u.claude_snapshots(), now, SNAPSHOT_KEEP_DAYS);
     Ok(totals)
 }
@@ -175,6 +197,8 @@ fn run_scan(ctx: &Ctx) -> Result<Output> {
             "events_new": t.events_new,
             "events_updated": t.events_updated,
             "errors": t.errors,
+            "bad_lines": t.bad_lines,
+            "skipped_before_floor": t.skipped_before_floor,
             "events_total": events,
         }),
         format!(

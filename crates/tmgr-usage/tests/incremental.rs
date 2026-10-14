@@ -101,7 +101,10 @@ fn malformed_lines_are_counted_without_stopping_the_scan() {
         ],
     );
     let report = scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
-    assert_eq!((report.errors, report.events_new), (1, 1));
+    assert_eq!(
+        (report.bad_lines, report.errors, report.events_new),
+        (1, 0, 1)
+    );
 }
 
 #[test]

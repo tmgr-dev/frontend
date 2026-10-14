@@ -122,7 +122,57 @@ fn prune_folds_old_events_and_keeps_totals() {
     .unwrap();
     let rescan = scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
     assert_eq!(rescan.events_new, 0);
+    assert_eq!(rescan.skipped_before_floor, 1);
     assert_eq!(totals(&store).events, before.events);
+}
+
+fn by_day(store: &Store, offset_h: i32) -> Vec<(String, u64, u64)> {
+    store
+        .aggregate(&Query {
+            from: Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap(),
+            to: Utc.with_ymd_and_hms(2026, 11, 1, 0, 0, 0).unwrap(),
+            tz: Tz::Fixed(chrono::FixedOffset::east_opt(offset_h * 3600).unwrap()),
+            group_by: vec![tmgr_usage::GroupBy::Day],
+            filters: Filters::default(),
+        })
+        .unwrap()
+        .rows
+        .into_iter()
+        .map(|r| (r.keys[0].clone(), r.events, r.tokens.input))
+        .collect()
+}
+
+#[test]
+fn folded_days_follow_the_reporting_timezone_and_merge_with_live_events() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("claude");
+    write_lines(
+        &projects_file(&home, "s.jsonl"),
+        &[
+            assistant_line("s", "2026-10-01T23:30:00Z", "m1", 10, 1),
+            assistant_line("s", "2026-10-02T00:30:00Z", "m2", 20, 1),
+            assistant_line("s", "2026-10-01T10:00:00Z", "m3", 40, 1),
+        ],
+    );
+    let mut store = open_store(tmp.path());
+    scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
+    let before = by_day(&store, 2);
+    assert_eq!(
+        before,
+        vec![
+            ("2026-10-01".to_string(), 1, 40),
+            ("2026-10-02".to_string(), 2, 30)
+        ]
+    );
+    let tz = Tz::Fixed(chrono::FixedOffset::east_opt(2 * 3600).unwrap());
+    let later = Utc.with_ymd_and_hms(2026, 10, 9, 15, 0, 0).unwrap();
+    let report = store.prune_with_tz(7, later, tz).unwrap();
+    assert_eq!(report.events_folded, 2);
+    assert_eq!(by_day(&store, 2), before);
+    assert_eq!(
+        store.history_floor().unwrap().unwrap().to_rfc3339(),
+        "2026-10-02T00:00:00+00:00"
+    );
 }
 
 #[test]

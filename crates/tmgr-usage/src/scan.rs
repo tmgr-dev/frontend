@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::io::Read;
 use std::path::Path;
 
@@ -8,7 +9,7 @@ use crate::claude::ClaudeCollector;
 use crate::codex::CodexCollector;
 use crate::collector::{Collector, LogFile, ParserState};
 use crate::error::{Result, UsageError};
-use crate::events::{upsert_event, upsert_session_meta, Upsert};
+use crate::events::{purge_session_events, upsert_event, upsert_session_meta, Upsert};
 use crate::model::{hex, Account, ParsedRecord, Tool};
 use crate::pricing::PriceBook;
 use crate::store::{ms, record_limit_conn, Store};
@@ -23,6 +24,8 @@ pub struct ScanReport {
     pub events_new: u64,
     pub events_updated: u64,
     pub skipped_oversized: u64,
+    pub skipped_before_floor: u64,
+    pub bad_lines: u64,
     pub errors: u64,
 }
 
@@ -48,7 +51,19 @@ struct FileRow {
 struct Tally {
     new: u64,
     updated: u64,
+    skipped_before_floor: u64,
     last_ts: Option<i64>,
+}
+
+#[derive(Default)]
+struct Reparse {
+    seen: HashSet<String>,
+    purged: HashSet<String>,
+}
+
+struct Source {
+    id: i64,
+    reparse: bool,
 }
 
 pub fn scan_account(
@@ -71,53 +86,60 @@ pub fn scan_with(
     now: DateTime<Utc>,
 ) -> Result<ScanReport> {
     let tool = collector.tool();
-    let source_id = prepare_source(store, tool, &account.label, collector.parser_version())?;
+    let source = prepare_source(store, tool, &account.label, collector.parser_version())?;
     let salt = store.fingerprint_salt()?;
     let floor = store.rollup_floor_ms()?;
     let mut report = ScanReport::default();
+    let mut reparse = source.reparse.then(Reparse::default);
+    let mut unreadable = 0;
     for file in collector.discover(account) {
         if scan_file(
             store,
             collector,
-            source_id,
+            source.id,
             &file,
             pricebook,
             &salt,
             floor,
+            &mut reparse,
             &mut report,
         )
         .is_err()
         {
-            report.errors += 1;
+            unreadable += 1;
         }
+    }
+    report.errors += unreadable;
+    if source.reparse && unreadable == 0 {
+        store.conn.execute(
+            "UPDATE usage_source SET parser_version = ?2 WHERE id = ?1 AND parser_version < ?2",
+            params![source.id, collector.parser_version()],
+        )?;
     }
     store.conn.execute(
         "UPDATE usage_source SET last_scan_at = ?2 WHERE id = ?1",
-        params![source_id, ms(now)],
+        params![source.id, ms(now)],
     )?;
     Ok(report)
 }
 
-fn prepare_source(store: &Store, tool: Tool, label: &str, version: u32) -> Result<i64> {
+fn prepare_source(store: &Store, tool: Tool, label: &str, version: u32) -> Result<Source> {
     store.conn.execute(
         "INSERT OR IGNORE INTO usage_source (tool, account) VALUES (?1, ?2)",
         params![tool.as_str(), label],
     )?;
-    let (id, old): (i64, i64) = store.conn.query_row(
+    let (id, stored): (i64, i64) = store.conn.query_row(
         "SELECT id, parser_version FROM usage_source WHERE tool = ?1 AND account = ?2",
         params![tool.as_str(), label],
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
-    if old != version as i64 {
+    let reparse = stored < version as i64;
+    if reparse {
         store
             .conn
             .execute("DELETE FROM usage_file_state WHERE source_id = ?1", [id])?;
-        store.conn.execute(
-            "UPDATE usage_source SET parser_version = ?2 WHERE id = ?1",
-            params![id, version],
-        )?;
     }
-    Ok(id)
+    Ok(Source { id, reparse })
 }
 
 fn stat_file(path: &Path) -> Result<FileStat> {
@@ -186,10 +208,20 @@ fn scan_file(
     pricebook: &PriceBook,
     salt: &str,
     floor: i64,
+    reparse: &mut Option<Reparse>,
     report: &mut ScanReport,
 ) -> Result<()> {
     let st = stat_file(&file.path)?;
-    let row = load_row(&store.conn, source_id, &file.rel)?;
+    if let Some(r) = load_row(&store.conn, source_id, &file.rel)? {
+        if (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns) {
+            report.files_unchanged += 1;
+            return Ok(());
+        }
+    }
+    let tx = store
+        .conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let row = load_row(&tx, source_id, &file.rel)?;
     let (from, mut pstate) = match row {
         None => (0, ParserState::default()),
         Some(r) => {
@@ -217,14 +249,22 @@ fn scan_file(
     };
 
     let tool = collector.tool();
-    let tx = store.conn.transaction()?;
     let mut tally = Tally::default();
     let mut failure: Option<UsageError> = None;
     let outcome = collector.parse(file, from, &mut pstate, &mut |rec| {
         if failure.is_some() {
             return;
         }
-        if let Err(e) = apply(&tx, tool, &file.account, pricebook, floor, rec, &mut tally) {
+        if let Err(e) = apply(
+            &tx,
+            tool,
+            &file.account,
+            pricebook,
+            floor,
+            reparse.as_mut(),
+            rec,
+            &mut tally,
+        ) {
             failure = Some(e);
         }
     });
@@ -268,25 +308,41 @@ fn scan_file(
     report.bytes += outcome.next_offset.saturating_sub(from);
     report.events_new += tally.new;
     report.events_updated += tally.updated;
+    report.skipped_before_floor += tally.skipped_before_floor;
     report.skipped_oversized += outcome.oversized;
-    report.errors += outcome.bad_lines;
+    report.bad_lines += outcome.bad_lines;
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply(
     conn: &Connection,
     tool: Tool,
     account: &str,
     pricebook: &PriceBook,
     floor: i64,
+    mut reparse: Option<&mut Reparse>,
     rec: ParsedRecord,
     tally: &mut Tally,
 ) -> Result<()> {
     match rec {
         ParsedRecord::Event(mut ev) => {
             ev.account = account.to_string();
+            if ms(ev.ts) < floor {
+                tally.skipped_before_floor += 1;
+                return Ok(());
+            }
+            let mut overwrite = false;
+            if let Some(rp) = reparse.as_deref_mut() {
+                if tool == Tool::Codex && rp.purged.insert(ev.tool_session_id.clone()) {
+                    purge_session_events(conn, tool, account, &ev.tool_session_id)?;
+                }
+                overwrite = rp
+                    .seen
+                    .insert(format!("{}|{}", tool.as_str(), ev.event_key));
+            }
             let (cost, _) = pricebook.price(&ev);
-            match upsert_event(conn, tool, &ev, cost, floor)? {
+            match upsert_event(conn, tool, &ev, cost, floor, overwrite)? {
                 Upsert::New => tally.new += 1,
                 Upsert::Updated => tally.updated += 1,
                 Upsert::Unchanged => {}
@@ -296,6 +352,11 @@ fn apply(
         }
         ParsedRecord::Session(mut meta) => {
             meta.account = account.to_string();
+            if let Some(rp) = reparse.as_deref_mut() {
+                if tool == Tool::Codex && rp.purged.insert(meta.tool_session_id.clone()) {
+                    purge_session_events(conn, tool, account, &meta.tool_session_id)?;
+                }
+            }
             upsert_session_meta(conn, tool, &meta)?;
         }
         ParsedRecord::Limit(mut snap) => {

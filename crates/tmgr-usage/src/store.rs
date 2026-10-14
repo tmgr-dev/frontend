@@ -1,7 +1,9 @@
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, Offset, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
+use std::collections::BTreeMap;
 use std::path::Path;
 
+use crate::aggregate::Tz;
 use crate::error::{Result, UsageError};
 use crate::limits::{LimitSnapshot, LimitSource, LimitWindow};
 use crate::model::{CostBasis, Tool};
@@ -11,6 +13,15 @@ use crate::schema::MIGRATIONS;
 const ROLLUP_FLOOR_KEY: &str = "rollup_floor_ms";
 const ROLLUP_KEEP_DAYS: i64 = 730;
 const LIMIT_KEEP_DAYS: i64 = 30;
+
+#[derive(Default)]
+struct Fold {
+    name: String,
+    tokens: crate::model::Tokens,
+    cost: f64,
+    events: u64,
+    unpriced: u64,
+}
 
 pub struct Store {
     pub(crate) conn: Connection,
@@ -46,7 +57,7 @@ impl Store {
     }
 
     fn from_connection(conn: Connection) -> Result<Store> {
-        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
+        conn.busy_timeout(std::time::Duration::from_millis(30_000))?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
@@ -246,40 +257,98 @@ impl Store {
         Ok(changes.len() as u64)
     }
 
+    pub fn history_floor(&self) -> Result<Option<DateTime<Utc>>> {
+        let floor = self.rollup_floor_ms()?;
+        Ok((floor != i64::MIN).then(|| from_ms(floor)))
+    }
+
     pub fn prune(&mut self, retention_days: u32, now: DateTime<Utc>) -> Result<PruneReport> {
+        self.prune_with_tz(retention_days, now, Tz::Fixed(Utc.fix()))
+    }
+
+    pub fn prune_with_tz(
+        &mut self,
+        retention_days: u32,
+        now: DateTime<Utc>,
+        tz: Tz,
+    ) -> Result<PruneReport> {
         let cutoff_day = (now - Duration::days(retention_days as i64)).date_naive();
         let cutoff =
             ms(Utc.from_utc_datetime(&cutoff_day.and_hms_opt(0, 0, 0).unwrap_or_default()));
         let floor = self.rollup_floor_ms()?.max(cutoff);
+        let offset = tz.offset_min(now);
         let tx = self.conn.transaction()?;
-        tx.execute(
-            "INSERT INTO usage_day_rollup
-               (day, tool, model, account, project_hash, project_name, input, output, cache_read,
-                cache_write_5m, cache_write_1h, reasoning, cost_usd, events, unpriced_events)
-             SELECT strftime('%Y-%m-%d', ts / 1000, 'unixepoch'), tool, model, account,
-                    COALESCE(project_hash, ''), COALESCE(MAX(project_name), ''),
-                    SUM(input), SUM(output), SUM(cache_read), SUM(cache_write_5m), SUM(cache_write_1h),
-                    SUM(reasoning), COALESCE(SUM(cost_usd), 0), COUNT(*),
-                    SUM(cost_basis = 'unpriced')
-             FROM usage_event WHERE ts < ?1
-             GROUP BY 1, tool, model, account, COALESCE(project_hash, '')
-             ON CONFLICT(day, tool, model, account, project_hash) DO UPDATE SET
-               input = input + excluded.input,
-               output = output + excluded.output,
-               cache_read = cache_read + excluded.cache_read,
-               cache_write_5m = cache_write_5m + excluded.cache_write_5m,
-               cache_write_1h = cache_write_1h + excluded.cache_write_1h,
-               reasoning = reasoning + excluded.reasoning,
-               cost_usd = cost_usd + excluded.cost_usd,
-               events = events + excluded.events,
-               unpriced_events = unpriced_events + excluded.unpriced_events",
-            [floor],
-        )?;
-        let events_folded: i64 = tx.query_row(
-            "SELECT COUNT(*) FROM usage_event WHERE ts < ?1",
-            [floor],
-            |r| r.get(0),
-        )?;
+        let mut folded: BTreeMap<(String, String, String, String, String), Fold> = BTreeMap::new();
+        let mut events_folded = 0u64;
+        {
+            let mut stmt = tx.prepare(
+                "SELECT ts, tool, model, account, COALESCE(project_hash, ''), COALESCE(project_name, ''),
+                        input, output, cache_read, cache_write_5m, cache_write_1h, reasoning,
+                        cost_usd, cost_basis
+                 FROM usage_event WHERE ts < ?1",
+            )?;
+            let mut rows = stmt.query([floor])?;
+            while let Some(r) = rows.next()? {
+                events_folded += 1;
+                let day = tz.day(from_ms(r.get(0)?)).format("%Y-%m-%d").to_string();
+                let key = (day, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?);
+                let f = folded.entry(key).or_default();
+                let name: String = r.get(5)?;
+                if f.name.is_empty() {
+                    f.name = name;
+                }
+                f.tokens.add(&crate::model::Tokens {
+                    input: r.get::<_, i64>(6)? as u64,
+                    output: r.get::<_, i64>(7)? as u64,
+                    cache_read: r.get::<_, i64>(8)? as u64,
+                    cache_write_5m: r.get::<_, i64>(9)? as u64,
+                    cache_write_1h: r.get::<_, i64>(10)? as u64,
+                    reasoning: r.get::<_, i64>(11)? as u64,
+                });
+                f.cost += r.get::<_, Option<f64>>(12)?.unwrap_or(0.0);
+                f.events += 1;
+                f.unpriced += u64::from(r.get::<_, String>(13)? == "unpriced");
+            }
+        }
+        {
+            let mut ins = tx.prepare(
+                "INSERT INTO usage_day_rollup
+                   (day, tool, model, account, project_hash, project_name, input, output, cache_read,
+                    cache_write_5m, cache_write_1h, reasoning, cost_usd, events, unpriced_events,
+                    tz_offset_min)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                 ON CONFLICT(day, tool, model, account, project_hash) DO UPDATE SET
+                   input = input + excluded.input,
+                   output = output + excluded.output,
+                   cache_read = cache_read + excluded.cache_read,
+                   cache_write_5m = cache_write_5m + excluded.cache_write_5m,
+                   cache_write_1h = cache_write_1h + excluded.cache_write_1h,
+                   reasoning = reasoning + excluded.reasoning,
+                   cost_usd = cost_usd + excluded.cost_usd,
+                   events = events + excluded.events,
+                   unpriced_events = unpriced_events + excluded.unpriced_events",
+            )?;
+            for ((day, tool, model, account, project), f) in &folded {
+                ins.execute(params![
+                    day,
+                    tool,
+                    model,
+                    account,
+                    project,
+                    f.name,
+                    f.tokens.input as i64,
+                    f.tokens.output as i64,
+                    f.tokens.cache_read as i64,
+                    f.tokens.cache_write_5m as i64,
+                    f.tokens.cache_write_1h as i64,
+                    f.tokens.reasoning as i64,
+                    f.cost,
+                    f.events as i64,
+                    f.unpriced as i64,
+                    offset,
+                ])?;
+            }
+        }
         tx.execute("DELETE FROM usage_event WHERE ts < ?1", [floor])?;
         tx.execute(
             "DELETE FROM usage_session WHERE parent_session_id IS NULL
@@ -301,7 +370,7 @@ impl Store {
         )?;
         tx.commit()?;
         Ok(PruneReport {
-            events_folded: events_folded as u64,
+            events_folded,
             rollup_rows_dropped: dropped as u64,
         })
     }

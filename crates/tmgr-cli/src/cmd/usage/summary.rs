@@ -238,7 +238,14 @@ pub fn run(ctx: &Ctx, args: &SummaryArgs) -> Result<Output> {
 }
 
 fn scan_json(t: ScanTotals) -> Value {
-    json!({"files": t.files, "events_new": t.events_new, "events_updated": t.events_updated, "errors": t.errors})
+    json!({
+        "files": t.files,
+        "events_new": t.events_new,
+        "events_updated": t.events_updated,
+        "errors": t.errors,
+        "bad_lines": t.bad_lines,
+        "skipped_before_floor": t.skipped_before_floor,
+    })
 }
 
 struct View {
@@ -437,6 +444,16 @@ fn task_view(
     want: Option<&WantedTask>,
     now: DateTime<Utc>,
 ) -> Result<View> {
+    if u.store
+        .history_floor()
+        .map_err(fail)?
+        .is_some_and(|floor| w.from < floor)
+    {
+        ctx.warn(
+            "usage_task_history_limited",
+            "the range starts before the stored events: task views only cover the kept recent history",
+        );
+    }
     let events = task_events(u, args, w)?;
     let set = runs::collect(ctx, w.from, w.to, now);
     let report = attribute_at(&events, &set.windows, now);

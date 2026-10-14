@@ -107,4 +107,7 @@ pub const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX usage_limit_observed ON usage_limit_snapshot(observed_at);
     ",
+    "
+    ALTER TABLE usage_day_rollup ADD COLUMN tz_offset_min INTEGER NOT NULL DEFAULT 0;
+    ",
 ];

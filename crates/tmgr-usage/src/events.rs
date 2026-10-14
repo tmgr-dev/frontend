@@ -3,7 +3,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::Result;
 use crate::link::LinkEvent;
-use crate::model::{project_hash, project_name, CostBasis, SessionMeta, Tool, UsageEvent};
+use crate::model::{project_hash, project_name, CostBasis, SessionMeta, Tokens, Tool, UsageEvent};
 use crate::store::{from_ms, ms, Store};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +11,18 @@ pub enum Upsert {
     New,
     Updated,
     Unchanged,
+}
+
+struct Stored {
+    id: i64,
+    ts: i64,
+    session_id: i64,
+    sid: String,
+    model: String,
+    tokens: Tokens,
+    cost: Option<f64>,
+    speed: Option<String>,
+    tier: Option<String>,
 }
 
 pub(crate) fn ensure_session(
@@ -87,12 +99,27 @@ pub(crate) fn upsert_session_meta(conn: &Connection, tool: Tool, meta: &SessionM
     Ok(())
 }
 
+pub(crate) fn purge_session_events(
+    conn: &Connection,
+    tool: Tool,
+    account: &str,
+    tool_session_id: &str,
+) -> Result<()> {
+    conn.prepare_cached(
+        "DELETE FROM usage_event WHERE session_id IN
+           (SELECT id FROM usage_session WHERE tool = ?1 AND account = ?2 AND tool_session_id = ?3)",
+    )?
+    .execute(params![tool.as_str(), account, tool_session_id])?;
+    Ok(())
+}
+
 pub(crate) fn upsert_event(
     conn: &Connection,
     tool: Tool,
     ev: &UsageEvent,
     cost: Option<f64>,
     floor_ms: i64,
+    overwrite: bool,
 ) -> Result<Upsert> {
     let ts = ms(ev.ts);
     if ts < floor_ms {
@@ -104,18 +131,37 @@ pub(crate) fn upsert_event(
     } else {
         CostBasis::Unpriced
     };
-    let existing: Option<(i64, i64, i64, i64, String)> = conn
+    let existing: Option<Stored> = conn
         .prepare_cached(
-            "SELECT e.id, e.ts, e.output, e.session_id, s.tool_session_id
+            "SELECT e.id, e.ts, e.session_id, s.tool_session_id, e.model, e.input, e.output,
+                    e.cache_read, e.cache_write_5m, e.cache_write_1h, e.reasoning, e.cost_usd,
+                    e.speed, e.service_tier
              FROM usage_event e JOIN usage_session s ON s.id = e.session_id
              WHERE e.event_key = ?1",
         )?
         .query_row([&key], |r| {
-            Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            Ok(Stored {
+                id: r.get(0)?,
+                ts: r.get(1)?,
+                session_id: r.get(2)?,
+                sid: r.get(3)?,
+                model: r.get(4)?,
+                tokens: Tokens {
+                    input: r.get::<_, i64>(5)? as u64,
+                    output: r.get::<_, i64>(6)? as u64,
+                    cache_read: r.get::<_, i64>(7)? as u64,
+                    cache_write_5m: r.get::<_, i64>(8)? as u64,
+                    cache_write_1h: r.get::<_, i64>(9)? as u64,
+                    reasoning: r.get::<_, i64>(10)? as u64,
+                },
+                cost: r.get(11)?,
+                speed: r.get(12)?,
+                tier: r.get(13)?,
+            })
         })
         .optional()?;
     let cwd = ev.cwd.as_deref();
-    let Some((id, old_ts, old_out, old_session, old_sid)) = existing else {
+    let Some(old) = existing else {
         let session_id = ensure_session(
             conn,
             tool,
@@ -164,8 +210,18 @@ pub(crate) fn upsert_event(
         return Ok(Upsert::New);
     };
 
-    let better = (ev.tokens.output as i64) > old_out;
-    let earlier = ts < old_ts || (ts == old_ts && ev.tool_session_id < old_sid);
+    let (id, old_ts, old_session) = (old.id, old.ts, old.session_id);
+    let differs = old.model != ev.model
+        || old.tokens != ev.tokens
+        || old.cost != cost
+        || old.speed != ev.speed
+        || old.tier != ev.service_tier;
+    let better = if overwrite {
+        differs
+    } else {
+        ev.tokens.output > old.tokens.output
+    };
+    let earlier = ts < old_ts || (ts == old_ts && ev.tool_session_id < old.sid);
     if !better && !earlier {
         return Ok(Upsert::Unchanged);
     }

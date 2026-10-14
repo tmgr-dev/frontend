@@ -974,6 +974,95 @@ fn the_hook_stores_a_whitelisted_snapshot_that_limits_then_shows() {
     assert!(limits.iter().all(|l| l["source"] == "statusline"));
 }
 
+fn warning_codes(v: &Value) -> Vec<String> {
+    v["warnings"]
+        .as_array()
+        .map(|w| {
+            w.iter()
+                .map(|x| x["code"].as_str().unwrap().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn unreadable_files_and_bad_lines_are_reported_separately() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-w/bad.jsonl",
+        &[
+            r#"{"type":"assistant", SECRET-BAD-LINE"#.to_string(),
+            Ev::new("sb", at(0, "10:00:00"), "b1", "claude-test-opus-1", 1, 1).line(),
+        ],
+    );
+    let v = u.json(&["usage", "--today"]);
+    let codes = warning_codes(&v);
+    assert!(
+        codes.contains(&"usage_scan_bad_lines".to_string()),
+        "{codes:?}"
+    );
+    assert!(
+        !codes.contains(&"usage_scan_errors".to_string()),
+        "{codes:?}"
+    );
+    assert_eq!(v["data"]["scan"]["bad_lines"], 1);
+    assert_eq!(v["data"]["scan"]["errors"], 0);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        u.session_file(
+            "-w/locked.jsonl",
+            &[Ev::new("sl", at(0, "10:01:00"), "l1", "claude-test-opus-1", 1, 1).line()],
+        );
+        let locked = u.p("claude/projects/-w/locked.jsonl");
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let v = u.json(&["usage", "--today"]);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let codes = warning_codes(&v);
+        assert!(
+            codes.contains(&"usage_scan_errors".to_string()),
+            "{codes:?}"
+        );
+        assert_eq!(v["data"]["scan"]["errors"], 1);
+    }
+}
+
+#[test]
+fn history_older_than_the_kept_window_is_reported_not_silently_dropped() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-w/now.jsonl",
+        &[Ev::new("sn", at(0, "10:00:00"), "n1", "claude-test-opus-1", 1, 1).line()],
+    );
+    let first = u.json(&["usage", "--today"]);
+    assert!(!warning_codes(&first).contains(&"usage_history_dropped".to_string()));
+    u.session_file(
+        "-w/ancient.jsonl",
+        &[Ev::new("sa", at(-400, "10:00:00"), "a1", "claude-test-opus-1", 1, 1).line()],
+    );
+    let second = u.json(&["usage", "--today"]);
+    assert!(warning_codes(&second).contains(&"usage_history_dropped".to_string()));
+    assert_eq!(second["data"]["scan"]["skipped_before_floor"], 1);
+}
+
+#[test]
+fn task_views_warn_when_the_range_reaches_before_the_kept_events() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-w/now.jsonl",
+        &[Ev::new("sn", at(0, "10:00:00"), "n1", "claude-test-opus-1", 1, 1).line()],
+    );
+    let since = (today() - Duration::days(200)).to_string();
+    let long = u.json(&["usage", "--by", "task", "--since", &since]);
+    assert!(warning_codes(&long).contains(&"usage_task_history_limited".to_string()));
+    let short = u.json(&["usage", "--by", "task", "--month"]);
+    assert!(!warning_codes(&short).contains(&"usage_task_history_limited".to_string()));
+}
+
 fn hook_payload(session: &str, pct: u32) -> String {
     format!(
         r#"{{"session_id":"{session}","rate_limits":{{"five_hour":{{"used_percentage":{pct},"resets_at":4102444800}}}}}}"#

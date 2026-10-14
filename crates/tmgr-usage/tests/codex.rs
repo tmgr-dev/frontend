@@ -176,6 +176,18 @@ fn plain_input_never_negative_and_cache_write_is_separate() {
 }
 
 #[test]
+fn cache_write_tokens_are_not_billed_again_as_plain_input() {
+    let line = format!(
+        r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":1000,"cached_input_tokens":200,"cache_write_input_tokens":100,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":1050}},"last_token_usage":null}}}}}}"#,
+        ts(2)
+    );
+    let p = run(&[meta("s1", None), line]);
+    assert_eq!(p.events[0].tokens.input, 700);
+    assert_eq!(p.events[0].tokens.cache_read, 200);
+    assert_eq!(p.events[0].tokens.cache_write_5m, 100);
+}
+
+#[test]
 fn last_token_usage_is_the_fallback_without_a_previous_total() {
     let p = run(&[
         meta("s1", None),
@@ -438,6 +450,28 @@ fn local_compaction_already_covered_by_an_advancing_token_count() {
         t,
         vec![toks(10, 1, 0, 0), toks(90, 9, 0, 0), toks(5, 1, 0, 0)]
     );
+}
+
+#[test]
+fn local_compaction_is_counted_once_whichever_side_of_the_marker_the_record_is_on() {
+    let before = run(&[
+        meta("s1", None),
+        tc(1, Some((10, 0, 1, 0)), None),
+        record(2, "r-local", 90, 9),
+        compacted(3, "r-local"),
+        tc(4, Some((100, 0, 10, 0)), None),
+    ]);
+    let after = run(&[
+        meta("s1", None),
+        tc(1, Some((10, 0, 1, 0)), None),
+        compacted(2, "r-local"),
+        record(3, "r-local", 90, 9),
+        tc(4, Some((100, 0, 10, 0)), None),
+    ]);
+    for p in [before, after] {
+        let t: Vec<Tokens> = p.events.iter().map(|e| e.tokens).collect();
+        assert_eq!(t, vec![toks(10, 1, 0, 0), toks(90, 9, 0, 0)]);
+    }
 }
 
 #[test]

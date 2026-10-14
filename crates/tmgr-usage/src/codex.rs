@@ -10,7 +10,7 @@ use crate::error::Result;
 use crate::limits::{LimitSnapshot, LimitSource, LimitWindow};
 use crate::model::{Account, ParsedRecord, SessionMeta, Tokens, Tool, UsageEvent};
 
-pub const PARSER_VERSION: u32 = 1;
+pub const PARSER_VERSION: u32 = 2;
 const MAX_PENDING: usize = 32;
 const MAX_IDS: usize = 256;
 const MARKERS: [&[u8]; 8] = [
@@ -71,7 +71,10 @@ impl Raw {
 
     fn tokens(&self) -> Tokens {
         Tokens {
-            input: self.input_tokens.saturating_sub(self.cached_input_tokens),
+            input: self
+                .input_tokens
+                .saturating_sub(self.cached_input_tokens)
+                .saturating_sub(self.cache_write_input_tokens),
             output: self.output_tokens,
             cache_read: self.cached_input_tokens,
             cache_write_5m: self.cache_write_input_tokens,
@@ -162,6 +165,8 @@ struct State {
     compacted: Vec<String>,
     emitted: Vec<String>,
     pending: Vec<Pending>,
+    #[serde(default)]
+    emitted_usage: Vec<(String, Raw)>,
     last_record: Option<String>,
 }
 
@@ -351,6 +356,13 @@ impl State {
             if covered {
                 self.pending.retain(|r| r.id != id);
                 self.mark_emitted(&id);
+            } else if self
+                .emitted_usage
+                .iter()
+                .any(|(i, u)| *i == id && *u == delta)
+            {
+                self.last_record = None;
+                return;
             }
         }
         let Some(ts) = ts else { return };
@@ -446,6 +458,11 @@ impl State {
             return;
         }
         self.mark_emitted(&rec.id);
+        push_bounded(
+            &mut self.emitted_usage,
+            (rec.id.clone(), rec.usage),
+            MAX_IDS,
+        );
         let key = format!("{}|compact:{}", self.session(ctx.file), rec.id);
         let ev = self.event(ctx.file, key, rec.ts, rec.model, &rec.usage);
         (ctx.sink)(ParsedRecord::Event(ev));

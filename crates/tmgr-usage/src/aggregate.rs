@@ -24,6 +24,16 @@ pub enum Tz {
 }
 
 impl Tz {
+    pub fn offset_min(&self, at: DateTime<Utc>) -> i32 {
+        let secs = match self {
+            Tz::Fixed(off) => off.local_minus_utc(),
+            Tz::Local => Local
+                .offset_from_utc_datetime(&at.naive_utc())
+                .local_minus_utc(),
+        };
+        secs / 60
+    }
+
     pub fn day(&self, ts: DateTime<Utc>) -> NaiveDate {
         match self {
             Tz::Fixed(off) => ts.with_timezone(off).date_naive(),
@@ -146,7 +156,7 @@ impl Store {
         drop(stmt);
 
         if ms(q.from) < floor && f.branches.is_empty() && f.sessions.is_empty() {
-            self.rollup_facts(q, floor, &mut facts)?;
+            self.rollup_facts(q, &mut facts)?;
         }
 
         let mut grouped: BTreeMap<Vec<String>, Row> = BTreeMap::new();
@@ -171,23 +181,18 @@ impl Store {
         })
     }
 
-    fn rollup_facts(&self, q: &Query, floor: i64, out: &mut Vec<Fact>) -> Result<()> {
+    fn rollup_facts(&self, q: &Query, out: &mut Vec<Fact>) -> Result<()> {
         let first = q.tz.day(q.from).format("%Y-%m-%d").to_string();
         let last =
             q.tz.day(q.to - chrono::Duration::milliseconds(1))
                 .format("%Y-%m-%d")
                 .to_string();
-        let floor_day = from_ms(floor).format("%Y-%m-%d").to_string();
         let mut sql = String::from(
             "SELECT day, tool, account, model, project_hash, project_name, input, output, cache_read,
                     cache_write_5m, cache_write_1h, reasoning, cost_usd, events, unpriced_events
-             FROM usage_day_rollup WHERE day >= ? AND day <= ? AND day < ?",
+             FROM usage_day_rollup WHERE day >= ? AND day <= ?",
         );
-        let mut params = vec![
-            Value::Text(first),
-            Value::Text(last),
-            Value::Text(floor_day),
-        ];
+        let mut params = vec![Value::Text(first), Value::Text(last)];
         let f = &q.filters;
         let tools: Vec<String> = f.tools.iter().map(|t| t.as_str().to_string()).collect();
         in_clause("tool", &tools, &mut sql, &mut params);

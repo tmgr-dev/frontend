@@ -344,6 +344,12 @@
             },
             "errors": {
               "type": "integer"
+            },
+            "bad_lines": {
+              "type": "integer"
+            },
+            "skipped_before_floor": {
+              "type": "integer"
             }
           }
         }
