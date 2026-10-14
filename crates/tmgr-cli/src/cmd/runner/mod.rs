@@ -162,7 +162,27 @@ pub enum AgentsCmd {
         /// Working directory of the run
         #[arg(long, value_name = "DIR")]
         cwd: PathBuf,
+        /// Permission mode of the run
+        #[arg(long, value_name = "MODE", default_value = "ask")]
+        mode: PermissionMode,
     },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum PermissionMode {
+    Ask,
+    AcceptEdits,
+    Plan,
+}
+
+impl PermissionMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Ask => "ask",
+            Self::AcceptEdits => "accept-edits",
+            Self::Plan => "plan",
+        }
+    }
 }
 
 #[derive(Clone, Copy, ValueEnum)]

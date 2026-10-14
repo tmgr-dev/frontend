@@ -503,6 +503,7 @@ pub fn bundle_cmd(
     profile: &str,
     model: Option<&str>,
     cwd: &Path,
+    mode: super::PermissionMode,
 ) -> Result<i32> {
     let reference = o.ws.as_deref().ok_or_else(|| {
         Error::usage("pass --ws local:<code>").hint("run bundles are built from local workspaces")
@@ -514,6 +515,7 @@ pub fn bundle_cmd(
         profile: profile.to_string(),
         model: model.map(str::to_string),
         cwd: cwd.to_string_lossy().into_owned(),
+        permission_mode: Some(mode.as_str().to_string()),
     };
     let (bundle, sha256) = bundle_from_local(&ws, task_id_of(&ws, task)?, launch)?;
     let human = format!(

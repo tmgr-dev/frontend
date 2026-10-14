@@ -390,6 +390,7 @@ fn bundle_maps_authors_includes_pages_and_hashes_stably() {
     assert_eq!(bundle.pages.len(), 1);
     assert_eq!((bundle.pages[0].id, bundle.pages[0].revision), (9, 3));
     assert_eq!(bundle.launch.model.as_deref(), Some("gpt-5"));
+    assert_eq!(bundle.launch.permission_mode.as_deref(), Some("ask"));
     assert_eq!(
         bundle.launch.cwd,
         std::fs::canonicalize(&cwd).unwrap().to_string_lossy()
@@ -397,6 +398,23 @@ fn bundle_maps_authors_includes_pages_and_hashes_stably() {
 
     let second = stdout_json(&local.bundle(&cwd));
     assert_eq!(second["data"]["sha256"], v["data"]["sha256"]);
+
+    let planned = stdout_json(
+        &local
+            .cmd()
+            .args(["--json", "--ws", "local:personal", "agents", "bundle", "1"])
+            .args([
+                "--agent", "codex", "--model", "gpt-5", "--mode", "plan", "--cwd",
+            ])
+            .arg(&cwd)
+            .output()
+            .unwrap(),
+    );
+    assert_eq!(
+        planned["data"]["bundle"]["launch"]["permission_mode"],
+        "plan"
+    );
+    assert_ne!(planned["data"]["sha256"], v["data"]["sha256"]);
 }
 
 #[test]

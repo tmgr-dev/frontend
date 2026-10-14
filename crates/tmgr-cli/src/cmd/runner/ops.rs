@@ -65,9 +65,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
                     agent,
                     model,
                     cwd,
+                    mode,
                 }),
             ..
-        }) => super::local::bundle_cmd(o, task, agent, model.as_deref(), cwd),
+        }) => super::local::bundle_cmd(o, task, agent, model.as_deref(), cwd, *mode),
         RunnerCommands::Agents(a) => match &a.host {
             Some(link) => remote::agents(o, link),
             None => agents(o),
