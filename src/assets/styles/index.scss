@@ -125,9 +125,22 @@ html:not([data-focus-source='pointer'])
 		var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000);
 }
 
-$focus-border-keep: "[aria-invalid='true'], .border-destructive, .border-red-500";
+$focus-border-keep: "[aria-invalid='true'], .border-destructive, .border-red-500, [class~='!border-red-500']";
 
 :root #{$focus-text-input}:not(.vs__search):not(#{$focus-border-keep}):focus,
 :root textarea:not(#{$focus-border-keep}):focus {
 	border-color: var(--focus-border);
+}
+
+/* The error border stays, so invalid text entry takes the ring with the error
+   colour in the band; the outline covers the 1px border. */
+html:not([data-focus-source='pointer'])
+	:is(#{$focus-text-input}, textarea):is(
+		#{$focus-border-keep}
+	):focus-visible:not([tabindex='-1']) {
+	outline: 2px solid var(--focus-ring);
+	outline-offset: -2px;
+	box-shadow: inset 0 0 0 4px hsl(var(--destructive)),
+		var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000),
+		var(--tw-shadow, 0 0 #0000);
 }
