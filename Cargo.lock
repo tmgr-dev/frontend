@@ -3990,6 +3990,7 @@ dependencies = [
  "tmgr-ipc",
  "tmgr-link",
  "tmgr-local",
+ "tmgr-queue",
  "tmgr-runner",
  "tokio",
  "toml_edit 0.22.27",
@@ -4071,6 +4072,22 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "tmgr-queue"
+version = "0.7.0"
+dependencies = [
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "tmgr-core",
+ "tmgr-ipc",
+ "tmgr-local",
+ "toml",
 ]
 
 [[package]]

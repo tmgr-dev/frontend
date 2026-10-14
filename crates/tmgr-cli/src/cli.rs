@@ -139,6 +139,13 @@ pub enum Command {
         #[command(subcommand)]
         command: LinkCommand,
     },
+    /// Auto-run queue for local workspaces (experimental)
+    #[cfg(feature = "runner")]
+    #[command(hide = true)]
+    Queue {
+        #[command(subcommand)]
+        command: crate::cmd::queue::QueueCommand,
+    },
     /// Forced command for a follower, started by sshd only (experimental)
     #[command(hide = true)]
     Worker(WorkerArgs),

@@ -13,7 +13,7 @@ name = "tmgr"
 path = "src/main.rs"
 
 [features]
-runner = ["dep:tmgr-runner", "dep:tmgr-ipc", "dep:shell-words", "dep:libc"]
+runner = ["dep:tmgr-runner", "dep:tmgr-ipc", "dep:tmgr-queue", "dep:shell-words", "dep:libc"]
 
 [dependencies]
 clap.workspace = true
@@ -31,6 +31,7 @@ unicode-width.workspace = true
 toml_edit.workspace = true
 tmgr-runner = { workspace = true, optional = true }
 tmgr-ipc = { workspace = true, optional = true }
+tmgr-queue = { workspace = true, optional = true }
 shell-words = { workspace = true, optional = true }
 libc = { workspace = true, optional = true }
 
