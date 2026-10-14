@@ -1,0 +1,20 @@
+[package]
+name = "tmgr-usage"
+description = "Local AI tool usage engine of the tmgr command line tool"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+rusqlite.workspace = true
+sha2.workspace = true
+memchr = "2"
+
+[dev-dependencies]
+tempfile.workspace = true
