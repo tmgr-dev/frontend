@@ -5,6 +5,7 @@ Rust workspace of the `tmgr` command line tool. It is a separate Cargo workspace
 - `tmgr-core` - shared library (envelope `tmgr.v1`, errors and exit codes, config, credential store, API client, task reference grammar).
 - `tmgr-cli` - the `tmgr` binary (clap).
 - `tmgr-usage` - local AI tool usage engine (library, no network): versioned SQLite store, incremental log scanner, Claude Code and Codex collectors, rate limit snapshots, price book (bundled filtered LiteLLM snapshot, MIT, see `pricing/NOTICE`), aggregation and the pure run-linking ladder (`link::attribute`). Parsers declare only whitelisted keys, so prompt, response and tool text is never deserialised or stored. Data dir `$TMGR_USAGE_DIR`, else `$XDG_DATA_HOME/tmgr/usage`, else `~/.local/share/tmgr/usage` (0700); it holds `usage.db`, `snapshots/` (Claude statusLine snapshots) and `accounts.json`.
+- `tmgr-queue` - the local auto-run queue of the runner (rules, pickups, approvals, audit); used by the hidden `tmgr queue` commands behind the `runner` feature.
 - `tmgr-local` - local (desktop) workspaces: reads `~/.tmgr.dev/workspaces/<code>/workspace.db` (`TMGR_LOCAL_ROOT` overrides the root) and answers the REST-shaped local API with the same JSON as the desktop's TS local API. `tests/parity` holds scenarios and goldens shared with `src/local/__tests__/parity.test.ts`. Writes open the database with the desktop's pragmas and run each request in one `BEGIN IMMEDIATE` transaction. Deliberate differences from the TS handlers, which are only statement-atomic: a request that fails after some writes leaves nothing (a refusal keeps only its `activity_log` row); a persona write whose audit row cannot be written answers 500 with nothing stored; `daily-routines/tasks/:id/complete-on` answers 422 unless the date is a real `YYYY-MM-DD` day. A write also re-checks the schema after taking the lock. Writes from tmgr fire no desktop page or task events, so an open desktop window shows them after a reload (TM-539). The schema is never migrated: anything but schema 12 is refused.
 
 ## Install
@@ -107,3 +108,19 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 ## Task references
 
 `TM-512` (key as shown in the title), `#8974` or `8974` (global task id). `tmgr help refs` prints the grammar.
+
+## Queue (`tmgr queue`, hidden, `runner` feature)
+
+`tmgr-queue` is the local auto-run queue base. It is off by default and starts no real agent: `run-once` records mock runs until the runner can start queue runs (`runner_supports_queue()` is false).
+
+Known limits:
+
+- Owner writes are not journaled by `tmgr-local` yet (`dispatch.rs` journals only requests with an actor, and the owner's client has none), so on real data nothing qualifies as `human` until the local-mode team journals owner task creates and edits. The queue fails closed: such tasks are `unrecorded` and are skipped unless a rule lists `unrecorded` (manual approval only).
+- The per-run `git clone --reference` only protects the owner's checkout from incidental git writes. Filesystem isolation of queue runs is the runner sandbox's job and a precondition before `runner_supports_queue()` may become true.
+
+Required runner capabilities before the real client is enabled:
+
+1. `permission_mode = ask` (prompts on) in `runs.create`; the contract has no such field yet.
+2. Lookup of a run by the start key (`<pickup>-<attempt>`), to reconcile an interrupted start.
+3. Liveness and exit status of a run, so a slot is freed only when the run has exited.
+4. Sandbox confinement of the run to its clone directory.
