@@ -78,6 +78,7 @@ impl Session {
             now,
             local_offset: now.with_timezone(&chrono::Local).offset().fix(),
             actor,
+            origin: tmgr_local::WriteOrigin::Cli,
         };
         Ok(Session { ctx, conn })
     }

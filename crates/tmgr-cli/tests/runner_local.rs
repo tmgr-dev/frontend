@@ -171,6 +171,7 @@ fn run_actor_kind_via_local_api(local: &Local, task: i64) -> String {
         now,
         local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
         actor: None,
+        origin: tmgr_local::WriteOrigin::Cli,
     };
     let r = tmgr_local::dispatch(
         &conn,
