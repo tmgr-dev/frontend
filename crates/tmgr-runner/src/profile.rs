@@ -23,11 +23,39 @@ pub struct StatusRules {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct Fresh {
+    pub json_key: String,
+    pub max_age_days: u32,
+}
+
+fn write_back_flag<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Flag {
+        Bool(bool),
+        Text(String),
+    }
+    match Flag::deserialize(d)? {
+        Flag::Bool(b) => Ok(b),
+        Flag::Text(t) if t == "confirm" => Ok(true),
+        Flag::Text(_) => Err(serde::de::Error::custom(
+            "write_back must be true, false or \"confirm\"",
+        )),
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct Seed {
     pub from: String,
     pub to: String,
     #[serde(default)]
     pub json_keys: Option<Vec<String>>,
+    #[serde(default)]
+    pub fresh: Option<Fresh>,
+    #[serde(default, deserialize_with = "write_back_flag")]
+    pub write_back: bool,
+    #[serde(default)]
+    pub same: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -39,9 +67,21 @@ pub struct SandboxDecl {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct SecretFile {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub token_prefix: Option<String>,
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct SecretsDecl {
     #[serde(default)]
     pub file: Option<String>,
+    #[serde(default)]
+    pub files: Vec<SecretFile>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

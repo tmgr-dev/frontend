@@ -5,12 +5,14 @@ use crate::login;
 use crate::profile::{self, Matcher, ProfileSet};
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
+use crate::seedguard;
 use crate::t0::{self, Detector};
 use crate::trust;
 use crate::wire::{
     clamp_size, now_ms, screen_pushes, write_atomic, LaunchFile, Slot, MAX_INPUT, SCROLLBACK,
     SHIM_CWD_FD,
 };
+use crate::worklog;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -300,6 +302,7 @@ struct Session {
     dir: PathBuf,
     hub: Arc<Hub>,
     inner: Mutex<Inner>,
+    worklog: worklog::Log,
     version: AtomicU64,
     shim: Mutex<Option<ShimLink>>,
     replies: Mutex<ReplyBudget>,
@@ -320,6 +323,15 @@ fn write_meta(dir: &Path, meta: &Meta) {
 
 const REVOKING_MARK: &str = "revoking";
 const REVOKE_WAIT: Duration = Duration::from_secs(2);
+
+fn finish_seeds(sdir: &Path, id: &str) {
+    let (sdir, id) = (sdir.to_path_buf(), id.to_string());
+    thread::spawn(move || {
+        for line in seedguard::finish(&sdir) {
+            log(&format!("session {id}: {line}"));
+        }
+    });
+}
 
 fn terminate(s: &Session) -> bool {
     s.mark_revoking();
@@ -454,10 +466,11 @@ impl Session {
         for state in states {
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
-                state,
+                state: state.clone(),
                 task,
                 origin: origin.clone(),
             }));
+            self.worklog.record(&state);
         }
     }
 
@@ -593,6 +606,7 @@ impl Session {
     }
 
     fn on_exited(&self, e: &ExitInfo) {
+        let at = now_ms();
         self.change(|i, now, out| {
             let changed = i.det.on_exit(now, e.code, e.signal);
             if changed.is_some() {
@@ -603,6 +617,8 @@ impl Session {
             }
             out.extend(changed)
         });
+        self.worklog.exited(at, e.code, e.signal);
+        finish_seeds(&self.dir, &self.id);
     }
 
     fn on_exit_report(&self, e: &ExitInfo) {
@@ -1004,6 +1020,7 @@ impl Runner {
                 sessions: lock(&self.sessions).len(),
             })),
             method::RUNNER_STOP => Ok(Value::Null),
+            method::CANDIDATES_LIST => Ok(to_json(&seedguard::pending(&self.cfg.dir))),
             method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
                 list.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
@@ -1066,6 +1083,12 @@ impl Runner {
                     ));
                 }
                 Ok(Value::Null)
+            }
+            method::SESSIONS_WORKLOG => {
+                let s = self
+                    .session(&session_id_param(p)?)
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+                Ok(to_json(&worklog::summary(&s.dir)))
             }
             method::SESSIONS_REMOVE => self.remove(&session_id_param(p)?).map(|_| Value::Null),
             method::LAYOUT_GET => Ok(self.layout_get()),
@@ -1447,6 +1470,7 @@ impl Runner {
         let profile_protected = profile_protected_paths()?;
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
+        let mut secret_files = Vec::new();
         if let Some(pid) = &req.profile {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
             if let Some(p) = set.get(pid) {
@@ -1471,6 +1495,7 @@ impl Runner {
                 base.extend(prep.pass_values);
                 grants = prep.grants;
                 seeds = prep.seeds;
+                secret_files = prep.secret_files;
             }
         }
         grants.deny = profile_protected;
@@ -1491,7 +1516,13 @@ impl Runner {
         for n in &launch.notes {
             log(&format!("session {id}: {n}"));
         }
-        login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        let records = login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        seedguard::save(sdir, &records).map_err(internal)?;
+        for note in login::apply_secret_files(&secret_files, home)
+            .map_err(|e| api(ErrorCode::Sandbox, e))?
+        {
+            log(&format!("session {id}: {note}"));
+        }
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
             argv: launch.argv,
@@ -1589,6 +1620,7 @@ impl Runner {
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
+        session.worklog.created(&session.info());
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
         log(&format!("session {id} created: {}", req.argv[0]));
@@ -1601,6 +1633,7 @@ impl Runner {
             id: meta.id.clone(),
             dir: sdir.to_path_buf(),
             hub: self.hub.clone(),
+            worklog: worklog::Log::open(sdir, PathBuf::from(&meta.cwd)),
             inner: Mutex::new(Inner {
                 meta,
                 screen,
@@ -1633,6 +1666,9 @@ impl Runner {
             return Err(api(ErrorCode::Busy, "only exited sessions can be removed"));
         }
         s.shim_msg(&ToShim::Reap);
+        for line in seedguard::finish(&self.sdir(id)) {
+            log(&format!("session {id}: {line}"));
+        }
         lock(&self.sessions).remove(id);
         let _ = fs::remove_dir_all(self.sdir(id));
         let _ = fs::remove_dir_all(self.cfg.homes.join(id));
@@ -1714,8 +1750,12 @@ impl Runner {
             }
             Err(e) => {
                 session.load_dead();
+                session.worklog.record(&session.state());
                 log(&format!("session {id} has no live shim ({:?})", e.kind()));
             }
+        }
+        if session.is_exited() {
+            finish_seeds(&sdir, id);
         }
         lock(&self.sessions).insert(id.to_string(), session);
         Ok(())

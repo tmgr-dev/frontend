@@ -576,56 +576,257 @@ fn run_is_refused_without_a_usable_sandbox() {
 }
 
 #[test]
-fn agents_login_file_creates_a_private_template_and_never_overwrites() {
+fn agents_login_stores_a_claude_credential_without_echoing_the_token() {
+    const TOKEN: &str = concat!("sk-", "ant-oat01-FAKEFAKEFAKEFAKEFAKE");
     let env = Env::new();
     let home = env.tmp.path().join("fakehome");
     private_dir(&home);
-    let file = home.join(".config/tmgr/agents/claude-code.env");
-    let run = |args: &[&str]| {
+    let file = home.join(".config/tmgr/agents/claude-code.credentials.json");
+    let run = |args: &[&str], stdin: &str| {
+        let input = env.tmp.path().join("stdin.txt");
+        fs::write(&input, stdin).unwrap();
         let mut c = env.cmd(args);
-        c.env("HOME", &home);
+        c.env("HOME", &home).stdin(fs::File::open(&input).unwrap());
         run_bounded(c, Duration::from_secs(60))
     };
+    let text = |o: &Output| {
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        )
+    };
 
-    let out = run(&["agents", "login-file", "claude-code", "--json"]);
+    let out = run(&["agents", "login", "claude-code"], &format!("{TOKEN}\n"));
+    assert!(out.status.success(), "login failed");
+    assert!(!text(&out).contains(TOKEN), "output leaks the token");
+    let shown = text(&out);
+    assert!(shown.contains("credentials.json") && shown.contains("Next session will be logged in"));
+    let v: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    let o = &v["claudeAiOauth"];
+    assert_eq!(o["accessToken"], TOKEN);
+    assert!(o["refreshToken"].is_null() && o["subscriptionType"].is_null());
+    assert_eq!(o["scopes"], serde_json::json!(["user:inference"]));
+    assert!(o["expiresAt"].as_u64().unwrap() > 300 * 24 * 3600 * 1000);
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&file), 0o600);
+    assert_eq!(mode(file.parent().unwrap()), 0o700);
+
+    let out = run(&["agents", "login", "claude-code"], &format!("{TOKEN}\n"));
+    assert!(!out.status.success() && text(&out).contains("--replace"));
+    assert!(!text(&out).contains(TOKEN), "output leaks the token");
+
+    let other = concat!("sk-", "ant-oat01-OTHEROTHEROTHEROTHER");
+    let out = run(&["agents", "login", "claude-code", "--replace"], other);
+    assert!(out.status.success(), "replace failed");
+    let v: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    assert_eq!(v["claudeAiOauth"]["accessToken"], other);
+
+    let before = fs::read(&file).unwrap();
+    for bad in [
+        concat!("sk-", "ant-api03-FAKEFAKEFAKEFAKEFAKE"),
+        "sk-ant-oat01-short",
+        "",
+    ] {
+        let out = run(&["agents", "login", "claude-code", "--replace"], bad);
+        assert!(!out.status.success(), "bad token accepted");
+        assert!(
+            bad.is_empty() || !text(&out).contains(bad),
+            "output leaks the token"
+        );
+    }
+    assert_eq!(fs::read(&file).unwrap(), before);
+
+    assert!(!run(&["agents", "login", "no-such"], TOKEN).status.success());
+    assert!(!run(&["agents", "login", "codex"], TOKEN).status.success());
+
+    let out = run(&["agents", "logout", "claude-code"], "");
+    assert!(out.status.success() && !file.exists());
+    let out = run(&["agents", "logout", "claude-code"], "");
+    assert!(out.status.success() && text(&out).contains("nothing to remove"));
+}
+
+const OLD_TOKEN: &str = concat!("old-", "refresh-FAKEOLD1234");
+const NEW_TOKEN: &str = concat!("new-", "refresh-FAKENEW5678");
+
+struct Cand {
+    home: PathBuf,
+    source: PathBuf,
+    old: String,
+    new: String,
+}
+
+fn login_doc(days_ago: i64, token: &str) -> String {
+    serde_json::json!({
+        "auth_mode": "chatgpt",
+        "last_refresh": (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339(),
+        "tokens": {"account_id": "acc", "refresh_token": token},
+    })
+    .to_string()
+}
+
+fn candidate(env: &Env) -> Cand {
+    let home = env.tmp.path().join("fakehome").canonicalize_or_create();
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    let source = home.join(".codex/auth.json");
+    let (old, new) = (login_doc(5, OLD_TOKEN), login_doc(0, NEW_TOKEN));
+    fs::write(&source, &old).unwrap();
+    let meta = tmgr_runner::seedguard::Meta {
+        root: home.clone(),
+        source: source.clone(),
+        sha: tmgr_runner::seedguard::sha256_hex(old.as_bytes()),
+        source_sha: tmgr_runner::seedguard::sha256_hex(old.as_bytes()),
+        session: "s_abcdefghij".into(),
+        created_ms: tmgr_runner::wire::now_ms(),
+        json_key: Some("last_refresh".into()),
+        same: vec!["tokens.account_id".into(), "auth_mode".into()],
+    };
+    tmgr_runner::seedguard::store(&env.run, "codex", 0, &meta, new.as_bytes()).unwrap();
+    Cand {
+        home,
+        source,
+        old,
+        new,
+    }
+}
+
+trait CanonicalOrCreate {
+    fn canonicalize_or_create(self) -> PathBuf;
+}
+
+impl CanonicalOrCreate for PathBuf {
+    fn canonicalize_or_create(self) -> PathBuf {
+        private_dir(&self);
+        self.canonicalize().unwrap()
+    }
+}
+
+fn out_text(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+fn no_tokens(text: &str) {
+    for frag in [OLD_TOKEN, NEW_TOKEN, "FAKEOLD1234", "FAKENEW5678"] {
+        assert!(!text.contains(frag), "output leaks a token fragment");
+    }
+}
+
+fn candidate_files(env: &Env) -> bool {
+    env.run.join("candidates/codex/0.json").exists()
+}
+
+#[test]
+fn agents_warns_about_a_pending_refreshed_login() {
+    let env = Env::new();
+    let c = candidate(&env);
+    let mut cmd = env.cmd(&["agents"]);
+    cmd.env("HOME", &c.home);
+    let out = out_text(&run_bounded(cmd, Duration::from_secs(60)));
     assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
+        out.contains(
+            "codex refreshed its login inside a session; run `tmgr agents sync codex` to apply it to ~/.codex/auth.json"
+        ),
+        "{out}"
     );
-    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["data"]["created"], true);
-    assert!(v["data"]["path"]
-        .as_str()
-        .unwrap()
-        .ends_with("fakehome/.config/tmgr/agents/claude-code.env"));
+    no_tokens(&out);
+    let json = out_text(&env.tmgr(&["agents", "--json"]));
+    assert!(!json.contains("refreshed its login"));
+}
+
+#[test]
+fn sync_without_a_terminal_is_refused_and_discard_still_works() {
+    let env = Env::new();
+    let c = candidate(&env);
+    let out = env.tmgr(&["agents", "sync", "codex"]);
+    assert_eq!(out.status.code(), Some(10), "{}", out_text(&out));
+    no_tokens(&out_text(&out));
+    let out = env.tmgr(&["agents", "sync", "codex", "--json"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+    assert!(candidate_files(&env));
+    let out = env.tmgr(&["agents", "sync", "codex", "--discard"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!candidate_files(&env));
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+}
+
+#[test]
+fn sync_in_a_terminal_shows_a_value_free_summary_and_applies_only_after_apply() {
+    let env = Env::new();
+    let c = candidate(&env);
+    let mut pty = env.pty(&["agents", "sync", "codex"]);
+    pty.wait_for("Type apply");
+    let shown = pty.text();
+    assert!(shown.contains("~/.codex/auth.json") || shown.contains(".codex/auth.json"));
+    assert!(shown.contains("same tokens.account_id: yes") && shown.contains("s_abcdefghij"));
+    no_tokens(&shown);
+    pty.type_bytes(b"yes\r");
+    assert!(pty.wait_exit_quiet(Duration::from_secs(10)));
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+    assert!(candidate_files(&env));
+
+    let mut pty = env.pty(&["agents", "sync", "codex"]);
+    pty.wait_for("Type apply");
+    pty.type_bytes(b"apply\r");
+    assert!(pty.wait_exit(Duration::from_secs(10)));
+    assert!(pty.text().contains("applied"));
+    no_tokens(&pty.text());
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.new);
+    let backup = c.home.join(".codex/auth.json.tmgr-backup");
+    assert_eq!(fs::read_to_string(&backup).unwrap(), c.old);
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&backup), mode(&c.source)), (0o600, 0o600));
+    assert!(!candidate_files(&env));
+}
+
+#[test]
+fn auto_mode_needs_a_terminal_and_the_exact_agreement() {
+    let env = Env::new();
+    let flag = env.tmp.path().join("cfg/agents/codex.autosync");
+    let out = env.tmgr(&["agents", "sync", "codex", "--auto", "on"]);
+    assert_eq!(out.status.code(), Some(10), "{}", out_text(&out));
+    assert!(!flag.exists());
+
+    let mut pty = env.pty(&["agents", "sync", "codex", "--auto", "on"]);
+    pty.wait_for("Type I AGREE");
+    assert!(pty.text().contains("another account's tokens"));
+    pty.type_bytes(b"i agree\r");
+    assert!(pty.wait_exit_quiet(Duration::from_secs(10)));
+    assert!(!flag.exists());
+
+    let mut pty = env.pty(&["agents", "sync", "codex", "--auto", "on"]);
+    pty.wait_for("Type I AGREE");
+    pty.type_bytes(b"I AGREE\r");
+    assert!(pty.wait_exit(Duration::from_secs(10)));
+    assert!(flag.exists());
     assert_eq!(
-        fs::read_to_string(&file).unwrap(),
-        "CLAUDE_CODE_OAUTH_TOKEN=\n"
-    );
-    assert_eq!(
-        fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+        fs::metadata(&flag).unwrap().permissions().mode() & 0o777,
         0o600
     );
 
-    fs::write(&file, "CLAUDE_CODE_OAUTH_TOKEN=keep-me\n").unwrap();
-    let out = run(&["agents", "login-file", "claude-code"]);
-    let text = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        out.status.success() && text.contains("already exists"),
-        "{text}"
-    );
-    assert!(!text.contains("keep-me"));
-    assert_eq!(
-        fs::read_to_string(&file).unwrap(),
-        "CLAUDE_CODE_OAUTH_TOKEN=keep-me\n"
-    );
+    let out = env.tmgr(&["agents", "sync", "codex", "--auto", "off"]);
+    assert!(out.status.success() && !flag.exists());
+}
 
-    fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
-    let out = run(&["agents", "login-file", "claude-code"]);
-    assert!(String::from_utf8_lossy(&out.stdout).contains("chmod 600"));
-
-    assert!(!run(&["agents", "login-file", "no-such"]).status.success());
+#[test]
+fn sync_and_auto_are_refused_inside_a_session() {
+    let env = Env::new();
+    let c = candidate(&env);
+    for args in [
+        vec!["agents", "sync", "codex"],
+        vec!["agents", "sync", "codex", "--auto", "on"],
+    ] {
+        let mut cmd = env.cmd(&args);
+        cmd.env("TMGR_SESSION_ID", "s_abcdefghij");
+        let out = run_bounded(cmd, Duration::from_secs(60));
+        assert_eq!(out.status.code(), Some(5), "{args:?}: {}", out_text(&out));
+    }
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+    assert!(!env.tmp.path().join("cfg/agents/codex.autosync").exists());
 }
 
 #[test]
@@ -664,5 +865,71 @@ fn runner_serve_started_directly_drops_the_shell_environment() {
     assert!(
         !seen.contains("s3cr3t-notify-value"),
         "TMGR_NOTIFY_TOKEN reached the runner"
+    );
+}
+
+fn git_cli(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .args(["-c", "core.hooksPath=/dev/null"])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git {args:?}");
+}
+
+#[test]
+fn agents_log_shows_time_branch_and_commits() {
+    let env = Env::new();
+    git_cli(&env.proj, &["init", "-q", "-b", "main"]);
+    fs::write(env.proj.join("a.txt"), "a").unwrap();
+    git_cli(&env.proj, &["add", "--", "a.txt"]);
+    git_cli(&env.proj, &["commit", "-q", "-m", "initial"]);
+    let script = env.script("worker.sh", "echo start; sleep 2.5; echo end\n");
+    let Some(id) = env.start(&script, "worker") else {
+        return;
+    };
+    fs::write(env.proj.join("b.txt"), "b").unwrap();
+    git_cli(&env.proj, &["add", "--", "b.txt"]);
+    git_cli(&env.proj, &["commit", "-q", "-m", "feat: add b"]);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let w = env.data(&["agents", "log", "worker", "--json"]);
+        if w["summary"]["ended_ms"].is_u64() {
+            assert_eq!(w["id"], id.as_str());
+            let s = &w["summary"];
+            assert_eq!(s["branch"], "main");
+            assert_eq!(s["commits"][0]["subject"], "feat: add b");
+            assert_eq!(s["exit"]["code"], 0);
+            assert!(s["duration_s"].as_u64().unwrap() >= 2, "{s}");
+            for key in ["working_s", "waiting_s", "blocked_s", "started_ms"] {
+                assert!(s[key].is_u64(), "{key}");
+            }
+            break;
+        }
+        assert!(Instant::now() < deadline, "the session did not exit");
+        thread::sleep(Duration::from_millis(200));
+    }
+    let human = env.tmgr(&["agents", "log", &id]);
+    let text = String::from_utf8_lossy(&human.stdout).into_owned();
+    assert!(human.status.success(), "{text}");
+    for needle in [
+        "worker",
+        "total: working",
+        "branch: main",
+        "feat: add b",
+        "exit code: 0",
+    ] {
+        assert!(text.contains(needle), "{needle}: {text}");
+    }
+    assert_eq!(
+        env.tmgr(&["agents", "log", "missing"]).status.code(),
+        Some(3)
     );
 }

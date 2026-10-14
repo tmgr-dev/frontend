@@ -5,7 +5,7 @@ mod remote_attach;
 
 use crate::cli::Cli;
 use crate::out::{self, Style};
-use clap::{ArgGroup, Args, Subcommand};
+use clap::{ArgGroup, Args, Subcommand, ValueEnum};
 use std::io;
 use std::path::PathBuf;
 use tmgr_core::error::{Error, Kind, Result};
@@ -98,11 +98,41 @@ pub struct AgentsArgs {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
-    /// [experimental] Create the file that holds an agent profile's login token
-    LoginFile {
+    /// [experimental] Store an agent profile's login token (read hidden from the terminal or one line of stdin)
+    Login {
+        /// Agent profile id
+        profile: String,
+        /// Overwrite an existing login
+        #[arg(long)]
+        replace: bool,
+    },
+    /// [experimental] Remove an agent profile's stored login
+    Logout {
         /// Agent profile id
         profile: String,
     },
+    /// [experimental] Apply a login an agent refreshed inside a session to your own file, after you confirm
+    Sync {
+        /// Agent profile id
+        profile: String,
+        /// Delete the pending refreshed logins without applying them
+        #[arg(long, conflicts_with = "auto")]
+        discard: bool,
+        /// Let the runner apply refreshed logins itself after each session (asks for a typed agreement)
+        #[arg(long, value_name = "on|off")]
+        auto: Option<AutoMode>,
+    },
+    /// [experimental] Show what the runner recorded of a session: time, branch, commits
+    Log {
+        /// Session id or name
+        session: String,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum AutoMode {
+    On,
+    Off,
 }
 
 #[derive(Args)]
