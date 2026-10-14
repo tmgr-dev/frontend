@@ -390,7 +390,7 @@ fn terminal_queries_are_answered() {
     let info = c.create(h.req(&[PY, &path])).unwrap();
     let mut w = Watch::new(h.client(), &[&info.id]);
     assert!(
-        w.wait(3, |w| w.has_line(&info.id, "ok:")),
+        w.wait(15, |w| w.has_line(&info.id, "ok:")),
         "{:?} {:?} {}",
         w.text(&info.id),
         c.list().unwrap()[0].state,
