@@ -207,6 +207,8 @@ const mutations = {
 		if ((state.token == null) !== (token == null)) state.sessionGeneration++;
 		if (token == null) {
 			disconnectRealtime();
+			state.pusher?.pusherBeamsClient?.stop?.();
+			if (state.pusher) state.pusher.pusherBeamsUserId = null;
 			requestCache.setContext('guest');
 			requestCache.clear();
 			localStorage.removeItem('token');
@@ -439,6 +441,8 @@ const actions = {
 			});
 		}
 		disconnectRealtime();
+		state.pusher?.pusherBeamsClient?.stop?.();
+		commit('setPusherBeamsUserId', null);
 		commit('setToken', null);
 		commit('dailyRoutines/reset');
 		commit('setAiPanelOpen', false);

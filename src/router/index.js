@@ -3,6 +3,7 @@ import { getWorkspaces } from '@/actions/tmgr/workspaces';
 import { isDesktopApp } from '@/utils/desktop';
 import { saveReturnPath } from '@/utils/emailVerification';
 import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
+import { scrollBehavior } from '@/utils/memberPageScroll';
 import { resolveLanding } from '@/utils/moduleSurfaces';
 import { createRouter, createWebHistory } from 'vue-router';
 import store from '../store';
@@ -17,7 +18,7 @@ import routes from './routes';
  * with the Router instance.
  */
 const router = createRouter({
-	scrollBehavior: () => ({ left: 0, top: 0 }),
+	scrollBehavior,
 	routes,
 	history: createWebHistory(
 		import.meta.env.MODE === 'ssr' ? void 0 : import.meta.env.VUE_ROUTER_BASE,

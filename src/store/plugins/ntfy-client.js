@@ -78,6 +78,7 @@ class NtfyClient {
 							{
 								body: data.message || '',
 								icon: '/favicon.ico',
+								...(data.id ? { tag: data.id } : {}),
 							},
 						);
 
