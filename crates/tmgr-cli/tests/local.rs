@@ -130,7 +130,7 @@ impl Local {
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
         let mut writer = pair.master.take_writer().unwrap();
-        std::io::Write::write_all(&mut writer, input.as_bytes()).unwrap();
+        let _ = std::io::Write::write_all(&mut writer, input.as_bytes());
         std::thread::spawn(move || {
             let mut sink = Vec::new();
             let _ = std::io::Read::read_to_end(&mut reader, &mut sink);
