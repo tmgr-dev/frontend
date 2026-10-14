@@ -1,6 +1,6 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
-import { GENESIS_HASH, isHumanWritten, provenance, rowHash, verifyChain, type JournalRow } from '../journal';
+import { confirmTask, GENESIS_HASH, isHumanWritten, provenance, rowHash, snapshotOf, snapshotParts, snapshotSha, verifyChain, type JournalRow } from '../journal';
 import { enableLocalPersona } from '../personas';
 import { LATEST_SCHEMA, MIGRATIONS, migrate } from '../schema';
 import type { LocalActor, LocalContext } from '../types';
@@ -55,7 +55,7 @@ describeSqlite('edit journal', () => {
 		expect(first).toMatchObject({ seq: 1, entity: 'task', entity_id: String(id), task_id: String(id), field: 'create', author_kind: 'human', source: 'desktop_ui', actor_id: '7', prev_hash: GENESIS_HASH });
 		expect(second).toMatchObject({ seq: 2, field: 'description', prev_hash: first.hash });
 		expect(await rowHash(first)).toBe(first.hash);
-		expect(await verifyChain(ctx.db)).toEqual({ ok: true, brokenAt: null, rows: 2 });
+		expect(await verifyChain(ctx.db, { full: true })).toMatchObject({ ok: true, brokenAt: null, rows: 2, tailSeq: 2 });
 		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(true);
 	});
 
@@ -80,7 +80,7 @@ describeSqlite('edit journal', () => {
 			'comment:delete',
 			'task:delete',
 		]);
-		expect(await verifyChain(ctx.db)).toMatchObject({ ok: true, rows: 5 });
+		expect(await verifyChain(ctx.db, { full: true })).toMatchObject({ ok: true, rows: 5 });
 	});
 
 	it('a failed write leaves no journal row', async () => {
@@ -103,6 +103,21 @@ describeSqlite('edit journal', () => {
 		expect(p).toMatchObject({ created_by: 'human', modified_by_non_human_since: true, chain_ok: true });
 		expect(isHumanWritten(p)).toBe(false);
 		expect(isHumanWritten(await provenance(ctx.db, agentTask))).toBe(false);
+	});
+
+	it('the runner actor is an agent; no actor of any kind is human', async () => {
+		const actors: [LocalActor, string, string, string][] = [
+			[{ kind: 'plugin', id: 'runner', name: 'Runner' }, 'agent', 'runner', 'runner'],
+			[{ kind: 'plugin', id: 'runner', name: 'R', ownerId: 'evil' }, 'plugin', 'plugin', 'evil'],
+			[{ kind: 'plugin', id: 'tmgr.x', name: 'x', ownerId: 'tmgr.x' }, 'plugin', 'plugin', 'tmgr.x'],
+			[{ kind: 'user', id: '7', name: 'Owner' }, 'unattended', 'import', '7'],
+			[{ kind: 'mystery' as any, id: 'm', name: 'm' }, 'unattended', 'import', 'm'],
+		];
+		for (const [actor, kind, source, actorId] of actors) {
+			await create({ title: 't' }, actor);
+			expect((await rows()).pop()).toMatchObject({ author_kind: kind, source, actor_id: actorId });
+		}
+		expect((await rows()).some((r) => r.author_kind === 'human')).toBe(false);
 	});
 
 	it('an MCP request is tagged mcp', async () => {
@@ -148,27 +163,27 @@ describeSqlite('edit journal', () => {
 
 		it('an edited row is found', async () => {
 			await ctx.db.execute(`UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 3`);
-			expect(await verifyChain(ctx.db)).toMatchObject({ ok: false, brokenAt: 3 });
+			expect(await verifyChain(ctx.db, { full: true })).toMatchObject({ ok: false, brokenAt: 3 });
 			expect((await provenance(ctx.db, id)).chain_ok).toBe(false);
 			expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
 		});
 
 		it('a deleted row is found', async () => {
 			await ctx.db.execute(`DELETE FROM edit_journal WHERE seq = 2`);
-			expect(await verifyChain(ctx.db)).toMatchObject({ ok: false, brokenAt: 3 });
+			expect(await verifyChain(ctx.db, { full: true })).toMatchObject({ ok: false, brokenAt: 3 });
 		});
 
 		it('a reordered pair is found', async () => {
 			await ctx.db.execute(`UPDATE edit_journal SET seq = 99 WHERE seq = 2`);
 			await ctx.db.execute(`UPDATE edit_journal SET seq = 2 WHERE seq = 3`);
 			await ctx.db.execute(`UPDATE edit_journal SET seq = 3 WHERE seq = 99`);
-			expect((await verifyChain(ctx.db)).ok).toBe(false);
+			expect((await verifyChain(ctx.db, { full: true })).ok).toBe(false);
 		});
 
 		it('an agent write after a tamper does not repair the chain', async () => {
 			await ctx.db.execute(`UPDATE edit_journal SET content_sha256 = 'x' WHERE seq = 1`);
 			await call('PATCH', `tasks/${id}`, { title: 'again' }, persona);
-			expect(await verifyChain(ctx.db)).toMatchObject({ ok: false, brokenAt: 1 });
+			expect(await verifyChain(ctx.db, { full: true })).toMatchObject({ ok: false, brokenAt: 1 });
 		});
 	});
 
@@ -186,8 +201,83 @@ describeSqlite('edit journal', () => {
 		};
 		await call('PATCH', `tasks/${id}`, { title: 'Mine' });
 		expect(raced).toBe(true);
-		expect(await verifyChain(ctx.db)).toMatchObject({ ok: true, rows: 3 });
+		expect(await verifyChain(ctx.db, { full: true })).toMatchObject({ ok: true, rows: 3 });
 		const [task] = await ctx.db.select<any>(`SELECT title FROM tasks WHERE id = ?`, [id]);
 		expect(task.title).toBe('Mine');
+	});
+
+	it('description_json is its own journal field and part of the snapshot', async () => {
+		const id = await create({ title: 'T', description: 'D' });
+		const before = await snapshotSha(await snapshotParts((await snapshotOf(ctx.db, id))!));
+		await call('PATCH', `tasks/${id}`, { description_json: { type: 'doc' } }, persona);
+		expect((await rows()).map((r) => r.field)).toEqual(['create', 'description', 'description_json']);
+		expect(await snapshotSha(await snapshotParts((await snapshotOf(ctx.db, id))!))).not.toBe(before);
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
+	});
+
+	it('only the app user can confirm, and a confirm covers exactly the text it was made on', async () => {
+		const id = await create({ title: 'T', description: 'D' });
+		await call('PATCH', `tasks/${id}`, { description: 'agent' }, persona);
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
+		await expect(confirmTask({ ...ctx, actor: persona }, id)).rejects.toThrow();
+		await expect(confirmTask({ ...ctx, actor: plugin }, id)).rejects.toThrow();
+		expect(await rows()).toHaveLength(3);
+		await expect(confirmTask(ctx, id, 'not the shown hash')).rejects.toThrow();
+		await confirmTask(ctx, id);
+		const p = await provenance(ctx.db, id);
+		expect(p).toMatchObject({ confirmed: true, human_written: true });
+		expect((await rows()).pop()).toMatchObject({ field: 'confirm', author_kind: 'human', source: 'desktop_ui' });
+		await call('POST', `tasks/${id}/comments`, { message: 'agent adds' }, persona);
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
+	});
+
+	it('an observed text that differs from the human text is not human', async () => {
+		const id = await create({ title: 'T', description: 'D' });
+		const seen = (await snapshotOf(ctx.db, id))!;
+		expect(isHumanWritten(await provenance(ctx.db, id, seen))).toBe(true);
+		expect(isHumanWritten(await provenance(ctx.db, id, { ...seen, description: 'other' }))).toBe(false);
+	});
+
+	it('verification resumes from the checkpoint; a task\'s own rows are always checked', async () => {
+		const a = await create({ title: 'A' });
+		const b = await create({ title: 'B' });
+		expect(await verifyChain(ctx.db)).toMatchObject({ ok: true, rows: 2 });
+		await call('PATCH', `tasks/${a}`, { title: 'A2' });
+		expect(await verifyChain(ctx.db)).toMatchObject({ ok: true, rows: 1, tailSeq: 3 });
+		await ctx.db.execute(`UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 1`);
+		expect((await verifyChain(ctx.db)).ok).toBe(true);
+		expect((await verifyChain(ctx.db, { full: true })).ok).toBe(false);
+		expect((await provenance(ctx.db, a)).chain_ok).toBe(false);
+		expect((await provenance(ctx.db, b)).chain_ok).toBe(true);
+	});
+
+	it('tasks created by routine convert, page selection and onboarding are journaled', async () => {
+		const { seedStarters } = await import('../onboardingFacts');
+		await seedStarters(ctx);
+		const starters = await rows();
+		expect(starters.length).toBeGreaterThan(0);
+		expect(starters.every((r) => r.field === 'create' && r.author_kind === 'unattended' && r.source === 'import')).toBe(true);
+		const [first] = starters;
+		expect(isHumanWritten(await provenance(ctx.db, Number(first.task_id)))).toBe(false);
+	});
+
+	it('migration 13 publishes the version together with the table', async () => {
+		const db = memoryDb();
+		await migrate(db, ctx.now().toISOString());
+		await db.execute(`DROP TABLE edit_journal`);
+		await db.execute(`DROP INDEX IF EXISTS edit_journal_task_idx`);
+		await db.execute(`UPDATE meta SET value = '12' WHERE key = 'schema_version'`);
+		const realBatch = db.batch.bind(db);
+		db.batch = async (statements) => {
+			if (statements.some((s) => s.sql.includes('schema_version'))) {
+				return realBatch([...statements.slice(0, -1), { sql: 'SELECT * FROM missing_table' }]).catch(() => ({ results: [], failedAt: 0 }));
+			}
+			return realBatch(statements);
+		};
+		await migrate(db, ctx.now().toISOString()).catch(() => undefined);
+		const [version] = await db.select<any>(`SELECT value FROM meta WHERE key = 'schema_version'`);
+		const tables = await db.select<any>(`SELECT name FROM sqlite_master WHERE name = 'edit_journal'`);
+		expect(version.value).toBe('12');
+		expect(tables).toEqual([]);
 	});
 });

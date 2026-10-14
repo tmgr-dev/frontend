@@ -4,8 +4,8 @@
 //! Row hash: SHA-256 (lowercase hex) of the UTF-8 JSON array
 //! `[seq, at, entity, entity_id, task_id, field, author_kind, source, actor_id, content_sha256, prev_hash]`
 //! (no whitespace; `seq` is a number, the rest strings). Genesis `prev_hash` is 64 zeros.
-
-use std::io::IsTerminal;
+//!
+//! Only the desktop UI (no actor) and an explicit `confirm` write `human` rows. Every CLI write is `unattended`.
 
 use rusqlite::types::Value as Sql;
 use rusqlite::Connection;
@@ -15,10 +15,11 @@ use sha2::{Digest, Sha256};
 
 use crate::context::Context;
 use crate::db::{execute, schema_version, select};
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 pub const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 pub const JOURNAL_SCHEMA: u32 = 13;
+pub const CHECKPOINT_KEY: &str = "edit_journal_verified";
 
 /// Environment variables that mark an agent session. A trailing `*` matches any name with that prefix.
 pub const AGENT_SESSION_MARKERS: [&str; 6] = [
@@ -30,49 +31,39 @@ pub const AGENT_SESSION_MARKERS: [&str; 6] = [
     "TMGR_RUN_ID",
 ];
 
-/// Where a request without an actor comes from. Everything but a terminal session is never human.
+/// True when any of the variable names is an agent-session marker.
+pub fn in_agent_session<I, S>(vars: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    vars.into_iter().any(|name| {
+        AGENT_SESSION_MARKERS
+            .iter()
+            .any(|marker| match marker.strip_suffix('*') {
+                Some(prefix) => name.as_ref().starts_with(prefix),
+                None => name.as_ref() == *marker,
+            })
+    })
+}
+
+pub fn agent_session_detected() -> bool {
+    in_agent_session(
+        std::env::vars_os()
+            .map(|(k, _)| k.to_string_lossy().into_owned())
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Where a request without an actor comes from. Only the desktop UI is the owner typing; the CLI never is.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WriteOrigin {
     #[default]
     Cli,
-    CliTty,
     DesktopUi,
 }
 
-impl WriteOrigin {
-    /// `CliTty` only when stdin and stdout are terminals and no agent-session marker is set.
-    pub fn from_session<I, S>(stdin_tty: bool, stdout_tty: bool, vars: I) -> WriteOrigin
-    where
-        I: IntoIterator<Item = S>,
-        S: AsRef<str>,
-    {
-        let in_agent = vars.into_iter().any(|name| {
-            AGENT_SESSION_MARKERS
-                .iter()
-                .any(|marker| match marker.strip_suffix('*') {
-                    Some(prefix) => name.as_ref().starts_with(prefix),
-                    None => name.as_ref() == *marker,
-                })
-        });
-        if stdin_tty && stdout_tty && !in_agent {
-            WriteOrigin::CliTty
-        } else {
-            WriteOrigin::Cli
-        }
-    }
-
-    pub fn detect() -> WriteOrigin {
-        let names: Vec<String> = std::env::vars_os()
-            .map(|(k, _)| k.to_string_lossy().into_owned())
-            .collect();
-        WriteOrigin::from_session(
-            std::io::stdin().is_terminal(),
-            std::io::stdout().is_terminal(),
-            names,
-        )
-    }
-}
-
+#[derive(Clone)]
 struct Author {
     kind: &'static str,
     source: &'static str,
@@ -86,11 +77,6 @@ fn author_of(ctx: &Context) -> Author {
             WriteOrigin::DesktopUi => Author {
                 kind: "human",
                 source: "desktop_ui",
-                actor_id: id(),
-            },
-            WriteOrigin::CliTty => Author {
-                kind: "human",
-                source: "cli_tty",
                 actor_id: id(),
             },
             WriteOrigin::Cli => Author {
@@ -114,6 +100,11 @@ fn author_of(ctx: &Context) -> Author {
                 kind: "agent",
                 source: "local_access",
                 actor_id: actor.id.clone(),
+            },
+            "plugin" if actor.id == "runner" && actor.owner_id.is_none() => Author {
+                kind: "agent",
+                source: "runner",
+                actor_id: "runner".into(),
             },
             "plugin" => Author {
                 kind: "plugin",
@@ -183,11 +174,11 @@ pub fn row_hash(row: &JournalRow) -> String {
 }
 
 pub(crate) struct Entry {
-    pub entity: &'static str,
-    pub entity_id: i64,
-    pub task_id: i64,
-    pub field: &'static str,
-    pub content: Option<String>,
+    entity: &'static str,
+    entity_id: i64,
+    task_id: i64,
+    field: &'static str,
+    content_sha: String,
 }
 
 impl Entry {
@@ -197,7 +188,9 @@ impl Entry {
             entity_id: task_id,
             task_id,
             field,
-            content,
+            content_sha: content
+                .as_deref()
+                .map_or(String::new(), |c| content_sha(Some(c))),
         }
     }
 
@@ -212,7 +205,9 @@ impl Entry {
             entity_id: comment_id,
             task_id,
             field,
-            content,
+            content_sha: content
+                .as_deref()
+                .map_or(String::new(), |c| content_sha(Some(c))),
         }
     }
 }
@@ -223,10 +218,13 @@ pub(crate) fn enabled(conn: &Connection) -> Result<bool> {
 
 /// Appends `entries` to the chain in the caller's transaction; a schema-12 database has no journal and gets nothing.
 pub(crate) fn append(conn: &Connection, ctx: &Context, entries: &[Entry]) -> Result<()> {
+    append_as(conn, ctx, entries, &author_of(ctx))
+}
+
+fn append_as(conn: &Connection, ctx: &Context, entries: &[Entry], author: &Author) -> Result<()> {
     if entries.is_empty() || !enabled(conn)? {
         return Ok(());
     }
-    let author = author_of(ctx);
     let tail = select(
         conn,
         "SELECT seq, hash FROM edit_journal ORDER BY seq DESC LIMIT 1",
@@ -251,10 +249,7 @@ pub(crate) fn append(conn: &Connection, ctx: &Context, entries: &[Entry]) -> Res
             author_kind: author.kind.into(),
             source: author.source.into(),
             actor_id: author.actor_id.clone(),
-            content_sha256: entry
-                .content
-                .as_deref()
-                .map_or(String::new(), |c| content_sha(Some(c))),
+            content_sha256: entry.content_sha.clone(),
             prev_hash: prev.clone(),
             hash: String::new(),
         };
@@ -308,28 +303,70 @@ fn to_row(row: &crate::db::Row) -> JournalRow {
     }
 }
 
-const COLUMNS: &str =
-    "seq, at, entity, entity_id, task_id, field, author_kind, source, actor_id, content_sha256, prev_hash, hash";
+const COLUMNS: &str = "seq, at, entity, entity_id, task_id, field, author_kind, source, actor_id, content_sha256, prev_hash, hash";
 const PAGE: i64 = 500;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ChainStatus {
     pub ok: bool,
     pub broken_at: Option<i64>,
+    /// Rows walked by this verification (all of them for a full walk, those after the checkpoint otherwise).
     pub rows: i64,
+    pub tail_seq: i64,
+    pub tail_hash: String,
 }
 
-/// Walks the chain in pages and reports the first row that does not follow from the one before it.
-/// A database without the journal has nothing to verify and is reported broken at 0.
+fn parse_checkpoint(conn: &Connection) -> Option<(i64, String)> {
+    let rows = select(
+        conn,
+        "SELECT value FROM meta WHERE key = ?",
+        &[Sql::Text(CHECKPOINT_KEY.into())],
+    )
+    .ok()?;
+    let value = rows.first()?.get("value")?.as_str()?.to_string();
+    let (seq, hash) = value.split_once(':')?;
+    Some((seq.parse().ok()?, hash.to_string()))
+}
+
+/// Verifies the chain from the stored checkpoint (a row already verified once), or from genesis when there
+/// is none or the checkpointed row is gone or changed. The checkpoint is same-user-forgeable like the rest.
 pub fn verify_chain(conn: &Connection) -> Result<ChainStatus> {
     if !enabled(conn)? {
         return Ok(ChainStatus {
             ok: false,
             broken_at: Some(0),
             rows: 0,
+            tail_seq: 0,
+            tail_hash: GENESIS_HASH.into(),
         });
     }
-    let (mut prev_hash, mut prev_seq, mut rows) = (GENESIS_HASH.to_string(), 0i64, 0i64);
+    let start = parse_checkpoint(conn).filter(|(seq, hash)| {
+        select(
+            conn,
+            "SELECT hash FROM edit_journal WHERE seq = ?",
+            &[Sql::Integer(*seq)],
+        )
+        .ok()
+        .and_then(|r| {
+            r.first()
+                .and_then(|r| r["hash"].as_str().map(|h| h == hash))
+        })
+        .unwrap_or(false)
+    });
+    walk(conn, start)
+}
+
+/// Verifies every row from genesis, ignoring the checkpoint.
+pub fn verify_chain_full(conn: &Connection) -> Result<ChainStatus> {
+    if !enabled(conn)? {
+        return verify_chain(conn);
+    }
+    walk(conn, None)
+}
+
+fn walk(conn: &Connection, start: Option<(i64, String)>) -> Result<ChainStatus> {
+    let (mut prev_seq, mut prev_hash) = start.unwrap_or((0, GENESIS_HASH.to_string()));
+    let mut rows = 0i64;
     loop {
         let page = select(
             conn,
@@ -343,6 +380,8 @@ pub fn verify_chain(conn: &Connection) -> Result<ChainStatus> {
                 ok: true,
                 broken_at: None,
                 rows,
+                tail_seq: prev_seq,
+                tail_hash: prev_hash,
             });
         }
         for raw in &page {
@@ -352,6 +391,8 @@ pub fn verify_chain(conn: &Connection) -> Result<ChainStatus> {
                     ok: false,
                     broken_at: Some(row.seq),
                     rows,
+                    tail_seq: prev_seq,
+                    tail_hash: prev_hash,
                 });
             }
             prev_hash = row.hash;
@@ -361,11 +402,160 @@ pub fn verify_chain(conn: &Connection) -> Result<ChainStatus> {
     }
 }
 
+/// Stores the verified tail as the next starting point; a read-only handle simply cannot.
+pub fn store_checkpoint(conn: &Connection, status: &ChainStatus) -> Result<()> {
+    if !status.ok || status.tail_seq == 0 {
+        return Ok(());
+    }
+    if let Some((seq, _)) = parse_checkpoint(conn) {
+        if seq >= status.tail_seq {
+            return Ok(());
+        }
+    }
+    execute(
+        conn,
+        "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        &[
+            Sql::Text(CHECKPOINT_KEY.into()),
+            Sql::Text(format!("{}:{}", status.tail_seq, status.tail_hash)),
+        ],
+    )?;
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HumanContent {
     pub title_sha: String,
     pub description_sha: String,
+    pub description_json_sha: String,
     pub comments_sha: String,
+}
+
+impl HumanContent {
+    /// The hash a `confirm` row carries: SHA-256 of the JSON array of the four parts.
+    pub fn snapshot_sha(&self) -> String {
+        sha256_hex(
+            json!([
+                self.title_sha,
+                self.description_sha,
+                self.description_json_sha,
+                self.comments_sha
+            ])
+            .to_string()
+            .as_bytes(),
+        )
+    }
+}
+
+/// The task text that reaches an agent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Snapshot {
+    pub title: String,
+    pub description: String,
+    pub description_json: String,
+    pub comments: Vec<(i64, String)>,
+}
+
+impl Snapshot {
+    pub fn parts(&self) -> HumanContent {
+        let comments: Vec<(i64, String)> = self
+            .comments
+            .iter()
+            .map(|(id, m)| (*id, content_sha(Some(m))))
+            .collect();
+        HumanContent {
+            title_sha: content_sha(Some(&self.title)),
+            description_sha: content_sha(Some(&self.description)),
+            description_json_sha: content_sha(Some(&self.description_json)),
+            comments_sha: comments_digest(&comments),
+        }
+    }
+
+    pub fn hash(&self) -> String {
+        self.parts().snapshot_sha()
+    }
+}
+
+pub fn snapshot(conn: &Connection, task_id: i64) -> Result<Option<Snapshot>> {
+    let task = select(
+        conn,
+        "SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL",
+        &[Sql::Integer(task_id)],
+    )?;
+    let Some(task) = task.first() else {
+        return Ok(None);
+    };
+    let comments = select(
+        conn,
+        "SELECT id, message FROM comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY id",
+        &[Sql::Integer(task_id)],
+    )?
+    .iter()
+    .map(|c| (c["id"].as_i64().unwrap_or(0), text(c, "message")))
+    .collect();
+    Ok(Some(Snapshot {
+        title: text(task, "title"),
+        description: text(task, "description"),
+        description_json: text(task, "description_json"),
+        comments,
+    }))
+}
+
+/// Records that the owner has read the task text as it is now and lets agents run on it. `expected` is the
+/// snapshot hash the owner was shown; if the task changed since, nothing is written. The caller must have
+/// established that this is the owner (a desktop action, or the CLI after a terminal and a typed hash).
+pub fn confirm_task(
+    conn: &Connection,
+    ctx: &Context,
+    task_id: i64,
+    expected: Option<&str>,
+) -> Result<String> {
+    conn.execute_batch("BEGIN IMMEDIATE")?;
+    let done = (|| {
+        crate::db::check_schema(conn)?;
+        if !enabled(conn)? {
+            return Err(Error::Unsupported(
+                "this workspace has no edit journal yet (open it in the TMGR desktop app once to upgrade it)"
+                    .into(),
+            ));
+        }
+        let Some(snap) = snapshot(conn, task_id)? else {
+            return Err(Error::NotFound(format!("task {task_id}")));
+        };
+        let hash = snap.hash();
+        if expected.is_some_and(|e| e != hash) {
+            return Err(Error::Unsupported(
+                "the task changed since it was shown; nothing was confirmed".into(),
+            ));
+        }
+        let author = Author {
+            kind: "human",
+            source: match ctx.origin {
+                WriteOrigin::DesktopUi => "desktop_ui",
+                WriteOrigin::Cli => "cli_confirm",
+            },
+            actor_id: ctx.user.id.to_string(),
+        };
+        let entry = Entry {
+            entity: "task",
+            entity_id: task_id,
+            task_id,
+            field: "confirm",
+            content_sha: hash.clone(),
+        };
+        append_as(conn, ctx, &[entry], &author)?;
+        Ok(hash)
+    })();
+    match done {
+        Ok(hash) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(hash)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -378,7 +568,13 @@ pub struct Provenance {
     /// The sorted, distinct `author_kind` of the non-human rows after the last human row.
     pub modified_by_kinds: Vec<String>,
     pub chain_ok: bool,
+    /// The current text equals `last_human_content`.
     pub content_matches: bool,
+    /// The latest `confirm` row's snapshot equals the current text and nothing non-human came after it.
+    pub confirmed: bool,
+    /// `chain_ok` and (`confirmed`, or created by the owner with every part last written by the owner and
+    /// untouched by anything else since).
+    pub human_written: bool,
 }
 
 impl Provenance {
@@ -391,69 +587,46 @@ impl Provenance {
             modified_by_kinds: Vec::new(),
             chain_ok,
             content_matches: false,
+            confirmed: false,
+            human_written: false,
         }
     }
 
-    /// Created by the owner, untouched by anything else since, the chain verifies and the content is
-    /// what the owner last wrote.
     pub fn is_human_written(&self) -> bool {
-        self.created_by == "human"
-            && !self.modified_by_non_human_since
-            && self.chain_ok
-            && self.content_matches
+        self.human_written
     }
 }
 
 /// A task's text as a consumer saw it (for example a run bundle built from API answers), to be compared
-/// with the last human content as well as the database.
+/// with the human or confirmed text as well as the database.
 pub struct Observed<'a> {
     pub title: &'a str,
     pub description: &'a str,
+    pub description_json: &'a str,
     pub comments: Vec<(i64, &'a str)>,
 }
 
-fn content_of(title: &str, description: Option<&str>, comments: &[(i64, String)]) -> HumanContent {
-    HumanContent {
-        title_sha: content_sha(Some(title)),
-        description_sha: content_sha(description),
-        comments_sha: comments_digest(comments),
+impl Observed<'_> {
+    fn parts(&self) -> HumanContent {
+        Snapshot {
+            title: self.title.into(),
+            description: self.description.into(),
+            description_json: self.description_json.into(),
+            comments: self
+                .comments
+                .iter()
+                .map(|(i, m)| (*i, m.to_string()))
+                .collect(),
+        }
+        .parts()
     }
-}
-
-fn current_content(conn: &Connection, task_id: i64) -> Result<Option<HumanContent>> {
-    let task = select(
-        conn,
-        "SELECT title, description FROM tasks WHERE id = ? AND deleted_at IS NULL",
-        &[Sql::Integer(task_id)],
-    )?;
-    let Some(task) = task.first() else {
-        return Ok(None);
-    };
-    let comments: Vec<(i64, String)> = select(
-        conn,
-        "SELECT id, message FROM comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY id",
-        &[Sql::Integer(task_id)],
-    )?
-    .iter()
-    .map(|c| {
-        (
-            c["id"].as_i64().unwrap_or(0),
-            content_sha(Some(&text(c, "message"))),
-        )
-    })
-    .collect();
-    Ok(Some(content_of(
-        &text(task, "title"),
-        Some(&text(task, "description")),
-        &comments,
-    )))
 }
 
 pub fn provenance(conn: &Connection, task_id: i64) -> Result<Provenance> {
     provenance_in(conn, task_id, None, &verify_chain(conn)?)
 }
 
-/// `provenance` that also requires `observed` to be the last human content.
+/// `provenance` that also requires `observed` to be the human or confirmed text.
 pub fn provenance_observed(
     conn: &Connection,
     task_id: i64,
@@ -462,8 +635,77 @@ pub fn provenance_observed(
     provenance_in(conn, task_id, Some(observed), &verify_chain(conn)?)
 }
 
-/// `provenance` for many tasks of one scan: the chain is verified once by the caller (`verify_chain`) and the
-/// same answer is used for each task.
+fn rows_intact(conn: &Connection, rows: &[JournalRow]) -> Result<bool> {
+    for row in rows {
+        if row_hash(row) != row.hash {
+            return Ok(false);
+        }
+        let expected = if row.seq == 1 {
+            Some(GENESIS_HASH.to_string())
+        } else {
+            select(
+                conn,
+                "SELECT hash FROM edit_journal WHERE seq = ?",
+                &[Sql::Integer(row.seq - 1)],
+            )?
+            .first()
+            .map(|r| text(r, "hash"))
+        };
+        if expected.as_deref() != Some(row.prev_hash.as_str()) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[derive(Clone, Default)]
+struct Fold {
+    title: String,
+    description: String,
+    description_json: String,
+    comments: Vec<(i64, String)>,
+}
+
+impl Fold {
+    fn apply(&mut self, row: &JournalRow) {
+        match (row.entity.as_str(), row.field.as_str()) {
+            ("task", "create" | "title") => self.title = row.content_sha256.clone(),
+            ("task", "description") => self.description = row.content_sha256.clone(),
+            ("task", "description_json") => self.description_json = row.content_sha256.clone(),
+            ("comment", "comment") => {
+                let id = row.entity_id.parse().unwrap_or(-1);
+                self.comments.retain(|(c, _)| *c != id);
+                self.comments.push((id, row.content_sha256.clone()));
+            }
+            ("comment", "delete") => {
+                let id = row.entity_id.parse().unwrap_or(-1);
+                self.comments.retain(|(c, _)| *c != id);
+            }
+            _ => {}
+        }
+    }
+
+    fn content(&self) -> HumanContent {
+        let empty = content_sha(None);
+        HumanContent {
+            title_sha: self.title.clone(),
+            description_sha: if self.description.is_empty() {
+                empty.clone()
+            } else {
+                self.description.clone()
+            },
+            description_json_sha: if self.description_json.is_empty() {
+                empty
+            } else {
+                self.description_json.clone()
+            },
+            comments_sha: comments_digest(&self.comments),
+        }
+    }
+}
+
+/// `provenance` for many tasks of one scan: the chain is verified once by the caller and the same answer is
+/// used for each task; the task's own rows are always verified in full.
 pub fn provenance_in(
     conn: &Connection,
     task_id: i64,
@@ -481,13 +723,14 @@ pub fn provenance_in(
     .iter()
     .map(to_row)
     .collect();
+    let chain_ok = chain.ok && rows_intact(conn, &rows)?;
     if rows.is_empty() {
-        return Ok(Provenance::unrecorded(chain.ok));
+        return Ok(Provenance::unrecorded(chain_ok));
     }
-    let created_by = rows
+    let created = rows
         .iter()
-        .find(|r| r.entity == "task" && r.field == "create")
-        .map_or("unrecorded".to_string(), |r| r.author_kind.clone());
+        .find(|r| r.entity == "task" && r.field == "create");
+    let created_by = created.map_or("unrecorded".to_string(), |r| r.author_kind.clone());
     let last_human = rows
         .iter()
         .filter(|r| r.author_kind == "human")
@@ -501,52 +744,83 @@ pub fn provenance_in(
     kinds.sort();
     kinds.dedup();
     let modified = !kinds.is_empty();
-    let human_content = last_human.map(|limit| {
-        let mut title = String::new();
-        let mut description = content_sha(None);
-        let mut comments: Vec<(i64, String)> = Vec::new();
-        for row in rows.iter().take_while(|r| r.seq <= limit) {
-            match (row.entity.as_str(), row.field.as_str()) {
-                ("task", "create" | "title") => title = row.content_sha256.clone(),
-                ("task", "description") => description = row.content_sha256.clone(),
-                ("comment", "comment") => {
-                    let id = row.entity_id.parse().unwrap_or(-1);
-                    comments.retain(|(c, _)| *c != id);
-                    comments.push((id, row.content_sha256.clone()));
-                }
-                ("comment", "delete") => {
-                    let id = row.entity_id.parse().unwrap_or(-1);
-                    comments.retain(|(c, _)| *c != id);
-                }
-                _ => {}
+
+    let mut fold = Fold::default();
+    let mut at_last_human = Fold::default();
+    let mut title_by = String::new();
+    let mut description_by = created_by.clone();
+    let mut json_by = created_by.clone();
+    let mut comment_by: Vec<(i64, String)> = Vec::new();
+    for row in &rows {
+        fold.apply(row);
+        if last_human.is_some_and(|h| row.seq <= h) {
+            at_last_human.apply(row);
+        }
+        match (row.entity.as_str(), row.field.as_str()) {
+            ("task", "create" | "title") => title_by = row.author_kind.clone(),
+            ("task", "description") => description_by = row.author_kind.clone(),
+            ("task", "description_json") => json_by = row.author_kind.clone(),
+            ("comment", "comment") => {
+                let id = row.entity_id.parse().unwrap_or(-1);
+                comment_by.retain(|(c, _)| *c != id);
+                comment_by.push((id, row.author_kind.clone()));
             }
+            ("comment", "delete") => {
+                let id = row.entity_id.parse().unwrap_or(-1);
+                comment_by.retain(|(c, _)| *c != id);
+            }
+            _ => {}
         }
-        HumanContent {
-            title_sha: title,
-            description_sha: description,
-            comments_sha: comments_digest(&comments),
-        }
-    });
-    let mut matches = match (&human_content, current_content(conn, task_id)?) {
-        (Some(human), Some(current)) => *human == current,
-        _ => false,
-    };
-    if let (true, Some(observed), Some(human)) = (matches, observed, &human_content) {
-        let comments: Vec<(i64, String)> = observed
-            .comments
-            .iter()
-            .map(|(id, message)| (*id, content_sha(Some(message))))
-            .collect();
-        matches = *human == content_of(observed.title, Some(observed.description), &comments);
     }
+    let human_content = last_human.map(|_| at_last_human.content());
+    let current = snapshot(conn, task_id)?.map(|s| s.parts());
+    let observed_parts = observed.map(Observed::parts);
+    let text_is = |target: &HumanContent| {
+        current.as_ref() == Some(target) && observed_parts.as_ref().is_none_or(|o| o == target)
+    };
+    let content_matches = human_content.as_ref().is_some_and(&text_is);
+
+    let confirm = rows
+        .iter()
+        .filter(|r| r.entity == "task" && r.field == "confirm" && r.author_kind == "human")
+        .max_by_key(|r| r.seq);
+    let confirmed = confirm.is_some_and(|c| {
+        let snapshot_is = |parts: &Option<HumanContent>| {
+            parts
+                .as_ref()
+                .is_some_and(|p| p.snapshot_sha() == c.content_sha256)
+        };
+        snapshot_is(&current)
+            && observed_parts
+                .as_ref()
+                .is_none_or(|_| snapshot_is(&observed_parts))
+            && !rows
+                .iter()
+                .any(|r| r.author_kind != "human" && r.seq > c.seq)
+    });
+
+    let all_human = title_by == "human"
+        && description_by == "human"
+        && json_by == "human"
+        && comment_by.iter().all(|(_, k)| k == "human");
+    let journal_state_current = text_is(&fold.content());
+    let human_written = chain_ok
+        && (confirmed
+            || (created_by == "human"
+                && !modified
+                && all_human
+                && journal_state_current
+                && content_matches));
     Ok(Provenance {
         created_by,
         last_human_seq: last_human,
         last_human_content: human_content,
         modified_by_non_human_since: modified,
         modified_by_kinds: kinds,
-        chain_ok: chain.ok,
-        content_matches: matches,
+        chain_ok,
+        content_matches,
+        confirmed,
+        human_written,
     })
 }
 
@@ -578,6 +852,10 @@ mod tests {
         c
     }
 
+    fn desktop() -> Context {
+        origin(WriteOrigin::DesktopUi)
+    }
+
     fn persona() -> Context {
         let mut c = ctx(T);
         c.actor = Some(Actor {
@@ -606,20 +884,13 @@ mod tests {
     }
 
     #[test]
-    fn only_a_clean_terminal_session_is_cli_tty() {
-        let none = vars(&["PATH", "HOME"]);
-        assert_eq!(
-            WriteOrigin::from_session(true, true, none.clone()),
-            WriteOrigin::CliTty
-        );
-        assert_eq!(
-            WriteOrigin::from_session(false, true, none.clone()),
-            WriteOrigin::Cli
-        );
-        assert_eq!(
-            WriteOrigin::from_session(true, false, none.clone()),
-            WriteOrigin::Cli
-        );
+    fn every_marker_makes_an_agent_session() {
+        assert!(!in_agent_session(vars(&[
+            "PATH",
+            "HOME",
+            "CLAUDECODE_NOT",
+            "MY_CODEX_SANDBOX"
+        ])));
         for marker in [
             "CLAUDECODE",
             "CLAUDE_CODE_ENTRYPOINT",
@@ -629,24 +900,15 @@ mod tests {
             "TMGR_RUN_TOKEN",
             "TMGR_RUN_ID",
         ] {
-            assert_eq!(
-                WriteOrigin::from_session(true, true, vars(&["PATH", marker])),
-                WriteOrigin::Cli,
-                "{marker}"
-            );
+            assert!(in_agent_session(vars(&["PATH", marker])), "{marker}");
         }
-        assert_eq!(
-            WriteOrigin::from_session(true, true, vars(&["CLAUDECODE_NOT", "MY_CODEX_SANDBOX"])),
-            WriteOrigin::CliTty
-        );
     }
 
     #[test]
-    fn the_origin_decides_what_a_user_write_is() {
+    fn only_the_desktop_ui_writes_human_rows() {
         let conn = writable();
         for (o, expected) in [
             (WriteOrigin::DesktopUi, ("human", "desktop_ui")),
-            (WriteOrigin::CliTty, ("human", "cli_tty")),
             (WriteOrigin::Cli, ("unattended", "cli")),
         ] {
             call(&conn, &origin(o), "POST", "tasks", json!({ "title": "t" }));
@@ -671,10 +933,10 @@ mod tests {
     fn a_persona_is_an_agent_whatever_the_body_and_origin_claim() {
         let conn = writable();
         let mut c = persona();
-        c.origin = WriteOrigin::CliTty;
+        c.origin = WriteOrigin::DesktopUi;
         let forged = json!({
-            "title": "Forged", "author_kind": "human", "source": "cli_tty", "actor_id": "1",
-            "actor": { "kind": "user", "id": "1" }, "origin": "cli_tty", "seq": 1, "hash": "x"
+            "title": "Forged", "author_kind": "human", "source": "desktop_ui", "actor_id": "1",
+            "actor": { "kind": "user", "id": "1" }, "origin": "desktop_ui", "seq": 1, "hash": "x"
         });
         assert_eq!(call(&conn, &c, "POST", "tasks", forged.clone()).status, 201);
         let mut comment = forged.clone();
@@ -719,8 +981,7 @@ mod tests {
             ("whatever", "unattended"),
             ("user", "unattended"),
         ] {
-            let mut c = ctx(T);
-            c.origin = WriteOrigin::DesktopUi;
+            let mut c = desktop();
             c.actor = Some(Actor {
                 kind: kind.into(),
                 id: "x".into(),
@@ -733,16 +994,72 @@ mod tests {
     }
 
     #[test]
+    fn the_runner_actor_is_an_agent_and_no_actor_is_ever_human() {
+        let conn = writable();
+        let actor = |kind: &str, id: &str, owner: Option<&str>| {
+            let mut c = desktop();
+            c.actor = Some(Actor {
+                kind: kind.into(),
+                id: id.into(),
+                name: id.into(),
+                owner_id: owner.map(str::to_string),
+            });
+            c
+        };
+        let cases = [
+            (
+                actor("plugin", "runner", None),
+                ("agent", "runner", "runner"),
+            ),
+            (
+                actor("plugin", "runner", Some("evil")),
+                ("plugin", "plugin", "evil"),
+            ),
+            (
+                actor("plugin", "tmgr.x", None),
+                ("plugin", "plugin", "tmgr.x"),
+            ),
+            (actor("user", "1", None), ("unattended", "import", "1")),
+            (actor("mystery", "m", None), ("unattended", "import", "m")),
+            (actor("", "", None), ("unattended", "import", "")),
+        ];
+        for (c, expected) in cases {
+            call(&conn, &c, "POST", "tasks", json!({ "title": "t" }));
+            let last = select(
+                &conn,
+                "SELECT author_kind, source, actor_id FROM edit_journal ORDER BY seq DESC LIMIT 1",
+                &[],
+            )
+            .unwrap();
+            let got = (
+                text(&last[0], "author_kind"),
+                text(&last[0], "source"),
+                text(&last[0], "actor_id"),
+            );
+            assert_eq!(
+                got,
+                (
+                    expected.0.to_string(),
+                    expected.1.to_string(),
+                    expected.2.to_string()
+                )
+            );
+        }
+        let humans: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM edit_journal WHERE author_kind = 'human'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(humans, 0);
+    }
+
+    #[test]
     fn a_schema_12_database_gets_no_journal_and_answers_unrecorded() {
         let conn = db12("");
         conn.execute_batch("PRAGMA query_only = OFF").unwrap();
-        let r = call(
-            &conn,
-            &origin(WriteOrigin::CliTty),
-            "POST",
-            "tasks",
-            json!({ "title": "t" }),
-        );
+        let r = call(&conn, &desktop(), "POST", "tasks", json!({ "title": "t" }));
         assert_eq!(r.status, 201);
         let tables: i64 = conn
             .query_row(
@@ -754,15 +1071,15 @@ mod tests {
         assert_eq!(tables, 0);
         let p = provenance(&conn, 1).unwrap();
         assert_eq!(p.created_by, "unrecorded");
-        assert!(!p.chain_ok);
-        assert!(!p.is_human_written());
+        assert!(!p.chain_ok && !p.is_human_written());
         assert!(!verify_chain(&conn).unwrap().ok);
+        assert!(confirm_task(&conn, &origin(WriteOrigin::Cli), 1, None).is_err());
     }
 
     #[test]
     fn a_failed_request_leaves_no_row() {
         let conn = writable();
-        let c = origin(WriteOrigin::CliTty);
+        let c = desktop();
         assert_eq!(
             call(&conn, &c, "PATCH", "tasks/9", json!({ "title": "x" })).status,
             404
@@ -780,7 +1097,7 @@ mod tests {
     fn a_tampered_chain_is_found_for_an_edit_a_delete_and_a_reorder() {
         let make = || {
             let conn = writable();
-            let c = origin(WriteOrigin::CliTty);
+            let c = desktop();
             call(
                 &conn,
                 &c,
@@ -799,28 +1116,23 @@ mod tests {
             conn
         };
         let intact = make();
-        assert_eq!(
-            verify_chain(&intact).unwrap(),
-            ChainStatus {
-                ok: true,
-                broken_at: None,
-                rows: 4
-            }
-        );
+        let status = verify_chain_full(&intact).unwrap();
+        assert!(status.ok && status.rows == 4 && status.tail_seq == 4);
         assert!(provenance(&intact, 1).unwrap().is_human_written());
 
         let edited = make();
         edited
             .execute_batch("UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 3")
             .unwrap();
-        assert_eq!(verify_chain(&edited).unwrap().broken_at, Some(3));
+        assert_eq!(verify_chain_full(&edited).unwrap().broken_at, Some(3));
         assert!(!provenance(&edited, 1).unwrap().chain_ok);
 
         let deleted = make();
         deleted
             .execute_batch("DELETE FROM edit_journal WHERE seq = 2")
             .unwrap();
-        assert_eq!(verify_chain(&deleted).unwrap().broken_at, Some(3));
+        assert_eq!(verify_chain_full(&deleted).unwrap().broken_at, Some(3));
+        assert!(!provenance(&deleted, 1).unwrap().is_human_written());
 
         let reordered = make();
         reordered
@@ -828,31 +1140,80 @@ mod tests {
                 "UPDATE edit_journal SET seq = 99 WHERE seq = 2; UPDATE edit_journal SET seq = 2 WHERE seq = 3; UPDATE edit_journal SET seq = 3 WHERE seq = 99;",
             )
             .unwrap();
-        assert!(!verify_chain(&reordered).unwrap().ok);
+        assert!(!verify_chain_full(&reordered).unwrap().ok);
         assert!(!provenance(&reordered, 1).unwrap().is_human_written());
+    }
+
+    #[test]
+    fn verification_resumes_from_the_checkpoint_but_a_tasks_own_rows_are_always_checked() {
+        let conn = writable();
+        let c = desktop();
+        call(&conn, &c, "POST", "tasks", json!({ "title": "T" }));
+        call(&conn, &c, "POST", "tasks", json!({ "title": "U" }));
+        let first = verify_chain(&conn).unwrap();
+        assert_eq!(first.rows, 2);
+        store_checkpoint(&conn, &first).unwrap();
+        call(&conn, &c, "PATCH", "tasks/1", json!({ "title": "T2" }));
+        let next = verify_chain(&conn).unwrap();
+        assert!(next.ok && next.rows == 1 && next.tail_seq == 3);
+        conn.execute_batch("UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 1")
+            .unwrap();
+        assert!(verify_chain(&conn).unwrap().ok);
+        assert!(!verify_chain_full(&conn).unwrap().ok);
+        assert!(!provenance(&conn, 1).unwrap().chain_ok);
+        assert!(provenance(&conn, 2).unwrap().chain_ok);
+        conn.execute_batch("UPDATE edit_journal SET hash = 'x' WHERE seq = 2")
+            .unwrap();
+        assert!(!verify_chain(&conn).unwrap().ok);
     }
 
     #[test]
     fn an_edit_outside_the_journal_changes_the_content_and_fails_closed() {
         let conn = writable();
-        call(
-            &conn,
-            &origin(WriteOrigin::CliTty),
-            "POST",
-            "tasks",
-            json!({ "title": "T" }),
-        );
+        call(&conn, &desktop(), "POST", "tasks", json!({ "title": "T" }));
         assert!(provenance(&conn, 1).unwrap().is_human_written());
-        conn.execute_batch("UPDATE tasks SET description = 'sneaky' WHERE id = 1")
-            .unwrap();
-        let p = provenance(&conn, 1).unwrap();
-        assert!(!p.content_matches && !p.is_human_written());
+        for sql in [
+            "UPDATE tasks SET description = 'sneaky' WHERE id = 1",
+            "UPDATE tasks SET description = NULL, description_json = '{}' WHERE id = 1",
+        ] {
+            conn.execute_batch(sql).unwrap();
+            let p = provenance(&conn, 1).unwrap();
+            assert!(!p.content_matches && !p.is_human_written(), "{sql}");
+        }
     }
 
     #[test]
-    fn what_a_consumer_saw_must_be_the_last_human_content() {
+    fn description_json_is_its_own_field_in_the_journal_and_the_snapshot() {
         let conn = writable();
-        let c = origin(WriteOrigin::CliTty);
+        call(
+            &conn,
+            &desktop(),
+            "POST",
+            "tasks",
+            json!({ "title": "T", "description": "D" }),
+        );
+        let before = snapshot(&conn, 1).unwrap().unwrap().hash();
+        call(
+            &conn,
+            &persona(),
+            "PATCH",
+            "tasks/1",
+            json!({ "description_json": { "type": "doc" } }),
+        );
+        let fields: Vec<String> = select(&conn, "SELECT field FROM edit_journal ORDER BY seq", &[])
+            .unwrap()
+            .iter()
+            .map(|r| text(r, "field"))
+            .collect();
+        assert_eq!(fields, ["create", "description", "description_json"]);
+        assert_ne!(snapshot(&conn, 1).unwrap().unwrap().hash(), before);
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+    }
+
+    #[test]
+    fn what_a_consumer_saw_must_be_the_human_text() {
+        let conn = writable();
+        let c = desktop();
         call(
             &conn,
             &c,
@@ -870,6 +1231,7 @@ mod tests {
         let same = Observed {
             title: "T",
             description: "D\nE",
+            description_json: "",
             comments: vec![(1, "note")],
         };
         assert!(provenance_observed(&conn, 1, &same)
@@ -878,6 +1240,7 @@ mod tests {
         let other = Observed {
             title: "T",
             description: "changed",
+            description_json: "",
             comments: vec![(1, "note")],
         };
         assert!(!provenance_observed(&conn, 1, &other)
@@ -886,11 +1249,104 @@ mod tests {
         let extra = Observed {
             title: "T",
             description: "D\nE",
+            description_json: "",
             comments: vec![(1, "note"), (2, "more")],
         };
         assert!(!provenance_observed(&conn, 1, &extra)
             .unwrap()
             .is_human_written());
+        let json = Observed {
+            title: "T",
+            description: "D\nE",
+            description_json: "{}",
+            comments: vec![(1, "note")],
+        };
+        assert!(!provenance_observed(&conn, 1, &json)
+            .unwrap()
+            .is_human_written());
+    }
+
+    #[test]
+    fn a_cli_task_is_not_human_until_the_owner_confirms_exactly_that_text() {
+        let conn = writable();
+        let cli = origin(WriteOrigin::Cli);
+        call(
+            &conn,
+            &cli,
+            "POST",
+            "tasks",
+            json!({ "title": "From a script", "description": "steps" }),
+        );
+        call(
+            &conn,
+            &cli,
+            "POST",
+            "tasks/1/comments",
+            json!({ "message": "context" }),
+        );
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+        let shown = snapshot(&conn, 1).unwrap().unwrap().hash();
+        assert!(confirm_task(&conn, &cli, 1, Some("not the shown hash")).is_err());
+        assert_eq!(rows(&conn).len(), 3);
+        assert_eq!(confirm_task(&conn, &cli, 1, Some(&shown)).unwrap(), shown);
+        let p = provenance(&conn, 1).unwrap();
+        assert!(p.confirmed && p.is_human_written());
+        assert_eq!(
+            rows(&conn).pop().unwrap(),
+            ("human".to_string(), "cli_confirm".to_string())
+        );
+        let same = Observed {
+            title: "From a script",
+            description: "steps",
+            description_json: "",
+            comments: vec![(1, "context")],
+        };
+        assert!(provenance_observed(&conn, 1, &same)
+            .unwrap()
+            .is_human_written());
+        let other = Observed {
+            title: "From a script",
+            description: "steps!",
+            description_json: "",
+            comments: vec![(1, "context")],
+        };
+        assert!(!provenance_observed(&conn, 1, &other)
+            .unwrap()
+            .is_human_written());
+
+        call(
+            &conn,
+            &persona(),
+            "POST",
+            "tasks/1/comments",
+            json!({ "message": "agent adds" }),
+        );
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+        confirm_task(&conn, &desktop(), 1, None).unwrap();
+        assert!(provenance(&conn, 1).unwrap().is_human_written());
+        conn.execute_batch("UPDATE tasks SET title = 'edited behind' WHERE id = 1")
+            .unwrap();
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+    }
+
+    #[test]
+    fn a_legacy_task_becomes_human_only_through_a_confirm() {
+        let conn = writable();
+        conn.execute_batch(
+            "INSERT INTO tasks (id, title, created_at, updated_at) VALUES (1, 'old', 'x', 'x')",
+        )
+        .unwrap();
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+        call(
+            &conn,
+            &desktop(),
+            "PATCH",
+            "tasks/1",
+            json!({ "description": "human edit" }),
+        );
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+        confirm_task(&conn, &origin(WriteOrigin::Cli), 1, None).unwrap();
+        assert!(provenance(&conn, 1).unwrap().is_human_written());
     }
 
     #[test]
@@ -901,13 +1357,13 @@ mod tests {
             .unwrap()
             .execute_batch(&crate::testing::schema())
             .unwrap();
-        let desktop = crate::open_write(&path).unwrap();
+        let desktop_conn = crate::open_write(&path).unwrap();
         let cli = crate::open_write(&path).unwrap();
         for i in 0..4 {
             let (conn, o) = if i % 2 == 0 {
-                (&desktop, WriteOrigin::DesktopUi)
+                (&desktop_conn, WriteOrigin::DesktopUi)
             } else {
-                (&cli, WriteOrigin::CliTty)
+                (&cli, WriteOrigin::Cli)
             };
             let r = call(
                 conn,
@@ -918,14 +1374,8 @@ mod tests {
             );
             assert_eq!(r.status, 201);
         }
-        assert_eq!(
-            verify_chain(&desktop).unwrap(),
-            ChainStatus {
-                ok: true,
-                broken_at: None,
-                rows: 4
-            }
-        );
+        let status = verify_chain_full(&desktop_conn).unwrap();
+        assert!(status.ok && status.rows == 4);
         assert_eq!(rows(&cli).len(), 4);
     }
 
@@ -956,5 +1406,15 @@ mod tests {
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
         assert_eq!(content_sha(Some("a\r\nb")), content_sha(Some("a\nb")));
+        let parts = HumanContent {
+            title_sha: "a".into(),
+            description_sha: "b".into(),
+            description_json_sha: "c".into(),
+            comments_sha: "d".into(),
+        };
+        assert_eq!(
+            parts.snapshot_sha(),
+            sha256_hex(b"[\"a\",\"b\",\"c\",\"d\"]")
+        );
     }
 }

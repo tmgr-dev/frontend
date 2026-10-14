@@ -5,7 +5,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use tmgr_local::{
-    dispatch, provenance, verify_chain, Actor, Context, LocalWorkspace, Manifest, User, WriteOrigin,
+    confirm_task, dispatch, provenance, verify_chain_full, Actor, Context, LocalWorkspace,
+    Manifest, User, WriteOrigin,
 };
 
 fn fixtures() -> PathBuf {
@@ -62,7 +63,6 @@ fn context(op: &Value) -> Context {
         })
     });
     let origin = match op.get("origin").and_then(Value::as_str) {
-        Some("cli_tty") => WriteOrigin::CliTty,
         Some("cli") => WriteOrigin::Cli,
         _ => WriteOrigin::DesktopUi,
     };
@@ -123,6 +123,19 @@ fn run(fixture: &mut Value, update: bool) -> Value {
     for mut op in ops {
         let before = journal(&conn).len();
         let ctx = context(&op);
+        if let Some(task) = op.get("confirm").and_then(Value::as_i64) {
+            confirm_task(&conn, &ctx, task, None).unwrap();
+            if op.get("writer").and_then(Value::as_str) == Some("rust") {
+                let appended: Vec<Value> = journal(&conn).split_off(before);
+                if update {
+                    op["rows"] = Value::Array(appended);
+                } else {
+                    assert_eq!(Value::Array(appended), op["rows"], "rows of confirm {task}");
+                }
+            }
+            updated_ops.push(op);
+            continue;
+        }
         let answer = dispatch(
             &conn,
             &ctx,
@@ -162,7 +175,7 @@ fn run(fixture: &mut Value, update: bool) -> Value {
             serde_json::to_value(provenance(&conn, id).unwrap()).unwrap(),
         );
     }
-    let chain = verify_chain(&conn).unwrap();
+    let chain = verify_chain_full(&conn).unwrap();
     json!({
         "journal": journal(&conn),
         "chain": { "ok": chain.ok, "broken_at": chain.broken_at, "rows": chain.rows },

@@ -16,7 +16,7 @@
 		},
 		{
 			"writer": "rust",
-			"origin": "cli_tty",
+			"origin": "cli",
 			"at": "2026-10-14T11:00:02.000Z",
 			"method": "PATCH",
 			"url": "tasks/1",
@@ -34,12 +34,12 @@
 					"entity_id": "1",
 					"task_id": "1",
 					"field": "description",
-					"author_kind": "human",
-					"source": "cli_tty",
+					"author_kind": "unattended",
+					"source": "cli",
 					"actor_id": "7",
 					"content_sha256": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
 					"prev_hash": "ce962b54c6e07f8b791f4a5a5c2d703a46b8086ed270be13dbd43b7a5254deaf",
-					"hash": "959dcebcb57cd7a153ea264b957701e6912c861a64fb647d960bbdc721dad9b7"
+					"hash": "8a39de1d8ca6914a48abf4e7360bed9a2b261e21387950f67a11a2d83f494b26"
 				}
 			]
 		},
@@ -75,8 +75,8 @@
 					"source": "cli",
 					"actor_id": "7",
 					"content_sha256": "ec1d377fb253010cbd998b7caaa9e7b1944817367d070b114aed3d0ccc0e9b10",
-					"prev_hash": "b6a9bd51d32fa3eaaebc1e69b0ee9cba29da7ef960072fcfd80a7c8da3e8fc56",
-					"hash": "f59752cab8b914e18d6418aa07808d86d08c3037115fd7c671549dda458d51b6"
+					"prev_hash": "fe84609ca9d6f4abc41be984de75d63ac49bb79824768e0be5c430d0b3d8cf25",
+					"hash": "af8b54194a20a6821d5cc5bdaec86806a9ca99ec0095852a502ef1b8fc4205ce"
 				}
 			]
 		},
@@ -90,7 +90,7 @@
 		},
 		{
 			"writer": "rust",
-			"origin": "cli_tty",
+			"origin": "cli",
 			"at": "2026-10-14T11:00:06.000Z",
 			"method": "POST",
 			"url": "tasks",
@@ -108,12 +108,12 @@
 					"entity_id": "2",
 					"task_id": "2",
 					"field": "create",
-					"author_kind": "human",
-					"source": "cli_tty",
+					"author_kind": "unattended",
+					"source": "cli",
 					"actor_id": "7",
 					"content_sha256": "13f976df41f105ea6038c2e8239e2c311f0a3cbaf126f0287e3c55d150131bcf",
-					"prev_hash": "de093cd5a9e8b7e3fb33039b9018af0969b340ddbdbd1ae2867d214400fc33f9",
-					"hash": "704cfbe9bb778b326344ef414e6b6046339d5a3ef577ef76490715c02824b452"
+					"prev_hash": "df621c2ac432737141d3e20890cb40875bffd4e5392f5f0813d241117afc48aa",
+					"hash": "6e3de7d3568b7b423417896c7c114770da1c0b8b31308714df3fb28aae5e58ff"
 				}
 			]
 		},
@@ -123,6 +123,36 @@
 			"url": "tasks/2",
 			"body": {
 				"description": "added by the desktop"
+			}
+		},
+		{
+			"writer": "rust",
+			"origin": "cli",
+			"at": "2026-10-14T11:00:08.000Z",
+			"confirm": 2,
+			"rows": [
+				{
+					"seq": 9,
+					"at": "2026-10-14T11:00:08.000Z",
+					"entity": "task",
+					"entity_id": "2",
+					"task_id": "2",
+					"field": "confirm",
+					"author_kind": "human",
+					"source": "cli_confirm",
+					"actor_id": "7",
+					"content_sha256": "cd07e4c8c2d028357fa9a20ff285f3c238b5ca7153e463ab0e7b1b8a48015b27",
+					"prev_hash": "01e3782036c1df64f256dc769acbbbae8ed8b7588aab516c1d37fc3acb1798d9",
+					"hash": "96b318cd84d71e3675d5d8c0d5220969f39644a24f5bccfc43e68f3516328165"
+				}
+			]
+		},
+		{
+			"at": "2026-10-14T11:00:09.000Z",
+			"method": "PATCH",
+			"url": "tasks/2",
+			"body": {
+				"title": "retitled by the desktop"
 			}
 		}
 	],
@@ -167,12 +197,12 @@
 				"entity_id": "1",
 				"task_id": "1",
 				"field": "description",
-				"author_kind": "human",
-				"source": "cli_tty",
+				"author_kind": "unattended",
+				"source": "cli",
 				"actor_id": "7",
 				"content_sha256": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
 				"prev_hash": "ce962b54c6e07f8b791f4a5a5c2d703a46b8086ed270be13dbd43b7a5254deaf",
-				"hash": "959dcebcb57cd7a153ea264b957701e6912c861a64fb647d960bbdc721dad9b7"
+				"hash": "8a39de1d8ca6914a48abf4e7360bed9a2b261e21387950f67a11a2d83f494b26"
 			},
 			{
 				"seq": 4,
@@ -185,8 +215,8 @@
 				"source": "desktop_ui",
 				"actor_id": "7",
 				"content_sha256": "73c2fb9fd13e7f3191c2ba77f9d7f57c914ffce7cfdc37c32d71b338706a9257",
-				"prev_hash": "959dcebcb57cd7a153ea264b957701e6912c861a64fb647d960bbdc721dad9b7",
-				"hash": "b6a9bd51d32fa3eaaebc1e69b0ee9cba29da7ef960072fcfd80a7c8da3e8fc56"
+				"prev_hash": "8a39de1d8ca6914a48abf4e7360bed9a2b261e21387950f67a11a2d83f494b26",
+				"hash": "fe84609ca9d6f4abc41be984de75d63ac49bb79824768e0be5c430d0b3d8cf25"
 			},
 			{
 				"seq": 5,
@@ -199,8 +229,8 @@
 				"source": "cli",
 				"actor_id": "7",
 				"content_sha256": "ec1d377fb253010cbd998b7caaa9e7b1944817367d070b114aed3d0ccc0e9b10",
-				"prev_hash": "b6a9bd51d32fa3eaaebc1e69b0ee9cba29da7ef960072fcfd80a7c8da3e8fc56",
-				"hash": "f59752cab8b914e18d6418aa07808d86d08c3037115fd7c671549dda458d51b6"
+				"prev_hash": "fe84609ca9d6f4abc41be984de75d63ac49bb79824768e0be5c430d0b3d8cf25",
+				"hash": "af8b54194a20a6821d5cc5bdaec86806a9ca99ec0095852a502ef1b8fc4205ce"
 			},
 			{
 				"seq": 6,
@@ -213,8 +243,8 @@
 				"source": "desktop_ui",
 				"actor_id": "7",
 				"content_sha256": "1329d985705ecce16f25a96ed4aef3fce74801afd0a67596836cace14e805a62",
-				"prev_hash": "f59752cab8b914e18d6418aa07808d86d08c3037115fd7c671549dda458d51b6",
-				"hash": "de093cd5a9e8b7e3fb33039b9018af0969b340ddbdbd1ae2867d214400fc33f9"
+				"prev_hash": "af8b54194a20a6821d5cc5bdaec86806a9ca99ec0095852a502ef1b8fc4205ce",
+				"hash": "df621c2ac432737141d3e20890cb40875bffd4e5392f5f0813d241117afc48aa"
 			},
 			{
 				"seq": 7,
@@ -223,12 +253,12 @@
 				"entity_id": "2",
 				"task_id": "2",
 				"field": "create",
-				"author_kind": "human",
-				"source": "cli_tty",
+				"author_kind": "unattended",
+				"source": "cli",
 				"actor_id": "7",
 				"content_sha256": "13f976df41f105ea6038c2e8239e2c311f0a3cbaf126f0287e3c55d150131bcf",
-				"prev_hash": "de093cd5a9e8b7e3fb33039b9018af0969b340ddbdbd1ae2867d214400fc33f9",
-				"hash": "704cfbe9bb778b326344ef414e6b6046339d5a3ef577ef76490715c02824b452"
+				"prev_hash": "df621c2ac432737141d3e20890cb40875bffd4e5392f5f0813d241117afc48aa",
+				"hash": "6e3de7d3568b7b423417896c7c114770da1c0b8b31308714df3fb28aae5e58ff"
 			},
 			{
 				"seq": 8,
@@ -241,14 +271,42 @@
 				"source": "desktop_ui",
 				"actor_id": "7",
 				"content_sha256": "900e95352571f2167558501fada21195f0d2fb6c694a4555ded97d8ca9c51416",
-				"prev_hash": "704cfbe9bb778b326344ef414e6b6046339d5a3ef577ef76490715c02824b452",
-				"hash": "e473315af54ff7395dca2b818e149f9d7ae560855ad030393fbd876ff5eef409"
+				"prev_hash": "6e3de7d3568b7b423417896c7c114770da1c0b8b31308714df3fb28aae5e58ff",
+				"hash": "01e3782036c1df64f256dc769acbbbae8ed8b7588aab516c1d37fc3acb1798d9"
+			},
+			{
+				"seq": 9,
+				"at": "2026-10-14T11:00:08.000Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "confirm",
+				"author_kind": "human",
+				"source": "cli_confirm",
+				"actor_id": "7",
+				"content_sha256": "cd07e4c8c2d028357fa9a20ff285f3c238b5ca7153e463ab0e7b1b8a48015b27",
+				"prev_hash": "01e3782036c1df64f256dc769acbbbae8ed8b7588aab516c1d37fc3acb1798d9",
+				"hash": "96b318cd84d71e3675d5d8c0d5220969f39644a24f5bccfc43e68f3516328165"
+			},
+			{
+				"seq": 10,
+				"at": "2026-10-14T11:00:09.000Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "title",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "a887ce085b08f0ae73a72fbd63ed386d278d6013cfaf8b8b3f4f6685dfb25b76",
+				"prev_hash": "96b318cd84d71e3675d5d8c0d5220969f39644a24f5bccfc43e68f3516328165",
+				"hash": "7a48a3a325cf179b6cd76a1100580f6957400958811bd908bb8cf065f2eebd47"
 			}
 		],
 		"chain": {
 			"ok": true,
 			"broken_at": null,
-			"rows": 8
+			"rows": 10
 		},
 		"provenance": {
 			"1": {
@@ -257,25 +315,31 @@
 				"last_human_content": {
 					"title_sha": "1329d985705ecce16f25a96ed4aef3fce74801afd0a67596836cace14e805a62",
 					"description_sha": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
+					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "99dc18ad8a59d3e9c5a0384cf2bb34aa6bf0decfdbcf7ffc7fc30eb007e48e48"
 				},
 				"modified_by_non_human_since": false,
 				"modified_by_kinds": [],
 				"chain_ok": true,
-				"content_matches": true
+				"content_matches": true,
+				"confirmed": false,
+				"human_written": false
 			},
 			"2": {
-				"created_by": "human",
-				"last_human_seq": 8,
+				"created_by": "unattended",
+				"last_human_seq": 10,
 				"last_human_content": {
-					"title_sha": "13f976df41f105ea6038c2e8239e2c311f0a3cbaf126f0287e3c55d150131bcf",
+					"title_sha": "a887ce085b08f0ae73a72fbd63ed386d278d6013cfaf8b8b3f4f6685dfb25b76",
 					"description_sha": "900e95352571f2167558501fada21195f0d2fb6c694a4555ded97d8ca9c51416",
+					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": false,
 				"modified_by_kinds": [],
 				"chain_ok": true,
-				"content_matches": true
+				"content_matches": true,
+				"confirmed": false,
+				"human_written": false
 			}
 		}
 	}

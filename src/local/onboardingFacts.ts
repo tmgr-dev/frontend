@@ -1,6 +1,7 @@
 import { domainEvents } from '@/utils/domainEvents';
 import { BOARD_MOVE_META_PREFIX, createLocalApi } from './api';
 import { dispatchLocal } from './dispatch';
+import { journaledCreate, unattendedAuthor } from './journal';
 import { TASK_SELECT, taskJson } from './serialize';
 import type { LocalContext, SqlValue } from './types';
 
@@ -100,11 +101,21 @@ export const seedStarters = async (ctx: LocalContext): Promise<number> => {
 	const now = ctx.now().toISOString();
 	const ids: number[] = [];
 	for (const title of STARTER_TITLES) {
-		const result = await ctx.db.execute(
-			`INSERT INTO tasks (title, status_id, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
-			[title, statusId, STARTER_SETTINGS, now, now],
+		const id = await journaledCreate(
+			ctx,
+			'tasks',
+			(taskId) => ({
+				statements: [
+					{
+						sql: `INSERT INTO tasks (id, title, status_id, settings, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`,
+						params: [taskId, title, statusId, STARTER_SETTINGS, now, now],
+					},
+				],
+				entries: [{ entity: 'task', entityId: taskId, taskId, field: 'create', content: title }],
+			}),
+			unattendedAuthor(ctx),
 		);
-		ids.push(Number(result.lastInsertId));
+		ids.push(id);
 	}
 	await ctx.db.execute(`INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)`, [
 		STARTER_IDS_META,

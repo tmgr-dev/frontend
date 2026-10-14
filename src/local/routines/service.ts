@@ -1,3 +1,4 @@
+import { journaledCreate, type JournalEntry } from '../journal';
 import { parseJson, toJson } from '../serialize';
 import { LocalHttpError, type LocalContext } from '../types';
 import {
@@ -312,27 +313,41 @@ export const convertRoutineToTask = async (ctx: LocalContext, row: any, body: an
 	}
 	const statusId = requestedStatusId ?? (await defaultStatusId(ctx));
 	const now = iso(ctx);
-	const result = await ctx.db.execute(
-		`INSERT INTO tasks (title, description, status_id, project_category_id, priority, approximately_time,
+	const taskId = await journaledCreate(ctx, 'tasks', (id) => {
+		const entries: JournalEntry[] = [
+			{ entity: 'task', entityId: id, taskId: id, field: 'create', content: String(row.title ?? '') },
+		];
+		if (String(row.description ?? '') !== '') {
+			entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description', content: String(row.description) });
+		}
+		return {
+			statements: [
+				{
+					sql: `INSERT INTO tasks (id, title, description, status_id, project_category_id, priority, approximately_time,
 			category_tasks_sequence_id, created_at, updated_at)
-		 SELECT ?, ?, ?, ?, ?, ?,
+		 SELECT ?, ?, ?, ?, ?, ?, ?,
 			CASE WHEN ? IS NULL THEN NULL ELSE (SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?) END,
 			?, ?`,
-		[
-			row.title,
-			row.description,
-			statusId,
-			projectCategoryId,
-			row.priority ?? 'medium',
-			row.approximately_time ?? 0,
-			projectCategoryId,
-			projectCategoryId,
-			now,
-			now,
-		],
-	);
+					params: [
+						id,
+						row.title,
+						row.description,
+						statusId,
+						projectCategoryId,
+						row.priority ?? 'medium',
+						row.approximately_time ?? 0,
+						projectCategoryId,
+						projectCategoryId,
+						now,
+						now,
+					],
+				},
+			],
+			entries,
+		};
+	});
 	await ctx.db.execute(`DELETE FROM routines WHERE id = ?`, [row.id]);
-	return Number(result.lastInsertId);
+	return taskId;
 };
 
 const defaultStatusId = async (ctx: LocalContext): Promise<number | null> => {

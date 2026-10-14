@@ -336,7 +336,7 @@ const textOf = (value: unknown): string => (value === null || value === undefine
 
 const sameText = (a: unknown, b: unknown) => textOf(a).replace(/\r\n/g, '\n') === textOf(b).replace(/\r\n/g, '\n');
 
-/** Journal rows for the title/description a write changes; a description_json-only change counts as a description edit. */
+/** Journal rows for the title, description and description_json a write changes. */
 const taskEditEntries = async (
 	ctx: LocalContext,
 	id: number,
@@ -352,11 +352,11 @@ const taskEditEntries = async (
 	if ('title' in fields && !sameText(fields.title, before.title)) {
 		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'title', content: textOf(fields.title) });
 	}
-	const descriptionChanged = 'description' in fields && !sameText(fields.description, before.description);
-	const jsonChanged = 'description_json' in fields && textOf(fields.description_json) !== textOf(before.description_json);
-	if (descriptionChanged || jsonChanged) {
-		const after = 'description' in fields ? fields.description : before.description;
-		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description', content: textOf(after) });
+	if ('description' in fields && !sameText(fields.description, before.description)) {
+		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description', content: textOf(fields.description) });
+	}
+	if ('description_json' in fields && !sameText(fields.description_json, before.description_json)) {
+		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description_json', content: textOf(fields.description_json) });
 	}
 	return entries;
 };
@@ -657,6 +657,9 @@ export const createLocalApi = () => {
 				];
 				if (textOf(fields.description) !== '') {
 					entries.push({ entity: 'task', entityId: taskId, taskId, field: 'description', content: textOf(fields.description) });
+				}
+				if (textOf(fields.description_json) !== '') {
+					entries.push({ entity: 'task', entityId: taskId, taskId, field: 'description_json', content: textOf(fields.description_json) });
 				}
 				return {
 					// One statement, so the per-category ticket number is atomic with the insert.

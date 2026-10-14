@@ -256,6 +256,11 @@ pub enum TaskCommand {
         #[arg(long, default_value = "64k", value_name = "SIZE")]
         max_desc: String,
     },
+    /// Let agents run on a local task: show its full text and confirm it (terminal only)
+    Confirm {
+        /// TM-512, #8974 or 8974 (see `tmgr help refs`)
+        reference: String,
+    },
     /// List tasks
     List {
         /// Project (category) code

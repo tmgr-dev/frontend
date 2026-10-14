@@ -11,8 +11,9 @@ export type JournalSource =
 	| 'mcp'
 	| 'runner'
 	| 'plugin'
-	| 'import';
-export type JournalField = 'create' | 'title' | 'description' | 'comment' | 'delete';
+	| 'import'
+	| 'cli_confirm';
+export type JournalField = 'create' | 'title' | 'description' | 'description_json' | 'comment' | 'delete' | 'confirm';
 
 export interface JournalRow {
 	seq: number;
@@ -36,6 +37,8 @@ export interface JournalEntry {
 	field: JournalField;
 	/** The field's new value; `null` for a delete. */
 	content: string | null;
+	/** A `confirm` row carries the snapshot hash itself, not the hash of a value. */
+	rawSha?: string;
 }
 
 export interface Author {
@@ -77,6 +80,13 @@ export const rowHash = (row: Omit<JournalRow, 'hash'>): Promise<string> =>
 		]),
 	);
 
+/** Who the journal blames for system writes that no one typed (onboarding starters, imports). */
+export const unattendedAuthor = (ctx: LocalContext): Author => ({
+	author_kind: 'unattended',
+	source: 'import',
+	actor_id: String(ctx.user.id),
+});
+
 /** Who the journal blames for a write. Anything that is not the app's own client is never human. */
 export const authorOf = (ctx: LocalContext): Author => {
 	const actor = ctx.actor;
@@ -89,6 +99,9 @@ export const authorOf = (ctx: LocalContext): Author => {
 		case 'companion':
 			return { author_kind: 'agent', source: 'local_access', actor_id: actor.id };
 		case 'plugin':
+			if (actor.id === 'runner' && actor.ownerId === undefined) {
+				return { author_kind: 'agent', source: 'runner', actor_id: 'runner' };
+			}
 			return { author_kind: 'plugin', source: 'plugin', actor_id: actor.ownerId ?? actor.id };
 		default:
 			return { author_kind: 'unattended', source: 'import', actor_id: actor.id };
@@ -156,10 +169,13 @@ export const journaledBatch = async (
 	ctx: LocalContext,
 	statements: BatchStatement[],
 	entries: JournalEntry[],
+	authorOverride?: Author,
 ): Promise<BatchResult> => {
-	const author = authorOf(ctx);
+	const author = authorOverride ?? authorOf(ctx);
 	const at = ctx.now().toISOString();
-	const shas = await Promise.all(entries.map((entry) => (entry.content === null ? '' : contentSha(entry.content))));
+	const shas = await Promise.all(
+		entries.map((entry) => (entry.rawSha ?? (entry.content === null ? '' : contentSha(entry.content)))),
+	);
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
 		const rows = await buildRows(ctx.db, author, at, entries, shas);
 		const inserts: BatchStatement[] = rows.map((row, index) =>
@@ -197,12 +213,13 @@ export const journaledCreate = async (
 	ctx: LocalContext,
 	table: 'tasks' | 'comments',
 	plan: (id: number) => { statements: BatchStatement[]; entries: JournalEntry[] },
+	authorOverride?: Author,
 ): Promise<number> => {
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
 		const id = await reserveId(ctx.db, table);
 		const { statements, entries } = plan(id);
 		try {
-			await journaledBatch(ctx, statements, entries);
+			await journaledBatch(ctx, statements, entries, authorOverride);
 			return id;
 		} catch (error) {
 			const message = typeof error === 'string' ? error : (error as { message?: string })?.message ?? '';
@@ -216,39 +233,78 @@ export interface ChainStatus {
 	ok: boolean;
 	/** The first `seq` whose row does not follow from the one before it (or from genesis). */
 	brokenAt: number | null;
+	/** Rows walked by this verification. */
 	rows: number;
+	tailSeq: number;
+	tailHash: string;
 }
 
 const PAGE = 500;
+export const CHECKPOINT_KEY = 'edit_journal_verified';
 
-/** Walks the whole chain in pages and reports the first row that does not verify. */
-export const verifyChain = async (db: LocalDb): Promise<ChainStatus> => {
-	let prevHash = GENESIS_HASH;
-	let prevSeq = 0;
-	let after = 0;
+const readCheckpoint = async (db: LocalDb): Promise<{ seq: number; hash: string } | null> => {
+	const [row] = await db.select<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [CHECKPOINT_KEY]);
+	const [seq, hash] = String(row?.value ?? '').split(':');
+	return seq && hash && /^\d+$/.test(seq) ? { seq: Number(seq), hash } : null;
+};
+
+const walk = async (db: LocalDb, start: { seq: number; hash: string } | null): Promise<ChainStatus> => {
+	let prevHash = start?.hash ?? GENESIS_HASH;
+	let prevSeq = start?.seq ?? 0;
 	let rows = 0;
 	for (;;) {
 		const page = await db.select<JournalRow>(
 			`SELECT ${INSERT_COLUMNS} FROM edit_journal WHERE seq > ? ORDER BY seq ASC LIMIT ${PAGE}`,
-			[after],
+			[prevSeq],
 		);
-		if (!page.length) return { ok: true, brokenAt: null, rows };
+		if (!page.length) return { ok: true, brokenAt: null, rows, tailSeq: prevSeq, tailHash: prevHash };
 		for (const row of page) {
 			const seq = Number(row.seq);
 			if (seq !== prevSeq + 1 || row.prev_hash !== prevHash || (await rowHash({ ...row, seq })) !== row.hash) {
-				return { ok: false, brokenAt: seq, rows };
+				return { ok: false, brokenAt: seq, rows, tailSeq: prevSeq, tailHash: prevHash };
 			}
 			prevHash = row.hash;
 			prevSeq = seq;
 			rows += 1;
 		}
-		after = prevSeq;
 	}
+};
+
+/**
+ * Walks the chain in pages from the stored checkpoint (a row verified before), or from genesis when there
+ * is none, the checkpointed row is gone or changed, or `full` is set. After a clean walk the tail becomes the
+ * new checkpoint (best effort). The checkpoint is as forgeable by the same user as the rest of the file.
+ */
+export const verifyChain = async (db: LocalDb, options: { full?: boolean; store?: boolean } = {}): Promise<ChainStatus> => {
+	let start: { seq: number; hash: string } | null = null;
+	if (!options.full) {
+		const checkpoint = await readCheckpoint(db);
+		if (checkpoint) {
+			const [row] = await db.select<{ hash: string }>(`SELECT hash FROM edit_journal WHERE seq = ?`, [checkpoint.seq]);
+			if (row?.hash === checkpoint.hash) start = checkpoint;
+		}
+	}
+	const status = await walk(db, start);
+	if (status.ok && status.tailSeq > 0 && options.store !== false) {
+		try {
+			const existing = await readCheckpoint(db);
+			if (!existing || existing.seq < status.tailSeq) {
+				await db.execute(
+					`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+					[CHECKPOINT_KEY, `${status.tailSeq}:${status.tailHash}`],
+				);
+			}
+		} catch {
+			// A read-only handle cannot advance the checkpoint; the next walk simply starts earlier.
+		}
+	}
+	return status;
 };
 
 export interface HumanContent {
 	title_sha: string;
 	description_sha: string;
+	description_json_sha: string;
 	comments_sha: string;
 }
 
@@ -260,17 +316,44 @@ export interface Provenance {
 	/** The sorted, distinct `author_kind` of the non-human rows after the last human row. */
 	modified_by_kinds: string[];
 	chain_ok: boolean;
-	/** The task's current title, description and live comments hash to `last_human_content`. */
+	/** The current text equals `last_human_content`. */
 	content_matches: boolean;
+	/** The latest `confirm` row's snapshot equals the current text and nothing non-human came after it. */
+	confirmed: boolean;
+	/** `chain_ok` and (`confirmed`, or created by the owner with every part last written by the owner and untouched since). */
+	human_written: boolean;
 }
 
 /** The comments digest: SHA-256 of the JSON array `[[comment_id, content_sha256], ...]` ordered by comment id. */
 export const commentsDigest = (comments: Map<number, string>): Promise<string> =>
 	sha256Hex(JSON.stringify([...comments.entries()].sort((a, b) => a[0] - b[0])));
 
-export const currentContent = async (db: LocalDb, taskId: number): Promise<HumanContent | null> => {
-	const [task] = await db.select<{ title: string; description: string | null }>(
-		`SELECT title, description FROM tasks WHERE id = ? AND deleted_at IS NULL`,
+/** The hash a `confirm` row carries: SHA-256 of the JSON array of the four content parts. */
+export const snapshotSha = (c: HumanContent): Promise<string> =>
+	sha256Hex(JSON.stringify([c.title_sha, c.description_sha, c.description_json_sha, c.comments_sha]));
+
+/** The task text that reaches an agent. */
+export interface Snapshot {
+	title: string;
+	description: string;
+	description_json: string;
+	comments: { id: number; message: string }[];
+}
+
+export const snapshotParts = async (s: Snapshot): Promise<HumanContent> => {
+	const comments = new Map<number, string>();
+	for (const comment of s.comments) comments.set(Number(comment.id), await contentSha(comment.message));
+	return {
+		title_sha: await contentSha(s.title),
+		description_sha: await contentSha(s.description),
+		description_json_sha: await contentSha(s.description_json),
+		comments_sha: await commentsDigest(comments),
+	};
+};
+
+export const snapshotOf = async (db: LocalDb, taskId: number): Promise<Snapshot | null> => {
+	const [task] = await db.select<{ title: string; description: string | null; description_json: string | null }>(
+		`SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL`,
 		[taskId],
 	);
 	if (!task) return null;
@@ -278,13 +361,26 @@ export const currentContent = async (db: LocalDb, taskId: number): Promise<Human
 		`SELECT id, message FROM comments WHERE task_id = ? AND deleted_at IS NULL ORDER BY id`,
 		[taskId],
 	);
-	const shas = new Map<number, string>();
-	for (const comment of comments) shas.set(Number(comment.id), await contentSha(comment.message));
 	return {
-		title_sha: await contentSha(task.title),
-		description_sha: await contentSha(task.description),
-		comments_sha: await commentsDigest(shas),
+		title: task.title,
+		description: String(task.description ?? ''),
+		description_json: String(task.description_json ?? ''),
+		comments: comments.map((c) => ({ id: Number(c.id), message: c.message })),
 	};
+};
+
+/**
+ * The owner confirms the task text exactly as it is now, so agents may run on it. Only the app's own client
+ * (no actor) can do this; the caller has to be a deliberate user action.
+ */
+export const confirmTask = async (ctx: LocalContext, taskId: number, expected?: string): Promise<string> => {
+	if (ctx.actor) throw new Error('Only the app user can confirm a task');
+	const snapshot = await snapshotOf(ctx.db, taskId);
+	if (!snapshot) throw new Error('Task not found');
+	const hash = await snapshotSha(await snapshotParts(snapshot));
+	if (expected !== undefined && expected !== hash) throw new Error('The task changed since it was shown');
+	await journaledBatch(ctx, [], [{ entity: 'task', entityId: taskId, taskId, field: 'confirm', content: null, rawSha: hash }]);
+	return hash;
 };
 
 const UNRECORDED: Provenance = {
@@ -295,17 +391,78 @@ const UNRECORDED: Provenance = {
 	modified_by_kinds: [],
 	chain_ok: false,
 	content_matches: false,
+	confirmed: false,
+	human_written: false,
 };
 
-/** Who wrote a task, from the journal, checked against the content the task has right now. */
-export const provenance = async (db: LocalDb, taskId: number): Promise<Provenance> => {
-	const chain = await verifyChain(db);
+interface Fold {
+	title: string;
+	description: string;
+	description_json: string;
+	comments: Map<number, string>;
+}
+
+const newFold = (): Fold => ({ title: '', description: '', description_json: '', comments: new Map() });
+
+const applyRow = (fold: Fold, row: JournalRow) => {
+	if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) fold.title = row.content_sha256;
+	else if (row.entity === 'task' && row.field === 'description') fold.description = row.content_sha256;
+	else if (row.entity === 'task' && row.field === 'description_json') fold.description_json = row.content_sha256;
+	else if (row.entity === 'comment' && row.field === 'comment') fold.comments.set(Number(row.entity_id), row.content_sha256);
+	else if (row.entity === 'comment' && row.field === 'delete') fold.comments.delete(Number(row.entity_id));
+};
+
+const foldContent = async (fold: Fold): Promise<HumanContent> => {
+	const empty = await contentSha('');
+	return {
+		title_sha: fold.title,
+		description_sha: fold.description || empty,
+		description_json_sha: fold.description_json || empty,
+		comments_sha: await commentsDigest(fold.comments),
+	};
+};
+
+const sameContent = (a: HumanContent | null, b: HumanContent | null) =>
+	!!a &&
+	!!b &&
+	a.title_sha === b.title_sha &&
+	a.description_sha === b.description_sha &&
+	a.description_json_sha === b.description_json_sha &&
+	a.comments_sha === b.comments_sha;
+
+const rowsIntact = async (db: LocalDb, rows: JournalRow[]): Promise<boolean> => {
+	for (const row of rows) {
+		if ((await rowHash({ ...row, seq: Number(row.seq) })) !== row.hash) return false;
+		let expected: string | undefined = GENESIS_HASH;
+		if (Number(row.seq) !== 1) {
+			const [previous] = await db.select<{ hash: string }>(`SELECT hash FROM edit_journal WHERE seq = ?`, [Number(row.seq) - 1]);
+			expected = previous?.hash;
+		}
+		if (expected !== row.prev_hash) return false;
+	}
+	return true;
+};
+
+/**
+ * Who wrote a task, from the journal, checked against the text the task has right now (and, when given, the
+ * text a consumer observed). The task's own rows are always verified in full; `chain` is the (checkpointed)
+ * whole-chain verification, which a caller can share between many tasks.
+ */
+export const provenance = async (
+	db: LocalDb,
+	taskId: number,
+	observed?: Snapshot,
+	chain?: ChainStatus,
+): Promise<Provenance> => {
+	const status = chain ?? (await verifyChain(db));
 	const rows = await db.select<JournalRow>(
 		`SELECT ${INSERT_COLUMNS} FROM edit_journal WHERE task_id = ? ORDER BY seq ASC`,
 		[String(taskId)],
 	);
-	if (!rows.length) return { ...UNRECORDED, chain_ok: chain.ok };
+	const chainOk = status.ok && (await rowsIntact(db, rows));
+	if (!rows.length) return { ...UNRECORDED, chain_ok: chainOk };
 	const created = rows.find((row) => row.entity === 'task' && row.field === 'create');
+	const createdBy = created ? created.author_kind : 'unrecorded';
 	const humanSeqs = rows.filter((row) => row.author_kind === 'human').map((row) => Number(row.seq));
 	const lastHuman = humanSeqs.length ? Math.max(...humanSeqs) : null;
 	const kinds = [
@@ -315,38 +472,56 @@ export const provenance = async (db: LocalDb, taskId: number): Promise<Provenanc
 				.map((row) => row.author_kind),
 		),
 	].sort();
-	let humanContent: HumanContent | null = null;
-	if (lastHuman !== null) {
-		let title = '';
-		let description = await contentSha('');
-		const comments = new Map<number, string>();
-		for (const row of rows) {
-			if (Number(row.seq) > lastHuman) break;
-			if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) title = row.content_sha256;
-			else if (row.entity === 'task' && row.field === 'description') description = row.content_sha256;
-			else if (row.entity === 'comment' && row.field === 'comment') comments.set(Number(row.entity_id), row.content_sha256);
-			else if (row.entity === 'comment' && row.field === 'delete') comments.delete(Number(row.entity_id));
-		}
-		humanContent = { title_sha: title, description_sha: description, comments_sha: await commentsDigest(comments) };
+	const fold = newFold();
+	const atLastHuman = newFold();
+	let titleBy = '';
+	let descriptionBy: string = createdBy;
+	let jsonBy: string = createdBy;
+	const commentBy = new Map<number, string>();
+	for (const row of rows) {
+		applyRow(fold, row);
+		if (lastHuman !== null && Number(row.seq) <= lastHuman) applyRow(atLastHuman, row);
+		if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) titleBy = row.author_kind;
+		else if (row.entity === 'task' && row.field === 'description') descriptionBy = row.author_kind;
+		else if (row.entity === 'task' && row.field === 'description_json') jsonBy = row.author_kind;
+		else if (row.entity === 'comment' && row.field === 'comment') commentBy.set(Number(row.entity_id), row.author_kind);
+		else if (row.entity === 'comment' && row.field === 'delete') commentBy.delete(Number(row.entity_id));
 	}
-	const current = await currentContent(db, taskId);
-	const matches =
-		!!humanContent &&
-		!!current &&
-		humanContent.title_sha === current.title_sha &&
-		humanContent.description_sha === current.description_sha &&
-		humanContent.comments_sha === current.comments_sha;
+	const humanContent = lastHuman !== null ? await foldContent(atLastHuman) : null;
+	const currentSnapshot = await snapshotOf(db, taskId);
+	const current = currentSnapshot ? await snapshotParts(currentSnapshot) : null;
+	const observedParts = observed ? await snapshotParts(observed) : null;
+	const textIs = (target: HumanContent) => sameContent(current, target) && (!observedParts || sameContent(observedParts, target));
+	const contentMatches = !!humanContent && textIs(humanContent);
+
+	const confirm = rows
+		.filter((row) => row.entity === 'task' && row.field === 'confirm' && row.author_kind === 'human')
+		.sort((a, b) => Number(b.seq) - Number(a.seq))[0];
+	let confirmed = false;
+	if (confirm) {
+		const currentHash = current ? await snapshotSha(current) : null;
+		const observedHash = observedParts ? await snapshotSha(observedParts) : null;
+		confirmed =
+			currentHash === confirm.content_sha256 &&
+			(!observedParts || observedHash === confirm.content_sha256) &&
+			!rows.some((row) => row.author_kind !== 'human' && Number(row.seq) > Number(confirm.seq));
+	}
+	const allHuman =
+		titleBy === 'human' && descriptionBy === 'human' && jsonBy === 'human' && [...commentBy.values()].every((kind) => kind === 'human');
+	const stateCurrent = textIs(await foldContent(fold));
+	const humanWritten =
+		chainOk && (confirmed || (createdBy === 'human' && kinds.length === 0 && allHuman && stateCurrent && contentMatches));
 	return {
-		created_by: created ? created.author_kind : 'unrecorded',
+		created_by: createdBy,
 		last_human_seq: lastHuman,
 		last_human_content: humanContent,
 		modified_by_non_human_since: kinds.length > 0,
 		modified_by_kinds: kinds,
-		chain_ok: chain.ok,
-		content_matches: matches,
+		chain_ok: chainOk,
+		content_matches: contentMatches,
+		confirmed,
+		human_written: humanWritten,
 	};
 };
 
-/** Trusted as the owner's own work: created by the human, untouched by anything else since, and the chain verifies. */
-export const isHumanWritten = (p: Provenance): boolean =>
-	p.created_by === 'human' && !p.modified_by_non_human_since && p.chain_ok && p.content_matches;
+export const isHumanWritten = (p: Provenance): boolean => p.human_written;

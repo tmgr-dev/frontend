@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
-import { provenance, verifyChain } from '../journal';
+import { confirmTask, provenance, verifyChain } from '../journal';
 import { migrate } from '../schema';
 import type { LocalActor, LocalContext, LocalDb } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
@@ -15,8 +15,9 @@ const COLUMNS = 'seq, at, entity, entity_id, task_id, field, author_kind, source
 interface Op {
 	writer?: 'rust';
 	at: string;
-	method: string;
-	url: string;
+	method?: string;
+	url?: string;
+	confirm?: number;
 	body?: unknown;
 	actor?: LocalActor;
 	status?: number;
@@ -70,12 +71,16 @@ describeSqlite('edit journal fixtures shared with the Rust crate', () => {
 				for (const row of op.rows ?? []) await insertRow(db, row);
 				continue;
 			}
-			const answer = await dispatchLocal(api, contextFor(db, op), op.method, op.url, op.body);
+			if (op.confirm) {
+				await confirmTask(contextFor(db, op), op.confirm);
+				continue;
+			}
+			const answer = await dispatchLocal(api, contextFor(db, op), op.method!, op.url!, op.body);
 			if (op.status) expect(answer!.status).toBe(op.status);
 			else expect(answer!.status).toBeLessThan(400);
 		}
 		expect(await db.select(`SELECT ${COLUMNS} FROM edit_journal ORDER BY seq`)).toEqual(fixture.expect.journal);
-		const chain = await verifyChain(db);
+		const chain = await verifyChain(db, { full: true });
 		expect({ ok: chain.ok, broken_at: chain.brokenAt, rows: chain.rows }).toEqual(fixture.expect.chain);
 		for (const id of fixture.provenance_for) {
 			expect(await provenance(db, id)).toEqual(fixture.expect.provenance[String(id)]);

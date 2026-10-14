@@ -242,8 +242,7 @@ fn same_text(a: &str, b: &str) -> bool {
     a.replace("\r\n", "\n") == b.replace("\r\n", "\n")
 }
 
-/// Journal entries for the title and description a write changes; a description_json-only change counts
-/// as a description edit.
+/// Journal entries for the title, description and description_json a write changes.
 fn task_edit_entries(
     req: &Request<'_>,
     id: i64,
@@ -268,12 +267,17 @@ fn task_edit_entries(
     if let Some(title) = title.map(sql_text).filter(|t| !same_text(t, &was("title"))) {
         entries.push(Entry::task(id, "title", Some(title)));
     }
-    let description_changed =
-        description.is_some_and(|d| !same_text(&sql_text(d), &was("description")));
-    let json_changed = description_json.is_some_and(|d| sql_text(d) != was("description_json"));
-    if description_changed || json_changed {
-        let after = description.map_or_else(|| was("description"), sql_text);
+    if let Some(after) = description
+        .map(sql_text)
+        .filter(|d| !same_text(d, &was("description")))
+    {
         entries.push(Entry::task(id, "description", Some(after)));
+    }
+    if let Some(after) = description_json
+        .map(sql_text)
+        .filter(|d| !same_text(d, &was("description_json")))
+    {
+        entries.push(Entry::task(id, "description_json", Some(after)));
     }
     Ok(entries)
 }
@@ -344,6 +348,12 @@ pub(super) fn create(req: &Request<'_>) -> Handled {
         .filter(|d| !d.is_empty())
     {
         entries.push(Entry::task(id, "description", Some(description)));
+    }
+    if let Some(json) = field(&fields, "description_json")
+        .map(sql_text)
+        .filter(|d| !d.is_empty())
+    {
+        entries.push(Entry::task(id, "description_json", Some(json)));
     }
     sql(journal::append(req.conn, req.ctx, &entries))?;
     if let Some(wanted) = personas {

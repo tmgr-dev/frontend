@@ -493,6 +493,36 @@
 		}
 	],
 	"tables": {
+		"edit_journal": [
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "9111179163afa282974635e8c9e11b4703f0189b5152c2bf68fdee68c8f8425c",
+				"entity": "task",
+				"entity_id": "9",
+				"field": "create",
+				"hash": "baecf79f0556cc7a9c732e8d87b025c97a5d6650e492c5755e0a76122e5149f4",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"seq": 1,
+				"source": "desktop_ui",
+				"task_id": "9"
+			},
+			{
+				"actor_id": "7",
+				"at": "2026-10-13T12:00:00.000Z",
+				"author_kind": "human",
+				"content_sha256": "c4e42b974c335dc5cba03b2b649aeb622641b0209f563d5f16ab98476183bbd3",
+				"entity": "task",
+				"entity_id": "9",
+				"field": "description",
+				"hash": "f4aaca5d65f1ea0287c10ed4e110869ec4406ea03d24400f8816e9f93aa3a0d7",
+				"prev_hash": "baecf79f0556cc7a9c732e8d87b025c97a5d6650e492c5755e0a76122e5149f4",
+				"seq": 2,
+				"source": "desktop_ui",
+				"task_id": "9"
+			}
+		],
 		"routine_instances": [
 			{
 				"completed_at": "2026-09-21T18:30:00Z",

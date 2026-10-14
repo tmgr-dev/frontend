@@ -8,7 +8,7 @@ use chrono::{Offset, Utc};
 use rusqlite::Connection;
 use serde_json::Value;
 use tmgr_local::Context;
-pub use tmgr_local::{LocalWorkspace, User, WriteOrigin};
+pub use tmgr_local::{agent_session_detected, LocalWorkspace, User};
 
 use crate::error::{Error, Kind, Result};
 
@@ -60,6 +60,38 @@ pub fn identity(root: &Path, configured_id: Option<i64>) -> User {
     }
 }
 
+/// The task text that would reach an agent, read from the workspace `code`.
+pub fn task_snapshot(code: &str, task_id: i64) -> Result<tmgr_local::Snapshot> {
+    let workspace = find(code)?;
+    let conn = tmgr_local::open_read(&workspace.database).map_err(local_error)?;
+    tmgr_local::snapshot(&conn, task_id)
+        .map_err(local_error)?
+        .ok_or_else(|| Error::not_found(format!("task {task_id} not found")))
+}
+
+/// Records the owner's confirmation of the task text whose snapshot hash is `expected`. The caller must have
+/// checked that a person is at a terminal and typed that hash.
+pub fn confirm_task(
+    code: &str,
+    local_user_id: Option<i64>,
+    task_id: i64,
+    expected: &str,
+) -> Result<String> {
+    let workspace = find(code)?;
+    let user = identity(&root()?, local_user_id);
+    let conn = tmgr_local::open_write(&workspace.database).map_err(local_error)?;
+    let now = Utc::now();
+    let ctx = Context {
+        workspace,
+        user,
+        now,
+        local_offset: now.with_timezone(&chrono::Local).offset().fix(),
+        actor: None,
+        origin: tmgr_local::WriteOrigin::Cli,
+    };
+    tmgr_local::confirm_task(&conn, &ctx, task_id, Some(expected)).map_err(local_error)
+}
+
 /// A client of the local workspace `code`, acting as the local identity.
 pub fn client(
     code: &str,
@@ -75,7 +107,6 @@ pub fn client(
 pub struct Local {
     workspace: LocalWorkspace,
     user: User,
-    origin: WriteOrigin,
     read: RefCell<Option<Connection>>,
     write: RefCell<Option<Connection>>,
 }
@@ -85,17 +116,9 @@ impl Local {
         Local {
             workspace,
             user,
-            origin: WriteOrigin::default(),
             read: RefCell::new(None),
             write: RefCell::new(None),
         }
-    }
-
-    /// Where this client's requests come from. The default is `WriteOrigin::Cli`, which the edit journal
-    /// never counts as the owner's own typing; only the interactive CLI opts into `CliTty`.
-    pub fn with_origin(mut self, origin: WriteOrigin) -> Local {
-        self.origin = origin;
-        self
     }
 
     pub fn workspace(&self) -> &LocalWorkspace {
@@ -129,7 +152,7 @@ impl Local {
             now,
             local_offset: now.with_timezone(&chrono::Local).offset().fix(),
             actor: None,
-            origin: self.origin,
+            origin: tmgr_local::WriteOrigin::Cli,
         };
         let cell = if method.eq_ignore_ascii_case("GET") {
             &self.read

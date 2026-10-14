@@ -23,6 +23,7 @@ pub fn run(ctx: &Ctx, cmd: &TaskCommand) -> Result<Output> {
             comments,
             max_desc,
         } => show(ctx, reference, *comments, max_desc),
+        TaskCommand::Confirm { reference } => confirm(ctx, reference),
         TaskCommand::List {
             project,
             status_type,
@@ -411,6 +412,77 @@ fn render_list(
         json!({"workspace": sanitize_line(ws_code), "items": views, "next_cursor": next_cursor}),
         human,
     )
+}
+
+const CONFIRM_PAGE: usize = 40;
+
+fn confirm(ctx: &Ctx, reference: &str) -> Result<Output> {
+    let tag = ctx.local_tag()?.ok_or_else(|| {
+        Error::usage("tmgr task confirm works on local workspaces only")
+            .hint("use --ws local:<code>")
+    })?;
+    let code = tmgr_core::local::local_code(&tag)
+        .ok_or_else(|| Error::usage("not a local workspace"))?
+        .to_string();
+    let tty = std::io::IsTerminal::is_terminal(&std::io::stdin())
+        && std::io::IsTerminal::is_terminal(&std::io::stdout());
+    tmgr_link::privileged::check(tmgr_core::local::agent_session_detected(), tty)?;
+    let client = ctx.client()?;
+    let task = super::shared::resolve_task(ctx, client, reference)?;
+    let snapshot = tmgr_core::local::task_snapshot(&code, task.id as i64)?;
+    let hash = snapshot.hash();
+    let mut lines = vec![
+        format!("Task {}", task_ref(&task)),
+        String::new(),
+        format!("Title: {}", sanitize_line(&snapshot.title)),
+        String::new(),
+        "Description:".to_string(),
+    ];
+    lines.extend(sanitize(&snapshot.description).lines().map(str::to_string));
+    if !snapshot.description_json.is_empty() {
+        lines.push(String::new());
+        lines.push("Description (editor data):".to_string());
+        lines.extend(
+            sanitize(&snapshot.description_json)
+                .lines()
+                .map(str::to_string),
+        );
+    }
+    for (id, message) in &snapshot.comments {
+        lines.push(String::new());
+        lines.push(format!("Comment #{id}:"));
+        lines.extend(sanitize(message).lines().map(str::to_string));
+    }
+    lines.push(String::new());
+    lines.push(format!("Snapshot: {hash}"));
+    {
+        let mut input = std::io::stdin().lock();
+        for (n, chunk) in lines.chunks(CONFIRM_PAGE).enumerate() {
+            for l in chunk {
+                eprintln!("{l}");
+            }
+            if (n + 1) * CONFIRM_PAGE < lines.len() {
+                eprint!("-- more, press Enter -- ");
+                let mut sink = String::new();
+                std::io::BufRead::read_line(&mut input, &mut sink)
+                    .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
+            }
+        }
+    }
+    tmgr_link::privileged::confirm_typed_stdio(
+        &hash[..12],
+        "\nThis is everything an agent will read. Type the first 12 characters of the snapshot to confirm:",
+    )?;
+    let confirmed =
+        tmgr_core::local::confirm_task(&code, ctx.cfg.local_user_id, task.id as i64, &hash)?;
+    Ok(Output::new(
+        json!({ "task": task_ref(&task), "snapshot": confirmed, "confirmed": true }),
+        format!(
+            "Confirmed {} for agent runs (snapshot {}).",
+            task_ref(&task),
+            &confirmed[..12]
+        ),
+    ))
 }
 
 #[cfg(test)]

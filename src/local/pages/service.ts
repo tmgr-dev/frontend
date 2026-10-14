@@ -1,3 +1,4 @@
+import { journaledBatch, journaledCreate } from '../journal';
 import { parseJson } from '../serialize';
 import {
 	LocalHttpError,
@@ -1589,20 +1590,21 @@ export const taskFromSelection = async (
 	}
 	const text: string = req.text;
 	const now = iso(ctx);
-	const created = await ctx.db.execute(
-		`INSERT INTO tasks (title, description, status_id, project_category_id, category_tasks_sequence_id, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, (SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?), ?, ?)`,
-		[
-			taskTitleOf(text),
-			`${text.trim()}\n\nFrom page: [${page.title}](tmgr://page/${page.id})`,
-			statusId,
-			categoryId,
-			categoryId,
-			now,
-			now,
+	const taskTitle = taskTitleOf(text);
+	const taskBody = `${text.trim()}\n\nFrom page: [${page.title}](tmgr://page/${page.id})`;
+	const taskId = await journaledCreate(ctx, 'tasks', (id) => ({
+		statements: [
+			{
+				sql: `INSERT INTO tasks (id, title, description, status_id, project_category_id, category_tasks_sequence_id, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?), ?, ?)`,
+				params: [id, taskTitle, taskBody, statusId, categoryId, categoryId, now, now],
+			},
 		],
-	);
-	const taskId = Number(created.lastInsertId);
+		entries: [
+			{ entity: 'task', entityId: id, taskId: id, field: 'create', content: taskTitle },
+			{ entity: 'task', entityId: id, taskId: id, field: 'description', content: taskBody },
+		],
+	}));
 	const [task] = await ctx.db.select<any>(
 		`SELECT id, title, category_tasks_sequence_id AS seq FROM tasks WHERE id = ?`,
 		[taskId],
@@ -1618,9 +1620,10 @@ export const taskFromSelection = async (
 			`Created task ${key}`,
 		);
 	} catch (error) {
-		await ctx.db.execute(
-			`UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?`,
-			[now, now, taskId],
+		await journaledBatch(
+			ctx,
+			[{ sql: `UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?`, params: [now, now, taskId] }],
+			[{ entity: 'task', entityId: taskId, taskId, field: 'delete', content: null }],
 		);
 		throw error;
 	}

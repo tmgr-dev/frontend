@@ -71,19 +71,44 @@ pub struct LocalSource {
     pub local_user_id: Option<i64>,
 }
 
+/// The API answers `description_json` parsed, the journal hashes the stored text: the stored text stands in
+/// for it only when it parses to exactly what the API showed, otherwise the API's own serialization is used
+/// and will not match.
+fn observed_json(shown: Option<&Value>, stored: Option<String>) -> String {
+    let shown = shown.cloned().unwrap_or(Value::Null);
+    if let Some(stored) = stored {
+        let parsed = if stored.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_str(&stored).unwrap_or(Value::String(stored.clone()))
+        };
+        if parsed == shown {
+            return stored;
+        }
+    }
+    match shown {
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
 fn author_of(p: &tmgr_local::Provenance) -> Author {
-    if !p.chain_ok || p.created_by == "unrecorded" {
+    if !p.chain_ok {
         return Author::Unrecorded;
     }
     if p.is_human_written() {
         return Author::Human;
     }
+    if p.created_by == "unrecorded" {
+        return Author::Unrecorded;
+    }
     let by = |kind: &str| p.modified_by_kinds.iter().any(|k| k == kind);
     match p.created_by.as_str() {
         "agent" => Author::Agent,
         _ if by("agent") => Author::Agent,
-        "human" if !p.modified_by_non_human_since => Author::Unrecorded,
-        _ => Author::Other,
+        "plugin" => Author::Other,
+        _ if p.modified_by_non_human_since => Author::Other,
+        _ => Author::Unrecorded,
     }
 }
 
@@ -171,6 +196,9 @@ impl TaskSource for LocalSource {
             .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
         let chain = tmgr_local::verify_chain(&journal)
             .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
+        if let Ok(writer) = tmgr_local::open_write(&workspace.database) {
+            let _ = tmgr_local::store_checkpoint(&writer, &chain);
+        }
         let mut out = Vec::new();
         let mut complete = true;
         for status_id in status_ids {
@@ -233,6 +261,13 @@ impl TaskSource for LocalSource {
                 };
                 let title = text(&full, "title");
                 let body = text(&full, "description");
+                let description_json = observed_json(
+                    full.get("description_json"),
+                    tmgr_local::snapshot(&journal, id)
+                        .ok()
+                        .flatten()
+                        .map(|s| s.description_json),
+                );
                 let seen: Vec<(i64, String)> = comments_raw
                     .as_array()
                     .map(|a| {
@@ -244,6 +279,7 @@ impl TaskSource for LocalSource {
                 let observed = tmgr_local::Observed {
                     title: &title,
                     description: &body,
+                    description_json: &description_json,
                     comments: seen.iter().map(|(i, m)| (*i, m.as_str())).collect(),
                 };
                 let author = match tmgr_local::provenance_in(&journal, id, Some(&observed), &chain)

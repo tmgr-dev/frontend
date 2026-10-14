@@ -100,7 +100,7 @@ impl Ctx {
             let workspace = local::find(code)?;
             let user = local::identity(&local::root()?, self.cfg.local_user_id);
             let client = Client::for_local(
-                local::Local::new(workspace, user).with_origin(local::WriteOrigin::detect()),
+                local::Local::new(workspace, user),
                 &Self::user_agent(),
                 self.verbose,
             )?;

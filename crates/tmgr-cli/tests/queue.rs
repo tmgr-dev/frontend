@@ -226,6 +226,24 @@ impl Fx {
         answer.data
     }
 
+    fn confirm(&self, id: i64) {
+        let workspace = tmgr_local::find(&self.root(), "personal").unwrap();
+        let conn = tmgr_local::open_write(&workspace.database).unwrap();
+        let ctx = tmgr_local::Context {
+            workspace,
+            user: tmgr_local::User {
+                id: -1,
+                name: "Owner".into(),
+                email: String::new(),
+            },
+            now: chrono::Utc::now(),
+            local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
+            actor: None,
+            origin: tmgr_local::WriteOrigin::Cli,
+        };
+        tmgr_local::confirm_task(&conn, &ctx, id, None).unwrap();
+    }
+
     fn owner_edit(&self, id: i64, description: &str) {
         self.write(
             tmgr_local::WriteOrigin::DesktopUi,
@@ -620,6 +638,22 @@ fn text_changed_outside_the_journal_or_a_cut_chain_is_not_the_owners() {
         .as_array()
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn a_script_made_task_waits_for_the_owner_to_confirm_exactly_its_text() {
+    let fx = Fx::new();
+    fx.task_as(1, "From a script", "do it", false);
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.run(&["queue", "run-once"]);
+    assert_eq!(fx.count("skipped"), 1);
+    fx.confirm(1);
+    fx.run(&["queue", "run-once"]);
+    assert_eq!(
+        fx.json(&["status"])["data"]["pickups"][0]["status"],
+        "pending_approval"
+    );
 }
 
 #[test]

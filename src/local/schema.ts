@@ -3,6 +3,8 @@ import type { LocalDb } from './types';
 export interface Migration {
 	version: number;
 	statements: string[];
+	/** The statements and the schema_version update land in one transaction, so no one sees the version without the tables. */
+	atomic?: boolean;
 }
 
 const PAGE_HEADING_RENAMES: [string, string][] = [
@@ -397,6 +399,7 @@ export const MIGRATIONS: Migration[] = [
 	},
 	{
 		version: 13,
+		atomic: true,
 		statements: [
 			`CREATE TABLE IF NOT EXISTS edit_journal (
 				seq INTEGER PRIMARY KEY,
@@ -454,6 +457,17 @@ export const migrate = async (
 	}
 	if (current > 0 && current < LATEST_SCHEMA && beforeMigration) await beforeMigration(current);
 	for (const migration of MIGRATIONS.filter((m) => m.version > current)) {
+		if (migration.atomic) {
+			await db.batch([
+				...migration.statements.map((sql) => ({ sql })),
+				{
+					sql: `INSERT INTO meta (key, value) VALUES ('schema_version', ?)
+			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+					params: [String(migration.version)],
+				},
+			]);
+			continue;
+		}
 		for (const statement of migration.statements) {
 			try {
 				await db.execute(statement);

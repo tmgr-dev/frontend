@@ -98,7 +98,7 @@ impl Local {
         c
     }
 
-    fn terminal(&self, args: &[&str], extra_env: &[(&str, &str)]) -> i32 {
+    fn terminal(&self, args: &[&str], extra_env: &[(&str, &str)], input: &str) -> i32 {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
@@ -129,6 +129,8 @@ impl Local {
         let mut child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        std::io::Write::write_all(&mut writer, input.as_bytes()).unwrap();
         std::thread::spawn(move || {
             let mut sink = Vec::new();
             let _ = std::io::Read::read_to_end(&mut reader, &mut sink);
@@ -585,35 +587,64 @@ fn row(field: &str, kind: &str, source: &str) -> (String, String, String) {
     (field.into(), kind.into(), source.into())
 }
 
+fn snapshot_prefix(local: &Local, id: i64) -> String {
+    let conn = tmgr_local::open_read(&local.root().join("personal/workspace.db")).unwrap();
+    tmgr_local::snapshot(&conn, id).unwrap().unwrap().hash()[..12].to_string()
+}
+
 #[test]
-fn a_cli_write_without_a_terminal_is_never_human() {
+fn a_cli_write_is_never_human_not_even_in_a_terminal() {
     let local = Local::new();
     let out = local.run(&["--json", "add", "Piped task", "-p", "WK"]);
     assert!(out.status.success(), "{}", text(&out.stderr));
-    assert_eq!(local.journal(), vec![row("create", "unattended", "cli")]);
+    assert_eq!(
+        local.terminal(&["add", "Typed task", "-p", "WK"], &[], ""),
+        0
+    );
+    assert_eq!(
+        local.journal(),
+        vec![
+            row("create", "unattended", "cli"),
+            row("create", "unattended", "cli")
+        ]
+    );
 }
 
 #[test]
-fn a_cli_write_in_a_terminal_is_the_owner() {
+fn confirm_needs_a_terminal_and_the_typed_snapshot() {
     let local = Local::new();
-    assert_eq!(local.terminal(&["add", "Typed task", "-p", "WK"], &[]), 0);
-    assert_eq!(local.journal(), vec![row("create", "human", "cli_tty")]);
+    let out = local.run(&["--json", "add", "Script task", "-p", "WK"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let piped = local.run(&["task", "confirm", "WK-1"]);
+    assert_eq!(piped.status.code(), Some(10), "{}", text(&piped.stderr));
+    let wrong = local.terminal(&["task", "confirm", "WK-1"], &[], "000000000000\n");
+    assert_ne!(wrong, 0);
+    assert_eq!(local.journal().len(), 1);
+    let prefix = snapshot_prefix(&local, 1);
+    assert_eq!(
+        local.terminal(&["task", "confirm", "WK-1"], &[], &format!("{prefix}\n")),
+        0
+    );
+    assert_eq!(
+        local.journal().pop().unwrap(),
+        row("confirm", "human", "cli_confirm")
+    );
 }
 
 #[test]
-fn a_terminal_inside_an_agent_session_is_not_the_owner() {
+fn confirm_is_refused_inside_an_agent_session_even_with_the_right_hash() {
     for marker in AGENT_MARKERS {
         let local = Local::new();
-        assert_eq!(
-            local.terminal(&["add", "Agent in a pty", "-p", "WK"], &[(marker, "1")]),
-            0,
-            "{marker}"
+        let out = local.run(&["--json", "add", "Script task", "-p", "WK"]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+        let prefix = snapshot_prefix(&local, 1);
+        let code = local.terminal(
+            &["task", "confirm", "WK-1"],
+            &[(marker, "1")],
+            &format!("{prefix}\n"),
         );
-        assert_eq!(
-            local.journal(),
-            vec![row("create", "unattended", "cli")],
-            "{marker}"
-        );
+        assert_eq!(code, 5, "{marker}");
+        assert_eq!(local.journal().len(), 1, "{marker}");
     }
 }
 

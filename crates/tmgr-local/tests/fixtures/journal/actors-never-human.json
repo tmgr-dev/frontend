@@ -1,0 +1,336 @@
+{
+	"name": "actors-never-human",
+	"seed": [
+		"INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p1', 7, 'Owner', 'Scribe', 'x')",
+		"INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at) VALUES ('p1', '[\"tasks:read\",\"tasks:write\",\"comments:read\",\"comments:write\"]', 'x')"
+	],
+	"ops": [
+		{
+			"at": "2026-10-14T12:00:01.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Runner made"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "runner",
+				"name": "Runner"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:02.000Z",
+			"method": "PATCH",
+			"url": "tasks/1",
+			"body": {
+				"description": "runner text"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "runner",
+				"name": "Runner"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:03.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Forged user actor"
+			},
+			"actor": {
+				"kind": "user",
+				"id": "7",
+				"name": "Owner"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:04.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Unknown kind"
+			},
+			"actor": {
+				"kind": "mystery",
+				"id": "x",
+				"name": "x"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:05.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Companion"
+			},
+			"actor": {
+				"kind": "companion",
+				"id": "c",
+				"name": "c"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:06.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Other plugin"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "tmgr.estimate",
+				"name": "E",
+				"ownerId": "tmgr.estimate"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:07.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "Runner id with an owner"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "runner",
+				"name": "R",
+				"ownerId": "evil.plugin"
+			}
+		},
+		{
+			"at": "2026-10-14T12:00:08.000Z",
+			"method": "POST",
+			"url": "tasks/1/comments",
+			"body": {
+				"message": "runner note"
+			},
+			"actor": {
+				"kind": "plugin",
+				"id": "runner",
+				"name": "Runner"
+			}
+		}
+	],
+	"provenance_for": [
+		1,
+		2,
+		3,
+		4,
+		5,
+		6,
+		7
+	],
+	"expect": {
+		"journal": [
+			{
+				"seq": 1,
+				"at": "2026-10-14T12:00:01.000Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "create",
+				"author_kind": "agent",
+				"source": "runner",
+				"actor_id": "runner",
+				"content_sha256": "c7db8fe99863c54730f406e65cb59e6d3b8089a43cf8b1086dff1a93bdf58188",
+				"prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+				"hash": "1c1af2aeef80f238d7ffd317375b92ad5264a759e90051890cb0ec640d38299c"
+			},
+			{
+				"seq": 2,
+				"at": "2026-10-14T12:00:02.000Z",
+				"entity": "task",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "description",
+				"author_kind": "agent",
+				"source": "runner",
+				"actor_id": "runner",
+				"content_sha256": "60e3cd44c96c06415f6c06e211cd959a8fb40af09759ac2c02fc7ee1de8da9dd",
+				"prev_hash": "1c1af2aeef80f238d7ffd317375b92ad5264a759e90051890cb0ec640d38299c",
+				"hash": "63c3ea2812266a4940d71674fa95562c8401b52757b4a6b25e70ce0f060f022d"
+			},
+			{
+				"seq": 3,
+				"at": "2026-10-14T12:00:03.000Z",
+				"entity": "task",
+				"entity_id": "2",
+				"task_id": "2",
+				"field": "create",
+				"author_kind": "unattended",
+				"source": "import",
+				"actor_id": "7",
+				"content_sha256": "3ac96096aa473d178e614d4257a0161df8e48f153455b52ff8f935baddf217af",
+				"prev_hash": "63c3ea2812266a4940d71674fa95562c8401b52757b4a6b25e70ce0f060f022d",
+				"hash": "6309e948195af28f8b7f0264624301d5f365446eb511f88a0f7cd8373365e21a"
+			},
+			{
+				"seq": 4,
+				"at": "2026-10-14T12:00:04.000Z",
+				"entity": "task",
+				"entity_id": "3",
+				"task_id": "3",
+				"field": "create",
+				"author_kind": "unattended",
+				"source": "import",
+				"actor_id": "x",
+				"content_sha256": "2a60d8ff6ac2bf07865e35dc079c88afb3baa36870706d7657c42b429853197c",
+				"prev_hash": "6309e948195af28f8b7f0264624301d5f365446eb511f88a0f7cd8373365e21a",
+				"hash": "c3131329a6b7f9742b03b461601fbc1df653e884709d38b9785b33238294e7fd"
+			},
+			{
+				"seq": 5,
+				"at": "2026-10-14T12:00:05.000Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "create",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "c",
+				"content_sha256": "1dadb3284b8b358259ac6c0d3fb12e6884aa8d566282a1277d2a06a026d12c4f",
+				"prev_hash": "c3131329a6b7f9742b03b461601fbc1df653e884709d38b9785b33238294e7fd",
+				"hash": "7a71ce3fc47d00e40272f51a11161a8df3b5a525f64e4a7024cbef3ef7fb764e"
+			},
+			{
+				"seq": 6,
+				"at": "2026-10-14T12:00:06.000Z",
+				"entity": "task",
+				"entity_id": "5",
+				"task_id": "5",
+				"field": "create",
+				"author_kind": "plugin",
+				"source": "plugin",
+				"actor_id": "tmgr.estimate",
+				"content_sha256": "0e4ac7c693461d2c2a535b0934c432b2c884b6b57fb1b6c1145204589b751d79",
+				"prev_hash": "7a71ce3fc47d00e40272f51a11161a8df3b5a525f64e4a7024cbef3ef7fb764e",
+				"hash": "0716737c6ce1fe493d4a1a009817397afa01964dbb03d8afb3e57df3d2cc2eeb"
+			},
+			{
+				"seq": 7,
+				"at": "2026-10-14T12:00:07.000Z",
+				"entity": "task",
+				"entity_id": "6",
+				"task_id": "6",
+				"field": "create",
+				"author_kind": "plugin",
+				"source": "plugin",
+				"actor_id": "evil.plugin",
+				"content_sha256": "01dd2f610cb0e42334ca45dba71daa6bea32f9e1af4dd95d01a612e8bd977cfe",
+				"prev_hash": "0716737c6ce1fe493d4a1a009817397afa01964dbb03d8afb3e57df3d2cc2eeb",
+				"hash": "71497000bfa63d6f55211e378e6e7343c1d6efc69a10b65afef770e56569c973"
+			},
+			{
+				"seq": 8,
+				"at": "2026-10-14T12:00:08.000Z",
+				"entity": "comment",
+				"entity_id": "1",
+				"task_id": "1",
+				"field": "comment",
+				"author_kind": "agent",
+				"source": "runner",
+				"actor_id": "runner",
+				"content_sha256": "1de980d97ea53d9d8b755086c5a7ef5f3974e702737d4079d6260f1d5057a6d8",
+				"prev_hash": "71497000bfa63d6f55211e378e6e7343c1d6efc69a10b65afef770e56569c973",
+				"hash": "12ba07dea78692195f06b86c5918a8b57ffc76b73e6db6fc4afc3b6b64251018"
+			}
+		],
+		"chain": {
+			"ok": true,
+			"broken_at": null,
+			"rows": 8
+		},
+		"provenance": {
+			"1": {
+				"created_by": "agent",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"agent"
+				],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			},
+			"2": {
+				"created_by": "unattended",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"unattended"
+				],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			},
+			"3": {
+				"created_by": "unattended",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"unattended"
+				],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			},
+			"4": {
+				"created_by": "agent",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"agent"
+				],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			},
+			"5": {
+				"created_by": "plugin",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"plugin"
+				],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			},
+			"6": {
+				"created_by": "plugin",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"plugin"
+				],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			},
+			"7": {
+				"created_by": "unrecorded",
+				"last_human_seq": null,
+				"last_human_content": null,
+				"modified_by_non_human_since": false,
+				"modified_by_kinds": [],
+				"chain_ok": true,
+				"content_matches": false,
+				"confirmed": false,
+				"human_written": false
+			}
+		}
+	}
+}
