@@ -1,7 +1,7 @@
 import { localStorageOf } from '@/privacy/storage';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 import { isCatalogRoute, type AccountMode } from './catalog';
-import { attachTelemetry } from './attach';
+import { attachTelemetry, onMainWindowClose } from './attach';
 import { createTelemetry } from './client';
 import { usageConsent } from './consent';
 import { makeMeta, telemetryBaseUrl } from './env';
@@ -74,13 +74,7 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 		telemetry,
 		usage,
 		window,
-		desktop
-			? (handler) => {
-					void import('@tauri-apps/api/window').then(({ getCurrentWindow }) =>
-						getCurrentWindow().listen('tauri://close-requested', handler),
-					);
-				}
-			: undefined,
+		desktop ? (handler) => void onMainWindowClose(handler) : undefined,
 	);
 	router.afterEach((to) => {
 		if (isCatalogRoute(to.name)) telemetry.track('screen_viewed', { route: to.name });
