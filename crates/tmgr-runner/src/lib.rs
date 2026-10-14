@@ -22,4 +22,6 @@ pub mod trust;
 #[cfg(unix)]
 pub mod wire;
 #[cfg(unix)]
+pub mod worklog;
+#[cfg(unix)]
 pub mod worktree;

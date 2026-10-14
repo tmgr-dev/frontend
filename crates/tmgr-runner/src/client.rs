@@ -8,7 +8,7 @@ use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
     method, AttachParams, CandidateInfo, CreateReq, EventMsg, IdParams, KillParams,
     LayoutSetParams, Line, RunCreateReq, ScreenPush, SendParams, SessionInfo, Snapshot, StatusInfo,
-    Welcome, CLIENT_CLI,
+    Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -150,6 +150,11 @@ impl Client {
         let params = IdParams { id: id.into() };
         self.call(method::SESSIONS_REMOVE, to_params(&params)?)
             .map(drop)
+    }
+
+    pub fn worklog(&mut self, id: &str) -> io::Result<WorkSummary> {
+        let params = IdParams { id: id.into() };
+        from_value(self.call(method::SESSIONS_WORKLOG, to_params(&params)?)?)
     }
 
     pub fn stop(&mut self) -> io::Result<()> {

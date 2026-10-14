@@ -2802,3 +2802,169 @@ fn a_stale_seeded_login_refuses_the_session_with_a_refresh_hint() {
     assert!(!e.contains("stale-rt"));
     assert!(fx.h.client().list().unwrap().is_empty());
 }
+
+fn git_in(dir: &Path, args: &[&str]) -> String {
+    tmgr_runner::worktree::GitEnv::bare(dir)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .run(args)
+        .unwrap()
+}
+
+fn init_repo(dir: &Path) {
+    git_in(dir, &["init", "-q", "-b", "main"]);
+    fs::write(dir.join("a.txt"), "a").unwrap();
+    git_in(dir, &["add", "--", "a.txt"]);
+    git_in(dir, &["commit", "-q", "-m", "initial"]);
+}
+
+fn worklog_of(c: &mut Client, id: &str) -> tmgr_ipc::api::WorkSummary {
+    c.worklog(id).unwrap()
+}
+
+fn wait_exited(c: &mut Client, id: &str) {
+    let done = wait_state(c, id, 15, |s| s.kind == StateKind::Exited);
+    assert_eq!(done.state.kind, StateKind::Exited);
+}
+
+const BUSY_THEN_READ: &str = "i=0; while [ $i -lt 20 ]; do echo p$i; sleep 0.1; i=$((i+1)); done\n\
+    echo ready; read x\nexit 0\n";
+
+#[test]
+fn worklog_has_time_in_states_branch_and_the_commits_made_during_the_session() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    init_repo(&h.work);
+    let marker = h.tmp.path().join("hook-ran");
+    for hook in ["post-checkout", "post-commit", "reference-transaction"] {
+        let path = h.work.join(".git/hooks").join(hook);
+        fs::write(&path, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut c = h.client();
+    let info = c.create(h.sh(BUSY_THEN_READ)).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    assert!(w.wait(15, |w| w.kinds().contains(&StateKind::Waiting)));
+    thread::sleep(Duration::from_millis(1500));
+    for (name, subject) in [("b.txt", "feat: add b"), ("c.txt", "fix: c\u{1b}[31m red")] {
+        fs::write(h.work.join(name), name).unwrap();
+        git_in(&h.work, &["add", "--", name]);
+        git_in(&h.work, &["commit", "-q", "-m", subject]);
+    }
+    let running = worklog_of(&mut c, &info.id);
+    assert_eq!(running.ended_ms, None);
+    assert!(running.commits.is_empty());
+    w.writer.input(&info.id, b"go\r").unwrap();
+    wait_exited(&mut c, &info.id);
+
+    let s = worklog_of(&mut c, &info.id);
+    assert_eq!(s.started_ms, info.created_ms);
+    assert!(s.ended_ms.is_some_and(|e| e > s.started_ms));
+    assert!(s.duration_s >= 3, "{s:?}");
+    assert!(s.working_s >= 1 && s.waiting_s >= 1, "{s:?}");
+    assert_eq!(s.blocked_s, 0);
+    assert_eq!(s.branch.as_deref(), Some("main"));
+    assert_eq!(s.agent.as_deref(), Some("sh"));
+    let subjects: Vec<&str> = s.commits.iter().map(|c| c.subject.as_str()).collect();
+    assert_eq!(subjects, ["feat: add b", "fix: c?[31m red"]);
+    assert!(s.commits.iter().all(|c| c.sha.len() == 40));
+    assert_eq!(s.exit.map(|e| (e.code, e.signal)), Some((Some(0), None)));
+    assert!(!marker.exists(), "a git hook ran");
+}
+
+#[test]
+fn worklog_outside_a_git_repo_has_no_branch_or_commits() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    let mut c = h.client();
+    let info = c.create(h.sh("echo hi; sleep 0.3; exit 3\n")).unwrap();
+    wait_exited(&mut c, &info.id);
+    let s = worklog_of(&mut c, &info.id);
+    assert_eq!(s.branch, None);
+    assert!(s.commits.is_empty());
+    assert_eq!(s.exit.map(|e| e.code), Some(Some(3)));
+    assert!(s.ended_ms.is_some());
+}
+
+#[test]
+fn worklog_ignores_a_repo_whose_config_would_run_programs() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    init_repo(&h.work);
+    let marker = h.tmp.path().join("fsmonitor-ran");
+    let script = h.script(
+        "fsm.sh",
+        &format!("#!/bin/sh\ntouch {}\n", marker.display()),
+    );
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    git_in(&h.work, &["config", "core.fsmonitor", &script]);
+    let mut c = h.client();
+    let info = c.create(h.sh("exit 0\n")).unwrap();
+    wait_exited(&mut c, &info.id);
+    let s = worklog_of(&mut c, &info.id);
+    assert_eq!(s.branch, None);
+    assert!(s.commits.is_empty());
+    assert!(!marker.exists());
+}
+
+#[test]
+fn worklog_survives_a_runner_restart_without_repeating_created() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    init_repo(&h.work);
+    let mut c = h.client();
+    let info = c.create(h.sh(BUSY_THEN_READ)).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    assert!(w.wait(15, |w| w.kinds().contains(&StateKind::Waiting)));
+    drop(w);
+    let before = worklog_of(&mut c, &info.id);
+    drop(c);
+    h.kill_runner();
+    h.start(300);
+    let mut c = h.client();
+    let after = worklog_of(&mut c, &info.id);
+    assert_eq!(after.started_ms, before.started_ms);
+    assert_eq!(after.branch.as_deref(), Some("main"));
+    fs::write(h.work.join("d.txt"), "d").unwrap();
+    git_in(&h.work, &["add", "--", "d.txt"]);
+    git_in(&h.work, &["commit", "-q", "-m", "after restart"]);
+    c.send(&info.id, "go\r").unwrap();
+    wait_exited(&mut c, &info.id);
+    let done = worklog_of(&mut c, &info.id);
+    assert_eq!(done.started_ms, before.started_ms);
+    assert_eq!(done.commits.len(), 1);
+    let log =
+        fs::read_to_string(h.run.join("sessions").join(&info.id).join("worklog.jsonl")).unwrap();
+    assert_eq!(log.matches("\"ev\":\"created\"").count(), 1);
+    assert_eq!(log.matches("\"ev\":\"exited\"").count(), 1);
+    let mode = fs::metadata(h.run.join("sessions").join(&info.id).join("worklog.jsonl"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+}
+
+#[test]
+fn worklog_of_an_unknown_session_is_not_found() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    let mut c = h.client();
+    assert!(err_text(c.worklog("s_abcdefghij")).starts_with("not_found"));
+}
