@@ -9,7 +9,15 @@ const deferred = () => {
 	});
 	return { promise, resolve };
 };
-function evaluate(path: string, dependencies: Record<string, unknown>) {
+function evaluate(
+	path: string,
+	dependencies: Record<string, unknown>,
+	storage: unknown = {
+		getItem: () => null,
+		setItem: jest.fn(),
+		removeItem: jest.fn(),
+	},
+) {
 	const source = transpileModule(readFileSync(require.resolve(path), 'utf8'), {
 		compilerOptions: { module: ModuleKind.CommonJS },
 	}).outputText;
@@ -18,21 +26,25 @@ function evaluate(path: string, dependencies: Record<string, unknown>) {
 		(name: string) => dependencies[name] ?? { default: {} },
 		loaded,
 		loaded.exports,
-		{ getItem: () => null, setItem: jest.fn(), removeItem: jest.fn() },
+		storage,
 	);
 	return loaded.exports;
 }
-function fixture(extraDeps: Record<string, unknown> = {}) {
+function fixture(extraDeps: Record<string, unknown> = {}, storage?: unknown) {
 	const getWorkspaces = jest.fn();
 	const cache = { clear: jest.fn(), setContext: jest.fn() };
-	const config = evaluate('../index.js', {
-		vuex: { createStore: (options: any) => options },
-		'@/actions/tmgr/workspaces': { getWorkspaces },
-		'@/utils/requestCache': { requestCache: cache },
-		'@/utils/workspaceContext': workspaceContext,
-		'@/composable/usePusher': { disconnectRealtime: jest.fn() },
-		...extraDeps,
-	}).default;
+	const config = evaluate(
+		'../index.js',
+		{
+			vuex: { createStore: (options: any) => options },
+			'@/actions/tmgr/workspaces': { getWorkspaces },
+			'@/utils/requestCache': { requestCache: cache },
+			'@/utils/workspaceContext': workspaceContext,
+			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
+			...extraDeps,
+		},
+		storage,
+	).default;
 	return { config, getWorkspaces };
 }
 
@@ -92,6 +104,66 @@ test('logout does not throw when no user is signed in', () => {
 	const state = { user: null, token: null };
 	expect(() => config.actions.logout({ commit: jest.fn(), state })).not.toThrow();
 	expect(clearPersonaLlmForLogout).not.toHaveBeenCalled();
+});
+
+test('logout stops the ntfy client and forgets the connected user', () => {
+	const { config } = fixture({
+		'@/local/personaCache': { clearPersonaLlmForLogout: jest.fn() },
+		'@/utils/desktop': { isDesktopApp: () => false },
+	});
+	const stop = jest.fn().mockResolvedValue(undefined);
+	const commit = jest.fn();
+	const state = {
+		user: { id: 42 },
+		token: { token: 'x' },
+		pusher: { pusherBeamsClient: { stop } },
+	};
+	config.actions.logout({ commit, state });
+	expect(stop).toHaveBeenCalled();
+	expect(commit).toHaveBeenCalledWith('setPusherBeamsUserId', null);
+});
+
+test('losing the token (e.g. logout in another tab) stops the ntfy client; a token refresh does not', () => {
+	const { config } = fixture();
+	const stop = jest.fn().mockResolvedValue(undefined);
+	const state = {
+		...config.state,
+		token: { token: 'first' },
+		pusher: { pusherBeamsClient: { stop }, pusherBeamsUserId: '42' },
+	};
+	config.mutations.setToken(state, { token: 'rotated' });
+	expect(stop).not.toHaveBeenCalled();
+	expect(state.pusher.pusherBeamsUserId).toBe('42');
+	config.mutations.setToken(state, null);
+	expect(stop).toHaveBeenCalledTimes(1);
+	expect(state.pusher.pusherBeamsUserId).toBeNull();
+});
+
+test('logout keeps the per-user ntfy opt-in so the same account reconnects after login', () => {
+	const storage: Record<string, string> = {
+		'tmgr:ntfy-subscribed:42': '1',
+		'pomo-enabled-42': '1',
+	};
+	Object.defineProperties(storage, {
+		getItem: { value: (key: string) => storage[key] ?? null },
+		setItem: { value: (key: string, value: string) => (storage[key] = value) },
+		removeItem: { value: (key: string) => delete storage[key] },
+	});
+	const { config } = fixture(
+		{
+			'@/local/personaCache': { clearPersonaLlmForLogout: jest.fn() },
+			'@/utils/desktop': { isDesktopApp: () => false },
+		},
+		storage,
+	);
+	const state = {
+		user: { id: 42 },
+		token: { token: 'x' },
+		pusher: { pusherBeamsClient: { stop: jest.fn() } },
+	};
+	config.actions.logout({ commit: jest.fn(), state });
+	expect(storage['pomo-enabled-42']).toBeUndefined();
+	expect(storage['tmgr:ntfy-subscribed:42']).toBe('1');
 });
 
 test.each(['refresh', 'session'])(
