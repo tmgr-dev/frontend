@@ -5,9 +5,13 @@ args = ["--no-daemon"]
 model_arg = ["--model", "{model}"]
 env_pass = []
 
+# Codex refreshes (and rotates) its tokens after ~8 days; 7 leaves a margin.
 [[sandbox.seed]]
 from = "~/.codex/auth.json"
 to = ".codex/auth.json"
+fresh = { json_key = "last_refresh", max_age_days = 7 }
+write_back = true
+same = ["tokens.account_id", "auth_mode"]
 
 # Checked against recorded Codex 0.157 screens in profiles/screens; the approval UI lines are stable, the "Reason" text is model-written.
 [status]

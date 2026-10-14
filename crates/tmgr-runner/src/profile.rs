@@ -23,11 +23,23 @@ pub struct StatusRules {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct Fresh {
+    pub json_key: String,
+    pub max_age_days: u32,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct Seed {
     pub from: String,
     pub to: String,
     #[serde(default)]
     pub json_keys: Option<Vec<String>>,
+    #[serde(default)]
+    pub fresh: Option<Fresh>,
+    #[serde(default)]
+    pub write_back: bool,
+    #[serde(default)]
+    pub same: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
