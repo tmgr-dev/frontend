@@ -12,6 +12,22 @@ pub struct Captured {
     pub stdout: String,
 }
 
+// A freshly written executable can still be open for writing in a concurrently forked child
+// (ETXTBSY until that child execs); a short retry covers that window.
+fn spawn_retrying_busy(cmd: &mut Command) -> std::io::Result<std::process::Child> {
+    const ETXTBSY: i32 = 26;
+    let mut attempt = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(ETXTBSY) && attempt < 5 => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(20 * attempt));
+            }
+            other => return other,
+        }
+    }
+}
+
 pub fn run_capture(
     program: &str,
     dir: Option<&Path>,
@@ -29,7 +45,7 @@ pub fn run_capture(
     if let Some(d) = dir {
         cmd.current_dir(d);
     }
-    let mut child = cmd.spawn()?;
+    let mut child = spawn_retrying_busy(&mut cmd)?;
     let drain = |mut r: Box<dyn Read + Send>| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();

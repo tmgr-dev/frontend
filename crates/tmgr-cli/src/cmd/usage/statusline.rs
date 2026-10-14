@@ -166,7 +166,19 @@ fn long_token(text: &str) -> bool {
         })
 }
 
+fn without_own_exe(text: &str) -> String {
+    match std::env::current_exe()
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string))
+    {
+        Some(exe) if !exe.is_empty() => text.replace(&exe, "tmgr"),
+        _ => text.to_string(),
+    }
+}
+
 fn looks_secret(text: &str) -> bool {
+    let owned = without_own_exe(text);
+    let text = owned.as_str();
     if redact_secrets(text) != text {
         return true;
     }
@@ -377,6 +389,17 @@ fn change(ctx: &Ctx, account: &StatuslineAccountArgs, mode: Mode) -> Result<Outp
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn our_own_versioned_install_path_is_not_taken_for_a_secret() {
+        let exe = std::env::current_exe().unwrap();
+        let cmd = format!("{} usage statusline-hook --chain", exe.display());
+        assert!(!looks_secret(&cmd), "{cmd}");
+        assert!(looks_secret(
+            "/opt/homebrew/Cellar/tmgr/0.8.0/bin/x --token abc"
+        ));
+        assert!(looks_secret("hook --key q7Zr2Wm9Kx4Tb8Nv1Lc6Hd3Pf5Yg0Js"));
+    }
 
     #[test]
     fn a_settings_file_that_changed_since_the_diff_is_refused_with_exit_six() {
