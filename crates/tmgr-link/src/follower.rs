@@ -132,13 +132,6 @@ pub fn plan_trust(
         )));
     }
     let bin = authkeys::check_binary(bin)?;
-    if let Ok(own) = std::fs::read_to_string(paths.public_key()) {
-        if grammar::parse_pubkey(&own).is_ok_and(|o| o.blob == key.blob) {
-            return Err(Error::conflict(
-                "this key is this machine's own link identity; a machine cannot lead itself",
-            ));
-        }
-    }
     if is_pending(paths, &name) {
         return Err(Error::conflict(format!(
             "a previous change of {name} could not be rolled back"
@@ -146,6 +139,7 @@ pub fn plan_trust(
         .hint(format!("tmgr link revoke {name}")));
     }
     let store = Store::load(paths)?;
+    crate::cycle::check_trust(paths, &store, &name, &key)?;
     if store.leaders.contains_key(&name) {
         return Err(
             Error::conflict(format!("a leader named {name} is already trusted"))
@@ -749,6 +743,24 @@ mod tests {
         std::fs::write(f.paths.public_key(), &own).unwrap();
         let e = plan_trust(&f.paths, &input(&f, "me", &own), &f.bin, chk(&f)).unwrap_err();
         assert!(e.message.contains("own link identity"));
+    }
+
+    #[test]
+    fn the_key_of_a_follower_this_machine_leads_cannot_be_trusted_as_a_leader() {
+        let f = fx();
+        let led = testkeys::generate();
+        let blob = led.split_whitespace().nth(1).unwrap().to_string();
+        Store::update(&f.paths, |s| {
+            s.peer_keys.insert("spark".into(), blob.clone());
+            Ok(())
+        })
+        .unwrap();
+        let e = plan_trust(&f.paths, &input(&f, "spark", &led), &f.bin, chk(&f)).unwrap_err();
+        assert_eq!(e.exit_code(), 6);
+        assert!(e.message.contains("cycle"), "{}", e.message);
+        let log = Audit::new(&f.paths.audit_dir()).tail(5).unwrap();
+        assert_eq!(log.last().unwrap()["event"], "link.refused");
+        assert!(!f.paths.authorized_keys().exists());
     }
 
     #[test]

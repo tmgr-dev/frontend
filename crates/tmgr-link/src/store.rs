@@ -110,6 +110,10 @@ pub struct Store {
     pub leaders: BTreeMap<String, Leader>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub followers: BTreeMap<String, Follower>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub jumps: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub peer_keys: BTreeMap<String, String>,
 }
 
 #[cfg(unix)]

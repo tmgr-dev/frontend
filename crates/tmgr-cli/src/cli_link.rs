@@ -38,7 +38,7 @@ pub struct AddArgs {
     pub ssh: String,
     #[arg(long, default_value_t = 22, value_name = "N")]
     pub port: u32,
-    /// Reach the follower through another pinned link (not supported yet)
+    /// Reach the follower through another pinned link (its sshd must allow forwarding to the follower)
     #[arg(long, value_name = "LINK")]
     pub jump: Option<String>,
 }

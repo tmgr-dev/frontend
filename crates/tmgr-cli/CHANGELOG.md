@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Experimental and hidden (`tmgr link`): `tmgr link add NAME --ssh user@host --jump JUMPLINK` reaches a follower through an existing pinned link (one hop). Both hops run with `-F none`, a dedicated key, `IdentitiesOnly`, `IdentityAgent=none`, no forwarding and `StrictHostKeyChecking=yes` against their own pinned host key; the jump is a `ProxyCommand` built from validated tokens only (absolute paths without spaces or shell characters, no `%`, no IPv6 literals). The target's host key is read through the jump at `link add` and confirmed as before; `link test` uses the jump too. `tmgr link trust` writes `restrict,...,no-port-forwarding`, which blocks the jump: on the jump machine the owner edits that one line by hand, replacing `no-port-forwarding` with `port-forwarding,permitopen="HOST:PORT"` for the follower (the same line still serves `hello`, because the forced command only applies to sessions). Through a jump the follower sees the jump host's address, so its `link trust --from` must list that address. A link used as a jump cannot be removed while others use it, and a jump link cannot itself be jumped.
+- Cycle protection: the worker's `hello` reply gains an optional `link_key` (the follower's own link identity). `link add` refuses a follower that has this machine's identity or already leads this machine; `link trust` refuses the key of a follower this machine leads; the worker refuses a leader whose key is its own identity or a follower of its machine. Each refusal is audited.
+
 ## 0.7.0
 
 - Local workspaces of the desktop app: `--ws local:<code>`, `tmgr ws use local:<code>` and `default_workspace = "local:<code>"` work offline and without a login, through the `tmgr-local` crate, which reads and writes the desktop's `workspace.db` directly. `tmgr ws list` shows local workspaces (`local: true`, negative ids) next to the cloud ones. A route the local mode does not support yet fails with exit 2 ("not supported for local workspaces yet"). The local user is `local_user_id` from the config, else the desktop profile (id -1).

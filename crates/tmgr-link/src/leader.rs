@@ -155,6 +155,17 @@ pub fn ssh_args(
     known_hosts: &Path,
     name: &str,
 ) -> Result<Vec<OsString>> {
+    build_args(target, key, known_hosts, name, "none", None)
+}
+
+pub(crate) fn build_args(
+    target: &SshTarget,
+    key: &Path,
+    known_hosts: &Path,
+    name: &str,
+    proxy: &str,
+    forward: Option<(&str, u16)>,
+) -> Result<Vec<OsString>> {
     grammar::link_name(name)?;
     let mut a: Vec<String> = ["-F", "none", "-T", "-a", "-x"]
         .iter()
@@ -169,7 +180,7 @@ pub fn ssh_args(
         "ControlMaster=no".to_string(),
         "ControlPath=none".to_string(),
         "PermitLocalCommand=no".to_string(),
-        "ProxyCommand=none".to_string(),
+        format!("ProxyCommand={proxy}"),
         "KnownHostsCommand=none".to_string(),
         format!("UserKnownHostsFile={}", opt_value(known_hosts)?),
         "GlobalKnownHostsFile=none".to_string(),
@@ -181,13 +192,17 @@ pub fn ssh_args(
         a.push("-o".into());
         a.push(o);
     }
+    if let Some((host, port)) = forward {
+        a.push("-W".into());
+        a.push(format!("{host}:{port}"));
+    }
     a.push("-p".into());
     a.push(target.port.to_string());
     a.push(format!("{}@{}", target.user, target.host));
     Ok(a.into_iter().map(OsString::from).collect())
 }
 
-fn tool(name: &str, fixed: &str) -> PathBuf {
+pub(crate) fn tool(name: &str, fixed: &str) -> PathBuf {
     let p = PathBuf::from(fixed);
     if p.is_file() {
         p
@@ -383,8 +398,24 @@ impl Client {
         name: &str,
         target: &SshTarget,
     ) -> Result<(Client, KeyFile)> {
+        Client::connect_via(paths, cred, name, target, None)
+    }
+
+    pub fn connect_via(
+        paths: &Paths,
+        cred: &CredentialStore,
+        name: &str,
+        target: &SshTarget,
+        hop: Option<&crate::jump::Hop>,
+    ) -> Result<(Client, KeyFile)> {
         let key = materialise(cred)?;
-        let args = ssh_args(target, &key.path, &paths.known_hosts(), name)?;
+        let args = match hop {
+            None => ssh_args(target, &key.path, &paths.known_hosts(), name)?,
+            Some(h) => {
+                let proxy = crate::jump::proxy_command(h, &key.path, &paths.known_hosts(), target)?;
+                build_args(target, &key.path, &paths.known_hosts(), name, &proxy, None)?
+            }
+        };
         let mut cmd = Command::new(tool("ssh", "/usr/bin/ssh"));
         cmd.args(args);
         Ok((Client::spawn(cmd, SSH_TIMEOUT)?, key))

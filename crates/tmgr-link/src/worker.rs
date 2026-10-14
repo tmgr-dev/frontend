@@ -273,6 +273,13 @@ pub fn serve_with(
         );
         return Err(refused());
     }
+    if let Some(reason) = crate::cycle::worker_refusal(paths, &store, &leader.key) {
+        let _ = audit.append(
+            "worker.refused",
+            json!({"link": name, "fp": leader.fingerprint, "reason": reason}),
+        );
+        return Err(refused());
+    }
     let Some(_slot) = Slot::acquire(paths, name, limits.max_workers)? else {
         let _ = audit.append(
             "worker.busy",
@@ -432,15 +439,16 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
             if conn.record(method, json!({}), "accepted", "").is_err() {
                 return audit_down();
             }
-            Step::Reply(proto::ok(
-                id,
-                json!({
-                    "protocol": proto::PROTOCOL,
-                    "role": "follower",
-                    "version": env!("CARGO_PKG_VERSION"),
-                    "methods": proto::METHODS,
-                }),
-            ))
+            let mut reply = json!({
+                "protocol": proto::PROTOCOL,
+                "role": "follower",
+                "version": env!("CARGO_PKG_VERSION"),
+                "methods": proto::METHODS,
+            });
+            if let Ok(Some(own)) = crate::cycle::own_key(conn.paths) {
+                reply["link_key"] = json!(own.openssh());
+            }
+            Step::Reply(proto::ok(id, reply))
         }
         "runs.list" | "runs.get" | "runs.create" | "runs.halt" | "attach.open" => {
             crate::runs::run_method(conn, state, chan, &req, &scope)
@@ -671,6 +679,62 @@ mod tests {
         assert_eq!(replies[0]["result"]["protocol"], 1);
         assert_eq!(replies[0]["result"]["methods"], json!(proto::METHODS));
         assert_eq!(replies[0]["id"], 1);
+    }
+
+    #[test]
+    fn hello_adds_the_own_link_identity_only_when_there_is_one() {
+        let f = fx();
+        let hello = || frames(&[json!({"id":1,"method":"hello","params":{"protocol":1}})]);
+        let (_, replies) = run(&f, hello(), 10);
+        assert!(replies[0]["result"].get("link_key").is_none());
+        assert_eq!(replies[0]["result"]["protocol"], 1);
+        let own = crate::grammar::testkeys::key();
+        std::fs::create_dir_all(&f.paths.config).unwrap();
+        std::fs::write(
+            f.paths.public_key(),
+            format!("{} tmgr-link\n", own.openssh()),
+        )
+        .unwrap();
+        let (_, replies) = run(&f, hello(), 10);
+        assert_eq!(replies[0]["result"]["link_key"], own.openssh());
+        assert_eq!(replies[0]["result"]["protocol"], 1);
+        assert_eq!(replies[0]["result"]["role"], "follower");
+    }
+
+    #[test]
+    fn a_leader_with_this_machines_own_key_or_a_led_followers_key_is_refused() {
+        let f = fx();
+        let own = crate::grammar::testkeys::key();
+        std::fs::create_dir_all(&f.paths.config).unwrap();
+        std::fs::write(
+            f.paths.public_key(),
+            format!("{} tmgr-link\n", own.openssh()),
+        )
+        .unwrap();
+        Store::update(&f.paths, |s| {
+            s.leaders.get_mut("laptop").unwrap().key = own.blob.clone();
+            Ok(())
+        })
+        .unwrap();
+        let (r, replies) = run(&f, frames(&[json!({"id":1,"method":"hello"})]), 10);
+        assert_eq!(r.unwrap_err().exit_code(), 5);
+        assert!(replies.is_empty());
+        let ev = events(&f);
+        assert_eq!(ev.len(), 1);
+        assert_eq!(ev[0]["event"], "worker.refused");
+        assert!(ev[0]["reason"].as_str().unwrap().contains("own identity"));
+        Store::update(&f.paths, |s| {
+            s.leaders.get_mut("laptop").unwrap().key = "AAAA".into();
+            s.peer_keys.insert("spark".into(), "AAAA".into());
+            Ok(())
+        })
+        .unwrap();
+        let (r, _) = run(&f, frames(&[json!({"id":1,"method":"hello"})]), 10);
+        assert!(r.is_err());
+        assert!(events(&f)[1]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("follower of this machine"));
     }
 
     #[test]

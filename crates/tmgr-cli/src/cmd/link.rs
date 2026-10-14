@@ -9,8 +9,10 @@ use tmgr_core::creds::Backend;
 use tmgr_core::error::{Error, Result};
 use tmgr_core::text::sanitize_line;
 use tmgr_link::audit::Audit;
+use tmgr_link::cycle;
 use tmgr_link::follower::{self, ScopeInput, TrustInput};
 use tmgr_link::grammar;
+use tmgr_link::jump;
 use tmgr_link::leader::{self, Client, SshTarget};
 use tmgr_link::privileged;
 use tmgr_link::scope::Scope;
@@ -78,26 +80,34 @@ fn shell_quote(s: &str) -> String {
 
 fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
     privileged::guard()?;
-    if a.jump.is_some() {
-        return Err(
-            Error::usage("--jump is not supported yet").hint("link the follower directly for now")
-        );
-    }
     let name = grammar::link_name(&a.name)?.to_string();
     let target = grammar::parse_target(&a.ssh)?;
     let port = grammar::parse_port(a.port)?;
     if leader::identity(paths)?.is_none() {
         return Err(Error::not_found("this machine has no link identity").hint("tmgr link init"));
     }
-    if Store::load(paths)?.followers.contains_key(&name) {
+    let store = Store::load(paths)?;
+    if store.followers.contains_key(&name) {
         return Err(
             Error::conflict(format!("a follower named {name} already exists"))
                 .hint(format!("tmgr link remove {name} first")),
         );
     }
-    let key = leader::scan_host(&target.host, port)?;
+    let hop = a
+        .jump
+        .as_deref()
+        .map(|j| jump::hop_for(&store, j))
+        .transpose()?;
+    let key = match &hop {
+        Some(h) => jump::scan_host_via(paths, &cred(ctx, paths), h, &target.host, port)?,
+        None => leader::scan_host(&target.host, port)?,
+    };
+    let via = hop
+        .as_ref()
+        .map(|h| format!(" (seen through the pinned jump link {})", h.name))
+        .unwrap_or_default();
     eprintln!(
-        "host key of {}:{port}\n  {}\nVerify this fingerprint with the follower's owner (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on it).",
+        "host key of {}:{port}{via}\n  {}\nVerify this fingerprint with the follower's owner (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on it).",
         target.host, key.fingerprint
     );
     privileged::confirm_typed_stdio(&name, &format!("Type {name} to pin this host key:"))?;
@@ -108,7 +118,8 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
         port,
     };
     let hello = (|| -> Result<Value> {
-        let (mut client, _key_file) = Client::connect(paths, &cred(ctx, paths), &name, &ssh)?;
+        let (mut client, _key_file) =
+            Client::connect_via(paths, &cred(ctx, paths), &name, &ssh, hop.as_ref())?;
         client.hello()
     })();
     let hello = match hello {
@@ -118,7 +129,28 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
             return Err(e);
         }
     };
-    Store::update(paths, |s| {
+    let peer = match cycle::check_follower(
+        paths,
+        &Store::load(paths)?,
+        &name,
+        hello.get("link_key").and_then(Value::as_str),
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            let _ = leader::unpin_host(paths, &name);
+            return Err(e);
+        }
+    };
+    let registered = Store::update(paths, |s| {
+        if let Some(h) = &hop {
+            if !s.followers.contains_key(&h.name) || s.jumps.contains_key(&h.name) {
+                return Err(Error::conflict("the jump link changed while adding"));
+            }
+            s.jumps.insert(name.clone(), h.name.clone());
+        }
+        if let Some(p) = &peer {
+            s.peer_keys.insert(name.clone(), p.blob.clone());
+        }
         s.followers.insert(
             name.clone(),
             Follower {
@@ -130,10 +162,14 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
             },
         );
         Ok(())
-    })?;
+    });
+    if let Err(e) = registered {
+        let _ = leader::unpin_host(paths, &name);
+        return Err(e);
+    }
     Audit::new(&paths.audit_dir()).append(
         "link.add",
-        json!({"link": name, "host": target.host, "port": port, "fingerprint": key.fingerprint}),
+        json!({"link": name, "host": target.host, "port": port, "fingerprint": key.fingerprint, "jump": hop.as_ref().map(|h| h.name.clone())}),
     )?;
     let version = hello.get("version").and_then(Value::as_str).unwrap_or("?");
     Ok(Output::new(
@@ -240,6 +276,7 @@ fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
         "followers": store.followers.iter().map(|(n, f)| json!({
             "name": n, "user": f.user, "host": f.host, "port": f.port,
             "host_key_fingerprint": f.host_key_fingerprint, "added": f.added,
+            "jump": store.jumps.get(n),
         })).collect::<Vec<_>>(),
     });
     let mut parts: Vec<String> = Vec::new();
@@ -274,7 +311,10 @@ fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
             rows.push(vec![
                 n.clone(),
                 "follower".into(),
-                format!("{}@{}:{}", f.user, f.host, f.port),
+                match store.jumps.get(n) {
+                    Some(j) => format!("{}@{}:{} via {j}", f.user, f.host, f.port),
+                    None => format!("{}@{}:{}", f.user, f.host, f.port),
+                },
                 short_fp(&f.host_key_fingerprint),
                 f.added.chars().take(10).collect(),
             ]);
@@ -454,10 +494,31 @@ fn revoke(paths: &Paths, a: &RevokeArgs) -> Result<Output> {
 
 fn remove(paths: &Paths, name: &str) -> Result<Output> {
     grammar::link_name(name)?;
+    let in_use = |s: &Store| -> Result<()> {
+        let users = jump::referenced_by(s, name);
+        if users.is_empty() {
+            return Ok(());
+        }
+        Err(
+            Error::conflict(format!("{name} is the jump host of {}", users.join(", ")))
+                .hint("remove those links first"),
+        )
+    };
+    if let Err(e) = in_use(&Store::load(paths)?) {
+        let _ = Audit::new(&paths.audit_dir()).append(
+            "link.remove.refused",
+            json!({"link": name, "reason": "used as a jump host"}),
+        );
+        return Err(e);
+    }
     Store::update(paths, |s| {
-        s.followers.remove(name).map(|_| ()).ok_or_else(|| {
+        in_use(s)?;
+        s.followers.remove(name).ok_or_else(|| {
             Error::not_found(format!("no follower named {name}")).hint("tmgr link list")
-        })
+        })?;
+        s.jumps.remove(name);
+        s.peer_keys.remove(name);
+        Ok(())
     })?;
     leader::unpin_host(paths, name)?;
     Audit::new(&paths.audit_dir()).append("link.remove", json!({"link": name}))?;
@@ -478,8 +539,10 @@ fn test(ctx: &Ctx, paths: &Paths, name: &str) -> Result<Output> {
         host: f.host.clone(),
         port: f.port,
     };
+    let hop = jump::resolve(&store, name)?;
     let started = Instant::now();
-    let (mut client, _key) = Client::connect(paths, &cred(ctx, paths), name, &target)?;
+    let (mut client, _key) =
+        Client::connect_via(paths, &cred(ctx, paths), name, &target, hop.as_ref())?;
     let hello = client.hello()?;
     let ms = started.elapsed().as_millis() as u64;
     let version = sanitize_line(hello.get("version").and_then(Value::as_str).unwrap_or("?"));

@@ -1,9 +1,11 @@
 pub mod attach;
 pub mod audit;
 pub mod authkeys;
+pub mod cycle;
 pub mod fence;
 pub mod follower;
 pub mod grammar;
+pub mod jump;
 pub mod leader;
 pub mod ownership;
 pub mod privileged;
