@@ -183,7 +183,8 @@ impl Stand {
 
     fn run_script(&self, script: &Path, env: &[(&str, &str)], without_minisign: bool) -> Output {
         let mut c = Command::new("sh");
-        c.arg(script)
+        c.args(["-c", "umask 022; exec sh \"$1\"", "sh"])
+            .arg(script)
             .env("HOME", self.tmp.path())
             .env("PATH", self.path_with_shims(without_minisign))
             .env("TMGR_API_URL", self.server.uri())
