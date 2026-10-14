@@ -268,7 +268,8 @@ fn task_edit_entries(
     if let Some(title) = title.map(sql_text).filter(|t| !same_text(t, &was("title"))) {
         entries.push(Entry::task(id, "title", Some(title)));
     }
-    let description_changed = description.is_some_and(|d| !same_text(&sql_text(d), &was("description")));
+    let description_changed =
+        description.is_some_and(|d| !same_text(&sql_text(d), &was("description")));
     let json_changed = description_json.is_some_and(|d| sql_text(d) != was("description_json"));
     if description_changed || json_changed {
         let after = description.map_or_else(|| was("description"), sql_text);
@@ -333,8 +334,15 @@ pub(super) fn create(req: &Request<'_>) -> Handled {
         &params,
     ))?;
     let id = inserted.last_id;
-    let mut entries = vec![Entry::task(id, "create", field(&fields, "title").map(sql_text))];
-    if let Some(description) = field(&fields, "description").map(sql_text).filter(|d| !d.is_empty()) {
+    let mut entries = vec![Entry::task(
+        id,
+        "create",
+        field(&fields, "title").map(sql_text),
+    )];
+    if let Some(description) = field(&fields, "description")
+        .map(sql_text)
+        .filter(|d| !d.is_empty())
+    {
         entries.push(Entry::task(id, "description", Some(description)));
     }
     sql(journal::append(req.conn, req.ctx, &entries))?;
@@ -450,7 +458,11 @@ pub(super) fn delete(req: &Request<'_>) -> Handled {
     if deleted.changes == 0 {
         return Err(not_found("Task"));
     }
-    sql(journal::append(req.conn, req.ctx, &[Entry::task(id, "delete", None)]))?;
+    sql(journal::append(
+        req.conn,
+        req.ctx,
+        &[Entry::task(id, "delete", None)],
+    ))?;
     for statement in [
         "DELETE FROM plugin_task_data WHERE task_id = ?",
         "DELETE FROM agent_work_runs WHERE task_id = ?",
@@ -562,7 +574,12 @@ pub(super) fn add_comment(req: &Request<'_>) -> Handled {
     sql(journal::append(
         req.conn,
         req.ctx,
-        &[Entry::comment(inserted.last_id, task_id, "comment", Some(message.clone()))],
+        &[Entry::comment(
+            inserted.last_id,
+            task_id,
+            "comment",
+            Some(message.clone()),
+        )],
     ))?;
     let row = sql(select_one(
         req.conn,

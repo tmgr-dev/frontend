@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Local workspaces keep a hash-chained edit journal (schema 13, created by the desktop app; the CLI never migrates a workspace and keeps working on schema 12 without recording anything). Every task create or delete, title or description change and comment create, edit or delete is recorded in the same transaction with who wrote it: `human` (`cli_tty`) only when stdin and stdout are terminals and the environment has none of `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`, `CODEX_SANDBOX*`, `TMGR_AGENT_SESSION`, `TMGR_RUN_TOKEN`, `TMGR_RUN_ID`; every other CLI write is `unattended` (`cli`). Tasks that predate the journal have no record and count as `unrecorded` until you edit them. A process that can write the workspace file directly can still forge a terminal or the file; the chain makes edits outside the app and the CLI detectable, not impossible.
+- `tmgr queue` (experimental, hidden, `runner` builds): a task counts as `human` only with positive evidence in the local edit journal (created by the owner, no later non-human edit, a verified hash chain, and the text the bundle shows equal to what the owner wrote or confirmed) instead of the local activity log. `tmgr queue approve` first walks the edit journal from genesis and refuses a workspace whose journal does not verify.
+
 ## 0.8.0
 
 - `tmgr usage [--today|--yesterday|--week|--month|--since DATE [--until DATE]] [--by tool|model|account|project|branch|day|task] [--task REF] [--tool claude|codex] [--account LABEL] [--no-scan] [--json]`: local AI tool usage (Claude Code now, Codex through the usage engine) read from the tools' own session logs by the new `tmgr-usage` crate. Without a period it shows today, 7 days and 30 days per tool and model. Every dollar figure is an API-equivalent cost at public list prices, not your subscription bill, and says so; events of models without a price are counted separately, left out of the cost and reported as a warning (`usage_unpriced`). Days follow the local time zone. A scan of new log lines runs first (`--no-scan` skips it; on a terminal a one-line note appears while the very first, large scan runs).

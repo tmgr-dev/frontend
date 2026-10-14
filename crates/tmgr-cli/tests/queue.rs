@@ -126,7 +126,7 @@ impl Fx {
         let dir = self.root().join("personal");
         std::fs::write(
             dir.join("workspace.json"),
-            json!({"id": 1, "name": "Personal", "code": "personal", "schema_version": 12, "created_at": "2026-10-01T00:00:00Z"}).to_string(),
+            json!({"id": 1, "name": "Personal", "code": "personal", "schema_version": 13, "created_at": "2026-10-01T00:00:00Z"}).to_string(),
         )
         .unwrap();
         let golden: Value = serde_json::from_str(
@@ -144,7 +144,7 @@ impl Fx {
             }
         }
         conn.execute(
-            "INSERT INTO meta (key, value) VALUES ('schema_version', '12')",
+            "INSERT INTO meta (key, value) VALUES ('schema_version', '13')",
             [],
         )
         .unwrap();
@@ -161,7 +161,7 @@ impl Fx {
              INSERT INTO personas (uuid, owner_user_id, owner_name, name, description, synced_at)
              VALUES ('p-1', -1, 'Owner', 'builder', 'Builds things', '2026-10-01T00:00:00Z');
              INSERT INTO workspace_personas (persona_uuid, permissions, enabled_at)
-             VALUES ('p-1', '[]', '2026-10-01T00:00:00Z');",
+             VALUES ('p-1', '[\"tasks:write\",\"comments:write\"]', '2026-10-01T00:00:00Z');",
         )
         .unwrap();
     }
@@ -171,26 +171,84 @@ impl Fx {
     }
 
     fn task_as(&self, id: i64, title: &str, body: &str, owned: bool) {
-        let conn = self.db();
-        conn.execute(
-            "INSERT INTO tasks (id, title, description, status_id, project_category_id, category_tasks_sequence_id, created_at, updated_at)
-             VALUES (?, ?, ?, 1, 1, ?, '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
-            rusqlite::params![id, title, body, id],
-        )
-        .unwrap();
-        if owned {
-            conn.execute(
-                "INSERT INTO activity_log (at, actor_kind, actor_id, actor_name, method, route, entity, entity_id, status)
-                 VALUES ('2026-10-01T00:00:00Z', 'user', '-1', 'Owner', 'POST', 'tasks', 'tasks', ?, 200)",
-                [id.to_string()],
+        let origin = if owned {
+            tmgr_local::WriteOrigin::DesktopUi
+        } else {
+            tmgr_local::WriteOrigin::Cli
+        };
+        let made = self.write(
+            origin,
+            None,
+            "POST",
+            "tasks",
+            json!({ "title": title, "description": body, "status_id": 1, "project_category_id": 1 }),
+        );
+        assert_eq!(made["data"]["id"], id);
+        self.db()
+            .execute(
+                "INSERT INTO task_persona_assignees (task_id, persona_uuid, created_at) VALUES (?, 'p-1', '2026-10-01T00:00:00Z')",
+                [id],
             )
             .unwrap();
-        }
-        conn.execute(
-            "INSERT INTO task_persona_assignees (task_id, persona_uuid, created_at) VALUES (?, 'p-1', '2026-10-01T00:00:00Z')",
-            [id],
-        )
-        .unwrap();
+    }
+
+    fn write(
+        &self,
+        origin: tmgr_local::WriteOrigin,
+        actor: Option<tmgr_local::Actor>,
+        method: &str,
+        url: &str,
+        body: Value,
+    ) -> Value {
+        let workspace = tmgr_local::find(&self.root(), "personal").unwrap();
+        let conn = tmgr_local::open_write(&workspace.database).unwrap();
+        let ctx = tmgr_local::Context {
+            workspace,
+            user: tmgr_local::User {
+                id: -1,
+                name: "Owner".into(),
+                email: String::new(),
+            },
+            now: chrono::Utc::now(),
+            local_offset: chrono::FixedOffset::east_opt(0).unwrap(),
+            actor,
+            origin,
+        };
+        let answer = tmgr_local::dispatch(&conn, &ctx, method, url, Some(&body))
+            .unwrap()
+            .unwrap();
+        assert!(
+            answer.status < 400,
+            "{url}: {} {}",
+            answer.status,
+            answer.data
+        );
+        answer.data
+    }
+
+    fn owner_edit(&self, id: i64, description: &str) {
+        self.write(
+            tmgr_local::WriteOrigin::DesktopUi,
+            None,
+            "PATCH",
+            &format!("tasks/{id}"),
+            json!({ "description": description }),
+        );
+    }
+
+    fn persona_edit(&self, id: i64, description: &str) {
+        self.write(
+            tmgr_local::WriteOrigin::DesktopUi,
+            Some(tmgr_local::Actor {
+                kind: "persona".into(),
+                id: "p-1".into(),
+                name: "builder".into(),
+                owner_id: None,
+            }),
+            "PATCH",
+            &format!("tasks/{id}"),
+            json!({ "description": description }),
+        );
     }
 
     fn envs(&self) -> Vec<(String, String)> {
@@ -497,13 +555,7 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
     fx.task(1, "Write the report", "Summarise the quarter");
     fx.task(2, "Agent wrote this", "from a persona");
     fx.task_as(3, "Imported", "no trail", false);
-    fx.db()
-        .execute(
-            "INSERT INTO activity_log (at, actor_kind, actor_id, actor_name, method, route, entity, entity_id, status)
-             VALUES ('2026-10-02T00:00:00Z', 'persona', 'p-1', 'builder', 'PATCH', 'tasks/:id', 'tasks', '2', 200)",
-            [],
-        )
-        .unwrap();
+    fx.persona_edit(2, "rewritten by a persona");
     assert_eq!(fx.add_rule("r1", &[]).0, 0);
     assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
 
@@ -549,6 +601,28 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
 }
 
 #[test]
+fn text_changed_outside_the_journal_or_a_cut_chain_is_not_the_owners() {
+    let fx = Fx::new();
+    fx.task(1, "Edited behind the app's back", "v1");
+    fx.task(2, "Chain cut", "v1");
+    fx.task(3, "Untouched", "v1");
+    fx.db()
+        .execute("UPDATE tasks SET description = 'sneaky' WHERE id = 1", [])
+        .unwrap();
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.db()
+        .execute("DELETE FROM edit_journal WHERE seq = 3", [])
+        .unwrap();
+    fx.run(&["queue", "run-once"]);
+    assert_eq!(fx.count("skipped"), 3);
+    assert!(fx.json(&["status"])["data"]["pickups"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
 fn changing_the_task_after_the_prompt_is_shown_voids_the_approval() {
     let fx = Fx::new();
     fx.task(1, "Write the report", "v1");
@@ -567,12 +641,7 @@ fn changing_the_task_after_the_prompt_is_shown_voids_the_approval() {
     let mut p = fx.pty(&["queue", "approve", &id], &[]);
     p.wait_for("Type the first 12");
     fx.run(&["queue", "run-once"]);
-    fx.db()
-        .execute(
-            "UPDATE tasks SET description = 'v2 with new instructions' WHERE id = 1",
-            [],
-        )
-        .unwrap();
+    fx.owner_edit(1, "v2 with new instructions");
     fx.run(&["queue", "run-once"]);
     p.line(&sha[..12]);
     assert_eq!(p.exit(), 6, "{}", p.text());

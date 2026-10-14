@@ -242,6 +242,7 @@
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": false,
+				"modified_by_kinds": [],
 				"chain_ok": true,
 				"content_matches": true
 			},
@@ -254,6 +255,7 @@
 					"comments_sha": "a5a7bc6a08d4188e1644db480c4bb833a5974fb612dd5894d49e3e083aa0af3a"
 				},
 				"modified_by_non_human_since": false,
+				"modified_by_kinds": [],
 				"chain_ok": true,
 				"content_matches": true
 			},
@@ -262,6 +264,9 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"plugin"
+				],
 				"chain_ok": true,
 				"content_matches": false
 			}

@@ -94,6 +94,16 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 		]);
 	});
 
+	it('journals an MCP write as mcp and a REST write as local_access, both as an agent', async () => {
+		await handleLocalAccessRequest(mcpCall('add_comment', { taskId, message: 'from mcp' }), deps);
+		await handleLocalAccessRequest(request('POST', `/api/tasks/${taskId}/comments`, { message: 'from rest' }), deps);
+		const rows = await ctx.db.select<any>(`SELECT author_kind, source, actor_id FROM edit_journal WHERE field = 'comment' ORDER BY seq`);
+		expect(rows).toEqual([
+			{ author_kind: 'agent', source: 'mcp', actor_id: 'p-1' },
+			{ author_kind: 'agent', source: 'local_access', actor_id: 'p-1' },
+		]);
+	});
+
 	it('emits a REST write exactly once', async () => {
 		await handleLocalAccessRequest(request('POST', `/api/tasks/${taskId}/comments`, { message: 'hi' }), deps);
 		expect(events.filter((e) => e.type === 'comment.created')).toHaveLength(1);

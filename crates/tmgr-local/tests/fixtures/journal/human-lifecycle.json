@@ -276,6 +276,7 @@
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": false,
+				"modified_by_kinds": [],
 				"chain_ok": true,
 				"content_matches": false
 			},
@@ -288,6 +289,7 @@
 					"comments_sha": "37ee89e6736def9e98434b1752706445c7b99434a25df198dece3dc53d8690e4"
 				},
 				"modified_by_non_human_since": false,
+				"modified_by_kinds": [],
 				"chain_ok": true,
 				"content_matches": true
 			}

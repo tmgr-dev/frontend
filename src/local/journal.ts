@@ -257,6 +257,8 @@ export interface Provenance {
 	last_human_seq: number | null;
 	last_human_content: HumanContent | null;
 	modified_by_non_human_since: boolean;
+	/** The sorted, distinct `author_kind` of the non-human rows after the last human row. */
+	modified_by_kinds: string[];
 	chain_ok: boolean;
 	/** The task's current title, description and live comments hash to `last_human_content`. */
 	content_matches: boolean;
@@ -290,6 +292,7 @@ const UNRECORDED: Provenance = {
 	last_human_seq: null,
 	last_human_content: null,
 	modified_by_non_human_since: false,
+	modified_by_kinds: [],
 	chain_ok: false,
 	content_matches: false,
 };
@@ -305,7 +308,13 @@ export const provenance = async (db: LocalDb, taskId: number): Promise<Provenanc
 	const created = rows.find((row) => row.entity === 'task' && row.field === 'create');
 	const humanSeqs = rows.filter((row) => row.author_kind === 'human').map((row) => Number(row.seq));
 	const lastHuman = humanSeqs.length ? Math.max(...humanSeqs) : null;
-	const modified = rows.some((row) => row.author_kind !== 'human' && (lastHuman === null || Number(row.seq) > lastHuman));
+	const kinds = [
+		...new Set(
+			rows
+				.filter((row) => row.author_kind !== 'human' && (lastHuman === null || Number(row.seq) > lastHuman))
+				.map((row) => row.author_kind),
+		),
+	].sort();
 	let humanContent: HumanContent | null = null;
 	if (lastHuman !== null) {
 		let title = '';
@@ -331,7 +340,8 @@ export const provenance = async (db: LocalDb, taskId: number): Promise<Provenanc
 		created_by: created ? created.author_kind : 'unrecorded',
 		last_human_seq: lastHuman,
 		last_human_content: humanContent,
-		modified_by_non_human_since: modified,
+		modified_by_non_human_since: kinds.length > 0,
+		modified_by_kinds: kinds,
 		chain_ok: chain.ok,
 		content_matches: matches,
 	};

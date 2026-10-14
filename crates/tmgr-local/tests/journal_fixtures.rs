@@ -136,7 +136,12 @@ fn run(fixture: &mut Value, update: bool) -> Value {
         if wanted != 0 {
             assert_eq!(answer.status as u64, wanted, "{}", op["url"]);
         } else {
-            assert!(answer.status < 400, "{} answered {}", op["url"], answer.status);
+            assert!(
+                answer.status < 400,
+                "{} answered {}",
+                op["url"],
+                answer.status
+            );
         }
         if op.get("writer").and_then(Value::as_str) == Some("rust") {
             let appended: Vec<Value> = journal(&conn).split_off(before);

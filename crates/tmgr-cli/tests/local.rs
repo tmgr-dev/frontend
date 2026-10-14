@@ -2,6 +2,7 @@ mod common;
 
 use assert_cmd::Command;
 use common::{assert_valid, dead_server, git, init_repo, path_with, stdout_json, text};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use rusqlite::Connection;
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -18,7 +19,7 @@ impl Local {
             tmp: tempfile::tempdir().unwrap(),
             server: dead_server(),
         };
-        local.workspace("personal", "Personal", 12);
+        local.workspace("personal", "Personal", 13);
         std::fs::write(
             local.root().parent().unwrap().join("profile.json"),
             r#"{"id":-1,"uuid":"u","name":"Owner","created_at":"2026-10-01T00:00:00Z"}"#,
@@ -95,6 +96,56 @@ impl Local {
             .env("TMGR_LOCAL_ROOT", self.root())
             .env("NO_COLOR", "1");
         c
+    }
+
+    fn terminal(&self, args: &[&str], extra_env: &[(&str, &str)]) -> i32 {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 100,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_tmgr"));
+        cmd.args(["--ws", "local:personal"]);
+        cmd.args(args);
+        cmd.env_clear();
+        cmd.cwd(self.tmp.path());
+        for (k, v) in [
+            ("HOME", self.tmp.path().to_path_buf()),
+            ("XDG_CONFIG_HOME", self.tmp.path().join("xdg")),
+            ("XDG_STATE_HOME", self.tmp.path().join("state")),
+            ("TMGR_CREDENTIAL_STORE", "file".into()),
+            ("TMGR_SERVER", self.server.clone().into()),
+            ("TMGR_LOCAL_ROOT", self.root()),
+            ("NO_COLOR", "1".into()),
+        ] {
+            cmd.env(k, v);
+        }
+        for (k, v) in extra_env {
+            cmd.env(k, v);
+        }
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        std::thread::spawn(move || {
+            let mut sink = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut reader, &mut sink);
+        });
+        let status = child.wait().unwrap();
+        status.exit_code() as i32
+    }
+
+    fn journal(&self) -> Vec<(String, String, String)> {
+        let db = self.db("personal");
+        let mut stmt = db
+            .prepare("SELECT field, author_kind, source FROM edit_journal ORDER BY seq")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect()
     }
 
     fn run(&self, args: &[&str]) -> std::process::Output {
@@ -271,7 +322,7 @@ fn notes_become_pages_that_sync_as_markdown() {
 #[test]
 fn a_newer_schema_is_refused_and_auth_stays_with_the_cloud() {
     let local = Local::new();
-    local.workspace("future", "Future", 13);
+    local.workspace("future", "Future", 14);
     let out = local
         .cmd()
         .args(["--ws", "local:future", "task", "list"])
@@ -518,4 +569,71 @@ fn local_tracked_time_is_reported_as_unavailable() {
     }
     let status = local.json(&["status"]);
     assert_eq!(status["data"]["today"], Value::Null);
+}
+
+const AGENT_MARKERS: [&str; 7] = [
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "TMGR_AGENT_SESSION",
+    "TMGR_RUN_TOKEN",
+    "TMGR_RUN_ID",
+];
+
+fn row(field: &str, kind: &str, source: &str) -> (String, String, String) {
+    (field.into(), kind.into(), source.into())
+}
+
+#[test]
+fn a_cli_write_without_a_terminal_is_never_human() {
+    let local = Local::new();
+    let out = local.run(&["--json", "add", "Piped task", "-p", "WK"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert_eq!(local.journal(), vec![row("create", "unattended", "cli")]);
+}
+
+#[test]
+fn a_cli_write_in_a_terminal_is_the_owner() {
+    let local = Local::new();
+    assert_eq!(local.terminal(&["add", "Typed task", "-p", "WK"], &[]), 0);
+    assert_eq!(local.journal(), vec![row("create", "human", "cli_tty")]);
+}
+
+#[test]
+fn a_terminal_inside_an_agent_session_is_not_the_owner() {
+    for marker in AGENT_MARKERS {
+        let local = Local::new();
+        assert_eq!(
+            local.terminal(&["add", "Agent in a pty", "-p", "WK"], &[(marker, "1")]),
+            0,
+            "{marker}"
+        );
+        assert_eq!(
+            local.journal(),
+            vec![row("create", "unattended", "cli")],
+            "{marker}"
+        );
+    }
+}
+
+#[test]
+fn a_schema_12_workspace_still_works_and_records_nothing() {
+    let local = Local::new();
+    local.workspace("old", "Old", 12);
+    local
+        .db("old")
+        .execute_batch("DROP TABLE edit_journal")
+        .unwrap();
+    let out = local
+        .cmd()
+        .args(["--ws", "local:old", "--json", "add", "Old task", "-p", "WK"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let tasks: i64 = local
+        .db("old")
+        .query_row("SELECT COUNT(*) FROM tasks", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(tasks, 1);
 }

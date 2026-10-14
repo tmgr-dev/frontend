@@ -1,6 +1,5 @@
 use crate::rules::{workspace_code, Rule};
 use serde_json::Value;
-use std::collections::BTreeMap;
 use tmgr_core::error::{Error, Result};
 use tmgr_ipc::api::{AuthorKind, BundleAuthor, BundleComment, BundlePage, TaskRef};
 
@@ -72,59 +71,19 @@ pub struct LocalSource {
     pub local_user_id: Option<i64>,
 }
 
-#[derive(Default)]
-struct Trail {
-    owner_created: bool,
-    foreign: Option<Author>,
-    latest: String,
-}
-
-impl LocalSource {
-    fn trails(workspace: &tmgr_local::LocalWorkspace, owner: &str) -> Result<BTreeMap<i64, Trail>> {
-        let conn = tmgr_local::open_read(&workspace.database)
-            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
-        let mut stmt = conn
-            .prepare(
-                "SELECT CAST(entity_id AS INTEGER), actor_kind, actor_id, method, at FROM activity_log
-                 WHERE entity = 'tasks' AND status < 400 AND entity_id IS NOT NULL
-                   AND method IN ('POST', 'PATCH', 'PUT', 'DELETE') ORDER BY id",
-            )
-            .map_err(|e| Error::internal(e.to_string()))?;
-        let rows = stmt
-            .query_map([], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, String>(4)?,
-                ))
-            })
-            .map_err(|e| Error::internal(e.to_string()))?;
-        let mut out: BTreeMap<i64, Trail> = BTreeMap::new();
-        for row in rows {
-            let (task, kind, actor, method, at) =
-                row.map_err(|e| Error::internal(e.to_string()))?;
-            let t = out.entry(task).or_default();
-            if at > t.latest {
-                t.latest = at;
-            }
-            if kind == "user" && actor == owner {
-                if method == "POST" {
-                    t.owner_created = true;
-                }
-            } else {
-                let found = if matches!(kind.as_str(), "persona" | "agent") {
-                    Author::Agent
-                } else {
-                    Author::Other
-                };
-                if t.foreign != Some(Author::Agent) {
-                    t.foreign = Some(found);
-                }
-            }
-        }
-        Ok(out)
+fn author_of(p: &tmgr_local::Provenance) -> Author {
+    if !p.chain_ok || p.created_by == "unrecorded" {
+        return Author::Unrecorded;
+    }
+    if p.is_human_written() {
+        return Author::Human;
+    }
+    let by = |kind: &str| p.modified_by_kinds.iter().any(|k| k == kind);
+    match p.created_by.as_str() {
+        "agent" => Author::Agent,
+        _ if by("agent") => Author::Agent,
+        "human" if !p.modified_by_non_human_since => Author::Unrecorded,
+        _ => Author::Other,
     }
 }
 
@@ -208,7 +167,10 @@ impl TaskSource for LocalSource {
                 }
             }
         };
-        let trails = Self::trails(&workspace, &owner)?;
+        let journal = tmgr_local::open_read(&workspace.database)
+            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
+        let chain = tmgr_local::verify_chain(&journal)
+            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
         let mut out = Vec::new();
         let mut complete = true;
         for status_id in status_ids {
@@ -269,15 +231,25 @@ impl TaskSource for LocalSource {
                     (Some(c), Some(n)) => format!("{c}-{n}"),
                     _ => format!("#{id}"),
                 };
-                let author = match trails.get(&id) {
-                    None => Author::Unrecorded,
-                    Some(t) => match t.foreign {
-                        Some(a) => a,
-                        None if t.owner_created && text(&full, "updated_at") <= t.latest => {
-                            Author::Human
-                        }
-                        None => Author::Unrecorded,
-                    },
+                let title = text(&full, "title");
+                let body = text(&full, "description");
+                let seen: Vec<(i64, String)> = comments_raw
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|c| Some((c.get("id")?.as_i64()?, text(c, "message"))))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let observed = tmgr_local::Observed {
+                    title: &title,
+                    description: &body,
+                    comments: seen.iter().map(|(i, m)| (*i, m.as_str())).collect(),
+                };
+                let author = match tmgr_local::provenance_in(&journal, id, Some(&observed), &chain)
+                {
+                    Ok(p) => author_of(&p),
+                    Err(_) => Author::Unrecorded,
                 };
                 out.push(Candidate {
                     task: TaskRef {
@@ -285,8 +257,8 @@ impl TaskSource for LocalSource {
                         task_id: id,
                     },
                     key,
-                    title: text(&full, "title"),
-                    body: text(&full, "description"),
+                    title,
+                    body,
                     author,
                     comments,
                     pages: Vec::new(),
