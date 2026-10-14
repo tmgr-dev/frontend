@@ -1760,11 +1760,10 @@ impl Runner {
         let result = self.spawn_session(
             &req,
             &cwd,
-            matcher,
             &id,
             (&sdir, &home),
             (bundle, dir, origin.map(|(o, _)| o), &mut installed),
-            (prof, extra),
+            (matcher, prof, extra),
         );
         if result.is_err() {
             if let Some(prior) = &installed {
@@ -1790,7 +1789,6 @@ impl Runner {
         self: &Arc<Self>,
         req: &CreateReq,
         cwd: &Path,
-        matcher: Option<Matcher>,
         id: &str,
         (sdir, home): (&Path, &Path),
         (bundle, dir, origin, installed): (
@@ -1799,7 +1797,7 @@ impl Runner {
             Option<&Origin>,
             &mut Option<bundle::Prior>,
         ),
-        (prof, extra): (Option<&Profile>, &RunExtra),
+        (matcher, prof, extra): (Option<Matcher>, Option<&Profile>, &RunExtra),
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;

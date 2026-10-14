@@ -422,6 +422,48 @@ fn credential_bytes(f: &ResolvedSecretFile) -> Result<Option<Vec<u8>>, String> {
     Ok(Some(buf))
 }
 
+fn write_new_below(home: &Path, rel: &Path, bytes: &[u8]) -> Result<(), String> {
+    let fail = |e: std::io::Error| format!("cannot write {}: {e}", home.join(rel).display());
+    let names: Vec<&OsStr> = rel
+        .components()
+        .map(|c| match c {
+            Component::Normal(n) => Ok(n),
+            _ => Err(std::io::Error::from(std::io::ErrorKind::InvalidInput)),
+        })
+        .collect::<Result<_, _>>()
+        .map_err(fail)?;
+    let Some((last, dirs)) = names.split_last() else {
+        return Err(fail(std::io::Error::from(std::io::ErrorKind::InvalidInput)));
+    };
+    let dir_flags = libc::O_RDONLY | libc::O_DIRECTORY;
+    let mut cur = openat_nofollow(libc::AT_FDCWD, home.as_os_str(), dir_flags).map_err(fail)?;
+    for name in dirs {
+        let c = CString::new(name.as_bytes())
+            .map_err(|_| fail(std::io::Error::from(std::io::ErrorKind::InvalidInput)))?;
+        let made = unsafe { libc::mkdirat(cur.as_raw_fd(), c.as_ptr(), 0o700) };
+        if made < 0 && std::io::Error::last_os_error().kind() != std::io::ErrorKind::AlreadyExists {
+            return Err(fail(std::io::Error::last_os_error()));
+        }
+        cur = openat_nofollow(cur.as_raw_fd(), name, dir_flags).map_err(fail)?;
+    }
+    let c = CString::new(last.as_bytes())
+        .map_err(|_| fail(std::io::Error::from(std::io::ErrorKind::InvalidInput)))?;
+    let fd = unsafe {
+        libc::openat(
+            cur.as_raw_fd(),
+            c.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600 as libc::c_uint,
+        )
+    };
+    if fd < 0 {
+        return Err(fail(std::io::Error::last_os_error()));
+    }
+    unsafe { File::from_raw_fd(fd) }
+        .write_all(bytes)
+        .map_err(fail)
+}
+
 pub fn apply_secret_files(
     files: &[ResolvedSecretFile],
     home: &Path,
@@ -435,22 +477,7 @@ pub fn apply_secret_files(
             ));
             continue;
         };
-        let dest = home.join(&f.to);
-        if let Some(parent) = dest.parent() {
-            DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(parent)
-                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
-        }
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&dest)
-            .and_then(|mut t| t.write_all(&bytes))
-            .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
+        write_new_below(home, &f.to, &bytes)?;
     }
     Ok(notes)
 }
@@ -825,22 +852,7 @@ pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<Vec<SeedRecord
         let Some(bytes) = seed_bytes(seed)? else {
             continue;
         };
-        let dest = home.join(&seed.to);
-        if let Some(parent) = dest.parent() {
-            DirBuilder::new()
-                .recursive(true)
-                .mode(0o700)
-                .create(parent)
-                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
-        }
-        OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&dest)
-            .and_then(|mut f| f.write_all(&bytes))
-            .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
+        write_new_below(home, &seed.to, &bytes)?;
         if seed.write_back {
             records.push(SeedRecord {
                 root: seed.root.clone(),
@@ -1178,6 +1190,40 @@ file = "~/.config/tmgr/agents/p.env"
         );
         let r = resolve(&p, &h.path, &[]).unwrap();
         assert_eq!(apply_seeds(&r.seeds, &run_home).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_symlinked_directory_in_the_run_home_stops_seed_writes() {
+        let h = home();
+        put(&h.path.join(".a.json"), r#"{"t":"fake-tok"}"#, 0o600);
+        let outside = h.path.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let run_home = h.path.join("run");
+        std::fs::create_dir(&run_home).unwrap();
+        symlink(&outside, run_home.join(".d")).unwrap();
+        let p = profile("[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".d/auth.json\"\n");
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        let e = apply_seeds(&r.seeds, &run_home).unwrap_err();
+        assert!(!e.contains("fake-tok"), "{e}");
+        assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+
+        let nested = run_home.join(".n");
+        std::fs::create_dir(&nested).unwrap();
+        symlink(&outside, nested.join("deep")).unwrap();
+        let p = profile("[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".n/deep/x/auth.json\"\n");
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        assert!(apply_seeds(&r.seeds, &run_home).is_err());
+        assert!(std::fs::read_dir(&outside).unwrap().next().is_none());
+
+        let p = profile("[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".ok/a/auth.json\"\n");
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        apply_seeds(&r.seeds, &run_home).unwrap();
+        let meta = std::fs::metadata(run_home.join(".ok/a/auth.json")).unwrap();
+        assert_eq!(meta.mode() & 0o777, 0o600);
+        assert_eq!(
+            std::fs::metadata(run_home.join(".ok/a")).unwrap().mode() & 0o777,
+            0o700
+        );
     }
 
     #[test]
