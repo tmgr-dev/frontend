@@ -12,6 +12,7 @@ const ANCHORS: Record<string, string[]> = {
 	'components/tasks/TasksMultipleActionsModal.vue': ['export.panel', 'export.download'],
 	'components/general/FiltersBoard.vue': ['statuses.editor'],
 	'pages/ProjectCategoryList.vue': ['categories.create', 'categories.row'],
+	'pages/CategoriesSettingsPage.vue': ['categories.create', 'categories.row'],
 	'pages/WorkspaceFilesPage.vue': ['files.list'],
 };
 

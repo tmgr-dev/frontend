@@ -65,5 +65,9 @@ export const updateCategorySettings = async (
 		data: { data },
 	} = await $axios.put(`project_categories/${categoryId}/settings`, payload);
 
+	requestCache.invalidate('categories');
+
+	requestCache.invalidate(/^categories-workspace-/);
+
 	return data.settings;
 };
