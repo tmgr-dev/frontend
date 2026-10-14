@@ -192,6 +192,7 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
     let bin = std::env::current_exe()?;
     let from = grammar::parse_cidr_list(&a.from)?;
     let check = match std::env::var("USER").ok().filter(|u| !u.is_empty()) {
+        Some(user) if !a.as_jump_for.is_empty() => sshd::check_jump(&user, &paths.home, &from),
         Some(user) => sshd::check(&user, &paths.home, &from),
         None => sshd::Check {
             verdict: Verdict::Unverified("USER is not set".into()),

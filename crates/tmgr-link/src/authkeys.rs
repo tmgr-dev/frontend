@@ -131,6 +131,9 @@ pub fn build_jump_line(
     let permit: String = dests
         .iter()
         .map(|d| format!("permitopen=\"{d}\""))
+        .chain(std::iter::once(
+            "permitlisten=\"never.invalid:1\"".to_string(),
+        ))
         .collect::<Vec<_>>()
         .join(",");
     let line = base.replacen(

@@ -256,6 +256,55 @@ fn pty_tmgr(m: &Machine, args: &[&str], typed: &str) -> (u32, String) {
     (status.exit_code(), text.join().unwrap_or_default())
 }
 
+fn probe(
+    lead: &Machine,
+    keyfile: &Path,
+    port: u16,
+    extra: &[&str],
+    user: &str,
+) -> (Option<i32>, String, String) {
+    let mut cmd = Command::new("ssh");
+    cmd.args(["-F", "none", "-T", "-a", "-x"]);
+    for o in [
+        "BatchMode=yes".to_string(),
+        "IdentitiesOnly=yes".into(),
+        "IdentityAgent=none".into(),
+        format!("IdentityFile={}", keyfile.display()),
+        format!("UserKnownHostsFile={}", lead.paths.known_hosts().display()),
+        "GlobalKnownHostsFile=none".into(),
+        "HostKeyAlias=tmgr-link-hop".into(),
+        "StrictHostKeyChecking=yes".into(),
+        "ExitOnForwardFailure=yes".into(),
+        "ConnectTimeout=8".into(),
+    ] {
+        cmd.args(["-o", &o]);
+    }
+    cmd.args(["-p", &port.to_string()]).args(extra);
+    cmd.arg(format!("{user}@127.0.0.1"));
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = cmd.spawn().unwrap();
+    let started = std::time::Instant::now();
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            break;
+        }
+        if started.elapsed() > std::time::Duration::from_secs(10) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return (None, String::new(), String::new());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let out = child.wait_with_output().unwrap();
+    (
+        out.status.code(),
+        String::from_utf8_lossy(&out.stdout).to_string(),
+        String::from_utf8_lossy(&out.stderr).to_string(),
+    )
+}
+
 struct Sshd(Child);
 
 impl Drop for Sshd {
@@ -383,7 +432,7 @@ fn start_sshd(root: &Path, name: &str, port: u16, fm: &FollowerMachine) -> Sshd 
     std::fs::write(
         &cfg,
         format!(
-            "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nPidFile {}\nAuthorizedKeysFile {}\nStrictModes no\nUsePAM no\nPermitUserEnvironment no\nAllowUsers {me}\nPubkeyAuthentication yes\nPasswordAuthentication no\nAllowTcpForwarding yes\nSetEnv XDG_CONFIG_HOME={} XDG_STATE_HOME={} TMGR_RUNNER_DIR={}\n",
+            "Port {port}\nListenAddress 127.0.0.1\nHostKey {}\nPidFile {}\nAuthorizedKeysFile {}\nStrictModes no\nUsePAM no\nPermitUserEnvironment no\nAllowUsers {me}\nPubkeyAuthentication yes\nPasswordAuthentication no\nAllowTcpForwarding yes\nAllowStreamLocalForwarding no\nSetEnv XDG_CONFIG_HOME={} XDG_STATE_HOME={} TMGR_RUNNER_DIR={}\n",
             host_key.display(),
             root.join(format!("{name}.pid")).display(),
             fm.authorized_keys.display(),
@@ -464,6 +513,62 @@ fn leader_reaches_a_follower_through_a_pinned_jump_sshd() {
         other => panic!("a jump enrollment must not run anything: {other:?}"),
     }
     drop(jc);
+
+    let keyfile = leader::materialise(&lead.cred()).unwrap();
+    let sock = root.join("remote.sock");
+    let (code, _, err) = probe(
+        &lead,
+        &keyfile.path,
+        jump_port,
+        &["-N", "-R", "127.0.0.1:0:127.0.0.1:1"],
+        &me,
+    );
+    assert_eq!(
+        code,
+        Some(255),
+        "ssh -R must be refused by the jump key: {err}"
+    );
+    let (code, _, err) = probe(
+        &lead,
+        &keyfile.path,
+        jump_port,
+        &["-N", "-R", &format!("{}:127.0.0.1:1", sock.display())],
+        &me,
+    );
+    assert_eq!(code, Some(255), "remote streamlocal must be refused: {err}");
+    assert!(!sock.exists());
+    let other = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let other_port = other.local_addr().unwrap().port();
+    let (code, _, err) = probe(
+        &lead,
+        &keyfile.path,
+        jump_port,
+        &["-W", &format!("127.0.0.1:{other_port}")],
+        &me,
+    );
+    assert_ne!(code, Some(0));
+    assert!(
+        err.contains("administratively prohibited") || err.contains("forwarding failed"),
+        "{err}"
+    );
+    let (code, _, err) = probe(
+        &lead,
+        &keyfile.path,
+        jump_port,
+        &["-W", &format!("127.0.0.1:{target_port}")],
+        &me,
+    );
+    assert!(
+        !err.contains("prohibited"),
+        "the permitted destination works: {err}"
+    );
+    assert!(matches!(code, Some(0) | Some(255)), "{code:?} {err}");
+    let (_, out, _) = probe(&lead, &keyfile.path, jump_port, &["id"], &me);
+    assert!(
+        !out.contains("uid="),
+        "a session command runs the worker, not the shell: {out}"
+    );
+    drop(keyfile);
     let hop = jump::hop_for(&Store::load(&lead.paths).unwrap(), "hop").unwrap();
     let through =
         jump::scan_host_via(&lead.paths, &lead.cred(), &hop, "127.0.0.1", target_port).unwrap();

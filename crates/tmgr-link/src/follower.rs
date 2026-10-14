@@ -126,6 +126,14 @@ pub fn plan_trust(
         ))
         .hint("fix sshd_config (PermitUserEnvironment no, PermitTunnel no, a minimal AcceptEnv, no ForceCommand or AuthorizedKeysCommand for this user)"));
     }
+    if !input.jump_for.is_empty() {
+        if let Verdict::Unverified(why) = &verdict {
+            return Err(crate::forbidden(format!(
+                "cannot verify that sshd allows only local forwarding for this user: {why}"
+            ))
+            .hint(crate::sshd::JUMP_GUIDANCE));
+        }
+    }
     let target = paths.authorized_keys();
     if matches!(verdict, Verdict::Verified) && !authorized_keys_files.contains(&target) {
         return Err(crate::forbidden(format!(
@@ -703,6 +711,13 @@ mod tests {
         let plan = plan_trust(&f.paths, &inp, &f.bin, chk(&f)).unwrap();
         assert!(plan.line.starts_with("restrict,no-pty,port-forwarding,permitopen=\"db.example.com:22\",permitopen=\"192.0.2.7:2222\","));
         assert!(!plan.line.contains("no-port-forwarding"));
+        assert!(plan.line.contains("permitlisten=\"never.invalid:1\""));
+        let unverified = Check {
+            verdict: Verdict::Unverified("sshd -T failed".into()),
+            authorized_keys_files: vec![f.paths.authorized_keys()],
+        };
+        let refused = plan_trust(&f.paths, &inp, &f.bin, unverified).unwrap_err();
+        assert!(refused.message.contains("cannot verify"));
         assert!(plan.line.contains(" worker --link hop --enrollment "));
         apply_trust(&f.paths, &plan).unwrap();
         let store = Store::load(&f.paths).unwrap();
