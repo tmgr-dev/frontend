@@ -373,29 +373,30 @@ pub fn set_autosync(profile: &str, on: bool) -> io::Result<()> {
     )
 }
 
-pub fn stage(rec: &SeedRecord, runner_dir: &Path, session: &str) -> io::Result<(String, bool)> {
+pub fn stage(
+    rec: &SeedRecord,
+    runner_dir: &Path,
+    session: &str,
+) -> io::Result<(String, Option<String>)> {
     let label = rec.to.display();
     let copy = match read_regular(&rec.home, &rec.home.join(&rec.to)) {
         Ok((b, _)) => b,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            return Ok((
-                format!("{label}: session copy is gone, no candidate"),
-                false,
-            ))
+            return Ok((format!("{label}: session copy is gone, no candidate"), None))
         }
         Err(_) => {
             return Ok((
                 format!("{label}: no candidate: session copy is not a readable regular file"),
-                false,
+                None,
             ))
         }
     };
     let csha = sha256_hex(&copy);
     if csha == rec.sha {
-        return Ok((format!("{label}: unchanged, no candidate"), false));
+        return Ok((format!("{label}: unchanged, no candidate"), None));
     }
     let _lock = lock(runner_dir, &rec.source)?;
-    let reject = |why: &str| Ok((format!("{label}: no candidate: {why}"), false));
+    let reject = |why: &str| Ok((format!("{label}: no candidate: {why}"), None));
     let (src, _) = match read_regular(&rec.root, &rec.source) {
         Ok(r) => r,
         Err(e) if is_symlink_error(&e) => {
@@ -411,7 +412,7 @@ pub fn stage(rec: &SeedRecord, runner_dir: &Path, session: &str) -> io::Result<(
     if ssha == csha {
         return Ok((
             format!("{label}: unchanged, source already holds the session copy"),
-            false,
+            None,
         ));
     }
     if let Err(why) = check_copy(&copy, &src, &rec.same) {
@@ -439,7 +440,7 @@ pub fn stage(rec: &SeedRecord, runner_dir: &Path, session: &str) -> io::Result<(
             "{label}: refreshed login stored as a candidate; run `tmgr agents sync {}` to apply it",
             rec.profile
         ),
-        true,
+        Some(csha),
     ))
 }
 
@@ -504,8 +505,9 @@ pub fn summary(
     profile: &str,
     index: usize,
     now: u64,
-) -> io::Result<Vec<String>> {
+) -> io::Result<(Vec<String>, String)> {
     let (meta, copy) = read_candidate(runner_dir, profile, index)?;
+    let csha = sha256_hex(&copy);
     let mut out = vec![
         format!("source:    {}", clean(&shown(&meta.source, &meta.root))),
         format!(
@@ -516,13 +518,13 @@ pub fn summary(
     ];
     let Ok((src, _)) = read_regular(&meta.root, &meta.source) else {
         out.push("the original cannot be read now; nothing can be applied".into());
-        return Ok(out);
+        return Ok((out, csha));
     };
     let Ok((c, s)) = objects(&copy, &src) else {
         out.push(
             "the candidate or the original is not a JSON object; nothing can be applied".into(),
         );
-        return Ok(out);
+        return Ok((out, csha));
     };
     for p in &meta.same {
         out.push(format!(
@@ -532,7 +534,7 @@ pub fn summary(
         ));
     }
     let (Some(cmap), Some(smap)) = (c.as_object(), s.as_object()) else {
-        return Ok(out);
+        return Ok((out, csha));
     };
     let changed: Vec<String> = smap
         .iter()
@@ -564,23 +566,37 @@ pub fn summary(
     if sha256_hex(&src) != meta.source_sha {
         out.push("the original changed after the candidate was captured".into());
     }
-    Ok(out)
+    Ok((out, csha))
 }
 
 fn refuse(what: impl Into<String>) -> String {
     format!("{}; nothing was changed", what.into())
 }
 
-pub fn apply(runner_dir: &Path, profile: &str, index: usize) -> Result<String, String> {
-    let (meta, copy) = read_candidate(runner_dir, profile, index).map_err(|e| {
-        if e.kind() == io::ErrorKind::NotFound {
-            refuse(format!("no pending login for {profile}"))
-        } else {
-            refuse(format!("the candidate cannot be read: {e}"))
-        }
-    })?;
+pub fn apply(
+    runner_dir: &Path,
+    profile: &str,
+    index: usize,
+    reviewed_sha: &str,
+) -> Result<String, String> {
+    let load = || {
+        read_candidate(runner_dir, profile, index).map_err(|e| {
+            if e.kind() == io::ErrorKind::NotFound {
+                refuse(format!("no pending login for {profile}"))
+            } else {
+                refuse(format!("the candidate cannot be read: {e}"))
+            }
+        })
+    };
     let io_err = |e: io::Error| refuse(e.to_string());
+    let (meta, _) = load()?;
     let _lock = lock(runner_dir, &meta.source).map_err(io_err)?;
+    let (meta, copy) = load()?;
+    if sha256_hex(&copy) != reviewed_sha {
+        return Err(refuse(
+            "the candidate changed while you were reviewing it; run sync again",
+        ));
+    }
     let (Some(parent), Some(name)) = (meta.source.parent(), meta.source.file_name()) else {
         return Err(refuse("the original path is invalid"));
     };
@@ -662,8 +678,8 @@ pub fn finish(sdir: &Path) -> Vec<String> {
         match stage(rec, runner_dir, &id) {
             Ok((line, staged)) => {
                 out.push(line);
-                if staged && autosync_on(&rec.profile) {
-                    out.push(match apply(runner_dir, &rec.profile, rec.index) {
+                if let Some(sha) = staged.filter(|_| autosync_on(&rec.profile)) {
+                    out.push(match apply(runner_dir, &rec.profile, rec.index, &sha) {
                         Ok(done) => format!("{}: auto mode: {done}", rec.to.display()),
                         Err(e) => format!("{}: auto mode: not applied: {e}", rec.to.display()),
                     });
@@ -762,7 +778,10 @@ mod tests {
             fs::read_to_string(self.run.join("candidates/codex/0.json")).ok()
         }
         fn apply(&self) -> Result<String, String> {
-            apply(&self.run, "codex", 0)
+            let sha = summary(&self.run, "codex", 0, now_ms())
+                .map(|(_, sha)| sha)
+                .unwrap_or_default();
+            apply(&self.run, "codex", 0, &sha)
         }
         fn backup(&self) -> PathBuf {
             self.home.join(".codex/auth.json.tmgr-backup")
@@ -984,13 +1003,36 @@ mod tests {
     }
 
     #[test]
+    fn apply_refuses_a_candidate_replaced_after_it_was_reviewed() {
+        let old = doc(5, "old-rt", "acc");
+        let f = fx(&old);
+        f.set_copy(&doc(1, "reviewed-rt", "acc"));
+        f.run("s1");
+        let (_, reviewed) = summary(&f.run, "codex", 0, now_ms()).unwrap();
+        let dir = cdir(&f.run, "codex").unwrap();
+        let meta = read_meta(&dir, 0).unwrap();
+        store(
+            &f.run,
+            "codex",
+            0,
+            &meta,
+            doc(0, "swapped-rt", "acc").as_bytes(),
+        )
+        .unwrap();
+        let e = apply(&f.run, "codex", 0, &reviewed).unwrap_err();
+        assert!(e.contains("changed while you were reviewing"), "{e}");
+        assert_eq!(f.source_text(), old);
+        assert!(!f.backup().exists() && f.candidate().is_some());
+    }
+
+    #[test]
     fn the_summary_names_keys_and_timestamps_but_no_token_values() {
         let old_tok = concat!("old-", "refresh-FAKE1234");
         let new_tok = concat!("new-", "refresh-FAKE5678");
         let f = fx(&doc(5, old_tok, "acc"));
         f.set_copy(&doc(0, new_tok, "acc"));
         f.run("s1");
-        let text = summary(&f.run, "codex", 0, now_ms()).unwrap().join(
+        let text = summary(&f.run, "codex", 0, now_ms()).unwrap().0.join(
             "
 ",
         );

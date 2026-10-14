@@ -472,14 +472,18 @@ fn agent_apply(profile: &str) -> Result<i32> {
     }
     for (index, _) in list {
         println!("Refreshed {profile} login captured inside a session:");
+        let mut reviewed = String::new();
         match seedguard::summary(&cfg.dir, profile, index, now_ms()) {
-            Ok(lines) => lines.iter().for_each(|l| println!("  {l}")),
+            Ok((lines, sha)) => {
+                lines.iter().for_each(|l| println!("  {l}"));
+                reviewed = sha;
+            }
             Err(e) => println!("  the candidate cannot be read: {e}"),
         }
         if ask("Type apply to replace your file with it: ")? != "apply" {
             return Err(cancelled());
         }
-        let done = seedguard::apply(&cfg.dir, profile, index)
+        let done = seedguard::apply(&cfg.dir, profile, index, &reviewed)
             .map_err(|e| Error::new(Kind::Conflict, e))?;
         println!("{done}");
     }

@@ -258,46 +258,127 @@ pub fn render_credential(
     }
 }
 
+fn cstring(name: &OsStr) -> std::io::Result<CString> {
+    CString::new(name.as_bytes())
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))
+}
+
+fn locked_agents_dir(f: &ResolvedSecretFile) -> std::io::Result<(File, File, std::ffi::OsString)> {
+    let parent = f
+        .from
+        .parent()
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    let name = f
+        .from
+        .file_name()
+        .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))?
+        .to_os_string();
+    let dir = open_dir_below(&f.root, parent)?;
+    let mut lock_name = name.clone();
+    lock_name.push(".lock");
+    let c = cstring(&lock_name)?;
+    let fd = unsafe {
+        libc::openat(
+            dir.as_raw_fd(),
+            c.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600 as libc::c_uint,
+        )
+    };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    let lock = unsafe { File::from_raw_fd(fd) };
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok((dir, lock, name))
+}
+
+fn exists_at(dir: RawFd, name: &OsStr) -> std::io::Result<Option<bool>> {
+    let c = cstring(name)?;
+    let mut st: libc::stat = unsafe { std::mem::zeroed() };
+    if unsafe { libc::fstatat(dir, c.as_ptr(), &mut st, libc::AT_SYMLINK_NOFOLLOW) } == 0 {
+        return Ok(Some((st.st_mode & libc::S_IFMT) == libc::S_IFDIR));
+    }
+    let e = std::io::Error::last_os_error();
+    if e.kind() == std::io::ErrorKind::NotFound {
+        Ok(None)
+    } else {
+        Err(e)
+    }
+}
+
 pub fn write_credential(f: &ResolvedSecretFile, bytes: &[u8], replace: bool) -> Result<(), String> {
     let Some(parent) = f.from.parent() else {
         return Err("credential file has no parent directory".into());
     };
-    if !replace && std::fs::symlink_metadata(&f.from).is_ok() {
-        return Err(format!(
-            "{} already exists; use --replace to overwrite it",
-            f.from.display()
-        ));
-    }
     DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(parent)
         .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
-    let name = f.from.file_name().unwrap_or_default().to_string_lossy();
-    let tmp = parent.join(format!(".{name}.tmgr-{}", std::process::id()));
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&tmp)
-        .and_then(|mut t| t.write_all(bytes))
-        .and_then(|()| std::fs::rename(&tmp, &f.from))
-        .map_err(|e| {
-            let _ = std::fs::remove_file(&tmp);
-            format!("cannot write {}: {e}", f.from.display())
-        })
+    let fail = |e: std::io::Error| format!("cannot write {}: {e}", f.from.display());
+    let (dir, _lock, name) = locked_agents_dir(f).map_err(fail)?;
+    let dfd = dir.as_raw_fd();
+    if !replace && exists_at(dfd, &name).map_err(fail)?.is_some() {
+        return Err(format!(
+            "{} already exists; use --replace to overwrite it",
+            f.from.display()
+        ));
+    }
+    let mut tmp_name = std::ffi::OsString::from(".");
+    tmp_name.push(&name);
+    tmp_name.push(format!(".tmgr-{}", std::process::id()));
+    let tmp = cstring(&tmp_name).map_err(fail)?;
+    let dest = cstring(&name).map_err(fail)?;
+    let fd = unsafe {
+        libc::openat(
+            dfd,
+            tmp.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600 as libc::c_uint,
+        )
+    };
+    if fd < 0 {
+        return Err(fail(std::io::Error::last_os_error()));
+    }
+    let mut file = unsafe { File::from_raw_fd(fd) };
+    let done = file.write_all(bytes).and_then(|()| {
+        if unsafe { libc::renameat(dfd, tmp.as_ptr(), dfd, dest.as_ptr()) } < 0 {
+            Err(std::io::Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    });
+    done.map_err(|e| {
+        unsafe { libc::unlinkat(dfd, tmp.as_ptr(), 0) };
+        fail(e)
+    })
 }
 
 pub fn remove_credential(f: &ResolvedSecretFile) -> Result<bool, String> {
-    match std::fs::symlink_metadata(&f.from) {
-        Ok(m) if m.is_dir() => Err(format!("{} is a directory", f.from.display())),
-        Ok(_) => std::fs::remove_file(&f.from)
-            .map(|()| true)
-            .map_err(|e| format!("cannot remove {}: {e}", f.from.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(format!("cannot remove {}: {e}", f.from.display())),
+    let fail = |e: std::io::Error| format!("cannot remove {}: {e}", f.from.display());
+    let (dir, _lock, name) = match locked_agents_dir(f) {
+        Ok(r) => r,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(fail(e)),
+    };
+    let dfd = dir.as_raw_fd();
+    match exists_at(dfd, &name).map_err(fail)? {
+        None => return Ok(false),
+        Some(true) => return Err(format!("{} is a directory", f.from.display())),
+        Some(false) => {}
     }
+    let c = cstring(&name).map_err(fail)?;
+    if unsafe { libc::unlinkat(dfd, c.as_ptr(), 0) } < 0 {
+        let e = std::io::Error::last_os_error();
+        if e.kind() == std::io::ErrorKind::NotFound {
+            return Ok(false);
+        }
+        return Err(fail(e));
+    }
+    Ok(true)
 }
 
 fn credential_bytes(f: &ResolvedSecretFile) -> Result<Option<Vec<u8>>, String> {
@@ -1351,9 +1432,57 @@ file = "~/.config/tmgr/agents/p.env"
         assert_eq!(std::fs::read(&f.from).unwrap(), b"two");
         assert_eq!(
             std::fs::read_dir(f.from.parent().unwrap()).unwrap().count(),
-            1
+            2
         );
         assert!(remove_credential(f).unwrap());
         assert!(!remove_credential(f).unwrap());
+    }
+
+    #[test]
+    fn concurrent_non_replace_logins_let_exactly_one_win_and_logout_stays_consistent() {
+        let h = home();
+        let r = resolve(&cred_profile("template = \"raw\"\n"), &h.path, &[]).unwrap();
+        let f = std::sync::Arc::new(r.secret_files[0].clone());
+        for round in 0..20 {
+            let _ = remove_credential(&f);
+            let wins: usize = (0..8)
+                .map(|n| {
+                    let f = f.clone();
+                    std::thread::spawn(move || {
+                        write_credential(&f, format!("login-{n}").as_bytes(), false).is_ok()
+                    })
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|t| usize::from(t.join().unwrap()))
+                .sum();
+            assert_eq!(wins, 1, "round {round}: not exactly one login won");
+            assert!(std::fs::read(&f.from).unwrap().starts_with(b"login-"));
+        }
+        assert!(remove_credential(&f).unwrap());
+        let writers: Vec<_> = (0..4)
+            .map(|n| {
+                let f = f.clone();
+                std::thread::spawn(move || {
+                    (0..50)
+                        .filter(|_| {
+                            write_credential(&f, format!("login-{n}").as_bytes(), false).is_ok()
+                        })
+                        .count()
+                })
+            })
+            .collect();
+        let remover = {
+            let f = f.clone();
+            std::thread::spawn(move || (0..200).filter(|_| remove_credential(&f).unwrap()).count())
+        };
+        let created: usize = writers.into_iter().map(|t| t.join().unwrap()).sum();
+        let removed = remover.join().unwrap();
+        let present = usize::from(f.from.exists());
+        assert_eq!(
+            created,
+            removed + present,
+            "logins and logouts do not add up"
+        );
     }
 }
