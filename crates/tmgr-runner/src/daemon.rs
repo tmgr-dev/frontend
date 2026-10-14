@@ -5,6 +5,7 @@ use crate::login;
 use crate::profile::{self, Matcher, ProfileSet};
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
+use crate::seedguard;
 use crate::t0::{self, Detector};
 use crate::trust;
 use crate::wire::{
@@ -321,6 +322,15 @@ fn write_meta(dir: &Path, meta: &Meta) {
 const REVOKING_MARK: &str = "revoking";
 const REVOKE_WAIT: Duration = Duration::from_secs(2);
 
+fn finish_seeds(sdir: &Path, id: &str) {
+    let (sdir, id) = (sdir.to_path_buf(), id.to_string());
+    thread::spawn(move || {
+        for line in seedguard::finish(&sdir) {
+            log(&format!("session {id}: {line}"));
+        }
+    });
+}
+
 fn terminate(s: &Session) -> bool {
     s.mark_revoking();
     let confirmed = s.kill_via_shim(Instant::now() + REVOKE_WAIT);
@@ -603,6 +613,7 @@ impl Session {
             }
             out.extend(changed)
         });
+        finish_seeds(&self.dir, &self.id);
     }
 
     fn on_exit_report(&self, e: &ExitInfo) {
@@ -1491,7 +1502,8 @@ impl Runner {
         for n in &launch.notes {
             log(&format!("session {id}: {n}"));
         }
-        login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        let records = login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        seedguard::save(sdir, &records).map_err(internal)?;
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
             argv: launch.argv,
@@ -1633,6 +1645,9 @@ impl Runner {
             return Err(api(ErrorCode::Busy, "only exited sessions can be removed"));
         }
         s.shim_msg(&ToShim::Reap);
+        for line in seedguard::finish(&self.sdir(id)) {
+            log(&format!("session {id}: {line}"));
+        }
         lock(&self.sessions).remove(id);
         let _ = fs::remove_dir_all(self.sdir(id));
         let _ = fs::remove_dir_all(self.cfg.homes.join(id));
@@ -1716,6 +1731,9 @@ impl Runner {
                 session.load_dead();
                 log(&format!("session {id} has no live shim ({:?})", e.kind()));
             }
+        }
+        if session.is_exited() {
+            finish_seeds(&sdir, id);
         }
         lock(&self.sessions).insert(id.to_string(), session);
         Ok(())

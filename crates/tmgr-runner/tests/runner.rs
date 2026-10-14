@@ -2530,3 +2530,93 @@ fn a_link_run_waits_for_the_trust_fence_and_gives_up_while_it_is_held() {
     assert_eq!(unsafe { libc::flock(fd, libc::LOCK_UN) }, 0);
     assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
 }
+
+fn guard_doc(days_ago: i64, refresh: &str) -> String {
+    json!({
+        "auth_mode": "chatgpt",
+        "last_refresh": (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339(),
+        "tokens": {"account_id": "acc", "refresh_token": refresh},
+    })
+    .to_string()
+}
+
+fn guard_fx(initial: &str, agent_body: &str) -> LoginFx {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(home.join(".codex/auth.json"), initial).unwrap();
+    fs::set_permissions(
+        home.join(".codex/auth.json"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let script = h.script("guard-agent.sh", agent_body);
+    fs::write(
+        h.agents.join("guard.toml"),
+        format!(
+            "id = \"guard\"\nname = \"guard\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [[sandbox.seed]]\nfrom = \"~/.codex/auth.json\"\nto = \".codex/auth.json\"\n\
+             fresh = {{ json_key = \"last_refresh\", max_age_days = 7 }}\n\
+             write_back = true\nsame = [\"tokens.account_id\", \"auth_mode\"]\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    LoginFx { h, home }
+}
+
+#[test]
+fn a_session_that_refreshes_the_seeded_login_writes_it_back_on_exit() {
+    if !sessions_available() {
+        return;
+    }
+    let old = guard_doc(5, "old-rt");
+    let new = guard_doc(0, "new-rt");
+    let mut fx = guard_fx(
+        &old,
+        &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
+    );
+    fx.h.start(5000);
+    Client::connect_as(&fx.h.run, "desktop")
+        .unwrap()
+        .create_run(fx.h.run_req("guard"))
+        .unwrap();
+    let source = fx.home.join(".codex/auth.json");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while fs::read_to_string(&source).unwrap() != new {
+        assert!(Instant::now() < deadline, "the login was not written back");
+        thread::sleep(Duration::from_millis(50));
+    }
+    let backup = fx.home.join(".codex/auth.json.tmgr-backup");
+    assert_eq!(fs::read_to_string(&backup).unwrap(), old);
+    assert_eq!(
+        fs::metadata(&backup).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        fs::metadata(&source).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}
+
+#[test]
+fn a_stale_seeded_login_refuses_the_session_with_a_refresh_hint() {
+    if !sessions_available() {
+        return;
+    }
+    let stale = guard_doc(9, "stale-rt");
+    let mut fx = guard_fx(&stale, "exit 0\n");
+    fx.h.start(5000);
+    let e = err_text(
+        Client::connect_as(&fx.h.run, "desktop")
+            .unwrap()
+            .create_run(fx.h.run_req("guard")),
+    );
+    assert!(
+        e.contains("due for a refresh") && e.contains("~/.codex/auth.json"),
+        "{e}"
+    );
+    assert!(!e.contains("stale-rt"));
+    assert!(fx.h.client().list().unwrap().is_empty());
+}

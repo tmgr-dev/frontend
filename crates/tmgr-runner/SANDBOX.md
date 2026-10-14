@@ -69,6 +69,21 @@ Claude Code on macOS keeps its login in the Keychain, which the sandbox does not
 creates it). Codex keeps its login in `~/.codex/auth.json`, which its profile seeds; the owner's `config.toml` and
 `~/.claude/settings.json` (hooks, MCP servers) are never seeded.
 
+Codex rotates its refresh token when `last_refresh` in `auth.json` is about 8 days old, and a rotation inside a session
+would leave the owner's original file with a token the server no longer accepts. A seed can therefore declare
+`fresh = { json_key, max_age_days }`: the session is refused (with a hint to run the agent once in a normal terminal)
+when that timestamp is missing, unreadable or older than the limit. `write_back = true` copies the session's file back
+to the source when the agent exits (also found exited after a runner restart, and on `sessions remove`), under an
+exclusive lock per source path. The runner writes back only if the copy is a JSON object that keeps every top-level key
+of the source and has equal values at every dotted path in `same` (the codex profile pins `tokens.account_id` and
+`auth_mode`); if the source changed in the meantime, only a copy with a strictly newer `fresh` timestamp wins. The
+previous source is kept as `<name>.tmgr-backup` next to it (0600, single rolling copy). A rejected or superseded copy
+is kept in `<runner dir>/seed-backups/`. `write_back` cannot be combined with `json_keys`.
+
+Residual risk: an agent can still corrupt the owner's Codex login with garbage of the same account that passes these
+checks (restore it from `auth.json.tmgr-backup`), and while a session holds rotated tokens the owner's own `codex` may
+fail until the session exits.
+
 ## Refused working directories
 
 `/`, the real home, any ancestor of the real home, anything equal to, containing or inside a deny-list path, the

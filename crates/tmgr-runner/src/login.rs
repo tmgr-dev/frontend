@@ -1,7 +1,8 @@
-use crate::profile::Profile;
+use crate::profile::{Fresh, Profile};
 use crate::sandbox::{
     canon_lossy, env_name_refused, home_deny_paths, overlaps, protected_forms, Grants,
 };
+use crate::seedguard::{self, SeedRecord};
 use std::collections::{BTreeMap, VecDeque};
 use std::ffi::{CString, OsStr};
 use std::fs::{DirBuilder, File, OpenOptions};
@@ -11,7 +12,7 @@ use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
 use std::path::{Component, Path, PathBuf};
 
-const MAX_SEED_BYTES: u64 = 1 << 20;
+pub(crate) const MAX_SEED_BYTES: u64 = 1 << 20;
 const MAX_SECRETS_BYTES: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,6 +21,11 @@ pub struct ResolvedSeed {
     pub from: PathBuf,
     pub to: PathBuf,
     pub json_keys: Option<Vec<String>>,
+    pub fresh: Option<Fresh>,
+    pub write_back: bool,
+    pub same: Vec<String>,
+    pub decl: String,
+    pub agent: String,
 }
 
 #[derive(Debug, Default)]
@@ -134,11 +140,31 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
         let from = allowed("seed source", &s.from)?;
         let to = PathBuf::from(&s.to);
         plain_relative("seed destination", &to)?;
+        if s.write_back && s.json_keys.is_some() {
+            return Err(format!(
+                "seed {:?}: write_back and json_keys cannot be combined",
+                s.from
+            ));
+        }
+        if s.fresh
+            .as_ref()
+            .is_some_and(|f| f.json_key.is_empty() || f.max_age_days == 0)
+        {
+            return Err(format!("seed {:?}: invalid fresh rule", s.from));
+        }
+        if s.same.iter().any(|p| p.split('.').any(str::is_empty)) {
+            return Err(format!("seed {:?}: invalid same path", s.from));
+        }
         out.seeds.push(ResolvedSeed {
             root: home.clone(),
             from,
             to,
             json_keys: s.json_keys.clone(),
+            fresh: s.fresh.clone(),
+            write_back: s.write_back,
+            same: s.same.clone(),
+            decl: s.from.clone(),
+            agent: p.command.first().cloned().unwrap_or_else(|| p.id.clone()),
         });
     }
     if let Some(f) = &p.secrets.file {
@@ -284,7 +310,7 @@ fn openat_nofollow(dir: RawFd, name: &OsStr, flags: libc::c_int) -> std::io::Res
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
+pub(crate) fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
     let names: Vec<&OsStr> = match path.strip_prefix(root) {
         Ok(rel) => rel
             .components()
@@ -308,7 +334,7 @@ fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
     openat_nofollow(dir.as_raw_fd(), last, libc::O_RDONLY | libc::O_NONBLOCK)
 }
 
-fn is_symlink_error(e: &std::io::Error) -> bool {
+pub(crate) fn is_symlink_error(e: &std::io::Error) -> bool {
     matches!(e.raw_os_error(), Some(libc::ELOOP | libc::ENOTDIR))
 }
 
@@ -467,6 +493,9 @@ fn seed_bytes(seed: &ResolvedSeed) -> Result<Option<Vec<u8>>, String> {
             seed.from.display()
         ));
     }
+    if let Some(rule) = &seed.fresh {
+        seedguard::check_fresh(&buf, rule, chrono::Utc::now(), &seed.agent, &seed.decl)?;
+    }
     let Some(keys) = &seed.json_keys else {
         return Ok(Some(buf));
     };
@@ -485,7 +514,8 @@ fn seed_bytes(seed: &ResolvedSeed) -> Result<Option<Vec<u8>>, String> {
         .map_err(|e| e.to_string())
 }
 
-pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<(), String> {
+pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<Vec<SeedRecord>, String> {
+    let mut records = Vec::new();
     for seed in seeds {
         let Some(bytes) = seed_bytes(seed)? else {
             continue;
@@ -506,8 +536,19 @@ pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<(), String> {
             .open(&dest)
             .and_then(|mut f| f.write_all(&bytes))
             .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
+        if seed.write_back {
+            records.push(SeedRecord {
+                root: seed.root.clone(),
+                source: seed.from.clone(),
+                home: home.to_path_buf(),
+                to: seed.to.clone(),
+                sha: seedguard::sha256_hex(&bytes),
+                json_key: seed.fresh.as_ref().map(|f| f.json_key.clone()),
+                same: seed.same.clone(),
+            });
+        }
     }
-    Ok(())
+    Ok(records)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -810,6 +851,73 @@ file = "~/.config/tmgr/agents/p.env"
             warnings.iter().all(|w| !w.contains("built-in")),
             "{warnings:?}"
         );
+    }
+
+    #[test]
+    fn guard_options_parse_and_reach_the_resolved_seed() {
+        let h = home();
+        put(&h.path.join(".a.json"), "{}", 0o600);
+        let p = profile(
+            "[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".a.json\"\nfresh = { json_key = \"last_refresh\", max_age_days = 7 }\nwrite_back = true\nsame = [\"tokens.account_id\"]\n",
+        );
+        let s = &resolve(&p, &h.path, &[]).unwrap().seeds[0];
+        assert_eq!(s.fresh.as_ref().unwrap().max_age_days, 7);
+        assert!(s.write_back);
+        assert_eq!(s.same, ["tokens.account_id"]);
+    }
+
+    #[test]
+    fn write_back_with_json_keys_is_rejected() {
+        let h = home();
+        let p = profile(
+            "[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".a.json\"\nwrite_back = true\njson_keys = [\"a\"]\n",
+        );
+        let e = resolve(&p, &h.path, &[]).unwrap_err();
+        assert!(e.contains("write_back") && e.contains("json_keys"), "{e}");
+    }
+
+    #[test]
+    fn the_codex_profile_guards_its_login() {
+        let (set, warnings) = ProfileSet::load(None);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let seed = &set.get("codex").unwrap().sandbox.seed[0];
+        assert!(seed.write_back && seed.fresh.is_some());
+        assert_eq!(seed.same, ["tokens.account_id", "auth_mode"]);
+    }
+
+    #[test]
+    fn a_stale_login_refuses_the_seed_and_only_write_back_seeds_are_recorded() {
+        let h = home();
+        let old = (chrono::Utc::now() - chrono::Duration::days(9)).to_rfc3339();
+        let recent = (chrono::Utc::now() - chrono::Duration::days(1)).to_rfc3339();
+        put(
+            &h.path.join(".a.json"),
+            &format!(r#"{{"last_refresh":"{old}","t":"fake-tok"}}"#),
+            0o600,
+        );
+        let p = profile(
+            "[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".a.json\"\nfresh = { json_key = \"last_refresh\", max_age_days = 7 }\n",
+        );
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        let run_home = h.path.join("run");
+        std::fs::create_dir(&run_home).unwrap();
+        let e = apply_seeds(&r.seeds, &run_home).unwrap_err();
+        assert!(
+            e.contains("due for a refresh") && !e.contains("fake-tok"),
+            "{e}"
+        );
+        assert!(!run_home.join(".a.json").exists());
+        put(
+            &h.path.join(".a.json"),
+            &format!(r#"{{"last_refresh":"{recent}"}}"#),
+            0o600,
+        );
+        assert!(apply_seeds(&r.seeds, &run_home).unwrap().is_empty());
+        let p = profile(
+            "[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".b.json\"\nwrite_back = true\n",
+        );
+        let r = resolve(&p, &h.path, &[]).unwrap();
+        assert_eq!(apply_seeds(&r.seeds, &run_home).unwrap().len(), 1);
     }
 
     #[test]
