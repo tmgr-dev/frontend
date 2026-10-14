@@ -89,12 +89,12 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await expect(page.getByText('Written offline').first()).toBeVisible();
   await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Create subcategory' }).click();
-  await expect(page).toHaveURL(/\/local-personal\/categories\/1\/create$/);
-  await expect(page.getByText('Parent category').locator('..')).toContainText('Parent');
-  await expect(page.getByText('Parent category').locator('..')).not.toContainText('Select');
+  await expect(page).toHaveURL(/\/local-personal\/categories\?create=1$/);
+  await expect(page.getByRole('combobox', { name: 'Parent' })).toHaveText('Parent');
   await page.getByPlaceholder('Name').fill('Fresh child');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page).toHaveURL(/\/local-personal\/categories\/3\/children$/);
+  await expect(page).toHaveURL(/\/local-personal\/categories\?category=3$/);
+  await expect(page.getByRole('heading', { name: 'Fresh child', level: 2 })).toBeVisible();
   expect(
     (await shell('local_db_select', { code: 'personal', sql: 'SELECT parent_id FROM categories WHERE id = 3', params: [] }))[0]
       .parent_id,

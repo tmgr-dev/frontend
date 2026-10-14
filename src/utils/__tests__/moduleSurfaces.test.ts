@@ -98,9 +98,9 @@ describe('surface wiring', () => {
 		expect(read('router/routes.js')).toMatch(/gatedPage\(\s*'task\.files'/);
 	});
 
-	it('gates the category form routes', () => {
-		expect(read('router/routes.js')).toMatch(
-			/ProjectCategoryForm = gatedPage\(\s*'categories'/,
+	it('gates the categories settings page behind the categories module', () => {
+		expect(read('pages/CategoriesSettingsPage.vue')).toMatch(
+			/<FeatureGate[^>]*feature-key="categories"/,
 		);
 	});
 });
