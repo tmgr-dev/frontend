@@ -28,3 +28,8 @@ blocked = [
   '(?i)waiting for user confirmation',
 ]
 idle = []
+
+[permission_modes]
+ask = ["--approval-mode", "default"]
+accept-edits = ["--approval-mode", "auto_edit"]
+plan = ["--approval-mode", "plan"]

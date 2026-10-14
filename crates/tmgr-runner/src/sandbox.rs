@@ -20,6 +20,7 @@ pub struct SandboxSpec {
 #[derive(Default)]
 pub struct Grants {
     pub extra_read: Vec<PathBuf>,
+    pub objects_ro: Vec<PathBuf>,
     pub deny: Vec<PathBuf>,
     pub trusted_env_pass: Vec<String>,
     pub env: Vec<(String, String)>,
@@ -419,6 +420,17 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
         if let Some(d) = deny.iter().find(|d| overlaps(&c, d)) {
             return Err(format!(
                 "profile read path {} overlaps the protected path {}",
+                c.display(),
+                d.display()
+            ));
+        }
+        push_unique(&mut read, c);
+    }
+    for objects in &spec.grants.objects_ro {
+        let c = canon_lossy(objects);
+        if let Some(d) = deny.iter().find(|d| overlaps(&c, d)) {
+            return Err(format!(
+                "object directory {} overlaps the protected path {}",
                 c.display(),
                 d.display()
             ));
@@ -1081,6 +1093,26 @@ mod tests {
 
         let mut f = fx();
         f.spec.grants.extra_read = vec![f.spec.real_home.join(".ssh/x")];
+        assert!(refusal(&f).contains("protected"));
+    }
+
+    #[test]
+    fn object_directories_become_read_only_roots_and_cannot_touch_the_deny_list() {
+        let mut f = fx();
+        let objects = f.spec.real_home.join("repo/.git/objects");
+        fs::create_dir_all(&objects).unwrap();
+        f.spec.grants.objects_ro = vec![objects.clone()];
+        let pl = plan(&f.spec).unwrap();
+        let objects = objects.canonicalize().unwrap();
+        assert!(pl.paths.read.contains(&objects));
+        assert!(!pl.paths.write.contains(&objects));
+        assert!(!pl
+            .paths
+            .read
+            .contains(&objects.parent().unwrap().to_path_buf()));
+
+        let mut f = fx();
+        f.spec.grants.objects_ro = vec![f.spec.real_home.join(".ssh")];
         assert!(refusal(&f).contains("protected"));
     }
 

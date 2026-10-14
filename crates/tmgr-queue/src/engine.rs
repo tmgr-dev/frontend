@@ -56,6 +56,7 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
             profile: rule.profile.clone(),
             model: rule.model.clone(),
             cwd: cwd.to_string(),
+            permission_mode: None,
         },
     }
 }

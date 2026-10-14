@@ -36,3 +36,6 @@ at = "after_command"
 
 [hooks]
 kind = "config-override"
+
+[permission_modes]
+ask = ["--ask-for-approval", "on-request"]

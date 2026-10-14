@@ -138,6 +138,9 @@ impl H {
             bundle_sha256: None,
             cwd_pin: None,
             origin: None,
+            permission_mode: None,
+            start_key: None,
+            clone_of: None,
         }
     }
 
@@ -516,6 +519,8 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         task: None,
         bundle_sha256: None,
         origin: None,
+        permission_mode: None,
+        clone_of: None,
         bypass: false,
         boot: None,
         pids: Vec::new(),

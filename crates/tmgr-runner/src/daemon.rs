@@ -1,8 +1,9 @@
 use crate::bundle;
 use crate::client::Client;
+use crate::clone;
 use crate::exe::resolve_exe;
 use crate::login;
-use crate::profile::{self, Matcher, ProfileSet};
+use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
@@ -32,9 +33,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    method, CreateReq, CwdPin, ErrorCode, EventMsg, Origin, OriginRevokeParams, OriginRevoked,
-    RestoredRun, RunCreateReq, SessionInfo, Snapshot, State, StateKind, StatusInfo, TaskRef,
-    CLIENT_CLI, CLIENT_WORKER,
+    method, CreateReq, CwdPin, ErrorCode, EventMsg, LookupParams, Origin, OriginRevokeParams,
+    OriginRevoked, RestoredRun, RunCreateReq, RunStatus, SessionInfo, Snapshot, State, StateKind,
+    StatusInfo, TaskRef, CLIENT_CLI, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -243,6 +244,24 @@ struct Meta {
     cwd_id: Option<(u64, u64)>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     bundled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    clone_of: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    start_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    start_hash: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    exit_signal: Option<i32>,
+}
+
+#[derive(Default)]
+struct RunExtra {
+    permission_mode: Option<String>,
+    clone_of: Option<String>,
+    objects: Option<PathBuf>,
+    start: Option<(String, String)>,
 }
 
 struct Inner {
@@ -405,6 +424,28 @@ impl Session {
             task: m.task,
             bundle_sha256: m.bundle_sha256.clone(),
             origin: m.origin.clone(),
+            permission_mode: m.permission_mode.clone(),
+        }
+    }
+
+    fn start_key(&self) -> Option<(String, String)> {
+        let i = lock(&self.inner);
+        Some((i.meta.start_key.clone()?, i.meta.start_hash.clone()?))
+    }
+
+    fn run_status(&self) -> RunStatus {
+        let alive = self.has_shim();
+        let i = lock(&self.inner);
+        let state = self.effective(&i);
+        let exited = state.kind == StateKind::Exited;
+        RunStatus {
+            id: i.meta.id.clone(),
+            alive: alive && !exited,
+            state: state.kind,
+            exit_code: state.exit_code.filter(|_| exited),
+            signal: i.meta.exit_signal,
+            started_ms: i.meta.created_ms,
+            ended_ms: exited.then_some(state.since_ms),
         }
     }
 
@@ -611,6 +652,7 @@ impl Session {
         self.change(|i, now, out| {
             let changed = i.det.on_exit(now, e.code, e.signal);
             if changed.is_some() {
+                i.meta.exit_signal = e.signal;
                 log(&format!(
                     "session {} exited code={:?} signal={:?}",
                     self.id, e.code, e.signal
@@ -914,6 +956,7 @@ struct Runner {
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     hub: Arc<Hub>,
     create_lock: Mutex<()>,
+    key_lock: Mutex<()>,
     layout_lock: Mutex<()>,
     stop: AtomicBool,
     conns: Arc<AtomicUsize>,
@@ -964,6 +1007,42 @@ fn signal_number(name: &str) -> Option<i32> {
         "int" => Some(libc::SIGINT),
         "hup" => Some(libc::SIGHUP),
         _ => None,
+    }
+}
+
+fn valid_start_key(k: &str) -> bool {
+    (1..=64).contains(&k.len())
+        && k.bytes()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'-'))
+}
+
+fn params_hash(req: &RunCreateReq) -> String {
+    let mut v = serde_json::to_value(req).unwrap_or(Value::Null);
+    if let Some(m) = v.as_object_mut() {
+        for k in ["cols", "rows", "start_key"] {
+            m.remove(k);
+        }
+    }
+    tmgr_ipc::api::sha256_hex(tmgr_ipc::api::canonical_json(&v).as_bytes())
+}
+
+fn resolve_mode(
+    prof: &Profile,
+    requested: Option<&str>,
+) -> Result<(Option<String>, Vec<String>), ApiErr> {
+    if requested.is_some_and(|m| !tmgr_ipc::api::valid_permission_mode(m)) {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            "permission_mode must be ask, accept-edits or plan",
+        ));
+    }
+    let effective = requested.or(prof.has_permission_modes().then_some("ask"));
+    match effective {
+        None => Ok((None, Vec::new())),
+        Some(m) => prof
+            .permission_args(m)
+            .map(|a| (Some(m.to_string()), a.to_vec()))
+            .map_err(|e| api(ErrorCode::InvalidParams, e)),
     }
 }
 
@@ -1045,6 +1124,18 @@ impl Runner {
                     ));
                 }
                 self.create_run(req).map(|i| to_json(&i))
+            }
+            method::RUNS_LOOKUP => {
+                let key = params::<LookupParams>(p)?.start_key;
+                self.by_key(&key)
+                    .map(|s| to_json(&s.info()))
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no run with this start key"))
+            }
+            method::RUNS_STATUS => {
+                let s = self
+                    .session(&session_id_param(p)?)
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+                Ok(to_json(&s.run_status()))
             }
             method::RUNS_RESTORE => {
                 if conn.client != CLIENT_CLI {
@@ -1319,18 +1410,21 @@ impl Runner {
         restore::store(&self.cfg.homes)
     }
 
-    fn seed_destinations(&self, profile: Option<&str>) -> Vec<String> {
-        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-        profile
-            .and_then(|id| set.get(id))
-            .map_or_else(Vec::new, |p| {
-                p.sandbox
-                    .seed
-                    .iter()
-                    .map(|s| s.to.clone())
-                    .chain(p.secrets.files.iter().map(|f| f.to.clone()))
-                    .collect()
-            })
+    fn seed_destinations(prof: Option<&Profile>) -> Vec<String> {
+        prof.map_or_else(Vec::new, |p| {
+            p.sandbox
+                .seed
+                .iter()
+                .map(|s| s.to.clone())
+                .chain(p.secrets.files.iter().map(|f| f.to.clone()))
+                .collect()
+        })
+    }
+
+    fn by_key(&self, key: &str) -> Option<Arc<Session>> {
+        self.all()
+            .into_iter()
+            .find(|s| s.start_key().is_some_and(|(k, _)| k == key))
     }
 
     fn restore_run(self: &Arc<Self>, old: &str) -> Result<RestoredRun, ApiErr> {
@@ -1382,6 +1476,29 @@ impl Runner {
         req: RunCreateReq,
         restore_from: Option<&str>,
     ) -> Result<(SessionInfo, bool, bool), ApiErr> {
+        let start = match &req.start_key {
+            Some(k) if !valid_start_key(k) => {
+                return Err(api(
+                    ErrorCode::InvalidParams,
+                    "start_key must be 1 to 64 characters of A-Za-z0-9._:-",
+                ))
+            }
+            Some(k) => Some((k.clone(), params_hash(&req))),
+            None => None,
+        };
+        let _keyed = start.as_ref().map(|_| lock(&self.key_lock));
+        if let Some((key, hash)) = &start {
+            if let Some(existing) = self.by_key(key) {
+                return if existing.start_key().is_some_and(|(_, h)| h == *hash) {
+                    Ok((existing.info(), false, true))
+                } else {
+                    Err(api(
+                        ErrorCode::Busy,
+                        "start key already used for a different request",
+                    ))
+                };
+            }
+        }
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
         let pinned = match &checked {
@@ -1401,9 +1518,32 @@ impl Runner {
                 ),
             )
         })?;
+        let (mode, perm_args) = resolve_mode(prof, req.permission_mode.as_deref())?;
+        if let Some(b) = &req.bundle {
+            match (b.launch.permission_mode.as_deref(), mode.as_deref()) {
+                (Some(x), Some(y)) if x == y => {}
+                (None, None | Some("ask")) => {}
+                _ => {
+                    return Err(api(
+                        ErrorCode::InvalidParams,
+                        "bundle permission_mode differs from the effective mode",
+                    ))
+                }
+            }
+        }
+        let objects = match (&req.clone_of, dir) {
+            (Some(_), _) if req.origin.is_some() => {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "clone_of is not accepted for link runs",
+                ))
+            }
+            (Some(repo), Some(d)) => Some(clone::check(d, repo).map_err(|(code, m)| api(code, m))?),
+            _ => None,
+        };
         let resume = match restore_from {
             Some(old) if self.cfg.homes.join(old).is_dir() => {
-                prof.resume_argv(req.model.as_deref())
+                prof.resume_argv_with(req.model.as_deref(), &perm_args)
             }
             _ => Ok(None),
         }
@@ -1412,8 +1552,14 @@ impl Runner {
         let mut argv = match resume {
             Some(argv) => argv,
             None => prof
-                .argv(req.model.as_deref())
+                .argv_with(req.model.as_deref(), &perm_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+        };
+        let extra = RunExtra {
+            permission_mode: mode.clone(),
+            clone_of: req.clone_of.clone(),
+            objects,
+            start,
         };
         if argv.is_empty() {
             return Err(api(ErrorCode::InvalidParams, "profile has no command"));
@@ -1445,6 +1591,7 @@ impl Runner {
                 dir,
                 req.origin.as_ref().map(|o| (o, req.model.as_deref())),
             ),
+            (Some(prof), &extra),
             restore_from,
         )?;
         let mut recorded = false;
@@ -1460,6 +1607,8 @@ impl Runner {
                 task: req.task,
                 bundle_sha256: checked.as_ref().map(|c| c.sha256.clone()),
                 origin: req.origin,
+                permission_mode: mode,
+                clone_of: req.clone_of,
                 bypass: false,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
@@ -1484,7 +1633,15 @@ impl Runner {
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_with(req, (None, None, None), None)
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        let prof =
+            match &req.profile {
+                None => None,
+                Some(pid) => Some(set.get(pid).ok_or_else(|| {
+                    api(ErrorCode::UnknownProfile, format!("unknown profile {pid}"))
+                })?),
+            };
+        self.create_with(req, (None, None, None), (prof, &RunExtra::default()), None)
     }
 
     fn create_with(
@@ -1495,19 +1652,14 @@ impl Runner {
             Option<&bundle::Dir>,
             Option<OriginArg<'_>>,
         ),
+        (prof, extra): (Option<&Profile>, &RunExtra),
         restore_from: Option<&str>,
     ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
         sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
-        let matcher = match &req.profile {
+        let matcher = match prof {
             None => None,
-            Some(pid) => {
-                let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-                let prof = set.get(pid).ok_or_else(|| {
-                    api(ErrorCode::UnknownProfile, format!("unknown profile {pid}"))
-                })?;
-                Some(Matcher::new(prof).map_err(|e| api(ErrorCode::UnknownProfile, e))?)
-            }
+            Some(p) => Some(Matcher::new(p).map_err(|e| api(ErrorCode::UnknownProfile, e))?),
         };
         if dir.is_some_and(|d| d.path != cwd) {
             return Err(api(
@@ -1577,7 +1729,7 @@ impl Runner {
             })?;
             moved_home = moved;
             if moved {
-                let tos = self.seed_destinations(req.profile.as_deref());
+                let tos = Self::seed_destinations(prof);
                 match restore::clear_seed_destinations(&home, &tos) {
                     Ok(removed) => {
                         for r in removed {
@@ -1607,6 +1759,7 @@ impl Runner {
             &id,
             (&sdir, &home),
             (bundle, dir, origin.map(|(o, _)| o), &mut installed),
+            (prof, extra),
         );
         if result.is_err() {
             if let Some(prior) = &installed {
@@ -1641,6 +1794,7 @@ impl Runner {
             Option<&Origin>,
             &mut Option<bundle::Prior>,
         ),
+        (prof, extra): (Option<&Profile>, &RunExtra),
     ) -> Result<SessionInfo, ApiErr> {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
@@ -1653,9 +1807,9 @@ impl Runner {
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
         let mut secret_files = Vec::new();
-        if let Some(pid) = &req.profile {
-            let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-            if let Some(p) = set.get(pid) {
+        if let Some(p) = prof {
+            let pid = &p.id;
+            {
                 let mut protected = vec![
                     self.cfg.dir.clone(),
                     home.parent().unwrap_or(home).to_path_buf(),
@@ -1681,6 +1835,7 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
+        grants.objects_ro.extend(extra.objects.iter().cloned());
         let launch = sandbox::prepare(&SandboxSpec {
             session_id: id.to_string(),
             argv: req.argv.clone(),
@@ -1799,6 +1954,11 @@ impl Runner {
             origin: origin.cloned(),
             cwd_id: Some(dir.id()),
             bundled: bundle.is_some(),
+            permission_mode: extra.permission_mode.clone(),
+            clone_of: extra.clone_of.clone(),
+            start_key: extra.start.as_ref().map(|(k, _)| k.clone()),
+            start_hash: extra.start.as_ref().map(|(_, h)| h.clone()),
+            exit_signal: None,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -2284,6 +2444,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         sessions: Mutex::new(HashMap::new()),
         hub: Arc::new(Hub::default()),
         create_lock: Mutex::new(()),
+        key_lock: Mutex::new(()),
         layout_lock: Mutex::new(()),
         stop: AtomicBool::new(false),
         conns: Arc::new(AtomicUsize::new(0)),

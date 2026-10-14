@@ -42,3 +42,8 @@ args = ["--continue"]
 
 [hooks]
 kind = "settings-file"
+
+[permission_modes]
+ask = ["--permission-mode", "manual"]
+accept-edits = ["--permission-mode", "acceptEdits"]
+plan = ["--permission-mode", "plan"]

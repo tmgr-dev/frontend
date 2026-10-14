@@ -443,6 +443,9 @@ fn create(
             link: conn.name.to_string(),
             generation,
         }),
+        permission_mode: None,
+        start_key: None,
+        clone_of: None,
     };
     let mut generation = generation;
     let call = |st: &mut State, req: &RunCreateReq| -> Result<SessionInfo, BackendError> {

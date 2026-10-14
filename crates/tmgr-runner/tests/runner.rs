@@ -203,6 +203,9 @@ impl Harness {
             bundle_sha256: None,
             cwd_pin: None,
             origin: None,
+            permission_mode: None,
+            start_key: None,
+            clone_of: None,
         }
     }
 
@@ -1125,6 +1128,7 @@ impl Harness {
                 profile: profile.into(),
                 model: None,
                 cwd: cwd.clone(),
+                permission_mode: None,
             },
         };
         let mut req = self.run_req(profile);
@@ -2975,4 +2979,344 @@ fn worklog_of_an_unknown_session_is_not_found() {
     h.start(300);
     let mut c = h.client();
     assert!(err_text(c.worklog("s_abcdefghij")).starts_with("not_found"));
+}
+
+impl Harness {
+    fn modal(&self, id: &str, modes: &str) {
+        let script = self.script(
+            "modal-agent.sh",
+            "printf '%s\\n' \"$@\" > args.txt\nwhile true; do sleep 0.2; done\n",
+        );
+        let text =
+            format!("id = {id:?}\nname = {id:?}\ncommand = [\"/bin/sh\", {script:?}]\n{modes}");
+        fs::write(self.agents.join(format!("{id}.toml")), text).unwrap();
+    }
+
+    fn args(&self) -> Vec<String> {
+        let path = self.work.join("args.txt");
+        wait_for("agent arguments", || path.exists());
+        let text = fs::read_to_string(&path).unwrap();
+        fs::remove_file(path).unwrap();
+        text.lines()
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect()
+    }
+
+    fn stop(&self, c: &mut Client, id: &str) {
+        c.kill(id, "kill").unwrap();
+        wait_state(c, id, 15, |s| s.kind == StateKind::Exited);
+    }
+}
+
+const MODES: &str = "[permission_modes]\nask = [\"--ask\", \"yes\"]\nplan = [\"--plan\"]\n";
+
+#[test]
+fn permission_modes_append_the_profile_arguments_and_default_to_ask() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.modal("modal", MODES);
+    h.modal("plain", "");
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+
+    let info = c.create_run(h.run_req("modal")).unwrap();
+    assert_eq!(info.permission_mode.as_deref(), Some("ask"));
+    assert_eq!(h.args(), ["--ask", "yes"]);
+    h.stop(&mut c, &info.id);
+
+    let mut req = h.run_req("modal");
+    req.permission_mode = Some("plan".into());
+    let info = c.create_run(req).unwrap();
+    assert_eq!(info.permission_mode.as_deref(), Some("plan"));
+    assert_eq!(info.argv.last().map(String::as_str), Some("--plan"));
+    assert_eq!(h.args(), ["--plan"]);
+    h.stop(&mut c, &info.id);
+
+    let info = c.create_run(h.run_req("plain")).unwrap();
+    assert_eq!(info.permission_mode, None);
+    assert!(h.args().is_empty());
+    h.stop(&mut c, &info.id);
+
+    for (profile, mode, want) in [
+        ("modal", "accept-edits", "cannot run in mode accept-edits"),
+        ("plain", "ask", "cannot run in mode ask"),
+        ("modal", "bypass", "permission_mode must be"),
+    ] {
+        let mut req = h.run_req(profile);
+        req.permission_mode = Some(mode.into());
+        let e = err_text(c.create_run(req));
+        assert!(e.starts_with("invalid_params: ") && e.contains(want), "{e}");
+    }
+    h.modal("noask", "[permission_modes]\nplan = [\"--plan\"]\n");
+    let e = err_text(c.create_run(h.run_req("noask")));
+    assert!(e.contains("cannot run in mode ask"), "{e}");
+    assert!(c
+        .list()
+        .unwrap()
+        .iter()
+        .all(|s| s.state.kind == StateKind::Exited));
+}
+
+#[test]
+fn a_bundle_must_carry_the_effective_permission_mode() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.modal("modal", MODES);
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let with = |h: &Harness, bundle_mode: Option<&str>, req_mode: Option<&str>| {
+        let mut r = h.bundled("modal");
+        r.bundle.as_mut().unwrap().launch.permission_mode = bundle_mode.map(String::from);
+        r.permission_mode = req_mode.map(String::from);
+        rehash(&mut r);
+        r
+    };
+    for (bundle_mode, req_mode) in [
+        (Some("plan"), None),
+        (None, Some("plan")),
+        (Some("ask"), Some("plan")),
+    ] {
+        let e = err_text(c.create_run(with(&h, bundle_mode, req_mode)));
+        assert!(
+            e.starts_with("invalid_params: ") && e.contains("permission_mode"),
+            "{e}"
+        );
+    }
+    assert!(c.list().unwrap().is_empty());
+    for (bundle_mode, req_mode, want) in [
+        (Some("plan"), Some("plan"), "plan"),
+        (None, None, "ask"),
+        (Some("ask"), None, "ask"),
+    ] {
+        let info = c.create_run(with(&h, bundle_mode, req_mode)).unwrap();
+        assert_eq!(info.permission_mode.as_deref(), Some(want));
+        h.stop(&mut c, &info.id);
+    }
+}
+
+#[test]
+fn a_start_key_makes_runs_create_idempotent_across_restarts() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.modal("modal", MODES);
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let keyed = |h: &Harness, key: &str| {
+        let mut r = h.run_req("modal");
+        r.start_key = Some(key.into());
+        r
+    };
+    let first = c.create_run(keyed(&h, "q_abc-1")).unwrap();
+    let mut resized = keyed(&h, "q_abc-1");
+    resized.cols = 100;
+    resized.rows = 30;
+    assert_eq!(c.create_run(resized).unwrap().id, first.id);
+    assert_eq!(c.list().unwrap().len(), 1);
+
+    let mut other = keyed(&h, "q_abc-1");
+    other.name = Some("other".into());
+    let e = err_text(c.create_run(other));
+    assert!(
+        e.starts_with("busy: ") && e.contains("different request"),
+        "{e}"
+    );
+    for bad in ["", "a b", "x/y", &"k".repeat(65)] {
+        let e = err_text(c.create_run(keyed(&h, bad)));
+        assert!(e.starts_with("invalid_params: "), "{e}");
+    }
+    assert_eq!(c.lookup("q_abc-1").unwrap().id, first.id);
+    assert!(err_text(c.lookup("q_abc-2")).starts_with("not_found: "));
+    drop(c);
+
+    h.kill_runner();
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    assert_eq!(c.lookup("q_abc-1").unwrap().id, first.id);
+    assert_eq!(c.create_run(keyed(&h, "q_abc-1")).unwrap().id, first.id);
+    h.stop(&mut c, &first.id);
+    let again = c.create_run(keyed(&h, "q_abc-1")).unwrap();
+    assert_eq!(again.id, first.id);
+    assert_eq!(again.state.kind, StateKind::Exited);
+    assert_eq!(c.list().unwrap().len(), 1);
+
+    c.remove(&first.id).unwrap();
+    assert!(err_text(c.lookup("q_abc-1")).starts_with("not_found: "));
+    let fresh = c.create_run(keyed(&h, "q_abc-1")).unwrap();
+    assert_ne!(fresh.id, first.id);
+}
+
+#[test]
+fn runs_status_reports_running_exited_and_unknown_sessions() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.modal("modal", MODES);
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let info = c.create_run(h.run_req("modal")).unwrap();
+    let st = c.run_status(&info.id).unwrap();
+    assert!(st.alive && st.state != StateKind::Exited, "{st:?}");
+    assert_eq!(st.started_ms, info.created_ms);
+    assert_eq!((st.exit_code, st.signal, st.ended_ms), (None, None, None));
+    h.stop(&mut c, &info.id);
+    let st = c.run_status(&info.id).unwrap();
+    assert!(!st.alive && st.state == StateKind::Exited, "{st:?}");
+    assert!(st.exit_code.is_some() && st.ended_ms.is_some(), "{st:?}");
+    assert_eq!(st.signal, Some(9));
+    assert!(err_text(c.run_status("s_zzzzzzzzzz")).starts_with("not_found: "));
+    assert!(err_text(c.run_status("nope")).starts_with("invalid_params: "));
+}
+
+struct CloneFx {
+    h: Harness,
+    repo: PathBuf,
+    queue: PathBuf,
+}
+
+impl CloneFx {
+    fn clone_to(&self, name: &str) -> PathBuf {
+        let dest = self.queue.join(name);
+        git_in(
+            &self.queue,
+            &[
+                "clone",
+                "-q",
+                "--reference",
+                self.repo.to_str().unwrap(),
+                self.repo.to_str().unwrap(),
+                dest.to_str().unwrap(),
+            ],
+        );
+        dest
+    }
+
+    fn req(&self, cwd: &Path) -> RunCreateReq {
+        let mut r = self.h.run_req("fake");
+        r.cwd = cwd.display().to_string();
+        r.clone_of = Some(self.repo.display().to_string());
+        r
+    }
+}
+
+fn clone_fx() -> CloneFx {
+    let mut h = Harness::new();
+    let home = fs::canonicalize(h.tmp.path()).unwrap().join("home");
+    let repo = home.join("repo");
+    let queue = home.join("repo-worktrees/queue");
+    fs::create_dir_all(&repo).unwrap();
+    fs::create_dir_all(&queue).unwrap();
+    init_repo(&repo);
+    fs::write(repo.join("README"), "repo-secret").unwrap();
+    let objects = repo.join(".git/objects").display().to_string();
+    let script = h.script(
+        "clone-agent.sh",
+        &format!(
+            "git log --oneline > r_log 2>&1; echo $? > r_log_rc\n\
+             (echo x > {objects}/zz) 2>/dev/null; echo $? > r_write_rc\n\
+             cat {}/README > r_readme 2>/dev/null; echo $? > r_readme_rc\n\
+             echo done > done\n\
+             while true; do sleep 0.2; done\n",
+            repo.display()
+        ),
+    );
+    h.profile("fake", &["/bin/sh", &script]);
+    h.real_home = Some(home);
+    h.start(5000);
+    CloneFx { h, repo, queue }
+}
+
+fn read_in(dir: &Path, name: &str) -> String {
+    fs::read_to_string(dir.join(name))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+#[test]
+fn a_queue_clone_reads_the_repository_objects_and_nothing_else() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = clone_fx();
+    let dest = fx.clone_to("q_1");
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let info = c.create_run(fx.req(&dest)).unwrap();
+    wait_for("agent done", || dest.join("done").exists());
+    assert_eq!(
+        read_in(&dest, "r_log_rc"),
+        "0",
+        "{}",
+        read_in(&dest, "r_log")
+    );
+    assert!(read_in(&dest, "r_log").contains("initial"));
+    assert_ne!(read_in(&dest, "r_write_rc"), "0");
+    assert!(!fx.repo.join(".git/objects/zz").exists());
+    assert_ne!(read_in(&dest, "r_readme_rc"), "0");
+    assert!(!read_in(&dest, "r_readme").contains("repo-secret"));
+    fx.h.stop(&mut c, &info.id);
+}
+
+#[test]
+fn clone_of_refuses_anything_but_a_hardened_queue_clone() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = clone_fx();
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let mut refused = |req: RunCreateReq, want: &str| {
+        let e = err_text(c.create_run(req));
+        assert!(
+            e.starts_with("invalid_params: ") && e.contains(want),
+            "{want}: {e}"
+        );
+    };
+
+    let elsewhere = fx.clone_to("q_alt");
+    fs::write(
+        elsewhere.join(".git/objects/info/alternates"),
+        "/somewhere/else/.git/objects\n",
+    )
+    .unwrap();
+    refused(fx.req(&elsewhere), "alternates");
+
+    let extra = fx.clone_to("q_extra");
+    let alt = extra.join(".git/objects/info/alternates");
+    let text = fs::read_to_string(&alt).unwrap();
+    fs::write(&alt, format!("{text}/somewhere/else/.git/objects\n")).unwrap();
+    refused(fx.req(&extra), "alternates");
+
+    let big = fx.clone_to("q_big");
+    fs::write(big.join(".git/objects/info/alternates"), "x".repeat(5000)).unwrap();
+    refused(fx.req(&big), "alternates");
+
+    let file = fx.queue.join("q_file");
+    fs::create_dir(&file).unwrap();
+    fs::write(file.join(".git"), "gitdir: ../../repo/.git/worktrees/x\n").unwrap();
+    refused(fx.req(&file), ".git");
+
+    let outside = fx.h.work.clone();
+    refused(fx.req(&outside), "worktrees");
+
+    let direct = fx.repo.parent().unwrap().join("repo-worktrees");
+    refused(fx.req(&direct), "strictly");
+
+    let alias = fx.repo.parent().unwrap().join("alias");
+    std::os::unix::fs::symlink(&fx.repo, &alias).unwrap();
+    let mut by_alias = fx.req(&fx.clone_to("q_alias"));
+    by_alias.clone_of = Some(alias.display().to_string());
+    refused(by_alias, "symlink");
+
+    let mut relative = fx.req(&fx.clone_to("q_rel"));
+    relative.clone_of = Some("repo".into());
+    refused(relative, "absolute");
+
+    assert!(c.list().unwrap().is_empty());
 }

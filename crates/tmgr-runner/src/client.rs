@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
     method, AttachParams, CandidateInfo, CreateReq, EventMsg, IdParams, KillParams,
-    LayoutSetParams, Line, RestoredRun, RunCreateReq, ScreenPush, SendParams, SessionInfo,
-    Snapshot, StatusInfo, Welcome, WorkSummary, CLIENT_CLI,
+    LayoutSetParams, Line, LookupParams, RestoredRun, RunCreateReq, RunStatus, ScreenPush,
+    SendParams, SessionInfo, Snapshot, StatusInfo, Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -126,6 +126,18 @@ impl Client {
     pub fn create_run(&mut self, req: RunCreateReq) -> io::Result<SessionInfo> {
         let params = serde_json::to_value(req).map_err(io::Error::other)?;
         from_value(self.call(method::RUNS_CREATE, params)?)
+    }
+
+    pub fn run_status(&mut self, id: &str) -> io::Result<RunStatus> {
+        let params = IdParams { id: id.into() };
+        from_value(self.call(method::RUNS_STATUS, to_params(&params)?)?)
+    }
+
+    pub fn lookup(&mut self, start_key: &str) -> io::Result<SessionInfo> {
+        let params = LookupParams {
+            start_key: start_key.into(),
+        };
+        from_value(self.call(method::RUNS_LOOKUP, to_params(&params)?)?)
     }
 
     pub fn restore(&mut self, id: &str) -> io::Result<RestoredRun> {

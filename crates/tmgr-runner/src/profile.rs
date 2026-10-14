@@ -171,6 +171,8 @@ pub struct Profile {
     pub tier: Tier,
     #[serde(default)]
     pub hooks: HooksDecl,
+    #[serde(default)]
+    pub permission_modes: BTreeMap<String, Vec<String>>,
     #[serde(skip)]
     pub source: Source,
 }
@@ -193,6 +195,10 @@ fn valid_model(model: &str) -> bool {
 
 impl Profile {
     pub fn argv(&self, model: Option<&str>) -> Result<Vec<String>, String> {
+        self.argv_with(model, &[])
+    }
+
+    pub fn argv_with(&self, model: Option<&str>, extra: &[String]) -> Result<Vec<String>, String> {
         let mut argv: Vec<String> = self.command.iter().chain(&self.args).cloned().collect();
         if let Some(model) = model {
             if !valid_model(model) {
@@ -200,14 +206,36 @@ impl Profile {
             }
             argv.extend(self.model_arg.iter().map(|a| a.replace("{model}", model)));
         }
+        argv.extend(extra.iter().cloned());
         Ok(argv)
     }
 
+    pub fn has_permission_modes(&self) -> bool {
+        self.permission_modes
+            .keys()
+            .any(|m| tmgr_ipc::api::valid_permission_mode(m))
+    }
+
+    pub fn permission_args(&self, mode: &str) -> Result<&[String], String> {
+        self.permission_modes
+            .get(mode)
+            .map(Vec::as_slice)
+            .ok_or_else(|| format!("profile {} cannot run in mode {mode}", self.id))
+    }
+
     pub fn resume_argv(&self, model: Option<&str>) -> Result<Option<Vec<String>>, String> {
+        self.resume_argv_with(model, &[])
+    }
+
+    pub fn resume_argv_with(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+    ) -> Result<Option<Vec<String>>, String> {
         let Some(r) = &self.resume else {
             return Ok(None);
         };
-        let mut argv = self.argv(model)?;
+        let mut argv = self.argv_with(model, extra)?;
         match r.at {
             ResumeAt::End => argv.extend(r.args.iter().cloned()),
             ResumeAt::AfterCommand => {
@@ -247,6 +275,16 @@ fn check_launch(p: &Profile) -> Result<(), String> {
             return Err("prompt.args is only used with mode = \"arg\"".into())
         }
         _ => {}
+    }
+    for (mode, args) in &p.permission_modes {
+        if !tmgr_ipc::api::valid_permission_mode(mode) {
+            continue;
+        }
+        if args.is_empty() || args.iter().any(|a| a.contains('{')) {
+            return Err(format!(
+                "permission_modes.{mode} must be non-empty and take no placeholders"
+            ));
+        }
     }
     if p.instruction_files.len() > MAX_INSTRUCTION_FILES {
         return Err(format!("at most {MAX_INSTRUCTION_FILES} instruction_files"));
@@ -720,6 +758,58 @@ idle = ['^> $']
         for bad in ["", "a b", "a;b", "$(x)", &"a".repeat(65), "-é"] {
             assert!(p.argv(Some(bad)).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn builtin_permission_modes_come_from_the_agents_own_flags() {
+        let (set, warnings) = ProfileSet::load(None);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let args = |id: &str, mode: &str| {
+            set.get(id)
+                .unwrap()
+                .permission_args(mode)
+                .map(<[_]>::to_vec)
+        };
+        assert_eq!(
+            args("claude-code", "accept-edits").unwrap(),
+            ["--permission-mode", "acceptEdits"]
+        );
+        assert_eq!(
+            args("codex", "ask").unwrap(),
+            ["--ask-for-approval", "on-request"]
+        );
+        assert_eq!(args("gemini", "plan").unwrap(), ["--approval-mode", "plan"]);
+        assert!(args("codex", "plan").is_err());
+        for id in ["opencode", "cursor-agent", "aider"] {
+            assert!(set.get(id).unwrap().permission_modes.is_empty(), "{id}");
+        }
+        let p = set.get("claude-code").unwrap();
+        let extra = p.permission_args("plan").unwrap();
+        assert_eq!(
+            p.argv_with(Some("m"), extra).unwrap(),
+            ["claude", "--model", "m", "--permission-mode", "plan"]
+        );
+        assert_eq!(
+            p.resume_argv_with(None, extra).unwrap().unwrap(),
+            ["claude", "--permission-mode", "plan", "--continue"]
+        );
+    }
+
+    #[test]
+    fn declared_permission_modes_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        for (i, table) in ["plan = []", "ask = []", "ask = [\"--m={model}\"]"]
+            .iter()
+            .enumerate()
+        {
+            let text = format!(
+                "id = \"p{i}\"\nname = \"p\"\ncommand = [\"p\"]\n[permission_modes]\n{table}\n"
+            );
+            std::fs::write(dir.path().join(format!("p{i}.toml")), text).unwrap();
+        }
+        let (set, warnings) = ProfileSet::load(Some(dir.path()));
+        assert_eq!(warnings.len(), 3, "{warnings:?}");
+        assert!(set.get("p0").is_none());
     }
 
     #[test]

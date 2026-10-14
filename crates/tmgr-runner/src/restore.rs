@@ -31,6 +31,10 @@ pub struct Intent {
     pub bundle_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clone_of: Option<String>,
     #[serde(default)]
     pub bypass: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -340,6 +344,9 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         bundle_sha256: i.bundle_sha256.clone(),
         cwd_pin: Some(i.cwd_pin),
         origin: None,
+        permission_mode: i.permission_mode.clone(),
+        start_key: None,
+        clone_of: i.clone_of.clone(),
     }
 }
 
@@ -525,6 +532,8 @@ mod tests {
             }),
             bundle_sha256: None,
             origin: None,
+            permission_mode: None,
+            clone_of: None,
             bypass: false,
             boot: None,
             pids: Vec::new(),

@@ -85,6 +85,8 @@ impl Env {
                 task: None,
                 bundle_sha256: None,
                 origin,
+                permission_mode: None,
+                clone_of: None,
                 bypass: false,
                 boot: None,
                 pids: Vec::new(),

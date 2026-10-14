@@ -107,7 +107,7 @@ impl Dir {
     }
 }
 
-fn open_root(path: &Path) -> io::Result<File> {
+pub(crate) fn open_root(path: &Path) -> io::Result<File> {
     use std::path::Component;
     let flags = libc::O_RDONLY | libc::O_DIRECTORY;
     let mut comps = path.components();
@@ -165,7 +165,7 @@ fn io_err(e: io::Error) -> Refusal {
     (ErrorCode::Internal, e.to_string())
 }
 
-fn open_at(dirfd: i32, name: impl AsRef<Path>, flags: i32) -> io::Result<File> {
+pub(crate) fn open_at(dirfd: i32, name: impl AsRef<Path>, flags: i32) -> io::Result<File> {
     openat_mode(dirfd, name, flags, 0)
 }
 
@@ -562,6 +562,7 @@ mod tests {
                 profile: "p".into(),
                 model: None,
                 cwd: cwd.clone(),
+                permission_mode: None,
             },
         };
         RunCreateReq {
@@ -574,6 +575,9 @@ mod tests {
             rows: 24,
             cwd_pin: None,
             origin: None,
+            permission_mode: None,
+            start_key: None,
+            clone_of: None,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }

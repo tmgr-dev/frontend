@@ -14,6 +14,8 @@ pub mod bundle;
 #[cfg(unix)]
 pub mod client;
 #[cfg(unix)]
+pub mod clone;
+#[cfg(unix)]
 pub mod daemon;
 #[cfg(unix)]
 pub mod restore;

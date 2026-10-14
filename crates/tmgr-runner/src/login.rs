@@ -745,6 +745,7 @@ pub fn prepare(
     Ok(Prepared {
         grants: Grants {
             extra_read: r.read,
+            objects_ro: Vec::new(),
             deny: Vec::new(),
             trusted_env_pass: p.env_pass.clone(),
             env: p.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),

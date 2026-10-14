@@ -224,6 +224,9 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             bundle_sha256: None,
             cwd_pin: None,
             origin: None,
+            permission_mode: None,
+            start_key: None,
+            clone_of: None,
         }),
     }
     .map_err(rerr)?;
