@@ -1,7 +1,9 @@
 use std::collections::BTreeSet;
-use std::fs::{self, OpenOptions};
+use std::ffi::CString;
+use std::fs;
 use std::io::{Read, Write};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 
@@ -346,7 +348,7 @@ pub fn create(plan: &Plan, fetch: bool) -> Result<Worktree, String> {
         utf8(&plan.path)?,
         &plan.base,
     ])?;
-    add_exclude(&git, &plan.repo, &[".tmgr/".to_string()])?;
+    soft_exclude(&git, &plan.repo, &plan.repo);
     Ok(Worktree {
         repo: plan.repo.clone(),
         path: plan.path.clone(),
@@ -376,7 +378,7 @@ pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
     ])?;
     let git = GitEnv::open(&plan.path)?;
     git.run(&["checkout", "--no-track", "-b", &plan.branch, &sha])?;
-    add_exclude(&git, &plan.path, &[".tmgr/".to_string()])?;
+    soft_exclude(&git, &plan.path, &plan.path);
     Ok(Worktree {
         repo: plan.repo.clone(),
         path: plan.path.clone(),
@@ -386,29 +388,107 @@ pub fn clone_mode(plan: &Plan) -> Result<Worktree, String> {
     })
 }
 
-fn add_exclude(git: &GitEnv, checkout: &Path, lines: &[String]) -> Result<(), String> {
+fn cstr(name: &str) -> std::io::Result<CString> {
+    CString::new(name).map_err(|_| std::io::Error::from_raw_os_error(libc::EINVAL))
+}
+
+fn open_at(
+    dir: BorrowedFd<'_>,
+    name: &str,
+    flags: libc::c_int,
+    mode: u32,
+) -> std::io::Result<OwnedFd> {
+    let name = cstr(name)?;
+    let fd = unsafe {
+        libc::openat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            flags | libc::O_CLOEXEC,
+            mode as libc::c_uint,
+        )
+    };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+fn open_root(path: &Path) -> std::io::Result<OwnedFd> {
+    let c = cstr(utf8(path).map_err(|_| std::io::Error::from_raw_os_error(libc::EINVAL))?)?;
+    let fd = unsafe {
+        libc::open(
+            c.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+}
+
+fn open_dir_at(dir: BorrowedFd<'_>, name: &str, create: bool) -> std::io::Result<OwnedFd> {
+    let flags = libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW;
+    match open_at(dir, name, flags, 0) {
+        Err(e) if create && e.raw_os_error() == Some(libc::ENOENT) => {
+            let c = cstr(name)?;
+            let rc = unsafe { libc::mkdirat(dir.as_raw_fd(), c.as_ptr(), 0o700) };
+            if rc < 0 && std::io::Error::last_os_error().raw_os_error() != Some(libc::EEXIST) {
+                return Err(std::io::Error::last_os_error());
+            }
+            open_at(dir, name, flags, 0)
+        }
+        other => other,
+    }
+}
+
+fn read_bounded(file: &mut fs::File) -> std::io::Result<Option<Vec<u8>>> {
+    let mut data = Vec::new();
+    file.take(MAX_COPY + 1).read_to_end(&mut data)?;
+    Ok((data.len() as u64 <= MAX_COPY).then_some(data))
+}
+
+fn add_exclude(git: &GitEnv, run_dir: &Path, owner: &Path, lines: &[String]) -> Result<(), String> {
     let common = PathBuf::from(git.run(&["rev-parse", "--git-common-dir"])?);
     let common = if common.is_absolute() {
         common
     } else {
-        checkout.join(common)
+        run_dir.join(common)
     };
-    let info = common.join("info");
-    fs::create_dir_all(&info).map_err(|e| format!("{}: {e}", info.display()))?;
-    let file = info.join("exclude");
-    let mut existing = String::new();
-    match OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&file)
-    {
-        Ok(mut f) => {
-            f.read_to_string(&mut existing)
-                .map_err(|e| format!("{}: {e}", file.display()))?;
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(format!("{}: {e}", file.display())),
+    let expected = fs::canonicalize(owner)
+        .map_err(|e| format!("{}: {e}", owner.display()))?
+        .join(".git");
+    let meta =
+        fs::symlink_metadata(&expected).map_err(|e| format!("{}: {e}", expected.display()))?;
+    let actual = fs::canonicalize(&common).map_err(|e| format!("{}: {e}", common.display()))?;
+    if !meta.is_dir() || actual != expected {
+        return Err(format!(
+            "git common dir {} is not {}",
+            common.display(),
+            expected.display()
+        ));
     }
+    let io = |what: &str, e: std::io::Error| format!("{}/{what}: {e}", expected.display());
+    let gitfd = open_root(&expected).map_err(|e| io("", e))?;
+    let infofd = open_dir_at(gitfd.as_fd(), "info", true).map_err(|e| io("info", e))?;
+    let raw = open_at(
+        infofd.as_fd(),
+        "exclude",
+        libc::O_RDWR | libc::O_APPEND | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+        0o644,
+    )
+    .map_err(|e| io("info/exclude", e))?;
+    let mut f = fs::File::from(raw);
+    let m = f.metadata().map_err(|e| io("info/exclude", e))?;
+    if !m.is_file() || m.nlink() != 1 || m.size() > MAX_COPY {
+        return Err(format!(
+            "{}/info/exclude is not a plain file",
+            expected.display()
+        ));
+    }
+    let existing = read_bounded(&mut f).map_err(|e| io("info/exclude", e))?;
+    let existing =
+        String::from_utf8_lossy(&existing.ok_or("info/exclude larger than 1 MiB")?).into_owned();
     let mut add = String::new();
     if !existing.is_empty() && !existing.ends_with('\n') {
         add.push('\n');
@@ -423,14 +503,14 @@ fn add_exclude(git: &GitEnv, checkout: &Path, lines: &[String]) -> Result<(), St
     if add.len() == before {
         return Ok(());
     }
-    let mut f = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&file)
-        .map_err(|e| format!("{}: {e}", file.display()))?;
     f.write_all(add.as_bytes())
-        .map_err(|e| format!("{}: {e}", file.display()))
+        .map_err(|e| io("info/exclude", e))
+}
+
+fn soft_exclude(git: &GitEnv, run_dir: &Path, owner: &Path) {
+    if let Err(e) = add_exclude(git, run_dir, owner, &[".tmgr/".to_string()]) {
+        eprintln!("tmgr-runner: skipped .tmgr/ exclude: {e}");
+    }
 }
 
 fn relative_components(rel: &str) -> Result<Vec<&str>, String> {
@@ -474,55 +554,51 @@ pub fn copy_untracked(src_repo: &Path, wt: &Worktree, files: &[String]) -> Resul
     for rel in files {
         parsed.push((rel, relative_components(rel)?));
     }
+    let src_fd = open_root(&src_root).map_err(|e| format!("{}: {e}", src_root.display()))?;
+    let dst_fd = open_root(&dst_root).map_err(|e| format!("{}: {e}", dst_root.display()))?;
     let mut excluded = Vec::new();
     for (rel, parts) in parsed {
-        let mut src = src_root.clone();
-        for p in &parts {
-            src.push(p);
-            if is_symlink(&src) {
-                return Err(format!("{rel}: symlink in source path"));
-            }
+        let (name, dirs) = parts.split_last().ok_or("empty path")?;
+        let mut sdir = src_fd.try_clone().map_err(|e| format!("{rel}: {e}"))?;
+        for p in dirs {
+            sdir = open_dir_at(sdir.as_fd(), p, false)
+                .map_err(|e| format!("{rel}: source path: {e}"))?;
         }
-        let meta = fs::symlink_metadata(&src).map_err(|e| format!("{rel}: {e}"))?;
+        let raw = open_at(
+            sdir.as_fd(),
+            name,
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+            0,
+        )
+        .map_err(|e| format!("{rel}: {e}"))?;
+        let mut input = fs::File::from(raw);
+        let meta = input.metadata().map_err(|e| format!("{rel}: {e}"))?;
         if !meta.is_file() || meta.size() > MAX_COPY {
             return Err(format!("{rel}: not a regular file of at most 1 MiB"));
         }
-        let mut dst = dst_root.clone();
-        for p in &parts[..parts.len() - 1] {
-            dst.push(p);
-            if is_symlink(&dst) {
-                return Err(format!("{rel}: symlink in destination path"));
-            }
-            if !dst.exists() {
-                fs::create_dir(&dst).map_err(|e| format!("{rel}: {e}"))?;
-            }
+        let data = read_bounded(&mut input)
+            .map_err(|e| format!("{rel}: {e}"))?
+            .ok_or_else(|| format!("{rel}: larger than 1 MiB"))?;
+        let mut ddir = dst_fd.try_clone().map_err(|e| format!("{rel}: {e}"))?;
+        for p in dirs {
+            ddir = open_dir_at(ddir.as_fd(), p, true)
+                .map_err(|e| format!("{rel}: destination path: {e}"))?;
         }
-        dst.push(parts[parts.len() - 1]);
-        let mut input = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&src)
+        let raw = open_at(
+            ddir.as_fd(),
+            name,
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW,
+            0o600,
+        )
+        .map_err(|e| format!("{rel}: {e}"))?;
+        fs::File::from(raw)
+            .write_all(&data)
             .map_err(|e| format!("{rel}: {e}"))?;
-        let mut data = Vec::new();
-        (&mut input)
-            .take(MAX_COPY + 1)
-            .read_to_end(&mut data)
-            .map_err(|e| format!("{rel}: {e}"))?;
-        if data.len() as u64 > MAX_COPY {
-            return Err(format!("{rel}: larger than 1 MiB"));
-        }
-        let mut out = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&dst)
-            .map_err(|e| format!("{rel}: {e}"))?;
-        out.write_all(&data).map_err(|e| format!("{rel}: {e}"))?;
         excluded.push(format!("/{rel}"));
     }
     let git = GitEnv::open(&wt.path)?;
-    add_exclude(&git, &wt.path, &excluded)
+    let owner = if wt.clone { &wt.path } else { &wt.repo };
+    add_exclude(&git, &wt.path, owner, &excluded)
 }
 
 pub fn status(wt: &Worktree) -> Result<Status, String> {
@@ -819,7 +895,7 @@ mod tests {
         assert!(!wt.path.starts_with(&fx.repo));
         let exclude = fx.repo.join(".git/info/exclude");
         let git_env = GitEnv::open(&fx.repo).unwrap();
-        add_exclude(&git_env, &fx.repo, &[".tmgr/".to_string()]).unwrap();
+        add_exclude(&git_env, &fx.repo, &fx.repo, &[".tmgr/".to_string()]).unwrap();
         make(&fx, "feat/two");
         let text = fs::read_to_string(exclude).unwrap();
         assert_eq!(text.lines().filter(|l| *l == ".tmgr/").count(), 1);
@@ -836,8 +912,50 @@ mod tests {
         fs::create_dir_all(exclude.parent().unwrap()).unwrap();
         symlink(&target, &exclude).unwrap();
         let p = plan(&fx.repo, "x", None).unwrap();
-        assert!(create(&p, false).is_err());
+        assert!(create(&p, false).is_ok());
         assert_eq!(fs::read_to_string(&target).unwrap(), "");
+    }
+
+    #[test]
+    fn exclude_refuses_a_symlinked_info_directory() {
+        let fx = fixture();
+        let sink = fx.outside.join("info");
+        fs::create_dir(&sink).unwrap();
+        fs::write(sink.join("exclude"), "keep\n").unwrap();
+        let info = fx.repo.join(".git/info");
+        fs::remove_dir_all(&info).unwrap();
+        symlink(&sink, &info).unwrap();
+        let g = GitEnv::open(&fx.repo).unwrap();
+        assert!(add_exclude(&g, &fx.repo, &fx.repo, &[".tmgr/".to_string()]).is_err());
+        let p = plan(&fx.repo, "x", None).unwrap();
+        assert!(create(&p, false).is_ok());
+        assert_eq!(fs::read_to_string(sink.join("exclude")).unwrap(), "keep\n");
+    }
+
+    #[test]
+    fn exclude_skips_a_common_dir_that_is_not_the_repo_git_dir() {
+        let fx = fixture();
+        let other = fx.outside.join("other");
+        fs::create_dir(&other).unwrap();
+        let g = GitEnv::open(&fx.repo).unwrap();
+        assert!(add_exclude(&g, &fx.repo, &other, &[".tmgr/".to_string()]).is_err());
+        assert!(!other.join(".git").exists());
+    }
+
+    #[test]
+    fn copy_untracked_refuses_symlinked_parent_directories() {
+        let fx = fixture();
+        let wt = make(&fx, "cp");
+        fs::create_dir(fx.outside.join("d")).unwrap();
+        fs::write(fx.outside.join("d/f"), "s").unwrap();
+        symlink(fx.outside.join("d"), fx.repo.join("sd")).unwrap();
+        assert!(copy_untracked(&fx.repo, &wt, &["sd/f".into()]).is_err());
+        fs::create_dir(fx.repo.join("dd")).unwrap();
+        fs::write(fx.repo.join("dd/f"), "x").unwrap();
+        fs::create_dir(fx.outside.join("sink")).unwrap();
+        symlink(fx.outside.join("sink"), wt.path.join("dd")).unwrap();
+        assert!(copy_untracked(&fx.repo, &wt, &["dd/f".into()]).is_err());
+        assert!(!fx.outside.join("sink/f").exists());
     }
 
     #[test]
