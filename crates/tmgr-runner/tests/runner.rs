@@ -2853,8 +2853,12 @@ fn worklog_has_time_in_states_branch_and_the_commits_made_during_the_session() {
     let mut c = h.client();
     let info = c.create(h.sh(BUSY_THEN_READ)).unwrap();
     let mut w = Watch::new(h.client(), &[&info.id]);
-    assert!(w.wait(15, |w| w.kinds().contains(&StateKind::Waiting)));
+    assert!(w.wait(15, |w| w.has_line(&info.id, "ready")));
+    let waiting = wait_state(&mut c, &info.id, 15, |s| s.kind == StateKind::Waiting);
+    assert_eq!(waiting.state.kind, StateKind::Waiting);
     thread::sleep(Duration::from_millis(1500));
+    let still = wait_state(&mut c, &info.id, 0, |_| true);
+    assert_eq!(still.state, waiting.state);
     for (name, subject) in [("b.txt", "feat: add b"), ("c.txt", "fix: c\u{1b}[31m red")] {
         fs::write(h.work.join(name), name).unwrap();
         git_in(&h.work, &["add", "--", name]);
