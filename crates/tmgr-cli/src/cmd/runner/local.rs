@@ -16,6 +16,7 @@ use tmgr_local::{Actor, Context, LocalWorkspace};
 
 const MAX_INPUT: usize = 64 * 1024;
 const MAX_COMMITS: usize = 200;
+const MAX_COMMENTS: usize = 500;
 const MAX_PAGES: usize = 50;
 const NAMESPACE: &str = "runner";
 
@@ -359,16 +360,66 @@ fn is_author_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "._:@-".contains(c))
 }
 
-fn author(kind: &str, id: Option<&str>, local_user: &str) -> BundleAuthor {
+fn author(kind: Option<&str>, id: Option<&str>, local_user: &str) -> BundleAuthor {
     let (kind, id) = match kind {
-        "user" if id.is_none_or(|i| i == local_user) => (AuthorKind::Human, Some(local_user)),
-        "persona" => (AuthorKind::Agent, id),
+        Some("user") if id == Some(local_user) => (AuthorKind::Human, id),
+        Some("persona") => (AuthorKind::Agent, id),
         _ => (AuthorKind::Other, id),
     };
     BundleAuthor {
         kind,
         id: id.filter(|i| is_author_id(i)).map(str::to_string),
     }
+}
+
+fn stored_comments(ws: &LocalWorkspace, task_id: i64, me: &str) -> Result<Vec<BundleComment>> {
+    let conn = tmgr_local::open_read(&ws.database).map_err(db_error)?;
+    let sql_err = |e: rusqlite::Error| Error::internal(e.to_string());
+    let (count, bytes): (i64, i64) = conn
+        .query_row(
+            "SELECT COUNT(*), COALESCE(SUM(LENGTH(CAST(message AS BLOB))), 0) FROM comments
+             WHERE task_id = ? AND deleted_at IS NULL",
+            [task_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(sql_err)?;
+    if count > MAX_COMMENTS as i64 || bytes > MAX_BUNDLE as i64 {
+        return Err(Error::usage(format!(
+            "the task has too many or too large comments for a run bundle ({count} comments)"
+        )));
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT author_kind, author_id, created_at, message FROM comments
+             WHERE task_id = ? AND deleted_at IS NULL ORDER BY id ASC",
+        )
+        .map_err(sql_err)?;
+    let rows = stmt
+        .query_map([task_id], |r| {
+            Ok((
+                r.get::<_, Option<String>>(0)?,
+                r.get::<_, Option<rusqlite::types::Value>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .and_then(|rows| rows.collect::<std::result::Result<Vec<_>, _>>())
+        .map_err(sql_err)?;
+    Ok(rows
+        .into_iter()
+        .map(|(kind, id, at, body)| {
+            let id = match id {
+                Some(rusqlite::types::Value::Integer(i)) => Some(i.to_string()),
+                Some(rusqlite::types::Value::Text(t)) => Some(t),
+                _ => None,
+            };
+            BundleComment {
+                author: author(kind.as_deref(), id.as_deref(), me),
+                at: at.unwrap_or_default(),
+                body: body.unwrap_or_default(),
+            }
+        })
+        .collect())
 }
 
 fn linked_pages(ws: &LocalWorkspace, task_id: i64) -> Result<Vec<i64>> {
@@ -394,23 +445,7 @@ pub fn bundle_from_local(
     let s = Session::open(ws, None, false)?;
     let me = s.ctx.user.id.to_string();
     let task = s.send("GET", &format!("tasks/{task_id}"), None)?;
-    let comments = s
-        .send("GET", &format!("tasks/{task_id}/comments"), None)?
-        .as_array()
-        .map(|all| {
-            all.iter()
-                .map(|c| BundleComment {
-                    author: author(
-                        c["author"]["kind"].as_str().unwrap_or(""),
-                        c["author"]["id"].as_str(),
-                        &me,
-                    ),
-                    at: c["created_at"].as_str().unwrap_or("").to_string(),
-                    body: c["message"].as_str().unwrap_or("").to_string(),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let comments = stored_comments(ws, task_id, &me)?;
     let mut pages = Vec::new();
     for id in linked_pages(ws, task_id)? {
         let (status, page) = s.status_and_data("GET", &format!("pages/{id}"), None)?;
@@ -435,7 +470,7 @@ pub fn bundle_from_local(
         },
         title: task["title"].as_str().unwrap_or("").to_string(),
         body: task["description"].as_str().unwrap_or("").to_string(),
-        author: author("user", Some(&me), &me),
+        author: author(None, None, &me),
         comments,
         pages,
         persona: None,

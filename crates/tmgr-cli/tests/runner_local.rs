@@ -341,7 +341,8 @@ fn seed_context(local: &Local) {
     conn.execute_batch(
         "INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p-1', -1, 'Owner', 'Scribe', 'x');
          INSERT INTO comments (task_id, message, created_at, updated_at, author_kind, author_id, author_name) VALUES
-           (1, 'from me', '2026-10-01T10:05:00.000Z', '2026-10-01T10:05:00.000Z', 'user', NULL, NULL),
+           (1, 'from me', '2026-10-01T10:05:00.000Z', '2026-10-01T10:05:00.000Z', 'user', '-1', 'Owner'),
+           (1, 'legacy', '2026-10-01T10:05:30.000Z', '2026-10-01T10:05:30.000Z', 'user', NULL, NULL),
            (1, 'from persona', '2026-10-01T10:06:00.000Z', '2026-10-01T10:06:00.000Z', 'persona', 'p-1', 'Scribe'),
            (1, 'from plugin', '2026-10-01T10:07:00.000Z', '2026-10-01T10:07:00.000Z', 'plugin', 'tmgr.x', 'X'),
            (1, 'from someone', '2026-10-01T10:08:00.000Z', '2026-10-01T10:08:00.000Z', 'user', '77', 'Other');
@@ -366,7 +367,7 @@ fn bundle_maps_authors_includes_pages_and_hashes_stably() {
     assert_eq!(v["data"]["sha256"], bundle.sha256());
     assert_eq!(bundle.title, "Fix login");
     assert_eq!(bundle.body, "Users cannot sign in");
-    assert_eq!(bundle.author.kind, AuthorKind::Human);
+    assert_eq!(bundle.author.kind, AuthorKind::Other);
     assert_eq!(bundle.task.task_id, 1);
     assert!(bundle.task.workspace_id < 0);
     assert!(bundle.persona.is_none());
@@ -379,6 +380,7 @@ fn bundle_maps_authors_includes_pages_and_hashes_stably() {
         kinds,
         [
             (AuthorKind::Human, Some("-1")),
+            (AuthorKind::Other, None),
             (AuthorKind::Agent, Some("p-1")),
             (AuthorKind::Other, Some("tmgr.x")),
             (AuthorKind::Other, Some("77")),
@@ -471,4 +473,23 @@ fn a_comment_with_a_malformed_timestamp_is_refused() {
     let out = local.bundle(&cwd);
     assert!(!out.status.success());
     assert!((text(&out.stderr) + &text(&out.stdout)).contains("RFC 3339"));
+}
+
+#[test]
+fn bundle_refuses_a_task_with_too_many_comments_before_loading_them() {
+    let local = Local::new();
+    let conn = local.db("personal");
+    for i in 0..501 {
+        conn.execute(
+            "INSERT INTO comments (task_id, message, created_at, updated_at, author_kind, author_id, author_name)
+             VALUES (1, ?, '2026-10-01T10:05:00.000Z', '2026-10-01T10:05:00.000Z', 'user', '-1', 'Owner')",
+            [format!("c{i}")],
+        )
+        .unwrap();
+    }
+    let cwd = local.tmp.path().join("work");
+    std::fs::create_dir_all(&cwd).unwrap();
+    let out = local.bundle(&cwd);
+    assert!(!out.status.success());
+    assert!(text(&out.stdout).contains("too many or too large comments"));
 }
