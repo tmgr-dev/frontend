@@ -101,7 +101,7 @@ fn clip(s: &str, max: usize) -> String {
 }
 
 fn git_facts(cwd: &Path) -> Option<(GitEnv, Option<String>, Option<String>)> {
-    let git = GitEnv::open(cwd).ok()?;
+    let git = GitEnv::open_facts(cwd).ok()?;
     if git.run(&["rev-parse", "--is-inside-work-tree"]).ok()? != "true" {
         return None;
     }
@@ -528,6 +528,34 @@ mod tests {
         assert_eq!(text.lines().count(), 2, "{text}");
         assert!(text.contains(r#""detail":"perm""#));
         assert!(!text.contains("secret"));
+    }
+
+    #[test]
+    fn a_huge_commit_subject_leaves_the_facts_absent() {
+        let d = tempfile::tempdir().unwrap();
+        let repo = d.path().join("repo");
+        let logs = d.path().join("logs");
+        std::fs::create_dir(&repo).unwrap();
+        std::fs::create_dir(&logs).unwrap();
+        let g = GitEnv::bare(&repo)
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com");
+        g.run(&["init", "-b", "main"]).unwrap();
+        g.run(&["commit", "--allow-empty", "-m", "first"]).unwrap();
+        let log = Log::open(&logs, repo.clone());
+        std::fs::write(d.path().join("msg"), "x".repeat(5 * 1024 * 1024)).unwrap();
+        let msg = d.path().join("msg");
+        g.run(&["commit", "--allow-empty", "-F", msg.to_str().unwrap()])
+            .unwrap();
+        let t = std::time::Instant::now();
+        log.exited(9, Some(0), None);
+        assert!(t.elapsed() < std::time::Duration::from_secs(10));
+        let text = std::fs::read_to_string(logs.join(FILE)).unwrap();
+        assert!(text.len() < 64 * 1024, "{}", text.len());
+        assert!(text.contains(r#""ev":"commits""#), "{text}");
+        assert!(text.contains(r#""list":[]"#), "{text}");
     }
 
     #[test]
