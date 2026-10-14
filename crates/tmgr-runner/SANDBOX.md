@@ -202,6 +202,7 @@ command (exec failure: exit 127).
 - Linux helper: every read/write root is re-opened and its kernel-resolved path must equal the policy path, and the working directory (handed over by the shim as a descriptor, not looked up by path) must be the directory with the
   `st_dev`/`st_ino` the runner approved, and the Landlock rule for it is created from that same descriptor; otherwise the run does not start (exit 78). This closes the swap-for-a-symlink race between validation and enforcement.
 - macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).
+- Queue clones: the object directory of `clone_of` is re-checked by descriptor identity before the policy is built and again before the spawn; on Linux the helper also verifies the opened root's device and inode. macOS Seatbelt grants are path based, so a swap after the second check is the residual window.
 - The `tmgr` binary (`self_exe`) must not live inside the working dir or the per-run home; the run is refused otherwise.
 - Windows: not supported; `prepare` returns an error.
 

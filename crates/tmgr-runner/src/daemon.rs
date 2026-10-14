@@ -264,7 +264,7 @@ struct Meta {
 struct RunExtra {
     permission_mode: Option<String>,
     clone_of: Option<String>,
-    objects: Option<PathBuf>,
+    objects: Option<clone::Objects>,
     start: Option<(String, String)>,
 }
 
@@ -1838,7 +1838,10 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
-        grants.objects_ro.extend(extra.objects.iter().cloned());
+        if let Some(o) = &extra.objects {
+            o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
+            grants.objects_ro.push((o.path.clone(), o.id));
+        }
         let launch = sandbox::prepare(&SandboxSpec {
             session_id: id.to_string(),
             argv: req.argv.clone(),
@@ -1879,6 +1882,9 @@ impl Runner {
             *installed = Some(bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?);
         }
         hold_before_spawn();
+        if let Some(o) = &extra.objects {
+            o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
+        }
         let log_file = OpenOptions::new()
             .create(true)
             .append(true)

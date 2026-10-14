@@ -172,7 +172,7 @@ pub struct Profile {
     #[serde(default)]
     pub hooks: HooksDecl,
     #[serde(default)]
-    pub permission_modes: BTreeMap<String, Vec<String>>,
+    pub permission_modes: Option<BTreeMap<String, Vec<String>>>,
     #[serde(skip)]
     pub source: Source,
 }
@@ -211,14 +211,13 @@ impl Profile {
     }
 
     pub fn has_permission_modes(&self) -> bool {
-        self.permission_modes
-            .keys()
-            .any(|m| tmgr_ipc::api::valid_permission_mode(m))
+        self.permission_modes.is_some()
     }
 
     pub fn permission_args(&self, mode: &str) -> Result<&[String], String> {
         self.permission_modes
-            .get(mode)
+            .as_ref()
+            .and_then(|t| t.get(mode))
             .map(Vec::as_slice)
             .ok_or_else(|| format!("profile {} cannot run in mode {mode}", self.id))
     }
@@ -276,9 +275,11 @@ fn check_launch(p: &Profile) -> Result<(), String> {
         }
         _ => {}
     }
-    for (mode, args) in &p.permission_modes {
+    for (mode, args) in p.permission_modes.iter().flatten() {
         if !tmgr_ipc::api::valid_permission_mode(mode) {
-            continue;
+            return Err(format!(
+                "permission_modes.{mode} is not a mode; use ask, accept-edits or plan"
+            ));
         }
         if args.is_empty() || args.iter().any(|a| a.contains('{')) {
             return Err(format!(
@@ -663,7 +664,7 @@ args = ["--prompt", "{prompt}"]
 [resume]
 args = ["--resume"]
 [permission_modes]
-default = []
+ask = ["--ask"]
 [hooks]
 kind = "none"
 [usage]
@@ -781,7 +782,7 @@ idle = ['^> $']
         assert_eq!(args("gemini", "plan").unwrap(), ["--approval-mode", "plan"]);
         assert!(args("codex", "plan").is_err());
         for id in ["opencode", "cursor-agent", "aider"] {
-            assert!(set.get(id).unwrap().permission_modes.is_empty(), "{id}");
+            assert!(set.get(id).unwrap().permission_modes.is_none(), "{id}");
         }
         let p = set.get("claude-code").unwrap();
         let extra = p.permission_args("plan").unwrap();
@@ -798,9 +799,14 @@ idle = ['^> $']
     #[test]
     fn declared_permission_modes_are_checked() {
         let dir = tempfile::tempdir().unwrap();
-        for (i, table) in ["plan = []", "ask = []", "ask = [\"--m={model}\"]"]
-            .iter()
-            .enumerate()
+        for (i, table) in [
+            "plan = []",
+            "ask = []",
+            "ask = [\"--m={model}\"]",
+            "askk = [\"--a\"]",
+        ]
+        .iter()
+        .enumerate()
         {
             let text = format!(
                 "id = \"p{i}\"\nname = \"p\"\ncommand = [\"p\"]\n[permission_modes]\n{table}\n"
@@ -808,7 +814,9 @@ idle = ['^> $']
             std::fs::write(dir.path().join(format!("p{i}.toml")), text).unwrap();
         }
         let (set, warnings) = ProfileSet::load(Some(dir.path()));
-        assert_eq!(warnings.len(), 3, "{warnings:?}");
+        assert_eq!(warnings.len(), 4, "{warnings:?}");
+        assert!(warnings.iter().any(|w| w.contains("askk")), "{warnings:?}");
+        assert!(set.get("p3").is_none());
         assert!(set.get("p0").is_none());
     }
 

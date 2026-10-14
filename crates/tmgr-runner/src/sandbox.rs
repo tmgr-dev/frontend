@@ -20,7 +20,7 @@ pub struct SandboxSpec {
 #[derive(Default)]
 pub struct Grants {
     pub extra_read: Vec<PathBuf>,
-    pub objects_ro: Vec<PathBuf>,
+    pub objects_ro: Vec<(PathBuf, (u64, u64))>,
     pub deny: Vec<PathBuf>,
     pub trusted_env_pass: Vec<String>,
     pub env: Vec<(String, String)>,
@@ -286,6 +286,8 @@ struct Plan {
     cwd: PathBuf,
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     cwd_id: (u64, u64),
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    read_ids: Vec<(PathBuf, (u64, u64))>,
     notes: Vec<String>,
     paths: PolicyPaths,
     env: Vec<(String, String)>,
@@ -426,7 +428,8 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
         }
         push_unique(&mut read, c);
     }
-    for objects in &spec.grants.objects_ro {
+    let mut read_ids = Vec::new();
+    for (objects, id) in &spec.grants.objects_ro {
         let c = canon_lossy(objects);
         if let Some(d) = deny.iter().find(|d| overlaps(&c, d)) {
             return Err(format!(
@@ -435,6 +438,7 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
                 d.display()
             ));
         }
+        read_ids.push((c.clone(), *id));
         push_unique(&mut read, c);
     }
     let write = vec![cwd.clone(), home.clone()];
@@ -452,6 +456,7 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
     Ok(Plan {
         cwd,
         cwd_id,
+        read_ids,
         notes,
         paths: PolicyPaths {
             real_home,
@@ -633,6 +638,7 @@ pub fn prepare(spec: &SandboxSpec) -> Result<Launch, String> {
         "cwd_dev": plan.cwd_id.0,
         "cwd_ino": plan.cwd_id.1,
         "read": plan.paths.read,
+        "read_ids": plan.read_ids.iter().map(|(p, (d, i))| (p, d, i)).collect::<Vec<_>>(),
         "write": plan.paths.write,
         "system_read": system_read,
         "deny": plan.paths.deny,
@@ -712,6 +718,8 @@ mod linux {
         cwd_dev: u64,
         cwd_ino: u64,
         read: Vec<String>,
+        #[serde(default)]
+        read_ids: Vec<(String, u64, u64)>,
         write: Vec<String>,
         system_read: Vec<String>,
         deny: Vec<String>,
@@ -732,12 +740,13 @@ mod linux {
         Ok(fd)
     }
 
+    fn stat_id(fd: RawFd) -> Option<(u64, u64)> {
+        let mut st: libc::stat = unsafe { std::mem::zeroed() };
+        (unsafe { libc::fstat(fd, &mut st) } == 0).then_some((st.st_dev, st.st_ino))
+    }
+
     fn same_file(a: RawFd, b: RawFd) -> bool {
-        let stat = |fd: RawFd| {
-            let mut st: libc::stat = unsafe { std::mem::zeroed() };
-            (unsafe { libc::fstat(fd, &mut st) } == 0).then_some((st.st_dev, st.st_ino))
-        };
-        matches!((stat(a), stat(b)), (Some(x), Some(y)) if x == y)
+        matches!((stat_id(a), stat_id(b)), (Some(x), Some(y)) if x == y)
     }
 
     fn own_terminal() -> Option<PathFd> {
@@ -804,6 +813,13 @@ mod linux {
             } else {
                 PathFd::new(p).map_err(|e| err(&e))?
             };
+            if let Some((_, dev, ino)) = policy.read_ids.iter().find(|(r, _, _)| *r == path) {
+                if stat_id(fd.as_fd().as_raw_fd()) != Some((*dev, *ino)) {
+                    return Err(format!(
+                        "tmgr: sandbox setup failed: {path} is not the directory that was validated; the run does not start"
+                    ));
+                }
+            }
             rs = rs
                 .add_rule(PathBeneath::new(fd, rights))
                 .map_err(|e| err(&e))?;
@@ -1101,7 +1117,8 @@ mod tests {
         let mut f = fx();
         let objects = f.spec.real_home.join("repo/.git/objects");
         fs::create_dir_all(&objects).unwrap();
-        f.spec.grants.objects_ro = vec![objects.clone()];
+        let meta = objects.metadata().unwrap();
+        f.spec.grants.objects_ro = vec![(objects.clone(), (meta.dev(), meta.ino()))];
         let pl = plan(&f.spec).unwrap();
         let objects = objects.canonicalize().unwrap();
         assert!(pl.paths.read.contains(&objects));
@@ -1112,7 +1129,7 @@ mod tests {
             .contains(&objects.parent().unwrap().to_path_buf()));
 
         let mut f = fx();
-        f.spec.grants.objects_ro = vec![f.spec.real_home.join(".ssh")];
+        f.spec.grants.objects_ro = vec![(f.spec.real_home.join(".ssh"), (0, 0))];
         assert!(refusal(&f).contains("protected"));
     }
 

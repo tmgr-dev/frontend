@@ -3050,9 +3050,17 @@ fn permission_modes_append_the_profile_arguments_and_default_to_ask() {
         let e = err_text(c.create_run(req));
         assert!(e.starts_with("invalid_params: ") && e.contains(want), "{e}");
     }
-    h.modal("noask", "[permission_modes]\nplan = [\"--plan\"]\n");
-    let e = err_text(c.create_run(h.run_req("noask")));
-    assert!(e.contains("cannot run in mode ask"), "{e}");
+    for (id, table) in [
+        ("noask", "plan = [\"--plan\"]"),
+        ("onlyedits", "accept-edits = [\"--edits\"]"),
+    ] {
+        h.modal(id, &format!("[permission_modes]\n{table}\n"));
+        let e = err_text(c.create_run(h.run_req(id)));
+        assert!(e.contains("cannot run in mode ask"), "{e}");
+    }
+    h.modal("typo", "[permission_modes]\naskk = [\"--ask\"]\n");
+    let e = err_text(c.create_run(h.run_req("typo")));
+    assert!(e.starts_with("unknown_profile: "), "{e}");
     assert!(c
         .list()
         .unwrap()
@@ -3207,7 +3215,12 @@ impl CloneFx {
 }
 
 fn clone_fx() -> CloneFx {
+    clone_fx_env(Vec::new())
+}
+
+fn clone_fx_env(env: Vec<(String, String)>) -> CloneFx {
     let mut h = Harness::new();
+    h.env.extend(env);
     let home = fs::canonicalize(h.tmp.path()).unwrap().join("home");
     let repo = home.join("repo");
     let queue = home.join("repo-worktrees/queue");
@@ -3319,6 +3332,56 @@ fn clone_of_refuses_anything_but_a_hardened_queue_clone() {
     refused(relative, "absolute");
 
     assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn a_fifo_as_alternates_is_refused_without_blocking() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = clone_fx();
+    let dest = fx.clone_to("q_fifo");
+    let alt = dest.join(".git/objects/info/alternates");
+    fs::remove_file(&alt).unwrap();
+    assert!(Command::new("mkfifo").arg(&alt).status().unwrap().success());
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let started = Instant::now();
+    let e = err_text(c.create_run(fx.req(&dest)));
+    assert!(started.elapsed() < Duration::from_secs(2), "{e}");
+    assert!(
+        e.starts_with("invalid_params: ") && e.contains("alternates"),
+        "{e}"
+    );
+}
+
+#[test]
+fn an_object_directory_swapped_before_launch_refuses_the_run() {
+    if !sessions_available() {
+        return;
+    }
+    let scratch = tempfile::tempdir().unwrap();
+    let hold = scratch.path().join("hold");
+    let fx = clone_fx_env(vec![(
+        "TMGR_TEST_HOLD_BEFORE_SPAWN".into(),
+        hold.display().to_string(),
+    )]);
+    let dest = fx.clone_to("q_swap");
+    let req = fx.req(&dest);
+    let objects = fx.repo.join(".git/objects");
+    let moved = fx.repo.join(".git/objects.real");
+    let elsewhere = scratch.path().join("elsewhere");
+    fs::create_dir(&elsewhere).unwrap();
+    let e = create_held(
+        &fx.h,
+        &hold,
+        move |mut c| c.create_run(req),
+        move || {
+            fs::rename(&objects, &moved).unwrap();
+            std::os::unix::fs::symlink(&elsewhere, &objects).unwrap();
+        },
+    );
+    let e = err_text(e);
+    assert!(e.contains("changed after validation"), "{e}");
 }
 
 #[test]
