@@ -158,7 +158,16 @@ impl Client {
         if self.verbose {
             eprintln!("< {status}");
         }
-        Ok((status, read_json(resp)?))
+        let retry_after = (status == 429)
+            .then(|| resp.headers().get("retry-after"))
+            .flatten()
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        let mut value = read_json(resp)?;
+        if let (Some(secs), Value::Object(m)) = (retry_after, &mut value) {
+            m.insert("retry_after_s".into(), Value::from(secs));
+        }
+        Ok((status, value))
     }
 
     fn network_error(&self, e: &reqwest::Error) -> Error {

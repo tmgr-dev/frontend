@@ -21,6 +21,7 @@ pub fn run(ctx: &Ctx, cmd: &AgentCommand) -> Result<Output> {
         AgentCommand::Start(a) => start(ctx, a),
         AgentCommand::Update(a) => update(ctx, a),
         AgentCommand::Finish(a) => finish(ctx, a),
+        AgentCommand::Status { command } => super::agent_status::run(ctx, command),
     }
 }
 

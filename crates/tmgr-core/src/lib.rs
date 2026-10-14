@@ -1,4 +1,5 @@
 pub mod active;
+pub mod agent_status;
 pub mod agentwork;
 pub mod api;
 pub mod api_ext;

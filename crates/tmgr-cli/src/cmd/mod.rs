@@ -1,5 +1,6 @@
 pub mod add;
 pub mod agent;
+pub mod agent_status;
 pub mod auth;
 pub mod board;
 pub mod config;

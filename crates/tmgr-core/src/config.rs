@@ -7,12 +7,13 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 5] = [
+pub const KEYS: [&str; 6] = [
     "server",
     "default_workspace",
     "web_url",
     "branch_template",
     "review_status",
+    "upload_status",
 ];
 pub const DEFAULT_REVIEW_STATUS: &str = "Review";
 
@@ -28,6 +29,8 @@ pub struct Config {
     pub branch_template: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upload_status: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_store: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -86,6 +89,7 @@ impl Config {
             "web_url" => self.web_url.clone(),
             "branch_template" => self.branch_template.clone(),
             "review_status" => self.review_status.clone(),
+            "upload_status" => Some(self.upload_status().to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -124,8 +128,19 @@ impl Config {
                 self.review_status = Some(v.clone());
                 Ok(v)
             }
+            "upload_status" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage("invalid upload_status").hint("use true or false")
+                })?;
+                self.upload_status = Some(v);
+                Ok(v.to_string())
+            }
             _ => Err(unknown_key(key)),
         }
+    }
+
+    pub fn upload_status(&self) -> bool {
+        self.upload_status.unwrap_or(false)
     }
 
     pub fn branch_template(&self) -> &str {
@@ -151,6 +166,14 @@ impl Config {
             .or(self.server.as_deref())
             .unwrap_or(DEFAULT_SERVER);
         normalize_server(raw)
+    }
+}
+
+fn parse_bool(raw: &str) -> Option<bool> {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "true" | "on" | "yes" | "1" => Some(true),
+        "false" | "off" | "no" | "0" => Some(false),
+        _ => None,
     }
 }
 
@@ -331,6 +354,21 @@ mod tests {
         assert!(c.set("review_status", "  ").is_err());
         assert!(c.set("default_workspace", "a b").is_err());
         assert!(c.get("nope").is_err());
+    }
+
+    #[test]
+    fn upload_status_is_off_by_default_and_parses_booleans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = Config::default();
+        assert!(!c.upload_status());
+        assert_eq!(c.get("upload_status").unwrap().as_deref(), Some("false"));
+        assert_eq!(c.set("upload_status", "On").unwrap(), "true");
+        assert!(c.upload_status());
+        assert!(c.set("upload_status", "maybe").is_err());
+        c.save(tmp.path()).unwrap();
+        assert!(Config::load(tmp.path()).unwrap().upload_status());
+        assert_eq!(c.set("upload_status", "0").unwrap(), "false");
+        assert!(!c.upload_status());
     }
 
     #[cfg(unix)]
