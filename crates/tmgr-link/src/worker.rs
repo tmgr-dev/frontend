@@ -166,6 +166,7 @@ pub(crate) struct Conn<'a> {
     client: IpAddr,
     pub(crate) fingerprint: String,
     pub(crate) rt: &'a Runtime<'a>,
+    hello_only: bool,
 }
 
 impl Conn<'_> {
@@ -302,6 +303,7 @@ pub fn serve_with(
         client,
         fingerprint: leader.fingerprint.clone(),
         rt,
+        hello_only: store.jump_for.contains_key(name),
     };
     let mut state = State { backend: None };
     let max_requests = limits.max_requests;
@@ -420,6 +422,19 @@ fn handle(conn: &Conn, state: &mut State, chan: &mut dyn Channel, frame: &[u8]) 
         Err(_) => return Step::Close(proto::error(id, "unavailable", "request refused")),
     };
     let method = req.method.as_str();
+    if conn.hello_only && method != "hello" {
+        if conn
+            .record(method, json!({}), "rejected", "jump enrollment")
+            .is_err()
+        {
+            return audit_down();
+        }
+        return Step::Reply(proto::error(
+            id,
+            "forbidden",
+            "this link is a jump enrollment: it may only forward",
+        ));
+    }
     match method {
         "hello" => {
             let want = req.params.get("protocol").and_then(Value::as_u64);

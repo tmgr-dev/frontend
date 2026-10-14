@@ -1,5 +1,5 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -286,16 +286,8 @@ struct FollowerMachine {
     root: PathBuf,
     xdg_config: PathBuf,
     authorized_keys: PathBuf,
-    base_line: String,
-}
-
-fn splice_forwarding(line: &str, port: u16) -> String {
-    assert!(line.contains(",no-port-forwarding,"));
-    line.replacen(
-        "no-port-forwarding",
-        &format!("port-forwarding,permitopen=\"127.0.0.1:{port}\""),
-        1,
-    )
+    bin: PathBuf,
+    key: grammar::PubKey,
 }
 
 fn follower_machine(
@@ -305,14 +297,24 @@ fn follower_machine(
     repo: &Path,
     forward_to: Option<u16>,
 ) -> FollowerMachine {
+    let ident = root.join(format!("{dir}_identity"));
+    keygen(&ident);
     let fol_root = root.join(dir);
     let fol = Paths::under(&fol_root);
     let bin = std::fs::canonicalize(env!("CARGO_BIN_EXE_tmgr")).unwrap();
     let line = authkeys::build_line(&bin, "laptop", ENR, &["127.0.0.1".to_string()], key).unwrap();
     let written = match forward_to {
-        Some(p) => splice_forwarding(&line, p),
+        Some(p) => jump_line(&bin, key, p),
         None => line.clone(),
     };
+    if let Some(p) = forward_to {
+        Store::update(&fol, |s| {
+            s.jump_for
+                .insert("laptop".into(), vec![format!("127.0.0.1:{p}")]);
+            Ok(())
+        })
+        .unwrap();
+    }
     authkeys::upsert(&fol.authorized_keys(), "laptop", &written, key).unwrap();
     Store::update(&fol, |s| {
         s.leaders.insert(
@@ -339,18 +341,36 @@ fn follower_machine(
     let xdg_config = fol_root.join("xdg-config");
     std::fs::create_dir_all(&xdg_config).unwrap();
     std::fs::rename(&fol.config, xdg_config.join("tmgr")).unwrap();
+    std::fs::write(
+        xdg_config.join("tmgr").join("link_key.pub"),
+        std::fs::read_to_string(ident.with_extension("pub")).unwrap(),
+    )
+    .unwrap();
     FollowerMachine {
         root: fol_root,
         xdg_config,
         authorized_keys: fol.authorized_keys(),
-        base_line: line,
+        bin,
+        key: key.clone(),
     }
+}
+
+fn jump_line(bin: &Path, key: &grammar::PubKey, port: u16) -> String {
+    authkeys::build_jump_line(
+        bin,
+        "laptop",
+        ENR,
+        &["127.0.0.1".to_string()],
+        key,
+        &[format!("127.0.0.1:{port}")],
+    )
+    .unwrap()
 }
 
 fn write_jump_keys(fm: &FollowerMachine, allowed: u16) {
     std::fs::write(
         &fm.authorized_keys,
-        format!("{}\n", splice_forwarding(&fm.base_line, allowed)),
+        format!("{}\n", jump_line(&fm.bin, &fm.key, allowed)),
     )
     .unwrap();
 }
@@ -437,6 +457,13 @@ fn leader_reaches_a_follower_through_a_pinned_jump_sshd() {
     let out = lead.tmgr().args(["link", "test", "hop"]).output().unwrap();
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let jump_key = leader::scan_host("127.0.0.1", jump_port).unwrap();
+    let (mut jc, _jk) = Client::dial(&lead.paths, &lead.cred(), "hop").unwrap();
+    jc.hello().unwrap();
+    match jc.call("runs.list", json!({})).unwrap() {
+        tmgr_link::proto::Reply::Err { code, .. } => assert_eq!(code, "forbidden"),
+        other => panic!("a jump enrollment must not run anything: {other:?}"),
+    }
+    drop(jc);
     let hop = jump::hop_for(&Store::load(&lead.paths).unwrap(), "hop").unwrap();
     let through =
         jump::scan_host_via(&lead.paths, &lead.cred(), &hop, "127.0.0.1", target_port).unwrap();
@@ -487,6 +514,31 @@ fn leader_reaches_a_follower_through_a_pinned_jump_sshd() {
         keygen(&k);
         grammar::parse_pubkey(&std::fs::read_to_string(k.with_extension("pub")).unwrap()).unwrap()
     };
+    #[cfg(feature = "runner")]
+    {
+        let out = lead
+            .tmgr()
+            .args(["agents", "--host", "dest"])
+            .output()
+            .unwrap();
+        assert!(
+            stderr(&out).contains("runner not running"),
+            "remote commands reach the follower through the jump: {}",
+            stderr(&out)
+        );
+        leader::pin_host(&lead.paths, "hop", &other).unwrap();
+        let out = lead
+            .tmgr()
+            .args(["agents", "--host", "dest"])
+            .output()
+            .unwrap();
+        assert!(
+            stderr(&out).contains("host key mismatch"),
+            "a remote command must not bypass the jump: {}",
+            stderr(&out)
+        );
+        leader::pin_host(&lead.paths, "hop", &jump_key).unwrap();
+    }
     leader::pin_host(&lead.paths, "dest", &other).unwrap();
     let out = lead.tmgr().args(["link", "test", "dest"]).output().unwrap();
     assert_eq!(out.status.code(), Some(9), "{}", stderr(&out));

@@ -148,8 +148,8 @@ fn add(ctx: &Ctx, paths: &Paths, a: &AddArgs) -> Result<Output> {
             }
             s.jumps.insert(name.clone(), h.name.clone());
         }
-        if let Some(p) = &peer {
-            s.peer_keys.insert(name.clone(), p.blob.clone());
+        {
+            s.peer_keys.insert(name.clone(), peer.blob.clone());
         }
         s.followers.insert(
             name.clone(),
@@ -201,6 +201,7 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
     let input = TrustInput {
         name: a.name.clone(),
         pubkey: a.pubkey.join(" "),
+        jump_for: a.as_jump_for.clone(),
         scope: ScopeInput {
             repos: Some(a.repos.clone()),
             agents: Some(a.agents.clone()),
@@ -224,8 +225,15 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
         paths.authorized_keys().display(),
         plan.line
     );
-    eprintln!("scope: {}", plan.scope.summary());
-    if plan.scope.repos.is_empty() || plan.scope.agents.is_empty() {
+    if !plan.jump_for.is_empty() {
+        eprintln!(
+            "jump enrollment: this key may only forward to {} and answer hello; it cannot start runs",
+            plan.jump_for.join(", ")
+        );
+    } else {
+        eprintln!("scope: {}", plan.scope.summary());
+    }
+    if plan.jump_for.is_empty() && (plan.scope.repos.is_empty() || plan.scope.agents.is_empty()) {
         eprintln!("note: the scope has no repos or no agents, so every run will be refused");
     }
     if let Verdict::Unverified(why) = &plan.sshd {
@@ -259,6 +267,7 @@ fn trust(paths: &Paths, a: &TrustArgs) -> Result<Output> {
             "authorized_keys": paths.authorized_keys().display().to_string(),
             "backup": edit.backup.as_ref().map(|b| b.display().to_string()),
             "scope": scope_json(&plan.scope),
+            "jump_for": plan.jump_for,
             "sshd": sshd_state,
         }),
         human,
@@ -272,11 +281,13 @@ fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
         "identity": own.as_ref().map(|(_, fp)| json!({"fingerprint": fp})),
         "leaders": store.leaders.iter().map(|(n, l)| json!({
             "name": n, "role": "leader", "fingerprint": l.fingerprint, "added": l.added, "scope": scope_json(&l.scope),
+            "jump_for": store.jump_for.get(n),
         })).collect::<Vec<_>>(),
         "followers": store.followers.iter().map(|(n, f)| json!({
             "name": n, "user": f.user, "host": f.host, "port": f.port,
             "host_key_fingerprint": f.host_key_fingerprint, "added": f.added,
             "jump": store.jumps.get(n),
+            "identity": if store.peer_keys.contains_key(n) { "verified" } else { "unverified" },
         })).collect::<Vec<_>>(),
     });
     let mut parts: Vec<String> = Vec::new();
@@ -293,7 +304,10 @@ fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
                 n.clone(),
                 "leader".into(),
                 short_fp(&l.fingerprint),
-                l.scope.summary(),
+                match store.jump_for.get(n) {
+                    Some(d) => format!("jump enrollment: {}", d.join(",")),
+                    None => l.scope.summary(),
+                },
                 l.added.chars().take(10).collect(),
             ]);
         }
@@ -323,6 +337,17 @@ fn list(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     }
     if let Some((_, fp)) = &own {
         parts.push(format!("this machine's link identity: {fp}"));
+    }
+    let unverified: Vec<&String> = store
+        .followers
+        .keys()
+        .filter(|n| !store.peer_keys.contains_key(*n))
+        .collect();
+    if !unverified.is_empty() {
+        parts.push(format!(
+            "warning: identity unverified for {}: cycle protection does not cover these links (remove and add them again once the follower has run tmgr link init)",
+            unverified.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")
+        ));
     }
     let human = if parts.is_empty() {
         ctx.style
@@ -529,20 +554,8 @@ fn remove(paths: &Paths, name: &str) -> Result<Output> {
 }
 
 fn test(ctx: &Ctx, paths: &Paths, name: &str) -> Result<Output> {
-    grammar::link_name(name)?;
-    let store = Store::load(paths)?;
-    let f = store.followers.get(name).ok_or_else(|| {
-        Error::not_found(format!("no follower named {name}")).hint("tmgr link list")
-    })?;
-    let target = SshTarget {
-        user: f.user.clone(),
-        host: f.host.clone(),
-        port: f.port,
-    };
-    let hop = jump::resolve(&store, name)?;
     let started = Instant::now();
-    let (mut client, _key) =
-        Client::connect_via(paths, &cred(ctx, paths), name, &target, hop.as_ref())?;
+    let (mut client, _key) = Client::dial(paths, &cred(ctx, paths), name)?;
     let hello = client.hello()?;
     let ms = started.elapsed().as_millis() as u64;
     let version = sanitize_line(hello.get("version").and_then(Value::as_str).unwrap_or("?"));

@@ -1,7 +1,7 @@
 use crate::audit::Audit;
 use crate::grammar::{self, PubKey};
 use crate::proto::{self, Channel, Framed, Reply};
-use crate::store::Paths;
+use crate::store::{Paths, Store};
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::io::Read;
@@ -305,6 +305,12 @@ pub fn classify_stderr(text: &str, timed_out: bool) -> String {
     {
         return "host key mismatch: the follower's key is not the pinned one".to_string();
     }
+    if lower.contains("administratively prohibited")
+        || lower.contains("stdio forwarding")
+        || lower.contains("channel open failed")
+    {
+        return "the jump host refused to forward to the follower: on the jump host run tmgr link trust <this machine's key> --as leader --name <NAME> --as-jump-for HOST:PORT".to_string();
+    }
     if lower.contains("permission denied") {
         return "the follower refused this link key (not trusted there, or from= does not match)"
             .to_string();
@@ -399,6 +405,22 @@ impl Client {
         target: &SshTarget,
     ) -> Result<(Client, KeyFile)> {
         Client::connect_via(paths, cred, name, target, None)
+    }
+
+    pub fn dial(paths: &Paths, cred: &CredentialStore, name: &str) -> Result<(Client, KeyFile)> {
+        grammar::link_name(name)?;
+        let store = Store::load(paths)?;
+        let f = store.followers.get(name).ok_or_else(|| {
+            Error::not_found(format!("no follower named {name}")).hint("tmgr link list")
+        })?;
+        grammar::parse_target(&format!("{}@{}", f.user, f.host))?;
+        let target = SshTarget {
+            user: f.user.clone(),
+            host: f.host.clone(),
+            port: grammar::parse_port(u32::from(f.port))?,
+        };
+        let hop = crate::jump::resolve(&store, name)?;
+        Client::connect_via(paths, cred, name, &target, hop.as_ref())
     }
 
     pub fn connect_via(
@@ -588,6 +610,11 @@ mod tests {
             classify_stderr("u@h: Permission denied (publickey).", false)
                 .contains("refused this link key")
         );
+        assert!(classify_stderr(
+            "channel 0: open failed: administratively prohibited: open failed",
+            false
+        )
+        .contains("--as-jump-for"));
         assert!(classify_stderr("", true).contains("in time"));
         assert!(classify_stderr("", false).contains("closed"));
         let weird = classify_stderr(

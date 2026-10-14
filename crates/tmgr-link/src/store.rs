@@ -114,6 +114,8 @@ pub struct Store {
     pub jumps: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub peer_keys: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub jump_for: BTreeMap<String, Vec<String>>,
 }
 
 #[cfg(unix)]

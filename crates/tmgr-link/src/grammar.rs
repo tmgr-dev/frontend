@@ -199,6 +199,37 @@ fn valid_host(host: &str) -> bool {
     })
 }
 
+pub const MAX_JUMP_DESTS: usize = 4;
+
+pub fn parse_jump_dests(items: &[String]) -> Result<Vec<String>> {
+    let bad = |why: &str| {
+        Error::usage(format!("invalid --as-jump-for: {why}")).hint("HOST:PORT, at most 4")
+    };
+    let mut out: Vec<String> = Vec::new();
+    for item in items {
+        let (host, port) = item
+            .rsplit_once(':')
+            .ok_or_else(|| bad("HOST:PORT expected"))?;
+        let is_ip4 = host.parse::<std::net::Ipv4Addr>().is_ok();
+        if !(is_ip4 || (!host.contains(':') && valid_host(host) && host.parse::<IpAddr>().is_err()))
+        {
+            return Err(bad("host must be a DNS name or an IPv4 address"));
+        }
+        let digits =
+            !port.is_empty() && port.len() <= 5 && port.bytes().all(|b| b.is_ascii_digit());
+        let n: u32 = if digits { port.parse().unwrap_or(0) } else { 0 };
+        let port = parse_port(n).map_err(|_| bad("bad port"))?;
+        let canon = format!("{host}:{port}");
+        if !out.contains(&canon) {
+            out.push(canon);
+        }
+    }
+    if out.is_empty() || out.len() > MAX_JUMP_DESTS {
+        return Err(bad("between 1 and 4 destinations"));
+    }
+    Ok(out)
+}
+
 pub fn parse_port(n: u32) -> Result<u16> {
     u16::try_from(n)
         .ok()
@@ -223,6 +254,93 @@ pub(crate) mod testkeys {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn jump_destinations_follow_a_strict_grammar() {
+        let ok = |v: &[&str]| {
+            super::parse_jump_dests(&v.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        };
+        assert_eq!(
+            ok(&["a.example.com:22", "192.0.2.1:2222", "a.example.com:22"])
+                .unwrap()
+                .len(),
+            2
+        );
+        for bad in [
+            "",
+            "host",
+            "host:",
+            ":22",
+            "host:0",
+            "host:65536",
+            "host:22x",
+            "host:+22",
+            "host: 22",
+            "a b:22",
+            "a\"b:22",
+            "a,b:22",
+            "a;b:22",
+            "-oFoo:22",
+            "-a.example.com:22",
+            "a_b:22",
+            "[::1]:22",
+            "::1:22",
+            "2001:db8::1:22",
+            "a*b:22",
+            "a?b:22",
+            "a%b:22",
+            "host:22,host2:22",
+            "host:123456",
+            "ho\nst:22",
+            "host:22\n",
+        ] {
+            assert!(ok(&[bad]).is_err(), "{bad:?}");
+        }
+        let five: Vec<&str> = vec!["a:1", "b:1", "c:1", "d:1", "e:1"];
+        assert!(ok(&five).is_err());
+        assert!(ok(&[]).is_err());
+    }
+
+    #[test]
+    fn ssh_target_parts_cannot_smuggle_options() {
+        for bad in [
+            "-oProxyCommand=x@host",
+            "u@-oProxyCommand=x",
+            "u@-host",
+            "-u@host",
+            "u@host -p 1",
+            "u@host;id",
+            "u@ho st",
+            "u@host,evil",
+            "u@host\n",
+            "u@host%h",
+            "u@$(id)",
+            "u@host:22",
+            "u@@host",
+            "u@",
+            "@host",
+            "u v@host",
+            "u@host'",
+            "u@host\"",
+            "u@host`",
+            "u@host|x",
+            "u@host#",
+            "u@~host",
+            "u@host\\",
+            "u@[::1]",
+        ] {
+            assert!(super::parse_target(bad).is_err(), "{bad:?}");
+        }
+        assert!(super::parse_target("deploy@192.0.2.1").is_ok());
+        for bad in [
+            "-x", "a b", "a_b", "A", "a/b", "a%b", "a;b", "", "a\nb", "a.b", "-", "--a",
+        ] {
+            assert!(super::link_name(bad).is_err(), "{bad:?}");
+        }
+        for bad in [0u32, 65536, u32::MAX] {
+            assert!(super::parse_port(bad).is_err());
+        }
+    }
+
     use super::*;
 
     #[test]

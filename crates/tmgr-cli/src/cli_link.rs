@@ -70,6 +70,9 @@ pub struct TrustArgs {
     /// Let the leader type into attached runs (default: view only)
     #[arg(long)]
     pub allow_attach_input: bool,
+    /// Enrol the key as a jump host key: it may only forward to these HOST:PORT (at most 4)
+    #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "HOST:PORT")]
+    pub as_jump_for: Vec<String>,
 }
 
 #[derive(Args)]

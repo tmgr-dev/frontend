@@ -88,10 +88,12 @@ pub struct TrustInput {
     pub name: String,
     pub pubkey: String,
     pub scope: ScopeInput,
+    pub jump_for: Vec<String>,
 }
 
 #[derive(Debug)]
 pub struct TrustPlan {
+    pub jump_for: Vec<String>,
     pub name: String,
     pub key: PubKey,
     pub scope: Scope,
@@ -163,8 +165,18 @@ pub fn plan_trust(
         .hint("remove that line first, or use a dedicated link key"));
     }
     let enrollment = new_enrollment();
-    let line = authkeys::build_line(&bin, &name, &enrollment, &scope.from, &key)?;
+    let jump_for = if input.jump_for.is_empty() {
+        Vec::new()
+    } else {
+        grammar::parse_jump_dests(&input.jump_for)?
+    };
+    let line = if jump_for.is_empty() {
+        authkeys::build_line(&bin, &name, &enrollment, &scope.from, &key)?
+    } else {
+        authkeys::build_jump_line(&bin, &name, &enrollment, &scope.from, &key, &jump_for)?
+    };
     Ok(TrustPlan {
+        jump_for,
         name,
         key,
         scope,
@@ -236,6 +248,7 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
             "link": plan.name,
             "fingerprint": plan.key.fingerprint,
             "scope": plan.scope.summary(),
+            "jump_for": plan.jump_for,
         }),
     )?;
     let edit = authkeys::upsert(&plan.target, &plan.name, &plan.line, &plan.key)?;
@@ -250,6 +263,13 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
             authorized_keys: plan.target.display().to_string(),
         },
     );
+    if plan.jump_for.is_empty() {
+        store.jump_for.remove(&plan.name);
+    } else {
+        store
+            .jump_for
+            .insert(plan.name.clone(), plan.jump_for.clone());
+    }
     if let Err(e) = store.save(paths) {
         let rolled = rollback(paths, &plan.name, Some(&edit), true);
         let _ = audit.append("link.trust.aborted", json!({"link": plan.name}));
@@ -262,6 +282,7 @@ pub fn apply_trust(paths: &Paths, plan: &TrustPlan) -> Result<authkeys::Edit> {
             "fingerprint": plan.key.fingerprint,
             "scope": plan.scope.summary(),
             "enrollment": plan.enrollment,
+            "jump_for": plan.jump_for,
             "sshd": match &plan.sshd { Verdict::Verified => "verified", _ => "unverified" },
         }),
     );
@@ -404,6 +425,7 @@ pub fn revoke(paths: &Paths, name: &str) -> Result<Revoked> {
         None => None,
     };
     store.generations.remove(name);
+    store.jump_for.remove(name);
     let leader = match store.leaders.remove(name) {
         Some(l) => Some(l),
         None if pending => None,
@@ -652,6 +674,7 @@ mod tests {
         TrustInput {
             name: name.into(),
             pubkey: key.into(),
+            jump_for: Vec::new(),
             scope: ScopeInput {
                 repos: Some(vec![f.repo.clone()]),
                 agents: Some(vec!["claude-code,codex".into()]),
@@ -669,6 +692,41 @@ mod tests {
         let key = plan.key.clone();
         apply_trust(&f.paths, &plan).unwrap();
         (plan, key)
+    }
+
+    #[test]
+    fn a_jump_enrollment_forwards_to_listed_destinations_only_and_revokes_cleanly() {
+        let f = fx();
+        let k = testkeys::generate();
+        let mut inp = input(&f, "hop", &k);
+        inp.jump_for = vec!["db.example.com:22".into(), "192.0.2.7:2222".into()];
+        let plan = plan_trust(&f.paths, &inp, &f.bin, chk(&f)).unwrap();
+        assert!(plan.line.starts_with("restrict,no-pty,port-forwarding,permitopen=\"db.example.com:22\",permitopen=\"192.0.2.7:2222\","));
+        assert!(!plan.line.contains("no-port-forwarding"));
+        assert!(plan.line.contains(" worker --link hop --enrollment "));
+        apply_trust(&f.paths, &plan).unwrap();
+        let store = Store::load(&f.paths).unwrap();
+        assert_eq!(
+            store.jump_for["hop"],
+            vec!["db.example.com:22", "192.0.2.7:2222"]
+        );
+        let audit = Audit::new(&f.paths.audit_dir()).tail(5).unwrap();
+        assert!(audit
+            .iter()
+            .any(|e| e["event"] == "link.trust" && e["jump_for"][0] == "db.example.com:22"));
+        revoke(&f.paths, "hop").unwrap();
+        assert!(Store::load(&f.paths).unwrap().jump_for.is_empty());
+        let keys = std::fs::read_to_string(f.paths.authorized_keys()).unwrap_or_default();
+        assert!(!keys.contains("tmgr-link:hop"));
+        for bad in [
+            vec!["x"],
+            vec!["a:1", "b:1", "c:1", "d:1", "e:1"],
+            vec!["-o:22"],
+        ] {
+            let mut i = input(&f, "hop2", &testkeys::generate());
+            i.jump_for = bad.iter().map(|s| s.to_string()).collect();
+            assert!(plan_trust(&f.paths, &i, &f.bin, chk(&f)).is_err());
+        }
     }
 
     #[test]

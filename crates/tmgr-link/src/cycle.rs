@@ -45,9 +45,16 @@ pub fn check_follower(
     store: &Store,
     name: &str,
     link_key: Option<&str>,
-) -> Result<Option<PubKey>> {
+) -> Result<PubKey> {
     let Some(text) = link_key else {
-        return Ok(None);
+        let _ = Audit::new(&paths.audit_dir()).append(
+            "link.refused",
+            json!({"link": name, "fp": "", "reason": "follower sent no link identity"}),
+        );
+        return Err(crate::link_err(
+            "the follower is too old or unidentified: its handshake carries no link identity",
+        )
+        .hint("update tmgr there and run tmgr link init on it"));
     };
     let key = grammar::parse_pubkey(text).map_err(|_| {
         crate::link_err("the follower sent an invalid link identity in its handshake")
@@ -70,7 +77,7 @@ pub fn check_follower(
             &format!("the follower already leads this machine (trusted as {leader}); linking it would create a cycle"),
         ));
     }
-    Ok(Some(key))
+    Ok(key)
 }
 
 pub fn worker_refusal(paths: &Paths, store: &Store, leader_key: &str) -> Option<&'static str> {
@@ -155,19 +162,19 @@ mod tests {
     }
 
     #[test]
-    fn an_old_follower_without_the_field_or_with_a_fresh_key_is_accepted() {
+    fn a_follower_without_an_identity_is_refused_and_a_fresh_key_is_accepted() {
         let (_d, paths, _own) = paths_with_identity();
         let store = Store::default();
-        assert!(check_follower(&paths, &store, "x", None).unwrap().is_none());
+        let e = check_follower(&paths, &store, "x", None).unwrap_err();
+        assert_eq!(e.exit_code(), 9);
+        assert!(e.message.contains("too old or unidentified"));
         let fresh = testkeys::key();
         assert_eq!(
-            check_follower(&paths, &store, "x", Some(&fresh.openssh()))
-                .unwrap()
-                .unwrap(),
+            check_follower(&paths, &store, "x", Some(&fresh.openssh())).unwrap(),
             fresh
         );
         assert!(check_follower(&paths, &store, "x", Some("garbage")).is_err());
-        assert!(refusals(&paths).is_empty());
+        assert_eq!(refusals(&paths).len(), 1);
     }
 
     #[test]
