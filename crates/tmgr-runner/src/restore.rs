@@ -490,14 +490,16 @@ pub fn clear_seed_destinations(home: &Path, tos: &[String]) -> io::Result<Vec<St
     Ok(removed)
 }
 
-pub fn return_home(homes: &Path, new: &str, old: &str) {
+pub fn return_home(homes: &Path, new: &str, old: &str) -> bool {
     if check_id(old).is_err() || check_id(new).is_err() {
-        return;
+        return false;
     }
     let to = homes.join(old);
-    if fs::symlink_metadata(&to).is_err() {
-        let _ = fs::rename(homes.join(new), to);
-    }
+    fs::symlink_metadata(&to).is_err() && fs::rename(homes.join(new), to).is_ok()
+}
+
+pub fn staging_complete(sdir: &Path) -> bool {
+    !sdir.join("seeds.json").exists() || sdir.join("seeds.done").exists()
 }
 
 #[cfg(test)]
@@ -748,8 +750,9 @@ mod tests {
         assert!(adopt_home(&homes, A, B).unwrap());
         assert!(homes.join(B).join("history").exists());
         assert!(!homes.join(A).exists());
-        return_home(&homes, B, A);
+        assert!(return_home(&homes, B, A));
         assert!(homes.join(A).join("history").exists());
+        assert!(!return_home(&homes, B, A));
         fs::create_dir(homes.join(B)).unwrap();
         assert!(adopt_home(&homes, A, B).is_err());
         assert!(adopt_home(&homes, "../x", B).is_err());

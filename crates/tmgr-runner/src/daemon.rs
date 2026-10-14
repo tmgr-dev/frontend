@@ -1558,9 +1558,16 @@ impl Runner {
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
+        let mut moved_home = false;
         if let Some(old) = restore_from {
             for line in seedguard::finish(&self.sdir(old)) {
                 log(&format!("session {old}: {line}"));
+            }
+            if !restore::staging_complete(&self.sdir(old)) {
+                return Err(api(
+                    ErrorCode::Internal,
+                    "the refreshed logins of the old session could not be staged for tmgr agents sync; nothing was restored",
+                ));
             }
             let moved = restore::adopt_home(&self.cfg.homes, old, &id).map_err(|e| {
                 api(
@@ -1568,6 +1575,7 @@ impl Runner {
                     format!("cannot reuse the run home: {e}"),
                 )
             })?;
+            moved_home = moved;
             if moved {
                 let tos = self.seed_destinations(req.profile.as_deref());
                 match restore::clear_seed_destinations(&home, &tos) {
@@ -1577,7 +1585,12 @@ impl Runner {
                         }
                     }
                     Err(e) => {
-                        restore::return_home(&self.cfg.homes, &id, old);
+                        if !restore::return_home(&self.cfg.homes, &id, old) {
+                            log(&format!(
+                                "session {old}: its home stays at {} after a failed restore",
+                                home.display()
+                            ));
+                        }
                         return Err(api(
                             ErrorCode::Sandbox,
                             format!("cannot clear the old logins in the run home: {e}"),
@@ -1599,11 +1612,18 @@ impl Runner {
             if let Some(prior) = &installed {
                 bundle::restore(prior);
             }
-            if let Some(old) = restore_from {
-                restore::return_home(&self.cfg.homes, &id, old);
-            }
+            let home_kept = match restore_from {
+                Some(old) if moved_home => !restore::return_home(&self.cfg.homes, &id, old),
+                _ => false,
+            };
             let _ = fs::remove_dir_all(&sdir);
-            let _ = fs::remove_dir_all(&home);
+            if home_kept {
+                log(&format!(
+                    "session {id}: kept the restored home after a failed start"
+                ));
+            } else {
+                let _ = fs::remove_dir_all(&home);
+            }
         }
         result
     }

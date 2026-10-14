@@ -430,6 +430,30 @@ fn restore_reseeds_the_moved_home_when_the_runner_dir_is_gone() {
 }
 
 #[test]
+fn a_login_that_cannot_be_staged_stops_the_restore_before_the_home_moves() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    seeded(&h);
+    h.start();
+    let first = h.client().create_run(h.req()).unwrap();
+    h.wait_log("home:new", 1);
+    let cands = h.run.join("candidates");
+    let _ = fs::create_dir(&cands);
+    fs::set_permissions(&cands, fs::Permissions::from_mode(0o500)).unwrap();
+    h.reboot(&first, false);
+    let err = h.client().restore(&first.id).unwrap_err().to_string();
+    fs::set_permissions(&cands, fs::Permissions::from_mode(0o700)).unwrap();
+    assert!(err.contains("could not be staged"), "{err}");
+    assert!(h.homes.join(&first.id).join(".fake/auth.json").exists());
+    assert_eq!(h.entries()[0].status, Status::Restorable);
+    let r = h.client().restore(&first.id).unwrap();
+    assert!(r.resumed);
+    assert_eq!(tmgr_runner::seedguard::pending(&h.run).len(), 1);
+}
+
+#[test]
 fn replaced_folder_is_refused_and_the_record_kept() {
     if !sessions_available() {
         return;
