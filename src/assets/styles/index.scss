@@ -117,7 +117,17 @@ html:not([data-focus-source='pointer']) .focus-ring {
 		var(--tw-shadow, 0 0 #0000);
 }
 
-:root #{$focus-text-input}:not(.vs__search):focus,
-:root textarea:focus {
+html:not([data-focus-source='pointer'])
+	:is([type='checkbox'], [type='radio'], [role='switch']):focus-visible:not(
+		[tabindex='-1']
+	):not(#{$focus-text-entry}) {
+	box-shadow: var(--tw-ring-offset-shadow, 0 0 #0000),
+		var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow, 0 0 #0000);
+}
+
+$focus-border-keep: "[aria-invalid='true'], .border-destructive, .border-red-500";
+
+:root #{$focus-text-input}:not(.vs__search):not(#{$focus-border-keep}):focus,
+:root textarea:not(#{$focus-border-keep}):focus {
 	border-color: var(--focus-border);
 }
