@@ -661,6 +661,62 @@ async function mouseProbe(
   return { down, after };
 }
 
+// D-016: an invalid text input keeps its error border; Tab adds the one ring
+// with the error colour in the band, blur and mouse click draw nothing.
+async function expectInvalidFocus(page, ref, tag, field, clicked, errorBorder) {
+  const red = await page.evaluate(() => {
+    const d = document.createElement('div');
+    d.style.color = 'hsl(var(--destructive))';
+    document.body.append(d);
+    const c = getComputedStyle(d).color;
+    d.remove();
+    return c;
+  });
+  const border = errorBorder ?? red;
+
+  await field.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  await expect(field).toBeFocused();
+  await shot(page, `${tag}-tab-invalid`);
+  const s = await page.evaluate(() => window.__qaFocus.probe());
+  expect.soft(s.focusVisible, `${tag}: Tab matches :focus-visible`).toBe(true);
+  expect
+    .soft(s.outlineDrawn && tupleOf(s), `${tag}: the one ring on Tab`)
+    .toBe(ref.tuple);
+  expect.soft(s.border, `${tag}: error border kept on focus`).toBe(border);
+  expect.soft(s.blurredBorder, `${tag}: error border on blur`).toBe(border);
+  const band = firstLayer(s.ownShadow);
+  expect
+    .soft(band, `${tag}: inner 4px band`)
+    .toMatch(/ 0px 0px 0px 4px inset$/);
+  expect.soft(layerColor(band), `${tag}: band is the error colour`).toBe(red);
+  expect
+    .soft(layerColor(band), `${tag}: band is not --bg-raised`)
+    .not.toBe(layerColor(ref.band));
+
+  await page.keyboard.press('Tab');
+  await expect(field).not.toBeFocused();
+  const blurred = await field.evaluate(async (el) => ({
+    outlineDrawn: (await window.__qaFocus.probe(el)).outlineDrawn,
+    shadow: getComputedStyle(el).boxShadow,
+  }));
+  expect
+    .soft(blurred.outlineDrawn, `${tag}: blurred input has no outline`)
+    .toBe(false);
+  expect
+    .soft(blurred.shadow, `${tag}: blurred input has no band`)
+    .not.toMatch(/4px inset/);
+
+  await clicked.click();
+  await expect(clicked).toBeFocused();
+  await shot(page, `${tag}-click-invalid`);
+  const c = await page.evaluate(() => window.__qaFocus.probe());
+  expect.soft(c.outlineDrawn, `${tag}: click draws no outline`).toBe(false);
+  expect.soft(c.ownShadow, `${tag}: click draws no band`).toBeNull();
+  expect.soft(c.border, `${tag}: error border on click`).toBe(border);
+}
+
 const textInput = (scope) =>
   scope
     .locator(
@@ -1369,4 +1425,78 @@ for (const scheme of ['light', 'dark']) {
       });
       expectKeyboardStops([s].filter(Boolean), ref, tag, { min: 1 });
     });
+
+  test(`register errors ${scheme}: Tab on an invalid input shows the one ring with the error band, click and blur show none (D-016)`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript((s) => {
+      sessionStorage.setItem('tmgr:tours:auto', 'true');
+      localStorage.setItem('colorScheme', s);
+    }, scheme);
+    await page.addInitScript(installProbe);
+    await page.route('**/api/auth/register', (r) =>
+      r.fulfill({
+        status: 422,
+        json: {
+          message: 'The given data was invalid.',
+          errors: {
+            name: ['The name field is required.'],
+            email: ['The email field is required.'],
+            password: ['The password field is required.'],
+          },
+        },
+      }),
+    );
+    const name = page.locator('#name');
+    await open(page, '/register', () => name, scheme);
+    await page.getByRole('button', { name: 'Create account' }).click();
+    await expect(page.getByText('The name field is required.')).toBeVisible();
+    const tag = `register-errors-${scheme}`;
+    const ref = await reference(page);
+    await expectInvalidFocus(page, ref, tag, name, page.locator('#password'));
+  });
+
+  test(`TextField errors ${scheme}: the !border-red-500 status name takes the same ring and error band (D-019)`, async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await setup(page, scheme);
+    await page.route('**/api/workspaces/*/statuses', (r) =>
+      r.request().method() === 'POST'
+        ? r.fulfill({
+            status: 422,
+            json: {
+              message: 'The given data was invalid.',
+              errors: { name: ['The name field is required.'] },
+            },
+          })
+        : r.fallback(),
+    );
+    await open(
+      page,
+      '/demo/board',
+      (p) => p.locator('[data-task-id="1"]').first(),
+      scheme,
+    );
+    const ref = await reference(page);
+    await page
+      .locator('[data-tour="statuses.editor"] button', {
+        hasText: 'Open options',
+      })
+      .click();
+    await page.getByRole('menuitem', { name: 'Add status' }).click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByText('The name field is required.')).toBeVisible();
+    const field = page.getByPlaceholder('Name', { exact: true });
+    await expectInvalidFocus(
+      page,
+      ref,
+      `board-status-errors-${scheme}`,
+      field,
+      field,
+      'rgb(239, 68, 68)',
+    );
+  });
 }
