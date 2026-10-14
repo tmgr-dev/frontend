@@ -1,0 +1,1 @@
+{"started_ms":1700000000000,"ended_ms":1700000090000,"duration_s":90,"working_s":60,"waiting_s":25,"blocked_s":5,"branch":"feat/x","commits":[{"sha":"0123456789abcdef0123456789abcdef01234567","subject":"feat: x"}],"exit":{"code":0,"signal":null},"task":{"workspace_id":-3,"task_id":412},"profile":"claude","agent":"claude","truncated":false}
