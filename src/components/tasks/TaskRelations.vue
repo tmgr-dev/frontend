@@ -205,7 +205,7 @@
 					<div class="relative">
 						<select
 							v-model="newRelation.typeId"
-							class="flex h-10 w-full appearance-none rounded-md border border-line bg-surface-sunken px-3 text-sm text-ink focus:border-line-strong"
+							class="flex h-10 w-full appearance-none rounded-md border border-line bg-surface-sunken px-3 text-sm text-ink"
 						>
 							<option value="">Select…</option>
 							<option

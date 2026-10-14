@@ -85,10 +85,11 @@
 											@loadTasks="retryBoard"
 											@loadColumns="loadColumns"
 										>
-											<template #actions-start>
+											<template #actions-start="{ active }">
 												<a
 													href="#"
 													class="block px-4 py-2 text-sm text-ink hover:bg-surface-hover"
+													:class="active ? 'bg-surface-hover' : ''"
 													@click.prevent="openCreateStatusModal"
 												>
 													Add status

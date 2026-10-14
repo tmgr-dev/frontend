@@ -66,7 +66,7 @@
 								<select
 									v-model="selectedBranch"
 									:size="Math.min(branches.length, 8)"
-									class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink focus:border-line-strong"
+									class="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink"
 								>
 									<option
 										v-for="branch in branches"

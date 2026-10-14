@@ -126,7 +126,7 @@
 		<!-- Category / user filters -->
 		<Popover v-if="hasSelectFilters" class="relative shrink-0">
 			<PopoverButton
-				class="flex h-9 items-center gap-2 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none hover:bg-surface-hover focus:border-line-strong"
+				class="flex h-9 items-center gap-2 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none hover:bg-surface-hover"
 			>
 				<FunnelIcon class="h-4 w-4 text-ink-subtle" />
 				Filters
@@ -144,7 +144,7 @@
 				<div v-if="showCategoryFilter" class="relative">
 					<select
 						v-model.number="selectedCategory"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none focus:border-line-strong"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none"
 					>
 						<option :value="0">All categories</option>
 						<option
@@ -164,7 +164,7 @@
 				<div v-if="showUserFilter" class="relative">
 					<UiSelect v-model="selectedUserValue">
 						<UiSelectTrigger
-							class="h-9 rounded-pill border-line bg-surface px-3 text-ink focus:border-line-strong"
+							class="h-9 rounded-pill border-line bg-surface px-3 text-ink"
 						>
 							<UiSelectValue placeholder="All users" />
 						</UiSelectTrigger>
@@ -194,7 +194,7 @@
 					<select
 						v-model="selectedPersona"
 						data-testid="persona-filter"
-						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none focus:border-line-strong"
+						class="h-9 w-full appearance-none rounded-pill border border-line bg-surface pl-3 pr-9 text-sm text-ink outline-none"
 					>
 						<option value="">All personas</option>
 						<option
@@ -238,8 +238,11 @@
 
 		<!-- Actions dropdown -->
 		<Dropdown data-tour="statuses.editor">
-			<MenuItem>
-				<div class="flex items-center px-3 py-2 text-sm text-ink">
+			<MenuItem v-slot="{ active }">
+				<div
+					class="flex items-center px-3 py-2 text-sm text-ink"
+					:class="active ? 'bg-surface-hover' : ''"
+				>
 					<input
 						class="h-4 w-4 cursor-pointer rounded"
 						type="checkbox"
@@ -257,8 +260,8 @@
 					>
 				</div>
 			</MenuItem>
-			<MenuItem>
-				<slot name="actions-start"></slot>
+			<MenuItem v-slot="{ active }">
+				<slot name="actions-start" :active="active"></slot>
 			</MenuItem>
 		</Dropdown>
 	</div>

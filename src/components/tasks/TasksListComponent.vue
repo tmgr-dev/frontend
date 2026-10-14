@@ -405,7 +405,7 @@
 					<select
 						v-model="perPage"
 						@change="onPerPageChange"
-						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
+						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none"
 					>
 						<option :value="10">10 per page</option>
 						<option :value="25">25 per page</option>

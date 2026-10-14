@@ -795,7 +795,7 @@
 								v-model="sortColumn"
 								@change="changeSort"
 								title="Sort by date"
-								class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-none focus:border-line-strong"
+								class="h-9 rounded-pill border border-line bg-surface pl-3 pr-7 text-sm text-ink outline-none"
 							>
 								<option
 									v-for="field in SORT_FIELDS"
