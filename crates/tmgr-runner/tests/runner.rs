@@ -3229,18 +3229,15 @@ fn clone_fx_env(env: Vec<(String, String)>) -> CloneFx {
     init_repo(&repo);
     fs::write(repo.join("README"), "repo-secret").unwrap();
     let objects = repo.join(".git/objects").display().to_string();
-    let script = h.script(
-        "clone-agent.sh",
-        &format!(
-            "git log --oneline > r_log 2>&1; echo $? > r_log_rc\n\
+    let script = format!(
+        "git log --oneline > r_log 2>&1; echo $? > r_log_rc\n\
              (echo x > {objects}/zz) 2>/dev/null; echo $? > r_write_rc\n\
              cat {}/README > r_readme 2>/dev/null; echo $? > r_readme_rc\n\
              echo done > done\n\
              while true; do sleep 0.2; done\n",
-            repo.display()
-        ),
+        repo.display()
     );
-    h.profile("fake", &["/bin/sh", &script]);
+    h.profile("fake", &["/bin/sh", "-c", &script]);
     h.real_home = Some(home);
     h.start(5000);
     CloneFx { h, repo, queue }
