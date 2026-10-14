@@ -11,6 +11,7 @@ npm run preview    # Preview built bundle
 npm test           # Jest (ts-jest, node env) — runs ./tests
 npm run typecheck  # vue-tsc --noEmit (same check the PR "Tests" workflow runs)
 npx jest path/to/file.test.ts   # Run a single test file
+JEST_TZ=Asia/Dubai npx jest src/local/__tests__/routines-api.test.ts src/local/__tests__/routines-recurrence.test.ts src/utils/__tests__/dnd.test.ts   # jest pins TZ=UTC; JEST_TZ runs local-day tests in another zone
 npm run format     # Prettier (singleQuote, trailingComma: all, printWidth 80)
 ```
 
