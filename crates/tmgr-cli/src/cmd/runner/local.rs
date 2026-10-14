@@ -360,9 +360,8 @@ fn is_author_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "._:@-".contains(c))
 }
 
-fn author(kind: Option<&str>, id: Option<&str>, local_user: &str) -> BundleAuthor {
+fn author(kind: Option<&str>, id: Option<&str>) -> BundleAuthor {
     let (kind, id) = match kind {
-        Some("user") if id == Some(local_user) => (AuthorKind::Human, id),
         Some("persona") => (AuthorKind::Agent, id),
         _ => (AuthorKind::Other, id),
     };
@@ -372,7 +371,7 @@ fn author(kind: Option<&str>, id: Option<&str>, local_user: &str) -> BundleAutho
     }
 }
 
-fn stored_comments(ws: &LocalWorkspace, task_id: i64, me: &str) -> Result<Vec<BundleComment>> {
+fn stored_comments(ws: &LocalWorkspace, task_id: i64) -> Result<Vec<BundleComment>> {
     let conn = tmgr_local::open_read(&ws.database).map_err(db_error)?;
     let sql_err = |e: rusqlite::Error| Error::internal(e.to_string());
     let (count, bytes): (i64, i64) = conn
@@ -414,7 +413,7 @@ fn stored_comments(ws: &LocalWorkspace, task_id: i64, me: &str) -> Result<Vec<Bu
                 _ => None,
             };
             BundleComment {
-                author: author(kind.as_deref(), id.as_deref(), me),
+                author: author(kind.as_deref(), id.as_deref()),
                 at: at.unwrap_or_default(),
                 body: body.unwrap_or_default(),
             }
@@ -443,9 +442,8 @@ pub fn bundle_from_local(
     launch: BundleLaunch,
 ) -> Result<(RunBundle, String)> {
     let s = Session::open(ws, None, false)?;
-    let me = s.ctx.user.id.to_string();
     let task = s.send("GET", &format!("tasks/{task_id}"), None)?;
-    let comments = stored_comments(ws, task_id, &me)?;
+    let comments = stored_comments(ws, task_id)?;
     let mut pages = Vec::new();
     for id in linked_pages(ws, task_id)? {
         let (status, page) = s.status_and_data("GET", &format!("pages/{id}"), None)?;
@@ -470,7 +468,7 @@ pub fn bundle_from_local(
         },
         title: task["title"].as_str().unwrap_or("").to_string(),
         body: task["description"].as_str().unwrap_or("").to_string(),
-        author: author(None, None, &me),
+        author: author(None, None),
         comments,
         pages,
         persona: None,

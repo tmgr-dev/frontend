@@ -379,13 +379,18 @@ fn bundle_maps_authors_includes_pages_and_hashes_stably() {
     assert_eq!(
         kinds,
         [
-            (AuthorKind::Human, Some("-1")),
+            (AuthorKind::Other, Some("-1")),
             (AuthorKind::Other, None),
             (AuthorKind::Agent, Some("p-1")),
             (AuthorKind::Other, Some("tmgr.x")),
             (AuthorKind::Other, Some("77")),
         ]
     );
+    assert_ne!(bundle.author.kind, AuthorKind::Human);
+    assert!(bundle
+        .comments
+        .iter()
+        .all(|c| c.author.kind != AuthorKind::Human));
     assert_eq!(bundle.comments[0].at, "2026-10-01T10:05:00.000Z");
     assert_eq!(bundle.pages.len(), 1);
     assert_eq!((bundle.pages[0].id, bundle.pages[0].revision), (9, 3));
