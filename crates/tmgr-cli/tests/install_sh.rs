@@ -183,7 +183,7 @@ impl Stand {
 
     fn run_script(&self, script: &Path, env: &[(&str, &str)], without_minisign: bool) -> Output {
         let mut c = Command::new("sh");
-        c.args(["-c", "umask 022; exec sh \"$1\"", "sh"])
+        c.args(["-c", "umask 002; exec sh \"$1\"", "sh"])
             .arg(script)
             .env("HOME", self.tmp.path())
             .env("PATH", self.path_with_shims(without_minisign))
@@ -360,6 +360,19 @@ fn older_installed_tmgr_is_upgraded() {
     let o = s.run_keyed(&[]);
     assert!(o.status.success(), "{}", stderr(&o));
     assert_eq!(s.installed_version().as_deref(), Some("tmgr 0.4.0"));
+}
+
+#[test]
+fn missing_install_dir_is_created_private_under_a_group_writable_umask() {
+    use std::os::unix::fs::PermissionsExt;
+    let s = Stand::new(Spec::default());
+    s.with_minisign();
+    assert!(!s.dest().exists());
+    let o = s.run_keyed(&[]);
+    assert!(o.status.success(), "{}", stderr(&o));
+    assert_eq!(s.installed_version().as_deref(), Some("tmgr 0.4.0"));
+    let mode = std::fs::metadata(s.dest()).unwrap().permissions().mode();
+    assert_eq!(mode & 0o777, 0o755);
 }
 
 #[test]
