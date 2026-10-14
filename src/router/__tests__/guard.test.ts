@@ -19,6 +19,7 @@ const loadGuard = (store: any, desktop: boolean) => {
 		'@/utils/desktop': { isDesktopApp: () => desktop },
 		'@/utils/emailVerification': { saveReturnPath: jest.fn() },
 		'@/utils/localWorkspaceSync': { syncActiveLocalWorkspace: jest.fn() },
+		'@/utils/memberPageScroll': { scrollBehavior: jest.fn() },
 		'@/utils/moduleSurfaces': moduleSurfaces,
 		'vue-router': {
 			createRouter: () => ({
