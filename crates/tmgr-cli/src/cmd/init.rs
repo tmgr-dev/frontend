@@ -184,11 +184,52 @@ pub fn plan(path: &Path, target: InitTarget, remove: bool) -> Result<Change> {
 }
 
 pub fn apply(change: &Change, stamp: &str) -> Result<Option<PathBuf>> {
+    apply_with(change, stamp, false)
+}
+
+fn unique_backup(path: &Path, stamp: &str) -> Result<PathBuf> {
+    use std::io::ErrorKind;
+    let mut opts = fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    for n in 0..1000 {
+        let suffix = if n == 0 {
+            String::new()
+        } else {
+            format!("-{n}")
+        };
+        let b = PathBuf::from(format!("{}.tmgr-backup-{stamp}{suffix}", path.display()));
+        match opts.open(&b) {
+            Ok(mut dst) => {
+                std::io::copy(&mut fs::File::open(path)?, &mut dst)?;
+                return Ok(b);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Err(Error::internal("cannot pick a free backup name"))
+}
+
+pub fn apply_with(
+    change: &Change,
+    stamp: &str,
+    unique_backup_name: bool,
+) -> Result<Option<PathBuf>> {
     let mut backup = None;
     let mut mode = 0o644;
     if change.path.exists() {
-        let b = PathBuf::from(format!("{}.tmgr-backup-{stamp}", change.path.display()));
-        fs::copy(&change.path, &b)?;
+        let b = if unique_backup_name {
+            unique_backup(&change.path, stamp)?
+        } else {
+            let b = PathBuf::from(format!("{}.tmgr-backup-{stamp}", change.path.display()));
+            fs::copy(&change.path, &b)?;
+            b
+        };
         backup = Some(b);
         #[cfg(unix)]
         {
@@ -266,6 +307,29 @@ mod tests {
         InitTarget::Tmux,
         InitTarget::Claude,
     ];
+
+    #[test]
+    fn unique_backups_never_overwrite_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(&path, "one").unwrap();
+        let change = Change {
+            path: path.clone(),
+            old: "one".into(),
+            new: "two".into(),
+        };
+        let a = apply_with(&change, "stamp", true).unwrap().unwrap();
+        let change = Change {
+            path: path.clone(),
+            old: "two".into(),
+            new: "three".into(),
+        };
+        let b = apply_with(&change, "stamp", true).unwrap().unwrap();
+        assert_ne!(a, b);
+        assert_eq!(fs::read_to_string(&a).unwrap(), "one");
+        assert_eq!(fs::read_to_string(&b).unwrap(), "two");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "three");
+    }
 
     #[test]
     fn install_is_idempotent_and_replaces_in_place() {

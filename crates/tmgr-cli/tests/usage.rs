@@ -914,6 +914,52 @@ fn statusline_install_prints_the_snippet_and_changes_nothing() {
 }
 
 #[test]
+fn statusline_install_previews_only_the_status_line_and_never_leaks_other_settings() {
+    let u = U::new();
+    std::fs::write(
+        u.p("claude/settings.json"),
+        r#"{"apiKeyHelper":"/bin/sh -c 'echo SECRET-HELPER-1'","theme":"SECRET-THEME-1","env":{"K":"SECRET-ENV-1"},"statusLine":{"type":"command","command":"my-line --token=SECRET-TOKEN-1"}}"#,
+    )
+    .unwrap();
+    let human = u.ok(&["usage", "statusline", "install"]);
+    let json = u.ok(&["--json", "usage", "statusline", "install"]);
+    let v = stdout_json(&json);
+    assert_valid("usage_statusline", &v);
+    assert_eq!(v["data"]["previous_command"], "<redacted>");
+    assert!(v["data"].get("diff").is_none());
+    for out in [&human, &json] {
+        let all = format!("{}{}", text(&out.stdout), text(&out.stderr));
+        for needle in [
+            "SECRET-HELPER-1",
+            "SECRET-THEME-1",
+            "SECRET-ENV-1",
+            "SECRET-TOKEN-1",
+            "apiKeyHelper",
+        ] {
+            assert!(!all.contains(needle), "{needle} leaked");
+        }
+    }
+    assert!(text(&human.stdout).contains("statusLine"));
+}
+
+#[test]
+fn statusline_install_preview_is_a_minimal_hunk_of_the_status_line_key() {
+    let u = U::new();
+    std::fs::write(
+        u.p("claude/settings.json"),
+        r#"{"theme":"SECRET-THEME-1","statusLine":{"type":"command","command":"echo hi"}}"#,
+    )
+    .unwrap();
+    let out = text(&u.ok(&["usage", "statusline", "install"]).stdout);
+    assert!(out.contains("- ") && out.contains("echo hi"), "{out}");
+    assert!(
+        out.contains("+ ") && out.contains("statusline-hook"),
+        "{out}"
+    );
+    assert!(!out.contains("SECRET-THEME-1"), "{out}");
+}
+
+#[test]
 fn statusline_install_flag_never_accepts_yes_and_writes_nothing_without_a_terminal() {
     let u = U::new();
     let settings = r#"{"theme":"dark"}"#;

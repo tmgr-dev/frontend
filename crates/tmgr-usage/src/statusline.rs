@@ -508,7 +508,7 @@ fn load_settings(text: &str) -> Result<Value> {
     }
 }
 
-fn hook_command(exe: &str, chain: Option<&str>) -> String {
+pub fn hook_command(exe: &str, chain: Option<&str>) -> String {
     let mut cmd = format!("{} usage statusline-hook", shell_quote(exe));
     if let Some(prev) = chain {
         cmd.push_str(" --chain ");
