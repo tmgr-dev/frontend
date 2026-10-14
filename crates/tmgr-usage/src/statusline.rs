@@ -148,6 +148,10 @@ pub fn config_dir_tag(config_dir: Option<&str>) -> String {
     }
 }
 
+pub fn account_tag(root: &Path) -> String {
+    config_dir_tag(Some(&crate::paths::canonical(root).to_string_lossy()))
+}
+
 pub fn parse_snapshot(
     config_dir_tag: Option<&str>,
     stdin_json: &[u8],
@@ -295,6 +299,36 @@ pub fn read_snapshots(dir: &Path) -> Result<Vec<StatuslineSnapshot>> {
     }
     out.sort_by(|a, b| (&a.config_dir_tag, &a.session_id).cmp(&(&b.config_dir_tag, &b.session_id)));
     Ok(out)
+}
+
+pub fn prune_snapshots(dir: &Path, now: DateTime<Utc>, max_age_days: u64) -> u64 {
+    let Some(cutoff) =
+        std::time::SystemTime::from(now).checked_sub(Duration::from_secs(max_age_days * 86_400))
+    else {
+        return 0;
+    };
+    let Ok(tags) = std::fs::read_dir(dir.join("claude")) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for tag in tags.flatten() {
+        let Ok(files) = std::fs::read_dir(tag.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let old = file
+                .metadata()
+                .ok()
+                .filter(std::fs::Metadata::is_file)
+                .and_then(|m| m.modified().ok())
+                .is_some_and(|t| t < cutoff);
+            if old && std::fs::remove_file(file.path()).is_ok() {
+                removed += 1;
+            }
+        }
+        let _ = std::fs::remove_dir(tag.path());
+    }
+    removed
 }
 
 pub fn run_hook(

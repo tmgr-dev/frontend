@@ -132,6 +132,10 @@ impl U {
         ] {
             std::fs::create_dir_all(u.tmp.path().join(d)).unwrap();
         }
+        #[cfg(unix)]
+        for (link, target) in [(".claude", "../claude"), (".codex", "../codex")] {
+            std::os::unix::fs::symlink(target, u.p("home").join(link)).unwrap();
+        }
         u
     }
 
@@ -917,6 +921,91 @@ fn the_hook_stores_a_whitelisted_snapshot_that_limits_then_shows() {
         .iter()
         .any(|l| l["window"] == "session" && l["used_pct"] == 33.0));
     assert!(limits.iter().all(|l| l["source"] == "statusline"));
+}
+
+fn hook_payload(session: &str, pct: u32) -> String {
+    format!(
+        r#"{{"session_id":"{session}","rate_limits":{{"five_hour":{{"used_percentage":{pct},"resets_at":4102444800}}}}}}"#
+    )
+}
+
+fn run_hook(u: &U, config_dir: Option<&Path>, payload: &str) {
+    let mut c = u.cmd();
+    if let Some(dir) = config_dir {
+        c.env("CLAUDE_CONFIG_DIR", dir);
+    }
+    let out = c
+        .args(["usage", "statusline-hook"])
+        .write_stdin(payload.to_string())
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+}
+
+#[test]
+fn snapshots_from_two_accounts_land_on_their_own_labels() {
+    let u = U::new();
+    let work = u.p("claude-work");
+    std::fs::create_dir_all(&work).unwrap();
+    u.ok(&[
+        "usage",
+        "accounts",
+        "add",
+        "--tool",
+        "claude",
+        "--root",
+        work.to_str().unwrap(),
+        "--label",
+        "work",
+    ]);
+    run_hook(&u, None, &hook_payload("sess-default", 40));
+    run_hook(&u, Some(&work), &hook_payload("sess-work", 20));
+    let v = u.json(&["usage", "limits"]);
+    assert_valid("usage_limits", &v);
+    let pct = |account: &str| {
+        v["data"]["limits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|l| l["account"] == account && l["window"] == "session")
+            .map(|l| l["used_pct"].as_f64().unwrap())
+    };
+    assert_eq!(pct("claude"), Some(40.0));
+    assert_eq!(pct("work"), Some(20.0));
+    assert_eq!(v["data"]["limits"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn an_unset_config_dir_means_the_home_account() {
+    let u = U::new();
+    let mut c = u.cmd();
+    c.env_remove("CLAUDE_CONFIG_DIR");
+    let out = c
+        .args(["usage", "statusline-hook"])
+        .write_stdin(hook_payload("sess-home", 55))
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let v = u.json(&["usage", "limits"]);
+    let limits = v["data"]["limits"].as_array().unwrap();
+    assert_eq!(limits.len(), 1);
+    assert_eq!(limits[0]["account"], "claude");
+    assert_eq!(limits[0]["used_pct"], 55.0);
+}
+
+#[test]
+fn snapshot_paths_never_contain_words_from_the_config_dir() {
+    let u = U::new();
+    let planted = u.p("PlantedAcctDir-xyz");
+    std::fs::create_dir_all(&planted).unwrap();
+    run_hook(&u, Some(&planted), &hook_payload("sess-p", 10));
+    let mut files = Vec::new();
+    data_files(&u.p("data"), &mut files);
+    assert!(!files.is_empty());
+    for f in files {
+        let rel = f.strip_prefix(u.p("data")).unwrap().display().to_string();
+        assert!(!rel.to_lowercase().contains("planted"), "{rel}");
+    }
 }
 
 struct Local<'a> {

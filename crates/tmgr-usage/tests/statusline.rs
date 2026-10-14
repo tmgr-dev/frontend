@@ -4,8 +4,8 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tmgr_usage::limits::{LimitSource, LimitWindow};
 use tmgr_usage::statusline::{
-    config_dir_tag, parse_snapshot, plan_install, plan_uninstall, read_snapshots, run_hook,
-    run_shell_chain, write_snapshot,
+    config_dir_tag, parse_snapshot, plan_install, plan_uninstall, prune_snapshots, read_snapshots,
+    run_hook, run_shell_chain, write_snapshot,
 };
 use tmgr_usage::UsageError;
 
@@ -487,4 +487,32 @@ fn odd_settings_are_refused_and_untouched() {
 fn relative_exe_gets_a_warning() {
     let plan = plan_install("{}", "tmgr", None).unwrap();
     assert_eq!(plan.warnings.len(), 1);
+}
+
+#[test]
+fn old_snapshots_are_pruned_with_their_empty_folders() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let body = |s: &str| serde_json::to_vec(&json!({"session_id": s})).unwrap();
+    write_snapshot(dir, Some("aaaa"), &body("old-one")).unwrap();
+    write_snapshot(dir, Some("aaaa"), &body("fresh")).unwrap();
+    write_snapshot(dir, Some("bbbb"), &body("old-two")).unwrap();
+    let now = std::time::SystemTime::now();
+    let old = now - std::time::Duration::from_secs(31 * 86_400);
+    for (tag, name) in [("aaaa", "old-one"), ("bbbb", "old-two")] {
+        let f = std::fs::File::options()
+            .write(true)
+            .open(dir.join("claude").join(tag).join(format!("{name}.json")))
+            .unwrap();
+        f.set_modified(old).unwrap();
+    }
+    let removed = prune_snapshots(dir, chrono::Utc::now(), 30);
+    assert_eq!(removed, 2);
+    let left: Vec<_> = read_snapshots(dir)
+        .unwrap()
+        .into_iter()
+        .map(|s| s.session_id)
+        .collect();
+    assert_eq!(left, ["fresh"]);
+    assert!(!dir.join("claude/bbbb").exists());
 }

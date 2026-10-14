@@ -22,6 +22,7 @@ use tmgr_usage::{scan_account, Account, PriceBook, Store, Tool};
 pub use statusline::statusline_hook;
 
 const RETENTION_DAYS: u32 = 90;
+const SNAPSHOT_KEEP_DAYS: u64 = 30;
 const BIG_FIRST_SCAN_BYTES: u64 = 50 * 1024 * 1024;
 
 pub fn fail(e: UsageError) -> Error {
@@ -123,6 +124,7 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>) -> Result<ScanTotals> 
     }
     ingest_statusline(u, &accounts);
     let _ = u.store.prune(RETENTION_DAYS, now);
+    tmgr_usage::statusline::prune_snapshots(&u.claude_snapshots(), now, SNAPSHOT_KEEP_DAYS);
     Ok(totals)
 }
 
@@ -131,15 +133,17 @@ fn ingest_statusline(u: &Usage, accounts: &[Account]) {
         return;
     };
     for snap in snaps {
-        let label = snap
-            .config_dir_tag
-            .as_deref()
-            .and_then(|tag| {
-                accounts
-                    .iter()
-                    .find(|a| a.tool == Tool::Claude && a.root.to_str() == Some(tag))
-            })
-            .map_or("claude", |a| a.label.as_str());
+        let Some(tag) = snap.config_dir_tag.as_deref() else {
+            continue;
+        };
+        let claude_accounts = || accounts.iter().filter(|a| a.tool == Tool::Claude);
+        let label = match tag {
+            "default" => claude_accounts().find(|a| a.label == "claude"),
+            _ => claude_accounts().find(|a| tmgr_usage::statusline::account_tag(&a.root) == tag),
+        };
+        let Some(label) = label.map(|a| a.label.as_str()) else {
+            continue;
+        };
         for limit in snap.to_limits(label) {
             let _ = u.store.record_limit(&limit);
         }

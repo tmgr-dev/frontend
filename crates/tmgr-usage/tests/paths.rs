@@ -66,9 +66,69 @@ fn default_accounts_follow_env_and_existence() {
         ("CODEX_HOME", codex.to_str().unwrap()),
     ];
     let found = default_accounts(&env(tmp.path(), &vars));
-    assert_eq!(found.len(), 2);
-    assert_eq!(found[0].root, other);
-    assert_eq!(found[1].root, codex);
+    let summary: Vec<_> = found.iter().map(|a| (a.tool, a.label.as_str())).collect();
+    assert_eq!(
+        summary,
+        [
+            (Tool::Claude, "claude"),
+            (Tool::Claude, "claude-env"),
+            (Tool::Codex, "codex-env"),
+        ]
+    );
+    assert_eq!(found[0].root, tmp.path().join(".claude"));
+    assert_eq!(found[1].root, other);
+    assert_eq!(found[2].root, codex);
+}
+
+#[test]
+fn the_default_account_is_always_the_home_dir_and_env_adds_an_extra_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    for d in [".claude", ".codex", "work-claude", "work-codex"] {
+        std::fs::create_dir_all(tmp.path().join(d)).unwrap();
+    }
+    let work_claude = tmp.path().join("work-claude");
+    let work_codex = tmp.path().join("work-codex");
+    let vars = [
+        ("CLAUDE_CONFIG_DIR", work_claude.to_str().unwrap()),
+        ("CODEX_HOME", work_codex.to_str().unwrap()),
+    ];
+    let found = default_accounts(&env(tmp.path(), &vars));
+    let summary: Vec<_> = found
+        .iter()
+        .map(|a| (a.label.as_str(), a.root.clone()))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            ("claude", tmp.path().join(".claude")),
+            ("claude-env", work_claude),
+            ("codex", tmp.path().join(".codex")),
+            ("codex-env", work_codex),
+        ]
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_env_dir_that_is_the_home_dir_through_a_symlink_is_not_added_twice() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(tmp.path().join(".claude")).unwrap();
+    std::fs::create_dir_all(tmp.path().join(".codex")).unwrap();
+    std::os::unix::fs::symlink(tmp.path().join(".claude"), tmp.path().join("alias")).unwrap();
+    let via = tmp.path().join(".codex").join("..").join(".codex");
+    let vars = [
+        ("CLAUDE_CONFIG_DIR", tmp.path().join("alias")),
+        ("CODEX_HOME", via),
+    ];
+    let vars: Vec<(&str, &str)> = vars
+        .iter()
+        .map(|(k, v)| (*k, v.to_str().unwrap()))
+        .collect();
+    let labels: Vec<_> = default_accounts(&env(tmp.path(), &vars))
+        .into_iter()
+        .map(|a| a.label)
+        .collect();
+    assert_eq!(labels, ["claude", "codex"]);
 }
 
 #[test]
@@ -86,6 +146,8 @@ fn user_accounts_add_list_remove() {
     assert!(add_account(&dir, &e, acc("work", "/r/other")).is_err());
     assert!(add_account(&dir, &e, acc("claude", "/r/other")).is_err());
     assert!(add_account(&dir, &e, acc("codex", "/r/other")).is_err());
+    assert!(add_account(&dir, &e, acc("claude-env", "/r/other")).is_err());
+    assert!(add_account(&dir, &e, acc("codex-env", "/r/other")).is_err());
     assert!(add_account(&dir, &e, acc("dup-root", "/r/work")).is_err());
     assert!(add_account(&dir, &e, acc("bad label", "/r/x")).is_err());
     assert!(add_account(&dir, &e, acc("", "/r/x")).is_err());

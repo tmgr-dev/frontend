@@ -9,8 +9,6 @@ use crate::out::Output;
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result};
 use tmgr_usage::paths::{self, Env};
 use tmgr_usage::statusline::{self, InstallPlan};
@@ -18,76 +16,47 @@ use tmgr_usage::Tool;
 
 const MAX_STDIN: u64 = 1024 * 1024;
 const MAX_SETTINGS: u64 = 4 * 1024 * 1024;
-const MAX_CHAIN_OUTPUT: u64 = 256 * 1024;
-const CHAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub fn statusline_hook(args: &StatuslineHookArgs) -> i32 {
     let mut input = Vec::new();
     let _ = std::io::stdin().take(MAX_STDIN).read_to_end(&mut input);
-    if !input.is_empty() {
-        let tag = std::env::var("CLAUDE_CONFIG_DIR")
-            .ok()
-            .filter(|v| !v.is_empty());
-        let _ = save_snapshot(tag.as_deref(), &input);
-    }
-    if let Some(cmd) = args.chain.as_deref() {
-        let out = run_chain(cmd, &input);
-        let mut stdout = std::io::stdout();
-        let _ = stdout.write_all(&out);
-        let _ = stdout.flush();
-    }
+    let snaps = if input.is_empty() {
+        None
+    } else {
+        snapshot_dir()
+    };
+    let tag = snaps.as_ref().and_then(|_| {
+        paths::claude_config_dir(&Env::from_process()).map(|d| statusline::account_tag(&d))
+    });
+    let out = match snaps {
+        Some(dir) => statusline::run_hook(
+            &input,
+            tag.as_deref(),
+            &dir,
+            args.chain.as_deref(),
+            &mut statusline::run_shell_chain,
+        ),
+        None => match args
+            .chain
+            .as_deref()
+            .map(str::trim)
+            .filter(|c| !c.is_empty())
+        {
+            Some(cmd) => statusline::run_shell_chain(cmd, &input),
+            None => Vec::new(),
+        },
+    };
+    let mut stdout = std::io::stdout();
+    let _ = stdout.write_all(&out);
+    let _ = stdout.flush();
     0
 }
 
-fn save_snapshot(tag: Option<&str>, input: &[u8]) -> tmgr_usage::Result<()> {
-    let env = Env::from_process();
-    let dir = paths::ensure_data_dir(&env)?;
+fn snapshot_dir() -> Option<PathBuf> {
+    let dir = paths::ensure_data_dir(&Env::from_process()).ok()?;
     let snaps = paths::snapshots_dir(&dir).join("claude");
-    paths::create_private_dir(&snaps)?;
-    statusline::write_snapshot(&snaps, tag, input).map(|_| ())
-}
-
-fn run_chain(cmd: &str, input: &[u8]) -> Vec<u8> {
-    let Ok(mut child) = Command::new("/bin/sh")
-        .arg("-c")
-        .arg(cmd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-    else {
-        return Vec::new();
-    };
-    if let Some(mut stdin) = child.stdin.take() {
-        let data = input.to_vec();
-        std::thread::spawn(move || {
-            let _ = stdin.write_all(&data);
-        });
-    }
-    let (tx, rx) = std::sync::mpsc::channel();
-    if let Some(stdout) = child.stdout.take() {
-        std::thread::spawn(move || {
-            let mut buf = Vec::new();
-            let _ = stdout.take(MAX_CHAIN_OUTPUT).read_to_end(&mut buf);
-            let _ = tx.send(buf);
-        });
-    }
-    let deadline = Instant::now() + CHAIN_TIMEOUT;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if Instant::now() < deadline => {
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Vec::new();
-            }
-        }
-    }
-    rx.recv_timeout(Duration::from_millis(500))
-        .unwrap_or_default()
+    paths::create_private_dir(&snaps).ok()?;
+    Some(snaps)
 }
 
 pub fn run(ctx: &Ctx, cmd: &StatuslineCommand) -> Result<Output> {

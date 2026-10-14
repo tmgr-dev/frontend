@@ -84,6 +84,21 @@ fn accounts_path(dir: &Path) -> PathBuf {
     dir.join("accounts.json")
 }
 
+pub fn canonical(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn same_dir(a: &Path, b: &Path) -> bool {
+    a == b || canonical(a) == canonical(b)
+}
+
+pub fn claude_config_dir(env: &Env) -> Option<PathBuf> {
+    match env.get("CLAUDE_CONFIG_DIR") {
+        Some(v) => Some(PathBuf::from(v)),
+        None => env.home.as_ref().map(|h| h.join(".claude")),
+    }
+}
+
 pub fn default_accounts(env: &Env) -> Vec<Account> {
     let mut out = Vec::new();
     let candidates = [
@@ -91,22 +106,33 @@ pub fn default_accounts(env: &Env) -> Vec<Account> {
         (Tool::Codex, "CODEX_HOME", ".codex"),
     ];
     for (tool, var, dot) in candidates {
-        let root = match env.get(var) {
-            Some(v) => PathBuf::from(v),
-            None => match &env.home {
-                Some(h) => h.join(dot),
-                None => continue,
-            },
-        };
-        if root.is_dir() {
+        let home_root = env.home.as_ref().map(|h| h.join(dot));
+        if let Some(root) = home_root.filter(|r| r.is_dir()) {
             out.push(Account {
                 tool,
                 label: tool.as_str().to_string(),
                 root,
             });
         }
+        let env_root = env.get(var).map(PathBuf::from).filter(|r| r.is_dir());
+        if let Some(root) = env_root {
+            if !out
+                .iter()
+                .any(|a| a.tool == tool && same_dir(&a.root, &root))
+            {
+                out.push(Account {
+                    tool,
+                    label: env_label(tool),
+                    root,
+                });
+            }
+        }
     }
     out
+}
+
+fn env_label(tool: Tool) -> String {
+    format!("{}-env", tool.as_str())
 }
 
 pub fn list_user_accounts(dir: &Path) -> Result<Vec<Account>> {
@@ -146,12 +172,17 @@ pub fn add_account(dir: &Path, env: &Env, account: Account) -> Result<()> {
         ));
     }
     let all = all_accounts(dir, env)?;
-    if all.iter().any(|a| a.label == account.label) || Tool::parse(&account.label).is_ok() {
+    if all.iter().any(|a| a.label == account.label)
+        || Tool::parse(&account.label).is_ok()
+        || [Tool::Claude, Tool::Codex]
+            .iter()
+            .any(|t| account.label == env_label(*t))
+    {
         return Err(UsageError::Invalid("account label already exists".into()));
     }
     if all
         .iter()
-        .any(|a| a.tool == account.tool && a.root == account.root)
+        .any(|a| a.tool == account.tool && same_dir(&a.root, &account.root))
     {
         return Err(UsageError::Invalid(
             "account root already registered".into(),
@@ -178,7 +209,7 @@ pub fn all_accounts(dir: &Path, env: &Env) -> Result<Vec<Account>> {
     for acc in list_user_accounts(dir)? {
         if !out
             .iter()
-            .any(|a| a.label == acc.label || (a.tool == acc.tool && a.root == acc.root))
+            .any(|a| a.label == acc.label || (a.tool == acc.tool && same_dir(&a.root, &acc.root)))
         {
             out.push(acc);
         }
