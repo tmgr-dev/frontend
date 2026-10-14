@@ -185,6 +185,7 @@
 		syncCategoryRepository,
 		syncGitHubInstallations,
 	} from '@/actions/tmgr/github';
+	import { apiErrorText } from '@/utils/apiErrorText';
 
 	export default {
 		name: 'CategoryGitHubSettings',
@@ -270,8 +271,7 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to connect repository:', e);
-					this.error =
-						e.response?.data?.error || 'Failed to connect repository';
+					this.error = apiErrorText(e, 'Failed to connect repository');
 				} finally {
 					this.connecting = false;
 				}
@@ -291,8 +291,7 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to disconnect repository:', e);
-					this.error =
-						e.response?.data?.error || 'Failed to disconnect repository';
+					this.error = apiErrorText(e, 'Failed to disconnect repository');
 				} finally {
 					this.disconnecting = false;
 				}
@@ -308,7 +307,7 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to sync repository:', e);
-					this.error = e.response?.data?.error || 'Failed to sync repository';
+					this.error = apiErrorText(e, 'Failed to sync repository');
 				} finally {
 					this.syncing = false;
 				}
@@ -324,8 +323,7 @@
 					await this.loadStatus();
 				} catch (e) {
 					console.error('Failed to relink repository:', e);
-					this.error =
-						e.response?.data?.error || 'Failed to relink task references';
+					this.error = apiErrorText(e, 'Failed to relink task references');
 				} finally {
 					this.relinking = false;
 				}

@@ -179,6 +179,7 @@
 		getCursorStatus,
 		updateCursorApiKey,
 	} from '@/actions/tmgr/cursor';
+	import { apiErrorText } from '@/utils/apiErrorText';
 	import { defineComponent } from 'vue';
 
 	export default defineComponent({
@@ -236,7 +237,7 @@
 					this.apiKey = '';
 					this.$emit('cursor-configured');
 				} catch (e) {
-					this.error = e.response?.data?.error || 'Failed to save API key';
+					this.error = apiErrorText(e, 'Failed to save API key');
 				} finally {
 					this.saving = false;
 				}
@@ -260,7 +261,7 @@
 					this.apiKey = '';
 					this.$emit('cursor-removed');
 				} catch (e) {
-					this.error = e.response?.data?.error || 'Failed to remove API key';
+					this.error = apiErrorText(e, 'Failed to remove API key');
 				} finally {
 					this.removing = false;
 				}
