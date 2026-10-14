@@ -370,6 +370,7 @@
 	import { isDesktopApp } from '@/utils/desktop';
 	import { hasSmartDeviceToken, smartDeviceTokenState } from '@/utils/smartDeviceToken';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
+	import { writeNtfySubscribed } from '@/utils/ntfySubscription';
 	import { Check, Copy, Eye, EyeOff } from 'lucide-vue-next';
 
 	export default {
@@ -841,6 +842,7 @@
 
 			async togglePushes() {
 				if (this.$store.getters.getPusherBeamsUserId) {
+					writeNtfySubscribed(localStorage, this.$store.state.user?.id, false);
 					await this.$store.getters.getPusherBeamsClient.stop();
 					return this.$store.commit('setPusherBeamsUserId', null);
 				}
@@ -852,6 +854,7 @@
 						userId,
 						this.$store.getters.getPusherTokenProvider,
 					);
+					writeNtfySubscribed(localStorage, userId, true);
 					this.$store.commit('setPusherBeamsUserId', userId);
 				} catch (e) {
 					this.showConfirm(

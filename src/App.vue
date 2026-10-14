@@ -130,6 +130,10 @@
 	import { isDetachedWindowLabel } from '@/utils/taskWindow';
 	import { visibleActiveTasks } from '@/utils/moduleSurfaces';
 	import { routeViewKey } from '@/utils/routeViewKey';
+	import {
+		NTFY_SUBSCRIBED_KEY_PREFIX,
+		syncNtfySubscription,
+	} from '@/utils/ntfySubscription';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		defineAsyncComponent,
@@ -283,6 +287,10 @@
 			'$store.state.reloadActiveTasksKey'() {
 				this.loadActiveTasks();
 			},
+			'$store.state.user': {
+				handler: 'syncNtfyConnection',
+				immediate: true,
+			},
 			'$route.params.workspace_code': {
 				async handler(workspaceCode) {
 					if (this.isDetachedWindow) return;
@@ -323,6 +331,29 @@
 			},
 		},
 		methods: {
+			handleNtfyStorage(event) {
+				if (event.key?.startsWith(NTFY_SUBSCRIBED_KEY_PREFIX)) {
+					this.syncNtfyConnection();
+				}
+			},
+			syncNtfyConnection() {
+				const { getters, state } = this.$store;
+				const allowed =
+					getters.isLoggedIn &&
+					!getters.isLocalOnly &&
+					!this.isQuickAddWindow &&
+					!this.isDetachedWindow;
+				const userId = syncNtfySubscription({
+					client: getters.getPusherBeamsClient,
+					storage: localStorage,
+					connectedUserId: getters.getPusherBeamsUserId,
+					userId: allowed ? state.user?.id : null,
+					tokenProvider: getters.getPusherTokenProvider,
+				});
+				if (userId !== (getters.getPusherBeamsUserId || null)) {
+					this.$store.commit('setPusherBeamsUserId', userId);
+				}
+			},
 			beforeLeave(element) {
 				this.prevHeight = getComputedStyle(element).height;
 			},
@@ -650,28 +681,6 @@
 
 				next();
 			});
-
-			if (
-				!this.$store.state.user?.id ||
-				this.$store.getters.isLocalOnly ||
-				this.isQuickAddWindow ||
-				this.isDetachedWindow
-			) {
-				return;
-			}
-			this.$store.getters.getPusherBeamsClient.getUserId().then((userId) => {
-				if (!userId) {
-					return this.$store.commit('setPusherBeamsUserId', userId);
-				}
-				userId = this.$store.state.user.id.toString();
-				this.$store.getters.getPusherBeamsClient.start().then(() => {
-					this.$store.getters.getPusherBeamsClient
-						.setUserId(userId, this.$store.getters.getPusherTokenProvider)
-						.then(() => {
-							this.$store.commit('setPusherBeamsUserId', userId);
-						});
-				});
-			});
 		},
 		mounted() {
 			this.initBodyHeight();
@@ -684,9 +693,11 @@
 			if (!this.isDetachedWindow) {
 				window.addEventListener('keydown', this.handleWorkspaceHotkeys);
 			}
+			window.addEventListener('storage', this.handleNtfyStorage);
 		},
 		beforeUnmount() {
 			window.removeEventListener('keydown', this.handleWorkspaceHotkeys);
+			window.removeEventListener('storage', this.handleNtfyStorage);
 		},
 	});
 </script>
