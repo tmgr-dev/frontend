@@ -1,0 +1,8 @@
+{"timestamp":"2026-10-14T10:00:00Z","type":"session_meta","payload":{"id":"fix1","session_id":"root1","cwd":"/work/alpha","cli_version":"0.150.0","git":{"branch":"main","commit_hash":"abc"},"base_instructions":{"text":"SECRET-BASEINSTR"}}}
+{"timestamp":"2026-10-14T10:00:01Z","type":"turn_context","payload":{"model":"gpt-test","cwd":"/work/alpha","user_instructions":"SECRET-PROMPT-1"}}
+{"timestamp":"2026-10-14T10:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"SECRET-CODEX-ITEM token_count"}]}}
+{"timestamp":"2026-10-14T10:00:03Z","type":"event_msg","payload":{"type":"user_message","message":"SECRET-CODEX-USERMSG task_started"}}
+{"timestamp":"2026-10-14T10:00:04Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10,"reasoning_output_tokens":4,"total_tokens":110},"last_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":10,"reasoning_output_tokens":4,"total_tokens":110},"note":"SECRET-RESPONSE-1"},"rate_limits":{"plan_type":"pro","primary":{"used_percent":10.0,"window_minutes":300,"resets_at":1791000000},"secondary":null,"credits":{"note":"SECRET-OUT-1"}}}}
+{"timestamp":"2026-10-14T10:00:05Z","type":"response_item","payload":{"type":"function_call_output","output":"SECRET-TOOL-1 compacted"}}
+{"timestamp":"2026-10-14T10:00:06Z","type":"compacted","payload":{"compaction_response_id":"r1","message":"SECRET-CODEX-ITEM"}}
+{"timestamp":"2026-10-14T10:00:07Z","type":"token_usage_record","payload":{"response_id":"r1","usage":{"input_tokens":50,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":55},"content":"SECRET-CODEX-USERMSG"}}

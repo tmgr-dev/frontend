@@ -2,14 +2,23 @@ mod common;
 use common::*;
 use std::path::{Path, PathBuf};
 use tmgr_usage::paths::{add_account, Env};
+use tmgr_usage::statusline::write_snapshot;
 use tmgr_usage::{scan_account, Account, Tool, UsageError};
 
-const SECRETS: [&str; 5] = [
+const SECRETS: [&str; 13] = [
     "SECRET-PROMPT-1",
     "SECRET-RESPONSE-1",
     "SECRET-TOOL-1",
     "SECRET-OUT-1",
     "SECRET-BASEINSTR",
+    "SECRET-CODEX-ITEM",
+    "SECRET-CODEX-USERMSG",
+    "SECRET-TRANSCRIPT",
+    "SECRET-CWD",
+    "SECRET-WS",
+    "SECRET-REPO",
+    "SECRET-PULL",
+    "SECRET-COST",
 ];
 
 fn all_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -74,7 +83,7 @@ fn no_content_reaches_the_data_dir() {
 #[test]
 fn the_fixtures_really_contain_the_secrets() {
     let mut files = Vec::new();
-    all_files(&fixture_dir(), &mut files);
+    all_files(fixture_dir().parent().unwrap(), &mut files);
     for secret in SECRETS {
         let found = files.iter().any(|f| {
             let bytes = std::fs::read(f).unwrap();
@@ -91,4 +100,60 @@ fn errors_never_carry_input_text() {
         .into();
     assert!(!err.to_string().contains("SECRET"));
     assert!(!format!("{err:?}").contains("SECRET"));
+}
+
+fn assert_secret_in_fixtures(secret: &str) {
+    let mut files = Vec::new();
+    all_files(fixture_dir().parent().unwrap(), &mut files);
+    assert!(files.iter().any(|f| {
+        let bytes = std::fs::read(f).unwrap();
+        bytes.windows(secret.len()).any(|w| w == secret.as_bytes())
+    }));
+}
+
+#[test]
+fn codex_and_statusline_content_never_reaches_the_data_dir() {
+    assert_secret_in_fixtures("SECRET-RL");
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("codex");
+    copy_dir(&fixture_dir().parent().unwrap().join("codex_home"), &root);
+    let data = tmp.path().join("data");
+    let mut store = open_store(&data_dir(&data));
+    let account = Account {
+        tool: Tool::Codex,
+        label: "codex".into(),
+        root,
+    };
+    let report = scan_account(&mut store, &account, &book(), now()).unwrap();
+    assert_eq!(report.events_new, 2);
+    assert_eq!(report.errors, 0);
+    assert_eq!(
+        store
+            .current_limits(chrono::DateTime::from_timestamp(1790990000, 0).unwrap())
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let input = std::fs::read(
+        fixture_dir()
+            .parent()
+            .unwrap()
+            .join("statusline/input.json"),
+    )
+    .unwrap();
+    write_snapshot(&data, Some("tag"), &input).unwrap();
+    let mut out = Vec::new();
+    all_files(&data, &mut out);
+    assert!(out.iter().any(|p| p.ends_with("claude/tag/fixsess.json")));
+    assert_clean(&data);
+
+    store.prune(7, now()).unwrap();
+    drop(store);
+    assert_clean(&data);
+}
+
+fn data_dir(data: &Path) -> PathBuf {
+    std::fs::create_dir_all(data).unwrap();
+    data.to_path_buf()
 }
