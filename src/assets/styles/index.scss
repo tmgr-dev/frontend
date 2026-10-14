@@ -105,7 +105,7 @@ html:not([data-focus-source='pointer'])
 		[role^='menuitem'],
 		[role='option']
 	),
-.focus-ring {
+html:not([data-focus-source='pointer']) .focus-ring {
 	outline: 2px solid var(--focus-ring);
 	outline-offset: -2px;
 }

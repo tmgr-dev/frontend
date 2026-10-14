@@ -11,12 +11,7 @@
 <template>
 	<Input
 		data-sidebar="input"
-		:class="
-			cn(
-				'h-8 w-full bg-background shadow-none',
-				props.class,
-			)
-		"
+		:class="cn('h-8 w-full bg-background shadow-none', props.class)"
 	>
 		<slot />
 	</Input>

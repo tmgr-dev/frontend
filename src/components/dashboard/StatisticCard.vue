@@ -1,8 +1,5 @@
 <template>
-	<div
-		:class="cardClasses"
-		@click="handleClick"
-	>
+	<div :class="cardClasses" @click="handleClick">
 		<div class="flex items-start gap-3">
 			<div :class="iconClasses">
 				<component :is="iconComponent" class="h-5 w-5" />
