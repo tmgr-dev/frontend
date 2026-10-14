@@ -365,8 +365,9 @@ pub fn verify_chain_at(conn: &Connection, now: DateTime<Utc>) -> Result<ChainSta
     }
     let start = parse_checkpoint(conn)
         .filter(|c| {
-            let age = now.signed_duration_since(c.full_at).num_seconds();
-            (0..=FULL_VERIFY_MAX_AGE_SECS).contains(&age)
+            let age = now.signed_duration_since(c.full_at);
+            age >= chrono::Duration::zero()
+                && age <= chrono::Duration::seconds(FULL_VERIFY_MAX_AGE_SECS)
         })
         .filter(|c| {
             select(
@@ -1269,6 +1270,12 @@ mod tests {
         assert!(late.full && !late.ok && late.broken_at == Some(1));
         let skewed = verify_chain_at(&conn, t0 - chrono::Duration::minutes(5)).unwrap();
         assert!(skewed.full);
+        let hour = chrono::Duration::seconds(FULL_VERIFY_MAX_AGE_SECS);
+        let barely_future = verify_chain_at(&conn, t0 - chrono::Duration::milliseconds(1)).unwrap();
+        assert!(barely_future.full);
+        let barely_late =
+            verify_chain_at(&conn, t0 + hour + chrono::Duration::milliseconds(1)).unwrap();
+        assert!(barely_late.full);
     }
 
     #[test]

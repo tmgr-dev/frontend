@@ -15,6 +15,8 @@ export interface ConfirmPreview {
 	description: string;
 	descriptionJson: string;
 	checkpoints: string[];
+	/** The complete stored checkpoints JSON, pretty-printed: exactly what the hash covers. */
+	checkpointsText: string;
 	comments: PreviewComment[];
 	snapshotHash: string;
 	shortHash: string;
@@ -37,6 +39,15 @@ const checkpointLines = (stored: string): string[] => {
 	return [stored];
 };
 
+const prettyJson = (stored: string): string => {
+	if (!stored) return '';
+	try {
+		return JSON.stringify(JSON.parse(stored), null, 2);
+	} catch {
+		return stored;
+	}
+};
+
 export const buildConfirmPreview = async (db: LocalDb, taskId: number): Promise<ConfirmPreview | null> => {
 	const snapshot = await snapshotOf(db, taskId);
 	if (!snapshot) return null;
@@ -52,6 +63,7 @@ export const buildConfirmPreview = async (db: LocalDb, taskId: number): Promise<
 		description: snapshot.description,
 		descriptionJson: snapshot.description_json,
 		checkpoints: checkpointLines(snapshot.checkpoints),
+		checkpointsText: prettyJson(snapshot.checkpoints),
 		comments: snapshot.comments.map((comment) => ({
 			id: comment.id,
 			author_kind: byId.get(comment.id)?.author_kind ?? 'user',

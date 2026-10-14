@@ -56,6 +56,12 @@
 								{{ line }}
 							</li>
 						</ul>
+						<div class="mt-1 text-2xs text-ink-subtle">Stored checkpoints, in full:</div>
+						<pre
+							class="whitespace-pre-wrap break-words font-mono text-xs"
+							data-testid="confirm-checkpoints-raw"
+							>{{ preview.checkpointsText }}</pre
+						>
 					</div>
 					<div v-if="preview.comments.length">
 						<div class="text-2xs font-bold uppercase text-ink-subtle">Comments</div>

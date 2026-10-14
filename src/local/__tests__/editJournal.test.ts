@@ -311,5 +311,9 @@ describeSqlite('edit journal', () => {
 		expect(value.endsWith('2026-10-14T10:00:00.000Z')).toBe(true);
 		const t2 = new Date(t0.getTime() + 61 * 60 * 1000);
 		expect(await verifyChain(ctx.db, { now: t2 })).toMatchObject({ ok: false, full: true, brokenAt: 1 });
+		const edge = await verifyChain(ctx.db, { now: new Date(t0.getTime() + 3600 * 1000 + 1), store: false });
+		expect(edge.full).toBe(true);
+		const early = await verifyChain(ctx.db, { now: new Date(t0.getTime() - 1), store: false });
+		expect(early.full).toBe(true);
 	});
 });

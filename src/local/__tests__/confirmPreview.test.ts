@@ -44,6 +44,11 @@ describeSqlite('confirm for agent runs', () => {
 		expect(preview.title).toBe('Do <b>it</b>');
 		expect(preview.description).toBe('Steps\nmore');
 		expect(preview.checkpoints).toEqual(['[x] first', '[ ] second']);
+		expect(JSON.parse(preview.checkpointsText)).toEqual([
+			{ description: 'first', checked: true },
+			{ description: 'second', checked: false },
+		]);
+		expect(preview.checkpointsText).toContain('\n  ');
 		expect(preview.comments.map((c) => [c.author_kind, c.message])).toEqual([
 			['user', 'by me'],
 			['persona', 'by an agent'],
