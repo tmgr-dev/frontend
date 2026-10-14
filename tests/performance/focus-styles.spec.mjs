@@ -2,6 +2,8 @@ import { writeFileSync } from 'node:fs';
 
 import { expect, test } from '@playwright/test';
 
+import { buildGraphMap } from './graphMapFixture.mjs';
+import { openMap, setupMap } from './graphMapHelpers.mjs';
 import { mockApp } from './mockApp.mjs';
 
 // FOCUS_SHOTS_DIR=<abs dir> also saves light/dark screenshots of mouse vs keyboard focus.
@@ -161,6 +163,7 @@ const installProbe = () => {
         parseFloat(cs.outlineWidth) > 0 &&
         alpha(cs.outlineColor) > 0,
       boxShadow: cs.boxShadow,
+      border: cs.borderColor,
     };
   };
   let seq = 0;
@@ -213,6 +216,8 @@ const installProbe = () => {
   ];
   const kind = (e) => {
     if (e.isContentEditable) return 'editor';
+    // D-009: the task title is an inline heading editor, exempt from D-003.
+    if (e.matches('[data-tour="task-form.title"]')) return 'editor';
     if (
       e.tagName === 'TEXTAREA' ||
       (e.tagName === 'INPUT' && !NON_TEXT.includes(e.type))
@@ -263,6 +268,12 @@ const installProbe = () => {
       await settle(els);
       const blurred = els.map(look);
       res.blurredBorder = getComputedStyle(el).borderColor;
+      // D-003: a borderless input inside a bordered wrapper shows focus on the wrapper.
+      const changed = els
+        .slice(0, 4)
+        .findIndex((e, i) => focused[i].border !== blurred[i].border);
+      res.focusBorder =
+        changed < 0 ? null : `${name(els[changed])} ${focused[changed].border}`;
       els.forEach((e, i) => {
         if (focused[i].boxShadow !== blurred[i].boxShadow)
           res.decorations.push(
@@ -511,9 +522,9 @@ function expectKeyboardStops(stops, ref, label, { min = 4 } = {}) {
   expect
     .soft(
       stops
-        .filter((s) => s.kind === 'text' && s.border === s.blurredBorder)
+        .filter((s) => s.kind === 'text' && !s.focusBorder)
         .map((s) => fmt(s, `border=${s.border}`)),
-      `${label}: text inputs show focus by a border change (D-003)`,
+      `${label}: text inputs show focus by a border change on the input or its wrapper (D-003)`,
     )
     .toEqual([]);
 }
@@ -557,13 +568,16 @@ async function mouseProbe(page, locator, label, { stops = [], file } = {}) {
     .toEqual([]);
   if (down?.kind === 'text') {
     expect
-      .soft(down.border, `${label}: input border changes on click (D-003)`)
-      .not.toBe(down.blurredBorder);
+      .soft(
+        down.focusBorder,
+        `${label}: input or its wrapper border changes on click (D-003)`,
+      )
+      .not.toBeNull();
     const viaTab = stops.find((s) => s.qaId === down.qaId);
     if (viaTab)
       expect
-        .soft(down.border, `${label}: same border on click and on Tab`)
-        .toBe(viaTab.border);
+        .soft(down.focusBorder, `${label}: same border on click and on Tab`)
+        .toBe(viaTab.focusBorder);
   }
   return { down, after };
 }
@@ -582,8 +596,8 @@ const PAGES = [
     ready: (p) => p.locator('[aria-labelledby="statistics-heading"]'),
     shots: [
       [
-        'tab-total-tasks',
-        (p) => p.getByRole('button', { name: /^Total Tasks/i }),
+        'tab-refresh',
+        (p) => p.getByRole('button', { name: 'Refresh dashboard data' }),
       ],
       [
         'tab-sidebar-list',
@@ -608,10 +622,23 @@ const PAGES = [
       ],
       [
         'total-tasks-card',
-        (p) => p.getByRole('button', { name: /^Total Tasks/i }),
+        (p) => p.getByText('Total Tasks', { exact: true }),
         'click-total-tasks',
       ],
     ],
+    // D-006: the stat cards are not clickable, so nothing up to the section is focusable.
+    check: async (p, label) =>
+      expect
+        .soft(
+          await p.getByText('Total Tasks', { exact: true }).evaluate((el) => {
+            for (let n = el; n && n.tagName !== 'SECTION'; n = n.parentElement)
+              if (n.tabIndex >= 0 || n.getAttribute('role') === 'button')
+                return n.outerHTML.slice(0, 120);
+            return null;
+          }),
+          `${label}: Total Tasks card is not focusable (D-006)`,
+        )
+        .toBeNull(),
   },
   {
     name: 'board',
@@ -726,8 +753,25 @@ for (const scheme of ['light', 'dark']) {
           stops,
           file: file && `${tag}-${file}`,
         });
-        if (after) await after(page);
+        if (after) {
+          await after(page);
+          await page.waitForTimeout(300);
+          // Escape is a keyboard action, so a ring on the restored focus is
+          // expected (D-001); if one is drawn it must be the one style.
+          const back = await page.evaluate(() => window.__qaFocus.probe());
+          if (back?.outlineDrawn)
+            expect
+              .soft(
+                back.kind === 'control'
+                  ? tupleOf(back)
+                  : `${back.kind} ${back.el}`,
+                `${tag} ${label}: focus restored by Escape shows the one style`,
+              )
+              .toBe(ref.tuple);
+          await page.evaluate(() => document.activeElement?.blur());
+        }
       }
+      if (pg.check) await pg.check(page, tag);
       expectKeyboardStops(stops, ref, tag);
     });
   }
@@ -758,7 +802,8 @@ for (const scheme of ['light', 'dark']) {
     for (const s of stops)
       if (await sidebar.locator(`[data-qa-id="${s.qaId}"]`).count())
         inSidebar.push(s);
-    const toggle = page.locator('[data-sidebar="trigger"]').first();
+    const toggle = page.locator('[data-tour="nav.menu-button"]');
+    await expect(toggle).toHaveCount(1);
     await mouseProbe(page, toggle, `sidebar-${scheme} toggle`);
     await mouseProbe(page, toggle, `sidebar-${scheme} toggle back`);
     await mouseProbe(
@@ -920,7 +965,9 @@ for (const scheme of ['light', 'dark']) {
       .not.toContain(item?.background);
   });
 
-  test(`dashboard sections ${scheme}: not in Tab order, Ctrl/Cmd+1..4 focus them without an outline`, async ({
+  // D-007: the Ctrl/Cmd+1..4 hotkey collides with workspace switching (App.vue,
+  // separate ticket), so the sections are focused by script after a keypress.
+  test(`dashboard sections ${scheme}: not in Tab order, programmatic focus draws no outline`, async ({
     page,
   }) => {
     test.setTimeout(180_000);
@@ -932,42 +979,38 @@ for (const scheme of ['light', 'dark']) {
       scheme,
     );
     const sections = [
-      ['1', 'statistics-heading'],
-      ['2', 'heatmap-heading'],
-      ['3', 'activity-heading'],
-      ['4', 'team-activity-heading'],
+      'statistics-heading',
+      'heatmap-heading',
+      'activity-heading',
+      'team-activity-heading',
     ];
     const stops = await walk(page, {
       max: 80,
       tag: `dashboard-sections-${scheme}`,
     });
-    for (const mod of ['Control', 'Meta'])
-      for (const [key, heading] of sections) {
-        await page.keyboard.press(`${mod}+${key}`);
-        const target = page.locator(`[aria-labelledby="${heading}"]`);
-        await expect
-          .soft(target, `${mod}+${key} focuses ${heading}`)
-          .toBeFocused();
-        if (mod === 'Control')
-          await shot(page, `dashboard-${scheme}-ctrl-${key}`);
-        const s = await page.evaluate(() => window.__qaFocus.probe());
-        expect
-          .soft(s?.outlineDrawn, `${mod}+${key}: section draws no outline`)
-          .toBe(false);
-        expect
-          .soft(
-            s?.decorations ?? [],
-            `${mod}+${key}: section has no focus ring`,
-          )
-          .toEqual([]);
-      }
-    for (const [, heading] of sections)
+    for (const heading of sections) {
+      const target = page.locator(`[aria-labelledby="${heading}"]`);
       await expect
-        .soft(
-          page.locator(`[aria-labelledby="${heading}"]`),
-          `${heading} section is a programmatic focus target`,
-        )
+        .soft(target, `${heading} section is a programmatic focus target`)
         .toHaveAttribute('tabindex', '-1');
+      await page.keyboard.press('Shift');
+      await target.evaluate((el) => el.focus());
+      await expect.soft(target, `${heading} takes focus`).toBeFocused();
+      await shot(page, `dashboard-${scheme}-focus-${heading}`);
+      const s = await page.evaluate(() => window.__qaFocus.probe());
+      expect
+        .soft(
+          s?.focusVisible,
+          `${heading}: keyboard-modality focus matches :focus-visible`,
+        )
+        .toBe(true);
+      expect
+        .soft(s?.outlineDrawn, `${heading}: section draws no outline (D-004)`)
+        .toBe(false);
+      expect
+        .soft(s?.decorations ?? [], `${heading}: section has no focus ring`)
+        .toEqual([]);
+    }
     expect
       .soft(
         stops
@@ -1045,5 +1088,34 @@ for (const scheme of ['light', 'dark']) {
       `dashboard-offline-${scheme}`,
       { min: 1 },
     );
+  });
+
+  test(`map timeline ${scheme}: Tab onto the scrubber shows the one style, click shows none`, async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript((sc) => {
+      sessionStorage.setItem('tmgr:tours:auto', 'true');
+      localStorage.setItem('colorScheme', sc);
+    }, scheme);
+    await page.addInitScript(installProbe);
+    await setupMap(page, buildGraphMap());
+    await openMap(page);
+    if (scheme === 'dark')
+      await expect(page.locator('html')).toHaveClass(/\bdark\b/);
+    else await expect(page.locator('html')).not.toHaveClass(/\bdark\b/);
+    const ref = await reference(page);
+    const scrubber = page.getByTestId('map-scrubber');
+    await page.getByTestId('map-play').focus();
+    await page.keyboard.press('Tab');
+    await expect(scrubber).toBeFocused();
+    await scrubber.evaluate((el) => (el.dataset.qaShot = 'tab-scrubber'));
+    await shot(page, `map-${scheme}-tab-scrubber`);
+    const s = await page.evaluate(() => window.__qaFocus.probe());
+    await mouseProbe(page, scrubber, `map-${scheme} scrubber`, {
+      file: `map-${scheme}-click-scrubber`,
+    });
+    expectKeyboardStops([s].filter(Boolean), ref, `map-${scheme}`, { min: 1 });
   });
 }
