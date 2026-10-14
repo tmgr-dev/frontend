@@ -1,4 +1,4 @@
-use crate::profile::{Fresh, Profile};
+use crate::profile::{Fresh, Profile, SecretFile};
 use crate::sandbox::{
     canon_lossy, env_name_refused, home_deny_paths, overlaps, protected_forms, Grants,
 };
@@ -28,8 +28,18 @@ pub struct ResolvedSeed {
     pub agent: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSecretFile {
+    pub root: PathBuf,
+    pub from: PathBuf,
+    pub to: PathBuf,
+    pub token_prefix: Option<String>,
+    pub template: Option<String>,
+}
+
 #[derive(Debug, Default)]
 pub struct Resolved {
+    pub secret_files: Vec<ResolvedSecretFile>,
     pub read: Vec<PathBuf>,
     pub seeds: Vec<ResolvedSeed>,
     pub secrets: Option<PathBuf>,
@@ -37,6 +47,7 @@ pub struct Resolved {
 }
 
 pub struct Prepared {
+    pub secret_files: Vec<ResolvedSecretFile>,
     pub grants: Grants,
     pub seeds: Vec<ResolvedSeed>,
     pub pass_values: Vec<(String, String)>,
@@ -170,7 +181,193 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
     if let Some(f) = &p.secrets.file {
         out.secrets = Some(under_home("secrets file", f, &home)?);
     }
+    for f in &p.secrets.files {
+        out.secret_files.push(resolve_secret_file(f, &home)?);
+    }
     Ok(out)
+}
+
+const AGENTS_AREA: &str = "~/.config/tmgr/agents/";
+const MAX_CREDENTIAL_BYTES: u64 = 64 * 1024;
+
+fn resolve_secret_file(f: &SecretFile, home: &Path) -> Result<ResolvedSecretFile, String> {
+    let rel = f
+        .from
+        .strip_prefix(AGENTS_AREA)
+        .ok_or_else(|| format!("credential file {:?} must be inside {AGENTS_AREA}", f.from))?;
+    plain_relative("credential file", Path::new(rel))?;
+    let from = home.join(".config/tmgr/agents").join(rel);
+    let to = PathBuf::from(&f.to);
+    plain_relative("credential destination", &to)?;
+    match f.template.as_deref() {
+        None | Some("raw") | Some("claude-oauth") => {}
+        Some(t) => {
+            return Err(format!(
+                "credential file {:?}: unknown template {t:?}",
+                f.from
+            ))
+        }
+    }
+    if f.token_prefix.as_deref().is_some_and(|p| !token_charset(p)) {
+        return Err(format!(
+            "credential file {:?}: invalid token_prefix",
+            f.from
+        ));
+    }
+    Ok(ResolvedSecretFile {
+        root: home.to_path_buf(),
+        from,
+        to,
+        token_prefix: f.token_prefix.clone(),
+        template: f.template.clone(),
+    })
+}
+
+fn token_charset(t: &str) -> bool {
+    t.bytes()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-'))
+}
+
+pub fn render_credential(
+    f: &ResolvedSecretFile,
+    token: &str,
+    now_ms: u64,
+) -> Result<Vec<u8>, String> {
+    if !(20..=400).contains(&token.len()) || !token_charset(token) {
+        return Err("the token must be 20 to 400 characters of A-Z a-z 0-9 _ -".into());
+    }
+    if let Some(prefix) = &f.token_prefix {
+        if !token.starts_with(prefix.as_str()) {
+            return Err(format!("the token must start with {prefix}"));
+        }
+    }
+    match f.template.as_deref() {
+        Some("claude-oauth") => serde_json::to_vec(&serde_json::json!({"claudeAiOauth": {
+            "accessToken": token,
+            "refreshToken": null,
+            "expiresAt": now_ms + 365 * 24 * 3600 * 1000,
+            "scopes": ["user:inference"],
+            "subscriptionType": null,
+        }}))
+        .map_err(|e| e.to_string()),
+        _ => Ok(token.as_bytes().to_vec()),
+    }
+}
+
+pub fn write_credential(f: &ResolvedSecretFile, bytes: &[u8], replace: bool) -> Result<(), String> {
+    let Some(parent) = f.from.parent() else {
+        return Err("credential file has no parent directory".into());
+    };
+    if !replace && std::fs::symlink_metadata(&f.from).is_ok() {
+        return Err(format!(
+            "{} already exists; use --replace to overwrite it",
+            f.from.display()
+        ));
+    }
+    DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(parent)
+        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    let name = f.from.file_name().unwrap_or_default().to_string_lossy();
+    let tmp = parent.join(format!(".{name}.tmgr-{}", std::process::id()));
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&tmp)
+        .and_then(|mut t| t.write_all(bytes))
+        .and_then(|()| std::fs::rename(&tmp, &f.from))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("cannot write {}: {e}", f.from.display())
+        })
+}
+
+pub fn remove_credential(f: &ResolvedSecretFile) -> Result<bool, String> {
+    match std::fs::symlink_metadata(&f.from) {
+        Ok(m) if m.is_dir() => Err(format!("{} is a directory", f.from.display())),
+        Ok(_) => std::fs::remove_file(&f.from)
+            .map(|()| true)
+            .map_err(|e| format!("cannot remove {}: {e}", f.from.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("cannot remove {}: {e}", f.from.display())),
+    }
+}
+
+fn credential_bytes(f: &ResolvedSecretFile) -> Result<Option<Vec<u8>>, String> {
+    let mut file = match open_below(&f.root, &f.from) {
+        Ok(file) => file,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) if is_symlink_error(&e) => {
+            return Err(format!(
+                "credential file {} is or passes through a symlink, refusing to copy it",
+                f.from.display()
+            ))
+        }
+        Err(e) => {
+            return Err(format!(
+                "cannot open credential file {}: {e}",
+                f.from.display()
+            ))
+        }
+    };
+    let meta = file.metadata().map_err(|e| e.to_string())?;
+    if let Some(problem) = private_file_problem(&f.from, &meta) {
+        return Err(format!("credential file: {problem}"));
+    }
+    if meta.len() > MAX_CREDENTIAL_BYTES {
+        return Err(format!(
+            "credential file {} is larger than {MAX_CREDENTIAL_BYTES} bytes",
+            f.from.display()
+        ));
+    }
+    let mut buf = Vec::new();
+    (&mut file)
+        .take(MAX_CREDENTIAL_BYTES + 1)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("cannot read credential file {}: {e}", f.from.display()))?;
+    if buf.len() as u64 > MAX_CREDENTIAL_BYTES {
+        return Err(format!(
+            "credential file {} is larger than {MAX_CREDENTIAL_BYTES} bytes",
+            f.from.display()
+        ));
+    }
+    Ok(Some(buf))
+}
+
+pub fn apply_secret_files(
+    files: &[ResolvedSecretFile],
+    home: &Path,
+) -> Result<Vec<String>, String> {
+    let mut notes = Vec::new();
+    for f in files {
+        let Some(bytes) = credential_bytes(f)? else {
+            notes.push(format!(
+                "credential file {} does not exist; the agent starts logged out",
+                f.from.display()
+            ));
+            continue;
+        };
+        let dest = home.join(&f.to);
+        if let Some(parent) = dest.parent() {
+            DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(parent)
+                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        }
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(&dest)
+            .and_then(|mut t| t.write_all(&bytes))
+            .map_err(|e| format!("cannot write {}: {e}", dest.display()))?;
+    }
+    Ok(notes)
 }
 
 fn push_new(out: &mut Vec<PathBuf>, p: PathBuf) {
@@ -446,6 +643,7 @@ pub fn prepare(
             trusted_env_pass: p.env_pass.clone(),
             env: p.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
         },
+        secret_files: r.secret_files,
         seeds: r.seeds,
         pass_values,
         warnings: r.warnings,
@@ -551,56 +749,6 @@ pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<Vec<SeedRecord
     Ok(records)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct LoginFile {
-    pub path: PathBuf,
-    pub created: bool,
-    pub private: bool,
-    pub names: Vec<String>,
-}
-
-pub fn ensure_login_file(p: &Profile, real_home: &Path) -> Result<LoginFile, String> {
-    let r = resolve(p, real_home, &[])?;
-    let path = r
-        .secrets
-        .ok_or_else(|| format!("profile {} declares no [secrets] file", p.id))?;
-    if p.env_pass.is_empty() {
-        return Err(format!("profile {} has no env_pass names", p.id));
-    }
-    let names = p.env_pass.clone();
-    if let Ok(meta) = std::fs::symlink_metadata(&path) {
-        let private = private_file_problem(&path, &meta).is_none();
-        return Ok(LoginFile {
-            path,
-            created: false,
-            private,
-            names,
-        });
-    }
-    if let Some(parent) = path.parent() {
-        DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(parent)
-            .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
-    }
-    let body: String = names.iter().map(|n| format!("{n}=\n")).collect();
-    OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&path)
-        .and_then(|mut f| f.write_all(body.as_bytes()))
-        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
-    Ok(LoginFile {
-        path,
-        created: true,
-        private: true,
-        names,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -663,13 +811,16 @@ file = "~/.config/tmgr/agents/p.env"
         assert!(warnings.is_empty(), "{warnings:?}");
         let claude = resolve(set.get("claude-code").unwrap(), &h.path, &[]).unwrap();
         assert_eq!(claude.seeds[0].from, h.path.join(".claude.json"));
+        assert!(claude.secrets.is_none());
+        assert!(set.get("claude-code").unwrap().env_pass.is_empty());
         assert_eq!(
-            claude.secrets,
-            Some(h.path.join(".config/tmgr/agents/claude-code.env"))
+            claude.secret_files[0].from,
+            h.path
+                .join(".config/tmgr/agents/claude-code.credentials.json")
         );
         assert_eq!(
-            set.get("claude-code").unwrap().env_pass,
-            ["CLAUDE_CODE_OAUTH_TOKEN"]
+            claude.secret_files[0].to,
+            PathBuf::from(".claude/.credentials.json")
         );
         let codex = resolve(set.get("codex").unwrap(), &h.path, &[]).unwrap();
         assert_eq!(codex.seeds[0].to, PathBuf::from(".codex/auth.json"));
@@ -1053,29 +1204,129 @@ file = "~/.config/tmgr/agents/p.env"
         );
     }
 
+    const FAKE_TOKEN: &str = concat!("sk-", "ant-oat01-FAKEFAKEFAKEFAKEFAKE");
+
+    fn cred_profile(extra: &str) -> Profile {
+        profile(&format!(
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/c.json\"\nto = \".c/c.json\"\n{extra}"
+        ))
+    }
+
     #[test]
-    fn login_file_is_created_once_and_never_overwritten() {
+    fn credential_files_must_be_inside_the_agents_area_with_a_plain_destination() {
         let h = home();
-        let p = profile("env_pass = [\"A_TOKEN\"]\n[secrets]\nfile = \"~/.config/x/p.env\"\n");
-        let first = ensure_login_file(&p, &h.path).unwrap();
-        assert!(first.created && first.private);
-        let meta = std::fs::metadata(&first.path).unwrap();
-        assert_eq!(meta.permissions().mode() & 0o777, 0o600);
-        assert_eq!(
-            std::fs::metadata(first.path.parent().unwrap())
-                .unwrap()
-                .permissions()
-                .mode()
-                & 0o777,
-            0o700
+        let bad = [
+            "[[secrets.files]]\nfrom = \"~/other/c.json\"\nto = \"c\"",
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/c.json\"\nto = \"c\"",
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/../x\"\nto = \"c\"",
+            "[[secrets.files]]\nfrom = \"/etc/passwd\"\nto = \"c\"",
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/c\"\nto = \"../c\"",
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/c\"\nto = \"/c\"",
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/c\"\nto = \"c\"\ntemplate = \"nope\"",
+            "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/c\"\nto = \"c\"\ntoken_prefix = \"a b\"",
+        ];
+        for extra in bad {
+            assert!(resolve(&profile(extra), &h.path, &[]).is_err(), "{extra}");
+        }
+        let r = resolve(&cred_profile(""), &h.path, &[]).unwrap();
+        assert_eq!(r.secret_files[0].to, PathBuf::from(".c/c.json"));
+    }
+
+    #[test]
+    fn credential_files_are_copied_privately_and_a_missing_one_is_only_noted() {
+        let h = home();
+        put(
+            &h.path.join(".config/tmgr/agents/c.json"),
+            "{\"k\":1}",
+            0o600,
         );
-        assert_eq!(std::fs::read_to_string(&first.path).unwrap(), "A_TOKEN=\n");
-        std::fs::write(&first.path, "A_TOKEN=keep\n").unwrap();
-        let second = ensure_login_file(&p, &h.path).unwrap();
-        assert!(!second.created);
-        assert_eq!(
-            std::fs::read_to_string(&first.path).unwrap(),
-            "A_TOKEN=keep\n"
+        let r = resolve(&cred_profile(""), &h.path, &[]).unwrap();
+        let run_home = h.path.join("run");
+        std::fs::create_dir(&run_home).unwrap();
+        assert!(apply_secret_files(&r.secret_files, &run_home)
+            .unwrap()
+            .is_empty());
+        let dest = run_home.join(".c/c.json");
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "{\"k\":1}");
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&dest), 0o600);
+        assert_eq!(mode(dest.parent().unwrap()), 0o700);
+        std::fs::remove_file(h.path.join(".config/tmgr/agents/c.json")).unwrap();
+        let other = h.path.join("run2");
+        std::fs::create_dir(&other).unwrap();
+        let notes = apply_secret_files(&r.secret_files, &other).unwrap();
+        assert_eq!(notes.len(), 1);
+        assert!(!other.join(".c").exists());
+    }
+
+    #[test]
+    fn a_loose_symlinked_or_oversized_credential_file_refuses_the_session() {
+        let h = home();
+        let src = h.path.join(".config/tmgr/agents/c.json");
+        let r = resolve(&cred_profile(""), &h.path, &[]).unwrap();
+        let run_home = h.path.join("run");
+        std::fs::create_dir(&run_home).unwrap();
+        put(&src, "fake-secret-body", 0o644);
+        let e = apply_secret_files(&r.secret_files, &run_home).unwrap_err();
+        assert!(
+            e.contains("chmod 600") && e.contains("c.json") && !e.contains("fake-secret-body"),
+            "{e}"
         );
+        std::fs::remove_file(&src).unwrap();
+        put(&h.path.join("real"), "{}", 0o600);
+        symlink(h.path.join("real"), &src).unwrap();
+        let e = apply_secret_files(&r.secret_files, &run_home).unwrap_err();
+        assert!(e.contains("symlink"), "{e}");
+        std::fs::remove_file(&src).unwrap();
+        put(&src, &"x".repeat(70 * 1024), 0o600);
+        assert!(apply_secret_files(&r.secret_files, &run_home).is_err());
+        assert!(!run_home.join(".c").exists());
+    }
+
+    #[test]
+    fn the_claude_template_renders_the_credential_document() {
+        let h = home();
+        let (set, _) = ProfileSet::load(None);
+        let r = resolve(set.get("claude-code").unwrap(), &h.path, &[]).unwrap();
+        let f = &r.secret_files[0];
+        let v: serde_json::Value =
+            serde_json::from_slice(&render_credential(f, FAKE_TOKEN, 1_000).unwrap()).unwrap();
+        let o = &v["claudeAiOauth"];
+        assert_eq!(o["accessToken"], FAKE_TOKEN);
+        assert!(o["refreshToken"].is_null() && o["subscriptionType"].is_null());
+        assert_eq!(o["expiresAt"], 1_000u64 + 365 * 24 * 3600 * 1000);
+        assert_eq!(o["scopes"], serde_json::json!(["user:inference"]));
+        for bad in [
+            concat!("sk-", "ant-api03-FAKEFAKEFAKEFAKEFAKE"),
+            "sk-ant-oat01-short",
+            "sk-ant-oat01-FAKE FAKEFAKEFAKEFAKE",
+        ] {
+            let e = render_credential(f, bad, 0).unwrap_err();
+            assert!(!e.contains(bad), "{e}");
+        }
+        assert!(render_credential(f, &format!("sk-ant-oat01-{}", "A".repeat(400)), 0).is_err());
+    }
+
+    #[test]
+    fn credentials_are_written_privately_replaced_only_on_request_and_removed() {
+        let h = home();
+        let r = resolve(&cred_profile("template = \"raw\"\n"), &h.path, &[]).unwrap();
+        let f = &r.secret_files[0];
+        write_credential(f, b"one", false).unwrap();
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&f.from), 0o600);
+        assert_eq!(mode(f.from.parent().unwrap()), 0o700);
+        assert!(write_credential(f, b"two", false)
+            .unwrap_err()
+            .contains("--replace"));
+        assert_eq!(std::fs::read(&f.from).unwrap(), b"one");
+        write_credential(f, b"two", true).unwrap();
+        assert_eq!(std::fs::read(&f.from).unwrap(), b"two");
+        assert_eq!(
+            std::fs::read_dir(f.from.parent().unwrap()).unwrap().count(),
+            1
+        );
+        assert!(remove_credential(f).unwrap());
+        assert!(!remove_credential(f).unwrap());
     }
 }

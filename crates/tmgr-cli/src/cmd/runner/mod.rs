@@ -98,8 +98,16 @@ pub struct AgentsArgs {
 
 #[derive(Subcommand)]
 pub enum AgentsCmd {
-    /// [experimental] Create the file that holds an agent profile's login token
-    LoginFile {
+    /// [experimental] Store an agent profile's login token (read hidden from the terminal or one line of stdin)
+    Login {
+        /// Agent profile id
+        profile: String,
+        /// Overwrite an existing login
+        #[arg(long)]
+        replace: bool,
+    },
+    /// [experimental] Remove an agent profile's stored login
+    Logout {
         /// Agent profile id
         profile: String,
     },

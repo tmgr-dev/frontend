@@ -20,11 +20,16 @@ and similar names stay refused (the profile is rejected at load). The profile's 
 An agent profile (trusted local data, see the design doc 6.10) may declare, all relative to the real home as `~/...`:
 
 ```toml
-env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]      # values come only from the [secrets] file; a missing value is logged
+env_pass = ["SOME_API_KEY"]                 # values come only from the [secrets] file; a missing value is logged
 [env]
 DISABLE_AUTOUPDATER = "1"                   # literal, non-secret
 [secrets]
-file = "~/.config/tmgr/agents/claude-code.env"
+file = "~/.config/tmgr/agents/some.env"
+[[secrets.files]]                           # owner-only credential file copied into the per-run home
+from = "~/.config/tmgr/agents/claude-code.credentials.json"
+to = ".claude/.credentials.json"
+token_prefix = "sk-ant-oat01-"              # optional: what `tmgr agents login` requires of the token
+template = "claude-oauth"                   # optional: "claude-oauth" or "raw" (default raw)
 [sandbox]
 read = ["~/.local/share/claude"]            # extra read-only roots (also executable)
 [[sandbox.seed]]
@@ -61,12 +66,37 @@ Rules, checked when the profile loads and again at session start (a violation dr
   regular file owned by the user, mode 0600 or stricter, not a symlink, at most 64 KiB, `NAME=VALUE` lines with `#`
   comments; empty values are ignored. Otherwise the session is refused with a `chmod 600` hint. Values are never logged,
   and `launch.json` (which holds the session environment) is deleted by the shim as soon as it has read it.
-- `tmgr agents login-file <profile>` creates that file (dirs 0700, file 0600, `NAME=` lines) if missing and never
-  touches an existing one.
+- `[[secrets.files]]`: `from` must be inside `~/.config/tmgr/agents/` (plain relative path below it, resolved under the
+  real home). The runner, which is not sandboxed, opens it one component at a time with `O_NOFOLLOW`; it must be a regular
+  file owned by the user, mode 0600 or stricter, at most 64 KiB, otherwise the session is refused with a `chmod 600`
+  hint naming the file. A missing file is not an error: one log line is written (never contents) and the agent starts
+  logged out. The copy goes to `to` (plain relative path) in the per-run home: file 0600, parent directories 0700,
+  exclusive create, no-follow. The agent still cannot read `~/.config/tmgr`; per-run homes of other sessions are denied
+  to each session, so only the session itself sees its copy.
+- `tmgr agents login <profile> [--replace]` reads one token (hidden prompt on a terminal, one line from stdin otherwise),
+  checks the profile's `token_prefix`, the charset `A-Za-z0-9_-` and a length of 20 to 400, renders the file's `template`
+  and writes it atomically (0600 temp file + rename). An existing file is replaced only with `--replace`. The token is
+  never printed or logged. `tmgr agents logout <profile>` removes that one declared file.
 
-Claude Code on macOS keeps its login in the Keychain, which the sandbox does not reach. Log in once with
-`claude setup-token`, put the token after `CLAUDE_CODE_OAUTH_TOKEN=` in the file above (`tmgr agents login-file claude-code`
-creates it). Codex keeps its login in `~/.codex/auth.json`, which its profile seeds; the owner's `config.toml` and
+Claude Code on macOS keeps its login in the Keychain, which the sandbox does not reach; it falls back to
+`$CLAUDE_CONFIG_DIR/.credentials.json` (default `~/.claude/.credentials.json` under `HOME`) when the Keychain read fails.
+The `claude-code` profile therefore copies a credential file into the per-run home.
+
+### Claude login
+
+1. Run `claude setup-token` in a normal terminal; it prints a long-lived token starting with `sk-ant-oat01-`.
+2. Run `tmgr agents login claude-code` and paste the token at the hidden prompt (or pipe it on stdin).
+3. This writes `~/.config/tmgr/agents/claude-code.credentials.json` (0600, directory 0700) with the token, no refresh
+   token and an expiry one year out. The next `claude-code` session finds it as `~/.claude/.credentials.json` and is
+   logged in. Repeat with `--replace` to rotate; `tmgr agents logout claude-code` deletes it.
+
+Who can read it: the owner and the runner; the session that received it (its copy lives in its own per-run home, which
+other sessions are denied); not the sandboxed agent's other sessions and not anything under the real `~/.config/tmgr`.
+The environment-variable route is intentionally not offered for Claude: on macOS the environment of a process can be read
+by other processes of the same user, so a token passed through `env_pass` is visible to other sessions, while a file in the
+per-run home is not. The generic `env_pass` and secrets-file engine stays for other profiles, but prefer credential files.
+
+Codex keeps its login in `~/.codex/auth.json`, which its profile seeds; the owner's `config.toml` and
 `~/.claude/settings.json` (hooks, MCP servers) are never seeded.
 
 Codex rotates its refresh token when `last_refresh` in `auth.json` is about 8 days old, and a rotation inside a session

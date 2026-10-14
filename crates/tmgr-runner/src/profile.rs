@@ -51,9 +51,21 @@ pub struct SandboxDecl {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct SecretFile {
+    pub from: String,
+    pub to: String,
+    #[serde(default)]
+    pub token_prefix: Option<String>,
+    #[serde(default)]
+    pub template: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct SecretsDecl {
     #[serde(default)]
     pub file: Option<String>,
+    #[serde(default)]
+    pub files: Vec<SecretFile>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]

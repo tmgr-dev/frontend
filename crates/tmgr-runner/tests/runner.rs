@@ -1614,6 +1614,125 @@ fn a_world_readable_secrets_file_refuses_the_session_with_a_chmod_hint() {
     assert!(fx.h.client().list().unwrap().is_empty());
 }
 
+const FAKE_CRED: &str = "{\"fake\":\"not-a-real-credential\"}";
+
+fn cred_fx(mode: Option<u32>) -> LoginFx {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    let cfg = home.join(".config/tmgr/agents");
+    fs::create_dir_all(&cfg).unwrap();
+    if let Some(mode) = mode {
+        let src = cfg.join("fake.cred");
+        fs::write(&src, FAKE_CRED).unwrap();
+        fs::set_permissions(&src, fs::Permissions::from_mode(mode)).unwrap();
+    }
+    let work = h.work.display();
+    let script = h.script(
+        "cred-agent.sh",
+        &format!(
+            "ls -l \"$HOME/.claude/.credentials.json\" 2>/dev/null | cut -c1-10 > \"$HOME/r_mode\"\n\
+             ls -ld \"$HOME/.claude\" | cut -c1-10 > \"$HOME/r_dirmode\"\n\
+             if [ \"$(cat \"$HOME/.claude/.credentials.json\" 2>/dev/null)\" = '{FAKE_CRED}' ]; then echo match; else echo mismatch; fi > \"$HOME/r_match\"\n\
+             if [ -f {work}/other ]; then cat \"$(cat {work}/other)/.claude/.credentials.json\" >/dev/null 2>&1; echo $? > \"$HOME/r_other_rc\"; fi\n\
+             echo done > \"$HOME/done\"\n\
+             while true; do sleep 0.2; done\n"
+        ),
+    );
+    fs::write(
+        h.agents.join("fake.toml"),
+        format!(
+            "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [[secrets.files]]\nfrom = \"~/.config/tmgr/agents/fake.cred\"\nto = \".claude/.credentials.json\"\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    LoginFx { h, home }
+}
+
+fn wait_done(rhome: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !rhome.join("done").exists() {
+        assert!(Instant::now() < deadline, "agent script did not finish");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_credential_file_is_copied_privately_and_only_its_own_session_can_read_it() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = cred_fx(Some(0o600));
+    fx.h.start(5000);
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let first = c.create_run(fx.h.run_req("fake")).unwrap();
+    let first_home = fx.h.homes.path().join(&first.id);
+    wait_done(&first_home);
+    let read = |home: &Path, n: &str| fs::read_to_string(home.join(n)).unwrap();
+    assert_eq!(read(&first_home, "r_match").trim(), "match");
+    assert_eq!(read(&first_home, "r_mode").trim(), "-rw-------");
+    assert_eq!(read(&first_home, "r_dirmode").trim(), "drwx------");
+    assert_eq!(
+        fs::read_to_string(first_home.join(".claude/.credentials.json")).unwrap(),
+        FAKE_CRED
+    );
+
+    fs::write(fx.h.work.join("other"), first_home.display().to_string()).unwrap();
+    let second = c.create_run(fx.h.run_req("fake")).unwrap();
+    let second_home = fx.h.homes.path().join(&second.id);
+    wait_done(&second_home);
+    assert_ne!(read(&second_home, "r_other_rc").trim(), "0");
+    assert_eq!(read(&second_home, "r_match").trim(), "match");
+
+    for log in ["runner.log", "sessions/{id}/shim.log"] {
+        let path = fx.h.run.join(log.replace("{id}", &first.id));
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        assert!(!text.contains("not-a-real-credential"), "{log}");
+    }
+}
+
+#[test]
+fn a_loose_credential_file_refuses_the_session_with_a_chmod_hint() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = cred_fx(Some(0o644));
+    fx.h.start(5000);
+    let e = err_text(
+        Client::connect_as(&fx.h.run, "desktop")
+            .unwrap()
+            .create_run(fx.h.run_req("fake")),
+    );
+    assert!(e.contains("chmod 600") && e.contains("fake.cred"), "{e}");
+    assert!(!e.contains("not-a-real-credential"));
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn a_missing_credential_file_starts_the_session_logged_out() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = cred_fx(None);
+    fx.h.start(5000);
+    let info = Client::connect_as(&fx.h.run, "desktop")
+        .unwrap()
+        .create_run(fx.h.run_req("fake"))
+        .unwrap();
+    let rhome = fx.h.homes.path().join(&info.id);
+    wait_done(&rhome);
+    assert_eq!(
+        fs::read_to_string(rhome.join("r_match")).unwrap().trim(),
+        "mismatch"
+    );
+    assert!(!rhome.join(".claude").exists() || !rhome.join(".claude/.credentials.json").exists());
+    let log = fs::read_to_string(fx.h.tmp.path().join("runner.err")).unwrap_or_default();
+    assert!(log.contains("starts logged out"));
+}
+
 #[test]
 fn a_profile_directory_inside_the_session_cwd_refuses_the_session() {
     let mut h = Harness::new();
