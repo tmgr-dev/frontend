@@ -624,7 +624,7 @@ mod tests {
     }
 
     fn fx() -> Fx {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let root = std::fs::canonicalize(d.path()).unwrap();
         let paths = Paths::under(&root);
         let bin_dir = root.join("bin");
@@ -1035,7 +1035,7 @@ mod tests {
         )
         .unwrap();
         assert!(more_agents.widening);
-        let other_repo = tempfile::tempdir().unwrap();
+        let other_repo = crate::testutil::private_tempdir();
         let repo2 = plan_scope(
             &f.paths,
             "laptop",

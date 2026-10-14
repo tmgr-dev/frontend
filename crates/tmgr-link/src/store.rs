@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn store_round_trips_with_private_modes() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         assert_eq!(Store::load(&paths).unwrap(), Store::default());
         Store::update(&paths, |s| {
@@ -379,7 +379,7 @@ mod tests {
 
     #[test]
     fn the_runner_reads_these_keys() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         Store::update(&paths, |s| {
             s.leaders.insert("laptop".into(), leader());
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn a_failing_change_writes_nothing() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let r: Result<()> = Store::update(&paths, |s| {
             s.leaders.insert("x".into(), leader());
@@ -413,7 +413,7 @@ mod tests {
     #[test]
     fn a_group_readable_store_is_refused() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         Store::update(&paths, |_| Ok(())).unwrap();
         std::fs::set_permissions(paths.links_toml(), std::fs::Permissions::from_mode(0o644))
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn unknown_fields_and_garbage_are_refused() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         Store::update(&paths, |_| Ok(())).unwrap();
         tmgr_core::config::write_atomic(&paths.links_toml(), b"bogus = 1\n", 0o600).unwrap();

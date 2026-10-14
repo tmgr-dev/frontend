@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn terminate_kills_registered_workers_of_that_link_only() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let mut mine = sleeper();
         let mut other = sleeper();
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn contain_kills_workers_even_when_the_runs_file_is_damaged() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         ensure_private_dir(&paths.config).unwrap();
         ensure_private_dir(&paths.link_dir()).unwrap();
@@ -247,7 +247,7 @@ mod tests {
 
     #[test]
     fn only_the_selected_enrollments_are_terminated() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let mut old = sleeper();
         let mut current = sleeper();
@@ -280,7 +280,7 @@ mod tests {
 
     #[test]
     fn a_recycled_pid_is_never_signalled() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let mut bystander = sleeper();
         fake_worker(&paths, "laptop", &bystander, "not-its-start-time".into());
@@ -296,7 +296,7 @@ mod tests {
     #[test]
     fn registration_is_removed_on_drop_and_private() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let guard = register(&paths, "laptop", "e").unwrap();
         let p = file(&paths, "laptop", std::process::id());

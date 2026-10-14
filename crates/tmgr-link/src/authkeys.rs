@@ -358,7 +358,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn setup() -> (tempfile::TempDir, PathBuf) {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let ak = d.path().join(".ssh").join("authorized_keys");
         (d, ak)
     }
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn binaries_in_writable_directories_are_refused() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let bin_dir = d.path().join("bin");
         std::fs::create_dir(&bin_dir).unwrap();
         let bin = bin_dir.join("tmgr");

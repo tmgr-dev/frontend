@@ -39,3 +39,14 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
         .map(|b| format!("{b:02x}"))
         .collect()
 }
+
+#[cfg(test)]
+pub(crate) mod testutil {
+    use std::os::unix::fs::PermissionsExt;
+
+    pub(crate) fn private_tempdir() -> tempfile::TempDir {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        d
+    }
+}

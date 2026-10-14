@@ -628,7 +628,7 @@ mod tests {
     }
 
     fn tree() -> (tempfile::TempDir, PathBuf) {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let root = std::fs::canonicalize(d.path()).unwrap();
         (d, root)
     }

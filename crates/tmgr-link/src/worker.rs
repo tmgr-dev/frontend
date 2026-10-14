@@ -593,7 +593,7 @@ mod tests {
     }
 
     fn fx() -> Fx {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let root = std::fs::canonicalize(d.path()).unwrap();
         let paths = Paths::under(&root);
         let repo = root.join("repo");

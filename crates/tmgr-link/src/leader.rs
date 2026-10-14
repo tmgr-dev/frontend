@@ -503,7 +503,7 @@ mod tests {
     #[test]
     fn pinning_replaces_only_its_own_lines_and_is_private() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let (k1, k2, k3) = (testkeys::key(), testkeys::key(), testkeys::key());
         pin_host(&paths, "a", &k1).unwrap();
@@ -569,7 +569,7 @@ mod tests {
     #[test]
     fn init_stores_the_key_in_a_private_file_and_never_overwrites() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let cred = CredentialStore::with_keychain(
             &paths.config,
@@ -622,7 +622,7 @@ mod tests {
 
     #[test]
     fn concurrent_inits_create_exactly_one_identity() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let root = d.path().to_path_buf();
         let handles: Vec<_> = (0..6)
             .map(|_| {
@@ -657,7 +657,7 @@ mod tests {
 
     #[test]
     fn the_link_key_and_the_login_token_do_not_disturb_each_other() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let login = CredentialStore::with_keychain(
             &paths.config,

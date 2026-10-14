@@ -111,7 +111,7 @@ mod tests {
     #[test]
     fn tombstones_are_kept_per_enrollment_until_retired() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         assert!(for_link(&paths, "laptop").unwrap().is_empty());
         record(&paths, "laptop", "e1", 4).unwrap();
@@ -132,7 +132,7 @@ mod tests {
 
     #[test]
     fn unresolved_tombstones_are_never_evicted_and_a_full_file_blocks_trust_changes() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         for i in 0..(MAX_UNRESOLVED + 5) {
             record(&paths, &format!("l{i}"), "e", i as u64).unwrap();
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn a_damaged_file_is_an_error_not_an_empty_list() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         ensure_private_dir(&paths.config).unwrap();
         ensure_private_dir(&paths.link_dir()).unwrap();

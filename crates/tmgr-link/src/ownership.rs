@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn ownership_is_keyed_by_link_and_enrollment() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         {
             let mut runs = Runs::lock(&paths).unwrap();
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn pruning_drops_runs_the_runner_no_longer_has() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let mut runs = Runs::lock(&paths).unwrap();
         runs.record(rec("s_a", "laptop", "e1")).unwrap();
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn young_records_survive_pruning_and_old_ones_do_not() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let mut runs = Runs::lock(&paths).unwrap();
         let mut old = rec("s_old", "laptop", "e1");
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn the_map_lives_in_the_private_config_link_dir_and_the_old_file_moves() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         ensure_private_dir(&paths.state).unwrap();
         let legacy = serde_json::json!({"runs": [rec("s_a", "laptop", "e1")]});
@@ -316,7 +316,7 @@ mod tests {
 
     #[test]
     fn garbage_is_refused_not_ignored() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         ensure_dir(&paths).unwrap();
         write_atomic(&map_path(&paths), b"not json", 0o600).unwrap();
