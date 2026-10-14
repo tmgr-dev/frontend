@@ -2685,8 +2685,23 @@ fn guard_fx(initial: &str, agent_body: &str) -> LoginFx {
     LoginFx { h, home }
 }
 
+fn run_guard_session(fx: &LoginFx) {
+    Client::connect_as(&fx.h.run, "desktop")
+        .unwrap()
+        .create_run(fx.h.run_req("guard"))
+        .unwrap();
+}
+
+fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !done() {
+        assert!(Instant::now() < deadline, "{what}");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
 #[test]
-fn a_session_that_refreshes_the_seeded_login_writes_it_back_on_exit() {
+fn a_session_that_refreshes_the_seeded_login_leaves_a_candidate_and_the_original_alone() {
     if !sessions_available() {
         return;
     }
@@ -2697,25 +2712,73 @@ fn a_session_that_refreshes_the_seeded_login_writes_it_back_on_exit() {
         &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
     );
     fx.h.start(5000);
-    Client::connect_as(&fx.h.run, "desktop")
-        .unwrap()
-        .create_run(fx.h.run_req("guard"))
-        .unwrap();
+    run_guard_session(&fx);
+    let candidate = fx.h.run.join("candidates/guard/0.json");
+    let meta = fx.h.run.join("candidates/guard/0.meta.json");
+    wait_for("no candidate was stored", || meta.exists());
+    assert_eq!(fs::read_to_string(&candidate).unwrap(), new);
     let source = fx.home.join(".codex/auth.json");
-    let deadline = Instant::now() + Duration::from_secs(20);
-    while fs::read_to_string(&source).unwrap() != new {
-        assert!(Instant::now() < deadline, "the login was not written back");
-        thread::sleep(Duration::from_millis(50));
+    assert_eq!(fs::read_to_string(&source).unwrap(), old);
+    assert!(!fx.home.join(".codex/auth.json.tmgr-backup").exists());
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&candidate), mode(&meta)), (0o600, 0o600));
+    let list = fx.h.client().candidates().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].profile, "guard");
+    assert_eq!(
+        Path::new(&list[0].source).canonicalize().unwrap(),
+        source.canonicalize().unwrap()
+    );
+    assert!(list[0].session.starts_with("s_"));
+}
+
+#[test]
+fn with_auto_mode_on_the_runner_applies_the_refreshed_login_after_the_session() {
+    if !sessions_available() {
+        return;
     }
+    let old = guard_doc(5, "old-rt");
+    let new = guard_doc(0, "new-rt");
+    let mut fx = guard_fx(
+        &old,
+        &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
+    );
+    let flag = fx.h.agents.join("guard.autosync");
+    fs::write(&flag, "{}").unwrap();
+    fs::set_permissions(&flag, fs::Permissions::from_mode(0o600)).unwrap();
+    fx.h.start(5000);
+    run_guard_session(&fx);
+    let source = fx.home.join(".codex/auth.json");
+    wait_for("the login was not applied", || {
+        fs::read_to_string(&source).unwrap() == new
+    });
     let backup = fx.home.join(".codex/auth.json.tmgr-backup");
     assert_eq!(fs::read_to_string(&backup).unwrap(), old);
-    assert_eq!(
-        fs::metadata(&backup).unwrap().permissions().mode() & 0o777,
-        0o600
+    assert!(fx.h.client().candidates().unwrap().is_empty());
+}
+
+#[test]
+fn a_loose_auto_mode_file_does_not_enable_auto_mode() {
+    if !sessions_available() {
+        return;
+    }
+    let old = guard_doc(5, "old-rt");
+    let new = guard_doc(0, "new-rt");
+    let mut fx = guard_fx(
+        &old,
+        &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
     );
+    let flag = fx.h.agents.join("guard.autosync");
+    fs::write(&flag, "{}").unwrap();
+    fs::set_permissions(&flag, fs::Permissions::from_mode(0o644)).unwrap();
+    fx.h.start(5000);
+    run_guard_session(&fx);
+    wait_for("no candidate was stored", || {
+        fx.h.run.join("candidates/guard/0.meta.json").exists()
+    });
     assert_eq!(
-        fs::metadata(&source).unwrap().permissions().mode() & 0o777,
-        0o600
+        fs::read_to_string(fx.home.join(".codex/auth.json")).unwrap(),
+        old
     );
 }
 

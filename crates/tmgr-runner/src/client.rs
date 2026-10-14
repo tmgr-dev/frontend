@@ -6,8 +6,9 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
-    method, AttachParams, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line,
-    RunCreateReq, ScreenPush, SendParams, SessionInfo, Snapshot, StatusInfo, Welcome, CLIENT_CLI,
+    method, AttachParams, CandidateInfo, CreateReq, EventMsg, IdParams, KillParams,
+    LayoutSetParams, Line, RunCreateReq, ScreenPush, SendParams, SessionInfo, Snapshot, StatusInfo,
+    Welcome, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -111,6 +112,10 @@ impl Client {
 
     pub fn list(&mut self) -> io::Result<Vec<SessionInfo>> {
         from_value(self.call(method::SESSIONS_LIST, Value::Null)?)
+    }
+
+    pub fn candidates(&mut self) -> io::Result<Vec<CandidateInfo>> {
+        from_value(self.call(method::CANDIDATES_LIST, Value::Null)?)
     }
 
     pub fn create(&mut self, req: CreateReq) -> io::Result<SessionInfo> {

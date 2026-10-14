@@ -75,7 +75,7 @@ Both sides must finish within 5 seconds. A refusal is
 
 ```json
 {"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"0011...eeff"}
-{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1"]}
+{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1","link_origin.v1","candidates.v1"]}
 ```
 
 ## 4. Versions and capabilities
@@ -99,6 +99,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `run_bundle.v1` | `bundle`, `bundle_sha256` on `runs.create`; `bundle_sha256` on `SessionInfo` (section 5, "Run bundles") |
 | `cwd_pin.v1` | `cwd_pin` on `runs.create` (section 5, "Pinning the folder") |
 | `link_origin.v1` | `origin` on `runs.create`, `SessionInfo` and `Event`; `origin.revoke` (section 5, "Link-originated runs") |
+| `candidates.v1` | `candidates.list` (section 5, "Refreshed logins") |
 
 ## 5. Messages after the handshake
 
@@ -125,6 +126,7 @@ missing params) and `internal`.
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
 | `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
+| `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -231,6 +233,14 @@ The revocation is incomplete while `unconfirmed` is not empty. The result is
 `{"killed":n,"unconfirmed":["s_…"]}` (the session ids still being retried). It is idempotent; a later call keeps the
 highest generation. After it, `runs.create` for that link and a generation up to
 the recorded one is `forbidden`; a newly trusted link has a higher generation.
+
+### Refreshed logins
+
+A profile seed with `write_back` never changes the owner's file by itself. When a session ends with a changed copy that
+passes the runner's checks, the copy is stored as a candidate (`<runner dir>/candidates/<profile>/<seed index>.json`)
+and `candidates.list` (cap `candidates.v1`) reports it: `profile`, `source` (absolute path of the file the candidate
+would replace), `created_ms` and the `session` that produced it. The result never carries file contents; an empty list
+means nothing is pending. The owner applies a candidate with `tmgr agents sync <profile>`, not over this protocol.
 
 ### Run bundles
 

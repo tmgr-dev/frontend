@@ -102,17 +102,35 @@ Codex keeps its login in `~/.codex/auth.json`, which its profile seeds; the owne
 Codex rotates its refresh token when `last_refresh` in `auth.json` is about 8 days old, and a rotation inside a session
 would leave the owner's original file with a token the server no longer accepts. A seed can therefore declare
 `fresh = { json_key, max_age_days }`: the session is refused (with a hint to run the agent once in a normal terminal)
-when that timestamp is missing, unreadable or older than the limit. `write_back = true` copies the session's file back
-to the source when the agent exits (also found exited after a runner restart, and on `sessions remove`), under an
-exclusive lock per source path. The runner writes back only if the copy is a JSON object that keeps every top-level key
-of the source and has equal values at every dotted path in `same` (the codex profile pins `tokens.account_id` and
-`auth_mode`); if the source changed in the meantime, only a copy with a strictly newer `fresh` timestamp wins. The
-previous source is kept as `<name>.tmgr-backup` next to it (0600, single rolling copy). A rejected or superseded copy
-is kept in `<runner dir>/seed-backups/`. `write_back` cannot be combined with `json_keys`.
+when that timestamp is missing, unreadable or older than the limit.
 
-Residual risk: an agent can still corrupt the owner's Codex login with garbage of the same account that passes these
-checks (restore it from `auth.json.tmgr-backup`), and while a session holds rotated tokens the owner's own `codex` may
-fail until the session exits.
+The session's copy is agent-controlled, so it is never written back by itself: an agent could keep `tokens.account_id`
+and `auth_mode` and plant another account's tokens, and the owner's own Codex would then send future work to that
+account. `write_back = true` (or `"confirm"`, the same) therefore only stores a candidate. After the session, if the copy
+changed and is a JSON object of at most 1 MiB that keeps every top-level key of the source and has equal values at every
+dotted path in `same` (the codex profile pins `tokens.account_id` and `auth_mode`), the runner stores it as
+`<runner dir>/candidates/<profile>/<seed index>.json` (0600, directories 0700, with a `<seed index>.meta.json` holding the
+source path, the seeded and current source hashes, the session id and the time); a newer candidate replaces an older one.
+A copy is not stored if the source changed during the session and the copy is not strictly newer. The original is not touched.
+
+`tmgr agents` and `tmgr run` print one line per pending candidate (the `candidates.list` method, no contents).
+`tmgr agents sync <profile>` needs a terminal on stdin and stdout and refuses inside a session (`TMGR_SESSION_ID`). It shows a
+summary without token values (source, age, session, whether each `same` path is equal, the names of the changed top-level keys,
+the old and new `fresh` timestamps) and applies only after `apply` is typed. Applying takes the per-source `flock`, opens the
+source's parent directory with `O_DIRECTORY | O_NOFOLLOW` one component at a time, re-reads the source, refuses if it changed
+since the candidate was made and now holds a newer (or unreadable) `fresh` timestamp, writes `<name>.tmgr-backup` and the new file
+(exclusive 0600 temp file, `fsync`, `renameat`) relative to that directory descriptor and checks with `fstatat(AT_SYMLINK_NOFOLLOW)`
+before and after that the source name is a regular file. `tmgr agents sync <profile> --discard` drops candidates without applying.
+
+Opt-in auto mode: `tmgr agents sync <profile> --auto on` prints the risk (an agent in a session can replace the login with
+another account's tokens, which TMGR cannot verify offline) and needs `I AGREE` typed in a terminal (`--yes` never applies; refused
+inside a session). It writes `<agents dir>/<profile>.autosync` (0600; the agents dir is sandbox-denied); while that private regular
+file exists the runner applies each new candidate itself after the session with the same function and logs it. `--auto off`
+removes the file. A profile TOML cannot enable auto mode.
+
+Residual risk: in auto mode, or if the owner types `apply` without reading the summary, an agent can put another account's
+tokens into the login (restore it from `auth.json.tmgr-backup`). Even in the default mode the owner's own `codex` may fail
+while a session holds rotated tokens, until the candidate is applied.
 
 ## Refused working directories
 

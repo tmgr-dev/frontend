@@ -102,6 +102,15 @@ pub struct OriginRevoked {
     pub unconfirmed: Vec<String>,
 }
 
+/// One element of the `candidates.list` result: a refreshed agent login waiting for `tmgr agents sync`. Never carries contents.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateInfo {
+    pub profile: String,
+    pub source: String,
+    pub created_ms: u64,
+    pub session: String,
+}
+
 /// Identity (`stat` device and inode) of the folder a human approved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CwdPin {

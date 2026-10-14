@@ -28,6 +28,22 @@ pub struct Fresh {
     pub max_age_days: u32,
 }
 
+fn write_back_flag<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Flag {
+        Bool(bool),
+        Text(String),
+    }
+    match Flag::deserialize(d)? {
+        Flag::Bool(b) => Ok(b),
+        Flag::Text(t) if t == "confirm" => Ok(true),
+        Flag::Text(_) => Err(serde::de::Error::custom(
+            "write_back must be true, false or \"confirm\"",
+        )),
+    }
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct Seed {
     pub from: String,
@@ -36,7 +52,7 @@ pub struct Seed {
     pub json_keys: Option<Vec<String>>,
     #[serde(default)]
     pub fresh: Option<Fresh>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "write_back_flag")]
     pub write_back: bool,
     #[serde(default)]
     pub same: Vec<String>,
