@@ -1,0 +1,17 @@
+id = "aider"
+name = "Aider"
+command = ["aider"]
+args = ["--no-check-update", "--analytics-disable"]
+model_arg = ["--model", "{model}"]
+env_pass = []
+tier = "t0"
+
+[resume]
+args = ["--restore-chat-history"]
+
+# Yes/No prompts and the first-run login prompt checked against recorded aider 0.86 screens.
+[status]
+blocked = [
+  '\(Y\)es/\(N\)o',
+]
+idle = []

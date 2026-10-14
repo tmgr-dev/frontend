@@ -4,6 +4,8 @@ command = ["claude"]
 args = []
 model_arg = ["--model", "{model}"]
 env_pass = []
+instruction_files = ["CLAUDE.md"]
+tier = "t2"
 
 [env]
 DISABLE_AUTOUPDATER = "1"
@@ -30,3 +32,13 @@ blocked = [
   '(?i)trust this folder',
 ]
 idle = []
+
+[prompt]
+mode = "arg"
+args = ["{prompt}"]
+
+[resume]
+args = ["--continue"]
+
+[hooks]
+kind = "settings-file"

@@ -34,8 +34,9 @@ pub mod caps {
     pub const LINK_ORIGIN_V1: &str = "link_origin.v1";
     pub const CANDIDATES_V1: &str = "candidates.v1";
     pub const WORKLOG_V1: &str = "worklog.v1";
+    pub const RUNS_RESTORE_V1: &str = "runs.restore.v1";
 
-    pub const ALL: [&str; 10] = [
+    pub const ALL: [&str; 11] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -46,6 +47,7 @@ pub mod caps {
         LINK_ORIGIN_V1,
         CANDIDATES_V1,
         WORKLOG_V1,
+        RUNS_RESTORE_V1,
     ];
 }
 
@@ -65,6 +67,7 @@ pub mod method {
     pub const ATTACH_SET: &str = "attach.set";
     pub const ORIGIN_REVOKE: &str = "origin.revoke";
     pub const CANDIDATES_LIST: &str = "candidates.list";
+    pub const RUNS_RESTORE: &str = "runs.restore";
 }
 
 pub mod limits {

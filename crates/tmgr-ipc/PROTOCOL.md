@@ -101,6 +101,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `link_origin.v1` | `origin` on `runs.create`, `SessionInfo` and `Event`; `origin.revoke` (section 5, "Link-originated runs") |
 | `candidates.v1` | `candidates.list` (section 5, "Refreshed logins") |
 | `worklog.v1` | `sessions.worklog` (section 5, "Work log") |
+| `runs.restore.v1` | `runs.restore` (section 5, "Restoring interrupted runs") |
 
 ## 5. Messages after the handshake
 
@@ -128,6 +129,7 @@ missing params) and `internal`.
 | `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
+| `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -166,6 +168,35 @@ of `starting`, `working`, `waiting`, `blocked`, `exited`.
 `AttachParams`: `{sessions:[id] (at most 64), sizes?: {id: [cols, rows]}}`. It
 replaces the watched list; ids must exist. `attach.open` also turns the
 connection into a push stream (once). An empty list gives state events only.
+
+### Restoring interrupted runs
+
+Every `runs.create` that succeeds leaves a restore record in `<homes>/.intents/<id>.json`
+(mode 0600, inside the per-run homes directory that agents cannot reach; the runner
+directory is not used because on Linux it lives in `$XDG_RUNTIME_DIR` and is gone after a
+reboot). The record holds the profile id, model, name, canonical `cwd` with its
+`(dev, ino)` pin, task, `bundle_sha256` (the canonical bundle is stored next to it as
+`<id>.bundle.json`), `origin`, terminal size, creation time, a boot marker and the shim and
+agent pids. While the boot marker matches and one of those pids is alive, the record counts as
+still running and is not restored; the same holds while anything is left in the agent's process group. It never holds argv or
+environment: a restore rebuilds argv from the current profile.
+
+The record is dropped when the agent exits with code 0 and the runner is still up 10 s later
+(agents often exit 0 on the SIGTERM of a shutdown, which kills the runner too), when `sessions.kill` is sent to
+it and when the session is removed. Exits by signal, non-zero exits and sessions the
+runner lost (reboot, logout) keep it.
+
+`runs.restore {id}` (cap `runs.restore.v1`, `cli` only) claims the record by renaming it,
+so two restores of the same session cannot both start. It refuses records older than
+7 days, records with an `origin` (a link run is re-requested by its leader) and bypass
+runs; then it sends the recorded launch through the same path as `runs.create`, with
+the stored bundle and `cwd_pin`, so the bundle hash and the folder identity are checked
+again (a replaced folder answers `invalid_params` "approved folder changed"). When the
+old run's home still exists it is moved to the new session and, if the profile has
+`[resume] args`, the agent starts with them (`resumed: true`); otherwise it starts fresh
+with the same bundle. On success the old record and the old exited session are removed;
+on failure the record is put back. The runner never restores on its own: each restore
+is one explicit local request (`tmgr agents restore`).
 
 ### Pinning the folder
 

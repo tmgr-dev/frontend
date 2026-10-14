@@ -3,6 +3,7 @@ use crate::client::Client;
 use crate::exe::resolve_exe;
 use crate::login;
 use crate::profile::{self, Matcher, ProfileSet};
+use crate::restore;
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
 use crate::seedguard;
@@ -31,9 +32,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    method, CreateReq, ErrorCode, EventMsg, Origin, OriginRevokeParams, OriginRevoked,
-    RunCreateReq, SessionInfo, Snapshot, State, StateKind, StatusInfo, TaskRef, CLIENT_CLI,
-    CLIENT_WORKER,
+    method, CreateReq, CwdPin, ErrorCode, EventMsg, Origin, OriginRevokeParams, OriginRevoked,
+    RestoredRun, RunCreateReq, SessionInfo, Snapshot, State, StateKind, StatusInfo, TaskRef,
+    CLIENT_CLI, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -1045,6 +1046,15 @@ impl Runner {
                 }
                 self.create_run(req).map(|i| to_json(&i))
             }
+            method::RUNS_RESTORE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "runs.restore is accepted only from the tmgr CLI",
+                    ));
+                }
+                self.restore_run(&session_id_param(p)?).map(|r| to_json(&r))
+            }
             method::ORIGIN_REVOKE => {
                 if conn.client != CLIENT_CLI {
                     return Err(api(
@@ -1065,6 +1075,7 @@ impl Runner {
                 })?;
                 let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
                 s.shim_msg(&ToShim::Signal { sig, id });
+                restore::forget(&self.intents(), &s.id);
                 Ok(Value::Null)
             }
             method::SESSIONS_SEND => {
@@ -1090,7 +1101,12 @@ impl Runner {
                     .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
                 Ok(to_json(&worklog::summary(&s.dir)))
             }
-            method::SESSIONS_REMOVE => self.remove(&session_id_param(p)?).map(|_| Value::Null),
+            method::SESSIONS_REMOVE => {
+                let id = session_id_param(p)?;
+                self.remove(&id)?;
+                restore::forget(&self.intents(), &id);
+                Ok(Value::Null)
+            }
             method::LAYOUT_GET => Ok(self.layout_get()),
             method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
             method::ATTACH_OPEN => self.attach_open(conn, p),
@@ -1299,14 +1315,78 @@ impl Runner {
         })
     }
 
+    fn intents(&self) -> PathBuf {
+        restore::store(&self.cfg.homes)
+    }
+
+    fn seed_destinations(&self, profile: Option<&str>) -> Vec<String> {
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        profile
+            .and_then(|id| set.get(id))
+            .map_or_else(Vec::new, |p| {
+                p.sandbox
+                    .seed
+                    .iter()
+                    .map(|s| s.to.clone())
+                    .chain(p.secrets.files.iter().map(|f| f.to.clone()))
+                    .collect()
+            })
+    }
+
+    fn restore_run(self: &Arc<Self>, old: &str) -> Result<RestoredRun, ApiErr> {
+        let store = self.intents();
+        let claim = restore::claim(&store, old).map_err(|e| match e.kind() {
+            io::ErrorKind::NotFound => api(ErrorCode::NotFound, e.to_string()),
+            io::ErrorKind::AlreadyExists => api(ErrorCode::Busy, e.to_string()),
+            _ => api(ErrorCode::InvalidParams, e.to_string()),
+        })?;
+        let running = self.session(old).is_some_and(|s| !s.is_exited());
+        let result = match restore::status(&claim.intent, now_ms(), running) {
+            restore::Status::Restorable => restore::read_bundle(&store, &claim.intent)
+                .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))
+                .and_then(|bundle| {
+                    self.create_run_as(restore::request(&claim.intent, bundle), Some(old))
+                }),
+            restore::Status::Running => Err(api(ErrorCode::Busy, "the session is still running")),
+            st => Err(api(ErrorCode::Forbidden, st.reason())),
+        };
+        match result {
+            Ok((session, resumed, recorded)) => {
+                if recorded {
+                    claim.finish();
+                } else {
+                    log(&format!(
+                        "session {old}: its restore record stays claimed because the new one was not written"
+                    ));
+                    claim.keep();
+                }
+                if self.session(old).is_some_and(|s| s.is_exited()) {
+                    let _ = self.remove(old);
+                }
+                log(&format!("session {old} restored as {}", session.id));
+                Ok(RestoredRun { session, resumed })
+            }
+            Err(e) => {
+                claim.release();
+                Err(e)
+            }
+        }
+    }
+
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
+        self.create_run_as(req, None).map(|(info, _, _)| info)
+    }
+
+    fn create_run_as(
+        self: &Arc<Self>,
+        req: RunCreateReq,
+        restore_from: Option<&str>,
+    ) -> Result<(SessionInfo, bool, bool), ApiErr> {
         let checked = bundle::check(&req, tmgr_ipc::api::limits::MAX_BUNDLE)
             .map_err(|(code, m)| api(code, m))?;
-        let pinned = match (&checked, req.cwd_pin, &req.origin) {
-            (None, Some(_), _) | (None, _, Some(_)) => {
-                Some(bundle::open_dir(&req).map_err(|(code, m)| api(code, m))?)
-            }
-            _ => None,
+        let pinned = match &checked {
+            None => Some(bundle::open_dir(&req).map_err(|(code, m)| api(code, m))?),
+            Some(_) => None,
         };
         let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
@@ -1321,9 +1401,20 @@ impl Runner {
                 ),
             )
         })?;
-        let mut argv = prof
-            .argv(req.model.as_deref())
-            .map_err(|e| api(ErrorCode::InvalidParams, e))?;
+        let resume = match restore_from {
+            Some(old) if self.cfg.homes.join(old).is_dir() => {
+                prof.resume_argv(req.model.as_deref())
+            }
+            _ => Ok(None),
+        }
+        .map_err(|e| api(ErrorCode::InvalidParams, e))?;
+        let resumed = resume.is_some();
+        let mut argv = match resume {
+            Some(argv) => argv,
+            None => prof
+                .argv(req.model.as_deref())
+                .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+        };
         if argv.is_empty() {
             return Err(api(ErrorCode::InvalidParams, "profile has no command"));
         }
@@ -1332,14 +1423,18 @@ impl Runner {
             .map_err(|e| api(ErrorCode::InvalidParams, e))?
             .display()
             .to_string();
-        self.create_with(
+        let pin = dir.map(|d| {
+            let (dev, ino) = d.id();
+            CwdPin { dev, ino }
+        });
+        let info = self.create_with(
             CreateReq {
                 argv,
                 cwd: dir
                     .as_ref()
-                    .map_or(req.cwd, |d| d.path.display().to_string()),
-                name: req.name,
-                profile: Some(req.profile),
+                    .map_or(req.cwd.clone(), |d| d.path.display().to_string()),
+                name: req.name.clone(),
+                profile: Some(req.profile.clone()),
                 cols: req.cols,
                 rows: req.rows,
                 env_pass: Vec::new(),
@@ -1350,11 +1445,46 @@ impl Runner {
                 dir,
                 req.origin.as_ref().map(|o| (o, req.model.as_deref())),
             ),
-        )
+            restore_from,
+        )?;
+        let mut recorded = false;
+        if let Some(cwd_pin) = pin {
+            let intent = restore::Intent {
+                v: 1,
+                session: info.id.clone(),
+                profile: req.profile,
+                model: req.model,
+                name: info.name.clone(),
+                cwd: info.cwd.clone(),
+                cwd_pin,
+                task: req.task,
+                bundle_sha256: checked.as_ref().map(|c| c.sha256.clone()),
+                origin: req.origin,
+                bypass: false,
+                boot: restore::boot_marker(),
+                pids: vec![info.shim_pid, info.child_pid],
+                created_ms: info.created_ms,
+                cols: info.cols,
+                rows: info.rows,
+            };
+            let canonical = checked.as_ref().map(|c| c.canonical.as_str());
+            recorded = restore::record(&self.intents(), &intent, canonical)
+                .map_err(|e| {
+                    log(&format!(
+                        "session {}: restore record not written: {e}",
+                        info.id
+                    ));
+                })
+                .is_ok();
+            if let Some(s) = self.session(&info.id) {
+                restore::on_state(&self.intents(), &info.id, &s.state());
+            }
+        }
+        Ok((info, resumed, recorded))
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_with(req, (None, None, None))
+        self.create_with(req, (None, None, None), None)
     }
 
     fn create_with(
@@ -1365,6 +1495,7 @@ impl Runner {
             Option<&bundle::Dir>,
             Option<OriginArg<'_>>,
         ),
+        restore_from: Option<&str>,
     ) -> Result<SessionInfo, ApiErr> {
         let cwd = self.validate(&req)?;
         sandbox::landlock_tier(landlock_abi()).map_err(|e| api(ErrorCode::Sandbox, e))?;
@@ -1427,6 +1558,34 @@ impl Runner {
         let id = new_session_id();
         let sdir = self.sdir(&id);
         let home = self.cfg.homes.join(&id);
+        if let Some(old) = restore_from {
+            for line in seedguard::finish(&self.sdir(old)) {
+                log(&format!("session {old}: {line}"));
+            }
+            let moved = restore::adopt_home(&self.cfg.homes, old, &id).map_err(|e| {
+                api(
+                    ErrorCode::Internal,
+                    format!("cannot reuse the run home: {e}"),
+                )
+            })?;
+            if moved {
+                let tos = self.seed_destinations(req.profile.as_deref());
+                match restore::clear_seed_destinations(&home, &tos) {
+                    Ok(removed) => {
+                        for r in removed {
+                            log(&format!("session {id}: removed the old copy at {r}"));
+                        }
+                    }
+                    Err(e) => {
+                        restore::return_home(&self.cfg.homes, &id, old);
+                        return Err(api(
+                            ErrorCode::Sandbox,
+                            format!("cannot clear the old logins in the run home: {e}"),
+                        ));
+                    }
+                }
+            }
+        }
         let mut installed = None;
         let result = self.spawn_session(
             &req,
@@ -1439,6 +1598,9 @@ impl Runner {
         if result.is_err() {
             if let Some(prior) = &installed {
                 bundle::restore(prior);
+            }
+            if let Some(old) = restore_from {
+                restore::return_home(&self.cfg.homes, &id, old);
             }
             let _ = fs::remove_dir_all(&sdir);
             let _ = fs::remove_dir_all(&home);
@@ -2110,6 +2272,17 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         next_conn: AtomicU64::new(1),
     });
     log(&format!("runner {} starting", cfg.version));
+    let intents = rt.intents();
+    restore::recover_claims(&intents);
+    let exits = rt.hub.subscribe();
+    let delay = restore::forget_delay();
+    thread::spawn(move || {
+        while let Ok(v) = exits.recv() {
+            if let Ok(ev) = serde_json::from_value::<EventMsg>(v) {
+                restore::on_event(&intents, &ev, delay);
+            }
+        }
+    });
     rt.adopt_all();
     let ep = Endpoint::new_runner(&cfg.dir)?;
     let listener: UnixListener = endpoint::bind(&ep)?;

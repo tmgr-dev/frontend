@@ -1,0 +1,28 @@
+id = "cursor-agent"
+name = "Cursor CLI"
+command = ["cursor-agent"]
+args = []
+model_arg = ["--model", "{model}"]
+env_pass = []
+instruction_files = ["AGENTS.md", "CLAUDE.md"]
+tier = "t2"
+
+[prompt]
+mode = "arg"
+args = ["{prompt}"]
+
+[resume]
+args = ["--continue"]
+
+[hooks]
+kind = "project-file"
+
+# unverified: patterns from strings in the Cursor Agent 2026.10.14 bundle; only the pre-login screen was recorded, no trust or approval screen.
+[status]
+blocked = [
+  '(?i)workspace trust required',
+  '(?i)trust this workspace',
+  '(?i)run (outside sandbox )?\(once\)',
+  '(?i)to allowlist\?',
+]
+idle = []

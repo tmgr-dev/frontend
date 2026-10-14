@@ -1,0 +1,40 @@
+Analytics have been permanently disabled.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+No LLM model was specified and no API keys were provided.
+OpenRouter provides free and paid access to many LLMs.
+Login to OpenRouter or create a free account? (Y)es/(N)o [Yes]:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

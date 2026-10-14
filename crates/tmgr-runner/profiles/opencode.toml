@@ -1,0 +1,27 @@
+id = "opencode"
+name = "opencode"
+command = ["opencode"]
+args = []
+model_arg = ["--model", "{model}"]
+env_pass = []
+instruction_files = ["AGENTS.md"]
+tier = "t2"
+
+[prompt]
+mode = "arg"
+args = ["--prompt", "{prompt}"]
+
+[resume]
+args = ["--continue"]
+
+[hooks]
+kind = "project-file"
+
+# Idle home screen checked against a recorded opencode 1.19 screen; the permission prompt lines come from strings in the 1.19 binary, no recorded approval screen.
+[status]
+blocked = [
+  '(?i)permission required',
+  '(?i)\ballow (once|always)\b',
+  '(?i)reject permission',
+]
+idle = []

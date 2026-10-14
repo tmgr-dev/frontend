@@ -4,6 +4,8 @@ command = ["codex"]
 args = ["--no-daemon"]
 model_arg = ["--model", "{model}"]
 env_pass = []
+instruction_files = ["AGENTS.md"]
+tier = "t2"
 
 # Codex rotates its tokens after ~8 days; 7 leaves a margin. A refreshed login becomes a candidate, applied with `tmgr agents sync codex`.
 [[sandbox.seed]]
@@ -23,3 +25,14 @@ blocked = [
   '(?i)press enter to confirm or esc to cancel',
 ]
 idle = []
+
+[prompt]
+mode = "arg"
+args = ["{prompt}"]
+
+[resume]
+args = ["resume", "--last"]
+at = "after_command"
+
+[hooks]
+kind = "config-override"

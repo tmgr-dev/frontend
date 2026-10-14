@@ -2,6 +2,8 @@ mod attach;
 mod ops;
 mod remote;
 mod remote_attach;
+mod restore;
+mod service;
 
 use crate::cli::Cli;
 use crate::out::{self, Style};
@@ -42,8 +44,19 @@ pub enum RunnerCmd {
     Stop,
     /// [experimental] Show whether the runner is up
     Status,
+    /// [experimental] Register the runner to start at login (shows a preview unless --install)
+    InstallService(InstallServiceArgs),
+    /// [experimental] Remove the login autostart registration
+    UninstallService,
     #[command(hide = true)]
     Serve,
+}
+
+#[derive(Args)]
+pub struct InstallServiceArgs {
+    /// Write the service file and register it (needs a terminal and a typed confirmation)
+    #[arg(long)]
+    pub install: bool,
 }
 
 #[derive(Args)]
@@ -126,6 +139,14 @@ pub enum AgentsCmd {
     Log {
         /// Session id or name
         session: String,
+    },
+    /// [experimental] List sessions stopped by a reboot or logout and start them again, one confirmation each
+    Restore {
+        /// Session id to restore (default: list them and ask for each)
+        session: Option<String>,
+        /// Delete the restore record of this session instead
+        #[arg(long, requires = "session")]
+        discard: bool,
     },
 }
 

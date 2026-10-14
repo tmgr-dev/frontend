@@ -600,7 +600,8 @@ fn constants_are_pinned() {
             "cwd_pin.v1",
             "link_origin.v1",
             "candidates.v1",
-            "worklog.v1"
+            "worklog.v1",
+            "runs.restore.v1"
         ]
     );
     let methods = [
@@ -619,6 +620,7 @@ fn constants_are_pinned() {
         method::ORIGIN_REVOKE,
         method::CANDIDATES_LIST,
         method::SESSIONS_WORKLOG,
+        method::RUNS_RESTORE,
     ];
     assert_eq!(
         methods,
@@ -638,6 +640,7 @@ fn constants_are_pinned() {
             "origin.revoke",
             "candidates.list",
             "sessions.worklog",
+            "runs.restore",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -660,7 +663,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 10);
+    assert_eq!(w.caps.len(), 11);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

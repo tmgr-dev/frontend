@@ -16,6 +16,10 @@ pub mod client;
 #[cfg(unix)]
 pub mod daemon;
 #[cfg(unix)]
+pub mod restore;
+#[cfg(unix)]
+pub mod service;
+#[cfg(unix)]
 pub mod shim;
 #[cfg(unix)]
 pub mod trust;

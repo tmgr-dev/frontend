@@ -25,6 +25,8 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Start => start(o),
             RunnerCmd::Stop => stop(o),
             RunnerCmd::Status => status(o),
+            RunnerCmd::InstallService(a) => super::service::install(o, a.install),
+            RunnerCmd::UninstallService => super::service::uninstall(o),
             RunnerCmd::Serve => serve(),
         },
         RunnerCommands::Run(a) => match &a.on {
@@ -52,6 +54,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             command: Some(AgentsCmd::Log { session }),
             ..
         }) => work_log(o, session),
+        RunnerCommands::Agents(AgentsArgs {
+            command: Some(AgentsCmd::Restore { session, discard }),
+            ..
+        }) => super::restore::run(o, session.as_deref(), *discard),
         RunnerCommands::Agents(a) => match &a.host {
             Some(link) => remote::agents(o, link),
             None => agents(o),
@@ -526,11 +532,21 @@ fn agents(o: &Opts) -> Result<i32> {
         return Ok(emit(o, json!({"sessions": tagged, "summary": summary}), ""));
     }
     let show_origin = sessions.iter().any(|s| origins.contains_key(&s.id));
+    let restorable = super::restore::count(&cfg, &sessions);
+    let hint = || {
+        if restorable > 0 {
+            println!(
+                "{restorable} session{} stopped by a reboot or logout can be restored: tmgr agents restore",
+                if restorable == 1 { "" } else { "s" }
+            );
+        }
+    };
     if sessions.is_empty() {
         println!("No agent sessions yet. Start one with: tmgr run --agent <profile>");
         for line in candidate_lines(&cfg) {
             println!("{line}");
         }
+        hint();
         return Ok(0);
     }
     let now = now_ms();
@@ -579,6 +595,7 @@ fn agents(o: &Opts) -> Result<i32> {
     for line in candidate_lines(&cfg) {
         println!("{line}");
     }
+    hint();
     Ok(0)
 }
 

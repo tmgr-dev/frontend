@@ -111,6 +111,13 @@ pub struct CandidateInfo {
     pub session: String,
 }
 
+/// Result of `runs.restore`: the new session and whether the agent was started with its resume arguments.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RestoredRun {
+    pub session: SessionInfo,
+    pub resumed: bool,
+}
+
 /// Identity (`stat` device and inode) of the folder a human approved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CwdPin {

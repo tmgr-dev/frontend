@@ -84,6 +84,64 @@ pub struct SecretsDecl {
     pub files: Vec<SecretFile>,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResumeAt {
+    #[default]
+    End,
+    AfterCommand,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct ResumeDecl {
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub at: ResumeAt,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptMode {
+    Arg,
+    Stdin,
+    File,
+    #[default]
+    None,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct PromptDecl {
+    #[serde(default)]
+    pub mode: PromptMode,
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Tier {
+    #[default]
+    T0,
+    T1,
+    T2,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum HooksKind {
+    #[default]
+    None,
+    SettingsFile,
+    ConfigOverride,
+    ProjectFile,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct HooksDecl {
+    #[serde(default)]
+    pub kind: HooksKind,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
@@ -103,6 +161,16 @@ pub struct Profile {
     pub secrets: SecretsDecl,
     #[serde(default)]
     pub status: StatusRules,
+    #[serde(default)]
+    pub resume: Option<ResumeDecl>,
+    #[serde(default)]
+    pub prompt: PromptDecl,
+    #[serde(default)]
+    pub instruction_files: Vec<String>,
+    #[serde(default)]
+    pub tier: Tier,
+    #[serde(default)]
+    pub hooks: HooksDecl,
     #[serde(skip)]
     pub source: Source,
 }
@@ -134,6 +202,65 @@ impl Profile {
         }
         Ok(argv)
     }
+
+    pub fn resume_argv(&self, model: Option<&str>) -> Result<Option<Vec<String>>, String> {
+        let Some(r) = &self.resume else {
+            return Ok(None);
+        };
+        let mut argv = self.argv(model)?;
+        match r.at {
+            ResumeAt::End => argv.extend(r.args.iter().cloned()),
+            ResumeAt::AfterCommand => {
+                let at = self.command.len().min(argv.len());
+                argv.splice(at..at, r.args.iter().cloned());
+            }
+        }
+        Ok(Some(argv))
+    }
+}
+
+const MAX_INSTRUCTION_FILES: usize = 8;
+
+fn check_launch(p: &Profile) -> Result<(), String> {
+    if let Some(r) = &p.resume {
+        if r.args.is_empty() {
+            return Err("resume.args must not be empty".into());
+        }
+        if r.args.iter().any(|a| a.contains('{')) {
+            return Err("resume.args take no placeholders".into());
+        }
+    }
+    let holes = p.prompt.args.iter().filter(|a| *a == "{prompt}").count();
+    let stray = p
+        .prompt
+        .args
+        .iter()
+        .any(|a| a != "{prompt}" && a.contains('{'));
+    match p.prompt.mode {
+        PromptMode::Arg if holes != 1 || stray => {
+            return Err(
+                "prompt.args must hold \"{prompt}\" exactly once as a whole argument".into(),
+            )
+        }
+        PromptMode::Arg => {}
+        _ if !p.prompt.args.is_empty() => {
+            return Err("prompt.args is only used with mode = \"arg\"".into())
+        }
+        _ => {}
+    }
+    if p.instruction_files.len() > MAX_INSTRUCTION_FILES {
+        return Err(format!("at most {MAX_INSTRUCTION_FILES} instruction_files"));
+    }
+    for f in &p.instruction_files {
+        let ok = (1..=64).contains(&f.len())
+            && !f.starts_with('.')
+            && f.bytes()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'));
+        if !ok {
+            return Err(format!("instruction file {f:?} must be a plain file name"));
+        }
+    }
+    Ok(())
 }
 
 pub fn user_dir() -> Option<PathBuf> {
@@ -151,9 +278,13 @@ pub fn user_dir() -> Option<PathBuf> {
     var("HOME").map(|h| h.join(".config").join("tmgr").join("agents"))
 }
 
-const BUILTINS: [&str; 2] = [
+const BUILTINS: [&str; 6] = [
     include_str!("../profiles/claude-code.toml"),
     include_str!("../profiles/codex.toml"),
+    include_str!("../profiles/opencode.toml"),
+    include_str!("../profiles/gemini.toml"),
+    include_str!("../profiles/cursor-agent.toml"),
+    include_str!("../profiles/aider.toml"),
 ];
 
 pub struct ProfileSet {
@@ -312,6 +443,7 @@ fn read_user_profile(path: &Path, home: Option<&Path>) -> Result<Profile, String
 }
 
 fn check_declarations(p: &Profile, home: Option<&Path>) -> Result<(), String> {
+    check_launch(p)?;
     match home {
         Some(h) => crate::login::resolve(p, h, &[]).map(|_| ()),
         None => crate::login::check_env(p),
@@ -368,7 +500,13 @@ mod tests {
         let (set, warnings) = ProfileSet::load(None);
         assert!(warnings.is_empty(), "{warnings:?}");
         let ids: Vec<_> = set.list().iter().map(|p| p.id.as_str()).collect();
-        assert_eq!(ids, vec!["claude-code", "codex"]);
+        let mut expected: Vec<String> = BUILTINS
+            .iter()
+            .map(|t| toml::from_str::<Profile>(t).unwrap().id)
+            .collect();
+        expected.sort();
+        assert_eq!(ids, expected);
+        assert_eq!(ids.len(), BUILTINS.len());
         assert_eq!(set.get("codex").unwrap().command, vec!["codex"]);
         assert_eq!(set.get("codex").unwrap().source, Source::Builtin);
         for p in set.list() {
@@ -390,7 +528,7 @@ mod tests {
         let p = set.get("claude-code").unwrap();
         assert_eq!(p.command, vec!["my-claude"]);
         assert!(matches!(p.source, Source::User(_)));
-        assert_eq!(set.list().len(), 3);
+        assert_eq!(set.list().len(), BUILTINS.len() + 1);
         assert!(set.get("extra").is_some());
     }
 
@@ -455,7 +593,7 @@ mod tests {
             );
         }
         let (set, warnings) = ProfileSet::load(Some(dir.path()));
-        assert_eq!(set.list().len(), 102);
+        assert_eq!(set.list().len(), BUILTINS.len() + 100);
         assert_eq!(warnings.len(), 1);
     }
 
@@ -464,7 +602,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let (set, warnings) = ProfileSet::load(Some(&dir.path().join("nope")));
         assert!(warnings.is_empty());
-        assert_eq!(set.list().len(), 2);
+        assert_eq!(set.list().len(), BUILTINS.len());
     }
 
     #[test]
@@ -483,6 +621,7 @@ env_pass = ["FOO"]
 instruction_files = ["AGENTS.md"]
 [prompt]
 mode = "arg"
+args = ["--prompt", "{prompt}"]
 [resume]
 args = ["--resume"]
 [permission_modes]
@@ -499,6 +638,64 @@ idle = ['^> $']
         let (set, warnings) = ProfileSet::load(Some(dir.path()));
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(set.get("full").unwrap().status.idle, vec!["^> $"]);
+    }
+
+    fn parse(extra: &str) -> Result<Profile, String> {
+        let text = format!("id = \"x\"\nname = \"X\"\ncommand = [\"x\", \"sub\"]\nargs = [\"--a\"]\nmodel_arg = [\"-m\", \"{{model}}\"]\n{extra}");
+        let p: Profile = toml::from_str(&text).map_err(|e| e.to_string())?;
+        check_launch(&p).map(|()| p)
+    }
+
+    #[test]
+    fn launch_fields_default_to_t0_without_resume() {
+        let p = parse("").unwrap();
+        assert_eq!(p.tier, Tier::T0);
+        assert_eq!(p.prompt.mode, PromptMode::None);
+        assert_eq!(p.hooks.kind, HooksKind::None);
+        assert_eq!(p.resume_argv(None).unwrap(), None);
+    }
+
+    #[test]
+    fn resume_argv_places_args() {
+        let p = parse("[resume]\nargs = [\"--continue\"]\n").unwrap();
+        assert_eq!(
+            p.resume_argv(Some("m1")).unwrap().unwrap(),
+            vec!["x", "sub", "--a", "-m", "m1", "--continue"]
+        );
+        let p =
+            parse("[resume]\nargs = [\"resume\", \"--last\"]\nat = \"after_command\"\n").unwrap();
+        assert_eq!(
+            p.resume_argv(None).unwrap().unwrap(),
+            vec!["x", "sub", "resume", "--last", "--a"]
+        );
+        assert!(p.resume_argv(Some("a b")).is_err());
+    }
+
+    #[test]
+    fn launch_fields_are_validated() {
+        for bad in [
+            "[resume]\nargs = []\n",
+            "[resume]\nargs = [\"--resume\", \"{session_id}\"]\n",
+            "[resume]\nargs = [\"x\"]\nat = \"middle\"\n",
+            "[prompt]\nmode = \"arg\"\n",
+            "[prompt]\nmode = \"arg\"\nargs = [\"{prompt}\", \"{prompt}\"]\n",
+            "[prompt]\nmode = \"arg\"\nargs = [\"--p={prompt}\"]\n",
+            "[prompt]\nmode = \"stdin\"\nargs = [\"{prompt}\"]\n",
+            "[prompt]\nmode = \"shell\"\n",
+            "instruction_files = [\"../AGENTS.md\"]\n",
+            "instruction_files = [\"a/b.md\"]\n",
+            "instruction_files = [\".env\"]\n",
+            "tier = \"t9\"\n",
+            "[hooks]\nkind = \"script\"\n",
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+        let ok = parse(
+            "tier = \"t2\"\ninstruction_files = [\"AGENTS.md\", \"GEMINI.md\"]\n[prompt]\nmode = \"arg\"\nargs = [\"-i\", \"{prompt}\"]\n[hooks]\nkind = \"project-file\"\n",
+        )
+        .unwrap();
+        assert_eq!(ok.tier, Tier::T2);
+        assert_eq!(ok.hooks.kind, HooksKind::ProjectFile);
     }
 
     #[test]

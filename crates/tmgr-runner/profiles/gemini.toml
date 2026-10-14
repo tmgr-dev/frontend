@@ -1,0 +1,30 @@
+id = "gemini"
+name = "Gemini CLI"
+command = ["gemini"]
+args = []
+model_arg = ["--model", "{model}"]
+env_pass = []
+instruction_files = ["GEMINI.md"]
+tier = "t2"
+
+[prompt]
+mode = "arg"
+args = ["--prompt-interactive", "{prompt}"]
+
+[resume]
+args = ["--resume", "latest"]
+
+[hooks]
+kind = "settings-file"
+
+# Folder trust and the auth choice checked against a recorded Gemini CLI 0.64 screen; the tool confirmation lines come from strings in the 0.64 package, no recorded approval screen.
+[status]
+blocked = [
+  '(?i)\d\. trust folder',
+  '(?i)\d\. don.t trust',
+  '(?i)no authentication method selected',
+  '(?i)\ballow once\b',
+  '(?i)allow for this session',
+  '(?i)waiting for user confirmation',
+]
+idle = []

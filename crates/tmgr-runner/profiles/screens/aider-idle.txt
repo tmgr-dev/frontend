@@ -1,0 +1,40 @@
+Analytics have been permanently disabled.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+OllamaError: Error getting model info for x. Set Ollama API Base via `OLLAMA_API_BASE` environment variable. Error: Serv
+er error '502 Bad Gateway' for url 'http://localhost:11434/api/show'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502
+Aider v0.86.2
+Model: ollama_chat/x with whole edit format
+Git repo: .git with 0 files
+Repo-map: using 1024 tokens, auto refresh
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
