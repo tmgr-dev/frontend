@@ -194,13 +194,13 @@ driveTour('tasks.categories: create a category, tip on the row, done', async ({ 
   await expectClear(page, 'categories.create');
   await shots(page, 'tasks.categories-s1', size);
   await page.locator('[data-tour="categories.create"]').first().click();
-  await expect(page).toHaveURL(/\/demo\/categories\/create$/);
+  await expect(page).toHaveURL(/\/demo\/categories\?create=top$/);
   await page.getByPlaceholder('Name').fill('Fixture');
   await page.getByPlaceholder('e.g., PROJ, FEAT, BUG').fill('FIX');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect.poll(() => calls.includes('POST project_categories')).toBe(true);
   await expect.poll(() => lastWrite(writes, 'tasks.categories')?.step_id).toBe('s2');
-  await expect(page).toHaveURL(/\/demo\/categories$/);
+  await expect(page).toHaveURL(/\/demo\/categories\?category=10$/);
   await expect(popover(page)).toContainText('Open a category');
   await expectClear(page, 'categories.row');
   await shots(page, 'tasks.categories-s2', size);
@@ -211,8 +211,9 @@ driveTour('tasks.categories: create a category, tip on the row, done', async ({ 
 
 driveTour('tasks.categories: with no row to point at the optional tip is skipped and the tour completes', async ({ page, size }) => {
   const { writes, calls, errors } = await boot(page, size);
-  await page.route('**/api/project_categories/children**', (route) =>
-    route.fulfill({ json: { data: [], meta: { current_page: 1, per_page: 15, last_page: 1, total: 0 }, links: {} } }),
+  await page.route(
+    (url) => url.pathname === '/api/project_categories',
+    (route) => (route.request().method() === 'GET' ? route.fulfill({ json: { data: [] } }) : route.fallback()),
   );
   await startFromHub(page, 'tasks.categories');
   await primary(page, 'Take me there').click();

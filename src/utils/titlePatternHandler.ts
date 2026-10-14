@@ -38,15 +38,21 @@ export const titlePatternHandler = (
 	}
 	let datetimeMap: Map<string, string> = new Map();
 	if (result.includes('{dts#')) {
-		let datetimes = result.split('{dts#');
-		datetimes
-			.map((format) => format.split('#dte}')[0])
+		result
+			.split('{dts#')
+			.slice(1)
+			.filter((segment) => segment.includes('#dte}'))
+			.map((segment) => segment.split('#dte}')[0])
 			.filter((format) => format.trim().length > 0)
 			.forEach((format) => {
-				datetimeMap.set(
-					`{dts#${format}#dte}`,
-					dateFnsFormat(new Date(), convertFormat(format)),
-				);
+				try {
+					datetimeMap.set(
+						`{dts#${format}#dte}`,
+						dateFnsFormat(new Date(), convertFormat(format)),
+					);
+				} catch {
+					// date-fns throws on letters it can't parse; keep the token as typed
+				}
 			});
 		datetimeMap.forEach((v, k) => {
 			result = result.replaceAll(k, v);

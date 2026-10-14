@@ -5,9 +5,13 @@ import { boardRedirect, isSimpleMode } from '@/utils/simpleStatus';
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
 const ProjectCategoryList = () => import('@/pages/ProjectCategoryList.vue');
-const ProjectCategoryForm = gatedPage('categories', 'Projects', () =>
-	import('@/pages/ProjectCategoryForm.vue'),
-);
+const CategoriesSettingsPage = () =>
+	import('@/pages/CategoriesSettingsPage.vue');
+const categoriesPane = (query) => (to) => ({
+	name: 'WorkspaceCategories',
+	params: { workspace_code: to.params.workspace_code },
+	query: { ...to.query, ...query(to) },
+});
 const DashboardPage = () => import('@/pages/DashboardPage.vue');
 
 // Helper function to get current workspace
@@ -774,7 +778,7 @@ const routes = [
 	},
 	{
 		path: '/:workspace_code/categories',
-		component: ProjectCategoryList,
+		component: CategoriesSettingsPage,
 		meta: {
 			title: 'Categories',
 			transitionName: 'slide',
@@ -784,32 +788,17 @@ const routes = [
 	},
 	{
 		path: '/:workspace_code/categories/create',
-		meta: {
-			title: 'Create category',
-			transitionName: 'slide',
-			navbarHidden: true,
-		},
-		component: ProjectCategoryForm,
+		redirect: categoriesPane(() => ({ create: 'top' })),
 		name: 'WorkspaceCategoryCreate',
 	},
 	{
 		path: '/:workspace_code/categories/:id',
-		meta: {
-			title: 'Edit category',
-			transitionName: 'slide',
-			navbarHidden: true,
-		},
-		component: ProjectCategoryForm,
+		redirect: categoriesPane((to) => ({ category: to.params.id })),
 		name: 'WorkspaceCategoryEdit',
 	},
 	{
 		path: '/:workspace_code/categories/status/:status?',
-		meta: {
-			title: 'Categories by status',
-			transitionName: 'slide',
-			navbarHidden: true,
-		},
-		component: ProjectCategoryList,
+		redirect: categoriesPane(() => ({})),
 		name: 'WorkspaceCategoryListWithStatus',
 	},
 	{
@@ -824,19 +813,14 @@ const routes = [
 	},
 	{
 		path: '/:workspace_code/categories/:category_id/create',
-		meta: {
-			title: 'Create subcategory',
-			transitionName: 'slide',
-			navbarHidden: true,
-		},
-		component: ProjectCategoryForm,
+		redirect: categoriesPane((to) => ({ create: to.params.category_id })),
 		name: 'WorkspaceCategoryCreateInCategory',
 	},
 
 	// Fallback route for categories when no workspace is available
 	{
 		path: '/fallback-categories',
-		component: ProjectCategoryList,
+		component: CategoriesSettingsPage,
 		meta: {
 			title: 'Categories',
 			transitionName: 'slide',
@@ -852,12 +836,10 @@ const routes = [
 	// Fallback route for create category when redirect doesn't work
 	{
 		path: '/fallback-categories-create',
-		meta: {
-			title: 'Create category',
-			transitionName: 'slide',
-			navbarHidden: true,
-		},
-		component: ProjectCategoryForm,
+		redirect: (to) => ({
+			name: 'FallbackCategoriesList',
+			query: { ...to.query, create: 'top' },
+		}),
 		name: 'FallbackCategoryCreate',
 	},
 

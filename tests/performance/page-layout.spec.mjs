@@ -6,7 +6,6 @@ const PAGES = [
   ['archive', '/demo/archive', 'wide'],
   ['dashboard', '/demo/dashboard', 'wide'],
   ['categories', '/demo/categories', 'wide'],
-  ['category-create', '/demo/categories/create', 'narrow'],
   ['notifications', '/demo/notifications', 'wide'],
   ['files', '/demo/files', 'wide'],
   ['member', '/demo/team/1', 'wide'],
