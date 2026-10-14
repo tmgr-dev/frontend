@@ -43,7 +43,7 @@
 									class="flex items-center gap-2 rounded-card border bg-surface px-3 py-1.5 shadow-tmgr-xs transition-colors"
 									:class="
 										quickFocused
-											? 'border-line-strong'
+											? 'border-line-focus'
 											: 'border-line'
 									"
 								>

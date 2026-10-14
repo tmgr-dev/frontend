@@ -67,6 +67,7 @@ module.exports = {
 
 				line: 'var(--line-color)',
 				'line-strong': 'var(--line-strong-color)',
+				'line-focus': 'var(--focus-border)',
 
 				brand: 'var(--brand-color)',
 				'brand-bg': 'var(--brand-bg-color)',

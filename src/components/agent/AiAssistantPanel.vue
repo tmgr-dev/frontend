@@ -149,7 +149,7 @@
 		</div>
 		<footer class="shrink-0 border-t border-line p-3">
 			<div
-				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-strong"
+				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 			>
 				<input
 					ref="input"

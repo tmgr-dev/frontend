@@ -88,6 +88,7 @@
 	--brand-ring-color: oklch(0.59 0.21 var(--accent-h) / 0.3);
 	--selection-bg: color-mix(in srgb, var(--brand-color) 32%, transparent);
 	--focus-ring: var(--fg);
+	--focus-border: color-mix(in srgb, var(--fg) 50%, transparent);
 
 	--s-todo: oklch(0.62 0.08 250);
 	--s-todo-bg: oklch(0.95 0.025 250);

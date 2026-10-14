@@ -14,7 +14,10 @@ export const installFocusSource = (
 	);
 	doc.addEventListener(
 		'keydown',
-		() => root.removeAttribute(FOCUS_SOURCE_ATTR),
+		(e: KeyboardEvent) => {
+			if (e.metaKey || e.ctrlKey || e.altKey || e.key === 'Shift') return;
+			root.removeAttribute(FOCUS_SOURCE_ATTR);
+		},
 		true,
 	);
 };
