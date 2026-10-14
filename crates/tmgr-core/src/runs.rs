@@ -47,6 +47,8 @@ pub struct ApiRun {
     #[serde(default)]
     pub branch: Option<String>,
     #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
     pub status: Option<String>,
     #[serde(default)]
     pub started_at: Option<String>,
@@ -97,6 +99,7 @@ pub struct RunView {
     pub agent: String,
     pub model: Option<String>,
     pub branch: Option<String>,
+    pub session_id: Option<String>,
     pub status: String,
     pub started_at: Option<String>,
     pub ended_at: Option<String>,
@@ -134,6 +137,7 @@ impl RunView {
             agent: clean(&r.agent).unwrap_or_else(|| "unknown".to_string()),
             model: clean(&r.model),
             branch: clean(&r.branch),
+            session_id: clean(&r.session_id),
             status: clean(&r.status).unwrap_or_else(|| "unknown".to_string()),
             started_at: clean(&r.started_at),
             ended_at: clean(&r.ended_at),
@@ -328,6 +332,17 @@ mod tests {
         );
         let v = RunView::from_api(&r);
         assert_eq!(v.task.unwrap().reference, "TM-1");
+    }
+
+    #[test]
+    fn the_session_id_is_exposed_and_optional() {
+        let r: ApiRun = serde_json::from_value(serde_json::json!({
+            "id": 7, "session_id": "ab\u{1b}[31mc-1"
+        }))
+        .unwrap();
+        assert_eq!(RunView::from_api(&r).session_id.as_deref(), Some("abc-1"));
+        let r: ApiRun = serde_json::from_value(serde_json::json!({"id": 8})).unwrap();
+        assert_eq!(RunView::from_api(&r).session_id, None);
     }
 
     #[test]

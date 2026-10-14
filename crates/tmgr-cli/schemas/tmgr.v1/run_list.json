@@ -126,6 +126,12 @@
             "null"
           ]
         },
+        "session_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "status": {
           "type": "string"
         },
