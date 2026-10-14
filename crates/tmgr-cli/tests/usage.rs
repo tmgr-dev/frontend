@@ -1200,7 +1200,7 @@ fn linked_fixture(u: &U) {
             1000,
         )
         .branch(Some("feat-x"))
-        .cwd("/work/beta")
+        .cwd(&repo_s)
         .line()],
     );
     u.session_file(
@@ -1222,7 +1222,7 @@ fn linked_fixture(u: &U) {
             50,
         )
         .branch(Some("par"))
-        .cwd("/work/delta")
+        .cwd(&repo_s)
         .line()],
     );
     u.session_file(

@@ -227,7 +227,8 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT e.id, e.tool, e.account, s.tool_session_id, e.ts, e.model, e.git_branch,
                     e.project_hash, e.cost_usd,
-                    e.input + e.output + e.cache_read + e.cache_write_5m + e.cache_write_1h
+                    e.input + e.output + e.cache_read + e.cache_write_5m + e.cache_write_1h,
+                    s.parent_session_id
              FROM usage_event e JOIN usage_session s ON s.id = e.session_id
              WHERE e.ts >= ?1 AND e.ts < ?2 ORDER BY e.ts, e.id",
         )?;
@@ -238,6 +239,7 @@ impl Store {
                     tool: Tool::Claude,
                     account: r.get(2)?,
                     tool_session_id: r.get(3)?,
+                    parent_session_id: r.get(10)?,
                     ts: from_ms(r.get(4)?),
                     model: r.get(5)?,
                     git_branch: r.get(6)?,

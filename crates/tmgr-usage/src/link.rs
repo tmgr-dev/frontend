@@ -22,6 +22,7 @@ pub struct LinkEvent {
     pub tool: Tool,
     pub account: String,
     pub tool_session_id: String,
+    pub parent_session_id: Option<String>,
     pub ts: DateTime<Utc>,
     pub model: String,
     pub git_branch: Option<String>,
@@ -94,7 +95,9 @@ pub struct LinkReport {
 }
 
 const CONFIDENCE_SESSION: f64 = 1.0;
+const CONFIDENCE_PARENT: f64 = 0.9;
 const CONFIDENCE_BRANCH: f64 = 0.8;
+const CONFIDENCE_BRANCH_UNVERIFIED: f64 = 0.7;
 const CONFIDENCE_PROJECT: f64 = 0.5;
 
 pub fn attribute(events: &[LinkEvent], runs: &[RunWindow]) -> LinkReport {
@@ -151,6 +154,21 @@ pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>
     let mut per_run: BTreeMap<&str, Totals> = BTreeMap::new();
     let mut per_task: BTreeMap<&str, Totals> = BTreeMap::new();
     for (idx, ev) in events.iter().enumerate() {
+        let on_branch = candidates(&by_branch, ev.git_branch.as_deref(), runs, ev.ts, now);
+        let same_project = |i: &usize| match (&ev.project_hash, &runs[*i].project_hash) {
+            (Some(a), Some(b)) => Some(a == b),
+            _ => None,
+        };
+        let verified: Vec<usize> = on_branch
+            .iter()
+            .copied()
+            .filter(|i| same_project(i) == Some(true))
+            .collect();
+        let unverified: Vec<usize> = on_branch
+            .iter()
+            .copied()
+            .filter(|i| same_project(i).is_none())
+            .collect();
         let rungs = [
             (
                 LinkMethod::SessionId,
@@ -158,9 +176,21 @@ pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>
                 candidates(&by_session, Some(&ev.tool_session_id), runs, ev.ts, now),
             ),
             (
+                LinkMethod::SessionId,
+                CONFIDENCE_PARENT,
+                candidates(
+                    &by_session,
+                    ev.parent_session_id.as_deref(),
+                    runs,
+                    ev.ts,
+                    now,
+                ),
+            ),
+            (LinkMethod::BranchWindow, CONFIDENCE_BRANCH, verified),
+            (
                 LinkMethod::BranchWindow,
-                CONFIDENCE_BRANCH,
-                candidates(&by_branch, ev.git_branch.as_deref(), runs, ev.ts, now),
+                CONFIDENCE_BRANCH_UNVERIFIED,
+                unverified,
             ),
             (
                 LinkMethod::ProjectWindow,
@@ -244,6 +274,7 @@ mod tests {
             tool: Tool::Claude,
             account: "claude".into(),
             tool_session_id: session.into(),
+            parent_session_id: None,
             ts: t(at),
             model: "m".into(),
             git_branch: None,
@@ -287,6 +318,47 @@ mod tests {
         assert_eq!(r.links[1].method, LinkMethod::ProjectWindow);
         assert_eq!(r.unattributed, vec![2]);
         assert!(r.links[0].confidence > r.links[1].confidence);
+    }
+
+    #[test]
+    fn a_branch_name_alone_does_not_cross_repositories() {
+        let mut x = run("x", "TM-1", 0, Some(60));
+        x.branch = Some("main".into());
+        x.project_hash = Some("repo-x".into());
+        let mut in_y = ev(1, "s", 5, Some(1.0));
+        in_y.git_branch = Some("main".into());
+        in_y.project_hash = Some("repo-y".into());
+        let mut in_x = ev(2, "s", 6, Some(2.0));
+        in_x.git_branch = Some("main".into());
+        in_x.project_hash = Some("repo-x".into());
+        let mut unknown = ev(3, "s", 7, Some(4.0));
+        unknown.git_branch = Some("main".into());
+        let r = attribute_at(&[in_y, in_x, unknown], &[x], now());
+        assert_eq!(r.unattributed, vec![0]);
+        let conf: Vec<(usize, f64)> = r
+            .links
+            .iter()
+            .map(|l| (l.event_index, l.confidence))
+            .collect();
+        assert_eq!(conf.len(), 2);
+        assert_eq!(conf[0].0, 1);
+        assert!(conf[0].1 > conf[1].1, "a verified match outranks a guess");
+    }
+
+    #[test]
+    fn a_child_thread_follows_its_parent_session() {
+        let mut a = run("a", "TM-1", 0, Some(60));
+        a.session_id = Some("parent".into());
+        let mut child = ev(1, "child", 5, Some(1.0));
+        child.parent_session_id = Some("parent".into());
+        let orphan = ev(2, "child", 6, Some(1.0));
+        let mut own = ev(3, "parent", 7, Some(1.0));
+        own.parent_session_id = Some("elsewhere".into());
+        let r = attribute_at(&[child, orphan, own], &[a], now());
+        assert_eq!(r.unattributed, vec![1]);
+        assert_eq!(r.links.len(), 2);
+        assert!(r.links[0].confidence < r.links[1].confidence);
+        assert_eq!(r.links[0].method, LinkMethod::SessionId);
     }
 
     #[test]

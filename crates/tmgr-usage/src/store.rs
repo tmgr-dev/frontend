@@ -282,7 +282,8 @@ impl Store {
         )?;
         tx.execute("DELETE FROM usage_event WHERE ts < ?1", [floor])?;
         tx.execute(
-            "DELETE FROM usage_session WHERE id NOT IN (SELECT DISTINCT session_id FROM usage_event)",
+            "DELETE FROM usage_session WHERE parent_session_id IS NULL
+               AND id NOT IN (SELECT DISTINCT session_id FROM usage_event)",
             [],
         )?;
         let old_day = (now - Duration::days(ROLLUP_KEEP_DAYS))

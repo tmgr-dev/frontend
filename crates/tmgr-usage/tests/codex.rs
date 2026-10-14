@@ -611,3 +611,35 @@ fn stale_and_expired_windows_are_dropped_from_current_limits() {
     assert_eq!(cur.len(), 1);
     assert_eq!(cur[0].window, LimitWindow::Weekly);
 }
+
+#[test]
+fn a_child_thread_keeps_its_parent_link_across_prune_and_later_events() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("codex");
+    let path = root.join("sessions/2026/10/14/rollout-child.jsonl");
+    write(&path, &[meta("child", Some("parent")), turn(1, "gpt-a")]);
+    let mut store = open_store(tmp.path());
+    let acc = account(&root);
+    scan_account(&mut store, &acc, &book(), now()).unwrap();
+    store.prune(90, now()).unwrap();
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
+    f.write_all(
+        format!(
+            "{}\n{}\n",
+            task_started(2),
+            tc(3, Some((50, 0, 8, 0)), None)
+        )
+        .as_bytes(),
+    )
+    .unwrap();
+    scan_account(&mut store, &acc, &book(), now()).unwrap();
+    let events = store
+        .link_events(now() - chrono::Duration::days(1), now())
+        .unwrap();
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].tool_session_id, "child");
+    assert_eq!(events[0].parent_session_id.as_deref(), Some("parent"));
+}
