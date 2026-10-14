@@ -846,7 +846,7 @@ pub fn provenance_in(
     let text_is = |target: &HumanContent| {
         current.as_ref() == Some(target) && observed_parts.as_ref().is_none_or(|o| o == target)
     };
-    let content_matches = human_content.as_ref().is_some_and(&text_is);
+    let content_matches = human_content.as_ref().is_some_and(text_is);
 
     let confirm = rows
         .iter()
