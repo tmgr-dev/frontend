@@ -646,6 +646,189 @@ fn agents_login_stores_a_claude_credential_without_echoing_the_token() {
     assert!(out.status.success() && text(&out).contains("nothing to remove"));
 }
 
+const OLD_TOKEN: &str = concat!("old-", "refresh-FAKEOLD1234");
+const NEW_TOKEN: &str = concat!("new-", "refresh-FAKENEW5678");
+
+struct Cand {
+    home: PathBuf,
+    source: PathBuf,
+    old: String,
+    new: String,
+}
+
+fn login_doc(days_ago: i64, token: &str) -> String {
+    serde_json::json!({
+        "auth_mode": "chatgpt",
+        "last_refresh": (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339(),
+        "tokens": {"account_id": "acc", "refresh_token": token},
+    })
+    .to_string()
+}
+
+fn candidate(env: &Env) -> Cand {
+    let home = env.tmp.path().join("fakehome").canonicalize_or_create();
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    let source = home.join(".codex/auth.json");
+    let (old, new) = (login_doc(5, OLD_TOKEN), login_doc(0, NEW_TOKEN));
+    fs::write(&source, &old).unwrap();
+    let meta = tmgr_runner::seedguard::Meta {
+        root: home.clone(),
+        source: source.clone(),
+        sha: tmgr_runner::seedguard::sha256_hex(old.as_bytes()),
+        source_sha: tmgr_runner::seedguard::sha256_hex(old.as_bytes()),
+        session: "s_abcdefghij".into(),
+        created_ms: tmgr_runner::wire::now_ms(),
+        json_key: Some("last_refresh".into()),
+        same: vec!["tokens.account_id".into(), "auth_mode".into()],
+    };
+    tmgr_runner::seedguard::store(&env.run, "codex", 0, &meta, new.as_bytes()).unwrap();
+    Cand {
+        home,
+        source,
+        old,
+        new,
+    }
+}
+
+trait CanonicalOrCreate {
+    fn canonicalize_or_create(self) -> PathBuf;
+}
+
+impl CanonicalOrCreate for PathBuf {
+    fn canonicalize_or_create(self) -> PathBuf {
+        private_dir(&self);
+        self.canonicalize().unwrap()
+    }
+}
+
+fn out_text(o: &Output) -> String {
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
+}
+
+fn no_tokens(text: &str) {
+    for frag in [OLD_TOKEN, NEW_TOKEN, "FAKEOLD1234", "FAKENEW5678"] {
+        assert!(!text.contains(frag), "output leaks a token fragment");
+    }
+}
+
+fn candidate_files(env: &Env) -> bool {
+    env.run.join("candidates/codex/0.json").exists()
+}
+
+#[test]
+fn agents_warns_about_a_pending_refreshed_login() {
+    let env = Env::new();
+    let c = candidate(&env);
+    let mut cmd = env.cmd(&["agents"]);
+    cmd.env("HOME", &c.home);
+    let out = out_text(&run_bounded(cmd, Duration::from_secs(60)));
+    assert!(
+        out.contains(
+            "codex refreshed its login inside a session; run `tmgr agents sync codex` to apply it to ~/.codex/auth.json"
+        ),
+        "{out}"
+    );
+    no_tokens(&out);
+    let json = out_text(&env.tmgr(&["agents", "--json"]));
+    assert!(!json.contains("refreshed its login"));
+}
+
+#[test]
+fn sync_without_a_terminal_is_refused_and_discard_still_works() {
+    let env = Env::new();
+    let c = candidate(&env);
+    let out = env.tmgr(&["agents", "sync", "codex"]);
+    assert_eq!(out.status.code(), Some(10), "{}", out_text(&out));
+    no_tokens(&out_text(&out));
+    let out = env.tmgr(&["agents", "sync", "codex", "--json"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+    assert!(candidate_files(&env));
+    let out = env.tmgr(&["agents", "sync", "codex", "--discard"]);
+    assert!(out.status.success(), "{}", out_text(&out));
+    assert!(!candidate_files(&env));
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+}
+
+#[test]
+fn sync_in_a_terminal_shows_a_value_free_summary_and_applies_only_after_apply() {
+    let env = Env::new();
+    let c = candidate(&env);
+    let mut pty = env.pty(&["agents", "sync", "codex"]);
+    pty.wait_for("Type apply");
+    let shown = pty.text();
+    assert!(shown.contains("~/.codex/auth.json") || shown.contains(".codex/auth.json"));
+    assert!(shown.contains("same tokens.account_id: yes") && shown.contains("s_abcdefghij"));
+    no_tokens(&shown);
+    pty.type_bytes(b"yes\r");
+    assert!(pty.wait_exit_quiet(Duration::from_secs(10)));
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+    assert!(candidate_files(&env));
+
+    let mut pty = env.pty(&["agents", "sync", "codex"]);
+    pty.wait_for("Type apply");
+    pty.type_bytes(b"apply\r");
+    assert!(pty.wait_exit(Duration::from_secs(10)));
+    assert!(pty.text().contains("applied"));
+    no_tokens(&pty.text());
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.new);
+    let backup = c.home.join(".codex/auth.json.tmgr-backup");
+    assert_eq!(fs::read_to_string(&backup).unwrap(), c.old);
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&backup), mode(&c.source)), (0o600, 0o600));
+    assert!(!candidate_files(&env));
+}
+
+#[test]
+fn auto_mode_needs_a_terminal_and_the_exact_agreement() {
+    let env = Env::new();
+    let flag = env.tmp.path().join("cfg/agents/codex.autosync");
+    let out = env.tmgr(&["agents", "sync", "codex", "--auto", "on"]);
+    assert_eq!(out.status.code(), Some(10), "{}", out_text(&out));
+    assert!(!flag.exists());
+
+    let mut pty = env.pty(&["agents", "sync", "codex", "--auto", "on"]);
+    pty.wait_for("Type I AGREE");
+    assert!(pty.text().contains("another account's tokens"));
+    pty.type_bytes(b"i agree\r");
+    assert!(pty.wait_exit_quiet(Duration::from_secs(10)));
+    assert!(!flag.exists());
+
+    let mut pty = env.pty(&["agents", "sync", "codex", "--auto", "on"]);
+    pty.wait_for("Type I AGREE");
+    pty.type_bytes(b"I AGREE\r");
+    assert!(pty.wait_exit(Duration::from_secs(10)));
+    assert!(flag.exists());
+    assert_eq!(
+        fs::metadata(&flag).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+
+    let out = env.tmgr(&["agents", "sync", "codex", "--auto", "off"]);
+    assert!(out.status.success() && !flag.exists());
+}
+
+#[test]
+fn sync_and_auto_are_refused_inside_a_session() {
+    let env = Env::new();
+    let c = candidate(&env);
+    for args in [
+        vec!["agents", "sync", "codex"],
+        vec!["agents", "sync", "codex", "--auto", "on"],
+    ] {
+        let mut cmd = env.cmd(&args);
+        cmd.env("TMGR_SESSION_ID", "s_abcdefghij");
+        let out = run_bounded(cmd, Duration::from_secs(60));
+        assert_eq!(out.status.code(), Some(5), "{args:?}: {}", out_text(&out));
+    }
+    assert_eq!(fs::read_to_string(&c.source).unwrap(), c.old);
+    assert!(!env.tmp.path().join("cfg/agents/codex.autosync").exists());
+}
+
 #[test]
 fn runner_serve_started_directly_drops_the_shell_environment() {
     let env = Env::new();

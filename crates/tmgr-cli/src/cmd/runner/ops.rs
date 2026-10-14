@@ -1,21 +1,22 @@
 use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
 use super::{
-    remote, AgentsArgs, AgentsCmd, AttachArgs, HaltArgs, RmArgs, RunnerCommands, SendArgs,
+    remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RmArgs, RunnerCommands, SendArgs,
 };
 use crate::out::table;
 use serde_json::json;
-use std::io::IsTerminal;
+use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
-use tmgr_core::error::{Error, Result};
-use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo, StateKind};
+use tmgr_core::error::{Error, Kind, Result};
+use tmgr_ipc::api::{CandidateInfo, CreateReq, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
 use tmgr_runner::login;
 use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_runner::sanitize::sanitize_text;
+use tmgr_runner::seedguard;
 use tmgr_runner::wire::now_ms;
 
 pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
@@ -38,6 +39,15 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             command: Some(AgentsCmd::Logout { profile }),
             ..
         }) => agent_logout(o, profile),
+        RunnerCommands::Agents(AgentsArgs {
+            command:
+                Some(AgentsCmd::Sync {
+                    profile,
+                    discard,
+                    auto,
+                }),
+            ..
+        }) => agent_sync(o, profile, *discard, *auto),
         RunnerCommands::Agents(a) => match &a.host {
             Some(link) => remote::agents(o, link),
             None => agents(o),
@@ -165,6 +175,11 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     }
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
+    if !o.json && !o.quiet {
+        for line in candidate_lines(&cfg) {
+            eprintln!("{line}");
+        }
+    }
     let mut client = connect(&cfg)?;
     let info = match raw {
         Some(argv) => client.create(CreateReq {
@@ -339,6 +354,138 @@ fn agent_logout(o: &Opts, profile: &str) -> Result<i32> {
     Ok(emit(o, json!({"path": path, "removed": removed}), human))
 }
 
+fn pending_candidates(cfg: &RunnerConfig) -> Vec<CandidateInfo> {
+    Client::connect(&cfg.dir)
+        .and_then(|mut c| c.candidates())
+        .unwrap_or_else(|_| seedguard::pending(&cfg.dir))
+}
+
+fn candidate_lines(cfg: &RunnerConfig) -> Vec<String> {
+    pending_candidates(cfg)
+        .iter()
+        .map(|c| {
+            let profile = clean(&c.profile);
+            format!(
+                "{profile} refreshed its login inside a session; run `tmgr agents sync {profile}` to apply it to {}",
+                tmgr_core::text::sanitize_line(&short_cwd(&c.source))
+            )
+        })
+        .collect()
+}
+
+fn in_session() -> bool {
+    std::env::var_os("TMGR_SESSION_ID").is_some()
+}
+
+fn need_terminal(what: &str) -> Result<()> {
+    if std::io::stdin().is_terminal() && std::io::stdout().is_terminal() {
+        return Ok(());
+    }
+    Err(
+        Error::needs_confirmation(format!("{what} needs an interactive terminal"))
+            .hint("run it in a terminal: this confirmation never accepts --yes"),
+    )
+}
+
+fn ask(prompt: &str) -> Result<String> {
+    print!("{prompt}");
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
+    Ok(line.trim_end_matches(['\r', '\n']).to_string())
+}
+
+fn cancelled() -> Error {
+    Error::new(Kind::Interrupted, "cancelled, nothing was changed")
+}
+
+fn agent_sync(o: &Opts, profile: &str, discard: bool, auto: Option<AutoMode>) -> Result<i32> {
+    if !profile::valid_profile_id(profile) {
+        return Err(Error::usage(format!("bad profile id {profile:?}")));
+    }
+    if discard {
+        let n = seedguard::discard(&runner_config()?.dir, profile)
+            .map_err(|e| Error::internal(format!("cannot discard: {e}")))?;
+        return Ok(emit(
+            o,
+            json!({"profile": profile, "discarded": n}),
+            format!("Discarded {n} pending login(s) for {profile}."),
+        ));
+    }
+    if in_session() {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "this command cannot run inside an agent session",
+        ));
+    }
+    if let Some(AutoMode::Off) = auto {
+        seedguard::set_autosync(profile, false)
+            .map_err(|e| Error::internal(format!("cannot turn auto mode off: {e}")))?;
+        return Ok(emit(
+            o,
+            json!({"profile": profile, "auto": false}),
+            format!("Auto mode for {profile} is off."),
+        ));
+    }
+    if o.json {
+        return Err(Error::usage(
+            "this command is interactive; --json is not supported",
+        ));
+    }
+    match auto {
+        Some(_) => agent_auto_on(profile),
+        None => agent_apply(profile),
+    }
+}
+
+fn agent_auto_on(profile: &str) -> Result<i32> {
+    need_terminal("turning on auto mode")?;
+    let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+    if set.get(profile).is_none() {
+        return Err(Error::not_found(format!("no agent profile {profile:?}")).hint("tmgr agents"));
+    }
+    println!(
+        "Risk: an agent in a session can replace your {profile} login with another account's tokens.\n\
+         TMGR cannot verify them offline. With auto mode your normal {profile} would then use that account."
+    );
+    if ask("Type I AGREE to turn on auto mode: ")? != "I AGREE" {
+        return Err(cancelled());
+    }
+    seedguard::set_autosync(profile, true)
+        .map_err(|e| Error::internal(format!("cannot turn auto mode on: {e}")))?;
+    println!(
+        "Auto mode for {profile} is on. Turn it off with: tmgr agents sync {profile} --auto off"
+    );
+    Ok(0)
+}
+
+fn agent_apply(profile: &str) -> Result<i32> {
+    need_terminal("applying a refreshed login")?;
+    let cfg = runner_config()?;
+    let list = seedguard::entries(&cfg.dir, profile);
+    if list.is_empty() {
+        println!("No pending refreshed login for {profile}.");
+        return Ok(0);
+    }
+    for (index, _) in list {
+        println!("Refreshed {profile} login captured inside a session:");
+        match seedguard::summary(&cfg.dir, profile, index, now_ms()) {
+            Ok(lines) => lines.iter().for_each(|l| println!("  {l}")),
+            Err(e) => println!("  the candidate cannot be read: {e}"),
+        }
+        if ask("Type apply to replace your file with it: ")? != "apply" {
+            return Err(cancelled());
+        }
+        let done = seedguard::apply(&cfg.dir, profile, index)
+            .map_err(|e| Error::new(Kind::Conflict, e))?;
+        println!("{done}");
+    }
+    Ok(0)
+}
+
 fn agents(o: &Opts) -> Result<i32> {
     let cfg = runner_config()?;
     let sessions = list_or_empty(&cfg)?;
@@ -373,6 +520,9 @@ fn agents(o: &Opts) -> Result<i32> {
     let show_origin = sessions.iter().any(|s| origins.contains_key(&s.id));
     if sessions.is_empty() {
         println!("No agent sessions yet. Start one with: tmgr run --agent <profile>");
+        for line in candidate_lines(&cfg) {
+            println!("{line}");
+        }
         return Ok(0);
     }
     let now = now_ms();
@@ -418,6 +568,9 @@ fn agents(o: &Opts) -> Result<i32> {
         summary["blocked"],
         summary["exited"]
     );
+    for line in candidate_lines(&cfg) {
+        println!("{line}");
+    }
     Ok(0)
 }
 
