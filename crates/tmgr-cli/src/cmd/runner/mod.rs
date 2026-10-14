@@ -5,7 +5,7 @@ mod remote_attach;
 
 use crate::cli::Cli;
 use crate::out::{self, Style};
-use clap::{ArgGroup, Args, Subcommand};
+use clap::{ArgGroup, Args, Subcommand, ValueEnum};
 use std::io;
 use std::path::PathBuf;
 use tmgr_core::error::{Error, Kind, Result};
@@ -111,6 +111,23 @@ pub enum AgentsCmd {
         /// Agent profile id
         profile: String,
     },
+    /// [experimental] Apply a login an agent refreshed inside a session to your own file, after you confirm
+    Sync {
+        /// Agent profile id
+        profile: String,
+        /// Delete the pending refreshed logins without applying them
+        #[arg(long, conflicts_with = "auto")]
+        discard: bool,
+        /// Let the runner apply refreshed logins itself after each session (asks for a typed agreement)
+        #[arg(long, value_name = "on|off")]
+        auto: Option<AutoMode>,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum AutoMode {
+    On,
+    Off,
 }
 
 #[derive(Args)]

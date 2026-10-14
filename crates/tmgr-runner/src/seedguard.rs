@@ -419,7 +419,7 @@ pub fn stage(rec: &SeedRecord, runner_dir: &Path, session: &str) -> io::Result<(
     }
     if ssha != rec.sha {
         let key = rec.json_key.as_deref();
-        if !key.is_some_and(|k| compare(&copy, &src, k) == Some(std::cmp::Ordering::Greater)) {
+        if key.and_then(|k| compare(&copy, &src, k)) != Some(std::cmp::Ordering::Greater) {
             return reject("source changed during the session and the session copy is not newer");
         }
     }
