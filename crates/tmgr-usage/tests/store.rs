@@ -302,3 +302,44 @@ fn link_events_expose_session_and_project_without_cwd() {
         .iter()
         .all(|e| e.project_hash.is_some() && e.tool == Tool::Claude));
 }
+
+#[test]
+fn rollups_folded_in_different_time_zones_share_a_day_label_and_count_once() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("claude");
+    write_lines(
+        &projects_file(&home, "s.jsonl"),
+        &[
+            assistant_line("s", "2026-10-01T10:00:00Z", "m1", 10, 1),
+            assistant_line("s", "2026-10-02T01:00:00Z", "m2", 20, 1),
+        ],
+    );
+    let mut store = open_store(tmp.path());
+    scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
+    let utc = Tz::Fixed(chrono::FixedOffset::east_opt(0).unwrap());
+    let first = store
+        .prune_with_tz(7, Utc.with_ymd_and_hms(2026, 10, 9, 0, 0, 0).unwrap(), utc)
+        .unwrap();
+    assert_eq!(first.events_folded, 1);
+    let west = Tz::Fixed(chrono::FixedOffset::west_opt(5 * 3600).unwrap());
+    let second = store
+        .prune_with_tz(
+            7,
+            Utc.with_ymd_and_hms(2026, 10, 10, 12, 0, 0).unwrap(),
+            west,
+        )
+        .unwrap();
+    assert_eq!(second.events_folded, 1);
+    assert_eq!(store.event_count().unwrap(), 0);
+    let conn = rusqlite::Connection::open(tmp.path().join("usage.db")).unwrap();
+    let rows: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM usage_day_rollup WHERE day = '2026-10-01'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 1);
+    let t = totals(&store);
+    assert_eq!((t.events, t.tokens.input), (2, 30));
+}

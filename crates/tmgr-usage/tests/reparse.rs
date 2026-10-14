@@ -256,3 +256,104 @@ fn concurrent_scans_of_one_data_dir_never_fail_or_double_count() {
     let store = open_store(tmp.path());
     assert_eq!(store.event_count().unwrap(), 120);
 }
+
+const CODEX_META: &str = r#"{"timestamp":"2026-10-14T10:00:00Z","type":"session_meta","payload":{"id":"s1","cwd":"/w/a"}}"#;
+const CODEX_CTX: &str =
+    r#"{"timestamp":"2026-10-14T10:00:01Z","type":"turn_context","payload":{"model":"gpt-a"}}"#;
+const CODEX_TOK1: &str = r#"{"timestamp":"2026-10-14T10:00:02Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"output_tokens":1},"last_token_usage":null}}}"#;
+const CODEX_TOK2: &str = r#"{"timestamp":"2026-10-14T10:00:03Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":30,"output_tokens":5},"last_token_usage":null}}}"#;
+
+fn codex_fixture() -> (tempfile::TempDir, std::path::PathBuf, Account, Store) {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().join("codex");
+    let file = root.join("sessions/2026/10/14/rollout-a.jsonl");
+    write_lines(
+        &file,
+        &[
+            CODEX_META.into(),
+            CODEX_CTX.into(),
+            CODEX_TOK1.into(),
+            CODEX_TOK2.into(),
+        ],
+    );
+    let account = Account {
+        tool: Tool::Codex,
+        label: "codex".into(),
+        root,
+    };
+    let mut store = open_store(tmp.path());
+    let old = Versioned {
+        inner: CodexCollector,
+        version: 10,
+        tweak: keep,
+    };
+    scan_with(&mut store, &old, &account, &book(), now()).unwrap();
+    assert_eq!(store.event_count().unwrap(), 2);
+    (tmp, file, account, store)
+}
+
+fn v11() -> Versioned<CodexCollector> {
+    Versioned {
+        inner: CodexCollector,
+        version: 11,
+        tweak: drop_first_event,
+    }
+}
+
+#[test]
+fn a_truncated_codex_log_keeps_its_old_events_after_a_version_bump() {
+    let (tmp, file, account, mut store) = codex_fixture();
+    write_lines(&file, &[CODEX_META.into(), CODEX_CTX.into()]);
+    let r = scan_with(&mut store, &v11(), &account, &book(), now()).unwrap();
+    assert_eq!(r.rescans_deferred, 1);
+    assert_eq!(store.event_count().unwrap(), 2);
+    assert_eq!(stored_version(tmp.path(), "codex"), 10);
+}
+
+#[test]
+fn a_codex_log_with_a_bad_line_keeps_its_old_events_after_a_version_bump() {
+    let (tmp, file, account, mut store) = codex_fixture();
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&file)
+        .unwrap();
+    writeln!(f, "{{\"type\":\"token_count\" broken").unwrap();
+    let r = scan_with(&mut store, &v11(), &account, &book(), now()).unwrap();
+    assert_eq!(r.rescans_deferred, 1);
+    assert_eq!(store.event_count().unwrap(), 2);
+    assert_eq!(stored_version(tmp.path(), "codex"), 10);
+}
+
+#[test]
+fn a_removed_codex_log_keeps_its_events_across_a_version_bump() {
+    let (tmp, file, account, mut store) = codex_fixture();
+    std::fs::remove_file(&file).unwrap();
+    scan_with(&mut store, &v11(), &account, &book(), now()).unwrap();
+    assert_eq!(store.event_count().unwrap(), 2);
+    assert_eq!(stored_version(tmp.path(), "codex"), 11);
+}
+
+#[test]
+fn a_deferred_codex_rescan_completes_cleanly_once_the_log_is_whole() {
+    let (tmp, file, account, mut store) = codex_fixture();
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&file)
+        .unwrap();
+    writeln!(f, "{{\"type\":\"token_count\" broken").unwrap();
+    scan_with(&mut store, &v11(), &account, &book(), now()).unwrap();
+    write_lines(
+        &file,
+        &[
+            CODEX_META.into(),
+            CODEX_CTX.into(),
+            CODEX_TOK1.into(),
+            CODEX_TOK2.into(),
+            r#"{"timestamp":"2026-10-14T10:00:04Z","type":"unrelated","payload":{}}"#.into(),
+        ],
+    );
+    let r = scan_with(&mut store, &v11(), &account, &book(), now()).unwrap();
+    assert_eq!(r.rescans_deferred, 0);
+    assert_eq!(store.event_count().unwrap(), 1);
+    assert_eq!(stored_version(tmp.path(), "codex"), 11);
+}

@@ -27,6 +27,7 @@ pub struct ScanReport {
     pub skipped_before_floor: u64,
     pub bad_lines: u64,
     pub errors: u64,
+    pub rescans_deferred: u64,
 }
 
 struct FileStat {
@@ -59,6 +60,40 @@ struct Tally {
 struct Reparse {
     seen: HashSet<String>,
     purged: HashSet<String>,
+    file_seen: Vec<String>,
+    file_purged: Vec<String>,
+}
+
+impl Reparse {
+    fn begin_file(&mut self) {
+        self.file_seen.clear();
+        self.file_purged.clear();
+    }
+
+    fn rollback_file(&mut self) {
+        for k in self.file_seen.drain(..) {
+            self.seen.remove(&k);
+        }
+        for k in self.file_purged.drain(..) {
+            self.purged.remove(&k);
+        }
+    }
+
+    fn mark_purged(&mut self, session: &str) -> bool {
+        let first = self.purged.insert(session.to_string());
+        if first {
+            self.file_purged.push(session.to_string());
+        }
+        first
+    }
+
+    fn mark_seen(&mut self, key: String) -> bool {
+        let first = self.seen.insert(key.clone());
+        if first {
+            self.file_seen.push(key);
+        }
+        first
+    }
 }
 
 struct Source {
@@ -110,7 +145,7 @@ pub fn scan_with(
         }
     }
     report.errors += unreadable;
-    if source.reparse && unreadable == 0 {
+    if source.reparse && unreadable == 0 && report.rescans_deferred == 0 {
         store.conn.execute(
             "UPDATE usage_source SET parser_version = ?2 WHERE id = ?1 AND parser_version < ?2",
             params![source.id, collector.parser_version()],
@@ -134,11 +169,6 @@ fn prepare_source(store: &Store, tool: Tool, label: &str, version: u32) -> Resul
         |r| Ok((r.get(0)?, r.get(1)?)),
     )?;
     let reparse = stored < version as i64;
-    if reparse {
-        store
-            .conn
-            .execute("DELETE FROM usage_file_state WHERE source_id = ?1", [id])?;
-    }
     Ok(Source { id, reparse })
 }
 
@@ -213,7 +243,9 @@ fn scan_file(
 ) -> Result<()> {
     let st = stat_file(&file.path)?;
     if let Some(r) = load_row(&store.conn, source_id, &file.rel)? {
-        if (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns) {
+        if reparse.is_none()
+            && (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns)
+        {
             report.files_unchanged += 1;
             return Ok(());
         }
@@ -222,8 +254,13 @@ fn scan_file(
         .conn
         .transaction_with_behavior(TransactionBehavior::Immediate)?;
     let row = load_row(&tx, source_id, &file.rel)?;
+    let previous = row.as_ref().map(|r| (r.size, r.offset));
+    if let Some(rp) = reparse.as_mut() {
+        rp.begin_file();
+    }
     let (from, mut pstate) = match row {
         None => (0, ParserState::default()),
+        Some(_) if reparse.is_some() => (0, ParserState::default()),
         Some(r) => {
             if (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns) {
                 report.files_unchanged += 1;
@@ -268,10 +305,30 @@ fn scan_file(
             failure = Some(e);
         }
     });
-    if let Some(e) = failure {
-        return Err(e);
+    let outcome = match (failure, outcome) {
+        (None, Ok(o)) => o,
+        (failed, res) => {
+            if let Some(rp) = reparse.as_mut() {
+                rp.rollback_file();
+            }
+            return Err(failed
+                .or(res.err())
+                .unwrap_or(UsageError::Invalid("scan failed".into())));
+        }
+    };
+
+    if let Some(rp) = reparse.as_mut() {
+        let whole = outcome.bad_lines == 0
+            && outcome.oversized == 0
+            && previous
+                .is_none_or(|(size, offset)| st.size >= size && outcome.next_offset >= offset);
+        if tool == Tool::Codex && !whole {
+            rp.rollback_file();
+            drop(tx);
+            report.rescans_deferred += 1;
+            return Ok(());
+        }
     }
-    let outcome = outcome?;
 
     let head_len = outcome.next_offset.min(HEAD_BYTES);
     let tag = if head_len > 0 {
@@ -334,12 +391,10 @@ fn apply(
             }
             let mut overwrite = false;
             if let Some(rp) = reparse.as_mut() {
-                if tool == Tool::Codex && rp.purged.insert(ev.tool_session_id.clone()) {
+                if tool == Tool::Codex && rp.mark_purged(&ev.tool_session_id) {
                     purge_session_events(conn, tool, account, &ev.tool_session_id)?;
                 }
-                overwrite = rp
-                    .seen
-                    .insert(format!("{}|{}", tool.as_str(), ev.event_key));
+                overwrite = rp.mark_seen(format!("{}|{}", tool.as_str(), ev.event_key));
             }
             let (cost, _) = pricebook.price(&ev);
             match upsert_event(conn, tool, &ev, cost, floor, overwrite)? {
@@ -353,7 +408,7 @@ fn apply(
         ParsedRecord::Session(mut meta) => {
             meta.account = account.to_string();
             if let Some(rp) = reparse.as_mut() {
-                if tool == Tool::Codex && rp.purged.insert(meta.tool_session_id.clone()) {
+                if tool == Tool::Codex && rp.mark_purged(&meta.tool_session_id) {
                     purge_session_events(conn, tool, account, &meta.tool_session_id)?;
                 }
             }

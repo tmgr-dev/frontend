@@ -220,6 +220,15 @@ pub fn apply_with(
     stamp: &str,
     unique_backup_name: bool,
 ) -> Result<Option<PathBuf>> {
+    apply_checked(change, stamp, unique_backup_name, &|| Ok(()))
+}
+
+pub fn apply_checked(
+    change: &Change,
+    stamp: &str,
+    unique_backup_name: bool,
+    before_write: &dyn Fn() -> Result<()>,
+) -> Result<Option<PathBuf>> {
     let mut backup = None;
     let mut mode = 0o644;
     if change.path.exists() {
@@ -238,6 +247,13 @@ pub fn apply_with(
         }
     } else if let Some(parent) = change.path.parent() {
         fs::create_dir_all(parent)?;
+    }
+    // A microsecond-scale race between this check and the rename remains.
+    if let Err(e) = before_write() {
+        if let Some(b) = &backup {
+            let _ = fs::remove_file(b);
+        }
+        return Err(e);
     }
     write_atomic(&change.path, change.new.as_bytes(), mode)?;
     Ok(backup)

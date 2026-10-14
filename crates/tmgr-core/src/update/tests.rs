@@ -716,3 +716,77 @@ fn private_tempdir() -> tempfile::TempDir {
     std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
     d
 }
+
+#[test]
+fn public_download_accepts_only_the_litellm_path_or_loopback() {
+    for ok in [
+        "https://raw.githubusercontent.com/BerriAI/litellm/main/p.json",
+        "http://127.0.0.1:8080/p.json",
+        "http://localhost/p.json",
+        "http://[::1]:9/p.json",
+    ] {
+        assert!(public_download_allowed(ok), "{ok}");
+    }
+    for bad in [
+        "https://raw.githubusercontent.com/BerriAI/litellm/../evil/p.json",
+        "https://raw.githubusercontent.com/BerriAI/litellm/%2e%2e/evil/p.json",
+        "https://raw.githubusercontent.com/BerriAI/litellm/%2E%2e/%2e%2e/p.json",
+        "https://raw.githubusercontent.com/BerriAI/litellm%2f..%2fevil/p.json",
+        "https://raw.githubusercontent.com/BerriAI/litellm/..%2Fevil/p.json",
+        "https://raw.githubusercontent.com/other/litellm/main/p.json",
+        "https://raw.githubusercontent.com/BerriAI/litellmx/p.json",
+        "https://user@raw.githubusercontent.com/BerriAI/litellm/p.json",
+        "https://user:pw@raw.githubusercontent.com/BerriAI/litellm/p.json",
+        "https://raw.githubusercontent.com:8443/BerriAI/litellm/p.json",
+        "https://RAW.GitHubUserContent.com/BerriAI/litellm/p.json",
+        "http://raw.githubusercontent.com/BerriAI/litellm/p.json",
+        "http://user@127.0.0.1/p.json",
+        "ftp://127.0.0.1/p.json",
+    ] {
+        assert!(!public_download_allowed(bad), "{bad}");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn public_download_does_not_follow_a_redirect_to_another_host() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/start"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("location", "https://evil.example.test/x"),
+        )
+        .mount(&server)
+        .await;
+    let url = format!("{}/start", server.uri());
+    let r = tokio::task::spawn_blocking(move || download_public(&url, 1024, "t"))
+        .await
+        .unwrap();
+    assert!(r.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn public_download_follows_loopback_redirects_but_at_most_three_hops() {
+    let server = MockServer::start().await;
+    for (from, to) in [("/a", "/b"), ("/b", "/c"), ("/c", "/d"), ("/d", "/e")] {
+        Mock::given(method("GET"))
+            .and(path(from))
+            .respond_with(ResponseTemplate::new(302).insert_header("location", to))
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("GET"))
+        .and(path("/e"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+        .mount(&server)
+        .await;
+    let base = server.uri();
+    let (three, four) = (format!("{base}/b"), format!("{base}/a"));
+    let ok = tokio::task::spawn_blocking(move || download_public(&three, 1024, "t"))
+        .await
+        .unwrap();
+    assert_eq!(ok.unwrap(), b"ok");
+    let too_far = tokio::task::spawn_blocking(move || download_public(&four, 1024, "t"))
+        .await
+        .unwrap();
+    assert!(too_far.is_err());
+}

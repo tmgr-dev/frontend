@@ -739,6 +739,10 @@ fn pricing_update_accepts_only_the_litellm_list_or_loopback() {
         "http://127.0.0.1@evil.test/p.json",
         "http://localhost.evil.test/p.json",
         "file:///etc/passwd",
+        "https://raw.githubusercontent.com/BerriAI/litellm/../evil/p.json",
+        "https://raw.githubusercontent.com/BerriAI/litellm/%2e%2e/evil/p.json",
+        "https://RAW.githubusercontent.com/BerriAI/litellm/p.json",
+        "https://raw.githubusercontent.com:8443/BerriAI/litellm/p.json",
     ] {
         let out = u.run(&["usage", "pricing", "update", "--url", url]);
         assert_eq!(out.status.code(), Some(2), "{url}");
@@ -907,10 +911,13 @@ fn statusline_install_prints_the_snippet_and_changes_nothing() {
     assert_valid("usage_statusline", &v);
     assert_eq!(v["data"]["installed"], false);
     assert_eq!(v["data"]["previous_command"], "echo hi");
-    assert!(v["data"]["settings_path"]
-        .as_str()
-        .unwrap()
-        .ends_with("claude/settings.json"));
+    let shown = v["data"]["settings_path"].as_str().unwrap();
+    assert!(
+        shown.ends_with("/settings.json")
+            && (shown.starts_with("~/") || shown.starts_with("<external>/")),
+        "settings_path is not masked"
+    );
+    assert!(!shown.contains(u.p("claude").to_str().unwrap()));
 }
 
 #[test]

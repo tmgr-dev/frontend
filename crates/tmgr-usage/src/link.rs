@@ -150,6 +150,13 @@ pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>
     let by_session = index_by(runs, |r| r.session_id.as_deref());
     let by_branch = index_by(runs, |r| r.branch.as_deref());
     let by_project = index_by(runs, |r| r.project_hash.as_deref());
+    let mut events_by_branch: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (i, e) in events.iter().enumerate() {
+        if let Some(b) = e.git_branch.as_deref() {
+            events_by_branch.entry(b).or_default().push(i);
+        }
+    }
+    let mut contended: HashMap<usize, bool> = HashMap::new();
     let mut report = LinkReport::default();
     let mut per_run: BTreeMap<&str, Totals> = BTreeMap::new();
     let mut per_task: BTreeMap<&str, Totals> = BTreeMap::new();
@@ -204,7 +211,32 @@ pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>
             report.unattributed.push(idx);
             continue;
         };
+        let shared_branch = |run_idx: usize, cache: &mut HashMap<usize, bool>| {
+            *cache.entry(run_idx).or_insert_with(|| {
+                let run = &runs[run_idx];
+                let hashes: BTreeSet<&str> = run
+                    .branch
+                    .as_deref()
+                    .and_then(|b| events_by_branch.get(b))
+                    .into_iter()
+                    .flatten()
+                    .map(|&i| &events[i])
+                    .filter(|e| contains(run, e.ts, now))
+                    .filter_map(|e| e.project_hash.as_deref())
+                    .collect();
+                hashes.len() > 1
+            })
+        };
+        let unverified_rung = confidence == CONFIDENCE_BRANCH_UNVERIFIED;
         if let [one] = found[..] {
+            if unverified_rung && shared_branch(one, &mut contended) {
+                report.ambiguous_totals.add(ev);
+                report.ambiguous.push(Ambiguous {
+                    event_index: idx,
+                    candidates: vec![runs[one].run_ref.clone()],
+                });
+                continue;
+            }
             let run = &runs[one];
             per_run
                 .entry(run.run_ref.as_str())
@@ -335,14 +367,45 @@ mod tests {
         unknown.git_branch = Some("main".into());
         let r = attribute_at(&[in_y, in_x, unknown], &[x], now());
         assert_eq!(r.unattributed, vec![0]);
-        let conf: Vec<(usize, f64)> = r
-            .links
-            .iter()
-            .map(|l| (l.event_index, l.confidence))
-            .collect();
-        assert_eq!(conf.len(), 2);
-        assert_eq!(conf[0].0, 1);
-        assert!(conf[0].1 > conf[1].1, "a verified match outranks a guess");
+        assert_eq!(r.links.len(), 1);
+        assert_eq!(r.links[0].event_index, 1);
+        assert_eq!(
+            r.ambiguous.len(),
+            1,
+            "an unknown repo sharing a branch name is not guessed"
+        );
+        assert_eq!(r.ambiguous[0].event_index, 2);
+    }
+
+    #[test]
+    fn an_unverified_branch_match_links_when_one_repository_uses_the_branch() {
+        let mut x = run("x", "TM-1", 0, Some(60));
+        x.branch = Some("main".into());
+        x.project_hash = Some("repo-x".into());
+        let mut in_x = ev(1, "s", 5, Some(1.0));
+        in_x.git_branch = Some("main".into());
+        in_x.project_hash = Some("repo-x".into());
+        let mut unknown = ev(2, "s", 7, Some(4.0));
+        unknown.git_branch = Some("main".into());
+        let r = attribute_at(&[in_x, unknown], &[x], now());
+        assert_eq!(r.links.len(), 2);
+        assert!(r.ambiguous.is_empty());
+        assert!(r.links[0].confidence > r.links[1].confidence);
+    }
+
+    #[test]
+    fn two_repositories_on_main_without_a_run_project_are_ambiguous() {
+        let mut x = run("x", "TM-1", 0, Some(60));
+        x.branch = Some("main".into());
+        let mut a = ev(1, "s1", 5, Some(1.0));
+        a.git_branch = Some("main".into());
+        a.project_hash = Some("repo-a".into());
+        let mut b = ev(2, "s2", 6, Some(2.0));
+        b.git_branch = Some("main".into());
+        b.project_hash = Some("repo-b".into());
+        let r = attribute_at(&[a, b], &[x], now());
+        assert!(r.links.is_empty());
+        assert_eq!(r.ambiguous.len(), 2);
     }
 
     #[test]
@@ -512,7 +575,7 @@ mod tests {
             }
             for a in &r.ambiguous {
                 seen[a.event_index] += 1;
-                assert!(a.candidates.len() >= 2);
+                assert!(!a.candidates.is_empty());
             }
             for &u in &r.unattributed {
                 seen[u] += 1;

@@ -1,4 +1,4 @@
-use super::fmt::{scrub, tilde};
+use super::fmt::{display_path, scrub, tilde};
 use super::{fail, Usage};
 use crate::cli_usage::{StatuslineAccountArgs, StatuslineCommand, StatuslineHookArgs};
 use crate::cmd::hookinstall::shell_quote;
@@ -92,7 +92,27 @@ fn settings_path(account: &StatuslineAccountArgs) -> Result<(String, PathBuf)> {
     Ok((acc.label, acc.root.join("settings.json")))
 }
 
+fn refuse_unsafe_link(path: &PathBuf) -> Result<()> {
+    let Ok(link) = std::fs::symlink_metadata(path) else {
+        return Ok(());
+    };
+    if !link.file_type().is_symlink() {
+        return Ok(());
+    }
+    match std::fs::metadata(path) {
+        Ok(m) if m.is_dir() => Err(Error::usage(
+            "settings.json is a symlink to a directory; nothing written",
+        )),
+        Ok(_) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(Error::usage(
+            "settings.json is a symlink whose target does not exist; nothing written",
+        )),
+        Err(_) => Err(Error::internal("cannot read settings.json")),
+    }
+}
+
 fn read_settings(path: &PathBuf) -> Result<(PathBuf, String, bool)> {
+    refuse_unsafe_link(path)?;
     let real = std::fs::canonicalize(path).unwrap_or_else(|_| path.clone());
     match std::fs::metadata(&real) {
         Ok(m) if m.len() > MAX_SETTINGS => Err(Error::usage("settings.json is too large to edit")),
@@ -107,24 +127,51 @@ fn read_settings(path: &PathBuf) -> Result<(PathBuf, String, bool)> {
 }
 
 const REDACTED: &str = "<redacted>";
-const SECRET_WORDS: [&str; 9] = [
+const SECRET_WORDS: [&str; 17] = [
     "token",
     "secret",
     "password",
     "passwd",
+    "pwd",
+    "--pass",
+    "pass=",
     "apikey",
     "api-key",
     "api_key",
+    "auth",
+    "bearer",
     "authorization",
     "credential",
+    "private_key",
+    "private-key",
+    "x-api",
 ];
+
+fn credential_argument(text: &str) -> bool {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    words.iter().any(|w| {
+        matches!(*w, "-u" | "--user")
+            || w.starts_with("--user=")
+            || w.split_once('@')
+                .is_some_and(|(before, _)| before.contains(':'))
+    })
+}
+
+fn long_token(text: &str) -> bool {
+    text.split(|c: char| !(c.is_ascii_alphanumeric() || "+/_=-".contains(c)))
+        .any(|piece| {
+            piece.len() >= 24
+                && piece.chars().any(|c| c.is_ascii_digit())
+                && piece.chars().any(|c| c.is_ascii_alphabetic())
+        })
+}
 
 fn looks_secret(text: &str) -> bool {
     if redact_secrets(text) != text {
         return true;
     }
     let lower = text.to_ascii_lowercase();
-    SECRET_WORDS.iter().any(|w| lower.contains(w))
+    SECRET_WORDS.iter().any(|w| lower.contains(w)) || credential_argument(text) || long_token(text)
 }
 
 fn shown(text: &str) -> String {
@@ -252,7 +299,7 @@ fn change(ctx: &Ctx, account: &StatuslineAccountArgs, mode: Mode) -> Result<Outp
     let data = |installed: bool, backup: Option<&PathBuf>| {
         json!({
             "account": label,
-            "settings_path": tilde(&real),
+            "settings_path": display_path(&real),
             "installed_command": shown(&plan.installed_command),
             "previous_command": plan.previous_command.as_deref().map(shown),
             "changed": changed,
@@ -293,16 +340,16 @@ fn change(ctx: &Ctx, account: &StatuslineAccountArgs, mode: Mode) -> Result<Outp
         false,
         false,
     )?;
-    ensure_unchanged(&real, &old, existed)?;
     let stamp = chrono::Local::now().format("%Y%m%d%H%M%S%6f").to_string();
-    let backup = init::apply_with(
+    let backup = init::apply_checked(
         &Change {
             path: real.clone(),
-            old,
+            old: old.clone(),
             new: plan.new_settings_text.clone(),
         },
         &stamp,
         true,
+        &|| ensure_unchanged(&real, &old, existed),
     )?;
     let mut human = format!(
         "{} {} {}",
@@ -353,6 +400,43 @@ mod tests {
         assert_eq!(shown("my-line --token=abc"), REDACTED);
         assert_eq!(shown("curl -H 'Authorization: Bearer abc'"), REDACTED);
         assert_eq!(shown("echo hi"), "echo hi");
+    }
+
+    #[test]
+    fn credentials_in_arguments_urls_and_long_tokens_are_hidden() {
+        for c in [
+            &["curl", "-u", "alice:pass123", "https://x"].join(" "),
+            "ssh host --pass=hunter2",
+            "run --api-key abcdef0123456789abcdef0123456789",
+            &["curl", "--user", "alice:pw", "https://x"].join(" "),
+            "git clone https://bob:pw@host/repo",
+            &["curl -H 'Authorization:", "Basic YWxpY2U6cHc=' https://x"].join(" "),
+            "sh -c 'PWD=1 x'",
+            "x deadbeefdeadbeefdeadbeef0123456789",
+            "login --Password hunter2",
+        ] {
+            assert_eq!(shown(c), REDACTED, "{c}");
+        }
+        for c in ["echo hi", "my-line --compact", "git clone git@host:a/b.git"] {
+            assert_eq!(shown(c), c, "{c}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_or_directory_symlink_is_refused_before_anything_is_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("settings.json");
+        std::os::unix::fs::symlink(dir.path().join("missing.json"), &link).unwrap();
+        assert!(read_settings(&link).is_err());
+        std::fs::remove_file(&link).unwrap();
+        std::fs::create_dir(dir.path().join("d")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("d"), &link).unwrap();
+        assert!(read_settings(&link).is_err());
+        std::fs::remove_file(&link).unwrap();
+        std::fs::write(dir.path().join("real.json"), "{}\n").unwrap();
+        std::os::unix::fs::symlink(dir.path().join("real.json"), &link).unwrap();
+        assert!(read_settings(&link).is_ok());
     }
 
     #[test]

@@ -495,9 +495,57 @@ fn fetch(client: &reqwest::blocking::Client, url: &str, cap: u64) -> Result<Vec<
     Ok(out)
 }
 
-/// An unauthenticated GET of a public file over https (http only for localhost), at most `cap` bytes.
+const PUBLIC_HOST: &str = "raw.githubusercontent.com";
+const PUBLIC_PATH: &str = "/BerriAI/litellm/";
+const PUBLIC_MAX_HOPS: usize = 3;
+
+fn public_url_ok(url: &reqwest::Url) -> bool {
+    if !url.username().is_empty() || url.password().is_some() {
+        return false;
+    }
+    match url.scheme() {
+        "https" => {
+            let path = url.path().to_ascii_lowercase();
+            url.host_str() == Some(PUBLIC_HOST)
+                && url.port().is_none()
+                && url.path().starts_with(PUBLIC_PATH)
+                && !path.contains("%2f")
+                && !path.contains("%5c")
+        }
+        "http" => matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]")),
+        _ => false,
+    }
+}
+
+/// True for the LiteLLM price list on raw.githubusercontent.com (https) or a loopback http URL.
+pub fn public_download_allowed(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let literal_host =
+        url.starts_with(&format!("https://{PUBLIC_HOST}/")) || parsed.scheme() == "http";
+    literal_host && public_url_ok(&parsed)
+}
+
+/// An unauthenticated GET of the public price list, at most `cap` bytes; every redirect hop is re-validated.
 pub fn download_public(url: &str, cap: u64, user_agent: &str) -> Result<Vec<u8>> {
-    let client = http_client(user_agent)?;
+    if !public_download_allowed(url) {
+        return Err(untrusted("refusing a download from an untrusted URL"));
+    }
+    let policy = reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() > PUBLIC_MAX_HOPS || !public_url_ok(attempt.url()) {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    });
+    let client = reqwest::blocking::Client::builder()
+        .user_agent(user_agent)
+        .redirect(policy)
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(300))
+        .build()
+        .map_err(|_| Error::internal("cannot build the HTTP client"))?;
     fetch(&client, url, cap)
 }
 
