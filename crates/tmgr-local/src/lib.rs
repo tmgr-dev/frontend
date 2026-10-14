@@ -22,6 +22,7 @@ pub use journal::{
     agent_session_detected, comments_digest, confirm_task, content_sha, in_agent_session,
     provenance, provenance_in, provenance_observed, row_hash, snapshot, store_checkpoint,
     verify_chain, verify_chain_full, ChainStatus, HumanContent, JournalRow, Observed, Provenance,
-    Snapshot, WriteOrigin, AGENT_SESSION_MARKERS, CHECKPOINT_KEY, GENESIS_HASH,
+    Snapshot, WriteOrigin, AGENT_SESSION_MARKERS, CHECKPOINT_KEY, FULL_VERIFY_MAX_AGE_SECS,
+    GENESIS_HASH,
 };
 pub use workspace::{find, list_in, local_id, root, LocalWorkspace, Manifest, ROOT_ENV};

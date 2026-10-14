@@ -336,15 +336,15 @@ const textOf = (value: unknown): string => (value === null || value === undefine
 
 const sameText = (a: unknown, b: unknown) => textOf(a).replace(/\r\n/g, '\n') === textOf(b).replace(/\r\n/g, '\n');
 
-/** Journal rows for the title, description and description_json a write changes. */
+/** Journal rows for the title, description, description_json and checkpoints a write changes. */
 const taskEditEntries = async (
 	ctx: LocalContext,
 	id: number,
 	fields: Record<string, any>,
 ): Promise<JournalEntry[]> => {
-	if (!('title' in fields) && !('description' in fields) && !('description_json' in fields)) return [];
+	if (!('title' in fields) && !('description' in fields) && !('description_json' in fields) && !('checkpoints' in fields)) return [];
 	const [before] = await ctx.db.select<any>(
-		`SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL`,
+		`SELECT title, description, description_json, checkpoints FROM tasks WHERE id = ? AND deleted_at IS NULL`,
 		[id],
 	);
 	if (!before) return [];
@@ -357,6 +357,9 @@ const taskEditEntries = async (
 	}
 	if ('description_json' in fields && !sameText(fields.description_json, before.description_json)) {
 		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description_json', content: textOf(fields.description_json) });
+	}
+	if ('checkpoints' in fields && !sameText(fields.checkpoints, before.checkpoints)) {
+		entries.push({ entity: 'task', entityId: id, taskId: id, field: 'checkpoints', content: textOf(fields.checkpoints) });
 	}
 	return entries;
 };
@@ -657,6 +660,9 @@ export const createLocalApi = () => {
 				];
 				if (textOf(fields.description) !== '') {
 					entries.push({ entity: 'task', entityId: taskId, taskId, field: 'description', content: textOf(fields.description) });
+				}
+				if (textOf(fields.checkpoints) !== '') {
+					entries.push({ entity: 'task', entityId: taskId, taskId, field: 'checkpoints', content: textOf(fields.checkpoints) });
 				}
 				if (textOf(fields.description_json) !== '') {
 					entries.push({ entity: 'task', entityId: taskId, taskId, field: 'description_json', content: textOf(fields.description_json) });

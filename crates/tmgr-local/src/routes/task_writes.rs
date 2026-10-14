@@ -242,7 +242,7 @@ fn same_text(a: &str, b: &str) -> bool {
     a.replace("\r\n", "\n") == b.replace("\r\n", "\n")
 }
 
-/// Journal entries for the title, description and description_json a write changes.
+/// Journal entries for the title, description, description_json and checkpoints a write changes.
 fn task_edit_entries(
     req: &Request<'_>,
     id: i64,
@@ -251,12 +251,17 @@ fn task_edit_entries(
     let title = field(fields, "title");
     let description = field(fields, "description");
     let description_json = field(fields, "description_json");
-    if title.is_none() && description.is_none() && description_json.is_none() {
+    let checkpoints = field(fields, "checkpoints");
+    if title.is_none()
+        && description.is_none()
+        && description_json.is_none()
+        && checkpoints.is_none()
+    {
         return Ok(Vec::new());
     }
     let Some(before) = sql(select_one(
         req.conn,
-        "SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL",
+        "SELECT title, description, description_json, checkpoints FROM tasks WHERE id = ? AND deleted_at IS NULL",
         &[int(id)],
     ))?
     else {
@@ -278,6 +283,12 @@ fn task_edit_entries(
         .filter(|d| !same_text(d, &was("description_json")))
     {
         entries.push(Entry::task(id, "description_json", Some(after)));
+    }
+    if let Some(after) = checkpoints
+        .map(sql_text)
+        .filter(|d| !same_text(d, &was("checkpoints")))
+    {
+        entries.push(Entry::task(id, "checkpoints", Some(after)));
     }
     Ok(entries)
 }
@@ -354,6 +365,12 @@ pub(super) fn create(req: &Request<'_>) -> Handled {
         .filter(|d| !d.is_empty())
     {
         entries.push(Entry::task(id, "description_json", Some(json)));
+    }
+    if let Some(checkpoints) = field(&fields, "checkpoints")
+        .map(sql_text)
+        .filter(|d| !d.is_empty())
+    {
+        entries.push(Entry::task(id, "checkpoints", Some(checkpoints)));
     }
     sql(journal::append(req.conn, req.ctx, &entries))?;
     if let Some(wanted) = personas {

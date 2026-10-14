@@ -71,6 +71,7 @@
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
+	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
 	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
@@ -2983,6 +2984,11 @@
 							No time logged yet — click “Add entry” to log what you worked on.
 						</div>
 					</section>
+
+					<ConfirmForAgentRuns
+						v-if="isDesktopApp() && isLocalWorkspaceTask && (taskId || form.id)"
+						:task-id="Number(taskId || form.id)"
+					/>
 
 					<TaskAgentRunner
 						v-if="isDesktopApp() && (taskId || form.id)"

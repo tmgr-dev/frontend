@@ -83,7 +83,8 @@ describeSqlite('edit journal fixtures shared with the Rust crate', () => {
 		const chain = await verifyChain(db, { full: true });
 		expect({ ok: chain.ok, broken_at: chain.brokenAt, rows: chain.rows }).toEqual(fixture.expect.chain);
 		for (const id of fixture.provenance_for) {
-			expect(await provenance(db, id)).toEqual(fixture.expect.provenance[String(id)]);
+			const got = await provenance(db, id);
+			expect(got).toEqual(fixture.expect.provenance[String(id)]);
 		}
 	});
 });

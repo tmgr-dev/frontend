@@ -69,6 +69,28 @@ pub fn task_snapshot(code: &str, task_id: i64) -> Result<tmgr_local::Snapshot> {
         .ok_or_else(|| Error::not_found(format!("task {task_id} not found")))
 }
 
+/// Walks the edit journal of the local workspace with manifest id `workspace_id` from genesis and refuses when
+/// it does not verify; on success the walk renews the checkpoint's full-verification time (best effort).
+pub fn verify_journal_from_genesis(workspace_id: i64) -> Result<()> {
+    let workspace = list()?
+        .into_iter()
+        .find(|w| w.manifest.id == workspace_id)
+        .ok_or_else(|| Error::not_found("local workspace of the pickup not found"))?;
+    let conn = tmgr_local::open_read(&workspace.database).map_err(local_error)?;
+    let status = tmgr_local::verify_chain_full(&conn).map_err(local_error)?;
+    if !status.ok {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the edit journal of this workspace does not verify; nothing is approved",
+        )
+        .hint("open the workspace in the desktop app and check its backups"));
+    }
+    if let Ok(writer) = tmgr_local::open_write(&workspace.database) {
+        let _ = tmgr_local::store_checkpoint(&writer, &status);
+    }
+    Ok(())
+}
+
 /// Records the owner's confirmation of the task text whose snapshot hash is `expected`. The caller must have
 /// checked that a person is at a terminal and typed that hash.
 pub fn confirm_task(

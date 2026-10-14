@@ -657,6 +657,42 @@ fn a_script_made_task_waits_for_the_owner_to_confirm_exactly_its_text() {
 }
 
 #[test]
+fn approve_walks_the_journal_from_genesis_and_refuses_a_broken_chain() {
+    let fx = Fx::new();
+    fx.task(1, "Write the report", "v1");
+    fx.task(2, "Another task", "v1");
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.run(&["queue", "run-once"]);
+    let status = fx.json(&["status"]);
+    let id = status["data"]["pickups"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    fx.db()
+        .execute(
+            "UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 3",
+            [],
+        )
+        .unwrap();
+    fx.db()
+        .execute(
+            "INSERT OR REPLACE INTO meta (key, value) VALUES ('edit_journal_verified', ?)",
+            [format!(
+                "4:{}:{}",
+                "0".repeat(64),
+                chrono::Utc::now().to_rfc3339()
+            )],
+        )
+        .unwrap();
+    let mut p = fx.pty(&["queue", "approve", &id], &[]);
+    let code = p.exit();
+    assert_eq!(code, 5, "{}", p.text());
+    assert!(p.text().contains("does not verify"), "{}", p.text());
+    assert_eq!(fx.count("approved"), 0);
+}
+
+#[test]
 fn changing_the_task_after_the_prompt_is_shown_voids_the_approval() {
     let fx = Fx::new();
     fx.task(1, "Write the report", "v1");

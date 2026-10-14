@@ -71,11 +71,39 @@ pub struct LocalSource {
     pub local_user_id: Option<i64>,
 }
 
+/// Run bundles carry only what the journal's snapshot covers: title, description, editor data, checkpoints
+/// and comments. Task files and settings are never given to an agent, and a local task brings no pages. The
+/// exhaustive destructuring fails to compile when `Candidate` gains a field, so a new input has to be
+/// reviewed against the snapshot before it can reach a bundle.
+pub fn assert_snapshot_scope(c: &Candidate) -> Result<()> {
+    let Candidate {
+        task: _,
+        key: _,
+        title: _,
+        body: _,
+        author: _,
+        comments: _,
+        pages,
+        context_tainted: _,
+        persona_text: _,
+    } = c;
+    if !pages.is_empty() {
+        return Err(Error::internal(
+            "a local task must not bring pages into a run bundle: they are outside the confirmed snapshot",
+        ));
+    }
+    Ok(())
+}
+
 /// The API answers `description_json` parsed, the journal hashes the stored text: the stored text stands in
 /// for it only when it parses to exactly what the API showed, otherwise the API's own serialization is used
 /// and will not match.
 fn observed_json(shown: Option<&Value>, stored: Option<String>) -> String {
     let shown = shown.cloned().unwrap_or(Value::Null);
+    let blank = shown.is_null() || shown.as_array().is_some_and(Vec::is_empty);
+    if blank && stored.as_deref().is_some_and(str::is_empty) {
+        return String::new();
+    }
     if let Some(stored) = stored {
         let parsed = if stored.is_empty() {
             Value::Null
@@ -261,13 +289,13 @@ impl TaskSource for LocalSource {
                 };
                 let title = text(&full, "title");
                 let body = text(&full, "description");
+                let stored = tmgr_local::snapshot(&journal, id).ok().flatten();
                 let description_json = observed_json(
                     full.get("description_json"),
-                    tmgr_local::snapshot(&journal, id)
-                        .ok()
-                        .flatten()
-                        .map(|s| s.description_json),
+                    stored.as_ref().map(|s| s.description_json.clone()),
                 );
+                let checkpoints =
+                    observed_json(full.get("checkpoints"), stored.map(|s| s.checkpoints));
                 let seen: Vec<(i64, String)> = comments_raw
                     .as_array()
                     .map(|a| {
@@ -280,6 +308,7 @@ impl TaskSource for LocalSource {
                     title: &title,
                     description: &body,
                     description_json: &description_json,
+                    checkpoints: &checkpoints,
                     comments: seen.iter().map(|(i, m)| (*i, m.as_str())).collect(),
                 };
                 let author = match tmgr_local::provenance_in(&journal, id, Some(&observed), &chain)
@@ -287,7 +316,7 @@ impl TaskSource for LocalSource {
                     Ok(p) => author_of(&p),
                     Err(_) => Author::Unrecorded,
                 };
-                out.push(Candidate {
+                let candidate = Candidate {
                     task: TaskRef {
                         workspace_id: workspace.manifest.id,
                         task_id: id,
@@ -300,7 +329,9 @@ impl TaskSource for LocalSource {
                     pages: Vec::new(),
                     context_tainted: tainted,
                     persona_text: text(persona, "description"),
-                });
+                };
+                assert_snapshot_scope(&candidate)?;
+                out.push(candidate);
             }
         }
         out.sort_by_key(|c| c.task.task_id);
@@ -308,5 +339,56 @@ impl TaskSource for LocalSource {
             candidates: out,
             complete,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate() -> Candidate {
+        Candidate {
+            task: TaskRef {
+                workspace_id: 1,
+                task_id: 1,
+            },
+            key: "WK-1".into(),
+            title: "t".into(),
+            body: "b".into(),
+            author: Author::Human,
+            comments: Vec::new(),
+            pages: Vec::new(),
+            context_tainted: false,
+            persona_text: String::new(),
+        }
+    }
+
+    #[test]
+    fn nothing_outside_the_snapshot_reaches_a_bundle() {
+        assert!(assert_snapshot_scope(&candidate()).is_ok());
+        let mut with_page = candidate();
+        with_page.pages.push(BundlePage {
+            id: 1,
+            revision: 1,
+            title: "p".into(),
+            body: "page text".into(),
+        });
+        assert!(assert_snapshot_scope(&with_page).is_err());
+    }
+
+    #[test]
+    fn the_stored_text_stands_in_for_parsed_json_only_when_it_parses_to_what_was_shown() {
+        let shown = serde_json::json!([{ "description": "a" }]);
+        let stored = "[ {\"description\":\"a\"} ]".to_string();
+        assert_eq!(observed_json(Some(&shown), Some(stored.clone())), stored);
+        assert_ne!(
+            observed_json(Some(&shown), Some("[{\"description\":\"b\"}]".into())),
+            "[{\"description\":\"b\"}]"
+        );
+        assert_eq!(
+            observed_json(Some(&serde_json::json!([])), Some(String::new())),
+            ""
+        );
+        assert_eq!(observed_json(None, Some(String::new())), "");
     }
 }

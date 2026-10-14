@@ -566,6 +566,7 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
             "the profile runs without permission prompts",
         ));
     }
+    tmgr_core::local::verify_journal_from_genesis(p.task.workspace_id)?;
     let sha = p.bundle_sha256.clone();
     page_through(&review(p, &pin))?;
     eprintln!();

@@ -213,6 +213,24 @@
 				"id": "p1",
 				"name": "Scribe"
 			}
+		},
+		{
+			"at": "2026-10-14T10:09:05.000Z",
+			"method": "PATCH",
+			"url": "tasks/4",
+			"body": {
+				"checkpoints": [
+					{
+						"description": "agent step",
+						"checked": true
+					}
+				]
+			},
+			"actor": {
+				"kind": "persona",
+				"id": "p1",
+				"name": "Scribe"
+			}
 		}
 	],
 	"provenance_for": [
@@ -500,9 +518,9 @@
 				"author_kind": "human",
 				"source": "desktop_ui",
 				"actor_id": "7",
-				"content_sha256": "e374d75568a83d0be5448f1de27a5f5924e000243ecbf5683f736ca89b0c0053",
+				"content_sha256": "43463c5137568faeb64f12da03de3a85be41520cc1e3622206ddaf5f55f02b9c",
 				"prev_hash": "bf83fbc7407a4d50d288b559dac6dcf5f4d548a5f832e93e04c50d6e66e99719",
-				"hash": "a7a79368b3f64bdfd8be1c3388be68203c74d966bb33d85aacef201002ffcffb"
+				"hash": "cea4133723286a0d9bc3a8eacbfae6a798124ff555d0fb56231d0cc425add558"
 			},
 			{
 				"seq": 21,
@@ -514,9 +532,9 @@
 				"author_kind": "human",
 				"source": "desktop_ui",
 				"actor_id": "7",
-				"content_sha256": "067a6f7360487eaf8318eca9e538efacdb0a3396c45e19a74b1ad7d7c7035c58",
-				"prev_hash": "a7a79368b3f64bdfd8be1c3388be68203c74d966bb33d85aacef201002ffcffb",
-				"hash": "1aa44110820d5164c495b4d9ba3426f13d5ccbebe6f31348f092673009d7b1f8"
+				"content_sha256": "60a69812cfb3340f2769562c60c3f1bf70659a3ca0bc3c170f373808266e1e2f",
+				"prev_hash": "cea4133723286a0d9bc3a8eacbfae6a798124ff555d0fb56231d0cc425add558",
+				"hash": "5a91ad6cb2145708ded89e8bb7607477148f23e4840cbf0d56124eeb953f2bee"
 			},
 			{
 				"seq": 22,
@@ -529,14 +547,28 @@
 				"source": "local_access",
 				"actor_id": "p1",
 				"content_sha256": "5817ea96b88b664225623c9070d464175e11ea345504f8161d2fbd9f5e3545e5",
-				"prev_hash": "1aa44110820d5164c495b4d9ba3426f13d5ccbebe6f31348f092673009d7b1f8",
-				"hash": "5c8171a8fcb1b3b6132a1eb7354b7b463bd3e1fb98656afcb869277cc6bfeac2"
+				"prev_hash": "5a91ad6cb2145708ded89e8bb7607477148f23e4840cbf0d56124eeb953f2bee",
+				"hash": "d5ab5e9323095442213b77b4bd704336a1a00498f5b88d5299092a0a3b6effae"
+			},
+			{
+				"seq": 23,
+				"at": "2026-10-14T10:09:05.000Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "checkpoints",
+				"author_kind": "agent",
+				"source": "local_access",
+				"actor_id": "p1",
+				"content_sha256": "1629a99a6cc2a1b6134b36e51c23307704fdd9fb992cb0cf7990366f78f64d15",
+				"prev_hash": "d5ab5e9323095442213b77b4bd704336a1a00498f5b88d5299092a0a3b6effae",
+				"hash": "a57f85711cf38cb53c2384b7d6b3e442ce919a6f78789e324640344ed37ec251"
 			}
 		],
 		"chain": {
 			"ok": true,
 			"broken_at": null,
-			"rows": 22
+			"rows": 23
 		},
 		"provenance": {
 			"1": {
@@ -546,6 +578,7 @@
 					"title_sha": "f57afb7d275a26df0de0e933b28c16f2462e84c09ad605945a4c6163f2be3baa",
 					"description_sha": "db3df7c28f1bae49ad57025dd82aea48cc479691822c574a556a8e5b267e77ae",
 					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": true,
@@ -564,6 +597,7 @@
 					"title_sha": "2d32a05d6aef64edbfc678c638c76a418822ef1e8dd6b03af07b5a2e9422b22e",
 					"description_sha": "18444f57aea2e74c0193172f734659cece53e8493942da9b7e79d744211392f1",
 					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": false,
@@ -593,14 +627,17 @@
 					"title_sha": "7fc1539806a982faca69b69eb69067371018f90a73de3fa5ebf2dfe7ee325ee2",
 					"description_sha": "2f08a559d0e15b5ba28ea190eb0139d5df1cec394507cb5ecae9001c5dd16c53",
 					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
-				"modified_by_non_human_since": false,
-				"modified_by_kinds": [],
+				"modified_by_non_human_since": true,
+				"modified_by_kinds": [
+					"agent"
+				],
 				"chain_ok": true,
-				"content_matches": true,
+				"content_matches": false,
 				"confirmed": false,
-				"human_written": true
+				"human_written": false
 			},
 			"5": {
 				"created_by": "human",
@@ -609,6 +646,7 @@
 					"title_sha": "7c94370fbe1017bc1eabedc8c37edefab2034b1a3466f96eb44e09738a5c8024",
 					"description_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"description_json_sha": "85e2c3e0d7db5da76c9b755397aaff3c4ac6e8c161b9762bd362711bcf1b04cd",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "2bbde9ddd07c5b73a5a1af322b5499227425d813303c7258bfeeeb661b8e0056"
 				},
 				"modified_by_non_human_since": false,

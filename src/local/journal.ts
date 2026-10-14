@@ -13,7 +13,7 @@ export type JournalSource =
 	| 'plugin'
 	| 'import'
 	| 'cli_confirm';
-export type JournalField = 'create' | 'title' | 'description' | 'description_json' | 'comment' | 'delete' | 'confirm';
+export type JournalField = 'create' | 'title' | 'description' | 'description_json' | 'checkpoints' | 'comment' | 'delete' | 'confirm';
 
 export interface JournalRow {
 	seq: number;
@@ -237,15 +237,26 @@ export interface ChainStatus {
 	rows: number;
 	tailSeq: number;
 	tailHash: string;
+	/** The walk started at genesis. */
+	full: boolean;
 }
 
 const PAGE = 500;
 export const CHECKPOINT_KEY = 'edit_journal_verified';
 
-const readCheckpoint = async (db: LocalDb): Promise<{ seq: number; hash: string } | null> => {
+export const FULL_VERIFY_MAX_AGE_MS = 3600 * 1000;
+
+interface Checkpoint {
+	seq: number;
+	hash: string;
+	fullAt: number;
+}
+
+const readCheckpoint = async (db: LocalDb): Promise<Checkpoint | null> => {
 	const [row] = await db.select<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [CHECKPOINT_KEY]);
-	const [seq, hash] = String(row?.value ?? '').split(':');
-	return seq && hash && /^\d+$/.test(seq) ? { seq: Number(seq), hash } : null;
+	const match = /^(\d+):([^:]+):(.+)$/.exec(String(row?.value ?? ''));
+	const fullAt = match ? Date.parse(match[3]) : NaN;
+	return match && !Number.isNaN(fullAt) ? { seq: Number(match[1]), hash: match[2], fullAt } : null;
 };
 
 const walk = async (db: LocalDb, start: { seq: number; hash: string } | null): Promise<ChainStatus> => {
@@ -257,11 +268,11 @@ const walk = async (db: LocalDb, start: { seq: number; hash: string } | null): P
 			`SELECT ${INSERT_COLUMNS} FROM edit_journal WHERE seq > ? ORDER BY seq ASC LIMIT ${PAGE}`,
 			[prevSeq],
 		);
-		if (!page.length) return { ok: true, brokenAt: null, rows, tailSeq: prevSeq, tailHash: prevHash };
+		if (!page.length) return { ok: true, brokenAt: null, rows, tailSeq: prevSeq, tailHash: prevHash, full: !start };
 		for (const row of page) {
 			const seq = Number(row.seq);
 			if (seq !== prevSeq + 1 || row.prev_hash !== prevHash || (await rowHash({ ...row, seq })) !== row.hash) {
-				return { ok: false, brokenAt: seq, rows, tailSeq: prevSeq, tailHash: prevHash };
+				return { ok: false, brokenAt: seq, rows, tailSeq: prevSeq, tailHash: prevHash, full: !start };
 			}
 			prevHash = row.hash;
 			prevSeq = seq;
@@ -271,15 +282,22 @@ const walk = async (db: LocalDb, start: { seq: number; hash: string } | null): P
 };
 
 /**
- * Walks the chain in pages from the stored checkpoint (a row verified before), or from genesis when there
- * is none, the checkpointed row is gone or changed, or `full` is set. After a clean walk the tail becomes the
- * new checkpoint (best effort). The checkpoint is as forgeable by the same user as the rest of the file.
+ * Walks the chain in pages from the stored checkpoint (a row verified before), or from genesis when there is
+ * none, the checkpointed row is gone or changed, the last walk from genesis is older than an hour, or `full` is
+ * set. `chain_ok` therefore means: verified from genesis at the checkpoint's `fullAt`, incrementally since.
+ * After a clean walk the tail becomes the new checkpoint (best effort); a walk from genesis renews `fullAt`.
+ * The checkpoint is as forgeable by the same user as the rest of the file.
  */
-export const verifyChain = async (db: LocalDb, options: { full?: boolean; store?: boolean } = {}): Promise<ChainStatus> => {
+export const verifyChain = async (
+	db: LocalDb,
+	options: { full?: boolean; store?: boolean; now?: Date } = {},
+): Promise<ChainStatus> => {
+	const now = options.now ?? new Date();
 	let start: { seq: number; hash: string } | null = null;
 	if (!options.full) {
 		const checkpoint = await readCheckpoint(db);
-		if (checkpoint) {
+		const age = checkpoint ? now.getTime() - checkpoint.fullAt : -1;
+		if (checkpoint && age >= 0 && age <= FULL_VERIFY_MAX_AGE_MS) {
 			const [row] = await db.select<{ hash: string }>(`SELECT hash FROM edit_journal WHERE seq = ?`, [checkpoint.seq]);
 			if (row?.hash === checkpoint.hash) start = checkpoint;
 		}
@@ -288,10 +306,11 @@ export const verifyChain = async (db: LocalDb, options: { full?: boolean; store?
 	if (status.ok && status.tailSeq > 0 && options.store !== false) {
 		try {
 			const existing = await readCheckpoint(db);
-			if (!existing || existing.seq < status.tailSeq) {
+			if (status.full || (existing && existing.seq < status.tailSeq)) {
+				const fullAt = status.full ? now.getTime() : existing!.fullAt;
 				await db.execute(
 					`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-					[CHECKPOINT_KEY, `${status.tailSeq}:${status.tailHash}`],
+					[CHECKPOINT_KEY, `${status.tailSeq}:${status.tailHash}:${new Date(fullAt).toISOString()}`],
 				);
 			}
 		} catch {
@@ -305,6 +324,7 @@ export interface HumanContent {
 	title_sha: string;
 	description_sha: string;
 	description_json_sha: string;
+	checkpoints_sha: string;
 	comments_sha: string;
 }
 
@@ -328,15 +348,16 @@ export interface Provenance {
 export const commentsDigest = (comments: Map<number, string>): Promise<string> =>
 	sha256Hex(JSON.stringify([...comments.entries()].sort((a, b) => a[0] - b[0])));
 
-/** The hash a `confirm` row carries: SHA-256 of the JSON array of the four content parts. */
+/** The hash a `confirm` row carries: SHA-256 of the JSON array of the five content parts. */
 export const snapshotSha = (c: HumanContent): Promise<string> =>
-	sha256Hex(JSON.stringify([c.title_sha, c.description_sha, c.description_json_sha, c.comments_sha]));
+	sha256Hex(JSON.stringify([c.title_sha, c.description_sha, c.description_json_sha, c.checkpoints_sha, c.comments_sha]));
 
 /** The task text that reaches an agent. */
 export interface Snapshot {
 	title: string;
 	description: string;
 	description_json: string;
+	checkpoints: string;
 	comments: { id: number; message: string }[];
 }
 
@@ -347,13 +368,14 @@ export const snapshotParts = async (s: Snapshot): Promise<HumanContent> => {
 		title_sha: await contentSha(s.title),
 		description_sha: await contentSha(s.description),
 		description_json_sha: await contentSha(s.description_json),
+		checkpoints_sha: await contentSha(s.checkpoints),
 		comments_sha: await commentsDigest(comments),
 	};
 };
 
 export const snapshotOf = async (db: LocalDb, taskId: number): Promise<Snapshot | null> => {
-	const [task] = await db.select<{ title: string; description: string | null; description_json: string | null }>(
-		`SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL`,
+	const [task] = await db.select<{ title: string; description: string | null; description_json: string | null; checkpoints: string | null }>(
+		`SELECT title, description, description_json, checkpoints FROM tasks WHERE id = ? AND deleted_at IS NULL`,
 		[taskId],
 	);
 	if (!task) return null;
@@ -365,6 +387,7 @@ export const snapshotOf = async (db: LocalDb, taskId: number): Promise<Snapshot 
 		title: task.title,
 		description: String(task.description ?? ''),
 		description_json: String(task.description_json ?? ''),
+		checkpoints: String(task.checkpoints ?? ''),
 		comments: comments.map((c) => ({ id: Number(c.id), message: c.message })),
 	};
 };
@@ -399,15 +422,17 @@ interface Fold {
 	title: string;
 	description: string;
 	description_json: string;
+	checkpoints: string;
 	comments: Map<number, string>;
 }
 
-const newFold = (): Fold => ({ title: '', description: '', description_json: '', comments: new Map() });
+const newFold = (): Fold => ({ title: '', description: '', description_json: '', checkpoints: '', comments: new Map() });
 
 const applyRow = (fold: Fold, row: JournalRow) => {
 	if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) fold.title = row.content_sha256;
 	else if (row.entity === 'task' && row.field === 'description') fold.description = row.content_sha256;
 	else if (row.entity === 'task' && row.field === 'description_json') fold.description_json = row.content_sha256;
+	else if (row.entity === 'task' && row.field === 'checkpoints') fold.checkpoints = row.content_sha256;
 	else if (row.entity === 'comment' && row.field === 'comment') fold.comments.set(Number(row.entity_id), row.content_sha256);
 	else if (row.entity === 'comment' && row.field === 'delete') fold.comments.delete(Number(row.entity_id));
 };
@@ -418,6 +443,7 @@ const foldContent = async (fold: Fold): Promise<HumanContent> => {
 		title_sha: fold.title,
 		description_sha: fold.description || empty,
 		description_json_sha: fold.description_json || empty,
+		checkpoints_sha: fold.checkpoints || empty,
 		comments_sha: await commentsDigest(fold.comments),
 	};
 };
@@ -428,6 +454,7 @@ const sameContent = (a: HumanContent | null, b: HumanContent | null) =>
 	a.title_sha === b.title_sha &&
 	a.description_sha === b.description_sha &&
 	a.description_json_sha === b.description_json_sha &&
+	a.checkpoints_sha === b.checkpoints_sha &&
 	a.comments_sha === b.comments_sha;
 
 const rowsIntact = async (db: LocalDb, rows: JournalRow[]): Promise<boolean> => {
@@ -477,6 +504,7 @@ export const provenance = async (
 	let titleBy = '';
 	let descriptionBy: string = createdBy;
 	let jsonBy: string = createdBy;
+	let checkpointsBy: string = createdBy;
 	const commentBy = new Map<number, string>();
 	for (const row of rows) {
 		applyRow(fold, row);
@@ -484,6 +512,7 @@ export const provenance = async (
 		if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) titleBy = row.author_kind;
 		else if (row.entity === 'task' && row.field === 'description') descriptionBy = row.author_kind;
 		else if (row.entity === 'task' && row.field === 'description_json') jsonBy = row.author_kind;
+		else if (row.entity === 'task' && row.field === 'checkpoints') checkpointsBy = row.author_kind;
 		else if (row.entity === 'comment' && row.field === 'comment') commentBy.set(Number(row.entity_id), row.author_kind);
 		else if (row.entity === 'comment' && row.field === 'delete') commentBy.delete(Number(row.entity_id));
 	}
@@ -507,7 +536,7 @@ export const provenance = async (
 			!rows.some((row) => row.author_kind !== 'human' && Number(row.seq) > Number(confirm.seq));
 	}
 	const allHuman =
-		titleBy === 'human' && descriptionBy === 'human' && jsonBy === 'human' && [...commentBy.values()].every((kind) => kind === 'human');
+		titleBy === 'human' && descriptionBy === 'human' && jsonBy === 'human' && checkpointsBy === 'human' && [...commentBy.values()].every((kind) => kind === 'human');
 	const stateCurrent = textIs(await foldContent(fold));
 	const humanWritten =
 		chainOk && (confirmed || (createdBy === 'human' && kinds.length === 0 && allHuman && stateCurrent && contentMatches));

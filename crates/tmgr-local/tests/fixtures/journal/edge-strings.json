@@ -99,12 +99,27 @@
 			"body": {
 				"description_json": "{\"t\":\"😀\\u2028\\\\\"}"
 			}
+		},
+		{
+			"at": "2026-10-14T10:03:55.000Z",
+			"method": "POST",
+			"url": "tasks",
+			"body": {
+				"title": "With checkpoints",
+				"checkpoints": [
+					{
+						"description": "quote \" 😀",
+						"checked": false
+					}
+				]
+			}
 		}
 	],
 	"provenance_for": [
 		1,
 		2,
-		3
+		3,
+		4
 	],
 	"expect": {
 		"journal": [
@@ -247,12 +262,40 @@
 				"content_sha256": "653356fbef7eb143be48bdc6ca0a82b23f7764b3a4cb75e2339f2216f0ff442a",
 				"prev_hash": "66d6e17b6ab83f22929cc3db70313990bf4f021c49fea2f8bb7f5ef4068db9ee",
 				"hash": "6d429e17a1621e4ec6bb5198fe5a36b3ff78a753ebd65590fccdd9734c5082c2"
+			},
+			{
+				"seq": 11,
+				"at": "2026-10-14T10:03:55.000Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "create",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "fa4786e33fe76b2d5123f0bdc0ebfaea64d54977227f409f5c4789da9dd79c33",
+				"prev_hash": "6d429e17a1621e4ec6bb5198fe5a36b3ff78a753ebd65590fccdd9734c5082c2",
+				"hash": "710f8843176349aa73e405913fe17fb122e12dee0be2b1c0137b66682137f124"
+			},
+			{
+				"seq": 12,
+				"at": "2026-10-14T10:03:55.000Z",
+				"entity": "task",
+				"entity_id": "4",
+				"task_id": "4",
+				"field": "checkpoints",
+				"author_kind": "human",
+				"source": "desktop_ui",
+				"actor_id": "7",
+				"content_sha256": "b3266f7bfb03f0a27ae6426bc04982022c14c2e369c3d9cc4872480fcd1753d9",
+				"prev_hash": "710f8843176349aa73e405913fe17fb122e12dee0be2b1c0137b66682137f124",
+				"hash": "60630ddda521cc5442d5065450cd4ca684a53b0421ac5f7940f699b616448906"
 			}
 		],
 		"chain": {
 			"ok": true,
 			"broken_at": null,
-			"rows": 10
+			"rows": 12
 		},
 		"provenance": {
 			"1": {
@@ -262,6 +305,7 @@
 					"title_sha": "f91e16cae3121f68c62af4950edd4c53e348b6e17d29b27c7cb907fbf148110b",
 					"description_sha": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
 					"description_json_sha": "653356fbef7eb143be48bdc6ca0a82b23f7764b3a4cb75e2339f2216f0ff442a",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": false,
@@ -278,6 +322,7 @@
 					"title_sha": "f1631bb158f6ce0d044f28a14a883698a028d216fc34f37debeeeea0566d3f53",
 					"description_sha": "c3bf963167dbdcb23083646fbdd0f295cac57c58cb6ee0ea7b49517dcfd31691",
 					"description_json_sha": "8c987762135ae05b51123c818d4c4ba2fd1af974061e7bfee21e08a9dfc418f8",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "a5a7bc6a08d4188e1644db480c4bb833a5974fb612dd5894d49e3e083aa0af3a"
 				},
 				"modified_by_non_human_since": false,
@@ -299,6 +344,23 @@
 				"content_matches": false,
 				"confirmed": false,
 				"human_written": false
+			},
+			"4": {
+				"created_by": "human",
+				"last_human_seq": 12,
+				"last_human_content": {
+					"title_sha": "fa4786e33fe76b2d5123f0bdc0ebfaea64d54977227f409f5c4789da9dd79c33",
+					"description_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"checkpoints_sha": "b3266f7bfb03f0a27ae6426bc04982022c14c2e369c3d9cc4872480fcd1753d9",
+					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+				},
+				"modified_by_non_human_since": false,
+				"modified_by_kinds": [],
+				"chain_ok": true,
+				"content_matches": true,
+				"confirmed": false,
+				"human_written": true
 			}
 		}
 	}

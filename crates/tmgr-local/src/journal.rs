@@ -7,6 +7,7 @@
 //!
 //! Only the desktop UI (no actor) and an explicit `confirm` write `human` rows. Every CLI write is `unattended`.
 
+use chrono::{DateTime, Utc};
 use rusqlite::types::Value as Sql;
 use rusqlite::Connection;
 use serde::Serialize;
@@ -20,6 +21,8 @@ use crate::error::{Error, Result};
 pub const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 pub const JOURNAL_SCHEMA: u32 = 13;
 pub const CHECKPOINT_KEY: &str = "edit_journal_verified";
+/// A walk from genesis is repeated at least this often, whatever the checkpoint says.
+pub const FULL_VERIFY_MAX_AGE_SECS: i64 = 3600;
 
 /// Environment variables that mark an agent session. A trailing `*` matches any name with that prefix.
 pub const AGENT_SESSION_MARKERS: [&str; 6] = [
@@ -314,9 +317,17 @@ pub struct ChainStatus {
     pub rows: i64,
     pub tail_seq: i64,
     pub tail_hash: String,
+    /// The walk started at genesis (not at the checkpoint).
+    pub full: bool,
 }
 
-fn parse_checkpoint(conn: &Connection) -> Option<(i64, String)> {
+struct Checkpoint {
+    seq: i64,
+    hash: String,
+    full_at: DateTime<Utc>,
+}
+
+fn parse_checkpoint(conn: &Connection) -> Option<Checkpoint> {
     let rows = select(
         conn,
         "SELECT value FROM meta WHERE key = ?",
@@ -324,13 +335,24 @@ fn parse_checkpoint(conn: &Connection) -> Option<(i64, String)> {
     )
     .ok()?;
     let value = rows.first()?.get("value")?.as_str()?.to_string();
-    let (seq, hash) = value.split_once(':')?;
-    Some((seq.parse().ok()?, hash.to_string()))
+    let mut parts = value.splitn(3, ':');
+    let seq = parts.next()?.parse().ok()?;
+    let hash = parts.next()?.to_string();
+    let full_at = DateTime::parse_from_rfc3339(parts.next()?)
+        .ok()?
+        .with_timezone(&Utc);
+    Some(Checkpoint { seq, hash, full_at })
 }
 
 /// Verifies the chain from the stored checkpoint (a row already verified once), or from genesis when there
-/// is none or the checkpointed row is gone or changed. The checkpoint is same-user-forgeable like the rest.
+/// is none, the checkpointed row is gone or changed, or the last walk from genesis is older than an hour.
+/// `chain_ok` therefore means: verified from genesis at the checkpoint's `full_at`, incrementally since.
+/// The checkpoint is same-user-forgeable like the rest.
 pub fn verify_chain(conn: &Connection) -> Result<ChainStatus> {
+    verify_chain_at(conn, Utc::now())
+}
+
+pub fn verify_chain_at(conn: &Connection, now: DateTime<Utc>) -> Result<ChainStatus> {
     if !enabled(conn)? {
         return Ok(ChainStatus {
             ok: false,
@@ -338,22 +360,31 @@ pub fn verify_chain(conn: &Connection) -> Result<ChainStatus> {
             rows: 0,
             tail_seq: 0,
             tail_hash: GENESIS_HASH.into(),
+            full: true,
         });
     }
-    let start = parse_checkpoint(conn).filter(|(seq, hash)| {
-        select(
-            conn,
-            "SELECT hash FROM edit_journal WHERE seq = ?",
-            &[Sql::Integer(*seq)],
-        )
-        .ok()
-        .and_then(|r| {
-            r.first()
-                .and_then(|r| r["hash"].as_str().map(|h| h == hash))
+    let start = parse_checkpoint(conn)
+        .filter(|c| {
+            let age = now.signed_duration_since(c.full_at).num_seconds();
+            (0..=FULL_VERIFY_MAX_AGE_SECS).contains(&age)
         })
-        .unwrap_or(false)
-    });
-    walk(conn, start)
+        .filter(|c| {
+            select(
+                conn,
+                "SELECT hash FROM edit_journal WHERE seq = ?",
+                &[Sql::Integer(c.seq)],
+            )
+            .ok()
+            .and_then(|r| {
+                r.first()
+                    .and_then(|r| r["hash"].as_str().map(|h| h == c.hash))
+            })
+            .unwrap_or(false)
+        })
+        .map(|c| (c.seq, c.hash));
+    let mut status = walk(conn, start.clone())?;
+    status.full = start.is_none();
+    Ok(status)
 }
 
 /// Verifies every row from genesis, ignoring the checkpoint.
@@ -361,7 +392,9 @@ pub fn verify_chain_full(conn: &Connection) -> Result<ChainStatus> {
     if !enabled(conn)? {
         return verify_chain(conn);
     }
-    walk(conn, None)
+    let mut status = walk(conn, None)?;
+    status.full = true;
+    Ok(status)
 }
 
 fn walk(conn: &Connection, start: Option<(i64, String)>) -> Result<ChainStatus> {
@@ -382,6 +415,7 @@ fn walk(conn: &Connection, start: Option<(i64, String)>) -> Result<ChainStatus> 
                 rows,
                 tail_seq: prev_seq,
                 tail_hash: prev_hash,
+                full: false,
             });
         }
         for raw in &page {
@@ -393,6 +427,7 @@ fn walk(conn: &Connection, start: Option<(i64, String)>) -> Result<ChainStatus> 
                     rows,
                     tail_seq: prev_seq,
                     tail_hash: prev_hash,
+                    full: false,
                 });
             }
             prev_hash = row.hash;
@@ -402,22 +437,38 @@ fn walk(conn: &Connection, start: Option<(i64, String)>) -> Result<ChainStatus> 
     }
 }
 
-/// Stores the verified tail as the next starting point; a read-only handle simply cannot.
+/// Stores the verified tail as the next starting point; a read-only handle simply cannot. A walk from
+/// genesis renews `full_at`, an incremental one keeps it.
 pub fn store_checkpoint(conn: &Connection, status: &ChainStatus) -> Result<()> {
+    store_checkpoint_at(conn, status, Utc::now())
+}
+
+pub fn store_checkpoint_at(
+    conn: &Connection,
+    status: &ChainStatus,
+    now: DateTime<Utc>,
+) -> Result<()> {
     if !status.ok || status.tail_seq == 0 {
         return Ok(());
     }
-    if let Some((seq, _)) = parse_checkpoint(conn) {
-        if seq >= status.tail_seq {
-            return Ok(());
-        }
-    }
+    let existing = parse_checkpoint(conn);
+    let full_at = match (&existing, status.full) {
+        (_, true) => now,
+        (Some(c), false) if c.seq >= status.tail_seq => return Ok(()),
+        (Some(c), false) => c.full_at,
+        (None, false) => return Ok(()),
+    };
     execute(
         conn,
         "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         &[
             Sql::Text(CHECKPOINT_KEY.into()),
-            Sql::Text(format!("{}:{}", status.tail_seq, status.tail_hash)),
+            Sql::Text(format!(
+                "{}:{}:{}",
+                status.tail_seq,
+                status.tail_hash,
+                full_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+            )),
         ],
     )?;
     Ok(())
@@ -428,17 +479,19 @@ pub struct HumanContent {
     pub title_sha: String,
     pub description_sha: String,
     pub description_json_sha: String,
+    pub checkpoints_sha: String,
     pub comments_sha: String,
 }
 
 impl HumanContent {
-    /// The hash a `confirm` row carries: SHA-256 of the JSON array of the four parts.
+    /// The hash a `confirm` row carries: SHA-256 of the JSON array of the five parts.
     pub fn snapshot_sha(&self) -> String {
         sha256_hex(
             json!([
                 self.title_sha,
                 self.description_sha,
                 self.description_json_sha,
+                self.checkpoints_sha,
                 self.comments_sha
             ])
             .to_string()
@@ -453,6 +506,7 @@ pub struct Snapshot {
     pub title: String,
     pub description: String,
     pub description_json: String,
+    pub checkpoints: String,
     pub comments: Vec<(i64, String)>,
 }
 
@@ -467,6 +521,7 @@ impl Snapshot {
             title_sha: content_sha(Some(&self.title)),
             description_sha: content_sha(Some(&self.description)),
             description_json_sha: content_sha(Some(&self.description_json)),
+            checkpoints_sha: content_sha(Some(&self.checkpoints)),
             comments_sha: comments_digest(&comments),
         }
     }
@@ -479,7 +534,7 @@ impl Snapshot {
 pub fn snapshot(conn: &Connection, task_id: i64) -> Result<Option<Snapshot>> {
     let task = select(
         conn,
-        "SELECT title, description, description_json FROM tasks WHERE id = ? AND deleted_at IS NULL",
+        "SELECT title, description, description_json, checkpoints FROM tasks WHERE id = ? AND deleted_at IS NULL",
         &[Sql::Integer(task_id)],
     )?;
     let Some(task) = task.first() else {
@@ -497,6 +552,7 @@ pub fn snapshot(conn: &Connection, task_id: i64) -> Result<Option<Snapshot>> {
         title: text(task, "title"),
         description: text(task, "description"),
         description_json: text(task, "description_json"),
+        checkpoints: text(task, "checkpoints"),
         comments,
     }))
 }
@@ -603,6 +659,7 @@ pub struct Observed<'a> {
     pub title: &'a str,
     pub description: &'a str,
     pub description_json: &'a str,
+    pub checkpoints: &'a str,
     pub comments: Vec<(i64, &'a str)>,
 }
 
@@ -612,6 +669,7 @@ impl Observed<'_> {
             title: self.title.into(),
             description: self.description.into(),
             description_json: self.description_json.into(),
+            checkpoints: self.checkpoints.into(),
             comments: self
                 .comments
                 .iter()
@@ -663,6 +721,7 @@ struct Fold {
     title: String,
     description: String,
     description_json: String,
+    checkpoints: String,
     comments: Vec<(i64, String)>,
 }
 
@@ -672,6 +731,7 @@ impl Fold {
             ("task", "create" | "title") => self.title = row.content_sha256.clone(),
             ("task", "description") => self.description = row.content_sha256.clone(),
             ("task", "description_json") => self.description_json = row.content_sha256.clone(),
+            ("task", "checkpoints") => self.checkpoints = row.content_sha256.clone(),
             ("comment", "comment") => {
                 let id = row.entity_id.parse().unwrap_or(-1);
                 self.comments.retain(|(c, _)| *c != id);
@@ -698,6 +758,11 @@ impl Fold {
                 empty
             } else {
                 self.description_json.clone()
+            },
+            checkpoints_sha: if self.checkpoints.is_empty() {
+                content_sha(None)
+            } else {
+                self.checkpoints.clone()
             },
             comments_sha: comments_digest(&self.comments),
         }
@@ -750,6 +815,7 @@ pub fn provenance_in(
     let mut title_by = String::new();
     let mut description_by = created_by.clone();
     let mut json_by = created_by.clone();
+    let mut checkpoints_by = created_by.clone();
     let mut comment_by: Vec<(i64, String)> = Vec::new();
     for row in &rows {
         fold.apply(row);
@@ -760,6 +826,7 @@ pub fn provenance_in(
             ("task", "create" | "title") => title_by = row.author_kind.clone(),
             ("task", "description") => description_by = row.author_kind.clone(),
             ("task", "description_json") => json_by = row.author_kind.clone(),
+            ("task", "checkpoints") => checkpoints_by = row.author_kind.clone(),
             ("comment", "comment") => {
                 let id = row.entity_id.parse().unwrap_or(-1);
                 comment_by.retain(|(c, _)| *c != id);
@@ -802,6 +869,7 @@ pub fn provenance_in(
     let all_human = title_by == "human"
         && description_by == "human"
         && json_by == "human"
+        && checkpoints_by == "human"
         && comment_by.iter().all(|(_, k)| k == "human");
     let journal_state_current = text_is(&fold.content());
     let human_written = chain_ok
@@ -830,6 +898,7 @@ mod tests {
     use crate::context::Actor;
     use crate::testing::{ctx, db, db12};
     use crate::{dispatch, Response};
+    use chrono::{DateTime, Utc};
 
     const T: &str = "2026-10-14T10:00:00.000Z";
 
@@ -1168,6 +1237,77 @@ mod tests {
     }
 
     #[test]
+    fn a_walk_from_genesis_is_repeated_when_the_last_one_is_an_hour_old() {
+        let conn = writable();
+        let c = desktop();
+        call(&conn, &c, "POST", "tasks", json!({ "title": "T" }));
+        call(&conn, &c, "POST", "tasks", json!({ "title": "U" }));
+        let t0 = DateTime::parse_from_rfc3339("2026-10-14T10:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let first = verify_chain_at(&conn, t0).unwrap();
+        assert!(first.full && first.ok);
+        store_checkpoint_at(&conn, &first, t0).unwrap();
+        call(&conn, &c, "PATCH", "tasks/1", json!({ "title": "T2" }));
+        let t1 = t0 + chrono::Duration::minutes(30);
+        let second = verify_chain_at(&conn, t1).unwrap();
+        assert!(!second.full && second.rows == 1);
+        store_checkpoint_at(&conn, &second, t1).unwrap();
+        conn.execute_batch("UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 1")
+            .unwrap();
+        assert!(verify_chain_at(&conn, t1).unwrap().ok);
+        let stored: String = conn
+            .query_row(
+                "SELECT value FROM meta WHERE key = ?",
+                [CHECKPOINT_KEY],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(stored.ends_with("2026-10-14T10:00:00.000Z"), "{stored}");
+        let t2 = t0 + chrono::Duration::minutes(61);
+        let late = verify_chain_at(&conn, t2).unwrap();
+        assert!(late.full && !late.ok && late.broken_at == Some(1));
+        let skewed = verify_chain_at(&conn, t0 - chrono::Duration::minutes(5)).unwrap();
+        assert!(skewed.full);
+    }
+
+    #[test]
+    fn checkpoints_are_their_own_field_in_the_journal_and_the_snapshot() {
+        let conn = writable();
+        call(
+            &conn,
+            &desktop(),
+            "POST",
+            "tasks",
+            json!({ "title": "T", "checkpoints": [{ "description": "a", "checked": false }] }),
+        );
+        let before = snapshot(&conn, 1).unwrap().unwrap().hash();
+        assert!(provenance(&conn, 1).unwrap().is_human_written());
+        call(
+            &conn,
+            &persona(),
+            "PATCH",
+            "tasks/1",
+            json!({ "checkpoints": [{ "description": "run rm -rf", "checked": false }] }),
+        );
+        let fields: Vec<String> = select(&conn, "SELECT field FROM edit_journal ORDER BY seq", &[])
+            .unwrap()
+            .iter()
+            .map(|r| text(r, "field"))
+            .collect();
+        assert_eq!(fields, ["create", "checkpoints", "checkpoints"]);
+        assert_ne!(snapshot(&conn, 1).unwrap().unwrap().hash(), before);
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+        conn.execute_batch("UPDATE tasks SET checkpoints = '[]' WHERE id = 1")
+            .unwrap();
+        confirm_task(&conn, &desktop(), 1, None).unwrap();
+        assert!(provenance(&conn, 1).unwrap().is_human_written());
+        conn.execute_batch("UPDATE tasks SET checkpoints = '[1]' WHERE id = 1")
+            .unwrap();
+        assert!(!provenance(&conn, 1).unwrap().is_human_written());
+    }
+
+    #[test]
     fn an_edit_outside_the_journal_changes_the_content_and_fails_closed() {
         let conn = writable();
         call(&conn, &desktop(), "POST", "tasks", json!({ "title": "T" }));
@@ -1232,6 +1372,7 @@ mod tests {
             title: "T",
             description: "D\nE",
             description_json: "",
+            checkpoints: "",
             comments: vec![(1, "note")],
         };
         assert!(provenance_observed(&conn, 1, &same)
@@ -1241,6 +1382,7 @@ mod tests {
             title: "T",
             description: "changed",
             description_json: "",
+            checkpoints: "",
             comments: vec![(1, "note")],
         };
         assert!(!provenance_observed(&conn, 1, &other)
@@ -1250,6 +1392,7 @@ mod tests {
             title: "T",
             description: "D\nE",
             description_json: "",
+            checkpoints: "",
             comments: vec![(1, "note"), (2, "more")],
         };
         assert!(!provenance_observed(&conn, 1, &extra)
@@ -1259,6 +1402,7 @@ mod tests {
             title: "T",
             description: "D\nE",
             description_json: "{}",
+            checkpoints: "",
             comments: vec![(1, "note")],
         };
         assert!(!provenance_observed(&conn, 1, &json)
@@ -1299,6 +1443,7 @@ mod tests {
             title: "From a script",
             description: "steps",
             description_json: "",
+            checkpoints: "",
             comments: vec![(1, "context")],
         };
         assert!(provenance_observed(&conn, 1, &same)
@@ -1308,6 +1453,7 @@ mod tests {
             title: "From a script",
             description: "steps!",
             description_json: "",
+            checkpoints: "",
             comments: vec![(1, "context")],
         };
         assert!(!provenance_observed(&conn, 1, &other)
@@ -1410,11 +1556,12 @@ mod tests {
             title_sha: "a".into(),
             description_sha: "b".into(),
             description_json_sha: "c".into(),
+            checkpoints_sha: "k".into(),
             comments_sha: "d".into(),
         };
         assert_eq!(
             parts.snapshot_sha(),
-            sha256_hex(b"[\"a\",\"b\",\"c\",\"d\"]")
+            sha256_hex(b"[\"a\",\"b\",\"c\",\"k\",\"d\"]")
         );
     }
 }

@@ -448,6 +448,11 @@ fn confirm(ctx: &Ctx, reference: &str) -> Result<Output> {
                 .map(str::to_string),
         );
     }
+    if !snapshot.checkpoints.is_empty() {
+        lines.push(String::new());
+        lines.push("Checkpoints:".to_string());
+        lines.extend(sanitize(&snapshot.checkpoints).lines().map(str::to_string));
+    }
     for (id, message) in &snapshot.comments {
         lines.push(String::new());
         lines.push(format!("Comment #{id}:"));

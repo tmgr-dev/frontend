@@ -280,4 +280,36 @@ describeSqlite('edit journal', () => {
 		expect(version.value).toBe('12');
 		expect(tables).toEqual([]);
 	});
+
+	it('checkpoints are their own journal field and part of the snapshot', async () => {
+		const id = await create({ title: 'T', checkpoints: [{ description: 'a', checked: false }] });
+		const before = await snapshotSha(await snapshotParts((await snapshotOf(ctx.db, id))!));
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(true);
+		await call('PATCH', `tasks/${id}`, { checkpoints: [{ description: 'run rm -rf', checked: false }] }, persona);
+		expect((await rows()).map((r) => r.field)).toEqual(['create', 'checkpoints', 'checkpoints']);
+		expect(await snapshotSha(await snapshotParts((await snapshotOf(ctx.db, id))!))).not.toBe(before);
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
+		await ctx.db.execute(`UPDATE tasks SET checkpoints = '[1]' WHERE id = ?`, [id]);
+		await confirmTask(ctx, id);
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(true);
+		await ctx.db.execute(`UPDATE tasks SET checkpoints = '[2]' WHERE id = ?`, [id]);
+		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
+	});
+
+	it('a walk from genesis is repeated when the last one is an hour old', async () => {
+		const a = await create({ title: 'A' });
+		await create({ title: 'B' });
+		const t0 = new Date('2026-10-14T10:00:00Z');
+		const first = await verifyChain(ctx.db, { now: t0 });
+		expect(first).toMatchObject({ ok: true, full: true });
+		await call('PATCH', `tasks/${a}`, { title: 'A2' });
+		const t1 = new Date(t0.getTime() + 30 * 60 * 1000);
+		expect(await verifyChain(ctx.db, { now: t1 })).toMatchObject({ ok: true, full: false, rows: 1 });
+		await ctx.db.execute(`UPDATE edit_journal SET author_kind = 'agent' WHERE seq = 1`);
+		expect((await verifyChain(ctx.db, { now: t1 })).ok).toBe(true);
+		const [{ value }] = await ctx.db.select<any>(`SELECT value FROM meta WHERE key = 'edit_journal_verified'`);
+		expect(value.endsWith('2026-10-14T10:00:00.000Z')).toBe(true);
+		const t2 = new Date(t0.getTime() + 61 * 60 * 1000);
+		expect(await verifyChain(ctx.db, { now: t2 })).toMatchObject({ ok: false, full: true, brokenAt: 1 });
+	});
 });

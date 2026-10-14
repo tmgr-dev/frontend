@@ -141,9 +141,9 @@
 					"author_kind": "human",
 					"source": "cli_confirm",
 					"actor_id": "7",
-					"content_sha256": "cd07e4c8c2d028357fa9a20ff285f3c238b5ca7153e463ab0e7b1b8a48015b27",
+					"content_sha256": "0aee5fe4188d83c69f5005629322ed7e5c7ecce7872501f4d9eb07fa180d6b21",
 					"prev_hash": "01e3782036c1df64f256dc769acbbbae8ed8b7588aab516c1d37fc3acb1798d9",
-					"hash": "96b318cd84d71e3675d5d8c0d5220969f39644a24f5bccfc43e68f3516328165"
+					"hash": "af9ffc1d9993bf5577f6e10edf41ed06cc76d00084f155ca05b8a0d1787652a6"
 				}
 			]
 		},
@@ -284,9 +284,9 @@
 				"author_kind": "human",
 				"source": "cli_confirm",
 				"actor_id": "7",
-				"content_sha256": "cd07e4c8c2d028357fa9a20ff285f3c238b5ca7153e463ab0e7b1b8a48015b27",
+				"content_sha256": "0aee5fe4188d83c69f5005629322ed7e5c7ecce7872501f4d9eb07fa180d6b21",
 				"prev_hash": "01e3782036c1df64f256dc769acbbbae8ed8b7588aab516c1d37fc3acb1798d9",
-				"hash": "96b318cd84d71e3675d5d8c0d5220969f39644a24f5bccfc43e68f3516328165"
+				"hash": "af9ffc1d9993bf5577f6e10edf41ed06cc76d00084f155ca05b8a0d1787652a6"
 			},
 			{
 				"seq": 10,
@@ -299,8 +299,8 @@
 				"source": "desktop_ui",
 				"actor_id": "7",
 				"content_sha256": "a887ce085b08f0ae73a72fbd63ed386d278d6013cfaf8b8b3f4f6685dfb25b76",
-				"prev_hash": "96b318cd84d71e3675d5d8c0d5220969f39644a24f5bccfc43e68f3516328165",
-				"hash": "7a48a3a325cf179b6cd76a1100580f6957400958811bd908bb8cf065f2eebd47"
+				"prev_hash": "af9ffc1d9993bf5577f6e10edf41ed06cc76d00084f155ca05b8a0d1787652a6",
+				"hash": "9baa769e375812e6facc5ac38faa58619ed52ca151da9659b66c85f6668081d6"
 			}
 		],
 		"chain": {
@@ -316,6 +316,7 @@
 					"title_sha": "1329d985705ecce16f25a96ed4aef3fce74801afd0a67596836cace14e805a62",
 					"description_sha": "80dd1e7704548391162dd0c0f64d5e03e2f9c390a1f6bc389a4e36a820258ad8",
 					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "99dc18ad8a59d3e9c5a0384cf2bb34aa6bf0decfdbcf7ffc7fc30eb007e48e48"
 				},
 				"modified_by_non_human_since": false,
@@ -332,6 +333,7 @@
 					"title_sha": "a887ce085b08f0ae73a72fbd63ed386d278d6013cfaf8b8b3f4f6685dfb25b76",
 					"description_sha": "900e95352571f2167558501fada21195f0d2fb6c694a4555ded97d8ca9c51416",
 					"description_json_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+					"checkpoints_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": false,
