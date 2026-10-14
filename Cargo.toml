@@ -40,6 +40,7 @@ tmgr-core = { path = "crates/tmgr-core" }
 tmgr-link = { path = "crates/tmgr-link" }
 tmgr-ipc = { path = "crates/tmgr-ipc" }
 tmgr-runner = { path = "crates/tmgr-runner" }
+tmgr-usage = { path = "crates/tmgr-usage" }
 portable-pty = "0.9"
 vt100 = "0.16"
 vte = "0.15"

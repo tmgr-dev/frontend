@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/usage_statusline.json",
+  "title": "tmgr.v1 usage statusline install and uninstall result",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "account",
+        "settings_path",
+        "installed_command",
+        "previous_command",
+        "changed",
+        "installed",
+        "backup",
+        "diff"
+      ],
+      "properties": {
+        "account": {
+          "type": "string"
+        },
+        "settings_path": {
+          "type": "string"
+        },
+        "installed_command": {
+          "type": "string"
+        },
+        "previous_command": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "changed": {
+          "type": "boolean"
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "backup": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "diff": {
+          "type": "string"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -3992,6 +3992,7 @@ dependencies = [
  "tmgr-link",
  "tmgr-local",
  "tmgr-runner",
+ "tmgr-usage",
  "tokio",
  "toml_edit 0.22.27",
  "unicode-width",

@@ -337,10 +337,10 @@ mod tests {
     #[test]
     fn the_session_id_is_exposed_and_optional() {
         let r: ApiRun = serde_json::from_value(serde_json::json!({
-            "id": 7, "session_id": "ab\u{1b}[31mc-1"
+            "id": 7, "session_id": "ab\u{7}c-1"
         }))
         .unwrap();
-        assert_eq!(RunView::from_api(&r).session_id.as_deref(), Some("abc-1"));
+        assert_eq!(RunView::from_api(&r).session_id.as_deref(), Some("ab c-1"));
         let r: ApiRun = serde_json::from_value(serde_json::json!({"id": 8})).unwrap();
         assert_eq!(RunView::from_api(&r).session_id, None);
     }

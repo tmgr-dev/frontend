@@ -1,5 +1,6 @@
 use crate::cli_agent::{AgentCommand, AlarmArgs, HookCmd, NotifyArgs};
 use crate::cli_link::{LinkCommand, WorkerArgs};
+use crate::cli_usage::UsageArgs;
 use clap::{Args, Parser, Subcommand};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -150,6 +151,8 @@ pub enum Command {
     Refs,
     /// Full-screen kanban board of the workspace
     Board(BoardArgs),
+    /// Local AI tool usage: cost, tokens, tasks and rate limits
+    Usage(UsageArgs),
     /// Update tmgr to the newest signed release
     #[command(name = "self-update")]
     SelfUpdate(SelfUpdateArgs),

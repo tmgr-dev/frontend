@@ -495,6 +495,12 @@ fn fetch(client: &reqwest::blocking::Client, url: &str, cap: u64) -> Result<Vec<
     Ok(out)
 }
 
+/// An unauthenticated GET of a public file over https (http only for localhost), at most `cap` bytes.
+pub fn download_public(url: &str, cap: u64, user_agent: &str) -> Result<Vec<u8>> {
+    let client = http_client(user_agent)?;
+    fetch(&client, url, cap)
+}
+
 fn list_releases(client: &reqwest::blocking::Client, api_base: &str) -> Result<Vec<Release>> {
     let mut all = Vec::new();
     for page in 1..=MAX_PAGES {

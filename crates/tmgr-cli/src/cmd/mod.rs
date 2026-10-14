@@ -26,5 +26,6 @@ pub mod status;
 pub mod task;
 pub mod timer;
 pub mod today;
+pub mod usage;
 pub mod worker;
 pub mod ws;

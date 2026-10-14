@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/usage_accounts.json",
+  "title": "tmgr.v1 usage accounts",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "properties": {
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/account"
+          }
+        },
+        "added": {
+          "$ref": "#/$defs/account"
+        },
+        "removed": {
+          "type": "string"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "account": {
+      "type": "object",
+      "required": [
+        "label",
+        "tool",
+        "root",
+        "source",
+        "exists"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "tool": {
+          "enum": [
+            "claude",
+            "codex"
+          ]
+        },
+        "root": {
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "default",
+            "user"
+          ]
+        },
+        "exists": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

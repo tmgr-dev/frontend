@@ -1,6 +1,7 @@
 mod cli;
 mod cli_agent;
 mod cli_link;
+mod cli_usage;
 mod cmd;
 mod ctx;
 mod gitx;
@@ -12,6 +13,7 @@ use clap::error::ErrorKind;
 use clap::Parser;
 use cli::{AuthCommand, Cli, Command, GitCommand, HookCommand, VERSION};
 use cli_agent::HookCmd;
+use cli_usage::{UsageArgs, UsageCommand};
 use ctx::Ctx;
 use out::Output;
 use serde_json::json;
@@ -67,6 +69,10 @@ fn standalone(cli: &Cli) -> Option<i32> {
         Some(Command::Hook {
             command: HookCmd::Codex { args },
         }) => Some(cmd::hook::codex(args, cli.server.clone())),
+        Some(Command::Usage(UsageArgs {
+            command: Some(UsageCommand::StatuslineHook(args)),
+            ..
+        })) => Some(cmd::usage::statusline_hook(args)),
         Some(Command::Mcp) => Some(cmd::mcp::run(cli.server.clone(), cli.verbose)),
         Some(Command::Worker(_)) => Some(cmd::worker::run()),
         _ => None,
@@ -75,8 +81,11 @@ fn standalone(cli: &Cli) -> Option<i32> {
 
 fn is_agent_hook_invocation() -> bool {
     let mut args = std::env::args().skip(1).filter(|a| !a.starts_with('-'));
-    args.next().as_deref() == Some("hook")
-        && matches!(args.next().as_deref(), Some("claude" | "codex"))
+    match args.next().as_deref() {
+        Some("hook") => matches!(args.next().as_deref(), Some("claude" | "codex")),
+        Some("usage") => args.next().as_deref() == Some("statusline-hook"),
+        _ => false,
+    }
 }
 
 fn usage_exit(e: clap::Error) -> i32 {
@@ -156,6 +165,7 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Note(args)) => cmd::note::run(ctx, args),
         Some(Command::Page { command }) => cmd::page::run(ctx, command),
         Some(Command::Board(args)) => cmd::board::run(ctx, args),
+        Some(Command::Usage(args)) => cmd::usage::run(ctx, args),
         Some(Command::SelfUpdate(args)) => cmd::self_update::run(ctx, args),
         Some(Command::Refs) => Ok(Output::new(
             json!({"help": "refs"}),
