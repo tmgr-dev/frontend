@@ -149,9 +149,13 @@ pub fn landlock_abi() -> i32 {
     i32::MAX
 }
 
-#[cfg(debug_assertions)]
 fn hold_before_spawn() {
-    let Some(go) = std::env::var_os("TMGR_TEST_HOLD_BEFORE_SPAWN").map(PathBuf::from) else {
+    hold_at("TMGR_TEST_HOLD_BEFORE_SPAWN")
+}
+
+#[cfg(debug_assertions)]
+fn hold_at(var: &str) {
+    let Some(go) = std::env::var_os(var).map(PathBuf::from) else {
         return;
     };
     let _ = fs::write(go.with_extension("reached"), "");
@@ -162,7 +166,7 @@ fn hold_before_spawn() {
 }
 
 #[cfg(not(debug_assertions))]
-fn hold_before_spawn() {}
+fn hold_at(_var: &str) {}
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
@@ -1518,6 +1522,7 @@ impl Runner {
                 ),
             )
         })?;
+        hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         let (mode, perm_args) = resolve_mode(prof, req.permission_mode.as_deref())?;
         if let Some(b) = &req.bundle {
             match (b.launch.permission_mode.as_deref(), mode.as_deref()) {

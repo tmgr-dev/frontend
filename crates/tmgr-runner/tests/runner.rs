@@ -3320,3 +3320,39 @@ fn clone_of_refuses_anything_but_a_hardened_queue_clone() {
 
     assert!(c.list().unwrap().is_empty());
 }
+
+#[test]
+fn a_profile_replaced_during_create_has_no_effect_on_that_run() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let hold = h.tmp.path().join("hold");
+    h.env.push((
+        "TMGR_TEST_HOLD_AFTER_PROFILE".into(),
+        hold.display().to_string(),
+    ));
+    let script = h.script(
+        "stamp-agent.sh",
+        "printf '%s\\n' \"$STAMP\" \"$@\" > stamp.txt\nwhile true; do sleep 0.2; done\n",
+    );
+    let swap = h.agents.join("swap.toml");
+    let write = move |v: &str| {
+        fs::write(
+            &swap,
+            format!(
+                "id = \"swap\"\nname = \"swap\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+                 [env]\nSTAMP = {v:?}\n[permission_modes]\nask = [\"--{v}\"]\n"
+            ),
+        )
+        .unwrap();
+    };
+    write("v1");
+    h.start(5000);
+    let req = h.run_req("swap");
+    let info = create_held(&h, &hold, move |mut c| c.create_run(req), || write("v2")).unwrap();
+    let path = h.work.join("stamp.txt");
+    wait_for("agent output", || path.exists());
+    assert_eq!(fs::read_to_string(path).unwrap(), "v1\n--v1\n");
+    assert_eq!(info.argv.last().map(String::as_str), Some("--v1"));
+}
