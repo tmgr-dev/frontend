@@ -98,6 +98,13 @@ impl<'a> Audit<'a> {
         })
     }
 
+    fn anchor_ok(&self, tip: &Tip) -> bool {
+        match self.anchor() {
+            None => tip.seq == 0,
+            Some((seq, hash)) => seq == tip.seq && (seq == 0 || hash == tip.hash),
+        }
+    }
+
     fn write(&self, tip: &Tip, event: &str, fields: Value) -> Result<Tip> {
         let mut entry = Map::new();
         entry.insert("v".into(), json!(1));
@@ -145,11 +152,7 @@ impl<'a> Audit<'a> {
         ensure_private_dir(&self.0.dir)?;
         let _lock = lock_file(&self.0.dir, "queue-audit.lock")?;
         let mut tip = self.tip()?;
-        let broken = match self.anchor() {
-            None => tip.seq > 0,
-            Some((seq, hash)) => seq > tip.seq || (seq == tip.seq && hash != tip.hash),
-        };
-        if broken {
+        if !self.anchor_ok(&tip) {
             tip = self.write(
                 &tip,
                 "chain_broken",
@@ -187,6 +190,10 @@ impl<'a> Audit<'a> {
     pub fn verify(&self) -> Result<std::result::Result<u64, Tampered>> {
         ensure_private_dir(&self.0.dir)?;
         let _lock = lock_file(&self.0.dir, "queue-audit.lock")?;
+        self.verify_locked()
+    }
+
+    fn verify_locked(&self) -> Result<std::result::Result<u64, Tampered>> {
         let lines = self.lines()?;
         let mut prev = GENESIS.to_string();
         let mut seq = 0u64;
@@ -211,12 +218,40 @@ impl<'a> Audit<'a> {
         }
         match self.anchor() {
             None if seq > 0 => fail(lines.len(), "the anchor file is missing"),
+            None => Ok(Ok(seq)),
             Some((a, _)) if a > seq => fail(lines.len(), "the log was truncated"),
-            Some((a, h)) if a == seq && h != prev => {
+            Some((a, _)) if a < seq => fail(lines.len(), "entries are not covered by the anchor"),
+            Some((_, h)) if seq > 0 && h != prev => {
                 fail(lines.len(), "the last entry does not match the anchor")
             }
-            _ => Ok(Ok(seq)),
+            Some((_, _)) if seq == 0 => fail(0, "the anchor expects entries"),
+            Some(_) => Ok(Ok(seq)),
         }
+    }
+
+    pub fn rebaseline(&self) -> Result<bool> {
+        ensure_private_dir(&self.0.dir)?;
+        let _lock = lock_file(&self.0.dir, "queue-audit.lock")?;
+        let Err(t) = self.verify_locked()? else {
+            return Ok(false);
+        };
+        let stamp = Utc::now().timestamp();
+        let moved = self.0.dir.join(format!("queue-audit.jsonl.broken-{stamp}"));
+        match std::fs::rename(self.0.audit(), &moved) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+        let _ = std::fs::remove_file(self.0.audit_anchor());
+        self.write(
+            &Tip {
+                seq: 0,
+                hash: GENESIS.into(),
+            },
+            "chain_rebaselined",
+            json!({"reason": t.reason, "line": t.line, "kept_as": moved.file_name().and_then(|n| n.to_str()).unwrap_or("")}),
+        )?;
+        Ok(true)
     }
 }
 
@@ -283,6 +318,24 @@ mod tests {
         a.append("d", json!({})).unwrap();
         let ev = a.events(10).unwrap();
         assert_eq!(ev[2]["event"], "chain_broken");
+    }
+
+    #[test]
+    fn an_unanchored_extra_entry_is_a_discrepancy_and_rebaseline_starts_a_new_chain() {
+        let (_d, p) = paths();
+        let a = Audit::new(&p);
+        a.append("a", json!({})).unwrap();
+        let anchor = std::fs::read_to_string(p.audit_anchor()).unwrap();
+        a.append("b", json!({})).unwrap();
+        std::fs::write(p.audit_anchor(), anchor).unwrap();
+        assert_eq!(
+            a.verify().unwrap().unwrap_err().reason,
+            "entries are not covered by the anchor"
+        );
+        assert!(a.rebaseline().unwrap());
+        assert_eq!(a.verify().unwrap(), Ok(1));
+        assert_eq!(a.events(5).unwrap()[0]["event"], "chain_rebaselined");
+        assert!(!a.rebaseline().unwrap());
     }
 
     #[test]

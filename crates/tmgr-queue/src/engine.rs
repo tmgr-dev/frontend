@@ -1,9 +1,10 @@
 use crate::audit::{sha256_hex, Audit};
 use crate::paths::Paths;
-use crate::rules::{self, hours_contains, ProfileResolver, Rule, GLOBAL_MAX};
-use crate::runs::{RunsClient, StartRequest};
+use crate::rules::{self, hours_contains, ProfilePin, ProfileResolver, Rule, GLOBAL_MAX};
+use crate::runs::{RunState, RunsClient, StartRequest, PERMISSION_MODE};
 use crate::source::{Candidate, TaskSource};
 use crate::state::{self, Pickup, State, Status};
+use crate::workdir::{clone_dir, WorkDirs};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -12,12 +13,13 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{BundleLaunch, BundlePersona, RunBundle};
 
 const APPROVAL_TTL_HOURS: i64 = 24;
-const MAX_BUNDLE: usize = 1 << 20;
+pub const MAX_BUNDLE: usize = 64 * 1024;
 
 pub struct Deps<'a> {
     pub source: &'a dyn TaskSource,
     pub runs: &'a dyn RunsClient,
     pub profiles: &'a dyn ProfileResolver,
+    pub workdirs: &'a dyn WorkDirs,
     pub now: DateTime<Utc>,
     pub local_minutes: u32,
 }
@@ -34,7 +36,7 @@ fn ts(now: DateTime<Utc>) -> String {
     now.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-pub fn bundle_of(rule: &Rule, c: &Candidate) -> RunBundle {
+pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
     RunBundle {
         v: 1,
         task: c.task,
@@ -48,12 +50,12 @@ pub fn bundle_of(rule: &Rule, c: &Candidate) -> RunBundle {
         pages: c.pages.clone(),
         persona: Some(BundlePersona {
             name: rule.persona.clone(),
-            instructions_sha256: c.persona_instructions_sha256.clone(),
+            instructions_sha256: sha256_hex(c.persona_text.as_bytes()),
         }),
         launch: BundleLaunch {
             profile: rule.profile.clone(),
             model: rule.model.clone(),
-            cwd: rule.repo.clone(),
+            cwd: cwd.to_string(),
         },
     }
 }
@@ -117,11 +119,11 @@ impl Pass<'_> {
     }
 }
 
-fn new_id(state: &State, rule: &str, task_id: i64, sha: &str, now: DateTime<Utc>) -> String {
+fn new_id(state: &State, rule: &str, task_id: i64, now: DateTime<Utc>) -> String {
     let mut n = 0u32;
     loop {
         let seed = format!(
-            "{rule}/{task_id}/{sha}/{}/{n}",
+            "{rule}/{task_id}/{}/{n}",
             now.timestamp_nanos_opt().unwrap_or(0)
         );
         let id = format!("q_{}", &sha256_hex(seed.as_bytes())[..10]);
@@ -137,7 +139,11 @@ fn recover(pass: &mut Pass) -> Result<()> {
         let p = &pass.state.pickups[i];
         if p.status == Status::Starting && p.run_id.is_none() {
             let (id, rule, task) = (p.id.clone(), p.rule.clone(), p.key.clone());
-            pass.set(i, Status::Failed, Some("start was interrupted before a run id was recorded; check the agents list before retrying".into()));
+            pass.set(
+                i,
+                Status::Failed,
+                Some("start was interrupted before a run id was recorded; check the agents list before retrying".into()),
+            );
             pass.audit.append(
                 "start_interrupted",
                 json!({"pickup": id, "rule": rule, "task": task}),
@@ -147,8 +153,27 @@ fn recover(pass: &mut Pass) -> Result<()> {
     Ok(())
 }
 
+fn refresh_runs(pass: &mut Pass, deps: &Deps) -> Result<()> {
+    for i in 0..pass.state.pickups.len() {
+        let p = &pass.state.pickups[i];
+        if p.status != Status::Started || p.run_exited {
+            continue;
+        }
+        let Some(run) = p.run_id.clone() else {
+            continue;
+        };
+        if deps.runs.status(&run) == RunState::Exited {
+            let id = p.id.clone();
+            pass.state.pickups[i].run_exited = true;
+            pass.audit
+                .append("run_exited", json!({"pickup": id, "run": run}))?;
+        }
+    }
+    Ok(())
+}
+
 fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>> {
-    let candidates = match deps.source.candidates(rule) {
+    let scan = match deps.source.candidates(rule) {
         Ok(c) => c,
         Err(e) => {
             pass.audit.append(
@@ -161,28 +186,40 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
             return Ok(Vec::new());
         }
     };
-    let present: BTreeSet<i64> = candidates.iter().map(|c| c.task.task_id).collect();
-    for i in 0..pass.state.pickups.len() {
-        let p = &pass.state.pickups[i];
-        if p.rule == rule.name
-            && !p.released
-            && !present.contains(&p.task.task_id)
-            && p.status != Status::Starting
-        {
-            let (id, status) = (p.id.clone(), p.status);
-            if matches!(status, Status::PendingApproval | Status::Approved) {
-                pass.set(
-                    i,
-                    Status::Expired,
-                    Some("the task no longer matches the rule".into()),
-                );
+    let candidates = scan.candidates;
+    if scan.complete {
+        let present: BTreeSet<i64> = candidates.iter().map(|c| c.task.task_id).collect();
+        for i in 0..pass.state.pickups.len() {
+            let p = &pass.state.pickups[i];
+            if p.rule == rule.name
+                && !p.released
+                && !present.contains(&p.task.task_id)
+                && p.status != Status::Starting
+            {
+                let (id, status) = (p.id.clone(), p.status);
+                if matches!(status, Status::PendingApproval | Status::Approved) {
+                    pass.set(
+                        i,
+                        Status::Expired,
+                        Some("the task no longer matches the rule".into()),
+                    );
+                }
+                pass.state.pickups[i].released = true;
+                pass.audit.append(
+                    "released",
+                    json!({"pickup": id, "rule": rule.name, "was": status.name()}),
+                )?;
             }
-            pass.state.pickups[i].released = true;
-            pass.audit.append(
-                "released",
-                json!({"pickup": id, "rule": rule.name, "was": status.name()}),
-            )?;
         }
+    } else {
+        pass.skip_once(
+            format!("{}/scan", rule.name),
+            "incomplete".into(),
+            &rule.name,
+            "",
+            "scan_incomplete",
+            json!({}),
+        )?;
     }
     for c in &candidates {
         let skey = format!("{}/{}", rule.name, c.task.task_id);
@@ -198,7 +235,23 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
             )?;
             continue;
         }
-        let bundle = bundle_of(rule, c);
+        let existing = pass.state.pickups.iter().position(|p| {
+            p.rule == rule.name && p.task.task_id == c.task.task_id && (!p.released || p.occupies())
+        });
+        let (id, cwd) = match existing {
+            Some(i) => (
+                pass.state.pickups[i].id.clone(),
+                pass.state.pickups[i].bundle.launch.cwd.clone(),
+            ),
+            None => {
+                let id = new_id(&pass.state, &rule.name, c.task.task_id, pass.now);
+                let Some(dir) = clone_dir(&rule.repo, &id) else {
+                    continue;
+                };
+                (id, dir.to_string_lossy().into_owned())
+            }
+        };
+        let bundle = bundle_of(rule, c, &cwd);
         if let Err(m) = bundle.validate() {
             pass.skip_once(
                 skey,
@@ -210,22 +263,18 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
             )?;
             continue;
         }
-        if bundle.canonical().len() > MAX_BUNDLE {
+        if bundle.canonical().len() > MAX_BUNDLE || c.persona_text.len() > MAX_BUNDLE {
             pass.skip_once(
                 skey,
                 "too_large".into(),
                 &rule.name,
                 &c.key,
                 "bundle_too_large",
-                json!({}),
+                json!({"limit": MAX_BUNDLE}),
             )?;
             continue;
         }
         let sha = bundle.sha256();
-        let existing =
-            pass.state.pickups.iter().position(|p| {
-                p.rule == rule.name && p.task.task_id == c.task.task_id && !p.released
-            });
         match existing {
             Some(i) => {
                 let p = &pass.state.pickups[i];
@@ -233,29 +282,37 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     && matches!(p.status, Status::PendingApproval | Status::Approved)
                 {
                     let voided = p.status == Status::Approved;
-                    let (id, old) = (p.id.clone(), p.bundle_sha256.clone());
+                    let old = p.bundle_sha256.clone();
                     let p = &mut pass.state.pickups[i];
                     p.bundle = bundle;
                     p.bundle_sha256 = sha.clone();
                     p.context_tainted = c.context_tainted;
+                    p.persona_text = c.persona_text.clone();
                     p.approved_by = None;
+                    p.profile_pin = None;
                     pass.set(i, Status::PendingApproval, None);
                     pass.audit.append(
                         if voided { "approval_voided" } else { "bundle_changed" },
                         json!({"pickup": id, "rule": rule.name, "task": c.key, "old_sha256": old, "new_sha256": sha}),
                     )?;
-                    let outcome = if voided {
-                        "approval_voided"
-                    } else {
-                        "bundle_changed"
-                    };
                     let p = pass.state.pickups[i].clone();
-                    pass.event(&p, outcome);
+                    pass.event(
+                        &p,
+                        if voided {
+                            "approval_voided"
+                        } else {
+                            "bundle_changed"
+                        },
+                    );
                 }
             }
             None => {
-                let id = new_id(&pass.state, &rule.name, c.task.task_id, &sha, pass.now);
-                let auto = rule.auto && !c.context_tainted;
+                let pin = if rule.auto && !c.context_tainted {
+                    deps.profiles.pin(&rule.profile, rule.model.as_deref()).ok()
+                } else {
+                    None
+                };
+                let auto = pin.is_some();
                 let now = ts(pass.now);
                 pass.state.pickups.push(Pickup {
                     id: id.clone(),
@@ -276,6 +333,9 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     run_id: None,
                     reason: None,
                     released: false,
+                    persona_text: c.persona_text.clone(),
+                    profile_pin: pin,
+                    run_exited: false,
                 });
                 pass.audit.append(
                     "candidate",
@@ -314,6 +374,14 @@ fn expire_stale(pass: &mut Pass) -> Result<()> {
             }
         }
     }
+    Ok(())
+}
+
+fn back_to_pending(pass: &mut Pass, i: usize, event: &str, fields: Value) -> Result<()> {
+    pass.audit.append(event, fields)?;
+    pass.state.pickups[i].approved_by = None;
+    pass.state.pickups[i].profile_pin = None;
+    pass.set(i, Status::PendingApproval, None);
     Ok(())
 }
 
@@ -365,6 +433,19 @@ fn start_phase(
         {
             continue;
         }
+        let cwd = pass.state.pickups[i].bundle.launch.cwd.clone();
+        if clone_dir(&rule.repo, &id).is_none_or(|d| d.to_string_lossy() != cwd) {
+            pass.set(
+                i,
+                Status::Failed,
+                Some("run directory does not match the pickup".into()),
+            );
+            pass.audit.append(
+                "start_refused",
+                json!({"pickup": id, "reason": "cwd_mismatch"}),
+            )?;
+            continue;
+        }
         let current = fresh
             .iter()
             .find(|(n, _)| *n == rule_name)
@@ -372,26 +453,51 @@ fn start_phase(
                 cs.iter()
                     .find(|c| c.task.task_id == pass.state.pickups[i].task.task_id)
             })
-            .map(|c| bundle_of(rule, c).sha256());
+            .map(|c| bundle_of(rule, c, &cwd).sha256());
         if current.as_deref() != Some(pass.state.pickups[i].bundle_sha256.as_str()) {
-            pass.audit.append(
+            back_to_pending(
+                pass,
+                i,
                 "start_refused",
                 json!({"pickup": id, "rule": rule_name, "reason": "content_changed_before_start"}),
             )?;
-            pass.state.pickups[i].approved_by = None;
-            pass.set(i, Status::PendingApproval, None);
+            continue;
+        }
+        let pin_now = deps.profiles.pin(&rule.profile, rule.model.as_deref());
+        if pin_now.as_ref().ok() != pass.state.pickups[i].profile_pin.as_ref() {
+            back_to_pending(
+                pass,
+                i,
+                "start_refused",
+                json!({"pickup": id, "rule": rule_name, "reason": "profile_changed_since_approval"}),
+            )?;
             continue;
         }
         let p = pass.state.pickups[i].clone();
         pass.set(i, Status::Starting, None);
         state::save(pass.paths, &mut pass.state)?;
-        pass.audit.append("starting", json!({"pickup": id, "rule": rule_name, "task": key, "bundle_sha256": p.bundle_sha256, "approved_by": p.approved_by}))?;
+        pass.audit.append(
+            "starting",
+            json!({"pickup": id, "rule": rule_name, "task": key, "bundle_sha256": p.bundle_sha256, "approved_by": p.approved_by, "cwd": cwd}),
+        )?;
+        if let Err(e) = deps.workdirs.prepare(&rule.repo, &id, &cwd) {
+            pass.set(i, Status::Failed, Some(e.message.clone()));
+            state::save(pass.paths, &mut pass.state)?;
+            pass.audit.append(
+                "start_failed",
+                json!({"pickup": id, "rule": rule_name, "error": e.message, "stage": "clone"}),
+            )?;
+            let p = pass.state.pickups[i].clone();
+            pass.event(&p, "failed");
+            continue;
+        }
         let req = StartRequest {
+            permission_mode: PERMISSION_MODE,
             rule: rule_name.clone(),
             trigger: format!("rule:{rule_name}"),
             profile: rule.profile.clone(),
             model: rule.model.clone(),
-            cwd: rule.repo.clone(),
+            cwd,
             task: p.task,
             bundle: p.bundle.clone(),
             bundle_sha256: p.bundle_sha256.clone(),
@@ -401,7 +507,10 @@ fn start_phase(
                 pass.state.pickups[i].run_id = Some(run_id.clone());
                 pass.set(i, Status::Started, None);
                 state::save(pass.paths, &mut pass.state)?;
-                pass.audit.append("started", json!({"pickup": id, "rule": rule_name, "task": key, "run": run_id, "mock": deps.runs.is_mock()}))?;
+                pass.audit.append(
+                    "started",
+                    json!({"pickup": id, "rule": rule_name, "task": key, "run": run_id, "mock": deps.runs.is_mock()}),
+                )?;
                 let p = pass.state.pickups[i].clone();
                 pass.event(&p, "started");
             }
@@ -433,12 +542,12 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         return Ok(report);
     }
     if rules::is_tampered(paths, &loaded)? {
-        audit.append("config_tampered", json!({"config_sha256": loaded.sha256}))?;
+        let _ = audit.append("config_tampered", json!({"config_sha256": loaded.sha256}));
         return Err(Error::new(
             Kind::Forbidden,
-            "queue.toml was changed outside `tmgr queue`",
+            "queue.toml or the audit log changed outside `tmgr queue`",
         )
-        .hint("review the file, then confirm it with `tmgr queue enable`"));
+        .hint("review the files, then confirm with `tmgr queue enable`"));
     }
     if loaded.file.version != rules::VERSION {
         return Err(Error::usage("queue.toml version is not supported"));
@@ -452,6 +561,7 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         now: deps.now,
     };
     recover(&mut pass)?;
+    refresh_runs(&mut pass, deps)?;
     if pass.state.paused {
         pass.report.paused = true;
         state::save(paths, &mut pass.state)?;
@@ -485,7 +595,13 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
     Ok(pass.report)
 }
 
-pub fn approve(paths: &Paths, id: &str, shown_sha256: &str, now: DateTime<Utc>) -> Result<Pickup> {
+pub fn approve(
+    paths: &Paths,
+    id: &str,
+    shown_sha256: &str,
+    pin: ProfilePin,
+    now: DateTime<Utc>,
+) -> Result<Pickup> {
     let _lock = paths.lock()?;
     let mut st = state::load(paths)?;
     let p = st
@@ -509,11 +625,14 @@ pub fn approve(paths: &Paths, id: &str, shown_sha256: &str, now: DateTime<Utc>) 
     }
     p.status = Status::Approved;
     p.approved_by = Some("local".into());
+    p.profile_pin = Some(pin);
     p.updated_at = ts(now);
     let done = p.clone();
     Audit::new(paths).append(
         "approved",
-        json!({"pickup": done.id, "rule": done.rule, "task": done.key, "bundle_sha256": done.bundle_sha256}),
+        json!({"pickup": done.id, "rule": done.rule, "task": done.key, "bundle_sha256": done.bundle_sha256,
+               "profile_sha256": done.profile_pin.as_ref().map(|p| p.profile_sha256.clone()),
+               "exe_sha256": done.profile_pin.as_ref().map(|p| p.exe_sha256.clone())}),
     )?;
     state::save(paths, &mut st)?;
     Ok(done)
@@ -523,15 +642,19 @@ pub fn approve(paths: &Paths, id: &str, shown_sha256: &str, now: DateTime<Utc>) 
 mod tests {
     use super::*;
     use crate::rules::{QueueFile, VERSION};
-    use crate::source::Author;
+    use crate::source::{Author, Scan};
+    use crate::workdir::{init_repo, GitClone};
     use std::cell::{Cell, RefCell};
     use tmgr_ipc::api::TaskRef;
 
-    struct Source(RefCell<Vec<Candidate>>);
+    struct Source(RefCell<Vec<Candidate>>, Cell<bool>);
 
     impl TaskSource for Source {
-        fn candidates(&self, _rule: &Rule) -> Result<Vec<Candidate>> {
-            Ok(self.0.borrow().clone())
+        fn candidates(&self, _rule: &Rule) -> Result<Scan> {
+            Ok(Scan {
+                candidates: self.0.borrow().clone(),
+                complete: self.1.get(),
+            })
         }
     }
 
@@ -539,6 +662,8 @@ mod tests {
     struct Runs {
         created: RefCell<Vec<String>>,
         fail: Cell<bool>,
+        exited: RefCell<Vec<String>>,
+        cwds: RefCell<Vec<String>>,
     }
 
     impl RunsClient for Runs {
@@ -546,6 +671,8 @@ mod tests {
             if self.fail.get() {
                 return Err(Error::internal("runner said no"));
             }
+            self.cwds.borrow_mut().push(req.cwd.clone());
+            assert_eq!(req.permission_mode, "ask");
             let id = format!("mock-{}", self.created.borrow().len() + 1);
             self.created
                 .borrow_mut()
@@ -553,12 +680,20 @@ mod tests {
             Ok(id)
         }
 
+        fn status(&self, run_id: &str) -> RunState {
+            if self.exited.borrow().iter().any(|r| r == run_id) {
+                RunState::Exited
+            } else {
+                RunState::Running
+            }
+        }
+
         fn is_mock(&self) -> bool {
             true
         }
     }
 
-    struct Profiles(Cell<bool>);
+    struct Profiles(Cell<bool>, Cell<u8>);
 
     impl ProfileResolver for Profiles {
         fn argv(&self, _p: &str, _m: Option<&str>) -> std::result::Result<Vec<String>, String> {
@@ -566,6 +701,15 @@ mod tests {
                 vec!["claude".into(), "--dangerously-skip-permissions".into()]
             } else {
                 vec!["claude".into()]
+            })
+        }
+
+        fn pin(&self, p: &str, m: Option<&str>) -> std::result::Result<ProfilePin, String> {
+            Ok(ProfilePin {
+                argv: self.argv(p, m)?,
+                profile_sha256: "p".repeat(64),
+                exe_path: "/bin/claude".into(),
+                exe_sha256: format!("{:064}", self.1.get()),
             })
         }
     }
@@ -583,7 +727,7 @@ mod tests {
             comments: vec![],
             pages: vec![],
             context_tainted: false,
-            persona_instructions_sha256: "0".repeat(64),
+            persona_text: "persona rules".into(),
         }
     }
 
@@ -601,6 +745,7 @@ mod tests {
             let tmp = tempfile::tempdir().unwrap();
             let repo = std::fs::canonicalize(tmp.path()).unwrap().join("repo");
             std::fs::create_dir(&repo).unwrap();
+            init_repo(&repo);
             let repo = std::fs::canonicalize(repo)
                 .unwrap()
                 .to_string_lossy()
@@ -625,9 +770,9 @@ mod tests {
                 _tmp: tmp,
                 paths,
                 repo,
-                source: Source(RefCell::new(vec![])),
+                source: Source(RefCell::new(vec![]), Cell::new(true)),
                 runs: Runs::default(),
-                profiles: Profiles(Cell::new(false)),
+                profiles: Profiles(Cell::new(false), Cell::new(0)),
             };
             fx.write(QueueFile {
                 version: VERSION,
@@ -655,6 +800,7 @@ mod tests {
                     source: &self.source,
                     runs: &self.runs,
                     profiles: &self.profiles,
+                    workdirs: &GitClone,
                     now: Utc::now(),
                     local_minutes: minutes,
                 },
@@ -680,7 +826,14 @@ mod tests {
                 .iter()
                 .filter(|p| p.status == Status::PendingApproval)
             {
-                approve(&self.paths, &p.id, &p.bundle_sha256, Utc::now()).unwrap();
+                approve(
+                    &self.paths,
+                    &p.id,
+                    &p.bundle_sha256,
+                    self.profiles.pin("claude-code", None).unwrap(),
+                    Utc::now(),
+                )
+                .unwrap();
             }
         }
     }
@@ -737,7 +890,8 @@ mod tests {
         fx.source.0.replace(vec![cand(1, "do it")]);
         fx.pass().unwrap();
         let p = fx.pickups().remove(0);
-        let e = approve(&fx.paths, &p.id, &"0".repeat(64), Utc::now()).unwrap_err();
+        let pin = fx.profiles.pin("claude-code", None).unwrap();
+        let e = approve(&fx.paths, &p.id, &"0".repeat(64), pin, Utc::now()).unwrap_err();
         assert_eq!(e.exit_code(), 6);
         assert_eq!(fx.pickups()[0].status, Status::PendingApproval);
     }
@@ -781,7 +935,7 @@ mod tests {
     }
 
     #[test]
-    fn concurrency_is_per_rule_and_slots_free_when_the_task_leaves() {
+    fn a_slot_is_held_until_the_run_exits_even_when_the_task_leaves() {
         let fx = Fx::new(|r| r.auto = true);
         fx.source.0.replace(vec![cand(1, "a"), cand(2, "b")]);
         fx.pass().unwrap();
@@ -789,9 +943,94 @@ mod tests {
         assert_eq!(fx.runs.created.borrow().len(), 1);
         fx.source.0.replace(vec![cand(2, "b")]);
         fx.pass().unwrap();
+        assert_eq!(
+            fx.runs.created.borrow().len(),
+            1,
+            "a leaving task must not free a live run"
+        );
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
         assert_eq!(fx.runs.created.borrow().len(), 2);
-        let p = fx.pickups();
-        assert!(p[0].released && !p[1].released);
+        assert_eq!(fx.audit_events("run_exited"), 1);
+    }
+
+    #[test]
+    fn a_task_that_returns_while_its_run_is_live_is_not_started_twice() {
+        let fx = Fx::new(|r| {
+            r.auto = true;
+            r.max_concurrent = 2;
+        });
+        fx.source.0.replace(vec![cand(1, "a")]);
+        fx.pass().unwrap();
+        fx.source.0.replace(vec![]);
+        fx.pass().unwrap();
+        fx.source.0.replace(vec![cand(1, "a")]);
+        fx.pass().unwrap();
+        assert_eq!(fx.runs.created.borrow().len(), 1);
+        assert_eq!(fx.pickups().len(), 1);
+    }
+
+    #[test]
+    fn an_incomplete_scan_releases_nothing() {
+        let fx = Fx::new(|_| {});
+        fx.source.0.replace(vec![cand(1, "a")]);
+        fx.pass().unwrap();
+        fx.source.0.replace(vec![]);
+        fx.source.1.set(false);
+        fx.pass().unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::PendingApproval);
+        assert!(!fx.pickups()[0].released);
+        assert_eq!(fx.audit_events("skipped"), 1);
+        fx.source.1.set(true);
+        fx.pass().unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Expired);
+    }
+
+    #[test]
+    fn a_changed_profile_after_approval_sends_the_pickup_back_to_approval() {
+        let fx = Fx::new(|_| {});
+        fx.source.0.replace(vec![cand(1, "a")]);
+        fx.pass().unwrap();
+        fx.approve_all();
+        fx.profiles.1.set(1);
+        fx.pass().unwrap();
+        assert!(fx.runs.created.borrow().is_empty());
+        let p = &fx.pickups()[0];
+        assert_eq!(p.status, Status::PendingApproval);
+        assert!(p.profile_pin.is_none());
+    }
+
+    #[test]
+    fn runs_start_in_a_separate_clone_beside_the_repo() {
+        let fx = Fx::new(|_| {});
+        fx.source.0.replace(vec![cand(1, "a")]);
+        fx.pass().unwrap();
+        fx.approve_all();
+        fx.pass().unwrap();
+        let cwd = fx.runs.cwds.borrow()[0].clone();
+        assert_ne!(cwd, fx.repo);
+        assert!(cwd.starts_with(&format!("{}-worktrees/queue/q_", fx.repo)));
+        assert!(std::path::Path::new(&cwd).join("README.md").is_file());
+        assert_eq!(fx.pickups()[0].bundle.launch.cwd, cwd);
+    }
+
+    #[test]
+    fn an_oversized_bundle_is_skipped() {
+        let fx = Fx::new(|_| {});
+        fx.source
+            .0
+            .replace(vec![cand(1, &"x".repeat(MAX_BUNDLE + 1))]);
+        fx.pass().unwrap();
+        assert!(fx.pickups().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 1);
+    }
+
+    #[test]
+    fn a_broken_audit_chain_stops_the_pass() {
+        let fx = Fx::new(|_| {});
+        let text = std::fs::read_to_string(fx.paths.audit()).unwrap();
+        std::fs::write(fx.paths.audit(), text.replace("enable", "enabl3")).unwrap();
+        assert_eq!(fx.pass().err().unwrap().exit_code(), 5);
     }
 
     #[test]
@@ -926,7 +1165,11 @@ mod tests {
         fx.approve_all();
         fx.pass().unwrap();
         assert_eq!(fx.runs.created.borrow()[0], format!("1:{sha}"));
-        assert!(fx.pickups()[0].bundle.launch.cwd == fx.repo);
+        assert!(fx.pickups()[0]
+            .bundle
+            .launch
+            .cwd
+            .starts_with(&format!("{}-worktrees/queue/", fx.repo)));
     }
 
     #[test]

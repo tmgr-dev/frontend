@@ -1,4 +1,5 @@
 use crate::paths::{read_private, Paths};
+use crate::rules::ProfilePin;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use tmgr_core::config::{ensure_private_dir, write_atomic};
@@ -55,6 +56,18 @@ pub struct Pickup {
     pub reason: Option<String>,
     #[serde(default)]
     pub released: bool,
+    #[serde(default)]
+    pub persona_text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_pin: Option<ProfilePin>,
+    #[serde(default)]
+    pub run_exited: bool,
+}
+
+impl Pickup {
+    pub fn occupies(&self) -> bool {
+        self.status.is_live() && !self.run_exited
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -93,7 +106,7 @@ pub fn save(paths: &Paths, state: &mut State) -> Result<()> {
     if released > KEEP_RELEASED {
         let mut drop = released - KEEP_RELEASED;
         state.pickups.retain(|p| {
-            if drop > 0 && p.released && !p.status.is_live() {
+            if drop > 0 && p.released && !p.occupies() {
                 drop -= 1;
                 false
             } else {
@@ -109,7 +122,7 @@ impl State {
     pub fn live_count(&self, rule: Option<&str>) -> usize {
         self.pickups
             .iter()
-            .filter(|p| p.status.is_live() && !p.released && rule.is_none_or(|r| p.rule == r))
+            .filter(|p| p.occupies() && rule.is_none_or(|r| p.rule == r))
             .count()
     }
 }

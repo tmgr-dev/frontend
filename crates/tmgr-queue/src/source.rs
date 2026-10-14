@@ -1,6 +1,6 @@
 use crate::rules::{workspace_code, Rule};
-use rusqlite::params;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use tmgr_core::error::{Error, Result};
 use tmgr_ipc::api::{AuthorKind, BundleAuthor, BundleComment, BundlePage, TaskRef};
 
@@ -41,26 +41,25 @@ pub struct Candidate {
     pub comments: Vec<BundleComment>,
     pub pages: Vec<BundlePage>,
     pub context_tainted: bool,
-    pub persona_instructions_sha256: String,
+    pub persona_text: String,
+}
+
+pub struct Scan {
+    pub candidates: Vec<Candidate>,
+    pub complete: bool,
 }
 
 pub trait TaskSource {
-    fn candidates(&self, rule: &Rule) -> Result<Vec<Candidate>>;
+    fn candidates(&self, rule: &Rule) -> Result<Scan>;
 }
+
+pub const MAX_PAGES: usize = 50;
 
 fn text(v: &Value, k: &str) -> String {
     match v.get(k) {
         Some(Value::String(s)) => s.clone(),
         Some(Value::Number(n)) => n.to_string(),
         _ => String::new(),
-    }
-}
-
-fn comment_kind(kind: &str) -> AuthorKind {
-    match kind {
-        "user" => AuthorKind::Human,
-        "persona" | "agent" => AuthorKind::Agent,
-        _ => AuthorKind::Other,
     }
 }
 
@@ -73,29 +72,101 @@ pub struct LocalSource {
     pub local_user_id: Option<i64>,
 }
 
+#[derive(Default)]
+struct Trail {
+    owner_created: bool,
+    foreign: Option<Author>,
+    latest: String,
+}
+
 impl LocalSource {
-    fn writers(workspace: &tmgr_local::LocalWorkspace) -> Result<std::collections::BTreeSet<i64>> {
+    fn trails(workspace: &tmgr_local::LocalWorkspace, owner: &str) -> Result<BTreeMap<i64, Trail>> {
         let conn = tmgr_local::open_read(&workspace.database)
             .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
         let mut stmt = conn
             .prepare(
-                "SELECT DISTINCT CAST(entity_id AS INTEGER) FROM activity_log
-                 WHERE entity = 'tasks' AND actor_kind <> 'user' AND status < 400
-                   AND method IN ('POST', 'PATCH', 'PUT', 'DELETE') AND entity_id IS NOT NULL",
+                "SELECT CAST(entity_id AS INTEGER), actor_kind, actor_id, method, at FROM activity_log
+                 WHERE entity = 'tasks' AND status < 400 AND entity_id IS NOT NULL
+                   AND method IN ('POST', 'PATCH', 'PUT', 'DELETE') ORDER BY id",
             )
             .map_err(|e| Error::internal(e.to_string()))?;
         let rows = stmt
-            .query_map(params![], |r| r.get::<_, i64>(0))
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })
             .map_err(|e| Error::internal(e.to_string()))?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        let mut out: BTreeMap<i64, Trail> = BTreeMap::new();
+        for row in rows {
+            let (task, kind, actor, method, at) =
+                row.map_err(|e| Error::internal(e.to_string()))?;
+            let t = out.entry(task).or_default();
+            if at > t.latest {
+                t.latest = at;
+            }
+            if kind == "user" && actor == owner {
+                if method == "POST" {
+                    t.owner_created = true;
+                }
+            } else {
+                let found = if matches!(kind.as_str(), "persona" | "agent") {
+                    Author::Agent
+                } else {
+                    Author::Other
+                };
+                if t.foreign != Some(Author::Agent) {
+                    t.foreign = Some(found);
+                }
+            }
+        }
+        Ok(out)
     }
 }
 
+fn list_all(client: &tmgr_core::api::Client, base: &str) -> Result<(Vec<Value>, bool)> {
+    let mut items = Vec::new();
+    for page in 1..=MAX_PAGES {
+        let sep = if base.contains('?') { '&' } else { '?' };
+        let (status, body) = client.call(
+            "GET",
+            &format!("{base}{sep}per_page=100&page={page}"),
+            None,
+            false,
+        )?;
+        if status >= 400 {
+            return Err(tmgr_core::local::status_error(status, &body));
+        }
+        let rows = body
+            .get("data")
+            .and_then(Value::as_array)
+            .or_else(|| body.as_array())
+            .cloned()
+            .unwrap_or_default();
+        items.extend(rows);
+        let last = body
+            .pointer("/meta/last_page")
+            .and_then(Value::as_u64)
+            .unwrap_or(1) as usize;
+        if page >= last {
+            return Ok((items, true));
+        }
+    }
+    Ok((items, false))
+}
+
 impl TaskSource for LocalSource {
-    fn candidates(&self, rule: &Rule) -> Result<Vec<Candidate>> {
+    fn candidates(&self, rule: &Rule) -> Result<Scan> {
         let code = workspace_code(&rule.workspace)?;
         let client = tmgr_core::local::client(code, self.local_user_id, "tmgr-queue", false)?;
         let workspace = tmgr_core::local::find(code)?;
+        let owner = tmgr_core::local::identity(&tmgr_core::local::root()?, self.local_user_id)
+            .id
+            .to_string();
         let fetch = |path: &str| -> Result<Value> {
             let (status, body) = client.call("GET", path, None, false)?;
             if status >= 400 {
@@ -128,19 +199,21 @@ impl TaskSource for LocalSource {
                 });
                 match found {
                     Some(id) => Some(id),
-                    None => return Ok(Vec::new()),
+                    None => {
+                        return Ok(Scan {
+                            candidates: Vec::new(),
+                            complete: true,
+                        })
+                    }
                 }
             }
         };
-        let writers = Self::writers(&workspace)?;
+        let trails = Self::trails(&workspace, &owner)?;
         let mut out = Vec::new();
+        let mut complete = true;
         for status_id in status_ids {
-            let listing = fetch(&format!("/api/tasks?status_id={status_id}&per_page=100"))?;
-            let items = listing
-                .as_array()
-                .cloned()
-                .or_else(|| listing.get("data").and_then(|d| d.as_array().cloned()))
-                .unwrap_or_default();
+            let (items, done) = list_all(&client, &format!("/api/tasks?status_id={status_id}"))?;
+            complete &= done;
             for item in items {
                 let Some(id) = item.get("id").and_then(Value::as_i64) else {
                     continue;
@@ -150,29 +223,39 @@ impl TaskSource for LocalSource {
                         continue;
                     }
                 }
-                let assigned = item
+                let persona = item
                     .get("persona_assignees")
                     .and_then(Value::as_array)
-                    .is_some_and(|a| {
+                    .and_then(|a| {
                         a.iter()
-                            .any(|p| text(p, "name").eq_ignore_ascii_case(&rule.persona))
+                            .find(|p| text(p, "name").eq_ignore_ascii_case(&rule.persona))
                     });
-                if !assigned {
+                let Some(persona) = persona else {
                     continue;
-                }
+                };
                 let full = fetch(&format!("/api/tasks/{id}"))?;
                 let comments_raw = fetch(&format!("/api/tasks/{id}/comments"))?;
                 let comments: Vec<BundleComment> = comments_raw
                     .as_array()
                     .map(|a| {
                         a.iter()
-                            .map(|c| BundleComment {
-                                author: BundleAuthor {
-                                    kind: comment_kind(&text(c, "author_kind")),
-                                    id: None,
-                                },
-                                at: utc_seconds(&text(c, "created_at")),
-                                body: text(c, "message"),
+                            .map(|c| {
+                                let kind = text(c, "author_kind");
+                                let human = kind == "user" && text(c, "author_id") == owner;
+                                BundleComment {
+                                    author: BundleAuthor {
+                                        kind: if human {
+                                            AuthorKind::Human
+                                        } else if matches!(kind.as_str(), "persona" | "agent") {
+                                            AuthorKind::Agent
+                                        } else {
+                                            AuthorKind::Other
+                                        },
+                                        id: None,
+                                    },
+                                    at: utc_seconds(&text(c, "created_at")),
+                                    body: text(c, "message"),
+                                }
                             })
                             .collect()
                     })
@@ -186,15 +269,16 @@ impl TaskSource for LocalSource {
                     (Some(c), Some(n)) => format!("{c}-{n}"),
                     _ => format!("#{id}"),
                 };
-                let persona_desc = item
-                    .get("persona_assignees")
-                    .and_then(Value::as_array)
-                    .and_then(|a| {
-                        a.iter()
-                            .find(|p| text(p, "name").eq_ignore_ascii_case(&rule.persona))
-                    })
-                    .map(|p| text(p, "description"))
-                    .unwrap_or_default();
+                let author = match trails.get(&id) {
+                    None => Author::Unrecorded,
+                    Some(t) => match t.foreign {
+                        Some(a) => a,
+                        None if t.owner_created && text(&full, "updated_at") <= t.latest => {
+                            Author::Human
+                        }
+                        None => Author::Unrecorded,
+                    },
+                };
                 out.push(Candidate {
                     task: TaskRef {
                         workspace_id: workspace.manifest.id,
@@ -203,19 +287,18 @@ impl TaskSource for LocalSource {
                     key,
                     title: text(&full, "title"),
                     body: text(&full, "description"),
-                    author: if writers.contains(&id) {
-                        Author::Agent
-                    } else {
-                        Author::Human
-                    },
+                    author,
                     comments,
                     pages: Vec::new(),
                     context_tainted: tainted,
-                    persona_instructions_sha256: crate::audit::sha256_hex(persona_desc.as_bytes()),
+                    persona_text: text(persona, "description"),
                 });
             }
         }
         out.sort_by_key(|c| c.task.task_id);
-        Ok(out)
+        Ok(Scan {
+            candidates: out,
+            complete,
+        })
     }
 }

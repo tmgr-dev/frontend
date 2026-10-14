@@ -71,8 +71,47 @@ pub struct Rule {
     pub auto: bool,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProfilePin {
+    pub argv: Vec<String>,
+    pub profile_sha256: String,
+    pub exe_path: String,
+    pub exe_sha256: String,
+}
+
 pub trait ProfileResolver {
     fn argv(&self, profile: &str, model: Option<&str>) -> std::result::Result<Vec<String>, String>;
+    fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String>;
+}
+
+pub fn file_sha256(path: &Path) -> std::io::Result<String> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    let mut f = std::fs::File::open(path)?;
+    let mut h = Sha256::new();
+    let mut buf = vec![0u8; 1 << 16];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        h.update(&buf[..n]);
+    }
+    Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+pub fn resolve_exe(command: &str) -> std::result::Result<std::path::PathBuf, String> {
+    let candidates: Vec<std::path::PathBuf> = if command.contains('/') {
+        vec![command.into()]
+    } else {
+        std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).map(|d| d.join(command)).collect())
+            .unwrap_or_default()
+    };
+    candidates
+        .into_iter()
+        .find_map(|c| std::fs::canonicalize(&c).ok().filter(|p| p.is_file()))
+        .ok_or_else(|| format!("executable {command} not found"))
 }
 
 pub fn argv_is_bypass(argv: &[String]) -> bool {
@@ -252,10 +291,13 @@ pub fn recorded_hash(paths: &Paths) -> Result<Option<String>> {
 }
 
 pub fn is_tampered(paths: &Paths, loaded: &Loaded) -> Result<bool> {
-    Ok(match &loaded.sha256 {
-        None => false,
-        Some(sha) => recorded_hash(paths)?.as_deref() != Some(sha.as_str()),
-    })
+    let Some(sha) = &loaded.sha256 else {
+        return Ok(false);
+    };
+    if Audit::new(paths).verify()?.is_err() {
+        return Ok(true);
+    }
+    Ok(recorded_hash(paths)?.as_deref() != Some(sha.as_str()))
 }
 
 #[cfg(test)]
@@ -275,6 +317,19 @@ mod tests {
                 "risky" => Ok(self.0.iter().map(|s| s.to_string()).collect()),
                 _ => Err("unknown profile".into()),
             }
+        }
+
+        fn pin(
+            &self,
+            profile: &str,
+            model: Option<&str>,
+        ) -> std::result::Result<ProfilePin, String> {
+            Ok(ProfilePin {
+                argv: self.argv(profile, model)?,
+                profile_sha256: "p".repeat(64),
+                exe_path: "/bin/claude".into(),
+                exe_sha256: "e".repeat(64),
+            })
         }
     }
 

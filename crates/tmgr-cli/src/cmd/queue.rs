@@ -4,13 +4,15 @@ use chrono::{Local, Timelike, Utc};
 use clap::{Args, Subcommand};
 use serde_json::{json, Value};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_core::text::{sanitize, truncate_chars};
+use tmgr_core::text::sanitize;
 use tmgr_link::privileged;
+use tmgr_queue::audit::sha256_hex;
 use tmgr_queue::audit::Audit;
-use tmgr_queue::rules::{self, ProfileResolver, QueueFile, Rule};
+use tmgr_queue::rules::{self, ProfilePin, ProfileResolver, QueueFile, Rule};
 use tmgr_queue::runs::{self, MockRuns, RunnerRuns, RunsClient};
 use tmgr_queue::source::LocalSource;
 use tmgr_queue::state::{self, Status};
+use tmgr_queue::workdir::GitClone;
 use tmgr_queue::{Deps, Paths};
 
 const WARNING: &str = "\
@@ -104,6 +106,28 @@ impl ProfileResolver for RunnerProfiles {
         set.get(profile)
             .ok_or_else(|| "unknown agent profile".to_string())?
             .argv(model)
+    }
+
+    fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String> {
+        let dir = tmgr_runner::profile::user_dir();
+        let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
+        let p = set
+            .get(profile)
+            .ok_or_else(|| "unknown agent profile".to_string())?;
+        let argv = p.argv(model)?;
+        let profile_sha256 = match &p.source {
+            tmgr_runner::profile::Source::User(path) => {
+                rules::file_sha256(path).map_err(|e| e.to_string())?
+            }
+            tmgr_runner::profile::Source::Builtin => sha256_hex(format!("{p:?}").as_bytes()),
+        };
+        let exe = rules::resolve_exe(p.command.first().ok_or("profile has no command")?)?;
+        Ok(ProfilePin {
+            argv,
+            profile_sha256,
+            exe_sha256: rules::file_sha256(&exe).map_err(|e| e.to_string())?,
+            exe_path: exe.to_string_lossy().into_owned(),
+        })
     }
 }
 
@@ -277,14 +301,27 @@ fn set_paused(paths: &Paths, paused: bool) -> Result<Output> {
 
 fn enable(paths: &Paths) -> Result<Output> {
     privileged::guard()?;
-    let loaded = rules::load(paths)?;
-    agree(&rules_summary(&loaded.file))?;
+    let shown = rules::load(paths)?;
+    rules::validate_file(&shown.file, &RunnerProfiles)?;
+    agree(&rules_summary(&shown.file))?;
     let _lock = paths.lock()?;
-    let mut file = rules::load(paths)?.file;
-    rules::validate_file(&file, &RunnerProfiles)?;
+    let now = rules::load(paths)?;
+    if now.sha256 != shown.sha256 {
+        return Err(Error::conflict(
+            "queue.toml changed while you were reading it; nothing was enabled",
+        )
+        .hint("run `tmgr queue enable` again"));
+    }
+    let mut file = now.file;
+    let rebaselined = Audit::new(paths).rebaseline()?;
     file.enabled = true;
     let sha = rules::save(paths, &file)?;
-    record(paths, "enable", &sha, json!({"rules": file.rules.len()}))?;
+    record(
+        paths,
+        "enable",
+        &sha,
+        json!({"rules": file.rules.len(), "audit_rebaselined": rebaselined}),
+    )?;
     Ok(Output::new(json!({"enabled": true}), "Queue is on."))
 }
 
@@ -340,7 +377,14 @@ fn add(paths: &Paths, a: &RuleArgs) -> Result<Output> {
     }
     agree(&format!("New rule:\n  {}", describe(&rule)))?;
     let _lock = paths.lock()?;
+    let shown_sha = loaded.sha256.clone();
     let loaded = rules::load(paths)?;
+    if loaded.sha256 != shown_sha {
+        return Err(Error::conflict(
+            "queue.toml changed while you were reading it; no rule was added",
+        )
+        .hint("run the command again"));
+    }
     if rules::is_tampered(paths, &loaded)? {
         return Err(tamper_error());
     }
@@ -385,6 +429,86 @@ fn remove(paths: &Paths, name: &str) -> Result<Output> {
     ))
 }
 
+const PAGE: usize = 40;
+const REVIEW_CAP: usize = 64 * 1024;
+
+fn review(p: &state::Pickup, pin: &ProfilePin) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut push =
+        |s: String| out.extend(sanitize(&s).lines().map(str::to_string).collect::<Vec<_>>());
+    push(format!("Approve {} for rule {}", p.id, p.rule));
+    push(format!("Task      {} {}", p.key, p.bundle.title));
+    push(format!("Author    {}", p.bundle.author.kind.as_str()));
+    if p.context_tainted {
+        push("NOTE      part of the context was written by agents or others".into());
+    }
+    push(format!(
+        "Persona   {}",
+        p.bundle
+            .persona
+            .as_ref()
+            .map_or("none", |x| x.name.as_str())
+    ));
+    push(format!(
+        "Profile   {} model {}",
+        p.bundle.launch.profile,
+        p.bundle.launch.model.as_deref().unwrap_or("default")
+    ));
+    push(format!("Launch    {}", pin.argv.join(" ")));
+    push(format!(
+        "Executable {} sha256 {}",
+        pin.exe_path, pin.exe_sha256
+    ));
+    push(format!("Profile sha256 {}", pin.profile_sha256));
+    push("Mode      the agent asks before it acts (permission prompts on); no bypass".into());
+    push(format!(
+        "Folder    {} (a separate clone on branch queue/{}), not your repository",
+        p.bundle.launch.cwd, p.id
+    ));
+    push(format!("Bundle    sha256 {}", p.bundle_sha256));
+    push(String::new());
+    push("Persona instructions (given to the agent):".into());
+    push(p.persona_text.clone());
+    push(String::new());
+    push("Task text (untrusted, given to the agent as data):".into());
+    push(p.bundle.body.clone());
+    for (n, c) in p.bundle.comments.iter().enumerate() {
+        push(String::new());
+        push(format!(
+            "Comment {} by {} at {}:",
+            n + 1,
+            c.author.kind.as_str(),
+            c.at
+        ));
+        push(c.body.clone());
+    }
+    for pg in &p.bundle.pages {
+        push(String::new());
+        push(format!(
+            "Page {} revision {}: {}",
+            pg.id, pg.revision, pg.title
+        ));
+        push(pg.body.clone());
+    }
+    out
+}
+
+fn page_through(lines: &[String]) -> Result<()> {
+    let mut input = std::io::stdin().lock();
+    for (n, chunk) in lines.chunks(PAGE).enumerate() {
+        for l in chunk {
+            eprintln!("{l}");
+        }
+        if (n + 1) * PAGE < lines.len() {
+            eprint!("-- more, press Enter -- ");
+            let mut sink = String::new();
+            std::io::BufRead::read_line(&mut input, &mut sink)
+                .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
+        }
+    }
+    Ok(())
+}
+
 fn approve(paths: &Paths, id: &str) -> Result<Output> {
     privileged::guard()?;
     let st = state::load(paths)?;
@@ -401,36 +525,43 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
             p.status.name()
         )));
     }
-    let non_human = p
-        .bundle
-        .comments
-        .iter()
-        .filter(|c| c.author.kind != tmgr_ipc::api::AuthorKind::Human)
-        .count();
-    let body = truncate_chars(&sanitize(&p.bundle.body), 600).0;
+    if p.bundle.canonical().len() > REVIEW_CAP {
+        return Err(Error::usage("the bundle is too large to review")
+            .hint("shorten the task text or its comments"));
+    }
+    if sha256_hex(p.persona_text.as_bytes())
+        != p.bundle
+            .persona
+            .as_ref()
+            .map_or(String::new(), |x| x.instructions_sha256.clone())
+    {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the stored persona text does not match its hash",
+        ));
+    }
+    let pin = RunnerProfiles
+        .pin(&p.bundle.launch.profile, p.bundle.launch.model.as_deref())
+        .map_err(|m| {
+            Error::new(
+                Kind::Forbidden,
+                format!("the agent profile cannot be pinned: {m}"),
+            )
+        })?;
+    if rules::argv_is_bypass(&pin.argv) {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the profile runs without permission prompts",
+        ));
+    }
     let sha = p.bundle_sha256.clone();
-    eprintln!(
-        "Approve {} for rule {}\n  task    {} {}\n  author  {}\n  comments {} ({} by agents or others){}\n  launch  profile {} model {} in {}\n  persona {}\n  sha256  {}\n\nTask text (untrusted, as it will be given to the agent):\n{}\n",
-        p.id,
-        p.rule,
-        p.key,
-        sanitize(&p.bundle.title),
-        p.bundle.author.kind.as_str(),
-        p.bundle.comments.len(),
-        non_human,
-        if p.context_tainted { "\n  NOTE: the context was written partly by agents or others" } else { "" },
-        p.bundle.launch.profile,
-        p.bundle.launch.model.as_deref().unwrap_or("default"),
-        p.bundle.launch.cwd,
-        p.bundle.persona.as_ref().map_or("none", |x| x.name.as_str()),
-        sha,
-        body,
-    );
+    page_through(&review(p, &pin))?;
+    eprintln!();
     privileged::confirm_typed_stdio(
         &sha[..12],
-        "Type the first 12 characters of the sha256 to approve exactly this:",
+        "Type the first 12 characters of the bundle sha256 to approve exactly this:",
     )?;
-    tmgr_queue::approve(paths, id, &sha, Utc::now())?;
+    tmgr_queue::approve(paths, id, &sha, pin, Utc::now())?;
     Ok(Output::new(
         json!({"approved": id, "bundle_sha256": sha}),
         format!("Pickup {id} approved. `tmgr queue run-once` starts it."),
@@ -456,6 +587,7 @@ fn run_once(ctx: &Ctx, paths: &Paths) -> Result<Output> {
             source: &source,
             runs: client,
             profiles: &RunnerProfiles,
+            workdirs: &GitClone,
             now: Utc::now(),
             local_minutes: now.hour() * 60 + now.minute(),
         },

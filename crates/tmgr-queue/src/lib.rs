@@ -5,6 +5,7 @@ pub mod rules;
 pub mod runs;
 pub mod source;
 pub mod state;
+pub mod workdir;
 
 pub use engine::{approve, run_once, Deps, PassReport};
 pub use paths::Paths;

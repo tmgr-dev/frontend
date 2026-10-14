@@ -76,6 +76,31 @@ impl Fx {
             tmp: tempfile::tempdir().unwrap(),
         };
         std::fs::create_dir_all(fx.repo()).unwrap();
+        std::fs::write(fx.repo().join("README.md"), "hi\n").unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec!["add", "."],
+            vec!["commit", "-q", "-m", "init"],
+        ] {
+            let out = std::process::Command::new("git")
+                .current_dir(fx.repo())
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@example.com")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@example.com")
+                .args(&args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}");
+        }
+        let agents = fx.tmp.path().join("agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(
+            agents.join("sh-agent.toml"),
+            "id = \"sh-agent\"\nname = \"Shell\"\ncommand = [\"/bin/sh\"]\n",
+        )
+        .unwrap();
         std::fs::create_dir_all(fx.root().join("personal")).unwrap();
         fx.workspace();
         fx
@@ -142,6 +167,10 @@ impl Fx {
     }
 
     fn task(&self, id: i64, title: &str, body: &str) {
+        self.task_as(id, title, body, true);
+    }
+
+    fn task_as(&self, id: i64, title: &str, body: &str, owned: bool) {
         let conn = self.db();
         conn.execute(
             "INSERT INTO tasks (id, title, description, status_id, project_category_id, category_tasks_sequence_id, created_at, updated_at)
@@ -149,6 +178,14 @@ impl Fx {
             rusqlite::params![id, title, body, id],
         )
         .unwrap();
+        if owned {
+            conn.execute(
+                "INSERT INTO activity_log (at, actor_kind, actor_id, actor_name, method, route, entity, entity_id, status)
+                 VALUES ('2026-10-01T00:00:00Z', 'user', '-1', 'Owner', 'POST', 'tasks', 'tasks', ?, 200)",
+                [id.to_string()],
+            )
+            .unwrap();
+        }
         conn.execute(
             "INSERT INTO task_persona_assignees (task_id, persona_uuid, created_at) VALUES (?, 'p-1', '2026-10-01T00:00:00Z')",
             [id],
@@ -167,6 +204,12 @@ impl Fx {
             ("TMGR_LOCAL_ROOT", self.root()),
             ("TMGR_AGENTS_DIR", t.join("agents")),
             ("NO_COLOR", "1".into()),
+            (
+                "PATH",
+                std::env::var_os("PATH")
+                    .map(PathBuf::from)
+                    .unwrap_or_default(),
+            ),
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string_lossy().into_owned()))
@@ -219,7 +262,7 @@ impl Fx {
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
-        let screen = Arc::new(Mutex::new(vt100::Parser::new(40, 140, 0)));
+        let screen = Arc::new(Mutex::new(vt100::Parser::new(120, 140, 0)));
         let sink = screen.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -258,7 +301,7 @@ impl Fx {
             "--persona",
             "builder",
             "--profile",
-            "claude-code",
+            "sh-agent",
             "--repo",
             repo.to_str().unwrap(),
             "--project",
@@ -373,7 +416,7 @@ fn a_wrong_phrase_changes_nothing_and_the_right_one_adds_a_private_rule() {
             "--persona",
             "builder",
             "--profile",
-            "claude-code",
+            "sh-agent",
             "--repo",
             repo.to_str().unwrap(),
         ];
@@ -397,7 +440,7 @@ fn cloud_workspaces_and_bypass_profiles_are_refused() {
             "--persona",
             "builder",
             "--profile",
-            "claude-code",
+            "sh-agent",
             "--repo",
             repo.to_str().unwrap(),
         ],
@@ -453,6 +496,7 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
     let fx = Fx::new();
     fx.task(1, "Write the report", "Summarise the quarter");
     fx.task(2, "Agent wrote this", "from a persona");
+    fx.task_as(3, "Imported", "no trail", false);
     fx.db()
         .execute(
             "INSERT INTO activity_log (at, actor_kind, actor_id, actor_name, method, route, entity, entity_id, status)
@@ -470,7 +514,7 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
     assert_eq!(pickups.len(), 1, "{status}");
     assert_eq!(pickups[0]["task"], "WK-1");
     assert_eq!(pickups[0]["status"], "pending_approval");
-    assert_eq!(fx.count("skipped"), 1);
+    assert_eq!(fx.count("skipped"), 2);
     let id = pickups[0]["id"].as_str().unwrap().to_string();
     let sha = pickups[0]["bundle_sha256"].as_str().unwrap().to_string();
 
@@ -479,7 +523,16 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
 
     let (code, screen) = fx.confirmed(&["queue", "approve", &id], &sha[..12]);
     assert_eq!(code, 0, "{screen}");
-    assert!(screen.contains("Summarise the quarter"));
+    for needle in [
+        "Summarise the quarter",
+        "Builds things",
+        "permission prompts on",
+        "-worktrees/queue/",
+        "/bin/sh",
+        "Executable",
+    ] {
+        assert!(screen.contains(needle), "{needle}: {screen}");
+    }
     fx.run(&["queue", "run-once"]);
     fx.run(&["queue", "run-once"]);
     let mock: Value = serde_json::from_str(
@@ -578,4 +631,61 @@ fn the_audit_log_detects_tampering() {
     std::fs::write(&path, edited).unwrap();
     let status = fx.json(&["status"]);
     assert_eq!(status["data"]["audit"]["ok"], false);
+}
+
+#[test]
+fn the_queue_runs_in_a_clone_not_in_the_repository() {
+    let fx = Fx::new();
+    fx.task(1, "Write the report", "v1");
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.run(&["queue", "run-once"]);
+    let status = fx.json(&["status"]);
+    let id = status["data"]["pickups"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sha = status["data"]["pickups"][0]["bundle_sha256"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(fx.confirmed(&["queue", "approve", &id], &sha[..12]).0, 0);
+    fx.run(&["queue", "run-once"]);
+    let clone = fx.tmp.path().join("repo-worktrees/queue").join(&id);
+    assert!(clone.join("README.md").is_file());
+    assert!(clone.join(".git/objects/info/alternates").is_file());
+}
+
+#[test]
+fn enable_aborts_when_the_rules_change_while_the_warning_is_shown() {
+    let fx = Fx::new();
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    let mut p = fx.pty(&["queue", "enable"], &[]);
+    p.wait_for("Type I AGREE");
+    let path = fx.cfg().join("queue.toml");
+    let edited = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace("auto = false", "auto = true");
+    std::fs::write(&path, edited).unwrap();
+    std::fs::set_permissions(&path, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
+    p.line("I AGREE");
+    assert_eq!(p.exit(), 6, "{}", p.text());
+    assert_eq!(fx.json(&["status"])["data"]["enabled"], false);
+}
+
+#[test]
+fn a_damaged_audit_log_stops_the_queue_until_enable_rebaselines_it() {
+    let fx = Fx::new();
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    let path = fx.cfg().join("queue-audit.jsonl");
+    let text = std::fs::read_to_string(&path).unwrap();
+    std::fs::write(&path, text.replacen("rule_add", "rule_xxx", 1)).unwrap();
+    assert_eq!(fx.run(&["queue", "run-once"]).status.code(), Some(5));
+    assert_eq!(fx.json(&["status"])["data"]["tampered"], true);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    let status = fx.json(&["status"]);
+    assert_eq!(status["data"]["audit"]["ok"], true);
+    assert_eq!(status["data"]["tampered"], false);
+    assert_eq!(fx.run(&["queue", "run-once"]).status.code(), Some(0));
 }
