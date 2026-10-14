@@ -68,7 +68,8 @@
 						<TextField
 							v-model="form.title"
 							placeholder="Name"
-							input-class="h-9 text-sm" :class="inputSkin"
+							input-class="h-9 text-sm"
+							:class="inputSkin"
 							:errors="errors.title"
 							:show-error-in-tooltip="false"
 						/>
@@ -78,7 +79,8 @@
 					<TextField
 						:model-value="form.code"
 						placeholder="e.g., PROJ, FEAT, BUG"
-						input-class="h-9 font-mono text-[13px]" :class="inputSkin"
+						input-class="h-9 font-mono text-[13px]"
+						:class="inputSkin"
 						:errors="errors.code"
 						:show-error-in-tooltip="false"
 						@update:model-value="form.code = sanitizeCategoryCode($event)"
@@ -101,7 +103,10 @@
 							</SelectItem>
 						</SelectContent>
 					</Select>
-					<p v-if="errors.project_category_id" class="mt-1 text-sm text-red-500">
+					<p
+						v-if="errors.project_category_id"
+						class="mt-1 text-sm text-red-500"
+					>
 						{{ errors.project_category_id[0] }}
 					</p>
 				</SettingRow>
@@ -123,7 +128,10 @@
 							width="lg"
 						>
 							<Select :model-value="copyFrom" @update:model-value="applyCopy">
-								<SelectTrigger :class="fieldClass" aria-label="Copy settings from">
+								<SelectTrigger
+									:class="fieldClass"
+									aria-label="Copy settings from"
+								>
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
@@ -186,7 +194,9 @@
 						:category-id="category.id"
 						:is-create="false"
 						class="!mt-2 !border-t-0 !pt-2"
-						@cursor-configured="onCursor('Cursor API key configured successfully')"
+						@cursor-configured="
+							onCursor('Cursor API key configured successfully')
+						"
 						@cursor-removed="onCursor('Cursor API key removed')"
 					/>
 					<CategoryGitHubSettings
@@ -201,7 +211,10 @@
 				</div>
 
 				<SectionHead title="Danger zone" danger />
-				<SettingRow label="Move category" hint="With its subcategories and tasks">
+				<SettingRow
+					label="Move category"
+					hint="With its subcategories and tasks"
+				>
 					<Button
 						type="button"
 						variant="outline"
@@ -272,10 +285,10 @@
 				<DialogHeader>
 					<DialogTitle>Move category to another workspace</DialogTitle>
 					<DialogDescription>
-						"{{ category?.title }}" will be moved with all its subcategories
-						and tasks. Task statuses are matched to the target workspace by
-						name, then by type; assignees who are not members of the target
-						workspace are removed.
+						"{{ category?.title }}" will be moved with all its subcategories and
+						tasks. Task statuses are matched to the target workspace by name,
+						then by type; assignees who are not members of the target workspace
+						are removed.
 					</DialogDescription>
 				</DialogHeader>
 				<LegacySelect
@@ -347,7 +360,6 @@
 	import { Skeleton } from '@/components/ui/skeleton';
 	import { Switch } from '@/components/ui/switch';
 	import { useToast } from '@/components/ui/toast';
-	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
 	import {
 		crumbOf,
 		ESTIMATE_KEY,
@@ -360,6 +372,7 @@
 		sanitizeCategoryCode,
 		TITLE_PATTERN_KEY,
 	} from '@/utils/categorySettingsPage';
+	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
 	import generateSlugFromRu from '@/utils/generateSlugFromRu';
 	import { ChevronLeft } from 'lucide-vue-next';
 	import {
@@ -414,7 +427,11 @@
 						props.title,
 					),
 					props.hint &&
-						h('span', { class: 'text-xs text-ink-subtle max-lg:hidden' }, props.hint),
+						h(
+							'span',
+							{ class: 'text-xs text-ink-subtle max-lg:hidden' },
+							props.hint,
+						),
 				]);
 		},
 	});
@@ -436,31 +453,38 @@
 							'grid min-w-0 content-start gap-1.5 py-2 lg:border-b lg:border-line lg:py-3.5 xl:grid-cols-[240px_minmax(0,1fr)] xl:gap-6',
 					},
 					[
-						h('div', { class: 'flex min-w-0 flex-col items-start gap-[3px] xl:pt-2' }, [
-							h('span', { class: 'text-[13px] font-semibold text-ink' }, [
-								props.shortLabel
-									? [
-											h('span', { class: 'lg:hidden' }, props.shortLabel),
-											h('span', { class: 'hidden lg:inline' }, props.label),
-									  ]
-									: props.label,
-							]),
-							props.tag &&
-								h(
-									'span',
-									{
-										class:
-											'rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.06em] text-tag-fg',
-									},
-									props.tag,
-								),
-							props.hint &&
-								h(
-									'span',
-									{ class: 'hidden text-xs leading-snug text-ink-subtle lg:block' },
-									props.hint,
-								),
-						]),
+						h(
+							'div',
+							{ class: 'flex min-w-0 flex-col items-start gap-[3px] xl:pt-2' },
+							[
+								h('span', { class: 'text-[13px] font-semibold text-ink' }, [
+									props.shortLabel
+										? [
+												h('span', { class: 'lg:hidden' }, props.shortLabel),
+												h('span', { class: 'hidden lg:inline' }, props.label),
+										  ]
+										: props.label,
+								]),
+								props.tag &&
+									h(
+										'span',
+										{
+											class:
+												'rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.06em] text-tag-fg',
+										},
+										props.tag,
+									),
+								props.hint &&
+									h(
+										'span',
+										{
+											class:
+												'hidden text-xs leading-snug text-ink-subtle lg:block',
+										},
+										props.hint,
+									),
+							],
+						),
 						h(
 							'div',
 							{ class: ['min-w-0', WIDTHS[props.width] ?? 'lg:max-w-[460px]'] },
@@ -554,13 +578,17 @@
 			);
 
 			const heading = computed(() => {
-				if (props.isCreate) return parent.value ? 'New subcategory' : 'New category';
+				if (props.isCreate)
+					return parent.value ? 'New subcategory' : 'New category';
 				return category.value?.title ?? '';
 			});
 			const crumb = computed(() => {
 				if (props.isCreate) {
 					return parent.value
-						? crumbOf([...props.parentNode.ancestors, parent.value], props.workspaceName)
+						? crumbOf(
+								[...props.parentNode.ancestors, parent.value],
+								props.workspaceName,
+						  )
 						: crumbOf([], props.workspaceName);
 				}
 				return crumbOf(props.node?.ancestors ?? [], props.workspaceName);
@@ -629,8 +657,8 @@
 						? String(parent.value.id)
 						: 'none'
 					: c?.project_category_id != null
-						? String(c.project_category_id)
-						: 'none';
+					? String(c.project_category_id)
+					: 'none';
 				errors.value = {};
 				fillDefaults();
 				initial.value = current();
@@ -638,7 +666,9 @@
 
 			const fillDefaults = () => {
 				if (props.isCreate) {
-					copyFrom.value = copyDefault.value ? String(copyDefault.value.id) : 'none';
+					copyFrom.value = copyDefault.value
+						? String(copyDefault.value.id)
+						: 'none';
 					fillSettings(copyDefault.value);
 				} else {
 					fillSettings(category.value);
@@ -649,13 +679,16 @@
 				() => props.catalogue,
 				() => {
 					fillDefaults();
-					if (initial.value) initial.value = { ...initial.value, values: current().values };
+					if (initial.value)
+						initial.value = { ...initial.value, values: current().values };
 				},
 			);
 
 			const applyCopy = (id) => {
 				copyFrom.value = id;
-				fillSettings(props.nodes.find((n) => String(n.category.id) === id)?.category);
+				fillSettings(
+					props.nodes.find((n) => String(n.category.id) === id)?.category,
+				);
 			};
 
 			const discard = () => reset();
@@ -670,13 +703,16 @@
 				const data = e?.response?.data;
 				if (data?.errors && typeof data.errors === 'object') {
 					errors.value = data.errors;
-					if (['title', 'code', 'project_category_id'].some((k) => data.errors[k]))
+					if (
+						['title', 'code', 'project_category_id'].some((k) => data.errors[k])
+					)
 						return;
 				}
 				notify(title, data?.message || 'Please try again.', 'destructive');
 			};
 
-			const parentId = () => (form.parent === 'none' ? null : Number(form.parent));
+			const parentId = () =>
+				form.parent === 'none' ? null : Number(form.parent);
 
 			const save = async () => {
 				const c = category.value;
@@ -819,7 +855,11 @@
 					const workspaces = await getWorkspaces();
 					transfer.targets = workspaces.filter((w) => Number(w.id) !== current);
 				} catch (e) {
-					notify('Could not load workspaces', 'Please try again.', 'destructive');
+					notify(
+						'Could not load workspaces',
+						'Please try again.',
+						'destructive',
+					);
 					return;
 				}
 				transfer.targetWorkspaceId = null;
@@ -894,7 +934,8 @@
 										h(TextField, {
 											modelValue: values[def.id],
 											'onUpdate:modelValue': (v) => (values[def.id] = v),
-											placeholder: def.key === RATE_KEY ? '—' : def.description || '',
+											placeholder:
+												def.key === RATE_KEY ? '—' : def.description || '',
 											inputClass: [
 												'h-9 font-mono text-[13px]',
 												def.key === RATE_KEY ? 'pr-9' : '',
@@ -921,17 +962,26 @@
 										'onUpdate:modelValue': (v) => (values[def.id] = v),
 									},
 									() => [
-										h(SelectTrigger, { class: FIELD_CLASS, 'aria-label': label }, () =>
-											h(SelectValue, { placeholder: def.description || 'Select' }),
+										h(
+											SelectTrigger,
+											{ class: FIELD_CLASS, 'aria-label': label },
+											() =>
+												h(SelectValue, {
+													placeholder: def.description || 'Select',
+												}),
 										),
 										h(SelectContent, null, () =>
 											(def.default_values || []).map((option) =>
 												h(
 													SelectItem,
-													{ key: option.id ?? option.value, value: String(option.value) },
+													{
+														key: option.id ?? option.value,
+														value: String(option.value),
+													},
 													() =>
 														def.component_type === 'time_in_seconds'
-															? formatDuration(option.value) || String(option.value)
+															? formatDuration(option.value) ||
+															  String(option.value)
 															: String(option.value),
 												),
 											),
@@ -942,13 +992,17 @@
 							control,
 							canCustom &&
 								withDefaults &&
-								h('label', { class: 'flex items-center gap-2 text-xs text-ink-muted' }, [
-									h(Switch, {
-										checked: !!custom[def.id],
-										'onUpdate:checked': (v) => (custom[def.id] = v),
-									}),
-									'Custom value',
-								]),
+								h(
+									'label',
+									{ class: 'flex items-center gap-2 text-xs text-ink-muted' },
+									[
+										h(Switch, {
+											checked: !!custom[def.id],
+											'onUpdate:checked': (v) => (custom[def.id] = v),
+										}),
+										'Custom value',
+									],
+								),
 						]);
 					};
 				},

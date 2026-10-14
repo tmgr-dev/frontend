@@ -52,7 +52,9 @@
 						<div
 							class="flex h-[calc(100dvh-12.5rem)] min-h-[28rem] overflow-hidden rounded-xl border border-line bg-surface"
 						>
-							<div class="w-full space-y-3 p-3 lg:w-[300px] lg:border-r lg:border-line">
+							<div
+								class="w-full space-y-3 p-3 lg:w-[300px] lg:border-r lg:border-line"
+							>
 								<Skeleton v-for="n in 6" :key="n" class="h-9 w-full" />
 							</div>
 						</div>
@@ -71,8 +73,8 @@
 						<p class="text-sm leading-normal text-ink-muted">
 							A category groups tasks and sets defaults for new ones: title
 							pattern like
-							<code class="font-mono text-xs">TM-{index#category}</code>,
-							hourly rate, estimate.
+							<code class="font-mono text-xs">TM-{index#category}</code>, hourly
+							rate, estimate.
 						</p>
 						<Button
 							data-tour="categories.create"
@@ -118,7 +120,7 @@
 								class="flex min-h-0 flex-1 flex-col gap-3 lg:gap-0 lg:overflow-y-auto lg:px-2 lg:pb-3 lg:pt-1.5"
 							>
 								<p
-									v-if="!visibleGroups.length"
+									v-if="!visibleGroups.length && filter.trim()"
 									class="px-2.5 py-3 text-sm text-ink-subtle"
 								>
 									No categories match “{{ filter }}”.
@@ -131,10 +133,7 @@
 									class="overflow-hidden rounded-xl border border-line bg-surface lg:overflow-visible lg:rounded-none lg:border-0 lg:bg-transparent"
 									:class="nested && 'lg:mt-2.5 lg:first:mt-0'"
 								>
-									<template
-										v-for="node in group.nodes"
-										:key="node.category.id"
-									>
+									<template v-for="node in group.nodes" :key="node.category.id">
 										<div
 											role="option"
 											data-tour="categories.row"
@@ -169,7 +168,9 @@
 													v-if="node.meta"
 													class="truncate font-mono text-[11px]"
 													:class="
-														node.literal ? 'text-status-progress' : 'text-ink-subtle'
+														node.literal
+															? 'text-status-progress'
+															: 'text-ink-subtle'
 													"
 												>
 													{{ node.meta }}
@@ -355,6 +356,7 @@
 		settingValue,
 		TITLE_PATTERN_KEY,
 	} from '@/utils/categorySettingsPage';
+	import { requestCache } from '@/utils/requestCache';
 	import {
 		ChevronRight,
 		Folder,
@@ -433,14 +435,16 @@
 				pending.value = true;
 				error.value = null;
 				try {
-					const data = await getCategories(!fresh);
+					if (fresh) requestCache.invalidate('categories');
+					const data = await getCategories();
 					if (id !== request) return;
 					categories.value = Array.isArray(data) ? data : [];
 					loaded.value = true;
 				} catch (e) {
 					if (id !== request) return;
 					if (e?.response?.status === 403) permissionDenied.value = true;
-					error.value = e?.response?.data?.message || 'Could not load categories.';
+					error.value =
+						e?.response?.data?.message || 'Could not load categories.';
 				} finally {
 					if (id === request) pending.value = false;
 				}
@@ -493,7 +497,10 @@
 							keep.add(node.category.id);
 							node.ancestors.forEach((a) => keep.add(a.id));
 						}
-						return { ...group, nodes: group.nodes.filter((n) => keep.has(n.category.id)) };
+						return {
+							...group,
+							nodes: group.nodes.filter((n) => keep.has(n.category.id)),
+						};
 					})
 					.filter((group) => group.nodes.length);
 			});
@@ -502,13 +509,16 @@
 			const isCreate = computed(
 				() => route.query.create != null && route.query.create !== '',
 			);
-			const findNode = (id) => nodes.value.find((n) => n.category.id === id) ?? null;
+			const findNode = (id) =>
+				nodes.value.find((n) => n.category.id === id) ?? null;
 			const parentNode = computed(() =>
 				isCreate.value && route.query.create !== 'top'
 					? findNode(Number(route.query.create))
 					: null,
 			);
-			const createParentId = computed(() => parentNode.value?.category.id ?? null);
+			const createParentId = computed(
+				() => parentNode.value?.category.id ?? null,
+			);
 			const selectedNode = computed(() =>
 				isCreate.value ? null : findNode(selectedId.value),
 			);
@@ -525,7 +535,9 @@
 			);
 
 			const workspace = computed(() => store.getters.currentWorkspace);
-			const workspaceName = computed(() => workspace.value?.name || 'Workspace');
+			const workspaceName = computed(
+				() => workspace.value?.name || 'Workspace',
+			);
 			const workspaceCode = computed(
 				() => route.params.workspace_code || workspace.value?.code || null,
 			);
@@ -582,7 +594,10 @@
 				let fixed = 0;
 				for (const category of targets) {
 					try {
-						await updateCategorySettings(category.id, fixedSettingsPayload(category));
+						await updateCategorySettings(
+							category.id,
+							fixedSettingsPayload(category),
+						);
 						fixed += 1;
 					} catch (e) {
 						console.error(e);
@@ -591,11 +606,17 @@
 				fixing.value = false;
 				await load(true);
 				if (fixed === targets.length) {
-					toast({ title: `Fixed ${fixed} title ${fixed === 1 ? 'pattern' : 'patterns'}` });
+					toast({
+						title: `Fixed ${fixed} title ${
+							fixed === 1 ? 'pattern' : 'patterns'
+						}`,
+					});
 				} else {
 					toast({
 						title: `Fixed ${fixed} of ${targets.length} title patterns`,
-						description: `${targets.length - fixed} could not be saved. Try again for the rest.`,
+						description: `${
+							targets.length - fixed
+						} could not be saved. Try again for the rest.`,
 						variant: 'destructive',
 					});
 				}
@@ -617,7 +638,8 @@
 				if (!dirty.value) return true;
 				if (
 					to.path === from.path &&
-					String(to.query.category ?? '') === String(from.query.category ?? '') &&
+					String(to.query.category ?? '') ===
+						String(from.query.category ?? '') &&
 					String(to.query.create ?? '') === String(from.query.create ?? '')
 				)
 					return true;
@@ -654,7 +676,7 @@
 
 			onMounted(() => {
 				window.addEventListener('keydown', onKeydown);
-				void load();
+				void load(true);
 				void loadCatalogue();
 			});
 			onBeforeUnmount(() => {

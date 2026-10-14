@@ -51,11 +51,17 @@ export const buildCategoryGroups = <T extends CategoryLike>(
 		children.set(parent, [...(children.get(parent) || []), c]);
 	}
 	const seen = new Set<number>();
-	const walk = (parent: T, depth: number, ancestors: T[], out: CategoryNode<T>[]) => {
+	const walk = (
+		parent: T,
+		depth: number,
+		ancestors: T[],
+		out: CategoryNode<T>[],
+	) => {
 		seen.add(parent.id);
 		out.push({ category: parent, depth, ancestors });
 		for (const child of [...(children.get(parent.id) || [])].sort(byTitle)) {
-			if (!seen.has(child.id)) walk(child, depth + 1, [...ancestors, parent], out);
+			if (!seen.has(child.id))
+				walk(child, depth + 1, [...ancestors, parent], out);
 		}
 	};
 	const groups = [...(children.get(null) || [])].sort(byTitle).map((root) => {
@@ -73,8 +79,9 @@ export const buildCategoryGroups = <T extends CategoryLike>(
 	return groups;
 };
 
-export const flattenGroups = <T extends CategoryLike>(groups: CategoryGroup<T>[]) =>
-	groups.flatMap((g) => g.nodes);
+export const flattenGroups = <T extends CategoryLike>(
+	groups: CategoryGroup<T>[],
+) => groups.flatMap((g) => g.nodes);
 
 export const descendantIds = (categories: CategoryLike[], id: number) => {
 	const result = new Set<number>();
@@ -82,7 +89,11 @@ export const descendantIds = (categories: CategoryLike[], id: number) => {
 	while (queue.length) {
 		const current = queue.shift();
 		for (const c of categories) {
-			if (c.project_category_id === current && !result.has(c.id) && c.id !== id) {
+			if (
+				c.project_category_id === current &&
+				!result.has(c.id) &&
+				c.id !== id
+			) {
 				result.add(c.id);
 				queue.push(c.id);
 			}
@@ -104,7 +115,10 @@ export const parentOptions = <T extends CategoryLike>(
 	return nodes.filter((n) => !excluded.has(n.category.id));
 };
 
-export const settingValue = (category: CategoryLike | null | undefined, key: string) => {
+export const settingValue = (
+	category: CategoryLike | null | undefined,
+	key: string,
+) => {
 	const value = category?.settings?.find((s) => s?.key === key)?.value;
 	return value == null ? '' : String(value);
 };
@@ -154,9 +168,13 @@ export const crumbOf = (ancestors: CategoryLike[], workspaceName: string) =>
 		? `${ancestors.map((a) => a.title).join(' / ')} /`
 		: `${workspaceName} · top level`;
 
-export const literalIssues = <T extends CategoryLike>(nodes: CategoryNode<T>[]) =>
+export const literalIssues = <T extends CategoryLike>(
+	nodes: CategoryNode<T>[],
+) =>
 	nodes
-		.filter((n) => isLiteralPattern(settingValue(n.category, TITLE_PATTERN_KEY)))
+		.filter((n) =>
+			isLiteralPattern(settingValue(n.category, TITLE_PATTERN_KEY)),
+		)
 		.map((n) => ({
 			category: n.category,
 			path: n.ancestors.map((a) => a.title).join(' / '),
@@ -195,7 +213,12 @@ export const sanitizeCategoryCode = (code: string, final = false) => {
 	return final ? cleaned.replace(/-+$/, '') : cleaned;
 };
 
-export const insertAt = (value: string, token: string, start: number, end = start) => {
+export const insertAt = (
+	value: string,
+	token: string,
+	start: number,
+	end = start,
+) => {
 	const from = Math.max(0, Math.min(start, value.length));
 	const to = Math.max(from, Math.min(end, value.length));
 	return {
