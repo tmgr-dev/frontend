@@ -3,13 +3,16 @@ name = "Claude Code"
 command = ["claude"]
 args = []
 model_arg = ["--model", "{model}"]
-env_pass = ["CLAUDE_CODE_OAUTH_TOKEN"]
+env_pass = []
 
 [env]
 DISABLE_AUTOUPDATER = "1"
 
-[secrets]
-file = "~/.config/tmgr/agents/claude-code.env"
+[[secrets.files]]
+from = "~/.config/tmgr/agents/claude-code.credentials.json"
+to = ".claude/.credentials.json"
+token_prefix = "sk-ant-oat01-"
+template = "claude-oauth"
 
 [sandbox]
 read = ["~/.local/share/claude"]

@@ -31,9 +31,13 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             None => run(o, a),
         },
         RunnerCommands::Agents(AgentsArgs {
-            command: Some(AgentsCmd::LoginFile { profile }),
+            command: Some(AgentsCmd::Login { profile, replace }),
             ..
-        }) => login_file(o, profile),
+        }) => agent_login(o, profile, *replace),
+        RunnerCommands::Agents(AgentsArgs {
+            command: Some(AgentsCmd::Logout { profile }),
+            ..
+        }) => agent_logout(o, profile),
         RunnerCommands::Agents(a) => match &a.host {
             Some(link) => remote::agents(o, link),
             None => agents(o),
@@ -277,7 +281,7 @@ fn command_line(s: &SessionInfo) -> String {
     tmgr_core::text::sanitize_line(&if more { format!("{cut}…") } else { cut })
 }
 
-fn login_file(o: &Opts, profile: &str) -> Result<i32> {
+fn credential_target(profile: &str) -> Result<login::ResolvedSecretFile> {
     let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
     let p = set.get(profile).ok_or_else(|| {
         Error::not_found(format!("no agent profile {profile:?}")).hint("tmgr agents")
@@ -285,25 +289,54 @@ fn login_file(o: &Opts, profile: &str) -> Result<i32> {
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .ok_or_else(|| Error::usage("HOME is not set"))?;
-    let f = login::ensure_login_file(p, &home).map_err(Error::usage)?;
-    let path = f.path.display().to_string();
-    let names = f.names.join(", ");
-    let human = if !f.created && !f.private {
-        format!(
-            "{path} exists but is not private; run: chmod 600 {path}\nSessions refuse to start until it is."
-        )
-    } else if f.created {
-        format!(
-            "Created {path} (mode 600).\nPut the value for {names} after the = in that file. For Claude Code run `claude setup-token` and paste the token there."
-        )
+    let mut files = login::resolve(p, &home, &[])
+        .map_err(Error::usage)?
+        .secret_files;
+    match (files.pop(), files.is_empty()) {
+        (Some(f), true) => Ok(f),
+        _ => Err(Error::usage(format!(
+            "profile {profile} must declare exactly one [[secrets.files]] entry to log in"
+        ))),
+    }
+}
+
+fn read_token() -> Result<String> {
+    let line = if std::io::stdin().is_terminal() {
+        rpassword::prompt_password("Token (input hidden): ")
+            .map_err(|e| Error::usage(format!("cannot read the token: {e}")))?
     } else {
-        format!("{path} already exists (permissions OK); it was not changed.")
+        let mut line = String::new();
+        std::io::stdin()
+            .read_line(&mut line)
+            .map_err(|e| Error::usage(format!("cannot read the token: {e}")))?;
+        line
     };
+    Ok(line.trim().to_string())
+}
+
+fn agent_login(o: &Opts, profile: &str, replace: bool) -> Result<i32> {
+    let target = credential_target(profile)?;
+    let token = read_token()?;
+    let bytes = login::render_credential(&target, &token, now_ms()).map_err(Error::usage)?;
+    login::write_credential(&target, &bytes, replace).map_err(Error::usage)?;
+    let path = target.from.display().to_string();
     Ok(emit(
         o,
-        json!({"path": path, "created": f.created, "private": f.private, "names": f.names}),
-        human,
+        json!({"path": path}),
+        format!("Wrote {path} (mode 600).\nNext session will be logged in."),
     ))
+}
+
+fn agent_logout(o: &Opts, profile: &str) -> Result<i32> {
+    let target = credential_target(profile)?;
+    let removed = login::remove_credential(&target).map_err(Error::usage)?;
+    let path = target.from.display().to_string();
+    let human = if removed {
+        format!("Removed {path}.")
+    } else {
+        format!("{path} does not exist; nothing to remove.")
+    };
+    Ok(emit(o, json!({"path": path, "removed": removed}), human))
 }
 
 fn agents(o: &Opts) -> Result<i32> {

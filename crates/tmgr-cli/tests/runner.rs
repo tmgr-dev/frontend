@@ -576,56 +576,74 @@ fn run_is_refused_without_a_usable_sandbox() {
 }
 
 #[test]
-fn agents_login_file_creates_a_private_template_and_never_overwrites() {
+fn agents_login_stores_a_claude_credential_without_echoing_the_token() {
+    const TOKEN: &str = concat!("sk-", "ant-oat01-FAKEFAKEFAKEFAKEFAKE");
     let env = Env::new();
     let home = env.tmp.path().join("fakehome");
     private_dir(&home);
-    let file = home.join(".config/tmgr/agents/claude-code.env");
-    let run = |args: &[&str]| {
+    let file = home.join(".config/tmgr/agents/claude-code.credentials.json");
+    let run = |args: &[&str], stdin: &str| {
+        let input = env.tmp.path().join("stdin.txt");
+        fs::write(&input, stdin).unwrap();
         let mut c = env.cmd(args);
-        c.env("HOME", &home);
+        c.env("HOME", &home).stdin(fs::File::open(&input).unwrap());
         run_bounded(c, Duration::from_secs(60))
     };
+    let text = |o: &Output| {
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&o.stdout),
+            String::from_utf8_lossy(&o.stderr)
+        )
+    };
 
-    let out = run(&["agents", "login-file", "claude-code", "--json"]);
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
-    let v: Value = serde_json::from_slice(&out.stdout).unwrap();
-    assert_eq!(v["data"]["created"], true);
-    assert!(v["data"]["path"]
-        .as_str()
-        .unwrap()
-        .ends_with("fakehome/.config/tmgr/agents/claude-code.env"));
-    assert_eq!(
-        fs::read_to_string(&file).unwrap(),
-        "CLAUDE_CODE_OAUTH_TOKEN=\n"
-    );
-    assert_eq!(
-        fs::metadata(&file).unwrap().permissions().mode() & 0o777,
-        0o600
-    );
+    let out = run(&["agents", "login", "claude-code"], &format!("{TOKEN}\n"));
+    assert!(out.status.success(), "login failed");
+    assert!(!text(&out).contains(TOKEN), "output leaks the token");
+    let shown = text(&out);
+    assert!(shown.contains("credentials.json") && shown.contains("Next session will be logged in"));
+    let v: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    let o = &v["claudeAiOauth"];
+    assert_eq!(o["accessToken"], TOKEN);
+    assert!(o["refreshToken"].is_null() && o["subscriptionType"].is_null());
+    assert_eq!(o["scopes"], serde_json::json!(["user:inference"]));
+    assert!(o["expiresAt"].as_u64().unwrap() > 300 * 24 * 3600 * 1000);
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode(&file), 0o600);
+    assert_eq!(mode(file.parent().unwrap()), 0o700);
 
-    fs::write(&file, "CLAUDE_CODE_OAUTH_TOKEN=keep-me\n").unwrap();
-    let out = run(&["agents", "login-file", "claude-code"]);
-    let text = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        out.status.success() && text.contains("already exists"),
-        "{text}"
-    );
-    assert!(!text.contains("keep-me"));
-    assert_eq!(
-        fs::read_to_string(&file).unwrap(),
-        "CLAUDE_CODE_OAUTH_TOKEN=keep-me\n"
-    );
+    let out = run(&["agents", "login", "claude-code"], &format!("{TOKEN}\n"));
+    assert!(!out.status.success() && text(&out).contains("--replace"));
+    assert!(!text(&out).contains(TOKEN), "output leaks the token");
 
-    fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).unwrap();
-    let out = run(&["agents", "login-file", "claude-code"]);
-    assert!(String::from_utf8_lossy(&out.stdout).contains("chmod 600"));
+    let other = concat!("sk-", "ant-oat01-OTHEROTHEROTHEROTHER");
+    let out = run(&["agents", "login", "claude-code", "--replace"], other);
+    assert!(out.status.success(), "replace failed");
+    let v: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    assert_eq!(v["claudeAiOauth"]["accessToken"], other);
 
-    assert!(!run(&["agents", "login-file", "no-such"]).status.success());
+    let before = fs::read(&file).unwrap();
+    for bad in [
+        concat!("sk-", "ant-api03-FAKEFAKEFAKEFAKEFAKE"),
+        "sk-ant-oat01-short",
+        "",
+    ] {
+        let out = run(&["agents", "login", "claude-code", "--replace"], bad);
+        assert!(!out.status.success(), "bad token accepted");
+        assert!(
+            bad.is_empty() || !text(&out).contains(bad),
+            "output leaks the token"
+        );
+    }
+    assert_eq!(fs::read(&file).unwrap(), before);
+
+    assert!(!run(&["agents", "login", "no-such"], TOKEN).status.success());
+    assert!(!run(&["agents", "login", "codex"], TOKEN).status.success());
+
+    let out = run(&["agents", "logout", "claude-code"], "");
+    assert!(out.status.success() && !file.exists());
+    let out = run(&["agents", "logout", "claude-code"], "");
+    assert!(out.status.success() && text(&out).contains("nothing to remove"));
 }
 
 #[test]

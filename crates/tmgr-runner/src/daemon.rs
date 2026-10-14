@@ -1458,6 +1458,7 @@ impl Runner {
         let profile_protected = profile_protected_paths()?;
         let mut grants = sandbox::Grants::default();
         let mut seeds = Vec::new();
+        let mut secret_files = Vec::new();
         if let Some(pid) = &req.profile {
             let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
             if let Some(p) = set.get(pid) {
@@ -1482,6 +1483,7 @@ impl Runner {
                 base.extend(prep.pass_values);
                 grants = prep.grants;
                 seeds = prep.seeds;
+                secret_files = prep.secret_files;
             }
         }
         grants.deny = profile_protected;
@@ -1504,6 +1506,11 @@ impl Runner {
         }
         let records = login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
         seedguard::save(sdir, &records).map_err(internal)?;
+        for note in login::apply_secret_files(&secret_files, home)
+            .map_err(|e| api(ErrorCode::Sandbox, e))?
+        {
+            log(&format!("session {id}: {note}"));
+        }
         let (cols, rows) = clamp_size(req.cols, req.rows);
         let lf = LaunchFile {
             argv: launch.argv,
