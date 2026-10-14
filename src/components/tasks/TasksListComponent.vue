@@ -2,7 +2,7 @@
 	<div
 		ref="listRoot"
 		class="relative w-full items-center justify-center outline-none"
-		tabindex="0"
+		tabindex="-1"
 	>
 		<TasksMultipleActionsModal
 			v-if="isShowSelectedTasksCommonTime"
@@ -69,8 +69,6 @@
 					selected: !!selected[i],
 					selecting: !!selecting[i],
 					'opacity-50 hover:opacity-100': task.deleted_at,
-					'rounded-card ring-2 ring-tmgr-blue ring-offset-2 ring-offset-surface dark:ring-tmgr-light-blue':
-						focusedIndex === i,
 				}"
 				:data-task-id="task.id"
 				data-tour="list.row"
@@ -89,6 +87,7 @@
 						'border-l-[3px] border-l-status-done': task.start_time,
 						'border-status-fix hover:border-status-fix':
 							taskTimeExceeded[task.id],
+						'focus-ring': focusedIndex === i,
 					}"
 					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md md:flex"
 					@click="$store.commit('setCurrentTaskIdForModal', task.id)"
@@ -406,7 +405,7 @@
 					<select
 						v-model="perPage"
 						@change="onPerPageChange"
-						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-line-strong"
+						class="h-9 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none"
 					>
 						<option :value="10">10 per page</option>
 						<option :value="25">25 per page</option>

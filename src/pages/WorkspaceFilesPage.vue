@@ -66,7 +66,7 @@
 					<button
 						v-if="previews[file.id]"
 						type="button"
-						class="block cursor-zoom-in rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+						class="block cursor-zoom-in rounded"
 						:title="`Open ${file.name}`"
 						@click="galleryStartId = file.id"
 					>

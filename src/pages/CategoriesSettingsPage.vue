@@ -96,7 +96,7 @@
 						>
 							<div class="pb-3 lg:border-b lg:border-line lg:p-3">
 								<label
-									class="flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-2.5 text-ink-subtle lg:h-8 lg:bg-surface-base"
+									class="flex h-9 items-center gap-2 rounded-lg border border-line-strong bg-surface px-2.5 text-ink-subtle focus-within:border-line-focus lg:h-8 lg:bg-surface-base"
 								>
 									<Search class="h-3.5 w-3.5 flex-none" />
 									<input
@@ -143,7 +143,7 @@
 												'--indent': `${node.depth * 14}px`,
 												'--pad': `${12 + node.depth * 16}px`,
 											}"
-											class="flex min-h-[52px] cursor-pointer items-center gap-2 border-t border-line py-1.5 pl-[var(--pad)] pr-3 outline-none first:border-t-0 hover:bg-surface-hover focus-visible:ring-2 focus-visible:ring-ring lg:ml-[var(--indent)] lg:min-h-9 lg:rounded-lg lg:border-0 lg:px-2.5 lg:py-[5px]"
+											class="flex min-h-[52px] cursor-pointer items-center gap-2 border-t border-line py-1.5 pl-[var(--pad)] pr-3 outline-none first:border-t-0 hover:bg-surface-hover focus-visible:bg-surface-hover lg:ml-[var(--indent)] lg:min-h-9 lg:rounded-lg lg:border-0 lg:px-2.5 lg:py-[5px]"
 											:class="
 												selectedId === node.category.id &&
 												!isCreate &&

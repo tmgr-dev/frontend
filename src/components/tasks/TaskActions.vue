@@ -14,7 +14,7 @@
 			<button
 				v-if="!isCreatingTask"
 				@click="$emit('saveTask')"
-				class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700 focus:outline-none"
+				class="relative rounded bg-blue-500 px-8 py-2 font-bold text-white hover:bg-blue-700"
 				type="button"
 			>
 				<svg
@@ -55,7 +55,7 @@
 		<button
 			v-if="isCreatingTask"
 			@click="$emit('createTask')"
-			class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 focus:outline-none sm:mb-0"
+			class="mb-5 rounded bg-orange-500 px-4 py-2 font-bold text-white transition hover:bg-orange-600 sm:mb-0"
 			type="button"
 		>
 			Create
@@ -64,7 +64,7 @@
 		<!--		<button
 			v-if="isCreatingTask"
 			@click="$emit('cancelCreateTask')"
-			class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 focus:outline-none sm:mb-0"
+			class="mb-5 rounded bg-gray-500 py-2 px-4 font-bold text-white transition hover:bg-gray-600 sm:mb-0"
 			type="button"
 		>
 			Cancel
@@ -73,7 +73,7 @@
 		<button
 			v-if="!isCreatingTask"
 			@click="$emit('settingsTask')"
-			class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700 focus:outline-none"
+			class="rounded bg-gray-500 px-4 py-2 font-bold text-white hover:bg-gray-700"
 			type="button"
 		>
 			Settings

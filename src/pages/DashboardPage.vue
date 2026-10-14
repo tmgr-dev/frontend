@@ -888,7 +888,7 @@
 							<section
 								class="dashboard-section"
 								aria-labelledby="heatmap-heading"
-								tabindex="0"
+								tabindex="-1"
 								role="region"
 							>
 								<div class="mb-4">
@@ -980,7 +980,7 @@
 							<section
 								class="dashboard-section"
 								aria-labelledby="statistics-heading"
-								tabindex="0"
+								tabindex="-1"
 								role="region"
 							>
 								<h2
@@ -1029,7 +1029,7 @@
 									<!-- Team Activity -->
 									<section
 										aria-labelledby="team-activity-heading"
-										tabindex="0"
+										tabindex="-1"
 										role="region"
 									>
 										<h3 id="team-activity-heading" class="sr-only">
@@ -1074,7 +1074,7 @@
 								<section
 									class="dashboard-main-content"
 									aria-labelledby="activity-heading"
-									tabindex="0"
+									tabindex="-1"
 									role="region"
 								>
 									<h2 id="activity-heading" class="sr-only">
@@ -1261,11 +1261,6 @@
 
 	.dashboard-container::-webkit-scrollbar-thumb:hover {
 		@apply bg-gray-500;
-	}
-
-	/* Focus States */
-	.dashboard-section:focus-within {
-		@apply ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-gray-800;
 	}
 
 	/* Animations */

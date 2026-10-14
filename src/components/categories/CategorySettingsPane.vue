@@ -407,9 +407,9 @@
 		lg: 'lg:max-w-[280px]',
 	};
 	const FIELD_CLASS =
-		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink focus:border-primary focus:ring-0 focus:ring-offset-0';
+		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
 	const INPUT_SKIN =
-		'[&_input]:!rounded-lg [&_input]:!border-line-strong [&_input]:!bg-surface-base [&_input:focus]:!border-primary';
+		'[&_input]:!rounded-lg [&_input]:!border-line-strong [&_input]:!bg-surface-base [&_input:focus]:!border-line-focus';
 
 	const SectionHead = defineComponent({
 		props: { title: String, hint: String, danger: Boolean },

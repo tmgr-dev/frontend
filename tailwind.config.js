@@ -67,6 +67,7 @@ module.exports = {
 
 				line: 'var(--line-color)',
 				'line-strong': 'var(--line-strong-color)',
+				'line-focus': 'var(--focus-border)',
 
 				brand: 'var(--brand-color)',
 				'brand-bg': 'var(--brand-bg-color)',
@@ -150,7 +151,6 @@ module.exports = {
 				'tmgr-sm': 'var(--shadow-sm)',
 				'tmgr-md': 'var(--shadow-md)',
 				'tmgr-lg': 'var(--shadow-lg)',
-				'tmgr-focus': 'var(--shadow-focus)',
 			},
 			fontSize: {
 				'2xs': ['var(--text-2xs)', { lineHeight: 'var(--leading-tight)' }],

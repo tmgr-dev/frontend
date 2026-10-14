@@ -40,7 +40,7 @@
 		},
 		methods: {
 			getClass() {
-				return `${this.extraClass} px-5 py-1 border focus:outline-none border-4 border-${this.color}-400 text-${this.color}-600 hover:bg-${this.color}-400 hover:text-white`;
+				return `${this.extraClass} px-5 py-1 border border-4 border-${this.color}-400 text-${this.color}-600 hover:bg-${this.color}-400 hover:text-white`;
 			},
 		},
 	};

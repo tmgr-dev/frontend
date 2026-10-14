@@ -134,7 +134,7 @@ describe('stack/card/grid class builders', () => {
 			onClick: { command: 'x' },
 		});
 		expect(clickable).toContain('cursor-pointer');
-		expect(clickable).toContain('focus-visible:ring-2');
+		expect(clickable.some((c) => /(^|:)ring|outline/.test(c))).toBe(false);
 	});
 
 	it('cardOuterClasses adds grow classes', () => {

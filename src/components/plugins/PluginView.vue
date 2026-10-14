@@ -41,7 +41,7 @@
 			<DropdownMenuTrigger as-child>
 				<button
 					type="button"
-					class="inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1 rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+					class="inline-flex h-7 w-7 shrink-0 items-center justify-center gap-1 rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
 					:aria-label="node.label ?? 'More actions'"
 				>
 					<MoreHorizontal class="h-4 w-4" />
@@ -99,7 +99,7 @@
 			'inline-flex w-fit items-center rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
 			colorClass(node.color),
 			node.command &&
-				'cursor-pointer transition-colors hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+				'cursor-pointer transition-colors hover:opacity-80',
 		]"
 		@click="node.command ? runNodeCommand(node) : undefined"
 	>

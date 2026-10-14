@@ -16,7 +16,7 @@
 		<div class="mt-4 flex flex-wrap gap-2">
 			<button
 				type="button"
-				class="min-h-[44px] rounded-md bg-brand px-4 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 sm:min-h-[36px]"
+				class="min-h-[44px] rounded-md bg-brand px-4 text-sm font-medium text-white hover:opacity-90 sm:min-h-[36px]"
 				data-tour-avoid="cta"
 				@click="$emit('check-again')"
 			>
@@ -24,7 +24,7 @@
 			</button>
 			<button
 				type="button"
-				class="min-h-[44px] rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[36px] dark:border-gray-700"
+				class="min-h-[44px] rounded-md border border-line px-4 text-sm font-medium text-ink hover:bg-surface sm:min-h-[36px] dark:border-gray-700"
 				@click="$emit('different-client')"
 			>
 				Use a different client

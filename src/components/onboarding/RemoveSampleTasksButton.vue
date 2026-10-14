@@ -2,7 +2,7 @@
 	<button
 		v-if="visible"
 		type="button"
-		class="min-h-[44px] rounded border border-line px-3 text-sm text-ink-muted hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-50 sm:min-h-[32px]"
+		class="min-h-[44px] rounded border border-line px-3 text-sm text-ink-muted hover:bg-surface-hover hover:text-ink disabled:opacity-50 sm:min-h-[32px]"
 		data-testid="remove-sample-tasks"
 		:disabled="busy"
 		@click="remove"

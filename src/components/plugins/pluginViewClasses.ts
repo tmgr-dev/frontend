@@ -97,10 +97,6 @@ export const cardOuterClasses = (node: {
 			'transition-colors',
 			'hover:bg-accent',
 			'hover:text-accent-foreground',
-			'focus-visible:outline-none',
-			'focus-visible:ring-2',
-			'focus-visible:ring-ring',
-			'focus-visible:ring-offset-2',
 		);
 	}
 	return classes;
@@ -126,10 +122,6 @@ export const statClasses = (clickable: boolean): string[] => {
 			'transition-colors',
 			'hover:bg-accent',
 			'hover:text-accent-foreground',
-			'focus-visible:outline-none',
-			'focus-visible:ring-2',
-			'focus-visible:ring-ring',
-			'focus-visible:ring-offset-2',
 		);
 	}
 	return classes;

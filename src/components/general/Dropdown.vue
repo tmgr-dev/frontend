@@ -3,7 +3,7 @@
 		<div>
 			<slot name="toggle">
 				<MenuButton
-					class="flex items-center text-ink-subtle transition-colors hover:text-ink focus:outline-none"
+					class="flex items-center text-ink-subtle transition-colors hover:text-ink"
 				>
 					<span class="sr-only">Open options</span>
 					<EllipsisVerticalIcon class="h-5 w-5" aria-hidden="true" />
@@ -20,7 +20,7 @@
 			leave-to-class="transform opacity-0 scale-95"
 		>
 			<MenuItems
-				class="absolute right-0 z-20 mt-2 w-56 origin-top-right overflow-hidden rounded-card border border-line bg-surface shadow-tmgr-md focus:outline-none"
+				class="absolute right-0 z-20 mt-2 w-56 origin-top-right overflow-hidden rounded-card border border-line bg-surface shadow-tmgr-md"
 			>
 				<div class="py-1">
 					<slot />

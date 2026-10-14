@@ -4,7 +4,7 @@
 		tabindex="0"
 		draggable="false"
 		:aria-label="label ? `Open ${label}` : 'Open member'"
-		class="hover:ring-brand/40 dark:hover:ring-brand/60 inline-flex cursor-pointer rounded-full outline-none transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:ring-brand dark:focus-visible:ring-brand"
+		class="hover:ring-brand/40 dark:hover:ring-brand/60 inline-flex cursor-pointer rounded-full outline-none transition-shadow hover:ring-2"
 		@click.stop.prevent="open"
 		@keydown.enter.stop.prevent="open"
 	>

@@ -1379,7 +1379,7 @@
 					v-model="localName"
 					data-selectable
 					autofocus
-					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus:ring-2 focus:ring-ring dark:border-input dark:bg-background"
+					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
 					placeholder="Personal, Client under NDA…"
 				/>
 				<p v-if="localError" class="text-xs text-destructive">{{ localError }}</p>

@@ -52,7 +52,7 @@
 						<div class="mt-6 flex flex-col items-center gap-1">
 							<button
 								type="button"
-								class="min-h-[44px] rounded-md bg-brand px-6 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+								class="min-h-[44px] rounded-md bg-brand px-6 text-sm font-medium text-white hover:opacity-90"
 								data-tour-avoid="cta"
 								@click="goWorkspace"
 							>
@@ -97,7 +97,7 @@
 									:aria-selected="tab.id === activeId"
 									:aria-controls="`connect-panel-${tab.id}`"
 									:tabindex="tab.id === activeId ? 0 : -1"
-									class="min-h-[44px] rounded-md border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand sm:min-h-[36px]"
+									class="min-h-[44px] rounded-md border px-3 text-sm font-medium transition-colors sm:min-h-[36px]"
 									:class="
 										tab.id === activeId
 											? 'border-brand text-ink'

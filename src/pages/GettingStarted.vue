@@ -107,7 +107,7 @@
 							<button
 								v-else
 								type="button"
-								class="min-h-[28px] rounded bg-brand px-2.5 py-0.5 text-xs font-semibold text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:opacity-50 dark:ring-offset-gray-900"
+								class="min-h-[28px] rounded bg-brand px-2.5 py-0.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
 								:data-testid="`hub-${row.action}-${row.id}`"
 								:aria-label="`${row.action === 'resume' ? 'Resume' : 'Start'} ${row.title}`"
 								:disabled="busy"
