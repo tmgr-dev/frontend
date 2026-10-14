@@ -75,7 +75,7 @@ Both sides must finish within 5 seconds. A refusal is
 
 ```json
 {"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"0011...eeff"}
-{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1"]}
+{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1","link_origin.v1","candidates.v1"]}
 ```
 
 ## 4. Versions and capabilities
@@ -99,6 +99,8 @@ Both sides must finish within 5 seconds. A refusal is
 | `run_bundle.v1` | `bundle`, `bundle_sha256` on `runs.create`; `bundle_sha256` on `SessionInfo` (section 5, "Run bundles") |
 | `cwd_pin.v1` | `cwd_pin` on `runs.create` (section 5, "Pinning the folder") |
 | `link_origin.v1` | `origin` on `runs.create`, `SessionInfo` and `Event`; `origin.revoke` (section 5, "Link-originated runs") |
+| `candidates.v1` | `candidates.list` (section 5, "Refreshed logins") |
+| `worklog.v1` | `sessions.worklog` (section 5, "Work log") |
 
 ## 5. Messages after the handshake
 
@@ -125,9 +127,11 @@ missing params) and `internal`.
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
 | `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
+| `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
+| `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
 | `layout.get` | none | the stored JSON value or `null` | | any |
 | `layout.set` | `{layout}` (any JSON, at most 64 KiB serialized) | `null` | | any |
 | `attach.open` | `AttachParams` | `null`, then pushes start | `not_found` | any |
@@ -231,6 +235,14 @@ The revocation is incomplete while `unconfirmed` is not empty. The result is
 `{"killed":n,"unconfirmed":["s_…"]}` (the session ids still being retried). It is idempotent; a later call keeps the
 highest generation. After it, `runs.create` for that link and a generation up to
 the recorded one is `forbidden`; a newly trusted link has a higher generation.
+
+### Refreshed logins
+
+A profile seed with `write_back` never changes the owner's file by itself. When a session ends with a changed copy that
+passes the runner's checks, the copy is stored as a candidate (`<runner dir>/candidates/<profile>/<seed index>.json`)
+and `candidates.list` (cap `candidates.v1`) reports it: `profile`, `source` (absolute path of the file the candidate
+would replace), `created_ms` and the `session` that produced it. The result never carries file contents; an empty list
+means nothing is pending. The owner applies a candidate with `tmgr agents sync <profile>`, not over this protocol.
 
 ### Run bundles
 
@@ -349,6 +361,32 @@ the bundle and sends it only after the human confirms.
 ```json
 {"type":"request","id":7,"method":"runs.create","params":{"profile":"codex","task":{"workspace_id":-3,"task_id":412},"cwd":"/work/project","model":"gpt-5","cols":120,"rows":40}}
 ```
+
+### Work log
+
+Capability `worklog.v1`. The runner keeps an append-only log per session,
+`<runner dir>/sessions/<id>/worklog.jsonl` (mode 0600, opened without following
+links, at most 10,000 lines and 1 MiB; past that it records one `truncated`
+event and stops, keeping a reserve for the `exited` and `commits` events).
+`sessions.worklog {id}` returns a `WorkSummary` computed from it:
+
+- `started_ms`, `ended_ms` (absent while running), `duration_s` (to now while running);
+- `working_s`, `waiting_s`, `blocked_s`: time in each state, from state changes (`starting` is not counted);
+- `branch`, `commits` (`[{sha, subject}]`, oldest first): git facts, absent when the folder is not a git work tree or git fails;
+- `exit` `{code, signal}`; `task`, `profile`, `agent` (the profile id, else the program's base name); `truncated`.
+
+Events: `created` (time, profile, program base name, task, bundle hash, branch
+and head of the folder), `state` (time, kind, and for `waiting` the detail
+`bell`, for `blocked` the rule id only), `exited`, `commits` (the final branch
+and the commits made since the head at creation, at most 200, each subject at
+most 200 characters with control and bidi characters replaced), `truncated`.
+Git is run by the runner with the hook-free environment of its worktree
+module (no hooks, no filters, no user config).
+
+Never recorded: terminal output, input, screen content, the text of a question
+or prompt, environment, or file contents. The log survives runner restarts;
+adopting a session does not repeat `created`. A session started before this
+capability has no log and returns an all-zero summary.
 
 ## 6. Who may call what
 

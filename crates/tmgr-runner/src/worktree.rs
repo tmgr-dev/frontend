@@ -4,8 +4,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, OwnedFd};
 use std::os::unix::fs::MetadataExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Output, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 const MAX_REF: usize = 100;
 const MAX_COPY: u64 = 1024 * 1024;
@@ -26,10 +30,125 @@ const HARDENING: [&str; 14] = [
     "core.askPass=",
 ];
 
+#[derive(Clone, Copy)]
+struct Limits {
+    deadline: Duration,
+    max_stdout: usize,
+    max_stderr: usize,
+}
+
+const PLUMBING: Limits = Limits {
+    deadline: Duration::from_secs(600),
+    max_stdout: 16 * 1024 * 1024,
+    max_stderr: 1024 * 1024,
+};
+
+const FACTS: Limits = Limits {
+    deadline: Duration::from_secs(5),
+    max_stdout: 256 * 1024,
+    max_stderr: 64 * 1024,
+};
+
 pub struct GitEnv {
     dir: Option<PathBuf>,
     filters: Vec<String>,
     extra: Vec<(String, String)>,
+    limits: Limits,
+    offline: bool,
+}
+
+fn drain<R: Read + Send + 'static>(
+    mut src: R,
+    cap: usize,
+    over: Arc<AtomicBool>,
+) -> std::thread::JoinHandle<Vec<u8>> {
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        loop {
+            match src.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if buf.len() + n > cap {
+                        over.store(true, Ordering::SeqCst);
+                        break;
+                    }
+                    buf.extend_from_slice(&chunk[..n]);
+                }
+            }
+        }
+        buf
+    })
+}
+
+fn run_bounded(
+    mut cmd: Command,
+    deadline: Duration,
+    max_stdout: usize,
+    max_stderr: usize,
+) -> Result<Output, String> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    unsafe {
+        cmd.pre_exec(|| {
+            if libc::setpgid(0, 0) < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("cannot spawn: {e}"))?;
+    let pgid = child.id() as libc::pid_t;
+    let over = Arc::new(AtomicBool::new(false));
+    let out = child
+        .stdout
+        .take()
+        .map(|s| drain(s, max_stdout, over.clone()));
+    let err = child
+        .stderr
+        .take()
+        .map(|s| drain(s, max_stderr, over.clone()));
+    let start = Instant::now();
+    let mut failure = None;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break Some(status),
+            Ok(None) => {}
+            Err(e) => {
+                failure = Some(format!("wait failed: {e}"));
+                break None;
+            }
+        }
+        if over.load(Ordering::SeqCst) {
+            failure = Some("output exceeded its cap".to_string());
+            break None;
+        }
+        if start.elapsed() >= deadline {
+            failure = Some("deadline exceeded".to_string());
+            break None;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    unsafe { libc::kill(-pgid, libc::SIGKILL) };
+    let status = match status {
+        Some(s) => s,
+        None => child.wait().map_err(|e| format!("wait failed: {e}"))?,
+    };
+    let join = |h: Option<std::thread::JoinHandle<Vec<u8>>>| {
+        h.map_or_else(Vec::new, |h| h.join().unwrap_or_default())
+    };
+    let stdout = join(out);
+    let stderr = join(err);
+    if let Some(why) = failure {
+        return Err(why);
+    }
+    if over.load(Ordering::SeqCst) {
+        return Err("output exceeded its cap".to_string());
+    }
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 impl GitEnv {
@@ -38,6 +157,8 @@ impl GitEnv {
             dir: None,
             filters: Vec::new(),
             extra: Vec::new(),
+            limits: PLUMBING,
+            offline: false,
         }
     }
 
@@ -49,7 +170,19 @@ impl GitEnv {
     }
 
     pub fn open(dir: &Path) -> Result<GitEnv, String> {
+        GitEnv::open_with(GitEnv::bare(dir))
+    }
+
+    pub fn open_facts(dir: &Path) -> Result<GitEnv, String> {
         let mut env = GitEnv::bare(dir);
+        env.limits = FACTS;
+        env.offline = true;
+        GitEnv::open_with(env)
+    }
+
+    fn open_with(mut env: GitEnv) -> Result<GitEnv, String> {
+        let dir = env.dir.clone().unwrap_or_default();
+        let dir = dir.as_path();
         let raw = env.run_raw(&["config", "--local", "--name-only", "--list", "-z"])?;
         if !raw.status.success() {
             return Err(format!("not a git repository: {}", dir.display()));
@@ -87,6 +220,7 @@ impl GitEnv {
         cmd.env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_NO_LAZY_FETCH", "1")
             .env("GIT_OPTIONAL_LOCKS", "0");
         for (k, v) in &self.extra {
             cmd.env(k, v);
@@ -95,6 +229,9 @@ impl GitEnv {
             cmd.current_dir(dir);
         }
         cmd.args(HARDENING);
+        if self.offline {
+            cmd.arg("-c").arg("protocol.allow=never");
+        }
         for f in &self.filters {
             for var in ["process", "smudge", "clean"] {
                 cmd.arg("-c").arg(format!("filter.{f}.{var}="));
@@ -108,8 +245,9 @@ impl GitEnv {
     fn run_raw(&self, args: &[&str]) -> Result<Output, String> {
         let mut cmd = self.command();
         cmd.args(args);
-        cmd.output()
-            .map_err(|e| format!("cannot run git {}: {e}", args.first().unwrap_or(&"")))
+        let l = self.limits;
+        run_bounded(cmd, l.deadline, l.max_stdout, l.max_stderr)
+            .map_err(|e| format!("git {} failed: {e}", args.first().unwrap_or(&"")))
     }
 
     pub fn run(&self, args: &[&str]) -> Result<String, String> {
@@ -688,6 +826,95 @@ mod tests {
         fs::write(repo.join(name), body).unwrap();
         git(repo, &["add", "--", name]);
         git(repo, &["commit", "-m", name]);
+    }
+
+    #[test]
+    fn run_bounded_kills_a_stalled_child() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "sleep 30"]);
+        c.stdin(Stdio::null());
+        let t = Instant::now();
+        let err = run_bounded(c, Duration::from_secs(1), 1024, 1024).unwrap_err();
+        assert!(err.contains("deadline"), "{err}");
+        assert!(t.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn run_bounded_kills_a_child_over_the_output_cap() {
+        let mut c = Command::new("yes");
+        c.stdin(Stdio::null());
+        let t = Instant::now();
+        let err = run_bounded(c, Duration::from_secs(30), 4096, 1024).unwrap_err();
+        assert!(err.contains("cap"), "{err}");
+        assert!(t.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn run_bounded_returns_output_within_limits() {
+        let mut c = Command::new("/bin/sh");
+        c.args(["-c", "echo hi; echo oops >&2; exit 3"]);
+        let out = run_bounded(c, Duration::from_secs(5), 1024, 1024).unwrap();
+        assert_eq!(out.stdout, b"hi\n");
+        assert_eq!(out.stderr, b"oops\n");
+        assert_eq!(out.status.code(), Some(3));
+    }
+
+    fn packs(repo: &Path) -> usize {
+        fs::read_dir(repo.join(".git/objects/pack"))
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .path()
+                    .extension()
+                    .is_some_and(|x| x == "pack")
+            })
+            .count()
+    }
+
+    #[test]
+    fn git_never_fetches_missing_objects_lazily() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let origin = root.join("origin");
+        fs::create_dir(&origin).unwrap();
+        git(&origin, &["init", "-b", "main"]);
+        git(&origin, &["config", "uploadpack.allowFilter", "true"]);
+        git(
+            &origin,
+            &["config", "uploadpack.allowAnySHA1InWant", "true"],
+        );
+        commit_file(&origin, "a.txt", "payload");
+        let blob = git(&origin, &["rev-parse", "HEAD:a.txt"]);
+        let url = format!("file://{}", origin.display());
+        git(
+            &root,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "clone",
+                "--filter=blob:none",
+                "--no-checkout",
+                &url,
+                "clone",
+            ],
+        );
+        let clone = root.join("clone");
+        let before = packs(&clone);
+        for env in [
+            GitEnv::open(&clone).unwrap(),
+            GitEnv::open_facts(&clone).unwrap(),
+        ] {
+            assert!(env.run(&["cat-file", "-p", &blob]).is_err());
+            assert_eq!(packs(&clone), before);
+        }
+        let plain = Command::new("git")
+            .args(["-c", "protocol.file.allow=always", "cat-file", "-p", &blob])
+            .current_dir(&clone)
+            .output()
+            .unwrap();
+        assert!(plain.status.success());
+        assert!(packs(&clone) > before);
     }
 
     struct Fx {

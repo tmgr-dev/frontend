@@ -326,6 +326,45 @@ fn method_params_and_results() {
             unconfirmed: Vec::new()
         }
     );
+    golden(
+        "candidates_list",
+        &vec![CandidateInfo {
+            profile: "codex".into(),
+            source: "/home/user/.codex/auth.json".into(),
+            created_ms: 1_700_000_000_000,
+            session: "s_abcdefghij".into(),
+        }],
+    );
+    golden(
+        "work_summary",
+        &WorkSummary {
+            started_ms: 1_700_000_000_000,
+            ended_ms: Some(1_700_000_090_000),
+            duration_s: 90,
+            working_s: 60,
+            waiting_s: 25,
+            blocked_s: 5,
+            branch: Some("feat/x".into()),
+            commits: vec![WorkCommit {
+                sha: "0123456789abcdef0123456789abcdef01234567".into(),
+                subject: "feat: x".into(),
+            }],
+            exit: Some(WorkExit {
+                code: Some(0),
+                signal: None,
+            }),
+            task: Some(TASK),
+            profile: Some("claude".into()),
+            agent: Some("claude".into()),
+            truncated: false,
+        },
+    );
+    let bare: WorkSummary = serde_json::from_value(json!({
+        "started_ms": 1, "duration_s": 0, "working_s": 0, "waiting_s": 0, "blocked_s": 0
+    }))
+    .unwrap();
+    assert_eq!(bare.commits, Vec::new());
+    assert!(bare.exit.is_none() && !bare.truncated);
     golden("run_bundle", &bundle());
     golden(
         "session_info_notask",
@@ -559,7 +598,9 @@ fn constants_are_pinned() {
             "layout.v1",
             "run_bundle.v1",
             "cwd_pin.v1",
-            "link_origin.v1"
+            "link_origin.v1",
+            "candidates.v1",
+            "worklog.v1"
         ]
     );
     let methods = [
@@ -576,6 +617,8 @@ fn constants_are_pinned() {
         method::ATTACH_OPEN,
         method::ATTACH_SET,
         method::ORIGIN_REVOKE,
+        method::CANDIDATES_LIST,
+        method::SESSIONS_WORKLOG,
     ];
     assert_eq!(
         methods,
@@ -593,6 +636,8 @@ fn constants_are_pinned() {
             "attach.open",
             "attach.set",
             "origin.revoke",
+            "candidates.list",
+            "sessions.worklog",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -615,7 +660,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 8);
+    assert_eq!(w.caps.len(), 10);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

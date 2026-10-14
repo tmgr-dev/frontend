@@ -405,7 +405,7 @@ fn working_waiting_working_exited() {
         return;
     }
     let mut h = Harness::new();
-    h.start(300);
+    h.start(1000);
     let mut c = h.client();
     let body = "i=0; while [ $i -lt 10 ]; do echo p$i; sleep 0.1; i=$((i+1)); done\n\
         echo ready; read x\n\
@@ -1614,6 +1614,125 @@ fn a_world_readable_secrets_file_refuses_the_session_with_a_chmod_hint() {
     assert!(fx.h.client().list().unwrap().is_empty());
 }
 
+const FAKE_CRED: &str = "{\"fake\":\"not-a-real-credential\"}";
+
+fn cred_fx(mode: Option<u32>) -> LoginFx {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    let cfg = home.join(".config/tmgr/agents");
+    fs::create_dir_all(&cfg).unwrap();
+    if let Some(mode) = mode {
+        let src = cfg.join("fake.cred");
+        fs::write(&src, FAKE_CRED).unwrap();
+        fs::set_permissions(&src, fs::Permissions::from_mode(mode)).unwrap();
+    }
+    let work = h.work.display();
+    let script = h.script(
+        "cred-agent.sh",
+        &format!(
+            "ls -l \"$HOME/.claude/.credentials.json\" 2>/dev/null | cut -c1-10 > \"$HOME/r_mode\"\n\
+             ls -ld \"$HOME/.claude\" | cut -c1-10 > \"$HOME/r_dirmode\"\n\
+             if [ \"$(cat \"$HOME/.claude/.credentials.json\" 2>/dev/null)\" = '{FAKE_CRED}' ]; then echo match; else echo mismatch; fi > \"$HOME/r_match\"\n\
+             if [ -f {work}/other ]; then cat \"$(cat {work}/other)/.claude/.credentials.json\" >/dev/null 2>&1; echo $? > \"$HOME/r_other_rc\"; fi\n\
+             echo done > \"$HOME/done\"\n\
+             while true; do sleep 0.2; done\n"
+        ),
+    );
+    fs::write(
+        h.agents.join("fake.toml"),
+        format!(
+            "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [[secrets.files]]\nfrom = \"~/.config/tmgr/agents/fake.cred\"\nto = \".claude/.credentials.json\"\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    LoginFx { h, home }
+}
+
+fn wait_done(rhome: &Path) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !rhome.join("done").exists() {
+        assert!(Instant::now() < deadline, "agent script did not finish");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_credential_file_is_copied_privately_and_only_its_own_session_can_read_it() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = cred_fx(Some(0o600));
+    fx.h.start(5000);
+    let mut c = Client::connect_as(&fx.h.run, "desktop").unwrap();
+    let first = c.create_run(fx.h.run_req("fake")).unwrap();
+    let first_home = fx.h.homes.path().join(&first.id);
+    wait_done(&first_home);
+    let read = |home: &Path, n: &str| fs::read_to_string(home.join(n)).unwrap();
+    assert_eq!(read(&first_home, "r_match").trim(), "match");
+    assert_eq!(read(&first_home, "r_mode").trim(), "-rw-------");
+    assert_eq!(read(&first_home, "r_dirmode").trim(), "drwx------");
+    assert_eq!(
+        fs::read_to_string(first_home.join(".claude/.credentials.json")).unwrap(),
+        FAKE_CRED
+    );
+
+    fs::write(fx.h.work.join("other"), first_home.display().to_string()).unwrap();
+    let second = c.create_run(fx.h.run_req("fake")).unwrap();
+    let second_home = fx.h.homes.path().join(&second.id);
+    wait_done(&second_home);
+    assert_ne!(read(&second_home, "r_other_rc").trim(), "0");
+    assert_eq!(read(&second_home, "r_match").trim(), "match");
+
+    for log in ["runner.log", "sessions/{id}/shim.log"] {
+        let path = fx.h.run.join(log.replace("{id}", &first.id));
+        let text = fs::read_to_string(&path).unwrap_or_default();
+        assert!(!text.contains("not-a-real-credential"), "{log}");
+    }
+}
+
+#[test]
+fn a_loose_credential_file_refuses_the_session_with_a_chmod_hint() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = cred_fx(Some(0o644));
+    fx.h.start(5000);
+    let e = err_text(
+        Client::connect_as(&fx.h.run, "desktop")
+            .unwrap()
+            .create_run(fx.h.run_req("fake")),
+    );
+    assert!(e.contains("chmod 600") && e.contains("fake.cred"), "{e}");
+    assert!(!e.contains("not-a-real-credential"));
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn a_missing_credential_file_starts_the_session_logged_out() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = cred_fx(None);
+    fx.h.start(5000);
+    let info = Client::connect_as(&fx.h.run, "desktop")
+        .unwrap()
+        .create_run(fx.h.run_req("fake"))
+        .unwrap();
+    let rhome = fx.h.homes.path().join(&info.id);
+    wait_done(&rhome);
+    assert_eq!(
+        fs::read_to_string(rhome.join("r_match")).unwrap().trim(),
+        "mismatch"
+    );
+    assert!(!rhome.join(".claude").exists() || !rhome.join(".claude/.credentials.json").exists());
+    let log = fs::read_to_string(fx.h.tmp.path().join("runner.err")).unwrap_or_default();
+    assert!(log.contains("starts logged out"));
+}
+
 #[test]
 fn a_profile_directory_inside_the_session_cwd_refuses_the_session() {
     let mut h = Harness::new();
@@ -2529,4 +2648,327 @@ fn a_link_run_waits_for_the_trust_fence_and_gives_up_while_it_is_held() {
     assert!(fx.h.client().list().unwrap().is_empty());
     assert_eq!(unsafe { libc::flock(fd, libc::LOCK_UN) }, 0);
     assert!(fx.worker().create_run(fx.req("laptop", 3)).is_ok());
+}
+
+fn guard_doc(days_ago: i64, refresh: &str) -> String {
+    json!({
+        "auth_mode": "chatgpt",
+        "last_refresh": (chrono::Utc::now() - chrono::Duration::days(days_ago)).to_rfc3339(),
+        "tokens": {"account_id": "acc", "refresh_token": refresh},
+    })
+    .to_string()
+}
+
+fn guard_fx(initial: &str, agent_body: &str) -> LoginFx {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir_all(home.join(".codex")).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(home.join(".codex/auth.json"), initial).unwrap();
+    fs::set_permissions(
+        home.join(".codex/auth.json"),
+        fs::Permissions::from_mode(0o600),
+    )
+    .unwrap();
+    let script = h.script("guard-agent.sh", agent_body);
+    fs::write(
+        h.agents.join("guard.toml"),
+        format!(
+            "id = \"guard\"\nname = \"guard\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [[sandbox.seed]]\nfrom = \"~/.codex/auth.json\"\nto = \".codex/auth.json\"\n\
+             fresh = {{ json_key = \"last_refresh\", max_age_days = 7 }}\n\
+             write_back = true\nsame = [\"tokens.account_id\", \"auth_mode\"]\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    LoginFx { h, home }
+}
+
+fn run_guard_session(fx: &LoginFx) {
+    Client::connect_as(&fx.h.run, "desktop")
+        .unwrap()
+        .create_run(fx.h.run_req("guard"))
+        .unwrap();
+}
+
+fn wait_for(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !done() {
+        assert!(Instant::now() < deadline, "{what}");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn a_session_that_refreshes_the_seeded_login_leaves_a_candidate_and_the_original_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let old = guard_doc(5, "old-rt");
+    let new = guard_doc(0, "new-rt");
+    let mut fx = guard_fx(
+        &old,
+        &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
+    );
+    fx.h.start(5000);
+    run_guard_session(&fx);
+    let candidate = fx.h.run.join("candidates/guard/0.json");
+    let meta = fx.h.run.join("candidates/guard/0.meta.json");
+    wait_for("no candidate was stored", || meta.exists());
+    assert_eq!(fs::read_to_string(&candidate).unwrap(), new);
+    let source = fx.home.join(".codex/auth.json");
+    assert_eq!(fs::read_to_string(&source).unwrap(), old);
+    assert!(!fx.home.join(".codex/auth.json.tmgr-backup").exists());
+    let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+    assert_eq!((mode(&candidate), mode(&meta)), (0o600, 0o600));
+    let list = fx.h.client().candidates().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].profile, "guard");
+    assert_eq!(
+        Path::new(&list[0].source).canonicalize().unwrap(),
+        source.canonicalize().unwrap()
+    );
+    assert!(list[0].session.starts_with("s_"));
+}
+
+#[test]
+fn with_auto_mode_on_the_runner_applies_the_refreshed_login_after_the_session() {
+    if !sessions_available() {
+        return;
+    }
+    let old = guard_doc(5, "old-rt");
+    let new = guard_doc(0, "new-rt");
+    let mut fx = guard_fx(
+        &old,
+        &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
+    );
+    let flag = fx.h.agents.join("guard.autosync");
+    fs::write(&flag, "{}").unwrap();
+    fs::set_permissions(&flag, fs::Permissions::from_mode(0o600)).unwrap();
+    fx.h.start(5000);
+    run_guard_session(&fx);
+    let source = fx.home.join(".codex/auth.json");
+    wait_for("the login was not applied", || {
+        fs::read_to_string(&source).unwrap() == new
+    });
+    let backup = fx.home.join(".codex/auth.json.tmgr-backup");
+    assert_eq!(fs::read_to_string(&backup).unwrap(), old);
+    assert!(fx.h.client().candidates().unwrap().is_empty());
+}
+
+#[test]
+fn a_loose_auto_mode_file_does_not_enable_auto_mode() {
+    if !sessions_available() {
+        return;
+    }
+    let old = guard_doc(5, "old-rt");
+    let new = guard_doc(0, "new-rt");
+    let mut fx = guard_fx(
+        &old,
+        &format!("printf '%s' '{new}' > \"$HOME/.codex/auth.json\"\n"),
+    );
+    let flag = fx.h.agents.join("guard.autosync");
+    fs::write(&flag, "{}").unwrap();
+    fs::set_permissions(&flag, fs::Permissions::from_mode(0o644)).unwrap();
+    fx.h.start(5000);
+    run_guard_session(&fx);
+    wait_for("no candidate was stored", || {
+        fx.h.run.join("candidates/guard/0.meta.json").exists()
+    });
+    assert_eq!(
+        fs::read_to_string(fx.home.join(".codex/auth.json")).unwrap(),
+        old
+    );
+}
+
+#[test]
+fn a_stale_seeded_login_refuses_the_session_with_a_refresh_hint() {
+    if !sessions_available() {
+        return;
+    }
+    let stale = guard_doc(9, "stale-rt");
+    let mut fx = guard_fx(&stale, "exit 0\n");
+    fx.h.start(5000);
+    let e = err_text(
+        Client::connect_as(&fx.h.run, "desktop")
+            .unwrap()
+            .create_run(fx.h.run_req("guard")),
+    );
+    assert!(
+        e.contains("due for a refresh") && e.contains("~/.codex/auth.json"),
+        "{e}"
+    );
+    assert!(!e.contains("stale-rt"));
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+fn git_in(dir: &Path, args: &[&str]) -> String {
+    tmgr_runner::worktree::GitEnv::bare(dir)
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .run(args)
+        .unwrap()
+}
+
+fn init_repo(dir: &Path) {
+    git_in(dir, &["init", "-q", "-b", "main"]);
+    fs::write(dir.join("a.txt"), "a").unwrap();
+    git_in(dir, &["add", "--", "a.txt"]);
+    git_in(dir, &["commit", "-q", "-m", "initial"]);
+}
+
+fn worklog_of(c: &mut Client, id: &str) -> tmgr_ipc::api::WorkSummary {
+    c.worklog(id).unwrap()
+}
+
+fn wait_exited(c: &mut Client, id: &str) {
+    let done = wait_state(c, id, 15, |s| s.kind == StateKind::Exited);
+    assert_eq!(done.state.kind, StateKind::Exited);
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while c.worklog(id).unwrap().exit.is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+const BUSY_THEN_READ: &str = "i=0; while [ $i -lt 20 ]; do echo p$i; sleep 0.1; i=$((i+1)); done\n\
+    echo ready; read x\nexit 0\n";
+
+#[test]
+fn worklog_has_time_in_states_branch_and_the_commits_made_during_the_session() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    init_repo(&h.work);
+    let marker = h.tmp.path().join("hook-ran");
+    for hook in ["post-checkout", "post-commit", "reference-transaction"] {
+        let path = h.work.join(".git/hooks").join(hook);
+        fs::write(&path, format!("#!/bin/sh\ntouch {}\n", marker.display())).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    let mut c = h.client();
+    let info = c.create(h.sh(BUSY_THEN_READ)).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    assert!(w.wait(15, |w| w.kinds().contains(&StateKind::Waiting)));
+    thread::sleep(Duration::from_millis(1500));
+    for (name, subject) in [("b.txt", "feat: add b"), ("c.txt", "fix: c\u{1b}[31m red")] {
+        fs::write(h.work.join(name), name).unwrap();
+        git_in(&h.work, &["add", "--", name]);
+        git_in(&h.work, &["commit", "-q", "-m", subject]);
+    }
+    let running = worklog_of(&mut c, &info.id);
+    assert_eq!(running.ended_ms, None);
+    assert!(running.commits.is_empty());
+    w.writer.input(&info.id, b"go\r").unwrap();
+    wait_exited(&mut c, &info.id);
+
+    let s = worklog_of(&mut c, &info.id);
+    assert_eq!(s.started_ms, info.created_ms);
+    assert!(s.ended_ms.is_some_and(|e| e > s.started_ms));
+    assert!(s.duration_s >= 3, "{s:?}");
+    assert!(s.working_s >= 1 && s.waiting_s >= 1, "{s:?}");
+    assert_eq!(s.blocked_s, 0);
+    assert_eq!(s.branch.as_deref(), Some("main"));
+    assert_eq!(s.agent.as_deref(), Some("sh"));
+    let subjects: Vec<&str> = s.commits.iter().map(|c| c.subject.as_str()).collect();
+    assert_eq!(subjects, ["feat: add b", "fix: c?[31m red"]);
+    assert!(s.commits.iter().all(|c| c.sha.len() == 40));
+    assert_eq!(s.exit.map(|e| (e.code, e.signal)), Some((Some(0), None)));
+    assert!(!marker.exists(), "a git hook ran");
+}
+
+#[test]
+fn worklog_outside_a_git_repo_has_no_branch_or_commits() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    let mut c = h.client();
+    let info = c.create(h.sh("echo hi; sleep 0.3; exit 3\n")).unwrap();
+    wait_exited(&mut c, &info.id);
+    let s = worklog_of(&mut c, &info.id);
+    assert_eq!(s.branch, None);
+    assert!(s.commits.is_empty());
+    assert_eq!(s.exit.map(|e| e.code), Some(Some(3)));
+    assert!(s.ended_ms.is_some());
+}
+
+#[test]
+fn worklog_ignores_a_repo_whose_config_would_run_programs() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    init_repo(&h.work);
+    let marker = h.tmp.path().join("fsmonitor-ran");
+    let script = h.script(
+        "fsm.sh",
+        &format!("#!/bin/sh\ntouch {}\n", marker.display()),
+    );
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    git_in(&h.work, &["config", "core.fsmonitor", &script]);
+    let mut c = h.client();
+    let info = c.create(h.sh("exit 0\n")).unwrap();
+    wait_exited(&mut c, &info.id);
+    let s = worklog_of(&mut c, &info.id);
+    assert_eq!(s.branch, None);
+    assert!(s.commits.is_empty());
+    assert!(!marker.exists());
+}
+
+#[test]
+fn worklog_survives_a_runner_restart_without_repeating_created() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    init_repo(&h.work);
+    let mut c = h.client();
+    let info = c.create(h.sh(BUSY_THEN_READ)).unwrap();
+    let mut w = Watch::new(h.client(), &[&info.id]);
+    assert!(w.wait(15, |w| w.kinds().contains(&StateKind::Waiting)));
+    drop(w);
+    let before = worklog_of(&mut c, &info.id);
+    drop(c);
+    h.kill_runner();
+    h.start(300);
+    let mut c = h.client();
+    let after = worklog_of(&mut c, &info.id);
+    assert_eq!(after.started_ms, before.started_ms);
+    assert_eq!(after.branch.as_deref(), Some("main"));
+    fs::write(h.work.join("d.txt"), "d").unwrap();
+    git_in(&h.work, &["add", "--", "d.txt"]);
+    git_in(&h.work, &["commit", "-q", "-m", "after restart"]);
+    c.send(&info.id, "go\r").unwrap();
+    wait_exited(&mut c, &info.id);
+    let done = worklog_of(&mut c, &info.id);
+    assert_eq!(done.started_ms, before.started_ms);
+    assert_eq!(done.commits.len(), 1);
+    let log =
+        fs::read_to_string(h.run.join("sessions").join(&info.id).join("worklog.jsonl")).unwrap();
+    assert_eq!(log.matches("\"ev\":\"created\"").count(), 1);
+    assert_eq!(log.matches("\"ev\":\"exited\"").count(), 1);
+    let mode = fs::metadata(h.run.join("sessions").join(&info.id).join("worklog.jsonl"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+}
+
+#[test]
+fn worklog_of_an_unknown_session_is_not_found() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(300);
+    let mut c = h.client();
+    assert!(err_text(c.worklog("s_abcdefghij")).starts_with("not_found"));
 }
