@@ -12,6 +12,7 @@ use crate::wire::{
     clamp_size, now_ms, screen_pushes, write_atomic, LaunchFile, Slot, MAX_INPUT, SCROLLBACK,
     SHIM_CWD_FD,
 };
+use crate::worklog;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -301,6 +302,7 @@ struct Session {
     dir: PathBuf,
     hub: Arc<Hub>,
     inner: Mutex<Inner>,
+    worklog: worklog::Log,
     version: AtomicU64,
     shim: Mutex<Option<ShimLink>>,
     replies: Mutex<ReplyBudget>,
@@ -462,6 +464,7 @@ impl Session {
         };
         self.persist();
         for state in states {
+            self.worklog.record(&state);
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
                 state,
@@ -603,6 +606,7 @@ impl Session {
     }
 
     fn on_exited(&self, e: &ExitInfo) {
+        self.worklog.exited(now_ms(), e.code, e.signal);
         self.change(|i, now, out| {
             let changed = i.det.on_exit(now, e.code, e.signal);
             if changed.is_some() {
@@ -1078,6 +1082,12 @@ impl Runner {
                     ));
                 }
                 Ok(Value::Null)
+            }
+            method::SESSIONS_WORKLOG => {
+                let s = self
+                    .session(&session_id_param(p)?)
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+                Ok(to_json(&worklog::summary(&s.dir)))
             }
             method::SESSIONS_REMOVE => self.remove(&session_id_param(p)?).map(|_| Value::Null),
             method::LAYOUT_GET => Ok(self.layout_get()),
@@ -1609,6 +1619,7 @@ impl Runner {
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
+        session.worklog.created(&session.info());
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
         log(&format!("session {id} created: {}", req.argv[0]));
@@ -1621,6 +1632,7 @@ impl Runner {
             id: meta.id.clone(),
             dir: sdir.to_path_buf(),
             hub: self.hub.clone(),
+            worklog: worklog::Log::open(sdir, PathBuf::from(&meta.cwd)),
             inner: Mutex::new(Inner {
                 meta,
                 screen,
@@ -1737,6 +1749,7 @@ impl Runner {
             }
             Err(e) => {
                 session.load_dead();
+                session.worklog.record(&session.state());
                 log(&format!("session {id} has no live shim ({:?})", e.kind()));
             }
         }
