@@ -15,8 +15,9 @@ const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 
 const AGENT: &str = r#"#!/bin/sh
 echo "args:$*" >> ./log
-if [ -f "$HOME/marker" ]; then echo "home:kept" >> ./log; else echo x > "$HOME/marker"; echo "home:new" >> ./log; fi
-if [ -f ./change-seed ] && ! grep -q home:kept ./log; then echo '{"a":2}' > "$HOME/.fake/auth.json"; fi
+if [ -f "$HOME/marker" ]; then kept=1; else kept=; fi
+if [ -f ./change-seed ] && [ -z "$kept" ]; then echo '{"a":2}' > "$HOME/.fake/auth.json"; fi
+if [ -n "$kept" ]; then echo "home:kept" >> ./log; else echo x > "$HOME/marker"; echo "home:new" >> ./log; fi
 trap 'kill $! 2>/dev/null; exit 0' HUP TERM
 if [ -f ./exit-now ]; then exit 0; fi
 sleep 600 &
