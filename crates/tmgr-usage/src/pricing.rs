@@ -13,6 +13,7 @@ const COST_PREFIXES: [&str; 4] = [
     "cache_creation_input_token_cost",
 ];
 const CACHE_1H: &str = "cache_creation_input_token_cost_above_1hr";
+const FAST_MULTIPLIER: &str = "fast_multiplier";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -186,6 +187,16 @@ impl PriceBook {
     }
 
     pub fn cost(&self, model: &str, t: &Tokens, tier: Option<&str>) -> Option<f64> {
+        self.cost_at(model, t, tier, None)
+    }
+
+    pub fn cost_at(
+        &self,
+        model: &str,
+        t: &Tokens,
+        tier: Option<&str>,
+        speed: Option<&str>,
+    ) -> Option<f64> {
         let e = self.lookup(model)?;
         let tier = tier
             .map(str::to_lowercase)
@@ -201,17 +212,25 @@ impl PriceBook {
             .rate("cache_creation_input_token_cost", long, tier)
             .unwrap_or(input);
         let cw1 = e.rate(CACHE_1H, long, tier).unwrap_or(cw5);
-        Some(
-            t.input as f64 * input
-                + t.output as f64 * output
-                + t.cache_read as f64 * cache_read
-                + t.cache_write_5m as f64 * cw5
-                + t.cache_write_1h as f64 * cw1,
-        )
+        let base = t.input as f64 * input
+            + t.output as f64 * output
+            + t.cache_read as f64 * cache_read
+            + t.cache_write_5m as f64 * cw5
+            + t.cache_write_1h as f64 * cw1;
+        let fast = (speed == Some("fast"))
+            .then(|| e.costs.get(FAST_MULTIPLIER).copied())
+            .flatten()
+            .unwrap_or(1.0);
+        Some(base * fast)
     }
 
     pub fn price(&self, ev: &UsageEvent) -> (Option<f64>, CostBasis) {
-        match self.cost(&ev.model, &ev.tokens, ev.service_tier.as_deref()) {
+        match self.cost_at(
+            &ev.model,
+            &ev.tokens,
+            ev.service_tier.as_deref(),
+            ev.speed.as_deref(),
+        ) {
             Some(c) => (Some(c), CostBasis::Computed),
             None => (None, CostBasis::Unpriced),
         }
@@ -234,11 +253,19 @@ fn filter_litellm(bytes: &[u8]) -> Result<BTreeMap<String, PriceEntry>> {
                 continue;
             }
         }
-        let costs: BTreeMap<String, f64> = obj
+        let mut costs: BTreeMap<String, f64> = obj
             .iter()
             .filter(|(k, _)| COST_PREFIXES.iter().any(|p| k.starts_with(p)))
             .filter_map(|(k, v)| v.as_f64().map(|f| (k.clone(), f)))
             .collect();
+        let fast = obj
+            .get("provider_specific_entry")
+            .and_then(|p| p.get("fast"))
+            .and_then(|f| f.as_f64())
+            .filter(|f| f.is_finite() && *f >= 1.0);
+        if let Some(f) = fast {
+            costs.insert(FAST_MULTIPLIER.to_string(), f);
+        }
         if costs.contains_key("input_cost_per_token") && costs.contains_key("output_cost_per_token")
         {
             out.insert(key, PriceEntry { costs });

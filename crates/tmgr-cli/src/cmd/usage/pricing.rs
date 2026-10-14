@@ -94,7 +94,33 @@ fn show(filter: Option<&str>) -> Result<Output> {
     ))
 }
 
+fn allowed_url(url: &str) -> bool {
+    let (secure, rest) = match url.strip_prefix("https://") {
+        Some(rest) => (true, rest),
+        None => match url.strip_prefix("http://") {
+            Some(rest) => (false, rest),
+            None => return false,
+        },
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, path) = rest.split_at(end);
+    if authority.contains('@') {
+        return false;
+    }
+    let host = authority.split(':').next().unwrap_or("");
+    if secure {
+        host == "raw.githubusercontent.com" && path.starts_with("/BerriAI/litellm/")
+    } else {
+        matches!(host, "127.0.0.1" | "localhost")
+    }
+}
+
 fn update(offline: bool, url: Option<&str>) -> Result<Output> {
+    if url.is_some_and(|u| !allowed_url(u)) {
+        return Err(Error::usage(
+            "the price list URL must be the LiteLLM list on raw.githubusercontent.com or a loopback address",
+        ));
+    }
     let mut u = Usage::open()?;
     let (book, source) = if offline {
         (PriceBook::bundled(), "bundled")

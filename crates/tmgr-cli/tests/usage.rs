@@ -630,6 +630,52 @@ fn accounts_are_added_listed_and_removed() {
     );
 }
 
+#[test]
+fn account_paths_are_shown_relative_to_home_or_as_external() {
+    let u = U::new();
+    let inside = u.p("home/alt-claude");
+    let outside = u.p("elsewhere/ext-claude");
+    std::fs::create_dir_all(&inside).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    let mut outputs = Vec::new();
+    for (root, label) in [(&inside, "inside"), (&outside, "outside")] {
+        outputs.push(u.ok(&[
+            "usage",
+            "accounts",
+            "add",
+            "--tool",
+            "claude",
+            "--root",
+            root.to_str().unwrap(),
+            "--label",
+            label,
+        ]));
+    }
+    let v = u.json(&["usage", "accounts", "list"]);
+    let root_of = |label: &str| {
+        v["data"]["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["label"] == label)
+            .unwrap()["root"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(root_of("inside"), "~/alt-claude");
+    assert_eq!(root_of("outside"), "<external>/ext-claude");
+    assert_eq!(root_of("claude"), "~/.claude");
+    outputs.push(u.ok(&["usage", "accounts", "list"]));
+    outputs.push(u.ok(&["--json", "usage", "accounts", "list"]));
+    let tmp = u.tmp.path().to_str().unwrap().to_string();
+    let canon = std::fs::canonicalize(u.tmp.path()).unwrap();
+    for out in &outputs {
+        let all = format!("{}{}", text(&out.stdout), text(&out.stderr));
+        assert!(!all.contains(&tmp) && !all.contains(canon.to_str().unwrap()));
+    }
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn pricing_updates_from_a_public_list_without_credentials_and_reprices() {
     use wiremock::matchers::{method, path};
@@ -682,16 +728,21 @@ async fn pricing_updates_from_a_public_list_without_credentials_and_reprices() {
 }
 
 #[test]
-fn pricing_update_refuses_plain_http_to_other_hosts() {
+fn pricing_update_accepts_only_the_litellm_list_or_loopback() {
     let u = U::new();
-    let out = u.run(&[
-        "usage",
-        "pricing",
-        "update",
-        "--url",
+    for url in [
         "http://example.com/p.json",
-    ]);
-    assert_eq!(out.status.code(), Some(5));
+        "https://example.com/BerriAI/litellm/p.json",
+        "https://raw.githubusercontent.com/someone-else/repo/main/p.json",
+        "https://raw.githubusercontent.com.evil.test/BerriAI/litellm/p.json",
+        "https://raw.githubusercontent.com@evil.test/BerriAI/litellm/p.json",
+        "http://127.0.0.1@evil.test/p.json",
+        "http://localhost.evil.test/p.json",
+        "file:///etc/passwd",
+    ] {
+        let out = u.run(&["usage", "pricing", "update", "--url", url]);
+        assert_eq!(out.status.code(), Some(2), "{url}");
+    }
 }
 
 #[test]

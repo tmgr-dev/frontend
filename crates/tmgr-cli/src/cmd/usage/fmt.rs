@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tmgr_usage::Tokens;
 
 pub const BASIS_NOTE: &str = "cost is API-equivalent (list prices), not your subscription bill";
@@ -49,6 +49,26 @@ pub fn tilde(path: &Path) -> String {
         },
         _ => text,
     }
+}
+
+pub fn display_path(path: &Path) -> String {
+    if let Some(home) = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .filter(|h| h.as_os_str().len() > 1)
+    {
+        let canonical = std::fs::canonicalize(&home).unwrap_or_else(|_| home.clone());
+        for base in [home, canonical] {
+            if let Ok(rest) = path.strip_prefix(&base) {
+                return if rest.as_os_str().is_empty() {
+                    "~".to_string()
+                } else {
+                    format!("~/{}", rest.display())
+                };
+            }
+        }
+    }
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned());
+    format!("<external>/{}", name.unwrap_or_default())
 }
 
 pub fn scrub(text: &str) -> String {

@@ -1,4 +1,4 @@
-use super::fmt::tilde;
+use super::fmt::display_path;
 use super::{fail, Usage};
 use crate::cli_usage::{AccountsCommand, ToolArg};
 use crate::ctx::Ctx;
@@ -38,7 +38,7 @@ pub fn run(ctx: &Ctx, cmd: Option<&AccountsCommand>) -> Result<Output> {
                     "Added {} account {} ({}). The next `tmgr usage` scans it.",
                     account.tool.as_str(),
                     account.label,
-                    tilde(&account.root)
+                    display_path(&account.root)
                 ),
             ))
         }
@@ -65,7 +65,7 @@ fn account_json(a: &Account, default: bool) -> serde_json::Value {
     json!({
         "label": a.label,
         "tool": a.tool.as_str(),
-        "root": tilde(&a.root),
+        "root": display_path(&a.root),
         "source": if default { "default" } else { "user" },
         "exists": a.root.is_dir(),
     })

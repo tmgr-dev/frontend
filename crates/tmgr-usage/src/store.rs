@@ -199,7 +199,7 @@ impl Store {
     pub fn reprice(&mut self, book: &PriceBook) -> Result<u64> {
         let changes = {
             let mut stmt = self.conn.prepare(
-                "SELECT id, model, input, output, cache_read, cache_write_5m, cache_write_1h, service_tier, cost_usd, cost_basis
+                "SELECT id, model, input, output, cache_read, cache_write_5m, cache_write_1h, service_tier, cost_usd, speed
                  FROM usage_event",
             )?;
             let rows = stmt.query_map([], |r| {
@@ -216,12 +216,13 @@ impl Store {
                     },
                     r.get::<_, Option<String>>(7)?,
                     r.get::<_, Option<f64>>(8)?,
+                    r.get::<_, Option<String>>(9)?,
                 ))
             })?;
             let mut changes = Vec::new();
             for row in rows {
-                let (id, model, tokens, tier, old) = row?;
-                let new = book.cost(&model, &tokens, tier.as_deref());
+                let (id, model, tokens, tier, old, speed) = row?;
+                let new = book.cost_at(&model, &tokens, tier.as_deref(), speed.as_deref());
                 if new != old {
                     changes.push((id, new));
                 }
