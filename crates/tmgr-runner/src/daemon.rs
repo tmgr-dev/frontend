@@ -1015,6 +1015,7 @@ impl Runner {
                 sessions: lock(&self.sessions).len(),
             })),
             method::RUNNER_STOP => Ok(Value::Null),
+            method::CANDIDATES_LIST => Ok(to_json(&seedguard::pending(&self.cfg.dir))),
             method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
                 list.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));

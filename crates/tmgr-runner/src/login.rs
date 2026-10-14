@@ -26,6 +26,8 @@ pub struct ResolvedSeed {
     pub same: Vec<String>,
     pub decl: String,
     pub agent: String,
+    pub profile: String,
+    pub index: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,7 +149,7 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
             )),
         }
     }
-    for s in &p.sandbox.seed {
+    for (index, s) in p.sandbox.seed.iter().enumerate() {
         let from = allowed("seed source", &s.from)?;
         let to = PathBuf::from(&s.to);
         plain_relative("seed destination", &to)?;
@@ -176,6 +178,8 @@ pub fn resolve(p: &Profile, real_home: &Path, protected: &[PathBuf]) -> Result<R
             same: s.same.clone(),
             decl: s.from.clone(),
             agent: p.command.first().cloned().unwrap_or_else(|| p.id.clone()),
+            profile: p.id.clone(),
+            index,
         });
     }
     if let Some(f) = &p.secrets.file {
@@ -497,7 +501,11 @@ fn open_nofollow(path: &Path) -> std::io::Result<File> {
         .open(path)
 }
 
-fn openat_nofollow(dir: RawFd, name: &OsStr, flags: libc::c_int) -> std::io::Result<File> {
+pub(crate) fn openat_nofollow(
+    dir: RawFd,
+    name: &OsStr,
+    flags: libc::c_int,
+) -> std::io::Result<File> {
     let c = CString::new(name.as_bytes())
         .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
     let fd = unsafe { libc::openat(dir, c.as_ptr(), flags | libc::O_NOFOLLOW | libc::O_CLOEXEC) };
@@ -505,6 +513,23 @@ fn openat_nofollow(dir: RawFd, name: &OsStr, flags: libc::c_int) -> std::io::Res
         return Err(std::io::Error::last_os_error());
     }
     Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+pub(crate) fn open_dir_below(root: &Path, dir: &Path) -> std::io::Result<File> {
+    let rel = dir
+        .strip_prefix(root)
+        .map_err(|_| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+    let mut cur = OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_DIRECTORY | libc::O_CLOEXEC)
+        .open(root)?;
+    for c in rel.components() {
+        let Component::Normal(name) = c else {
+            return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+        };
+        cur = openat_nofollow(cur.as_raw_fd(), name, libc::O_RDONLY | libc::O_DIRECTORY)?;
+    }
+    Ok(cur)
 }
 
 pub(crate) fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
@@ -743,6 +768,8 @@ pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<Vec<SeedRecord
                 sha: seedguard::sha256_hex(&bytes),
                 json_key: seed.fresh.as_ref().map(|f| f.json_key.clone()),
                 same: seed.same.clone(),
+                profile: seed.profile.clone(),
+                index: seed.index,
             });
         }
     }

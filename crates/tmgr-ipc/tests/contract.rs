@@ -326,6 +326,15 @@ fn method_params_and_results() {
             unconfirmed: Vec::new()
         }
     );
+    golden(
+        "candidates_list",
+        &vec![CandidateInfo {
+            profile: "codex".into(),
+            source: "/home/user/.codex/auth.json".into(),
+            created_ms: 1_700_000_000_000,
+            session: "s_abcdefghij".into(),
+        }],
+    );
     golden("run_bundle", &bundle());
     golden(
         "session_info_notask",
@@ -559,7 +568,8 @@ fn constants_are_pinned() {
             "layout.v1",
             "run_bundle.v1",
             "cwd_pin.v1",
-            "link_origin.v1"
+            "link_origin.v1",
+            "candidates.v1"
         ]
     );
     let methods = [
@@ -576,6 +586,7 @@ fn constants_are_pinned() {
         method::ATTACH_OPEN,
         method::ATTACH_SET,
         method::ORIGIN_REVOKE,
+        method::CANDIDATES_LIST,
     ];
     assert_eq!(
         methods,
@@ -593,6 +604,7 @@ fn constants_are_pinned() {
             "attach.open",
             "attach.set",
             "origin.revoke",
+            "candidates.list",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -615,7 +627,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 8);
+    assert_eq!(w.caps.len(), 9);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

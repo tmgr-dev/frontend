@@ -5,7 +5,7 @@ args = ["--no-daemon"]
 model_arg = ["--model", "{model}"]
 env_pass = []
 
-# Codex refreshes (and rotates) its tokens after ~8 days; 7 leaves a margin.
+# Codex rotates its tokens after ~8 days; 7 leaves a margin. A refreshed login becomes a candidate, applied with `tmgr agents sync codex`.
 [[sandbox.seed]]
 from = "~/.codex/auth.json"
 to = ".codex/auth.json"
