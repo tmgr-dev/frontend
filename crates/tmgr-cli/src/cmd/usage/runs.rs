@@ -87,7 +87,7 @@ fn fetch(
     ws: &Workspace,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
-) -> tmgr_core::error::Result<Option<Vec<ApiRun>>> {
+) -> tmgr_core::error::Result<Option<(Vec<ApiRun>, bool)>> {
     let is_local = ws.local || local::local_code(&ws.code).is_some();
     let client = if is_local {
         ctx.client_for_run(Some(&ws.code))?
@@ -97,7 +97,8 @@ fn fetch(
     let stamp = |t: DateTime<Utc>| t.to_rfc3339_opts(SecondsFormat::Secs, true);
     let mut runs = Vec::new();
     let mut cursor = None;
-    for _ in 0..MAX_PAGES {
+    let mut truncated = false;
+    for page_no in 0..MAX_PAGES {
         let q = RunQuery {
             since: Some(stamp(from - Duration::days(LOOKBACK_DAYS))),
             until: Some(stamp(to)),
@@ -110,11 +111,12 @@ fn fetch(
         };
         runs.extend(page.runs);
         match page.next_cursor {
+            Some(_) if page_no + 1 == MAX_PAGES => truncated = true,
             Some(c) => cursor = Some(c),
             None => break,
         }
     }
-    Ok(Some(runs))
+    Ok(Some((runs, truncated)))
 }
 
 fn repo_of(
@@ -152,7 +154,18 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
     let mut staged: Vec<(RunWindow, RunMeta)> = Vec::new();
     for ws in &workspaces {
         let runs = match fetch(ctx, ws, from, to) {
-            Ok(Some(runs)) => runs,
+            Ok(Some((runs, truncated))) => {
+                if truncated {
+                    ctx.warn(
+                        "usage_runs_truncated",
+                        format!(
+                            "workspace {} has more runs than were read: some usage may stay unlinked",
+                            ws.code
+                        ),
+                    );
+                }
+                runs
+            }
             Ok(None) => continue,
             Err(_) => {
                 set.workspaces_failed.push(ws.code.clone());

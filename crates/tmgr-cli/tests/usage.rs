@@ -1722,3 +1722,44 @@ async fn cloud_runs_link_through_their_session_id() {
     let all = text(&u.ok(&["--json", "usage", "--by", "task"]).stdout);
     assert!(!all.contains("acc-token-AAAA1111") && !all.contains("ref-token-BBBB2222"));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_endless_run_listing_is_cut_off_with_a_warning() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/workspaces"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+            {"id": 1, "name": "Personal", "code": "personal", "is_default": true}
+        ]})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/api/workspaces/1/agent-work"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"next_cursor": "more", "runs": [{
+            "id": 10, "task_id": 5, "agent": "claude-code", "session_id": "sess-a", "status": "succeeded",
+            "started_at": at(0, "11:00:00"), "ended_at": at(0, "13:00:00"), "duration_seconds": 7200,
+            "task": {"id": 5, "key": "TM-5", "title": "TM-5: Cloud task"}
+        }]})))
+        .mount(&server)
+        .await;
+    let u = U::with_server(server.uri());
+    let account = format!("{}:default", server.address());
+    std::fs::create_dir_all(u.p("xdg/tmgr")).unwrap();
+    let creds = u.p("xdg/tmgr/credentials.json");
+    std::fs::write(
+        &creds,
+        json!({ account: {"access_token": "acc-token-AAAA1111", "refresh_token": "ref-token-BBBB2222", "expires_at": "2099-12-01T00:00:00Z"} })
+            .to_string(),
+    )
+    .unwrap();
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&creds, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::set_permissions(u.p("xdg/tmgr"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    u.standard_fixture();
+    let v = u.json(&["usage", "--month", "--by", "task"]);
+    assert!(warning_codes(&v).contains(&"usage_runs_truncated".to_string()));
+}

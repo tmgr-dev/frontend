@@ -333,7 +333,7 @@ fn apply(
                 return Ok(());
             }
             let mut overwrite = false;
-            if let Some(rp) = reparse.as_deref_mut() {
+            if let Some(rp) = reparse.as_mut() {
                 if tool == Tool::Codex && rp.purged.insert(ev.tool_session_id.clone()) {
                     purge_session_events(conn, tool, account, &ev.tool_session_id)?;
                 }
@@ -352,7 +352,7 @@ fn apply(
         }
         ParsedRecord::Session(mut meta) => {
             meta.account = account.to_string();
-            if let Some(rp) = reparse.as_deref_mut() {
+            if let Some(rp) = reparse.as_mut() {
                 if tool == Tool::Codex && rp.purged.insert(meta.tool_session_id.clone()) {
                     purge_session_events(conn, tool, account, &meta.tool_session_id)?;
                 }
