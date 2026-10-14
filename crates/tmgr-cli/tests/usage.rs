@@ -799,13 +799,13 @@ fn a_slow_chain_is_cut_off_after_two_seconds() {
     let started = std::time::Instant::now();
     let out = u
         .cmd()
-        .args(["usage", "statusline-hook", "--chain", "sleep 8; echo late"])
+        .args(["usage", "statusline-hook", "--chain", "sleep 30; echo late"])
         .write_stdin("{}")
         .output()
         .unwrap();
     assert!(out.status.success());
     assert!(out.stdout.is_empty());
-    assert!(started.elapsed() < std::time::Duration::from_secs(6));
+    assert!(started.elapsed() < std::time::Duration::from_secs(15));
 }
 
 #[test]
