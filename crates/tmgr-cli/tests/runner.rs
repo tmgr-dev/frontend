@@ -867,3 +867,69 @@ fn runner_serve_started_directly_drops_the_shell_environment() {
         "TMGR_NOTIFY_TOKEN reached the runner"
     );
 }
+
+fn git_cli(dir: &Path, args: &[&str]) {
+    let out = Command::new("git")
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "t")
+        .env("GIT_AUTHOR_EMAIL", "t@example.com")
+        .env("GIT_COMMITTER_NAME", "t")
+        .env("GIT_COMMITTER_EMAIL", "t@example.com")
+        .args(["-c", "core.hooksPath=/dev/null"])
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "git {args:?}");
+}
+
+#[test]
+fn agents_log_shows_time_branch_and_commits() {
+    let env = Env::new();
+    git_cli(&env.proj, &["init", "-q", "-b", "main"]);
+    fs::write(env.proj.join("a.txt"), "a").unwrap();
+    git_cli(&env.proj, &["add", "--", "a.txt"]);
+    git_cli(&env.proj, &["commit", "-q", "-m", "initial"]);
+    let script = env.script("worker.sh", "echo start; sleep 2.5; echo end\n");
+    let Some(id) = env.start(&script, "worker") else {
+        return;
+    };
+    fs::write(env.proj.join("b.txt"), "b").unwrap();
+    git_cli(&env.proj, &["add", "--", "b.txt"]);
+    git_cli(&env.proj, &["commit", "-q", "-m", "feat: add b"]);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        let w = env.data(&["agents", "log", "worker", "--json"]);
+        if w["summary"]["ended_ms"].is_u64() {
+            assert_eq!(w["id"], id.as_str());
+            let s = &w["summary"];
+            assert_eq!(s["branch"], "main");
+            assert_eq!(s["commits"][0]["subject"], "feat: add b");
+            assert_eq!(s["exit"]["code"], 0);
+            assert!(s["duration_s"].as_u64().unwrap() >= 2, "{s}");
+            for key in ["working_s", "waiting_s", "blocked_s", "started_ms"] {
+                assert!(s[key].is_u64(), "{key}");
+            }
+            break;
+        }
+        assert!(Instant::now() < deadline, "the session did not exit");
+        thread::sleep(Duration::from_millis(200));
+    }
+    let human = env.tmgr(&["agents", "log", &id]);
+    let text = String::from_utf8_lossy(&human.stdout).into_owned();
+    assert!(human.status.success(), "{text}");
+    for needle in [
+        "worker",
+        "total: working",
+        "branch: main",
+        "feat: add b",
+        "exit code: 0",
+    ] {
+        assert!(text.contains(needle), "{needle}: {text}");
+    }
+    assert_eq!(
+        env.tmgr(&["agents", "log", "missing"]).status.code(),
+        Some(3)
+    );
+}

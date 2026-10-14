@@ -122,6 +122,11 @@ pub enum AgentsCmd {
         #[arg(long, value_name = "on|off")]
         auto: Option<AutoMode>,
     },
+    /// [experimental] Show what the runner recorded of a session: time, branch, commits
+    Log {
+        /// Session id or name
+        session: String,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]

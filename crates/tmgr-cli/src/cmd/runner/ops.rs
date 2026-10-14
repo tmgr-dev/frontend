@@ -48,6 +48,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
                 }),
             ..
         }) => agent_sync(o, profile, *discard, *auto),
+        RunnerCommands::Agents(AgentsArgs {
+            command: Some(AgentsCmd::Log { session }),
+            ..
+        }) => work_log(o, session),
         RunnerCommands::Agents(a) => match &a.host {
             Some(link) => remote::agents(o, link),
             None => agents(o),
@@ -679,6 +683,59 @@ fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
         o,
         json!({"id": s.id, "signal": signal, "exited": true}),
         format!("{} stopped", clean(&s.name)),
+    ))
+}
+
+fn work_log(o: &Opts, key: &str) -> Result<i32> {
+    let (mut c, s) = with_session(key)?;
+    let w = c.worklog(&s.id).map_err(rerr)?;
+    let mut lines = vec![format!("{} ({})", clean(&s.name), s.id)];
+    if w.started_ms == 0 {
+        lines.push("no work log: the session started before the runner kept one".into());
+    } else {
+        let end = if w.ended_ms.is_some() {
+            "ended"
+        } else {
+            "running"
+        };
+        lines.push(format!(
+            "{end}, {} total: working {}, waiting {}, blocked {}",
+            span(w.duration_s),
+            span(w.working_s),
+            span(w.waiting_s),
+            span(w.blocked_s)
+        ));
+        if let Some(a) = &w.agent {
+            lines.push(format!("agent: {}", clean(a)));
+        }
+        if let Some(b) = &w.branch {
+            lines.push(format!("branch: {}", clean(b)));
+        }
+        if let Some(e) = &w.exit {
+            lines.push(match (e.code, e.signal) {
+                (Some(code), _) => format!("exit code: {code}"),
+                (None, Some(sig)) => format!("killed by signal {sig}"),
+                _ => "exit: unknown".into(),
+            });
+        }
+        if !w.commits.is_empty() {
+            lines.push(format!("commits ({}):", w.commits.len()));
+            for c in &w.commits {
+                lines.push(format!(
+                    "  {} {}",
+                    clean(c.sha.get(..7).unwrap_or(&c.sha)),
+                    clean(&c.subject)
+                ));
+            }
+        }
+        if w.truncated {
+            lines.push("the log hit its size limit; later changes are not recorded".into());
+        }
+    }
+    Ok(emit(
+        o,
+        json!({"id": s.id, "name": s.name, "summary": w}),
+        lines.join("\n"),
     ))
 }
 
