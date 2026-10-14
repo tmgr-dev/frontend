@@ -138,10 +138,12 @@ export function useMemberPage(
 
 	watch(
 		[window, workspaceId, userId],
-		() => {
-			stats.value = null;
+		([, wid, uid], [, prevWid, prevUid]) => {
+			if (wid !== prevWid || uid !== prevUid) {
+				stats.value = null;
+				tasksLoaded.value = false;
+			}
 			tasks.value = [];
-			tasksLoaded.value = false;
 			tasksTotal.value = 0;
 			tasksPage.value = 1;
 			void refresh();
