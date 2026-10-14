@@ -2827,6 +2827,10 @@ fn worklog_of(c: &mut Client, id: &str) -> tmgr_ipc::api::WorkSummary {
 fn wait_exited(c: &mut Client, id: &str) {
     let done = wait_state(c, id, 15, |s| s.kind == StateKind::Exited);
     assert_eq!(done.state.kind, StateKind::Exited);
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while c.worklog(id).unwrap().exit.is_none() && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(50));
+    }
 }
 
 const BUSY_THEN_READ: &str = "i=0; while [ $i -lt 20 ]; do echo p$i; sleep 0.1; i=$((i+1)); done\n\

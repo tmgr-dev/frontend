@@ -464,13 +464,13 @@ impl Session {
         };
         self.persist();
         for state in states {
-            self.worklog.record(&state);
             self.hub.broadcast(to_json(&EventMsg {
                 session: self.id.clone(),
-                state,
+                state: state.clone(),
                 task,
                 origin: origin.clone(),
             }));
+            self.worklog.record(&state);
         }
     }
 
@@ -606,7 +606,7 @@ impl Session {
     }
 
     fn on_exited(&self, e: &ExitInfo) {
-        self.worklog.exited(now_ms(), e.code, e.signal);
+        let at = now_ms();
         self.change(|i, now, out| {
             let changed = i.det.on_exit(now, e.code, e.signal);
             if changed.is_some() {
@@ -617,6 +617,7 @@ impl Session {
             }
             out.extend(changed)
         });
+        self.worklog.exited(at, e.code, e.signal);
         finish_seeds(&self.dir, &self.id);
     }
 
