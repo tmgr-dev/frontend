@@ -58,6 +58,16 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             command: Some(AgentsCmd::Restore { session, discard }),
             ..
         }) => super::restore::run(o, session.as_deref(), *discard),
+        RunnerCommands::Agents(AgentsArgs {
+            command:
+                Some(AgentsCmd::Bundle {
+                    task,
+                    agent,
+                    model,
+                    cwd,
+                }),
+            ..
+        }) => super::local::bundle_cmd(o, task, agent, model.as_deref(), cwd),
         RunnerCommands::Agents(a) => match &a.host {
             Some(link) => remote::agents(o, link),
             None => agents(o),

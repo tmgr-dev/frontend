@@ -1,4 +1,5 @@
 mod attach;
+mod local;
 mod ops;
 mod remote;
 mod remote_attach;
@@ -148,6 +149,20 @@ pub enum AgentsCmd {
         #[arg(long, requires = "session")]
         discard: bool,
     },
+    /// [experimental] Print the run bundle of a task of a local workspace (--ws local:<code>) and its SHA-256
+    Bundle {
+        /// Task key (TM-512) or id (#8974)
+        task: String,
+        /// Agent profile id
+        #[arg(long, value_name = "PROFILE")]
+        agent: String,
+        /// Model to pass to the profile
+        #[arg(long, value_name = "MODEL")]
+        model: Option<String>,
+        /// Working directory of the run
+        #[arg(long, value_name = "DIR")]
+        cwd: PathBuf,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -198,6 +213,7 @@ pub struct RmArgs {
 }
 
 pub struct Opts {
+    pub ws: Option<String>,
     pub json: bool,
     pub quiet: bool,
     pub style: Style,
@@ -211,12 +227,14 @@ pub fn internal_entry() -> Option<i32> {
             &args[2],
         )),
         Some("__sandbox-exec") => Some(tmgr_runner::sandbox::exec_helper(&args[1..])),
+        Some("__agent-work") if args.len() == 1 => Some(local::agent_work_main()),
         _ => None,
     }
 }
 
 pub fn run(cli: &Cli, cmd: &RunnerCommands) -> i32 {
     let o = Opts {
+        ws: cli.ws.clone(),
         json: cli.json,
         quiet: cli.quiet,
         style: out::stdout_style(cli.no_color),
