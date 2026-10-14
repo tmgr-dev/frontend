@@ -235,10 +235,21 @@ impl<'a> Audit<'a> {
         let Err(t) = self.verify_locked()? else {
             return Ok(false);
         };
-        let stamp = Utc::now().timestamp();
-        let moved = self.0.dir.join(format!("queue-audit.jsonl.broken-{stamp}"));
-        match std::fs::rename(self.0.audit(), &moved) {
-            Ok(()) => {}
+        let nonce = sha256_hex(
+            format!(
+                "{}/{}",
+                std::process::id(),
+                Utc::now().timestamp_nanos_opt().unwrap_or(0)
+            )
+            .as_bytes(),
+        );
+        let moved = self.0.dir.join(format!(
+            "queue-audit.jsonl.broken-{}-{}",
+            Utc::now().timestamp(),
+            &nonce[..8]
+        ));
+        match std::fs::hard_link(self.0.audit(), &moved) {
+            Ok(()) => std::fs::remove_file(self.0.audit())?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
         }

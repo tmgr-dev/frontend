@@ -95,3 +95,19 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 ## Task references
 
 `TM-512` (key as shown in the title), `#8974` or `8974` (global task id). `tmgr help refs` prints the grammar.
+
+## Queue (`tmgr queue`, hidden, `runner` feature)
+
+`tmgr-queue` is the local auto-run queue base. It is off by default and starts no real agent: `run-once` records mock runs until the runner can start queue runs (`runner_supports_queue()` is false).
+
+Known limits:
+
+- Owner writes are not journaled by `tmgr-local` yet (`dispatch.rs` journals only requests with an actor, and the owner's client has none), so on real data nothing qualifies as `human` until the local-mode team journals owner task creates and edits. The queue fails closed: such tasks are `unrecorded` and are skipped unless a rule lists `unrecorded` (manual approval only).
+- The per-run `git clone --reference` only protects the owner's checkout from incidental git writes. Filesystem isolation of queue runs is the runner sandbox's job and a precondition before `runner_supports_queue()` may become true.
+
+Required runner capabilities before the real client is enabled:
+
+1. `permission_mode = ask` (prompts on) in `runs.create`; the contract has no such field yet.
+2. Lookup of a run by the start key (`<pickup>-<attempt>`), to reconcile an interrupted start.
+3. Liveness and exit status of a run, so a slot is freed only when the run has exited.
+4. Sandbox confinement of the run to its clone directory.

@@ -1,7 +1,7 @@
 use crate::audit::{sha256_hex, Audit};
 use crate::paths::Paths;
 use crate::rules::{self, hours_contains, ProfilePin, ProfileResolver, Rule, GLOBAL_MAX};
-use crate::runs::{RunState, RunsClient, StartRequest, PERMISSION_MODE};
+use crate::runs::{Lookup, RunState, RunsClient, StartRequest, PERMISSION_MODE};
 use crate::source::{Candidate, TaskSource};
 use crate::state::{self, Pickup, State, Status};
 use crate::workdir::{clone_dir, WorkDirs};
@@ -134,23 +134,68 @@ fn new_id(state: &State, rule: &str, task_id: i64, now: DateTime<Utc>) -> String
     }
 }
 
-fn recover(pass: &mut Pass) -> Result<()> {
+fn recover(pass: &mut Pass, deps: &Deps) -> Result<()> {
+    let limit = pass.now - Duration::hours(APPROVAL_TTL_HOURS);
     for i in 0..pass.state.pickups.len() {
         let p = &pass.state.pickups[i];
         if p.status == Status::Starting && p.run_id.is_none() {
             let (id, rule, task) = (p.id.clone(), p.rule.clone(), p.key.clone());
             pass.set(
                 i,
-                Status::Failed,
-                Some("start was interrupted before a run id was recorded; check the agents list before retrying".into()),
+                Status::UnknownStart,
+                Some("the start was interrupted; the slot is kept until the run is found or released".into()),
             );
             pass.audit.append(
                 "start_interrupted",
                 json!({"pickup": id, "rule": rule, "task": task}),
             )?;
         }
+        let p = &pass.state.pickups[i];
+        if p.status != Status::UnknownStart {
+            continue;
+        }
+        let (id, key) = (p.id.clone(), p.start_key());
+        let old = DateTime::parse_from_rfc3339(&p.updated_at)
+            .is_ok_and(|t| t.with_timezone(&Utc) < limit);
+        match deps.runs.lookup(&key) {
+            Lookup::Found(run) => {
+                pass.state.pickups[i].run_id = Some(run.clone());
+                pass.set(i, Status::Started, None);
+                pass.audit
+                    .append("start_reconciled", json!({"pickup": id, "run": run}))?;
+            }
+            Lookup::NotFound => {
+                pass.set(i, Status::Failed, Some("the run was never created".into()));
+                pass.audit
+                    .append("start_not_found", json!({"pickup": id}))?;
+            }
+            Lookup::Unsupported if old => {
+                pass.set(
+                    i,
+                    Status::Failed,
+                    Some("unreconciled after 24 hours".into()),
+                );
+                pass.audit.append("start_expired", json!({"pickup": id}))?;
+            }
+            Lookup::Unsupported => {}
+        }
     }
     Ok(())
+}
+
+pub fn release(paths: &Paths, id: &str, now: DateTime<Utc>) -> Result<()> {
+    let _lock = paths.lock()?;
+    let mut st = state::load(paths)?;
+    let p = st
+        .pickups
+        .iter_mut()
+        .find(|p| p.id == id && p.status == Status::UnknownStart)
+        .ok_or_else(|| Error::not_found(format!("no pickup {id} with an unknown start")))?;
+    p.status = Status::Failed;
+    p.reason = Some("released by the user".into());
+    p.updated_at = ts(now);
+    Audit::new(paths).append("start_released", json!({"pickup": id}))?;
+    state::save(paths, &mut st)
 }
 
 fn refresh_runs(pass: &mut Pass, deps: &Deps) -> Result<()> {
@@ -336,6 +381,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     persona_text: c.persona_text.clone(),
                     profile_pin: pin,
                     run_exited: false,
+                    attempt: 1,
                 });
                 pass.audit.append(
                     "candidate",
@@ -493,6 +539,7 @@ fn start_phase(
         }
         let req = StartRequest {
             permission_mode: PERMISSION_MODE,
+            start_key: p.start_key(),
             rule: rule_name.clone(),
             trigger: format!("rule:{rule_name}"),
             profile: rule.profile.clone(),
@@ -560,7 +607,7 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         touched: BTreeSet::new(),
         now: deps.now,
     };
-    recover(&mut pass)?;
+    recover(&mut pass, deps)?;
     refresh_runs(&mut pass, deps)?;
     if pass.state.paused {
         pass.report.paused = true;
@@ -663,6 +710,8 @@ mod tests {
         created: RefCell<Vec<String>>,
         fail: Cell<bool>,
         exited: RefCell<Vec<String>>,
+        lookup_mode: Cell<u8>,
+        keys: RefCell<Vec<String>>,
         cwds: RefCell<Vec<String>>,
     }
 
@@ -671,6 +720,7 @@ mod tests {
             if self.fail.get() {
                 return Err(Error::internal("runner said no"));
             }
+            self.keys.borrow_mut().push(req.start_key.clone());
             self.cwds.borrow_mut().push(req.cwd.clone());
             assert_eq!(req.permission_mode, "ask");
             let id = format!("mock-{}", self.created.borrow().len() + 1);
@@ -678,6 +728,14 @@ mod tests {
                 .borrow_mut()
                 .push(format!("{}:{}", req.task.task_id, req.bundle_sha256));
             Ok(id)
+        }
+
+        fn lookup(&self, key: &str) -> Lookup {
+            match self.lookup_mode.get() {
+                0 => Lookup::Unsupported,
+                1 => Lookup::NotFound,
+                _ => Lookup::Found(format!("found-{key}")),
+            }
         }
 
         fn status(&self, run_id: &str) -> RunState {
@@ -1109,20 +1167,77 @@ mod tests {
         assert!(fx.pickups().is_empty());
     }
 
-    #[test]
-    fn an_interrupted_start_is_failed_and_never_retried() {
-        let fx = Fx::new(|_| {});
+    fn interrupted(fx: &Fx) {
         fx.source.0.replace(vec![cand(1, "a")]);
         fx.pass().unwrap();
         fx.approve_all();
         let mut st = state::load(&fx.paths).unwrap();
         st.pickups[0].status = Status::Starting;
         state::save(&fx.paths, &mut st).unwrap();
+    }
+
+    #[test]
+    fn an_interrupted_start_keeps_its_slot_and_is_never_retried() {
+        let fx = Fx::new(|_| {});
+        interrupted(&fx);
+        fx.source.0.replace(vec![cand(1, "a"), cand(2, "b")]);
         fx.pass().unwrap();
+        fx.approve_all();
+        fx.pass().unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::UnknownStart);
+        assert!(
+            fx.runs.created.borrow().is_empty(),
+            "the slot is still taken"
+        );
+        assert_eq!(fx.audit_events("start_interrupted"), 1);
+        let mut st = state::load(&fx.paths).unwrap();
+        st.pickups[0].updated_at = "2020-01-01T00:00:00Z".into();
+        state::save(&fx.paths, &mut st).unwrap();
         fx.pass().unwrap();
         assert_eq!(fx.pickups()[0].status, Status::Failed);
-        assert!(fx.runs.created.borrow().is_empty());
-        assert_eq!(fx.audit_events("start_interrupted"), 1);
+        assert_eq!(fx.runs.created.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_start_found_by_its_key_is_reconciled_to_started() {
+        let fx = Fx::new(|_| {});
+        interrupted(&fx);
+        fx.runs.lookup_mode.set(2);
+        fx.pass().unwrap();
+        let p = &fx.pickups()[0];
+        assert_eq!(p.status, Status::Started);
+        assert!(p.run_id.as_deref().unwrap().starts_with("found-q_"));
+        assert!(p.run_id.as_deref().unwrap().ends_with("-1"));
+    }
+
+    #[test]
+    fn a_start_that_was_never_created_is_failed_and_frees_the_slot() {
+        let fx = Fx::new(|_| {});
+        interrupted(&fx);
+        fx.runs.lookup_mode.set(1);
+        fx.pass().unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Failed);
+    }
+
+    #[test]
+    fn release_frees_an_unknown_start_and_is_audited() {
+        let fx = Fx::new(|_| {});
+        interrupted(&fx);
+        fx.pass().unwrap();
+        let id = fx.pickups()[0].id.clone();
+        release(&fx.paths, &id, Utc::now()).unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Failed);
+        assert_eq!(fx.audit_events("start_released"), 1);
+        assert!(release(&fx.paths, &id, Utc::now()).is_err());
+    }
+
+    #[test]
+    fn every_start_carries_a_stable_key() {
+        let fx = Fx::new(|r| r.auto = true);
+        fx.source.0.replace(vec![cand(1, "a")]);
+        fx.pass().unwrap();
+        let id = fx.pickups()[0].id.clone();
+        assert_eq!(fx.runs.keys.borrow()[0], format!("{id}-1"));
     }
 
     #[test]

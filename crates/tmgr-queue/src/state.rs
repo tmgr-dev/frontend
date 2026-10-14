@@ -14,6 +14,7 @@ pub enum Status {
     PendingApproval,
     Approved,
     Starting,
+    UnknownStart,
     Started,
     Failed,
     Expired,
@@ -25,6 +26,7 @@ impl Status {
             Status::PendingApproval => "pending_approval",
             Status::Approved => "approved",
             Status::Starting => "starting",
+            Status::UnknownStart => "unknown_start",
             Status::Started => "started",
             Status::Failed => "failed",
             Status::Expired => "expired",
@@ -32,7 +34,10 @@ impl Status {
     }
 
     pub fn is_live(self) -> bool {
-        matches!(self, Status::Starting | Status::Started)
+        matches!(
+            self,
+            Status::Starting | Status::UnknownStart | Status::Started
+        )
     }
 }
 
@@ -62,9 +67,19 @@ pub struct Pickup {
     pub profile_pin: Option<ProfilePin>,
     #[serde(default)]
     pub run_exited: bool,
+    #[serde(default = "one")]
+    pub attempt: u32,
+}
+
+fn one() -> u32 {
+    1
 }
 
 impl Pickup {
+    pub fn start_key(&self) -> String {
+        format!("{}-{}", self.id, self.attempt)
+    }
+
     pub fn occupies(&self) -> bool {
         self.status.is_live() && !self.run_exited
     }

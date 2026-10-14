@@ -7,6 +7,13 @@ use tmgr_ipc::api::{RunBundle, TaskRef};
 
 pub const PERMISSION_MODE: &str = "ask";
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Lookup {
+    Found(String),
+    NotFound,
+    Unsupported,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunState {
     Running,
@@ -16,6 +23,7 @@ pub enum RunState {
 
 #[derive(Clone, Debug)]
 pub struct StartRequest {
+    pub start_key: String,
     pub permission_mode: &'static str,
     pub rule: String,
     pub trigger: String,
@@ -30,6 +38,7 @@ pub struct StartRequest {
 pub trait RunsClient {
     fn create(&self, req: &StartRequest) -> Result<String>;
     fn status(&self, run_id: &str) -> RunState;
+    fn lookup(&self, start_key: &str) -> Lookup;
     fn is_mock(&self) -> bool;
 }
 
@@ -45,6 +54,10 @@ impl RunsClient for RunnerRuns {
 
     fn status(&self, _run_id: &str) -> RunState {
         RunState::Unknown
+    }
+
+    fn lookup(&self, _start_key: &str) -> Lookup {
+        Lookup::Unsupported
     }
 
     fn is_mock(&self) -> bool {
@@ -64,6 +77,8 @@ pub struct MockRun {
     pub bundle_sha256: String,
     #[serde(default)]
     pub exited: bool,
+    #[serde(default)]
+    pub start_key: String,
 }
 
 pub struct MockRuns<'a>(pub &'a Paths);
@@ -94,6 +109,16 @@ impl MockRuns<'_> {
 }
 
 impl RunsClient for MockRuns<'_> {
+    fn lookup(&self, start_key: &str) -> Lookup {
+        match self.list() {
+            Ok(runs) => match runs.iter().find(|r| r.start_key == start_key) {
+                Some(r) => Lookup::Found(r.id.clone()),
+                None => Lookup::NotFound,
+            },
+            Err(_) => Lookup::Unsupported,
+        }
+    }
+
     fn status(&self, run_id: &str) -> RunState {
         match self.list() {
             Ok(runs) => match runs.iter().find(|r| r.id == run_id) {
@@ -115,6 +140,7 @@ impl RunsClient for MockRuns<'_> {
             task_id: req.task.task_id,
             bundle_sha256: req.bundle_sha256.clone(),
             exited: false,
+            start_key: req.start_key.clone(),
         });
         let value: Value = json!(runs);
         write_atomic(&self.0.mock_runs(), value.to_string().as_bytes(), 0o600)?;

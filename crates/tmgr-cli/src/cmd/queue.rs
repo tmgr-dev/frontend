@@ -45,6 +45,8 @@ pub enum QueueCommand {
         /// Pickup id from `tmgr queue status`
         pickup: String,
     },
+    /// Give up a pickup whose start has an unknown outcome and free its slot (needs a terminal)
+    Release { pickup: String },
     /// Run one pickup pass now
     RunOnce,
 }
@@ -220,6 +222,16 @@ pub fn run(ctx: &Ctx, cmd: &QueueCommand) -> Result<Output> {
             RulesCmd::Rm { name } => remove(&paths, name),
         },
         QueueCommand::Approve { pickup } => approve(&paths, pickup),
+        QueueCommand::Release { pickup } => {
+            privileged::guard()?;
+            eprintln!("The run may still be alive. Release only after checking `tmgr agents`.");
+            privileged::confirm_typed_stdio(pickup, "Type the pickup id to release it:")?;
+            tmgr_queue::release(&paths, pickup, Utc::now())?;
+            Ok(Output::new(
+                json!({"released": pickup}),
+                format!("Pickup {pickup} released."),
+            ))
+        }
         QueueCommand::RunOnce => run_once(ctx, &paths),
     }
 }
