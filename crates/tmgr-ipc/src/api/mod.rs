@@ -10,11 +10,13 @@ mod bundle;
 mod error;
 mod screen;
 mod types;
+mod worklog;
 
 pub use bundle::*;
 pub use error::ErrorCode;
 pub use screen::*;
 pub use types::*;
+pub use worklog::*;
 
 pub use crate::proto::{
     Auth, Challenge, ClientMsg, ErrorBody, Focus, Handshake, Hello, Request, Resize, Response,
@@ -31,8 +33,9 @@ pub mod caps {
     pub const CWD_PIN_V1: &str = "cwd_pin.v1";
     pub const LINK_ORIGIN_V1: &str = "link_origin.v1";
     pub const CANDIDATES_V1: &str = "candidates.v1";
+    pub const WORKLOG_V1: &str = "worklog.v1";
 
-    pub const ALL: [&str; 9] = [
+    pub const ALL: [&str; 10] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -42,6 +45,7 @@ pub mod caps {
         CWD_PIN_V1,
         LINK_ORIGIN_V1,
         CANDIDATES_V1,
+        WORKLOG_V1,
     ];
 }
 
@@ -53,6 +57,7 @@ pub mod method {
     pub const SESSIONS_KILL: &str = "sessions.kill";
     pub const SESSIONS_SEND: &str = "sessions.send";
     pub const SESSIONS_REMOVE: &str = "sessions.remove";
+    pub const SESSIONS_WORKLOG: &str = "sessions.worklog";
     pub const RUNS_CREATE: &str = "runs.create";
     pub const LAYOUT_GET: &str = "layout.get";
     pub const LAYOUT_SET: &str = "layout.set";
