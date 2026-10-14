@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn the_chain_verifies_and_files_are_private() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let dir = d.path().join("audit");
         let a = filled(&dir, 5);
         assert_eq!(
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn an_empty_log_verifies() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = Audit::new(d.path());
         assert_eq!(
             a.verify().unwrap(),
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn editing_an_entry_is_detected() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 5);
         let mut l = lines(&a);
         l[1] = l[1].replace("runs.list", "runs.get_");
@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn deleting_a_middle_entry_is_detected() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 5);
         let mut l = lines(&a);
         l.remove(2);
@@ -518,7 +518,7 @@ mod tests {
 
     #[test]
     fn reordering_is_detected() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 5);
         let mut l = lines(&a);
         l.swap(1, 2);
@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn deleting_the_first_entry_is_detected() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 4);
         let mut l = lines(&a);
         l.remove(0);
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn a_half_written_line_and_garbage_are_detected() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 3);
         let mut bytes = std::fs::read(a.current()).unwrap();
         bytes.extend_from_slice(b"{\"seq\":4");
@@ -555,7 +555,7 @@ mod tests {
     #[test]
     fn truncating_the_tail_is_detected_by_the_anchor() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 5);
         let anchor = d.path().join("audit.anchor");
         assert_eq!(
@@ -572,7 +572,7 @@ mod tests {
 
     #[test]
     fn editing_the_last_entry_or_dropping_the_anchor_is_detected() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 3);
         let mut l = lines(&a);
         l[2] = l[2].replace("runs.list", "runs.gett");
@@ -585,7 +585,7 @@ mod tests {
 
     #[test]
     fn an_anchor_one_entry_behind_is_a_crash_not_tampering() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 3);
         let l = lines(&a);
         let prev: Value = serde_json::from_str(&l[1]).unwrap();
@@ -601,7 +601,7 @@ mod tests {
 
     #[test]
     fn a_full_log_refuses_new_entries_and_keeps_the_old_ones() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = Audit::with_limits(d.path(), 300, 3);
         let mut refused = false;
         for i in 0..40 {
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn rotation_keeps_the_chain() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = Audit::with_rotation(d.path(), 600);
         for i in 0..12 {
             a.append("e", json!({"i": i.to_string()})).unwrap();
@@ -636,7 +636,7 @@ mod tests {
 
     #[test]
     fn tail_spans_rotated_files_and_values_are_bounded() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = Audit::with_rotation(d.path(), 600);
         for i in 0..8 {
             a.append("e", json!({"i": i})).unwrap();
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn caller_fields_cannot_overwrite_chain_fields() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = Audit::new(d.path());
         a.append("e", json!({"seq": 99, "prev": "x", "event": "other"}))
             .unwrap();
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn appending_to_a_truncated_log_records_the_break_and_verify_keeps_reporting_it() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 4);
         let mut l = lines(&a);
         l.pop();
@@ -700,7 +700,7 @@ mod tests {
 
     #[test]
     fn a_missing_anchor_is_recorded_as_a_break_on_the_next_append() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 2);
         std::fs::remove_file(d.path().join("audit.anchor")).unwrap();
         a.append("e", json!({})).unwrap();
@@ -718,7 +718,7 @@ mod tests {
         if unsafe { libc::geteuid() } == 0 {
             return;
         }
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 2);
         std::fs::set_permissions(a.current(), std::fs::Permissions::from_mode(0o000)).unwrap();
         assert!(a.verify().is_err());
@@ -743,7 +743,7 @@ mod tests {
 
     #[test]
     fn verify_holds_the_audit_lock_for_its_whole_run() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let a = filled(d.path(), 2);
         let guard = crate::store::lock(&d.path().join("audit.lock")).unwrap();
         let dir = d.path().to_path_buf();

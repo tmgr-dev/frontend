@@ -2291,10 +2291,13 @@ mod tests {
     }
 
     fn short_dir() -> tempfile::TempDir {
-        tempfile::Builder::new()
+        let t = tempfile::Builder::new()
             .prefix("td")
             .tempdir_in("/tmp")
-            .unwrap()
+            .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(t.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        t
     }
 
     #[test]

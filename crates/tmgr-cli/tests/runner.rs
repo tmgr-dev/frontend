@@ -632,7 +632,11 @@ fn agents_login_file_creates_a_private_template_and_never_overwrites() {
 fn runner_serve_started_directly_drops_the_shell_environment() {
     let env = Env::new();
     let mut c = env.cmd(&["runner", "serve"]);
-    c.env("SHELL_EXPORTED_TOKEN_FOR_TEST", "s3cr3t-shell-value")
+    c.env_clear()
+        .envs(env.envs())
+        .env("PATH", "/usr/bin:/bin")
+        .env("HOME", env.tmp.path())
+        .env("SHELL_EXPORTED_TOKEN_FOR_TEST", "s3cr3t-shell-value")
         .env("TMGR_NOTIFY_TOKEN", "s3cr3t-notify-value")
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -649,7 +653,16 @@ fn runner_serve_started_directly_drops_the_shell_environment() {
     let _ = env.tmgr(&["runner", "stop"]);
     let _ = child.kill();
     let _ = child.wait();
-    assert!(seen.contains("TMGR_RUNNER_DIR"), "{seen}");
-    assert!(!seen.contains("s3cr3t-shell-value"), "{seen}");
-    assert!(!seen.contains("s3cr3t-notify-value"), "{seen}");
+    assert!(
+        seen.contains("TMGR_RUNNER_DIR"),
+        "runner env lacks TMGR_RUNNER_DIR"
+    );
+    assert!(
+        !seen.contains("s3cr3t-shell-value"),
+        "shell variable reached the runner"
+    );
+    assert!(
+        !seen.contains("s3cr3t-notify-value"),
+        "TMGR_NOTIFY_TOKEN reached the runner"
+    );
 }

@@ -9,9 +9,9 @@ use tmgr_core::creds::Backend;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{State, StateKind};
 use tmgr_ipc::proto::valid_session_id;
-use tmgr_link::leader::{self, Client, KeyFile, SshTarget};
+use tmgr_link::leader::{self, Client, KeyFile};
 use tmgr_link::proto::Reply;
-use tmgr_link::store::{Paths, Store};
+use tmgr_link::store::Paths;
 use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::wire::now_ms;
 
@@ -48,19 +48,10 @@ fn cell(s: &str) -> String {
 pub(super) fn dial(link: &str) -> Result<(Client, KeyFile)> {
     tmgr_link::grammar::link_name(link)?;
     let paths = Paths::from_env()?;
-    let store = Store::load(&paths)?;
-    let f = store.followers.get(link).ok_or_else(|| {
-        Error::not_found(format!("no follower named {link}")).hint("tmgr link list")
-    })?;
     let cfg = Config::load(&config::config_dir()?)?;
     let preferred = cfg.credential_store.as_deref().and_then(Backend::parse);
     let cred = leader::credential_store(&paths, preferred);
-    let target = SshTarget {
-        user: f.user.clone(),
-        host: f.host.clone(),
-        port: f.port,
-    };
-    let (mut client, key) = Client::connect(&paths, &cred, link, &target)?;
+    let (mut client, key) = Client::dial(&paths, &cred, link)?;
     client.hello()?;
     Ok((client, key))
 }

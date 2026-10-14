@@ -1,0 +1,528 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": [
+					{
+						"color": "#64748b",
+						"id": 1,
+						"name": "Backlog",
+						"pivot": {
+							"is_active": 1,
+							"order": 1,
+							"status_id": 1
+						},
+						"type": "default"
+					},
+					{
+						"color": "#3b82f6",
+						"id": 2,
+						"name": "In progress",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 2
+						},
+						"type": "active"
+					},
+					{
+						"color": "#22c55e",
+						"id": 3,
+						"name": "Done",
+						"pivot": {
+							"is_active": 1,
+							"order": 3,
+							"status_id": 3
+						},
+						"type": "completed"
+					},
+					{
+						"color": "#374151",
+						"id": 4,
+						"name": "Archived",
+						"pivot": {
+							"is_active": 1,
+							"order": 4,
+							"status_id": 4
+						},
+						"type": "archived"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"color": "#64748b",
+						"id": 1,
+						"name": "Backlog",
+						"pivot": {
+							"is_active": 1,
+							"order": 1,
+							"status_id": 1
+						},
+						"type": "default"
+					},
+					{
+						"color": "#3b82f6",
+						"id": 2,
+						"name": "In progress",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 2
+						},
+						"type": "active"
+					},
+					{
+						"color": "#22c55e",
+						"id": 3,
+						"name": "Done",
+						"pivot": {
+							"is_active": 1,
+							"order": 3,
+							"status_id": 3
+						},
+						"type": "completed"
+					},
+					{
+						"color": "#374151",
+						"id": 4,
+						"name": "Archived",
+						"pivot": {
+							"is_active": 1,
+							"order": 4,
+							"status_id": 4
+						},
+						"type": "archived"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"color": "#64748b",
+					"id": 1,
+					"name": "Backlog",
+					"pivot": {
+						"is_active": 1,
+						"order": 1,
+						"status_id": 1
+					},
+					"type": "default"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"color": "#374151",
+					"id": 4,
+					"name": "Archived",
+					"pivot": {
+						"is_active": 1,
+						"order": 4,
+						"status_id": 4
+					},
+					"type": "archived"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Status not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"children_count": 0,
+						"code": "be",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 2,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [
+							{
+								"name": "task_name_pattern",
+								"value": "BE-{index#category}"
+							}
+						],
+						"slug": "backend",
+						"tasks_count": 2,
+						"title": "Backend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"children_count": 0,
+						"code": "fe",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 4,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [],
+						"slug": "frontend",
+						"tasks_count": 1,
+						"title": "Frontend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"children_count": 2,
+						"code": "wk",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 1,
+						"parent_category": null,
+						"project_category_id": null,
+						"settings": [],
+						"slug": "work",
+						"tasks_count": 2,
+						"title": "Work",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 2,
+					"code": "wk",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"id": 1,
+					"parent_category": null,
+					"project_category_id": null,
+					"settings": [],
+					"slug": "work",
+					"tasks_count": 2,
+					"title": "Work",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 0,
+					"code": "be",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"id": 2,
+					"parent_category": null,
+					"project_category_id": 1,
+					"settings": [
+						{
+							"name": "task_name_pattern",
+							"value": "BE-{index#category}"
+						}
+					],
+					"slug": "backend",
+					"tasks_count": 2,
+					"title": "Backend",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Category not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"message": "Category not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"children_count": 2,
+						"code": "wk",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 1,
+						"parent_category": null,
+						"project_category_id": null,
+						"settings": [],
+						"slug": "work",
+						"tasks_count": 2,
+						"title": "Work",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"children_count": 0,
+						"code": "be",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 2,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [
+							{
+								"name": "task_name_pattern",
+								"value": "BE-{index#category}"
+							}
+						],
+						"slug": "backend",
+						"tasks_count": 2,
+						"title": "Backend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"children_count": 0,
+						"code": "fe",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 4,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [],
+						"slug": "frontend",
+						"tasks_count": 1,
+						"title": "Frontend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				],
+				"links": {
+					"first": null,
+					"last": null,
+					"next": null,
+					"prev": null
+				},
+				"meta": {
+					"current_page": 1,
+					"from": 1,
+					"last_page": 1,
+					"links": [],
+					"path": "/api/project_categories/children/1",
+					"per_page": 20,
+					"to": 2,
+					"total": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"children_count": 0,
+						"code": "be",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 2,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [
+							{
+								"name": "task_name_pattern",
+								"value": "BE-{index#category}"
+							}
+						],
+						"slug": "backend",
+						"tasks_count": 2,
+						"title": "Backend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				],
+				"links": {
+					"first": null,
+					"last": null,
+					"next": null,
+					"prev": null
+				},
+				"meta": {
+					"current_page": 1,
+					"from": 1,
+					"last_page": 2,
+					"links": [],
+					"path": "/api/project_categories/children/1",
+					"per_page": 1,
+					"to": 1,
+					"total": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [],
+				"links": {
+					"first": null,
+					"last": null,
+					"next": null,
+					"prev": null
+				},
+				"meta": {
+					"current_page": 1,
+					"from": null,
+					"last_page": 1,
+					"links": [],
+					"path": "/api/project_categories/children/999",
+					"per_page": 20,
+					"to": null,
+					"total": 0
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 2,
+					"code": "wk",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"id": 1,
+					"parent_category": null,
+					"project_category_id": null,
+					"settings": [],
+					"slug": "work",
+					"tasks_count": 2,
+					"title": "Work",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 0,
+					"code": "be",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"id": 2,
+					"parent_category": {
+						"children_count": 2,
+						"code": "wk",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 1,
+						"parent_category": null,
+						"project_category_id": null,
+						"settings": [],
+						"slug": "work",
+						"tasks_count": 2,
+						"title": "Work",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					"project_category_id": 1,
+					"settings": [
+						{
+							"name": "task_name_pattern",
+							"value": "BE-{index#category}"
+						}
+					],
+					"slug": "backend",
+					"tasks_count": 2,
+					"title": "Backend",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Category not found"
+			},
+			"status": 404
+		}
+	]
+}

@@ -71,7 +71,7 @@ pub fn parse_runs_page(body: Value) -> Result<RunsPage> {
 }
 
 impl Client {
-    pub fn time_summary(&self, workspace_id: u64, from: &str, to: &str) -> Result<TimeSummary> {
+    pub fn time_summary(&self, workspace_id: i64, from: &str, to: &str) -> Result<TimeSummary> {
         let body = self.request(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/time-summary"),
@@ -110,7 +110,7 @@ impl Client {
 
     pub fn workspace_agent_runs(
         &self,
-        workspace_id: u64,
+        workspace_id: i64,
         q: &RunQuery,
     ) -> Result<Option<RunsPage>> {
         let mut query: Vec<(&str, String)> = Vec::new();
@@ -179,20 +179,20 @@ impl Client {
         .map(|_| ())
     }
 
-    fn in_workspace<T>(&self, workspace_id: u64, call: impl FnOnce() -> Result<T>) -> Result<T> {
+    fn in_workspace<T>(&self, workspace_id: i64, call: impl FnOnce() -> Result<T>) -> Result<T> {
         self.set_workspace_header(Some(workspace_id));
         let out = call();
         self.set_workspace_header(None);
         out
     }
 
-    pub fn pages_flat(&self, workspace_id: u64) -> Result<Vec<ApiPage>> {
+    pub fn pages_flat(&self, workspace_id: i64) -> Result<Vec<ApiPage>> {
         self.in_workspace(workspace_id, || {
             items(self.request(Method::GET, "/api/pages/tree", &[], None, "pages:read")?)
         })
     }
 
-    pub fn page_get(&self, workspace_id: u64, id: u64) -> Result<ApiPage> {
+    pub fn page_get(&self, workspace_id: i64, id: u64) -> Result<ApiPage> {
         self.in_workspace(workspace_id, || {
             parse(unwrap_data(self.request(
                 Method::GET,
@@ -204,7 +204,7 @@ impl Client {
         })
     }
 
-    pub fn page_create(&self, workspace_id: u64, body: &Value) -> Result<ApiPage> {
+    pub fn page_create(&self, workspace_id: i64, body: &Value) -> Result<ApiPage> {
         self.in_workspace(workspace_id, || {
             parse(unwrap_data(self.request(
                 Method::POST,
@@ -218,7 +218,7 @@ impl Client {
 
     pub fn page_update(
         &self,
-        workspace_id: u64,
+        workspace_id: i64,
         id: u64,
         version: i64,
         body: &str,
@@ -335,11 +335,15 @@ pub fn parse_daily_time(body: Value, date: &str) -> Result<DailyTime> {
 impl Client {
     pub fn time_daily(
         &self,
-        workspace_id: u64,
+        workspace_id: i64,
         date: &str,
         tz: &str,
         mine: bool,
     ) -> Result<Option<DailyTime>> {
+        // Local workspaces have no per-day endpoint; callers fall back to the time summary.
+        if self.local().is_some() {
+            return Ok(None);
+        }
         let (status, body) = self.request_status(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/time/daily"),

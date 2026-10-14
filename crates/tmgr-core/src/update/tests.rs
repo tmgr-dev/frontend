@@ -211,7 +211,7 @@ fn decision_separates_rollback_from_not_newer() {
 
 #[test]
 fn trust_state_round_trips_with_private_mode() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = private_tempdir();
     let state = dir.path().join("tmgr");
     assert_eq!(load_trusted(&state).unwrap(), None);
     store_trusted(&state, &v("1.2.3")).unwrap();
@@ -289,7 +289,7 @@ fn package_managers_are_detected() {
 #[test]
 fn install_replaces_atomically_and_keeps_one_backup() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = private_tempdir();
     let exe = dir.path().join("tmgr");
     std::fs::write(&exe, b"OLD").unwrap();
     let old = install_binary(&exe, b"NEW").unwrap();
@@ -322,7 +322,7 @@ impl Stand {
         Stand {
             rt,
             server,
-            dir: tempfile::tempdir().unwrap(),
+            dir: private_tempdir(),
             keys: keys(),
         }
     }
@@ -377,6 +377,11 @@ impl Stand {
     fn opts(&self, current: &str) -> Options {
         let exe = self.exe();
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
+        std::fs::set_permissions(
+            exe.parent().unwrap(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
         std::fs::write(&exe, b"OLDBIN").unwrap();
         Options {
             api_base: self.server.uri(),
@@ -575,7 +580,7 @@ fn consented_downgrade_never_lowers_the_floor_below_the_replaced_version() {
 
 #[test]
 fn stored_floor_is_monotonic() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = private_tempdir();
     store_trusted(dir.path(), &v("0.5.0")).unwrap();
     store_trusted(dir.path(), &v("0.4.0")).unwrap();
     assert_eq!(load_trusted(dir.path()).unwrap(), Some(v("0.5.0")));
@@ -621,7 +626,7 @@ fn archives_with_too_many_entries_are_refused() {
 #[test]
 fn group_writable_install_directory_is_refused() {
     use std::os::unix::fs::PermissionsExt;
-    let dir = tempfile::tempdir().unwrap();
+    let dir = private_tempdir();
     let bin = dir.path().join("bin");
     std::fs::create_dir(&bin).unwrap();
     let exe = bin.join("tmgr");
@@ -637,7 +642,7 @@ fn group_writable_install_directory_is_refused() {
 #[cfg(unix)]
 #[test]
 fn install_never_overwrites_through_a_planted_backup_symlink() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = private_tempdir();
     let exe = dir.path().join("tmgr");
     let victim = dir.path().join("victim");
     std::fs::write(&exe, b"OLD").unwrap();
@@ -703,4 +708,11 @@ fn hitting_the_page_cap_is_reported_as_an_incomplete_search() {
     mount_pages(&s, MAX_PAGES, None);
     let err = run(&s.opts("0.3.0"), &s.keys.pk).unwrap_err();
     assert!(err.message.contains("incomplete search"), "{}", err.message);
+}
+
+fn private_tempdir() -> tempfile::TempDir {
+    use std::os::unix::fs::PermissionsExt;
+    let d = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    d
 }

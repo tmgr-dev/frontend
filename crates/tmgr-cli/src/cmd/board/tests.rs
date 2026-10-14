@@ -493,3 +493,30 @@ fn hostile_server_text_never_reaches_the_screen() {
         );
     }
 }
+
+#[test]
+fn the_worker_of_a_local_board_writes_to_the_local_workspace() {
+    let dir = tempfile::tempdir().unwrap();
+    let (workspace, user) = super::data::local_fixture(dir.path());
+    let ws_id = workspace.manifest.id;
+    let db = workspace.database.clone();
+    let (eff_tx, eff_rx) = std::sync::mpsc::channel();
+    let (msg_tx, msg_rx) = std::sync::mpsc::channel();
+    super::spawn_worker(
+        super::Conn::Local { workspace, user },
+        ws_id,
+        None,
+        eff_rx,
+        msg_tx,
+    );
+    eff_tx.send(Effect::Move { id: 1, to: 2 }).unwrap();
+    let msg = msg_rx
+        .recv_timeout(std::time::Duration::from_secs(10))
+        .unwrap();
+    assert!(matches!(msg, Msg::MoveDone(1, Ok(()))));
+    let status: i64 = rusqlite::Connection::open(db)
+        .unwrap()
+        .query_row("SELECT status_id FROM tasks WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(status, 2);
+}

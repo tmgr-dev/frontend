@@ -23,6 +23,9 @@ flate2 = "1"
 tar = { version = "0.4", default-features = false }
 semver = "1"
 libc.workspace = true
+tmgr-local = { path = "../tmgr-local" }
+rusqlite.workspace = true
+form_urlencoded.workspace = true
 
 [dev-dependencies]
 minisign = "0.7"

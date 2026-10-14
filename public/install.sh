@@ -322,7 +322,7 @@ main() {
   tar -xzf "$TMP/$archive" -C "$TMP/x" "tmgr-$version-$target/tmgr"
   [ -f "$TMP/x/tmgr-$version-$target/tmgr" ] || die "the archive does not contain tmgr"
 
-  mkdir -p "$dest"
+  (umask 022 && mkdir -p -- "$dest") || die "cannot create $dest"
   check_dir "$dest"
   STAGED=$(mktemp "$dest/.tmgr.new.XXXXXX")
   cat "$TMP/x/tmgr-$version-$target/tmgr" >"$STAGED"

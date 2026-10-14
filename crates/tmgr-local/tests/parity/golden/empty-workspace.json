@@ -1,0 +1,894 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": [],
+				"links": {
+					"first": null,
+					"last": null,
+					"next": null,
+					"prev": null
+				},
+				"meta": {
+					"current_page": 1,
+					"from": null,
+					"last_page": 1,
+					"links": [],
+					"path": "/api/tasks",
+					"per_page": 20,
+					"to": null,
+					"total": 0,
+					"total_overtime_seconds": "0",
+					"total_seconds": "0"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [],
+				"links": {
+					"first": null,
+					"last": null,
+					"next": null,
+					"prev": null
+				},
+				"meta": {
+					"current_page": 1,
+					"from": null,
+					"last_page": 1,
+					"links": [],
+					"path": "/api/tasks/current",
+					"per_page": 20,
+					"to": null,
+					"total": 0,
+					"total_overtime_seconds": "0",
+					"total_seconds": "0"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [],
+				"links": {
+					"first": null,
+					"last": null,
+					"next": null,
+					"prev": null
+				},
+				"meta": {
+					"current_page": 1,
+					"from": null,
+					"last_page": 1,
+					"links": [],
+					"path": "/api/tasks/runned",
+					"per_page": 1,
+					"to": null,
+					"total": 0
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"index": {
+						"category": 1,
+						"workspace": 1
+					}
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"color": "#64748b",
+						"id": 1,
+						"name": "Backlog",
+						"pivot": {
+							"is_active": 1,
+							"order": 1,
+							"status_id": 1
+						},
+						"type": "default"
+					},
+					{
+						"color": "#3b82f6",
+						"id": 2,
+						"name": "In progress",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 2
+						},
+						"type": "active"
+					},
+					{
+						"color": "#22c55e",
+						"id": 3,
+						"name": "Done",
+						"pivot": {
+							"is_active": 1,
+							"order": 3,
+							"status_id": 3
+						},
+						"type": "completed"
+					},
+					{
+						"color": "#374151",
+						"id": 4,
+						"name": "Archived",
+						"pivot": {
+							"is_active": 1,
+							"order": 4,
+							"status_id": 4
+						},
+						"type": "archived"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"count": 0
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"error": "page_not_found",
+				"message": "Page not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"markdown": ""
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"email": "owner@example.com",
+						"has_avatar": false,
+						"id": 7,
+						"name": "Owner",
+						"role": "owner"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"can_manage": true,
+					"configured": true,
+					"enforcement": "report",
+					"modules": [
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": true,
+							"default": true,
+							"depends_on": [],
+							"description": "Projects with ticket numbers",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "categories",
+							"local": true,
+							"name": "Projects",
+							"pack": "core",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": true,
+							"default": true,
+							"depends_on": [
+								"workflow"
+							],
+							"description": "Kanban board",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "board",
+							"local": true,
+							"name": "Board",
+							"pack": "core",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile",
+								"desktop"
+							],
+							"core": true,
+							"default": true,
+							"depends_on": [],
+							"description": "Start and stop a timer on any task",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "task.countdown",
+							"local": true,
+							"name": "Timer",
+							"pack": "core",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": true,
+							"default": true,
+							"depends_on": [],
+							"description": "Comments and reactions",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "task.comments",
+							"local": true,
+							"name": "Comments",
+							"pack": "core",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Assign tasks to members",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "task.assignees",
+							"local": true,
+							"name": "Assignees",
+							"pack": "core",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": true,
+							"depends_on": [],
+							"description": "Overview of today and the week",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "dashboard",
+							"local": false,
+							"name": "Dashboard",
+							"pack": "time_focus",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "25/5 focus cycles on any task",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "pomodoro",
+							"local": false,
+							"name": "Pomodoro",
+							"pack": "time_focus",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Time reports and CSV",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "exports",
+							"local": false,
+							"name": "Reports & export",
+							"pack": "time_focus",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile",
+								"desktop"
+							],
+							"core": false,
+							"default": true,
+							"depends_on": [],
+							"description": "Custom statuses, the status picker and board columns",
+							"enabled": true,
+							"enforced": false,
+							"hidden": false,
+							"key": "workflow",
+							"local": true,
+							"name": "Workflow",
+							"pack": "planning",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": true,
+							"depends_on": [],
+							"description": "Checklist inside a task",
+							"enabled": true,
+							"enforced": false,
+							"hidden": false,
+							"key": "task.checkpoints",
+							"local": true,
+							"name": "Checkpoints",
+							"pack": "planning",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Links between tasks (blocks, relates to)",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "task.relations",
+							"local": true,
+							"name": "Relations",
+							"pack": "planning",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile",
+								"desktop"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Daily and recurring routines",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "daily_routines",
+							"local": true,
+							"name": "Routines",
+							"pack": "planning",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": true,
+							"depends_on": [],
+							"description": "Attachments on tasks and the Files screen",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "task.files",
+							"local": true,
+							"name": "Attachments & files",
+							"pack": "planning",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"desktop"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Markdown wiki linked to tasks",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "pages",
+							"local": true,
+							"name": "Pages",
+							"pack": "knowledge",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [
+								"pages"
+							],
+							"description": "Map of tasks, pages and agents",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "graph",
+							"local": true,
+							"name": "Graph",
+							"pack": "knowledge",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Chat and AI replies to comments (uses AI credits)",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "ai.assistant",
+							"local": false,
+							"name": "AI assistant",
+							"pack": "ai",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "See what agents did and how long",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "agent_work",
+							"local": true,
+							"name": "Agent work",
+							"pack": "ai",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"desktop"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "AI teammates with their own tokens and skills",
+							"enabled": true,
+							"enforced": true,
+							"hidden": false,
+							"key": "personas",
+							"local": true,
+							"name": "Personas",
+							"pack": "ai",
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Launch Cursor cloud agents from a task",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "cursor",
+							"local": false,
+							"name": "Cursor agents",
+							"pack": "ai",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "GitHub App: link repos, PRs and issues",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "github",
+							"local": false,
+							"name": "GitHub",
+							"pack": "integrations",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web",
+								"mobile"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Create and get tasks in Telegram",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "telegram",
+							"local": false,
+							"name": "Telegram bot",
+							"pack": "integrations",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web"
+							],
+							"core": false,
+							"default": false,
+							"depends_on": [],
+							"description": "Import tasks from other tools",
+							"enabled": false,
+							"enforced": true,
+							"hidden": false,
+							"key": "import",
+							"local": false,
+							"name": "Import",
+							"pack": "integrations",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"mobile"
+							],
+							"core": false,
+							"default": true,
+							"depends_on": [],
+							"description": "Push notifications to your devices",
+							"enabled": false,
+							"enforced": false,
+							"hidden": false,
+							"key": "notifications.push",
+							"local": false,
+							"name": "Push notifications",
+							"pack": "notifications",
+							"requires_account": true,
+							"scope": "workspace"
+						},
+						{
+							"clients": [
+								"web"
+							],
+							"core": false,
+							"default": true,
+							"depends_on": [],
+							"description": "Email notifications",
+							"enabled": false,
+							"enforced": false,
+							"hidden": false,
+							"key": "notifications.email",
+							"local": false,
+							"name": "Email notifications",
+							"pack": "notifications",
+							"requires_account": true,
+							"scope": "workspace"
+						}
+					],
+					"packs": [
+						{
+							"key": "core",
+							"name": "Core"
+						},
+						{
+							"key": "time_focus",
+							"name": "Time & focus"
+						},
+						{
+							"key": "planning",
+							"name": "Planning"
+						},
+						{
+							"key": "knowledge",
+							"name": "Knowledge"
+						},
+						{
+							"key": "ai",
+							"name": "AI agents"
+						},
+						{
+							"key": "integrations",
+							"name": "Integrations"
+						},
+						{
+							"key": "notifications",
+							"name": "Notifications"
+						}
+					],
+					"presets": [
+						{
+							"description": "Just the essentials",
+							"key": "minimal",
+							"modules": [],
+							"name": "Minimal"
+						},
+						{
+							"description": "Just me — tasks and time",
+							"key": "personal",
+							"modules": [
+								"task.checkpoints",
+								"task.files",
+								"daily_routines"
+							],
+							"name": "Personal"
+						},
+						{
+							"description": "Me and my AI agents",
+							"key": "developer",
+							"modules": [
+								"workflow",
+								"task.checkpoints",
+								"task.files",
+								"agent_work",
+								"personas"
+							],
+							"name": "Developer with AI agents"
+						},
+						{
+							"description": "Everything",
+							"key": "everything",
+							"modules": [
+								"task.assignees",
+								"workflow",
+								"task.checkpoints",
+								"task.relations",
+								"daily_routines",
+								"task.files",
+								"pages",
+								"graph",
+								"agent_work",
+								"personas"
+							],
+							"name": "Everything"
+						}
+					]
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"agent_work": {
+						"enabled": true,
+						"group": "local",
+						"key": "agent_work",
+						"name": "Agent work"
+					},
+					"board": {
+						"enabled": true,
+						"group": "local",
+						"key": "board",
+						"name": "board"
+					},
+					"categories": {
+						"enabled": true,
+						"group": "local",
+						"key": "categories",
+						"name": "categories"
+					},
+					"daily_routines": {
+						"enabled": true,
+						"group": "local",
+						"key": "daily_routines",
+						"name": "daily_routines"
+					},
+					"dashboard": {
+						"enabled": false,
+						"group": "local",
+						"key": "dashboard",
+						"name": "dashboard"
+					},
+					"graph": {
+						"enabled": false,
+						"group": "local",
+						"key": "graph",
+						"name": "graph"
+					},
+					"pages": {
+						"enabled": true,
+						"group": "local",
+						"key": "pages",
+						"name": "pages"
+					},
+					"task.assignees": {
+						"enabled": false,
+						"group": "local",
+						"key": "task.assignees",
+						"name": "task.assignees"
+					},
+					"task.checkpoints": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.checkpoints",
+						"name": "task.checkpoints"
+					},
+					"task.countdown": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.countdown",
+						"name": "task.countdown"
+					},
+					"task.files": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.files",
+						"name": "task.files"
+					},
+					"task.relations": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.relations",
+						"name": "task.relations"
+					},
+					"workflow": {
+						"enabled": true,
+						"group": "local",
+						"key": "workflow",
+						"name": "Workflow"
+					}
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"pages.analyst_persona_id": null
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"name": "blocks"
+					},
+					{
+						"id": 2,
+						"name": "is blocked by"
+					},
+					{
+						"id": 3,
+						"name": "relates to"
+					},
+					{
+						"id": 4,
+						"name": "duplicates"
+					},
+					{
+						"id": 5,
+						"name": "is duplicated by"
+					},
+					{
+						"id": 6,
+						"name": "depends on"
+					},
+					{
+						"id": 7,
+						"name": "is dependency of"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		}
+	]
+}

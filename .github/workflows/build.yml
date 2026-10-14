@@ -54,7 +54,6 @@ jobs:
           build-args: |
             APP_URL=${{ secrets.APP_URL }}
             VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
-            VITE_PUSHER_BEAMS_INSTANCE_ID=${{ secrets.VITE_PUSHER_BEAMS_INSTANCE_ID }}
             VITE_PUSHER_APP_ID=${{ secrets.VITE_PUSHER_APP_ID }}
             VITE_PUSHER_KEY=${{ secrets.VITE_PUSHER_KEY }}
             VITE_PUSHER_SECRET=${{ secrets.VITE_PUSHER_SECRET }}
@@ -126,7 +125,6 @@ jobs:
           kubectl create secret generic tmgr-ui-secret -n applications \
             --from-literal=APP_URL="${{ secrets.APP_URL }}" \
             --from-literal=VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }} \
-            --from-literal=VITE_PUSHER_BEAMS_INSTANCE_ID=${{ secrets.VITE_PUSHER_BEAMS_INSTANCE_ID }} \
             --from-literal=VITE_PUSHER_APP_ID="${{ secrets.VITE_PUSHER_APP_ID }}" \
             --from-literal=VITE_PUSHER_KEY=${{ secrets.VITE_PUSHER_KEY }} \
             --from-literal=VITE_PUSHER_SECRET=${{ secrets.VITE_PUSHER_SECRET }} \

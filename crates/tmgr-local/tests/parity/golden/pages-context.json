@@ -1,0 +1,63 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"markdown": ""
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"markdown": ""
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					},
+					{
+						"id": 2,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 1,
+						"slug": "child-page",
+						"title": "Child page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					},
+					{
+						"id": 4,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 2,
+						"slug": "persona-page",
+						"title": "Persona page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		}
+	]
+}

@@ -1,0 +1,39 @@
+{
+	"responses": [
+		{
+			"data": {
+				"code": "feature_disabled",
+				"message": "The Graph feature is turned off for this workspace"
+			},
+			"status": 403
+		},
+		{
+			"data": {
+				"code": "feature_disabled",
+				"message": "The Graph feature is turned off for this workspace"
+			},
+			"status": 403
+		},
+		{
+			"data": {
+				"code": "feature_disabled",
+				"message": "The Graph feature is turned off for this workspace"
+			},
+			"status": 403
+		},
+		{
+			"data": {
+				"code": "feature_disabled",
+				"message": "The Graph feature is turned off for this workspace"
+			},
+			"status": 403
+		},
+		{
+			"data": {
+				"code": "feature_disabled",
+				"message": "The Graph feature is turned off for this workspace"
+			},
+			"status": 403
+		}
+	]
+}

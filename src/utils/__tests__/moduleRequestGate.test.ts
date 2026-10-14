@@ -26,6 +26,7 @@ describe('moduleKeyForRequest', () => {
 		['telegram/link/generate', 'telegram'],
 		['/agent/conversations', 'ai.assistant'],
 		['tasks/9/agent-work', 'agent_work'],
+		['workspaces/5/agent-status', 'agent_work'],
 		['/user/alarm-phone', 'alerts'],
 		['/notify-tokens', 'alerts'],
 		['pages/tree', 'pages'],

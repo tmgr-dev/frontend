@@ -29,25 +29,40 @@ use tmgr_core::creds::{Backend, CredentialStore};
 use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::is_category_code;
 
-struct Conn {
-    server: String,
-    dir: PathBuf,
-    account: String,
-    preferred: Option<Backend>,
-    verbose: bool,
+/// How the background worker reaches the board's workspace: the logged-in cloud, or the same
+/// local workspace and identity as the board itself.
+enum Conn {
+    Cloud {
+        server: String,
+        dir: PathBuf,
+        account: String,
+        preferred: Option<Backend>,
+    },
+    Local {
+        workspace: tmgr_core::local::LocalWorkspace,
+        user: tmgr_core::local::User,
+    },
 }
 
 impl Conn {
     fn connect(&self) -> Result<Client> {
-        let store = CredentialStore::new(&self.dir, &self.account, self.preferred);
-        let (tokens, _) = store.load()?.ok_or_else(Error::not_logged_in)?;
-        Client::new(
-            &self.server,
-            &Ctx::user_agent(),
-            Some(tokens),
-            Some(store),
-            self.verbose,
-        )
+        match self {
+            Conn::Cloud {
+                server,
+                dir,
+                account,
+                preferred,
+            } => {
+                let store = CredentialStore::new(dir, account, *preferred);
+                let (tokens, _) = store.load()?.ok_or_else(Error::not_logged_in)?;
+                Client::new(server, &Ctx::user_agent(), Some(tokens), Some(store), false)
+            }
+            Conn::Local { workspace, user } => Client::for_local(
+                tmgr_core::local::Local::new(workspace.clone(), user.clone()),
+                &Ctx::user_agent(),
+                false,
+            ),
+        }
     }
 }
 
@@ -85,7 +100,7 @@ pub fn run(ctx: &Ctx, args: &BoardArgs) -> Result<Output> {
         None => None,
     };
     let me = if args.mine {
-        client.current_device()?.user.id
+        client.current_user_id()?
     } else {
         None
     };
@@ -94,13 +109,20 @@ pub fn run(ctx: &Ctx, args: &BoardArgs) -> Result<Output> {
     let mut app = App::new(&ws.name, project.as_deref(), args.mine, me, now);
     app.apply_snapshot(snapshot);
 
-    let server = ctx.server()?;
-    let conn = Conn {
-        account: config::account_for(&server, DEFAULT_PROFILE),
-        server,
-        dir: ctx.dir.clone(),
-        preferred: ctx.cfg.credential_store.as_deref().and_then(Backend::parse),
-        verbose: false,
+    let conn = match client.local() {
+        Some(local) => Conn::Local {
+            workspace: local.workspace().clone(),
+            user: local.user().clone(),
+        },
+        None => {
+            let server = ctx.server()?;
+            Conn::Cloud {
+                account: config::account_for(&server, DEFAULT_PROFILE),
+                server,
+                dir: ctx.dir.clone(),
+                preferred: ctx.cfg.credential_store.as_deref().and_then(Backend::parse),
+            }
+        }
     };
     let level = ColorLevel::from_env(
         ctx.style.is_off(),
@@ -143,7 +165,7 @@ impl Drop for TerminalGuard {
 
 fn spawn_worker(
     conn: Conn,
-    ws_id: u64,
+    ws_id: i64,
     category: Option<u64>,
     effects: mpsc::Receiver<Effect>,
     results: mpsc::Sender<Msg>,
@@ -176,7 +198,7 @@ fn event_loop(
     mut app: App,
     theme: &Theme,
     conn: Conn,
-    ws_id: u64,
+    ws_id: i64,
     category: Option<u64>,
 ) -> Result<()> {
     let (eff_tx, eff_rx) = mpsc::channel();

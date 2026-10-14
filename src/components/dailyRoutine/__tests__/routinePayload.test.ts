@@ -145,6 +145,32 @@ describe('routineForEdit + routineDraftFrom (reopening Edit)', () => {
 		expect(reopen(entry({ reminder_min: 0 })).reminderMin).toBe(0);
 	});
 
+	it('reopens a saved Work / Wednesday / 5m weekly routine', () => {
+		const sales = (date: string) =>
+			entry({
+				task_id: 9934,
+				title: 'Sales',
+				routine_category: { id: 'work', name: 'Work', color: '#5b8cff' },
+				date,
+				time: '13:30',
+				duration_min: 30,
+				reminder_min: 5,
+				frequency: 'WEEKLY',
+			});
+		const bare = { ...fullTask, id: 9934, title: 'Sales', routine_category: 'work' };
+		const d = routineDraftFrom(
+			routineForEdit(bare, sales('2026-10-14'), [
+				sales('2026-10-14'),
+				sales('2026-10-21'),
+			]),
+			TODAY,
+		);
+		expect(d.cat).toBe('work');
+		expect(d.frequency).toBe('WEEKLY');
+		expect(d.daysOfWeek).toEqual([2]);
+		expect(d.reminderMin).toBe(5);
+	});
+
 	it('recovers weekly days from the routine occurrences in that week', () => {
 		const d = reopen(entry({ frequency: 'WEEKLY', date: '2026-10-14' }), [
 			entry({ date: '2026-10-12' }),

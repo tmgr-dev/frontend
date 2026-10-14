@@ -68,7 +68,8 @@ pub struct Client {
     store: Option<CredentialStore>,
     verbose: bool,
     warnings: RefCell<Vec<Warning>>,
-    workspace_header: Cell<Option<u64>>,
+    workspace_header: Cell<Option<i64>>,
+    local: Option<crate::local::Local>,
 }
 
 impl Client {
@@ -100,7 +101,27 @@ impl Client {
             verbose,
             warnings: RefCell::new(Vec::new()),
             workspace_header: Cell::new(None),
+            local: None,
         })
+    }
+
+    /// A client whose requests go to a local workspace instead of the server.
+    pub fn for_local(local: crate::local::Local, user_agent: &str, verbose: bool) -> Result<Self> {
+        let mut client = Client::new("local://workspace", user_agent, None, None, verbose)?;
+        client.local = Some(local);
+        Ok(client)
+    }
+
+    pub fn local(&self) -> Option<&crate::local::Local> {
+        self.local.as_ref()
+    }
+
+    /// The id of the user this client acts as: the local identity, or the logged-in device's user.
+    pub fn current_user_id(&self) -> Result<Option<i64>> {
+        match &self.local {
+            Some(local) => Ok(Some(local.user().id)),
+            None => Ok(self.current_device()?.user.id),
+        }
     }
 
     pub fn take_warnings(&self) -> Vec<Warning> {
@@ -118,7 +139,7 @@ impl Client {
             .and_then(|t| t.expires_at.clone())
     }
 
-    pub fn set_workspace_header(&self, workspace_id: Option<u64>) {
+    pub fn set_workspace_header(&self, workspace_id: Option<i64>) {
         self.workspace_header.set(workspace_id);
     }
 
@@ -134,6 +155,10 @@ impl Client {
         body: Option<&Value>,
         auth: Auth,
     ) -> Result<(u16, Value)> {
+        if self.local.is_some() {
+            return Err(Error::usage("this is not available for local workspaces")
+                .hint("use a cloud workspace: --ws <code>"));
+        }
         let url = format!("{}{}", self.base, path);
         if self.verbose {
             eprintln!("> {method} {path}");
@@ -158,7 +183,16 @@ impl Client {
         if self.verbose {
             eprintln!("< {status}");
         }
-        Ok((status, read_json(resp)?))
+        let retry_after = (status == 429)
+            .then(|| resp.headers().get("retry-after"))
+            .flatten()
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        let mut value = read_json(resp)?;
+        if let (Some(secs), Value::Object(m)) = (retry_after, &mut value) {
+            m.insert("retry_after_s".into(), Value::from(secs));
+        }
+        Ok((status, value))
     }
 
     fn network_error(&self, e: &reqwest::Error) -> Error {
@@ -184,6 +218,8 @@ impl Client {
         let (status, value) = self.request_status(method, path, query, body)?;
         if (200..300).contains(&status) {
             Ok(value)
+        } else if self.local.is_some() {
+            Err(crate::local::status_error(status, &value))
         } else {
             Err(map_error(status, &value, scope))
         }
@@ -196,6 +232,9 @@ impl Client {
         query: &[(&str, String)],
         body: Option<&Value>,
     ) -> Result<(u16, Value)> {
+        if let Some(local) = &self.local {
+            return self.local_send(local, method.as_str(), path, query, body);
+        }
         let sent_access = self.current_access()?;
         let (mut status, mut value) =
             self.send_raw(method.clone(), path, query, body, Auth::Bearer)?;
@@ -214,11 +253,35 @@ impl Client {
     ) -> Result<(u16, Value)> {
         let method = Method::from_bytes(method.as_bytes())
             .map_err(|_| Error::internal("invalid HTTP method"))?;
+        if let Some(local) = &self.local {
+            return self.local_send(local, method.as_str(), path, &[], body);
+        }
         let sent_access = self.current_access()?;
         let (mut status, mut value) =
             self.send_raw(method.clone(), path, &[], body, Auth::Bearer)?;
         if status == 401 && refresh && self.recover(&sent_access)? {
             (status, value) = self.send_raw(method, path, &[], body, Auth::Bearer)?;
+        }
+        Ok((status, value))
+    }
+
+    fn local_send(
+        &self,
+        local: &crate::local::Local,
+        method: &str,
+        path: &str,
+        query: &[(&str, String)],
+        body: Option<&Value>,
+    ) -> Result<(u16, Value)> {
+        if self.verbose {
+            eprintln!(
+                "> {method} {path} (local {})",
+                local.workspace().manifest.code
+            );
+        }
+        let (status, value) = local.send(method, path, query, body)?;
+        if self.verbose {
+            eprintln!("< {status}");
         }
         Ok((status, value))
     }
@@ -404,7 +467,7 @@ impl Client {
         items(self.request(Method::GET, "/api/workspaces", &[], None, "workspaces:read")?)
     }
 
-    pub fn statuses(&self, workspace_id: u64) -> Result<Vec<Status>> {
+    pub fn statuses(&self, workspace_id: i64) -> Result<Vec<Status>> {
         items(self.request(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/statuses"),
@@ -414,7 +477,7 @@ impl Client {
         )?)
     }
 
-    pub fn categories(&self, workspace_id: u64) -> Result<Vec<Category>> {
+    pub fn categories(&self, workspace_id: i64) -> Result<Vec<Category>> {
         items(self.request(
             Method::GET,
             "/api/project_categories",
@@ -434,7 +497,7 @@ impl Client {
         )?))
     }
 
-    pub fn task_by_key(&self, key: &str, workspace_id: u64) -> Result<ApiTask> {
+    pub fn task_by_key(&self, key: &str, workspace_id: i64) -> Result<ApiTask> {
         if crate::refs::parse_key(key).is_none() {
             return Err(Error::usage("invalid task key"));
         }
@@ -459,7 +522,7 @@ impl Client {
 
     pub fn tasks_page(
         &self,
-        workspace_id: u64,
+        workspace_id: i64,
         category_id: Option<u64>,
         status_id: Option<u64>,
         page: u64,
@@ -494,7 +557,7 @@ impl Client {
         })
     }
 
-    pub fn time_summary_total(&self, workspace_id: u64, from: &str, to: &str) -> Result<i64> {
+    pub fn time_summary_total(&self, workspace_id: i64, from: &str, to: &str) -> Result<i64> {
         let body = self.request(
             Method::GET,
             &format!("/api/workspaces/{workspace_id}/time-summary"),

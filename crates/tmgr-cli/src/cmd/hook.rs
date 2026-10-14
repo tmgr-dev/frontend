@@ -248,7 +248,16 @@ enum Touch {
     Commits,
 }
 
-fn build_client(env: &NotifyEnv) -> Option<Client> {
+/// The client of the run's own workspace: its local workspace, or the logged-in cloud.
+fn build_client(env: &NotifyEnv, run: &runstate::Run) -> Option<Client> {
+    if let Some(code) = run
+        .workspace
+        .as_deref()
+        .and_then(tmgr_core::local::local_code)
+    {
+        return tmgr_core::local::client(code, env.cfg.local_user_id, &Ctx::user_agent(), false)
+            .ok();
+    }
     let server = env.server().ok()?;
     let (tokens, _) = env.login_store(&server).load().ok().flatten()?;
     Client::new(&server, &Ctx::user_agent(), Some(tokens), None, false).ok()
@@ -287,16 +296,11 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
     {
         return;
     }
-    let (client, located) = std::thread::scope(|sc| {
-        let located = sc.spawn(|| locate_run(&state, cwd, now, mode));
-        let client = build_client(env);
-        (client, located.join().ok().flatten())
-    });
-    let Some(run) = located else {
+    let Some(run) = locate_run(&state, cwd, now, mode) else {
         debug("no run matches the current branch");
         return;
     };
-    let Some(client) = client else {
+    let Some(client) = build_client(env, &run) else {
         debug("no usable login");
         return;
     };
@@ -319,7 +323,11 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
     match result {
         Ok(Outcome::Run(_)) => {
             let _ = runstate::modify(&path, STATE_WAIT, |r| {
-                if let Some(e) = r.runs.iter_mut().find(|e| e.run_id == run.run_id) {
+                if let Some(e) = r
+                    .runs
+                    .iter_mut()
+                    .find(|e| e.run_id == run.run_id && e.workspace == run.workspace)
+                {
                     e.last_sent = now;
                     if let Some(c) = merged {
                         e.commits = c;
@@ -328,7 +336,9 @@ fn touch_run(env: &NotifyEnv, cwd: &Path, mode: Touch) {
             });
         }
         Err(e) if matches!(e.kind, Kind::NotFound | Kind::Conflict) => {
-            let _ = runstate::modify(&path, STATE_WAIT, |r| r.remove(run.run_id));
+            let _ = runstate::modify(&path, STATE_WAIT, |r| {
+                r.remove(run.run_id, run.workspace.as_deref())
+            });
         }
         _ => {}
     }

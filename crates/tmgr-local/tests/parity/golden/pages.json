@@ -1,0 +1,538 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 2,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 1,
+						"slug": "child-page",
+						"title": "Child page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					},
+					{
+						"id": 4,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 2,
+						"slug": "persona-page",
+						"title": "Persona page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					},
+					{
+						"id": 2,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 1,
+						"slug": "child-page",
+						"title": "Child page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					},
+					{
+						"id": 4,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 2,
+						"slug": "persona-page",
+						"title": "Persona page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"deleted_at": "2026-09-24T00:00:00Z",
+						"id": 3,
+						"parent_id": null,
+						"pinned": false,
+						"position": 2,
+						"slug": "trashed",
+						"title": "Trashed",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 2,
+						"slug": "child-page",
+						"snippet": "Child body with needle word",
+						"title": "Child page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"slug": "handbook",
+						"snippet": "# Handbook See [[page:2]] and task #1.",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [
+						{
+							"id": 2,
+							"parent_id": 1,
+							"pinned": false,
+							"position": 1,
+							"slug": "child-page",
+							"title": "Child page",
+							"type": "plain",
+							"updated_at": "2026-09-20T08:00:00Z"
+						}
+					],
+					"body": "# Handbook\n\nSee [[page:2]] and task #1.",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [
+						{
+							"created_at": "2026-09-20T08:00:00Z",
+							"file_path": "pages/1/page.png",
+							"id": 4,
+							"mime_type": "image/png",
+							"name": "page.png",
+							"original_name": "page.png",
+							"page_id": 1,
+							"size": 99,
+							"user_id": 7,
+							"workspace_id": -42
+						}
+					],
+					"following": false,
+					"id": 1,
+					"parent_id": null,
+					"pinned": true,
+					"position": 0,
+					"properties": {},
+					"sections": [],
+					"slug": "handbook",
+					"title": "Handbook",
+					"type": "plain",
+					"updated_at": "2026-09-22T08:00:00Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [
+						{
+							"id": 1,
+							"parent_id": null,
+							"pinned": true,
+							"position": 0,
+							"slug": "handbook",
+							"title": "Handbook",
+							"type": "plain",
+							"updated_at": "2026-09-22T08:00:00Z"
+						}
+					],
+					"body": "Child body with needle word",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [],
+					"following": false,
+					"id": 2,
+					"parent_id": 1,
+					"pinned": false,
+					"position": 1,
+					"properties": {
+						"tag": "a"
+					},
+					"sections": [],
+					"slug": "child-page",
+					"title": "Child page",
+					"type": "plain",
+					"updated_at": "2026-09-20T08:00:00Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "page_not_found",
+				"message": "Page not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"error": "page_not_found",
+				"message": "Page not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"backlinks": [
+						{
+							"id": 2,
+							"parent_id": 1,
+							"pinned": false,
+							"position": 1,
+							"slug": "child-page",
+							"title": "Child page",
+							"type": "plain",
+							"updated_at": "2026-09-20T08:00:00Z"
+						}
+					],
+					"body": "# Handbook\n\nSee [[page:2]] and task #1.",
+					"created_at": "2026-09-20T08:00:00Z",
+					"deleted_at": null,
+					"files": [
+						{
+							"created_at": "2026-09-20T08:00:00Z",
+							"file_path": "pages/1/page.png",
+							"id": 4,
+							"mime_type": "image/png",
+							"name": "page.png",
+							"original_name": "page.png",
+							"page_id": 1,
+							"size": 99,
+							"user_id": 7,
+							"workspace_id": -42
+						}
+					],
+					"following": false,
+					"id": 1,
+					"parent_id": null,
+					"pinned": true,
+					"position": 0,
+					"properties": {},
+					"sections": [],
+					"slug": "handbook",
+					"title": "Handbook",
+					"type": "plain",
+					"updated_at": "2026-09-22T08:00:00Z",
+					"updated_by": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"author": {
+							"id": 7,
+							"kind": "user",
+							"name": "Owner"
+						},
+						"created_at": "2026-09-22T08:00:00Z",
+						"summary": "Added links",
+						"title": "Handbook",
+						"version": 2
+					},
+					{
+						"author": {
+							"id": 7,
+							"kind": "user",
+							"name": "Owner"
+						},
+						"created_at": "2026-09-20T08:00:00Z",
+						"summary": null,
+						"title": "Handbook",
+						"version": 1
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"body": "# Handbook",
+					"created_at": "2026-09-20T08:00:00Z",
+					"properties": {},
+					"summary": null,
+					"title": "Handbook",
+					"version": 1
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"author": {
+						"id": 7,
+						"kind": "user",
+						"name": "Owner"
+					},
+					"body": "# Handbook\n\nSee [[page:2]] and task #1.",
+					"created_at": "2026-09-22T08:00:00Z",
+					"properties": {},
+					"summary": "Added links",
+					"title": "Handbook",
+					"version": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "version_not_found",
+				"message": "Version not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 2,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 1,
+						"slug": "child-page",
+						"title": "Child page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"created_at": "2026-09-20T08:00:00Z",
+						"file_path": "pages/1/page.png",
+						"id": 4,
+						"mime_type": "image/png",
+						"name": "page.png",
+						"original_name": "page.png",
+						"page_id": 1,
+						"size": 99,
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "page_not_found",
+				"message": "Page not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 1,
+						"parent_id": null,
+						"pinned": true,
+						"position": 0,
+						"slug": "handbook",
+						"title": "Handbook",
+						"type": "plain",
+						"updated_at": "2026-09-22T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"id": 4,
+						"parent_id": 1,
+						"pinned": false,
+						"position": 2,
+						"slug": "persona-page",
+						"title": "Persona page",
+						"type": "plain",
+						"updated_at": "2026-09-20T08:00:00Z"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "task_not_found",
+				"message": "Task not found in this workspace"
+			},
+			"status": 404
+		}
+	]
+}

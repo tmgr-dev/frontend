@@ -82,6 +82,33 @@ pub fn evaluate(output: &str) -> Vec<String> {
     v
 }
 
+pub const JUMP_GUIDANCE: &str = "use a dedicated jump account with a Match User block: AllowTcpForwarding local, AllowStreamLocalForwarding no, PermitTunnel no, DisableForwarding no, X11Forwarding no, AllowAgentForwarding no";
+
+pub fn evaluate_jump(output: &str) -> Vec<String> {
+    let mut v = Vec::new();
+    let mut state: std::collections::BTreeMap<String, String> = Default::default();
+    for line in output.lines() {
+        let (key, value) = directive(line);
+        state.insert(key, value.to_ascii_lowercase());
+    }
+    let want = |k: &str, ok: &[&str], v: &mut Vec<String>| match state.get(k) {
+        None => v.push(format!("sshd -T output does not state {k}")),
+        Some(val) if !ok.contains(&val.as_str()) => v.push(format!(
+            "{k} is {val:?}, a jump key needs {}",
+            ok.join(" or ")
+        )),
+        _ => {}
+    };
+    want("allowtcpforwarding", &["local", "yes"], &mut v);
+    want("allowstreamlocalforwarding", &["no"], &mut v);
+    want("permittunnel", &["no"], &mut v);
+    want("disableforwarding", &["no"], &mut v);
+    if !v.is_empty() {
+        v.push(JUMP_GUIDANCE.to_string());
+    }
+    v
+}
+
 pub fn authorized_keys_tokens(output: &str) -> Vec<String> {
     for line in output.lines() {
         let (key, value) = directive(line);
@@ -264,6 +291,17 @@ pub fn check_with(
     uid: u32,
     from: &[String],
 ) -> Check {
+    check_inner(runner, user, home, uid, from, false)
+}
+
+fn check_inner(
+    runner: &dyn Runner,
+    user: &str,
+    home: &Path,
+    uid: u32,
+    from: &[String],
+    jump: bool,
+) -> Check {
     let unverified = |why: String| Check {
         verdict: Verdict::Unverified(why),
         authorized_keys_files: default_files(home),
@@ -276,7 +314,12 @@ pub fn check_with(
             Ok(o) => o,
             Err(why) => return unverified(why),
         };
-        for msg in evaluate(&output) {
+        let mut found = evaluate(&output);
+        if jump {
+            found.extend(evaluate_jump(&output));
+            found.retain(|m| !m.starts_with("neither PermitTunnel no nor DisableForwarding"));
+        }
+        for msg in found {
             if !violations.contains(&msg) {
                 violations.push(msg);
             }
@@ -361,6 +404,11 @@ impl Runner for Real {
     }
 }
 
+pub fn check_jump(user: &str, home: &Path, from: &[String]) -> Check {
+    let uid = unsafe { libc::getuid() };
+    check_inner(&Real, user, home, uid, from, true)
+}
+
 pub fn check(user: &str, home: &Path, from: &[String]) -> Check {
     let uid = unsafe { libc::getuid() };
     check_with(&Real, user, home, uid, from)
@@ -371,6 +419,41 @@ mod tests {
     use super::*;
 
     const GOOD: &str = "port 22\npermituserenvironment no\nforcecommand none\nauthorizedkeyscommand none\npermittunnel no\nauthorizedkeysfile .ssh/authorized_keys .ssh/authorized_keys2\nacceptenv LANG\nacceptenv LC_*\n";
+
+    #[test]
+    fn a_jump_needs_local_forwarding_and_nothing_else() {
+        let ok = format!(
+            "{GOOD}allowtcpforwarding local\nallowstreamlocalforwarding no\ndisableforwarding no\n"
+        );
+        assert!(evaluate_jump(&ok).is_empty());
+        assert!(
+            evaluate_jump(&ok.replace("allowtcpforwarding local", "allowtcpforwarding yes"))
+                .is_empty()
+        );
+        for (from, to) in [
+            ("allowtcpforwarding local", "allowtcpforwarding no"),
+            ("allowtcpforwarding local", "allowtcpforwarding remote"),
+            (
+                "allowstreamlocalforwarding no",
+                "allowstreamlocalforwarding yes",
+            ),
+            (
+                "allowstreamlocalforwarding no",
+                "allowstreamlocalforwarding local",
+            ),
+            ("disableforwarding no", "disableforwarding yes"),
+            ("permittunnel no", "permittunnel yes"),
+        ] {
+            let v = evaluate_jump(&ok.replace(from, to));
+            assert!(
+                v.len() >= 2 && v.last().unwrap().contains("Match User"),
+                "{to}: {v:?}"
+            );
+        }
+        assert!(evaluate_jump(GOOD)
+            .iter()
+            .any(|m| m.contains("does not state")));
+    }
 
     #[test]
     fn a_clean_configuration_passes() {
@@ -628,7 +711,7 @@ mod tests {
     }
 
     fn tree() -> (tempfile::TempDir, PathBuf) {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let root = std::fs::canonicalize(d.path()).unwrap();
         (d, root)
     }

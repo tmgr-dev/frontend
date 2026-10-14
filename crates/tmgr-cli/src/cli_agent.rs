@@ -8,6 +8,48 @@ pub enum AgentCommand {
     Update(AgentUpdateArgs),
     /// Finish the current run
     Finish(AgentFinishArgs),
+    /// Opt-in status of a local agent session (needs `tmgr config set upload_status true`)
+    Status {
+        #[command(subcommand)]
+        command: AgentStatusCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AgentStatusCommand {
+    /// Upload the state of a session
+    Set(AgentStatusSetArgs),
+    /// End a session
+    Clear(AgentStatusClearArgs),
+    /// Sessions of the workspace
+    List,
+}
+
+#[derive(Args)]
+pub struct AgentStatusSetArgs {
+    /// Client-generated session id, 8 to 64 characters of letters, digits, _ and -
+    pub session_id: String,
+    /// working, waiting, blocked, idle, done or exited
+    #[arg(long, value_name = "STATE")]
+    pub state: String,
+    /// Task the session works on: TM-512 or #8974 (see `tmgr help refs`)
+    #[arg(long, value_name = "REF")]
+    pub task: Option<String>,
+    /// Agent profile id
+    #[arg(long, default_value = "claude-code", value_name = "ID")]
+    pub profile: String,
+    /// When the current state began (RFC 3339; default: now)
+    #[arg(long, value_name = "TIME")]
+    pub since: Option<String>,
+    /// When the session started (RFC 3339; kept from the first upload)
+    #[arg(long, value_name = "TIME")]
+    pub started: Option<String>,
+}
+
+#[derive(Args)]
+pub struct AgentStatusClearArgs {
+    /// Session id given to `agent status set`
+    pub session_id: String,
 }
 
 #[derive(Args)]

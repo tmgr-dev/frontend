@@ -39,8 +39,11 @@ describe('isCompleteUserCode', () => {
 });
 
 describe('scope descriptions', () => {
-	it('describes all twelve scopes', () => {
-		expect(Object.keys(SCOPE_DESCRIPTIONS)).toHaveLength(12);
+	it('describes all thirteen scopes', () => {
+		expect(Object.keys(SCOPE_DESCRIPTIONS)).toHaveLength(13);
+		expect(describeScope('agent-status:write')).toBe(
+			'Share your local AI agent status (working, waiting, done) with your workspace',
+		);
 		expect(describeScope('tasks:create')).toBe('Create tasks');
 		expect(describeScope('notify:send')).toBe(
 			'Send notifications and phone alarms to your devices',

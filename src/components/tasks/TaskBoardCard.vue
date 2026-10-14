@@ -76,6 +76,11 @@
 				:task-id="task.id"
 			/>
 
+			<AgentStatusChip
+				:task-id="Number(task.id)"
+				:workspace-id="Number(task.workspace_id) || undefined"
+			/>
+
 			<PersonaAssigneeChips
 				v-if="
 					isFeatureEnabled('task.assignees') && isFeatureEnabled('personas')
@@ -317,6 +322,7 @@
 		unassignPersonaFromTask,
 	} from '@/actions/tmgr/tasks';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
+	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
@@ -401,6 +407,7 @@
 			AssigneeAvatar,
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
+			AgentStatusChip,
 			UserAvatar,
 			CategoryBadge,
 			Badge,

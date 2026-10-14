@@ -6,7 +6,7 @@ use std::io::Read;
 use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::is_category_code;
 use tmgr_core::text::sanitize_line;
-use tmgr_core::view::{display_title, task_ref, task_url, StatusView};
+use tmgr_core::view::{display_title, task_ref, StatusView};
 
 const MAX_INPUT: u64 = 64 * 1024;
 const MAX_TITLE_CHARS: usize = 255;
@@ -64,7 +64,7 @@ pub fn run(ctx: &Ctx, args: &AddArgs) -> Result<Output> {
     }
     let task = client.create_task(&Value::Object(body))?;
     let reference = task_ref(&task);
-    let url = task_url(&ctx.web_base()?, &sanitize_line(&ws.code), task.id);
+    let url = ctx.task_link(&sanitize_line(&ws.code), task.id)?;
     let view = StatusView::resolve(&task, &statuses);
     let shown_title = display_title(&task.title);
     let human = if ctx.quiet {
@@ -75,7 +75,11 @@ pub fn run(ctx: &Ctx, args: &AddArgs) -> Result<Output> {
             ctx.style.good("\u{2713}"),
             ctx.style.accent(&reference),
             shown_title,
-            ctx.style.muted(&format!("{url} \u{b7} {}", view.name))
+            ctx.style.muted(&format!(
+                "{} \u{b7} {}",
+                url.as_deref().unwrap_or(&ws.code),
+                view.name
+            ))
         )
     };
     Ok(Output::new(

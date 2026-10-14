@@ -1,7 +1,7 @@
 use crate::audit::Audit;
 use crate::grammar::{self, PubKey};
 use crate::proto::{self, Channel, Framed, Reply};
-use crate::store::Paths;
+use crate::store::{Paths, Store};
 use serde_json::{json, Value};
 use std::ffi::OsString;
 use std::io::Read;
@@ -155,6 +155,17 @@ pub fn ssh_args(
     known_hosts: &Path,
     name: &str,
 ) -> Result<Vec<OsString>> {
+    build_args(target, key, known_hosts, name, "none", None)
+}
+
+pub(crate) fn build_args(
+    target: &SshTarget,
+    key: &Path,
+    known_hosts: &Path,
+    name: &str,
+    proxy: &str,
+    forward: Option<(&str, u16)>,
+) -> Result<Vec<OsString>> {
     grammar::link_name(name)?;
     let mut a: Vec<String> = ["-F", "none", "-T", "-a", "-x"]
         .iter()
@@ -169,7 +180,7 @@ pub fn ssh_args(
         "ControlMaster=no".to_string(),
         "ControlPath=none".to_string(),
         "PermitLocalCommand=no".to_string(),
-        "ProxyCommand=none".to_string(),
+        format!("ProxyCommand={proxy}"),
         "KnownHostsCommand=none".to_string(),
         format!("UserKnownHostsFile={}", opt_value(known_hosts)?),
         "GlobalKnownHostsFile=none".to_string(),
@@ -181,13 +192,17 @@ pub fn ssh_args(
         a.push("-o".into());
         a.push(o);
     }
+    if let Some((host, port)) = forward {
+        a.push("-W".into());
+        a.push(format!("{host}:{port}"));
+    }
     a.push("-p".into());
     a.push(target.port.to_string());
     a.push(format!("{}@{}", target.user, target.host));
     Ok(a.into_iter().map(OsString::from).collect())
 }
 
-fn tool(name: &str, fixed: &str) -> PathBuf {
+pub(crate) fn tool(name: &str, fixed: &str) -> PathBuf {
     let p = PathBuf::from(fixed);
     if p.is_file() {
         p
@@ -290,6 +305,12 @@ pub fn classify_stderr(text: &str, timed_out: bool) -> String {
     {
         return "host key mismatch: the follower's key is not the pinned one".to_string();
     }
+    if lower.contains("administratively prohibited")
+        || lower.contains("stdio forwarding")
+        || lower.contains("channel open failed")
+    {
+        return "the jump host refused to forward to the follower: on the jump host run tmgr link trust <this machine's key> --as leader --name <NAME> --as-jump-for HOST:PORT".to_string();
+    }
     if lower.contains("permission denied") {
         return "the follower refused this link key (not trusted there, or from= does not match)"
             .to_string();
@@ -383,8 +404,40 @@ impl Client {
         name: &str,
         target: &SshTarget,
     ) -> Result<(Client, KeyFile)> {
+        Client::connect_via(paths, cred, name, target, None)
+    }
+
+    pub fn dial(paths: &Paths, cred: &CredentialStore, name: &str) -> Result<(Client, KeyFile)> {
+        grammar::link_name(name)?;
+        let store = Store::load(paths)?;
+        let f = store.followers.get(name).ok_or_else(|| {
+            Error::not_found(format!("no follower named {name}")).hint("tmgr link list")
+        })?;
+        grammar::parse_target(&format!("{}@{}", f.user, f.host))?;
+        let target = SshTarget {
+            user: f.user.clone(),
+            host: f.host.clone(),
+            port: grammar::parse_port(u32::from(f.port))?,
+        };
+        let hop = crate::jump::resolve(&store, name)?;
+        Client::connect_via(paths, cred, name, &target, hop.as_ref())
+    }
+
+    pub fn connect_via(
+        paths: &Paths,
+        cred: &CredentialStore,
+        name: &str,
+        target: &SshTarget,
+        hop: Option<&crate::jump::Hop>,
+    ) -> Result<(Client, KeyFile)> {
         let key = materialise(cred)?;
-        let args = ssh_args(target, &key.path, &paths.known_hosts(), name)?;
+        let args = match hop {
+            None => ssh_args(target, &key.path, &paths.known_hosts(), name)?,
+            Some(h) => {
+                let proxy = crate::jump::proxy_command(h, &key.path, &paths.known_hosts(), target)?;
+                build_args(target, &key.path, &paths.known_hosts(), name, &proxy, None)?
+            }
+        };
         let mut cmd = Command::new(tool("ssh", "/usr/bin/ssh"));
         cmd.args(args);
         Ok((Client::spawn(cmd, SSH_TIMEOUT)?, key))
@@ -503,7 +556,7 @@ mod tests {
     #[test]
     fn pinning_replaces_only_its_own_lines_and_is_private() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let (k1, k2, k3) = (testkeys::key(), testkeys::key(), testkeys::key());
         pin_host(&paths, "a", &k1).unwrap();
@@ -557,6 +610,11 @@ mod tests {
             classify_stderr("u@h: Permission denied (publickey).", false)
                 .contains("refused this link key")
         );
+        assert!(classify_stderr(
+            "channel 0: open failed: administratively prohibited: open failed",
+            false
+        )
+        .contains("--as-jump-for"));
         assert!(classify_stderr("", true).contains("in time"));
         assert!(classify_stderr("", false).contains("closed"));
         let weird = classify_stderr(
@@ -569,7 +627,7 @@ mod tests {
     #[test]
     fn init_stores_the_key_in_a_private_file_and_never_overwrites() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let cred = CredentialStore::with_keychain(
             &paths.config,
@@ -622,7 +680,7 @@ mod tests {
 
     #[test]
     fn concurrent_inits_create_exactly_one_identity() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let root = d.path().to_path_buf();
         let handles: Vec<_> = (0..6)
             .map(|_| {
@@ -657,7 +715,7 @@ mod tests {
 
     #[test]
     fn the_link_key_and_the_login_token_do_not_disturb_each_other() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let login = CredentialStore::with_keychain(
             &paths.config,

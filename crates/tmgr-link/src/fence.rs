@@ -32,7 +32,7 @@ mod tests {
 
     #[test]
     fn shared_holders_coexist_and_trust_changes_wait_for_them() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let a = shared(&paths).unwrap();
         let b = shared(&paths).unwrap();
@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn the_fence_file_is_private_and_where_the_runner_looks() {
         use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let paths = Paths::under(d.path());
         let _s = shared(&paths).unwrap();
         assert_eq!(path(&paths), paths.config.join("link").join("links.lock"));

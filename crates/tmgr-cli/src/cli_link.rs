@@ -38,7 +38,7 @@ pub struct AddArgs {
     pub ssh: String,
     #[arg(long, default_value_t = 22, value_name = "N")]
     pub port: u32,
-    /// Reach the follower through another pinned link (not supported yet)
+    /// Reach the follower through another pinned link (its sshd must allow forwarding to the follower)
     #[arg(long, value_name = "LINK")]
     pub jump: Option<String>,
 }
@@ -70,6 +70,9 @@ pub struct TrustArgs {
     /// Let the leader type into attached runs (default: view only)
     #[arg(long)]
     pub allow_attach_input: bool,
+    /// Enrol the key as a jump host key: it may only forward to these HOST:PORT (at most 4)
+    #[arg(long, num_args = 1.., value_delimiter = ',', value_name = "HOST:PORT")]
+    pub as_jump_for: Vec<String>,
 }
 
 #[derive(Args)]

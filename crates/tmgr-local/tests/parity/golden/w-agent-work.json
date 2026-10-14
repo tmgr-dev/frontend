@@ -1,0 +1,440 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"actor": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"agent": "claude-code",
+					"branch": "feat/x",
+					"commits": [],
+					"duration_seconds": 0,
+					"ended_at": null,
+					"id": 4,
+					"model": "opus",
+					"pr_url": null,
+					"session_id": "sess-1",
+					"started_at": "2026-10-13T12:00:00.000Z",
+					"status": "running",
+					"summary": null,
+					"task_id": 1,
+					"tests": null,
+					"user_id": 7,
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"actor": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"agent": "codex",
+					"branch": null,
+					"commits": [],
+					"duration_seconds": 0,
+					"ended_at": null,
+					"id": 5,
+					"model": null,
+					"pr_url": null,
+					"session_id": null,
+					"started_at": "2026-10-13T12:01:00.000Z",
+					"status": "running",
+					"summary": null,
+					"task_id": 1,
+					"tests": null,
+					"user_id": 7,
+					"version": 1,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"message": "agent is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"message": "Task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"actor": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"agent": "claude-code",
+					"branch": "feat/y",
+					"commits": [],
+					"duration_seconds": 600,
+					"ended_at": null,
+					"id": 4,
+					"model": "opus",
+					"pr_url": null,
+					"session_id": "sess-1",
+					"started_at": "2026-10-13T12:00:00.000Z",
+					"status": "running",
+					"summary": "wip",
+					"task_id": 1,
+					"tests": {
+						"command": "npm test",
+						"failed": 0,
+						"passed": 5
+					},
+					"user_id": 7,
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "at most 200 commits per run"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"code": "NOT_OWN",
+				"message": "Only the user the agent works for can change this run"
+			},
+			"status": 403
+		},
+		{
+			"data": {
+				"message": "Agent work run not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"actor": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"agent": "claude-code",
+					"branch": "feat/y",
+					"commits": [],
+					"duration_seconds": 1800,
+					"ended_at": "2026-10-13T12:30:00.000Z",
+					"id": 4,
+					"model": "opus",
+					"pr_url": "https://example.com/pr/9",
+					"session_id": "sess-1",
+					"started_at": "2026-10-13T12:00:00.000Z",
+					"status": "succeeded",
+					"summary": "All done",
+					"task_id": 1,
+					"tests": {
+						"command": "cargo test",
+						"failed": 1,
+						"passed": 7
+					},
+					"user_id": 7,
+					"version": 3,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Agent work run is already succeeded"
+			},
+			"status": 409
+		},
+		{
+			"data": {
+				"message": "status must be one of succeeded, failed, cancelled"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"actor": {
+						"id": "7",
+						"kind": "user",
+						"name": "Owner"
+					},
+					"agent": "codex",
+					"branch": null,
+					"commits": [],
+					"duration_seconds": 1740,
+					"ended_at": "2026-10-13T12:30:00.000Z",
+					"id": 5,
+					"model": null,
+					"pr_url": null,
+					"session_id": null,
+					"started_at": "2026-10-13T12:01:00.000Z",
+					"status": "failed",
+					"summary": "Broke",
+					"task_id": 1,
+					"tests": null,
+					"user_id": 7,
+					"version": 2,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Agent work run not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"runs": [
+						{
+							"actor": {
+								"id": "7",
+								"kind": "user",
+								"name": "Owner"
+							},
+							"agent": "codex",
+							"branch": null,
+							"commits": [],
+							"duration_seconds": 1740,
+							"ended_at": "2026-10-13T12:30:00.000Z",
+							"id": 5,
+							"model": null,
+							"pr_url": null,
+							"session_id": null,
+							"started_at": "2026-10-13T12:01:00.000Z",
+							"status": "failed",
+							"summary": "Broke",
+							"task_id": 1,
+							"tests": null,
+							"user_id": 7,
+							"version": 2,
+							"workspace_id": -42
+						},
+						{
+							"actor": {
+								"id": "7",
+								"kind": "user",
+								"name": "Owner"
+							},
+							"agent": "claude-code",
+							"branch": "feat/y",
+							"commits": [],
+							"duration_seconds": 1800,
+							"ended_at": "2026-10-13T12:30:00.000Z",
+							"id": 4,
+							"model": "opus",
+							"pr_url": "https://example.com/pr/9",
+							"session_id": "sess-1",
+							"started_at": "2026-10-13T12:00:00.000Z",
+							"status": "succeeded",
+							"summary": "All done",
+							"task_id": 1,
+							"tests": {
+								"command": "cargo test",
+								"failed": 1,
+								"passed": 7
+							},
+							"user_id": 7,
+							"version": 3,
+							"workspace_id": -42
+						},
+						{
+							"actor": {
+								"id": "7",
+								"kind": "user",
+								"name": "Owner"
+							},
+							"agent": "codex",
+							"branch": null,
+							"commits": [],
+							"duration_seconds": 0,
+							"ended_at": "2026-09-26T09:30:00Z",
+							"id": 2,
+							"model": null,
+							"pr_url": null,
+							"session_id": null,
+							"started_at": "2026-09-26T09:30:00Z",
+							"status": "abandoned",
+							"summary": null,
+							"task_id": 1,
+							"tests": null,
+							"user_id": 7,
+							"version": 2,
+							"workspace_id": -42
+						},
+						{
+							"actor": {
+								"id": "11111111-1111-4111-8111-111111111111",
+								"kind": "persona",
+								"name": "Scribe",
+								"owner": {
+									"id": "7",
+									"name": "Owner"
+								}
+							},
+							"agent": "claude-code",
+							"branch": "feat/x",
+							"commits": [
+								"abc123 first",
+								"def456 second"
+							],
+							"duration_seconds": 3600,
+							"ended_at": "2026-09-21T09:00:00Z",
+							"id": 1,
+							"model": "opus",
+							"pr_url": "https://example.com/pr/1",
+							"session_id": "s1",
+							"started_at": "2026-09-21T08:00:00Z",
+							"status": "succeeded",
+							"summary": "Done",
+							"task_id": 1,
+							"tests": {
+								"command": "npm test",
+								"failed": 0,
+								"passed": 10
+							},
+							"user_id": 7,
+							"version": 3,
+							"workspace_id": -42
+						}
+					],
+					"totals": {
+						"agent_seconds": 7140,
+						"human_seconds": 0,
+						"human_timer_running": false
+					}
+				}
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"agent_work_runs": [
+			{
+				"actor_id": "11111111-1111-4111-8111-111111111111",
+				"actor_kind": "persona",
+				"agent": "claude-code",
+				"branch": "feat/x",
+				"commits": "[\"abc123 first\",\"def456 second\"]",
+				"created_at": "2026-09-21T08:00:00Z",
+				"duration_seconds": 3600,
+				"ended_at": "2026-09-21T09:00:00Z",
+				"id": 1,
+				"model": "opus",
+				"pr_url": "https://example.com/pr/1",
+				"session_id": "s1",
+				"started_at": "2026-09-21T08:00:00Z",
+				"status": "succeeded",
+				"summary": "Done",
+				"task_id": 1,
+				"tests": "{\"passed\":10,\"failed\":0,\"command\":\"npm test\"}",
+				"updated_at": "2026-09-21T09:00:00Z",
+				"version": 3
+			},
+			{
+				"actor_id": "7",
+				"actor_kind": "user",
+				"agent": "codex",
+				"branch": null,
+				"commits": null,
+				"created_at": "2026-09-26T09:30:00Z",
+				"duration_seconds": 0,
+				"ended_at": "2026-09-26T09:30:00Z",
+				"id": 2,
+				"model": null,
+				"pr_url": null,
+				"session_id": null,
+				"started_at": "2026-09-26T09:30:00Z",
+				"status": "abandoned",
+				"summary": null,
+				"task_id": 1,
+				"tests": null,
+				"updated_at": "2026-10-13T12:01:00.000Z",
+				"version": 2
+			},
+			{
+				"actor_id": "tmgr.estimate",
+				"actor_kind": "plugin",
+				"agent": "cursor",
+				"branch": "b",
+				"commits": "[]",
+				"created_at": "2026-09-20T08:00:00Z",
+				"duration_seconds": 600,
+				"ended_at": "2026-09-22T08:10:00Z",
+				"id": 3,
+				"model": "gpt",
+				"pr_url": null,
+				"session_id": "s3",
+				"started_at": "2026-09-22T08:00:00Z",
+				"status": "failed",
+				"summary": "Broke",
+				"task_id": 2,
+				"tests": "{\"passed\":1,\"failed\":2}",
+				"updated_at": "2026-09-20T08:00:00Z",
+				"version": 2
+			},
+			{
+				"actor_id": "7",
+				"actor_kind": "user",
+				"agent": "claude-code",
+				"branch": "feat/y",
+				"commits": "[]",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"duration_seconds": 1800,
+				"ended_at": "2026-10-13T12:30:00.000Z",
+				"id": 4,
+				"model": "opus",
+				"pr_url": "https://example.com/pr/9",
+				"session_id": "sess-1",
+				"started_at": "2026-10-13T12:00:00.000Z",
+				"status": "succeeded",
+				"summary": "All done",
+				"task_id": 1,
+				"tests": "{\"passed\":7,\"failed\":1,\"command\":\"cargo test\"}",
+				"updated_at": "2026-10-13T12:30:00.000Z",
+				"version": 3
+			},
+			{
+				"actor_id": "7",
+				"actor_kind": "user",
+				"agent": "codex",
+				"branch": null,
+				"commits": null,
+				"created_at": "2026-10-13T12:01:00.000Z",
+				"duration_seconds": 1740,
+				"ended_at": "2026-10-13T12:30:00.000Z",
+				"id": 5,
+				"model": null,
+				"pr_url": null,
+				"session_id": null,
+				"started_at": "2026-10-13T12:01:00.000Z",
+				"status": "failed",
+				"summary": "Broke",
+				"task_id": 1,
+				"tests": null,
+				"updated_at": "2026-10-13T12:30:00.000Z",
+				"version": 2
+			}
+		]
+	}
+}

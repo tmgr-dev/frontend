@@ -141,3 +141,7 @@ command (exec failure: exit 127).
 - macOS: the agent also starts in the approved directory object, but Seatbelt rules are path based, so if that directory was renamed meanwhile the agent keeps no write access there (fail closed).
 - The `tmgr` binary (`self_exe`) must not live inside the working dir or the per-run home; the run is refused otherwise.
 - Windows: not supported; `prepare` returns an error.
+
+## Worktree setup git (not yet wired)
+
+`src/worktree.rs` runs git outside the sandbox with hooks disabled, a cleared environment, system/global config ignored, repository config keys that run programs refused, and every configured filter neutralized. Known gap: a process that can write the repository's `.git/config` between the inspection and the checkout could add a new filter; that requires write access to the owner's repository configuration, which sandboxed sessions do not have.

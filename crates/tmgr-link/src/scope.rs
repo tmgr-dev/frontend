@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn create_inside_the_scope_is_accepted() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
         let sub = format!("{repo}/sub");
         std::fs::create_dir(&sub).unwrap();
@@ -322,8 +322,8 @@ mod tests {
 
     #[test]
     fn create_outside_the_scope_is_refused() {
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
+        let a = crate::testutil::private_tempdir();
+        let b = crate::testutil::private_tempdir();
         let ra = canonical_repo(a.path().to_str().unwrap()).unwrap();
         let rb = canonical_repo(b.path().to_str().unwrap()).unwrap();
         let s = scope(&ra);
@@ -341,8 +341,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn symlinks_out_of_the_scope_are_refused() {
-        let a = tempfile::tempdir().unwrap();
-        let b = tempfile::tempdir().unwrap();
+        let a = crate::testutil::private_tempdir();
+        let b = crate::testutil::private_tempdir();
         let ra = canonical_repo(a.path().to_str().unwrap()).unwrap();
         let link = format!("{ra}/escape");
         std::os::unix::fs::symlink(b.path(), &link).unwrap();
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn agent_mode_max_and_on_are_enforced() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
         let s = scope(&repo);
         let mut p = create(&repo);
@@ -384,7 +384,7 @@ mod tests {
 
     #[test]
     fn the_canonical_repo_is_passed_on() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
         let s = scope(&repo);
         let dotted = format!(
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn models_are_an_allowlist_and_personas_cannot_be_paths() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let repo = canonical_repo(d.path().to_str().unwrap()).unwrap();
         let mut s = scope(&repo);
         s.models = vec!["claude-opus-4".into()];
