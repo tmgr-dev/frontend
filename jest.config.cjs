@@ -1,3 +1,6 @@
+// UTC by default for deterministic date goldens; JEST_TZ runs the local-day tests in another zone.
+process.env.TZ = process.env.JEST_TZ || 'UTC';
+
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 // CommonJS config (.cjs) because package.json sets "type": "module";
 // a plain jest.config.js with module.exports fails to load under ESM.
