@@ -405,7 +405,7 @@ fn working_waiting_working_exited() {
         return;
     }
     let mut h = Harness::new();
-    h.start(300);
+    h.start(1000);
     let mut c = h.client();
     let body = "i=0; while [ $i -lt 10 ]; do echo p$i; sleep 0.1; i=$((i+1)); done\n\
         echo ready; read x\n\
