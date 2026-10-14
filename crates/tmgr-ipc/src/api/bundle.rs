@@ -56,6 +56,8 @@ pub struct BundleLaunch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
     pub cwd: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
 }
 
 /// The immutable input of one agent run (see `PROTOCOL.md`, "Run bundles").
@@ -83,6 +85,11 @@ impl RunBundle {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(m) = &self.launch.permission_mode {
+            if !valid_permission_mode(m) {
+                return Err("launch.permission_mode must be ask, accept-edits or plan".into());
+            }
+        }
         valid_author("author.id", &self.author)?;
         for c in &self.comments {
             valid_author("comments[].author.id", &c.author)?;
@@ -106,6 +113,10 @@ impl RunBundle {
         }
         Ok(())
     }
+}
+
+pub fn valid_permission_mode(m: &str) -> bool {
+    matches!(m, "ask" | "accept-edits" | "plan")
 }
 
 fn valid_author(field: &str, a: &BundleAuthor) -> Result<(), String> {

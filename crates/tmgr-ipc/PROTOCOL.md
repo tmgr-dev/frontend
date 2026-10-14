@@ -102,6 +102,10 @@ Both sides must finish within 5 seconds. A refusal is
 | `candidates.v1` | `candidates.list` (section 5, "Refreshed logins") |
 | `worklog.v1` | `sessions.worklog` (section 5, "Work log") |
 | `runs.restore.v1` | `runs.restore` (section 5, "Restoring interrupted runs") |
+| `permission_mode.v1` | `permission_mode` on `runs.create`, `SessionInfo` and `launch` of a bundle (section 5, "Queue capabilities") |
+| `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
+| `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
+| `clone_dir.v1` | `clone_of` on `runs.create` (section 5, "Queue capabilities") |
 
 ## 5. Messages after the handshake
 
@@ -130,6 +134,8 @@ missing params) and `internal`.
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
+| `runs.lookup` | `{start_key}` | `SessionInfo` | `not_found` | any client; cap `start_key.v1` |
+| `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -275,6 +281,18 @@ and `candidates.list` (cap `candidates.v1`) reports it: `profile`, `source` (abs
 would replace), `created_ms` and the `session` that produced it. The result never carries file contents; an empty list
 means nothing is pending. The owner applies a candidate with `tmgr agents sync <profile>`, not over this protocol.
 
+### Queue capabilities
+
+All four are additive: new optional fields and methods, no change for clients that do not send them.
+
+**`permission_mode.v1`.** `runs.create` takes an optional `permission_mode`: `ask`, `accept-edits` or `plan` (there is no bypass). The profile maps each mode it supports to arguments (`permission_modes` table) and the runner appends them after the profile's own arguments. A request names a mode the profile has no entry for, or a profile that has a `permission_modes` table but no entry for `ask` gets no mode: `invalid_params` ("profile X cannot run in mode Y"). A profile without any `permission_modes` table keeps its old behavior when no mode is requested (no extra arguments, no recorded mode). The effective mode (request value, else `ask`) is stored and returned as `SessionInfo.permission_mode`. `launch.permission_mode` of a bundle is optional and hashed only when present; when the request carries a bundle, the bundle's value must equal the effective mode, and an absent value (old bundles) is accepted only when the effective mode is `ask` or none. `sessions.create` is not affected.
+
+**`start_key.v1`.** `runs.create` takes an optional `start_key` (`[A-Za-z0-9._:-]`, 1 to 64 characters). The runner stores it with a hash of the other parameters (everything except `cols`, `rows` and `start_key`). A second `runs.create` with the same key and the same hash returns the existing `SessionInfo` in whatever state it is, and starts nothing; the same key with other parameters is `busy` ("start key already used for a different request"). Keys survive a runner restart and are forgotten when the session is removed. `runs.lookup {start_key}` returns the `SessionInfo` or `not_found`.
+
+**`run_status.v1`.** `runs.status {id}` returns `{id, alive, state, exit_code, signal, started_ms, ended_ms}`: `state` is the state kind, `alive` is true while the shim is reachable and the child has not exited, `exit_code`, `signal` and `ended_ms` are `null` until the child exits, `started_ms` is `created_ms`. It carries no screen.
+
+**`clone_dir.v1`.** `runs.create` takes an optional `clone_of`, the absolute path of a repository. Before the sandbox is prepared the runner checks, walking descriptors without following any symlink, that the repository is a work tree root with a real `.git` directory, that the canonical `cwd` lies strictly inside `<repo parent>/<repo name>-worktrees/` (any depth), that `cwd/.git` is a real directory (not a worktree file) and that `cwd/.git/objects/info/alternates`, if present (at most 4 KiB), lists only `<repo>/.git/objects`. Any violation is `invalid_params`. The sandbox then gets read-only access to `<repo>/.git/objects` and nothing else of the repository; writes stay limited to `cwd` and the per-run home.
+
 ### Run bundles
 
 A run bundle is the immutable input of one agent run: the task text, its
@@ -293,6 +311,8 @@ on exactly what a human approved sends that bundle with `runs.create` (cap
  "persona":{"name":"reviewer","instructions_sha256":"<64 hex>"},
  "launch":{"profile":"codex","model":"gpt-5","cwd":"/work/project"}}
 ```
+
+`launch.permission_mode` (`ask`, `accept-edits` or `plan`) is optional, omitted when absent, and part of the hash when present.
 
 `author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
 `launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown

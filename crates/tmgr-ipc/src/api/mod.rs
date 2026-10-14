@@ -35,8 +35,12 @@ pub mod caps {
     pub const CANDIDATES_V1: &str = "candidates.v1";
     pub const WORKLOG_V1: &str = "worklog.v1";
     pub const RUNS_RESTORE_V1: &str = "runs.restore.v1";
+    pub const PERMISSION_MODE_V1: &str = "permission_mode.v1";
+    pub const START_KEY_V1: &str = "start_key.v1";
+    pub const RUN_STATUS_V1: &str = "run_status.v1";
+    pub const CLONE_DIR_V1: &str = "clone_dir.v1";
 
-    pub const ALL: [&str; 11] = [
+    pub const ALL: [&str; 15] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -48,6 +52,10 @@ pub mod caps {
         CANDIDATES_V1,
         WORKLOG_V1,
         RUNS_RESTORE_V1,
+        PERMISSION_MODE_V1,
+        START_KEY_V1,
+        RUN_STATUS_V1,
+        CLONE_DIR_V1,
     ];
 }
 
@@ -68,6 +76,8 @@ pub mod method {
     pub const ORIGIN_REVOKE: &str = "origin.revoke";
     pub const CANDIDATES_LIST: &str = "candidates.list";
     pub const RUNS_RESTORE: &str = "runs.restore";
+    pub const RUNS_LOOKUP: &str = "runs.lookup";
+    pub const RUNS_STATUS: &str = "runs.status";
 }
 
 pub mod limits {

@@ -78,6 +78,12 @@ pub struct RunCreateReq {
     pub cwd_pin: Option<CwdPin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub start_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clone_of: Option<String>,
 }
 
 /// The leader to follower link a run was started for, and the link's generation at that time.
@@ -144,6 +150,26 @@ pub struct SessionInfo {
     pub bundle_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<Origin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
+}
+
+/// Params of `runs.lookup`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LookupParams {
+    pub start_key: String,
+}
+
+/// Result of `runs.status`: cheap, no screen.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunStatus {
+    pub id: String,
+    pub alive: bool,
+    pub state: StateKind,
+    pub exit_code: Option<i32>,
+    pub signal: Option<i32>,
+    pub started_ms: u64,
+    pub ended_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

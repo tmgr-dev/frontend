@@ -115,6 +115,7 @@ fn bundle() -> RunBundle {
             profile: "codex".into(),
             model: Some("gpt-5".into()),
             cwd: "/work/project".into(),
+            permission_mode: None,
         },
     }
 }
@@ -148,6 +149,7 @@ fn session_info() -> SessionInfo {
         task: Some(TASK),
         bundle_sha256: None,
         origin: None,
+        permission_mode: None,
     }
 }
 
@@ -207,6 +209,9 @@ fn requests_and_responses() {
         bundle_sha256: None,
         cwd_pin: None,
         origin: None,
+        permission_mode: None,
+        start_key: None,
+        clone_of: None,
     };
     golden("run_create_req", &run);
     golden(
@@ -231,6 +236,28 @@ fn requests_and_responses() {
         "run_create_req_origin",
         &RunCreateReq {
             origin: Some(origin()),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_permission_mode",
+        &RunCreateReq {
+            permission_mode: Some("accept-edits".into()),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_start_key",
+        &RunCreateReq {
+            start_key: Some("q_abc-1".into()),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_clone_of",
+        &RunCreateReq {
+            cwd: "/work/project-worktrees/queue/q_abc".into(),
+            clone_of: Some("/work/project".into()),
             ..run.clone()
         },
     );
@@ -302,6 +329,43 @@ fn method_params_and_results() {
         &SessionInfo {
             origin: Some(origin()),
             ..session_info()
+        },
+    );
+    golden(
+        "session_info_permission_mode",
+        &SessionInfo {
+            permission_mode: Some("ask".into()),
+            ..session_info()
+        },
+    );
+    golden(
+        "lookup_params",
+        &LookupParams {
+            start_key: "q_abc-1".into(),
+        },
+    );
+    golden(
+        "run_status",
+        &RunStatus {
+            id: SID.into(),
+            alive: false,
+            state: StateKind::Exited,
+            exit_code: Some(137),
+            signal: Some(9),
+            started_ms: 1_759_999_990_000,
+            ended_ms: Some(1_760_000_005_000),
+        },
+    );
+    golden(
+        "run_status_running",
+        &RunStatus {
+            id: SID.into(),
+            alive: true,
+            state: StateKind::Working,
+            exit_code: None,
+            signal: None,
+            started_ms: 1_759_999_990_000,
+            ended_ms: None,
         },
     );
     golden(
@@ -383,6 +447,7 @@ fn method_params_and_results() {
             task: None,
             bundle_sha256: None,
             origin: None,
+            permission_mode: None,
         },
     );
     golden(
@@ -601,7 +666,11 @@ fn constants_are_pinned() {
             "link_origin.v1",
             "candidates.v1",
             "worklog.v1",
-            "runs.restore.v1"
+            "runs.restore.v1",
+            "permission_mode.v1",
+            "start_key.v1",
+            "run_status.v1",
+            "clone_dir.v1"
         ]
     );
     let methods = [
@@ -621,6 +690,8 @@ fn constants_are_pinned() {
         method::CANDIDATES_LIST,
         method::SESSIONS_WORKLOG,
         method::RUNS_RESTORE,
+        method::RUNS_LOOKUP,
+        method::RUNS_STATUS,
     ];
     assert_eq!(
         methods,
@@ -641,6 +712,8 @@ fn constants_are_pinned() {
             "candidates.list",
             "sessions.worklog",
             "runs.restore",
+            "runs.lookup",
+            "runs.status",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -663,7 +736,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 11);
+    assert_eq!(w.caps.len(), 15);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -779,6 +852,15 @@ fn bundle_canonical_form_and_hash_are_pinned() {
     .unwrap();
     assert_eq!(bundle().canonical(), want);
     assert_eq!(bundle().sha256(), BUNDLE_SHA256);
+}
+
+#[test]
+fn bundle_permission_mode_is_hashed_only_when_present() {
+    let mut b = bundle();
+    b.launch.permission_mode = Some("plan".into());
+    golden("run_bundle_permission_mode", &b);
+    assert_ne!(b.sha256(), BUNDLE_SHA256);
+    assert!(!bundle().canonical().contains("permission_mode"));
 }
 
 #[test]
