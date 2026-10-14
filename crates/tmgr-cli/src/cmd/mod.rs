@@ -1,5 +1,6 @@
 pub mod add;
 pub mod agent;
+pub mod agent_status;
 pub mod auth;
 pub mod board;
 pub mod config;
@@ -16,6 +17,8 @@ pub mod notifyenv;
 pub mod page;
 pub mod project;
 pub mod prompt;
+#[cfg(feature = "runner")]
+pub mod queue;
 pub mod routine;
 #[cfg(feature = "runner")]
 pub mod runner;

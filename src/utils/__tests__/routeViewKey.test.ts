@@ -9,6 +9,7 @@ describe('route view identity', () => {
 		'WorkspaceCategories',
 		'WorkspaceCategoryChildren',
 		'WorkspaceCategory',
+		'WorkspaceMember',
 	])('%s retains its view when only filters change', (name) => {
 		const first = { name, path: '/demo/list', fullPath: '/demo/list?page=1' };
 		expect(routeViewKey(first)).toBe(
@@ -29,6 +30,27 @@ describe('route view identity', () => {
 				fullPath: '/b/board',
 			}),
 		);
+	});
+	it('keeps the member page across tab and window changes but not across members', () => {
+		const member = (path: string, query = '') => ({
+			name: 'WorkspaceMember',
+			path,
+			fullPath: path + query,
+		});
+		const key = routeViewKey(
+			member('/spendly/team/1', '?window=30d&tab=touched'),
+		);
+		expect(
+			routeViewKey(member('/spendly/team/1', '?window=30d&tab=assigned')),
+		).toBe(key);
+		expect(
+			routeViewKey(member('/spendly/team/1', '?window=7d&tab=touched')),
+		).toBe(key);
+		expect(routeViewKey(member('/spendly/team/1', '?tab=bogus'))).toBe(key);
+		expect(routeViewKey(member('/spendly/team/1'))).toBe(key);
+		expect(
+			routeViewKey(member('/spendly/team/2', '?window=30d&tab=touched')),
+		).not.toBe(key);
 	});
 	it('preserves query-sensitive identity for screens that do not handle query updates yet', () => {
 		expect(

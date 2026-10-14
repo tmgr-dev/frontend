@@ -8,6 +8,7 @@ fn runner_commands_do_not_exist_without_the_feature() {
         ["run", "--help"],
         ["agents", "--help"],
         ["attach", "--help"],
+        ["queue", "--help"],
     ] {
         let home = tempfile::tempdir().unwrap();
         let out = Command::new(env!("CARGO_BIN_EXE_tmgr"))

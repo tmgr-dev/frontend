@@ -28,7 +28,8 @@ const MAX_SEARCHED_WORKSPACES: usize = 20;
 pub fn task_by_key(ctx: &Ctx, client: &Client, key: &str) -> Result<ApiTask> {
     let ws = ctx.workspace(client)?;
     match client.task_by_key(key, ws.id) {
-        Err(e) if e.kind == Kind::NotFound && ctx.ws.is_none() => {
+        // A local client is bound to one workspace.db, so it has no other workspaces to search.
+        Err(e) if e.kind == Kind::NotFound && ctx.ws.is_none() && client.local().is_none() => {
             find_in_other_workspaces(ctx, client, key, &ws, e)
         }
         other => other,

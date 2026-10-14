@@ -50,6 +50,8 @@ async fn ws_use_unknown_or_malformed_codes() {
     let out = env.cmd().args(["ws", "use", "../x"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
     let out = env.cmd().args(["ws", "use", "local:x"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(3));
+    let out = env.cmd().args(["ws", "use", "local:a/b"]).output().unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
 
@@ -278,4 +280,30 @@ async fn status_without_running_timers_has_no_active_and_no_warning() {
     assert_valid("status", &v);
     assert!(v["data"]["active"].is_null());
     assert!(v["warnings"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ws_list_shows_cloud_and_local_workspaces_together() {
+    let env = Env::new().await;
+    env.login_seed();
+    env.mock_workspaces().await;
+    let ws = env.tmp.path().join(".tmgr.dev/workspaces/personal");
+    std::fs::create_dir_all(&ws).unwrap();
+    std::fs::write(
+        ws.join("workspace.json"),
+        r#"{"id":1,"name":"Personal","code":"personal","schema_version":12,"created_at":"x"}"#,
+    )
+    .unwrap();
+    let out = env.cmd().args(["--json", "ws", "list"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let v = stdout_json(&out);
+    let all = v["data"]["workspaces"].as_array().unwrap();
+    let codes: Vec<&str> = all.iter().map(|w| w["code"].as_str().unwrap()).collect();
+    assert!(codes.contains(&"local:personal"), "{codes:?}");
+    assert!(all.iter().any(|w| w["local"] == false), "{codes:?}");
+    assert_eq!(all.iter().filter(|w| w["current"] == true).count(), 1);
+    assert_eq!(
+        all.iter().find(|w| w["current"] == true).unwrap()["local"],
+        false
+    );
 }

@@ -1,4 +1,5 @@
 pub mod active;
+pub mod agent_status;
 pub mod agentwork;
 pub mod api;
 pub mod api_ext;
@@ -6,6 +7,7 @@ pub mod branch;
 pub mod config;
 pub mod creds;
 pub mod error;
+pub mod local;
 pub mod models;
 pub mod notify;
 pub mod pages;

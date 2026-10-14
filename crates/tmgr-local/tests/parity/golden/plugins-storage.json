@@ -1,0 +1,81 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": [
+					"b",
+					"last run"
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					"last run"
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"value": "{\"at\":1}"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"value": null
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"value": "{\"h\":2}"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"value": "5"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"value": null
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"value": null
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Page not found"
+			},
+			"status": 404
+		}
+	]
+}

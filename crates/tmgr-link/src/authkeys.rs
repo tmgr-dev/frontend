@@ -118,6 +118,35 @@ pub fn build_line(
     ))
 }
 
+pub fn build_jump_line(
+    bin: &Path,
+    name: &str,
+    enrollment: &str,
+    from: &[String],
+    key: &PubKey,
+    dests: &[String],
+) -> Result<String> {
+    let dests = grammar::parse_jump_dests(dests)?;
+    let base = build_line(bin, name, enrollment, from, key)?;
+    let permit: String = dests
+        .iter()
+        .map(|d| format!("permitopen=\"{d}\""))
+        .chain(std::iter::once(
+            "permitlisten=\"never.invalid:1\"".to_string(),
+        ))
+        .collect::<Vec<_>>()
+        .join(",");
+    let line = base.replacen(
+        ",no-port-forwarding,",
+        &format!(",port-forwarding,{permit},"),
+        1,
+    );
+    if line == base {
+        return Err(Error::internal("cannot build the jump enrollment line"));
+    }
+    Ok(line)
+}
+
 #[cfg(unix)]
 pub fn check_binary(bin: &Path) -> Result<PathBuf> {
     use std::os::unix::fs::MetadataExt;
@@ -358,7 +387,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn setup() -> (tempfile::TempDir, PathBuf) {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let ak = d.path().join(".ssh").join("authorized_keys");
         (d, ak)
     }
@@ -616,7 +645,7 @@ mod tests {
 
     #[test]
     fn binaries_in_writable_directories_are_refused() {
-        let d = tempfile::tempdir().unwrap();
+        let d = crate::testutil::private_tempdir();
         let bin_dir = d.path().join("bin");
         std::fs::create_dir(&bin_dir).unwrap();
         let bin = bin_dir.join("tmgr");

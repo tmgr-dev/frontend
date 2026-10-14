@@ -48,7 +48,10 @@
               "type": "string"
             },
             "url": {
-              "type": "string"
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "status": {
               "$ref": "#/$defs/status"

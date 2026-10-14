@@ -4,6 +4,8 @@ Rust workspace of the `tmgr` command line tool. It is a separate Cargo workspace
 
 - `tmgr-core` - shared library (envelope `tmgr.v1`, errors and exit codes, config, credential store, API client, task reference grammar).
 - `tmgr-cli` - the `tmgr` binary (clap).
+- `tmgr-queue` - the local auto-run queue of the runner (rules, pickups, approvals, audit); used by the hidden `tmgr queue` commands behind the `runner` feature.
+- `tmgr-local` - local (desktop) workspaces: reads `~/.tmgr.dev/workspaces/<code>/workspace.db` (`TMGR_LOCAL_ROOT` overrides the root) and answers the REST-shaped local API with the same JSON as the desktop's TS local API. `tests/parity` holds scenarios and goldens shared with `src/local/__tests__/parity.test.ts`. Writes open the database with the desktop's pragmas and run each request in one `BEGIN IMMEDIATE` transaction. Deliberate differences from the TS handlers, which are only statement-atomic: a request that fails after some writes leaves nothing (a refusal keeps only its `activity_log` row); a persona write whose audit row cannot be written answers 500 with nothing stored; `daily-routines/tasks/:id/complete-on` answers 422 unless the date is a real `YYYY-MM-DD` day. A write also re-checks the schema after taking the lock. Writes from tmgr fire no desktop page or task events, so an open desktop window shows them after a reload (TM-539). The schema is never migrated: anything but schema 12 is refused.
 
 ## Install
 
@@ -42,6 +44,14 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 - Tokens are stored in the OS credential store under service `dev.tmgr.cli`, account `<server host>:default` (macOS Keychain; Linux Secret Service through a pure Rust client, no libdbus). Without a store they go to `$XDG_CONFIG_HOME/tmgr/credentials.json` (file mode 0600, directory 0700) and a warning is printed. A file readable by other users is refused. `TMGR_CREDENTIAL_STORE=file` forces the file store (used by the tests, so they never touch a real keychain).
 - Tokens are never printed, logged or put into `--json` output or error messages. Redirects are not followed, so the bearer token cannot be forwarded to another host. Plain `http` is accepted only for localhost.
 
+## Local workspaces
+
+`--ws local:<code>` (or `tmgr ws use local:<code>`) works on a workspace of the desktop app in `~/.tmgr.dev/workspaces/<code>` (`TMGR_LOCAL_ROOT` overrides the folder) through `tmgr-local`: no login and no network. `tmgr ws list` shows local workspaces next to the cloud ones, also when you are logged out. Login, logout, whoami, notify and alarms always use the cloud. Local tasks have no web link (`url` is null). A local workspace keeps only each task's total time, not when it was tracked, so `today` and `status` report tracked time as unavailable there (`null`, warning `local_time_unavailable`); the local `time-summary` route keeps the cloud's semantics (the whole tracked time of the tasks updated in the range). `stop`, an implicit `done`, `agent update|finish` and the hooks act in the workspace where the timer or run was started, whatever workspace is selected; `page push` only writes to the workspace a directory was pulled from.
+
+Identity: the CLI acts as the desktop's local account, id -1 with the name from `profile.json` next to the workspaces folder (`~/.tmgr.dev/profile.json`). The desktop keeps the id of a signed-in account only in the app's memory and web storage, so when the desktop is signed in, set `tmgr config set local_user_id <id>` to act as that user. Otherwise agent runs started by the CLI cannot be updated in the desktop and the other way round, personas owned by the account cannot be assigned from the CLI, and comments and runs carry author id -1.
+
+Reads open the database read-only; a write takes the desktop's write lock for one request and fails with a conflict (exit 6) when the desktop holds it for more than 5 seconds. A workspace with another schema than 12 is refused (open it in the desktop to upgrade it). A request the local API does not answer fails with "... is not supported for local workspaces yet" (exit 2).
+
 ## Timer, git and prompt
 
 - `tmgr start|stop|switch|done` drive the timer, the task status, a branch named from `branch_template` and the PR comment. They call only `GET` task/status routes, `PUT /api/tasks/{id}/{statusId}`, `GET /api/tasks/runned`, `POST|DELETE /api/tasks/{id}/countdown` and `POST /api/tasks/{id}/comments`. The branch key is the key in the task title (`TM-509: ...`), never `category_tasks_sequence_id`.
@@ -68,6 +78,7 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 ## Agent mode, hooks and notifications
 
 - `tmgr agent start|update|finish` drive an Agent work run (`POST /api/tasks/{id}/agent-work`, `PATCH /api/agent-work/{run}`, `POST /api/agent-work/{run}/finish`, scope `agent-work:write`). Runs are remembered in `$XDG_STATE_HOME/tmgr/runs.json` (`~/.local/state/tmgr`, mode 0600, schema `tmgr.runs.v1`) keyed by task, branch and repository.
+- `tmgr agent status set <session-id> --state S [--task REF] [--profile ID] [--since T]`, `tmgr agent status clear <session-id>` and `tmgr agent status list` are the hooks the runner calls to publish session state (`PUT` / `DELETE /api/agent-status/{session}`, scope `agent-status:write`, not in the default login; `GET /api/workspaces/{id}/agent-status`, scope `tasks:read`). `set` and `clear` are refused with exit 5 until `tmgr config set upload_status true` (default off); the upload carries only the task, state, agent profile id, timestamps and the device's host label, never terminal content. A 429 exits 6 and names the `Retry-After` wait; a workspace with Agent work off gives the warning `agent_work_disabled` and exit 0. JSON schemas: `agent_status_session` (set, clear) and `agent_status_list`.
 - `tmgr hook claude <event>` / `tmgr hook codex notify` never fail the agent: exit 0 always, no stdout, no shell, payload size bounded, 1.5 s watchdog. They use an existing notify token and login only; they never mint a token or refresh a session (a kill in the middle would lose a rotated refresh token), so an expired login silently skips the run update until the next `tmgr` command refreshes it.
 - `tmgr hook install claude|codex` edits `~/.claude/settings.json` (`CLAUDE_CONFIG_DIR` is honoured), `.claude/settings.json` with `--project`, or `~/.codex/config.toml` (`CODEX_HOME` is honoured). Hook commands call this binary by absolute path; `--project` writes that path into a file you may commit, so it warns.
 - `tmgr notify`, `tmgr alarm`, `tmgr mcp` use a notify token (`tmgrn_...`), never the login token. Order: `TMGR_NOTIFY_TOKEN` (server `TMGR_URL`, else the configured one), the legacy `~/.config/tmgr-notify/env` (ignored unless mode 0600 and owned by you), the credential store entry `<server>:default:notify`, else mint through `POST /api/notify-tokens` (scope `notify:send`) and store it. `tmgr logout` calls `DELETE /api/notify-tokens/{id}`.
@@ -75,7 +86,7 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 
 ## JSON schemas
 
-`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `agent_run`, `notify_result` and `alarm`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
+`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `agent_run`, `agent_status_session`, `agent_status_list`, `notify_result` and `alarm`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
 
 ## Exit codes
 
@@ -84,3 +95,19 @@ Tag `cli-vX.Y.Z` (must equal the `tmgr-cli` version and have a `## X.Y.Z` sectio
 ## Task references
 
 `TM-512` (key as shown in the title), `#8974` or `8974` (global task id). `tmgr help refs` prints the grammar.
+
+## Queue (`tmgr queue`, hidden, `runner` feature)
+
+`tmgr-queue` is the local auto-run queue base. It is off by default and starts no real agent: `run-once` records mock runs until the runner can start queue runs (`runner_supports_queue()` is false).
+
+Known limits:
+
+- Owner writes are not journaled by `tmgr-local` yet (`dispatch.rs` journals only requests with an actor, and the owner's client has none), so on real data nothing qualifies as `human` until the local-mode team journals owner task creates and edits. The queue fails closed: such tasks are `unrecorded` and are skipped unless a rule lists `unrecorded` (manual approval only).
+- The per-run `git clone --reference` only protects the owner's checkout from incidental git writes. Filesystem isolation of queue runs is the runner sandbox's job and a precondition before `runner_supports_queue()` may become true.
+
+Required runner capabilities before the real client is enabled:
+
+1. `permission_mode = ask` (prompts on) in `runs.create`; the contract has no such field yet.
+2. Lookup of a run by the start key (`<pickup>-<attempt>`), to reconcile an interrupted start.
+3. Liveness and exit status of a run, so a slot is freed only when the run has exited.
+4. Sandbox confinement of the run to its clone directory.

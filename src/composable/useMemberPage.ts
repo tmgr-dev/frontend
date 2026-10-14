@@ -120,7 +120,10 @@ export function useMemberPage(
 				tasksError.value =
 					e instanceof Error ? e.message : 'Could not load member tasks';
 		} finally {
-			if (current()) tasksLoading.value = false;
+			if (current()) {
+				tasksLoading.value = false;
+				if (page === 1 && tasksError.value) tasksLoaded.value = false;
+			}
 		}
 	}
 
@@ -149,7 +152,6 @@ export function useMemberPage(
 		tab,
 		() => {
 			tasks.value = [];
-			tasksLoaded.value = false;
 			tasksTotal.value = 0;
 			tasksPage.value = 1;
 			void loadTasks(1);

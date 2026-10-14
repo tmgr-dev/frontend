@@ -7,6 +7,8 @@ export const SCOPE_DESCRIPTIONS: Record<string, string> = {
 	'time:read': 'Read time reports',
 	'time:write': 'Start and stop your timer',
 	'agent-work:write': 'Record AI agent work on tasks',
+	'agent-status:write':
+		'Share your local AI agent status (working, waiting, done) with your workspace',
 	'pages:read': 'Read Pages',
 	'pages:write': 'Edit Pages',
 	'pages:append': 'Append to Pages',

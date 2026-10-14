@@ -10,9 +10,7 @@ use tmgr_core::refs::{is_category_code, parse_task_ref, TaskRef};
 use tmgr_core::text::{
     format_duration, markdown_to_text, parse_size, sanitize, sanitize_line, truncate_bytes,
 };
-use tmgr_core::view::{
-    display_title, task_ref, task_url, CategoryView, CommentView, PersonView, StatusView,
-};
+use tmgr_core::view::{display_title, task_ref, CategoryView, CommentView, PersonView, StatusView};
 
 const MAX_COMMENTS: usize = 50;
 const MAX_PAGES_PER_CALL: u32 = 20;
@@ -40,7 +38,7 @@ pub fn run(ctx: &Ctx, cmd: &TaskCommand) -> Result<Output> {
     }
 }
 
-fn workspace_code(ctx: &Ctx, workspace_id: Option<u64>) -> Option<String> {
+fn workspace_code(ctx: &Ctx, workspace_id: Option<i64>) -> Option<String> {
     let client = ctx.client().ok()?;
     let list = ctx.workspaces(client).ok()?;
     list.iter()
@@ -62,9 +60,11 @@ fn show(ctx: &Ctx, reference: &str, comments_n: usize, max_desc: &str) -> Result
             .task_by_id(*id)
             .map_err(|e| not_found_for(e, reference, "tmgr task list"))?,
     };
-    let web = ctx.web_base()?;
     let ws_code = workspace_code(ctx, task.workspace_id);
-    let url = ws_code.as_deref().map(|c| task_url(&web, c, task.id));
+    let url = match ws_code.as_deref() {
+        Some(c) => ctx.task_link(c, task.id)?,
+        None => None,
+    };
     let statuses = match task.workspace_id {
         Some(w) => ctx
             .soft(client.statuses(w), "status_unresolved", "status names")?
@@ -347,11 +347,10 @@ fn list(
             break;
         }
     }
-    let web = ctx.web_base()?;
-    let urls: Vec<String> = items
+    let urls: Vec<Option<String>> = items
         .iter()
-        .map(|t| task_url(&web, &sanitize_line(&ws.code), t.id))
-        .collect();
+        .map(|t| ctx.task_link(&sanitize_line(&ws.code), t.id))
+        .collect::<Result<_>>()?;
     Ok(render_list(
         ctx,
         &ws.code,
@@ -368,7 +367,7 @@ fn render_list(
     items: Vec<ApiTask>,
     next_cursor: Option<String>,
     statuses: &[Status],
-    urls: &[String],
+    urls: &[Option<String>],
 ) -> Output {
     let views: Vec<Value> = items
         .iter()

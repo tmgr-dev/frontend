@@ -1,0 +1,186 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "value must be a JSON string"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"value": "2"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"error": "settings_required",
+				"message": "settings is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"agent_work": {
+						"enabled": true,
+						"group": "local",
+						"key": "agent_work",
+						"name": "Agent work"
+					},
+					"board": {
+						"enabled": true,
+						"group": "local",
+						"key": "board",
+						"name": "board"
+					},
+					"categories": {
+						"enabled": true,
+						"group": "local",
+						"key": "categories",
+						"name": "categories"
+					},
+					"daily_routines": {
+						"enabled": true,
+						"group": "local",
+						"key": "daily_routines",
+						"name": "daily_routines"
+					},
+					"dashboard": {
+						"enabled": false,
+						"group": "local",
+						"key": "dashboard",
+						"name": "dashboard"
+					},
+					"graph": {
+						"enabled": true,
+						"group": "local",
+						"key": "graph",
+						"name": "graph"
+					},
+					"pages": {
+						"enabled": true,
+						"group": "local",
+						"key": "pages",
+						"name": "pages"
+					},
+					"task.assignees": {
+						"enabled": false,
+						"group": "local",
+						"key": "task.assignees",
+						"name": "task.assignees"
+					},
+					"task.checkpoints": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.checkpoints",
+						"name": "task.checkpoints"
+					},
+					"task.countdown": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.countdown",
+						"name": "task.countdown"
+					},
+					"task.files": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.files",
+						"name": "task.files"
+					},
+					"task.relations": {
+						"enabled": true,
+						"group": "local",
+						"key": "task.relations",
+						"name": "task.relations"
+					},
+					"workflow": {
+						"enabled": true,
+						"group": "local",
+						"key": "workflow",
+						"name": "Workflow"
+					}
+				}
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"meta": [
+			{
+				"key": "schema_version",
+				"value": "12"
+			},
+			{
+				"key": "feature.pages",
+				"value": "0"
+			},
+			{
+				"key": "feature.graph",
+				"value": "1"
+			}
+		],
+		"plugin_task_data": [
+			{
+				"key": "est",
+				"plugin_id": "tmgr.estimate",
+				"task_id": 1,
+				"updated_at": "2026-10-13T12:00:00.000Z",
+				"value": "{\"h\":9}"
+			},
+			{
+				"key": "est",
+				"plugin_id": "tmgr.other",
+				"task_id": 1,
+				"updated_at": "2026-09-20T08:00:00Z",
+				"value": "5"
+			}
+		]
+	}
+}

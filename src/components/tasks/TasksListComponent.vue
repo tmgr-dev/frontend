@@ -267,6 +267,10 @@
 									{{ taskTitles[task.id] }}
 								</div>
 							</div>
+							<AgentStatusChip
+								:task-id="Number(task.id)"
+								:workspace-id="Number(task.workspace_id) || undefined"
+							/>
 						</div>
 
 						<div
@@ -481,6 +485,7 @@
 		getWorkspaceMembers,
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
+	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
@@ -584,6 +589,7 @@
 			AssigneeUsers,
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
+			AgentStatusChip,
 			UserAvatar,
 			AppTooltip,
 			Popover,

@@ -20,3 +20,5 @@ pub mod shim;
 pub mod trust;
 #[cfg(unix)]
 pub mod wire;
+#[cfg(unix)]
+pub mod worktree;

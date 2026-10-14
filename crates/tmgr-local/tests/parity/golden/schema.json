@@ -1,0 +1,349 @@
+{
+	"meta": [
+		{
+			"key": "schema_version",
+			"value": "12"
+		}
+	],
+	"schema_version": 12,
+	"sqlite_master": [
+		{
+			"name": "meta",
+			"sql": "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)",
+			"tbl_name": "meta",
+			"type": "table"
+		},
+		{
+			"name": "statuses",
+			"sql": "CREATE TABLE statuses (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\tname TEXT NOT NULL,\n\t\t\t\ttype TEXT NOT NULL DEFAULT 'active',\n\t\t\t\tcolor TEXT,\n\t\t\t\tsort_order INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "statuses",
+			"type": "table"
+		},
+		{
+			"name": "categories",
+			"sql": "CREATE TABLE categories (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttitle TEXT NOT NULL,\n\t\t\t\tslug TEXT,\n\t\t\t\tcode TEXT,\n\t\t\t\tparent_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,\n\t\t\t\tsettings TEXT NOT NULL DEFAULT '[]',\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tdeleted_at TEXT\n\t\t\t)",
+			"tbl_name": "categories",
+			"type": "table"
+		},
+		{
+			"name": "tasks",
+			"sql": "CREATE TABLE tasks (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttitle TEXT NOT NULL,\n\t\t\t\tdescription TEXT,\n\t\t\t\tdescription_json TEXT,\n\t\t\t\tstatus_id INTEGER REFERENCES statuses(id) ON DELETE SET NULL,\n\t\t\t\tproject_category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,\n\t\t\t\tcategory_tasks_sequence_id INTEGER,\n\t\t\t\tsort_order INTEGER,\n\t\t\t\tpriority TEXT NOT NULL DEFAULT 'medium',\n\t\t\t\tcommon_time INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tstart_time INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tend_time INTEGER,\n\t\t\t\tapproximately_time INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tcheckpoints TEXT,\n\t\t\t\tsettings TEXT NOT NULL DEFAULT '[]',\n\t\t\t\texpired_at TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tdeleted_at TEXT\n\t\t\t)",
+			"tbl_name": "tasks",
+			"type": "table"
+		},
+		{
+			"name": "tasks_status_idx",
+			"sql": "CREATE INDEX tasks_status_idx ON tasks (status_id, deleted_at)",
+			"tbl_name": "tasks",
+			"type": "index"
+		},
+		{
+			"name": "tasks_category_idx",
+			"sql": "CREATE INDEX tasks_category_idx ON tasks (project_category_id, category_tasks_sequence_id)",
+			"tbl_name": "tasks",
+			"type": "index"
+		},
+		{
+			"name": "tasks_running_idx",
+			"sql": "CREATE INDEX tasks_running_idx ON tasks (start_time)",
+			"tbl_name": "tasks",
+			"type": "index"
+		},
+		{
+			"name": "comments",
+			"sql": "CREATE TABLE comments (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tmessage TEXT NOT NULL,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tdeleted_at TEXT\n\t\t\t, author_kind TEXT NOT NULL DEFAULT 'user', author_id TEXT, author_name TEXT)",
+			"tbl_name": "comments",
+			"type": "table"
+		},
+		{
+			"name": "comments_task_idx",
+			"sql": "CREATE INDEX comments_task_idx ON comments (task_id)",
+			"tbl_name": "comments",
+			"type": "index"
+		},
+		{
+			"name": "plugin_kv",
+			"sql": "CREATE TABLE plugin_kv (\n\t\t\t\tplugin_id TEXT NOT NULL,\n\t\t\t\tkey TEXT NOT NULL,\n\t\t\t\tvalue TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tPRIMARY KEY (plugin_id, key)\n\t\t\t)",
+			"tbl_name": "plugin_kv",
+			"type": "table"
+		},
+		{
+			"name": "routines",
+			"sql": "CREATE TABLE routines (\n\t\t\t\tid INTEGER PRIMARY KEY,\n\t\t\t\ttitle TEXT NOT NULL,\n\t\t\t\tdescription TEXT,\n\t\t\t\troutine_category TEXT,\n\t\t\t\tpriority TEXT,\n\t\t\t\tapproximately_time INTEGER,\n\t\t\t\tscheduled_date TEXT,\n\t\t\t\tscheduled_time TEXT,\n\t\t\t\tsettings TEXT NOT NULL DEFAULT '[]',\n\t\t\t\tarchived_at TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tdeleted_at TEXT\n\t\t\t)",
+			"tbl_name": "routines",
+			"type": "table"
+		},
+		{
+			"name": "routine_patterns",
+			"sql": "CREATE TABLE routine_patterns (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL UNIQUE REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tfrequency TEXT,\n\t\t\t\tinterval INTEGER NOT NULL DEFAULT 1,\n\t\t\t\tday_of_frequency INTEGER,\n\t\t\t\tmonth INTEGER,\n\t\t\t\tdays_of_week TEXT,\n\t\t\t\tstart_at TEXT,\n\t\t\t\tend_at TEXT,\n\t\t\t\toccurrences INTEGER,\n\t\t\t\tscheduled_time TEXT,\n\t\t\t\tduration_min INTEGER,\n\t\t\t\treminder_min INTEGER,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "routine_patterns",
+			"type": "table"
+		},
+		{
+			"name": "routine_instances",
+			"sql": "CREATE TABLE routine_instances (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\troutine_id INTEGER NOT NULL REFERENCES routines(id) ON DELETE CASCADE,\n\t\t\t\tscheduled_for TEXT NOT NULL,\n\t\t\t\tstatus TEXT NOT NULL DEFAULT 'PENDING',\n\t\t\t\tcompleted_at TEXT,\n\t\t\t\tskipped_at TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "routine_instances",
+			"type": "table"
+		},
+		{
+			"name": "routine_instances_routine_idx",
+			"sql": "CREATE INDEX routine_instances_routine_idx ON routine_instances (routine_id, scheduled_for)",
+			"tbl_name": "routine_instances",
+			"type": "index"
+		},
+		{
+			"name": "comment_reactions",
+			"sql": "CREATE TABLE comment_reactions (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\tcomment_id INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,\n\t\t\t\temoji TEXT NOT NULL,\n\t\t\t\tactor_kind TEXT NOT NULL,\n\t\t\t\tactor_id TEXT NOT NULL,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tUNIQUE (comment_id, emoji, actor_kind, actor_id)\n\t\t\t)",
+			"tbl_name": "comment_reactions",
+			"type": "table"
+		},
+		{
+			"name": "comment_reactions_comment_idx",
+			"sql": "CREATE INDEX comment_reactions_comment_idx ON comment_reactions (comment_id)",
+			"tbl_name": "comment_reactions",
+			"type": "index"
+		},
+		{
+			"name": "task_relation_types",
+			"sql": "CREATE TABLE task_relation_types (\n\t\t\t\tid INTEGER PRIMARY KEY,\n\t\t\t\tname TEXT NOT NULL UNIQUE\n\t\t\t)",
+			"tbl_name": "task_relation_types",
+			"type": "table"
+		},
+		{
+			"name": "task_relations",
+			"sql": "CREATE TABLE task_relations (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\trelated_task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\trelation_type_id INTEGER NOT NULL REFERENCES task_relation_types(id),\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tUNIQUE (task_id, related_task_id, relation_type_id)\n\t\t\t)",
+			"tbl_name": "task_relations",
+			"type": "table"
+		},
+		{
+			"name": "task_relations_task_idx",
+			"sql": "CREATE INDEX task_relations_task_idx ON task_relations (task_id)",
+			"tbl_name": "task_relations",
+			"type": "index"
+		},
+		{
+			"name": "plugin_task_data",
+			"sql": "CREATE TABLE plugin_task_data (\n\t\t\t\tplugin_id TEXT NOT NULL,\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tkey TEXT NOT NULL,\n\t\t\t\tvalue TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tPRIMARY KEY (plugin_id, task_id, key)\n\t\t\t)",
+			"tbl_name": "plugin_task_data",
+			"type": "table"
+		},
+		{
+			"name": "plugin_task_data_plugin_key_idx",
+			"sql": "CREATE INDEX plugin_task_data_plugin_key_idx ON plugin_task_data (plugin_id, key)",
+			"tbl_name": "plugin_task_data",
+			"type": "index"
+		},
+		{
+			"name": "agent_work_runs",
+			"sql": "CREATE TABLE agent_work_runs (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tagent TEXT NOT NULL,\n\t\t\t\tmodel TEXT,\n\t\t\t\tsession_id TEXT,\n\t\t\t\tbranch TEXT,\n\t\t\t\tstatus TEXT NOT NULL DEFAULT 'running',\n\t\t\t\tstarted_at TEXT NOT NULL,\n\t\t\t\tended_at TEXT,\n\t\t\t\tduration_seconds INTEGER,\n\t\t\t\tsummary TEXT,\n\t\t\t\tpr_url TEXT,\n\t\t\t\tcommits TEXT,\n\t\t\t\ttests TEXT,\n\t\t\t\tactor_kind TEXT NOT NULL,\n\t\t\t\tactor_id TEXT NOT NULL,\n\t\t\t\tversion INTEGER NOT NULL DEFAULT 1,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "agent_work_runs",
+			"type": "table"
+		},
+		{
+			"name": "agent_work_runs_task_idx",
+			"sql": "CREATE INDEX agent_work_runs_task_idx ON agent_work_runs (task_id)",
+			"tbl_name": "agent_work_runs",
+			"type": "index"
+		},
+		{
+			"name": "personas",
+			"sql": "CREATE TABLE personas (\n\t\t\t\tuuid TEXT PRIMARY KEY,\n\t\t\t\towner_user_id INTEGER NOT NULL,\n\t\t\t\towner_name TEXT NOT NULL,\n\t\t\t\tname TEXT NOT NULL,\n\t\t\t\tdescription TEXT,\n\t\t\t\tavatar_file TEXT,\n\t\t\t\tsynced_at TEXT NOT NULL,\n\t\t\t\tarchived_at TEXT\n\t\t\t)",
+			"tbl_name": "personas",
+			"type": "table"
+		},
+		{
+			"name": "workspace_personas",
+			"sql": "CREATE TABLE workspace_personas (\n\t\t\t\tpersona_uuid TEXT PRIMARY KEY REFERENCES personas(uuid),\n\t\t\t\tpermissions TEXT NOT NULL,\n\t\t\t\tenabled_at TEXT NOT NULL,\n\t\t\t\tdisabled_at TEXT\n\t\t\t)",
+			"tbl_name": "workspace_personas",
+			"type": "table"
+		},
+		{
+			"name": "activity_log",
+			"sql": "CREATE TABLE activity_log (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\tat TEXT NOT NULL,\n\t\t\t\tactor_kind TEXT NOT NULL,\n\t\t\t\tactor_id TEXT NOT NULL,\n\t\t\t\tactor_name TEXT,\n\t\t\t\tmethod TEXT NOT NULL,\n\t\t\t\troute TEXT NOT NULL,\n\t\t\t\tentity TEXT,\n\t\t\t\tentity_id TEXT,\n\t\t\t\tstatus INTEGER NOT NULL\n\t\t\t)",
+			"tbl_name": "activity_log",
+			"type": "table"
+		},
+		{
+			"name": "activity_log_actor_idx",
+			"sql": "CREATE INDEX activity_log_actor_idx ON activity_log (actor_kind, actor_id)",
+			"tbl_name": "activity_log",
+			"type": "index"
+		},
+		{
+			"name": "task_persona_assignees",
+			"sql": "CREATE TABLE task_persona_assignees (\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tpersona_uuid TEXT NOT NULL REFERENCES personas(uuid),\n\t\t\t\towner_implied INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tPRIMARY KEY (task_id, persona_uuid)\n\t\t\t)",
+			"tbl_name": "task_persona_assignees",
+			"type": "table"
+		},
+		{
+			"name": "task_persona_assignees_persona_idx",
+			"sql": "CREATE INDEX task_persona_assignees_persona_idx ON task_persona_assignees (persona_uuid)",
+			"tbl_name": "task_persona_assignees",
+			"type": "index"
+		},
+		{
+			"name": "pages",
+			"sql": "CREATE TABLE pages (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\tparent_id INTEGER REFERENCES pages(id) ON DELETE SET NULL,\n\t\t\t\ttitle TEXT NOT NULL,\n\t\t\t\tslug TEXT NOT NULL UNIQUE,\n\t\t\t\ttype TEXT NOT NULL DEFAULT 'plain',\n\t\t\t\tbody TEXT NOT NULL DEFAULT '',\n\t\t\t\tproperties TEXT NOT NULL DEFAULT '{}',\n\t\t\t\tversion INTEGER NOT NULL DEFAULT 1,\n\t\t\t\tauthor_id INTEGER NOT NULL,\n\t\t\t\tauthor_kind TEXT NOT NULL,\n\t\t\t\tauthor_ref TEXT NOT NULL,\n\t\t\t\tupdated_by_id INTEGER NOT NULL,\n\t\t\t\tupdated_by_kind TEXT NOT NULL,\n\t\t\t\tupdated_by_ref TEXT NOT NULL,\n\t\t\t\tposition INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tpinned INTEGER NOT NULL DEFAULT 0,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tdeleted_at TEXT\n\t\t\t)",
+			"tbl_name": "pages",
+			"type": "table"
+		},
+		{
+			"name": "pages_parent_idx",
+			"sql": "CREATE INDEX pages_parent_idx ON pages (parent_id)",
+			"tbl_name": "pages",
+			"type": "index"
+		},
+		{
+			"name": "page_versions",
+			"sql": "CREATE TABLE page_versions (\n\t\t\t\tpage_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,\n\t\t\t\tversion INTEGER NOT NULL,\n\t\t\t\ttitle TEXT NOT NULL,\n\t\t\t\tbody TEXT NOT NULL,\n\t\t\t\tproperties TEXT NOT NULL DEFAULT '{}',\n\t\t\t\tauthor_id INTEGER NOT NULL,\n\t\t\t\tauthor_kind TEXT NOT NULL,\n\t\t\t\tauthor_ref TEXT NOT NULL,\n\t\t\t\tsummary TEXT,\n\t\t\t\tcreated_at TEXT NOT NULL,\n\t\t\t\tPRIMARY KEY (page_id, version)\n\t\t\t)",
+			"tbl_name": "page_versions",
+			"type": "table"
+		},
+		{
+			"name": "page_links",
+			"sql": "CREATE TABLE page_links (\n\t\t\t\tpage_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,\n\t\t\t\ttarget_kind TEXT NOT NULL,\n\t\t\t\ttarget_id INTEGER NOT NULL,\n\t\t\t\tUNIQUE (page_id, target_kind, target_id)\n\t\t\t)",
+			"tbl_name": "page_links",
+			"type": "table"
+		},
+		{
+			"name": "page_links_target_idx",
+			"sql": "CREATE INDEX page_links_target_idx ON page_links (target_kind, target_id)",
+			"tbl_name": "page_links",
+			"type": "index"
+		},
+		{
+			"name": "task_page_mentions",
+			"sql": "CREATE TABLE task_page_mentions (\n\t\t\t\ttask_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tpage_id INTEGER NOT NULL REFERENCES pages(id) ON DELETE CASCADE,\n\t\t\t\tPRIMARY KEY (task_id, page_id)\n\t\t\t)",
+			"tbl_name": "task_page_mentions",
+			"type": "table"
+		},
+		{
+			"name": "task_page_mentions_page_idx",
+			"sql": "CREATE INDEX task_page_mentions_page_idx ON task_page_mentions (page_id)",
+			"tbl_name": "task_page_mentions",
+			"type": "index"
+		},
+		{
+			"name": "pages_fts",
+			"sql": "CREATE VIRTUAL TABLE pages_fts USING fts5(title, body, content='pages', content_rowid='id')",
+			"tbl_name": "pages_fts",
+			"type": "table"
+		},
+		{
+			"name": "pages_fts_ai",
+			"sql": "CREATE TRIGGER pages_fts_ai AFTER INSERT ON pages BEGIN\n\t\t\t\tINSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);\n\t\t\tEND",
+			"tbl_name": "pages",
+			"type": "trigger"
+		},
+		{
+			"name": "pages_fts_ad",
+			"sql": "CREATE TRIGGER pages_fts_ad AFTER DELETE ON pages BEGIN\n\t\t\t\tINSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);\n\t\t\tEND",
+			"tbl_name": "pages",
+			"type": "trigger"
+		},
+		{
+			"name": "pages_fts_au",
+			"sql": "CREATE TRIGGER pages_fts_au AFTER UPDATE OF title, body ON pages BEGIN\n\t\t\t\tINSERT INTO pages_fts(pages_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);\n\t\t\t\tINSERT INTO pages_fts(rowid, title, body) VALUES (new.id, new.title, new.body);\n\t\t\tEND",
+			"tbl_name": "pages",
+			"type": "trigger"
+		},
+		{
+			"name": "files",
+			"sql": "CREATE TABLE \"files\" (\n\t\t\t\tid INTEGER PRIMARY KEY AUTOINCREMENT,\n\t\t\t\ttask_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE,\n\t\t\t\tpage_id INTEGER REFERENCES pages(id) ON DELETE CASCADE,\n\t\t\t\tname TEXT NOT NULL,\n\t\t\t\tfile_path TEXT NOT NULL UNIQUE,\n\t\t\t\tmime_type TEXT,\n\t\t\t\tsize INTEGER,\n\t\t\t\tcreated_at TEXT NOT NULL\n\t\t\t)",
+			"tbl_name": "files",
+			"type": "table"
+		},
+		{
+			"name": "files_task_idx",
+			"sql": "CREATE INDEX files_task_idx ON files (task_id)",
+			"tbl_name": "files",
+			"type": "index"
+		},
+		{
+			"name": "files_page_idx",
+			"sql": "CREATE INDEX files_page_idx ON files (page_id)",
+			"tbl_name": "files",
+			"type": "index"
+		},
+		{
+			"name": "plugin_page_data",
+			"sql": "CREATE TABLE plugin_page_data (\n\t\t\t\tplugin_id TEXT NOT NULL,\n\t\t\t\tpage_id INTEGER NOT NULL,\n\t\t\t\tkey TEXT NOT NULL,\n\t\t\t\tvalue TEXT NOT NULL,\n\t\t\t\tupdated_at TEXT NOT NULL,\n\t\t\t\tPRIMARY KEY (plugin_id, page_id, key)\n\t\t\t)",
+			"tbl_name": "plugin_page_data",
+			"type": "table"
+		},
+		{
+			"name": "plugin_page_data_plugin_key_idx",
+			"sql": "CREATE INDEX plugin_page_data_plugin_key_idx ON plugin_page_data (plugin_id, key)",
+			"tbl_name": "plugin_page_data",
+			"type": "index"
+		}
+	],
+	"statuses": [
+		{
+			"color": "#64748b",
+			"created_at": "2026-09-26T10:00:00Z",
+			"id": 1,
+			"name": "Backlog",
+			"sort_order": 1,
+			"type": "default",
+			"updated_at": "2026-09-26T10:00:00Z"
+		},
+		{
+			"color": "#3b82f6",
+			"created_at": "2026-09-26T10:00:00Z",
+			"id": 2,
+			"name": "In progress",
+			"sort_order": 2,
+			"type": "active",
+			"updated_at": "2026-09-26T10:00:00Z"
+		},
+		{
+			"color": "#22c55e",
+			"created_at": "2026-09-26T10:00:00Z",
+			"id": 3,
+			"name": "Done",
+			"sort_order": 3,
+			"type": "completed",
+			"updated_at": "2026-09-26T10:00:00Z"
+		},
+		{
+			"color": "#374151",
+			"created_at": "2026-09-26T10:00:00Z",
+			"id": 4,
+			"name": "Archived",
+			"sort_order": 4,
+			"type": "archived",
+			"updated_at": "2026-09-26T10:00:00Z"
+		}
+	],
+	"task_relation_types": [
+		{
+			"id": 1,
+			"name": "blocks"
+		},
+		{
+			"id": 2,
+			"name": "is blocked by"
+		},
+		{
+			"id": 3,
+			"name": "relates to"
+		},
+		{
+			"id": 4,
+			"name": "duplicates"
+		},
+		{
+			"id": 5,
+			"name": "is duplicated by"
+		},
+		{
+			"id": 6,
+			"name": "depends on"
+		},
+		{
+			"id": 7,
+			"name": "is dependency of"
+		}
+	]
+}

@@ -23,7 +23,7 @@ pub struct Card {
     pub start_time: i64,
     pub tracked: i64,
     pub assignees: Vec<String>,
-    pub assignee_ids: Vec<u64>,
+    pub assignee_ids: Vec<i64>,
     pub description: Option<String>,
 }
 
@@ -170,7 +170,7 @@ pub struct App {
     pub ws_name: String,
     pub project: Option<String>,
     pub mine: bool,
-    pub me: Option<u64>,
+    pub me: Option<i64>,
     pub columns: Vec<Column>,
     pub cards: Vec<Card>,
     pub more: bool,
@@ -196,7 +196,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(ws_name: &str, project: Option<&str>, mine: bool, me: Option<u64>, now: i64) -> App {
+    pub fn new(ws_name: &str, project: Option<&str>, mine: bool, me: Option<i64>, now: i64) -> App {
         App {
             ws_name: sanitize_line(ws_name),
             project: project.map(sanitize_line),

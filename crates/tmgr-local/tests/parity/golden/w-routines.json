@@ -1,0 +1,831 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"approximately_time": 15,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 5,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "high",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Plain routine",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 6,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Recurring",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": null,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 7,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": null,
+					"scheduled_date": null,
+					"scheduled_time": null,
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Quick one",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"message": "title is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": 10,
+					"archived_at": null,
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-09-20T08:00:00Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": "Every day",
+					"end_time": null,
+					"id": 1,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": "health",
+					"scheduled_date": "2026-09-20",
+					"scheduled_time": "07:30",
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Stretch more",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"created_at": "2026-09-20T08:00:00Z",
+					"day_of_frequency": null,
+					"days_of_week": [
+						"MONDAY",
+						"FRIDAY"
+					],
+					"duration_min": null,
+					"end_at": null,
+					"frequency": "WEEKLY",
+					"id": 1,
+					"interval": 2,
+					"month": null,
+					"occurrences": null,
+					"reminder_min": null,
+					"scheduled_time": null,
+					"start_at": "2026-10-13",
+					"task_id": 1,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed_at": "2026-10-13T12:00:00.000Z",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"id": 5,
+					"scheduled_date": "2026-10-13",
+					"scheduled_for": "2026-10-13T00:00:00Z",
+					"scheduled_time": "00:00:00",
+					"skipped_at": null,
+					"status": "COMPLETED",
+					"task_id": 1,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed_at": null,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"id": 5,
+					"scheduled_date": "2026-10-13",
+					"scheduled_for": "2026-10-13T00:00:00Z",
+					"scheduled_time": "00:00:00",
+					"skipped_at": null,
+					"status": "PENDING",
+					"task_id": 1,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed": true,
+					"date": "2026-10-12",
+					"instance_id": 6,
+					"status": "COMPLETED",
+					"task_id": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed": true,
+					"date": "2026-10-11",
+					"instance_id": 7,
+					"status": "COMPLETED",
+					"task_id": 2
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed_at": "2026-10-13T12:00:00.000Z",
+					"created_at": "2026-09-20T08:00:00Z",
+					"id": 3,
+					"scheduled_date": "2026-09-26",
+					"scheduled_for": "2026-09-26Z",
+					"scheduled_time": "",
+					"skipped_at": null,
+					"status": "COMPLETED",
+					"task_id": 1,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"completed_at": null,
+					"created_at": "2026-09-20T08:00:00Z",
+					"id": 2,
+					"scheduled_date": "2026-09-25",
+					"scheduled_for": "2026-09-25Z",
+					"scheduled_time": "",
+					"skipped_at": "2026-10-13T12:00:00.000Z",
+					"status": "SKIPPED",
+					"task_id": 1,
+					"updated_at": "2026-10-13T12:00:00.000Z"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Task instance not found for routine"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"message": "a target date is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": 30,
+					"archived_at": "2026-10-13T12:00:00.000Z",
+					"category_tasks_sequence_id": null,
+					"common_time": 0,
+					"created_at": "2026-09-20T08:00:00Z",
+					"daily_routine": true,
+					"deleted_at": null,
+					"description": null,
+					"end_time": null,
+					"id": 2,
+					"is_daily_routine": true,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"recurring": false,
+					"routine_category": "work",
+					"scheduled_date": "2026-09-21",
+					"scheduled_time": "18:00",
+					"settings": [],
+					"start_time": 0,
+					"status": null,
+					"status_id": null,
+					"title": "Weekly review",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"approximately_time": 10,
+					"assignees": [],
+					"category": null,
+					"category_tasks_sequence_id": null,
+					"checkpoints": [],
+					"comments_count": 0,
+					"common_time": 0,
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"daily_routine": false,
+					"deleted_at": null,
+					"description": "Every day",
+					"description_json": null,
+					"end_time": null,
+					"expired_at": null,
+					"id": 9,
+					"is_daily_routine": false,
+					"order": null,
+					"priority": "medium",
+					"project_category_id": null,
+					"settings": [],
+					"start_time": 0,
+					"status": "default",
+					"status_id": 1,
+					"title": "Stretch more",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": null
+			},
+			"status": 204
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"approximately_time": null,
+						"archived_at": null,
+						"category_tasks_sequence_id": null,
+						"common_time": 0,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"daily_routine": true,
+						"deleted_at": null,
+						"description": null,
+						"end_time": null,
+						"id": 7,
+						"is_daily_routine": true,
+						"order": null,
+						"priority": "medium",
+						"project_category_id": null,
+						"recurring": false,
+						"routine_category": null,
+						"scheduled_date": null,
+						"scheduled_time": null,
+						"settings": [],
+						"start_time": 0,
+						"status": null,
+						"status_id": null,
+						"title": "Quick one",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"approximately_time": null,
+						"archived_at": null,
+						"category_tasks_sequence_id": null,
+						"common_time": 0,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"daily_routine": true,
+						"deleted_at": null,
+						"description": null,
+						"end_time": null,
+						"id": 6,
+						"is_daily_routine": true,
+						"order": null,
+						"priority": "medium",
+						"project_category_id": null,
+						"recurring": false,
+						"routine_category": null,
+						"scheduled_date": null,
+						"scheduled_time": null,
+						"settings": [],
+						"start_time": 0,
+						"status": null,
+						"status_id": null,
+						"title": "Recurring",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"approximately_time": 15,
+						"archived_at": null,
+						"category_tasks_sequence_id": null,
+						"common_time": 0,
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"daily_routine": true,
+						"deleted_at": null,
+						"description": null,
+						"end_time": null,
+						"id": 5,
+						"is_daily_routine": true,
+						"order": null,
+						"priority": "high",
+						"project_category_id": null,
+						"recurring": false,
+						"routine_category": null,
+						"scheduled_date": null,
+						"scheduled_time": null,
+						"settings": [],
+						"start_time": 0,
+						"status": null,
+						"status_id": null,
+						"title": "Plain routine",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Routine task not found"
+			},
+			"status": 404
+		}
+	],
+	"tables": {
+		"routine_instances": [
+			{
+				"completed_at": "2026-09-21T18:30:00Z",
+				"created_at": "2026-09-20T08:00:00Z",
+				"id": 4,
+				"routine_id": 2,
+				"scheduled_for": "2026-09-21",
+				"skipped_at": null,
+				"status": "COMPLETED",
+				"updated_at": "2026-09-20T08:00:00Z"
+			},
+			{
+				"completed_at": "2026-10-13T12:00:00.000Z",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"id": 6,
+				"routine_id": 2,
+				"scheduled_for": "2026-10-12T00:00:00",
+				"skipped_at": null,
+				"status": "COMPLETED",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"completed_at": "2026-10-13T12:00:00.000Z",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"id": 7,
+				"routine_id": 2,
+				"scheduled_for": "2026-10-11T00:00:00",
+				"skipped_at": null,
+				"status": "COMPLETED",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"routine_patterns": [
+			{
+				"created_at": "2026-09-20T08:00:00Z",
+				"day_of_frequency": null,
+				"days_of_week": "[\"MONDAY\"]",
+				"duration_min": 30,
+				"end_at": "2026-12-31",
+				"frequency": "WEEKLY",
+				"id": 2,
+				"interval": 1,
+				"month": null,
+				"occurrences": null,
+				"reminder_min": null,
+				"routine_id": 2,
+				"scheduled_time": "18:00",
+				"start_at": "2026-09-21",
+				"updated_at": "2026-09-20T08:00:00Z"
+			}
+		],
+		"routines": [
+			{
+				"approximately_time": 30,
+				"archived_at": "2026-10-13T12:00:00.000Z",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"id": 2,
+				"priority": "medium",
+				"routine_category": "work",
+				"scheduled_date": "2026-09-21",
+				"scheduled_time": "18:00",
+				"settings": "[]",
+				"title": "Weekly review",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"approximately_time": null,
+				"archived_at": "2026-09-22T00:00:00Z",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": "2026-10-13T12:00:00.000Z",
+				"description": null,
+				"id": 3,
+				"priority": null,
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Old habit",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"approximately_time": null,
+				"archived_at": null,
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": "2026-09-23T00:00:00Z",
+				"description": null,
+				"id": 4,
+				"priority": null,
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Deleted",
+				"updated_at": "2026-09-20T08:00:00Z"
+			},
+			{
+				"approximately_time": 15,
+				"archived_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": null,
+				"id": 5,
+				"priority": "high",
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Plain routine",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"approximately_time": null,
+				"archived_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": null,
+				"id": 6,
+				"priority": "medium",
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Recurring",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"approximately_time": null,
+				"archived_at": null,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": null,
+				"id": 7,
+				"priority": "medium",
+				"routine_category": null,
+				"scheduled_date": null,
+				"scheduled_time": null,
+				"settings": "[]",
+				"title": "Quick one",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"tasks": [
+			{
+				"approximately_time": 7200,
+				"category_tasks_sequence_id": 1,
+				"checkpoints": "[{\"title\":\"Draft\",\"done\":true}]",
+				"common_time": 0,
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"description": "Plain text",
+				"description_json": "{\"type\":\"doc\",\"content\":[]}",
+				"end_time": null,
+				"expired_at": "2026-09-30T00:00:00Z",
+				"id": 1,
+				"priority": "high",
+				"project_category_id": 2,
+				"settings": "[]",
+				"sort_order": 1,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Write spec",
+				"updated_at": "2026-09-21T08:00:00Z"
+			},
+			{
+				"approximately_time": 14400,
+				"category_tasks_sequence_id": 2,
+				"checkpoints": null,
+				"common_time": 3600,
+				"created_at": "2026-09-20T09:00:00Z",
+				"deleted_at": null,
+				"description": "Implement",
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 2,
+				"priority": "medium",
+				"project_category_id": 2,
+				"settings": "[{\"name\":\"x\",\"value\":\"1\"}]",
+				"sort_order": 2,
+				"start_time": 1790000000,
+				"status_id": 2,
+				"title": "Build API",
+				"updated_at": "2026-09-22T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": 1,
+				"checkpoints": null,
+				"common_time": 900,
+				"created_at": "2026-09-20T10:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": "2026-09-25T00:00:00Z",
+				"expired_at": null,
+				"id": 3,
+				"priority": "low",
+				"project_category_id": 1,
+				"settings": "[]",
+				"sort_order": 3,
+				"start_time": 0,
+				"status_id": 3,
+				"title": "Ship it",
+				"updated_at": "2026-09-25T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": null,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-09-01T10:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 4,
+				"priority": "medium",
+				"project_category_id": null,
+				"settings": "[]",
+				"sort_order": 4,
+				"start_time": 0,
+				"status_id": 4,
+				"title": "Old thing",
+				"updated_at": "2026-09-02T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": 3,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-09-20T11:00:00Z",
+				"deleted_at": "2026-09-24T00:00:00Z",
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 5,
+				"priority": "medium",
+				"project_category_id": 2,
+				"settings": "[]",
+				"sort_order": 5,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Deleted",
+				"updated_at": "2026-09-23T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": null,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-09-20T12:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": "2026-09-26T09:00:00Z",
+				"id": 6,
+				"priority": "urgent",
+				"project_category_id": null,
+				"settings": "[]",
+				"sort_order": null,
+				"start_time": 0,
+				"status_id": null,
+				"title": "No status",
+				"updated_at": "2026-09-26T08:00:00Z"
+			},
+			{
+				"approximately_time": 1800,
+				"category_tasks_sequence_id": 1,
+				"checkpoints": null,
+				"common_time": 120,
+				"created_at": "2026-09-20T13:00:00Z",
+				"deleted_at": null,
+				"description": "Needs \"quotes\" and ünïcode",
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 7,
+				"priority": "high",
+				"project_category_id": 4,
+				"settings": "[]",
+				"sort_order": 6,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Frontend polish",
+				"updated_at": "2026-09-24T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": 2,
+				"checkpoints": null,
+				"common_time": 60,
+				"created_at": "2026-09-20T14:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 8,
+				"priority": "medium",
+				"project_category_id": 1,
+				"settings": "[]",
+				"sort_order": 7,
+				"start_time": 1789999000,
+				"status_id": 2,
+				"title": "Second running",
+				"updated_at": "2026-09-26T07:00:00Z"
+			},
+			{
+				"approximately_time": 10,
+				"category_tasks_sequence_id": null,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"description": "Every day",
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 9,
+				"priority": "medium",
+				"project_category_id": null,
+				"settings": "[]",
+				"sort_order": null,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Stretch more",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		]
+	}
+}

@@ -1,4 +1,5 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
+import type { AgentSession } from '@/utils/agentStatus';
 import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 // Dashboard TypeScript interfaces and types
 
@@ -783,6 +784,7 @@ export interface EventHandlers {
 	onTaskCountdownStarted?: (task: any) => void;
 	onTaskCountdownStopped?: (task: any) => void;
 	onAgentWorkChanged?: (run: AgentWorkRun) => void;
+	onAgentStatusChanged?: (session: AgentSession) => void;
 	onAgentStep?: (e: AgentStepEvent) => void;
 	onAgentReply?: (e: AgentReplyEvent) => void;
 	onPageEvent?: (type: PageEventType, payload: PageEventPayload) => void;

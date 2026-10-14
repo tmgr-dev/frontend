@@ -1,0 +1,231 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": [
+					{
+						"created_at": "2026-09-21T08:00:00Z",
+						"file_path": "tasks/1/shot.png",
+						"id": 2,
+						"mime_type": "image/png",
+						"name": "shot.png",
+						"original_name": "shot.png",
+						"size": 2048,
+						"task_id": 1,
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"created_at": "2026-09-20T08:00:00Z",
+						"file_path": "tasks/1/spec.pdf",
+						"id": 1,
+						"mime_type": "application/pdf",
+						"name": "spec.pdf",
+						"original_name": "spec.pdf",
+						"size": 1024,
+						"task_id": 1,
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": []
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Task not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"created_at": "2026-09-20T08:00:00Z",
+					"file_path": "tasks/1/spec.pdf",
+					"id": 1,
+					"mime_type": "application/pdf",
+					"name": "spec.pdf",
+					"original_name": "spec.pdf",
+					"size": 1024,
+					"task_id": 1,
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"created_at": "2026-09-20T08:00:00Z",
+					"file_path": "pages/1/page.png",
+					"id": 4,
+					"mime_type": "image/png",
+					"name": "page.png",
+					"original_name": "page.png",
+					"size": 99,
+					"task_id": null,
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "File not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"expires_at": "9999-12-31T23:59:59Z",
+					"url": "tmgrfile://localhost/test/tasks/1/spec.pdf"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "File not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 3,
+						"mime_type": "text/plain",
+						"name": "notes.txt",
+						"size": 12,
+						"task": {
+							"id": 2,
+							"key": "be-2",
+							"title": "Build API"
+						},
+						"user_id": 7
+					},
+					{
+						"created_at": "2026-09-21T08:00:00Z",
+						"id": 2,
+						"mime_type": "image/png",
+						"name": "shot.png",
+						"size": 2048,
+						"task": {
+							"id": 1,
+							"key": "be-1",
+							"title": "Write spec"
+						},
+						"user_id": 7
+					},
+					{
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 1,
+						"mime_type": "application/pdf",
+						"name": "spec.pdf",
+						"size": 1024,
+						"task": {
+							"id": 1,
+							"key": "be-1",
+							"title": "Write spec"
+						},
+						"user_id": 7
+					}
+				],
+				"meta": {
+					"current_page": 1,
+					"last_page": 1,
+					"per_page": 40,
+					"total": 3
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"created_at": "2026-09-20T08:00:00Z",
+						"id": 3,
+						"mime_type": "text/plain",
+						"name": "notes.txt",
+						"size": 12,
+						"task": {
+							"id": 2,
+							"key": "be-2",
+							"title": "Build API"
+						},
+						"user_id": 7
+					},
+					{
+						"created_at": "2026-09-21T08:00:00Z",
+						"id": 2,
+						"mime_type": "image/png",
+						"name": "shot.png",
+						"size": 2048,
+						"task": {
+							"id": 1,
+							"key": "be-1",
+							"title": "Write spec"
+						},
+						"user_id": 7
+					}
+				],
+				"meta": {
+					"current_page": 1,
+					"last_page": 2,
+					"per_page": 2,
+					"total": 3
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"created_at": "2026-09-21T08:00:00Z",
+						"id": 2,
+						"mime_type": "image/png",
+						"name": "shot.png",
+						"size": 2048,
+						"task": {
+							"id": 1,
+							"key": "be-1",
+							"title": "Write spec"
+						},
+						"user_id": 7
+					}
+				],
+				"meta": {
+					"current_page": 1,
+					"last_page": 1,
+					"per_page": 40,
+					"total": 1
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [],
+				"meta": {
+					"current_page": 2,
+					"last_page": 1,
+					"per_page": 1,
+					"total": 1
+				}
+			},
+			"status": 200
+		}
+	]
+}

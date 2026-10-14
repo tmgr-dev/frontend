@@ -72,6 +72,7 @@
 	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
 	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
+	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskLinkChips from '@/components/tasks/TaskLinkChips.vue';
@@ -2575,6 +2576,16 @@
 							</div>
 						</div>
 					</Transition>
+
+					<div
+						v-if="(taskId || form.id) && isFeatureEnabled('agent_work')"
+						class="mb-1 flex items-center"
+					>
+						<AgentStatusChip
+							:task-id="Number(taskId || form.id)"
+							:workspace-id="form.workspace_id"
+						/>
+					</div>
 
 					<div class="relative">
 						<textarea

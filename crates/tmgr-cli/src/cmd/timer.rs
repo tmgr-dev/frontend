@@ -1,5 +1,5 @@
 use crate::cli::{DoneArgs, StartArgs};
-use crate::ctx::Ctx;
+use crate::ctx::{same_workspace, Ctx, RunClient};
 use crate::gitx::{self, Git};
 use crate::interact;
 use crate::out::Output;
@@ -13,7 +13,7 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::models::{ApiTask, Status};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::text::{format_duration, sanitize, sanitize_line, truncate_chars};
-use tmgr_core::view::{display_title, task_ref, task_url, StatusView};
+use tmgr_core::view::{display_title, task_ref, StatusView};
 
 const GH_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_COMMENT_CHARS: usize = 2000;
@@ -25,7 +25,7 @@ struct Resolved {
     key: String,
     title: String,
     ws_code: String,
-    url: String,
+    url: Option<String>,
     statuses: Vec<Status>,
     status: StatusView,
 }
@@ -74,7 +74,7 @@ fn resolve(ctx: &Ctx, client: &Client, reference: &str) -> Result<Resolved> {
         .ok_or_else(|| Error::not_found("the task's workspace is not available"))?;
     let statuses = client.statuses(ws_id)?;
     let status = StatusView::resolve(&task, &statuses);
-    let url = task_url(&ctx.web_base()?, &ws_code, task.id);
+    let url = ctx.task_link(&ws_code, task.id)?;
     Ok(Resolved {
         key: task_ref(&task),
         title: display_title(&task.title),
@@ -260,7 +260,11 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
                 .map(|t| (t.id, task_ref(t)))
                 .collect(),
             None => active::load()
-                .filter(|a| a.timer_running() && a.task.id != r.task.id)
+                .filter(|a| {
+                    a.timer_running()
+                        && !(a.task.id == r.task.id
+                            && same_workspace(a.workspace.as_deref(), &r.ws_code))
+                })
                 .map(|a| vec![(a.task.id, a.task.key)])
                 .unwrap_or_default(),
         }
@@ -335,7 +339,7 @@ fn run_start(ctx: &Ctx, args: &StartArgs, replace_running: bool) -> Result<Outpu
         id: r.task.id,
         key: r.key.clone(),
         title: r.title.clone(),
-        url: Some(r.url.clone()),
+        url: r.url.clone(),
     });
     state.workspace = Some(r.ws_code.clone());
     state.timer_started_at = started_at.map(rfc3339);
@@ -457,7 +461,7 @@ pub fn stop(ctx: &Ctx) -> Result<Output> {
             )),
         ));
     };
-    let client = ctx.client()?;
+    let client = &*ctx.client_for_run(state.workspace.as_deref())?;
     let tracked = match client.stop_countdown(state.task.id) {
         Ok(t) => t.common_time,
         Err(e) if e.kind == Kind::NotFound => {
@@ -534,9 +538,15 @@ pub fn done(ctx: &Ctx, args: &DoneArgs) -> Result<Output> {
             )
         }
     };
-    let client = ctx.client()?;
+    let client = match (&args.reference, &active_state) {
+        (None, Some(a)) => ctx.client_for_run(a.workspace.as_deref())?,
+        _ => RunClient::Shared(ctx.client()?),
+    };
+    let client = &*client;
     let r = resolve(ctx, client, &reference)?;
-    let same_as_active = active_state.as_ref().filter(|a| a.task.id == r.task.id);
+    let same_as_active = active_state
+        .as_ref()
+        .filter(|a| a.task.id == r.task.id && same_workspace(a.workspace.as_deref(), &r.ws_code));
 
     let git = match same_as_active
         .and_then(|a| a.repo.as_deref())

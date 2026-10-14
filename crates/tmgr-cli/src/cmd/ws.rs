@@ -1,11 +1,12 @@
 use crate::cli::WsCommand;
-use crate::ctx::Ctx;
+use crate::ctx::{local_workspaces, Ctx};
 use crate::interact;
 use crate::out::{table, Output};
 use serde_json::json;
 use std::io::{BufRead, Write};
 use tmgr_core::config::Config;
 use tmgr_core::error::{Error, Kind, Result};
+use tmgr_core::local;
 use tmgr_core::models::Workspace;
 use tmgr_core::refs::is_workspace_code;
 use tmgr_core::text::sanitize_line;
@@ -18,10 +19,35 @@ pub fn run(ctx: &Ctx, cmd: &Option<WsCommand>) -> Result<Output> {
     }
 }
 
+/// Cloud and local workspaces together, plus the code of the current one.
+fn all_workspaces(ctx: &Ctx) -> Result<(Vec<Workspace>, Option<String>)> {
+    let mut all: Vec<Workspace> = Vec::new();
+    let locals = local_workspaces()?;
+    match ctx.cloud_client().and_then(|client| ctx.workspaces(client)) {
+        Ok(cloud) => all.extend(cloud),
+        Err(e) if locals.is_empty() => return Err(e),
+        Err(e) if e.kind == Kind::Auth => {}
+        Err(e) => ctx.warn(
+            "cloud_unavailable",
+            format!("cloud workspaces are not listed: {}", e.message),
+        ),
+    }
+    all.extend(locals);
+    let wanted = ctx.wanted_workspace()?;
+    let current = match &wanted {
+        Some(code) => all.iter().find(|w| w.code.eq_ignore_ascii_case(code)),
+        None => all
+            .iter()
+            .find(|w| w.is_default && !w.local)
+            .or_else(|| all.iter().find(|w| !w.local)),
+    }
+    .map(|w| w.code.clone());
+    Ok((all, current))
+}
+
 fn list(ctx: &Ctx) -> Result<Output> {
-    let client = ctx.client()?;
-    let current = ctx.workspace(client)?;
-    let all = ctx.workspaces(client)?;
+    let (all, current) = all_workspaces(ctx)?;
+    let is_current = |w: &Workspace| current.as_deref() == Some(w.code.as_str());
     let data: Vec<_> = all
         .iter()
         .map(|w| {
@@ -29,7 +55,8 @@ fn list(ctx: &Ctx) -> Result<Output> {
                 "id": w.id,
                 "code": sanitize_line(&w.code),
                 "name": sanitize_line(&w.name),
-                "current": w.id == current.id,
+                "current": is_current(w),
+                "local": w.local,
             })
         })
         .collect();
@@ -37,7 +64,7 @@ fn list(ctx: &Ctx) -> Result<Output> {
         .iter()
         .map(|w| {
             vec![
-                if w.id == current.id { "*" } else { " " }.to_string(),
+                if is_current(w) { "*" } else { " " }.to_string(),
                 sanitize_line(&w.code),
                 sanitize_line(&w.name),
             ]
@@ -51,15 +78,18 @@ fn pick_ws(ctx: &Ctx) -> Result<Output> {
         return Err(Error::usage("a workspace code is required")
             .hint("tmgr ws use <code>, see `tmgr ws list`"));
     }
-    let client = ctx.client()?;
-    let all = ctx.workspaces(client)?;
-    let current = ctx.workspace(client)?;
+    let (all, current) = all_workspaces(ctx)?;
     let rows: Vec<Vec<String>> = all
         .iter()
         .enumerate()
         .map(|(i, w)| {
             vec![
-                if w.id == current.id { "*" } else { " " }.to_string(),
+                if current.as_deref() == Some(w.code.as_str()) {
+                    "*"
+                } else {
+                    " "
+                }
+                .to_string(),
                 (i + 1).to_string(),
                 sanitize_line(&w.code),
                 sanitize_line(&w.name),
@@ -74,7 +104,7 @@ fn pick_ws(ctx: &Ctx) -> Result<Output> {
         .lock()
         .read_line(&mut line)
         .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
-    let code = choose_workspace(&line, all)?;
+    let code = choose_workspace(&line, &all)?;
     use_ws(ctx, &code)
 }
 
@@ -103,32 +133,32 @@ pub fn choose_workspace(answer: &str, all: &[Workspace]) -> Result<String> {
 }
 
 fn use_ws(ctx: &Ctx, code: &str) -> Result<Output> {
-    if !is_workspace_code(code) {
-        return Err(if code.starts_with("local:") {
-            Error::usage("local workspaces are not supported by this version")
-        } else {
-            Error::usage("invalid workspace code")
-                .hint("a workspace code has letters, digits, - and _")
-        });
-    }
-    let client = ctx.client()?;
-    let found = ctx
-        .workspaces(client)?
-        .iter()
-        .find(|w| w.code.eq_ignore_ascii_case(code))
-        .cloned()
-        .ok_or_else(|| {
-            Error::not_found(format!("workspace {code} not found")).hint("tmgr ws list")
-        })?;
+    let chosen = if let Some(local) = local::local_code(code) {
+        local::find(local)?;
+        format!("{}{local}", local::PREFIX)
+    } else {
+        if !is_workspace_code(code) {
+            return Err(Error::usage("invalid workspace code")
+                .hint("a workspace code has letters, digits, - and _ (or local:<code>)"));
+        }
+        let client = ctx.cloud_client()?;
+        ctx.workspaces(client)?
+            .iter()
+            .find(|w| w.code.eq_ignore_ascii_case(code))
+            .map(|w| w.code.clone())
+            .ok_or_else(|| {
+                Error::not_found(format!("workspace {code} not found")).hint("tmgr ws list")
+            })?
+    };
     let mut cfg = Config::load(&ctx.dir)?;
-    cfg.default_workspace = Some(found.code.clone());
+    cfg.default_workspace = Some(chosen.clone());
     cfg.save(&ctx.dir)?;
     Ok(Output::new(
-        json!({"default_workspace": found.code}),
+        json!({"default_workspace": chosen}),
         format!(
             "{} default workspace is now {}",
             ctx.style.good("\u{2713}"),
-            sanitize_line(&found.code)
+            sanitize_line(&chosen)
         ),
     ))
 }
@@ -137,12 +167,13 @@ fn use_ws(ctx: &Ctx, code: &str) -> Result<Output> {
 mod tests {
     use super::*;
 
-    fn ws(id: u64, code: &str) -> Workspace {
+    fn ws(id: i64, code: &str) -> Workspace {
         Workspace {
             id,
             name: code.to_string(),
             code: code.to_string(),
             is_default: false,
+            local: false,
         }
     }
 

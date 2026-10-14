@@ -1,0 +1,666 @@
+{
+	"responses": [
+		{
+			"data": {
+				"data": {
+					"color": "#ff00ff",
+					"id": 5,
+					"name": "Review",
+					"pivot": {
+						"is_active": 1,
+						"order": 5,
+						"status_id": 5
+					},
+					"type": "active"
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"message": "name is required"
+			},
+			"status": 422
+		},
+		{
+			"data": {
+				"data": {
+					"color": "#ff00ff",
+					"id": 5,
+					"name": "In review",
+					"pivot": {
+						"is_active": 1,
+						"order": 5,
+						"status_id": 5
+					},
+					"type": "active"
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"color": "#ff00ff",
+						"id": 5,
+						"name": "In review",
+						"pivot": {
+							"is_active": 1,
+							"order": 1,
+							"status_id": 5
+						},
+						"type": "active"
+					},
+					{
+						"color": "#64748b",
+						"id": 1,
+						"name": "Backlog",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 1
+						},
+						"type": "default"
+					},
+					{
+						"color": "#3b82f6",
+						"id": 2,
+						"name": "In progress",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 2
+						},
+						"type": "active"
+					},
+					{
+						"color": "#22c55e",
+						"id": 3,
+						"name": "Done",
+						"pivot": {
+							"is_active": 1,
+							"order": 3,
+							"status_id": 3
+						},
+						"type": "completed"
+					},
+					{
+						"color": "#374151",
+						"id": 4,
+						"name": "Archived",
+						"pivot": {
+							"is_active": 1,
+							"order": 4,
+							"status_id": 4
+						},
+						"type": "archived"
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Move the tasks out of this status first"
+			},
+			"status": 409
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"message": "Status not found"
+			},
+			"status": 404
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 0,
+					"code": "OP",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"id": 5,
+					"parent_category": null,
+					"project_category_id": null,
+					"settings": [],
+					"slug": "ops",
+					"tasks_count": 0,
+					"title": "Ops",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 0,
+					"code": "CHILD-OPS",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"id": 6,
+					"parent_category": null,
+					"project_category_id": 5,
+					"settings": [],
+					"slug": "child-ops",
+					"tasks_count": 0,
+					"title": "Child ops",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 201
+		},
+		{
+			"data": {
+				"data": {
+					"children_count": 1,
+					"code": "OP",
+					"created_at": "2026-10-13T12:00:00.000Z",
+					"deleted_at": null,
+					"id": 5,
+					"parent_category": null,
+					"project_category_id": null,
+					"settings": [],
+					"slug": "ops",
+					"tasks_count": 0,
+					"title": "Operations",
+					"updated_at": "2026-10-13T12:00:00.000Z",
+					"user": {
+						"id": 7,
+						"name": "Owner"
+					},
+					"user_id": 7,
+					"workspace_id": -42
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": {
+					"success": true
+				}
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"children_count": 0,
+						"code": "be",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 2,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [
+							{
+								"name": "task_name_pattern",
+								"value": "BE-{index#category}"
+							}
+						],
+						"slug": "backend",
+						"tasks_count": 2,
+						"title": "Backend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"children_count": 0,
+						"code": "fe",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 4,
+						"parent_category": null,
+						"project_category_id": 1,
+						"settings": [],
+						"slug": "frontend",
+						"tasks_count": 1,
+						"title": "Frontend",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"children_count": 0,
+						"code": "OP",
+						"created_at": "2026-10-13T12:00:00.000Z",
+						"deleted_at": null,
+						"id": 5,
+						"parent_category": null,
+						"project_category_id": null,
+						"settings": [],
+						"slug": "ops",
+						"tasks_count": 0,
+						"title": "Operations",
+						"updated_at": "2026-10-13T12:00:00.000Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					},
+					{
+						"children_count": 2,
+						"code": "wk",
+						"created_at": "2026-09-20T08:00:00Z",
+						"deleted_at": null,
+						"id": 1,
+						"parent_category": null,
+						"project_category_id": null,
+						"settings": [],
+						"slug": "work",
+						"tasks_count": 2,
+						"title": "Work",
+						"updated_at": "2026-09-20T08:00:00Z",
+						"user": {
+							"id": 7,
+							"name": "Owner"
+						},
+						"user_id": 7,
+						"workspace_id": -42
+					}
+				]
+			},
+			"status": 200
+		},
+		{
+			"data": {
+				"data": [
+					{
+						"color": "#64748b",
+						"id": 1,
+						"name": "Backlog",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 1
+						},
+						"type": "default"
+					},
+					{
+						"color": "#3b82f6",
+						"id": 2,
+						"name": "In progress",
+						"pivot": {
+							"is_active": 1,
+							"order": 2,
+							"status_id": 2
+						},
+						"type": "active"
+					},
+					{
+						"color": "#22c55e",
+						"id": 3,
+						"name": "Done",
+						"pivot": {
+							"is_active": 1,
+							"order": 3,
+							"status_id": 3
+						},
+						"type": "completed"
+					},
+					{
+						"color": "#374151",
+						"id": 4,
+						"name": "Archived",
+						"pivot": {
+							"is_active": 1,
+							"order": 4,
+							"status_id": 4
+						},
+						"type": "archived"
+					}
+				]
+			},
+			"status": 200
+		}
+	],
+	"tables": {
+		"categories": [
+			{
+				"code": "wk",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 1,
+				"parent_id": null,
+				"settings": "[]",
+				"slug": "work",
+				"title": "Work",
+				"updated_at": "2026-09-20T08:00:00Z"
+			},
+			{
+				"code": "be",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 2,
+				"parent_id": 1,
+				"settings": "[{\"name\":\"task_name_pattern\",\"value\":\"BE-{index#category}\"}]",
+				"slug": "backend",
+				"title": "Backend",
+				"updated_at": "2026-09-20T08:00:00Z"
+			},
+			{
+				"code": "gn",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": "2026-09-21T00:00:00Z",
+				"id": 3,
+				"parent_id": null,
+				"settings": "[]",
+				"slug": "gone",
+				"title": "Gone",
+				"updated_at": "2026-09-20T08:00:00Z"
+			},
+			{
+				"code": "fe",
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"id": 4,
+				"parent_id": 1,
+				"settings": "[]",
+				"slug": "frontend",
+				"title": "Frontend",
+				"updated_at": "2026-09-20T08:00:00Z"
+			},
+			{
+				"code": "OP",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": null,
+				"id": 5,
+				"parent_id": null,
+				"settings": "[]",
+				"slug": "ops",
+				"title": "Operations",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"code": "CHILD-OPS",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"deleted_at": "2026-10-13T12:00:00.000Z",
+				"id": 6,
+				"parent_id": 5,
+				"settings": "[]",
+				"slug": "child-ops",
+				"title": "Child ops",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"meta": [
+			{
+				"key": "schema_version",
+				"value": "12"
+			},
+			{
+				"key": "onboarding:board_move:1",
+				"value": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"key": "onboarding:board_move:2",
+				"value": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"statuses": [
+			{
+				"color": "#64748b",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"id": 1,
+				"name": "Backlog",
+				"sort_order": 2,
+				"type": "default",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"color": "#3b82f6",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"id": 2,
+				"name": "In progress",
+				"sort_order": 2,
+				"type": "active",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"color": "#22c55e",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"id": 3,
+				"name": "Done",
+				"sort_order": 3,
+				"type": "completed",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"color": "#374151",
+				"created_at": "2026-10-13T12:00:00.000Z",
+				"id": 4,
+				"name": "Archived",
+				"sort_order": 4,
+				"type": "archived",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			}
+		],
+		"tasks": [
+			{
+				"approximately_time": 7200,
+				"category_tasks_sequence_id": 1,
+				"checkpoints": "[{\"title\":\"Draft\",\"done\":true}]",
+				"common_time": 0,
+				"created_at": "2026-09-20T08:00:00Z",
+				"deleted_at": null,
+				"description": "Plain text",
+				"description_json": "{\"type\":\"doc\",\"content\":[]}",
+				"end_time": null,
+				"expired_at": "2026-09-30T00:00:00Z",
+				"id": 1,
+				"priority": "high",
+				"project_category_id": 2,
+				"settings": "[]",
+				"sort_order": 1,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Write spec",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"approximately_time": 14400,
+				"category_tasks_sequence_id": 2,
+				"checkpoints": null,
+				"common_time": 3600,
+				"created_at": "2026-09-20T09:00:00Z",
+				"deleted_at": null,
+				"description": "Implement",
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 2,
+				"priority": "medium",
+				"project_category_id": 2,
+				"settings": "[{\"name\":\"x\",\"value\":\"1\"}]",
+				"sort_order": 2,
+				"start_time": 1790000000,
+				"status_id": 1,
+				"title": "Build API",
+				"updated_at": "2026-10-13T12:00:00.000Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": 1,
+				"checkpoints": null,
+				"common_time": 900,
+				"created_at": "2026-09-20T10:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": "2026-09-25T00:00:00Z",
+				"expired_at": null,
+				"id": 3,
+				"priority": "low",
+				"project_category_id": 1,
+				"settings": "[]",
+				"sort_order": 3,
+				"start_time": 0,
+				"status_id": 3,
+				"title": "Ship it",
+				"updated_at": "2026-09-25T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": null,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-09-01T10:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 4,
+				"priority": "medium",
+				"project_category_id": null,
+				"settings": "[]",
+				"sort_order": 4,
+				"start_time": 0,
+				"status_id": 4,
+				"title": "Old thing",
+				"updated_at": "2026-09-02T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": 3,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-09-20T11:00:00Z",
+				"deleted_at": "2026-09-24T00:00:00Z",
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 5,
+				"priority": "medium",
+				"project_category_id": 2,
+				"settings": "[]",
+				"sort_order": 5,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Deleted",
+				"updated_at": "2026-09-23T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": null,
+				"checkpoints": null,
+				"common_time": 0,
+				"created_at": "2026-09-20T12:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": "2026-09-26T09:00:00Z",
+				"id": 6,
+				"priority": "urgent",
+				"project_category_id": null,
+				"settings": "[]",
+				"sort_order": null,
+				"start_time": 0,
+				"status_id": null,
+				"title": "No status",
+				"updated_at": "2026-09-26T08:00:00Z"
+			},
+			{
+				"approximately_time": 1800,
+				"category_tasks_sequence_id": 1,
+				"checkpoints": null,
+				"common_time": 120,
+				"created_at": "2026-09-20T13:00:00Z",
+				"deleted_at": null,
+				"description": "Needs \"quotes\" and ünïcode",
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 7,
+				"priority": "high",
+				"project_category_id": 4,
+				"settings": "[]",
+				"sort_order": 6,
+				"start_time": 0,
+				"status_id": 1,
+				"title": "Frontend polish",
+				"updated_at": "2026-09-24T08:00:00Z"
+			},
+			{
+				"approximately_time": 0,
+				"category_tasks_sequence_id": 2,
+				"checkpoints": null,
+				"common_time": 60,
+				"created_at": "2026-09-20T14:00:00Z",
+				"deleted_at": null,
+				"description": null,
+				"description_json": null,
+				"end_time": null,
+				"expired_at": null,
+				"id": 8,
+				"priority": "medium",
+				"project_category_id": 1,
+				"settings": "[]",
+				"sort_order": 7,
+				"start_time": 1789999000,
+				"status_id": 2,
+				"title": "Second running",
+				"updated_at": "2026-09-26T07:00:00Z"
+			}
+		]
+	}
+}

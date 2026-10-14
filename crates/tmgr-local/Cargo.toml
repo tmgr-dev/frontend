@@ -1,0 +1,22 @@
+[package]
+name = "tmgr-local"
+description = "Local (desktop) workspaces of tmgr: SQLite store and the REST-shaped local API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+rusqlite.workspace = true
+form_urlencoded.workspace = true
+percent-encoding.workspace = true
+base64.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

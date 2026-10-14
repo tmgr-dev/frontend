@@ -1,4 +1,5 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
+import type { AgentSession } from '@/utils/agentStatus';
 import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
 import type {
 	ActionError,
@@ -431,6 +432,13 @@ export function usePusher(): UsePusherReturn {
 				const sub = subscriptions.get(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentWorkChanged?.(data.run));
+				}
+			});
+
+			channel.listen('.agent-status.changed', (data: AgentSession) => {
+				const sub = subscriptions.get(channelName);
+				if (sub) {
+					sub.handlers.forEach((h) => h.onAgentStatusChanged?.(data));
 				}
 			});
 

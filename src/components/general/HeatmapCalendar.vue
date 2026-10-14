@@ -1,5 +1,5 @@
 <template>
-	<div class="heatmap-calendar w-full">
+	<div class="heatmap-calendar relative w-full">
 		<div class="mb-6">
 			<div :class="['mb-1 text-sm font-medium', textColorClass]">
 				{{ data.total_contributions }} contributions in {{ currentYear }}
@@ -14,7 +14,7 @@
 
 		<div class="w-full overflow-x-auto scroll-smooth">
 			<div class="min-w-[600px]">
-				<div class="relative">
+				<div>
 					<div class="grid grid-cols-[auto_1fr] gap-4">
 						<div class="flex flex-col justify-around" style="height: 105px">
 							<div :class="['text-[9px] leading-none', textColorClass]">
@@ -39,7 +39,7 @@
 								</div>
 							</div>
 
-							<div class="grid gap-[2px]" :style="weekGridStyle">
+							<div class="grid gap-[2px] px-[2px]" :style="weekGridStyle">
 								<div
 									v-for="(week, weekIndex) in calendarGrid"
 									:key="weekIndex"
@@ -85,23 +85,21 @@
 							</div>
 						</div>
 					</div>
-
-					<div
-						v-if="hoveredDate"
-						class="pointer-events-none absolute z-50 whitespace-nowrap rounded px-2 py-1 text-xs"
-						:class="
-							theme === 'dark'
-								? 'bg-gray-900 text-white'
-								: 'bg-gray-800 text-white'
-						"
-						:style="tooltipStyle"
-					>
-						{{ hoveredDate.count }}
-						{{ hoveredDate.count === 1 ? 'contribution' : 'contributions' }} on
-						{{ formatDate(hoveredDate.date) }}
-					</div>
 				</div>
 			</div>
+		</div>
+		<div
+			v-if="hoveredDate"
+			ref="tooltip"
+			class="pointer-events-none absolute z-50 whitespace-nowrap rounded px-2 py-1 text-xs"
+			:class="
+				theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-800 text-white'
+			"
+			:style="tooltipStyle"
+		>
+			{{ hoveredDate.count }}
+			{{ hoveredDate.count === 1 ? 'contribution' : 'contributions' }} on
+			{{ formatDate(hoveredDate.date) }}
 		</div>
 	</div>
 </template>
@@ -284,8 +282,7 @@
 			tooltipStyle() {
 				return {
 					left: `${this.tooltipPosition.x}px`,
-					top: `${this.tooltipPosition.y - 40}px`,
-					transform: 'translateX(-50%)',
+					top: `${this.tooltipPosition.y}px`,
 				};
 			},
 		},
@@ -321,7 +318,7 @@
 				}
 			},
 
-			handleSquareHover(day, event) {
+			async handleSquareHover(day, event) {
 				if (!day.isInRange) return;
 
 				const rect = event.target.getBoundingClientRect();
@@ -330,9 +327,18 @@
 					.getBoundingClientRect();
 
 				this.hoveredDate = day;
+				await this.$nextTick();
+				const tooltip = this.$refs.tooltip;
+				if (!tooltip || this.hoveredDate?.date !== day.date) return;
+
+				const x =
+					rect.left -
+					parentRect.left +
+					rect.width / 2 -
+					tooltip.offsetWidth / 2;
 				this.tooltipPosition = {
-					x: rect.left - parentRect.left + rect.width / 2,
-					y: rect.top - parentRect.top,
+					x: Math.min(Math.max(x, 0), parentRect.width - tooltip.offsetWidth),
+					y: rect.top - parentRect.top - tooltip.offsetHeight - 4,
 				};
 			},
 

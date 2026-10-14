@@ -5,3 +5,6 @@ config/*.yml
 dist
 coverage
 public
+
+# Parity goldens are generated (UPDATE_PARITY_GOLDEN=1); reformatting them would be undone on the next run.
+crates/tmgr-local/tests/parity
