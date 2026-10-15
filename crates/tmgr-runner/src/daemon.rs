@@ -259,6 +259,8 @@ struct Meta {
     start_hash: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     exit_signal: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    trust_file: Option<String>,
 }
 
 #[derive(Default)]
@@ -1479,6 +1481,11 @@ impl Runner {
         })
     }
 
+    fn trust_file_of(&self, id: &str) -> Option<String> {
+        let bytes = fs::read(self.sdir(id).join("meta.json")).ok()?;
+        serde_json::from_slice::<Meta>(&bytes).ok()?.trust_file
+    }
+
     fn by_key(&self, key: &str) -> Option<Arc<Session>> {
         self.all()
             .into_iter()
@@ -1802,7 +1809,8 @@ impl Runner {
             })?;
             moved_home = moved;
             if moved {
-                let tos = Self::seed_destinations(prof);
+                let mut tos = Self::seed_destinations(prof);
+                tos.extend(self.trust_file_of(old));
                 match restore::clear_seed_destinations(&home, &tos) {
                     Ok(removed) => {
                         for r in removed {
@@ -2039,6 +2047,7 @@ impl Runner {
             start_key: extra.start.as_ref().map(|(k, _)| k.clone()),
             start_hash: extra.start.as_ref().map(|(_, h)| h.clone()),
             exit_signal: None,
+            trust_file: extra.trust.as_ref().map(|t| t.file.clone()),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);

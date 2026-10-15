@@ -572,3 +572,46 @@ fn only_the_cli_may_restore() {
     let err = h.client().restore("../etc").unwrap_err().to_string();
     assert!(err.starts_with("invalid_params"), "{err}");
 }
+
+fn trusted_profile(h: &H, seeded: bool) {
+    let script = h.work.join("agent.sh");
+    let extra = if seeded {
+        "[[sandbox.seed]]\nfrom = \"~/seed.json\"\nto = \".claude.json\"\n\
+         [trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{cwd}\", \"ok\"]\n"
+    } else {
+        ""
+    };
+    fs::write(
+        h.agents.join("fake.toml"),
+        format!(
+            "id = \"fake\"\nname = \"Fake\"\ncommand = [\"/bin/sh\", {:?}]\n[resume]\nargs = [\"--resumed\"]\n{extra}",
+            script.display().to_string()
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn restore_drops_a_trust_entry_the_profile_no_longer_seeds() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    fs::write(h.tmp.path().join("seed.json"), "{\"a\":1}").unwrap();
+    trusted_profile(&h, true);
+    h.start();
+    let mut req = h.req();
+    req.trust_cwd = Some(true);
+    let first = h.client().create_run(req).unwrap();
+    h.wait_log("home:new", 1);
+    assert!(fs::read_to_string(h.homes.join(&first.id).join(".claude.json"))
+        .unwrap()
+        .contains("\"ok\":true"));
+    trusted_profile(&h, false);
+    h.reboot(&first, false);
+    let r = h.client().restore(&first.id).unwrap();
+    h.wait_log("home:kept", 1);
+    let new_home = h.homes.join(&r.session.id);
+    assert!(new_home.join("marker").exists());
+    assert!(!new_home.join(".claude.json").exists());
+}
