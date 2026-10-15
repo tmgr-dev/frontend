@@ -24,6 +24,8 @@ printf 'got: %s\n' "$line"
 exit 0
 "#;
 
+const CHATTY: &str = "printf 'ready> '\nwhile read line; do printf 'got: %s\nready> ' \"$line\"; done\n";
+
 const SLEEPER: &str = "echo up\nwhile true; do sleep 0.2; done\n";
 
 struct Stand {
@@ -62,7 +64,7 @@ impl Stand {
     for d in [&run, &homes, &agents, &project] {
       private(d);
     }
-    for (id, script) in [("fake", AGENT), ("sleeper", SLEEPER)] {
+    for (id, script) in [("fake", AGENT), ("sleeper", SLEEPER), ("chatty", CHATTY)] {
       let file = project.join(format!("{id}.sh"));
       fs::write(&file, script).unwrap();
       let command = format!("id = {id:?}\nname = {id:?}\ncommand = [\"/bin/sh\", {:?}]\n", file.display().to_string());
@@ -287,4 +289,65 @@ fn live_runner_pin_and_bundle() {
   assert_eq!(mine["bundle_sha256"], sha.as_str());
   let context = fs::read_to_string(stand.project.join(".tmgr/task.md")).unwrap();
   assert!(context.contains("mind the tests") && context.trim_end().ends_with(&format!("bundle sha256: {sha}")), "{context}");
+}
+
+#[test]
+#[ignore = "starts a real tmgr-runner-host; run explicitly with --ignored live"]
+fn live_watch_follows_every_state_change() {
+  let stand = Stand::start();
+  let runner = stand.runner();
+  let (tx, events) = mpsc::channel();
+  let watch = runner.watch(move |ev| tx.send(ev).is_ok()).unwrap();
+  let created = runner.start_run(&run_req(&runner, "chatty", 500, &stand.project)).unwrap();
+  runner.term_attach(&created.id, 100, 30, |_| true).unwrap();
+  let mut last: Option<StateKind> = None;
+  let mut log: Vec<StateKind> = Vec::new();
+  let mut pump = |secs: u64, last: &mut Option<StateKind>| {
+    let end = Instant::now() + Duration::from_secs(secs);
+    while Instant::now() < end {
+      if let Ok(WatchEvent::State { session, state, .. }) = events.recv_timeout(Duration::from_millis(200)) {
+        if session == created.id {
+          *last = Some(state.kind);
+          log.push(state.kind);
+        }
+      }
+    }
+  };
+  for round in 0..3 {
+    pump(8, &mut last);
+    let actual = runner.sessions().unwrap().into_iter().find(|s| s.id == created.id).unwrap().state.kind;
+    println!("round {round}: watch says {last:?}, runner says {actual:?}");
+    assert_eq!(last, Some(actual), "round {round}");
+    runner.term_input(&created.id, "hi\r").unwrap();
+  }
+  println!("{log:?}");
+  runner.unwatch(watch);
+}
+
+#[test]
+#[ignore = "starts a real tmgr-runner-host; run explicitly with --ignored live"]
+fn live_watch_reports_waiting_after_working() {
+  let stand = Stand::start();
+  let runner = stand.runner();
+  let (tx, events) = mpsc::channel();
+  let watch = runner.watch(move |ev| tx.send(ev).is_ok()).unwrap();
+  let created = runner.start_run(&run_req(&runner, "fake", 500, &stand.project)).unwrap();
+  let (ftx, frames) = mpsc::channel();
+  runner.term_attach(&created.id, 100, 30, move |f| ftx.send(f).is_ok()).unwrap();
+  let mut screen = Screen { rx: frames, text: String::new(), states: Vec::new() };
+  screen.wait_for(&runner, &created.id, "ready>");
+  runner.term_detach(&created.id);
+  let _ = runner.sessions().unwrap();
+
+  let mut seen: Vec<StateKind> = Vec::new();
+  let deadline = Instant::now() + Duration::from_secs(20);
+  while !seen.contains(&StateKind::Waiting) && Instant::now() < deadline {
+    match events.recv_timeout(Duration::from_millis(500)) {
+      Ok(WatchEvent::State { session, state, .. }) if session == created.id => seen.push(state.kind),
+      _ => {}
+    }
+  }
+  println!("watch saw {seen:?}");
+  runner.unwatch(watch);
+  assert!(seen.contains(&StateKind::Waiting), "watch never reported waiting, saw {seen:?}");
 }
