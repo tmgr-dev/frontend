@@ -16,6 +16,7 @@ const LIFECYCLE_RESERVE: usize = 384 << 10;
 const MAX_COMMITS: usize = 200;
 const MAX_SUBJECT: usize = 200;
 const MAX_RULE: usize = 64;
+const TRUST_PRE_ACCEPTED: &str = "pre-accepted";
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "ev", rename_all = "snake_case")]
@@ -28,6 +29,8 @@ enum Ev {
         bundle_sha256: Option<String>,
         cwd_branch: Option<String>,
         cwd_head: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        trust: Option<String>,
     },
     State {
         ts: u64,
@@ -190,7 +193,7 @@ impl Log {
         }
     }
 
-    pub fn created(&self, info: &SessionInfo) {
+    pub fn created(&self, info: &SessionInfo, trusted: bool) {
         {
             let mut st = lock(&self.st);
             if st.created {
@@ -217,6 +220,7 @@ impl Log {
                 bundle_sha256: info.bundle_sha256.clone(),
                 cwd_branch: branch,
                 cwd_head: head,
+                trust: trusted.then(|| TRUST_PRE_ACCEPTED.to_string()),
             },
             true,
         );
@@ -329,9 +333,11 @@ pub fn summary_at(dir: &Path, now: u64) -> WorkSummary {
                 argv0_basename,
                 task,
                 cwd_branch,
+                trust,
                 ..
             } => {
                 if started.is_none() {
+                    out.trust = trust;
                     started = Some(ts);
                     cur = (StateKind::Starting, ts);
                     out.agent = profile

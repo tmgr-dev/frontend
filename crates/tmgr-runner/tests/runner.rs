@@ -3522,3 +3522,166 @@ fn an_idle_prompt_is_waiting_although_the_agent_keeps_using_cpu() {
         h.stop(&mut c, id);
     }
 }
+
+fn trust_fx(with_trust: bool) -> LoginFx {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    let source = r#"{"theme":"dark","hasCompletedOnboarding":true,"oauthAccount":{"id":"u"},"projects":{"/elsewhere":{"hasTrustDialogAccepted":true}}}"#;
+    fs::write(home.join(".claude.json"), source).unwrap();
+    let script = h.script(
+        "trust-agent.sh",
+        "cp \"$HOME/.claude.json\" \"$PWD/seen.json\"\nwhile true; do sleep 0.2; done\n",
+    );
+    let trust = if with_trust {
+        "[trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{cwd}\", \"hasTrustDialogAccepted\"]\n"
+    } else {
+        ""
+    };
+    fs::write(
+        h.agents.join("trusty.toml"),
+        format!(
+            "id = \"trusty\"\nname = \"trusty\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [[sandbox.seed]]\nfrom = \"~/.claude.json\"\nto = \".claude.json\"\n\
+             json_keys = [\"hasCompletedOnboarding\", \"theme\", \"oauthAccount\"]\n{trust}"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home.clone());
+    LoginFx { h, home }
+}
+
+fn run_home_json(fx: &LoginFx, id: &str) -> serde_json::Value {
+    let text = fs::read_to_string(fx.h.homes.path().join(id).join(".claude.json")).unwrap();
+    serde_json::from_str(&text).unwrap()
+}
+
+#[test]
+fn without_trust_cwd_the_run_home_has_no_trust_entry() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(true);
+    fx.h.start(5000);
+    let info = fx.h.client().create_run(fx.h.run_req("trusty")).unwrap();
+    assert_eq!(
+        run_home_json(&fx, &info.id),
+        json!({"theme": "dark", "hasCompletedOnboarding": true, "oauthAccount": {"id": "u"}})
+    );
+    let raw = fs::read_to_string(
+        fx.h.run
+            .join("sessions")
+            .join(&info.id)
+            .join("worklog.jsonl"),
+    )
+    .unwrap();
+    assert!(!raw.contains("\"trust\""), "{raw}");
+    assert_eq!(fx.h.client().worklog(&info.id).unwrap().trust, None);
+}
+
+#[test]
+fn trust_cwd_pre_accepts_exactly_the_canonical_folder_in_the_run_home() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(true);
+    fx.h.start(5000);
+    let canonical = fs::canonicalize(&fx.h.work).unwrap();
+    let link = fx.h.tmp.path().join("via-link");
+    std::os::unix::fs::symlink(&canonical, &link).unwrap();
+    let before = fs::read(fx.home.join(".claude.json")).unwrap();
+    let mut req = fx.h.run_req("trusty");
+    req.cwd = link.display().to_string();
+    req.trust_cwd = Some(true);
+    let info = fx.h.client().create_run(req).unwrap();
+    assert_eq!(info.cwd, canonical.display().to_string());
+    let want = json!({
+        "theme": "dark",
+        "hasCompletedOnboarding": true,
+        "oauthAccount": {"id": "u"},
+        "projects": {canonical.display().to_string(): {"hasTrustDialogAccepted": true}}
+    });
+    assert_eq!(run_home_json(&fx, &info.id), want);
+    wait_for("agent saw its home", || {
+        canonical.join("seen.json").exists()
+    });
+    let seen: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(canonical.join("seen.json")).unwrap()).unwrap();
+    assert_eq!(seen, want);
+    assert_eq!(fs::read(fx.home.join(".claude.json")).unwrap(), before);
+    assert_eq!(
+        fs::metadata(fx.h.homes.path().join(&info.id).join(".claude.json"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o600
+    );
+
+    let raw = fs::read_to_string(
+        fx.h.run
+            .join("sessions")
+            .join(&info.id)
+            .join("worklog.jsonl"),
+    )
+    .unwrap();
+    let created: serde_json::Value = serde_json::from_str(raw.lines().next().unwrap()).unwrap();
+    assert_eq!(created["ev"], "created");
+    assert_eq!(created["trust"], "pre-accepted");
+    assert_eq!(
+        fx.h.client().worklog(&info.id).unwrap().trust.as_deref(),
+        Some("pre-accepted")
+    );
+}
+
+#[test]
+fn trust_cwd_needs_a_profile_that_declares_trust() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(false);
+    fx.h.start(5000);
+    let mut req = fx.h.run_req("trusty");
+    req.trust_cwd = Some(true);
+    let e = err_text(fx.h.client().create_run(req));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn trust_cwd_is_refused_with_queue_and_clone_paths() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(true);
+    fx.h.start(5000);
+    let mut keyed = fx.h.run_req("trusty");
+    keyed.trust_cwd = Some(true);
+    keyed.start_key = Some("q_1".into());
+    let mut cloned = fx.h.run_req("trusty");
+    cloned.trust_cwd = Some(true);
+    cloned.clone_of = Some(fx.h.tmp.path().join("repo").display().to_string());
+    for req in [keyed, cloned] {
+        let e = err_text(fx.h.client().create_run(req));
+        assert!(e.starts_with("invalid_params: "), "{e}");
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn only_the_cli_may_send_trust_cwd() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(true);
+    fx.h.start(5000);
+    for client in ["desktop", "worker"] {
+        let mut req = fx.h.run_req("trusty");
+        req.trust_cwd = Some(true);
+        let mut c = Client::connect_as(&fx.h.run, client).unwrap();
+        let e = err_text(c.create_run(req));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
+}

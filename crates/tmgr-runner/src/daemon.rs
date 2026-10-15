@@ -267,6 +267,7 @@ struct RunExtra {
     clone_of: Option<String>,
     objects: Option<clone::Objects>,
     start: Option<(String, String)>,
+    trust: Option<profile::TrustDecl>,
 }
 
 struct Inner {
@@ -1145,6 +1146,20 @@ impl Runner {
                         "runs for a link come only from the worker and must name their origin",
                     ));
                 }
+                if req.trust_cwd.is_some() {
+                    if conn.client != CLIENT_CLI {
+                        return Err(api(
+                            ErrorCode::Forbidden,
+                            "trust_cwd is accepted only from the tmgr CLI",
+                        ));
+                    }
+                    if req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some() {
+                        return Err(api(
+                            ErrorCode::InvalidParams,
+                            "trust_cwd cannot be combined with start_key, clone_of or origin",
+                        ));
+                    }
+                }
                 self.create_run(req).map(|i| to_json(&i))
             }
             method::RUNS_LOOKUP => {
@@ -1599,7 +1614,21 @@ impl Runner {
                 .argv_with(req.model.as_deref(), &perm_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?,
         };
+        let trust = match (req.trust_cwd == Some(true), &prof.trust) {
+            (false, _) => None,
+            (true, Some(t)) => Some(t.clone()),
+            (true, None) => {
+                return Err(api(
+                    ErrorCode::InvalidParams,
+                    format!(
+                        "profile {} has no folder-trust entry to pre-accept",
+                        prof.id
+                    ),
+                ))
+            }
+        };
         let extra = RunExtra {
+            trust,
             permission_mode: mode.clone(),
             clone_of: req.clone_of.clone(),
             objects,
@@ -1900,6 +1929,9 @@ impl Runner {
         }
         let records = login::apply_seeds(&seeds, home).map_err(|e| api(ErrorCode::Sandbox, e))?;
         seedguard::save(sdir, &records).map_err(internal)?;
+        if let Some(t) = &extra.trust {
+            login::apply_trust(home, t, cwd).map_err(|e| api(ErrorCode::Sandbox, e))?;
+        }
         for note in login::apply_secret_files(&secret_files, home)
             .map_err(|e| api(ErrorCode::Sandbox, e))?
         {
@@ -2010,7 +2042,9 @@ impl Runner {
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
-        session.worklog.created(&session.info());
+        session
+            .worklog
+            .created(&session.info(), extra.trust.is_some());
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
         log(&format!("session {id} created: {}", req.argv[0]));
