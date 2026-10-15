@@ -88,6 +88,19 @@ impl Store {
         Ok(())
     }
 
+    pub fn take_notice(&self, key: &str, times: u32) -> Result<bool> {
+        let key = format!("notice_shown:{key}");
+        let shown: u32 = self
+            .setting(&key)?
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        if shown >= times {
+            return Ok(false);
+        }
+        self.set_setting(&key, &(shown + 1).to_string())?;
+        Ok(true)
+    }
+
     pub(crate) fn fingerprint_salt(&self) -> Result<String> {
         if let Some(s) = self.setting("fp_salt")? {
             return Ok(s);

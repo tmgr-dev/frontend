@@ -23,6 +23,7 @@ pub use statusline::statusline_hook;
 
 const RETENTION_DAYS: u32 = 90;
 const SNAPSHOT_KEEP_DAYS: u64 = 8;
+const HISTORY_DROPPED_NOTICES: u32 = 3;
 const BIG_FIRST_SCAN_BYTES: u64 = 50 * 1024 * 1024;
 
 pub fn fail(e: UsageError) -> Error {
@@ -135,7 +136,13 @@ pub fn scan(ctx: &Ctx, u: &mut Usage, now: DateTime<Utc>) -> Result<ScanTotals> 
             ),
         );
     }
-    if totals.skipped_before_floor > 0 {
+    if totals.skipped_before_floor > 0
+        && (ctx.json
+            || (!ctx.quiet
+                && u.store
+                    .take_notice("usage_history_dropped", HISTORY_DROPPED_NOTICES)
+                    .unwrap_or(false)))
+    {
         ctx.warn(
             "usage_history_dropped",
             format!(

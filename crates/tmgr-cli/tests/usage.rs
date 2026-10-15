@@ -1121,6 +1121,53 @@ fn history_older_than_the_kept_window_is_reported_not_silently_dropped() {
 }
 
 #[test]
+fn dropped_history_warning_reaches_stderr_three_times_then_only_json() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-w/now.jsonl",
+        &[Ev::new("sn", at(0, "10:00:00"), "n1", "claude-test-opus-1", 1, 1).line()],
+    );
+    u.json(&["usage", "--today"]);
+    let msg = "events are older than the 90 days of kept history";
+    let mut lines = Vec::new();
+    for i in 0..5 {
+        lines.push(
+            Ev::new(
+                "sa",
+                at(-400, "10:00:00"),
+                &format!("a{i}"),
+                "claude-test-opus-1",
+                1,
+                1,
+            )
+            .line(),
+        );
+        u.session_file("-w/ancient.jsonl", &lines);
+        let out = u.ok(&["usage", "--today"]);
+        assert_eq!(text(&out.stderr).contains(msg), i < 3, "run {i}");
+    }
+    lines.push(Ev::new("sa", at(-400, "10:00:00"), "a9", "claude-test-opus-1", 1, 1).line());
+    u.session_file("-w/ancient.jsonl", &lines);
+    let v = u.json(&["usage", "--today"]);
+    assert!(warning_codes(&v).contains(&"usage_history_dropped".to_string()));
+    lines.push(
+        Ev::new(
+            "sa",
+            at(-400, "10:00:00"),
+            "a10",
+            "claude-test-opus-1",
+            1,
+            1,
+        )
+        .line(),
+    );
+    u.session_file("-w/ancient.jsonl", &lines);
+    let out = u.ok(&["usage", "--today"]);
+    assert!(!text(&out.stderr).contains(msg));
+}
+
+#[test]
 fn task_views_warn_when_the_range_reaches_before_the_kept_events() {
     let u = U::new();
     u.seed_prices();

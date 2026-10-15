@@ -8,6 +8,7 @@
 - The `?` help and the bottom hint bar list the new keys.
 - Runner agent profiles: `gemini` is removed (`tmgr run --agent gemini`, queue rules and restores fail with "agent profile gemini was removed; use agy"; a gemini.toml of your own still works) and `agy` (Antigravity CLI) is added with permission modes `ask` (no flag), `accept-edits` and `plan`, the prompt via `--prompt-interactive`, resume via `--continue` and instruction files AGENTS.md and GEMINI.md. agy sign-in is stored in the macOS keychain, which the sandbox denies, so agy starts signed out in every run and there is no `tmgr agents login agy`; its idle screen is not recognised yet. The queue refuses `--dangerously-skip-permissions` for agy.
 - opencode profile: modes `ask` = `--agent build`, `accept-edits` = `--agent tmgr-accept-edits`, `plan` = `--agent plan`, with project config switched off (`OPENCODE_DISABLE_PROJECT_CONFIG=1` plus `OPENCODE_CONFIG_CONTENT`) so every built-in agent asks before bash, web and anything outside the project and `plan` denies edits. The project's AGENTS.md is therefore no longer read automatically. `OPENCODE_*` variables are no longer passed from the caller's environment, and the queue refuses `--auto`.
+- The warning `N events are older than the 90 days of kept history and were not stored` reaches stderr only the first 3 times on a machine (counted in the local usage database); `--json` still lists it in `warnings[]` every time.
 
 ## 1.0.2
 
