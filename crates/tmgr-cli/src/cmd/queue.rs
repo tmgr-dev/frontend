@@ -108,7 +108,7 @@ fn launch_argv(
     p: &tmgr_runner::profile::Profile,
     model: Option<&str>,
 ) -> std::result::Result<Vec<String>, String> {
-    p.argv_with(model, p.permission_args(runs::PERMISSION_MODE)?)
+    p.approved_argv(model, p.permission_args(runs::PERMISSION_MODE)?)
 }
 
 impl ProfileResolver for RunnerProfiles {

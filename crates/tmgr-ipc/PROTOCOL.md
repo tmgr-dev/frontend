@@ -144,7 +144,7 @@ missing params) and `internal`.
 | `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
 | `sessions.text` | `{id, lines?}` (`lines` 1 to 10000, default the screen height) | `{id, rows, cols, lines, scroll_max}` | `not_found`, `invalid_params`, `forbidden` | any client except `worker`; cap `session_text.v1` |
 | `trust.list` | none | `[TrustedFolder]` (`{path, dev, ino, added_ms, how}`) | | any client except `worker`; cap `trusted_folders.v1` |
-| `trust.add` | `{path}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
+| `trust.add` | `{path, dev?, ino?}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
 | `trust.remove` | `{path}` | `{removed}` | | `client: "cli"` only; cap `trusted_folders.v1` |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
@@ -330,7 +330,7 @@ What the pin does not cover:
 
 **`argv_pin.v1`.** `runs.create` takes an optional `argv_sha256`: the SHA-256 of the whole command line a human approved. It needs `exe_pin` in the same request (otherwise `invalid_params`) and must be exactly 64 lowercase hex characters (otherwise `invalid_params`). The digest is defined as follows, so that the approving side can reproduce it:
 
-- take the final argv exactly as the runner executes it for a new start: the profile `command` and `args`, then the model arguments (when `model` is set), then the permission-mode arguments (when the profile has `permission_modes`), in that order, without the `resume` arguments;
+- take the final argv exactly as the runner executes it for a new start: the profile `command` and `args`, then the model arguments (when `model` is set), then the permission-mode arguments (when the profile has `permission_modes`), then the profile's `[prompt]` arguments when its mode is `arg`, with the literal string `{prompt}` left in place of the task prompt, in that order, without the `resume` arguments;
 - replace `argv[0]` with the canonical executable path (the `exe_pin.path` that the pin check verifies);
 - feed SHA-256 with each element's UTF-8 bytes followed by a single `0x00` byte, nothing else;
 - write the digest as lowercase hex.
@@ -343,7 +343,7 @@ What the pin does not cover:
 
 ### Trusted folders
 
-**`trusted_folders.v1`.** The runner keeps a local list of folders whose agent folder-trust question is answered in advance: `.trusted-folders.json` in the homes directory (mode 0600, outside every sandbox), each entry the canonical path with the folder's `st_dev`/`st_ino`. A run whose canonical `cwd` has the same path and identity, and that has no `start_key`, `clone_of` or `origin`, gets the profile's `[trust]` entry seeded as with `trust_cwd`, from any client; the work log records `trust: "remembered"`. A folder inside a trusted one, a clone or worktree of it, or a new folder at the same path is not trusted. Entries come only from `trust.add` (`client: "cli"`; `tmgr runner trust` asks for a typed confirmation and refuses inside an agent session) or from the owner's own answer: when a run of the built-in `claude-code` profile that the runner did not pre-trust (no `start_key`, `clone_of`, `origin`, not restored) exits, and its per-run `.claude.json` (a plain file, not a link) records `projects.<cwd>.hasTrustDialogAccepted: true`, the folder is added with `how: "answered"`. Claude Code runs nothing before that question is answered, so the record comes from a person. `trust.remove` matches the stored path or the canonical form of the given one, also for a folder that no longer exists.
+**`trusted_folders.v1`.** The runner keeps a local list of folders whose agent folder-trust question is answered in advance: `.trusted-folders.json` in the homes directory (mode 0600, outside every sandbox), each entry the canonical path with the folder's `st_dev`/`st_ino`. A run whose canonical `cwd` has the same path and identity, and that has no `start_key`, `clone_of` or `origin`, gets the profile's `[trust]` entry seeded as with `trust_cwd`, from any client; the work log records `trust: "remembered"`. A folder inside a trusted one, a clone or worktree of it, or a new folder at the same path is not trusted. Entries come only from `trust.add` (`client: "cli"`; `tmgr runner trust` asks for a typed confirmation and refuses inside an agent session) or from the owner's own answer: when a run of the built-in `claude-code` profile that the runner did not pre-trust (no `start_key`, `clone_of`, `origin`, not restored) exits, and its per-run `.claude.json` (a plain file, not a link) records `projects.<cwd>.hasTrustDialogAccepted: true`, the folder is added with `how: "answered"`, unless any input to that session came from a client other than `cli` or `desktop` (for example a link worker). Claude Code runs nothing before that question is answered, so the record comes from a person at this machine. `trust.add` may carry the `dev` and `ino` the person confirmed; a different folder at the path is then `invalid_params`. `trust.remove` matches the stored path or the canonical form of the given one, also for a folder that no longer exists.
 
 ### Run bundles
 
@@ -424,8 +424,8 @@ The runner refuses the request with `invalid_params` when:
 
 The task reaches the agent as its first message. When the profile's `[prompt]`
 mode is `arg`, the runner renders the bundle into a prompt and puts it in place
-of `{prompt}` in the profile's prompt arguments, after the command line that
-`argv_sha256` covers. A resumed run gets no prompt. The prompt starts with
+of `{prompt}` in the profile's prompt arguments; `argv_sha256` covers those
+arguments with `{prompt}` itself in that place. A resumed run gets no prompt. The prompt starts with
 `Task: <title>`, then the description and the comments when there are any (a
 title alone is a complete task). Comments not written by a confirmed human are
 fenced between `<<<` `>>>` markers and labelled untrusted. Control characters

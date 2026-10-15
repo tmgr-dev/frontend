@@ -2,6 +2,7 @@ use super::{connect, emit, rerr, runner_config, Opts};
 use crate::interact;
 use crate::out::table;
 use serde_json::{json, Value};
+use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, method, TrustRemoved, TrustedFolder};
@@ -54,6 +55,7 @@ pub fn trust(o: &Opts, dir: &Path) -> Result<i32> {
     let path = absolute(dir)?;
     let shown = std::fs::canonicalize(&path)
         .map_err(|_| Error::usage(format!("{} is not an existing folder", clean(&path))))?;
+    let id = std::fs::metadata(&shown).map_err(|e| Error::usage(e.to_string()))?;
     interact::confirm(
         &format!(
             "Trust {}? Agents started in exactly this folder will no longer ask whether to trust it.",
@@ -63,7 +65,10 @@ pub fn trust(o: &Opts, dir: &Path) -> Result<i32> {
         false,
     )?;
     let v = client()?
-        .call(method::TRUST_ADD, json!({ "path": path }))
+        .call(
+            method::TRUST_ADD,
+            json!({ "path": shown, "dev": id.dev(), "ino": id.ino() }),
+        )
         .map_err(rerr)?;
     let f: TrustedFolder = serde_json::from_value(v).map_err(|e| Error::usage(e.to_string()))?;
     let human = format!("trusted {}", clean(&f.path));

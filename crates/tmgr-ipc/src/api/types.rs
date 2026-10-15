@@ -290,6 +290,11 @@ pub struct TrustedFolder {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PathParams {
     pub path: String,
+    /// `trust.add`: the folder identity the person confirmed; a different folder at the path is refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dev: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ino: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
