@@ -1,6 +1,34 @@
 <template>
 	<section
-		v-if="runs.length"
+		v-if="desktop && runs.length"
+		class="flex flex-col gap-1"
+		data-tour="task-form.agent-work"
+	>
+		<span class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
+			>Agent work</span
+		>
+		<button
+			type="button"
+			class="flex items-center justify-between gap-2 rounded-card border border-line bg-surface px-3 py-2 text-left text-xs text-ink hover:bg-surface-hover"
+			data-testid="agent-work-block"
+			data-tour="task-form.agent-totals"
+			@click="detailsOpen = true"
+		>
+			<span class="min-w-0 truncate">{{ blockLine }}</span>
+			<span class="shrink-0 text-ink-subtle">Details ▸</span>
+		</button>
+		<AgentWorkDetails
+			v-model:open="detailsOpen"
+			:task-id="taskId"
+			:workspace-id="workspaceId"
+			:workspace-code="workspaceCode"
+			:runs="runs"
+			:totals="totals"
+			:cost="cost"
+		/>
+	</section>
+	<section
+		v-else-if="runs.length"
 		class="flex flex-col gap-2"
 		data-tour="task-form.agent-work"
 	>
@@ -110,6 +138,11 @@
 
 <script>
 	import { getAgentWork } from '@/actions/tmgr/agentWork';
+	import { getTaskCost } from '@/actions/tmgr/taskCost';
+	import AgentWorkDetails from '@/components/tasks/AgentWorkDetails.vue';
+	import { readTaskUsage } from '@/usage/loadTaskUsage';
+	import { blockSummary, prLabel } from '@/usage/taskModel';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { usePusher } from '@/composable/usePusher';
 	import {
 		agentLabel,
@@ -148,6 +181,7 @@
 
 	export default defineComponent({
 		name: 'TaskAgentWork',
+		components: { AgentWorkDetails },
 		props: {
 			taskId: { type: Number, required: true },
 			workspaceId: { type: Number, default: undefined },
@@ -171,6 +205,13 @@
 			const receivedAt = reactive({});
 			const now = ref(Date.now());
 			const expanded = reactive({});
+			const desktop = isDesktopApp();
+			const detailsOpen = ref(false);
+			const cost = ref(null);
+			const localCost = ref(null);
+			const workspaceCode = computed(
+				() => store.getters.workspaceById?.(props.workspaceId)?.code ?? '',
+			);
 			let request = 0;
 			let ticker = null;
 			let subscription = null;
@@ -185,6 +226,23 @@
 				});
 			};
 
+			const loadCosts = async (list, current) => {
+				const [fetchedCost, local] = await Promise.all([
+					getTaskCost(props.taskId),
+					readTaskUsage({
+						taskId: props.taskId,
+						workspaceId: props.workspaceId,
+						workspaceCode: workspaceCode.value,
+						ownRuns: list,
+					})
+						.then((r) => r.usage)
+						.catch(() => null),
+				]);
+				if (current !== request) return;
+				cost.value = fetchedCost;
+				localCost.value = local?.aggregate?.totals.cost_usd ?? null;
+			};
+
 			const load = async () => {
 				const current = ++request;
 				try {
@@ -195,6 +253,7 @@
 					serverTotals.value = overview.totals;
 					totalsReceivedAt.value = Date.now();
 					loaded.value = true;
+					if (desktop) loadCosts(overview.runs, current);
 				} catch (error) {
 					console.error('Failed to load agent work', error);
 				}
@@ -303,6 +362,30 @@
 					),
 				),
 				receivedAt,
+				desktop,
+				detailsOpen,
+				cost,
+				workspaceCode,
+				blockLine: computed(() => {
+					const t = liveTotals(
+						runs.value,
+						serverTotals.value,
+						now.value,
+						receivedAt,
+						totalsReceivedAt.value,
+					);
+					const synced = cost.value?.ai?.synced
+						? Number(cost.value.ai.costUsd)
+						: null;
+					return (
+						blockSummary({
+							youSeconds: t.humanSeconds,
+							agentSeconds: t.agentSeconds,
+							aiCostUsd: localCost.value ?? (Number.isFinite(synced) ? synced : null),
+							prLabel: prLabel([], runs.value.map((r) => r.pr_url)),
+						}) || 'Details'
+					);
+				}),
 				agentLabel,
 				formatWorkDuration,
 				isHttpUrl,
