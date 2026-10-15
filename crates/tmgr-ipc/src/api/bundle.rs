@@ -185,6 +185,19 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
         })
 }
 
+/// SHA-256 over each argv element's UTF-8 bytes followed by one NUL byte, as lowercase hex.
+pub fn argv_sha256(argv: &[String]) -> String {
+    let mut sha = Sha256::new();
+    for a in argv {
+        sha.update(a.as_bytes());
+        sha.update([0u8]);
+    }
+    sha.finalize().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
+
 /// RFC 8785 (JCS) for the value kinds the contract uses: no floats.
 pub fn canonical_json(v: &Value) -> String {
     let mut out = String::new();

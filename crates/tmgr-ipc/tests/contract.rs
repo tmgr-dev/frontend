@@ -154,6 +154,23 @@ fn session_info() -> SessionInfo {
 }
 
 #[test]
+fn argv_digest_is_over_nul_terminated_elements() {
+    let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        tmgr_ipc::api::argv_sha256(&argv(&["a", "b"])),
+        "8fb20ef63ced4145fc2e983ffe597d1dcff39154c3bf21f0fa9dde6a0c50fdc9"
+    );
+    assert_eq!(
+        tmgr_ipc::api::argv_sha256(&argv(&["/bin/sh", "-c", "echo"])),
+        "9368828e273a35b5cd1133c836fab154e4582a2f93fa3bd155312c2ec46a547e"
+    );
+    assert_ne!(
+        tmgr_ipc::api::argv_sha256(&argv(&["ab"])),
+        tmgr_ipc::api::argv_sha256(&argv(&["a", "b"]))
+    );
+}
+
+#[test]
 fn handshake_messages() {
     golden(
         "hello",
@@ -215,6 +232,7 @@ fn requests_and_responses() {
         trust_cwd: None,
         agent_work: false,
         exe_pin: None,
+        argv_sha256: None,
     };
     golden("run_create_req", &run);
     golden(
@@ -278,6 +296,19 @@ fn requests_and_responses() {
                 path: "/usr/local/bin/claude".into(),
                 sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
             }),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_argv_sha256",
+        &RunCreateReq {
+            exe_pin: Some(ExePin {
+                path: "/usr/local/bin/claude".into(),
+                sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+            }),
+            argv_sha256: Some(
+                "8fb20ef63ced4145fc2e983ffe597d1dcff39154c3bf21f0fa9dde6a0c50fdc9".into(),
+            ),
             ..run.clone()
         },
     );
@@ -744,7 +775,8 @@ fn constants_are_pinned() {
             "session_text.v1",
             "trust_cwd.v1",
             "agent_work.v1",
-            "exe_pin.v1"
+            "exe_pin.v1",
+            "argv_pin.v1"
         ]
     );
     let methods = [
@@ -812,7 +844,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 19);
+    assert_eq!(w.caps.len(), 20);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
