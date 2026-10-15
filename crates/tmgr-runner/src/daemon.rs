@@ -456,7 +456,8 @@ impl Session {
 
     fn text(&self, lines: Option<u32>) -> SessionText {
         let mut i = lock(&self.inner);
-        let (rows, cols, scroll_max, lines) = i.screen.text_lines(lines.map(|n| n as usize));
+        let (rows, cols, scroll_max, mut lines) = i.screen.text_lines(lines.map(|n| n as usize));
+        cap_text(&mut lines, MAX_TEXT_BYTES);
         SessionText {
             id: i.meta.id.clone(),
             rows,
@@ -2671,11 +2672,34 @@ pub fn start_background(cfg: &RunnerConfig) -> io::Result<u32> {
     }
 }
 
+const MAX_TEXT_BYTES: usize = 512 << 10;
+
+fn cap_text(lines: &mut Vec<String>, max: usize) {
+    let mut total: usize = lines.iter().map(|l| l.len() + 8).sum();
+    let mut drop = 0;
+    while total > max && drop < lines.len() {
+        total -= lines[drop].len() + 8;
+        drop += 1;
+    }
+    lines.drain(..drop);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Read;
     use std::thread::JoinHandle;
+
+    #[test]
+    fn session_text_drops_the_oldest_lines_to_fit_one_frame() {
+        let mut lines: Vec<String> = (0..10).map(|i| format!("{i}{}", "x".repeat(99))).collect();
+        cap_text(&mut lines, 5 * 108);
+        assert_eq!(lines.len(), 5);
+        assert!(lines[0].starts_with('5') && lines[4].starts_with('9'));
+        let mut small = vec!["a".to_string()];
+        cap_text(&mut small, 100);
+        assert_eq!(small, ["a"]);
+    }
 
     #[test]
     fn default_names_are_sanitized_and_bounded() {

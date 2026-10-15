@@ -219,7 +219,8 @@ pub struct SendArgs {
     #[arg(long)]
     pub no_enter: bool,
     /// Wait for the agent, then print what the screen gained: `idle` ends when the agent is waiting or blocked again (exit code 8 when blocked), `exit` when the session exits.
-    /// The new output is a line diff of the session's plain text before the send and after the wait; TUIs redraw, so repainted lines can show up as new
+    /// The new output is a line diff of the session's plain text before the send and after the wait; TUIs redraw, so repainted lines can show up as new.
+    /// The state is read from the screen and terminal activity, so an agent can make itself look idle
     #[arg(long, value_name = "idle|exit")]
     pub wait: Option<WaitFor>,
     /// Longest time to wait (30s, 10m, 1h)
