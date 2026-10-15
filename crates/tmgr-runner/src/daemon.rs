@@ -1669,10 +1669,7 @@ impl Runner {
         })?;
         let running = self.session(old).is_some_and(|s| !s.is_exited());
         let result = match restore::status(&claim.intent, now_ms(), running) {
-            restore::Status::Restorable
-                if (claim.intent.agent_work || claim.intent.keyed)
-                    && claim.intent.exe_pin.is_none() =>
-            {
+            restore::Status::Restorable if claim.intent.keyed && claim.intent.exe_pin.is_none() => {
                 Err(api(
                     ErrorCode::Forbidden,
                     "this queue run was recorded without an approved executable; queue the task again",
