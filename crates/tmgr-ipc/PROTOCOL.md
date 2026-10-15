@@ -414,6 +414,20 @@ The runner refuses the request with `invalid_params` when:
 - `cwd` is not the directory that was approved by the time the agent starts
   (for example a symlink was swapped after the check).
 
+The task reaches the agent as its first message. When the profile's `[prompt]`
+mode is `arg`, the runner renders the bundle into a prompt and puts it in place
+of `{prompt}` in the profile's prompt arguments, after the command line that
+`argv_sha256` covers. A resumed run gets no prompt. The prompt starts with
+`Task: <title>`, then the description and the comments when there are any (a
+title alone is a complete task). Comments not written by a confirmed human are
+fenced between `<<<` `>>>` markers and labelled untrusted. Control characters
+and bidirectional overrides are dropped. Above 16 KiB the prompt is cut to the
+title and a pointer to `.tmgr/task.md`, which always holds the full task. The
+prompt is a fixed function of the bundle, so `bundle_sha256` binds it: what was
+approved is what the agent receives. It holds nothing but the bundle's own text.
+The prompt is an argument, so other local accounts that can list processes can
+read it.
+
 The runner opens the canonical `cwd` once, writes `.tmgr` only relative to the
 opened directory and hands that open directory to the process that starts the
 agent, which changes into it by descriptor. The agent therefore starts in the
