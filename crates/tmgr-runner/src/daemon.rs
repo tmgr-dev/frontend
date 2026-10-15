@@ -1185,17 +1185,6 @@ fn resume_rec(r: &crate::profile::ResumeDecl) -> restore::ResumeRec {
     }
 }
 
-fn resume_changed(i: &restore::Intent) -> bool {
-    if i.argv_sha256.is_none() {
-        return false;
-    }
-    let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-    let now = set
-        .get(&i.profile)
-        .and_then(|p| p.resume.as_ref().map(resume_rec));
-    now != i.resume_decl
-}
-
 fn check_argv_sha256(req: &RunCreateReq) -> Result<(), ApiErr> {
     let Some(d) = &req.argv_sha256 else {
         return Ok(());
@@ -1711,14 +1700,19 @@ impl Runner {
                 ErrorCode::Forbidden,
                 "this queue run was recorded without an approved executable; queue the task again",
             )),
-            restore::Status::Restorable if resume_changed(&claim.intent) => Err(api(
-                ErrorCode::Forbidden,
-                "the agent's resume arguments changed since the run was approved",
-            )),
             restore::Status::Restorable => restore::read_bundle(&store, &claim.intent)
                 .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))
                 .and_then(|bundle| {
-                    self.create_run_as(restore::request(&claim.intent, bundle), Some(old))
+                    let pinned_resume = claim
+                        .intent
+                        .argv_sha256
+                        .is_some()
+                        .then_some(&claim.intent.resume_decl);
+                    self.create_run_as(
+                        restore::request(&claim.intent, bundle),
+                        Some(old),
+                        pinned_resume,
+                    )
                 }),
             restore::Status::Running => Err(api(ErrorCode::Busy, "the session is still running")),
             st => Err(api(ErrorCode::Forbidden, st.reason())),
@@ -1747,7 +1741,7 @@ impl Runner {
     }
 
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_run_as(req, None).map(|(info, _, _)| info)
+        self.create_run_as(req, None, None).map(|(info, _, _)| info)
     }
 
     fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<PinCheck>, ApiErr> {
@@ -1772,6 +1766,7 @@ impl Runner {
         self: &Arc<Self>,
         req: RunCreateReq,
         restore_from: Option<&str>,
+        pinned_resume: Option<&Option<restore::ResumeRec>>,
     ) -> Result<(SessionInfo, bool, bool), ApiErr> {
         let start = match &req.start_key {
             Some(k) if !valid_start_key(k) => {
@@ -1818,6 +1813,12 @@ impl Runner {
             )
         })?;
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
+        if pinned_resume.is_some_and(|want| prof.resume.as_ref().map(resume_rec) != *want) {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "the agent's resume arguments changed since the run was approved",
+            ));
+        }
         let (mode, perm_args) = resolve_mode(prof, req.permission_mode.as_deref())?;
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
