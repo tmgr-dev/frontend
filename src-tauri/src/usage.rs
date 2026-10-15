@@ -1,9 +1,11 @@
 use chrono::{DateTime, Duration, Local, NaiveDate, NaiveDateTime, SecondsFormat, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
-use tmgr_usage::link::{attribute_at, RunWindow, Totals as LinkTotals};
+use tmgr_usage::link::{attribute_at, Link, RunWindow, Totals as LinkTotals};
+use tmgr_usage::task::{build, facts_as_events, TaskIdent, TaskInput, TaskUsageAggregate};
 use tmgr_usage::paths::{self, Env};
 use tmgr_usage::refresh::refresh;
 use tmgr_usage::{GroupBy, Query, Row as AggRow, Store, Tz};
@@ -344,7 +346,7 @@ fn window_of(run: &RawRun, now: DateTime<Utc>) -> Option<(DateTime<Utc>, Option<
   (start <= now).then_some((start, end))
 }
 
-fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOut, String> {
+fn run_windows(runs: &[RawRun], now: DateTime<Utc>) -> Vec<RunWindow> {
   let mut windows = Vec::new();
   for run in runs {
     let (session_id, branch) = (non_empty(&run.session_id), non_empty(&run.branch));
@@ -365,6 +367,11 @@ fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOu
       ended_at,
     });
   }
+  windows
+}
+
+fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOut, String> {
+  let mut windows = run_windows(runs, now);
   windows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
   let runs_truncated = windows.len() > MAX_RUNS;
   windows.truncate(MAX_RUNS);
@@ -384,6 +391,47 @@ fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOu
     runs_dropped: runs.len() - windows.len(),
     runs_truncated,
   })
+}
+
+#[derive(Serialize, Debug, Default)]
+pub struct TaskUsageOut {
+  pub supported: bool,
+  pub unsupported_reason: Option<String>,
+  pub aggregate: Option<TaskUsageAggregate>,
+}
+
+fn task_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun], workspace: &str, task_id: i64) -> Result<TaskUsageOut, String> {
+  let windows = run_windows(runs, now);
+  let task_ref = format!("{workspace}/{task_id}");
+  let Some(first) = windows.iter().filter(|w| w.task_ref == task_ref).map(|w| w.started_at).min() else {
+    return Ok(TaskUsageOut { supported: true, ..Default::default() });
+  };
+  let (from, to) = (first - Duration::days(1), now + Duration::minutes(1));
+  let (_, store) = open(env)?;
+  let (events, tokens): (Vec<_>, Vec<_>) = store.link_events_with_tokens(from, to).map_err(user_error)?.into_iter().unzip();
+  let facts = store.facts(from, to).map_err(user_error)?;
+  let agents = store.agents().map_err(user_error)?;
+  let mine: HashSet<&str> = windows.iter().filter(|w| w.task_ref == task_ref).map(|w| w.run_ref.as_str()).collect();
+  let matching = |links: &[Link]| -> Vec<usize> {
+    links.iter().filter(|l| mine.contains(l.run_ref.as_str())).map(|l| l.event_index).collect()
+  };
+  let linked_events = matching(&attribute_at(&events, &windows, now).links);
+  let linked_facts = matching(&attribute_at(&facts_as_events(&facts, &events), &windows, now).links);
+  let aggregate = build(&TaskInput {
+    source_id: store.install_id().map_err(user_error)?,
+    generated_at: now,
+    task: TaskIdent { workspace: workspace.to_string(), task_ref: format!("#{task_id}"), id: u64::try_from(task_id).ok() },
+    from,
+    to,
+    events: &events,
+    tokens: &tokens,
+    linked_events: &linked_events,
+    facts: &facts,
+    linked_facts: &linked_facts,
+    agents: &agents,
+    limits: &store.current_limits(now).map_err(user_error)?,
+  });
+  Ok(TaskUsageOut { supported: true, unsupported_reason: None, aggregate })
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
@@ -412,6 +460,14 @@ pub async fn usage_tasks(runs: Vec<RawRun>) -> Result<TasksOut, String> {
     return Err(SNAP_REASON.into());
   }
   blocking(move || tasks_inner(&Env::from_process(), Utc::now(), &runs)).await
+}
+
+#[tauri::command]
+pub async fn usage_task(runs: Vec<RawRun>, workspace: String, task_id: i64) -> Result<TaskUsageOut, String> {
+  if snap() {
+    return Ok(TaskUsageOut { supported: false, unsupported_reason: Some(SNAP_REASON.into()), aggregate: None });
+  }
+  blocking(move || task_inner(&Env::from_process(), Utc::now(), &runs, &workspace, task_id)).await
 }
 
 #[cfg(test)]
@@ -623,5 +679,65 @@ mod tests {
     run.ended_at = None;
     run.status = Some("running".into());
     assert_eq!(window_of(&run, now).unwrap().1, None);
+  }
+
+  #[test]
+  fn task_usage_links_by_session_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let runs = vec![raw(1, 7, Some("sess-1"), None, now), raw(2, 8, Some("other"), None, now)];
+    let out = task_inner(&env, now, &runs, "ws", 7).unwrap();
+    assert!(out.supported);
+    let a = out.aggregate.unwrap();
+    assert_eq!(a.totals.events, 2);
+    assert_eq!(a.totals.tokens.input, 200);
+    assert_eq!(a.task.task_ref, "#7");
+    assert_eq!(a.task.id, Some(7));
+    assert!(!a.nodes.is_empty());
+  }
+
+  #[test]
+  fn task_usage_excludes_events_won_by_a_competing_run() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let mut mine = raw(1, 7, None, Some("feat/one"), now);
+    mine.started_at = Some(at(now, 120));
+    mine.ended_at = Some(at(now, 55));
+    let mut other = raw(2, 8, None, Some("feat/one"), now);
+    other.started_at = Some(at(now, 54));
+    other.ended_at = Some(at(now, 10));
+    let runs = vec![mine, other];
+    let a7 = task_inner(&env, now, &runs, "ws", 7).unwrap().aggregate;
+    let a8 = task_inner(&env, now, &runs, "ws", 8).unwrap().aggregate;
+    assert_eq!(a7.as_ref().map_or(0, |a| a.totals.events), 1);
+    assert_eq!(a8.as_ref().map_or(0, |a| a.totals.events), 1);
+  }
+
+  #[test]
+  fn task_usage_without_runs_has_no_aggregate() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let out = task_inner(&env, now, &[raw(2, 8, Some("sess-1"), None, now)], "ws", 7).unwrap();
+    assert!(out.supported);
+    assert!(out.aggregate.is_none());
+  }
+
+  #[test]
+  fn task_usage_command_reports_the_snap_reason() {
+    std::env::set_var("SNAP", "1");
+    let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    let out = rt.block_on(usage_task(Vec::new(), "ws".into(), 1)).unwrap();
+    std::env::remove_var("SNAP");
+    assert!(!out.supported);
+    assert_eq!(out.unsupported_reason.as_deref(), Some(SNAP_REASON));
   }
 }

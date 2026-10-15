@@ -206,6 +206,7 @@ pub fn run() {
       usage::usage_scan,
       usage::usage_overview,
       usage::usage_tasks,
+      usage::usage_task,
       tray::tray_update,
       tray::dnd_update,
       task_windows::open_task_window,
