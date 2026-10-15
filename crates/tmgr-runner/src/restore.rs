@@ -15,6 +15,22 @@ const MAX_INTENT: u64 = 64 * 1024;
 const MAX_LISTED: usize = 256;
 const STORE: &str = ".intents";
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeRec {
+    pub args: Vec<String>,
+    pub at: String,
+}
+
+impl Intent {
+    pub fn needs_queue_pin(&self) -> bool {
+        self.exe_pin.is_none()
+            && match self.keyed {
+                Some(k) => k,
+                None => self.agent_work,
+            }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Intent {
     pub v: u32,
@@ -37,12 +53,14 @@ pub struct Intent {
     pub clone_of: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent_work: bool,
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub keyed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keyed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe_pin: Option<ExePin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub argv_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_decl: Option<ResumeRec>,
     #[serde(default)]
     pub bypass: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -547,7 +565,8 @@ mod tests {
             permission_mode: None,
             clone_of: None,
             agent_work: false,
-            keyed: false,
+            keyed: None,
+            resume_decl: None,
             exe_pin: None,
             argv_sha256: None,
             bypass: false,

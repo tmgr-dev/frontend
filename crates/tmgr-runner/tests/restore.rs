@@ -538,7 +538,8 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         permission_mode: None,
         clone_of: None,
         agent_work: false,
-        keyed: false,
+        keyed: Some(false),
+        resume_decl: None,
         exe_pin: None,
         argv_sha256: None,
         bypass: false,
@@ -584,13 +585,17 @@ fn link_bypass_expired_and_bundle_less_records_are_refused() {
 fn queue_records_without_a_pin_are_refused_and_kept() {
     let mut h = H::new(true);
     h.start();
-    forged(&h, "s_aaaaaaaaaa", |i| i.keyed = true);
+    forged(&h, "s_aaaaaaaaaa", |i| i.keyed = Some(true));
     forged(&h, "s_bbbbbbbbbb", |i| {
-        i.keyed = true;
+        i.keyed = Some(true);
         i.agent_work = true;
     });
     forged(&h, "s_cccccccccc", |i| i.agent_work = true);
-    for id in ["s_aaaaaaaaaa", "s_bbbbbbbbbb"] {
+    forged(&h, "s_dddddddddd", |i| {
+        i.keyed = None;
+        i.agent_work = true;
+    });
+    for id in ["s_aaaaaaaaaa", "s_bbbbbbbbbb", "s_dddddddddd"] {
         let err = h.client().restore(id).unwrap_err().to_string();
         assert!(err.starts_with("forbidden: "), "{id}: {err}");
         assert!(err.contains("queue the task again"), "{id}: {err}");
@@ -717,17 +722,17 @@ fn restore_rechecks_the_argv_digest_against_the_rebuilt_command_line() {
     fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
     let canonical = fs::canonicalize(&agent).unwrap();
     let agents = h.agents.clone();
-    let profile = |arg: &str| {
+    let profile = |arg: &str, resume: &str| {
         fs::write(
             agents.join("pinned.toml"),
             format!(
-                "id = \"pinned\"\nname = \"Pinned\"\ncommand = [{:?}]\nargs = [{arg:?}]\n[resume]\nargs = [\"--resumed\"]\n",
+                "id = \"pinned\"\nname = \"Pinned\"\ncommand = [{:?}]\nargs = [{arg:?}]\n[resume]\nargs = [{resume:?}]\n",
                 agent.display().to_string()
             ),
         )
         .unwrap();
     };
-    profile("--x");
+    profile("--x", "--resumed");
     let exe = canonical.display().to_string();
     let mut req = h.req();
     req.profile = "pinned".into();
@@ -745,14 +750,20 @@ fn restore_rechecks_the_argv_digest_against_the_rebuilt_command_line() {
         .is_some());
     h.reboot(&first, false);
 
-    profile("--y");
+    profile("--y", "--resumed");
     let e = h.client().restore(&first.id).unwrap_err().to_string();
     assert!(e.starts_with("forbidden: "), "{e}");
     assert!(e.contains("command line"), "{e}");
     assert!(h.client().list().unwrap().iter().all(|s| s.id == first.id));
     assert!(restore::load(&h.store(), &first.id).is_ok());
 
-    profile("--x");
+    profile("--x", "--other");
+    let e = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(e.contains("resume arguments changed"), "{e}");
+    assert!(restore::load(&h.store(), &first.id).is_ok());
+
+    profile("--x", "--resumed");
     let r = h.client().restore(&first.id).unwrap();
     assert!(r.resumed);
     assert_eq!(r.session.argv, [exe.as_str(), "--x", "--resumed"]);
