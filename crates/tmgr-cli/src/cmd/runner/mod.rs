@@ -337,7 +337,7 @@ pub fn rerr(e: io::Error) -> Error {
     let msg = e.to_string();
     if msg.starts_with("unknown_method: ") {
         return Error::new(Kind::Conflict, "the running runner is older than this tmgr")
-            .hint("tmgr runner stop && tmgr runner start");
+            .hint(format!("{0} runner stop && {0} runner start", bin()));
     }
     let Some((code, text)) = msg.split_once(": ") else {
         return Error::internal(msg);
