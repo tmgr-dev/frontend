@@ -368,6 +368,7 @@ struct Session {
     aw_busy: Arc<AtomicBool>,
     aw_pending: Mutex<Option<agentwork::Intent>>,
     halted: AtomicBool,
+    foreign_input: AtomicBool,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -718,7 +719,20 @@ impl Session {
         self.aw_next.store(0, Ordering::SeqCst);
     }
 
+    fn note_input_from(&self, client: &str) {
+        if client != CLIENT_CLI && client != "desktop" {
+            self.foreign_input.store(true, Ordering::SeqCst);
+        }
+    }
+
     fn learn_trust(&self) {
+        if self.foreign_input.load(Ordering::SeqCst) {
+            log(&format!(
+                "session {}: input came from a link or another client, so a folder-trust answer is not remembered",
+                self.id
+            ));
+            return;
+        }
         let (learn, cwd, cwd_id) = {
             let i = lock(&self.inner);
             (
@@ -1424,9 +1438,11 @@ impl Runner {
                         "folders are trusted only from the tmgr CLI",
                     ));
                 }
-                let path = params::<PathParams>(p)?.path;
+                let q = params::<PathParams>(p)?;
+                let path = q.path;
                 if req.method == method::TRUST_ADD {
-                    folders::add(&self.cfg.homes, Path::new(&path), now_ms())
+                    let expect = q.dev.zip(q.ino);
+                    folders::add(&self.cfg.homes, Path::new(&path), expect, now_ms())
                         .map(|f| to_json(&f))
                         .map_err(|e| api(ErrorCode::InvalidParams, e))
                 } else {
@@ -1489,6 +1505,7 @@ impl Runner {
                 if text.len() > MAX_INPUT {
                     return Err(api(ErrorCode::InvalidParams, "text is too large"));
                 }
+                s.note_input_from(&conn.client);
                 if s.input_dropped.swap(false, Ordering::SeqCst) || !s.input(text.as_bytes()) {
                     return Err(api(
                         ErrorCode::Busy,
@@ -1986,12 +2003,9 @@ impl Runner {
             (Some(p), _) => check_pin(&argv[0], &path, p)?.display().to_string(),
         };
         if let Some(want) = &req.argv_sha256 {
-            let mut basis = if resumed {
-                prof.argv_with(req.model.as_deref(), &perm_args)
-                    .map_err(|e| api(ErrorCode::InvalidParams, e))?
-            } else {
-                argv.clone()
-            };
+            let mut basis = prof
+                .approved_argv(req.model.as_deref(), &perm_args)
+                .map_err(|e| api(ErrorCode::InvalidParams, e))?;
             basis[0].clone_from(&argv[0]);
             if tmgr_ipc::api::argv_sha256(&basis) != *want {
                 return Err(api(
@@ -2479,6 +2493,7 @@ impl Runner {
             aw_busy: Arc::new(AtomicBool::new(false)),
             aw_pending: Mutex::new(None),
             halted: AtomicBool::new(false),
+            foreign_input: AtomicBool::new(false),
         })
     }
 
@@ -2742,6 +2757,7 @@ impl Runner {
                 s.resize(cols, rows, Some(conn.id));
             }
         }
+        s.note_input_from(&conn.client);
         let _ = s.input(data);
     }
 

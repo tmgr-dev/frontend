@@ -70,7 +70,7 @@ fn launch_pin(profile: &str, model: Option<&str>, mode: &str) -> Result<(ExePin,
         )));
     }
     let mode_args = p.permission_args(mode).map_err(Error::usage)?;
-    let mut argv = p.argv_with(model, mode_args).map_err(Error::usage)?;
+    let mut argv = p.approved_argv(model, mode_args).map_err(Error::usage)?;
     let exe = tmgr_queue::rules::resolve_exe(&argv[0]).map_err(Error::usage)?;
     let sha256 = tmgr_queue::rules::file_sha256(&exe)?;
     argv[0] = exe.to_string_lossy().into_owned();

@@ -3767,7 +3767,7 @@ fn a_yes_to_claudes_trust_question_is_remembered_for_that_folder_only() {
         return;
     }
     let mut fx = trust_fx(true);
-    let bin = fx.h.tmp.path().join("bin");
+    let bin = fx.h.work.join("bin");
     fs::create_dir(&bin).unwrap();
     let claude = bin.join("claude");
     fs::write(

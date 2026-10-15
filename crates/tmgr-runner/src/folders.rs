@@ -67,11 +67,19 @@ fn insert(homes: &Path, folder: TrustedFolder) -> Result<TrustedFolder, String> 
     Ok(folder)
 }
 
-pub fn add(homes: &Path, path: &Path, now_ms: u64) -> Result<TrustedFolder, String> {
+pub fn add(
+    homes: &Path,
+    path: &Path,
+    expect: Option<(u64, u64)>,
+    now_ms: u64,
+) -> Result<TrustedFolder, String> {
     if !path.is_absolute() {
         return Err("the folder must be an absolute path".into());
     }
     let (canon, dev, ino) = identify(path)?;
+    if expect.is_some_and(|e| e != (dev, ino)) {
+        return Err("the folder changed since it was confirmed".into());
+    }
     let path = canon
         .to_str()
         .ok_or("the folder path is not valid UTF-8")?
@@ -173,7 +181,7 @@ mod tests {
     #[test]
     fn a_folder_is_trusted_by_path_and_identity_and_stored_private() {
         let (_t, homes, work) = dirs();
-        let f = add(&homes, &work, 5).unwrap();
+        let f = add(&homes, &work, None, 5).unwrap();
         assert_eq!(
             (f.path.as_str(), f.how.as_str()),
             (work.to_str().unwrap(), "command")
@@ -189,14 +197,14 @@ mod tests {
             .mode()
             & 0o777;
         assert_eq!(mode, 0o600);
-        add(&homes, &work, 6).unwrap();
+        add(&homes, &work, None, 6).unwrap();
         assert_eq!(list(&homes).len(), 1);
     }
 
     #[test]
     fn a_replaced_folder_at_the_same_path_is_not_trusted() {
         let (_t, homes, work) = dirs();
-        add(&homes, &work, 1).unwrap();
+        add(&homes, &work, None, 1).unwrap();
         let old = id(&work);
         std::fs::rename(&work, work.with_extension("old")).unwrap();
         std::fs::create_dir(&work).unwrap();
@@ -207,7 +215,7 @@ mod tests {
     #[test]
     fn untrust_works_by_path_even_when_the_folder_is_gone() {
         let (_t, homes, work) = dirs();
-        add(&homes, &work, 1).unwrap();
+        add(&homes, &work, None, 1).unwrap();
         std::fs::remove_dir(&work).unwrap();
         assert!(remove(&homes, work.to_str().unwrap()).unwrap());
         assert!(!remove(&homes, work.to_str().unwrap()).unwrap());
@@ -217,10 +225,12 @@ mod tests {
     #[test]
     fn relative_and_missing_folders_are_refused() {
         let (_t, homes, work) = dirs();
-        assert!(add(&homes, Path::new("rel"), 1).is_err());
-        assert!(add(&homes, &work.join("nope"), 1).is_err());
+        assert!(add(&homes, Path::new("rel"), None, 1).is_err());
+        assert!(add(&homes, &work.join("nope"), None, 1).is_err());
         std::fs::write(work.join("f"), "").unwrap();
-        assert!(add(&homes, &work.join("f"), 1).is_err());
+        assert!(add(&homes, &work.join("f"), None, 1).is_err());
+        assert!(add(&homes, &work, Some((0, 0)), 1).is_err());
+        assert!(list(&homes).is_empty());
     }
 
     #[test]

@@ -647,6 +647,11 @@ fn cloud_workspaces_and_bypass_profiles_are_refused() {
             "without permission prompts",
         ),
         (
+            "prompty",
+            "command = [\"/bin/sh\"]\n[prompt]\nmode = \"arg\"\nargs = [\"--dangerously-skip-permissions\", \"{prompt}\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+            "without permission prompts",
+        ),
+        (
             "plain",
             "command = [\"/bin/sh\"]\n",
             "cannot be checked",

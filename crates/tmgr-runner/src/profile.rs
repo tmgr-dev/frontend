@@ -218,6 +218,16 @@ impl Profile {
         Ok(argv)
     }
 
+    pub fn approved_argv(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+    ) -> Result<Vec<String>, String> {
+        let mut argv = self.argv_with(model, extra)?;
+        argv.extend(self.prompt_args("{prompt}"));
+        Ok(argv)
+    }
+
     pub fn prompt_args(&self, prompt: &str) -> Vec<String> {
         match self.prompt.mode {
             PromptMode::Arg => self
@@ -924,6 +934,19 @@ idle = ['^> $']
                 .unwrap(),
             ["p"]
         );
+    }
+
+    #[test]
+    fn the_approved_command_line_holds_the_prompt_arguments() {
+        let (set, _) = ProfileSet::load(None);
+        let p = set.get("opencode").unwrap();
+        assert_eq!(
+            p.approved_argv(None, p.permission_args("ask").unwrap())
+                .unwrap(),
+            ["opencode", "--agent", "build", "--prompt", "{prompt}"]
+        );
+        let p = set.get("aider").unwrap();
+        assert_eq!(p.approved_argv(None, &[]).unwrap(), p.argv(None).unwrap());
     }
 
     #[test]
