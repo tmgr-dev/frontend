@@ -141,6 +141,7 @@ impl H {
             permission_mode: None,
             start_key: None,
             clone_of: None,
+            trust_cwd: None,
         }
     }
 

@@ -240,6 +240,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             permission_mode: None,
             start_key: None,
             clone_of: None,
+            trust_cwd: None,
         }),
     }
     .map_err(rerr)?;

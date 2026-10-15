@@ -347,6 +347,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         permission_mode: i.permission_mode.clone(),
         start_key: None,
         clone_of: i.clone_of.clone(),
+        trust_cwd: None,
     }
 }
 

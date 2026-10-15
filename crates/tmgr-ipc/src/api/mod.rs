@@ -40,8 +40,9 @@ pub mod caps {
     pub const RUN_STATUS_V1: &str = "run_status.v1";
     pub const CLONE_DIR_V1: &str = "clone_dir.v1";
     pub const SESSION_TEXT_V1: &str = "session_text.v1";
+    pub const TRUST_CWD_V1: &str = "trust_cwd.v1";
 
-    pub const ALL: [&str; 16] = [
+    pub const ALL: [&str; 17] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -58,6 +59,7 @@ pub mod caps {
         RUN_STATUS_V1,
         CLONE_DIR_V1,
         SESSION_TEXT_V1,
+        TRUST_CWD_V1,
     ];
 }
 

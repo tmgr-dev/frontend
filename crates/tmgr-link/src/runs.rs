@@ -446,6 +446,7 @@ fn create(
         permission_mode: None,
         start_key: None,
         clone_of: None,
+        trust_cwd: None,
     };
     let mut generation = generation;
     let call = |st: &mut State, req: &RunCreateReq| -> Result<SessionInfo, BackendError> {

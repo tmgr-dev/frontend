@@ -107,6 +107,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
 | `clone_dir.v1` | `clone_of` on `runs.create` (section 5, "Queue capabilities") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
+| `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
 
 ## 5. Messages after the handshake
 
@@ -131,7 +132,7 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
@@ -299,6 +300,10 @@ All four are additive: new optional fields and methods, no change for clients th
 
 `sessions.text {id, lines?}` (cap `session_text.v1`) returns the session's terminal contents as plain text from the runner's live screen model: `{id, rows, cols, lines, scroll_max}`. `lines` are strings without attributes, trailing spaces trimmed, oldest first; the last entry is the bottom row of the screen, so blank bottom rows are kept as empty strings. `lines` defaults to the screen height (`rows`); a larger value adds scrollback above the screen and is capped by what exists and by about 512 KiB of text (the oldest lines are dropped first), so fewer lines than asked may come back. `lines` outside 1 to 10000 is `invalid_params`, an unknown session `not_found`. Exited sessions answer too, with the screen as it was at exit. The runner never stores the text, and this method is refused for a `worker` client (link-originated runs): `forbidden`. A leader that attaches to a run it started on a follower still sees that run's screen through `attach.open` (section 5, "Link-originated runs").
 
+### Pre-accepted folder trust
+
+**`trust_cwd.v1`.** `runs.create` takes an optional `trust_cwd` (`true`). It asks the runner to pre-accept the agent's own folder-trust prompt for the session's canonical `cwd` and nothing else, for this run only. The profile declares how in a `[trust]` table (`file`, a relative path inside the per-run home, and `path`, 1 to 8 JSON keys of which `{cwd}` stands for the whole canonical `cwd`); the runner merges `true` at that path into the copy of the file in the per-run home after the seeds are written, creating the file and objects when missing. The owner's real files are never touched. A profile without `[trust]` gives `invalid_params`. `trust_cwd` is accepted only from `client: "cli"` (others get `forbidden`) and is `invalid_params` together with `start_key`, `clone_of` or `origin`, so it can never come from the queue, a link or a follower. A restored run does not carry it. The work log records `trust: "pre-accepted"` on the `created` event and in `WorkSummary.trust` (section 5, "Work log"); both are absent otherwise.
+
 ### Run bundles
 
 A run bundle is the immutable input of one agent run: the task text, its
@@ -430,10 +435,10 @@ event and stops, keeping a reserve for the `exited` and `commits` events).
 - `started_ms`, `ended_ms` (absent while running), `duration_s` (to now while running);
 - `working_s`, `waiting_s`, `blocked_s`: time in each state, from state changes (`starting` is not counted);
 - `branch`, `commits` (`[{sha, subject}]`, oldest first): git facts, absent when the folder is not a git work tree or git fails;
-- `exit` `{code, signal}`; `task`, `profile`, `agent` (the profile id, else the program's base name); `truncated`.
+- `exit` `{code, signal}`; `task`, `profile`, `agent` (the profile id, else the program's base name); `trust` (`pre-accepted`, only when the run used `trust_cwd`); `truncated`.
 
 Events: `created` (time, profile, program base name, task, bundle hash, branch
-and head of the folder), `state` (time, kind, and for `waiting` the detail
+and head of the folder, and `trust: "pre-accepted"` when `trust_cwd` was used), `state` (time, kind, and for `waiting` the detail
 `bell`, for `blocked` the rule id only), `exited`, `commits` (the final branch
 and the commits made since the head at creation, at most 200, each subject at
 most 200 characters with control and bidi characters replaced), `truncated`.
@@ -450,7 +455,9 @@ capability has no log and returns an all-zero summary.
 `hello.client` is declared by the client. The runner uses it for these rules:
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
-(section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`. This is a guardrail so well-behaved clients cannot start arbitrary
+(section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`;
+`trust_cwd` on `runs.create` is accepted only from `cli` (section 5,
+"Pre-accepted folder trust"). This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user
 can claim to be `cli`. The real boundary is that agents run in a sandbox that

@@ -578,6 +578,7 @@ mod tests {
             permission_mode: None,
             start_key: None,
             clone_of: None,
+            trust_cwd: None,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }

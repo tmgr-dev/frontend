@@ -212,6 +212,7 @@ fn requests_and_responses() {
         permission_mode: None,
         start_key: None,
         clone_of: None,
+        trust_cwd: None,
     };
     golden("run_create_req", &run);
     golden(
@@ -258,6 +259,13 @@ fn requests_and_responses() {
         &RunCreateReq {
             cwd: "/work/project-worktrees/queue/q_abc".into(),
             clone_of: Some("/work/project".into()),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_trust_cwd",
+        &RunCreateReq {
+            trust_cwd: Some(true),
             ..run.clone()
         },
     );
@@ -449,7 +457,17 @@ fn method_params_and_results() {
             task: Some(TASK),
             profile: Some("claude".into()),
             agent: Some("claude".into()),
+            trust: None,
             truncated: false,
+        },
+    );
+    golden(
+        "work_summary_trust",
+        &WorkSummary {
+            started_ms: 1_700_000_000_000,
+            duration_s: 90,
+            trust: Some("pre-accepted".into()),
+            ..Default::default()
         },
     );
     let bare: WorkSummary = serde_json::from_value(json!({
@@ -700,7 +718,8 @@ fn constants_are_pinned() {
             "start_key.v1",
             "run_status.v1",
             "clone_dir.v1",
-            "session_text.v1"
+            "session_text.v1",
+            "trust_cwd.v1"
         ]
     );
     let methods = [

@@ -35,6 +35,8 @@ pub struct WorkSummary {
     pub profile: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<String>,
     #[serde(default)]
     pub truncated: bool,
 }
