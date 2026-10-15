@@ -72,3 +72,38 @@ fn claude_idle_prompt_is_not_blocked() {
         None
     );
 }
+
+fn idle(id: &str, screen: &str) -> bool {
+    matcher(id)
+        .check(&bottom(screen, 10))
+        .is_some_and(|(rule, _)| rule.starts_with("idle"))
+}
+
+#[test]
+fn claude_empty_prompt_is_idle_in_auto_and_manual_mode() {
+    assert!(idle(
+        "claude-code",
+        include_str!("../profiles/screens/claude-idle.txt")
+    ));
+    assert!(idle(
+        "claude-code",
+        include_str!("../profiles/screens/claude-idle-manual.txt")
+    ));
+}
+
+#[test]
+fn claude_prompt_with_text_or_a_menu_is_not_idle() {
+    assert!(!idle("claude-code", "❯ fix the failing test\n"));
+    assert!(!idle(
+        "claude-code",
+        " ❯ No, exit\n   Yes, I trust this folder\n"
+    ));
+}
+
+#[test]
+fn codex_empty_prompt_is_idle() {
+    assert!(idle(
+        "codex",
+        include_str!("../profiles/screens/codex-idle.txt")
+    ));
+}

@@ -3416,3 +3416,33 @@ fn a_profile_replaced_during_create_has_no_effect_on_that_run() {
     assert_eq!(fs::read_to_string(path).unwrap(), "v1\n--v1\n");
     assert_eq!(info.argv.last().map(String::as_str), Some("--v1"));
 }
+
+#[test]
+fn an_idle_prompt_is_waiting_although_the_agent_keeps_using_cpu() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(2000);
+    let body = "printf 'READY>\\n'; while :; do :; done\n";
+    for (id, idle) in [("spin", "[]"), ("spin-idle", "['^READY>$']")] {
+        fs::write(
+            h.agents.join(format!("{id}.toml")),
+            format!(
+                "id = {id:?}\nname = {id:?}\ncommand = [\"/bin/sh\", \"-c\", {body:?}]\n\n[status]\nidle = {idle}\n"
+            ),
+        )
+        .unwrap();
+    }
+    let mut c = h.client();
+    let busy = c.create_run(h.run_req("spin")).unwrap();
+    let idle = c.create_run(h.run_req("spin-idle")).unwrap();
+    let s = wait_state(&mut c, &idle.id, 15, |s| s.kind == StateKind::Waiting);
+    assert_eq!(s.state.kind, StateKind::Waiting);
+    thread::sleep(Duration::from_millis(3000));
+    let s = wait_state(&mut c, &busy.id, 0, |_| true);
+    assert_eq!(s.state.kind, StateKind::Working);
+    for id in [&busy.id, &idle.id] {
+        h.stop(&mut c, id);
+    }
+}

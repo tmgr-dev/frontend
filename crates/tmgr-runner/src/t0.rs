@@ -20,6 +20,7 @@ pub struct Detector {
     last_input: Option<u64>,
     bell: bool,
     blocked: Option<String>,
+    idle: bool,
     tty_waiting: Option<bool>,
     cpu_samples: Vec<(u64, u64)>,
     exited: bool,
@@ -39,6 +40,7 @@ impl Detector {
             last_input: None,
             bell: false,
             blocked: None,
+            idle: false,
             tty_waiting: None,
             cpu_samples: Vec::new(),
             exited: false,
@@ -87,6 +89,11 @@ impl Detector {
 
     pub fn on_unblocked(&mut self, now: u64) -> Option<State> {
         self.blocked = None;
+        self.tick(now)
+    }
+
+    pub fn on_idle(&mut self, now: u64, idle: bool) -> Option<State> {
+        self.idle = idle;
         self.tick(now)
     }
 
@@ -141,10 +148,11 @@ impl Detector {
         if now.saturating_sub(activity) < self.quiet_ms {
             return (StateKind::Working, None);
         }
-        let waiting = match self.tty_waiting {
-            Some(w) => w,
-            None => !self.cpu_growing(now),
-        };
+        let waiting = self.idle
+            || match self.tty_waiting {
+                Some(w) => w,
+                None => !self.cpu_growing(now),
+            };
         if waiting {
             (StateKind::Waiting, None)
         } else {
@@ -272,6 +280,23 @@ mod tests {
         assert_eq!(kinds(&d), StateKind::Waiting);
         let s = d.on_input(1600).unwrap();
         assert_eq!(s.kind, StateKind::Working);
+    }
+
+    #[test]
+    fn an_idle_screen_waits_after_the_quiet_window_even_while_cpu_grows() {
+        let mut d = Detector::new(1000, 0);
+        d.on_output(0);
+        assert_eq!(d.on_idle(10, true), None);
+        assert_eq!(kinds(&d), StateKind::Working);
+        d.on_stat(1100, Some(100), None);
+        d.on_stat(1500, Some(900), None);
+        assert_eq!(kinds(&d), StateKind::Waiting);
+        let s = d.on_output(1600).unwrap();
+        assert_eq!(s.kind, StateKind::Working);
+        d.on_idle(1600, false);
+        d.on_stat(2700, Some(2000), None);
+        d.on_stat(2800, Some(3000), None);
+        assert_eq!(kinds(&d), StateKind::Working);
     }
 
     #[test]

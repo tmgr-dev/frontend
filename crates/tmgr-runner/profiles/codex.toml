@@ -24,7 +24,7 @@ blocked = [
   '(?i)would you like to run the following command\?',
   '(?i)press enter to confirm or esc to cancel',
 ]
-idle = []
+idle = ['^\s*\? for shortcuts\s*$']
 
 [prompt]
 mode = "arg"

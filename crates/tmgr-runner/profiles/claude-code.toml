@@ -24,14 +24,15 @@ from = "~/.claude.json"
 to = ".claude.json"
 json_keys = ["hasCompletedOnboarding", "theme", "oauthAccount"]
 
-# Folder trust checked against a recorded Claude Code 2.1 screen (profiles/screens); tool-approval shapes still unverified.
+# Folder trust and the empty prompt checked against recorded Claude Code 2.1 screens (profiles/screens); tool-approval shapes still unverified.
+# Idle only counts after the quiet window: while Claude works its spinner keeps printing.
 [status]
 blocked = [
   '(?i)do you want to (proceed|allow|make this edit)',
   '(?i)\ballow .+\?',
   '(?i)trust this folder',
 ]
-idle = []
+idle = ['^\s*❯\s*$']
 
 [prompt]
 mode = "arg"
