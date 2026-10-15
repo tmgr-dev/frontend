@@ -1669,6 +1669,15 @@ impl Runner {
         })?;
         let running = self.session(old).is_some_and(|s| !s.is_exited());
         let result = match restore::status(&claim.intent, now_ms(), running) {
+            restore::Status::Restorable
+                if (claim.intent.agent_work || claim.intent.keyed)
+                    && claim.intent.exe_pin.is_none() =>
+            {
+                Err(api(
+                    ErrorCode::Forbidden,
+                    "this queue run was recorded without an approved executable; queue the task again",
+                ))
+            }
             restore::Status::Restorable => restore::read_bundle(&store, &claim.intent)
                 .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))
                 .and_then(|bundle| {
@@ -1736,6 +1745,7 @@ impl Runner {
             Some(k) => Some((k.clone(), params_hash(&req))),
             None => None,
         };
+        let keyed = start.is_some();
         let prechecked = self.precheck_pin(&req)?;
         let _keyed = start.as_ref().map(|_| lock(&self.key_lock));
         if let Some((key, hash)) = &start {
@@ -1884,6 +1894,7 @@ impl Runner {
                 permission_mode: mode,
                 clone_of: req.clone_of,
                 agent_work: req.agent_work,
+                keyed,
                 exe_pin: req.exe_pin,
                 bypass: false,
                 boot: restore::boot_marker(),

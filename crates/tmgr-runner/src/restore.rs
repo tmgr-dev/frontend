@@ -37,6 +37,8 @@ pub struct Intent {
     pub clone_of: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent_work: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keyed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe_pin: Option<ExePin>,
     #[serde(default)]
@@ -542,6 +544,7 @@ mod tests {
             permission_mode: None,
             clone_of: None,
             agent_work: false,
+            keyed: false,
             exe_pin: None,
             bypass: false,
             boot: None,

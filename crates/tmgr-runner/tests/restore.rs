@@ -537,6 +537,7 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         permission_mode: None,
         clone_of: None,
         agent_work: false,
+        keyed: false,
         exe_pin: None,
         bypass: false,
         boot: None,
@@ -572,6 +573,21 @@ fn link_bypass_expired_and_bundle_less_records_are_refused() {
     ] {
         let err = h.client().restore(id).unwrap_err().to_string();
         assert!(err.starts_with(want), "{id}: {err}");
+        assert!(restore::load(&h.store(), id).is_ok(), "{id} record lost");
+    }
+    assert!(h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn queue_records_without_a_pin_are_refused_and_kept() {
+    let mut h = H::new(true);
+    h.start();
+    forged(&h, "s_aaaaaaaaaa", |i| i.agent_work = true);
+    forged(&h, "s_bbbbbbbbbb", |i| i.keyed = true);
+    for id in ["s_aaaaaaaaaa", "s_bbbbbbbbbb"] {
+        let err = h.client().restore(id).unwrap_err().to_string();
+        assert!(err.starts_with("forbidden: "), "{id}: {err}");
+        assert!(err.contains("queue the task again"), "{id}: {err}");
         assert!(restore::load(&h.store(), id).is_ok(), "{id} record lost");
     }
     assert!(h.client().list().unwrap().is_empty());
