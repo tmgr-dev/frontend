@@ -122,6 +122,8 @@ pub fn argv_is_bypass(argv: &[String]) -> bool {
             || a.contains("yolo")
             || a.contains("danger-full-access")
             || a == "--ask-for-approval=never"
+            || a == "-a=never"
+            || a == "-anever"
             || ((a == "--ask-for-approval" || a == "-a")
                 && lower.get(i + 1).is_some_and(|n| n == "never"))
     })
@@ -373,6 +375,9 @@ mod tests {
             vec!["codex", "--yolo"],
             vec!["codex", "--sandbox", "danger-full-access"],
             vec!["codex", "-a", "never"],
+            vec!["codex", "-a=never"],
+            vec!["codex", "-anever"],
+            vec!["codex", "--ask-for-approval", "NEVER"],
         ] {
             assert_eq!(
                 validate_rule(&r, &Fake(argv.clone()))
