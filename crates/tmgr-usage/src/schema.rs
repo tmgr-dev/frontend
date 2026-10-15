@@ -111,3 +111,48 @@ pub const MIGRATIONS: &[&str] = &[
     ALTER TABLE usage_day_rollup ADD COLUMN tz_offset_min INTEGER NOT NULL DEFAULT 0;
     ",
 ];
+
+/// Additive tables for agent context, versioned apart from `MIGRATIONS`: binaries that predate them
+/// refuse a database whose `schema_version` is newer than they know, and they ignore these tables.
+pub const CONTEXT_MIGRATIONS: &[&str] = &["
+    ALTER TABLE usage_event ADD COLUMN agent_id TEXT;
+    CREATE TABLE usage_agent (
+        id INTEGER PRIMARY KEY,
+        tool TEXT NOT NULL,
+        account TEXT NOT NULL,
+        tool_session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT '',
+        agent_type TEXT,
+        parent_agent_id TEXT,
+        spawn_tool_use_id TEXT,
+        spawn_depth INTEGER,
+        originator TEXT,
+        source TEXT,
+        version TEXT,
+        entrypoint TEXT,
+        started_at INTEGER,
+        project_hash TEXT,
+        UNIQUE (tool, account, tool_session_id, agent_id)
+    );
+    CREATE TABLE usage_fact (
+        id INTEGER PRIMARY KEY,
+        fact_key TEXT NOT NULL UNIQUE,
+        tool TEXT NOT NULL,
+        account TEXT NOT NULL,
+        tool_session_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT '',
+        ts INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        detail TEXT,
+        target TEXT,
+        ended_at INTEGER,
+        duration_ms INTEGER,
+        value INTEGER,
+        is_error INTEGER NOT NULL DEFAULT 0,
+        git_branch TEXT,
+        project_hash TEXT
+    );
+    CREATE INDEX usage_fact_ts ON usage_fact(ts);
+    CREATE INDEX usage_fact_session ON usage_fact(tool, account, tool_session_id);
+    "];

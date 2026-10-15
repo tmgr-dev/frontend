@@ -174,8 +174,8 @@ pub(crate) fn upsert_event(
             "INSERT INTO usage_event
                (session_id, event_key, tool, account, ts, model, input, output, cache_read,
                 cache_write_5m, cache_write_1h, reasoning, speed, service_tier, cost_usd, cost_basis,
-                git_branch, cwd, project_name, project_hash, is_sidechain)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                git_branch, cwd, project_name, project_hash, is_sidechain, agent_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         )?
         .execute(params![
             session_id,
@@ -199,6 +199,7 @@ pub(crate) fn upsert_event(
             cwd.map(project_name),
             cwd.map(project_hash),
             ev.is_sidechain,
+            ev.agent_id,
         ])?;
         conn.prepare_cached(
             "UPDATE usage_session SET
@@ -257,7 +258,7 @@ pub(crate) fn upsert_event(
         )?;
         conn.execute(
             "UPDATE usage_event SET ts = ?2, session_id = ?3, account = ?4, git_branch = ?5, cwd = ?6,
-               project_name = ?7, project_hash = ?8, is_sidechain = ?9 WHERE id = ?1",
+               project_name = ?7, project_hash = ?8, is_sidechain = ?9, agent_id = ?10 WHERE id = ?1",
             params![
                 id,
                 ts,
@@ -268,6 +269,7 @@ pub(crate) fn upsert_event(
                 cwd.map(project_name),
                 cwd.map(project_hash),
                 ev.is_sidechain,
+                ev.agent_id,
             ],
         )?;
         refresh_session_range(conn, session_id)?;
@@ -284,7 +286,7 @@ impl Store {
             "SELECT e.id, e.tool, e.account, s.tool_session_id, e.ts, e.model, e.git_branch,
                     e.project_hash, e.cost_usd,
                     e.input + e.output + e.cache_read + e.cache_write_5m + e.cache_write_1h,
-                    s.parent_session_id
+                    s.parent_session_id, e.agent_id
              FROM usage_event e JOIN usage_session s ON s.id = e.session_id
              WHERE e.ts >= ?1 AND e.ts < ?2 ORDER BY e.ts, e.id",
         )?;
@@ -302,6 +304,7 @@ impl Store {
                     project_hash: r.get(7)?,
                     cost_usd: r.get(8)?,
                     tokens: r.get::<_, i64>(9)? as u64,
+                    agent_id: r.get(11)?,
                 },
                 r.get::<_, String>(1)?,
             ))

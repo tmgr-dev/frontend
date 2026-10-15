@@ -8,9 +8,13 @@ use crate::error::{Result, UsageError};
 use crate::limits::{LimitSnapshot, LimitSource, LimitWindow};
 use crate::model::{CostBasis, Tool};
 use crate::pricing::{PriceBook, PriceEntry};
-use crate::schema::MIGRATIONS;
+use crate::schema::{CONTEXT_MIGRATIONS, MIGRATIONS};
 
 const ROLLUP_FLOOR_KEY: &str = "rollup_floor_ms";
+const CONTEXT_MIN_READER_KEY: &str = "context_min_reader";
+/// The oldest context version that can still use the database. Only a migration that old readers
+/// would misread raises it; additive ones leave it alone.
+const CONTEXT_MIN_READER: i64 = 1;
 const ROLLUP_KEEP_DAYS: i64 = 730;
 const LIMIT_KEEP_DAYS: i64 = 30;
 const SAME_WINDOW_S: i64 = 120;
@@ -44,6 +48,7 @@ pub fn from_ms(v: i64) -> DateTime<Utc> {
 
 impl Store {
     pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
+    pub const CONTEXT_VERSION: i64 = CONTEXT_MIGRATIONS.len() as i64;
 
     pub fn open(path: &Path) -> Result<Store> {
         let existed = path.exists();
@@ -63,11 +68,16 @@ impl Store {
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         migrate(&conn, MIGRATIONS.len())?;
+        migrate_context(&conn)?;
         Ok(Store { conn })
     }
 
     pub fn schema_version(&self) -> Result<i64> {
         current_version(&self.conn)
+    }
+
+    pub fn context_version(&self) -> Result<i64> {
+        context_version(&self.conn)
     }
 
     pub(crate) fn setting(&self, key: &str) -> Result<Option<String>> {
@@ -367,9 +377,19 @@ impl Store {
             }
         }
         tx.execute("DELETE FROM usage_event WHERE ts < ?1", [floor])?;
+        tx.execute("DELETE FROM usage_fact WHERE ts < ?1", [floor])?;
         tx.execute(
             "DELETE FROM usage_session WHERE parent_session_id IS NULL
                AND id NOT IN (SELECT DISTINCT session_id FROM usage_event)",
+            [],
+        )?;
+        tx.execute(
+            "DELETE FROM usage_agent WHERE NOT EXISTS (
+               SELECT 1 FROM usage_fact f WHERE f.tool = usage_agent.tool
+                 AND f.account = usage_agent.account AND f.tool_session_id = usage_agent.tool_session_id)
+             AND NOT EXISTS (
+               SELECT 1 FROM usage_session s WHERE s.tool = usage_agent.tool
+                 AND s.account = usage_agent.account AND s.tool_session_id = usage_agent.tool_session_id)",
             [],
         )?;
         let old_day = (now - Duration::days(ROLLUP_KEEP_DAYS))
@@ -401,6 +421,8 @@ impl Store {
             "usage_source",
             "usage_day_rollup",
             "usage_limit_snapshot",
+            "usage_fact",
+            "usage_agent",
         ] {
             tx.execute(&format!("DELETE FROM {table}"), [])?;
         }
@@ -465,6 +487,58 @@ pub(crate) fn migrate(conn: &Connection, target: usize) -> Result<()> {
              INSERT INTO schema_version (version) VALUES ({version});
              COMMIT;"
         ))?;
+    }
+    Ok(())
+}
+
+fn context_version(conn: &Connection) -> Result<i64> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS usage_context_version (version INTEGER NOT NULL)",
+    )?;
+    let v: Option<i64> = conn
+        .query_row("SELECT MAX(version) FROM usage_context_version", [], |r| {
+            r.get(0)
+        })
+        .optional()?
+        .flatten();
+    Ok(v.unwrap_or(0))
+}
+
+fn migrate_context(conn: &Connection) -> Result<()> {
+    let found = context_version(conn)?;
+    let min_reader: i64 = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            [CONTEXT_MIN_READER_KEY],
+            |r| r.get::<_, String>(0),
+        )
+        .optional()?
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if min_reader > CONTEXT_MIGRATIONS.len() as i64 {
+        return Err(UsageError::SchemaTooNew {
+            found: min_reader,
+            supported: CONTEXT_MIGRATIONS.len() as i64,
+        });
+    }
+    for (idx, sql) in CONTEXT_MIGRATIONS.iter().enumerate() {
+        let version = idx as i64 + 1;
+        if version <= found {
+            continue;
+        }
+        conn.execute_batch(&format!(
+            "BEGIN IMMEDIATE;
+             {sql}
+             INSERT INTO usage_context_version (version) VALUES ({version});
+             COMMIT;"
+        ))?;
+    }
+    if min_reader < CONTEXT_MIN_READER {
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [CONTEXT_MIN_READER_KEY, &CONTEXT_MIN_READER.to_string()],
+        )?;
     }
     Ok(())
 }

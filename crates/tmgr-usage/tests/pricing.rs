@@ -171,6 +171,7 @@ fn event(model: &str, speed: Option<&str>) -> tmgr_usage::UsageEvent {
         git_branch: None,
         cwd: None,
         is_sidechain: false,
+        agent_id: None,
     }
 }
 

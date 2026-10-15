@@ -10,6 +10,7 @@ use crate::codex::CodexCollector;
 use crate::collector::{Collector, LogFile, ParserState};
 use crate::error::{Result, UsageError};
 use crate::events::{purge_session_events, upsert_event, upsert_session_meta, Upsert};
+use crate::facts::{end_fact, upsert_agent, upsert_fact};
 use crate::model::{hex, Account, ParsedRecord, Tool};
 use crate::pricing::PriceBook;
 use crate::store::{ms, record_limit_conn, Store};
@@ -417,6 +418,17 @@ fn apply(
         ParsedRecord::Limit(mut snap) => {
             snap.account = account.to_string();
             record_limit_conn(conn, &snap)?;
+        }
+        ParsedRecord::Fact(mut fact) => {
+            fact.account = account.to_string();
+            if ms(fact.ts) >= floor {
+                upsert_fact(conn, tool, &fact)?;
+            }
+        }
+        ParsedRecord::FactEnd(end) => end_fact(conn, tool, &end)?,
+        ParsedRecord::Agent(mut agent) => {
+            agent.account = account.to_string();
+            upsert_agent(conn, tool, &agent)?;
         }
     }
     Ok(())

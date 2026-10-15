@@ -29,6 +29,7 @@ pub struct LinkEvent {
     pub project_hash: Option<String>,
     pub cost_usd: Option<f64>,
     pub tokens: u64,
+    pub agent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -313,6 +314,7 @@ mod tests {
             project_hash: None,
             cost_usd: cost,
             tokens: 10,
+            agent_id: None,
         }
     }
 

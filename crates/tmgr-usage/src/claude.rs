@@ -164,6 +164,7 @@ fn into_event(line: &Line, account: &str) -> Option<UsageEvent> {
         git_branch: line.git_branch.clone().filter(|b| !b.is_empty()),
         cwd: line.cwd.clone().filter(|c| !c.is_empty()),
         is_sidechain: line.is_sidechain.unwrap_or(false),
+        agent_id: None,
     })
 }
 

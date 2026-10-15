@@ -237,6 +237,7 @@ impl State {
             git_branch: self.branch.clone(),
             cwd: self.cwd.clone(),
             is_sidechain: self.child,
+            agent_id: None,
         }
     }
 

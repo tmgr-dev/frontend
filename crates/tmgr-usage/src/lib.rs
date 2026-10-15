@@ -3,6 +3,7 @@ pub mod claude;
 pub mod codex;
 pub mod collector;
 pub mod error;
+pub mod facts;
 pub mod limits;
 pub mod link;
 pub mod model;
@@ -20,7 +21,10 @@ pub use aggregate::{Filters, GroupBy, Query, Report, Row, Tz};
 pub use collector::{Collector, LogFile, ParseOutcome, ParserState};
 pub use error::{Result, UsageError};
 pub use events::Upsert;
-pub use model::{Account, CostBasis, ParsedRecord, SessionMeta, Tokens, Tool, UsageEvent};
+pub use model::{
+    Account, AgentMeta, CostBasis, Fact, FactEnd, FactKind, ParsedRecord, SessionMeta, Tokens,
+    Tool, UsageEvent,
+};
 pub use pricing::PriceBook;
 pub use scan::{scan_account, scan_with, ScanReport};
 pub use store::{PruneReport, Store};

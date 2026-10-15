@@ -454,3 +454,108 @@ fn a_notice_is_taken_at_most_the_given_times_across_connections() {
     assert_eq!(taken, [true, true, true, false, false]);
     assert!(a.take_notice("other", 3).unwrap());
 }
+
+const RELEASED_SCHEMA_VERSION: i64 = 3;
+
+#[test]
+fn readers_released_before_the_context_tables_still_open_a_new_database() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("usage.db");
+    drop(Store::open(&path).unwrap());
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+        .unwrap();
+    assert!(version <= RELEASED_SCHEMA_VERSION);
+    conn.execute_batch(
+        "INSERT INTO usage_session (tool, account, tool_session_id) VALUES ('claude', 'a', 's');
+         INSERT INTO usage_event (session_id, event_key, tool, account, ts, model, input, output,
+           cache_read, cache_write_5m, cache_write_1h, reasoning, cost_basis)
+         VALUES (1, 'k', 'claude', 'a', 0, 'm', 1, 1, 0, 0, 0, 0, 'unpriced');",
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_newer_additive_context_version_does_not_lock_out_this_reader() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("usage.db");
+    drop(Store::open(&path).unwrap());
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute("INSERT INTO usage_context_version VALUES (42)", [])
+        .unwrap();
+    drop(conn);
+    let store = Store::open(&path).unwrap();
+    assert_eq!(store.context_version().unwrap(), 42);
+    drop(store);
+    let conn = rusqlite::Connection::open(&path).unwrap();
+    conn.execute(
+        "UPDATE settings SET value = '42' WHERE key = 'context_min_reader'",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+    assert!(matches!(
+        Store::open(&path),
+        Err(UsageError::SchemaTooNew { found: 42, .. })
+    ));
+}
+
+#[test]
+fn facts_and_agents_are_stored_idempotently_and_deleted_on_reset() {
+    use tmgr_usage::{AgentMeta, Fact, FactEnd, FactKind};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut store = open_store(tmp.path());
+    let fact = Fact {
+        account: "claude".into(),
+        key: "s1|tool_call|toolu_1".into(),
+        tool_session_id: "s1".into(),
+        ts: now(),
+        kind: Some(FactKind::ToolCall),
+        name: "mcp__tmgr__update_task".into(),
+        detail: Some("/home/someone/secret path".into()),
+        cwd: Some("/work/alpha".into()),
+        ..Fact::default()
+    };
+    store.record_fact(Tool::Claude, &fact).unwrap();
+    store.record_fact(Tool::Claude, &fact).unwrap();
+    store
+        .end_fact(
+            Tool::Claude,
+            &FactEnd {
+                key: fact.key.clone(),
+                ended_at: now() + Duration::milliseconds(1500),
+                is_error: true,
+            },
+        )
+        .unwrap();
+    store
+        .record_agent(
+            Tool::Claude,
+            &AgentMeta {
+                account: "claude".into(),
+                tool_session_id: "s1".into(),
+                agent_id: Some("a1".into()),
+                agent_type: Some("codex:codex-rescue".into()),
+                ..AgentMeta::default()
+            },
+        )
+        .unwrap();
+    let facts = store
+        .facts(now() - Duration::hours(1), now() + Duration::hours(1))
+        .unwrap();
+    assert_eq!(facts.len(), 1);
+    let f = &facts[0];
+    assert_eq!(f.duration_ms, Some(1500));
+    assert!(f.is_error);
+    assert_eq!(f.call_id, "toolu_1");
+    assert_eq!(f.detail.as_deref(), Some("_home_someone_secret_path"));
+    assert!(f.project_hash.is_some());
+    assert_eq!(store.agents().unwrap().len(), 1);
+    store.delete_all().unwrap();
+    assert!(store
+        .facts(now() - Duration::hours(1), now() + Duration::hours(1))
+        .unwrap()
+        .is_empty());
+    assert!(store.agents().unwrap().is_empty());
+}

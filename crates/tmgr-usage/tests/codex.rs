@@ -113,6 +113,7 @@ fn parse_with(path: &Path, from: u64, state: &mut ParserState) -> (Parsed, u64) 
             ParsedRecord::Event(e) => out.events.push(e),
             ParsedRecord::Session(s) => out.sessions.push(s),
             ParsedRecord::Limit(l) => out.limits.push(l),
+            _ => {}
         })
         .unwrap();
     (out, outcome.next_offset)
