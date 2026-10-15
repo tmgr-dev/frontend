@@ -10,7 +10,7 @@ use tmgr_core::refs::{parse_task_ref, TaskRef as RefKind};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::limits::MAX_BUNDLE;
 use tmgr_ipc::api::{
-    argv_sha256, sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, ExePin, RunBundle,
+    argv_sha256, caps, sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, ExePin, RunBundle,
     RunCreateReq,
 };
 use tmgr_queue::source::{Candidate, LocalTasks};
@@ -297,6 +297,17 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut client = connect(&cfg)?;
+    let have = &client.welcome().caps;
+    if [caps::EXE_PIN_V1, caps::ARGV_PIN_V1]
+        .iter()
+        .any(|c| !have.iter().any(|h| h == c))
+    {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the running runner is older than this tmgr and cannot check the agent's command line",
+        )
+        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+    }
     let info = client
         .create_run(RunCreateReq {
             profile: profile.clone(),
