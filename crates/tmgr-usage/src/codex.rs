@@ -8,12 +8,15 @@ use crate::collector::{
 };
 use crate::error::Result;
 use crate::limits::{LimitSnapshot, LimitSource, LimitWindow};
-use crate::model::{Account, ParsedRecord, SessionMeta, Tokens, Tool, UsageEvent};
+use crate::model::{
+    Account, AgentMeta, Fact, FactEnd, FactKind, ParsedRecord, SessionMeta, Tokens, Tool,
+    UsageEvent,
+};
 
-pub const PARSER_VERSION: u32 = 2;
+pub const PARSER_VERSION: u32 = 3;
 const MAX_PENDING: usize = 32;
 const MAX_IDS: usize = 256;
-const MARKERS: [&[u8]; 8] = [
+const MARKERS: [&[u8]; 12] = [
     b"session_meta",
     b"turn_context",
     b"token_count",
@@ -22,8 +25,13 @@ const MARKERS: [&[u8]; 8] = [
     b"token_usage_record",
     b"compacted",
     b"inter_agent_communication",
+    b"task_complete",
+    b"exec_command_end",
+    b"patch_apply_end",
+    b"mcp_tool_call_end",
 ];
 const SKIP_HEAD: &[u8] = b"\"type\":\"response_item\"";
+const CALL_HEADS: [&[u8]; 2] = [b"\"type\":\"function_call", b"\"type\":\"custom_tool_call"];
 
 pub struct CodexCollector;
 
@@ -110,6 +118,18 @@ struct Payload {
     usage: Option<Raw>,
     compaction_response_id: Option<String>,
     trigger_turn: Option<bool>,
+    call_id: Option<String>,
+    name: Option<String>,
+    namespace: Option<String>,
+    status: Option<String>,
+    turn_id: Option<String>,
+    duration_ms: Option<u64>,
+    exit_code: Option<i64>,
+    success: Option<bool>,
+    result: Option<serde_json::Value>,
+    originator: Option<String>,
+    cli_version: Option<String>,
+    source: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -162,6 +182,8 @@ struct State {
     branch: Option<String>,
     tier: Option<String>,
     ordinal: u64,
+    #[serde(default)]
+    compactions: u64,
     compacted: Vec<String>,
     emitted: Vec<String>,
     pending: Vec<Pending>,
@@ -270,11 +292,40 @@ impl State {
                     self.replay = false;
                 }
             }
-            "compacted" => self.compacted(line.payload, ctx),
+            "compacted" => self.compacted(line.payload, ts, ctx),
             "token_usage_record" => self.usage_record(line.payload, ts, ctx),
+            "response_item" => {
+                let Some(p) = line.payload else { return };
+                match p.kind.as_deref() {
+                    Some("function_call" | "custom_tool_call") => self.tool_call(p, ts, ctx),
+                    Some("function_call_output" | "custom_tool_call_output") => {
+                        self.tool_end(p.call_id, ts, false, ctx);
+                    }
+                    _ => {}
+                }
+            }
             "event_msg" => {
                 let Some(p) = line.payload else { return };
                 match p.kind.as_deref() {
+                    Some("task_complete") => self.task_complete(p, ts, ctx),
+                    Some("exec_command_end") => {
+                        let failed = p.exit_code.is_some_and(|c| c != 0)
+                            || p.status.as_deref() == Some("failed");
+                        self.tool_end(p.call_id, ts, failed, ctx);
+                    }
+                    Some("patch_apply_end") => {
+                        let failed =
+                            p.success == Some(false) || p.status.as_deref() == Some("failed");
+                        self.tool_end(p.call_id, ts, failed, ctx);
+                    }
+                    Some("mcp_tool_call_end") => {
+                        let failed = p
+                            .result
+                            .as_ref()
+                            .and_then(|r| r.as_object())
+                            .is_some_and(|o| o.contains_key("Err"));
+                        self.tool_end(p.call_id, ts, failed, ctx);
+                    }
                     Some("task_started") => self.replay = false,
                     Some("inter_agent_communication_metadata" | "inter_agent_communication") => {
                         if p.trigger_turn == Some(true) {
@@ -313,6 +364,21 @@ impl State {
             self.child = true;
             self.replay = true;
         }
+        (ctx.sink)(ParsedRecord::Agent(AgentMeta {
+            account: ctx.file.account.clone(),
+            tool_session_id: self.session(ctx.file),
+            originator: p.originator.filter(|s| !s.is_empty()),
+            source: match p.source {
+                Some(serde_json::Value::String(s)) => Some(s),
+                Some(serde_json::Value::Object(o)) => o.keys().next().cloned(),
+                _ => None,
+            }
+            .filter(|s| !s.is_empty()),
+            version: p.cli_version.filter(|s| !s.is_empty()),
+            started_at: ts,
+            cwd: self.cwd.clone(),
+            ..Default::default()
+        }));
         (ctx.sink)(ParsedRecord::Session(SessionMeta {
             account: ctx.file.account.clone(),
             tool_session_id: self.session(ctx.file),
@@ -321,6 +387,76 @@ impl State {
             git_branch: self.branch.clone(),
             parent_session_id: parent,
         }));
+    }
+
+    fn fact(
+        &self,
+        ctx: &Ctx<'_>,
+        kind: FactKind,
+        id: &str,
+        name: String,
+        ts: DateTime<Utc>,
+    ) -> Fact {
+        let session = self.session(ctx.file);
+        Fact {
+            account: ctx.file.account.clone(),
+            key: format!("{session}|{}|{id}", kind.as_str()),
+            tool_session_id: session,
+            ts,
+            kind: Some(kind),
+            name,
+            git_branch: self.branch.clone(),
+            cwd: self.cwd.clone(),
+            ..Default::default()
+        }
+    }
+
+    fn tool_call(&self, p: Payload, ts: Option<DateTime<Utc>>, ctx: &mut Ctx<'_>) {
+        let (false, Some(ts), Some(id), Some(name)) = (
+            self.replay,
+            ts,
+            p.call_id.filter(|s| !s.is_empty()),
+            p.name.filter(|s| !s.is_empty()),
+        ) else {
+            return;
+        };
+        let name = match p.namespace.as_deref().and_then(|n| n.strip_prefix("mcp__")) {
+            Some(server) if !name.starts_with("mcp__") => {
+                format!("mcp__{}__{name}", server.trim_end_matches('_'))
+            }
+            _ => name,
+        };
+        let fact = self.fact(ctx, FactKind::ToolCall, &id, name, ts);
+        (ctx.sink)(ParsedRecord::Fact(fact));
+    }
+
+    fn tool_end(
+        &self,
+        call_id: Option<String>,
+        ts: Option<DateTime<Utc>>,
+        is_error: bool,
+        ctx: &mut Ctx<'_>,
+    ) {
+        let (false, Some(ended_at), Some(id)) =
+            (self.replay, ts, call_id.filter(|s| !s.is_empty()))
+        else {
+            return;
+        };
+        (ctx.sink)(ParsedRecord::FactEnd(FactEnd {
+            key: format!("{}|tool_call|{id}", self.session(ctx.file)),
+            ended_at,
+            is_error,
+        }));
+    }
+
+    fn task_complete(&self, p: Payload, ts: Option<DateTime<Utc>>, ctx: &mut Ctx<'_>) {
+        let (false, Some(ts), Some(id)) = (self.replay, ts, p.turn_id.filter(|s| !s.is_empty()))
+        else {
+            return;
+        };
+        let mut fact = self.fact(ctx, FactKind::Turn, &id, "turn".into(), ts);
+        fact.duration_ms = p.duration_ms;
+        (ctx.sink)(ParsedRecord::Fact(fact));
     }
 
     fn token_count(&mut self, p: Payload, ts: Option<DateTime<Utc>>, ctx: &mut Ctx<'_>) {
@@ -391,9 +527,25 @@ impl State {
         }
     }
 
-    fn compacted(&mut self, payload: Option<Payload>, ctx: &mut Ctx<'_>) {
+    fn compacted(
+        &mut self,
+        payload: Option<Payload>,
+        ts: Option<DateTime<Utc>>,
+        ctx: &mut Ctx<'_>,
+    ) {
         if self.replay {
             return;
+        }
+        self.compactions += 1;
+        let id = payload
+            .as_ref()
+            .and_then(|p| p.compaction_response_id.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map_or_else(|| format!("n{}", self.compactions), str::to_string);
+        if let Some(ts) = ts {
+            let fact = self.fact(ctx, FactKind::Compact, &id, "compact".into(), ts);
+            (ctx.sink)(ParsedRecord::Fact(fact));
         }
         let Some(id) = payload
             .and_then(|p| p.compaction_response_id)
@@ -473,7 +625,9 @@ impl State {
 fn relevant(raw: &[u8]) -> bool {
     let head = &raw[..raw.len().min(160)];
     if memchr::memmem::find(head, SKIP_HEAD).is_some() {
-        return false;
+        return CALL_HEADS
+            .iter()
+            .any(|m| memchr::memmem::find(head, m).is_some());
     }
     MARKERS
         .iter()
