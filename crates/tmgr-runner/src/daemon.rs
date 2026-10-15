@@ -34,7 +34,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    limits, method, CreateReq, CwdPin, ErrorCode, EventMsg, LookupParams, Origin,
+    limits, method, CreateReq, CwdPin, ErrorCode, EventMsg, ExePin, LookupParams, Origin,
     OriginRevokeParams, OriginRevoked, RestoredRun, RunCreateReq, RunStatus, SessionInfo,
     SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, CLIENT_CLI,
     CLIENT_WORKER,
@@ -1151,6 +1151,34 @@ fn valid_start_key(k: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b':' | b'-'))
 }
 
+type PinCheck = (String, Result<PathBuf, ApiErr>);
+
+fn check_pin_fields(pin: &ExePin) -> Result<(), ApiErr> {
+    if !Path::new(&pin.path).is_absolute() {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            "exe_pin.path must be absolute",
+        ));
+    }
+    if pin.sha256.len() != 64
+        || !pin
+            .sha256
+            .bytes()
+            .all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+    {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            "exe_pin.sha256 must be 64 lowercase hex characters",
+        ));
+    }
+    Ok(())
+}
+
+fn check_pin(command: &str, path: &std::ffi::OsStr, pin: &ExePin) -> Result<PathBuf, ApiErr> {
+    let exe = resolve_exe(command, path, None).map_err(|e| api(ErrorCode::Forbidden, e))?;
+    verify_pin(&exe, &pin.path, &pin.sha256).map_err(|e| api(ErrorCode::Forbidden, e))
+}
+
 fn params_hash(req: &RunCreateReq) -> String {
     let mut v = serde_json::to_value(req).unwrap_or(Value::Null);
     if let Some(m) = v.as_object_mut() {
@@ -1676,6 +1704,23 @@ impl Runner {
         self.create_run_as(req, None).map(|(info, _, _)| info)
     }
 
+    fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<PinCheck>, ApiErr> {
+        let Some(pin) = &req.exe_pin else {
+            return Ok(None);
+        };
+        check_pin_fields(pin)?;
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        let Some(cmd) = set
+            .get(&req.profile)
+            .and_then(|p| p.command.first().cloned())
+        else {
+            return Ok(None);
+        };
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        let done = check_pin(&cmd, &path, pin);
+        Ok(Some((cmd, done)))
+    }
+
     fn create_run_as(
         self: &Arc<Self>,
         req: RunCreateReq,
@@ -1691,6 +1736,7 @@ impl Runner {
             Some(k) => Some((k.clone(), params_hash(&req))),
             None => None,
         };
+        let prechecked = self.precheck_pin(&req)?;
         let _keyed = start.as_ref().map(|_| lock(&self.key_lock));
         if let Some((key, hash)) = &start {
             if let Some(existing) = self.by_key(key) {
@@ -1788,43 +1834,13 @@ impl Runner {
             return Err(api(ErrorCode::InvalidParams, "profile has no command"));
         }
         let path = std::env::var_os("PATH").unwrap_or_default();
-        let pin_fields = req
-            .exe_pin
-            .as_ref()
-            .map(|p| {
-                if !Path::new(&p.path).is_absolute() {
-                    return Err(api(
-                        ErrorCode::InvalidParams,
-                        "exe_pin.path must be absolute",
-                    ));
-                }
-                if p.sha256.len() != 64
-                    || !p
-                        .sha256
-                        .bytes()
-                        .all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
-                {
-                    return Err(api(
-                        ErrorCode::InvalidParams,
-                        "exe_pin.sha256 must be 64 lowercase hex characters",
-                    ));
-                }
-                Ok(p)
-            })
-            .transpose()?;
-        let resolved = resolve_exe(&argv[0], &path, None);
-        argv[0] = match pin_fields {
-            None => resolved
+        argv[0] = match (&req.exe_pin, prechecked) {
+            (None, _) => resolve_exe(&argv[0], &path, None)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?
                 .display()
                 .to_string(),
-            Some(p) => {
-                let exe = resolved.map_err(|e| api(ErrorCode::Forbidden, e))?;
-                verify_pin(&exe, &p.path, &p.sha256)
-                    .map_err(|e| api(ErrorCode::Forbidden, e))?
-                    .display()
-                    .to_string()
-            }
+            (Some(_), Some((cmd, done))) if cmd == argv[0] => done?.display().to_string(),
+            (Some(p), _) => check_pin(&argv[0], &path, p)?.display().to_string(),
         };
         let pin = dir.map(|d| {
             let (dev, ino) = d.id();

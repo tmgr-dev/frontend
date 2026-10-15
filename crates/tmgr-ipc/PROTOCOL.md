@@ -309,10 +309,19 @@ All four are additive: new optional fields and methods, no change for clients th
 **`exe_pin.v1`.** `runs.create` takes an optional `exe_pin {path, sha256}`: the agent executable a human approved, as the approving side resolved it. `path` must be absolute and `sha256` exactly 64 lowercase hex characters (the whole file), otherwise `invalid_params`. After the profile command line is built, the runner resolves `argv[0]` with its own `PATH` as usual, then, with `exe_pin` present:
 
 1. canonicalizes (realpath) the resolved `argv[0]` and `path`; if they differ, or `argv[0]` cannot be resolved (not found, not executable), the run is `forbidden`;
-2. opens the canonical file once (read-only, close-on-exec), requires a regular file (checked on the opened descriptor) of at most 512 MiB and streams it through SHA-256; anything else, or a different digest, is `forbidden`;
+2. opens the canonical file once (read-only, close-on-exec, without following a final symlink), requires a regular file (checked on the opened descriptor) of at most 512 MiB and streams it through SHA-256; anything else, or a different digest, is `forbidden`. It then compares the descriptor with the path on disk (device, inode, size, modification time, also against the state before hashing); any difference is `forbidden`;
 3. replaces `argv[0]` with the canonical path, so the exec uses exactly the verified path and not a `PATH` lookup (`SessionInfo.argv[0]` shows it).
 
-Error messages never contain file contents. Limit: there is no `fexecve` on every platform (macOS has none), so someone who can already write to the approved file could swap it between the hash and the exec. `exe_pin` is allowed together with `start_key`, `clone_of` and `bundle`, from any client, and is part of the start-key hash. `runs.restore` has no pin: a restored run re-resolves the executable as before.
+The hashing happens before the start-key lock is taken; a `start_key` replay still returns the existing session first.
+
+Error messages never contain file contents.
+
+What the pin does not cover:
+
+- There is no `fexecve` on every platform (macOS has none), so the check and the exec are bound by the path only. Someone who can write to the approved file as the same user can still swap it between the check and the exec; the comparison above only narrows that window.
+- The pin covers the file at `argv[0]` only. The interpreter named by the `#!` line of a script and the target of a wrapper are not pinned and are not hashed. An approval that shows the pin should say so.
+
+`exe_pin` is allowed together with `start_key`, `clone_of` and `bundle`, from any client, and is part of the start-key hash. The runner stores the verified pin with the restore record: `runs.restore` re-resolves `argv[0]`, runs the same check against the stored pin (`forbidden` on a mismatch or an unresolvable command, the record is kept) and executes the canonical path. A run started without a pin restores without one.
 
 ### Pre-accepted folder trust
 
