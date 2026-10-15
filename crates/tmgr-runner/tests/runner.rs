@@ -2988,7 +2988,7 @@ impl Harness {
     fn modal(&self, id: &str, modes: &str) {
         let script = self.script(
             "modal-agent.sh",
-            "printf '%s\\n' \"$@\" > args.txt\nwhile true; do sleep 0.2; done\n",
+            "printf '%s\\n' \"$@\" > args.tmp && mv args.tmp args.txt\nwhile true; do sleep 0.2; done\n",
         );
         let text =
             format!("id = {id:?}\nname = {id:?}\ncommand = [\"/bin/sh\", {script:?}]\n{modes}");
@@ -3472,7 +3472,7 @@ fn a_profile_replaced_during_create_has_no_effect_on_that_run() {
     ));
     let script = h.script(
         "stamp-agent.sh",
-        "printf '%s\\n' \"$STAMP\" \"$@\" > stamp.txt\nwhile true; do sleep 0.2; done\n",
+        "printf '%s\\n' \"$STAMP\" \"$@\" > stamp.tmp && mv stamp.tmp stamp.txt\nwhile true; do sleep 0.2; done\n",
     );
     let swap = h.agents.join("swap.toml");
     let write = move |v: &str| {
@@ -3534,7 +3534,7 @@ fn trust_fx(with_trust: bool) -> LoginFx {
     fs::write(home.join(".claude.json"), source).unwrap();
     let script = h.script(
         "trust-agent.sh",
-        "cp \"$HOME/.claude.json\" \"$PWD/seen.json\"\nwhile true; do sleep 0.2; done\n",
+        "cp \"$HOME/.claude.json\" \"$PWD/seen.tmp\" && mv \"$PWD/seen.tmp\" \"$PWD/seen.json\"\nwhile true; do sleep 0.2; done\n",
     );
     let trust = if with_trust {
         "[trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{cwd}\", \"hasTrustDialogAccepted\"]\n"
