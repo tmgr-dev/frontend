@@ -540,6 +540,21 @@ fn start_phase(
             pass.event(&p, "failed");
             continue;
         }
+        if deps.profiles.pin(&rule.profile, rule.model.as_deref()).ok() != Some(pin.clone()) {
+            pass.set(
+                i,
+                Status::Failed,
+                Some("the agent profile changed while the run was prepared".into()),
+            );
+            state::save(pass.paths, &mut pass.state)?;
+            pass.audit.append(
+                "start_refused",
+                json!({"pickup": id, "rule": rule_name, "reason": "profile_changed_during_start"}),
+            )?;
+            let p = pass.state.pickups[i].clone();
+            pass.event(&p, "failed");
+            continue;
+        }
         let req = StartRequest {
             permission_mode: PERMISSION_MODE,
             start_key: p.start_key(),
@@ -1000,6 +1015,38 @@ mod tests {
         let p = fx.pickups();
         assert_eq!(p.iter().filter(|p| p.status == Status::Started).count(), 1);
         assert!(fx.runs.created.borrow().is_empty());
+    }
+
+    struct ChangesProfile<'a>(&'a Profiles);
+
+    impl WorkDirs for ChangesProfile<'_> {
+        fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()> {
+            self.0 .1.set(self.0 .1.get() + 1);
+            GitClone.prepare(repo, pickup_id, cwd)
+        }
+    }
+
+    #[test]
+    fn a_profile_changed_while_the_clone_is_made_stops_the_start() {
+        let fx = Fx::new(|_| {});
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        fx.approve_all();
+        run_once(
+            &fx.paths,
+            &Deps {
+                source: &fx.source,
+                runs: &fx.runs,
+                profiles: &fx.profiles,
+                workdirs: &ChangesProfile(&fx.profiles),
+                now: Utc::now(),
+                local_minutes: 12 * 60,
+            },
+        )
+        .unwrap();
+        assert!(fx.runs.created.borrow().is_empty());
+        assert_eq!(fx.pickups()[0].status, Status::Failed);
+        assert_eq!(fx.audit_events("start_refused"), 1);
     }
 
     #[test]
