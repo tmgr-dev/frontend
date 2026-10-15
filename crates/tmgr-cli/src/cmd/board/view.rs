@@ -1,4 +1,4 @@
-use super::app::{App, Card, Detail, Hits, Mode};
+use super::app::{App, Card, Chip, Detail, Hits, Mode};
 use super::theme::Theme;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Style;
@@ -78,7 +78,7 @@ pub fn draw(f: &mut Frame, app: &App, theme: &Theme) {
     ])
     .areas(area);
     f.render_widget(
-        Paragraph::new(header_line(app, theme, header.width as usize)),
+        Paragraph::new(header_line(app, theme, header, &mut hits)),
         header,
     );
 
@@ -110,20 +110,101 @@ pub fn draw(f: &mut Frame, app: &App, theme: &Theme) {
     if app.mode == Mode::Help {
         draw_help(f, theme, area);
     }
+    if app.mode == Mode::Picker {
+        draw_picker(f, app, theme, area, &mut hits);
+    }
     app.view.borrow_mut().hits = hits;
 }
 
-fn header_line(app: &App, theme: &Theme, width: usize) -> Line<'static> {
-    let sep = theme.sep();
-    let mut mid = app.ws_name.clone();
-    if let Some(p) = &app.project {
-        mid.push_str(sep);
-        mid.push_str(p);
+fn caret(theme: &Theme) -> &'static str {
+    if theme.is_ascii() {
+        "v"
+    } else {
+        "\u{25be}"
     }
-    let left = vec![
-        Span::styled("tmgr board", theme.bold()),
-        Span::styled(format!("{sep}{mid}"), theme.muted()),
-    ];
+}
+
+struct Seg {
+    text: String,
+    style: Style,
+    chip: Option<Chip>,
+}
+
+fn seg(text: impl Into<String>, style: Style, chip: Option<Chip>) -> Seg {
+    Seg {
+        text: text.into(),
+        style,
+        chip,
+    }
+}
+
+fn header_line(app: &App, theme: &Theme, area: Rect, hits: &mut Hits) -> Line<'static> {
+    let width = area.width as usize;
+    let ell = theme.ellipsis();
+    let down = caret(theme);
+    let mut left: Vec<Seg> = Vec::new();
+    let f = &app.filters;
+    let value_style = |active: bool| if active { theme.accent() } else { Style::new() };
+    if area.width < WIDE_MIN {
+        let n = f.active();
+        let label = match n {
+            0 => "no filters".to_string(),
+            1 => "1 filter".to_string(),
+            n => format!("{n} filters"),
+        };
+        left.push(seg(
+            fit(&app.ws.name, 24, ell),
+            theme.bold(),
+            Some(Chip::Menu),
+        ));
+        left.push(seg(
+            format!("{}{label}", theme.sep()),
+            if n > 0 { theme.accent() } else { theme.muted() },
+            Some(Chip::Menu),
+        ));
+    } else {
+        left.push(seg(
+            format!("[{} {down}]", fit(&app.ws.name, 22, ell)),
+            theme.key(),
+            Some(Chip::Workspace),
+        ));
+        left.push(seg("  ", Style::new(), None));
+        left.push(seg("Project: ", theme.muted(), Some(Chip::Project)));
+        left.push(seg(
+            format!("{} {down}", fit(&app.project_label(), 12, ell)),
+            value_style(f.project.is_some()),
+            Some(Chip::Project),
+        ));
+        left.push(seg("  ", Style::new(), None));
+        left.push(seg("Assignee: ", theme.muted(), Some(Chip::Assignee)));
+        left.push(seg(
+            format!("{} {down}", fit(&app.assignee_label(), 14, ell)),
+            value_style(f.assignee != super::filters::Assignee::All),
+            Some(Chip::Assignee),
+        ));
+        left.push(seg("  ", Style::new(), None));
+        left.push(seg("Persona: ", theme.muted(), Some(Chip::Persona)));
+        left.push(seg(
+            format!("{} {down}", fit(&app.persona_label(), 14, ell)),
+            value_style(f.persona != super::filters::PersonaSel::Any),
+            Some(Chip::Persona),
+        ));
+        left.push(seg("  ", Style::new(), None));
+        if f.search.trim().is_empty() {
+            left.push(seg(
+                format!("/search{ell}"),
+                theme.muted(),
+                Some(Chip::Search),
+            ));
+        } else {
+            left.push(seg(
+                format!("/{}", fit(f.search.trim(), 20, ell)),
+                theme.accent(),
+                Some(Chip::Search),
+            ));
+        }
+    }
+    let sep = theme.sep();
     let mut right = Vec::new();
     if app.offline {
         right.push(Span::styled("offline".to_string(), theme.accent()));
@@ -132,21 +213,23 @@ fn header_line(app: &App, theme: &Theme, width: usize) -> Line<'static> {
         right.push(Span::styled("refreshing".to_string(), theme.muted()));
         right.push(Span::styled(sep.to_string(), theme.muted()));
     }
-    if !app.filter.trim().is_empty() {
-        right.push(Span::styled(
-            format!(
-                "filter: {}{sep}",
-                fit(app.filter.trim(), 20, theme.ellipsis())
-            ),
-            theme.muted(),
-        ));
-    }
     let more = if app.more { "+" } else { "" };
     right.push(Span::styled(
         format!("{}{more} tasks", app.visible_count()),
         theme.muted(),
     ));
-    pad_between(left, right, width)
+    let mut x = area.x;
+    let mut spans = Vec::new();
+    for s in left {
+        let w = s.text.width() as u16;
+        if let Some(chip) = s.chip {
+            let w = w.min(area.x + area.width - x.min(area.x + area.width));
+            hits.chips.push((Rect::new(x, area.y, w, 1), chip));
+        }
+        x += w;
+        spans.push(Span::styled(s.text, s.style));
+    }
+    pad_between(spans, right, width)
 }
 
 fn footer_line(app: &App, theme: &Theme, width: usize) -> Line<'static> {
@@ -177,14 +260,28 @@ fn footer_line(app: &App, theme: &Theme, width: usize) -> Line<'static> {
         };
         return Line::from(Span::styled(fit(&n.text, width, theme.ellipsis()), style));
     }
-    let hints: [(&str, &str); 9] = [
+    if app.mode == Mode::Picker {
+        return Line::from(vec![
+            Span::styled("j k", theme.key()),
+            Span::styled(" move  ", theme.muted()),
+            Span::styled("enter", theme.key()),
+            Span::styled(" choose  ", theme.muted()),
+            Span::styled("esc", theme.key()),
+            Span::styled(" close", theme.muted()),
+        ]);
+    }
+    let hints: [(&str, &str); 13] = [
         ("h l", "column"),
         ("j k", "card"),
         ("H L", "move"),
         ("enter", "details"),
         ("s S", "timer"),
         ("c", "comment"),
-        ("/", "filter"),
+        ("/", "search"),
+        ("w", "workspace"),
+        ("p a P", "filters"),
+        ("x", "reset"),
+        ("f", "menu"),
         ("?", "help"),
         ("q", "quit"),
     ];
@@ -579,7 +676,13 @@ fn draw_help(f: &mut Frame, theme: &Theme, area: Rect) {
         ("s", "start timer"),
         ("S", "stop timer"),
         ("c", "comment on the task"),
-        ("/", "filter (enter keeps, esc clears)"),
+        ("/", "search (enter keeps, esc clears)"),
+        ("w", "switch workspace (cloud and local)"),
+        ("p", "filter by project"),
+        ("a", "filter by assignee"),
+        ("P", "filter by persona"),
+        ("x", "reset all filters"),
+        ("f", "filters menu"),
         ("g", "refresh"),
         ("mouse", "click selects, wheel moves"),
         ("q / esc", "quit"),
@@ -610,4 +713,75 @@ fn draw_help(f: &mut Frame, theme: &Theme, area: Rect) {
         .collect();
     lines.push(Line::from(Span::styled("any key closes", theme.muted())));
     f.render_widget(Paragraph::new(lines), inner);
+}
+
+fn draw_picker(f: &mut Frame, app: &App, theme: &Theme, area: Rect, hits: &mut Hits) {
+    let Some(picker) = &app.picker else { return };
+    let title = match picker.chip {
+        Chip::Workspace => " workspace ",
+        Chip::Project => " project ",
+        Chip::Assignee => " assignee ",
+        Chip::Persona => " persona ",
+        Chip::Search | Chip::Menu => " filters ",
+    };
+    let want = picker
+        .items
+        .iter()
+        .map(|i| i.label.width() + 4)
+        .max()
+        .unwrap_or(0)
+        .max(title.width() + 2)
+        .max(24)
+        + 2;
+    let w = (want as u16).min(area.width).min(52);
+    let body = picker.items.len().max(1) as u16;
+    let h = (body + 2).min(area.height.saturating_sub(2)).max(3);
+    let rect = Rect::new(area.x, area.y + 1, w, h.min(area.height.saturating_sub(1)));
+    f.render_widget(Clear, rect);
+    let block = Block::bordered()
+        .border_set(theme.border_set())
+        .border_style(theme.accent())
+        .title(title);
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+    hits.picker_box = Some(rect);
+    if picker.loading {
+        f.render_widget(
+            Paragraph::new(Span::styled("loading...", theme.muted())),
+            inner,
+        );
+        return;
+    }
+    if picker.items.is_empty() {
+        f.render_widget(
+            Paragraph::new(Span::styled("nothing to choose from", theme.muted())),
+            inner,
+        );
+        return;
+    }
+    let visible = inner.height as usize;
+    let mut view = app.view.borrow_mut();
+    keep_visible(
+        &mut view.picker_scroll,
+        picker.sel,
+        visible,
+        picker.items.len(),
+    );
+    let top = view.picker_scroll;
+    drop(view);
+    for (n, item) in picker.items.iter().enumerate().skip(top).take(visible) {
+        let rect = Rect::new(inner.x, inner.y + (n - top) as u16, inner.width, 1);
+        let mark = if item.current { theme.dot() } else { " " };
+        let text = fit(
+            &format!("{mark} {}", item.label),
+            inner.width as usize,
+            theme.ellipsis(),
+        );
+        let mut line = Line::from(text);
+        if n == picker.sel {
+            line = line.style(theme.selected());
+        }
+        f.render_widget(Paragraph::new(line), rect);
+        hits.picker.push((rect, n));
+    }
 }

@@ -1,0 +1,10 @@
+[Website relaunch ▾]  Project: TM ▾  Assignee: all ▾  Persona: - ▾  /search…                                     5 tasks
+╭ workspace ─────────────╮───╮╭ In progress 1 ─────────────╮╭ Review 1 ──────────────────╮╭ Done 1 ────────────────────╮
+│● Website relaunch      │ … ││ TM-103 Fix login redirect… ││ TM-104 Invoice export bug  ││ TM-105 Footer links audit  │
+│  Notes (local)         │   ││ Ann · ● 1h 12m             ││ unassigned                 ││ Bob                        │
+╰────────────────────────╯   ││                            ││                            ││                            │
+│ TM-102 Fix flaky upload t… ││                            ││                            ││                            │
+│ unassigned · 2h 00m        ││                            ││                            ││                            │
+│                            ││                            ││                            ││                            │
+╰────────────────────────────╯╰────────────────────────────╯╰────────────────────────────╯╰────────────────────────────╯
+j k move  enter choose  esc close

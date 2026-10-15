@@ -1,0 +1,14 @@
+Website relaunch · 1 filter                                              5 tasks
+╭ filters ──────────────────────╮ 1  Done 1
+│  Workspace: Website relaunch  │──────────────────────────────────────────────╮
+│  Project: TM                  │                                              │
+│  Assignee: all                │                                              │
+│  Persona: -                   │                                              │
+│  Search                       │                                              │
+│  Reset all filters            │                                              │
+╰───────────────────────────────╯                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+j k move  enter choose  esc close

@@ -1,4 +1,4 @@
-use super::app::{CommentLine, Detail, Effect, Failure, Msg, Run, Snapshot};
+use super::app::{CommentLine, Detail, Effect, Failure, Msg, Opened, Project, Run, Snapshot, Ws};
 use serde_json::Value;
 use tmgr_core::api::Client;
 use tmgr_core::error::{Error, Kind};
@@ -14,6 +14,61 @@ const HIDDEN_KINDS: [&str; 2] = ["hidden", "archived"];
 
 fn failure(e: Error) -> Failure {
     Failure::new(e.kind, &e.message)
+}
+
+pub fn open(
+    client: &Client,
+    ws: &Ws,
+    project: Option<&str>,
+    strict: bool,
+) -> Result<Opened, Error> {
+    let categories = match client.categories(ws.id) {
+        Ok(list) => list,
+        Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let projects: Vec<Project> = categories
+        .iter()
+        .filter_map(|c| {
+            Some(Project {
+                code: sanitize_line(c.code.as_deref()?),
+                title: sanitize_line(&c.title),
+            })
+        })
+        .collect();
+    let (category, project) = match project {
+        Some(code) => {
+            let found = categories.iter().find(|c| {
+                c.code
+                    .as_deref()
+                    .is_some_and(|x| x.eq_ignore_ascii_case(code))
+            });
+            match found {
+                Some(c) => (Some(c.id), c.code.as_deref().map(sanitize_line)),
+                None if strict => {
+                    return Err(
+                        Error::not_found(format!("project {code} not found")).hint("tmgr ws list")
+                    )
+                }
+                None => (None, None),
+            }
+        }
+        None => (None, None),
+    };
+    let me = match client.current_user_id() {
+        Ok(me) => me,
+        Err(e) if e.kind == Kind::Auth => return Err(e),
+        Err(_) => None,
+    };
+    let snapshot = fetch(client, ws.id, category)?;
+    Ok(Opened {
+        ws: ws.clone(),
+        category,
+        project,
+        projects,
+        me,
+        snapshot,
+    })
 }
 
 pub fn fetch(client: &Client, ws_id: i64, category: Option<u64>) -> Result<Snapshot, Error> {
@@ -149,6 +204,9 @@ pub fn exec(client: &Client, ws_id: i64, category: Option<u64>, effect: Effect) 
         Effect::Comment { id, text } => {
             Msg::CommentDone(id, client.add_comment(id, &text).map_err(failure))
         }
+        Effect::Open { .. } | Effect::Workspaces | Effect::Save { .. } => Msg::Loaded(Err(
+            Failure::new(Kind::Internal, "effect is handled by the worker"),
+        )),
     }
 }
 
@@ -157,11 +215,22 @@ pub fn exec(client: &Client, ws_id: i64, category: Option<u64>, effect: Effect) 
 pub(super) fn local_fixture(
     dir: &std::path::Path,
 ) -> (tmgr_local::LocalWorkspace, tmgr_local::User) {
-    let ws = dir.join("personal");
+    local_fixture_as(dir, "personal", 1)
+}
+
+#[cfg(test)]
+pub(super) fn local_fixture_as(
+    dir: &std::path::Path,
+    code: &str,
+    id: i64,
+) -> (tmgr_local::LocalWorkspace, tmgr_local::User) {
+    let ws = dir.join(code);
     std::fs::create_dir_all(&ws).unwrap();
     std::fs::write(
         ws.join("workspace.json"),
-        r#"{"id":1,"name":"P","code":"personal","schema_version":12,"created_at":"x"}"#,
+        format!(
+            r#"{{"id":{id},"name":"{code}","code":"{code}","schema_version":12,"created_at":"x"}}"#
+        ),
     )
     .unwrap();
     let golden: Value = serde_json::from_str(include_str!(
@@ -174,15 +243,20 @@ pub(super) fn local_fixture(
             conn.execute_batch(ddl).unwrap();
         }
     }
-    conn.execute_batch(
+    let title = if code == "personal" {
+        "Local card".to_string()
+    } else {
+        format!("{code} card")
+    };
+    conn.execute_batch(&format!(
         "INSERT INTO meta VALUES ('schema_version', '12');
          INSERT INTO statuses (id, name, type, sort_order, created_at, updated_at)
          VALUES (1, 'Backlog', 'default', 1, 'x', 'x'), (2, 'Doing', 'active', 2, 'x', 'x'),
                 (3, 'Archived', 'archived', 3, 'x', 'x');
-         INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (1, 'Local card', 1, 'x', 'x');",
-    )
+         INSERT INTO tasks (id, title, status_id, created_at, updated_at) VALUES (1, '{title}', 1, 'x', 'x');"
+    ))
     .unwrap();
-    let workspace = tmgr_local::find(dir, "personal").unwrap();
+    let workspace = tmgr_local::find(dir, code).unwrap();
     let user = tmgr_core::local::identity(dir, None);
     (workspace, user)
 }

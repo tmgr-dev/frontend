@@ -69,6 +69,8 @@ pub struct ApiTask {
     #[serde(default)]
     pub assignees: Vec<Person>,
     #[serde(default)]
+    pub persona_assignees: Vec<serde_json::Value>,
+    #[serde(default)]
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,

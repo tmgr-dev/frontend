@@ -1,0 +1,6 @@
+[Website relaunch ▾]  Project: TM ▾  Assignee: me ▾  Persona: Agent Team ▾  /login                               0 tasks
+╭ Backlog 0 ─────────────────╮╭ In progress 0 ─────────────╮╭ Review 0 ──────────────────╮╭ Done 0 ────────────────────╮
+│                            ││                            ││                            ││                            │
+│                            ││                            ││                            ││                            │
+╰────────────────────────────╯╰────────────────────────────╯╰────────────────────────────╯╰────────────────────────────╯
+h l column  j k card  H L move  enter details  s S timer  c comment  / search  w workspace  p a P filters  x reset

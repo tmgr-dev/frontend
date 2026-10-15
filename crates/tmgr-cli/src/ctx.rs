@@ -253,7 +253,7 @@ pub fn local_workspaces() -> Result<Vec<Workspace>> {
     Ok(local::list()?.iter().map(local_entry).collect())
 }
 
-fn local_entry(w: &local::LocalWorkspace) -> Workspace {
+pub fn local_entry(w: &local::LocalWorkspace) -> Workspace {
     Workspace {
         id: w.manifest.id,
         name: w.manifest.name.clone(),

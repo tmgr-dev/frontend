@@ -103,6 +103,10 @@ impl Theme {
         }
     }
 
+    pub fn is_ascii(&self) -> bool {
+        self.ascii
+    }
+
     pub fn dot(&self) -> &'static str {
         if self.ascii {
             "*"

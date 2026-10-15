@@ -126,6 +126,7 @@ mod tests {
             approximately_time: None,
             priority: None,
             assignees: vec![],
+            persona_assignees: vec![],
             created_at: None,
             updated_at: None,
         }

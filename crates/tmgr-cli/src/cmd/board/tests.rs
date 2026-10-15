@@ -1,4 +1,5 @@
 use super::app::*;
+use super::filters::{self, Assignee, Filters, PersonaSel, Saved};
 use super::theme::{ColorLevel, Theme};
 use super::view;
 use ratatui::backend::TestBackend;
@@ -54,18 +55,64 @@ pub fn snapshot() -> Snapshot {
                 2,
                 json!({"start_time": NOW - 4320, "assignees": [{"id": 7, "name": "Ann"}]}),
             ),
-            task(104, "TM-104: Invoice export bug", 3, json!({})),
-            task(105, "TM-105: Footer links audit", 4, json!({})),
+            task(
+                104,
+                "TM-104: Invoice export bug",
+                3,
+                json!({"persona_assignees": [
+                    {"id": "p-1", "name": "Agent Team", "owner": {"id": 7, "name": "Ann"}}
+                ]}),
+            ),
+            task(
+                105,
+                "TM-105: Footer links audit",
+                4,
+                json!({"assignees": [{"id": 8, "name": "Bob"}], "persona_assignees": [
+                    {"id": "p-2", "name": "Reviewer", "owner": {"id": 8, "name": "Bob"}}
+                ]}),
+            ),
             task(106, "TM-106: Old thing", 10, json!({})),
         ],
         more: false,
     }
 }
 
-pub fn app() -> App {
-    let mut app = App::new("Website relaunch", Some("TM"), false, Some(7), NOW);
+pub fn ws(code: &str, name: &str, local: bool) -> Ws {
+    Ws {
+        id: 1,
+        code: code.into(),
+        name: name.into(),
+        local,
+    }
+}
+
+pub fn app_with(filters: Filters) -> App {
+    let mut app = App::new(
+        ws("web", "Website relaunch", false),
+        filters,
+        Saved::default(),
+        Some(7),
+        NOW,
+    );
+    app.projects = vec![
+        Project {
+            code: "TM".into(),
+            title: "Tasks".into(),
+        },
+        Project {
+            code: "WEB".into(),
+            title: "Site".into(),
+        },
+    ];
     app.apply_snapshot(snapshot());
     app
+}
+
+pub fn app() -> App {
+    app_with(Filters {
+        project: Some("TM".into()),
+        ..Filters::default()
+    })
 }
 
 pub fn key(c: KeyCode) -> Msg {
@@ -283,8 +330,10 @@ fn details_load_once_per_card_and_after_comments() {
 
 #[test]
 fn mine_keeps_only_tasks_assigned_to_me() {
-    let mut app = App::new("W", None, true, Some(7), NOW);
-    app.apply_snapshot(snapshot());
+    let app = app_with(Filters {
+        assignee: Assignee::Me,
+        ..Filters::default()
+    });
     assert_eq!(app.visible_count(), 2);
 }
 
@@ -405,7 +454,7 @@ fn snapshot_help_overlay() {
     let mut app = app();
     app.update(Msg::Resize(80));
     app.update(ch('?'));
-    assert_snapshot("help", &render(&app, 80, 20, &plain()));
+    assert_snapshot("help", &render(&app, 80, 24, &plain()));
 }
 
 fn mouse(kind: MouseEventKind, column: u16, row: u16) -> Msg {
@@ -464,7 +513,25 @@ fn hostile_server_text_never_reaches_the_screen() {
         2,
         json!({"description": evil, "assignees": [{"id": 1, "name": evil}]}),
     ));
-    let mut app = App::new(evil, Some(evil), false, None, NOW);
+    let mut app = App::new(
+        Ws {
+            id: 1,
+            code: "x".into(),
+            name: Failure::new(Kind::Internal, evil).message,
+            local: false,
+        },
+        Filters {
+            project: Some(Failure::new(Kind::Internal, evil).message),
+            assignee: Assignee::User {
+                id: 1,
+                name: Failure::new(Kind::Internal, evil).message,
+            },
+            ..Filters::default()
+        },
+        Saved::default(),
+        None,
+        NOW,
+    );
     app.apply_snapshot(snap);
     app.update(Msg::Resize(120));
     app.update(ch('l'));
@@ -506,6 +573,7 @@ fn the_worker_of_a_local_board_writes_to_the_local_workspace() {
         super::Conn::Local { workspace, user },
         ws_id,
         None,
+        no_reach(),
         eff_rx,
         msg_tx,
     );
@@ -519,4 +587,554 @@ fn the_worker_of_a_local_board_writes_to_the_local_workspace() {
         .query_row("SELECT status_id FROM tasks WHERE id = 1", [], |r| r.get(0))
         .unwrap();
     assert_eq!(status, 2);
+}
+
+fn no_reach() -> super::Reach {
+    super::Reach {
+        cloud: None,
+        local_root: None,
+        local_user_id: None,
+        state: None,
+    }
+}
+
+fn two_ws() -> Vec<Ws> {
+    vec![
+        ws("web", "Website relaunch", false),
+        Ws {
+            id: 2,
+            code: "local:notes".into(),
+            name: "Notes".into(),
+            local: true,
+        },
+    ]
+}
+
+fn opened(project: Option<&str>, name: &str, code: &str) -> Opened {
+    Opened {
+        ws: ws(code, name, code.starts_with("local:")),
+        category: None,
+        project: project.map(String::from),
+        projects: vec![],
+        me: Some(7),
+        snapshot: Snapshot {
+            statuses: snapshot().statuses,
+            tasks: vec![task(1, "N-1: Only here", 1, json!({}))],
+            more: false,
+        },
+    }
+}
+
+#[test]
+fn assignee_filter_matches_me_and_a_member() {
+    let mut app = app_with(Filters::default());
+    assert_eq!(app.visible_count(), 5);
+    app.update(ch('a'));
+    let picker = app.picker.clone().unwrap();
+    let labels: Vec<_> = picker.items.iter().map(|i| i.label.as_str()).collect();
+    assert_eq!(labels, ["Everyone", "Me", "Bob"]);
+    let effects = app.update(ch('j'));
+    assert!(effects.is_empty());
+    let effects = app.update(key(KeyCode::Enter));
+    assert_eq!(app.filters.assignee, Assignee::Me);
+    assert_eq!(app.visible_count(), 2);
+    assert!(matches!(effects[0], Effect::Save { .. }));
+    assert_eq!(app.mode, Mode::Normal);
+    app.update(ch('a'));
+    press(&mut app, "jj");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(
+        app.filters.assignee,
+        Assignee::User {
+            id: 8,
+            name: "Bob".into()
+        }
+    );
+    assert_eq!(titles(&app, 3), ["TM-105"]);
+    assert_eq!(app.visible_count(), 1);
+}
+
+#[test]
+fn persona_filter_matches_mine_and_one() {
+    let mut app = app_with(Filters::default());
+    press(&mut app, "P");
+    let labels: Vec<_> = app
+        .picker
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|i| i.label.clone())
+        .collect();
+    assert_eq!(labels, ["Any", "My personas", "Agent Team", "Reviewer"]);
+    press(&mut app, "j");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(app.filters.persona, PersonaSel::Mine);
+    assert_eq!(titles(&app, 2), ["TM-104"]);
+    assert_eq!(app.visible_count(), 1);
+    press(&mut app, "P");
+    press(&mut app, "jj");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(app.visible_count(), 1);
+    assert_eq!(titles(&app, 3), ["TM-105"]);
+}
+
+#[test]
+fn filters_combine_with_search_and_x_resets_everything() {
+    let mut app = app_with(Filters {
+        assignee: Assignee::Me,
+        ..Filters::default()
+    });
+    app.update(ch('/'));
+    press(&mut app, "login");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(app.visible_count(), 1);
+    let effects = press(&mut app, "x");
+    assert_eq!(app.filters, Filters::default());
+    assert_eq!(app.visible_count(), 5);
+    assert!(matches!(effects[0], Effect::Save { .. }));
+    assert!(press(&mut app, "x").is_empty());
+}
+
+#[test]
+fn x_with_a_project_reloads_the_board_without_it() {
+    let mut app = app();
+    let effects = press(&mut app, "x");
+    assert_eq!(
+        effects,
+        vec![Effect::Open {
+            ws: ws("web", "Website relaunch", false),
+            project: None
+        }]
+    );
+    assert!(press(&mut app, "j").is_empty());
+    let after = app.update(Msg::Opened(Box::new(Ok(opened(
+        None,
+        "Website relaunch",
+        "web",
+    )))));
+    assert_eq!(app.filters.project, None);
+    assert!(matches!(after[0], Effect::Save { .. }));
+}
+
+#[test]
+fn choosing_a_project_reloads_server_side_and_saves_after_it_opens() {
+    let mut app = app();
+    app.update(ch('p'));
+    let items: Vec<_> = app
+        .picker
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|i| i.label.clone())
+        .collect();
+    assert_eq!(items, ["All projects", "TM Tasks", "WEB Site"]);
+    assert_eq!(app.picker.as_ref().unwrap().sel, 1);
+    press(&mut app, "j");
+    let effects = app.update(key(KeyCode::Enter));
+    assert_eq!(
+        effects,
+        vec![Effect::Open {
+            ws: ws("web", "Website relaunch", false),
+            project: Some("WEB".into())
+        }]
+    );
+    assert_eq!(app.filters.project.as_deref(), Some("TM"));
+    let after = app.update(Msg::Opened(Box::new(Ok(opened(
+        Some("WEB"),
+        "Website relaunch",
+        "web",
+    )))));
+    assert_eq!(app.filters.project.as_deref(), Some("WEB"));
+    assert_eq!(app.visible_count(), 1);
+    assert!(
+        matches!(&after[0], Effect::Save { filters, .. } if filters.project.as_deref() == Some("WEB"))
+    );
+}
+
+#[test]
+fn switching_workspace_restores_that_workspaces_remembered_filters() {
+    let mut saved = Saved::default();
+    saved.workspaces.insert(
+        "local:notes".into(),
+        Filters {
+            assignee: Assignee::Me,
+            ..Filters::default()
+        },
+    );
+    let mut app = app();
+    app.saved = saved;
+    let effects = app.update(ch('w'));
+    assert_eq!(effects, vec![Effect::Workspaces]);
+    assert!(app.picker.as_ref().unwrap().loading);
+    app.update(Msg::Workspaces(Ok(two_ws())));
+    let picker = app.picker.as_ref().unwrap();
+    assert_eq!(picker.items[0].label, "Website relaunch");
+    assert_eq!(picker.items[1].label, "Notes (local)");
+    assert_eq!(picker.sel, 0);
+    app.update(ch('j'));
+    let effects = app.update(key(KeyCode::Enter));
+    assert_eq!(
+        effects,
+        vec![Effect::Open {
+            ws: two_ws()[1].clone(),
+            project: None
+        }]
+    );
+    assert!(press(&mut app, "L").is_empty());
+    app.update(Msg::Loaded(Ok(snapshot())));
+    assert_eq!(app.ws.code, "web");
+    assert_eq!(app.visible_count(), 5);
+    app.update(Msg::Opened(Box::new(Ok(opened(
+        None,
+        "Notes",
+        "local:notes",
+    )))));
+    assert_eq!(app.ws.code, "local:notes");
+    assert_eq!(app.filters.assignee, Assignee::Me);
+    assert_eq!(app.visible_count(), 0);
+    assert!(app.details.is_empty());
+}
+
+#[test]
+fn a_failed_switch_keeps_the_old_board_and_does_not_quit() {
+    let mut app = app();
+    app.update(ch('w'));
+    app.update(Msg::Workspaces(Ok(two_ws())));
+    press(&mut app, "j");
+    app.update(key(KeyCode::Enter));
+    app.update(Msg::Opened(Box::new(Err(fail(Kind::Auth)))));
+    assert!(!app.quit);
+    assert_eq!(app.ws.code, "web");
+    assert_eq!(app.visible_count(), 5);
+    assert!(app.notice.as_ref().is_some_and(|n| n.error));
+    assert!(!press(&mut app, "g").is_empty());
+}
+
+#[test]
+fn choosing_the_current_workspace_does_nothing() {
+    let mut app = app();
+    app.update(ch('w'));
+    app.update(Msg::Workspaces(Ok(two_ws())));
+    assert!(app.update(key(KeyCode::Enter)).is_empty());
+}
+
+#[test]
+fn escape_closes_the_picker_without_quitting() {
+    let mut app = app();
+    app.update(ch('p'));
+    app.update(key(KeyCode::Esc));
+    assert_eq!(app.mode, Mode::Normal);
+    assert!(!app.quit);
+}
+
+#[test]
+fn the_menu_reaches_every_filter() {
+    let mut app = app();
+    app.update(ch('f'));
+    assert_eq!(app.picker.as_ref().unwrap().items.len(), 6);
+    press(&mut app, "jj");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(app.picker.as_ref().unwrap().chip, Chip::Assignee);
+    app.update(key(KeyCode::Esc));
+    app.update(ch('f'));
+    press(&mut app, "jjjj");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(app.mode, Mode::Filter);
+}
+
+#[test]
+fn flags_override_only_their_own_field() {
+    let remembered = Filters {
+        project: Some("WEB".into()),
+        assignee: Assignee::Me,
+        persona: PersonaSel::Mine,
+        search: String::new(),
+    };
+    assert_eq!(
+        super::initial_filters(None, None, false),
+        Filters::default()
+    );
+    assert_eq!(
+        super::initial_filters(Some(remembered.clone()), None, false),
+        remembered
+    );
+    let with_project = super::initial_filters(Some(remembered.clone()), Some("TM".into()), false);
+    assert_eq!(with_project.project.as_deref(), Some("TM"));
+    assert_eq!(with_project.assignee, Assignee::Me);
+    assert_eq!(with_project.persona, PersonaSel::Mine);
+    let only_mine = super::initial_filters(
+        Some(Filters {
+            project: Some("WEB".into()),
+            ..Filters::default()
+        }),
+        None,
+        true,
+    );
+    assert_eq!(only_mine.project.as_deref(), Some("WEB"));
+    assert_eq!(only_mine.assignee, Assignee::Me);
+}
+
+#[test]
+fn remembered_filters_round_trip_per_workspace() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = filters::path(dir.path());
+    let f = Filters {
+        project: Some("TM".into()),
+        assignee: Assignee::User {
+            id: 8,
+            name: "Bob".into(),
+        },
+        persona: PersonaSel::One {
+            id: "p-1".into(),
+            name: "Agent Team".into(),
+        },
+        search: "typed".into(),
+    };
+    filters::save(&file, "TmgrDev", &f);
+    filters::save(
+        &file,
+        "local:notes",
+        &Filters {
+            assignee: Assignee::Me,
+            ..Filters::default()
+        },
+    );
+    let saved = filters::load(&file);
+    let mut expected = f.clone();
+    expected.search.clear();
+    assert_eq!(saved.workspaces[&filters::key("tmgrdev")], expected);
+    assert_eq!(saved.workspaces["local:notes"].assignee, Assignee::Me);
+    assert!(!std::fs::read_to_string(&file).unwrap().contains("typed"));
+    filters::save(&file, "tmgrdev", &Filters::default());
+    assert!(!filters::load(&file).workspaces.contains_key("tmgrdev"));
+    assert_eq!(filters::load(&file).workspaces.len(), 1);
+}
+
+#[test]
+fn a_corrupt_state_file_is_set_aside_not_trusted() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = filters::path(dir.path());
+    std::fs::write(&file, "{not json").unwrap();
+    assert_eq!(filters::load(&file), Saved::default());
+    filters::save(
+        &file,
+        "web",
+        &Filters {
+            assignee: Assignee::Me,
+            ..Filters::default()
+        },
+    );
+    assert_eq!(filters::load(&file).workspaces.len(), 1);
+    assert!(dir.path().join("board-filters.json.bad").exists());
+}
+
+#[test]
+fn app_state_follows_what_was_saved() {
+    let mut app = app_with(Filters::default());
+    app.update(ch('a'));
+    press(&mut app, "j");
+    app.update(key(KeyCode::Enter));
+    assert_eq!(app.saved.workspaces["web"].assignee, Assignee::Me);
+    press(&mut app, "x");
+    assert!(app.saved.workspaces.is_empty());
+}
+
+#[test]
+fn the_bar_collapses_at_the_narrow_breakpoint() {
+    let mut app = app_with(Filters {
+        project: Some("TM".into()),
+        assignee: Assignee::Me,
+        ..Filters::default()
+    });
+    app.ws.name = "TMGR.DEV".into();
+    let theme = plain();
+    let wide = render(&app, 100, 12, &theme);
+    let first = wide.lines().next().unwrap();
+    assert!(
+        first.starts_with("[TMGR.DEV ▾]  Project: TM ▾  Assignee: me ▾  Persona: - ▾  /search…"),
+        "{first}"
+    );
+    let narrow = render(&app, 99, 12, &theme);
+    assert!(narrow
+        .lines()
+        .next()
+        .unwrap()
+        .starts_with("TMGR.DEV · 2 filters"));
+    app.filters = Filters::default();
+    let none = render(&app, 80, 12, &theme);
+    assert!(none
+        .lines()
+        .next()
+        .unwrap()
+        .starts_with("TMGR.DEV · no filters"));
+}
+
+#[test]
+fn snapshot_workspace_picker() {
+    let mut app = app();
+    app.update(Msg::Resize(120));
+    app.update(ch('w'));
+    app.update(Msg::Workspaces(Ok(two_ws())));
+    assert_snapshot("workspace_picker", &render(&app, 120, 10, &plain()));
+}
+
+#[test]
+fn snapshot_filters_menu_on_a_narrow_terminal() {
+    let mut app = app();
+    app.update(Msg::Resize(80));
+    app.update(ch('f'));
+    assert_snapshot("menu_narrow", &render(&app, 80, 14, &plain()));
+}
+
+#[test]
+fn snapshot_active_filters_in_the_bar() {
+    let mut app = app_with(Filters {
+        project: Some("TM".into()),
+        assignee: Assignee::Me,
+        persona: PersonaSel::One {
+            id: "p-1".into(),
+            name: "Agent Team".into(),
+        },
+        search: "login".into(),
+    });
+    app.update(Msg::Resize(120));
+    assert_snapshot("bar_active", &render(&app, 120, 6, &plain()));
+}
+
+#[test]
+fn clicking_a_chip_opens_its_picker_and_clicking_an_item_chooses_it() {
+    let mut app = app_with(Filters::default());
+    app.update(Msg::Resize(120));
+    let out = render(&app, 120, 14, &plain());
+    let (x, y) = find(&out, "Assignee:");
+    app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+    assert_eq!(app.mode, Mode::Picker);
+    assert_eq!(app.picker.as_ref().unwrap().chip, Chip::Assignee);
+    let out = render(&app, 120, 14, &plain());
+    let (x, y) = find(&out, "Me");
+    let effects = app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+    assert_eq!(app.filters.assignee, Assignee::Me);
+    assert!(matches!(effects[0], Effect::Save { .. }));
+    render(&app, 120, 14, &plain());
+    let (x, y) = find(&render(&app, 120, 14, &plain()), "/search");
+    app.update(mouse(MouseEventKind::Down(MouseButton::Left), x, y));
+    assert_eq!(app.mode, Mode::Filter);
+}
+
+#[test]
+fn clicking_outside_the_picker_closes_it() {
+    let mut app = app();
+    app.update(Msg::Resize(120));
+    app.update(ch('p'));
+    render(&app, 120, 14, &plain());
+    app.update(mouse(MouseEventKind::Down(MouseButton::Left), 110, 12));
+    assert_eq!(app.mode, Mode::Normal);
+}
+
+#[test]
+fn hostile_workspace_and_member_names_are_clean_in_the_picker() {
+    let evil = "\u{1b}[31mRED\u{202e}x";
+    let mut app = app();
+    app.update(Msg::Resize(120));
+    app.update(ch('w'));
+    app.update(Msg::Workspaces(Ok(vec![Ws {
+        id: 3,
+        code: "evil".into(),
+        name: evil.into(),
+        local: false,
+    }])));
+    let out = render(&app, 120, 14, &plain());
+    assert!(out.contains("RED"));
+    assert!(!out.chars().any(|c| c.is_control() && c != '\n') && !out.contains('\u{202e}'));
+}
+
+#[test]
+fn the_worker_switches_between_local_workspaces_and_lists_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let (workspace, user) = super::data::local_fixture(dir.path());
+    super::data::local_fixture_as(dir.path(), "second", 2);
+    let state = dir.path().join("state").join("board-filters.json");
+    std::fs::create_dir_all(state.parent().unwrap()).unwrap();
+    let reach = super::Reach {
+        cloud: None,
+        local_root: Some(dir.path().to_path_buf()),
+        local_user_id: None,
+        state: Some(state.clone()),
+    };
+    let ws_id = workspace.manifest.id;
+    let (eff_tx, eff_rx) = std::sync::mpsc::channel();
+    let (msg_tx, msg_rx) = std::sync::mpsc::channel();
+    super::spawn_worker(
+        super::Conn::Local { workspace, user },
+        ws_id,
+        None,
+        reach,
+        eff_rx,
+        msg_tx,
+    );
+    let wait = std::time::Duration::from_secs(10);
+    eff_tx.send(Effect::Workspaces).unwrap();
+    let Msg::Workspaces(Ok(list)) = msg_rx.recv_timeout(wait).unwrap() else {
+        panic!("expected the workspace list");
+    };
+    let codes: Vec<_> = list.iter().map(|w| w.code.as_str()).collect();
+    assert_eq!(codes, ["local:personal", "local:second"]);
+    assert!(list.iter().all(|w| w.local));
+    eff_tx
+        .send(Effect::Open {
+            ws: list[1].clone(),
+            project: None,
+        })
+        .unwrap();
+    let Msg::Opened(opened) = msg_rx.recv_timeout(wait).unwrap() else {
+        panic!("expected Opened");
+    };
+    let opened = (*opened).unwrap_or_else(|_| panic!("open failed"));
+    assert_eq!(opened.ws.code, "local:second");
+    assert_eq!(opened.snapshot.tasks[0].title, "second card");
+    eff_tx.send(Effect::Move { id: 1, to: 2 }).unwrap();
+    assert!(matches!(
+        msg_rx.recv_timeout(wait).unwrap(),
+        Msg::MoveDone(1, Ok(()))
+    ));
+    eff_tx
+        .send(Effect::Save {
+            ws: "local:second".into(),
+            filters: Filters {
+                assignee: Assignee::Me,
+                ..Filters::default()
+            },
+        })
+        .unwrap();
+    eff_tx.send(Effect::Refresh).unwrap();
+    let Msg::Loaded(Ok(snap)) = msg_rx.recv_timeout(wait).unwrap() else {
+        panic!("expected a refresh");
+    };
+    assert_eq!(snap.tasks[0].title, "second card");
+    assert_eq!(
+        filters::load(&state).workspaces["local:second"].assignee,
+        Assignee::Me
+    );
+    eff_tx
+        .send(Effect::Open {
+            ws: Ws {
+                id: 9,
+                code: "local:missing".into(),
+                name: "Missing".into(),
+                local: true,
+            },
+            project: None,
+        })
+        .unwrap();
+    let Msg::Opened(failed) = msg_rx.recv_timeout(wait).unwrap() else {
+        panic!("expected Opened");
+    };
+    assert!((*failed).is_err());
+    eff_tx.send(Effect::Refresh).unwrap();
+    let Msg::Loaded(Ok(snap)) = msg_rx.recv_timeout(wait).unwrap() else {
+        panic!("the old workspace must keep working");
+    };
+    assert_eq!(snap.tasks[0].title, "second card");
 }

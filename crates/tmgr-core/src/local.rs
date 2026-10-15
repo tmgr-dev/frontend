@@ -36,7 +36,15 @@ pub fn list() -> Result<Vec<LocalWorkspace>> {
 }
 
 pub fn find(code: &str) -> Result<LocalWorkspace> {
-    tmgr_local::find(&root()?, code).map_err(|_| {
+    find_at(&root()?, code)
+}
+
+pub fn list_at(root: &Path) -> Vec<LocalWorkspace> {
+    tmgr_local::list_in(root)
+}
+
+pub fn find_at(root: &Path, code: &str) -> Result<LocalWorkspace> {
+    tmgr_local::find(root, code).map_err(|_| {
         Error::not_found(format!("local workspace {code} not found")).hint("tmgr ws list")
     })
 }

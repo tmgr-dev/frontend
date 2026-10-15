@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.3
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- `tmgr board` has a filter bar at the top, like the web and desktop boards: `[workspace ▾]  Project: TM ▾  Assignee: me ▾  Persona: - ▾  /search…`. `w` switches the workspace (cloud and local `local:<code>` workspaces in one list), `p` the project, `a` the assignee (everyone, me or a member), `P` the persona (any, my personas or one persona), `/` searches as before, `x` resets all filters and `f` opens a menu with all of them. Clicking a chip opens the same picker. On terminals narrower than 100 columns the bar collapses to `WORKSPACE · 2 filters`; `f` opens the menu.
+- The project, assignee and persona filters are remembered per workspace in `board-filters.json` in the tmgr config directory (the search text is not). `--ws`, `--project` and `--mine` still work and override only their own field of the remembered state. Assignee and persona filters apply to the tasks the board has loaded (the first 100 per column, shown as `+` in the task count); the project filter is applied by the server.
+- The `?` help and the bottom hint bar list the new keys.
+- Runner agent profiles: `gemini` is removed (`tmgr run --agent gemini`, queue rules and restores fail with "agent profile gemini was removed; use agy"; a gemini.toml of your own still works) and `agy` (Antigravity CLI) is added with permission modes `ask` (no flag), `accept-edits` and `plan`, the prompt via `--prompt-interactive`, resume via `--continue` and instruction files AGENTS.md and GEMINI.md. agy sign-in is stored in the macOS keychain, which the sandbox denies, so agy starts signed out in every run and there is no `tmgr agents login agy`; its idle screen is not recognised yet. The queue refuses `--dangerously-skip-permissions` for agy.
+- opencode profile: modes `ask` = `--agent build`, `accept-edits` = `--agent tmgr-accept-edits`, `plan` = `--agent plan`, with project config switched off (`OPENCODE_DISABLE_PROJECT_CONFIG=1` plus `OPENCODE_CONFIG_CONTENT`) so every built-in agent asks before bash, web and anything outside the project and `plan` denies edits. The project's AGENTS.md is therefore no longer read automatically. `OPENCODE_*` variables are no longer passed from the caller's environment, and the queue refuses `--auto`.
+
 ## 1.0.2
 
 - This release is still not signed (no minisign secrets yet): SHA256SUMS only, published as a prerelease.
