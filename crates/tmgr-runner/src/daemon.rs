@@ -1868,6 +1868,7 @@ impl Runner {
                 permission_mode: mode,
                 clone_of: req.clone_of,
                 agent_work: req.agent_work,
+                exe_pin: req.exe_pin,
                 bypass: false,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
