@@ -172,6 +172,24 @@ pub struct RunStatus {
     pub ended_ms: Option<u64>,
 }
 
+/// Params of `sessions.text`; `lines` is 1..=10000, default is the screen height.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextParams {
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<u32>,
+}
+
+/// Result of `sessions.text`: plain text, oldest line first, the last line is the bottom screen row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionText {
+    pub id: String,
+    pub rows: u16,
+    pub cols: u16,
+    pub lines: Vec<String>,
+    pub scroll_max: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StatusInfo {
     pub pid: u32,
