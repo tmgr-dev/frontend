@@ -170,6 +170,10 @@ fn terminal_size() -> (u16, u16) {
 }
 
 fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
+    if a.trust && !(crate::interact::is_interactive() && std::io::stdout().is_terminal()) {
+        return Err(Error::usage("--trust needs an interactive terminal")
+            .hint("run it yourself in a terminal; it is never accepted from scripts or agents"));
+    }
     let cwd = match &a.cwd {
         Some(p) => std::path::absolute(p),
         None => std::env::current_dir(),
@@ -240,7 +244,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             permission_mode: None,
             start_key: None,
             clone_of: None,
-            trust_cwd: None,
+            trust_cwd: a.trust.then_some(true),
         }),
     }
     .map_err(rerr)?;
@@ -777,6 +781,9 @@ fn work_log(o: &Opts, key: &str) -> Result<i32> {
         }
         if let Some(b) = &w.branch {
             lines.push(format!("branch: {}", clean(b)));
+        }
+        if let Some(t) = &w.trust {
+            lines.push(format!("trust: {}", clean(t)));
         }
         if let Some(e) = &w.exit {
             lines.push(match (e.code, e.signal) {

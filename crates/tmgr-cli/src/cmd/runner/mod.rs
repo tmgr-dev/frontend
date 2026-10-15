@@ -103,6 +103,9 @@ pub struct RunArgs {
     /// Start the session without opening the live view
     #[arg(long)]
     pub no_attach: bool,
+    /// [experimental] Pre-accept the agent's folder-trust prompt for this folder, for this run only
+    #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on"])]
+    pub trust: bool,
 }
 
 #[derive(Args)]

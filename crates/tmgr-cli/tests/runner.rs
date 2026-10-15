@@ -202,7 +202,11 @@ impl Env {
     }
 
     fn pty(&self, args: &[&str]) -> Pty {
-        Pty::spawn(self, args)
+        Pty::spawn(self, args, None)
+    }
+
+    fn pty_home(&self, args: &[&str], home: &Path) -> Pty {
+        Pty::spawn(self, args, Some(home))
     }
 }
 
@@ -259,7 +263,7 @@ impl Drop for Pty {
 }
 
 impl Pty {
-    fn spawn(env: &Env, args: &[&str]) -> Pty {
+    fn spawn(env: &Env, args: &[&str], home: Option<&Path>) -> Pty {
         let pair = native_pty_system()
             .openpty(PtySize {
                 rows: 30,
@@ -272,6 +276,9 @@ impl Pty {
         cmd.args(args);
         for (k, v) in env.envs() {
             cmd.env(k, v);
+        }
+        if let Some(h) = home {
+            cmd.env("HOME", h);
         }
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
@@ -1273,4 +1280,115 @@ fn send_wait_times_out_with_a_conflict_error() {
             .code(),
         Some(2)
     );
+
+fn trust_profile(env: &Env, home: &Path) {
+    private_dir(home);
+    fs::write(
+        home.join(".claude.json"),
+        r#"{"theme":"dark","oauthAccount":{"id":"u"},"projects":{"/elsewhere":{"keep":1}}}"#,
+    )
+    .unwrap();
+    let script = env.script(
+        "trust-agent.sh",
+        "cp \"$HOME/.claude.json\" \"$PWD/seen.json\"\nwhile true; do sleep 0.2; done\n",
+    );
+    let agents = env.tmp.path().join("cfg/agents");
+    private_dir(&agents);
+    fs::write(
+        agents.join("trusty.toml"),
+        format!(
+            "id = \"trusty\"\nname = \"trusty\"\ncommand = [{script:?}]\n\
+             [[sandbox.seed]]\nfrom = \"~/.claude.json\"\nto = \".claude.json\"\n\
+             json_keys = [\"theme\", \"oauthAccount\"]\n\
+             [trust]\nfile = \".claude.json\"\n\
+             path = [\"projects\", \"{{cwd}}\", \"hasTrustDialogAccepted\"]\n"
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn trust_is_refused_without_a_terminal_and_with_agent_cmd_or_on() {
+    let env = Env::new();
+    let home = env.tmp.path().join("home");
+    trust_profile(&env, &home);
+    let cwd = env.proj.display().to_string();
+    let script = env.script("noop.sh", "exit 0\n");
+    for args in [
+        vec![
+            "run",
+            "--agent",
+            "trusty",
+            "--trust",
+            "--cwd",
+            &cwd,
+            "--no-attach",
+        ],
+        vec![
+            "run",
+            "--agent-cmd",
+            &script,
+            "--trust",
+            "--cwd",
+            &cwd,
+            "--no-attach",
+        ],
+        vec![
+            "run", "--agent", "trusty", "--trust", "--on", "laptop", "w1:2",
+        ],
+    ] {
+        let mut cmd = env.cmd(&args);
+        cmd.env("HOME", &home);
+        let out = run_bounded(cmd, Duration::from_secs(60));
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", out_text(&out));
+    }
+    assert!(!env.run.join("runner.pid").exists());
+    assert!(!env.proj.join("seen.json").exists());
+}
+
+#[test]
+fn trust_in_a_terminal_pre_accepts_only_this_folder_and_the_log_says_so() {
+    if !sandbox_usable() {
+        return;
+    }
+    let env = Env::new();
+    let home = env.tmp.path().join("home");
+    trust_profile(&env, &home);
+    let cwd = env.proj.canonicalize().unwrap();
+    let before = fs::read(home.join(".claude.json")).unwrap();
+    let mut pty = env.pty_home(
+        &[
+            "run",
+            "--agent",
+            "trusty",
+            "--trust",
+            "--cwd",
+            &cwd.display().to_string(),
+            "--no-attach",
+        ],
+        &home,
+    );
+    assert!(pty.wait_exit(Duration::from_secs(30)), "{}", pty.text());
+    let seen_path = cwd.join("seen.json");
+    let end = Instant::now() + Duration::from_secs(15);
+    while !seen_path.exists() {
+        assert!(Instant::now() < end, "agent did not run: {}", pty.text());
+        thread::sleep(Duration::from_millis(50));
+    }
+    thread::sleep(Duration::from_millis(200));
+    let seen: Value = serde_json::from_str(&fs::read_to_string(&seen_path).unwrap()).unwrap();
+    assert_eq!(
+        seen,
+        serde_json::json!({
+            "theme": "dark",
+            "oauthAccount": {"id": "u"},
+            "projects": {cwd.display().to_string(): {"hasTrustDialogAccepted": true}}
+        })
+    );
+    assert_eq!(fs::read(home.join(".claude.json")).unwrap(), before);
+    let id = env.sessions()[0]["id"].as_str().unwrap().to_string();
+    let mut log = env.cmd(&["agents", "log", &id]);
+    log.env("HOME", &home);
+    let out = out_text(&run_bounded(log, Duration::from_secs(60)));
+    assert!(out.contains("trust: pre-accepted"), "{out}");
 }
