@@ -1848,7 +1848,7 @@ fn stamp(clock: &str) -> chrono::DateTime<Utc> {
     at(-2, clock).parse().unwrap()
 }
 
-fn codex_rollout(u: &U) {
+fn codex_rollout(u: &U, cwd: &str) {
     let line = |clock: &str, body: &str| format!(r#"{{"timestamp":"{}",{body}}}"#, at(-2, clock));
     let usage = |i: u64, o: u64| {
         format!(
@@ -1869,11 +1869,11 @@ fn codex_rollout(u: &U) {
     let lines = [
         line(
             "12:08:00",
-            r#""type":"session_meta","payload":{"id":"cx1","cwd":"/work/alpha"}"#,
+            &format!(r#""type":"session_meta","payload":{{"id":"cx1","cwd":"{cwd}"}}"#),
         ),
         line(
             "12:08:01",
-            r#""type":"turn_context","payload":{"model":"gpt-test-1","cwd":"/work/alpha"}"#,
+            &format!(r#""type":"turn_context","payload":{{"model":"gpt-test-1","cwd":"{cwd}"}}"#),
         ),
         count("12:09:00", (1000, 100), (1000, 100)),
         count("12:12:00", (3000, 300), (2000, 200)),
@@ -1899,7 +1899,7 @@ fn call_fact(session: &str, agent: Option<&str>, key: &str, name: &str, clock: &
 
 fn tree_fixture(u: &U, codex_cwd: &str) {
     linked_fixture(u);
-    codex_rollout(u);
+    codex_rollout(u, codex_cwd);
     u.ok(&["usage", "scan"]);
     Connection::open(u.p("data/usage.db"))
         .unwrap()
