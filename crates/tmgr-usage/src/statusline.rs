@@ -301,6 +301,22 @@ pub fn read_snapshots(dir: &Path) -> Result<Vec<StatuslineSnapshot>> {
     Ok(out)
 }
 
+fn windows_over(path: &Path, now: DateTime<Utc>) -> bool {
+    let Some(snap) =
+        read_capped(path).and_then(|b| serde_json::from_slice::<StatuslineSnapshot>(&b).ok())
+    else {
+        return false;
+    };
+    let windows: Vec<&RateWindow> = [&snap.five_hour, &snap.seven_day]
+        .into_iter()
+        .flatten()
+        .collect();
+    !windows.is_empty()
+        && windows
+            .iter()
+            .all(|w| w.resets_at.is_some_and(|r| r <= now))
+}
+
 pub fn prune_snapshots(dir: &Path, now: DateTime<Utc>, max_age_days: u64) -> u64 {
     let Some(cutoff) =
         std::time::SystemTime::from(now).checked_sub(Duration::from_secs(max_age_days * 86_400))
@@ -322,7 +338,8 @@ pub fn prune_snapshots(dir: &Path, now: DateTime<Utc>, max_age_days: u64) -> u64
                 .filter(std::fs::Metadata::is_file)
                 .and_then(|m| m.modified().ok())
                 .is_some_and(|t| t < cutoff);
-            if old && std::fs::remove_file(file.path()).is_ok() {
+            if (old || windows_over(&file.path(), now)) && std::fs::remove_file(file.path()).is_ok()
+            {
                 removed += 1;
             }
         }

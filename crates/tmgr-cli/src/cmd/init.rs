@@ -70,7 +70,7 @@ pub fn rc_path(target: InitTarget) -> Result<PathBuf> {
         }
         InitTarget::Claude => {
             return Err(Error::usage("tmgr does not edit Claude Code settings")
-                .hint("add the printed snippet to settings.json yourself"))
+                .hint("tmgr usage statusline install --install"))
         }
     })
 }
@@ -259,9 +259,20 @@ pub fn apply_checked(
     Ok(backup)
 }
 
+const CLAUDE_LIMITS_NOTE: &str = "For rate limits, keep your own status line and run `tmgr usage statusline install` (it chains your existing command).";
+
 pub fn run(ctx: &Ctx, args: &InitArgs) -> Result<Output> {
     if !args.install && !args.uninstall {
         let text = block(args.target);
+        if args.target == InitTarget::Claude {
+            if !ctx.json && !ctx.quiet {
+                eprintln!("{}", ctx.err_style.muted(CLAUDE_LIMITS_NOTE));
+            }
+            return Ok(Output::new(
+                json!({"snippet": text, "note": CLAUDE_LIMITS_NOTE}),
+                text.trim_end().to_string(),
+            ));
+        }
         return Ok(Output::new(
             json!({"snippet": text}),
             text.trim_end().to_string(),

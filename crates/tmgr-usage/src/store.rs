@@ -145,13 +145,7 @@ impl Store {
             ) else {
                 continue;
             };
-            if out
-                .iter()
-                .any(|s| s.tool == tool && s.account == account && s.window == window)
-            {
-                continue;
-            }
-            out.push(LimitSnapshot {
+            let snap = LimitSnapshot {
                 tool,
                 account,
                 window,
@@ -161,7 +155,14 @@ impl Store {
                 observed_at: from_ms(observed),
                 source,
                 tool_session_id: session,
-            });
+            };
+            match out.iter_mut().find(|s| {
+                s.tool == snap.tool && s.account == snap.account && s.window == snap.window
+            }) {
+                Some(best) if fresher(&snap, best) => *best = snap,
+                Some(_) => {}
+                None => out.push(snap),
+            }
         }
         out.sort_by(|a, b| (a.tool, &a.account, &a.window).cmp(&(b.tool, &b.account, &b.window)));
         Ok(out)
@@ -465,4 +466,18 @@ fn create_private_file(path: &Path) -> Result<()> {
     }
     opts.open(path)?;
     Ok(())
+}
+
+/// Every session reports its own copy of an account's limits, and an idle one repeats what it saw
+/// last. Within a window usage only grows, so the window that resets last is the current one and
+/// its highest reading is the freshest.
+fn fresher(candidate: &LimitSnapshot, best: &LimitSnapshot) -> bool {
+    let minute = |s: &LimitSnapshot| s.resets_at.map(|r| r.timestamp().div_euclid(60));
+    match (minute(candidate), minute(best)) {
+        (Some(c), Some(b)) if c != b => c > b,
+        (Some(_), Some(_)) => candidate.used_pct > best.used_pct,
+        (Some(_), None) => true,
+        (None, Some(_)) => false,
+        (None, None) => false,
+    }
 }

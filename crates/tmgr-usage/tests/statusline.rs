@@ -516,3 +516,43 @@ fn old_snapshots_are_pruned_with_their_empty_folders() {
     assert_eq!(left, ["fresh"]);
     assert!(!dir.join("claude/bbbb").exists());
 }
+
+#[test]
+fn snapshots_whose_windows_have_all_reset_are_pruned() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path();
+    let now = chrono::Utc::now().timestamp();
+    let body = |s: &str, weekly_reset: i64, session_reset: Option<i64>| {
+        let mut limits = json!({"seven_day": {"used_percentage": 40.0, "resets_at": weekly_reset}});
+        if let Some(r) = session_reset {
+            limits["five_hour"] = json!({"used_percentage": 10.0, "resets_at": r});
+        }
+        serde_json::to_vec(&json!({"session_id": s, "rate_limits": limits})).unwrap()
+    };
+    write_snapshot(
+        dir,
+        Some("aaaa"),
+        &body("expired", now - 60, Some(now - 30)),
+    )
+    .unwrap();
+    write_snapshot(
+        dir,
+        Some("aaaa"),
+        &body("half", now + 86_400, Some(now - 30)),
+    )
+    .unwrap();
+    write_snapshot(dir, Some("aaaa"), &body("current", now + 86_400, None)).unwrap();
+    write_snapshot(
+        dir,
+        Some("aaaa"),
+        &serde_json::to_vec(&json!({"session_id": "no-limits"})).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(prune_snapshots(dir, chrono::Utc::now(), 8), 1);
+    let left: Vec<_> = read_snapshots(dir)
+        .unwrap()
+        .into_iter()
+        .map(|s| s.session_id)
+        .collect();
+    assert_eq!(left, ["current", "half", "no-limits"]);
+}

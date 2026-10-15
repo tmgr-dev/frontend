@@ -76,6 +76,11 @@ async fn claude_settings_are_never_edited() {
         .output()
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
+    assert!(
+        text(&out.stderr).contains("tmgr usage statusline install --install"),
+        "{}",
+        text(&out.stderr)
+    );
     let out = env
         .cmd()
         .args(["init", "zsh", "--install", "--uninstall"])
@@ -104,4 +109,30 @@ async fn an_already_installed_block_is_a_no_op_without_a_terminal() {
         .unwrap();
     assert!(out.status.success());
     assert_eq!(stdout_json(&out)["data"]["changed"], false);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn init_claude_points_at_the_statusline_installer_for_limits() {
+    let env = Env::new().await;
+    let out = env.cmd().args(["init", "claude"]).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stderr).contains("tmgr usage statusline install"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert!(!text(&out.stdout).contains("statusline install"));
+    let out = env.cmd().args(["init", "zsh"]).output().unwrap();
+    assert!(!text(&out.stderr).contains("statusline install"));
+    let out = env
+        .cmd()
+        .args(["init", "claude", "--json"])
+        .output()
+        .unwrap();
+    let v = stdout_json(&out);
+    assert!(v["data"]["note"]
+        .as_str()
+        .unwrap()
+        .contains("tmgr usage statusline install"));
+    assert!(text(&out.stderr).is_empty(), "{}", text(&out.stderr));
 }

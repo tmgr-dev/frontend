@@ -343,3 +343,73 @@ fn rollups_folded_in_different_time_zones_share_a_day_label_and_count_once() {
     let t = totals(&store);
     assert_eq!((t.events, t.tokens.input), (2, 30));
 }
+
+#[test]
+fn the_fullest_snapshot_of_the_current_window_wins_over_newer_idle_ones() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = open_store(tmp.path());
+    let resets = now() + Duration::days(5);
+    let snap = |session: &str, window: LimitWindow, pct: f64, observed_min: i64, skew_s: i64| {
+        LimitSnapshot {
+            tool: Tool::Claude,
+            account: "claude".into(),
+            window,
+            used_pct: pct,
+            resets_at: Some(resets + Duration::seconds(skew_s)),
+            plan: None,
+            observed_at: now() - Duration::minutes(observed_min),
+            source: LimitSource::Statusline,
+            tool_session_id: session.into(),
+        }
+    };
+    store
+        .record_limit(&snap("active", LimitWindow::Weekly, 68.0, 4, 0))
+        .unwrap();
+    store
+        .record_limit(&snap("active", LimitWindow::Session, 25.0, 4, 0))
+        .unwrap();
+    for (i, pct) in [1.0, 5.0, 27.0, 32.0, 45.0, 58.0].into_iter().enumerate() {
+        store
+            .record_limit(&snap(
+                &format!("idle{i}"),
+                LimitWindow::Weekly,
+                pct,
+                i as i64,
+                20,
+            ))
+            .unwrap();
+    }
+    let mut old = snap("old", LimitWindow::Weekly, 97.0, 0, 0);
+    old.resets_at = Some(now() - Duration::hours(1));
+    store.record_limit(&old).unwrap();
+    for _ in 0..3 {
+        let current = store.current_limits(now()).unwrap();
+        let weekly = current
+            .iter()
+            .find(|l| l.window == LimitWindow::Weekly)
+            .unwrap();
+        assert_eq!(weekly.used_pct, 68.0);
+        assert_eq!(weekly.tool_session_id, "active");
+        assert_eq!(weekly.observed_at, now() - Duration::minutes(4));
+        let session = current
+            .iter()
+            .find(|l| l.window == LimitWindow::Session)
+            .unwrap();
+        assert_eq!(session.used_pct, 25.0);
+    }
+}
+
+#[test]
+fn a_new_window_replaces_the_fuller_old_one() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = open_store(tmp.path());
+    let mut fresh = limit(LimitWindow::Weekly, 3.0, 1, Some(24 * 7), "new");
+    fresh.tool = Tool::Claude;
+    let mut stale = limit(LimitWindow::Weekly, 90.0, 0, Some(2), "old");
+    stale.tool = Tool::Claude;
+    store.record_limit(&fresh).unwrap();
+    store.record_limit(&stale).unwrap();
+    let weekly = store.current_limits(now()).unwrap();
+    assert_eq!(weekly.len(), 1);
+    assert_eq!(weekly[0].used_pct, 3.0);
+}

@@ -23,6 +23,18 @@ pub fn run(ctx: &Ctx, no_scan: bool) -> Result<Output> {
         scan(ctx, &mut u, now)?;
     }
     let limits = u.store.current_limits(now).map_err(fail)?;
+    let claude_fresh = limits
+        .iter()
+        .filter(|l| l.tool == tmgr_usage::Tool::Claude)
+        .map(|l| l.observed_at)
+        .max()
+        .is_some_and(|t| now - t < chrono::Duration::hours(24));
+    if !claude_fresh {
+        ctx.warn(
+            "claude_limits_missing",
+            "Claude limits: run `tmgr usage statusline install`",
+        );
+    }
     let rows: Vec<_> = limits
         .iter()
         .map(|l| {

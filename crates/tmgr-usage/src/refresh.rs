@@ -7,7 +7,7 @@ use crate::paths::{self, Env};
 use crate::{scan_account, Account, PriceBook, Store, Tz};
 
 const RETENTION_DAYS: u32 = 90;
-const SNAPSHOT_KEEP_DAYS: u64 = 30;
+const SNAPSHOT_KEEP_DAYS: u64 = 8;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct RefreshReport {

@@ -506,9 +506,11 @@ fn limits_show_stored_windows_and_say_so_when_there_are_none() {
     let u = U::new();
     let empty = u.ok(&["usage", "limits", "--no-scan"]);
     assert!(text(&empty.stdout).contains("No limit data yet"));
+    assert!(text(&empty.stderr).contains("Claude limits: run `tmgr usage statusline install`"));
     let v = u.json(&["usage", "limits", "--no-scan"]);
     assert_valid("usage_limits", &v);
     assert_eq!(v["data"]["limits"], json!([]));
+    assert_eq!(v["warnings"][0]["code"], "claude_limits_missing", "{v}");
 
     let store = Store::open(&u.p("data/usage.db")).unwrap();
     let now = Utc::now();
@@ -537,9 +539,26 @@ fn limits_show_stored_windows_and_say_so_when_there_are_none() {
     assert!(t.contains("weekly   80%"), "{t}");
     assert!(t.contains("statusline"), "{t}");
     assert!(t.contains("5m ago"), "{t}");
+    assert!(
+        !text(&out.stderr).contains("statusline install"),
+        "{}",
+        text(&out.stderr)
+    );
     let v = u.json(&["usage", "limits", "--no-scan"]);
     assert_valid("usage_limits", &v);
     assert_eq!(v["data"]["limits"].as_array().unwrap().len(), 2);
+    assert_eq!(v["warnings"], json!([]), "{v}");
+
+    rusqlite::Connection::open(u.p("data/usage.db"))
+        .unwrap()
+        .execute(
+            "UPDATE usage_limit_snapshot SET observed_at = observed_at - 2 * 86400000",
+            [],
+        )
+        .unwrap();
+    let out = u.ok(&["usage", "limits", "--no-scan"]);
+    assert!(text(&out.stderr).contains("Claude limits: run `tmgr usage statusline install`"));
+    assert!(!text(&out.stdout).contains("Claude limits:"));
 }
 
 #[test]

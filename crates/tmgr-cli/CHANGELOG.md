@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr usage limits` no longer jumps between values when several Claude Code sessions are open: every session reports its own copy of the limits and an idle one repeats an old reading, so per account and window the window that resets last is the current one and its highest reading is shown (usage only grows within a window); readings of a window that has already reset are ignored, and the age is that of the reading shown. Statusline snapshot files are removed after 8 days (was 30) or once all their windows have reset.
+- `tmgr usage limits` warns on stderr (`warnings[]` in `--json`) `Claude limits: run \`tmgr usage statusline install\`` when there is no Claude reading or the newest is older than 24 hours.
+- `tmgr init claude` also says, on stderr (`note` in `--json`), that rate limits need `tmgr usage statusline install`, which keeps your own status line; `tmgr init claude --install` now points at `tmgr usage statusline install --install`.
+
 ## 1.0.1
 
 - This release is still not signed: the minisign secrets are not set up yet, so its tarballs have SHA256SUMS only and it is published as a prerelease.

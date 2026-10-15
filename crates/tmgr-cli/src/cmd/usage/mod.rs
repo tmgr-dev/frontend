@@ -22,7 +22,7 @@ use tmgr_usage::{scan_account, Account, PriceBook, Store, Tool, Tz};
 pub use statusline::statusline_hook;
 
 const RETENTION_DAYS: u32 = 90;
-const SNAPSHOT_KEEP_DAYS: u64 = 30;
+const SNAPSHOT_KEEP_DAYS: u64 = 8;
 const BIG_FIRST_SCAN_BYTES: u64 = 50 * 1024 * 1024;
 
 pub fn fail(e: UsageError) -> Error {
