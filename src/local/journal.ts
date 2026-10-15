@@ -1,4 +1,9 @@
-import type { BatchResult, BatchStatement, LocalContext, LocalDb } from './types';
+import type {
+	BatchResult,
+	BatchStatement,
+	LocalContext,
+	LocalDb,
+} from './types';
 
 export const GENESIS_HASH = '0'.repeat(64);
 
@@ -13,7 +18,15 @@ export type JournalSource =
 	| 'plugin'
 	| 'import'
 	| 'cli_confirm';
-export type JournalField = 'create' | 'title' | 'description' | 'description_json' | 'checkpoints' | 'comment' | 'delete' | 'confirm';
+export type JournalField =
+	| 'create'
+	| 'title'
+	| 'description'
+	| 'description_json'
+	| 'checkpoints'
+	| 'comment'
+	| 'delete'
+	| 'confirm';
 
 export interface JournalRow {
 	seq: number;
@@ -50,7 +63,9 @@ export interface Author {
 const MAX_ATTEMPTS = 12;
 
 const hex = (buffer: ArrayBuffer): string =>
-	Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('');
+	Array.from(new Uint8Array(buffer), (byte) =>
+		byte.toString(16).padStart(2, '0'),
+	).join('');
 
 export const sha256Hex = async (text: string): Promise<string> =>
 	hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)));
@@ -90,21 +105,42 @@ export const unattendedAuthor = (ctx: LocalContext): Author => ({
 /** Who the journal blames for a write. Anything that is not the app's own client is never human. */
 export const authorOf = (ctx: LocalContext): Author => {
 	const actor = ctx.actor;
-	if (!actor) return { author_kind: 'human', source: 'desktop_ui', actor_id: String(ctx.user.id) };
+	if (!actor)
+		return {
+			author_kind: 'human',
+			source: 'desktop_ui',
+			actor_id: String(ctx.user.id),
+		};
 	switch (actor.kind) {
 		case 'persona':
-			return { author_kind: 'agent', source: actor.via === 'mcp' ? 'mcp' : 'local_access', actor_id: actor.id };
+			return {
+				author_kind: 'agent',
+				source: actor.via === 'mcp' ? 'mcp' : 'local_access',
+				actor_id: actor.id,
+			};
 		case 'agent':
 			return { author_kind: 'agent', source: 'runner', actor_id: actor.id };
 		case 'companion':
-			return { author_kind: 'agent', source: 'local_access', actor_id: actor.id };
+			return {
+				author_kind: 'agent',
+				source: 'local_access',
+				actor_id: actor.id,
+			};
 		case 'plugin':
 			if (actor.id === 'runner' && actor.ownerId === undefined) {
 				return { author_kind: 'agent', source: 'runner', actor_id: 'runner' };
 			}
-			return { author_kind: 'plugin', source: 'plugin', actor_id: actor.ownerId ?? actor.id };
+			return {
+				author_kind: 'plugin',
+				source: 'plugin',
+				actor_id: actor.ownerId ?? actor.id,
+			};
 		default:
-			return { author_kind: 'unattended', source: 'import', actor_id: actor.id };
+			return {
+				author_kind: 'unattended',
+				source: 'import',
+				actor_id: actor.id,
+			};
 	}
 };
 
@@ -174,7 +210,11 @@ export const journaledBatch = async (
 	const author = authorOverride ?? authorOf(ctx);
 	const at = ctx.now().toISOString();
 	const shas = await Promise.all(
-		entries.map((entry) => (entry.rawSha ?? (entry.content === null ? '' : contentSha(entry.content)))),
+		entries.map(
+			(entry) =>
+				entry.rawSha ??
+				(entry.content === null ? '' : contentSha(entry.content)),
+		),
 	);
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
 		const rows = await buildRows(ctx.db, author, at, entries, shas);
@@ -193,13 +233,20 @@ export const journaledBatch = async (
 				  },
 		);
 		const result = await ctx.db.batch([...statements, ...inserts]);
-		if (result.failedAt === null) return { results: result.results.slice(0, statements.length), failedAt: null };
+		if (result.failedAt === null)
+			return {
+				results: result.results.slice(0, statements.length),
+				failedAt: null,
+			};
 		if (result.failedAt < statements.length) return result;
 	}
 	throw new Error('The edit journal is busy; try again');
 };
 
-export const reserveId = async (db: LocalDb, table: 'tasks' | 'comments'): Promise<number> => {
+export const reserveId = async (
+	db: LocalDb,
+	table: 'tasks' | 'comments',
+): Promise<number> => {
 	const [row] = await db.select<{ next: number }>(
 		`SELECT MAX(COALESCE((SELECT seq FROM sqlite_sequence WHERE name = '${table}'), 0), COALESCE((SELECT MAX(id) FROM ${table}), 0)) + 1 AS next`,
 	);
@@ -212,7 +259,10 @@ const DUPLICATE_ID = /UNIQUE constraint failed: (tasks|comments)\.id/i;
 export const journaledCreate = async (
 	ctx: LocalContext,
 	table: 'tasks' | 'comments',
-	plan: (id: number) => { statements: BatchStatement[]; entries: JournalEntry[] },
+	plan: (id: number) => {
+		statements: BatchStatement[];
+		entries: JournalEntry[];
+	},
 	authorOverride?: Author,
 ): Promise<number> => {
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
@@ -222,7 +272,10 @@ export const journaledCreate = async (
 			await journaledBatch(ctx, statements, entries, authorOverride);
 			return id;
 		} catch (error) {
-			const message = typeof error === 'string' ? error : (error as { message?: string })?.message ?? '';
+			const message =
+				typeof error === 'string'
+					? error
+					: (error as { message?: string })?.message ?? '';
 			if (!DUPLICATE_ID.test(message)) throw error;
 		}
 	}
@@ -253,13 +306,21 @@ interface Checkpoint {
 }
 
 const readCheckpoint = async (db: LocalDb): Promise<Checkpoint | null> => {
-	const [row] = await db.select<{ value: string }>(`SELECT value FROM meta WHERE key = ?`, [CHECKPOINT_KEY]);
+	const [row] = await db.select<{ value: string }>(
+		`SELECT value FROM meta WHERE key = ?`,
+		[CHECKPOINT_KEY],
+	);
 	const match = /^(\d+):([^:]+):(.+)$/.exec(String(row?.value ?? ''));
 	const fullAt = match ? Date.parse(match[3]) : NaN;
-	return match && !Number.isNaN(fullAt) ? { seq: Number(match[1]), hash: match[2], fullAt } : null;
+	return match && !Number.isNaN(fullAt)
+		? { seq: Number(match[1]), hash: match[2], fullAt }
+		: null;
 };
 
-const walk = async (db: LocalDb, start: { seq: number; hash: string } | null): Promise<ChainStatus> => {
+const walk = async (
+	db: LocalDb,
+	start: { seq: number; hash: string } | null,
+): Promise<ChainStatus> => {
 	let prevHash = start?.hash ?? GENESIS_HASH;
 	let prevSeq = start?.seq ?? 0;
 	let rows = 0;
@@ -268,11 +329,30 @@ const walk = async (db: LocalDb, start: { seq: number; hash: string } | null): P
 			`SELECT ${INSERT_COLUMNS} FROM edit_journal WHERE seq > ? ORDER BY seq ASC LIMIT ${PAGE}`,
 			[prevSeq],
 		);
-		if (!page.length) return { ok: true, brokenAt: null, rows, tailSeq: prevSeq, tailHash: prevHash, full: !start };
+		if (!page.length)
+			return {
+				ok: true,
+				brokenAt: null,
+				rows,
+				tailSeq: prevSeq,
+				tailHash: prevHash,
+				full: !start,
+			};
 		for (const row of page) {
 			const seq = Number(row.seq);
-			if (seq !== prevSeq + 1 || row.prev_hash !== prevHash || (await rowHash({ ...row, seq })) !== row.hash) {
-				return { ok: false, brokenAt: seq, rows, tailSeq: prevSeq, tailHash: prevHash, full: !start };
+			if (
+				seq !== prevSeq + 1 ||
+				row.prev_hash !== prevHash ||
+				(await rowHash({ ...row, seq })) !== row.hash
+			) {
+				return {
+					ok: false,
+					brokenAt: seq,
+					rows,
+					tailSeq: prevSeq,
+					tailHash: prevHash,
+					full: !start,
+				};
 			}
 			prevHash = row.hash;
 			prevSeq = seq;
@@ -298,7 +378,10 @@ export const verifyChain = async (
 		const checkpoint = await readCheckpoint(db);
 		const age = checkpoint ? now.getTime() - checkpoint.fullAt : -1;
 		if (checkpoint && age >= 0 && age <= FULL_VERIFY_MAX_AGE_MS) {
-			const [row] = await db.select<{ hash: string }>(`SELECT hash FROM edit_journal WHERE seq = ?`, [checkpoint.seq]);
+			const [row] = await db.select<{ hash: string }>(
+				`SELECT hash FROM edit_journal WHERE seq = ?`,
+				[checkpoint.seq],
+			);
 			if (row?.hash === checkpoint.hash) start = checkpoint;
 		}
 	}
@@ -310,7 +393,12 @@ export const verifyChain = async (
 				const fullAt = status.full ? now.getTime() : existing!.fullAt;
 				await db.execute(
 					`INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-					[CHECKPOINT_KEY, `${status.tailSeq}:${status.tailHash}:${new Date(fullAt).toISOString()}`],
+					[
+						CHECKPOINT_KEY,
+						`${status.tailSeq}:${status.tailHash}:${new Date(
+							fullAt,
+						).toISOString()}`,
+					],
 				);
 			}
 		} catch {
@@ -345,12 +433,24 @@ export interface Provenance {
 }
 
 /** The comments digest: SHA-256 of the JSON array `[[comment_id, content_sha256], ...]` ordered by comment id. */
-export const commentsDigest = (comments: Map<number, string>): Promise<string> =>
-	sha256Hex(JSON.stringify([...comments.entries()].sort((a, b) => a[0] - b[0])));
+export const commentsDigest = (
+	comments: Map<number, string>,
+): Promise<string> =>
+	sha256Hex(
+		JSON.stringify([...comments.entries()].sort((a, b) => a[0] - b[0])),
+	);
 
 /** The hash a `confirm` row carries: SHA-256 of the JSON array of the five content parts. */
 export const snapshotSha = (c: HumanContent): Promise<string> =>
-	sha256Hex(JSON.stringify([c.title_sha, c.description_sha, c.description_json_sha, c.checkpoints_sha, c.comments_sha]));
+	sha256Hex(
+		JSON.stringify([
+			c.title_sha,
+			c.description_sha,
+			c.description_json_sha,
+			c.checkpoints_sha,
+			c.comments_sha,
+		]),
+	);
 
 /** The task text that reaches an agent. */
 export interface Snapshot {
@@ -363,7 +463,8 @@ export interface Snapshot {
 
 export const snapshotParts = async (s: Snapshot): Promise<HumanContent> => {
 	const comments = new Map<number, string>();
-	for (const comment of s.comments) comments.set(Number(comment.id), await contentSha(comment.message));
+	for (const comment of s.comments)
+		comments.set(Number(comment.id), await contentSha(comment.message));
 	return {
 		title_sha: await contentSha(s.title),
 		description_sha: await contentSha(s.description),
@@ -373,8 +474,16 @@ export const snapshotParts = async (s: Snapshot): Promise<HumanContent> => {
 	};
 };
 
-export const snapshotOf = async (db: LocalDb, taskId: number): Promise<Snapshot | null> => {
-	const [task] = await db.select<{ title: string; description: string | null; description_json: string | null; checkpoints: string | null }>(
+export const snapshotOf = async (
+	db: LocalDb,
+	taskId: number,
+): Promise<Snapshot | null> => {
+	const [task] = await db.select<{
+		title: string;
+		description: string | null;
+		description_json: string | null;
+		checkpoints: string | null;
+	}>(
 		`SELECT title, description, description_json, checkpoints FROM tasks WHERE id = ? AND deleted_at IS NULL`,
 		[taskId],
 	);
@@ -396,13 +505,31 @@ export const snapshotOf = async (db: LocalDb, taskId: number): Promise<Snapshot 
  * The owner confirms the task text exactly as it is now, so agents may run on it. Only the app's own client
  * (no actor) can do this; the caller has to be a deliberate user action.
  */
-export const confirmTask = async (ctx: LocalContext, taskId: number, expected?: string): Promise<string> => {
+export const confirmTask = async (
+	ctx: LocalContext,
+	taskId: number,
+	expected?: string,
+): Promise<string> => {
 	if (ctx.actor) throw new Error('Only the app user can confirm a task');
 	const snapshot = await snapshotOf(ctx.db, taskId);
 	if (!snapshot) throw new Error('Task not found');
 	const hash = await snapshotSha(await snapshotParts(snapshot));
-	if (expected !== undefined && expected !== hash) throw new Error('The task changed since it was shown');
-	await journaledBatch(ctx, [], [{ entity: 'task', entityId: taskId, taskId, field: 'confirm', content: null, rawSha: hash }]);
+	if (expected !== undefined && expected !== hash)
+		throw new Error('The task changed since it was shown');
+	await journaledBatch(
+		ctx,
+		[],
+		[
+			{
+				entity: 'task',
+				entityId: taskId,
+				taskId,
+				field: 'confirm',
+				content: null,
+				rawSha: hash,
+			},
+		],
+	);
 	return hash;
 };
 
@@ -426,15 +553,30 @@ interface Fold {
 	comments: Map<number, string>;
 }
 
-const newFold = (): Fold => ({ title: '', description: '', description_json: '', checkpoints: '', comments: new Map() });
+const newFold = (): Fold => ({
+	title: '',
+	description: '',
+	description_json: '',
+	checkpoints: '',
+	comments: new Map(),
+});
 
 const applyRow = (fold: Fold, row: JournalRow) => {
-	if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) fold.title = row.content_sha256;
-	else if (row.entity === 'task' && row.field === 'description') fold.description = row.content_sha256;
-	else if (row.entity === 'task' && row.field === 'description_json') fold.description_json = row.content_sha256;
-	else if (row.entity === 'task' && row.field === 'checkpoints') fold.checkpoints = row.content_sha256;
-	else if (row.entity === 'comment' && row.field === 'comment') fold.comments.set(Number(row.entity_id), row.content_sha256);
-	else if (row.entity === 'comment' && row.field === 'delete') fold.comments.delete(Number(row.entity_id));
+	if (
+		row.entity === 'task' &&
+		(row.field === 'create' || row.field === 'title')
+	)
+		fold.title = row.content_sha256;
+	else if (row.entity === 'task' && row.field === 'description')
+		fold.description = row.content_sha256;
+	else if (row.entity === 'task' && row.field === 'description_json')
+		fold.description_json = row.content_sha256;
+	else if (row.entity === 'task' && row.field === 'checkpoints')
+		fold.checkpoints = row.content_sha256;
+	else if (row.entity === 'comment' && row.field === 'comment')
+		fold.comments.set(Number(row.entity_id), row.content_sha256);
+	else if (row.entity === 'comment' && row.field === 'delete')
+		fold.comments.delete(Number(row.entity_id));
 };
 
 const foldContent = async (fold: Fold): Promise<HumanContent> => {
@@ -457,12 +599,19 @@ const sameContent = (a: HumanContent | null, b: HumanContent | null) =>
 	a.checkpoints_sha === b.checkpoints_sha &&
 	a.comments_sha === b.comments_sha;
 
-const rowsIntact = async (db: LocalDb, rows: JournalRow[]): Promise<boolean> => {
+const rowsIntact = async (
+	db: LocalDb,
+	rows: JournalRow[],
+): Promise<boolean> => {
 	for (const row of rows) {
-		if ((await rowHash({ ...row, seq: Number(row.seq) })) !== row.hash) return false;
+		if ((await rowHash({ ...row, seq: Number(row.seq) })) !== row.hash)
+			return false;
 		let expected: string | undefined = GENESIS_HASH;
 		if (Number(row.seq) !== 1) {
-			const [previous] = await db.select<{ hash: string }>(`SELECT hash FROM edit_journal WHERE seq = ?`, [Number(row.seq) - 1]);
+			const [previous] = await db.select<{ hash: string }>(
+				`SELECT hash FROM edit_journal WHERE seq = ?`,
+				[Number(row.seq) - 1],
+			);
 			expected = previous?.hash;
 		}
 		if (expected !== row.prev_hash) return false;
@@ -488,14 +637,22 @@ export const provenance = async (
 	);
 	const chainOk = status.ok && (await rowsIntact(db, rows));
 	if (!rows.length) return { ...UNRECORDED, chain_ok: chainOk };
-	const created = rows.find((row) => row.entity === 'task' && row.field === 'create');
+	const created = rows.find(
+		(row) => row.entity === 'task' && row.field === 'create',
+	);
 	const createdBy = created ? created.author_kind : 'unrecorded';
-	const humanSeqs = rows.filter((row) => row.author_kind === 'human').map((row) => Number(row.seq));
+	const humanSeqs = rows
+		.filter((row) => row.author_kind === 'human')
+		.map((row) => Number(row.seq));
 	const lastHuman = humanSeqs.length ? Math.max(...humanSeqs) : null;
 	const kinds = [
 		...new Set(
 			rows
-				.filter((row) => row.author_kind !== 'human' && (lastHuman === null || Number(row.seq) > lastHuman))
+				.filter(
+					(row) =>
+						row.author_kind !== 'human' &&
+						(lastHuman === null || Number(row.seq) > lastHuman),
+				)
 				.map((row) => row.author_kind),
 		),
 	].sort();
@@ -508,38 +665,71 @@ export const provenance = async (
 	const commentBy = new Map<number, string>();
 	for (const row of rows) {
 		applyRow(fold, row);
-		if (lastHuman !== null && Number(row.seq) <= lastHuman) applyRow(atLastHuman, row);
-		if (row.entity === 'task' && (row.field === 'create' || row.field === 'title')) titleBy = row.author_kind;
-		else if (row.entity === 'task' && row.field === 'description') descriptionBy = row.author_kind;
-		else if (row.entity === 'task' && row.field === 'description_json') jsonBy = row.author_kind;
-		else if (row.entity === 'task' && row.field === 'checkpoints') checkpointsBy = row.author_kind;
-		else if (row.entity === 'comment' && row.field === 'comment') commentBy.set(Number(row.entity_id), row.author_kind);
-		else if (row.entity === 'comment' && row.field === 'delete') commentBy.delete(Number(row.entity_id));
+		if (lastHuman !== null && Number(row.seq) <= lastHuman)
+			applyRow(atLastHuman, row);
+		if (
+			row.entity === 'task' &&
+			(row.field === 'create' || row.field === 'title')
+		)
+			titleBy = row.author_kind;
+		else if (row.entity === 'task' && row.field === 'description')
+			descriptionBy = row.author_kind;
+		else if (row.entity === 'task' && row.field === 'description_json')
+			jsonBy = row.author_kind;
+		else if (row.entity === 'task' && row.field === 'checkpoints')
+			checkpointsBy = row.author_kind;
+		else if (row.entity === 'comment' && row.field === 'comment')
+			commentBy.set(Number(row.entity_id), row.author_kind);
+		else if (row.entity === 'comment' && row.field === 'delete')
+			commentBy.delete(Number(row.entity_id));
 	}
-	const humanContent = lastHuman !== null ? await foldContent(atLastHuman) : null;
+	const humanContent =
+		lastHuman !== null ? await foldContent(atLastHuman) : null;
 	const currentSnapshot = await snapshotOf(db, taskId);
 	const current = currentSnapshot ? await snapshotParts(currentSnapshot) : null;
 	const observedParts = observed ? await snapshotParts(observed) : null;
-	const textIs = (target: HumanContent) => sameContent(current, target) && (!observedParts || sameContent(observedParts, target));
+	const textIs = (target: HumanContent) =>
+		sameContent(current, target) &&
+		(!observedParts || sameContent(observedParts, target));
 	const contentMatches = !!humanContent && textIs(humanContent);
 
 	const confirm = rows
-		.filter((row) => row.entity === 'task' && row.field === 'confirm' && row.author_kind === 'human')
+		.filter(
+			(row) =>
+				row.entity === 'task' &&
+				row.field === 'confirm' &&
+				row.author_kind === 'human',
+		)
 		.sort((a, b) => Number(b.seq) - Number(a.seq))[0];
 	let confirmed = false;
 	if (confirm) {
 		const currentHash = current ? await snapshotSha(current) : null;
-		const observedHash = observedParts ? await snapshotSha(observedParts) : null;
+		const observedHash = observedParts
+			? await snapshotSha(observedParts)
+			: null;
 		confirmed =
 			currentHash === confirm.content_sha256 &&
 			(!observedParts || observedHash === confirm.content_sha256) &&
-			!rows.some((row) => row.author_kind !== 'human' && Number(row.seq) > Number(confirm.seq));
+			!rows.some(
+				(row) =>
+					row.author_kind !== 'human' && Number(row.seq) > Number(confirm.seq),
+			);
 	}
 	const allHuman =
-		titleBy === 'human' && descriptionBy === 'human' && jsonBy === 'human' && checkpointsBy === 'human' && [...commentBy.values()].every((kind) => kind === 'human');
+		titleBy === 'human' &&
+		descriptionBy === 'human' &&
+		jsonBy === 'human' &&
+		checkpointsBy === 'human' &&
+		[...commentBy.values()].every((kind) => kind === 'human');
 	const stateCurrent = textIs(await foldContent(fold));
 	const humanWritten =
-		chainOk && (confirmed || (createdBy === 'human' && kinds.length === 0 && allHuman && stateCurrent && contentMatches));
+		chainOk &&
+		(confirmed ||
+			(createdBy === 'human' &&
+				kinds.length === 0 &&
+				allHuman &&
+				stateCurrent &&
+				contentMatches));
 	return {
 		created_by: createdBy,
 		last_human_seq: lastHuman,

@@ -112,15 +112,7 @@
 			}
 		}
 	],
-	"provenance_for": [
-		1,
-		2,
-		3,
-		4,
-		5,
-		6,
-		7
-	],
+	"provenance_for": [1, 2, 3, 4, 5, 6, 7],
 	"expect": {
 		"journal": [
 			{
@@ -247,9 +239,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"agent"
-				],
+				"modified_by_kinds": ["agent"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -260,9 +250,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"unattended"
-				],
+				"modified_by_kinds": ["unattended"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -273,9 +261,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"unattended"
-				],
+				"modified_by_kinds": ["unattended"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -286,9 +272,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"agent"
-				],
+				"modified_by_kinds": ["agent"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -299,9 +283,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"plugin"
-				],
+				"modified_by_kinds": ["plugin"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -312,9 +294,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"plugin"
-				],
+				"modified_by_kinds": ["plugin"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,

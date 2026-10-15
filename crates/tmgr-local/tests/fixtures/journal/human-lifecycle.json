@@ -135,10 +135,7 @@
 			"url": "tasks/1"
 		}
 	],
-	"provenance_for": [
-		1,
-		2
-	],
+	"provenance_for": [1, 2],
 	"expect": {
 		"journal": [
 			{

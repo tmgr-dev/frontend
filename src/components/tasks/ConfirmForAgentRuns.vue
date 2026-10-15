@@ -9,7 +9,12 @@
 				>Agent runs</span
 			>
 			<span class="flex-1" />
-			<Button variant="outline" size="sm" data-testid="confirm-open" @click="openDialog">
+			<Button
+				variant="outline"
+				size="sm"
+				data-testid="confirm-open"
+				@click="openDialog"
+			>
 				Confirm for agent runs
 			</Button>
 		</div>
@@ -17,22 +22,31 @@
 			Confirmed. Agents may run on this exact text.
 		</p>
 		<Dialog :open="open" @update:open="(value) => (open = value)">
-			<DialogContent class="max-h-[85vh] overflow-y-auto" data-testid="confirm-dialog">
+			<DialogContent
+				class="max-h-[85vh] overflow-y-auto"
+				data-testid="confirm-dialog"
+			>
 				<DialogHeader>
 					<DialogTitle>Confirm for agent runs</DialogTitle>
 					<DialogDescription>
-						This is everything an agent will read from this task. Confirm only if
-						you wrote or checked all of it. Any later change by someone or something
-						else asks for a new confirmation.
+						This is everything an agent will read from this task. Confirm only
+						if you wrote or checked all of it. Any later change by someone or
+						something else asks for a new confirmation.
 					</DialogDescription>
 				</DialogHeader>
 				<div v-if="preview" class="flex flex-col gap-3 text-sm">
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">Title</div>
-						<div class="whitespace-pre-wrap break-words">{{ preview.title }}</div>
+						<div class="text-2xs font-bold uppercase text-ink-subtle">
+							Title
+						</div>
+						<div class="whitespace-pre-wrap break-words">
+							{{ preview.title }}
+						</div>
 					</div>
 					<div>
-						<div class="text-2xs font-bold uppercase text-ink-subtle">Description</div>
+						<div class="text-2xs font-bold uppercase text-ink-subtle">
+							Description
+						</div>
 						<pre class="whitespace-pre-wrap break-words font-sans">{{
 							preview.description || '(empty)'
 						}}</pre>
@@ -46,7 +60,9 @@
 						}}</pre>
 					</div>
 					<div v-if="preview.checkpoints.length">
-						<div class="text-2xs font-bold uppercase text-ink-subtle">Checkpoints</div>
+						<div class="text-2xs font-bold uppercase text-ink-subtle">
+							Checkpoints
+						</div>
 						<ul class="list-none">
 							<li
 								v-for="(line, index) in preview.checkpoints"
@@ -56,7 +72,9 @@
 								{{ line }}
 							</li>
 						</ul>
-						<div class="mt-1 text-2xs text-ink-subtle">Stored checkpoints, in full:</div>
+						<div class="mt-1 text-2xs text-ink-subtle">
+							Stored checkpoints, in full:
+						</div>
 						<pre
 							class="whitespace-pre-wrap break-words font-mono text-xs"
 							data-testid="confirm-checkpoints-raw"
@@ -64,25 +82,34 @@
 						>
 					</div>
 					<div v-if="preview.comments.length">
-						<div class="text-2xs font-bold uppercase text-ink-subtle">Comments</div>
+						<div class="text-2xs font-bold uppercase text-ink-subtle">
+							Comments
+						</div>
 						<div
 							v-for="comment in preview.comments"
 							:key="comment.id"
 							class="mt-1 rounded border border-line p-2"
 						>
 							<div class="text-xs text-ink-subtle">
-								{{ comment.author_kind }}<template v-if="comment.author_name">
+								{{ comment.author_kind
+								}}<template v-if="comment.author_name">
 									· {{ comment.author_name }}</template
 								>
 							</div>
-							<div class="whitespace-pre-wrap break-words">{{ comment.message }}</div>
+							<div class="whitespace-pre-wrap break-words">
+								{{ comment.message }}
+							</div>
 						</div>
 					</div>
 					<div class="text-xs text-ink-subtle" data-testid="confirm-hash">
 						Snapshot {{ preview.shortHash }}
 					</div>
 				</div>
-				<p v-if="error" class="text-sm text-red-600 dark:text-red-400" data-testid="confirm-error">
+				<p
+					v-if="error"
+					class="text-sm text-red-600 dark:text-red-400"
+					data-testid="confirm-error"
+				>
 					{{ error }}
 				</p>
 				<DialogFooter>
@@ -110,7 +137,11 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
-	import { buildConfirmPreview, confirmShownTask, type ConfirmPreview } from '@/local/confirmPreview';
+	import {
+		buildConfirmPreview,
+		confirmShownTask,
+		type ConfirmPreview,
+	} from '@/local/confirmPreview';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -150,7 +181,12 @@
 				preview.value = null;
 				open.value = true;
 				try {
-					preview.value = await buildConfirmPreview((await context()).db, props.taskId);
+					preview.value = await buildConfirmPreview(
+						(
+							await context()
+						).db,
+						props.taskId,
+					);
 					if (!preview.value) error.value = 'Task not found.';
 				} catch (e) {
 					error.value = e instanceof Error ? e.message : String(e);
@@ -166,7 +202,8 @@
 					done.value = true;
 					open.value = false;
 				} catch (e) {
-					error.value = 'The task changed since it was shown. Reopen this dialog to review it again.';
+					error.value =
+						'The task changed since it was shown. Reopen this dialog to review it again.';
 					preview.value = null;
 				} finally {
 					busy.value = false;

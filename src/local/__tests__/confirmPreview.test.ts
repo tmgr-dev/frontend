@@ -13,19 +13,37 @@ describeSqlite('confirm for agent runs', () => {
 	let ctx: LocalContext;
 	const api = createLocalApi();
 	const persona: LocalActor = { kind: 'persona', id: 'p-1', name: 'Reviewer' };
-	const call = (method: string, url: string, body?: unknown, actor?: LocalActor) =>
-		dispatchLocal(api, { ...ctx, actor }, method, url, body);
+	const call = (
+		method: string,
+		url: string,
+		body?: unknown,
+		actor?: LocalActor,
+	) => dispatchLocal(api, { ...ctx, actor }, method, url, body);
 
 	beforeEach(async () => {
 		ctx = {
 			db: memoryDb(),
-			workspace: { id: -1, name: 'P', code: 'local-p', schema_version: 0, created_at: '', path: '/x', database: '/x/workspace.db' },
+			workspace: {
+				id: -1,
+				name: 'P',
+				code: 'local-p',
+				schema_version: 0,
+				created_at: '',
+				path: '/x',
+				database: '/x/workspace.db',
+			},
 			user: { id: 7, name: 'Owner', email: 'me@example.com' },
 			now: () => new Date('2026-10-14T10:00:00Z'),
-			files: { url: (key) => key, read: async () => new Blob(['x']), remove: async () => {} },
+			files: {
+				url: (key) => key,
+				read: async () => new Blob(['x']),
+				remove: async () => {},
+			},
 		};
 		await migrate(ctx.db, '2026-10-14T00:00:00.000Z');
-		await ctx.db.execute(`INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p-1', 7, 'Owner', 'Reviewer', 'x')`);
+		await ctx.db.execute(
+			`INSERT INTO personas (uuid, owner_user_id, owner_name, name, synced_at) VALUES ('p-1', 7, 'Owner', 'Reviewer', 'x')`,
+		);
 		await enableLocalPersona(ctx, 'p-1', ['tasks:write', 'comments:write']);
 	});
 
@@ -33,13 +51,21 @@ describeSqlite('confirm for agent runs', () => {
 		(await call('POST', 'tasks', {
 			title: 'Do <b>it</b>',
 			description: 'Steps\nmore',
-			checkpoints: [{ description: 'first', checked: true }, { description: 'second', checked: false }],
+			checkpoints: [
+				{ description: 'first', checked: true },
+				{ description: 'second', checked: false },
+			],
 		}))!.data.data.id as number;
 
 	it('shows the whole text an agent can read, with author kinds and the short hash', async () => {
 		const id = await createTask();
 		await call('POST', `tasks/${id}/comments`, { message: 'by me' });
-		await call('POST', `tasks/${id}/comments`, { message: 'by an agent' }, persona);
+		await call(
+			'POST',
+			`tasks/${id}/comments`,
+			{ message: 'by an agent' },
+			persona,
+		);
 		const preview = (await buildConfirmPreview(ctx.db, id))!;
 		expect(preview.title).toBe('Do <b>it</b>');
 		expect(preview.description).toBe('Steps\nmore');
@@ -60,7 +86,12 @@ describeSqlite('confirm for agent runs', () => {
 
 	it('confirms the shown text; the task then counts as human even after an agent wrote parts of it', async () => {
 		const id = await createTask();
-		await call('PATCH', `tasks/${id}`, { description: 'agent rewrite' }, persona);
+		await call(
+			'PATCH',
+			`tasks/${id}`,
+			{ description: 'agent rewrite' },
+			persona,
+		);
 		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
 		const preview = (await buildConfirmPreview(ctx.db, id))!;
 		await confirmShownTask(ctx, preview);
@@ -70,16 +101,25 @@ describeSqlite('confirm for agent runs', () => {
 	it('refuses when the task changed after it was shown', async () => {
 		const id = await createTask();
 		const preview = (await buildConfirmPreview(ctx.db, id))!;
-		await call('POST', `tasks/${id}/comments`, { message: 'sneaked in' }, persona);
+		await call(
+			'POST',
+			`tasks/${id}/comments`,
+			{ message: 'sneaked in' },
+			persona,
+		);
 		const before = (await ctx.db.select(`SELECT seq FROM edit_journal`)).length;
 		await expect(confirmShownTask(ctx, preview)).rejects.toThrow(/changed/);
-		expect((await ctx.db.select(`SELECT seq FROM edit_journal`)).length).toBe(before);
+		expect((await ctx.db.select(`SELECT seq FROM edit_journal`)).length).toBe(
+			before,
+		);
 		expect(isHumanWritten(await provenance(ctx.db, id))).toBe(false);
 	});
 
 	it('is not available to an actor', async () => {
 		const id = await createTask();
 		const preview = (await buildConfirmPreview(ctx.db, id))!;
-		await expect(confirmShownTask({ ...ctx, actor: persona }, preview)).rejects.toThrow();
+		await expect(
+			confirmShownTask({ ...ctx, actor: persona }, preview),
+		).rejects.toThrow();
 	});
 });

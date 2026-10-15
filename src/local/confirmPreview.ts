@@ -48,10 +48,17 @@ const prettyJson = (stored: string): string => {
 	}
 };
 
-export const buildConfirmPreview = async (db: LocalDb, taskId: number): Promise<ConfirmPreview | null> => {
+export const buildConfirmPreview = async (
+	db: LocalDb,
+	taskId: number,
+): Promise<ConfirmPreview | null> => {
 	const snapshot = await snapshotOf(db, taskId);
 	if (!snapshot) return null;
-	const authors = await db.select<{ id: number; author_kind: string | null; author_name: string | null }>(
+	const authors = await db.select<{
+		id: number;
+		author_kind: string | null;
+		author_name: string | null;
+	}>(
 		`SELECT id, author_kind, author_name FROM comments WHERE task_id = ? AND deleted_at IS NULL`,
 		[taskId],
 	);
@@ -76,5 +83,7 @@ export const buildConfirmPreview = async (db: LocalDb, taskId: number): Promise<
 };
 
 /** Confirms exactly the text that was shown: a task that changed since is refused, nothing is written. */
-export const confirmShownTask = (ctx: LocalContext, preview: ConfirmPreview): Promise<string> =>
-	confirmTask(ctx, preview.taskId, preview.snapshotHash);
+export const confirmShownTask = (
+	ctx: LocalContext,
+	preview: ConfirmPreview,
+): Promise<string> => confirmTask(ctx, preview.taskId, preview.snapshotHash);

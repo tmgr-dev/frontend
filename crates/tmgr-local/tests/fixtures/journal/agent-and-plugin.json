@@ -233,13 +233,7 @@
 			}
 		}
 	],
-	"provenance_for": [
-		1,
-		2,
-		3,
-		4,
-		5
-	],
+	"provenance_for": [1, 2, 3, 4, 5],
 	"expect": {
 		"journal": [
 			{
@@ -582,9 +576,7 @@
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"agent"
-				],
+				"modified_by_kinds": ["agent"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -612,9 +604,7 @@
 				"last_human_seq": null,
 				"last_human_content": null,
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"plugin"
-				],
+				"modified_by_kinds": ["plugin"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
@@ -631,9 +621,7 @@
 					"comments_sha": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 				},
 				"modified_by_non_human_since": true,
-				"modified_by_kinds": [
-					"agent"
-				],
+				"modified_by_kinds": ["agent"],
 				"chain_ok": true,
 				"content_matches": false,
 				"confirmed": false,
