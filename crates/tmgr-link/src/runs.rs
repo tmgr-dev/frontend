@@ -20,7 +20,7 @@ const DEFAULT_SIZE: (u16, u16) = (120, 40);
 pub const BUSY_BUDGET: Duration = Duration::from_secs(10);
 pub const BUSY_PAUSE: Duration = Duration::from_millis(500);
 pub const BUSY_ATTEMPT_MAX: Duration = Duration::from_secs(6);
-const BUSY_MARGIN: Duration = Duration::from_millis(500);
+const BUSY_MARGIN: Duration = Duration::from_millis(1500);
 const HALT_STEP: Duration = Duration::from_secs(3);
 
 fn audit_down() -> Step {
