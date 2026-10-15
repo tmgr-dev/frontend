@@ -410,3 +410,50 @@ fn without_a_terminal_a_task_run_needs_yes() {
     assert!(String::from_utf8_lossy(&out.stderr).contains("--yes"));
     assert!(!fx.repo().parent().unwrap().join("repo-worktrees").exists());
 }
+
+#[test]
+fn the_runner_refuses_a_command_line_other_than_the_confirmed_one() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    fx.agent("exit 0\n");
+    fx.map_project();
+    let other = fx.tmp.path().join("other-agents");
+    private_dir(&other);
+    let confirmed = fs::read_to_string(fx.agents().join("fake.toml")).unwrap();
+    fs::write(
+        other.join("fake.toml"),
+        confirmed.replace("ask = [\"--ask\"]", "ask = [\"--ask\", \"--extra\"]"),
+    )
+    .unwrap();
+    let started = fx
+        .cmd(&["runner", "start"])
+        .env("TMGR_AGENTS_DIR", &other)
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "{}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    let (ok, v) = fx.json(&[
+        "--json",
+        "--ws",
+        "local:personal",
+        "run",
+        "WK-1",
+        "--agent",
+        "fake",
+        "--yes",
+    ]);
+    assert!(!ok, "{v}");
+    assert_eq!(v["error"]["code"], "forbidden", "{v}");
+    assert!(
+        v["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("command line"),
+        "{v}"
+    );
+}

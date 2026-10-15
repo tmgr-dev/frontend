@@ -79,6 +79,17 @@ pub struct ProfilePin {
     pub exe_sha256: String,
 }
 
+impl ProfilePin {
+    /// Digest of the command line the runner starts: the approved argv with the pinned executable.
+    pub fn argv_sha256(&self) -> String {
+        let mut argv = self.argv.clone();
+        if let Some(first) = argv.first_mut() {
+            first.clone_from(&self.exe_path);
+        }
+        tmgr_ipc::api::argv_sha256(&argv)
+    }
+}
+
 pub trait ProfileResolver {
     fn argv(&self, profile: &str, model: Option<&str>) -> std::result::Result<Vec<String>, String>;
     fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String>;

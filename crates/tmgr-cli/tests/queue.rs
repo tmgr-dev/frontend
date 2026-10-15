@@ -1080,3 +1080,48 @@ fn the_runner_refuses_an_executable_other_than_the_approved_one() {
         .join("who.txt")
         .exists());
 }
+
+#[test]
+fn the_runner_refuses_a_command_line_other_than_the_approved_one() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    fx.task(1, "Write the report", "v1");
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.run(&["queue", "run-once"]);
+    let status = fx.json(&["status"]);
+    let id = status["data"]["pickups"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sha = status["data"]["pickups"][0]["bundle_sha256"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(fx.confirmed(&["queue", "approve", &id], &sha[..12]).0, 0);
+    let other = fx.tmp.path().join("other-agents");
+    std::fs::create_dir_all(&other).unwrap();
+    let approved = std::fs::read_to_string(fx.tmp.path().join("agents/sh-agent.toml")).unwrap();
+    std::fs::write(
+        other.join("sh-agent.toml"),
+        approved.replace("ask = [\"--ask\"]", "ask = [\"--ask\", \"--extra\"]"),
+    )
+    .unwrap();
+    let started = fx
+        .cmd()
+        .env("TMGR_AGENTS_DIR", &other)
+        .args(["runner", "start"])
+        .output()
+        .unwrap();
+    assert!(started.status.success(), "{}", text(&started.stderr));
+    let report = fx.json(&["run-once"]);
+    assert_eq!(report["data"]["events"][0]["outcome"], "failed", "{report}");
+    let failed = fx
+        .audit_events()
+        .into_iter()
+        .find(|e| e["event"] == "start_failed")
+        .unwrap();
+    assert!(failed.to_string().contains("command line"), "{failed}");
+}

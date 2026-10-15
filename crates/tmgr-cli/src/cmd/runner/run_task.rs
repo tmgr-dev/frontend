@@ -10,7 +10,8 @@ use tmgr_core::refs::{parse_task_ref, TaskRef as RefKind};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::limits::MAX_BUNDLE;
 use tmgr_ipc::api::{
-    sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, RunBundle, RunCreateReq,
+    argv_sha256, sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, ExePin, RunBundle,
+    RunCreateReq,
 };
 use tmgr_queue::source::{Candidate, LocalTasks};
 use tmgr_queue::workdir;
@@ -57,6 +58,32 @@ fn recalled(p: &mut Plan) {
         p.clone = clone;
         p.branch = branch;
     }
+}
+
+fn launch_pin(profile: &str, model: Option<&str>, mode: &str) -> Result<(ExePin, String)> {
+    let dir = tmgr_runner::profile::user_dir();
+    let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
+    let p = set
+        .get(profile)
+        .ok_or_else(|| Error::usage(format!("unknown agent profile {profile}")))?;
+    if !p.has_permission_modes() {
+        return Err(Error::usage(format!(
+            "profile {profile:?} has no [permission_modes] table; task runs need its {mode} entry"
+        )));
+    }
+    let mode_args = p.permission_args(mode).map_err(Error::usage)?;
+    let mut argv = p.argv_with(model, mode_args).map_err(Error::usage)?;
+    let exe = tmgr_queue::rules::resolve_exe(&argv[0]).map_err(Error::usage)?;
+    let sha256 = tmgr_queue::rules::file_sha256(&exe)?;
+    argv[0] = exe.to_string_lossy().into_owned();
+    let digest = argv_sha256(&argv);
+    Ok((
+        ExePin {
+            path: argv[0].clone(),
+            sha256,
+        },
+        digest,
+    ))
 }
 
 fn import_line(code: &str, reference: &str) -> String {
@@ -244,6 +271,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     }
     crate::interact::confirm("Start this run?", true, a.yes)?;
     super::ops::login_preflight(&profile)?;
+    let (exe_pin, argv_digest) = launch_pin(&profile, a.model.as_deref(), mode)?;
     let earlier = record(&p)
         .map(|(_, clone, _)| clone)
         .filter(|clone| clone.exists());
@@ -287,8 +315,8 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             clone_of: Some(p.repo.clone()),
             trust_cwd: None,
             agent_work: true,
-            exe_pin: None,
-            argv_sha256: None,
+            exe_pin: Some(exe_pin),
+            argv_sha256: Some(argv_digest),
         })
         .map_err(rerr)?;
     let fetch = import_line(&p.code, reference);

@@ -566,6 +566,7 @@ fn start_phase(
             clone_of: rule.repo.clone(),
             exe_path: pin.exe_path.clone(),
             exe_sha256: pin.exe_sha256.clone(),
+            argv_sha256: pin.argv_sha256(),
             name: format!("{key} rule:{rule_name}").chars().take(64).collect(),
             task: p.task,
             bundle: p.bundle.clone(),
@@ -986,6 +987,12 @@ mod tests {
         let pin = fx.pickups()[0].profile_pin.clone().unwrap();
         assert_eq!(created[0].exe_path, pin.exe_path);
         assert_eq!(created[0].exe_sha256, pin.exe_sha256);
+        let mut launched = pin.argv.clone();
+        launched[0] = pin.exe_path.clone();
+        assert_eq!(
+            created[0].argv_sha256,
+            tmgr_ipc::api::argv_sha256(&launched)
+        );
     }
 
     #[test]

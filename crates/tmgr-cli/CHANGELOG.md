@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The runner checks the whole command line, not only the executable: queue starts send the digest of the approved command (profile command and arguments, model and `ask` arguments, with the pinned executable; runner cap `argv_pin.v1`, required), and `tmgr run` sends the executable pin and the command digest it resolves after the confirmation. A runner that would start anything else refuses with `forbidden`.
+- `runs.restore` refuses a queue run recorded without an executable pin; queue the task again.
+
 ## 1.0.0
 
 - This release is not signed: its tarballs have SHA256SUMS but no minisign signatures, and it is published as a prerelease. Signing comes back in 1.0.1.
