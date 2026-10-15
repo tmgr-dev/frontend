@@ -95,7 +95,7 @@
 					>
 						Agents
 					</h3>
-					<ul class="flex flex-col text-sm">
+					<ul class="flex max-h-64 flex-col overflow-y-auto text-sm">
 						<li v-for="row in flatTree" :key="row.node.id">
 							<button
 								type="button"
