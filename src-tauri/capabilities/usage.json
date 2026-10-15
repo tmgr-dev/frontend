@@ -8,6 +8,7 @@
   "permissions": [
     "allow-usage-scan",
     "allow-usage-overview",
-    "allow-usage-tasks"
+    "allow-usage-tasks",
+    "allow-usage-task"
   ]
 }

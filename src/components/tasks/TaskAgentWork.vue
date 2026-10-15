@@ -230,7 +230,6 @@
 
 			const loadCosts = async (list, current) => {
 				const readUsage = usageReadFor !== props.taskId;
-				if (readUsage) usageReadFor = props.taskId;
 				const [fetchedCost, local] = await Promise.all([
 					getTaskCost(props.taskId),
 					readUsage
@@ -246,7 +245,10 @@
 				]);
 				if (current !== request) return;
 				cost.value = fetchedCost;
-				if (local !== undefined) localCost.value = pricedCost(local?.aggregate);
+				if (local !== undefined) {
+					localCost.value = pricedCost(local?.aggregate);
+					if (local) usageReadFor = props.taskId;
+				}
 			};
 
 			const load = async () => {

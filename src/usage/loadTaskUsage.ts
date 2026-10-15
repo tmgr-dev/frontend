@@ -40,8 +40,8 @@ export const collectRuns = async (
 		return own;
 	const all = await workspaceRuns(req.workspaceId, req.workspaceCode, now);
 	if (!all) return own;
-	const known = new Set(all.map((run) => run.id));
-	return [...all, ...own.filter((run) => !known.has(run.id))];
+	const ownIds = new Set(own.map((run) => run.id));
+	return [...all.filter((run) => !ownIds.has(run.id)), ...own];
 };
 
 export const readTaskUsage = async (

@@ -100,6 +100,7 @@ const APP_COMMANDS: &[&str] = &[
   "usage_scan",
   "usage_overview",
   "usage_tasks",
+  "usage_task",
 ];
 
 fn main() {
