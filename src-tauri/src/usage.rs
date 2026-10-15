@@ -420,7 +420,7 @@ fn task_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun], workspace: &str, t
   let aggregate = build(&TaskInput {
     source_id: store.install_id().map_err(user_error)?,
     generated_at: now,
-    task: TaskIdent { workspace: workspace.to_string(), task_ref: format!("#{task_id}"), id: u64::try_from(task_id).ok() },
+    task: TaskIdent { workspace: workspace.to_string(), task_ref: task_id.to_string(), id: u64::try_from(task_id).ok() },
     from,
     to,
     events: &events,
@@ -694,7 +694,7 @@ mod tests {
     let a = out.aggregate.unwrap();
     assert_eq!(a.totals.events, 2);
     assert_eq!(a.totals.tokens.input, 200);
-    assert_eq!(a.task.task_ref, "#7");
+    assert_eq!(a.task.task_ref, "7");
     assert_eq!(a.task.id, Some(7));
     assert!(!a.nodes.is_empty());
   }
