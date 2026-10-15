@@ -75,7 +75,7 @@ Both sides must finish within 5 seconds. A refusal is
 
 ```json
 {"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"0011...eeff"}
-{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1","link_origin.v1","candidates.v1","worklog.v1","runs.restore.v1","permission_mode.v1","start_key.v1","run_status.v1","clone_dir.v1","session_text.v1","trust_cwd.v1","agent_work.v1","exe_pin.v1"]}
+{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1","link_origin.v1","candidates.v1","worklog.v1","runs.restore.v1","permission_mode.v1","start_key.v1","run_status.v1","clone_dir.v1","session_text.v1","trust_cwd.v1","agent_work.v1","exe_pin.v1","argv_pin.v1"]}
 ```
 
 ## 4. Versions and capabilities
@@ -110,6 +110,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
 | `agent_work.v1` | `runs.create` `agent_work` (section 5, "Queue capabilities") |
 | `exe_pin.v1` | `exe_pin` on `runs.create` (section 5, "Pinned executable") |
+| `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
 
 ## 5. Messages after the handshake
 
@@ -134,7 +135,7 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`, `exe_pin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`, `exe_pin`, `argv_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
@@ -321,7 +322,16 @@ What the pin does not cover:
 - There is no `fexecve` on every platform (macOS has none), so the check and the exec are bound by the path only. Someone who can write to the approved file as the same user can still swap it between the check and the exec; the comparison above only narrows that window.
 - The pin covers the file at `argv[0]` only. The interpreter named by the `#!` line of a script and the target of a wrapper are not pinned and are not hashed. An approval that shows the pin should say so.
 
-`exe_pin` is allowed together with `start_key`, `clone_of` and `bundle`, from any client, and is part of the start-key hash. The runner stores the verified pin with the restore record: `runs.restore` re-resolves `argv[0]`, runs the same check against the stored pin (`forbidden` on a mismatch or an unresolvable command, the record is kept) and executes the canonical path. A run started without a pin restores without one.
+`exe_pin` is allowed together with `start_key`, `clone_of` and `bundle`, from any client, and is part of the start-key hash. The runner stores the verified pin with the restore record: `runs.restore` re-resolves `argv[0]`, runs the same check against the stored pin (`forbidden` on a mismatch or an unresolvable command, the record is kept) and executes the canonical path. A run started without a pin restores without one, except a run that was started with a `start_key` (a queue run): its restore is `forbidden` ("queue the task again") when it was recorded without an `exe_pin`, and the record is kept.
+
+**`argv_pin.v1`.** `runs.create` takes an optional `argv_sha256`: the SHA-256 of the whole command line a human approved. It needs `exe_pin` in the same request (otherwise `invalid_params`) and must be exactly 64 lowercase hex characters (otherwise `invalid_params`). The digest is defined as follows, so that the approving side can reproduce it:
+
+- take the final argv exactly as the runner executes it for a new start: the profile `command` and `args`, then the model arguments (when `model` is set), then the permission-mode arguments (when the profile has `permission_modes`), in that order, without the `resume` arguments;
+- replace `argv[0]` with the canonical executable path (the `exe_pin.path` that the pin check verifies);
+- feed SHA-256 with each element's UTF-8 bytes followed by a single `0x00` byte, nothing else;
+- write the digest as lowercase hex.
+
+`tmgr_ipc::api::argv_sha256` implements this. Known vector: `["a", "b"]` gives `8fb20ef63ced4145fc2e983ffe597d1dcff39154c3bf21f0fa9dde6a0c50fdc9`. After the `exe_pin` check, the runner computes the digest of the argv it built and compares; a difference is `forbidden` ("the agent command line differs from the approved one"). A `start_key` replay still returns the existing session first, and `argv_sha256` is part of the start-key hash. The digest is stored with the restore record; `runs.restore` rebuilds the start-form argv from the current profile, checks it the same way (`forbidden` on a mismatch, the record is kept) and only then adds the `resume` arguments for the exec.
 
 ### Pre-accepted folder trust
 

@@ -88,6 +88,8 @@ pub struct RunCreateReq {
     pub trust_cwd: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe_pin: Option<ExePin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub argv_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent_work: bool,
 }
