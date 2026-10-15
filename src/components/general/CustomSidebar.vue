@@ -103,6 +103,7 @@
 		ArrowRight,
 		BadgeCheck,
 		BarChart3,
+		Gauge,
 		Bell,
 		Cable,
 		ChevronsUpDown,
@@ -1149,6 +1150,14 @@
 										>
 											<BarChart3 />
 											Statistics
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="isDesktop"
+											@click="$router.push('/ai-usage')"
+											class="cursor-pointer"
+										>
+											<Gauge />
+											AI usage
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											@click="$router.push('/settings?tab=theme')"

@@ -1,5 +1,6 @@
 import { gatedPage } from '@/router/moduleGate';
 import store from '@/store';
+import { desktopOnly } from '@/usage/guard';
 import { boardRedirect, isSimpleMode } from '@/utils/simpleStatus';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
@@ -602,6 +603,18 @@ const routes = [
 			notOnlyForLoggedUsers: true,
 		},
 		name: 'Stats',
+	},
+	{
+		path: '/ai-usage',
+		component: () => import('@/pages/AiUsage.vue'),
+		meta: {
+			transitionName: 'fade-fast',
+			navbarHidden: false,
+			allowedGuests: true,
+			notOnlyForLoggedUsers: true,
+		},
+		name: 'AiUsage',
+		beforeEnter: desktopOnly,
 	},
 	{
 		path: '/push-notifications-enable-guide',
