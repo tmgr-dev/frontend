@@ -1280,6 +1280,7 @@ fn send_wait_times_out_with_a_conflict_error() {
             .code(),
         Some(2)
     );
+}
 
 fn trust_profile(env: &Env, home: &Path) {
     private_dir(home);

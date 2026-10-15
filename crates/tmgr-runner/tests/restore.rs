@@ -604,9 +604,11 @@ fn restore_drops_a_trust_entry_the_profile_no_longer_seeds() {
     req.trust_cwd = Some(true);
     let first = h.client().create_run(req).unwrap();
     h.wait_log("home:new", 1);
-    assert!(fs::read_to_string(h.homes.join(&first.id).join(".claude.json"))
-        .unwrap()
-        .contains("\"ok\":true"));
+    assert!(
+        fs::read_to_string(h.homes.join(&first.id).join(".claude.json"))
+            .unwrap()
+            .contains("\"ok\":true")
+    );
     trusted_profile(&h, false);
     h.reboot(&first, false);
     let r = h.client().restore(&first.id).unwrap();
