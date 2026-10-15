@@ -15,6 +15,8 @@ export interface TaskInfo {
 export interface FetchedRuns {
 	runs: RawRun[];
 	tasks: Record<string, TaskInfo>;
+	failedWorkspaces: number;
+	truncated: number;
 }
 
 const DAY_MS = 86_400_000;
@@ -65,10 +67,17 @@ export async function fetchRuns(
 ): Promise<FetchedRuns> {
 	const since = new Date(now.getTime() - 33 * DAY_MS).toISOString();
 	const until = now.toISOString();
-	const result: FetchedRuns = { runs: [], tasks: {} };
+	const result: FetchedRuns = {
+		runs: [],
+		tasks: {},
+		failedWorkspaces: 0,
+		truncated: 0,
+	};
 	for (const ws of workspaces) {
+		if (!(ws.id >= 0)) continue;
 		const runs: RawRun[] = [];
 		const tasks: Record<string, TaskInfo> = {};
+		let leftover = false;
 		try {
 			let cursor: string | null = null;
 			for (let page = 0; page < MAX_PAGES; page++) {
@@ -85,7 +94,13 @@ export async function fetchRuns(
 				const { items, cursor: next } = pageOf(response.data);
 				for (const item of items) {
 					const run = toRawRun(item, ws.code);
-					if (!Number.isFinite(run.task_id) || !run.started_at) continue;
+					if (
+						item.id == null ||
+						!Number.isFinite(run.id) ||
+						!Number.isFinite(run.task_id) ||
+						!run.started_at
+					)
+						continue;
 					runs.push(run);
 					const ref = taskRef(ws.code, run.task_id);
 					if (!tasks[ref] || (item.task && !tasks[ref].title))
@@ -93,10 +108,13 @@ export async function fetchRuns(
 				}
 				if (!next || items.length === 0) break;
 				cursor = next;
+				if (page === MAX_PAGES - 1) leftover = true;
 			}
 		} catch {
+			result.failedWorkspaces++;
 			continue;
 		}
+		if (leftover) result.truncated++;
 		result.runs.push(...runs);
 		Object.assign(result.tasks, tasks);
 	}

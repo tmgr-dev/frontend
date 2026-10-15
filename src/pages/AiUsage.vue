@@ -24,6 +24,17 @@
 					</div>
 
 					<div
+						v-if="scanIncomplete"
+						role="alert"
+						class="flex flex-col gap-3 rounded-lg border border-amber-500/40 bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
+					>
+						<p class="text-sm text-amber-700 dark:text-amber-400">
+							Some log files could not be read; numbers may be incomplete
+						</p>
+						<Button variant="outline" size="sm" @click="load">Retry</Button>
+					</div>
+
+					<div
 						v-if="!overview && !error"
 						class="rounded-lg border border-border bg-card p-6 text-sm text-ink-subtle"
 					>
@@ -121,12 +132,12 @@
 									</p>
 								</div>
 							</div>
-							<p v-if="!hasLimit('claude')" class="mt-3 text-sm text-ink-subtle">
+							<p v-if="hasAccount('claude') && !hasLimit('claude')" class="mt-3 text-sm text-ink-subtle">
 								No Claude Code limits yet. Run
 								<code class="rounded bg-muted px-1">tmgr usage statusline install</code>
 								in a terminal to start collecting them.
 							</p>
-							<p v-if="!hasLimit('codex')" class="mt-3 text-sm text-ink-subtle">
+							<p v-if="hasAccount('codex') && !hasLimit('codex')" class="mt-3 text-sm text-ink-subtle">
 								No Codex limits yet. They appear after your next Codex session.
 							</p>
 						</SettingsSection>
@@ -270,6 +281,26 @@
 								<p v-else class="text-sm text-ink-subtle">
 									No usage could be matched to a task yet.
 								</p>
+								<p
+									v-if="failedWorkspaces > 0"
+									class="mt-3 text-xs text-ink-subtle"
+								>
+									Runs from {{ failedWorkspaces }}
+									{{ failedWorkspaces === 1 ? 'workspace' : 'workspaces' }}
+									could not be loaded
+								</p>
+								<p
+									v-if="runsTruncated"
+									class="mt-3 text-xs text-ink-subtle"
+								>
+									Only the most recent 5000 runs were used
+								</p>
+								<p
+									v-if="pagesTruncated > 0"
+									class="mt-3 text-xs text-ink-subtle"
+								>
+									Only the most recent runs were read
+								</p>
 								<p class="mt-3 text-xs text-ink-subtle">
 									Ambiguous: {{ money(tasks.ambiguous.cost_usd) }} · Unattributed:
 									{{ money(tasks.unattributed.cost_usd) }}
@@ -338,7 +369,11 @@
 				period = ref<'today' | 'week' | 'month'>('week'),
 				tasks = ref<UsageTasks | null>(null),
 				taskInfos = ref<Record<string, TaskInfo>>({}),
-				tasksPending = ref(false),
+				tasksPending = ref(true),
+				scanIncomplete = ref(false),
+				failedWorkspaces = ref(0),
+				pagesTruncated = ref(0),
+				runsTruncated = ref(false),
 				tasksError = ref<string | null>(null);
 			let disposed = false;
 			let timer: ReturnType<typeof setTimeout> | null = null;
@@ -357,6 +392,9 @@
 					const result = await usageTasks(fetched.runs);
 					if (disposed || run !== generation) return;
 					taskInfos.value = fetched.tasks;
+					failedWorkspaces.value = fetched.failedWorkspaces;
+					pagesTruncated.value = fetched.truncated;
+					runsTruncated.value = result.runs_truncated;
 					tasks.value = result;
 				} catch (e) {
 					if (disposed || run !== generation) return;
@@ -369,6 +407,7 @@
 			async function load() {
 				const run = ++generation;
 				error.value = null;
+				scanIncomplete.value = false;
 				try {
 					overview.value = await usageOverview();
 					if (disposed || run !== generation) return;
@@ -382,6 +421,7 @@
 					}
 					if (disposed || run !== generation) return;
 					scanning.value = false;
+					scanIncomplete.value = scan.errors > 0 || scan.bad_lines > 0;
 					overview.value = await usageOverview();
 				} catch (e) {
 					if (!disposed && run === generation) error.value = errorText(e);
@@ -432,6 +472,8 @@
 			const showAccount = computed(
 				() => new Set(overview.value?.limits.map((l) => l.account)).size > 1,
 			);
+			const hasAccount = (tool: string) =>
+				!!overview.value?.accounts.some((a) => a.tool === tool);
 			const hasLimit = (tool: string) =>
 				!!overview.value?.limits.some((l) => l.tool === tool);
 
@@ -448,6 +490,11 @@
 				taskRows,
 				showAccount,
 				hasLimit,
+				hasAccount,
+				scanIncomplete,
+				failedWorkspaces,
+				pagesTruncated,
+				runsTruncated,
 				load,
 				money,
 				count,

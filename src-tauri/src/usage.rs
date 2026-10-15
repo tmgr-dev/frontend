@@ -320,6 +320,7 @@ pub struct TasksOut {
   pub unattributed: TotalsOut,
   pub runs_used: usize,
   pub runs_dropped: usize,
+  pub runs_truncated: bool,
 }
 
 fn parse_ts(raw: &str) -> Option<DateTime<Utc>> {
@@ -353,9 +354,6 @@ fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOu
     let Some((started_at, ended_at)) = window_of(run, now) else {
       continue;
     };
-    if windows.len() >= MAX_RUNS {
-      break;
-    }
     windows.push(RunWindow {
       run_ref: format!("{}#{}", run.workspace, run.id),
       task_ref: format!("{}/{}", run.workspace, run.task_id),
@@ -367,6 +365,9 @@ fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOu
       ended_at,
     });
   }
+  windows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+  let runs_truncated = windows.len() > MAX_RUNS;
+  windows.truncate(MAX_RUNS);
   let (_, store) = open(env)?;
   let today = local_today(now);
   let from = day_bounds(today - Duration::days(MONTH_DAYS - 1)).0;
@@ -381,6 +382,7 @@ fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOu
     unattributed: totals_of(&report.unattributed_totals),
     runs_used: windows.len(),
     runs_dropped: runs.len() - windows.len(),
+    runs_truncated,
   })
 }
 
@@ -406,6 +408,9 @@ pub async fn usage_overview() -> Result<OverviewOut, String> {
 
 #[tauri::command]
 pub async fn usage_tasks(runs: Vec<RawRun>) -> Result<TasksOut, String> {
+  if snap() {
+    return Err(SNAP_REASON.into());
+  }
   blocking(move || tasks_inner(&Env::from_process(), Utc::now(), &runs)).await
 }
 
@@ -555,6 +560,7 @@ mod tests {
     let runs = vec![raw(1, 7, Some("sess-1"), None, now), raw(2, 8, None, None, now)];
     let out = tasks_inner(&env, now, &runs).unwrap();
     assert_eq!((out.runs_used, out.runs_dropped), (1, 1));
+    assert!(!out.runs_truncated);
     assert_eq!(out.tasks.len(), 1);
     assert_eq!(out.tasks[0].task_ref, "ws/7");
     assert_eq!(out.tasks[0].totals.events, 2);
@@ -576,6 +582,38 @@ mod tests {
     assert_eq!((out.runs_used, out.runs_dropped), (1, 1));
     assert!(out.tasks.is_empty());
     assert_eq!(out.unattributed.events, 2);
+  }
+
+  #[test]
+  fn run_cap_keeps_the_newest_eligible_runs_and_reports_truncation() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+
+    let mut runs = vec![raw(1, 7, Some("sess-1"), None, now)];
+    runs[0].started_at = Some(at(now, 600));
+    for i in 0..MAX_RUNS as i64 {
+      let mut r = raw(100 + i, 8, Some("other"), None, now);
+      r.started_at = Some(at(now, 500 - (i % 400)));
+      runs.push(r);
+    }
+    runs.push(raw(9000, 9, None, None, now));
+    let out = tasks_inner(&env, now, &runs).unwrap();
+    assert_eq!(out.runs_used, MAX_RUNS);
+    assert!(out.runs_truncated);
+    assert!(out.tasks.iter().all(|t| t.task_ref != "ws/7"));
+    assert_eq!(out.unattributed.events, 2);
+  }
+
+  #[test]
+  fn tasks_command_reports_the_snap_reason() {
+    std::env::set_var("SNAP", "1");
+    let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    let err = rt.block_on(usage_tasks(Vec::new())).unwrap_err();
+    std::env::remove_var("SNAP");
+    assert_eq!(err, SNAP_REASON);
   }
 
   #[test]

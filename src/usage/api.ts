@@ -96,6 +96,7 @@ export interface UsageTasks {
 	unattributed: UsageTotals;
 	runs_used: number;
 	runs_dropped: number;
+	runs_truncated: boolean;
 }
 
 export const usageScan = (): Promise<UsageScan> => invoke('usage_scan');

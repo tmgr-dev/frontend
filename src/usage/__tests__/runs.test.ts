@@ -78,4 +78,61 @@ describe('fetchRuns', () => {
 			path: '/demo/tasks/99',
 		});
 	});
+
+	it('skips workspaces with negative ids and counts failures', async () => {
+		get.mockImplementation(async (url: string) => {
+			if (url === 'workspaces/1/agent-work') return { data: { data: [run(1)] } };
+			const err: any = new Error('nope');
+			err.response = { status: url.endsWith('3/agent-work') ? 501 : 404 };
+			throw err;
+		});
+		const out = await fetchRuns(
+			[
+				{ id: -1, code: 'local' },
+				{ id: 1, code: 'demo' },
+				{ id: 2, code: 'a' },
+				{ id: 3, code: 'b' },
+			],
+			now,
+		);
+		expect(get).toHaveBeenCalledTimes(3);
+		expect(out.runs).toHaveLength(1);
+		expect(out.failedWorkspaces).toBe(2);
+		expect(out.truncated).toBe(0);
+	});
+
+	it('reports truncation when the page cap leaves a cursor', async () => {
+		get.mockImplementation(async (_u: string, cfg: any) => ({
+			data: { data: { runs: [run(1)], next_cursor: String((cfg.params.cursor ?? 0) + 1) } },
+		}));
+		const out = await fetchRuns([{ id: 1, code: 'demo' }], now);
+		expect(out.truncated).toBe(1);
+	});
+
+	it('does not report truncation when the last page has no cursor', async () => {
+		let n = 0;
+		get.mockImplementation(async () => ({
+			data: { data: { runs: [run(1)], next_cursor: ++n < 10 ? 'c' : null } },
+		}));
+		const out = await fetchRuns([{ id: 1, code: 'demo' }], now);
+		expect(get).toHaveBeenCalledTimes(10);
+		expect(out.truncated).toBe(0);
+	});
+
+	it('drops runs with a bad id, task id or missing start', async () => {
+		get.mockResolvedValue({
+			data: {
+				data: [
+					run(1),
+					run(2, { id: 'x' }),
+					run(3, { id: undefined }),
+					run(4, { task_id: 'y', task: undefined }),
+					run(5, { task_id: undefined, task: undefined }),
+					run(6, { started_at: null }),
+				],
+			},
+		});
+		const out = await fetchRuns([{ id: 1, code: 'demo' }], now);
+		expect(out.runs.map((r) => r.id)).toEqual([1]);
+	});
 });
