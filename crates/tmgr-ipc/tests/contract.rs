@@ -154,6 +154,17 @@ fn session_info() -> SessionInfo {
 }
 
 #[test]
+fn the_argv_fixture_digest_matches_its_command_line() {
+    let want = fixture("run_create_req_argv_sha256");
+    let argv: Vec<String> = ["/usr/local/bin/claude", "--model", "gpt-5"]
+        .map(String::from)
+        .into();
+    assert_eq!(want["argv_sha256"], tmgr_ipc::api::argv_sha256(&argv));
+    assert_eq!(want["exe_pin"]["path"], argv[0]);
+    assert_eq!(want["model"], argv[2]);
+}
+
+#[test]
 fn argv_digest_is_over_nul_terminated_elements() {
     let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     assert_eq!(
@@ -307,7 +318,7 @@ fn requests_and_responses() {
                 sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
             }),
             argv_sha256: Some(
-                "8fb20ef63ced4145fc2e983ffe597d1dcff39154c3bf21f0fa9dde6a0c50fdc9".into(),
+                "1f353ed1a84a7ca55863f6471b1c6346222a93f0d1546d73d1a5e3da7eaea3a0".into(),
             ),
             ..run.clone()
         },
