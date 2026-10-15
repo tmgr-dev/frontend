@@ -582,14 +582,20 @@ fn link_bypass_expired_and_bundle_less_records_are_refused() {
 fn queue_records_without_a_pin_are_refused_and_kept() {
     let mut h = H::new(true);
     h.start();
-    forged(&h, "s_aaaaaaaaaa", |i| i.agent_work = true);
-    forged(&h, "s_bbbbbbbbbb", |i| i.keyed = true);
+    forged(&h, "s_aaaaaaaaaa", |i| i.keyed = true);
+    forged(&h, "s_bbbbbbbbbb", |i| {
+        i.keyed = true;
+        i.agent_work = true;
+    });
+    forged(&h, "s_cccccccccc", |i| i.agent_work = true);
     for id in ["s_aaaaaaaaaa", "s_bbbbbbbbbb"] {
         let err = h.client().restore(id).unwrap_err().to_string();
         assert!(err.starts_with("forbidden: "), "{id}: {err}");
         assert!(err.contains("queue the task again"), "{id}: {err}");
         assert!(restore::load(&h.store(), id).is_ok(), "{id} record lost");
     }
+    let err = h.client().restore("s_cccccccccc").unwrap_err().to_string();
+    assert!(!err.contains("queue the task again"), "{err}");
     assert!(h.client().list().unwrap().is_empty());
 }
 
