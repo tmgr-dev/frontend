@@ -16,9 +16,19 @@ arguments or results, hook commands or output, paths, usernames or URLs.
 
 ## Names
 
-Every name field (agent type, model, tool, skill, plugin, MCP server/tool, hook, slash command,
-repository, version, extension) matches `[A-Za-z0-9._:@/+-]{1,128}`. The client replaces other
-characters with `_` and cuts to 128.
+The client sanitizes every name before sending; the server rejects anything else.
+
+| Field | Allowed |
+|---|---|
+| tool, skill, plugin, MCP server and tool, hook name and event, slash command, agent type, origin, permission mode, entrypoint | `[A-Za-z0-9._:+-]{1,128}`, not starting with `.` or `~`, no `..` |
+| model | `[A-Za-z0-9._:+@-]{1,128}`; `/` becomes `:` |
+| version | `[A-Za-z0-9._+-]{1,64}` |
+| file extension | `[A-Za-z0-9]{1,16}`, otherwise `other` |
+| `prs[].repo` | `owner/name`: `[A-Za-z0-9_.-]{1,64}/[A-Za-z0-9_.-]{1,100}`, no leading `.`; `number` 1..2^31 |
+| node id | `[A-Za-z0-9_-]{1,32}`; a `parent_id` always names an earlier node; depth ≤ 32 |
+
+Integers are JSON integers (0..2^53). `cost_usd` is a number ≥ 0 with at most 6 decimals.
+`generated_at` must not be more than 5 minutes in the future.
 
 ## Caps
 
@@ -44,6 +54,7 @@ characters with `_` and cuts to 128.
       "cache_write_5m": 600000, "cache_write_1h": 300000, "reasoning": 40000
     },
     "active_ms": 9300000,
+    "waiting_ms": 2100000,
     "turns": 31,
     "turn_ms": 7800000
   },
@@ -98,6 +109,7 @@ characters with `_` and cuts to 128.
 | `totals.cost_usd`, `nodes[].cost_usd` | number | API-equivalent USD, 6 decimals max |
 | `tokens.*` | integer ≥ 0 | |
 | `active_ms` | integer | sum of node durations, nested nodes not double counted |
+| `waiting_ms` | integer, optional | time agents waited for a person; left out until stage 2 fills it |
 | `limits[].tool` | enum | `claude`, `codex` |
 | `limits[].window` | enum | `five_hour`, `week`, `week_opus`, `week_sonnet`, `other` |
 | `limits[].used_pct` | number | share of the window the task used, percentage points |
