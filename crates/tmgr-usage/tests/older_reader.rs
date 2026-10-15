@@ -49,7 +49,7 @@ fn jsonl(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn split_fixture(home: &Path) -> Vec<(PathBuf, String)> {
-    copy_dir(&fixture_dir(), home);
+    copy_dir(&ctx_fixture_dir(), home);
     let mut files = Vec::new();
     jsonl(home, &mut files);
     let mut tails = Vec::new();
@@ -129,7 +129,7 @@ fn lines_an_older_binary_read_are_read_again_for_facts_without_duplicate_events(
 
     let fresh_tmp = tempfile::tempdir().unwrap();
     let fresh_home = fresh_tmp.path().join("claude");
-    copy_dir(&fixture_dir(), &fresh_home);
+    copy_dir(&ctx_fixture_dir(), &fresh_home);
     let fresh_db = fresh_tmp.path().join("usage.db");
     let mut fresh = Store::open(&fresh_db).unwrap();
     scan_with(
@@ -142,6 +142,8 @@ fn lines_an_older_binary_read_are_read_again_for_facts_without_duplicate_events(
     .unwrap();
     let expected = counts(&fresh_db);
 
+    assert!(expected.1 > 0 && expected.2 > 0 && expected.3 > 0);
     assert_eq!(after_old.0, expected.0);
+    assert!(after_old.2 < expected.2);
     assert_eq!(mixed, expected);
 }
