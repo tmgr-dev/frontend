@@ -27,6 +27,7 @@ mod plugin_tick;
 mod plugin_windows;
 mod quick_add;
 mod runner;
+mod usage;
 mod page_windows;
 mod task_windows;
 mod tray;
@@ -202,6 +203,9 @@ pub fn run() {
     })
     .invoke_handler(tauri::generate_handler![
       idle::idle_supported,
+      usage::usage_scan,
+      usage::usage_overview,
+      usage::usage_tasks,
       tray::tray_update,
       tray::dnd_update,
       task_windows::open_task_window,

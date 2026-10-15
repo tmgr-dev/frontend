@@ -22,7 +22,9 @@ impl Env {
         .filter_map(|k| std::env::var(k).ok().map(|v| (k.to_string(), v)))
         .collect();
         Env {
-            home: std::env::var_os("HOME").map(PathBuf::from),
+            home: std::env::var_os("HOME")
+                .or_else(|| std::env::var_os("USERPROFILE"))
+                .map(PathBuf::from),
             vars,
         }
     }

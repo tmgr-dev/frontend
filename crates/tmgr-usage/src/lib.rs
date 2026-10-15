@@ -8,6 +8,7 @@ pub mod link;
 pub mod model;
 pub mod paths;
 pub mod pricing;
+pub mod refresh;
 pub mod scan;
 pub mod schema;
 pub mod statusline;

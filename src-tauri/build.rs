@@ -97,6 +97,9 @@ const APP_COMMANDS: &[&str] = &[
   "runner_term_scroll",
   "runner_term_detach",
   "runner_term_open_link",
+  "usage_scan",
+  "usage_overview",
+  "usage_tasks",
 ];
 
 fn main() {

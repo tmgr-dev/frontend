@@ -6,7 +6,7 @@ authors = ["TMGR"]
 license = ""
 repository = ""
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.89"
 
 [lib]
 name = "tmgr_lib"
@@ -46,6 +46,8 @@ flate2 = "1.1"
 unicode-width = "0.2"
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 tmgr-ipc = { path = "../crates/tmgr-ipc" }
+tmgr-usage = { path = "../crates/tmgr-usage" }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
