@@ -89,16 +89,18 @@ impl Store {
     }
 
     pub fn take_notice(&self, key: &str, times: u32) -> Result<bool> {
-        let key = format!("notice_shown:{key}");
-        let shown: u32 = self
-            .setting(&key)?
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0);
-        if shown >= times {
-            return Ok(false);
-        }
-        self.set_setting(&key, &(shown + 1).to_string())?;
-        Ok(true)
+        Ok(self
+            .conn
+            .query_row(
+                "INSERT INTO settings (key, value) VALUES (?1, '1')
+                 ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1
+                 WHERE CAST(value AS INTEGER) < ?2
+                 RETURNING value",
+                params![format!("notice_shown:{key}"), times],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
     }
 
     pub(crate) fn fingerprint_salt(&self) -> Result<String> {

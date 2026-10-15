@@ -437,3 +437,20 @@ fn rollout_readings_keep_the_newest_one() {
     assert_eq!(pct(LimitWindow::Weekly), 20.0);
     assert_eq!(pct(LimitWindow::Session), 10.0);
 }
+
+#[test]
+fn a_notice_is_taken_at_most_the_given_times_across_connections() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("usage.db");
+    let a = Store::open(&path).unwrap();
+    let b = Store::open(&path).unwrap();
+    let taken: Vec<bool> = (0..5)
+        .map(|i| {
+            if i % 2 == 0 { &a } else { &b }
+                .take_notice("n", 3)
+                .unwrap()
+        })
+        .collect();
+    assert_eq!(taken, [true, true, true, false, false]);
+    assert!(a.take_notice("other", 3).unwrap());
+}
