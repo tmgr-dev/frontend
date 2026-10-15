@@ -1166,6 +1166,51 @@ fn send_wait_idle_prints_only_the_new_output() {
 }
 
 #[test]
+fn send_wait_idle_on_a_session_that_stays_blocked_ends_with_exit_8() {
+    let env = Env::new();
+    if !sandbox_usable() {
+        return;
+    }
+    let script = env.script("asker.sh", "echo 'ALLOW?'\nread l\nsleep 60\n");
+    let agents = env.tmp.path().join("cfg/agents");
+    fs::create_dir_all(&agents).unwrap();
+    fs::write(
+        agents.join("asker.toml"),
+        format!(
+            "id = \"asker\"\nname = \"Asker\"\ncommand = [{script:?}]\n\n[status]\nblocked = ['^ALLOW\\?$']\n"
+        ),
+    )
+    .unwrap();
+    let cwd = env.proj.display().to_string();
+    let out = env.tmgr(&[
+        "run",
+        "--agent",
+        "asker",
+        "--cwd",
+        &cwd,
+        "--no-attach",
+        "--json",
+    ]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let id = json_of(&out)["data"]["id"].as_str().unwrap().to_string();
+    wait_session_state(&env, &id, "blocked");
+    let started = Instant::now();
+    let out = env.tmgr(&["send", &id, "y", "--wait", "idle", "--timeout", "30s"]);
+    assert_eq!(
+        out.status.code(),
+        Some(8),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("blocked"));
+}
+
+#[test]
 fn send_wait_exit_waits_for_the_session_to_end() {
     let env = Env::new();
     let script = env.script(

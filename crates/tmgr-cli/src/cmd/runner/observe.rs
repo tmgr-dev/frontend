@@ -187,14 +187,16 @@ pub fn added_lines(before: &[String], after: &[String]) -> Vec<String> {
     trim_blank_end(&added[start..]).to_vec()
 }
 
-fn finished(s: &State, wait: WaitFor, sent_ms: u64) -> bool {
+const BLOCKED_GRACE: Duration = Duration::from_secs(3);
+
+fn finished(s: &State, wait: WaitFor, sent_ms: u64, waited: Duration) -> bool {
     match wait {
         WaitFor::Exit => s.kind == StateKind::Exited,
+        WaitFor::Idle if s.kind == StateKind::Blocked => {
+            s.since_ms >= sent_ms || waited >= BLOCKED_GRACE
+        }
         WaitFor::Idle => {
-            matches!(
-                s.kind,
-                StateKind::Waiting | StateKind::Blocked | StateKind::Exited
-            ) && s.since_ms >= sent_ms
+            matches!(s.kind, StateKind::Waiting | StateKind::Exited) && s.since_ms >= sent_ms
         }
     }
 }
@@ -217,7 +219,7 @@ pub fn send_wait(o: &Opts, a: &SendArgs, wait: WaitFor) -> Result<i32> {
                 clean(&s.name)
             )));
         };
-        if finished(&now.state, wait, sent_ms) {
+        if finished(&now.state, wait, sent_ms, started.elapsed()) {
             break now.state;
         }
         if started.elapsed() >= a.timeout {
