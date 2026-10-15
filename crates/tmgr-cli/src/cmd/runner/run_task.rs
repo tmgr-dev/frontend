@@ -31,15 +31,14 @@ fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
         .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
 }
 
-fn remember(p: &Plan) {
-    let Some(path) = record_path(&p.code, p.candidate.task.task_id) else {
-        return;
-    };
+fn remember(p: &Plan) -> Result<()> {
+    let path = record_path(&p.code, p.candidate.task.task_id)
+        .ok_or_else(|| Error::internal("no state directory for the run record"))?;
     let body = json!({ "repo": p.repo, "clone": p.clone, "branch": p.branch });
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        config::ensure_private_dir(dir)?;
     }
-    let _ = config::write_atomic(&path, body.to_string().as_bytes(), 0o600);
+    config::write_atomic(&path, body.to_string().as_bytes(), 0o600)
 }
 
 fn record(p: &Plan) -> Option<(String, PathBuf, String)> {
@@ -258,8 +257,8 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             import_line(&p.code, reference)
         )));
     }
+    remember(&p)?;
     workdir::prepare_clone(&p.repo, &p.clone, &p.branch, a.base.as_deref())?;
-    remember(&p);
     let cwd = std::fs::canonicalize(&p.clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", p.clone.display())))?
         .to_string_lossy()

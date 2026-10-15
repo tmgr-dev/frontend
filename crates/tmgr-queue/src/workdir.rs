@@ -193,14 +193,43 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
     result
 }
 
-fn read_small(path: &Path) -> Option<String> {
+fn open_beneath(root: &Path, rel: &str) -> Option<std::fs::File> {
+    use std::ffi::CString;
+    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::unix::ffi::OsStrExt;
+    let at = |dir: libc::c_int, name: &[u8], flags: libc::c_int| -> Option<std::fs::File> {
+        let name = CString::new(name).ok()?;
+        let fd = unsafe {
+            libc::openat(
+                dir,
+                name.as_ptr(),
+                flags | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_RDONLY,
+            )
+        };
+        (fd >= 0).then(|| unsafe { std::fs::File::from_raw_fd(fd) })
+    };
+    let mut dir = at(
+        libc::AT_FDCWD,
+        root.as_os_str().as_bytes(),
+        libc::O_DIRECTORY,
+    )?;
+    let parts: Vec<&str> = rel.split('/').collect();
+    let (last, inner) = parts.split_last()?;
+    for part in inner {
+        if part.is_empty() || *part == "." || *part == ".." {
+            return None;
+        }
+        dir = at(dir.as_raw_fd(), part.as_bytes(), libc::O_DIRECTORY)?;
+    }
+    if last.is_empty() || *last == "." || *last == ".." {
+        return None;
+    }
+    at(dir.as_raw_fd(), last.as_bytes(), libc::O_NONBLOCK)
+}
+
+fn read_small(root: &Path, rel: &str) -> Option<String> {
     use std::io::Read;
-    use std::os::unix::fs::OpenOptionsExt;
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(path)
-        .ok()?;
+    let file = open_beneath(root, rel)?;
     let meta = file.metadata().ok()?;
     if !meta.file_type().is_file() || meta.len() > 1 << 20 {
         return None;
@@ -216,16 +245,12 @@ fn is_sha(s: &str) -> bool {
 
 /// The commit `branch` points at in a clone, read from its ref files without running git there.
 fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
-    let git = clone.join(".git");
-    if !std::fs::symlink_metadata(&git).ok()?.is_dir() {
-        return None;
-    }
     let reference = format!("refs/heads/{branch}");
-    if let Some(text) = read_small(&git.join(&reference)) {
+    if let Some(text) = read_small(clone, &format!(".git/{reference}")) {
         let sha = text.trim();
         return is_sha(sha).then(|| sha.to_string());
     }
-    read_small(&git.join("packed-refs"))?
+    read_small(clone, ".git/packed-refs")?
         .lines()
         .filter_map(|l| l.split_once(' '))
         .find(|(_, r)| *r == reference)
@@ -248,6 +273,23 @@ pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     let b = bare.to_string_lossy().into_owned();
     git(None, &["init", "-q", "--bare", "--template=", &b])?;
     let objects = clone.join(".git/objects");
+    let inside = std::fs::canonicalize(clone)
+        .and_then(|c| std::fs::canonicalize(&objects).map(|o| o.starts_with(c.join(".git"))))
+        .unwrap_or(false);
+    let own = std::fs::canonicalize(Path::new(repo).join(".git/objects")).ok();
+    let borrowed_ok = match open_beneath(clone, ".git/objects/info/alternates") {
+        None => true,
+        Some(_) => read_small(clone, ".git/objects/info/alternates").is_some_and(|text| {
+            text.lines()
+                .filter(|l| !l.trim().is_empty())
+                .all(|l| std::fs::canonicalize(l.trim()).ok() == own)
+        }),
+    };
+    if !inside || !borrowed_ok {
+        return Err(Error::usage(
+            "the clone's object store reaches outside the clone and the repository",
+        ));
+    }
     std::fs::write(
         bare.join("objects/info/alternates"),
         format!(
@@ -440,6 +482,41 @@ mod tests {
         );
         assert!(!marker.exists());
         assert!(import_branch(&r, &dest, "no-such-branch").is_err());
+    }
+
+    #[test]
+    fn importing_refuses_refs_or_objects_reached_through_symlinks() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-2-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-2-fix", None).unwrap();
+        let tip = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        let outside = root.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("tm-2-fix"), format!("{tip}\n")).unwrap();
+        let heads = dest.join(".git/refs/heads");
+        std::fs::remove_dir_all(&heads).unwrap();
+        std::os::unix::fs::symlink(&outside, &heads).unwrap();
+        let _ = std::fs::remove_file(dest.join(".git/packed-refs"));
+        assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
+
+        std::fs::remove_file(&heads).unwrap();
+        std::fs::create_dir(&heads).unwrap();
+        std::fs::write(heads.join("tm-2-fix"), format!("{tip}\n")).unwrap();
+        let objects = dest.join(".git/objects");
+        let alternates = objects.join("info/alternates");
+        let original = std::fs::read_to_string(&alternates).unwrap_or_default();
+        std::fs::write(&alternates, format!("{original}{}\n", outside.display())).unwrap();
+        assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
+        std::fs::write(&alternates, original).unwrap();
+        assert!(import_branch(&r, &dest, "tm-2-fix").is_ok());
+        std::fs::rename(&objects, root.join("moved-objects")).unwrap();
+        std::os::unix::fs::symlink(root.join("moved-objects"), &objects).unwrap();
+        assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
     }
 
     #[test]
