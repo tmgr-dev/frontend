@@ -309,6 +309,9 @@ fn a_local_task_runs_in_its_own_clone_and_is_recorded_as_agent_work() {
         "--ask\n"
     );
     assert!(clone.join(".tmgr/task.md").is_file());
+    fx.db()
+        .execute("UPDATE tasks SET title = 'Renamed later' WHERE id = 1", [])
+        .unwrap();
     let (ok, v) = fx.json(&["--json", "--ws", "local:personal", "run", "WK-1", "--fetch"]);
     assert!(ok, "{v}");
     assert_eq!(

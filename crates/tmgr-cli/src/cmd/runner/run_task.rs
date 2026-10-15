@@ -26,6 +26,40 @@ struct Plan {
     chain_ok: bool,
 }
 
+fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
+    tmgr_core::active::state_dir()
+        .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
+}
+
+fn remember(p: &Plan) {
+    let Some(path) = record_path(&p.code, p.candidate.task.task_id) else {
+        return;
+    };
+    let body = json!({ "repo": p.repo, "clone": p.clone, "branch": p.branch });
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = config::write_atomic(&path, body.to_string().as_bytes(), 0o600);
+}
+
+fn record(p: &Plan) -> Option<(String, PathBuf, String)> {
+    let text = std::fs::read_to_string(record_path(&p.code, p.candidate.task.task_id)?).ok()?;
+    let v: Value = serde_json::from_str(&text).ok()?;
+    Some((
+        v["repo"].as_str()?.to_string(),
+        PathBuf::from(v["clone"].as_str()?),
+        v["branch"].as_str()?.to_string(),
+    ))
+}
+
+fn recalled(p: &mut Plan) {
+    if let Some((repo, clone, branch)) = record(p) {
+        p.repo = repo;
+        p.clone = clone;
+        p.branch = branch;
+    }
+}
+
 fn import_line(code: &str, reference: &str) -> String {
     format!(
         "{} --ws local:{code} run {} --fetch",
@@ -211,10 +245,13 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     }
     crate::interact::confirm("Start this run?", true, a.yes)?;
     super::ops::login_preflight(&profile)?;
-    if p.clone.exists() {
+    let earlier = record(&p)
+        .map(|(_, clone, _)| clone)
+        .filter(|clone| clone.exists());
+    if let Some(taken) = earlier.as_ref().or(Some(&p.clone).filter(|c| c.exists())) {
         return Err(Error::new(
             Kind::Conflict,
-            format!("{} already exists", p.clone.display()),
+            format!("{} already exists", taken.display()),
         )
         .hint(format!(
             "bring its branch in with `{}`, then remove the folder and run again",
@@ -222,6 +259,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         )));
     }
     workdir::prepare_clone(&p.repo, &p.clone, &p.branch, a.base.as_deref())?;
+    remember(&p);
     let cwd = std::fs::canonicalize(&p.clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", p.clone.display())))?
         .to_string_lossy()
@@ -284,7 +322,8 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
 }
 
 pub fn fetch(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
-    let p = plan(o, a, reference)?;
+    let mut p = plan(o, a, reference)?;
+    recalled(&mut p);
     if !p.clone.is_dir() {
         return Err(Error::not_found(format!(
             "there is no clone at {}",

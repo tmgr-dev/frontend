@@ -195,16 +195,18 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
 
 fn read_small(path: &Path) -> Option<String> {
     use std::io::Read;
-    let meta = std::fs::symlink_metadata(path).ok()?;
+    use std::os::unix::fs::OpenOptionsExt;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+        .ok()?;
+    let meta = file.metadata().ok()?;
     if !meta.file_type().is_file() || meta.len() > 1 << 20 {
         return None;
     }
     let mut text = String::new();
-    std::fs::File::open(path)
-        .ok()?
-        .take(1 << 20)
-        .read_to_string(&mut text)
-        .ok()?;
+    file.take(1 << 20).read_to_string(&mut text).ok()?;
     Some(text)
 }
 

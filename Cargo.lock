@@ -4082,6 +4082,7 @@ name = "tmgr-queue"
 version = "0.8.0"
 dependencies = [
  "chrono",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
