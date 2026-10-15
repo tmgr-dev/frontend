@@ -13,6 +13,7 @@ use crate::schema::MIGRATIONS;
 const ROLLUP_FLOOR_KEY: &str = "rollup_floor_ms";
 const ROLLUP_KEEP_DAYS: i64 = 730;
 const LIMIT_KEEP_DAYS: i64 = 30;
+const SAME_WINDOW_S: i64 = 120;
 
 #[derive(Default)]
 struct Fold {
@@ -468,16 +469,20 @@ fn create_private_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Every session reports its own copy of an account's limits, and an idle one repeats what it saw
-/// last. Within a window usage only grows, so the window that resets last is the current one and
-/// its highest reading is the freshest.
+/// Every Claude Code session reports its own statusline copy of an account's limits, and an idle
+/// one repeats what it saw last. Within a window usage only grows, so the window that resets last is
+/// the current one and its highest reading is the freshest. Rollout readings carry the time of the
+/// API response, so the newest of them wins.
 fn fresher(candidate: &LimitSnapshot, best: &LimitSnapshot) -> bool {
-    let minute = |s: &LimitSnapshot| s.resets_at.map(|r| r.timestamp().div_euclid(60));
-    match (minute(candidate), minute(best)) {
-        (Some(c), Some(b)) if c != b => c > b,
-        (Some(_), Some(_)) => candidate.used_pct > best.used_pct,
-        (Some(_), None) => true,
-        (None, Some(_)) => false,
-        (None, None) => false,
+    let statusline = |s: &LimitSnapshot| s.source == LimitSource::Statusline;
+    match (candidate.resets_at, best.resets_at) {
+        (Some(c), Some(b)) if statusline(candidate) && statusline(best) => {
+            if (c - b).num_seconds().abs() > SAME_WINDOW_S {
+                c > b
+            } else {
+                candidate.used_pct > best.used_pct
+            }
+        }
+        _ => candidate.observed_at > best.observed_at,
     }
 }
