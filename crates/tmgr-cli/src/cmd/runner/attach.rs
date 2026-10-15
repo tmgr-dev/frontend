@@ -508,9 +508,10 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
         Exit::Detached => {
             let (name, id) = target.unwrap_or_else(|| (initial.to_string(), initial.to_string()));
             let (name, id) = (sanitize_text(&name), sanitize_text(&id));
+            let bin = super::bin();
             let _ = writeln!(
                 io::stdout(),
-                "detached from {name} ({id}) — it keeps running; reattach with: tmgr attach {id}"
+                "detached from {name} ({id}) — it keeps running; reattach with: {bin} attach {id}"
             );
             Ok(0)
         }
@@ -519,6 +520,6 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
             Kind::Offline,
             format!("lost the connection to the runner: {why}"),
         )
-        .hint("tmgr runner status")),
+        .hint(format!("{} runner status", super::bin()))),
     }
 }

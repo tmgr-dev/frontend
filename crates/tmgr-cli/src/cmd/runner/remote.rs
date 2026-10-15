@@ -137,8 +137,9 @@ pub fn run(o: &Opts, link: &str, a: &RunArgs) -> Result<i32> {
     let v = check(client.call("runs.create", params)?)?;
     let view: RunView = serde_json::from_value(v.clone())
         .map_err(|_| Error::new(Kind::Link, "the follower sent an unexpected reply"))?;
+    let bin = super::bin();
     let human = format!(
-        "started {} ({}) on {link}; attach with: tmgr attach {} --on {link}",
+        "started {} ({}) on {link}; attach with: {bin} attach {} --on {link}",
         clean(&view.name),
         clean(&view.id),
         clean(&view.id)
@@ -165,7 +166,8 @@ pub fn agents(o: &Opts, link: &str) -> Result<i32> {
         return Ok(emit(o, json!({"link": link, "runs": v["runs"]}), ""));
     }
     if runs.is_empty() {
-        println!("No runs from this leader on {link}. Start one with: tmgr run <REF> --on {link} --agent <profile>");
+        let bin = super::bin();
+        println!("No runs from this leader on {link}. Start one with: {bin} run <REF> --on {link} --agent <profile>");
         return Ok(0);
     }
     let now = now_ms();
@@ -212,7 +214,7 @@ pub fn attach(link: &str, a: &AttachArgs) -> Result<i32> {
     }
     .ok_or_else(|| {
         Error::not_found("no run of this leader on the follower matches")
-            .hint(format!("tmgr agents --host {link}"))
+            .hint(format!("{} agents --host {link}", super::bin()))
     })?
     .clone();
     let (cols, rows) = ratatui::crossterm::terminal::size().unwrap_or((120, 40));
@@ -239,7 +241,7 @@ pub fn halt(o: &Opts, link: &str, a: &HaltArgs) -> Result<i32> {
                 "no run {:?} of this leader on {link}",
                 clean(&a.session)
             ))
-            .hint(format!("tmgr agents --host {link}"))
+            .hint(format!("{} agents --host {link}", super::bin()))
         })?;
     let v = check(client.call("runs.halt", json!({"run": target.id}))?)?;
     Ok(emit(

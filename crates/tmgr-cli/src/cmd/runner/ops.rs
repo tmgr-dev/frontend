@@ -194,6 +194,9 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             ),
         }
     }
+    if raw.is_none() {
+        login_preflight(a.agent.as_deref().unwrap_or_default())?;
+    }
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     if !o.json && !o.quiet {
@@ -234,8 +237,9 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
+    let bin = super::bin();
     let human = format!(
-        "started {} ({}); attach with: tmgr attach {}",
+        "started {} ({}); attach with: {bin} attach {}",
         clean(&info.name),
         clean(&info.id),
         clean(&info.id)
@@ -320,10 +324,22 @@ fn command_line(s: &SessionInfo) -> String {
     tmgr_core::text::sanitize_line(&if more { format!("{cut}…") } else { cut })
 }
 
+fn login_preflight(profile: &str) -> Result<()> {
+    let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+    let (Some(p), Some(home)) = (set.get(profile), std::env::var_os("HOME")) else {
+        return Ok(());
+    };
+    match login::login_problem(p, Path::new(&home), &super::bin()) {
+        Some(msg) => Err(Error::usage(clean(&msg))),
+        None => Ok(()),
+    }
+}
+
 fn credential_target(profile: &str) -> Result<login::ResolvedSecretFile> {
     let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
     let p = set.get(profile).ok_or_else(|| {
-        Error::not_found(format!("no agent profile {profile:?}")).hint("tmgr agents")
+        Error::not_found(format!("no agent profile {profile:?}"))
+            .hint(format!("{} agents", super::bin()))
     })?;
     let home = std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
@@ -389,8 +405,9 @@ fn candidate_lines(cfg: &RunnerConfig) -> Vec<String> {
         .iter()
         .map(|c| {
             let profile = clean(&c.profile);
+            let bin = super::bin();
             format!(
-                "{profile} refreshed its login inside a session; run `tmgr agents sync {profile}` to apply it to {}",
+                "{profile} refreshed its login inside a session; run `{bin} agents sync {profile}` to apply it to {}",
                 tmgr_core::text::sanitize_line(&short_cwd(&c.source))
             )
         })
@@ -469,7 +486,8 @@ fn agent_auto_on(profile: &str) -> Result<i32> {
     need_terminal("turning on auto mode")?;
     let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
     if set.get(profile).is_none() {
-        return Err(Error::not_found(format!("no agent profile {profile:?}")).hint("tmgr agents"));
+        return Err(Error::not_found(format!("no agent profile {profile:?}"))
+            .hint(format!("{} agents", super::bin())));
     }
     println!(
         "Risk: an agent in a session can replace your {profile} login with another account's tokens.\n\
@@ -480,8 +498,9 @@ fn agent_auto_on(profile: &str) -> Result<i32> {
     }
     seedguard::set_autosync(profile, true)
         .map_err(|e| Error::internal(format!("cannot turn auto mode on: {e}")))?;
+    let bin = super::bin();
     println!(
-        "Auto mode for {profile} is on. Turn it off with: tmgr agents sync {profile} --auto off"
+        "Auto mode for {profile} is on. Turn it off with: {bin} agents sync {profile} --auto off"
     );
     Ok(0)
 }
@@ -550,13 +569,15 @@ fn agents(o: &Opts) -> Result<i32> {
     let hint = || {
         if restorable > 0 {
             println!(
-                "{restorable} session{} stopped by a reboot or logout can be restored: tmgr agents restore",
-                if restorable == 1 { "" } else { "s" }
+                "{restorable} session{} stopped by a reboot or logout can be restored: {} agents restore",
+                if restorable == 1 { "" } else { "s" },
+                super::bin()
             );
         }
     };
     if sessions.is_empty() {
-        println!("No agent sessions yet. Start one with: tmgr run --agent <profile>");
+        let bin = super::bin();
+        println!("No agent sessions yet. Start one with: {bin} run --agent <profile>");
         for line in candidate_lines(&cfg) {
             println!("{line}");
         }
@@ -632,7 +653,10 @@ fn resolve<'a>(sessions: &'a [SessionInfo], key: &str) -> Result<&'a SessionInfo
             let mut hits = sessions.iter().filter(|s| s.id.starts_with(key));
             hits.next().filter(|_| hits.next().is_none())
         })
-        .ok_or_else(|| Error::not_found(format!("no session matches {key:?}")).hint("tmgr agents"))
+        .ok_or_else(|| {
+            Error::not_found(format!("no session matches {key:?}"))
+                .hint(format!("{} agents", super::bin()))
+        })
 }
 
 fn attach_cmd(a: &AttachArgs) -> Result<i32> {
@@ -642,7 +666,9 @@ fn attach_cmd(a: &AttachArgs) -> Result<i32> {
         Some(key) => resolve(&sessions, key)?,
         None => newest(&sessions, |s| s.state.kind != StateKind::Exited)
             .or_else(|| newest(&sessions, |_| true))
-            .ok_or_else(|| Error::not_found("no sessions to attach to").hint("tmgr run"))?,
+            .ok_or_else(|| {
+                Error::not_found("no sessions to attach to").hint(format!("{} run", super::bin()))
+            })?,
     };
     attach::run(&cfg, &target.id)
 }
@@ -707,7 +733,7 @@ fn halt(o: &Opts, a: &HaltArgs) -> Result<i32> {
     if !exited {
         return Err(
             Error::conflict(format!("{} is still running", clean(&s.name)))
-                .hint("tmgr halt --kill"),
+                .hint(format!("{} halt --kill", super::bin())),
         );
     }
     Ok(emit(

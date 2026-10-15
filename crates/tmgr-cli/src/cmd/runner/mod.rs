@@ -287,7 +287,8 @@ pub fn is_down(e: &io::Error) -> bool {
 
 pub fn rerr(e: io::Error) -> Error {
     if is_down(&e) {
-        return Error::new(Kind::Offline, "the runner is not running").hint("tmgr runner start");
+        return Error::new(Kind::Offline, "the runner is not running")
+            .hint(format!("{} runner start", bin()));
     }
     if matches!(
         e.kind(),
@@ -321,4 +322,22 @@ pub fn runner_config() -> Result<RunnerConfig> {
 
 pub fn connect(cfg: &RunnerConfig) -> Result<Client> {
     Client::connect(&cfg.dir).map_err(rerr)
+}
+
+pub fn bin() -> String {
+    std::env::args_os()
+        .next()
+        .and_then(|a| {
+            std::path::Path::new(&a)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(str::to_string)
+        })
+        .filter(|n| {
+            !n.is_empty()
+                && n.len() <= 64
+                && n.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+        })
+        .unwrap_or_else(|| "tmgr".to_string())
 }
