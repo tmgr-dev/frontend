@@ -136,7 +136,8 @@ pub const CONTEXT_MIGRATIONS: &[&str] = &["
     );
     CREATE TABLE usage_fact (
         id INTEGER PRIMARY KEY,
-        fact_key TEXT NOT NULL UNIQUE,
+        key_hash INTEGER NOT NULL UNIQUE,
+        call_id TEXT,
         tool TEXT NOT NULL,
         account TEXT NOT NULL,
         tool_session_id TEXT NOT NULL,
@@ -151,10 +152,13 @@ pub const CONTEXT_MIGRATIONS: &[&str] = &["
         value INTEGER,
         is_error INTEGER NOT NULL DEFAULT 0,
         git_branch TEXT,
-        project_hash TEXT
+        project_id INTEGER
+    );
+    CREATE TABLE usage_fact_project (
+        id INTEGER PRIMARY KEY,
+        project_hash TEXT NOT NULL UNIQUE
     );
     CREATE INDEX usage_fact_ts ON usage_fact(ts);
-    CREATE INDEX usage_fact_session ON usage_fact(tool, account, tool_session_id);
     CREATE TABLE usage_context_file_state (
         source_id INTEGER NOT NULL,
         file_key TEXT NOT NULL,

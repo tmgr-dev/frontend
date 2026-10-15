@@ -391,17 +391,21 @@ impl Store {
         tx.execute("DELETE FROM usage_event WHERE ts < ?1", [floor])?;
         tx.execute("DELETE FROM usage_fact WHERE ts < ?1", [floor])?;
         tx.execute(
+            "DELETE FROM usage_fact_project
+             WHERE id NOT IN (SELECT DISTINCT project_id FROM usage_fact WHERE project_id IS NOT NULL)",
+            [],
+        )?;
+        tx.execute(
             "DELETE FROM usage_session WHERE parent_session_id IS NULL
                AND id NOT IN (SELECT DISTINCT session_id FROM usage_event)",
             [],
         )?;
         tx.execute(
-            "DELETE FROM usage_agent WHERE NOT EXISTS (
-               SELECT 1 FROM usage_fact f WHERE f.tool = usage_agent.tool
-                 AND f.account = usage_agent.account AND f.tool_session_id = usage_agent.tool_session_id)
-             AND NOT EXISTS (
-               SELECT 1 FROM usage_session s WHERE s.tool = usage_agent.tool
-                 AND s.account = usage_agent.account AND s.tool_session_id = usage_agent.tool_session_id)",
+            "DELETE FROM usage_agent
+             WHERE (tool, account, tool_session_id) NOT IN
+                   (SELECT DISTINCT tool, account, tool_session_id FROM usage_fact)
+               AND (tool, account, tool_session_id) NOT IN
+                   (SELECT tool, account, tool_session_id FROM usage_session)",
             [],
         )?;
         let old_day = (now - Duration::days(ROLLUP_KEEP_DAYS))
@@ -436,6 +440,7 @@ impl Store {
             "usage_fact",
             "usage_agent",
             "usage_context_file_state",
+            "usage_fact_project",
         ] {
             tx.execute(&format!("DELETE FROM {table}"), [])?;
         }

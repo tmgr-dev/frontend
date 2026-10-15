@@ -340,7 +340,8 @@ fn facts_are_idempotent_incremental_and_private() {
     assert_eq!(by("c2").name, "mcp__serena__find_symbol");
     assert!(by("c4").is_error);
     assert_eq!(by("c5").duration_ms, Some(1000));
-    assert_eq!(by("turn-1").duration_ms, Some(1500));
+    let turn = facts.iter().find(|f| f.kind == FactKind::Turn).unwrap();
+    assert_eq!(turn.duration_ms, Some(1500));
 
     let agents = store.agents().unwrap();
     assert_eq!(agents.len(), 1);

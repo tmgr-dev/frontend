@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
+use sha2::{Digest, Sha256};
 
 use crate::error::Result;
 use crate::model::{clean_name, project_hash, AgentMeta, Fact, FactEnd, FactKind, Tool};
@@ -76,8 +77,23 @@ pub fn clean_repo(raw: &str) -> String {
     }
 }
 
-fn fact_key(tool: Tool, f: &Fact) -> String {
-    format!("{}|{}", tool.as_str(), f.key)
+fn key_hash(tool: Tool, key: &str) -> i64 {
+    let digest = Sha256::digest(format!("{}|{key}", tool.as_str()).as_bytes());
+    let mut first = [0u8; 8];
+    first.copy_from_slice(&digest[..8]);
+    i64::from_be_bytes(first)
+}
+
+fn project_id(conn: &Connection, cwd: Option<&str>) -> Result<Option<i64>> {
+    let Some(hash) = cwd.map(project_hash) else {
+        return Ok(None);
+    };
+    conn.prepare_cached("INSERT OR IGNORE INTO usage_fact_project (project_hash) VALUES (?1)")?
+        .execute([&hash])?;
+    Ok(Some(
+        conn.prepare_cached("SELECT id FROM usage_fact_project WHERE project_hash = ?1")?
+            .query_row([&hash], |r| r.get(0))?,
+    ))
 }
 
 pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()> {
@@ -86,19 +102,20 @@ pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()>
     };
     conn.prepare_cached(
         "INSERT INTO usage_fact
-           (fact_key, tool, account, tool_session_id, agent_id, ts, kind, name, detail, target,
-            duration_ms, value, is_error, git_branch, project_hash)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
-         ON CONFLICT(fact_key) DO UPDATE SET
+           (key_hash, tool, account, tool_session_id, agent_id, ts, kind, name, detail, target,
+            duration_ms, value, is_error, git_branch, project_id, call_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+         ON CONFLICT(key_hash) DO UPDATE SET
            ts = excluded.ts, kind = excluded.kind, name = excluded.name,
            detail = excluded.detail, target = excluded.target,
            duration_ms = COALESCE(excluded.duration_ms, duration_ms),
            value = excluded.value,
            is_error = MAX(is_error, excluded.is_error),
-           git_branch = excluded.git_branch, project_hash = excluded.project_hash",
+           git_branch = excluded.git_branch, project_id = excluded.project_id,
+           call_id = excluded.call_id",
     )?
     .execute(params![
-        fact_key(tool, f),
+        key_hash(tool, &f.key),
         tool.as_str(),
         f.account,
         f.tool_session_id,
@@ -115,7 +132,10 @@ pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()>
         f.value.map(|v| v as i64),
         f.is_error,
         f.git_branch,
-        f.cwd.as_deref().map(project_hash),
+        project_id(conn, f.cwd.as_deref())?,
+        (kind == FactKind::ToolCall)
+            .then(|| f.key.rsplit_once('|').map(|(_, id)| id.to_string()))
+            .flatten(),
     ])?;
     Ok(())
 }
@@ -125,10 +145,10 @@ pub(crate) fn end_fact(conn: &Connection, tool: Tool, end: &FactEnd) -> Result<(
         "UPDATE usage_fact SET ended_at = ?2,
            duration_ms = MAX(0, ?2 - ts),
            is_error = MAX(is_error, ?3)
-         WHERE fact_key = ?1",
+         WHERE key_hash = ?1",
     )?
     .execute(params![
-        format!("{}|{}", tool.as_str(), end.key),
+        key_hash(tool, &end.key),
         ms(end.ended_at),
         end.is_error,
     ])?;
@@ -197,8 +217,10 @@ impl Store {
     pub fn facts(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<StoredFact>> {
         let mut stmt = self.conn.prepare(
             "SELECT tool, account, tool_session_id, agent_id, ts, kind, name, detail, target,
-                    ended_at, duration_ms, value, is_error, git_branch, project_hash, fact_key
-             FROM usage_fact WHERE ts >= ?1 AND ts < ?2 ORDER BY ts, id",
+                    f.ended_at, f.duration_ms, f.value, f.is_error, f.git_branch, p.project_hash,
+                    f.call_id
+             FROM usage_fact f LEFT JOIN usage_fact_project p ON p.id = f.project_id
+             WHERE f.ts >= ?1 AND f.ts < ?2 ORDER BY f.ts, f.id",
         )?;
         let rows = stmt.query_map([ms(from), ms(to)], |r| {
             Ok((
@@ -220,7 +242,7 @@ impl Store {
                     is_error: r.get(12)?,
                     git_branch: r.get(13)?,
                     project_hash: r.get(14)?,
-                    call_id: r.get::<_, String>(15)?,
+                    call_id: r.get::<_, Option<String>>(15)?.unwrap_or_default(),
                 },
             ))
         })?;
@@ -232,11 +254,6 @@ impl Store {
             };
             f.tool = tool;
             f.kind = kind;
-            f.call_id = f
-                .call_id
-                .rsplit_once('|')
-                .map(|(_, id)| id.to_string())
-                .unwrap_or_default();
             out.push(f);
         }
         Ok(out)

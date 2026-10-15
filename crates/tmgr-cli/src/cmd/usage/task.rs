@@ -17,7 +17,6 @@ use tmgr_usage::task::{
 };
 use tmgr_usage::Tool;
 
-const HISTORY_DAYS: i64 = 90;
 const LABEL_WIDTH: usize = 8;
 const TOP_NAMES: usize = 6;
 
@@ -27,10 +26,7 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
         TaskRef::Key(k) => WantedTask::Key(k),
     };
     let now = Utc::now();
-    let (from, to) = (
-        now - Duration::days(HISTORY_DAYS),
-        now + Duration::minutes(1),
-    );
+    let (from, to) = (now - Duration::days(args.days), now + Duration::minutes(1));
     let mut u = Usage::open()?;
     if !args.no_scan {
         scan(ctx, &mut u, now)?;
@@ -171,16 +167,19 @@ fn node_line(n: &Node, style: &Style) -> String {
         (Tool::Codex, _) => "Codex".to_string(),
         (_, other) => sanitize_line(other),
     };
-    let mut parts = vec![
-        style.bold(&label),
-        style.muted(sanitize_line(n.model.strip_prefix("claude-").unwrap_or(&n.model)).as_str()),
-    ];
+    let mut parts = vec![style.bold(&label)];
+    if n.model != "unknown" {
+        let model = n.model.strip_prefix("claude-").unwrap_or(&n.model);
+        parts.push(style.muted(&sanitize_line(model)));
+    }
     if n.tool == Tool::Codex {
         if let Some(o) = &n.origin {
             parts.push(style.muted(&sanitize_line(o)));
         }
     }
-    parts.push(span((n.duration_ms / 1000) as i64));
+    if n.events > 0 || n.duration_ms > 0 {
+        parts.push(span((n.duration_ms / 1000) as i64));
+    }
     if n.cost_usd > 0.0 {
         parts.push(style.good(&money(n.cost_usd)));
     }
@@ -390,6 +389,10 @@ fn context_lines(a: &TaskUsageAggregate, style: &Style) -> Vec<String> {
 fn render(a: &TaskUsageAggregate, title: Option<&str>, tree: bool, style: &Style) -> String {
     let mut head = style.bold(&sanitize_line(&a.task.task_ref));
     if let Some(t) = title {
+        let t = t
+            .strip_prefix(a.task.task_ref.as_str())
+            .and_then(|rest| rest.strip_prefix(':'))
+            .map_or(t, str::trim_start);
         head.push_str(&format!("  {t}"));
     }
     let mut blocks = vec![head, summary_lines(a, style).join("\n")];

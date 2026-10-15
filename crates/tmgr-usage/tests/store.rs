@@ -559,3 +559,43 @@ fn facts_and_agents_are_stored_idempotently_and_deleted_on_reset() {
         .is_empty());
     assert!(store.agents().unwrap().is_empty());
 }
+
+#[test]
+fn prune_drops_old_facts_and_agents_that_nothing_refers_to() {
+    use tmgr_usage::{AgentMeta, Fact, FactKind};
+    let tmp = tempfile::tempdir().unwrap();
+    let mut store = open_store(tmp.path());
+    let fact = |session: &str, key: &str, days: i64| Fact {
+        account: "claude".into(),
+        key: format!("{session}|tool_call|{key}"),
+        tool_session_id: session.into(),
+        ts: now() - Duration::days(days),
+        kind: Some(FactKind::ToolCall),
+        name: "Read".into(),
+        cwd: Some("/work/alpha".into()),
+        ..Fact::default()
+    };
+    let agent = |session: &str| AgentMeta {
+        account: "claude".into(),
+        tool_session_id: session.into(),
+        ..AgentMeta::default()
+    };
+    store
+        .record_fact(Tool::Claude, &fact("old", "t1", 200))
+        .unwrap();
+    store
+        .record_fact(Tool::Claude, &fact("new", "t2", 1))
+        .unwrap();
+    store.record_agent(Tool::Claude, &agent("old")).unwrap();
+    store.record_agent(Tool::Claude, &agent("new")).unwrap();
+    store.prune(90, now()).unwrap();
+    let facts = store
+        .facts(now() - Duration::days(400), now() + Duration::days(1))
+        .unwrap();
+    assert_eq!(facts.len(), 1);
+    assert_eq!(facts[0].tool_session_id, "new");
+    assert!(facts[0].project_hash.is_some());
+    let agents = store.agents().unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0].tool_session_id, "new");
+}

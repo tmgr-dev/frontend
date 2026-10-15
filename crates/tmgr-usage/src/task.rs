@@ -205,14 +205,24 @@ pub fn clean_generic(raw: &str) -> String {
 }
 
 pub fn clean_model(raw: &str) -> String {
-    let mut out: String = raw
+    let (base, suffix) = match raw.rsplit_once('@') {
+        Some((b, s))
+            if (1..=16).contains(&s.len())
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-')) =>
+        {
+            (b, Some(s))
+        }
+        _ => (raw, None),
+    };
+    let mut out: String = base
         .chars()
         .map(|c| match c {
             '/' => ':',
-            c if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '@' | '-') => c,
+            c if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-') => c,
             _ => '_',
         })
-        .take(MAX_NAME)
+        .take(111)
         .collect();
     while out.contains("..") {
         out = out.replace("..", "_");
@@ -221,10 +231,13 @@ pub fn clean_model(raw: &str) -> String {
         out.replace_range(..1, "_");
     }
     if out.is_empty() {
-        "unknown".into()
-    } else {
-        out
+        return "unknown".into();
     }
+    if let Some(s) = suffix {
+        out.push('@');
+        out.push_str(s);
+    }
+    out
 }
 
 pub fn clean_version(raw: &str) -> String {
@@ -1705,6 +1718,12 @@ mod tests {
         assert_eq!(clean_model("anthropic/claude-x@1"), "anthropic:claude-x@1");
         assert_eq!(clean_model("a b\\c"), "a_b_c");
         assert_eq!(clean_model("../x"), "_:x");
+        assert_eq!(
+            clean_model("claude-opus-4@20250514"),
+            "claude-opus-4@20250514"
+        );
+        assert_eq!(clean_model("alice@example.com"), "alice_example.com");
+        assert_eq!(clean_model("a@b@c"), "a_b@c");
         assert_eq!(clean_version("2.1.90"), "2.1.90");
         assert_eq!(clean_version("1.0/rc@2"), "1.0_rc_2");
         assert_eq!(clean_version(&"9".repeat(80)).len(), 64);
@@ -1730,7 +1749,7 @@ mod tests {
         let a = fx.build().unwrap();
         let text = serde_json::to_string(&a).unwrap();
         assert!(!text.contains("/usr") && !text.contains("me@host") && !text.contains("/tmp"));
-        assert_eq!(a.nodes[0].model, "vendor:model@1_:tmp:x");
+        assert_eq!(a.nodes[0].model, "vendor:model_1_:tmp:x");
     }
 
     #[test]

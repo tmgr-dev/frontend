@@ -110,6 +110,9 @@ pub struct TaskArgs {
     /// Show every agent, not only the top level
     #[arg(long)]
     pub tree: bool,
+    /// How many days back to look for the task's work (at most 90, the kept history)
+    #[arg(long, value_name = "N", default_value_t = 30, value_parser = clap::value_parser!(i64).range(1..=90))]
+    pub days: i64,
     /// Do not scan the logs first
     #[arg(long)]
     pub no_scan: bool,
