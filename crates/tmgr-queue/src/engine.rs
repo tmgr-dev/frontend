@@ -510,15 +510,18 @@ fn start_phase(
             continue;
         }
         let pin_now = deps.profiles.pin(&rule.profile, rule.model.as_deref());
-        if pin_now.as_ref().ok() != pass.state.pickups[i].profile_pin.as_ref() {
-            back_to_pending(
-                pass,
-                i,
-                "start_refused",
-                json!({"pickup": id, "rule": rule_name, "reason": "profile_changed_since_approval"}),
-            )?;
-            continue;
-        }
+        let pin = match (pin_now, pass.state.pickups[i].profile_pin.clone()) {
+            (Ok(now), Some(approved)) if now == approved => approved,
+            _ => {
+                back_to_pending(
+                    pass,
+                    i,
+                    "start_refused",
+                    json!({"pickup": id, "rule": rule_name, "reason": "profile_changed_since_approval"}),
+                )?;
+                continue;
+            }
+        };
         let p = pass.state.pickups[i].clone();
         pass.set(i, Status::Starting, None);
         state::save(pass.paths, &mut pass.state)?;
@@ -546,6 +549,8 @@ fn start_phase(
             model: rule.model.clone(),
             cwd,
             clone_of: rule.repo.clone(),
+            exe_path: pin.exe_path.clone(),
+            exe_sha256: pin.exe_sha256.clone(),
             name: format!("{key} rule:{rule_name}").chars().take(64).collect(),
             task: p.task,
             bundle: p.bundle.clone(),
@@ -963,6 +968,9 @@ mod tests {
         assert_eq!(created[0].name, "TM-1 rule:r1");
         assert_eq!(created[0].clone_of, fx.repo);
         assert_eq!(created[0].trigger, "rule:r1");
+        let pin = fx.pickups()[0].profile_pin.clone().unwrap();
+        assert_eq!(created[0].exe_path, pin.exe_path);
+        assert_eq!(created[0].exe_sha256, pin.exe_sha256);
     }
 
     #[test]

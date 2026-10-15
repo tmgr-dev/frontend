@@ -440,6 +440,33 @@ impl Fx {
         }
     }
 
+    fn pty_with_path(&self, path: &str) -> Pty {
+        let repo = self.repo();
+        self.pty(
+            &[
+                "queue",
+                "rules",
+                "add",
+                "q",
+                "--workspace",
+                "local:personal",
+                "--persona",
+                "builder",
+                "--profile",
+                "qagent",
+                "--repo",
+                repo.to_str().unwrap(),
+                "--project",
+                "WK",
+            ],
+            &[("PATH", path)],
+        )
+    }
+
+    fn pty_approve_with_path(&self, id: &str, path: &str) -> Pty {
+        self.pty(&["queue", "approve", id], &[("PATH", path)])
+    }
+
     fn confirmed(&self, args: &[&str], phrase: &str) -> (i32, String) {
         let mut p = self.pty(args, &[]);
         p.wait_for("Type ");
@@ -974,4 +1001,82 @@ fn an_approved_pickup_waits_while_the_runner_cannot_be_reached() {
         "approved"
     );
     assert_eq!(fx.count("started") + fx.count("start_failed"), 0);
+}
+
+#[test]
+fn the_runner_refuses_an_executable_other_than_the_approved_one() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    let bins = |dir: &str, body: &str| {
+        let d = std::fs::canonicalize(fx.tmp.path()).unwrap().join(dir);
+        std::fs::create_dir_all(&d).unwrap();
+        let f = d.join("qagent");
+        std::fs::write(&f, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&f, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        d
+    };
+    let approved = bins("approved", "echo approved > who.txt");
+    let other = bins("other", "echo other > who.txt");
+    std::fs::write(
+        fx.tmp.path().join("agents/qagent.toml"),
+        "id = \"qagent\"\nname = \"Q\"\ncommand = [\"qagent\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+    )
+    .unwrap();
+    let path = |first: &PathBuf| {
+        format!(
+            "{}:{}",
+            first.display(),
+            std::env::var("PATH").unwrap_or_default()
+        )
+    };
+    let mut p = fx.pty_with_path(&path(&approved));
+    p.wait_for("Type ");
+    p.line("I AGREE");
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    fx.task(1, "Write the report", "v1");
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    let run = |extra_path: &PathBuf, args: &[&str]| {
+        fx.cmd()
+            .env("PATH", path(extra_path))
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    run(&approved, &["queue", "run-once"]);
+    let status = fx.json(&["status"]);
+    let id = status["data"]["pickups"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sha = status["data"]["pickups"][0]["bundle_sha256"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let mut p = fx.pty_approve_with_path(&id, &path(&approved));
+    p.wait_for("Type the first 12");
+    p.line(&sha[..12]);
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    assert!(run(&other, &["runner", "start"]).status.success());
+    let out = run(&approved, &["--json", "queue", "run-once"]);
+    let report: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(report["data"]["events"][0]["outcome"], "failed", "{report}");
+    assert_eq!(fx.count("start_failed"), 1);
+    let failed = fx
+        .audit_events()
+        .into_iter()
+        .find(|e| e["event"] == "start_failed")
+        .unwrap();
+    assert!(
+        failed.to_string().contains("forbidden") || failed.to_string().contains("executable"),
+        "{failed}"
+    );
+    assert!(!fx
+        .tmp
+        .path()
+        .join("repo-worktrees/queue")
+        .join(&id)
+        .join("who.txt")
+        .exists());
 }

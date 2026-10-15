@@ -27,6 +27,8 @@ pub struct StartRequest {
     pub model: Option<String>,
     pub cwd: String,
     pub clone_of: String,
+    pub exe_path: String,
+    pub exe_sha256: String,
     pub name: String,
     pub task: TaskRef,
     pub bundle: RunBundle,
@@ -39,13 +41,14 @@ pub trait RunsClient {
     fn lookup(&self, start_key: &str) -> Lookup;
 }
 
-pub const REQUIRED_CAPS: [&str; 6] = [
+pub const REQUIRED_CAPS: [&str; 7] = [
     caps::RUN_BUNDLE_V1,
     caps::PERMISSION_MODE_V1,
     caps::START_KEY_V1,
     caps::RUN_STATUS_V1,
     caps::CLONE_DIR_V1,
     caps::AGENT_WORK_V1,
+    caps::EXE_PIN_V1,
 ];
 
 pub fn runner_supports_queue(runner_caps: &[String]) -> bool {

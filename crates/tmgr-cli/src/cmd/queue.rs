@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize;
-use tmgr_ipc::api::{RunCreateReq, StateKind};
+use tmgr_ipc::api::{ExePin, RunCreateReq, StateKind};
 use tmgr_link::privileged;
 use tmgr_queue::audit::sha256_hex;
 use tmgr_queue::audit::Audit;
@@ -483,6 +483,7 @@ fn review(p: &state::Pickup, pin: &ProfilePin) -> Vec<String> {
         "Executable {} sha256 {}",
         pin.exe_path, pin.exe_sha256
     ));
+    push("          the runner refuses to start any other file; the pin covers this file only, not the interpreter of a script or what a wrapper starts".into());
     push(format!("Profile sha256 {}", pin.profile_sha256));
     push("Mode      the agent asks before it acts (permission prompts on); no bypass".into());
     push(format!(
@@ -690,7 +691,10 @@ impl RunsClient for RunnerRuns {
                 clone_of: Some(req.clone_of.clone()),
                 trust_cwd: None,
                 agent_work: true,
-                exe_pin: None,
+                exe_pin: Some(ExePin {
+                    path: req.exe_path.clone(),
+                    sha256: req.exe_sha256.clone(),
+                }),
             })
         })
         .map(|info| info.id)
