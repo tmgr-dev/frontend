@@ -13,6 +13,7 @@ fn main() {
         ["runner", "serve"] => serve(),
         ["__shim", dir, id] => shim::shim_main(&PathBuf::from(dir), id),
         ["__sandbox-exec", ..] => sandbox::exec_helper(&args[1..]),
+        ["__agent-work"] => fake_agent_work(),
         _ => {
             eprintln!(
                 "usage: tmgr-runner-host runner serve | __shim <dir> <id> | __sandbox-exec ..."
@@ -21,6 +22,30 @@ fn main() {
         }
     };
     std::process::exit(code);
+}
+
+fn fake_agent_work() -> i32 {
+    use std::io::{Read, Write};
+    let mut input = String::new();
+    let _ = std::io::stdin().read_to_string(&mut input);
+    let Some(log) = std::env::var_os("TMGR_TEST_AGENT_WORK_LOG") else {
+        println!("{{\"error\":\"no test log\"}}");
+        return 1;
+    };
+    let fail = std::path::Path::new(&log).with_extension("fail");
+    if fail.exists() {
+        println!("{{\"error\":\"workspace is locked\"}}");
+        return 1;
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log)
+    {
+        let _ = writeln!(f, "{}", input.trim());
+    }
+    println!("{{\"run_id\":77}}");
+    0
 }
 
 fn serve() -> i32 {

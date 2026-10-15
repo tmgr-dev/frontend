@@ -86,6 +86,8 @@ pub struct RunCreateReq {
     pub clone_of: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_cwd: Option<bool>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub agent_work: bool,
 }
 
 /// The leader to follower link a run was started for, and the link's generation at that time.

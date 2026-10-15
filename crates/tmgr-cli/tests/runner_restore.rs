@@ -87,6 +87,7 @@ impl Env {
                 origin,
                 permission_mode: None,
                 clone_of: None,
+                agent_work: false,
                 bypass: false,
                 boot: None,
                 pids: Vec::new(),

@@ -579,6 +579,7 @@ mod tests {
             start_key: None,
             clone_of: None,
             trust_cwd: None,
+            agent_work: false,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }

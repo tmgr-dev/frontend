@@ -211,6 +211,15 @@ fn start_moves_a_backlog_task_to_active_and_records_the_runner_not_the_user() {
 }
 
 #[test]
+fn a_repeated_start_of_the_same_session_returns_its_running_run() {
+    let local = Local::new();
+    assert_eq!(local.start(2)["run_id"], 1);
+    assert_eq!(local.start(2)["run_id"], 1);
+    let all: Vec<String> = runs(&local).into_iter().map(|r| r.3).collect();
+    assert_eq!(all, ["running"]);
+}
+
+#[test]
 fn start_leaves_a_task_that_is_not_in_the_backlog_where_it_is() {
     let local = Local::new();
     let out = local.start(2);

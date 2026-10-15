@@ -48,10 +48,31 @@ fn db_error(e: tmgr_local::Error) -> Error {
 fn find_workspace(reference: &str) -> Result<LocalWorkspace> {
     let key = reference.strip_prefix(local::PREFIX).unwrap_or(reference);
     let id = key.parse::<i64>().ok();
-    local::list()?
+    let mut found: Vec<LocalWorkspace> = local::list()?
         .into_iter()
-        .find(|w| w.manifest.code == key || id == Some(w.manifest.id))
-        .ok_or_else(|| Error::usage(format!("{key:?} is not a local workspace")))
+        .filter(|w| match id {
+            Some(id) => w.manifest.id == id,
+            None => w.manifest.code == key,
+        })
+        .collect();
+    match found.len() {
+        1 => Ok(found.remove(0)),
+        0 => Err(Error::usage(format!("{key:?} is not a local workspace"))),
+        _ => Err(Error::usage(format!(
+            "{key:?} names more than one local workspace (a copied folder keeps its id)"
+        ))),
+    }
+}
+
+fn running_run_of_session(s: &Session, task_id: i64, session: &str) -> Result<Option<i64>> {
+    let runs = s.send("GET", &format!("tasks/{task_id}/agent-work"), None)?;
+    Ok(runs["runs"].as_array().and_then(|all| {
+        all.iter()
+            .find(|r| {
+                r["session_id"].as_str() == Some(session) && r["status"].as_str() == Some("running")
+            })
+            .and_then(|r| r["id"].as_i64())
+    }))
 }
 
 struct Session {
@@ -268,6 +289,11 @@ fn handle(request: Request) -> Result<Value> {
                 "session_id": session,
             });
             let s = Session::open(&ws, Some(runner_actor()), true)?;
+            if let Some(sid) = session.as_deref() {
+                if let Some(run_id) = running_run_of_session(&s, task_id, sid)? {
+                    return Ok(json!({ "run_id": run_id }));
+                }
+            }
             let run = s.send("POST", &format!("tasks/{task_id}/agent-work"), Some(&body))?;
             let run_id = id_of(&run)?;
             let mut out = json!({ "run_id": run_id });

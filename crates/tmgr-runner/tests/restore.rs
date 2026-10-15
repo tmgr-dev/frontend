@@ -142,6 +142,7 @@ impl H {
             start_key: None,
             clone_of: None,
             trust_cwd: None,
+            agent_work: false,
         }
     }
 
@@ -522,6 +523,7 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         origin: None,
         permission_mode: None,
         clone_of: None,
+        agent_work: false,
         bypass: false,
         boot: None,
         pids: Vec::new(),

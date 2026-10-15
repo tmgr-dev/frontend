@@ -1,3 +1,4 @@
+use crate::agentwork;
 use crate::bundle;
 use crate::client::Client;
 use crate::clone;
@@ -341,6 +342,11 @@ struct Session {
     sig_acks: Mutex<HashMap<u64, bool>>,
     revoking: AtomicBool,
     retrying: AtomicBool,
+    helper: PathBuf,
+    aw_next: AtomicU64,
+    aw_busy: Arc<AtomicBool>,
+    aw_pending: Mutex<Option<agentwork::Intent>>,
+    halted: AtomicBool,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -687,6 +693,7 @@ impl Session {
         });
         self.worklog.exited(at, e.code, e.signal);
         finish_seeds(&self.dir, &self.id);
+        self.aw_next.store(0, Ordering::SeqCst);
     }
 
     fn on_exit_report(&self, e: &ExitInfo) {
@@ -696,8 +703,110 @@ impl Session {
         self.on_exited(e);
     }
 
-    fn tick(&self) {
+    fn tick(self: &Arc<Self>) {
         self.change(|i, now, out| out.extend(i.det.tick(now)));
+        self.agent_work();
+    }
+
+    fn prepare_agent_work(&self) {
+        let mut pending = lock(&self.aw_pending);
+        let Some(intent) = pending.as_ref() else {
+            return;
+        };
+        match agentwork::begin(
+            &self.dir,
+            intent.task,
+            &intent.agent,
+            intent.model.as_deref(),
+            &self.id,
+        ) {
+            Ok(()) => *pending = None,
+            Err(e) => {
+                self.aw_next
+                    .store(now_ms() + agentwork::retry_ms(), Ordering::SeqCst);
+                log(&format!(
+                    "session {}: agent work not prepared: {e}",
+                    self.id
+                ));
+            }
+        }
+    }
+
+    fn halt(&self) {
+        self.halted.store(true, Ordering::SeqCst);
+        agentwork::mark_halted(&self.dir);
+    }
+
+    fn exit_for_agent_work(&self) -> Option<agentwork::Exit> {
+        let state = self.state();
+        (state.kind == StateKind::Exited).then(|| agentwork::Exit {
+            code: state.exit_code,
+            interrupted: is_interrupted(&state),
+        })
+    }
+
+    fn settle_agent_work(&self) {
+        if !agentwork::wanted(&self.dir) {
+            return;
+        }
+        let deadline = Instant::now() + Duration::from_secs(35);
+        while self.aw_busy.swap(true, Ordering::SeqCst) {
+            if Instant::now() >= deadline {
+                log(&format!(
+                    "session {}: agent work still busy at removal",
+                    self.id
+                ));
+                return;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        if self.halted.load(Ordering::SeqCst) {
+            agentwork::mark_halted(&self.dir);
+        }
+        if let Err(e) = agentwork::step(
+            &self.helper,
+            &self.dir,
+            now_ms(),
+            self.exit_for_agent_work(),
+        ) {
+            log(&format!(
+                "session {}: agent work not finished before removal: {e}",
+                self.id
+            ));
+        }
+    }
+
+    fn agent_work(self: &Arc<Self>) {
+        let now = now_ms();
+        if now < self.aw_next.load(Ordering::SeqCst) {
+            return;
+        }
+        self.prepare_agent_work();
+        if now < self.aw_next.load(Ordering::SeqCst) || !agentwork::wanted(&self.dir) {
+            return;
+        }
+        if self.aw_busy.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        self.aw_next
+            .store(now + agentwork::retry_ms(), Ordering::SeqCst);
+        if self.halted.load(Ordering::SeqCst) {
+            agentwork::mark_halted(&self.dir);
+        }
+        let exit = self.exit_for_agent_work();
+        let s = self.clone();
+        thread::spawn(move || {
+            match agentwork::step(&s.helper, &s.dir, now, exit) {
+                Ok(Some("start")) => {
+                    log(&format!("session {}: agent work run opened", s.id));
+                    s.aw_next.store(0, Ordering::SeqCst);
+                }
+                Ok(Some(done)) => log(&format!("session {}: agent work {done}", s.id)),
+                Ok(None) => {}
+                Err(e) => log(&format!("session {}: agent work not recorded: {e}", s.id)),
+            }
+            s.aw_busy.store(false, Ordering::SeqCst);
+        });
     }
 
     fn interrupt(&self) {
@@ -822,6 +931,7 @@ impl Session {
 
     fn mark_revoking(&self) {
         self.revoking.store(true, Ordering::SeqCst);
+        self.halt();
         if let Err(e) = write_atomic(&self.dir.join(REVOKING_MARK), b"1") {
             log(&format!(
                 "session {} revocation not persisted: {e}",
@@ -1071,6 +1181,35 @@ fn resolve_mode(
     }
 }
 
+fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr> {
+    if req.origin.is_some() {
+        return Err(api(
+            ErrorCode::Forbidden,
+            "agent_work is not accepted for link runs",
+        ));
+    }
+    match req.task {
+        None => return Err(api(ErrorCode::InvalidParams, "agent_work needs a task")),
+        Some(t) if t.workspace_id >= 0 => {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "agent_work: the runner starts tasks of local workspaces only (decision 16a.11); run the task in a local workspace",
+            ))
+        }
+        Some(_) => {}
+    }
+    if mode.is_none() {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            format!(
+                "profile {:?} has no [permission_modes] table; task runs need its ask entry",
+                req.profile
+            ),
+        ));
+    }
+    Ok(())
+}
+
 fn session_id_param(v: &Value) -> Result<String, ApiErr> {
     let id = v
         .get("id")
@@ -1204,6 +1343,7 @@ impl Runner {
                     )
                 })?;
                 let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
+                s.halt();
                 s.shim_msg(&ToShim::Signal { sig, id });
                 restore::forget(&self.intents(), &s.id);
                 Ok(Value::Null)
@@ -1585,6 +1725,9 @@ impl Runner {
         })?;
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         let (mode, perm_args) = resolve_mode(prof, req.permission_mode.as_deref())?;
+        if req.agent_work {
+            check_agent_work(&req, mode.as_deref())?;
+        }
         if let Some(b) = &req.bundle {
             match (b.launch.permission_mode.as_deref(), mode.as_deref()) {
                 (Some(x), Some(y)) if x == y => {}
@@ -1675,6 +1818,7 @@ impl Runner {
             restore_from,
         )?;
         let mut recorded = false;
+        let info_model = req.model.clone();
         if let Some(cwd_pin) = pin {
             let intent = restore::Intent {
                 v: 1,
@@ -1689,6 +1833,7 @@ impl Runner {
                 origin: req.origin,
                 permission_mode: mode,
                 clone_of: req.clone_of,
+                agent_work: req.agent_work,
                 bypass: false,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
@@ -1708,6 +1853,14 @@ impl Runner {
             if let Some(s) = self.session(&info.id) {
                 restore::on_state(&self.intents(), &info.id, &s.state());
             }
+        }
+        if let (true, Some(task), Some(s)) = (req.agent_work, req.task, self.session(&info.id)) {
+            *lock(&s.aw_pending) = Some(agentwork::Intent {
+                task,
+                agent: info.profile.clone().unwrap_or_default(),
+                model: info_model,
+            });
+            s.prepare_agent_work();
         }
         Ok((info, resumed, recorded))
     }
@@ -2088,6 +2241,11 @@ impl Runner {
             sig_acks: Mutex::new(HashMap::new()),
             revoking: AtomicBool::new(false),
             retrying: AtomicBool::new(false),
+            helper: self.cfg.self_exe.clone(),
+            aw_next: AtomicU64::new(0),
+            aw_busy: Arc::new(AtomicBool::new(false)),
+            aw_pending: Mutex::new(None),
+            halted: AtomicBool::new(false),
         })
     }
 
@@ -2098,6 +2256,7 @@ impl Runner {
         if !s.is_exited() {
             return Err(api(ErrorCode::Busy, "only exited sessions can be removed"));
         }
+        s.settle_agent_work();
         s.shim_msg(&ToShim::Reap);
         for line in seedguard::finish(&self.sdir(id)) {
             log(&format!("session {id}: {line}"));
@@ -2647,6 +2806,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
         "TMGR_RUNNER_HOMES",
         "TMGR_T0_QUIET_MS",
         "TMGR_AGENTS_DIR",
+        "TMGR_LOCAL_ROOT",
         "TMGR_RUNNER_WRITE_TIMEOUT_MS",
         "TMGR_TEST_HOLD_BEFORE_SPAWN",
         "TMGR_TEST_SHIM_NO_CWD_ID",

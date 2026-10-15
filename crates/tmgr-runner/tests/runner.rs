@@ -1,6 +1,6 @@
 #![cfg(unix)]
 
-use serde_json::json;
+use serde_json::{json, Value};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -207,6 +207,7 @@ impl Harness {
             start_key: None,
             clone_of: None,
             trust_cwd: None,
+            agent_work: false,
         }
     }
 
@@ -3684,4 +3685,223 @@ fn only_the_cli_may_send_trust_cwd() {
         assert!(e.starts_with("forbidden: "), "{client}: {e}");
     }
     assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+const LOCAL_TASK: TaskRef = TaskRef {
+    workspace_id: -3,
+    task_id: 412,
+};
+
+impl Harness {
+    fn agent_work_log(&mut self) -> PathBuf {
+        let log = self.tmp.path().join("agent-work.log");
+        self.env
+            .push(("TMGR_TEST_AGENT_WORK_LOG".into(), log.display().to_string()));
+        log
+    }
+
+    fn worker(&self, id: &str, body: &str) {
+        let script = self.script(&format!("{id}.sh"), body);
+        fs::write(
+            self.agents.join(format!("{id}.toml")),
+            format!("id = {id:?}\nname = {id:?}\ncommand = [\"/bin/sh\", {script:?}]\n{MODES}"),
+        )
+        .unwrap();
+    }
+
+    fn task_run(&self, profile: &str) -> RunCreateReq {
+        let mut req = self.run_req(profile);
+        req.task = Some(LOCAL_TASK);
+        req.agent_work = true;
+        req
+    }
+}
+
+fn agent_work_calls(log: &Path) -> Vec<Value> {
+    fs::read_to_string(log)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+fn ops(log: &Path) -> Vec<String> {
+    agent_work_calls(log)
+        .iter()
+        .map(|c| c["op"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[test]
+fn a_task_run_opens_its_agent_work_run_and_finishes_it_on_exit() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    h.worker("aw", "while [ ! -f go ]; do sleep 0.1; done\nexit 0\n");
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create_run(h.task_run("aw")).unwrap();
+    wait_for("start call", || ops(&log) == ["start"]);
+    let start = &agent_work_calls(&log)[0];
+    assert_eq!(start["workspace"], "-3");
+    assert_eq!(start["task_id"], 412);
+    assert_eq!(start["agent"], "aw");
+    assert_eq!(start["session_id"], info.id.as_str());
+    fs::write(h.work.join("go"), "").unwrap();
+    wait_for("finish call", || ops(&log) == ["start", "finish"]);
+    let finish = &agent_work_calls(&log)[1];
+    assert_eq!(finish["run_id"], 77);
+    assert_eq!(finish["status"], "succeeded");
+    assert!(finish["summary"]
+        .as_str()
+        .unwrap()
+        .starts_with("Finished by the runner"));
+    thread::sleep(Duration::from_millis(600));
+    assert_eq!(ops(&log), ["start", "finish"]);
+}
+
+#[test]
+fn a_halted_task_run_is_finished_as_cancelled() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    h.worker("aw", "while true; do sleep 0.2; done\n");
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create_run(h.task_run("aw")).unwrap();
+    wait_for("start call", || ops(&log) == ["start"]);
+    h.stop(&mut c, &info.id);
+    wait_for("finish call", || ops(&log) == ["start", "finish"]);
+    assert_eq!(agent_work_calls(&log)[1]["status"], "cancelled");
+}
+
+#[test]
+fn a_replayed_start_key_opens_no_second_agent_work_run() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    h.worker("aw", "while true; do sleep 0.2; done\n");
+    h.start(5000);
+    let mut c = h.client();
+    let mut req = h.task_run("aw");
+    req.start_key = Some("run-3-412-a".into());
+    let first = c.create_run(req.clone()).unwrap();
+    wait_for("start call", || ops(&log) == ["start"]);
+    let again = c.create_run(req).unwrap();
+    assert_eq!(again.id, first.id);
+    thread::sleep(Duration::from_millis(800));
+    assert_eq!(ops(&log), ["start"]);
+    h.stop(&mut c, &first.id);
+}
+
+#[test]
+fn a_task_run_that_ends_while_the_runner_is_down_is_finished_after_the_restart() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    h.worker("aw", "while [ ! -f go ]; do sleep 0.1; done\nexit 3\n");
+    h.start(5000);
+    let info = h.client().create_run(h.task_run("aw")).unwrap();
+    let state = h.run.join("sessions").join(&info.id).join("agentwork.json");
+    wait_for("run id stored", || {
+        fs::read_to_string(&state).is_ok_and(|t| t.contains("\"run_id\":77"))
+    });
+    h.kill_runner();
+    fs::write(h.work.join("go"), "").unwrap();
+    thread::sleep(Duration::from_millis(500));
+    assert_eq!(ops(&log), ["start"]);
+    h.start(5000);
+    wait_for("finish call", || ops(&log) == ["start", "finish"]);
+    let finish = &agent_work_calls(&log)[1];
+    assert_eq!(finish["status"], "failed");
+    assert_eq!(finish["run_id"], 77);
+    assert!(h.client().list().unwrap().iter().any(|s| s.id == info.id));
+}
+
+#[test]
+fn a_failed_start_is_retried_and_nothing_is_lost() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    let fail = log.with_extension("fail");
+    fs::write(&fail, "").unwrap();
+    h.env
+        .push(("TMGR_TEST_AGENT_WORK_RETRY_MS".into(), "300".into()));
+    h.worker("aw", "while [ ! -f go ]; do sleep 0.1; done\nexit 0\n");
+    h.start(5000);
+    let mut c = h.client();
+    c.create_run(h.task_run("aw")).unwrap();
+    thread::sleep(Duration::from_millis(600));
+    assert!(ops(&log).is_empty());
+    fs::remove_file(&fail).unwrap();
+    wait_for("start after retry", || ops(&log) == ["start"]);
+    fs::write(h.work.join("go"), "").unwrap();
+    wait_for("finish call", || ops(&log) == ["start", "finish"]);
+}
+
+#[test]
+fn agent_work_is_refused_for_cloud_tasks_runs_without_a_task_and_profiles_without_modes() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.agent_work_log();
+    h.worker("aw", "while true; do sleep 0.2; done\n");
+    let plain = h.script("plain.sh", "while true; do sleep 0.2; done\n");
+    h.profile("plain", &["/bin/sh", &plain]);
+    h.start(5000);
+    let mut c = h.client();
+    let mut cloud = h.task_run("aw");
+    cloud.task = Some(TaskRef {
+        workspace_id: 56,
+        task_id: 9944,
+    });
+    let e = err_text(c.create_run(cloud));
+    assert!(
+        e.starts_with("invalid_params") && e.contains("16a.11"),
+        "{e}"
+    );
+    let mut none = h.task_run("aw");
+    none.task = None;
+    assert!(err_text(c.create_run(none)).contains("agent_work needs a task"));
+    let e = err_text(c.create_run(h.task_run("plain")));
+    assert!(
+        e.contains("\"plain\"") && e.contains("[permission_modes]"),
+        "{e}"
+    );
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn removing_an_exited_task_run_finishes_its_agent_work_first() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    h.worker("aw", "while [ ! -f go ]; do sleep 0.1; done\nexit 0\n");
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create_run(h.task_run("aw")).unwrap();
+    wait_for("start call", || ops(&log) == ["start"]);
+    let fail = log.with_extension("fail");
+    fs::write(&fail, "").unwrap();
+    fs::write(h.work.join("go"), "").unwrap();
+    wait_state(&mut c, &info.id, 15, |s| s.kind == StateKind::Exited);
+    thread::sleep(Duration::from_millis(600));
+    assert_eq!(ops(&log), ["start"]);
+    fs::remove_file(&fail).unwrap();
+    c.remove(&info.id).unwrap();
+    assert_eq!(ops(&log), ["start", "finish"]);
+    assert_eq!(agent_work_calls(&log)[1]["status"], "succeeded");
 }

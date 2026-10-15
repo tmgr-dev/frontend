@@ -35,6 +35,8 @@ pub struct Intent {
     pub permission_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub clone_of: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub agent_work: bool,
     #[serde(default)]
     pub bypass: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -348,6 +350,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         start_key: None,
         clone_of: i.clone_of.clone(),
         trust_cwd: None,
+        agent_work: i.agent_work,
     }
 }
 
@@ -535,6 +538,7 @@ mod tests {
             origin: None,
             permission_mode: None,
             clone_of: None,
+            agent_work: false,
             bypass: false,
             boot: None,
             pids: Vec::new(),

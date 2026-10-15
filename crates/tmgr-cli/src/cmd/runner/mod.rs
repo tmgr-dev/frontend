@@ -5,6 +5,7 @@ mod ops;
 mod remote;
 mod remote_attach;
 mod restore;
+mod run_task;
 mod service;
 
 use crate::cli::Cli;
@@ -67,8 +68,9 @@ pub struct InstallServiceArgs {
 #[derive(Args)]
 #[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent"])))]
 pub struct RunArgs {
-    /// [experimental] Task of the follower's local workspace, written w<workspace>:<task> (with --on)
-    #[arg(value_name = "REF", requires = "on", hide = true)]
+    /// Task to run, in a local workspace (--ws local:<code>): the agent works in its own clone of the
+    /// project's repository on the task's branch, and the run is recorded as Agent work of the task
+    #[arg(value_name = "REF", conflicts_with = "agent_cmd")]
     pub task: Option<String>,
     /// [experimental] Run on this follower (a pinned link) through its own runner
     #[arg(
@@ -104,8 +106,17 @@ pub struct RunArgs {
     #[arg(long)]
     pub no_attach: bool,
     /// [experimental] Pre-accept the agent's folder-trust prompt for this folder, for this run only
-    #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on"])]
+    #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on", "task"])]
     pub trust: bool,
+    /// Permission mode for a task run (default ask)
+    #[arg(long, value_enum, requires = "task", conflicts_with = "on")]
+    pub mode: Option<PermissionMode>,
+    /// Branch or commit the task's clone starts from (default: the repository's current branch)
+    #[arg(long, value_name = "BASE", requires = "task", conflicts_with = "on")]
+    pub base: Option<String>,
+    /// Start a task run without the confirmation prompt
+    #[arg(long, requires = "task", conflicts_with = "on")]
+    pub yes: bool,
 }
 
 #[derive(Args)]

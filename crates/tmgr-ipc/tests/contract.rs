@@ -213,6 +213,7 @@ fn requests_and_responses() {
         start_key: None,
         clone_of: None,
         trust_cwd: None,
+        agent_work: false,
     };
     golden("run_create_req", &run);
     golden(
@@ -266,6 +267,17 @@ fn requests_and_responses() {
         "run_create_req_trust_cwd",
         &RunCreateReq {
             trust_cwd: Some(true),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_agent_work",
+        &RunCreateReq {
+            cwd: "/work/project-worktrees/tm-412-fix-login".into(),
+            clone_of: Some("/work/project".into()),
+            permission_mode: Some("ask".into()),
+            start_key: Some("run-3-412-1a2b3c4d".into()),
+            agent_work: true,
             ..run.clone()
         },
     );
@@ -719,7 +731,8 @@ fn constants_are_pinned() {
             "run_status.v1",
             "clone_dir.v1",
             "session_text.v1",
-            "trust_cwd.v1"
+            "trust_cwd.v1",
+            "agent_work.v1"
         ]
     );
     let methods = [
@@ -787,7 +800,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 17);
+    assert_eq!(w.caps.len(), 18);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

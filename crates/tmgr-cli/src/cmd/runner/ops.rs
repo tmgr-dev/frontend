@@ -30,9 +30,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::UninstallService => super::service::uninstall(o),
             RunnerCmd::Serve => serve(),
         },
-        RunnerCommands::Run(a) => match &a.on {
-            Some(link) => remote::run(o, link, a),
-            None => run(o, a),
+        RunnerCommands::Run(a) => match (&a.on, &a.task) {
+            (Some(link), _) => remote::run(o, link, a),
+            (None, Some(task)) => super::run_task::run(o, a, task),
+            (None, None) => run(o, a),
         },
         RunnerCommands::Agents(AgentsArgs {
             command: Some(AgentsCmd::Watch),
@@ -160,7 +161,7 @@ fn resolve_exe(name: &str) -> Result<String> {
         .map_err(Error::not_found)
 }
 
-fn terminal_size() -> (u16, u16) {
+pub(super) fn terminal_size() -> (u16, u16) {
     if std::io::stdout().is_terminal() {
         if let Ok(size) = ratatui::crossterm::terminal::size() {
             return size;
@@ -245,6 +246,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             start_key: None,
             clone_of: None,
             trust_cwd: a.trust.then_some(true),
+            agent_work: false,
         }),
     }
     .map_err(rerr)?;
@@ -338,7 +340,7 @@ fn command_line(s: &SessionInfo) -> String {
     tmgr_core::text::sanitize_line(&if more { format!("{cut}…") } else { cut })
 }
 
-fn login_preflight(profile: &str) -> Result<()> {
+pub(super) fn login_preflight(profile: &str) -> Result<()> {
     let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
     let (Some(p), Some(home)) = (set.get(profile), std::env::var_os("HOME")) else {
         return Ok(());
