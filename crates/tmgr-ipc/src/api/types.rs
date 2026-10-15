@@ -86,6 +86,8 @@ pub struct RunCreateReq {
     pub clone_of: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_cwd: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exe_pin: Option<ExePin>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent_work: bool,
 }
@@ -126,6 +128,13 @@ pub struct CandidateInfo {
 pub struct RestoredRun {
     pub session: SessionInfo,
     pub resumed: bool,
+}
+
+/// The agent executable a human approved: canonical path and the SHA-256 of its contents.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExePin {
+    pub path: String,
+    pub sha256: String,
 }
 
 /// Identity (`stat` device and inode) of the folder a human approved.
