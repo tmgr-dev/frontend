@@ -319,7 +319,7 @@ fn check_launch(p: &Profile) -> Result<(), String> {
                 "permission_modes.{mode} is not a mode; use ask, accept-edits or plan"
             ));
         }
-        if args.is_empty() || args.iter().any(|a| a.contains('{')) {
+        if (args.is_empty() && mode != "ask") || args.iter().any(|a| a.contains('{')) {
             return Err(format!(
                 "permission_modes.{mode} must be non-empty and take no placeholders"
             ));
@@ -362,10 +362,19 @@ const BUILTINS: [&str; 6] = [
     include_str!("../profiles/claude-code.toml"),
     include_str!("../profiles/codex.toml"),
     include_str!("../profiles/opencode.toml"),
-    include_str!("../profiles/gemini.toml"),
+    include_str!("../profiles/agy.toml"),
     include_str!("../profiles/cursor-agent.toml"),
     include_str!("../profiles/aider.toml"),
 ];
+
+const REMOVED: [(&str, &str); 1] = [("gemini", "agy")];
+
+pub fn removed(id: &str) -> Option<String> {
+    REMOVED
+        .iter()
+        .find(|(old, _)| *old == id)
+        .map(|(old, new)| format!("agent profile {old} was removed; use {new}"))
+}
 
 pub struct ProfileSet {
     profiles: BTreeMap<String, Profile>,
@@ -397,6 +406,13 @@ impl ProfileSet {
 
     pub fn get(&self, id: &str) -> Option<&Profile> {
         self.profiles.get(id)
+    }
+
+    pub fn lookup(&self, id: &str) -> Result<&Profile, String> {
+        self.get(id).ok_or_else(|| match removed(id) {
+            Some(m) => m,
+            None => format!("unknown agent profile {id:?}"),
+        })
     }
 
     pub fn list(&self) -> Vec<&Profile> {
@@ -567,6 +583,7 @@ impl Matcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use std::fs;
 
     fn write(dir: &Path, name: &str, body: &str) {
@@ -820,9 +837,20 @@ idle = ['^> $']
             args("codex", "ask").unwrap(),
             ["--ask-for-approval", "on-request"]
         );
-        assert_eq!(args("gemini", "plan").unwrap(), ["--approval-mode", "plan"]);
+        assert!(args("agy", "ask").unwrap().is_empty());
+        assert_eq!(
+            args("agy", "accept-edits").unwrap(),
+            ["--mode", "accept-edits"]
+        );
+        assert_eq!(args("agy", "plan").unwrap(), ["--mode", "plan"]);
+        assert_eq!(args("opencode", "ask").unwrap(), ["--agent", "build"]);
+        assert_eq!(
+            args("opencode", "accept-edits").unwrap(),
+            ["--agent", "tmgr-accept-edits"]
+        );
+        assert_eq!(args("opencode", "plan").unwrap(), ["--agent", "plan"]);
         assert!(args("codex", "plan").is_err());
-        for id in ["opencode", "cursor-agent", "aider"] {
+        for id in ["cursor-agent", "aider"] {
             assert!(set.get(id).unwrap().permission_modes.is_none(), "{id}");
         }
         let p = set.get("claude-code").unwrap();
@@ -842,7 +870,7 @@ idle = ['^> $']
         let dir = tempfile::tempdir().unwrap();
         for (i, table) in [
             "plan = []",
-            "ask = []",
+            "accept-edits = []",
             "ask = [\"--m={model}\"]",
             "askk = [\"--a\"]",
         ]
@@ -862,12 +890,122 @@ idle = ['^> $']
     }
 
     #[test]
+    fn an_empty_ask_entry_means_the_agent_asks_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("p.toml"),
+            "id = \"p\"\nname = \"p\"\ncommand = [\"p\"]\n[permission_modes]\nask = []\nplan = [\"--plan\"]\n",
+        )
+        .unwrap();
+        let (set, warnings) = ProfileSet::load(Some(dir.path()));
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let p = set.get("p").unwrap();
+        assert!(p.permission_args("ask").unwrap().is_empty());
+        assert_eq!(
+            p.argv_with(None, p.permission_args("ask").unwrap())
+                .unwrap(),
+            ["p"]
+        );
+    }
+
+    #[test]
+    fn a_removed_profile_points_to_its_replacement() {
+        let (set, _) = ProfileSet::load(None);
+        assert!(set.get("gemini").is_none());
+        let m = set.lookup("gemini").err().unwrap();
+        assert!(
+            m.contains("gemini was removed") && m.contains("use agy"),
+            "{m}"
+        );
+        assert_eq!(
+            set.lookup("nope").err().unwrap(),
+            "unknown agent profile \"nope\""
+        );
+        assert_eq!(set.lookup("agy").unwrap().id, "agy");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("gemini.toml"),
+            "id = \"gemini\"\nname = \"mine\"\ncommand = [\"gemini\"]\n",
+        )
+        .unwrap();
+        let (set, _) = ProfileSet::load(Some(dir.path()));
+        assert_eq!(set.lookup("gemini").unwrap().name, "mine");
+    }
+
+    fn opencode_config() -> serde_json::Value {
+        let (set, _) = ProfileSet::load(None);
+        let p = set.get("opencode").unwrap();
+        assert_eq!(p.env["OPENCODE_DISABLE_PROJECT_CONFIG"], "1");
+        serde_json::from_str(&p.env["OPENCODE_CONFIG_CONTENT"]).unwrap()
+    }
+
+    #[test]
+    fn opencode_modes_ask_before_commands_in_every_agent() {
+        let c = opencode_config();
+        let edit = |agent: &str| c["agent"][agent]["permission"]["edit"].clone();
+        for (agent, want) in [
+            ("build", json!("ask")),
+            ("general", json!("ask")),
+            ("explore", json!("ask")),
+            ("tmgr-accept-edits", json!("allow")),
+        ] {
+            assert_eq!(edit(agent), want, "{agent}");
+        }
+        assert_eq!(edit("plan")["*"], "deny");
+        let quiet = [
+            "grep",
+            "glob",
+            "list",
+            "todowrite",
+            "todoread",
+            "question",
+            "plan_enter",
+        ];
+        let mut rulesets: Vec<(&str, &serde_json::Value)> =
+            ["build", "general", "explore", "tmgr-accept-edits", "plan"]
+                .iter()
+                .map(|a| (*a, &c["agent"][*a]["permission"]))
+                .collect();
+        rulesets.push(("top", &c["permission"]));
+        for (agent, r) in rulesets {
+            let rules = r.as_object().unwrap();
+            assert_eq!(rules.keys().next().unwrap(), "*", "{agent}");
+            assert_eq!(r["*"], "ask", "{agent}");
+            for k in [
+                "bash",
+                "webfetch",
+                "websearch",
+                "codesearch",
+                "task",
+                "external_directory",
+                "skill",
+                "lsp",
+                "doom_loop",
+                "plan_exit",
+            ] {
+                assert_eq!(r[k], "ask", "{k} in {agent}");
+            }
+            for (k, v) in rules {
+                if v == "allow" {
+                    assert!(
+                        quiet.contains(&k.as_str())
+                            || (agent == "tmgr-accept-edits" && k == "edit"),
+                        "{k} allowed in {agent}"
+                    );
+                }
+            }
+            assert_eq!(r["read"]["*.env"], "ask", "{agent}");
+        }
+        assert_eq!(c["permission"]["edit"], "ask");
+    }
+
+    #[test]
     fn claude_code_declares_its_trust_entry() {
         let (set, _) = ProfileSet::load(None);
         let t = set.get("claude-code").unwrap().trust.clone().unwrap();
         assert_eq!(t.file, ".claude.json");
         assert_eq!(t.path, ["projects", "{cwd}", "hasTrustDialogAccepted"]);
-        for id in ["codex", "gemini", "aider", "cursor-agent", "opencode"] {
+        for id in ["codex", "agy", "aider", "cursor-agent", "opencode"] {
             assert!(set.get(id).unwrap().trust.is_none(), "{id}");
         }
     }

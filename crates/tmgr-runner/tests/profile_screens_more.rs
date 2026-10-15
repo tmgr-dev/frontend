@@ -30,33 +30,32 @@ fn literal(id: &str, line: &str) -> bool {
 }
 
 #[test]
-fn gemini_folder_trust_is_blocked() {
-    let line = blocked(
-        "gemini",
-        include_str!("../profiles/screens/gemini-trust.txt"),
-    )
-    .unwrap();
-    assert!(line.contains("Trust folder"), "{line}");
+fn agy_login_choice_is_blocked() {
+    let line = blocked("agy", include_str!("../profiles/screens/agy-login.txt")).unwrap();
+    assert!(
+        line.contains("not signed in") || line.contains("login method"),
+        "{line}"
+    );
 }
 
 #[test]
-fn gemini_auth_choice_is_blocked() {
-    assert!(blocked(
-        "gemini",
-        include_str!("../profiles/screens/gemini-auth.txt")
-    )
-    .is_some());
+fn agy_oauth_code_prompt_is_blocked() {
+    assert!(blocked("agy", include_str!("../profiles/screens/agy-oauth.txt")).is_some());
 }
 
 #[test]
-fn gemini_confirmation_lines_are_blocked() {
+fn agy_confirmation_lines_are_blocked() {
     for line in [
-        "│ ● 1. Allow once",
-        "│   2. Allow for this session",
-        "Waiting for user confirmation...",
+        "Do you want to proceed?",
+        "Allow access to this file?",
+        "Allow creation of this file?",
+        "Allow sandbox bypass for command execution?",
+        "Requesting permission for:",
+        "> Yes, I trust this folder",
     ] {
-        assert!(literal("gemini", line), "{line}");
+        assert!(literal("agy", line), "{line}");
     }
+    assert!(!literal("agy", "Fix the login form validation"));
 }
 
 #[test]
@@ -68,6 +67,31 @@ fn opencode_idle_home_is_not_blocked() {
         ),
         None
     );
+}
+
+fn rows(screen: &str, n: usize) -> Vec<String> {
+    let mut lines: Vec<String> = screen.lines().map(|l| l.trim_end().to_string()).collect();
+    while lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    lines.split_off(lines.len().saturating_sub(n))
+}
+
+#[test]
+fn opencode_session_waiting_for_input_is_idle() {
+    let screen = include_str!("../profiles/screens/opencode-session-idle.txt");
+    let (rule, _) = matcher("opencode").check(&rows(screen, 10)).unwrap();
+    assert!(rule.starts_with("idle"), "{rule}");
+}
+
+#[test]
+fn opencode_recorded_permission_prompts_are_blocked() {
+    for screen in [
+        include_str!("../profiles/screens/opencode-permission.txt"),
+        include_str!("../profiles/screens/opencode-always-allow.txt"),
+    ] {
+        assert!(blocked("opencode", screen).is_some(), "{screen}");
+    }
 }
 
 #[test]
@@ -149,7 +173,7 @@ fn every_builtin_has_a_matcher_and_valid_launch_fields() {
         "claude-code",
         "codex",
         "cursor-agent",
-        "gemini",
+        "agy",
         "opencode",
     ] {
         assert!(ids.contains(&id), "{id} missing from {ids:?}");
@@ -176,9 +200,10 @@ fn resume_argv_matches_each_builtin() {
         argv(&["codex", "resume", "--last", "--no-daemon", "--model", "m1"])
     );
     assert_eq!(resume("opencode", None), argv(&["opencode", "--continue"]));
+    assert!(!set.list().iter().any(|p| p.id == "gemini"));
     assert_eq!(
-        resume("gemini", Some("m1")),
-        argv(&["gemini", "--model", "m1", "--resume", "latest"])
+        resume("agy", Some("m1")),
+        argv(&["agy", "--model", "m1", "--continue"])
     );
     assert_eq!(
         resume("cursor-agent", None),

@@ -15,10 +15,9 @@
                                          █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀
                                          ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀
 
-                                           /update to upgrade to OpenCode 2.0
 
                        ┃
-                       ┃  Ask anything… "Fix a TODO in the codebase"
+                       ┃  Ask anything… "What is the tech stack of this project?"
                        ┃
                        ┃  Build · Big Pickle OpenCode Zen
                        ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
@@ -36,5 +35,4 @@
 
 
 
-  /home/user/project:master                                                                        1.19.0
-
+  /private/tmp/tmgrlive/proj           1.18.35

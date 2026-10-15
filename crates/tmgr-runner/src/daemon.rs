@@ -1803,13 +1803,11 @@ impl Runner {
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = set.get(&req.profile).ok_or_else(|| {
             let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
+            let what = profile::removed(&req.profile)
+                .unwrap_or_else(|| format!("unknown agent profile {:?}", req.profile));
             api(
                 ErrorCode::UnknownProfile,
-                format!(
-                    "unknown agent profile {:?}; known profiles: {}",
-                    req.profile,
-                    known.join(", ")
-                ),
+                format!("{what}; known profiles: {}", known.join(", ")),
             )
         })?;
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
@@ -1988,13 +1986,14 @@ impl Runner {
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-        let prof =
-            match &req.profile {
-                None => None,
-                Some(pid) => Some(set.get(pid).ok_or_else(|| {
-                    api(ErrorCode::UnknownProfile, format!("unknown profile {pid}"))
-                })?),
-            };
+        let prof = match &req.profile {
+            None => None,
+            Some(pid) => Some(set.get(pid).ok_or_else(|| {
+                let what =
+                    profile::removed(pid).unwrap_or_else(|| format!("unknown profile {pid}"));
+                api(ErrorCode::UnknownProfile, what)
+            })?),
+        };
         self.create_with(req, (None, None, None), (prof, &RunExtra::default()), None)
     }
 

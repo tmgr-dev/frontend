@@ -115,19 +115,13 @@ impl ProfileResolver for RunnerProfiles {
     fn argv(&self, profile: &str, model: Option<&str>) -> std::result::Result<Vec<String>, String> {
         let dir = tmgr_runner::profile::user_dir();
         let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
-        launch_argv(
-            set.get(profile)
-                .ok_or_else(|| "unknown agent profile".to_string())?,
-            model,
-        )
+        launch_argv(set.lookup(profile)?, model)
     }
 
     fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String> {
         let dir = tmgr_runner::profile::user_dir();
         let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
-        let p = set
-            .get(profile)
-            .ok_or_else(|| "unknown agent profile".to_string())?;
+        let p = set.lookup(profile)?;
         let argv = launch_argv(p, model)?;
         let profile_sha256 = match &p.source {
             tmgr_runner::profile::Source::User(path) => {
