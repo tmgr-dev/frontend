@@ -208,6 +208,7 @@ impl Harness {
             clone_of: None,
             trust_cwd: None,
             agent_work: false,
+            exe_pin: None,
         }
     }
 

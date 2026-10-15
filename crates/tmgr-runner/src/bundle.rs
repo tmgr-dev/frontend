@@ -580,6 +580,7 @@ mod tests {
             clone_of: None,
             trust_cwd: None,
             agent_work: false,
+            exe_pin: None,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }

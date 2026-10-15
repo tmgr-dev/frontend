@@ -287,6 +287,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             clone_of: Some(p.repo.clone()),
             trust_cwd: None,
             agent_work: true,
+            exe_pin: None,
         })
         .map_err(rerr)?;
     let fetch = import_line(&p.code, reference);

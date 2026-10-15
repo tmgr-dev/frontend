@@ -75,7 +75,7 @@ Both sides must finish within 5 seconds. A refusal is
 
 ```json
 {"type":"hello","proto":1,"client":"desktop","version":"0.3.0","pid":4242,"nonce_c":"0011...eeff"}
-{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1","link_origin.v1","candidates.v1","worklog.v1","runs.restore.v1","permission_mode.v1","start_key.v1","run_status.v1","clone_dir.v1","session_text.v1","trust_cwd.v1","agent_work.v1"]}
+{"type":"welcome","proto":1,"runner_version":"0.3.0","caps":["sessions.v1","attach.v1","runs.create.v1","task_ref.v1","layout.v1","run_bundle.v1","cwd_pin.v1","link_origin.v1","candidates.v1","worklog.v1","runs.restore.v1","permission_mode.v1","start_key.v1","run_status.v1","clone_dir.v1","session_text.v1","trust_cwd.v1","agent_work.v1","exe_pin.v1"]}
 ```
 
 ## 4. Versions and capabilities
@@ -109,6 +109,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
 | `agent_work.v1` | `runs.create` `agent_work` (section 5, "Queue capabilities") |
+| `exe_pin.v1` | `exe_pin` on `runs.create` (section 5, "Pinned executable") |
 
 ## 5. Messages after the handshake
 
@@ -133,7 +134,7 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`, `exe_pin`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
@@ -302,6 +303,16 @@ All four are additive: new optional fields and methods, no change for clients th
 ### Session text
 
 `sessions.text {id, lines?}` (cap `session_text.v1`) returns the session's terminal contents as plain text from the runner's live screen model: `{id, rows, cols, lines, scroll_max}`. `lines` are strings without attributes, trailing spaces trimmed, oldest first; the last entry is the bottom row of the screen, so blank bottom rows are kept as empty strings. `lines` defaults to the screen height (`rows`); a larger value adds scrollback above the screen and is capped by what exists and by about 512 KiB of text (the oldest lines are dropped first), so fewer lines than asked may come back. `lines` outside 1 to 10000 is `invalid_params`, an unknown session `not_found`. Exited sessions answer too, with the screen as it was at exit. The runner never stores the text, and this method is refused for a `worker` client (link-originated runs): `forbidden`. A leader that attaches to a run it started on a follower still sees that run's screen through `attach.open` (section 5, "Link-originated runs").
+
+### Pinned executable
+
+**`exe_pin.v1`.** `runs.create` takes an optional `exe_pin {path, sha256}`: the agent executable a human approved, as the approving side resolved it. `path` must be absolute and `sha256` exactly 64 lowercase hex characters (the whole file), otherwise `invalid_params`. After the profile command line is built, the runner resolves `argv[0]` with its own `PATH` as usual, then, with `exe_pin` present:
+
+1. canonicalizes (realpath) the resolved `argv[0]` and `path`; if they differ, or `argv[0]` cannot be resolved (not found, not executable), the run is `forbidden`;
+2. opens the canonical file once (read-only, close-on-exec), requires a regular file (checked on the opened descriptor) of at most 512 MiB and streams it through SHA-256; anything else, or a different digest, is `forbidden`;
+3. replaces `argv[0]` with the canonical path, so the exec uses exactly the verified path and not a `PATH` lookup (`SessionInfo.argv[0]` shows it).
+
+Error messages never contain file contents. Limit: there is no `fexecve` on every platform (macOS has none), so someone who can already write to the approved file could swap it between the hash and the exec. `exe_pin` is allowed together with `start_key`, `clone_of` and `bundle`, from any client, and is part of the start-key hash. `runs.restore` has no pin: a restored run re-resolves the executable as before.
 
 ### Pre-accepted folder trust
 

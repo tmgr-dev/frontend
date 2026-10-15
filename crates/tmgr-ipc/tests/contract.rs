@@ -214,6 +214,7 @@ fn requests_and_responses() {
         clone_of: None,
         trust_cwd: None,
         agent_work: false,
+        exe_pin: None,
     };
     golden("run_create_req", &run);
     golden(
@@ -267,6 +268,16 @@ fn requests_and_responses() {
         "run_create_req_trust_cwd",
         &RunCreateReq {
             trust_cwd: Some(true),
+            ..run.clone()
+        },
+    );
+    golden(
+        "run_create_req_exe_pin",
+        &RunCreateReq {
+            exe_pin: Some(ExePin {
+                path: "/usr/local/bin/claude".into(),
+                sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".into(),
+            }),
             ..run.clone()
         },
     );
@@ -732,7 +743,8 @@ fn constants_are_pinned() {
             "clone_dir.v1",
             "session_text.v1",
             "trust_cwd.v1",
-            "agent_work.v1"
+            "agent_work.v1",
+            "exe_pin.v1"
         ]
     );
     let methods = [
@@ -800,7 +812,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 18);
+    assert_eq!(w.caps.len(), 19);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

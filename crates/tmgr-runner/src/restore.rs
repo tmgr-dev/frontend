@@ -351,6 +351,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         clone_of: i.clone_of.clone(),
         trust_cwd: None,
         agent_work: i.agent_work,
+        exe_pin: None,
     }
 }
 

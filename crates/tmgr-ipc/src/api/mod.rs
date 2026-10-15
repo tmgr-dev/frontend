@@ -42,8 +42,9 @@ pub mod caps {
     pub const SESSION_TEXT_V1: &str = "session_text.v1";
     pub const TRUST_CWD_V1: &str = "trust_cwd.v1";
     pub const AGENT_WORK_V1: &str = "agent_work.v1";
+    pub const EXE_PIN_V1: &str = "exe_pin.v1";
 
-    pub const ALL: [&str; 18] = [
+    pub const ALL: [&str; 19] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -62,6 +63,7 @@ pub mod caps {
         SESSION_TEXT_V1,
         TRUST_CWD_V1,
         AGENT_WORK_V1,
+        EXE_PIN_V1,
     ];
 }
 
