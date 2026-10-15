@@ -51,6 +51,31 @@ fn opt_name(v: &Option<String>) -> Option<String> {
         .map(|s| clean_name(s, MAX_NAME))
 }
 
+/// `owner/name` with each part kept to `[A-Za-z0-9_.-]`, or `_` when it is not a repository name.
+pub fn clean_repo(raw: &str) -> String {
+    let part = |p: &str, max: usize| {
+        let p: String = p
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .take(max)
+            .collect();
+        (!p.is_empty() && !p.starts_with('.')).then_some(p)
+    };
+    match raw.split_once('/') {
+        Some((owner, name)) if !name.contains('/') => match (part(owner, 64), part(name, 100)) {
+            (Some(o), Some(n)) => format!("{o}/{n}"),
+            _ => "_".into(),
+        },
+        _ => "_".into(),
+    }
+}
+
 fn fact_key(tool: Tool, f: &Fact) -> String {
     format!("{}|{}", tool.as_str(), f.key)
 }
@@ -80,7 +105,10 @@ pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()>
         f.agent_id.clone().unwrap_or_default(),
         ms(f.ts),
         kind.as_str(),
-        clean_name(&f.name, MAX_NAME),
+        match kind {
+            FactKind::Pr => clean_repo(&f.name),
+            _ => clean_name(&f.name, MAX_NAME),
+        },
         opt_name(&f.detail),
         opt_name(&f.target),
         f.duration_ms.map(|d| d as i64),
