@@ -572,7 +572,7 @@ fn detach_returns_and_restores_the_terminal_while_the_runner_is_frozen() {
     unsafe { libc::kill(pid, libc::SIGCONT) };
     assert!(exited, "attach hung on a frozen runner");
     assert!(started.elapsed() < Duration::from_secs(4));
-    assert!(pty.text().contains("detached from"), "{}", pty.text());
+    pty.wait_for("detached from");
 }
 
 #[test]
