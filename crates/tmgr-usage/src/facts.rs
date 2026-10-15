@@ -3,7 +3,7 @@ use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 
 use crate::error::Result;
-use crate::model::{clean_name, project_hash, AgentMeta, Fact, FactEnd, FactKind, Tool};
+use crate::model::{clean_name, opaque_id, project_hash, AgentMeta, Fact, FactEnd, FactKind, Tool};
 use crate::store::{from_ms, ms, Store};
 
 pub const MAX_NAME: usize = 128;
@@ -23,7 +23,6 @@ pub struct StoredFact {
     pub duration_ms: Option<u64>,
     pub value: Option<u64>,
     pub is_error: bool,
-    pub git_branch: Option<String>,
     pub project_hash: Option<String>,
     pub call_id: String,
 }
@@ -103,15 +102,15 @@ pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()>
     conn.prepare_cached(
         "INSERT INTO usage_fact
            (key_hash, tool, account, tool_session_id, agent_id, ts, kind, name, detail, target,
-            duration_ms, value, is_error, git_branch, project_id, call_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+            duration_ms, value, is_error, project_id, call_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
          ON CONFLICT(key_hash) DO UPDATE SET
            ts = excluded.ts, kind = excluded.kind, name = excluded.name,
            detail = excluded.detail, target = excluded.target,
            duration_ms = COALESCE(excluded.duration_ms, duration_ms),
            value = excluded.value,
            is_error = MAX(is_error, excluded.is_error),
-           git_branch = excluded.git_branch, project_id = excluded.project_id,
+           project_id = excluded.project_id,
            call_id = excluded.call_id",
     )?
     .execute(params![
@@ -119,11 +118,12 @@ pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()>
         tool.as_str(),
         f.account,
         f.tool_session_id,
-        f.agent_id.clone().unwrap_or_default(),
+        f.agent_id.as_deref().map(opaque_id).unwrap_or_default(),
         ms(f.ts),
         kind.as_str(),
         match kind {
             FactKind::Pr => clean_repo(&f.name),
+            _ if f.name.is_empty() => String::new(),
             _ => clean_name(&f.name, MAX_NAME),
         },
         opt_name(&f.detail),
@@ -131,10 +131,9 @@ pub(crate) fn upsert_fact(conn: &Connection, tool: Tool, f: &Fact) -> Result<()>
         f.duration_ms.map(|d| d as i64),
         f.value.map(|v| v as i64),
         f.is_error,
-        f.git_branch,
         project_id(conn, f.cwd.as_deref())?,
         (kind == FactKind::ToolCall)
-            .then(|| f.key.rsplit_once('|').map(|(_, id)| id.to_string()))
+            .then(|| f.key.rsplit_once('|').map(|(_, id)| opaque_id(id)))
             .flatten(),
     ])?;
     Ok(())
@@ -181,10 +180,10 @@ pub(crate) fn upsert_agent(conn: &Connection, tool: Tool, a: &AgentMeta) -> Resu
         tool.as_str(),
         a.account,
         a.tool_session_id,
-        a.agent_id.clone().unwrap_or_default(),
+        a.agent_id.as_deref().map(opaque_id).unwrap_or_default(),
         opt_name(&a.agent_type),
-        a.parent_agent_id,
-        a.spawn_tool_use_id,
+        a.parent_agent_id.as_deref().map(opaque_id),
+        a.spawn_tool_use_id.as_deref().map(opaque_id),
         a.spawn_depth,
         opt_name(&a.originator),
         opt_name(&a.source),
@@ -217,7 +216,7 @@ impl Store {
     pub fn facts(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<StoredFact>> {
         let mut stmt = self.conn.prepare(
             "SELECT tool, account, tool_session_id, agent_id, ts, kind, name, detail, target,
-                    f.ended_at, f.duration_ms, f.value, f.is_error, f.git_branch, p.project_hash,
+                    f.ended_at, f.duration_ms, f.value, f.is_error, p.project_hash,
                     f.call_id
              FROM usage_fact f LEFT JOIN usage_fact_project p ON p.id = f.project_id
              WHERE f.ts >= ?1 AND f.ts < ?2 ORDER BY f.ts, f.id",
@@ -240,9 +239,8 @@ impl Store {
                     duration_ms: r.get::<_, Option<i64>>(10)?.map(|v| v.max(0) as u64),
                     value: r.get::<_, Option<i64>>(11)?.map(|v| v.max(0) as u64),
                     is_error: r.get(12)?,
-                    git_branch: r.get(13)?,
-                    project_hash: r.get(14)?,
-                    call_id: r.get::<_, Option<String>>(15)?.unwrap_or_default(),
+                    project_hash: r.get(13)?,
+                    call_id: r.get::<_, Option<String>>(14)?.unwrap_or_default(),
                 },
             ))
         })?;

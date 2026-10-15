@@ -16,7 +16,9 @@ arguments or results, hook commands or output, paths, usernames or URLs.
 
 ## Names
 
-The client sanitizes every name before sending; the server rejects anything else.
+The client checks every name before sending; the server rejects anything else. A generic name that does
+not fit its pattern is sent as `other` rather than rewritten, so no path, email or free text passes in a
+cleaned-up form.
 
 | Field | Allowed |
 |---|---|

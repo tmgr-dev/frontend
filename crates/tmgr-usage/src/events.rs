@@ -3,7 +3,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::error::Result;
 use crate::link::LinkEvent;
-use crate::model::{project_hash, project_name, CostBasis, SessionMeta, Tokens, Tool, UsageEvent};
+use crate::model::{
+    opaque_id, project_hash, project_name, CostBasis, SessionMeta, Tokens, Tool, UsageEvent,
+};
 use crate::store::{from_ms, ms, Store};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +165,7 @@ pub(crate) fn upsert_event(
         })
         .optional()?;
     let cwd = ev.cwd.as_deref();
+    let agent_id = ev.agent_id.as_deref().map(opaque_id);
     let Some(old) = existing else {
         let session_id = ensure_session(
             conn,
@@ -201,7 +204,7 @@ pub(crate) fn upsert_event(
             cwd.map(project_name),
             cwd.map(project_hash),
             ev.is_sidechain,
-            ev.agent_id,
+            agent_id,
         ])?;
         conn.prepare_cached(
             "UPDATE usage_session SET
@@ -226,9 +229,9 @@ pub(crate) fn upsert_event(
     };
     let earlier = ts < old_ts || (ts == old_ts && ev.tool_session_id < old.sid);
     if !better && !earlier {
-        if old.agent_id.is_none() && ev.agent_id.is_some() && ev.tool_session_id == old.sid {
+        if old.agent_id.is_none() && agent_id.is_some() && ev.tool_session_id == old.sid {
             conn.prepare_cached("UPDATE usage_event SET agent_id = ?2 WHERE id = ?1")?
-                .execute(params![id, ev.agent_id])?;
+                .execute(params![id, agent_id])?;
             return Ok(Upsert::Updated);
         }
         return Ok(Upsert::Unchanged);
@@ -276,7 +279,7 @@ pub(crate) fn upsert_event(
                 cwd.map(project_name),
                 cwd.map(project_hash),
                 ev.is_sidechain,
-                ev.agent_id,
+                agent_id,
             ],
         )?;
         refresh_session_range(conn, session_id)?;

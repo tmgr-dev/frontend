@@ -405,7 +405,6 @@ impl State {
             ts,
             kind: Some(kind),
             name,
-            git_branch: self.branch.clone(),
             cwd: self.cwd.clone(),
             ..Default::default()
         }

@@ -196,11 +196,10 @@ pub struct TaskInput<'a> {
 }
 
 pub fn clean_generic(raw: &str) -> String {
-    let s = clean_name(raw, MAX_NAME);
-    if s.is_empty() {
+    if raw.trim().is_empty() {
         "unknown".into()
     } else {
-        s
+        clean_name(raw, MAX_NAME)
     }
 }
 
@@ -274,13 +273,29 @@ pub fn clean_extension(raw: &str) -> String {
 }
 
 /// Facts as link events (no cost, no tokens) so they are attributed to runs by the same rules.
+/// Facts keep no branch; each takes the branch of its session's latest event at or before it.
 pub fn facts_as_events(facts: &[StoredFact], events: &[LinkEvent]) -> Vec<LinkEvent> {
     let mut parents: HashMap<(Tool, &str), &str> = HashMap::new();
+    let mut branches: HashMap<(Tool, &str, &str), Vec<(DateTime<Utc>, &str)>> = HashMap::new();
     for e in events {
         if let Some(p) = e.parent_session_id.as_deref() {
             parents.insert((e.tool, e.tool_session_id.as_str()), p);
         }
+        if let Some(b) = e.git_branch.as_deref() {
+            branches
+                .entry((e.tool, e.account.as_str(), e.tool_session_id.as_str()))
+                .or_default()
+                .push((e.ts, b));
+        }
     }
+    for list in branches.values_mut() {
+        list.sort_by_key(|(ts, _)| *ts);
+    }
+    let branch_at = |f: &StoredFact| {
+        let list = branches.get(&(f.tool, f.account.as_str(), f.tool_session_id.as_str()))?;
+        let i = list.partition_point(|(ts, _)| *ts <= f.ts);
+        list.get(i.saturating_sub(1)).map(|(_, b)| b.to_string())
+    };
     facts
         .iter()
         .enumerate()
@@ -294,7 +309,7 @@ pub fn facts_as_events(facts: &[StoredFact], events: &[LinkEvent]) -> Vec<LinkEv
                 .map(|p| p.to_string()),
             ts: f.ts,
             model: String::new(),
-            git_branch: f.git_branch.clone(),
+            git_branch: branch_at(f),
             project_hash: f.project_hash.clone(),
             cost_usd: None,
             tokens: 0,
@@ -1276,7 +1291,6 @@ mod tests {
                 duration_ms: None,
                 value: None,
                 is_error: false,
-                git_branch: None,
                 project_hash: Some("p1".into()),
                 call_id: String::new(),
             });
@@ -1709,12 +1723,13 @@ mod tests {
 
     #[test]
     fn names_never_carry_paths_emails_or_odd_characters() {
-        assert_eq!(clean_generic("/etc/passwd"), "_etc_passwd");
-        assert_eq!(clean_generic("me@host"), "me_host");
-        assert_eq!(clean_generic("../x"), "__x");
-        assert_eq!(clean_generic("~/x"), "__x");
+        assert_eq!(clean_generic("/etc/passwd"), "other");
+        assert_eq!(clean_generic("me@host"), "other");
+        assert_eq!(clean_generic("../x"), "other");
+        assert_eq!(clean_generic("~/x"), "other");
+        assert_eq!(clean_generic("Claude Code"), "Claude_Code");
         assert_eq!(clean_generic(""), "unknown");
-        assert_eq!(clean_generic(&"a".repeat(300)).len(), 128);
+        assert_eq!(clean_generic(&"a".repeat(300)), "other");
         assert_eq!(clean_model("anthropic/claude-x@1"), "anthropic:claude-x@1");
         assert_eq!(clean_model("a b\\c"), "a_b_c");
         assert_eq!(clean_model("../x"), "_:x");

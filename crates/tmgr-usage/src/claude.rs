@@ -415,7 +415,6 @@ fn handle_line(
         agent_id: agent.clone(),
         ts,
         kind: Some(kind),
-        git_branch: line.git_branch.clone().filter(|b| !b.is_empty()),
         cwd: line.cwd.clone().filter(|c| !c.is_empty()),
         ..Fact::default()
     };
@@ -621,13 +620,19 @@ fn slash_fact(
         return;
     };
     let rest = &text[start..];
-    let mut end = rest.find("</command-name>").unwrap_or(rest.len());
-    end = end.min(MAX_SLASH_BYTES);
-    while !rest.is_char_boundary(end) {
-        end -= 1;
-    }
+    let Some(end) = rest
+        .find("</command-name>")
+        .filter(|e| *e <= MAX_SLASH_BYTES)
+    else {
+        return;
+    };
     let name = rest[..end].trim().trim_start_matches('/');
-    if name.is_empty() {
+    let valid = name.len() <= 64
+        && name.starts_with(|c: char| c.is_ascii_alphanumeric())
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b':' | b'_' | b'-'));
+    if !valid {
         return;
     }
     sink(ParsedRecord::Fact(Fact {
@@ -688,6 +693,10 @@ fn shell_tokens(command: &str) -> Vec<String> {
     out
 }
 
+const SCRIPT_EXTENSIONS: &[&str] = &[
+    "sh", "bash", "zsh", "js", "mjs", "cjs", "ts", "py", "rb", "pl", "ps1", "cmd", "bat",
+];
+
 pub fn hook_script_name(command: &str) -> String {
     const INLINE: &str = "inline";
     for token in shell_tokens(command) {
@@ -704,12 +713,24 @@ pub fn hook_script_name(command: &str) -> String {
             continue;
         }
         let base = token.rsplit(['/', '\\']).next().unwrap_or("");
-        let valid = (1..=64).contains(&base.len())
+        let charset = (1..=64).contains(&base.len())
             && !base.starts_with('.')
             && base
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'));
-        return if valid { base.into() } else { INLINE.into() };
+        let script = base
+            .rsplit_once('.')
+            .is_some_and(|(stem, ext)| !stem.is_empty() && SCRIPT_EXTENSIONS.contains(&ext));
+        let command = base.len() <= 32
+            && !token.contains(['/', '\\'])
+            && base
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+        return if charset && (script || command) {
+            base.into()
+        } else {
+            INLINE.into()
+        };
     }
     INLINE.into()
 }

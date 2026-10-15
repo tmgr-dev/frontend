@@ -214,7 +214,6 @@ fn calls_become_tool_facts_with_normalized_mcp_names() {
     let first = &p.facts[0];
     assert_eq!(first.key, "s1|tool_call|c1");
     assert_eq!(first.cwd.as_deref(), Some("/work/alpha"));
-    assert_eq!(first.git_branch.as_deref(), Some("feat/x"));
     assert!(p.facts.iter().all(|f| f.tool_session_id == "s1"));
 }
 

@@ -181,7 +181,6 @@ pub struct Fact {
     pub duration_ms: Option<u64>,
     pub value: Option<u64>,
     pub is_error: bool,
-    pub git_branch: Option<String>,
     pub cwd: Option<String>,
 }
 
@@ -209,27 +208,23 @@ pub struct AgentMeta {
     pub cwd: Option<String>,
 }
 
-/// Keeps a name to `[A-Za-z0-9._:+-]`, at most `max` characters, never starting with `.` or `~`
-/// and never containing `..`, so a path, an email or free text cannot pass as a name.
+/// A name as the tools write it: `[A-Za-z0-9._:+-]`, spaces read as `_`, at most `max` characters,
+/// not starting with `.` and without `..`. Anything else becomes `other`, so a path, an email or free
+/// text is never kept, not even in a cleaned-up form.
 pub fn clean_name(raw: &str, max: usize) -> String {
-    let mut out: String = raw
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(max)
-        .collect();
-    while out.contains("..") {
-        out = out.replace("..", "_");
+    let name = raw.trim().replace(' ', "_");
+    let valid = !name.is_empty()
+        && name.len() <= max
+        && !name.starts_with('.')
+        && !name.contains("..")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-'));
+    if valid {
+        name
+    } else {
+        "other".into()
     }
-    while out.starts_with('.') {
-        out.replace_range(..1, "_");
-    }
-    out
 }
 
 pub fn project_name(cwd: &str) -> String {
@@ -246,4 +241,18 @@ pub fn project_hash(cwd: &str) -> String {
 
 pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// An id from a log as it is stored: kept when it looks like the opaque ids the tools write,
+/// otherwise replaced by a short hash of itself, so equal ids still match.
+pub fn opaque_id(raw: &str) -> String {
+    let plain = (1..=64).contains(&raw.len())
+        && raw
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'));
+    if plain {
+        raw.to_string()
+    } else {
+        format!("h{}", &hex(&Sha256::digest(raw.as_bytes()))[..16])
+    }
 }

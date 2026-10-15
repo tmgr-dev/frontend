@@ -151,7 +151,6 @@ pub const CONTEXT_MIGRATIONS: &[&str] = &["
         duration_ms INTEGER,
         value INTEGER,
         is_error INTEGER NOT NULL DEFAULT 0,
-        git_branch TEXT,
         project_id INTEGER
     );
     CREATE TABLE usage_fact_project (

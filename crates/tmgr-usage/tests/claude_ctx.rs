@@ -74,6 +74,10 @@ fn hook_script_names() {
         ("", "inline"),
         ("node", "inline"),
         ("FOO=bar", "inline"),
+        ("node /tmp/sk_live_ABC123", "inline"),
+        ("token-goat hook post-read", "token-goat"),
+        ("/opt/bin/token-goat hook", "inline"),
+        ("Secret_Token_42 run", "inline"),
     ] {
         assert_eq!(hook_script_name(cmd), want, "{cmd}");
     }
@@ -97,7 +101,6 @@ fn facts_agents_and_events_are_extracted() {
     assert_eq!(bash.detail.as_deref(), Some("codex"));
     assert_eq!(bash.duration_ms, Some(2000));
     assert!(!bash.is_error);
-    assert_eq!(bash.git_branch.as_deref(), Some("feat"));
     let edit = by_id(&calls, "te1");
     assert!(edit.is_error);
     assert_eq!(edit.duration_ms, Some(3000));
@@ -277,4 +280,56 @@ fn rescans_do_not_duplicate_facts() {
     assert_eq!(store.event_count().unwrap(), 5);
     let calls = facts(&store, FactKind::ToolCall);
     assert_eq!(by_id(&calls, "tb1").duration_ms, Some(2000));
+}
+
+#[test]
+fn only_well_formed_slash_commands_and_ids_are_kept() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("claude");
+    let user = |uuid: &str, text: &str| {
+        serde_json::json!({
+            "type": "user", "sessionId": "s9", "uuid": uuid,
+            "timestamp": "2026-10-01T10:00:00Z", "cwd": "/work/alpha",
+            "message": {"role": "user", "content": text},
+        })
+        .to_string()
+    };
+    let tool = serde_json::json!({
+        "type": "assistant", "sessionId": "s9", "uuid": "u9",
+        "timestamp": "2026-10-01T10:00:01Z", "cwd": "/work/alpha",
+        "message": {"id": "m9", "content": [
+            {"type": "tool_use", "id": "alice@example.com", "name": "Read", "input": {}}
+        ]},
+    })
+    .to_string();
+    write_lines(
+        &projects_file(&home, "s9.jsonl"),
+        &[
+            user("u1", "<command-name>/tm</command-name>"),
+            user("u2", "<command-name>/my token sk_live_ABC</command-name>"),
+            user("u3", "<command-name>/unclosed SECRET-PROMPT"),
+            user("u4", "<command-name>/a/b</command-name>"),
+            tool,
+        ],
+    );
+    let mut store = open_store(tmp.path());
+    scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
+    let slash: Vec<String> = facts(&store, FactKind::Slash)
+        .into_iter()
+        .map(|f| f.name)
+        .collect();
+    assert_eq!(slash, vec!["tm".to_string()]);
+    let calls = facts(&store, FactKind::ToolCall);
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].call_id.starts_with('h') && !calls[0].call_id.contains('@'));
+    drop(store);
+    for entry in std::fs::read_dir(tmp.path()).unwrap() {
+        let p = entry.unwrap().path();
+        if p.is_file() {
+            let bytes = std::fs::read(&p).unwrap();
+            for s in ["sk_live_ABC", "SECRET-PROMPT", "alice@example.com"] {
+                assert!(!bytes.windows(s.len()).any(|w| w == s.as_bytes()), "{s}");
+            }
+        }
+    }
 }

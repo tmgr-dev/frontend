@@ -549,7 +549,7 @@ fn facts_and_agents_are_stored_idempotently_and_deleted_on_reset() {
     assert_eq!(f.duration_ms, Some(1500));
     assert!(f.is_error);
     assert_eq!(f.call_id, "toolu_1");
-    assert_eq!(f.detail.as_deref(), Some("_home_someone_secret_path"));
+    assert_eq!(f.detail.as_deref(), Some("other"));
     assert!(f.project_hash.is_some());
     assert_eq!(store.agents().unwrap().len(), 1);
     store.delete_all().unwrap();
