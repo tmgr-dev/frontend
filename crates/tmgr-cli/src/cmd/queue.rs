@@ -3,13 +3,16 @@ use crate::out::{table, Output};
 use chrono::{Local, Timelike, Utc};
 use clap::{Args, Subcommand};
 use serde_json::{json, Value};
+use std::cell::RefCell;
+use std::time::Duration;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize;
+use tmgr_ipc::api::{RunCreateReq, StateKind};
 use tmgr_link::privileged;
 use tmgr_queue::audit::sha256_hex;
 use tmgr_queue::audit::Audit;
 use tmgr_queue::rules::{self, ProfilePin, ProfileResolver, QueueFile, Rule};
-use tmgr_queue::runs::{self, MockRuns, RunnerRuns, RunsClient};
+use tmgr_queue::runs::{self, Lookup, RunState, RunsClient, StartRequest};
 use tmgr_queue::source::LocalSource;
 use tmgr_queue::state::{self, Status};
 use tmgr_queue::workdir::GitClone;
@@ -581,24 +584,122 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
     ))
 }
 
+struct RunnerRuns {
+    cfg: tmgr_runner::daemon::RunnerConfig,
+    client: RefCell<Option<tmgr_runner::client::Client>>,
+}
+
+fn answered_not_found(e: &std::io::Error) -> bool {
+    e.kind() == std::io::ErrorKind::Other && e.to_string().starts_with("not_found: ")
+}
+
+impl RunnerRuns {
+    fn new() -> Result<RunnerRuns> {
+        Ok(RunnerRuns {
+            cfg: super::runner::runner_config()?,
+            client: RefCell::new(None),
+        })
+    }
+
+    fn ready(&self) -> Result<()> {
+        if self.client.borrow().is_some() {
+            return Ok(());
+        }
+        tmgr_runner::daemon::start_background(&self.cfg).map_err(super::runner::rerr)?;
+        let client = super::runner::connect(&self.cfg)?;
+        client
+            .set_timeouts(Duration::from_secs(30))
+            .map_err(super::runner::rerr)?;
+        if !runs::runner_supports_queue(&client.welcome().caps) {
+            return Err(Error::new(
+                Kind::Conflict,
+                "the running runner is older than this tmgr and cannot start queue runs",
+            )
+            .hint(format!(
+                "{0} runner stop && {0} runner start",
+                super::runner::bin()
+            )));
+        }
+        *self.client.borrow_mut() = Some(client);
+        Ok(())
+    }
+
+    fn with<T>(
+        &self,
+        f: impl FnOnce(&mut tmgr_runner::client::Client) -> std::io::Result<T>,
+    ) -> std::result::Result<T, std::io::Error> {
+        self.ready()
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::NotConnected, e.message))?;
+        let mut slot = self.client.borrow_mut();
+        let client = slot.as_mut().expect("connected");
+        let out = f(client);
+        if out.as_ref().is_err_and(|e| !answered_not_found(e)) {
+            *slot = None;
+        }
+        out
+    }
+}
+
+impl RunsClient for RunnerRuns {
+    fn create(&self, req: &StartRequest) -> Result<String> {
+        self.ready()?;
+        self.with(|c| {
+            c.create_run(RunCreateReq {
+                profile: req.profile.clone(),
+                task: Some(req.task),
+                cwd: req.cwd.clone(),
+                name: Some(req.name.clone()),
+                model: req.model.clone(),
+                cols: 120,
+                rows: 40,
+                bundle: Some(req.bundle.clone()),
+                bundle_sha256: Some(req.bundle_sha256.clone()),
+                cwd_pin: None,
+                origin: None,
+                permission_mode: Some(req.permission_mode.to_string()),
+                start_key: Some(req.start_key.clone()),
+                clone_of: Some(req.clone_of.clone()),
+                trust_cwd: None,
+                agent_work: true,
+            })
+        })
+        .map(|info| info.id)
+        .map_err(super::runner::rerr)
+    }
+
+    fn status(&self, run_id: &str) -> RunState {
+        match self.with(|c| c.run_status(run_id)) {
+            Ok(s) if !s.alive || s.state == StateKind::Exited => RunState::Exited,
+            Ok(_) => RunState::Running,
+            Err(e) if answered_not_found(&e) => RunState::Exited,
+            Err(_) => RunState::Unknown,
+        }
+    }
+
+    fn lookup(&self, start_key: &str) -> Lookup {
+        match self.with(|c| c.lookup(start_key)) {
+            Ok(info) => Lookup::Found(info.id),
+            Err(e) if answered_not_found(&e) => Lookup::NotFound,
+            Err(_) => Lookup::Unsupported,
+        }
+    }
+}
+
 fn run_once(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     not_in_agent_session()?;
     let source = LocalSource {
         local_user_id: ctx.cfg.local_user_id,
     };
-    let mock = MockRuns(paths);
-    let real = RunnerRuns;
-    let client: &dyn RunsClient = if runs::runner_supports_queue() {
-        &real
-    } else {
-        &mock
-    };
+    let client = RunnerRuns::new()?;
+    if tmgr_queue::needs_runner(paths)? {
+        client.ready()?;
+    }
     let now = Local::now();
     let report = tmgr_queue::run_once(
         paths,
         &Deps {
             source: &source,
-            runs: client,
+            runs: &client,
             profiles: &RunnerProfiles,
             workdirs: &GitClone,
             now: Utc::now(),
@@ -620,9 +721,6 @@ fn run_once(ctx: &Ctx, paths: &Paths) -> Result<Output> {
             e["outcome"].as_str().unwrap_or(""),
             e["reason"].as_str().unwrap_or("")
         ));
-    }
-    if report.mock_runs {
-        lines.push("The runner cannot start queue runs yet: runs are recorded as mock runs and no agent was started.".to_string());
     }
     Ok(Output::new(&report, lines.join("\n")))
 }

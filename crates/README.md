@@ -111,16 +111,11 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 
 ## Queue (`tmgr queue`, hidden, `runner` feature)
 
-`tmgr-queue` is the local auto-run queue base. It is off by default and starts no real agent: `run-once` records mock runs until the runner can start queue runs (`runner_supports_queue()` is false).
+`tmgr-queue` is the local auto-run queue. It is off by default. `run-once` starts approved pickups through the runner (`runs.create` with the bundle, `permission_mode = ask`, the start key, `clone_of` and `agent_work`); the CLI implements `RunsClient` over the runner client.
 
 Known limits:
 
 - Owner writes are not journaled by `tmgr-local` yet (`dispatch.rs` journals only requests with an actor, and the owner's client has none), so on real data nothing qualifies as `human` until the local-mode team journals owner task creates and edits. The queue fails closed: such tasks are `unrecorded` and are skipped unless a rule lists `unrecorded` (manual approval only).
-- The per-run `git clone --reference` only protects the owner's checkout from incidental git writes. Filesystem isolation of queue runs is the runner sandbox's job and a precondition before `runner_supports_queue()` may become true.
+- The per-run `git clone --reference` only protects the owner's checkout from incidental git writes. Filesystem isolation of queue runs is the runner sandbox's job (always on).
 
-Required runner capabilities before the real client is enabled:
-
-1. `permission_mode = ask` (prompts on) in `runs.create`; the contract has no such field yet.
-2. Lookup of a run by the start key (`<pickup>-<attempt>`), to reconcile an interrupted start.
-3. Liveness and exit status of a run, so a slot is freed only when the run has exited.
-4. Sandbox confinement of the run to its clone directory.
+A pass that may start or check a run (an approved or live pickup, or an `auto` rule) starts the runner when it is down and needs its caps `run_bundle.v1`, `permission_mode.v1`, `start_key.v1`, `run_status.v1`, `clone_dir.v1` and `agent_work.v1` (`runs::REQUIRED_CAPS`); otherwise the pass stops before any pickup changes. Only a `not_found` answer from the runner frees a slot: a run the runner no longer knows counts as exited, a start key it does not know as never created, and any transport error leaves the pickup as it is.

@@ -37,10 +37,6 @@ impl Paths {
         self.dir.join("queue-audit.anchor")
     }
 
-    pub fn mock_runs(&self) -> PathBuf {
-        self.dir.join("queue-mock-runs.json")
-    }
-
     pub fn lock(&self) -> Result<Lock> {
         lock_file(&self.dir, "queue.lock")
     }

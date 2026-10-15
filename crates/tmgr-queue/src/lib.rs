@@ -7,5 +7,5 @@ pub mod source;
 pub mod state;
 pub mod workdir;
 
-pub use engine::{approve, release, run_once, Deps, PassReport};
+pub use engine::{approve, needs_runner, release, run_once, Deps, PassReport};
 pub use paths::Paths;

@@ -28,7 +28,6 @@ pub struct Deps<'a> {
 pub struct PassReport {
     pub enabled: bool,
     pub paused: bool,
-    pub mock_runs: bool,
     pub events: Vec<Value>,
 }
 
@@ -546,6 +545,8 @@ fn start_phase(
             profile: rule.profile.clone(),
             model: rule.model.clone(),
             cwd,
+            clone_of: rule.repo.clone(),
+            name: format!("{key} rule:{rule_name}").chars().take(64).collect(),
             task: p.task,
             bundle: p.bundle.clone(),
             bundle_sha256: p.bundle_sha256.clone(),
@@ -557,7 +558,7 @@ fn start_phase(
                 state::save(pass.paths, &mut pass.state)?;
                 pass.audit.append(
                     "started",
-                    json!({"pickup": id, "rule": rule_name, "task": key, "run": run_id, "mock": deps.runs.is_mock()}),
+                    json!({"pickup": id, "rule": rule_name, "task": key, "run": run_id}),
                 )?;
                 let p = pass.state.pickups[i].clone();
                 pass.event(&p, "started");
@@ -577,13 +578,29 @@ fn start_phase(
     Ok(())
 }
 
+/// Whether the next pass may talk to the runner: a pickup is approved, starting or running, or an
+/// enabled rule may approve and start one by itself.
+pub fn needs_runner(paths: &Paths) -> Result<bool> {
+    let loaded = rules::load(paths)?;
+    if !loaded.file.enabled {
+        return Ok(false);
+    }
+    let st = state::load(paths)?;
+    let open = st.pickups.iter().any(|p| {
+        matches!(
+            p.status,
+            Status::Approved | Status::Starting | Status::UnknownStart
+        ) || (p.status == Status::Started && !p.run_exited)
+    });
+    Ok(open || (!st.paused && loaded.file.rules.iter().any(|r| r.auto)))
+}
+
 pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
     let _lock = paths.lock()?;
     let audit = Audit::new(paths);
     let loaded = rules::load(paths)?;
     let report = PassReport {
         enabled: loaded.file.enabled,
-        mock_runs: deps.runs.is_mock(),
         ..PassReport::default()
     };
     if !loaded.file.enabled {
@@ -714,6 +731,7 @@ mod tests {
         lookup_mode: Cell<u8>,
         keys: RefCell<Vec<String>>,
         cwds: RefCell<Vec<String>>,
+        requests: RefCell<Vec<StartRequest>>,
     }
 
     impl RunsClient for Runs {
@@ -723,6 +741,7 @@ mod tests {
             }
             self.keys.borrow_mut().push(req.start_key.clone());
             self.cwds.borrow_mut().push(req.cwd.clone());
+            self.requests.borrow_mut().push(req.clone());
             assert_eq!(req.permission_mode, "ask");
             let id = format!("mock-{}", self.created.borrow().len() + 1);
             self.created
@@ -745,10 +764,6 @@ mod tests {
             } else {
                 RunState::Running
             }
-        }
-
-        fn is_mock(&self) -> bool {
-            true
         }
     }
 
@@ -895,6 +910,43 @@ mod tests {
                 .unwrap();
             }
         }
+    }
+
+    #[test]
+    fn the_runner_is_needed_only_for_approved_or_live_pickups_or_auto_rules() {
+        let fx = Fx::new(|_| {});
+        assert!(!needs_runner(&fx.paths).unwrap());
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        assert!(!needs_runner(&fx.paths).unwrap());
+        fx.approve_all();
+        assert!(needs_runner(&fx.paths).unwrap());
+        fx.pass().unwrap();
+        assert!(needs_runner(&fx.paths).unwrap());
+        let mut st = state::load(&fx.paths).unwrap();
+        st.pickups[0].run_exited = true;
+        state::save(&fx.paths, &mut st).unwrap();
+        assert!(!needs_runner(&fx.paths).unwrap());
+
+        let auto = Fx::new(|r| r.auto = true);
+        assert!(needs_runner(&auto.paths).unwrap());
+        let mut st = state::load(&auto.paths).unwrap();
+        st.paused = true;
+        state::save(&auto.paths, &mut st).unwrap();
+        assert!(!needs_runner(&auto.paths).unwrap());
+    }
+
+    #[test]
+    fn a_start_names_the_task_and_clones_from_the_rule_repo() {
+        let fx = Fx::new(|_| {});
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        fx.approve_all();
+        fx.pass().unwrap();
+        let created = fx.runs.requests.borrow();
+        assert_eq!(created[0].name, "TM-1 rule:r1");
+        assert_eq!(created[0].clone_of, fx.repo);
+        assert_eq!(created[0].trigger, "rule:r1");
     }
 
     #[test]

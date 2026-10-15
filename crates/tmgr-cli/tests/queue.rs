@@ -17,6 +17,47 @@ const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
 
 struct Fx {
     tmp: TempDir,
+    homes: TempDir,
+}
+
+fn private_tmp(prefix: &str) -> TempDir {
+    let dir = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempdir_in("/tmp")
+        .unwrap();
+    std::fs::set_permissions(
+        dir.path(),
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
+    )
+    .unwrap();
+    dir
+}
+
+fn sandbox_usable() -> bool {
+    let abi = tmgr_runner::daemon::landlock_abi();
+    if abi >= 6 {
+        return true;
+    }
+    eprintln!("skipped: Landlock ABI {abi} < 6");
+    false
+}
+
+impl Drop for Fx {
+    fn drop(&mut self) {
+        let Ok(mut c) = tmgr_runner::client::Client::connect(&self.runner_dir()) else {
+            return;
+        };
+        let _ = c.set_timeouts(Duration::from_secs(5));
+        if let Ok(list) = c.list() {
+            for s in list
+                .iter()
+                .filter(|s| s.state.kind != tmgr_ipc::api::StateKind::Exited)
+            {
+                let _ = c.kill(&s.id, "kill");
+            }
+        }
+        let _ = c.stop();
+    }
 }
 
 struct Pty {
@@ -73,8 +114,15 @@ impl Pty {
 impl Fx {
     fn new() -> Fx {
         let fx = Fx {
-            tmp: tempfile::tempdir().unwrap(),
+            tmp: private_tmp("qt"),
+            homes: private_tmp("qh"),
         };
+        std::fs::create_dir(fx.runner_dir()).unwrap();
+        std::fs::set_permissions(
+            fx.runner_dir(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
         std::fs::create_dir_all(fx.repo()).unwrap();
         std::fs::write(fx.repo().join("README.md"), "hi\n").unwrap();
         for args in [
@@ -98,7 +146,7 @@ impl Fx {
         std::fs::create_dir_all(&agents).unwrap();
         std::fs::write(
             agents.join("sh-agent.toml"),
-            "id = \"sh-agent\"\nname = \"Shell\"\ncommand = [\"/bin/sh\"]\n",
+            "id = \"sh-agent\"\nname = \"Shell\"\ncommand = [\"/bin/sh\", \"-c\", \"printf '%s\\\\n' \\\"$@\\\" > args.txt\", \"agent\"]\n[permission_modes]\nask = [\"--ask\"]\n",
         )
         .unwrap();
         std::fs::create_dir_all(fx.root().join("personal")).unwrap();
@@ -108,6 +156,38 @@ impl Fx {
 
     fn root(&self) -> PathBuf {
         self.tmp.path().join("tmgr-home/workspaces")
+    }
+
+    fn runner_dir(&self) -> PathBuf {
+        self.tmp.path().join("r")
+    }
+
+    fn agent_work(&self) -> Vec<(String, String)> {
+        let conn = self.db();
+        let mut stmt = conn
+            .prepare("SELECT agent, status FROM agent_work_runs ORDER BY id")
+            .unwrap();
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    fn wait_for_agent_work(&self, want: &[(&str, &str)]) {
+        let want: Vec<(String, String)> = want
+            .iter()
+            .map(|(a, s)| (a.to_string(), s.to_string()))
+            .collect();
+        let end = Instant::now() + Duration::from_secs(30);
+        while self.agent_work() != want {
+            assert!(
+                Instant::now() < end,
+                "agent work: {:?}\nrunner log:\n{}",
+                self.agent_work(),
+                std::fs::read_to_string(self.runner_dir().join("runner.log")).unwrap_or_default()
+            );
+            thread::sleep(Duration::from_millis(100));
+        }
     }
 
     fn repo(&self) -> PathBuf {
@@ -126,7 +206,7 @@ impl Fx {
         let dir = self.root().join("personal");
         std::fs::write(
             dir.join("workspace.json"),
-            json!({"id": 1, "name": "Personal", "code": "personal", "schema_version": 13, "created_at": "2026-10-01T00:00:00Z"}).to_string(),
+            json!({"id": -444_002, "name": "Personal", "code": "personal", "schema_version": 13, "created_at": "2026-10-01T00:00:00Z"}).to_string(),
         )
         .unwrap();
         let golden: Value = serde_json::from_str(
@@ -279,6 +359,9 @@ impl Fx {
             ("TMGR_SERVER", "http://127.0.0.1:9".into()),
             ("TMGR_LOCAL_ROOT", self.root()),
             ("TMGR_AGENTS_DIR", t.join("agents")),
+            ("TMGR_RUNNER_DIR", self.runner_dir()),
+            ("TMGR_RUNNER_HOMES", self.homes.path().to_path_buf()),
+            ("TMGR_T0_QUIET_MS", "300".into()),
             ("NO_COLOR", "1".into()),
             (
                 "PATH",
@@ -577,8 +660,7 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
     assert_eq!(fx.add_rule("r1", &[]).0, 0);
     assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
 
-    let first = fx.json(&["run-once"]);
-    assert_eq!(first["data"]["mock_runs"], true, "{first}");
+    fx.json(&["run-once"]);
     let status = fx.json(&["status"]);
     let pickups = status["data"]["pickups"].as_array().unwrap();
     assert_eq!(pickups.len(), 1, "{status}");
@@ -589,7 +671,8 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
     let sha = pickups[0]["bundle_sha256"].as_str().unwrap().to_string();
 
     fx.run(&["queue", "run-once"]);
-    assert!(!fx.cfg().join("queue-mock-runs.json").exists());
+    assert_eq!(fx.count("started"), 0);
+    assert!(!fx.runner_dir().join("runner.log").exists());
 
     let (code, screen) = fx.confirmed(&["queue", "approve", &id], &sha[..12]);
     assert_eq!(code, 0, "{screen}");
@@ -603,16 +686,30 @@ fn the_whole_flow_proposes_approves_starts_once_and_audits() {
     ] {
         assert!(screen.contains(needle), "{needle}: {screen}");
     }
+    if !sandbox_usable() {
+        return;
+    }
+    let started = fx.json(&["run-once"]);
+    assert_eq!(
+        started["data"]["events"][0]["outcome"], "started",
+        "{started}"
+    );
+    fx.wait_for_agent_work(&[("plugin:runner/sh-agent", "succeeded")]);
+    let clone = std::fs::canonicalize(fx.tmp.path())
+        .unwrap()
+        .join("repo-worktrees/queue")
+        .join(&id);
+    assert_eq!(
+        std::fs::read_to_string(clone.join("args.txt")).unwrap(),
+        "--ask\n"
+    );
+    assert!(clone.join(".tmgr/task.md").is_file());
     fx.run(&["queue", "run-once"]);
-    fx.run(&["queue", "run-once"]);
-    let mock: Value = serde_json::from_str(
-        &std::fs::read_to_string(fx.cfg().join("queue-mock-runs.json")).unwrap(),
-    )
-    .unwrap();
-    assert_eq!(mock.as_array().unwrap().len(), 1);
-    assert_eq!(mock[0]["id"], "mock-1");
+    assert_eq!(fx.count("run_exited"), 1);
+    let mut c = tmgr_runner::client::Client::connect(&fx.runner_dir()).unwrap();
+    let names: Vec<String> = c.list().unwrap().into_iter().map(|s| s.name).collect();
+    assert_eq!(names, ["WK-1 rule:r1"]);
     let status = fx.json(&["status"]);
-    assert_eq!(status["data"]["pickups"][0]["status"], "started");
     assert_eq!(status["data"]["audit"]["ok"], true);
     assert_eq!(fx.count("approved"), 1);
     assert_eq!(fx.count("started"), 1);
@@ -716,7 +813,7 @@ fn changing_the_task_after_the_prompt_is_shown_voids_the_approval() {
     p.line(&sha[..12]);
     assert_eq!(p.exit(), 6, "{}", p.text());
     fx.run(&["queue", "run-once"]);
-    assert!(!fx.cfg().join("queue-mock-runs.json").exists());
+    assert_eq!(fx.count("started"), 0);
     assert_eq!(
         fx.json(&["status"])["data"]["pickups"][0]["status"],
         "pending_approval"
@@ -742,7 +839,7 @@ fn a_hand_edited_rules_file_stops_the_queue() {
         Some(5)
     );
     assert_eq!(fx.count("config_tampered"), 1);
-    assert!(!fx.cfg().join("queue-mock-runs.json").exists());
+    assert_eq!(fx.count("started"), 0);
     assert_eq!(fx.json(&["disable"])["data"]["enabled"], false);
 }
 
@@ -789,6 +886,9 @@ fn the_queue_runs_in_a_clone_not_in_the_repository() {
         .unwrap()
         .to_string();
     assert_eq!(fx.confirmed(&["queue", "approve", &id], &sha[..12]).0, 0);
+    if !sandbox_usable() {
+        return;
+    }
     fx.run(&["queue", "run-once"]);
     let clone = fx.tmp.path().join("repo-worktrees/queue").join(&id);
     assert!(clone.join("README.md").is_file());
@@ -827,4 +927,32 @@ fn a_damaged_audit_log_stops_the_queue_until_enable_rebaselines_it() {
     assert_eq!(status["data"]["audit"]["ok"], true);
     assert_eq!(status["data"]["tampered"], false);
     assert_eq!(fx.run(&["queue", "run-once"]).status.code(), Some(0));
+}
+
+#[test]
+fn an_approved_pickup_waits_while_the_runner_cannot_be_reached() {
+    let fx = Fx::new();
+    fx.task(1, "Write the report", "v1");
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.run(&["queue", "run-once"]);
+    let status = fx.json(&["status"]);
+    let id = status["data"]["pickups"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let sha = status["data"]["pickups"][0]["bundle_sha256"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(fx.confirmed(&["queue", "approve", &id], &sha[..12]).0, 0);
+    std::fs::remove_dir(fx.runner_dir()).unwrap();
+    std::fs::write(fx.runner_dir(), "not a directory").unwrap();
+    let out = fx.run(&["queue", "run-once"]);
+    assert!(!out.status.success(), "{}", text(&out.stdout));
+    assert_eq!(
+        fx.json(&["status"])["data"]["pickups"][0]["status"],
+        "approved"
+    );
+    assert_eq!(fx.count("started") + fx.count("start_failed"), 0);
 }
