@@ -563,6 +563,18 @@ fn start_phase(
                 let p = pass.state.pickups[i].clone();
                 pass.event(&p, "started");
             }
+            Err(e) if e.kind == Kind::Offline => {
+                pass.set(
+                    i,
+                    Status::UnknownStart,
+                    Some("the runner did not confirm the start; the slot is kept until the run is found or released".into()),
+                );
+                state::save(pass.paths, &mut pass.state)?;
+                pass.audit.append(
+                    "start_unconfirmed",
+                    json!({"pickup": id, "rule": rule_name, "error": e.message}),
+                )?;
+            }
             Err(e) => {
                 pass.set(i, Status::Failed, Some(e.message.clone()));
                 state::save(pass.paths, &mut pass.state)?;
@@ -732,12 +744,16 @@ mod tests {
         keys: RefCell<Vec<String>>,
         cwds: RefCell<Vec<String>>,
         requests: RefCell<Vec<StartRequest>>,
+        lost: Cell<bool>,
     }
 
     impl RunsClient for Runs {
         fn create(&self, req: &StartRequest) -> Result<String> {
             if self.fail.get() {
                 return Err(Error::internal("runner said no"));
+            }
+            if self.lost.get() {
+                return Err(Error::new(Kind::Offline, "lost the connection"));
             }
             self.keys.borrow_mut().push(req.start_key.clone());
             self.cwds.borrow_mut().push(req.cwd.clone());
@@ -947,6 +963,35 @@ mod tests {
         assert_eq!(created[0].name, "TM-1 rule:r1");
         assert_eq!(created[0].clone_of, fx.repo);
         assert_eq!(created[0].trigger, "rule:r1");
+    }
+
+    #[test]
+    fn an_unconfirmed_start_keeps_its_slot_until_the_key_is_looked_up() {
+        let fx = Fx::new(|_| {});
+        fx.source
+            .0
+            .replace(vec![cand(1, "do it"), cand(2, "and this")]);
+        fx.pass().unwrap();
+        fx.approve_all();
+        fx.runs.lost.set(true);
+        fx.pass().unwrap();
+        let p = fx.pickups();
+        assert_eq!(
+            p.iter()
+                .filter(|p| p.status == Status::UnknownStart)
+                .count(),
+            1
+        );
+        assert_eq!(p.iter().filter(|p| p.status == Status::Approved).count(), 1);
+        assert_eq!(fx.audit_events("start_unconfirmed"), 1);
+        fx.runs.lost.set(false);
+        fx.pass().unwrap();
+        assert!(fx.runs.created.borrow().is_empty());
+        fx.runs.lookup_mode.set(2);
+        fx.pass().unwrap();
+        let p = fx.pickups();
+        assert_eq!(p.iter().filter(|p| p.status == Status::Started).count(), 1);
+        assert!(fx.runs.created.borrow().is_empty());
     }
 
     #[test]

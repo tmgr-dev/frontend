@@ -104,13 +104,22 @@ pub struct RuleArgs {
 
 pub struct RunnerProfiles;
 
+fn launch_argv(
+    p: &tmgr_runner::profile::Profile,
+    model: Option<&str>,
+) -> std::result::Result<Vec<String>, String> {
+    p.argv_with(model, p.permission_args(runs::PERMISSION_MODE)?)
+}
+
 impl ProfileResolver for RunnerProfiles {
     fn argv(&self, profile: &str, model: Option<&str>) -> std::result::Result<Vec<String>, String> {
         let dir = tmgr_runner::profile::user_dir();
         let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
-        set.get(profile)
-            .ok_or_else(|| "unknown agent profile".to_string())?
-            .argv(model)
+        launch_argv(
+            set.get(profile)
+                .ok_or_else(|| "unknown agent profile".to_string())?,
+            model,
+        )
     }
 
     fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String> {
@@ -119,7 +128,7 @@ impl ProfileResolver for RunnerProfiles {
         let p = set
             .get(profile)
             .ok_or_else(|| "unknown agent profile".to_string())?;
-        let argv = p.argv(model)?;
+        let argv = launch_argv(p, model)?;
         let profile_sha256 = match &p.source {
             tmgr_runner::profile::Source::User(path) => {
                 rules::file_sha256(path).map_err(|e| e.to_string())?
@@ -589,6 +598,26 @@ struct RunnerRuns {
     client: RefCell<Option<tmgr_runner::client::Client>>,
 }
 
+fn runner_refused(e: &std::io::Error) -> bool {
+    let text = e.to_string();
+    e.kind() == std::io::ErrorKind::Other
+        && [
+            "invalid_params: ",
+            "unknown_profile: ",
+            "forbidden: ",
+            "sandbox: ",
+            "busy: ",
+            "limit: ",
+            "not_found: ",
+            "not_running: ",
+            "unauthorized: ",
+            "unknown_method: ",
+            "proto_mismatch: ",
+        ]
+        .iter()
+        .any(|code| text.starts_with(code))
+}
+
 fn answered_not_found(e: &std::io::Error) -> bool {
     e.kind() == std::io::ErrorKind::Other && e.to_string().starts_with("not_found: ")
 }
@@ -664,7 +693,16 @@ impl RunsClient for RunnerRuns {
             })
         })
         .map(|info| info.id)
-        .map_err(super::runner::rerr)
+        .map_err(|e| {
+            if runner_refused(&e) {
+                super::runner::rerr(e)
+            } else {
+                Error::new(
+                    Kind::Offline,
+                    format!("the runner did not confirm the start: {e}"),
+                )
+            }
+        })
     }
 
     fn status(&self, run_id: &str) -> RunState {

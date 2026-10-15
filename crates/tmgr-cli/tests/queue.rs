@@ -608,29 +608,48 @@ fn cloud_workspaces_and_bypass_profiles_are_refused() {
     assert_eq!(p.exit(), 5, "{}", p.text());
     let agents = fx.tmp.path().join("agents");
     std::fs::create_dir_all(&agents).unwrap();
-    std::fs::write(
-        agents.join("risky.toml"),
-        "id = \"risky\"\nname = \"Risky\"\ncommand = [\"claude\"]\nargs = [\"--dangerously-skip-permissions\"]\n",
-    )
-    .unwrap();
-    let mut p = fx.pty(
-        &[
-            "queue",
-            "rules",
-            "add",
+    for (id, body, why) in [
+        (
             "risky",
-            "--workspace",
-            "local:personal",
-            "--persona",
-            "builder",
-            "--profile",
-            "risky",
-            "--repo",
-            repo.to_str().unwrap(),
-        ],
-        &[],
-    );
-    assert_eq!(p.exit(), 5, "{}", p.text());
+            "command = [\"claude\"]\nargs = [\"--dangerously-skip-permissions\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+            "without permission prompts",
+        ),
+        (
+            "sneaky",
+            "command = [\"/bin/sh\"]\n[permission_modes]\nask = [\"--dangerously-skip-permissions\"]\n",
+            "without permission prompts",
+        ),
+        (
+            "plain",
+            "command = [\"/bin/sh\"]\n",
+            "cannot be checked",
+        ),
+    ] {
+        std::fs::write(
+            agents.join(format!("{id}.toml")),
+            format!("id = \"{id}\"\nname = \"{id}\"\n{body}"),
+        )
+        .unwrap();
+        let mut p = fx.pty(
+            &[
+                "queue",
+                "rules",
+                "add",
+                id,
+                "--workspace",
+                "local:personal",
+                "--persona",
+                "builder",
+                "--profile",
+                id,
+                "--repo",
+                repo.to_str().unwrap(),
+            ],
+            &[],
+        );
+        assert_eq!(p.exit(), 5, "{id}: {}", p.text());
+        assert!(p.text().contains(why), "{id}: {}", p.text());
+    }
     assert!(!fx.cfg().join("queue.toml").exists());
 }
 
