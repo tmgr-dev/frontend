@@ -2,7 +2,7 @@ use crate::agentwork;
 use crate::bundle;
 use crate::client::Client;
 use crate::clone;
-use crate::exe::resolve_exe;
+use crate::exe::{resolve_exe, verify_pin};
 use crate::login;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
@@ -1788,10 +1788,44 @@ impl Runner {
             return Err(api(ErrorCode::InvalidParams, "profile has no command"));
         }
         let path = std::env::var_os("PATH").unwrap_or_default();
-        argv[0] = resolve_exe(&argv[0], &path, None)
-            .map_err(|e| api(ErrorCode::InvalidParams, e))?
-            .display()
-            .to_string();
+        let pin_fields = req
+            .exe_pin
+            .as_ref()
+            .map(|p| {
+                if !Path::new(&p.path).is_absolute() {
+                    return Err(api(
+                        ErrorCode::InvalidParams,
+                        "exe_pin.path must be absolute",
+                    ));
+                }
+                if p.sha256.len() != 64
+                    || !p
+                        .sha256
+                        .bytes()
+                        .all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f'))
+                {
+                    return Err(api(
+                        ErrorCode::InvalidParams,
+                        "exe_pin.sha256 must be 64 lowercase hex characters",
+                    ));
+                }
+                Ok(p)
+            })
+            .transpose()?;
+        let resolved = resolve_exe(&argv[0], &path, None);
+        argv[0] = match pin_fields {
+            None => resolved
+                .map_err(|e| api(ErrorCode::InvalidParams, e))?
+                .display()
+                .to_string(),
+            Some(p) => {
+                let exe = resolved.map_err(|e| api(ErrorCode::Forbidden, e))?;
+                verify_pin(&exe, &p.path, &p.sha256)
+                    .map_err(|e| api(ErrorCode::Forbidden, e))?
+                    .display()
+                    .to_string()
+            }
+        };
         let pin = dir.map(|d| {
             let (dev, ino) = d.id();
             CwdPin { dev, ino }

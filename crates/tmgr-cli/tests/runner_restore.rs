@@ -88,7 +88,6 @@ impl Env {
                 permission_mode: None,
                 clone_of: None,
                 agent_work: false,
-                exe_pin: None,
                 bypass: false,
                 boot: None,
                 pids: Vec::new(),

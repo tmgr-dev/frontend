@@ -1,4 +1,8 @@
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
+use std::fmt::Write as _;
+use std::fs::File;
+use std::io::Read;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -30,6 +34,51 @@ pub fn resolve_exe(name: &str, path: &OsStr, base: Option<&Path>) -> Result<Path
             .find(|p| executable(p))
     };
     found.ok_or_else(missing)
+}
+
+const PIN_MAX: u64 = 512 << 20;
+
+/// Checks that `resolved` is the pinned executable and returns the canonical path to exec.
+pub fn verify_pin(resolved: &Path, pin_path: &str, pin_sha256: &str) -> Result<PathBuf, String> {
+    let differs = || "the agent executable differs from the approved one".to_string();
+    let canonical = resolved.canonicalize().map_err(|_| differs())?;
+    if canonical != Path::new(pin_path).canonicalize().map_err(|_| differs())? {
+        return Err(differs());
+    }
+    let file =
+        File::open(&canonical).map_err(|_| "the agent executable cannot be read".to_string())?;
+    let meta = file.metadata().map_err(|_| differs())?;
+    if !meta.is_file() || meta.len() > PIN_MAX {
+        return Err("the agent executable is not a regular file within the size limit".into());
+    }
+    if hash(file)? != pin_sha256 {
+        return Err("the agent executable does not match the approved digest".into());
+    }
+    Ok(canonical)
+}
+
+fn hash(file: File) -> Result<String, String> {
+    let mut sha = Sha256::new();
+    let mut buf = vec![0u8; 64 << 10];
+    let mut total = 0u64;
+    let mut src = file.take(PIN_MAX + 1);
+    loop {
+        let n = src
+            .read(&mut buf)
+            .map_err(|_| "the agent executable cannot be read".to_string())?;
+        if n == 0 {
+            break;
+        }
+        total += n as u64;
+        sha.update(&buf[..n]);
+    }
+    if total > PIN_MAX {
+        return Err("the agent executable is not a regular file within the size limit".into());
+    }
+    Ok(sha.finalize().iter().fold(String::new(), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    }))
 }
 
 #[cfg(test)]

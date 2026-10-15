@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     caps, method, AuthorKind, BundleAuthor, BundleComment, BundleLaunch, BundlePage, BundlePersona,
-    CreateReq, CwdPin, Origin, OriginRevokeParams, OriginRevoked, RunBundle, RunCreateReq,
+    CreateReq, CwdPin, ExePin, Origin, OriginRevokeParams, OriginRevoked, RunBundle, RunCreateReq,
     SessionInfo, State, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::ServerMsg;
@@ -3905,4 +3905,145 @@ fn removing_an_exited_task_run_finishes_its_agent_work_first() {
     c.remove(&info.id).unwrap();
     assert_eq!(ops(&log), ["start", "finish"]);
     assert_eq!(agent_work_calls(&log)[1]["status"], "succeeded");
+}
+
+struct PinFx {
+    h: Harness,
+    agent: PathBuf,
+    sha: String,
+}
+
+fn pin_fx() -> PinFx {
+    let mut h = Harness::new();
+    let dir = h.tmp.path().join("bin");
+    fs::create_dir_all(&dir).unwrap();
+    let body = "#!/bin/sh\necho ready\nwhile true; do sleep 0.2; done\n";
+    let agent = dir.join("agent");
+    fs::write(&agent, body).unwrap();
+    fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
+    h.profile("pinned", &[agent.to_str().unwrap()]);
+    h.start(5000);
+    let agent = agent.canonicalize().unwrap();
+    PinFx {
+        h,
+        agent,
+        sha: tmgr_ipc::api::sha256_hex(body.as_bytes()),
+    }
+}
+
+fn pinned(fx: &PinFx, path: &str, sha: &str) -> RunCreateReq {
+    let mut r = fx.h.run_req("pinned");
+    r.exe_pin = Some(ExePin {
+        path: path.into(),
+        sha256: sha.into(),
+    });
+    r
+}
+
+#[test]
+fn a_matching_exe_pin_starts_the_run_with_the_canonical_path() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let want = fx.agent.display().to_string();
+    let info =
+        fx.h.client()
+            .create_run(pinned(&fx, &want, &fx.sha))
+            .unwrap();
+    assert_eq!(info.argv, [want]);
+}
+
+#[test]
+fn an_exe_pin_through_a_symlink_is_accepted_and_resolved() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let link = fx.h.tmp.path().join("link");
+    std::os::unix::fs::symlink(&fx.agent, &link).unwrap();
+    fx.h.profile("linked", &[link.to_str().unwrap()]);
+    let mut req = pinned(&fx, &fx.agent.display().to_string(), &fx.sha);
+    req.profile = "linked".into();
+    let info = fx.h.client().create_run(req).unwrap();
+    assert_eq!(info.argv, [fx.agent.display().to_string()]);
+}
+
+#[test]
+fn an_exe_pin_with_another_digest_or_path_is_forbidden() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let mut c = fx.h.client();
+    let want = fx.agent.display().to_string();
+    let e = err_text(c.create_run(pinned(&fx, &want, &"0".repeat(64))));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    let copy = fx.h.tmp.path().join("copy");
+    fs::copy(&fx.agent, &copy).unwrap();
+    let e = err_text(c.create_run(pinned(
+        &fx,
+        &copy.canonicalize().unwrap().display().to_string(),
+        &fx.sha,
+    )));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    let dir = fx.agent.parent().unwrap().display().to_string();
+    fx.h.profile("dirpin", &[&dir]);
+    let mut as_dir = pinned(&fx, &dir, &fx.sha);
+    as_dir.profile = "dirpin".into();
+    let e = err_text(c.create_run(as_dir));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn an_exe_pin_with_an_unresolvable_command_is_forbidden() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    fx.h.profile("ghost", &["tmgr-no-such-agent-binary"]);
+    let mut req = pinned(&fx, &fx.agent.display().to_string(), &fx.sha);
+    req.profile = "ghost".into();
+    let e = err_text(fx.h.client().create_run(req));
+    assert!(e.starts_with("forbidden: "), "{e}");
+}
+
+#[test]
+fn a_malformed_exe_pin_is_invalid_params() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let mut c = fx.h.client();
+    let want = fx.agent.display().to_string();
+    for (path, sha) in [
+        ("agent", fx.sha.clone()),
+        (want.as_str(), fx.sha.to_uppercase()),
+        (want.as_str(), fx.sha[..63].to_string()),
+        (want.as_str(), format!("{}g", &fx.sha[..63])),
+    ] {
+        let e = err_text(c.create_run(pinned(&fx, path, &sha)));
+        assert!(e.starts_with("invalid_params: "), "{path} {sha}: {e}");
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn an_exe_pin_works_with_a_start_key() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let mut c = fx.h.client();
+    let want = fx.agent.display().to_string();
+    let mut req = pinned(&fx, &want, &fx.sha);
+    req.start_key = Some("q_pin-1".into());
+    let first = c.create_run(req.clone()).unwrap();
+    assert_eq!(c.create_run(req).unwrap().id, first.id);
+    let mut other = pinned(&fx, &want, &"1".repeat(64));
+    other.start_key = Some("q_pin-1".into());
+    let e = err_text(c.create_run(other));
+    assert!(e.starts_with("busy: "), "{e}");
+    assert_eq!(c.list().unwrap().len(), 1);
 }
