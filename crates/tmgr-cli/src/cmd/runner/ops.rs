@@ -1,6 +1,7 @@
 use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
 use super::{
-    remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RmArgs, RunnerCommands, SendArgs,
+    observe, remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RmArgs, RunnerCommands,
+    SendArgs,
 };
 use crate::out::table;
 use serde_json::json;
@@ -33,6 +34,10 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             Some(link) => remote::run(o, link, a),
             None => run(o, a),
         },
+        RunnerCommands::Agents(AgentsArgs {
+            command: Some(AgentsCmd::Watch),
+            ..
+        }) => observe::watch(o),
         RunnerCommands::Agents(AgentsArgs {
             command: Some(AgentsCmd::Login { profile, replace }),
             ..
@@ -77,7 +82,11 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             Some(link) => remote::attach(link, a),
             None => attach_cmd(a),
         },
-        RunnerCommands::Send(a) => send(o, a),
+        RunnerCommands::Send(a) => match a.wait {
+            Some(w) => observe::send_wait(o, a, w),
+            None => send(o, a),
+        },
+        RunnerCommands::Peek(a) => observe::peek(o, a),
         RunnerCommands::Halt(a) => match &a.on {
             Some(link) => remote::halt(o, link, a),
             None => halt(o, a),
@@ -673,7 +682,7 @@ fn attach_cmd(a: &AttachArgs) -> Result<i32> {
     attach::run(&cfg, &target.id)
 }
 
-fn with_session(key: &str) -> Result<(Client, SessionInfo)> {
+pub(super) fn with_session(key: &str) -> Result<(Client, SessionInfo)> {
     let cfg = runner_config()?;
     let mut c = connect(&cfg)?;
     let sessions = c.list().map_err(rerr)?;

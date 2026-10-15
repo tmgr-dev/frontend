@@ -975,3 +975,249 @@ fn agents_log_shows_time_branch_and_commits() {
         Some(3)
     );
 }
+
+const LINE_AGENT: &str = "echo READY\nwhile read l; do echo \"got:$l\"; done\n";
+
+fn json_of(out: &Output) -> Value {
+    serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)))
+}
+
+fn lines_of(v: &Value) -> Vec<String> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l.as_str().unwrap().to_string())
+        .collect()
+}
+
+fn wait_screen(env: &Env, id: &str, needle: &str) {
+    let end = Instant::now() + Duration::from_secs(15);
+    while !String::from_utf8_lossy(&env.tmgr(&["peek", id]).stdout).contains(needle) {
+        assert!(Instant::now() < end, "{needle} never appeared");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn wait_session_state(env: &Env, id: &str, want: &str) {
+    let end = Instant::now() + Duration::from_secs(15);
+    loop {
+        let list = env.sessions();
+        let s = list.iter().find(|s| s["id"] == id).unwrap();
+        if s["state"]["kind"] == want {
+            return;
+        }
+        assert!(Instant::now() < end, "never reached {want}");
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn watch_streams_one_json_object_per_state_change() {
+    let env = Env::new();
+    let script = env.script("watch-agent.sh", "echo READY\nsleep 1\necho MORE\nread l\n");
+    if !sandbox_usable() {
+        return;
+    }
+    assert!(env.tmgr(&["runner", "start"]).status.success());
+    let mut json = env
+        .cmd(&["agents", "watch", "--json"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut human = env
+        .cmd(&["agents", "watch"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    thread::sleep(Duration::from_millis(500));
+    let id = env.start(&script, "watched").unwrap();
+
+    let read = |child: &mut std::process::Child, want: &str| -> Vec<String> {
+        let stdout = child.stdout.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            use std::io::BufRead;
+            for line in std::io::BufReader::new(stdout)
+                .lines()
+                .map_while(|l| l.ok())
+            {
+                if tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let mut got = Vec::new();
+        let end = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < end {
+            if let Ok(line) = rx.recv_timeout(Duration::from_millis(100)) {
+                got.push(line);
+                if got.last().unwrap().contains(want) {
+                    break;
+                }
+            }
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        got
+    };
+
+    let got = read(&mut json, "\"waiting\"");
+    let mine: Vec<Value> = got
+        .iter()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap_or_else(|e| panic!("{e}: {l}")))
+        .filter(|v| v["session"] == id.as_str())
+        .collect();
+    assert!(!mine.is_empty(), "{got:?}");
+    for v in &mine {
+        let kind = v["state"]["kind"].as_str().unwrap();
+        assert!(["starting", "working", "waiting"].contains(&kind), "{v}");
+        assert!(v["state"]["since_ms"].is_u64(), "{v}");
+        assert!(v.get("ok").is_none() && v.get("schema").is_none(), "{v}");
+    }
+    assert_eq!(mine.last().unwrap()["state"]["kind"], "waiting");
+
+    let got = read(&mut human, "waiting");
+    let line = got
+        .iter()
+        .find(|l| l.contains(&id))
+        .expect("a line for the session");
+    assert!(line.contains("watched"), "{line}");
+    assert!(
+        line.contains("working") || line.contains("starting") || line.contains("waiting"),
+        "{line}"
+    );
+    assert!(!line.starts_with('{'), "{line}");
+}
+
+#[test]
+fn peek_prints_the_screen_and_the_last_lines() {
+    let env = Env::new();
+    let script = env.script(
+        "peek-agent.sh",
+        "i=1\nwhile [ $i -le 40 ]; do echo \"row$i\"; i=$((i+1)); done\nsleep 30\n",
+    );
+    let Some(id) = env.start(&script, "peeked") else {
+        return;
+    };
+    let end = Instant::now() + Duration::from_secs(10);
+    let screen = loop {
+        let out = env.tmgr(&["peek", &id]);
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        if text.contains("row40") || Instant::now() > end {
+            break text;
+        }
+        thread::sleep(Duration::from_millis(100));
+    };
+    assert!(screen.trim_end().ends_with("row40"), "{screen}");
+    assert!(!screen.contains("row1\n"), "{screen}");
+
+    let last = env.tmgr(&["peek", &id, "--lines", "3"]);
+    assert_eq!(
+        String::from_utf8_lossy(&last.stdout),
+        "row38\nrow39\nrow40\n"
+    );
+    let deep = env.tmgr(&["peek", &id, "--lines", "100"]);
+    let text = String::from_utf8_lossy(&deep.stdout).into_owned();
+    assert!(text.starts_with("row1\n"), "{text}");
+    assert_eq!(text.lines().count(), 40);
+
+    let js = json_of(&env.tmgr(&["peek", &id, "--lines", "2", "--json"]));
+    assert_eq!(js["ok"], true);
+    assert_eq!(lines_of(&js["data"]["lines"]), ["row39", "row40"]);
+    assert_eq!(js["data"]["session"], id.as_str());
+    assert!(js["data"]["rows"].is_u64() && js["data"]["cols"].is_u64());
+
+    assert_eq!(env.tmgr(&["peek", "nope"]).status.code(), Some(3));
+    assert_eq!(
+        env.tmgr(&["peek", &id, "--lines", "0"]).status.code(),
+        Some(2)
+    );
+}
+
+#[test]
+fn send_wait_idle_prints_only_the_new_output() {
+    let env = Env::new();
+    let script = env.script("line-agent.sh", LINE_AGENT);
+    let Some(id) = env.start(&script, "liner") else {
+        return;
+    };
+    wait_screen(&env, &id, "READY");
+    wait_session_state(&env, &id, "waiting");
+
+    let out = env.tmgr(&["send", &id, "hello", "--wait", "idle", "--json"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v = json_of(&out);
+    assert_eq!(v["data"]["session"], id.as_str());
+    assert_eq!(v["data"]["state"]["kind"], "waiting");
+    let lines = lines_of(&v["data"]["output"]);
+    assert!(lines.contains(&"got:hello".to_string()), "{lines:?} {v}");
+    assert!(!lines.contains(&"READY".to_string()), "{lines:?}");
+
+    let human = env.tmgr(&["send", &id, "again", "--wait", "idle", "--timeout", "30s"]);
+    assert!(human.status.success());
+    let text = String::from_utf8_lossy(&human.stdout).into_owned();
+    assert!(text.lines().any(|l| l == "got:again"), "{text}");
+    assert!(!text.contains("got:hello"), "{text}");
+}
+
+#[test]
+fn send_wait_exit_waits_for_the_session_to_end() {
+    let env = Env::new();
+    let script = env.script(
+        "bye-agent.sh",
+        "echo READY\nread l\nsleep 1\necho \"bye:$l\"\n",
+    );
+    let Some(id) = env.start(&script, "byer") else {
+        return;
+    };
+    wait_screen(&env, &id, "READY");
+    wait_session_state(&env, &id, "waiting");
+    let out = env.tmgr(&["send", &id, "x", "--wait", "exit", "--json"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v = json_of(&out);
+    assert_eq!(v["data"]["state"]["kind"], "exited");
+    assert_eq!(v["data"]["state"]["exit_code"], 0);
+    assert!(
+        lines_of(&v["data"]["output"]).contains(&"bye:x".to_string()),
+        "{v}"
+    );
+}
+
+#[test]
+fn send_wait_times_out_with_a_conflict_error() {
+    let env = Env::new();
+    let script = env.script("loop-agent.sh", "echo READY\nwhile read l; do :; done\n");
+    let Some(id) = env.start(&script, "looper") else {
+        return;
+    };
+    wait_screen(&env, &id, "READY");
+    wait_session_state(&env, &id, "waiting");
+    let out = env.tmgr(&["send", &id, "x", "--wait", "exit", "--timeout", "1s"]);
+    assert_eq!(out.status.code(), Some(6));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("timed out"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        env.tmgr(&["send", &id, "x", "--wait", "idle", "--timeout", "soon"])
+            .status
+            .code(),
+        Some(2)
+    );
+    assert_eq!(
+        env.tmgr(&["send", &id, "x", "--timeout", "5s"])
+            .status
+            .code(),
+        Some(2)
+    );
+}

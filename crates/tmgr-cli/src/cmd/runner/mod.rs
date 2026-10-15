@@ -1,5 +1,6 @@
 mod attach;
 mod local;
+mod observe;
 mod ops;
 mod remote;
 mod remote_attach;
@@ -11,6 +12,7 @@ use crate::out::{self, Style};
 use clap::{ArgGroup, Args, Subcommand, ValueEnum};
 use std::io;
 use std::path::PathBuf;
+use std::time::Duration;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::Envelope;
 use tmgr_runner::client::Client;
@@ -29,8 +31,10 @@ pub enum RunnerCommands {
     Agents(AgentsArgs),
     /// [experimental] Open the live full-screen view of sessions
     Attach(AttachArgs),
-    /// [experimental] Type a line of text into a session
+    /// [experimental] Type a line of text into a session, optionally waiting for the agent to answer
     Send(SendArgs),
+    /// [experimental] Print what a session shows right now as plain text
+    Peek(PeekArgs),
     /// [experimental] Ask a session to stop (interrupt, then terminate)
     Halt(HaltArgs),
     /// [experimental] Delete a session that has already exited
@@ -136,6 +140,8 @@ pub enum AgentsCmd {
         #[arg(long, value_name = "on|off")]
         auto: Option<AutoMode>,
     },
+    /// [experimental] Follow state changes of all sessions until Ctrl-C (--json: one JSON object per line)
+    Watch,
     /// [experimental] Show what the runner recorded of a session: time, branch, commits
     Log {
         /// Session id or name
@@ -212,6 +218,34 @@ pub struct SendArgs {
     /// Do not press Enter after the text
     #[arg(long)]
     pub no_enter: bool,
+    /// Wait for the agent, then print what the screen gained: `idle` ends when the agent is waiting or blocked again (exit code 8 when blocked), `exit` when the session exits.
+    /// The new output is a line diff of the session's plain text before the send and after the wait; TUIs redraw, so repainted lines can show up as new
+    #[arg(long, value_name = "idle|exit")]
+    pub wait: Option<WaitFor>,
+    /// Longest time to wait (30s, 10m, 1h)
+    #[arg(long, value_name = "DURATION", default_value = "10m", value_parser = parse_timeout, requires = "wait")]
+    pub timeout: Duration,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+pub enum WaitFor {
+    Idle,
+    Exit,
+}
+
+fn parse_timeout(raw: &str) -> std::result::Result<Duration, String> {
+    tmgr_core::notify::parse_duration_seconds(raw)
+        .map(Duration::from_secs)
+        .ok_or_else(|| format!("{raw:?} is not a duration like 30s, 10m or 1h"))
+}
+
+#[derive(Args)]
+pub struct PeekArgs {
+    /// Session id or name
+    pub session: String,
+    /// Show the last N lines including scrollback (default: the current screen); blank rows at the bottom are not shown
+    #[arg(long, value_name = "N", value_parser = clap::value_parser!(u32).range(1..=10000))]
+    pub lines: Option<u32>,
 }
 
 #[derive(Args)]
@@ -300,6 +334,10 @@ pub fn rerr(e: io::Error) -> Error {
         return Error::new(Kind::Offline, "lost the connection to the runner");
     }
     let msg = e.to_string();
+    if msg.starts_with("unknown_method: ") {
+        return Error::new(Kind::Conflict, "the running runner is older than this tmgr")
+            .hint("tmgr runner stop && tmgr runner start");
+    }
     let Some((code, text)) = msg.split_once(": ") else {
         return Error::internal(msg);
     };
