@@ -81,7 +81,7 @@ jobs:
           TMGR_BUILD_COMMIT: ${{ github.sha }}
         run: |
           umask 002
-          cargo test --workspace --locked ${TARGET:+--target "$TARGET"}
+          cargo test --workspace --locked --no-fail-fast ${TARGET:+--target "$TARGET"}
 
       - name: test runner feature
         env:
