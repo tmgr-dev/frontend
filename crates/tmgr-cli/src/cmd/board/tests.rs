@@ -594,7 +594,6 @@ fn no_reach() -> super::Reach {
         cloud: None,
         local_root: None,
         local_user_id: None,
-        state: None,
     }
 }
 
@@ -1055,13 +1054,10 @@ fn the_worker_switches_between_local_workspaces_and_lists_them() {
     let dir = tempfile::tempdir().unwrap();
     let (workspace, user) = super::data::local_fixture(dir.path());
     super::data::local_fixture_as(dir.path(), "second", 2);
-    let state = dir.path().join("state").join("board-filters.json");
-    std::fs::create_dir_all(state.parent().unwrap()).unwrap();
     let reach = super::Reach {
         cloud: None,
         local_root: Some(dir.path().to_path_buf()),
         local_user_id: None,
-        state: Some(state.clone()),
     };
     let ws_id = workspace.manifest.id;
     let (eff_tx, eff_rx) = std::sync::mpsc::channel();
@@ -1099,24 +1095,11 @@ fn the_worker_switches_between_local_workspaces_and_lists_them() {
         msg_rx.recv_timeout(wait).unwrap(),
         Msg::MoveDone(1, Ok(()))
     ));
-    eff_tx
-        .send(Effect::Save {
-            ws: "local:second".into(),
-            filters: Filters {
-                assignee: Assignee::Me,
-                ..Filters::default()
-            },
-        })
-        .unwrap();
     eff_tx.send(Effect::Refresh).unwrap();
     let Msg::Loaded(Ok(snap)) = msg_rx.recv_timeout(wait).unwrap() else {
         panic!("expected a refresh");
     };
     assert_eq!(snap.tasks[0].title, "second card");
-    assert_eq!(
-        filters::load(&state).workspaces["local:second"].assignee,
-        Assignee::Me
-    );
     eff_tx
         .send(Effect::Open {
             ws: Ws {
@@ -1137,4 +1120,52 @@ fn the_worker_switches_between_local_workspaces_and_lists_them() {
         panic!("the old workspace must keep working");
     };
     assert_eq!(snap.tasks[0].title, "second card");
+}
+
+#[test]
+fn an_unreadable_state_file_is_left_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = filters::path(dir.path());
+    std::fs::create_dir(&file).unwrap();
+    assert!(!filters::save(
+        &file,
+        "web",
+        &Filters {
+            assignee: Assignee::Me,
+            ..Filters::default()
+        }
+    ));
+    assert!(file.is_dir());
+}
+
+#[test]
+fn a_failed_switch_drops_the_pending_optimistic_state_and_refreshes() {
+    let mut app = app();
+    press(&mut app, "L");
+    app.update(ch('w'));
+    app.update(Msg::Workspaces(Ok(two_ws())));
+    press(&mut app, "j");
+    app.update(key(KeyCode::Enter));
+    app.update(Msg::MoveDone(101, Err(fail(Kind::Forbidden))));
+    let after = app.update(Msg::Opened(Box::new(Err(fail(Kind::Offline)))));
+    assert_eq!(after, vec![Effect::Refresh]);
+    app.update(Msg::Loaded(Ok(snapshot())));
+    assert_eq!(titles(&app, 0), ["TM-101", "TM-102"].map(String::from));
+}
+
+#[test]
+fn a_project_change_keeps_the_search_text() {
+    let mut app = app();
+    app.update(ch('/'));
+    press(&mut app, "login");
+    app.update(key(KeyCode::Enter));
+    app.update(ch('p'));
+    press(&mut app, "j");
+    app.update(key(KeyCode::Enter));
+    app.update(Msg::Opened(Box::new(Ok(opened(
+        Some("WEB"),
+        "Website relaunch",
+        "web",
+    )))));
+    assert_eq!(app.filters.search, "login");
 }

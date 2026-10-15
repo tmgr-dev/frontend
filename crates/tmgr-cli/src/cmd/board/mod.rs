@@ -80,7 +80,6 @@ struct Reach {
     cloud: Option<CloudConn>,
     local_root: Option<PathBuf>,
     local_user_id: Option<i64>,
-    state: Option<PathBuf>,
 }
 
 impl Reach {
@@ -214,7 +213,6 @@ pub fn run(ctx: &Ctx, args: &BoardArgs) -> Result<Output> {
         cloud,
         local_root: tmgr_core::local::root().ok(),
         local_user_id: ctx.cfg.local_user_id,
-        state: Some(state),
     };
     let level = ColorLevel::from_env(
         ctx.style.is_off(),
@@ -222,7 +220,15 @@ pub fn run(ctx: &Ctx, args: &BoardArgs) -> Result<Output> {
         &std::env::var("TERM").unwrap_or_default(),
     );
     let theme = Theme::new(level, args.ascii);
-    event_loop(app, &theme, conn, reach, opened.ws.id, opened.category)?;
+    event_loop(
+        app,
+        &theme,
+        conn,
+        reach,
+        Some(state),
+        opened.ws.id,
+        opened.category,
+    )?;
     Ok(Output::new(json!({}), ""))
 }
 
@@ -327,12 +333,7 @@ fn spawn_worker(
                             .map_err(|e| Failure::new(e.kind, &e.message)),
                     )
                 }
-                Effect::Save { ws, filters: f } => {
-                    if let Some(file) = &reach.state {
-                        filters::save(file, &ws, &f);
-                    }
-                    continue;
-                }
+                Effect::Save { .. } => continue,
                 effect => match &client {
                     Ok(c) => data::exec(c, ws_id, category, effect),
                     Err(e) => failed(effect, Failure::new(e.kind, &e.message)),
@@ -363,6 +364,7 @@ fn event_loop(
     theme: &Theme,
     conn: Conn,
     reach: Reach,
+    state: Option<PathBuf>,
     ws_id: i64,
     category: Option<u64>,
 ) -> Result<()> {
@@ -372,10 +374,19 @@ fn event_loop(
     let guard = TerminalGuard::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
     let width = terminal.size()?.width;
+    let mut saved_failed = false;
     let mut pending = app.update(Msg::Resize(width));
     pending.extend(app.update(Msg::Tick(chrono::Utc::now().timestamp())));
     while !app.quit {
         for effect in pending.drain(..) {
+            if let Effect::Save { ws, filters: f } = &effect {
+                if let Some(file) = &state {
+                    if !filters::save(file, ws, f) {
+                        saved_failed = true;
+                    }
+                }
+                continue;
+            }
             if eff_tx.send(effect).is_err() {
                 app.fatal = Some(Failure::new(
                     tmgr_core::error::Kind::Internal,
@@ -404,7 +415,17 @@ fn event_loop(
         while let Ok(m) = msg_rx.try_recv() {
             pending.extend(app.update(m));
         }
+        if std::mem::take(&mut saved_failed) {
+            pending.extend(app.update(Msg::SaveFailed));
+        }
         pending.extend(app.update(Msg::Tick(chrono::Utc::now().timestamp())));
+    }
+    if let Some(file) = &state {
+        for effect in pending.drain(..) {
+            if let Effect::Save { ws, filters: f } = effect {
+                filters::save(file, &ws, &f);
+            }
+        }
     }
     drop(terminal);
     drop(guard);

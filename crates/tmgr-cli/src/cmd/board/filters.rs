@@ -73,7 +73,7 @@ pub fn load(file: &Path) -> Saved {
         .unwrap_or_default()
 }
 
-pub fn save(file: &Path, code: &str, filters: &Filters) {
+pub fn save(file: &Path, code: &str, filters: &Filters) -> bool {
     let mut filters = filters.clone();
     filters.search.clear();
     let mut saved = match std::fs::read_to_string(file) {
@@ -81,14 +81,15 @@ pub fn save(file: &Path, code: &str, filters: &Filters) {
             let _ = std::fs::rename(file, file.with_extension("json.bad"));
             Saved::default()
         }),
-        Err(_) => Saved::default(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Saved::default(),
+        Err(_) => return false,
     };
     if filters == Filters::default() {
         saved.workspaces.remove(&key(code));
     } else {
         saved.workspaces.insert(key(code), filters);
     }
-    if let Ok(bytes) = serde_json::to_vec_pretty(&saved) {
-        let _ = config::write_atomic(file, &bytes, 0o600);
-    }
+    serde_json::to_vec_pretty(&saved)
+        .map(|bytes| config::write_atomic(file, &bytes, 0o600).is_ok())
+        .unwrap_or(false)
 }

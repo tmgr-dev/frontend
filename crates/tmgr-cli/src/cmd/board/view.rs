@@ -145,7 +145,7 @@ fn header_line(app: &App, theme: &Theme, area: Rect, hits: &mut Hits) -> Line<'s
     let mut left: Vec<Seg> = Vec::new();
     let f = &app.filters;
     let value_style = |active: bool| if active { theme.accent() } else { Style::new() };
-    if area.width < WIDE_MIN {
+    let narrow = |left: &mut Vec<Seg>| {
         let n = f.active();
         let label = match n {
             0 => "no filters".to_string(),
@@ -162,7 +162,10 @@ fn header_line(app: &App, theme: &Theme, area: Rect, hits: &mut Hits) -> Line<'s
             if n > 0 { theme.accent() } else { theme.muted() },
             Some(Chip::Menu),
         ));
-    } else {
+    };
+    let mut wide: Vec<Seg> = Vec::new();
+    if area.width >= WIDE_MIN {
+        let left = &mut wide;
         left.push(seg(
             format!("[{} {down}]", fit(&app.ws.name, 22, ell)),
             theme.key(),
@@ -203,6 +206,12 @@ fn header_line(app: &App, theme: &Theme, area: Rect, hits: &mut Hits) -> Line<'s
                 Some(Chip::Search),
             ));
         }
+    }
+    let wide_w: usize = wide.iter().map(|s| s.text.width()).sum();
+    if wide.is_empty() || wide_w + 14 > width {
+        narrow(&mut left);
+    } else {
+        left = wide;
     }
     let sep = theme.sep();
     let mut right = Vec::new();

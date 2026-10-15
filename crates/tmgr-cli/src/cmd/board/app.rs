@@ -223,6 +223,7 @@ pub enum Msg {
     CommentDone(u64, Result<(), Failure>),
     Opened(Box<Result<Opened, Failure>>),
     Workspaces(Result<Vec<Ws>, Failure>),
+    SaveFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -561,6 +562,10 @@ impl App {
             Msg::Key(key) => self.on_key(key),
             Msg::Opened(result) => self.on_opened(*result),
             Msg::Workspaces(result) => self.on_workspaces(result),
+            Msg::SaveFailed => {
+                self.notify("could not remember the filters", true);
+                Vec::new()
+            }
             Msg::Loaded(_)
             | Msg::Detail(..)
             | Msg::MoveDone(..)
@@ -1049,18 +1054,20 @@ impl App {
                 if f.kind == Kind::Offline {
                     self.offline = true;
                 }
+                self.pending_status.clear();
+                self.pending_timer.clear();
+                self.origin.clear();
                 self.notify(
                     format!("could not open {}: {}", switch.ws.name, f.message),
                     true,
                 );
-                return Vec::new();
+                return self.refresh_effects();
             }
         };
         self.offline = false;
         self.ws = opened.ws;
         self.filters = Filters {
             project: opened.project,
-            search: String::new(),
             ..switch.filters
         };
         self.projects = opened.projects;
