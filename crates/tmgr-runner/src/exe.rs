@@ -2,8 +2,9 @@ use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
 use std::fmt::Write as _;
 use std::fs::File;
+use std::fs::Metadata;
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 fn executable(p: &Path) -> bool {
@@ -45,19 +46,33 @@ pub fn verify_pin(resolved: &Path, pin_path: &str, pin_sha256: &str) -> Result<P
     if canonical != Path::new(pin_path).canonicalize().map_err(|_| differs())? {
         return Err(differs());
     }
-    let file =
-        File::open(&canonical).map_err(|_| "the agent executable cannot be read".to_string())?;
-    let meta = file.metadata().map_err(|_| differs())?;
-    if !meta.is_file() || meta.len() > PIN_MAX {
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&canonical)
+        .map_err(|_| "the agent executable cannot be read".to_string())?;
+    let before = file.metadata().map_err(|_| differs())?;
+    if !before.is_file() || before.len() > PIN_MAX {
         return Err("the agent executable is not a regular file within the size limit".into());
     }
-    if hash(file)? != pin_sha256 {
+    let digest = hash(&file)?;
+    let after = file.metadata().map_err(|_| differs())?;
+    let on_disk = std::fs::symlink_metadata(&canonical).map_err(|_| differs())?;
+    if digest != pin_sha256 {
         return Err("the agent executable does not match the approved digest".into());
+    }
+    if !same_file(&before, &after) || !same_file(&after, &on_disk) {
+        return Err("the agent executable changed while it was checked".into());
     }
     Ok(canonical)
 }
 
-fn hash(file: File) -> Result<String, String> {
+fn same_file(a: &Metadata, b: &Metadata) -> bool {
+    (a.dev(), a.ino(), a.len(), a.mtime(), a.mtime_nsec())
+        == (b.dev(), b.ino(), b.len(), b.mtime(), b.mtime_nsec())
+}
+
+fn hash(file: &File) -> Result<String, String> {
     let mut sha = Sha256::new();
     let mut buf = vec![0u8; 64 << 10];
     let mut total = 0u64;
@@ -141,5 +156,30 @@ mod tests {
         let found = resolve_exe("agent", OsStr::new(&mixed), Some(t.path())).unwrap();
         assert_eq!(found, exe);
         assert!(found.is_absolute());
+    }
+
+    #[test]
+    fn a_pin_needs_the_same_file_digest_and_a_non_link_path() {
+        let t = tempfile::tempdir().unwrap();
+        let exe = script(t.path(), "agent", 0o755).canonicalize().unwrap();
+        let sha = tmgr_ipc::api::sha256_hex(b"#!/bin/sh\n");
+        let p = exe.display().to_string();
+        assert_eq!(verify_pin(&exe, &p, &sha).unwrap(), exe);
+        assert!(verify_pin(&exe, &p, &"0".repeat(64)).is_err());
+        let link = t.path().join("link");
+        std::os::unix::fs::symlink(&exe, &link).unwrap();
+        assert_eq!(verify_pin(&link, &p, &sha).unwrap(), exe);
+    }
+
+    #[test]
+    fn a_rewritten_file_is_not_the_same_file() {
+        let t = tempfile::tempdir().unwrap();
+        let exe = script(t.path(), "agent", 0o755);
+        let before = std::fs::metadata(&exe).unwrap();
+        assert!(same_file(&before, &std::fs::metadata(&exe).unwrap()));
+        let f = std::fs::OpenOptions::new().write(true).open(&exe).unwrap();
+        f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+            .unwrap();
+        assert!(!same_file(&before, &std::fs::metadata(&exe).unwrap()));
     }
 }
