@@ -199,15 +199,15 @@ pub fn run(ctx: &Ctx, args: &BoardArgs) -> Result<Output> {
             workspace: local.workspace().clone(),
             user: local.user().clone(),
         },
-        None => match ctx.server() {
-            Ok(server) => Conn::Cloud(CloudConn {
+        None => {
+            let server = ctx.server()?;
+            Conn::Cloud(CloudConn {
                 account: config::account_for(&server, DEFAULT_PROFILE),
                 server,
                 dir: ctx.dir.clone(),
                 preferred: ctx.cfg.credential_store.as_deref().and_then(Backend::parse),
-            }),
-            Err(e) => return Err(e),
-        },
+            })
+        }
     };
     let reach = Reach {
         cloud,
