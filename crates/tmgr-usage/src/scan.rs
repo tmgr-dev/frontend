@@ -221,6 +221,29 @@ fn load_row(conn: &Connection, source_id: i64, key: &str) -> Result<Option<FileR
         .optional()?)
 }
 
+/// True when a binary that does not collect context facts moved the token read position of a
+/// file past the context one, so the file is read again from the start for its facts.
+fn context_gap(conn: &Connection, source_id: i64, key: &str) -> Result<bool> {
+    let tokens: Option<i64> = conn
+        .query_row(
+            "SELECT byte_offset FROM usage_file_state WHERE source_id = ?1 AND file_key = ?2",
+            params![source_id, key],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(tokens) = tokens else {
+        return Ok(false);
+    };
+    let context: Option<i64> = conn
+        .query_row(
+            "SELECT byte_offset FROM usage_context_file_state WHERE source_id = ?1 AND file_key = ?2",
+            params![source_id, key],
+            |r| r.get(0),
+        )
+        .optional()?;
+    Ok(context != Some(tokens))
+}
+
 fn head_tag(path: &Path, salt: &str, len: u64) -> Result<String> {
     let mut buf = vec![0u8; len as usize];
     std::fs::File::open(path)?.read_exact(&mut buf)?;
@@ -243,6 +266,13 @@ fn scan_file(
     report: &mut ScanReport,
 ) -> Result<()> {
     let st = stat_file(&file.path)?;
+    let mut behind = (reparse.is_none() && context_gap(&store.conn, source_id, &file.rel)?)
+        .then(Reparse::default);
+    let reparse = if behind.is_some() {
+        &mut behind
+    } else {
+        reparse
+    };
     if let Some(r) = load_row(&store.conn, source_id, &file.rel)? {
         if reparse.is_none()
             && (r.dev, r.ino, r.size, r.mtime_ns) == (st.dev, st.ino, st.size, st.mtime_ns)
@@ -359,6 +389,11 @@ fn scan_file(
             state_text,
             tally.last_ts,
         ],
+    )?;
+    tx.execute(
+        "INSERT OR REPLACE INTO usage_context_file_state (source_id, file_key, byte_offset)
+         VALUES (?1, ?2, ?3)",
+        params![source_id, file.rel, outcome.next_offset as i64],
     )?;
     tx.commit()?;
 

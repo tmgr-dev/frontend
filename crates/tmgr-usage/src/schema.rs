@@ -155,4 +155,10 @@ pub const CONTEXT_MIGRATIONS: &[&str] = &["
     );
     CREATE INDEX usage_fact_ts ON usage_fact(ts);
     CREATE INDEX usage_fact_session ON usage_fact(tool, account, tool_session_id);
+    CREATE TABLE usage_context_file_state (
+        source_id INTEGER NOT NULL,
+        file_key TEXT NOT NULL,
+        byte_offset INTEGER NOT NULL,
+        PRIMARY KEY (source_id, file_key)
+    ) WITHOUT ROWID;
     "];

@@ -23,6 +23,7 @@ struct Stored {
     cost: Option<f64>,
     speed: Option<String>,
     tier: Option<String>,
+    agent_id: Option<String>,
 }
 
 pub(crate) fn ensure_session(
@@ -135,7 +136,7 @@ pub(crate) fn upsert_event(
         .prepare_cached(
             "SELECT e.id, e.ts, e.session_id, s.tool_session_id, e.model, e.input, e.output,
                     e.cache_read, e.cache_write_5m, e.cache_write_1h, e.reasoning, e.cost_usd,
-                    e.speed, e.service_tier
+                    e.speed, e.service_tier, e.agent_id
              FROM usage_event e JOIN usage_session s ON s.id = e.session_id
              WHERE e.event_key = ?1",
         )?
@@ -157,6 +158,7 @@ pub(crate) fn upsert_event(
                 cost: r.get(11)?,
                 speed: r.get(12)?,
                 tier: r.get(13)?,
+                agent_id: r.get(14)?,
             })
         })
         .optional()?;
@@ -224,6 +226,11 @@ pub(crate) fn upsert_event(
     };
     let earlier = ts < old_ts || (ts == old_ts && ev.tool_session_id < old.sid);
     if !better && !earlier {
+        if old.agent_id.is_none() && ev.agent_id.is_some() && ev.tool_session_id == old.sid {
+            conn.prepare_cached("UPDATE usage_event SET agent_id = ?2 WHERE id = ?1")?
+                .execute(params![id, ev.agent_id])?;
+            return Ok(Upsert::Updated);
+        }
         return Ok(Upsert::Unchanged);
     }
     if better {

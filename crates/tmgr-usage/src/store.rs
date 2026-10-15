@@ -423,6 +423,7 @@ impl Store {
             "usage_limit_snapshot",
             "usage_fact",
             "usage_agent",
+            "usage_context_file_state",
         ] {
             tx.execute(&format!("DELETE FROM {table}"), [])?;
         }
