@@ -37,7 +37,7 @@ pub fn prepare(task: &TaskInfo, workspace_id: i64, task_id: i64, profile: &str, 
     comments: task.comments.iter().map(comment).collect(),
     pages: Vec::new(),
     persona: None,
-    launch: BundleLaunch { profile: profile.to_owned(), model: None, cwd: cwd.to_owned() },
+    launch: BundleLaunch { profile: profile.to_owned(), model: None, cwd: cwd.to_owned(), permission_mode: None },
   };
   bundle.validate().map_err(|e| format!("The task cannot be sent to the agent: {e}"))?;
   if bundle.canonical().len() > MAX_BUNDLE {
@@ -80,7 +80,7 @@ mod tests {
     assert_eq!(b.task, TaskRef { workspace_id: ws.manifest.id, task_id: 7 });
     assert_eq!(b.author, BundleAuthor { kind: AuthorKind::Other, id: None });
     assert!(b.pages.is_empty() && b.persona.is_none());
-    assert_eq!(b.launch, BundleLaunch { profile: "codex".into(), model: None, cwd: "/work/project".into() });
+    assert_eq!(b.launch, BundleLaunch { profile: "codex".into(), model: None, cwd: "/work/project".into(), permission_mode: None });
     let got: Vec<_> = b.comments.iter().map(|c| (c.body.as_str(), c.author.kind, c.author.id.as_deref(), c.at.as_str())).collect();
     assert_eq!(
       got,
