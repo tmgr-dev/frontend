@@ -106,6 +106,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
 | `clone_dir.v1` | `clone_of` on `runs.create` (section 5, "Queue capabilities") |
+| `session_text.v1` | `sessions.text` (section 5, "Session text") |
 
 ## 5. Messages after the handshake
 
@@ -136,6 +137,7 @@ missing params) and `internal`.
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
 | `runs.lookup` | `{start_key}` | `SessionInfo` | `not_found` | any client; cap `start_key.v1` |
 | `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
+| `sessions.text` | `{id, lines?}` (`lines` 1 to 10000, default the screen height) | `{id, rows, cols, lines, scroll_max}` | `not_found`, `invalid_params`, `forbidden` | any client except `worker`; cap `session_text.v1` |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -293,6 +295,10 @@ All four are additive: new optional fields and methods, no change for clients th
 
 **`clone_dir.v1`.** `runs.create` takes an optional `clone_of`, the absolute path of a repository. Before the sandbox is prepared the runner checks, walking descriptors without following any symlink, that the repository is a work tree root with a real `.git` directory, that the canonical `cwd` lies strictly inside `<repo parent>/<repo name>-worktrees/` (any depth), that `cwd/.git` is a real directory (not a worktree file) and that `cwd/.git/objects/info/alternates`, if present (at most 4 KiB), lists only `<repo>/.git/objects`. Any violation is `invalid_params`. The sandbox then gets read-only access to `<repo>/.git/objects` and nothing else of the repository; writes stay limited to `cwd` and the per-run home.
 
+### Session text
+
+`sessions.text {id, lines?}` (cap `session_text.v1`) returns the session's terminal contents as plain text from the runner's live screen model: `{id, rows, cols, lines, scroll_max}`. `lines` are strings without attributes, trailing spaces trimmed, oldest first; the last entry is the bottom row of the screen, so blank bottom rows are kept as empty strings. `lines` defaults to the screen height (`rows`); a larger value adds scrollback above the screen and is capped by what exists, so fewer lines than asked may come back. `lines` outside 1 to 10000 is `invalid_params`, an unknown session `not_found`. Exited sessions answer too, with the screen as it was at exit. The text is never stored and never leaves the machine: a `worker` client (link-originated runs) gets `forbidden`.
+
 ### Run bundles
 
 A run bundle is the immutable input of one agent run: the task text, its
@@ -444,7 +450,7 @@ capability has no log and returns an all-zero summary.
 `hello.client` is declared by the client. The runner uses it for these rules:
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
-(section 5, "Link-originated runs"); other clients get `forbidden`. This is a guardrail so well-behaved clients cannot start arbitrary
+(section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`. This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user
 can claim to be `cli`. The real boundary is that agents run in a sandbox that

@@ -369,6 +369,30 @@ fn method_params_and_results() {
         },
     );
     golden(
+        "text_params",
+        &TextParams {
+            id: SID.into(),
+            lines: Some(50),
+        },
+    );
+    golden(
+        "text_params_default",
+        &TextParams {
+            id: SID.into(),
+            lines: None,
+        },
+    );
+    golden(
+        "session_text",
+        &SessionText {
+            id: SID.into(),
+            rows: 3,
+            cols: 20,
+            lines: vec!["older".into(), "$ echo hi".into(), "hi".into(), String::new()],
+            scroll_max: 42,
+        },
+    );
+    golden(
         "origin_revoke_params",
         &OriginRevokeParams {
             link: "laptop".into(),
@@ -670,7 +694,8 @@ fn constants_are_pinned() {
             "permission_mode.v1",
             "start_key.v1",
             "run_status.v1",
-            "clone_dir.v1"
+            "clone_dir.v1",
+            "session_text.v1"
         ]
     );
     let methods = [
@@ -692,6 +717,7 @@ fn constants_are_pinned() {
         method::RUNS_RESTORE,
         method::RUNS_LOOKUP,
         method::RUNS_STATUS,
+        method::SESSIONS_TEXT,
     ];
     assert_eq!(
         methods,
@@ -714,6 +740,7 @@ fn constants_are_pinned() {
             "runs.restore",
             "runs.lookup",
             "runs.status",
+            "sessions.text",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -736,7 +763,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 15);
+    assert_eq!(w.caps.len(), 16);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

@@ -39,8 +39,9 @@ pub mod caps {
     pub const START_KEY_V1: &str = "start_key.v1";
     pub const RUN_STATUS_V1: &str = "run_status.v1";
     pub const CLONE_DIR_V1: &str = "clone_dir.v1";
+    pub const SESSION_TEXT_V1: &str = "session_text.v1";
 
-    pub const ALL: [&str; 15] = [
+    pub const ALL: [&str; 16] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -56,6 +57,7 @@ pub mod caps {
         START_KEY_V1,
         RUN_STATUS_V1,
         CLONE_DIR_V1,
+        SESSION_TEXT_V1,
     ];
 }
 
@@ -78,6 +80,7 @@ pub mod method {
     pub const RUNS_RESTORE: &str = "runs.restore";
     pub const RUNS_LOOKUP: &str = "runs.lookup";
     pub const RUNS_STATUS: &str = "runs.status";
+    pub const SESSIONS_TEXT: &str = "sessions.text";
 }
 
 pub mod limits {
@@ -86,6 +89,7 @@ pub mod limits {
     pub const MAX_INPUT: usize = 64 << 10;
     pub const MAX_PUSH: usize = 256 << 10;
     pub const MAX_BUNDLE: usize = 1 << 20;
+    pub const MAX_TEXT_LINES: u32 = 10_000;
 }
 
 /// The only `Hello.client` value allowed to call `sessions.create`.
