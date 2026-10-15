@@ -1174,6 +1174,28 @@ fn check_pin_fields(pin: &ExePin) -> Result<(), ApiErr> {
     Ok(())
 }
 
+fn resume_rec(r: &crate::profile::ResumeDecl) -> restore::ResumeRec {
+    restore::ResumeRec {
+        args: r.args.clone(),
+        at: match r.at {
+            crate::profile::ResumeAt::End => "end",
+            crate::profile::ResumeAt::AfterCommand => "after_command",
+        }
+        .into(),
+    }
+}
+
+fn resume_changed(i: &restore::Intent) -> bool {
+    if i.argv_sha256.is_none() {
+        return false;
+    }
+    let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+    let now = set
+        .get(&i.profile)
+        .and_then(|p| p.resume.as_ref().map(resume_rec));
+    now != i.resume_decl
+}
+
 fn check_argv_sha256(req: &RunCreateReq) -> Result<(), ApiErr> {
     let Some(d) = &req.argv_sha256 else {
         return Ok(());
@@ -1685,12 +1707,14 @@ impl Runner {
         })?;
         let running = self.session(old).is_some_and(|s| !s.is_exited());
         let result = match restore::status(&claim.intent, now_ms(), running) {
-            restore::Status::Restorable if claim.intent.keyed && claim.intent.exe_pin.is_none() => {
-                Err(api(
-                    ErrorCode::Forbidden,
-                    "this queue run was recorded without an approved executable; queue the task again",
-                ))
-            }
+            restore::Status::Restorable if claim.intent.needs_queue_pin() => Err(api(
+                ErrorCode::Forbidden,
+                "this queue run was recorded without an approved executable; queue the task again",
+            )),
+            restore::Status::Restorable if resume_changed(&claim.intent) => Err(api(
+                ErrorCode::Forbidden,
+                "the agent's resume arguments changed since the run was approved",
+            )),
             restore::Status::Restorable => restore::read_bundle(&store, &claim.intent)
                 .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))
                 .and_then(|bundle| {
@@ -1923,7 +1947,11 @@ impl Runner {
                 permission_mode: mode,
                 clone_of: req.clone_of,
                 agent_work: req.agent_work,
-                keyed,
+                keyed: Some(keyed),
+                resume_decl: req
+                    .argv_sha256
+                    .as_ref()
+                    .and_then(|_| prof.resume.as_ref().map(resume_rec)),
                 exe_pin: req.exe_pin,
                 argv_sha256: req.argv_sha256,
                 bypass: false,
