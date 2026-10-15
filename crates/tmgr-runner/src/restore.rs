@@ -41,6 +41,8 @@ pub struct Intent {
     pub keyed: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe_pin: Option<ExePin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub argv_sha256: Option<String>,
     #[serde(default)]
     pub bypass: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -356,6 +358,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         trust_cwd: None,
         agent_work: i.agent_work,
         exe_pin: i.exe_pin.clone(),
+        argv_sha256: i.argv_sha256.clone(),
     }
 }
 
@@ -546,6 +549,7 @@ mod tests {
             agent_work: false,
             keyed: false,
             exe_pin: None,
+            argv_sha256: None,
             bypass: false,
             boot: None,
             pids: Vec::new(),

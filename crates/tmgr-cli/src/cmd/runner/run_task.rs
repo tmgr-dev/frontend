@@ -288,6 +288,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             trust_cwd: None,
             agent_work: true,
             exe_pin: None,
+            argv_sha256: None,
         })
         .map_err(rerr)?;
     let fetch = import_line(&p.code, reference);

@@ -249,6 +249,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             trust_cwd: a.trust.then_some(true),
             agent_work: false,
             exe_pin: None,
+            argv_sha256: None,
         }),
     }
     .map_err(rerr)?;
