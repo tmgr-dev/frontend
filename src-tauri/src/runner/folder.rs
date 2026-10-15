@@ -45,15 +45,26 @@ pub struct Snapshot {
   ino: u64,
 }
 
+#[cfg(unix)]
+fn identity(meta: &std::fs::Metadata) -> Result<(u64, u64), String> {
+  use std::os::unix::fs::MetadataExt;
+  Ok((meta.dev(), meta.ino()))
+}
+
+#[cfg(not(unix))]
+fn identity(_meta: &std::fs::Metadata) -> Result<(u64, u64), String> {
+  Err("The runner is not available on this platform".to_owned())
+}
+
 impl Snapshot {
   pub fn capture(path: &Path, home: Option<&Path>) -> Result<Snapshot, String> {
-    use std::os::unix::fs::MetadataExt;
     let canon = validate(path, home)?;
     let meta = std::fs::symlink_metadata(&canon).map_err(|_| CHANGED.to_owned())?;
     if !meta.is_dir() {
       return Err(CHANGED.to_owned());
     }
-    Ok(Snapshot { path: canon, dev: meta.dev(), ino: meta.ino() })
+    let (dev, ino) = identity(&meta)?;
+    Ok(Snapshot { path: canon, dev, ino })
   }
 
   pub fn path(&self) -> &str {
