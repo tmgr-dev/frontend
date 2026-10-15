@@ -388,7 +388,12 @@ fn method_params_and_results() {
             id: SID.into(),
             rows: 3,
             cols: 20,
-            lines: vec!["older".into(), "$ echo hi".into(), "hi".into(), String::new()],
+            lines: vec![
+                "older".into(),
+                "$ echo hi".into(),
+                "hi".into(),
+                String::new(),
+            ],
             scroll_max: 42,
         },
     );

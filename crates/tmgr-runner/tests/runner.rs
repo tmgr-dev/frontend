@@ -3183,6 +3183,81 @@ fn runs_status_reports_running_exited_and_unknown_sessions() {
     assert!(err_text(c.run_status("nope")).starts_with("invalid_params: "));
 }
 
+fn text_when(
+    c: &mut Client,
+    id: &str,
+    lines: Option<u32>,
+    ok: impl Fn(&[String]) -> bool,
+) -> Vec<String> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let t = c.text(id, lines).unwrap().lines;
+        if ok(&t) || Instant::now() >= deadline {
+            return t;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn sessions_text_returns_the_screen_and_scrollback_as_plain_text() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let mut maker = h.client();
+    let mut req = h.sh("i=1; while [ $i -le 60 ]; do printf 'line%s   \\n' $i; i=$((i+1)); done; printf '\\033[1;31mred\\033[0m\\n'; sleep 30\n");
+    req.rows = 10;
+    req.cols = 40;
+    let info = maker.create(req).unwrap();
+    text_when(&mut c, &info.id, None, |t| t.iter().any(|l| l == "red"));
+
+    let screen = c.text(&info.id, None).unwrap();
+    assert_eq!(
+        (screen.id.as_str(), screen.rows, screen.cols),
+        (info.id.as_str(), 10, 40)
+    );
+    assert_eq!(screen.lines.len(), 10);
+    assert_eq!(screen.lines[8], "red");
+    assert_eq!(screen.lines[7], "line60");
+    assert!(screen.scroll_max >= 50, "{screen:?}");
+
+    let deep = c.text(&info.id, Some(25)).unwrap();
+    assert_eq!(deep.lines.len(), 25);
+    assert_eq!(&deep.lines[15..], &screen.lines[..]);
+    assert_eq!(deep.lines[0], "line38");
+    assert!(deep.lines.iter().all(|l| l == l.trim_end()));
+
+    let one = c.text(&info.id, Some(1)).unwrap();
+    assert_eq!(one.lines, vec![screen.lines[9].clone()]);
+
+    let all = c.text(&info.id, Some(10_000)).unwrap();
+    assert_eq!(all.lines.len(), 10 + all.scroll_max as usize);
+    assert_eq!(all.lines[0], "line1");
+}
+
+#[test]
+fn sessions_text_rejects_bad_params_unknown_sessions_and_workers() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = Client::connect_as(&h.run, "desktop").unwrap();
+    let mut maker = h.client();
+    let info = maker.create(h.req(&["/bin/sleep", "30"])).unwrap();
+    assert!(err_text(c.text(&info.id, Some(0))).starts_with("invalid_params: "));
+    assert!(err_text(c.text(&info.id, Some(10_001))).starts_with("invalid_params: "));
+    assert!(err_text(c.text("s_zzzzzzzzzz", None)).starts_with("not_found: "));
+    assert!(err_text(c.text("nope", None)).starts_with("invalid_params: "));
+    let mut w = Client::connect_as(&h.run, "worker").unwrap();
+    assert!(err_text(w.text(&info.id, None)).starts_with("forbidden: "));
+    let mut cli = Client::connect(&h.run).unwrap();
+    assert!(cli.text(&info.id, None).is_ok());
+}
+
 struct CloneFx {
     h: Harness,
     repo: PathBuf,

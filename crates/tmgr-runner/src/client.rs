@@ -8,7 +8,8 @@ use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
     method, AttachParams, CandidateInfo, CreateReq, EventMsg, IdParams, KillParams,
     LayoutSetParams, Line, LookupParams, RestoredRun, RunCreateReq, RunStatus, ScreenPush,
-    SendParams, SessionInfo, Snapshot, StatusInfo, Welcome, WorkSummary, CLIENT_CLI,
+    SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary,
+    CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -161,6 +162,14 @@ impl Client {
         };
         self.call(method::SESSIONS_SEND, to_params(&params)?)
             .map(drop)
+    }
+
+    pub fn text(&mut self, id: &str, lines: Option<u32>) -> io::Result<SessionText> {
+        let params = TextParams {
+            id: id.into(),
+            lines,
+        };
+        from_value(self.call(method::SESSIONS_TEXT, to_params(&params)?)?)
     }
 
     pub fn remove(&mut self, id: &str) -> io::Result<()> {
