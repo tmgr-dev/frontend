@@ -277,6 +277,9 @@ fn check_trust(t: &TrustDecl) -> Result<(), String> {
             return Err("trust.path takes only {cwd}, as a whole segment".into());
         }
     }
+    if t.path.iter().filter(|s| *s == "{cwd}").count() != 1 {
+        return Err("trust.path must hold {cwd} exactly once".into());
+    }
     if t.path.last().is_some_and(|l| l == "{cwd}") {
         return Err("trust.path must end in a fixed key".into());
     }
@@ -883,6 +886,8 @@ idle = ['^> $']
             "file = \"x.json\"\npath = [\"a-{cwd}\", \"b\"]",
             "file = \"x.json\"\npath = [\"{home}\", \"b\"]",
             "file = \"x.json\"\npath = [\"a\", \"{cwd}\"]",
+            "file = \"x.json\"\npath = [\"a\", \"b\"]",
+            "file = \"x.json\"\npath = [\"{cwd}\", \"{cwd}\", \"b\"]",
         ];
         for (i, table) in bad.iter().enumerate() {
             let text =
