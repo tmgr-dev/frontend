@@ -303,3 +303,14 @@ export const contextSummary = (context: TaskContext): ContextSummary => {
 	if (context.away > 0) summary.away = context.away;
 	return summary;
 };
+
+export const pricedCost = (
+	aggregate:
+		| { totals: { cost_usd: number; events: number; unpriced_events: number } }
+		| null
+		| undefined,
+): number | null => {
+	if (!aggregate) return null;
+	const { cost_usd, events, unpriced_events } = aggregate.totals;
+	return events > 0 && unpriced_events >= events ? null : cost_usd;
+};

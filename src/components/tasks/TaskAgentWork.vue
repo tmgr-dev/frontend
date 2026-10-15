@@ -141,7 +141,7 @@
 	import { getTaskCost } from '@/actions/tmgr/taskCost';
 	import AgentWorkDetails from '@/components/tasks/AgentWorkDetails.vue';
 	import { readTaskUsage } from '@/usage/loadTaskUsage';
-	import { blockSummary, prLabel } from '@/usage/taskModel';
+	import { blockSummary, prLabel, pricedCost } from '@/usage/taskModel';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { usePusher } from '@/composable/usePusher';
 	import {
@@ -226,21 +226,27 @@
 				});
 			};
 
+			let usageReadFor = null;
+
 			const loadCosts = async (list, current) => {
+				const readUsage = usageReadFor !== props.taskId;
+				if (readUsage) usageReadFor = props.taskId;
 				const [fetchedCost, local] = await Promise.all([
 					getTaskCost(props.taskId),
-					readTaskUsage({
-						taskId: props.taskId,
-						workspaceId: props.workspaceId,
-						workspaceCode: workspaceCode.value,
-						ownRuns: list,
-					})
-						.then((r) => r.usage)
-						.catch(() => null),
+					readUsage
+						? readTaskUsage({
+								taskId: props.taskId,
+								workspaceId: props.workspaceId,
+								workspaceCode: workspaceCode.value,
+								ownRuns: list,
+						  })
+								.then((r) => r.usage)
+								.catch(() => null)
+						: Promise.resolve(undefined),
 				]);
 				if (current !== request) return;
 				cost.value = fetchedCost;
-				localCost.value = local?.aggregate?.totals.cost_usd ?? null;
+				if (local !== undefined) localCost.value = pricedCost(local?.aggregate);
 			};
 
 			const load = async () => {
@@ -253,7 +259,7 @@
 					serverTotals.value = overview.totals;
 					totalsReceivedAt.value = Date.now();
 					loaded.value = true;
-					if (desktop) loadCosts(overview.runs, current);
+					if (desktop && overview.runs.length) loadCosts(overview.runs, current);
 				} catch (error) {
 					console.error('Failed to load agent work', error);
 				}
@@ -324,6 +330,9 @@
 			watch(
 				() => props.taskId,
 				() => {
+					cost.value = null;
+					localCost.value = null;
+					usageReadFor = null;
 					runs.value = [];
 					loaded.value = false;
 					Object.keys(expanded).forEach((id) => delete expanded[id]);
@@ -374,7 +383,7 @@
 						receivedAt,
 						totalsReceivedAt.value,
 					);
-					const synced = cost.value?.ai?.synced
+					const synced = cost.value?.ai?.synced && cost.value.ai.costUsd != null
 						? Number(cost.value.ai.costUsd)
 						: null;
 					return (

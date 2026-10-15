@@ -406,7 +406,13 @@ fn task_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun], workspace: &str, t
   let Some(first) = windows.iter().filter(|w| w.task_ref == task_ref).map(|w| w.started_at).min() else {
     return Ok(TaskUsageOut { supported: true, ..Default::default() });
   };
-  let (from, to) = (first - Duration::days(1), now + Duration::minutes(1));
+  let mine_windows = || windows.iter().filter(|w| w.task_ref == task_ref);
+  let last_end = if mine_windows().any(|w| w.ended_at.is_none()) {
+    now
+  } else {
+    mine_windows().filter_map(|w| w.ended_at).max().unwrap_or(now).min(now)
+  };
+  let (from, to) = (first - Duration::days(1), last_end + Duration::hours(1));
   let (_, store) = open(env)?;
   let (events, tokens): (Vec<_>, Vec<_>) = store.link_events_with_tokens(from, to).map_err(user_error)?.into_iter().unzip();
   let facts = store.facts(from, to).map_err(user_error)?;
@@ -663,8 +669,11 @@ mod tests {
     assert_eq!(out.unattributed.events, 2);
   }
 
+  static SNAP_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
   #[test]
   fn tasks_command_reports_the_snap_reason() {
+    let _lock = SNAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var("SNAP", "1");
     let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
     let err = rt.block_on(usage_tasks(Vec::new())).unwrap_err();
@@ -733,6 +742,7 @@ mod tests {
 
   #[test]
   fn task_usage_command_reports_the_snap_reason() {
+    let _lock = SNAP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     std::env::set_var("SNAP", "1");
     let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
     let out = rt.block_on(usage_task(Vec::new(), "ws".into(), 1)).unwrap();

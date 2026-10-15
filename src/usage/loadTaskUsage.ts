@@ -5,7 +5,7 @@ import { usageTask, type TaskUsage } from './taskUsage';
 
 const RUNS_TTL_MS = 60_000;
 
-const cache = new Map<number, { at: number; runs: Promise<RawRun[] | null> }>();
+const cache = new Map<string, { at: number; runs: Promise<RawRun[] | null> }>();
 
 export const resetRunsCache = (): void => cache.clear();
 
@@ -14,12 +14,13 @@ const workspaceRuns = (
 	workspaceCode: string,
 	now: number,
 ): Promise<RawRun[] | null> => {
-	const known = cache.get(workspaceId);
+	const key = `${workspaceId}:${workspaceCode}`;
+	const known = cache.get(key);
 	if (known && now - known.at < RUNS_TTL_MS) return known.runs;
 	const runs = fetchRuns([{ id: workspaceId, code: workspaceCode }]).then(
 		(fetched) => (fetched.failedWorkspaces ? null : fetched.runs),
 	);
-	cache.set(workspaceId, { at: now, runs });
+	cache.set(key, { at: now, runs });
 	return runs;
 };
 
@@ -35,9 +36,12 @@ export const collectRuns = async (
 	now: number = Date.now(),
 ): Promise<RawRun[]> => {
 	const own = req.ownRuns.map((run) => toRawRun(run, req.workspaceCode));
-	if (req.workspaceId == null || !(req.workspaceId >= 0)) return own;
+	if (!req.workspaceCode || req.workspaceId == null || !(req.workspaceId >= 0))
+		return own;
 	const all = await workspaceRuns(req.workspaceId, req.workspaceCode, now);
-	return all ?? own;
+	if (!all) return own;
+	const known = new Set(all.map((run) => run.id));
+	return [...all, ...own.filter((run) => !known.has(run.id))];
 };
 
 export const readTaskUsage = async (

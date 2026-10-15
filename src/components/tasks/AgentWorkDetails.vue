@@ -292,6 +292,7 @@
 		groupMcp,
 		modelShort,
 		nodeLabel,
+		pricedCost,
 		tokenRows,
 		toolTotals,
 	} from '@/usage/taskModel';
@@ -386,8 +387,8 @@
 			};
 
 			watch(
-				() => props.open,
-				(open) => {
+				() => [props.open, props.taskId],
+				([open]) => {
 					if (open) load();
 					else session++;
 				},
@@ -410,7 +411,7 @@
 			);
 
 			const aiCost = computed(() => {
-				if (aggregate.value) {
+				if (aggregate.value && pricedCost(aggregate.value) !== null) {
 					return {
 						label: 'AI (API-equivalent)',
 						text: formatUsd(aggregate.value.totals.cost_usd),
