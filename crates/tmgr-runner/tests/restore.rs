@@ -16,11 +16,11 @@ use tmgr_runner::wire::now_ms;
 const HOST: &str = env!("CARGO_BIN_EXE_tmgr-runner-host");
 
 const AGENT: &str = r#"#!/bin/sh
+trap 'kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
 if [ -f "$HOME/marker" ]; then kept=1; else kept=; fi
 if [ -f ./change-seed ] && [ -z "$kept" ]; then echo '{"a":2}' > "$HOME/.fake/auth.json"; fi
 if [ -n "$kept" ]; then echo "home:kept" >> ./log; else echo x > "$HOME/marker"; echo "home:new" >> ./log; fi
-trap 'kill $! 2>/dev/null; exit 0' HUP TERM
 if [ -f ./exit-now ]; then exit 0; fi
 sleep 600 &
 wait
@@ -180,7 +180,17 @@ impl H {
                 }
             }
         }
-        thread::sleep(Duration::from_millis(200));
+        let deadline = Instant::now() + Duration::from_secs(10);
+        for pid in [s.child_pid, s.shim_pid] {
+            let Ok(p) = i32::try_from(pid) else { continue };
+            while p > 1 && unsafe { libc::kill(p, 0) } == 0 {
+                assert!(
+                    Instant::now() < deadline,
+                    "session processes outlived the reboot"
+                );
+                thread::sleep(Duration::from_millis(20));
+            }
+        }
         if lose_runner_dir {
             fs::remove_dir_all(&self.run).unwrap();
             private_dir(&self.run);
