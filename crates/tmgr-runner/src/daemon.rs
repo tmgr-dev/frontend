@@ -607,9 +607,13 @@ impl Session {
             if let Some(m) = &i.matcher {
                 match m.check(&i.screen.bottom_text(10)) {
                     Some((rule, line)) if rule.starts_with("blocked") => {
+                        out.extend(i.det.on_idle(now, false));
                         out.extend(i.det.on_blocked(now, &rule, &line))
                     }
-                    _ => out.extend(i.det.on_unblocked(now)),
+                    found => {
+                        out.extend(i.det.on_idle(now, found.is_some()));
+                        out.extend(i.det.on_unblocked(now))
+                    }
                 }
             }
         });
