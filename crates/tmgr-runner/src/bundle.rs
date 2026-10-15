@@ -581,6 +581,7 @@ mod tests {
             trust_cwd: None,
             agent_work: false,
             exe_pin: None,
+            argv_sha256: None,
             bundle_sha256: Some(bundle.sha256()),
             bundle: Some(bundle),
         }

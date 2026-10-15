@@ -209,6 +209,7 @@ impl Harness {
             trust_cwd: None,
             agent_work: false,
             exe_pin: None,
+            argv_sha256: None,
         }
     }
 
@@ -4043,6 +4044,118 @@ fn an_exe_pin_works_with_a_start_key() {
     assert_eq!(c.create_run(req).unwrap().id, first.id);
     let mut other = pinned(&fx, &want, &"1".repeat(64));
     other.start_key = Some("q_pin-1".into());
+    let e = err_text(c.create_run(other));
+    assert!(e.starts_with("busy: "), "{e}");
+    assert_eq!(c.list().unwrap().len(), 1);
+}
+
+fn argv_fx(fx: &PinFx) -> String {
+    let text = format!(
+        "id = \"argvp\"\nname = \"argvp\"\ncommand = [{:?}]\nargs = [\"--x\"]\nmodel_arg = [\"--model\", \"{{model}}\"]\n[permission_modes]\nask = [\"--ask\"]\nplan = [\"--plan\"]\n",
+        fx.agent.display().to_string()
+    );
+    fs::write(fx.h.agents.join("argvp.toml"), text).unwrap();
+    fx.agent.display().to_string()
+}
+
+fn digest(exe: &str, rest: &[&str]) -> String {
+    let argv: Vec<String> = std::iter::once(exe)
+        .chain(rest.iter().copied())
+        .map(String::from)
+        .collect();
+    tmgr_ipc::api::argv_sha256(&argv)
+}
+
+fn argv_req(fx: &PinFx, exe: &str, sha: Option<String>) -> RunCreateReq {
+    let mut r = pinned(fx, exe, &fx.sha);
+    r.profile = "argvp".into();
+    r.model = Some("m1".into());
+    r.permission_mode = Some("plan".into());
+    r.argv_sha256 = sha;
+    r
+}
+
+#[test]
+fn a_matching_argv_digest_starts_the_run() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let exe = argv_fx(&fx);
+    let sha = digest(&exe, &["--x", "--model", "m1", "--plan"]);
+    let info =
+        fx.h.client()
+            .create_run(argv_req(&fx, &exe, Some(sha)))
+            .unwrap();
+    assert_eq!(info.argv, [exe.as_str(), "--x", "--model", "m1", "--plan"]);
+}
+
+#[test]
+fn an_argv_digest_of_other_model_or_mode_arguments_is_forbidden() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let exe = argv_fx(&fx);
+    let mut c = fx.h.client();
+    for rest in [
+        &["--x", "--model", "m2", "--plan"][..],
+        &["--x", "--model", "m1", "--ask"],
+        &["--x", "--model", "m1"],
+        &["--model", "m1", "--plan"],
+    ] {
+        let e = err_text(c.create_run(argv_req(&fx, &exe, Some(digest(&exe, rest)))));
+        assert!(e.starts_with("forbidden: "), "{rest:?}: {e}");
+        assert!(e.contains("command line"), "{e}");
+    }
+    let e = err_text(c.create_run(argv_req(
+        &fx,
+        &exe,
+        Some(digest("/other", &["--x", "--model", "m1", "--plan"])),
+    )));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn an_argv_digest_needs_an_exe_pin_and_lowercase_hex() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let exe = argv_fx(&fx);
+    let mut c = fx.h.client();
+    let good = digest(&exe, &["--x", "--model", "m1", "--plan"]);
+    let mut no_pin = argv_req(&fx, &exe, Some(good.clone()));
+    no_pin.exe_pin = None;
+    let e = err_text(c.create_run(no_pin));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    for bad in [
+        good.to_uppercase(),
+        good[..63].to_string(),
+        format!("{}g", &good[..63]),
+    ] {
+        let e = err_text(c.create_run(argv_req(&fx, &exe, Some(bad.clone()))));
+        assert!(e.starts_with("invalid_params: "), "{bad}: {e}");
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn an_argv_digest_is_part_of_the_start_key() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = pin_fx();
+    let exe = argv_fx(&fx);
+    let mut c = fx.h.client();
+    let sha = digest(&exe, &["--x", "--model", "m1", "--plan"]);
+    let mut req = argv_req(&fx, &exe, Some(sha));
+    req.start_key = Some("q_argv-1".into());
+    let first = c.create_run(req.clone()).unwrap();
+    assert_eq!(c.create_run(req.clone()).unwrap().id, first.id);
+    let mut other = req;
+    other.argv_sha256 = Some("1".repeat(64));
     let e = err_text(c.create_run(other));
     assert!(e.starts_with("busy: "), "{e}");
     assert_eq!(c.list().unwrap().len(), 1);

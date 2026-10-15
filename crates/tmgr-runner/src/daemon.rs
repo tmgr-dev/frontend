@@ -1174,6 +1174,22 @@ fn check_pin_fields(pin: &ExePin) -> Result<(), ApiErr> {
     Ok(())
 }
 
+fn check_argv_sha256(req: &RunCreateReq) -> Result<(), ApiErr> {
+    let Some(d) = &req.argv_sha256 else {
+        return Ok(());
+    };
+    if req.exe_pin.is_none() {
+        return Err(api(ErrorCode::InvalidParams, "argv_sha256 needs exe_pin"));
+    }
+    if d.len() != 64 || !d.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            "argv_sha256 must be 64 lowercase hex characters",
+        ));
+    }
+    Ok(())
+}
+
 fn check_pin(command: &str, path: &std::ffi::OsStr, pin: &ExePin) -> Result<PathBuf, ApiErr> {
     let exe = resolve_exe(command, path, None).map_err(|e| api(ErrorCode::Forbidden, e))?;
     verify_pin(&exe, &pin.path, &pin.sha256).map_err(|e| api(ErrorCode::Forbidden, e))
@@ -1711,6 +1727,7 @@ impl Runner {
     }
 
     fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<PinCheck>, ApiErr> {
+        check_argv_sha256(req)?;
         let Some(pin) = &req.exe_pin else {
             return Ok(None);
         };
@@ -1849,6 +1866,21 @@ impl Runner {
             (Some(_), Some((cmd, done))) if cmd == argv[0] => done?.display().to_string(),
             (Some(p), _) => check_pin(&argv[0], &path, p)?.display().to_string(),
         };
+        if let Some(want) = &req.argv_sha256 {
+            let mut basis = if resumed {
+                prof.argv_with(req.model.as_deref(), &perm_args)
+                    .map_err(|e| api(ErrorCode::InvalidParams, e))?
+            } else {
+                argv.clone()
+            };
+            basis[0].clone_from(&argv[0]);
+            if tmgr_ipc::api::argv_sha256(&basis) != *want {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "the agent command line differs from the approved one",
+                ));
+            }
+        }
         let pin = dir.map(|d| {
             let (dev, ino) = d.id();
             CwdPin { dev, ino }
@@ -1893,6 +1925,7 @@ impl Runner {
                 agent_work: req.agent_work,
                 keyed,
                 exe_pin: req.exe_pin,
+                argv_sha256: req.argv_sha256,
                 bypass: false,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],

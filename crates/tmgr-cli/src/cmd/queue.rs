@@ -695,6 +695,7 @@ impl RunsClient for RunnerRuns {
                     path: req.exe_path.clone(),
                     sha256: req.exe_sha256.clone(),
                 }),
+                argv_sha256: None,
             })
         })
         .map(|info| info.id)

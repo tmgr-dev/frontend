@@ -146,6 +146,7 @@ impl H {
             trust_cwd: None,
             agent_work: false,
             exe_pin: None,
+            argv_sha256: None,
         }
     }
 
@@ -539,6 +540,7 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         agent_work: false,
         keyed: false,
         exe_pin: None,
+        argv_sha256: None,
         bypass: false,
         boot: None,
         pids: Vec::new(),
@@ -702,4 +704,56 @@ fn restore_keeps_the_pinned_executable_pinned() {
     let r = h.client().restore(&first.id).unwrap();
     assert_eq!(r.session.argv[0], canonical.display().to_string());
     h.wait_log("home:kept", 1);
+}
+
+#[test]
+fn restore_rechecks_the_argv_digest_against_the_rebuilt_command_line() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let agent = h.work.join("pinned-agent");
+    fs::write(&agent, AGENT).unwrap();
+    fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
+    let canonical = fs::canonicalize(&agent).unwrap();
+    let agents = h.agents.clone();
+    let profile = |arg: &str| {
+        fs::write(
+            agents.join("pinned.toml"),
+            format!(
+                "id = \"pinned\"\nname = \"Pinned\"\ncommand = [{:?}]\nargs = [{arg:?}]\n[resume]\nargs = [\"--resumed\"]\n",
+                agent.display().to_string()
+            ),
+        )
+        .unwrap();
+    };
+    profile("--x");
+    let exe = canonical.display().to_string();
+    let mut req = h.req();
+    req.profile = "pinned".into();
+    req.exe_pin = Some(ExePin {
+        path: exe.clone(),
+        sha256: sha256_hex(AGENT.as_bytes()),
+    });
+    req.argv_sha256 = Some(tmgr_ipc::api::argv_sha256(&[exe.clone(), "--x".into()]));
+    h.start();
+    let first = h.client().create_run(req).unwrap();
+    h.wait_log("home:new", 1);
+    assert!(restore::load(&h.store(), &first.id)
+        .unwrap()
+        .argv_sha256
+        .is_some());
+    h.reboot(&first, false);
+
+    profile("--y");
+    let e = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(e.contains("command line"), "{e}");
+    assert!(h.client().list().unwrap().iter().all(|s| s.id == first.id));
+    assert!(restore::load(&h.store(), &first.id).is_ok());
+
+    profile("--x");
+    let r = h.client().restore(&first.id).unwrap();
+    assert!(r.resumed);
+    assert_eq!(r.session.argv, [exe.as_str(), "--x", "--resumed"]);
 }
