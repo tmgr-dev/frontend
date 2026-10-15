@@ -75,7 +75,7 @@ const ENV_BLOCK_EXACT: &[&str] = &[
 
 const ENV_REFUSE_PREFIX: &[&str] = &["LD_", "DYLD_", "TMGR_", "XDG_", "GIT_CONFIG", "GIT_SSH"];
 
-const ENV_OPT_IN_PREFIX: &[&str] = &["AWS_", "GH_"];
+const ENV_OPT_IN_PREFIX: &[&str] = &["AWS_", "GH_", "OPENCODE_"];
 
 const ENV_OPT_IN_CONTAINS: &[&str] = &["TOKEN", "SECRET", "KEY", "PASSWORD"];
 
@@ -1058,6 +1058,26 @@ mod tests {
         }
         assert_eq!(e["EDITOR"], "vi");
         assert_eq!(e["GIT_AUTHOR_NAME"], "n");
+    }
+
+    #[test]
+    fn agent_permission_config_comes_only_from_the_profile() {
+        let mut f = fx();
+        f.spec.base_env = vec![
+            kv("OPENCODE_PERMISSION", "{}"),
+            kv("OPENCODE_CONFIG", "/x.json"),
+            kv("OPENCODE_CONFIG_CONTENT", "{}"),
+        ];
+        f.spec.env_pass = vec![
+            "OPENCODE_PERMISSION".into(),
+            "OPENCODE_CONFIG".into(),
+            "OPENCODE_CONFIG_CONTENT".into(),
+        ];
+        f.spec.grants.env = vec![kv("OPENCODE_CONFIG_CONTENT", "{\"p\":1}")];
+        let e = env_of(&f.spec);
+        assert!(!e.contains_key("OPENCODE_PERMISSION"));
+        assert!(!e.contains_key("OPENCODE_CONFIG"));
+        assert_eq!(e["OPENCODE_CONFIG_CONTENT"], "{\"p\":1}");
     }
 
     #[test]

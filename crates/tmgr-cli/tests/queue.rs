@@ -677,6 +677,29 @@ fn cloud_workspaces_and_bypass_profiles_are_refused() {
         assert_eq!(p.exit(), 5, "{id}: {}", p.text());
         assert!(p.text().contains(why), "{id}: {}", p.text());
     }
+    let mut p = fx.pty(
+        &[
+            "queue",
+            "rules",
+            "add",
+            "old",
+            "--workspace",
+            "local:personal",
+            "--persona",
+            "builder",
+            "--profile",
+            "gemini",
+            "--repo",
+            repo.to_str().unwrap(),
+        ],
+        &[],
+    );
+    assert_eq!(p.exit(), 5, "{}", p.text());
+    assert!(
+        p.text().contains("gemini was removed; use agy"),
+        "{}",
+        p.text()
+    );
     assert!(!fx.cfg().join("queue.toml").exists());
 }
 

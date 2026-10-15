@@ -1,0 +1,36 @@
+
+  ┃
+  ┃  Use the bash tool to run: ls -la. Do not do anything else.
+  ┃
+
+     The user wants me to run ls -la only.</think>
+
+     $ ls -la
+
+     ▣  Build · Big Pickle
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Always allow
+  ┃
+  ┃  This will allow the following patterns until OpenCode is restarted
+  ┃
+  ┃  - ls *
+  ┃
+  ┃
+  ┃   Confirm   Cancel                                            ⇆ select  enter confirm
+  ┃

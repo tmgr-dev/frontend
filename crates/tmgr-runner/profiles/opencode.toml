@@ -4,8 +4,15 @@ command = ["opencode"]
 args = []
 model_arg = ["--model", "{model}"]
 env_pass = []
-instruction_files = ["AGENTS.md"]
+instruction_files = []
 tier = "t2"
+
+# opencode's default agent runs every tool without asking, and a repository can loosen that (opencode.json, .opencode/ agents and plugins).
+# So project config is off (which also stops opencode reading the project's AGENTS.md) and the config below names every built-in agent and
+# tool, so no other config can reorder its rules. Checked with `opencode debug agent` on 1.18.35, including against hostile project and home configs.
+[env]
+OPENCODE_DISABLE_PROJECT_CONFIG = "1"
+OPENCODE_CONFIG_CONTENT = '{"permission":{"*":"ask","read":{"*":"allow","*.env":"ask","*.env.*":"ask","*.env.example":"allow"},"grep":"allow","glob":"allow","list":"allow","todowrite":"allow","todoread":"allow","question":"allow","plan_enter":"allow","plan_exit":"ask","bash":"ask","edit":"ask","webfetch":"ask","websearch":"ask","codesearch":"ask","task":"ask","external_directory":"ask","skill":"ask","lsp":"ask","doom_loop":"ask"},"agent":{"build":{"permission":{"*":"ask","read":{"*":"allow","*.env":"ask","*.env.*":"ask","*.env.example":"allow"},"grep":"allow","glob":"allow","list":"allow","todowrite":"allow","todoread":"allow","question":"allow","plan_enter":"allow","plan_exit":"ask","bash":"ask","edit":"ask","webfetch":"ask","websearch":"ask","codesearch":"ask","task":"ask","external_directory":"ask","skill":"ask","lsp":"ask","doom_loop":"ask"}},"general":{"permission":{"*":"ask","read":{"*":"allow","*.env":"ask","*.env.*":"ask","*.env.example":"allow"},"grep":"allow","glob":"allow","list":"allow","todowrite":"allow","todoread":"allow","question":"allow","plan_enter":"allow","plan_exit":"ask","bash":"ask","edit":"ask","webfetch":"ask","websearch":"ask","codesearch":"ask","task":"ask","external_directory":"ask","skill":"ask","lsp":"ask","doom_loop":"ask"}},"explore":{"permission":{"*":"ask","read":{"*":"allow","*.env":"ask","*.env.*":"ask","*.env.example":"allow"},"grep":"allow","glob":"allow","list":"allow","todowrite":"allow","todoread":"allow","question":"allow","plan_enter":"allow","plan_exit":"ask","bash":"ask","edit":"ask","webfetch":"ask","websearch":"ask","codesearch":"ask","task":"ask","external_directory":"ask","skill":"ask","lsp":"ask","doom_loop":"ask"}},"tmgr-accept-edits":{"mode":"primary","description":"Edits files in the project without asking; asks before commands, web access and anything outside the project.","permission":{"*":"ask","read":{"*":"allow","*.env":"ask","*.env.*":"ask","*.env.example":"allow"},"grep":"allow","glob":"allow","list":"allow","todowrite":"allow","todoread":"allow","question":"allow","plan_enter":"allow","plan_exit":"ask","bash":"ask","edit":"allow","webfetch":"ask","websearch":"ask","codesearch":"ask","task":"ask","external_directory":"ask","skill":"ask","lsp":"ask","doom_loop":"ask"}},"plan":{"permission":{"*":"ask","read":{"*":"allow","*.env":"ask","*.env.*":"ask","*.env.example":"allow"},"grep":"allow","glob":"allow","list":"allow","todowrite":"allow","todoread":"allow","question":"allow","plan_enter":"allow","plan_exit":"ask","bash":"ask","edit":{"*":"deny",".opencode/plans/*.md":"allow"},"webfetch":"ask","websearch":"ask","codesearch":"ask","task":"ask","external_directory":"ask","skill":"ask","lsp":"ask","doom_loop":"ask"}}}}'
 
 [prompt]
 mode = "arg"
@@ -17,11 +24,19 @@ args = ["--continue"]
 [hooks]
 kind = "project-file"
 
-# Idle home screen checked against a recorded opencode 1.19 screen; the permission prompt lines come from strings in the 1.19 binary, no recorded approval screen.
+# Checked against recorded opencode 1.18.35 screens (profiles/screens): a bash permission prompt in ask mode, its "always allow"
+# confirmation and a session waiting for input. The ctrl+p footer also shows while opencode works, so idle only counts after the quiet
+# window; the start screen without a prompt keeps that footer above the bottom rows and stays "working".
 [status]
 blocked = [
   '(?i)permission required',
   '(?i)\ballow (once|always)\b',
   '(?i)reject permission',
+  '(?i)this will allow the following patterns',
 ]
-idle = []
+idle = ['(?i)\bctrl\+p\b']
+
+[permission_modes]
+ask = ["--agent", "build"]
+accept-edits = ["--agent", "tmgr-accept-edits"]
+plan = ["--agent", "plan"]

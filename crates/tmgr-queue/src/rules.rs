@@ -132,6 +132,8 @@ pub fn argv_is_bypass(argv: &[String]) -> bool {
             || a.contains("dangerous")
             || a.contains("yolo")
             || a.contains("danger-full-access")
+            || a == "--auto"
+            || a.starts_with("--auto=")
             || a == "--ask-for-approval=never"
             || a == "-a=never"
             || a == "-anever"
@@ -389,6 +391,9 @@ mod tests {
             vec!["codex", "-a=never"],
             vec!["codex", "-anever"],
             vec!["codex", "--ask-for-approval", "NEVER"],
+            vec!["opencode", "--auto"],
+            vec!["opencode", "--AUTO=true"],
+            vec!["agy", "--dangerously-skip-permissions"],
         ] {
             assert_eq!(
                 validate_rule(&r, &Fake(argv.clone()))
@@ -399,6 +404,7 @@ mod tests {
             );
         }
         assert!(validate_rule(&r, &Fake(vec!["codex", "--model", "x"])).is_ok());
+        assert!(validate_rule(&r, &Fake(vec!["agy", "--model", "auto"])).is_ok());
         r.profile = "nope".into();
         assert_eq!(validate_rule(&r, &Fake(vec![])).unwrap_err().exit_code(), 5);
     }

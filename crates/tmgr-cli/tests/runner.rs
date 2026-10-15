@@ -483,6 +483,10 @@ fn bad_run_requests_are_refused() {
     assert_eq!(out.status.code(), Some(2));
     assert!(String::from_utf8_lossy(&out.stderr).contains("unknown agent profile"));
 
+    let out = env.tmgr(&["run", "--agent", "gemini", "--cwd", &cwd, "--no-attach"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("gemini was removed; use agy"));
+
     let script = env.script("x.sh", "sleep 5\n");
     let home = std::env::var("HOME").unwrap();
     let out = env.tmgr(&["run", "--agent-cmd", &script, "--cwd", &home, "--no-attach"]);

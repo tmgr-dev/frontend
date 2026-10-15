@@ -1,0 +1,35 @@
+id = "agy"
+name = "Antigravity CLI"
+command = ["agy"]
+args = []
+model_arg = ["--model", "{model}"]
+env_pass = []
+instruction_files = ["AGENTS.md", "GEMINI.md"]
+tier = "t2"
+
+[prompt]
+mode = "arg"
+args = ["--prompt-interactive", "{prompt}"]
+
+[resume]
+args = ["--continue"]
+
+# Sign-in screens checked against recorded agy 1.1.1 screens (profiles/screens). agy keeps its login in the OS keychain, which the sandbox denies, so signed-in screens were not recorded: the confirmation and folder-trust lines come from strings in the 1.1.1 binary, and there is no idle pattern yet.
+[status]
+blocked = [
+  '(?i)you are currently not signed in',
+  '(?i)select login method',
+  '(?i)paste the authorization code',
+  '(?i)do you want to proceed\?',
+  '(?i)\ballow (access to|creation of) this file\?',
+  '(?i)allow sandbox bypass',
+  '(?i)requesting permission for:',
+  '(?i)yes, i trust this folder',
+]
+idle = []
+
+# agy asks before edits and commands unless told otherwise, so ask adds no flag.
+[permission_modes]
+ask = []
+accept-edits = ["--mode", "accept-edits"]
+plan = ["--mode", "plan"]

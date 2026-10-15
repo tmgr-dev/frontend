@@ -63,9 +63,7 @@ fn recalled(p: &mut Plan) {
 fn launch_pin(profile: &str, model: Option<&str>, mode: &str) -> Result<(ExePin, String)> {
     let dir = tmgr_runner::profile::user_dir();
     let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
-    let p = set
-        .get(profile)
-        .ok_or_else(|| Error::usage(format!("unknown agent profile {profile}")))?;
+    let p = set.lookup(profile).map_err(Error::usage)?;
     if !p.has_permission_modes() {
         return Err(Error::usage(format!(
             "profile {profile:?} has no [permission_modes] table; task runs need its {mode} entry"
