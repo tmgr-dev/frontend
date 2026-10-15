@@ -274,18 +274,30 @@ fn entries(dir: &std::fs::File) -> Vec<std::ffi::OsString> {
     names
 }
 
-fn copy_regular(dir: &std::fs::File, name: &std::ffi::OsStr, to: &Path) -> Result<()> {
-    let Some(mut file) = open_in(dir, name, libc::O_NONBLOCK) else {
+const MAX_IMPORT: u64 = 2 << 30;
+
+fn copy_regular(
+    dir: &std::fs::File,
+    name: &std::ffi::OsStr,
+    to: &Path,
+    budget: &mut u64,
+) -> Result<()> {
+    use std::io::Read;
+    let Some(file) = open_in(dir, name, libc::O_NONBLOCK) else {
         return Ok(());
     };
-    if !file.metadata()?.file_type().is_file() {
+    let meta = file.metadata()?;
+    if !meta.file_type().is_file() {
         return Ok(());
     }
+    *budget = budget.checked_sub(meta.len()).ok_or_else(|| {
+        Error::usage("the clone's objects are larger than 2 GiB, too large to import")
+    })?;
     let mut out = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(to.join(name))?;
-    std::io::copy(&mut file, &mut out)?;
+    std::io::copy(&mut file.take(meta.len()), &mut out)?;
     Ok(())
 }
 
@@ -294,6 +306,7 @@ fn copy_regular(dir: &std::fs::File, name: &std::ffi::OsStr, to: &Path) -> Resul
 fn copy_objects(clone: &Path, into: &Path) -> Result<()> {
     let objects = open_beneath(clone, ".git/objects", libc::O_DIRECTORY)
         .ok_or_else(|| Error::usage("the clone has no object store of its own"))?;
+    let mut budget = MAX_IMPORT;
     for name in entries(&objects) {
         let text = name.to_string_lossy();
         let fanout = text.len() == 2 && text.bytes().all(|b| b.is_ascii_hexdigit());
@@ -314,7 +327,7 @@ fn copy_objects(clone: &Path, into: &Path) -> Result<()> {
                     && (f.ends_with(".pack") || f.ends_with(".idx") || f.ends_with(".rev"))
             };
             if wanted {
-                copy_regular(&sub, &file, &to)?;
+                copy_regular(&sub, &file, &to, &mut budget)?;
             }
         }
     }
@@ -609,6 +622,11 @@ mod tests {
         std::fs::write(&alternates, original).unwrap();
         std::fs::write(heads.join("tm-2-fix"), format!("{tip}\n")).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_ok());
+        let huge = std::fs::File::create(objects.join("pack/pack-big.pack")).unwrap();
+        huge.set_len(MAX_IMPORT + 1).unwrap();
+        let err = import_branch(&r, &dest, "tm-2-fix").unwrap_err();
+        assert!(err.to_string().contains("too large"), "{err}");
+        std::fs::remove_file(objects.join("pack/pack-big.pack")).unwrap();
         std::fs::rename(&objects, root.join("moved-objects")).unwrap();
         std::os::unix::fs::symlink(root.join("moved-objects"), &objects).unwrap();
         assert!(import_branch(&r, &dest, "tm-2-fix").is_err());
