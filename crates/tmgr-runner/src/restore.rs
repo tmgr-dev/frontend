@@ -5,8 +5,8 @@ use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tmgr_ipc::api::{
-    limits::MAX_BUNDLE, sha256_hex, CwdPin, EventMsg, Origin, RunBundle, RunCreateReq, State,
-    StateKind, TaskRef,
+    limits::MAX_BUNDLE, sha256_hex, CwdPin, EventMsg, ExePin, Origin, RunBundle, RunCreateReq,
+    State, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::valid_session_id;
 
@@ -37,6 +37,8 @@ pub struct Intent {
     pub clone_of: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent_work: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exe_pin: Option<ExePin>,
     #[serde(default)]
     pub bypass: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -351,7 +353,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         clone_of: i.clone_of.clone(),
         trust_cwd: None,
         agent_work: i.agent_work,
-        exe_pin: None,
+        exe_pin: i.exe_pin.clone(),
     }
 }
 

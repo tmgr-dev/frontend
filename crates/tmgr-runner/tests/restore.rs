@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
-use tmgr_ipc::api::{CwdPin, Origin, RunCreateReq, SessionInfo, StateKind, CLIENT_WORKER};
+use tmgr_ipc::api::{
+    sha256_hex, CwdPin, ExePin, Origin, RunCreateReq, SessionInfo, StateKind, CLIENT_WORKER,
+};
 use tmgr_runner::client::Client;
 use tmgr_runner::restore::{self, Intent, Status};
 use tmgr_runner::wire::now_ms;
@@ -525,6 +527,7 @@ fn forged(h: &H, id: &str, edit: impl Fn(&mut Intent)) {
         permission_mode: None,
         clone_of: None,
         agent_work: false,
+        exe_pin: None,
         bypass: false,
         boot: None,
         pids: Vec::new(),
@@ -619,4 +622,52 @@ fn restore_drops_a_trust_entry_the_profile_no_longer_seeds() {
     let new_home = h.homes.join(&r.session.id);
     assert!(new_home.join("marker").exists());
     assert!(!new_home.join(".claude.json").exists());
+}
+
+#[test]
+fn restore_keeps_the_pinned_executable_pinned() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new(true);
+    let agent = h.work.join("pinned-agent");
+    fs::write(&agent, AGENT).unwrap();
+    fs::set_permissions(&agent, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(
+        h.agents.join("pinned.toml"),
+        format!(
+            "id = \"pinned\"\nname = \"Pinned\"\ncommand = [{:?}]\n[resume]\nargs = [\"--resumed\"]\n",
+            agent.display().to_string()
+        ),
+    )
+    .unwrap();
+    let canonical = fs::canonicalize(&agent).unwrap();
+    let mut req = h.req();
+    req.profile = "pinned".into();
+    req.exe_pin = Some(ExePin {
+        path: canonical.display().to_string(),
+        sha256: sha256_hex(AGENT.as_bytes()),
+    });
+    h.start();
+    let first = h.client().create_run(req).unwrap();
+    h.wait_log("home:new", 1);
+    assert_eq!(
+        restore::load(&h.store(), &first.id).unwrap().exe_pin,
+        Some(ExePin {
+            path: canonical.display().to_string(),
+            sha256: sha256_hex(AGENT.as_bytes()),
+        })
+    );
+    h.reboot(&first, false);
+
+    fs::write(&agent, format!("{AGENT}# changed\n")).unwrap();
+    let e = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(e.starts_with("forbidden: "), "{e}");
+    assert!(h.client().list().unwrap().iter().all(|s| s.id == first.id));
+    assert!(restore::load(&h.store(), &first.id).is_ok());
+
+    fs::write(&agent, AGENT).unwrap();
+    let r = h.client().restore(&first.id).unwrap();
+    assert_eq!(r.session.argv[0], canonical.display().to_string());
+    h.wait_log("home:kept", 1);
 }
