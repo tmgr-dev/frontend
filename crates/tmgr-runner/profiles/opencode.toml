@@ -30,7 +30,7 @@ kind = "project-file"
 [status]
 blocked = [
   '(?i)permission required',
-  '(?i)\ballow (once|always)\b',
+  '(?i)\ballow once\s+allow always\b',
   '(?i)reject permission',
   '(?i)this will allow the following patterns',
 ]

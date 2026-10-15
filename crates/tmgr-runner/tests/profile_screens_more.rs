@@ -110,6 +110,10 @@ fn opencode_ordinary_text_is_not_blocked() {
         "opencode",
         "Ask anything… \"Fix a TODO in the codebase\""
     ));
+    assert!(!literal(
+        "opencode",
+        "Pick allow once for a single command, or allow always for the pattern."
+    ));
 }
 
 #[test]
