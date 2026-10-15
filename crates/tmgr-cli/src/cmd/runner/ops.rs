@@ -28,6 +28,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Status => status(o),
             RunnerCmd::InstallService(a) => super::service::install(o, a.install),
             RunnerCmd::UninstallService => super::service::uninstall(o),
+            RunnerCmd::Trust(a) => super::trusted::trust(o, &a.dir),
+            RunnerCmd::Untrust(a) => super::trusted::untrust(o, &a.dir),
+            RunnerCmd::Trusted => super::trusted::list(o),
             RunnerCmd::Serve => serve(),
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {

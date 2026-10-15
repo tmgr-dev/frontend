@@ -787,7 +787,8 @@ fn constants_are_pinned() {
             "trust_cwd.v1",
             "agent_work.v1",
             "exe_pin.v1",
-            "argv_pin.v1"
+            "argv_pin.v1",
+            "trusted_folders.v1"
         ]
     );
     let methods = [
@@ -810,6 +811,9 @@ fn constants_are_pinned() {
         method::RUNS_LOOKUP,
         method::RUNS_STATUS,
         method::SESSIONS_TEXT,
+        method::TRUST_LIST,
+        method::TRUST_ADD,
+        method::TRUST_REMOVE,
     ];
     assert_eq!(
         methods,
@@ -833,6 +837,9 @@ fn constants_are_pinned() {
             "runs.lookup",
             "runs.status",
             "sessions.text",
+            "trust.list",
+            "trust.add",
+            "trust.remove",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -855,7 +862,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 20);
+    assert_eq!(w.caps.len(), 21);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

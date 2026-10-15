@@ -44,8 +44,9 @@ pub mod caps {
     pub const AGENT_WORK_V1: &str = "agent_work.v1";
     pub const EXE_PIN_V1: &str = "exe_pin.v1";
     pub const ARGV_PIN_V1: &str = "argv_pin.v1";
+    pub const TRUSTED_FOLDERS_V1: &str = "trusted_folders.v1";
 
-    pub const ALL: [&str; 20] = [
+    pub const ALL: [&str; 21] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -66,6 +67,7 @@ pub mod caps {
         AGENT_WORK_V1,
         EXE_PIN_V1,
         ARGV_PIN_V1,
+        TRUSTED_FOLDERS_V1,
     ];
 }
 
@@ -89,6 +91,9 @@ pub mod method {
     pub const RUNS_LOOKUP: &str = "runs.lookup";
     pub const RUNS_STATUS: &str = "runs.status";
     pub const SESSIONS_TEXT: &str = "sessions.text";
+    pub const TRUST_LIST: &str = "trust.list";
+    pub const TRUST_ADD: &str = "trust.add";
+    pub const TRUST_REMOVE: &str = "trust.remove";
 }
 
 pub mod limits {
