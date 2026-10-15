@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.1
 
+- This release is still not signed: the minisign secrets are not set up yet, so its tarballs have SHA256SUMS only and it is published as a prerelease.
 - The runner checks the whole command line, not only the executable: queue starts send the digest of the approved command (profile command and arguments, model and `ask` arguments, with the pinned executable; runner cap `argv_pin.v1`, required), and `tmgr run` sends the executable pin and the command digest it resolves after the confirmation. A runner that would start anything else refuses with `forbidden`.
-- `runs.restore` refuses a queue run recorded without an executable pin; queue the task again.
+- `runs.restore` refuses a queue run recorded without an executable pin (queue the task again) and checks the resume arguments against the profile it launches.
+- `tmgr run` and `tmgr queue run-once` refuse a runner that is still the 1.0.0 one (it cannot check the command line): run `tmgr runner stop && tmgr runner start` after updating.
 
 ## 1.0.0
 
