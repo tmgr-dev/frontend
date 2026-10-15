@@ -5,10 +5,20 @@ import { languages } from '@codemirror/language-data';
 import { shift, size } from '@floating-ui/dom';
 import { classHighlighter } from '@lezer/highlight';
 import { Crepe } from '@milkdown/crepe';
-import { editorViewCtx, remarkStringifyOptionsCtx } from '@milkdown/kit/core';
+import {
+	commandsCtx,
+	editorViewCtx,
+	remarkStringifyOptionsCtx,
+	schemaCtx,
+} from '@milkdown/kit/core';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { uploadConfig } from '@milkdown/kit/plugin/upload';
-import { linkAttr } from '@milkdown/kit/preset/commonmark';
+import {
+	clearTextInCurrentBlockCommand,
+	linkAttr,
+} from '@milkdown/kit/preset/commonmark';
 import { remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
+import type { Node, Schema } from '@milkdown/kit/prose/model';
 import type { TmgrDirectory } from '../useTmgrDirectory';
 import { icons } from './icons';
 
@@ -25,6 +35,49 @@ export interface PageCrepeOptions {
 const item = (label: string, icon: string) => ({ label, icon });
 
 export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
+	const uploadImages = async (
+		list: ArrayLike<File>,
+		schema: Schema,
+	): Promise<Node[]> => {
+		const upload = options.uploadFile;
+		if (!upload) return [];
+		const nodes = [];
+		for (const file of imageFilesOf(list)) {
+			try {
+				const id = await upload(file);
+				const node = schema.nodes.image.createAndFill({
+					src: `tmgr://file/${id}`,
+					alt: file.name,
+				});
+				if (node) nodes.push(node);
+			} catch {
+				options.onUploadError(file);
+			}
+		}
+		return nodes;
+	};
+
+	const pickImages = (ctx: Ctx) => {
+		ctx.get(commandsCtx).call(clearTextInCurrentBlockCommand.key);
+		const view = ctx.get(editorViewCtx);
+		const schema = ctx.get(schemaCtx);
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = 'image/*';
+		input.multiple = true;
+		input.style.display = 'none';
+		input.addEventListener('cancel', () => input.remove());
+		input.addEventListener('change', async () => {
+			const files = Array.from(input.files ?? []);
+			input.remove();
+			const nodes = await uploadImages(files, schema);
+			if (!nodes.length || view.isDestroyed) return;
+			view.dispatch(view.state.tr.insert(view.state.selection.to, nodes));
+		});
+		document.body.appendChild(input);
+		input.click();
+	};
+
 	const crepe = new Crepe({
 		root: options.root,
 		defaultValue: options.markdown,
@@ -37,6 +90,14 @@ export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
 				handleAddIcon: icons.plus,
 				handleDragIcon: icons.grip,
 				blockHandle: { getOffset: () => 6 },
+				buildMenu: (builder) => {
+					if (!options.uploadFile) return;
+					builder.getGroup('advanced').addItem('image', {
+						label: 'Image',
+						icon: icons.image,
+						onRun: pickImages,
+					});
+				},
 				slashMenu: {
 					middleware: [
 						shift({ padding: 8 }),
@@ -122,24 +183,7 @@ export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
 		ctx.set(remarkGFMPlugin.options.key, { stringLength: () => 3 });
 		ctx.update(uploadConfig.key, (prev) => ({
 			...prev,
-			uploader: async (list, schema) => {
-				const upload = options.uploadFile;
-				if (!upload) return [];
-				const nodes = [];
-				for (const file of imageFilesOf(list)) {
-					try {
-						const id = await upload(file);
-						const node = schema.nodes.image.createAndFill({
-							src: `tmgr://file/${id}`,
-							alt: file.name,
-						});
-						if (node) nodes.push(node);
-					} catch {
-						options.onUploadError(file);
-					}
-				}
-				return nodes;
-			},
+			uploader: uploadImages,
 		}));
 		ctx.set(linkAttr.key, (mark) => {
 			const href = String(mark.attrs.href ?? '');
