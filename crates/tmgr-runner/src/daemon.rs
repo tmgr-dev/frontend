@@ -33,9 +33,10 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    method, CreateReq, CwdPin, ErrorCode, EventMsg, LookupParams, Origin, OriginRevokeParams,
-    OriginRevoked, RestoredRun, RunCreateReq, RunStatus, SessionInfo, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, CLIENT_CLI, CLIENT_WORKER,
+    limits, method, CreateReq, CwdPin, ErrorCode, EventMsg, LookupParams, Origin,
+    OriginRevokeParams, OriginRevoked, RestoredRun, RunCreateReq, RunStatus, SessionInfo,
+    SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, CLIENT_CLI,
+    CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -450,6 +451,18 @@ impl Session {
             signal: i.meta.exit_signal,
             started_ms: i.meta.created_ms,
             ended_ms: exited.then_some(state.since_ms),
+        }
+    }
+
+    fn text(&self, lines: Option<u32>) -> SessionText {
+        let mut i = lock(&self.inner);
+        let (rows, cols, scroll_max, lines) = i.screen.text_lines(lines.map(|n| n as usize));
+        SessionText {
+            id: i.meta.id.clone(),
+            rows,
+            cols,
+            lines,
+            scroll_max,
         }
     }
 
@@ -1193,6 +1206,27 @@ impl Runner {
                     ));
                 }
                 Ok(Value::Null)
+            }
+            method::SESSIONS_TEXT => {
+                if conn.client == CLIENT_WORKER {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "screen text is never available to link workers",
+                    ));
+                }
+                let q: TextParams = params(p)?;
+                if !valid_session_id(&q.id) {
+                    return Err(api(ErrorCode::InvalidParams, "invalid session id"));
+                }
+                if q.lines
+                    .is_some_and(|n| !(1..=limits::MAX_TEXT_LINES).contains(&n))
+                {
+                    return Err(api(ErrorCode::InvalidParams, "lines must be 1 to 10000"));
+                }
+                let s = self
+                    .session(&q.id)
+                    .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+                Ok(to_json(&s.text(q.lines)))
             }
             method::SESSIONS_WORKLOG => {
                 let s = self

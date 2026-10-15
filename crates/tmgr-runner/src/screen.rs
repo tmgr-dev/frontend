@@ -260,6 +260,27 @@ impl ScreenModel {
         }
     }
 
+    pub fn text_lines(&mut self, n: Option<usize>) -> (u16, u16, u32, Vec<String>) {
+        let screen = self.parser.screen_mut();
+        screen.set_scrollback(usize::MAX);
+        let scroll_max = screen.scrollback();
+        let (rows, cols) = screen.size();
+        let n = n.unwrap_or(rows as usize);
+        let mut offset = n.saturating_sub(rows as usize).min(scroll_max);
+        let keep = n.min(rows as usize);
+        let mut lines = Vec::new();
+        while offset > 0 {
+            let take = offset.min(rows as usize);
+            screen.set_scrollback(offset);
+            lines.extend(row_texts(screen, cols).take(take));
+            offset -= take;
+        }
+        screen.set_scrollback(0);
+        let bottom: Vec<String> = row_texts(screen, cols).collect();
+        lines.extend(bottom[bottom.len() - keep..].iter().cloned());
+        (rows, cols, scroll_max as u32, lines)
+    }
+
     pub fn bottom_text(&self, n: usize) -> Vec<String> {
         let screen = self.parser.screen();
         let (_, cols) = screen.size();
@@ -273,6 +294,12 @@ impl ScreenModel {
         let skip = lines.len().saturating_sub(n);
         lines.split_off(skip)
     }
+}
+
+fn row_texts(screen: &vt100::Screen, cols: u16) -> impl Iterator<Item = String> + '_ {
+    screen
+        .rows(0, cols)
+        .map(|l| sanitize_text(l.trim_end()).into_owned())
 }
 
 fn convert_color(c: vt100::Color) -> Color {
