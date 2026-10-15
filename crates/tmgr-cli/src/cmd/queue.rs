@@ -690,6 +690,7 @@ impl RunsClient for RunnerRuns {
                 clone_of: Some(req.clone_of.clone()),
                 trust_cwd: None,
                 agent_work: true,
+                exe_pin: None,
             })
         })
         .map(|info| info.id)
