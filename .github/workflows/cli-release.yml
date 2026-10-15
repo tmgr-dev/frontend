@@ -99,7 +99,7 @@ jobs:
 
       - name: build
         run: |
-          cargo build --release --locked --package tmgr-cli --target "$TARGET"
+          cargo build --release --locked --package tmgr-cli --features runner --target "$TARGET"
           mkdir -p dist
           cp "target/$TARGET/release/tmgr" dist/tmgr
           file dist/tmgr
@@ -107,6 +107,7 @@ jobs:
       - name: smoke
         run: |
           ./dist/tmgr --version
+          ./dist/tmgr runner --help > /dev/null
           ./dist/tmgr version --json | jq -e --arg v "$CLI_VERSION" '.schema == "tmgr.v1" and .ok and .data.version == $v'
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
