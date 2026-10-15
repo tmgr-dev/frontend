@@ -21,6 +21,7 @@ struct Env {
     run: PathBuf,
     homes: tempfile::TempDir,
     proj: PathBuf,
+    quiet_ms: u64,
 }
 
 fn private_dir(path: &Path) {
@@ -114,7 +115,14 @@ impl Env {
             run,
             homes,
             proj,
+            quiet_ms: 300,
         }
+    }
+
+    fn with_quiet(quiet_ms: u64) -> Env {
+        let mut env = Env::new();
+        env.quiet_ms = quiet_ms;
+        env
     }
 
     fn envs(&self) -> Vec<(&'static str, String)> {
@@ -122,7 +130,7 @@ impl Env {
         vec![
             ("TMGR_RUNNER_DIR", self.run.display().to_string()),
             ("TMGR_RUNNER_HOMES", self.homes.path().display().to_string()),
-            ("TMGR_T0_QUIET_MS", "300".into()),
+            ("TMGR_T0_QUIET_MS", self.quiet_ms.to_string()),
             ("XDG_CONFIG_HOME", cfg.display().to_string()),
             ("TMGR_AGENTS_DIR", cfg.join("agents").display().to_string()),
             ("TERM", "xterm-256color".into()),
@@ -357,7 +365,7 @@ const ECHO_AGENT: &str = "echo READY\nwhile read l; do echo \"echo:$l\"; done\n"
 
 #[test]
 fn acceptance_working_waiting_working_exited() {
-    let env = Env::new();
+    let env = Env::with_quiet(1000);
     let script = env.script("fake-agent.sh", FAKE_AGENT);
     let Some(id) = env.start(&script, "fake") else {
         return;
