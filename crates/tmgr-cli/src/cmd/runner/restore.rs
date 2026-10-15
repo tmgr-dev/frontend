@@ -101,7 +101,7 @@ pub fn run(o: &Opts, session: Option<&str>, discard: bool) -> Result<i32> {
     if let Some(id) = session {
         let e = all.iter().find(|e| e.intent.session == id).ok_or_else(|| {
             Error::not_found(format!("no restore record for {}", clean(id)))
-                .hint("tmgr agents restore")
+                .hint(format!("{} agents restore", super::bin()))
         })?;
         return restore_one(o, &cfg, e);
     }
@@ -134,7 +134,8 @@ pub fn run(o: &Opts, session: Option<&str>, discard: bool) -> Result<i32> {
         .collect();
     if restorable.is_empty() || !interact::is_interactive() || in_agent() {
         if !restorable.is_empty() {
-            println!("Restore one in a terminal with: tmgr agents restore <id>");
+            let bin = super::bin();
+            println!("Restore one in a terminal with: {bin} agents restore <id>");
         }
         return Ok(0);
     }
@@ -166,8 +167,9 @@ fn restore_one(o: &Opts, cfg: &RunnerConfig, e: &Entry) -> Result<i32> {
     } else {
         "started fresh"
     };
+    let bin = super::bin();
     let human = format!(
-        "{how}: {} ({}); attach with: tmgr attach {}",
+        "{how}: {} ({}); attach with: {bin} attach {}",
         clean(&r.session.name),
         clean(&r.session.id),
         clean(&r.session.id)

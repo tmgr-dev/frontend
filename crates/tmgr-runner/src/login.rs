@@ -784,6 +784,41 @@ pub fn prepare(
     })
 }
 
+pub fn login_problem(p: &Profile, real_home: &Path, bin: &str) -> Option<String> {
+    let r = match resolve(p, real_home, &[]) {
+        Ok(r) => r,
+        Err(e) => return Some(e),
+    };
+    for f in &r.secret_files {
+        match open_below(&f.root, &f.from) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let first = match f.template.as_deref() {
+                    Some("claude-oauth") => "run `claude setup-token`, then ".to_string(),
+                    _ => "run ".to_string(),
+                };
+                return Some(format!(
+                    "{} has no login for the runner yet: {first}`{bin} agents login {}`",
+                    p.name, p.id
+                ));
+            }
+            _ => {}
+        }
+    }
+    for seed in r.seeds.iter().filter(|s| s.fresh.is_some()) {
+        match seed_bytes(seed) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                return Some(format!(
+                    "{} has no login yet: run `{}` once in a normal terminal and log in, then start the session again",
+                    p.name, seed.agent
+                ))
+            }
+            Err(e) => return Some(e),
+        }
+    }
+    None
+}
+
 fn seed_bytes(seed: &ResolvedSeed) -> Result<Option<Vec<u8>>, String> {
     let mut f = match open_below(&seed.root, &seed.from) {
         Ok(f) => f,
@@ -1365,6 +1400,58 @@ file = "~/.config/tmgr/agents/p.env"
         profile(&format!(
             "[[secrets.files]]\nfrom = \"~/.config/tmgr/agents/c.json\"\nto = \".c/c.json\"\n{extra}"
         ))
+    }
+
+    #[test]
+    fn a_missing_stored_login_is_a_login_problem_with_the_next_step() {
+        let h = home();
+        let (set, _) = ProfileSet::load(None);
+        let claude = set.get("claude-code").unwrap();
+        let msg = login_problem(claude, &h.path, "tmgr-exp").unwrap();
+        assert!(
+            msg.contains("Claude Code has no login for the runner yet")
+                && msg.contains("`claude setup-token`")
+                && msg.contains("`tmgr-exp agents login claude-code`"),
+            "{msg}"
+        );
+        put(
+            &h.path
+                .join(".config/tmgr/agents/claude-code.credentials.json"),
+            "{}",
+            0o600,
+        );
+        assert_eq!(login_problem(claude, &h.path, "tmgr-exp"), None);
+
+        let plain = cred_profile("");
+        let msg = login_problem(&plain, &h.path, "tmgr").unwrap();
+        assert!(msg.contains("`tmgr agents login p`"), "{msg}");
+    }
+
+    #[test]
+    fn a_missing_or_stale_refreshing_login_is_a_login_problem() {
+        let h = home();
+        let (set, _) = ProfileSet::load(None);
+        let codex = set.get("codex").unwrap();
+        let msg = login_problem(codex, &h.path, "tmgr").unwrap();
+        assert!(
+            msg.contains("Codex has no login yet") && msg.contains("run `codex` once"),
+            "{msg}"
+        );
+        let auth = h.path.join(".codex/auth.json");
+        put(&auth, r#"{"last_refresh":"2020-01-01T00:00:00Z"}"#, 0o600);
+        let msg = login_problem(codex, &h.path, "tmgr").unwrap();
+        assert!(msg.contains("due for a refresh"), "{msg}");
+        let now = chrono::Utc::now().to_rfc3339();
+        put(&auth, &format!(r#"{{"last_refresh":"{now}"}}"#), 0o600);
+        assert_eq!(login_problem(codex, &h.path, "tmgr"), None);
+    }
+
+    #[test]
+    fn a_profile_without_a_login_has_no_login_problem() {
+        let h = home();
+        assert_eq!(login_problem(&profile(""), &h.path, "tmgr"), None);
+        let seeded = profile("[[sandbox.seed]]\nfrom = \"~/.a.json\"\nto = \".a.json\"\n");
+        assert_eq!(login_problem(&seeded, &h.path, "tmgr"), None);
     }
 
     #[test]

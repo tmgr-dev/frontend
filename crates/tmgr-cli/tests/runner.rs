@@ -5,6 +5,7 @@ use serde_json::Value;
 use std::fs;
 use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::sync::{Arc, Mutex};
@@ -474,6 +475,47 @@ fn bad_run_requests_are_refused() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(err.contains("home directory"), "{err}");
     assert!(env.sessions().is_empty());
+}
+
+#[test]
+fn an_agent_without_a_login_is_refused_before_anything_starts() {
+    let env = Env::new();
+    let home = env.tmp.path().join("home");
+    private_dir(&home);
+    let cwd = env.proj.display().to_string();
+    for (agent, want) in [
+        (
+            "claude-code",
+            "Claude Code has no login for the runner yet: run `claude setup-token`, then `tmgr-exp agents login claude-code`",
+        ),
+        ("codex", "run `codex` once"),
+    ] {
+        let mut cmd = env.cmd(&["run", "--agent", agent, "--cwd", &cwd, "--no-attach"]);
+        cmd.arg0("tmgr-exp")
+            .env("HOME", &home)
+            .env("PATH", "/usr/bin:/bin");
+        let out = run_bounded(cmd, Duration::from_secs(60));
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.code(), Some(2), "{err}");
+        assert!(err.contains(want), "{err}");
+    }
+    assert!(!env.run.join("runner.pid").exists());
+}
+
+#[test]
+fn hints_name_the_binary_that_was_invoked() {
+    let env = Env::new();
+    if !sandbox_usable() {
+        return;
+    }
+    let script = env.script("idle.sh", "sleep 30\n");
+    let cwd = env.proj.display().to_string();
+    let mut cmd = env.cmd(&["run", "--agent-cmd", &script, "--cwd", &cwd, "--no-attach"]);
+    cmd.arg0("tmgr-exp");
+    let out = run_bounded(cmd, Duration::from_secs(60));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{text}");
+    assert!(text.contains("attach with: tmgr-exp attach s_"), "{text}");
 }
 
 #[test]

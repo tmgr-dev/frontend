@@ -457,7 +457,7 @@ pub fn run(link: &str, mut client: Client, target: &RunView, input: bool) -> Res
             Kind::Offline,
             format!("lost the connection to {link}: {}", sanitize_text(&why)),
         )
-        .hint(format!("tmgr agents --host {link}"))),
+        .hint(format!("{} agents --host {link}", super::bin()))),
     }
 }
 
