@@ -262,6 +262,7 @@
 													>
 														{{ t.key }}
 													</router-link>
+													<span v-if="showWorkspace" class="ml-2 text-xs text-ink-subtle/70">{{ t.workspace }}</span>
 													<span v-if="t.title" class="ml-2 text-ink-subtle">{{ t.title }}</span>
 												</span>
 											</td>
@@ -469,6 +470,9 @@
 					...taskInfoFor(taskInfos.value, t.task_ref),
 				})),
 			);
+			const showWorkspace = computed(
+				() => new Set(taskRows.value.map((t) => t.workspace)).size > 1,
+			);
 			const showAccount = computed(
 				() => new Set(overview.value?.limits.map((l) => l.account)).size > 1,
 			);
@@ -489,6 +493,7 @@
 				trend,
 				taskRows,
 				showAccount,
+				showWorkspace,
 				hasLimit,
 				hasAccount,
 				scanIncomplete,

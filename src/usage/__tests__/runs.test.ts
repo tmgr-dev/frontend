@@ -1,7 +1,7 @@
 const get = jest.fn();
 jest.mock('@/plugins/axios', () => ({ __esModule: true, default: { get: (...a: unknown[]) => get(...a) } }));
 
-import { fetchRuns, taskInfoFor } from '../runs';
+import { fetchRuns, stripKeyPrefix, taskInfoFor } from '../runs';
 
 const run = (id: number, extra: object = {}) => ({
 	id,
@@ -50,6 +50,7 @@ describe('fetchRuns', () => {
 			key: 'TM-1',
 			title: 'Task 1',
 			path: '/demo/tasks/41',
+			workspace: 'demo',
 		});
 		const params = get.mock.calls[0][1].params;
 		expect(params.limit).toBe(200);
@@ -76,6 +77,7 @@ describe('fetchRuns', () => {
 			key: '#99',
 			title: null,
 			path: '/demo/tasks/99',
+			workspace: 'demo',
 		});
 	});
 

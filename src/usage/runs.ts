@@ -10,7 +10,22 @@ export interface TaskInfo {
 	key: string;
 	title: string | null;
 	path: string;
+	workspace: string;
 }
+
+export const stripKeyPrefix = (
+	key: string,
+	title: string | null,
+): string | null => {
+	if (!title) return title;
+	const lower = title.toLowerCase();
+	const k = key.toLowerCase();
+	if (!lower.startsWith(k)) return title;
+	const rest = title.slice(key.length);
+	if (!/^(:|\s)/.test(rest)) return title;
+	const clean = rest.replace(/^:?\s*/, '');
+	return clean || title;
+};
 
 export interface FetchedRuns {
 	runs: RawRun[];
@@ -54,10 +69,12 @@ export const toRawRun = (item: any, workspace: string): RawRun => ({
 
 const taskInfo = (item: any, ws: WorkspaceRef, taskId: number): TaskInfo => {
 	const task = item.task;
+	const key = task?.key ?? task?.code ?? `#${taskId}`;
 	return {
-		key: task?.key ?? task?.code ?? `#${taskId}`,
-		title: task?.title ?? null,
+		key,
+		title: stripKeyPrefix(key, task?.title ?? null),
 		path: `/${ws.code}/tasks/${taskId}`,
+		workspace: ws.code,
 	};
 };
 
@@ -130,5 +147,5 @@ export const taskInfoFor = (
 	const slash = ref.lastIndexOf('/');
 	const workspace = ref.slice(0, slash);
 	const id = ref.slice(slash + 1);
-	return { key: `#${id}`, title: null, path: `/${workspace}/tasks/${id}` };
+	return { key: `#${id}`, title: null, path: `/${workspace}/tasks/${id}`, workspace };
 };
