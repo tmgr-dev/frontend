@@ -124,8 +124,14 @@ const setupPages = async (page, body) => {
   return state;
 };
 
+const gate = () => {
+  let release;
+  const wait = new Promise((resolve) => (release = resolve));
+  return { wait, release };
+};
+
 // Registered after setupPages so these routes win over the pages catch-all.
-const mockUpload = async (page, { failing = [] } = {}) => {
+const mockUpload = async (page, { failing = [], hold } = {}) => {
   const attaches = [];
   await page.route('**/api/files/presign-upload', (route) => {
     const body = route.request().postDataJSON();
@@ -144,11 +150,12 @@ const mockUpload = async (page, { failing = [] } = {}) => {
   await page.route('**/storage-put', (route) =>
     route.fulfill({ status: 200, body: '' }),
   );
-  await page.route('**/api/pages/1/files', (route) => {
+  await page.route('**/api/pages/1/files', async (route) => {
     if (route.request().method() !== 'POST')
       return route.fulfill({ json: { data: [] } });
     const body = route.request().postDataJSON();
     attaches.push(body.file_name);
+    if (hold) await hold.wait;
     if (failing.includes(body.file_name))
       return route.fulfill({ status: 500, json: { message: 'Boom' } });
     return route.fulfill({
@@ -203,21 +210,28 @@ const imageItem = (page) =>
     .locator('.menu-group', { has: page.locator('h6', { hasText: 'Insert' }) })
     .locator('li', { hasText: /^Image$/ });
 
-// Caret at the end of the first line, then Enter + the given slash query.
-const typeSlash = async (page, query = '/') => {
-  const line = page.locator('.page-editor .ProseMirror p', {
-    hasText: 'First line',
-  });
+const paragraph = (page, text) =>
+  page.locator('.page-editor .ProseMirror p', { hasText: text });
+
+const selectIn = async (line, collapse) => {
   await line.click();
-  await line.evaluate((el) => {
+  await line.evaluate((el, collapse) => {
     const range = document.createRange();
     range.selectNodeContents(el);
-    range.collapse(false);
+    if (collapse) range.collapse(false);
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-  });
-  await page.waitForTimeout(100);
+  }, collapse);
+  await line.page().waitForTimeout(100);
+};
+
+const placeholder = (page) =>
+  page.locator('.page-editor').getByText('Upload in progress...');
+
+// Caret at the end of the first line, then Enter + the given slash query.
+const typeSlash = async (page, query = '/') => {
+  await selectIn(paragraph(page, 'First line'), true);
   await page.keyboard.press('Enter');
   await page.keyboard.type(query);
   await expect(slashMenu(page)).toBeVisible();
@@ -321,12 +335,16 @@ test('upload 500 inserts nothing and shows Failed to upload', async ({
   page,
 }) => {
   const state = await setupPages(page, 'First line\n');
-  const attaches = await mockUpload(page, { failing: ['shot.png'] });
+  const hold = gate();
+  const attaches = await mockUpload(page, { failing: ['shot.png'], hold });
   await openPage(page);
   await typeSlash(page);
   const chooser = await chooseImage(page, () => imageItem(page).click());
   await chooser.setFiles(png('shot.png'));
+  await expect(placeholder(page)).toBeVisible();
+  hold.release();
   await expect(page.getByText('Failed to upload shot.png')).toBeVisible();
+  await expect(placeholder(page)).toHaveCount(0);
   await expect(page.locator('.page-editor img[alt$=".png"]')).toHaveCount(0);
   await page.waitForTimeout(DEBOUNCE_MARGIN);
   expect(attaches, 'a failed mutation is not replayed').toEqual(['shot.png']);
@@ -343,10 +361,70 @@ test('one failed file of two still inserts the other', async ({ page }) => {
   await chooser.setFiles([png('bad.png'), png('good.png')]);
   await expect(page.getByText('Failed to upload bad.png')).toBeVisible();
   await expect(page.locator('.page-editor img[alt="good.png"]')).toBeVisible();
+  await expect(placeholder(page)).toHaveCount(0);
   await expect
     .poll(async () => (await savedBody(state)).includes('![good.png]('))
     .toBe(true);
   expect(await savedBody(state)).not.toContain('bad.png');
+});
+
+test('a pending upload lands where Image was chosen while the user edits elsewhere', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n\nLast line\n');
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await typeSlash(page);
+  const chooser = await chooseImage(page, () => imageItem(page).click());
+  await chooser.setFiles(png('shot.png'));
+  await expect(placeholder(page)).toBeVisible();
+  await expect.poll(() => attaches).toEqual(['shot.png']);
+  const last = paragraph(page, 'Last line');
+  await selectIn(last, true);
+  await page.keyboard.type(' edited');
+  await selectIn(last, false);
+  hold.release();
+  await expect(page.locator('.page-editor img[alt="shot.png"]')).toBeVisible();
+  await expect(placeholder(page)).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
+    )
+    .toBe(true);
+  expect(await savedBody(state)).toBe(
+    'First line\n\n![shot.png](tmgr://file/41)\n\nLast line edited\n',
+  );
+  expect(
+    await page.evaluate(() => window.getSelection().toString()),
+    'the selection made meanwhile is untouched',
+  ).toBe('Last line edited');
+});
+
+test('text typed at the Image spot while uploading is kept next to the image', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n\nLast line\n');
+  const hold = gate();
+  await mockUpload(page, { hold });
+  await openPage(page);
+  await typeSlash(page);
+  const chooser = await chooseImage(page, () => imageItem(page).click());
+  await chooser.setFiles(png('shot.png'));
+  await expect(placeholder(page)).toBeVisible();
+  await page.keyboard.type('abc');
+  await expect(paragraph(page, 'abc')).toBeVisible();
+  hold.release();
+  await expect(page.locator('.page-editor img[alt="shot.png"]')).toBeVisible();
+  await expect(placeholder(page)).toHaveCount(0);
+  await expect
+    .poll(async () =>
+      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
+    )
+    .toBe(true);
+  expect(await savedBody(state)).toMatch(
+    /^First line\n\n(abc!\[shot\.png\]\(tmgr:\/\/file\/41\)|!\[shot\.png\]\(tmgr:\/\/file\/41\)abc)\n\nLast line\n$/,
+  );
 });
 
 for (const how of ['cancel event', 'empty selection']) {
