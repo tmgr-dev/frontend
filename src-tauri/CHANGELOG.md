@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.39 — 2026-10-16
+
+- AI usage: Claude limits now show the fullest reading of the current window instead of the newest copy sent by an idle session.
+
 ## 0.9.38 — 2026-10-15
 
 - AI usage screen: tokens, API-equivalent cost and limits per day, tool, model and task, read from the Claude Code and Codex logs on this computer (user menu, AI usage). Cost is API-equivalent (list prices), not your subscription bill. Claude limits need the status line hook (`tmgr usage statusline install`); Codex limits come from its local sessions. Nothing leaves this computer.
