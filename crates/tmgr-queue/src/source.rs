@@ -171,21 +171,146 @@ fn list_all(client: &tmgr_core::api::Client, base: &str) -> Result<(Vec<Value>, 
     Ok((items, false))
 }
 
+/// A local workspace opened for reading tasks the way the queue snapshots them: the edit journal is
+/// verified once and every task's author comes from it.
+pub struct LocalTasks {
+    client: tmgr_core::api::Client,
+    workspace: tmgr_core::local::LocalWorkspace,
+    owner: String,
+    journal: rusqlite::Connection,
+    chain: tmgr_local::ChainStatus,
+}
+
+impl LocalTasks {
+    pub fn open(code: &str, local_user_id: Option<i64>) -> Result<LocalTasks> {
+        let client = tmgr_core::local::client(code, local_user_id, "tmgr-queue", false)?;
+        let workspace = tmgr_core::local::find(code)?;
+        let owner = tmgr_core::local::identity(&tmgr_core::local::root()?, local_user_id)
+            .id
+            .to_string();
+        let journal = tmgr_local::open_read(&workspace.database)
+            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
+        let chain = tmgr_local::verify_chain(&journal)
+            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
+        if let Ok(writer) = tmgr_local::open_write(&workspace.database) {
+            let _ = tmgr_local::store_checkpoint(&writer, &chain);
+        }
+        Ok(LocalTasks {
+            client,
+            workspace,
+            owner,
+            journal,
+            chain,
+        })
+    }
+
+    pub fn chain_ok(&self) -> bool {
+        self.chain.ok
+    }
+
+    pub fn fetch(&self, path: &str) -> Result<Value> {
+        let (status, body) = self.client.call("GET", path, None, false)?;
+        if status >= 400 {
+            return Err(tmgr_core::local::status_error(status, &body));
+        }
+        Ok(tmgr_core::api::unwrap_data(body))
+    }
+
+    /// The task as a run bundle would carry it; `persona` is the persona assignee the run is for.
+    pub fn candidate(&self, id: i64, persona: &Value) -> Result<Candidate> {
+        let fetch = |path: &str| self.fetch(path);
+        let owner = &self.owner;
+        let journal = &self.journal;
+        let chain = &self.chain;
+        let workspace = &self.workspace;
+        let full = fetch(&format!("/api/tasks/{id}"))?;
+        let comments_raw = fetch(&format!("/api/tasks/{id}/comments"))?;
+        let comments: Vec<BundleComment> = comments_raw
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .map(|c| {
+                        let kind = text(c, "author_kind");
+                        let human = kind == "user" && text(c, "author_id") == *owner;
+                        BundleComment {
+                            author: BundleAuthor {
+                                kind: if human {
+                                    AuthorKind::Human
+                                } else if matches!(kind.as_str(), "persona" | "agent") {
+                                    AuthorKind::Agent
+                                } else {
+                                    AuthorKind::Other
+                                },
+                                id: None,
+                            },
+                            at: utc_seconds(&text(c, "created_at")),
+                            body: text(c, "message"),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        let tainted = comments.iter().any(|c| c.author.kind != AuthorKind::Human);
+        let key = match (
+            full.pointer("/category/code").and_then(Value::as_str),
+            full.get("category_tasks_sequence_id")
+                .and_then(Value::as_i64),
+        ) {
+            (Some(c), Some(n)) => format!("{c}-{n}"),
+            _ => format!("#{id}"),
+        };
+        let title = text(&full, "title");
+        let body = text(&full, "description");
+        let stored = tmgr_local::snapshot(journal, id).ok().flatten();
+        let description_json = observed_json(
+            full.get("description_json"),
+            stored.as_ref().map(|s| s.description_json.clone()),
+        );
+        let checkpoints = observed_json(full.get("checkpoints"), stored.map(|s| s.checkpoints));
+        let seen: Vec<(i64, String)> = comments_raw
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|c| Some((c.get("id")?.as_i64()?, text(c, "message"))))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let observed = tmgr_local::Observed {
+            title: &title,
+            description: &body,
+            description_json: &description_json,
+            checkpoints: &checkpoints,
+            comments: seen.iter().map(|(i, m)| (*i, m.as_str())).collect(),
+        };
+        let author = match tmgr_local::provenance_in(journal, id, Some(&observed), chain) {
+            Ok(p) => author_of(&p),
+            Err(_) => Author::Unrecorded,
+        };
+        let candidate = Candidate {
+            task: TaskRef {
+                workspace_id: workspace.manifest.id,
+                task_id: id,
+            },
+            key,
+            title,
+            body,
+            author,
+            comments,
+            pages: Vec::new(),
+            context_tainted: tainted,
+            persona_text: text(persona, "description"),
+        };
+        assert_snapshot_scope(&candidate)?;
+        Ok(candidate)
+    }
+}
+
 impl TaskSource for LocalSource {
     fn candidates(&self, rule: &Rule) -> Result<Scan> {
         let code = workspace_code(&rule.workspace)?;
-        let client = tmgr_core::local::client(code, self.local_user_id, "tmgr-queue", false)?;
-        let workspace = tmgr_core::local::find(code)?;
-        let owner = tmgr_core::local::identity(&tmgr_core::local::root()?, self.local_user_id)
-            .id
-            .to_string();
-        let fetch = |path: &str| -> Result<Value> {
-            let (status, body) = client.call("GET", path, None, false)?;
-            if status >= 400 {
-                return Err(tmgr_core::local::status_error(status, &body));
-            }
-            Ok(tmgr_core::api::unwrap_data(body))
-        };
+        let local = LocalTasks::open(code, self.local_user_id)?;
+        let fetch = |path: &str| local.fetch(path);
+        let client = &local.client;
         let wanted = match rule.status_type.as_str() {
             "backlog" => "default",
             other => other,
@@ -220,17 +345,10 @@ impl TaskSource for LocalSource {
                 }
             }
         };
-        let journal = tmgr_local::open_read(&workspace.database)
-            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
-        let chain = tmgr_local::verify_chain(&journal)
-            .map_err(|e| Error::internal(format!("local workspace: {e}")))?;
-        if let Ok(writer) = tmgr_local::open_write(&workspace.database) {
-            let _ = tmgr_local::store_checkpoint(&writer, &chain);
-        }
         let mut out = Vec::new();
         let mut complete = true;
         for status_id in status_ids {
-            let (items, done) = list_all(&client, &format!("/api/tasks?status_id={status_id}"))?;
+            let (items, done) = list_all(client, &format!("/api/tasks?status_id={status_id}"))?;
             complete &= done;
             for item in items {
                 let Some(id) = item.get("id").and_then(Value::as_i64) else {
@@ -251,86 +369,7 @@ impl TaskSource for LocalSource {
                 let Some(persona) = persona else {
                     continue;
                 };
-                let full = fetch(&format!("/api/tasks/{id}"))?;
-                let comments_raw = fetch(&format!("/api/tasks/{id}/comments"))?;
-                let comments: Vec<BundleComment> = comments_raw
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .map(|c| {
-                                let kind = text(c, "author_kind");
-                                let human = kind == "user" && text(c, "author_id") == owner;
-                                BundleComment {
-                                    author: BundleAuthor {
-                                        kind: if human {
-                                            AuthorKind::Human
-                                        } else if matches!(kind.as_str(), "persona" | "agent") {
-                                            AuthorKind::Agent
-                                        } else {
-                                            AuthorKind::Other
-                                        },
-                                        id: None,
-                                    },
-                                    at: utc_seconds(&text(c, "created_at")),
-                                    body: text(c, "message"),
-                                }
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let tainted = comments.iter().any(|c| c.author.kind != AuthorKind::Human);
-                let key = match (
-                    full.pointer("/category/code").and_then(Value::as_str),
-                    full.get("category_tasks_sequence_id")
-                        .and_then(Value::as_i64),
-                ) {
-                    (Some(c), Some(n)) => format!("{c}-{n}"),
-                    _ => format!("#{id}"),
-                };
-                let title = text(&full, "title");
-                let body = text(&full, "description");
-                let stored = tmgr_local::snapshot(&journal, id).ok().flatten();
-                let description_json = observed_json(
-                    full.get("description_json"),
-                    stored.as_ref().map(|s| s.description_json.clone()),
-                );
-                let checkpoints =
-                    observed_json(full.get("checkpoints"), stored.map(|s| s.checkpoints));
-                let seen: Vec<(i64, String)> = comments_raw
-                    .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|c| Some((c.get("id")?.as_i64()?, text(c, "message"))))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let observed = tmgr_local::Observed {
-                    title: &title,
-                    description: &body,
-                    description_json: &description_json,
-                    checkpoints: &checkpoints,
-                    comments: seen.iter().map(|(i, m)| (*i, m.as_str())).collect(),
-                };
-                let author = match tmgr_local::provenance_in(&journal, id, Some(&observed), &chain)
-                {
-                    Ok(p) => author_of(&p),
-                    Err(_) => Author::Unrecorded,
-                };
-                let candidate = Candidate {
-                    task: TaskRef {
-                        workspace_id: workspace.manifest.id,
-                        task_id: id,
-                    },
-                    key,
-                    title,
-                    body,
-                    author,
-                    comments,
-                    pages: Vec::new(),
-                    context_tainted: tainted,
-                    persona_text: text(persona, "description"),
-                };
-                assert_snapshot_scope(&candidate)?;
+                let candidate = local.candidate(id, persona)?;
                 out.push(candidate);
             }
         }
