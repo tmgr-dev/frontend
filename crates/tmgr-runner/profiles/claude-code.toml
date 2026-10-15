@@ -48,3 +48,7 @@ kind = "settings-file"
 ask = ["--permission-mode", "manual"]
 accept-edits = ["--permission-mode", "acceptEdits"]
 plan = ["--permission-mode", "plan"]
+
+[trust]
+file = ".claude.json"
+path = ["projects", "{cwd}", "hasTrustDialogAccepted"]

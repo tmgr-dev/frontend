@@ -143,6 +143,12 @@ pub struct HooksDecl {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct TrustDecl {
+    pub file: String,
+    pub path: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
     pub name: String,
@@ -173,6 +179,8 @@ pub struct Profile {
     pub hooks: HooksDecl,
     #[serde(default)]
     pub permission_modes: Option<BTreeMap<String, Vec<String>>>,
+    #[serde(default)]
+    pub trust: Option<TrustDecl>,
     #[serde(skip)]
     pub source: Source,
 }
@@ -248,6 +256,33 @@ impl Profile {
 
 const MAX_INSTRUCTION_FILES: usize = 8;
 
+fn check_trust(t: &TrustDecl) -> Result<(), String> {
+    let rel = Path::new(&t.file);
+    let plain = !t.file.is_empty()
+        && !t.file.contains('\0')
+        && rel
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !plain {
+        return Err("trust.file must be a relative path inside the run home without ..".into());
+    }
+    if !(1..=8).contains(&t.path.len()) {
+        return Err("trust.path must have 1 to 8 segments".into());
+    }
+    for seg in &t.path {
+        if seg.is_empty() || seg.len() > 64 {
+            return Err("trust.path segments must be 1 to 64 bytes".into());
+        }
+        if seg.contains('{') && seg != "{cwd}" {
+            return Err("trust.path takes only {cwd}, as a whole segment".into());
+        }
+    }
+    if t.path.last().is_some_and(|l| l == "{cwd}") {
+        return Err("trust.path must end in a fixed key".into());
+    }
+    Ok(())
+}
+
 fn check_launch(p: &Profile) -> Result<(), String> {
     if let Some(r) = &p.resume {
         if r.args.is_empty() {
@@ -286,6 +321,9 @@ fn check_launch(p: &Profile) -> Result<(), String> {
                 "permission_modes.{mode} must be non-empty and take no placeholders"
             ));
         }
+    }
+    if let Some(t) = &p.trust {
+        check_trust(t)?;
     }
     if p.instruction_files.len() > MAX_INSTRUCTION_FILES {
         return Err(format!("at most {MAX_INSTRUCTION_FILES} instruction_files"));
@@ -818,6 +856,50 @@ idle = ['^> $']
         assert!(warnings.iter().any(|w| w.contains("askk")), "{warnings:?}");
         assert!(set.get("p3").is_none());
         assert!(set.get("p0").is_none());
+    }
+
+    #[test]
+    fn claude_code_declares_its_trust_entry() {
+        let (set, _) = ProfileSet::load(None);
+        let t = set.get("claude-code").unwrap().trust.clone().unwrap();
+        assert_eq!(t.file, ".claude.json");
+        assert_eq!(t.path, ["projects", "{cwd}", "hasTrustDialogAccepted"]);
+        for id in ["codex", "gemini", "aider", "cursor-agent", "opencode"] {
+            assert!(set.get(id).unwrap().trust.is_none(), "{id}");
+        }
+    }
+
+    #[test]
+    fn declared_trust_is_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        let bad = [
+            "file = \"/etc/x.json\"\npath = [\"a\"]",
+            "file = \"../x.json\"\npath = [\"a\"]",
+            "file = \"a/../x.json\"\npath = [\"a\"]",
+            "file = \"\"\npath = [\"a\"]",
+            "file = \"x.json\"\npath = []",
+            "file = \"x.json\"\npath = [\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\"]",
+            "file = \"x.json\"\npath = [\"a\", \"\"]",
+            "file = \"x.json\"\npath = [\"a-{cwd}\", \"b\"]",
+            "file = \"x.json\"\npath = [\"{home}\", \"b\"]",
+            "file = \"x.json\"\npath = [\"a\", \"{cwd}\"]",
+        ];
+        for (i, table) in bad.iter().enumerate() {
+            let text =
+                format!("id = \"p{i}\"\nname = \"p\"\ncommand = [\"p\"]\n[trust]\n{table}\n");
+            std::fs::write(dir.path().join(format!("p{i}.toml")), text).unwrap();
+        }
+        std::fs::write(
+            dir.path().join("good.toml"),
+            "id = \"good\"\nname = \"p\"\ncommand = [\"p\"]\n[trust]\nfile = \"sub/x.json\"\npath = [\"projects\", \"{cwd}\", \"ok\"]\n",
+        )
+        .unwrap();
+        let (set, warnings) = ProfileSet::load(Some(dir.path()));
+        assert_eq!(warnings.len(), bad.len(), "{warnings:?}");
+        assert!(set.get("good").is_some());
+        for i in 0..bad.len() {
+            assert!(set.get(&format!("p{i}")).is_none(), "{i}");
+        }
     }
 
     #[test]

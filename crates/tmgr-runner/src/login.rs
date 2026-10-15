@@ -1,4 +1,4 @@
-use crate::profile::{Fresh, Profile, SecretFile};
+use crate::profile::{Fresh, Profile, SecretFile, TrustDecl};
 use crate::sandbox::{
     canon_lossy, env_name_refused, home_deny_paths, overlaps, protected_forms, Grants,
 };
@@ -641,6 +641,10 @@ pub(crate) fn open_dir_below(root: &Path, dir: &Path) -> std::io::Result<File> {
 }
 
 pub(crate) fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
+    open_below_with(root, path, libc::O_RDONLY | libc::O_NONBLOCK)
+}
+
+fn open_below_with(root: &Path, path: &Path, flags: libc::c_int) -> std::io::Result<File> {
     let names: Vec<&OsStr> = match path.strip_prefix(root) {
         Ok(rel) => rel
             .components()
@@ -661,7 +665,7 @@ pub(crate) fn open_below(root: &Path, path: &Path) -> std::io::Result<File> {
     for name in dirs {
         dir = openat_nofollow(dir.as_raw_fd(), name, libc::O_RDONLY | libc::O_DIRECTORY)?;
     }
-    openat_nofollow(dir.as_raw_fd(), last, libc::O_RDONLY | libc::O_NONBLOCK)
+    openat_nofollow(dir.as_raw_fd(), last, flags)
 }
 
 pub(crate) fn is_symlink_error(e: &std::io::Error) -> bool {
@@ -903,6 +907,81 @@ pub fn apply_seeds(seeds: &[ResolvedSeed], home: &Path) -> Result<Vec<SeedRecord
         }
     }
     Ok(records)
+}
+
+fn merge_trust(existing: Option<&[u8]>, decl: &TrustDecl, cwd: &str) -> Result<Vec<u8>, String> {
+    let mut root = match existing {
+        None => serde_json::Value::Object(serde_json::Map::new()),
+        Some(b) => serde_json::from_slice(b)
+            .map_err(|_| format!("{} in the run home is not valid JSON", decl.file))?,
+    };
+    let mut cur = &mut root;
+    let Some((last, parents)) = decl.path.split_last() else {
+        return Err("trust.path is empty".into());
+    };
+    let not_object = || {
+        format!(
+            "{} in the run home has a non-object where trust goes",
+            decl.file
+        )
+    };
+    for seg in parents {
+        let key = if seg == "{cwd}" { cwd } else { seg };
+        let serde_json::Value::Object(map) = cur else {
+            return Err(not_object());
+        };
+        cur = map
+            .entry(key.to_string())
+            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    }
+    let serde_json::Value::Object(map) = cur else {
+        return Err(not_object());
+    };
+    map.insert(last.clone(), serde_json::Value::Bool(true));
+    let out = serde_json::to_vec(&root).map_err(|e| e.to_string())?;
+    if out.len() as u64 > MAX_SEED_BYTES {
+        return Err(format!(
+            "{} in the run home would exceed {MAX_SEED_BYTES} bytes",
+            decl.file
+        ));
+    }
+    Ok(out)
+}
+
+pub fn apply_trust(home: &Path, decl: &TrustDecl, cwd: &Path) -> Result<(), String> {
+    let cwd = cwd.to_str().ok_or_else(|| {
+        "cwd is not valid UTF-8, so its trust entry cannot be written".to_string()
+    })?;
+    let rel = Path::new(&decl.file);
+    let target = home.join(rel);
+    let mut file = match open_below_with(home, &target, libc::O_RDWR | libc::O_NONBLOCK) {
+        Ok(f) => Some(f),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) if is_symlink_error(&e) => {
+            return Err(format!(
+                "{} in the run home is or passes through a symlink, refusing to edit it",
+                decl.file
+            ))
+        }
+        Err(e) => return Err(format!("cannot open {} in the run home: {e}", decl.file)),
+    };
+    let Some(f) = file.as_mut() else {
+        return write_new_below(home, rel, &merge_trust(None, decl, cwd)?);
+    };
+    let meta = f.metadata().map_err(|e| e.to_string())?;
+    if !meta.is_file() || meta.len() > MAX_SEED_BYTES {
+        return Err(format!(
+            "{} in the run home is not a regular file within {MAX_SEED_BYTES} bytes",
+            decl.file
+        ));
+    }
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)
+        .map_err(|e| format!("cannot read {} in the run home: {e}", decl.file))?;
+    let out = merge_trust(Some(&buf), decl, cwd)?;
+    f.set_len(0)
+        .and_then(|()| std::os::unix::fs::FileExt::write_all_at(f, &out, 0))
+        .map_err(|e| format!("cannot write {} in the run home: {e}", decl.file))
 }
 
 #[cfg(test)]
@@ -1284,6 +1363,97 @@ file = "~/.config/tmgr/agents/p.env"
         );
         let mode = std::fs::metadata(&dest).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
+    }
+
+    fn trust_decl() -> TrustDecl {
+        TrustDecl {
+            file: ".claude.json".into(),
+            path: ["projects", "{cwd}", "hasTrustDialogAccepted"]
+                .map(String::from)
+                .to_vec(),
+        }
+    }
+
+    #[test]
+    fn trust_is_merged_into_a_seeded_file_for_one_folder() {
+        let run_home = tempfile::tempdir().unwrap();
+        let file = run_home.path().join(".claude.json");
+        std::fs::write(
+            &file,
+            r#"{"theme":"dark","projects":{"/other":{"hasTrustDialogAccepted":false,"keep":1}}}"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600)).unwrap();
+        apply_trust(run_home.path(), &trust_decl(), Path::new("/work/p")).unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        assert_eq!(v["theme"], "dark");
+        assert_eq!(v["projects"]["/work/p"]["hasTrustDialogAccepted"], true);
+        assert_eq!(v["projects"]["/other"]["hasTrustDialogAccepted"], false);
+        assert_eq!(v["projects"]["/other"]["keep"], 1);
+        assert_eq!(v["projects"].as_object().unwrap().len(), 2);
+        assert_eq!(std::fs::metadata(&file).unwrap().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn trust_creates_a_missing_file_privately() {
+        let run_home = tempfile::tempdir().unwrap();
+        apply_trust(run_home.path(), &trust_decl(), Path::new("/work/p")).unwrap();
+        let file = run_home.path().join(".claude.json");
+        let v: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+        assert_eq!(
+            v,
+            serde_json::json!({"projects": {"/work/p": {"hasTrustDialogAccepted": true}}})
+        );
+        assert_eq!(std::fs::metadata(&file).unwrap().mode() & 0o777, 0o600);
+    }
+
+    #[test]
+    fn trust_refuses_symlinks_and_odd_files_without_writing_through_them() {
+        let run_home = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let target = outside.path().join("t.json");
+        std::fs::write(&target, "{}").unwrap();
+        symlink(&target, run_home.path().join(".claude.json")).unwrap();
+        assert!(apply_trust(run_home.path(), &trust_decl(), Path::new("/w")).is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "{}");
+
+        let other = tempfile::tempdir().unwrap();
+        symlink(outside.path(), other.path().join("sub")).unwrap();
+        let mut d = trust_decl();
+        d.file = "sub/x.json".into();
+        assert!(apply_trust(other.path(), &d, Path::new("/w")).is_err());
+        assert!(!outside.path().join("x.json").exists());
+
+        for body in [
+            "[]",
+            "not json",
+            r#"{"projects":{"/w":true}}"#,
+            r#"{"projects":1}"#,
+        ] {
+            let h = tempfile::tempdir().unwrap();
+            std::fs::write(h.path().join(".claude.json"), body).unwrap();
+            assert!(
+                apply_trust(h.path(), &trust_decl(), Path::new("/w")).is_err(),
+                "{body}"
+            );
+            assert_eq!(
+                std::fs::read_to_string(h.path().join(".claude.json")).unwrap(),
+                body
+            );
+        }
+
+        let big = tempfile::tempdir().unwrap();
+        std::fs::write(big.path().join(".claude.json"), vec![b' '; (1 << 20) + 1]).unwrap();
+        assert!(apply_trust(big.path(), &trust_decl(), Path::new("/w")).is_err());
+    }
+
+    #[test]
+    fn trust_refuses_a_cwd_that_is_not_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let run_home = tempfile::tempdir().unwrap();
+        let cwd = Path::new(OsStr::from_bytes(b"/w/\xff"));
+        assert!(apply_trust(run_home.path(), &trust_decl(), cwd).is_err());
+        assert!(!run_home.path().join(".claude.json").exists());
     }
 
     #[test]
