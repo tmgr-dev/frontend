@@ -218,6 +218,24 @@ impl Profile {
         Ok(argv)
     }
 
+    pub fn prompt_args(&self, prompt: &str) -> Vec<String> {
+        match self.prompt.mode {
+            PromptMode::Arg => self
+                .prompt
+                .args
+                .iter()
+                .map(|a| {
+                    if a == "{prompt}" {
+                        prompt.to_string()
+                    } else {
+                        a.clone()
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
     pub fn has_permission_modes(&self) -> bool {
         self.permission_modes.is_some()
     }

@@ -1904,6 +1904,9 @@ impl Runner {
                 ));
             }
         }
+        if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
+            argv.extend(prof.prompt_args(&bundle::prompt(b)));
+        }
         let pin = dir.map(|d| {
             let (dev, ino) = d.id();
             CwdPin { dev, ino }
