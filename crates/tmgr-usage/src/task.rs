@@ -272,11 +272,13 @@ pub fn clean_extension(raw: &str) -> String {
     }
 }
 
+type Branches<'a> = Vec<(DateTime<Utc>, &'a str)>;
+
 /// Facts as link events (no cost, no tokens) so they are attributed to runs by the same rules.
 /// Facts keep no branch; each takes the branch of its session's latest event at or before it.
 pub fn facts_as_events(facts: &[StoredFact], events: &[LinkEvent]) -> Vec<LinkEvent> {
     let mut parents: HashMap<(Tool, &str), &str> = HashMap::new();
-    let mut branches: HashMap<(Tool, &str, &str), Vec<(DateTime<Utc>, &str)>> = HashMap::new();
+    let mut branches: HashMap<(Tool, &str, &str), Branches> = HashMap::new();
     for e in events {
         if let Some(p) = e.parent_session_id.as_deref() {
             parents.insert((e.tool, e.tool_session_id.as_str()), p);
