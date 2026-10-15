@@ -111,6 +111,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `agent_work.v1` | `runs.create` `agent_work` (section 5, "Queue capabilities") |
 | `exe_pin.v1` | `exe_pin` on `runs.create` (section 5, "Pinned executable") |
 | `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
+| `trusted_folders.v1` | `trust.list`, `trust.add`, `trust.remove` (section 5, "Trusted folders") |
 
 ## 5. Messages after the handshake
 
@@ -142,6 +143,9 @@ missing params) and `internal`.
 | `runs.lookup` | `{start_key}` | `SessionInfo` | `not_found` | any client; cap `start_key.v1` |
 | `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
 | `sessions.text` | `{id, lines?}` (`lines` 1 to 10000, default the screen height) | `{id, rows, cols, lines, scroll_max}` | `not_found`, `invalid_params`, `forbidden` | any client except `worker`; cap `session_text.v1` |
+| `trust.list` | none | `[TrustedFolder]` (`{path, dev, ino, added_ms, how}`) | | any client except `worker`; cap `trusted_folders.v1` |
+| `trust.add` | `{path}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
+| `trust.remove` | `{path}` | `{removed}` | | `client: "cli"` only; cap `trusted_folders.v1` |
 | `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
@@ -337,6 +341,10 @@ What the pin does not cover:
 
 **`trust_cwd.v1`.** `runs.create` takes an optional `trust_cwd` (`true`). It asks the runner to pre-accept the agent's own folder-trust prompt for the session's canonical `cwd` and nothing else, for this run only. The profile declares how in a `[trust]` table (`file`, a relative path inside the per-run home, and `path`, 1 to 8 JSON keys of which `{cwd}` stands for the whole canonical `cwd`); the runner merges `true` at that path into the copy of the file in the per-run home after the seeds are written, creating the file and objects when missing. The owner's real files are never touched. A profile without `[trust]` gives `invalid_params`. `trust_cwd` is accepted only from `client: "cli"` (others get `forbidden`) and is `invalid_params` together with `start_key`, `clone_of` or `origin`, so it can never come from the queue, a link or a follower. A restored run does not carry it. The work log records `trust: "pre-accepted"` on the `created` event and in `WorkSummary.trust` (section 5, "Work log"); both are absent otherwise.
 
+### Trusted folders
+
+**`trusted_folders.v1`.** The runner keeps a local list of folders whose agent folder-trust question is answered in advance: `.trusted-folders.json` in the homes directory (mode 0600, outside every sandbox), each entry the canonical path with the folder's `st_dev`/`st_ino`. A run whose canonical `cwd` has the same path and identity, and that has no `start_key`, `clone_of` or `origin`, gets the profile's `[trust]` entry seeded as with `trust_cwd`, from any client; the work log records `trust: "remembered"`. A folder inside a trusted one, a clone or worktree of it, or a new folder at the same path is not trusted. Entries come only from `trust.add` (`client: "cli"`; `tmgr runner trust` asks for a typed confirmation and refuses inside an agent session) or from the owner's own answer: when a run of the built-in `claude-code` profile that the runner did not pre-trust (no `start_key`, `clone_of`, `origin`, not restored) exits, and its per-run `.claude.json` (a plain file, not a link) records `projects.<cwd>.hasTrustDialogAccepted: true`, the folder is added with `how: "answered"`. Claude Code runs nothing before that question is answered, so the record comes from a person. `trust.remove` matches the stored path or the canonical form of the given one, also for a folder that no longer exists.
+
 ### Run bundles
 
 A run bundle is the immutable input of one agent run: the task text, its
@@ -421,12 +429,13 @@ of `{prompt}` in the profile's prompt arguments, after the command line that
 `Task: <title>`, then the description and the comments when there are any (a
 title alone is a complete task). Comments not written by a confirmed human are
 fenced between `<<<` `>>>` markers and labelled untrusted. Control characters
-and bidirectional overrides are dropped. Above 16 KiB the prompt is cut to the
-title and a pointer to `.tmgr/task.md`, which always holds the full task. The
+and bidirectional overrides are dropped. Above 4000 bytes the prompt is cut to
+the title and a pointer to `.tmgr/task.md`, which always holds the full task.
+`SessionInfo.argv` shows the prompt argument as `<task prompt, N bytes>`. The
 prompt is a fixed function of the bundle, so `bundle_sha256` binds it: what was
 approved is what the agent receives. It holds nothing but the bundle's own text.
-The prompt is an argument, so other local accounts that can list processes can
-read it.
+The agent's process arguments still carry it, so other local accounts that can
+list processes can read it.
 
 The runner opens the canonical `cwd` once, writes `.tmgr` only relative to the
 opened directory and hands that open directory to the process that starts the

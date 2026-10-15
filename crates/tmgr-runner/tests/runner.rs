@@ -1215,9 +1215,16 @@ fn a_bundled_run_hands_the_task_to_the_agent_as_its_prompt() {
     let info = h.client().create_run(h.bundled("echo")).unwrap();
     assert_eq!(info.argv[2], "--task");
     assert!(
-        info.argv[3].starts_with("Task: Fix login\n"),
+        info.argv[3].starts_with("<task prompt, "),
         "{:?}",
         info.argv
+    );
+    let listed = h.client().list().unwrap();
+    assert!(
+        listed
+            .iter()
+            .all(|s| !s.argv.concat().contains("Fix login")),
+        "{listed:?}"
     );
     let out = h.work.join("argv.txt");
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -3681,6 +3688,140 @@ fn trust_cwd_pre_accepts_exactly_the_canonical_folder_in_the_run_home() {
         fx.h.client().worklog(&info.id).unwrap().trust.as_deref(),
         Some("pre-accepted")
     );
+}
+
+#[test]
+fn a_trusted_folder_answers_the_trust_question_until_it_is_untrusted() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(true);
+    fx.h.start(5000);
+    let canonical = fs::canonicalize(&fx.h.work).unwrap();
+    let path = canonical.display().to_string();
+    let added =
+        fx.h.client()
+            .call("trust.add", json!({"path": fx.h.work}))
+            .unwrap();
+    assert_eq!(
+        (added["path"].as_str(), added["how"].as_str()),
+        (Some(path.as_str()), Some("command"))
+    );
+    let listed = fx.h.client().call("trust.list", json!(null)).unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+
+    let info = fx.h.client().create_run(fx.h.run_req("trusty")).unwrap();
+    assert_eq!(
+        run_home_json(&fx, &info.id)["projects"][&path]["hasTrustDialogAccepted"],
+        true
+    );
+    assert_eq!(
+        fx.h.client().worklog(&info.id).unwrap().trust.as_deref(),
+        Some("remembered")
+    );
+    fx.h.client().kill(&info.id, "kill").unwrap();
+
+    let mut keyed = fx.h.run_req("trusty");
+    keyed.start_key = Some("k1".into());
+    let info = fx.h.client().create_run(keyed).unwrap();
+    assert!(run_home_json(&fx, &info.id)["projects"]
+        .get(&path)
+        .is_none());
+    fx.h.client().kill(&info.id, "kill").unwrap();
+
+    let gone =
+        fx.h.client()
+            .call("trust.remove", json!({"path": path}))
+            .unwrap();
+    assert_eq!(gone["removed"], true);
+    let info = fx.h.client().create_run(fx.h.run_req("trusty")).unwrap();
+    assert!(run_home_json(&fx, &info.id)["projects"]
+        .get(&path)
+        .is_none());
+}
+
+#[test]
+fn only_the_cli_changes_trusted_folders() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut desktop = Client::connect_as(&h.run, "desktop").unwrap();
+    let err = desktop
+        .call("trust.add", json!({"path": h.work}))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("forbidden"), "{err}");
+    assert!(desktop
+        .call("trust.list", json!(null))
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn a_yes_to_claudes_trust_question_is_remembered_for_that_folder_only() {
+    if !sessions_available() {
+        return;
+    }
+    let mut fx = trust_fx(true);
+    let bin = fx.h.tmp.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let claude = bin.join("claude");
+    fs::write(
+        &claude,
+        "#!/bin/sh\nprintf '{\"projects\":{\"%s\":{\"hasTrustDialogAccepted\":true}}}' \"$(pwd -P)\" > \"$HOME/.claude.json\"\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&claude, fs::Permissions::from_mode(0o755)).unwrap();
+    fx.h.env
+        .push(("PATH".into(), format!("{}:/usr/bin:/bin", bin.display())));
+    fx.h.start(5000);
+    let canonical = fs::canonicalize(&fx.h.work).unwrap().display().to_string();
+    let trusted = |fx: &LoginFx| {
+        fx.h.client()
+            .call("trust.list", json!(null))
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| {
+                (
+                    f["path"].as_str().unwrap().to_string(),
+                    f["how"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let mut keyed = fx.h.run_req("claude-code");
+    keyed.start_key = Some("q1".into());
+    let info = fx.h.client().create_run(keyed).unwrap();
+    wait_for("keyed run exits", || {
+        fx.h.client()
+            .list()
+            .unwrap()
+            .iter()
+            .any(|s| s.id == info.id && s.state.kind == StateKind::Exited)
+    });
+    thread::sleep(Duration::from_millis(300));
+    assert!(trusted(&fx).is_empty());
+
+    let info =
+        fx.h.client()
+            .create_run(fx.h.run_req("claude-code"))
+            .unwrap();
+    wait_for("run exits", || {
+        fx.h.client()
+            .list()
+            .unwrap()
+            .iter()
+            .any(|s| s.id == info.id && s.state.kind == StateKind::Exited)
+    });
+    wait_for("answer remembered", || !trusted(&fx).is_empty());
+    assert_eq!(trusted(&fx), [(canonical, "answered".to_string())]);
 }
 
 #[test]

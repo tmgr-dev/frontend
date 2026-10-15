@@ -275,3 +275,24 @@ pub struct AttachParams {
 pub struct LayoutSetParams {
     pub layout: Value,
 }
+
+/// A folder whose agent folder-trust question is answered in advance (`trust.list`, `trust.add`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustedFolder {
+    pub path: String,
+    pub dev: u64,
+    pub ino: u64,
+    pub added_ms: u64,
+    /// `command` (`tmgr runner trust`) or `answered` (the owner said yes in a session).
+    pub how: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PathParams {
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TrustRemoved {
+    pub removed: bool,
+}

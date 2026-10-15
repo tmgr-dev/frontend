@@ -7,6 +7,7 @@ mod remote_attach;
 mod restore;
 mod run_task;
 mod service;
+mod trusted;
 
 use crate::cli::Cli;
 use crate::out::{self, Style};
@@ -54,8 +55,21 @@ pub enum RunnerCmd {
     InstallService(InstallServiceArgs),
     /// [experimental] Remove the login autostart registration
     UninstallService,
+    /// [experimental] Trust a folder: agents started in exactly this folder skip their folder-trust question (asks to confirm)
+    Trust(FolderArgs),
+    /// [experimental] Stop trusting a folder
+    Untrust(FolderArgs),
+    /// [experimental] List the trusted folders
+    Trusted,
     #[command(hide = true)]
     Serve,
+}
+
+#[derive(Args)]
+pub struct FolderArgs {
+    /// The folder (default: current directory)
+    #[arg(value_name = "DIR", default_value = ".")]
+    pub dir: PathBuf,
 }
 
 #[derive(Args)]

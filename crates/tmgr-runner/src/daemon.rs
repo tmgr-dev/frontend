@@ -3,6 +3,7 @@ use crate::bundle;
 use crate::client::Client;
 use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
+use crate::folders;
 use crate::login;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
@@ -35,9 +36,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     limits, method, CreateReq, CwdPin, ErrorCode, EventMsg, ExePin, LookupParams, Origin,
-    OriginRevokeParams, OriginRevoked, RestoredRun, RunCreateReq, RunStatus, SessionInfo,
-    SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, CLIENT_CLI,
-    CLIENT_WORKER,
+    OriginRevokeParams, OriginRevoked, PathParams, RestoredRun, RunCreateReq, RunStatus,
+    SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams,
+    TrustRemoved, CLIENT_CLI, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -262,6 +263,15 @@ struct Meta {
     exit_signal: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     trust_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    learn_trust: Option<LearnTrust>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct LearnTrust {
+    home: String,
+    file: String,
+    path: Vec<String>,
 }
 
 #[derive(Default)]
@@ -271,6 +281,17 @@ struct RunExtra {
     objects: Option<clone::Objects>,
     start: Option<(String, String)>,
     trust: Option<profile::TrustDecl>,
+    trust_note: Option<&'static str>,
+    learn_trust: bool,
+    prompt_at: Option<usize>,
+}
+
+fn shown_argv(argv: &[String], prompt_at: Option<usize>) -> Vec<String> {
+    let mut out = argv.to_vec();
+    if let Some(a) = prompt_at.and_then(|i| out.get_mut(i)) {
+        *a = format!("<task prompt, {} bytes>", a.len());
+    }
+    out
 }
 
 struct Inner {
@@ -692,8 +713,40 @@ impl Session {
             out.extend(changed)
         });
         self.worklog.exited(at, e.code, e.signal);
+        self.learn_trust();
         finish_seeds(&self.dir, &self.id);
         self.aw_next.store(0, Ordering::SeqCst);
+    }
+
+    fn learn_trust(&self) {
+        let (learn, cwd, cwd_id) = {
+            let i = lock(&self.inner);
+            (
+                i.meta.learn_trust.clone(),
+                i.meta.cwd.clone(),
+                i.meta.cwd_id,
+            )
+        };
+        let (Some(l), Some(id)) = (learn, cwd_id) else {
+            return;
+        };
+        let home = PathBuf::from(&l.home);
+        let Some(homes) = home.parent().map(Path::to_path_buf) else {
+            return;
+        };
+        if !folders::answered(&home, &l.file, &l.path, &cwd) {
+            return;
+        }
+        match folders::learn(&homes, &cwd, id, now_ms()) {
+            Ok(()) => log(&format!(
+                "session {}: the folder-trust answer was remembered for {cwd}",
+                self.id
+            )),
+            Err(e) => log(&format!(
+                "session {}: the folder-trust answer was not remembered: {e}",
+                self.id
+            )),
+        }
     }
 
     fn on_exit_report(&self, e: &ExitInfo) {
@@ -1358,6 +1411,30 @@ impl Runner {
                 }
                 self.create_run(req).map(|i| to_json(&i))
             }
+            method::TRUST_LIST => {
+                if conn.client == CLIENT_WORKER {
+                    return Err(api(ErrorCode::Forbidden, "trusted folders are local only"));
+                }
+                Ok(to_json(&folders::list(&self.cfg.homes)))
+            }
+            method::TRUST_ADD | method::TRUST_REMOVE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "folders are trusted only from the tmgr CLI",
+                    ));
+                }
+                let path = params::<PathParams>(p)?.path;
+                if req.method == method::TRUST_ADD {
+                    folders::add(&self.cfg.homes, Path::new(&path), now_ms())
+                        .map(|f| to_json(&f))
+                        .map_err(|e| api(ErrorCode::InvalidParams, e))
+                } else {
+                    folders::remove(&self.cfg.homes, &path)
+                        .map(|removed| to_json(&TrustRemoved { removed }))
+                        .map_err(|e| api(ErrorCode::Internal, e))
+                }
+            }
             method::RUNS_LOOKUP => {
                 let key = params::<LookupParams>(p)?.start_key;
                 self.by_key(&key)
@@ -1857,7 +1934,7 @@ impl Runner {
                 .argv_with(req.model.as_deref(), &perm_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?,
         };
-        let trust = match (req.trust_cwd == Some(true), &prof.trust) {
+        let explicit = match (req.trust_cwd == Some(true), &prof.trust) {
             (false, _) => None,
             (true, Some(t)) => Some(t.clone()),
             (true, None) => {
@@ -1870,12 +1947,31 @@ impl Runner {
                 ))
             }
         };
-        let extra = RunExtra {
+        let unattended = req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some();
+        let remembered = explicit.is_none()
+            && !unattended
+            && dir.is_some_and(|d| folders::is_trusted(&self.cfg.homes, &d.path, d.id()));
+        let (trust, trust_note) = match (explicit, &prof.trust) {
+            (Some(t), _) => (Some(t), Some(worklog::TRUST_PRE_ACCEPTED)),
+            (None, Some(t)) if remembered => (Some(t.clone()), Some(worklog::TRUST_REMEMBERED)),
+            _ => (None, None),
+        };
+        let learn_trust = trust.is_none()
+            && !unattended
+            && restore_from.is_none()
+            && dir.is_some()
+            && prof.id == "claude-code"
+            && prof.source == profile::Source::Builtin
+            && prof.trust.is_some();
+        let mut extra = RunExtra {
             trust,
+            trust_note,
+            learn_trust,
             permission_mode: mode.clone(),
             clone_of: req.clone_of.clone(),
             objects,
             start,
+            prompt_at: None,
         };
         if argv.is_empty() {
             return Err(api(ErrorCode::InvalidParams, "profile has no command"));
@@ -1905,7 +2001,15 @@ impl Runner {
             }
         }
         if let (false, Some(_), Some(b)) = (resumed, &checked, &req.bundle) {
-            argv.extend(prof.prompt_args(&bundle::prompt(b)));
+            let args = prof.prompt_args(&bundle::prompt(b));
+            extra.prompt_at = prof
+                .prompt
+                .args
+                .iter()
+                .position(|a| a == "{prompt}")
+                .filter(|_| !args.is_empty())
+                .map(|i| argv.len() + i);
+            argv.extend(args);
         }
         let pin = dir.map(|d| {
             let (dev, ino) = d.id();
@@ -2304,7 +2408,7 @@ impl Runner {
                 .name
                 .clone()
                 .unwrap_or_else(|| default_name(&req.argv[0])),
-            argv: req.argv.clone(),
+            argv: shown_argv(&req.argv, extra.prompt_at),
             cwd: cwd.display().to_string(),
             profile: req.profile.clone(),
             created_ms: now_ms(),
@@ -2324,12 +2428,18 @@ impl Runner {
             start_hash: extra.start.as_ref().map(|(_, h)| h.clone()),
             exit_signal: None,
             trust_file: extra.trust.as_ref().map(|t| t.file.clone()),
+            learn_trust: match (&prof.and_then(|p| p.trust.clone()), extra.learn_trust) {
+                (Some(t), true) => Some(LearnTrust {
+                    home: home.display().to_string(),
+                    file: t.file.clone(),
+                    path: t.path.clone(),
+                }),
+                _ => None,
+            },
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
-        session
-            .worklog
-            .created(&session.info(), extra.trust.is_some());
+        session.worklog.created(&session.info(), extra.trust_note);
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
         log(&format!("session {id} created: {}", req.argv[0]));

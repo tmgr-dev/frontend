@@ -464,6 +464,43 @@ fn second_pane_and_zoom() {
 }
 
 #[test]
+fn folders_are_trusted_only_after_a_typed_yes_and_can_be_untrusted() {
+    let env = Env::new();
+    let dir = env.proj.display().to_string();
+    let canonical = std::fs::canonicalize(&env.proj)
+        .unwrap()
+        .display()
+        .to_string();
+    let out = env.tmgr(&["runner", "trust", &dir]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("confirmation"));
+
+    let mut p = env.pty(&["runner", "trust", &dir]);
+    p.wait_for("[y/N]");
+    p.type_bytes(b"n\r");
+    assert!(!p.wait_exit(Duration::from_secs(10)));
+    let listed: serde_json::Value =
+        serde_json::from_slice(&env.tmgr(&["runner", "trusted", "--json"]).stdout).unwrap();
+    assert_eq!(listed["data"], serde_json::json!([]));
+
+    let mut p = env.pty(&["runner", "trust", &dir]);
+    p.wait_for("[y/N]");
+    p.type_bytes(b"y\r");
+    assert!(p.wait_exit(Duration::from_secs(10)));
+    let listed: serde_json::Value =
+        serde_json::from_slice(&env.tmgr(&["runner", "trusted", "--json"]).stdout).unwrap();
+    assert_eq!(listed["data"][0]["path"], canonical.as_str());
+    assert_eq!(listed["data"][0]["how"], "command");
+
+    let out = env.tmgr(&["runner", "untrust", &dir]);
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("no longer trusted"));
+    let listed: serde_json::Value =
+        serde_json::from_slice(&env.tmgr(&["runner", "trusted", "--json"]).stdout).unwrap();
+    assert_eq!(listed["data"], serde_json::json!([]));
+}
+
+#[test]
 fn bad_run_requests_are_refused() {
     let env = Env::new();
     let cwd = env.proj.display().to_string();

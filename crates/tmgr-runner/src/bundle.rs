@@ -504,7 +504,7 @@ fn block(out: &mut String, from: &str, text: &str) {
     out.push_str("<<<end of task data>>>\n\n");
 }
 
-pub const MAX_INLINE_PROMPT: usize = 16 * 1024;
+pub const MAX_INLINE_PROMPT: usize = 4000;
 const MAX_SHORT_TITLE: usize = 500;
 
 fn clean(text: &str) -> String {

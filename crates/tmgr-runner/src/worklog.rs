@@ -16,7 +16,8 @@ const LIFECYCLE_RESERVE: usize = 384 << 10;
 const MAX_COMMITS: usize = 200;
 const MAX_SUBJECT: usize = 200;
 const MAX_RULE: usize = 64;
-const TRUST_PRE_ACCEPTED: &str = "pre-accepted";
+pub const TRUST_PRE_ACCEPTED: &str = "pre-accepted";
+pub const TRUST_REMEMBERED: &str = "remembered";
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "ev", rename_all = "snake_case")]
@@ -193,7 +194,7 @@ impl Log {
         }
     }
 
-    pub fn created(&self, info: &SessionInfo, trusted: bool) {
+    pub fn created(&self, info: &SessionInfo, trust: Option<&str>) {
         {
             let mut st = lock(&self.st);
             if st.created {
@@ -220,7 +221,7 @@ impl Log {
                 bundle_sha256: info.bundle_sha256.clone(),
                 cwd_branch: branch,
                 cwd_head: head,
-                trust: trusted.then(|| TRUST_PRE_ACCEPTED.to_string()),
+                trust: trust.map(str::to_string),
             },
             true,
         );
