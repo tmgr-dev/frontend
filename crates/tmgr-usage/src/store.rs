@@ -124,6 +124,18 @@ impl Store {
         Ok(salt)
     }
 
+    /// Random id of this install for uploads, created once and never derived from the machine.
+    pub fn install_id(&self) -> Result<String> {
+        if let Some(id) = self.setting("install_id")? {
+            return Ok(id);
+        }
+        let id: String = self
+            .conn
+            .query_row("SELECT lower(hex(randomblob(12)))", [], |r| r.get(0))?;
+        self.set_setting("install_id", &id)?;
+        Ok(id)
+    }
+
     pub(crate) fn rollup_floor_ms(&self) -> Result<i64> {
         Ok(self
             .setting(ROLLUP_FLOOR_KEY)?

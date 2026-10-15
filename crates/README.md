@@ -87,7 +87,7 @@ Reads open the database read-only; a write takes the desktop's write lock for on
 
 ## JSON schemas
 
-`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `today`, `run_list`, `run` (one NDJSON line of `log --follow --json`), `usage_summary`, `usage_limits`, `usage_accounts`, `usage_statusline`, `routine_list`, `routine_done`, `page_ref` (`note`), `page_sync` (`page pull|push`) and `page_status`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
+`crates/tmgr-cli/schemas/tmgr.v1/*.json` (JSON Schema 2020-12) describe the whole envelope of `error`, `status`, `task`, `task_list`, `task_created`, `whoami` (also the result of `login`), `start` (also `switch`), `stop`, `done`, `today`, `run_list`, `run` (one NDJSON line of `log --follow --json`), `usage_summary`, `usage_task`, `usage_limits`, `usage_accounts`, `usage_statusline`, `routine_list`, `routine_done`, `page_ref` (`note`), `page_sync` (`page pull|push`) and `page_status`. The integration tests validate real command output against them. They live inside the crate so the CI path filter (`crates/**`) covers them.
 ## Agent mode, hooks and notifications
 
 - `tmgr agent start|update|finish` drive an Agent work run (`POST /api/tasks/{id}/agent-work`, `PATCH /api/agent-work/{run}`, `POST /api/agent-work/{run}/finish`, scope `agent-work:write`). Runs are remembered in `$XDG_STATE_HOME/tmgr/runs.json` (`~/.local/state/tmgr`, mode 0600, schema `tmgr.runs.v1`) keyed by task, branch and repository.

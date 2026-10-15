@@ -425,7 +425,7 @@ fn task_events(u: &Usage, args: &SummaryArgs, w: &Window) -> Result<Vec<LinkEven
     Ok(events)
 }
 
-fn linking_json(set: &RunSet, report: &LinkReport) -> Value {
+pub(super) fn linking_json(set: &RunSet, report: &LinkReport) -> Value {
     json!({
         "runs": set.windows.len(),
         "workspaces_ok": set.workspaces_ok,

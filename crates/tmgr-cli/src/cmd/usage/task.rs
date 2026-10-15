@@ -1,0 +1,409 @@
+use super::fmt::{count, money, span};
+use super::runs::{self, WantedTask};
+use super::summary::linking_json;
+use super::{fail, scan, Usage};
+use crate::cli_usage::TaskArgs;
+use crate::ctx::Ctx;
+use crate::out::{Output, Style};
+use chrono::{Duration, Utc};
+use serde_json::{json, Value};
+use std::collections::{BTreeMap, BTreeSet};
+use tmgr_core::error::{Error, Result};
+use tmgr_core::refs::{parse_task_ref, TaskRef};
+use tmgr_core::text::sanitize_line;
+use tmgr_usage::link::{attribute_at, Link};
+use tmgr_usage::task::{
+    build, facts_as_events, LimitKind, LinkKind, Node, TaskIdent, TaskInput, TaskUsageAggregate,
+};
+use tmgr_usage::Tool;
+
+const HISTORY_DAYS: i64 = 90;
+const LABEL_WIDTH: usize = 8;
+const TOP_NAMES: usize = 6;
+
+pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
+    let want = match parse_task_ref(&args.reference)? {
+        TaskRef::Id(id) => WantedTask::Id(id),
+        TaskRef::Key(k) => WantedTask::Key(k),
+    };
+    let now = Utc::now();
+    let (from, to) = (
+        now - Duration::days(HISTORY_DAYS),
+        now + Duration::minutes(1),
+    );
+    let mut u = Usage::open()?;
+    if !args.no_scan {
+        scan(ctx, &mut u, now)?;
+    }
+    let (events, tokens): (Vec<_>, Vec<_>) = u
+        .store
+        .link_events_with_tokens(from, to)
+        .map_err(fail)?
+        .into_iter()
+        .unzip();
+    let facts = u.store.facts(from, to).map_err(fail)?;
+    let agents = u.store.agents().map_err(fail)?;
+    let set = runs::collect(ctx, from, to, now);
+    let report = attribute_at(&events, &set.windows, now);
+    let fact_events = facts_as_events(&facts, &events);
+    let fact_report = attribute_at(&fact_events, &set.windows, now);
+    let matching = |links: &[Link]| -> Vec<usize> {
+        links
+            .iter()
+            .filter(|l| set.task_matches(&l.run_ref, &want))
+            .map(|l| l.event_index)
+            .collect()
+    };
+    let linked_events = matching(&report.links);
+    let linked_facts = matching(&fact_report.links);
+    let mut linking = linking_json(&set, &report);
+    linking["linked_facts"] = json!(linked_facts.len());
+
+    let label = match &want {
+        WantedTask::Id(id) => format!("#{id}"),
+        WantedTask::Key(k) => k.clone(),
+    };
+    let matched_runs: BTreeSet<&str> = report
+        .links
+        .iter()
+        .chain(&fact_report.links)
+        .filter(|l| set.task_matches(&l.run_ref, &want))
+        .map(|l| l.run_ref.as_str())
+        .collect();
+    let workspaces: BTreeSet<&str> = set
+        .windows
+        .iter()
+        .filter(|w| matched_runs.contains(w.run_ref.as_str()))
+        .map(|w| w.workspace.as_str())
+        .collect();
+    if workspaces.len() > 1 {
+        return Err(Error::usage(format!(
+            "{} matches tasks in several workspaces ({})",
+            sanitize_line(&label),
+            workspaces.iter().copied().collect::<Vec<_>>().join(", ")
+        ))
+        .hint("pick one with --ws CODE"));
+    }
+    let meta = matched_runs.iter().find_map(|r| set.meta.get(*r));
+    let task = TaskIdent {
+        workspace: workspaces.iter().next().copied().unwrap_or("").to_string(),
+        task_ref: match (&want, meta) {
+            (WantedTask::Key(k), _) => k.clone(),
+            (_, Some(m)) => m.task_ref.rsplit('/').next().unwrap_or("").to_string(),
+            _ => label.clone(),
+        },
+        id: meta.and_then(|m| m.task_id),
+    };
+    let title = meta
+        .and_then(|m| m.title.as_deref())
+        .map(sanitize_line)
+        .filter(|t| !t.trim().is_empty());
+
+    let aggregate = build(&TaskInput {
+        source_id: u.store.install_id().map_err(fail)?,
+        generated_at: now,
+        task,
+        from,
+        to,
+        events: &events,
+        tokens: &tokens,
+        linked_events: &linked_events,
+        facts: &facts,
+        linked_facts: &linked_facts,
+        agents: &agents,
+        limits: &u.store.current_limits(now).map_err(fail)?,
+    });
+    let Some(aggregate) = aggregate else {
+        return Ok(Output::new(
+            json!({"basis": "api_equivalent", "aggregate": Value::Null, "title": Value::Null, "linking": linking}),
+            format!(
+                "No usage linked to {} in this period.\nLinking needs run windows: tmgr agent start records the session; see tmgr usage --by task for unattributed usage.",
+                sanitize_line(&label)
+            ),
+        ));
+    };
+    if aggregate.totals.unpriced_events > 0 {
+        ctx.warn(
+            "usage_unpriced",
+            format!(
+                "{} events use models without a known price and are left out of the cost (tmgr usage pricing update)",
+                aggregate.totals.unpriced_events
+            ),
+        );
+    }
+    let human = render(&aggregate, title.as_deref(), args.tree, &ctx.style);
+    Ok(Output::new(
+        json!({"basis": "api_equivalent", "aggregate": aggregate, "title": title, "linking": linking}),
+        human,
+    ))
+}
+
+fn line(style: &Style, label: &str, text: String) -> String {
+    format!("{}{text}", style.muted(&format!("{label:<LABEL_WIDTH$}")))
+}
+
+fn thousands(n: u64) -> String {
+    let mut out: Vec<char> = Vec::new();
+    for (i, c) in n.to_string().chars().rev().enumerate() {
+        if i > 0 && i % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out.iter().rev().collect()
+}
+
+fn seconds_text(ms: u64) -> String {
+    format!("{:.1}s", ms as f64 / 1000.0)
+}
+
+fn times(name: &str, n: u64) -> String {
+    format!("{} ×{n}", sanitize_line(name))
+}
+
+fn join<T>(items: impl Iterator<Item = T>, sep: &str, f: impl Fn(T) -> String) -> String {
+    items.map(f).collect::<Vec<_>>().join(sep)
+}
+
+fn node_line(n: &Node, style: &Style) -> String {
+    let label = match (n.tool, n.agent_type.as_str()) {
+        (Tool::Claude, "main") => "Claude Code".to_string(),
+        (Tool::Codex, _) => "Codex".to_string(),
+        (_, other) => sanitize_line(other),
+    };
+    let mut parts = vec![
+        style.bold(&label),
+        style.muted(sanitize_line(n.model.strip_prefix("claude-").unwrap_or(&n.model)).as_str()),
+    ];
+    if n.tool == Tool::Codex {
+        if let Some(o) = &n.origin {
+            parts.push(style.muted(&sanitize_line(o)));
+        }
+    }
+    parts.push(span((n.duration_ms / 1000) as i64));
+    if n.cost_usd > 0.0 {
+        parts.push(style.good(&money(n.cost_usd)));
+    }
+    let mut text = parts.join(&style.muted(" · "));
+    let tools = join(n.tools.iter().take(4), " ", |t| times(&t.name, t.count));
+    if !tools.is_empty() {
+        text.push_str(&format!("   {}", style.muted(&tools)));
+    }
+    if n.link == Some(LinkKind::Likely) {
+        text.push_str(&format!("  {}", style.muted("(likely)")));
+    }
+    text
+}
+
+type Kids<'a> = BTreeMap<Option<&'a str>, Vec<&'a Node>>;
+
+fn walk(
+    node: &Node,
+    kids: &Kids<'_>,
+    prefix: &str,
+    place: Option<bool>,
+    style: &Style,
+    all: bool,
+    out: &mut Vec<String>,
+) {
+    let glyph = match place {
+        None => "",
+        Some(true) => "└─ ",
+        Some(false) => "├─ ",
+    };
+    out.push(format!("{prefix}{glyph}{}", node_line(node, style)));
+    if !all {
+        return;
+    }
+    let below = match place {
+        None => String::new(),
+        Some(last) => format!("{prefix}{}", if last { "   " } else { "│  " }),
+    };
+    let children = kids.get(&Some(node.id.as_str())).map_or(&[][..], |c| c);
+    for (i, c) in children.iter().enumerate() {
+        let last = i + 1 == children.len();
+        walk(c, kids, &below, Some(last), style, all, out);
+    }
+}
+
+fn tree_lines(a: &TaskUsageAggregate, style: &Style, all: bool) -> Vec<String> {
+    let mut kids: Kids<'_> = BTreeMap::new();
+    for n in &a.nodes {
+        kids.entry(n.parent_id.as_deref()).or_default().push(n);
+    }
+    let mut out = Vec::new();
+    for root in kids.get(&None).map_or(&[][..], |r| r) {
+        walk(root, &kids, "", None, style, all, &mut out);
+    }
+    out
+}
+
+fn summary_lines(a: &TaskUsageAggregate, style: &Style) -> Vec<String> {
+    let mut out = Vec::new();
+    let t = &a.totals;
+    out.push(line(
+        style,
+        "Time",
+        format!("agents {} working", span((t.active_ms / 1000) as i64)),
+    ));
+    out.push(line(
+        style,
+        "Cost",
+        format!("AI {} (API-equivalent)", style.good(&money(t.cost_usd))),
+    ));
+    let k = &t.tokens;
+    let prompt = k.prompt_total();
+    let mut tokens = vec![format!("input {}", count(k.input))];
+    tokens.push(if prompt > 0 {
+        format!(
+            "cache read {} ({}%)",
+            count(k.cache_read),
+            (k.cache_read as f64 * 100.0 / prompt as f64).round()
+        )
+    } else {
+        format!("cache read {}", count(k.cache_read))
+    });
+    tokens.push(format!(
+        "cache write {}",
+        count(k.cache_write_5m + k.cache_write_1h)
+    ));
+    tokens.push(format!("output {}", count(k.output)));
+    if k.reasoning > 0 {
+        tokens.push(format!("reasoning {}", count(k.reasoning)));
+    }
+    out.push(line(style, "Tokens", tokens.join(" · ")));
+    if !a.limits.is_empty() {
+        let text = join(a.limits.iter(), " · ", |l| {
+            let tool = match l.tool {
+                Tool::Claude => "Claude",
+                Tool::Codex => "Codex",
+            };
+            let window = match l.window {
+                LimitKind::FiveHour => "5h",
+                LimitKind::Week => "week",
+            };
+            format!("{tool} {window} −{}%", l.used_pct)
+        });
+        out.push(line(style, "Limits", text));
+    }
+    out
+}
+
+fn context_lines(a: &TaskUsageAggregate, style: &Style) -> Vec<String> {
+    let c = &a.context;
+    let mut out = Vec::new();
+    if !c.tools.is_empty() {
+        let mut grouped: BTreeMap<String, u64> = BTreeMap::new();
+        for t in &c.tools {
+            let name = match t.name.strip_prefix("mcp__") {
+                Some(rest) => format!("mcp__{}", rest.split("__").next().unwrap_or(rest)),
+                None => t.name.clone(),
+            };
+            *grouped.entry(name).or_default() += t.count;
+        }
+        let mut list: Vec<_> = grouped.into_iter().collect();
+        list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        out.push(line(
+            style,
+            "Tools",
+            join(list.iter().take(8), " · ", |(n, c)| times(n, *c)),
+        ));
+    }
+    if !c.skills.is_empty() {
+        let mut text = join(c.skills.iter().take(TOP_NAMES), " · ", |s| {
+            times(&s.name, s.count)
+        });
+        if c.skills_available > 0 {
+            text.push_str(&format!("  (of {} available)", c.skills_available));
+        }
+        out.push(line(style, "Skills", text));
+    }
+    if !c.plugins.is_empty() {
+        out.push(line(
+            style,
+            "Plugins",
+            join(c.plugins.iter().take(TOP_NAMES), " · ", |p| {
+                times(&p.name, p.count)
+            }),
+        ));
+    }
+    if !c.mcp.is_empty() {
+        let mut servers: BTreeMap<&str, u64> = BTreeMap::new();
+        for m in &c.mcp {
+            *servers.entry(m.server.as_str()).or_default() += m.count;
+        }
+        let mut list: Vec<_> = servers.into_iter().collect();
+        list.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+        out.push(line(
+            style,
+            "MCP",
+            join(list.iter().take(TOP_NAMES), " · ", |(n, c)| times(n, *c)),
+        ));
+    }
+    if !c.hooks.is_empty() {
+        let runs: u64 = c.hooks.iter().map(|h| h.count).sum();
+        let ms: u64 = c.hooks.iter().map(|h| h.duration_ms).sum();
+        let errors: u64 = c.hooks.iter().map(|h| h.errors).sum();
+        let mut by_name: BTreeMap<&str, u64> = BTreeMap::new();
+        for h in &c.hooks {
+            *by_name.entry(h.name.as_str()).or_default() += h.count;
+        }
+        let top = by_name
+            .into_iter()
+            .max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(a.0)));
+        let mut text = format!(
+            "{} runs · {} · {} errors",
+            thousands(runs),
+            seconds_text(ms),
+            errors
+        );
+        if let Some((name, n)) = top {
+            text.push_str(&format!("  (top: {})", times(name, n)));
+        }
+        out.push(line(style, "Hooks", text));
+    }
+    let mut mode: Vec<String> = Vec::new();
+    if !c.permission_modes.is_empty() {
+        mode.push(join(c.permission_modes.iter(), ", ", |m| {
+            sanitize_line(&m.mode)
+        }));
+    }
+    if c.compactions > 0 {
+        mode.push(format!("Compactions {}", c.compactions));
+    }
+    if !c.prs.is_empty() {
+        mode.push(format!(
+            "PRs {}",
+            join(c.prs.iter().take(3), ", ", |p| format!(
+                "{}#{}",
+                sanitize_line(&p.repo),
+                p.number
+            ))
+        ));
+    }
+    if !mode.is_empty() {
+        out.push(line(style, "Mode", mode.join(" · ")));
+    }
+    out
+}
+
+fn render(a: &TaskUsageAggregate, title: Option<&str>, tree: bool, style: &Style) -> String {
+    let mut head = style.bold(&sanitize_line(&a.task.task_ref));
+    if let Some(t) = title {
+        head.push_str(&format!("  {t}"));
+    }
+    let mut blocks = vec![head, summary_lines(a, style).join("\n")];
+    let mut nodes = tree_lines(a, style, tree).join("\n");
+    if a.truncated.nodes {
+        nodes.push_str(&format!(
+            "\n{}",
+            style.muted("(some agents are left out of the tree)")
+        ));
+    }
+    blocks.push(nodes);
+    let context = context_lines(a, style);
+    if !context.is_empty() {
+        blocks.push(context.join("\n"));
+    }
+    blocks.join("\n\n")
+}

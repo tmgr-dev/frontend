@@ -8,13 +8,15 @@ use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 use tmgr_usage::limits::{LimitSnapshot, LimitSource, LimitWindow};
-use tmgr_usage::{PriceBook, Store, Tool};
+use tmgr_usage::{AgentMeta, Fact, FactEnd, FactKind, PriceBook, Store, Tool};
 
 const PRICES: &str = r#"{
   "claude-test-opus-1": {"mode": "chat", "input_cost_per_token": 1e-5, "output_cost_per_token": 5e-5,
     "cache_read_input_token_cost": 1e-6, "cache_creation_input_token_cost": 1.25e-5},
   "claude-test-sonnet-1": {"mode": "chat", "input_cost_per_token": 3e-6, "output_cost_per_token": 1.5e-5,
-    "cache_read_input_token_cost": 3e-7, "cache_creation_input_token_cost": 3.75e-6}
+    "cache_read_input_token_cost": 3e-7, "cache_creation_input_token_cost": 3.75e-6},
+  "gpt-test-1": {"mode": "chat", "input_cost_per_token": 2e-6, "output_cost_per_token": 8e-6,
+    "cache_read_input_token_cost": 5e-7}
 }"#;
 
 const SECRETS: [&str; 4] = [
@@ -1840,4 +1842,276 @@ async fn an_endless_run_listing_is_cut_off_with_a_warning() {
     u.standard_fixture();
     let v = u.json(&["usage", "--month", "--by", "task"]);
     assert!(warning_codes(&v).contains(&"usage_runs_truncated".to_string()));
+}
+
+fn stamp(clock: &str) -> chrono::DateTime<Utc> {
+    at(-2, clock).parse().unwrap()
+}
+
+fn codex_rollout(u: &U) {
+    let line = |clock: &str, body: &str| format!(r#"{{"timestamp":"{}",{body}}}"#, at(-2, clock));
+    let usage = |i: u64, o: u64| {
+        format!(
+            r#"{{"input_tokens":{i},"cached_input_tokens":0,"output_tokens":{o},"reasoning_output_tokens":0,"total_tokens":{}}}"#,
+            i + o
+        )
+    };
+    let count = |clock: &str, total: (u64, u64), last: (u64, u64)| {
+        line(
+            clock,
+            &format!(
+                r#""type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{},"last_token_usage":{}}},"rate_limits":null}}"#,
+                usage(total.0, total.1),
+                usage(last.0, last.1)
+            ),
+        )
+    };
+    let lines = [
+        line(
+            "12:08:00",
+            r#""type":"session_meta","payload":{"id":"cx1","cwd":"/work/alpha"}"#,
+        ),
+        line(
+            "12:08:01",
+            r#""type":"turn_context","payload":{"model":"gpt-test-1","cwd":"/work/alpha"}"#,
+        ),
+        count("12:09:00", (1000, 100), (1000, 100)),
+        count("12:12:00", (3000, 300), (2000, 200)),
+    ];
+    let path = u.p("codex/sessions/2026/10/rollout-cx1.jsonl");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, format!("{}\n", lines.join("\n"))).unwrap();
+}
+
+fn call_fact(session: &str, agent: Option<&str>, key: &str, name: &str, clock: &str) -> Fact {
+    Fact {
+        account: "claude".into(),
+        key: key.into(),
+        tool_session_id: session.into(),
+        agent_id: agent.map(String::from),
+        ts: stamp(clock),
+        kind: Some(FactKind::ToolCall),
+        name: name.into(),
+        cwd: Some("/work/alpha".into()),
+        ..Fact::default()
+    }
+}
+
+fn tree_fixture(u: &U, codex_cwd: &str) {
+    linked_fixture(u);
+    codex_rollout(u);
+    u.ok(&["usage", "scan"]);
+    Connection::open(u.p("data/usage.db"))
+        .unwrap()
+        .execute(
+            "UPDATE usage_event SET agent_id = 'ag1' WHERE event_key LIKE '%a3%'",
+            [],
+        )
+        .unwrap();
+    let store = Store::open(&u.p("data/usage.db")).unwrap();
+    store
+        .record_agent(
+            Tool::Claude,
+            &AgentMeta {
+                account: "claude".into(),
+                tool_session_id: "sess-a".into(),
+                version: Some("2.1.90".into()),
+                entrypoint: Some("cli".into()),
+                ..AgentMeta::default()
+            },
+        )
+        .unwrap();
+    store
+        .record_agent(
+            Tool::Claude,
+            &AgentMeta {
+                account: "claude".into(),
+                tool_session_id: "sess-a".into(),
+                agent_id: Some("ag1".into()),
+                agent_type: Some("codex:codex-rescue".into()),
+                spawn_tool_use_id: Some("tu1".into()),
+                ..AgentMeta::default()
+            },
+        )
+        .unwrap();
+    store
+        .record_agent(
+            Tool::Codex,
+            &AgentMeta {
+                account: "codex".into(),
+                tool_session_id: "cx1".into(),
+                originator: Some("Claude Code".into()),
+                source: Some("vscode".into()),
+                version: Some("0.150.0".into()),
+                started_at: Some(stamp("12:08:00")),
+                cwd: Some(codex_cwd.into()),
+                ..AgentMeta::default()
+            },
+        )
+        .unwrap();
+    let mut agent_call = call_fact("sess-a", None, "tu1", "Agent", "12:07:00");
+    agent_call.detail = Some("codex:codex-rescue".into());
+    let mut bash = call_fact("sess-a", Some("ag1"), "tu2", "Bash", "12:07:30");
+    bash.detail = Some("codex".into());
+    let mut skill = call_fact(
+        "sess-a",
+        None,
+        "sk1",
+        "superpowers:brainstorming",
+        "12:06:00",
+    );
+    skill.kind = Some(FactKind::Skill);
+    let mut hook = call_fact("sess-a", None, "hk1", "token-goat", "12:06:30");
+    hook.kind = Some(FactKind::Hook);
+    hook.detail = Some("PostToolUse".into());
+    hook.duration_ms = Some(120);
+    for f in [&agent_call, &bash, &skill, &hook] {
+        store.record_fact(Tool::Claude, f).unwrap();
+    }
+    store
+        .end_fact(
+            Tool::Claude,
+            &FactEnd {
+                key: "tu2".into(),
+                ended_at: stamp("12:16:00"),
+                is_error: false,
+            },
+        )
+        .unwrap();
+    for (key, name, clock) in [
+        ("c1", "exec", "12:09:00"),
+        ("c2", "exec", "12:10:00"),
+        ("c3", "apply_patch", "12:11:00"),
+    ] {
+        let mut f = call_fact("cx1", None, key, name, clock);
+        f.account = "codex".into();
+        f.cwd = Some(codex_cwd.into());
+        store.record_fact(Tool::Codex, &f).unwrap();
+    }
+}
+
+#[test]
+fn usage_task_json_carries_the_aggregate_with_subagent_and_linked_codex_nodes() {
+    let u = U::new();
+    tree_fixture(&u, "/work/alpha");
+    let out = u.ok(&["--json", "usage", "task", "WK-2"]);
+    let v = stdout_json(&out);
+    assert_valid("usage_task", &v);
+    let a = &v["data"]["aggregate"];
+    assert_eq!(a["schema"], "task_usage.v1");
+    assert_eq!(a["task"]["ref"], "WK-2");
+    assert_eq!(a["task"]["workspace"], "local:personal");
+    assert!(a["source_id"].as_str().unwrap().len() >= 16);
+    let nodes = a["nodes"].as_array().unwrap();
+    let kinds: Vec<(&str, &str)> = nodes
+        .iter()
+        .map(|n| {
+            (
+                n["tool"].as_str().unwrap(),
+                n["agent_type"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![
+            ("claude", "main"),
+            ("claude", "codex:codex-rescue"),
+            ("codex", "codex")
+        ]
+    );
+    assert_eq!(nodes[1]["parent_id"], "n0");
+    assert_eq!(nodes[2]["parent_id"], "n1");
+    assert_eq!(nodes[2]["link"], "exact");
+    assert_eq!(nodes[2]["origin"], "vscode");
+    assert_eq!(nodes[0]["origin"], "cli");
+    assert_eq!(nodes[2]["events"], 2);
+    assert_eq!(a["totals"]["events"], 4);
+    assert_eq!(
+        a["context"]["skills"][0]["name"],
+        "superpowers:brainstorming"
+    );
+    assert_eq!(a["context"]["hooks"][0]["event"], "PostToolUse");
+    let codex_tools: Vec<&str> = nodes[2]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(codex_tools, vec!["exec", "apply_patch"]);
+    assert!(a["totals"].get("waiting_ms").is_none());
+    assert_eq!(v["data"]["linking"]["linked_facts"], 4);
+
+    let raw = text(&out.stdout);
+    for leak in [
+        u.p("home").to_str().unwrap(),
+        "/work/alpha",
+        "sess-a",
+        "cx1",
+        "SECRET",
+    ] {
+        assert!(!raw.contains(leak), "{leak} leaked: {raw}");
+    }
+}
+
+#[test]
+fn usage_task_marks_a_codex_session_from_another_repository_as_likely() {
+    let u = U::new();
+    tree_fixture(&u, "/work/other");
+    let v = u.json(&["usage", "task", "WK-2"]);
+    assert_valid("usage_task", &v);
+    assert_eq!(v["data"]["aggregate"]["nodes"][2]["link"], "likely");
+    let human = text(
+        &u.ok(&["usage", "task", "WK-2", "--tree", "--no-scan"])
+            .stdout,
+    );
+    assert!(human.contains("(likely)"), "{human}");
+}
+
+#[test]
+fn usage_task_tree_text_follows_the_layout_and_hides_the_tree_without_the_flag() {
+    let u = U::new();
+    tree_fixture(&u, "/work/alpha");
+    let tree = text(&u.ok(&["usage", "task", "WK-2", "--tree"]).stdout);
+    println!("{tree}");
+    for part in [
+        "WK-2",
+        "Time    agents",
+        "Cost    AI $",
+        "(API-equivalent)",
+        "Tokens  input",
+        "Claude Code",
+        "└─ codex:codex-rescue",
+        "   └─ Codex",
+        "gpt-test-1",
+        "Tools   ",
+        "Skills  superpowers:brainstorming ×1",
+        "Plugins ",
+        "Hooks   1 runs",
+    ] {
+        assert!(tree.contains(part), "missing {part:?} in\n{tree}");
+    }
+    assert!(!tree.contains("(likely)"), "{tree}");
+    assert!(!tree.contains("\x1b["), "{tree}");
+    for leak in [u.p("home").to_str().unwrap(), "/work/alpha", "sess-a"] {
+        assert!(!tree.contains(leak), "{leak} leaked: {tree}");
+    }
+    let flat = text(&u.ok(&["usage", "task", "WK-2", "--no-scan"]).stdout);
+    assert!(flat.contains("Claude Code"), "{flat}");
+    assert!(!flat.contains("└─") && !flat.contains("├─"), "{flat}");
+}
+
+#[test]
+fn usage_task_for_an_unlinked_task_says_so_and_a_bad_ref_exits_two() {
+    let u = U::new();
+    linked_fixture(&u);
+    let none = text(&u.ok(&["usage", "task", "WK-6"]).stdout);
+    assert!(none.contains("No usage linked to WK-6"), "{none}");
+    let v = u.json(&["usage", "task", "WK-6"]);
+    assert_valid("usage_task", &v);
+    assert!(v["data"]["aggregate"].is_null());
+    let unknown = text(&u.ok(&["usage", "task", "ZZ-99"]).stdout);
+    assert!(unknown.contains("No usage linked to ZZ-99"), "{unknown}");
+    let bad = u.run(&["usage", "task", "not-a-ref"]);
+    assert_eq!(bad.status.code(), Some(2), "{}", text(&bad.stderr));
 }

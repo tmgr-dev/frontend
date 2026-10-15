@@ -289,15 +289,30 @@ pub(crate) fn upsert_event(
 
 impl Store {
     pub fn link_events(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> Result<Vec<LinkEvent>> {
+        Ok(self
+            .link_events_with_tokens(from, to)?
+            .into_iter()
+            .map(|(ev, _)| ev)
+            .collect())
+    }
+
+    /// The same events as `link_events`, each with its token breakdown.
+    pub fn link_events_with_tokens(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> Result<Vec<(LinkEvent, Tokens)>> {
         let mut stmt = self.conn.prepare(
             "SELECT e.id, e.tool, e.account, s.tool_session_id, e.ts, e.model, e.git_branch,
                     e.project_hash, e.cost_usd,
                     e.input + e.output + e.cache_read + e.cache_write_5m + e.cache_write_1h,
-                    s.parent_session_id, e.agent_id
+                    s.parent_session_id, e.agent_id,
+                    e.input, e.output, e.cache_read, e.cache_write_5m, e.cache_write_1h, e.reasoning
              FROM usage_event e JOIN usage_session s ON s.id = e.session_id
              WHERE e.ts >= ?1 AND e.ts < ?2 ORDER BY e.ts, e.id",
         )?;
         let rows = stmt.query_map([ms(from), ms(to)], |r| {
+            let count = |i: usize| r.get::<_, i64>(i).map(|v| v.max(0) as u64);
             Ok((
                 LinkEvent {
                     id: r.get(0)?,
@@ -313,14 +328,22 @@ impl Store {
                     tokens: r.get::<_, i64>(9)? as u64,
                     agent_id: r.get(11)?,
                 },
+                Tokens {
+                    input: count(12)?,
+                    output: count(13)?,
+                    cache_read: count(14)?,
+                    cache_write_5m: count(15)?,
+                    cache_write_1h: count(16)?,
+                    reasoning: count(17)?,
+                },
                 r.get::<_, String>(1)?,
             ))
         })?;
         let mut out = Vec::new();
         for row in rows {
-            let (mut ev, tool) = row?;
+            let (mut ev, tokens, tool) = row?;
             ev.tool = Tool::parse(&tool)?;
-            out.push(ev);
+            out.push((ev, tokens));
         }
         Ok(out)
     }

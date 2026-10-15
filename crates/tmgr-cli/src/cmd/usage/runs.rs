@@ -18,6 +18,7 @@ const MAX_PAGES: usize = 10;
 pub struct RunMeta {
     pub task_ref: String,
     pub task_id: Option<u64>,
+    pub title: Option<String>,
 }
 
 #[derive(Default)]
@@ -209,6 +210,7 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
                 RunMeta {
                     task_ref,
                     task_id: task.id.or(run.task_id),
+                    title: task.title.clone(),
                 },
             ));
         }

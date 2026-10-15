@@ -5,6 +5,7 @@ mod pricing;
 mod runs;
 mod statusline;
 mod summary;
+mod task;
 
 use crate::cli_usage::{UsageArgs, UsageCommand};
 use crate::ctx::Ctx;
@@ -183,6 +184,7 @@ pub fn run(ctx: &Ctx, args: &UsageArgs) -> Result<Output> {
     match &args.command {
         None => summary::run(ctx, &args.summary),
         Some(UsageCommand::Limits { no_scan }) => limits::run(ctx, *no_scan),
+        Some(UsageCommand::Task(task_args)) => task::run(ctx, task_args),
         Some(UsageCommand::Scan) => run_scan(ctx),
         Some(UsageCommand::Accounts { command }) => accounts::run(ctx, command.as_ref()),
         Some(UsageCommand::Pricing { command }) => pricing::run(ctx, command.as_ref()),

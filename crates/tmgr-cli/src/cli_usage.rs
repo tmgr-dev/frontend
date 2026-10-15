@@ -77,6 +77,8 @@ pub enum UsageCommand {
         #[arg(long)]
         no_scan: bool,
     },
+    /// Cost, time, tokens and the agent tree of one task
+    Task(TaskArgs),
     /// Read new log lines into the local usage database
     Scan,
     /// Accounts whose logs are scanned (default roots plus the ones you add)
@@ -98,6 +100,19 @@ pub enum UsageCommand {
     },
     #[command(name = "statusline-hook", hide = true)]
     StatuslineHook(StatuslineHookArgs),
+}
+
+#[derive(Args)]
+pub struct TaskArgs {
+    /// Task reference (TM-512 or #8974)
+    #[arg(value_name = "REF")]
+    pub reference: String,
+    /// Show every agent, not only the top level
+    #[arg(long)]
+    pub tree: bool,
+    /// Do not scan the logs first
+    #[arg(long)]
+    pub no_scan: bool,
 }
 
 #[derive(Subcommand)]

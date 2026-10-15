@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr usage task REF [--tree] [--days N] [--no-scan] [--json]`: cost, time, tokens and the agent tree (main session, subagents, linked Codex sessions) of one task over the last 30 days (`--days N`, up to the 90 kept), with the tools, skills, plugins, MCP servers and hooks used. A Codex session started by a Claude Code call is attached to it (`exact`, or `likely` when the match is ambiguous). `--json` carries the `task_usage.v1` aggregate under `data.aggregate`; it holds only names, numbers and times, never paths, prompts or arguments. New JSON schema `usage_task`.
+
 ## 1.0.3
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
