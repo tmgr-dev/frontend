@@ -80,3 +80,7 @@ pub fn assistant_line(session: &str, ts: &str, msg: &str, input: u64, output: u6
 pub fn projects_file(root: &Path, name: &str) -> PathBuf {
     root.join("projects").join("-work-alpha").join(name)
 }
+
+pub fn ctx_fixture_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/claude_ctx")
+}
