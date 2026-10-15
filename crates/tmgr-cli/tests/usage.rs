@@ -1300,7 +1300,7 @@ fn linked_fixture(u: &U) {
         &[
             Ev::new(
                 "sess-a",
-                at(0, "12:00:00"),
+                at(-2, "12:00:00"),
                 "a1",
                 "claude-test-opus-1",
                 1000,
@@ -1309,7 +1309,7 @@ fn linked_fixture(u: &U) {
             .line(),
             Ev::new(
                 "sess-a",
-                at(0, "12:05:00"),
+                at(-2, "12:05:00"),
                 "a2",
                 "claude-test-opus-1",
                 2000,
@@ -1322,7 +1322,7 @@ fn linked_fixture(u: &U) {
         "-s/sess-a/subagents/agent-1.jsonl",
         &[Ev::new(
             "sess-a",
-            at(0, "12:10:00"),
+            at(-2, "12:10:00"),
             "a3",
             "claude-test-sonnet-1",
             1000,
@@ -1335,7 +1335,7 @@ fn linked_fixture(u: &U) {
         "-s/sess-b.jsonl",
         &[Ev::new(
             "sess-b",
-            at(-1, "10:00:00"),
+            at(-3, "10:00:00"),
             "b1",
             "claude-test-sonnet-1",
             1000,
@@ -1347,17 +1347,22 @@ fn linked_fixture(u: &U) {
     );
     u.session_file(
         "-s/sess-c.jsonl",
-        &[
-            Ev::new("sess-c", at(0, "12:20:00"), "c1", "mystery-model-9", 10, 10)
-                .cwd("/work/gamma")
-                .line(),
-        ],
+        &[Ev::new(
+            "sess-c",
+            at(-2, "12:20:00"),
+            "c1",
+            "mystery-model-9",
+            10,
+            10,
+        )
+        .cwd("/work/gamma")
+        .line()],
     );
     u.session_file(
         "-s/sess-d.jsonl",
         &[Ev::new(
             "sess-d",
-            at(0, "13:00:00"),
+            at(-2, "13:00:00"),
             "d1",
             "claude-test-opus-1",
             500,
@@ -1371,7 +1376,7 @@ fn linked_fixture(u: &U) {
         "-s/sess-e.jsonl",
         &[Ev::new(
             "sess-e",
-            at(0, "14:00:00"),
+            at(-2, "14:00:00"),
             "e1",
             "claude-test-sonnet-1",
             1000,
@@ -1390,48 +1395,48 @@ fn linked_fixture(u: &U) {
         1,
         Some("sess-a"),
         None,
-        &at(0, "11:55:00"),
-        &at(0, "12:02:00"),
+        &at(-2, "11:55:00"),
+        &at(-2, "12:02:00"),
     );
     ws.run(
         "personal",
         2,
         Some("sess-a"),
         None,
-        &at(0, "12:02:00"),
-        &at(0, "12:30:00"),
+        &at(-2, "12:02:00"),
+        &at(-2, "12:30:00"),
     );
     ws.run(
         "personal",
         1,
         None,
         Some("feat-x"),
-        &at(-1, "09:30:00"),
-        &at(-1, "10:30:00"),
+        &at(-3, "09:30:00"),
+        &at(-3, "10:30:00"),
     );
     ws.run(
         "personal",
         3,
         None,
         Some("par"),
-        &at(0, "12:50:00"),
-        &at(0, "13:30:00"),
+        &at(-2, "12:50:00"),
+        &at(-2, "13:30:00"),
     );
     ws.run(
         "personal",
         4,
         None,
         Some("par"),
-        &at(0, "12:55:00"),
-        &at(0, "13:30:00"),
+        &at(-2, "12:55:00"),
+        &at(-2, "13:30:00"),
     );
     ws.run(
         "personal",
         5,
         None,
         None,
-        &at(0, "13:50:00"),
-        &at(0, "14:30:00"),
+        &at(-2, "13:50:00"),
+        &at(-2, "14:30:00"),
     );
     u.ok(&["project", "map", "WK", repo.to_str().unwrap()]);
 }
@@ -1584,8 +1589,8 @@ fn an_explicit_workspace_limits_linking_to_it() {
         1,
         Some("sess-a"),
         None,
-        &at(0, "11:00:00"),
-        &at(0, "23:00:00"),
+        &at(-2, "11:00:00"),
+        &at(-2, "23:00:00"),
     );
     let both = u.json(&["usage", "--month", "--by", "task"]);
     assert_eq!(
@@ -1650,7 +1655,7 @@ fn a_run_recorded_by_the_cli_maps_to_its_repository_through_runs_json() {
         "-s/sess-f.jsonl",
         &[Ev::new(
             "sess-f",
-            at(0, "15:00:00"),
+            at(-2, "15:00:00"),
             "f1",
             "claude-test-opus-1",
             1000,
@@ -1665,8 +1670,8 @@ fn a_run_recorded_by_the_cli_maps_to_its_repository_through_runs_json() {
         6,
         None,
         None,
-        &at(0, "14:50:00"),
-        &at(0, "15:30:00"),
+        &at(-2, "14:50:00"),
+        &at(-2, "15:30:00"),
     );
     let state = u.p("state/tmgr");
     std::fs::create_dir_all(&state).unwrap();
@@ -1674,7 +1679,7 @@ fn a_run_recorded_by_the_cli_maps_to_its_repository_through_runs_json() {
         state.join("runs.json"),
         json!({"schema": "tmgr.runs.v1", "runs": [{
             "run_id": 7, "task_id": 6, "task_key": "WK-6", "repo": repo2_s,
-            "agent": "claude-code", "started_at": at(0, "14:50:00"), "workspace": "local:personal"
+            "agent": "claude-code", "started_at": at(-2, "14:50:00"), "workspace": "local:personal"
         }]})
         .to_string(),
     )
@@ -1700,7 +1705,7 @@ async fn cloud_runs_link_through_their_session_id() {
         .and(path("/api/workspaces/1/agent-work"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"runs": [{
             "id": 10, "task_id": 5, "agent": "claude-code", "session_id": "sess-a", "status": "succeeded",
-            "started_at": at(0, "11:00:00"), "ended_at": at(0, "13:00:00"), "duration_seconds": 7200,
+            "started_at": at(-1, "11:00:00"), "ended_at": at(0, "13:00:00"), "duration_seconds": 93600,
             "task": {"id": 5, "key": "TM-5", "title": "TM-5: Cloud task"}
         }]})))
         .mount(&server)
