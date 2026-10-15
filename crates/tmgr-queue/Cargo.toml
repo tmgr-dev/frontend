@@ -18,6 +18,5 @@ rusqlite.workspace = true
 tmgr-core.workspace = true
 tmgr-ipc.workspace = true
 tmgr-local = { path = "../tmgr-local" }
-
-[dev-dependencies]
 tempfile.workspace = true
+

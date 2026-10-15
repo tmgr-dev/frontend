@@ -66,7 +66,7 @@ pub struct InstallServiceArgs {
 }
 
 #[derive(Args)]
-#[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent"])))]
+#[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent", "fetch"])))]
 pub struct RunArgs {
     /// Task to run, in a local workspace (--ws local:<code>): the agent works in its own clone of the
     /// project's repository on the task's branch, and the run is recorded as Agent work of the task
@@ -117,6 +117,9 @@ pub struct RunArgs {
     /// Start a task run without the confirmation prompt
     #[arg(long, requires = "task", conflicts_with = "on")]
     pub yes: bool,
+    /// Bring the task's branch from the agent's clone into your repository (runs nothing)
+    #[arg(long, requires = "task", conflicts_with_all = ["on", "agent", "agent_cmd"])]
+    pub fetch: bool,
 }
 
 #[derive(Args)]

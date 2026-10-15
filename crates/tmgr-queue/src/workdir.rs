@@ -48,10 +48,7 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
     if let Some(d) = dir {
         cmd.arg("-C").arg(d);
     }
-    let out = cmd
-        .args(args)
-        .output()
-        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    let out = output_within(cmd.args(args), GIT_TIMEOUT)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
         let line = msg.lines().next().unwrap_or("git failed");
@@ -61,6 +58,57 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+fn output_within(cmd: &mut Command, limit: std::time::Duration) -> Result<std::process::Output> {
+    use std::io::Read;
+    use std::process::Stdio;
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    let drain = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            buf
+        })
+    };
+    let out = drain(
+        child
+            .stdout
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let err = drain(
+        child
+            .stderr
+            .take()
+            .map(|p| Box::new(p) as Box<dyn Read + Send>),
+    );
+    let deadline = std::time::Instant::now() + limit;
+    let status = loop {
+        if let Some(st) = child.try_wait()? {
+            break st;
+        }
+        if std::time::Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(Error::internal("git did not finish in time"));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    Ok(std::process::Output {
+        status,
+        stdout: out.join().unwrap_or_default(),
+        stderr: err.join().unwrap_or_default(),
+    })
 }
 
 pub trait WorkDirs {
@@ -84,8 +132,27 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
     if dest.exists() {
         return Err(Error::conflict("the run directory already exists"));
     }
+    validate_branch(branch)?;
     let base = match base {
-        Some(b) => b.to_string(),
+        Some(b) => {
+            tmgr_core::branch::validate_base(b)?;
+            let commit = format!("{b}^{{commit}}");
+            git(
+                Some(Path::new(repo)),
+                &[
+                    "rev-parse",
+                    "--verify",
+                    "--quiet",
+                    "--end-of-options",
+                    &commit,
+                ],
+            )
+            .map_err(|_| {
+                Error::usage(format!(
+                    "{b} is not a branch, tag or commit of the repository"
+                ))
+            })?
+        }
         None => git(
             Some(Path::new(repo)),
             &["symbolic-ref", "--quiet", "--short", "HEAD"],
@@ -126,22 +193,86 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
     result
 }
 
-/// Whether `dest` is a clone made by [`prepare_clone`] from `repo` that is on `branch`.
-pub fn is_clone_of(repo: &str, dest: &Path, branch: &str) -> bool {
-    if !dest.join(".git").is_dir() {
-        return false;
+fn read_small(path: &Path) -> Option<String> {
+    use std::io::Read;
+    let meta = std::fs::symlink_metadata(path).ok()?;
+    if !meta.file_type().is_file() || meta.len() > 1 << 20 {
+        return None;
     }
-    let alternates =
-        std::fs::read_to_string(dest.join(".git/objects/info/alternates")).unwrap_or_default();
-    let objects = Path::new(repo).join(".git/objects");
-    let same_objects = alternates.lines().count() == 1
-        && alternates
-            .lines()
-            .next()
-            .is_some_and(|l| Path::new(l.trim()) == objects);
-    same_objects
-        && git(Some(dest), &["symbolic-ref", "--quiet", "--short", "HEAD"])
-            .is_ok_and(|head| head == branch)
+    let mut text = String::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(1 << 20)
+        .read_to_string(&mut text)
+        .ok()?;
+    Some(text)
+}
+
+fn is_sha(s: &str) -> bool {
+    matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// The commit `branch` points at in a clone, read from its ref files without running git there.
+fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
+    let git = clone.join(".git");
+    if !std::fs::symlink_metadata(&git).ok()?.is_dir() {
+        return None;
+    }
+    let reference = format!("refs/heads/{branch}");
+    if let Some(text) = read_small(&git.join(&reference)) {
+        let sha = text.trim();
+        return is_sha(sha).then(|| sha.to_string());
+    }
+    read_small(&git.join("packed-refs"))?
+        .lines()
+        .filter_map(|l| l.split_once(' '))
+        .find(|(_, r)| *r == reference)
+        .map(|(sha, _)| sha.to_string())
+        .filter(|sha| is_sha(sha))
+}
+
+/// Brings `branch` of an agent's clone into `repo` without running git inside the clone: its
+/// configuration and hooks were writable by the agent. A fresh bare repository of ours borrows the
+/// clone's objects, and `repo` fetches from that. Returns the imported commit.
+pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
+    crate::workdir::validate_branch(branch)?;
+    let sha = clone_tip(clone, branch)
+        .ok_or_else(|| Error::usage(format!("the clone has no branch {branch}")))?;
+    let tmp = tempfile::Builder::new()
+        .prefix("tmgr-import")
+        .tempdir()
+        .map_err(|e| Error::internal(format!("temporary directory: {e}")))?;
+    let bare = tmp.path().join("b.git");
+    let b = bare.to_string_lossy().into_owned();
+    git(None, &["init", "-q", "--bare", "--template=", &b])?;
+    let objects = clone.join(".git/objects");
+    std::fs::write(
+        bare.join("objects/info/alternates"),
+        format!(
+            "{}\n{}\n",
+            objects.display(),
+            Path::new(repo).join(".git/objects").display()
+        ),
+    )?;
+    git(
+        Some(&bare),
+        &["update-ref", &format!("refs/heads/{branch}"), &sha],
+    )?;
+    git(
+        Some(Path::new(repo)),
+        &[
+            "fetch",
+            "--no-tags",
+            "--",
+            &b,
+            &format!("refs/heads/{branch}:refs/heads/{branch}"),
+        ],
+    )?;
+    Ok(sha)
+}
+
+fn validate_branch(branch: &str) -> Result<()> {
+    tmgr_core::branch::validate_branch_name(branch)
 }
 
 pub struct GitClone;
@@ -236,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn a_run_clone_sits_beside_the_repo_on_its_branch_and_is_recognised_again() {
+    fn a_run_clone_sits_beside_the_repo_on_its_branch_and_bases_are_checked() {
         let tmp = tempfile::tempdir().unwrap();
         let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
         std::fs::create_dir(&repo).unwrap();
@@ -247,21 +378,66 @@ mod tests {
             dest,
             repo.parent().unwrap().join("proj-worktrees/feat-tm-1-fix")
         );
-        assert!(!is_clone_of(&r, &dest, "feat/tm-1-fix"));
-        prepare_clone(&r, &dest, "feat/tm-1-fix", None).unwrap();
-        assert!(is_clone_of(&r, &dest, "feat/tm-1-fix"));
-        assert!(!is_clone_of(&r, &dest, "other"));
-        assert!(prepare_clone(&r, &dest, "feat/tm-1-fix", None).is_err());
-        let other = tmp.path().join("other");
-        std::fs::create_dir(&other).unwrap();
-        init_repo(&other);
-        assert!(!is_clone_of(
-            &other.to_string_lossy(),
-            &dest,
+        prepare_clone(&r, &dest, "feat/tm-1-fix", Some("main")).unwrap();
+        assert_eq!(
+            git(Some(&dest), &["symbolic-ref", "--short", "HEAD"]).unwrap(),
             "feat/tm-1-fix"
-        ));
-        assert!(prepare_clone(&r, &dest.with_file_name("bad"), "x", Some("no-such-base")).is_err());
-        assert!(!dest.with_file_name("bad").exists());
+        );
+        assert!(prepare_clone(&r, &dest, "feat/tm-1-fix", None).is_err());
+        for base in ["no-such-base", "--no-overlay", "a..b"] {
+            let bad = dest.with_file_name("bad");
+            assert!(prepare_clone(&r, &bad, "x", Some(base)).is_err(), "{base}");
+            assert!(!bad.exists());
+        }
+        assert!(prepare_clone(&r, &dest.with_file_name("dash"), "-x", None).is_err());
+    }
+
+    #[test]
+    fn importing_a_branch_never_runs_the_clones_own_configuration() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = root.join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let r = repo.to_string_lossy().into_owned();
+        let dest = run_clone_dir(&r, "tm-1-fix").unwrap();
+        prepare_clone(&r, &dest, "tm-1-fix", None).unwrap();
+        std::fs::write(dest.join("work.txt"), "agent\n").unwrap();
+        let commit = |args: &[&str]| {
+            let out = Command::new("git")
+                .current_dir(&dest)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "a")
+                .env("GIT_AUTHOR_EMAIL", "a@example.com")
+                .env("GIT_COMMITTER_NAME", "a")
+                .env("GIT_COMMITTER_EMAIL", "a@example.com")
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success());
+        };
+        commit(&["add", "work.txt"]);
+        commit(&["commit", "-q", "-m", "agent change"]);
+        let marker = root.join("pwned");
+        let mut cfg = std::fs::OpenOptions::new()
+            .append(true)
+            .open(dest.join(".git/config"))
+            .unwrap();
+        use std::io::Write;
+        writeln!(
+            cfg,
+            "[core]\n\talternateRefsCommand = touch {m}\n\tfsmonitor = touch {m}\n[uploadpack]\n\tpackObjectsHook = touch {m}\n",
+            m = marker.display()
+        )
+        .unwrap();
+        let sha = import_branch(&r, &dest, "tm-1-fix").unwrap();
+        assert_eq!(git(Some(&repo), &["rev-parse", "tm-1-fix"]).unwrap(), sha);
+        assert_eq!(
+            git(Some(&repo), &["log", "-1", "--format=%s", "tm-1-fix"]).unwrap(),
+            "agent change"
+        );
+        assert!(!marker.exists());
+        assert!(import_branch(&r, &dest, "no-such-branch").is_err());
     }
 
     #[test]

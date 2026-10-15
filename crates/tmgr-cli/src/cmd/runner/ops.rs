@@ -32,6 +32,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {
             (Some(link), _) => remote::run(o, link, a),
+            (None, Some(task)) if a.fetch => super::run_task::fetch(o, a, task),
             (None, Some(task)) => super::run_task::run(o, a, task),
             (None, None) => run(o, a),
         },

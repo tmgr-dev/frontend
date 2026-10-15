@@ -286,13 +286,12 @@ fn a_local_task_runs_in_its_own_clone_and_is_recorded_as_agent_work() {
     );
     assert_eq!(data["author"], "human");
     assert_eq!(data["session"]["permission_mode"], "ask");
-    assert_eq!(
-        data["fetch"].as_str().unwrap(),
-        format!(
-            "git -C {} fetch {} {branch}:{branch}",
-            fx.repo().display(),
-            clone.display()
-        )
+    assert!(
+        data["fetch"]
+            .as_str()
+            .unwrap()
+            .ends_with("--ws local:personal run WK-1 --fetch"),
+        "{data}"
     );
     wait_for(
         "agent work finished",
@@ -310,20 +309,36 @@ fn a_local_task_runs_in_its_own_clone_and_is_recorded_as_agent_work() {
         "--ask\n"
     );
     assert!(clone.join(".tmgr/task.md").is_file());
-    git(
-        &fx.repo(),
-        &[
-            "fetch",
-            "-q",
-            &clone.display().to_string(),
-            &format!("{branch}:{branch}"),
-        ],
+    let (ok, v) = fx.json(&["--json", "--ws", "local:personal", "run", "WK-1", "--fetch"]);
+    assert!(ok, "{v}");
+    assert_eq!(
+        v["data"]["commit"],
+        git(&fx.repo(), &["rev-parse", &branch])
     );
     assert_eq!(
         git(&fx.repo(), &["log", "-1", "--format=%s", &branch]),
         "agent change"
     );
     assert!(!fx.repo().join("result.txt").exists());
+    let (ok, v) = fx.json(&[
+        "--json",
+        "--ws",
+        "local:personal",
+        "run",
+        "WK-1",
+        "--agent",
+        "fake",
+        "--yes",
+    ]);
+    assert!(!ok);
+    assert_eq!(v["error"]["code"], "conflict", "{v}");
+    assert!(
+        v["error"]["hint"]
+            .as_str()
+            .unwrap()
+            .contains("run WK-1 --fetch"),
+        "{v}"
+    );
 }
 
 #[test]

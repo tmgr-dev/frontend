@@ -1,7 +1,7 @@
 use super::{attach, connect, emit, rerr, runner_config, Opts, PermissionMode, RunArgs};
 use serde_json::{json, Value};
 use std::io::IsTerminal;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tmgr_core::branch;
 use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
@@ -21,16 +21,16 @@ struct Plan {
     persona: Option<String>,
     repo: String,
     clone: PathBuf,
-    reuse: bool,
+    code: String,
     branch: String,
     chain_ok: bool,
 }
 
-fn fetch_line(repo: &str, clone: &Path, branch: &str) -> String {
+fn import_line(code: &str, reference: &str) -> String {
     format!(
-        "git -C {} fetch {} {branch}:{branch}",
-        shell_words::quote(repo),
-        shell_words::quote(&clone.to_string_lossy())
+        "{} --ws local:{code} run {} --fetch",
+        super::bin(),
+        shell_words::quote(reference)
     )
 }
 
@@ -124,18 +124,8 @@ fn plan(o: &Opts, a: &RunArgs, reference: &str) -> Result<Plan> {
     )?;
     let clone = workdir::run_clone_dir(&repo, &branch)
         .ok_or_else(|| Error::usage("the repository path has no parent directory"))?;
-    let reuse = clone.exists();
-    if reuse && !workdir::is_clone_of(&repo, &clone, &branch) {
-        return Err(Error::new(
-            Kind::Conflict,
-            format!(
-                "{} exists but is not a clone of {repo} on {branch}",
-                clone.display()
-            ),
-        )
-        .hint("move it away or remove it, then run again"));
-    }
     Ok(Plan {
+        code,
         persona: persona
             .get("name")
             .and_then(Value::as_str)
@@ -144,7 +134,6 @@ fn plan(o: &Opts, a: &RunArgs, reference: &str) -> Result<Plan> {
         candidate,
         repo,
         clone,
-        reuse,
         branch,
     })
 }
@@ -203,11 +192,7 @@ fn summary(p: &Plan, profile: &str, mode: &str) -> String {
             }
         ),
         format!("Repo:    {}", sanitize_line(&p.repo)),
-        format!(
-            "Clone:   {}{}",
-            sanitize_line(&clone),
-            if p.reuse { " (existing)" } else { "" }
-        ),
+        format!("Clone:   {}", sanitize_line(&clone)),
         format!("Branch:  {}", p.branch),
         format!("Agent:   {} in {mode} mode", sanitize_line(profile)),
     ]
@@ -226,9 +211,17 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     }
     crate::interact::confirm("Start this run?", true, a.yes)?;
     super::ops::login_preflight(&profile)?;
-    if !p.reuse {
-        workdir::prepare_clone(&p.repo, &p.clone, &p.branch, a.base.as_deref())?;
+    if p.clone.exists() {
+        return Err(Error::new(
+            Kind::Conflict,
+            format!("{} already exists", p.clone.display()),
+        )
+        .hint(format!(
+            "bring its branch in with `{}`, then remove the folder and run again",
+            import_line(&p.code, reference)
+        )));
     }
+    workdir::prepare_clone(&p.repo, &p.clone, &p.branch, a.base.as_deref())?;
     let cwd = std::fs::canonicalize(&p.clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", p.clone.display())))?
         .to_string_lossy()
@@ -259,9 +252,11 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             agent_work: true,
         })
         .map_err(rerr)?;
-    let fetch = fetch_line(&p.repo, Path::new(&cwd), &p.branch);
+    let fetch = import_line(&p.code, reference);
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
-        eprintln!("The agent's commits stay in its clone; bring them back with:\n  {fetch}");
+        eprintln!(
+            "The agent's commits stay in its clone; bring its branch into your repository with:\n  {fetch}"
+        );
         let code = attach::run(&cfg, &info.id)?;
         eprintln!("To bring the agent's branch into your repository:\n  {fetch}");
         return Ok(code);
@@ -284,6 +279,28 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             "author": p.candidate.author.name(),
             "fetch": fetch,
         }),
+        human,
+    ))
+}
+
+pub fn fetch(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
+    let p = plan(o, a, reference)?;
+    if !p.clone.is_dir() {
+        return Err(Error::not_found(format!(
+            "there is no clone at {}",
+            p.clone.display()
+        )));
+    }
+    let sha = workdir::import_branch(&p.repo, &p.clone, &p.branch)?;
+    let human = format!(
+        "{} is now at {} in {}",
+        p.branch,
+        &sha[..12],
+        sanitize_line(&p.repo)
+    );
+    Ok(emit(
+        o,
+        json!({ "repo": p.repo, "clone": p.clone, "branch": p.branch, "commit": sha }),
         human,
     ))
 }
