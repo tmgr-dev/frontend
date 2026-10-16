@@ -165,7 +165,7 @@
 	}auth/login/telegram/redirect`;
 
 	const isLoading = ref(false);
-	const errors = ref({});
+	const errors = ref<Record<string, string[]>>({});
 	const form = ref({
 		name: '',
 		email: '',

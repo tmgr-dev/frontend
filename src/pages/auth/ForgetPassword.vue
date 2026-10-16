@@ -78,7 +78,7 @@
 	});
 	const message = ref('');
 	const isLoading = ref(false);
-	const errors = ref({});
+	const errors = ref<Record<string, string[]>>({});
 
 	async function sendResetLink() {
 		if (isLoading.value) return;
