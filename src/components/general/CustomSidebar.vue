@@ -89,7 +89,7 @@
 	import { useTours } from '@/tours/useTours';
 	import store from '@/store';
 	import { pagesAvailable } from '@/utils/pagesTree';
-	import { generateCategoryUrl, generateWorkspaceUrl } from '@/utils/url';
+	import { generateCategoryUrl } from '@/utils/url';
 	import { pluginState } from '@/pluginSystem/state';
 	import {
 		BADGE_DOT_CLASS,
@@ -151,8 +151,7 @@
 
 	const route = useRoute();
 	const router = useRouter();
-	const { isFeatureEnabled, isUserFeatureEnabled, showSurface } =
-		useFeatureToggles();
+	const { isFeatureEnabled, showSurface } = useFeatureToggles();
 
 	const { onboarding } = useTours();
 	const hubHidden = computed(() => onboarding.value?.hub_hidden === true);
@@ -546,21 +545,6 @@
 		// Show for all non-default workspaces
 		return true;
 	};
-
-	// Get the current workspace from store
-	const currentWorkspace = computed(() => {
-		const currentWorkspaceId = store.state.user?.settings?.find(
-			(setting: any) => setting.key === 'current_workspace',
-		)?.value;
-
-		return store.state.workspaces.find(
-			(workspace: any) => Number(workspace.id) === Number(currentWorkspaceId),
-		);
-	});
-
-	const archiveUrl = computed(() =>
-		generateWorkspaceUrl('archive', activeWorkspace.value),
-	);
 </script>
 
 <template>

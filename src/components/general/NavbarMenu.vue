@@ -35,7 +35,7 @@
 </template>
 
 <script lang="ts" setup>
-	import { getUser, updateUserSettingsV2, User } from '@/actions/tmgr/user';
+	import { getUser, User } from '@/actions/tmgr/user';
 	import { getWorkspaces, Workspace } from '@/actions/tmgr/workspaces';
 	import WorkspaceSelect from '@/components/general/WorkspaceSelect.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
@@ -68,26 +68,6 @@
 			workspaceId.value = +workspaceSetting.value;
 		}
 	});
-	async function onSelectChange(workspaceId: number) {
-		const settingsWithUpdatedWorkspace = user.value.settings.map((setting) => {
-			if (setting.key === 'current_workspace') {
-				setting.value = workspaceId;
-			}
-
-			return {
-				id: setting.id,
-				value: setting.value,
-			};
-		});
-
-		const updatedUser = await updateUserSettingsV2(
-			settingsWithUpdatedWorkspace,
-		);
-		store.commit('setUser', updatedUser);
-		store.commit('updateUserWorkspaceSetting', { workspaceId });
-
-		store.commit('rerenderApp');
-	}
 
 	const showCreatingTaskModal = () => {
 		store.commit('setShowCreatingTaskModal');

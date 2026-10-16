@@ -27,7 +27,8 @@
 		placeholder: string;
 	}
 
-	const props = defineProps<Props>();
+	defineProps<Props>();
+	defineEmits<{ 'keydown:enter': [value: unknown] }>();
 	const value = defineModel();
 </script>
 

@@ -197,7 +197,7 @@
 				e.response?.data?.message || 'Failed to load workspace members';
 			toast({
 				title: 'Error',
-				description: error.value,
+				description: error.value ?? undefined,
 				variant: 'destructive',
 			});
 		} finally {

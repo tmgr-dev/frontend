@@ -20,7 +20,7 @@
 				class="text-sm text-red-500"
 				:class="showErrorInTooltip && tooltipClasses"
 			>
-				{{ errors[0] }}
+				{{ errors?.[0] }}
 			</div>
 		</transition>
 	</div>
@@ -30,9 +30,8 @@
 	import VueSelect from '@/plugins/VueSelect';
 	import { computed } from 'vue';
 
-	type optionType = {
-		[key: string]: string | number;
-	};
+	// Record<string, any>: interface-typed options (Workspace, CategoryOption) have no index signature
+	type optionType = Record<string, any>;
 	const tooltipClasses = [
 		'pl-0 p-1 absolute top-1/2   left-[calc(100%+15px)] min-w-[220px] sm:-translate-y-1/2 rounded-md sm:drop-shadow-lg sm:bg-white sm:p-2.5',
 		"before:content-none sm:before:content-[''] before:border-[7px] before:border-transparent before:border-r-white",
@@ -46,7 +45,7 @@
 		modelValue?: string | number | null;
 		options: optionType[];
 		selectClass?: string;
-		errors?: [];
+		errors?: string[];
 		showErrorInTooltip?: boolean;
 	}
 
@@ -84,7 +83,7 @@
 	});
 
 	const hasError = computed(() => {
-		return props.errors?.length > 0 && props.errors[0];
+		return (props.errors?.length ?? 0) > 0 && props.errors?.[0];
 	});
 </script>
 

@@ -36,7 +36,7 @@
 		togglePersona: [persona: PersonaAssignee];
 	}>();
 	const assigneeIds = defineModel<number[]>({
-		default: [],
+		default: () => [],
 	});
 	const impliedOwnerIds = computed(
 		() => new Set(props.selectedPersonas.map((p) => p.owner.id)),

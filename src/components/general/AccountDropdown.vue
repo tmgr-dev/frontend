@@ -78,6 +78,7 @@
 		getWorkspaceMembers,
 		getWorkspaces,
 		Workspace,
+		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import Select from '@/components/general/Select.vue';
 	import store from '@/store';
@@ -107,7 +108,7 @@
 	const workspaces = ref([] as Workspace[]);
 	const user = ref({} as User);
 	const workspaceId: Ref<number> = ref(0);
-	const workspaceUsers = ref([]);
+	const workspaceUsers = ref<WorkspaceMember[]>([]);
 
 	onBeforeMount(async () => {
 		const [userData, workspaceData] = await Promise.all([

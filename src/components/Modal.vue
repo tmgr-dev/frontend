@@ -21,7 +21,7 @@
 		closeOnBgClick?: boolean;
 	}
 
-	const props = defineProps<Props>();
+	defineProps<Props>();
 	const emit = defineEmits(['close', 'closingModal']);
 	const initialUrl = ref(location.href);
 	const store = useStore();

@@ -19,7 +19,7 @@
 				class="text-sm text-red-500"
 				:class="showErrorInTooltip && tooltipClasses"
 			>
-				{{ errors[0] }}
+				{{ errors?.[0] }}
 			</div>
 		</transition>
 	</div>
@@ -39,9 +39,9 @@
 		name?: string;
 		modelValue: string;
 		placeholder?: string;
-		readonly?: string;
+		readonly?: 'true' | 'false';
 		inputClass?: string;
-		errors?: Record<any, any>[];
+		errors?: (string | Record<any, any>)[];
 		showErrorInTooltip?: boolean;
 	}
 

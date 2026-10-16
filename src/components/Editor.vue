@@ -10,7 +10,7 @@
 	});
 
 	const editorId = `md-editor-${Math.random().toString(36).slice(2)}`;
-	const value = defineModel();
+	const value = defineModel<string>();
 	onBeforeUnmount(() => {
 		const dom = document.querySelector<HTMLElement>(
 			`#${editorId} .cm-editor`,

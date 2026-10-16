@@ -15,6 +15,7 @@
 	} from '@/components/ui/popover';
 	import { cn } from '@/utils';
 	import { Check, ChevronsUpDown } from 'lucide-vue-next';
+	import type { ComboboxItemEmits } from 'radix-vue';
 	import { computed, ref } from 'vue';
 
 	interface Props {
@@ -41,9 +42,10 @@
 		);
 	});
 
-	const handleSelect = (e: { detail: { value: string | number | null } }) => {
+	const handleSelect = (e: ComboboxItemEmits['select'][0]) => {
 		if (e.detail.value) {
-			modelValue.value = e.detail.value;
+			// entity[valueKey] values are strings or numbers; radix types them as AcceptableValue
+			modelValue.value = e.detail.value as string | number;
 			searchValue.value = '';
 		}
 		openCombobox.value = false;
