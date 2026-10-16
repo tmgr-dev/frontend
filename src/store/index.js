@@ -80,6 +80,7 @@ const state = {
 	appRerenderKey: 0,
 	workspaceStatuses: [],
 	workspaceStatusesById: {},
+	/** @type {import('@/types/store').Workspace[]} */
 	workspaces: [],
 	workspacesById: {},
 	defaultWorkspaceId: null,

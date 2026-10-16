@@ -47,6 +47,9 @@ export interface Task {
 	recurrence?: Record<string, any> | null;
 	relationTypeWithTask?: any[];
 	mentioned_people?: { page_id: number; slug: string; title: string }[];
+	created_at?: string;
+	updated_at?: string;
+	deleted_at?: string | null;
 }
 
 interface LinkResponse {
@@ -68,6 +71,7 @@ export interface PaginationMeta {
 	last_page: number;
 	from: number;
 	to: number;
+	total_seconds?: number | string;
 }
 
 export interface PaginatedResponse<T> {

@@ -55,9 +55,7 @@ export const updateComment = async (commentId: number, payload: Comment) => {
 };
 
 export const deleteComment = async (commentId: number) => {
-	const {
-		data: { data },
-	} = await $axios.delete(`/comments/${commentId}`);
+	await $axios.delete(`/comments/${commentId}`);
 };
 
 export const toggleCommentReaction = async (

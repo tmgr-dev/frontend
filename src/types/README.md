@@ -231,7 +231,7 @@ export const isApiErrorResponse = (obj: any): obj is ApiErrorResponse => {
 // Validate validation error responses
 export const isValidationErrorResponse = (obj: any): obj is ValidationErrorResponse => {
   return isApiErrorResponse(obj) &&
-    obj.errors &&
+    !!obj.errors &&
     typeof obj.errors === 'object';
 };
 

@@ -147,7 +147,7 @@ export function useApiData<T>(
 
 		const attemptFetch = async (): Promise<T> => {
 			try {
-				let result = await fetcher();
+				let result: T = await fetcher();
 
 				if (transform) {
 					result = transform(result);
