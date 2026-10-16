@@ -204,6 +204,7 @@ test('header, quote, table, embed and paragraph blocks survive create and reopen
     'src',
     /youtube\.com\/embed\/dQw4w9WgXcQ/,
   );
+  expect(errors.filter((line) => line.startsWith('pageerror'))).toEqual([]);
   expect(editorErrors(errors)).toEqual([]);
 });
 
@@ -236,6 +237,7 @@ test('legacy HTML string description renders through renderFromHTML', async ({
   const editor = page.locator('.codex-editor');
   await expect(editor).toContainText('Legacy HTML paragraph');
   await expect(editor).toContainText('Second legacy line');
+  expect(errors.filter((line) => line.startsWith('pageerror'))).toEqual([]);
   expect(editorErrors(errors)).toEqual([]);
 });
 
