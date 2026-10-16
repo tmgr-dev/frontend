@@ -25,7 +25,6 @@
 	const props = defineProps<Props>();
 	const emit = defineEmits(['stopTimer', 'update:timer']);
 	const isEditMode = ref(false);
-	const isLoading = ref(false);
 	const timeTokens = {
 		F: {
 			pattern: /[0-5]/,

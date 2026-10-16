@@ -45,7 +45,7 @@
 							@select="
 								(e) => {
 									if (e.detail.value) {
-										modelValue = e.detail.value;
+										modelValue = e.detail.value as number;
 										searchValue = '';
 									}
 									openCombobox = false;
@@ -223,8 +223,12 @@
 		modelValue: string | number;
 	}
 
-	const props = defineProps<Props>();
-	const modelValue = defineModel<number>(0);
+	type InvitationForm = Omit<WorkspaceInvitation, 'max_usage_times'> & {
+		max_usage_times: number | '';
+	};
+
+	defineProps<Props>();
+	const modelValue = defineModel<number>();
 	const emit = defineEmits(['update:modelValue', 'updateSettings']);
 	const route = useRoute();
 
@@ -245,12 +249,12 @@
 		);
 	});
 
-	const errors = ref({});
-	const newWorkspace: Ref<Workspace> = ref({
+	const errors = ref<Record<string, string[]>>({});
+	const newWorkspace: Ref<{ name: string; type: string }> = ref({
 		name: '',
 		type: 'test',
 	});
-	const newWorkspaceInvitation: Ref<WorkspaceInvitation> = ref({
+	const newWorkspaceInvitation: Ref<InvitationForm> = ref({
 		max_usage_times: '',
 		expired_at: null,
 		emails: '',
@@ -323,8 +327,9 @@
 			errors.value = {};
 
 			const response = await createWorkspaceInvitation(
-				+modelValue.value,
-				newWorkspaceInvitation.value,
+				Number(modelValue.value),
+				// the form keeps '' for an empty limit; the API type says number
+				newWorkspaceInvitation.value as WorkspaceInvitation,
 			);
 
 			// If it's a general invitation (no emails), store the token

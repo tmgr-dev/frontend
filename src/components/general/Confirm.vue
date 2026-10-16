@@ -52,11 +52,6 @@
 		cancelOnBgClick?: Boolean;
 	}
 
-	interface Context {
-		attrs: Props;
-		emit: Function;
-	}
-
 	interface Data extends Props {}
 
 	export default {

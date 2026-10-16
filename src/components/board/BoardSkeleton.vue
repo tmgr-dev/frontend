@@ -5,7 +5,7 @@
 		columnsCount?: number;
 	}
 
-	const props = withDefaults(defineProps<Props>(), {
+	withDefaults(defineProps<Props>(), {
 		columnsCount: 4,
 	});
 </script>

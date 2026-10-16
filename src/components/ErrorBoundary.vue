@@ -169,7 +169,6 @@
 		error.name = 'UnhandledPromiseRejection';
 
 		hasError.value = true;
-		error.value = error;
 		errorInfo.value = {
 			type: 'unhandledRejection',
 			reason: event.reason,

@@ -16,7 +16,7 @@
 		tasks?: Task[];
 	}
 
-	const props = withDefaults(defineProps<Props>(), {
+	withDefaults(defineProps<Props>(), {
 		tasks: () => [],
 	});
 	const showActiveTasks = ref(false);
