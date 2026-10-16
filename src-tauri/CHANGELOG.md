@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.43 — 2026-10-16
+
+- Settings → Agent work (user menu): turn on Agent usage sync to upload per-task AI usage totals so web and mobile can show them, see what you uploaded, and delete it. Turning it off deletes everything already uploaded. Prompts, replies, file paths and command arguments are never uploaded.
+
 ## 0.9.42 — 2026-10-16
 
 - Terminal commands in the app now have a copy button: Settings → Experimental (`tmgr config allow-bypass`), runner messages such as `tmgr runner start` or `tmgr agents login`, AI usage, CLI devices, MCP setup and onboarding. One click puts the command on the clipboard.
