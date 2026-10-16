@@ -427,9 +427,9 @@
 				pickSound,
 				handleSave,
 				notifyOptions: [
-					{ value: 'silent', label: 'Silent', icon: Eye },
-					{ value: 'system', label: 'System', icon: Bell },
-					{ value: 'both', label: 'Both', icon: Volume2 },
+					{ value: 'silent' as const, label: 'Silent', icon: Eye },
+					{ value: 'system' as const, label: 'System', icon: Bell },
+					{ value: 'both' as const, label: 'Both', icon: Volume2 },
 				],
 				sounds: [
 					{ id: 'bell', label: 'Bell' },

@@ -86,7 +86,7 @@
 					:class="{
 						'border-l-[3px] border-l-status-done': task.start_time,
 						'border-status-fix hover:border-status-fix':
-							taskTimeExceeded[task.id],
+							taskTimeExceeded[String(task.id)],
 						'focus-ring': focusedIndex === i,
 					}"
 					class="group/list-item relative w-full overflow-hidden rounded-card border border-line bg-surface text-left shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md md:flex"
@@ -96,7 +96,7 @@
 				>
 					<Popover
 						v-if="isFeatureEnabled('task.assignees')"
-						v-model:open="assigneePopoverOpen[task.id]"
+						v-model:open="assigneePopoverOpen[String(task.id)]"
 					>
 						<PopoverTrigger as-child>
 							<button
@@ -110,7 +110,8 @@
 							>
 								<UserPlus
 									v-if="
-										assigneePopoverOpen[task.id] || !visibleAssignees(task).length
+										assigneePopoverOpen[String(task.id)] ||
+										!visibleAssignees(task).length
 									"
 									class="h-6 w-6 rounded-pill bg-surface-sunken p-1"
 								/>
@@ -256,14 +257,16 @@
 										showSurface('categories.badge')
 									"
 									class="mb-2 shrink-0 self-start"
-									:category="task.category"
+									:category="
+										typeof task.category === 'object' ? task.category : null
+									"
 								/>
 
 								<div
 									class="text-left text-base font-medium leading-snug text-ink"
 									:title="task.title?.length > 60 ? task.title : ''"
 								>
-									{{ taskTitles[task.id] }}
+									{{ taskTitles[String(task.id)] }}
 								</div>
 							</div>
 							<AgentStatusChip
@@ -279,7 +282,7 @@
 							<AlarmClock
 								class="h-4 w-4"
 								:class="
-									taskTimeExceeded[task.id]
+									taskTimeExceeded[String(task.id)]
 										? 'text-status-fix'
 										: 'text-status-done'
 								"
@@ -292,14 +295,16 @@
 
 							<span
 								class="text-sm text-ink"
-								:class="taskTimeExceeded[task.id] && 'text-status-fix-fg'"
+								:class="
+									taskTimeExceeded[String(task.id)] && 'text-status-fix-fg'
+								"
 								:title="
-									taskOvertimes[task.id]
-										? `+${taskOvertimes[task.id]} overtime`
+									taskOvertimes[String(task.id)]
+										? `+${taskOvertimes[String(task.id)]} overtime`
 										: undefined
 								"
 							>
-								{{ taskFormattedTimes[task.id] }}
+								{{ taskFormattedTimes[String(task.id)] }}
 							</span>
 
 							<AppTooltip
@@ -338,7 +343,7 @@
 							<TaskTimeInfo
 								:created-at="task.created_at"
 								:updated-at="task.updated_at"
-								:overtime="taskOvertimes[task.id]"
+								:overtime="taskOvertimes[String(task.id)] ?? undefined"
 							/>
 
 							<PersonaAssigneeChips
@@ -363,10 +368,12 @@
 								class="flex items-center gap-1.5 text-ink-subtle"
 								:class="personaAssigneesOf(task).length ? '' : 'ml-auto'"
 							>
-								<span>{{ taskStatusNames[task.id] }}</span>
+								<span>{{ taskStatusNames[String(task.id)] }}</span>
 								<span
 									class="inline-block h-2 w-2 rounded-full"
-									:style="{ backgroundColor: taskStatusColors[task.id] }"
+									:style="{
+										backgroundColor: taskStatusColors[String(task.id)],
+									}"
 								/>
 							</span>
 						</div>
@@ -570,6 +577,12 @@
 	} from 'lucide-vue-next';
 	import { PropType } from 'vue';
 
+	type ExportType = Parameters<typeof exportTasks>[0];
+	type ExportOptions = Omit<
+		Parameters<typeof exportTasks>[1],
+		'ids' | 'per_hour'
+	>;
+
 	export default {
 		name: 'TasksListComponent',
 		components: {
@@ -725,14 +738,21 @@
 				clockInterval: null as ReturnType<typeof setInterval> | null,
 				showTaskForm: false,
 				modalTaskId: null,
-				confirm: null,
+				confirm: null as
+					| {
+							title: string;
+							body: string;
+							action: () => void;
+					  }
+					| null
+					| undefined,
 				settingsTask: null as Task | null,
 				isShowSelectedTasksCommonTime: false,
-				selected: [],
-				selecting: [],
+				selected: [] as boolean[],
+				selecting: [] as boolean[],
 				showTimeInModal: false,
-				timeForModal: null,
-				loadingActionsForMultipleTasks: [],
+				timeForModal: null as string | null,
+				loadingActionsForMultipleTasks: [] as string[],
 				perPage: 10,
 				statuses: [] as Status[],
 				backlogStatusChangeConfirm: null as {
@@ -740,8 +760,8 @@
 					dotId: string | null;
 					prompt: BacklogTimerPrompt;
 				} | null,
-				hoveredTaskId: null as number | null,
-				assigneePopoverOpen: {} as Record<number, boolean>,
+				hoveredTaskId: null as number | null | undefined,
+				assigneePopoverOpen: {} as Record<string, boolean>,
 				workspaceMembers: [] as WorkspaceMember[],
 				assignablePersonas: [] as PersonaAssignee[],
 				focusedIndex: -1,
@@ -823,7 +843,7 @@
 					const live = task.start_time
 						? { ...task, common_time: liveTaskTime(task, this.nowSeconds) }
 						: task;
-					acc[task.id] = {
+					acc[String(task.id)] = {
 						title: this.truncateTitle(task.title),
 						timeExceeded: this.isTimeExceeded(live),
 						formattedTime: this.getTaskFormattedTime(live),
@@ -832,45 +852,45 @@
 						statusColor: this.getStatusColor(task),
 					};
 					return acc;
-				}, {} as Record<number, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
+				}, {} as Record<string, { title: string; timeExceeded: boolean; formattedTime: string; overtime: string | null; statusName: string; statusColor: string }>);
 			},
 			taskTitles() {
-				const data: Record<number, string> = {};
+				const data: Record<string, string> = {};
 				for (const id in this.taskComputedData) {
 					data[id] = this.taskComputedData[id].title;
 				}
 				return data;
 			},
 			taskTimeExceeded() {
-				const data: Record<number, boolean> = {};
+				const data: Record<string, boolean> = {};
 				for (const id in this.taskComputedData) {
 					data[id] = this.taskComputedData[id].timeExceeded;
 				}
 				return data;
 			},
 			taskFormattedTimes() {
-				const data: Record<number, string> = {};
+				const data: Record<string, string> = {};
 				for (const id in this.taskComputedData) {
 					data[id] = this.taskComputedData[id].formattedTime;
 				}
 				return data;
 			},
 			taskOvertimes() {
-				const data: Record<number, string | null> = {};
+				const data: Record<string, string | null> = {};
 				for (const id in this.taskComputedData) {
 					data[id] = this.taskComputedData[id].overtime;
 				}
 				return data;
 			},
 			taskStatusNames() {
-				const data: Record<number, string> = {};
+				const data: Record<string, string> = {};
 				for (const id in this.taskComputedData) {
 					data[id] = this.taskComputedData[id].statusName;
 				}
 				return data;
 			},
 			taskStatusColors() {
-				const data: Record<number, string> = {};
+				const data: Record<string, string> = {};
 				for (const id in this.taskComputedData) {
 					data[id] = this.taskComputedData[id].statusColor;
 				}
@@ -889,7 +909,9 @@
 						(s: any) => s.key === 'current_workspace',
 					)?.value;
 					if (workspaceId) {
-						this.workspaceMembers = await getWorkspaceMembers(workspaceId);
+						this.workspaceMembers = await getWorkspaceMembers(
+							Number(workspaceId),
+						);
 					}
 				} catch (e) {
 					console.error('Failed to load workspace members:', e);
@@ -971,7 +993,7 @@
 						(m: WorkspaceMember) => m.id === memberId,
 					);
 					if (currentAssigneeIds.includes(memberId)) {
-						task.assignees = task.assignees?.filter(
+						task.assignees = (task.assignees as Record<string, any>[])?.filter(
 							(a: any) => a.id !== memberId,
 						);
 					} else if (member) {
@@ -985,7 +1007,7 @@
 			closeTaskModal() {
 				this.$store.commit('closeTaskModal');
 			},
-			async stopCountdown(task, dotId) {
+			async stopCountdown(task: Task, dotId: string | null) {
 				if (!task?.id) return;
 				if (dotId) this.isLoadingActions[dotId] = true;
 				try {
@@ -1059,13 +1081,13 @@
 					}
 				});
 			},
-			onDragStart(event, task) {
-				event.dataTransfer.setData('task-id', task.id);
+			onDragStart(event: DragEvent, task: Task) {
+				event.dataTransfer?.setData('task-id', String(task.id));
 			},
 			loadTasks() {
 				this.$emit('reload-tasks');
 			},
-			getShowButtons(task) {
+			getShowButtons(task: Task) {
 				return {
 					restore: !!task.deleted_at,
 					deleteTask: !task.deleted_at && this.status === 'hidden',
@@ -1099,10 +1121,15 @@
 				const overtime = (task.common_time || 0) - approximatelyTime;
 				return formatOvertime(overtime);
 			},
-			async updateStatus(task, status, dotId = null, loadTasks = true) {
+			async updateStatus(
+				task: Task,
+				status: string,
+				dotId = null,
+				loadTasks = true,
+			) {
 				try {
 					this.setLoadingAction(dotId);
-					await updateTaskStatus(task.id, status);
+					await updateTaskStatus(task.id!, status);
 
 					if (loadTasks) {
 						this.loadTasks();
@@ -1166,7 +1193,7 @@
 					console.error('Failed to archive task:', e);
 				}
 			},
-			async updateStatusForSelectedTasks(status) {
+			async updateStatusForSelectedTasks(status: string) {
 				this.loadingActionsForMultipleTasks.push(status);
 				if (this.simpleMode) {
 					const taskIds = this.tasks
@@ -1190,7 +1217,7 @@
 					this.loadingActionsForMultipleTasks.filter((s) => s !== status);
 				this.resetSelectedTasks();
 			},
-			showConfirm(title, body, action) {
+			showConfirm(title: string, body: string, action: () => void) {
 				this.confirm = { title, body, action };
 			},
 			formatRelativeTime(dateString: string) {
@@ -1215,7 +1242,7 @@
 						this.loadingActionsForMultipleTasks.push('delete');
 						const selectedTasks = this.tasks.filter((_, i) => this.selected[i]);
 						const deletePromises = selectedTasks.map(async (task) => {
-							const deletedAt = await deleteTask(task.id);
+							const deletedAt = await deleteTask(task.id!);
 							task.deleted_at = deletedAt;
 							return task;
 						});
@@ -1234,12 +1261,12 @@
 			selectedGetter() {
 				return this.selected;
 			},
-			selectingSetter(arr) {
+			selectingSetter(arr: boolean[]) {
 				if (arr.filter((item) => item).length >= 2) {
 					this.selecting = arr;
 				}
 			},
-			selectedSetter(arr) {
+			selectedSetter(arr: boolean[]) {
 				this.selected = arr.map((v, i) =>
 					this.selected[i] && v
 						? false
@@ -1258,7 +1285,7 @@
 				this.timeForModal = this.formatTime(time);
 			},
 			getSelectedTasks() {
-				return this.tasks.filter((task, index) => this.selected[index]);
+				return this.tasks.filter((_, index) => this.selected[index]);
 			},
 			resetSelectedTasks() {
 				this.isShowSelectedTasksCommonTime = false;
@@ -1270,14 +1297,18 @@
 				this.isShowSelectedTasksCommonTime = false;
 				this.resetSelectedTasks();
 			},
-			async exportSelectedTasks(payload = {}) {
+			async exportSelectedTasks(
+				payload:
+					| ExportType
+					| { type?: ExportType; settings?: ExportOptions } = {},
+			) {
 				const exportType =
 					typeof payload === 'string' ? payload : payload.type || 'csv';
 				const settings =
 					typeof payload === 'string' ? {} : payload.settings || {};
 
 				this.loadingActionsForMultipleTasks.push(exportType);
-				const tasksIds = this.getSelectedTasks().map(({ id }) => id);
+				const tasksIds = this.getSelectedTasks().map(({ id }) => id as number);
 
 				try {
 					const data = await exportTasks(exportType, {
