@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.41 — 2026-10-16
+
+- Agent work details and the AI usage task list now link usage to tasks that agents tracked through the TMGR MCP tools (start, update and finish agent work), not only to runs started with `tmgr agent start`. Before, those tasks showed no local usage.
+
 ## 0.9.40 — 2026-10-16
 
 - Task page: a short Agent work line (your time, agent time, AI cost, pull request) that opens "Agent work — details": totals, tokens by type, the agent tree (Claude Code, its subagents and the Codex runs they started), tools, skills, MCP servers, hooks, permission modes and the commits and pull request of the agent runs. AI usage is read from the Claude Code and Codex logs on this computer and stays here; AI cost is API-equivalent.
