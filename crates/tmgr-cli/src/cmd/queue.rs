@@ -684,6 +684,7 @@ impl RunsClient for RunnerRuns {
                 start_key: Some(req.start_key.clone()),
                 clone_of: Some(req.clone_of.clone()),
                 trust_cwd: None,
+                trust_via_repo: None,
                 agent_work: true,
                 exe_pin: Some(ExePin {
                     path: req.exe_path.clone(),

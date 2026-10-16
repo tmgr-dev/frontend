@@ -167,10 +167,14 @@ impl Fx {
     }
 
     fn agent(&self, body: &str) {
+        self.agent_with(body, "");
+    }
+
+    fn agent_with(&self, body: &str, extra: &str) {
         fs::write(
             self.agents().join("fake.toml"),
             format!(
-                "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", \"-c\", {body:?}, \"fake\"]\n[permission_modes]\nask = [\"--ask\"]\nplan = [\"--plan\"]\n"
+                "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", \"-c\", {body:?}, \"fake\"]\n[permission_modes]\nask = [\"--ask\"]\nplan = [\"--plan\"]\n{extra}"
             ),
         )
         .unwrap();
@@ -341,6 +345,53 @@ fn a_local_task_runs_in_its_own_clone_and_is_recorded_as_agent_work() {
             .unwrap()
             .contains("run WK-1 --fetch"),
         "{v}"
+    );
+}
+
+#[test]
+fn a_task_clone_of_a_trusted_repository_starts_without_the_trust_question() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    fx.agent_with(
+        "cp \"$HOME/.claude.json\" seen.tmp && mv seen.tmp seen.json\nexit 0\n",
+        "[trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{cwd}\", \"hasTrustDialogAccepted\"]\n",
+    );
+    fx.map_project();
+    let out = fx.tmgr(&["runner", "start"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let repo = fs::canonicalize(fx.repo()).unwrap();
+    Client::connect(&fx.run())
+        .unwrap()
+        .call("trust.add", json!({ "path": repo }))
+        .unwrap();
+    let (ok, v) = fx.json(&[
+        "--json",
+        "--ws",
+        "local:personal",
+        "run",
+        "WK-1",
+        "--agent",
+        "fake",
+        "--yes",
+    ]);
+    assert!(ok, "{v}");
+    let clone = fs::canonicalize(v["data"]["clone"].as_str().unwrap()).unwrap();
+    wait_for(
+        "agent saw its home",
+        || clone.join("seen.json").exists(),
+        || fs::read_to_string(fx.run().join("runner.log")).unwrap_or_default(),
+    );
+    let seen: Value =
+        serde_json::from_str(&fs::read_to_string(clone.join("seen.json")).unwrap()).unwrap();
+    assert_eq!(
+        seen["projects"],
+        json!({ clone.display().to_string(): { "hasTrustDialogAccepted": true } })
     );
 }
 

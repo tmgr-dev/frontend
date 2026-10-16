@@ -447,6 +447,7 @@ fn create(
         start_key: None,
         clone_of: None,
         trust_cwd: None,
+        trust_via_repo: None,
         agent_work: false,
         exe_pin: None,
         argv_sha256: None,

@@ -45,8 +45,9 @@ pub mod caps {
     pub const EXE_PIN_V1: &str = "exe_pin.v1";
     pub const ARGV_PIN_V1: &str = "argv_pin.v1";
     pub const TRUSTED_FOLDERS_V1: &str = "trusted_folders.v1";
+    pub const TRUST_VIA_REPO_V1: &str = "trust_via_repo.v1";
 
-    pub const ALL: [&str; 21] = [
+    pub const ALL: [&str; 22] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -68,6 +69,7 @@ pub mod caps {
         EXE_PIN_V1,
         ARGV_PIN_V1,
         TRUSTED_FOLDERS_V1,
+        TRUST_VIA_REPO_V1,
     ];
 }
 

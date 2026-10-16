@@ -1423,6 +1423,24 @@ impl Runner {
                         ));
                     }
                 }
+                if req.trust_via_repo.is_some() {
+                    if conn.client != CLIENT_CLI {
+                        return Err(api(
+                            ErrorCode::Forbidden,
+                            "trust_via_repo is accepted only from the tmgr CLI",
+                        ));
+                    }
+                    if req.clone_of.is_none()
+                        || req.start_key.is_some()
+                        || req.origin.is_some()
+                        || req.trust_cwd.is_some()
+                    {
+                        return Err(api(
+                            ErrorCode::InvalidParams,
+                            "trust_via_repo needs clone_of and cannot be combined with start_key, origin or trust_cwd",
+                        ));
+                    }
+                }
                 self.create_run(req).map(|i| to_json(&i))
             }
             method::TRUST_LIST => {
@@ -1968,9 +1986,20 @@ impl Runner {
         let remembered = explicit.is_none()
             && !unattended
             && dir.is_some_and(|d| folders::is_trusted(&self.cfg.homes, &d.path, d.id()));
+        let via_repo = explicit.is_none()
+            && req.trust_via_repo == Some(true)
+            && req.start_key.is_none()
+            && req.origin.is_none()
+            && objects.as_ref().is_some_and(|o| {
+                o.task_clone
+                    && req.clone_of.as_deref().is_some_and(|r| {
+                        folders::is_trusted(&self.cfg.homes, Path::new(r), o.repo_id)
+                    })
+            });
         let (trust, trust_note) = match (explicit, &prof.trust) {
             (Some(t), _) => (Some(t), Some(worklog::TRUST_PRE_ACCEPTED)),
             (None, Some(t)) if remembered => (Some(t.clone()), Some(worklog::TRUST_REMEMBERED)),
+            (None, Some(t)) if via_repo => (Some(t.clone()), Some(worklog::TRUST_REPO)),
             _ => (None, None),
         };
         let learn_trust = trust.is_none()
