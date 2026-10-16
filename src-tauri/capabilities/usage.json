@@ -3,7 +3,8 @@
   "identifier": "usage",
   "description": "AI usage screen: main window only, never plugin windows.",
   "windows": [
-    "main"
+    "main",
+    "task-*"
   ],
   "permissions": [
     "allow-usage-scan",

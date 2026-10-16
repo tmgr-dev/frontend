@@ -30,7 +30,7 @@ describe('usageTask', () => {
 		const capability = JSON.parse(
 			readFileSync(join(root, 'capabilities/usage.json'), 'utf8'),
 		);
-		expect(capability.windows).toEqual(['main']);
+		expect(capability.windows).toEqual(['main', 'task-*']);
 		expect(capability.permissions).toContain('allow-usage-task');
 	});
 });
