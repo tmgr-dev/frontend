@@ -75,6 +75,18 @@ describe('buildExportBundle', () => {
 		expect(b).toContain('[![x](assets/9-a.png)](A.md)');
 	});
 
+	it('exports a sized image and keeps its Outline title', async () => {
+		const tree = [summary(1, 'A')];
+		const result = await bundle(
+			tree,
+			providerFor({ 1: '![Cap](tmgr://file/9 "right-50 =300x200")' }, tree),
+		);
+		const files = readZip(result.bytes).files;
+		expect(files.map((f) => f.path).sort()).toEqual(['A.md', 'assets/9-a.png']);
+		const a = decode(files.find((f) => f.path === 'A.md')!.bytes);
+		expect(a).toContain('![Cap](assets/9-a.png "right-50 =300x200")');
+	});
+
 	it('skips a page that fails to load and keeps exporting', async () => {
 		const tree = [summary(1, 'A'), summary(2, 'Gone'), summary(3, 'C')];
 		const provider = providerFor(

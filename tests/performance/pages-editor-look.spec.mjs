@@ -1071,12 +1071,13 @@ test.describe('QA verification', () => {
       await expect.poll(() => uploads).toEqual(['shot.png']);
       await expect
         .poll(async () =>
-          (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
+          /!\[\]\(tmgr:\/\/file\/41 " =\d+x\d+"\)/.test(await savedBody(state)),
         )
         .toBe(true);
-      await expect(
-        page.locator('.page-editor img[alt="shot.png"]'),
-      ).toHaveAttribute('src', /^blob:/);
+      await expect(page.locator('.page-editor img.pe-image-img')).toHaveAttribute(
+        'src',
+        /^blob:/,
+      );
     });
   }
 

@@ -15,7 +15,7 @@ const pngChunk = (type, data) => {
   return Buffer.concat([head, body, tail]);
 };
 
-const makePng = (width, height) => {
+const makePng = (width, height, pixelsPerMeter = null) => {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
@@ -32,6 +32,18 @@ const makePng = (width, height) => {
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     pngChunk('IHDR', header),
+    ...(pixelsPerMeter
+      ? [
+          pngChunk(
+            'pHYs',
+            Buffer.from([
+              ...[24, 16, 8, 0].map((s) => (pixelsPerMeter >>> s) & 255),
+              ...[24, 16, 8, 0].map((s) => (pixelsPerMeter >>> s) & 255),
+              1,
+            ]),
+          ),
+        ]
+      : []),
     pngChunk('IDAT', deflateSync(Buffer.concat(rows))),
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
@@ -226,8 +238,11 @@ const selectIn = async (line, collapse) => {
   await line.page().waitForTimeout(100);
 };
 
-const placeholder = (page) =>
-  page.locator('.page-editor').getByText('Upload in progress...');
+const placeholder = (page) => page.locator('.page-editor .pe-upload-ghost');
+
+const IMG = (id, size = '240x120') => `![](tmgr://file/${id} " =${size}")`;
+
+const images = (page) => page.locator('.page-editor img.pe-image-img');
 
 // Caret at the end of the first line, then Enter + the given slash query.
 const typeSlash = async (page, query = '/') => {
@@ -273,16 +288,12 @@ test('clicking Image uploads the picked PNG and saves a tmgr://file image', asyn
   await expect(slashMenu(page)).toBeHidden();
   await chooser.setFiles(png('shot.png'));
   await expect.poll(() => attaches).toEqual(['shot.png']);
-  await expect(
-    page.locator('.page-editor img[alt="shot.png"]'),
-  ).toHaveAttribute('src', /^blob:/);
+  await expect(images(page)).toHaveAttribute('src', /^blob:/);
   await expect
-    .poll(async () =>
-      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
-    )
+    .poll(async () => (await savedBody(state)).includes(IMG(41)))
     .toBe(true);
   expect(await savedBody(state)).toBe(
-    'First line\n\n![shot.png](tmgr://file/41)\n\nLast line\n',
+    `First line\n\n${IMG(41)}\n\nLast line\n`,
   );
   expect(await page.locator('body > input[type=file]').count()).toBe(0);
 });
@@ -298,14 +309,12 @@ test('/ima + Enter picks Image with the keyboard and removes the query', async (
   const chooser = await chooseImage(page, () => page.keyboard.press('Enter'));
   await chooser.setFiles(png('shot.png'));
   await expect.poll(() => attaches).toEqual(['shot.png']);
-  await expect(page.locator('.page-editor img[alt="shot.png"]')).toBeVisible();
+  await expect(images(page)).toBeVisible();
   await expect(page.locator('.page-editor .ProseMirror')).not.toContainText(
     '/ima',
   );
   await expect
-    .poll(async () =>
-      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
-    )
+    .poll(async () => (await savedBody(state)).includes(IMG(41)))
     .toBe(true);
   expect(await savedBody(state)).not.toContain('/ima');
 });
@@ -318,14 +327,12 @@ test('several picked images are all inserted in order', async ({ page }) => {
   const chooser = await chooseImage(page, () => imageItem(page).click());
   await chooser.setFiles([png('one.png'), png('two.png')]);
   await expect.poll(() => attaches).toEqual(['one.png', 'two.png']);
-  await expect(page.locator('.page-editor img[alt$=".png"]')).toHaveCount(2);
+  await expect(images(page)).toHaveCount(2);
   await expect
     .poll(async () => {
       const body = await savedBody(state);
       return (
-        body.indexOf('![one.png](tmgr://file/41)') >= 0 &&
-        body.indexOf('![one.png](tmgr://file/41)') <
-          body.indexOf('![two.png](tmgr://file/42)')
+        body.indexOf(IMG(41)) >= 0 && body.indexOf(IMG(41)) < body.indexOf(IMG(42))
       );
     })
     .toBe(true);
@@ -345,7 +352,7 @@ test('upload 500 inserts nothing and shows Failed to upload', async ({
   hold.release();
   await expect(page.getByText('Failed to upload shot.png')).toBeVisible();
   await expect(placeholder(page)).toHaveCount(0);
-  await expect(page.locator('.page-editor img[alt$=".png"]')).toHaveCount(0);
+  await expect(images(page)).toHaveCount(0);
   await page.waitForTimeout(DEBOUNCE_MARGIN);
   expect(attaches, 'a failed mutation is not replayed').toEqual(['shot.png']);
   for (const write of state.writes)
@@ -360,12 +367,12 @@ test('one failed file of two still inserts the other', async ({ page }) => {
   const chooser = await chooseImage(page, () => imageItem(page).click());
   await chooser.setFiles([png('bad.png'), png('good.png')]);
   await expect(page.getByText('Failed to upload bad.png')).toBeVisible();
-  await expect(page.locator('.page-editor img[alt="good.png"]')).toBeVisible();
+  await expect(images(page)).toHaveCount(1);
   await expect(placeholder(page)).toHaveCount(0);
   await expect
-    .poll(async () => (await savedBody(state)).includes('![good.png]('))
+    .poll(async () => (await savedBody(state)).includes(IMG(42)))
     .toBe(true);
-  expect(await savedBody(state)).not.toContain('bad.png');
+  expect(await savedBody(state)).not.toContain('tmgr://file/41');
 });
 
 test('a pending upload lands where Image was chosen while the user edits elsewhere', async ({
@@ -385,15 +392,13 @@ test('a pending upload lands where Image was chosen while the user edits elsewhe
   await page.keyboard.type(' edited');
   await selectIn(last, false);
   hold.release();
-  await expect(page.locator('.page-editor img[alt="shot.png"]')).toBeVisible();
+  await expect(images(page)).toBeVisible();
   await expect(placeholder(page)).toHaveCount(0);
   await expect
-    .poll(async () =>
-      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
-    )
+    .poll(async () => (await savedBody(state)).includes(IMG(41)))
     .toBe(true);
   expect(await savedBody(state)).toBe(
-    'First line\n\n![shot.png](tmgr://file/41)\n\nLast line edited\n',
+    `First line\n\n${IMG(41)}\n\nLast line edited\n`,
   );
   expect(
     await page.evaluate(() => window.getSelection().toString()),
@@ -415,15 +420,13 @@ test('text typed at the Image spot while uploading is kept next to the image', a
   await page.keyboard.type('abc');
   await expect(paragraph(page, 'abc')).toBeVisible();
   hold.release();
-  await expect(page.locator('.page-editor img[alt="shot.png"]')).toBeVisible();
+  await expect(images(page)).toBeVisible();
   await expect(placeholder(page)).toHaveCount(0);
   await expect
-    .poll(async () =>
-      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
-    )
+    .poll(async () => (await savedBody(state)).includes(IMG(41)))
     .toBe(true);
-  expect(await savedBody(state)).toMatch(
-    /^First line\n\n(abc!\[shot\.png\]\(tmgr:\/\/file\/41\)|!\[shot\.png\]\(tmgr:\/\/file\/41\)abc)\n\nLast line\n$/,
+  expect(await savedBody(state)).toBe(
+    `First line\n\nabc${IMG(41)}\n\nLast line\n`,
   );
 });
 
@@ -449,7 +452,7 @@ for (const how of ['cancel event', 'empty selection']) {
     else await chooser.setFiles([]);
     await expect(page.locator('body > input[type=file]')).toHaveCount(0);
     await page.waitForTimeout(DEBOUNCE_MARGIN);
-    await expect(page.locator('.page-editor img[alt$=".png"]')).toHaveCount(0);
+    await expect(images(page)).toHaveCount(0);
     expect(attaches).toEqual([]);
     for (const write of state.writes) {
       expect(write.body?.body ?? '').not.toContain('tmgr://file');
@@ -482,13 +485,9 @@ test('the + block handle menu inserts an image and keeps the line', async ({
   const chooser = await chooseImage(page, () => imageItem(page).click());
   await chooser.setFiles(png('shot.png'));
   await expect
-    .poll(async () =>
-      (await savedBody(state)).includes('![shot.png](tmgr://file/41)'),
-    )
+    .poll(async () => (await savedBody(state)).includes(IMG(41)))
     .toBe(true);
-  expect(await savedBody(state)).toBe(
-    'First line\n\n![shot.png](tmgr://file/41)\n',
-  );
+  expect(await savedBody(state)).toBe(`First line\n\n${IMG(41)}\n`);
 });
 
 for (const scheme of ['light', 'dark']) {
@@ -527,3 +526,303 @@ for (const scheme of ['light', 'dark']) {
     }
   });
 }
+
+const fileEvent = async (target, type, files, point, html) =>
+  target.evaluate(
+    (el, { type, files, point, html }) => {
+      const transfer = new DataTransfer();
+      if (html) transfer.setData('text/html', html);
+      for (const f of files)
+        transfer.items.add(
+          new File([new Uint8Array(f.bytes)], f.name, { type: 'image/png' }),
+        );
+      const event =
+        type === 'paste'
+          ? new ClipboardEvent('paste', {
+              clipboardData: transfer,
+              bubbles: true,
+              cancelable: true,
+            })
+          : new DragEvent(type, {
+              dataTransfer: transfer,
+              clientX: point.x,
+              clientY: point.y,
+              bubbles: true,
+              cancelable: true,
+            });
+      el.dispatchEvent(event);
+    },
+    {
+      type,
+      point,
+      html,
+      files: files.map((f) => ({ name: f.name, bytes: [...f.buffer] })),
+    },
+  );
+
+test('pasting an image into an empty line shows a ghost preview without the hint over it', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n');
+  const hold = gate();
+  await mockUpload(page, { hold });
+  await openPage(page);
+  await selectIn(paragraph(page, 'First line'), true);
+  await page.keyboard.press('Enter');
+  const empty = page.locator('.page-editor .ProseMirror p.crepe-placeholder');
+  await expect(empty).toHaveCount(1);
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    png('shot.png'),
+  ]);
+  const ghost = placeholder(page);
+  await expect(ghost).toBeVisible();
+  await expect(ghost.locator('img')).toHaveAttribute('src', /^blob:/);
+  expect(
+    await ghost.locator('img').evaluate((el) => getComputedStyle(el).opacity),
+  ).toBe('0.5');
+  await expect(page.locator('.page-editor')).not.toContainText(
+    'Upload in progress',
+  );
+  const hint = await page
+    .locator('.page-editor .ProseMirror p', {
+      has: page.locator('.pe-upload-ghost'),
+    })
+    .evaluate((el) => getComputedStyle(el, '::before').content);
+  expect(hint === 'none' || hint === 'normal').toBe(true);
+  hold.release();
+  await expect(images(page)).toHaveCount(1);
+  await expect(placeholder(page)).toHaveCount(0);
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe(`First line\n\n${IMG(41)}\n`);
+});
+
+test('the slash ghost sits in the emptied line and hides its hint', async ({
+  page,
+}) => {
+  await setupPages(page, 'First line\n');
+  const hold = gate();
+  await mockUpload(page, { hold });
+  await openPage(page);
+  await typeSlash(page);
+  const chooser = await chooseImage(page, () => imageItem(page).click());
+  await chooser.setFiles(png('shot.png'));
+  await expect(placeholder(page)).toBeVisible();
+  const line = page.locator('.page-editor .ProseMirror p', {
+    has: page.locator('.pe-upload-ghost'),
+  });
+  await expect(line).toHaveCount(1);
+  const hint = await line.evaluate(
+    (el) => getComputedStyle(el, '::before').content,
+  );
+  expect(hint === 'none' || hint === 'normal').toBe(true);
+  hold.release();
+  await expect(images(page)).toHaveCount(1);
+});
+
+test('dropping an image inserts it where it was dropped', async ({ page }) => {
+  const state = await setupPages(page, 'First line\n\nLast line\n');
+  await mockUpload(page);
+  await openPage(page);
+  const last = paragraph(page, 'Last line');
+  const box = await last.boundingBox();
+  await fileEvent(
+    page.locator('.page-editor .ProseMirror'),
+    'drop',
+    [png('shot.png')],
+    { x: box.x + 1, y: box.y + box.height / 2 },
+  );
+  await expect(images(page)).toHaveCount(1);
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe(`First line\n\n${IMG(41)}Last line\n`);
+});
+
+test('a retina screenshot is stored at half its pixel size', async ({ page }) => {
+  const state = await setupPages(page, 'First line\n');
+  await mockUpload(page);
+  await openPage(page);
+  await typeSlash(page);
+  const chooser = await chooseImage(page, () => imageItem(page).click());
+  await chooser.setFiles({
+    name: 'retina.png',
+    mimeType: 'image/png',
+    buffer: makePng(240, 120, 5669),
+  });
+  await expect
+    .poll(async () => (await savedBody(state)).includes(IMG(41, '120x60')))
+    .toBe(true);
+});
+
+test('pasting onto a selected image replaces it and keeps its width', async ({
+  page,
+}) => {
+  const state = await setupPages(
+    page,
+    'First line\n\n![Cap](tmgr://file/7 "right-50 =100x50")\n',
+  );
+  const attaches = await mockUpload(page);
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  await expect(
+    page.locator('.page-editor .pe-image.ProseMirror-selectednode'),
+  ).toHaveCount(1);
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    { name: 'new.png', mimeType: 'image/png', buffer: makePng(200, 200) },
+  ]);
+  await expect.poll(() => attaches).toEqual(['new.png']);
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/41 "right-50 =100x100")\n');
+});
+
+test('opening a page with existing images saves nothing', async ({ page }) => {
+  const body =
+    'Intro\n\n![shot.png](tmgr://file/1)\n\n![](tmgr://file/2)\n\n- item ![x](tmgr://file/3 " =50x20")\n\n| a | b |\n| - | - |\n| ![](tmgr://file/4) | c |\n\n![Cap](https://example.com/a.png "right-50 =300x200")\n';
+  const state = await setupPages(page, body);
+  await mockUpload(page);
+  await openPage(page);
+  await expect(images(page)).toHaveCount(5);
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  expect(state.writes).toEqual([]);
+  await expect(page.locator('.page-editor .pe-image-caption', { hasText: 'shot.png' })).toHaveCount(0);
+});
+
+test('aligning an image while its replacement uploads still swaps it', async ({
+  page,
+}) => {
+  const state = await setupPages(
+    page,
+    'First line\n\n![Cap](tmgr://file/7 "right-50 =100x50")\n',
+  );
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    { name: 'new.png', mimeType: 'image/png', buffer: makePng(200, 200) },
+  ]);
+  await expect.poll(() => attaches).toEqual(['new.png']);
+  await page
+    .locator('.page-editor .pe-image-toolbar [data-action="align-center"]')
+    .click();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/7 " =100x50")\n');
+  hold.release();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/41 " =100x100")\n');
+});
+
+test('deleting an image while its replacement uploads leaves its copies alone', async ({
+  page,
+}) => {
+  const copy = '![Cap](tmgr://file/7 " =100x50")';
+  const state = await setupPages(page, `First line\n\n${copy}\n\n${copy}\n`);
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    { name: 'new.png', mimeType: 'image/png', buffer: makePng(200, 200) },
+  ]);
+  await expect.poll(() => attaches).toEqual(['new.png']);
+  await page
+    .locator('.page-editor .pe-image-toolbar [data-action="delete"]')
+    .first()
+    .click();
+  await expect(images(page)).toHaveCount(1);
+  hold.release();
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  const body = await savedBody(state);
+  expect(body).not.toContain('tmgr://file/41');
+  expect(body.split(copy)).toHaveLength(2);
+});
+
+test('pasting a snippet with text around an image keeps the text', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n');
+  const attaches = await mockUpload(page);
+  await openPage(page);
+  await selectIn(paragraph(page, 'First line'), true);
+  await fileEvent(
+    page.locator('.page-editor .ProseMirror'),
+    'paste',
+    [png('shot.png')],
+    undefined,
+    '<p>Hello <b>world</b> <img src="https://example.com/x.png"></p>',
+  );
+  await expect
+    .poll(async () => (await savedBody(state)).includes('Hello **world**'))
+    .toBe(true);
+  expect(attaches).toEqual([]);
+});
+
+const selectText = async (page, text) => {
+  await selectIn(paragraph(page, text), false);
+  expect(await page.evaluate(() => window.getSelection().toString())).toBe(text);
+};
+
+test('pasting an image over selected text keeps the text when the upload fails', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n\nReplace me\n');
+  await mockUpload(page, { failing: ['shot.png'] });
+  await openPage(page);
+  await selectText(page, 'Replace me');
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    png('shot.png'),
+  ]);
+  await expect(page.getByText('Failed to upload shot.png')).toBeVisible();
+  await expect(placeholder(page)).toHaveCount(0);
+  await expect(paragraph(page, 'Replace me')).toHaveCount(1);
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  for (const write of state.writes)
+    expect(write.body?.body ?? '').toContain('Replace me');
+});
+
+test('pasting an image over selected text replaces it once uploaded', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n\nReplace me\n');
+  const hold = gate();
+  await mockUpload(page, { hold });
+  await openPage(page);
+  await selectText(page, 'Replace me');
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    png('shot.png'),
+  ]);
+  await expect(placeholder(page)).toBeVisible();
+  await expect(paragraph(page, 'Replace me')).toHaveCount(1);
+  hold.release();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe(`First line\n\n${IMG(41)}\n`);
+});
+
+test('replacing an image twice keeps the latest choice', async ({ page }) => {
+  const state = await setupPages(
+    page,
+    'First line\n\n![Cap](tmgr://file/7 " =100x50")\n',
+  );
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  const paste = (name) =>
+    fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+      { name, mimeType: 'image/png', buffer: makePng(200, 200) },
+    ]);
+  await paste('first.png');
+  await expect.poll(() => attaches).toEqual(['first.png']);
+  await paste('second.png');
+  await expect.poll(() => attaches).toEqual(['first.png', 'second.png']);
+  hold.release();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/42 " =100x100")\n');
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  expect(await savedBody(state)).toContain('tmgr://file/42');
+});
