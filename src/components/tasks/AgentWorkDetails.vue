@@ -68,7 +68,7 @@
 				class="text-xs text-ink-subtle"
 				data-state="empty"
 			>
-				No local AI usage found for this task on this computer.
+				No local agent usage linked to this task yet.
 			</p>
 
 			<template v-if="aggregate">
