@@ -59,7 +59,6 @@
 		watch,
 	} from 'vue';
 	import { createPageCrepe } from './editor/crepe';
-	import { createImageView } from './editor/imageView';
 	import { useMentions } from './editor/mentions';
 	import './editor/page-editor.css';
 	import type { TmgrDirectory } from './useTmgrDirectory';
@@ -140,7 +139,7 @@
 					onMakeTask: (text) => emit('make-task', text),
 				});
 				crepe = instance;
-				instance.editor.use(plugin).use(createImageView());
+				instance.editor.use(plugin);
 				instance.on((listener) => {
 					listener.markdownUpdated((_ctx, markdown) => {
 						if (!ready.value) return;

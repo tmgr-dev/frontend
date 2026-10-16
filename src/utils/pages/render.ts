@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import { Marked, type Tokens } from 'marked';
+import { isFilenameAlt, parseImageTitle } from './imageTitle';
 import { parseTmgrUrl } from './tmgrLinks';
 import { PAGE_ALLOWED_URI_REGEXP } from './uri';
 
@@ -25,17 +26,25 @@ const renderer = {
 			href,
 		)}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`;
 	},
-	image({ href, text }: Tokens.Image): string {
+	image({ href, text, title }: Tokens.Image): string {
 		const parsed = parseTmgrUrl(href);
+		let source: string;
 		if (parsed?.form === 'storage' && parsed.kind === 'file') {
-			return `<img data-tmgr-file="${parsed.id}" alt="${escapeAttribute(
-				text,
-			)}" class="tmgr-image">`;
+			source = `data-tmgr-file="${parsed.id}" class="tmgr-image"`;
+		} else if (/^\s*(javascript|data|vbscript|tmgr):/i.test(href)) {
+			return '';
+		} else {
+			source = `src="${escapeAttribute(href)}"`;
 		}
-		if (/^\s*(javascript|data|vbscript|tmgr):/i.test(href)) return '';
-		return `<img src="${escapeAttribute(href)}" alt="${escapeAttribute(
-			text,
-		)}">`;
+		const { layout, width } = parseImageTitle(title);
+		const size = width ? ` width="${width}"` : '';
+		const caption =
+			text && !isFilenameAlt(text)
+				? `<span class="page-image-caption">${escapeAttribute(text)}</span>`
+				: '';
+		return `<span class="page-image" data-layout="${
+			layout ?? 'center'
+		}"><img ${source} alt="${escapeAttribute(text)}"${size}>${caption}</span>`;
 	},
 };
 
