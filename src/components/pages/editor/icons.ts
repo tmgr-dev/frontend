@@ -31,6 +31,30 @@ export const icons = {
 	image: svg(
 		'<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
 	),
+	alignLeft: svg(
+		'<rect x="3" y="5" width="9" height="9" rx="1"/><path d="M16 6h5"/><path d="M16 11h5"/><path d="M3 19h18"/>',
+	),
+	alignCenter: svg(
+		'<rect x="7" y="5" width="10" height="9" rx="1"/><path d="M3 19h18"/>',
+	),
+	alignRight: svg(
+		'<rect x="12" y="5" width="9" height="9" rx="1"/><path d="M3 6h5"/><path d="M3 11h5"/><path d="M3 19h18"/>',
+	),
+	fullWidth: svg(
+		'<path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/>',
+	),
+	download: svg(
+		'<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+	),
+	replace: svg(
+		'<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+	),
+	trash: svg(
+		'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+	),
+	close: svg('<path d="M18 6 6 18"/><path d="m6 6 12 12"/>'),
+	chevronLeft: svg('<path d="m15 18-6-6 6-6"/>'),
+	chevronRight: svg('<path d="m9 18 6-6-6-6"/>'),
 	plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>'),
 	grip: svg(
 		'<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',

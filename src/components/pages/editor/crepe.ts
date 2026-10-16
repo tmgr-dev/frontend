@@ -1,4 +1,3 @@
-import { imageFilesOf } from '@/utils/pages/files';
 import { parseTmgrUrl } from '@/utils/pages/tmgrLinks';
 import { syntaxHighlighting } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
@@ -8,8 +7,8 @@ import { Crepe } from '@milkdown/crepe';
 import {
 	commandsCtx,
 	editorViewCtx,
+	editorViewOptionsCtx,
 	remarkStringifyOptionsCtx,
-	schemaCtx,
 } from '@milkdown/kit/core';
 import type { Ctx } from '@milkdown/kit/ctx';
 import { uploadConfig } from '@milkdown/kit/plugin/upload';
@@ -18,12 +17,10 @@ import {
 	linkAttr,
 } from '@milkdown/kit/preset/commonmark';
 import { remarkGFMPlugin } from '@milkdown/kit/preset/gfm';
-import type { Node, Schema } from '@milkdown/kit/prose/model';
-import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
-import { DecorationSet } from '@milkdown/kit/prose/view';
-import { $prose } from '@milkdown/kit/utils';
 import type { TmgrDirectory } from '../useTmgrDirectory';
 import { icons } from './icons';
+import { createImageView } from './imageView';
+import { createImageUpload, pickImageFiles } from './upload';
 
 export interface PageCrepeOptions {
 	root: HTMLElement;
@@ -37,92 +34,20 @@ export interface PageCrepeOptions {
 
 const item = (label: string, icon: string) => ({ label, icon });
 
-const pickKey = new PluginKey<DecorationSet>('tmgr-image-pick');
-
-const pickPlaceholders = $prose(
-	(ctx) =>
-		new Plugin<DecorationSet>({
-			key: pickKey,
-			state: {
-				init: () => DecorationSet.empty,
-				apply(tr, set) {
-					const next = set.map(tr.mapping, tr.doc);
-					const meta = tr.getMeta(pickKey);
-					if (meta?.add) {
-						const { uploadWidgetFactory } = ctx.get(uploadConfig.key);
-						return next.add(tr.doc, [
-							uploadWidgetFactory(meta.add.pos, { id: meta.add.id }),
-						]);
-					}
-					if (meta?.remove) {
-						return next.remove(
-							next.find(
-								undefined,
-								undefined,
-								(spec) => spec.id === meta.remove,
-							),
-						);
-					}
-					return next;
-				},
-			},
-			props: { decorations: (state) => pickKey.getState(state) },
-		}),
-);
-
 export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
-	const uploadImages = async (
-		list: ArrayLike<File>,
-		schema: Schema,
-	): Promise<Node[]> => {
-		const upload = options.uploadFile;
-		if (!upload) return [];
-		const nodes = [];
-		for (const file of imageFilesOf(list)) {
-			try {
-				const id = await upload(file);
-				const node = schema.nodes.image.createAndFill({
-					src: `tmgr://file/${id}`,
-					alt: file.name,
-				});
-				if (node) nodes.push(node);
-			} catch {
-				options.onUploadError(file);
-			}
-		}
-		return nodes;
-	};
+	const upload = createImageUpload(options);
 
-	const pickImages = (ctx: Ctx) => {
+	const pickImages = async (ctx: Ctx) => {
 		ctx.get(commandsCtx).call(clearTextInCurrentBlockCommand.key);
 		const view = ctx.get(editorViewCtx);
-		const schema = ctx.get(schemaCtx);
 		const at = view.state.selection.from;
-		const input = document.createElement('input');
-		input.type = 'file';
-		input.accept = 'image/*';
-		input.multiple = true;
-		input.style.display = 'none';
-		input.addEventListener('cancel', () => input.remove());
-		input.addEventListener('change', async () => {
-			const files = Array.from(input.files ?? []);
-			input.remove();
-			if (!files.length || view.isDestroyed) return;
-			const id = Symbol('image pick');
-			const pos = Math.min(at, view.state.doc.content.size);
-			view.dispatch(view.state.tr.setMeta(pickKey, { add: { id, pos } }));
-			const nodes = await uploadImages(files, schema);
-			if (view.isDestroyed) return;
-			const [placeholder] =
-				pickKey
-					.getState(view.state)
-					?.find(undefined, undefined, (spec) => spec.id === id) ?? [];
-			const tr = view.state.tr.setMeta(pickKey, { remove: id });
-			if (placeholder && nodes.length) tr.insert(placeholder.from, nodes);
-			view.dispatch(tr);
-		});
-		document.body.appendChild(input);
-		input.click();
+		const files = await pickImageFiles(true);
+		if (!files.length || view.isDestroyed) return;
+		void upload.insertImages(
+			view,
+			Math.min(at, view.state.doc.content.size),
+			files,
+		);
 	};
 
 	const crepe = new Crepe({
@@ -221,7 +146,12 @@ export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
 		},
 	});
 
-	crepe.editor.use(pickPlaceholders);
+	crepe.editor.use(upload.plugin).use(
+		createImageView({
+			replaceImage: options.uploadFile ? upload.replaceImage : undefined,
+			pickImageFiles,
+		}),
+	);
 	crepe.editor.config((ctx) => {
 		ctx.update(remarkStringifyOptionsCtx, (prev) => ({
 			...prev,
@@ -231,7 +161,12 @@ export const createPageCrepe = (options: PageCrepeOptions): Crepe => {
 		ctx.set(remarkGFMPlugin.options.key, { stringLength: () => 3 });
 		ctx.update(uploadConfig.key, (prev) => ({
 			...prev,
-			uploader: uploadImages,
+			uploader: async () => [],
+		}));
+		ctx.update(editorViewOptionsCtx, (prev) => ({
+			...prev,
+			handlePaste: upload.handlePaste,
+			handleDrop: upload.handleDrop,
 		}));
 		ctx.set(linkAttr.key, (mark) => {
 			const href = String(mark.attrs.href ?? '');
