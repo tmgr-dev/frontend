@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.5
 
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
 - The clones `tmgr run` makes for a task (`<repo>-worktrees/<branch>`) skip the folder-trust question when the repository itself is trusted (`tmgr runner trust <repo>`, or answering the question in the repository folder). Only a clone exactly one level below `<repo>-worktrees`, not named `queue`, whose git alternates name that repository's objects, with an unchanged repository identity, and while no running agent works in a folder above the clone. Queue clones, link runs, folders inside a clone and clones anywhere else are never covered, and answering the question inside a clone does not trust the repository. Needs a runner restart after upgrading.
 - A folder you removed with `tmgr runner untrust` is no longer added again when the runner restarts: a session's answer to the trust question is read once.
 - Security note: to skip the trust question the runner sets `projects.<folder>.hasTrustDialogAccepted` (one key, for that one folder) in the copy of `.claude.json` inside the run's own home. Your real `~/.claude.json` and `~/.claude/settings.json` are never written.
