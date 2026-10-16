@@ -4,7 +4,8 @@ use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tmgr_usage::error::UsageError;
 use tmgr_usage::limits::LimitWindow;
-use tmgr_usage::link::{attribute_at, Link, RunWindow, Totals as LinkTotals};
+use tmgr_usage::bind::{facts_from, Linker, RunIds};
+use tmgr_usage::link::{Link, RunWindow, Totals as LinkTotals};
 use tmgr_usage::task::{build, facts_as_events, TaskIdent, TaskInput, TaskUsageAggregate};
 use tmgr_usage::paths::{self, Env};
 use tmgr_usage::refresh::refresh;
@@ -346,16 +347,27 @@ fn window_of(run: &RawRun, now: DateTime<Utc>) -> Option<(DateTime<Utc>, Option<
   (start <= now).then_some((start, end))
 }
 
-fn run_windows(runs: &[RawRun], now: DateTime<Utc>) -> Vec<RunWindow> {
+impl Id {
+  fn number(&self) -> Option<u64> {
+    match self {
+      Id::Num(n) => u64::try_from(*n).ok(),
+      Id::Text(s) => s.parse().ok(),
+    }
+  }
+}
+
+fn run_windows(runs: &[RawRun], now: DateTime<Utc>) -> (Vec<RunWindow>, Vec<RunIds>) {
   let mut windows = Vec::new();
+  let mut ids = Vec::new();
   for run in runs {
     let (session_id, branch) = (non_empty(&run.session_id), non_empty(&run.branch));
-    if session_id.is_none() && branch.is_none() {
-      continue;
-    }
     let Some((started_at, ended_at)) = window_of(run, now) else {
       continue;
     };
+    let Some(run_id) = run.id.number() else {
+      continue;
+    };
+    ids.push(RunIds { run_id, task_id: run.task_id.number() });
     windows.push(RunWindow {
       run_ref: format!("{}#{}", run.workspace, run.id),
       task_ref: format!("{}/{}", run.workspace, run.task_id),
@@ -367,19 +379,31 @@ fn run_windows(runs: &[RawRun], now: DateTime<Utc>) -> Vec<RunWindow> {
       ended_at,
     });
   }
-  windows
+  (windows, ids)
+}
+
+fn newest_first(windows: Vec<RunWindow>, ids: Vec<RunIds>) -> (Vec<RunWindow>, Vec<RunIds>) {
+  let mut pairs: Vec<_> = windows.into_iter().zip(ids).collect();
+  pairs.sort_by(|a, b| b.0.started_at.cmp(&a.0.started_at));
+  pairs.into_iter().unzip()
 }
 
 fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOut, String> {
-  let mut windows = run_windows(runs, now);
-  windows.sort_by(|a, b| b.started_at.cmp(&a.started_at));
+  let (windows, ids) = run_windows(runs, now);
+  let (mut windows, mut ids) = newest_first(windows, ids);
   let runs_truncated = windows.len() > MAX_RUNS;
   windows.truncate(MAX_RUNS);
+  ids.truncate(MAX_RUNS);
   let (_, store) = open(env)?;
   let today = local_today(now);
   let from = day_bounds(today - Duration::days(MONTH_DAYS - 1)).0;
-  let events = store.link_events(from, day_bounds(today).1).map_err(user_error)?;
-  let report = attribute_at(&events, &windows, now);
+  let to = day_bounds(today).1;
+  let events = store.link_events(from, to).map_err(user_error)?;
+  let facts = store.facts(from, to).map_err(user_error)?;
+  let earlier = facts_from(&windows, from).map(|f| store.facts(f, to)).transpose().map_err(user_error)?;
+  let agents = store.agents().map_err(user_error)?;
+  let linker = Linker::new(&windows, &ids, &events, earlier.as_deref().unwrap_or(&facts), &agents, now);
+  let report = linker.attribute(&events);
   let mut per_task = report.per_task.clone();
   per_task.sort_by(|a, b| b.cost_usd.total_cmp(&a.cost_usd).then(a.key.cmp(&b.key)));
   let tasks = per_task.iter().map(|t| TaskOut { task_ref: t.key.clone(), totals: totals_of(t) }).collect();
@@ -401,7 +425,7 @@ pub struct TaskUsageOut {
 }
 
 fn task_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun], workspace: &str, task_id: i64) -> Result<TaskUsageOut, String> {
-  let windows = run_windows(runs, now);
+  let (windows, ids) = run_windows(runs, now);
   let task_ref = format!("{workspace}/{task_id}");
   let Some(first) = windows.iter().filter(|w| w.task_ref == task_ref).map(|w| w.started_at).min() else {
     return Ok(TaskUsageOut { supported: true, ..Default::default() });
@@ -417,12 +441,14 @@ fn task_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun], workspace: &str, t
   let (events, tokens): (Vec<_>, Vec<_>) = store.link_events_with_tokens(from, to).map_err(user_error)?.into_iter().unzip();
   let facts = store.facts(from, to).map_err(user_error)?;
   let agents = store.agents().map_err(user_error)?;
+  let earlier = facts_from(&windows, from).map(|f| store.facts(f, to)).transpose().map_err(user_error)?;
+  let linker = Linker::new(&windows, &ids, &events, earlier.as_deref().unwrap_or(&facts), &agents, now);
   let mine: HashSet<&str> = windows.iter().filter(|w| w.task_ref == task_ref).map(|w| w.run_ref.as_str()).collect();
   let matching = |links: &[Link]| -> Vec<usize> {
     links.iter().filter(|l| mine.contains(l.run_ref.as_str())).map(|l| l.event_index).collect()
   };
-  let linked_events = matching(&attribute_at(&events, &windows, now).links);
-  let linked_facts = matching(&attribute_at(&facts_as_events(&facts, &events), &windows, now).links);
+  let linked_events = matching(&linker.attribute(&events).links);
+  let linked_facts = matching(&linker.attribute(&facts_as_events(&facts, &events)).links);
   let aggregate = build(&TaskInput {
     source_id: store.install_id().map_err(user_error)?,
     generated_at: now,
@@ -612,7 +638,7 @@ mod tests {
   }
 
   #[test]
-  fn tasks_link_by_session_id_and_drop_runs_without_keys() {
+  fn tasks_link_by_session_id_and_keep_runs_without_keys() {
     let tmp = tempfile::tempdir().unwrap();
     let env = env_in(tmp.path());
     let now = local_noon();
@@ -621,7 +647,7 @@ mod tests {
 
     let runs = vec![raw(1, 7, Some("sess-1"), None, now), raw(2, 8, None, None, now)];
     let out = tasks_inner(&env, now, &runs).unwrap();
-    assert_eq!((out.runs_used, out.runs_dropped), (1, 1));
+    assert_eq!((out.runs_used, out.runs_dropped), (2, 0));
     assert!(!out.runs_truncated);
     assert_eq!(out.tasks.len(), 1);
     assert_eq!(out.tasks[0].task_ref, "ws/7");
@@ -706,6 +732,38 @@ mod tests {
     assert_eq!(a.task.task_ref, "7");
     assert_eq!(a.task.id, Some(7));
     assert!(!a.nodes.is_empty());
+  }
+
+
+  fn mcp_only_log(home: &Path, now: DateTime<Utc>) {
+    let line = |msg: &str, ago: i64, call: &str| {
+      format!(
+        r#"{{"type":"assistant","sessionId":"sess-mcp","timestamp":"{}","cwd":"/work/beta","gitBranch":"main","isSidechain":false,"requestId":"req-{msg}","message":{{"id":"{msg}","model":"claude-test-opus-1","content":[{{"type":"text","text":"x"}}{call}],"usage":{{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}}}"#,
+        at(now, ago)
+      )
+    };
+    let start = r#",{"type":"tool_use","id":"tu-start","name":"mcp__tmgr__start_agent_work","input":{"taskId":7,"agent":"claude-code"}}"#;
+    write(
+      &home.join(".claude/projects/-work-beta/sess-mcp.jsonl"),
+      &[line("n1", 119, start), line("n2", 100, ""), line("n3", 60, "")],
+    );
+  }
+
+  #[test]
+  fn task_usage_links_an_mcp_only_run_through_its_start_call() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    mcp_only_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let runs = vec![raw(1, 7, None, None, now), raw(2, 8, None, None, now)];
+    let a = task_inner(&env, now, &runs, "ws", 7).unwrap().aggregate.unwrap();
+    assert_eq!(a.totals.events, 3);
+    assert_eq!(a.totals.tokens.input, 300);
+    assert!(task_inner(&env, now, &runs, "ws", 8).unwrap().aggregate.is_none());
+    let listed = tasks_inner(&env, now, &runs).unwrap();
+    assert_eq!(listed.tasks.iter().map(|t| t.task_ref.as_str()).collect::<Vec<_>>(), vec!["ws/7"]);
+    assert_eq!(listed.tasks[0].totals.events, 3);
   }
 
   #[test]
