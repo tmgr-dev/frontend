@@ -67,6 +67,7 @@ const state = {
 		!!window.matchMedia &&
 		window.matchMedia('(prefers-color-scheme: dark)').matches,
 	theme: localStorage.getItem('theme') || 'default',
+	/** @type {number | null} */
 	currentTaskIdForModal: null,
 	createTaskInProjectCategoryId: null,
 	taskStatusId: null,

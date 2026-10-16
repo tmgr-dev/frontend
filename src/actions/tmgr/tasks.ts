@@ -223,7 +223,7 @@ export const restoreDeletedTask = async (taskId: number) => {
 };
 
 export const getTasksByStatus = async (
-	statusId: number,
+	statusId: number | string,
 	params: GetTasksParams,
 ): Promise<PaginatedResponse<Task>> => {
 	const { data } = await $axios.get(`tasks/status/${statusId}`, {
