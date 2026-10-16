@@ -17,7 +17,7 @@
 				>
 					<button
 						v-for="option in filters"
-						:key="option.value"
+						:key="String(option.value)"
 						type="button"
 						class="rounded-md px-3 py-1 text-sm transition-colors"
 						:class="

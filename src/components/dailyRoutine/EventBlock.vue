@@ -68,7 +68,7 @@
 	import type { RoutineEntry } from '@/types/dailyRoutine';
 	import { hexAlpha, resolveCategory } from '@/utils/dailyRoutines/categoryMap';
 	import { fmtTime } from '@/utils/dailyRoutines/dateHelpers';
-	import { computed, ref } from 'vue';
+	import { computed, ref, type CSSProperties } from 'vue';
 	import DRIcon from './DRIcon.vue';
 
 	const HOUR_PX = 56;
@@ -174,7 +174,7 @@
 	);
 	const isShort = computed(() => height.value < 38);
 
-	const blockStyle = computed(() => {
+	const blockStyle = computed<CSSProperties>(() => {
 		const raw = props.entry.routine_category as unknown;
 		const cat =
 			typeof raw === 'string' || raw == null
