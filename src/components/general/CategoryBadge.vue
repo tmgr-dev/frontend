@@ -4,7 +4,7 @@
 	import { PlusCircleIcon } from '@heroicons/vue/24/outline';
 
 	interface Props {
-		category: Category | null;
+		category: Pick<Category, 'id' | 'title'> | null;
 		statusId?: number;
 	}
 

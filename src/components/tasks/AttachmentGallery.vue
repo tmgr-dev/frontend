@@ -143,7 +143,6 @@
 			fullLoaded.value,
 		),
 	);
-	const currentUrl = computed(() => layers.value.full ?? layers.value.thumb);
 
 	const markLoaded = (id?: number) => {
 		if (id) {
@@ -199,7 +198,7 @@
 		}
 	};
 
-	// Not currentUrl: that may be a signed link on the API origin, and a browser ignores
+	// Not the displayed URL: that may be a signed link on the API origin, and a browser ignores
 	// `download` on a cross-origin href, opening the image instead of saving it.
 	const download = async () => {
 		const file = current.value;

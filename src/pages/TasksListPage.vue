@@ -1,5 +1,5 @@
 <script setup lang="ts">
-	import { getCategories } from '@/actions/tmgr/categories';
+	import { Category, getCategories } from '@/actions/tmgr/categories';
 	import {
 		getTasks,
 		getTasksByStatus,
@@ -83,7 +83,7 @@
 		FallbackTasksList: 'Current tasks',
 	};
 	const tasks = ref<Task[]>([]);
-	const isLoadingActions = ref({});
+	const isLoadingActions = ref<Record<string, boolean>>({});
 	const hasAbilityToShowConfetti = ref(false);
 	const { showSurface } = useFeatureToggles();
 	const { simpleMode, archiveStatusId, workspaceStatuses, isDoneTask } =
@@ -97,7 +97,7 @@
 	const ALL_TASKS_PER_PAGE = 100000;
 	const stateFilter = ref<TaskStateFilter>('all');
 	const archiveDoneIds = ref<number[] | null>(null);
-	const categories = ref([]);
+	const categories = ref<Category[]>([]);
 	const selectedCategory = ref(null);
 	const showCategorySelect = ref(false);
 	const workspaceUsers = ref<Array<{ id: number; name: string }>>([]);
@@ -129,7 +129,7 @@
 		to: 0,
 	});
 
-	const status = computed(() => route.meta.status);
+	const status = computed(() => route.meta.status as string | undefined);
 	const isActiveList = computed(() => !status.value);
 	const pageTitle = computed(
 		() => (h1 as Record<string, string>)[route.name as string] || 'Task List',
@@ -185,10 +185,11 @@
 		return !searchText.value && matchesKnownFilters(task);
 	}
 
-	const totalSeconds = computed(
-		() =>
+	const totalSeconds = computed(() =>
+		Number(
 			pagination.value?.total_seconds ||
-			tasks.value.reduce((summary, task) => task.common_time + summary, 0),
+				tasks.value.reduce((summary, task) => task.common_time + summary, 0),
+		),
 	);
 
 	const summaryTime = computed(() =>
@@ -249,7 +250,7 @@
 		isLoading.value = true;
 		errorLoading.value = false;
 		try {
-			setDocumentTitle(h1[route.name] || 'Task List');
+			setDocumentTitle(pageTitle.value);
 
 			categories.value = await getCategories();
 			if (disposed) return;
@@ -327,7 +328,7 @@
 					store.commit('setMetaTitle', titleWithCount);
 				} else {
 					// Update metaTitle with task count for regular routes
-					const baseTitle = h1[route.name] || 'Task List';
+					const baseTitle = pageTitle.value;
 					const titleWithCount =
 						pagination.value.total !== undefined
 							? `${baseTitle} (${pagination.value.total})`
@@ -427,7 +428,7 @@
 		() => route.name,
 		(newName) => {
 			if (newName) {
-				setDocumentTitle(h1[newName] || 'Task List');
+				setDocumentTitle(pageTitle.value);
 			}
 		},
 	);
@@ -435,7 +436,7 @@
 		() => pagination.value.total,
 		() => {
 			if (pagination.value.total !== undefined) {
-				const baseTitle = h1[route.name] || 'Task List';
+				const baseTitle = pageTitle.value;
 				store.commit(
 					'setMetaTitle',
 					`${baseTitle} (${pagination.value.total})`,
@@ -444,7 +445,7 @@
 		},
 	);
 
-	function setLoadingActions(tasks) {
+	function setLoadingActions(tasks: Task[]) {
 		tasks.forEach((task) => {
 			isLoadingActions.value[`hide-${task.id}`] = false;
 			isLoadingActions.value[`done-${task.id}`] = false;
@@ -521,7 +522,7 @@
 			hasLoadedTasks.value = true;
 			setLoadingActions(tasks.value);
 
-			const baseTitle = h1[route.name] || 'Task List';
+			const baseTitle = pageTitle.value;
 			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
 		} catch (e) {
 			if (!requests.isCurrent(request)) return;
@@ -629,8 +630,8 @@
 	function updateSingleTaskInList(updatedTask: Task) {
 		const known = tasks.value.some((x) => x.id === updatedTask.id);
 		const result = upsertTaskInList(tasks.value as any[], updatedTask as any, {
-			accepts: (t) =>
-				known ? matchesKnownFilters(t as Task) : canInsertTask(t as Task),
+			accepts: () =>
+				known ? matchesKnownFilters(updatedTask) : canInsertTask(updatedTask),
 			firstPage: pagination.value.current_page === 1,
 		});
 		if (result === 'inserted') pagination.value.total++;
