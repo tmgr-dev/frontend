@@ -1,7 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.0.6
 
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
 - New `tmgr usage sync`: uploads one summary per task so the people in that task's workspace can see what the AI work on it cost. A summary holds the AI cost (API-equivalent), tokens, time, the tree of agents and the names of tools, skills, plugins, MCP servers and hooks used. Pull requests stay on your machine and are not uploaded. It never holds prompts, replies, file contents, paths, command lines or arguments. Every member of the task's workspace can see it. Local workspaces are never uploaded, and nothing is uploaded automatically.
 - Two locks must be open before anything is sent. First, run `tmgr usage sync on` in a terminal: it shows who can see the data and the exact JSON of your latest task, and asks you to type `yes` (`--yes` is not accepted). Second, turn on "Agent usage sync" in TMGR Settings → Agent work, which the CLI can neither read nor change.
 - `tmgr usage sync --dry-run` prints exactly what would be sent and works without consent. `tmgr usage sync status` shows whether uploading is on and the result of the last run, `tmgr usage sync off` turns it off, and `tmgr usage sync forget` (all tasks, or one with `--task REF`) deletes your uploads from the server. Run `forget` before `tmgr usage reset`: reset clears the local upload history, so a smaller upload could later replace a fuller one on the server.
