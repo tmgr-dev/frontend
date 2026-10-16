@@ -214,50 +214,34 @@ pub fn clean_model(raw: &str) -> String {
         }
         _ => (raw, None),
     };
-    let mut out: String = base
-        .chars()
-        .map(|c| match c {
-            '/' => ':',
-            c if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-') => c,
-            _ => '_',
-        })
-        .take(111)
-        .collect();
-    while out.contains("..") {
-        out = out.replace("..", "_");
+    let valid = !base.is_empty()
+        && base.len() <= 111
+        && !base.starts_with('.')
+        && !base.contains("..")
+        && base
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-'));
+    match (valid, suffix) {
+        (false, _) if raw.trim().is_empty() => "unknown".into(),
+        (false, _) => "other".into(),
+        (true, Some(s)) => format!("{base}@{s}"),
+        (true, None) => base.to_string(),
     }
-    while out.starts_with('.') {
-        out.replace_range(..1, "_");
-    }
-    if out.is_empty() {
-        return "unknown".into();
-    }
-    if let Some(s) = suffix {
-        out.push('@');
-        out.push_str(s);
-    }
-    out
 }
 
 pub fn clean_version(raw: &str) -> String {
-    let mut out: String = raw
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-') {
-                c
-            } else {
-                '_'
-            }
-        })
-        .take(64)
-        .collect();
-    while out.starts_with('.') {
-        out.replace_range(..1, "_");
-    }
-    if out.is_empty() {
+    let valid = (1..=64).contains(&raw.len())
+        && !raw.starts_with('.')
+        && !raw.contains("..")
+        && raw
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'));
+    if valid {
+        raw.to_string()
+    } else if raw.is_empty() {
         "unknown".into()
     } else {
-        out
+        "other".into()
     }
 }
 
@@ -1001,7 +985,7 @@ fn limit_shares(inp: &TaskInput<'_>, selected: &[usize]) -> Vec<LimitShare> {
         .map(|((tool, window), pct)| LimitShare {
             tool,
             window,
-            used_pct: (pct * 10.0).round() / 10.0,
+            used_pct: ((pct * 10.0).round() / 10.0).clamp(0.0, 100.0),
             approximate: true,
         })
         .filter(|l| l.used_pct > 0.0)
@@ -1060,6 +1044,503 @@ struct Built {
     events: u64,
     model: String,
     tools: Vec<ToolStat>,
+}
+
+const MAX_BODY_BYTES: usize = 262_144;
+const MAX_JSON_INT: u64 = 1 << 53;
+const MAX_PR_NUMBER: u64 = (1 << 31) - 1;
+const MAX_NODE_TOOLS_TOTAL: usize = 2000;
+const MAX_COST_USD: f64 = 1_000_000.0;
+
+#[derive(Clone, Copy)]
+enum Rule {
+    Uint,
+    TaskId,
+    PrNumber,
+    Depth,
+    Cost,
+    Pct,
+    Bool,
+    Name,
+    Model,
+    Version,
+    Workspace,
+    TaskRef,
+    Ext,
+    Repo,
+    SourceId,
+    NodeId,
+    Time,
+    Schema,
+    Enum(&'static [&'static str]),
+    Nested,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Presence {
+    Required,
+    Optional,
+    Nullable,
+}
+
+type Spec = &'static [(&'static str, Presence, Rule)];
+
+const TOOLS: &[&str] = &["claude", "codex"];
+const WINDOWS: &[&str] = &["five_hour", "week", "week_opus", "week_sonnet", "other"];
+const LINKS: &[&str] = &["exact", "likely"];
+
+const REQ: Presence = Presence::Required;
+const OPT: Presence = Presence::Optional;
+const NUL: Presence = Presence::Nullable;
+
+const TOP_SPEC: Spec = &[
+    ("schema", REQ, Rule::Schema),
+    ("source_id", REQ, Rule::SourceId),
+    ("generated_at", REQ, Rule::Time),
+    ("task", REQ, Rule::Nested),
+    ("period", REQ, Rule::Nested),
+    ("totals", REQ, Rule::Nested),
+    ("limits", REQ, Rule::Nested),
+    ("nodes", REQ, Rule::Nested),
+    ("context", REQ, Rule::Nested),
+    ("truncated", REQ, Rule::Nested),
+];
+const TASK_SPEC: Spec = &[
+    ("workspace", REQ, Rule::Workspace),
+    ("ref", REQ, Rule::TaskRef),
+    ("id", NUL, Rule::TaskId),
+];
+const PERIOD_SPEC: Spec = &[("from", REQ, Rule::Time), ("to", REQ, Rule::Time)];
+const TOTALS_SPEC: Spec = &[
+    ("cost_usd", REQ, Rule::Cost),
+    ("events", REQ, Rule::Uint),
+    ("unpriced_events", REQ, Rule::Uint),
+    ("tokens", REQ, Rule::Nested),
+    ("active_ms", REQ, Rule::Uint),
+    ("waiting_ms", OPT, Rule::Uint),
+    ("turns", REQ, Rule::Uint),
+    ("turn_ms", REQ, Rule::Uint),
+];
+const TOKENS_SPEC: Spec = &[
+    ("input", REQ, Rule::Uint),
+    ("output", REQ, Rule::Uint),
+    ("cache_read", REQ, Rule::Uint),
+    ("cache_write_5m", REQ, Rule::Uint),
+    ("cache_write_1h", REQ, Rule::Uint),
+    ("reasoning", REQ, Rule::Uint),
+];
+const LIMIT_SPEC: Spec = &[
+    ("tool", REQ, Rule::Enum(TOOLS)),
+    ("window", REQ, Rule::Enum(WINDOWS)),
+    ("used_pct", REQ, Rule::Pct),
+    ("approximate", REQ, Rule::Bool),
+];
+const NODE_SPEC: Spec = &[
+    ("id", REQ, Rule::NodeId),
+    ("parent_id", NUL, Rule::NodeId),
+    ("depth", REQ, Rule::Depth),
+    ("tool", REQ, Rule::Enum(TOOLS)),
+    ("agent_type", REQ, Rule::Name),
+    ("model", NUL, Rule::Model),
+    ("origin", NUL, Rule::Name),
+    ("link", NUL, Rule::Enum(LINKS)),
+    ("started_at", REQ, Rule::Time),
+    ("ended_at", REQ, Rule::Time),
+    ("duration_ms", REQ, Rule::Uint),
+    ("cost_usd", REQ, Rule::Cost),
+    ("events", REQ, Rule::Uint),
+    ("tokens", REQ, Rule::Nested),
+    ("tools", REQ, Rule::Nested),
+];
+const TOOL_STAT_SPEC: Spec = &[
+    ("name", REQ, Rule::Name),
+    ("count", REQ, Rule::Uint),
+    ("errors", REQ, Rule::Uint),
+    ("duration_ms", REQ, Rule::Uint),
+];
+const CONTEXT_SPEC: Spec = &[
+    ("tools", REQ, Rule::Nested),
+    ("skills", REQ, Rule::Nested),
+    ("skills_available", REQ, Rule::Uint),
+    ("plugins", REQ, Rule::Nested),
+    ("mcp", REQ, Rule::Nested),
+    ("hooks", REQ, Rule::Nested),
+    ("slash_commands", REQ, Rule::Nested),
+    ("permission_modes", REQ, Rule::Nested),
+    ("compactions", REQ, Rule::Uint),
+    ("away", REQ, Rule::Uint),
+    ("file_edits", REQ, Rule::Nested),
+    ("prs", REQ, Rule::Nested),
+    ("agents", REQ, Rule::Nested),
+];
+const NAMED_COUNT_SPEC: Spec = &[("name", REQ, Rule::Name), ("count", REQ, Rule::Uint)];
+const MCP_SPEC: Spec = &[
+    ("server", REQ, Rule::Name),
+    ("tool", REQ, Rule::Name),
+    ("count", REQ, Rule::Uint),
+    ("errors", REQ, Rule::Uint),
+];
+const HOOK_SPEC: Spec = &[
+    ("event", REQ, Rule::Name),
+    ("name", REQ, Rule::Name),
+    ("tool", NUL, Rule::Name),
+    ("count", REQ, Rule::Uint),
+    ("errors", REQ, Rule::Uint),
+    ("duration_ms", REQ, Rule::Uint),
+];
+const MODE_SPEC: Spec = &[("mode", REQ, Rule::Name), ("count", REQ, Rule::Uint)];
+const FILE_EDITS_SPEC: Spec = &[
+    ("count", REQ, Rule::Uint),
+    ("extensions", REQ, Rule::Nested),
+];
+const EXT_SPEC: Spec = &[("name", REQ, Rule::Ext), ("count", REQ, Rule::Uint)];
+const PR_SPEC: Spec = &[("repo", REQ, Rule::Repo), ("number", REQ, Rule::PrNumber)];
+const AGENT_SPEC: Spec = &[
+    ("tool", REQ, Rule::Enum(TOOLS)),
+    ("version", REQ, Rule::Version),
+    ("entrypoint", REQ, Rule::Name),
+    ("count", REQ, Rule::Uint),
+];
+const TRUNCATED_SPEC: Spec = &[("nodes", REQ, Rule::Bool), ("lists", REQ, Rule::Bool)];
+
+fn is_uint(v: &serde_json::Value) -> Option<u64> {
+    v.as_u64().filter(|&n| n <= MAX_JSON_INT)
+}
+
+fn name_ok(s: &str) -> bool {
+    (1..=128).contains(&s.len())
+        && !s.starts_with('.')
+        && !s.contains("..")
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-'))
+}
+
+fn model_ok(s: &str) -> bool {
+    let (base, suffix) = match s.split_once('@') {
+        Some((b, x)) => (b, Some(x)),
+        None => (s, None),
+    };
+    let mut chars = base.chars();
+    let head = chars
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '+' | '-'));
+    head && !s.contains("..")
+        && base.len() <= 111
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-'))
+        && suffix.is_none_or(|x| (1..=16).contains(&x.len()) && id_ok(x, 16))
+}
+
+fn version_ok(s: &str) -> bool {
+    (1..=64).contains(&s.len())
+        && !s.starts_with('.')
+        && !s.contains("..")
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '+' | '-'))
+}
+
+fn id_ok(s: &str, max: usize) -> bool {
+    (1..=max).contains(&s.len())
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+}
+
+fn repo_part_ok(s: &str, max: usize) -> bool {
+    (1..=max).contains(&s.len())
+        && !s.starts_with('.')
+        && !s.contains("..")
+        && s.chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+}
+
+fn repo_ok(s: &str) -> bool {
+    s.split_once('/')
+        .is_some_and(|(o, n)| repo_part_ok(o, 64) && repo_part_ok(n, 100))
+}
+
+fn six_decimals(x: f64) -> bool {
+    x.to_string()
+        .split_once('.')
+        .is_none_or(|(_, fraction)| fraction.len() <= 6)
+}
+
+fn cost_ok(x: f64) -> bool {
+    (0.0..=MAX_COST_USD).contains(&x) && six_decimals(x)
+}
+
+fn workspace_ok(s: &str) -> bool {
+    id_ok(s, 64)
+}
+
+fn task_ref_ok(s: &str) -> bool {
+    s.split_once('-').is_some_and(|(prefix, number)| {
+        (1..=31).contains(&prefix.len())
+            && prefix.starts_with(|c: char| c.is_ascii_alphabetic())
+            && prefix.chars().all(|c| c.is_ascii_alphanumeric())
+            && (1..=18).contains(&number.len())
+            && number.chars().all(|c| c.is_ascii_digit())
+    })
+}
+
+fn instant_of(v: Option<&serde_json::Value>) -> Option<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(v?.as_str()?)
+        .ok()
+        .map(|t| t.with_timezone(&Utc))
+}
+
+fn rule_ok(rule: Rule, v: &serde_json::Value) -> bool {
+    let s = v.as_str();
+    match rule {
+        Rule::Uint => is_uint(v).is_some(),
+        Rule::TaskId => is_uint(v).is_some_and(|n| n >= 1),
+        Rule::PrNumber => is_uint(v).is_some_and(|n| (1..=MAX_PR_NUMBER).contains(&n)),
+        Rule::Depth => is_uint(v).is_some_and(|n| n <= MAX_DEPTH as u64),
+        Rule::Cost => v.is_number() && v.as_f64().is_some_and(cost_ok),
+        Rule::Pct => {
+            v.is_number()
+                && v.as_f64()
+                    .is_some_and(|x| (0.0..=100.0).contains(&x) && six_decimals(x))
+        }
+        Rule::Bool => v.is_boolean(),
+        Rule::Name => s.is_some_and(name_ok),
+        Rule::Model => s.is_some_and(model_ok),
+        Rule::Version => s.is_some_and(version_ok),
+        Rule::Ext => s.is_some_and(|x| id_ok(x, 16) && !x.contains(['_', '-'])),
+        Rule::Repo => s.is_some_and(repo_ok),
+        Rule::Workspace => s.is_some_and(workspace_ok),
+        Rule::TaskRef => s.is_some_and(task_ref_ok),
+        Rule::SourceId => s.is_some_and(|x| id_ok(x, 64)),
+        Rule::NodeId => s.is_some_and(|x| id_ok(x, 32)),
+        Rule::Time => s.is_some_and(|x| DateTime::parse_from_rfc3339(x).is_ok()),
+        Rule::Schema => s == Some(SCHEMA),
+        Rule::Enum(allowed) => s.is_some_and(|x| allowed.contains(&x)),
+        Rule::Nested => true,
+    }
+}
+
+fn rule_message(rule: Rule) -> &'static str {
+    match rule {
+        Rule::Uint | Rule::TaskId | Rule::PrNumber | Rule::Depth => "invalid integer",
+        Rule::Cost | Rule::Pct => "invalid number",
+        Rule::Bool => "expected boolean",
+        Rule::Time => "invalid timestamp",
+        Rule::Schema => "unsupported schema",
+        Rule::Enum(_) => "invalid value",
+        _ => "invalid characters",
+    }
+}
+
+struct Checker {
+    errors: Vec<String>,
+}
+
+impl Checker {
+    fn fail(&mut self, path: &str, what: &str) {
+        let path = if path.is_empty() { "body" } else { path };
+        self.errors.push(format!("{path}: {what}"));
+    }
+
+    fn fields<'a>(
+        &mut self,
+        v: &'a serde_json::Value,
+        path: &str,
+        spec: Spec,
+    ) -> Option<&'a serde_json::Map<String, serde_json::Value>> {
+        let Some(map) = v.as_object() else {
+            self.fail(path, "expected object");
+            return None;
+        };
+        if map.keys().any(|k| !spec.iter().any(|(n, _, _)| n == k)) {
+            self.fail(path, "unknown field");
+        }
+        for &(key, presence, rule) in spec {
+            let at = if path.is_empty() {
+                key.to_string()
+            } else {
+                format!("{path}.{key}")
+            };
+            match map.get(key) {
+                None if presence == OPT => {}
+                None => self.fail(&at, "missing"),
+                Some(serde_json::Value::Null) if presence == NUL => {}
+                Some(x) if !rule_ok(rule, x) => self.fail(&at, rule_message(rule)),
+                Some(_) => {}
+            }
+        }
+        Some(map)
+    }
+
+    fn list<'a>(
+        &mut self,
+        v: Option<&'a serde_json::Value>,
+        path: &str,
+        spec: Spec,
+        limit: usize,
+    ) -> Vec<&'a serde_json::Value> {
+        let Some(items) = v.and_then(|x| x.as_array()) else {
+            self.fail(path, "expected array");
+            return Vec::new();
+        };
+        if items.len() > limit {
+            self.fail(path, &format!("more than {limit} entries"));
+        }
+        for (i, item) in items.iter().enumerate() {
+            self.fields(item, &format!("{path}[{i}]"), spec);
+        }
+        items.iter().collect()
+    }
+
+    fn nodes(&mut self, v: Option<&serde_json::Value>) -> Vec<usize> {
+        let items = self.list(v, "nodes", NODE_SPEC, MAX_NODES);
+        let mut seen: HashSet<&str> = HashSet::new();
+        let mut tool_counts = Vec::new();
+        for (i, item) in items.iter().enumerate() {
+            let path = format!("nodes[{i}]");
+            let Some(map) = item.as_object() else {
+                continue;
+            };
+            if let Some(t) = map.get("tokens") {
+                self.fields(t, &format!("{path}.tokens"), TOKENS_SPEC);
+            }
+            let tools = self.list(
+                map.get("tools"),
+                &format!("{path}.tools"),
+                TOOL_STAT_SPEC,
+                MAX_LIST,
+            );
+            tool_counts.push(tools.len());
+            if let Some(parent) = map.get("parent_id").and_then(|p| p.as_str()) {
+                if !seen.contains(parent) {
+                    self.fail(&format!("{path}.parent_id"), "not an earlier node");
+                }
+            }
+            if let Some(id) = map.get("id").and_then(|x| x.as_str()) {
+                if !seen.insert(id) {
+                    self.fail(&format!("{path}.id"), "duplicate");
+                }
+            }
+        }
+        tool_counts
+    }
+}
+
+/// Checks a serialized aggregate against the rules the server enforces, so only what it would
+/// accept ever leaves the machine. Returns every violation found; messages carry the field path
+/// and the rule, never the offending value.
+pub fn validate_json(
+    value: &serde_json::Value,
+    now: DateTime<Utc>,
+) -> std::result::Result<(), Vec<String>> {
+    let mut c = Checker { errors: Vec::new() };
+    match serde_json::to_vec(value) {
+        Ok(body) if body.len() <= MAX_BODY_BYTES => {}
+        _ => c.fail("body", "larger than 256 KB"),
+    }
+    let Some(top) = c.fields(value, "", TOP_SPEC) else {
+        return Err(c.errors);
+    };
+    for (key, spec) in [
+        ("task", TASK_SPEC),
+        ("period", PERIOD_SPEC),
+        ("truncated", TRUNCATED_SPEC),
+    ] {
+        if let Some(v) = top.get(key) {
+            c.fields(v, key, spec);
+        }
+    }
+    if let Some(totals) = top.get("totals") {
+        if let Some(t) = c.fields(totals, "totals", TOTALS_SPEC) {
+            if let Some(tokens) = t.get("tokens") {
+                c.fields(tokens, "totals.tokens", TOKENS_SPEC);
+            }
+        }
+    }
+    let limit = now + Duration::minutes(5);
+    let mut times: Vec<(String, Option<&serde_json::Value>)> = vec![
+        ("generated_at".into(), top.get("generated_at")),
+        (
+            "period.from".into(),
+            top.get("period").and_then(|p| p.get("from")),
+        ),
+        (
+            "period.to".into(),
+            top.get("period").and_then(|p| p.get("to")),
+        ),
+    ];
+    for (i, n) in top
+        .get("nodes")
+        .and_then(|n| n.as_array())
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        for key in ["started_at", "ended_at"] {
+            times.push((format!("nodes[{i}].{key}"), n.get(key)));
+        }
+    }
+    for (path, v) in times {
+        if instant_of(v).is_some_and(|t| t > limit) {
+            c.fail(&path, "in the future");
+        }
+    }
+    if let (Some(from), Some(to)) = (
+        instant_of(top.get("period").and_then(|p| p.get("from"))),
+        instant_of(top.get("period").and_then(|p| p.get("to"))),
+    ) {
+        if to < from {
+            c.fail("period.to", "before period.from");
+        }
+    }
+    let mut total = c
+        .list(top.get("limits"), "limits", LIMIT_SPEC, MAX_LIST)
+        .len();
+    let node_tools: usize = c.nodes(top.get("nodes")).iter().sum();
+    if node_tools > MAX_NODE_TOOLS_TOTAL {
+        c.fail(
+            "nodes.tools",
+            &format!("more than {MAX_NODE_TOOLS_TOTAL} entries in total"),
+        );
+    }
+    if let Some(ctx) = top.get("context") {
+        if let Some(m) = c.fields(ctx, "context", CONTEXT_SPEC) {
+            let simple: [(&str, Spec); 9] = [
+                ("tools", TOOL_STAT_SPEC),
+                ("skills", NAMED_COUNT_SPEC),
+                ("plugins", NAMED_COUNT_SPEC),
+                ("mcp", MCP_SPEC),
+                ("hooks", HOOK_SPEC),
+                ("slash_commands", NAMED_COUNT_SPEC),
+                ("permission_modes", MODE_SPEC),
+                ("prs", PR_SPEC),
+                ("agents", AGENT_SPEC),
+            ];
+            for (key, spec) in simple {
+                let path = format!("context.{key}");
+                total += c.list(m.get(key), &path, spec, MAX_LIST).len();
+            }
+            if let Some(fe) = m.get("file_edits") {
+                if let Some(f) = c.fields(fe, "context.file_edits", FILE_EDITS_SPEC) {
+                    let exts = c.list(
+                        f.get("extensions"),
+                        "context.file_edits.extensions",
+                        EXT_SPEC,
+                        MAX_LIST,
+                    );
+                    total += exts.len();
+                }
+            }
+        }
+    }
+    if total > MAX_LISTS_TOTAL {
+        c.fail(
+            "lists",
+            &format!("more than {MAX_LISTS_TOTAL} entries in total"),
+        );
+    }
+    if c.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(c.errors)
+    }
 }
 
 pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
@@ -1237,7 +1718,7 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
             Some(acc.map_or(*s, |a| (a.0.min(s.0), a.1.max(s.1))))
         })
         .unwrap_or((inp.from, inp.to));
-    let limits = limit_shares(inp, &all_events);
+    let mut limits = limit_shares(inp, &all_events);
 
     let mut lists: Vec<&mut dyn Capped> = vec![
         &mut context.tools,
@@ -1251,6 +1732,7 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
         &mut context.prs,
         &mut context.agents,
     ];
+    lists.push(&mut limits);
     for n in &mut nodes {
         lists.push(&mut n.tools);
     }
@@ -1953,26 +2435,66 @@ mod tests {
     }
 
     #[test]
+    fn repositories_with_foreign_characters_are_dropped_not_rewritten() {
+        assert_eq!(clean_repo("tmgr-dev/frontend"), "tmgr-dev/frontend");
+        for raw in [
+            "alice@example.com/private",
+            "alice/pri vate",
+            "a\\b/c",
+            "a/b/c",
+            "a..b/c",
+            "alice/\u{e9}x",
+            &format!("{}/x", "o".repeat(65)),
+            &format!("o/{}", "n".repeat(101)),
+        ] {
+            assert_eq!(clean_repo(raw), "_", "{raw}");
+        }
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.fact(
+            Tool::Claude,
+            "s1",
+            None,
+            FactKind::Pr,
+            "alice@example.com/private",
+            7,
+        )
+        .value = Some(7);
+        fx.link_all();
+        let a = fx.build().unwrap();
+        assert!(a.context.prs.is_empty());
+        assert!(!serde_json::to_string(&a).unwrap().contains("alice"));
+    }
+
+    #[test]
     fn names_never_carry_paths_emails_or_odd_characters() {
         assert_eq!(clean_generic("/etc/passwd"), "other");
         assert_eq!(clean_generic("me@host"), "other");
         assert_eq!(clean_generic("../x"), "other");
         assert_eq!(clean_generic("~/x"), "other");
-        assert_eq!(clean_generic("Claude Code"), "Claude_Code");
+        assert_eq!(clean_generic("Claude Code"), "other");
         assert_eq!(clean_generic(""), "unknown");
         assert_eq!(clean_generic(&"a".repeat(300)), "other");
-        assert_eq!(clean_model("anthropic/claude-x@1"), "anthropic:claude-x@1");
-        assert_eq!(clean_model("a b\\c"), "a_b_c");
-        assert_eq!(clean_model("../x"), "_:x");
+        assert_eq!(clean_model("anthropic/claude-x@1"), "other");
+        assert_eq!(clean_model("home/alice"), "other");
+        assert_eq!(clean_model("a\\b"), "other");
+        assert_eq!(clean_version("a\\b"), "other");
+        assert_eq!(clean_version("1..2"), "other");
+        assert_eq!(clean_version("home/alice"), "other");
+        assert_eq!(clean_version("alice@x"), "other");
+        assert_eq!(clean_model("a b\\c"), "other");
+        assert_eq!(clean_model("../x"), "other");
+        assert_eq!(clean_model("/Users/someone/secret"), "other");
+        assert_eq!(clean_model(""), "unknown");
         assert_eq!(
             clean_model("claude-opus-4@20250514"),
             "claude-opus-4@20250514"
         );
-        assert_eq!(clean_model("alice@example.com"), "alice_example.com");
-        assert_eq!(clean_model("a@b@c"), "a_b@c");
+        assert_eq!(clean_model("alice@example.com"), "other");
+        assert_eq!(clean_model("a@b@c"), "other");
         assert_eq!(clean_version("2.1.90"), "2.1.90");
-        assert_eq!(clean_version("1.0/rc@2"), "1.0_rc_2");
-        assert_eq!(clean_version(&"9".repeat(80)).len(), 64);
+        assert_eq!(clean_version("1.0/rc@2"), "other");
+        assert_eq!(clean_version(&"9".repeat(80)), "other");
         assert_eq!(clean_extension(".rs"), "rs");
         assert_eq!(clean_extension(""), "none");
         assert_eq!(clean_extension("a/b"), "other");
@@ -1995,7 +2517,7 @@ mod tests {
         let a = fx.build().unwrap();
         let text = serde_json::to_string(&a).unwrap();
         assert!(!text.contains("/usr") && !text.contains("me@host") && !text.contains("/tmp"));
-        assert_eq!(a.nodes[0].model, "vendor:model_1_:tmp:x");
+        assert_eq!(a.nodes[0].model, "other");
     }
 
     #[test]
@@ -2106,5 +2628,406 @@ mod tests {
         assert_eq!(evs[0].cost_usd, None);
         assert_eq!(evs[1].agent_id.as_deref(), Some("a1"));
         assert_eq!(evs[1].tool_session_id, "s1");
+    }
+
+    fn rich_fixture() -> Fx {
+        let mut fx = rescue_fixture();
+        fx.call("s1", None, "mcp__tmgr__update_task", None, "c9", 5, Some(6));
+        fx.fact(
+            Tool::Claude,
+            "s1",
+            None,
+            FactKind::Skill,
+            "superpowers:x",
+            7,
+        );
+        let h = fx.fact(Tool::Claude, "s1", None, FactKind::Hook, "token-goat", 8);
+        h.detail = Some("PostToolUse".into());
+        h.target = Some("Read".into());
+        fx.fact(Tool::Claude, "s1", None, FactKind::FileEdit, "rs", 9);
+        fx.fact(Tool::Claude, "s1", None, FactKind::Slash, "tm", 9);
+        fx.fact(
+            Tool::Claude,
+            "s1",
+            None,
+            FactKind::Pr,
+            "tmgr-dev/frontend",
+            9,
+        )
+        .value = Some(497);
+        fx.link_all();
+        fx
+    }
+
+    fn sample() -> serde_json::Value {
+        serde_json::to_value(rich_fixture().build().unwrap()).unwrap()
+    }
+
+    fn violations(edit: impl FnOnce(&mut serde_json::Value)) -> Vec<String> {
+        let mut v = sample();
+        edit(&mut v);
+        validate_json(&v, t(100_000)).unwrap_err()
+    }
+
+    fn set(v: &mut serde_json::Value, pointer: &str, to: serde_json::Value) {
+        *v.pointer_mut(pointer).unwrap() = to;
+    }
+
+    fn rejects(pointer: &str, to: serde_json::Value, expect: &str) {
+        let errs = violations(|v| set(v, pointer, to));
+        assert!(errs.iter().any(|e| e.starts_with(expect)), "{errs:?}");
+    }
+
+    #[test]
+    fn the_builders_own_output_validates() {
+        let v = sample();
+        assert!(!v["nodes"].as_array().unwrap().is_empty());
+        assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+        let rescue = serde_json::to_value(rescue_fixture().build().unwrap()).unwrap();
+        assert_eq!(validate_json(&rescue, t(100_000)), Ok(()));
+    }
+
+    #[test]
+    fn unknown_fields_are_rejected_at_every_level() {
+        for (pointer, expect) in [
+            ("", "body"),
+            ("/task", "task"),
+            ("/totals/tokens", "totals.tokens"),
+            ("/nodes/0", "nodes[0]"),
+            ("/nodes/0/tokens", "nodes[0].tokens"),
+            ("/context", "context"),
+            ("/context/file_edits", "context.file_edits"),
+            ("/truncated", "truncated"),
+        ] {
+            let errs = violations(|v| {
+                let o = if pointer.is_empty() {
+                    v
+                } else {
+                    v.pointer_mut(pointer).unwrap()
+                };
+                o.as_object_mut().unwrap().insert("extra".into(), 1.into());
+            });
+            assert_eq!(errs, vec![format!("{expect}: unknown field")]);
+        }
+    }
+
+    #[test]
+    fn missing_fields_and_wrong_types_are_rejected() {
+        let errs = violations(|v| {
+            v["totals"].as_object_mut().unwrap().remove("events");
+        });
+        assert_eq!(errs, vec!["totals.events: missing"]);
+        rejects("/totals/events", serde_json::json!(1.5), "totals.events");
+        rejects("/totals/events", serde_json::json!(2.0), "totals.events");
+        rejects("/totals/events", serde_json::json!("5"), "totals.events");
+        rejects("/totals/events", serde_json::json!(-1), "totals.events");
+        rejects(
+            "/totals/events",
+            serde_json::json!(1u64 << 54),
+            "totals.events",
+        );
+        rejects(
+            "/totals/tokens/input",
+            serde_json::json!(null),
+            "totals.tokens.input",
+        );
+        rejects(
+            "/truncated/nodes",
+            serde_json::json!("false"),
+            "truncated.nodes",
+        );
+        rejects("/task", serde_json::json!([]), "task");
+        let ok = violations(|v| {
+            v["totals"]["waiting_ms"] = serde_json::json!(1.5);
+        });
+        assert_eq!(ok, vec!["totals.waiting_ms: invalid integer"]);
+        let mut v = sample();
+        v["totals"]["waiting_ms"] = serde_json::json!(5);
+        assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+    }
+
+    #[test]
+    fn cost_needs_six_decimals_at_most_and_a_sane_range() {
+        rejects(
+            "/totals/cost_usd",
+            serde_json::json!(0.1234567),
+            "totals.cost_usd",
+        );
+        rejects(
+            "/totals/cost_usd",
+            serde_json::json!(-0.5),
+            "totals.cost_usd",
+        );
+        rejects(
+            "/totals/cost_usd",
+            serde_json::json!(1_000_000.5),
+            "totals.cost_usd",
+        );
+        rejects(
+            "/nodes/0/cost_usd",
+            serde_json::json!("1.0"),
+            "nodes[0].cost_usd",
+        );
+        let mut v = sample();
+        set(&mut v, "/totals/cost_usd", serde_json::json!(123.456789));
+        set(&mut v, "/nodes/0/cost_usd", serde_json::json!(0));
+        assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+    }
+
+    #[test]
+    fn names_models_and_other_strings_follow_the_server_patterns() {
+        for bad in [
+            "a/b",
+            "a@b",
+            "a..b",
+            ".hidden",
+            "~/x",
+            "/etc/passwd",
+            "me@example.com",
+            "fix the login bug",
+            "",
+            "x\u{e9}",
+            &"a".repeat(129),
+        ] {
+            rejects(
+                "/nodes/0/agent_type",
+                serde_json::json!(bad),
+                "nodes[0].agent_type",
+            );
+            rejects("/task/workspace", serde_json::json!(bad), "task.workspace");
+            rejects(
+                "/context/skills/0/name",
+                serde_json::json!(bad),
+                "context.skills[0].name",
+            );
+        }
+        rejects(
+            "/task/ref",
+            serde_json::json!("TM 571"),
+            "task.ref: invalid characters",
+        );
+        for bad in [
+            "claude/opus",
+            "a b",
+            ".x",
+            "m@",
+            "m@x/y",
+            "m@aaaaaaaaaaaaaaaaa",
+            "m@a@b",
+        ] {
+            rejects("/nodes/0/model", serde_json::json!(bad), "nodes[0].model");
+        }
+        for ok in ["claude-opus-5-5", "gpt-6.1:x", "_m", "m@high", "x@a_b-1"] {
+            let mut v = sample();
+            set(&mut v, "/nodes/0/model", serde_json::json!(ok));
+            assert_eq!(validate_json(&v, t(100_000)), Ok(()), "{ok}");
+        }
+        let mut v = sample();
+        set(&mut v, "/nodes/0/model", serde_json::json!(null));
+        set(&mut v, "/nodes/0/origin", serde_json::json!(null));
+        assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+        rejects(
+            "/context/agents/0/version",
+            serde_json::json!("1/2"),
+            "context.agents[0].version",
+        );
+        rejects(
+            "/context/agents/0/version",
+            serde_json::json!(":1"),
+            "context.agents[0].version",
+        );
+        rejects(
+            "/context/file_edits/extensions/0/name",
+            serde_json::json!("r.s"),
+            "context.file_edits.extensions[0].name",
+        );
+        rejects(
+            "/context/file_edits/extensions/0/name",
+            serde_json::json!("a".repeat(17)),
+            "context.file_edits.extensions[0].name",
+        );
+    }
+
+    #[test]
+    fn repo_and_pr_number_are_checked() {
+        for bad in [
+            "a/b/c",
+            "a",
+            "/b",
+            "a/",
+            ".a/b",
+            "a/.b",
+            "a b/c",
+            "a/b@c",
+            &format!("{}/b", "a".repeat(65)),
+        ] {
+            rejects(
+                "/context/prs/0/repo",
+                serde_json::json!(bad),
+                "context.prs[0].repo",
+            );
+        }
+        rejects(
+            "/context/prs/0/number",
+            serde_json::json!(0),
+            "context.prs[0].number",
+        );
+        rejects(
+            "/context/prs/0/number",
+            serde_json::json!((1u64 << 31) + 1),
+            "context.prs[0].number",
+        );
+    }
+
+    #[test]
+    fn enums_ids_and_timestamps_are_checked() {
+        rejects("/schema", serde_json::json!("task_usage.v2"), "schema");
+        rejects("/source_id", serde_json::json!("bad id"), "source_id");
+        rejects("/source_id", serde_json::json!("a".repeat(65)), "source_id");
+        rejects(
+            "/nodes/0/tool",
+            serde_json::json!("gemini"),
+            "nodes[0].tool",
+        );
+        rejects("/nodes/0/link", serde_json::json!("maybe"), "nodes[0].link");
+        rejects(
+            "/period/from",
+            serde_json::json!("yesterday"),
+            "period.from",
+        );
+        rejects("/task/id", serde_json::json!(0), "task.id");
+        rejects("/nodes/0/depth", serde_json::json!(33), "nodes[0].depth");
+        rejects(
+            "/nodes/0/id",
+            serde_json::json!("a".repeat(33)),
+            "nodes[0].id",
+        );
+        let mut v = sample();
+        set(&mut v, "/task/id", serde_json::json!(null));
+        v["limits"] = serde_json::json!([
+            {"tool": "codex", "window": "week_opus", "used_pct": 12.5, "approximate": true}
+        ]);
+        assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+        for (field, bad) in [("window", "month"), ("tool", "x"), ("used_pct", "5")] {
+            let mut w = v.clone();
+            w["limits"][0][field] = serde_json::json!(bad);
+            assert!(validate_json(&w, t(100_000)).is_err(), "{field}");
+        }
+        for pct in [-1.0, 100.5] {
+            let mut w = v.clone();
+            w["limits"][0]["used_pct"] = serde_json::json!(pct);
+            assert!(validate_json(&w, t(100_000)).is_err());
+        }
+    }
+
+    #[test]
+    fn generated_at_may_lead_the_clock_by_five_minutes_only() {
+        let v = sample();
+        assert_eq!(validate_json(&v, t(100_000) - Duration::minutes(5)), Ok(()));
+        let errs = validate_json(&v, t(100_000) - Duration::minutes(6)).unwrap_err();
+        assert_eq!(errs, vec!["generated_at: in the future"]);
+    }
+
+    #[test]
+    fn node_ids_parents_and_counts_are_checked() {
+        let errs = violations(|v| {
+            let n = v["nodes"].as_array_mut().unwrap();
+            let first = n[0].clone();
+            n.push(first);
+        });
+        assert!(
+            errs.iter().any(|e| e.ends_with("id: duplicate")),
+            "{errs:?}"
+        );
+        let errs = violations(|v| set(v, "/nodes/0/parent_id", serde_json::json!("zz")));
+        assert_eq!(errs, vec!["nodes[0].parent_id: not an earlier node"]);
+        let errs = violations(|v| {
+            let last = v["nodes"].as_array().unwrap().len() - 1;
+            let later = v["nodes"][last]["id"].clone();
+            set(v, "/nodes/0/parent_id", later);
+        });
+        assert_eq!(errs, vec!["nodes[0].parent_id: not an earlier node"]);
+        let errs = violations(|v| {
+            let n = v["nodes"].as_array_mut().unwrap();
+            let proto = n[0].clone();
+            n.clear();
+            for i in 0..=MAX_NODES {
+                let mut x = proto.clone();
+                x["id"] = format!("n{i}").into();
+                x["parent_id"] = serde_json::Value::Null;
+                n.push(x);
+            }
+        });
+        assert_eq!(errs, vec![format!("nodes: more than {MAX_NODES} entries")]);
+    }
+
+    #[test]
+    fn lists_are_capped_each_and_in_total() {
+        let errs = violations(|v| {
+            let item = serde_json::json!({"name": "x", "count": 1});
+            v["context"]["skills"] = vec![item; MAX_LIST + 1].into();
+        });
+        assert_eq!(
+            errs,
+            vec![format!("context.skills: more than {MAX_LIST} entries")]
+        );
+        let errs = violations(|v| {
+            let item = serde_json::json!({"name": "x", "count": 1});
+            for key in ["skills", "plugins", "slash_commands", "permission_modes"] {
+                let item = if key == "permission_modes" {
+                    serde_json::json!({"mode": "x", "count": 1})
+                } else {
+                    item.clone()
+                };
+                v["context"][key] = vec![item; MAX_LIST].into();
+            }
+            let tool = serde_json::json!({"name": "x", "count": 1, "errors": 0, "duration_ms": 0});
+            v["context"]["tools"] = vec![tool.clone(); MAX_LIST].into();
+            v["nodes"][0]["tools"] = vec![tool; MAX_LIST].into();
+        });
+        assert_eq!(
+            errs,
+            vec![format!(
+                "lists: more than {MAX_LISTS_TOTAL} entries in total"
+            )]
+        );
+    }
+
+    #[test]
+    fn a_body_over_256_kb_is_rejected() {
+        let errs = violations(|v| {
+            v["context"]["skills"][0]["name"] = "a".repeat(262_144).into();
+        });
+        assert!(
+            errs.contains(&"body: larger than 256 KB".to_string()),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn messages_never_echo_the_offending_value() {
+        let secret = "SECRET-VALUE";
+        let errs = violations(|v| {
+            v["source_id"] = secret.into();
+            v["generated_at"] = secret.into();
+            v["schema"] = secret.into();
+            v["task"]["workspace"] = secret.replace('-', "/").into();
+            v["task"]["ref"] = format!("{secret} with spaces").into();
+            v["nodes"][0]["model"] = format!("{secret}/x").into();
+            v["nodes"][0]["tool"] = secret.into();
+            v["nodes"][0]["cost_usd"] = secret.into();
+            v["nodes"][0]["parent_id"] = secret.into();
+            v["nodes"][0]["id"] = format!("{secret}!").into();
+            v["context"]["prs"][0]["repo"] = format!("{secret}/a/b").into();
+            v["context"]["file_edits"]["extensions"][0]["name"] = format!("{secret}.").into();
+            v["context"]["agents"][0]["version"] = format!("{secret}/").into();
+            v["totals"]
+                .as_object_mut()
+                .unwrap()
+                .insert(secret.into(), 1.into());
+            v.as_object_mut().unwrap().insert(secret.into(), 1.into());
+        });
+        assert!(errs.len() >= 12, "{errs:?}");
+        assert!(errs.iter().all(|e| !e.contains("SECRET")), "{errs:?}");
     }
 }

@@ -208,11 +208,11 @@ pub struct AgentMeta {
     pub cwd: Option<String>,
 }
 
-/// A name as the tools write it: `[A-Za-z0-9._:+-]`, spaces read as `_`, at most `max` characters,
+/// A name as the tools write it: `[A-Za-z0-9._:+-]`, at most `max` characters,
 /// not starting with `.` and without `..`. Anything else becomes `other`, so a path, an email or free
 /// text is never kept, not even in a cleaned-up form.
 pub fn clean_name(raw: &str, max: usize) -> String {
-    let name = raw.trim().replace(' ', "_");
+    let name = raw.trim().to_string();
     let valid = !name.is_empty()
         && name.len() <= max
         && !name.starts_with('.')

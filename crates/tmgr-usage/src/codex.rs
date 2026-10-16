@@ -367,7 +367,10 @@ impl State {
         (ctx.sink)(ParsedRecord::Agent(AgentMeta {
             account: ctx.file.account.clone(),
             tool_session_id: self.session(ctx.file),
-            originator: p.originator.filter(|s| !s.is_empty()),
+            originator: p
+                .originator
+                .filter(|s| !s.is_empty())
+                .map(|s| s.replace(' ', "_")),
             source: match p.source {
                 Some(serde_json::Value::String(s)) => Some(s),
                 Some(serde_json::Value::Object(o)) => o.keys().next().cloned(),

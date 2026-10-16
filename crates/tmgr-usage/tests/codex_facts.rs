@@ -255,7 +255,7 @@ fn turn_and_compact_facts_and_agent_meta() {
     assert_eq!(keys, ["s1|compact|resp-1", "s1|compact|n2"]);
     assert_eq!(p.agents.len(), 1);
     let a = &p.agents[0];
-    assert_eq!(a.originator.as_deref(), Some("Claude Code"));
+    assert_eq!(a.originator.as_deref(), Some("Claude_Code"));
     assert_eq!(a.source.as_deref(), Some("vscode"));
     assert_eq!(a.version.as_deref(), Some("0.150.0"));
     assert_eq!(a.agent_id, None);

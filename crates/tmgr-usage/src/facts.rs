@@ -51,27 +51,17 @@ fn opt_name(v: &Option<String>) -> Option<String> {
         .map(|s| clean_name(s, MAX_NAME))
 }
 
-/// `owner/name` with each part kept to `[A-Za-z0-9_.-]`, or `_` when it is not a repository name.
+/// `owner/name` kept as is when each part is `[A-Za-z0-9_.-]`, otherwise `_` (never rewritten).
 pub fn clean_repo(raw: &str) -> String {
     let part = |p: &str, max: usize| {
-        let p: String = p
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-') {
-                    c
-                } else {
-                    '_'
-                }
-            })
-            .take(max)
-            .collect();
-        (!p.is_empty() && !p.starts_with('.')).then_some(p)
+        (1..=max).contains(&p.len())
+            && !p.starts_with('.')
+            && !p.contains("..")
+            && p.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
     };
     match raw.split_once('/') {
-        Some((owner, name)) if !name.contains('/') => match (part(owner, 64), part(name, 100)) {
-            (Some(o), Some(n)) => format!("{o}/{n}"),
-            _ => "_".into(),
-        },
+        Some((owner, name)) if part(owner, 64) && part(name, 100) => raw.to_string(),
         _ => "_".into(),
     }
 }
