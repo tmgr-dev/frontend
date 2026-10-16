@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.44 — 2026-10-16
+
+- Pages: images work like in Outline. Drag the side handles to resize (corners keep the proportions), align left, center, right or full width from the image toolbar, add a caption under the image, and click a selected image to open it full screen.
+- Pages: while an image uploads, a faded preview of it sits where it will land instead of the "Upload in progress" text over the line hint. Pasting or dropping an image works the same way, and retina screenshots keep their on-screen size.
+- Agent usage sync checks totals against the server's rules on your machine before uploading.
+
 ## 0.9.43 — 2026-10-16
 
 - Settings → Agent work (user menu): turn on Agent usage sync to upload per-task AI usage totals so web and mobile can show them, see what you uploaded, and delete it. Turning it off deletes everything already uploaded. Prompts, replies, file paths and command arguments are never uploaded.
