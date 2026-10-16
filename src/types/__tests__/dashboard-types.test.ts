@@ -94,6 +94,18 @@ describe('Dashboard Type Definitions', () => {
 			expect(isValidationErrorResponse(error)).toBe(true);
 		});
 
+		it('should reject an ApiErrorResponse without errors', () => {
+			const error = {
+				error: 'server_error',
+				message: 'Server error',
+				status_code: 500,
+				timestamp: new Date().toISOString(),
+			};
+
+			expect(isValidationErrorResponse(error)).toBe(false);
+			expect(isValidationErrorResponse({ ...error, errors: null })).toBe(false);
+		});
+
 		it('should validate NetworkErrorResponse structure', () => {
 			const error: NetworkErrorResponse = {
 				error: 'network_error',
