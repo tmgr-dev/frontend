@@ -690,6 +690,23 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
         events.push(ev);
         facts.push(fa);
     }
+    let mut live = vec![false; n];
+    for i in 0..n {
+        if events[i].is_empty() && facts[i].is_empty() {
+            continue;
+        }
+        let mut cur = Some(i);
+        for _ in 0..MAX_CHAIN {
+            let Some(c) = cur else { break };
+            live[c] = true;
+            cur = g.nodes[c].parent;
+        }
+    }
+    for i in 0..n {
+        if g.nodes[i].key.tool == Tool::Codex && !live[i] {
+            included[i] = false;
+        }
+    }
     Picked {
         events,
         facts,
@@ -1560,6 +1577,42 @@ mod tests {
         fx.linked_facts = vec![0];
         let a = fx.build().unwrap();
         assert_eq!(a.totals.events, 3);
+    }
+
+    #[test]
+    fn a_codex_session_outside_every_call_window_is_not_linked() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 10, Some(60));
+        fx.event(Tool::Codex, "cx1", None, 5000, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 5000);
+        fx.linked_events = vec![0];
+        fx.linked_facts = vec![0];
+        let a = fx.build().unwrap();
+        assert_eq!(a.nodes.len(), 1);
+        assert_eq!(a.totals.events, 1);
+    }
+
+    #[test]
+    fn codex_children_with_nothing_selected_for_the_task_are_dropped() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 0, Some(60));
+        fx.call("s1", None, "Bash", Some("codex"), "tu2", 3000, Some(3060));
+        fx.event(Tool::Codex, "cx1", None, 3020, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 3010);
+        fx.linked_events = vec![0];
+        fx.linked_facts = vec![0];
+        let a = fx.build().unwrap();
+        assert_eq!(a.nodes.len(), 1);
+        assert_eq!(a.totals.events, 1);
+        fx.linked_events = vec![];
+        fx.linked_facts = vec![1];
+        let b = fx.build().unwrap();
+        assert_eq!(b.nodes.len(), 2);
+        assert_eq!(b.totals.events, 1);
     }
 
     fn rescue_fixture() -> Fx {
