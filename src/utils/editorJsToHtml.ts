@@ -1,11 +1,10 @@
+import { listStart, normalizeBlocks, type ListItem } from '@/utils/editor';
 import DOMPurify from 'dompurify';
 
 interface Block {
 	type?: string;
 	data?: any;
 }
-
-type ListItem = string | { content?: string; items?: ListItem[] };
 
 const escapeHtml = (value: unknown): string =>
 	String(value ?? '')
@@ -30,17 +29,22 @@ const codeboxText = (value: unknown): string =>
 const caption = (value: unknown): string =>
 	html(value) ? `<figcaption>${html(value)}</figcaption>` : '';
 
-const renderList = (items: unknown, ordered: boolean): string => {
-	if (!Array.isArray(items) || items.length === 0) return '';
-	const tag = ordered ? 'ol' : 'ul';
-	const lis = (items as ListItem[])
-		.map((item) =>
-			typeof item === 'string'
-				? `<li>${item}</li>`
-				: `<li>${html(item?.content)}${renderList(item?.items, ordered)}</li>`,
-		)
+const renderList = (items: ListItem[], style: string, start = 1): string => {
+	if (items.length === 0) return '';
+	if (style === 'checklist')
+		return `<ul class="checklist">${items
+			.map(
+				(item) =>
+					`<li><input type="checkbox" disabled${
+						item.meta.checked ? ' checked' : ''
+					}> <div>${item.content}${renderList(item.items, style)}</div></li>`,
+			)
+			.join('')}</ul>`;
+	const tag = style === 'ordered' ? 'ol' : 'ul';
+	const lis = items
+		.map((item) => `<li>${item.content}${renderList(item.items, style)}</li>`)
 		.join('');
-	return `<${tag}>${lis}</${tag}>`;
+	return `<${tag}${start > 1 ? ` start="${start}"` : ''}>${lis}</${tag}>`;
 };
 
 const renderTable = (data: any): string => {
@@ -70,19 +74,7 @@ const renderBlock = ({ type, data = {} }: Block): string => {
 		case 'paragraph':
 			return `<p>${html(data.text)}</p>`;
 		case 'list':
-			return renderList(data.items, data.style === 'ordered');
-		case 'checklist':
-			return `<ul class="checklist">${(Array.isArray(data.items)
-				? data.items
-				: []
-			)
-				.map(
-					(item: any) =>
-						`<li><input type="checkbox" disabled${
-							item?.checked ? ' checked' : ''
-						}> <span>${html(item?.text)}</span></li>`,
-				)
-				.join('')}</ul>`;
+			return renderList(data.items, data.style, listStart(data.meta));
 		case 'quote':
 			return `<blockquote><p>${html(data.text)}</p>${caption(
 				data.caption,
@@ -148,22 +140,9 @@ const sanitize = (body: string): string => {
 	return root.innerHTML;
 };
 
-const parse = (data: unknown): Block[] => {
-	let value = data;
-	if (typeof value === 'string') {
-		try {
-			value = JSON.parse(value);
-		} catch {
-			return [];
-		}
-	}
-	const blocks = (value as { blocks?: unknown } | null | undefined)?.blocks;
-	return Array.isArray(blocks) ? blocks : [];
-};
-
 export default function editorJsToHtml(data: unknown): string {
-	const body = parse(data)
-		.filter((block): block is Block => !!block && typeof block === 'object')
+	const body = normalizeBlocks(data)
+		.blocks.filter((block): block is Block => !!block && typeof block === 'object')
 		.map(renderBlock)
 		.join('');
 	return body ? sanitize(body) : '';

@@ -99,6 +99,80 @@ describe('editorJsToHtml', () => {
 		expect(root.textContent).toContain('todo');
 	});
 
+	it('renders list@2 ordered, unordered and nested lists', () => {
+		const item = (content: string, items: unknown[] = []) => ({
+			content,
+			meta: {},
+			items,
+		});
+		expect(
+			render({
+				type: 'list',
+				data: {
+					style: 'ordered',
+					meta: { counterType: 'numeric' },
+					items: [item('a', [item('a1')]), item('b')],
+				},
+			}),
+		).toBe('<ol><li>a<ol><li>a1</li></ol></li><li>b</li></ol>');
+		expect(
+			render({
+				type: 'list',
+				data: { style: 'unordered', meta: {}, items: [item('<b>x</b>')] },
+			}),
+		).toBe('<ul><li><b>x</b></li></ul>');
+	});
+
+	it('keeps a valid ordered list start through sanitize, top level only', () => {
+		const ordered = (start: unknown) =>
+			render({
+				type: 'list',
+				data: {
+					style: 'ordered',
+					meta: { start, counterType: 'numeric' },
+					items: [{ content: 'a', meta: {}, items: [{ content: 'a1', meta: {}, items: [] }] }],
+				},
+			});
+		expect(ordered(5)).toBe('<ol start="5"><li>a<ol><li>a1</li></ol></li></ol>');
+		expect(parse(ordered(5)).querySelector('ol')!.start).toBe(5);
+		for (const start of [1, 0, -2, 2.5, '7', '" onclick="x', undefined])
+			expect(ordered(start)).toBe('<ol><li>a<ol><li>a1</li></ol></li></ol>');
+	});
+
+	it('renders list@2 checklists with nested items as disabled checkboxes', () => {
+		const root = parse(
+			render({
+				type: 'list',
+				data: {
+					style: 'checklist',
+					meta: {},
+					items: [
+						{
+							content: 'parent',
+							meta: { checked: true },
+							items: [{ content: 'child', meta: { checked: false }, items: [] }],
+						},
+						{ content: 'todo', meta: { checked: false }, items: [] },
+					],
+				},
+			}),
+		);
+		const outer = root.querySelector('ul.checklist')!;
+		const nested = outer.querySelector('li ul.checklist')!;
+		expect(nested.textContent).toBe(' child');
+		const boxes = [...root.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
+		expect(boxes.map((box) => box.checked)).toEqual([true, false, false]);
+		expect(boxes.every((box) => box.disabled)).toBe(true);
+		expect(root.textContent).toContain('todo');
+	});
+
+	it('renders nothing for empty or malformed lists', () => {
+		expect(render({ type: 'list', data: { style: 'unordered', items: [] } })).toBe('');
+		expect(render({ type: 'checklist', data: { items: [] } })).toBe('');
+		expect(render({ type: 'checklist', data: { items: [null, 1] } })).toBe('');
+		expect(render({ type: 'list', data: { style: 'checklist', meta: {}, items: [] } })).toBe('');
+	});
+
 	it('renders quote, warning, delimiter and code', () => {
 		expect(render({ type: 'quote', data: { text: 'q', caption: 'c' } })).toBe(
 			'<blockquote><p>q</p><figcaption>c</figcaption></blockquote>',

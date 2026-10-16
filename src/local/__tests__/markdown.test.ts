@@ -58,6 +58,38 @@ it('converts Editor.js descriptions', () => {
 	);
 });
 
+it('converts list@2 descriptions and drops empty lists', () => {
+	const item = (content: string, meta = {}, items: unknown[] = []) => ({ content, meta, items });
+	const md = editorJsToMarkdown({
+		blocks: [
+			{ type: 'list', data: { style: 'unordered', meta: {}, items: [item('a', {}, [item('<b>a1</b>')])] } },
+			{ type: 'list', data: { style: 'ordered', meta: { counterType: 'numeric' }, items: [item('one'), item('two')] } },
+			{
+				type: 'list',
+				data: {
+					style: 'checklist',
+					meta: {},
+					items: [item('done', { checked: true }, [item('sub', { checked: false })]), item('todo', { checked: false })],
+				},
+			},
+			{ type: 'checklist', data: { items: [] } },
+			{ type: 'list', data: { style: 'checklist', meta: {}, items: [] } },
+		],
+	});
+	expect(md).toBe('- a\n  - **a1**\n\n1. one\n2. two\n\n- [x] done\n  - [ ] sub\n- [ ] todo');
+});
+
+it('numbers ordered lists from meta.start at the top level only', () => {
+	const item = (content: string, items: unknown[] = []) => ({ content, meta: {}, items });
+	const ordered = (start: unknown) =>
+		editorJsToMarkdown({
+			blocks: [{ type: 'list', data: { style: 'ordered', meta: { start }, items: [item('a', [item('a1')]), item('b')] } }],
+		});
+	expect(ordered(5)).toBe('5. a\n  1. a1\n6. b');
+	expect(ordered(0)).toBe('1. a\n  1. a1\n2. b');
+	expect(ordered('3')).toBe('1. a\n  1. a1\n2. b');
+});
+
 it('exports a workspace as a README index plus one file per task', () => {
 	const files = exportWorkspaceFiles(
 		'Personal',

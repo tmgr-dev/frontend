@@ -1,4 +1,5 @@
 /** Markdown export of local workspaces: one file per task plus a README index. Pure functions. */
+import { listStart, normalizeBlocks, type ListItem } from '@/utils/editor';
 
 export interface ExportTask {
 	id: number;
@@ -60,30 +61,24 @@ const stripHtml = (html: string) =>
 		.replace(/&gt;/g, '>')
 		.replace(/&amp;/g, '&');
 
-const listItems = (items: any[], ordered: boolean, depth = 0): string[] =>
+const listItems = (items: ListItem[], style: string, depth = 0, start = 1): string[] =>
 	items.flatMap((item, index) => {
-		const text = typeof item === 'string' ? item : (item?.content ?? item?.text ?? '');
-		const marker = ordered ? `${index + 1}.` : '-';
-		const line = `${'  '.repeat(depth)}${marker} ${stripHtml(String(text))}`;
-		const children = Array.isArray(item?.items) ? listItems(item.items, ordered, depth + 1) : [];
-		return [line, ...children];
+		const marker =
+			style === 'checklist' ? `- [${item.meta.checked ? 'x' : ' '}]` : style === 'ordered' ? `${start + index}.` : '-';
+		const line = `${'  '.repeat(depth)}${marker} ${stripHtml(item.content)}`;
+		return [line, ...listItems(item.items, style, depth + 1)];
 	});
 
 /** Editor.js blocks → Markdown for the block types the task editor offers. */
 export const editorJsToMarkdown = (doc: any): string => {
-	const blocks: any[] = Array.isArray(doc?.blocks) ? doc.blocks : [];
-	return blocks
-		.map((block) => {
+	return normalizeBlocks(doc)
+		.blocks.map((block) => {
 			const data = block?.data ?? {};
 			switch (block?.type) {
 				case 'header':
 					return `${'#'.repeat(Math.min(6, Math.max(2, Number(data.level) || 2)))} ${stripHtml(data.text ?? '')}`;
 				case 'list':
-					return listItems(data.items ?? [], data.style === 'ordered').join('\n');
-				case 'checklist':
-					return (data.items ?? [])
-						.map((item: any) => `- [${item.checked ? 'x' : ' '}] ${stripHtml(item.text ?? '')}`)
-						.join('\n');
+					return listItems(data.items, data.style, 0, listStart(data.meta)).join('\n');
 				case 'code':
 					return '```\n' + (data.code ?? '') + '\n```';
 				case 'quote':
