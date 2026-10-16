@@ -24,7 +24,6 @@
 		LoginGithubRequest,
 		loginGoogle,
 		LoginGoogleRequest,
-		LoginRequest,
 		loginTelegram,
 		LoginWithCodeRequest,
 		setTokenAndHeaders,
@@ -47,11 +46,6 @@
 
 	const router = useRouter();
 	const route = useRoute();
-
-	const form = ref({
-		email: '',
-		password: '',
-	} as LoginRequest);
 
 	// @todo for savayer only. Find out how to make it global
 	const isLoading = ref(false);
