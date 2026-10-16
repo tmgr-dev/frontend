@@ -1,4 +1,5 @@
 pub mod aggregate;
+pub mod bind;
 pub mod claude;
 pub mod codex;
 pub mod collector;

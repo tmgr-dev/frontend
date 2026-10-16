@@ -12,7 +12,7 @@ use crate::model::{
     Account, AgentMeta, Fact, FactEnd, FactKind, ParsedRecord, Tokens, Tool, UsageEvent,
 };
 
-pub const PARSER_VERSION: u32 = 3;
+pub const PARSER_VERSION: u32 = 4;
 const MAX_META_BYTES: u64 = 64 * 1024;
 const MAX_SLASH_BYTES: usize = 128;
 const INTERPRETERS: [&str; 12] = [
@@ -133,6 +133,41 @@ struct Input {
     command: Option<String>,
     file_path: Option<String>,
     notebook_path: Option<String>,
+    #[serde(rename = "taskId")]
+    task_id: Option<WorkId>,
+    #[serde(rename = "runId")]
+    run_id: Option<WorkId>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum WorkId {
+    Num(u64),
+    Text(String),
+    Other(serde::de::IgnoredAny),
+}
+
+impl WorkId {
+    fn value(&self) -> Option<u64> {
+        match self {
+            WorkId::Num(n) => Some(*n),
+            WorkId::Text(t) => t.trim().parse().ok(),
+            WorkId::Other(_) => None,
+        }
+    }
+}
+
+fn agent_work(name: &str, input: Option<&Input>) -> Option<(&'static str, u64)> {
+    let input = input?;
+    if name.ends_with("__start_agent_work") {
+        Some(("agent_work_start", input.task_id.as_ref()?.value()?))
+    } else if name.ends_with("__update_agent_work") {
+        Some(("agent_work_update", input.run_id.as_ref()?.value()?))
+    } else if name.ends_with("__finish_agent_work") {
+        Some(("agent_work_finish", input.run_id.as_ref()?.value()?))
+    } else {
+        None
+    }
 }
 
 #[derive(Deserialize)]
@@ -577,13 +612,16 @@ fn tool_use_facts(
             .map(|_| "codex".to_string()),
         _ => None,
     };
+    let work = agent_work(name, input);
     sink(ParsedRecord::Fact(Fact {
         name: name.to_string(),
         detail,
         target: input
             .and_then(|i| i.run_in_background)
             .filter(|b| *b)
-            .map(|_| "background".to_string()),
+            .map(|_| "background".to_string())
+            .or(work.map(|(t, _)| t.to_string())),
+        value: work.map(|(_, v)| v),
         ..fact(FactKind::ToolCall, id, ts)
     }));
     match (name, input) {

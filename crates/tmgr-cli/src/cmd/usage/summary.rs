@@ -1,5 +1,5 @@
 use super::fmt::{count, money, round6, total_tokens, BASIS_NOTE};
-use super::runs::{self, RunSet, WantedTask};
+use super::runs::{self, Linker, RunSet, WantedTask};
 use super::{fail, scan, ScanTotals, Usage};
 use crate::cli_usage::{By, SummaryArgs, ToolArg};
 use crate::ctx::Ctx;
@@ -11,7 +11,7 @@ use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::runs::day_bounds;
 use tmgr_core::text::sanitize_line;
-use tmgr_usage::link::{attribute_at, LinkEvent, LinkReport};
+use tmgr_usage::link::{LinkEvent, LinkReport};
 use tmgr_usage::{Filters, GroupBy, Query, Report, Row, Tokens, Tool, Tz};
 
 struct Window {
@@ -456,7 +456,9 @@ fn task_view(
     }
     let events = task_events(u, args, w)?;
     let set = runs::collect(ctx, w.from, w.to, now);
-    let report = attribute_at(&events, &set.windows, now);
+    let facts = u.store.facts(w.from, w.to).map_err(fail)?;
+    let agents = u.store.agents().map_err(fail)?;
+    let report = Linker::new(&set, &events, &facts, &agents, now).attribute(&events);
     let linking = linking_json(&set, &report);
     let unpriced = events.iter().filter(|e| e.cost_usd.is_none()).count() as u64;
     match want {

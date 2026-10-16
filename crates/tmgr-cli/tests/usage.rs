@@ -2115,3 +2115,271 @@ fn usage_task_for_an_unlinked_task_says_so_and_a_bad_ref_exits_two() {
     let bad = u.run(&["usage", "task", "not-a-ref"]);
     assert_eq!(bad.status.code(), Some(2), "{}", text(&bad.stderr));
 }
+
+struct Call<'a> {
+    id: &'a str,
+    name: &'a str,
+    input: String,
+}
+
+fn work_line(session: &str, clock: &str, msg: &str, side: bool, calls: &[Call]) -> String {
+    let blocks: Vec<String> = calls
+        .iter()
+        .map(|c| {
+            format!(
+                r#"{{"type":"tool_use","id":"{}","name":"{}","input":{}}}"#,
+                c.id, c.name, c.input
+            )
+        })
+        .collect();
+    format!(
+        r#"{{"type":"assistant","sessionId":"{session}","timestamp":"{}","cwd":"/work/orch","gitBranch":"main","isSidechain":{side},"requestId":"req-{msg}","message":{{"id":"{msg}","model":"claude-test-opus-1","content":[{}],"usage":{{"input_tokens":1000,"output_tokens":100,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}}}"#,
+        at(-2, clock),
+        blocks.join(",")
+    )
+}
+
+fn subagent(u: &U, session: &str, id: &str, meta: &str, lines: &[String]) {
+    u.session_file(
+        &format!("-orch/{session}/subagents/agent-{id}.jsonl"),
+        lines,
+    );
+    let path = u.p(&format!(
+        "claude/projects/-orch/{session}/subagents/agent-{id}.meta.json"
+    ));
+    std::fs::write(path, meta).unwrap();
+}
+
+fn agent_call(id: &str) -> Call<'_> {
+    Call {
+        id,
+        name: "Agent",
+        input: r#"{"subagent_type":"general-purpose"}"#.into(),
+    }
+}
+
+fn start_call<'a>(id: &'a str, task: u64) -> Call<'a> {
+    Call {
+        id,
+        name: "mcp__tmgr__start_agent_work",
+        input: format!(r#"{{"taskId":{task},"agent":"claude-code","branch":"feat/other"}}"#),
+    }
+}
+
+fn finish_call<'a>(id: &'a str, run: u64) -> Call<'a> {
+    Call {
+        id,
+        name: "mcp__tmgr__finish_agent_work",
+        input: format!(
+            r#"{{"runId":{run},"summary":"SECRET-SUMMARY","commits":["abc SECRET-COMMIT"],"prUrl":"https://example.com/SECRET-PR"}}"#
+        ),
+    }
+}
+
+fn owner_shape(u: &U) {
+    u.seed_prices();
+    u.session_file(
+        "-orch/sess-o.jsonl",
+        &[
+            work_line("sess-o", "11:50:00", "o1", false, &[]),
+            work_line("sess-o", "12:00:30", "o2", false, &[agent_call("tuL")]),
+            work_line("sess-o", "12:25:00", "o3", false, &[]),
+        ],
+    );
+    subagent(
+        u,
+        "sess-o",
+        "l1",
+        r#"{"agentType":"general-purpose","toolUseId":"tuL"}"#,
+        &[
+            work_line("sess-o", "12:01:00", "l1a", true, &[start_call("tl1", 2)]),
+            work_line("sess-o", "12:05:00", "l1b", true, &[agent_call("tuW")]),
+            work_line("sess-o", "12:10:00", "l1c", true, &[]),
+            work_line("sess-o", "12:20:00", "l1d", true, &[finish_call("tl2", 1)]),
+        ],
+    );
+    subagent(
+        u,
+        "sess-o",
+        "w1",
+        r#"{"agentType":"general-purpose","parentAgentId":"l1","toolUseId":"tuW"}"#,
+        &[work_line("sess-o", "12:12:00", "w1a", true, &[])],
+    );
+    let ws = Local::workspace(u, "personal");
+    ws.task("personal", "One");
+    ws.task("personal", "Two");
+    ws.run(
+        "personal",
+        2,
+        None,
+        Some("feat/other"),
+        &at(-2, "12:00:00"),
+        &at(-2, "12:30:00"),
+    );
+}
+
+#[test]
+fn agent_work_calls_link_a_lead_and_its_workers_but_not_the_orchestrator() {
+    let u = U::new();
+    owner_shape(&u);
+    let out = u.ok(&["--json", "usage", "task", "WK-2"]);
+    let v = stdout_json(&out);
+    assert_valid("usage_task", &v);
+    let a = &v["data"]["aggregate"];
+    assert_eq!(a["totals"]["events"], 5, "{v}");
+    assert_eq!(v["data"]["linking"]["linked_events"], 5);
+    assert_eq!(v["data"]["linking"]["linked_facts"], 3);
+    let nodes = a["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 3, "{nodes:?}");
+    assert_eq!(nodes[0]["agent_type"], "main");
+    assert_eq!(nodes[0]["events"], 0);
+    assert_eq!(nodes[1]["parent_id"], nodes[0]["id"]);
+    assert_eq!(nodes[1]["events"], 4);
+    assert_eq!(nodes[2]["parent_id"], nodes[1]["id"]);
+    assert_eq!(nodes[2]["events"], 1);
+
+    let by_task = u.json(&["usage", "--task", "WK-2", "--month"]);
+    assert_eq!(
+        by_task["data"]["task"]["link_methods"]["agent_work_run"], 5,
+        "{by_task}"
+    );
+
+    let mut files = Vec::new();
+    data_files(&u.p("data"), &mut files);
+    let raw = text(&out.stdout);
+    for leak in [
+        "SECRET-SUMMARY",
+        "SECRET-COMMIT",
+        "SECRET-PR",
+        "example.com",
+    ] {
+        assert!(!raw.contains(leak), "{leak} leaked in output");
+        for f in &files {
+            let bytes = std::fs::read(f).unwrap();
+            assert!(
+                !bytes.windows(leak.len()).any(|w| w == leak.as_bytes()),
+                "{leak} leaked into {f:?}"
+            );
+        }
+    }
+}
+
+fn two_task_workspace(u: &U) {
+    let ws = Local::workspace(u, "personal");
+    ws.task("personal", "One");
+    ws.task("personal", "Two");
+    for task in [1, 2] {
+        ws.run(
+            "personal",
+            task,
+            None,
+            Some("feat/other"),
+            &at(-2, "12:00:00"),
+            &at(-2, "12:30:00"),
+        );
+    }
+}
+
+#[test]
+fn a_start_call_alone_links_likely_and_the_text_says_so() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-orch/sess-o.jsonl",
+        &[work_line(
+            "sess-o",
+            "12:00:30",
+            "o1",
+            false,
+            &[agent_call("tuL")],
+        )],
+    );
+    subagent(
+        &u,
+        "sess-o",
+        "l1",
+        r#"{"agentType":"general-purpose","toolUseId":"tuL"}"#,
+        &[
+            work_line("sess-o", "12:01:30", "l1a", true, &[start_call("tl1", 2)]),
+            work_line("sess-o", "12:10:00", "l1b", true, &[]),
+        ],
+    );
+    two_task_workspace(&u);
+    let v = u.json(&["usage", "--task", "WK-2", "--month"]);
+    assert_eq!(v["data"]["task"]["link_methods"]["agent_work_task"], 2);
+    let human = text(&u.ok(&["usage", "task", "WK-2"]).stdout);
+    assert!(human.contains("some by task id only: likely"), "{human}");
+}
+
+#[test]
+fn a_start_call_without_a_run_start_nearby_and_a_run_id_outside_the_window_bind_nothing() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-orch/sess-o.jsonl",
+        &[work_line(
+            "sess-o",
+            "12:00:30",
+            "o1",
+            false,
+            &[agent_call("tuL")],
+        )],
+    );
+    subagent(
+        &u,
+        "sess-o",
+        "l1",
+        r#"{"agentType":"general-purpose","toolUseId":"tuL"}"#,
+        &[
+            work_line("sess-o", "12:05:00", "l1a", true, &[start_call("tl1", 2)]),
+            work_line("sess-o", "13:10:00", "l1b", true, &[finish_call("tl2", 1)]),
+        ],
+    );
+    two_task_workspace(&u);
+    let v = u.json(&["usage", "task", "WK-2"]);
+    assert!(v["data"]["aggregate"].is_null(), "{v}");
+    assert_eq!(v["data"]["linking"]["linked_events"], 0);
+}
+
+#[test]
+fn parallel_leads_on_two_tasks_each_link_to_their_own_task_once() {
+    let u = U::new();
+    u.seed_prices();
+    u.session_file(
+        "-orch/sess-o.jsonl",
+        &[work_line(
+            "sess-o",
+            "12:00:30",
+            "o1",
+            false,
+            &[agent_call("tuA"), agent_call("tuB")],
+        )],
+    );
+    for (id, tool_use, task) in [("a1", "tuA", 1), ("b1", "tuB", 2)] {
+        let msg = |n: &str| format!("{id}{n}");
+        subagent(
+            &u,
+            "sess-o",
+            id,
+            &format!(r#"{{"agentType":"general-purpose","toolUseId":"{tool_use}"}}"#),
+            &[
+                work_line(
+                    "sess-o",
+                    "12:01:00",
+                    &msg("a"),
+                    true,
+                    &[start_call(&format!("t{id}"), task)],
+                ),
+                work_line("sess-o", "12:10:00", &msg("b"), true, &[]),
+                work_line("sess-o", "12:11:00", &msg("c"), true, &[]),
+            ],
+        );
+    }
+    two_task_workspace(&u);
+    for task in ["WK-1", "WK-2"] {
+        let v = u.json(&["usage", "task", task]);
+        assert_eq!(v["data"]["aggregate"]["totals"]["events"], 3, "{task}: {v}");
+        assert_eq!(v["data"]["linking"]["ambiguous_events"], 0);
+        assert_eq!(v["data"]["linking"]["linked_events"], 6);
+    }
+}

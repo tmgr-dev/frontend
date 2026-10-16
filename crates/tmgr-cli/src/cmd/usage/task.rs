@@ -1,5 +1,5 @@
 use super::fmt::{count, money, span};
-use super::runs::{self, WantedTask};
+use super::runs::{self, Linker, WantedTask};
 use super::summary::linking_json;
 use super::{fail, scan, Usage};
 use crate::cli_usage::TaskArgs;
@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::text::sanitize_line;
-use tmgr_usage::link::{attribute_at, Link};
+use tmgr_usage::link::{Link, LinkMethod};
 use tmgr_usage::task::{
     build, facts_as_events, LimitKind, LinkKind, Node, TaskIdent, TaskInput, TaskUsageAggregate,
 };
@@ -40,9 +40,10 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
     let facts = u.store.facts(from, to).map_err(fail)?;
     let agents = u.store.agents().map_err(fail)?;
     let set = runs::collect(ctx, from, to, now);
-    let report = attribute_at(&events, &set.windows, now);
     let fact_events = facts_as_events(&facts, &events);
-    let fact_report = attribute_at(&fact_events, &set.windows, now);
+    let linker = Linker::new(&set, &events, &facts, &agents, now);
+    let report = linker.attribute(&events);
+    let fact_report = linker.attribute(&fact_events);
     let matching = |links: &[Link]| -> Vec<usize> {
         links
             .iter()
@@ -127,7 +128,18 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
             ),
         );
     }
-    let human = render(&aggregate, title.as_deref(), args.tree, &ctx.style);
+    let by_task_id = report
+        .links
+        .iter()
+        .chain(&fact_report.links)
+        .any(|l| l.method == LinkMethod::AgentWorkTask && set.task_matches(&l.run_ref, &want));
+    let human = render(
+        &aggregate,
+        title.as_deref(),
+        args.tree,
+        by_task_id,
+        &ctx.style,
+    );
     Ok(Output::new(
         json!({"basis": "api_equivalent", "aggregate": aggregate, "title": title, "linking": linking}),
         human,
@@ -386,7 +398,13 @@ fn context_lines(a: &TaskUsageAggregate, style: &Style) -> Vec<String> {
     out
 }
 
-fn render(a: &TaskUsageAggregate, title: Option<&str>, tree: bool, style: &Style) -> String {
+fn render(
+    a: &TaskUsageAggregate,
+    title: Option<&str>,
+    tree: bool,
+    by_task_id: bool,
+    style: &Style,
+) -> String {
     let mut head = style.bold(&sanitize_line(&a.task.task_ref));
     if let Some(t) = title {
         let t = t
@@ -395,7 +413,15 @@ fn render(a: &TaskUsageAggregate, title: Option<&str>, tree: bool, style: &Style
             .map_or(t, str::trim_start);
         head.push_str(&format!("  {t}"));
     }
-    let mut blocks = vec![head, summary_lines(a, style).join("\n")];
+    let mut summary = summary_lines(a, style);
+    if by_task_id {
+        summary.push(line(
+            style,
+            "Linking",
+            "agent work calls (some by task id only: likely)".into(),
+        ));
+    }
+    let mut blocks = vec![head, summary.join("\n")];
     let mut nodes = tree_lines(a, style, tree).join("\n");
     if a.truncated.nodes {
         nodes.push_str(&format!(

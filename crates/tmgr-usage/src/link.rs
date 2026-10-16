@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
+use crate::bind::{AgentBinding, NodeKey};
 use crate::model::Tool;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +35,8 @@ pub struct LinkEvent {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkMethod {
+    AgentWorkRun,
+    AgentWorkTask,
     SessionId,
     BranchWindow,
     ProjectWindow,
@@ -42,6 +45,8 @@ pub enum LinkMethod {
 impl LinkMethod {
     pub fn as_str(self) -> &'static str {
         match self {
+            LinkMethod::AgentWorkRun => "agent_work_run",
+            LinkMethod::AgentWorkTask => "agent_work_task",
             LinkMethod::SessionId => "session_id",
             LinkMethod::BranchWindow => "branch_window",
             LinkMethod::ProjectWindow => "project_window",
@@ -96,6 +101,8 @@ pub struct LinkReport {
 }
 
 const CONFIDENCE_SESSION: f64 = 1.0;
+const CONFIDENCE_AGENT_RUN: f64 = 0.95;
+const CONFIDENCE_AGENT_TASK: f64 = 0.75;
 const CONFIDENCE_PARENT: f64 = 0.9;
 const CONFIDENCE_BRANCH: f64 = 0.8;
 const CONFIDENCE_BRANCH_UNVERIFIED: f64 = 0.7;
@@ -148,6 +155,81 @@ fn candidates(
 }
 
 pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>) -> LinkReport {
+    attribute_with_bindings(events, runs, &[], &HashMap::new(), now)
+}
+
+const MAX_CHAIN: usize = 64;
+
+type Levels = Vec<(bool, Vec<usize>)>;
+
+fn levels_of(
+    key: &NodeKey,
+    parents: &HashMap<NodeKey, NodeKey>,
+    by_node: &HashMap<NodeKey, Vec<usize>>,
+) -> Levels {
+    let mut out = Vec::new();
+    let mut cur = Some(key.clone());
+    for _ in 0..MAX_CHAIN {
+        let Some(k) = cur else { break };
+        if let Some(found) = by_node.get(&k) {
+            out.push((k.agent.is_some(), found.clone()));
+        }
+        cur = parents
+            .get(&k)
+            .cloned()
+            .or_else(|| k.agent.is_some().then(|| k.main()));
+    }
+    out
+}
+
+struct Bound {
+    subagent: bool,
+    runs: Vec<usize>,
+    exact: bool,
+}
+
+fn bound_of(
+    levels: &Levels,
+    bindings: &[AgentBinding],
+    runs: &[RunWindow],
+    ts: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Option<Bound> {
+    levels.iter().find_map(|(subagent, found)| {
+        let active: Vec<&AgentBinding> = found
+            .iter()
+            .map(|&i| &bindings[i])
+            .filter(|b| b.from <= ts && b.to.map_or(ts <= now, |t| ts <= t))
+            .collect();
+        if active.is_empty() {
+            return None;
+        }
+        let by_ref: BTreeMap<&str, usize> = active
+            .iter()
+            .map(|b| (runs[b.run_index].run_ref.as_str(), b.run_index))
+            .collect();
+        Some(Bound {
+            subagent: *subagent,
+            runs: by_ref.into_values().collect(),
+            exact: active.iter().all(|b| b.exact),
+        })
+    })
+}
+
+pub fn attribute_with_bindings(
+    events: &[LinkEvent],
+    runs: &[RunWindow],
+    bindings: &[AgentBinding],
+    parents: &HashMap<NodeKey, NodeKey>,
+    now: DateTime<Utc>,
+) -> LinkReport {
+    let mut by_node: HashMap<NodeKey, Vec<usize>> = HashMap::new();
+    for (i, b) in bindings.iter().enumerate() {
+        if b.run_index < runs.len() {
+            by_node.entry(b.node()).or_default().push(i);
+        }
+    }
+    let mut chains: HashMap<NodeKey, Levels> = HashMap::new();
     let by_session = index_by(runs, |r| r.session_id.as_deref());
     let by_branch = index_by(runs, |r| r.branch.as_deref());
     let by_project = index_by(runs, |r| r.project_hash.as_deref());
@@ -177,12 +259,31 @@ pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>
             .copied()
             .filter(|i| same_project(i).is_none())
             .collect();
+        let bound = if by_node.is_empty() {
+            None
+        } else {
+            let levels = chains
+                .entry(NodeKey::of_event(ev))
+                .or_insert_with_key(|k| levels_of(k, parents, &by_node));
+            bound_of(levels, bindings, runs, ev.ts, now)
+        };
+        let (bound_method, bound_confidence) = match &bound {
+            Some(b) if b.exact => (LinkMethod::AgentWorkRun, CONFIDENCE_AGENT_RUN),
+            _ => (LinkMethod::AgentWorkTask, CONFIDENCE_AGENT_TASK),
+        };
+        let (own_runs, main_runs) = match bound {
+            Some(b) if b.subagent => (b.runs, Vec::new()),
+            Some(b) => (Vec::new(), b.runs),
+            None => (Vec::new(), Vec::new()),
+        };
         let rungs = [
+            (bound_method, bound_confidence, own_runs),
             (
                 LinkMethod::SessionId,
                 CONFIDENCE_SESSION,
                 candidates(&by_session, Some(&ev.tool_session_id), runs, ev.ts, now),
             ),
+            (bound_method, bound_confidence, main_runs),
             (
                 LinkMethod::SessionId,
                 CONFIDENCE_PARENT,

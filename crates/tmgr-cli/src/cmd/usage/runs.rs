@@ -8,7 +8,9 @@ use tmgr_core::models::Workspace;
 use tmgr_core::refs::parse_key;
 use tmgr_core::runs::{parse_ts, task_ref_of, ApiRun};
 use tmgr_core::runstate::{self, Runs};
-use tmgr_usage::link::RunWindow;
+use tmgr_usage::bind::{agent_bindings, node_parents, AgentBinding, NodeKey, RunIds};
+use tmgr_usage::facts::{StoredAgent, StoredFact};
+use tmgr_usage::link::{attribute_with_bindings, LinkEvent, LinkReport, RunWindow};
 use tmgr_usage::model::project_hash;
 
 const LOOKBACK_DAYS: i64 = 3;
@@ -24,6 +26,7 @@ pub struct RunMeta {
 #[derive(Default)]
 pub struct RunSet {
     pub windows: Vec<RunWindow>,
+    pub ids: Vec<RunIds>,
     pub meta: HashMap<String, RunMeta>,
     pub workspaces_ok: Vec<String>,
     pub workspaces_failed: Vec<String>,
@@ -41,6 +44,40 @@ impl RunSet {
                 plain.eq_ignore_ascii_case(key)
             }
         }
+    }
+}
+
+pub struct Linker<'a> {
+    set: &'a RunSet,
+    bindings: Vec<AgentBinding>,
+    parents: HashMap<NodeKey, NodeKey>,
+    now: DateTime<Utc>,
+}
+
+impl<'a> Linker<'a> {
+    pub fn new(
+        set: &'a RunSet,
+        events: &[LinkEvent],
+        facts: &[StoredFact],
+        agents: &[StoredAgent],
+        now: DateTime<Utc>,
+    ) -> Self {
+        Linker {
+            set,
+            bindings: agent_bindings(facts, &set.windows, &set.ids, now),
+            parents: node_parents(events, facts, agents),
+            now,
+        }
+    }
+
+    pub fn attribute(&self, events: &[LinkEvent]) -> LinkReport {
+        attribute_with_bindings(
+            events,
+            &self.set.windows,
+            &self.bindings,
+            &self.parents,
+            self.now,
+        )
     }
 }
 
@@ -152,7 +189,7 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
         .map(|p| runstate::load_from(&p))
         .unwrap_or_default();
     let mut ref_workspaces: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut staged: Vec<(RunWindow, RunMeta)> = Vec::new();
+    let mut staged: Vec<(RunWindow, RunMeta, RunIds)> = Vec::new();
     for ws in &workspaces {
         let runs = match fetch(ctx, ws, from, to) {
             Ok(Some((runs, truncated))) => {
@@ -212,10 +249,14 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
                     task_id: task.id.or(run.task_id),
                     title: task.title.clone(),
                 },
+                RunIds {
+                    run_id: run.id,
+                    task_id: task.id.or(run.task_id),
+                },
             ));
         }
     }
-    for (mut window, mut meta) in staged {
+    for (mut window, mut meta, ids) in staged {
         let shared = ref_workspaces
             .get(&window.task_ref)
             .is_some_and(|w| w.len() > 1);
@@ -225,6 +266,7 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
         }
         set.meta.insert(window.run_ref.clone(), meta);
         set.windows.push(window);
+        set.ids.push(ids);
     }
     set
 }

@@ -333,3 +333,68 @@ fn only_well_formed_slash_commands_and_ids_are_kept() {
         }
     }
 }
+
+#[test]
+fn agent_work_calls_keep_only_the_task_or_run_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("claude");
+    let call = |id: &str, name: &str, input: serde_json::Value| serde_json::json!({"type": "tool_use", "id": id, "name": name, "input": input});
+    let line = serde_json::json!({
+        "type": "assistant", "sessionId": "s8", "uuid": "u8",
+        "timestamp": "2026-10-01T10:00:01Z", "cwd": "/work/alpha",
+        "message": {"id": "m8", "content": [
+            call("a", "mcp__tmgr__start_agent_work", serde_json::json!({"taskId": 42, "branch": "SECRET-BRANCH"})),
+            call("b", "mcp__other__update_agent_work", serde_json::json!({"runId": "7", "summary": "SECRET-SUMMARY"})),
+            call("c", "mcp__tmgr__finish_agent_work", serde_json::json!({"runId": "x7", "prUrl": "https://SECRET-URL"})),
+            call("d", "mcp__tmgr__finish_agent_work", serde_json::json!({"runId": 9, "commits": ["SECRET-COMMIT"]})),
+            call("e", "mcp__tmgr__start_agent_work", serde_json::json!({"taskId": true})),
+        ]},
+    })
+    .to_string();
+    write_lines(&projects_file(&home, "s8.jsonl"), &[line]);
+    let mut store = open_store(tmp.path());
+    scan_account(&mut store, &claude_account(&home), &book(), now()).unwrap();
+    let calls = facts(&store, FactKind::ToolCall);
+    let mut got: Vec<(String, Option<String>, Option<u64>)> = calls
+        .iter()
+        .map(|f| (f.name.clone(), f.target.clone(), f.value))
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![
+            (
+                "mcp__other__update_agent_work".into(),
+                Some("agent_work_update".into()),
+                Some(7)
+            ),
+            ("mcp__tmgr__finish_agent_work".into(), None, None),
+            (
+                "mcp__tmgr__finish_agent_work".into(),
+                Some("agent_work_finish".into()),
+                Some(9)
+            ),
+            ("mcp__tmgr__start_agent_work".into(), None, None),
+            (
+                "mcp__tmgr__start_agent_work".into(),
+                Some("agent_work_start".into()),
+                Some(42)
+            ),
+        ]
+    );
+    drop(store);
+    for entry in std::fs::read_dir(tmp.path()).unwrap() {
+        let p = entry.unwrap().path();
+        if p.is_file() {
+            let bytes = std::fs::read(&p).unwrap();
+            for s in [
+                "SECRET-BRANCH",
+                "SECRET-SUMMARY",
+                "SECRET-URL",
+                "SECRET-COMMIT",
+            ] {
+                assert!(!bytes.windows(s.len()).any(|w| w == s.as_bytes()), "{s}");
+            }
+        }
+    }
+}
