@@ -30,6 +30,7 @@ tempfile.workspace = true
 ratatui.workspace = true
 unicode-width.workspace = true
 toml_edit.workspace = true
+sha2.workspace = true
 tmgr-runner = { workspace = true, optional = true }
 tmgr-ipc = { workspace = true, optional = true }
 tmgr-queue = { workspace = true, optional = true }
@@ -43,7 +44,6 @@ assert_cmd.workspace = true
 wiremock.workspace = true
 tokio.workspace = true
 jsonschema.workspace = true
-sha2.workspace = true
 portable-pty.workspace = true
 vt100.workspace = true
 rusqlite.workspace = true

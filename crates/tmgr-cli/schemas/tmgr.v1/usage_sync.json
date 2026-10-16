@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/usage_sync.json",
+  "title": "tmgr.v1 usage sync",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "data",
+    "warnings"
+  ],
+  "properties": {
+    "schema": {
+      "const": "tmgr.v1"
+    },
+    "ok": {
+      "const": true
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "action"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "sync",
+            "on",
+            "off",
+            "status",
+            "forget"
+          ]
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 90
+        },
+        "counts": {
+          "$ref": "#/$defs/counts"
+        },
+        "results": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/result"
+          }
+        },
+        "stopped": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/stopped"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "consent_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "last_run": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/last_run"
+            }
+          ]
+        },
+        "tasks_uploaded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scope": {
+          "enum": [
+            "all",
+            "task"
+          ]
+        },
+        "task": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "sync"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "dry_run",
+              "days",
+              "counts",
+              "results",
+              "stopped"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "status"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "enabled",
+              "consent_at",
+              "last_run",
+              "tasks_uploaded"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "on",
+                  "off"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "enabled"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "forget"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "scope",
+              "task"
+            ]
+          }
+        }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/warning"
+      }
+    }
+  },
+  "$defs": {
+    "counts": {
+      "type": "object",
+      "required": [
+        "sent",
+        "stale",
+        "unchanged",
+        "refused_shrink",
+        "invalid",
+        "skipped",
+        "failed",
+        "would_send"
+      ],
+      "properties": {
+        "sent": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stale": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unchanged": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refused_shrink": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "would_send": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "workspace",
+        "ref",
+        "outcome"
+      ],
+      "properties": {
+        "workspace": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "sent",
+            "stale",
+            "unchanged",
+            "refused_shrink",
+            "invalid",
+            "skipped",
+            "failed",
+            "would_send"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "aggregate": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "stopped": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "hint"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "hint": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "last_run": {
+      "type": "object",
+      "required": [
+        "at",
+        "counts",
+        "stopped"
+      ],
+      "properties": {
+        "at": {
+          "type": "string"
+        },
+        "counts": {
+          "$ref": "#/$defs/counts"
+        },
+        "stopped": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

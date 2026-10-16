@@ -441,10 +441,17 @@ impl Store {
             "usage_agent",
             "usage_context_file_state",
             "usage_fact_project",
+            "usage_sync_ledger",
         ] {
             tx.execute(&format!("DELETE FROM {table}"), [])?;
         }
-        tx.execute("DELETE FROM settings WHERE key = ?1", [ROLLUP_FLOOR_KEY])?;
+        for key in [
+            ROLLUP_FLOOR_KEY,
+            crate::sync::CONSENT_KEY,
+            crate::sync::LAST_RUN_KEY,
+        ] {
+            tx.execute("DELETE FROM settings WHERE key = ?1", [key])?;
+        }
         tx.commit()?;
         self.conn
             .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()))?;

@@ -114,7 +114,8 @@ pub const MIGRATIONS: &[&str] = &[
 
 /// Additive tables for agent context, versioned apart from `MIGRATIONS`: binaries that predate them
 /// refuse a database whose `schema_version` is newer than they know, and they ignore these tables.
-pub const CONTEXT_MIGRATIONS: &[&str] = &["
+pub const CONTEXT_MIGRATIONS: &[&str] = &[
+    "
     ALTER TABLE usage_event ADD COLUMN agent_id TEXT;
     CREATE TABLE usage_agent (
         id INTEGER PRIMARY KEY,
@@ -164,4 +165,21 @@ pub const CONTEXT_MIGRATIONS: &[&str] = &["
         byte_offset INTEGER NOT NULL,
         PRIMARY KEY (source_id, file_key)
     ) WITHOUT ROWID;
-    "];
+    ",
+    "
+    CREATE TABLE usage_sync_ledger (
+        key TEXT PRIMARY KEY,
+        workspace TEXT NOT NULL,
+        task_ref TEXT NOT NULL,
+        task_id INTEGER,
+        generated_at TEXT NOT NULL,
+        events INTEGER NOT NULL,
+        cost_usd REAL NOT NULL,
+        digest TEXT NOT NULL
+    ) WITHOUT ROWID;
+    ",
+    "
+    ALTER TABLE usage_sync_ledger ADD COLUMN first_event_at TEXT;
+    ALTER TABLE usage_sync_ledger ADD COLUMN last_event_at TEXT;
+    ",
+];

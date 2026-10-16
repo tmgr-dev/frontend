@@ -160,6 +160,7 @@ impl U {
             .env("TMGR_CREDENTIAL_STORE", "file")
             .env("TMGR_SERVER", &self.server)
             .env("TZ", "UTC")
+            .env("TMGR_USAGE_SYNC_WAIT_MS", "30")
             .env("NO_COLOR", "1");
         c
     }
@@ -1899,6 +1900,10 @@ fn call_fact(session: &str, agent: Option<&str>, key: &str, name: &str, clock: &
 
 fn tree_fixture(u: &U, codex_cwd: &str) {
     linked_fixture(u);
+    tree_extras(u, codex_cwd);
+}
+
+fn tree_extras(u: &U, codex_cwd: &str) {
     codex_rollout(u, codex_cwd);
     u.ok(&["usage", "scan"]);
     Connection::open(u.p("data/usage.db"))
@@ -1940,7 +1945,7 @@ fn tree_fixture(u: &U, codex_cwd: &str) {
             &AgentMeta {
                 account: "codex".into(),
                 tool_session_id: "cx1".into(),
-                originator: Some("Claude Code".into()),
+                originator: Some("Claude_Code".into()),
                 source: Some("vscode".into()),
                 version: Some("0.150.0".into()),
                 started_at: Some(stamp("12:08:00")),
@@ -2416,4 +2421,1158 @@ fn a_binding_made_before_the_period_still_links_events_inside_it() {
         v["data"]["task"]["link_methods"]["agent_work_task"], 1,
         "{v}"
     );
+}
+
+mod usage_sync {
+    use super::*;
+    use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+    use tmgr_usage::sync::LedgerEntry;
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    const PUT: &str = "/api/agent-usage";
+    const A: &str = "/Users/someone/secret";
+    const B: &str = "alice@example.com";
+    const C: &str = "PROMPT SECRET TEXT";
+
+    fn put_ok() -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "task_id": 5, "source_id": "x", "generated_at": "2026-10-16T12:00:00Z",
+            "stale": false, "updated_at": "2026-10-16T12:00:01Z"
+        }}))
+    }
+
+    fn put_mock(response: ResponseTemplate) -> Mock {
+        Mock::given(method("PUT"))
+            .and(path(PUT))
+            .respond_with(response)
+    }
+
+    fn run_json(
+        id: u64,
+        task_id: u64,
+        key: &str,
+        session: &str,
+        from: String,
+        to: String,
+    ) -> Value {
+        json!({
+            "id": id, "task_id": task_id, "agent": "claude-code", "session_id": session,
+            "status": "succeeded", "started_at": from, "ended_at": to, "duration_seconds": 600,
+            "task": {"id": task_id, "key": key, "title": format!("{key}: a title")}
+        })
+    }
+
+    fn standard_runs() -> (Vec<Value>, Vec<Value>) {
+        (
+            vec![
+                run_json(
+                    10,
+                    5,
+                    "TM-5",
+                    "sess-a",
+                    at(-2, "11:55:00"),
+                    at(-2, "12:30:00"),
+                ),
+                run_json(
+                    11,
+                    7,
+                    "TM-7",
+                    "sess-b",
+                    at(-1, "09:30:00"),
+                    at(-1, "10:30:00"),
+                ),
+            ],
+            vec![run_json(
+                20,
+                9,
+                "WK-1",
+                "sess-c",
+                at(-2, "12:15:00"),
+                at(-2, "12:40:00"),
+            )],
+        )
+    }
+
+    struct Cloud {
+        u: U,
+        server: MockServer,
+    }
+
+    impl Cloud {
+        async fn new(puts: Vec<Mock>) -> Cloud {
+            let (personal, work) = standard_runs();
+            Cloud::build(personal, work, puts).await
+        }
+
+        async fn build(personal: Vec<Value>, work: Vec<Value>, mocks: Vec<Mock>) -> Cloud {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/api/workspaces"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
+                    {"id": 1, "name": "Personal", "code": "personal", "is_default": true},
+                    {"id": 2, "name": "Work", "code": "work", "is_default": false}
+                ]})))
+                .mount(&server)
+                .await;
+            for (id, runs) in [(1, personal), (2, work)] {
+                Mock::given(method("GET"))
+                    .and(path(format!("/api/workspaces/{id}/agent-work")))
+                    .respond_with(ResponseTemplate::new(200).set_body_json(json!({"runs": runs})))
+                    .mount(&server)
+                    .await;
+            }
+            for m in mocks {
+                m.mount(&server).await;
+            }
+            put_mock(put_ok()).mount(&server).await;
+            Mock::given(method("DELETE"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}})))
+                .mount(&server)
+                .await;
+            let u = U::with_server(server.uri());
+            login(&u, &server);
+            fixture(&u);
+            Cloud { u, server }
+        }
+
+        fn consent(&self) {
+            Store::open(&self.u.p("data/usage.db"))
+                .unwrap()
+                .set_sync_consent(Utc::now())
+                .unwrap();
+        }
+
+        fn store(&self) -> Store {
+            Store::open(&self.u.p("data/usage.db")).unwrap()
+        }
+
+        async fn requests(&self, verb: &str, p: &str) -> Vec<wiremock::Request> {
+            self.server
+                .received_requests()
+                .await
+                .unwrap()
+                .into_iter()
+                .filter(|r| r.method.as_str() == verb && r.url.path() == p)
+                .collect()
+        }
+
+        async fn puts(&self) -> Vec<wiremock::Request> {
+            self.requests("PUT", PUT).await
+        }
+
+        async fn all_requests(&self) -> usize {
+            self.server.received_requests().await.unwrap().len()
+        }
+    }
+
+    fn login(u: &U, server: &MockServer) {
+        let account = format!("{}:default", server.address());
+        std::fs::create_dir_all(u.p("xdg/tmgr")).unwrap();
+        let creds = u.p("xdg/tmgr/credentials.json");
+        std::fs::write(
+            &creds,
+            json!({ account: {"access_token": "acc-token-AAAA1111", "refresh_token": "ref-token-BBBB2222", "expires_at": "2099-12-01T00:00:00Z"} })
+                .to_string(),
+        )
+        .unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&creds, std::fs::Permissions::from_mode(0o600)).unwrap();
+        std::fs::set_permissions(u.p("xdg/tmgr"), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
+    fn fixture(u: &U) {
+        u.seed_prices();
+        u.session_file(
+            "-s/sess-a.jsonl",
+            &[
+                user_line("sess-a", &at(-2, "11:59:00")),
+                Ev::new(
+                    "sess-a",
+                    at(-2, "12:00:00"),
+                    "a1",
+                    "claude-test-opus-1",
+                    1000,
+                    100,
+                )
+                .line(),
+                Ev::new(
+                    "sess-a",
+                    at(-2, "12:05:00"),
+                    "a2",
+                    "claude-test-opus-1",
+                    2000,
+                    200,
+                )
+                .line(),
+            ],
+        );
+        u.session_file(
+            "-s/sess-a/subagents/agent-1.jsonl",
+            &[Ev::new(
+                "sess-a",
+                at(-2, "12:10:00"),
+                "a3",
+                "claude-test-sonnet-1",
+                1000,
+                0,
+            )
+            .side()
+            .line()],
+        );
+        u.session_file(
+            "-s/sess-b.jsonl",
+            &[Ev::new(
+                "sess-b",
+                at(-1, "10:00:00"),
+                "b1",
+                "claude-test-sonnet-1",
+                1000,
+                1000,
+            )
+            .branch(Some("feat-x"))
+            .line()],
+        );
+        u.session_file(
+            "-s/sess-c.jsonl",
+            &[Ev::new(
+                "sess-c",
+                at(-2, "12:20:00"),
+                "c1",
+                "claude-test-sonnet-1",
+                10,
+                10,
+            )
+            .cwd("/work/gamma")
+            .line()],
+        );
+        tree_extras(u, "/work/alpha");
+    }
+
+    fn results(v: &Value) -> Vec<(String, String, String)> {
+        v["data"]["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                (
+                    r["workspace"].as_str().unwrap().to_string(),
+                    r["ref"].as_str().unwrap().to_string(),
+                    r["outcome"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    }
+
+    fn outcome_of(v: &Value, task_ref: &str) -> String {
+        results(v)
+            .into_iter()
+            .find(|r| r.1 == task_ref)
+            .unwrap_or_else(|| panic!("{task_ref} missing in {v}"))
+            .2
+    }
+
+    fn without_clock(mut v: Value) -> Value {
+        v.as_object_mut().unwrap().remove("generated_at");
+        v
+    }
+
+    fn body(r: &wiremock::Request) -> Value {
+        serde_json::from_slice(&r.body).unwrap()
+    }
+
+    fn run_sync(c: &Cloud, extra: &[&str]) -> (std::process::Output, Value) {
+        let mut args = vec!["--json", "usage", "sync"];
+        args.extend_from_slice(extra);
+        let out = c.u.run(&args);
+        let v = serde_json::from_slice(&out.stdout).unwrap_or(Value::Null);
+        (out, v)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sync_without_consent_is_refused_and_dry_run_sends_nothing() {
+        let c = Cloud::new(vec![]).await;
+        let refused = c.u.run(&["usage", "sync"]);
+        assert!(!refused.status.success());
+        assert!(
+            text(&refused.stderr).contains("usage sync on"),
+            "{}",
+            text(&refused.stderr)
+        );
+        assert_eq!(c.all_requests().await, 0);
+
+        let v = c.u.json(&["usage", "sync", "--dry-run"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["dry_run"], true);
+        let rows = results(&v);
+        assert_eq!(rows.len(), 3, "{v}");
+        assert!(rows.iter().all(|r| r.2 == "would_send"));
+        for r in v["data"]["results"].as_array().unwrap() {
+            assert_eq!(r["aggregate"]["schema"], "task_usage.v1");
+        }
+        let shown = text(&c.u.ok(&["usage", "sync", "--dry-run"]).stdout);
+        assert!(
+            shown.contains("would send") && shown.contains("\"schema\": \"task_usage.v1\""),
+            "{shown}"
+        );
+        assert!(c.puts().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn each_task_is_put_once_with_the_dry_run_body() {
+        let c = Cloud::new(vec![]).await;
+        let dry = c.u.json(&["usage", "sync", "--dry-run"]);
+        c.consent();
+        let out = c.u.ok(&["usage", "sync"]);
+        println!("{}", text(&out.stdout));
+        let shown = text(&out.stdout);
+        assert!(shown.contains("TM-5") && shown.contains("sent"), "{shown}");
+        let puts = c.puts().await;
+        assert_eq!(puts.len(), 3);
+        for r in &puts {
+            let parsed = body(r);
+            assert_eq!(r.body, serde_json::to_vec(&parsed).unwrap());
+            let task_ref = parsed["task"]["ref"].as_str().unwrap();
+            let planned = dry["data"]["results"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|d| d["ref"] == task_ref)
+                .unwrap();
+            assert_eq!(
+                without_clock(parsed.clone()),
+                without_clock(planned["aggregate"].clone())
+            );
+            assert_eq!(parsed["task"]["workspace"], planned["workspace"]);
+            assert_eq!(
+                r.headers.get("authorization").unwrap().to_str().unwrap(),
+                "Bearer acc-token-AAAA1111"
+            );
+        }
+        let (out, v) = run_sync(&c, &["--no-scan"]);
+        assert_eq!(out.status.code(), Some(0));
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["counts"]["unchanged"], 3, "{v}");
+        assert_eq!(c.puts().await.len(), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_stale_answer_is_reported_and_not_recorded() {
+        let stale = ResponseTemplate::new(200).set_body_json(json!({"data": {
+            "task_id": 5, "source_id": "x", "generated_at": "2026-10-16T12:00:00Z",
+            "stale": true, "updated_at": "2026-10-16T12:00:01Z"
+        }}));
+        let c = Cloud::new(vec![put_mock(stale)]).await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(0));
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["counts"]["stale"], 3, "{v}");
+        assert_eq!(c.store().ledger_count().unwrap(), 0);
+        run_sync(&c, &["--no-scan"]);
+        assert_eq!(c.puts().await.len(), 6);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn less_usage_than_uploaded_is_refused_unless_forced() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        run_sync(&c, &[]);
+        let store = c.store();
+        let mut last = store.ledger_get("personal", "TM-5").unwrap().unwrap();
+        last.events += 10;
+        last.digest = "other".into();
+        store.ledger_put(&last).unwrap();
+
+        let (out, v) = run_sync(&c, &["--no-scan"]);
+        assert_eq!(out.status.code(), Some(0));
+        assert_eq!(outcome_of(&v, "TM-5"), "refused_shrink", "{v}");
+        assert_eq!(c.puts().await.len(), 3);
+        assert!(v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["code"] == "usage_sync_shrink"));
+
+        let (out, v) = run_sync(&c, &["--no-scan", "--task", "TM-5", "--force"]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_eq!(outcome_of(&v, "TM-5"), "sent");
+        assert_eq!(c.puts().await.len(), 4);
+        let bad = c.u.run(&["usage", "sync", "--force"]);
+        assert_eq!(bad.status.code(), Some(2));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_disabled_server_setting_stops_the_run_with_the_settings_hint() {
+        let c = Cloud::new(vec![put_mock(
+            ResponseTemplate::new(403).set_body_json(json!({"error": "agent_usage_sync_disabled"})),
+        )])
+        .await;
+        c.consent();
+        let out = c.u.run(&["usage", "sync"]);
+        assert_eq!(out.status.code(), Some(1));
+        let shown = text(&out.stdout);
+        assert!(
+            shown.contains("Turn on Agent usage sync in TMGR Settings → Agent work"),
+            "{shown}"
+        );
+        assert_eq!(c.puts().await.len(), 1);
+        let (_, v) = run_sync(&c, &["--no-scan"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["stopped"]["code"], "sync_disabled");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_missing_scope_stops_the_run_with_a_login_hint() {
+        let c = Cloud::new(vec![put_mock(
+            ResponseTemplate::new(403).set_body_json(json!({"error": "insufficient_scope"})),
+        )])
+        .await;
+        c.consent();
+        let out = c.u.run(&["usage", "sync"]);
+        assert_eq!(out.status.code(), Some(1));
+        let shown = text(&out.stdout);
+        assert!(
+            shown.contains("tmgr login --scopes workspaces:read,tasks:read,tasks:write,tasks:create,comments:create,time:read,time:write,agent-usage:write"),
+            "{shown}"
+        );
+        assert_eq!(c.puts().await.len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_workspace_with_agent_work_off_is_skipped_and_the_rest_continue() {
+        let off = Mock::given(method("PUT"))
+            .and(path(PUT))
+            .and(body_partial_json(json!({"task": {"workspace": "work"}})))
+            .respond_with(
+                ResponseTemplate::new(403).set_body_json(json!({"error": "feature_disabled"})),
+            );
+        let c = Cloud::new(vec![off]).await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_eq!(outcome_of(&v, "TM-5"), "sent");
+        assert_eq!(outcome_of(&v, "TM-7"), "sent");
+        assert_eq!(outcome_of(&v, "WK-1"), "skipped");
+        assert!(v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["code"] == "usage_sync_workspace_off"));
+        assert_eq!(c.puts().await.len(), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_rejected_task_fails_the_run_but_the_others_go_on() {
+        let reject = Mock::given(method("PUT"))
+            .and(path(PUT))
+            .and(body_partial_json(json!({"task": {"ref": "TM-5"}})))
+            .respond_with(
+                ResponseTemplate::new(422).set_body_json(json!({"message": "unknown task"})),
+            );
+        let c = Cloud::new(vec![reject]).await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(1));
+        assert_valid("usage_sync", &v);
+        assert_eq!(outcome_of(&v, "TM-5"), "failed");
+        assert_eq!(outcome_of(&v, "TM-7"), "sent");
+        assert_eq!(outcome_of(&v, "WK-1"), "sent");
+        assert!(v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["code"] == "usage_sync_failed"));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_rate_limit_is_retried_once_and_then_stops_the_run() {
+        let once = put_mock(ResponseTemplate::new(429).set_body_json(json!({}))).up_to_n_times(1);
+        let c = Cloud::new(vec![once]).await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_eq!(v["data"]["counts"]["sent"], 3);
+        assert_eq!(c.puts().await.len(), 4);
+
+        let always = Cloud::new(vec![put_mock(
+            ResponseTemplate::new(429).set_body_json(json!({})),
+        )])
+        .await;
+        always.consent();
+        let (out, v) = run_sync(&always, &[]);
+        assert_eq!(out.status.code(), Some(1));
+        assert_eq!(v["data"]["stopped"]["code"], "rate_limited");
+        assert_eq!(always.puts().await.len(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn local_workspaces_are_never_uploaded() {
+        let c = Cloud::new(vec![]).await;
+        c.u.session_file(
+            "-s/sess-d.jsonl",
+            &[Ev::new(
+                "sess-d",
+                at(-2, "14:00:00"),
+                "d1",
+                "claude-test-opus-1",
+                500,
+                50,
+            )
+            .line()],
+        );
+        let ws = Local::workspace(&c.u, "loc");
+        ws.task("loc", "One");
+        ws.run(
+            "loc",
+            1,
+            Some("sess-d"),
+            None,
+            &at(-2, "13:50:00"),
+            &at(-2, "14:30:00"),
+        );
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_valid("usage_sync", &v);
+        let local: Vec<_> = results(&v)
+            .into_iter()
+            .filter(|r| r.0.starts_with("local:"))
+            .collect();
+        assert_eq!(local.len(), 1, "{v}");
+        assert_eq!(local[0].2, "skipped");
+        let puts = c.puts().await;
+        assert_eq!(puts.len(), 3);
+        assert!(puts.iter().all(|r| !text(&r.body).contains("local:")));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_workspace_prefixed_ref_is_split_into_workspace_and_ref() {
+        let personal = vec![run_json(
+            10,
+            5,
+            "TM-5",
+            "sess-a",
+            at(-2, "11:55:00"),
+            at(-2, "12:30:00"),
+        )];
+        let work = vec![run_json(
+            20,
+            15,
+            "TM-5",
+            "sess-c",
+            at(-2, "12:15:00"),
+            at(-2, "12:40:00"),
+        )];
+        let c = Cloud::build(personal, work, vec![]).await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        let mut seen: Vec<(String, String, u64)> = c
+            .puts()
+            .await
+            .iter()
+            .map(|r| {
+                let b = body(r);
+                (
+                    b["task"]["workspace"].as_str().unwrap().to_string(),
+                    b["task"]["ref"].as_str().unwrap().to_string(),
+                    b["task"]["id"].as_u64().unwrap(),
+                )
+            })
+            .collect();
+        seen.sort();
+        assert_eq!(
+            seen,
+            vec![
+                ("personal".to_string(), "TM-5".to_string(), 5),
+                ("work".to_string(), "TM-5".to_string(), 15)
+            ]
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn forget_deletes_on_the_server_and_needs_yes_without_a_terminal() {
+        let task = Mock::given(method("GET"))
+            .and(path("/api/tasks/by-key/TM-5"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({"data": common::task_json(5, "TM-5: x")})),
+            );
+        let c = Cloud::new(vec![task]).await;
+        c.consent();
+        run_sync(&c, &[]);
+        assert_eq!(c.store().ledger_count().unwrap(), 3);
+
+        let refused = c.u.run(&["usage", "sync", "forget"]);
+        assert_eq!(refused.status.code(), Some(10));
+        assert!(c.requests("DELETE", PUT).await.is_empty());
+        assert_eq!(c.store().ledger_count().unwrap(), 3);
+
+        let v = c.u.json(&["--yes", "usage", "sync", "forget"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(c.requests("DELETE", PUT).await.len(), 1);
+        assert_eq!(c.store().ledger_count().unwrap(), 0);
+
+        run_sync(&c, &["--no-scan"]);
+        assert_eq!(c.puts().await.len(), 6);
+        c.u.ok(&["--yes", "usage", "sync", "forget", "--task", "TM-5"]);
+        assert_eq!(
+            c.requests("DELETE", "/api/tasks/5/agent-usage").await.len(),
+            1
+        );
+        assert_eq!(c.requests("DELETE", PUT).await.len(), 1);
+        assert_eq!(c.store().ledger_count().unwrap(), 2);
+        assert!(c.store().ledger_get("personal", "TM-5").unwrap().is_none());
+    }
+
+    fn plant(u: &U) {
+        let conn = Connection::open(u.p("data/usage.db")).unwrap();
+        let sets = [
+            ("usage_fact", "name = ?1, detail = ?2, target = ?3"),
+            (
+                "usage_agent",
+                "originator = ?1, source = ?2, version = ?3, entrypoint = ?1",
+            ),
+            (
+                "usage_event",
+                "model = ?1, git_branch = ?2, cwd = ?3, project_name = ?1",
+            ),
+            (
+                "usage_session",
+                "git_branch = ?1, cwd = ?2, project_name = ?3",
+            ),
+        ];
+        for (table, set) in sets {
+            for (i, args) in [[A, B, C], [B, C, A], [C, A, B]].iter().enumerate() {
+                conn.execute(
+                    &format!("UPDATE {table} SET {set} WHERE rowid % 3 = {i}"),
+                    rusqlite::params![args[0], args[1], args[2]],
+                )
+                .unwrap();
+            }
+        }
+        conn.execute(
+            "UPDATE usage_agent SET agent_type = ?1 WHERE agent_id != ''",
+            [C],
+        )
+        .unwrap();
+    }
+
+    async fn planted_outputs(c: &Cloud) -> Vec<String> {
+        plant(&c.u);
+        c.consent();
+        let dry_json =
+            c.u.ok(&["--json", "usage", "sync", "--dry-run", "--no-scan"]);
+        let dry_text = c.u.ok(&["usage", "sync", "--dry-run", "--no-scan"]);
+        let real_json = c.u.ok(&["--json", "usage", "sync", "--no-scan"]);
+        let real_text =
+            c.u.ok(&["usage", "sync", "--force", "--task", "TM-5", "--no-scan"]);
+        let mut seen: Vec<String> = [&dry_json, &dry_text, &real_json, &real_text]
+            .iter()
+            .flat_map(|o| [text(&o.stdout), text(&o.stderr)])
+            .collect();
+        let puts = c.puts().await;
+        assert!(puts.len() >= 3);
+        seen.extend(puts.iter().map(|r| text(&r.body)));
+        seen
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn planted_paths_emails_and_prompts_never_leave_the_machine_or_reach_the_output() {
+        let c = Cloud::new(vec![]).await;
+        for haystack in &planted_outputs(&c).await {
+            for needle in [A, B, C, "/Users", "@example.com", "PROMPT SECRET"] {
+                assert!(!haystack.contains(needle), "{needle} leaked: {haystack}");
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn planted_values_do_not_survive_in_a_rewritten_form_either() {
+        let c = Cloud::new(vec![]).await;
+        for haystack in &planted_outputs(&c).await {
+            for needle in ["someone", "alice", "SECRET_TEXT", "SECRET:TEXT"] {
+                assert!(!haystack.contains(needle), "{needle} leaked: {haystack}");
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_body_that_breaks_a_server_rule_is_not_sent() {
+        let c = Cloud::new(vec![]).await;
+        Connection::open(c.u.p("data/usage.db"))
+            .unwrap()
+            .execute("UPDATE usage_event SET cost_usd = 5000000", [])
+            .unwrap();
+        c.consent();
+        let (out, v) = run_sync(&c, &["--no-scan"]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_eq!(outcome_of(&v, "TM-5"), "invalid", "{v}");
+        assert!(c.puts().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consent_commands_without_a_terminal_status_off_and_reset() {
+        let c = Cloud::new(vec![]).await;
+        let refused = c.u.run(&["usage", "sync", "on"]);
+        assert_eq!(refused.status.code(), Some(10));
+        let yes = c.u.run(&["--yes", "usage", "sync", "on"]);
+        assert_eq!(yes.status.code(), Some(10));
+        assert!(c.store().sync_consent().unwrap().is_none());
+        assert_eq!(c.all_requests().await, 0);
+
+        let v = c.u.json(&["usage", "sync", "status"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["enabled"], false);
+
+        c.consent();
+        run_sync(&c, &[]);
+        let v = c.u.json(&["usage", "sync", "status"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["enabled"], true);
+        assert_eq!(v["data"]["last_run"]["counts"]["sent"], 3);
+        assert_eq!(v["data"]["tasks_uploaded"], 3);
+        let shown = text(&c.u.ok(&["usage", "sync", "status"]).stdout);
+        assert!(
+            shown.contains("on since") && shown.contains("Last run"),
+            "{shown}"
+        );
+
+        let off = c.u.json(&["usage", "sync", "off"]);
+        assert_valid("usage_sync", &off);
+        assert!(c.store().sync_consent().unwrap().is_none());
+        assert_eq!(c.store().ledger_count().unwrap(), 3);
+
+        c.consent();
+        c.store()
+            .ledger_put(&LedgerEntry {
+                workspace: "personal".into(),
+                task_ref: "TM-1".into(),
+                task_id: None,
+                generated_at: "2026-10-16T12:00:00Z".into(),
+                events: 1,
+                cost_usd: 1.0,
+                digest: "d".into(),
+                first_event_at: None,
+                last_event_at: None,
+            })
+            .unwrap();
+        c.u.ok(&["--yes", "usage", "reset"]);
+        assert!(c.store().sync_consent().unwrap().is_none());
+        assert_eq!(c.store().ledger_count().unwrap(), 0);
+        assert!(c.store().sync_last_run().unwrap().is_none());
+    }
+
+    fn terminal(c: &Cloud, args: &[&str], input: &str) -> (i32, String) {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 50,
+                cols: 120,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_tmgr"));
+        cmd.args(args);
+        cmd.env_clear();
+        cmd.cwd(c.u.p("home"));
+        for (k, v) in [
+            ("HOME", c.u.p("home").into_os_string()),
+            ("XDG_DATA_HOME", c.u.p("xdgdata").into_os_string()),
+            ("XDG_CONFIG_HOME", c.u.p("xdg").into_os_string()),
+            ("XDG_STATE_HOME", c.u.p("state").into_os_string()),
+            ("TMGR_USAGE_DIR", c.u.p("data").into_os_string()),
+            ("CLAUDE_CONFIG_DIR", c.u.p("claude").into_os_string()),
+            ("CODEX_HOME", c.u.p("codex").into_os_string()),
+            (
+                "TMGR_LOCAL_ROOT",
+                c.u.p("tmgr-home/workspaces").into_os_string(),
+            ),
+            ("TMGR_CREDENTIAL_STORE", "file".into()),
+            ("TMGR_SERVER", c.u.server.clone().into()),
+            ("TZ", "UTC".into()),
+            ("NO_COLOR", "1".into()),
+        ] {
+            cmd.env(k, v);
+        }
+        let mut child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        let _ = std::io::Write::write_all(&mut writer, input.as_bytes());
+        let seen = std::thread::spawn(move || {
+            let mut sink = Vec::new();
+            let _ = std::io::Read::read_to_end(&mut reader, &mut sink);
+            String::from_utf8_lossy(&sink).to_string()
+        });
+        let code = child.wait().unwrap().exit_code() as i32;
+        drop(writer);
+        (code, seen.join().unwrap())
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn on_shows_the_audience_and_a_sample_and_stores_consent_only_after_yes() {
+        let c = Cloud::new(vec![]).await;
+        let (code, shown) = terminal(&c, &["usage", "sync", "on"], "no\n");
+        assert_ne!(code, 0, "{shown}");
+        assert!(c.store().sync_consent().unwrap().is_none());
+        let (code, shown) = terminal(&c, &["usage", "sync", "on"], "yes\n");
+        assert_eq!(code, 0, "{shown}");
+        assert!(c.store().sync_consent().unwrap().is_some());
+        for part in [
+            "personal, work",
+            "\"schema\": \"task_usage.v1\"",
+            "Type yes",
+            "Nothing is uploaded automatically",
+        ] {
+            assert!(shown.contains(part), "missing {part:?} in\n{shown}");
+        }
+        assert!(c.puts().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_server_that_turned_sync_off_clears_the_ledger_so_re_enabling_resends() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        run_sync(&c, &[]);
+        assert_eq!(c.store().ledger_count().unwrap(), 3);
+        put_mock(
+            ResponseTemplate::new(403).set_body_json(json!({"error": "agent_usage_sync_disabled"})),
+        )
+        .with_priority(1)
+        .up_to_n_times(1)
+        .mount(&c.server)
+        .await;
+        let (out, v) = run_sync(&c, &["--no-scan", "--task", "TM-5", "--force"]);
+        assert_eq!(out.status.code(), Some(1), "{v}");
+        assert_eq!(c.store().ledger_count().unwrap(), 0);
+        let (out, v) = run_sync(&c, &["--no-scan"]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_eq!(v["data"]["counts"]["sent"], 3, "{v}");
+        assert_eq!(v["data"]["counts"]["unchanged"], 0, "{v}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_window_that_slid_past_uploaded_usage_is_refused_even_with_equal_totals() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        run_sync(&c, &[]);
+        let store = c.store();
+        let mut last = store.ledger_get("personal", "TM-5").unwrap().unwrap();
+        let first = last
+            .first_event_at
+            .clone()
+            .expect("first event time is stored");
+        assert!(last.last_event_at.is_some());
+        last.first_event_at = Some("2000-01-01T00:00:00Z".into());
+        last.digest = "other".into();
+        store.ledger_put(&last).unwrap();
+        assert!(first.as_str() > "2000-01-01T00:00:00Z");
+
+        let (out, v) = run_sync(&c, &["--no-scan"]);
+        assert_eq!(out.status.code(), Some(0));
+        assert_eq!(outcome_of(&v, "TM-5"), "refused_shrink", "{v}");
+        assert_eq!(c.puts().await.len(), 3);
+
+        let (_, v) = run_sync(&c, &["--no-scan", "--task", "TM-5", "--force"]);
+        assert_eq!(outcome_of(&v, "TM-5"), "sent", "{v}");
+        assert_eq!(c.puts().await.len(), 4);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consent_withdrawn_between_uploads_stops_the_run() {
+        let db = std::sync::Arc::new(std::sync::Mutex::new(None::<std::path::PathBuf>));
+        let hook = db.clone();
+        let withdraw = move |_: &wiremock::Request| {
+            if let Some(path) = hook.lock().unwrap().clone() {
+                Store::open(&path).unwrap().clear_sync_consent().unwrap();
+            }
+            put_ok()
+        };
+        let c = Cloud::new(vec![Mock::given(method("PUT"))
+            .and(path(PUT))
+            .respond_with(withdraw)
+            .with_priority(1)])
+        .await;
+        *db.lock().unwrap() = Some(c.u.p("data/usage.db"));
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(1), "{v}");
+        assert_eq!(c.puts().await.len(), 1);
+        assert_eq!(v["data"]["stopped"]["message"], "consent withdrawn", "{v}");
+        assert!(
+            text(&out.stderr).contains("consent withdrawn")
+                || text(&out.stdout).contains("consent withdrawn")
+        );
+        assert!(c.store().sync_consent().unwrap().is_none());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn one_ref_with_two_task_ids_is_never_uploaded() {
+        let personal = vec![
+            run_json(
+                10,
+                5,
+                "TM-5",
+                "sess-a",
+                at(-2, "11:55:00"),
+                at(-2, "12:30:00"),
+            ),
+            run_json(
+                11,
+                55,
+                "TM-5",
+                "sess-b",
+                at(-1, "09:30:00"),
+                at(-1, "10:30:00"),
+            ),
+        ];
+        let c = Cloud::build(personal, vec![], vec![]).await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        assert_eq!(outcome_of(&v, "TM-5"), "skipped", "{v}");
+        assert!(c.puts().await.is_empty());
+        assert!(v["warnings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("task id mismatch")));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn server_error_text_never_reaches_the_output() {
+        let planted = "home/alice@example.com PROMPT SECRET";
+        let reject = Mock::given(method("PUT"))
+            .and(path(PUT))
+            .and(body_partial_json(json!({"task": {"ref": "TM-5"}})))
+            .respond_with(
+                ResponseTemplate::new(422)
+                    .set_body_json(json!({"message": planted, "error": "rate_limited"})),
+            );
+        let odd = Mock::given(method("PUT"))
+            .and(path(PUT))
+            .and(body_partial_json(json!({"task": {"ref": "TM-7"}})))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_json(json!({"message": planted, "error": planted})),
+            );
+        let c = Cloud::new(vec![reject, odd]).await;
+        c.consent();
+        let json_out = c.u.run(&["--json", "usage", "sync"]);
+        let text_out =
+            c.u.run(&["usage", "sync", "--force", "--task", "TM-5", "--no-scan"]);
+        for o in [&json_out, &text_out] {
+            for h in [text(&o.stdout), text(&o.stderr)] {
+                for needle in ["alice", "example.com", "SECRET", "home/"] {
+                    assert!(!h.contains(needle), "{needle} leaked: {h}");
+                }
+            }
+        }
+        let v: Value = serde_json::from_slice(&json_out.stdout).unwrap();
+        let reasons: Vec<String> = v["data"]["results"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["reason"].as_str().map(String::from))
+            .collect();
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("422") && r.contains("rate_limited")),
+            "{reasons:?}"
+        );
+        assert!(
+            reasons
+                .iter()
+                .any(|r| r.contains("400") && r.contains("unknown")),
+            "{reasons:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consent_withdrawn_during_a_rate_limit_wait_stops_before_the_retry() {
+        let db = std::sync::Arc::new(std::sync::Mutex::new(None::<std::path::PathBuf>));
+        let hook = db.clone();
+        let limit = move |_: &wiremock::Request| {
+            if let Some(path) = hook.lock().unwrap().clone() {
+                Store::open(&path).unwrap().clear_sync_consent().unwrap();
+            }
+            ResponseTemplate::new(429).set_body_json(json!({}))
+        };
+        let c = Cloud::new(vec![Mock::given(method("PUT"))
+            .and(path(PUT))
+            .respond_with(limit)
+            .with_priority(1)])
+        .await;
+        *db.lock().unwrap() = Some(c.u.p("data/usage.db"));
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(1), "{v}");
+        assert_eq!(c.puts().await.len(), 1);
+        assert_eq!(v["data"]["stopped"]["message"], "consent withdrawn", "{v}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_server_error_on_forget_never_echoes_its_text() {
+        let planted = "home/alice@example.com PROMPT SECRET";
+        let c = Cloud::new(vec![]).await;
+        Mock::given(method("DELETE"))
+            .respond_with(
+                ResponseTemplate::new(422)
+                    .set_body_json(json!({"message": planted, "error": "not allowed!"})),
+            )
+            .with_priority(1)
+            .mount(&c.server)
+            .await;
+        let out = c.u.run(&["usage", "sync", "forget", "--yes"]);
+        assert!(!out.status.success());
+        for h in [text(&out.stdout), text(&out.stderr)] {
+            for needle in ["alice", "example.com", "SECRET", "home/"] {
+                assert!(!h.contains(needle), "{needle} leaked: {h}");
+            }
+        }
+        assert!(text(&out.stderr).contains("422"), "{}", text(&out.stderr));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_error_code_outside_the_server_contract_is_unknown() {
+        let reject = Mock::given(method("PUT")).and(path(PUT)).respond_with(
+            ResponseTemplate::new(422).set_body_json(json!({"error": "alice_at_example"})),
+        );
+        let c = Cloud::new(vec![reject]).await;
+        c.consent();
+        let out = c.u.run(&["--json", "usage", "sync"]);
+        let h = text(&out.stdout);
+        assert!(!h.contains("alice") && h.contains("unknown"), "{h}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consent_withdrawn_during_a_token_refresh_stops_before_the_resend() {
+        let db = std::sync::Arc::new(std::sync::Mutex::new(None::<std::path::PathBuf>));
+        let hook = db.clone();
+        let c = Cloud::new(vec![put_mock(ResponseTemplate::new(401))
+            .with_priority(1)
+            .up_to_n_times(1)])
+        .await;
+        *db.lock().unwrap() = Some(c.u.p("data/usage.db"));
+        let withdraw = move |_: &wiremock::Request| {
+            if let Some(path) = hook.lock().unwrap().clone() {
+                Store::open(&path).unwrap().clear_sync_consent().unwrap();
+            }
+            ResponseTemplate::new(200).set_body_json(json!({"data": {
+                "token": "new-access-CCCC", "token_type": "Bearer", "expires_in": 3600,
+                "refresh_token": "new-refresh-DDDD", "refresh_expires_in": 86400
+            }}))
+        };
+        Mock::given(method("POST"))
+            .and(path("/api/auth/refresh"))
+            .respond_with(withdraw)
+            .mount(&c.server)
+            .await;
+        c.consent();
+        let (out, v) = run_sync(&c, &[]);
+        assert_eq!(out.status.code(), Some(1), "{v}");
+        assert_eq!(c.puts().await.len(), 1);
+        assert_eq!(c.requests("POST", "/api/auth/refresh").await.len(), 1);
+        assert_eq!(v["data"]["stopped"]["message"], "consent withdrawn", "{v}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn consent_withdrawn_during_the_pacing_wait_sends_nothing_more() {
+        let db = std::sync::Arc::new(std::sync::Mutex::new(None::<std::path::PathBuf>));
+        let hook = db.clone();
+        let withdraw_later = move |_: &wiremock::Request| {
+            if let Some(path) = hook.lock().unwrap().clone() {
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    Store::open(&path).unwrap().clear_sync_consent().unwrap();
+                });
+            }
+            put_ok()
+        };
+        let c = Cloud::new(vec![Mock::given(method("PUT"))
+            .and(path(PUT))
+            .respond_with(withdraw_later)
+            .with_priority(1)])
+        .await;
+        *db.lock().unwrap() = Some(c.u.p("data/usage.db"));
+        c.consent();
+        let out =
+            c.u.cmd()
+                .args(["--json", "usage", "sync"])
+                .env("TMGR_USAGE_SYNC_WAIT_MS", "400")
+                .env("TMGR_USAGE_SYNC_PER_WINDOW", "1")
+                .output()
+                .unwrap();
+        let v: Value = serde_json::from_slice(&out.stdout).unwrap();
+        assert_eq!(out.status.code(), Some(1), "{v}");
+        assert_eq!(c.puts().await.len(), 1);
+        assert_eq!(v["data"]["stopped"]["message"], "consent withdrawn", "{v}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_failed_token_refresh_is_an_auth_error_with_the_login_hint() {
+        let c = Cloud::new(vec![put_mock(ResponseTemplate::new(401)).with_priority(1)]).await;
+        Mock::given(method("POST"))
+            .and(path("/api/auth/refresh"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&c.server)
+            .await;
+        c.consent();
+        let out = c.u.run(&["usage", "sync"]);
+        assert_eq!(out.status.code(), Some(4), "{}", text(&out.stderr));
+        assert!(
+            text(&out.stderr).contains("tmgr login"),
+            "{}",
+            text(&out.stderr)
+        );
+        assert_eq!(c.puts().await.len(), 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn pull_requests_stay_local_and_are_never_uploaded() {
+        let c = Cloud::new(vec![]).await;
+        let mut pr = call_fact(
+            "sess-a",
+            None,
+            "pr1",
+            "secret-owner/hidden-repo",
+            "12:08:30",
+        );
+        pr.kind = Some(FactKind::Pr);
+        pr.value = Some(77);
+        c.store().record_fact(Tool::Claude, &pr).unwrap();
+
+        let local = c.u.json(&["usage", "task", "TM-5", "--no-scan"]);
+        assert_eq!(
+            local["data"]["aggregate"]["context"]["prs"],
+            json!([{"repo": "secret-owner/hidden-repo", "number": 77}]),
+            "{local}"
+        );
+
+        let (code, sample) = terminal(&c, &["usage", "sync", "on"], "yes\n");
+        assert_eq!(code, 0, "{sample}");
+        let dry_json =
+            c.u.ok(&["--json", "usage", "sync", "--dry-run", "--no-scan"]);
+        let dry_text = c.u.ok(&["usage", "sync", "--dry-run", "--no-scan"]);
+        let (out, v) = run_sync(&c, &["--no-scan"]);
+        assert_eq!(out.status.code(), Some(0), "{v}");
+        let puts = c.puts().await;
+        assert_eq!(puts.len(), 3);
+        for r in &puts {
+            assert_eq!(body(r)["context"]["prs"], json!([]));
+        }
+        let mut seen = vec![sample, text(&dry_json.stdout), text(&dry_text.stdout)];
+        seen.extend(puts.iter().map(|r| text(&r.body)));
+        for h in seen {
+            for needle in ["secret-owner", "hidden-repo"] {
+                assert!(!h.contains(needle), "{needle} leaked: {h}");
+            }
+        }
+    }
 }

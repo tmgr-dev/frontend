@@ -15,6 +15,7 @@ pub mod scan;
 pub mod schema;
 pub mod statusline;
 pub mod store;
+pub mod sync;
 pub mod task;
 
 mod events;

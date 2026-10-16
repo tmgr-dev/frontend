@@ -5,54 +5,165 @@ use super::{fail, scan, Usage};
 use crate::cli_usage::TaskArgs;
 use crate::ctx::Ctx;
 use crate::out::{Output, Style};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::text::sanitize_line;
 use tmgr_usage::bind::Linker;
-use tmgr_usage::link::{Link, LinkMethod};
+use tmgr_usage::facts::{StoredAgent, StoredFact};
+use tmgr_usage::limits::LimitSnapshot;
+use tmgr_usage::link::{Link, LinkEvent, LinkMethod, LinkReport};
 use tmgr_usage::task::{
     build, facts_as_events, LimitKind, LinkKind, Node, TaskIdent, TaskInput, TaskUsageAggregate,
 };
-use tmgr_usage::Tool;
+use tmgr_usage::{Tokens, Tool};
 
 const LABEL_WIDTH: usize = 8;
 const TOP_NAMES: usize = 6;
+
+pub struct Corpus {
+    pub now: DateTime<Utc>,
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+    pub source_id: String,
+    pub events: Vec<LinkEvent>,
+    pub tokens: Vec<Tokens>,
+    pub facts: Vec<StoredFact>,
+    pub agents: Vec<StoredAgent>,
+    pub limits: Vec<LimitSnapshot>,
+    pub set: runs::RunSet,
+    pub report: LinkReport,
+    pub fact_report: LinkReport,
+}
+
+pub struct Bucket {
+    pub workspace: String,
+    pub task_ref: String,
+    pub id: Option<u64>,
+    pub id_mismatch: bool,
+    pub events: Vec<usize>,
+    pub facts: Vec<usize>,
+}
+
+impl Corpus {
+    pub fn load(ctx: &Ctx, u: &mut Usage, days: i64, no_scan: bool) -> Result<Corpus> {
+        let now = Utc::now();
+        let (from, to) = (now - Duration::days(days), now + Duration::minutes(1));
+        if !no_scan {
+            scan(ctx, u, now)?;
+        }
+        let (events, tokens): (Vec<_>, Vec<_>) = u
+            .store
+            .link_events_with_tokens(from, to)
+            .map_err(fail)?
+            .into_iter()
+            .unzip();
+        let facts = u.store.facts(from, to).map_err(fail)?;
+        let agents = u.store.agents().map_err(fail)?;
+        let set = runs::collect(ctx, from, to, now);
+        let fact_events = facts_as_events(&facts, &events);
+        let earlier = runs::earlier_facts(&u.store, &set, from, to)?;
+        let linker = Linker::new(
+            &set.windows,
+            &set.ids,
+            &events,
+            earlier.as_deref().unwrap_or(&facts),
+            &agents,
+            now,
+        );
+        let report = linker.attribute(&events);
+        let fact_report = linker.attribute(&fact_events);
+        Ok(Corpus {
+            now,
+            from,
+            to,
+            source_id: u.store.install_id().map_err(fail)?,
+            limits: u.store.current_limits(now).map_err(fail)?,
+            events,
+            tokens,
+            facts,
+            agents,
+            set,
+            report,
+            fact_report,
+        })
+    }
+
+    pub fn aggregate(
+        &self,
+        task: TaskIdent,
+        linked_events: &[usize],
+        linked_facts: &[usize],
+    ) -> Option<TaskUsageAggregate> {
+        build(&TaskInput {
+            source_id: self.source_id.clone(),
+            generated_at: self.now,
+            task,
+            from: self.from,
+            to: self.to,
+            events: &self.events,
+            tokens: &self.tokens,
+            linked_events,
+            facts: &self.facts,
+            linked_facts,
+            agents: &self.agents,
+            limits: &self.limits,
+        })
+    }
+
+    pub fn buckets(&self) -> Vec<Bucket> {
+        let workspace_of: HashMap<&str, &str> = self
+            .set
+            .windows
+            .iter()
+            .map(|w| (w.run_ref.as_str(), w.workspace.as_str()))
+            .collect();
+        let mut by_task: BTreeMap<(String, String), Bucket> = BTreeMap::new();
+        for (links, facts) in [(&self.report.links, false), (&self.fact_report.links, true)] {
+            for l in links {
+                let (Some(meta), Some(ws)) = (
+                    self.set.meta.get(&l.run_ref),
+                    workspace_of.get(l.run_ref.as_str()),
+                ) else {
+                    continue;
+                };
+                let plain = meta.task_ref.rsplit('/').next().unwrap_or(&meta.task_ref);
+                let bucket = by_task
+                    .entry((ws.to_string(), plain.to_ascii_uppercase()))
+                    .or_insert_with(|| Bucket {
+                        workspace: ws.to_string(),
+                        task_ref: plain.to_string(),
+                        id: None,
+                        id_mismatch: false,
+                        events: Vec::new(),
+                        facts: Vec::new(),
+                    });
+                match (bucket.id, meta.task_id) {
+                    (Some(a), Some(b)) if a != b => bucket.id_mismatch = true,
+                    (None, found) => bucket.id = found,
+                    _ => {}
+                }
+                if facts {
+                    bucket.facts.push(l.event_index);
+                } else {
+                    bucket.events.push(l.event_index);
+                }
+            }
+        }
+        by_task.into_values().collect()
+    }
+}
 
 pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
     let want = match parse_task_ref(&args.reference)? {
         TaskRef::Id(id) => WantedTask::Id(id),
         TaskRef::Key(k) => WantedTask::Key(k),
     };
-    let now = Utc::now();
-    let (from, to) = (now - Duration::days(args.days), now + Duration::minutes(1));
     let mut u = Usage::open()?;
-    if !args.no_scan {
-        scan(ctx, &mut u, now)?;
-    }
-    let (events, tokens): (Vec<_>, Vec<_>) = u
-        .store
-        .link_events_with_tokens(from, to)
-        .map_err(fail)?
-        .into_iter()
-        .unzip();
-    let facts = u.store.facts(from, to).map_err(fail)?;
-    let agents = u.store.agents().map_err(fail)?;
-    let set = runs::collect(ctx, from, to, now);
-    let fact_events = facts_as_events(&facts, &events);
-    let earlier = runs::earlier_facts(&u.store, &set, from, to)?;
-    let linker = Linker::new(
-        &set.windows,
-        &set.ids,
-        &events,
-        earlier.as_deref().unwrap_or(&facts),
-        &agents,
-        now,
-    );
-    let report = linker.attribute(&events);
-    let fact_report = linker.attribute(&fact_events);
+    let c = Corpus::load(ctx, &mut u, args.days, args.no_scan)?;
+    let (set, report, fact_report) = (&c.set, &c.report, &c.fact_report);
     let matching = |links: &[Link]| -> Vec<usize> {
         links
             .iter()
@@ -62,7 +173,7 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
     };
     let linked_events = matching(&report.links);
     let linked_facts = matching(&fact_report.links);
-    let mut linking = linking_json(&set, &report);
+    let mut linking = linking_json(set, report);
     linking["linked_facts"] = json!(linked_facts.len());
 
     let label = match &want {
@@ -105,20 +216,7 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
         .map(sanitize_line)
         .filter(|t| !t.trim().is_empty());
 
-    let aggregate = build(&TaskInput {
-        source_id: u.store.install_id().map_err(fail)?,
-        generated_at: now,
-        task,
-        from,
-        to,
-        events: &events,
-        tokens: &tokens,
-        linked_events: &linked_events,
-        facts: &facts,
-        linked_facts: &linked_facts,
-        agents: &agents,
-        limits: &u.store.current_limits(now).map_err(fail)?,
-    });
+    let aggregate = c.aggregate(task, &linked_events, &linked_facts);
     let Some(aggregate) = aggregate else {
         return Ok(Output::new(
             json!({"basis": "api_equivalent", "aggregate": Value::Null, "title": Value::Null, "linking": linking}),

@@ -265,6 +265,32 @@ impl Client {
         Ok((status, value))
     }
 
+    pub fn call_guarded(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&Value>,
+        allow_resend: &dyn Fn() -> bool,
+    ) -> Result<Option<(u16, Value)>> {
+        let method = Method::from_bytes(method.as_bytes())
+            .map_err(|_| Error::internal("invalid HTTP method"))?;
+        if let Some(local) = &self.local {
+            return self
+                .local_send(local, method.as_str(), path, &[], body)
+                .map(Some);
+        }
+        let sent_access = self.current_access()?;
+        let (mut status, mut value) =
+            self.send_raw(method.clone(), path, &[], body, Auth::Bearer)?;
+        if status == 401 && self.recover(&sent_access)? {
+            if !allow_resend() {
+                return Ok(None);
+            }
+            (status, value) = self.send_raw(method, path, &[], body, Auth::Bearer)?;
+        }
+        Ok(Some((status, value)))
+    }
+
     fn local_send(
         &self,
         local: &crate::local::Local,

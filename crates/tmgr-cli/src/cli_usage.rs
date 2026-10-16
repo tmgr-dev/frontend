@@ -91,6 +91,8 @@ pub enum UsageCommand {
         #[command(subcommand)]
         command: Option<PricingCommand>,
     },
+    /// Upload per-task usage to TMGR (opt-in, never automatic)
+    Sync(SyncArgs),
     /// Delete all usage data (database and statusline snapshots)
     Reset,
     /// Claude Code statusLine integration for rate limits
@@ -116,6 +118,60 @@ pub struct TaskArgs {
     /// Do not scan the logs first
     #[arg(long)]
     pub no_scan: bool,
+}
+
+#[derive(Args)]
+#[command(
+    args_conflicts_with_subcommands = true,
+    subcommand_negates_reqs = true,
+    long_about = "Upload one summary per task (cost, tokens, time, the agent tree, tool and skill names; never prompts, replies, paths or arguments) so the members of the task's workspace can see it.\n\nNothing is uploaded automatically and nothing until two locks are open: `tmgr usage sync on` (typed consent in a terminal) and the Agent usage sync setting in TMGR Settings -> Agent work. Use --dry-run to see exactly what would be sent. Local workspaces are never uploaded."
+)]
+pub struct SyncArgs {
+    #[command(subcommand)]
+    pub command: Option<SyncCommand>,
+    #[command(flatten)]
+    pub run: SyncRunArgs,
+}
+
+#[derive(Args)]
+pub struct SyncRunArgs {
+    /// Only this task (TM-512 or #8974)
+    #[arg(long, value_name = "REF")]
+    pub task: Option<String>,
+    /// How many days back to read (at most 90, the kept history)
+    #[arg(long, value_name = "N", default_value_t = 30, value_parser = clap::value_parser!(i64).range(1..=90))]
+    pub days: i64,
+    /// Print what would be sent and send nothing (works without consent)
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Send even when the local usage is smaller than what was uploaded before
+    #[arg(long, requires = "task")]
+    pub force: bool,
+    /// Do not scan the logs first
+    #[arg(long)]
+    pub no_scan: bool,
+}
+
+#[derive(Subcommand)]
+pub enum SyncCommand {
+    /// Turn uploading on: shows who can see the data and a real sample, then asks you to type yes (terminal only)
+    On,
+    /// Turn uploading off; earlier uploads stay until the server setting is turned off or you run `forget`
+    #[command(
+        long_about = "Turn uploading off. Uploads made earlier stay on the server until the Agent usage sync setting is turned off (that deletes them) or you run `tmgr usage sync forget`.\n\nRun `tmgr usage sync forget` before `tmgr usage reset`: reset clears the local upload history but keeps this install's source id, so afterwards a smaller upload could replace the fuller one on the server."
+    )]
+    Off,
+    /// Whether uploading is on, and the result of the last run
+    Status,
+    /// Delete what you uploaded from the server (all tasks, or one with --task)
+    #[command(
+        long_about = "Delete what you uploaded from the server: everything with no flags, one task with --task. Needs a typed confirmation in a terminal or --yes.\n\nRun `tmgr usage sync forget` before `tmgr usage reset`: reset clears the local upload history but keeps this install's source id, so afterwards a smaller upload could replace the fuller one on the server."
+    )]
+    Forget {
+        /// Only this task (TM-512 or #8974)
+        #[arg(long, value_name = "REF")]
+        task: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]

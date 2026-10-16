@@ -5,6 +5,7 @@ mod pricing;
 mod runs;
 mod statusline;
 mod summary;
+mod sync;
 mod task;
 
 use crate::cli_usage::{UsageArgs, UsageCommand};
@@ -188,6 +189,7 @@ pub fn run(ctx: &Ctx, args: &UsageArgs) -> Result<Output> {
         Some(UsageCommand::Scan) => run_scan(ctx),
         Some(UsageCommand::Accounts { command }) => accounts::run(ctx, command.as_ref()),
         Some(UsageCommand::Pricing { command }) => pricing::run(ctx, command.as_ref()),
+        Some(UsageCommand::Sync(sync_args)) => sync::run(ctx, sync_args),
         Some(UsageCommand::Reset) => reset(ctx),
         Some(UsageCommand::Statusline { command }) => statusline::run(ctx, command),
         Some(UsageCommand::StatuslineHook(_)) => {
