@@ -81,7 +81,7 @@
 	const HEADER_H = 18;
 
 	const props = defineProps<{
-		events: PositionedEvent<{ source: RoutineEntry }>[];
+		events: PositionedEvent<{ entry: RoutineEntry }>[];
 		startMin: number;
 		endMin: number;
 		mode: 'stack' | 'pill';

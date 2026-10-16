@@ -79,7 +79,7 @@
 
 	const toaster = useToast();
 	const [isOpen, closeDialog] = dialogState();
-	const [isOpenInvitation, closeInvitationDialog] = dialogState();
+	const [isOpenInvitation] = dialogState();
 	const newWorkspace = ref({
 		name: '',
 		type: 'test',
