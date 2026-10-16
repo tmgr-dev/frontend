@@ -274,7 +274,7 @@ struct LearnTrust {
     path: Vec<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct RunExtra {
     permission_mode: Option<String>,
     clone_of: Option<String>,
@@ -1999,12 +1999,6 @@ impl Runner {
                     && req.clone_of.as_deref().is_some_and(|r| {
                         folders::is_trusted(&self.cfg.homes, Path::new(r), o.repo_id)
                     })
-            })
-            && dir.is_some_and(|d| {
-                !self
-                    .all()
-                    .iter()
-                    .any(|s| s.awaiting_exit() && d.path.starts_with(s.info().cwd))
             });
         let (trust, trust_note) = match (explicit, &prof.trust) {
             (Some(t), _) => (Some(t), Some(worklog::TRUST_PRE_ACCEPTED)),
@@ -2189,6 +2183,7 @@ impl Runner {
             }
         };
         let _g = lock(&self.create_lock);
+        let mut repo_trust_dropped = false;
         let _fence = match origin {
             Some(_) => Some(trust::fence_shared().map_err(|e| api(ErrorCode::Busy, e))?),
             None => None,
@@ -2207,6 +2202,13 @@ impl Runner {
                     "a session from an older runner has an unknown directory identity; \
                      bundled runs are refused until it exits",
                 ));
+            }
+            if extra.trust_note == Some(worklog::TRUST_REPO)
+                && sessions
+                    .values()
+                    .any(|s| s.awaiting_exit() && dir.path.starts_with(s.info().cwd))
+            {
+                repo_trust_dropped = true;
             }
             let id = dir.id();
             if sessions.values().any(|s| {
@@ -2265,6 +2267,17 @@ impl Runner {
                 }
             }
         }
+        let without_trust;
+        let extra = if repo_trust_dropped {
+            without_trust = RunExtra {
+                trust: None,
+                trust_note: None,
+                ..extra.clone()
+            };
+            &without_trust
+        } else {
+            extra
+        };
         let mut installed = None;
         let result = self.spawn_session(
             &req,
