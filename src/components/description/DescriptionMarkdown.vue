@@ -1,15 +1,18 @@
 <template>
 	<MdPreview
-		:editor-id="editorId"
+		:id="editorId"
 		:model-value="content"
 		language="en-US"
 		:theme="store.getters.isDarkTheme ? 'dark' : 'light'"
 		class="description-markdown"
+		no-echarts
+		:code-foldable="false"
 	/>
 </template>
 
 <script lang="ts">
 	import '@/assets/styles/md-editor.css';
+	import '@/utils/mdEditorConfig';
 	import store from '@/store';
 	import { MdPreview } from 'md-editor-v3';
 	import { defineComponent } from 'vue';
@@ -36,10 +39,6 @@
 		min-height: 0;
 		border: 0;
 		background: transparent;
-	}
-
-	.description-markdown .md-editor-preview-wrapper {
-		padding: 0;
 	}
 
 	/* Tailwind preflight resets list-style to none. */

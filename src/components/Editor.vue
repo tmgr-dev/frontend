@@ -1,16 +1,13 @@
 <script setup lang="ts">
 	import '@/assets/styles/md-editor.css';
 	import { EditorView } from '@codemirror/view';
-	import { MdEditor, config } from 'md-editor-v3';
+	import '@/utils/mdEditorConfig';
+	import { MdEditor } from 'md-editor-v3';
 	import { onBeforeUnmount } from 'vue';
 	import store from '../store';
 
-	config({
-		editorExtensions: { screenfull: { instance: { isEnabled: false } as any } },
-	});
-
 	const editorId = `md-editor-${Math.random().toString(36).slice(2)}`;
-	const value = defineModel<string>();
+	const value = defineModel<string>({ default: '' });
 	onBeforeUnmount(() => {
 		const dom = document.querySelector<HTMLElement>(
 			`#${editorId} .cm-editor`,
@@ -21,9 +18,13 @@
 
 <template>
 	<MdEditor
-		:editor-id="editorId"
+		:id="editorId"
 		v-model="value"
 		:preview="false"
+		no-highlight
+		no-katex
+		no-mermaid
+		no-echarts
 		language="en-US"
 		placeholder="Add description..."
 		:theme="store.getters.isDarkTheme ? 'dark' : 'light'"

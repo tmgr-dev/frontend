@@ -3386,8 +3386,7 @@
 	}
 
 	/* Description editor wrapper (modal/side-panel) — no overflow clipping so editor popups (slash menu, toolbox) can overflow; the panel scrolls */
-	.description-editor-wrapper--editing .md-editor,
-	.description-editor-wrapper--editing .md-editor-dark {
+	.description-editor-wrapper--editing .md-editor:not(.md-editor-fullscreen) {
 		border: 0 !important;
 		background: transparent !important;
 		/* md-editor-v3 defaults to 500px and scrolls internally; the wrapper no longer clips it */
