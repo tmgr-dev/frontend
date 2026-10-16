@@ -382,6 +382,18 @@ fn run_windows(runs: &[RawRun], now: DateTime<Utc>) -> (Vec<RunWindow>, Vec<RunI
   (windows, ids)
 }
 
+fn earlier_facts(
+  store: &Store,
+  windows: &[RunWindow],
+  from: DateTime<Utc>,
+  to: DateTime<Utc>,
+  now: DateTime<Utc>,
+) -> Result<Option<Vec<tmgr_usage::facts::StoredFact>>, String> {
+  let overlapping: Vec<RunWindow> =
+    windows.iter().filter(|w| w.started_at <= to && w.ended_at.unwrap_or(now) >= from).cloned().collect();
+  facts_from(&overlapping, from).map(|f| store.facts(f, to)).transpose().map_err(user_error)
+}
+
 fn newest_first(windows: Vec<RunWindow>, ids: Vec<RunIds>) -> (Vec<RunWindow>, Vec<RunIds>) {
   let mut pairs: Vec<_> = windows.into_iter().zip(ids).collect();
   pairs.sort_by(|a, b| b.0.started_at.cmp(&a.0.started_at));
@@ -400,7 +412,7 @@ fn tasks_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun]) -> Result<TasksOu
   let to = day_bounds(today).1;
   let events = store.link_events(from, to).map_err(user_error)?;
   let facts = store.facts(from, to).map_err(user_error)?;
-  let earlier = facts_from(&windows, from).map(|f| store.facts(f, to)).transpose().map_err(user_error)?;
+  let earlier = earlier_facts(&store, &windows, from, to, now)?;
   let agents = store.agents().map_err(user_error)?;
   let linker = Linker::new(&windows, &ids, &events, earlier.as_deref().unwrap_or(&facts), &agents, now);
   let report = linker.attribute(&events);
@@ -441,7 +453,7 @@ fn task_inner(env: &Env, now: DateTime<Utc>, runs: &[RawRun], workspace: &str, t
   let (events, tokens): (Vec<_>, Vec<_>) = store.link_events_with_tokens(from, to).map_err(user_error)?.into_iter().unzip();
   let facts = store.facts(from, to).map_err(user_error)?;
   let agents = store.agents().map_err(user_error)?;
-  let earlier = facts_from(&windows, from).map(|f| store.facts(f, to)).transpose().map_err(user_error)?;
+  let earlier = earlier_facts(&store, &windows, from, to, now)?;
   let linker = Linker::new(&windows, &ids, &events, earlier.as_deref().unwrap_or(&facts), &agents, now);
   let mine: HashSet<&str> = windows.iter().filter(|w| w.task_ref == task_ref).map(|w| w.run_ref.as_str()).collect();
   let matching = |links: &[Link]| -> Vec<usize> {
