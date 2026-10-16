@@ -353,6 +353,8 @@ fn agent_work_calls_keep_only_the_task_or_run_id() {
             call("h", "mcp__tmgr-local__update_agent_work", serde_json::json!({"runId": 11})),
             call("i", "mcp__tmgr__update_agent_work", serde_json::json!({"runId": 18446744073709551615u64})),
             call("j", "mcp__tmgr__update_agent_work", serde_json::json!({"runId": "9223372036854775808"})),
+            call("k", "mcp__tmgr-evil__start_agent_work", serde_json::json!({"taskId": 7})),
+            call("l", "mcp__tmgr_x__start_agent_work", serde_json::json!({"taskId": 8})),
         ]},
     })
     .to_string();
@@ -371,6 +373,7 @@ fn agent_work_calls_keep_only_the_task_or_run_id() {
             ("mcp__evil_tmgr__start_agent_work".into(), None, None),
             ("mcp__other__start_agent_work".into(), None, None),
             ("mcp__other__update_agent_work".into(), None, None),
+            ("mcp__tmgr-evil__start_agent_work".into(), None, None),
             (
                 "mcp__tmgr-local__update_agent_work".into(),
                 Some("agent_work_update".into()),
@@ -390,6 +393,7 @@ fn agent_work_calls_keep_only_the_task_or_run_id() {
             ),
             ("mcp__tmgr__update_agent_work".into(), None, None),
             ("mcp__tmgr__update_agent_work".into(), None, None),
+            ("mcp__tmgr_x__start_agent_work".into(), None, None),
         ]
     );
     drop(store);

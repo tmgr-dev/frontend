@@ -1,5 +1,5 @@
 use super::fmt::{count, money, span};
-use super::runs::{self, Linker, WantedTask};
+use super::runs::{self, WantedTask};
 use super::summary::linking_json;
 use super::{fail, scan, Usage};
 use crate::cli_usage::TaskArgs;
@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::text::sanitize_line;
+use tmgr_usage::bind::Linker;
 use tmgr_usage::link::{Link, LinkMethod};
 use tmgr_usage::task::{
     build, facts_as_events, LimitKind, LinkKind, Node, TaskIdent, TaskInput, TaskUsageAggregate,
@@ -43,7 +44,8 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
     let fact_events = facts_as_events(&facts, &events);
     let earlier = runs::earlier_facts(&u.store, &set, from, to)?;
     let linker = Linker::new(
-        &set,
+        &set.windows,
+        &set.ids,
         &events,
         earlier.as_deref().unwrap_or(&facts),
         &agents,

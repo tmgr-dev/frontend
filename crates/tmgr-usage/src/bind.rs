@@ -2,7 +2,7 @@ use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::facts::{StoredAgent, StoredFact};
-use crate::link::{LinkEvent, RunWindow};
+use crate::link::{attribute_with_bindings, LinkEvent, LinkReport, RunWindow};
 use crate::model::{FactKind, Tool};
 
 pub const SLACK_MINUTES: i64 = 2;
@@ -196,6 +196,42 @@ pub fn node_parents(
         }
     }
     parents
+}
+
+pub fn facts_from(runs: &[RunWindow], from: DateTime<Utc>) -> Option<DateTime<Utc>> {
+    runs.iter()
+        .map(|w| w.started_at - Duration::minutes(SLACK_MINUTES))
+        .min()
+        .filter(|e| *e < from)
+}
+
+pub struct Linker<'a> {
+    runs: &'a [RunWindow],
+    bindings: Vec<AgentBinding>,
+    parents: HashMap<NodeKey, NodeKey>,
+    now: DateTime<Utc>,
+}
+
+impl<'a> Linker<'a> {
+    pub fn new(
+        runs: &'a [RunWindow],
+        ids: &[RunIds],
+        events: &[LinkEvent],
+        facts: &[StoredFact],
+        agents: &[StoredAgent],
+        now: DateTime<Utc>,
+    ) -> Self {
+        Linker {
+            runs,
+            bindings: agent_bindings(facts, runs, ids, now),
+            parents: node_parents(events, facts, agents),
+            now,
+        }
+    }
+
+    pub fn attribute(&self, events: &[LinkEvent]) -> LinkReport {
+        attribute_with_bindings(events, self.runs, &self.bindings, &self.parents, self.now)
+    }
 }
 
 #[cfg(test)]

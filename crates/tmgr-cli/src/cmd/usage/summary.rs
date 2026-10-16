@@ -1,5 +1,5 @@
 use super::fmt::{count, money, round6, total_tokens, BASIS_NOTE};
-use super::runs::{self, Linker, RunSet, WantedTask};
+use super::runs::{self, RunSet, WantedTask};
 use super::{fail, scan, ScanTotals, Usage};
 use crate::cli_usage::{By, SummaryArgs, ToolArg};
 use crate::ctx::Ctx;
@@ -11,6 +11,7 @@ use tmgr_core::error::{Error, Result};
 use tmgr_core::refs::{parse_task_ref, TaskRef};
 use tmgr_core::runs::day_bounds;
 use tmgr_core::text::sanitize_line;
+use tmgr_usage::bind::Linker;
 use tmgr_usage::link::{LinkEvent, LinkReport};
 use tmgr_usage::{Filters, GroupBy, Query, Report, Row, Tokens, Tool, Tz};
 
@@ -460,7 +461,8 @@ fn task_view(
     let agents = u.store.agents().map_err(fail)?;
     let earlier = runs::earlier_facts(&u.store, &set, w.from, w.to)?;
     let report = Linker::new(
-        &set,
+        &set.windows,
+        &set.ids,
         &events,
         earlier.as_deref().unwrap_or(&facts),
         &agents,

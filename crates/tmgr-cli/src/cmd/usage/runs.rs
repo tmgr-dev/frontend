@@ -8,11 +8,9 @@ use tmgr_core::models::Workspace;
 use tmgr_core::refs::parse_key;
 use tmgr_core::runs::{parse_ts, task_ref_of, ApiRun};
 use tmgr_core::runstate::{self, Runs};
-use tmgr_usage::bind::{
-    agent_bindings, node_parents, AgentBinding, NodeKey, RunIds, SLACK_MINUTES,
-};
-use tmgr_usage::facts::{StoredAgent, StoredFact};
-use tmgr_usage::link::{attribute_with_bindings, LinkEvent, LinkReport, RunWindow};
+use tmgr_usage::bind::RunIds;
+use tmgr_usage::facts::StoredFact;
+use tmgr_usage::link::RunWindow;
 use tmgr_usage::model::project_hash;
 
 const LOOKBACK_DAYS: i64 = 3;
@@ -55,49 +53,9 @@ pub fn earlier_facts(
     from: DateTime<Utc>,
     to: DateTime<Utc>,
 ) -> Result<Option<Vec<StoredFact>>> {
-    let earliest = set
-        .windows
-        .iter()
-        .map(|w| w.started_at - Duration::minutes(SLACK_MINUTES))
-        .min()
-        .filter(|e| *e < from);
-    earliest
+    tmgr_usage::bind::facts_from(&set.windows, from)
         .map(|e| store.facts(e, to).map_err(super::fail))
         .transpose()
-}
-
-pub struct Linker<'a> {
-    set: &'a RunSet,
-    bindings: Vec<AgentBinding>,
-    parents: HashMap<NodeKey, NodeKey>,
-    now: DateTime<Utc>,
-}
-
-impl<'a> Linker<'a> {
-    pub fn new(
-        set: &'a RunSet,
-        events: &[LinkEvent],
-        facts: &[StoredFact],
-        agents: &[StoredAgent],
-        now: DateTime<Utc>,
-    ) -> Self {
-        Linker {
-            set,
-            bindings: agent_bindings(facts, &set.windows, &set.ids, now),
-            parents: node_parents(events, facts, agents),
-            now,
-        }
-    }
-
-    pub fn attribute(&self, events: &[LinkEvent]) -> LinkReport {
-        attribute_with_bindings(
-            events,
-            &self.set.windows,
-            &self.bindings,
-            &self.parents,
-            self.now,
-        )
-    }
 }
 
 pub enum WantedTask {

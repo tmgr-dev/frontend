@@ -335,10 +335,12 @@ struct Raw<'a> {
     meta: Option<&'a StoredAgent>,
     parent: Option<usize>,
     link: Option<LinkKind>,
+    spawns: Vec<(DateTime<Utc>, usize)>,
 }
 
 struct Cand<'a> {
     node: usize,
+    fact: usize,
     start: DateTime<Utc>,
     end: DateTime<Utc>,
     project: Option<&'a str>,
@@ -373,6 +375,7 @@ impl<'a> Graph<'a> {
             meta: None,
             parent: None,
             link: None,
+            spawns: Vec::new(),
         });
         i
     }
@@ -522,8 +525,9 @@ fn link_codex_to_claude(g: &mut Graph<'_>, inp: &TaskInput<'_>) {
     let cands: Vec<Cand<'_>> = inp
         .facts
         .iter()
-        .filter(|f| is_codex_call(f))
-        .filter_map(|f| {
+        .enumerate()
+        .filter(|(_, f)| is_codex_call(f))
+        .filter_map(|(fact, f)| {
             let node = *g.index.get(&Key {
                 tool: f.tool,
                 account: f.account.clone(),
@@ -533,6 +537,7 @@ fn link_codex_to_claude(g: &mut Graph<'_>, inp: &TaskInput<'_>) {
             let (start, end) = call_window(f);
             Some(Cand {
                 node,
+                fact,
                 start,
                 end,
                 project: f.project_hash.as_deref(),
@@ -582,6 +587,12 @@ fn link_codex_to_claude(g: &mut Graph<'_>, inp: &TaskInput<'_>) {
         let same_project = matches!((project, hits[0].project), (Some(a), Some(b)) if a == b);
         let parent = hits[0].node;
         g.nodes[idx].parent = Some(parent);
+        g.nodes[idx].spawns = cands
+            .iter()
+            .filter(|c| c.node == parent)
+            .map(|c| (c.start, c.fact))
+            .collect();
+        g.nodes[idx].spawns.sort();
         g.nodes[idx].link = Some(if chain && same_project {
             LinkKind::Exact
         } else {
@@ -620,40 +631,51 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
             children[p].push(i);
         }
     }
-    let mut window: Vec<Option<Span>> = vec![None; n];
-    let selected =
-        |i: usize, take_all: &[bool], window: &[Option<Span>]| -> (Vec<usize>, Vec<usize>) {
-            let keep =
-                |items: &[usize], linked: &HashSet<usize>, ts: &dyn Fn(usize) -> DateTime<Utc>| {
-                    items
-                        .iter()
-                        .copied()
-                        .filter(|x| {
-                            linked.contains(x)
-                                || (take_all[i]
-                                    && window[i].is_none_or(|(a, b)| a <= ts(*x) && ts(*x) <= b))
-                        })
-                        .collect::<Vec<_>>()
-                };
-            (
-                keep(&g.nodes[i].events, &linked_ev, &|x| inp.events[x].ts),
-                keep(&g.nodes[i].facts, &linked_fa, &|x| inp.facts[x].ts),
-            )
-        };
+    let mut gate: Vec<Gate> = vec![None; n];
+    let selected = |i: usize, take_all: &[bool], gate: &[Gate]| -> (Vec<usize>, Vec<usize>) {
+        let keep =
+            |items: &[usize], linked: &HashSet<usize>, ts: &dyn Fn(usize) -> DateTime<Utc>| {
+                items
+                    .iter()
+                    .copied()
+                    .filter(|x| {
+                        linked.contains(x)
+                            || (take_all[i]
+                                && gate[i].as_ref().is_none_or(|calls| {
+                                    let t = ts(*x);
+                                    calls
+                                        .iter()
+                                        .rev()
+                                        .find(|(start, _)| *start <= t)
+                                        .or(calls.first())
+                                        .is_some_and(|(_, picked)| *picked)
+                                }))
+                    })
+                    .collect::<Vec<_>>()
+            };
+        (
+            keep(&g.nodes[i].events, &linked_ev, &|x| inp.events[x].ts),
+            keep(&g.nodes[i].facts, &linked_fa, &|x| inp.facts[x].ts),
+        )
+    };
     let mut queue: Vec<usize> = (0..n).filter(|&i| included[i]).collect();
     while let Some(i) = queue.pop() {
         for &c in &children[i] {
             if g.nodes[c].key.tool == Tool::Codex && !take_all[c] {
                 take_all[c] = true;
                 included[c] = true;
-                window[c] = if g.nodes[i].key.tool == Tool::Claude {
-                    let (ev, fa) = selected(i, &take_all, &window);
+                gate[c] = if g.nodes[i].key.tool == Tool::Claude {
+                    let (_, fa) = selected(i, &take_all, &gate);
+                    let picked: HashSet<usize> = fa.into_iter().collect();
                     Some(
-                        own_span(inp, &ev, &fa)
-                            .unwrap_or((DateTime::<Utc>::MAX_UTC, DateTime::<Utc>::MIN_UTC)),
+                        g.nodes[c]
+                            .spawns
+                            .iter()
+                            .map(|(start, fact)| (*start, picked.contains(fact)))
+                            .collect(),
                     )
                 } else if take_all[i] {
-                    window[i]
+                    gate[i].clone()
                 } else {
                     None
                 };
@@ -664,7 +686,7 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
     let mut events = Vec::with_capacity(n);
     let mut facts = Vec::with_capacity(n);
     for i in 0..n {
-        let (ev, fa) = selected(i, &take_all, &window);
+        let (ev, fa) = selected(i, &take_all, &gate);
         events.push(ev);
         facts.push(fa);
     }
@@ -676,6 +698,7 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
 }
 
 type Span = (DateTime<Utc>, DateTime<Utc>);
+type Gate = Option<Vec<(DateTime<Utc>, bool)>>;
 type HookKey = (String, String, Option<String>);
 
 fn own_span(inp: &TaskInput<'_>, events: &[usize], facts: &[usize]) -> Option<Span> {
@@ -1497,6 +1520,46 @@ mod tests {
         let b = fx.build().unwrap();
         assert_eq!(b.totals.events, 2);
         assert_eq!(a.totals.events + b.totals.events, fx.events.len() as u64);
+    }
+
+    #[test]
+    fn a_codex_event_between_two_tasks_calls_counts_for_one_task_only() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.event(Tool::Claude, "s1", None, 1200, 1.0);
+        fx.event(Tool::Claude, "s1", None, 300, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 0, Some(60));
+        fx.call("s1", None, "Bash", Some("codex"), "tu2", 300, Some(660));
+        fx.call("s1", None, "Bash", Some("codex"), "tu3", 1200, Some(1260));
+        fx.event(Tool::Codex, "cx1", None, 30, 0.5);
+        fx.event(Tool::Codex, "cx1", None, 600, 0.5);
+        fx.event(Tool::Codex, "cx1", None, 1230, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 30);
+        fx.linked_events = vec![0, 1];
+        fx.linked_facts = vec![0, 2];
+        let a = fx.build().unwrap();
+        fx.linked_events = vec![2];
+        fx.linked_facts = vec![1];
+        let b = fx.build().unwrap();
+        assert_eq!(a.totals.events, 4);
+        assert_eq!(b.totals.events, 2);
+        assert_eq!(a.totals.events + b.totals.events, fx.events.len() as u64);
+    }
+
+    #[test]
+    fn codex_events_after_the_spawning_call_stay_with_that_task() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 10, Some(20));
+        fx.event(Tool::Codex, "cx1", None, 15, 0.5);
+        fx.event(Tool::Codex, "cx1", None, 900, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 15);
+        fx.linked_events = vec![0];
+        fx.linked_facts = vec![0];
+        let a = fx.build().unwrap();
+        assert_eq!(a.totals.events, 3);
     }
 
     fn rescue_fixture() -> Fx {

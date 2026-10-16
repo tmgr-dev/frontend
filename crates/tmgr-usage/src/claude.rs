@@ -161,7 +161,7 @@ impl WorkId {
 fn agent_work(name: &str, input: Option<&Input>) -> Option<(&'static str, u64)> {
     let input = input?;
     let server = name.strip_prefix("mcp__")?.rsplit_once("__")?.0;
-    if server != "tmgr" && !server.starts_with("tmgr-") && !server.starts_with("tmgr_") {
+    if server != "tmgr" && server != "tmgr-local" {
         return None;
     }
     if name.ends_with("__start_agent_work") {
