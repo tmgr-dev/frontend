@@ -10,7 +10,7 @@
 			<li>Run the command in the terminal where you start {{ client }}, not inside a session.</li>
 			<li>Restart the agent so it reloads its MCP config.</li>
 			<li v-if="verifyCommand">
-				Run <code class="font-mono">{{ verifyCommand }}</code> and look for tmgr.
+				Run <CommandChip :command="verifyCommand" /> and look for tmgr.
 			</li>
 		</ol>
 		<div class="mt-4 flex flex-wrap gap-2">
@@ -50,10 +50,12 @@
 </template>
 
 <script lang="ts">
+import CommandChip from '@/components/general/CommandChip.vue';
 import { defineComponent } from 'vue';
 
 export default defineComponent({
 	name: 'StillWaiting',
+	components: { CommandChip },
 	props: {
 		client: { type: String, default: 'your agent' },
 		verifyCommand: { type: String, default: '' },

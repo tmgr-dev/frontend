@@ -134,7 +134,7 @@
 							</div>
 							<p v-if="hasAccount('claude') && !hasLimit('claude')" class="mt-3 text-sm text-ink-subtle">
 								No Claude Code limits yet. Run
-								<code class="rounded bg-muted px-1">tmgr usage statusline install</code>
+								<CommandChip command="tmgr usage statusline install" />
 								in a terminal to start collecting them.
 							</p>
 							<p v-if="hasAccount('codex') && !hasLimit('codex')" class="mt-3 text-sm text-ink-subtle">
@@ -327,6 +327,7 @@
 </template>
 
 <script lang="ts">
+	import CommandChip from '@/components/general/CommandChip.vue';
 	import { Button } from '@/components/ui/button';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -362,7 +363,7 @@
 
 	export default defineComponent({
 		name: 'AiUsage',
-		components: { Button, SettingsSection },
+		components: { Button, CommandChip, SettingsSection },
 		setup() {
 			const overview = ref<UsageOverview | null>(null),
 				error = ref<string | null>(null),

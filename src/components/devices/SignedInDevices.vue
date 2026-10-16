@@ -13,7 +13,8 @@
 			class="text-sm text-ink-subtle"
 			data-testid="devices-empty"
 		>
-			No CLI devices yet. Run <code>tmgr login</code> in your terminal.
+			No CLI devices yet. Run <CommandChip command="tmgr login" /> in your
+			terminal.
 		</p>
 		<ul v-else class="divide-y divide-border" data-testid="devices-list">
 			<li
@@ -99,6 +100,7 @@
 		updateCliDeviceScopes,
 	} from '@/actions/tmgr/devices';
 	import ScopeChecklist from '@/components/devices/ScopeChecklist.vue';
+	import CommandChip from '@/components/general/CommandChip.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
@@ -111,7 +113,7 @@
 
 	export default defineComponent({
 		name: 'SignedInDevices',
-		components: { Button, ScopeChecklist, SettingsSection },
+		components: { Button, CommandChip, ScopeChecklist, SettingsSection },
 		data() {
 			return {
 				devices: [],

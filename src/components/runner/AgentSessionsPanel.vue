@@ -7,7 +7,7 @@
 			data-testid="agent-sessions-error"
 		>
 			<span class="font-semibold text-destructive">error:</span>
-			{{ unavailable }}
+			<CommandText :text="unavailable" />
 		</p>
 		<p
 			v-else-if="!list.length"
@@ -63,12 +63,13 @@
 			</li>
 		</ul>
 		<p v-if="actionError" class="text-xs text-destructive" role="alert">
-			{{ actionError }}
+			<CommandText :text="actionError" />
 		</p>
 	</div>
 </template>
 
 <script lang="ts">
+	import CommandText from '@/components/general/CommandText.vue';
 	import AgentStateChip from '@/components/runner/AgentStateChip.vue';
 	import { Button } from '@/components/ui/button';
 	import { runnerHalt, runnerOpenTerminal } from '@/runner/api';
@@ -96,7 +97,7 @@
 
 	export default defineComponent({
 		name: 'AgentSessionsPanel',
-		components: { AgentStateChip, Button },
+		components: { AgentStateChip, Button, CommandText },
 		props: {
 			workspaceId: { type: [Number, String] as PropType<Id>, default: null },
 			taskId: { type: [Number, String] as PropType<Id>, default: null },

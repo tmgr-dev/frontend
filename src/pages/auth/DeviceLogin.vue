@@ -119,8 +119,8 @@
 
 					<template v-else>
 						<p v-if="approval.state.value === 'not_found'">
-							This code is invalid or has expired. Run <code>tmgr login</code>
-							again.
+							This code is invalid or has expired. Run
+							<CommandChip command="tmgr login" /> again.
 						</p>
 						<p v-else-if="approval.state.value === 'locked'">
 							{{ lockedMessage }}
@@ -162,6 +162,7 @@
 		getDeviceRequest,
 	} from '@/actions/tmgr/devices';
 	import ScopeChecklist from '@/components/devices/ScopeChecklist.vue';
+	import CommandChip from '@/components/general/CommandChip.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
@@ -185,7 +186,14 @@
 
 	export default defineComponent({
 		name: 'DeviceLogin',
-		components: { PageContainer, Button, Input, Label, ScopeChecklist },
+		components: {
+			PageContainer,
+			Button,
+			CommandChip,
+			Input,
+			Label,
+			ScopeChecklist,
+		},
 		setup() {
 			const route = useRoute();
 			const approval = createDeviceApproval({

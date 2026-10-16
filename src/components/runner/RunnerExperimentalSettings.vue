@@ -17,15 +17,19 @@
 					/>
 				</SettingsRow>
 				<template v-if="runner.enabled.value">
-					<SettingsRow label="Runner status" :description="detail ?? undefined">
+					<SettingsRow label="Runner status">
+						<template v-if="detail" #description>
+							<CommandText :text="detail" />
+						</template>
 						<span class="text-sm text-ink" data-testid="runner-status">{{
 							statusLine(runner.status.value)
 						}}</span>
 					</SettingsRow>
-					<SettingsRow
-						label="Permission prompts"
-						description="Bypass mode can be enabled only from the terminal with `tmgr config allow-bypass`."
-					>
+					<SettingsRow label="Permission prompts">
+						<template #description>
+							Bypass mode can be enabled only from the terminal with
+							<CommandChip command="tmgr config allow-bypass" />.
+						</template>
 						<span class="text-sm text-ink" data-testid="runner-permissions"
 							>on</span
 						>
@@ -63,6 +67,8 @@
 </template>
 
 <script lang="ts">
+	import CommandChip from '@/components/general/CommandChip.vue';
+	import CommandText from '@/components/general/CommandText.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import AgentSessionsPanel from '@/components/runner/AgentSessionsPanel.vue';
@@ -84,6 +90,8 @@
 			AgentSessionsPanel,
 			BypassConsentDialog,
 			Button,
+			CommandChip,
+			CommandText,
 			SettingsRow,
 			SettingsSection,
 			Switch,

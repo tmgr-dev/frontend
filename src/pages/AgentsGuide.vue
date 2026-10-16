@@ -90,7 +90,7 @@
 							and is readable. Hooks always exit 0 and print nothing.
 						</li>
 						<li>
-							Run <code class="font-mono">claude mcp list</code> to check the
+							Run <CommandChip command="claude mcp list" /> to check the
 							server is connected.
 						</li>
 						<li>
@@ -141,6 +141,7 @@
 	import AgentConnectTabs from '@/components/agents/AgentConnectTabs.vue';
 	import AiAgentsOverview from '@/components/agents/AiAgentsOverview.vue';
 	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
+	import CommandChip from '@/components/general/CommandChip.vue';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 
 	const mcpUrl = resolveMcpUrl(

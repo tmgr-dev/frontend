@@ -79,7 +79,7 @@
 						Permission prompts: on
 					</p>
 					<p v-if="error" class="text-xs text-destructive" role="alert">
-						{{ error }}
+						<CommandText :text="error" />
 					</p>
 					<Button type="submit" size="sm" :disabled="starting || !profile">
 						{{ starting ? 'Starting…' : 'Run' }}
@@ -91,6 +91,7 @@
 </template>
 
 <script lang="ts">
+	import CommandText from '@/components/general/CommandText.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Popover,
@@ -119,6 +120,7 @@
 		components: {
 			Bot,
 			Button,
+			CommandText,
 			Popover,
 			PopoverContent,
 			PopoverTrigger,

@@ -230,12 +230,7 @@
 										Generate the token above, then configure an MCP client
 										that supports remote Streamable HTTP servers with headers
 										(Claude Code:
-										<code
-											class="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-ink"
-											>claude mcp add --transport http tmgr
-											{{ mcpUrl }} --header "X-Smart-Device-Token:
-											&lt;token&gt;"</code
-										>).
+										<CommandChip :command="mcpAddCommand" />).
 									</p>
 									<div>
 										<p class="mb-1 font-medium text-ink">Server URL</p>
@@ -342,6 +337,7 @@
 		updateUserSettings,
 		updateUserSettingsV2,
 	} from '@/actions/tmgr/user';
+	import CommandChip from '@/components/general/CommandChip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import ThemePicker from '@/components/general/ThemePicker.vue';
 	import PromotionsList from '@/components/promotions/PromotionsList.vue';
@@ -389,6 +385,7 @@
 			LocalDataSettings,
 			LocalProfileSettings,
 			ThemePicker,
+			CommandChip,
 			SettingsSection,
 			PromotionsList,
 			SettingsRow,
@@ -483,6 +480,9 @@
 					import.meta.env.VITE_API_BASE_URL,
 					window.location.origin,
 				);
+			},
+			mcpAddCommand() {
+				return `claude mcp add --transport http tmgr ${this.mcpUrl} --header "X-Smart-Device-Token: <token>"`;
 			},
 			docsBaseUrl() {
 				const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/';

@@ -35,7 +35,7 @@
 				<p>Register the MCP server for every project with one command.</p>
 				<CodeSnippet :code="snippets.claudeCode" label="Claude Code command" />
 				<p class="text-ink-subtle">
-					Then run <code class="font-mono">claude mcp list</code> to check it's
+					Then run <CommandChip command="claude mcp list" /> to check it's
 					connected.
 				</p>
 			</template>
@@ -90,6 +90,7 @@
 
 <script setup lang="ts">
 	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
+	import CommandChip from '@/components/general/CommandChip.vue';
 	import {
 		buildNotifySnippets,
 		resolveNotifyApiUrl,
