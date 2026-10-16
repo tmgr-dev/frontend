@@ -720,12 +720,24 @@ impl Session {
     }
 
     fn note_input_from(&self, client: &str) {
-        if client != CLIENT_CLI && client != "desktop" {
-            self.foreign_input.store(true, Ordering::SeqCst);
+        if client != CLIENT_CLI
+            && client != "desktop"
+            && !self.foreign_input.swap(true, Ordering::SeqCst)
+            && lock(&self.inner).meta.learn_trust.take().is_some()
+        {
+            self.persist();
         }
     }
 
     fn learn_trust(&self) {
+        let (learn, cwd, cwd_id) = {
+            let mut i = lock(&self.inner);
+            (i.meta.learn_trust.take(), i.meta.cwd.clone(), i.meta.cwd_id)
+        };
+        if learn.is_none() {
+            return;
+        }
+        self.persist();
         if self.foreign_input.load(Ordering::SeqCst) {
             log(&format!(
                 "session {}: input came from a link or another client, so a folder-trust answer is not remembered",
@@ -733,14 +745,6 @@ impl Session {
             ));
             return;
         }
-        let (learn, cwd, cwd_id) = {
-            let i = lock(&self.inner);
-            (
-                i.meta.learn_trust.clone(),
-                i.meta.cwd.clone(),
-                i.meta.cwd_id,
-            )
-        };
         let (Some(l), Some(id)) = (learn, cwd_id) else {
             return;
         };
@@ -1995,6 +1999,12 @@ impl Runner {
                     && req.clone_of.as_deref().is_some_and(|r| {
                         folders::is_trusted(&self.cfg.homes, Path::new(r), o.repo_id)
                     })
+            })
+            && dir.is_some_and(|d| {
+                !self
+                    .all()
+                    .iter()
+                    .any(|s| s.awaiting_exit() && d.path.starts_with(s.info().cwd))
             });
         let (trust, trust_note) = match (explicit, &prof.trust) {
             (Some(t), _) => (Some(t), Some(worklog::TRUST_PRE_ACCEPTED)),

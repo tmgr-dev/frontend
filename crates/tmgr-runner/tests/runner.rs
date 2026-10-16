@@ -3822,7 +3822,22 @@ fn a_yes_to_claudes_trust_question_is_remembered_for_that_folder_only() {
             .any(|s| s.id == info.id && s.state.kind == StateKind::Exited)
     });
     wait_for("answer remembered", || !trusted(&fx).is_empty());
-    assert_eq!(trusted(&fx), [(canonical, "answered".to_string())]);
+    assert_eq!(trusted(&fx), [(canonical.clone(), "answered".to_string())]);
+
+    fx.h.client()
+        .call("trust.remove", json!({ "path": canonical }))
+        .unwrap();
+    fx.h.kill_runner();
+    fx.h.start(5000);
+    wait_for("session recovered", || {
+        fx.h.client()
+            .list()
+            .unwrap()
+            .iter()
+            .any(|s| s.id == info.id)
+    });
+    thread::sleep(Duration::from_millis(500));
+    assert!(trusted(&fx).is_empty());
 }
 
 #[test]
@@ -3950,6 +3965,21 @@ fn a_task_clone_of_a_trusted_repository_skips_the_trust_question() {
     assert!(!fx.started_trusted(fx.req(&fx.clone_at("tm-1-a"))));
     fx.trust(&fx.repo);
     assert!(fx.started_trusted(fx.req(&fx.clone_at("tm-2-b"))));
+    let mut above = fx.fx.h.run_req("trusty");
+    above.cwd = fx.trees.display().to_string();
+    let writer = fx.fx.h.client().create_run(above).unwrap();
+    assert!(!fx.started_trusted(fx.req(&fx.clone_at("tm-2-x"))));
+    fx.fx.h.client().kill(&writer.id, "kill").unwrap();
+    wait_for("writer exits", || {
+        fx.fx
+            .h
+            .client()
+            .list()
+            .unwrap()
+            .iter()
+            .any(|s| s.id == writer.id && s.state.kind == StateKind::Exited)
+    });
+    assert!(fx.started_trusted(fx.req(&fx.clone_at("tm-2-y"))));
     let mut unasked = fx.req(&fx.clone_at("tm-3-c"));
     unasked.trust_via_repo = None;
     assert!(!fx.started_trusted(unasked));
