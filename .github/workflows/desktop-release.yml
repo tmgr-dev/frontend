@@ -111,6 +111,11 @@ jobs:
 
       - run: npm ci
 
+      # TM-528 removed the Web Inspector from release builds; fail before signing if devtools comes back.
+      - name: no devtools in the release build
+        run: |
+          bash scripts/check-no-devtools.sh "$(rustc -vV | sed -n 's/^host: //p' | tr -d '\r')"
+
       - name: throwaway signing key for dry runs
         if: env.DRY_RUN == 'true'
         run: |
