@@ -458,7 +458,15 @@ fn task_view(
     let set = runs::collect(ctx, w.from, w.to, now);
     let facts = u.store.facts(w.from, w.to).map_err(fail)?;
     let agents = u.store.agents().map_err(fail)?;
-    let report = Linker::new(&set, &events, &facts, &agents, now).attribute(&events);
+    let earlier = runs::earlier_facts(&u.store, &set, w.from, w.to)?;
+    let report = Linker::new(
+        &set,
+        &events,
+        earlier.as_deref().unwrap_or(&facts),
+        &agents,
+        now,
+    )
+    .attribute(&events);
     let linking = linking_json(&set, &report);
     let unpriced = events.iter().filter(|e| e.cost_usd.is_none()).count() as u64;
     match want {

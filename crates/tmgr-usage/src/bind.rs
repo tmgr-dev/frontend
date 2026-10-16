@@ -5,7 +5,7 @@ use crate::facts::{StoredAgent, StoredFact};
 use crate::link::{LinkEvent, RunWindow};
 use crate::model::{FactKind, Tool};
 
-const SLACK_MINUTES: i64 = 2;
+pub const SLACK_MINUTES: i64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunIds {
@@ -109,17 +109,18 @@ pub fn agent_bindings(
                 .collect(),
             _ => continue,
         };
-        let [run] = matched[..] else { continue };
         let exact = marker != "agent_work_start";
-        let span = spans.entry((NodeKey::of_fact(f), run)).or_insert(Span {
-            from: f.ts,
-            finished: None,
-            exact: false,
-        });
-        span.from = span.from.min(f.ts);
-        span.exact |= exact;
-        if marker == "agent_work_finish" {
-            span.finished = span.finished.max(Some(f.ts));
+        for run in matched {
+            let span = spans.entry((NodeKey::of_fact(f), run)).or_insert(Span {
+                from: f.ts,
+                finished: None,
+                exact: false,
+            });
+            span.from = span.from.min(f.ts);
+            span.exact |= exact;
+            if marker == "agent_work_finish" {
+                span.finished = span.finished.max(Some(f.ts));
+            }
         }
     }
     spans
@@ -131,7 +132,10 @@ pub fn agent_bindings(
             agent_id: node.agent,
             run_index,
             from: span.from,
-            to: span.finished.or(runs[run_index].ended_at),
+            to: match (span.finished, runs[run_index].ended_at) {
+                (Some(f), Some(e)) => Some(f.min(e)),
+                (f, e) => f.or(e),
+            },
             exact: span.exact,
         })
         .collect()
@@ -301,13 +305,42 @@ mod tests {
     }
 
     #[test]
-    fn calls_that_match_no_run_or_several_runs_bind_nothing() {
+    fn calls_that_match_no_run_bind_nothing() {
         let runs = [run("a", 10, Some(60)), run("b", 10, Some(60))];
         let far = call(Some("l"), "agent_work_finish", 7, 300);
         let start_far = call(Some("l"), "agent_work_start", 1, 20);
-        let both = call(Some("l"), "agent_work_update", 7, 20);
         assert!(bindings(&[far, start_far], &runs, &[ids(7, 1), ids(8, 2)]).is_empty());
-        assert!(bindings(&[both], &runs, &[ids(7, 1), ids(7, 2)]).is_empty());
+    }
+
+    #[test]
+    fn a_call_matching_several_runs_binds_all_of_them_and_stays_ambiguous() {
+        let runs = [run("a", 10, Some(60)), run("b", 11, Some(60))];
+        let facts = [call(Some("l"), "agent_work_start", 1, 11)];
+        let b = bindings(&facts, &runs, &[ids(7, 1), ids(8, 1)]);
+        assert_eq!(b.len(), 2);
+        let mut fallback = run("c", 0, Some(100));
+        fallback.session_id = Some("s".into());
+        let all = [runs[0].clone(), runs[1].clone(), fallback];
+        let r =
+            attribute_with_bindings(&[ev(Some("l"), 20)], &all, &b, &tree(&[("l", None)]), now());
+        assert!(r.links.is_empty());
+        assert_eq!(r.ambiguous[0].candidates, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn a_finish_call_within_slack_cannot_extend_the_binding_past_the_run_end() {
+        let runs = [run("a", 10, Some(60))];
+        let facts = [call(Some("l"), "agent_work_finish", 7, 61)];
+        let b = bindings(&facts, &runs, &[ids(7, 1)]);
+        assert_eq!(b[0].to, Some(t(60)));
+        let r = attribute_with_bindings(
+            &[ev(Some("l"), 60)],
+            &runs,
+            &b,
+            &tree(&[("l", None)]),
+            now(),
+        );
+        assert!(r.links.is_empty());
     }
 
     #[test]
@@ -486,5 +519,15 @@ mod tests {
         let plain = attribute_at(&events, std::slice::from_ref(&a), now());
         let with = attribute_with_bindings(&events, &[a], &[], &HashMap::new(), now());
         assert_eq!(plain, with);
+    }
+
+    #[test]
+    fn a_parent_cycle_inherits_nothing() {
+        let runs = [run("a", 0, Some(100))];
+        let b = [bind(None, 0, 0, None)];
+        let parents = tree(&[("l", Some("w")), ("w", Some("l"))]);
+        let r = attribute_with_bindings(&[ev(Some("l"), 20)], &runs, &b, &parents, now());
+        assert!(r.links.is_empty());
+        assert_eq!(r.unattributed, vec![0]);
     }
 }

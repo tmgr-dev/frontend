@@ -154,11 +154,16 @@ impl WorkId {
             WorkId::Text(t) => t.trim().parse().ok(),
             WorkId::Other(_) => None,
         }
+        .filter(|v| *v <= i64::MAX as u64)
     }
 }
 
 fn agent_work(name: &str, input: Option<&Input>) -> Option<(&'static str, u64)> {
     let input = input?;
+    let server = name.strip_prefix("mcp__")?.rsplit_once("__")?.0;
+    if server != "tmgr" && !server.starts_with("tmgr-") && !server.starts_with("tmgr_") {
+        return None;
+    }
     if name.ends_with("__start_agent_work") {
         Some(("agent_work_start", input.task_id.as_ref()?.value()?))
     } else if name.ends_with("__update_agent_work") {

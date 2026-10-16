@@ -2383,3 +2383,37 @@ fn parallel_leads_on_two_tasks_each_link_to_their_own_task_once() {
         assert_eq!(v["data"]["linking"]["linked_events"], 6);
     }
 }
+
+#[test]
+fn a_binding_made_before_the_period_still_links_events_inside_it() {
+    let u = U::new();
+    u.seed_prices();
+    let next_day = |line: String, clock: &str| line.replace(&at(-2, clock), &at(-1, clock));
+    u.session_file(
+        "-orch/sess-o.jsonl",
+        &[
+            work_line("sess-o", "23:31:00", "o1", false, &[start_call("tl1", 2)]),
+            next_day(
+                work_line("sess-o", "00:10:00", "o2", false, &[]),
+                "00:10:00",
+            ),
+        ],
+    );
+    let ws = Local::workspace(&u, "personal");
+    ws.task("personal", "One");
+    ws.task("personal", "Two");
+    ws.run(
+        "personal",
+        2,
+        None,
+        Some("feat/other"),
+        &at(-2, "23:30:00"),
+        &at(-1, "00:30:00"),
+    );
+    let y = (today() - Duration::days(1)).to_string();
+    let v = u.json(&["usage", "--task", "WK-2", "--since", &y, "--until", &y]);
+    assert_eq!(
+        v["data"]["task"]["link_methods"]["agent_work_task"], 1,
+        "{v}"
+    );
+}

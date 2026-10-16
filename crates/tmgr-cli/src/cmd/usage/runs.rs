@@ -2,13 +2,15 @@ use crate::ctx::{local_workspaces, Ctx};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use std::collections::{HashMap, HashSet};
 use tmgr_core::api_ext::RunQuery;
-use tmgr_core::error::Kind;
+use tmgr_core::error::{Kind, Result};
 use tmgr_core::local;
 use tmgr_core::models::Workspace;
 use tmgr_core::refs::parse_key;
 use tmgr_core::runs::{parse_ts, task_ref_of, ApiRun};
 use tmgr_core::runstate::{self, Runs};
-use tmgr_usage::bind::{agent_bindings, node_parents, AgentBinding, NodeKey, RunIds};
+use tmgr_usage::bind::{
+    agent_bindings, node_parents, AgentBinding, NodeKey, RunIds, SLACK_MINUTES,
+};
 use tmgr_usage::facts::{StoredAgent, StoredFact};
 use tmgr_usage::link::{attribute_with_bindings, LinkEvent, LinkReport, RunWindow};
 use tmgr_usage::model::project_hash;
@@ -45,6 +47,23 @@ impl RunSet {
             }
         }
     }
+}
+
+pub fn earlier_facts(
+    store: &tmgr_usage::Store,
+    set: &RunSet,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<Option<Vec<StoredFact>>> {
+    let earliest = set
+        .windows
+        .iter()
+        .map(|w| w.started_at - Duration::minutes(SLACK_MINUTES))
+        .min()
+        .filter(|e| *e < from);
+    earliest
+        .map(|e| store.facts(e, to).map_err(super::fail))
+        .transpose()
 }
 
 pub struct Linker<'a> {

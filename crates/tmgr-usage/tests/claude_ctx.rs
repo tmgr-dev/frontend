@@ -348,6 +348,11 @@ fn agent_work_calls_keep_only_the_task_or_run_id() {
             call("c", "mcp__tmgr__finish_agent_work", serde_json::json!({"runId": "x7", "prUrl": "https://SECRET-URL"})),
             call("d", "mcp__tmgr__finish_agent_work", serde_json::json!({"runId": 9, "commits": ["SECRET-COMMIT"]})),
             call("e", "mcp__tmgr__start_agent_work", serde_json::json!({"taskId": true})),
+            call("f", "mcp__other__start_agent_work", serde_json::json!({"taskId": 5})),
+            call("g", "mcp__evil_tmgr__start_agent_work", serde_json::json!({"taskId": 6})),
+            call("h", "mcp__tmgr-local__update_agent_work", serde_json::json!({"runId": 11})),
+            call("i", "mcp__tmgr__update_agent_work", serde_json::json!({"runId": 18446744073709551615u64})),
+            call("j", "mcp__tmgr__update_agent_work", serde_json::json!({"runId": "9223372036854775808"})),
         ]},
     })
     .to_string();
@@ -363,10 +368,13 @@ fn agent_work_calls_keep_only_the_task_or_run_id() {
     assert_eq!(
         got,
         vec![
+            ("mcp__evil_tmgr__start_agent_work".into(), None, None),
+            ("mcp__other__start_agent_work".into(), None, None),
+            ("mcp__other__update_agent_work".into(), None, None),
             (
-                "mcp__other__update_agent_work".into(),
+                "mcp__tmgr-local__update_agent_work".into(),
                 Some("agent_work_update".into()),
-                Some(7)
+                Some(11)
             ),
             ("mcp__tmgr__finish_agent_work".into(), None, None),
             (
@@ -380,6 +388,8 @@ fn agent_work_calls_keep_only_the_task_or_run_id() {
                 Some("agent_work_start".into()),
                 Some(42)
             ),
+            ("mcp__tmgr__update_agent_work".into(), None, None),
+            ("mcp__tmgr__update_agent_work".into(), None, None),
         ]
     );
     drop(store);

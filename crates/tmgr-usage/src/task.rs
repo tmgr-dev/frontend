@@ -620,30 +620,57 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
             children[p].push(i);
         }
     }
+    let mut window: Vec<Option<Span>> = vec![None; n];
+    let selected =
+        |i: usize, take_all: &[bool], window: &[Option<Span>]| -> (Vec<usize>, Vec<usize>) {
+            let keep =
+                |items: &[usize], linked: &HashSet<usize>, ts: &dyn Fn(usize) -> DateTime<Utc>| {
+                    items
+                        .iter()
+                        .copied()
+                        .filter(|x| {
+                            linked.contains(x)
+                                || (take_all[i]
+                                    && window[i].is_none_or(|(a, b)| a <= ts(*x) && ts(*x) <= b))
+                        })
+                        .collect::<Vec<_>>()
+                };
+            (
+                keep(&g.nodes[i].events, &linked_ev, &|x| inp.events[x].ts),
+                keep(&g.nodes[i].facts, &linked_fa, &|x| inp.facts[x].ts),
+            )
+        };
     let mut queue: Vec<usize> = (0..n).filter(|&i| included[i]).collect();
     while let Some(i) = queue.pop() {
         for &c in &children[i] {
             if g.nodes[c].key.tool == Tool::Codex && !take_all[c] {
                 take_all[c] = true;
                 included[c] = true;
+                window[c] = if g.nodes[i].key.tool == Tool::Claude {
+                    let (ev, fa) = selected(i, &take_all, &window);
+                    Some(
+                        own_span(inp, &ev, &fa)
+                            .unwrap_or((DateTime::<Utc>::MAX_UTC, DateTime::<Utc>::MIN_UTC)),
+                    )
+                } else if take_all[i] {
+                    window[i]
+                } else {
+                    None
+                };
                 queue.push(c);
             }
         }
     }
-    let select = |all: bool, items: &[usize], linked: &HashSet<usize>| -> Vec<usize> {
-        items
-            .iter()
-            .copied()
-            .filter(|i| all || linked.contains(i))
-            .collect()
-    };
+    let mut events = Vec::with_capacity(n);
+    let mut facts = Vec::with_capacity(n);
+    for i in 0..n {
+        let (ev, fa) = selected(i, &take_all, &window);
+        events.push(ev);
+        facts.push(fa);
+    }
     Picked {
-        events: (0..n)
-            .map(|i| select(take_all[i], &g.nodes[i].events, &linked_ev))
-            .collect(),
-        facts: (0..n)
-            .map(|i| select(take_all[i], &g.nodes[i].facts, &linked_fa))
-            .collect(),
+        events,
+        facts,
         included,
     }
 }
@@ -1448,6 +1475,28 @@ mod tests {
         assert_eq!(a.nodes[0].origin.as_deref(), Some("cli"));
         assert_eq!(a.nodes[0].agent_type, "codex");
         assert_eq!(a.totals.events, 3);
+    }
+
+    #[test]
+    fn a_codex_session_spanning_two_tasks_is_split_by_the_parent_link_windows() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 55, 1.0);
+        fx.event(Tool::Claude, "s1", None, 205, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 50, Some(100));
+        fx.call("s1", None, "Bash", Some("codex"), "tu2", 150, Some(210));
+        fx.event(Tool::Codex, "cx1", None, 60, 0.5);
+        fx.event(Tool::Codex, "cx1", None, 200, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 60);
+        fx.linked_events = vec![0];
+        fx.linked_facts = vec![0];
+        let a = fx.build().unwrap();
+        assert_eq!(a.totals.events, 2);
+        fx.linked_events = vec![1];
+        fx.linked_facts = vec![1];
+        let b = fx.build().unwrap();
+        assert_eq!(b.totals.events, 2);
+        assert_eq!(a.totals.events + b.totals.events, fx.events.len() as u64);
     }
 
     fn rescue_fixture() -> Fx {

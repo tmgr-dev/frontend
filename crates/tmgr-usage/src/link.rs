@@ -169,8 +169,12 @@ fn levels_of(
 ) -> Levels {
     let mut out = Vec::new();
     let mut cur = Some(key.clone());
+    let mut seen = BTreeSet::new();
     for _ in 0..MAX_CHAIN {
         let Some(k) = cur else { break };
+        if !seen.insert(k.clone()) {
+            break;
+        }
         if let Some(found) = by_node.get(&k) {
             out.push((k.agent.is_some(), found.clone()));
         }

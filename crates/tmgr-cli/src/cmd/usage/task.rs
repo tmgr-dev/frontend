@@ -41,7 +41,14 @@ pub fn run(ctx: &Ctx, args: &TaskArgs) -> Result<Output> {
     let agents = u.store.agents().map_err(fail)?;
     let set = runs::collect(ctx, from, to, now);
     let fact_events = facts_as_events(&facts, &events);
-    let linker = Linker::new(&set, &events, &facts, &agents, now);
+    let earlier = runs::earlier_facts(&u.store, &set, from, to)?;
+    let linker = Linker::new(
+        &set,
+        &events,
+        earlier.as_deref().unwrap_or(&facts),
+        &agents,
+        now,
+    );
     let report = linker.attribute(&events);
     let fact_report = linker.attribute(&fact_events);
     let matching = |links: &[Link]| -> Vec<usize> {
