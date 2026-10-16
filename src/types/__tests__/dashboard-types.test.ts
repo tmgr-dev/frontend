@@ -300,10 +300,7 @@ describe('Dashboard Type Definitions', () => {
 			// This is a compile-time test - if it compiles, the types are correct
 
 			const mockDashboardActions = {
-				getDashboardStatistics: async (
-					workspaceId: number,
-					options?: { cache?: boolean; timeout?: number },
-				) => {
+				getDashboardStatistics: async () => {
 					return {
 						success: true,
 						data: {
@@ -324,11 +321,7 @@ describe('Dashboard Type Definitions', () => {
 					};
 				},
 
-				getActivityFeed: async (
-					workspaceId: number,
-					params?: any,
-					options?: { cache?: boolean; timeout?: number },
-				) => {
+				getActivityFeed: async () => {
 					return {
 						success: true,
 						data: {
@@ -353,11 +346,7 @@ describe('Dashboard Type Definitions', () => {
 					};
 				},
 
-				getUserHeatmap: async (
-					workspaceId: number,
-					params?: any,
-					options?: { cache?: boolean; timeout?: number },
-				) => {
+				getUserHeatmap: async () => {
 					return {
 						success: true,
 						data: {
@@ -374,11 +363,7 @@ describe('Dashboard Type Definitions', () => {
 					};
 				},
 
-				getRecentTasks: async (
-					workspaceId: number,
-					params?: any,
-					options?: { cache?: boolean; timeout?: number },
-				) => {
+				getRecentTasks: async () => {
 					return {
 						success: true,
 						data: [],
@@ -386,10 +371,7 @@ describe('Dashboard Type Definitions', () => {
 					};
 				},
 
-				getTeamActivity: async (
-					workspaceId: number,
-					options?: { cache?: boolean; timeout?: number },
-				) => {
+				getTeamActivity: async () => {
 					return {
 						success: true,
 						data: {
@@ -402,10 +384,7 @@ describe('Dashboard Type Definitions', () => {
 					};
 				},
 
-				getDashboardData: async (
-					workspaceId: number,
-					options?: { cache?: boolean; timeout?: number },
-				) => {
+				getDashboardData: async () => {
 					return {
 						success: true,
 						data: {
@@ -443,11 +422,7 @@ describe('Dashboard Type Definitions', () => {
 					};
 				},
 
-				refreshDashboardSection: async (
-					workspaceId: number,
-					section: 'statistics' | 'activities' | 'heatmap' | 'tasks' | 'team',
-					options?: { force?: boolean; timeout?: number },
-				) => {
+				refreshDashboardSection: async () => {
 					return {
 						success: true,
 						data: {},

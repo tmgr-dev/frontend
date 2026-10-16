@@ -8,7 +8,7 @@ interface CategoryLike {
 }
 
 interface TaskLike {
-	id: number;
+	id?: number | null;
 	title?: string | null;
 }
 

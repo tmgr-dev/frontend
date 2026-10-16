@@ -126,7 +126,7 @@ describe('page events across windows', () => {
 			const bus = createDomainEvents();
 			installWindowEventRelay(bus, {
 				label,
-				emit: async (channel, payload) => {
+				emit: async (_channel, payload) => {
 					for (const [other, deliver] of listeners)
 						if (other !== label) deliver({ payload });
 				},

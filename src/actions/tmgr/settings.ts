@@ -7,6 +7,7 @@ export interface FormSetting {
 	name: string;
 	value: string | number;
 	description: string;
+	pivot?: { value?: string | number };
 }
 
 export interface Setting extends Omit<FormSetting, 'value'> {

@@ -1,3 +1,4 @@
+import type { RoutineEntry, ViewId, YearStats } from '@/types/dailyRoutine';
 import type { LocalProfile } from '@/utils/localProfile';
 import { Store } from 'vuex';
 
@@ -69,6 +70,31 @@ export interface RootState {
 	localProfile: LocalProfile | null;
 }
 
+export interface StoreState extends RootState {
+	filter: BoardFilterState;
+	dailyRoutines: DailyRoutinesState;
+}
+
+export interface BoardFilterState {
+	selectedCategory: number;
+	searchText: string | null;
+	selectedUser: number;
+	selectedPersona: string;
+}
+
+export interface DailyRoutinesState {
+	view: ViewId;
+	cursor: string;
+	entries: RoutineEntry[];
+	yearStats: YearStats;
+	isLoading: boolean;
+	rangeLoading: boolean;
+	yearLoading: boolean;
+	rangeError: unknown;
+	yearError: unknown;
+	lastRange: { from: string | null; to: string | null };
+}
+
 export type AccountMode = 'cloud' | 'local' | 'none';
 
 export interface RootGetters {
@@ -84,12 +110,12 @@ export interface RootGetters {
 }
 
 declare module 'vuex' {
-	export function useStore(): Store<RootState>;
+	export function useStore(): Store<StoreState>;
 }
 
 declare module '@vue/runtime-core' {
 	interface ComponentCustomProperties {
-		$store: Store<RootState>;
+		$store: Store<StoreState>;
 	}
 }
 

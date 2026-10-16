@@ -137,7 +137,7 @@ const createActionResult = <T>(
 const createRequestConfig = (options?: {
 	timeout?: number;
 	cache?: boolean;
-}): AxiosRequestConfig => ({
+}): Pick<AxiosRequestConfig, 'timeout' | 'headers'> => ({
 	timeout: options?.timeout || 30000,
 	headers: {
 		Accept: 'application/json',
