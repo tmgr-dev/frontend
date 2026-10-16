@@ -3905,6 +3905,10 @@ fn repo_trust_fx() -> RepoTrustFx {
     fs::create_dir_all(&repo).unwrap();
     fs::create_dir_all(&trees).unwrap();
     init_repo(&repo);
+    fx.h.profile(
+        "sleeper",
+        &["/bin/sh", "-c", "while true; do sleep 0.2; done"],
+    );
     fx.h.start(5000);
     RepoTrustFx { fx, repo, trees }
 }
@@ -3951,7 +3955,7 @@ impl RepoTrustFx {
             .is_some();
         let note = self.fx.h.client().worklog(&info.id).unwrap().trust;
         assert_eq!(note.as_deref(), trusted.then_some("repo"), "{cwd}");
-        self.fx.h.client().kill(&info.id, "kill").unwrap();
+        let _ = self.fx.h.client().kill(&info.id, "kill");
         trusted
     }
 }
@@ -3965,7 +3969,7 @@ fn a_task_clone_of_a_trusted_repository_skips_the_trust_question() {
     assert!(!fx.started_trusted(fx.req(&fx.clone_at("tm-1-a"))));
     fx.trust(&fx.repo);
     assert!(fx.started_trusted(fx.req(&fx.clone_at("tm-2-b"))));
-    let mut above = fx.fx.h.run_req("trusty");
+    let mut above = fx.fx.h.run_req("sleeper");
     above.cwd = fx.trees.display().to_string();
     let writer = fx.fx.h.client().create_run(above).unwrap();
     assert!(!fx.started_trusted(fx.req(&fx.clone_at("tm-2-x"))));
