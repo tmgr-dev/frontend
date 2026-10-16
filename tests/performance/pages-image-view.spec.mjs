@@ -737,3 +737,20 @@ for (const scheme of ['light', 'dark']) {
     }
   });
 }
+
+test('leaving the page closes an open lightbox', async ({ page }) => {
+  await setupPages(page, `First line\n\n${IMAGE}\n`);
+  await page.goto('/demo/pages');
+  await page.locator('a', { hasText: 'Rich page' }).first().click();
+  await expect(page).toHaveURL(/\/demo\/pages\/rich-page$/);
+  await loaded(page);
+  await select(page);
+  await picture(page).click();
+  await expect(page.locator('.pe-lightbox')).toBeVisible();
+  await page.goBack();
+  await expect(page).not.toHaveURL(/rich-page/);
+  await expect(page.locator('.pe-lightbox')).toHaveCount(0);
+  expect(
+    await page.evaluate(() => document.documentElement.style.overflow),
+  ).toBe('');
+});

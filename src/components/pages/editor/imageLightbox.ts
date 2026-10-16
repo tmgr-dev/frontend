@@ -17,8 +17,11 @@ const button = (action: string, label: string, icon: string) => {
 	return element;
 };
 
-export const openImageLightbox = (images: LightboxImage[], start: number) => {
-	if (!images[start]) return;
+export const openImageLightbox = (
+	images: LightboxImage[],
+	start: number,
+): (() => void) | null => {
+	if (!images[start]) return null;
 	let index = start;
 	const previous = document.activeElement as HTMLElement | null;
 	const overflow = document.documentElement.style.overflow;
@@ -49,7 +52,10 @@ export const openImageLightbox = (images: LightboxImage[], start: number) => {
 		index = Math.min(images.length - 1, Math.max(0, index + step));
 		show();
 	};
+	let open = true;
 	const shut = () => {
+		if (!open) return;
+		open = false;
 		window.removeEventListener('keydown', onKey, true);
 		root.remove();
 		document.documentElement.style.overflow = overflow;
@@ -84,4 +90,5 @@ export const openImageLightbox = (images: LightboxImage[], start: number) => {
 	document.documentElement.style.overflow = 'hidden';
 	document.body.append(root);
 	close.focus({ preventScroll: true });
+	return shut;
 };

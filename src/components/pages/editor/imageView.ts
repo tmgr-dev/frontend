@@ -63,6 +63,7 @@ const TOOLS = [
 const OWN_UI = '.pe-image-caption, .pe-image-toolbar, .pe-image-handle';
 
 const downloads = new WeakMap<HTMLImageElement, () => void>();
+const lightboxes = new WeakMap<EditorView, () => void>();
 
 const fileIdOf = (src: string): number | null => {
 	const parsed = parseTmgrUrl(src);
@@ -89,7 +90,7 @@ const showLightbox = (view: EditorView, current: HTMLImageElement) => {
 	const images = Array.from(
 		view.dom.querySelectorAll<HTMLImageElement>('img.pe-image-img'),
 	).filter((img) => img.naturalWidth > 0);
-	openImageLightbox(
+	const close = openImageLightbox(
 		images.map((img) => ({
 			src: img.currentSrc || img.src,
 			alt: img.alt,
@@ -97,6 +98,7 @@ const showLightbox = (view: EditorView, current: HTMLImageElement) => {
 		})),
 		images.indexOf(current),
 	);
+	if (close) lightboxes.set(view, close);
 };
 
 const contentWidth = (element: HTMLElement) => {
@@ -112,6 +114,9 @@ const imageKeys = () =>
 	$prose(
 		() =>
 			new Plugin({
+				view: (editorView) => ({
+					destroy: () => lightboxes.get(editorView)?.(),
+				}),
 				props: {
 					handleKeyDown(view, event) {
 						const { selection } = view.state;
