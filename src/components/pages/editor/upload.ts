@@ -31,9 +31,15 @@ interface Ghost {
 	url: string;
 }
 
+interface Range {
+	from: number;
+	to: number;
+}
+
 interface GhostState {
 	set: DecorationSet;
 	targets: Map<number, number>;
+	ranges: Map<number, Range>;
 }
 
 interface Size {
@@ -41,10 +47,12 @@ interface Size {
 	height: number | null;
 }
 
-type GhostMeta =
-	| { add: Ghost[] }
-	| { track: { id: number; pos: number } }
-	| { remove: number };
+interface GhostMeta {
+	add?: Ghost[];
+	track?: { id: number; pos: number };
+	range?: Range & { id: number };
+	remove?: number[];
+}
 
 const ghostKey = new PluginKey<GhostState>('tmgr-image-upload');
 const PRELOAD_TIMEOUT = 8000;
@@ -137,6 +145,13 @@ const preload = async (fileId: number): Promise<void> => {
 	}
 };
 
+// Text around an <img> (a web page, a doc) goes through the normal paste;
+// only a bare copied image is uploaded from the clipboard file.
+const isImageOnlyHtml = (html: string): boolean => {
+	const body = new DOMParser().parseFromString(html, 'text/html').body;
+	return !!body.querySelector('img') && !(body.textContent ?? '').trim();
+};
+
 export const pickImageFiles = (multiple: boolean): Promise<File[]> =>
 	new Promise((resolve) => {
 		const input = document.createElement('input');
@@ -160,10 +175,14 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 			new Plugin<GhostState>({
 				key: ghostKey,
 				state: {
-					init: () => ({ set: DecorationSet.empty, targets: new Map() }),
+					init: () => ({
+						set: DecorationSet.empty,
+						targets: new Map(),
+						ranges: new Map(),
+					}),
 					apply(tr, prev) {
 						let set = prev.set.map(tr.mapping, tr.doc);
-						let targets = prev.targets;
+						let { targets, ranges } = prev;
 						if (tr.docChanged && targets.size) {
 							targets = new Map();
 							for (const [id, pos] of prev.targets) {
@@ -171,25 +190,32 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 								if (at !== null) targets.set(id, at);
 							}
 						}
-						const meta = tr.getMeta(ghostKey) as GhostMeta | undefined;
-						if (meta && 'add' in meta) {
-							set = set.add(tr.doc, meta.add.map(ghostDecoration));
-						} else if (meta && 'track' in meta) {
-							targets = new Map(targets).set(meta.track.id, meta.track.pos);
-						} else if (meta && 'remove' in meta) {
-							set = set.remove(
-								set.find(
-									undefined,
-									undefined,
-									(spec) => spec.id === meta.remove,
-								),
-							);
-							if (targets.has(meta.remove)) {
-								targets = new Map(targets);
-								targets.delete(meta.remove);
+						if (tr.docChanged && ranges.size) {
+							ranges = new Map();
+							for (const [id, range] of prev.ranges) {
+								const from = tr.mapping.map(range.from, 1);
+								const to = tr.mapping.map(range.to, -1);
+								if (from < to) ranges.set(id, { from, to });
 							}
 						}
-						return { set, targets };
+						const meta = tr.getMeta(ghostKey) as GhostMeta | undefined;
+						if (meta?.add) set = set.add(tr.doc, meta.add.map(ghostDecoration));
+						if (meta?.track) {
+							targets = new Map(targets).set(meta.track.id, meta.track.pos);
+						}
+						if (meta?.range) {
+							const { id, from, to } = meta.range;
+							ranges = new Map(ranges).set(id, { from, to });
+						}
+						if (meta?.remove?.length) {
+							const gone = new Set(meta.remove);
+							set = set.remove(
+								set.find(undefined, undefined, (spec) => gone.has(spec.id)),
+							);
+							targets = new Map([...targets].filter(([id]) => !gone.has(id)));
+							ranges = new Map([...ranges].filter(([id]) => !gone.has(id)));
+						}
+						return { set, targets, ranges };
 					},
 				},
 				props: {
@@ -245,7 +271,13 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 		return { fileId, size };
 	};
 
-	const insertImages = async (view: EditorView, pos: number, list: File[]) => {
+	// `replacing` is the pasted-over selection: it stays until an image lands.
+	const insertImages = async (
+		view: EditorView,
+		pos: number,
+		list: File[],
+		replacing?: Range,
+	) => {
 		const files = imageFilesOf(list);
 		if (!options.uploadFile || !files.length || view.isDestroyed) return;
 		const jobs = files.map((file) => ({
@@ -253,9 +285,11 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 			file,
 			url: URL.createObjectURL(file),
 		}));
+		const rangeId = ++lastId;
 		view.dispatch(
 			view.state.tr.setMeta(ghostKey, {
 				add: jobs.map(({ id, url }) => ({ id, pos, url })),
+				range: replacing && { id: rangeId, ...replacing },
 			}),
 		);
 		const results = jobs.map((job) =>
@@ -276,15 +310,25 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 			URL.revokeObjectURL(job.url);
 			if (view.isDestroyed) continue;
 			const ghost = findGhost(view, job.id);
-			const tr = view.state.tr.setMeta(ghostKey, { remove: job.id });
+			const remove = [job.id];
+			const tr = view.state.tr;
 			if (ghost && node) {
 				const inline = tr.doc.resolve(ghost.from).parent.inlineContent;
 				tr.insert(
 					ghost.from,
 					inline ? node : view.state.schema.nodes.paragraph.create(null, node),
 				);
+				const range = ghostKey.getState(view.state)?.ranges.get(rangeId);
+				if (range) {
+					tr.delete(
+						tr.mapping.map(range.from, 1),
+						tr.mapping.map(range.to, -1),
+					);
+					remove.push(rangeId);
+				}
 			}
-			view.dispatch(tr);
+			if (index === jobs.length - 1) remove.push(rangeId);
+			view.dispatch(tr.setMeta(ghostKey, { remove }));
 		}
 	};
 
@@ -303,7 +347,7 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 		URL.revokeObjectURL(url);
 		if (view.isDestroyed) return;
 		const at = ghostKey.getState(view.state)?.targets.get(id);
-		const tr = view.state.tr.setMeta(ghostKey, { remove: id });
+		const tr = view.state.tr.setMeta(ghostKey, { remove: [id] });
 		const target = at === undefined ? null : tr.doc.nodeAt(at);
 		if (result && at !== undefined && target?.type.name === 'image') {
 			const parts = parseImageTitle(target.attrs.title);
@@ -330,7 +374,7 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 		const files = imageFilesOf(data?.files);
 		if (!options.uploadFile || !files.length) return false;
 		const html = data?.getData('text/html') ?? '';
-		if (html && !/<img\b/i.test(html)) return false;
+		if (html && !isImageOnlyHtml(html)) return false;
 		event.preventDefault();
 		const { selection } = view.state;
 		if (
@@ -341,8 +385,13 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 			void replaceImage(view, selection.from, files[0]);
 			return true;
 		}
-		if (!selection.empty) view.dispatch(view.state.tr.deleteSelection());
-		void insertImages(view, view.state.selection.from, files);
+		const { from, to, empty } = selection;
+		void insertImages(
+			view,
+			empty ? from : to,
+			files,
+			empty ? undefined : { from, to },
+		);
 		return true;
 	};
 

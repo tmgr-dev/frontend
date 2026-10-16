@@ -527,10 +527,11 @@ for (const scheme of ['light', 'dark']) {
   });
 }
 
-const fileEvent = async (target, type, files, point) =>
+const fileEvent = async (target, type, files, point, html) =>
   target.evaluate(
-    (el, { type, files, point }) => {
+    (el, { type, files, point, html }) => {
       const transfer = new DataTransfer();
+      if (html) transfer.setData('text/html', html);
       for (const f of files)
         transfer.items.add(
           new File([new Uint8Array(f.bytes)], f.name, { type: 'image/png' }),
@@ -554,6 +555,7 @@ const fileEvent = async (target, type, files, point) =>
     {
       type,
       point,
+      html,
       files: files.map((f) => ({ name: f.name, bytes: [...f.buffer] })),
     },
   );
@@ -736,4 +738,66 @@ test('deleting an image while its replacement uploads leaves its copies alone', 
   const body = await savedBody(state);
   expect(body).not.toContain('tmgr://file/41');
   expect(body.split(copy)).toHaveLength(2);
+});
+
+test('pasting a snippet with text around an image keeps the text', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n');
+  const attaches = await mockUpload(page);
+  await openPage(page);
+  await selectIn(paragraph(page, 'First line'), true);
+  await fileEvent(
+    page.locator('.page-editor .ProseMirror'),
+    'paste',
+    [png('shot.png')],
+    undefined,
+    '<p>Hello <b>world</b> <img src="https://example.com/x.png"></p>',
+  );
+  await expect
+    .poll(async () => (await savedBody(state)).includes('Hello **world**'))
+    .toBe(true);
+  expect(attaches).toEqual([]);
+});
+
+const selectText = async (page, text) => {
+  await selectIn(paragraph(page, text), false);
+  expect(await page.evaluate(() => window.getSelection().toString())).toBe(text);
+};
+
+test('pasting an image over selected text keeps the text when the upload fails', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n\nReplace me\n');
+  await mockUpload(page, { failing: ['shot.png'] });
+  await openPage(page);
+  await selectText(page, 'Replace me');
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    png('shot.png'),
+  ]);
+  await expect(page.getByText('Failed to upload shot.png')).toBeVisible();
+  await expect(placeholder(page)).toHaveCount(0);
+  await expect(paragraph(page, 'Replace me')).toHaveCount(1);
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  for (const write of state.writes)
+    expect(write.body?.body ?? '').toContain('Replace me');
+});
+
+test('pasting an image over selected text replaces it once uploaded', async ({
+  page,
+}) => {
+  const state = await setupPages(page, 'First line\n\nReplace me\n');
+  const hold = gate();
+  await mockUpload(page, { hold });
+  await openPage(page);
+  await selectText(page, 'Replace me');
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    png('shot.png'),
+  ]);
+  await expect(placeholder(page)).toBeVisible();
+  await expect(paragraph(page, 'Replace me')).toHaveCount(1);
+  hold.release();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe(`First line\n\n${IMG(41)}\n`);
 });
