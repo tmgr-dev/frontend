@@ -1,7 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.4
 
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Runner: the agent now receives the task. The approved run bundle becomes the agent's first message through each profile's prompt arguments (claude, codex, cursor-agent, agy, opencode): `Task: <title>`, then the description and comments when there are any. Comments not confirmed as written by a person are fenced as untrusted, control and bidi characters are removed, and above 4000 bytes the message is the title plus a pointer to `.tmgr/task.md`, which always holds the full task. The text is bound to the approved bundle, and the prompt arguments are now part of the approved command line, so a profile cannot slip in an extra flag. Session listings show `<task prompt, N bytes>` instead of the text.
+- Security note: the task text is passed on the agent's command line, so other processes of the same user can read it in the process list (`ps`) while the agent runs.
+- Runner: trusted folders. `tmgr runner trust [DIR]` (typed confirmation, refused inside an agent session), `tmgr runner untrust` and `tmgr runner trusted` manage the list. When you answer "Yes" to Claude Code's trust question in a run you started yourself from the CLI or desktop, that folder is remembered and the next run there skips the question. Nothing is learned from queue, link or restored runs. Worktrees and clones are separate folders and ask again.
 - `tmgr usage task REF [--tree] [--days N] [--no-scan] [--json]`: cost, time, tokens and the agent tree (main session, subagents, linked Codex sessions) of one task over the last 30 days (`--days N`, up to the 90 kept), with the tools, skills, plugins, MCP servers and hooks used. A Codex session started by a Claude Code call is attached to it (`exact`, or `likely` when the match is ambiguous). `--json` carries the `task_usage.v1` aggregate under `data.aggregate`; it holds only names, numbers and times, never paths, prompts or arguments. New JSON schema `usage_task`.
 
 ## 1.0.3
