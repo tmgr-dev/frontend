@@ -587,7 +587,7 @@ fn link_codex_to_claude(g: &mut Graph<'_>, inp: &TaskInput<'_>) {
         let same_project = matches!((project, hits[0].project), (Some(a), Some(b)) if a == b);
         let parent = hits[0].node;
         g.nodes[idx].parent = Some(parent);
-        g.nodes[idx].spawns = cands
+        g.nodes[idx].spawns = hits
             .iter()
             .filter(|c| c.node == parent)
             .map(|c| (c.start, c.fact))
@@ -614,8 +614,9 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
     let mut included = vec![false; n];
     let mut take_all = vec![false; n];
     for (i, node) in g.nodes.iter().enumerate() {
-        if node.events.iter().any(|e| linked_ev.contains(e))
-            || node.facts.iter().any(|f| linked_fa.contains(f))
+        if node.spawns.is_empty()
+            && (node.events.iter().any(|e| linked_ev.contains(e))
+                || node.facts.iter().any(|f| linked_fa.contains(f)))
         {
             let mut cur = Some(i);
             for _ in 0..MAX_CHAIN {
@@ -639,7 +640,7 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
                     .iter()
                     .copied()
                     .filter(|x| {
-                        linked.contains(x)
+                        (linked.contains(x) && gate[i].is_none())
                             || (take_all[i]
                                 && gate[i].as_ref().is_none_or(|calls| {
                                     let t = ts(*x);
@@ -1518,7 +1519,7 @@ mod tests {
     }
 
     #[test]
-    fn a_codex_session_spanning_two_tasks_is_split_by_the_parent_link_windows() {
+    fn codex_sessions_started_by_two_calls_are_split_between_their_tasks() {
         let mut fx = Fx::default();
         fx.event(Tool::Claude, "s1", None, 55, 1.0);
         fx.event(Tool::Claude, "s1", None, 205, 1.0);
@@ -1526,8 +1527,9 @@ mod tests {
         fx.call("s1", None, "Bash", Some("codex"), "tu1", 50, Some(100));
         fx.call("s1", None, "Bash", Some("codex"), "tu2", 150, Some(210));
         fx.event(Tool::Codex, "cx1", None, 60, 0.5);
-        fx.event(Tool::Codex, "cx1", None, 200, 0.5);
+        fx.event(Tool::Codex, "cx2", None, 200, 0.5);
         fx.codex_agent("cx1", "Claude_Code", "vscode", 60);
+        fx.codex_agent("cx2", "Claude_Code", "vscode", 200);
         fx.linked_events = vec![0];
         fx.linked_facts = vec![0];
         let a = fx.build().unwrap();
@@ -1559,8 +1561,8 @@ mod tests {
         fx.linked_events = vec![2];
         fx.linked_facts = vec![1];
         let b = fx.build().unwrap();
-        assert_eq!(a.totals.events, 4);
-        assert_eq!(b.totals.events, 2);
+        assert_eq!(a.totals.events, 5);
+        assert_eq!(b.totals.events, 1);
         assert_eq!(a.totals.events + b.totals.events, fx.events.len() as u64);
     }
 
@@ -1613,6 +1615,45 @@ mod tests {
         let b = fx.build().unwrap();
         assert_eq!(b.nodes.len(), 2);
         assert_eq!(b.totals.events, 1);
+    }
+
+    #[test]
+    fn a_background_codex_session_stays_with_the_call_that_started_it() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.event(Tool::Claude, "s1", None, 600, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 0, Some(60));
+        fx.call("s1", None, "Bash", Some("codex"), "tu2", 600, Some(660));
+        fx.event(Tool::Codex, "cx1", None, 30, 0.5);
+        fx.event(Tool::Codex, "cx1", None, 900, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 30);
+        fx.linked_events = vec![0];
+        fx.linked_facts = vec![0];
+        let a = fx.build().unwrap();
+        fx.linked_events = vec![1];
+        fx.linked_facts = vec![1];
+        let b = fx.build().unwrap();
+        assert_eq!(a.totals.events, 3);
+        assert_eq!(b.totals.events, 1);
+    }
+
+    #[test]
+    fn a_directly_linked_codex_event_is_counted_only_through_its_spawning_call() {
+        let mut fx = Fx::default();
+        fx.event(Tool::Claude, "s1", None, 0, 1.0);
+        fx.claude_agent("s1", None);
+        fx.call("s1", None, "Bash", Some("codex"), "tu1", 0, Some(60));
+        fx.event(Tool::Codex, "cx1", None, 30, 0.5);
+        fx.codex_agent("cx1", "Claude_Code", "vscode", 30);
+        fx.linked_events = vec![0];
+        fx.linked_facts = vec![0];
+        let a = fx.build().unwrap();
+        fx.linked_events = vec![1];
+        fx.linked_facts = vec![];
+        let b = fx.build().unwrap();
+        assert_eq!(a.totals.events, 2);
+        assert_eq!(b.totals.events, 0);
     }
 
     fn rescue_fixture() -> Fx {
