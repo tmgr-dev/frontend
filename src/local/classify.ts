@@ -36,6 +36,7 @@ const ACCOUNT = [
 	/^error-reports$/,
 	/^v2\/user\/settings$/,
 	/^onboarding(\/|$)/,
+	/^agent-usage(\/|$)/,
 ];
 
 /** Calls an account-less session answers itself, so the app boots the same way it does signed in. */

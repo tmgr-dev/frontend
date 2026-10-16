@@ -35,14 +35,16 @@
 				<Button
 					variant="outline"
 					size="sm"
-					:disabled="busy || !rows.length"
+					:disabled="busy || loading"
 					data-testid="agent-usage-delete-all"
 					@click="confirmDelete = true"
 				>
 					Delete all
 				</Button>
 			</template>
-			<p v-if="loading" class="text-sm text-ink-subtle">Loading…</p>
+			<p v-if="loading" class="text-sm text-ink-subtle" aria-live="polite">
+				Loading…
+			</p>
 			<p v-else-if="!rows.length" class="text-sm text-ink-subtle">
 				Nothing uploaded.
 			</p>
@@ -75,7 +77,9 @@
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel>Keep it on</AlertDialogCancel>
-					<AlertDialogAction @click="turnOff"
+					<AlertDialogAction
+						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						@click="turnOff"
 						>Turn off and delete</AlertDialogAction
 					>
 				</AlertDialogFooter>
@@ -93,7 +97,11 @@
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction @click="deleteAll">Delete all</AlertDialogAction>
+					<AlertDialogAction
+						class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+						@click="deleteAll"
+						>Delete all</AlertDialogAction
+					>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>

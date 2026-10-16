@@ -734,6 +734,7 @@
 				this.isExperimental = false;
 				this.isLocalData = false;
 				this.isAbout = false;
+				this.isAgentWork = false;
 				this.isPrivacy = true;
 				this.updateQueryParam('privacy');
 			},

@@ -31,5 +31,7 @@ export const ACCOUNT_ROUTES_SAMPLE: [string, string][] = [
 	['POST', 'error-reports'],
 	['GET', 'v2/user/settings'],
 	['PUT', 'v2/user/settings'],
+	['GET', 'agent-usage'],
+	['DELETE', 'agent-usage'],
 	['GET', 'workspaces'],
 ];
