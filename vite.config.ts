@@ -176,7 +176,6 @@ export default defineConfig({
 								'@editorjs/editorjs',
 								'@editorjs/header',
 								'@editorjs/list',
-								'@editorjs/checklist',
 								'@editorjs/delimiter',
 								'@editorjs/embed',
 								'@editorjs/inline-code',

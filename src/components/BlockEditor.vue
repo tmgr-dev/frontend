@@ -9,8 +9,8 @@
 		createEditorOperationQueue,
 		createSerialEditor,
 	} from '@/utils/serialEditor';
+	import { normalizeBlocks } from '@/utils/editor';
 	import CodeTool from '@bomdi/codebox';
-	import Checklist from '@editorjs/checklist';
 	import Delimiter from '@editorjs/delimiter';
 	import EditorJS from '@editorjs/editorjs';
 	import Embed from '@editorjs/embed';
@@ -61,7 +61,7 @@
 			try {
 				if (typeof value === 'string')
 					await editor.blocks.renderFromHTML(value);
-				else await editor.render(value || { blocks: [] });
+				else await editor.render(normalizeBlocks(value));
 			} finally {
 				rendering = false;
 			}
@@ -147,10 +147,6 @@
 						defaultStyle: 'unordered',
 					},
 				},
-				checklist: {
-					class: Checklist,
-					inlineToolbar: true,
-				},
 				quote: {
 					class: Quote,
 					inlineToolbar: true,
@@ -220,7 +216,10 @@
 				},
 			},
 			minHeight: 'auto',
-			data: typeof initialData === 'string' ? undefined : initialData,
+			data:
+				typeof initialData === 'string' || !initialData
+					? undefined
+					: normalizeBlocks(initialData),
 			onReady: () => {
 				isEditorReady = true;
 				initDragDrop();
@@ -261,8 +260,6 @@
 		position: relative;
 	}
 
-	/* Fix for checklist items to prevent overflow */
-	.cdx-checklist__item,
 	.ce-block__content {
 		word-break: break-word;
 		overflow-wrap: break-word;
@@ -281,6 +278,20 @@
 	.cdx-list {
 		max-width: 100%;
 		padding-right: 16px;
+	}
+
+	/* Hang the counter left of the item like a native <ol> marker, so its width doesn't shift the text */
+	.cdx-list-ordered .cdx-list__item {
+		position: relative;
+	}
+
+	.cdx-list-ordered .cdx-list__item::before {
+		position: absolute;
+		right: 100%;
+	}
+
+	.dark .cdx-list {
+		--checkbox-background: transparent;
 	}
 
 	/* Improve readability in dark mode */
@@ -309,17 +320,6 @@
 	/* Fix block width to prevent overflow */
 	.ce-block {
 		max-width: 100% !important;
-	}
-
-	/* Better checkbox appearance in checklists */
-	.cdx-checklist__item-checkbox {
-		flex-shrink: 0;
-	}
-
-	/* Better text handling in checklist items */
-	.cdx-checklist__item-text {
-		flex-grow: 1;
-		word-break: break-word;
 	}
 
 	/* Fix for toolbar positioning in modal */

@@ -129,7 +129,7 @@
 		isTaskDone,
 		openTarget,
 	} from '@/utils/simpleStatus';
-	import { getBlockEditorDescription } from '@/utils/editor';
+	import { getBlockEditorDescription, normalizeBlocks } from '@/utils/editor';
 	import {
 		EDITOR_LABELS,
 		buildDescriptionPayload,
@@ -1912,7 +1912,10 @@
 					if (
 						content &&
 						JSON.stringify(content.blocks) !==
-							JSON.stringify(snapshot.description_json?.blocks)
+							JSON.stringify(
+								snapshot.description_json &&
+									normalizeBlocks(snapshot.description_json).blocks,
+							)
 					) {
 						snapshot.description_json = content;
 						snapshot.description = null;
@@ -3369,8 +3372,7 @@
 
 	/* Fix for the very long strings with no spaces shown in your screenshot */
 	.ce-paragraph,
-	.cdx-list__item,
-	.cdx-checklist__item {
+	.cdx-list__item {
 		overflow-wrap: break-word !important;
 		word-wrap: break-word !important;
 		-ms-word-break: break-all !important;
