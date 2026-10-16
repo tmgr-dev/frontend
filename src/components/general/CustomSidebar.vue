@@ -127,6 +127,7 @@
 		Plug,
 		Plus,
 		Settings2,
+		Bot,
 		ShieldCheck,
 		Sliders,
 		Smartphone,
@@ -1184,6 +1185,14 @@
 										>
 											<LifeBuoy />
 											Getting started
+										</DropdownMenuItem>
+										<DropdownMenuItem
+											v-if="!isLocalOnly"
+											@click="$router.push('/settings?tab=agent-work')"
+											class="cursor-pointer"
+										>
+											<Bot />
+											Agent work
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											@click="$router.push('/settings?tab=privacy')"

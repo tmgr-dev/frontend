@@ -94,6 +94,8 @@
 
 						<PrivacySettings v-if="isPrivacy" />
 
+						<AgentUsageSync v-if="isAgentWork" />
+
 						<SettingsSection v-if="isTheme" data-tour="settings.theme" title="Theme" description="Pick a color theme and light/dark mode.">
 							<ThemePicker />
 						</SettingsSection>
@@ -348,6 +350,7 @@
 	import LocalProfileSettings from '@/components/desktop/LocalProfileSettings.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import PrivacySettings from '@/components/privacy/PrivacySettings.vue';
+	import AgentUsageSync from '@/components/settings/AgentUsageSync.vue';
 	import TipsSettings from '@/tours/ui/TipsSettings.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
@@ -390,6 +393,7 @@
 			PromotionsList,
 			SettingsRow,
 			PrivacySettings,
+			AgentUsageSync,
 			TipsSettings,
 			Button,
 			Input,
@@ -421,6 +425,7 @@
 			isLocalData: false,
 			isAbout: false,
 			isPrivacy: false,
+			isAgentWork: false,
 			appVersion: '',
 			isDesktop: isDesktopApp(),
 			telegramLink: null,
@@ -460,6 +465,7 @@
 				if (this.isDesktopSection) return 'Keyboard shortcuts';
 				if (this.isLocalData) return 'Local data';
 				if (this.isPrivacy) return 'Privacy';
+				if (this.isAgentWork) return 'Agent work';
 				if (this.isAbout) return 'About';
 				return 'Settings';
 			},
@@ -596,6 +602,10 @@
 						case 'privacy':
 							this.showPrivacySettings();
 							break;
+						case 'agent-work':
+							if (this.localOnly) this.showProfileSettings();
+							else this.showAgentWorkSettings();
+							break;
 						case 'about':
 							this.showAboutSettings();
 							break;
@@ -606,6 +616,7 @@
 			showNotificationSettings() {
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.isProfile = false;
 				this.isNotification = true;
@@ -623,6 +634,7 @@
 			showProfileSettings() {
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = true;
@@ -636,6 +648,7 @@
 			showDeviceSettings() {
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -649,6 +662,7 @@
 			showThemeSettings() {
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -662,6 +676,7 @@
 			showDesktopSettings() {
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -675,6 +690,7 @@
 			showExperimentalSettings() {
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.isNotification = false;
 				this.isProfile = false;
@@ -694,6 +710,7 @@
 				this.isExperimental = false;
 				this.isLocalData = true;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = false;
 				this.updateQueryParam('data');
 			},
@@ -721,6 +738,20 @@
 				this.updateQueryParam('privacy');
 			},
 
+			showAgentWorkSettings() {
+				this.isNotification = false;
+				this.isProfile = false;
+				this.isDevice = false;
+				this.isTheme = false;
+				this.isDesktopSection = false;
+				this.isExperimental = false;
+				this.isLocalData = false;
+				this.isAbout = false;
+				this.isPrivacy = false;
+				this.isAgentWork = true;
+				this.updateQueryParam('agent-work');
+			},
+
 			showAboutSettings() {
 				this.loadAppVersion();
 				this.isNotification = false;
@@ -731,6 +762,7 @@
 				this.isExperimental = false;
 				this.isLocalData = false;
 				this.isPrivacy = false;
+				this.isAgentWork = false;
 				this.isAbout = true;
 				this.updateQueryParam('about');
 			},
