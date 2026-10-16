@@ -17,6 +17,7 @@
 		getCursorStatus,
 		sendFollowUp,
 	} from '@/actions/tmgr/cursor';
+	import type { CursorAgent } from '@/types/cursor';
 	import {
 		getCategoryGitHubStatus,
 		getTaskGitActivity,
@@ -159,11 +160,7 @@
 		setTaskWindowTitle,
 		taskWindowTarget,
 	} from '@/utils/taskWindow';
-	import {
-		sendToMainWindow,
-		TASK_WINDOW_CREATE_TASK,
-	} from '@/utils/taskWindowBridge';
-	import { generateTaskUrl, generateWorkspaceUrl } from '@/utils/url';
+	import { generateTaskUrl } from '@/utils/url';
 	import {
 		DocumentPlusIcon,
 		TrashIcon,
@@ -615,7 +612,7 @@
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
 	const showCursorAgentModal = ref(false);
-	const cursorAgents = ref([]);
+	const cursorAgents = ref<CursorAgent[]>([]);
 	const categoryHasRepository = ref(false);
 	const categoryCursorConfigured = ref(false);
 	const categoryGitHubLoaded = ref(false);
@@ -651,14 +648,6 @@
 			(c: Category) => c.id === form.value.project_category_id,
 		);
 		return category?.code || null;
-	});
-
-	const currentCategory = computed(() => {
-		if (!form.value.project_category_id || !categories.value.length)
-			return null;
-		return categories.value.find(
-			(c: Category) => c.id === form.value.project_category_id,
-		);
 	});
 
 	const taskKeyError = ref<string | null>(null);
@@ -736,16 +725,6 @@
 	);
 	const isTitleAtLimit = computed(() => (form.value.title?.length || 0) >= 255);
 
-	const checklistDoneCount = computed(() => {
-		const items = form.value.checkpoints || [];
-		return items.filter((c: any) => c && c.checked).length;
-	});
-	const checklistPercent = computed(() => {
-		const items = form.value.checkpoints || [];
-		if (!items.length) return 0;
-		return Math.round((checklistDoneCount.value / items.length) * 100);
-	});
-
 	const checkpointsTotalLabel = computed(() => {
 		const items = form.value.checkpoints || [];
 		const total = items.reduce(
@@ -797,11 +776,6 @@
 			form.value.status_id = parseInt(value, 10);
 		},
 	});
-
-	// Toggle checkpoints expanded state
-	const toggleCheckpointsExpanded = () => {
-		isCheckpointsExpanded.value = !isCheckpointsExpanded.value;
-	};
 
 	// Add a checkpoint to the task
 	const addCheckpoint = () => {
@@ -1090,7 +1064,7 @@
 		}
 		subscribedWorkspaceId.value = workspaceId;
 		pusherSubscriptionId.value = subscribeToWorkspace(workspaceId, {
-			onTaskUpdated: (task, action, updatedByUserId, sourceInstanceId) => {
+			onTaskUpdated: (task, action, _updatedByUserId, sourceInstanceId) => {
 				console.log('[NewForm] onTaskUpdated received:', {
 					taskId: task.id,
 					myTaskId: taskId.value,
@@ -1394,7 +1368,7 @@
 		const activeAgent = cursorAgents.value.find(
 			(a: any) => a.status === 'RUNNING',
 		);
-		if (!activeAgent || !newComment.value.trim()) return;
+		if (!activeAgent || !form.value.id || !newComment.value.trim()) return;
 
 		try {
 			await sendFollowUp(form.value.id, activeAgent.id, newComment.value);
@@ -1596,41 +1570,6 @@
 			handleTaskSaveError(e);
 		} finally {
 			isCreatingTask.value = false;
-		}
-	};
-
-	const removeTask = async () => {
-		if (taskId.value) {
-			if (form.value.start_time) {
-				suppressAutoSavingForOnce.value = true;
-				form.value = await taskVersionGuard.track(() =>
-					stopTaskTimeCounter(taskId.value as number),
-				);
-			}
-
-			try {
-				await deleteTask(taskId.value);
-
-				if (props.isModal) {
-					emit('close');
-					store.commit('taskDeleted', taskId.value);
-				} else {
-					// Get current workspace
-					const currentWorkspaceId = store.state.user?.settings?.find(
-						(setting: Record<string, any>) =>
-							setting.key === 'current_workspace',
-					)?.value;
-
-					const currentWorkspace = (store.state.workspaces || []).find(
-						(workspace: Record<string, any>) =>
-							workspace.id === currentWorkspaceId,
-					);
-
-					await router.replace(generateWorkspaceUrl('list', currentWorkspace));
-				}
-			} catch (e) {
-				console.error(e);
-			}
 		}
 	};
 
@@ -2051,20 +1990,6 @@
 
 	const currentUserId = computed(() => store.state.user?.id);
 
-	const formatFullDate = (dateString: string) => {
-		if (!dateString) return '';
-		const date = new Date(dateString);
-		return date.toLocaleString('en-US', {
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit',
-			hour12: false,
-		});
-	};
-
 	const applyAssignments = (data: Partial<Task> | null | undefined) => {
 		if (!data?.assignees) return;
 		suppressAutoSavingForOnce.value = true;
@@ -2222,59 +2147,6 @@
 		{ immediate: true },
 	);
 
-	// Get unchecked checkpoints from the current task
-	const getUncheckedCheckpoints = () => {
-		if (!form.value.checkpoints || form.value.checkpoints.length === 0) {
-			return [];
-		}
-
-		return form.value.checkpoints
-			.filter((checkpoint) => !checkpoint.checked)
-			.map((checkpoint) => ({
-				...checkpoint,
-				start: 0,
-				end: 0,
-			}));
-	};
-
-	// Create a new task with the unchecked checkpoints from the current task
-	const createTaskWithCheckpoints = () => {
-		const uncheckedCheckpoints = getUncheckedCheckpoints();
-
-		// Create a copy of the current form data without ID and with reset times
-		const newTaskData = {
-			...form.value,
-			id: undefined,
-			title: `${form.value.title} (copy)`,
-			common_time: 0,
-			start_time: 0,
-			checkpoints: uncheckedCheckpoints,
-		};
-
-		// Store the new task data in localStorage to be used when new task form opens
-		localStorage.setItem('newTaskWithCheckpoints', JSON.stringify(newTaskData));
-
-		if (props.detached) {
-			void sendToMainWindow(TASK_WINDOW_CREATE_TASK, {
-				statusId: form.value.status_id,
-				projectCategoryId: form.value.project_category_id,
-			});
-			return;
-		}
-
-		// Create a new task with this data
-		store.commit('setShowCreatingTaskModal', form.value.status_id);
-		store.commit('createTaskInProjectCategoryId', {
-			projectCategoryId: form.value.project_category_id,
-			statusId: form.value.status_id,
-		});
-
-		// Close current task modal if we're in modal mode
-		if (props.isModal) {
-			emit('close');
-		}
-	};
-
 	const scrollMainToBottom = () => {
 		nextTick(() => {
 			const mainEl = document.querySelector(
@@ -2348,11 +2220,6 @@
 	const submitComment = () =>
 		commentAiReply.value ? askAIComment() : sendComment();
 
-	const handleCommentEsc = () => {
-		if (!newComment.value.trim()) {
-			isCommentInputExpanded.value = false;
-		}
-	};
 </script>
 
 <template>
@@ -2871,7 +2738,7 @@
 						<Editor
 							:key="form.id"
 							v-else-if="editorType === 'markdown'"
-							:model-value="form.description"
+							:model-value="form.description ?? undefined"
 							@update:model-value="onDescriptionInput('description', $event)"
 							class="mb-0"
 						/>
