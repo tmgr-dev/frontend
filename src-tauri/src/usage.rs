@@ -364,10 +364,7 @@ fn run_windows(runs: &[RawRun], now: DateTime<Utc>) -> (Vec<RunWindow>, Vec<RunI
     let Some((started_at, ended_at)) = window_of(run, now) else {
       continue;
     };
-    let Some(run_id) = run.id.number() else {
-      continue;
-    };
-    ids.push(RunIds { run_id, task_id: run.task_id.number() });
+    ids.push(RunIds { run_id: run.id.number().unwrap_or(0), task_id: run.task_id.number() });
     windows.push(RunWindow {
       run_ref: format!("{}#{}", run.workspace, run.id),
       task_ref: format!("{}/{}", run.workspace, run.task_id),
@@ -776,6 +773,54 @@ mod tests {
     let listed = tasks_inner(&env, now, &runs).unwrap();
     assert_eq!(listed.tasks.iter().map(|t| t.task_ref.as_str()).collect::<Vec<_>>(), vec!["ws/7"]);
     assert_eq!(listed.tasks[0].totals.events, 3);
+  }
+
+
+  #[test]
+  fn runs_with_a_text_id_still_link_by_session() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    claude_log(tmp.path(), now);
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let mut run = raw(1, 7, Some("sess-1"), None, now);
+    run.id = Id::Text("local-a".into());
+    let a = task_inner(&env, now, &[run], "ws", 7).unwrap().aggregate.unwrap();
+    assert_eq!(a.totals.events, 2);
+  }
+
+  #[test]
+  fn successive_mcp_tasks_in_one_session_split_at_the_finish() {
+    let tmp = tempfile::tempdir().unwrap();
+    let env = env_in(tmp.path());
+    let now = local_noon();
+    let line = |msg: &str, ago: i64, call: &str| {
+      format!(
+        r#"{{"type":"assistant","sessionId":"sess-two","timestamp":"{}","cwd":"/work/gamma","gitBranch":"main","isSidechain":false,"requestId":"req-{msg}","message":{{"id":"{msg}","model":"claude-test-opus-1","content":[{{"type":"text","text":"x"}}{call}],"usage":{{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}}}}"#,
+        at(now, ago)
+      )
+    };
+    let tool = |id: &str, name: &str, input: &str| format!(r#",{{"type":"tool_use","id":"{id}","name":"mcp__tmgr__{name}","input":{input}}}"#);
+    write(
+      &tmp.path().join(".claude/projects/-work-gamma/sess-two.jsonl"),
+      &[
+        line("g1", 119, &tool("tu-1", "start_agent_work", r#"{"taskId":7}"#)),
+        line("g2", 100, ""),
+        line("g3", 80, &tool("tu-2", "finish_agent_work", r#"{"runId":1}"#)),
+        line("g4", 79, &tool("tu-3", "start_agent_work", r#"{"taskId":8}"#)),
+        line("g5", 50, ""),
+      ],
+    );
+    scan_inner(&AtomicBool::new(false), &env, now).unwrap();
+    let mut first = raw(1, 7, None, None, now);
+    first.ended_at = Some(at(now, 80));
+    let mut second = raw(2, 8, None, None, now);
+    second.started_at = Some(at(now, 79));
+    let runs = vec![first, second];
+    let one = task_inner(&env, now, &runs, "ws", 7).unwrap().aggregate.unwrap();
+    let two = task_inner(&env, now, &runs, "ws", 8).unwrap().aggregate.unwrap();
+    assert_eq!(one.totals.events, 3);
+    assert_eq!(two.totals.events, 2);
   }
 
   #[test]
