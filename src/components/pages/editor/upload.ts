@@ -201,7 +201,10 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 						const meta = tr.getMeta(ghostKey) as GhostMeta | undefined;
 						if (meta?.add) set = set.add(tr.doc, meta.add.map(ghostDecoration));
 						if (meta?.track) {
-							targets = new Map(targets).set(meta.track.id, meta.track.pos);
+							const { id, pos } = meta.track;
+							targets = new Map(
+								[...targets].filter(([, at]) => at !== pos),
+							).set(id, pos);
 						}
 						if (meta?.range) {
 							const { id, from, to } = meta.range;

@@ -801,3 +801,28 @@ test('pasting an image over selected text replaces it once uploaded', async ({
     .poll(async () => await savedBody(state))
     .toBe(`First line\n\n${IMG(41)}\n`);
 });
+
+test('replacing an image twice keeps the latest choice', async ({ page }) => {
+  const state = await setupPages(
+    page,
+    'First line\n\n![Cap](tmgr://file/7 " =100x50")\n',
+  );
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  const paste = (name) =>
+    fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+      { name, mimeType: 'image/png', buffer: makePng(200, 200) },
+    ]);
+  await paste('first.png');
+  await expect.poll(() => attaches).toEqual(['first.png']);
+  await paste('second.png');
+  await expect.poll(() => attaches).toEqual(['first.png', 'second.png']);
+  hold.release();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/42 " =100x100")\n');
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  expect(await savedBody(state)).toContain('tmgr://file/42');
+});
