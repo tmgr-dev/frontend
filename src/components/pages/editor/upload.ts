@@ -206,17 +206,19 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 				add: jobs.map(({ id, url }) => ({ id, pos, url })),
 			}),
 		);
-		const results = jobs.map((job) => upload(job.file, job.url));
+		const results = jobs.map((job) =>
+			upload(job.file, job.url).catch(() => null),
+		);
 		for (const [index, job] of jobs.entries()) {
 			let node: Node | null = null;
-			try {
-				const { fileId, size } = await results[index];
+			const result = await results[index];
+			if (result) {
 				node = view.state.schema.nodes.image.create({
-					src: `tmgr://file/${fileId}`,
+					src: `tmgr://file/${result.fileId}`,
 					alt: '',
-					title: formatImageTitle({ ...parseImageTitle(''), ...size }),
+					title: formatImageTitle({ ...parseImageTitle(''), ...result.size }),
 				});
-			} catch {
+			} else {
 				options.onUploadError(job.file);
 			}
 			URL.revokeObjectURL(job.url);
