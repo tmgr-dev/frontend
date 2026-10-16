@@ -130,7 +130,6 @@
 		loadingStates,
 		error: dashboardError,
 		loadDashboard: loadDashboardSections,
-		loadHeatmap,
 		refreshSection,
 		refreshDashboard: refreshDashboardSections,
 		clearError,
@@ -157,7 +156,6 @@
 	// Pusher composable for real-time updates
 	const {
 		isConnected: isPusherConnected,
-		connectionState,
 		connectionError,
 		subscribeToWorkspace,
 		unsubscribeHandlerFromWorkspace,
@@ -166,9 +164,7 @@
 
 	// Network status monitoring
 	const {
-		isOnline,
 		isOffline,
-		networkStatus,
 		checkConnection,
 		onOnline,
 		onOffline,
@@ -176,7 +172,6 @@
 
 	// Error handling
 	const {
-		error: globalError,
 		hasError: hasGlobalError,
 		canRetry: canRetryGlobal,
 		isRetrying: isRetryingGlobal,
@@ -466,16 +461,6 @@
 		});
 	};
 
-	// Optimistic update handlers
-	const optimisticallyUpdateStatistics = (
-		updates: Partial<DashboardStatistics>,
-	) => {
-		// Update statistics immediately for better UX
-		if (statistics.value) {
-			updateStatistics(updates);
-		}
-	};
-
 	// Activity filters handler
 	const handleActivityFiltersChange = async (filters: ActivityFilters) => {
 		try {
@@ -594,28 +579,36 @@
 					event.preventDefault();
 					// Focus on statistics section
 					document
-						.querySelector('[aria-labelledby="statistics-heading"]')
+						.querySelector<HTMLElement>(
+							'[aria-labelledby="statistics-heading"]',
+						)
 						?.focus();
 					break;
 				case '2':
 					event.preventDefault();
 					// Focus on heatmap section
 					document
-						.querySelector('[aria-labelledby="heatmap-heading"]')
+						.querySelector<HTMLElement>(
+							'[aria-labelledby="heatmap-heading"]',
+						)
 						?.focus();
 					break;
 				case '3':
 					event.preventDefault();
 					// Focus on activity feed
 					document
-						.querySelector('[aria-labelledby="activity-heading"]')
+						.querySelector<HTMLElement>(
+							'[aria-labelledby="activity-heading"]',
+						)
 						?.focus();
 					break;
 				case '4':
 					event.preventDefault();
 					// Focus on team activity
 					document
-						.querySelector('[aria-labelledby="team-activity-heading"]')
+						.querySelector<HTMLElement>(
+							'[aria-labelledby="team-activity-heading"]',
+						)
 						?.focus();
 					break;
 			}
@@ -642,27 +635,6 @@
 		setTimeout(() => {
 			document.body.removeChild(announcement);
 		}, 1000);
-	};
-
-	// Enhanced real-time event handlers with accessibility
-	const handleNewActivityAccessible = (activity: Activity) => {
-		handleNewActivity(activity);
-
-		// Announce to screen readers
-		announceUpdate(`New activity: ${activity.description}`);
-	};
-
-	const handleDashboardUpdateAccessible = (
-		updates: Partial<DashboardStatistics>,
-	) => {
-		handleDashboardUpdate(updates);
-
-		// Announce significant changes
-		if (updates.completed_today) {
-			announceUpdate(
-				`Tasks completed today updated to ${updates.completed_today}`,
-			);
-		}
 	};
 
 	// Lifecycle hooks

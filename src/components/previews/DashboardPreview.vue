@@ -77,12 +77,12 @@
 					class="mb-4 h-5 w-40 animate-pulse rounded bg-gray-200 dark:bg-gray-700"
 				></div>
 				<div class="grid grid-cols-12 gap-1">
-					<template v-for="i in 84" :key="i">
-						<div
-							class="h-4 w-4 animate-pulse rounded"
-							:class="getHeatmapColor(i)"
-						></div>
-					</template>
+					<div
+						v-for="i in 84"
+						:key="i"
+						class="h-4 w-4 animate-pulse rounded"
+						:class="getHeatmapColor()"
+					></div>
 				</div>
 			</div>
 		</div>
@@ -117,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-	const getHeatmapColor = (index: number) => {
+	const getHeatmapColor = () => {
 		const colors = [
 			'bg-gray-100 dark:bg-gray-700',
 			'bg-green-100 dark:bg-green-900/30',
