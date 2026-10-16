@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.42 — 2026-10-16
+
+- Terminal commands in the app now have a copy button: Settings → Experimental (`tmgr config allow-bypass`), runner messages such as `tmgr runner start` or `tmgr agents login`, AI usage, CLI devices, MCP setup and onboarding. One click puts the command on the clipboard.
+- Settings → Personas lists the newest personas first.
+
 ## 0.9.41 — 2026-10-16
 
 - Agent work details and the AI usage task list now link usage to tasks that agents tracked through the TMGR MCP tools (start, update and finish agent work), not only to runs started with `tmgr agent start`. Before, those tasks showed no local usage.
