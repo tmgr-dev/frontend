@@ -30,7 +30,6 @@
 		Activity,
 		ActivityFilters,
 		DashboardStatistics,
-		RecentTask,
 		TeamMemberStatus,
 	} from '@/types/dashboard';
 
@@ -447,8 +446,8 @@
 		if (activity.subject_type === 'Task') openTask(activity.subject_id);
 	};
 
-	const handleTaskClick = (task: RecentTask) => {
-		openTask(task.id);
+	const handleTaskClick = (taskId: number) => {
+		openTask(taskId);
 	};
 
 	const handleMemberClick = (member: TeamMemberStatus) => {
