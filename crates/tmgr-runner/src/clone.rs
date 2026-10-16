@@ -12,6 +12,10 @@ const MAX_ALTERNATES: u64 = 4096;
 pub struct Objects {
     pub path: PathBuf,
     pub id: (u64, u64),
+    pub repo_id: (u64, u64),
+    /// True for a clone directly in `<repository>-worktrees` (not `queue`) that borrows the
+    /// repository's objects, the shape `tmgr run` creates for a task.
+    pub task_clone: bool,
 }
 
 impl Objects {
@@ -73,6 +77,15 @@ pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
             "clone_of: the repository has no real .git directory".to_string(),
         )
     })?;
+    let repo_id = repo_fd
+        .metadata()
+        .map(|m| (m.dev(), m.ino()))
+        .map_err(|_| {
+            (
+                ErrorCode::InvalidParams,
+                "clone_of: the repository cannot be read".to_string(),
+            )
+        })?;
     let objects_id = walk(&git, &["objects"]).and_then(|f| f.metadata());
     let Ok(objects_id) = objects_id else {
         return refuse("the repository is not a git work tree root");
@@ -117,6 +130,7 @@ pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
     let want = repo.join(".git/objects");
     let want = want.to_str().unwrap_or("");
     let info = walk(&clone_git, &["objects", "info"]);
+    let mut referenced = false;
     let alt = info.and_then(|i| {
         open_at(
             i.as_raw_fd(),
@@ -146,6 +160,7 @@ pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
             if text.lines().any(|l| l != want) {
                 return refuse("alternates must list only the repository's object directory");
             }
+            referenced = text.lines().count() > 0;
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(_) => return refuse("alternates is not a plain file"),
@@ -153,5 +168,7 @@ pub fn check(cwd: &Dir, clone_of: &str) -> Result<Objects, Refusal> {
     Ok(Objects {
         path: PathBuf::from(want),
         id: (objects_id.dev(), objects_id.ino()),
+        repo_id,
+        task_clone: referenced && rel.len() == 1 && rel[0] != "queue",
     })
 }

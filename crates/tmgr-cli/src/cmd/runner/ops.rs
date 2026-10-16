@@ -250,6 +250,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             start_key: None,
             clone_of: None,
             trust_cwd: a.trust.then_some(true),
+            trust_via_repo: None,
             agent_work: false,
             exe_pin: None,
             argv_sha256: None,

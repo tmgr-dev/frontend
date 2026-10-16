@@ -18,6 +18,7 @@ const MAX_SUBJECT: usize = 200;
 const MAX_RULE: usize = 64;
 pub const TRUST_PRE_ACCEPTED: &str = "pre-accepted";
 pub const TRUST_REMEMBERED: &str = "remembered";
+pub const TRUST_REPO: &str = "repo";
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "ev", rename_all = "snake_case")]

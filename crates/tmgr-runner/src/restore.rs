@@ -374,6 +374,7 @@ pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
         start_key: None,
         clone_of: i.clone_of.clone(),
         trust_cwd: None,
+        trust_via_repo: None,
         agent_work: i.agent_work,
         exe_pin: i.exe_pin.clone(),
         argv_sha256: i.argv_sha256.clone(),

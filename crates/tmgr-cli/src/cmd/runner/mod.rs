@@ -55,7 +55,7 @@ pub enum RunnerCmd {
     InstallService(InstallServiceArgs),
     /// [experimental] Remove the login autostart registration
     UninstallService,
-    /// [experimental] Trust a folder: agents started in exactly this folder skip their folder-trust question (asks to confirm)
+    /// [experimental] Trust a folder: agents started in exactly this folder, or in its `tmgr run` task clones, skip their folder-trust question (asks to confirm)
     Trust(FolderArgs),
     /// [experimental] Stop trusting a folder
     Untrust(FolderArgs),

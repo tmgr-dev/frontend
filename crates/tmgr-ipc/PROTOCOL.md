@@ -112,6 +112,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `exe_pin.v1` | `exe_pin` on `runs.create` (section 5, "Pinned executable") |
 | `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
 | `trusted_folders.v1` | `trust.list`, `trust.add`, `trust.remove` (section 5, "Trusted folders") |
+| `trust_via_repo.v1` | `trust_via_repo` on `runs.create` (section 5, "Trusted folders") |
 
 ## 5. Messages after the handshake
 
@@ -136,7 +137,7 @@ missing params) and `internal`.
 | `runner.stop` | none | `null`, then the runner exits (sessions keep running) | | any |
 | `sessions.list` | none | `[SessionInfo]`, oldest first | | any |
 | `sessions.create` | `CreateReq` | `SessionInfo` | `forbidden`, `sandbox`, `limit`, `unknown_profile` | `client: "cli"` only |
-| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`, `exe_pin`, `argv_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
+| `runs.create` | `RunCreateReq` (optional `bundle` + `bundle_sha256`, `cwd_pin`, `origin`, `trust_cwd`, `trust_via_repo`, `exe_pin`, `argv_sha256`) | `SessionInfo` | `unknown_profile`, `sandbox`, `limit`, `invalid_params`, `busy`, `forbidden` | any; `client: "worker"` must send `origin`, every other client must not |
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
@@ -343,7 +344,9 @@ What the pin does not cover:
 
 ### Trusted folders
 
-**`trusted_folders.v1`.** The runner keeps a local list of folders whose agent folder-trust question is answered in advance: `.trusted-folders.json` in the homes directory (mode 0600, outside every sandbox), each entry the canonical path with the folder's `st_dev`/`st_ino`. A run whose canonical `cwd` has the same path and identity, and that has no `start_key`, `clone_of` or `origin`, gets the profile's `[trust]` entry seeded as with `trust_cwd`, from any client; the work log records `trust: "remembered"`. A folder inside a trusted one, a clone or worktree of it, or a new folder at the same path is not trusted. Entries come only from `trust.add` (`client: "cli"`; `tmgr runner trust` asks for a typed confirmation and refuses inside an agent session) or from the owner's own answer: when a run of the built-in `claude-code` profile that the runner did not pre-trust (no `start_key`, `clone_of`, `origin`, not restored) exits, and its per-run `.claude.json` (a plain file, not a link) records `projects.<cwd>.hasTrustDialogAccepted: true`, the folder is added with `how: "answered"`, unless any input to that session came from a client other than `cli` or `desktop` (for example a link worker). Claude Code runs nothing before that question is answered, so the record comes from a person at this machine. `trust.add` may carry the `dev` and `ino` the person confirmed; a different folder at the path is then `invalid_params`. `trust.remove` matches the stored path or the canonical form of the given one, also for a folder that no longer exists.
+**`trusted_folders.v1`.** The runner keeps a local list of folders whose agent folder-trust question is answered in advance: `.trusted-folders.json` in the homes directory (mode 0600, outside every sandbox), each entry the canonical path with the folder's `st_dev`/`st_ino`. A run whose canonical `cwd` has the same path and identity, and that has no `start_key`, `clone_of` or `origin`, gets the profile's `[trust]` entry seeded as with `trust_cwd`, from any client; the work log records `trust: "remembered"`. A folder inside a trusted one, a clone or worktree of it, or a new folder at the same path is not trusted. Entries come only from `trust.add` (`client: "cli"`; `tmgr runner trust` asks to confirm and refuses inside an agent session) or from the owner's own answer: when a run of the built-in `claude-code` profile that the runner did not pre-trust (no `start_key`, `clone_of`, `origin`, not restored) exits, and its per-run `.claude.json` (a plain file, not a link) records `projects.<cwd>.hasTrustDialogAccepted: true`, the folder is added with `how: "answered"`, unless any input to that session came from a client other than `cli` or `desktop` (for example a link worker). Claude Code runs nothing before that question is answered, so the record comes from a person at this machine. `trust.add` may carry the `dev` and `ino` the person confirmed; a different folder at the path is then `invalid_params`. `trust.remove` matches the stored path or the canonical form of the given one, also for a folder that no longer exists.
+
+**`trust_via_repo.v1`.** `runs.create` takes an optional `trust_via_repo` (`true`) for the per-task clones `tmgr run` makes. It is accepted only from `client: "cli"` (others get `forbidden`), needs `clone_of` and is `invalid_params` together with `start_key`, `origin` or `trust_cwd`, so the queue (which always sends a `start_key`), a link or a follower can never use it; `tmgr run` does not send it inside an agent session, and a restored run does not carry it. The profile's `[trust]` entry is seeded for the clone's canonical `cwd`, as with `trust_cwd`, only when every `clone_dir.v1` check passes and in addition: the `clone_of` repository's path and `st_dev`/`st_ino` match an entry of the trusted list; `cwd` is exactly one level below `<repo>-worktrees/` and that name is not `queue`; and the clone's `objects/info/alternates` exists and names the repository's object directory. Otherwise the run starts without it and the agent asks as usual. A folder inside such a clone, a clone elsewhere, a clone without `--reference` and a `-worktrees` folder reached through a symlink are never covered. The work log records `trust: "repo"`. Answering the question inside a clone never adds the repository (or the clone) to the list.
 
 ### Run bundles
 
@@ -491,7 +494,7 @@ event and stops, keeping a reserve for the `exited` and `commits` events).
 - `started_ms`, `ended_ms` (absent while running), `duration_s` (to now while running);
 - `working_s`, `waiting_s`, `blocked_s`: time in each state, from state changes (`starting` is not counted);
 - `branch`, `commits` (`[{sha, subject}]`, oldest first): git facts, absent when the folder is not a git work tree or git fails;
-- `exit` `{code, signal}`; `task`, `profile`, `agent` (the profile id, else the program's base name); `trust` (`pre-accepted`, only when the run used `trust_cwd`); `truncated`.
+- `exit` `{code, signal}`; `task`, `profile`, `agent` (the profile id, else the program's base name); `trust` (`pre-accepted` when the run used `trust_cwd`, `remembered` for a trusted folder, `repo` for a clone of a trusted repository); `truncated`.
 
 Events: `created` (time, profile, program base name, task, bundle hash, branch
 and head of the folder, and `trust: "pre-accepted"` when `trust_cwd` was used), `state` (time, kind, and for `waiting` the detail
@@ -512,8 +515,8 @@ capability has no log and returns an all-zero summary.
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
 (section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`;
-`trust_cwd` on `runs.create` is accepted only from `cli` (section 5,
-"Pre-accepted folder trust"). This is a guardrail so well-behaved clients cannot start arbitrary
+`trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
+"Pre-accepted folder trust", "Trusted folders"). This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user
 can claim to be `cli`. The real boundary is that agents run in a sandbox that

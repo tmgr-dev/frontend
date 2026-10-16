@@ -58,7 +58,7 @@ pub fn trust(o: &Opts, dir: &Path) -> Result<i32> {
     let id = std::fs::metadata(&shown).map_err(|e| Error::usage(e.to_string()))?;
     interact::confirm(
         &format!(
-            "Trust {}? Agents started in exactly this folder will no longer ask whether to trust it.",
+            "Trust {}? Agents started in exactly this folder, or in the clones `tmgr run` makes of it for a task, will no longer ask whether to trust it.",
             clean(&shown.display().to_string())
         ),
         false,

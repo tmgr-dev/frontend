@@ -306,6 +306,10 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         )
         .hint(format!("{0} runner stop && {0} runner start", super::bin())));
     }
+    let via_repo = have.iter().any(|h| h == caps::TRUST_VIA_REPO_V1)
+        && !tmgr_link::privileged::RUN_ENV
+            .iter()
+            .any(|k| std::env::var_os(k).is_some());
     let info = client
         .create_run(RunCreateReq {
             profile: profile.clone(),
@@ -323,6 +327,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             start_key: None,
             clone_of: Some(p.repo.clone()),
             trust_cwd: None,
+            trust_via_repo: via_repo.then_some(true),
             agent_work: true,
             exe_pin: Some(exe_pin),
             argv_sha256: Some(argv_digest),

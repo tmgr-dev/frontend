@@ -87,6 +87,8 @@ pub struct RunCreateReq {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trust_cwd: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust_via_repo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exe_pin: Option<ExePin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub argv_sha256: Option<String>,

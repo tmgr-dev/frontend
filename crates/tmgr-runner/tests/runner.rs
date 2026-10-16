@@ -207,6 +207,7 @@ impl Harness {
             start_key: None,
             clone_of: None,
             trust_cwd: None,
+            trust_via_repo: None,
             agent_work: false,
             exe_pin: None,
             argv_sha256: None,
@@ -3873,6 +3874,163 @@ fn only_the_cli_may_send_trust_cwd() {
         assert!(e.starts_with("forbidden: "), "{client}: {e}");
     }
     assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+struct RepoTrustFx {
+    fx: LoginFx,
+    repo: PathBuf,
+    trees: PathBuf,
+}
+
+fn repo_trust_fx() -> RepoTrustFx {
+    let mut fx = trust_fx(true);
+    let base = fs::canonicalize(fx.h.tmp.path()).unwrap().join("code");
+    let repo = base.join("repo");
+    let trees = base.join("repo-worktrees");
+    fs::create_dir_all(&repo).unwrap();
+    fs::create_dir_all(&trees).unwrap();
+    init_repo(&repo);
+    fx.h.start(5000);
+    RepoTrustFx { fx, repo, trees }
+}
+
+fn clone_into(repo: &Path, dest: &Path, reference: bool) -> PathBuf {
+    let parent = dest.parent().unwrap();
+    fs::create_dir_all(parent).unwrap();
+    let r = repo.to_str().unwrap();
+    let mut args = vec!["clone", "-q"];
+    if reference {
+        args.extend(["--reference", r]);
+    }
+    args.extend([r, dest.to_str().unwrap()]);
+    git_in(parent, &args);
+    dest.to_path_buf()
+}
+
+impl RepoTrustFx {
+    fn clone_at(&self, rel: &str) -> PathBuf {
+        clone_into(&self.repo, &self.trees.join(rel), true)
+    }
+
+    fn req(&self, cwd: &Path) -> RunCreateReq {
+        let mut r = self.fx.h.run_req("trusty");
+        r.cwd = cwd.display().to_string();
+        r.clone_of = Some(self.repo.display().to_string());
+        r.trust_via_repo = Some(true);
+        r
+    }
+
+    fn trust(&self, dir: &Path) {
+        self.fx
+            .h
+            .client()
+            .call("trust.add", json!({ "path": dir }))
+            .unwrap();
+    }
+
+    fn started_trusted(&self, req: RunCreateReq) -> bool {
+        let cwd = req.cwd.clone();
+        let info = self.fx.h.client().create_run(req).unwrap();
+        let trusted = run_home_json(&self.fx, &info.id)["projects"]
+            .get(&cwd)
+            .is_some();
+        let note = self.fx.h.client().worklog(&info.id).unwrap().trust;
+        assert_eq!(note.as_deref(), trusted.then_some("repo"), "{cwd}");
+        self.fx.h.client().kill(&info.id, "kill").unwrap();
+        trusted
+    }
+}
+
+#[test]
+fn a_task_clone_of_a_trusted_repository_skips_the_trust_question() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = repo_trust_fx();
+    assert!(!fx.started_trusted(fx.req(&fx.clone_at("tm-1-a"))));
+    fx.trust(&fx.repo);
+    assert!(fx.started_trusted(fx.req(&fx.clone_at("tm-2-b"))));
+    let mut unasked = fx.req(&fx.clone_at("tm-3-c"));
+    unasked.trust_via_repo = None;
+    assert!(!fx.started_trusted(unasked));
+    let listed = fx.fx.h.client().call("trust.list", json!(null)).unwrap();
+    assert_eq!(listed.as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn trust_via_repo_never_covers_queue_nested_unreferenced_or_redirected_clones() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = repo_trust_fx();
+    fx.trust(&fx.repo);
+    assert!(!fx.started_trusted(fx.req(&fx.clone_at("queue"))));
+    assert!(!fx.started_trusted(fx.req(&fx.clone_at("queue/q_1"))));
+    let outer = fx.clone_at("tm-5-outer");
+    fx.trust(&outer);
+    let nested = clone_into(&fx.repo, &outer.join("inner"), true);
+    assert!(!fx.started_trusted(fx.req(&nested)));
+    let plain = clone_into(&fx.repo, &fx.trees.join("tm-6-plain"), false);
+    assert!(!fx.started_trusted(fx.req(&plain)));
+
+    let elsewhere = fx.clone_at("tm-7-alt");
+    fs::write(
+        elsewhere.join(".git/objects/info/alternates"),
+        "/somewhere/else/.git/objects\n",
+    )
+    .unwrap();
+    let e = err_text(fx.fx.h.client().create_run(fx.req(&elsewhere)));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+
+    let base = fx.repo.parent().unwrap();
+    let other = base.join("other");
+    fs::create_dir(&other).unwrap();
+    init_repo(&other);
+    fx.trust(&other);
+    let outside = fs::canonicalize(fx.fx.h.tmp.path())
+        .unwrap()
+        .join("outside");
+    fs::create_dir(&outside).unwrap();
+    std::os::unix::fs::symlink(&outside, base.join("other-worktrees")).unwrap();
+    clone_into(&other, &outside.join("tm-8"), true);
+    let mut redirected = fx.req(&base.join("other-worktrees/tm-8"));
+    redirected.clone_of = Some(other.display().to_string());
+    let e = err_text(fx.fx.h.client().create_run(redirected));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(fx
+        .fx
+        .h
+        .client()
+        .list()
+        .unwrap()
+        .iter()
+        .all(|s| s.state.kind == StateKind::Exited));
+}
+
+#[test]
+fn only_a_local_cli_task_run_may_ask_for_trust_via_repo() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = repo_trust_fx();
+    fx.trust(&fx.repo);
+    let clone = fx.clone_at("tm-9");
+    for client in ["desktop", "worker"] {
+        let mut c = Client::connect_as(&fx.fx.h.run, client).unwrap();
+        let e = err_text(c.create_run(fx.req(&clone)));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    let mut keyed = fx.req(&clone);
+    keyed.start_key = Some("q_1-1".into());
+    let mut unbound = fx.req(&clone);
+    unbound.clone_of = None;
+    let mut both = fx.req(&clone);
+    both.trust_cwd = Some(true);
+    for req in [keyed, unbound, both] {
+        let e = err_text(fx.fx.h.client().create_run(req));
+        assert!(e.starts_with("invalid_params: "), "{e}");
+    }
+    assert!(fx.fx.h.client().list().unwrap().is_empty());
 }
 
 const LOCAL_TASK: TaskRef = TaskRef {
