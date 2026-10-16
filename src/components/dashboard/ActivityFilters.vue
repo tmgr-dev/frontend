@@ -43,8 +43,8 @@
 
 		<!-- User Filter -->
 		<Select
-			v-model="localFilters.user_id"
-			@update:model-value="handleFilterChange"
+			:model-value="localFilters.user_id?.toString()"
+			@update:model-value="handleUserChange"
 		>
 			<SelectTrigger class="w-32">
 				<SelectValue placeholder="All Users" />
@@ -258,6 +258,12 @@
 			limit: 20,
 		};
 		selectedDateRange.value = dateRanges[0];
+		handleFilterChange();
+	};
+
+	const handleUserChange = (value: unknown) => {
+		// Select emits the item's string value; ActivityFilters.user_id is typed number | 'all' (shared type)
+		localFilters.value.user_id = value as ActivityFiltersType['user_id'];
 		handleFilterChange();
 	};
 
