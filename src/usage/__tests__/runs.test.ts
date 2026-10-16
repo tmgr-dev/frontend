@@ -1,7 +1,7 @@
 const get = jest.fn();
 jest.mock('@/plugins/axios', () => ({ __esModule: true, default: { get: (...a: unknown[]) => get(...a) } }));
 
-import { fetchRuns, stripKeyPrefix, taskInfoFor } from '../runs';
+import { fetchRuns, taskInfoFor } from '../runs';
 
 const run = (id: number, extra: object = {}) => ({
 	id,
