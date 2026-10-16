@@ -39,6 +39,18 @@ export const isAgentUsageSyncAvailable = (): boolean =>
 export const isAgentUsageSyncOn = (): boolean =>
 	isOn(store.getters.userSettingByKey(AGENT_USAGE_SYNC_KEY)?.value);
 
+export const withCurrentAgentUsageSync = <
+	T extends { id: number; value?: unknown },
+>(
+	settings: T[],
+): T[] => {
+	const current = store.getters.userSettingByKey(AGENT_USAGE_SYNC_KEY);
+	if (!current) return settings;
+	return settings.map((s) =>
+		s.id === current.id ? { ...s, value: current.value } : s,
+	);
+};
+
 export const setAgentUsageSync = async (on: boolean): Promise<void> => {
 	const user = (store.state as any).user;
 	const setting = store.getters.userSettingByKey(AGENT_USAGE_SYNC_KEY);

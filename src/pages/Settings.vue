@@ -349,6 +349,7 @@
 	import LocalDataSettings from '@/components/desktop/LocalDataSettings.vue';
 	import LocalProfileSettings from '@/components/desktop/LocalProfileSettings.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
+	import { withCurrentAgentUsageSync } from '@/actions/tmgr/agentUsage';
 	import PrivacySettings from '@/components/privacy/PrivacySettings.vue';
 	import AgentUsageSync from '@/components/settings/AgentUsageSync.vue';
 	import TipsSettings from '@/tours/ui/TipsSettings.vue';
@@ -936,7 +937,7 @@
 					const originalEditorValue = originalEditorSetting?.value;
 
 					const [data] = await Promise.all([
-						updateUserSettingsV2(this.settings),
+						updateUserSettingsV2(withCurrentAgentUsageSync(this.settings)),
 						updateUserSettings({ settings: this.userSettings }),
 					]);
 

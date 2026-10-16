@@ -41,6 +41,7 @@ import {
 	listAgentUsage,
 	setAgentUsageSync,
 	uploadRows,
+	withCurrentAgentUsageSync,
 } from '../agentUsage';
 
 const user = (value: string | null) => ({
@@ -163,5 +164,26 @@ describe('uploads', () => {
 			tokens: '10k tokens',
 		});
 		expect(rows[1]).toMatchObject({ task: '#2', cost: null });
+	});
+});
+
+describe('withCurrentAgentUsageSync', () => {
+	it('replaces a stale cached value with the current one', () => {
+		state.user = user('1');
+		const stale = [
+			{ id: 5, value: 56 },
+			{ id: 9, value: '0' },
+		];
+		expect(withCurrentAgentUsageSync(stale)).toEqual([
+			{ id: 5, value: 56 },
+			{ id: 9, value: '1' },
+		]);
+		expect(stale[1].value).toBe('0');
+	});
+
+	it('leaves the list alone without the setting', () => {
+		state.user = user(null);
+		const list = [{ id: 5, value: 56 }];
+		expect(withCurrentAgentUsageSync(list)).toBe(list);
 	});
 });

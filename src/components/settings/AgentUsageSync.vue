@@ -175,15 +175,19 @@
 				return isAgentUsageSyncOn();
 			});
 
+			let latest = 0;
+
 			const load = async () => {
 				if (!isAgentUsageSyncAvailable()) return;
+				const current = ++latest;
 				loading.value = true;
 				try {
-					rows.value = uploadRows(await listAgentUsage());
+					const fetched = uploadRows(await listAgentUsage());
+					if (current === latest) rows.value = fetched;
 				} catch (e) {
 					error.value = message(e);
 				} finally {
-					loading.value = false;
+					if (current === latest) loading.value = false;
 				}
 			};
 
