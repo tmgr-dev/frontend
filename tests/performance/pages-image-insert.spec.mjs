@@ -712,3 +712,28 @@ test('aligning an image while its replacement uploads still swaps it', async ({
     .poll(async () => await savedBody(state))
     .toBe('First line\n\n![Cap](tmgr://file/41 " =100x100")\n');
 });
+
+test('deleting an image while its replacement uploads leaves its copies alone', async ({
+  page,
+}) => {
+  const copy = '![Cap](tmgr://file/7 " =100x50")';
+  const state = await setupPages(page, `First line\n\n${copy}\n\n${copy}\n`);
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    { name: 'new.png', mimeType: 'image/png', buffer: makePng(200, 200) },
+  ]);
+  await expect.poll(() => attaches).toEqual(['new.png']);
+  await page
+    .locator('.page-editor .pe-image-toolbar [data-action="delete"]')
+    .first()
+    .click();
+  await expect(images(page)).toHaveCount(1);
+  hold.release();
+  await page.waitForTimeout(DEBOUNCE_MARGIN);
+  const body = await savedBody(state);
+  expect(body).not.toContain('tmgr://file/41');
+  expect(body.split(copy)).toHaveLength(2);
+});

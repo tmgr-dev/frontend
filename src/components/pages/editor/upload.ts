@@ -6,8 +6,13 @@ import {
 	pngPixelRatio,
 } from '@/utils/pages/imageTitle';
 import type { Node } from '@milkdown/kit/prose/model';
-import { NodeSelection, Plugin, PluginKey } from '@milkdown/kit/prose/state';
-import { Mapping } from '@milkdown/kit/prose/transform';
+import {
+	NodeSelection,
+	Plugin,
+	PluginKey,
+	type Transaction,
+} from '@milkdown/kit/prose/state';
+import { Mapping, ReplaceStep } from '@milkdown/kit/prose/transform';
 import {
 	Decoration,
 	DecorationSet,
@@ -23,8 +28,12 @@ export interface ImageUploadOptions {
 interface Ghost {
 	id: number;
 	pos: number;
-	url?: string;
-	replaceSize?: number;
+	url: string;
+}
+
+interface GhostState {
+	set: DecorationSet;
+	targets: Map<number, number>;
 }
 
 interface Size {
@@ -32,27 +41,45 @@ interface Size {
 	height: number | null;
 }
 
-type GhostMeta = { add: Ghost[] } | { remove: number };
+type GhostMeta =
+	| { add: Ghost[] }
+	| { track: { id: number; pos: number } }
+	| { remove: number };
 
-const ghostKey = new PluginKey<DecorationSet>('tmgr-image-upload');
+const ghostKey = new PluginKey<GhostState>('tmgr-image-upload');
 const PRELOAD_TIMEOUT = 8000;
 let lastId = 0;
 
-const ghostDecoration = (ghost: Ghost): Decoration => {
-	if (ghost.replaceSize) {
-		return Decoration.node(
-			ghost.pos,
-			ghost.pos + ghost.replaceSize,
-			{ class: 'pe-image-replacing' },
-			{ id: ghost.id },
-		);
+// Resizing, aligning or captioning re-creates the image in place, which plain
+// position mapping reports as a deletion; only a real deletion drops the target.
+const mapTarget = (tr: Transaction, pos: number): number | null => {
+	let at = pos;
+	for (const step of tr.steps) {
+		if (
+			step instanceof ReplaceStep &&
+			step.from === at &&
+			step.to === at + 1 &&
+			step.slice.openStart === 0 &&
+			step.slice.openEnd === 0 &&
+			step.slice.content.childCount === 1 &&
+			step.slice.content.firstChild?.type.name === 'image'
+		) {
+			continue;
+		}
+		const result = step.getMap().mapResult(at, 1);
+		if (result.deletedAfter) return null;
+		at = result.pos;
 	}
+	return at;
+};
+
+const ghostDecoration = (ghost: Ghost): Decoration => {
 	const wrap = document.createElement('span');
 	wrap.className = 'pe-upload-ghost';
 	wrap.contentEditable = 'false';
 	const img = document.createElement('img');
 	img.alt = '';
-	if (ghost.url) img.src = ghost.url;
+	img.src = ghost.url;
 	wrap.append(img);
 	return Decoration.widget(ghost.pos, wrap, {
 		id: ghost.id,
@@ -64,7 +91,7 @@ const ghostDecoration = (ghost: Ghost): Decoration => {
 const findGhost = (view: EditorView, id: number): Decoration | undefined =>
 	ghostKey
 		.getState(view.state)
-		?.find(undefined, undefined, (spec) => spec.id === id)[0];
+		?.set.find(undefined, undefined, (spec) => spec.id === id)[0];
 
 const measure = async (file: File, url: string): Promise<Size> => {
 	const img = new Image();
@@ -130,28 +157,53 @@ export const pickImageFiles = (multiple: boolean): Promise<File[]> =>
 export const createImageUpload = (options: ImageUploadOptions) => {
 	const plugin = $prose(
 		() =>
-			new Plugin<DecorationSet>({
+			new Plugin<GhostState>({
 				key: ghostKey,
 				state: {
-					init: () => DecorationSet.empty,
-					apply(tr, set) {
-						let next = set.map(tr.mapping, tr.doc);
+					init: () => ({ set: DecorationSet.empty, targets: new Map() }),
+					apply(tr, prev) {
+						let set = prev.set.map(tr.mapping, tr.doc);
+						let targets = prev.targets;
+						if (tr.docChanged && targets.size) {
+							targets = new Map();
+							for (const [id, pos] of prev.targets) {
+								const at = mapTarget(tr, pos);
+								if (at !== null) targets.set(id, at);
+							}
+						}
 						const meta = tr.getMeta(ghostKey) as GhostMeta | undefined;
 						if (meta && 'add' in meta) {
-							next = next.add(tr.doc, meta.add.map(ghostDecoration));
+							set = set.add(tr.doc, meta.add.map(ghostDecoration));
+						} else if (meta && 'track' in meta) {
+							targets = new Map(targets).set(meta.track.id, meta.track.pos);
 						} else if (meta && 'remove' in meta) {
-							next = next.remove(
-								next.find(
+							set = set.remove(
+								set.find(
 									undefined,
 									undefined,
 									(spec) => spec.id === meta.remove,
 								),
 							);
+							if (targets.has(meta.remove)) {
+								targets = new Map(targets);
+								targets.delete(meta.remove);
+							}
 						}
-						return next;
+						return { set, targets };
 					},
 				},
-				props: { decorations: (state) => ghostKey.getState(state) },
+				props: {
+					decorations: (state) => {
+						const ghosts = ghostKey.getState(state);
+						if (!ghosts?.targets.size) return ghosts?.set;
+						const dimmed = [...ghosts.targets.values()]
+							.filter((at) => state.doc.nodeAt(at)?.type.name === 'image')
+							.map((at) =>
+								Decoration.node(at, at + 1, { class: 'pe-image-replacing' }),
+							);
+						return ghosts.set.add(state.doc, dimmed);
+					},
+				},
 				appendTransaction: (trs, oldState, newState) => {
 					if (
 						!trs.some((tr) => tr.docChanged && tr.getMeta('uiEvent') === 'drop')
@@ -241,11 +293,7 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 		if (!options.uploadFile || current?.type.name !== 'image') return;
 		const id = ++lastId;
 		const url = URL.createObjectURL(file);
-		view.dispatch(
-			view.state.tr.setMeta(ghostKey, {
-				add: [{ id, pos, replaceSize: current.nodeSize }],
-			}),
-		);
+		view.dispatch(view.state.tr.setMeta(ghostKey, { track: { id, pos } }));
 		let result: Awaited<ReturnType<typeof upload>> | null = null;
 		try {
 			result = await upload(file, url);
@@ -254,22 +302,11 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 		}
 		URL.revokeObjectURL(url);
 		if (view.isDestroyed) return;
+		const at = ghostKey.getState(view.state)?.targets.get(id);
 		const tr = view.state.tr.setMeta(ghostKey, { remove: id });
-		// Resizing or aligning re-creates the node and drops its decoration, so
-		// the image is found again by its source, nearest to where it was.
-		let found: { node: Node; pos: number } | null = null;
-		tr.doc.descendants((node, at) => {
-			if (
-				node.type.name === 'image' &&
-				node.attrs.src === current.attrs.src &&
-				(!found || Math.abs(at - pos) < Math.abs(found.pos - pos))
-			) {
-				found = { node, pos: at };
-			}
-		});
-		const target = found as { node: Node; pos: number } | null;
-		if (target && result) {
-			const parts = parseImageTitle(target.node.attrs.title);
+		const target = at === undefined ? null : tr.doc.nodeAt(at);
+		if (result && at !== undefined && target?.type.name === 'image') {
+			const parts = parseImageTitle(target.attrs.title);
 			const { width, height } = result.size;
 			const keepWidth = parts.width ?? width;
 			const fitted =
@@ -279,8 +316,8 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 							height: Math.round((keepWidth * height) / width),
 					  }
 					: { width, height };
-			tr.setNodeMarkup(target.pos, undefined, {
-				...target.node.attrs,
+			tr.setNodeMarkup(at, undefined, {
+				...target.attrs,
 				src: `tmgr://file/${result.fileId}`,
 				title: formatImageTitle({ ...parts, ...fitted }),
 			});
