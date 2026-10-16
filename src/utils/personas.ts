@@ -58,6 +58,17 @@ export const DESCRIPTION_MAX_LENGTH = 500;
 export const NAME_MAX_LENGTH = 60;
 export const PERSONA_LIMIT = 20;
 
+export const sortPersonasNewestFirst = <
+	T extends { id: string; created_at: string },
+>(
+	personas: T[],
+): T[] =>
+	[...personas].sort(
+		(a, b) =>
+			Date.parse(b.created_at) - Date.parse(a.created_at) ||
+			b.id.localeCompare(a.id),
+	);
+
 /** The server counts the prompt in bytes, not characters — Cyrillic/emoji cost more than 1 byte each. */
 export const byteLength = (text: string): number =>
 	new TextEncoder().encode(text ?? '').length;

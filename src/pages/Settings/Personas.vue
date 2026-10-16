@@ -217,6 +217,7 @@
 		extractFieldErrors,
 		PERSONA_LIMIT,
 		personaScopeLabel,
+		sortPersonasNewestFirst,
 	} from '@/utils/personas';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 	import PersonaForm, { type PersonaFormModel } from './PersonaForm.vue';
@@ -297,7 +298,7 @@
 				loading.value = true;
 				loadError.value = null;
 				try {
-					personas.value = await listPersonas(true);
+					personas.value = sortPersonasNewestFirst(await listPersonas(true));
 					const workspaceId = currentWorkspace.value?.id;
 					workspaceGrants.value = workspaceId
 						? await listWorkspacePersonas(workspaceId).catch(() => [])

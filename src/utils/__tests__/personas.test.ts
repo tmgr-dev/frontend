@@ -16,6 +16,7 @@ import {
 	PERSONA_PERMISSIONS,
 	PERSONA_TOKEN_ENV_VAR,
 	resolveAuthor,
+	sortPersonasNewestFirst,
 	validatePersonaName,
 	validateSkillMarkdown,
 	validateTokenLabel,
@@ -396,5 +397,36 @@ describe('buildPersonaTokenSnippet', () => {
 		expect(snippet).toContain('X-Persona-Token');
 		expect(snippet).toContain('http://taskmanager.localhost/mcp');
 		expect(snippet).not.toMatch(/tmgrp_[A-Za-z0-9]/);
+	});
+});
+
+describe('sortPersonasNewestFirst', () => {
+	const p = (id: string, created_at: string) => ({ id, created_at });
+
+	it('puts the most recently created persona first', () => {
+		const sorted = sortPersonasNewestFirst([
+			p('a', '2026-10-01T10:00:00Z'),
+			p('b', '2026-10-03T10:00:00Z'),
+			p('c', '2026-10-02T10:00:00Z'),
+		]);
+		expect(sorted.map((x) => x.id)).toEqual(['b', 'c', 'a']);
+	});
+
+	it('breaks ties on equal timestamps by id, newest id first', () => {
+		const sorted = sortPersonasNewestFirst([
+			p('a1', '2026-10-01T10:00:00Z'),
+			p('c3', '2026-10-01T10:00:00Z'),
+			p('b2', '2026-10-01T10:00:00Z'),
+		]);
+		expect(sorted.map((x) => x.id)).toEqual(['c3', 'b2', 'a1']);
+	});
+
+	it('does not reorder the input array', () => {
+		const input = [
+			p('a', '2026-10-01T10:00:00Z'),
+			p('b', '2026-10-02T10:00:00Z'),
+		];
+		sortPersonasNewestFirst(input);
+		expect(input.map((x) => x.id)).toEqual(['a', 'b']);
 	});
 });
