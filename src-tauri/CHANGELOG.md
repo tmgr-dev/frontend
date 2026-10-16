@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.40 — 2026-10-16
+
+- Task page: a short Agent work line (your time, agent time, AI cost, pull request) that opens "Agent work — details": totals, tokens by type, the agent tree (Claude Code, its subagents and the Codex runs they started), tools, skills, MCP servers, hooks, permission modes and the commits and pull request of the agent runs. AI usage is read from the Claude Code and Codex logs on this computer and stays here; AI cost is API-equivalent.
+- Runner: the agy profile and opencode permission modes.
+
 ## 0.9.39 — 2026-10-16
 
 - AI usage: Claude limits now show the fullest reading of the current window instead of the newest copy sent by an idle session.
