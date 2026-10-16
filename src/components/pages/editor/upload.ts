@@ -254,11 +254,22 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 		}
 		URL.revokeObjectURL(url);
 		if (view.isDestroyed) return;
-		const ghost = findGhost(view, id);
 		const tr = view.state.tr.setMeta(ghostKey, { remove: id });
-		const target = ghost ? tr.doc.nodeAt(ghost.from) : null;
-		if (ghost && result && target?.type.name === 'image') {
-			const parts = parseImageTitle(target.attrs.title);
+		// Resizing or aligning re-creates the node and drops its decoration, so
+		// the image is found again by its source, nearest to where it was.
+		let found: { node: Node; pos: number } | null = null;
+		tr.doc.descendants((node, at) => {
+			if (
+				node.type.name === 'image' &&
+				node.attrs.src === current.attrs.src &&
+				(!found || Math.abs(at - pos) < Math.abs(found.pos - pos))
+			) {
+				found = { node, pos: at };
+			}
+		});
+		const target = found as { node: Node; pos: number } | null;
+		if (target && result) {
+			const parts = parseImageTitle(target.node.attrs.title);
 			const { width, height } = result.size;
 			const keepWidth = parts.width ?? width;
 			const fitted =
@@ -268,8 +279,8 @@ export const createImageUpload = (options: ImageUploadOptions) => {
 							height: Math.round((keepWidth * height) / width),
 					  }
 					: { width, height };
-			tr.setNodeMarkup(ghost.from, undefined, {
-				...target.attrs,
+			tr.setNodeMarkup(target.pos, undefined, {
+				...target.node.attrs,
 				src: `tmgr://file/${result.fileId}`,
 				title: formatImageTitle({ ...parts, ...fitted }),
 			});

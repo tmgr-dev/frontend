@@ -685,3 +685,30 @@ test('opening a page with existing images saves nothing', async ({ page }) => {
   expect(state.writes).toEqual([]);
   await expect(page.locator('.page-editor .pe-image-caption', { hasText: 'shot.png' })).toHaveCount(0);
 });
+
+test('aligning an image while its replacement uploads still swaps it', async ({
+  page,
+}) => {
+  const state = await setupPages(
+    page,
+    'First line\n\n![Cap](tmgr://file/7 "right-50 =100x50")\n',
+  );
+  const hold = gate();
+  const attaches = await mockUpload(page, { hold });
+  await openPage(page);
+  await images(page).first().click({ force: true });
+  await fileEvent(page.locator('.page-editor .ProseMirror'), 'paste', [
+    { name: 'new.png', mimeType: 'image/png', buffer: makePng(200, 200) },
+  ]);
+  await expect.poll(() => attaches).toEqual(['new.png']);
+  await page
+    .locator('.page-editor .pe-image-toolbar [data-action="align-center"]')
+    .click();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/7 " =100x50")\n');
+  hold.release();
+  await expect
+    .poll(async () => await savedBody(state))
+    .toBe('First line\n\n![Cap](tmgr://file/41 " =100x100")\n');
+});

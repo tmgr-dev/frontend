@@ -428,6 +428,22 @@ test('a floated image resizes by the plain delta', async ({ page }) => {
   );
 });
 
+test('a caption being typed is saved without leaving the caption', async ({
+  page,
+}) => {
+  const state = await setupPages(page, `First line\n\n${IMAGE}\n`);
+  await openPage(page);
+  await select(page);
+  const caption = figure(page).locator('.pe-image-caption');
+  await caption.click();
+  await page.keyboard.type('Still typing');
+  expect(await savedBody(state, 'Still typing')).toBe(
+    'First line\n\n![Still typing](tmgr://file/1 " =400x200")\n',
+  );
+  await expect(caption).toBeFocused();
+  await expect(caption).toHaveText('Still typing');
+});
+
 test('editing the caption writes the alt and keeps typing out of the doc', async ({
   page,
 }) => {

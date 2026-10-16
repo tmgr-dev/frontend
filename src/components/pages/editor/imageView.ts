@@ -452,9 +452,11 @@ const imageView = (options: ImageViewOptions) =>
 			releaseDrag();
 			commitCaption();
 		});
-		caption.addEventListener('input', () => {
+		caption.addEventListener('input', (event) => {
 			if (!caption.textContent) caption.replaceChildren();
+			if (!(event as InputEvent).isComposing) commitCaption();
 		});
+		caption.addEventListener('compositionend', commitCaption);
 		caption.addEventListener('paste', (event) => {
 			event.preventDefault();
 			const text = event.clipboardData?.getData('text/plain') ?? '';
