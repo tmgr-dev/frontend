@@ -492,6 +492,127 @@ test('opening and closing a legacy list task without edits sends no write', asyn
   expect(editorErrors(errors)).toEqual([]);
 });
 
+// TM-588: Done and Create must not write a block description nobody edited.
+// Keys in MySQL JSON column order (data before type), unlike Editor.js save().
+const paragraphDoc = () => ({
+  time: 1731156298664,
+  blocks: [{ id: 'p1', data: { text: 'Untouched text' }, type: 'paragraph' }],
+  version: '2.30.6',
+});
+
+const doneButton = (page) =>
+  page.getByRole('button', { name: 'Done', exact: true });
+
+test('Done on an untouched block description sends no write', async ({
+  page,
+}) => {
+  const { errors, writes } = await setup(page, {
+    task: () => ({ description_json: paragraphDoc() }),
+  });
+  await openTask(page, 2);
+  const editor = await openEditor(page);
+  await expect(editor.locator('.ce-paragraph')).toHaveText('Untouched text');
+  // Longer than the 400ms Editor.js onChange batch.
+  await page.waitForTimeout(1500);
+  await doneButton(page).click();
+  await expect(editor).toHaveCount(0);
+  // Longer than the 2000ms autosave debounce.
+  await page.waitForTimeout(2500);
+  expect(writes).toEqual([]);
+  expect(pageErrors(errors)).toEqual([]);
+  expect(editorErrors(errors)).toEqual([]);
+});
+
+test('Done after an edit still saves the block description', async ({
+  page,
+}) => {
+  const { errors, writes } = await setup(page, {
+    task: () => ({ description_json: paragraphDoc() }),
+  });
+  await openTask(page, 2);
+  const editor = await openEditor(page);
+  const paragraph = editor.locator('.ce-paragraph').first();
+  await paragraph.click();
+  await caretAtEnd(paragraph);
+  await page.keyboard.type('!');
+  await doneButton(page).click();
+  await expect.poll(() => writes.length, { timeout: 8000 }).toBe(1);
+  expect(writes[0].method).toBe('PUT');
+  expect(
+    writes[0].body.description_json.blocks.map((block) => block.data.text),
+  ).toEqual(['Untouched text!']);
+  expect(pageErrors(errors)).toEqual([]);
+  expect(editorErrors(errors)).toEqual([]);
+});
+
+test('Create with an untouched block description sends no description_json', async ({
+  page,
+}) => {
+  const { created } = await setup(page);
+  await page.evaluate(() =>
+    document
+      .querySelector('#app')
+      .__vue_app__.config.globalProperties.$store.commit(
+        'setShowCreatingTaskModal',
+        1,
+      ),
+  );
+  await page
+    .locator('.new-form-container .codex-editor .ce-paragraph')
+    .first()
+    .waitFor();
+  await page.locator('.new-form-container button[title="Create"]').click();
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0].description_json ?? null).toBeNull();
+});
+
+test('Done on an untouched legacy list task sends no write', async ({
+  page,
+}) => {
+  const { errors, writes } = await setup(page, {
+    task: () => ({ description_json: legacyListDoc() }),
+  });
+  await openTask(page, 2);
+  const editor = await openEditor(page);
+  await expect(
+    editor.locator('.cdx-list__item-content', { hasText: 'todo' }),
+  ).toBeVisible();
+  await page.waitForTimeout(1500);
+  await doneButton(page).click();
+  await expect(editor).toHaveCount(0);
+  await page.waitForTimeout(2500);
+  expect(writes).toEqual([]);
+  expect(pageErrors(errors)).toEqual([]);
+  expect(editorErrors(errors)).toEqual([]);
+});
+
+// D-001: an HTML string model compares as no blocks, so clearing it must still write.
+test('clearing a legacy HTML description and pressing Done saves the empty description', async ({
+  page,
+}) => {
+  const { errors, writes } = await setup(page, {
+    task: () => ({ description: null, description_json: '<p>Legacy HTML</p>' }),
+  });
+  await openTask(page, 2);
+  const editor = await openEditor(page);
+  const paragraph = editor.locator('.ce-paragraph').first();
+  await expect(paragraph).toHaveText('Legacy HTML');
+  await paragraph.click();
+  await page.keyboard.press('ControlOrMeta+A');
+  await page.keyboard.press('Backspace');
+  await expect(paragraph).toHaveText('');
+  await page.waitForTimeout(1000);
+  await doneButton(page).click();
+  await expect.poll(() => writes.length, { timeout: 8000 }).toBeGreaterThan(0);
+  const saved = writes.at(-1).body.description_json;
+  expect(JSON.stringify(saved ?? null)).not.toContain('Legacy');
+  expect(
+    (saved?.blocks ?? []).filter((block) => block.data?.text),
+  ).toEqual([]);
+  expect(pageErrors(errors)).toEqual([]);
+  expect(editorErrors(errors)).toEqual([]);
+});
+
 test('lists created via slash menu and plus button are posted as list@2 and reopen without a write', async ({
   page,
 }) => {
