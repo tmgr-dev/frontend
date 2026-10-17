@@ -652,7 +652,7 @@ test('criterion 10: script-bearing markdown does not execute in preview or edito
   await expectNoXssInDom(page);
 });
 
-// TM-593: only https embeds of the Editor.js embed hosts (BlockEditor.vue) keep their src,
+// TM-593: only https embeds of IFRAME_HOSTS (src/utils/mdEditorConfig.ts) keep their src,
 // always with the forced sandbox; every other iframe loses its src.
 const SANDBOX = 'allow-scripts allow-same-origin allow-popups';
 const ALLOWED_IFRAMES = {

@@ -1,7 +1,6 @@
 import { XSSPlugin, config } from 'md-editor-v3';
 
-// The embedUrl hosts of the services enabled for the Editor.js embed tool in
-// BlockEditor.vue, so both editors embed the same things.
+// The only hosts a markdown description may load in an iframe.
 const IFRAME_HOSTS = new Set(['www.youtube.com', 'codepen.io', 'www.figma.com']);
 
 // The app origin is never in IFRAME_HOSTS, so `allow-same-origin` only gives the
