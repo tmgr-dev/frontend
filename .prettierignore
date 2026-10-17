@@ -6,5 +6,27 @@ dist
 coverage
 public
 
-# Parity goldens are generated (UPDATE_PARITY_GOLDEN=1); reformatting them would be undone on the next run.
-crates/tmgr-local/tests/parity
+# Local, untracked: nested agent worktrees, team notes and build/test output.
+# Prettier 2 does not read .gitignore, so `prettier .` would walk into them.
+.claude
+.team
+dev-dist
+test-results
+playwright-report
+performance-results
+target
+src-tauri/target
+src-tauri/gen
+
+# Rust crates belong to the CLI/runner side; their JSON (generated schemas,
+# parity goldens) is not formatted from here.
+crates
+
+# Signed fixtures: the .minisig files sign these exact bytes.
+src-tauri/tests/fixtures
+
+# Written by scripts/nix-bump.sh (CI desktop-nix job) in its own layout.
+nix/source.json
+
+# organize-imports would move `import './utcClock'` (sets TZ) below the modules under test.
+src/local/__tests__/parity.test.ts
