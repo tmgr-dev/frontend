@@ -35,7 +35,7 @@
 	import { Button } from '@/components/ui/button';
 	import type { EditorType } from '@/types';
 	import { getBlockEditorDescription } from '@/utils/editor';
-	import editorJsToHtml from '@/utils/editorJsToHtml';
+	import editorJsToHtml, { legacyHtmlToHtml } from '@/utils/editorJsToHtml';
 	import { hasBlockContent, hasMarkdownContent } from '@/utils/editorType';
 	import { Pencil } from 'lucide-vue-next';
 	import {
@@ -68,6 +68,8 @@
 				if (props.editorType !== 'block') return '';
 				if (hasBlockContent(props.descriptionJson))
 					return editorJsToHtml(props.descriptionJson);
+				const legacyHtml = legacyHtmlToHtml(props.descriptionJson);
+				if (legacyHtml) return legacyHtml;
 				return hasMarkdownContent(props.description)
 					? editorJsToHtml(getBlockEditorDescription(props.description))
 					: '';

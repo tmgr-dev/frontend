@@ -246,12 +246,35 @@ test('legacy HTML string description renders through renderFromHTML', async ({
     }),
   });
   await openTask(page, 2);
+  const preview = page.locator('.description-editor-wrapper');
+  await expect(preview).toContainText('Legacy HTML paragraph');
+  await expect(preview).toContainText('Second legacy line');
+  await expect(preview.getByText('No description — click to add')).toHaveCount(
+    0,
+  );
   await page.getByRole('button', { name: 'Edit description' }).click();
   const editor = page.locator('.codex-editor');
   await expect(editor).toContainText('Legacy HTML paragraph');
   await expect(editor).toContainText('Second legacy line');
   expect(errors.filter((line) => line.startsWith('pageerror'))).toEqual([]);
   expect(editorErrors(errors)).toEqual([]);
+});
+
+test('legacy HTML preview runs no script or event handler from the description', async ({
+  page,
+}) => {
+  await setup(page, {
+    task: () => ({
+      description: null,
+      description_json:
+        '<p>Safe legacy text</p><img src="x" onerror="window.__tm586=1"><script>window.__tm586=2</script>',
+    }),
+  });
+  await openTask(page, 2);
+  const preview = page.locator('.description-editor-wrapper');
+  await expect(preview).toContainText('Safe legacy text');
+  await expect(preview.locator('img')).toHaveCount(1);
+  await expect(preview.locator('script, [onerror]')).toHaveCount(0);
 });
 
 test('Create right after the last keystroke keeps that text in the request', async ({

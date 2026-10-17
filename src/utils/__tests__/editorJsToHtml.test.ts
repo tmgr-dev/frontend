@@ -1,5 +1,5 @@
 /** @jest-environment jsdom */
-import editorJsToHtml from '../editorJsToHtml';
+import editorJsToHtml, { legacyHtmlToHtml } from '../editorJsToHtml';
 
 const render = (...blocks: unknown[]) => editorJsToHtml({ blocks });
 const parse = (html: string) => {
@@ -330,5 +330,56 @@ describe('editorJsToHtml', () => {
 		expect(root.querySelector('script, iframe, [onerror]')).toBeNull();
 		expect(root.innerHTML).not.toMatch(/javascript:/i);
 		expect(root.textContent).toContain('p');
+	});
+});
+
+describe('legacyHtmlToHtml', () => {
+	it.each([
+		null,
+		undefined,
+		'',
+		'   ',
+		'{"blocks":[]}',
+		'{}',
+		'[]',
+		'null',
+		{},
+	])('returns an empty string for %p', (value) => {
+		expect(legacyHtmlToHtml(value)).toBe('');
+	});
+
+	it.each(['plain text', '2024', 'true', '"quoted"'])(
+		'renders %p as text, like the editor does',
+		(value) => {
+			expect(parse(legacyHtmlToHtml(value)).textContent).toBe(value);
+		},
+	);
+
+	it('renders a legacy HTML string', () => {
+		const root = parse(
+			legacyHtmlToHtml('<p>Legacy <b>bold</b></p><p>Second line</p>'),
+		);
+		expect(
+			Array.from(root.querySelectorAll('p')).map((p) => p.textContent),
+		).toEqual(['Legacy bold', 'Second line']);
+		expect(root.querySelector('b')?.textContent).toBe('bold');
+	});
+
+	it('sanitises scripts, handlers and page-restyling markup', () => {
+		const root = parse(
+			legacyHtmlToHtml(
+				'<p onclick="alert(1)" style="position:fixed" class="x">Kept</p>' +
+					'<img src=x onerror="alert(1)"><script>alert(1)</script>' +
+					'<a href="javascript:alert(1)">link</a><iframe src="https://x"></iframe>' +
+					'<style>body{display:none}</style><form><button>Pay</button></form>',
+			),
+		);
+		expect(
+			root.querySelector(
+				'script, iframe, style, form, button, [onerror], [onclick], [style], [class]',
+			),
+		).toBeNull();
+		expect(root.innerHTML).not.toMatch(/javascript:/i);
+		expect(root.textContent).toContain('Kept');
 	});
 });

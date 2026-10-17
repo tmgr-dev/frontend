@@ -150,3 +150,13 @@ export default function editorJsToHtml(data: unknown): string {
 		.join('');
 	return body ? sanitize(body) : '';
 }
+
+// Old tasks keep HTML (not JSON) in description_json; the editor loads it with renderFromHTML.
+export const legacyHtmlToHtml = (value: unknown): string => {
+	if (typeof value !== 'string' || !value.trim()) return '';
+	try {
+		const parsed = JSON.parse(value);
+		if (parsed === null || typeof parsed === 'object') return '';
+	} catch {}
+	return editorJsToHtml({ blocks: [{ type: 'raw', data: { html: value } }] });
+};
