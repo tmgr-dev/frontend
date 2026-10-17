@@ -79,6 +79,23 @@ it('converts list@2 descriptions and drops empty lists', () => {
 	expect(md).toBe('- a\n  - **a1**\n\n1. one\n2. two\n\n- [x] done\n  - [ ] sub\n- [ ] todo');
 });
 
+it('exports readable siblings of a list kept raw as malformed', () => {
+	const md = editorJsToMarkdown({
+		blocks: [
+			{ type: 'list', data: { style: 'checklist', items: { content: 'a', items: 'x' } } },
+			{ type: 'list', data: { items: 'abc' } },
+			{ type: 'checklist', data: { items: 5 } },
+			{ type: 'paragraph', data: { text: 'readable' } },
+		],
+	});
+	expect(md).toBe('readable');
+	expect(
+		editorJsToMarkdown({
+			blocks: [{ type: 'list', data: { style: 'checklist', items: ['skipped', { content: {}, items: 'x' }, { content: 'ok', items: [7] }] } }],
+		}),
+	).toBe('- [ ] skipped\n- [ ] {}\n  - [ ] x\n- [ ] ok\n  - [ ] 7');
+});
+
 it('numbers ordered lists from meta.start at the top level only', () => {
 	const item = (content: string, items: unknown[] = []) => ({ content, meta: {}, items });
 	const ordered = (start: unknown) =>

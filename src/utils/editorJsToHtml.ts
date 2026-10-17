@@ -29,20 +29,23 @@ const codeboxText = (value: unknown): string =>
 const caption = (value: unknown): string =>
 	html(value) ? `<figcaption>${html(value)}</figcaption>` : '';
 
-const renderList = (items: ListItem[], style: string, start = 1): string => {
+const renderList = (raw: unknown, style: string, start = 1): string => {
+	const items: Partial<ListItem>[] = (Array.isArray(raw) ? raw : []).filter(
+		(item) => item && typeof item === 'object',
+	);
 	if (items.length === 0) return '';
 	if (style === 'checklist')
 		return `<ul class="checklist">${items
 			.map(
 				(item) =>
 					`<li><input type="checkbox" disabled${
-						item.meta.checked ? ' checked' : ''
-					}> <div>${item.content}${renderList(item.items, style)}</div></li>`,
+						item.meta?.checked ? ' checked' : ''
+					}> <div>${html(item.content)}${renderList(item.items, style)}</div></li>`,
 			)
 			.join('')}</ul>`;
 	const tag = style === 'ordered' ? 'ol' : 'ul';
 	const lis = items
-		.map((item) => `<li>${item.content}${renderList(item.items, style)}</li>`)
+		.map((item) => `<li>${html(item.content)}${renderList(item.items, style)}</li>`)
 		.join('');
 	return `<${tag}${start > 1 ? ` start="${start}"` : ''}>${lis}</${tag}>`;
 };
