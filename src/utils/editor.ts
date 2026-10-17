@@ -142,3 +142,17 @@ export const normalizeBlocks = (
 		),
 	};
 };
+
+const sortedKeys = (_key: string, value: unknown) =>
+	value && typeof value === 'object' && !Array.isArray(value)
+		? Object.fromEntries(
+				Object.keys(value)
+					.sort()
+					.map((key) => [key, (value as Record<string, unknown>)[key]]),
+		  )
+		: value;
+
+/** Saved Editor.js blocks equal the stored document, ignoring key order (a MySQL JSON column reorders keys). */
+export const sameBlocks = (blocks: unknown, doc: unknown) =>
+	JSON.stringify(blocks, sortedKeys) ===
+	JSON.stringify(normalizeBlocks(doc).blocks, sortedKeys);
