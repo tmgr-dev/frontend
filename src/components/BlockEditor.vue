@@ -120,6 +120,55 @@
 			});
 	}
 
+	// Editor.js binds a new block's keydown handler in requestIdleCallback, so an Enter right
+	// after the block appears gets the native line break: https://github.com/codex-team/editor.js/issues/2470
+	function enterBeforeBlockEventsBound(event) {
+		if (
+			event.keyCode !== 13 ||
+			event.shiftKey ||
+			event.isComposing ||
+			event.defaultPrevented ||
+			!isEditorReady ||
+			editorRef.value.querySelector('.ce-popover--opened')
+		)
+			return;
+		const index = editor.blocks.getCurrentBlockIndex();
+		const block = editor.blocks.getBlockByIndex(index);
+		const selection = window.getSelection();
+		if (
+			index < 0 ||
+			!['paragraph', 'header'].includes(block?.name) ||
+			!block.holder.contains(event.target) ||
+			!selection.rangeCount ||
+			!event.target.contains(
+				selection.getRangeAt(0).commonAncestorContainer,
+			)
+		)
+			return;
+		event.preventDefault();
+		const caret = selection.getRangeAt(0);
+		caret.deleteContents();
+		const before = document.createRange();
+		before.selectNodeContents(event.target);
+		before.setEnd(caret.startContainer, caret.startOffset);
+		const after = document.createRange();
+		after.selectNodeContents(event.target);
+		after.setStart(caret.startContainer, caret.startOffset);
+		if (!before.toString()) {
+			editor.blocks.insert('paragraph', {}, undefined, index, false);
+			return;
+		}
+		const rest = document.createElement('div');
+		if (after.toString()) rest.append(after.extractContents());
+		editor.blocks.insert(
+			'paragraph',
+			{ text: rest.innerHTML },
+			undefined,
+			index + 1,
+		);
+		editor.caret.setToBlock(index + 1, 'start');
+	}
+
 	watch(
 		() => props.modelValue,
 		() => {
@@ -130,6 +179,7 @@
 	);
 
 	onMounted(() => {
+		editorRef.value.addEventListener('keydown', enterBeforeBlockEventsBound);
 		const initialData = props.modelValue;
 		lastRequested = initialData;
 		editor = new EditorJS({
@@ -236,6 +286,10 @@
 	});
 
 	onBeforeUnmount(() => {
+		editorRef.value?.removeEventListener(
+			'keydown',
+			enterBeforeBlockEventsBound,
+		);
 		disposed = true;
 		isEditorReady = false;
 		dragDropInitialized = false;
