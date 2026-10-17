@@ -693,7 +693,7 @@ test('lists created via slash menu and plus button are posted as list@2 and reop
   expect(editorErrors(errors)).toEqual([]);
 });
 
-test('empty and malformed list blocks load without errors and render nothing', async ({
+test('empty and malformed list blocks load without errors and keep unreadable items as text', async ({
   page,
 }) => {
   const { errors, writes } = await setup(page, {
@@ -712,12 +712,12 @@ test('empty and malformed list blocks load without errors and render nothing', a
   await openTask(page, 2);
   const preview = page.locator('.description-editor-wrapper');
   await expect(preview).toContainText('only');
-  await expect(preview.locator('li')).toHaveCount(0);
+  await expect(preview.locator('li')).toHaveText(['3']);
   const editor = await openEditor(page);
   await expect(
     editor.locator('.ce-paragraph', { hasText: 'only' }),
   ).toBeVisible();
-  await expect(editor.locator('.cdx-list')).toHaveCount(0);
+  await expect(editor.locator('.cdx-list__item-content')).toHaveText(['3']);
   await expect(editor.locator('.ce-stub')).toHaveCount(0);
   await page.waitForTimeout(1500);
   await closeTask(page);
