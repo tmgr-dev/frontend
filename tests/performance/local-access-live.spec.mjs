@@ -34,7 +34,9 @@ test('persona writes over the local socket update the open board and task panel 
         body: body === undefined ? null : JSON.stringify(body),
       },
     );
-    await expect.poll(() => shell.accessReplies.some((r) => r.id === id)).toBe(true);
+    await expect
+      .poll(() => shell.accessReplies.some((r) => r.id === id))
+      .toBe(true);
     const reply = shell.accessReplies.find((r) => r.id === id);
     expect(reply.status, reply.body).toBeLessThan(300);
     return reply.body ? JSON.parse(reply.body) : null;
@@ -67,20 +69,42 @@ test('persona writes over the local socket update the open board and task panel 
     params: [JSON.stringify(PERMISSIONS), now],
   });
   await expect
-    .poll(() => page.evaluate(() => (window.__listeners['local-access://request'] ?? []).length))
+    .poll(() =>
+      page.evaluate(
+        () => (window.__listeners['local-access://request'] ?? []).length,
+      ),
+    )
     .toBeGreaterThan(0);
 
   const statuses = (await ask('GET', '/api/workspaces/statuses')).data;
   const [backlog, next] = statuses;
-  const task = (await ask('POST', '/api/tasks', { title: 'Watched task', status_id: backlog.id })).data;
-  const other = (await ask('POST', '/api/tasks', { title: 'Other task', status_id: backlog.id })).data;
-  const comment = (await ask('POST', `/api/tasks/${task.id}/comments`, { message: 'First note' })).data;
+  const task = (
+    await ask('POST', '/api/tasks', {
+      title: 'Watched task',
+      status_id: backlog.id,
+    })
+  ).data;
+  const other = (
+    await ask('POST', '/api/tasks', {
+      title: 'Other task',
+      status_id: backlog.id,
+    })
+  ).data;
+  const comment = (
+    await ask('POST', `/api/tasks/${task.id}/comments`, {
+      message: 'First note',
+    })
+  ).data;
 
   await page.goto('/local-personal/board');
-  const column = (status) => page.locator(`.board-card-draggable[data-column-id='${status.id}']`);
+  const column = (status) =>
+    page.locator(`.board-card-draggable[data-column-id='${status.id}']`);
   await expect(column(backlog)).toContainText('Watched task');
 
-  await ask('POST', '/api/tasks', { title: 'Created by persona', status_id: backlog.id });
+  await ask('POST', '/api/tasks', {
+    title: 'Created by persona',
+    status_id: backlog.id,
+  });
   await expect(column(backlog)).toContainText('Created by persona');
 
   await ask('PATCH', `/api/tasks/${task.id}`, { status_id: next.id });
@@ -91,32 +115,55 @@ test('persona writes over the local socket update the open board and task panel 
   const panel = page.getByRole('dialog').last();
   await expect(panel.getByText('First note')).toBeVisible();
 
-  await ask('POST', `/api/tasks/${task.id}/comments`, { message: 'Reply from the companion' });
+  await ask('POST', `/api/tasks/${task.id}/comments`, {
+    message: 'Reply from the companion',
+  });
   await expect(panel.getByText('Reply from the companion')).toBeVisible();
 
   await mcp('add_comment', { taskId: task.id, message: 'Reply over MCP' });
   await expect(panel.getByText('Reply over MCP')).toBeVisible();
 
-  await ask('POST', `/api/comments/${comment.id}/reactions/toggle`, { emoji: '🚀' });
+  await ask('POST', `/api/comments/${comment.id}/reactions/toggle`, {
+    emoji: '🚀',
+  });
   await expect(panel.getByRole('button', { name: /🚀\s*1/ })).toBeVisible();
 
   await expect(panel.getByText('Other task')).toHaveCount(0);
   await ask('POST', `/api/tasks/${task.id}/related-to/${other.id}/with/3`);
   await expect(panel.getByText('Other task')).toBeVisible();
 
-  await ask('PATCH', `/api/tasks/${task.id}`, { title: 'Renamed by persona', description: 'Persona text' });
-  await expect(panel.getByText('This task was updated by another user')).toBeVisible();
+  await ask('PATCH', `/api/tasks/${task.id}`, {
+    title: 'Renamed by persona',
+    description: 'Persona text',
+  });
+  await expect(
+    panel.getByText('This task was updated by another user'),
+  ).toBeVisible();
   await panel.getByRole('button', { name: 'Apply Changes' }).click();
-  await expect(panel.locator('textarea').first()).toHaveValue('Renamed by persona');
+  await expect(panel.locator('textarea').first()).toHaveValue(
+    'Renamed by persona',
+  );
   await expect(column(next)).toContainText('Renamed by persona');
 
-  const run = (await ask('POST', `/api/tasks/${task.id}/agent-work`, { agent: 'claude-code', model: 'companion-model' })).data;
+  const run = (
+    await ask('POST', `/api/tasks/${task.id}/agent-work`, {
+      agent: 'claude-code',
+      model: 'companion-model',
+    })
+  ).data;
   await expect(panel.getByText('companion-model')).toBeVisible();
   await expect(panel.getByText('running')).toBeVisible();
-  await mcp('finish_agent_work', { runId: run.id, status: 'succeeded', summary: 'Done by the companion' });
+  await mcp('finish_agent_work', {
+    runId: run.id,
+    status: 'succeeded',
+    summary: 'Done by the companion',
+  });
   await expect(panel.getByText('Done by the companion')).toBeVisible();
 
-  await panel.getByPlaceholder('Write a comment…').first().fill('Typed in the panel');
+  await panel
+    .getByPlaceholder('Write a comment…')
+    .first()
+    .fill('Typed in the panel');
   await panel.getByPlaceholder('Write a comment…').first().press('Enter');
   await expect(panel.getByText('Typed in the panel')).toHaveCount(1);
   await page.waitForTimeout(500);
@@ -146,7 +193,9 @@ test('a persona deleting a comment removes it live from the open task panel, and
         body: body === undefined ? null : JSON.stringify(body),
       },
     );
-    await expect.poll(() => shell.accessReplies.some((r) => r.id === id)).toBe(true);
+    await expect
+      .poll(() => shell.accessReplies.some((r) => r.id === id))
+      .toBe(true);
     const reply = shell.accessReplies.find((r) => r.id === id);
     expect(reply.status, reply.body).toBeLessThan(300);
     return reply.body ? JSON.parse(reply.body) : null;
@@ -172,18 +221,30 @@ test('a persona deleting a comment removes it live from the open task panel, and
     params: [JSON.stringify(PERMISSIONS), now],
   });
   await expect
-    .poll(() => page.evaluate(() => (window.__listeners['local-access://request'] ?? []).length))
+    .poll(() =>
+      page.evaluate(
+        () => (window.__listeners['local-access://request'] ?? []).length,
+      ),
+    )
     .toBeGreaterThan(0);
 
   const statuses = (await ask('GET', '/api/workspaces/statuses')).data;
   const [backlog] = statuses;
-  const task = (await ask('POST', '/api/tasks', { title: 'Task with comments', status_id: backlog.id })).data;
+  const task = (
+    await ask('POST', '/api/tasks', {
+      title: 'Task with comments',
+      status_id: backlog.id,
+    })
+  ).data;
   const personaComment = (
-    await ask('POST', `/api/tasks/${task.id}/comments`, { message: 'From the persona' })
+    await ask('POST', `/api/tasks/${task.id}/comments`, {
+      message: 'From the persona',
+    })
   ).data;
 
   await page.goto('/local-personal/board');
-  const column = (status) => page.locator(`.board-card-draggable[data-column-id='${status.id}']`);
+  const column = (status) =>
+    page.locator(`.board-card-draggable[data-column-id='${status.id}']`);
   await column(backlog).getByText('Task with comments').first().click();
   const panel = page.getByRole('dialog').last();
   await expect(panel.getByText('From the persona')).toBeVisible();
@@ -191,17 +252,26 @@ test('a persona deleting a comment removes it live from the open task panel, and
   await ask('DELETE', `/api/comments/${personaComment.id}`);
   await expect(panel.getByText('From the persona')).toHaveCount(0);
 
-  await panel.getByPlaceholder('Write a comment…').first().fill('Typed in the panel');
+  await panel
+    .getByPlaceholder('Write a comment…')
+    .first()
+    .fill('Typed in the panel');
   await panel.getByPlaceholder('Write a comment…').first().press('Enter');
   await expect(panel.getByText('Typed in the panel')).toHaveCount(1);
 
-  await panel.locator('.group', { hasText: 'Typed in the panel' }).getByRole('button').first().click();
+  await panel
+    .locator('.group', { hasText: 'Typed in the panel' })
+    .getByRole('button')
+    .first()
+    .click();
   await expect(panel.getByText('Typed in the panel')).toHaveCount(0);
   await page.waitForTimeout(500);
   await expect(panel.getByText('Typed in the panel')).toHaveCount(0);
 });
 
-test('persona writes over the local socket update the task list page live', async ({ page }) => {
+test('persona writes over the local socket update the task list page live', async ({
+  page,
+}) => {
   const shell = await desktopPage(page);
   let requestId = 0;
   const ask = async (method, path, body) => {
@@ -220,7 +290,9 @@ test('persona writes over the local socket update the task list page live', asyn
         body: body === undefined ? null : JSON.stringify(body),
       },
     );
-    await expect.poll(() => shell.accessReplies.some((r) => r.id === id)).toBe(true);
+    await expect
+      .poll(() => shell.accessReplies.some((r) => r.id === id))
+      .toBe(true);
     const reply = shell.accessReplies.find((r) => r.id === id);
     expect(reply.status, reply.body).toBeLessThan(300);
     return reply.body ? JSON.parse(reply.body) : null;
@@ -246,7 +318,11 @@ test('persona writes over the local socket update the task list page live', asyn
     params: [JSON.stringify(PERMISSIONS), now],
   });
   await expect
-    .poll(() => page.evaluate(() => (window.__listeners['local-access://request'] ?? []).length))
+    .poll(() =>
+      page.evaluate(
+        () => (window.__listeners['local-access://request'] ?? []).length,
+      ),
+    )
     .toBeGreaterThan(0);
 
   const statuses = (await ask('GET', '/api/workspaces/statuses')).data;
@@ -255,7 +331,12 @@ test('persona writes over the local socket update the task list page live', asyn
   await page.goto('/local-personal/list');
   const row = (task) => page.locator(`[data-task-id="${task.id}"]`);
 
-  const task = (await ask('POST', '/api/tasks', { title: 'Listed by persona', status_id: backlog.id })).data;
+  const task = (
+    await ask('POST', '/api/tasks', {
+      title: 'Listed by persona',
+      status_id: backlog.id,
+    })
+  ).data;
   await expect(row(task)).toContainText('Listed by persona');
 
   await ask('PATCH', `/api/tasks/${task.id}`, { title: 'Renamed in the list' });
@@ -270,7 +351,10 @@ test('persona writes over the local socket update the task list page live', asyn
 
   // A task created directly into an archived-type status must never be inserted into the active list either.
   const filteredOut = (
-    await ask('POST', '/api/tasks', { title: 'Created already archived', status_id: archived.id })
+    await ask('POST', '/api/tasks', {
+      title: 'Created already archived',
+      status_id: archived.id,
+    })
   ).data;
   await page.waitForTimeout(300);
   await expect(row(filteredOut)).toHaveCount(0);

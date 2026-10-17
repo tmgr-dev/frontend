@@ -10,7 +10,8 @@ import { stripAnalytics } from './src/utils/stripAnalytics';
 
 const appVersion: string =
 	process.env.VITE_APP_VERSION ||
-	JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
+	JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+		.version;
 
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -48,7 +49,7 @@ const runnerTerminalDevCsp = (): Plugin => ({
 				? html.replace(
 						'connect-src ipc: http://ipc.localhost',
 						'connect-src ipc: http://ipc.localhost ws://localhost:* ws://127.0.0.1:*',
-					)
+				  )
 				: html,
 	},
 });
@@ -212,11 +213,7 @@ export default defineConfig({
 							['d3-force', 'd3-quadtree', 'd3-dispatch', 'd3-timer'],
 							15,
 						),
-						vendorGroup(
-							'vendor-pusher',
-							['pusher-js', 'laravel-echo'],
-							10,
-						),
+						vendorGroup('vendor-pusher', ['pusher-js', 'laravel-echo'], 10),
 					],
 				},
 				chunkFileNames: 'assets/js/[name]-[hash].js',

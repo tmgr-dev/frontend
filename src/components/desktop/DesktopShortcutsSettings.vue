@@ -61,19 +61,19 @@
 <script>
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
+	import { desktopPlatform, isMacLike } from '@/utils/desktop';
 	import {
 		DEFAULT_SHORTCUTS,
 		describeAccelerator,
 		eventToAccelerator,
 		findConflict,
 		primaryModifiersHint,
-		shortcutActionsFor,
 		saveShortcuts,
+		shortcutActionsFor,
 		shortcutConfig,
 		shortcutStatus,
 		validateAccelerator,
 	} from '@/utils/desktopShortcuts';
-	import { isMacLike, desktopPlatform } from '@/utils/desktop';
 	import { RotateCcw } from 'lucide-vue-next';
 	import { computed, defineComponent, reactive, ref } from 'vue';
 
@@ -137,7 +137,11 @@
 							: primaryModifiersHint();
 					return;
 				}
-				const conflict = findConflict(shortcutConfig.value, action, accelerator);
+				const conflict = findConflict(
+					shortcutConfig.value,
+					action,
+					accelerator,
+				);
 				if (conflict) {
 					errors[action] = `Already used for “${LABELS[conflict]}”`;
 					return;

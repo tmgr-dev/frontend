@@ -6,8 +6,8 @@
 	import { getTask } from '@/actions/tmgr/tasks';
 	import { toast } from '@/components/ui/toast';
 	import { createAhaWatcher, type AhaWatcher } from '@/onboarding/aha';
-	import { tourBus } from '@/tours/events';
 	import { onboardingApi } from '@/tours/api';
+	import { tourBus } from '@/tours/events';
 	import { useTours } from '@/tours/useTours';
 	import { defineComponent, onBeforeUnmount, onMounted, watch } from 'vue';
 	import { useStore } from 'vuex';
@@ -56,7 +56,8 @@
 					inert: () => !!store.getters.isLocalOnly,
 					now: Date.now,
 					storage: safeStorage(),
-					fetchFacts: (keys, taskId) => onboardingApi().fetchFacts(keys, taskId),
+					fetchFacts: (keys, taskId) =>
+						onboardingApi().fetchFacts(keys, taskId),
 					toast: (title) => toast({ title }),
 					visibility: {
 						hidden: () => document.visibilityState === 'hidden',
@@ -71,7 +72,10 @@
 					},
 				});
 				stopWatch = watch(
-					() => [store.state.user?.id ?? null, tours.onboarding.value?.intent ?? null],
+					() => [
+						store.state.user?.id ?? null,
+						tours.onboarding.value?.intent ?? null,
+					],
 					() => {
 						stop?.();
 						stop = watcher?.start() ?? null;
@@ -88,7 +92,11 @@
 						title = task.title || title;
 						minutes = Math.max(1, Math.floor((task.common_time || 0) / 60));
 					} catch {}
-					await watcher?.onTimerStopped({ taskId: taskId as number, minutes, title });
+					await watcher?.onTimerStopped({
+						taskId: taskId as number,
+						minutes,
+						title,
+					});
 				});
 			});
 

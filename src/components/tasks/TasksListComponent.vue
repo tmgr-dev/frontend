@@ -180,7 +180,9 @@
 							<button
 								type="button"
 								class="absolute top-3 z-10 flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-								:class="isFeatureEnabled('task.assignees') ? 'right-11' : 'right-3'"
+								:class="
+									isFeatureEnabled('task.assignees') ? 'right-11' : 'right-3'
+								"
 								aria-label="Task actions"
 								@click.stop
 							>
@@ -468,43 +470,42 @@
 </template>
 
 <script lang="ts">
-	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
-	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
+	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import { getStatuses, Status } from '@/actions/tmgr/statuses';
 	import {
+		assignPersonaToTask,
 		deleteTask,
 		exportTasks,
-		updateStatusOfTasks,
 		PaginationMeta,
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		Task,
+		unassignPersonaFromTask,
+		updateStatusOfTasks,
 		updateTaskPartially,
 		updateTaskStatus,
-	} from '@/actions/tmgr/tasks';
-	import { getAssignablePersonas } from '@/actions/tmgr/personas';
-	import {
-		assignPersonaToTask,
-		unassignPersonaFromTask,
 	} from '@/actions/tmgr/tasks';
 	import {
 		getWorkspaceMembers,
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
-	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
-	import UserAvatar from '@/components/general/UserAvatar.vue';
-	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import Button from '@/components/general/Button.vue';
-	import MobilePagination from '@/components/general/MobilePagination.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
 	import Confirm from '@/components/general/Confirm.vue';
+	import MobilePagination from '@/components/general/MobilePagination.vue';
+	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import BounceLoader from '@/components/loaders/BounceLoader.vue';
 	import Loader from '@/components/loaders/Loader.vue';
 	import Modal from '@/components/Modal.vue';
+	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
+	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
+	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
@@ -516,36 +517,27 @@
 		CommandList,
 	} from '@/components/ui/command';
 	import {
-		Popover,
-		PopoverContent,
-		PopoverTrigger,
-	} from '@/components/ui/popover';
-	import {
 		DropdownMenu,
 		DropdownMenuContent,
 		DropdownMenuItem,
 		DropdownMenuSeparator,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
-	import SettingsComponent from '@/components/SettingsComponent.vue';
+	import {
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import TaskActionsInTheListMixin from '@/mixins/TaskActionsInTheListMixin';
 	import TasksListMixin from '@/mixins/TasksListMixin';
+	import { selectionStarted, tourBus } from '@/tours/events';
 	import {
 		backlogTimerPrompt,
 		type BacklogTimerPrompt,
 	} from '@/utils/backlogTimerPrompt';
 	import downloadFile from '@/utils/downloadFile';
-	import { selectionStarted, tourBus } from '@/tours/events';
 	import { formatOvertime } from '@/utils/formatOvertime';
-	import {
-		archiveTarget,
-		DONE_DISABLED_TOOLTIP,
-		doneTarget,
-		isTaskArchived,
-		isTaskDone,
-		openTarget,
-	} from '@/utils/simpleStatus';
 	import {
 		isInteractiveTarget,
 		nextFocusIndex,
@@ -556,9 +548,17 @@
 		assigneeWritePayload,
 		personaAssigneeIds,
 		personaAssigneesOf,
-		type PersonaAssignee,
 		visibleHumanAssignees,
+		type PersonaAssignee,
 	} from '@/utils/personas';
+	import {
+		archiveTarget,
+		DONE_DISABLED_TOOLTIP,
+		doneTarget,
+		isTaskArchived,
+		isTaskDone,
+		openTarget,
+	} from '@/utils/simpleStatus';
 	import { formatRelativeTime } from '@/utils/timeUtils';
 	import {
 		AlarmClock,

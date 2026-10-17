@@ -15,13 +15,15 @@ const winWith = (storage: unknown) => {
 	const listeners: Record<string, Array<(e: unknown) => void>> = {};
 	return {
 		localStorage: storage,
-		addEventListener: (type: string, fn: (e: unknown) => void) => (listeners[type] ??= []).push(fn),
+		addEventListener: (type: string, fn: (e: unknown) => void) =>
+			(listeners[type] ??= []).push(fn),
 		BroadcastChannel: SpyChannel,
 		fire: (type: string, e: unknown) => listeners[type]?.forEach((fn) => fn(e)),
 	} as unknown as Window & { fire: (type: string, e: unknown) => void };
 };
 
-const stored = (s: FlakyStorage, key = USAGE_KEY) => JSON.parse(s.data.get(key) ?? 'null');
+const stored = (s: FlakyStorage, key = USAGE_KEY) =>
+	JSON.parse(s.data.get(key) ?? 'null');
 
 beforeEach(() => {
 	FakeChannel.all = [];
@@ -48,18 +50,33 @@ describe('separate keys', () => {
 		const s = new FlakyStorage();
 		s.data.set(
 			CONSENT_KEY,
-			JSON.stringify({ analytics: 'denied', usage: 'granted', usageGeneration: 3, updatedAt: 'x' }),
+			JSON.stringify({
+				analytics: 'denied',
+				usage: 'granted',
+				usageGeneration: 3,
+				updatedAt: 'x',
+			}),
 		);
 		const usage = createUsageConsent(winWith(s));
 		expect(stored(s)).toEqual({ on: true, generation: 3 });
-		expect(JSON.parse(s.data.get(CONSENT_KEY)!)).toEqual({ analytics: 'denied', updatedAt: 'x' });
-		expect(usage.read()).toMatchObject({ on: true, generation: 3, answered: true });
+		expect(JSON.parse(s.data.get(CONSENT_KEY)!)).toEqual({
+			analytics: 'denied',
+			updatedAt: 'x',
+		});
+		expect(usage.read()).toMatchObject({
+			on: true,
+			generation: 3,
+			answered: true,
+		});
 	});
 
 	it('does not overwrite an existing usage record when migrating', () => {
 		const s = new FlakyStorage();
 		s.data.set(USAGE_KEY, JSON.stringify({ on: false, generation: 9 }));
-		s.data.set(CONSENT_KEY, JSON.stringify({ analytics: null, usage: 'granted', usageGeneration: 3 }));
+		s.data.set(
+			CONSENT_KEY,
+			JSON.stringify({ analytics: null, usage: 'granted', usageGeneration: 3 }),
+		);
 		createUsageConsent(winWith(s));
 		expect(stored(s)).toEqual({ on: false, generation: 9 });
 	});
@@ -131,7 +148,8 @@ describe('asymmetric signals', () => {
 		const { b } = pair();
 		const mine = FakeChannel.all[FakeChannel.all.length - 1] as SpyChannel;
 		const other = new SpyChannel();
-		for (let i = 0; i < 20; i += 1) other.postMessage({ type: 'deny', generation: 2 + i });
+		for (let i = 0; i < 20; i += 1)
+			other.postMessage({ type: 'deny', generation: 2 + i });
 		expect(mine.posts).toEqual([]);
 		expect(b.read().on).toBe(false);
 	});
@@ -173,7 +191,9 @@ describe('asymmetric signals', () => {
 		const win = winWith(s);
 		const usage = createUsageConsent(win);
 		const seen: boolean[] = [];
-		usage.subscribe(() => { seen.push(usage.read().on); });
+		usage.subscribe(() => {
+			seen.push(usage.read().on);
+		});
 		s.data.set(USAGE_KEY, JSON.stringify({ on: true, generation: 1 }));
 		win.fire('storage', { key: USAGE_KEY });
 		expect(seen).toEqual([true]);

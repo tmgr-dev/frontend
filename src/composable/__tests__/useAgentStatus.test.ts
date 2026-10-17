@@ -1,10 +1,10 @@
 import { getAgentStatus } from '@/actions/tmgr/agentStatus';
+import type { AgentSession } from '@/utils/agentStatus';
 import {
 	applyAgentStatusEvent,
 	trackAgentStatus,
 	useTaskAgentStatus,
 } from '../useAgentStatus';
-import type { AgentSession } from '@/utils/agentStatus';
 
 jest.mock('@/actions/tmgr/agentStatus', () => ({ getAgentStatus: jest.fn() }));
 
@@ -68,7 +68,10 @@ describe('trackAgentStatus', () => {
 		releaseA();
 		expect(pusher.unsubscribeHandlerFromWorkspace).not.toHaveBeenCalled();
 		releaseB();
-		expect(pusher.unsubscribeHandlerFromWorkspace).toHaveBeenCalledWith(5, 'sub-1');
+		expect(pusher.unsubscribeHandlerFromWorkspace).toHaveBeenCalledWith(
+			5,
+			'sub-1',
+		);
 	});
 
 	it('shows nothing when the workspace answers 403', async () => {

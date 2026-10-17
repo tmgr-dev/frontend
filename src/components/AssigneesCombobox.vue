@@ -104,10 +104,7 @@
 							+{{ selectedMembers.length - MAX_SUMMARY_AVATARS }}
 						</span>
 					</span>
-					<span
-						class="truncate"
-						:class="{ 'ml-1.5': selectedMembers.length }"
-					>
+					<span class="truncate" :class="{ 'ml-1.5': selectedMembers.length }">
 						{{ triggerLabel }}
 					</span>
 					<ChevronsUpDown class="ml-1 h-4 w-4 shrink-0 opacity-50" />

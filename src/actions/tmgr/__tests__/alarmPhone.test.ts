@@ -1,19 +1,24 @@
 jest.mock('@/plugins/axios', () => ({
 	__esModule: true,
-	default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
+	default: {
+		get: jest.fn(),
+		post: jest.fn(),
+		put: jest.fn(),
+		delete: jest.fn(),
+	},
 }));
 
 import axios from '@/plugins/axios';
 import {
 	alarmCallerNumber,
-	downloadAlarmContact,
 	alarmPhoneError,
-	formatRetryAfter,
+	downloadAlarmContact,
 	fetchAlarmPhone,
+	formatRetryAfter,
 	isValidAlarmCode,
 	isValidAlarmPhone,
-	resendAlarmCode,
 	removeAlarmPhone,
+	resendAlarmCode,
 	saveAlarmPhone,
 	startAlarmTestCall,
 	verifyAlarmPhone,
@@ -32,7 +37,15 @@ describe('isValidAlarmPhone', () => {
 	});
 
 	it('rejects everything else', () => {
-		for (const value of ['', '15550100123', '+0550100123', '+1555', '+1555010012345678', '+1 555 010 0123', '+1555abc0123']) {
+		for (const value of [
+			'',
+			'15550100123',
+			'+0550100123',
+			'+1555',
+			'+1555010012345678',
+			'+1 555 010 0123',
+			'+1555abc0123',
+		]) {
 			expect(isValidAlarmPhone(value)).toBe(false);
 		}
 	});
@@ -61,7 +74,9 @@ describe('fetchAlarmPhone', () => {
 	});
 
 	it('maps GET 409 to the unreadable state', async () => {
-		(axios.get as jest.Mock).mockRejectedValue(http(409, { error: 'phone_unreadable' }));
+		(axios.get as jest.Mock).mockRejectedValue(
+			http(409, { error: 'phone_unreadable' }),
+		);
 		expect(await fetchAlarmPhone()).toEqual({ kind: 'unreadable' });
 	});
 
@@ -74,14 +89,18 @@ describe('fetchAlarmPhone', () => {
 describe('mutations', () => {
 	it('saves a trimmed number and returns the masked form with codeSent', async () => {
 		(axios.put as jest.Mock).mockResolvedValue({
-			data: { data: { masked: '+1 ••• ••• 123', verified: false, codeSent: true } },
+			data: {
+				data: { masked: '+1 ••• ••• 123', verified: false, codeSent: true },
+			},
 		});
 		expect(await saveAlarmPhone(' +15550100123 ')).toEqual({
 			masked: '+1 ••• ••• 123',
 			verified: false,
 			codeSent: true,
 		});
-		expect(axios.put).toHaveBeenCalledWith('/user/alarm-phone', { phone: '+15550100123' });
+		expect(axios.put).toHaveBeenCalledWith('/user/alarm-phone', {
+			phone: '+15550100123',
+		});
 	});
 
 	it('starts a test call and removes the phone', async () => {
@@ -103,7 +122,9 @@ describe('verification', () => {
 			masked: '+1 ••• ••• 123',
 			verified: true,
 		});
-		expect(axios.post).toHaveBeenCalledWith('/user/alarm-phone/verify', { code: '123456' });
+		expect(axios.post).toHaveBeenCalledWith('/user/alarm-phone/verify', {
+			code: '123456',
+		});
 	});
 
 	it('resends the code', async () => {
@@ -124,7 +145,10 @@ describe('verification', () => {
 describe('alarmPhoneError', () => {
 	it('classifies HTTP statuses', () => {
 		expect(alarmPhoneError(http(503))).toEqual({ kind: 'unconfigured' });
-		expect(alarmPhoneError(http(400))).toEqual({ kind: 'invalid', message: undefined });
+		expect(alarmPhoneError(http(400))).toEqual({
+			kind: 'invalid',
+			message: undefined,
+		});
 		expect(alarmPhoneError(http(409))).toEqual({ kind: 'conflict' });
 		expect(alarmPhoneError(http(500))).toEqual({ kind: 'failed' });
 		expect(alarmPhoneError(new Error('network'))).toEqual({ kind: 'failed' });
@@ -150,31 +174,49 @@ describe('alarmPhoneError', () => {
 	});
 
 	it('carries the server message on 400 when present', () => {
-		expect(alarmPhoneError(http(400, { message: 'Country not allowed' }))).toEqual({
+		expect(
+			alarmPhoneError(http(400, { message: 'Country not allowed' })),
+		).toEqual({
 			kind: 'invalid',
 			message: 'Country not allowed',
 		});
-		expect(alarmPhoneError(http(400, {}))).toEqual({ kind: 'invalid', message: undefined });
+		expect(alarmPhoneError(http(400, {}))).toEqual({
+			kind: 'invalid',
+			message: undefined,
+		});
 	});
 
 	it('maps 410 and 422 with reset to reset', () => {
 		expect(alarmPhoneError(http(410))).toEqual({ kind: 'reset' });
-		expect(alarmPhoneError(http(422, { reset: true }))).toEqual({ kind: 'reset' });
-		expect(alarmPhoneError(http(422, { data: { reset: true } }))).toEqual({ kind: 'reset' });
+		expect(alarmPhoneError(http(422, { reset: true }))).toEqual({
+			kind: 'reset',
+		});
+		expect(alarmPhoneError(http(422, { data: { reset: true } }))).toEqual({
+			kind: 'reset',
+		});
 	});
 
 	it('parses Retry-After on 429 from plain and AxiosHeaders-like headers', () => {
-		expect(alarmPhoneError(http(429, undefined, { 'retry-after': '42' }))).toEqual({
+		expect(
+			alarmPhoneError(http(429, undefined, { 'retry-after': '42' })),
+		).toEqual({
 			kind: 'rate_limited',
 			retryAfter: 42,
 		});
-		const headers = { get: (n: string) => (n === 'retry-after' ? '30' : undefined) };
+		const headers = {
+			get: (n: string) => (n === 'retry-after' ? '30' : undefined),
+		};
 		expect(alarmPhoneError(http(429, undefined, headers))).toEqual({
 			kind: 'rate_limited',
 			retryAfter: 30,
 		});
-		expect(alarmPhoneError(http(429))).toEqual({ kind: 'rate_limited', retryAfter: undefined });
-		expect(alarmPhoneError(http(429, undefined, { 'retry-after': 'soon' }))).toEqual({
+		expect(alarmPhoneError(http(429))).toEqual({
+			kind: 'rate_limited',
+			retryAfter: undefined,
+		});
+		expect(
+			alarmPhoneError(http(429, undefined, { 'retry-after': 'soon' })),
+		).toEqual({
 			kind: 'rate_limited',
 			retryAfter: undefined,
 		});
@@ -194,11 +236,21 @@ describe('formatRetryAfter', () => {
 describe('fetchAlarmPhone callerNumber', () => {
 	it('passes callerNumber through', async () => {
 		(axios.get as jest.Mock).mockResolvedValue({
-			data: { data: { masked: '+1 ••• ••• 199', verified: true, callerNumber: '+1 555 010 0199' } },
+			data: {
+				data: {
+					masked: '+1 ••• ••• 199',
+					verified: true,
+					callerNumber: '+1 555 010 0199',
+				},
+			},
 		});
 		expect(await fetchAlarmPhone()).toEqual({
 			kind: 'set',
-			phone: { masked: '+1 ••• ••• 199', verified: true, callerNumber: '+1 555 010 0199' },
+			phone: {
+				masked: '+1 ••• ••• 199',
+				verified: true,
+				callerNumber: '+1 555 010 0199',
+			},
 		});
 	});
 });
@@ -210,7 +262,9 @@ describe('alarmCallerNumber', () => {
 	});
 
 	it('returns the number only for a verified phone with a caller number', () => {
-		expect(alarmCallerNumber(set(true, '+1 555 010 0199'))).toBe('+1 555 010 0199');
+		expect(alarmCallerNumber(set(true, '+1 555 010 0199'))).toBe(
+			'+1 555 010 0199',
+		);
 		expect(alarmCallerNumber(set(false, '+1 555 010 0199'))).toBeNull();
 		expect(alarmCallerNumber(set(true, null))).toBeNull();
 		expect(alarmCallerNumber({ kind: 'unset' })).toBeNull();
@@ -233,7 +287,9 @@ describe('downloadAlarmContact', () => {
 
 		await downloadAlarmContact();
 
-		expect(axios.get).toHaveBeenCalledWith('/user/alarm-phone/caller.vcf', { responseType: 'blob' });
+		expect(axios.get).toHaveBeenCalledWith('/user/alarm-phone/caller.vcf', {
+			responseType: 'blob',
+		});
 		expect(create).toHaveBeenCalledWith(blob);
 		expect(link.download).toBe('tmgr-alarm.vcf');
 		expect(link.href).toBe('blob:fake');

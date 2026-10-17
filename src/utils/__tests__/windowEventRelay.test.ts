@@ -1,6 +1,9 @@
-import { createDomainEvents, type DomainEvent } from '../domainEvents';
 import { installLocalLiveUpdates } from '@/local/liveUpdates';
-import { applyRelayedEvent, installWindowEventRelay } from '../windowEventRelay';
+import { createDomainEvents, type DomainEvent } from '../domainEvents';
+import {
+	applyRelayedEvent,
+	installWindowEventRelay,
+} from '../windowEventRelay';
 
 const event: DomainEvent = { type: 'task.deleted', workspaceId: -2, taskId: 4 };
 
@@ -16,21 +19,33 @@ const setup = (label = 'main') => {
 	installWindowEventRelay(bus, { label, emit, listen, onRelayed });
 	const seen: DomainEvent[] = [];
 	bus.on((e) => seen.push(e));
-	return { bus, emit, onRelayed, seen, receive: (payload: any) => incoming({ payload }) };
+	return {
+		bus,
+		emit,
+		onRelayed,
+		seen,
+		receive: (payload: any) => incoming({ payload }),
+	};
 };
 
 describe('installWindowEventRelay', () => {
 	it('sends local events to other windows with the source label', () => {
 		const { bus, emit } = setup('task-a-1');
 		bus.emit(event);
-		expect(emit).toHaveBeenCalledWith('tmgr://domain-event', { source: 'task-a-1', event });
+		expect(emit).toHaveBeenCalledWith('tmgr://domain-event', {
+			source: 'task-a-1',
+			event,
+		});
 	});
 
 	it('delivers events from other windows with a window actor', () => {
 		const { receive, seen, onRelayed } = setup();
 		receive({ source: 'task-a-1', event });
 		expect(seen).toEqual([{ ...event, actor: 'window:task-a-1' }]);
-		expect(onRelayed).toHaveBeenCalledWith({ ...event, actor: 'window:task-a-1' });
+		expect(onRelayed).toHaveBeenCalledWith({
+			...event,
+			actor: 'window:task-a-1',
+		});
 	});
 
 	it('keeps an actor the event already had', () => {
@@ -79,12 +94,21 @@ describe('applyRelayedEvent', () => {
 	});
 
 	it('drops the comment cache for comment events', () => {
-		const { invalidate } = run({ type: 'comment.created', workspaceId: 1, taskId: 4, comment: {} });
+		const { invalidate } = run({
+			type: 'comment.created',
+			workspaceId: 1,
+			taskId: 4,
+			comment: {},
+		});
 		expect(invalidate).toHaveBeenCalledWith('comments-task-4');
 	});
 
 	it('ignores routine events', () => {
-		const { invalidate } = run({ type: 'routine.deleted', workspaceId: 1, routineId: 2 });
+		const { invalidate } = run({
+			type: 'routine.deleted',
+			workspaceId: 1,
+			routineId: 2,
+		});
 		expect(invalidate).not.toHaveBeenCalled();
 	});
 

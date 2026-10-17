@@ -28,7 +28,9 @@
 			</span>
 			<div class="flex items-center gap-2">
 				<span data-tauri-drag-region>esc to close</span>
-				<span class="flex overflow-hidden rounded-md border border-border dark:border-border">
+				<span
+					class="flex overflow-hidden rounded-md border border-border dark:border-border"
+				>
 					<button
 						v-for="option in MODES"
 						:key="option.value"
@@ -57,7 +59,10 @@
 			</div>
 		</div>
 
-		<form class="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3" @submit.prevent="submit">
+		<form
+			class="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3"
+			@submit.prevent="submit"
+		>
 			<div v-if="mode === 'page'" class="flex min-h-0 flex-1 flex-col gap-2">
 				<div class="flex items-center gap-2 text-xs">
 					<input
@@ -76,7 +81,11 @@
 						<option :value="null" disabled>
 							{{ pagesLoading ? 'Loading pages…' : 'Choose a page' }}
 						</option>
-						<option v-for="option in visiblePageOptions" :key="option.id" :value="option.id">
+						<option
+							v-for="option in visiblePageOptions"
+							:key="option.id"
+							:value="option.id"
+						>
 							{{ '\u00a0\u00a0'.repeat(option.depth) }}{{ option.title }}
 						</option>
 					</select>
@@ -142,7 +151,10 @@
 				>
 					+ Description
 				</button>
-				<span v-if="message" :class="error ? 'text-destructive' : 'text-emerald-500'">
+				<span
+					v-if="message"
+					:class="error ? 'text-destructive' : 'text-emerald-500'"
+				>
 					{{ message }}
 				</span>
 			</div>
@@ -162,21 +174,21 @@
 		followActiveLocalWorkspace,
 	} from '@/local/runtime';
 	import store from '@/store';
-	import { relayCreated, relayPageAppended } from '@/utils/quickAddPageRelay';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import {
 		pickQuickAddWorkspace,
 		splitQuickText,
 	} from '@/utils/desktopShortcuts';
 	import {
+		appendToLoadedPage,
 		filterPageOptions,
 		flattenPages,
-		appendToLoadedPage,
 		listPageSections,
 		pickRememberedPage,
 		readLastPage,
 		writeLastPage,
 	} from '@/utils/quickAddPage';
+	import { relayCreated, relayPageAppended } from '@/utils/quickAddPageRelay';
 	import { format } from 'date-fns';
 	import {
 		computed,
@@ -214,7 +226,9 @@
 		try {
 			const log = await import('@tauri-apps/plugin-log');
 			await log.warn(
-				`[quick-add] failed ${config?.method?.toUpperCase() ?? ''} ${config?.url ?? ''} status=${status ?? '-'}: ${detail}`,
+				`[quick-add] failed ${config?.method?.toUpperCase() ?? ''} ${
+					config?.url ?? ''
+				} status=${status ?? '-'}: ${detail}`,
 			);
 		} catch {
 			/* logging must never break quick add */
@@ -381,7 +395,9 @@
 					pageText.value = payload.text;
 				}
 				if (payload?.screenshot) {
-					const bytes = await invoke('take_capture', { path: payload.screenshot });
+					const bytes = await invoke('take_capture', {
+						path: payload.screenshot,
+					});
 					const blob = new Blob([bytes], { type: 'image/png' });
 					screenshot.value = new File(
 						[blob],
@@ -412,7 +428,11 @@
 					await appendToLoadedPage(
 						pagesWorkspace,
 						pageId.value,
-						{ text: pageText.value, section: section.value, screenshot: screenshot.value },
+						{
+							text: pageText.value,
+							section: section.value,
+							screenshot: screenshot.value,
+						},
 						{ uploadPageFile, appendToPage, relayPageAppended },
 					);
 					writeLastPage(ws.id, pageId.value);
@@ -426,7 +446,8 @@
 					void reportFailure(e);
 					error.value = true;
 					message.value =
-						e?.response?.data?.message || 'Could not add to the page. Try again.';
+						e?.response?.data?.message ||
+						'Could not add to the page. Try again.';
 				} finally {
 					saving.value = false;
 				}

@@ -53,13 +53,13 @@ test('prefilled code shows the request and approves the checked scopes', async (
   await page.goto('/device?code=abcd2345');
 
   await expect(page.getByTestId('device-client')).toHaveText('tmgr-cli');
-  await expect(page.getByTestId('device-host')).toHaveText('<b>work-laptop</b>');
+  await expect(page.getByTestId('device-host')).toHaveText(
+    '<b>work-laptop</b>',
+  );
   await expect(page.getByTestId('device-host').locator('b')).toHaveCount(0);
   expect(calls[0].path).toBe('/api/auth/device/requests/ABCD-2345');
   await expect(page.locator('input[type="checkbox"]:checked')).toHaveCount(7);
-  await expect(
-    page.getByText('Only approve if you started'),
-  ).toBeVisible();
+  await expect(page.getByText('Only approve if you started')).toBeVisible();
   await shot(page, '01-request');
 
   await page.getByTestId('scope-time:write').uncheck();
@@ -86,7 +86,9 @@ test('approve is disabled with nothing selected and deny posts deny', async ({
   await expect(page.getByRole('button', { name: 'Approve' })).toBeDisabled();
   await shot(page, '03-none-selected');
   await page.getByRole('button', { name: 'Deny' }).click();
-  await expect(page.getByText('Request denied. Nothing was signed in.')).toBeVisible();
+  await expect(
+    page.getByText('Request denied. Nothing was signed in.'),
+  ).toBeVisible();
   expect(calls.some((c) => c.path.endsWith('/deny'))).toBe(true);
 });
 
@@ -171,14 +173,18 @@ async function openProfile(page, list) {
     calls.push({
       method: req.method(),
       path: new URL(req.url()).pathname,
-      body: ['PATCH', 'POST'].includes(req.method()) ? req.postDataJSON() : null,
+      body: ['PATCH', 'POST'].includes(req.method())
+        ? req.postDataJSON()
+        : null,
     });
     if (req.method() === 'GET') return route.fulfill({ json: { data: list } });
     if (req.method() === 'PATCH') {
       const id = new URL(req.url()).pathname.split('/').pop();
       const device = list.find((d) => d.id === id);
       return route.fulfill({
-        json: { data: { ...device, scopes: ['cli', ...req.postDataJSON().scopes] } },
+        json: {
+          data: { ...device, scopes: ['cli', ...req.postDataJSON().scopes] },
+        },
       });
     }
     return route.fulfill({ status: 204, body: '' });
@@ -214,8 +220,12 @@ test('devices list shows chips, edits scopes and revokes', async ({ page }) => {
     .getByRole('button', { name: 'Revoke' })
     .click();
   await expect(page.getByTestId('device-dev-2')).toHaveCount(0);
-  expect(calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/dev-2'))).toBe(true);
-  await expect(page.getByTestId('device-dev-1')).not.toContainText('time:write');
+  expect(
+    calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/dev-2')),
+  ).toBe(true);
+  await expect(page.getByTestId('device-dev-1')).not.toContainText(
+    'time:write',
+  );
 });
 
 test('empty devices list shows the hint', async ({ page }) => {

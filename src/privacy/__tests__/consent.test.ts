@@ -37,7 +37,9 @@ describe('consent store', () => {
 		store.subscribe((r) => seen.push(r.analytics));
 		store.set({ analytics: 'granted' });
 		expect(store.get().analytics).toBe('granted');
-		expect(JSON.parse(localStorage.getItem(CONSENT_KEY)!).analytics).toBe('granted');
+		expect(JSON.parse(localStorage.getItem(CONSENT_KEY)!).analytics).toBe(
+			'granted',
+		);
 		expect(seen).toEqual(['granted']);
 	});
 
@@ -60,7 +62,10 @@ describe('consent store', () => {
 		const store = createConsentStore(win);
 		const seen: unknown[] = [];
 		store.subscribe((r) => seen.push(r.analytics));
-		localStorage.setItem(CONSENT_KEY, JSON.stringify({ analytics: 'granted', usage: null }));
+		localStorage.setItem(
+			CONSENT_KEY,
+			JSON.stringify({ analytics: 'granted', usage: null }),
+		);
 		win.dispatchEvent(new StorageEvent('storage', { key: CONSENT_KEY }));
 		expect(store.get().analytics).toBe('granted');
 		expect(seen).toEqual(['granted']);
@@ -80,12 +85,16 @@ describe('consent store', () => {
 
 	it('keeps working in memory when localStorage throws', () => {
 		const win = freshWindow();
-		const spy = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
-			throw new Error('blocked');
-		});
-		const set = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-			throw new Error('blocked');
-		});
+		const spy = jest
+			.spyOn(Storage.prototype, 'getItem')
+			.mockImplementation(() => {
+				throw new Error('blocked');
+			});
+		const set = jest
+			.spyOn(Storage.prototype, 'setItem')
+			.mockImplementation(() => {
+				throw new Error('blocked');
+			});
 		const store = createConsentStore(win);
 		expect(store.get().analytics).toBeNull();
 		expect(() => store.set({ analytics: 'granted' })).not.toThrow();
@@ -100,7 +109,11 @@ describe('consent store', () => {
 		const b = createConsentStore(win);
 		b.subscribe(() => {});
 		a.subscribe(() => {});
-		const stale = { analytics: 'granted', usage: null, updatedAt: '2026-01-01T00:00:00.000Z' };
+		const stale = {
+			analytics: 'granted',
+			usage: null,
+			updatedAt: '2026-01-01T00:00:00.000Z',
+		};
 		b.set({ analytics: 'denied' });
 		FakeChannel.all[1].postMessage(stale);
 		expect(a.get().analytics).toBe('denied');

@@ -1,8 +1,5 @@
 <template>
-	<nav
-		class="flex flex-col items-center gap-3 px-1"
-		aria-label="Pagination"
-	>
+	<nav class="flex flex-col items-center gap-3 px-1" aria-label="Pagination">
 		<div class="flex items-center gap-0.5">
 			<button
 				type="button"

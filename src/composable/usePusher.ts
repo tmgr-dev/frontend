@@ -1,17 +1,17 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
-import type { AgentSession } from '@/utils/agentStatus';
 import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
 import type {
 	ActionError,
 	Activity,
 	DashboardStatistics,
 	EventHandlers,
-	TaskAssignmentEvent,
 	PageEventPayload,
 	PageEventType,
+	TaskAssignmentEvent,
 	TeamMemberStatus,
 	UsePusherReturn,
 } from '@/types/dashboard';
+import type { AgentSession } from '@/utils/agentStatus';
 import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 import type { ChannelAuthorizationHandler } from '@/utils/pusherChannelAuthorizer';
 import { createChannelAuthorizer } from '@/utils/pusherChannelAuthorizer';

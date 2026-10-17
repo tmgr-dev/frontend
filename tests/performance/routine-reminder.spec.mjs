@@ -9,7 +9,9 @@ const openLocalRoutines = async (page) => {
     localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1'),
   );
   // routines.first auto-offers 600ms after landing on /routines and covers the page.
-  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
   await page.goto('/demo/board');
   await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
@@ -29,7 +31,9 @@ const reminderOf = async (shell) =>
     })
   )[0]?.reminder_min;
 
-test('a repeating routine reminder is saved and shown again on Edit', async ({ page }) => {
+test('a repeating routine reminder is saved and shown again on Edit', async ({
+  page,
+}) => {
   const shell = await openLocalRoutines(page);
   const reminder = page.locator('[data-tour="routine.reminder"]');
 
@@ -41,22 +45,32 @@ test('a repeating routine reminder is saved and shown again on Edit', async ({ p
   await expect.poll(() => reminderOf(shell)).toBe(15);
 
   await page.getByText('Stretch', { exact: true }).first().click();
-  await expect(page.getByRole('button', { name: 'Daily', exact: true })).toHaveClass(/bg-surface text-ink/);
-  await expect(reminder.getByRole('button', { name: '15m' })).toHaveClass(/border-brand/);
+  await expect(
+    page.getByRole('button', { name: 'Daily', exact: true }),
+  ).toHaveClass(/bg-surface text-ink/);
+  await expect(reminder.getByRole('button', { name: '15m' })).toHaveClass(
+    /border-brand/,
+  );
 
   await reminder.getByRole('button', { name: 'At time' }).click();
   await page.getByRole('button', { name: 'Save changes' }).click();
   await expect.poll(() => reminderOf(shell)).toBe(0);
 
   await page.getByText('Stretch', { exact: true }).first().click();
-  await expect(reminder.getByRole('button', { name: 'At time' })).toHaveClass(/border-brand/);
+  await expect(reminder.getByRole('button', { name: 'At time' })).toHaveClass(
+    /border-brand/,
+  );
 });
 
-test('a one-off routine cannot take a reminder the server would drop', async ({ page }) => {
+test('a one-off routine cannot take a reminder the server would drop', async ({
+  page,
+}) => {
   await openLocalRoutines(page);
   const reminder = page.locator('[data-tour="routine.reminder"]');
   await page.getByRole('button', { name: 'New routine' }).click();
-  await expect(page.getByRole('button', { name: 'Once', exact: true })).toHaveClass(/bg-surface text-ink/);
+  await expect(
+    page.getByRole('button', { name: 'Once', exact: true }),
+  ).toHaveClass(/bg-surface text-ink/);
   await expect(reminder).toContainText('Only for repeating routines');
   await expect(reminder.getByRole('button', { name: '15m' })).toBeDisabled();
   await page.getByRole('button', { name: 'Daily', exact: true }).click();

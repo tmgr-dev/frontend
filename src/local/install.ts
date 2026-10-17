@@ -23,7 +23,6 @@ import { createLocalApi } from './api';
 import { classify, crossesWorkspaces } from './classify';
 import { dispatchLocal } from './dispatch';
 import { createOnboardingHandler } from './onboarding';
-import { normalizePath } from './router';
 import {
 	CURRENT_WORKSPACE,
 	mergeWorkspaces,
@@ -31,6 +30,7 @@ import {
 	withCurrentWorkspace,
 	withoutLocalWorkspace,
 } from './patch';
+import { normalizePath } from './router';
 import {
 	activeLocalWorkspace,
 	createLocalWorkspace,
@@ -134,7 +134,9 @@ const parsed = (response: AxiosResponse): AxiosResponse => {
 };
 
 const serverWorkspaceOf = (user: any): number | null => {
-	const value = user?.settings?.find((s: any) => s?.key === CURRENT_WORKSPACE)?.value;
+	const value = user?.settings?.find(
+		(s: any) => s?.key === CURRENT_WORKSPACE,
+	)?.value;
 	return value === undefined || value === null ? null : Number(value);
 };
 
@@ -142,21 +144,33 @@ const serverWorkspaceOf = (user: any): number | null => {
  * Routes the desktop app's API calls for local workspaces (see `classify`). Local calls never
  * reach the network: the adapter answers them from SQLite or refuses them with 501.
  */
-export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) => {
-	const rawNetwork = axios.getAdapter(instance.defaults.adapter ?? axios.defaults.adapter);
+export const installLocalWorkspaces = (
+	instance: AxiosInstance,
+	hooks: Hooks,
+) => {
+	const rawNetwork = axios.getAdapter(
+		instance.defaults.adapter ?? axios.defaults.adapter,
+	);
 	const api = createLocalApi();
 	const isAccountless = () => hooks.accountless?.() === true;
 	const network: AxiosAdapter = (config) => {
 		if (isAccountless()) {
 			return Promise.reject(
-				new AxiosError(REQUIRES_ACCOUNT.message, AxiosError.ERR_NETWORK, config),
+				new AxiosError(
+					REQUIRES_ACCOUNT.message,
+					AxiosError.ERR_NETWORK,
+					config,
+				),
 			);
 		}
 		return rawNetwork(config);
 	};
 
 	/** The server's answer, or — offline inside a local workspace — the last one it gave. */
-	const networkOrCache = async (config: InternalAxiosRequestConfig, key: string) => {
+	const networkOrCache = async (
+		config: InternalAxiosRequestConfig,
+		key: string,
+	) => {
 		try {
 			const response = parsed(await network(config));
 			remember(key, response.data);
@@ -181,48 +195,70 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 			listLocalWorkspaces(),
 		]);
 		const body = response.data ?? {};
-		const merged = mergeWorkspaces(body.data ?? body, local, hooks.currentUser()?.id ?? null);
-		return { ...response, data: Array.isArray(body) ? merged : { ...body, data: merged } };
+		const merged = mergeWorkspaces(
+			body.data ?? body,
+			local,
+			hooks.currentUser()?.id ?? null,
+		);
+		return {
+			...response,
+			data: Array.isArray(body) ? merged : { ...body, data: merged },
+		};
 	};
 
 	const userAdapter: AxiosAdapter = async (config) => {
-		const [response] = await Promise.all([networkOrCache(config, 'user'), listLocalWorkspaces()]);
+		const [response] = await Promise.all([
+			networkOrCache(config, 'user'),
+			listLocalWorkspaces(),
+		]);
 		const user = response.data?.data;
 		if (user?.id) {
 			adoptOwner(Number(user.id));
 			remember('user', response.data);
 			const serverWorkspace = serverWorkspaceOf(user);
-			if (serverWorkspace !== null && serverWorkspace >= 0) remember('serverWorkspace', serverWorkspace);
+			if (serverWorkspace !== null && serverWorkspace >= 0)
+				remember('serverWorkspace', serverWorkspace);
 		}
 		const active = activeLocalWorkspace();
 		if (!active || !user) return response;
 		return {
 			...response,
-			data: { ...response.data, data: withCurrentWorkspace(response.data.data, active.id) },
+			data: {
+				...response.data,
+				data: withCurrentWorkspace(response.data.data, active.id),
+			},
 		};
 	};
 
 	const settingsAdapter: AxiosAdapter = async (config) => {
-		const payload = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
+		const payload =
+			typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
 		const user = hooks.currentUser();
 		const target = requestedWorkspace(payload, user);
 		if (target === null || target >= 0) {
 			return network(config);
 		}
 		const workspace = await localWorkspaceById(target);
-		if (!workspace) return respond(config, 404, { message: 'Local workspace not found' });
+		if (!workspace)
+			return respond(config, 404, { message: 'Local workspace not found' });
 		const serverWorkspace = recall('serverWorkspace');
 		if (serverWorkspace === null || serverWorkspace < 0) {
 			return respond(config, 409, {
-				message: 'Open one of your cloud workspaces once before switching to a local one',
+				message:
+					'Open one of your cloud workspaces once before switching to a local one',
 			});
 		}
 		const safe = withoutLocalWorkspace(payload, user, serverWorkspace);
-		const response = parsed(await network({ ...config, data: JSON.stringify(safe) }));
+		const response = parsed(
+			await network({ ...config, data: JSON.stringify(safe) }),
+		);
 		setActiveLocalWorkspace(workspace);
 		return {
 			...response,
-			data: { ...response.data, data: withCurrentWorkspace(response.data?.data, workspace.id) },
+			data: {
+				...response.data,
+				data: withCurrentWorkspace(response.data?.data, workspace.id),
+			},
 		};
 	};
 
@@ -231,7 +267,9 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		const workspace = activeLocalWorkspace();
 		if (!workspace) {
 			setActiveLocalWorkspace(null);
-			return respond(config, 409, { message: 'The local workspace is gone; pick another workspace' });
+			return respond(config, 409, {
+				message: 'The local workspace is gone; pick another workspace',
+			});
 		}
 		const ctx = await localContext(workspace, localUser());
 		if (isAccountless()) ctx.accountless = true;
@@ -245,7 +283,9 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		);
 		if (!result) {
 			return respond(config, 501, {
-				message: `Not available in local workspaces yet: ${(config.method ?? 'get').toUpperCase()} ${config.url}`,
+				message: `Not available in local workspaces yet: ${(
+					config.method ?? 'get'
+				).toUpperCase()} ${config.url}`,
 			});
 		}
 		return respond(config, result.status, result.data);
@@ -260,10 +300,17 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 				.then((response) => parsed(response).data?.data ?? [])
 				.catch(() => []),
 		]);
-		const rows = [...(local.data?.data ?? []), ...(Array.isArray(cloud) ? cloud : [])];
+		const rows = [
+			...(local.data?.data ?? []),
+			...(Array.isArray(cloud) ? cloud : []),
+		];
 		return {
 			...local,
-			data: { ...local.data, data: rows, meta: { ...local.data?.meta, total: rows.length } },
+			data: {
+				...local.data,
+				data: rows,
+				meta: { ...local.data?.meta, total: rows.length },
+			},
 		};
 	};
 
@@ -274,7 +321,9 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		if (current) return current;
 		const first =
 			list[0] ??
-			(await (creatingFirst ??= createLocalWorkspace(FIRST_WORKSPACE_NAME).finally(() => {
+			(await (creatingFirst ??= createLocalWorkspace(
+				FIRST_WORKSPACE_NAME,
+			).finally(() => {
 				creatingFirst = null;
 			})));
 		setActiveLocalWorkspace(first);
@@ -282,13 +331,25 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 	};
 
 	const identity = async () =>
-		localIdentity(hooks.profileName?.() ?? '', (await ensureActiveWorkspace())?.id ?? null);
+		localIdentity(
+			hooks.profileName?.() ?? '',
+			(await ensureActiveWorkspace())?.id ?? null,
+		);
 
 	const localUser = () => {
-		if (isAccountless()) return { id: LOCAL_USER_ID, name: hooks.profileName?.() ?? '', email: '' };
+		if (isAccountless())
+			return {
+				id: LOCAL_USER_ID,
+				name: hooks.profileName?.() ?? '',
+				email: '',
+			};
 		const current = hooks.currentUser();
-		const user = current?.id ? current : (recall('user')?.data ?? {});
-		return { id: Number(user.id ?? 0), name: user.name ?? '', email: user.email ?? '' };
+		const user = current?.id ? current : recall('user')?.data ?? {};
+		return {
+			id: Number(user.id ?? 0),
+			name: user.name ?? '',
+			email: user.email ?? '',
+		};
 	};
 
 	const onboarding = createOnboardingHandler(
@@ -313,26 +374,36 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		},
 	);
 
-	const refuseAccount: AxiosAdapter = async (config) => respond(config, 403, REQUIRES_ACCOUNT);
+	const refuseAccount: AxiosAdapter = async (config) =>
+		respond(config, 403, REQUIRES_ACCOUNT);
 
 	const guestAdapter: AxiosAdapter = async (config) => {
 		const path = normalizePath(config.url ?? '');
 		const verb = (config.method ?? 'get').toUpperCase();
-		const body = typeof config.data === 'string' ? JSON.parse(config.data || 'null') : config.data;
+		const body =
+			typeof config.data === 'string'
+				? JSON.parse(config.data || 'null')
+				: config.data;
 		if (path === 'workspaces') {
 			await ensureActiveWorkspace();
-			return respond(config, 200, { data: mergeWorkspaces([], await listLocalWorkspaces(), LOCAL_USER_ID) });
+			return respond(config, 200, {
+				data: mergeWorkspaces([], await listLocalWorkspaces(), LOCAL_USER_ID),
+			});
 		}
-		if (path === 'user') return respond(config, 200, { data: await identity() });
+		if (path === 'user')
+			return respond(config, 200, { data: await identity() });
 		if (path === 'v2/user/settings') {
 			if (verb === 'GET') {
-				return respond(config, 200, { data: localSettings((await ensureActiveWorkspace())?.id ?? null) });
+				return respond(config, 200, {
+					data: localSettings((await ensureActiveWorkspace())?.id ?? null),
+				});
 			}
 			saveLocalSettings(body);
 			const target = requestedLocalWorkspace(body);
 			if (target !== null) {
 				const workspace = await localWorkspaceById(target);
-				if (!workspace) return respond(config, 404, { message: 'Local workspace not found' });
+				if (!workspace)
+					return respond(config, 404, { message: 'Local workspace not found' });
 				setActiveLocalWorkspace(workspace);
 			}
 			return respond(config, 200, { data: await identity() });
@@ -343,12 +414,21 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 		}
 		if (path === 'user/feature-toggles') {
 			if (verb === 'PUT') saveUserToggles(body);
-			return respond(config, 200, { data: verb === 'PUT' ? {} : userFeatureToggles() });
+			return respond(config, 200, {
+				data: verb === 'PUT' ? {} : userFeatureToggles(),
+			});
 		}
 		if (path === 'notifications') {
-			return respond(config, 200, { data: [], current_page: 1, last_page: 1, per_page: 20, total: 0 });
+			return respond(config, 200, {
+				data: [],
+				current_page: 1,
+				last_page: 1,
+				per_page: 20,
+				total: 0,
+			});
 		}
-		if (path === 'notifications/unread-count') return respond(config, 200, { count: 0 });
+		if (path === 'notifications/unread-count')
+			return respond(config, 200, { count: 0 });
 		if (path === 'personas') return respond(config, 200, { data: [] });
 		if (/^onboarding(\/|$)/.test(path)) {
 			const result = await onboarding(verb, path, body, config.params);
@@ -359,16 +439,30 @@ export const installLocalWorkspaces = (instance: AxiosInstance, hooks: Hooks) =>
 
 	const refuse: AxiosAdapter = async (config) =>
 		respond(config, 409, {
-			message: 'This change belongs to another workspace and was not saved; reopen the task',
+			message:
+				'This change belongs to another workspace and was not saved; reopen the task',
 		});
 
 	instance.interceptors.request.use(async (config) => {
 		await hooks.ready?.();
 		const accountless = isAccountless();
 		const localMode = hasActiveLocalWorkspace();
-		const route = classify(config.method ?? 'get', config.url ?? '', localMode, config.params, accountless);
+		const route = classify(
+			config.method ?? 'get',
+			config.url ?? '',
+			localMode,
+			config.params,
+			accountless,
+		);
 		if (localMode || accountless) await listLocalWorkspaces();
-		if (crossesWorkspaces(route, config.data, config.params, activeLocalWorkspace()?.id ?? null)) {
+		if (
+			crossesWorkspaces(
+				route,
+				config.data,
+				config.params,
+				activeLocalWorkspace()?.id ?? null,
+			)
+		) {
 			config.adapter = refuse;
 			return config;
 		}

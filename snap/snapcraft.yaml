@@ -31,7 +31,7 @@ apps:
     desktop: usr/share/applications/tmgr.desktop
     extensions: [gnome]
     environment:
-      TMGR_DISABLE_UPDATER: "1"
+      TMGR_DISABLE_UPDATER: '1'
     plugs:
       - network
       - home

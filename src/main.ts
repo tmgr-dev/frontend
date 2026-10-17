@@ -1,41 +1,44 @@
 import alertPlugin from '@/alert';
 import components from '@/globalComponents.ts';
+import { installLocalWorkspaces } from '@/local/install';
+import { activeLocalWorkspace } from '@/local/runtime';
+import { installOnboardingFlow } from '@/onboarding/boot';
 import { mask, VueTheMask } from '@/plugins/VueTheMask';
+import $axios from '@/plugins/axios';
 import Selectable from '@/plugins/directives/selectable';
+import { startPrivacy } from '@/privacy/boot';
 import router from '@/router';
+import { startRunnerStore } from '@/runner/store';
 import store from '@/store';
+import { installTours } from '@/tours/boot';
+import { installTourTelemetry } from '@/tours/telemetryAdapter';
+import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
 import {
 	desktopPlatform,
 	desktopWindowLabel,
 	installAutoHideScrollbars,
 	isDesktopApp,
 } from '@/utils/desktop';
-import { isDetachedWindowLabel } from '@/utils/taskWindow';
-import { applyRelayedEvent, installWindowEventRelay } from '@/utils/windowEventRelay';
-import { startPrivacy } from '@/privacy/boot';
-import { installLocalWorkspaces } from '@/local/install';
-import { activeLocalWorkspace } from '@/local/runtime';
-import { shouldReloadOnModeChange } from '@/utils/accountModeSwitch';
-import { requestCache } from '@/utils/requestCache';
-import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
-import $axios from '@/plugins/axios';
 import { installDesktopDiagnostics } from '@/utils/desktopDiagnostics';
 import { startUpdateChecks } from '@/utils/desktopUpdater';
+import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import { installFileDropGuard } from '@/utils/fileDrag';
 import { installFocusSource } from '@/utils/focusSource';
+import { requestCache } from '@/utils/requestCache';
+import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
-import '@fontsource/instrument-serif/400-italic.css';
-import '@fontsource/instrument-serif/400.css';
+import {
+	applyRelayedEvent,
+	installWindowEventRelay,
+} from '@/utils/windowEventRelay';
 import '@fontsource/exo-2/400.css';
 import '@fontsource/exo-2/500.css';
 import '@fontsource/exo-2/600.css';
 import '@fontsource/exo-2/700.css';
+import '@fontsource/instrument-serif/400-italic.css';
+import '@fontsource/instrument-serif/400.css';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
-import { startRunnerStore } from '@/runner/store';
-import { installTours } from '@/tours/boot';
-import { installTourTelemetry } from '@/tours/telemetryAdapter';
-import { installOnboardingFlow } from '@/onboarding/boot';
 import { createApp, watch } from 'vue';
 import App from './App.vue';
 
@@ -69,10 +72,14 @@ if (isDesktopApp()) {
 			import('@tauri-apps/api/core').then(({ invoke }) =>
 				invoke<boolean>('plugins_safe_mode').catch(() => false),
 			),
-		]).then(([{ installPlugins }, safeMode]) => installPlugins(store, safeMode));
-		void import('@/local/localAccess').then(({ installLocalAccess }) => installLocalAccess(store));
-		void import('@/utils/quickAddPageRelay').then(({ installQuickAddPageHost }) =>
-			installQuickAddPageHost(store),
+		]).then(([{ installPlugins }, safeMode]) =>
+			installPlugins(store, safeMode),
+		);
+		void import('@/local/localAccess').then(({ installLocalAccess }) =>
+			installLocalAccess(store),
+		);
+		void import('@/utils/quickAddPageRelay').then(
+			({ installQuickAddPageHost }) => installQuickAddPageHost(store),
 		);
 		void import('@/utils/taskWindowBridge').then(({ installTaskWindowHost }) =>
 			installTaskWindowHost(router, store),
@@ -103,11 +110,12 @@ if (isDesktopApp()) {
 		);
 	}
 	if (isDetachedWindow) {
-		void import('@/pluginSystem/taskMenuRelay').then(({ installTaskMenuRelayClient }) =>
-			installTaskMenuRelayClient(desktopWindowLabel() as string, () => {
-				const id = Number(store.getters.currentWorkspaceId);
-				return Number.isSafeInteger(id) && id > 0 ? id : null;
-			}),
+		void import('@/pluginSystem/taskMenuRelay').then(
+			({ installTaskMenuRelayClient }) =>
+				installTaskMenuRelayClient(desktopWindowLabel() as string, () => {
+					const id = Number(store.getters.currentWorkspaceId);
+					return Number.isSafeInteger(id) && id > 0 ? id : null;
+				}),
 		);
 	}
 	if (isMainWindow || isDetachedWindow) {
@@ -126,10 +134,16 @@ if (isDesktopApp()) {
 				onRelayed: (event) =>
 					applyRelayedEvent(event, {
 						invalidate: (key) => requestCache.invalidate(key),
-						reloadActiveTasks: () => store.commit('incrementReloadActiveTasksKey'),
+						reloadActiveTasks: () =>
+							store.commit('incrementReloadActiveTasksKey'),
 						deliverTimer: (timer) => {
 							const userId = store.state.user?.id;
-							if (!userId || timer.workspaceId == null || timer.workspaceId >= 0) return;
+							if (
+								!userId ||
+								timer.workspaceId == null ||
+								timer.workspaceId >= 0
+							)
+								return;
 							if (activeLocalWorkspace()?.id !== timer.workspaceId) return;
 							void import('@/composable/usePusher').then(({ deliverToUser }) =>
 								deliverToUser(userId, (h) =>
@@ -146,13 +160,14 @@ if (isDesktopApp()) {
 			import('@/local/liveUpdates'),
 			import('@/composable/usePusher'),
 			import('@/actions/tmgr/tasks'),
-		]).then(([{ installLocalLiveUpdates }, { deliverToWorkspace }, { getTask }]) =>
-			installLocalLiveUpdates({
-				deliver: deliverToWorkspace,
-				fetchTask: async (workspaceId, taskId) =>
-					activeLocalWorkspace()?.id === workspaceId ? getTask(taskId) : null,
-				invalidate: (key) => requestCache.invalidate(key),
-			}),
+		]).then(
+			([{ installLocalLiveUpdates }, { deliverToWorkspace }, { getTask }]) =>
+				installLocalLiveUpdates({
+					deliver: deliverToWorkspace,
+					fetchTask: async (workspaceId, taskId) =>
+						activeLocalWorkspace()?.id === workspaceId ? getTask(taskId) : null,
+					invalidate: (key) => requestCache.invalidate(key),
+				}),
 		);
 	}
 }
@@ -190,7 +205,8 @@ const start = async () => {
 		watch(
 			() => store.getters.accountMode,
 			(next, previous) => {
-				if (shouldReloadOnModeChange(previous, next)) window.location.assign('/app');
+				if (shouldReloadOnModeChange(previous, next))
+					window.location.assign('/app');
 			},
 		);
 	}

@@ -62,11 +62,7 @@
 				<div class="flex max-w-sm flex-col gap-4">
 					<div class="flex flex-col gap-1.5">
 						<Label for="profile-name">Name</Label>
-						<Input
-							id="profile-name"
-							v-model="user.name"
-							autocomplete="name"
-						/>
+						<Input id="profile-name" v-model="user.name" autocomplete="name" />
 						<p v-if="errors.name" class="text-xs text-destructive">
 							{{ errors.name[0] }}
 						</p>
@@ -74,9 +70,7 @@
 					<div v-if="user.email" class="flex flex-col gap-1.5">
 						<Label for="profile-email">Email</Label>
 						<Input id="profile-email" :model-value="user.email" disabled />
-						<p class="text-xs text-ink-subtle">
-							Email can't be changed here
-						</p>
+						<p class="text-xs text-ink-subtle">Email can't be changed here</p>
 					</div>
 				</div>
 				<div class="mt-6 border-t border-border pt-6">
@@ -200,11 +194,11 @@
 	import { presignUpload, putToStorage } from '@/actions/tmgr/files';
 	import { revokeAllMyPersonaTokens } from '@/actions/tmgr/personas';
 	import { getUser, updateUser } from '@/actions/tmgr/user';
+	import SignedInDevices from '@/components/devices/SignedInDevices.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
-	import SignedInDevices from '@/components/devices/SignedInDevices.vue';
 	import AvatarCropModal from '@/components/profile/AvatarCropModal.vue';
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';

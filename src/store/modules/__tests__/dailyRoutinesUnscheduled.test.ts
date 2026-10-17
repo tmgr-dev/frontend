@@ -3,10 +3,7 @@ jest.mock('@/actions/tmgr/daily-tasks', () => ({
 	updateDailyTask: jest.fn(),
 	rescheduleRoutineInstance: jest.fn(),
 }));
-import {
-	completeRoutineOn,
-	updateDailyTask,
-} from '@/actions/tmgr/daily-tasks';
+import { completeRoutineOn, updateDailyTask } from '@/actions/tmgr/daily-tasks';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
 const source = transpileModule(
@@ -57,7 +54,10 @@ test('dropping on the all-day row stays dated', async () => {
 	});
 	expect(updateDailyTask).toHaveBeenCalledWith(
 		5,
-		expect.objectContaining({ scheduled_date: '2026-10-09', scheduled_time: null }),
+		expect.objectContaining({
+			scheduled_date: '2026-10-09',
+			scheduled_time: null,
+		}),
 	);
 });
 

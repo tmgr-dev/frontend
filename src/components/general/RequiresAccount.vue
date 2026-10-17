@@ -21,7 +21,9 @@
 				{{ module }}
 			</h1>
 			<p class="text-sm font-medium text-ink">Requires an account</p>
-			<p class="text-sm text-ink-subtle">This feature runs in the TMGR cloud.</p>
+			<p class="text-sm text-ink-subtle">
+				This feature runs in the TMGR cloud.
+			</p>
 			<Button @click="createAccount">Create account</Button>
 		</template>
 	</div>

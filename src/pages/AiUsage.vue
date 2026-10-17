@@ -132,12 +132,18 @@
 									</p>
 								</div>
 							</div>
-							<p v-if="hasAccount('claude') && !hasLimit('claude')" class="mt-3 text-sm text-ink-subtle">
+							<p
+								v-if="hasAccount('claude') && !hasLimit('claude')"
+								class="mt-3 text-sm text-ink-subtle"
+							>
 								No Claude Code limits yet. Run
 								<CommandChip command="tmgr usage statusline install" />
 								in a terminal to start collecting them.
 							</p>
-							<p v-if="hasAccount('codex') && !hasLimit('codex')" class="mt-3 text-sm text-ink-subtle">
+							<p
+								v-if="hasAccount('codex') && !hasLimit('codex')"
+								class="mt-3 text-sm text-ink-subtle"
+							>
 								No Codex limits yet. They appear after your next Codex session.
 							</p>
 						</SettingsSection>
@@ -167,7 +173,9 @@
 								</div>
 							</template>
 							<table v-if="rows.length" class="w-full text-sm max-sm:block">
-								<thead class="hidden text-left text-xs text-ink-subtle sm:table-header-group">
+								<thead
+									class="hidden text-left text-xs text-ink-subtle sm:table-header-group"
+								>
 									<tr>
 										<th class="py-2 pr-3 font-medium">Tool</th>
 										<th class="py-2 pr-3 font-medium">Model</th>
@@ -182,17 +190,23 @@
 										:key="r.tool + r.model"
 										class="block border-t border-border py-2 sm:table-row sm:py-0"
 									>
-										<td :class="cell" data-label="Tool">{{ toolName(r.tool) }}</td>
+										<td :class="cell" data-label="Tool">
+											{{ toolName(r.tool) }}
+										</td>
 										<td :class="cell" data-label="Model">
 											<span class="break-all">{{ r.model }}</span>
 										</td>
-										<td :class="cellNum" data-label="Cost"><span>{{ money(r.cost_usd) }}
+										<td :class="cellNum" data-label="Cost">
 											<span
-												v-if="r.unpriced_events > 0"
-												class="text-amber-700 dark:text-amber-400"
-												title="Some events have no known price"
-												>*</span
-											></span></td>
+												>{{ money(r.cost_usd) }}
+												<span
+													v-if="r.unpriced_events > 0"
+													class="text-amber-700 dark:text-amber-400"
+													title="Some events have no known price"
+													>*</span
+												></span
+											>
+										</td>
 										<td :class="cellNum" data-label="Tokens">
 											{{ count(r.tokens_total) }}
 										</td>
@@ -202,7 +216,9 @@
 									</tr>
 								</tbody>
 							</table>
-							<p v-else class="text-sm text-ink-subtle">No usage in this period.</p>
+							<p v-else class="text-sm text-ink-subtle">
+								No usage in this period.
+							</p>
 						</SettingsSection>
 
 						<SettingsSection title="Last 30 days">
@@ -211,7 +227,14 @@
 									v-for="d in trend"
 									:key="d.day"
 									class="flex h-full min-w-0 flex-1 items-end"
-									:title="d.day + ' · ' + money(d.cost) + ' · ' + count(d.tokens) + ' tokens'"
+									:title="
+										d.day +
+										' · ' +
+										money(d.cost) +
+										' · ' +
+										count(d.tokens) +
+										' tokens'
+									"
 								>
 									<div
 										class="w-full rounded-t bg-ink-subtle"
@@ -219,7 +242,9 @@
 									/>
 								</div>
 							</div>
-							<p v-else class="text-sm text-ink-subtle">No usage in the last 30 days.</p>
+							<p v-else class="text-sm text-ink-subtle">
+								No usage in the last 30 days.
+							</p>
 							<p
 								v-if="trend.length"
 								class="mt-2 flex justify-between text-xs text-ink-subtle"
@@ -240,8 +265,13 @@
 								Matching usage to tasks
 							</p>
 							<template v-else-if="tasks">
-								<table v-if="taskRows.length" class="w-full text-sm max-sm:block">
-									<thead class="hidden text-left text-xs text-ink-subtle sm:table-header-group">
+								<table
+									v-if="taskRows.length"
+									class="w-full text-sm max-sm:block"
+								>
+									<thead
+										class="hidden text-left text-xs text-ink-subtle sm:table-header-group"
+									>
 										<tr>
 											<th class="py-2 pr-3 font-medium">Task</th>
 											<th class="py-2 pr-3 text-right font-medium">Cost</th>
@@ -262,17 +292,27 @@
 													>
 														{{ t.key }}
 													</router-link>
-													<span v-if="showWorkspace" class="ml-2 text-xs text-ink-subtle/70">{{ t.workspace }}</span>
-													<span v-if="t.title" class="ml-2 text-ink-subtle">{{ t.title }}</span>
+													<span
+														v-if="showWorkspace"
+														class="text-ink-subtle/70 ml-2 text-xs"
+														>{{ t.workspace }}</span
+													>
+													<span v-if="t.title" class="ml-2 text-ink-subtle">{{
+														t.title
+													}}</span>
 												</span>
 											</td>
-											<td :class="cellNum" data-label="Cost"><span>{{ money(t.cost_usd) }}
+											<td :class="cellNum" data-label="Cost">
 												<span
-													v-if="t.unpriced_events > 0"
-													class="text-amber-700 dark:text-amber-400"
-													title="Some events have no known price"
-													>*</span
-												></span></td>
+													>{{ money(t.cost_usd) }}
+													<span
+														v-if="t.unpriced_events > 0"
+														class="text-amber-700 dark:text-amber-400"
+														title="Some events have no known price"
+														>*</span
+													></span
+												>
+											</td>
 											<td :class="cellNum" data-label="Tokens">
 												{{ count(t.tokens_total) }}
 											</td>
@@ -290,10 +330,7 @@
 									{{ failedWorkspaces === 1 ? 'workspace' : 'workspaces' }}
 									could not be loaded
 								</p>
-								<p
-									v-if="runsTruncated"
-									class="mt-3 text-xs text-ink-subtle"
-								>
+								<p v-if="runsTruncated" class="mt-3 text-xs text-ink-subtle">
 									Only the most recent 5000 runs were used
 								</p>
 								<p
@@ -303,7 +340,8 @@
 									Only the most recent runs were read
 								</p>
 								<p class="mt-3 text-xs text-ink-subtle">
-									Ambiguous: {{ money(tasks.ambiguous.cost_usd) }} · Unattributed:
+									Ambiguous: {{ money(tasks.ambiguous.cost_usd) }} ·
+									Unattributed:
 									{{ money(tasks.unattributed.cost_usd) }}
 								</p>
 							</template>
@@ -328,8 +366,8 @@
 
 <script lang="ts">
 	import CommandChip from '@/components/general/CommandChip.vue';
-	import { Button } from '@/components/ui/button';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import store from '@/store';
 	import {
@@ -352,7 +390,13 @@
 		toolName,
 	} from '@/usage/format';
 	import { fetchRuns, taskInfoFor, type TaskInfo } from '@/usage/runs';
-	import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+	} from 'vue';
 
 	const POLL_MS = 3000;
 	const TONES = {

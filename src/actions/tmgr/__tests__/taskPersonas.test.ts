@@ -1,6 +1,11 @@
 jest.mock('@/plugins/axios', () => ({
 	__esModule: true,
-	default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
+	default: {
+		get: jest.fn(),
+		post: jest.fn(),
+		put: jest.fn(),
+		delete: jest.fn(),
+	},
 }));
 jest.mock('@/store', () => ({
 	__esModule: true,

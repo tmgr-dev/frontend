@@ -137,7 +137,9 @@ const setup = async (page) => {
           network: 'operational',
           company: 'Acme',
           role: 'CTO',
-          aliases: [{ source: 'email', native_id: 'ann@example.test', display: 'Ann' }],
+          aliases: [
+            { source: 'email', native_id: 'ann@example.test', display: 'Ann' },
+          ],
           last_contact_at: '2026-10-01',
         }),
       );
@@ -182,9 +184,9 @@ test.describe('Pages UI is English', () => {
     await expect(page.getByText('Backlinks')).toBeVisible();
     await expect(page.getByText('Contents')).toBeVisible();
     await expect(page.getByText('Versions').first()).toBeVisible();
-    await expect(page.locator('option[value="operational"]').first()).toHaveText(
-      'Operational',
-    );
+    await expect(
+      page.locator('option[value="operational"]').first(),
+    ).toHaveText('Operational');
     await expect(page.getByText('Last contact')).toBeVisible();
     await expect(page.getByText('Add alias')).toBeVisible();
     await shot(page, 'person');
@@ -213,7 +215,9 @@ test.describe('Pages UI is English', () => {
 
   test('trash', async ({ page }) => {
     await page.goto('/demo/pages/_/trash');
-    await expect(page.getByRole('heading', { name: 'Pages trash' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Pages trash' }),
+    ).toBeVisible();
     await expect(page.getByText('Restore').first()).toBeVisible();
     await shot(page, 'trash');
     expect(await visibleText(page)).not.toMatch(CYRILLIC);
@@ -221,7 +225,10 @@ test.describe('Pages UI is English', () => {
 
   test('global search Pages tab', async ({ page }) => {
     await page.goto('/demo/pages');
-    await page.getByRole('button', { name: 'Search', exact: true }).first().click();
+    await page
+      .getByRole('button', { name: 'Search', exact: true })
+      .first()
+      .click();
     await page.getByRole('tab', { name: 'Pages', exact: true }).click();
     await page.getByPlaceholder('Page title or text').fill('ann');
     await expect(page.getByText('Ann Lee').first()).toBeVisible();

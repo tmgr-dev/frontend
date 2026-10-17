@@ -1,10 +1,9 @@
-import { ToastAction, toast } from '@/components/ui/toast';
+import { toast, ToastAction } from '@/components/ui/toast';
 import { usePusher } from '@/composable/usePusher';
-import $axios from '@/plugins/axios';
 import { pinnedLocalClient } from '@/local/pinned';
 import { localWorkspaceById } from '@/local/runtime';
 import { LOCAL_CODE_PREFIX } from '@/local/types';
-import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
+import $axios from '@/plugins/axios';
 import {
 	dndState,
 	expireDndIfNeeded,
@@ -12,28 +11,12 @@ import {
 	startDndClock,
 	syncDndToTray,
 } from '@/utils/dnd';
+import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import type { AxiosInstance } from 'axios';
 import { h, watch } from 'vue';
 import type { Store } from 'vuex';
 import type { PluginWorkspace } from './broker';
 import { builtinPackages } from './builtin';
-import { cloudPluginClient, type MintedToken } from './cloudClient';
-import {
-	hasMachineConsent,
-	matchesPin,
-	pinMismatch,
-	pinOf,
-	recordFor,
-	releaseOf,
-	workspacePlugins,
-	BUILTIN_REPO,
-	type WorkspacePluginRecord,
-} from './cloud';
-import { createDataApi } from './dataApi';
-import { stepDevWatch, type DevWatchState } from './devReload';
-import { encodeFile } from './fileData';
-import { folderPackagesFrom, type FolderPlugin } from './folder';
-import { createPluginHost, storageIdOf, type PluginPackage } from './host';
 import {
 	blockedById,
 	pluginCatalog,
@@ -41,6 +24,23 @@ import {
 	setCatalog,
 	type Catalog,
 } from './catalog';
+import {
+	BUILTIN_REPO,
+	hasMachineConsent,
+	matchesPin,
+	pinMismatch,
+	pinOf,
+	recordFor,
+	releaseOf,
+	workspacePlugins,
+	type WorkspacePluginRecord,
+} from './cloud';
+import { cloudPluginClient, type MintedToken } from './cloudClient';
+import { createDataApi } from './dataApi';
+import { stepDevWatch, type DevWatchState } from './devReload';
+import { encodeFile } from './fileData';
+import { folderPackagesFrom, type FolderPlugin } from './folder';
+import { createPluginHost, storageIdOf, type PluginPackage } from './host';
 import { bundleToPackage, type Release } from './market';
 import type { WorkerEndpoint } from './process';
 import {
@@ -117,7 +117,8 @@ const startDevPluginWatcher = (host: ReturnType<typeof createPluginHost>) => {
 	let watch: DevWatchState = null;
 	let polling = false;
 	const poll = async () => {
-		if (polling || !devModeStored() || document.visibilityState !== 'visible') return;
+		if (polling || !devModeStored() || document.visibilityState !== 'visible')
+			return;
 		polling = true;
 		try {
 			const { invoke } = await import('@tauri-apps/api/core');
@@ -125,11 +126,15 @@ const startDevPluginWatcher = (host: ReturnType<typeof createPluginHost>) => {
 				'plugins_dev_fingerprints',
 			).catch(() => null);
 			if (!found) return;
-			const fingerprints = Object.fromEntries(found.map((f) => [f.folder, f.fingerprint]));
+			const fingerprints = Object.fromEntries(
+				found.map((f) => [f.folder, f.fingerprint]),
+			);
 			const { next, changed } = stepDevWatch(watch, fingerprints);
 			watch = next;
 			if (!changed.length) return;
-			const list = (await invoke<FolderPlugin[]>('plugins_dev_list').catch(() => null)) ?? [];
+			const list =
+				(await invoke<FolderPlugin[]>('plugins_dev_list').catch(() => null)) ??
+				[];
 			const idByFolder = new Map<string, string>();
 			for (const plugin of list) {
 				try {
@@ -232,9 +237,11 @@ const syncWorkspacePlugins = async (workspaceId: number) => {
 		if (existing) {
 			// The member's own install is theirs: never replace it (with other permissions or an older
 			// release) behind their back. The pinned release simply does not run until they match.
-			errors[record.plugin_id] = `Shared workspace plugin: this workspace runs ${
-				record.repo
-			} ${record.version}, but ${
+			errors[
+				record.plugin_id
+			] = `Shared workspace plugin: this workspace runs ${record.repo} ${
+				record.version
+			}, but ${
 				existing.source === 'installed'
 					? `you have ${existing.origin?.tag ?? 'another release'} installed`
 					: `a ${existing.source} plugin uses this id`
@@ -439,7 +446,8 @@ const showPluginNotification = (
 						ToastAction,
 						{
 							altText: payload.command ? 'Run' : 'Open',
-							onClick: () => void followNotificationClick(host, store, payload.token!),
+							onClick: () =>
+								void followNotificationClick(host, store, payload.token!),
 						},
 						() => (payload.command ? 'Run' : 'Open'),
 				  )
@@ -521,7 +529,8 @@ export const installPlugins = async (
 			showPluginNotification(host, store, pluginName, payload),
 		dnd: () => ({
 			active: isDndActive(),
-			until: dndState.until == null ? null : new Date(dndState.until).toISOString(),
+			until:
+				dndState.until == null ? null : new Date(dndState.until).toISOString(),
 		}),
 		alarms: {
 			get: (key) => alarmsStore.get(key) as any,
@@ -536,7 +545,9 @@ export const installPlugins = async (
 			) => (await import('@tauri-apps/api/core')).invoke<T>(command, args);
 			if (workspace.kind === 'cloud') {
 				const localOnly = async () => {
-					throw new Error('exports go to a local workspace folder; this one is shared');
+					throw new Error(
+						'exports go to a local workspace folder; this one is shared',
+					);
 				};
 				return {
 					export: localOnly,
@@ -591,7 +602,9 @@ export const installPlugins = async (
 		},
 		revokePluginTokens: async (pluginId) => {
 			const { invoke } = await import('@tauri-apps/api/core');
-			await invoke('local_token_revoke_all', { pluginId }).catch(() => undefined);
+			await invoke('local_token_revoke_all', { pluginId }).catch(
+				() => undefined,
+			);
 		},
 		// Not the app's own origin: the main window's on_new_window hook denies the popup and hands the
 		// URL to the system opener, the same way any other external link in the app already opens.
@@ -625,11 +638,13 @@ export const installPlugins = async (
 	window.addEventListener('focus', wake);
 	const { listen } = await import('@tauri-apps/api/event');
 	await listen('plugins://tick', wake);
-	await listen<string>('plugins://notification-click', ({ payload }) =>
-		void followNotificationClick(host, store, payload),
+	await listen<string>(
+		'plugins://notification-click',
+		({ payload }) => void followNotificationClick(host, store, payload),
 	);
-	await listen<string>('tray://plugin-item', ({ payload }) =>
-		void followTrayClick(host, store, payload),
+	await listen<string>(
+		'tray://plugin-item',
+		({ payload }) => void followTrayClick(host, store, payload),
 	);
 	// The relay is only a hint: the routine is read back from that local workspace, never taken from the payload.
 	await listen<{ workspaceId?: unknown; routineId?: unknown }>(
@@ -638,10 +653,22 @@ export const installPlugins = async (
 			void (async () => {
 				const workspaceId = Number(payload?.workspaceId);
 				const routineId = Number(payload?.routineId);
-				if (!Number.isSafeInteger(workspaceId) || !Number.isSafeInteger(routineId)) return;
+				if (
+					!Number.isSafeInteger(workspaceId) ||
+					!Number.isSafeInteger(routineId)
+				)
+					return;
 				if (!(await localWorkspaceById(workspaceId))) return;
-				const { data } = await clientFor(workspaceId, store).get(`daily-routines/tasks/${routineId}`);
-				if (data?.data) domainEvents.emit({ type: 'routine.created', workspaceId, routineId, routine: data.data });
+				const { data } = await clientFor(workspaceId, store).get(
+					`daily-routines/tasks/${routineId}`,
+				);
+				if (data?.data)
+					domainEvents.emit({
+						type: 'routine.created',
+						workspaceId,
+						routineId,
+						routine: data.data,
+					});
 			})().catch(() => undefined),
 	);
 	watch(
@@ -740,7 +767,13 @@ export const installPlugins = async (
 							page?.updated_by?.kind === 'plugin'
 								? `plugin:${page.updated_by.id}`
 								: undefined;
-						domainEvents.emit({ type, workspaceId: workspace.id, pageId: page.id, page, actor });
+						domainEvents.emit({
+							type,
+							workspaceId: workspace.id,
+							pageId: page.id,
+							page,
+							actor,
+						});
 					},
 				}),
 			};
@@ -819,7 +852,8 @@ export const setWorkspacePlugin = async (pluginId: string, on: boolean) => {
 	if (!workspace || workspace.kind !== 'cloud' || !entry) return;
 	if (on) {
 		const pin = pinOf(entry);
-		if (!pin) throw new Error('only built-in and installed plugins can be shared');
+		if (!pin)
+			throw new Error('only built-in and installed plugins can be shared');
 		await $axios.put(`workspaces/${workspace.id}/plugins/${pluginId}`, pin);
 	} else {
 		await $axios.delete(`workspaces/${workspace.id}/plugins/${pluginId}`);

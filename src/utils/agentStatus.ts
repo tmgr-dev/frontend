@@ -122,14 +122,13 @@ export const sessionTooltip = (
 	const who = session.agent_profile || 'agent';
 	const where = session.host_label ? ` on ${session.host_label}` : '';
 	const since = formatSince(session.state_since, nowMs);
-	const parts = [`${STATE_LABELS[session.state] ?? session.state}: ${who}${where}`];
+	const parts = [
+		`${STATE_LABELS[session.state] ?? session.state}: ${who}${where}`,
+	];
 	if (since) parts.push(`since ${since}`);
 	if (session.stale) parts.push('no recent updates');
 	return parts.join(' · ');
 };
 
-export const statusTooltip = (
-	status: TaskAgentStatus,
-	nowMs: number,
-): string =>
+export const statusTooltip = (status: TaskAgentStatus, nowMs: number): string =>
 	status.sessions.map((session) => sessionTooltip(session, nowMs)).join('\n');

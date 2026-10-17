@@ -60,8 +60,9 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 		win.addEventListener('storage', (event: StorageEvent) => {
 			if (event.key === CONSENT_KEY || event.key === null) adopt(read());
 		});
-		const Channel = (win as unknown as { BroadcastChannel?: typeof BroadcastChannel })
-			.BroadcastChannel;
+		const Channel = (
+			win as unknown as { BroadcastChannel?: typeof BroadcastChannel }
+		).BroadcastChannel;
 		if (typeof Channel === 'function') {
 			channel = new Channel(CONSENT_CHANNEL);
 			channel.onmessage = (event: MessageEvent) => {
@@ -69,7 +70,8 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 					adopt(parse(win.localStorage.getItem(CONSENT_KEY)));
 				} catch {
 					const incoming = parse(JSON.stringify(event.data));
-					if ((incoming.updatedAt ?? '') > (current?.updatedAt ?? '')) adopt(incoming);
+					if ((incoming.updatedAt ?? '') > (current?.updatedAt ?? ''))
+						adopt(incoming);
 				}
 			};
 		}
@@ -79,7 +81,10 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 		get: () => (current ??= read()),
 		read,
 		set(patch) {
-			const next: ConsentRecord = { analytics: patch.analytics, updatedAt: new Date().toISOString() };
+			const next: ConsentRecord = {
+				analytics: patch.analytics,
+				updatedAt: new Date().toISOString(),
+			};
 			try {
 				win.localStorage.setItem(CONSENT_KEY, JSON.stringify(next));
 			} catch {
@@ -100,4 +105,5 @@ export const createConsentStore = (win: Window = window): ConsentStore => {
 
 let shared: ConsentStore | null = null;
 
-export const consentStore = (): ConsentStore => (shared ??= createConsentStore());
+export const consentStore = (): ConsentStore =>
+	(shared ??= createConsentStore());

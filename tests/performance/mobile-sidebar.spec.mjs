@@ -17,7 +17,9 @@ test('the sidebar slides in on a phone', async ({ page }) => {
   await expect(sheet.getByTitle('Switch workspace').first()).toBeInViewport();
 });
 
-test('the desktop sidebar keeps its dotted background layer', async ({ page }) => {
+test('the desktop sidebar keeps its dotted background layer', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await mockApp(page);
   await page.goto('/demo/board');

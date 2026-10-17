@@ -65,10 +65,16 @@ describe('classify', () => {
 
 	it('collects running timers from both sides and lets the tray stop a cloud timer', () => {
 		expect(classify('GET', 'tasks/runned', true)).toBe('runned');
-		expect(classify('DELETE', 'tasks/5/countdown', true, { workspace_id: 56 })).toBe('server');
-		expect(classify('DELETE', 'tasks/5/countdown', true, { workspace_id: -42 })).toBe('local');
+		expect(
+			classify('DELETE', 'tasks/5/countdown', true, { workspace_id: 56 }),
+		).toBe('server');
+		expect(
+			classify('DELETE', 'tasks/5/countdown', true, { workspace_id: -42 }),
+		).toBe('local');
 		expect(classify('DELETE', 'tasks/5/countdown', true)).toBe('local');
-		expect(classify('PUT', 'tasks/5', true, { workspace_id: 56 })).toBe('local');
+		expect(classify('PUT', 'tasks/5', true, { workspace_id: 56 })).toBe(
+			'local',
+		);
 	});
 
 	it('does not treat look-alike paths as account-level', () => {
@@ -114,8 +120,15 @@ describe('classify', () => {
 
 describe('classify graph endpoints', () => {
 	it('goes to the server outside a local workspace and stays local inside one', () => {
-		expect(classify('GET', 'graph/related?entity=task:1', false)).toBe('server');
-		for (const url of ['graph/related?entity=task:1', 'graph/path', 'graph/hubs', 'graph/orphans']) {
+		expect(classify('GET', 'graph/related?entity=task:1', false)).toBe(
+			'server',
+		);
+		for (const url of [
+			'graph/related?entity=task:1',
+			'graph/path',
+			'graph/hubs',
+			'graph/orphans',
+		]) {
 			expect(classify('GET', url, true)).toBe('local');
 		}
 	});
@@ -123,17 +136,43 @@ describe('classify graph endpoints', () => {
 
 describe('crossesWorkspaces', () => {
 	it('refuses sending a local task to the server', () => {
-		expect(crossesWorkspaces('server', { title: 'x', workspace_id: -42 }, undefined, null)).toBe(true);
-		expect(crossesWorkspaces('server', JSON.stringify({ workspace_id: -42 }), undefined, null)).toBe(true);
-		expect(crossesWorkspaces('server', {}, { workspace_id: -42 }, null)).toBe(true);
-		expect(crossesWorkspaces('server', { workspace_id: 56 }, undefined, null)).toBe(false);
+		expect(
+			crossesWorkspaces(
+				'server',
+				{ title: 'x', workspace_id: -42 },
+				undefined,
+				null,
+			),
+		).toBe(true);
+		expect(
+			crossesWorkspaces(
+				'server',
+				JSON.stringify({ workspace_id: -42 }),
+				undefined,
+				null,
+			),
+		).toBe(true);
+		expect(crossesWorkspaces('server', {}, { workspace_id: -42 }, null)).toBe(
+			true,
+		);
+		expect(
+			crossesWorkspaces('server', { workspace_id: 56 }, undefined, null),
+		).toBe(false);
 	});
 
 	it('refuses writing cloud or other-local data into the active local workspace', () => {
-		expect(crossesWorkspaces('local', { workspace_id: 56 }, undefined, -42)).toBe(true);
-		expect(crossesWorkspaces('local', { workspace_id: -7 }, undefined, -42)).toBe(true);
-		expect(crossesWorkspaces('local', { workspace_id: -42 }, undefined, -42)).toBe(false);
-		expect(crossesWorkspaces('local', { title: 'no workspace' }, undefined, -42)).toBe(false);
+		expect(
+			crossesWorkspaces('local', { workspace_id: 56 }, undefined, -42),
+		).toBe(true);
+		expect(
+			crossesWorkspaces('local', { workspace_id: -7 }, undefined, -42),
+		).toBe(true);
+		expect(
+			crossesWorkspaces('local', { workspace_id: -42 }, undefined, -42),
+		).toBe(false);
+		expect(
+			crossesWorkspaces('local', { title: 'no workspace' }, undefined, -42),
+		).toBe(false);
 	});
 });
 
@@ -144,7 +183,16 @@ describe('classify pages endpoints', () => {
 	});
 
 	it('never reaches the server from a local workspace', () => {
-		for (const url of ['pages', 'pages/tree', 'pages/trash', 'pages/search', 'pages/12/versions', 'pages/12/files', 'tasks/5/pages', 'workspaces/context']) {
+		for (const url of [
+			'pages',
+			'pages/tree',
+			'pages/trash',
+			'pages/search',
+			'pages/12/versions',
+			'pages/12/files',
+			'tasks/5/pages',
+			'workspaces/context',
+		]) {
 			expect(classify('GET', url, true)).toBe('local');
 		}
 		for (const [method, url] of [
@@ -164,7 +212,9 @@ describe('classify pages endpoints', () => {
 	});
 
 	it('keeps a page write that names another workspace from reaching the server', () => {
-		expect(crossesWorkspaces('local', { workspace_id: 3 }, undefined, -1)).toBe(true);
+		expect(crossesWorkspaces('local', { workspace_id: 3 }, undefined, -1)).toBe(
+			true,
+		);
 	});
 });
 
@@ -206,7 +256,12 @@ describe('pages endpoints in the local API', () => {
 describe('classify onboarding', () => {
 	it('answers every onboarding verb itself without an account and never sends it to a local workspace', () => {
 		for (const method of ['GET', 'POST', 'PUT', 'PATCH', 'DELETE']) {
-			for (const url of ['onboarding', 'onboarding/preferences', 'onboarding/tours/start.nav', 'onboarding/facts']) {
+			for (const url of [
+				'onboarding',
+				'onboarding/preferences',
+				'onboarding/tours/start.nav',
+				'onboarding/facts',
+			]) {
 				expect(classify(method, url, false, undefined, true)).toBe('guest');
 			}
 		}

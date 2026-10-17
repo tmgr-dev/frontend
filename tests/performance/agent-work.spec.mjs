@@ -46,12 +46,19 @@ test('task panel shows agent work apart from the human time', async ({
               summary: 'Backend: agent_work_runs table, REST and MCP tools',
               pr_url: 'https://github.com/tmgr-dev/backend/pull/148',
               commits: [
-                { sha: 'e7134ec0', message: 'feat(agent-work): track AI agent work' },
+                {
+                  sha: 'e7134ec0',
+                  message: 'feat(agent-work): track AI agent work',
+                },
               ],
               tests: { passed: 84, failed: 0, command: 'mvn test' },
             },
           ],
-          totals: { agent_seconds: 5100, human_seconds: 900, human_timer_running: false },
+          totals: {
+            agent_seconds: 5100,
+            human_seconds: 900,
+            human_timer_running: false,
+          },
         },
       },
     }),

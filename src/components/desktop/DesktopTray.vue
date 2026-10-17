@@ -2,9 +2,7 @@
 	<AlertDialog :open="!!away" @update:open="(open) => !open && (away = null)">
 		<AlertDialogContent>
 			<AlertDialogHeader>
-				<AlertDialogTitle>
-					You were away for {{ awayLabel }}
-				</AlertDialogTitle>
+				<AlertDialogTitle> You were away for {{ awayLabel }} </AlertDialogTitle>
 				<AlertDialogDescription>
 					Since {{ awaySinceLabel }} the timer kept running on
 					{{ runningLabel }}.
@@ -37,18 +35,18 @@
 	import { pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
 	import store from '@/store';
-	import { isDndActive, setDnd } from '@/utils/dnd';
-	import { showSurface } from '@/utils/moduleSurfaces';
-	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import {
 		buildTrayState,
 		formatAway,
 		loadRecent,
 		pushTrayState,
 		rememberRecent,
-		saveRecent,
 		sameTask,
+		saveRecent,
 	} from '@/utils/desktopTray';
+	import { isDndActive, setDnd } from '@/utils/dnd';
+	import { showSurface } from '@/utils/moduleSurfaces';
+	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import {
 		computed,
 		defineComponent,
@@ -96,7 +94,8 @@
 		},
 		setup(props) {
 			const pusher = usePusher();
-			const isOn = (key) => store.getters['featureToggles/isFeatureEnabled'](key);
+			const isOn = (key) =>
+				store.getters['featureToggles/isFeatureEnabled'](key);
 			const recent = ref([]);
 			const away = ref(null);
 			const unlisteners = [];

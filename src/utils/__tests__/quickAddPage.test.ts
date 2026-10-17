@@ -1,5 +1,5 @@
-import { crossesWorkspaces } from '@/local/classify';
 import type { PageSummary } from '@/actions/tmgr/pages';
+import { crossesWorkspaces } from '@/local/classify';
 import {
 	appendToLoadedPage,
 	composeAppendMarkdown,
@@ -11,7 +11,12 @@ import {
 	writeLastPage,
 } from '../quickAddPage';
 
-const page = (id: number, title: string, parent_id: number | null = null, position = 0): PageSummary => ({
+const page = (
+	id: number,
+	title: string,
+	parent_id: number | null = null,
+	position = 0,
+): PageSummary => ({
 	id,
 	title,
 	slug: `p${id}`,
@@ -24,12 +29,14 @@ const page = (id: number, title: string, parent_id: number | null = null, positi
 
 describe('listPageSections', () => {
 	it('lists level-2 headings only, in order, with raw text', () => {
-		const body = '# Title\n\nintro\n\n## Хронология\n- a\n### Sub\n## **Итоги** ##\n#### deep\n';
+		const body =
+			'# Title\n\nintro\n\n## Хронология\n- a\n### Sub\n## **Итоги** ##\n#### deep\n';
 		expect(listPageSections(body)).toEqual(['Хронология', '**Итоги**']);
 	});
 
 	it('skips headings inside code fences and repeated headings', () => {
-		const body = '```\n## fake\n```\n## Real\n## real\n~~~\n## also fake\n~~~\n';
+		const body =
+			'```\n## fake\n```\n## Real\n## real\n~~~\n## also fake\n~~~\n';
 		expect(listPageSections(body)).toEqual(['Real']);
 	});
 
@@ -56,7 +63,9 @@ describe('listPageSections', () => {
 
 describe('composeAppendMarkdown', () => {
 	it('puts the screenshot link first, then the text', () => {
-		expect(composeAppendMarkdown('  note  ', 12)).toBe('![](tmgr://file/12)\n\nnote');
+		expect(composeAppendMarkdown('  note  ', 12)).toBe(
+			'![](tmgr://file/12)\n\nnote',
+		);
 	});
 
 	it('handles text only and file only', () => {
@@ -67,7 +76,12 @@ describe('composeAppendMarkdown', () => {
 });
 
 describe('page options', () => {
-	const pages = [page(1, 'Root B', null, 1), page(2, 'Root A', null, 0), page(3, 'Child', 2), page(4, 'Deep', 3)];
+	const pages = [
+		page(1, 'Root B', null, 1),
+		page(2, 'Root A', null, 0),
+		page(3, 'Child', 2),
+		page(4, 'Deep', 3),
+	];
 
 	it('flattens the tree depth-first with depth', () => {
 		expect(flattenPages(pages)).toEqual([
@@ -81,7 +95,9 @@ describe('page options', () => {
 	it('filters by title and keeps the selected page visible', () => {
 		const options = flattenPages(pages);
 		expect(filterPageOptions(options, 'root').map((o) => o.id)).toEqual([2, 1]);
-		expect(filterPageOptions(options, 'root', 4).map((o) => o.id)).toEqual([2, 4, 1]);
+		expect(filterPageOptions(options, 'root', 4).map((o) => o.id)).toEqual([
+			2, 4, 1,
+		]);
 		expect(filterPageOptions(options, '  ')).toBe(options);
 	});
 
@@ -120,14 +136,24 @@ describe('last page storage', () => {
 describe('appendToLoadedPage', () => {
 	const deps = () => ({
 		uploadPageFile: jest.fn(async () => ({ id: 9 })),
-		appendToPage: jest.fn(async () => ({ id: 4, slug: 'doc', title: 'Doc', version: 3 })),
+		appendToPage: jest.fn(async () => ({
+			id: 4,
+			slug: 'doc',
+			title: 'Doc',
+			version: 3,
+		})),
 		relayPageAppended: jest.fn(async () => undefined),
 	});
 
 	it('sends the workspace the page list came from with the upload, the append and the relay', async () => {
 		const d = deps();
 		const file = new File(['x'], 'shot.png');
-		await appendToLoadedPage({ id: -3, code: 'local-a' }, 4, { text: 'note', section: 'Log', screenshot: file }, d);
+		await appendToLoadedPage(
+			{ id: -3, code: 'local-a' },
+			4,
+			{ text: 'note', section: 'Log', screenshot: file },
+			d,
+		);
 		expect(d.uploadPageFile).toHaveBeenCalledWith(4, file, -3);
 		expect(d.appendToPage).toHaveBeenCalledWith(4, {
 			markdown: '![](tmgr://file/9)\n\nnote',
@@ -142,7 +168,12 @@ describe('appendToLoadedPage', () => {
 
 	it('makes the append fail closed when the active workspace is no longer the loaded one', async () => {
 		const d = deps();
-		await appendToLoadedPage({ id: -3, code: 'local-a' }, 4, { text: 'note', section: '', screenshot: null }, d);
+		await appendToLoadedPage(
+			{ id: -3, code: 'local-a' },
+			4,
+			{ text: 'note', section: '', screenshot: null },
+			d,
+		);
 		const body = (d.appendToPage.mock.calls[0] as any[])[1];
 		expect(crossesWorkspaces('local', body, undefined, -3)).toBe(false);
 		expect(crossesWorkspaces('local', body, undefined, -9)).toBe(true);
@@ -151,8 +182,17 @@ describe('appendToLoadedPage', () => {
 
 	it('appends text only without an upload', async () => {
 		const d = deps();
-		await appendToLoadedPage({ id: 7, code: 'w' }, 4, { text: 'note', section: '', screenshot: null }, d);
+		await appendToLoadedPage(
+			{ id: 7, code: 'w' },
+			4,
+			{ text: 'note', section: '', screenshot: null },
+			d,
+		);
 		expect(d.uploadPageFile).not.toHaveBeenCalled();
-		expect(d.appendToPage).toHaveBeenCalledWith(4, { markdown: 'note', heading: undefined, workspace_id: 7 });
+		expect(d.appendToPage).toHaveBeenCalledWith(4, {
+			markdown: 'note',
+			heading: undefined,
+			workspace_id: 7,
+		});
 	});
 });

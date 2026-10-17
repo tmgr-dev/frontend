@@ -11,7 +11,10 @@ const commit = jest.fn();
 jest.mock('@/composable/usePusher', () => ({
 	usePusher: () => ({ subscribeToWorkspace, unsubscribeHandlerFromWorkspace }),
 }));
-jest.mock('@/store', () => ({ __esModule: true, default: { commit, state: { pagesEvent: null } } }));
+jest.mock('@/store', () => ({
+	__esModule: true,
+	default: { commit, state: { pagesEvent: null } },
+}));
 jest.mock('@/actions/tmgr/pages', () => ({ invalidatePages: jest.fn() }));
 
 import { usePagesRealtime } from '../usePagesRealtime';
@@ -23,8 +26,14 @@ it('a page window subscribes once its workspace is ready and turns page events i
 	expect(subscribeToWorkspace).not.toHaveBeenCalled();
 	ready.value = true;
 	await nextTick();
-	expect(subscribeToWorkspace).toHaveBeenCalledWith(-3, expect.objectContaining({ onPageEvent: expect.any(Function) }));
+	expect(subscribeToWorkspace).toHaveBeenCalledWith(
+		-3,
+		expect.objectContaining({ onPageEvent: expect.any(Function) }),
+	);
 	const page = { id: 4, slug: 'doc', version: 3 };
 	handlers[-3].onPageEvent('page.updated', { page });
-	expect(commit).toHaveBeenCalledWith('pagesEvent', { type: 'page.updated', page });
+	expect(commit).toHaveBeenCalledWith('pagesEvent', {
+		type: 'page.updated',
+		page,
+	});
 });

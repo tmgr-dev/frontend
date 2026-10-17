@@ -16,7 +16,10 @@
 		@click="handleCardClick"
 		@keydown="handleCardKeydown"
 	>
-		<div v-if="node.accent" :class="['h-[3px] w-full', barClass(node.accent)]" />
+		<div
+			v-if="node.accent"
+			:class="['h-[3px] w-full', barClass(node.accent)]"
+		/>
 		<div :class="cardInnerClasses(node)">
 			<PluginView
 				v-for="(child, index) in node.children"
@@ -62,7 +65,8 @@
 			<AlertDialogContent v-if="menuConfirmItem">
 				<AlertDialogHeader>
 					<AlertDialogTitle
-						>Plugin {{ pluginName }}: {{ menuConfirmItem.text }}</AlertDialogTitle
+						>Plugin {{ pluginName }}:
+						{{ menuConfirmItem.text }}</AlertDialogTitle
 					>
 					<AlertDialogDescription>{{
 						menuConfirmItem.confirm
@@ -70,7 +74,9 @@
 				</AlertDialogHeader>
 				<AlertDialogFooter>
 					<AlertDialogCancel>Cancel</AlertDialogCancel>
-					<AlertDialogAction @click="runMenuConfirm">Continue</AlertDialogAction>
+					<AlertDialogAction @click="runMenuConfirm"
+						>Continue</AlertDialogAction
+					>
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>
@@ -98,8 +104,7 @@
 		:class="[
 			'inline-flex w-fit items-center rounded px-1.5 py-0.5 text-2xs font-semibold tabular-nums',
 			colorClass(node.color),
-			node.command &&
-				'cursor-pointer transition-colors hover:opacity-80',
+			node.command && 'cursor-pointer transition-colors hover:opacity-80',
 		]"
 		@click="node.command ? runNodeCommand(node) : undefined"
 	>
@@ -191,7 +196,9 @@
 		</Button>
 		<AlertDialogContent v-if="node.confirm">
 			<AlertDialogHeader>
-				<AlertDialogTitle>Plugin {{ pluginName }}: {{ node.text }}</AlertDialogTitle>
+				<AlertDialogTitle
+					>Plugin {{ pluginName }}: {{ node.text }}</AlertDialogTitle
+				>
 				<AlertDialogDescription>{{ node.confirm }}</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
@@ -278,13 +285,13 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
-	import { toast } from '@/components/ui/toast';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
 		DropdownMenuItem,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
+	import { toast } from '@/components/ui/toast';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
 	import { usePluginTicker } from '@/composable/usePluginTicker';
 	import { formatDueTime, formatTimeAgo } from '@/pluginSystem/relativeTime';
@@ -448,7 +455,8 @@
 			};
 			const isCopied = computed(
 				() =>
-					props.node.type === 'copyable' && copiedText.value === props.node.text,
+					props.node.type === 'copyable' &&
+					copiedText.value === props.node.text,
 			);
 			const tick = usePluginTicker();
 			const timeAgoText = computed(() =>
@@ -470,7 +478,8 @@
 					: 'text-foreground',
 			);
 			const pluginName = computed(
-				() => pluginState.plugins[props.pluginId]?.manifest.name ?? props.pluginId,
+				() =>
+					pluginState.plugins[props.pluginId]?.manifest.name ?? props.pluginId,
 			);
 			return {
 				running,

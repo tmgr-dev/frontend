@@ -13,7 +13,9 @@ export interface UsageView {
 export interface UsageConsent {
 	read(): UsageView;
 	set(on: boolean): Promise<UsageView>;
-	subscribe(listener: (change?: 'deny' | 'withdraw') => void | Promise<void>): () => void;
+	subscribe(
+		listener: (change?: 'deny' | 'withdraw') => void | Promise<void>,
+	): () => void;
 	saveFailed(): boolean;
 }
 
@@ -26,7 +28,9 @@ const parseStored = (raw: string | null): Stored | null => {
 	if (!raw) return null;
 	try {
 		const data = JSON.parse(raw);
-		return typeof data?.on === 'boolean' && Number.isInteger(data.generation) && data.generation >= 0
+		return typeof data?.on === 'boolean' &&
+			Number.isInteger(data.generation) &&
+			data.generation >= 0
 			? { on: data.on, generation: data.generation }
 			: null;
 	} catch {
@@ -40,10 +44,23 @@ const migrateLegacy = (win: Window) => {
 		const raw = storage.getItem(CONSENT_KEY);
 		if (!raw) return;
 		const old = JSON.parse(raw);
-		if (!old || typeof old !== 'object' || !('usage' in old || 'usageGeneration' in old)) return;
-		if (storage.getItem(USAGE_KEY) === null && (old.usage === 'granted' || old.usage === 'denied')) {
-			const generation = Number.isInteger(old.usageGeneration) ? Math.max(1, old.usageGeneration) : 1;
-			storage.setItem(USAGE_KEY, JSON.stringify({ on: old.usage === 'granted', generation }));
+		if (
+			!old ||
+			typeof old !== 'object' ||
+			!('usage' in old || 'usageGeneration' in old)
+		)
+			return;
+		if (
+			storage.getItem(USAGE_KEY) === null &&
+			(old.usage === 'granted' || old.usage === 'denied')
+		) {
+			const generation = Number.isInteger(old.usageGeneration)
+				? Math.max(1, old.usageGeneration)
+				: 1;
+			storage.setItem(
+				USAGE_KEY,
+				JSON.stringify({ on: old.usage === 'granted', generation }),
+			);
 		}
 		const { usage: _usage, usageGeneration: _generation, ...rest } = old;
 		storage.setItem(CONSENT_KEY, JSON.stringify(rest));
@@ -51,7 +68,9 @@ const migrateLegacy = (win: Window) => {
 };
 
 export const createUsageConsent = (win: Window = window): UsageConsent => {
-	const listeners = new Set<(change?: 'deny' | 'withdraw') => void | Promise<void>>();
+	const listeners = new Set<
+		(change?: 'deny' | 'withdraw') => void | Promise<void>
+	>();
 	const locks = win.navigator?.locks;
 	let hardOff = false;
 	let denied = false;
@@ -88,14 +107,19 @@ export const createUsageConsent = (win: Window = window): UsageConsent => {
 		const incoming = parseStored(event.newValue);
 		const current = stored();
 		if (
-			incoming?.on && current?.on &&
-			incoming.generation === current.generation && current.generation > deniedThrough
-		) denied = false;
+			incoming?.on &&
+			current?.on &&
+			incoming.generation === current.generation &&
+			current.generation > deniedThrough
+		)
+			denied = false;
 		generationHere = Math.max(current?.generation ?? 0, generationHere);
 		void notify();
 	});
 	read();
-	const Channel = (win as unknown as { BroadcastChannel?: typeof BroadcastChannel }).BroadcastChannel;
+	const Channel = (
+		win as unknown as { BroadcastChannel?: typeof BroadcastChannel }
+	).BroadcastChannel;
 	if (typeof Channel === 'function') {
 		channel = new Channel(TELEMETRY_CHANNEL);
 		channel.onmessage = (event: MessageEvent) => {
@@ -107,7 +131,10 @@ export const createUsageConsent = (win: Window = window): UsageConsent => {
 		};
 	}
 
-	void withLock(locks, 'consent', () => migrateLegacy(win)).then(() => notify(), () => {});
+	void withLock(locks, 'consent', () => migrateLegacy(win)).then(
+		() => notify(),
+		() => {},
+	);
 
 	return {
 		read,
@@ -120,7 +147,10 @@ export const createUsageConsent = (win: Window = window): UsageConsent => {
 				const generation = read().generation + 1;
 				generationHere = generation;
 				try {
-					win.localStorage.setItem(USAGE_KEY, JSON.stringify({ on: false, generation }));
+					win.localStorage.setItem(
+						USAGE_KEY,
+						JSON.stringify({ on: false, generation }),
+					);
 				} catch {
 					try {
 						win.localStorage.removeItem(USAGE_KEY);
@@ -132,14 +162,25 @@ export const createUsageConsent = (win: Window = window): UsageConsent => {
 				await withLock(locks, 'consent', async () => {
 					const current = stored();
 					const generation =
-						!on && current && !current.on && current.generation === generationHere
+						!on &&
+						current &&
+						!current.on &&
+						current.generation === generationHere
 							? generationHere
 							: read().generation + 1;
-					if (on && ((stored()?.generation ?? 0) !== generation - 1 || request !== choice)) return;
+					if (
+						on &&
+						((stored()?.generation ?? 0) !== generation - 1 ||
+							request !== choice)
+					)
+						return;
 					generationHere = generation;
 					let saved = false;
 					try {
-						win.localStorage.setItem(USAGE_KEY, JSON.stringify({ on, generation }));
+						win.localStorage.setItem(
+							USAGE_KEY,
+							JSON.stringify({ on, generation }),
+						);
 						saved = true;
 					} catch {
 						if (!on) {
@@ -176,4 +217,5 @@ export const createUsageConsent = (win: Window = window): UsageConsent => {
 
 let shared: UsageConsent | null = null;
 
-export const usageConsent = (): UsageConsent => (shared ??= createUsageConsent());
+export const usageConsent = (): UsageConsent =>
+	(shared ??= createUsageConsent());

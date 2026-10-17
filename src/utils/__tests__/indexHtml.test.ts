@@ -7,7 +7,9 @@ const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
 
 describe('index.html analytics', () => {
 	it('web build loads neither Yandex nor Google tags statically', () => {
-		expect(html).not.toMatch(/mc\.yandex|metrika|ym\(|googletagmanager|gtag\(/i);
+		expect(html).not.toMatch(
+			/mc\.yandex|metrika|ym\(|googletagmanager|gtag\(/i,
+		);
 	});
 
 	it('web build keeps the self-hosted analytics inside the strip markers', () => {
@@ -54,14 +56,18 @@ describe('index.html analytics', () => {
 			expect(injectedOn(pathname)).toHaveLength(0);
 		});
 
-		it.each(['/', '/tmgrdev/board', '/loginhistory', '/l/abc', '/settings/personas', '/workspaces'])(
-			'is loaded on %s',
-			(pathname) => {
-				const [script] = injectedOn(pathname);
-				expect(script.src).toBe('https://analytics.dzik.email/js/script.js');
-				expect(script.attrs['data-domain']).toBe('tmgr.dev');
-			},
-		);
+		it.each([
+			'/',
+			'/tmgrdev/board',
+			'/loginhistory',
+			'/l/abc',
+			'/settings/personas',
+			'/workspaces',
+		])('is loaded on %s', (pathname) => {
+			const [script] = injectedOn(pathname);
+			expect(script.src).toBe('https://analytics.dzik.email/js/script.js');
+			expect(script.attrs['data-domain']).toBe('tmgr.dev');
+		});
 	});
 
 	it.each([

@@ -36,7 +36,11 @@
 				await getCurrentWindow()[action]();
 			};
 
-			return { controls, run, isDesktop: isDesktopApp() && !hasNativeTitleBar() };
+			return {
+				controls,
+				run,
+				isDesktop: isDesktopApp() && !hasNativeTitleBar(),
+			};
 		},
 	});
 </script>

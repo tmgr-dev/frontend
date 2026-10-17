@@ -47,9 +47,9 @@ describe('createPkcePair', () => {
 		const fixed = {
 			getRandomValues: (bytes: Uint8Array) => {
 				bytes.set([
-					116, 24, 223, 180, 151, 153, 224, 37, 79, 250, 96, 125, 216, 173,
-					187, 186, 22, 212, 37, 77, 105, 214, 191, 240, 91, 88, 5, 88, 83,
-					132, 141, 121,
+					116, 24, 223, 180, 151, 153, 224, 37, 79, 250, 96, 125, 216, 173, 187,
+					186, 22, 212, 37, 77, 105, 214, 191, 240, 91, 88, 5, 88, 83, 132, 141,
+					121,
 				]);
 				return bytes;
 			},
@@ -108,11 +108,17 @@ describe('takePendingDesktopAuth', () => {
 
 	it('a newer attempt replaces the old one, so a late callback of the old one is rejected', async () => {
 		const storage = memoryStorage();
-		const oldState = (await startedAt(storage, 1000)).searchParams.get('state')!;
-		const newState = (await startedAt(storage, 2000)).searchParams.get('state')!;
+		const oldState = (await startedAt(storage, 1000)).searchParams.get(
+			'state',
+		)!;
+		const newState = (await startedAt(storage, 2000)).searchParams.get(
+			'state',
+		)!;
 
 		expect(takePendingDesktopAuth(oldState, storage, () => 3000)).toBeNull();
-		expect(takePendingDesktopAuth(newState, storage, () => 3000)).not.toBeNull();
+		expect(
+			takePendingDesktopAuth(newState, storage, () => 3000),
+		).not.toBeNull();
 	});
 
 	it('only the most recently started attempt may install its session', async () => {
@@ -195,9 +201,9 @@ describe('website relay helpers', () => {
 		expect(
 			parseRelayFragment(relayReturnHash({ code: CODE, state: STATE })),
 		).toEqual({ code: CODE, state: STATE });
-		expect(parseRelayFragment(relayReturnHash({ error: 'telegram' }))).toEqual(
-			{ error: 'telegram' },
-		);
+		expect(parseRelayFragment(relayReturnHash({ error: 'telegram' }))).toEqual({
+			error: 'telegram',
+		});
 	});
 
 	it('builds the top-level complete URL for the starting browser', () => {
@@ -225,9 +231,10 @@ describe('website relay helpers', () => {
 		(provider) => {
 			const error = `${provider}_link_confirmation`;
 			expect(parseRelayFragment(`#error=${error}`)).toEqual({ error });
-			expect(
-				parseAuthCallback(`tmgr://auth/callback?error=${error}`),
-			).toEqual({ type: 'auth', error });
+			expect(parseAuthCallback(`tmgr://auth/callback?error=${error}`)).toEqual({
+				type: 'auth',
+				error,
+			});
 			expect(buildDesktopCallbackUrl({ error })).toBe(
 				`tmgr://auth/callback?error=${error}`,
 			);

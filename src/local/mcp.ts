@@ -1,10 +1,13 @@
 import { dispatchLocal } from './dispatch';
+import { checkPersonaIdentity, type PersonaPermission } from './personaGate';
 import { normalizePath, type LocalRouter } from './router';
 import type { LocalContext } from './types';
-import { checkPersonaIdentity, type PersonaPermission } from './personaGate';
 
 export interface McpDeps {
-	personaPrompt(uuid: string): Promise<{ system_prompt?: string | null; prompt_version?: number | null } | null>;
+	personaPrompt(uuid: string): Promise<{
+		system_prompt?: string | null;
+		prompt_version?: number | null;
+	} | null>;
 }
 
 class ToolError extends Error {}
@@ -12,24 +15,36 @@ class ToolError extends Error {}
 const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 const DEFAULT_PROTOCOL_VERSION = '2025-06-18';
 
-const toCamelKey = (key: string): string => key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+const toCamelKey = (key: string): string =>
+	key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
 
 /** Free-form user content (rich-text JSON, checkpoint lists): keys travel as the user wrote them. */
-const OPAQUE_KEYS = new Set(['description_json', 'checkpoints', 'settings', 'properties']);
+const OPAQUE_KEYS = new Set([
+	'description_json',
+	'checkpoints',
+	'settings',
+	'properties',
+]);
 
 const camelizeDeep = (value: unknown, opaque = false): unknown => {
 	if (opaque) return value;
 	if (Array.isArray(value)) return value.map((v) => camelizeDeep(v));
 	if (value && typeof value === 'object') {
 		return Object.fromEntries(
-			Object.entries(value).map(([k, v]) => [toCamelKey(k), camelizeDeep(v, OPAQUE_KEYS.has(k))]),
+			Object.entries(value).map(([k, v]) => [
+				toCamelKey(k),
+				camelizeDeep(v, OPAQUE_KEYS.has(k)),
+			]),
 		);
 	}
 	return value;
 };
 
 const ensureTokenWorkspace = (args: Record<string, any>, ctx: LocalContext) => {
-	if (args.workspaceId != null && Number(args.workspaceId) !== ctx.workspace.id) {
+	if (
+		args.workspaceId != null &&
+		Number(args.workspaceId) !== ctx.workspace.id
+	) {
 		throw new ToolError('workspaceId does not match this local workspace');
 	}
 };
@@ -51,12 +66,17 @@ const runRoute = async (
 	const res = await dispatchLocal(router, ctx, method, path, body);
 	if (!res) throw new ToolError(`No local route for ${method} ${path}`);
 	if (res.status >= 400) {
-		if (res.data?.error === 'feature_disabled' && res.data?.feature === 'agent_work') {
+		if (
+			res.data?.error === 'feature_disabled' &&
+			res.data?.feature === 'agent_work'
+		) {
 			throw new ToolError(
 				`Agent work is disabled in workspace ${ctx.workspace.code} — skip agent-work reporting`,
 			);
 		}
-		throw new ToolError(res.data?.message ?? `Request failed with status ${res.status}`);
+		throw new ToolError(
+			res.data?.message ?? `Request failed with status ${res.status}`,
+		);
 	}
 	return res.data?.data;
 };
@@ -64,7 +84,8 @@ const runRoute = async (
 const qs = (params: Record<string, unknown>): string => {
 	const search = new URLSearchParams();
 	Object.entries(params).forEach(([key, value]) => {
-		if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+		if (value !== undefined && value !== null && value !== '')
+			search.set(key, String(value));
 	});
 	const s = search.toString();
 	return s ? `?${s}` : '';
@@ -74,12 +95,27 @@ const pageOf = async (
 	router: LocalRouter,
 	ctx: LocalContext,
 	path: string,
-): Promise<{ items: any[]; page: number; perPage: number; total: number; hasMore: boolean }> => {
+): Promise<{
+	items: any[];
+	page: number;
+	perPage: number;
+	total: number;
+	hasMore: boolean;
+}> => {
 	const res = await dispatchLocal(router, ctx, 'GET', path);
 	if (!res) throw new ToolError(`No local route for GET ${path}`);
-	if (res.status >= 400) throw new ToolError(res.data?.message ?? `Request failed with status ${res.status}`);
+	if (res.status >= 400)
+		throw new ToolError(
+			res.data?.message ?? `Request failed with status ${res.status}`,
+		);
 	const { data, meta } = res.data;
-	return { items: data, page: meta.current_page, perPage: meta.per_page, total: meta.total, hasMore: meta.current_page < meta.last_page };
+	return {
+		items: data,
+		page: meta.current_page,
+		perPage: meta.per_page,
+		total: meta.total,
+		hasMore: meta.current_page < meta.last_page,
+	};
 };
 
 const DEFAULT_PER_PAGE = 50;
@@ -88,24 +124,40 @@ const MAX_PER_PAGE = 100;
 /** Cloud pagination (`McpPage.of`) for a local route that has none: slice the full array in memory. */
 const paginateInMemory = (all: any[], page?: number, perPage?: number) => {
 	const p = !page || page < 1 ? 1 : page;
-	const size = !perPage || perPage < 1 ? DEFAULT_PER_PAGE : Math.min(perPage, MAX_PER_PAGE);
+	const size =
+		!perPage || perPage < 1
+			? DEFAULT_PER_PAGE
+			: Math.min(perPage, MAX_PER_PAGE);
 	const from = Math.min((p - 1) * size, all.length);
 	const to = Math.min(from + size, all.length);
-	return { items: all.slice(from, to), page: p, perPage: size, total: all.length, hasMore: to < all.length };
+	return {
+		items: all.slice(from, to),
+		page: p,
+		perPage: size,
+		total: all.length,
+		hasMore: to < all.length,
+	};
 };
 
 /** The local `tasks` route defaults `per_page` to 20; the cloud tools default to 50 (cap 100). */
 const perPageArg = (args: Record<string, any>): number =>
-	!args.perPage || args.perPage < 1 ? DEFAULT_PER_PAGE : Math.min(Number(args.perPage), MAX_PER_PAGE);
+	!args.perPage || args.perPage < 1
+		? DEFAULT_PER_PAGE
+		: Math.min(Number(args.perPage), MAX_PER_PAGE);
 
 /** Empty permissions (never the stored grant) once a persona is unknown, archived or disabled. */
-const personaGrantPermissions = async (ctx: LocalContext): Promise<PersonaPermission[]> => {
+const personaGrantPermissions = async (
+	ctx: LocalContext,
+): Promise<PersonaPermission[]> => {
 	const [persona] = await ctx.db.select<{ archived_at: string | null }>(
 		`SELECT archived_at FROM personas WHERE uuid = ?`,
 		[ctx.actor!.id],
 	);
 	if (!persona || persona.archived_at) return [];
-	const [grant] = await ctx.db.select<{ permissions: string; disabled_at: string | null }>(
+	const [grant] = await ctx.db.select<{
+		permissions: string;
+		disabled_at: string | null;
+	}>(
 		`SELECT permissions, disabled_at FROM workspace_personas WHERE persona_uuid = ?`,
 		[ctx.actor!.id],
 	);
@@ -115,7 +167,12 @@ const personaGrantPermissions = async (ctx: LocalContext): Promise<PersonaPermis
 
 const personaRow = (ctx: LocalContext) =>
 	ctx.db
-		.select<{ name: string; description: string | null; owner_user_id: number; owner_name: string }>(
+		.select<{
+			name: string;
+			description: string | null;
+			owner_user_id: number;
+			owner_name: string;
+		}>(
 			`SELECT name, description, owner_user_id, owner_name FROM personas WHERE uuid = ?`,
 			[ctx.actor!.id],
 		)
@@ -124,19 +181,33 @@ const personaRow = (ctx: LocalContext) =>
 interface ToolDef {
 	name: string;
 	description: string;
-	inputSchema: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
+	inputSchema: {
+		type: 'object';
+		properties: Record<string, unknown>;
+		required?: string[];
+	};
 	permission?: PersonaPermission;
 	/** `user` tools are for the account owner's own token; a persona never sees or runs them. */
 	audience?: 'user';
 	raw?: boolean;
 	/** `whoami`/`get_persona` mirror the cloud's own snake_case Map literally — never camelized. */
 	literal?: boolean;
-	handler: (args: Record<string, any>, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => Promise<any>;
+	handler: (
+		args: Record<string, any>,
+		ctx: LocalContext,
+		router: LocalRouter,
+		deps: McpDeps,
+	) => Promise<any>;
 }
 
-
 /** Page failures read like the cloud tool's: the message plus status and error code, a conflict names the current version. */
-const pageRoute = async (router: LocalRouter, ctx: LocalContext, method: string, path: string, body?: unknown) => {
+const pageRoute = async (
+	router: LocalRouter,
+	ctx: LocalContext,
+	method: string,
+	path: string,
+	body?: unknown,
+) => {
 	const res = await dispatchLocal(router, ctx, method, path, body);
 	if (!res) throw new ToolError(`No local route for ${method} ${path}`);
 	if (res.status >= 400) {
@@ -146,21 +217,28 @@ const pageRoute = async (router: LocalRouter, ctx: LocalContext, method: string,
 				`Page version conflict (409 page_conflict): the page is now at version ${res.data.data.version}. Re-read it with pages_get, merge your change into the current body and retry with that version; never overwrite.`,
 			);
 		}
-		throw new ToolError(`${res.data?.message ?? 'Request failed'} (${res.status}${error ? ` ${error}` : ''})`);
+		throw new ToolError(
+			`${res.data?.message ?? 'Request failed'} (${res.status}${
+				error ? ` ${error}` : ''
+			})`,
+		);
 	}
 	return res.data?.data;
 };
 
 const pageItems = (items: any[]) => ({ items, total: items.length });
 
-const WORKSPACE_ARG = "Workspace id; omit for the account's default workspace (a persona always works in its token's workspace)";
+const WORKSPACE_ARG =
+	"Workspace id; omit for the account's default workspace (a persona always works in its token's workspace)";
 const workspaceProp = { type: 'number', description: WORKSPACE_ARG };
 const pageBody = (args: Record<string, any>, keys: Record<string, string>) => {
 	const body: Record<string, any> = {};
-	for (const [arg, field] of Object.entries(keys)) if (args[arg] !== undefined && args[arg] !== null) body[field] = args[arg];
+	for (const [arg, field] of Object.entries(keys))
+		if (args[arg] !== undefined && args[arg] !== null) body[field] = args[arg];
 	return body;
 };
-const pageRef = (args: Record<string, any>) => encodeURIComponent(String(requireArg(args, 'id')));
+const pageRef = (args: Record<string, any>) =>
+	encodeURIComponent(String(requireArg(args, 'id')));
 
 const PAGES_TOOLS: ToolDef[] = [
 	{
@@ -172,7 +250,8 @@ const PAGES_TOOLS: ToolDef[] = [
 		inputSchema: { type: 'object', properties: { workspaceId: workspaceProp } },
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			return (await pageRoute(router, ctx, 'GET', 'workspaces/context')).markdown;
+			return (await pageRoute(router, ctx, 'GET', 'workspaces/context'))
+				.markdown;
 		},
 	},
 	{
@@ -182,14 +261,20 @@ const PAGES_TOOLS: ToolDef[] = [
 		permission: 'pages:read',
 		inputSchema: {
 			type: 'object',
-			properties: { taskId: { type: 'number', description: 'Task id' }, workspaceId: workspaceProp },
+			properties: {
+				taskId: { type: 'number', description: 'Task id' },
+				workspaceId: workspaceProp,
+			},
 			required: ['taskId'],
 		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			const taskId = Number(requireArg(args, 'taskId'));
-			if (!Number.isSafeInteger(taskId) || taskId <= 0) throw new ToolError('taskId must be a positive integer');
-			return pageItems(await pageRoute(router, ctx, 'GET', `tasks/${taskId}/pages`));
+			if (!Number.isSafeInteger(taskId) || taskId <= 0)
+				throw new ToolError('taskId must be a positive integer');
+			return pageItems(
+				await pageRoute(router, ctx, 'GET', `tasks/${taskId}/pages`),
+			);
 		},
 	},
 	{
@@ -201,7 +286,10 @@ const PAGES_TOOLS: ToolDef[] = [
 			type: 'object',
 			properties: {
 				query: { type: 'string', description: 'Search words' },
-				type: { type: 'string', description: 'Page type filter: plain, context, person or meeting' },
+				type: {
+					type: 'string',
+					description: 'Page type filter: plain, context, person or meeting',
+				},
 				limit: { type: 'number', description: 'Max hits (default 20, max 50)' },
 				workspaceId: workspaceProp,
 			},
@@ -213,7 +301,11 @@ const PAGES_TOOLS: ToolDef[] = [
 				router,
 				ctx,
 				'GET',
-				`pages/search${qs({ q: requireArg(args, 'query'), type: args.type, limit: args.limit })}`,
+				`pages/search${qs({
+					q: requireArg(args, 'query'),
+					type: args.type,
+					limit: args.limit,
+				})}`,
 			);
 			return pageItems(hits);
 		},
@@ -236,7 +328,10 @@ const PAGES_TOOLS: ToolDef[] = [
 		permission: 'pages:read',
 		inputSchema: {
 			type: 'object',
-			properties: { id: { type: 'string', description: 'Page id or slug' }, workspaceId: workspaceProp },
+			properties: {
+				id: { type: 'string', description: 'Page id or slug' },
+				workspaceId: workspaceProp,
+			},
 			required: ['id'],
 		},
 		async handler(args, ctx, router) {
@@ -253,7 +348,10 @@ const PAGES_TOOLS: ToolDef[] = [
 			type: 'object',
 			properties: {
 				title: { type: 'string', description: 'Page title' },
-				type: { type: 'string', description: 'plain (default), context, person or meeting' },
+				type: {
+					type: 'string',
+					description: 'plain (default), context, person or meeting',
+				},
 				parentId: { type: 'number', description: 'Parent page id' },
 				body: { type: 'string', description: 'Markdown body' },
 				properties: { type: 'object', description: 'Properties object' },
@@ -264,7 +362,13 @@ const PAGES_TOOLS: ToolDef[] = [
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			requireArg(args, 'title');
-			const body = pageBody(args, { title: 'title', type: 'type', parentId: 'parent_id', body: 'body', properties: 'properties' });
+			const body = pageBody(args, {
+				title: 'title',
+				type: 'type',
+				parentId: 'parent_id',
+				body: 'body',
+				properties: 'properties',
+			});
 			return pageRoute(router, ctx, 'POST', 'pages', body);
 		},
 	},
@@ -277,7 +381,10 @@ const PAGES_TOOLS: ToolDef[] = [
 			type: 'object',
 			properties: {
 				id: { type: 'string', description: 'Page id or slug' },
-				version: { type: 'number', description: 'Version from the latest pages_get' },
+				version: {
+					type: 'number',
+					description: 'Version from the latest pages_get',
+				},
 				body: { type: 'string', description: 'Whole new markdown body' },
 				title: { type: 'string', description: 'New title' },
 				properties: { type: 'object', description: 'New properties object' },
@@ -289,7 +396,13 @@ const PAGES_TOOLS: ToolDef[] = [
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			requireArg(args, 'version');
-			const body = pageBody(args, { version: 'version', body: 'body', title: 'title', properties: 'properties', summary: 'summary' });
+			const body = pageBody(args, {
+				version: 'version',
+				body: 'body',
+				title: 'title',
+				properties: 'properties',
+				summary: 'summary',
+			});
 			return pageRoute(router, ctx, 'PATCH', `pages/${pageRef(args)}`, body);
 		},
 	},
@@ -303,8 +416,14 @@ const PAGES_TOOLS: ToolDef[] = [
 			properties: {
 				id: { type: 'string', description: 'Page id or slug' },
 				markdown: { type: 'string', description: 'Markdown to append' },
-				heading: { type: 'string', description: 'Append under this existing heading (text without #)' },
-				createHeading: { type: 'boolean', description: 'Create the heading at the end when it does not exist' },
+				heading: {
+					type: 'string',
+					description: 'Append under this existing heading (text without #)',
+				},
+				createHeading: {
+					type: 'boolean',
+					description: 'Create the heading at the end when it does not exist',
+				},
 				summary: { type: 'string', description: 'One line: what changed' },
 				workspaceId: workspaceProp,
 			},
@@ -313,8 +432,19 @@ const PAGES_TOOLS: ToolDef[] = [
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			requireArg(args, 'markdown');
-			const body = pageBody(args, { markdown: 'markdown', heading: 'heading', createHeading: 'create_heading', summary: 'summary' });
-			return pageRoute(router, ctx, 'POST', `pages/${pageRef(args)}/append`, body);
+			const body = pageBody(args, {
+				markdown: 'markdown',
+				heading: 'heading',
+				createHeading: 'create_heading',
+				summary: 'summary',
+			});
+			return pageRoute(
+				router,
+				ctx,
+				'POST',
+				`pages/${pageRef(args)}/append`,
+				body,
+			);
 		},
 	},
 	{
@@ -326,8 +456,14 @@ const PAGES_TOOLS: ToolDef[] = [
 			type: 'object',
 			properties: {
 				id: { type: 'string', description: 'Page id or slug' },
-				sectionId: { type: 'string', description: 'Section id, e.g. agent-notes' },
-				markdown: { type: 'string', description: 'New markdown content of the section' },
+				sectionId: {
+					type: 'string',
+					description: 'Section id, e.g. agent-notes',
+				},
+				markdown: {
+					type: 'string',
+					description: 'New markdown content of the section',
+				},
 				summary: { type: 'string', description: 'One line: what changed' },
 				workspaceId: workspaceProp,
 			},
@@ -335,10 +471,19 @@ const PAGES_TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			const sectionId = encodeURIComponent(String(requireArg(args, 'sectionId')));
-			if (typeof args.markdown !== 'string') throw new ToolError('markdown is required');
+			const sectionId = encodeURIComponent(
+				String(requireArg(args, 'sectionId')),
+			);
+			if (typeof args.markdown !== 'string')
+				throw new ToolError('markdown is required');
 			const body = pageBody(args, { markdown: 'markdown', summary: 'summary' });
-			return pageRoute(router, ctx, 'PUT', `pages/${pageRef(args)}/sections/${sectionId}`, body);
+			return pageRoute(
+				router,
+				ctx,
+				'PUT',
+				`pages/${pageRef(args)}/sections/${sectionId}`,
+				body,
+			);
 		},
 	},
 ];
@@ -346,7 +491,8 @@ const PAGES_TOOLS: ToolDef[] = [
 const TOOLS: ToolDef[] = [
 	{
 		name: 'whoami',
-		description: "Returns the authenticated user id and the acting persona's identity, owner, workspace and permissions",
+		description:
+			"Returns the authenticated user id and the acting persona's identity, owner, workspace and permissions",
 		inputSchema: { type: 'object', properties: {} },
 		literal: true,
 		async handler(_args, ctx, _router, deps) {
@@ -359,9 +505,16 @@ const TOOLS: ToolDef[] = [
 					id: ctx.actor!.id,
 					name: persona?.name ?? ctx.actor!.name,
 					description: persona?.description ?? null,
-					owner: { id: persona?.owner_user_id ?? ctx.user.id, name: persona?.owner_name ?? ctx.user.name },
+					owner: {
+						id: persona?.owner_user_id ?? ctx.user.id,
+						name: persona?.owner_name ?? ctx.user.name,
+					},
 					prompt_version: prompt?.prompt_version ?? null,
-					workspace: { id: ctx.workspace.id, code: ctx.workspace.code, permissions },
+					workspace: {
+						id: ctx.workspace.id,
+						code: ctx.workspace.code,
+						permissions,
+					},
 					skills: [],
 				},
 			};
@@ -369,7 +522,8 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'get_persona',
-		description: "Returns the acting persona's system prompt, its version, and the skills index",
+		description:
+			"Returns the acting persona's system prompt, its version, and the skills index",
 		inputSchema: { type: 'object', properties: {} },
 		literal: true,
 		async handler(_args, ctx, _router, deps) {
@@ -387,33 +541,55 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'get_persona_skill',
-		description: "Returns one of the acting persona's skills by slug: its body and version",
-		inputSchema: { type: 'object', properties: { slug: { type: 'string' } }, required: ['slug'] },
+		description:
+			"Returns one of the acting persona's skills by slug: its body and version",
+		inputSchema: {
+			type: 'object',
+			properties: { slug: { type: 'string' } },
+			required: ['slug'],
+		},
 		async handler() {
 			throw new ToolError('No skills in local workspaces yet');
 		},
 	},
 	{
 		name: 'list_workspaces',
-		description: 'List all workspaces the authenticated user belongs to. With a persona token, only the token\'s own workspace',
+		description:
+			"List all workspaces the authenticated user belongs to. With a persona token, only the token's own workspace",
 		inputSchema: { type: 'object', properties: {} },
 		async handler(_args, ctx) {
-			return [{ id: ctx.workspace.id, name: ctx.workspace.name, code: ctx.workspace.code }];
+			return [
+				{
+					id: ctx.workspace.id,
+					name: ctx.workspace.name,
+					code: ctx.workspace.code,
+				},
+			];
 		},
 	},
 	{
 		name: 'get_task',
 		description: 'Get a task by its id',
 		permission: 'tasks:read',
-		inputSchema: { type: 'object', properties: { taskId: { type: 'number' } }, required: ['taskId'] },
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number' } },
+			required: ['taskId'],
+		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			return runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}`);
+			return runRoute(
+				router,
+				ctx,
+				'GET',
+				`tasks/${requireArg(args, 'taskId')}`,
+			);
 		},
 	},
 	{
 		name: 'search_tasks',
-		description: 'Search tasks by query string within this workspace. Paginated: page (default 1), perPage (default 50, max 100)',
+		description:
+			'Search tasks by query string within this workspace. Paginated: page (default 1), perPage (default 50, max 100)',
 		permission: 'tasks:read',
 		inputSchema: {
 			type: 'object',
@@ -428,12 +604,21 @@ const TOOLS: ToolDef[] = [
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			const query = requireArg(args, 'query');
-			return pageOf(router, ctx, `tasks${qs({ search: query, page: args.page, per_page: perPageArg(args) })}`);
+			return pageOf(
+				router,
+				ctx,
+				`tasks${qs({
+					search: query,
+					page: args.page,
+					per_page: perPageArg(args),
+				})}`,
+			);
 		},
 	},
 	{
 		name: 'list_tasks_by_status',
-		description: "List tasks by status TYPE (default|active|completed|hidden|archived, 'done' is an alias of archived) or a numeric status id",
+		description:
+			"List tasks by status TYPE (default|active|completed|hidden|archived, 'done' is an alias of archived) or a numeric status id",
 		permission: 'tasks:read',
 		inputSchema: {
 			type: 'object',
@@ -451,7 +636,15 @@ const TOOLS: ToolDef[] = [
 			const filter = /^\d+$/.test(status)
 				? { status_id: status }
 				: { status_type: status === 'done' ? 'archived' : status };
-			return pageOf(router, ctx, `tasks${qs({ ...filter, page: args.page, per_page: perPageArg(args) })}`);
+			return pageOf(
+				router,
+				ctx,
+				`tasks${qs({
+					...filter,
+					page: args.page,
+					per_page: perPageArg(args),
+				})}`,
+			);
 		},
 	},
 	{
@@ -474,13 +667,15 @@ const TOOLS: ToolDef[] = [
 			const body: Record<string, any> = { title: requireArg(args, 'title') };
 			if (args.description !== undefined) body.description = args.description;
 			if (args.statusId !== undefined) body.status_id = args.statusId;
-			if (args.projectCategoryId !== undefined) body.project_category_id = args.projectCategoryId;
+			if (args.projectCategoryId !== undefined)
+				body.project_category_id = args.projectCategoryId;
 			return runRoute(router, ctx, 'POST', 'tasks', body);
 		},
 	},
 	{
 		name: 'update_task',
-		description: 'Update an existing task. Only provided fields are changed. A persona cannot move a task to another workspace',
+		description:
+			'Update an existing task. Only provided fields are changed. A persona cannot move a task to another workspace',
 		permission: 'tasks:write',
 		inputSchema: {
 			type: 'object',
@@ -494,7 +689,9 @@ const TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			if (args.workspaceId !== undefined && args.workspaceId !== null) {
-				throw new ToolError('A persona cannot move a task to another workspace');
+				throw new ToolError(
+					'A persona cannot move a task to another workspace',
+				);
 			}
 			const taskId = requireArg(args, 'taskId');
 			const body: Record<string, any> = {};
@@ -506,15 +703,25 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'list_comments',
-		description: 'List comments on a task by taskId. Paginated: page (default 1), perPage (default 50, max 100)',
+		description:
+			'List comments on a task by taskId. Paginated: page (default 1), perPage (default 50, max 100)',
 		permission: 'comments:read',
 		inputSchema: {
 			type: 'object',
-			properties: { taskId: { type: 'number' }, page: { type: 'number' }, perPage: { type: 'number' } },
+			properties: {
+				taskId: { type: 'number' },
+				page: { type: 'number' },
+				perPage: { type: 'number' },
+			},
 			required: ['taskId'],
 		},
 		async handler(args, ctx, router) {
-			const all = await runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/comments`);
+			const all = await runRoute(
+				router,
+				ctx,
+				'GET',
+				`tasks/${requireArg(args, 'taskId')}/comments`,
+			);
 			return paginateInMemory(all, args.page, args.perPage);
 		},
 	},
@@ -530,20 +737,32 @@ const TOOLS: ToolDef[] = [
 		async handler(args, ctx, router) {
 			const taskId = requireArg(args, 'taskId');
 			const message = requireArg(args, 'message');
-			return runRoute(router, ctx, 'POST', `tasks/${taskId}/comments`, { message });
+			return runRoute(router, ctx, 'POST', `tasks/${taskId}/comments`, {
+				message,
+			});
 		},
 	},
 	{
 		name: 'list_task_files',
-		description: 'List the files attached to a task. Paginated: page (default 1), perPage (default 50, max 100)',
+		description:
+			'List the files attached to a task. Paginated: page (default 1), perPage (default 50, max 100)',
 		permission: 'files:attachments',
 		inputSchema: {
 			type: 'object',
-			properties: { taskId: { type: 'number' }, page: { type: 'number' }, perPage: { type: 'number' } },
+			properties: {
+				taskId: { type: 'number' },
+				page: { type: 'number' },
+				perPage: { type: 'number' },
+			},
 			required: ['taskId'],
 		},
 		async handler(args, ctx, router) {
-			const rows = await runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/files`);
+			const rows = await runRoute(
+				router,
+				ctx,
+				'GET',
+				`tasks/${requireArg(args, 'taskId')}/files`,
+			);
 			// get_task_image isn't offered locally, so nothing is ever viewable via this MCP.
 			const items = rows.map((f: any) => ({
 				id: f.id,
@@ -561,7 +780,10 @@ const TOOLS: ToolDef[] = [
 		name: 'list_statuses',
 		description: 'List all task statuses in this workspace',
 		permission: 'statuses:read',
-		inputSchema: { type: 'object', properties: { workspaceId: { type: 'number' } } },
+		inputSchema: {
+			type: 'object',
+			properties: { workspaceId: { type: 'number' } },
+		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
 			return runRoute(router, ctx, 'GET', 'workspaces/statuses');
@@ -569,7 +791,8 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'start_agent_work',
-		description: 'Record that you, an AI agent, start working on a task. Keep the returned id for update_agent_work and finish_agent_work',
+		description:
+			'Record that you, an AI agent, start working on a task. Keep the returned id for update_agent_work and finish_agent_work',
 		permission: 'agent_work:write',
 		inputSchema: {
 			type: 'object',
@@ -593,7 +816,8 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'update_agent_work',
-		description: 'Report progress of your running agent work: branch, summary, pull request url, commits, test results',
+		description:
+			'Report progress of your running agent work: branch, summary, pull request url, commits, test results',
 		permission: 'agent_work:write',
 		inputSchema: {
 			type: 'object',
@@ -611,12 +835,19 @@ const TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			const runId = requireArg(args, 'runId');
-			return runRoute(router, ctx, 'PATCH', `agent-work/${runId}`, agentWorkBody(args, true));
+			return runRoute(
+				router,
+				ctx,
+				'PATCH',
+				`agent-work/${runId}`,
+				agentWorkBody(args, true),
+			);
 		},
 	},
 	{
 		name: 'finish_agent_work',
-		description: 'Finish your agent work run: status succeeded, failed or cancelled, plus a short summary',
+		description:
+			'Finish your agent work run: status succeeded, failed or cancelled, plus a short summary',
 		permission: 'agent_work:write',
 		inputSchema: {
 			type: 'object',
@@ -641,41 +872,73 @@ const TOOLS: ToolDef[] = [
 	},
 	{
 		name: 'list_agent_work',
-		description: 'Agent work runs on a task, newest first, with the total agent time next to the human timer',
+		description:
+			'Agent work runs on a task, newest first, with the total agent time next to the human timer',
 		permission: 'agent_work:read',
-		inputSchema: { type: 'object', properties: { taskId: { type: 'number' } }, required: ['taskId'] },
+		inputSchema: {
+			type: 'object',
+			properties: { taskId: { type: 'number' } },
+			required: ['taskId'],
+		},
 		async handler(args, ctx, router) {
-			return runRoute(router, ctx, 'GET', `tasks/${requireArg(args, 'taskId')}/agent-work`);
+			return runRoute(
+				router,
+				ctx,
+				'GET',
+				`tasks/${requireArg(args, 'taskId')}/agent-work`,
+			);
 		},
 	},
 	{
 		name: 'list_my_queue',
-		description: "List the tasks assigned to you (the acting persona), ordered by status then position. Optional statusType (default|active|completed|hidden|archived), statusId, limit (default 50, max 100)",
+		description:
+			'List the tasks assigned to you (the acting persona), ordered by status then position. Optional statusType (default|active|completed|hidden|archived), statusId, limit (default 50, max 100)',
 		permission: 'tasks:read',
 		inputSchema: {
 			type: 'object',
-			properties: { statusType: { type: 'string' }, statusId: { type: 'number' }, limit: { type: 'number' } },
+			properties: {
+				statusType: { type: 'string' },
+				statusId: { type: 'number' },
+				limit: { type: 'number' },
+			},
 		},
 		async handler(args, ctx, router) {
-			const filter: Record<string, unknown> = { persona: ctx.actor!.id, sort: 'queue', per_page: perPageArg({ perPage: args.limit }) };
-			if (args.statusId !== undefined && args.statusId !== null) filter.status_id = args.statusId;
-			else if (args.statusType) filter.status_type = args.statusType === 'done' ? 'archived' : args.statusType;
+			const filter: Record<string, unknown> = {
+				persona: ctx.actor!.id,
+				sort: 'queue',
+				per_page: perPageArg({ perPage: args.limit }),
+			};
+			if (args.statusId !== undefined && args.statusId !== null)
+				filter.status_id = args.statusId;
+			else if (args.statusType)
+				filter.status_type =
+					args.statusType === 'done' ? 'archived' : args.statusType;
 			return pageOf(router, ctx, `tasks${qs(filter)}`);
 		},
 	},
 	{
 		name: 'list_assignable_personas',
-		description: 'List the personas that can be assigned to tasks in this workspace',
+		description:
+			'List the personas that can be assigned to tasks in this workspace',
 		audience: 'user',
-		inputSchema: { type: 'object', properties: { workspaceId: { type: 'number' } } },
+		inputSchema: {
+			type: 'object',
+			properties: { workspaceId: { type: 'number' } },
+		},
 		async handler(args, ctx, router) {
 			ensureTokenWorkspace(args, ctx);
-			return runRoute(router, ctx, 'GET', `workspaces/${ctx.workspace.id}/assignable-personas`);
+			return runRoute(
+				router,
+				ctx,
+				'GET',
+				`workspaces/${ctx.workspace.id}/assignable-personas`,
+			);
 		},
 	},
 	{
 		name: 'assign_persona',
-		description: 'Put a task into a persona queue. persona is its uuid or exact name among the assignable personas',
+		description:
+			'Put a task into a persona queue. persona is its uuid or exact name among the assignable personas',
 		audience: 'user',
 		inputSchema: {
 			type: 'object',
@@ -684,12 +947,18 @@ const TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			const persona = encodeURIComponent(String(requireArg(args, 'persona')));
-			return runRoute(router, ctx, 'POST', `tasks/${requireArg(args, 'taskId')}/personas/${persona}`);
+			return runRoute(
+				router,
+				ctx,
+				'POST',
+				`tasks/${requireArg(args, 'taskId')}/personas/${persona}`,
+			);
 		},
 	},
 	{
 		name: 'unassign_persona',
-		description: 'Remove a persona from a task. persona is its uuid or exact name',
+		description:
+			'Remove a persona from a task. persona is its uuid or exact name',
 		audience: 'user',
 		inputSchema: {
 			type: 'object',
@@ -698,16 +967,26 @@ const TOOLS: ToolDef[] = [
 		},
 		async handler(args, ctx, router) {
 			const persona = encodeURIComponent(String(requireArg(args, 'persona')));
-			return runRoute(router, ctx, 'DELETE', `tasks/${requireArg(args, 'taskId')}/personas/${persona}`);
+			return runRoute(
+				router,
+				ctx,
+				'DELETE',
+				`tasks/${requireArg(args, 'taskId')}/personas/${persona}`,
+			);
 		},
 	},
 	{
 		name: 'tmgr_request',
-		description: 'Make an HTTP request to the local tmgr REST API. method: GET|POST|PATCH|DELETE. path: e.g. /api/tasks/1. jsonBody: optional JSON string',
+		description:
+			'Make an HTTP request to the local tmgr REST API. method: GET|POST|PATCH|DELETE. path: e.g. /api/tasks/1. jsonBody: optional JSON string',
 		raw: true,
 		inputSchema: {
 			type: 'object',
-			properties: { method: { type: 'string' }, path: { type: 'string' }, jsonBody: { type: 'string' } },
+			properties: {
+				method: { type: 'string' },
+				path: { type: 'string' },
+				jsonBody: { type: 'string' },
+			},
 			required: ['method', 'path'],
 		},
 		async handler(args, ctx, router) {
@@ -715,19 +994,34 @@ const TOOLS: ToolDef[] = [
 			const path = requireArg(args, 'path');
 			const withoutQuery = normalizePath(String(path));
 			if (withoutQuery === 'local' || withoutQuery.startsWith('local/')) {
-				throw new ToolError('local/* routes are not available via tmgr_request');
+				throw new ToolError(
+					'local/* routes are not available via tmgr_request',
+				);
 			}
-			const res = await dispatchLocal(router, ctx, method, path, args.jsonBody ?? undefined);
-			if (!res) throw new ToolError(`No local route for ${method} ${withoutQuery}`);
-			if (res.status >= 400) throw new ToolError(res.data?.message ?? `Request failed with status ${res.status}`);
-			if (res.data instanceof Blob) throw new ToolError('tmgr_request cannot return binary content');
+			const res = await dispatchLocal(
+				router,
+				ctx,
+				method,
+				path,
+				args.jsonBody ?? undefined,
+			);
+			if (!res)
+				throw new ToolError(`No local route for ${method} ${withoutQuery}`);
+			if (res.status >= 400)
+				throw new ToolError(
+					res.data?.message ?? `Request failed with status ${res.status}`,
+				);
+			if (res.data instanceof Blob)
+				throw new ToolError('tmgr_request cannot return binary content');
 			return JSON.stringify(res.data);
 		},
 	},
 ];
 
 /** Mirrors `AgentWorkMcpTools.parseCommits`: each entry is `"<sha> <subject>"`, split on the first run of whitespace. */
-const parseCommits = (commits: string[]): { sha: string; message: string | null }[] =>
+const parseCommits = (
+	commits: string[],
+): { sha: string; message: string | null }[] =>
 	commits
 		.filter((line) => typeof line === 'string' && line.trim())
 		.map((line) => {
@@ -735,14 +1029,25 @@ const parseCommits = (commits: string[]): { sha: string; message: string | null 
 			return { sha: match[1], message: match[2] ?? null };
 		});
 
-const agentWorkBody = (args: Record<string, any>, includeBranch: boolean): Record<string, any> => {
+const agentWorkBody = (
+	args: Record<string, any>,
+	includeBranch: boolean,
+): Record<string, any> => {
 	const body: Record<string, any> = {};
 	if (includeBranch && args.branch !== undefined) body.branch = args.branch;
 	if (args.summary !== undefined) body.summary = args.summary;
 	if (args.prUrl !== undefined) body.pr_url = args.prUrl;
 	if (args.commits !== undefined) body.commits = parseCommits(args.commits);
-	if (args.testsPassed !== undefined || args.testsFailed !== undefined || args.testsCommand !== undefined) {
-		body.tests = { passed: args.testsPassed ?? null, failed: args.testsFailed ?? null, command: args.testsCommand ?? null };
+	if (
+		args.testsPassed !== undefined ||
+		args.testsFailed !== undefined ||
+		args.testsCommand !== undefined
+	) {
+		body.tests = {
+			passed: args.testsPassed ?? null,
+			failed: args.testsFailed ?? null,
+			command: args.testsCommand ?? null,
+		};
 	}
 	return body;
 };
@@ -754,10 +1059,13 @@ const TOOLS_BY_NAME = new Map(TOOLS.map((tool) => [tool.name, tool]));
 const isPersonaCtx = (ctx: LocalContext) => ctx.actor?.kind === 'persona';
 
 const listedTools = async (ctx: LocalContext) => {
-	if (!isPersonaCtx(ctx)) return TOOLS.filter((tool) => tool.audience === 'user');
+	if (!isPersonaCtx(ctx))
+		return TOOLS.filter((tool) => tool.audience === 'user');
 	const permissions = await personaGrantPermissions(ctx);
 	return TOOLS.filter(
-		(tool) => tool.audience !== 'user' && (!tool.permission || permissions.includes(tool.permission)),
+		(tool) =>
+			tool.audience !== 'user' &&
+			(!tool.permission || permissions.includes(tool.permission)),
 	);
 };
 
@@ -765,7 +1073,11 @@ const toolResultOk = (payload: any, tool: ToolDef) => ({
 	content: [
 		{
 			type: 'text',
-			text: tool.raw ? payload : tool.literal ? JSON.stringify(payload) : JSON.stringify(camelizeDeep(payload)),
+			text: tool.raw
+				? payload
+				: tool.literal
+				? JSON.stringify(payload)
+				: JSON.stringify(camelizeDeep(payload)),
 		},
 	],
 });
@@ -777,29 +1089,47 @@ const toolResultError = (message: string) => ({
 
 const handleInitialize = (params: any) => {
 	const requested = params?.protocolVersion;
-	const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requested) ? requested : DEFAULT_PROTOCOL_VERSION;
+	const protocolVersion = SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+		? requested
+		: DEFAULT_PROTOCOL_VERSION;
 	return {
 		protocolVersion,
 		capabilities: { tools: {} },
 		serverInfo: { name: 'tmgr-desktop-local', version: '1' },
-		instructions: 'Local TMGR tools for this persona, scoped to its own workspace and permissions.',
+		instructions:
+			'Local TMGR tools for this persona, scoped to its own workspace and permissions.',
 	};
 };
 
 /** personaGate (via `dispatchLocal`) decides permissions; this layer never re-implements it. */
-const handleToolsCall = async (params: any, ctx: LocalContext, router: LocalRouter, deps: McpDeps) => {
+const handleToolsCall = async (
+	params: any,
+	ctx: LocalContext,
+	router: LocalRouter,
+	deps: McpDeps,
+) => {
 	try {
 		const persona = isPersonaCtx(ctx);
 		if (persona) await checkPersonaIdentity(ctx);
 		const tool = TOOLS_BY_NAME.get(params?.name);
-		if (!tool || (persona ? tool.audience === 'user' : tool.audience !== 'user')) {
+		if (
+			!tool ||
+			(persona ? tool.audience === 'user' : tool.audience !== 'user')
+		) {
 			return toolResultError('Tool not available to personas');
 		}
-		const result = await tool.handler(params?.arguments ?? {}, ctx, router, deps);
+		const result = await tool.handler(
+			params?.arguments ?? {},
+			ctx,
+			router,
+			deps,
+		);
 		return toolResultOk(result, tool);
 	} catch (error) {
 		if (error instanceof ToolError) return toolResultError(error.message);
-		return toolResultError(error instanceof Error ? error.message : String(error));
+		return toolResultError(
+			error instanceof Error ? error.message : String(error),
+		);
 	}
 };
 
@@ -808,15 +1138,31 @@ const processMessage = async (
 	ctx: LocalContext,
 	router: LocalRouter,
 	deps: McpDeps,
-): Promise<{ jsonrpc: '2.0'; id: any; result?: any; error?: { code: number; message: string } } | null> => {
+): Promise<{
+	jsonrpc: '2.0';
+	id: any;
+	result?: any;
+	error?: { code: number; message: string };
+} | null> => {
 	const isPlainObject = !!msg && typeof msg === 'object' && !Array.isArray(msg);
-	if (!isPlainObject || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
-		return { jsonrpc: '2.0', id: isPlainObject && 'id' in msg ? msg.id : null, error: { code: -32600, message: 'Invalid Request' } };
+	if (
+		!isPlainObject ||
+		msg.jsonrpc !== '2.0' ||
+		typeof msg.method !== 'string'
+	) {
+		return {
+			jsonrpc: '2.0',
+			id: isPlainObject && 'id' in msg ? msg.id : null,
+			error: { code: -32600, message: 'Invalid Request' },
+		};
 	}
 	const isNotification = !('id' in msg);
-	const respond = (result: any) => (isNotification ? null : { jsonrpc: '2.0' as const, id: msg.id, result });
+	const respond = (result: any) =>
+		isNotification ? null : { jsonrpc: '2.0' as const, id: msg.id, result };
 	const respondError = (code: number, message: string) =>
-		isNotification ? null : { jsonrpc: '2.0' as const, id: msg.id, error: { code, message } };
+		isNotification
+			? null
+			: { jsonrpc: '2.0' as const, id: msg.id, error: { code, message } };
 
 	switch (msg.method) {
 		case 'initialize':
@@ -850,13 +1196,21 @@ export const handleMcpRequest = async (
 	} catch {
 		return {
 			status: 400,
-			body: JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }),
+			body: JSON.stringify({
+				jsonrpc: '2.0',
+				id: null,
+				error: { code: -32700, message: 'Parse error' },
+			}),
 		};
 	}
 	if (Array.isArray(parsed) && parsed.length === 0) {
 		return {
 			status: 200,
-			body: JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: 'Invalid Request' } }),
+			body: JSON.stringify({
+				jsonrpc: '2.0',
+				id: null,
+				error: { code: -32600, message: 'Invalid Request' },
+			}),
 		};
 	}
 	const messages = Array.isArray(parsed) ? parsed : [parsed];
@@ -866,5 +1220,8 @@ export const handleMcpRequest = async (
 		if (response) responses.push(response);
 	}
 	if (!responses.length) return { status: 202, body: '' };
-	return { status: 200, body: JSON.stringify(Array.isArray(parsed) ? responses : responses[0]) };
+	return {
+		status: 200,
+		body: JSON.stringify(Array.isArray(parsed) ? responses : responses[0]),
+	};
 };

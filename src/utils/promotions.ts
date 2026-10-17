@@ -29,9 +29,7 @@ export interface PromotionsDeps {
 export const createPromotionsController = (deps: PromotionsDeps) => {
 	const seen = new Set<string>();
 
-	const load = async (
-		placement: PromotionPlacement,
-	): Promise<Promotion[]> => {
+	const load = async (placement: PromotionPlacement): Promise<Promotion[]> => {
 		if (!deps.isEnabled()) return [];
 		try {
 			return await deps.fetchPromotions(placement, deps.locale());
@@ -45,9 +43,9 @@ export const createPromotionsController = (deps: PromotionsDeps) => {
 		const key = `${promotion.id}:${promotion.placement}`;
 		if (seen.has(key)) return;
 		seen.add(key);
-		deps.sendEvent(promotion.id, promotion.placement, 'impression').catch(
-			() => seen.delete(key),
-		);
+		deps
+			.sendEvent(promotion.id, promotion.placement, 'impression')
+			.catch(() => seen.delete(key));
 	};
 
 	const click = (promotion: Promotion) => {

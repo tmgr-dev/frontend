@@ -1,3 +1,4 @@
+import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import {
 	agentLabel,
 	formatWorkDuration,
@@ -7,7 +8,6 @@ import {
 	mergeSnapshot,
 	upsertRun,
 } from '../agentWork';
-import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 
 const run = (overrides: Partial<AgentWorkRun> = {}): AgentWorkRun => ({
 	id: 1,
@@ -53,12 +53,20 @@ describe('liveSeconds', () => {
 	});
 
 	it('counts a running run up to now', () => {
-		const running = run({ status: 'running', ended_at: null, duration_seconds: 60 });
+		const running = run({
+			status: 'running',
+			ended_at: null,
+			duration_seconds: 60,
+		});
 		expect(liveSeconds(running, Date.parse('2026-09-26T10:05:00Z'))).toBe(300);
 	});
 
 	it('counts on from the server duration when it was received, ignoring the browser clock', () => {
-		const running = run({ status: 'running', ended_at: null, duration_seconds: 60 });
+		const running = run({
+			status: 'running',
+			ended_at: null,
+			duration_seconds: 60,
+		});
 		const receivedAt = Date.parse('2030-01-01T00:00:00Z');
 		expect(liveSeconds(running, receivedAt + 15_000, receivedAt)).toBe(75);
 	});
@@ -81,7 +89,12 @@ it('adds running runs up to now to the agent total and leaves the human time alo
 describe('upsertRun', () => {
 	it('replaces a known run and puts a new one first', () => {
 		const list = [run({ id: 1 }), run({ id: 2 })];
-		expect(upsertRun(list, run({ id: 2, summary: 'done' })).map((r) => [r.id, r.summary])).toEqual([
+		expect(
+			upsertRun(list, run({ id: 2, summary: 'done' })).map((r) => [
+				r.id,
+				r.summary,
+			]),
+		).toEqual([
 			[1, null],
 			[2, 'done'],
 		]);
@@ -111,9 +124,9 @@ it('accepts only http(s) links', () => {
 
 it('ignores a realtime event older than the run it would replace', () => {
 	const list = [run({ id: 1, version: 3, status: 'succeeded' })];
-	expect(upsertRun(list, run({ id: 1, version: 2, status: 'running' }))[0].status).toBe(
-		'succeeded',
-	);
+	expect(
+		upsertRun(list, run({ id: 1, version: 2, status: 'running' }))[0].status,
+	).toBe('succeeded');
 });
 
 it('keeps newer realtime state when an older snapshot arrives', () => {
@@ -125,9 +138,11 @@ it('keeps newer realtime state when an older snapshot arrives', () => {
 		run({ id: 2, version: 2, status: 'running' }),
 		run({ id: 1, version: 1 }),
 	];
-	expect(mergeSnapshot(current, snapshot).map((r) => [r.id, r.status])).toEqual([
-		[3, 'running'],
-		[2, 'succeeded'],
-		[1, 'succeeded'],
-	]);
+	expect(mergeSnapshot(current, snapshot).map((r) => [r.id, r.status])).toEqual(
+		[
+			[3, 'running'],
+			[2, 'succeeded'],
+			[1, 'succeeded'],
+		],
+	);
 });

@@ -53,7 +53,10 @@ describe('lease', () => {
 		const storage = memory();
 		storage.setItem(LEASE_KEY, '{nope');
 		const posted: unknown[] = [];
-		const channel = { postMessage: (m: unknown) => void posted.push(m), onmessage: null as any };
+		const channel = {
+			postMessage: (m: unknown) => void posted.push(m),
+			onmessage: null as any,
+		};
 		const a = createLease({ storage, channel, now: () => 0, ownerId: 'a' });
 		expect(a.acquire()).toBe(true);
 		a.broadcast({ type: 'x' });

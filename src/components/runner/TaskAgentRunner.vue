@@ -9,10 +9,7 @@
 				>Agent runner</span
 			>
 			<span class="flex-1" />
-			<RunWithAgentButton
-				:workspace-id="workspaceId"
-				:task-id="taskId"
-			/>
+			<RunWithAgentButton :workspace-id="workspaceId" :task-id="taskId" />
 		</div>
 		<AgentSessionsPanel
 			v-if="latest"

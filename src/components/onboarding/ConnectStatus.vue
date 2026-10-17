@@ -11,32 +11,32 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent } from 'vue';
-import type { PropType } from 'vue';
+	import type { PropType } from 'vue';
+	import { computed, defineComponent } from 'vue';
 
-export type ConnectState = 'waiting' | 'connected' | 'stalled';
+	export type ConnectState = 'waiting' | 'connected' | 'stalled';
 
-export default defineComponent({
-	name: 'ConnectStatus',
-	props: {
-		state: { type: String as PropType<ConnectState>, required: true },
-	},
-	setup(props) {
-		const text = computed(() =>
-			props.state === 'connected'
-				? 'Connected'
-				: props.state === 'stalled'
+	export default defineComponent({
+		name: 'ConnectStatus',
+		props: {
+			state: { type: String as PropType<ConnectState>, required: true },
+		},
+		setup(props) {
+			const text = computed(() =>
+				props.state === 'connected'
+					? 'Connected'
+					: props.state === 'stalled'
 					? 'Not connected yet'
 					: 'Waiting for your agent…',
-		);
-		const dot = computed(() =>
-			props.state === 'connected'
-				? 'bg-green-500'
-				: props.state === 'stalled'
+			);
+			const dot = computed(() =>
+				props.state === 'connected'
+					? 'bg-green-500'
+					: props.state === 'stalled'
 					? 'bg-amber-500'
 					: 'animate-pulse bg-red-400',
-		);
-		return { text, dot };
-	},
-});
+			);
+			return { text, dot };
+		},
+	});
 </script>

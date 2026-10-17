@@ -46,7 +46,9 @@
 			v-for="item in pluginItems"
 			:key="`${item.pluginId}:${item.itemId}`"
 			:type="item.command ? 'button' : undefined"
-			:title="`${item.pluginName} (plugin)${item.tooltip ? `: ${item.tooltip}` : ''}`"
+			:title="`${item.pluginName} (plugin)${
+				item.tooltip ? `: ${item.tooltip}` : ''
+			}`"
 			:class="[
 				'flex h-full items-center px-3',
 				item.command && 'hover:bg-muted hover:text-foreground',
@@ -150,8 +152,8 @@
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import router from '@/router';
 	import store from '@/store';
-	import { dndClock, dndState, isDndActive, setDnd } from '@/utils/dnd';
 	import { installUpdate, updateState } from '@/utils/desktopUpdater';
+	import { dndClock, dndState, isDndActive, setDnd } from '@/utils/dnd';
 	import { openTaskPreferringWindow } from '@/utils/openTaskInWorkspace';
 	import { openWhatsNew } from '@/utils/whatsNewState';
 	import {

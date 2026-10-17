@@ -1,4 +1,9 @@
-import { copyProps, isKnownEvent, type EventName, type TrackArgs } from './catalog';
+import {
+	copyProps,
+	isKnownEvent,
+	type EventName,
+	type TrackArgs,
+} from './catalog';
 import {
 	buildEnvelope,
 	hourStart,
@@ -89,7 +94,8 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 
 	const storeQueue = (events: QueuedEvent[]) =>
 		safely(() => {
-			if (events.length) deps.storage?.setItem(QUEUE_KEY, JSON.stringify({ events }));
+			if (events.length)
+				deps.storage?.setItem(QUEUE_KEY, JSON.stringify({ events }));
 			else deps.storage?.removeItem(QUEUE_KEY);
 		});
 
@@ -112,7 +118,9 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		try {
 			const data = JSON.parse(deps.storage?.getItem(QUEUE_KEY) ?? 'null');
 			return Array.isArray(data?.events)
-				? data.events.map(normalizeEntry).filter((e: QueuedEvent | null): e is QueuedEvent => e !== null)
+				? data.events
+						.map(normalizeEntry)
+						.filter((e: QueuedEvent | null): e is QueuedEvent => e !== null)
 				: [];
 		} catch {
 			return [];
@@ -122,11 +130,15 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 	const purgeStored = () => {
 		const consent = deps.consent.read();
 		if (!consent.on) return safely(() => deps.storage?.removeItem(QUEUE_KEY));
-		storeQueue(fresh(readStoredQueue()).filter((e) => e.g === consent.generation));
+		storeQueue(
+			fresh(readStoredQueue()).filter((e) => e.g === consent.generation),
+		);
 	};
 
 	const loadQueue = (gen: number): QueuedEvent[] => {
-		const events = fresh(readStoredQueue()).filter((e) => e.g === gen).slice(-MAX_QUEUE);
+		const events = fresh(readStoredQueue())
+			.filter((e) => e.g === gen)
+			.slice(-MAX_QUEUE);
 		storeQueue(events);
 		return events;
 	};
@@ -162,10 +174,12 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		generation = gen;
 		queue = loadQueue(gen);
 		const ep = epoch;
-		identityReady = identities.create(() => {
-			const consent = deps.consent.read();
-			return ep === epoch && consent.on && consent.generation === gen;
-		}).catch(() => null);
+		identityReady = identities
+			.create(() => {
+				const consent = deps.consent.read();
+				return ep === epoch && consent.on && consent.generation === gen;
+			})
+			.catch(() => null);
 		timer = deps.setInterval(() => void flush(), FLUSH_INTERVAL_MS);
 		emit();
 		void identityReady.then((identity) => {
@@ -195,7 +209,10 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 
 	const hashOf = async (identity: Identity) => {
 		if (secretHash?.secret !== identity.secret) {
-			secretHash = { secret: identity.secret, hash: await deps.sha256(identity.secret) };
+			secretHash = {
+				secret: identity.secret,
+				hash: await deps.sha256(identity.secret),
+			};
 		}
 		return secretHash.hash;
 	};
@@ -216,32 +233,41 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 			const sha = identity.registered ? undefined : await hashOf(identity);
 			if (ep !== epoch) return;
 			const sending = await withLock(deps.locks, 'consent', () =>
-				withLock(deps.locks, 'send', () => withLock(deps.locks, 'identity', () => {
-					const consent = deps.consent.read();
-					if (ep !== epoch || !active || controller.signal.aborted) return null;
-					if (!consent.on || consent.generation !== generation) {
-						sync();
-						return null;
-					}
-					const current = identities.read();
-					if (current?.install_id !== identity.install_id || current.secret !== identity.secret) return null;
-					queue = queue.filter((e) => e.g === consent.generation);
-					if (!queue.length) return null;
-					const batch = pickBatch(queue);
-					const response = deps.fetch(endpoint('t/events'), {
-						method: 'POST',
-						credentials: 'omit',
-						cache: 'no-store',
-						referrerPolicy: 'no-referrer',
-						keepalive,
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify(buildEnvelope(identity.install_id, batch, sha)),
-						signal: controller.signal,
-					});
-					// The wrapper releases the locks before the network response arrives.
-					void response.catch(noop);
-					return { response, batch };
-				})),
+				withLock(deps.locks, 'send', () =>
+					withLock(deps.locks, 'identity', () => {
+						const consent = deps.consent.read();
+						if (ep !== epoch || !active || controller.signal.aborted)
+							return null;
+						if (!consent.on || consent.generation !== generation) {
+							sync();
+							return null;
+						}
+						const current = identities.read();
+						if (
+							current?.install_id !== identity.install_id ||
+							current.secret !== identity.secret
+						)
+							return null;
+						queue = queue.filter((e) => e.g === consent.generation);
+						if (!queue.length) return null;
+						const batch = pickBatch(queue);
+						const response = deps.fetch(endpoint('t/events'), {
+							method: 'POST',
+							credentials: 'omit',
+							cache: 'no-store',
+							referrerPolicy: 'no-referrer',
+							keepalive,
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify(
+								buildEnvelope(identity.install_id, batch, sha),
+							),
+							signal: controller.signal,
+						});
+						// The wrapper releases the locks before the network response arrives.
+						void response.catch(noop);
+						return { response, batch };
+					}),
+				),
 			);
 			if (!sending) return;
 			const { batch } = sending;
@@ -252,7 +278,8 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 				queue = queue.filter((e) => !sent.has(e.id));
 				failures = 0;
 				retryAt = 0;
-				if (!identity.registered) await identities.markRegistered(identity.install_id, true);
+				if (!identity.registered)
+					await identities.markRegistered(identity.install_id, true);
 				if (ep !== epoch) return;
 				persist();
 				emit();
@@ -278,7 +305,9 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 
 	const backoff = () => {
 		failures += 1;
-		retryAt = deps.now() + Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS);
+		retryAt =
+			deps.now() +
+			Math.min(BACKOFF_BASE_MS * 2 ** (failures - 1), BACKOFF_MAX_MS);
 	};
 
 	const track = <N extends EventName>(name: N, ...args: TrackArgs<N>) => {
@@ -307,12 +336,20 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		const installId = identities.read()?.install_id;
 		stop();
 		await deps.consent.deny();
-		if (installId) error = (await identities.retire(installId)) ? null : 'receipt';
+		if (installId)
+			error = (await identities.retire(installId)) ? null : 'receipt';
 		const result: DeleteResult = { deleted: 0, failed: 0 };
 		const targets: Receipt[] = await identities.receipts();
 		const leftover = identities.read();
-		if (leftover && leftover.install_id === installId && !targets.some((r) => r.install_id === installId)) {
-			targets.push({ install_id: leftover.install_id, secret: leftover.secret });
+		if (
+			leftover &&
+			leftover.install_id === installId &&
+			!targets.some((r) => r.install_id === installId)
+		) {
+			targets.push({
+				install_id: leftover.install_id,
+				secret: leftover.secret,
+			});
 		}
 		for (const receipt of targets) {
 			try {
@@ -346,7 +383,9 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 		epoch += 1;
 		secretHash = null;
 		const ep = epoch;
-		identityReady = identities.rotate(() => ep === epoch && deps.consent.read().on).catch(() => null);
+		identityReady = identities
+			.rotate(() => ep === epoch && deps.consent.read().on)
+			.catch(() => null);
 		persist();
 		emit();
 		return identityReady.then(() => emit());
@@ -367,9 +406,26 @@ export const createTelemetry = (deps: TelemetryDeps) => {
 			return () => listeners.delete(fn);
 		},
 		snapshot(): TelemetrySnapshot {
-			return { active, installId: identities.read()?.install_id ?? null, pending: queue.length, error };
+			return {
+				active,
+				installId: identities.read()?.install_id ?? null,
+				pending: queue.length,
+				error,
+			};
 		},
-		queueJson: () => JSON.stringify(queue.map(({ id, n, t, seq: s, p, m }) => ({ id, n, t, seq: s, p, ...m })), null, 2),
+		queueJson: () =>
+			JSON.stringify(
+				queue.map(({ id, n, t, seq: s, p, m }) => ({
+					id,
+					n,
+					t,
+					seq: s,
+					p,
+					...m,
+				})),
+				null,
+				2,
+			),
 	};
 };
 

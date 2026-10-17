@@ -10,13 +10,16 @@
 	<PageContainer v-else width="narrow">
 		<PageHeader title="Personas">
 			<template #subtitle>
-				A persona is an identity your AI agents act under: its own name,
-				avatar and system prompt, with its own permissions per workspace.
+				A persona is an identity your AI agents act under: its own name, avatar
+				and system prompt, with its own permissions per workspace.
 				{{ activePersonas.length }}/{{ PERSONA_LIMIT }} used.
 			</template>
 			<template #actions>
 				<label class="flex w-fit items-center gap-2 text-sm">
-					<Switch :checked="showArchived" @update:checked="toggleShowArchived" />
+					<Switch
+						:checked="showArchived"
+						@update:checked="toggleShowArchived"
+					/>
 					Show archived
 				</label>
 			</template>
@@ -97,7 +100,10 @@
 									prompt v{{ persona.prompt_version ?? 1 }}
 								</span>
 							</div>
-							<p v-if="persona.description" class="text-sm text-muted-foreground">
+							<p
+								v-if="persona.description"
+								class="text-sm text-muted-foreground"
+							>
 								{{ persona.description }}
 							</p>
 						</div>
@@ -124,26 +130,40 @@
 				</header>
 
 				<details class="border-t border-border pt-3">
-					<summary data-tour="personas.grants" class="cursor-pointer text-sm font-medium">
+					<summary
+						data-tour="personas.grants"
+						class="cursor-pointer text-sm font-medium"
+					>
 						Workspaces
 					</summary>
 					<PersonaWorkspaceGrants :persona="persona" class="mt-3" />
 				</details>
 
 				<details class="border-t border-border pt-3">
-					<summary data-tour="personas.skills" class="cursor-pointer text-sm font-medium">Skills</summary>
+					<summary
+						data-tour="personas.skills"
+						class="cursor-pointer text-sm font-medium"
+					>
+						Skills
+					</summary>
 					<PersonaSkills :persona="persona" class="mt-3" />
 				</details>
 
 				<details class="border-t border-border pt-3">
-					<summary data-tour="personas.tokens" class="cursor-pointer text-sm font-medium">
+					<summary
+						data-tour="personas.tokens"
+						class="cursor-pointer text-sm font-medium"
+					>
 						Agent connections
 					</summary>
 					<PersonaTokens :persona="persona" class="mt-3" />
 				</details>
 			</article>
 
-			<p v-if="!loading && visiblePersonas.length === 0" class="text-sm text-muted-foreground">
+			<p
+				v-if="!loading && visiblePersonas.length === 0"
+				class="text-sm text-muted-foreground"
+			>
 				No personas yet.
 			</p>
 		</div>
@@ -262,9 +282,10 @@
 			const isLocalOnly = isDesktop && !!store.getters.isLocalOnly;
 			const workspaceGrants = ref<PersonaGrant[]>([]);
 			const currentWorkspace = computed(
-				() => store.getters.currentWorkspace as
-					| { id: number; name: string }
-					| undefined,
+				() =>
+					store.getters.currentWorkspace as
+						| { id: number; name: string }
+						| undefined,
 			);
 			const sharedPersonas = computed(() =>
 				workspaceGrants.value.filter(

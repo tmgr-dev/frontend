@@ -274,7 +274,11 @@ describe('updateUserWorkspaceSetting in a task, page or quick add window', () =>
 		mutations.setUser(state, userWith());
 		mutations.updateUserWorkspaceSetting(state, { workspaceId: 2 });
 		expect(state.clientWorkspaceId).toBe(2);
-		expect(sessionStorage.getItem(workspaceContext.WORKSPACE_SESSION_KEY)).toBe('2');
-		expect(localStorage.getItem(workspaceContext.WORKSPACE_LOCAL_KEY)).not.toBe('2');
+		expect(sessionStorage.getItem(workspaceContext.WORKSPACE_SESSION_KEY)).toBe(
+			'2',
+		);
+		expect(localStorage.getItem(workspaceContext.WORKSPACE_LOCAL_KEY)).not.toBe(
+			'2',
+		);
 	});
 });

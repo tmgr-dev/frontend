@@ -195,7 +195,9 @@
 			);
 			const isActive = computed(() => route.params.slug === props.node.slug);
 			const zone = useFileDrop((files) => ctx.importInto(props.node, files));
-			const url = computed(() => pageUrl(ctx.workspaceCode.value, props.node.slug));
+			const url = computed(() =>
+				pageUrl(ctx.workspaceCode.value, props.node.slug),
+			);
 
 			const openInWindow = () => {
 				const target = pageWindowTarget(props.node, ctx.workspaceCode.value);

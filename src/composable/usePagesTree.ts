@@ -1,8 +1,4 @@
-import {
-	getPagesTree,
-	movePage,
-	type PageSummary,
-} from '@/actions/tmgr/pages';
+import { getPagesTree, movePage, type PageSummary } from '@/actions/tmgr/pages';
 import { usePagesRealtime } from '@/composable/usePagesRealtime';
 import {
 	ancestorIds,
@@ -81,7 +77,11 @@ export function usePagesTree(
 		if (page) ancestorIds(pages.value, page.id).forEach(expand);
 	};
 
-	const move = async (id: number, parentId: number | null, position: number) => {
+	const move = async (
+		id: number,
+		parentId: number | null,
+		position: number,
+	) => {
 		const snapshot = pages.value;
 		pages.value = applyMove(pages.value, id, parentId, position);
 		if (parentId !== null) expand(parentId);
@@ -94,5 +94,17 @@ export function usePagesTree(
 		await load(false);
 	};
 
-	return { pages, tree, loaded, failed, expanded, load, refresh, toggle, expand, revealPage, move };
+	return {
+		pages,
+		tree,
+		loaded,
+		failed,
+		expanded,
+		load,
+		refresh,
+		toggle,
+		expand,
+		revealPage,
+		move,
+	};
 }

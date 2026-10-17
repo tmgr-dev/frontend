@@ -71,8 +71,7 @@ test('the desktop CSP lets the main screens run and blocks foreign hosts', async
   // vuedraggable's globalThis fallback tries `new Function` inside a try/catch.
   const violations = async () =>
     (await page.evaluate(() => window.__cspViolations)).filter(
-      (entry) =>
-        !/^script-src eval .*vuedraggable/.test(entry),
+      (entry) => !/^script-src eval .*vuedraggable/.test(entry),
     );
   for (const path of [
     '/demo/board',

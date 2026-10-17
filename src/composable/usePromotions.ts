@@ -1,11 +1,11 @@
 import { getPromotions, sendPromotionEvent } from '@/actions/tmgr/promotions';
 import { useFeatureToggles } from '@/composable/useFeatureToggles';
+import store from '@/store';
 import {
 	createPromotionsController,
 	type Promotion,
 	type PromotionPlacement,
 } from '@/utils/promotions';
-import store from '@/store';
 import { onMounted, ref, watch } from 'vue';
 
 const MODULE_KEY = 'promotions';

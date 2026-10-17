@@ -37,7 +37,12 @@ export const enabledStore = {
 
 /** A member's consent that a plugin of a shared workspace may reach this computer, per member and pinned release. */
 export const machineConsentStore = {
-	has: (memberId: number, workspaceId: number, pluginId: string, release: string) =>
+	has: (
+		memberId: number,
+		workspaceId: number,
+		pluginId: string,
+		release: string,
+	) =>
 		read<Record<string, boolean>>(MACHINE_CONSENT, {})[
 			`${memberId}:${pluginId}@${workspaceId}#${release}`
 		] === true,
@@ -103,7 +108,10 @@ export const trayTitlePluginStore = {
 
 /** A removed plugin leaves nothing a later plugin with the same id could inherit; `storageId` is what
  *  the "Always" consent and the menu bar text choice were actually keyed by. */
-export const forgetPlugin = (pluginId: string, storageId: string = pluginId) => {
+export const forgetPlugin = (
+	pluginId: string,
+	storageId: string = pluginId,
+) => {
 	const enabled = read<Record<string, boolean>>(ENABLED, {});
 	write(
 		ENABLED,
@@ -127,7 +135,9 @@ export const forgetPlugin = (pluginId: string, storageId: string = pluginId) => 
 	write(
 		DEEP_LINK_CONSENT,
 		Object.fromEntries(
-			Object.entries(consent).filter(([key]) => !key.startsWith(`${storageId}:`)),
+			Object.entries(consent).filter(
+				([key]) => !key.startsWith(`${storageId}:`),
+			),
 		),
 	);
 	if (trayTitlePluginStore.get() === storageId) trayTitlePluginStore.set(null);

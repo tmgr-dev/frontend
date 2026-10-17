@@ -60,8 +60,8 @@
 						</span>
 						<span class="mt-0.5 block text-xs text-ink-subtle">
 							<span v-if="task.category && showSurface('categories.badge')"
-								>{{ task.category.code }} · </span
-							>
+								>{{ task.category.code }} ·
+							</span>
 							<span>{{ task.status?.name ?? 'No status' }}</span>
 							<span v-if="task.my_comments && showSurface('comments.count')">
 								· {{ task.my_comments }} comments</span

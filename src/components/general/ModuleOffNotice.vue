@@ -1,9 +1,6 @@
 <template>
 	<PageContainer width="narrow">
-		<RequiresAccount
-			v-if="mode === 'requires-account'"
-			:module="title"
-		/>
+		<RequiresAccount v-if="mode === 'requires-account'" :module="title" />
 		<div
 			v-else
 			class="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-8 text-center text-card-foreground"

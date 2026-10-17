@@ -17,10 +17,16 @@ const BADGE_KEY = /^[a-z0-9_-]{1,40}$/;
 const normalizeBadge = (badge) => ({
 	text: String(badge.text).slice(0, 16),
 	color: COLORS.includes(badge.color) ? badge.color : 'gray',
-	tooltip: typeof badge.tooltip === 'string' ? badge.tooltip.slice(0, 200) : null,
+	tooltip:
+		typeof badge.tooltip === 'string' ? badge.tooltip.slice(0, 200) : null,
 	priority:
-		typeof badge.priority === 'number' && Number.isFinite(badge.priority) ? badge.priority : 0,
-	key: typeof badge.key === 'string' && BADGE_KEY.test(badge.key) ? badge.key : undefined,
+		typeof badge.priority === 'number' && Number.isFinite(badge.priority)
+			? badge.priority
+			: 0,
+	key:
+		typeof badge.key === 'string' && BADGE_KEY.test(badge.key)
+			? badge.key
+			: undefined,
 });
 
 const taskCategory = (state, task) =>
@@ -99,7 +105,10 @@ const occurrencesInRange = (routine, from, to) => {
 	const start = parseDate(routine.scheduledDate);
 	const fromD = parseDate(from);
 	const toD = parseDate(to);
-	const frequency = routine.frequency && routine.frequency !== 'NONE' ? routine.frequency : null;
+	const frequency =
+		routine.frequency && routine.frequency !== 'NONE'
+			? routine.frequency
+			: null;
 	if (!frequency) {
 		return start >= fromD && start <= toD ? [formatDate(start)] : [];
 	}
@@ -116,27 +125,39 @@ const occurrencesInRange = (routine, from, to) => {
 const createMockApi = (state, clock) => ({
 	async listTasks(query) {
 		let items = state.tasks;
-		if (query.statusId != null) items = items.filter((t) => t.status_id === query.statusId);
+		if (query.statusId != null)
+			items = items.filter((t) => t.status_id === query.statusId);
 		if (query.categoryId != null)
 			items = items.filter((t) => t.project_category_id === query.categoryId);
 		if (query.search) {
 			const needle = query.search.toLowerCase();
 			items = items.filter((t) => t.title.toLowerCase().includes(needle));
 		}
-		if (query.priority) items = items.filter((t) => t.priority === query.priority);
+		if (query.priority)
+			items = items.filter((t) => t.priority === query.priority);
 		if (query.statusType) {
 			const ids = new Set(
-				state.statuses.filter((s) => s.type === query.statusType).map((s) => s.id),
+				state.statuses
+					.filter((s) => s.type === query.statusType)
+					.map((s) => s.id),
 			);
 			items = items.filter((t) => ids.has(t.status_id));
 		}
-		if (query.dueBefore) items = items.filter((t) => t.expired_at && t.expired_at < query.dueBefore);
-		if (query.dueAfter) items = items.filter((t) => t.expired_at && t.expired_at > query.dueAfter);
+		if (query.dueBefore)
+			items = items.filter(
+				(t) => t.expired_at && t.expired_at < query.dueBefore,
+			);
+		if (query.dueAfter)
+			items = items.filter(
+				(t) => t.expired_at && t.expired_at > query.dueAfter,
+			);
 		const perPage = query.perPage ?? 50;
 		const page = query.page ?? 1;
 		const start = (page - 1) * perPage;
 		return {
-			items: items.slice(start, start + perPage).map((t) => toWireTask(state, t)),
+			items: items
+				.slice(start, start + perPage)
+				.map((t) => toWireTask(state, t)),
 			total: items.length,
 		};
 	},
@@ -144,9 +165,10 @@ const createMockApi = (state, clock) => ({
 		return toWireTask(state, findTask(state, id));
 	},
 	async createTask(fields) {
-		const category = fields.project_category_id != null
-			? state.categories.find((c) => c.id === fields.project_category_id)
-			: null;
+		const category =
+			fields.project_category_id != null
+				? state.categories.find((c) => c.id === fields.project_category_id)
+				: null;
 		const task = {
 			id: state.nextTaskId++,
 			title: fields.title,
@@ -227,7 +249,13 @@ const createMockApi = (state, clock) => ({
 	},
 	async addComment(taskId, text) {
 		findTask(state, taskId);
-		const comment = { id: state.nextCommentId++, task_id: taskId, text, is_plugin: true, reactions: {} };
+		const comment = {
+			id: state.nextCommentId++,
+			task_id: taskId,
+			text,
+			is_plugin: true,
+			reactions: {},
+		};
 		(state.comments[taskId] ??= []).push(comment);
 		return { ...comment };
 	},
@@ -287,7 +315,8 @@ const createMockApi = (state, clock) => ({
 	},
 	async taskDataGetMany(taskIds, key) {
 		const result = {};
-		for (const id of taskIds) result[id] = state.taskData[`${id}:${key}`] ?? null;
+		for (const id of taskIds)
+			result[id] = state.taskData[`${id}:${key}`] ?? null;
 		return result;
 	},
 	async listAgentWork(taskId) {
@@ -295,7 +324,12 @@ const createMockApi = (state, clock) => ({
 	},
 	async startAgentWork(taskId, fields) {
 		findTask(state, taskId);
-		const run = { id: state.nextAgentWorkId++, task_id: taskId, status: 'running', ...fields };
+		const run = {
+			id: state.nextAgentWorkId++,
+			task_id: taskId,
+			status: 'running',
+			...fields,
+		};
 		(state.agentWork[taskId] ??= []).push(run);
 		return { ...run };
 	},
@@ -316,7 +350,11 @@ const createMockApi = (state, clock) => ({
 				: todayStr >= from && todayStr <= to
 				? [todayStr]
 				: [];
-			const recurring = !!(routine.scheduledDate && routine.frequency && routine.frequency !== 'NONE');
+			const recurring = !!(
+				routine.scheduledDate &&
+				routine.frequency &&
+				routine.frequency !== 'NONE'
+			);
 			for (const date of dates) {
 				const instance = state.routineInstances.find(
 					(i) => i.routineId === routine.id && i.date === date,
@@ -336,7 +374,9 @@ const createMockApi = (state, clock) => ({
 				});
 			}
 		}
-		entries.sort((a, b) => a.date.localeCompare(b.date) || a.routineId - b.routineId);
+		entries.sort(
+			(a, b) => a.date.localeCompare(b.date) || a.routineId - b.routineId,
+		);
 		return entries;
 	},
 	async getRoutine(id) {
@@ -367,14 +407,18 @@ const createMockApi = (state, clock) => ({
 	async updateRoutine(id, patch) {
 		const routine = findRoutine(state, id);
 		if (patch.title !== undefined) routine.title = patch.title;
-		if (patch.description !== undefined) routine.description = patch.description;
+		if (patch.description !== undefined)
+			routine.description = patch.description;
 		routine.updatedAt = new Date(clock()).toISOString();
 		return toRoutine(routine);
 	},
 	async completeRoutine(id, date) {
 		const routine = findRoutine(state, id);
-		let instance = state.routineInstances.find((i) => i.routineId === id && i.date === date);
-		if (instance && instance.status === 'COMPLETED') return toRoutineInstance(instance);
+		let instance = state.routineInstances.find(
+			(i) => i.routineId === id && i.date === date,
+		);
+		if (instance && instance.status === 'COMPLETED')
+			return toRoutineInstance(instance);
 		if (instance) {
 			instance.status = 'COMPLETED';
 			return toRoutineInstance(instance);
@@ -391,8 +435,11 @@ const createMockApi = (state, clock) => ({
 	},
 	async skipRoutine(id, date) {
 		const routine = findRoutine(state, id);
-		let instance = state.routineInstances.find((i) => i.routineId === id && i.date === date);
-		if (instance && instance.status === 'SKIPPED') return toRoutineInstance(instance);
+		let instance = state.routineInstances.find(
+			(i) => i.routineId === id && i.date === date,
+		);
+		if (instance && instance.status === 'SKIPPED')
+			return toRoutineInstance(instance);
 		if (instance) {
 			instance.status = 'SKIPPED';
 			return toRoutineInstance(instance);
@@ -411,7 +458,9 @@ const createMockApi = (state, clock) => ({
 		const routine = findRoutine(state, id);
 		const opts = options ?? {};
 		const category =
-			opts.categoryId != null ? state.categories.find((c) => c.id === opts.categoryId) : null;
+			opts.categoryId != null
+				? state.categories.find((c) => c.id === opts.categoryId)
+				: null;
 		const task = {
 			id: state.nextTaskId++,
 			title: routine.title,
@@ -427,7 +476,9 @@ const createMockApi = (state, clock) => ({
 		};
 		state.tasks.push(task);
 		state.routines = state.routines.filter((r) => r.id !== id);
-		state.routineInstances = state.routineInstances.filter((i) => i.routineId !== id);
+		state.routineInstances = state.routineInstances.filter(
+			(i) => i.routineId !== id,
+		);
 		return toWireTask(state, task);
 	},
 });
@@ -454,14 +505,17 @@ const computeBadges = async (sandbox, badgeIds, tasks) => {
 			if (parsed.length) (result[taskId] ??= []).push(...parsed);
 		}
 	}
-	for (const list of Object.values(result)) list.sort((a, b) => b.priority - a.priority);
+	for (const list of Object.values(result))
+		list.sort((a, b) => b.priority - a.priority);
 	return result;
 };
 
 /** Real Node has no trouble loading the wasm variant directly; only Jest's CommonJS transform does. */
 const loadDefaultQuickJS = () => {
 	const variant = require('@jitl/quickjs-wasmfile-release-sync');
-	const { newQuickJSWASMModuleFromVariant } = require('quickjs-emscripten-core');
+	const {
+		newQuickJSWASMModuleFromVariant,
+	} = require('quickjs-emscripten-core');
 	return newQuickJSWASMModuleFromVariant(variant);
 };
 
@@ -505,10 +559,20 @@ const createTestHost = async (options = {}) => {
 		log: [],
 	};
 	for (const s of options.statuses ?? []) {
-		state.statuses.push({ id: state.nextStatusId++, name: s.name, type: s.type ?? 'default', color: s.color ?? null });
+		state.statuses.push({
+			id: state.nextStatusId++,
+			name: s.name,
+			type: s.type ?? 'default',
+			color: s.color ?? null,
+		});
 	}
 	for (const c of options.categories ?? []) {
-		state.categories.push({ id: state.nextCategoryId++, title: c.title, code: c.code ?? null, nextSequence: 0 });
+		state.categories.push({
+			id: state.nextCategoryId++,
+			title: c.title,
+			code: c.code ?? null,
+			nextSequence: 0,
+		});
 	}
 	for (const t of options.tasks ?? []) {
 		state.tasks.push({
@@ -550,7 +614,13 @@ const createTestHost = async (options = {}) => {
 		});
 	}
 
-	const registered = { event: new Set(), command: new Set(), badges: new Set(), page: new Set(), section: new Set() };
+	const registered = {
+		event: new Set(),
+		command: new Set(),
+		badges: new Set(),
+		page: new Set(),
+		section: new Set(),
+	};
 	const workspace = {
 		id: -1,
 		code: options.workspaceCode ?? 'test',
@@ -575,7 +645,12 @@ const createTestHost = async (options = {}) => {
 			else delete state.statusBar[id];
 		},
 		setViewBadge: (viewId, badge) => {
-			if (badge) state.viewBadges[viewId] = { count: badge.count, text: badge.text, tone: badge.tone };
+			if (badge)
+				state.viewBadges[viewId] = {
+					count: badge.count,
+					text: badge.text,
+					tone: badge.tone,
+				};
 			else delete state.viewBadges[viewId];
 		},
 		refresh: () => undefined,
@@ -592,8 +667,15 @@ const createTestHost = async (options = {}) => {
 		},
 		alarms: {
 			create: (name, spec) => {
-				state.alarms[name] = { name, scheduledAtMs: spec.scheduledAtMs, periodMinutes: spec.periodMinutes };
-				return { name, scheduledAt: new Date(spec.scheduledAtMs).toISOString() };
+				state.alarms[name] = {
+					name,
+					scheduledAtMs: spec.scheduledAtMs,
+					periodMinutes: spec.periodMinutes,
+				};
+				return {
+					name,
+					scheduledAt: new Date(spec.scheduledAtMs).toISOString(),
+				};
 			},
 			clear: (name) => delete state.alarms[name],
 			list: () =>
@@ -602,7 +684,10 @@ const createTestHost = async (options = {}) => {
 					scheduledAt: new Date(a.scheduledAtMs).toISOString(),
 				})),
 		},
-		dnd: () => (typeof options.dnd === 'function' ? options.dnd() : options.dnd ?? { active: false, until: null }),
+		dnd: () =>
+			typeof options.dnd === 'function'
+				? options.dnd()
+				: options.dnd ?? { active: false, until: null },
 		tray: {
 			setItem: (itemId, item) => {
 				if (item) state.trayItems[itemId] = item;
@@ -613,7 +698,8 @@ const createTestHost = async (options = {}) => {
 		},
 		fetch: options.fetch,
 		localAccess: {
-			requestConnection: async () => options.localAccessConnect ?? { status: 'cancelled' },
+			requestConnection: async () =>
+				options.localAccessConnect ?? { status: 'cancelled' },
 		},
 	});
 
@@ -656,8 +742,14 @@ const createTestHost = async (options = {}) => {
 				!Number.isSafeInteger(taskId) ||
 				taskId <= 0
 			)
-				throw new PluginError('NOT_DECLARED', `${command} is not a task menu item of ${manifest.id}`);
-			return sandbox.dispatch('command', command, { taskId, workspaceId: workspace.id });
+				throw new PluginError(
+					'NOT_DECLARED',
+					`${command} is not a task menu item of ${manifest.id}`,
+				);
+			return sandbox.dispatch('command', command, {
+				taskId,
+				workspaceId: workspace.id,
+			});
 		},
 		renderPage: async (id, props) =>
 			sanitizeTree(
@@ -674,10 +766,15 @@ const createTestHost = async (options = {}) => {
 		badges: (tasks) => computeBadges(sandbox, registered.badges, tasks),
 		fireAlarms: (atTime) => {
 			if (typeof atTime === 'number') currentTime = atTime;
-			const due = Object.values(state.alarms).filter((a) => a.scheduledAtMs <= currentTime);
+			const due = Object.values(state.alarms).filter(
+				(a) => a.scheduledAtMs <= currentTime,
+			);
 			for (const def of due) {
 				if (def.periodMinutes) {
-					state.alarms[def.name] = { ...def, scheduledAtMs: currentTime + def.periodMinutes * 60_000 };
+					state.alarms[def.name] = {
+						...def,
+						scheduledAtMs: currentTime + def.periodMinutes * 60_000,
+					};
 				} else {
 					delete state.alarms[def.name];
 				}
@@ -685,7 +782,10 @@ const createTestHost = async (options = {}) => {
 			return Promise.all(
 				due.map((def) =>
 					sandbox
-						.dispatch('event', 'alarm', { name: def.name, scheduledAt: new Date(def.scheduledAtMs).toISOString() })
+						.dispatch('event', 'alarm', {
+							name: def.name,
+							scheduledAt: new Date(def.scheduledAtMs).toISOString(),
+						})
 						.catch(() => undefined),
 				),
 			);

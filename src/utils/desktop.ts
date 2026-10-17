@@ -7,10 +7,9 @@ export const desktopWindowLabel = (): string | null =>
 export type DesktopPlatform = 'macos' | 'windows' | 'linux';
 
 export const desktopPlatform = (
-	nav: { platform?: string; userAgent?: string } | undefined = typeof navigator ===
-	'undefined'
-		? undefined
-		: navigator,
+	nav:
+		| { platform?: string; userAgent?: string }
+		| undefined = typeof navigator === 'undefined' ? undefined : navigator,
 ): DesktopPlatform | null => {
 	const hint = `${nav?.platform ?? ''} ${nav?.userAgent ?? ''}`;
 	if (/mac|darwin/i.test(hint)) return 'macos';
@@ -26,8 +25,9 @@ export const hasNativeTitleBar = (
 	platform: DesktopPlatform | null = desktopPlatform(),
 ): boolean => platform === 'windows' || platform === 'linux';
 
-export const trayName = (platform: DesktopPlatform | null = desktopPlatform()): string =>
-	isMacLike(platform) ? 'menu bar' : 'system tray';
+export const trayName = (
+	platform: DesktopPlatform | null = desktopPlatform(),
+): string => (isMacLike(platform) ? 'menu bar' : 'system tray');
 
 export const revealInFileManagerLabel = (
 	platform: DesktopPlatform | null = desktopPlatform(),

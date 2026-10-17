@@ -1074,10 +1074,9 @@ test.describe('QA verification', () => {
           /!\[\]\(tmgr:\/\/file\/41 " =\d+x\d+"\)/.test(await savedBody(state)),
         )
         .toBe(true);
-      await expect(page.locator('.page-editor img.pe-image-img')).toHaveAttribute(
-        'src',
-        /^blob:/,
-      );
+      await expect(
+        page.locator('.page-editor img.pe-image-img'),
+      ).toHaveAttribute('src', /^blob:/);
     });
   }
 

@@ -5,7 +5,10 @@ export interface LocalProfile {
 	created_at: string;
 }
 
-const invoke = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+const invoke = async <T>(
+	command: string,
+	args?: Record<string, unknown>,
+): Promise<T> => {
 	const core = await import('@tauri-apps/api/core');
 	return core.invoke<T>(command, args);
 };

@@ -32,8 +32,9 @@ export const REFRESH_MS = 6 * 60 * 60 * 1000;
 
 /** Built-in and folder plugins have no repository or release, so only their id can be blocked. */
 export const blockedById = (catalog: Catalog, pluginId: string) =>
-	catalog.blocked.find((block) => block.id === pluginId)?.reason.slice(0, 200) ??
-	null;
+	catalog.blocked
+		.find((block) => block.id === pluginId)
+		?.reason.slice(0, 200) ?? null;
 
 export const setCatalog = (next: Catalog) => {
 	if (next.serial < pluginCatalog.serial) return;

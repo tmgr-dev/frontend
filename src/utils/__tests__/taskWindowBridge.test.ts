@@ -11,7 +11,9 @@ describe('installTaskWindowNavigationGuard', () => {
 
 	it('lets the task window route through', () => {
 		const { guard, send } = setup();
-		expect(guard({ name: 'TaskWindow', fullPath: '/a/task-window/1' })).toBeUndefined();
+		expect(
+			guard({ name: 'TaskWindow', fullPath: '/a/task-window/1' }),
+		).toBeUndefined();
 		expect(send).not.toHaveBeenCalled();
 	});
 
@@ -28,8 +30,12 @@ describe('installTaskWindowNavigationGuard for page windows', () => {
 		const router = { beforeEach: (g: typeof guard) => ((guard = g), () => {}) };
 		const send = jest.fn();
 		installTaskWindowNavigationGuard(router, send, 'PageWindow');
-		expect(guard({ name: 'PageWindow', fullPath: '/a/page-window/x' })).toBeUndefined();
-		expect(guard({ name: 'TaskWindow', fullPath: '/a/task-window/1' })).toBe(false);
+		expect(
+			guard({ name: 'PageWindow', fullPath: '/a/page-window/x' }),
+		).toBeUndefined();
+		expect(guard({ name: 'TaskWindow', fullPath: '/a/task-window/1' })).toBe(
+			false,
+		);
 		expect(send).toHaveBeenCalledWith('/a/task-window/1');
 	});
 });

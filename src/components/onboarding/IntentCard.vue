@@ -9,25 +9,27 @@
 	>
 		<component :is="icon" class="h-10 w-10 text-brand" aria-hidden="true" />
 		<span class="text-lg font-semibold text-ink">{{ title }}</span>
-		<span class="w-full border-t border-line pt-3 text-sm text-ink-subtle dark:border-gray-700">
+		<span
+			class="w-full border-t border-line pt-3 text-sm text-ink-subtle dark:border-gray-700"
+		>
 			{{ description }}
 		</span>
 	</button>
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
-import type { PropType } from 'vue';
+	import type { PropType } from 'vue';
+	import { defineComponent } from 'vue';
 
-export default defineComponent({
-	name: 'IntentCard',
-	props: {
-		title: { type: String, required: true },
-		description: { type: String, required: true },
-		icon: { type: [Object, Function] as PropType<object>, required: true },
-		selected: { type: Boolean, default: false },
-		disabled: { type: Boolean, default: false },
-	},
-	emits: ['select'],
-});
+	export default defineComponent({
+		name: 'IntentCard',
+		props: {
+			title: { type: String, required: true },
+			description: { type: String, required: true },
+			icon: { type: [Object, Function] as PropType<object>, required: true },
+			selected: { type: Boolean, default: false },
+			disabled: { type: Boolean, default: false },
+		},
+		emits: ['select'],
+	});
 </script>

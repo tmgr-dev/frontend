@@ -80,7 +80,11 @@ export const classify = (
 	if (verb === 'GET' && path === 'tasks/runned') return 'runned';
 	// A timer call pinned to a cloud workspace (from the tray) targets that cloud task explicitly.
 	const target = params?.workspace_id;
-	if (/^tasks\/\d+\/countdown$/.test(path) && target !== undefined && Number(target) >= 0) {
+	if (
+		/^tasks\/\d+\/countdown$/.test(path) &&
+		target !== undefined &&
+		Number(target) >= 0
+	) {
 		return 'server';
 	}
 	return 'local';
@@ -92,11 +96,18 @@ const classifyAccountless = (
 	params?: Record<string, any>,
 ): Route => {
 	if (SIGN_IN.some((pattern) => pattern.test(path))) return 'server';
-	if (GUEST.some(([pattern, verbs]) => pattern.test(path) && verbs.includes(verb))) return 'guest';
+	if (
+		GUEST.some(([pattern, verbs]) => pattern.test(path) && verbs.includes(verb))
+	)
+		return 'guest';
 	if (ACCOUNT.some((pattern) => pattern.test(path))) return 'refuse';
 	if (verb === 'GET' && path === 'tasks/runned') return 'runned';
 	const target = params?.workspace_id;
-	if (/^tasks\/\d+\/countdown$/.test(path) && target !== undefined && Number(target) >= 0) {
+	if (
+		/^tasks\/\d+\/countdown$/.test(path) &&
+		target !== undefined &&
+		Number(target) >= 0
+	) {
 		return 'refuse';
 	}
 	return 'local';
@@ -128,7 +139,9 @@ export const crossesWorkspaces = (
 	params: unknown,
 	activeLocalId: number | null,
 ): boolean => {
-	const ids = [workspaceIdIn(body), workspaceIdIn(params)].filter((id): id is number => id !== null);
+	const ids = [workspaceIdIn(body), workspaceIdIn(params)].filter(
+		(id): id is number => id !== null,
+	);
 	if (!ids.length) return false;
 	if (route === 'local') return ids.some((id) => id !== activeLocalId);
 	return ids.some((id) => id < 0);

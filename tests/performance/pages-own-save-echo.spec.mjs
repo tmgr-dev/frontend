@@ -31,7 +31,13 @@ const fakePage = async (page, { hold = false } = {}) => {
   const patchHeld = new Promise((resolve) => (releasePatch = resolve));
   const patches = [];
   await page.route('**/api/**/feature-toggles', (route) => {
-    const toggle = (key) => ({ key, name: key, group: 'pages', type: 'boolean', enabled: true });
+    const toggle = (key) => ({
+      key,
+      name: key,
+      group: 'pages',
+      type: 'boolean',
+      enabled: true,
+    });
     return route.fulfill({
       json: {
         data: route.request().url().includes('/user/')
@@ -42,16 +48,25 @@ const fakePage = async (page, { hold = false } = {}) => {
   });
   await page.route('**/api/pages**', async (route) => {
     const request = route.request();
-    const path = new URL(request.url()).pathname.replace('/api/pages', '').replace(/^\//, '');
+    const path = new URL(request.url()).pathname
+      .replace('/api/pages', '')
+      .replace(/^\//, '');
     const json = (data) => route.fulfill({ json: { data } });
     if (path === 'tree' || path === '') return json([notes(current.version)]);
     if ((path === 'notes' || path === '3') && request.method() === 'PATCH') {
       const body = request.postDataJSON();
       patches.push(body);
       if (body.version !== current.version)
-        return route.fulfill({ status: 409, json: { error: 'page_conflict', data: current } });
+        return route.fulfill({
+          status: 409,
+          json: { error: 'page_conflict', data: current },
+        });
       if (hold) await patchHeld;
-      current = { ...current, ...request.postDataJSON(), version: current.version + 1 };
+      current = {
+        ...current,
+        ...request.postDataJSON(),
+        version: current.version + 1,
+      };
       return json(current);
     }
     if (path === 'notes' || path === '3') return json(current);
@@ -80,7 +95,9 @@ test('the echo of my own save arriving before the PATCH response is not a change
   page,
 }) => {
   await mockApp(page);
-  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
   const server = await fakePage(page, { hold: true });
   await page.goto('/demo/pages/notes');
   const title = page.getByTestId('page-title-input');
@@ -103,14 +120,23 @@ test('the echo of my own save arriving before the PATCH response is not a change
 
   server.serverChange(5, 'Renamed elsewhere');
   await pageUpdated(page, 5);
-  await expect(page.getByTestId('page-update-banner')).toContainText('Page changed, version 5');
-  await page.getByTestId('page-update-banner').getByRole('button', { name: 'Refresh' }).click();
+  await expect(page.getByTestId('page-update-banner')).toContainText(
+    'Page changed, version 5',
+  );
+  await page
+    .getByTestId('page-update-banner')
+    .getByRole('button', { name: 'Refresh' })
+    .click();
   await expect(title).toHaveValue('Renamed elsewhere');
 });
 
-test('a change elsewhere while I have unsaved edits opens the conflict', async ({ page }) => {
+test('a change elsewhere while I have unsaved edits opens the conflict', async ({
+  page,
+}) => {
   await mockApp(page);
-  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
   const server = await fakePage(page);
   await page.goto('/demo/pages/notes');
   const title = page.getByTestId('page-title-input');
@@ -118,10 +144,15 @@ test('a change elsewhere while I have unsaved edits opens the conflict', async (
 
   server.serverChange(4, 'Renamed elsewhere');
   await pageUpdated(page, 4);
-  await expect(page.getByTestId('page-update-banner')).toContainText('Page changed, version 4');
+  await expect(page.getByTestId('page-update-banner')).toContainText(
+    'Page changed, version 4',
+  );
   await title.fill('My unsaved title');
   // Refresh (refreshAction) or the autosave's 409, whichever runs first, must end in the conflict.
-  await page.getByTestId('page-update-banner').getByRole('button', { name: 'Refresh' }).click();
+  await page
+    .getByTestId('page-update-banner')
+    .getByRole('button', { name: 'Refresh' })
+    .click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await expect(title).toHaveValue('My unsaved title');
 });

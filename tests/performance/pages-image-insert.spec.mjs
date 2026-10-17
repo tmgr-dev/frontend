@@ -332,7 +332,8 @@ test('several picked images are all inserted in order', async ({ page }) => {
     .poll(async () => {
       const body = await savedBody(state);
       return (
-        body.indexOf(IMG(41)) >= 0 && body.indexOf(IMG(41)) < body.indexOf(IMG(42))
+        body.indexOf(IMG(41)) >= 0 &&
+        body.indexOf(IMG(41)) < body.indexOf(IMG(42))
       );
     })
     .toBe(true);
@@ -638,7 +639,9 @@ test('dropping an image inserts it where it was dropped', async ({ page }) => {
     .toBe(`First line\n\n${IMG(41)}Last line\n`);
 });
 
-test('a retina screenshot is stored at half its pixel size', async ({ page }) => {
+test('a retina screenshot is stored at half its pixel size', async ({
+  page,
+}) => {
   const state = await setupPages(page, 'First line\n');
   await mockUpload(page);
   await openPage(page);
@@ -685,7 +688,9 @@ test('opening a page with existing images saves nothing', async ({ page }) => {
   await expect(images(page)).toHaveCount(5);
   await page.waitForTimeout(DEBOUNCE_MARGIN);
   expect(state.writes).toEqual([]);
-  await expect(page.locator('.page-editor .pe-image-caption', { hasText: 'shot.png' })).toHaveCount(0);
+  await expect(
+    page.locator('.page-editor .pe-image-caption', { hasText: 'shot.png' }),
+  ).toHaveCount(0);
 });
 
 test('aligning an image while its replacement uploads still swaps it', async ({
@@ -762,7 +767,9 @@ test('pasting a snippet with text around an image keeps the text', async ({
 
 const selectText = async (page, text) => {
   await selectIn(paragraph(page, text), false);
-  expect(await page.evaluate(() => window.getSelection().toString())).toBe(text);
+  expect(await page.evaluate(() => window.getSelection().toString())).toBe(
+    text,
+  );
 };
 
 test('pasting an image over selected text keeps the text when the upload fails', async ({

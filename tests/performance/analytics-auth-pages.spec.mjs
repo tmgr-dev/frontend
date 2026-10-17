@@ -32,9 +32,9 @@ for (const path of ['/', '/tmgrdev/board']) {
   test(`app page ${path} loads analytics`, async ({ page }) => {
     const requests = await watchAnalytics(page);
     await page.goto(path, { waitUntil: 'domcontentloaded' });
-    await expect.poll(() => requests).toEqual([
-      'https://analytics.dzik.email/js/script.js',
-    ]);
+    await expect
+      .poll(() => requests)
+      .toEqual(['https://analytics.dzik.email/js/script.js']);
   });
 }
 
@@ -43,7 +43,10 @@ const watchGoogle = async (page) => {
   await page.addInitScript(() =>
     localStorage.setItem(
       'tmgr:consent:v1',
-      JSON.stringify({ analytics: 'granted', updatedAt: '2026-10-01T00:00:00Z' }),
+      JSON.stringify({
+        analytics: 'granted',
+        updatedAt: '2026-10-01T00:00:00Z',
+      }),
     ),
   );
   await page.route('https://www.googletagmanager.com/**', (route) => {
@@ -53,15 +56,23 @@ const watchGoogle = async (page) => {
   return requests;
 };
 
-test('with analytics consent Google Analytics stays off the OAuth callback page', async ({ page }) => {
+test('with analytics consent Google Analytics stays off the OAuth callback page', async ({
+  page,
+}) => {
   const requests = await watchGoogle(page);
-  await page.goto('/login/github?code=x&state=y', { waitUntil: 'domcontentloaded' });
+  await page.goto('/login/github?code=x&state=y', {
+    waitUntil: 'domcontentloaded',
+  });
   await page.waitForTimeout(1500);
   expect(requests).toEqual([]);
-  expect(await page.evaluate(() => JSON.stringify(window.dataLayer ?? []))).not.toContain('code=x');
+  expect(
+    await page.evaluate(() => JSON.stringify(window.dataLayer ?? [])),
+  ).not.toContain('code=x');
 });
 
-test('with analytics consent Google Analytics loads on an app page', async ({ page }) => {
+test('with analytics consent Google Analytics loads on an app page', async ({
+  page,
+}) => {
   await mockApp(page);
   const requests = await watchGoogle(page);
   await page.goto('/tmgrdev/board', { waitUntil: 'domcontentloaded' });
@@ -69,7 +80,9 @@ test('with analytics consent Google Analytics loads on an app page', async ({ pa
   expect(requests[0]).toContain('https://www.googletagmanager.com/gtag/js?id=');
 });
 
-test('an in-app navigation to a token URL does a full load so Plausible stays off it', async ({ page }) => {
+test('an in-app navigation to a token URL does a full load so Plausible stays off it', async ({
+  page,
+}) => {
   await mockApp(page);
   const requests = await watchAnalytics(page);
   await page.goto('/tmgrdev/board', { waitUntil: 'domcontentloaded' });
@@ -78,10 +91,14 @@ test('an in-app navigation to a token URL does a full load so Plausible stays of
   await page.evaluate(() =>
     document
       .querySelector('#app')
-      .__vue_app__.config.globalProperties.$router.push('/workspaces/invitations/secret-token'),
+      .__vue_app__.config.globalProperties.$router.push(
+        '/workspaces/invitations/secret-token',
+      ),
   );
   await expect(page).toHaveURL(/\/workspaces\/invitations\/secret-token$/);
-  await expect.poll(() => page.evaluate(() => window.__sameDocument)).toBeUndefined();
+  await expect
+    .poll(() => page.evaluate(() => window.__sameDocument))
+    .toBeUndefined();
   await page.waitForTimeout(1000);
   expect(requests).toHaveLength(1);
 });

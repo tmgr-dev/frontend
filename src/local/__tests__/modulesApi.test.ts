@@ -24,7 +24,8 @@ describeSqlite('local modules API', () => {
 		if (!res) throw new Error(`no local route for ${method} ${url}`);
 		return res.data.data;
 	};
-	const payload = async () => parseModulesPayload({ data: await data('GET', 'workspaces/-42/modules') });
+	const payload = async () =>
+		parseModulesPayload({ data: await data('GET', 'workspaces/-42/modules') });
 	const enabled = (modules: { key: string; enabled?: boolean }[]) =>
 		Object.fromEntries(modules.map((m) => [m.key, m.enabled]));
 
@@ -43,7 +44,11 @@ describeSqlite('local modules API', () => {
 			},
 			user: { id: 7, name: 'Yurij', email: '' },
 			now: () => new Date('2026-10-11T10:00:00Z'),
-			files: { url: (key: string) => key, read: async () => new Blob([]), remove: async () => {} },
+			files: {
+				url: (key: string) => key,
+				read: async () => new Blob([]),
+				remove: async () => {},
+			},
 		};
 		await migrate(ctx.db, '2026-10-11T10:00:00Z');
 	});
@@ -53,43 +58,83 @@ describeSqlite('local modules API', () => {
 		const modules = enabled((await payload()).modules);
 
 		for (const [key, toggle] of Object.entries<any>(legacy)) {
-			expect({ key, enabled: modules[key] }).toEqual({ key, enabled: toggle.enabled });
+			expect({ key, enabled: modules[key] }).toEqual({
+				key,
+				enabled: toggle.enabled,
+			});
 		}
 	});
 
 	it('keeps Workflow on by default and lets the board follow it', async () => {
-		expect(enabled((await payload()).modules)).toMatchObject({ workflow: true, board: true });
+		expect(enabled((await payload()).modules)).toMatchObject({
+			workflow: true,
+			board: true,
+		});
 
 		await data('PUT', 'workspaces/-42/modules', { preset: 'personal' });
-		expect(enabled((await payload()).modules)).toMatchObject({ workflow: false, board: false });
+		expect(enabled((await payload()).modules)).toMatchObject({
+			workflow: false,
+			board: false,
+		});
 
 		await data('PUT', 'workspaces/-42/modules', { modules: { board: true } });
-		expect(enabled((await payload()).modules)).toMatchObject({ workflow: true, board: true });
+		expect(enabled((await payload()).modules)).toMatchObject({
+			workflow: true,
+			board: true,
+		});
 	});
 
 	it('shows every module of the catalog and keeps cloud-only ones off', async () => {
 		const { modules } = await payload();
 
-		const cloudOnly = MODULES.filter((m) => !m.local && m.scope === 'workspace').map((m) => m.key);
+		const cloudOnly = MODULES.filter(
+			(m) => !m.local && m.scope === 'workspace',
+		).map((m) => m.key);
 		expect(cloudOnly).toEqual(
-			expect.arrayContaining(['dashboard', 'pomodoro', 'exports', 'ai.assistant', 'cursor', 'github', 'telegram', 'import']),
+			expect.arrayContaining([
+				'dashboard',
+				'pomodoro',
+				'exports',
+				'ai.assistant',
+				'cursor',
+				'github',
+				'telegram',
+				'import',
+			]),
 		);
 		for (const key of cloudOnly) {
 			const entry = modules.find((m) => m.key === key)!;
-			expect(entry).toMatchObject({ enabled: false, requires_account: true, local: false });
+			expect(entry).toMatchObject({
+				enabled: false,
+				requires_account: true,
+				local: false,
+			});
 		}
-		expect(modules.find((m) => m.key === 'pages')).toMatchObject({ local: true, enabled: true });
-		expect(modules.find((m) => m.key === 'pages')?.requires_account).toBeUndefined();
+		expect(modules.find((m) => m.key === 'pages')).toMatchObject({
+			local: true,
+			enabled: true,
+		});
+		expect(
+			modules.find((m) => m.key === 'pages')?.requires_account,
+		).toBeUndefined();
 	});
 
 	it('leaves user-scope modules to the server unless there is no account', async () => {
-		expect((await payload()).modules.some((m) => m.scope === 'user')).toBe(false);
+		expect((await payload()).modules.some((m) => m.scope === 'user')).toBe(
+			false,
+		);
 
 		ctx.accountless = true;
 		const { modules } = await payload();
 
-		expect(modules.find((m) => m.key === 'mcp')).toMatchObject({ scope: 'user', enabled: true });
-		expect(modules.find((m) => m.key === 'alerts')).toMatchObject({ enabled: false, requires_account: true });
+		expect(modules.find((m) => m.key === 'mcp')).toMatchObject({
+			scope: 'user',
+			enabled: true,
+		});
+		expect(modules.find((m) => m.key === 'alerts')).toMatchObject({
+			enabled: false,
+			requires_account: true,
+		});
 	});
 
 	it('saves a preset and ignores cloud-only keys', async () => {
@@ -106,13 +151,21 @@ describeSqlite('local modules API', () => {
 	});
 
 	it('has no team preset and no cloud-only key in any preset', async () => {
-		expect(PRESETS.map((p) => p.key)).toEqual(['minimal', 'personal', 'developer', 'everything']);
+		expect(PRESETS.map((p) => p.key)).toEqual([
+			'minimal',
+			'personal',
+			'developer',
+			'everything',
+		]);
 		const local = new Set(MODULES.filter((m) => m.local).map((m) => m.key));
-		for (const preset of PRESETS) expect(preset.modules.every((key) => local.has(key))).toBe(true);
+		for (const preset of PRESETS)
+			expect(preset.modules.every((key) => local.has(key))).toBe(true);
 	});
 
 	it('toggles a module through the feature-toggles route', async () => {
-		await data('PUT', 'workspaces/-42/feature-toggles', { features: { pages: false, 'task.assignees': true } });
+		await data('PUT', 'workspaces/-42/feature-toggles', {
+			features: { pages: false, 'task.assignees': true },
+		});
 
 		const map = enabled((await payload()).modules);
 		expect(map.pages).toBe(false);
@@ -120,7 +173,9 @@ describeSqlite('local modules API', () => {
 	});
 
 	it('hides a module for me', async () => {
-		const result = parseModulesPayload({ data: await data('PUT', 'workspaces/-42/modules/hidden', { pages: true }) });
+		const result = parseModulesPayload({
+			data: await data('PUT', 'workspaces/-42/modules/hidden', { pages: true }),
+		});
 
 		expect(result.modules.find((m) => m.key === 'pages')?.hidden).toBe(true);
 	});

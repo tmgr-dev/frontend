@@ -1,9 +1,6 @@
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import {
-	DEFAULT_EXPORT_SETTINGS,
-	toExportParams,
-} from '../exportSettings';
+import { DEFAULT_EXPORT_SETTINGS, toExportParams } from '../exportSettings';
 
 const read = (file: string) =>
 	readFileSync(join(__dirname, '../..', file), 'utf8');

@@ -1,4 +1,7 @@
-import { shouldCloseDetachedWindow, shouldReloadOnModeChange } from '../accountModeSwitch';
+import {
+	shouldCloseDetachedWindow,
+	shouldReloadOnModeChange,
+} from '../accountModeSwitch';
 
 describe('shouldReloadOnModeChange', () => {
 	it('reloads when moving between local-only and cloud', () => {
@@ -18,22 +21,34 @@ describe('shouldReloadOnModeChange', () => {
 describe('shouldCloseDetachedWindow', () => {
 	it('closes when the cloud session ends even though the app stays usable', () => {
 		expect(
-			shouldCloseDetachedWindow({ isLoggedIn: true, canUseApp: true }, { isLoggedIn: false, canUseApp: true }),
+			shouldCloseDetachedWindow(
+				{ isLoggedIn: true, canUseApp: true },
+				{ isLoggedIn: false, canUseApp: true },
+			),
 		).toBe(true);
 	});
 
 	it('closes when the app can no longer be used', () => {
 		expect(
-			shouldCloseDetachedWindow({ isLoggedIn: false, canUseApp: true }, { isLoggedIn: false, canUseApp: false }),
+			shouldCloseDetachedWindow(
+				{ isLoggedIn: false, canUseApp: true },
+				{ isLoggedIn: false, canUseApp: false },
+			),
 		).toBe(true);
 	});
 
 	it('stays open otherwise', () => {
 		expect(
-			shouldCloseDetachedWindow({ isLoggedIn: false, canUseApp: true }, { isLoggedIn: true, canUseApp: true }),
+			shouldCloseDetachedWindow(
+				{ isLoggedIn: false, canUseApp: true },
+				{ isLoggedIn: true, canUseApp: true },
+			),
 		).toBe(false);
 		expect(
-			shouldCloseDetachedWindow({ isLoggedIn: false, canUseApp: true }, { isLoggedIn: false, canUseApp: true }),
+			shouldCloseDetachedWindow(
+				{ isLoggedIn: false, canUseApp: true },
+				{ isLoggedIn: false, canUseApp: true },
+			),
 		).toBe(false);
 	});
 });

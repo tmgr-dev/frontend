@@ -703,9 +703,16 @@ const sharedWorkspacePlugins = async (page, records) => {
     }
     const pluginId = path.split('/')[3];
     if (request.method() === 'PUT')
-      records.push({ plugin_id: pluginId, ...request.postDataJSON(), enabled_by: 1 });
+      records.push({
+        plugin_id: pluginId,
+        ...request.postDataJSON(),
+        enabled_by: 1,
+      });
     if (request.method() === 'DELETE')
-      records.splice(records.findIndex((r) => r.plugin_id === pluginId), 1);
+      records.splice(
+        records.findIndex((r) => r.plugin_id === pluginId),
+        1,
+      );
     await route.fulfill({
       json: { data: request.method() === 'GET' ? records : { success: true } },
     });
@@ -751,9 +758,9 @@ test('the creator of a shared workspace turns a plugin on for everyone; it talks
     /\/api\/(tasks|workspaces\/statuses)$/.test(url.pathname),
   );
   expect(lists.length).toBeGreaterThan(0);
-  expect(lists.every((url) => url.searchParams.get('workspace_id') === '1')).toBe(
-    true,
-  );
+  expect(
+    lists.every((url) => url.searchParams.get('workspace_id') === '1'),
+  ).toBe(true);
 
   await openPluginSettings(page);
   await card.getByRole('switch').click();
@@ -788,13 +795,19 @@ test('a member gets the plugins the creator turned on, and allows network and fi
     {},
     {
       releases: { 'acme/net': net },
-      localHttp: () => ({ status: 200, headers: [], body: 'from this computer' }),
+      localHttp: () => ({
+        status: 200,
+        headers: [],
+        body: 'from this computer',
+      }),
     },
   );
   await page.route('**/api/workspaces', (route) =>
     route.fulfill({
       json: {
-        data: [{ id: 1, name: 'Demo', code: 'demo', user_id: 2, is_default: true }],
+        data: [
+          { id: 1, name: 'Demo', code: 'demo', user_id: 2, is_default: true },
+        ],
       },
     }),
   );
@@ -812,7 +825,9 @@ test('a member gets the plugins the creator turned on, and allows network and fi
       plugin_id: 'acme.net',
       repo: 'acme/net',
       version: 'v1.0.0',
-      sha256: createHash('sha256').update(JSON.stringify(net.content)).digest('hex'),
+      sha256: createHash('sha256')
+        .update(JSON.stringify(net.content))
+        .digest('hex'),
       public_key: 'RWtestkey',
       permissions: ['notifications'],
       enabled_by: 2,
@@ -821,7 +836,9 @@ test('a member gets the plugins the creator turned on, and allows network and fi
   await sharedWorkspacePlugins(page, records);
   await page.goto('/demo/board');
   await openPluginSettings(page);
-  await expect(page.getByText(/Only its creator turns plugins on/)).toBeVisible();
+  await expect(
+    page.getByText(/Only its creator turns plugins on/),
+  ).toBeVisible();
   const estimate = page.locator('article', { hasText: 'Estimate vs actual' });
   await expect(estimate.getByText('Running')).toBeVisible();
   await expect(estimate.getByRole('switch')).toBeDisabled();
@@ -831,14 +848,18 @@ test('a member gets the plugins the creator turned on, and allows network and fi
   await expect(card.getByText('Running')).toBeVisible();
   expect(shell.installed.has('acme.net')).toBe(true);
   await card.getByRole('button', { name: 'Ask' }).click();
-  await expect(page.getByText(/answer: network access is not available/).first()).toBeVisible();
+  await expect(
+    page.getByText(/answer: network access is not available/).first(),
+  ).toBeVisible();
   expect(shell.fetches).toEqual([]);
 
   await card.getByRole('button', { name: 'Allow on this computer' }).click();
   await expect(card.getByText(/Allowed to use the network/)).toBeVisible();
   await expect(card.getByText('Running')).toBeVisible();
   await card.getByRole('button', { name: 'Ask' }).click();
-  await expect(page.getByText('answer: from this computer').first()).toBeVisible();
+  await expect(
+    page.getByText('answer: from this computer').first(),
+  ).toBeVisible();
   expect(shell.fetches.map((f) => f.url)).toEqual(['http://localhost:11434/x']);
 });
 
@@ -881,7 +902,9 @@ test("a shared workspace never replaces the member's own install of a plugin", a
   await page.goto('/demo/board');
   await openPluginSettings(page);
   await expect(
-    page.getByText(/this workspace runs acme\/net v1.0.0, but you have v0.9.0 installed/),
+    page.getByText(
+      /this workspace runs acme\/net v1.0.0, but you have v0.9.0 installed/,
+    ),
   ).toBeVisible();
   const card = page.locator('article', { hasText: 'Acme net' });
   await expect(card.getByText('Off')).toBeVisible();
@@ -975,12 +998,16 @@ test('cards and a grid use theme-aware backgrounds, work by mouse and keyboard, 
   }));
   expect(scrollInfo.scrollWidth).toBeLessThanOrEqual(scrollInfo.clientWidth);
 
-  const lightBg = await card0.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const lightBg = await card0.evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
   expect(lightBg).not.toBe('rgba(0, 0, 0, 0)');
   await page.evaluate(() => document.documentElement.classList.add('dark'));
   // Card background is `transition-colors`-animated; wait it out before reading the used value.
   await page.waitForTimeout(300);
-  const darkBg = await card0.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const darkBg = await card0.evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
   expect(darkBg).not.toBe('rgba(0, 0, 0, 0)');
   expect(darkBg).not.toBe(lightBg);
   await page.evaluate(() => document.documentElement.classList.remove('dark'));
@@ -989,10 +1016,15 @@ test('cards and a grid use theme-aware backgrounds, work by mouse and keyboard, 
   await page.keyboard.press('Enter');
   await expect(page.getByText('card command ran').first()).toBeVisible();
 
-  const menuTrigger = page.getByRole('button', { name: 'Actions', exact: true });
+  const menuTrigger = page.getByRole('button', {
+    name: 'Actions',
+    exact: true,
+  });
   await menuTrigger.focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('menuitem', { name: 'No confirm' })).toBeFocused();
+  await expect(
+    page.getByRole('menuitem', { name: 'No confirm' }),
+  ).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(page.getByText('menu command ran').first()).toBeVisible();
 

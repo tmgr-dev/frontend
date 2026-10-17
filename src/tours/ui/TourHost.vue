@@ -61,19 +61,22 @@
 		stepAnnouncement,
 		trapFocus,
 	} from '../a11y';
-	import { createOverlayAdapter } from '../overlay';
 	import { partsToText } from '../keycaps';
-	import type { ActiveTour } from '../useTours';
+	import { createOverlayAdapter } from '../overlay';
 	import type {
 		OverlayAdapter,
 		OverlayShowOptions,
 	} from '../overlay/OverlayAdapter';
+	import type { ActiveTour } from '../useTours';
 	import { setOverlayAdapter, useTours, type ToursApi } from '../useTours';
 	import BottomSheetStep from './BottomSheetStep.vue';
 	import TourPopover from './TourPopover.vue';
 	import './tours.css';
 
-	type Presentation = Pick<OverlayShowOptions, 'mode' | 'anchorEl' | 'blocking'>;
+	type Presentation = Pick<
+		OverlayShowOptions,
+		'mode' | 'anchorEl' | 'blocking'
+	>;
 
 	export default defineComponent({
 		name: 'TourHost',
@@ -169,7 +172,10 @@
 				const dialog = host.querySelector<HTMLElement>('[role="dialog"]');
 				const { mode, anchorEl } = presentation.value;
 				if (!modal.value) {
-					if (mode === 'passive' && !anchorEl?.contains(document.activeElement)) {
+					if (
+						mode === 'passive' &&
+						!anchorEl?.contains(document.activeElement)
+					) {
 						focusAnchor(anchorEl);
 					}
 				} else if (dialog) {
@@ -188,7 +194,8 @@
 				restoreFocus = rememberFocus();
 				offEsc = onEscape(() => api.pause(), {
 					swallow: () => modal.value,
-					ownDialog: () => hostEl.value?.querySelector('[role="dialog"]') ?? null,
+					ownDialog: () =>
+						hostEl.value?.querySelector('[role="dialog"]') ?? null,
 				});
 			}
 

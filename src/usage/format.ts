@@ -2,8 +2,7 @@ export const money = (usd: number | null | undefined): string => {
 	const value = usd == null ? NaN : Number(usd);
 	if (!Number.isFinite(value)) return '—';
 	if (value > 0 && value < 0.01) return '<$0.01';
-	if (value >= 1000)
-		return `$${Math.round(value).toLocaleString('en-US')}`;
+	if (value >= 1000) return `$${Math.round(value).toLocaleString('en-US')}`;
 	return `$${value.toFixed(2)}`;
 };
 
@@ -19,7 +18,8 @@ export const count = (n: number | null | undefined): string => {
 	for (const [size, suffix] of units) {
 		if (abs >= size) {
 			const scaled = value / size;
-			const text = Math.abs(scaled) >= 100 ? scaled.toFixed(0) : scaled.toFixed(1);
+			const text =
+				Math.abs(scaled) >= 100 ? scaled.toFixed(0) : scaled.toFixed(1);
 			return `${text.replace(/\.0$/, '')}${suffix}`;
 		}
 	}

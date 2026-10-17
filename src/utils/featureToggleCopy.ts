@@ -8,12 +8,15 @@ const DESCRIPTIONS: Record<string, string> = {
 	categories: 'Group tasks into categories to organize your workspace.',
 	board: 'Switch to a kanban board view for tracking task status.',
 	workflow: 'Custom statuses, the status picker and board columns.',
-	pages: 'Keep notes, context and documentation in a tree of pages that people and agents can edit.',
+	pages:
+		'Keep notes, context and documentation in a tree of pages that people and agents can edit.',
 	graph:
 		'See how tasks, pages, people and agent runs connect: a Graph section on tasks and pages, and the workspace Map.',
-	agent_work: 'Lets AI agents report their work and time on tasks; when off, agent runs are hidden and agents skip reporting.',
+	agent_work:
+		'Lets AI agents report their work and time on tasks; when off, agent runs are hidden and agents skip reporting.',
 	dashboard: 'See an overview of activity and progress across your workspace.',
-	daily_routines: 'Track recurring routines and notes separate from your tasks.',
+	daily_routines:
+		'Track recurring routines and notes separate from your tasks.',
 	'task.comments': 'Allow comments and discussion on tasks.',
 	'task.countdown': 'Track time spent on tasks with a start/stop timer.',
 	'task.files': 'Allow files to be attached to tasks.',

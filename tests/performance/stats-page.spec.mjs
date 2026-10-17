@@ -24,9 +24,9 @@ test('renders formatted stat tiles and the week value under Last 7 days', async 
   await expect(page.getByText('55,555').first()).toBeVisible();
 
   const weekLabel = page.getByText('Last 7 days', { exact: true });
-  await expect(
-    weekLabel.locator('xpath=following-sibling::span'),
-  ).toHaveText('456');
+  await expect(weekLabel.locator('xpath=following-sibling::span')).toHaveText(
+    '456',
+  );
 });
 
 test('shows no NaN when the stats payload is empty', async ({ page }) => {

@@ -2,7 +2,10 @@
 	<div :class="SNIPPET_ROW_CLASS">
 		<pre
 			:aria-label="label"
-			:class="[snippetTextClass(false), 'rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink']"
+			:class="[
+				snippetTextClass(false),
+				'rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink',
+			]"
 			data-testid="snippet-text"
 			>{{ code }}</pre
 		>
@@ -17,15 +20,21 @@
 		>
 			{{ copied ? 'Copied' : 'Copy' }}
 		</Button>
-		<span class="sr-only" role="status" aria-live="polite">{{ copied ? 'Copied' : '' }}</span>
+		<span class="sr-only" role="status" aria-live="polite">{{
+			copied ? 'Copied' : ''
+		}}</span>
 	</div>
 </template>
 
 <script setup lang="ts">
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
+	import {
+		SNIPPET_BUTTON_CLASS,
+		SNIPPET_ROW_CLASS,
+		snippetTextClass,
+	} from '@/utils/snippetLayout';
 	import { onBeforeUnmount, ref } from 'vue';
-	import { SNIPPET_BUTTON_CLASS, SNIPPET_ROW_CLASS, snippetTextClass } from '@/utils/snippetLayout';
 
 	const props = defineProps<{
 		code: string;

@@ -19,9 +19,9 @@ export interface WorkspacePluginRecord {
 export const BUILTIN_REPO = 'builtin';
 
 /** By shared workspace id, as last read from the server. */
-export const workspacePlugins = reactive<Record<number, WorkspacePluginRecord[]>>(
-	{},
-);
+export const workspacePlugins = reactive<
+	Record<number, WorkspacePluginRecord[]>
+>({});
 
 export const recordFor = (workspaceId: number, pluginId: string) =>
 	workspacePlugins[workspaceId]?.find((r) => r.plugin_id === pluginId) ?? null;

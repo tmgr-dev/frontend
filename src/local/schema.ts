@@ -390,7 +390,9 @@ export const MIGRATIONS: Migration[] = [
 	{
 		version: 12,
 		statements: [
-			`UPDATE pages SET body = ${renameManagedHeadings('body')} WHERE body LIKE '%" -->' || char(10) || '## %'`,
+			`UPDATE pages SET body = ${renameManagedHeadings(
+				'body',
+			)} WHERE body LIKE '%" -->' || char(10) || '## %'`,
 			`UPDATE page_versions SET body = ${renameManagedHeadings('body')}
 				WHERE body LIKE '%" -->' || char(10) || '## %'
 				AND version = (SELECT p.version FROM pages p WHERE p.id = page_versions.page_id)`,
@@ -455,7 +457,8 @@ export const migrate = async (
 			`This workspace was written by a newer TMGR (schema ${current}); update the app to open it.`,
 		);
 	}
-	if (current > 0 && current < LATEST_SCHEMA && beforeMigration) await beforeMigration(current);
+	if (current > 0 && current < LATEST_SCHEMA && beforeMigration)
+		await beforeMigration(current);
 	for (const migration of MIGRATIONS.filter((m) => m.version > current)) {
 		if (migration.atomic) {
 			await db.batch([
@@ -480,8 +483,8 @@ export const migrate = async (
 					typeof error === 'string'
 						? error
 						: typeof (error as { message?: unknown })?.message === 'string'
-						  ? (error as { message: string }).message
-						  : '';
+						? (error as { message: string }).message
+						: '';
 				if (!/duplicate column name/i.test(message)) throw error;
 			}
 		}
@@ -491,7 +494,9 @@ export const migrate = async (
 			[String(migration.version)],
 		);
 	}
-	const statuses = await db.select<{ n: number }>(`SELECT COUNT(*) AS n FROM statuses`);
+	const statuses = await db.select<{ n: number }>(
+		`SELECT COUNT(*) AS n FROM statuses`,
+	);
 	if (!Number(statuses[0]?.n)) {
 		for (const [index, [name, type, color]] of DEFAULT_STATUSES.entries()) {
 			await db.execute(

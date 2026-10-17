@@ -47,7 +47,11 @@ const readHeader = (headers: any, name: string): string | undefined => {
 
 const toCount = (value: unknown): number | undefined => {
 	const n = Number(value);
-	return value !== undefined && value !== null && value !== '' && Number.isFinite(n) && n >= 0
+	return value !== undefined &&
+		value !== null &&
+		value !== '' &&
+		Number.isFinite(n) &&
+		n >= 0
 		? Math.floor(n)
 		: undefined;
 };
@@ -126,7 +130,9 @@ export const downloadAlarmContact = async (): Promise<void> => {
 	URL.revokeObjectURL(url);
 };
 
-export const saveAlarmPhone = async (phone: string): Promise<AlarmPhoneSaved> => {
+export const saveAlarmPhone = async (
+	phone: string,
+): Promise<AlarmPhoneSaved> => {
 	const {
 		data: { data },
 	} = await $axios.put('/user/alarm-phone', { phone: phone.trim() });

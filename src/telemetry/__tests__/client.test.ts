@@ -2,7 +2,15 @@
 import { createHash } from 'node:crypto';
 import { QUEUE_KEY } from '../client';
 import { IDENTITY_KEY } from '../identity';
-import { BASE, FakeChannel, makeClock, makeTab, receiptKeys, setConsent, tick } from './harness';
+import {
+	BASE,
+	FakeChannel,
+	makeClock,
+	makeTab,
+	receiptKeys,
+	setConsent,
+	tick,
+} from './harness';
 
 beforeEach(() => {
 	localStorage.clear();
@@ -12,22 +20,31 @@ beforeEach(() => {
 afterEach(tick);
 
 const stored = (key: string) => JSON.parse(localStorage.getItem(key) ?? 'null');
-const bodyOf = (call: { init: RequestInit }) => JSON.parse(call.init.body as string);
+const bodyOf = (call: { init: RequestInit }) =>
+	JSON.parse(call.init.body as string);
 
 describe('without consent', () => {
-	it.each([null, 'denied'] as const)('sends nothing and stores no id when usage is %s', async (usage) => {
-		if (usage) setConsent(usage, 1);
-		const tab = makeTab();
-		tab.telemetry.sync();
-		tab.telemetry.track('app_opened');
-		await tab.telemetry.flush();
-		await tick();
-		expect(tab.calls).toEqual([]);
-		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
-		expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
-		expect(tab.timers).toEqual([]);
-		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
-	});
+	it.each([null, 'denied'] as const)(
+		'sends nothing and stores no id when usage is %s',
+		async (usage) => {
+			if (usage) setConsent(usage, 1);
+			const tab = makeTab();
+			tab.telemetry.sync();
+			tab.telemetry.track('app_opened');
+			await tab.telemetry.flush();
+			await tick();
+			expect(tab.calls).toEqual([]);
+			expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
+			expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
+			expect(tab.timers).toEqual([]);
+			expect(tab.telemetry.snapshot()).toEqual({
+				active: false,
+				installId: null,
+				pending: 0,
+				error: null,
+			});
+		},
+	);
 });
 
 describe('with consent', () => {
@@ -78,7 +95,13 @@ describe('with consent', () => {
 	});
 
 	it('builds an envelope from enums only, with t truncated to the hour', async () => {
-		const tab = makeTab({ secret: () => 'a'.repeat(64), uuid: (() => { let i = 0; return () => `00000000-0000-4000-8000-${String(i++).padStart(12, '0')}`; })() });
+		const tab = makeTab({
+			secret: () => 'a'.repeat(64),
+			uuid: (() => {
+				let i = 0;
+				return () => `00000000-0000-4000-8000-${String(i++).padStart(12, '0')}`;
+			})(),
+		});
 		tab.telemetry.track('screen_viewed', { route: 'WorkspaceBoard' });
 		await tab.telemetry.flush();
 		expect(bodyOf(tab.calls[0])).toMatchSnapshot({
@@ -93,7 +116,11 @@ describe('with consent', () => {
 		track('not_an_event');
 		track('screen_viewed', { route: 'SecretRoute' });
 		track('screen_viewed', { route: 'Board', extra: 'x' });
-		track('tour_step_viewed', { tour: 'time.timer', step: 'nav.sidebar', i: 1 });
+		track('tour_step_viewed', {
+			tour: 'time.timer',
+			step: 'nav.sidebar',
+			i: 1,
+		});
 		track('tour_step_viewed', { tour: 'time.timer', step: 's13', i: 1 });
 		track('tour_step_viewed', { tour: 'time.timer', step: 's2', i: 99 });
 		expect(tab.telemetry.snapshot().pending).toBe(0);
@@ -105,7 +132,9 @@ describe('with consent', () => {
 		const tab = makeTab();
 		for (let i = 0; i < 205; i++) tab.telemetry.track('connect_command_copied');
 		expect(tab.telemetry.snapshot().pending).toBe(200);
-		const seqs = JSON.parse(tab.telemetry.queueJson()).map((e: { seq: number }) => e.seq);
+		const seqs = JSON.parse(tab.telemetry.queueJson()).map(
+			(e: { seq: number }) => e.seq,
+		);
 		expect(seqs[0]).toBe(5);
 	});
 
@@ -122,7 +151,9 @@ describe('with consent', () => {
 		tab.clock.advance(8 * 24 * 3600_000);
 		tab.telemetry.track('connect_stalled');
 		await tab.telemetry.flush();
-		expect(bodyOf(tab.calls[0]).events.map((e: { n: string }) => e.n)).toEqual(['connect_stalled']);
+		expect(bodyOf(tab.calls[0]).events.map((e: { n: string }) => e.n)).toEqual([
+			'connect_stalled',
+		]);
 	});
 
 	it('mirrors the queue to storage and reloads it, dropping stale entries', async () => {
@@ -188,7 +219,12 @@ describe('withdrawal', () => {
 		await tab.telemetry.flush();
 		await tick();
 		expect(tab.calls).toHaveLength(1);
-		expect(tab.telemetry.snapshot()).toEqual({ active: false, installId: null, pending: 0, error: null });
+		expect(tab.telemetry.snapshot()).toEqual({
+			active: false,
+			installId: null,
+			pending: 0,
+			error: null,
+		});
 		expect(localStorage.getItem(IDENTITY_KEY)).toBeNull();
 		expect(localStorage.getItem(QUEUE_KEY)).toBeNull();
 		expect(receiptKeys()).toEqual([`tmgr:telemetry:receipt:${id.install_id}`]);
@@ -197,7 +233,9 @@ describe('withdrawal', () => {
 
 	it('does not send when consent flips while the secret hash is being computed', async () => {
 		let finish!: (hash: string) => void;
-		const tab = makeTab({ sha256: () => new Promise((resolve) => (finish = resolve)) });
+		const tab = makeTab({
+			sha256: () => new Promise((resolve) => (finish = resolve)),
+		});
 		tab.telemetry.track('app_opened');
 		const pending = tab.telemetry.flush();
 		await tick();
@@ -236,7 +274,11 @@ describe('withdrawal', () => {
 		expect(b.telemetry.snapshot().active).toBe(true);
 		setConsent('denied', 2);
 		b.telemetry.sync();
-		expect(b.telemetry.snapshot()).toMatchObject({ active: false, pending: 0, error: null });
+		expect(b.telemetry.snapshot()).toMatchObject({
+			active: false,
+			pending: 0,
+			error: null,
+		});
 		expect(localStorage.getItem(IDENTITY_KEY)).not.toBeNull();
 		expect(b.timers[0].cleared).toBe(true);
 		a.telemetry.sync();
@@ -305,7 +347,9 @@ describe('receipts and deletion', () => {
 		const after = stored(IDENTITY_KEY);
 		expect(after.install_id).not.toBe(before.install_id);
 		expect(after.registered).toBe(false);
-		expect(receiptKeys()).toEqual([`tmgr:telemetry:receipt:${before.install_id}`]);
+		expect(receiptKeys()).toEqual([
+			`tmgr:telemetry:receipt:${before.install_id}`,
+		]);
 	});
 
 	it('Reset ID does nothing while sharing is off', () => {

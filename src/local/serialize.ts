@@ -1,6 +1,9 @@
 import type { LocalContext } from './types';
 
-export const parseJson = <T>(raw: string | null | undefined, fallback: T): T => {
+export const parseJson = <T>(
+	raw: string | null | undefined,
+	fallback: T,
+): T => {
 	if (raw === null || raw === undefined || raw === '') return fallback;
 	try {
 		return JSON.parse(raw) as T;

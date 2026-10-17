@@ -60,8 +60,8 @@
 							A move is in progress.
 						</template>
 						<template v-else>
-							Copies this workspace into a new workspace in your TMGR account. The
-							local copy stays.
+							Copies this workspace into a new workspace in your TMGR account.
+							The local copy stays.
 						</template>
 					</template>
 					<Button
@@ -105,6 +105,10 @@
 </template>
 
 <script lang="ts">
+	import RemoveLocalCopy from '@/components/desktop/RemoveLocalCopy.vue';
+	import SettingsRow from '@/components/layouts/SettingsRow.vue';
+	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import { Button } from '@/components/ui/button';
 	import {
 		backupNow,
 		backupStatus,
@@ -118,13 +122,15 @@
 	import { openMoveDialog, openMoveProgress } from '@/local/moveToCloud/ui';
 	import { listLocalWorkspaces } from '@/local/runtime';
 	import type { LocalWorkspace } from '@/local/types';
-	import RemoveLocalCopy from '@/components/desktop/RemoveLocalCopy.vue';
-	import SettingsRow from '@/components/layouts/SettingsRow.vue';
-	import SettingsSection from '@/components/layouts/SettingsSection.vue';
-	import { Button } from '@/components/ui/button';
 	import { revealInFileManagerLabel } from '@/utils/desktop';
 	import { lastBackupLabel } from '@/utils/localOnly';
-	import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+	} from 'vue';
 	import { useStore } from 'vuex';
 
 	interface Row {
@@ -204,7 +210,11 @@
 			const sectionDescription = (row: Row) => {
 				const published = moveState(row).published;
 				return published
-					? `Copied to your cloud workspace ${published.name} on ${formatMoveDate(published.at)}. Backups stay on this computer.`
+					? `Copied to your cloud workspace ${
+							published.name
+					  } on ${formatMoveDate(
+							published.at,
+					  )}. Backups stay on this computer.`
 					: 'No cloud copy. Backups stay on this computer.';
 			};
 

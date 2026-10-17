@@ -206,6 +206,7 @@
 	} from '@/actions/tmgr/files';
 	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
 	import AttachmentsSkeleton from '@/components/tasks/AttachmentsSkeleton.vue';
+	import { hasActiveLocalWorkspace } from '@/local/runtime';
 	import {
 		attachmentErrorMessage,
 		formatFileSize,
@@ -216,7 +217,6 @@
 		clipboardImageName,
 		imagesFromClipboard,
 	} from '@/utils/clipboardImages';
-	import { hasActiveLocalWorkspace } from '@/local/runtime';
 	import { galleryImages } from '@/utils/galleryNavigation';
 	import { createVisiblePreviewQueue } from '@/utils/visiblePreviewQueue';
 	import {

@@ -72,7 +72,9 @@
 							maxlength="255"
 							data-testid="page-title-input"
 							@blur="normalizeTitle"
-							@keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+							@keydown.enter.prevent="
+								($event.target as HTMLInputElement).blur()
+							"
 						/>
 					</template>
 					<template #actions>
@@ -302,11 +304,12 @@
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { ToastAction, useToast } from '@/components/ui/toast';
-	import { usePagesMarkdownIo } from '@/composable/usePagesMarkdownIo';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { usePagesMarkdownIo } from '@/composable/usePagesMarkdownIo';
 	import store from '@/store';
 	import type { RootState } from '@/types/store';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		changedFields,
 		type ConflictChoice,
@@ -343,7 +346,6 @@
 	} from '@/utils/pages/taskFromSelection';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { extractToc, type TocEntry } from '@/utils/pages/toc';
-	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		isInPageWindow,
 		openPageWindow,
@@ -554,8 +556,7 @@
 					!element ||
 					!root.contains(element) ||
 					element.closest('[data-read-only="true"]') ||
-					(element.closest('.page-editor') &&
-						!element.closest('.cm-editor'))
+					(element.closest('.page-editor') && !element.closest('.cm-editor'))
 				) {
 					selection.value = null;
 					return;

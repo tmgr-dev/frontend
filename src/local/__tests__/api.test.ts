@@ -4,7 +4,12 @@ import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import { taskExport, workspaceExport } from '../export';
 import { respond } from '../install';
-import { LATEST_SCHEMA, MIGRATIONS, migrate, readSchemaVersion } from '../schema';
+import {
+	LATEST_SCHEMA,
+	MIGRATIONS,
+	migrate,
+	readSchemaVersion,
+} from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
@@ -47,7 +52,10 @@ describeSqlite('local workspace API on SQLite', () => {
 						config.data,
 						config.params,
 					);
-					if (!result) throw new Error(`no local route for ${config.method} ${config.url}`);
+					if (!result)
+						throw new Error(
+							`no local route for ${config.method} ${config.url}`,
+						);
 					return respond(config, result.status, result.data);
 				},
 			}),
@@ -87,57 +95,117 @@ describeSqlite('local workspace API on SQLite', () => {
 	it('migrates a fresh database and seeds the four status types, archived last', async () => {
 		expect(await readSchemaVersion(ctx.db)).toBe(LATEST_SCHEMA);
 		const statuses = await data('GET', '/workspaces/statuses');
-		expect(statuses.map((s: any) => s.type)).toEqual(['default', 'active', 'completed', 'archived']);
+		expect(statuses.map((s: any) => s.type)).toEqual([
+			'default',
+			'active',
+			'completed',
+			'archived',
+		]);
 		expect(statuses[0].pivot.order).toBe(1);
 	});
 
 	it('serves a category page: subcategories, parent chain and its tasks across statuses', async () => {
-		const root = await data('POST', 'project_categories', { title: 'Root', code: 'rt' });
-		const child = await data('POST', 'project_categories', { title: 'Child', project_category_id: root.id });
-		await data('POST', 'project_categories', { title: 'Grandchild', project_category_id: child.id });
+		const root = await data('POST', 'project_categories', {
+			title: 'Root',
+			code: 'rt',
+		});
+		const child = await data('POST', 'project_categories', {
+			title: 'Child',
+			project_category_id: root.id,
+		});
+		await data('POST', 'project_categories', {
+			title: 'Grandchild',
+			project_category_id: child.id,
+		});
 		const statuses = await data('GET', 'workspaces/statuses');
 		const archived = statuses.find((s: any) => s.type === 'archived');
-		await data('POST', 'tasks', { title: 'Open', project_category_id: child.id });
-		await data('POST', 'tasks', { title: 'Done', project_category_id: child.id, status_id: archived.id });
-		await data('POST', 'tasks', { title: 'Elsewhere', project_category_id: root.id });
+		await data('POST', 'tasks', {
+			title: 'Open',
+			project_category_id: child.id,
+		});
+		await data('POST', 'tasks', {
+			title: 'Done',
+			project_category_id: child.id,
+			status_id: archived.id,
+		});
+		await data('POST', 'tasks', {
+			title: 'Elsewhere',
+			project_category_id: root.id,
+		});
 
-		const page = (await call('GET', `project_categories/children/${child.id}?page=1&per_page=10`)).data;
+		const page = (
+			await call(
+				'GET',
+				`project_categories/children/${child.id}?page=1&per_page=10`,
+			)
+		).data;
 		expect(page.data.map((c: any) => c.title)).toEqual(['Grandchild']);
 		expect(page.meta.total).toBe(1);
 
-		const withParents = await data('GET', `project_categories/${child.id}/with/parents`);
+		const withParents = await data(
+			'GET',
+			`project_categories/${child.id}/with/parents`,
+		);
 		expect(withParents.title).toBe('Child');
 		expect(withParents.parent_category.title).toBe('Root');
 		expect(withParents.parent_category.parent_category).toBeNull();
 
-		const all = (await call('GET', `tasks/?project_category_id=${child.id}&page=1&per_page=10`)).data;
+		const all = (
+			await call(
+				'GET',
+				`tasks/?project_category_id=${child.id}&page=1&per_page=10`,
+			)
+		).data;
 		expect(all.data.map((t: any) => t.title).sort()).toEqual(['Done', 'Open']);
-		const onlyArchived = await data('GET', `tasks?project_category_id=${child.id}&status_id=${archived.id}`);
+		const onlyArchived = await data(
+			'GET',
+			`tasks?project_category_id=${child.id}&status_id=${archived.id}`,
+		);
 		expect(onlyArchived.map((t: any) => t.title)).toEqual(['Done']);
 	});
 
 	it('keeps plugin storage per plugin within a quota', async () => {
-		await call('PUT', 'plugins/tmgr.estimate/storage/last%20run', { value: '{"at":1}' });
+		await call('PUT', 'plugins/tmgr.estimate/storage/last%20run', {
+			value: '{"at":1}',
+		});
 		await call('PUT', 'plugins/tmgr.other/storage/last%20run', { value: '2' });
-		expect(await data('GET', 'plugins/tmgr.estimate/storage/last%20run')).toEqual({ value: '{"at":1}' });
-		expect(await data('GET', 'plugins/tmgr.estimate/storage/missing')).toEqual({ value: null });
-		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual(['last run']);
+		expect(
+			await data('GET', 'plugins/tmgr.estimate/storage/last%20run'),
+		).toEqual({ value: '{"at":1}' });
+		expect(await data('GET', 'plugins/tmgr.estimate/storage/missing')).toEqual({
+			value: null,
+		});
+		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual([
+			'last run',
+		]);
 		await call('DELETE', 'plugins/tmgr.estimate/storage/last%20run');
 		expect(await data('GET', 'plugins/tmgr.estimate/storage')).toEqual([]);
-		expect(await data('GET', 'plugins/tmgr.other/storage')).toEqual(['last run']);
+		expect(await data('GET', 'plugins/tmgr.other/storage')).toEqual([
+			'last run',
+		]);
 
 		const big = JSON.stringify('x'.repeat(250_000));
 		for (let i = 0; i < 20; i++) {
-			expect((await call('PUT', `plugins/tmgr.big/storage/k${i}`, { value: big })).status).toBe(200);
+			expect(
+				(await call('PUT', `plugins/tmgr.big/storage/k${i}`, { value: big }))
+					.status,
+			).toBe(200);
 		}
-		expect((await call('PUT', 'plugins/tmgr.big/storage/k20', { value: big })).status).toBe(413);
-		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+		expect(
+			(await call('PUT', 'plugins/tmgr.big/storage/k20', { value: big }))
+				.status,
+		).toBe(413);
+		expect(
+			(await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status,
+		).toBe(200);
 	});
 
 	it('measures the plugin storage quota in bytes, not characters, for multi-byte text', async () => {
 		// 1.8M CJK characters are under the 5 MB character count but over 5 MB once encoded as UTF-8.
 		const cjk = JSON.stringify('字'.repeat(1_800_000));
-		expect((await call('PUT', 'plugins/tmgr.cjk/storage/k0', { value: cjk })).status).toBe(413);
+		expect(
+			(await call('PUT', 'plugins/tmgr.cjk/storage/k0', { value: cjk })).status,
+		).toBe(413);
 		const [{ n }] = await ctx.db.select<{ n: number }>(
 			`SELECT COUNT(*) AS n FROM plugin_kv WHERE plugin_id = 'tmgr.cjk'`,
 		);
@@ -147,17 +215,27 @@ describeSqlite('local workspace API on SQLite', () => {
 	it('holds the plugin storage quota under concurrent writes and counts keys too', async () => {
 		const big = JSON.stringify('x'.repeat(250_000));
 		const results = await Promise.all(
-			Array.from({ length: 25 }, (_, i) => call('PUT', `plugins/tmgr.race/storage/k${i}`, { value: big })),
+			Array.from({ length: 25 }, (_, i) =>
+				call('PUT', `plugins/tmgr.race/storage/k${i}`, { value: big }),
+			),
 		);
-		expect(results.filter((r) => r.status === 200).length).toBeLessThanOrEqual(20);
+		expect(results.filter((r) => r.status === 200).length).toBeLessThanOrEqual(
+			20,
+		);
 		const [{ used }] = await ctx.db.select<{ used: number }>(
 			`SELECT SUM(LENGTH(value)) AS used FROM plugin_kv WHERE plugin_id = 'tmgr.race'`,
 		);
 		expect(Number(used)).toBeLessThanOrEqual(5 * 1024 * 1024);
 
-		for (let i = 0; i < 1000; i++) await call('PUT', `plugins/tmgr.keys/storage/${i}`, { value: '1' });
-		expect((await call('PUT', 'plugins/tmgr.keys/storage/one-more', { value: '1' })).status).toBe(413);
-		expect((await call('PUT', 'plugins/tmgr.keys/storage/0', { value: '2' })).status).toBe(200);
+		for (let i = 0; i < 1000; i++)
+			await call('PUT', `plugins/tmgr.keys/storage/${i}`, { value: '1' });
+		expect(
+			(await call('PUT', 'plugins/tmgr.keys/storage/one-more', { value: '1' }))
+				.status,
+		).toBe(413);
+		expect(
+			(await call('PUT', 'plugins/tmgr.keys/storage/0', { value: '2' })).status,
+		).toBe(200);
 	});
 
 	it('migrating twice is a no-op and does not duplicate statuses', async () => {
@@ -166,32 +244,56 @@ describeSqlite('local workspace API on SQLite', () => {
 	});
 
 	it('refuses a database written by a newer app', async () => {
-		await ctx.db.execute(`UPDATE meta SET value = '999' WHERE key = 'schema_version'`);
+		await ctx.db.execute(
+			`UPDATE meta SET value = '999' WHERE key = 'schema_version'`,
+		);
 		await expect(migrate(ctx.db, '')).rejects.toThrow(/newer TMGR/);
 	});
 
 	it('creates a task in the default status and numbers tickets per category', async () => {
-		const category = await data('POST', 'project_categories', { title: 'Taskmgr', code: 'tm' });
-		const first = await data('POST', 'tasks', { title: 'One', project_category_id: category.id });
-		const second = await data('POST', 'tasks', { title: 'Two', project_category_id: category.id });
+		const category = await data('POST', 'project_categories', {
+			title: 'Taskmgr',
+			code: 'tm',
+		});
+		const first = await data('POST', 'tasks', {
+			title: 'One',
+			project_category_id: category.id,
+		});
+		const second = await data('POST', 'tasks', {
+			title: 'Two',
+			project_category_id: category.id,
+		});
 		const loose = await data('POST', 'tasks', { title: 'No category' });
 
 		expect(first.status).toBe('default');
-		expect(first.category).toMatchObject({ id: category.id, code: 'TM', workspace_id: -42 });
-		expect([first.category_tasks_sequence_id, second.category_tasks_sequence_id]).toEqual([1, 2]);
+		expect(first.category).toMatchObject({
+			id: category.id,
+			code: 'TM',
+			workspace_id: -42,
+		});
+		expect([
+			first.category_tasks_sequence_id,
+			second.category_tasks_sequence_id,
+		]).toEqual([1, 2]);
 		expect(loose.category_tasks_sequence_id).toBeNull();
 		expect(first.workspace_id).toBe(-42);
 		expect((await call('POST', 'tasks', { title: '  ' })).status).toBe(422);
 	});
 
 	it('lists current tasks newest first, paginated and searchable, without archived ones', async () => {
-		for (const title of ['Alpha', 'Beta', 'Gamma']) await data('POST', 'tasks', { title });
+		for (const title of ['Alpha', 'Beta', 'Gamma'])
+			await data('POST', 'tasks', { title });
 		const archived = await data('POST', 'tasks', { title: 'Old' });
 		await call('PUT', `tasks/${archived.id}/done`);
 
 		const page = (await call('GET', 'tasks/current?page=1&per_page=2')).data;
 		expect(page.data.map((t: any) => t.title)).toEqual(['Gamma', 'Beta']);
-		expect(page.meta).toMatchObject({ total: 3, last_page: 2, per_page: 2, current_page: 1 });
+		expect(page.meta).toMatchObject({
+			total: 3,
+			last_page: 2,
+			per_page: 2,
+			current_page: 1,
+		});
 		const found = (await call('GET', 'tasks/current?search=alp')).data;
 		expect(found.data.map((t: any) => t.title)).toEqual(['Alpha']);
 		const done = (await call('GET', 'tasks/status/done?page=1')).data;
@@ -202,7 +304,12 @@ describeSqlite('local workspace API on SQLite', () => {
 		const one = await data('POST', 'tasks', { title: 'one' });
 		const two = await data('POST', 'tasks', { title: 'two' });
 		const three = await data('POST', 'tasks', { title: 'three' });
-		await call('PUT', 'tasks/update-orders', { tasks: [{ id: one.id, order: 2 }, { id: two.id, order: 1 }] });
+		await call('PUT', 'tasks/update-orders', {
+			tasks: [
+				{ id: one.id, order: 2 },
+				{ id: two.id, order: 1 },
+			],
+		});
 
 		const column = await data(
 			'GET',
@@ -214,11 +321,18 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('searches a board column by title or description, literally, and accepts fields=card', async () => {
 		const byTitle = await data('POST', 'tasks', { title: 'Zebra plan' });
-		await data('POST', 'tasks', { title: 'Other', description: '<p>has quartz inside</p>' });
+		await data('POST', 'tasks', {
+			title: 'Other',
+			description: '<p>has quartz inside</p>',
+		});
 		await data('POST', 'tasks', { title: '100% sure' });
 		await data('POST', 'tasks', { title: 'plain' });
 		const url = (search: string) =>
-			`tasks/status/${byTitle.status_id}?all&fields=card&order[column]=order&order[direction]=asc&search=${encodeURIComponent(search)}`;
+			`tasks/status/${
+				byTitle.status_id
+			}?all&fields=card&order[column]=order&order[direction]=asc&search=${encodeURIComponent(
+				search,
+			)}`;
 
 		const titles = async (search: string) =>
 			(await data('GET', url(search))).map((t: any) => t.title);
@@ -234,7 +348,9 @@ describeSqlite('local workspace API on SQLite', () => {
 		await call('POST', `tasks/${task.id}/countdown`);
 		clock = new Date('2026-09-26T10:00:30Z');
 		await call('POST', `tasks/${task.id}/countdown`);
-		expect((await data('GET', 'tasks/runned')).map((t: any) => t.id)).toEqual([task.id]);
+		expect((await data('GET', 'tasks/runned')).map((t: any) => t.id)).toEqual([
+			task.id,
+		]);
 		clock = new Date('2026-09-26T10:01:30Z');
 
 		const stopped = await data('DELETE', `tasks/${task.id}/countdown`);
@@ -245,7 +361,10 @@ describeSqlite('local workspace API on SQLite', () => {
 	});
 
 	it('updates only the fields sent and keeps derived ones out of the database', async () => {
-		const task = await data('POST', 'tasks', { title: 'Draft', checkpoints: [] });
+		const task = await data('POST', 'tasks', {
+			title: 'Draft',
+			checkpoints: [],
+		});
 		const updated = await data('PUT', `tasks/${task.id}`, {
 			...task,
 			title: 'Final',
@@ -272,7 +391,9 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('handles comments and soft-deletes tasks', async () => {
 		const task = await data('POST', 'tasks', { title: 'Talk' });
-		const comment = await data('POST', `/tasks/${task.id}/comments`, { message: 'hello' });
+		const comment = await data('POST', `/tasks/${task.id}/comments`, {
+			message: 'hello',
+		});
 		expect(comment.user.name).toBe('Yurij');
 		expect(await data('GET', `/tasks/${task.id}/comments/`)).toHaveLength(1);
 		expect((await data('GET', `tasks/${task.id}`)).comments_count).toBe(1);
@@ -282,26 +403,61 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('refuses to delete a status that still has tasks', async () => {
 		const task = await data('POST', 'tasks', { title: 'Stay' });
-		expect((await call('DELETE', `statuses/${task.status_id}`)).status).toBe(409);
+		expect((await call('DELETE', `statuses/${task.status_id}`)).status).toBe(
+			409,
+		);
 	});
 
 	it('refuses a duplicate category code, case-insensitively, but allows saving a category unchanged', async () => {
-		const a = await data('POST', 'project_categories', { title: 'Alpha', code: 'AB' });
-		expect((await call('POST', 'project_categories', { title: 'Beta', code: 'ab' })).status).toBe(422);
-		const b = await data('POST', 'project_categories', { title: 'Beta', code: 'CD' });
+		const a = await data('POST', 'project_categories', {
+			title: 'Alpha',
+			code: 'AB',
+		});
+		expect(
+			(await call('POST', 'project_categories', { title: 'Beta', code: 'ab' }))
+				.status,
+		).toBe(422);
+		const b = await data('POST', 'project_categories', {
+			title: 'Beta',
+			code: 'CD',
+		});
 
-		expect((await call('PUT', `project_categories/${b.id}`, { title: 'Beta', code: 'ab' })).status).toBe(422);
+		expect(
+			(
+				await call('PUT', `project_categories/${b.id}`, {
+					title: 'Beta',
+					code: 'ab',
+				})
+			).status,
+		).toBe(422);
 		// Unchanged code (even by case) must not trip over the category's own row.
-		expect((await call('PUT', `project_categories/${a.id}`, { title: 'Alpha v2', code: 'ab' })).status).toBe(200);
-		expect((await call('PUT', `project_categories/${a.id}`, { title: 'Alpha v2' })).status).toBe(200);
+		expect(
+			(
+				await call('PUT', `project_categories/${a.id}`, {
+					title: 'Alpha v2',
+					code: 'ab',
+				})
+			).status,
+		).toBe(200);
+		expect(
+			(await call('PUT', `project_categories/${a.id}`, { title: 'Alpha v2' }))
+				.status,
+		).toBe(200);
 	});
 
 	it('derives a category code from its title when none is given, like the Java backend', async () => {
-		const first = await data('POST', 'project_categories', { title: 'Разработка' });
+		const first = await data('POST', 'project_categories', {
+			title: 'Разработка',
+		});
 		expect(first.code).toBe('RAZRABOTKA');
-		const second = await data('POST', 'project_categories', { title: 'Разработка' });
+		const second = await data('POST', 'project_categories', {
+			title: 'Разработка',
+		});
 		expect(second.code).toBe('RAZRABOTKA-1');
-		const withExplicitCode = await data('POST', 'project_categories', { title: 'Other', code: 'OTHER' });
+		const withExplicitCode = await data('POST', 'project_categories', {
+			title: 'Other',
+			code: 'OTHER',
+		});
 		expect(withExplicitCode.code).toBe('OTHER');
 	});
 
@@ -312,18 +468,30 @@ describeSqlite('local workspace API on SQLite', () => {
 		const toggles = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(toggles.board.enabled).toBe(true);
 		expect(toggles.workflow).toEqual(
-			expect.objectContaining({ key: 'workflow', name: 'Workflow', enabled: true }),
+			expect.objectContaining({
+				key: 'workflow',
+				name: 'Workflow',
+				enabled: true,
+			}),
 		);
 		expect(toggles['task.relations'].enabled).toBe(true);
-		expect(await dispatchLocal(api, ctx, 'GET', 'tasks/1/nonexistent-route')).toBeNull();
+		expect(
+			await dispatchLocal(api, ctx, 'GET', 'tasks/1/nonexistent-route'),
+		).toBeNull();
 	});
 
 	it('keeps workspace feature toggles as persisted overrides, agent work on by default', async () => {
 		const defaults = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(defaults.agent_work).toEqual(
-			expect.objectContaining({ key: 'agent_work', name: 'Agent work', enabled: true }),
+			expect.objectContaining({
+				key: 'agent_work',
+				name: 'Agent work',
+				enabled: true,
+			}),
 		);
-		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: false } });
+		await data('PUT', 'workspaces/-42/feature-toggles', {
+			features: { agent_work: false },
+		});
 		const updated = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(updated.agent_work.enabled).toBe(false);
 		expect(updated.board.enabled).toBe(true);
@@ -335,7 +503,9 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(ignored.board.enabled).toBe(true);
 		expect(ignored.pages.enabled).toBe(true);
 		expect(ignored.agent_work.enabled).toBe(false);
-		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: true, unknown: false } });
+		await data('PUT', 'workspaces/-42/feature-toggles', {
+			features: { agent_work: true, unknown: false },
+		});
 		const restored = await data('GET', 'workspaces/-42/feature-toggles');
 		expect(restored.agent_work.enabled).toBe(true);
 		expect(restored.unknown).toBeUndefined();
@@ -343,8 +513,12 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('refuses agent work with the cloud 403 body while the toggle is off and shows the runs again when it is on', async () => {
 		const task = await data('POST', 'tasks', { title: 'Agent task' });
-		const run = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
-		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: false } });
+		const run = await data('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'claude-code',
+		});
+		await data('PUT', 'workspaces/-42/feature-toggles', {
+			features: { agent_work: false },
+		});
 
 		const body = {
 			message: 'Agent work is disabled in this workspace',
@@ -362,20 +536,42 @@ describeSqlite('local workspace API on SQLite', () => {
 			expect(res.data).toEqual(body);
 		}
 
-		await data('PUT', 'workspaces/-42/feature-toggles', { features: { agent_work: true } });
+		await data('PUT', 'workspaces/-42/feature-toggles', {
+			features: { agent_work: true },
+		});
 		const overview = await data('GET', `tasks/${task.id}/agent-work`);
-		expect(overview.runs).toEqual([expect.objectContaining({ id: run.id, status: 'running' })]);
+		expect(overview.runs).toEqual([
+			expect.objectContaining({ id: run.id, status: 'running' }),
+		]);
 	});
 
 	it('gives a task the next ticket number of the category it moves to', async () => {
-		const a = await data('POST', 'project_categories', { title: 'A', code: 'a' });
-		const b = await data('POST', 'project_categories', { title: 'B', code: 'b' });
+		const a = await data('POST', 'project_categories', {
+			title: 'A',
+			code: 'a',
+		});
+		const b = await data('POST', 'project_categories', {
+			title: 'B',
+			code: 'b',
+		});
 		await data('POST', 'tasks', { title: 'b1', project_category_id: b.id });
-		const task = await data('POST', 'tasks', { title: 'moving', project_category_id: a.id });
+		const task = await data('POST', 'tasks', {
+			title: 'moving',
+			project_category_id: a.id,
+		});
 
-		const moved = await data('PUT', `tasks/${task.id}`, { ...task, project_category_id: b.id });
-		const same = await data('PUT', `tasks/${task.id}`, { ...moved, title: 'renamed' });
-		const loose = await data('PUT', `tasks/${task.id}`, { ...same, project_category_id: null });
+		const moved = await data('PUT', `tasks/${task.id}`, {
+			...task,
+			project_category_id: b.id,
+		});
+		const same = await data('PUT', `tasks/${task.id}`, {
+			...moved,
+			title: 'renamed',
+		});
+		const loose = await data('PUT', `tasks/${task.id}`, {
+			...same,
+			project_category_id: null,
+		});
 
 		expect(moved.category_tasks_sequence_id).toBe(2);
 		expect(same.category_tasks_sequence_id).toBe(2);
@@ -384,13 +580,25 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('clears the other description field only when asked to', async () => {
 		const blocks = { blocks: [{ type: 'paragraph', data: { text: 'j' } }] };
-		const task = await data('POST', 'tasks', { title: 'Both', description: 'md', description_json: blocks });
-		const kept = await data('PUT', `tasks/${task.id}`, { description_json: blocks });
+		const task = await data('POST', 'tasks', {
+			title: 'Both',
+			description: 'md',
+			description_json: blocks,
+		});
+		const kept = await data('PUT', `tasks/${task.id}`, {
+			description_json: blocks,
+		});
 		expect(kept.description).toBe('md');
-		const block = await data('PUT', `tasks/${task.id}`, { description_json: blocks, clear_description: true });
+		const block = await data('PUT', `tasks/${task.id}`, {
+			description_json: blocks,
+			clear_description: true,
+		});
 		expect(block.description).toBeNull();
 		expect(block.description_json).toEqual(blocks);
-		const md = await data('PUT', `tasks/${task.id}`, { description: 'md2', clear_description_json: true });
+		const md = await data('PUT', `tasks/${task.id}`, {
+			description: 'md2',
+			clear_description_json: true,
+		});
 		expect(md.description).toBe('md2');
 		expect(md.description_json).toBeNull();
 	});
@@ -403,7 +611,9 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('does not mistake the task settings route for a status change', async () => {
 		const task = await data('POST', 'tasks', { title: 'Set' });
-		const res = await call('PUT', `tasks/${task.id}/settings`, [{ id: 1, value: 3 }]);
+		const res = await call('PUT', `tasks/${task.id}/settings`, [
+			{ id: 1, value: 3 },
+		]);
 		expect(res.status).toBe(200);
 		expect(res.data.data.status_id).toBe(task.status_id);
 	});
@@ -415,7 +625,9 @@ describeSqlite('local workspace API on SQLite', () => {
 			content_type: 'image/png',
 			size_bytes: 1200,
 		});
-		expect(target.key).toMatch(/^[0-9a-f-]+\/Screen-Shot-2026-09-26-at-10.00.png$/);
+		expect(target.key).toMatch(
+			/^[0-9a-f-]+\/Screen-Shot-2026-09-26-at-10.00.png$/,
+		);
 		expect(target.upload_url).toBe(`tmgrfile://localhost/test/${target.key}`);
 
 		const file = await data('POST', `/tasks/${task.id}/files`, {
@@ -424,9 +636,16 @@ describeSqlite('local workspace API on SQLite', () => {
 			mime_type: 'image/png',
 			size_bytes: 1200,
 		});
-		expect(file).toMatchObject({ task_id: task.id, name: 'Screen Shot.png', size: 1200, workspace_id: -42 });
+		expect(file).toMatchObject({
+			task_id: task.id,
+			name: 'Screen Shot.png',
+			size: 1200,
+			workspace_id: -42,
+		});
 		expect(await data('GET', `/tasks/${task.id}/files`)).toHaveLength(1);
-		expect((await data('GET', `/files/${file.id}/signed-url`)).url).toBe(target.upload_url);
+		expect((await data('GET', `/files/${file.id}/signed-url`)).url).toBe(
+			target.upload_url,
+		);
 		const page = (await call('GET', 'workspaces/-42/files?images=true')).data;
 		expect(page.data[0].task.title).toBe('With a screenshot');
 
@@ -436,27 +655,61 @@ describeSqlite('local workspace API on SQLite', () => {
 	});
 
 	it('refuses oversized uploads and keys it did not hand out', async () => {
-		expect((await call('POST', 'files/presign-upload', { file_name: 'a', size_bytes: 26 * 1024 * 1024 })).status).toBe(413);
+		expect(
+			(
+				await call('POST', 'files/presign-upload', {
+					file_name: 'a',
+					size_bytes: 26 * 1024 * 1024,
+				})
+			).status,
+		).toBe(413);
 		const task = await data('POST', 'tasks', { title: 'x' });
-		expect((await call('POST', `tasks/${task.id}/files`, { file_path: '../../etc/passwd' })).status).toBe(422);
+		expect(
+			(
+				await call('POST', `tasks/${task.id}/files`, {
+					file_path: '../../etc/passwd',
+				})
+			).status,
+		).toBe(422);
 	});
 
 	it('returns file bytes raw, without the envelope', async () => {
 		const task = await data('POST', 'tasks', { title: 'x' });
-		const target = await data('POST', 'files/presign-upload', { file_name: 'a.txt' });
-		const file = await data('POST', `tasks/${task.id}/files`, { file_name: 'a.txt', file_path: target.key });
+		const target = await data('POST', 'files/presign-upload', {
+			file_name: 'a.txt',
+		});
+		const file = await data('POST', `tasks/${task.id}/files`, {
+			file_name: 'a.txt',
+			file_path: target.key,
+		});
 		const res = await call('GET', `files/${file.id}/content`);
 		expect(res.data).toBeInstanceOf(Blob);
 	});
 
 	it('exports the workspace and a single task from the database', async () => {
-		const category = await data('POST', 'project_categories', { title: 'Taskmgr', code: 'tm' });
-		const task = await data('POST', 'tasks', { title: 'Export me', project_category_id: category.id });
+		const category = await data('POST', 'project_categories', {
+			title: 'Taskmgr',
+			code: 'tm',
+		});
+		const task = await data('POST', 'tasks', {
+			title: 'Export me',
+			project_category_id: category.id,
+		});
 		await data('POST', `tasks/${task.id}/comments`, { message: 'noted' });
-		await data('POST', 'tasks', { title: 'Gone' }).then((t) => call('DELETE', `tasks/${t.id}`));
+		await data('POST', 'tasks', { title: 'Gone' }).then((t) =>
+			call('DELETE', `tasks/${t.id}`),
+		);
 
-		const files = await workspaceExport(ctx.db, 'Personal', 'Yurij', '2026-09-26');
-		expect(files.map((f) => f.path)).toEqual(['README.md', 'tasks/TM-1-export-me.md']);
+		const files = await workspaceExport(
+			ctx.db,
+			'Personal',
+			'Yurij',
+			'2026-09-26',
+		);
+		expect(files.map((f) => f.path)).toEqual([
+			'README.md',
+			'tasks/TM-1-export-me.md',
+		]);
 		expect(files[1].content).toContain('**Yurij** · ');
 		expect(files[1].content).toContain('noted');
 
@@ -469,7 +722,8 @@ describeSqlite('local workspace API on SQLite', () => {
 		const fresh = memoryDb();
 		const now = clock.toISOString();
 		for (const migration of MIGRATIONS.filter((m) => m.version <= 4)) {
-			for (const statement of migration.statements) await fresh.execute(statement);
+			for (const statement of migration.statements)
+				await fresh.execute(statement);
 		}
 		await fresh.execute(
 			`INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -478,18 +732,27 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(await readSchemaVersion(fresh)).toBe(4);
 
 		expect(await migrate(fresh, now)).toBe(LATEST_SCHEMA);
-		const columns = (await fresh.select<any>(`PRAGMA table_info(comments)`)).map((c: any) => c.name);
-		expect(columns).toEqual(expect.arrayContaining(['author_kind', 'author_id', 'author_name']));
+		const columns = (
+			await fresh.select<any>(`PRAGMA table_info(comments)`)
+		).map((c: any) => c.name);
+		expect(columns).toEqual(
+			expect.arrayContaining(['author_kind', 'author_id', 'author_name']),
+		);
 
 		// A migration cut short leaves one ALTER already applied; re-running must not throw.
-		await fresh.execute(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
+		await fresh.execute(
+			`UPDATE meta SET value = '4' WHERE key = 'schema_version'`,
+		);
 		await expect(migrate(fresh, now)).resolves.toBe(LATEST_SCHEMA);
 		expect(await readSchemaVersion(fresh)).toBe(LATEST_SCHEMA);
 	});
 
 	it('gives a plugin comment the author from ctx, ignoring any author fields in the body', async () => {
 		const task = await data('POST', 'tasks', { title: 'Plugin task' });
-		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' } };
+		ctx = {
+			...ctx,
+			actor: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' },
+		};
 		const comment = await data('POST', `tasks/${task.id}/comments`, {
 			message: 'hi',
 			author: { kind: 'user', id: '999', name: 'Spoofed' },
@@ -504,39 +767,86 @@ describeSqlite('local workspace API on SQLite', () => {
 		});
 
 		ctx = { ...ctx, actor: undefined };
-		const own = await data('POST', `tasks/${task.id}/comments`, { message: 'from the app' });
+		const own = await data('POST', `tasks/${task.id}/comments`, {
+			message: 'from the app',
+		});
 		expect(own.author).toEqual({ kind: 'user', id: '7', name: 'Yurij' });
 	});
 
 	it('toggles a comment reaction per actor: on, off, and independently for a plugin', async () => {
 		const task = await data('POST', 'tasks', { title: 'React' });
-		const comment = await data('POST', `tasks/${task.id}/comments`, { message: 'hi' });
+		const comment = await data('POST', `tasks/${task.id}/comments`, {
+			message: 'hi',
+		});
 
-		const toggled = await data('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' });
+		const toggled = await data(
+			'POST',
+			`comments/${comment.id}/reactions/toggle`,
+			{ emoji: '👍' },
+		);
 		expect(toggled).toEqual({
-			reactions: [{ emoji: '👍', count: 1, reacted: true, users: [{ id: 7, name: 'Yurij' }] }],
+			reactions: [
+				{
+					emoji: '👍',
+					count: 1,
+					reacted: true,
+					users: [{ id: 7, name: 'Yurij' }],
+				},
+			],
 			task_id: task.id,
 		});
-		const untoggled = await data('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' });
+		const untoggled = await data(
+			'POST',
+			`comments/${comment.id}/reactions/toggle`,
+			{ emoji: '👍' },
+		);
 		expect(untoggled.reactions).toEqual([]);
 
-		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' } };
-		const pluginReacted = await data('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '🎉' });
-		expect(pluginReacted.reactions).toEqual([{ emoji: '🎉', count: 1, reacted: true, users: [] }]);
+		ctx = {
+			...ctx,
+			actor: { kind: 'plugin', id: 'tmgr.estimate', name: 'Estimate' },
+		};
+		const pluginReacted = await data(
+			'POST',
+			`comments/${comment.id}/reactions/toggle`,
+			{ emoji: '🎉' },
+		);
+		expect(pluginReacted.reactions).toEqual([
+			{ emoji: '🎉', count: 1, reacted: true, users: [] },
+		]);
 
 		ctx = { ...ctx, actor: undefined };
 		const list = await data('GET', `tasks/${task.id}/comments`);
-		expect(list[0].reactions).toEqual([{ emoji: '🎉', count: 1, reacted: false, users: [] }]);
+		expect(list[0].reactions).toEqual([
+			{ emoji: '🎉', count: 1, reacted: false, users: [] },
+		]);
 
-		expect((await call('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '   ' })).status).toBe(422);
-		expect((await call('POST', `comments/999999/reactions/toggle`, { emoji: '👍' })).status).toBe(404);
+		expect(
+			(
+				await call('POST', `comments/${comment.id}/reactions/toggle`, {
+					emoji: '   ',
+				})
+			).status,
+		).toBe(422);
+		expect(
+			(await call('POST', `comments/999999/reactions/toggle`, { emoji: '👍' }))
+				.status,
+		).toBe(404);
 	});
 
 	it('refuses to react to a comment whose task was deleted', async () => {
 		const task = await data('POST', 'tasks', { title: 'Doomed' });
-		const comment = await data('POST', `tasks/${task.id}/comments`, { message: 'hi' });
+		const comment = await data('POST', `tasks/${task.id}/comments`, {
+			message: 'hi',
+		});
 		await call('DELETE', `tasks/${task.id}`);
-		expect((await call('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' })).status).toBe(404);
+		expect(
+			(
+				await call('POST', `comments/${comment.id}/reactions/toggle`, {
+					emoji: '👍',
+				})
+			).status,
+		).toBe(404);
 	});
 
 	it('creates, lists and deletes task relations; refuses the same task and unknown tasks', async () => {
@@ -554,8 +864,15 @@ describeSqlite('local workspace API on SQLite', () => {
 		]);
 		const blocks = types.find((t: any) => t.name === 'blocks');
 
-		const created = await data('POST', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
-		expect(created).toMatchObject({ task_id: a.id, related_task_id: b.id, task_relation_type_id: blocks.id });
+		const created = await data(
+			'POST',
+			`tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`,
+		);
+		expect(created).toMatchObject({
+			task_id: a.id,
+			related_task_id: b.id,
+			task_relation_type_id: blocks.id,
+		});
 
 		const relations = await data('GET', `tasks/${a.id}/relations`);
 		expect(relations).toEqual([
@@ -571,10 +888,18 @@ describeSqlite('local workspace API on SQLite', () => {
 				},
 			},
 		]);
-		expect((await data('GET', `tasks/${a.id}`)).relationTypeWithTask).toEqual(relations);
+		expect((await data('GET', `tasks/${a.id}`)).relationTypeWithTask).toEqual(
+			relations,
+		);
 
-		expect((await call('POST', `tasks/${a.id}/related-to/${a.id}/with/${blocks.id}`)).status).toBe(422);
-		expect((await call('POST', `tasks/${a.id}/related-to/999999/with/${blocks.id}`)).status).toBe(404);
+		expect(
+			(await call('POST', `tasks/${a.id}/related-to/${a.id}/with/${blocks.id}`))
+				.status,
+		).toBe(422);
+		expect(
+			(await call('POST', `tasks/${a.id}/related-to/999999/with/${blocks.id}`))
+				.status,
+		).toBe(404);
 
 		await call('DELETE', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
 		expect(await data('GET', `tasks/${a.id}/relations`)).toEqual([]);
@@ -583,10 +908,16 @@ describeSqlite('local workspace API on SQLite', () => {
 	it('deletes task relations and comment reactions when either task is deleted', async () => {
 		const a = await data('POST', 'tasks', { title: 'A' });
 		const b = await data('POST', 'tasks', { title: 'B' });
-		const blocks = (await data('GET', 'task-relation-types')).find((t: any) => t.name === 'blocks');
+		const blocks = (await data('GET', 'task-relation-types')).find(
+			(t: any) => t.name === 'blocks',
+		);
 		await call('POST', `tasks/${a.id}/related-to/${b.id}/with/${blocks.id}`);
-		const comment = await data('POST', `tasks/${a.id}/comments`, { message: 'hi' });
-		await call('POST', `comments/${comment.id}/reactions/toggle`, { emoji: '👍' });
+		const comment = await data('POST', `tasks/${a.id}/comments`, {
+			message: 'hi',
+		});
+		await call('POST', `comments/${comment.id}/reactions/toggle`, {
+			emoji: '👍',
+		});
 
 		await call('DELETE', `tasks/${b.id}`);
 		const [{ relations }] = await ctx.db.select<{ relations: number }>(
@@ -607,7 +938,8 @@ describeSqlite('local workspace API on SQLite', () => {
 		const fresh = memoryDb();
 		const now = clock.toISOString();
 		for (const migration of MIGRATIONS.filter((m) => m.version <= 4)) {
-			for (const statement of migration.statements) await fresh.execute(statement);
+			for (const statement of migration.statements)
+				await fresh.execute(statement);
 		}
 		await fresh.execute(
 			`INSERT INTO meta (key, value) VALUES ('schema_version', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -616,14 +948,25 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(await readSchemaVersion(fresh)).toBe(4);
 
 		expect(await migrate(fresh, now)).toBe(LATEST_SCHEMA);
-		const tables = (await fresh.select<any>(`SELECT name FROM sqlite_master WHERE type = 'table'`)).map(
-			(t: any) => t.name,
-		);
+		const tables = (
+			await fresh.select<any>(
+				`SELECT name FROM sqlite_master WHERE type = 'table'`,
+			)
+		).map((t: any) => t.name);
 		expect(tables).toEqual(
-			expect.arrayContaining(['plugin_task_data', 'agent_work_runs', 'pages', 'page_versions', 'page_links', 'task_page_mentions']),
+			expect.arrayContaining([
+				'plugin_task_data',
+				'agent_work_runs',
+				'pages',
+				'page_versions',
+				'page_links',
+				'task_page_mentions',
+			]),
 		);
 
-		await fresh.execute(`UPDATE meta SET value = '4' WHERE key = 'schema_version'`);
+		await fresh.execute(
+			`UPDATE meta SET value = '4' WHERE key = 'schema_version'`,
+		);
 		await expect(migrate(fresh, now)).resolves.toBe(LATEST_SCHEMA);
 	});
 
@@ -638,11 +981,14 @@ describeSqlite('local workspace API on SQLite', () => {
 			priority: 'high',
 			expired_at: '2026-10-01T08:00:00Z',
 		});
-		const t3 = await data('POST', 'tasks', { title: 'High, no due date', priority: 'high' });
+		const t3 = await data('POST', 'tasks', {
+			title: 'High, no due date',
+			priority: 'high',
+		});
 
-		expect((await data('GET', 'tasks?priority=high')).map((t: any) => t.id).sort()).toEqual(
-			[t2.id, t3.id].sort(),
-		);
+		expect(
+			(await data('GET', 'tasks?priority=high')).map((t: any) => t.id).sort(),
+		).toEqual([t2.id, t3.id].sort());
 		expect(await data('GET', 'tasks?due_before=2026-10-02T00:00:00Z')).toEqual([
 			expect.objectContaining({ id: t2.id }),
 		]);
@@ -650,13 +996,19 @@ describeSqlite('local workspace API on SQLite', () => {
 			expect.objectContaining({ id: t1.id }),
 		]);
 		expect(
-			(await data('GET', 'tasks?status_type=default')).map((t: any) => t.id).sort(),
+			(await data('GET', 'tasks?status_type=default'))
+				.map((t: any) => t.id)
+				.sort(),
 		).toEqual([t1.id, t2.id, t3.id].sort());
-		expect(await data('GET', `tasks?updated_since=${clock.toISOString()}`)).toHaveLength(3);
+		expect(
+			await data('GET', `tasks?updated_since=${clock.toISOString()}`),
+		).toHaveLength(3);
 		clock = new Date('2026-09-26T10:30:00Z');
 		await data('PATCH', `tasks/${t2.id}`, { priority: 'urgent' });
 		expect(
-			(await data('GET', `tasks?updated_since=${clock.toISOString()}`)).map((t: any) => t.id),
+			(await data('GET', `tasks?updated_since=${clock.toISOString()}`)).map(
+				(t: any) => t.id,
+			),
 		).toEqual([t2.id]);
 
 		const byDue = await data('GET', 'tasks?sort=due&direction=asc');
@@ -664,16 +1016,30 @@ describeSqlite('local workspace API on SQLite', () => {
 	});
 
 	it('gives a plugin a task key immediately on create, and the next number when a category is set on update', async () => {
-		const category = await data('POST', 'project_categories', { title: 'Taskmgr', code: 'tm' });
-		const other = await data('POST', 'project_categories', { title: 'Other', code: 'ot' });
-		await data('POST', 'tasks', { title: 'other1', project_category_id: other.id });
+		const category = await data('POST', 'project_categories', {
+			title: 'Taskmgr',
+			code: 'tm',
+		});
+		const other = await data('POST', 'project_categories', {
+			title: 'Other',
+			code: 'ot',
+		});
+		await data('POST', 'tasks', {
+			title: 'other1',
+			project_category_id: other.id,
+		});
 		const api = pluginApi();
 
-		const created = (await api.createTask({ title: 'One', project_category_id: category.id })) as any;
+		const created = (await api.createTask({
+			title: 'One',
+			project_category_id: category.id,
+		})) as any;
 		expect(created.key).toBe('TM-1');
 
 		const loose = await data('POST', 'tasks', { title: 'Loose' });
-		const updated = (await api.updateTask(loose.id, { project_category_id: other.id })) as any;
+		const updated = (await api.updateTask(loose.id, {
+			project_category_id: other.id,
+		})) as any;
 		expect(updated.key).toBe('OT-2');
 
 		const fetched = (await api.getTask(created.id)) as any;
@@ -691,26 +1057,40 @@ describeSqlite('local workspace API on SQLite', () => {
 	it('round-trips priority and a markdown description byte-for-byte', async () => {
 		const description =
 			'  leading and trailing spaces  \r\n\r\nSome *markdown* with `code` and unicode: héllo 世界 🎉\r\n\r\n- item\r\n';
-		const task = await data('POST', 'tasks', { title: 'Desc', description, priority: 'urgent' });
+		const task = await data('POST', 'tasks', {
+			title: 'Desc',
+			description,
+			priority: 'urgent',
+		});
 		expect(task.description).toBe(description);
 		expect(task.priority).toBe('urgent');
 
 		const fetched = await data('GET', `tasks/${task.id}`);
 		expect(fetched.description).toBe(description);
 
-		const updated = await data('PATCH', `tasks/${task.id}`, { priority: 'low' });
+		const updated = await data('PATCH', `tasks/${task.id}`, {
+			priority: 'low',
+		});
 		expect(updated.priority).toBe('low');
 	});
 
 	it('stores and clears expired_at', async () => {
-		const task = await data('POST', 'tasks', { title: 'Deadline', expired_at: '2026-10-01T12:00:00Z' });
+		const task = await data('POST', 'tasks', {
+			title: 'Deadline',
+			expired_at: '2026-10-01T12:00:00Z',
+		});
 		expect(task.expired_at).toBe('2026-10-01T12:00:00Z');
-		const cleared = await data('PATCH', `tasks/${task.id}`, { expired_at: null });
+		const cleared = await data('PATCH', `tasks/${task.id}`, {
+			expired_at: null,
+		});
 		expect(cleared.expired_at).toBeNull();
 	});
 
 	it('normalises expired_at: keeps a date-only string as is, normalises a time to ISO UTC, rejects garbage', async () => {
-		const dateOnly = await data('POST', 'tasks', { title: 'Date only', expired_at: '2026-10-01' });
+		const dateOnly = await data('POST', 'tasks', {
+			title: 'Date only',
+			expired_at: '2026-10-01',
+		});
 		expect(dateOnly.expired_at).toBe('2026-10-01');
 
 		const withOffset = await data('POST', 'tasks', {
@@ -719,10 +1099,18 @@ describeSqlite('local workspace API on SQLite', () => {
 		});
 		expect(withOffset.expired_at).toBe('2026-10-01T12:00:00Z');
 
-		const clearedByEmptyString = await data('PATCH', `tasks/${dateOnly.id}`, { expired_at: '' });
+		const clearedByEmptyString = await data('PATCH', `tasks/${dateOnly.id}`, {
+			expired_at: '',
+		});
 		expect(clearedByEmptyString.expired_at).toBeNull();
 
-		expect((await call('PATCH', `tasks/${dateOnly.id}`, { expired_at: 'not a date' })).status).toBe(422);
+		expect(
+			(
+				await call('PATCH', `tasks/${dateOnly.id}`, {
+					expired_at: 'not a date',
+				})
+			).status,
+		).toBe(422);
 	});
 
 	it('archiving a task via a plain field update stops its running timer', async () => {
@@ -732,7 +1120,9 @@ describeSqlite('local workspace API on SQLite', () => {
 		await call('POST', `tasks/${task.id}/countdown`);
 		clock = new Date('2026-09-26T10:05:00Z');
 
-		const updated = await data('PATCH', `tasks/${task.id}`, { status_id: archived.id });
+		const updated = await data('PATCH', `tasks/${task.id}`, {
+			status_id: archived.id,
+		});
 
 		expect(updated.status).toBe('archived');
 		expect(updated.start_time).toBe(0);
@@ -743,13 +1133,25 @@ describeSqlite('local workspace API on SQLite', () => {
 		const task = await data('POST', 'tasks', { title: 'With data' });
 		const other = await data('POST', 'tasks', { title: 'Other' });
 
-		expect(await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`)).toEqual({ value: null });
-		await call('PUT', `plugins/tmgr.estimate/tasks/${task.id}/data/points`, { value: '5' });
-		await call('PUT', `plugins/tmgr.other/tasks/${task.id}/data/points`, { value: '"mine"' });
-		expect(await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`)).toEqual({ value: '5' });
-		expect(await data('GET', `plugins/tmgr.other/tasks/${task.id}/data/points`)).toEqual({ value: '"mine"' });
+		expect(
+			await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`),
+		).toEqual({ value: null });
+		await call('PUT', `plugins/tmgr.estimate/tasks/${task.id}/data/points`, {
+			value: '5',
+		});
+		await call('PUT', `plugins/tmgr.other/tasks/${task.id}/data/points`, {
+			value: '"mine"',
+		});
+		expect(
+			await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`),
+		).toEqual({ value: '5' });
+		expect(
+			await data('GET', `plugins/tmgr.other/tasks/${task.id}/data/points`),
+		).toEqual({ value: '"mine"' });
 
-		await call('PUT', `plugins/tmgr.estimate/tasks/${other.id}/data/points`, { value: '8' });
+		await call('PUT', `plugins/tmgr.estimate/tasks/${other.id}/data/points`, {
+			value: '8',
+		});
 		expect(
 			await data('POST', 'plugins/tmgr.estimate/task-data/query', {
 				task_ids: [task.id, other.id],
@@ -758,9 +1160,17 @@ describeSqlite('local workspace API on SQLite', () => {
 		).toEqual({ [task.id]: '5', [other.id]: '8' });
 
 		await call('DELETE', `plugins/tmgr.estimate/tasks/${task.id}/data/points`);
-		expect(await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`)).toEqual({ value: null });
+		expect(
+			await data('GET', `plugins/tmgr.estimate/tasks/${task.id}/data/points`),
+		).toEqual({ value: null });
 
-		expect((await call('PUT', `plugins/tmgr.estimate/tasks/999999/data/points`, { value: '1' })).status).toBe(404);
+		expect(
+			(
+				await call('PUT', `plugins/tmgr.estimate/tasks/999999/data/points`, {
+					value: '1',
+				})
+			).status,
+		).toBe(404);
 
 		await call('DELETE', `tasks/${other.id}`);
 		const [{ n }] = await ctx.db.select<{ n: number }>(
@@ -774,19 +1184,39 @@ describeSqlite('local workspace API on SQLite', () => {
 		const task = await data('POST', 'tasks', { title: 'CJK data' });
 		const cjk = JSON.stringify('字'.repeat(1_800_000));
 		expect(
-			(await call('PUT', `plugins/tmgr.cjk/tasks/${task.id}/data/k0`, { value: cjk })).status,
+			(
+				await call('PUT', `plugins/tmgr.cjk/tasks/${task.id}/data/k0`, {
+					value: cjk,
+				})
+			).status,
 		).toBe(413);
 	});
 
 	it('shares the plugin storage quota between kv and per-task data', async () => {
 		const task = await data('POST', 'tasks', { title: 'Quota' });
 		const big = JSON.stringify('x'.repeat(250_000));
-		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+		expect(
+			(await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status,
+		).toBe(200);
 		for (let i = 1; i < 20; i++) {
-			expect((await call('PUT', `plugins/tmgr.big/tasks/${task.id}/data/k${i}`, { value: big })).status).toBe(200);
+			expect(
+				(
+					await call('PUT', `plugins/tmgr.big/tasks/${task.id}/data/k${i}`, {
+						value: big,
+					})
+				).status,
+			).toBe(200);
 		}
-		expect((await call('PUT', `plugins/tmgr.big/tasks/${task.id}/data/k20`, { value: big })).status).toBe(413);
-		expect((await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status).toBe(200);
+		expect(
+			(
+				await call('PUT', `plugins/tmgr.big/tasks/${task.id}/data/k20`, {
+					value: big,
+				})
+			).status,
+		).toBe(413);
+		expect(
+			(await call('PUT', 'plugins/tmgr.big/storage/k0', { value: big })).status,
+		).toBe(200);
 	});
 
 	it('runs the agent work lifecycle: list, start, update, finish, and time totals', async () => {
@@ -794,7 +1224,11 @@ describeSqlite('local workspace API on SQLite', () => {
 
 		expect(await data('GET', `tasks/${task.id}/agent-work`)).toEqual({
 			runs: [],
-			totals: { agent_seconds: 0, human_seconds: 0, human_timer_running: false },
+			totals: {
+				agent_seconds: 0,
+				human_seconds: 0,
+				human_timer_running: false,
+			},
 		});
 
 		const run = await data('POST', `tasks/${task.id}/agent-work`, {
@@ -842,18 +1276,29 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(finished.branch).toBe('feat/y');
 		expect(finished.pr_url).toBe('https://example.com/pr/1');
 
-		expect((await data('GET', `tasks/${task.id}/agent-work`)).totals.agent_seconds).toBe(600);
-		expect((await call('PATCH', `agent-work/${run.id}`, { summary: 'late' })).status).toBe(409);
-		expect((await call('POST', `agent-work/${run.id}/finish`, { status: 'failed' })).status).toBe(409);
+		expect(
+			(await data('GET', `tasks/${task.id}/agent-work`)).totals.agent_seconds,
+		).toBe(600);
+		expect(
+			(await call('PATCH', `agent-work/${run.id}`, { summary: 'late' })).status,
+		).toBe(409);
+		expect(
+			(await call('POST', `agent-work/${run.id}/finish`, { status: 'failed' }))
+				.status,
+		).toBe(409);
 	});
 
 	it('abandons a still-running run of the same agent and actor when a new one starts, ending at its last update', async () => {
 		const task = await data('POST', 'tasks', { title: 'Two runs' });
-		const first = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		const first = await data('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'claude-code',
+		});
 		clock = new Date('2026-09-26T10:02:00Z');
 		await data('PATCH', `agent-work/${first.id}`, { summary: 'progress' });
 		clock = new Date('2026-09-26T10:07:00Z');
-		const second = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		const second = await data('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'claude-code',
+		});
 
 		const overview = await data('GET', `tasks/${task.id}/agent-work`);
 		// Ends at the run's own last update, not "now" — it went silent, it was not just abandoned.
@@ -861,32 +1306,58 @@ describeSqlite('local workspace API on SQLite', () => {
 			status: 'abandoned',
 			duration_seconds: 120,
 		});
-		expect(overview.runs.find((r: any) => r.id === second.id)).toMatchObject({ status: 'running' });
+		expect(overview.runs.find((r: any) => r.id === second.id)).toMatchObject({
+			status: 'running',
+		});
 
 		await data('POST', `tasks/${task.id}/agent-work`, { agent: 'codex' });
-		const stillRunning = (await data('GET', `tasks/${task.id}/agent-work`)).runs.find(
-			(r: any) => r.id === second.id,
-		);
+		const stillRunning = (
+			await data('GET', `tasks/${task.id}/agent-work`)
+		).runs.find((r: any) => r.id === second.id);
 		expect(stillRunning.status).toBe('running');
 	});
 
 	it('refuses to update or finish a run started by a different actor', async () => {
 		const task = await data('POST', 'tasks', { title: 'Owned' });
-		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.agent', name: 'Agent' } };
-		const run = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		ctx = {
+			...ctx,
+			actor: { kind: 'plugin', id: 'tmgr.agent', name: 'Agent' },
+		};
+		const run = await data('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'claude-code',
+		});
 
-		ctx = { ...ctx, actor: { kind: 'plugin', id: 'tmgr.other', name: 'Other' } };
-		expect((await call('PATCH', `agent-work/${run.id}`, { summary: 'x' })).status).toBe(403);
-		expect((await call('POST', `agent-work/${run.id}/finish`, { status: 'succeeded' })).status).toBe(403);
+		ctx = {
+			...ctx,
+			actor: { kind: 'plugin', id: 'tmgr.other', name: 'Other' },
+		};
+		expect(
+			(await call('PATCH', `agent-work/${run.id}`, { summary: 'x' })).status,
+		).toBe(403);
+		expect(
+			(
+				await call('POST', `agent-work/${run.id}/finish`, {
+					status: 'succeeded',
+				})
+			).status,
+		).toBe(403);
 
 		ctx = { ...ctx, actor: undefined };
-		expect((await call('PATCH', `agent-work/${run.id}`, { summary: 'x' })).status).toBe(403);
+		expect(
+			(await call('PATCH', `agent-work/${run.id}`, { summary: 'x' })).status,
+		).toBe(403);
 	});
 
 	it('validates starting agent work: the task must exist, agent is required', async () => {
-		expect((await call('POST', `tasks/999999/agent-work`, { agent: 'claude-code' })).status).toBe(404);
+		expect(
+			(await call('POST', `tasks/999999/agent-work`, { agent: 'claude-code' }))
+				.status,
+		).toBe(404);
 		const task = await data('POST', 'tasks', { title: 'x' });
-		expect((await call('POST', `tasks/${task.id}/agent-work`, { agent: '  ' })).status).toBe(422);
+		expect(
+			(await call('POST', `tasks/${task.id}/agent-work`, { agent: '  ' }))
+				.status,
+		).toBe(422);
 	});
 
 	it('includes the task timer in agent work totals', async () => {
@@ -922,10 +1393,16 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(run.agent).toBe('plugin:tmgr.agent/claude-code');
 
 		const other = pluginApi('tmgr.other');
-		await expect(other.updateAgentWork(run.id, { summary: 'hijack' })).rejects.toThrow();
-		await expect(other.finishAgentWork(run.id, { status: 'succeeded' })).rejects.toThrow();
+		await expect(
+			other.updateAgentWork(run.id, { summary: 'hijack' }),
+		).rejects.toThrow();
+		await expect(
+			other.finishAgentWork(run.id, { status: 'succeeded' }),
+		).rejects.toThrow();
 
-		const updated = (await mine.updateAgentWork(run.id, { summary: 'mine' })) as any;
+		const updated = (await mine.updateAgentWork(run.id, {
+			summary: 'mine',
+		})) as any;
 		expect(updated.summary).toBe('mine');
 
 		// A plugin's own second, unlabelled run does not collide with, or abandon, a different plugin's run.
@@ -936,16 +1413,26 @@ describeSqlite('local workspace API on SQLite', () => {
 		})) as any;
 		expect(bare.agent).toBe('plugin:tmgr.other');
 		const overview = await data('GET', `tasks/${task.id}/agent-work`);
-		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe('running');
+		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe(
+			'running',
+		);
 	});
 
 	it('rejects an agent name over 64 characters instead of silently truncating it', async () => {
 		const task = await data('POST', 'tasks', { title: 'Long agent' });
 		expect(
-			(await call('POST', `tasks/${task.id}/agent-work`, { agent: 'a'.repeat(65) })).status,
+			(
+				await call('POST', `tasks/${task.id}/agent-work`, {
+					agent: 'a'.repeat(65),
+				})
+			).status,
 		).toBe(422);
 		expect(
-			(await call('POST', `tasks/${task.id}/agent-work`, { agent: 'a'.repeat(64) })).status,
+			(
+				await call('POST', `tasks/${task.id}/agent-work`, {
+					agent: 'a'.repeat(64),
+				})
+			).status,
 		).toBe(201);
 	});
 
@@ -958,7 +1445,11 @@ describeSqlite('local workspace API on SQLite', () => {
 		);
 		const { enableLocalPersona } = await import('../personas');
 		await enableLocalPersona(ctx, 'p-1', ['agent_work:write']);
-		const personaActor = { kind: 'persona' as const, id: 'p-1', name: 'Reviewer' };
+		const personaActor = {
+			kind: 'persona' as const,
+			id: 'p-1',
+			name: 'Reviewer',
+		};
 
 		const personaResult = await dispatchLocal(
 			api,
@@ -982,11 +1473,19 @@ describeSqlite('local workspace API on SQLite', () => {
 		})) as any;
 		expect(pluginRun.actor).toEqual({ kind: 'plugin', id: 'tmgr.estimate' });
 
-		const userRun = await data('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
-		expect(userRun.actor).toEqual({ kind: 'user', id: String(ctx.user.id), name: ctx.user.name });
+		const userRun = await data('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'claude-code',
+		});
+		expect(userRun.actor).toEqual({
+			kind: 'user',
+			id: String(ctx.user.id),
+			name: ctx.user.name,
+		});
 
 		const overview = await data('GET', `tasks/${task.id}/agent-work`);
-		const personaRunInList = overview.runs.find((r: any) => r.agent === 'reviewer-bot');
+		const personaRunInList = overview.runs.find(
+			(r: any) => r.agent === 'reviewer-bot',
+		);
 		expect(personaRunInList.actor).toEqual({
 			kind: 'persona',
 			id: 'p-1',
@@ -997,8 +1496,14 @@ describeSqlite('local workspace API on SQLite', () => {
 
 	it('isolates agent-work ownership by storage id, not the bare plugin id, when a different repo reuses it', async () => {
 		const task = await data('POST', 'tasks', { title: 'Contested' });
-		const authorA = pluginApi('tmgr.agent', 'tmgr.agent@github.com/authorA/repo');
-		const authorB = pluginApi('tmgr.agent', 'tmgr.agent@github.com/authorB/repo');
+		const authorA = pluginApi(
+			'tmgr.agent',
+			'tmgr.agent@github.com/authorA/repo',
+		);
+		const authorB = pluginApi(
+			'tmgr.agent',
+			'tmgr.agent@github.com/authorB/repo',
+		);
 
 		const run = (await authorA.startAgentWork(task.id, {
 			agent: 'claude-code',
@@ -1009,9 +1514,15 @@ describeSqlite('local workspace API on SQLite', () => {
 		// The stored agent namespace is by bare plugin id, same for both repos.
 		expect(run.agent).toBe('plugin:tmgr.agent/claude-code');
 
-		await expect(authorB.updateAgentWork(run.id, { summary: 'hijack' })).rejects.toThrow();
-		await expect(authorB.finishAgentWork(run.id, { status: 'succeeded' })).rejects.toThrow();
-		const updated = (await authorA.updateAgentWork(run.id, { summary: 'mine' })) as any;
+		await expect(
+			authorB.updateAgentWork(run.id, { summary: 'hijack' }),
+		).rejects.toThrow();
+		await expect(
+			authorB.finishAgentWork(run.id, { status: 'succeeded' }),
+		).rejects.toThrow();
+		const updated = (await authorA.updateAgentWork(run.id, {
+			summary: 'mine',
+		})) as any;
 		expect(updated.summary).toBe('mine');
 
 		// A same-named run from the other repo does not collide with, or abandon, author A's run.
@@ -1022,11 +1533,17 @@ describeSqlite('local workspace API on SQLite', () => {
 			branch: null,
 		})) as any;
 		const overview = await data('GET', `tasks/${task.id}/agent-work`);
-		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe('running');
-		expect(overview.runs.find((r: any) => r.id === other.id).status).toBe('running');
+		expect(overview.runs.find((r: any) => r.id === run.id).status).toBe(
+			'running',
+		);
+		expect(overview.runs.find((r: any) => r.id === other.id).status).toBe(
+			'running',
+		);
 
 		// Reactions are owned by storage id too: both repos can react independently under the same plugin id.
-		const comment = await data('POST', `tasks/${task.id}/comments`, { message: 'hi' });
+		const comment = await data('POST', `tasks/${task.id}/comments`, {
+			message: 'hi',
+		});
 		await authorA.reactToComment(comment.id, '👍');
 		const afterA = (await authorA.listComments(task.id)) as any[];
 		expect(afterA.find((c) => c.id === comment.id).reactions).toEqual([
@@ -1042,11 +1559,15 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(own.author).toMatchObject({ kind: 'plugin', id: 'tmgr.agent' });
 	});
 
-	it('taskData PUT and agent-work POST guard the task\'s existence inside the write itself, not a separate check', async () => {
+	it("taskData PUT and agent-work POST guard the task's existence inside the write itself, not a separate check", async () => {
 		const task = await data('POST', 'tasks', { title: 'Deleted mid-flight' });
 		await call('DELETE', `tasks/${task.id}`);
 
-		const putRes = await call('PUT', `plugins/tmgr.race/tasks/${task.id}/data/k`, { value: '1' });
+		const putRes = await call(
+			'PUT',
+			`plugins/tmgr.race/tasks/${task.id}/data/k`,
+			{ value: '1' },
+		);
 		expect(putRes.status).toBe(404);
 		const [{ dataRows }] = await ctx.db.select<{ dataRows: number }>(
 			`SELECT COUNT(*) AS dataRows FROM plugin_task_data WHERE task_id = ?`,
@@ -1054,7 +1575,9 @@ describeSqlite('local workspace API on SQLite', () => {
 		);
 		expect(Number(dataRows)).toBe(0);
 
-		const postRes = await call('POST', `tasks/${task.id}/agent-work`, { agent: 'claude-code' });
+		const postRes = await call('POST', `tasks/${task.id}/agent-work`, {
+			agent: 'claude-code',
+		});
 		expect(postRes.status).toBe(404);
 		const [{ runRows }] = await ctx.db.select<{ runRows: number }>(
 			`SELECT COUNT(*) AS runRows FROM agent_work_runs WHERE task_id = ?`,

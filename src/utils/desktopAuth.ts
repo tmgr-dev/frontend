@@ -22,7 +22,8 @@ const CALLBACK_PREFIX = 'tmgr://auth/callback';
 const DESKTOP_STATE = /^desktop\.([A-Za-z0-9_-]{43})$/;
 const CODE = /^[A-Za-z0-9_-]{43}$/;
 const STATE = /^[A-Za-z0-9_-]{16,128}$/;
-const ERROR = /^(google|github|apple|telegram|(google|github|apple)_link_confirmation)$/;
+const ERROR =
+	/^(google|github|apple|telegram|(google|github|apple)_link_confirmation)$/;
 
 const base64Url = (bytes: Uint8Array): string =>
 	btoa(String.fromCharCode(...bytes))
@@ -132,7 +133,7 @@ export const parseAuthCallback = (url: string): AuthCallback | null => {
 };
 
 export const desktopTxFromState = (state: unknown): string | null =>
-	typeof state === 'string' ? (DESKTOP_STATE.exec(state)?.[1] ?? null) : null;
+	typeof state === 'string' ? DESKTOP_STATE.exec(state)?.[1] ?? null : null;
 
 export const parseRelayFragment = (hash: string): RelayResult | null =>
 	parseResult(hash.replace(/^#/, ''));

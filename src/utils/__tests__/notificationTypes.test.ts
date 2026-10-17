@@ -87,8 +87,8 @@ describe('notificationTitle', () => {
 		expect(notificationTitle({ type: 'page.created', title: '' })).toBe(
 			'New page',
 		);
-		expect(
-			notificationTitle({ type: 'agent_work_started', title: null }),
-		).toBe('Agent work started');
+		expect(notificationTitle({ type: 'agent_work_started', title: null })).toBe(
+			'Agent work started',
+		);
 	});
 });

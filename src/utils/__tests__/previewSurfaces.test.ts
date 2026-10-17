@@ -124,10 +124,7 @@ describe('previewSurfaces', () => {
 });
 
 describe('workflow in the preview', () => {
-	const withWorkflow: any[] = [
-		...catalog,
-		{ key: 'workflow', enabled: true },
-	];
+	const withWorkflow: any[] = [...catalog, { key: 'workflow', enabled: true }];
 	const off = presetTarget(preset('minimal', []), withWorkflow);
 	const on = presetTarget(preset('team', ['workflow']), withWorkflow);
 
@@ -146,7 +143,9 @@ describe('workflow in the preview', () => {
 		const current = currentTarget(withWorkflow);
 		expect(byId(previewSurfaces(off, current).nav).board).toBe('will-hide');
 		const wasOff = currentTarget(
-			withWorkflow.map((m) => (m.key === 'workflow' ? { ...m, enabled: false } : m)),
+			withWorkflow.map((m) =>
+				m.key === 'workflow' ? { ...m, enabled: false } : m,
+			),
 		);
 		expect(byId(previewSurfaces(on, wasOff).nav).board).toBe('new');
 	});

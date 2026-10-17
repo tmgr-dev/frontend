@@ -1,7 +1,9 @@
 import { handlePageAppended } from '../quickAddPageRelay';
 
 const invalidate = jest.fn();
-jest.mock('@/actions/tmgr/pages', () => ({ invalidatePages: () => invalidate() }));
+jest.mock('@/actions/tmgr/pages', () => ({
+	invalidatePages: () => invalidate(),
+}));
 
 const payload = {
 	workspace_code: 'work',
@@ -10,7 +12,10 @@ const payload = {
 
 const setup = (code: string | undefined) => {
 	const commit = jest.fn();
-	return { commit, store: { getters: { currentWorkspace: code ? { code } : null }, commit } };
+	return {
+		commit,
+		store: { getters: { currentWorkspace: code ? { code } : null }, commit },
+	};
 };
 
 beforeEach(() => invalidate.mockReset());
@@ -20,7 +25,10 @@ describe('handlePageAppended', () => {
 		const { store, commit } = setup('work');
 		handlePageAppended(store, payload);
 		expect(invalidate).toHaveBeenCalled();
-		expect(commit).toHaveBeenCalledWith('pagesEvent', { type: 'page.updated', page: payload.page });
+		expect(commit).toHaveBeenCalledWith('pagesEvent', {
+			type: 'page.updated',
+			page: payload.page,
+		});
 	});
 
 	it('only invalidates when another workspace is open', () => {
@@ -43,13 +51,16 @@ describe('handleQuickAddCreated', () => {
 	const { tourBus } = jest.requireActual('@/tours/events');
 	const { handleQuickAddCreated } = jest.requireActual('../quickAddPageRelay');
 
-	it.each(['task', 'routine'])('maps a %s to task.created from quick add', (kind) => {
-		const seen: unknown[] = [];
-		const off = tourBus.on('task.created', (p: unknown) => seen.push(p));
-		handleQuickAddCreated({ kind });
-		off();
-		expect(seen).toEqual([{ source: 'quick_add', kind }]);
-	});
+	it.each(['task', 'routine'])(
+		'maps a %s to task.created from quick add',
+		(kind) => {
+			const seen: unknown[] = [];
+			const off = tourBus.on('task.created', (p: unknown) => seen.push(p));
+			handleQuickAddCreated({ kind });
+			off();
+			expect(seen).toEqual([{ source: 'quick_add', kind }]);
+		},
+	);
 
 	it('ignores an unknown or missing kind', () => {
 		const seen: unknown[] = [];

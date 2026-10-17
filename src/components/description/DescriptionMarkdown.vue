@@ -12,8 +12,8 @@
 
 <script lang="ts">
 	import '@/assets/styles/md-editor.css';
-	import '@/utils/mdEditorConfig';
 	import store from '@/store';
+	import '@/utils/mdEditorConfig';
 	import { MdPreview } from 'md-editor-v3';
 	import { defineComponent } from 'vue';
 

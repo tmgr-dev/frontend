@@ -29,7 +29,11 @@ it('appends local workspaces shaped like cloud ones with a prefixed code', () =>
 		[56, 'tmgrdev'],
 		[-42, 'local-personal'],
 	]);
-	expect(merged[1]).toMatchObject({ type: 'local', is_local: true, user_id: 7 });
+	expect(merged[1]).toMatchObject({
+		type: 'local',
+		is_local: true,
+		user_id: 7,
+	});
 });
 
 it('does not duplicate local workspaces when the list is merged twice', () => {

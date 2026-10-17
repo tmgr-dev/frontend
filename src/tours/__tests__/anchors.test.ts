@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
-import { anchorSelector, isOccluded, isVisible, pickAnchorName, resolveAnchor } from '../anchors';
+import {
+	anchorSelector,
+	isOccluded,
+	isVisible,
+	pickAnchorName,
+	resolveAnchor,
+} from '../anchors';
 import type { StepDef } from '../types';
 
 const step = (extra: Partial<StepDef> = {}): StepDef => ({
@@ -13,7 +19,16 @@ const step = (extra: Partial<StepDef> = {}): StepDef => ({
 
 const box = (el: Element, w = 10, h = 10) => {
 	(el as HTMLElement).getBoundingClientRect = () =>
-		({ width: w, height: h, top: 0, left: 0, right: w, bottom: h, x: 0, y: 0 }) as DOMRect;
+		({
+			width: w,
+			height: h,
+			top: 0,
+			left: 0,
+			right: w,
+			bottom: h,
+			x: 0,
+			y: 0,
+		} as DOMRect);
 };
 
 const add = (html: string) => {
@@ -39,7 +54,9 @@ describe('isVisible', () => {
 	});
 
 	it('rejects display:none and visibility:hidden', () => {
-		const host = add('<i data-tour="a" style="display:none"></i><b data-tour="b" style="visibility:hidden"></b>');
+		const host = add(
+			'<i data-tour="a" style="display:none"></i><b data-tour="b" style="visibility:hidden"></b>',
+		);
 		expect(isVisible(host.children[0])).toBe(false);
 		expect(isVisible(host.children[1])).toBe(false);
 	});
@@ -47,10 +64,12 @@ describe('isVisible', () => {
 
 describe('isOccluded', () => {
 	const stubHit = (hit: (x: number, y: number) => Element | null) => {
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = hit;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			hit;
 	};
 	afterEach(() => {
-		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+		delete (document as unknown as { elementFromPoint?: unknown })
+			.elementFromPoint;
 	});
 
 	it('is false when the browser cannot hit-test', () => {
@@ -76,7 +95,9 @@ describe('isOccluded', () => {
 	});
 
 	it('ignores the sidebar resize rail that overlaps the sidebar edge', () => {
-		const host = add('<i data-tour="a"></i><button data-sidebar="rail"></button>');
+		const host = add(
+			'<i data-tour="a"></i><button data-sidebar="rail"></button>',
+		);
 		const el = host.querySelector('i')!;
 		stubHit(() => host.querySelector('button'));
 		expect(isOccluded(el)).toBe(false);
@@ -102,20 +123,25 @@ describe('pickAnchorName', () => {
 
 describe('resolveAnchor occlusion', () => {
 	afterEach(() => {
-		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+		delete (document as unknown as { elementFromPoint?: unknown })
+			.elementFromPoint;
 	});
 
 	it('skips anchors that sit behind another surface', async () => {
 		const host = add('<i data-tour="nav.sidebar"></i><u></u>');
 		const panel = host.querySelector('u')!;
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
-		expect(await resolveAnchor(step(), { mobile: false, timeoutMs: 20 })).toBeNull();
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			() => panel;
+		expect(
+			await resolveAnchor(step(), { mobile: false, timeoutMs: 20 }),
+		).toBeNull();
 	});
 });
 
 describe('resolveAnchor inside a scroller', () => {
 	afterEach(() => {
-		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+		delete (document as unknown as { elementFromPoint?: unknown })
+			.elementFromPoint;
 	});
 
 	it('scrolls a clipped anchor into view once and accepts it when it is no longer covered', async () => {
@@ -127,8 +153,11 @@ describe('resolveAnchor inside a scroller', () => {
 			scrolled = true;
 		});
 		el.scrollIntoView = scrollIntoView;
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => (scrolled ? el : panel);
-		expect((await resolveAnchor(step(), { mobile: false, timeoutMs: 100 }))?.id).toBe('a');
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			() => (scrolled ? el : panel);
+		expect(
+			(await resolveAnchor(step(), { mobile: false, timeoutMs: 100 }))?.id,
+		).toBe('a');
 		expect(scrollIntoView).toHaveBeenCalledTimes(1);
 	});
 
@@ -138,26 +167,33 @@ describe('resolveAnchor inside a scroller', () => {
 		const panel = host.querySelector('u')!;
 		const scrollIntoView = jest.fn();
 		el.scrollIntoView = scrollIntoView;
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
-		expect(await resolveAnchor(step(), { mobile: false, timeoutMs: 600 })).toBeNull();
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			() => panel;
+		expect(
+			await resolveAnchor(step(), { mobile: false, timeoutMs: 600 }),
+		).toBeNull();
 		expect(scrollIntoView).toHaveBeenCalledTimes(1);
 	});
 });
 
 describe('resolveAnchor scroll budget', () => {
 	afterEach(() => {
-		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+		delete (document as unknown as { elementFromPoint?: unknown })
+			.elementFromPoint;
 	});
 
 	it('scrolls only the first visible candidate, never the later ones', async () => {
-		const host = add('<i data-tour="nav.sidebar"></i><i data-tour="nav.sidebar"></i><u></u>');
+		const host = add(
+			'<i data-tour="nav.sidebar"></i><i data-tour="nav.sidebar"></i><u></u>',
+		);
 		const [a, b] = Array.from(host.querySelectorAll('i')) as HTMLElement[];
 		const panel = host.querySelector('u')!;
 		const first = jest.fn();
 		const second = jest.fn();
 		a.scrollIntoView = first;
 		b.scrollIntoView = second;
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			() => panel;
 		await resolveAnchor(step(), { mobile: false, timeoutMs: 600 });
 		expect(first).toHaveBeenCalledTimes(1);
 		expect(second).not.toHaveBeenCalled();
@@ -169,7 +205,8 @@ describe('resolveAnchor scroll budget', () => {
 		const panel = host.querySelector('u')!;
 		const scrollIntoView = jest.fn();
 		el.scrollIntoView = scrollIntoView;
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = () => panel;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			() => panel;
 		await resolveAnchor(step(), { mobile: false, timeoutMs: 300 });
 		await resolveAnchor(step(), { mobile: false, timeoutMs: 300 });
 		expect(scrollIntoView).toHaveBeenCalledTimes(1);
@@ -178,14 +215,16 @@ describe('resolveAnchor scroll budget', () => {
 
 describe('resolveAnchor throttling', () => {
 	afterEach(() => {
-		delete (document as unknown as { elementFromPoint?: unknown }).elementFromPoint;
+		delete (document as unknown as { elementFromPoint?: unknown })
+			.elementFromPoint;
 	});
 
 	it('checks at most once per frame during a burst of mutations and samples few points', async () => {
 		const host = add('<i data-tour="nav.sidebar"></i><u></u>');
 		const panel = host.querySelector('u')!;
 		const hit = jest.fn(() => panel);
-		(document as unknown as { elementFromPoint: unknown }).elementFromPoint = hit;
+		(document as unknown as { elementFromPoint: unknown }).elementFromPoint =
+			hit;
 		const promise = resolveAnchor(step(), { mobile: false, timeoutMs: 120 });
 		for (let i = 0; i < 20; i++) {
 			add('<span></span>');
@@ -205,7 +244,9 @@ describe('anchorSelector', () => {
 
 describe('resolveAnchor', () => {
 	it('returns the first visible match', async () => {
-		const host = add('<i data-tour="nav.sidebar"></i><b data-tour="nav.sidebar" id="two"></b>');
+		const host = add(
+			'<i data-tour="nav.sidebar"></i><b data-tour="nav.sidebar" id="two"></b>',
+		);
 		box(host.children[0], 0, 0);
 		const el = await resolveAnchor(step(), { mobile: false });
 		expect(el?.id).toBe('two');
@@ -218,28 +259,45 @@ describe('resolveAnchor', () => {
 	});
 
 	it('gives up after the timeout', async () => {
-		expect(await resolveAnchor(step(), { mobile: false, timeoutMs: 50 })).toBeNull();
+		expect(
+			await resolveAnchor(step(), { mobile: false, timeoutMs: 50 }),
+		).toBeNull();
 	});
 
 	it('returns null for a step without an anchor', async () => {
-		expect(await resolveAnchor(step({ anchor: undefined, type: 'modal' }), { mobile: false })).toBeNull();
+		expect(
+			await resolveAnchor(step({ anchor: undefined, type: 'modal' }), {
+				mobile: false,
+			}),
+		).toBeNull();
 	});
 
 	it('narrows to the task of the last task.created for anchorScope eventTask', async () => {
-		add('<div data-tour="list.row" data-task-id="1" id="a"></div><div data-tour="list.row" data-task-id="2" id="b"></div>');
-		const el = await resolveAnchor(step({ anchor: 'list.row', anchorScope: 'eventTask' }), { mobile: false, eventTaskId: 2 });
+		add(
+			'<div data-tour="list.row" data-task-id="1" id="a"></div><div data-tour="list.row" data-task-id="2" id="b"></div>',
+		);
+		const el = await resolveAnchor(
+			step({ anchor: 'list.row', anchorScope: 'eventTask' }),
+			{ mobile: false, eventTaskId: 2 },
+		);
 		expect(el?.id).toBe('b');
 	});
 
 	it('uses the mobile anchor on small screens', async () => {
 		add('<i data-tour="nav.menu-button" id="m"></i>');
-		const el = await resolveAnchor(step({ mobileAnchor: 'nav.menu-button' }), { mobile: true });
+		const el = await resolveAnchor(step({ mobileAnchor: 'nav.menu-button' }), {
+			mobile: true,
+		});
 		expect(el?.id).toBe('m');
 	});
 
 	it('can be cancelled', async () => {
 		const ctl = new AbortController();
-		const promise = resolveAnchor(step(), { mobile: false, timeoutMs: 5000, signal: ctl.signal });
+		const promise = resolveAnchor(step(), {
+			mobile: false,
+			timeoutMs: 5000,
+			signal: ctl.signal,
+		});
 		ctl.abort();
 		expect(await promise).toBeNull();
 	});

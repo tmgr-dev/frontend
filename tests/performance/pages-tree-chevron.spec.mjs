@@ -23,7 +23,13 @@ test('leaf pages have no expand button and titles stay aligned', async ({
     localStorage.setItem('pages-expanded-1', JSON.stringify([3])),
   );
   await page.route('**/api/**/feature-toggles', (route) => {
-    const toggle = (key) => ({ key, name: key, group: 'pages', type: 'boolean', enabled: true });
+    const toggle = (key) => ({
+      key,
+      name: key,
+      group: 'pages',
+      type: 'boolean',
+      enabled: true,
+    });
     return route.fulfill({
       json: {
         data: route.request().url().includes('/user/')
@@ -36,7 +42,9 @@ test('leaf pages have no expand button and titles stay aligned', async ({
     const path = new URL(route.request().url()).pathname;
     if (route.request().method() === 'POST' && /\/move$/.test(path)) {
       moves.push(route.request().postDataJSON());
-      return route.fulfill({ json: { data: row(3, 'Leaf page', 'leaf-page') } });
+      return route.fulfill({
+        json: { data: row(3, 'Leaf page', 'leaf-page') },
+      });
     }
     if (/\/pages(\/tree)?$/.test(path))
       return route.fulfill({
@@ -65,16 +73,23 @@ test('leaf pages have no expand button and titles stay aligned', async ({
 
   await expect(page.locator('[data-parent-id="3"]')).toHaveCount(0);
 
-  const x = async (loc) => (await loc.getByText(/page$/).first().boundingBox()).x;
+  const x = async (loc) =>
+    (await loc.getByText(/page$/).first().boundingBox()).x;
   expect(await x(leaf)).toBe(await x(parent));
 
   const from = await leaf.boundingBox();
   const target = await page.locator('[data-page-id="4"]').boundingBox();
   await page.mouse.move(from.x + 60, from.y + from.height / 2);
   await page.mouse.down();
-  await page.mouse.move(from.x + 60, from.y + from.height / 2 + 10, { steps: 5 });
-  await page.mouse.move(target.x + 60, target.y + target.height / 2, { steps: 10 });
-  await page.mouse.move(target.x + 60, target.y + target.height + 4, { steps: 10 });
+  await page.mouse.move(from.x + 60, from.y + from.height / 2 + 10, {
+    steps: 5,
+  });
+  await page.mouse.move(target.x + 60, target.y + target.height / 2, {
+    steps: 10,
+  });
+  await page.mouse.move(target.x + 60, target.y + target.height + 4, {
+    steps: 10,
+  });
   await page.mouse.up();
 
   await expect.poll(() => moves.length).toBe(1);

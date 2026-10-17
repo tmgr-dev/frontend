@@ -31,11 +31,16 @@ export const pageWindowTarget = (
 		pageId,
 		workspaceCode,
 		slug: page.slug,
-		title: typeof page.title === 'string' && page.title.trim() ? page.title.trim() : null,
+		title:
+			typeof page.title === 'string' && page.title.trim()
+				? page.title.trim()
+				: null,
 	};
 };
 
-export const openPageWindow = async (target: PageWindowTarget): Promise<void> => {
+export const openPageWindow = async (
+	target: PageWindowTarget,
+): Promise<void> => {
 	const { invoke } = await import('@tauri-apps/api/core');
 	await invoke('open_page_window', { ...target });
 };

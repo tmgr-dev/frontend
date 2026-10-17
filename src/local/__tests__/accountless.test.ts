@@ -1,4 +1,8 @@
-import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import axios, {
+	AxiosError,
+	type AxiosResponse,
+	type InternalAxiosRequestConfig,
+} from 'axios';
 
 import { migrate } from '../schema';
 import type { LocalWorkspace } from '../types';
@@ -34,7 +38,8 @@ jest.mock('../runtime', () => ({
 	setActiveLocalWorkspace: (w: LocalWorkspace | null) => {
 		active = w;
 	},
-	localWorkspaceById: async (id: number) => workspaces.find((w) => w.id === id) ?? null,
+	localWorkspaceById: async (id: number) =>
+		workspaces.find((w) => w.id === id) ?? null,
 	createLocalWorkspace: async (name: string) => {
 		created.push(name);
 		const workspace = { ...LOCAL, id: -77, name, code: 'created' };
@@ -46,7 +51,11 @@ jest.mock('../runtime', () => ({
 		workspace,
 		user,
 		now: () => new Date('2026-10-11T10:00:00Z'),
-		files: { url: (key: string) => key, read: async () => new Blob([]), remove: async () => {} },
+		files: {
+			url: (key: string) => key,
+			read: async () => new Blob([]),
+			remove: async () => {},
+		},
 	}),
 }));
 
@@ -63,7 +72,9 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	let user: any = {};
 	let ready: Promise<unknown> = Promise.resolve();
 
-	const network = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+	const network = async (
+		config: InternalAxiosRequestConfig,
+	): Promise<AxiosResponse> => {
 		sent.push(`${config.method} ${config.url}`);
 		throw new AxiosError('Network Error', AxiosError.ERR_NETWORK, config);
 	};
@@ -97,8 +108,13 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	it('creates a first local workspace once when the profile exists but no workspace does', async () => {
 		workspaces = [];
 		created.length = 0;
-		const [user1, user2] = await Promise.all([client.get('user'), client.get('workspaces')]);
-		const current = user1.data.data.settings.find((s: any) => s.key === 'current_workspace');
+		const [user1, user2] = await Promise.all([
+			client.get('user'),
+			client.get('workspaces'),
+		]);
+		const current = user1.data.data.settings.find(
+			(s: any) => s.key === 'current_workspace',
+		);
 		expect(created).toEqual(['My workspace']);
 		expect(Number(current.value)).toBe(-77);
 		expect(user2.data.data.map((w: any) => w.id)).toEqual([-77]);
@@ -128,24 +144,40 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	});
 
 	it('serves onboarding from local storage without touching the network', async () => {
-		const put = await client.put('onboarding/preferences', { tips_mode: 'off' });
+		const put = await client.put('onboarding/preferences', {
+			tips_mode: 'off',
+		});
 		expect(put.data.data.tips_mode).toBe('off');
 		const got = await client.get('onboarding');
-		expect(got.data.data).toMatchObject({ tips_mode: 'off', tours: {}, facts: {} });
+		expect(got.data.data).toMatchObject({
+			tips_mode: 'off',
+			tours: {},
+			facts: {},
+		});
 		const reset = await client.delete('onboarding/tours');
 		expect(reset.data.data.tours_generation).toBe(1);
 		expect(sent).toEqual([]);
 	});
 
 	it('forwards request params to the onboarding handler and seeds starters through the adapter', async () => {
-		const only = await client.get('onboarding/facts', { params: { keys: 'has_page,has_task', task_id: 3 } });
+		const only = await client.get('onboarding/facts', {
+			params: { keys: 'has_page,has_task', task_id: 3 },
+		});
 		expect(only.data.data).toEqual({ has_page: false, has_task: false });
-		const seeded = await client.post('onboarding/intent', { intent: 'human', seed: true });
+		const seeded = await client.post('onboarding/intent', {
+			intent: 'human',
+			seed: true,
+		});
 		expect(seeded.data.data.starter_tasks_created).toBe(3);
-		expect((await client.get('onboarding/facts', { params: { keys: 'has_task' } })).data.data).toEqual({
+		expect(
+			(await client.get('onboarding/facts', { params: { keys: 'has_task' } }))
+				.data.data,
+		).toEqual({
 			has_task: false,
 		});
-		expect((await client.delete('onboarding/starter-tasks')).data.data).toEqual({ removed: 3 });
+		expect((await client.delete('onboarding/starter-tasks')).data.data).toEqual(
+			{ removed: 3 },
+		);
 		expect(sent).toEqual([]);
 	});
 
@@ -183,8 +215,15 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	it('answers GET user with the local identity and activates the first local workspace', async () => {
 		const { data } = await client.get('user');
 
-		expect(data.data).toMatchObject({ id: -1, name: 'Ada', email: '', is_local: true });
-		const current = data.data.settings.find((s: any) => s.key === 'current_workspace');
+		expect(data.data).toMatchObject({
+			id: -1,
+			name: 'Ada',
+			email: '',
+			is_local: true,
+		});
+		const current = data.data.settings.find(
+			(s: any) => s.key === 'current_workspace',
+		);
 		expect(current.value).toBe(LOCAL.id);
 		expect(typeof current.id).toBe('number');
 		expect(active).toEqual(LOCAL);
@@ -197,7 +236,9 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 
 		const { data } = await client.get('user');
 
-		expect(data.data.settings.find((s: any) => s.key === 'current_workspace').value).toBe(-43);
+		expect(
+			data.data.settings.find((s: any) => s.key === 'current_workspace').value,
+		).toBe(-43);
 	});
 
 	it('answers GET workspaces with the local workspaces only', async () => {
@@ -211,20 +252,28 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 		const other = { ...LOCAL, id: -43, code: 'other', name: 'Other' };
 		workspaces = [LOCAL, other];
 		const { data: me } = await client.get('user');
-		const id = me.data.settings.find((s: any) => s.key === 'current_workspace').id;
+		const id = me.data.settings.find(
+			(s: any) => s.key === 'current_workspace',
+		).id;
 
 		const { data } = await client.put('v2/user/settings', [{ id, value: -43 }]);
 
 		expect(active).toEqual(other);
-		expect(data.data.settings.find((s: any) => s.key === 'current_workspace').value).toBe(-43);
+		expect(
+			data.data.settings.find((s: any) => s.key === 'current_workspace').value,
+		).toBe(-43);
 		expect(sent).toEqual([]);
 	});
 
 	it('refuses a switch to a workspace that does not exist', async () => {
 		const { data: me } = await client.get('user');
-		const id = me.data.settings.find((s: any) => s.key === 'current_workspace').id;
+		const id = me.data.settings.find(
+			(s: any) => s.key === 'current_workspace',
+		).id;
 
-		const error = await attempt('PUT', 'v2/user/settings', [{ id, value: -999 }]);
+		const error = await attempt('PUT', 'v2/user/settings', [
+			{ id, value: -999 },
+		]);
 
 		expect(error.response.status).toBe(404);
 	});
@@ -237,16 +286,25 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 
 		const list = (await client.get('v2/user/settings')).data.data;
 		expect(list.find((s: any) => s.key === 'theme').value).toBe('ocean');
-		expect((await client.get('user')).data.data.settings.find((s: any) => s.key === 'theme').value).toBe('ocean');
+		expect(
+			(await client.get('user')).data.data.settings.find(
+				(s: any) => s.key === 'theme',
+			).value,
+		).toBe('ocean');
 	});
 
 	it('keeps user feature toggles locally', async () => {
 		const first = (await client.get('user/feature-toggles')).data.data;
 		expect(first.default_landing_page.value).toBe('list');
 
-		await client.put('user/feature-toggles', { features: { default_landing_page: 'board' } });
+		await client.put('user/feature-toggles', {
+			features: { default_landing_page: 'board' },
+		});
 
-		expect((await client.get('user/feature-toggles')).data.data.default_landing_page.value).toBe('board');
+		expect(
+			(await client.get('user/feature-toggles')).data.data.default_landing_page
+				.value,
+		).toBe('board');
 		expect(sent).toEqual([]);
 	});
 
@@ -283,7 +341,9 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 	it('refuses a timer call pinned to a cloud workspace', async () => {
 		active = LOCAL;
 
-		const error = await client.delete('tasks/900/countdown', { params: { workspace_id: 56 } }).catch((e) => e);
+		const error = await client
+			.delete('tasks/900/countdown', { params: { workspace_id: 56 } })
+			.catch((e) => e);
 
 		expect(error.response.status).toBe(403);
 		expect(sent).toEqual([]);
@@ -305,7 +365,10 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 			resolve = done;
 		});
 
-		const pending = Promise.all([attempt('GET', 'tasks/current'), attempt('GET', 'notifications/unread-count')]);
+		const pending = Promise.all([
+			attempt('GET', 'tasks/current'),
+			attempt('GET', 'notifications/unread-count'),
+		]);
 		await Promise.resolve();
 		accountless = true;
 		resolve();
@@ -316,7 +379,11 @@ describeSqlite('installLocalWorkspaces without an account', () => {
 
 	it('goes back to the server once an account is signed in', async () => {
 		accountless = false;
-		user = { id: 7, name: 'Yurij', settings: [{ id: 5, key: 'current_workspace', value: 56 }] };
+		user = {
+			id: 7,
+			name: 'Yurij',
+			settings: [{ id: 5, key: 'current_workspace', value: 56 }],
+		};
 
 		await attempt('GET', 'dashboard');
 		await attempt('GET', 'notifications/unread-count');

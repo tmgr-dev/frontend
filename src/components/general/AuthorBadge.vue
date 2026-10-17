@@ -28,15 +28,14 @@
 				v-if="resolved.kind === 'persona'"
 				class="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white ring-1 ring-white dark:bg-gray-900 dark:ring-gray-900"
 			>
-				<VenetianMask class="h-2.5 w-2.5 text-violet-600 dark:text-violet-400" />
+				<VenetianMask
+					class="h-2.5 w-2.5 text-violet-600 dark:text-violet-400"
+				/>
 			</span>
 		</span>
 		<span v-if="showLabel" class="inline-flex min-w-0 flex-col leading-tight">
 			<span class="truncate text-sm font-semibold text-ink">{{ label }}</span>
-			<span
-				v-if="resolved.subtitle"
-				class="truncate text-2xs text-ink-subtle"
-			>
+			<span v-if="resolved.subtitle" class="truncate text-2xs text-ink-subtle">
 				{{ resolved.subtitle }}
 			</span>
 		</span>
@@ -44,9 +43,9 @@
 </template>
 
 <script lang="ts">
-	import { resolveAuthor } from '@/utils/personas';
 	import type { AuthorRef } from '@/types/author';
 	import { avatarInitials } from '@/utils/avatarInitials';
+	import { resolveAuthor } from '@/utils/personas';
 	import { Cog, Plug, VenetianMask } from 'lucide-vue-next';
 	import { computed, defineComponent, type PropType } from 'vue';
 	import PersonaAvatar from './PersonaAvatar.vue';
@@ -62,7 +61,10 @@
 		name: 'AuthorBadge',
 		components: { PersonaAvatar, UserAvatar, Cog, Plug, VenetianMask },
 		props: {
-			author: { type: Object as PropType<AuthorRef | null | undefined>, default: null },
+			author: {
+				type: Object as PropType<AuthorRef | null | undefined>,
+				default: null,
+			},
 			user: { type: Object as PropType<FallbackUser | null>, default: null },
 			size: { type: Number, default: 20 },
 			showLabel: { type: Boolean, default: true },
@@ -77,7 +79,9 @@
 				height: `${Math.round(props.size / 1.8)}px`,
 			}));
 			const label = computed(() => {
-				const known = ['user', 'persona', 'plugin', 'system'].includes(resolved.value.kind);
+				const known = ['user', 'persona', 'plugin', 'system'].includes(
+					resolved.value.kind,
+				);
 				return known
 					? resolved.value.name
 					: `${resolved.value.kind}: ${resolved.value.name}`;

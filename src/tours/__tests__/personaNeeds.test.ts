@@ -1,10 +1,10 @@
-import { createTours } from '../engine';
+import { TOURS } from '../catalog';
 import type { ToursHostDeps } from '../engine';
+import { createTours } from '../engine';
 import { createTourBus } from '../events';
+import { buildHubModel } from '../hubModel';
 import { createLease } from '../lease';
 import { setTourTelemetry } from '../telemetry';
-import { buildHubModel } from '../hubModel';
-import { TOURS } from '../catalog';
 
 const memory = () => {
 	const data = new Map<string, string>();
@@ -24,7 +24,9 @@ const make = (
 	const bus = createTourBus();
 	const deps: ToursHostDeps = {
 		api: {
-			fetchState: jest.fn().mockResolvedValue({ tips_mode: 'hub_only', tours_generation: 1 }),
+			fetchState: jest
+				.fn()
+				.mockResolvedValue({ tips_mode: 'hub_only', tours_generation: 1 }),
 			putTour: jest.fn().mockResolvedValue({}),
 			putPreferences: jest.fn().mockResolvedValue({}),
 			resetTours: jest.fn().mockResolvedValue({}),
@@ -33,7 +35,11 @@ const make = (
 			removeStarterTasks: jest.fn().mockResolvedValue({}),
 		} as never,
 		bus,
-		lease: createLease({ storage: memory(), now: () => Date.now(), ownerId: 'a' }),
+		lease: createLease({
+			storage: memory(),
+			now: () => Date.now(),
+			ownerId: 'a',
+		}),
 		storage: memory(),
 		session: memory(),
 		now: () => Date.now(),
@@ -46,7 +52,9 @@ const make = (
 		currentRouteName: () => 'WorkspaceTasksList',
 		navigate: jest.fn(),
 		isBusy: () => false,
-		overlay: () => ({ adapter: { show: jest.fn(), refresh: jest.fn(), hide: jest.fn() } }),
+		overlay: () => ({
+			adapter: { show: jest.fn(), refresh: jest.fn(), hide: jest.fn() },
+		}),
 		setTimer: () => () => {},
 		hasPersonas,
 	};
@@ -54,13 +62,21 @@ const make = (
 };
 
 const hubIds = (engine: ReturnType<typeof make>['engine']) =>
-	buildHubModel(engine.api.hubItems.value, { canManageModules: true, isModuleEnabled: () => true })
-		.groups.flatMap((g) => g.rows.map((r) => r.id));
+	buildHubModel(engine.api.hubItems.value, {
+		canManageModules: true,
+		isModuleEnabled: () => true,
+	}).groups.flatMap((g) => g.rows.map((r) => r.id));
 
 describe('catalog persona requirement', () => {
 	it('marks the persona-dependent tours and leaves personas.create free', () => {
-		const needing = TOURS.filter((t) => t.requires?.needs?.includes('persona')).map((t) => t.id);
-		expect(needing.sort()).toEqual(['personas.assign', 'personas.skills', 'personas.token']);
+		const needing = TOURS.filter((t) =>
+			t.requires?.needs?.includes('persona'),
+		).map((t) => t.id);
+		expect(needing.sort()).toEqual([
+			'personas.assign',
+			'personas.skills',
+			'personas.token',
+		]);
 	});
 });
 
@@ -83,7 +99,13 @@ describe('hub persona gating', () => {
 		h.bus.emit('persona.created', {});
 		await flush();
 		const ids = hubIds(h.engine);
-		expect(ids).toEqual(expect.arrayContaining(['personas.token', 'personas.skills', 'personas.assign']));
+		expect(ids).toEqual(
+			expect.arrayContaining([
+				'personas.token',
+				'personas.skills',
+				'personas.assign',
+			]),
+		);
 	});
 
 	it('shows them when the list already has a persona', async () => {
@@ -137,7 +159,10 @@ describe('hub persona gating', () => {
 	});
 
 	it('resets the answer when the workspace modules reload', async () => {
-		const fetcher = jest.fn().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+		const fetcher = jest
+			.fn()
+			.mockResolvedValueOnce(true)
+			.mockResolvedValueOnce(false);
 		const h = make(fetcher);
 		await h.engine.init();
 		await h.engine.api.ensurePersonas();

@@ -19,7 +19,8 @@ export const stepDevWatch = (
 	state: DevWatchState,
 	fingerprints: Record<string, string>,
 ): { next: DevWatchBaseline; changed: string[] } => {
-	if (!state) return { next: { stable: { ...fingerprints }, pending: {} }, changed: [] };
+	if (!state)
+		return { next: { stable: { ...fingerprints }, pending: {} }, changed: [] };
 
 	const stable = { ...state.stable };
 	const pending = { ...state.pending };

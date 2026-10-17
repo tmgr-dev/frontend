@@ -5,7 +5,12 @@ import {
 	showUsageBlock,
 } from '../panelVisibility';
 
-const base = { analytics: null, usage: null, path: '/login', desktop: false } as const;
+const base = {
+	analytics: null,
+	usage: null,
+	path: '/login',
+	desktop: false,
+} as const;
 
 describe('consent panel visibility', () => {
 	it('shows both blocks on the web while nothing is answered', () => {
@@ -22,7 +27,13 @@ describe('consent panel visibility', () => {
 		const usageAnswered = { ...base, usage: 'granted' } as const;
 		expect(shouldShowConsentPanel(usageAnswered)).toBe(true);
 		expect(showUsageBlock(usageAnswered)).toBe(false);
-		expect(shouldShowConsentPanel({ ...base, analytics: 'granted', usage: 'denied' })).toBe(false);
+		expect(
+			shouldShowConsentPanel({
+				...base,
+				analytics: 'granted',
+				usage: 'denied',
+			}),
+		).toBe(false);
 	});
 
 	it('hides on the privacy page', () => {
@@ -36,7 +47,9 @@ describe('consent panel visibility', () => {
 		expect(showAnalyticsBlock(desktop)).toBe(false);
 		expect(showUsageBlock(desktop)).toBe(true);
 		expect(shouldShowConsentPanel(desktop)).toBe(true);
-		expect(shouldShowConsentPanel({ ...desktop, analytics: null, usage: 'denied' })).toBe(false);
+		expect(
+			shouldShowConsentPanel({ ...desktop, analytics: null, usage: 'denied' }),
+		).toBe(false);
 	});
 
 	it('waits for the desktop welcome step before asking', () => {

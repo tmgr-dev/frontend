@@ -3,10 +3,7 @@
 </template>
 
 <script>
-	import {
-		acceptDesktopLogin,
-		installDesktopLogin,
-	} from '@/actions/tmgr/auth';
+	import { acceptDesktopLogin, installDesktopLogin } from '@/actions/tmgr/auth';
 	import {
 		desktopAuthStatus,
 		failDesktopSocialLogin,
@@ -73,7 +70,8 @@
 					return;
 				}
 				// A newer attempt or another login took over while this one was in flight.
-				if (!isLatestDesktopAuth(pending.state) || store.getters.isLoggedIn) return;
+				if (!isLatestDesktopAuth(pending.state) || store.getters.isLoggedIn)
+					return;
 				installDesktopLogin(response);
 				desktopAuthStatus.value = 'idle';
 				const invitation = localStorage.getItem('workspace.invitation');

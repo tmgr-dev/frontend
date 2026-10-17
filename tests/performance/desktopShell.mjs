@@ -253,9 +253,11 @@ const fakeShell = async ({
         let count = 0;
         for (const token of tokens.values()) {
           if (token.revokedAt) continue;
-          if (args.personaUuid && token.personaUuid !== args.personaUuid) continue;
+          if (args.personaUuid && token.personaUuid !== args.personaUuid)
+            continue;
           if (args.pluginId && token.pluginId !== args.pluginId) continue;
-          if (args.workspaceCode && token.workspaceCode !== args.workspaceCode) continue;
+          if (args.workspaceCode && token.workspaceCode !== args.workspaceCode)
+            continue;
           token.revokedAt = new Date().toISOString();
           count++;
         }
@@ -277,7 +279,8 @@ const fakeShell = async ({
         accessEnabled = !!args.enabled;
         return null;
       default:
-        if (runner && command.startsWith('runner_')) return runner(command, args);
+        if (runner && command.startsWith('runner_'))
+          return runner(command, args);
         unknown.push(command);
         return null;
     }
@@ -331,8 +334,12 @@ export const desktopPage = async (
   } = shellOptions;
   if (platform) {
     await page.addInitScript((spoof) => {
-      Object.defineProperty(navigator, 'platform', { get: () => spoof.platform });
-      Object.defineProperty(navigator, 'userAgent', { get: () => spoof.userAgent });
+      Object.defineProperty(navigator, 'platform', {
+        get: () => spoof.platform,
+      });
+      Object.defineProperty(navigator, 'userAgent', {
+        get: () => spoof.userAgent,
+      });
     }, platform);
   }
   await page.addInitScript((seed) => {
@@ -351,7 +358,10 @@ export const desktopPage = async (
           (window.__listeners[args.event] ??= []).push(args.handler);
           return Promise.resolve(args.handler);
         }
-        if (command === 'plugin:event|emit' || command === 'plugin:event|emit_to')
+        if (
+          command === 'plugin:event|emit' ||
+          command === 'plugin:event|emit_to'
+        )
           (window.__emitted ??= []).push({ command, ...args });
         if (command.startsWith('plugin:event|')) return Promise.resolve(null);
         return window.__shellInvoke(

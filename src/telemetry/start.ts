@@ -1,7 +1,7 @@
 import { localStorageOf } from '@/privacy/storage';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
-import { isCatalogRoute, type AccountMode } from './catalog';
 import { attachTelemetry, onMainWindowClose } from './attach';
+import { isCatalogRoute, type AccountMode } from './catalog';
 import { createTelemetry } from './client';
 import { usageConsent } from './consent';
 import { makeMeta, telemetryBaseUrl } from './env';
@@ -77,9 +77,11 @@ export const startTelemetry = async ({ router, accountMode }: StartOptions) => {
 		desktop ? (handler) => void onMainWindowClose(handler) : undefined,
 	);
 	router.afterEach((to) => {
-		if (isCatalogRoute(to.name)) telemetry.track('screen_viewed', { route: to.name });
+		if (isCatalogRoute(to.name))
+			telemetry.track('screen_viewed', { route: to.name });
 	});
 	const current = router.currentRoute?.value?.name;
-	if (isCatalogRoute(current)) telemetry.track('screen_viewed', { route: current });
+	if (isCatalogRoute(current))
+		telemetry.track('screen_viewed', { route: current });
 	return telemetry;
 };

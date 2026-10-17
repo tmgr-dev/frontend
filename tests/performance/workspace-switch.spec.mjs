@@ -50,7 +50,8 @@ async function routeApi(context, requests) {
     const path = url.pathname.replace('/api/', '');
     const headers = route.request().headers();
     const workspaceId = Number(headers['x-workspace-id']) || 1;
-    if (requests) requests.push({ path, method: route.request().method(), workspaceId });
+    if (requests)
+      requests.push({ path, method: route.request().method(), workspaceId });
     let data = [];
     if (path === 'v2/user/settings' && route.request().method() === 'PUT') {
       // A settings save (e.g. "Default workspace") still reaches the server, but must never be
@@ -77,7 +78,9 @@ async function routeApi(context, requests) {
       ];
     } else if (path === 'tasks/current')
       data = [task(1, STATUSES[workspaceId][0].id, workspaceId)];
-    await route.fulfill({ json: { data, meta: { current_page: 1, last_page: 1 } } });
+    await route.fulfill({
+      json: { data, meta: { current_page: 1, last_page: 1 } },
+    });
   });
 }
 
@@ -117,7 +120,9 @@ test('switching workspace on the board keeps the app rendering', async ({
     requests.some((r) => r.path === 'v2/user/settings' && r.method === 'PUT'),
   ).toBe(false);
   // Every request after the switch is scoped to the new workspace by header.
-  expect(requests.filter((r) => r.path.endsWith('statuses'))[0]?.workspaceId).toBe(2);
+  expect(
+    requests.filter((r) => r.path.endsWith('statuses'))[0]?.workspaceId,
+  ).toBe(2);
 
   await page.goto('/other/list');
   await page.goto('/other/board');

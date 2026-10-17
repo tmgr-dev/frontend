@@ -209,15 +209,18 @@ test('website relay: GitHub callback with a desktop state hands the code to the 
 }) => {
   await mockApp(page);
   const relayed = [];
-  await page.route('**/api/auth/login/desktop/github/complete?*', async (route) => {
-    relayed.push(new URL(route.request().url()));
-    await route.fulfill({
-      status: 302,
-      headers: {
-        location: `/desktop-auth/return#code=${CODE}&state=${'s'.repeat(43)}`,
-      },
-    });
-  });
+  await page.route(
+    '**/api/auth/login/desktop/github/complete?*',
+    async (route) => {
+      relayed.push(new URL(route.request().url()));
+      await route.fulfill({
+        status: 302,
+        headers: {
+          location: `/desktop-auth/return#code=${CODE}&state=${'s'.repeat(43)}`,
+        },
+      });
+    },
+  );
   const webLogins = [];
   await page.route('**/api/auth/login/github/redirect', async (route) => {
     webLogins.push(1);
@@ -278,16 +281,19 @@ test('website relay: Telegram posts the signed fields with the transaction as a 
     }),
   );
   const posted = [];
-  await page.route('**/api/auth/login/desktop/telegram/complete', async (route) => {
-    posted.push({
-      method: route.request().method(),
-      body: new URLSearchParams(route.request().postData()),
-    });
-    await route.fulfill({
-      status: 302,
-      headers: { location: '/desktop-auth/return#error=telegram' },
-    });
-  });
+  await page.route(
+    '**/api/auth/login/desktop/telegram/complete',
+    async (route) => {
+      posted.push({
+        method: route.request().method(),
+        body: new URLSearchParams(route.request().postData()),
+      });
+      await route.fulfill({
+        status: 302,
+        headers: { location: '/desktop-auth/return#error=telegram' },
+      });
+    },
+  );
 
   await page.goto(`/desktop-auth/telegram?tx=${TX}`, { waitUntil: 'commit' });
 

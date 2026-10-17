@@ -3,7 +3,8 @@ import { createConsentStore } from '../consent';
 import { startGoogleAnalytics } from '../googleAnalytics';
 
 const ID = 'G-TEST123';
-const scripts = () => document.querySelectorAll('script[src*="googletagmanager"]');
+const scripts = () =>
+	document.querySelectorAll('script[src*="googletagmanager"]');
 
 beforeEach(() => {
 	localStorage.clear();
@@ -11,7 +12,9 @@ beforeEach(() => {
 	delete (window as any).dataLayer;
 	delete (window as any)[`ga-disable-${ID}`];
 	document.cookie.split(';').forEach((c) => {
-		document.cookie = `${c.split('=')[0].trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+		document.cookie = `${c
+			.split('=')[0]
+			.trim()}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
 	});
 });
 
@@ -152,7 +155,11 @@ describe('google analytics on auth pages', () => {
 
 	it('Back/Forward onto an auth URL disables reporting before the router runs', () => {
 		window.history.replaceState({}, '', '/tmgrdev/board');
-		const stop = startGoogleAnalytics({ id: ID, enabled: true, store: granted() });
+		const stop = startGoogleAnalytics({
+			id: ID,
+			enabled: true,
+			store: granted(),
+		});
 		window.history.replaceState({}, '', '/workspaces/invitations/secret-token');
 		window.dispatchEvent(new PopStateEvent('popstate'));
 		expect(disabled()).toBe(true);

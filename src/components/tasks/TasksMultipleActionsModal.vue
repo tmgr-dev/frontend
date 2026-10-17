@@ -140,9 +140,7 @@
 				return (
 					!this.$store.getters.isLocalOnly &&
 					!!this.$store.getters['featureToggles/modulesKnown'] &&
-					this.$store.getters['featureToggles/isFeatureEnabled'](
-						'exports',
-					)
+					this.$store.getters['featureToggles/isFeatureEnabled']('exports')
 				);
 			},
 			doneStatusId() {

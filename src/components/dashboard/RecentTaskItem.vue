@@ -12,10 +12,7 @@
 			<div class="min-w-0 flex-1">
 				<!-- Task Title and Status -->
 				<div class="mb-2 flex items-center space-x-2">
-					<div
-						:class="statusIndicatorClasses"
-						:title="statusText"
-					></div>
+					<div :class="statusIndicatorClasses" :title="statusText"></div>
 					<h4
 						class="truncate text-sm font-medium text-gray-900 dark:text-white"
 					>
@@ -180,9 +177,13 @@
 	} from '@/components/ui/select';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
-	import { DONE_DISABLED_TOOLTIP, isDone, stateLabel } from '@/utils/simpleStatus';
 	import type { RecentTask } from '@/types/dashboard';
 	import { cn } from '@/utils';
+	import {
+		DONE_DISABLED_TOOLTIP,
+		isDone,
+		stateLabel,
+	} from '@/utils/simpleStatus';
 	import {
 		ArrowDownIcon,
 		ArrowRightIcon,

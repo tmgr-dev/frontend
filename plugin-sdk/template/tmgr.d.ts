@@ -168,7 +168,11 @@ interface TmgrAgentWorkRun {
 
 interface TmgrAgentWorkOverview {
 	runs: TmgrAgentWorkRun[];
-	totals: { agent_seconds: number; human_seconds: number; human_timer_running: boolean };
+	totals: {
+		agent_seconds: number;
+		human_seconds: number;
+		human_timer_running: boolean;
+	};
 }
 
 interface TmgrAgentWorkProgress {
@@ -247,15 +251,43 @@ interface RoutineInstance {
 
 type TmgrEvent =
 	/** `changed` (task.updated only) names the fields the write's request body set. */
-	| { type: 'task.created' | 'task.updated'; workspaceId: number; taskId: number; task: TmgrTask; changed?: string[] }
+	| {
+			type: 'task.created' | 'task.updated';
+			workspaceId: number;
+			taskId: number;
+			task: TmgrTask;
+			changed?: string[];
+	  }
 	| { type: 'task.deleted'; workspaceId: number; taskId: number }
-	| { type: 'task.statusChanged'; workspaceId: number; taskId: number; statusId: number; task?: TmgrTask }
-	| { type: 'timer.started' | 'timer.stopped'; workspaceId: number; taskId: number; task: TmgrTask }
+	| {
+			type: 'task.statusChanged';
+			workspaceId: number;
+			taskId: number;
+			statusId: number;
+			task?: TmgrTask;
+	  }
+	| {
+			type: 'timer.started' | 'timer.stopped';
+			workspaceId: number;
+			taskId: number;
+			task: TmgrTask;
+	  }
 	/** `author` may be missing in a shared workspace until the server names the writer (TM-296). */
-	| { type: 'comment.created' | 'comment.updated'; workspaceId: number; taskId: number; comment: Record<string, unknown> & { author?: TmgrCommentAuthor | null } }
+	| {
+			type: 'comment.created' | 'comment.updated';
+			workspaceId: number;
+			taskId: number;
+			comment: Record<string, unknown> & { author?: TmgrCommentAuthor | null };
+	  }
 	| { type: 'comment.deleted'; workspaceId: number; commentId: number }
 	/** No `reacted`/`users`: those are actor-relative. Read this plugin's own state via comments.list. */
-	| { type: 'comment.reactionChanged'; workspaceId: number; commentId: number; taskId?: number; reactions: { emoji: string; count: number }[] }
+	| {
+			type: 'comment.reactionChanged';
+			workspaceId: number;
+			commentId: number;
+			taskId?: number;
+			reactions: { emoji: string; count: number }[];
+	  }
 	/** `relationType` is the fixed name (e.g. "blocks") when known, otherwise the numeric relation type id. */
 	| {
 			type: 'task.relationChanged';
@@ -275,10 +307,28 @@ type TmgrEvent =
 	 * API 1.5, needs pages:read. `changedSections` lists the managed sections whose text changed in this write;
 	 * it is empty for events from shared workspaces, which carry no body. Your own writes are not delivered back.
 	 */
-	| { type: 'page.created' | 'page.updated' | 'page.restored' | 'page.moved'; workspaceId: number; pageId: number; slug: string | null; title: string | null; parentId: number | null; version: number | null; author: { kind: 'user' | 'persona' | 'plugin'; id: string | number | null } | null; changedSections: string[] }
+	| {
+			type: 'page.created' | 'page.updated' | 'page.restored' | 'page.moved';
+			workspaceId: number;
+			pageId: number;
+			slug: string | null;
+			title: string | null;
+			parentId: number | null;
+			version: number | null;
+			author: {
+				kind: 'user' | 'persona' | 'plugin';
+				id: string | number | null;
+			} | null;
+			changedSections: string[];
+	  }
 	| { type: 'page.deleted'; workspaceId: number; pageId: number }
 	/** Needs routines:read. Local workspaces only — never delivered in a shared workspace. */
-	| { type: 'routine.created'; workspaceId: number; routineId: number; routine: Routine }
+	| {
+			type: 'routine.created';
+			workspaceId: number;
+			routineId: number;
+			routine: Routine;
+	  }
 	| {
 			type: 'routine.updated';
 			workspaceId: number;
@@ -287,10 +337,22 @@ type TmgrEvent =
 			instance?: RoutineInstance;
 	  }
 	/** `taskId` is set when the routine was deleted by being converted into a task. */
-	| { type: 'routine.deleted'; workspaceId: number; routineId: number; taskId?: number };
+	| {
+			type: 'routine.deleted';
+			workspaceId: number;
+			routineId: number;
+			taskId?: number;
+	  };
 
 type TmgrTone = 'default' | 'muted' | 'success' | 'warning' | 'danger';
-type TmgrColor = 'gray' | 'green' | 'yellow' | 'red' | 'blue' | 'purple' | 'orange';
+type TmgrColor =
+	| 'gray'
+	| 'green'
+	| 'yellow'
+	| 'red'
+	| 'blue'
+	| 'purple'
+	| 'orange';
 
 /** Gap between a stack's children (API 1.3). */
 type TmgrGap = 'none' | 'sm' | 'md' | 'lg';
@@ -342,7 +404,12 @@ type TmgrNode =
 			type: 'menu';
 			label?: string;
 			icon?: 'more';
-			items: { text: string; command: string; args?: unknown; confirm?: string }[];
+			items: {
+				text: string;
+				command: string;
+				args?: unknown;
+				confirm?: string;
+			}[];
 	  }
 	| { type: 'heading'; text: string; level?: 1 | 2 | 3 }
 	| { type: 'text'; text: string; tone?: TmgrTone }
@@ -397,7 +464,14 @@ type TmgrNode =
 	| { type: 'keyValue'; items: { key: string; value: TmgrNode }[] };
 
 declare const tmgr: {
-	workspace: { current(): Promise<{ id: number; code: string; name: string; kind: 'local' | 'cloud' }> };
+	workspace: {
+		current(): Promise<{
+			id: number;
+			code: string;
+			name: string;
+			kind: 'local' | 'cloud';
+		}>;
+	};
 	settings: { get(): Promise<Record<string, unknown>> };
 	tasks: {
 		/**
@@ -457,17 +531,30 @@ declare const tmgr: {
 		update(id: number, patch: TmgrCategoryPatch): Promise<unknown>;
 	};
 	/** Needs time:write. */
-	time: { start(taskId: number): Promise<TmgrTask>; stop(taskId: number): Promise<TmgrTask> };
+	time: {
+		start(taskId: number): Promise<TmgrTask>;
+		stop(taskId: number): Promise<TmgrTask>;
+	};
 	comments: {
 		/**
 		 * Needs comments:read. Each comment carries `author` (kind 'user' | 'plugin' | 'persona' | …),
 		 * or `null` in a shared workspace when the server does not yet say who wrote it.
 		 */
-		list(taskId: number): Promise<(Record<string, unknown> & { author: TmgrCommentAuthor | null })[]>;
+		list(
+			taskId: number,
+		): Promise<
+			(Record<string, unknown> & { author: TmgrCommentAuthor | null })[]
+		>;
 		/** Needs comments:write. Written with this plugin as the author; a body `author` field is ignored. */
-		add(taskId: number, text: string): Promise<Record<string, unknown> & { author: TmgrCommentAuthor }>;
+		add(
+			taskId: number,
+			text: string,
+		): Promise<Record<string, unknown> & { author: TmgrCommentAuthor }>;
 		/** Needs comments:write. Toggles the emoji reaction for this plugin; returns the comment's reactions. */
-		react(commentId: number, emoji: string): Promise<{ reactions: TmgrReaction[]; taskId?: number }>;
+		react(
+			commentId: number,
+			emoji: string,
+		): Promise<{ reactions: TmgrReaction[]; taskId?: number }>;
 	};
 	/** Per plugin and workspace, JSON values up to 256 KB, 5 MB in total. */
 	storage: {
@@ -485,7 +572,10 @@ declare const tmgr: {
 		set(taskId: number, key: string, value: unknown): Promise<void>;
 		delete(taskId: number, key: string): Promise<void>;
 		/** Up to 500 task ids in one call; meant for `ui.provideBadges` (one call per batch). */
-		getMany<T = unknown>(taskIds: number[], key: string): Promise<Record<number, T | null>>;
+		getMany<T = unknown>(
+			taskIds: number[],
+			key: string,
+		): Promise<Record<number, T | null>>;
 	};
 	/**
 	 * API 1.5, needs `engines.tmgr` `^1.5`. Pages of the workspace the plugin runs in; writes are made as
@@ -493,7 +583,10 @@ declare const tmgr: {
 	 */
 	pages: {
 		/** Needs pages:read. `limit` is at most 50. */
-		search(q: string, opts?: { type?: TmgrPageType; limit?: number }): Promise<TmgrPageSearchHit[]>;
+		search(
+			q: string,
+			opts?: { type?: TmgrPageType; limit?: number },
+		): Promise<TmgrPageSearchHit[]>;
 		/** Needs pages:read. Every live page without bodies. */
 		tree(): Promise<TmgrPageSummary[]>;
 		/** Needs pages:read. By id or slug. */
@@ -509,13 +602,27 @@ declare const tmgr: {
 		/** Needs pages:write. Rejects with a `page_conflict` error (see TmgrPageConflictError) when `version` is stale. */
 		update(
 			id: number,
-			fields: { version: number; title?: string; body?: string; properties?: Record<string, unknown>; summary?: string },
+			fields: {
+				version: number;
+				title?: string;
+				body?: string;
+				properties?: Record<string, unknown>;
+				summary?: string;
+			},
 		): Promise<TmgrPage>;
 		/**
 		 * Needs pages:write. Adds markdown at the end of the page, or at the end of the `##` section named
 		 * `heading` (created when `createHeading` is set). No version needed.
 		 */
-		append(id: number, fields: { markdown: string; heading?: string; createHeading?: boolean; summary?: string }): Promise<TmgrPage>;
+		append(
+			id: number,
+			fields: {
+				markdown: string;
+				heading?: string;
+				createHeading?: boolean;
+				summary?: string;
+			},
+		): Promise<TmgrPage>;
 		/**
 		 * Needs pages:sections. Replaces the text of a managed section whose owner is `plugin:<this plugin's id>`;
 		 * any other existing section rejects with PERMISSION_DENIED (sections owned by `agents` are for personas).
@@ -523,7 +630,12 @@ declare const tmgr: {
 		 * heading (`heading`, default the section id; one line, at most 200 characters). The id must match
 		 * `[a-z0-9][a-z0-9-]{0,63}`. A context page refuses new sections.
 		 */
-		setSection(id: number, sectionId: string, markdown: string, opts?: { summary?: string; heading?: string }): Promise<TmgrPage>;
+		setSection(
+			id: number,
+			sectionId: string,
+			markdown: string,
+			opts?: { summary?: string; heading?: string },
+		): Promise<TmgrPage>;
 	};
 	/**
 	 * API 1.5, needs pages:read. Per-page JSON values up to 64 KB, with their own 5 MB / 1000 key quota per
@@ -534,7 +646,10 @@ declare const tmgr: {
 		set(pageId: number, key: string, value: unknown): Promise<void>;
 		delete(pageId: number, key: string): Promise<void>;
 		/** Up to 500 page ids in one call. */
-		getMany<T = unknown>(pageIds: number[], key: string): Promise<Record<number, T | null>>;
+		getMany<T = unknown>(
+			pageIds: number[],
+			key: string,
+		): Promise<Record<number, T | null>>;
 	};
 	agentWork: {
 		/** Needs agent_work:read. Newest first, with agent time next to time tracked on the task timer. */
@@ -548,17 +663,28 @@ declare const tmgr: {
 		 */
 		start(
 			taskId: number,
-			fields: { agent?: string; model?: string; sessionId?: string; branch?: string },
+			fields: {
+				agent?: string;
+				model?: string;
+				sessionId?: string;
+				branch?: string;
+			},
 		): Promise<TmgrAgentWorkRun>;
 		/**
 		 * Needs agent_work:write. Only the run's own starting actor may update it, and only within its
 		 * own agent namespace; 409 once it is finished.
 		 */
-		update(runId: number, patch: TmgrAgentWorkProgress): Promise<TmgrAgentWorkRun>;
+		update(
+			runId: number,
+			patch: TmgrAgentWorkProgress,
+		): Promise<TmgrAgentWorkRun>;
 		/** Needs agent_work:write. Closes the run; `branch` cannot be changed here. */
 		finish(
 			runId: number,
-			patch: { status: 'succeeded' | 'failed' | 'cancelled' } & Omit<TmgrAgentWorkProgress, 'branch'>,
+			patch: { status: 'succeeded' | 'failed' | 'cancelled' } & Omit<
+				TmgrAgentWorkProgress,
+				'branch'
+			>,
 		): Promise<TmgrAgentWorkRun>;
 	};
 	files: {
@@ -566,20 +692,54 @@ declare const tmgr: {
 		export(path: string, content: string): Promise<{ path: string }>;
 		reveal(path: string): Promise<void>;
 		/** files:attachments. Attachments of tasks in this workspace, up to 5 MB. */
-		list(taskId: number): Promise<{ id: number; name: string; mimeType: string | null; size: number | null; createdAt: string }[]>;
-		read(fileId: number): Promise<{ name: string; mimeType: string | null; size: number; base64: string; text: string | null }>;
+		list(taskId: number): Promise<
+			{
+				id: number;
+				name: string;
+				mimeType: string | null;
+				size: number | null;
+				createdAt: string;
+			}[]
+		>;
+		read(fileId: number): Promise<{
+			name: string;
+			mimeType: string | null;
+			size: number;
+			base64: string;
+			text: string | null;
+		}>;
 		/** files:pick. The user picks a file in a system dialog; null when they cancel. */
-		pick(): Promise<{ name: string; size: number; base64: string; text: string | null } | null>;
+		pick(): Promise<{
+			name: string;
+			size: number;
+			base64: string;
+			text: string | null;
+		} | null>;
 	};
 	/** Only origins listed in manifest network.allowedOrigins, all on this computer (http://localhost:<port>). */
 	net: {
 		fetch(
 			url: string,
-			init?: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; headers?: Record<string, string>; body?: string },
-		): Promise<{ status: number; ok: boolean; headers: Record<string, string>; text(): Promise<string>; json<T = unknown>(): Promise<T> }>;
+			init?: {
+				method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+				headers?: Record<string, string>;
+				body?: string;
+			},
+		): Promise<{
+			status: number;
+			ok: boolean;
+			headers: Record<string, string>;
+			text(): Promise<string>;
+			json<T = unknown>(): Promise<T>;
+		}>;
 	};
 	/** task.* needs tasks:read, timer.* needs time:read, comment.* needs comments:read. Own writes are not delivered. */
-	events: { on<T extends TmgrEvent['type']>(type: T, handler: (event: Extract<TmgrEvent, { type: T }>) => unknown): Promise<void> };
+	events: {
+		on<T extends TmgrEvent['type']>(
+			type: T,
+			handler: (event: Extract<TmgrEvent, { type: T }>) => unknown,
+		): Promise<void>;
+	};
 	/**
 	 * The command id must be declared in contributes.commands and start with the plugin id. A command with
 	 * `"deepLink": true` in its manifest entry can also be run from `tmgr://plugin/<id>/command/<local id>`
@@ -590,7 +750,9 @@ declare const tmgr: {
 	 * Its handler then receives a TaskMenuCommandArgs: `tmgr.commands.register(id, (args) => { const { taskId } = args as TaskMenuCommandArgs; ... })`.
 	 * The item is shown only while the plugin runs and has registered the command.
 	 */
-	commands: { register(id: string, handler: (args: unknown) => unknown): Promise<void> };
+	commands: {
+		register(id: string, handler: (args: unknown) => unknown): Promise<void>;
+	};
 	/** Needs the alarms permission. Host-scheduled: fires even if the plugin was not running when it was due, coalesced into one event. */
 	alarms: {
 		/** name is 1-60 characters of letters, digits, ".", "_" or "-". Delay/period are minutes, from 1 to 525600 (one year); `when` is at most a year ahead. */
@@ -613,25 +775,56 @@ declare const tmgr: {
 		 */
 		provideBadges(
 			id: string,
-			provider: (
-				tasks: TmgrTask[],
-			) =>
+			provider: (tasks: TmgrTask[]) =>
 				| Record<
 						number,
-						| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }
-						| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }[]
+						| {
+								text: string;
+								color?: TmgrColor;
+								tooltip?: string;
+								priority?: number;
+								key?: string;
+						  }
+						| {
+								text: string;
+								color?: TmgrColor;
+								tooltip?: string;
+								priority?: number;
+								key?: string;
+						  }[]
 				  >
 				| Promise<
 						Record<
 							number,
-							| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }
-							| { text: string; color?: TmgrColor; tooltip?: string; priority?: number; key?: string }[]
+							| {
+									text: string;
+									color?: TmgrColor;
+									tooltip?: string;
+									priority?: number;
+									key?: string;
+							  }
+							| {
+									text: string;
+									color?: TmgrColor;
+									tooltip?: string;
+									priority?: number;
+									key?: string;
+							  }[]
 						>
 				  >,
 		): Promise<void>;
-		providePage(id: string, render: (props: unknown) => TmgrNode | Promise<TmgrNode>): Promise<void>;
-		provideTaskSection(id: string, render: (task: TmgrTask) => TmgrNode | Promise<TmgrNode>): Promise<void>;
-		setStatusBarItem(id: string, item: { text: string; tooltip?: string; command?: string } | null): Promise<void>;
+		providePage(
+			id: string,
+			render: (props: unknown) => TmgrNode | Promise<TmgrNode>,
+		): Promise<void>;
+		provideTaskSection(
+			id: string,
+			render: (task: TmgrTask) => TmgrNode | Promise<TmgrNode>,
+		): Promise<void>;
+		setStatusBarItem(
+			id: string,
+			item: { text: string; tooltip?: string; command?: string } | null,
+		): Promise<void>;
 		/**
 		 * Needs notifications. title is at most 80 characters, message at most 300, args at most 4 KB of JSON.
 		 * The shown title always names this plugin: "<plugin name>: <title>", or just the plugin name without
@@ -662,7 +855,12 @@ declare const tmgr: {
 			id: string,
 			item: {
 				title: string;
-				items: { title: string; taskId?: number; command?: string; args?: unknown }[];
+				items: {
+					title: string;
+					taskId?: number;
+					command?: string;
+					args?: unknown;
+				}[];
 			} | null,
 		): Promise<void>;
 		/**
@@ -684,7 +882,11 @@ declare const tmgr: {
 		 */
 		setViewBadge(
 			viewId: string,
-			badge: { count?: number; text?: string; tone?: 'default' | 'info' | 'warning' | 'danger' } | null,
+			badge: {
+				count?: number;
+				text?: string;
+				tone?: 'default' | 'info' | 'warning' | 'danger';
+			} | null,
 		): Promise<void>;
 		/** Ask the host to draw badges, a page or a section again. */
 		refresh(kind: 'badges' | 'page' | 'section', id: string): Promise<void>;
@@ -711,7 +913,10 @@ declare const tmgr: {
 			time?: string | null;
 		}): Promise<Routine>;
 		/** Needs routines:write. At least one field. */
-		update(id: number, patch: { title?: string; description?: string | null }): Promise<Routine>;
+		update(
+			id: number,
+			patch: { title?: string; description?: string | null },
+		): Promise<Routine>;
 		/** Needs routines:write. Idempotent: completing an already-completed occurrence just returns it. `date` defaults to today. */
 		complete(id: number, options?: { date?: string }): Promise<RoutineInstance>;
 		/** Needs routines:write. Idempotent, like `complete`. */
@@ -720,7 +925,10 @@ declare const tmgr: {
 		 * Needs routines:write AND tasks:write (missing tasks:write rejects with PERMISSION_DENIED).
 		 * Creates a task from the routine (with a `key`, like `tasks.create`) and removes the routine.
 		 */
-		convertToTask(id: number, options?: { categoryId?: number; statusId?: number }): Promise<TmgrTask>;
+		convertToTask(
+			id: number,
+			options?: { categoryId?: number; statusId?: number },
+		): Promise<TmgrTask>;
 	};
 	/**
 	 * Only available when the manifest declares a `companion` section. Asks the workspace owner to
@@ -730,8 +938,12 @@ declare const tmgr: {
 	 * `companion` manifest section, and RATE_LIMITED while a request from this plugin is already pending.
 	 */
 	localAccess: {
-		requestConnection(opts?: { label?: string; permissions?: string[] }): Promise<
-			{ status: 'connected'; tokenId: string; prefix: string } | { status: 'cancelled' }
+		requestConnection(opts?: {
+			label?: string;
+			permissions?: string[];
+		}): Promise<
+			| { status: 'connected'; tokenId: string; prefix: string }
+			| { status: 'cancelled' }
 		>;
 	};
 };

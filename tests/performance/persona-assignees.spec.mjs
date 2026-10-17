@@ -90,7 +90,10 @@ const withPersonas = async (page, { assigned = [reviewer] } = {}) => {
               },
               'board.user_filter': toggle('board.user_filter'),
             }
-          : { board: toggle('board'), 'task.assignees': toggle('task.assignees') },
+          : {
+              board: toggle('board'),
+              'task.assignees': toggle('task.assignees'),
+            },
       },
     });
   });
@@ -170,7 +173,9 @@ test('the board card renders persona chips outside the assignee picker', async (
   await page.goto('/demo/board');
   const chip = page.getByTestId('persona-chip').first();
   await expect(chip).toBeVisible();
-  await expect(chip.locator('xpath=ancestor::button[@title="Change assignee"]')).toHaveCount(0);
+  await expect(
+    chip.locator('xpath=ancestor::button[@title="Change assignee"]'),
+  ).toHaveCount(0);
   await chip.click();
   await expect(page.getByTestId('persona-popover')).toBeVisible();
   await shot(page, 'board-card-persona-chip-popover');
@@ -194,9 +199,14 @@ test('the task modal picker lists personas and assigns one through the persona e
   await expect(page.getByTestId('persona-option')).toHaveCount(2);
   await shot(page, 'assignee-picker-personas');
 
-  await page.getByTestId('persona-option').filter({ hasText: 'Triager' }).click();
+  await page
+    .getByTestId('persona-option')
+    .filter({ hasText: 'Triager' })
+    .click();
   await expect
-    .poll(() => calls.some((c) => c.method === 'POST' && c.persona === 'uuid-triager'))
+    .poll(() =>
+      calls.some((c) => c.method === 'POST' && c.persona === 'uuid-triager'),
+    )
     .toBe(true);
   await expect(form.getByTestId('persona-chip')).toHaveCount(2);
   await shot(page, 'task-modal-persona-chips');
@@ -249,7 +259,13 @@ test('Settings -> Personas offers the scope and lists other members workspace pe
       json: {
         data: [
           own,
-          { ...own, id: 'uuid-private', name: 'Scratch', workspace_id: null, scope: 'account' },
+          {
+            ...own,
+            id: 'uuid-private',
+            name: 'Scratch',
+            workspace_id: null,
+            scope: 'account',
+          },
         ],
       },
     });
@@ -310,10 +326,12 @@ test('Settings -> Personas offers the scope and lists other members workspace pe
   await page.getByLabel(/This workspace/).check();
   await page.getByPlaceholder('Reviewer').fill('Shared bot');
   await page.getByRole('button', { name: 'Create persona' }).click();
-  await expect.poll(() => created[0]).toMatchObject({
-    name: 'Shared bot',
-    workspace_id: 1,
-  });
+  await expect
+    .poll(() => created[0])
+    .toMatchObject({
+      name: 'Shared bot',
+      workspace_id: 1,
+    });
 });
 
 test('the board filter narrows to a persona and writes it to the URL', async ({

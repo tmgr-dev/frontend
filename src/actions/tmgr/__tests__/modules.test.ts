@@ -152,9 +152,7 @@ describe('getWorkspaceModules single flight', () => {
 
 	it('re-reads after a save even when an older read is still in flight', async () => {
 		let release: (value: unknown) => void = () => {};
-		http.get.mockReturnValueOnce(
-			new Promise((resolve) => (release = resolve)),
-		);
+		http.get.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
 		http.get.mockResolvedValueOnce({ data: { data: payload } });
 		http.put.mockResolvedValue({ data: {} });
 		const stale = getWorkspaceModules(9);

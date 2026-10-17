@@ -307,33 +307,31 @@
 </template>
 
 <script>
-	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
-	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
-	import {
-		deleteTask,
-		startTaskTimeCounter,
-		stopTaskTimeCounter,
-		updateTaskPartially,
-		updateTaskStatus,
-	} from '@/actions/tmgr/tasks';
 	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
 		assignPersonaToTask,
+		deleteTask,
+		startTaskTimeCounter,
+		stopTaskTimeCounter,
 		unassignPersonaFromTask,
+		updateTaskPartially,
+		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import { getWorkspaceMembers } from '@/actions/tmgr/workspaces';
-	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import AssigneeAvatar from '@/components/general/AssigneeAvatar.vue';
 	import AssigneePersonaGroup from '@/components/general/AssigneePersonaGroup.vue';
 	import AssigneeUsers from '@/components/general/AssigneeUsers.vue';
 	import CategoryBadge from '@/components/general/CategoryBadge.vue';
+	import Confirm from '@/components/general/Confirm.vue';
 	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import Loader from '@/components/loaders/Loader.vue';
+	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
 	import TaskCardAgentChip from '@/components/runner/TaskCardAgentChip.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
+	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
+	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
 		Command,
@@ -360,13 +358,13 @@
 	import TimePreparationMixin from '@/mixins/TimePreparationMixin';
 	import { backlogTimerPrompt } from '@/utils/backlogTimerPrompt';
 	import { formatBoardDate } from '@/utils/boardDate';
+	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		assigneeWritePayload,
 		personaAssigneeIds,
 		personaAssigneesOf,
 		visibleHumanAssignees,
 	} from '@/utils/personas';
-	import { isDesktopApp } from '@/utils/desktop';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		ArchiveIcon,
@@ -378,9 +376,9 @@
 		FilePenLine,
 		GripVertical,
 		MoreVertical,
-		Settings2,
 		Pause,
 		Play,
+		Settings2,
 		Siren,
 		Trash2,
 		UserPlus,
@@ -494,7 +492,7 @@
 						blue: 'bg-sky-500/15 text-sky-700 dark:text-sky-300',
 						purple: 'bg-purple-500/15 text-purple-700 dark:text-purple-300',
 						orange: 'bg-orange-500/15 text-orange-700 dark:text-orange-300',
-					})[color] || 'bg-muted text-muted-foreground';
+					}[color] || 'bg-muted text-muted-foreground');
 			},
 			visiblePluginBadges() {
 				const badges = this.pluginBadges[this.task.id] || [];

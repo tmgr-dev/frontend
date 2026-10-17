@@ -1,6 +1,9 @@
 import { isLinkAllowed, sanitizeTree, type LinkContext } from '../uiTree';
 
-const ALLOWED: LinkContext = { allowedDomains: ['a.example.com'], linksOpen: true };
+const ALLOWED: LinkContext = {
+	allowedDomains: ['a.example.com'],
+	linksOpen: true,
+};
 
 it('keeps known components and normalises their props', () => {
 	expect(
@@ -212,18 +215,19 @@ it('caps a copyable node and keeps its optional label', () => {
 });
 
 it('drops timeAgo and dueTime with an unparsable date, keeps a valid one', () => {
-	expect(
-		sanitizeTree({ type: 'timeAgo', at: '2026-09-27T10:00:00Z' }),
-	).toEqual({ type: 'timeAgo', at: '2026-09-27T10:00:00Z' });
-	expect(
-		sanitizeTree({ type: 'dueTime', at: '2026-09-27T10:00:00Z' }),
-	).toEqual({ type: 'dueTime', at: '2026-09-27T10:00:00Z' });
+	expect(sanitizeTree({ type: 'timeAgo', at: '2026-09-27T10:00:00Z' })).toEqual(
+		{ type: 'timeAgo', at: '2026-09-27T10:00:00Z' },
+	);
+	expect(sanitizeTree({ type: 'dueTime', at: '2026-09-27T10:00:00Z' })).toEqual(
+		{ type: 'dueTime', at: '2026-09-27T10:00:00Z' },
+	);
 	expect(sanitizeTree({ type: 'timeAgo', at: 'not a date' })).toBeNull();
 	expect(sanitizeTree({ type: 'dueTime', at: 123 })).toBeNull();
 });
 
 it('drops timeAgo and dueTime whose at string is over 64 chars, even if parsable', () => {
-	const long = 'Sun Sep 27 2026 10:00:00 GMT+0000 (Coordinated Universal Time Zone)';
+	const long =
+		'Sun Sep 27 2026 10:00:00 GMT+0000 (Coordinated Universal Time Zone)';
 	expect(long.length).toBeGreaterThan(64);
 	expect(Number.isNaN(Date.parse(long))).toBe(false);
 	expect(sanitizeTree({ type: 'timeAgo', at: long })).toBeNull();
@@ -236,7 +240,10 @@ it('builds a keyValue list from valid rows only, capped at 50', () => {
 			type: 'keyValue',
 			items: [
 				{ key: 'Owner', value: 'Ann' },
-				{ key: 'Status', value: { type: 'badge', text: 'Open', color: 'blue' } },
+				{
+					key: 'Status',
+					value: { type: 'badge', text: 'Open', color: 'blue' },
+				},
 				{ key: 'x'.repeat(90), value: undefined },
 			],
 		}),
@@ -371,10 +378,20 @@ describe('API 1.3: card', () => {
 			padding: 'md',
 		});
 		expect(
-			sanitizeTree({ type: 'card', tone: 'raised', padding: 'lg', children: [] }),
+			sanitizeTree({
+				type: 'card',
+				tone: 'raised',
+				padding: 'lg',
+				children: [],
+			}),
 		).toEqual({ type: 'card', children: [], tone: 'raised', padding: 'lg' });
 		expect(
-			sanitizeTree({ type: 'card', tone: 'huge', padding: 'huge', children: [] }),
+			sanitizeTree({
+				type: 'card',
+				tone: 'huge',
+				padding: 'huge',
+				children: [],
+			}),
 		).toEqual({ type: 'card', children: [], tone: 'default', padding: 'md' });
 	});
 
@@ -383,20 +400,23 @@ describe('API 1.3: card', () => {
 			(sanitizeTree({ type: 'card', children: [] }) as any).accent,
 		).toBeUndefined();
 		expect(
-			(sanitizeTree({ type: 'card', accent: 'pink', children: [] }) as any).accent,
+			(sanitizeTree({ type: 'card', accent: 'pink', children: [] }) as any)
+				.accent,
 		).toBe('gray');
 		expect(
-			(sanitizeTree({ type: 'card', accent: null, children: [] }) as any).accent,
+			(sanitizeTree({ type: 'card', accent: null, children: [] }) as any)
+				.accent,
 		).toBe('gray');
 		expect(
-			(sanitizeTree({ type: 'card', accent: 'purple', children: [] }) as any).accent,
+			(sanitizeTree({ type: 'card', accent: 'purple', children: [] }) as any)
+				.accent,
 		).toBe('purple');
 	});
 
 	it('keeps grow only when exactly true', () => {
-		expect((sanitizeTree({ type: 'card', grow: true, children: [] }) as any).grow).toBe(
-			true,
-		);
+		expect(
+			(sanitizeTree({ type: 'card', grow: true, children: [] }) as any).grow,
+		).toBe(true);
 		expect(
 			(sanitizeTree({ type: 'card', grow: 'yes', children: [] }) as any).grow,
 		).toBeUndefined();
@@ -491,32 +511,63 @@ describe('API 1.3: card', () => {
 
 describe('API 1.3: grid', () => {
 	it('clamps columns to 1-6 and rounds, defaulting a non-number to 1', () => {
-		expect((sanitizeTree({ type: 'grid', columns: 4, children: [] }) as any).columns).toBe(4);
-		expect((sanitizeTree({ type: 'grid', columns: 0, children: [] }) as any).columns).toBe(1);
-		expect((sanitizeTree({ type: 'grid', columns: 12, children: [] }) as any).columns).toBe(6);
-		expect((sanitizeTree({ type: 'grid', columns: 2.6, children: [] }) as any).columns).toBe(3);
 		expect(
-			(sanitizeTree({ type: 'grid', columns: 'lots', children: [] }) as any).columns,
+			(sanitizeTree({ type: 'grid', columns: 4, children: [] }) as any).columns,
+		).toBe(4);
+		expect(
+			(sanitizeTree({ type: 'grid', columns: 0, children: [] }) as any).columns,
+		).toBe(1);
+		expect(
+			(sanitizeTree({ type: 'grid', columns: 12, children: [] }) as any)
+				.columns,
+		).toBe(6);
+		expect(
+			(sanitizeTree({ type: 'grid', columns: 2.6, children: [] }) as any)
+				.columns,
+		).toBe(3);
+		expect(
+			(sanitizeTree({ type: 'grid', columns: 'lots', children: [] }) as any)
+				.columns,
 		).toBe(1);
 	});
 
 	it('clamps minWidth to 160-480, defaulting a non-number to 200, and defaults gap to md', () => {
 		expect(
-			(sanitizeTree({ type: 'grid', columns: 2, minWidth: 100, children: [] }) as any)
-				.minWidth,
+			(
+				sanitizeTree({
+					type: 'grid',
+					columns: 2,
+					minWidth: 100,
+					children: [],
+				}) as any
+			).minWidth,
 		).toBe(160);
 		expect(
-			(sanitizeTree({ type: 'grid', columns: 2, minWidth: 900, children: [] }) as any)
-				.minWidth,
+			(
+				sanitizeTree({
+					type: 'grid',
+					columns: 2,
+					minWidth: 900,
+					children: [],
+				}) as any
+			).minWidth,
 		).toBe(480);
 		expect(
-			(sanitizeTree({ type: 'grid', columns: 2, children: [] }) as any).minWidth,
+			(sanitizeTree({ type: 'grid', columns: 2, children: [] }) as any)
+				.minWidth,
 		).toBe(200);
-		expect((sanitizeTree({ type: 'grid', columns: 2, children: [] }) as any).gap).toBe(
-			'md',
-		);
 		expect(
-			(sanitizeTree({ type: 'grid', columns: 2, gap: 'sm', children: [] }) as any).gap,
+			(sanitizeTree({ type: 'grid', columns: 2, children: [] }) as any).gap,
+		).toBe('md');
+		expect(
+			(
+				sanitizeTree({
+					type: 'grid',
+					columns: 2,
+					gap: 'sm',
+					children: [],
+				}) as any
+			).gap,
 		).toBe('sm');
 	});
 });
@@ -546,7 +597,10 @@ describe('API 1.3: menu', () => {
 		expect(sanitizeTree({ type: 'menu', items: [] })).toBeNull();
 		const many = sanitizeTree({
 			type: 'menu',
-			items: Array.from({ length: 30 }, (_, i) => ({ text: `i${i}`, command: `c.${i}` })),
+			items: Array.from({ length: 30 }, (_, i) => ({
+				text: `i${i}`,
+				command: `c.${i}`,
+			})),
 		}) as any;
 		expect(many.items).toHaveLength(20);
 	});
@@ -583,7 +637,13 @@ describe('API 1.3: button variant/size, stat/badge command', () => {
 				variant: 'primary',
 				size: 'sm',
 			}),
-		).toEqual({ type: 'button', text: 'Go', command: 'a.b', variant: 'primary', size: 'sm' });
+		).toEqual({
+			type: 'button',
+			text: 'Go',
+			command: 'a.b',
+			variant: 'primary',
+			size: 'sm',
+		});
 		const bad = sanitizeTree({
 			type: 'button',
 			text: 'Go',
@@ -612,14 +672,28 @@ describe('API 1.3: button variant/size, stat/badge command', () => {
 			command: 'a.open',
 			args: { id: 1 },
 		});
-		const badStat = sanitizeTree({ type: 'stat', label: 'x', value: 'y', command: 1 }) as any;
+		const badStat = sanitizeTree({
+			type: 'stat',
+			label: 'x',
+			value: 'y',
+			command: 1,
+		}) as any;
 		expect(badStat.command).toBeUndefined();
 		expect(badStat.type).toBe('stat');
 
 		expect(
-			sanitizeTree({ type: 'badge', text: 'A', color: 'blue', command: 'a.open' }),
+			sanitizeTree({
+				type: 'badge',
+				text: 'A',
+				color: 'blue',
+				command: 'a.open',
+			}),
 		).toEqual({ type: 'badge', text: 'A', color: 'blue', command: 'a.open' });
-		const badBadge = sanitizeTree({ type: 'badge', text: 'A', command: 1 }) as any;
+		const badBadge = sanitizeTree({
+			type: 'badge',
+			text: 'A',
+			command: 1,
+		}) as any;
 		expect(badBadge.command).toBeUndefined();
 		expect(badBadge.type).toBe('badge');
 	});
@@ -667,7 +741,7 @@ describe('an older apiMinor downgrades API 1.3 nodes and drops the new optional 
 		).toEqual({ type: 'stack', direction: 'column', children: [] });
 	});
 
-	it('drops the new optional fields on stack/button/stat/badge, matching today\'s output exactly', () => {
+	it("drops the new optional fields on stack/button/stat/badge, matching today's output exactly", () => {
 		expect(
 			sanitizeTree(
 				{
@@ -685,7 +759,13 @@ describe('an older apiMinor downgrades API 1.3 nodes and drops the new optional 
 		).toStrictEqual({ type: 'stack', direction: 'row', children: [] });
 		expect(
 			sanitizeTree(
-				{ type: 'button', text: 'Go', command: 'a.b', variant: 'primary', size: 'sm' },
+				{
+					type: 'button',
+					text: 'Go',
+					command: 'a.b',
+					variant: 'primary',
+					size: 'sm',
+				},
 				undefined,
 				2,
 			),
@@ -714,6 +794,8 @@ describe('an older apiMinor downgrades API 1.3 nodes and drops the new optional 
 				{ type: 'taskLink', taskId: 3, text: 'TM-3' },
 			],
 		};
-		expect(sanitizeTree(tree, undefined, 2)).toEqual(sanitizeTree(tree, undefined, 3));
+		expect(sanitizeTree(tree, undefined, 2)).toEqual(
+			sanitizeTree(tree, undefined, 3),
+		);
 	});
 });

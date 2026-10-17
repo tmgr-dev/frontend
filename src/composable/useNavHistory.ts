@@ -37,10 +37,7 @@ const sync = () => {
 	canForward.value = history.canForward();
 };
 
-export const installNavHistory = (
-	router: NavRouter,
-	store: NavStore,
-): void => {
+export const installNavHistory = (router: NavRouter, store: NavStore): void => {
 	if (installed) return;
 	installed = true;
 
@@ -104,8 +101,9 @@ const isEditable = (target: EventTarget | null): boolean => {
 	if (!el || typeof el.closest !== 'function') return false;
 	return (
 		el.isContentEditable === true ||
-		el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]') !==
-			null
+		el.closest(
+			'input, textarea, select, [contenteditable=""], [contenteditable="true"]',
+		) !== null
 	);
 };
 

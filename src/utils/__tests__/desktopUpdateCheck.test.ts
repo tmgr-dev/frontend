@@ -9,7 +9,9 @@ it('confirms the running version when already up to date', () => {
 });
 
 it('offers to install the found update', () => {
-	expect(updateCheckToast({ kind: 'available', version: '0.9.0' }, '0.8.4')).toEqual({
+	expect(
+		updateCheckToast({ kind: 'available', version: '0.9.0' }, '0.8.4'),
+	).toEqual({
 		title: 'Update v0.9.0 available',
 		description: 'Install and restart to update.',
 		variant: 'default',

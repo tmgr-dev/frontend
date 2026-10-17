@@ -1,6 +1,6 @@
+import * as workspaceContext from '@/utils/workspaceContext';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
-import * as workspaceContext from '@/utils/workspaceContext';
 
 const deferred = () => {
 	let resolve!: (value: any) => void;
@@ -102,7 +102,9 @@ test('logout does not throw when no user is signed in', () => {
 		'@/utils/desktop': { isDesktopApp },
 	});
 	const state = { user: null, token: null };
-	expect(() => config.actions.logout({ commit: jest.fn(), state })).not.toThrow();
+	expect(() =>
+		config.actions.logout({ commit: jest.fn(), state }),
+	).not.toThrow();
 	expect(clearPersonaLlmForLogout).not.toHaveBeenCalled();
 });
 

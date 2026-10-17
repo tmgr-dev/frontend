@@ -19,7 +19,12 @@ export interface PropertyDef {
 export const PROPERTY_DEFS: Partial<Record<PageType, PropertyDef[]>> = {
 	person: [
 		{ key: 'user_id', label: 'Member', kind: 'user' },
-		{ key: 'network', label: 'Relationship', kind: 'enum', options: NETWORK_OPTIONS },
+		{
+			key: 'network',
+			label: 'Relationship',
+			kind: 'enum',
+			options: NETWORK_OPTIONS,
+		},
 		{ key: 'company', label: 'Company', kind: 'string' },
 		{ key: 'role', label: 'Role', kind: 'string' },
 		{ key: 'aliases', label: 'Aliases', kind: 'aliases' },

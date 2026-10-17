@@ -47,13 +47,19 @@ export const openTaskPreferringWindow = async (
 	store: WorkspaceStore,
 	router: Navigator,
 	showMain?: () => unknown,
-	focusWindow: (taskId: number, workspaceCode: string) => Promise<boolean> = focusTaskWindow,
+	focusWindow: (
+		taskId: number,
+		workspaceCode: string,
+	) => Promise<boolean> = focusTaskWindow,
 ): Promise<void> => {
 	const workspaceId = ref.workspaceId ?? store.getters.currentWorkspaceId;
 	const code = store.state.workspaces?.find(
 		(w) => Number(w.id) === Number(workspaceId),
 	)?.code;
-	if (code && (await focusWindow(Number(ref.taskId), code).catch(() => false))) {
+	if (
+		code &&
+		(await focusWindow(Number(ref.taskId), code).catch(() => false))
+	) {
 		return;
 	}
 	await showMain?.();

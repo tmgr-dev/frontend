@@ -24,7 +24,10 @@ const scanHeader = (page) =>
       const el = document.elementFromPoint(x, y);
       if (!el || el.closest(interactive)) continue;
       if (el.hasAttribute('data-tauri-drag-region')) draggable++;
-      else dead.push(`${Math.round(x)}:${el.tagName}.${String(el.className).slice(0, 40)}`);
+      else
+        dead.push(
+          `${Math.round(x)}:${el.tagName}.${String(el.className).slice(0, 40)}`,
+        );
     }
     const buttonsMarked = [
       ...header.querySelectorAll('button, a, input'),

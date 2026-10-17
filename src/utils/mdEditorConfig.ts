@@ -1,7 +1,11 @@
 import { XSSPlugin, config } from 'md-editor-v3';
 
 // The only hosts a markdown description may load in an iframe.
-const IFRAME_HOSTS = new Set(['www.youtube.com', 'codepen.io', 'www.figma.com']);
+const IFRAME_HOSTS = new Set([
+	'www.youtube.com',
+	'codepen.io',
+	'www.figma.com',
+]);
 
 // The app origin is never in IFRAME_HOSTS, so `allow-same-origin` only gives the
 // embed its own origin back. An embed can still navigate itself to the app origin

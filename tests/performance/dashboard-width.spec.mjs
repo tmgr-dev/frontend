@@ -66,7 +66,9 @@ const mockDashboard = async (page) => {
       !u.pathname.includes('/user'),
     (r) =>
       r.fulfill({
-        json: { data: { board: { enabled: true }, dashboard: { enabled: true } } },
+        json: {
+          data: { board: { enabled: true }, dashboard: { enabled: true } },
+        },
       }),
   );
   await page.route(
@@ -81,7 +83,8 @@ const mockDashboard = async (page) => {
             links: {},
           },
         });
-      if (p.endsWith('heatmap')) return r.fulfill({ json: { data: heatmap() } });
+      if (p.endsWith('heatmap'))
+        return r.fulfill({ json: { data: heatmap() } });
       if (p.endsWith('team-activity'))
         return r.fulfill({
           json: {

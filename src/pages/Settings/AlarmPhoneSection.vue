@@ -3,7 +3,10 @@
 		<p v-if="loading" class="text-sm text-muted-foreground">
 			Loading alarm phone…
 		</p>
-		<p v-else-if="state.kind === 'unconfigured'" class="text-sm text-muted-foreground">
+		<p
+			v-else-if="state.kind === 'unconfigured'"
+			class="text-sm text-muted-foreground"
+		>
 			Alarm phone is not configured on this server.
 		</p>
 		<p v-else-if="loadError" class="text-sm text-destructive">
@@ -30,7 +33,9 @@
 				class="flex flex-wrap items-center justify-between gap-3 rounded border border-border p-2"
 			>
 				<div class="flex min-w-0 items-center gap-2">
-					<span class="truncate font-mono text-sm">{{ state.phone.masked }}</span>
+					<span class="truncate font-mono text-sm">{{
+						state.phone.masked
+					}}</span>
 					<span
 						:class="[
 							'shrink-0 rounded px-1.5 py-0.5 text-xs font-medium',
@@ -52,7 +57,12 @@
 					>
 						Test call
 					</Button>
-					<Button variant="outline" size="sm" :disabled="busy" @click="startEdit">
+					<Button
+						variant="outline"
+						size="sm"
+						:disabled="busy"
+						@click="startEdit"
+					>
 						Change
 					</Button>
 					<Button variant="outline" size="sm" :disabled="busy" @click="remove">
@@ -71,7 +81,12 @@
 				</p>
 				<div class="flex flex-wrap gap-2">
 					<Button variant="outline" size="sm" @click="copyCaller">Copy</Button>
-					<Button variant="outline" size="sm" :disabled="busy" @click="addContact">
+					<Button
+						variant="outline"
+						size="sm"
+						:disabled="busy"
+						@click="addContact"
+					>
 						Add to contacts
 					</Button>
 				</div>
@@ -123,7 +138,11 @@
 				</p>
 			</form>
 
-			<form v-else-if="state.kind !== 'set' || editing" class="flex flex-col gap-3" @submit.prevent="submit">
+			<form
+				v-else-if="state.kind !== 'set' || editing"
+				class="flex flex-col gap-3"
+				@submit.prevent="submit"
+			>
 				<label class="flex flex-col gap-1">
 					<span class="text-sm font-medium">Phone number (E.164)</span>
 					<Input
@@ -175,7 +194,13 @@
 	import { Button } from '@/components/ui/button';
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
-	import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+	} from 'vue';
 
 	const COOLDOWN_SECONDS = 60;
 	const RESET_MESSAGE = 'Too many wrong codes. Enter the number again.';
@@ -344,7 +369,10 @@
 					const detail = alarmPhoneError(error);
 					if (detail.kind === 'conflict') {
 						await reload();
-						toast({ title: 'This number changed, please re-check', variant: 'destructive' });
+						toast({
+							title: 'This number changed, please re-check',
+							variant: 'destructive',
+						});
 					} else if (detail.kind === 'wrong_code') {
 						codeError.value =
 							detail.attemptsLeft === undefined
@@ -379,7 +407,10 @@
 				} catch (error) {
 					const detail = alarmPhoneError(error);
 					if (detail.kind === 'unconfigured') {
-						toast({ title: 'Calls are not configured on this server', variant: 'destructive' });
+						toast({
+							title: 'Calls are not configured on this server',
+							variant: 'destructive',
+						});
 					} else if (detail.kind === 'conflict') {
 						toast({ title: 'Verify the number first', variant: 'destructive' });
 					} else {
@@ -405,7 +436,10 @@
 				try {
 					await downloadAlarmContact();
 				} catch {
-					toast({ title: 'Could not download the contact', variant: 'destructive' });
+					toast({
+						title: 'Could not download the contact',
+						variant: 'destructive',
+					});
 				} finally {
 					busy.value = false;
 				}

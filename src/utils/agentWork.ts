@@ -82,7 +82,8 @@ export const mergeSnapshot = (
 		return live && live.version > run.version ? live : run;
 	});
 	const newer = current.filter(
-		(run) => !snapshot.some((r) => r.id === run.id) && run.id > (snapshot[0]?.id ?? 0),
+		(run) =>
+			!snapshot.some((r) => r.id === run.id) && run.id > (snapshot[0]?.id ?? 0),
 	);
 	return [...newer, ...merged];
 };

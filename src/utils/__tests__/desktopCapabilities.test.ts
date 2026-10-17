@@ -3,7 +3,10 @@ import { join } from 'node:path';
 
 const capability = (name: string) =>
 	JSON.parse(
-		readFileSync(join(__dirname, '../../../src-tauri/capabilities', `${name}.json`), 'utf8'),
+		readFileSync(
+			join(__dirname, '../../../src-tauri/capabilities', `${name}.json`),
+			'utf8',
+		),
 	);
 
 describe('main window capabilities', () => {

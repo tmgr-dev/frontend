@@ -13,7 +13,9 @@
 					:checked="consent.analytics === 'granted'"
 					:aria-labelledby="labelId"
 					:aria-describedby="descriptionId"
-					@update:checked="(value) => setAnalytics(value ? 'granted' : 'denied')"
+					@update:checked="
+						(value) => setAnalytics(value ? 'granted' : 'denied')
+					"
 				/>
 			</SettingsRow>
 		</SettingsSection>

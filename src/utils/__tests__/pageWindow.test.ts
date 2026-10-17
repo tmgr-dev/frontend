@@ -1,4 +1,3 @@
-import { isDetachedWindowLabel, isInSecondaryWindow } from '../taskWindow';
 import {
 	focusPageWindow,
 	isInPageWindow,
@@ -7,10 +6,13 @@ import {
 	pageWindowTarget,
 	setPageWindowTitle,
 } from '../pageWindow';
+import { isDetachedWindowLabel, isInSecondaryWindow } from '../taskWindow';
 
 const invoke = jest.fn();
 const setTitle = jest.fn();
-jest.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+jest.mock('@tauri-apps/api/core', () => ({
+	invoke: (...args: unknown[]) => invoke(...args),
+}));
 jest.mock('@tauri-apps/api/window', () => ({
 	getCurrentWindow: () => ({ setTitle: (t: string) => setTitle(t) }),
 }));
@@ -38,7 +40,9 @@ describe('window labels', () => {
 
 	it('detects the current window from the Tauri metadata', () => {
 		expect(isInPageWindow()).toBe(false);
-		(globalThis as any).__TAURI_INTERNALS__ = { metadata: { currentWindow: { label: 'page-a-1' } } };
+		(globalThis as any).__TAURI_INTERNALS__ = {
+			metadata: { currentWindow: { label: 'page-a-1' } },
+		};
 		expect(isInPageWindow()).toBe(true);
 		delete (globalThis as any).__TAURI_INTERNALS__;
 	});
@@ -46,7 +50,9 @@ describe('window labels', () => {
 
 describe('isInSecondaryWindow', () => {
 	const inWindow = (label: string | null) => {
-		(globalThis as any).__TAURI_INTERNALS__ = { metadata: { currentWindow: { label } } };
+		(globalThis as any).__TAURI_INTERNALS__ = {
+			metadata: { currentWindow: { label } },
+		};
 		const result = isInSecondaryWindow();
 		delete (globalThis as any).__TAURI_INTERNALS__;
 		return result;
@@ -63,7 +69,9 @@ describe('isInSecondaryWindow', () => {
 
 describe('pageWindowTarget', () => {
 	it('builds a target with a trimmed title', () => {
-		expect(pageWindowTarget({ id: 7, slug: 'ivan', title: ' Ivan ' }, 'work')).toEqual({
+		expect(
+			pageWindowTarget({ id: 7, slug: 'ivan', title: ' Ivan ' }, 'work'),
+		).toEqual({
 			pageId: 7,
 			workspaceCode: 'work',
 			slug: 'ivan',
@@ -72,7 +80,9 @@ describe('pageWindowTarget', () => {
 	});
 
 	it('gives a null title for blank titles', () => {
-		expect(pageWindowTarget({ id: 7, slug: 'x', title: '  ' }, 'work')?.title).toBeNull();
+		expect(
+			pageWindowTarget({ id: 7, slug: 'x', title: '  ' }, 'work')?.title,
+		).toBeNull();
 	});
 
 	it('is null without an id, slug or workspace code', () => {
@@ -87,11 +97,19 @@ describe('pageWindowTarget', () => {
 describe('commands', () => {
 	it('opens and focuses through the Rust commands', async () => {
 		invoke.mockResolvedValue(true);
-		const target = { pageId: 7, workspaceCode: 'work', slug: 'ivan', title: 'Ivan' };
+		const target = {
+			pageId: 7,
+			workspaceCode: 'work',
+			slug: 'ivan',
+			title: 'Ivan',
+		};
 		await openPageWindow(target);
 		expect(invoke).toHaveBeenCalledWith('open_page_window', target);
 		expect(await focusPageWindow(7, 'work')).toBe(true);
-		expect(invoke).toHaveBeenCalledWith('focus_page_window', { pageId: 7, workspaceCode: 'work' });
+		expect(invoke).toHaveBeenCalledWith('focus_page_window', {
+			pageId: 7,
+			workspaceCode: 'work',
+		});
 	});
 
 	it('sets a single-line window title', async () => {

@@ -13,10 +13,18 @@ describeSqlite('activity_log journal', () => {
 	const clock = new Date('2026-09-28T10:00:00Z');
 	const api = createLocalApi();
 	const persona = { kind: 'persona' as const, id: 'p-1', name: 'Reviewer' };
-	const plugin = { kind: 'plugin' as const, id: 'tmgr.estimate', name: 'tmgr.estimate' };
+	const plugin = {
+		kind: 'plugin' as const,
+		id: 'tmgr.estimate',
+		name: 'tmgr.estimate',
+	};
 
-	const call = (method: string, url: string, body?: unknown, actor = ctx.actor) =>
-		dispatchLocal(api, { ...ctx, actor }, method, url, body);
+	const call = (
+		method: string,
+		url: string,
+		body?: unknown,
+		actor = ctx.actor,
+	) => dispatchLocal(api, { ...ctx, actor }, method, url, body);
 
 	const journalRows = () =>
 		ctx.db.select<any>(`SELECT * FROM activity_log ORDER BY id ASC`);
@@ -24,10 +32,22 @@ describeSqlite('activity_log journal', () => {
 	beforeEach(async () => {
 		ctx = {
 			db: memoryDb(),
-			workspace: { id: -1, name: 'Personal', code: 'local-personal', schema_version: 0, created_at: '', path: '/tmp/x', database: '/tmp/x/workspace.db' },
+			workspace: {
+				id: -1,
+				name: 'Personal',
+				code: 'local-personal',
+				schema_version: 0,
+				created_at: '',
+				path: '/tmp/x',
+				database: '/tmp/x/workspace.db',
+			},
 			user: { id: 7, name: 'Yurij', email: 'me@example.com' },
 			now: () => clock,
-			files: { url: (key) => `tmgrfile://localhost/${key}`, read: async () => new Blob(['x']), remove: async () => {} },
+			files: {
+				url: (key) => `tmgrfile://localhost/${key}`,
+				read: async () => new Blob(['x']),
+				remove: async () => {},
+			},
 		};
 		await migrate(ctx.db, clock.toISOString());
 		await ctx.db.execute(
@@ -35,13 +55,20 @@ describeSqlite('activity_log journal', () => {
 			 VALUES ('p-1', 7, 'Yurij', 'Reviewer', NULL, NULL, ?, NULL)`,
 			[clock.toISOString()],
 		);
-		const created = await dispatchLocal(api, ctx, 'POST', 'tasks', { title: 'Do the thing' });
+		const created = await dispatchLocal(api, ctx, 'POST', 'tasks', {
+			title: 'Do the thing',
+		});
 		taskId = created!.data.data.id;
 	});
 
 	it('journals a persona write with the matched route, entity and status', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
-		const res = await call('POST', `tasks/${taskId}/comments`, { message: 'Looks fine' }, persona);
+		const res = await call(
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'Looks fine' },
+			persona,
+		);
 		expect(res!.status).toBe(201);
 
 		const rows = await journalRows();
@@ -59,7 +86,12 @@ describeSqlite('activity_log journal', () => {
 	});
 
 	it('journals a plugin write', async () => {
-		const res = await call('POST', `tasks/${taskId}/agent-work`, { agent: 'claude-code' }, plugin);
+		const res = await call(
+			'POST',
+			`tasks/${taskId}/agent-work`,
+			{ agent: 'claude-code' },
+			plugin,
+		);
 		expect(res!.status).toBe(201);
 
 		const rows = await journalRows();
@@ -91,7 +123,12 @@ describeSqlite('activity_log journal', () => {
 	});
 
 	it('writes no journal rows for the human user, on writes or refusals', async () => {
-		await call('POST', `tasks/${taskId}/comments`, { message: 'from the user' }, undefined);
+		await call(
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'from the user' },
+			undefined,
+		);
 		await call('DELETE', `tasks/999999`, undefined, undefined);
 
 		expect(await journalRows()).toHaveLength(0);

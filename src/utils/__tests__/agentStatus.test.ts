@@ -45,7 +45,9 @@ describe('upsertSession', () => {
 	});
 
 	it('ignores an ended session that was never known', () => {
-		expect(upsertSession([], session({ ended_at: '2026-10-13T11:00:00Z' }))).toEqual([]);
+		expect(
+			upsertSession([], session({ ended_at: '2026-10-13T11:00:00Z' })),
+		).toEqual([]);
 	});
 });
 
@@ -119,9 +121,9 @@ describe('tooltip text', () => {
 	});
 
 	it('omits the host when there is none and marks stale sessions', () => {
-		expect(sessionTooltip(session({ host_label: null, stale: true }), NOW)).toBe(
-			'Working: claude-code · since 5 min ago · no recent updates',
-		);
+		expect(
+			sessionTooltip(session({ host_label: null, stale: true }), NOW),
+		).toBe('Working: claude-code · since 5 min ago · no recent updates');
 	});
 
 	it('passes server strings through verbatim as plain text', () => {

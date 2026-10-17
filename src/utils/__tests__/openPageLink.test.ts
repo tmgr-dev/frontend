@@ -19,7 +19,9 @@ const setup = (over: Partial<OpenPageLinkDeps> = {}) => {
 describe('openPageLink', () => {
 	it('navigates the main window to the page, which switches the workspace', async () => {
 		const deps = setup({ currentWorkspaceId: jest.fn(() => 1) });
-		expect(await openPageLink({ workspaceCode: 'local-proj', slug: 'ivan' }, deps)).toBe(true);
+		expect(
+			await openPageLink({ workspaceCode: 'local-proj', slug: 'ivan' }, deps),
+		).toBe(true);
 		expect(deps.resolvePageId).not.toHaveBeenCalled();
 		expect(deps.showMain).toHaveBeenCalled();
 		expect(deps.navigate).toHaveBeenCalledWith('/local-proj/pages/ivan');
@@ -27,14 +29,20 @@ describe('openPageLink', () => {
 
 	it('focuses an existing page window of the current workspace without touching the main window', async () => {
 		const deps = setup({ focusPageWindow: jest.fn(async () => true) });
-		expect(await openPageLink({ workspaceCode: 'work', slug: 'ivan' }, deps)).toBe(true);
+		expect(
+			await openPageLink({ workspaceCode: 'work', slug: 'ivan' }, deps),
+		).toBe(true);
 		expect(deps.focusPageWindow).toHaveBeenCalledWith(42, 'work');
 		expect(deps.navigate).not.toHaveBeenCalled();
 		expect(deps.showMain).not.toHaveBeenCalled();
 	});
 
 	it('falls back to the main window when no window is open or the page cannot be resolved', async () => {
-		const deps = setup({ resolvePageId: jest.fn(async () => { throw new Error('404'); }) });
+		const deps = setup({
+			resolvePageId: jest.fn(async () => {
+				throw new Error('404');
+			}),
+		});
 		await openPageLink({ workspaceCode: 'work', slug: 'ivan' }, deps);
 		expect(deps.navigate).toHaveBeenCalledWith('/work/pages/ivan');
 		const second = setup();
@@ -45,7 +53,9 @@ describe('openPageLink', () => {
 
 	it('does nothing for an unknown workspace', async () => {
 		const deps = setup();
-		expect(await openPageLink({ workspaceCode: 'nope', slug: 'x' }, deps)).toBe(false);
+		expect(await openPageLink({ workspaceCode: 'nope', slug: 'x' }, deps)).toBe(
+			false,
+		);
 		expect(deps.navigate).not.toHaveBeenCalled();
 	});
 });

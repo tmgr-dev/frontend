@@ -1,7 +1,13 @@
+import { checkPersonaAccess } from './personaGate';
 import type { LocalRouter } from './router';
 import { normalizePath } from './router';
-import { checkPersonaAccess } from './personaGate';
-import { LocalHttpError, LocalRaw, type LocalActor, type LocalContext, type LocalResponse } from './types';
+import {
+	LocalHttpError,
+	LocalRaw,
+	type LocalActor,
+	type LocalContext,
+	type LocalResponse,
+} from './types';
 
 const parseBody = (body: unknown) => {
 	if (typeof body !== 'string') return body ?? {};
@@ -13,7 +19,9 @@ const parseBody = (body: unknown) => {
 };
 
 const queryOf = (url: string, params?: Record<string, any>) => {
-	const query = new URLSearchParams(url.includes('?') ? url.slice(url.indexOf('?') + 1) : '');
+	const query = new URLSearchParams(
+		url.includes('?') ? url.slice(url.indexOf('?') + 1) : '',
+	);
 	Object.entries(params ?? {}).forEach(([key, value]) => {
 		if (value !== undefined && value !== null) query.set(key, String(value));
 	});
@@ -23,7 +31,11 @@ const queryOf = (url: string, params?: Record<string, any>) => {
 const JOURNALED_ACTOR_KINDS = new Set(['persona', 'plugin']);
 
 /** A row is journaled for a non-GET write by persona/plugin, or a persona refusal (401/403) even on a GET. */
-const journalWorthy = (actor: LocalActor | undefined, method: string, status: number): boolean => {
+const journalWorthy = (
+	actor: LocalActor | undefined,
+	method: string,
+	status: number,
+): boolean => {
 	if (!actor || !JOURNALED_ACTOR_KINDS.has(actor.kind)) return false;
 	if (method !== 'GET') return true;
 	return actor.kind === 'persona' && (status === 401 || status === 403);
@@ -37,10 +49,21 @@ const firstNumericParam = (params: Record<string, string>): string | null => {
 };
 
 /** Route pattern's first path segment as the entity, plus an id from the path or, for a create, the response body. */
-const entityOf = (method: string, pattern: string, params: Record<string, string>, data: unknown) => {
+const entityOf = (
+	method: string,
+	pattern: string,
+	params: Record<string, string>,
+	data: unknown,
+) => {
 	const entity = pattern.split('/')[0] || null;
 	let entityId = firstNumericParam(params);
-	if (entityId == null && method === 'POST' && data && typeof data === 'object' && 'id' in (data as object)) {
+	if (
+		entityId == null &&
+		method === 'POST' &&
+		data &&
+		typeof data === 'object' &&
+		'id' in (data as object)
+	) {
 		const id = (data as Record<string, unknown>).id;
 		entityId = id == null ? null : String(id);
 	}
@@ -59,7 +82,17 @@ const writeJournalRow = (
 	ctx.db.execute(
 		`INSERT INTO activity_log (at, actor_kind, actor_id, actor_name, method, route, entity, entity_id, status)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		[ctx.now().toISOString(), actor.kind, actor.id, actor.name ?? null, method, route, entity, entityId, status],
+		[
+			ctx.now().toISOString(),
+			actor.kind,
+			actor.id,
+			actor.name ?? null,
+			method,
+			route,
+			entity,
+			entityId,
+			status,
+		],
 	);
 
 /**
@@ -80,7 +113,8 @@ export const dispatchLocal = async (
 	if (!route) return null;
 	const actor = ctx.actor;
 	try {
-		if (actor?.kind === 'persona') await checkPersonaAccess(ctx, method, route.pattern);
+		if (actor?.kind === 'persona')
+			await checkPersonaAccess(ctx, method, route.pattern);
 		const data = await route.handler({
 			method: upperMethod,
 			path,
@@ -90,15 +124,30 @@ export const dispatchLocal = async (
 			ctx,
 		});
 		if (journalWorthy(actor, upperMethod, route.status)) {
-			const { entity, entityId } = entityOf(upperMethod, route.pattern, route.params, data);
+			const { entity, entityId } = entityOf(
+				upperMethod,
+				route.pattern,
+				route.params,
+				data,
+			);
 			try {
-				await writeJournalRow(ctx, actor!, upperMethod, route.pattern, entity, entityId, route.status);
+				await writeJournalRow(
+					ctx,
+					actor!,
+					upperMethod,
+					route.pattern,
+					entity,
+					entityId,
+					route.status,
+				);
 			} catch {
 				// A persona's audit trail is part of the write, so a journal failure must surface, not vanish.
-				if (actor!.kind === 'persona') return { status: 500, data: { message: 'Audit failed' } };
+				if (actor!.kind === 'persona')
+					return { status: 500, data: { message: 'Audit failed' } };
 			}
 		}
-		if (data instanceof LocalRaw) return { status: route.status, data: data.body };
+		if (data instanceof LocalRaw)
+			return { status: route.status, data: data.body };
 		// Same rule as the Java envelope filter: wrap unless the body already carries `data`.
 		const wrapped =
 			data && typeof data === 'object' && !Array.isArray(data) && 'data' in data
@@ -108,9 +157,22 @@ export const dispatchLocal = async (
 	} catch (error) {
 		if (error instanceof LocalHttpError) {
 			if (journalWorthy(actor, upperMethod, error.status)) {
-				const { entity, entityId } = entityOf(upperMethod, route.pattern, route.params, undefined);
+				const { entity, entityId } = entityOf(
+					upperMethod,
+					route.pattern,
+					route.params,
+					undefined,
+				);
 				try {
-					await writeJournalRow(ctx, actor!, upperMethod, route.pattern, entity, entityId, error.status);
+					await writeJournalRow(
+						ctx,
+						actor!,
+						upperMethod,
+						route.pattern,
+						entity,
+						entityId,
+						error.status,
+					);
 				} catch {
 					// Best effort: the response already carries the real refusal.
 				}
@@ -118,7 +180,10 @@ export const dispatchLocal = async (
 			return {
 				status: error.status,
 				data:
-					error.body ?? (error.code ? { message: error.message, code: error.code } : { message: error.message }),
+					error.body ??
+					(error.code
+						? { message: error.message, code: error.code }
+						: { message: error.message }),
 			};
 		}
 		throw error;

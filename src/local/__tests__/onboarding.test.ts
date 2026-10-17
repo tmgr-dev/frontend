@@ -1,4 +1,8 @@
-import { createOnboardingHandler, ONBOARDING_KEY, type OnboardingStorage } from '../onboarding';
+import {
+	createOnboardingHandler,
+	ONBOARDING_KEY,
+	type OnboardingStorage,
+} from '../onboarding';
 
 const memory = (): OnboardingStorage & { map: Map<string, string> } => {
 	const map = new Map<string, string>();
@@ -22,7 +26,10 @@ const empty = {
 describe('local onboarding handler', () => {
 	it('answers GET with the default state, intent null, wrapped in data', async () => {
 		const handle = createOnboardingHandler(memory());
-		expect(await handle('GET', 'onboarding')).toEqual({ status: 200, data: { data: empty } });
+		expect(await handle('GET', 'onboarding')).toEqual({
+			status: 200,
+			data: { data: empty },
+		});
 	});
 
 	it('does not store an intent on GET', async () => {
@@ -33,7 +40,11 @@ describe('local onboarding handler', () => {
 
 	it('accepts and ignores seed, never invited, creates no starter tasks', async () => {
 		const handle = createOnboardingHandler(memory());
-		for (const body of [{ intent: 'human' }, { intent: 'human', seed: false }, { intent: 'human', seed: true }]) {
+		for (const body of [
+			{ intent: 'human' },
+			{ intent: 'human', seed: false },
+			{ intent: 'human', seed: true },
+		]) {
 			expect((await handle('POST', 'onboarding/intent', body)).data).toEqual({
 				data: { intent: 'human', starter_tasks_created: 0, invited: false },
 			});
@@ -43,10 +54,22 @@ describe('local onboarding handler', () => {
 	it('persists preferences and ignores unknown values', async () => {
 		const storage = memory();
 		const handle = createOnboardingHandler(storage);
-		await handle('PUT', 'onboarding/preferences', { tips_mode: 'off', hub_hidden: true, bogus: 1 });
-		await handle('PUT', 'onboarding/preferences', { tips_mode: 'nonsense', checklist_hidden: true });
-		const state = (await createOnboardingHandler(storage)('GET', 'onboarding')).data.data;
-		expect(state).toMatchObject({ tips_mode: 'off', hub_hidden: true, checklist_hidden: true });
+		await handle('PUT', 'onboarding/preferences', {
+			tips_mode: 'off',
+			hub_hidden: true,
+			bogus: 1,
+		});
+		await handle('PUT', 'onboarding/preferences', {
+			tips_mode: 'nonsense',
+			checklist_hidden: true,
+		});
+		const state = (await createOnboardingHandler(storage)('GET', 'onboarding'))
+			.data.data;
+		expect(state).toMatchObject({
+			tips_mode: 'off',
+			hub_hidden: true,
+			checklist_hidden: true,
+		});
 		expect(JSON.parse(storage.map.get(ONBOARDING_KEY)!).tips_mode).toBe('off');
 	});
 
@@ -70,47 +93,100 @@ describe('local onboarding handler', () => {
 
 	it('answers a preferences write with the preference fields only', async () => {
 		const handle = createOnboardingHandler(memory());
-		const res = await handle('PUT', 'onboarding/preferences', { tips_mode: 'hub_only' });
-		expect(res.data).toEqual({
-			data: { tips_mode: 'hub_only', hub_hidden: false, checklist_hidden: false },
+		const res = await handle('PUT', 'onboarding/preferences', {
+			tips_mode: 'hub_only',
 		});
-		expect((await handle('PUT', 'onboarding/preferences', { tips_mode: 'all' })).data.data.tips_mode).toBe('hub_only');
+		expect(res.data).toEqual({
+			data: {
+				tips_mode: 'hub_only',
+				hub_hidden: false,
+				checklist_hidden: false,
+			},
+		});
+		expect(
+			(await handle('PUT', 'onboarding/preferences', { tips_mode: 'all' })).data
+				.data.tips_mode,
+		).toBe('hub_only');
 	});
 
 	it('rejects an invalid tour status', async () => {
 		const handle = createOnboardingHandler(memory());
-		expect((await handle('PUT', 'onboarding/tours/a', { status: 'weird', version: 1 })).status).toBe(422);
+		expect(
+			(
+				await handle('PUT', 'onboarding/tours/a', {
+					status: 'weird',
+					version: 1,
+				})
+			).status,
+		).toBe(422);
 	});
 
 	it('never downgrades a completed tour with an older generation or version', async () => {
 		const handle = createOnboardingHandler(memory());
-		await handle('PUT', 'onboarding/tours/a', { status: 'completed', step_id: null, version: 2, generation: 1 });
-		await handle('PUT', 'onboarding/tours/a', { status: 'in_progress', step_id: 's', version: 1, generation: 1 });
+		await handle('PUT', 'onboarding/tours/a', {
+			status: 'completed',
+			step_id: null,
+			version: 2,
+			generation: 1,
+		});
+		await handle('PUT', 'onboarding/tours/a', {
+			status: 'in_progress',
+			step_id: 's',
+			version: 1,
+			generation: 1,
+		});
 		const state = (await handle('GET', 'onboarding')).data.data;
 		expect(state.tours.a.status).toBe('completed');
 	});
 
 	it('drops writes from an older generation than the reset one', async () => {
 		const handle = createOnboardingHandler(memory());
-		await handle('PUT', 'onboarding/tours/a', { status: 'completed', step_id: null, version: 1, generation: 0 });
+		await handle('PUT', 'onboarding/tours/a', {
+			status: 'completed',
+			step_id: null,
+			version: 1,
+			generation: 0,
+		});
 		const reset = await handle('DELETE', 'onboarding/tours');
 		expect(reset.data).toEqual({ data: { tours_generation: 1 } });
-		await handle('PUT', 'onboarding/tours/b', { status: 'in_progress', step_id: 'x', version: 1, generation: 0 });
+		await handle('PUT', 'onboarding/tours/b', {
+			status: 'in_progress',
+			step_id: 'x',
+			version: 1,
+			generation: 0,
+		});
 		expect((await handle('GET', 'onboarding')).data.data.tours).toEqual({});
-		await handle('PUT', 'onboarding/tours/b', { status: 'in_progress', step_id: 'x', version: 1, generation: 1 });
-		expect((await handle('GET', 'onboarding')).data.data.tours.b.status).toBe('in_progress');
+		await handle('PUT', 'onboarding/tours/b', {
+			status: 'in_progress',
+			step_id: 'x',
+			version: 1,
+			generation: 1,
+		});
+		expect((await handle('GET', 'onboarding')).data.data.tours.b.status).toBe(
+			'in_progress',
+		);
 	});
 
 	it('sets the intent and validates it', async () => {
 		const handle = createOnboardingHandler(memory());
-		expect((await handle('POST', 'onboarding/intent', { intent: 'agent' })).data.data.intent).toBe('agent');
-		expect((await handle('POST', 'onboarding/intent', { intent: 'x' })).status).toBe(422);
+		expect(
+			(await handle('POST', 'onboarding/intent', { intent: 'agent' })).data.data
+				.intent,
+		).toBe('agent');
+		expect(
+			(await handle('POST', 'onboarding/intent', { intent: 'x' })).status,
+		).toBe(422);
 	});
 
 	it('serves empty facts and a no-op starter task removal', async () => {
 		const handle = createOnboardingHandler(memory());
-		expect(await handle('GET', 'onboarding/facts')).toEqual({ status: 200, data: { data: {} } });
-		expect((await handle('DELETE', 'onboarding/starter-tasks')).status).toBe(200);
+		expect(await handle('GET', 'onboarding/facts')).toEqual({
+			status: 200,
+			data: { data: {} },
+		});
+		expect((await handle('DELETE', 'onboarding/starter-tasks')).status).toBe(
+			200,
+		);
 	});
 
 	it('survives corrupt storage and unknown routes', async () => {

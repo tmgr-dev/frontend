@@ -1,6 +1,6 @@
+import { expect, test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 import { mockApp } from './mockApp.mjs';
 
@@ -70,7 +70,9 @@ test('a fresh visit sends nothing to telemetry or trackers before any choice', a
   expect(stored).toEqual([]);
 });
 
-test('both blocks stand alone and the buttons weigh the same', async ({ page }) => {
+test('both blocks stand alone and the buttons weigh the same', async ({
+  page,
+}) => {
   await mockApp(page, { account: false, consent: false });
   await page.goto('/login');
   const no = page.getByRole('button', { name: 'No, thanks' });
@@ -83,15 +85,16 @@ test('both blocks stand alone and the buttons weigh the same', async ({ page }) 
   await page.getByRole('button', { name: 'What we send' }).click();
   await expect(page.getByText('We never send:')).toBeVisible();
   await page.getByRole('button', { name: 'What we send' }).click();
-  await expect(page.getByRole('link', { name: 'What we collect' })).toHaveAttribute(
-    'href',
-    '/privacy#usage-data',
-  );
+  await expect(
+    page.getByRole('link', { name: 'What we collect' }),
+  ).toHaveAttribute('href', '/privacy#usage-data');
   await no.click();
   await expect(page.locator('[data-consent-block="usage"]')).toHaveCount(0);
   await expect(page.locator('[data-consent-block="analytics"]')).toBeVisible();
   await page.getByRole('button', { name: 'Decline' }).click();
-  await expect(page.getByRole('region', { name: 'Privacy choices' })).toHaveCount(0);
+  await expect(
+    page.getByRole('region', { name: 'Privacy choices' }),
+  ).toHaveCount(0);
 });
 
 test('sharing sends a credential-free batch and no id exists before it', async ({
@@ -161,7 +164,9 @@ test('turning sharing off in Settings stops a second tab at once', async ({
   await expect(page.getByTestId('install-id')).toHaveText('\u2014');
   await expect(page.getByTestId('pending-count')).toHaveText('0');
   await expect
-    .poll(() => second.evaluate(() => localStorage.getItem('tmgr:telemetry:identity')))
+    .poll(() =>
+      second.evaluate(() => localStorage.getItem('tmgr:telemetry:identity')),
+    )
     .toBeNull();
 
   await second.evaluate(() => (window.__tmgrBefore = 0));
@@ -209,15 +214,23 @@ test('a guest who opted in can turn sharing off and delete on the privacy page',
   await page.getByRole('button', { name: 'Decline' }).click();
   await page.waitForTimeout(500);
   await goHidden(page);
-  await expect.poll(() => events.filter((e) => e.method === 'POST').length).toBeGreaterThan(0);
+  await expect
+    .poll(() => events.filter((e) => e.method === 'POST').length)
+    .toBeGreaterThan(0);
   await page.goto('/privacy#usage-data');
   await expect(page.getByTestId('usage-switch')).toBeChecked();
   await page.getByTestId('usage-switch').click();
   await expect(page.getByTestId('usage-switch')).not.toBeChecked();
   await expect(page.getByTestId('install-id')).toHaveText('\u2014');
   await page.getByRole('button', { name: 'Delete data already sent' }).click();
-  await expect(page.getByTestId('delete-result')).toHaveText('Deleted. Sharing is off.');
-  expect(events.some((e) => e.method === 'DELETE' && e.headers['x-telemetry-secret'])).toBe(true);
+  await expect(page.getByTestId('delete-result')).toHaveText(
+    'Deleted. Sharing is off.',
+  );
+  expect(
+    events.some(
+      (e) => e.method === 'DELETE' && e.headers['x-telemetry-secret'],
+    ),
+  ).toBe(true);
 });
 
 test.describe('settings and screenshots', () => {
@@ -226,14 +239,18 @@ test.describe('settings and screenshots', () => {
   }) => {
     await mockApp(page, { account: true, consent: false });
     const { events, route } = await watchTelemetry(page.context());
-  await route(page);
+    await route(page);
     await page.goto('/settings?tab=privacy');
     await shareUsage(page);
     await page.getByRole('button', { name: 'Decline' }).click();
     await expect(page.getByText('Not linked to your account:')).toBeVisible();
     await expect(page.getByTestId('pending-count')).toHaveText(/^[1-9]/);
-    await expect(page.getByTestId('install-id')).toHaveText(/^[0-9a-f]{4}…[0-9a-f]{4}$/);
-    await expect(page.getByText('Turning sharing off stops it at once.')).toBeVisible();
+    await expect(page.getByTestId('install-id')).toHaveText(
+      /^[0-9a-f]{4}…[0-9a-f]{4}$/,
+    );
+    await expect(
+      page.getByText('Turning sharing off stops it at once.'),
+    ).toBeVisible();
     await expect(page.getByRole('link', { name: 'Read more' })).toHaveAttribute(
       'href',
       '/privacy#onboarding-aggregates',
@@ -246,11 +263,17 @@ test.describe('settings and screenshots', () => {
     await page.keyboard.press('Escape');
     await goHidden(page);
     await expect.poll(() => events.some((e) => e.method === 'POST')).toBe(true);
-    await page.getByRole('button', { name: 'Delete data already sent' }).click();
-    await expect(page.getByTestId('delete-result')).toHaveText('Deleted. Sharing is off.');
-    expect(events.some((e) => e.method === 'DELETE' && e.headers['x-telemetry-secret'])).toBe(
-      true,
+    await page
+      .getByRole('button', { name: 'Delete data already sent' })
+      .click();
+    await expect(page.getByTestId('delete-result')).toHaveText(
+      'Deleted. Sharing is off.',
     );
+    expect(
+      events.some(
+        (e) => e.method === 'DELETE' && e.headers['x-telemetry-secret'],
+      ),
+    ).toBe(true);
     await expect(page.getByTestId('usage-switch')).not.toBeChecked();
     await expect(page.getByTestId('install-id')).toHaveText('\u2014');
     await expect(page.getByTestId('pending-count')).toHaveText('0');
@@ -258,12 +281,17 @@ test.describe('settings and screenshots', () => {
     await shot(page, 's6b-settings-privacy-off.png');
   });
 
-  for (const [name, width, height] of [['1280', 1280, 800], ['390', 390, 844]]) {
+  for (const [name, width, height] of [
+    ['1280', 1280, 800],
+    ['390', 390, 844],
+  ]) {
     test(`consent panel at ${name}`, async ({ page }) => {
       await page.setViewportSize({ width, height });
       await mockApp(page, { account: false, consent: false });
       await page.goto('/login');
-      await expect(page.getByRole('region', { name: 'Privacy choices' })).toBeVisible();
+      await expect(
+        page.getByRole('region', { name: 'Privacy choices' }),
+      ).toBeVisible();
       await shot(page, `s6b-consent-panel-${name}.png`);
     });
   }
@@ -312,19 +340,27 @@ for (const analytics of ['denied', 'granted']) {
       sessionStorage.setItem('seeded', '1');
       localStorage.setItem(
         'tmgr:consent:v1',
-        JSON.stringify({ analytics: value, usage: null, updatedAt: '2026-10-12T00:00:00.000Z' }),
+        JSON.stringify({
+          analytics: value,
+          usage: null,
+          updatedAt: '2026-10-12T00:00:00.000Z',
+        }),
       );
     }, analytics);
     const { events, others, route } = await watchTelemetry(page.context());
     await route(page);
     await page.goto('/login');
     await expect(page.locator('[data-consent-block="usage"]')).toHaveCount(1);
-    await expect(page.locator('[data-consent-block="analytics"]')).toHaveCount(0);
+    await expect(page.locator('[data-consent-block="analytics"]')).toHaveCount(
+      0,
+    );
     await page.waitForTimeout(1000);
     expect(events).toEqual([]);
     if (analytics === 'denied') expect(others).toEqual([]);
     else expect(others.some((u) => /googletagmanager/.test(u))).toBe(true);
-    const usage = await page.evaluate(() => localStorage.getItem('tmgr:telemetry:consent'));
+    const usage = await page.evaluate(() =>
+      localStorage.getItem('tmgr:telemetry:consent'),
+    );
     expect(usage === null || JSON.parse(usage).on === false).toBe(true);
   });
 }

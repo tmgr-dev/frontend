@@ -45,9 +45,15 @@
 		<ul
 			class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
 		>
-			<li v-for="run in runs" :key="run.id" class="flex flex-col gap-1.5 px-3 py-2.5">
+			<li
+				v-for="run in runs"
+				:key="run.id"
+				class="flex flex-col gap-1.5 px-3 py-2.5"
+			>
 				<div class="flex flex-wrap items-center gap-2 text-xs">
-					<span class="font-semibold text-ink">{{ agentLabel(run.agent) }}</span>
+					<span class="font-semibold text-ink">{{
+						agentLabel(run.agent)
+					}}</span>
 					<span v-if="run.model" class="text-ink-faint">{{ run.model }}</span>
 					<span
 						:class="[
@@ -140,10 +146,16 @@
 	import { getAgentWork } from '@/actions/tmgr/agentWork';
 	import { getTaskCost } from '@/actions/tmgr/taskCost';
 	import AgentWorkDetails from '@/components/tasks/AgentWorkDetails.vue';
+	import { usePusher } from '@/composable/usePusher';
+	import store from '@/store';
+	import {
+		agentRunEvent,
+		showAgentWorkEmptyState,
+	} from '@/tours/agentRunEvents';
+	import { tourBus } from '@/tours/events';
+	import { useTours } from '@/tours/useTours';
 	import { readTaskUsage } from '@/usage/loadTaskUsage';
 	import { blockSummary, prLabel, pricedCost } from '@/usage/taskModel';
-	import { isDesktopApp } from '@/utils/desktop';
-	import { usePusher } from '@/composable/usePusher';
 	import {
 		agentLabel,
 		formatWorkDuration,
@@ -153,10 +165,7 @@
 		mergeSnapshot,
 		upsertRun,
 	} from '@/utils/agentWork';
-	import store from '@/store';
-	import { agentRunEvent, showAgentWorkEmptyState } from '@/tours/agentRunEvents';
-	import { tourBus } from '@/tours/events';
-	import { useTours } from '@/tours/useTours';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { formatDistanceToNow } from 'date-fns';
 	import {
 		computed,
@@ -173,8 +182,7 @@
 		succeeded:
 			'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
 		failed: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-		cancelled:
-			'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
+		cancelled: 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300',
 		abandoned:
 			'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
 	};
@@ -261,7 +269,8 @@
 					serverTotals.value = overview.totals;
 					totalsReceivedAt.value = Date.now();
 					loaded.value = true;
-					if (desktop && overview.runs.length) loadCosts(overview.runs, current);
+					if (desktop && overview.runs.length)
+						loadCosts(overview.runs, current);
 				} catch (error) {
 					console.error('Failed to load agent work', error);
 				}
@@ -385,15 +394,20 @@
 						receivedAt,
 						totalsReceivedAt.value,
 					);
-					const synced = cost.value?.ai?.synced && cost.value.ai.costUsd != null
-						? Number(cost.value.ai.costUsd)
-						: null;
+					const synced =
+						cost.value?.ai?.synced && cost.value.ai.costUsd != null
+							? Number(cost.value.ai.costUsd)
+							: null;
 					return (
 						blockSummary({
 							youSeconds: t.humanSeconds,
 							agentSeconds: t.agentSeconds,
-							aiCostUsd: localCost.value ?? (Number.isFinite(synced) ? synced : null),
-							prLabel: prLabel([], runs.value.map((r) => r.pr_url)),
+							aiCostUsd:
+								localCost.value ?? (Number.isFinite(synced) ? synced : null),
+							prLabel: prLabel(
+								[],
+								runs.value.map((r) => r.pr_url),
+							),
 						}) || 'Details'
 					);
 				}),

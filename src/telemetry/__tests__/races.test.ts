@@ -19,9 +19,14 @@ import {
 const ID_A = '00000000-0000-4000-8000-00000000000a';
 const ID_B = '00000000-0000-4000-8000-00000000000b';
 const SECRET = 'a'.repeat(64);
-const identity = (install_id = ID_A) => ({ install_id, secret: SECRET, registered: false });
+const identity = (install_id = ID_A) => ({
+	install_id,
+	secret: SECRET,
+	registered: false,
+});
 const asStorage = (storage: FlakyStorage) => storage as unknown as Storage;
-const body = (call: { init: RequestInit }) => JSON.parse(call.init.body as string);
+const body = (call: { init: RequestInit }) =>
+	JSON.parse(call.init.body as string);
 
 beforeEach(() => {
 	localStorage.clear();
@@ -73,7 +78,10 @@ it('cannot persist withdrawal between the final consent read and fetch start', a
 	const storage = new FlakyStorage();
 	const locks = new TestLocks();
 	storage.setItem(USAGE_KEY, JSON.stringify({ on: true, generation: 1 }));
-	storage.setItem(IDENTITY_KEY, JSON.stringify({ ...identity(), registered: true }));
+	storage.setItem(
+		IDENTITY_KEY,
+		JSON.stringify({ ...identity(), registered: true }),
+	);
 	const sender = createUsageConsent(testWindow(storage, locks));
 	const withdrawer = createUsageConsent(testWindow(storage, locks));
 	await tick();
@@ -96,7 +104,10 @@ it('cannot persist withdrawal between the final consent read and fetch start', a
 			deny: () => sender.set(false),
 		},
 		fetch: (async (_url: string, init: RequestInit) => {
-			posts.push({ on: JSON.parse(storage.getItem(USAGE_KEY)!).on, signal: init.signal! });
+			posts.push({
+				on: JSON.parse(storage.getItem(USAGE_KEY)!).on,
+				signal: init.signal!,
+			});
 			return { status: 204 } as Response;
 		}) as unknown as typeof fetch,
 	});
@@ -172,14 +183,19 @@ it('adopts every delivered deny despite unreadable storage and a higher stored g
 	expect(b.timers.every((timer) => timer.cleared)).toBe(true);
 	expect(b.calls[0].init.signal?.aborted).toBe(true);
 	expect(storage.getItem(IDENTITY_KEY)).not.toBeNull();
-	expect([...storage.data.keys()].some((key) => key.startsWith(RECEIPT_PREFIX))).toBe(false);
+	expect(
+		[...storage.data.keys()].some((key) => key.startsWith(RECEIPT_PREFIX)),
+	).toBe(false);
 	response.resolve();
 	await pending;
 	b.telemetry.track('app_opened');
 	await b.telemetry.flush();
 	expect(b.calls).toHaveLength(1);
 	storage.setItem(USAGE_KEY, JSON.stringify({ on: true, generation: 21 }));
-	b.win.fire('storage', { key: USAGE_KEY, newValue: storage.getItem(USAGE_KEY) });
+	b.win.fire('storage', {
+		key: USAGE_KEY,
+		newValue: storage.getItem(USAGE_KEY),
+	});
 	expect(b.usage.read().on).toBe(true);
 });
 
@@ -193,7 +209,10 @@ it.each([undefined, -1, 0, 1])(
 		new FakeChannel().postMessage({ type: 'deny', generation });
 		await tab.telemetry.flush();
 		expect(tab.calls).toHaveLength(0);
-		expect(tab.telemetry.snapshot()).toMatchObject({ active: false, pending: 0 });
+		expect(tab.telemetry.snapshot()).toMatchObject({
+			active: false,
+			pending: 0,
+		});
 	},
 );
 
@@ -232,8 +251,14 @@ it('does not prune a receipt refreshed after its expired value was read', async 
 	const locks = new TestLocks();
 	const clock = makeClock();
 	const key = RECEIPT_PREFIX + ID_A;
-	storage.setItem(key, JSON.stringify({ secret: SECRET, expiresAt: clock.now() - 1 }));
-	const fresh = JSON.stringify({ secret: SECRET, expiresAt: clock.now() + 60_000 });
+	storage.setItem(
+		key,
+		JSON.stringify({ secret: SECRET, expiresAt: clock.now() - 1 }),
+	);
+	const fresh = JSON.stringify({
+		secret: SECRET,
+		expiresAt: clock.now() + 60_000,
+	});
 	const read = storage.getItem.bind(storage);
 	let refreshed = false;
 	storage.getItem = (name) => {
@@ -264,16 +289,18 @@ it('identity storage events never retire or recreate another tab identity in a h
 	const b = connectedTab(storage);
 	await b.usage.set(true);
 	const current = storage.getItem(IDENTITY_KEY);
-	const receipts = [...storage.data.keys()].filter((key) => key.startsWith(RECEIPT_PREFIX));
+	const receipts = [...storage.data.keys()].filter((key) =>
+		key.startsWith(RECEIPT_PREFIX),
+	);
 	for (let i = 0; i < 5; i += 1) {
 		a.win.fire('storage', { key: IDENTITY_KEY });
 		b.win.fire('storage', { key: IDENTITY_KEY });
 		await tick();
 	}
 	expect(storage.getItem(IDENTITY_KEY)).toBe(current);
-	expect([...storage.data.keys()].filter((key) => key.startsWith(RECEIPT_PREFIX))).toEqual(
-		receipts,
-	);
+	expect(
+		[...storage.data.keys()].filter((key) => key.startsWith(RECEIPT_PREFIX)),
+	).toEqual(receipts);
 	expect(a.usage.read().on).toBe(false);
 	expect(b.telemetry.snapshot().active).toBe(true);
 });
@@ -284,7 +311,10 @@ it.each([
 	{ install_id: ID_A, secret: 'bad secret' },
 ])('never sends a malformed stored identity: %j', async (poison) => {
 	setConsent('granted', 1);
-	localStorage.setItem(IDENTITY_KEY, JSON.stringify({ ...poison, registered: false }));
+	localStorage.setItem(
+		IDENTITY_KEY,
+		JSON.stringify({ ...poison, registered: false }),
+	);
 	const store = createIdentityStore({
 		storage: localStorage,
 		now: Date.now,
@@ -358,7 +388,9 @@ it('an old install acknowledgement cannot register the new install', async () =>
 	const next = JSON.parse(localStorage.getItem(IDENTITY_KEY)!);
 	response.resolve();
 	await pending;
-	expect(JSON.parse(localStorage.getItem(IDENTITY_KEY)!).registered).toBe(false);
+	expect(JSON.parse(localStorage.getItem(IDENTITY_KEY)!).registered).toBe(
+		false,
+	);
 	b.telemetry.track('app_opened');
 	await b.telemetry.flush();
 	expect(body(b.calls[0])).toMatchObject({
@@ -406,7 +438,12 @@ it('stops a flush waiting for the send lock when this window withdraws', async (
 it('concurrent identity creation reuses the identity already created under the lock', async () => {
 	const storage = new FlakyStorage();
 	const locks = new TestLocks();
-	const deps = { storage: asStorage(storage), locks, now: Date.now, secret: () => SECRET };
+	const deps = {
+		storage: asStorage(storage),
+		locks,
+		now: Date.now,
+		secret: () => SECRET,
+	};
 	const a = createIdentityStore({ ...deps, uuid: () => ID_A });
 	const b = createIdentityStore({ ...deps, uuid: () => ID_B });
 	const [first, second] = await Promise.all([a.create(), b.create()]);
@@ -446,7 +483,10 @@ it('starts safely when obtaining localStorage throws', async () => {
 	tab.telemetry.track('app_opened');
 	await tab.telemetry.flush();
 	expect(tab.calls).toHaveLength(0);
-	expect(tab.telemetry.snapshot()).toMatchObject({ active: false, installId: null });
+	expect(tab.telemetry.snapshot()).toMatchObject({
+		active: false,
+		installId: null,
+	});
 });
 
 it('leaves the never-shipped legacy receipt key alone', async () => {
@@ -469,8 +509,16 @@ it('a delayed old storage grant cannot undo a delivered denial', async () => {
 	const tab = connectedTab(storage);
 	tab.telemetry.track('app_opened');
 	new FakeChannel().postMessage({ type: 'deny', generation: 1 });
-	tab.win.fire('storage', { key: USAGE_KEY, oldValue: null, newValue: original });
-	tab.win.fire('storage', { key: USAGE_KEY, oldValue: original, newValue: null });
+	tab.win.fire('storage', {
+		key: USAGE_KEY,
+		oldValue: null,
+		newValue: original,
+	});
+	tab.win.fire('storage', {
+		key: USAGE_KEY,
+		oldValue: original,
+		newValue: null,
+	});
 	tab.win.fire('storage', { key: null, oldValue: null, newValue: null });
 	tab.telemetry.track('app_opened');
 	await tab.telemetry.flush();
@@ -478,7 +526,11 @@ it('a delayed old storage grant cannot undo a delivered denial', async () => {
 	expect(tab.usage.read().on).toBe(false);
 	const granted = JSON.stringify({ on: true, generation: 8 });
 	storage.setItem(USAGE_KEY, granted);
-	tab.win.fire('storage', { key: USAGE_KEY, oldValue: original, newValue: granted });
+	tab.win.fire('storage', {
+		key: USAGE_KEY,
+		oldValue: original,
+		newValue: granted,
+	});
 	tab.telemetry.track('app_opened');
 	await tab.telemetry.flush();
 	expect(tab.calls).toHaveLength(1);

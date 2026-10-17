@@ -1,7 +1,7 @@
 <script setup lang="ts">
 	import '@/assets/styles/md-editor.css';
-	import { EditorView } from '@codemirror/view';
 	import '@/utils/mdEditorConfig';
+	import { EditorView } from '@codemirror/view';
 	import { MdEditor } from 'md-editor-v3';
 	import { onBeforeUnmount } from 'vue';
 	import store from '../store';
@@ -9,9 +9,7 @@
 	const editorId = `md-editor-${Math.random().toString(36).slice(2)}`;
 	const value = defineModel<string>({ default: '' });
 	onBeforeUnmount(() => {
-		const dom = document.querySelector<HTMLElement>(
-			`#${editorId} .cm-editor`,
-		);
+		const dom = document.querySelector<HTMLElement>(`#${editorId} .cm-editor`);
 		if (dom) EditorView.findFromDOM(dom)?.destroy();
 	});
 </script>

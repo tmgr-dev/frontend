@@ -25,7 +25,11 @@
 					module for yourself.
 				</div>
 
-				<div v-if="presets.length" data-tour="modules.presets" class="flex items-center gap-3">
+				<div
+					v-if="presets.length"
+					data-tour="modules.presets"
+					class="flex items-center gap-3"
+				>
 					<Button
 						variant="outline"
 						size="sm"
@@ -214,7 +218,11 @@
 						<SettingsRow
 							v-for="feature in personalFeatures"
 							:key="feature.key"
-							:data-tour="feature.key === 'default_landing_page' ? 'settings.default-landing' : undefined"
+							:data-tour="
+								feature.key === 'default_landing_page'
+									? 'settings.default-landing'
+									: undefined
+							"
 							v-slot="{ labelId, descriptionId }"
 							:label="feature.name || humanizeKey(feature.key)"
 							:description="featureDescription(feature.key, feature)"
@@ -277,9 +285,9 @@
 		setModuleEnabled,
 	} from '@/actions/tmgr/modules';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
-	import PageContainer from '@/components/layouts/PageContainer.vue';
-	import RequiresAccount from '@/components/general/RequiresAccount.vue';
 	import ModulesPresetDialog from '@/components/general/ModulesPresetDialog.vue';
+	import RequiresAccount from '@/components/general/RequiresAccount.vue';
+	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
@@ -307,8 +315,8 @@
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { visiblePresets } from '@/utils/localOnly';
 	import { featureDescription, humanizeKey } from '@/utils/featureToggleCopy';
+	import { visiblePresets } from '@/utils/localOnly';
 	import { allowedLandings } from '@/utils/moduleSurfaces';
 	import {
 		buildModulesView,

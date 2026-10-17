@@ -21,8 +21,10 @@ import {
 	CONTEXT,
 	CONTEXT_TITLE,
 	PERSON,
+	SECTION_ID,
 	appendInSection,
 	appendNewHeading,
+	appendNewSection,
 	appendToEnd,
 	appendUnderHeading,
 	autolinkTaskKeys,
@@ -32,12 +34,10 @@ import {
 	findSection,
 	isKnownType,
 	nonHumanViolation,
-	appendNewSection,
-	SECTION_ID,
-	systemSectionViolation,
 	replaceSection,
 	sections,
 	structureError,
+	systemSectionViolation,
 	taskKeyCandidates,
 	templateBody,
 	writableBy,
@@ -627,7 +627,10 @@ interface Written {
 const changedSectionIds = (before: string, after: string): string[] => {
 	const inner = (body: string) =>
 		new Map(
-			sections(body).map((s) => [s.id, body.slice(s.innerStart, s.innerEnd).trim()]),
+			sections(body).map((s) => [
+				s.id,
+				body.slice(s.innerStart, s.innerEnd).trim(),
+			]),
 		);
 	const was = inner(before);
 	const now = inner(after);
@@ -1591,18 +1594,41 @@ export const taskFromSelection = async (
 	const text: string = req.text;
 	const now = iso(ctx);
 	const taskTitle = taskTitleOf(text);
-	const taskBody = `${text.trim()}\n\nFrom page: [${page.title}](tmgr://page/${page.id})`;
+	const taskBody = `${text.trim()}\n\nFrom page: [${page.title}](tmgr://page/${
+		page.id
+	})`;
 	const taskId = await journaledCreate(ctx, 'tasks', (id) => ({
 		statements: [
 			{
 				sql: `INSERT INTO tasks (id, title, description, status_id, project_category_id, category_tasks_sequence_id, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, (SELECT COALESCE(MAX(category_tasks_sequence_id), 0) + 1 FROM tasks WHERE project_category_id = ?), ?, ?)`,
-				params: [id, taskTitle, taskBody, statusId, categoryId, categoryId, now, now],
+				params: [
+					id,
+					taskTitle,
+					taskBody,
+					statusId,
+					categoryId,
+					categoryId,
+					now,
+					now,
+				],
 			},
 		],
 		entries: [
-			{ entity: 'task', entityId: id, taskId: id, field: 'create', content: taskTitle },
-			{ entity: 'task', entityId: id, taskId: id, field: 'description', content: taskBody },
+			{
+				entity: 'task',
+				entityId: id,
+				taskId: id,
+				field: 'create',
+				content: taskTitle,
+			},
+			{
+				entity: 'task',
+				entityId: id,
+				taskId: id,
+				field: 'description',
+				content: taskBody,
+			},
 		],
 	}));
 	const [task] = await ctx.db.select<any>(
@@ -1622,8 +1648,21 @@ export const taskFromSelection = async (
 	} catch (error) {
 		await journaledBatch(
 			ctx,
-			[{ sql: `UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?`, params: [now, now, taskId] }],
-			[{ entity: 'task', entityId: taskId, taskId, field: 'delete', content: null }],
+			[
+				{
+					sql: `UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?`,
+					params: [now, now, taskId],
+				},
+			],
+			[
+				{
+					entity: 'task',
+					entityId: taskId,
+					taskId,
+					field: 'delete',
+					content: null,
+				},
+			],
 		);
 		throw error;
 	}

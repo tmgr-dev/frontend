@@ -113,15 +113,21 @@
 				title="Agents"
 				description="Notifications Claude Code, Codex or other AI agents send you with a notify token"
 			>
-				<div class="flex flex-col divide-y divide-border rounded-md border border-border">
-					<div class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink">
+				<div
+					class="flex flex-col divide-y divide-border rounded-md border border-border"
+				>
+					<div
+						class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink"
+					>
 						Push to the mobile app
 						<Switch
 							:checked="formData.agent_push_enabled"
 							@update:checked="(v) => (formData.agent_push_enabled = v)"
 						/>
 					</div>
-					<div class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink">
+					<div
+						class="flex items-center justify-between gap-3 px-3 py-2 text-sm text-ink"
+					>
 						Telegram
 						<Switch
 							:checked="formData.agent_telegram_enabled"
@@ -147,6 +153,7 @@
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
+	import { notificationTypeLabel } from '@/utils/notificationTypes';
 	import {
 		computed,
 		defineComponent,
@@ -155,7 +162,6 @@
 		ref,
 		watch,
 	} from 'vue';
-	import { notificationTypeLabel } from '@/utils/notificationTypes';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({

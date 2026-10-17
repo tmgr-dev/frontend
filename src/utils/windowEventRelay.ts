@@ -29,9 +29,9 @@ export const installWindowEventRelay = (
 	const relayed = new WeakSet<object>();
 	const offBus = bus.on((event) => {
 		if (relayed.has(event)) return;
-		void Promise.resolve(emit(DOMAIN_EVENT_CHANNEL, { source: label, event })).catch(
-			(error) => console.error('[window-relay] emit failed', error),
-		);
+		void Promise.resolve(
+			emit(DOMAIN_EVENT_CHANNEL, { source: label, event }),
+		).catch((error) => console.error('[window-relay] emit failed', error));
 	});
 	const listening = Promise.resolve(
 		listen(DOMAIN_EVENT_CHANNEL, ({ payload }) => {
@@ -70,11 +70,13 @@ export const applyRelayedEvent = (
 		if (taskId != null) invalidate(`comments-task-${taskId}`);
 		return;
 	}
-	if (!event.type.startsWith('task.') && !event.type.startsWith('timer.')) return;
+	if (!event.type.startsWith('task.') && !event.type.startsWith('timer.'))
+		return;
 	const { taskId } = event as { taskId: number };
 	invalidate(`task-${taskId}`);
 	invalidate(/^tasks-status-/);
-	if (event.type === 'task.relationChanged') invalidate(`task-${event.otherTaskId}`);
+	if (event.type === 'task.relationChanged')
+		invalidate(`task-${event.otherTaskId}`);
 	if (event.type === 'timer.started' || event.type === 'timer.stopped') {
 		reloadActiveTasks();
 		deliverTimer?.(event);

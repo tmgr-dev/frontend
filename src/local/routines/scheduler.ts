@@ -1,7 +1,11 @@
 import { isDesktopApp } from '@/utils/desktop';
 import { listLocalWorkspaces, localContext } from '../runtime';
 import type { LocalContext, LocalUser, LocalWorkspace } from '../types';
-import { expandRange, materializeDueInstances, type RoutineEntryJson } from './service';
+import {
+	expandRange,
+	materializeDueInstances,
+	type RoutineEntryJson,
+} from './service';
 
 export const POLL_INTERVAL_MS = 60_000;
 const STORAGE_KEY = 'local.routines.reminded';
@@ -35,8 +39,10 @@ const entryScheduledAt = (entry: RoutineEntryJson): Date | null => {
 	return Number.isNaN(date.getTime()) ? null : date;
 };
 
-export const reminderKey = (workspaceCode: string, entry: RoutineEntryJson): string =>
-	`${workspaceCode}:${entry.task_id}:${entry.date}:${entry.time}`;
+export const reminderKey = (
+	workspaceCode: string,
+	entry: RoutineEntryJson,
+): string => `${workspaceCode}:${entry.task_id}:${entry.date}:${entry.time}`;
 
 /** Mirrors TaskScheduleProcessor.maybeRemind: fire once the reminder window opens, never after the routine's own time. */
 export const dueReminders = (
@@ -64,7 +70,10 @@ const loadReminded = (storage: SchedulerStorage): RemindedStore => {
 	}
 };
 
-const saveReminded = (storage: SchedulerStorage, reminded: RemindedStore): void => {
+const saveReminded = (
+	storage: SchedulerStorage,
+	reminded: RemindedStore,
+): void => {
 	try {
 		storage.setItem(STORAGE_KEY, JSON.stringify(reminded));
 	} catch {
@@ -73,7 +82,10 @@ const saveReminded = (storage: SchedulerStorage, reminded: RemindedStore): void 
 };
 
 /** Keeps only keys for today or later, so the store never grows across days. */
-export const pruneReminded = (reminded: RemindedStore, todayIso: string): RemindedStore => {
+export const pruneReminded = (
+	reminded: RemindedStore,
+	todayIso: string,
+): RemindedStore => {
 	const kept: RemindedStore = {};
 	for (const [key, date] of Object.entries(reminded)) {
 		if (date >= todayIso) kept[key] = date;
@@ -85,7 +97,11 @@ export const runSchedulerTick = async (deps: SchedulerDeps): Promise<void> => {
 	const workspaces = await deps.listWorkspaces();
 	const now = deps.now();
 	const todayIso = localDateKey(now);
-	const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+	const tomorrow = new Date(
+		now.getFullYear(),
+		now.getMonth(),
+		now.getDate() + 1,
+	);
 	const tomorrowIso = localDateKey(tomorrow);
 	let reminded = pruneReminded(loadReminded(deps.storage), todayIso);
 
@@ -98,10 +114,17 @@ export const runSchedulerTick = async (deps: SchedulerDeps): Promise<void> => {
 				const key = reminderKey(workspace.code, entry);
 				if (reminded[key]) continue;
 				reminded[key] = entry.date;
-				deps.notify(`Routine: ${entry.title}`, `at ${entry.time} · ${workspace.name} (local)`);
+				deps.notify(
+					`Routine: ${entry.title}`,
+					`at ${entry.time} · ${workspace.name} (local)`,
+				);
 			}
 		} catch (error) {
-			console.error('routine scheduler failed for local workspace', workspace.code, error);
+			console.error(
+				'routine scheduler failed for local workspace',
+				workspace.code,
+				error,
+			);
 		}
 	}
 
@@ -109,7 +132,11 @@ export const runSchedulerTick = async (deps: SchedulerDeps): Promise<void> => {
 };
 
 const defaultNotify = (title: string, body: string): void => {
-	if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+	if (
+		typeof Notification === 'undefined' ||
+		Notification.permission !== 'granted'
+	)
+		return;
 	new Notification(title, { body });
 };
 
@@ -126,7 +153,11 @@ const defaultStorage: SchedulerStorage = {
 const userFromStore = async (): Promise<LocalUser> => {
 	const { default: store } = await import('@/store');
 	const user: any = store.state.user ?? {};
-	return { id: Number(user.id ?? 0), name: user.name ?? '', email: user.email ?? '' };
+	return {
+		id: Number(user.id ?? 0),
+		name: user.name ?? '',
+		email: user.email ?? '',
+	};
 };
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -140,7 +171,8 @@ export const startRoutineScheduler = (deps?: Partial<SchedulerDeps>): void => {
 		storage: deps?.storage ?? defaultStorage,
 		listWorkspaces: deps?.listWorkspaces ?? (() => listLocalWorkspaces()),
 		context:
-			deps?.context ?? (async (workspace) => localContext(workspace, await userFromStore())),
+			deps?.context ??
+			(async (workspace) => localContext(workspace, await userFromStore())),
 	};
 	requestNotificationPermissionOnce();
 	void runSchedulerTick(resolved);

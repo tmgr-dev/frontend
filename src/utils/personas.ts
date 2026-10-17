@@ -99,7 +99,8 @@ export const SKILL_LIMIT = 20;
 export const SKILL_BODY_MAX_BYTES = 16384;
 export const SKILL_TITLE_MAX_LENGTH = 120;
 export const SKILL_SLUG_PATTERN = /^[a-z0-9-]{1,60}$/;
-export const SKILL_TEMPLATE = '---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
+export const SKILL_TEMPLATE =
+	'---\nslug: \ntitle: \nwhen: \nactions: []\n---\n';
 
 export interface ParsedSkillFrontMatter {
 	slug: string;
@@ -130,9 +131,10 @@ export const parseSkillFrontMatter = (
 	}
 
 	const actionsRaw = (fields.actions ?? '').trim();
-	const inner = actionsRaw.startsWith('[') && actionsRaw.endsWith(']')
-		? actionsRaw.slice(1, -1)
-		: actionsRaw;
+	const inner =
+		actionsRaw.startsWith('[') && actionsRaw.endsWith(']')
+			? actionsRaw.slice(1, -1)
+			: actionsRaw;
 	const actions = inner
 		.split(',')
 		.map((item) => item.trim())
@@ -168,7 +170,9 @@ export const validateSkillMarkdown = (
 	if (!parsed.slug) {
 		errors.slug = ['is required'];
 	} else if (!SKILL_SLUG_PATTERN.test(parsed.slug)) {
-		errors.slug = ['must be lowercase letters, digits or \'-\', up to 60 characters'];
+		errors.slug = [
+			"must be lowercase letters, digits or '-', up to 60 characters",
+		];
 	} else if (expectedSlug && parsed.slug !== expectedSlug) {
 		errors.slug = ['must match the URL slug'];
 	}
@@ -355,9 +359,9 @@ export const personaAssigneeIds = (task: AssigneeBearing): string[] =>
 /** Hidden implied owners must stay in `assignees`, and both fields travel together (the server cascades otherwise). */
 export const assigneeWritePayload = (
 	task: AssigneeBearing,
-	humanIds: number[] = ((task.assignees ?? []) as Array<{ id: number } | number>).map(
-		humanId,
-	),
+	humanIds: number[] = (
+		(task.assignees ?? []) as Array<{ id: number } | number>
+	).map(humanId),
 ): { assignees: number[]; persona_assignees: string[] } => ({
 	assignees: humanIds,
 	persona_assignees: personaAssigneeIds(task),

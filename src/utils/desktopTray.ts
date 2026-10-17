@@ -53,7 +53,8 @@ export const sameTask = (
 	b: { id: number; workspaceId?: number | null; workspace_id?: number | null },
 ) =>
 	a.id === b.id &&
-	(a.workspaceId ?? a.workspace_id ?? null) === (b.workspaceId ?? b.workspace_id ?? null);
+	(a.workspaceId ?? a.workspace_id ?? null) ===
+		(b.workspaceId ?? b.workspace_id ?? null);
 
 export const rememberRecent = (
 	previous: TrayTask[],

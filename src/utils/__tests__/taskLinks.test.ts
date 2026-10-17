@@ -119,7 +119,10 @@ describe('parseTaskLink', () => {
 describe('taskShareLinks', () => {
 	it('builds web, app and markdown links for a synced workspace', () => {
 		expect(
-			taskShareLinks({ id: 8, title: 'TM-8: Share' }, { id: 2, code: 'tmgrdev' }),
+			taskShareLinks(
+				{ id: 8, title: 'TM-8: Share' },
+				{ id: 2, code: 'tmgrdev' },
+			),
 		).toEqual({
 			web: 'https://tmgr.dev/tmgrdev/tasks/8',
 			app: 'tmgr://task/tmgrdev/8',
@@ -128,7 +131,9 @@ describe('taskShareLinks', () => {
 	});
 
 	it('has no web link for a local workspace and points markdown at the app link', () => {
-		expect(taskShareLinks({ id: 8, title: 'x' }, { id: -1, code: 'local' })).toEqual({
+		expect(
+			taskShareLinks({ id: 8, title: 'x' }, { id: -1, code: 'local' }),
+		).toEqual({
 			web: null,
 			app: 'tmgr://task/local/8',
 			markdown: '[x](tmgr://task/local/8)',

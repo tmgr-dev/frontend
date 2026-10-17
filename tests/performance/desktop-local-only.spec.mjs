@@ -1,6 +1,6 @@
+import { expect, test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
 const screensDir = process.env.SCREENS_DIR;
@@ -22,9 +22,12 @@ const localPage = async (
     { account: false, apiRequests, loginAs, authHeaders },
     { profile },
   );
-  await page.addInitScript((scheme) => {
-    localStorage.setItem('colorScheme', scheme);
-  }, dark ? 'dark' : 'light');
+  await page.addInitScript(
+    (scheme) => {
+      localStorage.setItem('colorScheme', scheme);
+    },
+    dark ? 'dark' : 'light',
+  );
   return { shell, apiRequests, authHeaders };
 };
 
@@ -45,7 +48,10 @@ const startLocal = async (page) => {
 };
 
 const addTask = async (page, title) => {
-  await page.getByRole('button', { name: 'Open Add Task Modal' }).first().click();
+  await page
+    .getByRole('button', { name: 'Open Add Task Modal' })
+    .first()
+    .click();
   await page.getByPlaceholder('Task name').fill(title);
   await page.keyboard.press('ControlOrMeta+KeyS');
 };
@@ -199,7 +205,9 @@ test('sign in from local-only mode keeps local workspaces next to the cloud one'
     profile,
     loginAs: 'cloud-token',
   });
-  const created = await shell('local_workspace_create', { name: 'My workspace' });
+  const created = await shell('local_workspace_create', {
+    name: 'My workspace',
+  });
   await shell('local_workspace_set_schema', {});
   await page.goto('/');
   await expect(page).toHaveURL(/\/local-my-workspace\//);
@@ -220,10 +228,14 @@ test('sign in from local-only mode keeps local workspaces next to the cloud one'
   await expect.poll(() => authHeaders.length).toBeGreaterThan(0);
   expect(authHeaders.every((h) => h === 'Bearer cloud-token')).toBe(true);
   await expect(page.getByText('Test User').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Create account' })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Create account' }),
+  ).toHaveCount(0);
 
   await page.getByTitle('Switch workspace').first().click();
-  await expect(page.getByRole('menuitem', { name: /My workspace/ })).toBeVisible();
+  await expect(
+    page.getByRole('menuitem', { name: /My workspace/ }),
+  ).toBeVisible();
   await page.getByRole('menuitem', { name: /Demo/ }).click();
   await expect(page).toHaveURL(/\/demo\//);
   await page.getByTitle('Switch workspace').first().click();

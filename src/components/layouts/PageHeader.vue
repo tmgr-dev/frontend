@@ -32,8 +32,8 @@
 </template>
 
 <script>
-	import { defineComponent } from 'vue';
 	import { ChevronLeft } from 'lucide-vue-next';
+	import { defineComponent } from 'vue';
 
 	export default defineComponent({
 		name: 'PageHeader',

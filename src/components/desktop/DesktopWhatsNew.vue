@@ -83,13 +83,10 @@
 	import Modal from '@/components/Modal.vue';
 	import PromotionsList from '@/components/promotions/PromotionsList.vue';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { useTours } from '@/tours/useTours';
-	import {
-		availableTours,
-		WHATS_NEW_TOUR_ID,
-	} from '@/tours/whatsNewTours';
 	import router from '@/router';
 	import store from '@/store';
+	import { useTours } from '@/tours/useTours';
+	import { availableTours, WHATS_NEW_TOUR_ID } from '@/tours/whatsNewTours';
 	import {
 		checkWhatsNewOnStartup,
 		closeWhatsNew,
@@ -119,10 +116,7 @@
 			onMounted(async () => {
 				await router.isReady();
 				watch(
-					() => [
-						store.getters.canUseApp,
-						router.currentRoute.value.path,
-					],
+					() => [store.getters.canUseApp, router.currentRoute.value.path],
 					check,
 					{ immediate: true },
 				);

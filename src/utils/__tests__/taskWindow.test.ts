@@ -1,4 +1,8 @@
-import { isInTaskWindow, isTaskWindowLabel, taskWindowTarget } from '../taskWindow';
+import {
+	isInTaskWindow,
+	isTaskWindowLabel,
+	taskWindowTarget,
+} from '../taskWindow';
 
 describe('isTaskWindowLabel', () => {
 	it('matches only task windows', () => {
@@ -17,12 +21,23 @@ describe('taskWindowTarget', () => {
 	const current = { id: 1, code: 'work' };
 
 	it('uses the task workspace, then the current one', () => {
-		expect(taskWindowTarget({ id: 5, title: ' Hi ', workspace_id: -3 }, workspaces, current)).toEqual({
+		expect(
+			taskWindowTarget(
+				{ id: 5, title: ' Hi ', workspace_id: -3 },
+				workspaces,
+				current,
+			),
+		).toEqual({
 			taskId: 5,
 			workspaceCode: 'local-proj',
 			title: 'Hi',
 		});
-		expect(taskWindowTarget({ id: 5, title: 'x' }, workspaces, { id: 9, code: 'cur' })).toEqual({
+		expect(
+			taskWindowTarget({ id: 5, title: 'x' }, workspaces, {
+				id: 9,
+				code: 'cur',
+			}),
+		).toEqual({
 			taskId: 5,
 			workspaceCode: 'cur',
 			title: 'x',
@@ -30,7 +45,9 @@ describe('taskWindowTarget', () => {
 	});
 
 	it('gives a null title for blank titles', () => {
-		expect(taskWindowTarget({ id: 5, title: '  ' }, workspaces, current)?.title).toBeNull();
+		expect(
+			taskWindowTarget({ id: 5, title: '  ' }, workspaces, current)?.title,
+		).toBeNull();
 	});
 
 	it('is null without an id or a workspace code', () => {

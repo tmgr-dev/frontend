@@ -4,11 +4,11 @@
 
 <script lang="ts">
 	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { updateCheckToast } from '@/utils/desktopUpdateCheck';
 	import {
 		checkForUpdateManually,
 		installUpdate,
 	} from '@/utils/desktopUpdater';
-	import { updateCheckToast } from '@/utils/desktopUpdateCheck';
 	import { defineComponent, h, onBeforeUnmount, onMounted } from 'vue';
 
 	export default defineComponent({

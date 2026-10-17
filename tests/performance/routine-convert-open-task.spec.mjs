@@ -9,7 +9,9 @@ const convertRoutine = async (page, title) => {
     localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1'),
   );
   // routines.first auto-offers 600ms after landing on /routines and covers the page.
-  await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
   await page.goto('/demo/board');
   await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();

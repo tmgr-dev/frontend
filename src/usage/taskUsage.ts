@@ -69,7 +69,12 @@ export interface TaskContext {
 	away: number;
 	file_edits: { count: number; extensions: NamedCount[] };
 	prs: { repo: string; number: number }[];
-	agents: { tool: 'claude' | 'codex'; version: string; entrypoint: string; count: number }[];
+	agents: {
+		tool: 'claude' | 'codex';
+		version: string;
+		entrypoint: string;
+		count: number;
+	}[];
 }
 
 export interface TaskUsageAggregate {
@@ -88,7 +93,12 @@ export interface TaskUsageAggregate {
 		turns: number;
 		turn_ms: number;
 	};
-	limits: { tool: string; window: string; used_pct: number; approximate: boolean }[];
+	limits: {
+		tool: string;
+		window: string;
+		used_pct: number;
+		approximate: boolean;
+	}[];
 	nodes: TaskNode[];
 	context: TaskContext;
 	truncated: { nodes: boolean; lists: boolean };

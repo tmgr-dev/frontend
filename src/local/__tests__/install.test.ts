@@ -1,9 +1,17 @@
-import axios, { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import axios, {
+	AxiosError,
+	type AxiosResponse,
+	type InternalAxiosRequestConfig,
+} from 'axios';
 
+import {
+	createDomainEvents,
+	installDomainEvents,
+	type DomainEvent,
+} from '@/utils/domainEvents';
 import { migrate } from '../schema';
 import type { LocalWorkspace } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
-import { createDomainEvents, installDomainEvents, type DomainEvent } from '@/utils/domainEvents';
 
 const LOCAL: LocalWorkspace = {
 	id: -42,
@@ -40,7 +48,11 @@ jest.mock('../runtime', () => ({
 		user,
 		actor,
 		now: () => new Date('2026-09-26T10:00:00Z'),
-		files: { url: (key: string) => key, read: async () => new Blob([]), remove: async () => {} },
+		files: {
+			url: (key: string) => key,
+			read: async () => new Blob([]),
+			remove: async () => {},
+		},
 	}),
 }));
 
@@ -56,22 +68,43 @@ describeSqlite('installLocalWorkspaces', () => {
 	let offline = false;
 	let user: any;
 
-	const server = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
-		if (offline) throw new AxiosError('Network Error', AxiosError.ERR_NETWORK, config);
+	const server = async (
+		config: InternalAxiosRequestConfig,
+	): Promise<AxiosResponse> => {
+		if (offline)
+			throw new AxiosError('Network Error', AxiosError.ERR_NETWORK, config);
 		sent.push({ method: config.method!, url: config.url!, data: config.data });
 		const body =
 			config.url === 'workspaces'
 				? { data: [{ id: 56, name: 'TMGR.DEV', code: 'tmgrdev' }] }
 				: config.url === 'tasks/runned'
-				? { data: [{ id: 900, title: 'Cloud timer', workspace_id: 56 }], meta: {} }
+				? {
+						data: [{ id: 900, title: 'Cloud timer', workspace_id: 56 }],
+						meta: {},
+				  }
 				: config.url === 'user' || config.url === 'v2/user/settings'
-				? { data: { id: 7, name: 'Yurij', settings: [{ id: 5, key: 'current_workspace', value: 56 }] } }
+				? {
+						data: {
+							id: 7,
+							name: 'Yurij',
+							settings: [{ id: 5, key: 'current_workspace', value: 56 }],
+						},
+				  }
 				: { data: 'from server' };
-		return { data: JSON.stringify(body), status: 200, statusText: 'OK', headers: {}, config };
+		return {
+			data: JSON.stringify(body),
+			status: 200,
+			statusText: 'OK',
+			headers: {},
+			config,
+		};
 	};
 
 	const client = axios.create({ adapter: server });
-	installLocalWorkspaces(client, { currentUser: () => user, hasSession: () => true });
+	installLocalWorkspaces(client, {
+		currentUser: () => user,
+		hasSession: () => true,
+	});
 	const events = createDomainEvents();
 	installDomainEvents(client, events, () => 56);
 
@@ -83,20 +116,29 @@ describeSqlite('installLocalWorkspaces', () => {
 		sent.length = 0;
 		offline = false;
 		active = null;
-		user = { id: 7, name: 'Yurij', settings: [{ id: 5, key: 'current_workspace', value: 56 }] };
+		user = {
+			id: 7,
+			name: 'Yurij',
+			settings: [{ id: 5, key: 'current_workspace', value: 56 }],
+		};
 		localStorage.clear();
 	});
 
 	it('lists local workspaces next to the cloud ones and leaves other calls alone', async () => {
 		const { data } = await client.get('workspaces');
-		expect(data.data.map((w: any) => w.code)).toEqual(['tmgrdev', 'local-personal']);
+		expect(data.data.map((w: any) => w.code)).toEqual([
+			'tmgrdev',
+			'local-personal',
+		]);
 		expect((await client.get('tasks/current')).data.data).toBe('from server');
 	});
 
 	it('switching to a local workspace keeps the server on its cloud workspace', async () => {
 		await client.get('user');
 		sent.length = 0;
-		const { data } = await client.put('v2/user/settings', [{ id: 5, value: -42 }]);
+		const { data } = await client.put('v2/user/settings', [
+			{ id: 5, value: -42 },
+		]);
 
 		expect(JSON.parse(sent[0].data)).toEqual([{ id: 5, value: 56 }]);
 		expect(data.data.settings[0].value).toBe(-42);
@@ -130,38 +172,78 @@ describeSqlite('installLocalWorkspaces', () => {
 	});
 
 	it('a pinned client stays in its local workspace whatever the app switches to', async () => {
-		const pinned = pinnedLocalClient(LOCAL.id, () => ({ id: 7, name: 'Yurij', email: '' }));
+		const pinned = pinnedLocalClient(LOCAL.id, () => ({
+			id: 7,
+			name: 'Yurij',
+			email: '',
+		}));
 		pinned.defaults.headers.common['X-TMGR-Plugin'] = 'tmgr.x';
 		active = null;
-		const created = await pinned.post('tasks', { title: 'Written by a plugin' });
+		const created = await pinned.post('tasks', {
+			title: 'Written by a plugin',
+		});
 		expect(created.data.data.workspace_id).toBe(LOCAL.id);
 		expect(sent).toEqual([]);
 
-		const gone = pinnedLocalClient(-999, () => ({ id: 7, name: '', email: '' }));
-		await expect(gone.get('tasks')).rejects.toMatchObject({ response: { status: 409 } });
-		await expect(pinned.post('agent/conversations', {})).rejects.toMatchObject({ response: { status: 501 } });
+		const gone = pinnedLocalClient(-999, () => ({
+			id: 7,
+			name: '',
+			email: '',
+		}));
+		await expect(gone.get('tasks')).rejects.toMatchObject({
+			response: { status: 409 },
+		});
+		await expect(pinned.post('agent/conversations', {})).rejects.toMatchObject({
+			response: { status: 501 },
+		});
 		expect(sent).toEqual([]);
 	});
 
 	it('a pinned client writes only as a plugin, never as the human', async () => {
-		const pinned = pinnedLocalClient(LOCAL.id, () => ({ id: 7, name: 'Yurij', email: '' }));
-		const before = await db!.select<any>(`SELECT COUNT(*) AS n FROM edit_journal`);
-		await expect(pinned.post('tasks', { title: 'No plugin id' })).rejects.toMatchObject({ response: { status: 403 } });
-		await expect(pinned.get('tasks')).rejects.toMatchObject({ response: { status: 403 } });
-		expect(await db!.select<any>(`SELECT COUNT(*) AS n FROM edit_journal`)).toEqual(before);
+		const pinned = pinnedLocalClient(LOCAL.id, () => ({
+			id: 7,
+			name: 'Yurij',
+			email: '',
+		}));
+		const before = await db!.select<any>(
+			`SELECT COUNT(*) AS n FROM edit_journal`,
+		);
+		await expect(
+			pinned.post('tasks', { title: 'No plugin id' }),
+		).rejects.toMatchObject({ response: { status: 403 } });
+		await expect(pinned.get('tasks')).rejects.toMatchObject({
+			response: { status: 403 },
+		});
+		expect(
+			await db!.select<any>(`SELECT COUNT(*) AS n FROM edit_journal`),
+		).toEqual(before);
 
-		const created = await pinned.post('tasks', { title: 'By plugin' }, { headers: { 'X-TMGR-Plugin': 'runner' } });
-		const journal = await db!.select<any>(`SELECT author_kind, source, actor_id FROM edit_journal WHERE task_id = ?`, [
-			String(created.data.data.id),
-		]);
+		const created = await pinned.post(
+			'tasks',
+			{ title: 'By plugin' },
+			{ headers: { 'X-TMGR-Plugin': 'runner' } },
+		);
+		const journal = await db!.select<any>(
+			`SELECT author_kind, source, actor_id FROM edit_journal WHERE task_id = ?`,
+			[String(created.data.data.id)],
+		);
 		expect(journal.length).toBeGreaterThan(0);
-		expect(journal.every((r: any) => r.author_kind === 'plugin' && r.source === 'plugin' && r.actor_id === 'runner')).toBe(true);
+		expect(
+			journal.every(
+				(r: any) =>
+					r.author_kind === 'plugin' &&
+					r.source === 'plugin' &&
+					r.actor_id === 'runner',
+			),
+		).toBe(true);
 		expect(sent).toEqual([]);
 	});
 
 	it('refuses what the local API does not implement instead of sending it', async () => {
 		active = LOCAL;
-		const error = await client.post('agent/conversations', { message: 'summarise my tasks' }).catch((e) => e);
+		const error = await client
+			.post('agent/conversations', { message: 'summarise my tasks' })
+			.catch((e) => e);
 
 		expect(error.response.status).toBe(501);
 		expect(sent).toEqual([]);
@@ -190,7 +272,10 @@ describeSqlite('installLocalWorkspaces', () => {
 		// the local workspace directly when it switches away, so the adapter must not do it too
 		// on an ordinary preference save that happens to report a cloud id.
 		active = LOCAL;
-		user = { ...user, settings: [{ id: 5, key: 'current_workspace', value: -42 }] };
+		user = {
+			...user,
+			settings: [{ id: 5, key: 'current_workspace', value: -42 }],
+		};
 		await client.put('v2/user/settings', [{ id: 5, value: 56 }]);
 
 		expect(active).toEqual(LOCAL);
@@ -198,7 +283,9 @@ describeSqlite('installLocalWorkspaces', () => {
 	});
 
 	it('refuses a switch to a local workspace before the cloud one is known, never sending null', async () => {
-		const error = await client.put('v2/user/settings', [{ id: 5, value: -42 }]).catch((e) => e);
+		const error = await client
+			.put('v2/user/settings', [{ id: 5, value: -42 }])
+			.catch((e) => e);
 
 		expect(error.response.status).toBe(409);
 		expect(sent).toEqual([]);
@@ -228,19 +315,27 @@ describeSqlite('installLocalWorkspaces', () => {
 
 	it('lists running timers of the local workspace and of the cloud together', async () => {
 		active = LOCAL;
-		const task = (await client.post('tasks', { title: 'Local timer' })).data.data;
+		const task = (await client.post('tasks', { title: 'Local timer' })).data
+			.data;
 		await client.post(`tasks/${task.id}/countdown`);
 
 		const { data } = await client.get('tasks/runned');
 
-		expect(data.data.map((t: any) => t.title)).toEqual(['Local timer', 'Cloud timer']);
+		expect(data.data.map((t: any) => t.title)).toEqual([
+			'Local timer',
+			'Cloud timer',
+		]);
 		await client.delete(`tasks/${task.id}/countdown`);
 	});
 
 	it('stops a cloud timer from the tray while a local workspace is open', async () => {
 		active = LOCAL;
-		await client.delete('tasks/900/countdown', { params: { workspace_id: 56 } });
+		await client.delete('tasks/900/countdown', {
+			params: { workspace_id: 56 },
+		});
 
-		expect(sent.map((r) => `${r.method} ${r.url}`)).toEqual(['delete tasks/900/countdown']);
+		expect(sent.map((r) => `${r.method} ${r.url}`)).toEqual([
+			'delete tasks/900/countdown',
+		]);
 	});
 });

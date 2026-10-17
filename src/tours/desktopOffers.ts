@@ -34,7 +34,11 @@ const remember = (env: DesktopOfferEnv, key: string) => {
 
 const inFlight = new Map<string, Promise<void>>();
 
-const deliver = (env: DesktopOfferEnv, key: string, id: 'desktop.backups' | 'desktop.move-to-cloud') => {
+const deliver = (
+	env: DesktopOfferEnv,
+	key: string,
+	id: 'desktop.backups' | 'desktop.move-to-cloud',
+) => {
 	const pending = inFlight.get(key);
 	if (pending) return pending;
 	const run = env

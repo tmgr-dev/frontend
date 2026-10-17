@@ -1,6 +1,6 @@
 import { createTourBus } from '../events';
-import { durBucket, TourRunner } from '../runner';
 import type { RunnerDeps, RunnerView } from '../runner';
+import { durBucket, TourRunner } from '../runner';
 import { setTourTelemetry } from '../telemetry';
 import type { StepDef, TourDef, TourState } from '../types';
 
@@ -21,11 +21,18 @@ const tour = (extra: Partial<TourDef> = {}): TourDef => ({
 	title: 'T',
 	minutes: 1,
 	triggers: [{ kind: 'hub' }],
-	steps: [step('s1'), step('s2', { type: 'wait', waitFor: { event: 'task.created' } }), step('s3')],
+	steps: [
+		step('s1'),
+		step('s2', { type: 'wait', waitFor: { event: 'task.created' } }),
+		step('s3'),
+	],
 	...extra,
 });
 
-const setup = (tours: TourDef[] = [tour()], overrides: Partial<RunnerDeps> = {}) => {
+const setup = (
+	tours: TourDef[] = [tour()],
+	overrides: Partial<RunnerDeps> = {},
+) => {
 	const bus = createTourBus();
 	const present = new Set<string>();
 	const views: Array<RunnerView | null> = [];
@@ -50,7 +57,10 @@ const setup = (tours: TourDef[] = [tour()], overrides: Partial<RunnerDeps> = {})
 		currentRouteName: () => route,
 		currentRouteQuery: () => query,
 		navigate: (r) => nav.push(r),
-		resolveAnchor: async (s) => (present.has(s.anchor!) || present.has(s.mobileAnchor ?? '#') ? ({ id: s.anchor } as unknown as Element) : null),
+		resolveAnchor: async (s) =>
+			present.has(s.anchor!) || present.has(s.mobileAnchor ?? '#')
+				? ({ id: s.anchor } as unknown as Element)
+				: null,
 		facts: () => facts,
 		save: (id, input) => {
 			saves.push([id, input]);
@@ -66,7 +76,8 @@ const setup = (tours: TourDef[] = [tour()], overrides: Partial<RunnerDeps> = {})
 	};
 	const runner = new TourRunner(deps);
 	const last = () => views[views.length - 1];
-	const calls = (name: string) => track.mock.calls.filter((c) => c[0] === name).map((c) => c[1]);
+	const calls = (name: string) =>
+		track.mock.calls.filter((c) => c[0] === name).map((c) => c[1]);
 	return {
 		runner,
 		bus,
@@ -106,11 +117,22 @@ describe('TourRunner', () => {
 		const h = setup();
 		h.present.add('a.s1');
 		expect(await h.runner.start('t.one', 'hub')).toBe(true);
-		expect(h.last()).toMatchObject({ index: 0, total: 3, mode: 'modal', waiting: false });
+		expect(h.last()).toMatchObject({
+			index: 0,
+			total: 3,
+			mode: 'modal',
+			waiting: false,
+		});
 		expect(h.last()?.step.id).toBe('s1');
-		expect(h.saves).toEqual([['t.one', { status: 'in_progress', step_id: 's1', version: 1 }]]);
-		expect(h.calls('tour_started')).toEqual([{ tour: 't.one', trigger: 'hub' }]);
-		expect(h.calls('tour_step_viewed')).toEqual([{ tour: 't.one', step: 's1', i: 1 }]);
+		expect(h.saves).toEqual([
+			['t.one', { status: 'in_progress', step_id: 's1', version: 1 }],
+		]);
+		expect(h.calls('tour_started')).toEqual([
+			{ tour: 't.one', trigger: 'hub' },
+		]);
+		expect(h.calls('tour_step_viewed')).toEqual([
+			{ tour: 't.one', step: 's1', i: 1 },
+		]);
 	});
 
 	it('returns false for an unknown tour', async () => {
@@ -122,15 +144,30 @@ describe('TourRunner', () => {
 		['a.s1', 'a.s2', 'a.s3'].forEach((a) => h.present.add(a));
 		await h.runner.start('t.one', 'hub');
 		await h.runner.next();
-		expect(h.last()).toMatchObject({ index: 1, mode: 'passive', waiting: true });
-		expect(h.calls('tour_step_completed')).toEqual([{ tour: 't.one', step: 's1', i: 1, via: 'next' }]);
+		expect(h.last()).toMatchObject({
+			index: 1,
+			mode: 'passive',
+			waiting: true,
+		});
+		expect(h.calls('tour_step_completed')).toEqual([
+			{ tour: 't.one', step: 's1', i: 1, via: 'next' },
+		]);
 		await h.runner.next();
 		expect(h.last()?.index).toBe(1);
 	});
 
 	it('wait step completes on the bus event (via action), where is respected', async () => {
 		const t = tour({
-			steps: [step('w', { type: 'wait', waitFor: { event: 'task.status_changed', where: { statusType: 'active' } } }), step('after')],
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: {
+						event: 'task.status_changed',
+						where: { statusType: 'active' },
+					},
+				}),
+				step('after'),
+			],
 		});
 		const h = setup([t]);
 		h.present.add('a.w');
@@ -148,7 +185,9 @@ describe('TourRunner', () => {
 	it('wait step listens to a module.enabled event that is not in the fixed list', async () => {
 		const t = tour({
 			completeOn: 'module.enabled:graph',
-			steps: [step('w', { type: 'wait', waitFor: { event: 'module.enabled:graph' } })],
+			steps: [
+				step('w', { type: 'wait', waitFor: { event: 'module.enabled:graph' } }),
+			],
 		});
 		const h = setup([t]);
 		h.present.add('a.w');
@@ -170,14 +209,20 @@ describe('TourRunner', () => {
 		await h.runner.next();
 		expect(h.last()).toBeNull();
 		expect(h.calls('tour_completed')).toEqual([{ tour: 't.one', dur: 'm1_3' }]);
-		expect(h.saves.pop()).toEqual(['t.one', { status: 'completed', step_id: null, version: 1 }]);
+		expect(h.saves.pop()).toEqual([
+			't.one',
+			{ status: 'completed', step_id: null, version: 1 },
+		]);
 		expect(h.runner.activeTourId).toBeNull();
 	});
 
 	it('completeOn marks completed once while remaining steps keep showing', async () => {
 		const t = tour({
 			completeOn: 'task.created',
-			steps: [step('w', { type: 'wait', waitFor: { event: 'task.created' } }), step('tail')],
+			steps: [
+				step('w', { type: 'wait', waitFor: { event: 'task.created' } }),
+				step('tail'),
+			],
 		});
 		const h = setup([t]);
 		h.present.add('a.w');
@@ -200,7 +245,9 @@ describe('TourRunner', () => {
 		await h.runner.start('t.one', 'hub');
 		await h.runner.skipStep();
 		expect(h.last()?.step.id).toBe('s2');
-		expect(h.calls('tour_step_skipped')).toEqual([{ tour: 't.one', step: 's1', i: 1 }]);
+		expect(h.calls('tour_step_skipped')).toEqual([
+			{ tour: 't.one', step: 's1', i: 1 },
+		]);
 		expect(h.calls('tour_step_completed')).toEqual([]);
 		expect(onSkip).toHaveBeenCalledWith('t.one');
 	});
@@ -224,21 +271,36 @@ describe('TourRunner', () => {
 		await h.runner.next();
 		h.runner.pause();
 		expect(h.last()).toBeNull();
-		expect(h.saves.pop()).toEqual(['t.one', { status: 'paused', step_id: 's2', version: 1 }]);
+		expect(h.saves.pop()).toEqual([
+			't.one',
+			{ status: 'paused', step_id: 's2', version: 1 },
+		]);
 		expect(h.calls('tour_paused')).toEqual([{ tour: 't.one', i: 2 }]);
 		await h.runner.resume('t.one');
 		expect(h.last()?.step.id).toBe('s2');
-		expect(h.calls('tour_started')[1]).toEqual({ tour: 't.one', trigger: 'resume' });
+		expect(h.calls('tour_started')[1]).toEqual({
+			tour: 't.one',
+			trigger: 'resume',
+		});
 	});
 
 	it('resume with an unknown step id restarts; completed tours restart too', async () => {
 		const h = setup();
 		['a.s1', 'a.s2', 'a.s3'].forEach((a) => h.present.add(a));
-		h.setSaved({ 't.one': { status: 'paused', step_id: 'gone', version: 1, generation: 0 } });
+		h.setSaved({
+			't.one': { status: 'paused', step_id: 'gone', version: 1, generation: 0 },
+		});
 		await h.runner.resume('t.one');
 		expect(h.last()?.step.id).toBe('s1');
 		h.runner.pause();
-		h.setSaved({ 't.one': { status: 'completed', step_id: null, version: 1, generation: 0 } });
+		h.setSaved({
+			't.one': {
+				status: 'completed',
+				step_id: null,
+				version: 1,
+				generation: 0,
+			},
+		});
 		await h.runner.resume('t.one');
 		expect(h.last()?.step.id).toBe('s1');
 	});
@@ -249,7 +311,9 @@ describe('TourRunner', () => {
 		h.present.add('a.real');
 		await h.runner.start('t.one', 'hub');
 		expect(h.last()?.step.id).toBe('real');
-		expect(h.calls('tour_step_unavailable')).toEqual([{ tour: 't.one', step: 'o' }]);
+		expect(h.calls('tour_step_unavailable')).toEqual([
+			{ tour: 't.one', step: 'o' },
+		]);
 	});
 
 	it('completes when the only remaining optional steps are missing', async () => {
@@ -260,31 +324,73 @@ describe('TourRunner', () => {
 	});
 
 	it('shows a centered unavailable state for a required missing anchor, with Take me there', async () => {
-		const t = tour({ steps: [step('r', { takeMeRoute: { name: 'WorkspaceTasksList', params: 'currentWorkspace' } }), step('n')] });
+		const t = tour({
+			steps: [
+				step('r', {
+					takeMeRoute: {
+						name: 'WorkspaceTasksList',
+						params: 'currentWorkspace',
+					},
+				}),
+				step('n'),
+			],
+		});
 		const h = setup([t]);
 		h.setRoute('Dashboard');
 		await h.runner.start('t.one', 'hub');
-		expect(h.last()).toMatchObject({ mode: 'centered', unavailable: true, canTakeMe: true, onTargetPage: false, waiting: false });
+		expect(h.last()).toMatchObject({
+			mode: 'centered',
+			unavailable: true,
+			canTakeMe: true,
+			onTargetPage: false,
+			waiting: false,
+		});
 		await h.runner.next();
 		expect(h.last()?.step.id).toBe('r');
 		h.present.add('a.r');
 		await h.runner.takeMeThere();
-		expect(h.nav).toEqual([{ name: 'WorkspaceTasksList', params: 'currentWorkspace' }]);
+		expect(h.nav).toEqual([
+			{ name: 'WorkspaceTasksList', params: 'currentWorkspace' },
+		]);
 		expect(h.last()).toMatchObject({ mode: 'modal', unavailable: false });
 	});
 
 	it('does not offer a no-op Take me there when already on the target page', async () => {
-		const t = tour({ steps: [step('r', { takeMeRoute: { name: 'WorkspaceTasksList', params: 'currentWorkspace' } }), step('n')] });
+		const t = tour({
+			steps: [
+				step('r', {
+					takeMeRoute: {
+						name: 'WorkspaceTasksList',
+						params: 'currentWorkspace',
+					},
+				}),
+				step('n'),
+			],
+		});
 		const h = setup([t]);
 		await h.runner.start('t.one', 'hub');
-		expect(h.last()).toMatchObject({ unavailable: true, canTakeMe: false, onTargetPage: true });
+		expect(h.last()).toMatchObject({
+			unavailable: true,
+			canTakeMe: false,
+			onTargetPage: true,
+		});
 	});
 
 	it('treats a step route with a different query as not on the target page', async () => {
-		const t = tour({ steps: [step('r', { route: { name: 'WorkspaceTasksList', query: { tab: 'x' } } })] });
+		const t = tour({
+			steps: [
+				step('r', {
+					route: { name: 'WorkspaceTasksList', query: { tab: 'x' } },
+				}),
+			],
+		});
 		const h = setup([t]);
 		await h.runner.start('t.one', 'hub');
-		expect(h.last()).toMatchObject({ unavailable: true, canTakeMe: true, onTargetPage: false });
+		expect(h.last()).toMatchObject({
+			unavailable: true,
+			canTakeMe: true,
+			onTargetPage: false,
+		});
 	});
 
 	it('re-enters an unavailable step as soon as its anchor shows up', async () => {
@@ -292,14 +398,23 @@ describe('TourRunner', () => {
 		const waitForAnchor = jest.fn(
 			() => new Promise<Element | null>((resolve) => (appear = resolve)),
 		);
-		const t = tour({ steps: [step('r', { type: 'wait', waitFor: { event: 'timer.started' } }), step('n')] });
+		const t = tour({
+			steps: [
+				step('r', { type: 'wait', waitFor: { event: 'timer.started' } }),
+				step('n'),
+			],
+		});
 		const h = setup([t], { waitForAnchor });
 		await h.runner.start('t.one', 'hub');
 		expect(h.last()).toMatchObject({ unavailable: true, mode: 'centered' });
 		h.present.add('a.r');
 		appear({} as Element);
 		await flush();
-		expect(h.last()).toMatchObject({ unavailable: false, mode: 'passive', waiting: true });
+		expect(h.last()).toMatchObject({
+			unavailable: false,
+			mode: 'passive',
+			waiting: true,
+		});
 	});
 
 	it('stops watching for the anchor once the tour is paused', async () => {
@@ -308,7 +423,9 @@ describe('TourRunner', () => {
 			signal = o.signal;
 			return new Promise<Element | null>(() => {});
 		});
-		const h = setup([tour({ steps: [step('r'), step('n')] })], { waitForAnchor });
+		const h = setup([tour({ steps: [step('r'), step('n')] })], {
+			waitForAnchor,
+		});
 		await h.runner.start('t.one', 'hub');
 		h.runner.pause();
 		expect(signal?.aborted).toBe(true);
@@ -325,11 +442,19 @@ describe('TourRunner', () => {
 	});
 
 	it('navigates to the step route when elsewhere and does not pause for its own navigation', async () => {
-		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
+		const t = tour({
+			steps: [
+				step('b', {
+					route: { name: 'WorkspaceBoard', params: 'currentWorkspace' },
+				}),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.b');
 		await h.runner.start('t.one', 'hub');
-		expect(h.nav).toEqual([{ name: 'WorkspaceBoard', params: 'currentWorkspace' }]);
+		expect(h.nav).toEqual([
+			{ name: 'WorkspaceBoard', params: 'currentWorkspace' },
+		]);
 		h.setRoute('WorkspaceBoard');
 		h.runner.routeChanged('WorkspaceBoard');
 		expect(h.last()).not.toBeNull();
@@ -342,21 +467,36 @@ describe('TourRunner', () => {
 	});
 
 	it('goes back to the step route once when the app redirects elsewhere before the step was shown', async () => {
-		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
+		const t = tour({
+			steps: [
+				step('b', {
+					route: { name: 'WorkspaceBoard', params: 'currentWorkspace' },
+				}),
+			],
+		});
 		const h = setup([t]);
 		await h.runner.start('t.one', 'hub');
 		expect(h.nav).toHaveLength(1);
 		h.setRoute('Other');
 		h.runner.routeChanged('Other');
 		expect(h.nav).toHaveLength(2);
-		expect(h.nav[1]).toEqual({ name: 'WorkspaceBoard', params: 'currentWorkspace' });
+		expect(h.nav[1]).toEqual({
+			name: 'WorkspaceBoard',
+			params: 'currentWorkspace',
+		});
 		h.runner.routeChanged('Other');
 		expect(h.nav).toHaveLength(2);
 		expect(h.last()).not.toBeNull();
 	});
 
 	it('does not pull the user back once the step was shown and they clicked away', async () => {
-		const t = tour({ steps: [step('b', { route: { name: 'WorkspaceBoard', params: 'currentWorkspace' } })] });
+		const t = tour({
+			steps: [
+				step('b', {
+					route: { name: 'WorkspaceBoard', params: 'currentWorkspace' },
+				}),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.b');
 		await h.runner.start('t.one', 'hub');
@@ -369,7 +509,11 @@ describe('TourRunner', () => {
 	});
 
 	it('pauses when only the query leaves the step route query', async () => {
-		const t = tour({ steps: [step('a', { route: { name: 'Settings', query: { tab: 'privacy' } } })] });
+		const t = tour({
+			steps: [
+				step('a', { route: { name: 'Settings', query: { tab: 'privacy' } } }),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.a');
 		h.setRoute('Settings');
@@ -402,7 +546,16 @@ describe('TourRunner', () => {
 	});
 
 	it('Already done advances via facts after a short delay', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					alreadyDone: 'has_timer_minute',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.w');
 		h.present.add('a.after');
@@ -416,7 +569,17 @@ describe('TourRunner', () => {
 	});
 
 	it('skipWhen skips a step whose fact is already set, even when its anchor is missing', async () => {
-		const t = tour({ steps: [step('s1'), step('w', { type: 'wait', waitFor: { event: 'timer.started' }, skipWhen: 'connected' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('s1'),
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					skipWhen: 'connected',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.s1');
 		h.present.add('a.after');
@@ -428,7 +591,16 @@ describe('TourRunner', () => {
 	});
 
 	it('factsChanged skips the active step when its skipWhen fact appears', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, skipWhen: 'connected' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					skipWhen: 'connected',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.w');
 		h.present.add('a.after');
@@ -441,7 +613,16 @@ describe('TourRunner', () => {
 	});
 
 	it('factsChanged on a shown wait step advances directly without re-viewing or the done card', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					alreadyDone: 'has_timer_minute',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.w');
 		h.present.add('a.after');
@@ -452,12 +633,25 @@ describe('TourRunner', () => {
 		await flush();
 		expect(h.last()?.step.id).toBe('after');
 		expect(h.views.some((v) => v?.alreadyDone)).toBe(false);
-		expect(h.calls('tour_step_viewed').filter((c) => c.step === 'w')).toHaveLength(1);
-		expect(h.calls('tour_step_completed').filter((c) => c.step === 'w')).toHaveLength(1);
+		expect(
+			h.calls('tour_step_viewed').filter((c) => c.step === 'w'),
+		).toHaveLength(1);
+		expect(
+			h.calls('tour_step_completed').filter((c) => c.step === 'w'),
+		).toHaveLength(1);
 	});
 
 	it('the waitFor event arriving after factsChanged advanced is a no-op', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					alreadyDone: 'has_timer_minute',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.w');
 		h.present.add('a.after');
@@ -467,12 +661,25 @@ describe('TourRunner', () => {
 		h.bus.emit('timer.started', { taskId: 1 });
 		await flush();
 		expect(h.last()?.step.id).toBe('after');
-		expect(h.calls('tour_step_completed').filter((c) => c.step === 'w')).toHaveLength(1);
-		expect(h.calls('tour_step_viewed').filter((c) => c.step === 'after')).toHaveLength(1);
+		expect(
+			h.calls('tour_step_completed').filter((c) => c.step === 'w'),
+		).toHaveLength(1);
+		expect(
+			h.calls('tour_step_viewed').filter((c) => c.step === 'after'),
+		).toHaveLength(1);
 	});
 
 	it('factsChanged arriving after the waitFor event advanced is a no-op', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					alreadyDone: 'has_timer_minute',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.w');
 		h.present.add('a.after');
@@ -482,23 +689,48 @@ describe('TourRunner', () => {
 		h.runner.factsChanged();
 		await flush();
 		expect(h.last()?.step.id).toBe('after');
-		expect(h.calls('tour_step_completed').filter((c) => c.step === 'w')).toHaveLength(1);
-		expect(h.calls('tour_step_viewed').filter((c) => c.step === 'after')).toHaveLength(1);
+		expect(
+			h.calls('tour_step_completed').filter((c) => c.step === 'w'),
+		).toHaveLength(1);
+		expect(
+			h.calls('tour_step_viewed').filter((c) => c.step === 'after'),
+		).toHaveLength(1);
 	});
 
 	it('emits tour_step_skipped for steps skipped via skipWhen', async () => {
-		const t = tour({ steps: [step('s1'), step('w', { type: 'wait', waitFor: { event: 'timer.started' }, skipWhen: 'connected' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('s1'),
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					skipWhen: 'connected',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.s1');
 		h.present.add('a.after');
 		h.setFacts({ connected: true });
 		await h.runner.start('t.one', 'hub');
 		await h.runner.next();
-		expect(h.calls('tour_step_skipped')).toEqual([expect.objectContaining({ step: 'w' })]);
+		expect(h.calls('tour_step_skipped')).toEqual([
+			expect.objectContaining({ step: 'w' }),
+		]);
 	});
 
 	it('a wait step already done with a missing anchor advances instead of showing unavailable', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'timer.started' }, alreadyDone: 'has_timer_minute' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'timer.started' },
+					alreadyDone: 'has_timer_minute',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.after');
 		h.setFacts({ has_timer_minute: true });
@@ -518,7 +750,16 @@ describe('TourRunner', () => {
 	});
 
 	it('Already done also advances via a previously seen event', async () => {
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'comment.created' }, alreadyDone: 'comment.created' }), step('after')] });
+		const t = tour({
+			steps: [
+				step('w', {
+					type: 'wait',
+					waitFor: { event: 'comment.created' },
+					alreadyDone: 'comment.created',
+				}),
+				step('after'),
+			],
+		});
 		const h = setup([t]);
 		h.present.add('a.w');
 		h.present.add('a.after');
@@ -542,7 +783,9 @@ describe('TourRunner', () => {
 	});
 
 	it('does not judge modules before they are known', async () => {
-		const h = setup([tour({ requires: { modules: ['board'] } })], { modulesKnown: () => false });
+		const h = setup([tour({ requires: { modules: ['board'] } })], {
+			modulesKnown: () => false,
+		});
 		h.present.add('a.s1');
 		h.setModules([]);
 		expect(await h.runner.start('t.one', 'hub')).toBe(true);
@@ -551,7 +794,9 @@ describe('TourRunner', () => {
 	});
 
 	it('skips steps whose requiresModules are off', async () => {
-		const t = tour({ steps: [step('a', { requiresModules: ['task.assignees'] }), step('b')] });
+		const t = tour({
+			steps: [step('a', { requiresModules: ['task.assignees'] }), step('b')],
+		});
 		const h = setup([t]);
 		h.present.add('a.a');
 		h.present.add('a.b');
@@ -590,7 +835,12 @@ describe('TourRunner', () => {
 
 	it('anchorScope eventTask receives the id of the last task.created', async () => {
 		const resolveAnchor = jest.fn().mockResolvedValue({} as Element);
-		const t = tour({ steps: [step('w', { type: 'wait', waitFor: { event: 'task.created' } }), step('row', { anchorScope: 'eventTask' })] });
+		const t = tour({
+			steps: [
+				step('w', { type: 'wait', waitFor: { event: 'task.created' } }),
+				step('row', { anchorScope: 'eventTask' }),
+			],
+		});
 		const h = setup([t], { resolveAnchor });
 		await h.runner.start('t.one', 'hub');
 		h.bus.emit('task.created', { taskId: 42 });
@@ -607,7 +857,9 @@ describe('TourRunner', () => {
 	});
 
 	it('a step without an anchor is a centered card', async () => {
-		const t = tour({ steps: [step('m', { type: 'modal', anchor: undefined })] });
+		const t = tour({
+			steps: [step('m', { type: 'modal', anchor: undefined })],
+		});
 		const h = setup([t]);
 		await h.runner.start('t.one', 'hub');
 		expect(h.last()).toMatchObject({ mode: 'centered', unavailable: false });
@@ -620,13 +872,18 @@ describe('TourRunner', () => {
 		await h.runner.start('t.one', 'hub');
 		await h.runner.start('t.two', 'hub');
 		expect(h.runner.activeTourId).toBe('t.two');
-		expect(h.saves.find((s) => s[0] === 't.one' && s[1].status === 'paused')).toBeTruthy();
+		expect(
+			h.saves.find((s) => s[0] === 't.one' && s[1].status === 'paused'),
+		).toBeTruthy();
 	});
 
 	it('ignores a stale anchor resolution after the step changed', async () => {
 		let release: (el: Element | null) => void = () => {};
 		const slow = new Promise<Element | null>((r) => (release = r));
-		const resolveAnchor = jest.fn().mockReturnValueOnce(slow).mockResolvedValue({} as Element);
+		const resolveAnchor = jest
+			.fn()
+			.mockReturnValueOnce(slow)
+			.mockResolvedValue({} as Element);
 		const h = setup([tour()], { resolveAnchor });
 		const first = h.runner.start('t.one', 'hub');
 		await flush();

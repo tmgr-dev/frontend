@@ -62,7 +62,11 @@ test('falls back to the store token and omits the refresh token when there is no
 });
 
 test('current_password is sent together with a new password', async () => {
-	await updateUser({ ...base, password: 'secret-1', current_password: 'old-1' });
+	await updateUser({
+		...base,
+		password: 'secret-1',
+		current_password: 'old-1',
+	});
 	expect(sent().current_password).toBe('old-1');
 });
 

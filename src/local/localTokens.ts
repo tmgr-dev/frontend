@@ -22,7 +22,10 @@ export interface LocalAccessStatus {
 	bridgeCommand: string;
 }
 
-const invoke = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+const invoke = async <T>(
+	command: string,
+	args?: Record<string, unknown>,
+): Promise<T> => {
 	const core = await import('@tauri-apps/api/core');
 	return core.invoke<T>(command, args);
 };
@@ -39,7 +42,8 @@ export const issueLocalToken = (args: {
 export const listLocalTokens = (workspaceCode?: string): Promise<TokenInfo[]> =>
 	invoke('local_token_list', { workspaceCode });
 
-export const revokeLocalToken = (id: string): Promise<void> => invoke('local_token_revoke', { id });
+export const revokeLocalToken = (id: string): Promise<void> =>
+	invoke('local_token_revoke', { id });
 
 export const revokeAllLocalTokens = (filter: {
 	personaUuid?: string;
@@ -47,9 +51,11 @@ export const revokeAllLocalTokens = (filter: {
 	workspaceCode?: string;
 }): Promise<number> => invoke('local_token_revoke_all', filter);
 
-export const copyLocalToken = (id: string): Promise<void> => invoke('local_token_copy', { id });
+export const copyLocalToken = (id: string): Promise<void> =>
+	invoke('local_token_copy', { id });
 
-export const getLocalAccessStatus = (): Promise<LocalAccessStatus> => invoke('local_access_status');
+export const getLocalAccessStatus = (): Promise<LocalAccessStatus> =>
+	invoke('local_access_status');
 
 export const setLocalAccessEnabled = (enabled: boolean): Promise<void> =>
 	invoke('local_access_set_enabled', { enabled });

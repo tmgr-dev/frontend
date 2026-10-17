@@ -71,7 +71,6 @@ describe('applyTimerState', () => {
 		expect(form.common_time).toBe(300);
 	});
 
-
 	it('ignores a same-id task from another workspace', () => {
 		const form = { id: 5, workspace_id: 2, start_time: null, common_time: 0 };
 

@@ -36,7 +36,8 @@
 				failed ? 'Sign-in did not finish' : 'You are signed in',
 			);
 			const subtitle = computed(() => {
-				if (!result) return 'This sign-in link is not valid. Start again in TMGR.';
+				if (!result)
+					return 'This sign-in link is not valid. Start again in TMGR.';
 				if ('error' in result) {
 					const provider = linkConfirmationProvider(result.error);
 					return provider

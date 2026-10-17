@@ -40,9 +40,12 @@
 					desktopOfferEnv(async () => workspaces.value.length > 0),
 				);
 			};
-			watch(() => toursEngine().store.loaded.value, (loaded) => {
-				if (loaded) retryOffer();
-			});
+			watch(
+				() => toursEngine().store.loaded.value,
+				(loaded) => {
+					if (loaded) retryOffer();
+				},
+			);
 
 			onMounted(async () => {
 				if (store.getters.isLocalOnly) return;

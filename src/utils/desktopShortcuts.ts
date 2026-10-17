@@ -1,11 +1,11 @@
 import { LOCAL_ID, PLUGIN_ID } from '@/pluginSystem/manifest';
-import { AuthCallback, parseAuthCallback } from '@/utils/desktopAuth';
 import {
 	DesktopPlatform,
 	desktopPlatform,
 	isMacLike,
 	supportsSelectionCapture,
 } from '@/utils/desktop';
+import { AuthCallback, parseAuthCallback } from '@/utils/desktopAuth';
 import { parseTaskLink } from '@/utils/taskLinks';
 import { ref } from 'vue';
 
@@ -34,7 +34,13 @@ export const DEFAULT_SHORTCUTS: ShortcutConfig = {
 	selection: { accelerator: 'Alt+Shift+C', enabled: true },
 };
 
-const PRIMARY_MODIFIERS = ['Command', 'CommandOrControl', 'Control', 'Alt', 'Super'];
+const PRIMARY_MODIFIERS = [
+	'Command',
+	'CommandOrControl',
+	'Control',
+	'Alt',
+	'Super',
+];
 const RESERVED = [
 	'Command+Space',
 	'Command+Tab',
@@ -86,7 +92,9 @@ export const primaryModifiersHint = (
 ): string =>
 	isMacLike(platform)
 		? 'Use at least one of ⌘ ⌃ ⌥'
-		: `Use at least one of Ctrl, Alt, ${platform === 'windows' ? 'Win' : 'Super'}`;
+		: `Use at least one of Ctrl, Alt, ${
+				platform === 'windows' ? 'Win' : 'Super'
+		  }`;
 
 const keyFromCode = (code: string): string | null => {
 	if (/^Key[A-Z]$/.test(code)) return code.slice(3);
@@ -173,7 +181,7 @@ export const describeAccelerator = (
 	}
 	const meta = platform === 'windows' ? 'Win' : 'Super';
 	return parts
-		.map((part) => (part === 'Super' ? meta : (PLAIN_LABELS[part] ?? part)))
+		.map((part) => (part === 'Super' ? meta : PLAIN_LABELS[part] ?? part))
 		.join('+');
 };
 
@@ -181,8 +189,18 @@ export type DeepLink =
 	| AuthCallback
 	| { type: 'task'; taskId: number; workspaceCode?: string }
 	| { type: 'page'; workspaceCode: string; slug: string }
-	| { type: 'view'; pluginId: string; viewId: string; params: Record<string, string> }
-	| { type: 'command'; pluginId: string; commandId: string; params: Record<string, string> };
+	| {
+			type: 'view';
+			pluginId: string;
+			viewId: string;
+			params: Record<string, string>;
+	  }
+	| {
+			type: 'command';
+			pluginId: string;
+			commandId: string;
+			params: Record<string, string>;
+	  };
 
 const MAX_DEEP_LINK_PARAMS = 20;
 const MAX_DEEP_LINK_PARAM_VALUE = 500;
@@ -223,7 +241,8 @@ const parseParams = (search: string): Record<string, string> | null => {
 const PLUGIN_LINK =
 	/^tmgr:\/\/plugin\/([^/?#]+)\/(view|command)\/([^/?#]+)(\?[^#]*)?$/;
 
-const PAGE_LINK = /^tmgr:\/\/page\/([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9_-]{1,120})\/?$/;
+const PAGE_LINK =
+	/^tmgr:\/\/page\/([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9_-]{1,120})\/?$/;
 
 export const parseDeepLink = (url: string): DeepLink | null => {
 	const trimmed = url.trim();
@@ -248,10 +267,17 @@ export const parseDeepLink = (url: string): DeepLink | null => {
 	const params = parseParams(search ? search.slice(1) : '');
 	if (!params) return null;
 	if (kind === 'view') {
-		return LOCAL_ID.test(targetId) ? { type: 'view', pluginId, viewId: targetId, params } : null;
+		return LOCAL_ID.test(targetId)
+			? { type: 'view', pluginId, viewId: targetId, params }
+			: null;
 	}
 	return LOCAL_ID.test(targetId)
-		? { type: 'command', pluginId, commandId: `${pluginId}.${targetId}`, params }
+		? {
+				type: 'command',
+				pluginId,
+				commandId: `${pluginId}.${targetId}`,
+				params,
+		  }
 		: null;
 };
 
@@ -284,7 +310,9 @@ const STORAGE_KEY = 'desktop.shortcuts';
 
 const loadShortcuts = (): ShortcutConfig => {
 	try {
-		return mergeShortcuts(JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'));
+		return mergeShortcuts(
+			JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'),
+		);
 	} catch {
 		return mergeShortcuts({});
 	}
@@ -294,9 +322,9 @@ export const shortcutConfig = ref<ShortcutConfig>(
 	typeof window === 'undefined' ? mergeShortcuts({}) : loadShortcuts(),
 );
 
-export const shortcutStatus = ref<Partial<Record<ShortcutAction, ShortcutStatus>>>(
-	{},
-);
+export const shortcutStatus = ref<
+	Partial<Record<ShortcutAction, ShortcutStatus>>
+>({});
 
 export const saveShortcuts = (config: ShortcutConfig): void => {
 	shortcutConfig.value = config;

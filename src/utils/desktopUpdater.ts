@@ -1,5 +1,5 @@
-import { ref } from 'vue';
 import type { Update } from '@tauri-apps/plugin-updater';
+import { ref } from 'vue';
 
 type UpdateStatus = 'idle' | 'checking' | 'ready' | 'installing';
 

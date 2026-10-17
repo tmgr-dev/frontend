@@ -61,7 +61,9 @@ export const createDataApi = (
 	const headers: Record<string, string> = {
 		'X-TMGR-Plugin': pluginId,
 		'X-TMGR-Plugin-Name': encodeURIComponent(pluginName),
-		...(cloud ? {} : { 'X-TMGR-Plugin-Storage': encodeURIComponent(storageId) }),
+		...(cloud
+			? {}
+			: { 'X-TMGR-Plugin-Storage': encodeURIComponent(storageId) }),
 	};
 	const notInSharedWorkspaces = (what: string) => {
 		if (cloud)
@@ -77,24 +79,37 @@ export const createDataApi = (
 		} catch (error: any) {
 			const response = error?.response;
 			if (response?.status === 409 && response.data?.error === 'page_conflict')
-				throw new PluginError('page_conflict', 'page was changed', response.data.data);
-			if (response?.status === 403 && response.data?.error === 'section_forbidden')
+				throw new PluginError(
+					'page_conflict',
+					'page was changed',
+					response.data.data,
+				);
+			if (
+				response?.status === 403 &&
+				response.data?.error === 'section_forbidden'
+			)
 				throw new PluginError(
 					'PERMISSION_DENIED',
 					String(response.data?.message ?? 'section_forbidden'),
 				);
 			if (response?.status === 413)
 				throw new PluginError('INVALID_PARAMS', 'page is larger than 1 MB');
-			if (response?.status === 404) throw new PluginError('HOST_ERROR', 'page not found');
+			if (response?.status === 404)
+				throw new PluginError('HOST_ERROR', 'page not found');
 			throw error;
 		}
 	};
 	const pageDataPath = (pageId: number, key: string) =>
-		`plugins/${encodeURIComponent(storageId)}/pages/${pageId}/data/${encodeURIComponent(key)}`;
+		`plugins/${encodeURIComponent(
+			storageId,
+		)}/pages/${pageId}/data/${encodeURIComponent(key)}`;
 	/** Defence in depth: the broker already refuses every routines.* call outside a local workspace. */
 	const routinesNotSupported = () => {
 		if (cloud)
-			throw new PluginError('NOT_SUPPORTED', 'routines are not available in shared workspaces yet');
+			throw new PluginError(
+				'NOT_SUPPORTED',
+				'routines are not available in shared workspaces yet',
+			);
 	};
 	// Overlapping calls on one routine would each see no instance for the date and create two.
 	const routineQueues = new Map<number, Promise<unknown>>();
@@ -108,11 +123,17 @@ export const createDataApi = (
 		return next;
 	};
 	/** Never the toggling complete-on route: a set status is what makes repeating the call harmless. */
-	const setRoutineStatus = async (id: number, date: string, status: 'COMPLETED' | 'SKIPPED') => {
+	const setRoutineStatus = async (
+		id: number,
+		date: string,
+		status: 'COMPLETED' | 'SKIPPED',
+	) => {
 		const instances = (unwrap(
 			await http.get(`daily-routines/tasks/${id}/instances`, { headers }),
 		) ?? []) as any[];
-		let instance = instances.find((row) => String(row.scheduled_for).slice(0, 10) === date);
+		let instance = instances.find(
+			(row) => String(row.scheduled_for).slice(0, 10) === date,
+		);
 		if (instance?.status === status) return toRoutineInstance(instance);
 		instance ??= unwrap(
 			await http.patch(
@@ -124,7 +145,9 @@ export const createDataApi = (
 		return toRoutineInstance(
 			unwrap(
 				await http.post(
-					`daily-routines/tasks/${id}/instances/${instance.id}/${status === 'COMPLETED' ? 'complete' : 'skip'}`,
+					`daily-routines/tasks/${id}/instances/${instance.id}/${
+						status === 'COMPLETED' ? 'complete' : 'skip'
+					}`,
 					undefined,
 					{ headers },
 				),
@@ -150,7 +173,14 @@ export const createDataApi = (
 			sort,
 			direction,
 		}) {
-			if (updatedSince || dueBefore || dueAfter || statusType || priority || sort) {
+			if (
+				updatedSince ||
+				dueBefore ||
+				dueAfter ||
+				statusType ||
+				priority ||
+				sort
+			) {
 				notInSharedWorkspaces('this task filter or sort');
 			}
 			const response = await http.get('tasks', {
@@ -172,7 +202,8 @@ export const createDataApi = (
 			const items = ((unwrap(response) ?? []) as any[]).map(withKey);
 			return { items, total: response.data?.meta?.total ?? items.length };
 		},
-		getTask: async (id) => withKey(unwrap(await http.get(`tasks/${id}`, { headers }))),
+		getTask: async (id) =>
+			withKey(unwrap(await http.get(`tasks/${id}`, { headers }))),
 		createTask: async (fields) =>
 			withKey(unwrap(await http.post('tasks', fields, { headers }))),
 		updateTask: async (id, fields) => {
@@ -180,16 +211,23 @@ export const createDataApi = (
 			if (cloud && 'expired_at' in fields && fields.expired_at === null) {
 				notInSharedWorkspaces('clearing the due date');
 			}
-			return withKey(unwrap(await http.patch(`tasks/${id}`, fields, { headers })));
+			return withKey(
+				unwrap(await http.patch(`tasks/${id}`, fields, { headers })),
+			);
 		},
 		listStatuses: async () =>
 			unwrap(await http.get('workspaces/statuses', { headers })),
 		listCategories: async () =>
 			unwrap(await http.get('project_categories', { headers })),
 		createStatus: async (fields) =>
-			unwrap(await http.post(`workspaces/${workspaceId}/statuses`, fields, { headers })),
+			unwrap(
+				await http.post(`workspaces/${workspaceId}/statuses`, fields, {
+					headers,
+				}),
+			),
 		updateStatus: async (id, patch) => {
-			if (cloud && 'type' in patch) notInSharedWorkspaces('changing a status type');
+			if (cloud && 'type' in patch)
+				notInSharedWorkspaces('changing a status type');
 			return unwrap(await http.put(`statuses/${id}`, patch, { headers }));
 		},
 		reorderStatuses: async (ids) =>
@@ -214,8 +252,11 @@ export const createDataApi = (
 				),
 			),
 		updateCategory: async (id, patch) => {
-			if (cloud && 'code' in patch) notInSharedWorkspaces('changing a category code');
-			return unwrap(await http.put(`project_categories/${id}`, patch, { headers }));
+			if (cloud && 'code' in patch)
+				notInSharedWorkspaces('changing a category code');
+			return unwrap(
+				await http.put(`project_categories/${id}`, patch, { headers }),
+			);
 		},
 		startTimer: async (taskId) =>
 			withKey(
@@ -224,7 +265,9 @@ export const createDataApi = (
 				),
 			),
 		stopTimer: async (taskId) =>
-			withKey(unwrap(await http.delete(`tasks/${taskId}/countdown`, { headers }))),
+			withKey(
+				unwrap(await http.delete(`tasks/${taskId}/countdown`, { headers })),
+			),
 		listComments: async (taskId) =>
 			(
 				(unwrap(await http.get(`tasks/${taskId}/comments`, { headers })) ??
@@ -308,7 +351,9 @@ export const createDataApi = (
 			return (
 				unwrap(
 					await http.get(
-						`plugins/${encodeURIComponent(storageId)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
+						`plugins/${encodeURIComponent(
+							storageId,
+						)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
 						{ headers },
 					),
 				)?.value ?? null
@@ -317,7 +362,9 @@ export const createDataApi = (
 		taskDataSet: async (taskId, key, json) => {
 			notInSharedWorkspaces('per-task plugin data');
 			void (await http.put(
-				`plugins/${encodeURIComponent(storageId)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
+				`plugins/${encodeURIComponent(
+					storageId,
+				)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
 				{ value: json },
 				{ headers },
 			));
@@ -325,7 +372,9 @@ export const createDataApi = (
 		taskDataDelete: async (taskId, key) => {
 			notInSharedWorkspaces('per-task plugin data');
 			void (await http.delete(
-				`plugins/${encodeURIComponent(storageId)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
+				`plugins/${encodeURIComponent(
+					storageId,
+				)}/tasks/${taskId}/data/${encodeURIComponent(key)}`,
 				{ headers },
 			));
 		},
@@ -366,12 +415,17 @@ export const createDataApi = (
 		pageDataGet: async (pageId, key) => {
 			notInSharedWorkspaces('per-page plugin data');
 			return (
-				unwrap(await http.get(pageDataPath(pageId, key), { headers }))?.value ?? null
+				unwrap(await http.get(pageDataPath(pageId, key), { headers }))?.value ??
+				null
 			);
 		},
 		pageDataSet: async (pageId, key, json) => {
 			notInSharedWorkspaces('per-page plugin data');
-			void (await http.put(pageDataPath(pageId, key), { value: json }, { headers }));
+			void (await http.put(
+				pageDataPath(pageId, key),
+				{ value: json },
+				{ headers },
+			));
 		},
 		pageDataDelete: async (pageId, key) => {
 			notInSharedWorkspaces('per-page plugin data');
@@ -397,7 +451,9 @@ export const createDataApi = (
 					`tasks/${taskId}/agent-work`,
 					{
 						// Namespaced under this plugin's own identity: it can never claim to be a bare agent.
-						agent: `plugin:${pluginId}${fields.agent ? `/${fields.agent}` : ''}`,
+						agent: `plugin:${pluginId}${
+							fields.agent ? `/${fields.agent}` : ''
+						}`,
 						model: fields.model,
 						session_id: fields.sessionId,
 						branch: fields.branch,
@@ -464,13 +520,18 @@ export const createDataApi = (
 		listRoutines: async (from, to) => {
 			routinesNotSupported();
 			const rows = (unwrap(
-				await http.get('daily-routines/expand', { headers, params: { from, to } }),
+				await http.get('daily-routines/expand', {
+					headers,
+					params: { from, to },
+				}),
 			) ?? []) as any[];
 			return rows.map(toRoutineEntry);
 		},
 		getRoutine: async (id) => {
 			routinesNotSupported();
-			return toRoutine(unwrap(await http.get(`daily-routines/tasks/${id}`, { headers })));
+			return toRoutine(
+				unwrap(await http.get(`daily-routines/tasks/${id}`, { headers })),
+			);
 		},
 		listRoutineInstances: async (id) => {
 			routinesNotSupported();
@@ -487,13 +548,19 @@ export const createDataApi = (
 						{ title, description, scheduled_date: date, scheduled_time: time },
 						{ headers },
 				  )
-				: await http.post('daily-routines/tasks', { title, description }, { headers });
+				: await http.post(
+						'daily-routines/tasks',
+						{ title, description },
+						{ headers },
+				  );
 			return toRoutine(unwrap(response));
 		},
 		updateRoutine: async (id, patch) => {
 			routinesNotSupported();
 			return toRoutine(
-				unwrap(await http.put(`daily-routines/tasks/${id}`, patch, { headers })),
+				unwrap(
+					await http.put(`daily-routines/tasks/${id}`, patch, { headers }),
+				),
 			);
 		},
 		completeRoutine: async (id, date) => {
@@ -510,7 +577,11 @@ export const createDataApi = (
 				unwrap(
 					await http.post(
 						`daily-routines/tasks/${id}/convert`,
-						{ workspace_id: workspaceId, project_category_id: categoryId, status_id: statusId },
+						{
+							workspace_id: workspaceId,
+							project_category_id: categoryId,
+							status_id: statusId,
+						},
 						{ headers },
 					),
 				),

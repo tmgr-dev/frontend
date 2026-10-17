@@ -24,7 +24,9 @@ export interface ExportFile {
 	content: string;
 }
 
-export const taskKey = (task: Pick<ExportTask, 'id' | 'category' | 'category_tasks_sequence_id'>) =>
+export const taskKey = (
+	task: Pick<ExportTask, 'id' | 'category' | 'category_tasks_sequence_id'>,
+) =>
 	task.category?.code && task.category_tasks_sequence_id
 		? `${task.category.code}-${task.category_tasks_sequence_id}`
 		: `T-${task.id}`;
@@ -37,7 +39,8 @@ const slug = (text: string) =>
 		.replace(/^-+|-+$/g, '')
 		.slice(0, 60) || 'task';
 
-export const taskFileName = (task: ExportTask) => `${taskKey(task)}-${slug(task.title)}.md`;
+export const taskFileName = (task: ExportTask) =>
+	`${taskKey(task)}-${slug(task.title)}.md`;
 
 export const formatDuration = (seconds: number) => {
 	const total = Math.max(0, Math.floor(seconds || 0));
@@ -61,13 +64,28 @@ const stripHtml = (html: string) =>
 		.replace(/&gt;/g, '>')
 		.replace(/&amp;/g, '&');
 
-const listItems = (items: unknown, style: string, depth = 0, start = 1): string[] =>
-	(Array.isArray(items) ? items : []).filter((item): item is Partial<ListItem> => item && typeof item === 'object').flatMap((item, index) => {
-		const marker =
-			style === 'checklist' ? `- [${item.meta?.checked ? 'x' : ' '}]` : style === 'ordered' ? `${start + index}.` : '-';
-		const line = `${'  '.repeat(depth)}${marker} ${stripHtml(typeof item.content === 'string' ? item.content : '')}`;
-		return [line, ...listItems(item.items, style, depth + 1)];
-	});
+const listItems = (
+	items: unknown,
+	style: string,
+	depth = 0,
+	start = 1,
+): string[] =>
+	(Array.isArray(items) ? items : [])
+		.filter(
+			(item): item is Partial<ListItem> => item && typeof item === 'object',
+		)
+		.flatMap((item, index) => {
+			const marker =
+				style === 'checklist'
+					? `- [${item.meta?.checked ? 'x' : ' '}]`
+					: style === 'ordered'
+					? `${start + index}.`
+					: '-';
+			const line = `${'  '.repeat(depth)}${marker} ${stripHtml(
+				typeof item.content === 'string' ? item.content : '',
+			)}`;
+			return [line, ...listItems(item.items, style, depth + 1)];
+		});
 
 /** Editor.js blocks → Markdown for the block types the task editor offers. */
 export const editorJsToMarkdown = (doc: any): string => {
@@ -76,9 +94,16 @@ export const editorJsToMarkdown = (doc: any): string => {
 			const data = block?.data ?? {};
 			switch (block?.type) {
 				case 'header':
-					return `${'#'.repeat(Math.min(6, Math.max(2, Number(data.level) || 2)))} ${stripHtml(data.text ?? '')}`;
+					return `${'#'.repeat(
+						Math.min(6, Math.max(2, Number(data.level) || 2)),
+					)} ${stripHtml(data.text ?? '')}`;
 				case 'list':
-					return listItems(data.items, data.style, 0, listStart(data.meta)).join('\n');
+					return listItems(
+						data.items,
+						data.style,
+						0,
+						listStart(data.meta),
+					).join('\n');
 				case 'code':
 					return '```\n' + (data.code ?? '') + '\n```';
 				case 'quote':
@@ -109,7 +134,9 @@ export const taskToMarkdown = (task: ExportTask, filesBase: string): string => {
 		task.category ? `category: ${yamlString(task.category.title)}` : null,
 		task.priority ? `priority: ${task.priority}` : null,
 		`time_spent: ${formatDuration(task.common_time)}`,
-		task.approximately_time ? `estimate: ${formatDuration(task.approximately_time)}` : null,
+		task.approximately_time
+			? `estimate: ${formatDuration(task.approximately_time)}`
+			: null,
 		`created: ${task.created_at}`,
 		`updated: ${task.updated_at}`,
 		'---',
@@ -121,20 +148,26 @@ export const taskToMarkdown = (task: ExportTask, filesBase: string): string => {
 		sections.push(
 			'## Checkpoints\n\n' +
 				task.checkpoints
-					.map((c) => `- [${c.checked ? 'x' : ' '}] ${c.description ?? ''}`.trimEnd())
+					.map((c) =>
+						`- [${c.checked ? 'x' : ' '}] ${c.description ?? ''}`.trimEnd(),
+					)
 					.join('\n'),
 		);
 	}
 	if (task.files.length) {
 		sections.push(
 			'## Attachments\n\n' +
-				task.files.map((f) => `- [${f.name}](${filesBase}/${encodeURI(f.file_path)})`).join('\n'),
+				task.files
+					.map((f) => `- [${f.name}](${filesBase}/${encodeURI(f.file_path)})`)
+					.join('\n'),
 		);
 	}
 	if (task.comments.length) {
 		sections.push(
 			'## Comments\n\n' +
-				task.comments.map((c) => `**${c.author}** · ${c.created_at}\n\n${c.message}`).join('\n\n---\n\n'),
+				task.comments
+					.map((c) => `**${c.author}** · ${c.created_at}\n\n${c.message}`)
+					.join('\n\n---\n\n'),
 		);
 	}
 	return `${front.join('\n')}\n\n${sections.join('\n\n')}\n`;
@@ -147,13 +180,24 @@ export const workspaceIndex = (
 	tasks: ExportTask[],
 	exportedAt: string,
 ): string => {
-	const lines = [`# ${name}`, '', `Exported ${exportedAt} · ${tasks.length} tasks`, ''];
+	const lines = [
+		`# ${name}`,
+		'',
+		`Exported ${exportedAt} · ${tasks.length} tasks`,
+		'',
+	];
 	const groups = [...statuses.map((s) => s.name), 'No status'];
 	for (const group of groups) {
-		const inGroup = tasks.filter((t) => (t.status?.name ?? 'No status') === group);
+		const inGroup = tasks.filter(
+			(t) => (t.status?.name ?? 'No status') === group,
+		);
 		if (!inGroup.length) continue;
 		lines.push(`## ${group}`, '');
-		inGroup.forEach((t) => lines.push(`- [${taskKey(t)}: ${t.title}](tasks/${encodeURI(taskFileName(t))})`));
+		inGroup.forEach((t) =>
+			lines.push(
+				`- [${taskKey(t)}: ${t.title}](tasks/${encodeURI(taskFileName(t))})`,
+			),
+		);
 		lines.push('');
 	}
 	return lines.join('\n');
@@ -165,7 +209,10 @@ export const exportWorkspaceFiles = (
 	tasks: ExportTask[],
 	exportedAt: string,
 ): ExportFile[] => [
-	{ path: 'README.md', content: workspaceIndex(name, statuses, tasks, exportedAt) },
+	{
+		path: 'README.md',
+		content: workspaceIndex(name, statuses, tasks, exportedAt),
+	},
 	...tasks.map((task) => ({
 		path: `tasks/${taskFileName(task)}`,
 		// exports/<stamp>/tasks/x.md → ../../../files

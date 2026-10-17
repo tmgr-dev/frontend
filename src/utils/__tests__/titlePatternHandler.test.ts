@@ -47,9 +47,7 @@ describe('titlePatternHandler date masks', () => {
 
 	it('leaves an unfinished or unformattable token as typed', () => {
 		expect(titlePatternHandler('Sprint {dts#dd')).toBe('Sprint {dts#dd');
-		expect(titlePatternHandler('{dts#note#dte} x')).toBe(
-			'{dts#note#dte} x',
-		);
+		expect(titlePatternHandler('{dts#note#dte} x')).toBe('{dts#note#dte} x');
 	});
 
 	it('substitutes index placeholders', () => {

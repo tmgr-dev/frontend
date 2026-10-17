@@ -26,7 +26,10 @@
 									/>
 
 									<BoardTaskCount v-if="tasksLoaded" :summary="sprintSummary" />
-									<RemoveSampleTasksButton :tasks="boardTasks" @removed="retryBoard" />
+									<RemoveSampleTasksButton
+										:tasks="boardTasks"
+										@removed="retryBoard"
+									/>
 
 									<div class="ml-auto flex items-center gap-2 xl-custom:hidden">
 										<button
@@ -66,7 +69,10 @@
 											v-if="tasksLoaded"
 											:summary="sprintSummary"
 										/>
-										<RemoveSampleTasksButton :tasks="boardTasks" @removed="retryBoard" />
+										<RemoveSampleTasksButton
+											:tasks="boardTasks"
+											@removed="retryBoard"
+										/>
 										<div
 											data-tauri-drag-region
 											class="h-5 w-px shrink-0 bg-line"
@@ -106,7 +112,7 @@
 												:class="[
 													'rounded-pill border px-3 py-1 text-xs font-medium transition-colors',
 													boardFilterToggles[filter.key]
-														? 'border-brand bg-brand/10 text-brand'
+														? 'bg-brand/10 border-brand text-brand'
 														: 'border-line text-ink-subtle hover:bg-surface-hover',
 												]"
 												@click="toggleBoardFilter(filter.key)"
@@ -271,7 +277,10 @@
 
 																<div class="ml-auto flex items-center gap-2">
 																	<span
-																		v-if="column.summary && showSurface('timer.totals')"
+																		v-if="
+																			column.summary &&
+																			showSurface('timer.totals')
+																		"
 																		class="font-mono text-2xs tabular-nums text-ink-subtle"
 																	>
 																		{{ column.summary }}
@@ -418,7 +427,9 @@
 																		:statuses="statuses"
 																		:class="[
 																			'my-5',
-																			{ hidden: !taskMatchesBoardFilters(task) },
+																			{
+																				hidden: !taskMatchesBoardFilters(task),
+																			},
 																		]"
 																		:data-task-id="task.id"
 																		v-bind="cardHandlers(task)"
@@ -796,25 +807,24 @@
 		updateWorkspaceOrder,
 	} from '@/actions/tmgr/workspaces';
 	import BoardTaskCount from '@/components/board/BoardTaskCount.vue';
-	import RemoveSampleTasksButton from '@/components/onboarding/RemoveSampleTasksButton.vue';
 	import AppTooltip from '@/components/general/AppTooltip.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import Dropdown from '@/components/general/Dropdown.vue';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import FiltersBoard from '@/components/general/FiltersBoard.vue';
 	import Select from '@/components/general/Select.vue';
 	import TextField from '@/components/general/TextField.vue';
 	import WorkspaceUsers from '@/components/general/WorkspaceUsers.vue';
 	import FilterIcon from '@/components/icons/FilterIcon.vue';
+	import RemoveSampleTasksButton from '@/components/onboarding/RemoveSampleTasksButton.vue';
 	import BoardPreview from '@/components/previews/BoardPreview.vue';
 	import ViewportTaskCard from '@/components/tasks/ViewportTaskCard.vue';
 	import { BreadcrumbItem, BreadcrumbLink } from '@/components/ui/breadcrumb';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { usePusher } from '@/composable/usePusher';
 	import { createCardBadgeFeed } from '@/pluginSystem/cardBadges';
 	import { pluginState } from '@/pluginSystem/state';
-	import { markRaw } from 'vue';
 	import {
 		createBoardLoader,
 		filterBoardTasks,
@@ -831,6 +841,7 @@
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
 	import { SquareKanban } from 'lucide-vue-next';
+	import { markRaw } from 'vue';
 
 	export default {
 		name: 'Board',
@@ -960,7 +971,9 @@
 
 		watch: {
 			pluginBadgeKey() {
-				this.pluginBadgeFeed.update(this.columns.flatMap((column) => column.tasks));
+				this.pluginBadgeFeed.update(
+					this.columns.flatMap((column) => column.tasks),
+				);
 			},
 			'$store.state.reloadTasksKey'() {
 				this.loadTasks();
@@ -1010,9 +1023,14 @@
 			pluginBoardFilters(next) {
 				const valid = new Set(next.map((filter) => filter.key));
 				const kept = Object.fromEntries(
-					Object.entries(this.boardFilterToggles).filter(([key]) => valid.has(key)),
+					Object.entries(this.boardFilterToggles).filter(([key]) =>
+						valid.has(key),
+					),
 				);
-				if (Object.keys(kept).length !== Object.keys(this.boardFilterToggles).length) {
+				if (
+					Object.keys(kept).length !==
+					Object.keys(this.boardFilterToggles).length
+				) {
 					this.boardFilterToggles = kept;
 				}
 			},
@@ -1021,7 +1039,10 @@
 			pluginBadgeKey() {
 				return this.columns
 					.flatMap((column) => column.tasks)
-					.map((t) => `${t.id}:${t.common_time}:${t.approximately_time}:${t.start_time}`)
+					.map(
+						(t) =>
+							`${t.id}:${t.common_time}:${t.approximately_time}:${t.start_time}`,
+					)
 					.join(',');
 			},
 			workspaceUsersWithoutAll() {
@@ -1701,7 +1722,8 @@
 					this.workspacesData = workspaces;
 					this.categories = [{ id: 0, title: 'All categories' }, ...categories];
 					if (this.workspaceId) {
-						if (users === null) users = await getWorkspaceMembers(this.workspaceId);
+						if (users === null)
+							users = await getWorkspaceMembers(this.workspaceId);
 						if (this.boardDisposed) return;
 						this.workspaceUsers = [{ id: 0, name: 'All users' }, ...users];
 						this.assignablePersonas =
@@ -1728,7 +1750,8 @@
 									const onBoard = this.columns.some((column) =>
 										column.tasks.some((t) => t.id === task_id),
 									);
-									if (onBoard) void refreshAssignedTask(task_id).catch(() => {});
+									if (onBoard)
+										void refreshAssignedTask(task_id).catch(() => {});
 								},
 								onCommentAdded: (comment) => {
 									for (const column of this.columns) {
@@ -2027,7 +2050,9 @@
 	}
 
 	:global(.peer[data-state='collapsed'] ~ main .board-container) {
-		width: calc(100vw - var(--sidebar-width-icon, 3rem) - var(--canvas-gap, 0px));
+		width: calc(
+			100vw - var(--sidebar-width-icon, 3rem) - var(--canvas-gap, 0px)
+		);
 	}
 
 	.column-width {

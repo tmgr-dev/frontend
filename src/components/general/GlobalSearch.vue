@@ -38,9 +38,7 @@
 					autofocus
 					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
 					:placeholder="
-						activeTab === 'pages'
-							? 'Page title or text'
-							: 'Task title'
+						activeTab === 'pages' ? 'Page title or text' : 'Task title'
 					"
 				/>
 				<div class="max-h-80 overflow-y-auto">

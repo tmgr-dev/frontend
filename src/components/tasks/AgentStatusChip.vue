@@ -24,16 +24,19 @@
 </template>
 
 <script>
-	import { computed, defineComponent, onBeforeUnmount, watch } from 'vue';
-	import { useTaskAgentStatus, trackAgentStatus } from '@/composable/useAgentStatus';
+	import {
+		trackAgentStatus,
+		useTaskAgentStatus,
+	} from '@/composable/useAgentStatus';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { useStore } from 'vuex';
 	import { usePusher } from '@/composable/usePusher';
 	import {
 		STATE_GLYPHS,
 		STATE_LABELS,
 		statusTooltip,
 	} from '@/utils/agentStatus';
+	import { computed, defineComponent, onBeforeUnmount, watch } from 'vue';
+	import { useStore } from 'vuex';
 
 	const STATE_CLASSES = {
 		working: 'text-tmgr-light-blue dark:text-sky-400',
@@ -56,7 +59,8 @@
 				usePusher();
 			const store = useStore();
 			const effectiveWorkspaceId = computed(
-				() => props.workspaceId || Number(store.getters.currentWorkspaceId) || null,
+				() =>
+					props.workspaceId || Number(store.getters.currentWorkspaceId) || null,
 			);
 			const enabled = computed(
 				() => !!effectiveWorkspaceId.value && isFeatureEnabled('agent_work'),

@@ -1,8 +1,18 @@
-import { exportWorkspaceFiles, taskFileName, taskToMarkdown, type ExportFile, type ExportTask } from './markdown';
+import {
+	exportWorkspaceFiles,
+	taskFileName,
+	taskToMarkdown,
+	type ExportFile,
+	type ExportTask,
+} from './markdown';
 import { parseJson } from './serialize';
 import type { LocalDb } from './types';
 
-const loadTasks = async (db: LocalDb, author: string, taskId?: number): Promise<ExportTask[]> => {
+const loadTasks = async (
+	db: LocalDb,
+	author: string,
+	taskId?: number,
+): Promise<ExportTask[]> => {
 	const tasks = await db.select<any>(
 		`SELECT t.*, s.name AS s_name, s.type AS s_type, c.title AS c_title, c.code AS c_code
 		 FROM tasks t
@@ -15,7 +25,9 @@ const loadTasks = async (db: LocalDb, author: string, taskId?: number): Promise<
 	const comments = await db.select<any>(
 		`SELECT task_id, message, created_at FROM comments WHERE deleted_at IS NULL ORDER BY id`,
 	);
-	const files = await db.select<any>(`SELECT task_id, name, file_path FROM files ORDER BY id`);
+	const files = await db.select<any>(
+		`SELECT task_id, name, file_path FROM files ORDER BY id`,
+	);
 	return tasks.map((t) => ({
 		id: t.id,
 		title: t.title,
@@ -33,7 +45,9 @@ const loadTasks = async (db: LocalDb, author: string, taskId?: number): Promise<
 		comments: comments
 			.filter((c) => c.task_id === t.id)
 			.map((c) => ({ message: c.message, created_at: c.created_at, author })),
-		files: files.filter((f) => f.task_id === t.id).map((f) => ({ name: f.name, file_path: f.file_path })),
+		files: files
+			.filter((f) => f.task_id === t.id)
+			.map((f) => ({ name: f.name, file_path: f.file_path })),
 	}));
 };
 
@@ -46,11 +60,22 @@ export const workspaceExport = async (
 	const statuses = await db.select<{ name: string }>(
 		`SELECT name FROM statuses ORDER BY CASE WHEN type = 'archived' THEN 1 ELSE 0 END, sort_order, id`,
 	);
-	return exportWorkspaceFiles(name, statuses, await loadTasks(db, author), exportedAt);
+	return exportWorkspaceFiles(
+		name,
+		statuses,
+		await loadTasks(db, author),
+		exportedAt,
+	);
 };
 
 /** One task, written to exports/tasks/ (so attachments are two levels up). */
-export const taskExport = async (db: LocalDb, taskId: number, author: string): Promise<ExportFile | null> => {
+export const taskExport = async (
+	db: LocalDb,
+	taskId: number,
+	author: string,
+): Promise<ExportFile | null> => {
 	const [task] = await loadTasks(db, author, taskId);
-	return task ? { path: taskFileName(task), content: taskToMarkdown(task, '../../files') } : null;
+	return task
+		? { path: taskFileName(task), content: taskToMarkdown(task, '../../files') }
+		: null;
 };

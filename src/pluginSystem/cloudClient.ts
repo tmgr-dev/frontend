@@ -5,7 +5,11 @@ export interface MintedToken {
 	expires_in: number;
 }
 
-const WORKSPACE_LISTS = new Set(['tasks', 'workspaces/statuses', 'project_categories']);
+const WORKSPACE_LISTS = new Set([
+	'tasks',
+	'workspaces/statuses',
+	'project_categories',
+]);
 const RENEW_BEFORE_MS = 60_000;
 
 const routeOf = (url?: string) => (url ?? '').replace(/^\/+/, '').split('?')[0];

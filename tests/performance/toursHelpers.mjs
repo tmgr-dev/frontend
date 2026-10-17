@@ -25,7 +25,8 @@ export const mockOnboarding = async (page, seed = {}) => {
     const request = route.request();
     const method = request.method();
     const path = new URL(request.url()).pathname.replace(/^.*\/api\//, '');
-    const body = method === 'GET' || method === 'DELETE' ? null : request.postDataJSON();
+    const body =
+      method === 'GET' || method === 'DELETE' ? null : request.postDataJSON();
     if (method !== 'GET') writes.push({ method, path, body });
     if (path === 'onboarding/preferences' && method === 'PUT') {
       for (const key of ['tips_mode', 'hub_hidden', 'checklist_hidden']) {
@@ -89,7 +90,14 @@ export const mockTasks = async (page) => {
     await route.fulfill({
       json: {
         data: rows,
-        meta: { current_page: 1, per_page: 10, total: rows.length, last_page: 1, from: 1, to: rows.length },
+        meta: {
+          current_page: 1,
+          per_page: 10,
+          total: rows.length,
+          last_page: 1,
+          from: 1,
+          to: rows.length,
+        },
       },
     });
   });
@@ -107,5 +115,7 @@ export const setScheme = async (page, scheme) => {
 
 export const shoot = async (page, name, size, scheme) => {
   await setScheme(page, scheme);
-  await page.screenshot({ path: `${SHOTS}/${name}-${size.name}-${scheme}.png` });
+  await page.screenshot({
+    path: `${SHOTS}/${name}-${size.name}-${scheme}.png`,
+  });
 };

@@ -41,9 +41,9 @@ describe('visibleHumanAssignees', () => {
 
 	it('ignores uuid-only persona lists (already normalized for save)', () => {
 		const assignees = [{ id: 1 }];
-		expect(visibleHumanAssignees({ assignees, persona_assignees: ['p1'] })).toEqual(
-			assignees,
-		);
+		expect(
+			visibleHumanAssignees({ assignees, persona_assignees: ['p1'] }),
+		).toEqual(assignees);
 	});
 });
 
@@ -60,7 +60,10 @@ describe('assigneeWritePayload', () => {
 	});
 
 	it('uses the supplied human ids but still carries personas', () => {
-		const task = { assignees: [{ id: 1 }], persona_assignees: [persona('p1', 1)] };
+		const task = {
+			assignees: [{ id: 1 }],
+			persona_assignees: [persona('p1', 1)],
+		};
 		expect(assigneeWritePayload(task, [1, 5])).toEqual({
 			assignees: [1, 5],
 			persona_assignees: ['p1'],

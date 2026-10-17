@@ -20,11 +20,6 @@
 	import Select from '@/components/general/Select.vue';
 	import CategoriesPreview from '@/components/previews/CategoriesPreview.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
-	import { useWorkflowMode } from '@/composable/useWorkflowMode';
-	import {
-		filterTasksByState,
-		paginateLocally,
-	} from '@/utils/taskStateFilter';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -43,8 +38,10 @@
 	import { Skeleton } from '@/components/ui/skeleton';
 	import { useToast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import store from '@/store';
 	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
+	import { filterTasksByState, paginateLocally } from '@/utils/taskStateFilter';
 	import {
 		ArchiveRestoreIcon,
 		ArrowRightLeftIcon,
@@ -141,10 +138,7 @@
 		{ label: '50 per page', value: 50 },
 	];
 
-	const {
-		simpleMode,
-		workspaceStatuses: simpleStatuses,
-	} = useWorkflowMode();
+	const { simpleMode, workspaceStatuses: simpleStatuses } = useWorkflowMode();
 	const ALL_TASKS_PER_PAGE = 100000;
 	const simpleFilter = computed(() => {
 		const value = workspaceStatus.value;
@@ -477,7 +471,9 @@
 		return currentWorkspace?.code;
 	};
 
-	const pageTitle = computed(() => (category.value ? category.value.title : 'Categories'));
+	const pageTitle = computed(() =>
+		category.value ? category.value.title : 'Categories',
+	);
 
 	watch(
 		category,
@@ -580,7 +576,9 @@
 									() => {
 										if (workspaceCode) {
 											router.push(
-												`/${workspaceCode}/categories?create=${route.params.id || 'top'}`,
+												`/${workspaceCode}/categories?create=${
+													route.params.id || 'top'
+												}`,
 											);
 										} else {
 											router.push(

@@ -1,8 +1,8 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
+import { materializeDueInstances, ROUTINE_ID_BASE } from '../routines/service';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
-import { materializeDueInstances, ROUTINE_ID_BASE } from '../routines/service';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
@@ -16,7 +16,8 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		if (!res) throw new Error(`no local route for ${method} ${url}`);
 		return res;
 	};
-	const data = async (method: string, url: string, body?: unknown) => (await call(method, url, body)).data.data;
+	const data = async (method: string, url: string, body?: unknown) =>
+		(await call(method, url, body)).data.data;
 
 	beforeEach(async () => {
 		clock = new Date('2026-09-26T10:00:00');
@@ -43,23 +44,38 @@ describeSqlite('local daily-routines API on SQLite', () => {
 	});
 
 	it('resolves the workspace id and starts every count at zero', async () => {
-		expect(await data('GET', 'daily-routines/workspace')).toEqual({ workspace_id: -42 });
-		expect(await data('GET', 'daily-routines/tasks/count')).toEqual({ count: 0 });
-		expect(await data('GET', 'daily-routines/tasks/archived/count')).toEqual({ count: 0 });
-		expect(await data('GET', 'daily-routines/tasks/completed/count')).toEqual({ count: 0 });
+		expect(await data('GET', 'daily-routines/workspace')).toEqual({
+			workspace_id: -42,
+		});
+		expect(await data('GET', 'daily-routines/tasks/count')).toEqual({
+			count: 0,
+		});
+		expect(await data('GET', 'daily-routines/tasks/archived/count')).toEqual({
+			count: 0,
+		});
+		expect(await data('GET', 'daily-routines/tasks/completed/count')).toEqual({
+			count: 0,
+		});
 		expect(await data('GET', 'daily-routines/tasks')).toEqual([]);
 	});
 
 	it('creates a plain routine with a disjoint id and rejects a blank title', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Water plants', description: 'x' });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Water plants',
+			description: 'x',
+		});
 		expect(routine.id).toBeGreaterThan(ROUTINE_ID_BASE);
 		expect(routine.title).toBe('Water plants');
 		expect(routine.is_daily_routine).toBe(true);
 		expect(routine.daily_routine).toBe(true);
 		expect(routine.workspace_id).toBe(-42);
-		expect((await call('POST', 'daily-routines/tasks', { title: '  ' })).status).toBe(422);
+		expect(
+			(await call('POST', 'daily-routines/tasks', { title: '  ' })).status,
+		).toBe(422);
 
-		const second = await data('POST', 'daily-routines/tasks', { title: 'Second' });
+		const second = await data('POST', 'daily-routines/tasks', {
+			title: 'Second',
+		});
 		expect(second.id).toBe(routine.id + 1);
 	});
 
@@ -68,26 +84,48 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		// from recurrence.time — matching the Java DTO (RoutineTaskRequest.resolveScheduledTime()).
 		const created = await call('POST', 'daily-routines/tasks/recurring', {
 			title: 'Standup',
-			recurrence: { frequency: 'DAILY', interval: 1, time: { hours: 9, minutes: 30 } },
+			recurrence: {
+				frequency: 'DAILY',
+				interval: 1,
+				time: { hours: 9, minutes: 30 },
+			},
 			scheduled_date: '2026-09-26',
 			scheduled_time: { hours: 9, minutes: 30 },
 		});
 		expect(created.status).toBe(201);
 		const routine = created.data.data;
-		const instances = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
+		const instances = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
+		);
 		expect(instances).toHaveLength(1);
 		expect(instances[0].scheduled_for).toBe('2026-09-26T09:30:00Z');
 	});
 
 	it('quick-creates an undated routine without an instance when no time is given', async () => {
-		const created = await data('POST', 'daily-routines/tasks/quick', { title: 'Quick one' });
-		expect(await data('GET', `daily-routines/tasks/${created.id}/instances`)).toEqual([]);
+		const created = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Quick one',
+		});
+		expect(
+			await data('GET', `daily-routines/tasks/${created.id}/instances`),
+		).toEqual([]);
 
-		const nearDate = await data('POST', 'daily-routines/tasks/quick', { title: 'Near', date: '2026-09-27' });
-		expect(await data('GET', `daily-routines/tasks/${nearDate.id}/instances`)).toEqual([]);
+		const nearDate = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Near',
+			date: '2026-09-27',
+		});
+		expect(
+			await data('GET', `daily-routines/tasks/${nearDate.id}/instances`),
+		).toEqual([]);
 
-		const farDate = await data('POST', 'daily-routines/tasks/quick', { title: 'Far', date: '2026-10-05' });
-		const farInstances = await data('GET', `daily-routines/tasks/${farDate.id}/instances`);
+		const farDate = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Far',
+			date: '2026-10-05',
+		});
+		const farInstances = await data(
+			'GET',
+			`daily-routines/tasks/${farDate.id}/instances`,
+		);
 		expect(farInstances[0].scheduled_for).toBe('2026-10-05T00:00:00Z');
 
 		const withTime = await data('POST', 'daily-routines/tasks/quick', {
@@ -95,72 +133,129 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			date: '2026-10-01',
 			time: '08:15',
 		});
-		const timedInstances = await data('GET', `daily-routines/tasks/${withTime.id}/instances`);
+		const timedInstances = await data(
+			'GET',
+			`daily-routines/tasks/${withTime.id}/instances`,
+		);
 		expect(timedInstances[0].scheduled_for).toBe('2026-10-01T08:15:00Z');
 
-		const timedToday = await data('POST', 'daily-routines/tasks/quick', { title: 'Today 9', time: '09:00' });
-		expect(await data('GET', `daily-routines/tasks/${timedToday.id}/instances`)).toHaveLength(1);
+		const timedToday = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Today 9',
+			time: '09:00',
+		});
+		expect(
+			await data('GET', `daily-routines/tasks/${timedToday.id}/instances`),
+		).toHaveLength(1);
 	});
 
 	it('expands an undated quick-added routine on today only', async () => {
-		const created = await data('POST', 'daily-routines/tasks/quick', { title: 'Someday' });
+		const created = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Someday',
+		});
 		const titles = async (from: string, to: string) =>
-			(await data('GET', `daily-routines/expand?from=${from}&to=${to}`)).map((e: any) => e.title);
+			(await data('GET', `daily-routines/expand?from=${from}&to=${to}`)).map(
+				(e: any) => e.title,
+			);
 		expect(await titles('2026-09-26', '2026-09-26')).toContain('Someday');
 		expect(await titles('2026-09-25', '2026-09-25')).not.toContain('Someday');
 		expect(created.id).toBeGreaterThan(ROUTINE_ID_BASE);
 	});
 
 	it('makes a routine undated via unscheduled:true, keeping completed instances', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Dated' });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Dated',
+		});
 		await data('PUT', `daily-routines/tasks/${routine.id}`, {
 			scheduled_date: '2026-09-30',
 			scheduled_time: { hours: 9, minutes: 0 },
 		});
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toHaveLength(1);
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/instances`),
+		).toHaveLength(1);
 		await data('PUT', `daily-routines/tasks/${routine.id}`, {
 			title: 'Dated',
 			unscheduled: true,
 			scheduled_date: '2026-10-09',
 		});
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toEqual([]);
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/instances`),
+		).toEqual([]);
 
 		const done = await data('POST', 'daily-routines/tasks', { title: 'Done' });
-		await data('PUT', `daily-routines/tasks/${done.id}`, { scheduled_date: '2026-09-30' });
-		await data('POST', `daily-routines/tasks/${done.id}/complete-on`, { date: '2026-09-30' });
+		await data('PUT', `daily-routines/tasks/${done.id}`, {
+			scheduled_date: '2026-09-30',
+		});
+		await data('POST', `daily-routines/tasks/${done.id}/complete-on`, {
+			date: '2026-09-30',
+		});
 		await data('PUT', `daily-routines/tasks/${done.id}`, { unscheduled: true });
-		expect(await data('GET', `daily-routines/tasks/${done.id}/instances`)).toHaveLength(1);
+		expect(
+			await data('GET', `daily-routines/tasks/${done.id}/instances`),
+		).toHaveLength(1);
 	});
 
 	it('un-completing an undated routine deletes its only midnight instance', async () => {
-		const routine = await data('POST', 'daily-routines/tasks/quick', { title: 'Undated' });
-		const on = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-09-26' });
+		const routine = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Undated',
+		});
+		const on = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/complete-on`,
+			{ date: '2026-09-26' },
+		);
 		expect(on.completed).toBe(true);
 		expect(on.instance_id).not.toBeNull();
-		const off = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-09-26' });
-		expect(off).toMatchObject({ instance_id: null, completed: false, status: 'PENDING' });
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toEqual([]);
+		const off = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/complete-on`,
+			{ date: '2026-09-26' },
+		);
+		expect(off).toMatchObject({
+			instance_id: null,
+			completed: false,
+			status: 'PENDING',
+		});
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/instances`),
+		).toEqual([]);
 	});
 
 	it('un-completing a dated no-time routine created earlier keeps it as a pending instance', async () => {
-		const routine = await data('POST', 'daily-routines/tasks/quick', { title: 'Next week', date: '2026-10-01' });
+		const routine = await data('POST', 'daily-routines/tasks/quick', {
+			title: 'Next week',
+			date: '2026-10-01',
+		});
 		clock = new Date('2026-09-26T12:00:00');
-		await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-10-01' });
-		const off = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-10-01' });
+		await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, {
+			date: '2026-10-01',
+		});
+		const off = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/complete-on`,
+			{ date: '2026-10-01' },
+		);
 		expect(off).toMatchObject({ completed: false, status: 'PENDING' });
 		expect(off.instance_id).not.toBeNull();
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toHaveLength(1);
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/instances`),
+		).toHaveLength(1);
 	});
 
 	it('clears the routine own date and time when made unscheduled', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Plain' });
-		await ctx.db.execute(`UPDATE routines SET scheduled_date = '2026-09-20', scheduled_time = '09:00:00' WHERE id = ?`, [
-			routine.id,
-		]);
-		await data('PUT', `daily-routines/tasks/${routine.id}`, { unscheduled: true });
-		const [row] = await ctx.db.select<any>(`SELECT scheduled_date, scheduled_time FROM routines WHERE id = ?`, [
-			routine.id,
-		]);
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Plain',
+		});
+		await ctx.db.execute(
+			`UPDATE routines SET scheduled_date = '2026-09-20', scheduled_time = '09:00:00' WHERE id = ?`,
+			[routine.id],
+		);
+		await data('PUT', `daily-routines/tasks/${routine.id}`, {
+			unscheduled: true,
+		});
+		const [row] = await ctx.db.select<any>(
+			`SELECT scheduled_date, scheduled_time FROM routines WHERE id = ?`,
+			[routine.id],
+		);
 		expect(row).toEqual({ scheduled_date: null, scheduled_time: null });
 	});
 
@@ -168,23 +263,46 @@ describeSqlite('local daily-routines API on SQLite', () => {
 		const a = await data('POST', 'daily-routines/tasks', { title: 'A' });
 		const b = await data('POST', 'daily-routines/tasks', { title: 'B' });
 		await call('POST', `daily-routines/tasks/${a.id}/archive`);
-		expect((await data('GET', 'daily-routines/tasks')).map((r: any) => r.id)).toEqual([b.id]);
-		expect(await data('GET', 'daily-routines/tasks/count')).toEqual({ count: 1 });
-		expect(await data('GET', 'daily-routines/tasks/archived/count')).toEqual({ count: 1 });
+		expect(
+			(await data('GET', 'daily-routines/tasks')).map((r: any) => r.id),
+		).toEqual([b.id]);
+		expect(await data('GET', 'daily-routines/tasks/count')).toEqual({
+			count: 1,
+		});
+		expect(await data('GET', 'daily-routines/tasks/archived/count')).toEqual({
+			count: 1,
+		});
 	});
 
 	it('404s reading, updating, completing or listing instances of an archived or missing routine', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Gone soon' });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Gone soon',
+		});
 		await call('POST', `daily-routines/tasks/${routine.id}/archive`);
-		expect((await call('GET', `daily-routines/tasks/${routine.id}`)).status).toBe(404);
-		expect((await call('PUT', `daily-routines/tasks/${routine.id}`, { title: 'x' })).status).toBe(404);
-		expect((await call('POST', `daily-routines/tasks/${routine.id}/complete`)).status).toBe(404);
-		expect((await call('GET', `daily-routines/tasks/${routine.id}/instances`)).status).toBe(404);
-		expect((await call('GET', 'daily-routines/tasks/999999999999')).status).toBe(404);
+		expect(
+			(await call('GET', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(404);
+		expect(
+			(await call('PUT', `daily-routines/tasks/${routine.id}`, { title: 'x' }))
+				.status,
+		).toBe(404);
+		expect(
+			(await call('POST', `daily-routines/tasks/${routine.id}/complete`))
+				.status,
+		).toBe(404);
+		expect(
+			(await call('GET', `daily-routines/tasks/${routine.id}/instances`))
+				.status,
+		).toBe(404);
+		expect(
+			(await call('GET', 'daily-routines/tasks/999999999999')).status,
+		).toBe(404);
 	});
 
 	it('updates title/description/category/duration and reflects them back', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Draft' });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Draft',
+		});
 		const updated = await data('PUT', `daily-routines/tasks/${routine.id}`, {
 			title: 'Final',
 			description: 'Notes',
@@ -202,7 +320,12 @@ describeSqlite('local daily-routines API on SQLite', () => {
 	it('is_recurring:false removes the pattern; a scheduled_date creates or updates the one-off instance', async () => {
 		const routine = await call('POST', 'daily-routines/tasks/recurring', {
 			title: 'Weekly sync',
-			recurrence: { frequency: 'WEEKLY', days_of_week: ['MON'], interval: 1, time: { hours: 9, minutes: 0 } },
+			recurrence: {
+				frequency: 'WEEKLY',
+				days_of_week: ['MON'],
+				interval: 1,
+				time: { hours: 9, minutes: 0 },
+			},
 		}).then((r) => r.data.data);
 
 		await data('PUT', `daily-routines/tasks/${routine.id}`, {
@@ -211,7 +334,10 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			scheduled_date: '2026-09-28',
 			scheduled_time: { hours: 14, minutes: 0 },
 		});
-		const expanded = await data('GET', 'daily-routines/expand?from=2026-09-28&to=2026-09-28');
+		const expanded = await data(
+			'GET',
+			'daily-routines/expand?from=2026-09-28&to=2026-09-28',
+		);
 		expect(expanded).toHaveLength(1);
 		expect(expanded[0].frequency).toBeNull();
 		expect(expanded[0].time).toBe('14:00');
@@ -221,33 +347,65 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			scheduled_date: '2026-09-28',
 			scheduled_time: null,
 		});
-		const unscheduled = await data('GET', 'daily-routines/expand?from=2026-09-28&to=2026-09-28');
+		const unscheduled = await data(
+			'GET',
+			'daily-routines/expand?from=2026-09-28&to=2026-09-28',
+		);
 		expect(unscheduled[0].time).toBeNull();
 	});
 
 	it('deletes a routine (204), after which it is gone from GET and the list', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Bye' });
-		expect((await call('DELETE', `daily-routines/tasks/${routine.id}`)).status).toBe(204);
-		expect((await call('GET', `daily-routines/tasks/${routine.id}`)).status).toBe(404);
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Bye',
+		});
+		expect(
+			(await call('DELETE', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(204);
+		expect(
+			(await call('GET', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(404);
 		expect(await data('GET', 'daily-routines/tasks')).toEqual([]);
 	});
 
 	it('deletes an already-archived routine but not one already deleted', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Archived then gone' });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Archived then gone',
+		});
 		await call('POST', `daily-routines/tasks/${routine.id}/archive`);
-		expect((await call('DELETE', `daily-routines/tasks/${routine.id}`)).status).toBe(204);
-		expect((await call('DELETE', `daily-routines/tasks/${routine.id}`)).status).toBe(404);
+		expect(
+			(await call('DELETE', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(204);
+		expect(
+			(await call('DELETE', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(404);
 	});
 
 	it('toggles completion for today via complete, and for an explicit date via complete-on', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Meditate' });
-		const first = await data('POST', `daily-routines/tasks/${routine.id}/complete`);
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Meditate',
+		});
+		const first = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/complete`,
+		);
 		expect(first.status).toBe('COMPLETED');
-		const second = await data('POST', `daily-routines/tasks/${routine.id}/complete`);
+		const second = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/complete`,
+		);
 		expect(second.status).toBe('PENDING');
 
-		const onDate = await data('POST', `daily-routines/tasks/${routine.id}/complete-on`, { date: '2026-10-05' });
-		expect(onDate).toMatchObject({ task_id: routine.id, date: '2026-10-05', status: 'COMPLETED', completed: true });
+		const onDate = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/complete-on`,
+			{ date: '2026-10-05' },
+		);
+		expect(onDate).toMatchObject({
+			task_id: routine.id,
+			date: '2026-10-05',
+			status: 'COMPLETED',
+			completed: true,
+		});
 	});
 
 	it('lists, completes, skips and deletes instances by id, scoped to their routine', async () => {
@@ -256,55 +414,111 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			recurrence: { frequency: 'DAILY', interval: 1 },
 			scheduled_date: '2026-09-26',
 		});
-		const other = await data('POST', 'daily-routines/tasks', { title: 'Other' });
-		const [instance] = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
-
-		expect((await call('POST', `daily-routines/tasks/${other.id}/instances/${instance.id}/complete`)).status).toBe(
-			404,
+		const other = await data('POST', 'daily-routines/tasks', {
+			title: 'Other',
+		});
+		const [instance] = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
 		);
-		const completed = await data('POST', `daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`);
+
+		expect(
+			(
+				await call(
+					'POST',
+					`daily-routines/tasks/${other.id}/instances/${instance.id}/complete`,
+				)
+			).status,
+		).toBe(404);
+		const completed = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`,
+		);
 		expect(completed.status).toBe('COMPLETED');
-		const skipped = await data('POST', `daily-routines/tasks/${routine.id}/instances/${instance.id}/skip`);
+		const skipped = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/instances/${instance.id}/skip`,
+		);
 		expect(skipped.status).toBe('SKIPPED');
 
-		expect((await call('DELETE', `daily-routines/tasks/${routine.id}/instances/${instance.id}`)).status).toBe(204);
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toEqual([]);
+		expect(
+			(
+				await call(
+					'DELETE',
+					`daily-routines/tasks/${routine.id}/instances/${instance.id}`,
+				)
+			).status,
+		).toBe(204);
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/instances`),
+		).toEqual([]);
 	});
 
 	it('reschedules a numeric instance (keeping its time when none is given) and a virtual one', async () => {
 		const routine = await data('POST', 'daily-routines/tasks/recurring', {
 			title: 'Run',
-			recurrence: { frequency: 'DAILY', interval: 1, time: { hours: 7, minutes: 0 } },
+			recurrence: {
+				frequency: 'DAILY',
+				interval: 1,
+				time: { hours: 7, minutes: 0 },
+			},
 			scheduled_date: '2026-09-26',
 			scheduled_time: { hours: 7, minutes: 0 },
 		});
-		const [instance] = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
+		const [instance] = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
+		);
 
-		const moved = await data('PATCH', `daily-routines/tasks/${routine.id}/instances/${instance.id}`, {
-			scheduled_for: '2026-09-27',
-		});
+		const moved = await data(
+			'PATCH',
+			`daily-routines/tasks/${routine.id}/instances/${instance.id}`,
+			{
+				scheduled_for: '2026-09-27',
+			},
+		);
 		expect(moved.scheduled_for).toBe('2026-09-27T07:00:00Z');
 
-		const virtual = await data('PATCH', `daily-routines/tasks/${routine.id}/instances/virtual`, {
-			scheduled_for: '2026-09-30 08:15:00',
-		});
+		const virtual = await data(
+			'PATCH',
+			`daily-routines/tasks/${routine.id}/instances/virtual`,
+			{
+				scheduled_for: '2026-09-30 08:15:00',
+			},
+		);
 		expect(virtual.scheduled_for).toBe('2026-09-30T08:15:00Z');
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/instances`)).toHaveLength(2);
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/instances`),
+		).toHaveLength(2);
 	});
 
 	it('upserts a recurrence pattern via the legacy PUT .../pattern endpoint', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Legacy pattern' });
-		const pattern = await data('PUT', `daily-routines/tasks/${routine.id}/pattern`, {
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Legacy pattern',
+		});
+		const pattern = await data(
+			'PUT',
+			`daily-routines/tasks/${routine.id}/pattern`,
+			{
+				frequency: 'WEEKLY',
+				interval: 2,
+				days_of_week: ['mon', 'wed'],
+				time: { hours: 6, minutes: 0 },
+			},
+		);
+		expect(pattern).toMatchObject({
+			task_id: routine.id,
 			frequency: 'WEEKLY',
 			interval: 2,
-			days_of_week: ['mon', 'wed'],
-			time: { hours: 6, minutes: 0 },
 		});
-		expect(pattern).toMatchObject({ task_id: routine.id, frequency: 'WEEKLY', interval: 2 });
 		expect(pattern.days_of_week).toEqual(['MON', 'WED']);
-		expect((await call('PUT', `daily-routines/tasks/${routine.id}/pattern`, { frequency: 'NONE' })).status).toBe(
-			422,
-		);
+		expect(
+			(
+				await call('PUT', `daily-routines/tasks/${routine.id}/pattern`, {
+					frequency: 'NONE',
+				})
+			).status,
+		).toBe(422);
 	});
 
 	it('reports task stats and the upcoming instance feed', async () => {
@@ -313,32 +527,75 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			recurrence: { frequency: 'DAILY', interval: 1 },
 			scheduled_date: '2026-09-26',
 		});
-		const [instance] = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
-		await call('POST', `daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`);
+		const [instance] = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
+		);
+		await call(
+			'POST',
+			`daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`,
+		);
 
-		expect(await data('GET', `daily-routines/tasks/${routine.id}/stats`)).toEqual({
+		expect(
+			await data('GET', `daily-routines/tasks/${routine.id}/stats`),
+		).toEqual({
 			total: 1,
 			completed: 1,
 			skipped: 0,
 		});
-		const upcoming = await data('GET', 'daily-routines/tasks/upcoming?limit=10');
+		const upcoming = await data(
+			'GET',
+			'daily-routines/tasks/upcoming?limit=10',
+		);
 		expect(upcoming.map((i: any) => i.task_id)).toContain(routine.id);
 	});
 
 	it('expands a daily pattern across the range and honours the instance status override', async () => {
 		const routine = await data('POST', 'daily-routines/tasks/recurring', {
 			title: 'Daily walk',
-			recurrence: { frequency: 'DAILY', interval: 1, time: { hours: 7, minutes: 0 }, duration_min: 20 },
+			recurrence: {
+				frequency: 'DAILY',
+				interval: 1,
+				time: { hours: 7, minutes: 0 },
+				duration_min: 20,
+			},
 			scheduled_date: '2026-09-26',
 		});
-		const [instance] = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
-		await call('POST', `daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`);
+		const [instance] = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
+		);
+		await call(
+			'POST',
+			`daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`,
+		);
 
-		const entries = await data('GET', 'daily-routines/expand?from=2026-09-26&to=2026-09-28');
-		expect(entries.map((e: any) => e.date)).toEqual(['2026-09-26', '2026-09-27', '2026-09-28']);
-		expect(entries[0]).toMatchObject({ status: 'completed', completed: true, virtual: false, instance_id: instance.id });
-		expect(entries[1]).toMatchObject({ status: 'pending', completed: false, virtual: true, instance_id: null });
-		expect(entries[0].routine_category).toEqual({ id: 'none', name: 'General', color: '#888888' });
+		const entries = await data(
+			'GET',
+			'daily-routines/expand?from=2026-09-26&to=2026-09-28',
+		);
+		expect(entries.map((e: any) => e.date)).toEqual([
+			'2026-09-26',
+			'2026-09-27',
+			'2026-09-28',
+		]);
+		expect(entries[0]).toMatchObject({
+			status: 'completed',
+			completed: true,
+			virtual: false,
+			instance_id: instance.id,
+		});
+		expect(entries[1]).toMatchObject({
+			status: 'pending',
+			completed: false,
+			virtual: true,
+			instance_id: null,
+		});
+		expect(entries[0].routine_category).toEqual({
+			id: 'none',
+			name: 'General',
+			color: '#888888',
+		});
 	});
 
 	it('expands an orphan instance (pattern removed) and a plain unscheduled routine on today', async () => {
@@ -347,17 +604,36 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			recurrence: { frequency: 'DAILY', interval: 1 },
 			scheduled_date: '2026-09-27',
 		});
-		await data('PUT', `daily-routines/tasks/${orphan.id}`, { title: 'Orphan', is_recurring: false });
+		await data('PUT', `daily-routines/tasks/${orphan.id}`, {
+			title: 'Orphan',
+			is_recurring: false,
+		});
 
-		const plain = await data('POST', 'daily-routines/tasks', { title: 'Someday' });
+		const plain = await data('POST', 'daily-routines/tasks', {
+			title: 'Someday',
+		});
 
-		const entries = await data('GET', 'daily-routines/expand?from=2026-09-26&to=2026-09-27');
+		const entries = await data(
+			'GET',
+			'daily-routines/expand?from=2026-09-26&to=2026-09-27',
+		);
 		const orphanEntry = entries.find((e: any) => e.task_id === orphan.id);
-		expect(orphanEntry).toMatchObject({ date: '2026-09-27', virtual: false, frequency: null });
+		expect(orphanEntry).toMatchObject({
+			date: '2026-09-27',
+			virtual: false,
+			frequency: null,
+		});
 
-		const todayEntries = await data('GET', 'daily-routines/expand?from=2026-09-26&to=2026-09-26');
+		const todayEntries = await data(
+			'GET',
+			'daily-routines/expand?from=2026-09-26&to=2026-09-26',
+		);
 		const plainEntry = todayEntries.find((e: any) => e.task_id === plain.id);
-		expect(plainEntry).toMatchObject({ date: '2026-09-26', virtual: true, time: null });
+		expect(plainEntry).toMatchObject({
+			date: '2026-09-26',
+			virtual: true,
+			time: null,
+		});
 	});
 
 	it('uses device-local "today" for a plain routine, not toISOString().slice(0,10)', async () => {
@@ -369,18 +645,27 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			offsetMinutes > 0
 				? new Date(2026, 8, 26, 23, 45, 0) // local behind UTC: late local = next-day UTC
 				: offsetMinutes < 0
-					? new Date(2026, 8, 27, 0, 15, 0) // local ahead of UTC: early local = prev-day UTC
-					: new Date(2026, 8, 26, 12, 0, 0); // no offset: nothing to prove either way
-		const localToday = `${clock.getFullYear()}-${String(clock.getMonth() + 1).padStart(2, '0')}-${String(
-			clock.getDate(),
-		).padStart(2, '0')}`;
+				? new Date(2026, 8, 27, 0, 15, 0) // local ahead of UTC: early local = prev-day UTC
+				: new Date(2026, 8, 26, 12, 0, 0); // no offset: nothing to prove either way
+		const localToday = `${clock.getFullYear()}-${String(
+			clock.getMonth() + 1,
+		).padStart(2, '0')}-${String(clock.getDate()).padStart(2, '0')}`;
 		const utcToday = clock.toISOString().slice(0, 10);
 		if (offsetMinutes !== 0) expect(localToday).not.toBe(utcToday);
 
-		const plain = await data('POST', 'daily-routines/tasks', { title: 'Near midnight' });
-		const entries = await data('GET', `daily-routines/expand?from=${localToday}&to=${localToday}`);
-		expect(entries.find((e: any) => e.task_id === plain.id)?.date).toBe(localToday);
-		expect(entries.some((e: any) => e.task_id === plain.id && e.date === utcToday)).toBe(offsetMinutes === 0);
+		const plain = await data('POST', 'daily-routines/tasks', {
+			title: 'Near midnight',
+		});
+		const entries = await data(
+			'GET',
+			`daily-routines/expand?from=${localToday}&to=${localToday}`,
+		);
+		expect(entries.find((e: any) => e.task_id === plain.id)?.date).toBe(
+			localToday,
+		);
+		expect(
+			entries.some((e: any) => e.task_id === plain.id && e.date === utcToday),
+		).toBe(offsetMinutes === 0);
 	});
 
 	it('builds year-stats by date from the same expansion', async () => {
@@ -389,67 +674,122 @@ describeSqlite('local daily-routines API on SQLite', () => {
 			recurrence: { frequency: 'DAILY', interval: 1 },
 			scheduled_date: '2026-09-26',
 		});
-		const [instance] = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
-		await call('POST', `daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`);
+		const [instance] = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
+		);
+		await call(
+			'POST',
+			`daily-routines/tasks/${routine.id}/instances/${instance.id}/complete`,
+		);
 
-		const stats = await data('GET', 'daily-routines/expand/stats?from=2026-09-26&to=2026-09-27');
+		const stats = await data(
+			'GET',
+			'daily-routines/expand/stats?from=2026-09-26&to=2026-09-27',
+		);
 		expect(stats['2026-09-26']).toEqual({ fires: 1, completed: 1 });
 		expect(stats['2026-09-27']).toEqual({ fires: 1, completed: 0 });
 	});
 
 	it('converts a routine into a regular task in the current workspace, honouring category and ticket numbering', async () => {
-		const category = await data('POST', 'project_categories', { title: 'Habits', code: 'hb' });
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Read', approximately_time: 15 });
+		const category = await data('POST', 'project_categories', {
+			title: 'Habits',
+			code: 'hb',
+		});
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Read',
+			approximately_time: 15,
+		});
 
 		expect(
-			(await call('POST', `daily-routines/tasks/${routine.id}/convert`, { workspace_id: 999 })).status,
+			(
+				await call('POST', `daily-routines/tasks/${routine.id}/convert`, {
+					workspace_id: 999,
+				})
+			).status,
 		).toBe(409);
 
-		const task = await data('POST', `daily-routines/tasks/${routine.id}/convert`, {
-			workspace_id: -42,
-			project_category_id: category.id,
+		const task = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/convert`,
+			{
+				workspace_id: -42,
+				project_category_id: category.id,
+			},
+		);
+		expect(task).toMatchObject({
+			title: 'Read',
+			category_tasks_sequence_id: 1,
+			approximately_time: 15,
 		});
-		expect(task).toMatchObject({ title: 'Read', category_tasks_sequence_id: 1, approximately_time: 15 });
-		expect((await call('GET', `daily-routines/tasks/${routine.id}`)).status).toBe(404);
+		expect(
+			(await call('GET', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(404);
 	});
 
 	it('converts a routine that has no estimate', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Stretch' });
-
-		const task = await data('POST', `daily-routines/tasks/${routine.id}/convert`, {
-			workspace_id: -42,
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Stretch',
 		});
+
+		const task = await data(
+			'POST',
+			`daily-routines/tasks/${routine.id}/convert`,
+			{
+				workspace_id: -42,
+			},
+		);
 		expect(task).toMatchObject({ title: 'Stretch', approximately_time: 0 });
 	});
 
 	it('routes PUT/PATCH tasks/:id for a routine id to the routine, honouring only title and approximately_time', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Resize me' });
-		await call('PUT', `tasks/${routine.id}`, { approximately_time: 90, status_id: 999999 });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Resize me',
+		});
+		await call('PUT', `tasks/${routine.id}`, {
+			approximately_time: 90,
+			status_id: 999999,
+		});
 		const reloaded = await data('GET', `daily-routines/tasks/${routine.id}`);
 		expect(reloaded.approximately_time).toBe(90);
 		expect(reloaded.status_id).toBeNull();
 
 		await call('PATCH', `tasks/${routine.id}`, { title: 'Renamed' });
-		expect((await data('GET', `daily-routines/tasks/${routine.id}`)).title).toBe('Renamed');
+		expect(
+			(await data('GET', `daily-routines/tasks/${routine.id}`)).title,
+		).toBe('Renamed');
 	});
 
 	it('404s GET/DELETE tasks/:id for a routine id instead of touching the tasks table', async () => {
-		const routine = await data('POST', 'daily-routines/tasks', { title: 'Untouchable' });
+		const routine = await data('POST', 'daily-routines/tasks', {
+			title: 'Untouchable',
+		});
 		expect((await call('GET', `tasks/${routine.id}`)).status).toBe(404);
 		expect((await call('DELETE', `tasks/${routine.id}`)).status).toBe(404);
-		expect((await call('GET', `daily-routines/tasks/${routine.id}`)).status).toBe(200);
+		expect(
+			(await call('GET', `daily-routines/tasks/${routine.id}`)).status,
+		).toBe(200);
 	});
 
 	it('materializes the next due instance for a recurring routine', async () => {
 		const routine = await data('POST', 'daily-routines/tasks/recurring', {
 			title: 'Daily pill',
-			recurrence: { frequency: 'DAILY', interval: 1, time: { hours: 8, minutes: 0 } },
+			recurrence: {
+				frequency: 'DAILY',
+				interval: 1,
+				time: { hours: 8, minutes: 0 },
+			},
 		});
 		clock = new Date('2026-09-27T07:00:00');
 		const created = await materializeDueInstances(ctx);
 		expect(created).toBe(1);
-		const instances = await data('GET', `daily-routines/tasks/${routine.id}/instances`);
-		expect(instances.some((i: any) => i.scheduled_date === '2026-09-27')).toBe(true);
+		const instances = await data(
+			'GET',
+			`daily-routines/tasks/${routine.id}/instances`,
+		);
+		expect(instances.some((i: any) => i.scheduled_date === '2026-09-27')).toBe(
+			true,
+		);
 
 		const again = await materializeDueInstances(ctx);
 		expect(again).toBe(0);

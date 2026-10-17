@@ -13,14 +13,14 @@ import {
 	modulesToMap,
 	parseModulesPayload,
 	payloadFromLegacy,
+	payloadNotices,
+	presetCard,
 	presetDiff,
 	presetNotes,
-	workflowOffConfirm,
-	payloadNotices,
 	presetSummary,
-	presetCard,
 	readModulesCache,
 	shouldShowPicker,
+	workflowOffConfirm,
 	writeModulesCache,
 } from '../modules';
 
@@ -501,7 +501,10 @@ describe('presetSummary', () => {
 	});
 	it('says core only for a preset without modules', () => {
 		expect(
-			presetSummary({ key: 'minimal', name: 'Minimal', description: '', modules: [] }, modules),
+			presetSummary(
+				{ key: 'minimal', name: 'Minimal', description: '', modules: [] },
+				modules,
+			),
 		).toBe('No modules, core only');
 	});
 	it('falls back to a readable key for unknown modules', () => {
@@ -618,12 +621,20 @@ describe('workflow copy', () => {
 			parseModulesPayload({ ...raw, notices: ['Added a Done status'] }).notices,
 		).toEqual(['Added a Done status']);
 		expect(parseModulesPayload(raw).notices).toEqual([]);
-		expect(payloadNotices(parseModulesPayload({ ...raw, notices: ['a', 7] }))).toEqual(['a']);
+		expect(
+			payloadNotices(parseModulesPayload({ ...raw, notices: ['a', 7] })),
+		).toEqual(['a']);
 	});
 	it('greys Board in the core line when workflow is off', () => {
 		const payload = parseModulesPayload({
 			modules: [
-				{ key: 'board', name: 'Board', core: true, enabled: false, depends_on: ['workflow'] },
+				{
+					key: 'board',
+					name: 'Board',
+					core: true,
+					enabled: false,
+					depends_on: ['workflow'],
+				},
 				{ key: 'categories', name: 'Projects', core: true, enabled: true },
 				{ key: 'workflow', name: 'Workflow', pack: 'planning', enabled: false },
 			],
@@ -640,7 +651,13 @@ describe('workflow copy', () => {
 	it('does not grey Board when workflow is on', () => {
 		const payload = parseModulesPayload({
 			modules: [
-				{ key: 'board', name: 'Board', core: true, enabled: true, depends_on: ['workflow'] },
+				{
+					key: 'board',
+					name: 'Board',
+					core: true,
+					enabled: true,
+					depends_on: ['workflow'],
+				},
 				{ key: 'workflow', name: 'Workflow', pack: 'planning', enabled: true },
 			],
 		});
@@ -667,7 +684,10 @@ describe('presetCard', () => {
 					'Just tasks: List, Timer, Comments. Turn on more any time.',
 				),
 			),
-		).toEqual({ title: 'Minimal', summary: 'Just tasks: List, Timer and Comments' });
+		).toEqual({
+			title: 'Minimal',
+			summary: 'Just tasks: List, Timer and Comments',
+		});
 		expect(presetCard(preset('team', 'Team', 'A team'))).toEqual({
 			title: 'Team',
 			summary: 'Work together with statuses and a board',

@@ -103,7 +103,15 @@
 			const formatDeleted = (value?: string | null) =>
 				value ? new Date(value).toLocaleString() : '';
 
-			return { workspaceCode, pages, loaded, failed, restoring, restore, formatDeleted };
+			return {
+				workspaceCode,
+				pages,
+				loaded,
+				failed,
+				restoring,
+				restore,
+				formatDeleted,
+			};
 		},
 	});
 </script>

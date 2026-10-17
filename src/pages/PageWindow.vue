@@ -1,5 +1,7 @@
 <template>
-	<div class="flex h-screen flex-col overflow-y-auto bg-surface font-display text-ink">
+	<div
+		class="flex h-screen flex-col overflow-y-auto bg-surface font-display text-ink"
+	>
 		<div
 			v-if="error"
 			role="alert"
@@ -14,7 +16,9 @@
 				Close window
 			</button>
 		</div>
-		<div v-else-if="!ready" class="m-auto text-sm text-ink-subtle">Loading...</div>
+		<div v-else-if="!ready" class="m-auto text-sm text-ink-subtle">
+			Loading...
+		</div>
 		<FeatureGate
 			v-else
 			feature-key="pages"
@@ -36,9 +40,9 @@
 		getWorkspaceFeatureToggles,
 	} from '@/actions/tmgr/featureToggles';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
-	import { usePagesRealtime } from '@/composable/usePagesRealtime';
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import PagesPreview from '@/components/previews/PagesPreview.vue';
+	import { usePagesRealtime } from '@/composable/usePagesRealtime';
 	import PageView from '@/pages/PageView.vue';
 	import store from '@/store';
 	import { shouldCloseDetachedWindow } from '@/utils/accountModeSwitch';
@@ -103,7 +107,8 @@
 					ready.value = true;
 				} catch (e) {
 					console.error('Error opening page window:', e);
-					error.value = 'The page could not be opened. Close this window and try again.';
+					error.value =
+						'The page could not be opened. Close this window and try again.';
 				}
 			};
 			void open();

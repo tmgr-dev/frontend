@@ -33,10 +33,12 @@
 </template>
 
 <script>
+	import { getPage } from '@/actions/tmgr/pages';
 	import {
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 	} from '@/actions/tmgr/tasks';
+	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -49,19 +51,17 @@
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
-	import { getPage } from '@/actions/tmgr/pages';
 	import $axios from '@/plugins/axios';
-	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import { pluginsReady } from '@/pluginSystem/app';
 	import { storageIdOf } from '@/pluginSystem/host';
 	import { pluginHost, pluginState } from '@/pluginSystem/state';
 	import { deepLinkConsentStore } from '@/pluginSystem/storage';
 	import router from '@/router';
+	import store from '@/store';
 	import {
 		PLUGIN_WINDOWS_UNAVAILABLE,
 		supportsPluginWindows,
 	} from '@/utils/desktop';
-	import store from '@/store';
 	import {
 		createRecentUrlGuard,
 		parseDeepLink,
@@ -69,8 +69,8 @@
 		shortcutConfig,
 		shortcutStatus,
 	} from '@/utils/desktopShortcuts';
-	import { showSurface } from '@/utils/moduleSurfaces';
 	import { loadRecent } from '@/utils/desktopTray';
+	import { showSurface } from '@/utils/moduleSurfaces';
 	import { openPageLink } from '@/utils/openPageLink';
 	import { openTaskLink, taskLinkFailureMessage } from '@/utils/openTaskLink';
 	import { focusPageWindow } from '@/utils/pageWindow';
@@ -127,7 +127,8 @@
 			tasks: { type: Array, default: () => [] },
 		},
 		setup(props) {
-			const isOn = (key) => store.getters['featureToggles/isFeatureEnabled'](key);
+			const isOn = (key) =>
+				store.getters['featureToggles/isFeatureEnabled'](key);
 			let registered = [];
 			let unlistenDeepLink = null;
 			let unlistenAppLink = null;
@@ -251,7 +252,11 @@
 				const confirm = pendingConfirm.value;
 				pendingConfirm.value = null;
 				if (!confirm) return;
-				deepLinkConsentStore.remember(confirm.storageId, confirm.link.commandId, confirm.version);
+				deepLinkConsentStore.remember(
+					confirm.storageId,
+					confirm.link.commandId,
+					confirm.version,
+				);
 				await runCommandLink(confirm.link, {
 					generation: confirm.generation,
 					workspaceId: confirm.workspaceId,
@@ -261,7 +266,10 @@
 			const openCommandLink = async (link) => {
 				// A second command link while a dialog is open is ignored: not queued, not swapped in.
 				if (pendingConfirm.value) return;
-				const command = pluginHost()?.deepLinkCommand(link.pluginId, link.commandId);
+				const command = pluginHost()?.deepLinkCommand(
+					link.pluginId,
+					link.commandId,
+				);
 				if (!command) return cantOpenLink();
 				const entry = pluginState.plugins[link.pluginId];
 				const storageId = entry ? storageIdOf(entry) : link.pluginId;
@@ -308,7 +316,8 @@
 							focusTaskWindow,
 							showMain: showMainWindow,
 							navigate: (path) => router.push(path),
-							openModal: (taskId) => store.commit('setCurrentTaskIdForModal', taskId),
+							openModal: (taskId) =>
+								store.commit('setCurrentTaskIdForModal', taskId),
 						},
 					);
 					if (!result.ok) {
@@ -339,7 +348,9 @@
 				}
 				const ready = await Promise.race([
 					pluginsReady().then(() => true),
-					new Promise((resolve) => setTimeout(() => resolve(false), DEEP_LINK_TIMEOUT_MS)),
+					new Promise((resolve) =>
+						setTimeout(() => resolve(false), DEEP_LINK_TIMEOUT_MS),
+					),
 				]);
 				if (!ready) return cantOpenLink();
 				if (link.type === 'view') return openViewLink(link);
@@ -372,13 +383,15 @@
 			});
 
 			const pendingConfirmParams = computed(() =>
-				Object.entries(pendingConfirm.value?.link.params ?? {}).map(([key, value]) => ({
-					key,
-					value:
-						value.length > MAX_PARAM_VALUE_DISPLAY
-							? `${value.slice(0, MAX_PARAM_VALUE_DISPLAY)}…`
-							: value,
-				})),
+				Object.entries(pendingConfirm.value?.link.params ?? {}).map(
+					([key, value]) => ({
+						key,
+						value:
+							value.length > MAX_PARAM_VALUE_DISPLAY
+								? `${value.slice(0, MAX_PARAM_VALUE_DISPLAY)}…`
+								: value,
+					}),
+				),
 			);
 
 			return {

@@ -19,7 +19,9 @@ export interface ResolveTokenOptions {
 	tokenId?: string;
 }
 
-export function resolveToken(options?: ResolveTokenOptions): Promise<string | null>;
+export function resolveToken(
+	options?: ResolveTokenOptions,
+): Promise<string | null>;
 
 export interface RequestOptions {
 	/** Overrides the client's default retry behavior for this call. */
@@ -49,9 +51,21 @@ export interface LocalAccessClient {
 		options?: RequestOptions,
 	): Promise<T>;
 	get<T = unknown>(path: string, options?: RequestOptions): Promise<T>;
-	post<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
-	patch<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
-	put<T = unknown>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
+	post<T = unknown>(
+		path: string,
+		body?: unknown,
+		options?: RequestOptions,
+	): Promise<T>;
+	patch<T = unknown>(
+		path: string,
+		body?: unknown,
+		options?: RequestOptions,
+	): Promise<T>;
+	put<T = unknown>(
+		path: string,
+		body?: unknown,
+		options?: RequestOptions,
+	): Promise<T>;
 	delete<T = unknown>(path: string, options?: RequestOptions): Promise<T>;
 	health(): Promise<{
 		ok: boolean;

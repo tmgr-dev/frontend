@@ -101,7 +101,9 @@
 		},
 		setup(props) {
 			const ownerHasAvatar = (persona: PersonaAssignee) =>
-				persona.owner.has_avatar ?? props.memberAvatars[persona.owner.id] ?? false;
+				persona.owner.has_avatar ??
+				props.memberAvatars[persona.owner.id] ??
+				false;
 
 			return { ownerHasAvatar };
 		},

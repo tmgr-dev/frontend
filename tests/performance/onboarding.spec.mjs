@@ -17,16 +17,22 @@ const OLD_USER = { created_at: '2026-01-01T10:00:00Z' };
 
 const setScheme = async (page, scheme) => {
   await page.emulateMedia({ colorScheme: scheme });
-  await page.evaluate((dark) => document.documentElement.classList.toggle('dark', dark), scheme === 'dark');
+  await page.evaluate(
+    (dark) => document.documentElement.classList.toggle('dark', dark),
+    scheme === 'dark',
+  );
   await page.waitForTimeout(300);
 };
 
 const shoot = async (page, name, size, scheme) => {
   await setScheme(page, scheme);
-  await page.screenshot({ path: `${SHOTS}/${name}-${size.name}-${scheme}.png` });
+  await page.screenshot({
+    path: `${SHOTS}/${name}-${size.name}-${scheme}.png`,
+  });
 };
 
-const popover = (page) => page.locator('[role="dialog"][aria-labelledby^="tour-"]').first();
+const popover = (page) =>
+  page.locator('[role="dialog"][aria-labelledby^="tour-"]').first();
 
 const baseTask = {
   description: null,
@@ -46,7 +52,11 @@ const baseTask = {
   updated_at: '2026-10-12T10:00:00Z',
 };
 
-const boot = async (page, size, { onboarding = {}, user = OLD_USER, ...options } = {}) => {
+const boot = async (
+  page,
+  size,
+  { onboarding = {}, user = OLD_USER, ...options } = {},
+) => {
   await page.setViewportSize({ width: size.width, height: size.height });
   const app = await mockApp(page, {
     multiStatus: true,
@@ -56,20 +66,37 @@ const boot = async (page, size, { onboarding = {}, user = OLD_USER, ...options }
   });
   await page.route('**/api/tasks/*/countdown', async (route) => {
     const stop = route.request().method() === 'DELETE';
-    await route.fulfill({ json: { data: { ...baseTask, id: 1, title: 'Original task', start_time: stop ? 0 : 1 } } });
+    await route.fulfill({
+      json: {
+        data: {
+          ...baseTask,
+          id: 1,
+          title: 'Original task',
+          start_time: stop ? 0 : 1,
+        },
+      },
+    });
   });
   return app.onboarding;
 };
 
 const expectStarters = (page) =>
-  page.addInitScript(() => localStorage.setItem('tmgr:onboarding:starters-expected', '3'));
+  page.addInitScript(() =>
+    localStorage.setItem('tmgr:onboarding:starters-expected', '3'),
+  );
 
-const SIZES_SCHEMES = SIZES.flatMap((size) => SCHEMES.map((scheme) => [size, scheme]));
+const SIZES_SCHEMES = SIZES.flatMap((size) =>
+  SCHEMES.map((scheme) => [size, scheme]),
+);
 
 test.describe('hub checklist and sample tasks', () => {
   for (const [size, scheme] of SIZES_SCHEMES) {
-    test(`the hub shows the checklist card at ${size.name}, ${scheme}`, async ({ page }) => {
-      await boot(page, size, { onboarding: { intent: 'human', facts: { has_task: true } } });
+    test(`the hub shows the checklist card at ${size.name}, ${scheme}`, async ({
+      page,
+    }) => {
+      await boot(page, size, {
+        onboarding: { intent: 'human', facts: { has_task: true } },
+      });
       await page.goto('/demo/getting-started');
       await expect(page.locator('[data-tour="hub.checklist"]')).toBeVisible();
       await expect(page.getByTestId('checklist-card')).toBeVisible();
@@ -79,93 +106,155 @@ test.describe('hub checklist and sample tasks', () => {
   }
 
   for (const size of SIZES) {
-    flow(`checklist: Hide checklist then Show checklist at ${size.name}`, async ({ page }) => {
-      const fx = await boot(page, size, { onboarding: { intent: 'human', facts: { has_task: true } } });
-      await page.goto('/demo/getting-started');
-      await expect(page.locator('[data-checklist-item]').first()).toBeVisible();
-      await expect(page.locator('[data-checklist-item][data-done="true"]')).toHaveCount(1);
-      if (size.width < 640) {
-        const box = await page.getByTestId('checklist-menu').boundingBox();
-        expect(box.height).toBeGreaterThanOrEqual(44);
-      }
-      await page.getByTestId('checklist-menu').click();
-      await page.getByTestId('checklist-hide').click();
-      await expect
-        .poll(() => fx.writes.filter((w) => w.path === 'onboarding/preferences').at(-1)?.body)
-        .toEqual({ checklist_hidden: true });
-      await expect(page.getByTestId('checklist-show')).toBeVisible();
-      await expect(page.locator('[data-tour="hub.checklist"]')).toBeVisible();
-      await page.getByTestId('checklist-show').click();
-      await expect
-        .poll(() => fx.writes.filter((w) => w.path === 'onboarding/preferences').at(-1)?.body)
-        .toEqual({ checklist_hidden: false });
-      await expect(page.getByTestId('checklist-card').getByRole('region')).toBeVisible();
-    });
+    flow(
+      `checklist: Hide checklist then Show checklist at ${size.name}`,
+      async ({ page }) => {
+        const fx = await boot(page, size, {
+          onboarding: { intent: 'human', facts: { has_task: true } },
+        });
+        await page.goto('/demo/getting-started');
+        await expect(
+          page.locator('[data-checklist-item]').first(),
+        ).toBeVisible();
+        await expect(
+          page.locator('[data-checklist-item][data-done="true"]'),
+        ).toHaveCount(1);
+        if (size.width < 640) {
+          const box = await page.getByTestId('checklist-menu').boundingBox();
+          expect(box.height).toBeGreaterThanOrEqual(44);
+        }
+        await page.getByTestId('checklist-menu').click();
+        await page.getByTestId('checklist-hide').click();
+        await expect
+          .poll(
+            () =>
+              fx.writes
+                .filter((w) => w.path === 'onboarding/preferences')
+                .at(-1)?.body,
+          )
+          .toEqual({ checklist_hidden: true });
+        await expect(page.getByTestId('checklist-show')).toBeVisible();
+        await expect(page.locator('[data-tour="hub.checklist"]')).toBeVisible();
+        await page.getByTestId('checklist-show').click();
+        await expect
+          .poll(
+            () =>
+              fx.writes
+                .filter((w) => w.path === 'onboarding/preferences')
+                .at(-1)?.body,
+          )
+          .toEqual({ checklist_hidden: false });
+        await expect(
+          page.getByTestId('checklist-card').getByRole('region'),
+        ).toBeVisible();
+      },
+    );
 
-    flow(`agent checklist lists six items and greys the module-off ones at ${size.name}`, async ({ page }) => {
-      await boot(page, size, { onboarding: { intent: 'agent', facts: { mcp_first_call_at: true } } });
-      await page.goto('/demo/getting-started');
-      await expect(page.locator('[data-checklist-item]')).toHaveCount(6);
-      await expect(page.getByTestId('checklist-card').getByText('Connect an agent')).toBeVisible();
-    });
+    flow(
+      `agent checklist lists six items and greys the module-off ones at ${size.name}`,
+      async ({ page }) => {
+        await boot(page, size, {
+          onboarding: { intent: 'agent', facts: { mcp_first_call_at: true } },
+        });
+        await page.goto('/demo/getting-started');
+        await expect(page.locator('[data-checklist-item]')).toHaveCount(6);
+        await expect(
+          page.getByTestId('checklist-card').getByText('Connect an agent'),
+        ).toBeVisible();
+      },
+    );
   }
 
   for (const [size, scheme] of SIZES_SCHEMES) {
-    flow(`remove sample tasks from the hub at ${size.name}, ${scheme}`, async ({ page }) => {
-      const fx = await boot(page, size, { onboarding: { intent: 'human', starterTasks: 3 } });
-      await expectStarters(page);
-      await page.goto('/demo/getting-started');
-      const button = page.getByTestId('remove-sample-tasks');
-      await expect(button).toBeVisible();
-      if (size.width < 640) expect((await button.boundingBox()).height).toBeGreaterThanOrEqual(44);
-      await shoot(page, 'remove-samples-hub', size, scheme);
-      await button.click();
-      await expect(page.getByText('Removed 3 sample tasks').first()).toBeVisible();
-      await expect(button).toBeHidden();
-      expect(fx.writes.some((w) => w.method === 'DELETE' && w.path === 'onboarding/starter-tasks')).toBe(true);
-      await shoot(page, 'remove-samples-done', size, scheme);
-      await page.reload();
-      await expect(page.getByTestId('remove-sample-tasks')).toBeHidden();
-    });
+    flow(
+      `remove sample tasks from the hub at ${size.name}, ${scheme}`,
+      async ({ page }) => {
+        const fx = await boot(page, size, {
+          onboarding: { intent: 'human', starterTasks: 3 },
+        });
+        await expectStarters(page);
+        await page.goto('/demo/getting-started');
+        const button = page.getByTestId('remove-sample-tasks');
+        await expect(button).toBeVisible();
+        if (size.width < 640)
+          expect((await button.boundingBox()).height).toBeGreaterThanOrEqual(
+            44,
+          );
+        await shoot(page, 'remove-samples-hub', size, scheme);
+        await button.click();
+        await expect(
+          page.getByText('Removed 3 sample tasks').first(),
+        ).toBeVisible();
+        await expect(button).toBeHidden();
+        expect(
+          fx.writes.some(
+            (w) =>
+              w.method === 'DELETE' && w.path === 'onboarding/starter-tasks',
+          ),
+        ).toBe(true);
+        await shoot(page, 'remove-samples-done', size, scheme);
+        await page.reload();
+        await expect(page.getByTestId('remove-sample-tasks')).toBeHidden();
+      },
+    );
   }
 
-  flow('remove sample tasks is offered in the board toolbar and refetches the board', async ({ page }) => {
-    const fx = await boot(page, SIZES[0], {
-      onboarding: { intent: 'human', starterTasks: 3 },
-      taskSettings: [{ key: 'starter', value: '1' }],
-    });
-    await page.goto('/demo/board');
-    const button = page.getByTestId('remove-sample-tasks').first();
-    await expect(button).toBeVisible();
-    const before = fx.writes.length;
-    await button.click();
-    await expect(page.getByText('Removed 3 sample tasks').first()).toBeVisible();
-    expect(fx.writes.length).toBeGreaterThan(before);
-  });
+  flow(
+    'remove sample tasks is offered in the board toolbar and refetches the board',
+    async ({ page }) => {
+      const fx = await boot(page, SIZES[0], {
+        onboarding: { intent: 'human', starterTasks: 3 },
+        taskSettings: [{ key: 'starter', value: '1' }],
+      });
+      await page.goto('/demo/board');
+      const button = page.getByTestId('remove-sample-tasks').first();
+      await expect(button).toBeVisible();
+      const before = fx.writes.length;
+      await button.click();
+      await expect(
+        page.getByText('Removed 3 sample tasks').first(),
+      ).toBeVisible();
+      expect(fx.writes.length).toBeGreaterThan(before);
+    },
+  );
 
-  flow('no remove button on a board without starter tasks', async ({ page }) => {
-    await boot(page, SIZES[0], { onboarding: { intent: 'human', starterTasks: 3 } });
-    await page.goto('/demo/board');
-    await expect(page.getByTestId('remove-sample-tasks')).toHaveCount(0);
-  });
+  flow(
+    'no remove button on a board without starter tasks',
+    async ({ page }) => {
+      await boot(page, SIZES[0], {
+        onboarding: { intent: 'human', starterTasks: 3 },
+      });
+      await page.goto('/demo/board');
+      await expect(page.getByTestId('remove-sample-tasks')).toHaveCount(0);
+    },
+  );
 
-  flow('no remove button on the hub after an empty-workspace start', async ({ page }) => {
-    await boot(page, SIZES[0], { onboarding: { intent: 'human' } });
-    await page.goto('/demo/getting-started');
-    await expect(page.getByTestId('remove-sample-tasks')).toHaveCount(0);
-  });
+  flow(
+    'no remove button on the hub after an empty-workspace start',
+    async ({ page }) => {
+      await boot(page, SIZES[0], { onboarding: { intent: 'human' } });
+      await page.goto('/demo/getting-started');
+      await expect(page.getByTestId('remove-sample-tasks')).toHaveCount(0);
+    },
+  );
 
   flow('removing when nothing is left says so', async ({ page }) => {
-    await boot(page, SIZES[0], { onboarding: { intent: 'human', starterTasks: 0 } });
+    await boot(page, SIZES[0], {
+      onboarding: { intent: 'human', starterTasks: 0 },
+    });
     await expectStarters(page);
     await page.goto('/demo/getting-started');
     await page.getByTestId('remove-sample-tasks').click();
-    await expect(page.getByText('No sample tasks to remove').first()).toBeVisible();
+    await expect(
+      page.getByText('No sample tasks to remove').first(),
+    ).toBeVisible();
     await expect(page.getByTestId('remove-sample-tasks')).toBeHidden();
   });
 
   flow('no remove button for intent skipped or null', async ({ page }) => {
-    await boot(page, SIZES[0], { onboarding: { intent: 'skipped', starterTasks: 3 } });
+    await boot(page, SIZES[0], {
+      onboarding: { intent: 'skipped', starterTasks: 3 },
+    });
     await page.goto('/demo/getting-started');
     await expect(page.getByTestId('remove-sample-tasks')).toBeHidden();
   });
@@ -173,77 +262,116 @@ test.describe('hub checklist and sample tasks', () => {
 
 test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
   for (const [size, scheme] of SIZES_SCHEMES) {
-    flow(`human: intent -> G1 -> G2 -> timer aha toast at ${size.name}, ${scheme}`, async ({ page }) => {
-      const fx = await boot(page, size, { user: NEW_USER });
-      await page.goto('/');
-      await expect(page).toHaveURL(/\/welcome-setup$/);
-      await expect(page.getByRole('button', { name: /Just track my tasks/ })).toBeVisible();
-      await expect(page.getByRole('button', { name: /Connect my AI agent/ })).toBeVisible();
-      await shoot(page, 'intent', size, scheme);
+    flow(
+      `human: intent -> G1 -> G2 -> timer aha toast at ${size.name}, ${scheme}`,
+      async ({ page }) => {
+        const fx = await boot(page, size, { user: NEW_USER });
+        await page.goto('/');
+        await expect(page).toHaveURL(/\/welcome-setup$/);
+        await expect(
+          page.getByRole('button', { name: /Just track my tasks/ }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: /Connect my AI agent/ }),
+        ).toBeVisible();
+        await shoot(page, 'intent', size, scheme);
 
-      await page.getByRole('button', { name: /Just track my tasks/ }).click();
-      await expect
-        .poll(() => fx.writes.find((w) => w.path === 'onboarding/intent')?.body)
-        .toMatchObject({ intent: 'human' });
-      await expect(page).toHaveURL(/\/demo\/list$/);
-      await expect(popover(page)).toBeVisible();
-      await shoot(page, 'human-g1', size, scheme);
-      await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: /Just track my tasks/ }).click();
+        await expect
+          .poll(
+            () => fx.writes.find((w) => w.path === 'onboarding/intent')?.body,
+          )
+          .toMatchObject({ intent: 'human' });
+        await expect(page).toHaveURL(/\/demo\/list$/);
+        await expect(popover(page)).toBeVisible();
+        await shoot(page, 'human-g1', size, scheme);
+        await page.keyboard.press('Escape');
 
-      await page.goto('/demo/list');
-      await page.locator('[data-task-id="1"]').first().click();
-      await page.getByTitle('Start timer').click();
-      await expect(page.getByTitle('Stop timer')).toBeVisible();
-      await page.getByRole('button', { name: 'Ok', exact: true }).click();
-      fx.state.facts.has_timer_minute = true;
-      await page.getByTitle('Stop timer').click();
-      await expect(page.getByText(/Logged \d+m on .*Your time stays with the task\./).first()).toBeVisible();
-      await shoot(page, 'human-aha-timer', size, scheme);
-      expect(fx.factsRequests.some((r) => r.keys.includes('has_timer_minute'))).toBe(true);
-    });
+        await page.goto('/demo/list');
+        await page.locator('[data-task-id="1"]').first().click();
+        await page.getByTitle('Start timer').click();
+        await expect(page.getByTitle('Stop timer')).toBeVisible();
+        await page.getByRole('button', { name: 'Ok', exact: true }).click();
+        fx.state.facts.has_timer_minute = true;
+        await page.getByTitle('Stop timer').click();
+        await expect(
+          page
+            .getByText(/Logged \d+m on .*Your time stays with the task\./)
+            .first(),
+        ).toBeVisible();
+        await shoot(page, 'human-aha-timer', size, scheme);
+        expect(
+          fx.factsRequests.some((r) => r.keys.includes('has_timer_minute')),
+        ).toBe(true);
+      },
+    );
 
-    flow(`agent: connect -> Connected -> prompt -> aha at ${size.name}, ${scheme}`, async ({ page }) => {
-      const fx = await boot(page, size, { user: NEW_USER });
-      await page.route('**/api/smart-device/token/**', (route) =>
-        route.fulfill({ json: { data: { token: 'fixture-token', has_token: false } } }),
-      );
-      await page.goto('/');
-      await page.getByRole('button', { name: /Connect my AI agent/ }).click();
-      await expect(page).toHaveURL(/\/welcome-setup\/agent$/);
-      await expect(page.getByText('Waiting for your agent')).toBeVisible();
-      await shoot(page, 'agent-connect', size, scheme);
+    flow(
+      `agent: connect -> Connected -> prompt -> aha at ${size.name}, ${scheme}`,
+      async ({ page }) => {
+        const fx = await boot(page, size, { user: NEW_USER });
+        await page.route('**/api/smart-device/token/**', (route) =>
+          route.fulfill({
+            json: { data: { token: 'fixture-token', has_token: false } },
+          }),
+        );
+        await page.goto('/');
+        await page.getByRole('button', { name: /Connect my AI agent/ }).click();
+        await expect(page).toHaveURL(/\/welcome-setup\/agent$/);
+        await expect(page.getByText('Waiting for your agent')).toBeVisible();
+        await shoot(page, 'agent-connect', size, scheme);
 
-      fx.state.facts.mcp_first_call_at = true;
-      await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-      await expect(page.getByText('Connected', { exact: true })).toBeVisible({ timeout: 20000 });
-      await expect(page.getByTestId('starter-prompt')).toBeVisible();
-      await shoot(page, 'agent-connected-prompt', size, scheme);
+        fx.state.facts.mcp_first_call_at = true;
+        await page.evaluate(() =>
+          document.dispatchEvent(new Event('visibilitychange')),
+        );
+        await expect(page.getByText('Connected', { exact: true })).toBeVisible({
+          timeout: 20000,
+        });
+        await expect(page.getByTestId('starter-prompt')).toBeVisible();
+        await shoot(page, 'agent-connected-prompt', size, scheme);
 
-      fx.state.facts.agent_runs_finished = true;
-      await expect(page.getByText('Run logged')).toBeVisible({ timeout: 40000 });
-    });
+        fx.state.facts.agent_runs_finished = true;
+        await expect(page.getByText('Run logged')).toBeVisible({
+          timeout: 40000,
+        });
+      },
+    );
 
-    flow(`agent: still waiting after 3 minutes at ${size.name}, ${scheme}`, async ({ page }) => {
-      await page.clock.install();
-      await boot(page, size, { user: NEW_USER });
-      await page.route('**/api/smart-device/token/**', (route) =>
-        route.fulfill({ json: { data: { token: 'fixture-token', has_token: false } } }),
-      );
-      await page.goto('/welcome-setup/agent');
-      await expect(page.getByTestId('shown-once')).toBeVisible();
-      await page.clock.fastForward(181000);
-      await expect(page.getByRole('heading', { name: 'Still waiting for your agent' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Check again' })).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Do this later' })).toBeVisible();
-      await shoot(page, 'agent-still-waiting', size, scheme);
-    });
+    flow(
+      `agent: still waiting after 3 minutes at ${size.name}, ${scheme}`,
+      async ({ page }) => {
+        await page.clock.install();
+        await boot(page, size, { user: NEW_USER });
+        await page.route('**/api/smart-device/token/**', (route) =>
+          route.fulfill({
+            json: { data: { token: 'fixture-token', has_token: false } },
+          }),
+        );
+        await page.goto('/welcome-setup/agent');
+        await expect(page.getByTestId('shown-once')).toBeVisible();
+        await page.clock.fastForward(181000);
+        await expect(
+          page.getByRole('heading', { name: 'Still waiting for your agent' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Check again' }),
+        ).toBeVisible();
+        await expect(
+          page.getByRole('button', { name: 'Do this later' }),
+        ).toBeVisible();
+        await shoot(page, 'agent-still-waiting', size, scheme);
+      },
+    );
   }
 
   flow('skip: no auto tour afterwards', async ({ page }) => {
     const fx = await boot(page, SIZES[0], { user: NEW_USER });
     await page.goto('/');
     await page.getByRole('button', { name: /Skip, I'll look around/ }).click();
-    await expect.poll(() => fx.writes.find((w) => w.path === 'onboarding/intent')?.body).toMatchObject({ intent: 'skipped' });
+    await expect
+      .poll(() => fx.writes.find((w) => w.path === 'onboarding/intent')?.body)
+      .toMatchObject({ intent: 'skipped' });
     await expect(page).toHaveURL(/\/demo\/list$/);
     await page.waitForTimeout(1500);
     await expect(popover(page)).toHaveCount(0);
@@ -255,33 +383,43 @@ test.describe('new-account flow (needs W1 + W2 code, ONBOARDING_E2E=1)', () => {
   flow('empty workspace sends seed:false', async ({ page }) => {
     const fx = await boot(page, SIZES[0], { user: NEW_USER });
     await page.goto('/');
-    await page.getByRole('button', { name: /Start with an empty workspace/ }).click();
+    await page
+      .getByRole('button', { name: /Start with an empty workspace/ })
+      .click();
     await expect
       .poll(() => fx.writes.find((w) => w.path === 'onboarding/intent')?.body)
       .toEqual({ intent: 'human', seed: false });
   });
 
   flow('invited user is not redirected', async ({ page }) => {
-    const fx = await boot(page, SIZES[0], { user: NEW_USER, onboarding: { invited: true } });
+    const fx = await boot(page, SIZES[0], {
+      user: NEW_USER,
+      onboarding: { invited: true },
+    });
     await page.goto('/');
     await expect(page).toHaveURL(/\/demo\/list$/);
     expect(fx.writes.some((w) => w.path === 'onboarding/intent')).toBe(false);
   });
 
   flow('user with a pending invitation is not redirected', async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem('workspace.invitation', 'pending-fixture'));
+    await page.addInitScript(() =>
+      localStorage.setItem('workspace.invitation', 'pending-fixture'),
+    );
     await boot(page, SIZES[0], { user: NEW_USER });
     await page.goto('/');
     await expect(page).not.toHaveURL(/welcome-setup/);
   });
 
-  flow('existing user with intent null and an old created_at is not redirected', async ({ page }) => {
-    await boot(page, SIZES[0], { user: OLD_USER });
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/demo\/list$/);
-    await page.waitForTimeout(1000);
-    await expect(page).not.toHaveURL(/welcome-setup/);
-  });
+  flow(
+    'existing user with intent null and an old created_at is not redirected',
+    async ({ page }) => {
+      await boot(page, SIZES[0], { user: OLD_USER });
+      await page.goto('/');
+      await expect(page).toHaveURL(/\/demo\/list$/);
+      await page.waitForTimeout(1000);
+      await expect(page).not.toHaveURL(/welcome-setup/);
+    },
+  );
 });
 
 test.describe('welcome intent cards', () => {
@@ -308,7 +446,9 @@ test.describe('welcome screens: consent banner and keyboard', () => {
     const banner = page.locator('[data-consent-panel]');
     await expect(banner).toBeVisible();
     const skip = page.getByTestId('intent-skip');
-    await page.getByTestId('welcome-setup').evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await page
+      .getByTestId('welcome-setup')
+      .evaluate((el) => el.scrollTo(0, el.scrollHeight));
     const skipBox = await skip.boundingBox();
     const bannerBox = await banner.boundingBox();
     expect(skipBox.y + skipBox.height).toBeLessThanOrEqual(bannerBox.y);
@@ -317,32 +457,52 @@ test.describe('welcome screens: consent banner and keyboard', () => {
     await page.getByRole('button', { name: 'Decline' }).click();
   });
 
-  flow('keyboard reaches the intent cards first and the shell is inert', async ({ page }) => {
-    await boot(page, SIZES[0], { user: NEW_USER });
-    await page.goto('/');
-    await expect(page).toHaveURL(/\/welcome-setup$/);
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('button', { name: /Just track my tasks/ })).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('button', { name: /Connect my AI agent/ })).toBeFocused();
-  });
+  flow(
+    'keyboard reaches the intent cards first and the shell is inert',
+    async ({ page }) => {
+      await boot(page, SIZES[0], { user: NEW_USER });
+      await page.goto('/');
+      await expect(page).toHaveURL(/\/welcome-setup$/);
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('button', { name: /Just track my tasks/ }),
+      ).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(
+        page.getByRole('button', { name: /Connect my AI agent/ }),
+      ).toBeFocused();
+    },
+  );
 
-  flow('connect screen: tabs, copy and status are keyboard reachable', async ({ page }) => {
-    await boot(page, SIZES[1], { user: NEW_USER });
-    await page.route('**/api/smart-device/token/**', (route) =>
-      route.fulfill({ json: { data: { token: 'fixture-token', has_token: false } } }),
-    );
-    await page.goto('/welcome-setup/agent');
-    const tabs = page.getByRole('tab');
-    await expect(tabs).toHaveCount(4);
-    for (const tab of await tabs.all()) expect((await tab.boundingBox()).height).toBeGreaterThanOrEqual(44);
-    await page.getByRole('tab', { name: 'Claude Code' }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Codex' })).toHaveAttribute('aria-selected', 'true');
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('button', { name: 'Copy' })).toBeFocused();
-    const copy = await page.getByRole('button', { name: 'Copy' }).boundingBox();
-    expect(copy.height).toBeGreaterThanOrEqual(44);
-    await expect(page.getByRole('status').filter({ hasText: 'Waiting for your agent' })).toHaveAttribute('aria-live', 'polite');
-  });
+  flow(
+    'connect screen: tabs, copy and status are keyboard reachable',
+    async ({ page }) => {
+      await boot(page, SIZES[1], { user: NEW_USER });
+      await page.route('**/api/smart-device/token/**', (route) =>
+        route.fulfill({
+          json: { data: { token: 'fixture-token', has_token: false } },
+        }),
+      );
+      await page.goto('/welcome-setup/agent');
+      const tabs = page.getByRole('tab');
+      await expect(tabs).toHaveCount(4);
+      for (const tab of await tabs.all())
+        expect((await tab.boundingBox()).height).toBeGreaterThanOrEqual(44);
+      await page.getByRole('tab', { name: 'Claude Code' }).focus();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('tab', { name: 'Codex' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('button', { name: 'Copy' })).toBeFocused();
+      const copy = await page
+        .getByRole('button', { name: 'Copy' })
+        .boundingBox();
+      expect(copy.height).toBeGreaterThanOrEqual(44);
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Waiting for your agent' }),
+      ).toHaveAttribute('aria-live', 'polite');
+    },
+  );
 });

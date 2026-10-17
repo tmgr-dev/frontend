@@ -226,13 +226,33 @@ describe('normalizeBlocks', () => {
 
 	it.each([
 		['object content', [{ content: {} }], [item('{}')]],
-		['escaped object content', [{ content: { a: '<b>&' } }], [item('{"a":"&lt;b&gt;&amp;"}')]],
-		['boolean content with items', [{ content: true, items: [] }], [item('true')]],
+		[
+			'escaped object content',
+			[{ content: { a: '<b>&' } }],
+			[item('{"a":"&lt;b&gt;&amp;"}')],
+		],
+		[
+			'boolean content with items',
+			[{ content: true, items: [] }],
+			[item('true')],
+		],
 		['NaN text', [{ text: NaN }], [item('NaN')]],
 		['Infinity content', [{ content: Infinity }], [item('Infinity')]],
-		['non-array nested items', [{ content: 'a', items: 'x' }], [item('a', {}, [item('x')])]],
-		['object nested items', [{ content: 'a', items: { content: 'b' } }], [item('a', {}, [item('b')])]],
-		['nested array item', [{ content: 'a', items: [[1]] }], [item('a', {}, [item('[1]')])]],
+		[
+			'non-array nested items',
+			[{ content: 'a', items: 'x' }],
+			[item('a', {}, [item('x')])],
+		],
+		[
+			'object nested items',
+			[{ content: 'a', items: { content: 'b' } }],
+			[item('a', {}, [item('b')])],
+		],
+		[
+			'nested array item',
+			[{ content: 'a', items: [[1]] }],
+			[item('a', {}, [item('[1]')])],
+		],
 		['array item', ['a', ['b']], [item('a'), item('["b"]')]],
 		['boolean item', [true, false], [item('true'), item('false')]],
 	])('turns %s into text, siblings intact', (_, items, expected) => {
@@ -287,16 +307,17 @@ describe('normalizeBlocks', () => {
 				type: 'list',
 				data: {
 					items: [
-						{ content: 'a', items: { 0: { content: 'x' }, 2: { content: 'y' } } },
+						{
+							content: 'a',
+							items: { 0: { content: 'x' }, 2: { content: 'y' } },
+						},
 						{ label: 'Buy milk', checked: true, id: null },
 					],
 				},
 			}),
 		).blocks;
 		expect(block.data.items).toEqual([
-			item('a', {}, [
-				item('{"0":{"content":"x"},"2":{"content":"y"}}'),
-			]),
+			item('a', {}, [item('{"0":{"content":"x"},"2":{"content":"y"}}')]),
 			item('{"label":"Buy milk"}'),
 		]);
 		expect(normalizeBlocks({ blocks: [block] }).blocks[0]).toEqual(block);
@@ -314,7 +335,12 @@ describe('normalizeBlocks', () => {
 		const input = freeze(
 			doc(
 				{ type: 'list', data: { style: 'ordered', items: ['a', 3] } },
-				{ type: 'checklist', data: { items: [5, { text: 't', checked: true, items: [{ content: 7 }] }] } },
+				{
+					type: 'checklist',
+					data: {
+						items: [5, { text: 't', checked: true, items: [{ content: 7 }] }],
+					},
+				},
 				raw,
 			),
 		);
@@ -325,14 +351,18 @@ describe('normalizeBlocks', () => {
 		const keys = (items: any[]): string[][] =>
 			items.flatMap((i) => [Object.keys(i), ...keys(i.items)]);
 		const built = [...out.blocks[0].data.items, ...out.blocks[1].data.items];
-		expect(new Set(keys(built).map((k) => k.join()))).toEqual(new Set(['content,meta,items']));
+		expect(new Set(keys(built).map((k) => k.join()))).toEqual(
+			new Set(['content,meta,items']),
+		);
 		expect(Object.keys(out.blocks[1].data)).toEqual(['style', 'meta', 'items']);
 		expect(out.blocks[1].data.items).toEqual([
 			item('5', { checked: false }),
 			item('t', { checked: true }, [item('7', { checked: false })]),
 		]);
 		expect(JSON.stringify(normalizeBlocks(out))).toBe(JSON.stringify(out));
-		expect(JSON.stringify(normalizeBlocks(JSON.stringify(input)))).toBe(JSON.stringify(out));
+		expect(JSON.stringify(normalizeBlocks(JSON.stringify(input)))).toBe(
+			JSON.stringify(out),
+		);
 	});
 
 	it('defaults a missing style to unordered', () => {

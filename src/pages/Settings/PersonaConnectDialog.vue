@@ -1,6 +1,8 @@
 <template>
 	<Dialog :open="open" @update:open="onOpenChange">
-		<DialogContent :class="issuedSecret ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'">
+		<DialogContent
+			:class="issuedSecret ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'"
+		>
 			<DialogHeader>
 				<DialogTitle>Connect an agent</DialogTitle>
 			</DialogHeader>
@@ -13,8 +15,8 @@
 					v-else-if="eligibleWorkspaces.length === 0"
 					class="text-sm text-muted-foreground"
 				>
-					This persona has no active workspace grant yet. Grant it access
-					under Workspaces above, then come back here.
+					This persona has no active workspace grant yet. Grant it access under
+					Workspaces above, then come back here.
 				</p>
 				<form v-else class="flex flex-col gap-3" @submit.prevent="submit">
 					<label class="flex flex-col gap-1">
@@ -46,10 +48,7 @@
 							placeholder="Claude Code on my laptop"
 							@update:model-value="(v) => (form.label = String(v))"
 						/>
-						<span
-							v-if="fieldErrors.label"
-							class="text-xs text-destructive"
-						>
+						<span v-if="fieldErrors.label" class="text-xs text-destructive">
 							{{ fieldErrors.label.join(' ') }}
 						</span>
 					</label>
@@ -76,9 +75,9 @@
 					</label>
 
 					<p class="text-xs text-muted-foreground">
-						Unlike your device token, this token works in one workspace only,
-						is limited to this persona's grant there, and everything it writes
-						is signed as this persona.
+						Unlike your device token, this token works in one workspace only, is
+						limited to this persona's grant there, and everything it writes is
+						signed as this persona.
 					</p>
 
 					<DialogFooter>
@@ -105,9 +104,7 @@
 				</div>
 
 				<div class="flex min-w-0 flex-col gap-2">
-					<p class="text-sm">
-						Add it to your agent's <code>.mcp.json</code>:
-					</p>
+					<p class="text-sm">Add it to your agent's <code>.mcp.json</code>:</p>
 					<CodeSnippet :code="snippet" label="MCP config" />
 					<p class="text-xs text-muted-foreground">
 						Put the token itself in an environment variable or a gitignored
@@ -157,7 +154,14 @@
 		extractFieldErrors,
 		validateTokenLabel,
 	} from '@/utils/personas';
-	import { computed, defineComponent, reactive, ref, watch, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		reactive,
+		ref,
+		watch,
+		type PropType,
+	} from 'vue';
 
 	interface EligibleWorkspace {
 		id: number;
@@ -215,9 +219,7 @@
 			const loadEligibleWorkspaces = async () => {
 				loadingWorkspaces.value = true;
 				try {
-					const workspaces = (await getWorkspaces()).filter(
-						(w) => !w.is_local,
-					);
+					const workspaces = (await getWorkspaces()).filter((w) => !w.is_local);
 					const results = await Promise.all(
 						workspaces.map(async (ws) => {
 							try {
@@ -295,7 +297,10 @@
 					copied.value = true;
 					setTimeout(() => (copied.value = false), 2000);
 				} catch {
-					toast({ title: 'Could not copy to clipboard', variant: 'destructive' });
+					toast({
+						title: 'Could not copy to clipboard',
+						variant: 'destructive',
+					});
 				}
 			};
 

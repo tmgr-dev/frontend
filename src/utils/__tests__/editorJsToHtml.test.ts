@@ -130,10 +130,18 @@ describe('editorJsToHtml', () => {
 				data: {
 					style: 'ordered',
 					meta: { start, counterType: 'numeric' },
-					items: [{ content: 'a', meta: {}, items: [{ content: 'a1', meta: {}, items: [] }] }],
+					items: [
+						{
+							content: 'a',
+							meta: {},
+							items: [{ content: 'a1', meta: {}, items: [] }],
+						},
+					],
 				},
 			});
-		expect(ordered(5)).toBe('<ol start="5"><li>a<ol><li>a1</li></ol></li></ol>');
+		expect(ordered(5)).toBe(
+			'<ol start="5"><li>a<ol><li>a1</li></ol></li></ol>',
+		);
 		expect(parse(ordered(5)).querySelector('ol')!.start).toBe(5);
 		for (const start of [1, 0, -2, 2.5, '7', '" onclick="x', undefined])
 			expect(ordered(start)).toBe('<ol><li>a<ol><li>a1</li></ol></li></ol>');
@@ -150,7 +158,9 @@ describe('editorJsToHtml', () => {
 						{
 							content: 'parent',
 							meta: { checked: true },
-							items: [{ content: 'child', meta: { checked: false }, items: [] }],
+							items: [
+								{ content: 'child', meta: { checked: false }, items: [] },
+							],
 						},
 						{ content: 'todo', meta: { checked: false }, items: [] },
 					],
@@ -160,28 +170,45 @@ describe('editorJsToHtml', () => {
 		const outer = root.querySelector('ul.checklist')!;
 		const nested = outer.querySelector('li ul.checklist')!;
 		expect(nested.textContent).toBe(' child');
-		const boxes = [...root.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
+		const boxes = [
+			...root.querySelectorAll<HTMLInputElement>('input[type=checkbox]'),
+		];
 		expect(boxes.map((box) => box.checked)).toEqual([true, false, false]);
 		expect(boxes.every((box) => box.disabled)).toBe(true);
 		expect(root.textContent).toContain('todo');
 	});
 
 	it('renders nothing for empty or malformed lists', () => {
-		expect(render({ type: 'list', data: { style: 'unordered', items: [] } })).toBe('');
+		expect(
+			render({ type: 'list', data: { style: 'unordered', items: [] } }),
+		).toBe('');
 		expect(render({ type: 'checklist', data: { items: [] } })).toBe('');
-		expect(render({ type: 'checklist', data: { items: [null, undefined] } })).toBe('');
-		expect(render({ type: 'list', data: { style: 'checklist', meta: {}, items: [] } })).toBe('');
+		expect(
+			render({ type: 'checklist', data: { items: [null, undefined] } }),
+		).toBe('');
+		expect(
+			render({
+				type: 'list',
+				data: { style: 'checklist', meta: {}, items: [] },
+			}),
+		).toBe('');
 	});
 
 	it('renders readable siblings of a list kept raw as malformed', () => {
 		const out = render(
-			{ type: 'list', data: { style: 'checklist', items: { content: 'a', items: 'x' } } },
+			{
+				type: 'list',
+				data: { style: 'checklist', items: { content: 'a', items: 'x' } },
+			},
 			{ type: 'list', data: { items: 'abc' } },
 			{ type: 'checklist', data: { items: 5 } },
 			{ type: 'paragraph', data: { text: 'readable' } },
 		);
 		expect(out).toBe('<p>readable</p>');
-		expect(parse(render({ type: 'checklist', data: { items: [null, 1] } })).textContent).toBe(' 1');
+		expect(
+			parse(render({ type: 'checklist', data: { items: [null, 1] } }))
+				.textContent,
+		).toBe(' 1');
 	});
 
 	it('previews unreadable list values as text', () => {
@@ -190,17 +217,19 @@ describe('editorJsToHtml', () => {
 				type: 'list',
 				data: {
 					style: 'checklist',
-					items: ['skipped', { content: {}, items: 'x' }, { content: 'ok', items: [7] }],
+					items: [
+						'skipped',
+						{ content: {}, items: 'x' },
+						{ content: 'ok', items: [7] },
+					],
 				},
 			}),
 		);
-		expect([...root.querySelectorAll('ul.checklist > li > div')].map((div) => div.textContent)).toEqual([
-			'skipped',
-			'{} x',
-			'x',
-			'ok 7',
-			'7',
-		]);
+		expect(
+			[...root.querySelectorAll('ul.checklist > li > div')].map(
+				(div) => div.textContent,
+			),
+		).toEqual(['skipped', '{} x', 'x', 'ok 7', '7']);
 	});
 
 	it('renders quote, warning, delimiter and code', () => {

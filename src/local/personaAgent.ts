@@ -7,7 +7,11 @@ export interface ChatMessage {
 	role: 'system' | 'user' | 'assistant' | 'tool';
 	content: string | null;
 	tool_call_id?: string;
-	tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+	tool_calls?: {
+		id: string;
+		type: 'function';
+		function: { name: string; arguments: string };
+	}[];
 }
 
 export interface ToolCall {
@@ -18,17 +22,24 @@ export interface ToolCall {
 	args: { method: string; path: string; body?: unknown };
 }
 
-export type ChatStreamEvent = { type: 'text'; delta: string } | { type: 'tool_call'; call: ToolCall };
+export type ChatStreamEvent =
+	| { type: 'text'; delta: string }
+	| { type: 'tool_call'; call: ToolCall };
 
 /** The Rust side turns the SSE stream from `llm_chat` into this; a test can fake it directly. */
-export type ChatFn = (messages: ChatMessage[]) => AsyncIterable<ChatStreamEvent>;
+export type ChatFn = (
+	messages: ChatMessage[],
+) => AsyncIterable<ChatStreamEvent>;
 
 const TOOL_NAME = 'tmgr_request';
 
 /** Every call still goes through `dispatchLocal`, so the whitelist gate decides what runs, not this. */
 export const personaToolDefinition = (grantedPermissions: string[]) => {
-	const routes = PERSONA_WHITELIST.filter((entry) => grantedPermissions.includes(entry.permission)).map(
-		(entry) => `${entry.method} ${entry.pattern.replace(/:(\w+)(\([^)]*\))?/g, '{$1}')}`,
+	const routes = PERSONA_WHITELIST.filter((entry) =>
+		grantedPermissions.includes(entry.permission),
+	).map(
+		(entry) =>
+			`${entry.method} ${entry.pattern.replace(/:(\w+)(\([^)]*\))?/g, '{$1}')}`,
 	);
 	return {
 		type: 'function',
@@ -75,15 +86,30 @@ export const runPersonaAgent = async ({
 	chat,
 	maxToolCalls = 8,
 }: PersonaAgentParams): Promise<PersonaAgentResult> => {
-	const actor = { kind: 'persona' as const, id: persona.uuid, name: persona.name };
+	const actor = {
+		kind: 'persona' as const,
+		id: persona.uuid,
+		name: persona.name,
+	};
 	const personaCtx: LocalContext = { ...ctx, actor };
 
-	const started = await dispatchLocal(router, personaCtx, 'POST', `tasks/${taskId}/agent-work`, {
-		agent: 'local-llm',
-	});
-	const agentWorkOff = started?.status === 403 && started.data?.error === 'feature_disabled';
+	const started = await dispatchLocal(
+		router,
+		personaCtx,
+		'POST',
+		`tasks/${taskId}/agent-work`,
+		{
+			agent: 'local-llm',
+		},
+	);
+	const agentWorkOff =
+		started?.status === 403 && started.data?.error === 'feature_disabled';
 	if (!agentWorkOff && (!started || started.status >= 400)) {
-		throw new Error(`Could not start a local agent-work run: ${started?.data?.message ?? 'no route'}`);
+		throw new Error(
+			`Could not start a local agent-work run: ${
+				started?.data?.message ?? 'no route'
+			}`,
+		);
 	}
 	const runId = agentWorkOff ? null : started!.data.data.id;
 
@@ -123,9 +149,13 @@ export const runPersonaAgent = async ({
 				const content =
 					typeof method !== 'string' || typeof path !== 'string'
 						? { message: 'method and path are required strings' }
-						: (await dispatchLocal(router, personaCtx, method, path, body))?.data ??
-							{ message: `no local route for ${method} ${path}` };
-				messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(content) });
+						: (await dispatchLocal(router, personaCtx, method, path, body))
+								?.data ?? { message: `no local route for ${method} ${path}` };
+				messages.push({
+					role: 'tool',
+					tool_call_id: call.id,
+					content: JSON.stringify(content),
+				});
 			}
 		}
 	} catch (error) {
@@ -133,20 +163,32 @@ export const runPersonaAgent = async ({
 		throw error;
 	} finally {
 		if (runId !== null) {
-			await dispatchLocal(router, personaCtx, 'POST', `agent-work/${runId}/finish`, {
-				status,
-				summary: finalText.slice(0, 2000),
-			});
+			await dispatchLocal(
+				router,
+				personaCtx,
+				'POST',
+				`agent-work/${runId}/finish`,
+				{
+					status,
+					summary: finalText.slice(0, 2000),
+				},
+			);
 		}
 	}
 	return { text: finalText, toolCalls };
 };
 
 /** Needs `comments:write` in the grant, same as any other persona-authored comment. */
-export const askPersonaOnTask = async (params: PersonaAgentParams): Promise<PersonaAgentResult> => {
+export const askPersonaOnTask = async (
+	params: PersonaAgentParams,
+): Promise<PersonaAgentResult> => {
 	const result = await runPersonaAgent(params);
 	if (result.text.trim()) {
-		const actor = { kind: 'persona' as const, id: params.persona.uuid, name: params.persona.name };
+		const actor = {
+			kind: 'persona' as const,
+			id: params.persona.uuid,
+			name: params.persona.name,
+		};
 		const posted = await dispatchLocal(
 			params.router,
 			{ ...params.ctx, actor },
@@ -155,7 +197,11 @@ export const askPersonaOnTask = async (params: PersonaAgentParams): Promise<Pers
 			{ message: result.text },
 		);
 		if (!posted || posted.status >= 400) {
-			throw new Error(`Could not post the persona's answer as a comment: ${posted?.data?.message ?? 'no route'}`);
+			throw new Error(
+				`Could not post the persona's answer as a comment: ${
+					posted?.data?.message ?? 'no route'
+				}`,
+			);
 		}
 	}
 	return result;

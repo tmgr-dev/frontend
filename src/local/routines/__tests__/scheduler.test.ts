@@ -4,13 +4,21 @@ import type { RoutineEntryJson } from '../service';
 const materializeDueInstances = jest.fn().mockResolvedValue(0);
 const expandRange = jest.fn().mockResolvedValue([]);
 jest.mock('../service', () => ({
-	materializeDueInstances: (...args: unknown[]) => materializeDueInstances(...args),
+	materializeDueInstances: (...args: unknown[]) =>
+		materializeDueInstances(...args),
 	expandRange: (...args: unknown[]) => expandRange(...args),
 }));
 
-import { dueReminders, pruneReminded, reminderKey, runSchedulerTick } from '../scheduler';
+import {
+	dueReminders,
+	pruneReminded,
+	reminderKey,
+	runSchedulerTick,
+} from '../scheduler';
 
-const entry = (overrides: Partial<RoutineEntryJson> = {}): RoutineEntryJson => ({
+const entry = (
+	overrides: Partial<RoutineEntryJson> = {},
+): RoutineEntryJson => ({
 	task_id: 1,
 	title: 'Water plants',
 	description: null,
@@ -66,7 +74,10 @@ describe('dueReminders', () => {
 describe('pruneReminded', () => {
 	it('drops keys older than today and keeps the rest', () => {
 		const pruned = pruneReminded(
-			{ 'a:1:2026-09-26:09:00': '2026-09-26', 'a:1:2026-09-27:09:00': '2026-09-27' },
+			{
+				'a:1:2026-09-26:09:00': '2026-09-26',
+				'a:1:2026-09-27:09:00': '2026-09-27',
+			},
 			'2026-09-27',
 		);
 		expect(pruned).toEqual({ 'a:1:2026-09-27:09:00': '2026-09-27' });
@@ -75,7 +86,9 @@ describe('pruneReminded', () => {
 
 describe('reminderKey', () => {
 	it('scopes the key to workspace, task, date and time', () => {
-		expect(reminderKey('personal', entry())).toBe('personal:1:2026-09-27:09:00');
+		expect(reminderKey('personal', entry())).toBe(
+			'personal:1:2026-09-27:09:00',
+		);
 	});
 });
 
@@ -105,7 +118,10 @@ describe('runSchedulerTick', () => {
 	});
 
 	it('materializes due instances, then notifies once for each due entry', async () => {
-		expandRange.mockResolvedValue([entry(), entry({ task_id: 2, reminder_min: null })]);
+		expandRange.mockResolvedValue([
+			entry(),
+			entry({ task_id: 2, reminder_min: null }),
+		]);
 		const notify = jest.fn();
 		const context = jest.fn().mockResolvedValue(ctx);
 		const now = () => new Date('2026-09-27T08:55:00');
@@ -122,7 +138,10 @@ describe('runSchedulerTick', () => {
 		expect(materializeDueInstances).toHaveBeenCalledWith(ctx);
 		expect(expandRange).toHaveBeenCalledWith(ctx, '2026-09-27', '2026-09-28');
 		expect(notify).toHaveBeenCalledTimes(1);
-		expect(notify).toHaveBeenCalledWith('Routine: Water plants', 'at 09:00 · Personal (local)');
+		expect(notify).toHaveBeenCalledWith(
+			'Routine: Water plants',
+			'at 09:00 · Personal (local)',
+		);
 	});
 
 	it('does not re-notify an already-reminded entry on the next tick', async () => {
@@ -162,6 +181,9 @@ describe('runSchedulerTick', () => {
 		});
 
 		expect(notify).toHaveBeenCalledTimes(1);
-		expect(notify).toHaveBeenCalledWith('Routine: Water plants', 'at 09:00 · Personal (local)');
+		expect(notify).toHaveBeenCalledWith(
+			'Routine: Water plants',
+			'at 09:00 · Personal (local)',
+		);
 	});
 });

@@ -11,7 +11,8 @@ import { parseManifest } from '../manifest';
 const { createTestHost } = require('../../../plugin-sdk/testing/index.js');
 
 const dir = join(__dirname, '../../../plugin-sdk/examples/kitchen-sink');
-const loadManifest = () => JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+const loadManifest = () =>
+	JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
 
 let quickjs: QuickJSWASMModule;
 beforeAll(async () => {
@@ -25,7 +26,12 @@ beforeAll(async () => {
 });
 
 const startHost = (options: Record<string, unknown> = {}) =>
-	createTestHost({ manifest: loadManifest(), mainPath: join(dir, 'main.js'), quickjs, ...options });
+	createTestHost({
+		manifest: loadManifest(),
+		mainPath: join(dir, 'main.js'),
+		quickjs,
+		...options,
+	});
 
 it('the kitchen-sink manifest is valid', () => {
 	expect(() => parseManifest(loadManifest())).not.toThrow();
@@ -46,22 +52,32 @@ it('"Set up workspace" creates the status and category', async () => {
 it('"Create sample task" gets a key, a comment and taskData', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
-	const task = await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	const task = await host.runCommand(
+		'tmgr-dev.kitchen-sink.createSample',
+		null,
+	);
 	expect(task.key).toBe('KS-1');
 	expect(host.tmgr.comments[task.id]).toHaveLength(1);
 	expect(host.tmgr.comments[task.id][0].reactions['👍']).toBe(1);
 	expect(host.tmgr.taskData[`${task.id}:kitchenSink.note`]).toBeDefined();
-	expect(host.tmgr.relations[task.id]).toEqual([{ taskId: expect.any(Number), type: 'relates to' }]);
+	expect(host.tmgr.relations[task.id]).toEqual([
+		{ taskId: expect.any(Number), type: 'relates to' },
+	]);
 	host.dispose();
 });
 
 it('badges returns an array of normalized badges per task', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
-	const task = await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	const task = await host.runCommand(
+		'tmgr-dev.kitchen-sink.createSample',
+		null,
+	);
 	const badges = await host.badges([task]);
 	expect(Array.isArray(badges[task.id])).toBe(true);
-	expect(badges[task.id].map((b: any) => b.text)).toEqual(expect.arrayContaining(['HIGH', 'KS']));
+	expect(badges[task.id].map((b: any) => b.text)).toEqual(
+		expect.arrayContaining(['HIGH', 'KS']),
+	);
 	host.dispose();
 });
 
@@ -69,7 +85,11 @@ it('sets a counter badge on its view while active tasks exist (API 1.4)', async 
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
 	await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
-	expect(host.tmgr.viewBadges.view).toEqual({ count: expect.any(Number), text: null, tone: 'info' });
+	expect(host.tmgr.viewBadges.view).toEqual({
+		count: expect.any(Number),
+		text: null,
+		tone: 'info',
+	});
 	host.dispose();
 });
 
@@ -82,14 +102,19 @@ it('the alarm fires and refreshes the tray item', async () => {
 	await host.fireAlarms(scheduledAt + 1);
 	expect(host.tmgr.trayItems['ks-tray']).toBeDefined();
 	// Periodic: the alarm reschedules itself instead of disappearing.
-	expect(host.tmgr.alarms['ks-tick'].scheduledAtMs).toBeGreaterThan(scheduledAt);
+	expect(host.tmgr.alarms['ks-tick'].scheduledAtMs).toBeGreaterThan(
+		scheduledAt,
+	);
 	host.dispose();
 });
 
 it('"Capture today\'s notes" converts an undated note into a task (API 1.2)', async () => {
 	const host = await startHost({ routines: [{ title: 'Undated note' }] });
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
-	const task: any = await host.runCommand('tmgr-dev.kitchen-sink.captureNotes', null);
+	const task: any = await host.runCommand(
+		'tmgr-dev.kitchen-sink.captureNotes',
+		null,
+	);
 	expect(task.title).toBe('Undated note');
 	expect(host.tmgr.routines).toHaveLength(0);
 	expect(host.tmgr.tasks.map((t: any) => t.title)).toContain('Undated note');
@@ -111,19 +136,35 @@ it('routine.created is delivered to the plugin (API 1.2)', async () => {
 			updatedAt: new Date().toISOString(),
 		},
 	});
-	expect(host.tmgr.log.some((l: any) => l.message.includes('routine.created 1'))).toBe(true);
+	expect(
+		host.tmgr.log.some((l: any) => l.message.includes('routine.created 1')),
+	).toBe(true);
 	host.dispose();
 });
 
 it('"Write a Kitchen Sink page" creates the page, owns its section and survives a stale update (API 1.5)', async () => {
 	const host = await startHost();
-	const page: any = await host.runCommand('tmgr-dev.kitchen-sink.writePage', null);
+	const page: any = await host.runCommand(
+		'tmgr-dev.kitchen-sink.writePage',
+		null,
+	);
 	expect(page.body).toContain('Written 1 time(s) by Kitchen Sink.');
 	expect(page.body).toMatch(/## Log\n[\s\S]*- written at /);
-	expect(page.sections).toEqual([{ id: 'kitchen-sink', owner: 'plugin:tmgr-dev.kitchen-sink', heading: 'Kitchen Sink' }]);
+	expect(page.sections).toEqual([
+		{
+			id: 'kitchen-sink',
+			owner: 'plugin:tmgr-dev.kitchen-sink',
+			heading: 'Kitchen Sink',
+		},
+	]);
 	expect(host.tmgr.pageData[`${page.id}:kitchenSink.runs`]).toBe('1');
-	expect(host.tmgr.log.some((l: any) => l.message.includes('page is at version'))).toBe(true);
-	const again: any = await host.runCommand('tmgr-dev.kitchen-sink.writePage', null);
+	expect(
+		host.tmgr.log.some((l: any) => l.message.includes('page is at version')),
+	).toBe(true);
+	const again: any = await host.runCommand(
+		'tmgr-dev.kitchen-sink.writePage',
+		null,
+	);
 	expect(again.id).toBe(page.id);
 	expect(host.tmgr.pages).toHaveLength(1);
 	expect(again.body).toContain('Written 2 time(s) by Kitchen Sink.');
@@ -139,14 +180,24 @@ it('refuses to write into a section another plugin owns', async () => {
 			},
 		],
 	});
-	await expect(host.runCommand('tmgr-dev.kitchen-sink.writePage', null)).rejects.toThrow('PERMISSION_DENIED');
+	await expect(
+		host.runCommand('tmgr-dev.kitchen-sink.writePage', null),
+	).rejects.toThrow('PERMISSION_DENIED');
 	host.dispose();
 });
 
 it('page.updated is delivered to the plugin (API 1.5)', async () => {
 	const host = await startHost();
-	await host.emit({ type: 'page.updated', pageId: 3, changedSections: ['kitchen-sink'] });
-	expect(host.tmgr.log.some((l: any) => l.message.includes('page.updated 3 sections=kitchen-sink'))).toBe(true);
+	await host.emit({
+		type: 'page.updated',
+		pageId: 3,
+		changedSections: ['kitchen-sink'],
+	});
+	expect(
+		host.tmgr.log.some((l: any) =>
+			l.message.includes('page.updated 3 sections=kitchen-sink'),
+		),
+	).toBe(true);
 	host.dispose();
 });
 
@@ -154,7 +205,9 @@ const containsNodeType = (node: any, type: string): boolean => {
 	if (!node || typeof node !== 'object') return false;
 	if (node.type === type) return true;
 	const lists = [node.children, node.items].filter(Array.isArray);
-	return lists.some((list) => list.some((child: any) => containsNodeType(child, type)));
+	return lists.some((list) =>
+		list.some((child: any) => containsNodeType(child, type)),
+	);
 };
 
 it('the "Kitchen Sink view" page renders card, grid and menu nodes (API 1.3)', async () => {
@@ -169,7 +222,10 @@ it('the "Kitchen Sink view" page renders card, grid and menu nodes (API 1.3)', a
 it('offers two task menu items and both work on a task (API 1.6)', async () => {
 	const host = await startHost();
 	await host.runCommand('tmgr-dev.kitchen-sink.setup', null);
-	const task = await host.runCommand('tmgr-dev.kitchen-sink.createSample', null);
+	const task = await host.runCommand(
+		'tmgr-dev.kitchen-sink.createSample',
+		null,
+	);
 	expect(host.taskMenuItems().map((item: any) => item.title)).toEqual([
 		'Add a Kitchen Sink comment',
 		'Show task id',

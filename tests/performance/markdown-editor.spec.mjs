@@ -95,15 +95,13 @@ const openEditor = async (page, task = {}, options) => {
 };
 
 const docText = (page) =>
-  page
-    .locator('.new-form-container .cm-content')
-    .evaluate((el) => {
-      // innerText would include the placeholder. @codemirror/view < 6.43 exposes `cmView`,
-      // 6.43+ `cmTile`; fail loudly if both disappear.
-      const view = el.cmView?.view ?? el.cmTile?.root?.view;
-      if (!view) throw new Error('CodeMirror view not found, update docText');
-      return view.state.doc.toString();
-    });
+  page.locator('.new-form-container .cm-content').evaluate((el) => {
+    // innerText would include the placeholder. @codemirror/view < 6.43 exposes `cmView`,
+    // 6.43+ `cmTile`; fail loudly if both disappear.
+    const view = el.cmView?.view ?? el.cmTile?.root?.view;
+    if (!view) throw new Error('CodeMirror view not found, update docText');
+    return view.state.doc.toString();
+  });
 
 const selectAll = async (page, content) => {
   await content.click();
@@ -322,16 +320,17 @@ for (const scheme of ['light', 'dark'])
   test(`criterion 6: ${scheme} theme — dark class only in dark, no white box in dark`, async ({
     page,
   }) => {
-    const ctx = track(
-      await openEditor(page, {}, { colorScheme: scheme }),
-    );
+    const ctx = track(await openEditor(page, {}, { colorScheme: scheme }));
     await ctx.content.click();
     await page.keyboard.type('Theme check text');
     const editor = root(page);
-    if (scheme === 'dark') await expect(editor).toHaveClass(/\bmd-editor-dark\b/);
+    if (scheme === 'dark')
+      await expect(editor).toHaveClass(/\bmd-editor-dark\b/);
     else await expect(editor).not.toHaveClass(/\bmd-editor-dark\b/);
 
-    const wrapper = page.locator('.new-form-container .description-editor-wrapper');
+    const wrapper = page.locator(
+      '.new-form-container .description-editor-wrapper',
+    );
     const look = await wrapper.evaluate((w, lightnessSrc) => {
       const lightnessOf = new Function(`return (${lightnessSrc})`)();
       const content = w.querySelector('.cm-content');
@@ -371,10 +370,14 @@ for (const scheme of ['light', 'dark'])
     // once the content overflows.
     const scrollbar = () =>
       wrapper.evaluate((w) => {
-        const track = w.querySelector('.cm-editor .md-editor-custom-scrollbar__track, .md-editor-input-wrapper .md-editor-custom-scrollbar__track')
-          ?? w.querySelector('.md-editor-custom-scrollbar__track');
+        const track =
+          w.querySelector(
+            '.cm-editor .md-editor-custom-scrollbar__track, .md-editor-input-wrapper .md-editor-custom-scrollbar__track',
+          ) ?? w.querySelector('.md-editor-custom-scrollbar__track');
         if (!track) return null;
-        const thumb = track.parentElement.querySelector('.md-editor-custom-scrollbar__thumb');
+        const thumb = track.parentElement.querySelector(
+          '.md-editor-custom-scrollbar__thumb',
+        );
         const box = thumb?.getBoundingClientRect();
         return {
           track: getComputedStyle(track).backgroundColor,
@@ -390,7 +393,9 @@ for (const scheme of ['light', 'dark'])
       await page.keyboard.insertText(
         Array.from({ length: 60 }, (_, i) => `\nOverflow line ${i}`).join(''),
       );
-      await expect.poll(async () => (await scrollbar()).thumbHeight).toBeGreaterThan(10);
+      await expect
+        .poll(async () => (await scrollbar()).thumbHeight)
+        .toBeGreaterThan(10);
       const overflow = await scrollbar();
       record(`${scheme} scrollbar overflow`, overflow);
       expect(overflow.track).toBe('rgba(0, 0, 0, 0)');
@@ -400,7 +405,9 @@ for (const scheme of ['light', 'dark'])
     }
   });
 
-test('criterion 7: page fullscreen toggles on and back off', async ({ page }) => {
+test('criterion 7: page fullscreen toggles on and back off', async ({
+  page,
+}) => {
   const ctx = track(await openEditor(page));
   const editor = root(page);
   const viewport = page.viewportSize();
@@ -425,9 +432,13 @@ test('criterion 7: page fullscreen toggles on and back off', async ({ page }) =>
 
   await toolbarButton(page, 'fullscreen in page').click();
   await expect(editor).not.toHaveClass(/\bmd-editor-fullscreen\b/);
-  await expect.poll(async () => (await editor.boundingBox()).width).toBeCloseTo(before.width, 0);
+  await expect
+    .poll(async () => (await editor.boundingBox()).width)
+    .toBeCloseTo(before.width, 0);
   expect(Math.round(before.height)).toBe(420);
-  await expect.poll(async () => Math.round((await editor.boundingBox()).height)).toBe(420);
+  await expect
+    .poll(async () => Math.round((await editor.boundingBox()).height))
+    .toBe(420);
   await expect(ctx.content).toBeVisible();
 });
 
@@ -491,8 +502,14 @@ for (const { name, clip, expected } of [
 const fillModal = async (page, title) => {
   const heading = page.getByText(title, { exact: true });
   if (!(await shown(heading))) return false;
-  await page.getByPlaceholder('Enter a description...').filter({ visible: true }).fill('Docs');
-  await page.getByPlaceholder('Enter a link...').filter({ visible: true }).fill('https://example.com/docs');
+  await page
+    .getByPlaceholder('Enter a description...')
+    .filter({ visible: true })
+    .fill('Docs');
+  await page
+    .getByPlaceholder('Enter a link...')
+    .filter({ visible: true })
+    .fill('https://example.com/docs');
   await page.getByText('OK', { exact: true }).filter({ visible: true }).click();
   return true;
 };
@@ -507,10 +524,19 @@ test('criterion 8: link button ends with link markdown (pop-up on v4, direct on 
   await page.waitForTimeout(500);
   await shot(page, 'md-editor-link-button');
   const popup = await fillModal(page, 'Add Link');
-  test.info().annotations.push({ type: 'link button', description: popup ? 'modal (v4)' : 'direct insert (v6, D-004)' });
+  test.info().annotations.push({
+    type: 'link button',
+    description: popup ? 'modal (v4)' : 'direct insert (v6, D-004)',
+  });
   record('link button', { popup, doc: await docText(page) });
-  if (popup) await expect.poll(() => docText(page)).toBe('Start [Docs](https://example.com/docs)');
-  else await expect.poll(() => docText(page)).toMatch(/^Start .*\[[^\]]*\]\([^)]*\)/);
+  if (popup)
+    await expect
+      .poll(() => docText(page))
+      .toBe('Start [Docs](https://example.com/docs)');
+  else
+    await expect
+      .poll(() => docText(page))
+      .toMatch(/^Start .*\[[^\]]*\]\([^)]*\)/);
 });
 
 test('criterion 8: image button ends with image markdown (pop-up on v4, direct on v6)', async ({
@@ -524,7 +550,9 @@ test('criterion 8: image button ends with image markdown (pop-up on v4, direct o
   const dropdownItem = page.getByText('Add Image Link', { exact: true });
   const dropdown = await shown(dropdownItem);
   if (dropdown) {
-    await expect(page.getByText('Upload Images', { exact: true })).toBeVisible();
+    await expect(
+      page.getByText('Upload Images', { exact: true }),
+    ).toBeVisible();
     await shot(page, 'md-editor-image-dropdown');
     await dropdownItem.click();
     await page.waitForTimeout(500);
@@ -533,12 +561,20 @@ test('criterion 8: image button ends with image markdown (pop-up on v4, direct o
   const popup = await fillModal(page, 'Add Image');
   test.info().annotations.push({
     type: 'image button',
-    description: `${dropdown ? 'dropdown' : 'no dropdown'}, ${popup ? 'modal (v4)' : 'direct insert (v6, D-004)'}`,
+    description: `${dropdown ? 'dropdown' : 'no dropdown'}, ${
+      popup ? 'modal (v4)' : 'direct insert (v6, D-004)'
+    }`,
   });
   record('image button', { dropdown, popup, doc: await docText(page) });
   // develop's image modal appends a newline after the image markdown.
-  if (popup) await expect.poll(() => docText(page)).toBe('Start ![Docs](https://example.com/docs)\n');
-  else await expect.poll(() => docText(page)).toMatch(/^Start .*!\[[^\]]*\]\([^)]*\)/);
+  if (popup)
+    await expect
+      .poll(() => docText(page))
+      .toBe('Start ![Docs](https://example.com/docs)\n');
+  else
+    await expect
+      .poll(() => docText(page))
+      .toMatch(/^Start .*!\[[^\]]*\]\([^)]*\)/);
 });
 
 const PREVIEW_MD = [
@@ -560,12 +596,19 @@ for (const scheme of ['light', 'dark'])
   test(`criterion 9: ${scheme} preview renders heading, bullets, link, code with develop spacing`, async ({
     page,
   }) => {
-    const ctx = track(await setup(page, { description: PREVIEW_MD }, { colorScheme: scheme }));
+    const ctx = track(
+      await setup(page, { description: PREVIEW_MD }, { colorScheme: scheme }),
+    );
     const form = await openTask(page);
     const wrapper = form.locator('.description-editor-wrapper');
     await expect(wrapper.locator('h1')).toHaveText('Preview heading');
-    await expect(wrapper.locator('ul > li')).toHaveText(['first bullet', 'second bullet']);
-    await expect(wrapper.locator('a[href="https://example.com/x"]')).toHaveText('a link');
+    await expect(wrapper.locator('ul > li')).toHaveText([
+      'first bullet',
+      'second bullet',
+    ]);
+    await expect(wrapper.locator('a[href="https://example.com/x"]')).toHaveText(
+      'a link',
+    );
     await expect(wrapper.locator('p code')).toHaveText('inline code');
     await expect(wrapper.locator('pre')).toContainText('const a = 1;');
     await expect(form.locator('.cm-editor')).toHaveCount(0);
@@ -574,11 +617,16 @@ for (const scheme of ['light', 'dark'])
       const wb = w.getBoundingClientRect();
       const at = (sel) => {
         const b = w.querySelector(sel).getBoundingClientRect();
-        return { left: b.left - wb.left, top: b.top - wb.top, right: wb.right - b.right };
+        return {
+          left: b.left - wb.left,
+          top: b.top - wb.top,
+          right: wb.right - b.right,
+        };
       };
       const li = w.querySelector('ul > li');
       return {
-        padding: getComputedStyle(w.querySelector('.description-markdown')).padding,
+        padding: getComputedStyle(w.querySelector('.description-markdown'))
+          .padding,
         h1: at('h1'),
         li: at('ul > li'),
         listStyle: getComputedStyle(li).listStyleType,
@@ -614,7 +662,8 @@ const expectNoXssInDom = async (page) => {
   expect(
     await page.evaluate(() => ({
       xss: window.__xss,
-      onerror: document.querySelectorAll('.new-form-container [onerror]').length,
+      onerror: document.querySelectorAll('.new-form-container [onerror]')
+        .length,
       scripts: document.querySelectorAll('.new-form-container script').length,
       jsHrefs: [...document.querySelectorAll('[href]')].filter((el) =>
         /^\s*javascript:/i.test(el.getAttribute('href')),
@@ -633,9 +682,11 @@ test('criterion 10: script-bearing markdown does not execute in preview or edito
   const wrapper = form.locator('.description-editor-wrapper');
   await expect(wrapper).toContainText('Safe marker');
   await page.waitForFunction(() =>
-    [...document.querySelectorAll('.new-form-container .description-editor-wrapper img')].every(
-      (img) => img.complete,
-    ),
+    [
+      ...document.querySelectorAll(
+        '.new-form-container .description-editor-wrapper img',
+      ),
+    ].every((img) => img.complete),
   );
   await expectNoXssInDom(page);
   const y = wrapper.getByText('y', { exact: true });
@@ -644,7 +695,10 @@ test('criterion 10: script-bearing markdown does not execute in preview or edito
   if (await x.count()) await x.first().click();
   await page.waitForTimeout(300);
   await expectNoXssInDom(page);
-  record('xss preview html', await wrapper.locator('.description-markdown').innerHTML());
+  record(
+    'xss preview html',
+    await wrapper.locator('.description-markdown').innerHTML(),
+  );
 
   await form.getByRole('button', { name: 'Edit description' }).click();
   await expect.poll(() => docText(page)).toBe(XSS_MD);
@@ -656,14 +710,38 @@ test('criterion 10: script-bearing markdown does not execute in preview or edito
 // always with the forced sandbox; every other iframe loses its src.
 const SANDBOX = 'allow-scripts allow-same-origin allow-popups';
 const ALLOWED_IFRAMES = {
-  youtube: ['https://www.youtube.com/embed/abc', 'https://www.youtube.com/embed/abc'],
-  codepen: ['https://codepen.io/u/embed/p?height=300', 'https://codepen.io/u/embed/p?height=300'],
-  figma: ['https://www.figma.com/embed?embed_host=share&url=x', 'https://www.figma.com/embed?embed_host=share&url=x'],
-  entities: ['https://www.youtube.com/embed/ent?a=1&amp;b=2', 'https://www.youtube.com/embed/ent?a=1&b=2'],
-  'author-sandbox': ['https://www.youtube.com/embed/sb" sandbox="" srcdoc="x', 'https://www.youtube.com/embed/sb'],
-  'author-allow': ['https://www.youtube.com/embed/al" allow="camera; microphone', 'https://www.youtube.com/embed/al'],
-  'bad-then-good': ['https://evil.example/a" src="https://www.youtube.com/embed/bg', 'https://www.youtube.com/embed/bg'],
-  'good-then-bad': ['https://www.youtube.com/embed/gb" src="https://evil.example/b', 'https://www.youtube.com/embed/gb'],
+  youtube: [
+    'https://www.youtube.com/embed/abc',
+    'https://www.youtube.com/embed/abc',
+  ],
+  codepen: [
+    'https://codepen.io/u/embed/p?height=300',
+    'https://codepen.io/u/embed/p?height=300',
+  ],
+  figma: [
+    'https://www.figma.com/embed?embed_host=share&url=x',
+    'https://www.figma.com/embed?embed_host=share&url=x',
+  ],
+  entities: [
+    'https://www.youtube.com/embed/ent?a=1&amp;b=2',
+    'https://www.youtube.com/embed/ent?a=1&b=2',
+  ],
+  'author-sandbox': [
+    'https://www.youtube.com/embed/sb" sandbox="" srcdoc="x',
+    'https://www.youtube.com/embed/sb',
+  ],
+  'author-allow': [
+    'https://www.youtube.com/embed/al" allow="camera; microphone',
+    'https://www.youtube.com/embed/al',
+  ],
+  'bad-then-good': [
+    'https://evil.example/a" src="https://www.youtube.com/embed/bg',
+    'https://www.youtube.com/embed/bg',
+  ],
+  'good-then-bad': [
+    'https://www.youtube.com/embed/gb" src="https://evil.example/b',
+    'https://www.youtube.com/embed/gb',
+  ],
 };
 const BLOCKED_IFRAMES = {
   http: 'http://www.youtube.com/embed/abc',
@@ -684,20 +762,25 @@ const IFRAME_MD = [
     ([title, [src]]) => `<iframe title="${title}" src="${src}"></iframe>`,
   ),
   ...Object.entries(BLOCKED_IFRAMES).map(
-    ([title, src]) => `<iframe title="${title}" src="${src}" sandbox=""></iframe>`,
+    ([title, src]) =>
+      `<iframe title="${title}" src="${src}" sandbox=""></iframe>`,
   ),
   '<iframe title="srcdoc" srcdoc="hello"></iframe>',
 ].join('\n\n');
 
 const iframesIn = (page, selector) =>
-  page.locator(selector).evaluateAll((els) =>
-    Object.fromEntries(
-      els.map((el) => [
-        el.title,
-        ['src', 'sandbox', 'srcdoc', 'allow'].map((name) => el.getAttribute(name)),
-      ]),
-    ),
-  );
+  page
+    .locator(selector)
+    .evaluateAll((els) =>
+      Object.fromEntries(
+        els.map((el) => [
+          el.title,
+          ['src', 'sandbox', 'srcdoc', 'allow'].map((name) =>
+            el.getAttribute(name),
+          ),
+        ]),
+      ),
+    );
 
 test('TM-593: preview keeps only allowlisted https iframes, sandboxed; editor renders none', async ({
   page,
@@ -706,14 +789,23 @@ test('TM-593: preview keeps only allowlisted https iframes, sandboxed; editor re
   const form = await openTask(page);
   const wrapper = form.locator('.description-editor-wrapper');
   await expect(wrapper).toContainText('Iframe marker');
-  const iframes = await iframesIn(page, '.new-form-container .description-markdown iframe');
+  const iframes = await iframesIn(
+    page,
+    '.new-form-container .description-markdown iframe',
+  );
   record('iframes', iframes);
   expect(iframes).toEqual({
     ...Object.fromEntries(
-      Object.entries(ALLOWED_IFRAMES).map(([title, [, href]]) => [title, [href, SANDBOX, null, null]]),
+      Object.entries(ALLOWED_IFRAMES).map(([title, [, href]]) => [
+        title,
+        [href, SANDBOX, null, null],
+      ]),
     ),
     ...Object.fromEntries(
-      Object.keys(BLOCKED_IFRAMES).map((title) => [title, [null, null, null, null]]),
+      Object.keys(BLOCKED_IFRAMES).map((title) => [
+        title,
+        [null, null, null, null],
+      ]),
     ),
     srcdoc: [null, null, null, null],
   });
@@ -727,12 +819,19 @@ test('TM-593: preview keeps only allowlisted https iframes, sandboxed; editor re
     .filter((url) => url !== 'about:blank')
     .map((url) => new URL(url).hostname);
   record('frame hosts', frameHosts);
-  expect([...new Set(frameHosts)].sort()).toEqual(['codepen.io', 'www.figma.com', 'www.youtube.com']);
-  expect([...ctx.external].filter((url) => url.includes('evil.example'))).toEqual([]);
+  expect([...new Set(frameHosts)].sort()).toEqual([
+    'codepen.io',
+    'www.figma.com',
+    'www.youtube.com',
+  ]);
+  expect(
+    [...ctx.external].filter((url) => url.includes('evil.example')),
+  ).toEqual([]);
   expect(await page.evaluate(() => window.__xss)).toBeUndefined();
   // Allowed embeds are expected traffic here, not new CDN hosts (afterEach check).
   for (const url of [...ctx.external])
-    if (/^(www\.youtube\.com|codepen\.io|www\.figma\.com)\//.test(url)) ctx.external.delete(url);
+    if (/^(www\.youtube\.com|codepen\.io|www\.figma\.com)\//.test(url))
+      ctx.external.delete(url);
 
   await form.getByRole('button', { name: 'Edit description' }).click();
   await expect.poll(() => docText(page)).toBe(IFRAME_MD);
@@ -746,12 +845,16 @@ test('criterion 11: empty description shows the empty preview and the editor pla
 }) => {
   const ctx = track(await setup(page));
   const form = await openTask(page);
-  const empty = form.getByRole('button', { name: 'No description — click to add' });
+  const empty = form.getByRole('button', {
+    name: 'No description — click to add',
+  });
   await expect(empty).toBeVisible();
   await expect(form.locator('.cm-editor')).toHaveCount(0);
   await empty.click();
   await expect(form.locator('.cm-content')).toBeVisible();
-  await expect(form.getByText('Add description...', { exact: true })).toBeVisible();
+  await expect(
+    form.getByText('Add description...', { exact: true }),
+  ).toBeVisible();
   await expect.poll(() => docText(page)).toBe('');
   expect(ctx.puts).toEqual([]);
 });

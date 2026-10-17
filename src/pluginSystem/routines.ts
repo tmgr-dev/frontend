@@ -1,5 +1,3 @@
-
-
 export type RoutineStatus = 'PENDING' | 'COMPLETED' | 'SKIPPED';
 
 export interface RoutineEntry {
@@ -52,7 +50,8 @@ export const toRoutine = (row: any): Routine => ({
 
 /** Accepts `instanceJson` output, a raw `routine_instances` row, or the `complete-on` response shape. */
 export const toRoutineInstance = (row: any): RoutineInstance => {
-	const scheduledFor = row.scheduled_for != null ? String(row.scheduled_for) : null;
+	const scheduledFor =
+		row.scheduled_for != null ? String(row.scheduled_for) : null;
 	return {
 		id: Number(row.id),
 		routineId: Number(row.routine_id ?? row.task_id),
@@ -64,7 +63,8 @@ export const toRoutineInstance = (row: any): RoutineInstance => {
 
 /** Accepts a `RoutineEntryJson` from `GET daily-routines/expand`. */
 export const toRoutineEntry = (entry: any): RoutineEntry => {
-	const frequency = entry.frequency && entry.frequency !== 'NONE' ? entry.frequency : null;
+	const frequency =
+		entry.frequency && entry.frequency !== 'NONE' ? entry.frequency : null;
 	return {
 		routineId: Number(entry.task_id),
 		instanceId: entry.instance_id == null ? null : Number(entry.instance_id),

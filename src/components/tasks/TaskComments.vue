@@ -99,7 +99,9 @@
 	);
 
 	const filteredComments = computed(() =>
-		sortedComments.value.filter((c) => matchesAuthorFilter(c, authorFilter.value)),
+		sortedComments.value.filter((c) =>
+			matchesAuthorFilter(c, authorFilter.value),
+		),
 	);
 
 	const loadComments = async () => {
@@ -319,7 +321,11 @@
 					v-else-if="comment.author && comment.author.kind !== 'user'"
 					class="mt-0.5 flex-shrink-0"
 				>
-					<AuthorBadge :author="comment.author" :size="28" :show-label="false" />
+					<AuthorBadge
+						:author="comment.author"
+						:size="28"
+						:show-label="false"
+					/>
 				</span>
 				<MemberAvatarLink
 					v-else

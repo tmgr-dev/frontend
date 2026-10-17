@@ -5,11 +5,11 @@
 </template>
 
 <script setup>
+	import { normalizeBlocks, sameBlocks } from '@/utils/editor';
 	import {
 		createEditorOperationQueue,
 		createSerialEditor,
 	} from '@/utils/serialEditor';
-	import { normalizeBlocks, sameBlocks } from '@/utils/editor';
 	import CodeTool from '@bomdi/codebox';
 	import Delimiter from '@editorjs/delimiter';
 	import EditorJS from '@editorjs/editorjs';
@@ -140,9 +140,7 @@
 			!['paragraph', 'header'].includes(block?.name) ||
 			!block.holder.contains(event.target) ||
 			!selection.rangeCount ||
-			!event.target.contains(
-				selection.getRangeAt(0).commonAncestorContainer,
-			)
+			!event.target.contains(selection.getRangeAt(0).commonAncestorContainer)
 		)
 			return;
 		event.preventDefault();

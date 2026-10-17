@@ -9,22 +9,29 @@ const ANCHORS: Record<string, string[]> = {
 	'components/tasks/TaskRelations.vue': ['task-form.relations'],
 	'pages/TasksListPage.vue': ['list.select'],
 	'components/tasks/TasksListComponent.vue': ['list.process'],
-	'components/tasks/TasksMultipleActionsModal.vue': ['export.panel', 'export.download'],
+	'components/tasks/TasksMultipleActionsModal.vue': [
+		'export.panel',
+		'export.download',
+	],
 	'components/general/FiltersBoard.vue': ['statuses.editor'],
 	'pages/ProjectCategoryList.vue': ['categories.create', 'categories.row'],
 	'pages/CategoriesSettingsPage.vue': ['categories.create', 'categories.row'],
 	'pages/WorkspaceFilesPage.vue': ['files.list'],
 };
 
-const read = (file: string) => readFileSync(join(__dirname, '../..', file), 'utf8');
+const read = (file: string) =>
+	readFileSync(join(__dirname, '../..', file), 'utf8');
 
 describe('S4b task-area data-tour anchors', () => {
-	it.each(Object.entries(ANCHORS).flatMap(([file, list]) => list.map((a) => [file, a])))(
-		'%s has %s',
-		(file, anchor) => {
-			expect(read(file)).toMatch(new RegExp(`data-tour="${anchor.replace(/\./g, '\\.')}"`));
-		},
-	);
+	it.each(
+		Object.entries(ANCHORS).flatMap(([file, list]) =>
+			list.map((a) => [file, a]),
+		),
+	)('%s has %s', (file, anchor) => {
+		expect(read(file)).toMatch(
+			new RegExp(`data-tour="${anchor.replace(/\./g, '\\.')}"`),
+		);
+	});
 });
 
 describe('TasksMultipleActionsModal', () => {
@@ -37,13 +44,17 @@ describe('TasksMultipleActionsModal', () => {
 
 describe('S4b task-area emits', () => {
 	it('NewForm emits checkpoint.added from addCheckpoint', () => {
-		expect(read('pages/NewForm.vue')).toMatch(/tourBus\.emit\('checkpoint\.added'/);
+		expect(read('pages/NewForm.vue')).toMatch(
+			/tourBus\.emit\('checkpoint\.added'/,
+		);
 	});
 
 	it('TasksListComponent emits tasks.selected and tasks.actions_opened', () => {
 		const source = read('components/tasks/TasksListComponent.vue');
 		expect(source).toMatch(/tourBus\.emit\('tasks\.selected'/);
-		expect(source).toMatch(/showProcessModal\(\) \{\s*tourBus\.emit\('tasks\.actions_opened'\)/);
+		expect(source).toMatch(
+			/showProcessModal\(\) \{\s*tourBus\.emit\('tasks\.actions_opened'\)/,
+		);
 	});
 });
 

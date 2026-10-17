@@ -57,14 +57,22 @@ const ASSIGNABLE_SQL = `
 	JOIN workspace_personas wp ON wp.persona_uuid = p.uuid
 	WHERE p.archived_at IS NULL AND wp.disabled_at IS NULL AND p.owner_user_id IN (?, ${LOCAL_OWNER_ID})`;
 
-export const assignablePersonas = async (ctx: LocalContext): Promise<PersonaView[]> => {
-	const rows = await ctx.db.select<any>(`${ASSIGNABLE_SQL} ORDER BY p.name`, [ctx.user.id]);
+export const assignablePersonas = async (
+	ctx: LocalContext,
+): Promise<PersonaView[]> => {
+	const rows = await ctx.db.select<any>(`${ASSIGNABLE_SQL} ORDER BY p.name`, [
+		ctx.user.id,
+	]);
 	return rows.map(personaView);
 };
 
 export const requireHumanActor = (ctx: LocalContext) => {
 	if (ctx.actor?.kind === 'persona') {
-		throw new LocalHttpError(403, 'A persona cannot change persona assignees', 'ROUTE_NOT_ALLOWED');
+		throw new LocalHttpError(
+			403,
+			'A persona cannot change persona assignees',
+			'ROUTE_NOT_ALLOWED',
+		);
 	}
 };
 
@@ -87,8 +95,13 @@ export const resolvePersona = async (
 			if (!pool.some((p) => p.id === row.uuid)) pool.push(personaView(row));
 		}
 	}
-	const found = pool.find((p) => p.id === ref) ?? pool.find((p) => p.name === ref);
-	if (!found) throw new LocalHttpError(422, `Persona ${ref} is not assignable in this workspace`);
+	const found =
+		pool.find((p) => p.id === ref) ?? pool.find((p) => p.name === ref);
+	if (!found)
+		throw new LocalHttpError(
+			422,
+			`Persona ${ref} is not assignable in this workspace`,
+		);
 	return found;
 };
 
@@ -131,11 +144,18 @@ export const withPersonaAssignees = async <T extends { id: number }>(
 	});
 };
 
-export const taskPersonaIds = async (ctx: LocalContext, taskId: number): Promise<string[]> =>
+export const taskPersonaIds = async (
+	ctx: LocalContext,
+	taskId: number,
+): Promise<string[]> =>
 	(await assignedRows(ctx, taskId)).map((row) => row.uuid);
 
 const eventPersonas = (personas: PersonaView[]) =>
-	personas.map((p) => ({ uuid: p.id, name: p.name, owner_user_id: p.owner.id }));
+	personas.map((p) => ({
+		uuid: p.id,
+		name: p.name,
+		owner_user_id: p.owner.id,
+	}));
 
 /** Applies the final persona list; returns what actually changed. New personas must be assignable. */
 export const setTaskPersonas = async (
@@ -143,7 +163,11 @@ export const setTaskPersonas = async (
 	taskId: number,
 	wanted: unknown,
 ): Promise<void> => {
-	if (!Array.isArray(wanted)) throw new LocalHttpError(422, 'persona_assignees must be a list of persona ids');
+	if (!Array.isArray(wanted))
+		throw new LocalHttpError(
+			422,
+			'persona_assignees must be a list of persona ids',
+		);
 	const current = await assignedRows(ctx, taskId);
 	const currentIds = new Set(current.map((r) => r.uuid));
 	const targetIds = [...new Set(wanted.map(String))];
@@ -151,7 +175,9 @@ export const setTaskPersonas = async (
 	for (const id of targetIds) {
 		if (!currentIds.has(id)) toAdd.push(await resolvePersona(ctx, id));
 	}
-	const toRemove = current.filter((r) => !targetIds.includes(r.uuid)).map(personaView);
+	const toRemove = current
+		.filter((r) => !targetIds.includes(r.uuid))
+		.map(personaView);
 	const wasEmpty = current.length === 0;
 	const nowEmpty = current.length - toRemove.length + toAdd.length === 0;
 	const now = ctx.now().toISOString();
@@ -163,13 +189,16 @@ export const setTaskPersonas = async (
 		);
 	}
 	for (const persona of toRemove) {
-		await ctx.db.execute(`DELETE FROM task_persona_assignees WHERE task_id = ? AND persona_uuid = ?`, [
-			taskId,
-			persona.id,
-		]);
+		await ctx.db.execute(
+			`DELETE FROM task_persona_assignees WHERE task_id = ? AND persona_uuid = ?`,
+			[taskId, persona.id],
+		);
 	}
 	if (toAdd.length || toRemove.length) {
-		await ctx.db.execute(`UPDATE tasks SET updated_at = ? WHERE id = ?`, [now, taskId]);
+		await ctx.db.execute(`UPDATE tasks SET updated_at = ? WHERE id = ?`, [
+			now,
+			taskId,
+		]);
 	}
 	const actor = ctx.actor?.kind ?? 'user';
 	const base = { task_id: taskId, workspace_id: ctx.workspace.id };
@@ -177,29 +206,50 @@ export const setTaskPersonas = async (
 		reportAssignment({
 			type: 'task.assigned',
 			actor,
-			payload: { ...base, user_ids: wasEmpty ? [ctx.user.id] : [], personas: eventPersonas(toAdd) },
+			payload: {
+				...base,
+				user_ids: wasEmpty ? [ctx.user.id] : [],
+				personas: eventPersonas(toAdd),
+			},
 		});
 	}
 	if (toRemove.length) {
 		reportAssignment({
 			type: 'task.unassigned',
 			actor,
-			payload: { ...base, user_ids: nowEmpty ? [ctx.user.id] : [], personas: eventPersonas(toRemove) },
+			payload: {
+				...base,
+				user_ids: nowEmpty ? [ctx.user.id] : [],
+				personas: eventPersonas(toRemove),
+			},
 		});
 	}
 };
 
-export const assignPersona = async (ctx: LocalContext, taskId: number, ref: string) => {
+export const assignPersona = async (
+	ctx: LocalContext,
+	taskId: number,
+	ref: string,
+) => {
 	const current = await taskPersonaIds(ctx, taskId);
 	const persona = await resolvePersona(ctx, ref);
-	if (!current.includes(persona.id)) await setTaskPersonas(ctx, taskId, [...current, persona.id]);
+	if (!current.includes(persona.id))
+		await setTaskPersonas(ctx, taskId, [...current, persona.id]);
 };
 
-export const unassignPersona = async (ctx: LocalContext, taskId: number, ref: string) => {
+export const unassignPersona = async (
+	ctx: LocalContext,
+	taskId: number,
+	ref: string,
+) => {
 	const current = await taskPersonaIds(ctx, taskId);
 	const persona = await resolvePersona(ctx, ref, taskId);
 	if (current.includes(persona.id)) {
-		await setTaskPersonas(ctx, taskId, current.filter((id) => id !== persona.id));
+		await setTaskPersonas(
+			ctx,
+			taskId,
+			current.filter((id) => id !== persona.id),
+		);
 	}
 };
 

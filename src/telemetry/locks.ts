@@ -9,7 +9,9 @@ export const withLock = <T>(
 ): Promise<Awaited<T>> => {
 	try {
 		return (
-			locks ? locks.request(`tmgr-telemetry-${name}`, callback) : Promise.resolve(callback())
+			locks
+				? locks.request(`tmgr-telemetry-${name}`, callback)
+				: Promise.resolve(callback())
 		) as Promise<Awaited<T>>;
 	} catch (error) {
 		return Promise.reject(error);

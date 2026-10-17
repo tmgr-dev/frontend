@@ -7,11 +7,13 @@
 		:class="
 			inline
 				? 'rounded-lg border border-border bg-card p-4 text-card-foreground'
-				: 'fixed inset-x-0 bottom-0 z-[60] max-h-[90vh] overflow-y-auto border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4' + (authPage ? ' lg:left-4 lg:right-auto' : '')
+				: 'fixed inset-x-0 bottom-0 z-[60] max-h-[90vh] overflow-y-auto border-t border-border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] text-card-foreground shadow-lg sm:inset-x-auto sm:bottom-4 sm:right-4 sm:max-w-md sm:rounded-lg sm:border sm:pb-4' +
+				  (authPage ? ' lg:left-4 lg:right-auto' : '')
 		"
 	>
 		<p v-if="saveFailed" role="alert" class="mb-3 text-sm text-destructive">
-			Couldn't save your choice in this browser. Sharing is stopped in this window.
+			Couldn't save your choice in this browser. Sharing is stopped in this
+			window.
 		</p>
 		<div v-if="showUsage" data-consent-block="usage">
 			<h2 class="text-base font-semibold">Help improve TMGR?</h2>
@@ -39,8 +41,8 @@
 			<div v-if="detailsOpen" id="usage-consent-details" class="mt-2">
 				<p class="text-sm text-muted-foreground">
 					If you agree, TMGR sends usage events that are not linked to your
-					account: which screens and tours you open, which steps you finish,
-					app version and platform.
+					account: which screens and tours you open, which steps you finish, app
+					version and platform.
 				</p>
 				<dl class="mt-2 space-y-1 text-sm">
 					<div>
@@ -59,8 +61,8 @@
 					</div>
 				</dl>
 				<p class="mt-2 text-sm text-muted-foreground">
-					Change it any time in Settings → Privacy. Turning it off stops
-					sending at once; you can also delete what was already sent.
+					Change it any time in Settings → Privacy. Turning it off stops sending
+					at once; you can also delete what was already sent.
 				</p>
 			</div>
 			<div class="mt-4 grid grid-cols-2 gap-3">
@@ -129,9 +131,9 @@
 		showUsageBlock,
 	} from '@/privacy/panelVisibility';
 	import { useConsent } from '@/privacy/useConsent';
+	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { computed, ref } from 'vue';
-	import store from '@/store';
 	import { useRoute } from 'vue-router';
 
 	const props = defineProps<{ inline?: boolean }>();
@@ -154,5 +156,7 @@
 	const showAnalytics = computed(() =>
 		props.inline ? !desktop : showAnalyticsBlock(state.value),
 	);
-	const showUsage = computed(() => !props.inline && showUsageBlock(state.value));
+	const showUsage = computed(
+		() => !props.inline && showUsageBlock(state.value),
+	);
 </script>

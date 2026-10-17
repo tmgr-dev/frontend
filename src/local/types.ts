@@ -15,7 +15,10 @@ export interface BatchResult {
 
 /** SQL access the local API needs: Rust commands in the app, node:sqlite in tests. */
 export interface LocalDb {
-	select<T = Record<string, any>>(sql: string, params?: SqlValue[]): Promise<T[]>;
+	select<T = Record<string, any>>(
+		sql: string,
+		params?: SqlValue[],
+	): Promise<T[]>;
 	execute(
 		sql: string,
 		params?: SqlValue[],

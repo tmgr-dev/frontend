@@ -22,7 +22,11 @@ async function openProfile(page) {
       return route.fulfill({
         json: {
           data: body.password
-            ? { ...user, has_smart_device_token: false, smart_device_token: null }
+            ? {
+                ...user,
+                has_smart_device_token: false,
+                smart_device_token: null,
+              }
             : user,
         },
       });
@@ -44,7 +48,9 @@ test('changing the password shows the revoked-tokens notice and clears the field
   await page.getByRole('button', { name: 'Save' }).click();
 
   await expect(page.getByTestId('tokens-revoked-notice')).toHaveText(notice);
-  await expect(page.getByLabel('New password', { exact: true })).toHaveValue('');
+  await expect(page.getByLabel('New password', { exact: true })).toHaveValue(
+    '',
+  );
   await expect(page.getByLabel('Confirm password')).toHaveValue('');
 
   await page.getByLabel('Name').fill('Renamed User');

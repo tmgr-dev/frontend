@@ -46,7 +46,10 @@ export const GRID_GAP: Record<GridGap, string> = {
 	lg: 'gap-5',
 };
 
-export const BUTTON_VARIANT: Record<ButtonVariant, 'outline' | 'default' | 'ghost'> = {
+export const BUTTON_VARIANT: Record<
+	ButtonVariant,
+	'outline' | 'default' | 'ghost'
+> = {
 	default: 'outline',
 	primary: 'default',
 	ghost: 'ghost',

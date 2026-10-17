@@ -1,5 +1,4 @@
 import $axios from '@/plugins/axios';
-import requestCache from '@/utils/requestCache';
 import {
 	modulesToMap,
 	parseModulesPayload,
@@ -7,6 +6,7 @@ import {
 	type ModulesMap,
 	type ModulesPayload,
 } from '@/utils/modules';
+import requestCache from '@/utils/requestCache';
 
 const modulesKey = (workspaceId: number | string) =>
 	`workspace-modules:${workspaceId}`;
@@ -21,9 +21,7 @@ export const getWorkspaceModules = async (
 		modulesKey(workspaceId),
 		async () => {
 			try {
-				const { data } = await $axios.get(
-					`/workspaces/${workspaceId}/modules`,
-				);
+				const { data } = await $axios.get(`/workspaces/${workspaceId}/modules`);
 				return parseModulesPayload(data);
 			} catch (error: any) {
 				if ([404, 501].includes(error?.response?.status)) return null;

@@ -23,7 +23,10 @@ beforeEach(() => {
 afterEach(tick);
 
 const hide = (state: 'hidden' | 'visible') => {
-	Object.defineProperty(document, 'visibilityState', { value: state, configurable: true });
+	Object.defineProperty(document, 'visibilityState', {
+		value: state,
+		configurable: true,
+	});
 	document.dispatchEvent(new Event('visibilitychange'));
 };
 
@@ -53,7 +56,12 @@ describe('window wiring', () => {
 		setConsent('granted', 1);
 		const tab = makeTab();
 		let quit = () => {};
-		attachTelemetry(tab.telemetry, createUsageConsent(window), window, (handler) => (quit = handler));
+		attachTelemetry(
+			tab.telemetry,
+			createUsageConsent(window),
+			window,
+			(handler) => (quit = handler),
+		);
 		tab.telemetry.track('app_opened');
 		quit();
 		await tick();
@@ -73,7 +81,11 @@ describe('window wiring', () => {
 		expect(tab.telemetry.snapshot().pending).toBe(1);
 		setConsent('denied', 2);
 		window.dispatchEvent(new StorageEvent('storage', { key: USAGE_KEY }));
-		expect(tab.telemetry.snapshot()).toMatchObject({ active: false, pending: 0, error: null });
+		expect(tab.telemetry.snapshot()).toMatchObject({
+			active: false,
+			pending: 0,
+			error: null,
+		});
 		expect(localStorage.getItem(IDENTITY_KEY)).not.toBeNull();
 	});
 
@@ -87,15 +99,37 @@ describe('window wiring', () => {
 
 describe('environment', () => {
 	const win = (width: number, coarse: boolean) =>
-		({ innerWidth: width, matchMedia: () => ({ matches: coarse }) }) as unknown as Window;
-	const meta = (width: number, coarse: boolean, desktop: 'macos' | 'windows' | 'linux' | null | false) =>
-		makeMeta({ win: win(width, coarse), desktop, appVersion: '3.4.87', accountMode: () => 'none' })();
+		({
+			innerWidth: width,
+			matchMedia: () => ({ matches: coarse }),
+		} as unknown as Window);
+	const meta = (
+		width: number,
+		coarse: boolean,
+		desktop: 'macos' | 'windows' | 'linux' | null | false,
+	) =>
+		makeMeta({
+			win: win(width, coarse),
+			desktop,
+			appVersion: '3.4.87',
+			accountMode: () => 'none',
+		})();
 
 	it('classifies platform and viewport', () => {
-		expect(meta(1280, false, false)).toMatchObject({ platform: 'web', viewport: 'l', app_version: '3.4' });
-		expect(meta(390, true, false)).toMatchObject({ platform: 'mobile_web', viewport: 's' });
+		expect(meta(1280, false, false)).toMatchObject({
+			platform: 'web',
+			viewport: 'l',
+			app_version: '3.4',
+		});
+		expect(meta(390, true, false)).toMatchObject({
+			platform: 'mobile_web',
+			viewport: 's',
+		});
 		expect(meta(390, false, false).platform).toBe('web');
-		expect(meta(800, true, false)).toMatchObject({ platform: 'web', viewport: 'm' });
+		expect(meta(800, true, false)).toMatchObject({
+			platform: 'web',
+			viewport: 'm',
+		});
 		expect(meta(1280, false, 'windows').platform).toBe('desktop_win');
 		expect(meta(1280, false, 'linux').platform).toBe('desktop_linux');
 		expect(meta(1280, false, 'macos').platform).toBe('desktop_mac');
@@ -103,9 +137,15 @@ describe('environment', () => {
 	});
 
 	it('resolves the endpoint base', () => {
-		expect(telemetryBaseUrl('https://api.tmgr.dev/api/', 'https://tmgr.dev')).toBe('https://api.tmgr.dev/api/');
-		expect(telemetryBaseUrl('/api', 'https://tmgr.dev')).toBe('https://tmgr.dev/api/');
-		expect(telemetryBaseUrl(undefined, 'https://tmgr.dev')).toBe('https://tmgr.dev/api/');
+		expect(
+			telemetryBaseUrl('https://api.tmgr.dev/api/', 'https://tmgr.dev'),
+		).toBe('https://api.tmgr.dev/api/');
+		expect(telemetryBaseUrl('/api', 'https://tmgr.dev')).toBe(
+			'https://tmgr.dev/api/',
+		);
+		expect(telemetryBaseUrl(undefined, 'https://tmgr.dev')).toBe(
+			'https://tmgr.dev/api/',
+		);
 	});
 });
 

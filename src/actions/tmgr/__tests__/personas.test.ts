@@ -1,6 +1,11 @@
 jest.mock('@/plugins/axios', () => ({
 	__esModule: true,
-	default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
+	default: {
+		get: jest.fn(),
+		post: jest.fn(),
+		put: jest.fn(),
+		delete: jest.fn(),
+	},
 }));
 
 import axios from '@/plugins/axios';
@@ -52,7 +57,9 @@ describe('listPersonas', () => {
 	it('passes archived=1 and caches separately from the default list', async () => {
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [PERSONA] } });
 		await listPersonas(true);
-		expect(axios.get).toHaveBeenCalledWith('/personas', { params: { archived: 1 } });
+		expect(axios.get).toHaveBeenCalledWith('/personas', {
+			params: { archived: 1 },
+		});
 	});
 });
 
@@ -141,7 +148,13 @@ describe('personaAvatarObjectUrl', () => {
 });
 
 describe('persona skills', () => {
-	const SKILL = { slug: 'triage', title: 'Triage', when: 'sort it', actions: [], version: 1 };
+	const SKILL = {
+		slug: 'triage',
+		title: 'Triage',
+		when: 'sort it',
+		actions: [],
+		version: 1,
+	};
 
 	it('lists skills for a persona', async () => {
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [SKILL] } });
@@ -206,7 +219,7 @@ describe('persona tokens', () => {
 		expect(result).toEqual([TOKEN]);
 	});
 
-	it('issues a token and invalidates that persona\'s token cache', async () => {
+	it("issues a token and invalidates that persona's token cache", async () => {
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
 		await listPersonaTokens('uuid-1');
 		expect(requestCache.has('personas-uuid-1-tokens')).toBe(true);
@@ -229,7 +242,7 @@ describe('persona tokens', () => {
 		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
 	});
 
-	it('revokes one token and invalidates that persona\'s token cache', async () => {
+	it("revokes one token and invalidates that persona's token cache", async () => {
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
 		await listPersonaTokens('uuid-1');
 
@@ -251,7 +264,7 @@ describe('persona tokens', () => {
 		expect(requestCache.has('personas-uuid-1-tokens')).toBe(false);
 	});
 
-	it('revokes all of the owner\'s persona tokens across every persona', async () => {
+	it("revokes all of the owner's persona tokens across every persona", async () => {
 		(axios.get as jest.Mock).mockResolvedValue({ data: { data: [TOKEN] } });
 		await listPersonaTokens('uuid-1');
 		await listPersonaTokens('uuid-2');

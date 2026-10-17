@@ -2,7 +2,9 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 
 const ANCHORS: Record<string, string[]> = {
-	'components/desktop/DesktopShortcutsSettings.vue': ['settings.desktop-shortcuts'],
+	'components/desktop/DesktopShortcutsSettings.vue': [
+		'settings.desktop-shortcuts',
+	],
 	'pages/NewForm.vue': ['task-form.open-window'],
 	'pages/PageView.vue': ['task-form.open-window'],
 	'components/desktop/LocalOnlyBanner.vue': ['local.banner'],
@@ -21,13 +23,17 @@ const ANCHORS: Record<string, string[]> = {
 	'components/desktop/DesktopWhatsNew.vue': ['whats-new.item-tour'],
 };
 
-const read = (file: string) => readFileSync(join(__dirname, '../..', file), 'utf8');
+const read = (file: string) =>
+	readFileSync(join(__dirname, '../..', file), 'utf8');
 
 describe('S8 desktop data-tour anchors', () => {
-	it.each(Object.entries(ANCHORS).flatMap(([file, list]) => list.map((a) => [file, a])))(
-		'%s has %s',
-		(file, anchor) => {
-			expect(read(file)).toMatch(new RegExp(`data-tour="[^"]*${anchor.replace(/\./g, '\\.')}`));
-		},
-	);
+	it.each(
+		Object.entries(ANCHORS).flatMap(([file, list]) =>
+			list.map((a) => [file, a]),
+		),
+	)('%s has %s', (file, anchor) => {
+		expect(read(file)).toMatch(
+			new RegExp(`data-tour="[^"]*${anchor.replace(/\./g, '\\.')}`),
+		);
+	});
 });

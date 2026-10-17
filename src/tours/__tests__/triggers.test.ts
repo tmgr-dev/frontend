@@ -1,6 +1,6 @@
-import { createTriggers, COOLDOWN_MS } from '../triggers';
-import type { TriggerDeps } from '../triggers';
 import { setTourTelemetry } from '../telemetry';
+import type { TriggerDeps } from '../triggers';
+import { COOLDOWN_MS, createTriggers } from '../triggers';
 import type { OnboardingState, TourDef, TourState } from '../types';
 
 const memory = () => {
@@ -11,14 +11,21 @@ const memory = () => {
 	};
 };
 
-const tour = (id: string, route: string, extra: Partial<TourDef['triggers'][number]> = {}): TourDef => ({
+const tour = (
+	id: string,
+	route: string,
+	extra: Partial<TourDef['triggers'][number]> = {},
+): TourDef => ({
 	id,
 	version: 1,
 	since: '1',
 	group: 'start',
 	title: id,
 	minutes: 1,
-	triggers: [{ kind: 'first_visit', routeName: route, ...extra } as any, { kind: 'hub' }],
+	triggers: [
+		{ kind: 'first_visit', routeName: route, ...extra } as any,
+		{ kind: 'hub' },
+	],
 	steps: [{ id: 's', type: 'spot', anchor: 'a', title: 't', body: 'b' }],
 });
 
@@ -33,7 +40,10 @@ const onboarding = (extra: Partial<OnboardingState> = {}): OnboardingState => ({
 	...extra,
 });
 
-const setup = (over: Partial<TriggerDeps> = {}, tours = [tour('a.tour', 'List'), tour('b.tour', 'Board')]) => {
+const setup = (
+	over: Partial<TriggerDeps> = {},
+	tours = [tour('a.tour', 'List'), tour('b.tour', 'Board')],
+) => {
 	let now = 5_000_000;
 	const states: Record<string, TourState> = {};
 	const timers: Array<() => void> = [];
@@ -83,7 +93,10 @@ describe('triggers', () => {
 		const h = setup();
 		h.visit('List');
 		expect(h.start).toHaveBeenCalledWith('a.tour', 'first_visit');
-		expect(h.track).toHaveBeenCalledWith('tour_offered', { tour: 'a.tour', trigger: 'first_visit' });
+		expect(h.track).toHaveBeenCalledWith('tour_offered', {
+			tour: 'a.tour',
+			trigger: 'first_visit',
+		});
 	});
 
 	it('only one auto tour per session', () => {
@@ -101,12 +114,15 @@ describe('triggers', () => {
 		expect(h.start).not.toHaveBeenCalled();
 	});
 
-	it.each([['hub_only'], ['off']])('tips_mode %s silences auto tours', (mode) => {
-		const h = setup();
-		h.setOb(onboarding({ tips_mode: mode as any }));
-		h.visit('List');
-		expect(h.start).not.toHaveBeenCalled();
-	});
+	it.each([['hub_only'], ['off']])(
+		'tips_mode %s silences auto tours',
+		(mode) => {
+			const h = setup();
+			h.setOb(onboarding({ tips_mode: mode as any }));
+			h.visit('List');
+			expect(h.start).not.toHaveBeenCalled();
+		},
+	);
 
 	it('does nothing before onboarding state is known', () => {
 		const h = setup();
@@ -143,14 +159,24 @@ describe('triggers', () => {
 
 	it('a tour skipped twice is not auto-offered; skipped once is offered again later', () => {
 		const h = setup();
-		h.states['a.tour'] = { status: 'skipped', step_id: 's', version: 1, generation: 0 };
+		h.states['a.tour'] = {
+			status: 'skipped',
+			step_id: 's',
+			version: 1,
+			generation: 0,
+		};
 		h.triggers.noteSkip('a.tour');
 		h.advance(COOLDOWN_MS + 1);
 		h.visit('List');
 		expect(h.start).toHaveBeenCalledTimes(1);
 
 		const g = setup();
-		g.states['a.tour'] = { status: 'skipped', step_id: 's', version: 1, generation: 0 };
+		g.states['a.tour'] = {
+			status: 'skipped',
+			step_id: 's',
+			version: 1,
+			generation: 0,
+		};
 		g.triggers.noteSkip('a.tour');
 		g.triggers.noteSkip('a.tour');
 		g.advance(COOLDOWN_MS + 1);
@@ -159,12 +185,15 @@ describe('triggers', () => {
 		expect(g.triggers.skipCount('a.tour')).toBe(2);
 	});
 
-	it.each(['completed', 'paused', 'in_progress'] as const)('never auto-offers a %s tour', (status) => {
-		const h = setup();
-		h.states['a.tour'] = { status, step_id: 's', version: 1, generation: 0 };
-		h.visit('List');
-		expect(h.start).not.toHaveBeenCalled();
-	});
+	it.each(['completed', 'paused', 'in_progress'] as const)(
+		'never auto-offers a %s tour',
+		(status) => {
+			const h = setup();
+			h.states['a.tour'] = { status, step_id: 's', version: 1, generation: 0 };
+			h.visit('List');
+			expect(h.start).not.toHaveBeenCalled();
+		},
+	);
 
 	it('honours unlessFact and eligibility', () => {
 		const h = setup({}, [tour('a.tour', 'List', { unlessFact: 'has_task' })]);
@@ -184,14 +213,20 @@ describe('triggers', () => {
 		expect(h.start).not.toHaveBeenCalled();
 	});
 
-	it.each(['hub_only', 'off'] as const)('tips_mode %s never auto-starts a tour', (mode) => {
-		const h = setup();
-		h.setOb(onboarding({ tips_mode: mode }));
-		h.visit('List');
-		h.visit('Board');
-		expect(h.start).not.toHaveBeenCalled();
-		expect(h.track).not.toHaveBeenCalledWith('tour_offered', expect.anything());
-	});
+	it.each(['hub_only', 'off'] as const)(
+		'tips_mode %s never auto-starts a tour',
+		(mode) => {
+			const h = setup();
+			h.setOb(onboarding({ tips_mode: mode }));
+			h.visit('List');
+			h.visit('Board');
+			expect(h.start).not.toHaveBeenCalled();
+			expect(h.track).not.toHaveBeenCalledWith(
+				'tour_offered',
+				expect.anything(),
+			);
+		},
+	);
 
 	it('unlessFact starts the tour while the fact is false', () => {
 		const h = setup({}, [tour('a.tour', 'List', { unlessFact: 'has_task' })]);

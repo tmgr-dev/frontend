@@ -5,11 +5,7 @@
 		data-tour="settings.tips"
 	>
 		<div class="flex flex-col gap-4">
-			<fieldset
-				:key="renderKey"
-				class="flex flex-col gap-2"
-				:disabled="busy"
-			>
+			<fieldset :key="renderKey" class="flex flex-col gap-2" :disabled="busy">
 				<legend class="sr-only">When to show tips</legend>
 				<label
 					v-for="option in options"
@@ -87,7 +83,8 @@
 		{
 			value: 'hub_only',
 			label: 'Only from Getting started',
-			description: 'No automatic tours. Start any tour yourself from the Getting started page.',
+			description:
+				'No automatic tours. Start any tour yourself from the Getting started page.',
 		},
 		{
 			value: 'off',

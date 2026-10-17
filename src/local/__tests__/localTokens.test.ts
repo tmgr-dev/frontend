@@ -40,7 +40,9 @@ it('lists tokens scoped to a workspace code', async () => {
 
 	await listLocalTokens('local-1');
 
-	expect(invoke).toHaveBeenCalledWith('local_token_list', { workspaceCode: 'local-1' });
+	expect(invoke).toHaveBeenCalledWith('local_token_list', {
+		workspaceCode: 'local-1',
+	});
 });
 
 it('revokes a single token by id', async () => {
@@ -58,7 +60,9 @@ it('revokes all tokens matching a filter', async () => {
 
 	const result = await revokeAllLocalTokens({ personaUuid: 'p-1' });
 
-	expect(invoke).toHaveBeenCalledWith('local_token_revoke_all', { personaUuid: 'p-1' });
+	expect(invoke).toHaveBeenCalledWith('local_token_revoke_all', {
+		personaUuid: 'p-1',
+	});
 	expect(result).toBe(3);
 });
 
@@ -96,5 +100,7 @@ it('toggles the kill switch', async () => {
 
 	await setLocalAccessEnabled(false);
 
-	expect(invoke).toHaveBeenCalledWith('local_access_set_enabled', { enabled: false });
+	expect(invoke).toHaveBeenCalledWith('local_access_set_enabled', {
+		enabled: false,
+	});
 });

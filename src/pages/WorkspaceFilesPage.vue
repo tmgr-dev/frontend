@@ -1,9 +1,5 @@
 <template>
-	<PageContainer
-		width="wide"
-		class="workspace-files"
-		data-tour="files.list"
-	>
+	<PageContainer width="wide" class="workspace-files" data-tour="files.list">
 		<PageHeader>
 			<template #title>
 				Files
@@ -162,10 +158,10 @@
 		releaseFileDisplayUrl,
 		type WorkspaceFile,
 	} from '@/actions/tmgr/files';
-	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
-	import AttachmentsSkeleton from '@/components/tasks/AttachmentsSkeleton.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import AttachmentGallery from '@/components/tasks/AttachmentGallery.vue';
+	import AttachmentsSkeleton from '@/components/tasks/AttachmentsSkeleton.vue';
 	import store from '@/store';
 	import { formatFileSize, isImageMime } from '@/utils/attachments';
 	import { galleryImages } from '@/utils/galleryNavigation';

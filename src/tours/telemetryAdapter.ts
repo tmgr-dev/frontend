@@ -1,5 +1,5 @@
-import { track } from '@/telemetry';
 import type { EventName } from '@/telemetry';
+import { track } from '@/telemetry';
 import { setTourTelemetry } from './telemetry';
 
 export const installTourTelemetry = (): void => {

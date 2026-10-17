@@ -1,11 +1,11 @@
 import {
 	EDITOR_LABELS,
 	buildDescriptionPayload,
-	toUpdateBody,
 	editorOptionLabel,
 	hasBlockContent,
 	normalizeEditorType,
 	resolveEditorType,
+	toUpdateBody,
 } from '@/utils/editorType';
 
 describe('normalizeEditorType', () => {
@@ -233,7 +233,10 @@ describe('resolveEditorType', () => {
 		for (const json of ['', '  \n', 'null', '{}', '[]', '{"blocks":[]}'])
 			for (const pref of ['markdown', 'blockmd', 'block'] as const)
 				expect(
-					resolveEditorType({ description: null, description_json: json }, pref),
+					resolveEditorType(
+						{ description: null, description_json: json },
+						pref,
+					),
 				).toBe(pref);
 	});
 
@@ -302,6 +305,9 @@ describe('toUpdateBody', () => {
 	});
 
 	it('leaves a snapshot without flags untouched', () => {
-		expect(toUpdateBody({ title: 't', description: null })).toEqual({ title: 't', description: null });
+		expect(toUpdateBody({ title: 't', description: null })).toEqual({
+			title: 't',
+			description: null,
+		});
 	});
 });

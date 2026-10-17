@@ -108,7 +108,16 @@ it('lists and reads attachments with text and base64', async () => {
 it('leaves cloud comments without a server author as unknown (null), but passes one through if present', async () => {
 	const { http } = recording((method, url) =>
 		url === 'tasks/4/comments' && method === 'get'
-			? { data: [{ id: 1, userId: 9, message: 'hi' }, { id: 2, author: { kind: 'plugin', id: 'x', name: 'X' }, message: 'yo' }] }
+			? {
+					data: [
+						{ id: 1, userId: 9, message: 'hi' },
+						{
+							id: 2,
+							author: { kind: 'plugin', id: 'x', name: 'X' },
+							message: 'yo',
+						},
+					],
+			  }
 			: { data: { id: 3, userId: 9, message: 'new' } },
 	);
 	const api = createDataApi(http, 'tmgr.estimate');
@@ -118,8 +127,10 @@ it('leaves cloud comments without a server author as unknown (null), but passes 
 	]);
 });
 
-it('names addComment\'s own author as this plugin, since we know it even when the server does not say so', async () => {
-	const { http } = recording(() => ({ data: { id: 3, userId: 9, message: 'new' } }));
+it("names addComment's own author as this plugin, since we know it even when the server does not say so", async () => {
+	const { http } = recording(() => ({
+		data: { id: 3, userId: 9, message: 'new' },
+	}));
 	const api = createDataApi(http, 'tmgr.estimate', 'tmgr.estimate', 'Estimate');
 	expect(await api.addComment(4, 'new')).toEqual({
 		id: 3,
@@ -131,23 +142,38 @@ it('names addComment\'s own author as this plugin, since we know it even when th
 
 it('resolves a relation type name to its fixed id, without asking the server', async () => {
 	const { http, seen } = recording((_method, url) => {
-		if (url === 'task-relation-types') throw new Error('must not fetch relation types');
+		if (url === 'task-relation-types')
+			throw new Error('must not fetch relation types');
 		if (url === 'tasks/4/relations') {
 			return {
 				data: [
-					{ id: 1, relation_type: { id: 1, name: 'blocks' }, related_task: { id: 9 } },
+					{
+						id: 1,
+						relation_type: { id: 1, name: 'blocks' },
+						related_task: { id: 9 },
+					},
 				],
 			};
 		}
 		return { data: { id: 1 } };
 	});
 	const api = createDataApi(http, 'tmgr.estimate');
-	expect(await api.listRelations(4)).toEqual([{ taskId: 4, otherTaskId: 9, type: 'blocks' }]);
+	expect(await api.listRelations(4)).toEqual([
+		{ taskId: 4, otherTaskId: 9, type: 'blocks' },
+	]);
 	await api.relateTask(4, 9, 'blocks');
 	await api.unrelateTask(4, 9, 'relates to');
-	expect(seen.filter((line) => line.startsWith('POST tasks/4/related-to/9/with/1'))).toHaveLength(1);
-	expect(seen.filter((line) => line.startsWith('DELETE tasks/4/related-to/9/with/3'))).toHaveLength(1);
-	await expect(api.relateTask(4, 9, 'not a relation type' as any)).rejects.toThrow('unknown relation type');
+	expect(
+		seen.filter((line) => line.startsWith('POST tasks/4/related-to/9/with/1')),
+	).toHaveLength(1);
+	expect(
+		seen.filter((line) =>
+			line.startsWith('DELETE tasks/4/related-to/9/with/3'),
+		),
+	).toHaveLength(1);
+	await expect(
+		api.relateTask(4, 9, 'not a relation type' as any),
+	).rejects.toThrow('unknown relation type');
 });
 
 it('keeps storage in the namespace it is given', async () => {
@@ -167,11 +193,23 @@ it('tells the local workspace the storage id, so a different repo reusing the pl
 	const http = axios.create({
 		adapter: async (config) => {
 			header = config.headers['X-TMGR-Plugin-Storage'];
-			return { data: { data: null }, status: 200, statusText: 'OK', headers: {}, config };
+			return {
+				data: { data: null },
+				status: 200,
+				statusText: 'OK',
+				headers: {},
+				config,
+			};
 		},
 	});
-	await createDataApi(http, 'acme.board', 'acme.board@github.com/acme/board').storageGet('k');
-	expect(decodeURIComponent(String(header))).toBe('acme.board@github.com/acme/board');
+	await createDataApi(
+		http,
+		'acme.board',
+		'acme.board@github.com/acme/board',
+	).storageGet('k');
+	expect(decodeURIComponent(String(header))).toBe(
+		'acme.board@github.com/acme/board',
+	);
 });
 
 it('never sends the storage header to the cloud client', async () => {
@@ -179,17 +217,31 @@ it('never sends the storage header to the cloud client', async () => {
 	const http = axios.create({
 		adapter: async (config) => {
 			header = config.headers['X-TMGR-Plugin-Storage'];
-			return { data: { data: null }, status: 200, statusText: 'OK', headers: {}, config };
+			return {
+				data: { data: null },
+				status: 200,
+				statusText: 'OK',
+				headers: {},
+				config,
+			};
 		},
 	});
-	await createDataApi(http, 'acme.board', 'acme.board', 'Board', true).storageGet('k');
+	await createDataApi(
+		http,
+		'acme.board',
+		'acme.board',
+		'Board',
+		true,
+	).storageGet('k');
 	expect(header).toBeUndefined();
 });
 
 it('rejects clearing the due date in a shared workspace instead of silently keeping it (the server ignores null)', async () => {
 	const { http, seen } = recording(() => ({ data: { id: 4 } }));
 	const api = createDataApi(http, 'acme.board', 'acme.board', 'Board', true);
-	await expect(api.updateTask(4, { expired_at: null })).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
+	await expect(api.updateTask(4, { expired_at: null })).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
 	expect(seen).toEqual([]);
 	await api.updateTask(4, { title: 'x' });
 	expect(seen).toHaveLength(1);
@@ -200,10 +252,18 @@ it('sends the plugin name so a header can carry any script', async () => {
 	const http = axios.create({
 		adapter: async (config) => {
 			name = config.headers['X-TMGR-Plugin-Name'];
-			return { data: { data: [] }, status: 200, statusText: 'OK', headers: {}, config };
+			return {
+				data: { data: [] },
+				status: 200,
+				statusText: 'OK',
+				headers: {},
+				config,
+			};
 		},
 	});
-	await createDataApi(http, 'acme.board', 'acme.board', 'Доска').listComments(1);
+	await createDataApi(http, 'acme.board', 'acme.board', 'Доска').listComments(
+		1,
+	);
 	expect(decodeURIComponent(String(name))).toBe('Доска');
 	expect(String(name)).toMatch(/^[\x20-\x7e]+$/);
 });
@@ -211,7 +271,13 @@ it('sends the plugin name so a header can carry any script', async () => {
 it('refuses task relations in shared workspaces until the server lists them', async () => {
 	const { http, seen } = recording(() => ({ data: [] }));
 	await expect(
-		createDataApi(http, 'acme.board', 'acme.board', 'Board', true).listRelations(1),
+		createDataApi(
+			http,
+			'acme.board',
+			'acme.board',
+			'Board',
+			true,
+		).listRelations(1),
 	).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
 	expect(seen).toEqual([]);
 });
@@ -219,12 +285,18 @@ it('refuses task relations in shared workspaces until the server lists them', as
 it('computes the ticket key from category.code and category_tasks_sequence_id', async () => {
 	const { http } = recording((_method, url) =>
 		url === 'tasks/4'
-			? { data: { id: 4, category: { code: 'TM' }, category_tasks_sequence_id: 12 } }
+			? {
+					data: {
+						id: 4,
+						category: { code: 'TM' },
+						category_tasks_sequence_id: 12,
+					},
+			  }
 			: { data: { id: 5, category: null, category_tasks_sequence_id: null } },
 	);
 	const api = createDataApi(http, 'tmgr.estimate');
-	expect((await api.getTask(4) as any).key).toBe('TM-12');
-	expect((await api.getTask(5) as any).key).toBeNull();
+	expect(((await api.getTask(4)) as any).key).toBe('TM-12');
+	expect(((await api.getTask(5)) as any).key).toBeNull();
 });
 
 it('refuses the new task filters and sort in shared workspaces before sending a request', async () => {
@@ -277,18 +349,32 @@ it('sends the new task filters and sort to the local route', async () => {
 it('refuses per-task plugin data in shared workspaces for all four calls', async () => {
 	const { http, seen } = recording(() => ({ data: {} }));
 	const api = createDataApi(http, 'acme.board', 'acme.board', 'Board', true);
-	await expect(api.taskDataGet(1, 'k')).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
-	await expect(api.taskDataSet(1, 'k', '1')).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
-	await expect(api.taskDataDelete(1, 'k')).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
-	await expect(api.taskDataGetMany([1], 'k')).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
+	await expect(api.taskDataGet(1, 'k')).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
+	await expect(api.taskDataSet(1, 'k', '1')).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
+	await expect(api.taskDataDelete(1, 'k')).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
+	await expect(api.taskDataGetMany([1], 'k')).rejects.toMatchObject({
+		code: 'NOT_SUPPORTED',
+	});
 	expect(seen).toEqual([]);
 });
 
 it('scopes per-task plugin data under the plugin storage id', async () => {
 	const { http, seen } = recording((_method, url) =>
-		url.endsWith('/data/k') ? { data: { value: '"v"' } } : { data: { 1: '"a"' } },
+		url.endsWith('/data/k')
+			? { data: { value: '"v"' } }
+			: { data: { 1: '"a"' } },
 	);
-	const api = createDataApi(http, 'acme.board', 'acme.board@github.com/acme/board');
+	const api = createDataApi(
+		http,
+		'acme.board',
+		'acme.board@github.com/acme/board',
+	);
 	expect(await api.taskDataGet(1, 'k')).toBe('"v"');
 	await api.taskDataSet(1, 'k', '"v"');
 	await api.taskDataDelete(1, 'k');
@@ -303,7 +389,14 @@ it('scopes per-task plugin data under the plugin storage id', async () => {
 
 it('writes statuses to the workspace route and categories with workspace_id only in the cloud', async () => {
 	const { http, seen } = recording(() => ({ data: { id: 1 } }));
-	const local = createDataApi(http, 'tmgr.estimate', 'tmgr.estimate', 'Estimate', false, -42);
+	const local = createDataApi(
+		http,
+		'tmgr.estimate',
+		'tmgr.estimate',
+		'Estimate',
+		false,
+		-42,
+	);
 	await local.createStatus({ name: 'Blocked', type: 'active' });
 	await local.updateStatus(3, { name: 'Blocked v2' });
 	await local.reorderStatuses([3, 1, 2]);
@@ -317,8 +410,17 @@ it('writes statuses to the workspace route and categories with workspace_id only
 		'PUT project_categories/5 tmgr.estimate {"title":"Backend team"}',
 	]);
 
-	const { http: cloudHttp, seen: cloudSeen } = recording(() => ({ data: { id: 1 } }));
-	const cloud = createDataApi(cloudHttp, 'acme.board', 'acme.board', 'Board', true, 99);
+	const { http: cloudHttp, seen: cloudSeen } = recording(() => ({
+		data: { id: 1 },
+	}));
+	const cloud = createDataApi(
+		cloudHttp,
+		'acme.board',
+		'acme.board',
+		'Board',
+		true,
+		99,
+	);
 	await cloud.createCategory({ title: 'Backend' });
 	expect(cloudSeen[0]).toBe(
 		'POST project_categories acme.board {"title":"Backend","workspace_id":99}',
@@ -327,8 +429,17 @@ it('writes statuses to the workspace route and categories with workspace_id only
 
 it('refuses changing a status type or category code in shared workspaces (Java ignores both there)', async () => {
 	const { http, seen } = recording(() => ({ data: { id: 1 } }));
-	const cloud = createDataApi(http, 'acme.board', 'acme.board', 'Board', true, 99);
-	await expect(cloud.updateStatus(3, { type: 'archived' })).rejects.toMatchObject({
+	const cloud = createDataApi(
+		http,
+		'acme.board',
+		'acme.board',
+		'Board',
+		true,
+		99,
+	);
+	await expect(
+		cloud.updateStatus(3, { type: 'archived' }),
+	).rejects.toMatchObject({
 		code: 'NOT_SUPPORTED',
 	});
 	await expect(cloud.updateCategory(5, { code: 'NEW' })).rejects.toMatchObject({
@@ -341,7 +452,9 @@ it('refuses changing a status type or category code in shared workspaces (Java i
 });
 
 it('maps agent work calls to the Java routes with snake_case bodies, agent namespaced under the plugin', async () => {
-	const { http, seen } = recording(() => ({ data: { id: 9, status: 'running' } }));
+	const { http, seen } = recording(() => ({
+		data: { id: 9, status: 'running' },
+	}));
 	const api = createDataApi(http, 'tmgr.estimate');
 	await api.listAgentWork(4);
 	await api.startAgentWork(4, {
@@ -403,7 +516,10 @@ describe('pages (API 1.5)', () => {
 	});
 
 	it('turns a 409 page_conflict into a typed error carrying the current page', async () => {
-		const api = createDataApi(failing(409, { error: 'page_conflict', data: { id: 5, version: 9 } }), 'acme.dossier');
+		const api = createDataApi(
+			failing(409, { error: 'page_conflict', data: { id: 5, version: 9 } }),
+			'acme.dossier',
+		);
 		await expect(api.pagesUpdate(5, { version: 1 })).rejects.toMatchObject({
 			code: 'page_conflict',
 			data: { id: 5, version: 9 },
@@ -412,15 +528,23 @@ describe('pages (API 1.5)', () => {
 
 	it('maps section_forbidden to PERMISSION_DENIED and a too large page to INVALID_PARAMS', async () => {
 		await expect(
-			createDataApi(failing(403, { error: 'section_forbidden', message: 'not yours' }), 'a.b').pagesSetSection(1, 's', 'x'),
+			createDataApi(
+				failing(403, { error: 'section_forbidden', message: 'not yours' }),
+				'a.b',
+			).pagesSetSection(1, 's', 'x'),
 		).rejects.toMatchObject({ code: 'PERMISSION_DENIED' });
 		await expect(
-			createDataApi(failing(413, { error: 'page_too_large' }), 'a.b').pagesAppend(1, { markdown: 'x' }),
+			createDataApi(
+				failing(413, { error: 'page_too_large' }),
+				'a.b',
+			).pagesAppend(1, { markdown: 'x' }),
 		).rejects.toMatchObject({ code: 'INVALID_PARAMS' });
 	});
 
 	it('stores per-page data under the plugin storage id, and refuses it in shared workspaces', async () => {
-		const { http, seen } = recording((_m, url) => (url.includes('/data/') ? { data: { value: '1' } } : { data: {} }));
+		const { http, seen } = recording((_m, url) =>
+			url.includes('/data/') ? { data: { value: '1' } } : { data: {} },
+		);
 		const api = createDataApi(http, 'acme.dossier', 'acme.dossier@repo');
 		expect(await api.pageDataGet(5, 'seen')).toBe('1');
 		await api.pageDataSet(5, 'seen', '2');
@@ -432,7 +556,16 @@ describe('pages (API 1.5)', () => {
 			'DELETE plugins/acme.dossier%40repo/pages/5/data/seen acme.dossier',
 			'POST plugins/acme.dossier%40repo/page-data/query acme.dossier {"page_ids":[5,6],"key":"seen"}',
 		]);
-		const shared = createDataApi(http, 'acme.dossier', 'acme.dossier', 'x', true, 3);
-		await expect(shared.pageDataGet(5, 'seen')).rejects.toMatchObject({ code: 'NOT_SUPPORTED' });
+		const shared = createDataApi(
+			http,
+			'acme.dossier',
+			'acme.dossier',
+			'x',
+			true,
+			3,
+		);
+		await expect(shared.pageDataGet(5, 'seen')).rejects.toMatchObject({
+			code: 'NOT_SUPPORTED',
+		});
 	});
 });

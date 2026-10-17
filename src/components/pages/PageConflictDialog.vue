@@ -7,8 +7,8 @@
 			<DialogHeader>
 				<DialogTitle>Page changed elsewhere</DialogTitle>
 				<DialogDescription>
-					Version {{ theirs.version }} appeared while you were editing.
-					Choose which to keep.
+					Version {{ theirs.version }} appeared while you were editing. Choose
+					which to keep.
 				</DialogDescription>
 			</DialogHeader>
 

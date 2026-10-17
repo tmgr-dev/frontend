@@ -1,7 +1,9 @@
 export const WEB_ORIGIN = 'https://tmgr.dev';
 
 const WORKSPACE_CODE = '[A-Za-z0-9_-]{1,64}';
-const APP_LINK = new RegExp(`^tmgr://task/(?:(${WORKSPACE_CODE})/)?(\\d{1,15})/?$`);
+const APP_LINK = new RegExp(
+	`^tmgr://task/(?:(${WORKSPACE_CODE})/)?(\\d{1,15})/?$`,
+);
 const WEB_LINK = new RegExp(
 	`^https://tmgr\\.dev/(${WORKSPACE_CODE})/tasks/(\\d{1,15})/?(?:[?#].*)?$`,
 );
@@ -11,11 +13,15 @@ export interface TaskLinkRef {
 	taskId: number;
 }
 
-export const buildWebTaskUrl = (workspaceCode: string, taskId: number): string =>
-	`${WEB_ORIGIN}/${workspaceCode}/tasks/${taskId}`;
+export const buildWebTaskUrl = (
+	workspaceCode: string,
+	taskId: number,
+): string => `${WEB_ORIGIN}/${workspaceCode}/tasks/${taskId}`;
 
-export const buildAppTaskUrl = (workspaceCode: string, taskId: number): string =>
-	`tmgr://task/${workspaceCode}/${taskId}`;
+export const buildAppTaskUrl = (
+	workspaceCode: string,
+	taskId: number,
+): string => `tmgr://task/${workspaceCode}/${taskId}`;
 
 export const buildMarkdownLink = (
 	title: string | null | undefined,
@@ -46,6 +52,7 @@ export const taskShareLinks = (
 	workspace: { id: number | string; code: string },
 ): TaskShareLinks => {
 	const app = buildAppTaskUrl(workspace.code, task.id);
-	const web = Number(workspace.id) < 0 ? null : buildWebTaskUrl(workspace.code, task.id);
+	const web =
+		Number(workspace.id) < 0 ? null : buildWebTaskUrl(workspace.code, task.id);
 	return { web, app, markdown: buildMarkdownLink(task.title, web ?? app) };
 };

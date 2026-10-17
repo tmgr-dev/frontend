@@ -71,7 +71,10 @@
 					</div>
 				</div>
 
-				<div v-if="members.length === 0" class="py-8 text-center text-sm text-ink-subtle">
+				<div
+					v-if="members.length === 0"
+					class="py-8 text-center text-sm text-ink-subtle"
+				>
 					<p>No members found</p>
 				</div>
 			</div>

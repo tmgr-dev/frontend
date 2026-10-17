@@ -1,6 +1,9 @@
+import {
+	showSurface as surfaceVisible,
+	type SurfaceId,
+} from '@/utils/moduleSurfaces';
 import { computed } from 'vue';
 import { useStore } from 'vuex';
-import { showSurface as surfaceVisible, type SurfaceId } from '@/utils/moduleSurfaces';
 
 export function useFeatureToggles() {
 	const store = useStore();

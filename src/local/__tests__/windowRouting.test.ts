@@ -1,4 +1,7 @@
-import axios, { type AxiosResponse, type InternalAxiosRequestConfig } from 'axios';
+import axios, {
+	type AxiosResponse,
+	type InternalAxiosRequestConfig,
+} from 'axios';
 
 const LOCAL = {
 	id: -42,
@@ -11,7 +14,8 @@ const LOCAL = {
 };
 
 jest.mock('@tauri-apps/api/core', () => ({
-	invoke: async (command: string) => (command === 'local_workspaces_list' ? [LOCAL] : null),
+	invoke: async (command: string) =>
+		command === 'local_workspaces_list' ? [LOCAL] : null,
 }));
 
 const storage = new Map<string, string>();
@@ -32,12 +36,23 @@ const openWindow = () => {
 		install = require('../install');
 	});
 	const sent: string[] = [];
-	const server = async (config: InternalAxiosRequestConfig): Promise<AxiosResponse> => {
+	const server = async (
+		config: InternalAxiosRequestConfig,
+	): Promise<AxiosResponse> => {
 		sent.push(`${config.method} ${config.url}`);
-		return { data: '{"data":{"id":1}}', status: 201, statusText: 'Created', headers: {}, config };
+		return {
+			data: '{"data":{"id":1}}',
+			status: 201,
+			statusText: 'Created',
+			headers: {},
+			config,
+		};
 	};
 	const client = axios.create({ adapter: server });
-	install.installLocalWorkspaces(client, { currentUser: () => ({ id: 7 }), hasSession: () => true });
+	install.installLocalWorkspaces(client, {
+		currentUser: () => ({ id: 7 }),
+		hasSession: () => true,
+	});
 	return { runtime, client, sent };
 };
 
@@ -52,7 +67,11 @@ describe('a window opened while the app has a local workspace open', () => {
 		await runtime.listLocalWorkspaces();
 
 		const error = await client
-			.post('daily-routines/tasks', { title: 'asdasd', workspace_id: 1, is_daily_routine: true })
+			.post('daily-routines/tasks', {
+				title: 'asdasd',
+				workspace_id: 1,
+				is_daily_routine: true,
+			})
 			.catch((e) => e);
 		expect(error.response.status).toBe(409);
 		expect(error.response.data.message).toBe(
@@ -61,7 +80,11 @@ describe('a window opened while the app has a local workspace open', () => {
 		expect(sent).toEqual([]);
 
 		runtime.followActiveLocalWorkspace(false);
-		await client.post('daily-routines/tasks', { title: 'asdasd', workspace_id: 1, is_daily_routine: true });
+		await client.post('daily-routines/tasks', {
+			title: 'asdasd',
+			workspace_id: 1,
+			is_daily_routine: true,
+		});
 		await client.post('/files/presign-upload', { name: 'screenshot.png' });
 		await client.post('/tasks/9000/files', { name: 'screenshot.png' });
 
@@ -90,7 +113,9 @@ describe('a window opened while the app has a local workspace open', () => {
 
 describe('a task window', () => {
 	const asWindow = (label: string) => {
-		(globalThis as any).window = { __TAURI_INTERNALS__: { metadata: { currentWindow: { label } } } };
+		(globalThis as any).window = {
+			__TAURI_INTERNALS__: { metadata: { currentWindow: { label } } },
+		};
 	};
 	afterEach(() => {
 		delete (globalThis as any).window;

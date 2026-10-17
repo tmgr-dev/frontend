@@ -29,9 +29,9 @@ test('horizontal wheel over a card scrolls the board in the desktop app', async 
   const card = page.getByText('Fixture task 2').first();
   await card.waitFor();
   const board = page.locator('.board-container .board-container').first();
-  expect(
-    await board.evaluate((el) => el.scrollWidth > el.clientWidth),
-  ).toBe(true);
+  expect(await board.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+    true,
+  );
 
   await card.hover();
   await page.mouse.wheel(400, 0);

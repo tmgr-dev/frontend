@@ -198,13 +198,19 @@ test('a local workspace keeps its handlers without a realtime channel and receiv
 	pusher.subscribeToWorkspace(-4, { onTaskUpdated: other });
 	expect(id).not.toBe('');
 	expect(instances[0].channels.has('App.Workspace.-3')).toBe(false);
-	api.deliverToWorkspace(-3, (h: any) => h.onTaskUpdated?.({ id: 1 }, 'updated'));
+	api.deliverToWorkspace(-3, (h: any) =>
+		h.onTaskUpdated?.({ id: 1 }, 'updated'),
+	);
 	expect(onTaskUpdated).toHaveBeenCalledWith({ id: 1 }, 'updated');
 	expect(other).not.toHaveBeenCalled();
 	pusher.unsubscribeHandlerFromWorkspace(-3, id);
-	api.deliverToWorkspace(-3, (h: any) => h.onTaskUpdated?.({ id: 2 }, 'updated'));
+	api.deliverToWorkspace(-3, (h: any) =>
+		h.onTaskUpdated?.({ id: 2 }, 'updated'),
+	);
 	expect(onTaskUpdated).toHaveBeenCalledTimes(1);
-	expect(pusher.getConnectionInfo().subscriptions).toEqual(['App.Workspace.-4']);
+	expect(pusher.getConnectionInfo().subscriptions).toEqual([
+		'App.Workspace.-4',
+	]);
 	expect(instances[0].leave).not.toHaveBeenCalled();
 });
 

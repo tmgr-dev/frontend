@@ -60,7 +60,10 @@
 							Permissions: {{ grant.permissions.join(', ') || 'none' }} ·
 							Effective: {{ grant.effective_permissions.join(', ') || 'none' }}
 						</p>
-						<p v-if="grant.blocked" class="text-xs font-medium text-destructive">
+						<p
+							v-if="grant.blocked"
+							class="text-xs font-medium text-destructive"
+						>
 							Blocked
 						</p>
 						<p
@@ -109,7 +112,14 @@
 	} from '@/components/ui/select';
 	import { toast } from '@/components/ui/toast';
 	import type { PersonaPolicy } from '@/utils/personas';
-	import { computed, defineComponent, onMounted, reactive, ref, watch } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		reactive,
+		ref,
+		watch,
+	} from 'vue';
 
 	const POLICY_LABELS: Record<PersonaPolicy, string> = {
 		allowed: 'Allowed',
@@ -189,7 +199,10 @@
 					);
 					if (index !== -1) grants.value[index] = updated;
 				} catch {
-					toast({ title: 'Could not change block state', variant: 'destructive' });
+					toast({
+						title: 'Could not change block state',
+						variant: 'destructive',
+					});
 				} finally {
 					blocking[grant.persona.id] = false;
 				}
@@ -202,8 +215,8 @@
 				grants,
 				policy,
 				policyDraft,
-				policyLabel: computed(
-					() => (policy.value ? POLICY_LABELS[policy.value.policy] : ''),
+				policyLabel: computed(() =>
+					policy.value ? POLICY_LABELS[policy.value.policy] : '',
 				),
 				loading,
 				savingPolicy,

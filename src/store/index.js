@@ -167,7 +167,10 @@ const mutations = {
 					sessionStorageSafe(),
 					WORKSPACE_SESSION_KEY,
 				),
-				lastWorkspaceId: readWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY),
+				lastWorkspaceId: readWorkspaceId(
+					localStorageSafe(),
+					WORKSPACE_LOCAL_KEY,
+				),
 				defaultWorkspaceId: state.defaultWorkspaceId,
 				workspaces: state.workspaces,
 			});
@@ -258,7 +261,9 @@ const mutations = {
 				(setting) => setting?.key === 'current_workspace',
 			);
 			const rawWorkspaceId =
-				rawWorkspaceSetting?.value != null ? Number(rawWorkspaceSetting.value) : null;
+				rawWorkspaceSetting?.value != null
+					? Number(rawWorkspaceSetting.value)
+					: null;
 			if (rawWorkspaceId != null && rawWorkspaceId >= 0) {
 				state.defaultWorkspaceId = rawWorkspaceId;
 			}
@@ -269,7 +274,10 @@ const mutations = {
 						sessionStorageSafe(),
 						WORKSPACE_SESSION_KEY,
 					),
-					lastWorkspaceId: readWorkspaceId(localStorageSafe(), WORKSPACE_LOCAL_KEY),
+					lastWorkspaceId: readWorkspaceId(
+						localStorageSafe(),
+						WORKSPACE_LOCAL_KEY,
+					),
 					defaultWorkspaceId: state.defaultWorkspaceId,
 					workspaces: state.workspaces,
 				});
@@ -328,8 +336,8 @@ const mutations = {
 			colorScheme === 'dark'
 				? 'dark'
 				: colorScheme === 'system' || colorScheme == null
-					? 'system'
-					: 'default';
+				? 'system'
+				: 'default';
 		state.userSettings.colorScheme = normalized;
 		state.colorScheme = normalized;
 		localStorage.setItem('colorScheme', normalized);
@@ -439,7 +447,10 @@ const actions = {
 		const userId = state.user?.id;
 		if (isDesktopApp() && userId != null) {
 			clearPersonaLlmForLogout(userId).catch((error) => {
-				console.error('[auth] failed to clear persona LLM data on logout', error);
+				console.error(
+					'[auth] failed to clear persona LLM data on logout',
+					error,
+				);
 			});
 		}
 		disconnectRealtime();
@@ -477,7 +488,9 @@ const actions = {
 	},
 
 	async startWithoutAccount({ commit, state }, { name } = {}) {
-		const { createLocalProfile, loadLocalProfile } = await import('@/utils/localProfile');
+		const { createLocalProfile, loadLocalProfile } = await import(
+			'@/utils/localProfile'
+		);
 		const runtime = await import('@/local/runtime');
 		const firstRun = await import('@/onboarding/localFirstRun');
 		const storage = localStorageSafe();
@@ -499,7 +512,9 @@ const actions = {
 		}
 		const fresh =
 			!!storage &&
-			firstRun.isFreshLocalInstall(firstRun.freshInstallFacts(storage, hadProfile, workspaceCount));
+			firstRun.isFreshLocalInstall(
+				firstRun.freshInstallFacts(storage, hadProfile, workspaceCount),
+			);
 		if (!fresh && storage) firstRun.clearFreshMarker(storage);
 		const profile = await createLocalProfile(name);
 		let [first] = await runtime.listLocalWorkspaces(true);

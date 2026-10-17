@@ -1,6 +1,6 @@
+import { expect, test } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
 const screensDir = process.env.SCREENS_DIR;
@@ -99,7 +99,11 @@ const makeRunner = (page, init = {}) => {
           args.taskId,
           'starting',
           null,
-          { name: `Task ${args.taskId}`, profile: args.profile, createdMs: Date.now() },
+          {
+            name: `Task ${args.taskId}`,
+            profile: args.profile,
+            createdMs: Date.now(),
+          },
         );
         st.sessions = [...st.sessions, created];
         return created;
@@ -369,16 +373,29 @@ test('sessions panel: no-task session, failed exit code, halt error', async ({
 }) => {
   const { runner } = await setup(page);
   runner.sessions = [
-    session('s_ext', 0, 'working', null, { name: 'Started from terminal', task: null }),
+    session('s_ext', 0, 'working', null, {
+      name: 'Started from terminal',
+      task: null,
+    }),
     session('s_fail', 0, 'exited', 'failed', {
       name: 'Broken run',
       task: null,
-      state: { kind: 'exited', sinceMs: Date.now(), detail: 'failed', exitCode: 2 },
+      state: {
+        kind: 'exited',
+        sinceMs: Date.now(),
+        detail: 'failed',
+        exitCode: 2,
+      },
     }),
     session('s_ok', 0, 'exited', 'done', {
       name: 'Fine run',
       task: null,
-      state: { kind: 'exited', sinceMs: Date.now(), detail: 'done', exitCode: 0 },
+      state: {
+        kind: 'exited',
+        sinceMs: Date.now(),
+        detail: 'done',
+        exitCode: 0,
+      },
     }),
   ];
   await page.goto('/settings?tab=experimental');
@@ -390,7 +407,10 @@ test('sessions panel: no-task session, failed exit code, halt error', async ({
   ).toHaveText('Exited (code 2)');
   await expect(page.getByTestId('agent-exit-code')).toHaveCount(1);
   runner.haltError = 'busy';
-  await page.locator('[data-session="s_ext"]').getByTestId('agent-stop').click();
+  await page
+    .locator('[data-session="s_ext"]')
+    .getByTestId('agent-stop')
+    .click();
   await expect(page.getByRole('alert')).toHaveText(
     'The agent is busy, try again in a moment.',
   );
@@ -617,7 +637,9 @@ for (const [width, height] of [
       await expect(page.getByTestId('agent-project-folder')).toBeVisible();
       await expect(page.getByTestId('agent-run-popover')).toBeVisible();
       await expect(page.getByTestId('agent-profile')).toBeVisible();
-      await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: 'Run', exact: true }),
+      ).toBeVisible();
       await page.waitForTimeout(400);
       await page.screenshot({
         path: join(screensDir, `task-run-popover-${tag}.png`),

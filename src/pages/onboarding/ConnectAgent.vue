@@ -3,22 +3,35 @@
 		<Teleport to="body">
 			<div
 				ref="root"
-				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pt-6 dark:bg-gray-950 pb-[var(--screen-pad)] sm:pb-16"
-				:style="{ '--screen-pad': consentOpen ? `${consentPad + 24}px` : '4rem' }"
+				class="fixed inset-0 z-[55] overflow-y-auto bg-surface px-4 pb-[var(--screen-pad)] pt-6 dark:bg-gray-950 sm:pb-16"
+				:style="{
+					'--screen-pad': consentOpen ? `${consentPad + 24}px` : '4rem',
+				}"
 				data-testid="connect-agent"
 			>
-				<p class="sr-only" role="status" aria-live="polite">{{ liveMessage }}</p>
+				<p class="sr-only" role="status" aria-live="polite">
+					{{ liveMessage }}
+				</p>
 				<div class="flex items-center justify-between">
 					<p class="text-xl font-bold tracking-tight text-brand">TMGR</p>
-					<p v-if="stepLabel" class="text-sm text-ink-subtle">{{ stepLabel }}</p>
+					<p v-if="stepLabel" class="text-sm text-ink-subtle">
+						{{ stepLabel }}
+					</p>
 				</div>
 
 				<main
 					class="mx-auto mt-8 max-w-2xl rounded-card border border-line bg-surface p-5 dark:border-gray-700 dark:bg-gray-900 sm:p-8"
 				>
 					<template v-if="blocked">
-						<h1 class="text-xl font-semibold text-ink">Connect your AI agent</h1>
-						<p class="mt-3 text-sm text-ink-subtle" data-testid="connect-blocked">{{ blocked }}</p>
+						<h1 class="text-xl font-semibold text-ink">
+							Connect your AI agent
+						</h1>
+						<p
+							class="mt-3 text-sm text-ink-subtle"
+							data-testid="connect-blocked"
+						>
+							{{ blocked }}
+						</p>
 						<router-link
 							v-if="!localOnly"
 							:to="{ name: 'ModuleSettings' }"
@@ -39,10 +52,19 @@
 					</template>
 
 					<template v-else-if="connected">
-						<h1 class="text-center text-xl font-semibold text-ink">{{ clientLabel }} is connected</h1>
+						<h1 class="text-center text-xl font-semibold text-ink">
+							{{ clientLabel }} is connected
+						</h1>
 						<ul class="mx-auto mt-5 max-w-xs space-y-2 text-sm text-ink">
-							<li v-for="item in doneItems" :key="item" class="flex items-center gap-2">
-								<Check class="h-4 w-4 rounded-full bg-green-600 p-0.5 text-white" aria-hidden="true" />
+							<li
+								v-for="item in doneItems"
+								:key="item"
+								class="flex items-center gap-2"
+							>
+								<Check
+									class="h-4 w-4 rounded-full bg-green-600 p-0.5 text-white"
+									aria-hidden="true"
+								/>
 								{{ item }}
 							</li>
 						</ul>
@@ -63,12 +85,16 @@
 					</template>
 
 					<template v-else>
-						<h1 class="text-center text-xl font-semibold text-ink">Connect your AI agent</h1>
+						<h1 class="text-center text-xl font-semibold text-ink">
+							Connect your AI agent
+						</h1>
 						<p class="mt-2 text-center text-sm text-ink-subtle">
-							Pick the tool you use. TMGR gives it a token and your agent starts picking up tasks.
+							Pick the tool you use. TMGR gives it a token and your agent starts
+							picking up tasks.
 						</p>
 						<p class="mt-2 text-center text-sm text-ink-subtle sm:hidden">
-							Open this page on your computer, or copy the command to send it there.
+							Open this page on your computer, or copy the command to send it
+							there.
 						</p>
 
 						<StillWaiting
@@ -116,23 +142,47 @@
 								:aria-labelledby="`connect-tab-${activeId}`"
 								class="mt-4 space-y-3"
 							>
-								<div v-if="tokenMode === 'checking'" class="text-sm text-ink-subtle" role="status">
+								<div
+									v-if="tokenMode === 'checking'"
+									class="text-sm text-ink-subtle"
+									role="status"
+								>
 									Checking your account…
 								</div>
 
-								<div v-else-if="tokenMode === 'loading'" class="text-sm text-ink-subtle" role="status">
+								<div
+									v-else-if="tokenMode === 'loading'"
+									class="text-sm text-ink-subtle"
+									role="status"
+								>
 									Creating your token…
 								</div>
 
-								<div v-else-if="tokenMode === 'user-error'" class="space-y-2 text-sm" role="alert">
-									<p class="text-red-600 dark:text-red-400">Could not check your account.</p>
-									<button type="button" class="min-h-[44px] text-ink underline" @click="retryPlan">
+								<div
+									v-else-if="tokenMode === 'user-error'"
+									class="space-y-2 text-sm"
+									role="alert"
+								>
+									<p class="text-red-600 dark:text-red-400">
+										Could not check your account.
+									</p>
+									<button
+										type="button"
+										class="min-h-[44px] text-ink underline"
+										@click="retryPlan"
+									>
 										Try again
 									</button>
 								</div>
 
-								<div v-else-if="tokenMode === 'reconnect'" class="space-y-3 text-sm text-ink">
-									<p>An agent has connected to this account before, and you have no active token.</p>
+								<div
+									v-else-if="tokenMode === 'reconnect'"
+									class="space-y-3 text-sm text-ink"
+								>
+									<p>
+										An agent has connected to this account before, and you have
+										no active token.
+									</p>
 									<button
 										type="button"
 										class="min-h-[44px] rounded-md bg-brand px-4 font-medium text-white"
@@ -142,17 +192,30 @@
 									</button>
 								</div>
 
-								<div v-else-if="tokenMode === 'error'" class="space-y-2 text-sm" role="alert">
-									<p class="text-red-600 dark:text-red-400">Could not create a token.</p>
-									<button type="button" class="min-h-[44px] text-ink underline" @click="mint">
+								<div
+									v-else-if="tokenMode === 'error'"
+									class="space-y-2 text-sm"
+									role="alert"
+								>
+									<p class="text-red-600 dark:text-red-400">
+										Could not create a token.
+									</p>
+									<button
+										type="button"
+										class="min-h-[44px] text-ink underline"
+										@click="mint"
+									>
 										Try again
 									</button>
 								</div>
 
-								<div v-else-if="tokenMode === 'choose' || tokenMode === 'confirm'" class="space-y-3 text-sm text-ink">
+								<div
+									v-else-if="tokenMode === 'choose' || tokenMode === 'confirm'"
+									class="space-y-3 text-sm text-ink"
+								>
 									<p>
-										You already have a token, and TMGR can't show it again. Paste it to build the
-										command, or generate a new one.
+										You already have a token, and TMGR can't show it again.
+										Paste it to build the command, or generate a new one.
 									</p>
 									<label class="block">
 										<span class="sr-only">Existing token</span>
@@ -190,7 +253,10 @@
 										role="alertdialog"
 										aria-label="Generate a new token"
 									>
-										<p>A new token replaces the old one. Agents already using the old token will disconnect.</p>
+										<p>
+											A new token replaces the old one. Agents already using the
+											old token will disconnect.
+										</p>
 										<div class="mt-2 flex flex-wrap gap-2">
 											<button
 												type="button"
@@ -199,7 +265,11 @@
 											>
 												Generate new token
 											</button>
-											<button type="button" class="min-h-[44px] px-3 underline" @click="tokenMode = 'choose'">
+											<button
+												type="button"
+												class="min-h-[44px] px-3 underline"
+												@click="tokenMode = 'choose'"
+											>
 												Cancel
 											</button>
 										</div>
@@ -218,7 +288,10 @@
 										</div>
 									</template>
 									<template v-else-if="activeId === 'codex'">
-										<p class="text-sm text-ink">Add to <code class="font-mono">~/.codex/config.toml</code>:</p>
+										<p class="text-sm text-ink">
+											Add to
+											<code class="font-mono">~/.codex/config.toml</code>:
+										</p>
 										<div data-tour="connect.command">
 											<CopyCommand
 												:code="snippets.codexToml"
@@ -236,7 +309,9 @@
 										>
 											Add to Cursor
 										</a>
-										<p class="text-sm text-ink-subtle">Or copy the install link and open it on your computer.</p>
+										<p class="text-sm text-ink-subtle">
+											Or copy the install link and open it on your computer.
+										</p>
 										<div data-tour="connect.command">
 											<CopyCommand
 												:code="snippets.cursorDeeplink"
@@ -247,7 +322,9 @@
 										</div>
 									</template>
 									<template v-else>
-										<p class="text-sm text-ink">Add to your client's MCP config:</p>
+										<p class="text-sm text-ink">
+											Add to your client's MCP config:
+										</p>
 										<div data-tour="connect.command">
 											<CopyCommand
 												:code="snippets.mcpJson"
@@ -257,14 +334,21 @@
 											/>
 										</div>
 									</template>
-									<p v-if="fresh" class="text-xs text-ink-subtle" data-testid="shown-once">
-										Token shown once. TMGR stores only a hash, so copy the command now.
+									<p
+										v-if="fresh"
+										class="text-xs text-ink-subtle"
+										data-testid="shown-once"
+									>
+										Token shown once. TMGR stores only a hash, so copy the
+										command now.
 									</p>
 								</template>
 							</div>
 						</template>
 
-						<div class="mt-5 space-y-3 border-t border-line pt-5 dark:border-gray-700">
+						<div
+							class="mt-5 space-y-3 border-t border-line pt-5 dark:border-gray-700"
+						>
 							<ConnectStatus :state="stalled ? 'stalled' : 'waiting'" />
 							<div v-if="!stalled" class="flex flex-col items-center gap-1">
 								<button
@@ -293,295 +377,322 @@
 </template>
 
 <script lang="ts">
-import { Check } from 'lucide-vue-next';
-import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { useStore } from 'vuex';
-import ConnectStatus from '@/components/onboarding/ConnectStatus.vue';
-import CopyCommand from '@/components/onboarding/CopyCommand.vue';
-import StarterPrompt from '@/components/onboarding/StarterPrompt.vue';
-import StillWaiting from '@/components/onboarding/StillWaiting.vue';
-import { generateSmartDeviceToken } from '@/actions/tmgr/smart-devices';
-import { getUser } from '@/actions/tmgr/user';
-import { planConnect } from '@/onboarding/connectPlan';
-import { steps } from '@/onboarding/flow';
-import { useFocusedScreen } from '@/onboarding/useFocusedScreen';
-import { createFactsPoller } from '@/onboarding/poller';
-import type { FactsPoller } from '@/onboarding/poller';
-import { onboardingApi } from '@/tours/api';
-import { tourBus } from '@/tours/events';
-import { useTours } from '@/tours/useTours';
-import { buildMcpSnippets, resolveMcpUrl } from '@/utils/mcpConnectSnippets';
+	import { generateSmartDeviceToken } from '@/actions/tmgr/smart-devices';
+	import { getUser } from '@/actions/tmgr/user';
+	import ConnectStatus from '@/components/onboarding/ConnectStatus.vue';
+	import CopyCommand from '@/components/onboarding/CopyCommand.vue';
+	import StarterPrompt from '@/components/onboarding/StarterPrompt.vue';
+	import StillWaiting from '@/components/onboarding/StillWaiting.vue';
+	import { planConnect } from '@/onboarding/connectPlan';
+	import { steps } from '@/onboarding/flow';
+	import type { FactsPoller } from '@/onboarding/poller';
+	import { createFactsPoller } from '@/onboarding/poller';
+	import { useFocusedScreen } from '@/onboarding/useFocusedScreen';
+	import { onboardingApi } from '@/tours/api';
+	import { tourBus } from '@/tours/events';
+	import { useTours } from '@/tours/useTours';
+	import { buildMcpSnippets, resolveMcpUrl } from '@/utils/mcpConnectSnippets';
+	import { Check } from 'lucide-vue-next';
+	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
+	import { useRouter } from 'vue-router';
+	import { useStore } from 'vuex';
 
-type TokenMode =
-	| 'checking'
-	| 'loading'
-	| 'ready'
-	| 'choose'
-	| 'confirm'
-	| 'reconnect'
-	| 'user-error'
-	| 'error';
+	type TokenMode =
+		| 'checking'
+		| 'loading'
+		| 'ready'
+		| 'choose'
+		| 'confirm'
+		| 'reconnect'
+		| 'user-error'
+		| 'error';
 
-const TABS = [
-	{ id: 'claude', label: 'Claude Code', verify: 'claude mcp list' },
-	{ id: 'codex', label: 'Codex', verify: 'codex mcp list' },
-	{ id: 'cursor', label: 'Cursor', verify: '' },
-	{ id: 'other', label: 'Other (JSON)', verify: '' },
-];
+	const TABS = [
+		{ id: 'claude', label: 'Claude Code', verify: 'claude mcp list' },
+		{ id: 'codex', label: 'Codex', verify: 'codex mcp list' },
+		{ id: 'cursor', label: 'Cursor', verify: '' },
+		{ id: 'other', label: 'Other (JSON)', verify: '' },
+	];
 
-const MASK_VISIBLE = 5;
+	const MASK_VISIBLE = 5;
 
-export default defineComponent({
-	name: 'ConnectAgent',
-	components: { Check, ConnectStatus, CopyCommand, StarterPrompt, StillWaiting },
-	setup() {
-		const router = useRouter();
-		const store = useStore();
-		const tours = useTours();
-		const root = ref<HTMLElement | null>(null);
-		const { consentOpen, consentPad } = useFocusedScreen(root);
+	export default defineComponent({
+		name: 'ConnectAgent',
+		components: {
+			Check,
+			ConnectStatus,
+			CopyCommand,
+			StarterPrompt,
+			StillWaiting,
+		},
+		setup() {
+			const router = useRouter();
+			const store = useStore();
+			const tours = useTours();
+			const root = ref<HTMLElement | null>(null);
+			const { consentOpen, consentPad } = useFocusedScreen(root);
 
-		const tabs = TABS;
-		const activeId = ref('claude');
-		const token = ref('');
-		const pasted = ref('');
-		const fresh = ref(false);
-		const tokenMode = ref<TokenMode>('checking');
-		const stalled = ref(false);
-		const connected = ref(false);
-		const runLogged = ref(false);
-		let unmounted = false;
-		let connectPoller: FactsPoller | null = null;
-		let runsPoller: FactsPoller | null = null;
+			const tabs = TABS;
+			const activeId = ref('claude');
+			const token = ref('');
+			const pasted = ref('');
+			const fresh = ref(false);
+			const tokenMode = ref<TokenMode>('checking');
+			const stalled = ref(false);
+			const connected = ref(false);
+			const runLogged = ref(false);
+			let unmounted = false;
+			let connectPoller: FactsPoller | null = null;
+			let runsPoller: FactsPoller | null = null;
 
-		const localOnly = computed(() => !!store.getters.isLocalOnly);
-		const modulesKnown = computed(() => !!store.getters['featureToggles/modulesKnown']);
-		const mcpEnabled = computed(() => !!store.getters['featureToggles/isFeatureEnabled']?.('mcp'));
-		const blocked = computed(() => {
-			if (localOnly.value) return 'Connecting an AI agent needs a TMGR cloud account.';
-			if (!modulesKnown.value) return '';
-			if (!mcpEnabled.value) return 'The MCP module is off for this workspace, so agents cannot connect yet.';
-			return '';
-		});
-
-		const active = computed(() => TABS.find((tab) => tab.id === activeId.value) ?? TABS[0]);
-		const clientLabel = computed(() =>
-			activeId.value === 'other' ? 'Your agent' : active.value.label,
-		);
-		const mcpUrl = resolveMcpUrl(import.meta.env.VITE_API_BASE_URL, window.location.origin);
-		const snippets = computed(() =>
-			token.value ? buildMcpSnippets({ token: token.value, mcpUrl }) : null,
-		);
-		const mask = (text: string) => {
-			const secret = token.value;
-			if (!secret) return text;
-			return text.split(secret).join(`${secret.slice(0, MASK_VISIBLE)}••••••••`);
-		};
-
-		const stepLabel = computed(() => {
-			const list = steps('agent');
-			const index = list.indexOf('connect');
-			return index >= 0 ? `Step ${index + 1} of ${list.length}` : '';
-		});
-		const liveMessage = computed(() =>
-			connected.value ? 'Agent connected' : stalled.value ? 'Still waiting for your agent' : '',
-		);
-		const doneItems = ['Token created', 'Command ran', 'Agent connected'];
-
-		const workspacePath = (page: string) => {
-			const code = store.getters.currentWorkspace?.code;
-			return code ? `/${code}/${page}` : '/';
-		};
-
-		const fetchFacts = async (keys: string[]) => {
-			const facts = await onboardingApi().fetchFacts(keys);
-			if (facts?.mcp_first_call_at) tours.patchFacts({ mcp_first_call_at: facts.mcp_first_call_at });
-			return facts;
-		};
-		const pollerDeps = {
-			inert: () => localOnly.value,
-			now: () => Date.now(),
-			setTimer: (fn: () => void, ms: number) => {
-				const id = setTimeout(fn, ms);
-				return () => clearTimeout(id);
-			},
-			visibility: {
-				hidden: () => document.hidden,
-				onChange: (fn: () => void) => {
-					document.addEventListener('visibilitychange', fn);
-					return () => document.removeEventListener('visibilitychange', fn);
-				},
-			},
-			fetchFacts,
-		};
-
-		const startRunsPoller = () => {
-			if (runsPoller) return;
-			runsPoller = createFactsPoller({
-				...pollerDeps,
-				keys: ['agent_runs_finished'],
-				onFacts: (facts) => {
-					if (facts.agent_runs_finished) runLogged.value = true;
-				},
+			const localOnly = computed(() => !!store.getters.isLocalOnly);
+			const modulesKnown = computed(
+				() => !!store.getters['featureToggles/modulesKnown'],
+			);
+			const mcpEnabled = computed(
+				() => !!store.getters['featureToggles/isFeatureEnabled']?.('mcp'),
+			);
+			const blocked = computed(() => {
+				if (localOnly.value)
+					return 'Connecting an AI agent needs a TMGR cloud account.';
+				if (!modulesKnown.value) return '';
+				if (!mcpEnabled.value)
+					return 'The MCP module is off for this workspace, so agents cannot connect yet.';
+				return '';
 			});
-			runsPoller.start();
-		};
 
-		const startConnectPoller = () => {
-			if (connectPoller) return;
-			connectPoller = createFactsPoller({
-				...pollerDeps,
-				keys: ['mcp_first_call_at'],
-				onFacts: (facts) => {
-					if (!facts.mcp_first_call_at || connected.value) return;
-					connected.value = true;
-					stalled.value = false;
-					token.value = '';
-					pasted.value = '';
-					startRunsPoller();
-				},
-				onStall: () => {
-					if (!connected.value) stalled.value = true;
-				},
-				onExhausted: () => {
-					if (!connected.value) stalled.value = true;
-				},
+			const active = computed(
+				() => TABS.find((tab) => tab.id === activeId.value) ?? TABS[0],
+			);
+			const clientLabel = computed(() =>
+				activeId.value === 'other' ? 'Your agent' : active.value.label,
+			);
+			const mcpUrl = resolveMcpUrl(
+				import.meta.env.VITE_API_BASE_URL,
+				window.location.origin,
+			);
+			const snippets = computed(() =>
+				token.value ? buildMcpSnippets({ token: token.value, mcpUrl }) : null,
+			);
+			const mask = (text: string) => {
+				const secret = token.value;
+				if (!secret) return text;
+				return text
+					.split(secret)
+					.join(`${secret.slice(0, MASK_VISIBLE)}••••••••`);
+			};
+
+			const stepLabel = computed(() => {
+				const list = steps('agent');
+				const index = list.indexOf('connect');
+				return index >= 0 ? `Step ${index + 1} of ${list.length}` : '';
 			});
-			connectPoller.start();
-		};
+			const liveMessage = computed(() =>
+				connected.value
+					? 'Agent connected'
+					: stalled.value
+					? 'Still waiting for your agent'
+					: '',
+			);
+			const doneItems = ['Token created', 'Command ran', 'Agent connected'];
 
-		const mint = async () => {
-			tokenMode.value = 'loading';
-			try {
-				const response = await generateSmartDeviceToken();
-				if (unmounted) return;
-				const value = response?.data?.token;
-				if (!value) throw new Error('empty token');
+			const workspacePath = (page: string) => {
+				const code = store.getters.currentWorkspace?.code;
+				return code ? `/${code}/${page}` : '/';
+			};
+
+			const fetchFacts = async (keys: string[]) => {
+				const facts = await onboardingApi().fetchFacts(keys);
+				if (facts?.mcp_first_call_at)
+					tours.patchFacts({ mcp_first_call_at: facts.mcp_first_call_at });
+				return facts;
+			};
+			const pollerDeps = {
+				inert: () => localOnly.value,
+				now: () => Date.now(),
+				setTimer: (fn: () => void, ms: number) => {
+					const id = setTimeout(fn, ms);
+					return () => clearTimeout(id);
+				},
+				visibility: {
+					hidden: () => document.hidden,
+					onChange: (fn: () => void) => {
+						document.addEventListener('visibilitychange', fn);
+						return () => document.removeEventListener('visibilitychange', fn);
+					},
+				},
+				fetchFacts,
+			};
+
+			const startRunsPoller = () => {
+				if (runsPoller) return;
+				runsPoller = createFactsPoller({
+					...pollerDeps,
+					keys: ['agent_runs_finished'],
+					onFacts: (facts) => {
+						if (facts.agent_runs_finished) runLogged.value = true;
+					},
+				});
+				runsPoller.start();
+			};
+
+			const startConnectPoller = () => {
+				if (connectPoller) return;
+				connectPoller = createFactsPoller({
+					...pollerDeps,
+					keys: ['mcp_first_call_at'],
+					onFacts: (facts) => {
+						if (!facts.mcp_first_call_at || connected.value) return;
+						connected.value = true;
+						stalled.value = false;
+						token.value = '';
+						pasted.value = '';
+						startRunsPoller();
+					},
+					onStall: () => {
+						if (!connected.value) stalled.value = true;
+					},
+					onExhausted: () => {
+						if (!connected.value) stalled.value = true;
+					},
+				});
+				connectPoller.start();
+			};
+
+			const mint = async () => {
+				tokenMode.value = 'loading';
+				try {
+					const response = await generateSmartDeviceToken();
+					if (unmounted) return;
+					const value = response?.data?.token;
+					if (!value) throw new Error('empty token');
+					token.value = value;
+					fresh.value = true;
+					tokenMode.value = 'ready';
+				} catch {
+					if (!unmounted) tokenMode.value = 'error';
+				}
+			};
+
+			const usePasted = () => {
+				const value = pasted.value.trim();
+				if (!value || /\s/.test(value)) return;
 				token.value = value;
-				fresh.value = true;
+				pasted.value = '';
+				fresh.value = false;
 				tokenMode.value = 'ready';
-			} catch {
-				if (!unmounted) tokenMode.value = 'error';
-			}
-		};
+			};
 
-		const usePasted = () => {
-			const value = pasted.value.trim();
-			if (!value || /\s/.test(value)) return;
-			token.value = value;
-			pasted.value = '';
-			fresh.value = false;
-			tokenMode.value = 'ready';
-		};
-
-		const onTabKey = (event: KeyboardEvent) => {
-			const last = TABS.length - 1;
-			const index = TABS.findIndex((tab) => tab.id === activeId.value);
-			const next =
-				event.key === 'ArrowRight'
-					? (index + 1) % TABS.length
-					: event.key === 'ArrowLeft'
+			const onTabKey = (event: KeyboardEvent) => {
+				const last = TABS.length - 1;
+				const index = TABS.findIndex((tab) => tab.id === activeId.value);
+				const next =
+					event.key === 'ArrowRight'
+						? (index + 1) % TABS.length
+						: event.key === 'ArrowLeft'
 						? (index + last) % TABS.length
 						: event.key === 'Home'
-							? 0
-							: event.key === 'End'
-								? last
-								: -1;
-			if (next < 0) return;
-			event.preventDefault();
-			activeId.value = TABS[next].id;
-			document.getElementById(`connect-tab-${TABS[next].id}`)?.focus();
-		};
+						? 0
+						: event.key === 'End'
+						? last
+						: -1;
+				if (next < 0) return;
+				event.preventDefault();
+				activeId.value = TABS[next].id;
+				document.getElementById(`connect-tab-${TABS[next].id}`)?.focus();
+			};
 
-		const checkAgain = () => {
-			if (!connectPoller) return void goWorkspace();
-			stalled.value = false;
-			connectPoller?.checkAgain();
-		};
+			const checkAgain = () => {
+				if (!connectPoller) return void goWorkspace();
+				stalled.value = false;
+				connectPoller?.checkAgain();
+			};
 
-		const differentClient = () => {
-			const index = TABS.findIndex((tab) => tab.id === activeId.value);
-			activeId.value = TABS[(index + 1) % TABS.length].id;
-			checkAgain();
-		};
+			const differentClient = () => {
+				const index = TABS.findIndex((tab) => tab.id === activeId.value);
+				activeId.value = TABS[(index + 1) % TABS.length].id;
+				checkAgain();
+			};
 
-		const later = () => {
-			tours.pause();
-			router.push(workspacePath('getting-started'));
-		};
+			const later = () => {
+				tours.pause();
+				router.push(workspacePath('getting-started'));
+			};
 
-		const goWorkspace = () => router.push(workspacePath('list'));
+			const goWorkspace = () => router.push(workspacePath('list'));
 
-		const onCursorOpen = () => {
-			tourBus.emit('connect.command_copied', { client: 'cursor' });
-		};
+			const onCursorOpen = () => {
+				tourBus.emit('connect.command_copied', { client: 'cursor' });
+			};
 
-		let planning = false;
-		const begin = async () => {
-			if (planning || connectPoller || blocked.value || !modulesKnown.value) return;
-			planning = true;
-			tokenMode.value = 'checking';
-			const plan = await planConnect({ getUser, fetchFacts });
-			planning = false;
-			if (unmounted) return;
-			if (plan === 'user-error') {
-				tokenMode.value = 'user-error';
-				return;
-			}
-			if (plan === 'reconnect') {
-				tokenMode.value = 'reconnect';
-				return;
-			}
-			startConnectPoller();
-			if (plan === 'choose') tokenMode.value = 'choose';
-			else await mint();
-		};
+			let planning = false;
+			const begin = async () => {
+				if (planning || connectPoller || blocked.value || !modulesKnown.value)
+					return;
+				planning = true;
+				tokenMode.value = 'checking';
+				const plan = await planConnect({ getUser, fetchFacts });
+				planning = false;
+				if (unmounted) return;
+				if (plan === 'user-error') {
+					tokenMode.value = 'user-error';
+					return;
+				}
+				if (plan === 'reconnect') {
+					tokenMode.value = 'reconnect';
+					return;
+				}
+				startConnectPoller();
+				if (plan === 'choose') tokenMode.value = 'choose';
+				else await mint();
+			};
 
-		const retryPlan = () => void begin();
+			const retryPlan = () => void begin();
 
-		watch([modulesKnown, mcpEnabled, localOnly], () => void begin(), { immediate: true });
+			watch([modulesKnown, mcpEnabled, localOnly], () => void begin(), {
+				immediate: true,
+			});
 
-		onBeforeUnmount(() => {
-			unmounted = true;
-			connectPoller?.stop();
-			runsPoller?.stop();
-			token.value = '';
-			pasted.value = '';
-		});
+			onBeforeUnmount(() => {
+				unmounted = true;
+				connectPoller?.stop();
+				runsPoller?.stop();
+				token.value = '';
+				pasted.value = '';
+			});
 
-		return {
-			root,
-			consentOpen,
-			consentPad,
-			tabs,
-			activeId,
-			active,
-			clientLabel,
-			token,
-			pasted,
-			fresh,
-			tokenMode,
-			stalled,
-			connected,
-			runLogged,
-			localOnly,
-			blocked,
-			snippets,
-			stepLabel,
-			doneItems,
-			liveMessage,
-			mask,
-			mint,
-			retryPlan,
-			usePasted,
-			onTabKey,
-			checkAgain,
-			differentClient,
-			later,
-			goWorkspace,
-			onCursorOpen,
-		};
-	},
-});
+			return {
+				root,
+				consentOpen,
+				consentPad,
+				tabs,
+				activeId,
+				active,
+				clientLabel,
+				token,
+				pasted,
+				fresh,
+				tokenMode,
+				stalled,
+				connected,
+				runLogged,
+				localOnly,
+				blocked,
+				snippets,
+				stepLabel,
+				doneItems,
+				liveMessage,
+				mask,
+				mint,
+				retryPlan,
+				usePasted,
+				onTabKey,
+				checkAgain,
+				differentClient,
+				later,
+				goWorkspace,
+				onCursorOpen,
+			};
+		},
+	});
 </script>

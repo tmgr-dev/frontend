@@ -14,7 +14,9 @@
 				Close window
 			</button>
 		</div>
-		<div v-else-if="!ready" class="m-auto text-sm text-ink-subtle">Loading...</div>
+		<div v-else-if="!ready" class="m-auto text-sm text-ink-subtle">
+			Loading...
+		</div>
 		<NewForm v-else :is-modal="true" detached @close="closeWindow" />
 	</div>
 </template>
@@ -85,7 +87,8 @@
 					ready.value = true;
 				} catch (e) {
 					console.error('Error opening task window:', e);
-					error.value = 'The task could not be opened. Close this window and try again.';
+					error.value =
+						'The task could not be opened. Close this window and try again.';
 				}
 			};
 			void open();

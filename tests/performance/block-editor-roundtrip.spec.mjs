@@ -864,9 +864,7 @@ test('clearing a legacy HTML description and pressing Done saves the empty descr
   await expect.poll(() => writes.length, { timeout: 8000 }).toBeGreaterThan(0);
   const saved = writes.at(-1).body.description_json;
   expect(JSON.stringify(saved ?? null)).not.toContain('Legacy');
-  expect(
-    (saved?.blocks ?? []).filter((block) => block.data?.text),
-  ).toEqual([]);
+  expect((saved?.blocks ?? []).filter((block) => block.data?.text)).toEqual([]);
   expect(pageErrors(errors)).toEqual([]);
   expect(editorErrors(errors)).toEqual([]);
 });
@@ -928,9 +926,9 @@ test('an edited legacy HTML description of a markdown user saves as blocks and k
   const { body } = writes.at(-1);
   expect(body.clear_description_json).toBeUndefined();
   expect(body.clear_description).toBe(true);
-  expect(body.description_json.blocks.map((block) => block.data.text)).toEqual(
-    ['Legacy HTML kept!'],
-  );
+  expect(body.description_json.blocks.map((block) => block.data.text)).toEqual([
+    'Legacy HTML kept!',
+  ]);
   expect(pageErrors(errors)).toEqual([]);
   expect(editorErrors(errors)).toEqual([]);
 });

@@ -32,12 +32,22 @@ describe('installLocalAccessEvents', () => {
 	});
 
 	it('forwards a local workspace event with its permission and the persona actor', async () => {
-		domainEvents.emit({ type: 'task.created', workspaceId: -3, taskId: 1, task: { id: 1 }, actor: 'persona:p-1' });
+		domainEvents.emit({
+			type: 'task.created',
+			workspaceId: -3,
+			taskId: 1,
+			task: { id: 1 },
+			actor: 'persona:p-1',
+		});
 		await flush();
 		expect(invoke).toHaveBeenCalledWith('local_access_event', {
 			workspaceCode: 'local-personal',
 			permission: 'tasks:read',
-			event: expect.objectContaining({ type: 'task.created', taskId: 1, actor: 'persona:p-1' }),
+			event: expect.objectContaining({
+				type: 'task.created',
+				taskId: 1,
+				actor: 'persona:p-1',
+			}),
 		});
 	});
 
@@ -46,30 +56,52 @@ describe('installLocalAccessEvents', () => {
 		await flush();
 		expect(invoke).toHaveBeenCalledWith(
 			'local_access_event',
-			expect.objectContaining({ event: expect.objectContaining({ actor: 'user' }) }),
+			expect.objectContaining({
+				event: expect.objectContaining({ actor: 'user' }),
+			}),
 		);
 	});
 
 	it('ignores a cloud workspace event', async () => {
-		domainEvents.emit({ type: 'task.created', workspaceId: 42, taskId: 1, task: { id: 1 } });
+		domainEvents.emit({
+			type: 'task.created',
+			workspaceId: 42,
+			taskId: 1,
+			task: { id: 1 },
+		});
 		await flush();
 		expect(invoke).not.toHaveBeenCalled();
 	});
 
 	it('ignores an event with no workspace', async () => {
-		domainEvents.emit({ type: 'task.created', workspaceId: null, taskId: 1, task: { id: 1 } });
+		domainEvents.emit({
+			type: 'task.created',
+			workspaceId: null,
+			taskId: 1,
+			task: { id: 1 },
+		});
 		await flush();
 		expect(invoke).not.toHaveBeenCalled();
 	});
 
 	it('never forwards timer events, even though PLUGIN_EVENTS grants them a permission', async () => {
-		domainEvents.emit({ type: 'timer.started', workspaceId: -3, taskId: 1, task: { id: 1 } });
+		domainEvents.emit({
+			type: 'timer.started',
+			workspaceId: -3,
+			taskId: 1,
+			task: { id: 1 },
+		});
 		await flush();
 		expect(invoke).not.toHaveBeenCalled();
 	});
 
 	it('never forwards routine events: routines are owner-only', async () => {
-		domainEvents.emit({ type: 'routine.created', workspaceId: -3, routineId: 1_000_000_001, routine: { id: 1_000_000_001 } });
+		domainEvents.emit({
+			type: 'routine.created',
+			workspaceId: -3,
+			routineId: 1_000_000_001,
+			routine: { id: 1_000_000_001 },
+		});
 		await flush();
 		expect(invoke).not.toHaveBeenCalled();
 	});
@@ -85,17 +117,28 @@ describe('installLocalAccessEvents', () => {
 			type: 'comment.reactionChanged',
 			workspaceId: -3,
 			commentId: 5,
-			reactions: [{ emoji: '👍', count: 2, users: [1, 2], reacted: true } as any],
+			reactions: [
+				{ emoji: '👍', count: 2, users: [1, 2], reacted: true } as any,
+			],
 		});
 		await flush();
 		expect(invoke).toHaveBeenCalledWith(
 			'local_access_event',
-			expect.objectContaining({ event: expect.objectContaining({ reactions: [{ emoji: '👍', count: 2 }] }) }),
+			expect.objectContaining({
+				event: expect.objectContaining({
+					reactions: [{ emoji: '👍', count: 2 }],
+				}),
+			}),
 		);
 	});
 
 	it('does nothing for a workspace id that resolves to no local workspace', async () => {
-		domainEvents.emit({ type: 'task.created', workspaceId: -99, taskId: 1, task: { id: 1 } });
+		domainEvents.emit({
+			type: 'task.created',
+			workspaceId: -99,
+			taskId: 1,
+			task: { id: 1 },
+		});
 		await flush();
 		expect(invoke).not.toHaveBeenCalled();
 	});

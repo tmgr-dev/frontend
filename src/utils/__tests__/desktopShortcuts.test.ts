@@ -9,8 +9,8 @@ import {
 	pickQuickAddWorkspace,
 	primaryModifiersHint,
 	registerShortcuts,
-	shortcutActionsFor,
 	sanitizeDeepLinkParams,
+	shortcutActionsFor,
 	splitQuickText,
 	validateAccelerator,
 } from '../desktopShortcuts';
@@ -24,11 +24,13 @@ const key = (code: string, mods: Partial<KeyboardEvent> = {}) =>
 		metaKey: false,
 		ctrlKey: false,
 		...mods,
-	}) as KeyboardEvent;
+	} as KeyboardEvent);
 
 describe('eventToAccelerator', () => {
 	it('builds a Tauri accelerator from modifiers and the physical key', () => {
-		expect(eventToAccelerator(key('Space', { altKey: true }))).toBe('Alt+Space');
+		expect(eventToAccelerator(key('Space', { altKey: true }))).toBe(
+			'Alt+Space',
+		);
 		expect(
 			eventToAccelerator(key('KeyT', { altKey: true, shiftKey: true })),
 		).toBe('Alt+Shift+T');
@@ -184,8 +186,14 @@ describe('parseDeepLink', () => {
 	});
 
 	it('extracts a task id', () => {
-		expect(parseDeepLink('tmgr://task/9233')).toEqual({ type: 'task', taskId: 9233 });
-		expect(parseDeepLink('tmgr://task/9233/')).toEqual({ type: 'task', taskId: 9233 });
+		expect(parseDeepLink('tmgr://task/9233')).toEqual({
+			type: 'task',
+			taskId: 9233,
+		});
+		expect(parseDeepLink('tmgr://task/9233/')).toEqual({
+			type: 'task',
+			taskId: 9233,
+		});
 	});
 
 	it('extracts the workspace from app and web task links', () => {
@@ -241,17 +249,23 @@ describe('parseDeepLink', () => {
 	});
 
 	it('rejects params that are not a flat, bounded string map', () => {
-		expect(parseDeepLink('tmgr://plugin/acme.board/view/report?a=1&a=2')).toBeNull();
+		expect(
+			parseDeepLink('tmgr://plugin/acme.board/view/report?a=1&a=2'),
+		).toBeNull();
+		expect(
+			parseDeepLink(`tmgr://plugin/acme.board/view/report?${'x'.repeat(41)}=1`),
+		).toBeNull();
 		expect(
 			parseDeepLink(
-				`tmgr://plugin/acme.board/view/report?${'x'.repeat(41)}=1`,
+				`tmgr://plugin/acme.board/view/report?v=${'x'.repeat(501)}`,
 			),
 		).toBeNull();
+		const manyParams = Array.from({ length: 21 }, (_, i) => `p${i}=1`).join(
+			'&',
+		);
 		expect(
-			parseDeepLink(`tmgr://plugin/acme.board/view/report?v=${'x'.repeat(501)}`),
+			parseDeepLink(`tmgr://plugin/acme.board/view/report?${manyParams}`),
 		).toBeNull();
-		const manyParams = Array.from({ length: 21 }, (_, i) => `p${i}=1`).join('&');
-		expect(parseDeepLink(`tmgr://plugin/acme.board/view/report?${manyParams}`)).toBeNull();
 	});
 });
 
@@ -353,18 +367,30 @@ describe('registerShortcuts', () => {
 			screenshot: 'ok',
 			selection: 'off',
 		});
-		expect(result.registered).toEqual(['Alt+Space', 'Alt+Shift+T', 'Alt+Shift+S']);
+		expect(result.registered).toEqual([
+			'Alt+Space',
+			'Alt+Shift+T',
+			'Alt+Shift+S',
+		]);
 	});
 
 	it('takes the shortcuts back after a page reload left them grabbed by the previous page', async () => {
 		const api = fakeGlobalShortcuts();
 		const previousPage: string[] = [];
-		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => previousPage.push(action), 'macos');
+		await registerShortcuts(
+			api,
+			DEFAULT_SHORTCUTS,
+			(action) => previousPage.push(action),
+			'macos',
+		);
 
 		const reloadedPage: string[] = [];
-		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) =>
-			reloadedPage.push(action),
-		'macos');
+		const result = await registerShortcuts(
+			api,
+			DEFAULT_SHORTCUTS,
+			(action) => reloadedPage.push(action),
+			'macos',
+		);
 
 		expect(result.status).toEqual({
 			quickAdd: 'ok',
@@ -380,7 +406,12 @@ describe('registerShortcuts', () => {
 	it('fires only on press, not on release', async () => {
 		const api = fakeGlobalShortcuts();
 		const fired: string[] = [];
-		await registerShortcuts(api, DEFAULT_SHORTCUTS, (action) => fired.push(action), 'macos');
+		await registerShortcuts(
+			api,
+			DEFAULT_SHORTCUTS,
+			(action) => fired.push(action),
+			'macos',
+		);
 
 		api.grabbed.get('Alt+Shift+T')?.({ state: 'Released' });
 		api.grabbed.get('Alt+Shift+T')?.({ state: 'Pressed' });
@@ -396,7 +427,12 @@ describe('registerShortcuts', () => {
 			return register(accelerator, handler);
 		};
 
-		const result = await registerShortcuts(api, DEFAULT_SHORTCUTS, () => {}, 'macos');
+		const result = await registerShortcuts(
+			api,
+			DEFAULT_SHORTCUTS,
+			() => {},
+			'macos',
+		);
 
 		expect(result.status.quickAdd).toBe('taken');
 		expect(result.registered).not.toContain('Alt+Space');

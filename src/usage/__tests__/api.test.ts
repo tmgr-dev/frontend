@@ -1,5 +1,7 @@
 const invoke = jest.fn();
-jest.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...a) }));
+jest.mock('@tauri-apps/api/core', () => ({
+	invoke: (...a: unknown[]) => invoke(...a),
+}));
 
 import { errorText, usageOverview, usageScan, usageTasks } from '../api';
 

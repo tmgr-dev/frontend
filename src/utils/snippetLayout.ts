@@ -1,4 +1,5 @@
-export const SNIPPET_ROW_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-start';
+export const SNIPPET_ROW_CLASS =
+	'flex flex-col gap-2 sm:flex-row sm:items-start';
 
 export const SNIPPET_BUTTON_CLASS = 'shrink-0 self-end sm:self-start';
 

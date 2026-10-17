@@ -17,19 +17,19 @@ import {
 	type ViewBadgeSpec,
 } from './broker';
 import { taskKey } from './dataApi';
-import { createPageEventMapper } from './pageEvents';
 import { TASK_MENU_LOCATION, type PluginManifest } from './manifest';
-import { resolveTaskMenuItems } from './taskMenu';
-import { toRoutine, toRoutineInstance } from './routines';
+import { createPageEventMapper } from './pageEvents';
 import {
 	startPluginProcess,
 	type PluginProcess,
 	type WorkerEndpoint,
 } from './process';
+import { toRoutine, toRoutineInstance } from './routines';
+import { resolveTaskMenuItems } from './taskMenu';
 import {
+	COLORS,
 	isLinkAllowed,
 	sanitizeTree,
-	COLORS,
 	type Color,
 	type LinkContext,
 	type UiNode,
@@ -230,14 +230,22 @@ const clampPriority = (value: unknown): number => {
 	return Math.max(-100, Math.min(100, n));
 };
 
-const normalizeBadge = (pluginId: string, badgeId: string, badge: any): CardBadge => ({
+const normalizeBadge = (
+	pluginId: string,
+	badgeId: string,
+	badge: any,
+): CardBadge => ({
 	pluginId,
 	badgeId,
 	text: String(badge.text).slice(0, 16),
 	color: COLORS.includes(badge.color) ? badge.color : 'gray',
-	tooltip: typeof badge.tooltip === 'string' ? badge.tooltip.slice(0, 200) : null,
+	tooltip:
+		typeof badge.tooltip === 'string' ? badge.tooltip.slice(0, 200) : null,
 	priority: clampPriority(badge.priority),
-	key: typeof badge.key === 'string' && BADGE_KEY.test(badge.key) ? badge.key : undefined,
+	key:
+		typeof badge.key === 'string' && BADGE_KEY.test(badge.key)
+			? badge.key
+			: undefined,
 });
 const MAX_ALARMS = 10;
 const NOTIFY_LIMIT = 5;
@@ -251,7 +259,9 @@ export const storageIdOf = (pkg: {
 	manifest: { id: string };
 	origin?: { repo: string };
 }): string =>
-	pkg.origin ? `${pkg.manifest.id}@github.com/${pkg.origin.repo}` : pkg.manifest.id;
+	pkg.origin
+		? `${pkg.manifest.id}@github.com/${pkg.origin.repo}`
+		: pkg.manifest.id;
 
 const isValidAlarmDef = (def: AlarmDef): boolean =>
 	Number.isFinite(def.scheduledAtMs) &&
@@ -305,7 +315,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		const key = `${storageId}@${workspace.id}`;
 		return {
 			create: (name: string, spec: AlarmSpec): AlarmInfo => {
-				if (!Number.isFinite(spec.scheduledAtMs) || spec.scheduledAtMs > now() + ONE_YEAR_MS) {
+				if (
+					!Number.isFinite(spec.scheduledAtMs) ||
+					spec.scheduledAtMs > now() + ONE_YEAR_MS
+				) {
 					throw new PluginError(
 						'INVALID_PARAMS',
 						'scheduled time must be finite and at most a year ahead',
@@ -331,7 +344,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					periodMinutes: spec.periodMinutes,
 				};
 				alarmsDep.set(key, current);
-				return { name, scheduledAt: new Date(spec.scheduledAtMs).toISOString() };
+				return {
+					name,
+					scheduledAt: new Date(spec.scheduledAtMs).toISOString(),
+				};
 			},
 			clear: (name: string) => {
 				const current = alarmsDep.get(key) ?? {};
@@ -372,7 +388,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		for (const [key, entry] of pendingClicks) {
 			if (entry.expiresAt < now()) pendingClicks.delete(key);
 		}
-		const token = `c${nextClickToken++}${Math.random().toString(36).slice(2, 8)}`;
+		const token = `c${nextClickToken++}${Math.random()
+			.toString(36)
+			.slice(2, 8)}`;
 		pendingClicks.set(token, {
 			pluginId,
 			workspaceId,
@@ -404,7 +422,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	): PluginLogLine | undefined => {
 		const entry = state.plugins[pluginId];
 		if (!entry) return undefined;
-		const line: PluginLogLine = { at: now(), level, message: message.slice(0, MESSAGE_LIMIT) };
+		const line: PluginLogLine = {
+			at: now(),
+			level,
+			message: message.slice(0, MESSAGE_LIMIT),
+		};
 		entry.log.push(line);
 		if (entry.log.length > LOG_LIMIT)
 			entry.log.splice(0, entry.log.length - LOG_LIMIT);
@@ -419,19 +441,31 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	>();
 
 	/** Makes a plugin's broker refusals visible in its log, collapsing identical repeats within 5s. */
-	const logBrokerRefusal = (pluginId: string, method: string, error: unknown) => {
+	const logBrokerRefusal = (
+		pluginId: string,
+		method: string,
+		error: unknown,
+	) => {
 		if (!(error instanceof PluginError)) return;
 		const message = `${method}: ${error.code} ${error.message}`;
 		const previous = brokerRefusals.get(pluginId);
-		if (previous && previous.message === message && now() - previous.at < REFUSAL_THROTTLE_MS) {
+		if (
+			previous &&
+			previous.message === message &&
+			now() - previous.at < REFUSAL_THROTTLE_MS
+		) {
 			previous.count++;
 			previous.at = now();
 			previous.line.at = now();
-			previous.line.message = `${message} (×${previous.count})`.slice(0, MESSAGE_LIMIT);
+			previous.line.message = `${message} (×${previous.count})`.slice(
+				0,
+				MESSAGE_LIMIT,
+			);
 			return;
 		}
 		const line = log(pluginId, 'warn', message);
-		if (line) brokerRefusals.set(pluginId, { message, count: 1, at: now(), line });
+		if (line)
+			brokerRefusals.set(pluginId, { message, count: 1, at: now(), line });
 	};
 
 	/** A refused tray item is logged and answered with null: it must not reject the handler that is rendering a page. */
@@ -485,7 +519,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 
 	const badgeTimers = new Map<
 		string,
-		{ at: number; timer: ReturnType<typeof setTimeout> | null; pending: ViewBadgeSpec | null }
+		{
+			at: number;
+			timer: ReturnType<typeof setTimeout> | null;
+			pending: ViewBadgeSpec | null;
+		}
 	>();
 
 	const applyViewBadge = (
@@ -514,7 +552,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		slot.pending = badge;
 		if (slot.timer) return;
 		slot.timer = setTimeout(() => {
-			if (badgeTimers.get(key) !== slot || running.get(pluginId)?.generation !== generation)
+			if (
+				badgeTimers.get(key) !== slot ||
+				running.get(pluginId)?.generation !== generation
+			)
 				return;
 			slot.timer = null;
 			slot.at = now();
@@ -530,7 +571,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			badgeTimers.delete(key);
 		}
 		for (const key of Object.keys(state.viewBadges)) {
-			if (state.viewBadges[key].pluginId === pluginId) delete state.viewBadges[key];
+			if (state.viewBadges[key].pluginId === pluginId)
+				delete state.viewBadges[key];
 		}
 	};
 
@@ -551,7 +593,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 	const windowProps = new Map<string, Record<string, string>>();
 
 	const clearTrayItem = (key: string) => {
-		state.trayItems[key]?.items.forEach((item) => trayClickTargets.delete(item.id));
+		state.trayItems[key]?.items.forEach((item) =>
+			trayClickTargets.delete(item.id),
+		);
 		delete state.trayItems[key];
 	};
 
@@ -591,7 +635,13 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			});
 			return { id: token, title: item.title };
 		});
-		state.trayItems[key] = { pluginId, pluginName, itemId, title: spec.title, items };
+		state.trayItems[key] = {
+			pluginId,
+			pluginName,
+			itemId,
+			title: spec.title,
+			items,
+		};
 	};
 
 	const setTrayTitle = (pluginId: string, text: string | null) => {
@@ -693,7 +743,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				const title = payload.title
 					? `${manifest.name}: ${payload.title}`
 					: manifest.name;
-				deps.notifyPlugin?.(pluginId, manifest.name, { ...payload, title, token });
+				deps.notifyPlugin?.(pluginId, manifest.name, {
+					...payload,
+					title,
+					token,
+				});
 			},
 			dnd: deps.dnd,
 			alarms: alarmsFor(workspace, storageId),
@@ -716,7 +770,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					};
 				} else delete state.statusBar[key];
 			},
-			setViewBadge: (viewId, badge) => setViewBadge(pluginId, generation, viewId, badge),
+			setViewBadge: (viewId, badge) =>
+				setViewBadge(pluginId, generation, viewId, badge),
 			refresh: () => bump(pluginId),
 			register: (kind, id) => {
 				if (registered[kind].has(id)) return;
@@ -724,7 +779,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				if (kind !== 'event' && kind !== 'command') bump(pluginId);
 				else if (
 					kind === 'command' &&
-					manifest.contributes.menus[TASK_MENU_LOCATION].some((item) => item.command === id)
+					manifest.contributes.menus[TASK_MENU_LOCATION].some(
+						(item) => item.command === id,
+					)
 				)
 					bump(pluginId);
 			},
@@ -734,7 +791,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 				? deps.files?.(pluginId, workspace, manifest.name)
 				: undefined,
 			localAccess: deps.requestLocalConnection
-				? { requestConnection: (opts) => deps.requestLocalConnection!(pluginId, opts) }
+				? {
+						requestConnection: (opts) =>
+							deps.requestLocalConnection!(pluginId, opts),
+				  }
 				: undefined,
 			now,
 		});
@@ -835,7 +895,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					corrupted = true;
 				}
 			}
-			const due = Object.values(current).filter((def) => def.scheduledAtMs <= time);
+			const due = Object.values(current).filter(
+				(def) => def.scheduledAtMs <= time,
+			);
 			if (!due.length) {
 				if (corrupted) alarmsDep.set(key, current);
 				continue;
@@ -843,7 +905,10 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			// Persist the reschedule/removal before dispatching: an overlapping tick must not double-fire.
 			for (const def of due) {
 				if (def.periodMinutes) {
-					current[def.name] = { ...def, scheduledAtMs: time + def.periodMinutes * 60_000 };
+					current[def.name] = {
+						...def,
+						scheduledAtMs: time + def.periodMinutes * 60_000,
+					};
 				} else {
 					delete current[def.name];
 				}
@@ -892,7 +957,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			void dispatch(pluginId, 'command', command, args).catch(() => undefined);
 			return { type: 'command' };
 		}
-		if (taskId != null) return { type: 'task', taskId, workspaceId, pluginId, generation };
+		if (taskId != null)
+			return { type: 'task', taskId, workspaceId, pluginId, generation };
 		return null;
 	};
 
@@ -932,12 +998,7 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		const pkg = packages.get(pluginId);
 		const workspace = state.workspace;
 		stop(pluginId);
-		if (
-			pkg &&
-			workspace &&
-			!state.safeMode &&
-			isEnabled(pluginId, workspace)
-		) {
+		if (pkg && workspace && !state.safeMode && isEnabled(pluginId, workspace)) {
 			await start(pkg, workspace);
 		}
 	};
@@ -951,7 +1012,11 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		if (event.type.startsWith('page.')) {
 			const payload =
 				event.type === 'page.deleted'
-					? { type: event.type, workspaceId: event.workspaceId, pageId: event.pageId }
+					? {
+							type: event.type,
+							workspaceId: event.workspaceId,
+							pageId: event.pageId,
+					  }
 					: mapPageEvent(event as Parameters<typeof mapPageEvent>[0]);
 			for (const [pluginId, plugin] of running) {
 				if (
@@ -960,7 +1025,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 					!packages.get(pluginId)?.manifest.permissions.includes('pages:read')
 				)
 					continue;
-				void dispatch(pluginId, 'event', event.type, payload).catch(() => undefined);
+				void dispatch(pluginId, 'event', event.type, payload).catch(
+					() => undefined,
+				);
 			}
 			return;
 		}
@@ -1004,17 +1071,31 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			// A task snapshot rides along with timer and status events; it is only for tasks:read.
 			if (!permissions.includes('tasks:read')) {
 				payloadTask = undefined;
-			} else if (payloadTask && typeof payloadTask === 'object' && !permissions.includes('relations:read')) {
-				const { relationTypeWithTask, ...rest } = payloadTask as Record<string, unknown>;
+			} else if (
+				payloadTask &&
+				typeof payloadTask === 'object' &&
+				!permissions.includes('relations:read')
+			) {
+				const { relationTypeWithTask, ...rest } = payloadTask as Record<
+					string,
+					unknown
+				>;
 				payloadTask = rest;
 			}
-			const payload: Record<string, unknown> = { ...basePayload, task: payloadTask };
+			const payload: Record<string, unknown> = {
+				...basePayload,
+				task: payloadTask,
+			};
 			if (payloadTask === undefined) delete payload.task;
 			if (routine !== undefined) payload.routine = routine;
 			else delete payload.routine;
 			if (instance !== undefined) payload.instance = instance;
 			else delete payload.instance;
-			if (event.type === 'routine.deleted' && !permissions.includes('tasks:read')) delete payload.taskId;
+			if (
+				event.type === 'routine.deleted' &&
+				!permissions.includes('tasks:read')
+			)
+				delete payload.taskId;
 			void dispatch(pluginId, 'event', event.type, payload).catch(
 				() => undefined,
 			);
@@ -1233,18 +1314,27 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		deepLinkView(pluginId: string, viewId: string) {
 			const plugin = running.get(pluginId);
 			const pkg = packages.get(pluginId);
-			if (!plugin || !pkg || state.plugins[pluginId]?.status !== 'running') return null;
-			if (!pkg.manifest.permissions.includes('deeplinks') || !plugin.machine) return null;
-			return pkg.manifest.contributes.views.find((v) => v.id === viewId) ?? null;
+			if (!plugin || !pkg || state.plugins[pluginId]?.status !== 'running')
+				return null;
+			if (!pkg.manifest.permissions.includes('deeplinks') || !plugin.machine)
+				return null;
+			return (
+				pkg.manifest.contributes.views.find((v) => v.id === viewId) ?? null
+			);
 		},
 		/** The declared, deep-linkable, registered command, only while the plugin runs here with deeplinks and machine access. */
 		deepLinkCommand(pluginId: string, commandId: string) {
 			const plugin = running.get(pluginId);
 			const pkg = packages.get(pluginId);
-			if (!plugin || !pkg || state.plugins[pluginId]?.status !== 'running') return null;
-			if (!pkg.manifest.permissions.includes('deeplinks') || !plugin.machine) return null;
-			const command = pkg.manifest.contributes.commands.find((c) => c.id === commandId);
-			if (!command?.deepLink || !plugin.registered.command.has(commandId)) return null;
+			if (!plugin || !pkg || state.plugins[pluginId]?.status !== 'running')
+				return null;
+			if (!pkg.manifest.permissions.includes('deeplinks') || !plugin.machine)
+				return null;
+			const command = pkg.manifest.contributes.commands.find(
+				(c) => c.id === commandId,
+			);
+			if (!command?.deepLink || !plugin.registered.command.has(commandId))
+				return null;
 			return command;
 		},
 		/** Runs a deep-linked command after the same checks; `expected` must still match, or it is refused. */
@@ -1271,7 +1361,9 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 			if (!view || !isCurrentRun(pluginId, expected)) return null;
 			if (!view.ui) return { view };
 			try {
-				return (await host.openView(pluginId, viewId, params)) ? { view } : null;
+				return (await host.openView(pluginId, viewId, params))
+					? { view }
+					: null;
 			} catch {
 				return null;
 			}
@@ -1432,7 +1524,8 @@ export const createPluginHost = (deps: PluginHostDeps) => {
 		/** Re-checks permission, domain and https at click time; never trusts a tree rendered earlier. */
 		openLink(pluginId: string, url: string): boolean {
 			const plugin = running.get(pluginId);
-			if (!plugin || state.plugins[pluginId]?.status !== 'running') return false;
+			if (!plugin || state.plugins[pluginId]?.status !== 'running')
+				return false;
 			if (!isLinkAllowed(url, linkContext(pluginId))) return false;
 			try {
 				plugin.broker.admit(false);

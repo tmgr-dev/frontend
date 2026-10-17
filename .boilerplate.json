@@ -1,8 +1,8 @@
 {
-  "lineage": [],
-  "generic_paths": [
-    ".github/workflows/**",
-    "config/deployment*.yml",
-    "Dockerfile"
-  ]
+	"lineage": [],
+	"generic_paths": [
+		".github/workflows/**",
+		"config/deployment*.yml",
+		"Dockerfile"
+	]
 }

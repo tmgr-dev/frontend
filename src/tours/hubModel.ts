@@ -1,5 +1,5 @@
-import type { HubItem } from './useTours';
 import type { TourGroup } from './types';
+import type { HubItem } from './useTours';
 
 export const GROUP_TITLES: Record<TourGroup, string> = {
 	start: 'Getting started',

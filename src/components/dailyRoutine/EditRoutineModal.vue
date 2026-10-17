@@ -360,12 +360,12 @@
 </template>
 
 <script setup lang="ts">
+	import { emitRoutineEditorOpened } from '@/tours/pageRoutineEvents';
 	import type { RoutineFrequency } from '@/types/dailyRoutine';
 	import {
 		ROUTINE_CATEGORY_LIST,
 		resolveCategory,
 	} from '@/utils/dailyRoutines/categoryMap';
-	import { emitRoutineEditorOpened } from '@/tours/pageRoutineEvents';
 	import { isSameTimestamp } from '@/utils/dailyRoutines/relativeTime';
 	import {
 		computed,

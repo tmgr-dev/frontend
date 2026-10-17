@@ -2,7 +2,11 @@ import { downloadToast } from '../desktopDownloads';
 
 it('names the saved file and the folder it landed in', () => {
 	expect(
-		downloadToast({ name: 'IMG_5866 (2).PNG', path: '/home/user/Downloads/IMG_5866 (2).PNG', success: true }),
+		downloadToast({
+			name: 'IMG_5866 (2).PNG',
+			path: '/home/user/Downloads/IMG_5866 (2).PNG',
+			success: true,
+		}),
 	).toEqual({
 		title: 'Downloaded IMG_5866 (2).PNG',
 		description: 'Saved to Downloads',
@@ -21,7 +25,13 @@ it('still confirms a download whose path is unknown, without a reveal button', (
 });
 
 it('reports a failed download', () => {
-	expect(downloadToast({ name: 'a.pdf', path: '/home/user/Downloads/a.pdf', success: false })).toEqual({
+	expect(
+		downloadToast({
+			name: 'a.pdf',
+			path: '/home/user/Downloads/a.pdf',
+			success: false,
+		}),
+	).toEqual({
 		title: 'Download failed',
 		description: 'a.pdf could not be saved.',
 		variant: 'destructive',

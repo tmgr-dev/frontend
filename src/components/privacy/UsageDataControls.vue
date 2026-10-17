@@ -2,11 +2,23 @@
 	<div>
 		<SettingsSection title="Usage data">
 			<div class="flex flex-col gap-2">
-				<p v-if="saveFailed" role="alert" data-testid="consent-save-error" class="text-sm text-destructive">
-					Couldn't save your choice in this browser. Sharing is stopped in this window.
+				<p
+					v-if="saveFailed"
+					role="alert"
+					data-testid="consent-save-error"
+					class="text-sm text-destructive"
+				>
+					Couldn't save your choice in this browser. Sharing is stopped in this
+					window.
 				</p>
-				<p v-if="snapshot.error" role="alert" data-testid="receipt-error" class="text-sm text-destructive">
-					Couldn't keep a deletion key for this install. Use "Delete data already sent" to remove its data.
+				<p
+					v-if="snapshot.error"
+					role="alert"
+					data-testid="receipt-error"
+					class="text-sm text-destructive"
+				>
+					Couldn't keep a deletion key for this install. Use "Delete data
+					already sent" to remove its data.
 				</p>
 				<SettingsRow
 					v-slot="{ labelId, descriptionId }"
@@ -46,9 +58,12 @@
 				</SettingsRow>
 				<SettingsRow label="Data already sent">
 					<template #description>
-						<span v-if="deleteMessage" role="status" data-testid="delete-result">{{
-							deleteMessage
-						}}</span>
+						<span
+							v-if="deleteMessage"
+							role="status"
+							data-testid="delete-result"
+							>{{ deleteMessage }}</span
+						>
 					</template>
 					<Button
 						variant="outline"
@@ -132,8 +147,8 @@
 			deleteMessage.value = failed
 				? 'Could not delete everything. Sharing is off. Try again later.'
 				: deleted
-					? 'Deleted. Sharing is off.'
-					: 'Nothing to delete. Sharing is off.';
+				? 'Deleted. Sharing is off.'
+				: 'Nothing to delete. Sharing is off.';
 		} finally {
 			deleting.value = false;
 		}

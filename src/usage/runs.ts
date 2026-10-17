@@ -46,13 +46,16 @@ const pageOf = (body: any): { items: any[]; cursor: string | null } => {
 	const items = Array.isArray(data)
 		? data
 		: Array.isArray(data?.runs)
-			? data.runs
-			: Array.isArray(data?.data)
-				? data.data
-				: [];
+		? data.runs
+		: Array.isArray(data?.data)
+		? data.data
+		: [];
 	const cursor =
 		data?.next_cursor ?? body?.next_cursor ?? body?.meta?.next_cursor ?? null;
-	return { items, cursor: typeof cursor === 'string' && cursor ? cursor : null };
+	return {
+		items,
+		cursor: typeof cursor === 'string' && cursor ? cursor : null,
+	};
 };
 
 export const toRawRun = (item: any, workspace: string): RawRun => ({
@@ -147,5 +150,10 @@ export const taskInfoFor = (
 	const slash = ref.lastIndexOf('/');
 	const workspace = ref.slice(0, slash);
 	const id = ref.slice(slash + 1);
-	return { key: `#${id}`, title: null, path: `/${workspace}/tasks/${id}`, workspace };
+	return {
+		key: `#${id}`,
+		title: null,
+		path: `/${workspace}/tasks/${id}`,
+		workspace,
+	};
 };

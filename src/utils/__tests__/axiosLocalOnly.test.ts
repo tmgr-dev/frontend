@@ -4,7 +4,10 @@ import ts from 'typescript';
 
 const store = {
 	state: { token: null as any, workspaces: [] },
-	getters: { currentWorkspaceId: null, isLocalOnly: true } as Record<string, any>,
+	getters: { currentWorkspaceId: null, isLocalOnly: true } as Record<
+		string,
+		any
+	>,
 	commit: jest.fn(),
 	dispatch: jest.fn(),
 };
@@ -30,7 +33,10 @@ const loadErrorHandler = (): ((error: any) => Promise<unknown>) => {
 	}).outputText;
 	const module = { exports: {} };
 	new Function('require', 'module', 'exports', code)(
-		(name: string) => (name === 'axios' ? { create: () => client, post: jest.fn() } : require(name)),
+		(name: string) =>
+			name === 'axios'
+				? { create: () => client, post: jest.fn() }
+				: require(name),
 		module,
 		module.exports,
 	);
@@ -45,7 +51,10 @@ describe('401 without an account', () => {
 
 	it('never logs out or leaves the local workspace', async () => {
 		const handler = loadErrorHandler();
-		const error = { config: { headers: {}, url: 'tasks/current' }, response: { status: 401 } };
+		const error = {
+			config: { headers: {}, url: 'tasks/current' },
+			response: { status: 401 },
+		};
 
 		await expect(handler(error)).rejects.toBe(error);
 

@@ -55,7 +55,10 @@ test('board cards show the agent state chip', async ({ page }) => {
   await expect(chip(2)).toHaveAttribute('data-state', 'blocked');
   await expect(chip(2)).toContainText('2');
   await expect(chip(3)).toHaveAttribute('data-state', 'done');
-  await expect(chip(2)).toHaveAttribute('title', /Blocked: <b>x<\/b> on work-laptop/);
+  await expect(chip(2)).toHaveAttribute(
+    'title',
+    /Blocked: <b>x<\/b> on work-laptop/,
+  );
   await expect(chip(2).locator('b')).toHaveCount(0);
   await shot(page, 'board');
 });
@@ -73,9 +76,7 @@ test('chip slot keeps the card height whether or not a session exists', async ({
   const card = page.locator('[data-task-id="1"]');
   await card.waitFor();
   const before = (await card.boundingBox()).height;
-  await expect(
-    card.locator('[data-testid="agent-status-chip"]'),
-  ).toBeVisible();
+  await expect(card.locator('[data-testid="agent-status-chip"]')).toBeVisible();
   expect((await card.boundingBox()).height).toBe(before);
 });
 
@@ -87,7 +88,9 @@ test('nothing is shown when agent work is off in the workspace', async ({
   await stubStatus(page, 403);
   await page.goto('/demo/board');
   await page.locator('[data-task-id="1"]').waitFor();
-  await expect(page.locator('[data-testid="agent-status-chip"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="agent-status-chip"]')).toHaveCount(
+    0,
+  );
 });
 
 test('list rows and the task panel show the chip', async ({ page }) => {
@@ -96,7 +99,9 @@ test('list rows and the task panel show the chip', async ({ page }) => {
   await stubStatus(page);
   await page.goto('/demo/list');
   await expect(
-    page.locator('[data-testid="agent-status-chip"][data-state="working"]').first(),
+    page
+      .locator('[data-testid="agent-status-chip"][data-state="working"]')
+      .first(),
   ).toBeVisible();
   await shot(page, 'list');
 

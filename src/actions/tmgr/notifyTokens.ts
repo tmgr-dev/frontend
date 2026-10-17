@@ -67,7 +67,9 @@ export const sendTestNotification = async (
 	apiBaseUrl?: string,
 ): Promise<TestNotificationResult> => {
 	const now = new Date();
-	const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+	const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
+		now.getSeconds(),
+	)}`;
 	try {
 		const response = await fetch(buildNotifyPushUrl(apiBaseUrl), {
 			method: 'POST',
@@ -87,14 +89,19 @@ export const sendTestNotification = async (
 			const retryAfter = Number(response.headers.get('Retry-After'));
 			return {
 				kind: 'rate_limited',
-				retryAfter: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
+				retryAfter:
+					Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : null,
 			};
 		}
 		if (!response.ok) return { kind: 'error' };
 		const { data } = await response.json();
 		if (data?.status === 'deduplicated') return { kind: 'deduplicated' };
-		const channels: string[] = Array.isArray(data?.channels) ? data.channels : [];
-		return channels.length ? { kind: 'sent', channels } : { kind: 'no_channels' };
+		const channels: string[] = Array.isArray(data?.channels)
+			? data.channels
+			: [];
+		return channels.length
+			? { kind: 'sent', channels }
+			: { kind: 'no_channels' };
 	} catch {
 		return { kind: 'error' };
 	}

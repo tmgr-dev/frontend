@@ -94,7 +94,15 @@
 			unavailable: { type: Boolean, default: false },
 			waitingText: { type: String, default: 'Waiting for you…' },
 		},
-		emits: ['next', 'take-me', 'skip-step', 'skip-tour', 'pause', 'explore', 'never'],
+		emits: [
+			'next',
+			'take-me',
+			'skip-step',
+			'skip-tour',
+			'pause',
+			'explore',
+			'never',
+		],
 		setup(props, { emit }) {
 			counter += 1;
 			const titleId = `tour-sheet-title-${counter}`;
@@ -148,7 +156,11 @@
 
 			function primary() {
 				emit(
-					props.canTakeMe ? 'take-me' : props.unavailable ? 'skip-step' : 'next',
+					props.canTakeMe
+						? 'take-me'
+						: props.unavailable
+						? 'skip-step'
+						: 'next',
 				);
 			}
 

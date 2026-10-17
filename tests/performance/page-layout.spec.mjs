@@ -60,7 +60,9 @@ async function mockExtras(page) {
       }
       if (/members\/\d+$/.test(p)) {
         return r.fulfill({
-          json: { data: { id: 1, name: 'Test User', email: 'test@example.test' } },
+          json: {
+            data: { id: 1, name: 'Test User', email: 'test@example.test' },
+          },
         });
       }
       return r.fulfill({ json: { data: {} } });
@@ -84,7 +86,9 @@ for (const vp of VIEWPORTS) {
 
       const offset = await heading.evaluate((h) => {
         const main = document.querySelector('main');
-        return h.getBoundingClientRect().left - main.getBoundingClientRect().left;
+        return (
+          h.getBoundingClientRect().left - main.getBoundingClientRect().left
+        );
       });
       expect(Math.round(offset)).toBe(vp.edge);
       await expect(container).toBeVisible();
@@ -99,7 +103,9 @@ for (const vp of VIEWPORTS) {
   }
 }
 
-test('/settings without a tab opens the workspace settings page', async ({ page }) => {
+test('/settings without a tab opens the workspace settings page', async ({
+  page,
+}) => {
   await mockApp(page);
   await mockExtras(page);
   await page.goto('/settings');

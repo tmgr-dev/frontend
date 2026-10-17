@@ -32,7 +32,11 @@ export const PERMISSIONS = [
 	'menus:task',
 ] as const;
 
-const PAGE_PERMISSIONS = ['pages:read', 'pages:write', 'pages:sections'] as const;
+const PAGE_PERMISSIONS = [
+	'pages:read',
+	'pages:write',
+	'pages:sections',
+] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -142,12 +146,15 @@ const engineSupported = (range: unknown) => {
 const engineMinor = (range: unknown): number =>
 	Number((range as string).match(ENGINE_RANGE)![2]);
 
-const DOMAIN = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const DOMAIN =
+	/^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 
 const parseDomain = (value: unknown): string =>
 	typeof value === 'string' && DOMAIN.test(value)
 		? value
-		: fail(`links domain ${String(value)} must be a host name like example.com`);
+		: fail(
+				`links domain ${String(value)} must be a host name like example.com`,
+		  );
 
 const HTTPS_URL = /^https:\/\/.+/;
 
@@ -211,7 +218,9 @@ const parseMenus = (
 		},
 	);
 	if (items.length > TASK_MENU_MAX_ITEMS)
-		fail(`contributes.menus["${TASK_MENU_LOCATION}"] must have at most ${TASK_MENU_MAX_ITEMS} entries`);
+		fail(
+			`contributes.menus["${TASK_MENU_LOCATION}"] must have at most ${TASK_MENU_MAX_ITEMS} entries`,
+		);
 	if (items.length && !permissions.includes('menus:task'))
 		fail('contributes.menus needs the menus:task permission');
 	return { [TASK_MENU_LOCATION]: items };
@@ -236,9 +245,13 @@ export const parseManifest = (raw: any): PluginManifest => {
 		return LOCAL_ID.test(value) ? value : fail(`${field} id "${value}"`);
 	};
 	const c = raw.contributes ?? {};
-	const boardCardBadges = list(c.boardCardBadges, 'boardCardBadges', (item) => ({
-		id: localId(item, 'boardCardBadges'),
-	}));
+	const boardCardBadges = list(
+		c.boardCardBadges,
+		'boardCardBadges',
+		(item) => ({
+			id: localId(item, 'boardCardBadges'),
+		}),
+	);
 	const boardCardBadgeIds = new Set(boardCardBadges.map((b) => b.id));
 	const allowedDomains = [
 		...new Set(
@@ -273,7 +286,11 @@ export const parseManifest = (raw: any): PluginManifest => {
 			...(deepLink ? { deepLink: true as const } : {}),
 		};
 	});
-	const menus = parseMenus(apiMinor < 6 ? undefined : c.menus, commands, permissions);
+	const menus = parseMenus(
+		apiMinor < 6 ? undefined : c.menus,
+		commands,
+		permissions,
+	);
 	return {
 		id,
 		name: text(raw.name, 'name', 80),
@@ -306,7 +323,8 @@ export const parseManifest = (raw: any): PluginManifest => {
 				const items = list(c.trayItems, 'trayItems', (item) => ({
 					id: localId(item, 'trayItems'),
 				}));
-				if (items.length > 5) fail('contributes.trayItems must have at most 5 entries');
+				if (items.length > 5)
+					fail('contributes.trayItems must have at most 5 entries');
 				return items;
 			})(),
 			commands,
@@ -334,9 +352,15 @@ export const parseManifest = (raw: any): PluginManifest => {
 			boardFilters: list(c.boardFilters, 'boardFilters', (item) => {
 				const badge = text(item?.badge, 'boardFilters.badge', 60);
 				if (!boardCardBadgeIds.has(badge))
-					fail(`boardFilters.badge "${badge}" is not a declared boardCardBadges id`);
-				const key = item?.key === undefined ? undefined : text(item.key, 'boardFilters.key', 40);
-				if (key !== undefined && !/^[a-z0-9_-]+$/.test(key)) fail('boardFilters.key');
+					fail(
+						`boardFilters.badge "${badge}" is not a declared boardCardBadges id`,
+					);
+				const key =
+					item?.key === undefined
+						? undefined
+						: text(item.key, 'boardFilters.key', 40);
+				if (key !== undefined && !/^[a-z0-9_-]+$/.test(key))
+					fail('boardFilters.key');
 				return {
 					id: localId(item, 'boardFilters'),
 					title: text(item?.title, 'boardFilters.title', 40),

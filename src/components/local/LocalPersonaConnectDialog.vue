@@ -1,6 +1,8 @@
 <template>
 	<Dialog :open="open" @update:open="onOpenChange">
-		<DialogContent :class="issuedToken ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'">
+		<DialogContent
+			:class="issuedToken ? 'sm:max-w-[640px]' : 'sm:max-w-[480px]'"
+		>
 			<DialogHeader>
 				<DialogTitle>Connect an agent</DialogTitle>
 			</DialogHeader>
@@ -57,25 +59,36 @@
 					Token issued.
 				</p>
 				<p class="text-sm">
-					<code class="rounded bg-muted px-2 py-1 font-mono text-xs">{{ issuedToken.prefix }}…</code>
+					<code class="rounded bg-muted px-2 py-1 font-mono text-xs"
+						>{{ issuedToken.prefix }}…</code
+					>
 					expires {{ formatDate(issuedToken.expiresAt) }}
 				</p>
 
-				<Button type="button" variant="outline" size="sm" class="self-start" @click="copyToken">
+				<Button
+					type="button"
+					variant="outline"
+					size="sm"
+					class="self-start"
+					@click="copyToken"
+				>
 					{{ copiedToken ? 'Copied' : 'Copy token' }}
 				</Button>
 
 				<div class="flex min-w-0 flex-col gap-2">
 					<p class="text-sm font-medium">MCP config</p>
 
-					<p class="text-xs text-muted-foreground">Codex (<code>~/.codex/config.toml</code>)</p>
+					<p class="text-xs text-muted-foreground">
+						Codex (<code>~/.codex/config.toml</code>)
+					</p>
 					<pre
 						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
 						>{{ codexSnippet }}</pre
 					>
 
 					<p class="text-xs text-muted-foreground">
-						Claude Code: run this once in your terminal, then restart Claude Code. TMGR must be running.
+						Claude Code: run this once in your terminal, then restart Claude
+						Code. TMGR must be running.
 					</p>
 					<pre
 						class="overflow-x-auto whitespace-pre rounded bg-muted p-3 font-mono text-xs"
@@ -84,11 +97,17 @@
 
 					<p class="break-words text-xs text-muted-foreground">
 						Other companions: read the token id from
-						<code>--token-id {{ issuedToken.id }}</code>, or point
-						<code>TMGR_LOCAL_TOKEN</code> at the secret.
+						<code>--token-id {{ issuedToken.id }}</code
+						>, or point <code>TMGR_LOCAL_TOKEN</code> at the secret.
 					</p>
 
-					<Button type="button" variant="outline" size="sm" class="self-start" @click="copyConfig">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="self-start"
+						@click="copyConfig"
+					>
 						{{ copiedConfig ? 'Copied' : 'Copy MCP config' }}
 					</Button>
 				</div>
@@ -120,23 +139,40 @@
 	} from '@/local/localTokens';
 	import type { WorkspacePersonaRow } from '@/local/personas';
 	import type { LocalWorkspace } from '@/local/types';
+	import { thisComputerName } from '@/utils/desktop';
 	import {
 		DEFAULT_TOKEN_EXPIRY_DAYS,
 		EXPIRY_OPTIONS,
 		extractFieldErrors,
 		validateTokenLabel,
 	} from '@/utils/personas';
-	import { thisComputerName } from '@/utils/desktop';
-	import { computed, defineComponent, reactive, ref, watch, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		reactive,
+		ref,
+		watch,
+		type PropType,
+	} from 'vue';
 
-	const BOUNDARY_LINE =
-		`The token keeps an agent inside this persona's permissions and signs everything it writes. It is not a lock against other programs on ${thisComputerName()}: anything running as you can read this workspace's file directly.`;
+	const BOUNDARY_LINE = `The token keeps an agent inside this persona's permissions and signs everything it writes. It is not a lock against other programs on ${thisComputerName()}: anything running as you can read this workspace's file directly.`;
 
 	export default defineComponent({
 		name: 'LocalPersonaConnectDialog',
-		components: { Button, Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input },
+		components: {
+			Button,
+			Dialog,
+			DialogContent,
+			DialogFooter,
+			DialogHeader,
+			DialogTitle,
+			Input,
+		},
 		props: {
-			persona: { type: Object as PropType<WorkspacePersonaRow>, required: true },
+			persona: {
+				type: Object as PropType<WorkspacePersonaRow>,
+				required: true,
+			},
 			workspace: { type: Object as PropType<LocalWorkspace>, required: true },
 			open: { type: Boolean, default: false },
 			initialLabel: { type: String, default: '' },
@@ -261,7 +297,10 @@
 					toast({ title: 'Copied to clipboard' });
 					setTimeout(() => (copiedConfig.value = false), 2000);
 				} catch {
-					toast({ title: 'Could not copy to clipboard', variant: 'destructive' });
+					toast({
+						title: 'Could not copy to clipboard',
+						variant: 'destructive',
+					});
 				}
 			};
 

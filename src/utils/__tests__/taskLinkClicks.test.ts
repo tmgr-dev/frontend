@@ -12,12 +12,16 @@ const click = (extra = {}) => ({
 
 describe('isPlainTaskLinkClick', () => {
 	it('takes a plain click on a task link', () => {
-		expect(isPlainTaskLinkClick(click(), 'https://tmgr.dev/w/tasks/1')).toBe(true);
+		expect(isPlainTaskLinkClick(click(), 'https://tmgr.dev/w/tasks/1')).toBe(
+			true,
+		);
 		expect(isPlainTaskLinkClick(click(), 'tmgr://task/w/1')).toBe(true);
 	});
 
 	it('leaves other links alone', () => {
-		expect(isPlainTaskLinkClick(click(), 'https://tmgr.dev/w/pages/a')).toBe(false);
+		expect(isPlainTaskLinkClick(click(), 'https://tmgr.dev/w/pages/a')).toBe(
+			false,
+		);
 		expect(isPlainTaskLinkClick(click(), 'https://example.com')).toBe(false);
 		expect(isPlainTaskLinkClick(click(), null)).toBe(false);
 	});

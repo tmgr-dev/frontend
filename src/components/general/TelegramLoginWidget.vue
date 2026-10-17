@@ -29,7 +29,10 @@
 	const widgetScriptId = ref(`tg-widget-script-${nanoid(5)}`);
 	const widgetContainer = ref<HTMLDivElement | null>(null);
 	const emit = defineEmits<{ auth: [user: Record<string, unknown>] }>();
-	const callbackName = `__tmgrTelegramAuth_${nanoid(8).replace(/[^A-Za-z0-9]/g, '')}`;
+	const callbackName = `__tmgrTelegramAuth_${nanoid(8).replace(
+		/[^A-Za-z0-9]/g,
+		'',
+	)}`;
 
 	const loadWidgetScript = () => {
 		if (

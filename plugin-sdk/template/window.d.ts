@@ -13,16 +13,30 @@ declare const tmgr: {
 	/** Runs one of the plugin's own declared commands in its sandbox. */
 	runCommand<T = unknown>(id: string, args?: unknown): Promise<T>;
 	tasks: {
-		list(query?: { statusId?: number; categoryId?: number; search?: string; page?: number; perPage?: number }): Promise<{
+		list(query?: {
+			statusId?: number;
+			categoryId?: number;
+			search?: string;
+			page?: number;
+			perPage?: number;
+		}): Promise<{
 			items: Record<string, unknown>[];
 			total: number;
 		}>;
 		get(id: number): Promise<Record<string, unknown>>;
-		update(id: number, patch: Record<string, unknown>): Promise<Record<string, unknown>>;
+		update(
+			id: number,
+			patch: Record<string, unknown>,
+		): Promise<Record<string, unknown>>;
 	};
 	statuses: { list(): Promise<{ id: number; name: string; type: string }[]> };
-	categories: { list(): Promise<{ id: number; title: string; code: string | null }[]> };
-	storage: { get<T = unknown>(key: string): Promise<T | null>; set(key: string, value: unknown): Promise<void> };
+	categories: {
+		list(): Promise<{ id: number; title: string; code: string | null }[]>;
+	};
+	storage: {
+		get<T = unknown>(key: string): Promise<T | null>;
+		set(key: string, value: unknown): Promise<void>;
+	};
 	settings: { get(): Promise<Record<string, unknown>> };
 	notify(message: string): Promise<void>;
 };

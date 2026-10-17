@@ -24,7 +24,8 @@ export const formatDueTime = (
 	now: number,
 ): { text: string; urgency: DueUrgency } => {
 	const diff = Date.parse(at) - now;
-	if (diff < 0) return { text: `overdue ${formatSpan(-diff)}`, urgency: 'overdue' };
+	if (diff < 0)
+		return { text: `overdue ${formatSpan(-diff)}`, urgency: 'overdue' };
 	if (diff < DAY) return { text: `in ${formatSpan(diff)}`, urgency: 'soon' };
 	return { text: `in ${formatSpan(diff)}`, urgency: 'later' };
 };

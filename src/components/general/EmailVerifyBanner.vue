@@ -41,9 +41,8 @@
 
 <script setup lang="ts">
 	import { resendVerificationEmail } from '@/actions/tmgr/emailVerification';
-	import { getUser } from '@/actions/tmgr/user';
+	import { getUser, User } from '@/actions/tmgr/user';
 	import { createResendController } from '@/composable/useEmailVerification';
-	import { User } from '@/actions/tmgr/user';
 	import store from '@/store';
 	import {
 		dismissBanner,

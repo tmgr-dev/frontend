@@ -62,7 +62,9 @@ export const startGoogleAnalytics = ({
 		(w.gtag as (...args: unknown[]) => void)('config', id);
 		const script = doc.createElement('script');
 		script.async = true;
-		script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(id)}`;
+		script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(
+			id,
+		)}`;
 		script.setAttribute(SCRIPT_ATTR, '');
 		doc.head.appendChild(script);
 	};

@@ -44,7 +44,9 @@ export function installDesktopDiagnostics(
 	app.config.errorHandler = (err, instance, info) => {
 		write(
 			'error',
-			`[vue.error] ${info} in <${instance?.$options?.name || 'anonymous'}>: ${describe(err)}`,
+			`[vue.error] ${info} in <${
+				instance?.$options?.name || 'anonymous'
+			}>: ${describe(err)}`,
 		);
 		if (previousErrorHandler) previousErrorHandler(err, instance, info);
 		else console.error(err);
@@ -57,7 +59,9 @@ export function installDesktopDiagnostics(
 	router.afterEach((to, from, failure) => {
 		write(
 			failure ? 'warn' : 'info',
-			`[nav] ${from.fullPath} -> ${to.fullPath}${failure ? ` failure=${describe(failure)}` : ''}`,
+			`[nav] ${from.fullPath} -> ${to.fullPath}${
+				failure ? ` failure=${describe(failure)}` : ''
+			}`,
 		);
 		const target = to.fullPath;
 		setTimeout(() => {

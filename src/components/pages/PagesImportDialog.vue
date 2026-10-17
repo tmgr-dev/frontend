@@ -68,8 +68,8 @@
 			>
 				<p class="text-sm text-ink" data-testid="pages-import-counts">
 					{{ flow.importCount.value }}
-					{{ flow.importCount.value === 1 ? 'page' : 'pages' }} will be created<template
-						v-if="flow.conflictCount.value"
+					{{ flow.importCount.value === 1 ? 'page' : 'pages' }} will be
+					created<template v-if="flow.conflictCount.value"
 						>, {{ flow.conflictCount.value }} with a title that already
 						exists</template
 					>.
@@ -138,11 +138,13 @@
 						{{ flow.warnings.value.length }}
 						{{ flow.warnings.value.length === 1 ? 'warning' : 'warnings' }}
 					</button>
-					<ul v-if="warningsShown" class="mt-2 max-h-40 space-y-1 overflow-y-auto">
+					<ul
+						v-if="warningsShown"
+						class="mt-2 max-h-40 space-y-1 overflow-y-auto"
+					>
 						<li v-for="(warning, index) in flow.warnings.value" :key="index">
-							<span v-if="warning.path" class="font-mono text-xs">{{
-								warning.path
-							}}: </span
+							<span v-if="warning.path" class="font-mono text-xs"
+								>{{ warning.path }}: </span
 							>{{ warning.message }}
 						</li>
 					</ul>
@@ -154,7 +156,9 @@
 				class="space-y-2 py-4"
 				data-testid="pages-import-progress"
 			>
-				<div class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+				<div
+					class="h-2 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"
+				>
 					<div
 						class="h-full bg-blue-600 transition-all dark:bg-blue-500"
 						:style="{ width: `${percent}%` }"
@@ -213,9 +217,8 @@
 					class="max-h-40 space-y-1 overflow-y-auto rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200"
 				>
 					<li v-for="(warning, index) in resultWarnings" :key="index">
-						<span v-if="warning.path" class="font-mono text-xs">{{
-							warning.path
-						}}: </span
+						<span v-if="warning.path" class="font-mono text-xs"
+							>{{ warning.path }}: </span
 						>{{ warning.message }}
 					</li>
 				</ul>
@@ -264,7 +267,13 @@
 	import { usePagesImportFlow } from '@/composable/usePagesImportFlow';
 	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
 	import { ChevronRight, Loader2, Upload } from 'lucide-vue-next';
-	import { computed, defineComponent, onMounted, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		ref,
+		type PropType,
+	} from 'vue';
 
 	export default defineComponent({
 		name: 'PagesImportDialog',

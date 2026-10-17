@@ -1,11 +1,11 @@
-import { createTours } from '../engine';
+import { describeAccelerator, mergeShortcuts } from '@/utils/desktopShortcuts';
+import type { OnboardingApi } from '../api';
 import type { ToursHostDeps } from '../engine';
+import { createTours } from '../engine';
 import { createTourBus } from '../events';
 import { createLease } from '../lease';
 import { setTourTelemetry } from '../telemetry';
 import { COOLDOWN_KEY } from '../triggers';
-import { describeAccelerator, mergeShortcuts } from '@/utils/desktopShortcuts';
-import type { OnboardingApi } from '../api';
 import type { Platform } from '../types';
 
 const memory = () => {
@@ -20,7 +20,9 @@ const flush = () => new Promise((r) => setImmediate(r));
 
 const make = (over: Partial<ToursHostDeps> = {}, tipsMode = 'auto') => {
 	const api: jest.Mocked<OnboardingApi> = {
-		fetchState: jest.fn().mockResolvedValue({ tips_mode: tipsMode, tours_generation: 1 }),
+		fetchState: jest
+			.fn()
+			.mockResolvedValue({ tips_mode: tipsMode, tours_generation: 1 }),
 		putTour: jest.fn().mockResolvedValue({}),
 		putPreferences: jest.fn().mockResolvedValue({}),
 		resetTours: jest.fn().mockResolvedValue({ tours_generation: 2 }),
@@ -37,7 +39,11 @@ const make = (over: Partial<ToursHostDeps> = {}, tipsMode = 'auto') => {
 	const deps: ToursHostDeps = {
 		api,
 		bus: createTourBus(),
-		lease: createLease({ storage: memory(), now: () => clock.now, ownerId: 'a' }),
+		lease: createLease({
+			storage: memory(),
+			now: () => clock.now,
+			ownerId: 'a',
+		}),
 		storage,
 		session: memory(),
 		now: () => clock.now,
@@ -75,11 +81,16 @@ const make = (over: Partial<ToursHostDeps> = {}, tipsMode = 'auto') => {
 
 describe('requires.capability', () => {
 	const item = (h: ReturnType<typeof make>) =>
-		h.engine.api.hubItems.value.find((i) => i.tour.id === 'desktop.local-agent')!;
+		h.engine.api.hubItems.value.find(
+			(i) => i.tour.id === 'desktop.local-agent',
+		)!;
 
 	it('marks the tour unavailable (platform) when the host lacks the capability', () => {
 		const h = make({ capability: () => false });
-		expect(item(h)).toMatchObject({ available: false, unavailableReason: 'platform' });
+		expect(item(h)).toMatchObject({
+			available: false,
+			unavailableReason: 'platform',
+		});
 	});
 
 	it('is available when the capability is supported', () => {
@@ -99,9 +110,14 @@ describe('offer', () => {
 	it('starts an eligible tour and counts as the session auto tour', async () => {
 		const h = make();
 		await h.engine.init();
-		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(true);
+		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(
+			true,
+		);
 		expect(h.engine.api.active.value?.tour.id).toBe('desktop.menu-bar-timer');
-		expect(h.track).toHaveBeenCalledWith('tour_offered', { tour: 'desktop.menu-bar-timer', trigger: 'event' });
+		expect(h.track).toHaveBeenCalledWith('tour_offered', {
+			tour: 'desktop.menu-bar-timer',
+			trigger: 'event',
+		});
 		h.engine.api.skipTour();
 		expect(await h.engine.api.offer('desktop.backups', 'event')).toBe(false);
 	});
@@ -110,7 +126,9 @@ describe('offer', () => {
 		for (const mode of ['hub_only', 'off']) {
 			const h = make({}, mode);
 			await h.engine.init();
-			expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(false);
+			expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(
+				false,
+			);
 			expect(h.engine.api.active.value).toBeNull();
 		}
 	});
@@ -119,7 +137,9 @@ describe('offer', () => {
 		const h = make();
 		await h.engine.init();
 		h.storage.setItem(COOLDOWN_KEY, JSON.stringify(h.clock.now - 1000));
-		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(false);
+		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(
+			false,
+		);
 	});
 
 	it('does not offer a tour that already has state', async () => {
@@ -129,21 +149,29 @@ describe('offer', () => {
 		h.engine.api.skipStep();
 		h.engine.api.skipStep();
 		await flush();
-		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event', { retryMs: 60_000 })).toBe(false);
+		expect(
+			await h.engine.api.offer('desktop.menu-bar-timer', 'event', {
+				retryMs: 60_000,
+			}),
+		).toBe(false);
 	});
 
 	it('returns false at once when busy and no retry is asked for', async () => {
 		const h = make();
 		await h.engine.init();
 		h.clock.busy = true;
-		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(false);
+		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(
+			false,
+		);
 	});
 
 	it('retries while busy and starts once the dialog closes', async () => {
 		const h = make();
 		await h.engine.init();
 		h.clock.busy = true;
-		const result = h.engine.api.offer('desktop.menu-bar-timer', 'event', { retryMs: 60_000 });
+		const result = h.engine.api.offer('desktop.menu-bar-timer', 'event', {
+			retryMs: 60_000,
+		});
 		await advance(h, 10_000);
 		expect(h.engine.api.active.value).toBeNull();
 		h.clock.busy = false;
@@ -156,7 +184,9 @@ describe('offer', () => {
 		const h = make();
 		await h.engine.init();
 		h.clock.busy = true;
-		const result = h.engine.api.offer('desktop.menu-bar-timer', 'event', { retryMs: 6_000 });
+		const result = h.engine.api.offer('desktop.menu-bar-timer', 'event', {
+			retryMs: 6_000,
+		});
 		await advance(h, 2_000);
 		await advance(h, 2_000);
 		await advance(h, 2_000);
@@ -168,8 +198,12 @@ describe('offer', () => {
 		const h = make();
 		await h.engine.init();
 		h.clock.busy = true;
-		const a = h.engine.api.offer('desktop.menu-bar-timer', 'event', { retryMs: 60_000 });
-		const b = h.engine.api.offer('desktop.menu-bar-timer', 'event', { retryMs: 60_000 });
+		const a = h.engine.api.offer('desktop.menu-bar-timer', 'event', {
+			retryMs: 60_000,
+		});
+		const b = h.engine.api.offer('desktop.menu-bar-timer', 'event', {
+			retryMs: 60_000,
+		});
 		expect(a).toBe(b);
 		h.engine.dispose();
 		expect(await a).toBe(false);
@@ -179,7 +213,9 @@ describe('offer', () => {
 		const h = make({ platform: () => 'web' });
 		await h.engine.init();
 		expect(await h.engine.api.offer('nope', 'event')).toBe(false);
-		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(false);
+		expect(await h.engine.api.offer('desktop.menu-bar-timer', 'event')).toBe(
+			false,
+		);
 	});
 });
 
@@ -211,7 +247,9 @@ describe('body parts', () => {
 		const h = make({ keycaps: keycaps('macos') });
 		await h.engine.init();
 		await h.engine.api.start('desktop.menu-bar-timer', 'hub');
-		expect(h.engine.api.active.value?.bodyParts?.[0].text).toContain('menu bar');
+		expect(h.engine.api.active.value?.bodyParts?.[0].text).toContain(
+			'menu bar',
+		);
 	});
 
 	it('leaves plain steps untouched', async () => {
@@ -223,7 +261,8 @@ describe('body parts', () => {
 });
 
 describe('overlay blocking', () => {
-	const last = (h: ReturnType<typeof make>) => h.adapter.show.mock.calls[h.adapter.show.mock.calls.length - 1][0];
+	const last = (h: ReturnType<typeof make>) =>
+		h.adapter.show.mock.calls[h.adapter.show.mock.calls.length - 1][0];
 
 	it('a passive wait step with no anchor does not block the page', async () => {
 		const h = make();
@@ -233,7 +272,11 @@ describe('overlay blocking', () => {
 		h.engine.api.next();
 		await flush();
 		expect(h.engine.api.active.value?.step.type).toBe('wait');
-		expect(last(h)).toMatchObject({ mode: 'passive', anchorEl: null, blocking: false });
+		expect(last(h)).toMatchObject({
+			mode: 'passive',
+			anchorEl: null,
+			blocking: false,
+		});
 	});
 
 	it('a modal step with an anchor still blocks', async () => {

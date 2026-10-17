@@ -47,7 +47,8 @@ const ITEM_KEYS = ['content', 'text', 'meta', 'checked', 'items'];
 
 const itemContent = (item: any): string => {
 	const { content, text } = item;
-	if (content === '' && text != null && text !== '') return itemContent({ text });
+	if (content === '' && text != null && text !== '')
+		return itemContent({ text });
 	if (typeof content === 'string') return content;
 	if (typeof text === 'string') return text;
 	if (Number.isFinite(content)) return String(content);

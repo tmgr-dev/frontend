@@ -1,4 +1,3 @@
-import { computed, reactive } from 'vue';
 import { getAgentStatus } from '@/actions/tmgr/agentStatus';
 import {
 	groupByTask,
@@ -7,6 +6,7 @@ import {
 	type AgentSession,
 	type TaskAgentStatus,
 } from '@/utils/agentStatus';
+import { computed, reactive } from 'vue';
 
 export interface AgentStatusPusher {
 	subscribeToWorkspace: (

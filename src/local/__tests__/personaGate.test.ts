@@ -1,7 +1,7 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
-import { enableLocalPersona } from '../personas';
 import { PERSONA_WHITELIST, personaWhitelistFor } from '../personaGate';
+import { enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
 import { memoryDb, nodeSqliteAvailable } from './nodeDb';
@@ -23,7 +23,9 @@ describe('PERSONA_WHITELIST', () => {
 	});
 
 	it('has no duplicate method+pattern entries', () => {
-		const keys = PERSONA_WHITELIST.map((entry) => `${entry.method} ${entry.pattern}`);
+		const keys = PERSONA_WHITELIST.map(
+			(entry) => `${entry.method} ${entry.pattern}`,
+		);
 		expect(new Set(keys).size).toBe(keys.length);
 	});
 });
@@ -35,16 +37,32 @@ describeSqlite('persona whitelist gate in the local router', () => {
 	const api = createLocalApi();
 	const persona = { kind: 'persona' as const, id: 'p-1', name: 'Reviewer' };
 
-	const call = (method: string, url: string, body?: unknown, actor = ctx.actor) =>
-		dispatchLocal(api, { ...ctx, actor }, method, url, body);
+	const call = (
+		method: string,
+		url: string,
+		body?: unknown,
+		actor = ctx.actor,
+	) => dispatchLocal(api, { ...ctx, actor }, method, url, body);
 
 	beforeEach(async () => {
 		ctx = {
 			db: memoryDb(),
-			workspace: { id: -1, name: 'Personal', code: 'local-personal', schema_version: 0, created_at: '', path: '/tmp/x', database: '/tmp/x/workspace.db' },
+			workspace: {
+				id: -1,
+				name: 'Personal',
+				code: 'local-personal',
+				schema_version: 0,
+				created_at: '',
+				path: '/tmp/x',
+				database: '/tmp/x/workspace.db',
+			},
 			user: { id: 7, name: 'Yurij', email: 'me@example.com' },
 			now: () => clock,
-			files: { url: (key) => `tmgrfile://localhost/${key}`, read: async () => new Blob(['x']), remove: async () => {} },
+			files: {
+				url: (key) => `tmgrfile://localhost/${key}`,
+				read: async () => new Blob(['x']),
+				remove: async () => {},
+			},
 		};
 		await migrate(ctx.db, clock.toISOString());
 		await ctx.db.execute(
@@ -52,7 +70,9 @@ describeSqlite('persona whitelist gate in the local router', () => {
 			 VALUES ('p-1', 7, 'Yurij', 'Reviewer', NULL, NULL, ?, NULL)`,
 			[clock.toISOString()],
 		);
-		const created = await dispatchLocal(api, ctx, 'POST', 'tasks', { title: 'Do the thing' });
+		const created = await dispatchLocal(api, ctx, 'POST', 'tasks', {
+			title: 'Do the thing',
+		});
 		taskId = created!.data.data.id;
 	});
 
@@ -64,7 +84,12 @@ describeSqlite('persona whitelist gate in the local router', () => {
 
 	it('allows a whitelisted write and attributes it to the persona', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
-		const res = await call('POST', `tasks/${taskId}/comments`, { message: 'Looks fine' }, persona);
+		const res = await call(
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'Looks fine' },
+			persona,
+		);
 		expect(res!.status).toBe(201);
 		expect(res!.data.data.author).toEqual({
 			kind: 'persona',
@@ -76,7 +101,12 @@ describeSqlite('persona whitelist gate in the local router', () => {
 
 	it('returns 403 when the grant is missing the required permission', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['comments:read']);
-		const res = await call('POST', `tasks/${taskId}/comments`, { message: 'nope' }, persona);
+		const res = await call(
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'nope' },
+			persona,
+		);
 		expect(res!.status).toBe(403);
 	});
 
@@ -90,14 +120,19 @@ describeSqlite('persona whitelist gate in the local router', () => {
 
 	it('returns 401 when the persona is archived', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['tasks:read']);
-		await ctx.db.execute(`UPDATE personas SET archived_at = ? WHERE uuid = 'p-1'`, [clock.toISOString()]);
+		await ctx.db.execute(
+			`UPDATE personas SET archived_at = ? WHERE uuid = 'p-1'`,
+			[clock.toISOString()],
+		);
 		const res = await call('GET', `tasks/${taskId}`, undefined, persona);
 		expect(res!.status).toBe(401);
 	});
 
 	it('returns 401 OWNER_MISMATCH when the persona belongs to a different account', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['tasks:read']);
-		await ctx.db.execute(`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`);
+		await ctx.db.execute(
+			`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`,
+		);
 		const res = await call('GET', `tasks/${taskId}`, undefined, persona);
 		expect(res!.status).toBe(401);
 	});
@@ -118,7 +153,12 @@ describeSqlite('persona whitelist gate in the local router', () => {
 
 	it('changes the title but strips common_time from a persona PATCH (no timer permission)', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['tasks:write']);
-		const res = await call('PATCH', `tasks/${taskId}`, { title: 'Renamed', common_time: 999 }, persona);
+		const res = await call(
+			'PATCH',
+			`tasks/${taskId}`,
+			{ title: 'Renamed', common_time: 999 },
+			persona,
+		);
 		expect(res!.status).toBe(200);
 		expect(res!.data.data.title).toBe('Renamed');
 		expect(res!.data.data.common_time).toBe(0);
@@ -126,21 +166,47 @@ describeSqlite('persona whitelist gate in the local router', () => {
 
 	it('also strips common_time from a persona creating a task', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['tasks:write']);
-		const res = await call('POST', 'tasks', { title: 'New task', common_time: 999 }, persona);
+		const res = await call(
+			'POST',
+			'tasks',
+			{ title: 'New task', common_time: 999 },
+			persona,
+		);
 		expect(res!.status).toBe(201);
 		expect(res!.data.data.common_time).toBe(0);
 	});
 
-	it('lets a persona delete only its own comment, not the owner\'s', async () => {
+	it("lets a persona delete only its own comment, not the owner's", async () => {
 		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
-		const own = await call('POST', `tasks/${taskId}/comments`, { message: 'mine' }, persona);
-		const ownersComment = await dispatchLocal(api, ctx, 'POST', `tasks/${taskId}/comments`, {
-			message: 'the owner said this',
-		});
-		const refused = await call('DELETE', `comments/${ownersComment!.data.data.id}`, undefined, persona);
+		const own = await call(
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'mine' },
+			persona,
+		);
+		const ownersComment = await dispatchLocal(
+			api,
+			ctx,
+			'POST',
+			`tasks/${taskId}/comments`,
+			{
+				message: 'the owner said this',
+			},
+		);
+		const refused = await call(
+			'DELETE',
+			`comments/${ownersComment!.data.data.id}`,
+			undefined,
+			persona,
+		);
 		expect(refused!.status).toBe(403);
 		expect(refused!.data.code).toBe('NOT_OWN');
-		const allowed = await call('DELETE', `comments/${own!.data.data.id}`, undefined, persona);
+		const allowed = await call(
+			'DELETE',
+			`comments/${own!.data.data.id}`,
+			undefined,
+			persona,
+		);
 		expect(allowed!.status).toBe(200);
 		expect(allowed!.data.data.task_id).toBe(taskId);
 	});
@@ -158,10 +224,21 @@ describeSqlite('persona whitelist gate in the local router', () => {
 
 	it('lets a persona edit only its own comment, and lets the user edit a persona comment', async () => {
 		await enableLocalPersona(ctx, 'p-1', ['comments:write']);
-		const own = await call('POST', `tasks/${taskId}/comments`, { message: 'mine' }, persona);
-		const ownersComment = await dispatchLocal(api, ctx, 'POST', `tasks/${taskId}/comments`, {
-			message: 'the owner said this',
-		});
+		const own = await call(
+			'POST',
+			`tasks/${taskId}/comments`,
+			{ message: 'mine' },
+			persona,
+		);
+		const ownersComment = await dispatchLocal(
+			api,
+			ctx,
+			'POST',
+			`tasks/${taskId}/comments`,
+			{
+				message: 'the owner said this',
+			},
+		);
 
 		const refused = await call(
 			'PUT',
@@ -172,14 +249,27 @@ describeSqlite('persona whitelist gate in the local router', () => {
 		expect(refused!.status).toBe(403);
 		expect(refused!.data.code).toBe('NOT_OWN');
 
-		const editedOwn = await call('PUT', `comments/${own!.data.data.id}`, { message: 'edited mine' }, persona);
+		const editedOwn = await call(
+			'PUT',
+			`comments/${own!.data.data.id}`,
+			{ message: 'edited mine' },
+			persona,
+		);
 		expect(editedOwn!.status).toBe(200);
 		expect(editedOwn!.data.data.message).toBe('edited mine');
 
-		const userEditsPersonaComment = await dispatchLocal(api, ctx, 'PUT', `comments/${own!.data.data.id}`, {
-			message: 'edited by the user',
-		});
+		const userEditsPersonaComment = await dispatchLocal(
+			api,
+			ctx,
+			'PUT',
+			`comments/${own!.data.data.id}`,
+			{
+				message: 'edited by the user',
+			},
+		);
 		expect(userEditsPersonaComment!.status).toBe(200);
-		expect(userEditsPersonaComment!.data.data.message).toBe('edited by the user');
+		expect(userEditsPersonaComment!.data.data.message).toBe(
+			'edited by the user',
+		);
 	});
 });

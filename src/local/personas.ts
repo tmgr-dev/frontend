@@ -1,5 +1,9 @@
+import {
+	LOCAL_OWNER_ID,
+	PERSONA_PERMISSIONS,
+	type PersonaPermission,
+} from './personaGate';
 import { LocalHttpError, type LocalContext } from './types';
-import { LOCAL_OWNER_ID, PERSONA_PERMISSIONS, type PersonaPermission } from './personaGate';
 
 /** Owner-view Persona shape from `GET /api/personas`. Only identity fields are kept locally — the prompt goes to the persona cache, never to workspace.db. */
 export interface CloudPersona {
@@ -97,7 +101,9 @@ export const syncPersonasSnapshot = async (
 	return { synced: personas.length };
 };
 
-export const listLocalPersonas = async (ctx: LocalContext): Promise<WorkspacePersonaRow[]> => {
+export const listLocalPersonas = async (
+	ctx: LocalContext,
+): Promise<WorkspacePersonaRow[]> => {
 	const rows = await ctx.db.select<any>(
 		`SELECT p.*, wp.permissions AS wp_permissions, wp.enabled_at, wp.disabled_at
 		 FROM personas p LEFT JOIN workspace_personas wp ON wp.persona_uuid = p.uuid
@@ -124,9 +130,15 @@ export const enableLocalPersona = async (
 	uuid: string,
 	permissions: string[],
 ): Promise<void> => {
-	const [persona] = await ctx.db.select<{ uuid: string }>(`SELECT uuid FROM personas WHERE uuid = ?`, [uuid]);
-	if (!persona) throw new LocalHttpError(404, 'Persona not found in the local snapshot');
-	const unknown = permissions.find((p) => !PERSONA_PERMISSIONS.includes(p as PersonaPermission));
+	const [persona] = await ctx.db.select<{ uuid: string }>(
+		`SELECT uuid FROM personas WHERE uuid = ?`,
+		[uuid],
+	);
+	if (!persona)
+		throw new LocalHttpError(404, 'Persona not found in the local snapshot');
+	const unknown = permissions.find(
+		(p) => !PERSONA_PERMISSIONS.includes(p as PersonaPermission),
+	);
 	if (unknown) throw new LocalHttpError(422, `Unknown permission ${unknown}`);
 	const now = ctx.now().toISOString();
 	await ctx.db.execute(
@@ -138,11 +150,14 @@ export const enableLocalPersona = async (
 };
 
 /** Local-only, no network: the whitelist gate reads `disabled_at` on every request from then on. */
-export const disableLocalPersona = async (ctx: LocalContext, uuid: string): Promise<void> => {
-	await ctx.db.execute(`UPDATE workspace_personas SET disabled_at = ? WHERE persona_uuid = ?`, [
-		ctx.now().toISOString(),
-		uuid,
-	]);
+export const disableLocalPersona = async (
+	ctx: LocalContext,
+	uuid: string,
+): Promise<void> => {
+	await ctx.db.execute(
+		`UPDATE workspace_personas SET disabled_at = ? WHERE persona_uuid = ?`,
+		[ctx.now().toISOString(), uuid],
+	);
 };
 
 export const DEFAULT_LOCAL_PERSONA_NAME = 'Local agent';
@@ -175,7 +190,9 @@ export const createLocalPersona = async (
 	};
 };
 
-export const ensureDefaultLocalPersona = async (ctx: LocalContext): Promise<{ uuid: string }> => {
+export const ensureDefaultLocalPersona = async (
+	ctx: LocalContext,
+): Promise<{ uuid: string }> => {
 	const [existing] = await ctx.db.select<{ uuid: string }>(
 		`SELECT uuid FROM personas WHERE owner_user_id = ? ORDER BY synced_at, uuid LIMIT 1`,
 		[LOCAL_OWNER_ID],

@@ -1,7 +1,11 @@
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import type { ChatMessage, ChatStreamEvent } from '../personaAgent';
-import { askPersonaOnTask, personaToolDefinition, runPersonaAgent } from '../personaAgent';
+import {
+	askPersonaOnTask,
+	personaToolDefinition,
+	runPersonaAgent,
+} from '../personaAgent';
 import { enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
 import type { LocalContext } from '../types';
@@ -18,16 +22,33 @@ describeSqlite('local persona agent loop', () => {
 
 	const toolCallEvent = (path: string, id = 't1'): ChatStreamEvent => ({
 		type: 'tool_call',
-		call: { id, name: 'tmgr_request', rawArguments: JSON.stringify({ method: 'GET', path }), args: { method: 'GET', path } },
+		call: {
+			id,
+			name: 'tmgr_request',
+			rawArguments: JSON.stringify({ method: 'GET', path }),
+			args: { method: 'GET', path },
+		},
 	});
 
 	beforeEach(async () => {
 		ctx = {
 			db: memoryDb(),
-			workspace: { id: -1, name: 'Personal', code: 'local-personal', schema_version: 0, created_at: '', path: '/tmp/x', database: '/tmp/x/workspace.db' },
+			workspace: {
+				id: -1,
+				name: 'Personal',
+				code: 'local-personal',
+				schema_version: 0,
+				created_at: '',
+				path: '/tmp/x',
+				database: '/tmp/x/workspace.db',
+			},
 			user: { id: 7, name: 'Yurij', email: 'me@example.com' },
 			now: () => clock,
-			files: { url: (key) => `tmgrfile://localhost/${key}`, read: async () => new Blob(['x']), remove: async () => {} },
+			files: {
+				url: (key) => `tmgrfile://localhost/${key}`,
+				read: async () => new Blob(['x']),
+				remove: async () => {},
+			},
 		};
 		await migrate(ctx.db, clock.toISOString());
 		await ctx.db.execute(
@@ -35,20 +56,44 @@ describeSqlite('local persona agent loop', () => {
 			 VALUES ('p-1', 7, 'Yurij', 'Reviewer', NULL, NULL, ?, NULL)`,
 			[clock.toISOString()],
 		);
-		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'comments:write', 'agent_work:read', 'agent_work:write']);
-		const created = await dispatchLocal(router, ctx, 'POST', 'tasks', { title: 'Review the PR' });
+		await enableLocalPersona(ctx, 'p-1', [
+			'tasks:read',
+			'comments:write',
+			'agent_work:read',
+			'agent_work:write',
+		]);
+		const created = await dispatchLocal(router, ctx, 'POST', 'tasks', {
+			title: 'Review the PR',
+		});
 		taskId = created!.data.data.id;
 	});
 
 	it('still answers when agent work is turned off, without recording a run', async () => {
-		await dispatchLocal(router, ctx, 'PUT', 'workspaces/-1/feature-toggles', { features: { agent_work: false } });
+		await dispatchLocal(router, ctx, 'PUT', 'workspaces/-1/feature-toggles', {
+			features: { agent_work: false },
+		});
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield { type: 'text', delta: 'Fine.' };
 		};
-		const result = await runPersonaAgent({ ctx, router, persona, taskId, systemPrompt: 'Be careful.', grantedPermissions: ['tasks:read'], chat });
+		const result = await runPersonaAgent({
+			ctx,
+			router,
+			persona,
+			taskId,
+			systemPrompt: 'Be careful.',
+			grantedPermissions: ['tasks:read'],
+			chat,
+		});
 		expect(result.text).toBe('Fine.');
-		await dispatchLocal(router, ctx, 'PUT', 'workspaces/-1/feature-toggles', { features: { agent_work: true } });
-		const overview = await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/agent-work`);
+		await dispatchLocal(router, ctx, 'PUT', 'workspaces/-1/feature-toggles', {
+			features: { agent_work: true },
+		});
+		const overview = await dispatchLocal(
+			router,
+			ctx,
+			'GET',
+			`tasks/${taskId}/agent-work`,
+		);
 		expect(overview!.data.data.runs).toEqual([]);
 	});
 
@@ -75,7 +120,10 @@ describeSqlite('local persona agent loop', () => {
 
 		expect(result).toEqual({ text: 'Looks good, no blockers.', toolCalls: 1 });
 
-		const [run] = await ctx.db.select<any>(`SELECT * FROM agent_work_runs WHERE task_id = ?`, [taskId]);
+		const [run] = await ctx.db.select<any>(
+			`SELECT * FROM agent_work_runs WHERE task_id = ?`,
+			[taskId],
+		);
 		expect(run.agent).toBe('local-llm');
 		expect(run.actor_kind).toBe('persona');
 		expect(run.actor_id).toBe('p-1');
@@ -85,7 +133,9 @@ describeSqlite('local persona agent loop', () => {
 	it('pairs the assistant tool_calls message with a matching tool result message', async () => {
 		const seenMessages: ChatMessage[][] = [];
 		let calls = 0;
-		const chat = async function* (messages: ChatMessage[]): AsyncIterable<ChatStreamEvent> {
+		const chat = async function* (
+			messages: ChatMessage[],
+		): AsyncIterable<ChatStreamEvent> {
 			seenMessages.push(messages.map((m) => ({ ...m })));
 			calls += 1;
 			if (calls === 1) {
@@ -106,9 +156,18 @@ describeSqlite('local persona agent loop', () => {
 		});
 
 		const secondCallMessages = seenMessages[1];
-		const assistantMessage = secondCallMessages.find((m) => m.role === 'assistant');
+		const assistantMessage = secondCallMessages.find(
+			(m) => m.role === 'assistant',
+		);
 		expect(assistantMessage?.tool_calls).toEqual([
-			{ id: 't1', type: 'function', function: { name: 'tmgr_request', arguments: JSON.stringify({ method: 'GET', path: `tasks/${taskId}` }) } },
+			{
+				id: 't1',
+				type: 'function',
+				function: {
+					name: 'tmgr_request',
+					arguments: JSON.stringify({ method: 'GET', path: `tasks/${taskId}` }),
+				},
+			},
 		]);
 		const toolMessage = secondCallMessages.find((m) => m.role === 'tool');
 		expect(toolMessage?.tool_call_id).toBe('t1');
@@ -126,7 +185,15 @@ describeSqlite('local persona agent loop', () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			calls += 1;
 			if (calls === 1) {
-				yield { type: 'tool_call', call: { id: 'bad', name: 'tmgr_request', rawArguments: '{}', args: {} as any } };
+				yield {
+					type: 'tool_call',
+					call: {
+						id: 'bad',
+						name: 'tmgr_request',
+						rawArguments: '{}',
+						args: {} as any,
+					},
+				};
 			} else {
 				yield { type: 'text', delta: 'done' };
 			}
@@ -178,7 +245,12 @@ describeSqlite('local persona agent loop', () => {
 			grantedPermissions: ['comments:write'],
 			chat,
 		});
-		const comments = await dispatchLocal(router, ctx, 'GET', `tasks/${taskId}/comments`);
+		const comments = await dispatchLocal(
+			router,
+			ctx,
+			'GET',
+			`tasks/${taskId}/comments`,
+		);
 		expect(comments!.data.data).toHaveLength(1);
 		expect(comments!.data.data[0]).toMatchObject({
 			message: 'No blockers found.',
@@ -190,7 +262,10 @@ describeSqlite('local persona agent loop', () => {
 		const chat = async function* (): AsyncIterable<ChatStreamEvent> {
 			yield { type: 'text', delta: 'No blockers found.' };
 		};
-		await enableLocalPersona(ctx, 'p-1', ['agent_work:read', 'agent_work:write']);
+		await enableLocalPersona(ctx, 'p-1', [
+			'agent_work:read',
+			'agent_work:write',
+		]);
 		await expect(
 			askPersonaOnTask({
 				ctx,
@@ -210,7 +285,15 @@ describeSqlite('local persona agent loop', () => {
 			yield { type: 'text', delta: 'hi' };
 		};
 		await expect(
-			runPersonaAgent({ ctx, router, persona, taskId, systemPrompt: 'x', grantedPermissions: ['tasks:read'], chat }),
+			runPersonaAgent({
+				ctx,
+				router,
+				persona,
+				taskId,
+				systemPrompt: 'x',
+				grantedPermissions: ['tasks:read'],
+				chat,
+			}),
 		).rejects.toThrow('agent-work run');
 	});
 });

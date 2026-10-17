@@ -1,5 +1,8 @@
 <template>
-	<div v-if="show && enabledPersonas.length" class="mb-3 flex items-center gap-2 text-xs">
+	<div
+		v-if="show && enabledPersonas.length"
+		class="mb-3 flex items-center gap-2 text-xs"
+	>
 		<select
 			v-model="selected"
 			class="rounded border border-line bg-surface px-2 py-1 dark:bg-surface-sunken"
@@ -33,9 +36,15 @@
 <script lang="ts">
 	import { createLocalApi } from '@/local/api';
 	import { createLlmChat } from '@/local/llmClient';
+	import {
+		askPersonaOnTask,
+		personaToolDefinition,
+	} from '@/local/personaAgent';
 	import { readPersonaCache } from '@/local/personaCache';
-	import { askPersonaOnTask, personaToolDefinition } from '@/local/personaAgent';
-	import { listLocalPersonas, type WorkspacePersonaRow } from '@/local/personas';
+	import {
+		listLocalPersonas,
+		type WorkspacePersonaRow,
+	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -82,16 +91,23 @@
 
 			const ask = async () => {
 				if (!workspace || !selected.value) return;
-				const persona = enabledPersonas.value.find((p) => p.uuid === selected.value);
+				const persona = enabledPersonas.value.find(
+					(p) => p.uuid === selected.value,
+				);
 				if (!persona) return;
 				asking.value = true;
 				error.value = null;
 				try {
 					const ctx = await localContext(workspace, currentUser());
 					const cached = await readPersonaCache(persona.uuid, currentUser().id);
-					const systemPrompt = cached?.system_prompt || `You are ${persona.name}. ${persona.description ?? ''}`;
+					const systemPrompt =
+						cached?.system_prompt ||
+						`You are ${persona.name}. ${persona.description ?? ''}`;
 					const grantedPermissions = persona.permissions ?? [];
-					const { chat, cancel } = createLlmChat([personaToolDefinition(grantedPermissions)], currentUser().id);
+					const { chat, cancel } = createLlmChat(
+						[personaToolDefinition(grantedPermissions)],
+						currentUser().id,
+					);
 					cancelCurrent = cancel;
 					await askPersonaOnTask({
 						ctx,

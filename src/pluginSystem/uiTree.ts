@@ -12,7 +12,12 @@ export type Color =
 
 export type Gap = 'none' | 'sm' | 'md' | 'lg';
 export type Command = { command: string; args?: unknown };
-export type MenuItem = { text: string; command: string; args?: unknown; confirm?: string };
+export type MenuItem = {
+	text: string;
+	command: string;
+	args?: unknown;
+	confirm?: string;
+};
 
 export type UiNode =
 	| {
@@ -44,7 +49,13 @@ export type UiNode =
 	| { type: 'menu'; label?: string; icon: 'more'; items: MenuItem[] }
 	| { type: 'heading'; text: string; level: 1 | 2 | 3 }
 	| { type: 'text'; text: string; tone: Tone }
-	| { type: 'badge'; text: string; color: Color; command?: string; args?: unknown }
+	| {
+			type: 'badge';
+			text: string;
+			color: Color;
+			command?: string;
+			args?: unknown;
+	  }
 	| {
 			type: 'stat';
 			label: string;
@@ -109,7 +120,11 @@ const ALIGNS: ('start' | 'center' | 'end' | 'stretch')[] = [
 	'stretch',
 ];
 const JUSTIFIES: ('start' | 'between' | 'end')[] = ['start', 'between', 'end'];
-const CARD_TONES: ('default' | 'muted' | 'raised')[] = ['default', 'muted', 'raised'];
+const CARD_TONES: ('default' | 'muted' | 'raised')[] = [
+	'default',
+	'muted',
+	'raised',
+];
 const PADDINGS: ('sm' | 'md' | 'lg')[] = ['sm', 'md', 'lg'];
 const BUTTON_VARIANTS: ('default' | 'primary' | 'ghost')[] = [
 	'default',
@@ -136,15 +151,18 @@ export const isLinkAllowed = (url: string, context: LinkContext): boolean => {
 		return false;
 	}
 	return (
-		parsed.protocol === 'https:' && context.allowedDomains.includes(parsed.hostname)
+		parsed.protocol === 'https:' &&
+		context.allowedDomains.includes(parsed.hostname)
 	);
 };
 
 const pick = <T>(value: unknown, allowed: readonly T[], fallback: T): T =>
 	allowed.includes(value as T) ? (value as T) : fallback;
 
-const pickOptional = <T>(value: unknown, allowed: readonly T[]): T | undefined =>
-	allowed.includes(value as T) ? (value as T) : undefined;
+const pickOptional = <T>(
+	value: unknown,
+	allowed: readonly T[],
+): T | undefined => (allowed.includes(value as T) ? (value as T) : undefined);
 
 const text = (value: unknown): string | null =>
 	typeof value === 'string'
@@ -153,7 +171,9 @@ const text = (value: unknown): string | null =>
 		? String(value)
 		: null;
 
-const parseCommandArgs = (value: any): { command: string; args?: unknown } | null => {
+const parseCommandArgs = (
+	value: any,
+): { command: string; args?: unknown } | null => {
 	const command =
 		typeof value?.command === 'string' ? value.command.slice(0, 120) : null;
 	if (!command) return null;
@@ -205,7 +225,11 @@ export const sanitizeTree = (
 	apiMinor: number = CURRENT_API_MINOR,
 ): UiNode | null => {
 	let budget = MAX_NODES;
-	const node = (value: any, depth: number, cardDepth: number): UiNode | null => {
+	const node = (
+		value: any,
+		depth: number,
+		cardDepth: number,
+	): UiNode | null => {
 		if (depth > MAX_DEPTH || budget-- <= 0) return null;
 		const plain = text(value);
 		if (plain !== null) return { type: 'text', text: plain, tone: 'default' };
@@ -218,7 +242,8 @@ export const sanitizeTree = (
 			case 'stack': {
 				const base = {
 					type: 'stack' as const,
-					direction: value.direction === 'row' ? ('row' as const) : ('column' as const),
+					direction:
+						value.direction === 'row' ? ('row' as const) : ('column' as const),
 					children: children(value.children, cardDepth),
 				};
 				if (apiMinor < 3) return base;
@@ -246,7 +271,9 @@ export const sanitizeTree = (
 				const tone = pick(value.tone, CARD_TONES, 'default');
 				const padding = pick(value.padding, PADDINGS, 'md');
 				const accent =
-					value.accent === undefined ? undefined : pick(value.accent, COLORS, 'gray');
+					value.accent === undefined
+						? undefined
+						: pick(value.accent, COLORS, 'gray');
 				const grow = value.grow === true ? true : undefined;
 				const onClick = parseCommandArgs(value.onClick);
 				const label = onClick ? findLabel(kids) ?? 'Card' : undefined;
@@ -289,8 +316,11 @@ export const sanitizeTree = (
 				};
 			}
 			case 'menu': {
-				if (apiMinor < 3) return { type: 'stack', direction: 'column', children: [] };
-				const items = (Array.isArray(value.items) ? value.items.slice(0, MAX_MENU_ITEMS) : [])
+				if (apiMinor < 3)
+					return { type: 'stack', direction: 'column', children: [] };
+				const items = (
+					Array.isArray(value.items) ? value.items.slice(0, MAX_MENU_ITEMS) : []
+				)
 					// Items count against the node budget, like table rows, so nesting cannot multiply it.
 					.filter(() => budget-- > 0)
 					.map((item: any) => {
@@ -300,7 +330,11 @@ export const sanitizeTree = (
 						const confirmText =
 							typeof item?.confirm === 'string' ? item.confirm.trim() : '';
 						const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
-						return { text: t, ...cmd, ...(confirm !== undefined ? { confirm } : {}) };
+						return {
+							text: t,
+							...cmd,
+							...(confirm !== undefined ? { confirm } : {}),
+						};
 					})
 					.filter((item: any): item is MenuItem => item !== null);
 				if (items.length === 0) return null;
@@ -395,8 +429,12 @@ export const sanitizeTree = (
 				const confirmText =
 					typeof value.confirm === 'string' ? value.confirm.trim() : '';
 				const confirm = confirmText ? confirmText.slice(0, 200) : undefined;
-				const variant = apiMinor >= 3 ? pickOptional(value.variant, BUTTON_VARIANTS) : undefined;
-				const size = apiMinor >= 3 ? pickOptional(value.size, BUTTON_SIZES) : undefined;
+				const variant =
+					apiMinor >= 3
+						? pickOptional(value.variant, BUTTON_VARIANTS)
+						: undefined;
+				const size =
+					apiMinor >= 3 ? pickOptional(value.size, BUTTON_SIZES) : undefined;
 				return {
 					type: 'button',
 					text: t,
@@ -428,7 +466,8 @@ export const sanitizeTree = (
 					: { type: 'copyable', text: t, label };
 			}
 			case 'link': {
-				const url = typeof value.url === 'string' ? value.url.slice(0, 2000) : null;
+				const url =
+					typeof value.url === 'string' ? value.url.slice(0, 2000) : null;
 				if (url === null) return null;
 				const label = text(value.text) ?? url;
 				if (!isLinkAllowed(url, context)) {
@@ -454,17 +493,22 @@ export const sanitizeTree = (
 			}
 			case 'keyValue': {
 				const items = (
-					Array.isArray(value.items) ? value.items.slice(0, MAX_KEY_VALUE_ITEMS) : []
+					Array.isArray(value.items)
+						? value.items.slice(0, MAX_KEY_VALUE_ITEMS)
+						: []
 				)
 					// Rows count against the node budget, like table rows, so nesting cannot multiply it.
 					.filter(() => budget-- > 0)
 					.map((item: any) => {
 						const key = text(item?.key)?.slice(0, 60) ?? null;
 						const value_ = node(item?.value, depth + 1, cardDepth);
-						return key !== null && value_ !== null ? { key, value: value_ } : null;
+						return key !== null && value_ !== null
+							? { key, value: value_ }
+							: null;
 					})
 					.filter(
-						(item: any): item is { key: string; value: UiNode } => item !== null,
+						(item: any): item is { key: string; value: UiNode } =>
+							item !== null,
 					);
 				return { type: 'keyValue', items };
 			}

@@ -1,9 +1,13 @@
-import { domainEvents, type DomainEvent } from '@/utils/domainEvents';
 import type { EventHandlers } from '@/types/dashboard';
+import { domainEvents, type DomainEvent } from '@/utils/domainEvents';
 import { createLocalApi } from '../api';
 import { dispatchLocal } from '../dispatch';
 import { installLocalLiveUpdates } from '../liveUpdates';
-import { handleLocalAccessRequest, type LocalAccessDeps, type LocalAccessRequestPayload } from '../localAccess';
+import {
+	handleLocalAccessRequest,
+	type LocalAccessDeps,
+	type LocalAccessRequestPayload,
+} from '../localAccess';
 import { enableLocalPersona } from '../personas';
 import { migrate } from '../schema';
 import type { LocalContext, LocalUser, LocalWorkspace } from '../types';
@@ -31,13 +35,23 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 	};
 	const user: LocalUser = { id: 7, name: 'Yurij', email: 'me@example.com' };
 	const deps: LocalAccessDeps = {
-		resolveWorkspace: async (code) => (code === workspace.code ? workspace : null),
+		resolveWorkspace: async (code) =>
+			code === workspace.code ? workspace : null,
 		currentUser: () => user,
-		contextFor: async (ws, u, actor) => ({ ...ctx, workspace: ws, user: u, actor }),
+		contextFor: async (ws, u, actor) => ({
+			...ctx,
+			workspace: ws,
+			user: u,
+			actor,
+		}),
 		tokenInfo: async () => null,
 		promptVersion: async () => null,
 	};
-	const request = (method: string, path: string, body?: unknown): LocalAccessRequestPayload => ({
+	const request = (
+		method: string,
+		path: string,
+		body?: unknown,
+	): LocalAccessRequestPayload => ({
 		id: 1,
 		workspaceCode: workspace.code,
 		workspaceId: workspace.id,
@@ -49,7 +63,12 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 		body: body === undefined ? null : JSON.stringify(body),
 	});
 	const mcpCall = (name: string, args: Record<string, unknown>) =>
-		request('POST', '/mcp', { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } });
+		request('POST', '/mcp', {
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'tools/call',
+			params: { name, arguments: args },
+		});
 
 	beforeEach(async () => {
 		ctx = {
@@ -69,8 +88,19 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 			 VALUES ('p-1', 7, 'Yurij', 'Reviewer', NULL, NULL, ?, NULL)`,
 			[clock.toISOString()],
 		);
-		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'tasks:write', 'comments:write', 'agent_work:write']);
-		const created = await dispatchLocal(createLocalApi(), ctx, 'POST', 'tasks', { title: 'Review the PR' });
+		await enableLocalPersona(ctx, 'p-1', [
+			'tasks:read',
+			'tasks:write',
+			'comments:write',
+			'agent_work:write',
+		]);
+		const created = await dispatchLocal(
+			createLocalApi(),
+			ctx,
+			'POST',
+			'tasks',
+			{ title: 'Review the PR' },
+		);
 		taskId = created!.data.data.id;
 		events = [];
 		unsubscribe = domainEvents.on((event) => events.push(event));
@@ -79,15 +109,26 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 	afterEach(() => unsubscribe());
 
 	it('emits comment.created as the persona for an MCP add_comment', async () => {
-		const reply = await handleLocalAccessRequest(mcpCall('add_comment', { taskId, message: 'from mcp' }), deps);
+		const reply = await handleLocalAccessRequest(
+			mcpCall('add_comment', { taskId, message: 'from mcp' }),
+			deps,
+		);
 		expect(JSON.parse(reply.body).result.isError).toBeFalsy();
 		expect(events).toEqual([
-			expect.objectContaining({ type: 'comment.created', workspaceId: -1, taskId, actor: 'persona:p-1' }),
+			expect.objectContaining({
+				type: 'comment.created',
+				workspaceId: -1,
+				taskId,
+				actor: 'persona:p-1',
+			}),
 		]);
 	});
 
 	it('emits task.updated and task.statusChanged for an MCP update_task with a status', async () => {
-		await handleLocalAccessRequest(mcpCall('update_task', { taskId, title: 'Renamed', statusId: 2 }), deps);
+		await handleLocalAccessRequest(
+			mcpCall('update_task', { taskId, title: 'Renamed', statusId: 2 }),
+			deps,
+		);
 		expect(events.map((e) => [e.type, e.actor])).toEqual([
 			['task.updated', 'persona:p-1'],
 			['task.statusChanged', 'persona:p-1'],
@@ -95,9 +136,19 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 	});
 
 	it('journals an MCP write as mcp and a REST write as local_access, both as an agent', async () => {
-		await handleLocalAccessRequest(mcpCall('add_comment', { taskId, message: 'from mcp' }), deps);
-		await handleLocalAccessRequest(request('POST', `/api/tasks/${taskId}/comments`, { message: 'from rest' }), deps);
-		const rows = await ctx.db.select<any>(`SELECT author_kind, source, actor_id FROM edit_journal WHERE field = 'comment' ORDER BY seq`);
+		await handleLocalAccessRequest(
+			mcpCall('add_comment', { taskId, message: 'from mcp' }),
+			deps,
+		);
+		await handleLocalAccessRequest(
+			request('POST', `/api/tasks/${taskId}/comments`, {
+				message: 'from rest',
+			}),
+			deps,
+		);
+		const rows = await ctx.db.select<any>(
+			`SELECT author_kind, source, actor_id FROM edit_journal WHERE field = 'comment' ORDER BY seq`,
+		);
 		expect(rows).toEqual([
 			{ author_kind: 'agent', source: 'mcp', actor_id: 'p-1' },
 			{ author_kind: 'agent', source: 'local_access', actor_id: 'p-1' },
@@ -105,7 +156,10 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 	});
 
 	it('emits a REST write exactly once', async () => {
-		await handleLocalAccessRequest(request('POST', `/api/tasks/${taskId}/comments`, { message: 'hi' }), deps);
+		await handleLocalAccessRequest(
+			request('POST', `/api/tasks/${taskId}/comments`, { message: 'hi' }),
+			deps,
+		);
 		expect(events.filter((e) => e.type === 'comment.created')).toHaveLength(1);
 	});
 
@@ -123,9 +177,18 @@ describeSqlite('persona writes over the local socket reach the open UI', () => {
 			deps,
 		);
 		const runId = JSON.parse(started.body).data.id;
-		await handleLocalAccessRequest(mcpCall('finish_agent_work', { runId, status: 'succeeded' }), deps);
+		await handleLocalAccessRequest(
+			mcpCall('finish_agent_work', { runId, status: 'succeeded' }),
+			deps,
+		);
 		uninstall();
-		expect(onAgentWorkChanged.mock.calls.map(([run]) => [run.id, run.task_id, run.status])).toEqual([
+		expect(
+			onAgentWorkChanged.mock.calls.map(([run]) => [
+				run.id,
+				run.task_id,
+				run.status,
+			]),
+		).toEqual([
 			[runId, taskId, 'running'],
 			[runId, taskId, 'succeeded'],
 		]);

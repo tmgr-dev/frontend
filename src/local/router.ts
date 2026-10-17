@@ -50,7 +50,12 @@ export class LocalRouter {
 	match(
 		method: string,
 		path: string,
-	): { handler: Handler; params: Record<string, string>; status: number; pattern: string } | null {
+	): {
+		handler: Handler;
+		params: Record<string, string>;
+		status: number;
+		pattern: string;
+	} | null {
 		const upper = method.toUpperCase();
 		for (const route of this.routes) {
 			if (route.method !== upper) continue;
@@ -60,7 +65,12 @@ export class LocalRouter {
 			route.keys.forEach((key, i) => {
 				params[key] = decodeURIComponent(found[i + 1]);
 			});
-			return { handler: route.handler, params, status: route.status, pattern: route.pattern };
+			return {
+				handler: route.handler,
+				params,
+				status: route.status,
+				pattern: route.pattern,
+			};
 		}
 		return null;
 	}

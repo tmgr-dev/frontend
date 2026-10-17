@@ -157,7 +157,12 @@ describe('routineForEdit + routineDraftFrom (reopening Edit)', () => {
 				reminder_min: 5,
 				frequency: 'WEEKLY',
 			});
-		const bare = { ...fullTask, id: 9934, title: 'Sales', routine_category: 'work' };
+		const bare = {
+			...fullTask,
+			id: 9934,
+			title: 'Sales',
+			routine_category: 'work',
+		};
 		const d = routineDraftFrom(
 			routineForEdit(bare, sales('2026-10-14'), [
 				sales('2026-10-14'),

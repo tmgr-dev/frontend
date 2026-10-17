@@ -62,9 +62,7 @@ it.each([
 	],
 ])('refuses a broken bundle %#', (bundle, message) => {
 	const input =
-		typeof bundle === 'string'
-			? { ...release(null), bundle }
-			: release(bundle);
+		typeof bundle === 'string' ? { ...release(null), bundle } : release(bundle);
 	expect(() => bundleToPackage(input)).toThrow(message);
 });
 

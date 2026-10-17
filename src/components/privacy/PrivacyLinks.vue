@@ -1,5 +1,7 @@
 <template>
-	<p class="flex items-center justify-center gap-4 text-xs text-muted-foreground">
+	<p
+		class="flex items-center justify-center gap-4 text-xs text-muted-foreground"
+	>
 		<router-link to="/privacy" class="hover:text-foreground hover:underline">
 			Privacy
 		</router-link>

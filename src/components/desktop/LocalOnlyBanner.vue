@@ -66,15 +66,20 @@
 </template>
 
 <script lang="ts">
-	import { backupNow, backupStatus, revealBackups, type BackupStatus } from '@/local/backups';
+	import {
+		backupNow,
+		backupStatus,
+		revealBackups,
+		type BackupStatus,
+	} from '@/local/backups';
 	import { activeLocalWorkspace } from '@/local/runtime';
 	import { desktopOfferEnv, offerBackups } from '@/tours/desktopOffers';
 	import { isDesktopApp } from '@/utils/desktop';
 	import {
 		backupWarning,
-		tildePath,
 		bannerDismissed,
 		dismissBanner,
+		tildePath,
 	} from '@/utils/localOnly';
 	import { X } from 'lucide-vue-next';
 	import {
@@ -104,11 +109,10 @@
 
 			const localOnly = computed(() => store.getters.isLocalOnly === true);
 			const inLocalWorkspace = computed(
-				() => localOnly.value || store.getters.currentWorkspace?.is_local === true,
+				() =>
+					localOnly.value || store.getters.currentWorkspace?.is_local === true,
 			);
-			const watching = computed(
-				() => isDesktopApp() && inLocalWorkspace.value,
-			);
+			const watching = computed(() => isDesktopApp() && inLocalWorkspace.value);
 
 			const code = computed(
 				() =>

@@ -1,105 +1,122 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "TMGR",
-  "version": "0.9.45",
-  "identifier": "dev.tmgr.desktop",
-  "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
-    "beforeDevCommand": "npm run dev -- --mode desktop",
-    "beforeBuildCommand": "npx vite build --mode desktop"
-  },
-  "app": {
-    "windows": [
-      {
-        "title": "TMGR",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
-        "center": true,
-        "resizable": true,
-        "fullscreen": false,
-        "label": "main",
-        "dragDropEnabled": false,
-        "create": false,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
-        "visible": false,
-        "backgroundThrottling": "disabled"
-      }
-    ],
-    "security": {
-      "csp": {
-        "default-src": "'self'",
-        "script-src": ["'self'", "https://telegram.org", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
-        "style-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"],
-        "img-src": ["'self'", "data:", "blob:", "https:", "tmgrfile:", "http://tmgrfile.localhost"],
-        "media-src": ["'self'", "data:", "blob:", "https:", "tmgrfile:", "http://tmgrfile.localhost"],
-        "font-src": ["'self'", "data:"],
-        "connect-src": [
-          "'self'",
-          "ipc:",
-          "http://ipc.localhost",
-          "tmgrfile:",
-          "http://tmgrfile.localhost",
-          "https://api.tmgr.dev",
-          "wss://ws.tmgr.dev",
-          "https://ws.tmgr.dev",
-          "https://ntfy.tmgr.dev",
-          "wss://ntfy.tmgr.dev",
-          "https://s3.danubedata.ro"
-        ],
-        "frame-src": [
-          "https://oauth.telegram.org",
-          "https://www.youtube.com",
-          "https://codesandbox.io",
-          "https://codepen.io",
-          "https://www.figma.com"
-        ],
-        "worker-src": ["'self'", "blob:"],
-        "object-src": "'none'",
-        "base-uri": "'self'",
-        "form-action": "'self'",
-        "frame-ancestors": "'none'"
-      },
-      "devCsp": null,
-      "dangerousDisableAssetCspModification": ["style-src"]
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": [
-      "app",
-      "dmg"
-    ],
-    "category": "Productivity",
-    "shortDescription": "Task manager with time tracking",
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
-    "macOS": {
-      "minimumSystemVersion": "11.0"
-    },
-    "createUpdaterArtifacts": true
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxODdEQzA0MEM0RUJBOUUKUldTZXVrNE1CTnlIWVE3K3E3KzR4bjdBNmtsclFVRTVDKy81dHFOOEhXc2syamRJVWxOYXJ2bnMK",
-      "endpoints": [
-        "https://github.com/tmgr-dev/frontend/releases/latest/download/latest.json"
-      ]
-    },
-    "deep-link": {
-      "desktop": {
-        "schemes": [
-          "tmgr"
-        ]
-      }
-    }
-  }
+	"$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+	"productName": "TMGR",
+	"version": "0.9.45",
+	"identifier": "dev.tmgr.desktop",
+	"build": {
+		"frontendDist": "../dist",
+		"devUrl": "http://localhost:5173",
+		"beforeDevCommand": "npm run dev -- --mode desktop",
+		"beforeBuildCommand": "npx vite build --mode desktop"
+	},
+	"app": {
+		"windows": [
+			{
+				"title": "TMGR",
+				"width": 1280,
+				"height": 800,
+				"minWidth": 960,
+				"minHeight": 600,
+				"center": true,
+				"resizable": true,
+				"fullscreen": false,
+				"label": "main",
+				"dragDropEnabled": false,
+				"create": false,
+				"titleBarStyle": "Overlay",
+				"hiddenTitle": true,
+				"visible": false,
+				"backgroundThrottling": "disabled"
+			}
+		],
+		"security": {
+			"csp": {
+				"default-src": "'self'",
+				"script-src": [
+					"'self'",
+					"https://telegram.org",
+					"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"
+				],
+				"style-src": [
+					"'self'",
+					"'unsafe-inline'",
+					"https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@9.18.1/"
+				],
+				"img-src": [
+					"'self'",
+					"data:",
+					"blob:",
+					"https:",
+					"tmgrfile:",
+					"http://tmgrfile.localhost"
+				],
+				"media-src": [
+					"'self'",
+					"data:",
+					"blob:",
+					"https:",
+					"tmgrfile:",
+					"http://tmgrfile.localhost"
+				],
+				"font-src": ["'self'", "data:"],
+				"connect-src": [
+					"'self'",
+					"ipc:",
+					"http://ipc.localhost",
+					"tmgrfile:",
+					"http://tmgrfile.localhost",
+					"https://api.tmgr.dev",
+					"wss://ws.tmgr.dev",
+					"https://ws.tmgr.dev",
+					"https://ntfy.tmgr.dev",
+					"wss://ntfy.tmgr.dev",
+					"https://s3.danubedata.ro"
+				],
+				"frame-src": [
+					"https://oauth.telegram.org",
+					"https://www.youtube.com",
+					"https://codesandbox.io",
+					"https://codepen.io",
+					"https://www.figma.com"
+				],
+				"worker-src": ["'self'", "blob:"],
+				"object-src": "'none'",
+				"base-uri": "'self'",
+				"form-action": "'self'",
+				"frame-ancestors": "'none'"
+			},
+			"devCsp": null,
+			"dangerousDisableAssetCspModification": ["style-src"]
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": ["app", "dmg"],
+		"category": "Productivity",
+		"shortDescription": "Task manager with time tracking",
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		],
+		"macOS": {
+			"minimumSystemVersion": "11.0"
+		},
+		"createUpdaterArtifacts": true
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDYxODdEQzA0MEM0RUJBOUUKUldTZXVrNE1CTnlIWVE3K3E3KzR4bjdBNmtsclFVRTVDKy81dHFOOEhXc2syamRJVWxOYXJ2bnMK",
+			"endpoints": [
+				"https://github.com/tmgr-dev/frontend/releases/latest/download/latest.json"
+			]
+		},
+		"deep-link": {
+			"desktop": {
+				"schemes": ["tmgr"]
+			}
+		}
+	}
 }

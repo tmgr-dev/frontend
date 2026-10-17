@@ -36,11 +36,17 @@ test('drops current_workspace from an ordinary settings save', async () => {
 });
 
 test('sends the requested value untouched when setDefaultWorkspace is true', async () => {
-	await updateUserSettingsV2([{ id: 5, value: 2 }], { setDefaultWorkspace: true });
-	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [{ id: 5, value: 2 }]);
+	await updateUserSettingsV2([{ id: 5, value: 2 }], {
+		setDefaultWorkspace: true,
+	});
+	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [
+		{ id: 5, value: 2 },
+	]);
 });
 
 test('is a no-op when the payload has no current_workspace entry', async () => {
 	await updateUserSettingsV2([{ id: 6, value: 'dark' }]);
-	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [{ id: 6, value: 'dark' }]);
+	expect($axios.put).toHaveBeenCalledWith('v2/user/settings', [
+		{ id: 6, value: 'dark' },
+	]);
 });

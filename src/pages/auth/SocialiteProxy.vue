@@ -38,7 +38,10 @@
 		desktopTxFromState,
 		relayReturnHash,
 	} from '@/utils/desktopAuth';
-	import { linkConfirmationMessage, takeReturnPath } from '@/utils/emailVerification';
+	import {
+		linkConfirmationMessage,
+		takeReturnPath,
+	} from '@/utils/emailVerification';
 	import { takeOAuthBinding } from '@/utils/oauthBinding';
 	import { AxiosError } from 'axios';
 	import { ref } from 'vue';

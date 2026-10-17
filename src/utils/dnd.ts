@@ -87,7 +87,12 @@ export const setDnd = (option: DndOption): void => {
 
 /** Turns an expired "until" off so the tray checkmark and status bar do not stay on past it. */
 export const expireDndIfNeeded = (now: number = Date.now()): void => {
-	if (dndState.option === 'off' || dndState.until == null || now < dndState.until) return;
+	if (
+		dndState.option === 'off' ||
+		dndState.until == null ||
+		now < dndState.until
+	)
+		return;
 	dndState.option = 'off';
 	dndState.until = null;
 	persist();

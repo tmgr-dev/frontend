@@ -92,7 +92,10 @@
 			Trash
 		</router-link>
 
-		<Dialog :open="!!renaming" @update:open="(open) => !open && (renaming = null)">
+		<Dialog
+			:open="!!renaming"
+			@update:open="(open) => !open && (renaming = null)"
+		>
 			<DialogContent class="max-w-sm">
 				<DialogHeader>
 					<DialogTitle>Rename page</DialogTitle>
@@ -164,22 +167,12 @@
 		usePagesMarkdownIo,
 	} from '@/composable/usePagesMarkdownIo';
 	import { usePagesTree } from '@/composable/usePagesTree';
-	import {
-		descendantIds,
-		PAGE_CREATE_OPTIONS,
-	} from '@/utils/pagesTree';
+	import { descendantIds, PAGE_CREATE_OPTIONS } from '@/utils/pagesTree';
 	import { ChevronDown, Plus, Trash2, Upload } from 'lucide-vue-next';
-	import {
-		computed,
-		defineComponent,
-		provide,
-		ref,
-		toRef,
-		watch,
-	} from 'vue';
+	import { computed, defineComponent, provide, ref, toRef, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
-	import { useStore } from 'vuex';
 	import Draggable from 'vuedraggable';
+	import { useStore } from 'vuex';
 	import PagesTreeNode from './PagesTreeNode.vue';
 	import { PAGES_TREE_KEY, type PagesTreeContext } from './context';
 
@@ -286,7 +279,9 @@
 
 			const dragging = ref<number | null>(null);
 			const onDragStart = (event: { item: HTMLElement }) => {
-				const id = event.item.querySelector('[data-page-id]')?.getAttribute('data-page-id');
+				const id = event.item
+					.querySelector('[data-page-id]')
+					?.getAttribute('data-page-id');
 				dragging.value = id ? Number(id) : null;
 			};
 

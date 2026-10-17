@@ -21,7 +21,9 @@ test('the desktop button opens the task in its own window and closes the modal',
   await expect(page.locator('.new-form-container')).toHaveCount(0);
 });
 
-test('on the web the button stays a link to the task page', async ({ page }) => {
+test('on the web the button stays a link to the task page', async ({
+  page,
+}) => {
   await mockApp(page);
   await page.goto('/demo/list');
   await page.locator('[data-task-id="1"]').first().click();

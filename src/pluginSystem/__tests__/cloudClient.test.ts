@@ -1,13 +1,22 @@
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
 import { cloudPluginClient } from '../cloudClient';
 
-const recorder = (status: (config: InternalAxiosRequestConfig) => number = () => 200) => {
+const recorder = (
+	status: (config: InternalAxiosRequestConfig) => number = () => 200,
+) => {
 	const seen: InternalAxiosRequestConfig[] = [];
 	const adapter: AxiosAdapter = async (config) => {
 		seen.push(config);
 		const code = status(config);
-		const response = { data: { data: [] }, status: code, statusText: '', headers: {}, config };
-		if (code >= 400) throw Object.assign(new Error(`status ${code}`), { config, response });
+		const response = {
+			data: { data: [] },
+			status: code,
+			statusText: '',
+			headers: {},
+			config,
+		};
+		if (code >= 400)
+			throw Object.assign(new Error(`status ${code}`), { config, response });
 		return response;
 	};
 	return { adapter, seen };
@@ -32,7 +41,9 @@ it('sends only the plugin token and names the workspace on lists and creates', a
 	expect(seen.map((c) => c.headers.Authorization)).toEqual(
 		Array(4).fill('Bearer plugin-1'),
 	);
-	expect(seen.map((c) => c.headers['X-Workspace-Id'])).toEqual(Array(4).fill('56'));
+	expect(seen.map((c) => c.headers['X-Workspace-Id'])).toEqual(
+		Array(4).fill('56'),
+	);
 	expect(seen[0].params).toEqual({ page: 1, workspace_id: 56 });
 	expect(seen[1].params).toEqual({ workspace_id: 56 });
 	expect(JSON.parse(seen[2].data)).toEqual({ title: 'x', workspace_id: 56 });

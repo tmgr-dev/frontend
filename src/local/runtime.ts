@@ -2,11 +2,21 @@ import { desktopWindowLabel } from '@/utils/desktop';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { ensureContextPage } from './pages/service';
 import { migrate } from './schema';
-import type { LocalActor, LocalContext, LocalDb, LocalFiles, LocalUser, LocalWorkspace } from './types';
+import type {
+	LocalActor,
+	LocalContext,
+	LocalDb,
+	LocalFiles,
+	LocalUser,
+	LocalWorkspace,
+} from './types';
 
 const ACTIVE_KEY = 'local.activeWorkspace';
 
-const invoke = async <T>(command: string, args?: Record<string, unknown>): Promise<T> => {
+const invoke = async <T>(
+	command: string,
+	args?: Record<string, unknown>,
+): Promise<T> => {
 	const core = await import('@tauri-apps/api/core');
 	return core.invoke<T>(command, args);
 };
@@ -26,7 +36,9 @@ const readActive = (): string | null => {
 
 let activeCode = readActive();
 
-export const listLocalWorkspaces = (refresh = false): Promise<LocalWorkspace[]> => {
+export const listLocalWorkspaces = (
+	refresh = false,
+): Promise<LocalWorkspace[]> => {
 	if (!listed || refresh) {
 		listed = invoke<LocalWorkspace[]>('local_workspaces_list')
 			.then((list) => (workspaces = Array.isArray(list) ? list : []))
@@ -39,14 +51,18 @@ export const listLocalWorkspaces = (refresh = false): Promise<LocalWorkspace[]> 
 	return listed;
 };
 
-export const createLocalWorkspace = async (name: string): Promise<LocalWorkspace> => {
-	const created = await invoke<LocalWorkspace>('local_workspace_create', { name });
+export const createLocalWorkspace = async (
+	name: string,
+): Promise<LocalWorkspace> => {
+	const created = await invoke<LocalWorkspace>('local_workspace_create', {
+		name,
+	});
 	await listLocalWorkspaces(true);
 	return created;
 };
 
 export const activeLocalWorkspace = (): LocalWorkspace | null =>
-	activeCode ? (workspaces.find((w) => w.code === activeCode) ?? null) : null;
+	activeCode ? workspaces.find((w) => w.code === activeCode) ?? null : null;
 
 export const activeLocalWorkspaceCode = (): string | null => activeCode;
 
@@ -82,21 +98,31 @@ const openDatabase = async (workspace: LocalWorkspace): Promise<LocalDb> => {
 		batch: (statements) =>
 			invoke('local_db_batch', {
 				code: workspace.code,
-				statements: statements.map((s) => ({ sql: s.sql, params: s.params ?? [], expectChanges: !!s.expectChanges })),
+				statements: statements.map((s) => ({
+					sql: s.sql,
+					params: s.params ?? [],
+					expectChanges: !!s.expectChanges,
+				})),
 			}),
 	};
 	const version = await migrate(db, new Date().toISOString(), async () => {
 		await invoke('local_db_backup', { code: workspace.code });
 	});
 	if (version !== workspace.schema_version) {
-		await invoke('local_workspace_set_schema', { code: workspace.code, version });
+		await invoke('local_workspace_set_schema', {
+			code: workspace.code,
+			version,
+		});
 	}
 	return db;
 };
 
 const filesOf = (workspace: LocalWorkspace): LocalFiles => {
 	const url = (key: string) =>
-		(window as any).__TAURI_INTERNALS__.convertFileSrc(`${workspace.code}/${key}`, 'tmgrfile');
+		(window as any).__TAURI_INTERNALS__.convertFileSrc(
+			`${workspace.code}/${key}`,
+			'tmgrfile',
+		);
 	return {
 		url,
 		read: async (key) => {
@@ -121,7 +147,14 @@ export const localContext = async (
 		databases.set(workspace.code, db);
 		db.catch(() => databases.delete(workspace.code));
 	}
-	const ctx: LocalContext = { db: await db, workspace, user, now: () => new Date(), files: filesOf(workspace), actor };
+	const ctx: LocalContext = {
+		db: await db,
+		workspace,
+		user,
+		now: () => new Date(),
+		files: filesOf(workspace),
+		actor,
+	};
 	if (user.id !== 0 && !contextSeeded.has(workspace.code)) {
 		contextSeeded.add(workspace.code);
 		await ensureContextPage({ ...ctx, actor: undefined }).catch((error) => {
@@ -133,13 +166,20 @@ export const localContext = async (
 };
 
 /** Stores an attachment of the active local workspace over IPC (WKWebView drops fetch bodies to custom schemes). */
-export const writeLocalFile = async (key: string, file: Blob): Promise<void> => {
+export const writeLocalFile = async (
+	key: string,
+	file: Blob,
+): Promise<void> => {
 	const workspace = activeLocalWorkspace();
 	if (!workspace) throw new Error('No local workspace is open');
 	const core = await import('@tauri-apps/api/core');
-	await core.invoke('local_file_write', new Uint8Array(await file.arrayBuffer()), {
-		headers: { 'x-tmgr-target': `${workspace.code}/${key}` },
-	});
+	await core.invoke(
+		'local_file_write',
+		new Uint8Array(await file.arrayBuffer()),
+		{
+			headers: { 'x-tmgr-target': `${workspace.code}/${key}` },
+		},
+	);
 };
 
 const stamp = (date: Date) =>
@@ -152,26 +192,49 @@ export const exportLocalWorkspace = async (author: string): Promise<string> => {
 	const { workspaceExport } = await import('./export');
 	const ctx = await localContext(workspace, { id: 0, name: author, email: '' });
 	const now = new Date();
-	const files = await workspaceExport(ctx.db, workspace.name, author, now.toLocaleString());
+	const files = await workspaceExport(
+		ctx.db,
+		workspace.name,
+		author,
+		now.toLocaleString(),
+	);
 	const folder = stamp(now);
-	const dir = await invoke<string>('local_export_write', { code: workspace.code, folder, files });
-	await invoke('local_reveal', { code: workspace.code, relative: `exports/${folder}/README.md` });
+	const dir = await invoke<string>('local_export_write', {
+		code: workspace.code,
+		folder,
+		files,
+	});
+	await invoke('local_reveal', {
+		code: workspace.code,
+		relative: `exports/${folder}/README.md`,
+	});
 	return dir;
 };
 
 /** Writes one task to exports/tasks/ of the local workspace and shows the file in Finder. */
-export const exportLocalTask = async (taskId: number, author: string): Promise<void> => {
+export const exportLocalTask = async (
+	taskId: number,
+	author: string,
+): Promise<void> => {
 	const workspace = activeLocalWorkspace();
 	if (!workspace) throw new Error('No local workspace is open');
 	const { taskExport } = await import('./export');
 	const ctx = await localContext(workspace, { id: 0, name: author, email: '' });
 	const file = await taskExport(ctx.db, taskId, author);
 	if (!file) throw new Error('Task not found');
-	await invoke('local_export_write', { code: workspace.code, folder: 'tasks', files: [file] });
-	await invoke('local_reveal', { code: workspace.code, relative: `exports/tasks/${file.path}` });
+	await invoke('local_export_write', {
+		code: workspace.code,
+		folder: 'tasks',
+		files: [file],
+	});
+	await invoke('local_reveal', {
+		code: workspace.code,
+		relative: `exports/tasks/${file.path}`,
+	});
 };
 
 export const revealLocalWorkspace = async (): Promise<void> => {
 	const workspace = activeLocalWorkspace();
-	if (workspace) await invoke('local_reveal', { code: workspace.code, relative: null });
+	if (workspace)
+		await invoke('local_reveal', { code: workspace.code, relative: null });
 };

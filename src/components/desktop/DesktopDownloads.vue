@@ -4,11 +4,11 @@
 
 <script lang="ts">
 	import { ToastAction, useToast } from '@/components/ui/toast';
+	import { revealInFileManagerLabel } from '@/utils/desktop';
 	import {
 		downloadToast,
 		type DownloadFinished,
 	} from '@/utils/desktopDownloads';
-	import { revealInFileManagerLabel } from '@/utils/desktop';
 	import { defineComponent, h, onBeforeUnmount, onMounted } from 'vue';
 
 	export default defineComponent({

@@ -35,7 +35,9 @@ describe('validateProperties person', () => {
 	});
 
 	it('accepts the local identity as a person user id', () => {
-		expect(validateProperties('person', { user_id: -1 }).user_id).toBeUndefined();
+		expect(
+			validateProperties('person', { user_id: -1 }).user_id,
+		).toBeUndefined();
 		expect(validateProperties('person', { user_id: 0 }).user_id).toBeTruthy();
 	});
 

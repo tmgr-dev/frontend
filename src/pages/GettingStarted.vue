@@ -1,11 +1,11 @@
 <template>
 	<PageContainer width="wide" class="getting-started">
-		<PageHeader title="Getting started" subtitle="Short guided tours. Do them in any order, skip any of them.">
+		<PageHeader
+			title="Getting started"
+			subtitle="Short guided tours. Do them in any order, skip any of them."
+		>
 			<template #actions>
-				<div
-					class="flex items-center gap-3"
-					data-tour="hub.tips-toggle"
-				>
+				<div class="flex items-center gap-3" data-tour="hub.tips-toggle">
 					<label
 						id="hub-tips-label"
 						class="text-sm font-medium text-ink"
@@ -59,10 +59,7 @@
 			</section>
 		</div>
 
-		<div
-			data-tour="hub.catalog"
-			class="grid grid-cols-1 gap-4 md:grid-cols-2"
-		>
+		<div data-tour="hub.catalog" class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			<section
 				v-for="group in model.groups"
 				:key="group.group"
@@ -83,7 +80,9 @@
 						:data-tour-id="row.id"
 					>
 						<span
-							:class="row.action === 'none' ? 'font-semibold text-ink' : 'text-ink'"
+							:class="
+								row.action === 'none' ? 'font-semibold text-ink' : 'text-ink'
+							"
 						>
 							{{ row.title }}
 						</span>
@@ -109,7 +108,9 @@
 								type="button"
 								class="min-h-[28px] rounded bg-brand px-2.5 py-0.5 text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50"
 								:data-testid="`hub-${row.action}-${row.id}`"
-								:aria-label="`${row.action === 'resume' ? 'Resume' : 'Start'} ${row.title}`"
+								:aria-label="`${row.action === 'resume' ? 'Resume' : 'Start'} ${
+									row.title
+								}`"
 								:disabled="busy"
 								@click="run(row)"
 							>
@@ -127,10 +128,10 @@
 </template>
 
 <script lang="ts">
-	import ChecklistCard from '@/components/onboarding/ChecklistCard.vue';
-	import RemoveSampleTasksButton from '@/components/onboarding/RemoveSampleTasksButton.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import ChecklistCard from '@/components/onboarding/ChecklistCard.vue';
+	import RemoveSampleTasksButton from '@/components/onboarding/RemoveSampleTasksButton.vue';
 	import { Switch } from '@/components/ui/switch';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { buildHubModel, type HubRow } from '@/tours/hubModel';
@@ -155,7 +156,8 @@
 
 			const model = computed(() =>
 				buildHubModel(tours.hubItems.value, {
-					canManageModules: store.getters['featureToggles/canManageModules'] === true,
+					canManageModules:
+						store.getters['featureToggles/canManageModules'] === true,
 					isModuleEnabled: (key: string) => isFeatureEnabled(key),
 				}),
 			);
@@ -165,8 +167,12 @@
 					: '0%',
 			);
 			void tours.ensurePersonas();
-			const tipsOn = computed(() => tours.onboarding.value?.tips_mode === 'auto');
-			const hubHidden = computed(() => tours.onboarding.value?.hub_hidden === true);
+			const tipsOn = computed(
+				() => tours.onboarding.value?.tips_mode === 'auto',
+			);
+			const hubHidden = computed(
+				() => tours.onboarding.value?.hub_hidden === true,
+			);
 
 			const guarded = async (work: () => Promise<void>) => {
 				busy.value = true;
@@ -191,7 +197,9 @@
 					guarded(() => tours.setHubHidden(!hubHidden.value)),
 				run: (row: HubRow) =>
 					guarded(() =>
-						row.action === 'resume' ? tours.resume(row.id) : tours.start(row.id, 'hub'),
+						row.action === 'resume'
+							? tours.resume(row.id)
+							: tours.start(row.id, 'hub'),
 					),
 			};
 		},

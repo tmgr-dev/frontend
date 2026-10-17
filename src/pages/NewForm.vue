@@ -5,31 +5,29 @@
 		getCategoriesOfWorkspace,
 	} from '@/actions/tmgr/categories';
 	import {
-		createAskingHelpComment,
-		createComment,
-	} from '@/actions/tmgr/comments';
-	import {
 		isCommentAiReplyOn,
 		setCommentAiReply,
 	} from '@/actions/tmgr/commentAiReply';
+	import {
+		createAskingHelpComment,
+		createComment,
+	} from '@/actions/tmgr/comments';
 	import {
 		getCursorAgents,
 		getCursorStatus,
 		sendFollowUp,
 	} from '@/actions/tmgr/cursor';
-	import type { CursorAgent } from '@/types/cursor';
+	import { uploadTaskFile } from '@/actions/tmgr/files';
 	import {
 		getCategoryGitHubStatus,
 		getTaskGitActivity,
 	} from '@/actions/tmgr/github';
+	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
 		getStatuses,
 		getStatusesOfWorkspace,
 		Status,
 	} from '@/actions/tmgr/statuses';
-	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
-	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
-	import { getAssignablePersonas } from '@/actions/tmgr/personas';
 	import {
 		assignPersonaToTask,
 		createTask as createTaskAction,
@@ -39,8 +37,8 @@
 		startTaskTimeCounter,
 		stopTaskTimeCounter,
 		Task,
-		updateTask,
 		unassignPersonaFromTask,
+		updateTask,
 		updateTaskStatus,
 	} from '@/actions/tmgr/tasks';
 	import {
@@ -48,34 +46,27 @@
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
-	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
-	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
-	import {
-		DropdownMenu,
-		DropdownMenuContent,
-		DropdownMenuItem,
-		DropdownMenuTrigger,
-	} from '@/components/ui/dropdown-menu';
-	import { usePluginTaskMenu } from '@/composable/usePluginTaskMenu';
 	import TimeCounter from '@/components/TimeCounter.vue';
+	import DescriptionPreview from '@/components/description/DescriptionPreview.vue';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
-	import DescriptionPreview from '@/components/description/DescriptionPreview.vue';
+	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
+	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
+	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
+	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
+	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
+	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
+	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
-	import { tourBus } from '@/tours/events';
+	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
 	import TaskAttachments from '@/components/tasks/TaskAttachments.vue';
 	import TaskComments from '@/components/tasks/TaskComments.vue';
 	import TaskCursorAgent from '@/components/tasks/TaskCursorAgent.vue';
 	import TaskFormSkeleton from '@/components/tasks/TaskFormSkeleton.vue';
-	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
-	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
-	import TaskAgentWork from '@/components/tasks/TaskAgentWork.vue';
-	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
-	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskGitActivity from '@/components/tasks/TaskGitActivity.vue';
 	import TaskLinkChips from '@/components/tasks/TaskLinkChips.vue';
 	import TaskPageMentions from '@/components/tasks/TaskPageMentions.vue';
@@ -92,24 +83,32 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import {
+		DropdownMenu,
+		DropdownMenuContent,
+		DropdownMenuItem,
+		DropdownMenuTrigger,
+	} from '@/components/ui/dropdown-menu';
+	import {
 		Select,
 		SelectContent,
 		SelectItem,
 		SelectTrigger,
 		SelectValue,
 	} from '@/components/ui/select';
+	import { useToast } from '@/components/ui/toast/use-toast';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
-	import { useWorkflowMode } from '@/composable/useWorkflowMode';
-	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
-	import { pagesAvailable } from '@/utils/pagesTree';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
+	import { usePluginTaskMenu } from '@/composable/usePluginTaskMenu';
 	import { usePusher } from '@/composable/usePusher';
 	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
+	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import store from '@/store';
+	import { tourBus } from '@/tours/events';
 	import { EditorType } from '@/types';
 	import type { AgentStep } from '@/types/agent';
+	import type { CursorAgent } from '@/types/cursor';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
 	import {
 		backlogTimerPrompt,
@@ -121,45 +120,50 @@
 		type CategoryIntegrationHint,
 	} from '@/utils/categoryIntegrationHint';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
-	import {
-		archiveTarget,
-		doneTarget,
-		DONE_DISABLED_TOOLTIP,
-		isTaskArchived,
-		isTaskDone,
-		openTarget,
-	} from '@/utils/simpleStatus';
+	import { isDesktopApp } from '@/utils/desktop';
 	import { getBlockEditorDescription, sameBlocks } from '@/utils/editor';
 	import {
-		EDITOR_LABELS,
 		buildDescriptionPayload,
-		toUpdateBody,
+		EDITOR_LABELS,
 		normalizeEditorType,
 		resolveEditorType,
+		toUpdateBody,
 	} from '@/utils/editorType';
+	import { createFileDragDepth, isFileDrag } from '@/utils/fileDrag';
 	import { focusField } from '@/utils/focusTarget';
-	import { isSaveHotkey } from '@/utils/saveHotkey';
-	import {
-		personaAssigneeIds,
-		personaAssigneesOf,
-		type PersonaAssignee,
-	} from '@/utils/personas';
-	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import {
 		applicableTaskSettings,
 		hasTaskSettings,
 		loadLastTaskSettings,
 		saveLastTaskSettings,
 	} from '@/utils/lastTaskSettings';
+	import { pagesAvailable } from '@/utils/pagesTree';
+	import { uploadPendingFiles } from '@/utils/pendingUploads';
+	import {
+		personaAssigneeIds,
+		personaAssigneesOf,
+		type PersonaAssignee,
+	} from '@/utils/personas';
 	import { requestCache } from '@/utils/requestCache';
-	import { applyTimerState } from '@/utils/timerSync';
-	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
-	import { isDesktopApp } from '@/utils/desktop';
+	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import {
+		archiveTarget,
+		DONE_DISABLED_TOOLTIP,
+		doneTarget,
+		isTaskArchived,
+		isTaskDone,
+		openTarget,
+	} from '@/utils/simpleStatus';
+	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
+	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
+	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import {
 		openTaskWindow,
 		setTaskWindowTitle,
 		taskWindowTarget,
 	} from '@/utils/taskWindow';
+	import { applyTimerState } from '@/utils/timerSync';
+	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		DocumentPlusIcon,
@@ -188,10 +192,6 @@
 		Sparkles,
 		Upload,
 	} from 'lucide-vue-next';
-	import { uploadTaskFile } from '@/actions/tmgr/files';
-	import { useToast } from '@/components/ui/toast/use-toast';
-	import { createFileDragDepth, isFileDrag } from '@/utils/fileDrag';
-	import { uploadPendingFiles } from '@/utils/pendingUploads';
 	import {
 		computed,
 		defineAsyncComponent,
@@ -397,8 +397,9 @@
 		(known, incoming) =>
 			!hasTaskMeaningfulChanges({ ...incoming, ...known }, incoming),
 	);
-	let loadTaskReferenceData: ((taskWorkspaceId: number | null) => unknown) | null =
-		null;
+	let loadTaskReferenceData:
+		| ((taskWorkspaceId: number | null) => unknown)
+		| null = null;
 
 	const form = ref<Task>({
 		title: '',
@@ -706,9 +707,7 @@
 
 	const canRunWithCursor = computed(() => {
 		return (
-			isFeatureEnabled('cursor') &&
-			form.value.id &&
-			currentCategoryCode.value
+			isFeatureEnabled('cursor') && form.value.id && currentCategoryCode.value
 		);
 	});
 
@@ -747,9 +746,7 @@
 		(simpleMode.value ? openTarget(list) : null) ??
 		pickDefaultStatusId(list) ??
 		list[0].id;
-	const canMarkDone = computed(
-		() => doneTarget(simpleStatuses.value) !== null,
-	);
+	const canMarkDone = computed(() => doneTarget(simpleStatuses.value) !== null);
 	const doneChecked = computed({
 		get: () => isTaskDone(form.value, simpleStatuses.value),
 		set: (checked: boolean) => {
@@ -1410,12 +1407,17 @@
 		}
 	};
 
-	const isLocalWorkspaceTask = computed(() => Number(store.getters.currentWorkspaceId) < 0);
+	const isLocalWorkspaceTask = computed(
+		() => Number(store.getters.currentWorkspaceId) < 0,
+	);
 
 	const exportTaskToMarkdown = async () => {
 		try {
 			const { exportLocalTask } = await import('@/local/runtime');
-			await exportLocalTask(Number(taskId.value || form.value.id), store.state.user?.name ?? '');
+			await exportLocalTask(
+				Number(taskId.value || form.value.id),
+				store.state.user?.name ?? '',
+			);
 		} catch (error) {
 			console.error('Markdown export failed', error);
 		}
@@ -1423,9 +1425,7 @@
 
 	const isCreatingTask = ref(false);
 	const pendingFiles = ref<File[]>([]);
-	const attachmentsRef = ref<InstanceType<typeof TaskAttachments> | null>(
-		null,
-	);
+	const attachmentsRef = ref<InstanceType<typeof TaskAttachments> | null>(null);
 	const { toast } = useToast();
 	const { items: pluginTaskMenuItems } = usePluginTaskMenu();
 
@@ -1750,9 +1750,7 @@
 		try {
 			suppressAutoSavingForOnce.value = true;
 			const id = taskId.value || (form.value.id as number);
-			form.value = await taskVersionGuard.track(() =>
-				startTaskTimeCounter(id),
-			);
+			form.value = await taskVersionGuard.track(() => startTaskTimeCounter(id));
 			store.commit('updateSingleTask', form.value);
 		} catch (e) {
 			console.error(e);
@@ -1826,9 +1824,7 @@
 		try {
 			suppressAutoSavingForOnce.value = true;
 			const id = backlogStatusChangeConfirm.value.taskId;
-			await taskVersionGuard.track(() =>
-				updateTaskStatus(id, activeStatus.id),
-			);
+			await taskVersionGuard.track(() => updateTaskStatus(id, activeStatus.id));
 			form.value.status_id = activeStatus.id;
 			store.commit('updateSingleTask', form.value);
 		} catch (e) {
@@ -2224,7 +2220,6 @@
 
 	const submitComment = () =>
 		commentAiReply.value ? askAIComment() : sendComment();
-
 </script>
 
 <template>
@@ -2375,7 +2370,12 @@
 						</button>
 
 						<DropdownMenu
-							v-if="form.id && (pluginTaskMenuItems.length || canArchiveTask || canUnarchiveTask)"
+							v-if="
+								form.id &&
+								(pluginTaskMenuItems.length ||
+									canArchiveTask ||
+									canUnarchiveTask)
+							"
 						>
 							<DropdownMenuTrigger as-child>
 								<button
@@ -2387,7 +2387,10 @@
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" class="w-56">
-								<DropdownMenuItem v-if="canUnarchiveTask" @click="unarchiveTask">
+								<DropdownMenuItem
+									v-if="canUnarchiveTask"
+									@click="unarchiveTask"
+								>
 									<ArchiveRestore class="mr-2 h-4 w-4" />
 									<span>Restore</span>
 								</DropdownMenuItem>
@@ -2605,7 +2608,9 @@
 									v-if="form.project_category_id"
 									type="button"
 									class="shrink-0 rounded-md border border-line px-1.5 py-1 text-ink-subtle hover:text-ink"
-									:title="`New task in ${currentCategoryCode || 'this category'}`"
+									:title="`New task in ${
+										currentCategoryCode || 'this category'
+									}`"
 									@click="createAnotherInCategory"
 								>
 									<PlusIcon class="h-3.5 w-3.5" />
@@ -2641,7 +2646,7 @@
 								>
 									{{ taskKeyError }}
 								</div>
-						</template>
+							</template>
 						</template>
 
 						<template v-if="form.id && isFeatureEnabled('github')">
@@ -2753,7 +2758,9 @@
 							:key="form.id"
 							v-else-if="editorType === 'block'"
 							:model-value="form.description_json"
-							@update:model-value="onDescriptionInput('description_json', $event)"
+							@update:model-value="
+								onDescriptionInput('description_json', $event)
+							"
 							placeholder="Type your description here or enter / to see commands or "
 							class="block-editor-container mb-0 min-h-[240px] px-2"
 						/>
@@ -2995,113 +3002,117 @@
 							:disabled="!newComment?.trim() || isSendingComment"
 							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
-							:title="commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'"
+							:title="
+								commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'
+							"
 						>
 							<Send class="h-3.5 w-3.5" />
 						</button>
 					</div>
 
-						<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+					<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+						<Button
+							v-if="
+								isModal && !detached && isDesktopApp() && (taskId || form.id)
+							"
+							type="button"
+							variant="ghost"
+							size="icon"
+							data-tour="task-form.open-window"
+							title="Open in a separate window"
+							aria-label="Open in a separate window"
+							class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+							@click="openInSeparateWindow"
+						>
+							<ArrowTopRightOnSquareIcon />
+						</Button>
+						<Button
+							v-else-if="isModal && !detached && (taskId || form.id)"
+							as="a"
+							variant="ghost"
+							size="icon"
+							:href="generateTaskUrlForAdvancedForm()"
+							title="Open advanced form"
+							aria-label="Open advanced form"
+							class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+						>
+							<ArrowTopRightOnSquareIcon />
+						</Button>
+
+						<div
+							v-if="taskId || form.id"
+							class="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-ink-faint"
+						>
+							<TaskTimeInfo
+								:created-at="form.created_at"
+								:updated-at="form.updated_at"
+							/>
+						</div>
+
+						<div class="ml-auto flex items-center gap-1">
+							<TaskShareMenu :task="form" :open-in-app="!isModal" />
 							<Button
-								v-if="isModal && !detached && isDesktopApp() && (taskId || form.id)"
+								v-if="!taskId && !form.id"
+								type="button"
+								size="sm"
+								title="Create"
+								class="h-8 bg-brand text-white hover:bg-brand-hover"
+								@click="createTask"
+							>
+								<DocumentPlusIcon />
+								Create
+							</Button>
+
+							<Button
+								v-if="taskId || form.id"
 								type="button"
 								variant="ghost"
 								size="icon"
-								data-tour="task-form.open-window"
-								title="Open in a separate window"
-								aria-label="Open in a separate window"
-								class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
-								@click="openInSeparateWindow"
+								title="Save"
+								aria-label="Save"
+								:aria-busy="isAutoSaving || isLoading"
+								:data-unsaved="hasUnsavedChanges || undefined"
+								:class="
+									hasUnsavedChanges
+										? 'h-8 w-8 bg-brand text-white hover:bg-brand-hover hover:text-white'
+										: 'h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink'
+								"
+								@click="saveTask()"
 							>
-								<ArrowTopRightOnSquareIcon />
+								<Loader2
+									v-if="isAutoSaving || isLoading"
+									class="animate-spin"
+								/>
+								<Save v-else />
 							</Button>
+
 							<Button
-								v-else-if="isModal && !detached && (taskId || form.id)"
-								as="a"
+								v-if="isLocalWorkspaceTask && (taskId || form.id)"
+								type="button"
 								variant="ghost"
 								size="icon"
-								:href="generateTaskUrlForAdvancedForm()"
-								title="Open advanced form"
-								aria-label="Open advanced form"
+								title="Export to Markdown"
+								aria-label="Export to Markdown"
 								class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
+								@click="exportTaskToMarkdown"
 							>
-								<ArrowTopRightOnSquareIcon />
+								<ArrowDownTrayIcon />
 							</Button>
 
-							<div
+							<Button
 								v-if="taskId || form.id"
-								class="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-ink-faint"
+								type="button"
+								variant="ghost"
+								size="icon"
+								title="Delete"
+								aria-label="Delete"
+								class="h-8 w-8 text-ink-muted hover:bg-status-fix-bg hover:text-status-fix focus-visible:bg-status-fix-bg focus-visible:text-status-fix"
+								@click="deleteCurrentTask"
 							>
-								<TaskTimeInfo
-									:created-at="form.created_at"
-									:updated-at="form.updated_at"
-								/>
-							</div>
-
-							<div class="ml-auto flex items-center gap-1">
-								<TaskShareMenu :task="form" :open-in-app="!isModal" />
-								<Button
-									v-if="!taskId && !form.id"
-									type="button"
-									size="sm"
-									title="Create"
-									class="h-8 bg-brand text-white hover:bg-brand-hover"
-									@click="createTask"
-								>
-									<DocumentPlusIcon />
-									Create
-								</Button>
-
-								<Button
-									v-if="taskId || form.id"
-									type="button"
-									variant="ghost"
-									size="icon"
-									title="Save"
-									aria-label="Save"
-									:aria-busy="isAutoSaving || isLoading"
-									:data-unsaved="hasUnsavedChanges || undefined"
-									:class="
-										hasUnsavedChanges
-											? 'h-8 w-8 bg-brand text-white hover:bg-brand-hover hover:text-white'
-											: 'h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink'
-									"
-									@click="saveTask()"
-								>
-									<Loader2
-										v-if="isAutoSaving || isLoading"
-										class="animate-spin"
-									/>
-									<Save v-else />
-								</Button>
-
-								<Button
-									v-if="isLocalWorkspaceTask && (taskId || form.id)"
-									type="button"
-									variant="ghost"
-									size="icon"
-									title="Export to Markdown"
-									aria-label="Export to Markdown"
-									class="h-8 w-8 text-ink-muted hover:bg-surface-hover hover:text-ink"
-									@click="exportTaskToMarkdown"
-								>
-									<ArrowDownTrayIcon />
-								</Button>
-
-								<Button
-									v-if="taskId || form.id"
-									type="button"
-									variant="ghost"
-									size="icon"
-									title="Delete"
-									aria-label="Delete"
-									class="h-8 w-8 text-ink-muted hover:bg-status-fix-bg hover:text-status-fix focus-visible:bg-status-fix-bg focus-visible:text-status-fix"
-									@click="deleteCurrentTask"
-								>
-									<TrashIcon />
-								</Button>
-							</div>
+								<TrashIcon />
+							</Button>
 						</div>
+					</div>
 				</footer>
 			</div>
 			<!-- End Form Panel -->
@@ -3194,7 +3205,9 @@
 							:disabled="!newComment?.trim() || isSendingComment"
 							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
-							:title="commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'"
+							:title="
+								commentAiReply ? 'Ask AI (Enter)' : 'Send comment (Enter)'
+							"
 						>
 							<Send class="h-3.5 w-3.5" />
 						</button>

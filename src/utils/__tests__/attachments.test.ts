@@ -89,6 +89,8 @@ describe('preflightError', () => {
 
 	it('lets an untyped file through when any type is allowed', () => {
 		expect(preflightError(file(10, ''), { anyType: true })).toBeNull();
-		expect(preflightError(file(0, ''), { anyType: true })).toBe('File is empty.');
+		expect(preflightError(file(0, ''), { anyType: true })).toBe(
+			'File is empty.',
+		);
 	});
 });

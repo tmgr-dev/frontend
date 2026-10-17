@@ -13,12 +13,19 @@
 				>
 			</template>
 		</PageHeader>
-		<p v-if="!workspace" class="mb-6 text-sm text-amber-600 dark:text-amber-400">
+		<p
+			v-if="!workspace"
+			class="mb-6 text-sm text-amber-600 dark:text-amber-400"
+		>
 			Open a workspace to turn plugins on or off for it.
 		</p>
-		<p v-else-if="workspace.kind === 'cloud'" class="mb-6 text-sm text-muted-foreground">
+		<p
+			v-else-if="workspace.kind === 'cloud'"
+			class="mb-6 text-sm text-muted-foreground"
+		>
 			Shared workspace:
-			<span class="text-foreground">{{ workspace.name }}</span>.
+			<span class="text-foreground">{{ workspace.name }}</span
+			>.
 			{{
 				isCreator
 					? 'You created it: a plugin you turn on here runs for every member.'
@@ -57,7 +64,10 @@
 						Let one plugin show text next to the timer in the {{ trayName }}.
 					</span>
 				</span>
-				<Select :model-value="trayTitlePlugin" @update:model-value="setTrayTitlePlugin">
+				<Select
+					:model-value="trayTitlePlugin"
+					@update:model-value="setTrayTitlePlugin"
+				>
 					<SelectTrigger class="w-48">
 						<SelectValue placeholder="None" />
 					</SelectTrigger>
@@ -162,8 +172,8 @@
 						v-else
 						class="text-xs font-medium text-amber-600 dark:text-amber-400"
 					>
-						Unverified publisher: signed, but not listed in the TMGR catalog. Its
-						key is remembered, and updates must be signed with the same key.
+						Unverified publisher: signed, but not listed in the TMGR catalog.
+						Its key is remembered, and updates must be signed with the same key.
 					</p>
 				</DialogHeader>
 				<div class="flex flex-col gap-2 text-sm">
@@ -196,9 +206,9 @@
 						v-if="offer.pkg.manifest.companion"
 						class="font-medium text-amber-600 dark:text-amber-400"
 					>
-						Works with an external program you install yourself
-						({{ offer.pkg.manifest.companion.description }}). It will write as
-						a persona you choose.
+						Works with an external program you install yourself ({{
+							offer.pkg.manifest.companion.description
+						}}). It will write as a persona you choose.
 						<a
 							v-if="offer.pkg.manifest.companion.homepage"
 							:href="offer.pkg.manifest.companion.homepage"
@@ -294,7 +304,9 @@
 							From github.com/{{ plugin.origin.repo }} · {{ plugin.origin.tag }}
 							·
 							{{
-								plugin.origin.verified ? 'verified publisher' : 'unverified publisher'
+								plugin.origin.verified
+									? 'verified publisher'
+									: 'unverified publisher'
 							}}
 							<button
 								type="button"
@@ -312,10 +324,7 @@
 								Remove
 							</button>
 						</p>
-						<p
-							v-if="plugin.error"
-							class="text-xs text-destructive"
-						>
+						<p v-if="plugin.error" class="text-xs text-destructive">
 							{{ plugin.error }}
 						</p>
 					</div>
@@ -466,6 +475,9 @@
 </template>
 
 <script lang="ts">
+	import PageContainer from '@/components/layouts/PageContainer.vue';
+	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -476,9 +488,6 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { Input } from '@/components/ui/input';
-	import PageContainer from '@/components/layouts/PageContainer.vue';
-	import PageHeader from '@/components/layouts/PageHeader.vue';
-	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import {
 		Select,
 		SelectContent,
@@ -487,10 +496,10 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import { Switch } from '@/components/ui/switch';
-	import { trayName } from '@/utils/desktop';
 	import { toast } from '@/components/ui/toast';
-	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useCopyToClipboard } from '@/composable/useCopyToClipboard';
+	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { hasMachineConsent, reachesThisComputer } from '@/pluginSystem/cloud';
 	import {
 		storageIdOf,
 		type PluginEntry,
@@ -500,7 +509,6 @@
 	} from '@/pluginSystem/host';
 	import { PLUGIN_API_VERSION, type Permission } from '@/pluginSystem/manifest';
 	import { permissionChanges, type Release } from '@/pluginSystem/market';
-	import { hasMachineConsent, reachesThisComputer } from '@/pluginSystem/cloud';
 	import {
 		folderPluginErrors,
 		installedPluginErrors,
@@ -513,6 +521,7 @@
 		storeSafeMode,
 		trayTitlePluginStore,
 	} from '@/pluginSystem/storage';
+	import { trayName } from '@/utils/desktop';
 	import {
 		computed,
 		defineComponent,
@@ -547,7 +556,8 @@
 		deeplinks: 'be opened from tmgr:// links in other apps',
 		'links:open': 'open web links in your browser',
 		'routines:read': 'read your notes and routines (local workspaces only)',
-		'routines:write': 'add, rename, complete and convert your notes and routines (local workspaces only)',
+		'routines:write':
+			'add, rename, complete and convert your notes and routines (local workspaces only)',
 		'views:badge': 'show counters on its sidebar items',
 		'pages:read': 'read your pages and their per-page data',
 		'pages:write': 'create pages and change their text',
@@ -842,7 +852,9 @@
 				statusClass: (status: PluginStatus) =>
 					status === 'running'
 						? 'text-emerald-600 dark:text-emerald-400'
-						: status === 'failed' || status === 'crashed' || status === 'blocked'
+						: status === 'failed' ||
+						  status === 'crashed' ||
+						  status === 'blocked'
 						? 'text-destructive'
 						: 'text-muted-foreground',
 				logLineClass: (level: PluginEntry['log'][number]['level']) =>
@@ -868,7 +880,9 @@
 						workspaceKind: pluginState.workspace?.kind ?? null,
 						log: plugin.log.slice(-200),
 					};
-					const ok = await copyToClipboard(JSON.stringify(diagnostics, null, 2));
+					const ok = await copyToClipboard(
+						JSON.stringify(diagnostics, null, 2),
+					);
 					toast(
 						ok
 							? { title: 'Diagnostics copied' }

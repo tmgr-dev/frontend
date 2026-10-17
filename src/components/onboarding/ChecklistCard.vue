@@ -19,7 +19,10 @@
 			<div class="flex items-center justify-between gap-3">
 				<p id="checklist-title" class="text-sm font-semibold text-ink">
 					Getting started
-					<span class="font-normal text-ink-subtle" data-testid="checklist-count">
+					<span
+						class="font-normal text-ink-subtle"
+						data-testid="checklist-count"
+					>
 						{{ checklist.done }} of {{ checklist.total }}
 					</span>
 				</p>
@@ -34,7 +37,9 @@
 						@click="menuOpen = !menuOpen"
 						@keydown.esc="menuOpen = false"
 					>
-						<span class="material-icons text-xl" aria-hidden="true">more_horiz</span>
+						<span class="material-icons text-xl" aria-hidden="true"
+							>more_horiz</span
+						>
 					</button>
 					<div
 						v-if="menuOpen"
@@ -63,7 +68,10 @@
 				:aria-valuemax="checklist.total"
 				:aria-valuenow="checklist.done"
 			>
-				<div class="h-full rounded-full bg-brand transition-all" :style="{ width: progressWidth }" />
+				<div
+					class="h-full rounded-full bg-brand transition-all"
+					:style="{ width: progressWidth }"
+				/>
 			</div>
 			<ul class="mt-2 flex flex-col divide-y divide-line dark:divide-gray-700">
 				<li
@@ -142,19 +150,27 @@
 					{
 						isModuleEnabled: (key: string) => isFeatureEnabled(key),
 						modulesKnown: () => !!store.getters['featureToggles/modulesKnown'],
-						canManageModules: store.getters['featureToggles/canManageModules'] === true,
+						canManageModules:
+							store.getters['featureToggles/canManageModules'] === true,
 						account: store.getters.isLocalOnly ? 'local' : 'cloud',
-						emailVerified: !!(store.state.user as { email_verified_at?: string | null } | undefined)
-							?.email_verified_at,
+						emailVerified: !!(
+							store.state.user as
+								| { email_verified_at?: string | null }
+								| undefined
+						)?.email_verified_at,
 					},
 				),
 			);
 			const progressWidth = computed(() =>
 				checklist.value.total
-					? `${Math.round((checklist.value.done / checklist.value.total) * 100)}%`
+					? `${Math.round(
+							(checklist.value.done / checklist.value.total) * 100,
+					  )}%`
 					: '0%',
 			);
-			const hidden = computed(() => tours.onboarding.value?.checklist_hidden === true);
+			const hidden = computed(
+				() => tours.onboarding.value?.checklist_hidden === true,
+			);
 
 			const setHidden = async (value: boolean) => {
 				menuOpen.value = false;
@@ -168,7 +184,16 @@
 				}
 			};
 
-			return { root, visible, checklist, progressWidth, hidden, busy, menuOpen, setHidden };
+			return {
+				root,
+				visible,
+				checklist,
+				progressWidth,
+				hidden,
+				busy,
+				menuOpen,
+				setHidden,
+			};
 		},
 	});
 </script>

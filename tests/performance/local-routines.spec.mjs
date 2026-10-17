@@ -62,11 +62,13 @@ test('local routines are created and completed entirely offline, clearly labelle
 
   await expect
     .poll(async () =>
-      (await shell('local_db_select', {
-        code: 'personal',
-        sql: 'SELECT title FROM routines ORDER BY id',
-        params: [],
-      })).map((row) => row.title),
+      (
+        await shell('local_db_select', {
+          code: 'personal',
+          sql: 'SELECT title FROM routines ORDER BY id',
+          params: [],
+        })
+      ).map((row) => row.title),
     )
     .toEqual(expect.arrayContaining(['Water plants', 'Morning stretch']));
 
@@ -74,12 +76,15 @@ test('local routines are created and completed entirely offline, clearly labelle
   await waterTitle.locator('xpath=../..').locator('button').first().click();
 
   await expect
-    .poll(async () =>
-      (await shell('local_db_select', {
-        code: 'personal',
-        sql: "SELECT COUNT(*) as n FROM routine_instances WHERE status = 'COMPLETED'",
-        params: [],
-      }))[0].n,
+    .poll(
+      async () =>
+        (
+          await shell('local_db_select', {
+            code: 'personal',
+            sql: "SELECT COUNT(*) as n FROM routine_instances WHERE status = 'COMPLETED'",
+            params: [],
+          })
+        )[0].n,
     )
     .toBeGreaterThan(0);
 

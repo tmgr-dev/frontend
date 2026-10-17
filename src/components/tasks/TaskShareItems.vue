@@ -43,7 +43,7 @@
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { taskShareLinks } from '@/utils/taskLinks';
-	import { AppWindow, Link, Link2, Share2, FileText } from 'lucide-vue-next';
+	import { AppWindow, FileText, Link, Link2, Share2 } from 'lucide-vue-next';
 	import { computed, defineComponent } from 'vue';
 
 	const MOBILE_UA = /Android|iPhone|iPad|iPod/i;

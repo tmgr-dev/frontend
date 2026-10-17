@@ -10,8 +10,9 @@ const walk = (dir: string): string[] =>
 
 const anchors = () =>
 	new Set(
-		TOURS.flatMap((t) => t.steps.flatMap((s) => [s.anchor, s.mobileAnchor]))
-			.filter((a): a is string => !!a),
+		TOURS.flatMap((t) =>
+			t.steps.flatMap((s) => [s.anchor, s.mobileAnchor]),
+		).filter((a): a is string => !!a),
 	);
 
 describe('every tour anchor exists as data-tour in a .vue file', () => {
@@ -21,7 +22,14 @@ describe('every tour anchor exists as data-tour in a .vue file', () => {
 		.join('\n');
 
 	it.each([...anchors()])('%s', (anchor) => {
-		expect(source).toMatch(new RegExp(`data-tour=["']${anchor.replace(/\./g, '\\.')}["']|data-tour="[^"]*${anchor.replace(/\./g, '\\.')}`));
+		expect(source).toMatch(
+			new RegExp(
+				`data-tour=["']${anchor.replace(
+					/\./g,
+					'\\.',
+				)}["']|data-tour="[^"]*${anchor.replace(/\./g, '\\.')}`,
+			),
+		);
 	});
 });
 

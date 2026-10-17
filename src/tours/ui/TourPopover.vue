@@ -69,7 +69,14 @@
 </template>
 
 <script lang="ts">
-	import { computed, defineComponent, onBeforeUnmount, onMounted, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		onMounted,
+		ref,
+		type PropType,
+	} from 'vue';
 	import type { BodyPart } from '../keycaps';
 	import TourSkipMenu, { type SkipMenuKey } from './TourSkipMenu.vue';
 
@@ -91,7 +98,15 @@
 			unavailable: { type: Boolean, default: false },
 			waitingText: { type: String, default: 'Waiting for you…' },
 		},
-		emits: ['next', 'take-me', 'skip-step', 'skip-tour', 'pause', 'explore', 'never'],
+		emits: [
+			'next',
+			'take-me',
+			'skip-step',
+			'skip-tour',
+			'pause',
+			'explore',
+			'never',
+		],
 		setup(props, { emit }) {
 			counter += 1;
 			const titleId = `tour-title-${counter}`;
@@ -138,11 +153,24 @@
 
 			function primary() {
 				emit(
-					props.canTakeMe ? 'take-me' : props.unavailable ? 'skip-step' : 'next',
+					props.canTakeMe
+						? 'take-me'
+						: props.unavailable
+						? 'skip-step'
+						: 'next',
 				);
 			}
 
-			return { titleId, bodyId, bodyEl, scrollable, eyebrow, onSelect, primaryLabel, primary };
+			return {
+				titleId,
+				bodyId,
+				bodyEl,
+				scrollable,
+				eyebrow,
+				onSelect,
+				primaryLabel,
+				primary,
+			};
 		},
 	});
 </script>

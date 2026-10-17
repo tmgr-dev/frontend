@@ -2,16 +2,20 @@
 	<PageContainer width="narrow">
 		<PageHeader title="Agent notifications">
 			<template #subtitle>
-				Get a push notification on your phone when Claude Code, Codex or
-				another AI agent needs you — the recipient is always you, the token
-				owner, and a token works across every workspace you're in. Create a
-				token, then connect Claude Code, Codex or Cursor in one step.
+				Get a push notification on your phone when Claude Code, Codex or another
+				AI agent needs you — the recipient is always you, the token owner, and a
+				token works across every workspace you're in. Create a token, then
+				connect Claude Code, Codex or Cursor in one step.
 			</template>
 		</PageHeader>
 
 		<AiAgentsOverview class="mb-6" />
 
-		<SettingsSection title="New token" class="mb-6" data-tour="agent-notify.connect">
+		<SettingsSection
+			title="New token"
+			class="mb-6"
+			data-tour="agent-notify.connect"
+		>
 			<form class="flex flex-col gap-3" @submit.prevent="submitCreate">
 				<label class="flex flex-col gap-1">
 					<span class="text-sm font-medium">Label (optional)</span>
@@ -29,7 +33,10 @@
 				</div>
 			</form>
 
-			<div v-if="issuedToken" class="mt-4 flex flex-col gap-2 border-t border-border pt-4">
+			<div
+				v-if="issuedToken"
+				class="mt-4 flex flex-col gap-2 border-t border-border pt-4"
+			>
 				<p class="text-sm font-medium text-amber-600 dark:text-amber-400">
 					Copy this token now — you won't see it again.
 				</p>
@@ -47,7 +54,12 @@
 					<Button type="button" size="sm" @click="dialogOpen = true">
 						Show setup
 					</Button>
-					<Button type="button" variant="outline" size="sm" @click="dismissToken">
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						@click="dismissToken"
+					>
 						Done
 					</Button>
 				</div>
@@ -99,7 +111,9 @@
 			<div class="flex flex-col gap-3 text-sm text-muted-foreground">
 				<p>
 					Already have a token? Use these snippets and replace
-					<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs">&lt;your token&gt;</code>
+					<code class="rounded bg-muted px-1 py-0.5 font-mono text-xs"
+						>&lt;your token&gt;</code
+					>
 					with it.
 				</p>
 				<Collapsible v-model:open="snippetsOpen" class="flex flex-col gap-3">
@@ -122,8 +136,13 @@
 
 		<AlarmPhoneSection id="alarm-phone" class="mt-6" />
 
-		<Dialog :open="dialogOpen && !!issuedToken" @update:open="(v) => (dialogOpen = v)">
-			<DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[680px] [&>*]:min-w-0">
+		<Dialog
+			:open="dialogOpen && !!issuedToken"
+			@update:open="(v) => (dialogOpen = v)"
+		>
+			<DialogContent
+				class="max-h-[90vh] overflow-y-auto sm:max-w-[680px] [&>*]:min-w-0"
+			>
 				<DialogHeader>
 					<DialogTitle>Connect your agent</DialogTitle>
 				</DialogHeader>
@@ -135,7 +154,10 @@
 						<CodeSnippet :code="issuedToken.token" label="Notify token" />
 					</div>
 
-					<AgentConnectTabs :token="issuedToken.token" data-tour="agent-notify.command" />
+					<AgentConnectTabs
+						:token="issuedToken.token"
+						data-tour="agent-notify.command"
+					/>
 
 					<div class="flex flex-col gap-2 border-t border-border pt-4">
 						<div class="flex flex-wrap items-center gap-3">
@@ -181,16 +203,15 @@
 		revokeNotifyToken,
 		sendTestNotification,
 		type IssuedNotifyToken,
-		type TestNotificationResult,
 		type NotifyToken,
+		type TestNotificationResult,
 	} from '@/actions/tmgr/notifyTokens';
+	import AgentConnectTabs from '@/components/agents/AgentConnectTabs.vue';
+	import AiAgentsOverview from '@/components/agents/AiAgentsOverview.vue';
+	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
-	import AiAgentsOverview from '@/components/agents/AiAgentsOverview.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
-	import AgentConnectTabs from '@/components/agents/AgentConnectTabs.vue';
-	import CodeSnippet from '@/components/agents/CodeSnippet.vue';
-	import AlarmPhoneSection from '@/pages/Settings/AlarmPhoneSection.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Collapsible,
@@ -207,6 +228,7 @@
 	import { Input } from '@/components/ui/input';
 	import { toast } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import AlarmPhoneSection from '@/pages/Settings/AlarmPhoneSection.vue';
 	import { computed, defineComponent, nextTick, onMounted, ref } from 'vue';
 
 	export default defineComponent({
@@ -302,7 +324,9 @@
 				if (!result) return '';
 				switch (result.kind) {
 					case 'sent':
-						return `Sent — check your phone. (via ${result.channels.join(', ')})`;
+						return `Sent — check your phone. (via ${result.channels.join(
+							', ',
+						)})`;
 					case 'no_channels':
 						return 'Nothing was delivered: install the TMGR mobile app and allow notifications, or link Telegram in Profile.';
 					case 'deduplicated':
@@ -333,7 +357,10 @@
 					copied.value = true;
 					setTimeout(() => (copied.value = false), 2000);
 				} catch {
-					toast({ title: 'Could not copy to clipboard', variant: 'destructive' });
+					toast({
+						title: 'Could not copy to clipboard',
+						variant: 'destructive',
+					});
 				}
 			};
 

@@ -41,12 +41,18 @@ const renderList = (raw: unknown, style: string, start = 1): string => {
 				(item) =>
 					`<li><input type="checkbox" disabled${
 						item.meta?.checked ? ' checked' : ''
-					}> <div>${html(item.content)}${renderList(item.items, style)}</div></li>`,
+					}> <div>${html(item.content)}${renderList(
+						item.items,
+						style,
+					)}</div></li>`,
 			)
 			.join('')}</ul>`;
 	const tag = style === 'ordered' ? 'ol' : 'ul';
 	const lis = items
-		.map((item) => `<li>${html(item.content)}${renderList(item.items, style)}</li>`)
+		.map(
+			(item) =>
+				`<li>${html(item.content)}${renderList(item.items, style)}</li>`,
+		)
 		.join('');
 	return `<${tag}${start > 1 ? ` start="${start}"` : ''}>${lis}</${tag}>`;
 };
@@ -146,7 +152,9 @@ const sanitize = (body: string): string => {
 
 export default function editorJsToHtml(data: unknown): string {
 	const body = normalizeBlocks(data)
-		.blocks.filter((block): block is Block => !!block && typeof block === 'object')
+		.blocks.filter(
+			(block): block is Block => !!block && typeof block === 'object',
+		)
 		.map(renderBlock)
 		.join('');
 	return body ? sanitize(body) : '';

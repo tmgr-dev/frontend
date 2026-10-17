@@ -13,7 +13,10 @@
 
 <script lang="ts">
 	import { toast } from '@/components/ui/toast';
-	import { showRemoveStarters, STARTERS_EXPECTED_KEY } from '@/onboarding/starters';
+	import {
+		showRemoveStarters,
+		STARTERS_EXPECTED_KEY,
+	} from '@/onboarding/starters';
 	import { onboardingApi } from '@/tours/api';
 	import { useTours } from '@/tours/useTours';
 	import { requestCache } from '@/utils/requestCache';
@@ -41,7 +44,12 @@
 	export default defineComponent({
 		name: 'RemoveSampleTasksButton',
 		props: {
-			tasks: { type: Array as PropType<Array<{ settings?: Array<{ key?: string }> }> | null>, default: null },
+			tasks: {
+				type: Array as PropType<Array<{
+					settings?: Array<{ key?: string }>;
+				}> | null>,
+				default: null,
+			},
 		},
 		emits: ['removed'],
 		setup(props, { emit }) {
@@ -86,13 +94,18 @@
 						requestCache.invalidate(/^tasks-status-/);
 						requestCache.invalidate(/^task-/);
 						toast({
-							title: `Removed ${removed} sample ${removed === 1 ? 'task' : 'tasks'}`,
+							title: `Removed ${removed} sample ${
+								removed === 1 ? 'task' : 'tasks'
+							}`,
 						});
 						emit('removed', removed);
 					}
 				} catch (error) {
 					console.error(error);
-					toast({ title: 'Could not remove sample tasks', variant: 'destructive' });
+					toast({
+						title: 'Could not remove sample tasks',
+						variant: 'destructive',
+					});
 				} finally {
 					busy.value = false;
 				}

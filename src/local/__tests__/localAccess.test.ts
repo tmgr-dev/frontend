@@ -37,14 +37,25 @@ describeSqlite('local access socket bridge handler', () => {
 	const user: LocalUser = { id: 7, name: 'Yurij', email: 'me@example.com' };
 
 	const baseDeps = (): LocalAccessDeps => ({
-		resolveWorkspace: async (code) => (code === workspace.code ? workspace : null),
+		resolveWorkspace: async (code) =>
+			code === workspace.code ? workspace : null,
 		currentUser: () => user,
-		contextFor: async (ws, u, actor) => ({ ...ctx, workspace: ws, user: u, actor }),
-		tokenInfo: async () => ({ prefix: 'tmgrl_abcd', expiresAt: '2027-01-01T00:00:00Z' }),
+		contextFor: async (ws, u, actor) => ({
+			...ctx,
+			workspace: ws,
+			user: u,
+			actor,
+		}),
+		tokenInfo: async () => ({
+			prefix: 'tmgrl_abcd',
+			expiresAt: '2027-01-01T00:00:00Z',
+		}),
 		promptVersion: async () => 3,
 	});
 
-	const payload = (overrides: Partial<LocalAccessRequestPayload> = {}): LocalAccessRequestPayload => ({
+	const payload = (
+		overrides: Partial<LocalAccessRequestPayload> = {},
+	): LocalAccessRequestPayload => ({
 		id: 1,
 		workspaceCode: workspace.code,
 		workspaceId: workspace.id,
@@ -75,9 +86,15 @@ describeSqlite('local access socket bridge handler', () => {
 			 VALUES ('p-1', 7, 'Yurij', 'Reviewer', NULL, NULL, ?, NULL)`,
 			[clock.toISOString()],
 		);
-		await enableLocalPersona(ctx, 'p-1', ['tasks:read', 'tasks:write', 'comments:write']);
+		await enableLocalPersona(ctx, 'p-1', [
+			'tasks:read',
+			'tasks:write',
+			'comments:write',
+		]);
 		const api = createLocalApi();
-		const created = await dispatchLocal(api, ctx, 'POST', 'tasks', { title: 'Review the PR' });
+		const created = await dispatchLocal(api, ctx, 'POST', 'tasks', {
+			title: 'Review the PR',
+		});
 		taskId = created!.data.data.id;
 	});
 
@@ -95,8 +112,17 @@ describeSqlite('local access socket bridge handler', () => {
 		unsubscribe();
 		expect(reply.status).toBe(201);
 		const body = JSON.parse(reply.body);
-		expect(body.data.author).toMatchObject({ kind: 'persona', id: 'p-1', name: 'Reviewer' });
-		expect(events).toContainEqual(expect.objectContaining({ type: 'comment.created', actor: 'persona:p-1' }));
+		expect(body.data.author).toMatchObject({
+			kind: 'persona',
+			id: 'p-1',
+			name: 'Reviewer',
+		});
+		expect(events).toContainEqual(
+			expect.objectContaining({
+				type: 'comment.created',
+				actor: 'persona:p-1',
+			}),
+		);
 	});
 
 	it('ignores an actor smuggled in the request body: there is no header path to become "user"', async () => {
@@ -104,7 +130,10 @@ describeSqlite('local access socket bridge handler', () => {
 			payload({
 				method: 'POST',
 				path: `/api/tasks/${taskId}/comments`,
-				body: JSON.stringify({ message: 'hi', actor: { kind: 'user', id: '7', name: 'Yurij' } }),
+				body: JSON.stringify({
+					message: 'hi',
+					actor: { kind: 'user', id: '7', name: 'Yurij' },
+				}),
 			}),
 			baseDeps(),
 		);
@@ -166,7 +195,9 @@ describeSqlite('local access socket bridge handler', () => {
 	});
 
 	it('refuses a persona owned by a different account with 401 OWNER_MISMATCH', async () => {
-		await ctx.db.execute(`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`);
+		await ctx.db.execute(
+			`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`,
+		);
 		const reply = await handleLocalAccessRequest(payload(), baseDeps());
 		expect(reply.status).toBe(401);
 		expect(JSON.parse(reply.body).code).toBe('OWNER_MISMATCH');
@@ -174,7 +205,11 @@ describeSqlite('local access socket bridge handler', () => {
 
 	it('answers POST /mcp tools/list for a persona', async () => {
 		const reply = await handleLocalAccessRequest(
-			payload({ method: 'POST', path: '/mcp', body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }),
+			payload({
+				method: 'POST',
+				path: '/mcp',
+				body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+			}),
 			baseDeps(),
 		);
 		expect(reply.status).toBe(200);
@@ -184,7 +219,14 @@ describeSqlite('local access socket bridge handler', () => {
 
 	it('answers POST /mcp with 202 and an empty body for a notification', async () => {
 		const reply = await handleLocalAccessRequest(
-			payload({ method: 'POST', path: '/mcp', body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) }),
+			payload({
+				method: 'POST',
+				path: '/mcp',
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					method: 'notifications/initialized',
+				}),
+			}),
 			baseDeps(),
 		);
 		expect(reply.status).toBe(202);
@@ -195,37 +237,63 @@ describeSqlite('local access socket bridge handler', () => {
 		resetFirstLocalCallForTests();
 		const seen: unknown[] = [];
 		const off = tourBus.on('agent.first_local_call', (p) => seen.push(p));
-		await handleLocalAccessRequest(payload({ path: '/api/local/events' }), baseDeps());
-		await handleLocalAccessRequest(payload({ path: '/api/tasks/99999' }), baseDeps());
+		await handleLocalAccessRequest(
+			payload({ path: '/api/local/events' }),
+			baseDeps(),
+		);
+		await handleLocalAccessRequest(
+			payload({ path: '/api/tasks/99999' }),
+			baseDeps(),
+		);
 		expect(seen).toHaveLength(0);
-		await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
-		await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		await handleLocalAccessRequest(
+			payload({ path: '/api/local/whoami' }),
+			baseDeps(),
+		);
+		await handleLocalAccessRequest(
+			payload({ path: '/api/local/whoami' }),
+			baseDeps(),
+		);
 		off();
 		expect(seen).toHaveLength(1);
 	});
 
 	it('answers an unlisted /api/local/* route with 404', async () => {
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/events' }), baseDeps());
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/events' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(404);
 		expect(JSON.parse(reply.body).code).toBe('NOT_FOUND');
 	});
 
 	it('refuses whoami for a persona owned by a different account with 401 OWNER_MISMATCH', async () => {
-		await ctx.db.execute(`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`);
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		await ctx.db.execute(
+			`UPDATE personas SET owner_user_id = 99 WHERE uuid = 'p-1'`,
+		);
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/whoami' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(401);
 		expect(JSON.parse(reply.body).code).toBe('OWNER_MISMATCH');
 	});
 
 	it('refuses whoami for a disabled persona with 401 PERSONA_DISABLED', async () => {
 		await disableLocalPersona(ctx, 'p-1');
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/whoami' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(401);
 		expect(JSON.parse(reply.body).code).toBe('PERSONA_DISABLED');
 	});
 
 	it('answers GET /api/local/whoami', async () => {
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/whoami' }), baseDeps());
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/whoami' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(200);
 		const body = JSON.parse(reply.body);
 		expect(body.user_id).toBe(7);
@@ -237,12 +305,17 @@ describeSqlite('local access socket bridge handler', () => {
 			workspace: { id: -1, code: 'local-personal' },
 			skills: [],
 		});
-		expect(body.persona.workspace.permissions).toEqual(expect.arrayContaining(['tasks:read', 'tasks:write']));
+		expect(body.persona.workspace.permissions).toEqual(
+			expect.arrayContaining(['tasks:read', 'tasks:write']),
+		);
 		expect(body.token).toMatchObject({ id: 'lt_test', prefix: 'tmgrl_abcd' });
 	});
 
 	it('answers GET /api/local/_grant with the persona permissions', async () => {
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/_grant' }), baseDeps());
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/_grant' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(200);
 		expect(JSON.parse(reply.body).permissions).toEqual(
 			expect.arrayContaining(['tasks:read', 'tasks:write', 'comments:write']),
@@ -251,13 +324,19 @@ describeSqlite('local access socket bridge handler', () => {
 
 	it('refuses /api/local/_grant for a disabled persona with 401 PERSONA_DISABLED', async () => {
 		await disableLocalPersona(ctx, 'p-1');
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/local/_grant' }), baseDeps());
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/local/_grant' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(401);
 		expect(JSON.parse(reply.body).code).toBe('PERSONA_DISABLED');
 	});
 
 	it('falls through to 501 for a route the local router has never heard of', async () => {
-		const reply = await handleLocalAccessRequest(payload({ path: '/api/definitely-not-a-route' }), baseDeps());
+		const reply = await handleLocalAccessRequest(
+			payload({ path: '/api/definitely-not-a-route' }),
+			baseDeps(),
+		);
 		expect(reply.status).toBe(501);
 		expect(JSON.parse(reply.body).code).toBe('NOT_AVAILABLE_LOCALLY');
 	});
@@ -268,25 +347,40 @@ describe('installLocalAccess wiring', () => {
 	const listenMock = listen as jest.Mock;
 
 	beforeEach(() => {
-		invokeMock.mockReset().mockImplementation(async (command: string) => (command === 'local_workspaces_list' ? [] : undefined));
+		invokeMock
+			.mockReset()
+			.mockImplementation(async (command: string) =>
+				command === 'local_workspaces_list' ? [] : undefined,
+			);
 		listenMock.mockReset();
 	});
 
 	it('registers the request handler before announcing readiness, and replies with the request id', async () => {
-		let handler: ((event: { payload: LocalAccessRequestPayload }) => void) | undefined;
-		listenMock.mockImplementation((_channel: string, callback: typeof handler) => {
-			handler = callback;
-			return Promise.resolve(() => {});
-		});
+		let handler:
+			| ((event: { payload: LocalAccessRequestPayload }) => void)
+			| undefined;
+		listenMock.mockImplementation(
+			(_channel: string, callback: typeof handler) => {
+				handler = callback;
+				return Promise.resolve(() => {});
+			},
+		);
 		const store = { state: { user: null }, watch: jest.fn() };
 
 		await installLocalAccess(store);
 
-		expect(listenMock).toHaveBeenCalledWith('local-access://request', expect.any(Function));
+		expect(listenMock).toHaveBeenCalledWith(
+			'local-access://request',
+			expect.any(Function),
+		);
 		const listenOrder = listenMock.mock.invocationCallOrder[0];
-		const readyCall = invokeMock.mock.calls.findIndex(([command]) => command === 'local_access_ready');
+		const readyCall = invokeMock.mock.calls.findIndex(
+			([command]) => command === 'local_access_ready',
+		);
 		expect(readyCall).toBeGreaterThanOrEqual(0);
-		expect(invokeMock.mock.invocationCallOrder[readyCall]).toBeGreaterThan(listenOrder);
+		expect(invokeMock.mock.invocationCallOrder[readyCall]).toBeGreaterThan(
+			listenOrder,
+		);
 		expect(store.watch).toHaveBeenCalled();
 
 		invokeMock.mockClear();

@@ -1,8 +1,4 @@
-import {
-	activitySubject,
-	activityTime,
-	activityTitle,
-} from '../activityLines';
+import { activitySubject, activityTime, activityTitle } from '../activityLines';
 
 describe('activityTitle', () => {
 	it('keeps the title the API sent', () => {
@@ -130,9 +126,9 @@ describe('activityTime', () => {
 
 	it('computes it from created_at when the API sent none', () => {
 		const now = Date.parse('2026-10-04T12:00:00Z');
-		expect(
-			activityTime({ created_at: '2026-10-04T11:55:00Z' }, now),
-		).toBe('5 minutes ago');
+		expect(activityTime({ created_at: '2026-10-04T11:55:00Z' }, now)).toBe(
+			'5 minutes ago',
+		);
 		expect(activityTime({}, now)).toBe('');
 	});
 });

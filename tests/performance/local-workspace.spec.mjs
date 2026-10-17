@@ -13,7 +13,8 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     if (!url.pathname.startsWith('/api/')) return;
     const path = url.pathname.replace('/api/', '');
     sent.push(path);
-    if (path === 'v2/user/settings') settingsPayloads.push(request.postData() ?? '');
+    if (path === 'v2/user/settings')
+      settingsPayloads.push(request.postData() ?? '');
   });
 
   await page.goto('/demo/board');
@@ -27,17 +28,28 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.goto('/local-personal/board');
   await expect(page.getByText('Backlog').first()).toBeVisible();
   await expect(page.getByText('In progress').first()).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Invite user' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Invite user' })).toHaveCount(
+    0,
+  );
   await expect(page.getByTestId('local-workspace-badge').first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'Open Add Task Modal' }).first().click();
+  await page
+    .getByRole('button', { name: 'Open Add Task Modal' })
+    .first()
+    .click();
   await page.getByPlaceholder('Task name').fill('Written offline');
   await page.keyboard.press('ControlOrMeta+KeyS');
-  await expect.poll(async () => (await shell('local_db_select', {
-    code: 'personal',
-    sql: 'SELECT title FROM tasks',
-    params: [],
-  })).map((row) => row.title)).toContain('Written offline');
+  await expect
+    .poll(async () =>
+      (
+        await shell('local_db_select', {
+          code: 'personal',
+          sql: 'SELECT title FROM tasks',
+          params: [],
+        })
+      ).map((row) => row.title),
+    )
+    .toContain('Written offline');
   const attachments = page.locator('.task-attachments').first();
   await expect(attachments).toBeVisible();
   await attachments.locator('input[type="file"]').setInputFiles({
@@ -50,11 +62,21 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   });
   await expect(page.getByText('notes.png').first()).toBeVisible();
   await expect
-    .poll(() => [...stored.entries()].find(([key]) => key.startsWith('personal/') && key.endsWith('/notes.png'))?.[1].length)
+    .poll(
+      () =>
+        [...stored.entries()].find(
+          ([key]) => key.startsWith('personal/') && key.endsWith('/notes.png'),
+        )?.[1].length,
+    )
     .toBeGreaterThan(0);
   await attachments.scrollIntoViewIfNeeded();
   await expect
-    .poll(() => attachments.locator('img').first().evaluate((img) => img.complete && img.naturalWidth))
+    .poll(() =>
+      attachments
+        .locator('img')
+        .first()
+        .evaluate((img) => img.complete && img.naturalWidth),
+    )
     .toBeGreaterThan(0);
   await attachments.locator('input[type="file"]').setInputFiles({
     name: 'framework_blank.stl',
@@ -62,7 +84,9 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     buffer: Buffer.from('solid blank\nendsolid blank\n'),
   });
   await expect(page.getByText('framework_blank.stl').first()).toBeVisible();
-  await expect(page.getByText('This file type cannot be attached.')).toHaveCount(0);
+  await expect(
+    page.getByText('This file type cannot be attached.'),
+  ).toHaveCount(0);
   await page.evaluate(() =>
     window.__emit('download://finished', {
       name: 'notes.png',
@@ -72,7 +96,9 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   );
   await expect(page.getByText('Downloaded notes.png')).toBeVisible();
   await page.getByRole('button', { name: 'Show in Finder' }).click();
-  await expect.poll(() => shell.revealed).toEqual(['/home/user/Downloads/notes.png']);
+  await expect
+    .poll(() => shell.revealed)
+    .toEqual(['/home/user/Downloads/notes.png']);
   await page.keyboard.press('Escape');
   await page.goto('/local-personal/board');
   await expect(page.getByText('Written offline').first()).toBeVisible();
@@ -82,37 +108,62 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     sql: `INSERT INTO categories (title, code, settings, created_at, updated_at) VALUES ('Parent', 'PA', '[]', '', ''), ('Nested', NULL, '[]', '', '')`,
     params: [],
   });
-  await shell('local_db_execute', { code: 'personal', sql: `UPDATE categories SET parent_id = 1 WHERE id = 2`, params: [] });
-  await shell('local_db_execute', { code: 'personal', sql: `UPDATE tasks SET project_category_id = 1`, params: [] });
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `UPDATE categories SET parent_id = 1 WHERE id = 2`,
+    params: [],
+  });
+  await shell('local_db_execute', {
+    code: 'personal',
+    sql: `UPDATE tasks SET project_category_id = 1`,
+    params: [],
+  });
   await page.goto('/local-personal/categories/1/children');
   await expect(page.getByText('Nested').first()).toBeVisible();
   await expect(page.getByText('Written offline').first()).toBeVisible();
-  await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(0);
+  await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(
+    0,
+  );
   await page.getByRole('button', { name: 'Create subcategory' }).click();
   await expect(page).toHaveURL(/\/local-personal\/categories\?create=1$/);
-  await expect(page.getByRole('combobox', { name: 'Parent' })).toHaveText('Parent');
+  await expect(page.getByRole('combobox', { name: 'Parent' })).toHaveText(
+    'Parent',
+  );
   await page.getByPlaceholder('Name').fill('Fresh child');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page).toHaveURL(/\/local-personal\/categories\?category=3$/);
-  await expect(page.getByRole('heading', { name: 'Fresh child', level: 2 })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Fresh child', level: 2 }),
+  ).toBeVisible();
   expect(
-    (await shell('local_db_select', { code: 'personal', sql: 'SELECT parent_id FROM categories WHERE id = 3', params: [] }))[0]
-      .parent_id,
+    (
+      await shell('local_db_select', {
+        code: 'personal',
+        sql: 'SELECT parent_id FROM categories WHERE id = 3',
+        params: [],
+      })
+    )[0].parent_id,
   ).toBe(1);
 
   await page.goto('/settings/workspaces');
   await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
   await expect(page.getByText('Workspace Invitations')).toHaveCount(0);
   await expect(page.getByText('Workspace Members')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Invite|Delete workspace|Exit/ })).toHaveCount(0);
-  await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /Invite|Delete workspace|Exit/ }),
+  ).toHaveCount(0);
+  await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(
+    0,
+  );
 
   await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /Export to Markdown/ }).click();
   await expect.poll(() => shell.exports.length).toBe(1);
   const exported = shell.exports[0].files.map((file) => file.path);
   expect(exported[0]).toBe('README.md');
-  expect(exported.some((path) => /^tasks\/T-\d+-written-offline\.md$/.test(path))).toBe(true);
+  expect(
+    exported.some((path) => /^tasks\/T-\d+-written-offline\.md$/.test(path)),
+  ).toBe(true);
 
   const workspaceCalls = sent.filter(
     (path) =>

@@ -54,10 +54,7 @@
 				placeholder="What this persona is for"
 				@update:model-value="(v) => update('description', String(v))"
 			/>
-			<span
-				v-if="fieldErrors.description"
-				class="text-xs text-destructive"
-			>
+			<span v-if="fieldErrors.description" class="text-xs text-destructive">
 				{{ fieldErrors.description.join(' ') }}
 			</span>
 		</label>
@@ -74,17 +71,12 @@
 			<span
 				:class="[
 					'text-xs',
-					promptOverLimit
-						? 'text-destructive'
-						: 'text-muted-foreground',
+					promptOverLimit ? 'text-destructive' : 'text-muted-foreground',
 				]"
 			>
 				{{ promptBytes }} / {{ PROMPT_MAX_BYTES }} bytes
 			</span>
-			<span
-				v-if="fieldErrors.system_prompt"
-				class="text-xs text-destructive"
-			>
+			<span v-if="fieldErrors.system_prompt" class="text-xs text-destructive">
 				{{ fieldErrors.system_prompt.join(' ') }}
 			</span>
 		</label>
@@ -124,7 +116,10 @@
 		name: 'PersonaForm',
 		components: { Button, Input, Textarea },
 		props: {
-			modelValue: { type: Object as PropType<PersonaFormModel>, required: true },
+			modelValue: {
+				type: Object as PropType<PersonaFormModel>,
+				required: true,
+			},
 			fieldErrors: {
 				type: Object as PropType<Record<string, string[]>>,
 				default: () => ({}),

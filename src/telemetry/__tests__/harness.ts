@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { USAGE_KEY } from '../consent';
 import { createTelemetry, type TelemetryDeps } from '../client';
+import { USAGE_KEY } from '../consent';
 
 export const BASE = 'https://api.example.test/api/';
 
@@ -22,13 +22,21 @@ export interface FetchCall {
 	init: RequestInit & { headers: Record<string, string> };
 }
 
-export const setConsent = (usage: 'granted' | 'denied' | null, generation: number) =>
+export const setConsent = (
+	usage: 'granted' | 'denied' | null,
+	generation: number,
+) =>
 	usage === null
 		? localStorage.removeItem(USAGE_KEY)
-		: localStorage.setItem(USAGE_KEY, JSON.stringify({ on: usage === 'granted', generation }));
+		: localStorage.setItem(
+				USAGE_KEY,
+				JSON.stringify({ on: usage === 'granted', generation }),
+		  );
 
 export const receiptKeys = (storage: Storage = localStorage): string[] =>
-	Object.keys(storage).filter((key) => key.startsWith('tmgr:telemetry:receipt:'));
+	Object.keys(storage).filter((key) =>
+		key.startsWith('tmgr:telemetry:receipt:'),
+	);
 
 export const makeClock = (start = Date.UTC(2026, 9, 12, 10, 37, 21)) => {
 	let time = start;
@@ -38,13 +46,20 @@ export const makeClock = (start = Date.UTC(2026, 9, 12, 10, 37, 21)) => {
 export interface Tab {
 	telemetry: ReturnType<typeof createTelemetry>;
 	calls: FetchCall[];
-	respond: { status: number | 'network'; delay?: Promise<void>; onStart?: () => void };
+	respond: {
+		status: number | 'network';
+		delay?: Promise<void>;
+		onStart?: () => void;
+	};
 	timers: { fn: () => void; ms: number; id: number; cleared: boolean }[];
 	later: { fn: () => void; ms: number }[];
 	clock: ReturnType<typeof makeClock>;
 }
 
-export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeClock()): Tab => {
+export const makeTab = (
+	overrides: Partial<TelemetryDeps> = {},
+	clock = makeClock(),
+): Tab => {
 	const calls: FetchCall[] = [];
 	const timers: Tab['timers'] = [];
 	const later: Tab['later'] = [];
@@ -94,7 +109,8 @@ export const makeTab = (overrides: Partial<TelemetryDeps> = {}, clock = makeCloc
 	return { telemetry, calls, respond, timers, later, clock };
 };
 
-export const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+export const tick = () =>
+	new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 export class FlakyStorage {
 	data = new Map<string, string>();
@@ -137,10 +153,12 @@ export class TestLocks {
 				} catch (error) {
 					result = Promise.reject(error);
 				}
-				Promise.resolve(result).then(resolve, reject).finally(() => {
-					this.held.delete(name);
-					this.waiting.get(name)?.shift()?.();
-				});
+				Promise.resolve(result)
+					.then(resolve, reject)
+					.finally(() => {
+						this.held.delete(name);
+						this.waiting.get(name)?.shift()?.();
+					});
 			};
 			if (this.held.has(name)) {
 				const queue = this.waiting.get(name) ?? [];
@@ -158,11 +176,13 @@ export const testWindow = (storage: unknown, locks?: TestLocks) => {
 		navigator: { locks },
 		BroadcastChannel: FakeChannel,
 		document: new EventTarget(),
-		addEventListener: (type: string, fn: (event: any) => void) => (listeners[type] ??= []).push(fn),
+		addEventListener: (type: string, fn: (event: any) => void) =>
+			(listeners[type] ??= []).push(fn),
 		removeEventListener: (type: string, fn: (event: any) => void) => {
 			listeners[type] = listeners[type]?.filter((listener) => listener !== fn);
 		},
-		fire: (type: string, event: unknown) => listeners[type]?.forEach((fn) => fn(event)),
+		fire: (type: string, event: unknown) =>
+			listeners[type]?.forEach((fn) => fn(event)),
 	} as unknown as Window & { fire(type: string, event: unknown): void };
 };
 

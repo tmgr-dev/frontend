@@ -70,7 +70,10 @@ export interface DataApi {
 	taskDataSet(taskId: number, key: string, json: string): Promise<unknown>;
 	taskDataDelete(taskId: number, key: string): Promise<unknown>;
 	taskDataGetMany(taskIds: number[], key: string): Promise<unknown>;
-	pagesSearch(q: string, opts: { type?: string; limit?: number }): Promise<unknown>;
+	pagesSearch(
+		q: string,
+		opts: { type?: string; limit?: number },
+	): Promise<unknown>;
 	pagesTree(): Promise<unknown>;
 	pagesGet(idOrSlug: number | string): Promise<any>;
 	pagesCreate(fields: Record<string, unknown>): Promise<unknown>;
@@ -97,8 +100,14 @@ export interface DataApi {
 			branch: string | null;
 		},
 	): Promise<unknown>;
-	updateAgentWork(runId: number, patch: Record<string, unknown>): Promise<unknown>;
-	finishAgentWork(runId: number, patch: Record<string, unknown>): Promise<unknown>;
+	updateAgentWork(
+		runId: number,
+		patch: Record<string, unknown>,
+	): Promise<unknown>;
+	finishAgentWork(
+		runId: number,
+		patch: Record<string, unknown>,
+	): Promise<unknown>;
 	listRoutines(from: string, to: string): Promise<RoutineEntry[]>;
 	getRoutine(id: number): Promise<Routine>;
 	listRoutineInstances(id: number): Promise<RoutineInstance[]>;
@@ -293,13 +302,18 @@ const TRAY_RAW_MAX = 1000;
 const graphemes = (value: string): string[] =>
 	typeof Intl !== 'undefined' && 'Segmenter' in Intl
 		? Array.from(
-				new (Intl as any).Segmenter(undefined, { granularity: 'grapheme' }).segment(value),
+				new (Intl as any).Segmenter(undefined, {
+					granularity: 'grapheme',
+				}).segment(value),
 				(part: any) => part.segment as string,
 		  )
 		: [...value];
 
 /** At most `max` graphemes: a longer text keeps `max - 1` of them and a trailing "…". */
-export const truncateGraphemes = (value: string, max = TRAY_TEXT_MAX): string => {
+export const truncateGraphemes = (
+	value: string,
+	max = TRAY_TEXT_MAX,
+): string => {
 	const parts = graphemes(value);
 	return parts.length <= max ? value : `${parts.slice(0, max - 1).join('')}…`;
 };
@@ -307,7 +321,12 @@ export const truncateGraphemes = (value: string, max = TRAY_TEXT_MAX): string =>
 const trayText = (value: unknown, field: string): string =>
 	truncateGraphemes(string(value, field, TRAY_RAW_MAX));
 
-const VIEW_BADGE_TONES: ViewBadgeTone[] = ['default', 'info', 'warning', 'danger'];
+const VIEW_BADGE_TONES: ViewBadgeTone[] = [
+	'default',
+	'info',
+	'warning',
+	'danger',
+];
 const VIEW_BADGE_TEXT_MAX = 4;
 
 const viewBadge = (value: unknown): ViewBadgeSpec | null => {
@@ -317,14 +336,20 @@ const viewBadge = (value: unknown): ViewBadgeSpec | null => {
 	const b = value as Params;
 	const hasCount = b.count !== undefined;
 	const hasText = b.text !== undefined;
-	if (hasCount === hasText) invalid('badge needs exactly one of count and text');
-	if (b.tone !== undefined && !VIEW_BADGE_TONES.includes(b.tone as ViewBadgeTone))
+	if (hasCount === hasText)
+		invalid('badge needs exactly one of count and text');
+	if (
+		b.tone !== undefined &&
+		!VIEW_BADGE_TONES.includes(b.tone as ViewBadgeTone)
+	)
 		invalid(`tone must be one of ${VIEW_BADGE_TONES.join(', ')}`);
 	const tone = (b.tone as ViewBadgeTone | undefined) ?? 'default';
 	if (hasCount) {
 		if (!Number.isSafeInteger(b.count) || (b.count as number) < 0)
 			invalid('count must be a non-negative integer');
-		return b.count === 0 ? null : { count: b.count as number, text: null, tone };
+		return b.count === 0
+			? null
+			: { count: b.count as number, text: null, tone };
 	}
 	if (
 		typeof b.text !== 'string' ||
@@ -337,11 +362,15 @@ const viewBadge = (value: unknown): ViewBadgeSpec | null => {
 
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
 
-const ISO_DATETIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+const ISO_DATETIME =
+	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
 /** Any offset is accepted, but stored/compared as UTC like Java's Instant ("…T12:00:00Z"). */
 const isoDateTime = (value: unknown, field: string): string => {
-	const ms = typeof value === 'string' && ISO_DATETIME.test(value) ? Date.parse(value) : NaN;
+	const ms =
+		typeof value === 'string' && ISO_DATETIME.test(value)
+			? Date.parse(value)
+			: NaN;
 	if (Number.isNaN(ms)) invalid(`${field} must be an ISO 8601 date-time`);
 	return new Date(ms).toISOString().replace(/\.000Z$/, 'Z');
 };
@@ -387,7 +416,8 @@ const idArrayMax = (value: unknown, field: string, max: number): number[] => {
 	return (value as unknown[]).map((v) => id(v, field));
 };
 
-const idArray = (value: unknown, field: string): number[] => idArrayMax(value, field, 100);
+const idArray = (value: unknown, field: string): number[] =>
+	idArrayMax(value, field, 100);
 
 const stringArray = (value: unknown, field: string, max: number): string[] => {
 	if (!Array.isArray(value) || value.length > max)
@@ -433,18 +463,22 @@ const httpsUrl = (value: unknown): string =>
 
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/i;
 
-const commitsField = (value: unknown): { sha: string; message: string | null }[] => {
+const commitsField = (
+	value: unknown,
+): { sha: string; message: string | null }[] => {
 	if (!Array.isArray(value) || value.length > 200)
 		invalid('commits must be an array of at most 200 items');
 	return (value as unknown[]).map((commit) => {
-		if (!commit || typeof commit !== 'object') invalid('each commit must be an object');
+		if (!commit || typeof commit !== 'object')
+			invalid('each commit must be an object');
 		const sha = (commit as Params).sha;
 		if (typeof sha !== 'string' || !COMMIT_SHA.test(sha))
 			invalid('commit sha must be 7-40 hex characters');
 		const message = (commit as Params).message;
 		return {
 			sha,
-			message: message == null ? null : string(message, 'commit message', 500, true),
+			message:
+				message == null ? null : string(message, 'commit message', 500, true),
 		};
 	});
 };
@@ -453,8 +487,8 @@ const nonNegativeInt = (value: unknown, field: string): number | null =>
 	value == null
 		? null
 		: Number.isSafeInteger(value) && (value as number) >= 0
-		  ? (value as number)
-		  : invalid(`${field} must be a non-negative integer`);
+		? (value as number)
+		: invalid(`${field} must be a non-negative integer`);
 
 const testsField = (
 	value: unknown,
@@ -470,13 +504,18 @@ const testsField = (
 
 const FINISH_STATUSES = ['succeeded', 'failed', 'cancelled'];
 
-const agentWorkProgress = (patch: unknown, includeBranch: boolean): Record<string, unknown> => {
+const agentWorkProgress = (
+	patch: unknown,
+	includeBranch: boolean,
+): Record<string, unknown> => {
 	if (!patch || typeof patch !== 'object' || Array.isArray(patch))
 		invalid('patch must be an object');
 	const p = patch as Params;
 	const out: Record<string, unknown> = {};
-	if (includeBranch && p.branch != null) out.branch = string(p.branch, 'branch', 255);
-	if (p.summary != null) out.summary = string(p.summary, 'summary', 10_000, true);
+	if (includeBranch && p.branch != null)
+		out.branch = string(p.branch, 'branch', 255);
+	if (p.summary != null)
+		out.summary = string(p.summary, 'summary', 10_000, true);
 	if (p.prUrl != null) out.prUrl = httpsUrl(p.prUrl);
 	if (p.commits != null) out.commits = commitsField(p.commits);
 	if (p.tests != null) out.tests = testsField(p.tests);
@@ -490,11 +529,15 @@ const MAX_PAGE_BYTES = 1_048_576;
 const SECTION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 const pageRef = (value: unknown): number | string =>
-	typeof value === 'string' ? string(value, 'idOrSlug', 200) : id(value, 'idOrSlug');
+	typeof value === 'string'
+		? string(value, 'idOrSlug', 200)
+		: id(value, 'idOrSlug');
 
 const pageBody = (value: unknown, field: string): string => {
 	const text = string(value, field, MAX_PAGE_BYTES, true);
-	return byteLength(text) <= MAX_PAGE_BYTES ? text : invalid(`${field} is larger than 1 MB`);
+	return byteLength(text) <= MAX_PAGE_BYTES
+		? text
+		: invalid(`${field} is larger than 1 MB`);
 };
 
 const pageProperties = (value: unknown): Record<string, unknown> => {
@@ -508,7 +551,8 @@ const pageType = (value: unknown): string =>
 		? (value as string)
 		: invalid(`type must be one of ${PAGE_TYPES.join(', ')}`);
 
-const pageSummary = (value: unknown): string => string(value, 'summary', 255, true);
+const pageSummary = (value: unknown): string =>
+	string(value, 'summary', 255, true);
 
 const pagePatch = (p: Params): Record<string, unknown> => {
 	const out: Record<string, unknown> = {};
@@ -538,10 +582,15 @@ const relationType = (value: unknown): string =>
 const ROUTINE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const routineDate = (value: unknown, field: string): string => {
-	if (typeof value !== 'string' || !ROUTINE_DATE.test(value)) invalid(`${field} must be YYYY-MM-DD`);
+	if (typeof value !== 'string' || !ROUTINE_DATE.test(value))
+		invalid(`${field} must be YYYY-MM-DD`);
 	const [y, m, d] = (value as string).split('-').map(Number);
 	const parsed = new Date(Date.UTC(y, m - 1, d));
-	if (parsed.getUTCFullYear() !== y || parsed.getUTCMonth() !== m - 1 || parsed.getUTCDate() !== d) {
+	if (
+		parsed.getUTCFullYear() !== y ||
+		parsed.getUTCMonth() !== m - 1 ||
+		parsed.getUTCDate() !== d
+	) {
 		invalid(`${field} must be a real date`);
 	}
 	return value as string;
@@ -550,11 +599,16 @@ const routineDate = (value: unknown, field: string): string => {
 const ROUTINE_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const routineTime = (value: unknown): string =>
-	typeof value === 'string' && ROUTINE_TIME.test(value) ? value : invalid('time must be HH:mm');
+	typeof value === 'string' && ROUTINE_TIME.test(value)
+		? value
+		: invalid('time must be HH:mm');
 
 const todayLocal = (nowMs: number): string => {
 	const d = new Date(nowMs);
-	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+	return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+		2,
+		'0',
+	)}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
 /** Local routine ids start above this; the local PUT/PATCH tasks/:id would edit a routine with one. */
@@ -577,7 +631,8 @@ const taskFields = (patch: unknown) => {
 
 const MAX_VALUE_BYTES = 256 * 1024;
 const MAX_TASK_DATA_VALUE_BYTES = 64 * 1024;
-const byteLength = (value: string): number => new TextEncoder().encode(value).byteLength;
+const byteLength = (value: string): number =>
+	new TextEncoder().encode(value).byteLength;
 const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
 const EXPORT_SEGMENT = /^[\p{L}\p{N} ._()-]{1,100}$/u;
 // Data and documents only: nothing Finder would run or follow on a double-click.
@@ -635,7 +690,9 @@ const minutesValue = (value: unknown, field: string): number => {
 		value < 1 ||
 		value > ONE_YEAR_MS / 60_000
 	)
-		invalid(`${field} must be a number of minutes, from 1 to ${ONE_YEAR_MS / 60_000}`);
+		invalid(
+			`${field} must be a number of minutes, from 1 to ${ONE_YEAR_MS / 60_000}`,
+		);
 	return value as number;
 };
 
@@ -655,7 +712,9 @@ const alarmSpec = (p: Params, now: number): AlarmSpec => {
 	}
 	if (hasPeriod) {
 		const period = minutesValue(p.periodMinutes, 'periodMinutes');
-		const delay = hasDelay ? minutesValue(p.delayMinutes, 'delayMinutes') : period;
+		const delay = hasDelay
+			? minutesValue(p.delayMinutes, 'delayMinutes')
+			: period;
 		return { scheduledAtMs: now + delay * 60_000, periodMinutes: period };
 	}
 	if (hasDelay) {
@@ -700,7 +759,8 @@ export const createBroker = (deps: BrokerDeps) => {
 
 	/** `relationTypeWithTask` is a local implementation detail; only relations:read may see it. */
 	const stripRelations = (task: unknown): unknown => {
-		if (granted.has('relations:read') || !task || typeof task !== 'object') return task;
+		if (granted.has('relations:read') || !task || typeof task !== 'object')
+			return task;
 		const { relationTypeWithTask, ...rest } = task as Record<string, unknown>;
 		return rest;
 	};
@@ -765,12 +825,17 @@ export const createBroker = (deps: BrokerDeps) => {
 					perPage:
 						p.perPage == null ? 50 : Math.min(100, id(p.perPage, 'perPage')),
 				};
-				if (p.updatedSince != null) query.updatedSince = isoDateTime(p.updatedSince, 'updatedSince');
-				if (p.dueBefore != null) query.dueBefore = isoDateTime(p.dueBefore, 'dueBefore');
-				if (p.dueAfter != null) query.dueAfter = isoDateTime(p.dueAfter, 'dueAfter');
+				if (p.updatedSince != null)
+					query.updatedSince = isoDateTime(p.updatedSince, 'updatedSince');
+				if (p.dueBefore != null)
+					query.dueBefore = isoDateTime(p.dueBefore, 'dueBefore');
+				if (p.dueAfter != null)
+					query.dueAfter = isoDateTime(p.dueAfter, 'dueAfter');
 				if (p.statusType != null) query.statusType = statusType(p.statusType);
 				if (p.priority != null)
-					query.priority = PRIORITIES.includes(p.priority) ? p.priority : invalid('priority');
+					query.priority = PRIORITIES.includes(p.priority)
+						? p.priority
+						: invalid('priority');
 				if (p.sort != null) {
 					query.sort = ['due', 'updated', 'created'].includes(p.sort)
 						? p.sort
@@ -794,7 +859,8 @@ export const createBroker = (deps: BrokerDeps) => {
 			permission: 'tasks:read',
 			run: (p) => {
 				const taskId = id(p.id);
-				if (deps.workspace.kind === 'local' && taskId > ROUTINE_ID_BASE) routineIdRefused();
+				if (deps.workspace.kind === 'local' && taskId > ROUTINE_ID_BASE)
+					routineIdRefused();
 				return api.getTask(taskId).then(stripRelations);
 			},
 		},
@@ -812,7 +878,8 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) => {
 				const taskId = id(p.id);
-				if (deps.workspace.kind === 'local' && taskId > ROUTINE_ID_BASE) routineIdRefused();
+				if (deps.workspace.kind === 'local' && taskId > ROUTINE_ID_BASE)
+					routineIdRefused();
 				return api.updateTask(taskId, taskFields(p.patch)).then(stripRelations);
 			},
 		},
@@ -850,7 +917,9 @@ export const createBroker = (deps: BrokerDeps) => {
 			permission: 'categories:write',
 			write: true,
 			run: (p) => {
-				const fields: Record<string, unknown> = { title: string(p.title, 'title', 100) };
+				const fields: Record<string, unknown> = {
+					title: string(p.title, 'title', 100),
+				};
 				if (p.code != null) fields.code = categoryCode(p.code);
 				return api.createCategory(fields);
 			},
@@ -916,7 +985,10 @@ export const createBroker = (deps: BrokerDeps) => {
 		'taskData.get': {
 			permission: 'tasks:read',
 			run: async (p) => {
-				const json = await api.taskDataGet(id(p.taskId, 'taskId'), taskDataKey(p.key));
+				const json = await api.taskDataGet(
+					id(p.taskId, 'taskId'),
+					taskDataKey(p.key),
+				);
 				return typeof json === 'string' ? JSON.parse(json) : null;
 			},
 		},
@@ -925,23 +997,29 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) => {
 				const json = JSON.stringify(p.value ?? null);
-				if (byteLength(json) > MAX_TASK_DATA_VALUE_BYTES) invalid('value is larger than 64 KB');
-				return api.taskDataSet(id(p.taskId, 'taskId'), taskDataKey(p.key), json);
+				if (byteLength(json) > MAX_TASK_DATA_VALUE_BYTES)
+					invalid('value is larger than 64 KB');
+				return api.taskDataSet(
+					id(p.taskId, 'taskId'),
+					taskDataKey(p.key),
+					json,
+				);
 			},
 		},
 		'taskData.delete': {
 			permission: 'tasks:read',
 			write: true,
-			run: (p) => api.taskDataDelete(id(p.taskId, 'taskId'), taskDataKey(p.key)),
+			run: (p) =>
+				api.taskDataDelete(id(p.taskId, 'taskId'), taskDataKey(p.key)),
 		},
 		'taskData.getMany': {
 			permission: 'tasks:read',
 			run: async (p) => {
 				const taskIds = idArrayMax(p.taskIds, 'taskIds', 500);
-				const raw = (await api.taskDataGetMany(taskIds, taskDataKey(p.key))) as Record<
-					string,
-					string
-				>;
+				const raw = (await api.taskDataGetMany(
+					taskIds,
+					taskDataKey(p.key),
+				)) as Record<string, string>;
 				const result: Record<string, unknown> = {};
 				for (const [taskId, json] of Object.entries(raw ?? {})) {
 					result[taskId] = typeof json === 'string' ? JSON.parse(json) : null;
@@ -970,11 +1048,14 @@ export const createBroker = (deps: BrokerDeps) => {
 			permission: 'pages:write',
 			write: true,
 			run: (p) => {
-				const fields: Record<string, unknown> = { title: string(p.title, 'title', 255) };
+				const fields: Record<string, unknown> = {
+					title: string(p.title, 'title', 255),
+				};
 				if (p.type != null) fields.type = pageType(p.type);
 				if (p.parentId != null) fields.parent_id = id(p.parentId, 'parentId');
 				if (p.body !== undefined) fields.body = pageBody(p.body, 'body');
-				if (p.properties !== undefined) fields.properties = pageProperties(p.properties);
+				if (p.properties !== undefined)
+					fields.properties = pageProperties(p.properties);
 				return api.pagesCreate(fields);
 			},
 		},
@@ -994,9 +1075,11 @@ export const createBroker = (deps: BrokerDeps) => {
 				const fields: Record<string, unknown> = {
 					markdown: pageBody(p.markdown, 'markdown'),
 				};
-				if (p.heading != null) fields.heading = string(p.heading, 'heading', 255);
+				if (p.heading != null)
+					fields.heading = string(p.heading, 'heading', 255);
 				if (p.createHeading != null) {
-					if (typeof p.createHeading !== 'boolean') invalid('createHeading must be a boolean');
+					if (typeof p.createHeading !== 'boolean')
+						invalid('createHeading must be a boolean');
 					fields.create_heading = p.createHeading;
 				}
 				if (p.summary != null) fields.summary = pageSummary(p.summary);
@@ -1014,21 +1097,33 @@ export const createBroker = (deps: BrokerDeps) => {
 						: invalid('sectionId must be a section id');
 				const markdown = pageBody(p.markdown, 'markdown');
 				const summary = p.summary == null ? undefined : pageSummary(p.summary);
-				const heading = p.heading == null ? undefined : string(p.heading, 'heading', 200);
+				const heading =
+					p.heading == null ? undefined : string(p.heading, 'heading', 200);
 				const page = await api.pagesGet(pageId);
-				const section = (page?.sections ?? []).find((s: { id: string }) => s.id === sectionId);
+				const section = (page?.sections ?? []).find(
+					(s: { id: string }) => s.id === sectionId,
+				);
 				if (section && section.owner !== `plugin:${manifest.id}`)
 					throw new PluginError(
 						'PERMISSION_DENIED',
 						`section ${sectionId} is not owned by plugin:${manifest.id}`,
 					);
-				return api.pagesSetSection(pageId, sectionId, markdown, summary, heading);
+				return api.pagesSetSection(
+					pageId,
+					sectionId,
+					markdown,
+					summary,
+					heading,
+				);
 			},
 		},
 		'pageData.get': {
 			permission: 'pages:read',
 			run: async (p) => {
-				const json = await api.pageDataGet(id(p.pageId, 'pageId'), taskDataKey(p.key));
+				const json = await api.pageDataGet(
+					id(p.pageId, 'pageId'),
+					taskDataKey(p.key),
+				);
 				return typeof json === 'string' ? JSON.parse(json) : null;
 			},
 		},
@@ -1037,23 +1132,29 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) => {
 				const json = JSON.stringify(p.value ?? null);
-				if (byteLength(json) > MAX_TASK_DATA_VALUE_BYTES) invalid('value is larger than 64 KB');
-				return api.pageDataSet(id(p.pageId, 'pageId'), taskDataKey(p.key), json);
+				if (byteLength(json) > MAX_TASK_DATA_VALUE_BYTES)
+					invalid('value is larger than 64 KB');
+				return api.pageDataSet(
+					id(p.pageId, 'pageId'),
+					taskDataKey(p.key),
+					json,
+				);
 			},
 		},
 		'pageData.delete': {
 			permission: 'pages:read',
 			write: true,
-			run: (p) => api.pageDataDelete(id(p.pageId, 'pageId'), taskDataKey(p.key)),
+			run: (p) =>
+				api.pageDataDelete(id(p.pageId, 'pageId'), taskDataKey(p.key)),
 		},
 		'pageData.getMany': {
 			permission: 'pages:read',
 			run: async (p) => {
 				const pageIds = idArrayMax(p.pageIds, 'pageIds', 500);
-				const raw = (await api.pageDataGetMany(pageIds, taskDataKey(p.key))) as Record<
-					string,
-					string
-				>;
+				const raw = (await api.pageDataGetMany(
+					pageIds,
+					taskDataKey(p.key),
+				)) as Record<string, string>;
 				const result: Record<string, unknown> = {};
 				for (const [pageId, json] of Object.entries(raw ?? {})) {
 					result[pageId] = typeof json === 'string' ? JSON.parse(json) : null;
@@ -1079,7 +1180,8 @@ export const createBroker = (deps: BrokerDeps) => {
 				return api.startAgentWork(id(p.taskId, 'taskId'), {
 					agent,
 					model: p.model == null ? null : string(p.model, 'model', 128),
-					sessionId: p.sessionId == null ? null : string(p.sessionId, 'sessionId', 191),
+					sessionId:
+						p.sessionId == null ? null : string(p.sessionId, 'sessionId', 191),
 					branch: p.branch == null ? null : string(p.branch, 'branch', 255),
 				});
 			},
@@ -1087,7 +1189,11 @@ export const createBroker = (deps: BrokerDeps) => {
 		'agentWork.update': {
 			permission: 'agent_work:write',
 			write: true,
-			run: (p) => api.updateAgentWork(id(p.runId, 'runId'), agentWorkProgress(p.patch ?? {}, true)),
+			run: (p) =>
+				api.updateAgentWork(
+					id(p.runId, 'runId'),
+					agentWorkProgress(p.patch ?? {}, true),
+				),
 		},
 		'agentWork.finish': {
 			permission: 'agent_work:write',
@@ -1110,7 +1216,8 @@ export const createBroker = (deps: BrokerDeps) => {
 				const to = routineDate(p.to, 'to');
 				if (from > to) invalid('from must not be after to');
 				const spanDays =
-					(Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+					(Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) /
+					86_400_000;
 				if (spanDays > 92) invalid('from..to must span at most 92 days');
 				return api.listRoutines(from, to);
 			},
@@ -1136,7 +1243,9 @@ export const createBroker = (deps: BrokerDeps) => {
 				requireLocalWorkspace();
 				const title = string(p.title, 'title', 500);
 				const description =
-					p.description == null ? null : string(p.description, 'description', 20_000, true);
+					p.description == null
+						? null
+						: string(p.description, 'description', 20_000, true);
 				const date = p.date == null ? null : routineDate(p.date, 'date');
 				if (p.time != null && date == null) invalid('time requires date');
 				const time = p.time == null ? null : routineTime(p.time);
@@ -1155,9 +1264,12 @@ export const createBroker = (deps: BrokerDeps) => {
 				if ('title' in patch) fields.title = string(patch.title, 'title', 500);
 				if ('description' in patch) {
 					fields.description =
-						patch.description == null ? null : string(patch.description, 'description', 20_000, true);
+						patch.description == null
+							? null
+							: string(patch.description, 'description', 20_000, true);
 				}
-				if (!Object.keys(fields).length) invalid('patch must include title or description');
+				if (!Object.keys(fields).length)
+					invalid('patch must include title or description');
 				return api.updateRoutine(id(p.id), fields);
 			},
 		},
@@ -1166,7 +1278,8 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) => {
 				requireLocalWorkspace();
-				const date = p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
+				const date =
+					p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
 				return api.completeRoutine(id(p.id), date);
 			},
 		},
@@ -1175,7 +1288,8 @@ export const createBroker = (deps: BrokerDeps) => {
 			write: true,
 			run: (p) => {
 				requireLocalWorkspace();
-				const date = p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
+				const date =
+					p.date == null ? todayLocal(deps.now()) : routineDate(p.date, 'date');
 				return api.skipRoutine(id(p.id), date);
 			},
 		},
@@ -1354,12 +1468,18 @@ export const createBroker = (deps: BrokerDeps) => {
 						'a connection request is already pending',
 					);
 				}
-				const label = p.label == null ? undefined : string(p.label, 'label', 60);
+				const label =
+					p.label == null ? undefined : string(p.label, 'label', 60);
 				const permissions =
-					p.permissions == null ? undefined : stringArray(p.permissions, 'permissions', 20);
+					p.permissions == null
+						? undefined
+						: stringArray(p.permissions, 'permissions', 20);
 				pendingConnection = true;
 				try {
-					return await deps.localAccess.requestConnection({ label, permissions });
+					return await deps.localAccess.requestConnection({
+						label,
+						permissions,
+					});
 				} finally {
 					pendingConnection = false;
 				}
@@ -1394,7 +1514,9 @@ export const createBroker = (deps: BrokerDeps) => {
 					const itemTitle = trayText(raw?.title, 'items.title');
 					const taskId = optionalId(raw?.taskId, 'items.taskId');
 					const command =
-						raw?.command == null ? null : string(raw.command, 'items.command', 120);
+						raw?.command == null
+							? null
+							: string(raw.command, 'items.command', 120);
 					if (command) mustDeclare(declared.command, command);
 					let args: unknown = null;
 					if (raw?.args !== undefined && raw?.args !== null) {

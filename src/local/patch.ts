@@ -2,7 +2,10 @@ import { LOCAL_CODE_PREFIX, type LocalWorkspace } from './types';
 
 export const CURRENT_WORKSPACE = 'current_workspace';
 
-export const workspaceJson = (workspace: LocalWorkspace, userId: number | null) => ({
+export const workspaceJson = (
+	workspace: LocalWorkspace,
+	userId: number | null,
+) => ({
 	id: workspace.id,
 	name: workspace.name,
 	code: `${LOCAL_CODE_PREFIX}${workspace.code}`,
@@ -42,16 +45,26 @@ export const withCurrentWorkspace = (user: any, workspaceId: number) => {
  * `{id, value}`; the current-workspace one is recognised by the id it has in the user's settings.
  */
 export const requestedWorkspace = (payload: any, user: any): number | null => {
-	const setting = user?.settings?.find((s: any) => s?.key === CURRENT_WORKSPACE);
+	const setting = user?.settings?.find(
+		(s: any) => s?.key === CURRENT_WORKSPACE,
+	);
 	if (!setting || !Array.isArray(payload)) return null;
 	const entry = payload.find((item: any) => item?.id === setting.id);
 	return entry ? Number(entry.value) : null;
 };
 
 /** The same payload with current_workspace left at the server's value, so a local id never reaches it. */
-export const withoutLocalWorkspace = (payload: any[], user: any, serverWorkspaceId: number | null) => {
-	const setting = user?.settings?.find((s: any) => s?.key === CURRENT_WORKSPACE);
+export const withoutLocalWorkspace = (
+	payload: any[],
+	user: any,
+	serverWorkspaceId: number | null,
+) => {
+	const setting = user?.settings?.find(
+		(s: any) => s?.key === CURRENT_WORKSPACE,
+	);
 	return payload.map((item: any) =>
-		setting && item?.id === setting.id ? { ...item, value: serverWorkspaceId } : item,
+		setting && item?.id === setting.id
+			? { ...item, value: serverWorkspaceId }
+			: item,
 	);
 };

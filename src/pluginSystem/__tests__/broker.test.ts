@@ -28,8 +28,22 @@ const manifest = (permissions: Permission[], allowedOrigins: string[] = []) =>
 		},
 	});
 
-const fakeRoutine = { id: 0, title: '', description: null, scheduledDate: null, scheduledTime: null, createdAt: '', updatedAt: '' };
-const fakeInstance = { id: 0, routineId: 0, date: '', time: null, status: 'PENDING' as const };
+const fakeRoutine = {
+	id: 0,
+	title: '',
+	description: null,
+	scheduledDate: null,
+	scheduledTime: null,
+	createdAt: '',
+	updatedAt: '',
+};
+const fakeInstance = {
+	id: 0,
+	routineId: 0,
+	date: '',
+	time: null,
+	status: 'PENDING' as const,
+};
 
 const fakeApi = (): DataApi & { calls: unknown[][] } => {
 	const calls: unknown[][] = [];
@@ -40,7 +54,7 @@ const fakeApi = (): DataApi & { calls: unknown[][] } => {
 			return { name };
 		};
 	const recordAs =
-		<T,>(name: string, value: T) =>
+		<T>(name: string, value: T) =>
 		async (...args: unknown[]) => {
 			calls.push([name, ...args]);
 			return value;
@@ -218,10 +232,14 @@ it('gates reactions and relations behind their permissions, validated and rate-l
 		await code(broker.call('comments.react', { commentId: 1, emoji: '👍' })),
 	).toBe('PERMISSION_DENIED');
 	expect(
-		await code(broker.call('tasks.relate', { taskId: 1, otherId: 2, type: 'blocks' })),
+		await code(
+			broker.call('tasks.relate', { taskId: 1, otherId: 2, type: 'blocks' }),
+		),
 	).toBe('PERMISSION_DENIED');
 	expect(
-		await code(broker.call('tasks.unrelate', { taskId: 1, otherId: 2, type: 'blocks' })),
+		await code(
+			broker.call('tasks.unrelate', { taskId: 1, otherId: 2, type: 'blocks' }),
+		),
 	).toBe('PERMISSION_DENIED');
 	expect(await code(broker.call('tasks.relations', { taskId: 1 }))).toBe('ok');
 	expect(api.calls).toEqual([['listRelations', 1]]);
@@ -234,19 +252,27 @@ it('gates reactions and relations behind their permissions, validated and rate-l
 		await code(writer.call('comments.react', { commentId: 1, emoji: '  ' })),
 	).toBe('INVALID_PARAMS');
 	expect(
-		await code(writer.call('comments.react', { commentId: 1, emoji: 'x'.repeat(33) })),
+		await code(
+			writer.call('comments.react', { commentId: 1, emoji: 'x'.repeat(33) }),
+		),
 	).toBe('INVALID_PARAMS');
 	expect(
-		await code(writer.call('tasks.relate', { taskId: 1, otherId: 2, type: 'nope' })),
+		await code(
+			writer.call('tasks.relate', { taskId: 1, otherId: 2, type: 'nope' }),
+		),
 	).toBe('INVALID_PARAMS');
-	expect(await code(writer.call('comments.react', { commentId: 1, emoji: '👍' }))).toBe(
-		'ok',
-	);
 	expect(
-		await code(writer.call('tasks.relate', { taskId: 1, otherId: 2, type: 'blocks' })),
+		await code(writer.call('comments.react', { commentId: 1, emoji: '👍' })),
 	).toBe('ok');
 	expect(
-		await code(writer.call('tasks.unrelate', { taskId: 1, otherId: 2, type: 'blocks' })),
+		await code(
+			writer.call('tasks.relate', { taskId: 1, otherId: 2, type: 'blocks' }),
+		),
+	).toBe('ok');
+	expect(
+		await code(
+			writer.call('tasks.unrelate', { taskId: 1, otherId: 2, type: 'blocks' }),
+		),
 	).toBe('ok');
 	expect(writerApi.calls).toEqual([
 		['reactToComment', 1, '👍'],
@@ -257,7 +283,11 @@ it('gates reactions and relations behind their permissions, validated and rate-l
 	const { broker: burstWriter } = setup(['comments:write']);
 	const results: string[] = [];
 	for (let i = 0; i < 21; i++) {
-		results.push(await code(burstWriter.call('comments.react', { commentId: 1, emoji: '👍' })));
+		results.push(
+			await code(
+				burstWriter.call('comments.react', { commentId: 1, emoji: '👍' }),
+			),
+		);
 	}
 	expect(results.filter((r) => r === 'ok')).toHaveLength(20);
 	expect(results[20]).toBe('RATE_LIMITED');
@@ -274,19 +304,39 @@ it('strips relationTypeWithTask from every task-returning call unless relations:
 		startTimer: async () => withRelation,
 		stopTimer: async () => withRelation,
 	};
-	const { broker } = setup(['tasks:read', 'tasks:write', 'time:write'], { api });
-	expect(await broker.call('tasks.list', {})).toEqual({ items: [{ id: 1, title: 'x' }], total: 1 });
-	expect(await broker.call('tasks.get', { id: 1 })).toEqual({ id: 1, title: 'x' });
-	expect(await broker.call('tasks.create', { title: 'x' })).toEqual({ id: 1, title: 'x' });
-	expect(await broker.call('tasks.update', { id: 1, patch: { title: 'x' } })).toEqual({ id: 1, title: 'x' });
-	expect(await broker.call('time.start', { taskId: 1 })).toEqual({ id: 1, title: 'x' });
-	expect(await broker.call('time.stop', { taskId: 1 })).toEqual({ id: 1, title: 'x' });
+	const { broker } = setup(['tasks:read', 'tasks:write', 'time:write'], {
+		api,
+	});
+	expect(await broker.call('tasks.list', {})).toEqual({
+		items: [{ id: 1, title: 'x' }],
+		total: 1,
+	});
+	expect(await broker.call('tasks.get', { id: 1 })).toEqual({
+		id: 1,
+		title: 'x',
+	});
+	expect(await broker.call('tasks.create', { title: 'x' })).toEqual({
+		id: 1,
+		title: 'x',
+	});
+	expect(
+		await broker.call('tasks.update', { id: 1, patch: { title: 'x' } }),
+	).toEqual({ id: 1, title: 'x' });
+	expect(await broker.call('time.start', { taskId: 1 })).toEqual({
+		id: 1,
+		title: 'x',
+	});
+	expect(await broker.call('time.stop', { taskId: 1 })).toEqual({
+		id: 1,
+		title: 'x',
+	});
 
-	const { broker: withRelations } = setup(
-		['tasks:read', 'relations:read'],
-		{ api: { ...fakeApi(), getTask: async () => withRelation } },
+	const { broker: withRelations } = setup(['tasks:read', 'relations:read'], {
+		api: { ...fakeApi(), getTask: async () => withRelation },
+	});
+	expect(await withRelations.call('tasks.get', { id: 1 })).toEqual(
+		withRelation,
 	);
-	expect(await withRelations.call('tasks.get', { id: 1 })).toEqual(withRelation);
 });
 
 it('refuses every call once the app has left the plugin workspace', async () => {
@@ -462,8 +512,14 @@ it('fetches only from the origins the manifest lists', async () => {
 
 it('accepts expired_at as a nullable ISO date-time task field, normalised to UTC', async () => {
 	const { broker, api } = setup(['tasks:write']);
-	await broker.call('tasks.update', { id: 4, patch: { expired_at: '2026-10-01T12:30:00Z' } });
-	await broker.call('tasks.update', { id: 4, patch: { expired_at: '2026-10-01T14:30:00+02:00' } });
+	await broker.call('tasks.update', {
+		id: 4,
+		patch: { expired_at: '2026-10-01T12:30:00Z' },
+	});
+	await broker.call('tasks.update', {
+		id: 4,
+		patch: { expired_at: '2026-10-01T14:30:00+02:00' },
+	});
 	await broker.call('tasks.update', { id: 4, patch: { expired_at: null } });
 	expect(api.calls).toEqual([
 		['updateTask', 4, { expired_at: '2026-10-01T12:30:00Z' }],
@@ -471,10 +527,20 @@ it('accepts expired_at as a nullable ISO date-time task field, normalised to UTC
 		['updateTask', 4, { expired_at: null }],
 	]);
 	expect(
-		await code(broker.call('tasks.update', { id: 4, patch: { expired_at: '2026-10-01' } })),
+		await code(
+			broker.call('tasks.update', {
+				id: 4,
+				patch: { expired_at: '2026-10-01' },
+			}),
+		),
 	).toBe('INVALID_PARAMS');
 	expect(
-		await code(broker.call('tasks.update', { id: 4, patch: { expired_at: 'not a date' } })),
+		await code(
+			broker.call('tasks.update', {
+				id: 4,
+				patch: { expired_at: 'not a date' },
+			}),
+		),
 	).toBe('INVALID_PARAMS');
 });
 
@@ -508,18 +574,35 @@ it('passes the new list filters and sort through, validated', async () => {
 			},
 		],
 	]);
-	expect(await code(broker.call('tasks.list', { statusType: 'nope' }))).toBe('INVALID_PARAMS');
-	expect(await code(broker.call('tasks.list', { priority: 'nope' }))).toBe('INVALID_PARAMS');
-	expect(await code(broker.call('tasks.list', { sort: 'nope' }))).toBe('INVALID_PARAMS');
-	expect(await code(broker.call('tasks.list', { direction: 'nope' }))).toBe('INVALID_PARAMS');
-	expect(await code(broker.call('tasks.list', { dueBefore: 'nope' }))).toBe('INVALID_PARAMS');
+	expect(await code(broker.call('tasks.list', { statusType: 'nope' }))).toBe(
+		'INVALID_PARAMS',
+	);
+	expect(await code(broker.call('tasks.list', { priority: 'nope' }))).toBe(
+		'INVALID_PARAMS',
+	);
+	expect(await code(broker.call('tasks.list', { sort: 'nope' }))).toBe(
+		'INVALID_PARAMS',
+	);
+	expect(await code(broker.call('tasks.list', { direction: 'nope' }))).toBe(
+		'INVALID_PARAMS',
+	);
+	expect(await code(broker.call('tasks.list', { dueBefore: 'nope' }))).toBe(
+		'INVALID_PARAMS',
+	);
 });
 
 describe('statuses and categories writes', () => {
 	it('creates and updates statuses behind statuses:write, validated', async () => {
 		const { broker, api } = setup(['statuses:write']);
-		await broker.call('statuses.create', { name: 'Blocked', type: 'active', color: '#ff0000' });
-		await broker.call('statuses.update', { id: 3, patch: { name: 'Blocked v2' } });
+		await broker.call('statuses.create', {
+			name: 'Blocked',
+			type: 'active',
+			color: '#ff0000',
+		});
+		await broker.call('statuses.update', {
+			id: 3,
+			patch: { name: 'Blocked v2' },
+		});
 		await broker.call('statuses.reorder', { ids: [3, 1, 2] });
 		expect(api.calls).toEqual([
 			['createStatus', { name: 'Blocked', type: 'active', color: '#ff0000' }],
@@ -527,13 +610,25 @@ describe('statuses and categories writes', () => {
 			['reorderStatuses', [3, 1, 2]],
 		]);
 		expect(
-			await code(broker.call('statuses.create', { name: 'x', type: 'not-a-type' })),
+			await code(
+				broker.call('statuses.create', { name: 'x', type: 'not-a-type' }),
+			),
 		).toBe('INVALID_PARAMS');
 		expect(
-			await code(broker.call('statuses.create', { name: 'x', type: 'active', color: 'red' })),
+			await code(
+				broker.call('statuses.create', {
+					name: 'x',
+					type: 'active',
+					color: 'red',
+				}),
+			),
 		).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('statuses.reorder', { ids: [] }))).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('statuses.reorder', { ids: 'nope' }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('statuses.reorder', { ids: [] }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(await code(broker.call('statuses.reorder', { ids: 'nope' }))).toBe(
+			'INVALID_PARAMS',
+		);
 
 		const { broker: reader } = setup(['statuses:read']);
 		expect(
@@ -544,12 +639,17 @@ describe('statuses and categories writes', () => {
 	it('creates and updates categories behind categories:write, validated', async () => {
 		const { broker, api } = setup(['categories:write']);
 		await broker.call('categories.create', { title: 'Backend', code: 'BE' });
-		await broker.call('categories.update', { id: 5, patch: { title: 'Backend team' } });
+		await broker.call('categories.update', {
+			id: 5,
+			patch: { title: 'Backend team' },
+		});
 		expect(api.calls).toEqual([
 			['createCategory', { title: 'Backend', code: 'BE' }],
 			['updateCategory', 5, { title: 'Backend team' }],
 		]);
-		expect(await code(broker.call('categories.create', { title: '' }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('categories.create', { title: '' }))).toBe(
+			'INVALID_PARAMS',
+		);
 		expect(
 			await code(broker.call('categories.create', { title: 'x', code: 'be' })),
 		).toBe('INVALID_PARAMS');
@@ -564,7 +664,8 @@ describe('per-task plugin data', () => {
 		const stored = new Map<string, string>();
 		const api = {
 			...fakeApi(),
-			taskDataGet: async (taskId: number, key: string) => stored.get(`${taskId}:${key}`) ?? null,
+			taskDataGet: async (taskId: number, key: string) =>
+				stored.get(`${taskId}:${key}`) ?? null,
 			taskDataSet: async (taskId: number, key: string, json: string) => {
 				stored.set(`${taskId}:${key}`, json);
 			},
@@ -580,40 +681,72 @@ describe('per-task plugin data', () => {
 				return result;
 			},
 		};
-		expect(await code(setup([], { api }).broker.call('taskData.get', { taskId: 1, key: 'estimate' }))).toBe(
-			'PERMISSION_DENIED',
-		);
+		expect(
+			await code(
+				setup([], { api }).broker.call('taskData.get', {
+					taskId: 1,
+					key: 'estimate',
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
 		const { broker } = setup(['tasks:read'], { api });
-		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toBeNull();
-		await broker.call('taskData.set', { taskId: 1, key: 'estimate', value: { points: 5 } });
-		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toEqual({ points: 5 });
-		expect(await broker.call('taskData.getMany', { taskIds: [1, 2], key: 'estimate' })).toEqual({
+		expect(
+			await broker.call('taskData.get', { taskId: 1, key: 'estimate' }),
+		).toBeNull();
+		await broker.call('taskData.set', {
+			taskId: 1,
+			key: 'estimate',
+			value: { points: 5 },
+		});
+		expect(
+			await broker.call('taskData.get', { taskId: 1, key: 'estimate' }),
+		).toEqual({ points: 5 });
+		expect(
+			await broker.call('taskData.getMany', {
+				taskIds: [1, 2],
+				key: 'estimate',
+			}),
+		).toEqual({
 			1: { points: 5 },
 		});
 		await broker.call('taskData.delete', { taskId: 1, key: 'estimate' });
-		expect(await broker.call('taskData.get', { taskId: 1, key: 'estimate' })).toBeNull();
+		expect(
+			await broker.call('taskData.get', { taskId: 1, key: 'estimate' }),
+		).toBeNull();
 	});
 
 	it('rejects an oversized value and a key that is too long, byte-accurate for multi-byte text', async () => {
 		const { broker } = setup(['tasks:read']);
 		expect(
 			await code(
-				broker.call('taskData.set', { taskId: 1, key: 'k', value: 'x'.repeat(70_000) }),
+				broker.call('taskData.set', {
+					taskId: 1,
+					key: 'k',
+					value: 'x'.repeat(70_000),
+				}),
 			),
 		).toBe('INVALID_PARAMS');
 		expect(
 			await code(
-				broker.call('taskData.set', { taskId: 1, key: 'k', value: '字'.repeat(22_000) }),
+				broker.call('taskData.set', {
+					taskId: 1,
+					key: 'k',
+					value: '字'.repeat(22_000),
+				}),
 			),
 		).toBe('INVALID_PARAMS');
 		expect(
 			await code(
-				broker.call('taskData.set', { taskId: 1, key: 'k'.repeat(201), value: 1 }),
+				broker.call('taskData.set', {
+					taskId: 1,
+					key: 'k'.repeat(201),
+					value: 1,
+				}),
 			),
 		).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('taskData.getMany', { taskIds: [], key: 'k' }))).toBe(
-			'INVALID_PARAMS',
-		);
+		expect(
+			await code(broker.call('taskData.getMany', { taskIds: [], key: 'k' })),
+		).toBe('INVALID_PARAMS');
 		expect(
 			await code(
 				broker.call('taskData.getMany', {
@@ -644,7 +777,10 @@ describe('agent work', () => {
 			sessionId: 'sess-1',
 			branch: 'feat/x',
 		});
-		await writer.call('agentWork.update', { runId: 9, patch: { branch: 'feat/y', summary: 'wip' } });
+		await writer.call('agentWork.update', {
+			runId: 9,
+			patch: { branch: 'feat/y', summary: 'wip' },
+		});
 		await writer.call('agentWork.finish', {
 			runId: 9,
 			patch: { status: 'succeeded', summary: 'done', branch: 'ignored' },
@@ -653,7 +789,12 @@ describe('agent work', () => {
 			[
 				'startAgentWork',
 				1,
-				{ agent: 'claude-code', model: 'opus', sessionId: 'sess-1', branch: 'feat/x' },
+				{
+					agent: 'claude-code',
+					model: 'opus',
+					sessionId: 'sess-1',
+					branch: 'feat/x',
+				},
 			],
 			['updateAgentWork', 9, { branch: 'feat/y', summary: 'wip' }],
 			['finishAgentWork', 9, { status: 'succeeded', summary: 'done' }],
@@ -667,14 +808,21 @@ describe('agent work', () => {
 		]);
 
 		expect(
-			await code(writer.call('agentWork.start', { taskId: 1, agent: 'Claude Code!' })),
-		).toBe('INVALID_PARAMS');
-		expect(
-			await code(writer.call('agentWork.start', { taskId: 1, agent: 'x'.repeat(41) })),
+			await code(
+				writer.call('agentWork.start', { taskId: 1, agent: 'Claude Code!' }),
+			),
 		).toBe('INVALID_PARAMS');
 		expect(
 			await code(
-				writer.call('agentWork.finish', { runId: 9, patch: { status: 'closed' } }),
+				writer.call('agentWork.start', { taskId: 1, agent: 'x'.repeat(41) }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				writer.call('agentWork.finish', {
+					runId: 9,
+					patch: { status: 'closed' },
+				}),
 			),
 		).toBe('INVALID_PARAMS');
 		expect(
@@ -720,9 +868,13 @@ describe('agent work', () => {
 				taskPanelSections: [],
 			},
 		});
-		const { broker, api } = setup(['agent_work:write'], { manifest: longManifest });
+		const { broker, api } = setup(['agent_work:write'], {
+			manifest: longManifest,
+		});
 		expect(
-			await code(broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(7) })),
+			await code(
+				broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(7) }),
+			),
 		).toBe('ok');
 		expect(api.calls[0]).toEqual([
 			'startAgentWork',
@@ -730,7 +882,9 @@ describe('agent work', () => {
 			{ agent: 'a'.repeat(7), model: null, sessionId: null, branch: null },
 		]);
 		expect(
-			await code(broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(8) })),
+			await code(
+				broker.call('agentWork.start', { taskId: 1, agent: 'a'.repeat(8) }),
+			),
 		).toBe('INVALID_PARAMS');
 	});
 });
@@ -738,15 +892,24 @@ describe('agent work', () => {
 describe('setViewBadge', () => {
 	const badges = () => {
 		const calls: unknown[][] = [];
-		return { calls, setViewBadge: (id: string, badge: unknown) => void calls.push([id, badge]) };
+		return {
+			calls,
+			setViewBadge: (id: string, badge: unknown) =>
+				void calls.push([id, badge]),
+		};
 	};
-	const call = (broker: ReturnType<typeof setup>['broker'], viewId: unknown, badge: unknown) =>
-		broker.call('ui.setViewBadge', { viewId, badge });
+	const call = (
+		broker: ReturnType<typeof setup>['broker'],
+		viewId: unknown,
+		badge: unknown,
+	) => broker.call('ui.setViewBadge', { viewId, badge });
 
 	it('needs the views:badge permission', async () => {
 		const { calls, setViewBadge } = badges();
 		const { broker } = setup([], { setViewBadge });
-		expect(await code(call(broker, 'report', { count: 1 }))).toBe('PERMISSION_DENIED');
+		expect(await code(call(broker, 'report', { count: 1 }))).toBe(
+			'PERMISSION_DENIED',
+		);
 		expect(calls).toEqual([]);
 	});
 
@@ -754,7 +917,9 @@ describe('setViewBadge', () => {
 		const { calls, setViewBadge } = badges();
 		const { broker } = setup(['views:badge'], { setViewBadge });
 		for (const viewId of ['other', 'tmgr.other:report', '', 5, null, undefined])
-			expect(await code(call(broker, viewId, { count: 1 }))).toBe('INVALID_PARAMS');
+			expect(await code(call(broker, viewId, { count: 1 }))).toBe(
+				'INVALID_PARAMS',
+			);
 		expect(calls).toEqual([]);
 	});
 
@@ -832,11 +997,19 @@ describe('tray', () => {
 	it('needs the tray permission and machine access, and validates the item', async () => {
 		const { tray: deps, items } = tray();
 		expect(
-			await code(setup([], { tray: deps }).broker.call('ui.setTrayItem', { id: 'menu', title: 'x', items: [] })),
+			await code(
+				setup([], { tray: deps }).broker.call('ui.setTrayItem', {
+					id: 'menu',
+					title: 'x',
+					items: [],
+				}),
+			),
 		).toBe('PERMISSION_DENIED');
 		const { broker } = setup(['tray'], { tray: deps });
 		expect(
-			await code(broker.call('ui.setTrayItem', { id: 'other', title: 'x', items: [] })),
+			await code(
+				broker.call('ui.setTrayItem', { id: 'other', title: 'x', items: [] }),
+			),
 		).toBe('NOT_DECLARED');
 		expect(
 			await code(
@@ -860,23 +1033,31 @@ describe('tray', () => {
 			await broker.call('ui.setTrayItem', {
 				id: 'menu',
 				title: 'Section',
-				items: [{ title: 'Go', command: 'tmgr.test.go', taskId: 4, args: { a: 1 } }],
+				items: [
+					{ title: 'Go', command: 'tmgr.test.go', taskId: 4, args: { a: 1 } },
+				],
 			}),
 		).toBeNull();
-		expect(await broker.call('ui.setTrayItem', { id: 'menu', items: null })).toBeNull();
+		expect(
+			await broker.call('ui.setTrayItem', { id: 'menu', items: null }),
+		).toBeNull();
 		expect(items).toEqual([
 			[
 				'menu',
 				{
 					title: 'Section',
-					items: [{ title: 'Go', taskId: 4, command: 'tmgr.test.go', args: { a: 1 } }],
+					items: [
+						{ title: 'Go', taskId: 4, command: 'tmgr.test.go', args: { a: 1 } },
+					],
 				},
 			],
 			['menu', null],
 		]);
 		const { broker: noTray } = setup(['tray']);
 		expect(
-			await code(noTray.call('ui.setTrayItem', { id: 'menu', title: 'x', items: [] })),
+			await code(
+				noTray.call('ui.setTrayItem', { id: 'menu', title: 'x', items: [] }),
+			),
 		).toBe('PERMISSION_DENIED');
 	});
 
@@ -905,25 +1086,33 @@ describe('tray', () => {
 		const { tray: deps } = tray();
 		const { broker } = setup(['tray'], { tray: deps });
 		for (const title of ['', '  ', 5, null, 'x'.repeat(1001)])
-			expect(await code(broker.call('ui.setTrayItem', { id: 'menu', title, items: [] }))).toBe(
-				'INVALID_PARAMS',
-			);
+			expect(
+				await code(
+					broker.call('ui.setTrayItem', { id: 'menu', title, items: [] }),
+				),
+			).toBe('INVALID_PARAMS');
 	});
 
 	it('lets only the chosen plugin set the menu bar title, within the length and shape limits', async () => {
 		const { tray: deps, titles, setOwner } = tray();
 		const { broker } = setup(['tray'], { tray: deps });
-		expect(await broker.call('ui.setTrayTitle', { text: ' 3 tasks ' })).toBeNull();
-		expect(await code(broker.call('ui.setTrayTitle', { text: 'way too long text' }))).toBe(
+		expect(
+			await broker.call('ui.setTrayTitle', { text: ' 3 tasks ' }),
+		).toBeNull();
+		expect(
+			await code(broker.call('ui.setTrayTitle', { text: 'way too long text' })),
+		).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('ui.setTrayTitle', { text: 'a\nb' }))).toBe(
 			'INVALID_PARAMS',
 		);
-		expect(await code(broker.call('ui.setTrayTitle', { text: 'a\nb' }))).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('ui.setTrayTitle', { text: 'a\u0000b' }))).toBe(
-			'INVALID_PARAMS',
-		);
+		expect(
+			await code(broker.call('ui.setTrayTitle', { text: 'a\u0000b' })),
+		).toBe('INVALID_PARAMS');
 		expect(await broker.call('ui.setTrayTitle', { text: null })).toBeNull();
 		setOwner(false);
-		expect(await code(broker.call('ui.setTrayTitle', { text: 'x' }))).toBe('PERMISSION_DENIED');
+		expect(await code(broker.call('ui.setTrayTitle', { text: 'x' }))).toBe(
+			'PERMISSION_DENIED',
+		);
 		expect(titles).toEqual(['3 tasks', null]);
 	});
 });
@@ -1024,7 +1213,10 @@ describe('files', () => {
 });
 
 describe('localAccess.requestConnection', () => {
-	const withCompanion = { ...manifest([]), companion: { description: 'A CLI' } };
+	const withCompanion = {
+		...manifest([]),
+		companion: { description: 'A CLI' },
+	};
 
 	it('refuses without a companion section in the manifest', async () => {
 		const { broker } = setup([], { manifest: manifest([]) });
@@ -1057,7 +1249,11 @@ describe('localAccess.requestConnection', () => {
 			localAccess: {
 				requestConnection: async (opts) => {
 					requests.push(opts);
-					return { status: 'connected', tokenId: 'lt_abc', prefix: 'tmgrl_1234' };
+					return {
+						status: 'connected',
+						tokenId: 'lt_abc',
+						prefix: 'tmgrl_1234',
+					};
 				},
 			},
 		});
@@ -1070,7 +1266,9 @@ describe('localAccess.requestConnection', () => {
 			tokenId: 'lt_abc',
 			prefix: 'tmgrl_1234',
 		});
-		expect(requests).toEqual([{ label: 'My CLI', permissions: ['tasks:read'] }]);
+		expect(requests).toEqual([
+			{ label: 'My CLI', permissions: ['tasks:read'] },
+		]);
 	});
 
 	it('allows a cancelled result through unchanged', async () => {
@@ -1110,7 +1308,10 @@ describe('localAccess.requestConnection', () => {
 describe('routines', () => {
 	it('gates reads and writes behind routines permissions, validated', async () => {
 		const { broker, api } = setup(['routines:read']);
-		await broker.call('routines.list', { from: '2026-09-01', to: '2026-09-30' });
+		await broker.call('routines.list', {
+			from: '2026-09-01',
+			to: '2026-09-30',
+		});
 		await broker.call('routines.get', { id: 4 });
 		await broker.call('routines.instances', { id: 4 });
 		expect(api.calls).toEqual([
@@ -1118,51 +1319,80 @@ describe('routines', () => {
 			['getRoutine', 4],
 			['listRoutineInstances', 4],
 		]);
-		expect(
-			await code(broker.call('routines.create', { title: 'Read' })),
-		).toBe('PERMISSION_DENIED');
+		expect(await code(broker.call('routines.create', { title: 'Read' }))).toBe(
+			'PERMISSION_DENIED',
+		);
 
 		const { broker: writer, api: writerApi } = setup(['routines:write']);
-		await writer.call('routines.create', { title: 'Read', date: '2026-09-26', time: '09:00' });
+		await writer.call('routines.create', {
+			title: 'Read',
+			date: '2026-09-26',
+			time: '09:00',
+		});
 		await writer.call('routines.update', { id: 4, patch: { title: 'New' } });
 		await writer.call('routines.complete', { id: 4, date: '2026-09-26' });
 		await writer.call('routines.skip', { id: 4 });
 		expect(writerApi.calls).toEqual([
-			['createRoutine', { title: 'Read', description: null, date: '2026-09-26', time: '09:00' }],
+			[
+				'createRoutine',
+				{ title: 'Read', description: null, date: '2026-09-26', time: '09:00' },
+			],
 			['updateRoutine', 4, { title: 'New' }],
 			['completeRoutine', 4, '2026-09-26'],
 			['skipRoutine', 4, expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/)],
 		]);
-		expect(await code(writer.call('routines.list', { from: '2026-09-01', to: '2026-09-30' }))).toBe(
-			'PERMISSION_DENIED',
-		);
+		expect(
+			await code(
+				writer.call('routines.list', { from: '2026-09-01', to: '2026-09-30' }),
+			),
+		).toBe('PERMISSION_DENIED');
 	});
 
 	it('validates the date range, dates, times and update patch', async () => {
 		const { broker } = setup(['routines:read']);
-		expect(await code(broker.call('routines.list', { from: '2026-09-30', to: '2026-09-01' }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(await code(broker.call('routines.list', { from: '2026-01-01', to: '2026-12-31' }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(await code(broker.call('routines.list', { from: '2026-02-30', to: '2026-02-30' }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(await code(broker.call('routines.list', { from: 'nope', to: '2026-09-30' }))).toBe(
-			'INVALID_PARAMS',
-		);
+		expect(
+			await code(
+				broker.call('routines.list', { from: '2026-09-30', to: '2026-09-01' }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('routines.list', { from: '2026-01-01', to: '2026-12-31' }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('routines.list', { from: '2026-02-30', to: '2026-02-30' }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('routines.list', { from: 'nope', to: '2026-09-30' }),
+			),
+		).toBe('INVALID_PARAMS');
 
 		const { broker: writer } = setup(['routines:write']);
-		expect(await code(writer.call('routines.create', { title: '' }))).toBe('INVALID_PARAMS');
+		expect(await code(writer.call('routines.create', { title: '' }))).toBe(
+			'INVALID_PARAMS',
+		);
 		expect(
 			await code(writer.call('routines.create', { title: 'x', time: '09:00' })),
 		).toBe('INVALID_PARAMS');
 		expect(
-			await code(writer.call('routines.create', { title: 'x', date: '2026-09-26', time: '9:00' })),
+			await code(
+				writer.call('routines.create', {
+					title: 'x',
+					date: '2026-09-26',
+					time: '9:00',
+				}),
+			),
 		).toBe('INVALID_PARAMS');
-		expect(await code(writer.call('routines.update', { id: 4, patch: {} }))).toBe('INVALID_PARAMS');
-		expect(await code(writer.call('routines.update', { id: 4, patch: 'title' }))).toBe('INVALID_PARAMS');
+		expect(
+			await code(writer.call('routines.update', { id: 4, patch: {} })),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(writer.call('routines.update', { id: 4, patch: 'title' })),
+		).toBe('INVALID_PARAMS');
 	});
 
 	it('refuses every routines.* call outside a local workspace, before touching the api', async () => {
@@ -1170,14 +1400,22 @@ describe('routines', () => {
 			workspace: { id: -7, code: 'shared', name: 'Shared', kind: 'cloud' },
 		});
 		expect(
-			await code(broker.call('routines.list', { from: '2026-09-01', to: '2026-09-02' })),
+			await code(
+				broker.call('routines.list', { from: '2026-09-01', to: '2026-09-02' }),
+			),
 		).toBe('NOT_SUPPORTED');
-		expect(await code(broker.call('routines.get', { id: 1 }))).toBe('NOT_SUPPORTED');
-		expect(await code(broker.call('routines.create', { title: 'x' }))).toBe('NOT_SUPPORTED');
-		expect(await code(broker.call('routines.complete', { id: 1 }))).toBe('NOT_SUPPORTED');
-		expect(
-			await code(broker.call('routines.convertToTask', { id: 1 })),
-		).toBe('NOT_SUPPORTED');
+		expect(await code(broker.call('routines.get', { id: 1 }))).toBe(
+			'NOT_SUPPORTED',
+		);
+		expect(await code(broker.call('routines.create', { title: 'x' }))).toBe(
+			'NOT_SUPPORTED',
+		);
+		expect(await code(broker.call('routines.complete', { id: 1 }))).toBe(
+			'NOT_SUPPORTED',
+		);
+		expect(await code(broker.call('routines.convertToTask', { id: 1 }))).toBe(
+			'NOT_SUPPORTED',
+		);
 		expect(api.calls).toEqual([]);
 	});
 
@@ -1188,7 +1426,10 @@ describe('routines', () => {
 		);
 		expect(api.calls).toEqual([]);
 
-		const { broker: allowed, api: allowedApi } = setup(['routines:write', 'tasks:write']);
+		const { broker: allowed, api: allowedApi } = setup([
+			'routines:write',
+			'tasks:write',
+		]);
 		await allowed.call('routines.convertToTask', {
 			id: 4,
 			categoryId: 9,
@@ -1205,7 +1446,12 @@ describe('routines', () => {
 			'INVALID_PARAMS',
 		);
 		expect(
-			await code(broker.call('tasks.update', { id: 1_000_000_005, patch: { title: 'x' } })),
+			await code(
+				broker.call('tasks.update', {
+					id: 1_000_000_005,
+					patch: { title: 'x' },
+				}),
+			),
 		).toBe('INVALID_PARAMS');
 		expect(api.calls).toEqual([]);
 		await broker.call('tasks.get', { id: 4 });
@@ -1227,16 +1473,36 @@ describe('pages (API 1.5)', () => {
 		expect(await code(read.call('pages.search', { q: 'x' }))).toBe('ok');
 		expect(await code(read.call('pages.tree', {}))).toBe('ok');
 		expect(await code(read.call('pages.get', { idOrSlug: 'saha' }))).toBe('ok');
-		expect(await code(read.call('pages.create', { title: 'T' }))).toBe('PERMISSION_DENIED');
-		expect(await code(read.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'x' }))).toBe(
+		expect(await code(read.call('pages.create', { title: 'T' }))).toBe(
 			'PERMISSION_DENIED',
 		);
+		expect(
+			await code(
+				read.call('pages.setSection', {
+					id: 5,
+					sectionId: 'mine',
+					markdown: 'x',
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
 		const write = setup(['pages:read', 'pages:write']).broker;
-		expect(await code(write.call('pages.append', { id: 5, markdown: 'line' }))).toBe('ok');
-		expect(await code(write.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'x' }))).toBe(
-			'PERMISSION_DENIED',
-		);
-		expect(await code(setup([]).broker.call('pageData.get', { pageId: 5, key: 'k' }))).toBe('PERMISSION_DENIED');
+		expect(
+			await code(write.call('pages.append', { id: 5, markdown: 'line' })),
+		).toBe('ok');
+		expect(
+			await code(
+				write.call('pages.setSection', {
+					id: 5,
+					sectionId: 'mine',
+					markdown: 'x',
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(
+				setup([]).broker.call('pageData.get', { pageId: 5, key: 'k' }),
+			),
+		).toBe('PERMISSION_DENIED');
 	});
 
 	it('validates and maps the parameters', async () => {
@@ -1248,73 +1514,199 @@ describe('pages (API 1.5)', () => {
 			body: 'hi',
 			properties: { role: 'cto' },
 		});
-		await broker.call('pages.update', { id: 5, version: 2, title: 'N', summary: 's' });
-		await broker.call('pages.append', { id: 5, markdown: 'm', heading: 'Log', createHeading: true });
+		await broker.call('pages.update', {
+			id: 5,
+			version: 2,
+			title: 'N',
+			summary: 's',
+		});
+		await broker.call('pages.append', {
+			id: 5,
+			markdown: 'm',
+			heading: 'Log',
+			createHeading: true,
+		});
 		await broker.call('pages.search', { q: 'x', type: 'person', limit: 500 });
 		expect(api.calls).toEqual([
-			['pagesCreate', { title: 'Saha', type: 'person', parent_id: 3, body: 'hi', properties: { role: 'cto' } }],
+			[
+				'pagesCreate',
+				{
+					title: 'Saha',
+					type: 'person',
+					parent_id: 3,
+					body: 'hi',
+					properties: { role: 'cto' },
+				},
+			],
 			['pagesUpdate', 5, { version: 2, title: 'N', summary: 's' }],
-			['pagesAppend', 5, { markdown: 'm', heading: 'Log', create_heading: true }],
+			[
+				'pagesAppend',
+				5,
+				{ markdown: 'm', heading: 'Log', create_heading: true },
+			],
 			['pagesSearch', 'x', { type: 'person', limit: 50 }],
 		]);
-		expect(await code(broker.call('pages.update', { id: 5, title: 'x' }))).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('pages.create', { title: '' }))).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('pages.create', { title: 'x', type: 'weird' }))).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('pages.get', { idOrSlug: 0 }))).toBe('INVALID_PARAMS');
-		expect(await code(broker.call('pages.append', { id: 5, markdown: 'x'.repeat(1_048_577) }))).toBe(
+		expect(await code(broker.call('pages.update', { id: 5, title: 'x' }))).toBe(
 			'INVALID_PARAMS',
 		);
-		expect(await code(broker.call('pages.create', { title: 'x', properties: [] }))).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('pages.create', { title: '' }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(
+			await code(broker.call('pages.create', { title: 'x', type: 'weird' })),
+		).toBe('INVALID_PARAMS');
+		expect(await code(broker.call('pages.get', { idOrSlug: 0 }))).toBe(
+			'INVALID_PARAMS',
+		);
+		expect(
+			await code(
+				broker.call('pages.append', { id: 5, markdown: 'x'.repeat(1_048_577) }),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(broker.call('pages.create', { title: 'x', properties: [] })),
+		).toBe('INVALID_PARAMS');
 	});
 
 	it('lets setSection write only into sections owned by this plugin', async () => {
 		const { broker, api } = setup(['pages:read', 'pages:sections']);
-		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'mine', markdown: 'ok' }))).toBe('ok');
-		expect(api.calls[api.calls.length - 1]).toEqual(['pagesSetSection', 5, 'mine', 'ok', undefined, undefined]);
+		expect(
+			await code(
+				broker.call('pages.setSection', {
+					id: 5,
+					sectionId: 'mine',
+					markdown: 'ok',
+				}),
+			),
+		).toBe('ok');
+		expect(api.calls[api.calls.length - 1]).toEqual([
+			'pagesSetSection',
+			5,
+			'mine',
+			'ok',
+			undefined,
+			undefined,
+		]);
 		const before = api.calls.length;
-		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'theirs', markdown: 'x' }))).toBe(
-			'PERMISSION_DENIED',
-		);
-		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'shared', markdown: 'x' }))).toBe(
-			'PERMISSION_DENIED',
-		);
-		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'a b', markdown: 'x' }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(await code(broker.call('pages.setSection', { id: 5, sectionId: 'x', markdown: 'x', heading: 'h'.repeat(201) }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(api.calls.slice(before).filter((c) => c[0] === 'pagesSetSection')).toEqual([]);
+		expect(
+			await code(
+				broker.call('pages.setSection', {
+					id: 5,
+					sectionId: 'theirs',
+					markdown: 'x',
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(
+				broker.call('pages.setSection', {
+					id: 5,
+					sectionId: 'shared',
+					markdown: 'x',
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
+		expect(
+			await code(
+				broker.call('pages.setSection', {
+					id: 5,
+					sectionId: 'a b',
+					markdown: 'x',
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('pages.setSection', {
+					id: 5,
+					sectionId: 'x',
+					markdown: 'x',
+					heading: 'h'.repeat(201),
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			api.calls.slice(before).filter((c) => c[0] === 'pagesSetSection'),
+		).toEqual([]);
 	});
 
 	it('lets setSection create a section the page does not have yet, with an optional heading', async () => {
 		const { broker, api } = setup(['pages:read', 'pages:sections']);
 		expect(
-			await code(broker.call('pages.setSection', { id: 5, sectionId: 'nope', markdown: 'x', heading: 'Notes' })),
+			await code(
+				broker.call('pages.setSection', {
+					id: 5,
+					sectionId: 'nope',
+					markdown: 'x',
+					heading: 'Notes',
+				}),
+			),
 		).toBe('ok');
-		expect(api.calls[api.calls.length - 1]).toEqual(['pagesSetSection', 5, 'nope', 'x', undefined, 'Notes']);
+		expect(api.calls[api.calls.length - 1]).toEqual([
+			'pagesSetSection',
+			5,
+			'nope',
+			'x',
+			undefined,
+			'Notes',
+		]);
 	});
 
 	it('stores per-page data as JSON with a 200-character key and a 64 KB value', async () => {
 		const { broker, api } = setup(['pages:read']);
-		await broker.call('pageData.set', { pageId: 5, key: 'seen', value: { n: 1 } });
-		expect(api.calls[api.calls.length - 1]).toEqual(['pageDataSet', 5, 'seen', '{"n":1}']);
-		expect(await code(broker.call('pageData.set', { pageId: 5, key: 'k'.repeat(201), value: 1 }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(await code(broker.call('pageData.set', { pageId: 5, key: 'k', value: 'x'.repeat(70_000) }))).toBe(
-			'INVALID_PARAMS',
-		);
-		expect(await broker.call('pageData.getMany', { pageIds: [5, 6], key: 'k' })).toEqual({ 5: { a: 1 }, 6: 2 });
-		expect(await code(broker.call('pageData.getMany', { pageIds: [], key: 'k' }))).toBe('INVALID_PARAMS');
+		await broker.call('pageData.set', {
+			pageId: 5,
+			key: 'seen',
+			value: { n: 1 },
+		});
+		expect(api.calls[api.calls.length - 1]).toEqual([
+			'pageDataSet',
+			5,
+			'seen',
+			'{"n":1}',
+		]);
+		expect(
+			await code(
+				broker.call('pageData.set', {
+					pageId: 5,
+					key: 'k'.repeat(201),
+					value: 1,
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await code(
+				broker.call('pageData.set', {
+					pageId: 5,
+					key: 'k',
+					value: 'x'.repeat(70_000),
+				}),
+			),
+		).toBe('INVALID_PARAMS');
+		expect(
+			await broker.call('pageData.getMany', { pageIds: [5, 6], key: 'k' }),
+		).toEqual({ 5: { a: 1 }, 6: 2 });
+		expect(
+			await code(broker.call('pageData.getMany', { pageIds: [], key: 'k' })),
+		).toBe('INVALID_PARAMS');
 	});
 
 	it('subscribes to page events only with pages:read', async () => {
-		expect(await code(setup(['pages:read']).broker.call('register', { kind: 'event', id: 'page.updated' }))).toBe(
-			'ok',
-		);
-		expect(await code(setup(['tasks:read']).broker.call('register', { kind: 'event', id: 'page.updated' }))).toBe(
-			'PERMISSION_DENIED',
-		);
+		expect(
+			await code(
+				setup(['pages:read']).broker.call('register', {
+					kind: 'event',
+					id: 'page.updated',
+				}),
+			),
+		).toBe('ok');
+		expect(
+			await code(
+				setup(['tasks:read']).broker.call('register', {
+					kind: 'event',
+					id: 'page.updated',
+				}),
+			),
+		).toBe('PERMISSION_DENIED');
 	});
 });

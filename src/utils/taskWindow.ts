@@ -49,17 +49,23 @@ export const taskWindowTarget = (
 	if (!task || !Number.isFinite(taskId) || taskId === 0) return null;
 	const workspace =
 		(workspaces ?? []).find(
-			(w) => task.workspace_id != null && Number(w.id) === Number(task.workspace_id),
+			(w) =>
+				task.workspace_id != null && Number(w.id) === Number(task.workspace_id),
 		) ?? currentWorkspace;
 	if (!workspace?.code) return null;
 	return {
 		taskId,
 		workspaceCode: workspace.code,
-		title: typeof task.title === 'string' && task.title.trim() ? task.title.trim() : null,
+		title:
+			typeof task.title === 'string' && task.title.trim()
+				? task.title.trim()
+				: null,
 	};
 };
 
-export const openTaskWindow = async (target: TaskWindowTarget): Promise<void> => {
+export const openTaskWindow = async (
+	target: TaskWindowTarget,
+): Promise<void> => {
 	const { invoke } = await import('@tauri-apps/api/core');
 	await invoke('open_task_window', { ...target });
 };

@@ -36,7 +36,9 @@ export interface LocalAccessConnectRequest {
  * LocalPersonaConnectDialog. Settings/App shell renders it from here and answers via
  * resolveLocalAccessConnect; the promise given to the plugin resolves only then.
  */
-export const localAccessConnect = reactive<{ current: LocalAccessConnectRequest | null }>({
+export const localAccessConnect = reactive<{
+	current: LocalAccessConnectRequest | null;
+}>({
 	current: null,
 });
 
@@ -51,7 +53,9 @@ export const requestLocalAccessConnect = (
 		localAccessConnect.current = request;
 	});
 
-export const resolveLocalAccessConnect = (result: LocalConnectionResult): void => {
+export const resolveLocalAccessConnect = (
+	result: LocalConnectionResult,
+): void => {
 	localAccessConnect.current = null;
 	const resolve = resolveConnect;
 	resolveConnect = null;

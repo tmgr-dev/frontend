@@ -252,7 +252,13 @@ describe('page events on the local access stream', () => {
 			'page.restored',
 			'page.moved',
 		] as const) {
-			domainEvents.emit({ type, workspaceId: -3, pageId: 4, page, actor: 'persona:p-1' });
+			domainEvents.emit({
+				type,
+				workspaceId: -3,
+				pageId: 4,
+				page,
+				actor: 'persona:p-1',
+			});
 		}
 		await flush();
 		expect(invoke).toHaveBeenCalledTimes(5);

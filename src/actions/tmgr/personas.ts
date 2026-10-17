@@ -1,6 +1,6 @@
 import $axios from '@/plugins/axios';
-import { requestCache } from '@/utils/requestCache';
 import type { PersonaAssignee, PersonaPolicy } from '@/utils/personas';
+import { requestCache } from '@/utils/requestCache';
 
 export interface PersonaOwnerRef {
 	id: number;
@@ -132,7 +132,9 @@ export const getPersona = async (uuid: string): Promise<Persona> => {
 	return data;
 };
 
-export const createPersona = async (payload: PersonaInput): Promise<Persona> => {
+export const createPersona = async (
+	payload: PersonaInput,
+): Promise<Persona> => {
 	const {
 		data: { data },
 	} = await $axios.post('/personas', payload);
@@ -324,10 +326,9 @@ export const upsertWorkspaceGrant = async (
 ): Promise<PersonaGrant> => {
 	const {
 		data: { data },
-	} = await $axios.put(
-		`/workspaces/${workspaceId}/personas/${personaUuid}`,
-		{ permissions },
-	);
+	} = await $axios.put(`/workspaces/${workspaceId}/personas/${personaUuid}`, {
+		permissions,
+	});
 	requestCache.invalidate(workspaceGrantsKey(workspaceId));
 	invalidateAssignable(workspaceId);
 	return data;

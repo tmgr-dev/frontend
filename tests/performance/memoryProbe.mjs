@@ -3,7 +3,11 @@ export const instrument = (page) =>
     const live = new Map();
     const bump = (key, d) => live.set(key, (live.get(key) ?? 0) + d);
     const name = (t) =>
-      t === window ? 'window' : t === document ? 'document' : t?.constructor?.name ?? 'other';
+      t === window
+        ? 'window'
+        : t === document
+        ? 'document'
+        : t?.constructor?.name ?? 'other';
     const listeners = new WeakMap();
     const sig = (t, type, fn, opts) => {
       const cap = typeof opts === 'object' ? !!opts?.capture : !!opts;
@@ -12,7 +16,13 @@ export const instrument = (page) =>
     const add = EventTarget.prototype.addEventListener;
     const remove = EventTarget.prototype.removeEventListener;
     EventTarget.prototype.addEventListener = function (type, fn, opts) {
-      if (fn && (this === window || this === document || this === document.body || this === document.documentElement)) {
+      if (
+        fn &&
+        (this === window ||
+          this === document ||
+          this === document.body ||
+          this === document.documentElement)
+      ) {
         let set = listeners.get(this);
         if (!set) listeners.set(this, (set = new Map()));
         const k = sig(this, type, fn, opts);
@@ -72,7 +82,8 @@ export const instrument = (page) =>
         }
       };
     }
-    window.__live = () => Object.fromEntries([...live].filter(([, v]) => v !== 0));
+    window.__live = () =>
+      Object.fromEntries([...live].filter(([, v]) => v !== 0));
   });
 
 export const recordSockets = (page, log) =>
@@ -81,7 +92,8 @@ export const recordSockets = (page, log) =>
       try {
         const msg = JSON.parse(m);
         if (msg.event === 'pusher:subscribe') log.push(`+${msg.data.channel}`);
-        if (msg.event === 'pusher:unsubscribe') log.push(`-${msg.data.channel}`);
+        if (msg.event === 'pusher:unsubscribe')
+          log.push(`-${msg.data.channel}`);
       } catch {}
     });
     ws.send(
@@ -97,7 +109,9 @@ export const heap = async (page) => {
   await cdp.send('HeapProfiler.enable');
   await cdp.send('HeapProfiler.collectGarbage');
   await cdp.send('HeapProfiler.collectGarbage');
-  const { metrics } = await cdp.send('Performance.getMetrics').catch(() => ({ metrics: [] }));
+  const { metrics } = await cdp
+    .send('Performance.getMetrics')
+    .catch(() => ({ metrics: [] }));
   await cdp.detach();
   return metrics;
 };

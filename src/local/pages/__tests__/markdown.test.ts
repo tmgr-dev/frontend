@@ -173,9 +173,7 @@ describe('append', () => {
 			section(CONTEXT, 'agent-notes'),
 			'fresh insight',
 		);
-		expect(out.startsWith('## How we work\n\n## Architecture\n\n')).toBe(
-			true,
-		);
+		expect(out.startsWith('## How we work\n\n## Architecture\n\n')).toBe(true);
 		expect(
 			out.endsWith(
 				'<!-- tmgr:section id="agent-notes" owner="agents" -->\n## Agent notes\n\nfresh insight\n<!-- /tmgr:section -->\n',

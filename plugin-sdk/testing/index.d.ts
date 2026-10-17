@@ -83,11 +83,15 @@ export interface CreateTestHostOptions {
 	now?: number;
 	/** Whether `tmgr.ui.setTrayTitle` succeeds, as if the user picked this plugin in Settings. Defaults to `true`. */
 	trayTitleOwner?: boolean;
-	dnd?: { active: boolean; until: string | null } | (() => { active: boolean; until: string | null });
+	dnd?:
+		| { active: boolean; until: string | null }
+		| (() => { active: boolean; until: string | null });
 	/** What `tmgr.files.pick()` resolves to. Defaults to `null` (the user cancelled). */
 	filesPick?: unknown;
 	/** What `tmgr.localAccess.requestConnection()` resolves to. Defaults to `{ status: 'cancelled' }`. */
-	localAccessConnect?: { status: 'connected'; tokenId: string; prefix: string } | { status: 'cancelled' };
+	localAccessConnect?:
+		| { status: 'connected'; tokenId: string; prefix: string }
+		| { status: 'cancelled' };
 	/** Backs `tmgr.net.fetch`; omit to make network calls reject with PERMISSION_DENIED, as on a computer with no network access granted. */
 	fetch?: (request: {
 		url: string;
@@ -122,13 +126,23 @@ export interface TestHostState {
 	routineInstances: Record<string, unknown>[];
 	attachments: Record<number, unknown[]>;
 	files: Record<string, string>;
-	alarms: Record<string, { name: string; scheduledAtMs: number; periodMinutes: number | null }>;
+	alarms: Record<
+		string,
+		{ name: string; scheduledAtMs: number; periodMinutes: number | null }
+	>;
 	notifications: Record<string, unknown>[];
 	statusBar: Record<string, Record<string, unknown>>;
 	trayItems: Record<string, Record<string, unknown>>;
 	trayTitle: string | null;
 	/** Badges set with `tmgr.ui.setViewBadge`, by view id. Applied immediately (no 1 s coalescing); a null or 0 badge removes the key. */
-	viewBadges: Record<string, { count: number | null; text: string | null; tone: 'default' | 'info' | 'warning' | 'danger' }>;
+	viewBadges: Record<
+		string,
+		{
+			count: number | null;
+			text: string | null;
+			tone: 'default' | 'info' | 'warning' | 'danger';
+		}
+	>;
 	log: { at: number; level: 'info' | 'warn' | 'error'; message: string }[];
 }
 
@@ -144,7 +158,10 @@ export interface TestHost {
 	manifest: Record<string, unknown>;
 	tmgr: TestHostState;
 	/** Which ids the plugin has registered so far, by kind. */
-	registered: Record<'event' | 'command' | 'badges' | 'page' | 'section', Set<string>>;
+	registered: Record<
+		'event' | 'command' | 'badges' | 'page' | 'section',
+		Set<string>
+	>;
 	/** Every broker method call the plugin made, in order: `[method, params]`. */
 	calls: [string, unknown][];
 	/** Dispatches an event to every handler the plugin registered for `event.type`. */
@@ -165,4 +182,6 @@ export interface TestHost {
 	dispose(): void;
 }
 
-export function createTestHost(options: CreateTestHostOptions): Promise<TestHost>;
+export function createTestHost(
+	options: CreateTestHostOptions,
+): Promise<TestHost>;

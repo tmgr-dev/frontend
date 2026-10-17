@@ -36,9 +36,7 @@ describe('getUserFeatureToggles', () => {
 
 	it('reads again after an update even when an older read is in flight', async () => {
 		let release: (value: unknown) => void = () => {};
-		http.get.mockReturnValueOnce(
-			new Promise((resolve) => (release = resolve)),
-		);
+		http.get.mockReturnValueOnce(new Promise((resolve) => (release = resolve)));
 		http.get.mockResolvedValueOnce({ data: { data: { fresh: {} } } });
 		http.put.mockResolvedValue({ data: {} });
 		const stale = getUserFeatureToggles();

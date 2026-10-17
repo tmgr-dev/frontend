@@ -90,8 +90,8 @@
 							and is readable. Hooks always exit 0 and print nothing.
 						</li>
 						<li>
-							Run <CommandChip command="claude mcp list" /> to check the
-							server is connected.
+							Run <CommandChip command="claude mcp list" /> to check the server
+							is connected.
 						</li>
 						<li>
 							MCP servers do not go into

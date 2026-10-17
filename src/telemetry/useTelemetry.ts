@@ -3,7 +3,12 @@ import type { TelemetrySnapshot } from './client';
 import { onTelemetry } from './index';
 
 export const useTelemetry = () => {
-	const snapshot = ref<TelemetrySnapshot>({ active: false, installId: null, pending: 0, error: null });
+	const snapshot = ref<TelemetrySnapshot>({
+		active: false,
+		installId: null,
+		pending: 0,
+		error: null,
+	});
 	let unsubscribe: (() => void) | null = null;
 	const stopWaiting = onTelemetry((telemetry) => {
 		unsubscribe?.();

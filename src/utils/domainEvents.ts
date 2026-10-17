@@ -32,7 +32,12 @@ export type DomainEvent = (
 			taskId: number;
 			comment: Entity;
 	  }
-	| { type: 'comment.deleted'; workspaceId: number | null; commentId: number; taskId?: number }
+	| {
+			type: 'comment.deleted';
+			workspaceId: number | null;
+			commentId: number;
+			taskId?: number;
+	  }
 	| {
 			type: 'comment.reactionChanged';
 			workspaceId: number | null;
@@ -48,7 +53,12 @@ export type DomainEvent = (
 			relationType: string | number;
 			change: 'added' | 'removed';
 	  }
-	| { type: 'routine.created'; workspaceId: number | null; routineId: number; routine: Entity }
+	| {
+			type: 'routine.created';
+			workspaceId: number | null;
+			routineId: number;
+			routine: Entity;
+	  }
 	| {
 			type: 'routine.updated';
 			workspaceId: number | null;
@@ -56,9 +66,19 @@ export type DomainEvent = (
 			routine?: Entity;
 			instance?: Entity;
 	  }
-	| { type: 'routine.deleted'; workspaceId: number | null; routineId: number; taskId?: number }
 	| {
-			type: 'page.created' | 'page.updated' | 'page.deleted' | 'page.restored' | 'page.moved';
+			type: 'routine.deleted';
+			workspaceId: number | null;
+			routineId: number;
+			taskId?: number;
+	  }
+	| {
+			type:
+				| 'page.created'
+				| 'page.updated'
+				| 'page.deleted'
+				| 'page.restored'
+				| 'page.moved';
 			workspaceId: number | null;
 			pageId: number;
 			page: Entity;
@@ -151,11 +171,18 @@ const ROUTINE_ID_BASE = 1_000_000_000;
 
 /** A `routineJson` payload or a raw `routines` row: both carry `title` and `scheduled_date`, never `scheduled_for`. */
 const isRoutineShaped = (entity?: Entity): boolean =>
-	!!entity && typeof entity === 'object' && 'title' in entity && 'scheduled_date' in entity && !('scheduled_for' in entity);
+	!!entity &&
+	typeof entity === 'object' &&
+	'title' in entity &&
+	'scheduled_date' in entity &&
+	!('scheduled_for' in entity);
 
 /** An `instanceJson` payload or a raw `routine_instances` row. */
 const isInstanceShaped = (entity?: Entity): boolean =>
-	!!entity && typeof entity === 'object' && 'scheduled_for' in entity && 'task_id' in entity;
+	!!entity &&
+	typeof entity === 'object' &&
+	'scheduled_for' in entity &&
+	'task_id' in entity;
 
 /** The domain events a successful API write stands for. Pure: reads nothing but its arguments. */
 export const eventsForResponse = (
@@ -200,7 +227,11 @@ export const eventsForResponse = (
 		const taskId = Number(match[1]);
 		// Local workspace ids are negative; a cloud task id above the base is still a task.
 		const inLocalWorkspace = (workspaceOf(payload) ?? 0) < 0;
-		if (taskId > ROUTINE_ID_BASE && inLocalWorkspace && (method === 'put' || method === 'patch')) {
+		if (
+			taskId > ROUTINE_ID_BASE &&
+			inLocalWorkspace &&
+			(method === 'put' || method === 'patch')
+		) {
 			return [
 				{
 					type: 'routine.updated',
@@ -298,7 +329,9 @@ export const eventsForResponse = (
 					type: 'comment.deleted',
 					workspaceId: workspaceOf(),
 					commentId: Number(match[1]),
-					...(payload?.task_id != null ? { taskId: Number(payload.task_id) } : {}),
+					...(payload?.task_id != null
+						? { taskId: Number(payload.task_id) }
+						: {}),
 				},
 			];
 		}
@@ -369,7 +402,9 @@ export const eventsForResponse = (
 	if ((match = path.match(/^daily-routines\/tasks\/(\d+)$/))) {
 		const routineId = Number(match[1]);
 		if (method === 'delete')
-			return [{ type: 'routine.deleted', workspaceId: workspaceOf(), routineId }];
+			return [
+				{ type: 'routine.deleted', workspaceId: workspaceOf(), routineId },
+			];
 		if (method === 'put') {
 			return [
 				{
@@ -381,10 +416,22 @@ export const eventsForResponse = (
 			];
 		}
 	}
-	if ((match = path.match(/^daily-routines\/tasks\/(\d+)\/pattern$/)) && method === 'put') {
-		return [{ type: 'routine.updated', workspaceId: workspaceOf(), routineId: Number(match[1]) }];
+	if (
+		(match = path.match(/^daily-routines\/tasks\/(\d+)\/pattern$/)) &&
+		method === 'put'
+	) {
+		return [
+			{
+				type: 'routine.updated',
+				workspaceId: workspaceOf(),
+				routineId: Number(match[1]),
+			},
+		];
 	}
-	if ((match = path.match(/^daily-routines\/tasks\/(\d+)\/archive$/)) && method === 'post') {
+	if (
+		(match = path.match(/^daily-routines\/tasks\/(\d+)\/archive$/)) &&
+		method === 'post'
+	) {
 		const routineId = Number(match[1]);
 		return [
 			{
@@ -396,7 +443,9 @@ export const eventsForResponse = (
 		];
 	}
 	if (
-		(match = path.match(/^daily-routines\/tasks\/(\d+)\/(?:complete|complete-on)$/)) &&
+		(match = path.match(
+			/^daily-routines\/tasks\/(\d+)\/(?:complete|complete-on)$/,
+		)) &&
 		method === 'post'
 	) {
 		const routineId = Number(match[1]);
@@ -410,7 +459,9 @@ export const eventsForResponse = (
 		];
 	}
 	if (
-		(match = path.match(/^daily-routines\/tasks\/(\d+)\/instances\/[^/]+\/(?:complete|skip)$/)) &&
+		(match = path.match(
+			/^daily-routines\/tasks\/(\d+)\/instances\/[^/]+\/(?:complete|skip)$/,
+		)) &&
 		method === 'post'
 	) {
 		const routineId = Number(match[1]);
@@ -437,12 +488,26 @@ export const eventsForResponse = (
 			},
 		];
 	}
-	if ((match = path.match(/^daily-routines\/tasks\/(\d+)\/convert$/)) && method === 'post' && payload) {
+	if (
+		(match = path.match(/^daily-routines\/tasks\/(\d+)\/convert$/)) &&
+		method === 'post' &&
+		payload
+	) {
 		const routineId = Number(match[1]);
 		const taskId = Number(payload.id);
 		return [
-			{ type: 'routine.deleted', workspaceId: workspaceOf(payload), routineId, taskId },
-			{ type: 'task.created', workspaceId: workspaceOf(payload), taskId, task: payload },
+			{
+				type: 'routine.deleted',
+				workspaceId: workspaceOf(payload),
+				routineId,
+				taskId,
+			},
+			{
+				type: 'task.created',
+				workspaceId: workspaceOf(payload),
+				taskId,
+				task: payload,
+			},
 		];
 	}
 	return [];
@@ -466,7 +531,11 @@ export const installDomainEvents = (
 			const plugin = response.config.headers?.['X-TMGR-Plugin'];
 			// Never a header: the socket path must not let anything in the request choose its own actor.
 			const localAccessActor = (response.config as any).localAccessActor;
-			const actor = plugin ? `plugin:${plugin}` : localAccessActor ? `persona:${localAccessActor}` : undefined;
+			const actor = plugin
+				? `plugin:${plugin}`
+				: localAccessActor
+				? `persona:${localAccessActor}`
+				: undefined;
 			const sentIn = (response.config as any)[SENT_IN];
 			const workspaceId = () =>
 				sentIn === undefined ? currentWorkspaceId() : sentIn;

@@ -8,14 +8,22 @@
 				Local workspaces aren't listed here. Open the local workspace, then
 				grant this persona in its own Personas → "On this device" panel.
 			</span>
-			<Button size="sm" variant="outline" class="shrink-0" @click="goToLocalPersonas">
+			<Button
+				size="sm"
+				variant="outline"
+				class="shrink-0"
+				@click="goToLocalPersonas"
+			>
 				On this device
 			</Button>
 		</div>
 		<p v-if="loading" class="text-xs text-muted-foreground">
 			Loading workspaces…
 		</p>
-		<p v-else-if="workspaces.length === 0" class="text-xs text-muted-foreground">
+		<p
+			v-else-if="workspaces.length === 0"
+			class="text-xs text-muted-foreground"
+		>
 			No shared workspaces.
 		</p>
 		<div
@@ -76,7 +84,9 @@
 				</label>
 				<p class="text-2xs text-muted-foreground">
 					Effective here:
-					{{ (grantFor(ws.id)?.effective_permissions ?? []).join(', ') || 'none' }}
+					{{
+						(grantFor(ws.id)?.effective_permissions ?? []).join(', ') || 'none'
+					}}
 				</p>
 			</div>
 		</div>
@@ -86,10 +96,10 @@
 <script lang="ts">
 	import {
 		listWorkspacePersonas,
-		type Persona,
-		type PersonaGrant,
 		removeWorkspaceGrant,
 		upsertWorkspaceGrant,
+		type Persona,
+		type PersonaGrant,
 	} from '@/actions/tmgr/personas';
 	import { type Workspace } from '@/actions/tmgr/workspaces';
 	import { Button } from '@/components/ui/button';
@@ -97,7 +107,10 @@
 	import { toast } from '@/components/ui/toast';
 	import store from '@/store';
 	import { isDesktopApp } from '@/utils/desktop';
-	import { DEFAULT_GRANT_PERMISSIONS, PERSONA_PERMISSIONS } from '@/utils/personas';
+	import {
+		DEFAULT_GRANT_PERMISSIONS,
+		PERSONA_PERMISSIONS,
+	} from '@/utils/personas';
 	import {
 		computed,
 		defineComponent,
@@ -124,7 +137,8 @@
 				((store.state.workspaces as Workspace[]) || []).filter(
 					(w) =>
 						!w.is_local &&
-						(!props.persona.workspace_id || w.id === props.persona.workspace_id),
+						(!props.persona.workspace_id ||
+							w.id === props.persona.workspace_id),
 				),
 			);
 
@@ -147,8 +161,7 @@
 							try {
 								const grants = await listWorkspacePersonas(ws.id);
 								grantsByWorkspace[ws.id] =
-									grants.find((g) => g.persona.id === props.persona.id) ??
-									null;
+									grants.find((g) => g.persona.id === props.persona.id) ?? null;
 							} catch {
 								grantsByWorkspace[ws.id] = null;
 							}
@@ -173,14 +186,12 @@
 						grantsByWorkspace[workspaceId] = null;
 					}
 				} catch (error) {
-					const status = (error as { response?: { status?: number } })
-						?.response?.status;
+					const status = (error as { response?: { status?: number } })?.response
+						?.status;
 					toast({
 						title: 'Could not change this workspace',
 						description:
-							status === 409
-								? 'Blocked by the workspace creator'
-								: undefined,
+							status === 409 ? 'Blocked by the workspace creator' : undefined,
 						variant: 'destructive',
 					});
 				} finally {

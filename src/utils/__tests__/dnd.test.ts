@@ -28,7 +28,9 @@ describe('dnd', () => {
 		setDnd('3h');
 		expect(dndState.until).not.toBeNull();
 		expect(dndState.until! - before).toBeGreaterThan(2 * 60 * 60_000);
-		expect(dndState.until! - before).toBeLessThanOrEqual(3 * 60 * 60_000 + 1000);
+		expect(dndState.until! - before).toBeLessThanOrEqual(
+			3 * 60 * 60_000 + 1000,
+		);
 	});
 
 	it('until tomorrow means 9am the next day', () => {

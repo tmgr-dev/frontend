@@ -1,5 +1,8 @@
 const get = jest.fn();
-jest.mock('@/plugins/axios', () => ({ __esModule: true, default: { get: (...a: unknown[]) => get(...a) } }));
+jest.mock('@/plugins/axios', () => ({
+	__esModule: true,
+	default: { get: (...a: unknown[]) => get(...a) },
+}));
 
 import { fetchRuns, taskInfoFor } from '../runs';
 
@@ -60,7 +63,12 @@ describe('fetchRuns', () => {
 
 	it('follows cursors up to 10 pages', async () => {
 		get.mockImplementation(async (_u: string, cfg: any) => ({
-			data: { data: { runs: [run(Number(cfg.params.cursor ?? 0) + 1)], next_cursor: String((cfg.params.cursor ?? 0) + 1) } },
+			data: {
+				data: {
+					runs: [run(Number(cfg.params.cursor ?? 0) + 1)],
+					next_cursor: String((cfg.params.cursor ?? 0) + 1),
+				},
+			},
 		}));
 		const out = await fetchRuns([{ id: 1, code: 'demo' }], now);
 		expect(get).toHaveBeenCalledTimes(10);
@@ -83,7 +91,8 @@ describe('fetchRuns', () => {
 
 	it('skips workspaces with negative ids and counts failures', async () => {
 		get.mockImplementation(async (url: string) => {
-			if (url === 'workspaces/1/agent-work') return { data: { data: [run(1)] } };
+			if (url === 'workspaces/1/agent-work')
+				return { data: { data: [run(1)] } };
 			const err: any = new Error('nope');
 			err.response = { status: url.endsWith('3/agent-work') ? 501 : 404 };
 			throw err;
@@ -105,7 +114,12 @@ describe('fetchRuns', () => {
 
 	it('reports truncation when the page cap leaves a cursor', async () => {
 		get.mockImplementation(async (_u: string, cfg: any) => ({
-			data: { data: { runs: [run(1)], next_cursor: String((cfg.params.cursor ?? 0) + 1) } },
+			data: {
+				data: {
+					runs: [run(1)],
+					next_cursor: String((cfg.params.cursor ?? 0) + 1),
+				},
+			},
 		}));
 		const out = await fetchRuns([{ id: 1, code: 'demo' }], now);
 		expect(out.truncated).toBe(1);

@@ -31,7 +31,9 @@ export async function mockApp(
   if (!account && !loginAs) {
     await page.route('**/api/**', async (route) => {
       apiRequests.push(
-        `${route.request().method()} ${new URL(route.request().url()).pathname}`,
+        `${route.request().method()} ${
+          new URL(route.request().url()).pathname
+        }`,
       );
       await route.fulfill({ status: 500, json: { message: 'no account' } });
     });
@@ -112,13 +114,23 @@ export async function mockApp(
     if (onboardingFixture && path.startsWith('onboarding')) {
       const fx = onboardingFixture;
       const method = route.request().method();
-      const body = method === 'GET' || method === 'DELETE' ? null : route.request().postDataJSON();
+      const body =
+        method === 'GET' || method === 'DELETE'
+          ? null
+          : route.request().postDataJSON();
       if (method !== 'GET') fx.writes.push({ method, path, body });
       let out = fx.state;
       if (path === 'onboarding/facts') {
-        const keys = (url.searchParams.get('keys') ?? '').split(',').filter(Boolean);
-        fx.factsRequests.push({ keys, taskId: url.searchParams.get('task_id') });
-        out = Object.fromEntries(keys.map((k) => [k, fx.state.facts[k] ?? false]));
+        const keys = (url.searchParams.get('keys') ?? '')
+          .split(',')
+          .filter(Boolean);
+        fx.factsRequests.push({
+          keys,
+          taskId: url.searchParams.get('task_id'),
+        });
+        out = Object.fromEntries(
+          keys.map((k) => [k, fx.state.facts[k] ?? false]),
+        );
       } else if (path === 'onboarding/intent' && method === 'POST') {
         fx.state.intent = body.intent;
         fx.state.intent_at = new Date().toISOString();
@@ -132,7 +144,9 @@ export async function mockApp(
         for (const key of ['tips_mode', 'hub_hidden', 'checklist_hidden'])
           if (body?.[key] !== undefined) fx.state[key] = body[key];
       } else if (path.startsWith('onboarding/tours/') && method === 'PUT') {
-        fx.state.tours[decodeURIComponent(path.slice('onboarding/tours/'.length))] = {
+        fx.state.tours[
+          decodeURIComponent(path.slice('onboarding/tours/'.length))
+        ] = {
           status: body.status,
           step_id: body.step_id ?? null,
           version: body.version ?? 1,
@@ -255,7 +269,11 @@ export async function mockApp(
     await page.route('**/api/**', async (route) => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
-      if (anonymous && request.method() === 'POST' && path.endsWith('/auth/login')) {
+      if (
+        anonymous &&
+        request.method() === 'POST' &&
+        path.endsWith('/auth/login')
+      ) {
         apiRequests.push(`POST ${path}`);
         anonymous = false;
         await route.fulfill({ json: { data: { token: loginAs } } });

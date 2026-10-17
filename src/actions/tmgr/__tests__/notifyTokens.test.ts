@@ -84,7 +84,11 @@ describe('revokeNotifyToken', () => {
 describe('sendTestNotification', () => {
 	const NOTIFY_TOKEN = ['tmgrn', 'EXAMPLE0000000000'].join('_');
 	const fetchMock = jest.fn();
-	const reply = (status: number, body: unknown = {}, headers: Record<string, string> = {}) =>
+	const reply = (
+		status: number,
+		body: unknown = {},
+		headers: Record<string, string> = {},
+	) =>
 		fetchMock.mockResolvedValue({
 			status,
 			ok: status >= 200 && status < 300,
@@ -120,7 +124,9 @@ describe('sendTestNotification', () => {
 		expect(buildNotifyPushUrl('https://api.example.com/api')).toBe(
 			'https://api.example.com/api/notifications/push',
 		);
-		expect(buildNotifyPushUrl()).toBe('http://localhost/api/notifications/push');
+		expect(buildNotifyPushUrl()).toBe(
+			'http://localhost/api/notifications/push',
+		);
 	});
 
 	it('maps a 202 with channels to sent', async () => {

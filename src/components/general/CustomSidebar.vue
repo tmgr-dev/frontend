@@ -3,8 +3,8 @@
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
 	import WindowControls from '@/components/desktop/WindowControls.vue';
-	import { isRunnerSupported } from '@/runner/api';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import { isRunnerSupported } from '@/runner/api';
 	import {
 		hasNativeTitleBar,
 		isDesktopApp,
@@ -25,18 +25,16 @@
 		Workspace,
 	} from '@/actions/tmgr/workspaces.ts';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
-	import ModulesPicker from '@/components/general/ModulesPicker.vue';
-	import { Button } from '@/components/ui/button';
-	import Confirm from '@/components/general/Confirm.vue';
-	import GlobalSearch from '@/components/general/GlobalSearch.vue';
-	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
-	import DarkMode from '@/components/general/DarkMode.vue';
-	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
 	import LocalMoveBanner from '@/components/desktop/LocalMoveBanner.vue';
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
 	import MoveToCloudHost from '@/components/desktop/MoveToCloudHost.vue';
-	import { openMoveDialog } from '@/local/moveToCloud/ui';
+	import Confirm from '@/components/general/Confirm.vue';
+	import DarkMode from '@/components/general/DarkMode.vue';
+	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
+	import GlobalSearch from '@/components/general/GlobalSearch.vue';
+	import ModulesPicker from '@/components/general/ModulesPicker.vue';
 	import NotificationBell from '@/components/notifications/NotificationBell.vue';
+	import SidebarPagesSection from '@/components/pagesNav/SidebarPagesSection.vue';
 	import {
 		Breadcrumb,
 		BreadcrumbItem,
@@ -44,6 +42,15 @@
 		BreadcrumbList,
 		BreadcrumbSeparator,
 	} from '@/components/ui/breadcrumb';
+	import { Button } from '@/components/ui/button';
+	import {
+		Dialog,
+		DialogContent,
+		DialogDescription,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -53,17 +60,7 @@
 		DropdownMenuSeparator,
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
-	import {
-		Dialog,
-		DialogContent,
-		DialogDescription,
-		DialogFooter,
-		DialogHeader,
-		DialogTitle,
-	} from '@/components/ui/dialog';
 	import { Separator } from '@/components/ui/separator';
-	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
-	import { requestCache } from '@/utils/requestCache';
 	import {
 		Sidebar,
 		SidebarContent,
@@ -85,49 +82,46 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useNavHistory } from '@/composable/useNavHistory';
+	import { openMoveDialog } from '@/local/moveToCloud/ui';
+	import { pluginState } from '@/pluginSystem/state';
+	import store from '@/store';
 	import HelpMenu from '@/tours/ui/HelpMenu.vue';
 	import { useTours } from '@/tours/useTours';
-	import store from '@/store';
+	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { pagesAvailable } from '@/utils/pagesTree';
+	import { requestCache } from '@/utils/requestCache';
 	import { generateCategoryUrl } from '@/utils/url';
-	import { pluginState } from '@/pluginSystem/state';
-	import {
-		BADGE_DOT_CLASS,
-		BADGE_TONE_CLASS,
-		viewBadgeAriaLabel,
-		viewBadgeLabel,
-	} from './sidebarViewBadge';
 	import {
 		ArchiveIcon,
 		ArrowLeft,
 		ArrowRight,
 		BadgeCheck,
 		BarChart3,
-		Gauge,
 		Bell,
+		Bot,
 		Cable,
 		ChevronsUpDown,
 		ClipboardListIcon,
-		FolderClosedIcon,
-		Inbox,
 		CloudUpload,
 		FileDown,
+		FlaskConical,
+		FolderClosedIcon,
 		FolderOpen,
+		Gauge,
 		HardDrive,
+		Inbox,
+		Info,
+		Keyboard,
 		LayoutDashboard,
+		LifeBuoy,
 		LogOut,
 		Package,
 		PackageOpen,
-		FlaskConical,
-		Keyboard,
-		LifeBuoy,
-		Info,
 		Palette,
 		PaperclipIcon,
 		Plug,
 		Plus,
 		Settings2,
-		Bot,
 		ShieldCheck,
 		Sliders,
 		Smartphone,
@@ -146,6 +140,12 @@
 		watch,
 	} from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
+	import {
+		BADGE_DOT_CLASS,
+		BADGE_TONE_CLASS,
+		viewBadgeAriaLabel,
+		viewBadgeLabel,
+	} from './sidebarViewBadge';
 
 	const AiAssistantPanel = defineAsyncComponent(
 		() => import('@/components/agent/AiAssistantPanel.vue'),
@@ -290,11 +290,12 @@
 					categoriesLoaded.value = true;
 				}
 			}),
-			(userJustLoaded ? Promise.resolve(store.state.user as any) : getUser()).then(
-				(data) => {
-					if (current()) user.value = data;
-				},
-			),
+			(userJustLoaded
+				? Promise.resolve(store.state.user as any)
+				: getUser()
+			).then((data) => {
+				if (current()) user.value = data;
+			}),
 			getWorkspaces().then((data) => {
 				if (current()) workspaces.value = data;
 			}),
@@ -592,7 +593,7 @@
 														v-if="activeWorkspace?.is_local"
 														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
 														data-testid="local-workspace-badge"
-																						data-tour="local.badge"
+														data-tour="local.badge"
 														>Local</span
 													>
 												</span>
@@ -914,9 +915,7 @@
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
-							<SidebarMenuItem
-								v-if="activeWorkspace?.code && !hubHidden"
-							>
+							<SidebarMenuItem v-if="activeWorkspace?.code && !hubHidden">
 								<SidebarMenuButton as-child>
 									<router-link
 										data-tour="nav.getting-started"
@@ -951,7 +950,9 @@
 							<SidebarMenuItem v-for="page in pluginPages" :key="page.key">
 								<SidebarMenuButton
 									as-child
-									:class="page.badge && 'pr-11 group-data-[collapsible=icon]:!pr-2'"
+									:class="
+										page.badge && 'pr-11 group-data-[collapsible=icon]:!pr-2'
+									"
 								>
 									<router-link
 										:to="`/${activeWorkspace.code}/plugins/${page.key}`"
@@ -1330,7 +1331,9 @@
 						></div>
 						<div data-tauri-drag-region class="flex items-center gap-2">
 							<button
-								v-if="!isDesktop && !isLocalOnly && isFeatureEnabled('ai.assistant')"
+								v-if="
+									!isDesktop && !isLocalOnly && isFeatureEnabled('ai.assistant')
+								"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,
@@ -1342,7 +1345,9 @@
 							>
 								<Sparkles class="h-4 w-4" />
 							</button>
-							<ActiveCursorAgents v-if="!isDesktop && isFeatureEnabled('cursor')" />
+							<ActiveCursorAgents
+								v-if="!isDesktop && isFeatureEnabled('cursor')"
+							/>
 							<HelpMenu />
 							<NotificationBell v-if="!isLocalOnly" />
 						</div>
@@ -1372,11 +1377,14 @@
 			<DialogHeader>
 				<DialogTitle>New local workspace</DialogTitle>
 				<DialogDescription>
-					Stored only on this Mac in ~/.tmgr.dev/workspaces — it never reaches the
-					server. Back it up by copying the folder.
+					Stored only on this Mac in ~/.tmgr.dev/workspaces — it never reaches
+					the server. Back it up by copying the folder.
 				</DialogDescription>
 			</DialogHeader>
-			<form class="flex flex-col gap-3" @submit.prevent="createLocalWorkspaceFromDialog">
+			<form
+				class="flex flex-col gap-3"
+				@submit.prevent="createLocalWorkspaceFromDialog"
+			>
 				<input
 					v-model="localName"
 					data-selectable
@@ -1384,7 +1392,9 @@
 					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
 					placeholder="Personal, Client under NDA…"
 				/>
-				<p v-if="localError" class="text-xs text-destructive">{{ localError }}</p>
+				<p v-if="localError" class="text-xs text-destructive">
+					{{ localError }}
+				</p>
 				<DialogFooter>
 					<button
 						type="submit"

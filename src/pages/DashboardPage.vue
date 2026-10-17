@@ -162,12 +162,8 @@
 	} = usePusher();
 
 	// Network status monitoring
-	const {
-		isOffline,
-		checkConnection,
-		onOnline,
-		onOffline,
-	} = useNetworkStatus();
+	const { isOffline, checkConnection, onOnline, onOffline } =
+		useNetworkStatus();
 
 	// Error handling
 	const {
@@ -254,7 +250,7 @@
 			? feedActivities.value
 			: feedActivities.value.filter(
 					(activity) => !String(activity.type ?? '').startsWith('agent_work'),
-				),
+			  ),
 	);
 	const activityLoading = feedLoading;
 	const activityLoadingMore = feedLoadingMore;
@@ -587,18 +583,14 @@
 					event.preventDefault();
 					// Focus on heatmap section
 					document
-						.querySelector<HTMLElement>(
-							'[aria-labelledby="heatmap-heading"]',
-						)
+						.querySelector<HTMLElement>('[aria-labelledby="heatmap-heading"]')
 						?.focus();
 					break;
 				case '3':
 					event.preventDefault();
 					// Focus on activity feed
 					document
-						.querySelector<HTMLElement>(
-							'[aria-labelledby="activity-heading"]',
-						)
+						.querySelector<HTMLElement>('[aria-labelledby="activity-heading"]')
 						?.focus();
 					break;
 				case '4':
@@ -693,7 +685,9 @@
 
 			<BaseLayout :title="pageTitle">
 				<template #header-actions>
-					<div class="dashboard-header-actions flex flex-wrap items-center gap-2">
+					<div
+						class="dashboard-header-actions flex flex-wrap items-center gap-2"
+					>
 						<!-- Connection Status Indicator -->
 						<div
 							v-if="showConnectionStatus || !isRealTimeActive"

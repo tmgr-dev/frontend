@@ -1,4 +1,7 @@
-import { bootstrapTaskWindow, bootstrapWindowWorkspace } from '../taskWindowBootstrap';
+import {
+	bootstrapTaskWindow,
+	bootstrapWindowWorkspace,
+} from '../taskWindowBootstrap';
 
 const workspaces = [
 	{ id: 56, code: 'tmgrdev' },
@@ -21,10 +24,15 @@ const setup = (loaded = workspaces) => {
 		syncActiveLocalWorkspace: jest.fn(async (id: number) => {
 			calls.push(`sync:${id}`);
 		}),
-		getUserFeatureToggles: jest.fn(async () => ({ workspaces: { enabled: true } })),
+		getUserFeatureToggles: jest.fn(async () => ({
+			workspaces: { enabled: true },
+		})),
 		getWorkspaceFeatureToggles: jest.fn(async (id: number) => {
 			calls.push(`toggles:${id}`);
-			return { 'task.files': { enabled: true }, 'task.checkpoints': { enabled: true } };
+			return {
+				'task.files': { enabled: true },
+				'task.checkpoints': { enabled: true },
+			};
 		}),
 	};
 	return { store, deps, calls, commits };
@@ -34,22 +42,30 @@ describe('bootstrapTaskWindow', () => {
 	test.each([
 		['a cloud task', 'tmgrdev', 56],
 		['a local workspace task', 'current-project', -7],
-	])('loads the feature toggles of the workspace of %s before the form opens', async (_, code, id) => {
-		const { store, deps, calls, commits } = setup();
-		const workspace = await bootstrapTaskWindow(store, deps, code, 60);
-		expect(workspace?.id).toBe(id);
-		expect(deps.getWorkspaceFeatureToggles).toHaveBeenCalledWith(id);
-		expect(commits).toContainEqual([
-			'featureToggles/setWorkspaceToggles',
-			{ 'task.files': { enabled: true }, 'task.checkpoints': { enabled: true } },
-		]);
-		expect(commits).toContainEqual([
-			'featureToggles/setUserToggles',
-			{ workspaces: { enabled: true } },
-		]);
-		expect(calls.indexOf(`sync:${id}`)).toBeLessThan(calls.indexOf(`toggles:${id}`));
-		expect(calls[calls.length - 1]).toBe('commit:setCurrentTaskIdForModal');
-	});
+	])(
+		'loads the feature toggles of the workspace of %s before the form opens',
+		async (_, code, id) => {
+			const { store, deps, calls, commits } = setup();
+			const workspace = await bootstrapTaskWindow(store, deps, code, 60);
+			expect(workspace?.id).toBe(id);
+			expect(deps.getWorkspaceFeatureToggles).toHaveBeenCalledWith(id);
+			expect(commits).toContainEqual([
+				'featureToggles/setWorkspaceToggles',
+				{
+					'task.files': { enabled: true },
+					'task.checkpoints': { enabled: true },
+				},
+			]);
+			expect(commits).toContainEqual([
+				'featureToggles/setUserToggles',
+				{ workspaces: { enabled: true } },
+			]);
+			expect(calls.indexOf(`sync:${id}`)).toBeLessThan(
+				calls.indexOf(`toggles:${id}`),
+			);
+			expect(calls[calls.length - 1]).toBe('commit:setCurrentTaskIdForModal');
+		},
+	);
 
 	test('loads the workspaces when this window has none yet', async () => {
 		const { store, deps } = setup([] as any);
@@ -72,9 +88,16 @@ describe('bootstrapWindowWorkspace', () => {
 			calls.push(`toggles:${id}`);
 			return { pages: { enabled: true } } as any;
 		});
-		const workspace = await bootstrapWindowWorkspace(store, deps, 'current-project');
+		const workspace = await bootstrapWindowWorkspace(
+			store,
+			deps,
+			'current-project',
+		);
 		expect(workspace?.id).toBe(-7);
-		expect(commits).toContainEqual(['featureToggles/setWorkspaceToggles', { pages: { enabled: true } }]);
+		expect(commits).toContainEqual([
+			'featureToggles/setWorkspaceToggles',
+			{ pages: { enabled: true } },
+		]);
 		expect(calls.indexOf('sync:-7')).toBeLessThan(calls.indexOf('toggles:-7'));
 		expect(commits.some(([m]) => m === 'setCurrentTaskIdForModal')).toBe(false);
 	});

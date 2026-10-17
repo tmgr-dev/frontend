@@ -26,10 +26,7 @@
 				/>
 			</div>
 
-			<div
-				v-if="showUserFilter"
-				class="w-full"
-			>
+			<div v-if="showUserFilter" class="w-full">
 				<UiSelect v-model="selectedUserValue">
 					<UiSelectTrigger class="w-full">
 						<UiSelectValue placeholder="Select user" />
@@ -89,11 +86,7 @@
 	</div>
 
 	<!-- Desktop pill-style filters (header layout) -->
-	<div
-		v-else
-		data-tauri-drag-region
-		class="flex min-w-0 items-center gap-2"
-	>
+	<div v-else data-tauri-drag-region class="flex min-w-0 items-center gap-2">
 		<!-- Search -->
 		<div
 			v-if="isUserFeatureEnabled('board.search_input')"
@@ -279,6 +272,7 @@
 		SelectTrigger as UiSelectTrigger,
 		SelectValue as UiSelectValue,
 	} from '@/components/ui/select';
+	import { MY_PERSONAS_FILTER } from '@/utils/boardLoading';
 	import {
 		MenuItem,
 		Popover,
@@ -292,7 +286,6 @@
 		MagnifyingGlassIcon,
 		XMarkIcon,
 	} from '@heroicons/vue/24/outline';
-	import { MY_PERSONAS_FILTER } from '@/utils/boardLoading';
 	import { computed, nextTick, ref } from 'vue';
 
 	export interface UserOption {

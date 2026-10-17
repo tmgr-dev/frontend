@@ -1,4 +1,8 @@
-import { createNavHistory, navDirectionForKey, navDirectionForMouse } from '../navHistory';
+import {
+	createNavHistory,
+	navDirectionForKey,
+	navDirectionForMouse,
+} from '../navHistory';
 
 const e = (path: string, taskId: number | null = null) => ({ path, taskId });
 
@@ -102,19 +106,42 @@ describe('navDirectionForKey', () => {
 	const key = (init: Partial<KeyboardEvent>) => init as KeyboardEvent;
 
 	it('maps Cmd+[ and Cmd+] on macOS', () => {
-		expect(navDirectionForKey(key({ metaKey: true, key: '[', code: 'BracketLeft' }), 'macos')).toBe('back');
-		expect(navDirectionForKey(key({ metaKey: true, key: ']', code: 'BracketRight' }), 'macos')).toBe('forward');
+		expect(
+			navDirectionForKey(
+				key({ metaKey: true, key: '[', code: 'BracketLeft' }),
+				'macos',
+			),
+		).toBe('back');
+		expect(
+			navDirectionForKey(
+				key({ metaKey: true, key: ']', code: 'BracketRight' }),
+				'macos',
+			),
+		).toBe('forward');
 	});
 
 	it('maps Alt+Arrow on Windows and Linux', () => {
-		expect(navDirectionForKey(key({ altKey: true, key: 'ArrowLeft' }), 'windows')).toBe('back');
-		expect(navDirectionForKey(key({ altKey: true, key: 'ArrowRight' }), 'linux')).toBe('forward');
+		expect(
+			navDirectionForKey(key({ altKey: true, key: 'ArrowLeft' }), 'windows'),
+		).toBe('back');
+		expect(
+			navDirectionForKey(key({ altKey: true, key: 'ArrowRight' }), 'linux'),
+		).toBe('forward');
 	});
 
 	it('ignores other chords and extra modifiers', () => {
-		expect(navDirectionForKey(key({ altKey: true, key: 'ArrowLeft' }), 'macos')).toBeNull();
-		expect(navDirectionForKey(key({ metaKey: true, key: '[' }), 'windows')).toBeNull();
-		expect(navDirectionForKey(key({ metaKey: true, shiftKey: true, key: '[' }), 'macos')).toBeNull();
+		expect(
+			navDirectionForKey(key({ altKey: true, key: 'ArrowLeft' }), 'macos'),
+		).toBeNull();
+		expect(
+			navDirectionForKey(key({ metaKey: true, key: '[' }), 'windows'),
+		).toBeNull();
+		expect(
+			navDirectionForKey(
+				key({ metaKey: true, shiftKey: true, key: '[' }),
+				'macos',
+			),
+		).toBeNull();
 		expect(navDirectionForKey(key({ key: '[' }), 'macos')).toBeNull();
 	});
 });

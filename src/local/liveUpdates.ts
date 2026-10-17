@@ -1,8 +1,12 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import type { EventHandlers, PageEventPayload } from '@/types/dashboard';
-import { domainEvents, eventsForResponse, type DomainEvent } from '@/utils/domainEvents';
-import type { LocalRouter } from './router';
+import {
+	domainEvents,
+	eventsForResponse,
+	type DomainEvent,
+} from '@/utils/domainEvents';
 import { onTaskAssignment } from './personaAssignees';
+import type { LocalRouter } from './router';
 import { LocalRaw } from './types';
 
 type AgentWorkListener = (workspaceId: number, run: AgentWorkRun) => void;
@@ -13,7 +17,8 @@ export const reportAgentWorkRun = (workspaceId: number, run: AgentWorkRun) => {
 	agentWorkListeners.forEach((listener) => listener(workspaceId, run));
 };
 
-const AGENT_WORK_WRITE = /^(tasks\/\d+\/agent-work|agent-work\/\d+(\/finish)?)$/;
+const AGENT_WORK_WRITE =
+	/^(tasks\/\d+\/agent-work|agent-work\/\d+(\/finish)?)$/;
 
 interface LiveWriteOptions {
 	workspaceId: number;
@@ -28,9 +33,14 @@ const reportWrite = (
 ) => {
 	if (options.emitDomainEvents) {
 		eventsForResponse(
-			{ config: { method: write.method, url: write.path, data: write.body }, data: { data: write.data } },
+			{
+				config: { method: write.method, url: write.path, data: write.body },
+				data: { data: write.data },
+			},
 			() => options.workspaceId,
-		).forEach((event) => domainEvents.emit({ ...event, actor: `persona:${options.personaUuid}` }));
+		).forEach((event) =>
+			domainEvents.emit({ ...event, actor: `persona:${options.personaUuid}` }),
+		);
 	}
 	const run = write.data as AgentWorkRun | undefined;
 	if (AGENT_WORK_WRITE.test(write.path) && run?.task_id != null) {
@@ -39,7 +49,10 @@ const reportWrite = (
 };
 
 /** The same router, but every successful persona write is reported once its handler has committed. */
-export const withLiveWrites = (router: LocalRouter, options: LiveWriteOptions): LocalRouter => {
+export const withLiveWrites = (
+	router: LocalRouter,
+	options: LiveWriteOptions,
+): LocalRouter => {
 	const wrapped = Object.create(router) as LocalRouter;
 	wrapped.match = (method, path) => {
 		const route = router.match(method, path);
@@ -50,7 +63,12 @@ export const withLiveWrites = (router: LocalRouter, options: LiveWriteOptions): 
 				const data = await route.handler(req);
 				if (!(data instanceof LocalRaw)) {
 					try {
-						reportWrite(options, { method: req.method, path: req.path, body: req.body, data });
+						reportWrite(options, {
+							method: req.method,
+							path: req.path,
+							body: req.body,
+							data,
+						});
 					} catch (error) {
 						console.error('[local-access] failed to report a write', error);
 					}
@@ -63,7 +81,10 @@ export const withLiveWrites = (router: LocalRouter, options: LiveWriteOptions): 
 };
 
 export interface LiveUpdateDeps {
-	deliver: (workspaceId: number, call: (handlers: EventHandlers) => void) => void;
+	deliver: (
+		workspaceId: number,
+		call: (handlers: EventHandlers) => void,
+	) => void;
 	/** Resolves null when the workspace is not the one the app shows, so nothing reaches another workspace's API. */
 	fetchTask: (workspaceId: number, taskId: number) => Promise<any | null>;
 	invalidate: (key: string | RegExp) => void;
@@ -73,7 +94,10 @@ export interface LiveUpdateDeps {
  * Local workspaces have no realtime socket: writes that did not come from this UI (a persona over
  * the local socket, a plugin) are handed to the same handlers the cloud realtime events call.
  */
-export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents) => {
+export const installLocalLiveUpdates = (
+	deps: LiveUpdateDeps,
+	bus = domainEvents,
+) => {
 	const dropTask = (taskId: number) => {
 		deps.invalidate(`task-${taskId}`);
 		deps.invalidate(/^tasks-status-/);
@@ -83,9 +107,12 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 		deps
 			.fetchTask(workspaceId, taskId)
 			.then((task) => {
-				if (task) deps.deliver(workspaceId, (h) => h.onTaskUpdated?.(task, 'updated'));
+				if (task)
+					deps.deliver(workspaceId, (h) => h.onTaskUpdated?.(task, 'updated'));
 			})
-			.catch((error: unknown) => console.error('[local-live] failed to refetch a task', error));
+			.catch((error: unknown) =>
+				console.error('[local-live] failed to refetch a task', error),
+			);
 	};
 	const apply = (event: DomainEvent, workspaceId: number) => {
 		switch (event.type) {
@@ -93,12 +120,17 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 			case 'task.updated':
 				dropTask(event.taskId);
 				deps.deliver(workspaceId, (h) =>
-					h.onTaskUpdated?.(event.task, event.type === 'task.created' ? 'created' : 'updated'),
+					h.onTaskUpdated?.(
+						event.task,
+						event.type === 'task.created' ? 'created' : 'updated',
+					),
 				);
 				return;
 			case 'task.deleted':
 				dropTask(event.taskId);
-				deps.deliver(workspaceId, (h) => h.onTaskUpdated?.({ id: event.taskId }, 'deleted'));
+				deps.deliver(workspaceId, (h) =>
+					h.onTaskUpdated?.({ id: event.taskId }, 'deleted'),
+				);
 				return;
 			case 'task.statusChanged':
 				if (!event.task) refetchTask(workspaceId, event.taskId);
@@ -107,11 +139,15 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 			case 'comment.updated':
 				deps.invalidate(`comments-task-${event.taskId}`);
 				deps.deliver(workspaceId, (h) =>
-					event.type === 'comment.created' ? h.onCommentAdded?.(event.comment) : h.onCommentUpdated?.(event.comment),
+					event.type === 'comment.created'
+						? h.onCommentAdded?.(event.comment)
+						: h.onCommentUpdated?.(event.comment),
 				);
 				return;
 			case 'comment.deleted':
-				deps.deliver(workspaceId, (h) => h.onCommentDeleted?.({ id: event.commentId, task_id: event.taskId }));
+				deps.deliver(workspaceId, (h) =>
+					h.onCommentDeleted?.({ id: event.commentId, task_id: event.taskId }),
+				);
 				return;
 			case 'comment.reactionChanged':
 				if (event.taskId == null) return;
@@ -134,7 +170,9 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 			case 'page.moved':
 				deps.invalidate(/^pages-/);
 				deps.deliver(workspaceId, (h) =>
-					h.onPageEvent?.(event.type, { page: event.page as PageEventPayload['page'] }),
+					h.onPageEvent?.(event.type, {
+						page: event.page as PageEventPayload['page'],
+					}),
 				);
 				return;
 		}
@@ -142,7 +180,8 @@ export const installLocalLiveUpdates = (deps: LiveUpdateDeps, bus = domainEvents
 	const offBus = bus.on((event) => {
 		if (!event.actor) return;
 		const workspaceId = event.workspaceId;
-		if (workspaceId === null || workspaceId === undefined || workspaceId >= 0) return;
+		if (workspaceId === null || workspaceId === undefined || workspaceId >= 0)
+			return;
 		apply(event, workspaceId);
 	});
 	const onRun: AgentWorkListener = (workspaceId, run) =>

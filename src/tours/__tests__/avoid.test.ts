@@ -14,16 +14,30 @@ const card = rect(100, 300, 300, 200);
 
 describe('pickAvoidingPosition', () => {
 	it('returns null when the card does not touch an avoid rect', () => {
-		expect(pickAvoidingPosition({ card, anchor: null, avoid: [rect(600, 600, 100, 40)], viewport: vp })).toBeNull();
+		expect(
+			pickAvoidingPosition({
+				card,
+				anchor: null,
+				avoid: [rect(600, 600, 100, 40)],
+				viewport: vp,
+			}),
+		).toBeNull();
 	});
 
 	it('returns null when there is nothing to avoid', () => {
-		expect(pickAvoidingPosition({ card, anchor: null, avoid: [], viewport: vp })).toBeNull();
+		expect(
+			pickAvoidingPosition({ card, anchor: null, avoid: [], viewport: vp }),
+		).toBeNull();
 	});
 
 	it('moves the card to a spot that clears the avoid rect and stays in the viewport', () => {
 		const cta = rect(120, 400, 200, 44);
-		const pos = pickAvoidingPosition({ card, anchor: rect(120, 100, 300, 60), avoid: [cta], viewport: vp })!;
+		const pos = pickAvoidingPosition({
+			card,
+			anchor: rect(120, 100, 300, 60),
+			avoid: [cta],
+			viewport: vp,
+		})!;
 		expect(pos).not.toBeNull();
 		const moved = rect(pos.left, pos.top, card.width, card.height);
 		expect(collides(moved, cta)).toBe(false);
@@ -36,8 +50,15 @@ describe('pickAvoidingPosition', () => {
 	it('prefers a spot that also clears the anchor', () => {
 		const cta = rect(120, 400, 200, 44);
 		const anchor = rect(120, 100, 300, 60);
-		const pos = pickAvoidingPosition({ card, anchor, avoid: [cta], viewport: vp })!;
-		expect(collides(rect(pos.left, pos.top, card.width, card.height), anchor)).toBe(false);
+		const pos = pickAvoidingPosition({
+			card,
+			anchor,
+			avoid: [cta],
+			viewport: vp,
+		})!;
+		expect(
+			collides(rect(pos.left, pos.top, card.width, card.height), anchor),
+		).toBe(false);
 	});
 
 	it('falls back to the least overlap when nothing fits', () => {

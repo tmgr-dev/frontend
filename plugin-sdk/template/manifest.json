@@ -9,7 +9,9 @@
 	"permissions": ["tasks:read", "statuses:read"],
 	"contributes": {
 		"statusBarItems": [{ "id": "count" }],
-		"commands": [{ "id": "yourname.hello.refresh", "title": "Count tasks in progress" }],
+		"commands": [
+			{ "id": "yourname.hello.refresh", "title": "Count tasks in progress" }
+		],
 		"views": [
 			{ "id": "summary", "title": "Hello summary" },
 			{ "id": "page", "title": "Hello page", "ui": "ui/page.html" }

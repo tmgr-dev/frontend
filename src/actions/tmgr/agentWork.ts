@@ -23,7 +23,11 @@ export interface AgentWorkRun {
 	summary: string | null;
 	pr_url: string | null;
 	commits: { sha: string; message: string | null }[];
-	tests: { passed: number | null; failed: number | null; command: string | null } | null;
+	tests: {
+		passed: number | null;
+		failed: number | null;
+		command: string | null;
+	} | null;
 	version: number;
 }
 
@@ -38,7 +42,9 @@ export interface AgentWorkOverview {
 	totals: AgentWorkTotals;
 }
 
-export const getAgentWork = async (taskId: number): Promise<AgentWorkOverview> => {
+export const getAgentWork = async (
+	taskId: number,
+): Promise<AgentWorkOverview> => {
 	const {
 		data: { data },
 	} = await $axios.get(`tasks/${taskId}/agent-work`);

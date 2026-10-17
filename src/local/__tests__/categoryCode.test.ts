@@ -1,4 +1,7 @@
-import { generateUniqueCategoryCode, sanitizeCategoryCode } from '../categoryCode';
+import {
+	generateUniqueCategoryCode,
+	sanitizeCategoryCode,
+} from '../categoryCode';
 
 describe('sanitizeCategoryCode', () => {
 	it('transliterates Cyrillic', () => {
@@ -35,7 +38,9 @@ describe('generateUniqueCategoryCode', () => {
 	it('appends an incrementing suffix when the base is taken', () => {
 		expect(generateUniqueCategoryCode('DEV', ['DEV'])).toBe('DEV-1');
 		expect(generateUniqueCategoryCode('DEV', ['DEV', 'DEV-1'])).toBe('DEV-2');
-		expect(generateUniqueCategoryCode('DEV', ['DEV', 'DEV-1', 'DEV-2'])).toBe('DEV-3');
+		expect(generateUniqueCategoryCode('DEV', ['DEV', 'DEV-1', 'DEV-2'])).toBe(
+			'DEV-3',
+		);
 	});
 
 	it('is case-insensitive', () => {

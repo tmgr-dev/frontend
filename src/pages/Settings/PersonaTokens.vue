@@ -73,7 +73,13 @@
 	} from '@/actions/tmgr/personas';
 	import { Button } from '@/components/ui/button';
 	import { toast } from '@/components/ui/toast';
-	import { computed, defineComponent, onMounted, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		ref,
+		type PropType,
+	} from 'vue';
 	import PersonaConnectDialog from './PersonaConnectDialog.vue';
 
 	export default defineComponent({
@@ -129,11 +135,7 @@
 			};
 
 			const revokeAll = async () => {
-				if (
-					!window.confirm(
-						'Revoke every agent connection for this persona?',
-					)
-				)
+				if (!window.confirm('Revoke every agent connection for this persona?'))
 					return;
 				try {
 					await revokeAllPersonaTokens(props.persona.id);

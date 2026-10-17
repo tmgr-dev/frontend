@@ -543,7 +543,11 @@ const routes = [
 		component: gatedPage('personas', 'Personas', () =>
 			import('@/pages/Settings/Personas.vue'),
 		),
-		meta: { title: 'Personas', transitionName: 'fade-fast', navbarHidden: true },
+		meta: {
+			title: 'Personas',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+		},
 		name: 'PersonaSettings',
 	},
 	{

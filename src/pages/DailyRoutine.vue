@@ -41,11 +41,7 @@
 							<div class="flex min-w-0 flex-1 flex-col gap-1">
 								<div
 									class="flex items-center gap-2 rounded-card border bg-surface px-3 py-1.5 shadow-tmgr-xs transition-colors"
-									:class="
-										quickFocused
-											? 'border-line-focus'
-											: 'border-line'
-									"
+									:class="quickFocused ? 'border-line-focus' : 'border-line'"
 								>
 									<Inbox
 										:size="16"
@@ -427,16 +423,6 @@
 	import { updateTask } from '@/actions/tmgr/tasks';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
-	import {
-		AlertDialog,
-		AlertDialogAction,
-		AlertDialogCancel,
-		AlertDialogContent,
-		AlertDialogDescription,
-		AlertDialogFooter,
-		AlertDialogHeader,
-		AlertDialogTitle,
-	} from '@/components/ui/alert-dialog';
 	import ConvertRoutineModal from '@/components/dailyRoutine/ConvertRoutineModal.vue';
 	import CountChip from '@/components/dailyRoutine/CountChip.vue';
 	import DRIcon from '@/components/dailyRoutine/DRIcon.vue';
@@ -460,10 +446,20 @@
 	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import DailyRoutinesPreview from '@/components/previews/DailyRoutinesPreview.vue';
+	import {
+		AlertDialog,
+		AlertDialogAction,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+	} from '@/components/ui/alert-dialog';
 	import { useToast } from '@/components/ui/toast';
 	import { useDailyRoutineViewport } from '@/composable/useDailyRoutineViewport';
-	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import { useRoutineDrag } from '@/composable/useRoutineDrag';
 	import type { RoutineEntry, ViewId } from '@/types/dailyRoutine';
 	import {

@@ -41,7 +41,8 @@ export interface RoutineEntryJson {
 	updated_at: string | null;
 }
 
-export const notFoundRoutine = (): LocalHttpError => new LocalHttpError(404, 'Routine task not found');
+export const notFoundRoutine = (): LocalHttpError =>
+	new LocalHttpError(404, 'Routine task not found');
 
 const iso = (ctx: LocalContext) => ctx.now().toISOString();
 
@@ -58,7 +59,9 @@ const resolveTimeInput = (raw: any): string | null => {
 		const h = raw.hours;
 		const m = raw.minutes;
 		if (typeof h === 'number' && typeof m === 'number') {
-			return `${pad2(h)}:${pad2(m)}:${pad2(typeof raw.seconds === 'number' ? raw.seconds : 0)}`;
+			return `${pad2(h)}:${pad2(m)}:${pad2(
+				typeof raw.seconds === 'number' ? raw.seconds : 0,
+			)}`;
 		}
 		return null;
 	}
@@ -76,7 +79,10 @@ const resolveTimeInput = (raw: any): string | null => {
 
 /** Any routine that has not been (soft) deleted — includes archived ones. */
 export const loadRoutineRow = async (ctx: LocalContext, id: number) => {
-	const rows = await ctx.db.select<any>(`SELECT * FROM routines WHERE id = ? AND deleted_at IS NULL`, [id]);
+	const rows = await ctx.db.select<any>(
+		`SELECT * FROM routines WHERE id = ? AND deleted_at IS NULL`,
+		[id],
+	);
 	return rows[0] ?? null;
 };
 
@@ -103,7 +109,11 @@ const patternFromRow = (row: any): RecurrencePattern => ({
 	reminder_min: row.reminder_min ?? null,
 });
 
-export const savePattern = async (ctx: LocalContext, routineId: number, pattern: RecurrencePattern) => {
+export const savePattern = async (
+	ctx: LocalContext,
+	routineId: number,
+	pattern: RecurrencePattern,
+) => {
 	const now = iso(ctx);
 	await ctx.db.execute(
 		`INSERT INTO routine_patterns
@@ -135,7 +145,12 @@ export const savePattern = async (ctx: LocalContext, routineId: number, pattern:
 };
 
 /** Create-or-update the one instance for a (routine, date) pair; a null time stores midnight (unscheduled). */
-const upsertInstanceForDate = async (ctx: LocalContext, routineId: number, date: string, time: string | null) => {
+const upsertInstanceForDate = async (
+	ctx: LocalContext,
+	routineId: number,
+	date: string,
+	time: string | null,
+) => {
 	const dayStart = `${date}T00:00:00`;
 	const dayEnd = `${addDays(date, 1)}T00:00:00`;
 	const [existing] = await ctx.db.select<any>(
@@ -145,11 +160,10 @@ const upsertInstanceForDate = async (ctx: LocalContext, routineId: number, date:
 	const now = iso(ctx);
 	const scheduledFor = `${date}T${time ?? '00:00:00'}`;
 	if (existing) {
-		await ctx.db.execute(`UPDATE routine_instances SET scheduled_for = ?, updated_at = ? WHERE id = ?`, [
-			scheduledFor,
-			now,
-			existing.id,
-		]);
+		await ctx.db.execute(
+			`UPDATE routine_instances SET scheduled_for = ?, updated_at = ? WHERE id = ?`,
+			[scheduledFor, now, existing.id],
+		);
 		return Number(existing.id);
 	}
 	const result = await ctx.db.execute(
@@ -161,15 +175,21 @@ const upsertInstanceForDate = async (ctx: LocalContext, routineId: number, date:
 
 // ── create ───────────────────────────────────────────────────────────────────
 
-const settingsOf = (body: any): string => (Array.isArray(body?.settings) ? toJson(body.settings)! : '[]');
+const settingsOf = (body: any): string =>
+	Array.isArray(body?.settings) ? toJson(body.settings)! : '[]';
 
 /** One statement so the disjoint routine-id range assignment is atomic with the insert. */
-const insertRoutineRow = async (ctx: LocalContext, fields: Record<string, any>) => {
+const insertRoutineRow = async (
+	ctx: LocalContext,
+	fields: Record<string, any>,
+) => {
 	const keys = Object.keys(fields);
 	const now = iso(ctx);
 	const result = await ctx.db.execute(
 		`INSERT INTO routines (id, ${keys.join(', ')}, created_at, updated_at)
-		 SELECT COALESCE(MAX(id), ${ROUTINE_ID_BASE}) + 1, ${keys.map(() => '?').join(', ')}, ?, ?
+		 SELECT COALESCE(MAX(id), ${ROUTINE_ID_BASE}) + 1, ${keys
+			.map(() => '?')
+			.join(', ')}, ?, ?
 		 FROM routines`,
 		[...keys.map((k) => fields[k]), now, now],
 	);
@@ -182,7 +202,8 @@ export const createRoutine = async (ctx: LocalContext, body: any) => {
 	const routineId = await insertRoutineRow(ctx, {
 		title,
 		description: body?.description ?? null,
-		routine_category: 'routine_category' in (body ?? {}) ? body.routine_category : null,
+		routine_category:
+			'routine_category' in (body ?? {}) ? body.routine_category : null,
 		priority: body?.priority || 'medium',
 		approximately_time: numberOrNull(body?.approximately_time),
 		settings: settingsOf(body),
@@ -196,7 +217,8 @@ export const createRecurringRoutine = async (ctx: LocalContext, body: any) => {
 	const routineId = await insertRoutineRow(ctx, {
 		title,
 		description: body?.description ?? null,
-		routine_category: 'routine_category' in (body ?? {}) ? body.routine_category : null,
+		routine_category:
+			'routine_category' in (body ?? {}) ? body.routine_category : null,
 		priority: body?.priority || 'medium',
 		approximately_time: numberOrNull(body?.approximately_time),
 		settings: settingsOf(body),
@@ -204,8 +226,14 @@ export const createRecurringRoutine = async (ctx: LocalContext, body: any) => {
 	const pattern = normalizeRecurrence(body?.recurrence);
 	if (pattern) await savePattern(ctx, routineId, pattern);
 	if (body?.scheduled_date) {
-		const date = normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
-		await upsertInstanceForDate(ctx, routineId, date, resolveTimeInput(body?.scheduled_time));
+		const date =
+			normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
+		await upsertInstanceForDate(
+			ctx,
+			routineId,
+			date,
+			resolveTimeInput(body?.scheduled_time),
+		);
 	}
 	return loadRoutineRow(ctx, routineId);
 };
@@ -213,12 +241,19 @@ export const createRecurringRoutine = async (ctx: LocalContext, body: any) => {
 export const quickCreateRoutine = async (ctx: LocalContext, body: any) => {
 	const title = String(body?.title ?? '').trim();
 	if (!title) throw new LocalHttpError(422, 'title is required');
-	const routineId = await insertRoutineRow(ctx, { title, priority: 'medium', settings: '[]' });
+	const routineId = await insertRoutineRow(ctx, {
+		title,
+		priority: 'medium',
+		settings: '[]',
+	});
 	const today = localDate(ctx.now());
 	const requestedDate = normalizeDateField(body?.scheduled_date ?? body?.date);
 	const date = requestedDate ?? today;
 	const time = resolveTimeInput(body?.scheduled_time ?? body?.time);
-	const undated = !time && (!requestedDate || (date >= addDays(today, -1) && date <= addDays(today, 1)));
+	const undated =
+		!time &&
+		(!requestedDate ||
+			(date >= addDays(today, -1) && date <= addDays(today, 1)));
 	if (undated) return loadRoutineRow(ctx, routineId);
 	await upsertInstanceForDate(ctx, routineId, date, time);
 	return loadRoutineRow(ctx, routineId);
@@ -231,36 +266,58 @@ export const updateRoutine = async (ctx: LocalContext, row: any, body: any) => {
 	const fields: Record<string, any> = {};
 	if ('title' in body && body.title != null) fields.title = String(body.title);
 	if ('description' in body) fields.description = body.description ?? null;
-	if ('routine_category' in body) fields.routine_category = body.routine_category ?? null;
+	if ('routine_category' in body)
+		fields.routine_category = body.routine_category ?? null;
 	if (body?.priority) fields.priority = String(body.priority);
-	if ('approximately_time' in body) fields.approximately_time = numberOrNull(body.approximately_time);
+	if ('approximately_time' in body)
+		fields.approximately_time = numberOrNull(body.approximately_time);
 	if (Array.isArray(body?.settings)) fields.settings = toJson(body.settings);
 	if (Object.keys(fields).length) {
-		const sets = [...Object.keys(fields).map((k) => `${k} = ?`), 'updated_at = ?'];
-		await ctx.db.execute(`UPDATE routines SET ${sets.join(', ')} WHERE id = ?`, [
-			...Object.values(fields),
-			now,
-			row.id,
-		]);
+		const sets = [
+			...Object.keys(fields).map((k) => `${k} = ?`),
+			'updated_at = ?',
+		];
+		await ctx.db.execute(
+			`UPDATE routines SET ${sets.join(', ')} WHERE id = ?`,
+			[...Object.values(fields), now, row.id],
+		);
 	}
 	if (body?.is_recurring === false) {
-		await ctx.db.execute(`DELETE FROM routine_patterns WHERE routine_id = ?`, [row.id]);
+		await ctx.db.execute(`DELETE FROM routine_patterns WHERE routine_id = ?`, [
+			row.id,
+		]);
 	} else {
 		const pattern = normalizeRecurrence(body?.recurrence);
 		if (pattern) await savePattern(ctx, row.id, pattern);
 	}
 	if (body?.unscheduled === true) {
-		await ctx.db.execute(`DELETE FROM routine_instances WHERE routine_id = ? AND status = 'PENDING'`, [row.id]);
-		await ctx.db.execute(`UPDATE routines SET scheduled_date = NULL, scheduled_time = NULL WHERE id = ?`, [row.id]);
+		await ctx.db.execute(
+			`DELETE FROM routine_instances WHERE routine_id = ? AND status = 'PENDING'`,
+			[row.id],
+		);
+		await ctx.db.execute(
+			`UPDATE routines SET scheduled_date = NULL, scheduled_time = NULL WHERE id = ?`,
+			[row.id],
+		);
 	} else if (body?.scheduled_date) {
-		const date = normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
-		await upsertInstanceForDate(ctx, row.id, date, resolveTimeInput(body?.scheduled_time));
+		const date =
+			normalizeDateField(body.scheduled_date) ?? localDate(ctx.now());
+		await upsertInstanceForDate(
+			ctx,
+			row.id,
+			date,
+			resolveTimeInput(body?.scheduled_time),
+		);
 	}
 	return loadRoutineRow(ctx, row.id);
 };
 
 /** Honours only `approximately_time` and `title`, for the day view's `PUT tasks/{id}` resize call. */
-export const updateRoutineTaskFields = async (ctx: LocalContext, id: number, body: any) => {
+export const updateRoutineTaskFields = async (
+	ctx: LocalContext,
+	id: number,
+	body: any,
+) => {
 	const row = await loadRoutineRow(ctx, id);
 	if (!row) throw notFoundRoutine();
 	const fields: Record<string, any> = {};
@@ -268,24 +325,26 @@ export const updateRoutineTaskFields = async (ctx: LocalContext, id: number, bod
 		const title = String(body.title).trim();
 		if (title) fields.title = title;
 	}
-	if ('approximately_time' in body) fields.approximately_time = Number(body.approximately_time ?? 0) || 0;
+	if ('approximately_time' in body)
+		fields.approximately_time = Number(body.approximately_time ?? 0) || 0;
 	if (Object.keys(fields).length) {
-		const sets = [...Object.keys(fields).map((k) => `${k} = ?`), 'updated_at = ?'];
-		await ctx.db.execute(`UPDATE routines SET ${sets.join(', ')} WHERE id = ?`, [
-			...Object.values(fields),
-			iso(ctx),
-			id,
-		]);
+		const sets = [
+			...Object.keys(fields).map((k) => `${k} = ?`),
+			'updated_at = ?',
+		];
+		await ctx.db.execute(
+			`UPDATE routines SET ${sets.join(', ')} WHERE id = ?`,
+			[...Object.values(fields), iso(ctx), id],
+		);
 	}
 	return loadRoutineRow(ctx, id);
 };
 
 export const archiveRoutine = async (ctx: LocalContext, row: any) => {
-	await ctx.db.execute(`UPDATE routines SET archived_at = ?, updated_at = ? WHERE id = ?`, [
-		iso(ctx),
-		iso(ctx),
-		row.id,
-	]);
+	await ctx.db.execute(
+		`UPDATE routines SET archived_at = ?, updated_at = ? WHERE id = ?`,
+		[iso(ctx), iso(ctx), row.id],
+	);
 	return loadRoutineRow(ctx, row.id);
 };
 
@@ -298,27 +357,55 @@ export const destroyRoutine = async (ctx: LocalContext, id: number) => {
 	if (!result.rowsAffected) throw notFoundRoutine();
 };
 
-export const convertRoutineToTask = async (ctx: LocalContext, row: any, body: any) => {
+export const convertRoutineToTask = async (
+	ctx: LocalContext,
+	row: any,
+	body: any,
+) => {
 	const projectCategoryId = numberOrNull(body?.project_category_id);
 	if (projectCategoryId) {
-		const rows = await ctx.db.select<any>(`SELECT id FROM categories WHERE id = ? AND deleted_at IS NULL`, [
-			projectCategoryId,
-		]);
-		if (!rows.length) throw new LocalHttpError(422, 'The project category does not belong to the target workspace.');
+		const rows = await ctx.db.select<any>(
+			`SELECT id FROM categories WHERE id = ? AND deleted_at IS NULL`,
+			[projectCategoryId],
+		);
+		if (!rows.length)
+			throw new LocalHttpError(
+				422,
+				'The project category does not belong to the target workspace.',
+			);
 	}
 	const requestedStatusId = numberOrNull(body?.status_id);
 	if (requestedStatusId) {
-		const rows = await ctx.db.select<any>(`SELECT id FROM statuses WHERE id = ?`, [requestedStatusId]);
-		if (!rows.length) throw new LocalHttpError(422, 'The status does not belong to the target workspace.');
+		const rows = await ctx.db.select<any>(
+			`SELECT id FROM statuses WHERE id = ?`,
+			[requestedStatusId],
+		);
+		if (!rows.length)
+			throw new LocalHttpError(
+				422,
+				'The status does not belong to the target workspace.',
+			);
 	}
 	const statusId = requestedStatusId ?? (await defaultStatusId(ctx));
 	const now = iso(ctx);
 	const taskId = await journaledCreate(ctx, 'tasks', (id) => {
 		const entries: JournalEntry[] = [
-			{ entity: 'task', entityId: id, taskId: id, field: 'create', content: String(row.title ?? '') },
+			{
+				entity: 'task',
+				entityId: id,
+				taskId: id,
+				field: 'create',
+				content: String(row.title ?? ''),
+			},
 		];
 		if (String(row.description ?? '') !== '') {
-			entries.push({ entity: 'task', entityId: id, taskId: id, field: 'description', content: String(row.description) });
+			entries.push({
+				entity: 'task',
+				entityId: id,
+				taskId: id,
+				field: 'description',
+				content: String(row.description),
+			});
 		}
 		return {
 			statements: [
@@ -364,7 +451,11 @@ const defaultStatusId = async (ctx: LocalContext): Promise<number | null> => {
 
 // ── completion / instances ───────────────────────────────────────────────────
 
-export const completeForDate = async (ctx: LocalContext, routineId: number, date: string) => {
+export const completeForDate = async (
+	ctx: LocalContext,
+	routineId: number,
+	date: string,
+) => {
 	const dayStart = `${date}T00:00:00`;
 	const dayEnd = `${addDays(date, 1)}T00:00:00`;
 	let [row] = await ctx.db.select<any>(
@@ -377,7 +468,10 @@ export const completeForDate = async (ctx: LocalContext, routineId: number, date
 			`INSERT INTO routine_instances (routine_id, scheduled_for, status, created_at, updated_at) VALUES (?, ?, 'PENDING', ?, ?)`,
 			[routineId, dayStart, now, now],
 		);
-		[row] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ?`, [Number(result.lastInsertId)]);
+		[row] = await ctx.db.select<any>(
+			`SELECT * FROM routine_instances WHERE id = ?`,
+			[Number(result.lastInsertId)],
+		);
 	}
 	const wasCompleted = row.status === 'COMPLETED';
 	if (wasCompleted) {
@@ -389,22 +483,37 @@ export const completeForDate = async (ctx: LocalContext, routineId: number, date
 			`SELECT frequency FROM routine_patterns WHERE routine_id = ? AND frequency IS NOT NULL AND frequency NOT IN ('', 'NONE')`,
 			[routineId],
 		);
-		const [routine] = await ctx.db.select<any>(`SELECT created_at FROM routines WHERE id = ?`, [routineId]);
+		const [routine] = await ctx.db.select<any>(
+			`SELECT created_at FROM routines WHERE id = ?`,
+			[routineId],
+		);
 		const gapMs = (x: any, y: any) => Math.abs(Date.parse(x) - Date.parse(y));
-		const createdByCompletion = gapMs(row.created_at, row.completed_at) <= 60_000;
+		const createdByCompletion =
+			gapMs(row.created_at, row.completed_at) <= 60_000;
 		const createdWithRoutine =
 			!!routine &&
 			gapMs(row.created_at, routine.created_at) <= 60_000 &&
-			Math.abs(Date.parse(`${date}T00:00:00Z`) - Date.parse(`${String(routine.created_at).slice(0, 10)}T00:00:00Z`)) <=
-				86_400_000;
+			Math.abs(
+				Date.parse(`${date}T00:00:00Z`) -
+					Date.parse(`${String(routine.created_at).slice(0, 10)}T00:00:00Z`),
+			) <= 86_400_000;
 		if (
 			!pattern &&
 			Number(n) === 1 &&
 			String(row.scheduled_for).slice(11, 19) === '00:00:00' &&
 			(createdByCompletion || createdWithRoutine)
 		) {
-			await ctx.db.execute(`DELETE FROM routine_instances WHERE id = ?`, [row.id]);
-			return { ...row, id: null, status: 'PENDING', completed_at: null, skipped_at: null, updated_at: now };
+			await ctx.db.execute(`DELETE FROM routine_instances WHERE id = ?`, [
+				row.id,
+			]);
+			return {
+				...row,
+				id: null,
+				status: 'PENDING',
+				completed_at: null,
+				skipped_at: null,
+				updated_at: now,
+			};
 		}
 	}
 	const status = wasCompleted ? 'PENDING' : 'COMPLETED';
@@ -412,7 +521,10 @@ export const completeForDate = async (ctx: LocalContext, routineId: number, date
 		`UPDATE routine_instances SET status = ?, completed_at = ?, skipped_at = NULL, updated_at = ? WHERE id = ?`,
 		[status, wasCompleted ? null : now, now, row.id],
 	);
-	const [updated] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ?`, [row.id]);
+	const [updated] = await ctx.db.select<any>(
+		`SELECT * FROM routine_instances WHERE id = ?`,
+		[row.id],
+	);
 	return updated;
 };
 
@@ -422,50 +534,83 @@ export const setInstanceStatus = async (
 	instanceId: number,
 	status: 'COMPLETED' | 'SKIPPED',
 ) => {
-	const [row] = await ctx.db.select<any>(`SELECT id FROM routine_instances WHERE id = ? AND routine_id = ?`, [
-		instanceId,
-		routineId,
-	]);
-	if (!row) throw new LocalHttpError(404, 'Task instance not found for routine');
+	const [row] = await ctx.db.select<any>(
+		`SELECT id FROM routine_instances WHERE id = ? AND routine_id = ?`,
+		[instanceId, routineId],
+	);
+	if (!row)
+		throw new LocalHttpError(404, 'Task instance not found for routine');
 	const now = iso(ctx);
 	await ctx.db.execute(
 		`UPDATE routine_instances SET status = ?, completed_at = ?, skipped_at = ?, updated_at = ? WHERE id = ?`,
-		[status, status === 'COMPLETED' ? now : null, status === 'SKIPPED' ? now : null, now, instanceId],
+		[
+			status,
+			status === 'COMPLETED' ? now : null,
+			status === 'SKIPPED' ? now : null,
+			now,
+			instanceId,
+		],
 	);
-	const [updated] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ?`, [instanceId]);
+	const [updated] = await ctx.db.select<any>(
+		`SELECT * FROM routine_instances WHERE id = ?`,
+		[instanceId],
+	);
 	return updated;
 };
 
-export const deleteInstance = async (ctx: LocalContext, routineId: number, instanceId: number) => {
-	const [row] = await ctx.db.select<any>(`SELECT id FROM routine_instances WHERE id = ? AND routine_id = ?`, [
+export const deleteInstance = async (
+	ctx: LocalContext,
+	routineId: number,
+	instanceId: number,
+) => {
+	const [row] = await ctx.db.select<any>(
+		`SELECT id FROM routine_instances WHERE id = ? AND routine_id = ?`,
+		[instanceId, routineId],
+	);
+	if (!row)
+		throw new LocalHttpError(404, 'Task instance not found for routine');
+	await ctx.db.execute(`DELETE FROM routine_instances WHERE id = ?`, [
 		instanceId,
-		routineId,
 	]);
-	if (!row) throw new LocalHttpError(404, 'Task instance not found for routine');
-	await ctx.db.execute(`DELETE FROM routine_instances WHERE id = ?`, [instanceId]);
 };
 
-export const resolveReschedule = (body: any): { date: string | null; time: string | null } => {
-	const sf = typeof body?.scheduled_for === 'string' ? body.scheduled_for : null;
+export const resolveReschedule = (
+	body: any,
+): { date: string | null; time: string | null } => {
+	const sf =
+		typeof body?.scheduled_for === 'string' ? body.scheduled_for : null;
 	if (sf && sf.length >= 10) {
 		const date = sf.slice(0, 10);
 		const rest = sf.length > 10 ? sf.slice(11).trim() : '';
-		const time = rest ? (rest.length === 5 ? `${rest}:00` : rest) : resolveTimeInput(body?.scheduled_time);
+		const time = rest
+			? rest.length === 5
+				? `${rest}:00`
+				: rest
+			: resolveTimeInput(body?.scheduled_time);
 		return { date, time };
 	}
-	return { date: normalizeDateField(body?.scheduled_date), time: resolveTimeInput(body?.scheduled_time) };
+	return {
+		date: normalizeDateField(body?.scheduled_date),
+		time: resolveTimeInput(body?.scheduled_time),
+	};
 };
 
-export const rescheduleVirtual = async (ctx: LocalContext, routineId: number, date: string, time: string | null) => {
+export const rescheduleVirtual = async (
+	ctx: LocalContext,
+	routineId: number,
+	date: string,
+	time: string | null,
+) => {
 	const now = iso(ctx);
 	const scheduledFor = `${date}T${time ?? '00:00:00'}`;
 	const result = await ctx.db.execute(
 		`INSERT INTO routine_instances (routine_id, scheduled_for, status, created_at, updated_at) VALUES (?, ?, 'PENDING', ?, ?)`,
 		[routineId, scheduledFor, now, now],
 	);
-	const [created] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ?`, [
-		Number(result.lastInsertId),
-	]);
+	const [created] = await ctx.db.select<any>(
+		`SELECT * FROM routine_instances WHERE id = ?`,
+		[Number(result.lastInsertId)],
+	);
 	return created;
 };
 
@@ -476,19 +621,22 @@ export const rescheduleInstance = async (
 	date: string,
 	time: string | null,
 ) => {
-	const [existing] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ? AND routine_id = ?`, [
-		instanceId,
-		routineId,
-	]);
-	if (!existing) throw new LocalHttpError(404, 'Task instance not found for routine');
+	const [existing] = await ctx.db.select<any>(
+		`SELECT * FROM routine_instances WHERE id = ? AND routine_id = ?`,
+		[instanceId, routineId],
+	);
+	if (!existing)
+		throw new LocalHttpError(404, 'Task instance not found for routine');
 	const keepTime = time ?? String(existing.scheduled_for).slice(11);
 	const now = iso(ctx);
-	await ctx.db.execute(`UPDATE routine_instances SET scheduled_for = ?, updated_at = ? WHERE id = ?`, [
-		`${date}T${keepTime}`,
-		now,
-		instanceId,
-	]);
-	const [updated] = await ctx.db.select<any>(`SELECT * FROM routine_instances WHERE id = ?`, [instanceId]);
+	await ctx.db.execute(
+		`UPDATE routine_instances SET scheduled_for = ?, updated_at = ? WHERE id = ?`,
+		[`${date}T${keepTime}`, now, instanceId],
+	);
+	const [updated] = await ctx.db.select<any>(
+		`SELECT * FROM routine_instances WHERE id = ?`,
+		[instanceId],
+	);
 	return updated;
 };
 
@@ -533,18 +681,32 @@ const buildInstanceMap = (rows: any[]): Map<string, any> => {
 		const date = String(row.scheduled_for).slice(0, 10);
 		const key = `${row.routine_id}|${date}`;
 		const existing = map.get(key);
-		if (!existing || statusPriority(row.status) > statusPriority(existing.status)) map.set(key, row);
+		if (
+			!existing ||
+			statusPriority(row.status) > statusPriority(existing.status)
+		)
+			map.set(key, row);
 	}
 	return map;
 };
 
-export const expandRange = async (ctx: LocalContext, from: string, to: string): Promise<RoutineEntryJson[]> => {
+export const expandRange = async (
+	ctx: LocalContext,
+	from: string,
+	to: string,
+): Promise<RoutineEntryJson[]> => {
 	const rangeStart = `${from}T00:00:00`;
 	const rangeEnd = `${addDays(to, 1)}T00:00:00`;
 
 	const patternRows = await ctx.db.select<any>(PATTERN_SQL);
-	const instanceRows = await ctx.db.select<any>(INSTANCE_SQL, [rangeStart, rangeEnd]);
-	const orphanRows = await ctx.db.select<any>(ORPHAN_SQL, [rangeStart, rangeEnd]);
+	const instanceRows = await ctx.db.select<any>(INSTANCE_SQL, [
+		rangeStart,
+		rangeEnd,
+	]);
+	const orphanRows = await ctx.db.select<any>(ORPHAN_SQL, [
+		rangeStart,
+		rangeEnd,
+	]);
 	const plainRows = await ctx.db.select<any>(PLAIN_SQL);
 
 	const instanceMap = buildInstanceMap(instanceRows);
@@ -561,19 +723,25 @@ export const expandRange = async (ctx: LocalContext, from: string, to: string): 
 		day = addDays(day, 1);
 	}
 
-	for (const row of orphanRows) results.push(buildOrphanEntry(row, resolveCategory));
+	for (const row of orphanRows)
+		results.push(buildOrphanEntry(row, resolveCategory));
 
 	const today = localDate(ctx.now());
 	for (const row of plainRows) {
 		const day2 = row.scheduled_date ?? today;
-		if (day2 >= from && day2 <= to) results.push(buildPlainEntry(row, day2, resolveCategory));
+		if (day2 >= from && day2 <= to)
+			results.push(buildPlainEntry(row, day2, resolveCategory));
 	}
 
-	results.sort((a, b) => (a.scheduled_for ?? '').localeCompare(b.scheduled_for ?? ''));
+	results.sort((a, b) =>
+		(a.scheduled_for ?? '').localeCompare(b.scheduled_for ?? ''),
+	);
 	return results;
 };
 
-export const materializeDueInstances = async (ctx: LocalContext): Promise<number> => {
+export const materializeDueInstances = async (
+	ctx: LocalContext,
+): Promise<number> => {
 	const now = localDateTime(ctx.now());
 	const rows = await ctx.db.select<any>(
 		`SELECT rp.* FROM routine_patterns rp
@@ -588,7 +756,11 @@ export const materializeDueInstances = async (ctx: LocalContext): Promise<number
 			`SELECT scheduled_for FROM routine_instances WHERE routine_id = ? ORDER BY scheduled_for DESC LIMIT 1`,
 			[row.routine_id],
 		);
-		const next = nextInstance(pattern, latest ? latest.scheduled_for : null, now);
+		const next = nextInstance(
+			pattern,
+			latest ? latest.scheduled_for : null,
+			now,
+		);
 		if (!next) continue;
 		if (pattern.occurrences != null) {
 			const [{ n }] = await ctx.db.select<{ n: number }>(
@@ -600,7 +772,11 @@ export const materializeDueInstances = async (ctx: LocalContext): Promise<number
 		const nextDate = next.slice(0, 10);
 		const [existing] = await ctx.db.select<any>(
 			`SELECT id FROM routine_instances WHERE routine_id = ? AND scheduled_for >= ? AND scheduled_for < ?`,
-			[row.routine_id, `${nextDate}T00:00:00`, `${addDays(nextDate, 1)}T00:00:00`],
+			[
+				row.routine_id,
+				`${nextDate}T00:00:00`,
+				`${addDays(nextDate, 1)}T00:00:00`,
+			],
 		);
 		if (existing) continue;
 		const nowIso = iso(ctx);

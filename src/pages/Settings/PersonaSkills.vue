@@ -95,7 +95,13 @@
 		SKILL_TEMPLATE,
 		validateSkillMarkdown,
 	} from '@/utils/personas';
-	import { computed, defineComponent, onMounted, ref, type PropType } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onMounted,
+		ref,
+		type PropType,
+	} from 'vue';
 
 	export default defineComponent({
 		name: 'PersonaSkills',
@@ -148,8 +154,9 @@
 
 			const submit = async () => {
 				const slugFromDraft =
-					/^slug:\s*(.+)$/m.exec(draft.value.replace(/\r\n/g, '\n'))?.[1]?.trim() ??
-					'';
+					/^slug:\s*(.+)$/m
+						.exec(draft.value.replace(/\r\n/g, '\n'))?.[1]
+						?.trim() ?? '';
 				const targetSlug = editingSlug.value ?? slugFromDraft;
 				const clientErrors = validateSkillMarkdown(draft.value, targetSlug);
 				if (clientErrors) {

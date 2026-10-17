@@ -1,8 +1,12 @@
 import { buildHubModel, moduleOffMessage, tourForRoute } from '../hubModel';
-import type { HubItem } from '../useTours';
 import type { TourDef, TourState } from '../types';
+import type { HubItem } from '../useTours';
 
-const tour = (id: string, group: TourDef['group'], extra: Partial<TourDef> = {}): TourDef => ({
+const tour = (
+	id: string,
+	group: TourDef['group'],
+	extra: Partial<TourDef> = {},
+): TourDef => ({
 	id,
 	version: 1,
 	since: '3.5.0',
@@ -18,14 +22,22 @@ const tour = (id: string, group: TourDef['group'], extra: Partial<TourDef> = {})
 	...extra,
 });
 
-const state = (status: TourState['status'], step_id: string | null, version = 1): TourState => ({
+const state = (
+	status: TourState['status'],
+	step_id: string | null,
+	version = 1,
+): TourState => ({
 	status,
 	step_id,
 	version,
 	generation: 0,
 });
 
-const item = (t: TourDef, s: TourState | null = null, extra: Partial<HubItem> = {}): HubItem => ({
+const item = (
+	t: TourDef,
+	s: TourState | null = null,
+	extra: Partial<HubItem> = {},
+): HubItem => ({
 	tour: t,
 	state: s,
 	available: true,
@@ -39,7 +51,10 @@ describe('buildHubModel', () => {
 		const model = buildHubModel(
 			[
 				item(tour('p1', 'personas')),
-				item(tour('p2', 'personas'), null, { available: false, unavailableReason: 'needs_persona' }),
+				item(tour('p2', 'personas'), null, {
+					available: false,
+					unavailableReason: 'needs_persona',
+				}),
 			],
 			context,
 		);
@@ -56,10 +71,16 @@ describe('buildHubModel', () => {
 			],
 			context,
 		);
-		expect(model.groups.map((g) => g.title)).toEqual(['Getting started', 'Tasks & board']);
+		expect(model.groups.map((g) => g.title)).toEqual([
+			'Getting started',
+			'Tasks & board',
+		]);
 		expect(model.done).toBe(2);
 		expect(model.total).toBe(3);
-		expect(model.groups[0].rows.map((r) => r.action)).toEqual(['done', 'start']);
+		expect(model.groups[0].rows.map((r) => r.action)).toEqual([
+			'done',
+			'start',
+		]);
 	});
 
 	it('shows resume with the step position and falls back to step 1 for an unknown step', () => {
@@ -92,25 +113,43 @@ describe('buildHubModel', () => {
 	});
 
 	it('explains a module-off tour by who can fix it and keeps it out of the progress count', () => {
-		const off = item(tour('m', 'graph', { requires: { modules: ['graph'] } }), null, {
-			available: false,
-			unavailableReason: 'module_off',
+		const off = item(
+			tour('m', 'graph', { requires: { modules: ['graph'] } }),
+			null,
+			{
+				available: false,
+				unavailableReason: 'module_off',
+			},
+		);
+		const owner = buildHubModel([off], {
+			canManageModules: true,
+			isModuleEnabled: () => false,
 		});
-		const owner = buildHubModel([off], { canManageModules: true, isModuleEnabled: () => false });
 		expect(owner.groups[0].rows[0]).toMatchObject({
 			action: 'none',
 			disabledMessage: 'Turn on Graph in Settings -> Modules',
 		});
 		expect(owner.total).toBe(0);
-		const member = buildHubModel([off], { canManageModules: false, isModuleEnabled: () => false });
-		expect(member.groups[0].rows[0].disabledMessage).toBe('Ask the workspace owner to turn on Graph');
+		const member = buildHubModel([off], {
+			canManageModules: false,
+			isModuleEnabled: () => false,
+		});
+		expect(member.groups[0].rows[0].disabledMessage).toBe(
+			'Ask the workspace owner to turn on Graph',
+		);
 	});
 
 	it('hides tours unavailable for platform, account or role reasons', () => {
 		const model = buildHubModel(
 			[
-				item(tour('p', 'desktop'), null, { available: false, unavailableReason: 'platform' }),
-				item(tour('o', 'workspace'), null, { available: false, unavailableReason: 'role' }),
+				item(tour('p', 'desktop'), null, {
+					available: false,
+					unavailableReason: 'platform',
+				}),
+				item(tour('o', 'workspace'), null, {
+					available: false,
+					unavailableReason: 'role',
+				}),
 			],
 			context,
 		);
@@ -118,19 +157,28 @@ describe('buildHubModel', () => {
 	});
 
 	it('humanises dotted module keys', () => {
-		expect(moduleOffMessage('task.assignees', false)).toBe('Ask the workspace owner to turn on Task assignees');
+		expect(moduleOffMessage('task.assignees', false)).toBe(
+			'Ask the workspace owner to turn on Task assignees',
+		);
 	});
 });
 
 describe('tourForRoute', () => {
-	const board = tour('t.board', 'tasks', { triggers: [{ kind: 'first_visit', routeName: 'WorkspaceBoard' }] });
+	const board = tour('t.board', 'tasks', {
+		triggers: [{ kind: 'first_visit', routeName: 'WorkspaceBoard' }],
+	});
 
 	it('finds the available tour that opens on the current route', () => {
-		expect(tourForRoute([item(tour('x', 'start')), item(board)], 'WorkspaceBoard')?.tour.id).toBe('t.board');
+		expect(
+			tourForRoute([item(tour('x', 'start')), item(board)], 'WorkspaceBoard')
+				?.tour.id,
+		).toBe('t.board');
 	});
 
 	it('ignores unavailable tours and unknown routes', () => {
-		expect(tourForRoute([item(board, null, { available: false })], 'WorkspaceBoard')).toBeNull();
+		expect(
+			tourForRoute([item(board, null, { available: false })], 'WorkspaceBoard'),
+		).toBeNull();
 		expect(tourForRoute([item(board)], 'WorkspaceList')).toBeNull();
 		expect(tourForRoute([item(board)], undefined)).toBeNull();
 	});

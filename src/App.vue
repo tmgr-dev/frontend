@@ -16,77 +16,79 @@
 		<Toaster />
 	</template>
 	<template v-else>
-	<alert ref="alert" />
+		<alert ref="alert" />
 
-	<div
-		v-if="isDesktop && !$store.getters.canUseApp"
-		data-tauri-drag-region
-		class="fixed inset-x-0 top-0 z-50 flex h-10 items-center px-3"
-	>
-		<WindowControls />
-	</div>
-
-	<div
-		class="font-sans text-tmgr-blue dark:text-tmgr-gray"
-		:key="$store.state.appRerenderKey"
-	>
-		<div class="flex min-h-screen">
-			<CustomSidebar>
-				<router-view v-slot="{ Component, route }">
-					<component :is="Component" :key="routeViewKey(route)" />
-				</router-view>
-			</CustomSidebar>
+		<div
+			v-if="isDesktop && !$store.getters.canUseApp"
+			data-tauri-drag-region
+			class="fixed inset-x-0 top-0 z-50 flex h-10 items-center px-3"
+		>
+			<WindowControls />
 		</div>
 
-		<StatusBar
-			v-if="isDesktop && $store.getters.canUseApp"
-			:tasks="shownActiveTasks"
-		/>
-		<ActiveTasks v-else :tasks="shownActiveTasks" />
-		<DesktopTray
-			v-if="isDesktop && $store.getters.canUseApp"
-			:tasks="shownActiveTasks"
-		/>
-		<DesktopHotkeys
-			v-if="isDesktop && $store.getters.canUseApp"
-			:tasks="shownActiveTasks"
-		/>
-		<DesktopDownloads v-if="isDesktop" />
-		<DesktopUpdateCheck v-if="isDesktop" />
-		<DesktopAuthLinks v-if="isDesktop && !$store.getters.isLoggedIn" />
+		<div
+			class="font-sans text-tmgr-blue dark:text-tmgr-gray"
+			:key="$store.state.appRerenderKey"
+		>
+			<div class="flex min-h-screen">
+				<CustomSidebar>
+					<router-view v-slot="{ Component, route }">
+						<component :is="Component" :key="routeViewKey(route)" />
+					</router-view>
+				</CustomSidebar>
+			</div>
 
-		<Transition name="fade">
-			<TaskSidePanel
-				v-if="showTaskFormModalWindow"
-				close-on-bg-click
-				@close="handleModalClose"
-			>
-				<NewForm
-					:is-modal="true"
-					:key="`${$store.state.currentTaskIdForModal || 'new'}-${
-						$store.state.createTaskInProjectCategoryId || 'none'
-					}`"
+			<StatusBar
+				v-if="isDesktop && $store.getters.canUseApp"
+				:tasks="shownActiveTasks"
+			/>
+			<ActiveTasks v-else :tasks="shownActiveTasks" />
+			<DesktopTray
+				v-if="isDesktop && $store.getters.canUseApp"
+				:tasks="shownActiveTasks"
+			/>
+			<DesktopHotkeys
+				v-if="isDesktop && $store.getters.canUseApp"
+				:tasks="shownActiveTasks"
+			/>
+			<DesktopDownloads v-if="isDesktop" />
+			<DesktopUpdateCheck v-if="isDesktop" />
+			<DesktopAuthLinks v-if="isDesktop && !$store.getters.isLoggedIn" />
+
+			<Transition name="fade">
+				<TaskSidePanel
+					v-if="showTaskFormModalWindow"
+					close-on-bg-click
 					@close="handleModalClose"
-				/>
-			</TaskSidePanel>
-		</Transition>
-	</div>
+				>
+					<NewForm
+						:is-modal="true"
+						:key="`${$store.state.currentTaskIdForModal || 'new'}-${
+							$store.state.createTaskInProjectCategoryId || 'none'
+						}`"
+						@close="handleModalClose"
+					/>
+				</TaskSidePanel>
+			</Transition>
+		</div>
 
-	<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
-	<PagesImportDialog
-		v-if="pagesImport.open"
-		:key="pagesImport.key"
-		:open="pagesImport.open"
-		:files="pagesImport.files"
-		:parent-id="pagesImport.parentId"
-		:parent-title="pagesImport.parentTitle"
-		:workspace-code="pagesImport.workspaceCode"
-		@update:open="closePagesImport"
-	/>
-	<Toaster />
-	<ConsentPanel v-if="!isDesktop || isMainWindow" />
-	<TourHost v-if="!isDesktop || isMainWindow" />
-	<AhaWatcher v-if="(!isDesktop || isMainWindow) && $store.getters.isLoggedIn" />
+		<DesktopWhatsNew v-if="isDesktop && isMainWindow" />
+		<PagesImportDialog
+			v-if="pagesImport.open"
+			:key="pagesImport.key"
+			:open="pagesImport.open"
+			:files="pagesImport.files"
+			:parent-id="pagesImport.parentId"
+			:parent-title="pagesImport.parentTitle"
+			:workspace-code="pagesImport.workspaceCode"
+			@update:open="closePagesImport"
+		/>
+		<Toaster />
+		<ConsentPanel v-if="!isDesktop || isMainWindow" />
+		<TourHost v-if="!isDesktop || isMainWindow" />
+		<AhaWatcher
+			v-if="(!isDesktop || isMainWindow) && $store.getters.isLoggedIn"
+		/>
 	</template>
 </template>
 
@@ -108,32 +110,35 @@
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
-	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
 	import Modal from '@/components/Modal.vue';
+	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
 	import { Toaster } from '@/components/ui/toast';
-	import {
-		closePagesImport,
-		pagesImportRequest,
-	} from '@/composable/usePagesMarkdownIo';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
-	import { startRoutineScheduler, stopRoutineScheduler } from '@/local/routines/scheduler';
-	import store from '@/store';
-	import router from '@/router';
 	import {
 		installNavHistory,
 		useNavHistoryInputs,
 	} from '@/composable/useNavHistory';
+	import {
+		closePagesImport,
+		pagesImportRequest,
+	} from '@/composable/usePagesMarkdownIo';
+	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
+	import {
+		startRoutineScheduler,
+		stopRoutineScheduler,
+	} from '@/local/routines/scheduler';
+	import router from '@/router';
+	import store from '@/store';
 	import { desktopWindowLabel, isDesktopApp } from '@/utils/desktop';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
-	import { useRunningTimerSync } from '@/composable/useRunningTimerSync';
-	import { isDetachedWindowLabel } from '@/utils/taskWindow';
 	import { visibleActiveTasks } from '@/utils/moduleSurfaces';
-	import { routeViewKey } from '@/utils/routeViewKey';
 	import {
 		NTFY_SUBSCRIBED_KEY_PREFIX,
 		syncNtfySubscription,
 	} from '@/utils/ntfySubscription';
+	import { routeViewKey } from '@/utils/routeViewKey';
+	import { isDetachedWindowLabel } from '@/utils/taskWindow';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
 		defineAsyncComponent,
@@ -143,14 +148,14 @@
 		watch,
 	} from 'vue';
 	const NewForm = defineAsyncComponent(() => import('@/pages/NewForm.vue'));
-	const TourHost = defineAsyncComponent(
-		() => import('@/tours/ui/TourHost.vue'),
+	const TourHost = defineAsyncComponent(() =>
+		import('@/tours/ui/TourHost.vue'),
 	);
-	const AhaWatcher = defineAsyncComponent(
-		() => import('@/components/onboarding/AhaWatcher.vue'),
+	const AhaWatcher = defineAsyncComponent(() =>
+		import('@/components/onboarding/AhaWatcher.vue'),
 	);
-	const PagesImportDialog = defineAsyncComponent(
-		() => import('@/components/pages/PagesImportDialog.vue'),
+	const PagesImportDialog = defineAsyncComponent(() =>
+		import('@/components/pages/PagesImportDialog.vue'),
 	);
 
 	const DEFAULT_TRANSITION = 'fade';
@@ -208,7 +213,8 @@
 			if (!isDetachedWindow) {
 				watch(
 					() => store.getters.canUseApp,
-					(loggedIn) => (loggedIn ? startRoutineScheduler() : stopRoutineScheduler()),
+					(loggedIn) =>
+						loggedIn ? startRoutineScheduler() : stopRoutineScheduler(),
 					{ immediate: true },
 				);
 				onBeforeUnmount(stopRoutineScheduler);

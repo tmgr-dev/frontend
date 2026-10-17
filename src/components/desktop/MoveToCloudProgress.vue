@@ -8,10 +8,7 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
-	import {
-		LEGACY_MOVE_MESSAGE,
-		type MoveView,
-	} from '@/local/moveToCloud/flow';
+	import { LEGACY_MOVE_MESSAGE, type MoveView } from '@/local/moveToCloud/flow';
 	import { stepIndex } from '@/local/moveToCloud/model';
 	import { summarize } from '@/local/moveToCloud/progress';
 	import { reportLines, serverErrorLines } from '@/local/moveToCloud/report';

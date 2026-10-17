@@ -1,4 +1,5 @@
 import store from '@/store';
+import { desktopWindowLabel } from '@/utils/desktop';
 import {
 	createFeatureDisabledNotifier,
 	showFeatureDisabledToast,
@@ -15,10 +16,9 @@ import {
 	shouldReplayWithCurrentToken,
 	wasSentWithCurrentToken,
 } from '@/utils/sessionGuards';
+import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { createTokenRefresher, isAuthUrl } from '@/utils/tokenRefresher';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
-import { desktopWindowLabel } from '@/utils/desktop';
-import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { shouldAttachWorkspaceHeader } from '@/utils/workspaceContext';
 import axios from 'axios';
 

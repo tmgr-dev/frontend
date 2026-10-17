@@ -120,9 +120,7 @@
 			<AlertDialog v-model:open="confirmOpen">
 				<AlertDialogContent data-testid="restore-confirm">
 					<AlertDialogHeader>
-						<AlertDialogTitle
-							>Restore version {{ selected }}?</AlertDialogTitle
-						>
+						<AlertDialogTitle>Restore version {{ selected }}?</AlertDialogTitle>
 						<AlertDialogDescription>
 							A new page version will be created with the content of version
 							{{ selected }}. The current text stays in history.

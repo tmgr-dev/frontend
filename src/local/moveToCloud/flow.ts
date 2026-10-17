@@ -1,3 +1,4 @@
+import { tourBus } from '@/tours/events';
 import {
 	apiErrorMessage,
 	isFileNotAllowed,
@@ -29,7 +30,6 @@ import type {
 	MovePutResult,
 	MoveSnapshot,
 } from './native';
-import { tourBus } from '@/tours/events';
 
 export const ACCOUNT_MISMATCH_MESSAGE =
 	'This move was started by another account. Sign in as that account to continue, or discard it.';

@@ -32,7 +32,8 @@ export const taskLinkFailureMessage = (reason: TaskLinkFailure): string =>
 	MESSAGES[reason];
 
 const failureOf = (error: unknown): TaskLinkFailure => {
-	const status = (error as { response?: { status?: number } })?.response?.status;
+	const status = (error as { response?: { status?: number } })?.response
+		?.status;
 	if (status === 404) return 'not_found';
 	if (status === 403) return 'forbidden';
 	return 'error';
@@ -60,7 +61,9 @@ export const openTaskLink = async (
 		}
 	}
 
-	if (await deps.focusTaskWindow(link.taskId, workspace.code).catch(() => false)) {
+	if (
+		await deps.focusTaskWindow(link.taskId, workspace.code).catch(() => false)
+	) {
 		return { ok: true };
 	}
 	await deps.showMain();

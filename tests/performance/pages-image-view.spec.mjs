@@ -287,9 +287,7 @@ test('a resize is one undo step', async ({ page }) => {
   await drag(page, 'right', 40, 0);
   await savedBody(state, '=480x240');
   await page.keyboard.press('ControlOrMeta+z');
-  expect(await savedBody(state, '=400x200')).toBe(
-    `First line\n\n${IMAGE}\n`,
-  );
+  expect(await savedBody(state, '=400x200')).toBe(`First line\n\n${IMAGE}\n`);
   await expect(page.locator('.pe-image')).toHaveCount(1);
   await expect.poll(() => renderedWidth(page)).toBe(400);
 });
@@ -374,9 +372,9 @@ test('layout buttons write Outline layouts and full width hides handles', async 
     'aria-pressed',
     'true',
   );
-  expect(
-    await figure(page).evaluate((el) => getComputedStyle(el).float),
-  ).toBe('right');
+  expect(await figure(page).evaluate((el) => getComputedStyle(el).float)).toBe(
+    'right',
+  );
 
   await tool(page, 'full-width').click();
   expect(await savedBody(state, 'full-width')).toBe(
@@ -651,7 +649,9 @@ test('the lightbox opens on a selected image and pages through images', async ({
   await expect(lightbox.locator('[data-action="download"]')).toBeVisible();
   if (shotDir) await page.screenshot({ path: `${shotDir}/lightbox.png` });
   expect(
-    await page.evaluate(() => getComputedStyle(document.documentElement).overflow),
+    await page.evaluate(
+      () => getComputedStyle(document.documentElement).overflow,
+    ),
   ).toBe('hidden');
   await page.keyboard.press('Escape');
   await expect(lightbox).toHaveCount(0);

@@ -11,18 +11,18 @@ import { timeTours } from './time';
 import { workspaceTours } from './workspace';
 
 export const TOURS: TourDef[] = [
-  ...startTours,
-  ...tasksTours,
-  ...timeTours,
-  ...agentsTours,
-  ...personasTours,
-  ...workspaceTours,
-  ...pagesTours,
-  ...graphTours,
-  ...routinesTours,
-  ...desktopTours,
+	...startTours,
+	...tasksTours,
+	...timeTours,
+	...agentsTours,
+	...personasTours,
+	...workspaceTours,
+	...pagesTours,
+	...graphTours,
+	...routinesTours,
+	...desktopTours,
 ];
 
 export function getTour(id: TourId): TourDef | undefined {
-  return TOURS.find((tour) => tour.id === id);
+	return TOURS.find((tour) => tour.id === id);
 }

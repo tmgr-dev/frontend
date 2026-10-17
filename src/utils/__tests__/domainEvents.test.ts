@@ -37,7 +37,13 @@ describe('eventsForResponse', () => {
 				current,
 			),
 		).toEqual([
-			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: ['title'] },
+			{
+				type: 'task.updated',
+				workspaceId: -42,
+				taskId: 7,
+				task,
+				changed: ['title'],
+			},
 		]);
 		expect(
 			eventsForResponse(
@@ -45,7 +51,13 @@ describe('eventsForResponse', () => {
 				current,
 			),
 		).toEqual([
-			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: ['common_time'] },
+			{
+				type: 'task.updated',
+				workspaceId: -42,
+				taskId: 7,
+				task,
+				changed: ['common_time'],
+			},
 		]);
 		expect(
 			eventsForResponse(
@@ -81,7 +93,13 @@ describe('eventsForResponse', () => {
 				current,
 			),
 		).toEqual([
-			{ type: 'task.updated', workspaceId: -42, taskId: 7, task, changed: ['status_id'] },
+			{
+				type: 'task.updated',
+				workspaceId: -42,
+				taskId: 7,
+				task,
+				changed: ['status_id'],
+			},
 			{
 				type: 'task.statusChanged',
 				workspaceId: -42,
@@ -160,7 +178,9 @@ describe('eventsForResponse', () => {
 				response('delete', '/comments/3', { success: true, task_id: 7 }),
 				current,
 			),
-		).toEqual([{ type: 'comment.deleted', workspaceId: 5, commentId: 3, taskId: 7 }]);
+		).toEqual([
+			{ type: 'comment.deleted', workspaceId: 5, commentId: 3, taskId: 7 },
+		]);
 		expect(
 			eventsForResponse(
 				response('delete', '/comments/3', { success: true }),
@@ -177,11 +197,19 @@ describe('eventsForResponse', () => {
 				current,
 			),
 		).toEqual([
-			{ type: 'comment.reactionChanged', workspaceId: 5, commentId: 3, reactions },
+			{
+				type: 'comment.reactionChanged',
+				workspaceId: 5,
+				commentId: 3,
+				reactions,
+			},
 		]);
 		expect(
 			eventsForResponse(
-				response('post', 'comments/3/reactions/toggle', { reactions, task_id: 7 }),
+				response('post', 'comments/3/reactions/toggle', {
+					reactions,
+					task_id: 7,
+				}),
 				current,
 			),
 		).toEqual([
@@ -246,28 +274,54 @@ describe('eventsForResponse', () => {
 			updated_at: 'b',
 		};
 		expect(
-			eventsForResponse(response('post', 'daily-routines/tasks', routine), current),
-		).toEqual([{ type: 'routine.created', workspaceId: -42, routineId: routine.id, routine }]);
+			eventsForResponse(
+				response('post', 'daily-routines/tasks', routine),
+				current,
+			),
+		).toEqual([
+			{
+				type: 'routine.created',
+				workspaceId: -42,
+				routineId: routine.id,
+				routine,
+			},
+		]);
 		expect(
 			eventsForResponse(
 				response('put', `daily-routines/tasks/${routine.id}`, routine),
 				current,
 			),
-		).toEqual([{ type: 'routine.updated', workspaceId: -42, routineId: routine.id, routine }]);
+		).toEqual([
+			{
+				type: 'routine.updated',
+				workspaceId: -42,
+				routineId: routine.id,
+				routine,
+			},
+		]);
 		expect(
 			eventsForResponse(
 				response('delete', `daily-routines/tasks/${routine.id}`, null),
 				current,
 			),
-		).toEqual([{ type: 'routine.deleted', workspaceId: 5, routineId: routine.id }]);
+		).toEqual([
+			{ type: 'routine.deleted', workspaceId: 5, routineId: routine.id },
+		]);
 
-		const pattern = { id: 9, task_id: routine.id, frequency: 'WEEKLY', interval: 1 };
+		const pattern = {
+			id: 9,
+			task_id: routine.id,
+			frequency: 'WEEKLY',
+			interval: 1,
+		};
 		expect(
 			eventsForResponse(
 				response('put', `daily-routines/tasks/${routine.id}/pattern`, pattern),
 				current,
 			),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id }]);
+		).toEqual([
+			{ type: 'routine.updated', workspaceId: 5, routineId: routine.id },
+		]);
 
 		const instance = {
 			id: 4,
@@ -277,22 +331,50 @@ describe('eventsForResponse', () => {
 		};
 		expect(
 			eventsForResponse(
-				response('post', `daily-routines/tasks/${routine.id}/instances/4/complete`, instance),
+				response(
+					'post',
+					`daily-routines/tasks/${routine.id}/instances/4/complete`,
+					instance,
+				),
 				current,
 			),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, instance }]);
+		).toEqual([
+			{
+				type: 'routine.updated',
+				workspaceId: 5,
+				routineId: routine.id,
+				instance,
+			},
+		]);
 		expect(
 			eventsForResponse(
-				response('patch', `daily-routines/tasks/${routine.id}/instances/virtual`, instance),
+				response(
+					'patch',
+					`daily-routines/tasks/${routine.id}/instances/virtual`,
+					instance,
+				),
 				current,
 			),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id, instance }]);
+		).toEqual([
+			{
+				type: 'routine.updated',
+				workspaceId: 5,
+				routineId: routine.id,
+				instance,
+			},
+		]);
 		expect(
 			eventsForResponse(
-				response('delete', `daily-routines/tasks/${routine.id}/instances/4`, null),
+				response(
+					'delete',
+					`daily-routines/tasks/${routine.id}/instances/4`,
+					null,
+				),
 				current,
 			),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id }]);
+		).toEqual([
+			{ type: 'routine.updated', workspaceId: 5, routineId: routine.id },
+		]);
 
 		// complete-on's response is not instance-shaped, so no `instance` rides along.
 		expect(
@@ -306,19 +388,35 @@ describe('eventsForResponse', () => {
 				}),
 				current,
 			),
-		).toEqual([{ type: 'routine.updated', workspaceId: 5, routineId: routine.id }]);
+		).toEqual([
+			{ type: 'routine.updated', workspaceId: 5, routineId: routine.id },
+		]);
 	});
 
 	it('reports a routine conversion as both routine.deleted and task.created', () => {
 		const convertedTask = { id: 77, title: 'Water plants', workspace_id: -42 };
 		expect(
 			eventsForResponse(
-				response('post', 'daily-routines/tasks/1000000005/convert', convertedTask),
+				response(
+					'post',
+					'daily-routines/tasks/1000000005/convert',
+					convertedTask,
+				),
 				current,
 			),
 		).toEqual([
-			{ type: 'routine.deleted', workspaceId: -42, routineId: 1_000_000_005, taskId: 77 },
-			{ type: 'task.created', workspaceId: -42, taskId: 77, task: convertedTask },
+			{
+				type: 'routine.deleted',
+				workspaceId: -42,
+				routineId: 1_000_000_005,
+				taskId: 77,
+			},
+			{
+				type: 'task.created',
+				workspaceId: -42,
+				taskId: 77,
+				task: convertedTask,
+			},
 		]);
 	});
 
@@ -332,17 +430,42 @@ describe('eventsForResponse', () => {
 			updated_at: 'b',
 		};
 		expect(
-			eventsForResponse(response('put', 'tasks/1000000005', routine, { approximately_time: 90 }), current),
-		).toEqual([{ type: 'routine.updated', workspaceId: -42, routineId: routine.id, routine }]);
+			eventsForResponse(
+				response('put', 'tasks/1000000005', routine, {
+					approximately_time: 90,
+				}),
+				current,
+			),
+		).toEqual([
+			{
+				type: 'routine.updated',
+				workspaceId: -42,
+				routineId: routine.id,
+				routine,
+			},
+		]);
 		expect(
-			eventsForResponse(response('patch', 'tasks/1000000005', routine, { title: 'x' }), current),
-		).toEqual([{ type: 'routine.updated', workspaceId: -42, routineId: routine.id, routine }]);
+			eventsForResponse(
+				response('patch', 'tasks/1000000005', routine, { title: 'x' }),
+				current,
+			),
+		).toEqual([
+			{
+				type: 'routine.updated',
+				workspaceId: -42,
+				routineId: routine.id,
+				routine,
+			},
+		]);
 	});
 
 	it('keeps a cloud task id above the routine range a task', () => {
 		const cloudTask = { id: 1_000_000_005, title: 'Big id', workspace_id: 5 };
 		expect(
-			eventsForResponse(response('patch', 'tasks/1000000005', cloudTask, { title: 'x' }), current).map((e) => e.type),
+			eventsForResponse(
+				response('patch', 'tasks/1000000005', cloudTask, { title: 'x' }),
+				current,
+			).map((e) => e.type),
 		).toEqual(['task.updated']);
 	});
 
@@ -486,16 +609,44 @@ it('attributes an event to the workspace that was current when the request was s
 });
 
 describe('page events', () => {
-	const page = { id: 4, workspace_id: -42, title: 'Saha', body: 'x', version: 2 };
+	const page = {
+		id: 4,
+		workspace_id: -42,
+		title: 'Saha',
+		body: 'x',
+		version: 2,
+	};
 
 	it('never derives page events from write responses: the pages service and realtime emit them once', () => {
 		for (const workspace of [-42, 5]) {
 			const current = () => workspace;
-			expect(eventsForResponse(response('post', 'pages', page), current)).toEqual([]);
-			expect(eventsForResponse(response('patch', 'pages/4', page, { version: 1 }), current)).toEqual([]);
-			expect(eventsForResponse(response('post', 'pages/4/append', page, { markdown: 'a' }), current)).toEqual([]);
-			expect(eventsForResponse(response('put', 'pages/4/sections/notes', page, { markdown: 'a' }), current)).toEqual([]);
-			expect(eventsForResponse(response('delete', 'pages/4', { deleted: 4 }), current)).toEqual([]);
+			expect(
+				eventsForResponse(response('post', 'pages', page), current),
+			).toEqual([]);
+			expect(
+				eventsForResponse(
+					response('patch', 'pages/4', page, { version: 1 }),
+					current,
+				),
+			).toEqual([]);
+			expect(
+				eventsForResponse(
+					response('post', 'pages/4/append', page, { markdown: 'a' }),
+					current,
+				),
+			).toEqual([]);
+			expect(
+				eventsForResponse(
+					response('put', 'pages/4/sections/notes', page, { markdown: 'a' }),
+					current,
+				),
+			).toEqual([]);
+			expect(
+				eventsForResponse(
+					response('delete', 'pages/4', { deleted: 4 }),
+					current,
+				),
+			).toEqual([]);
 		}
 	});
 });

@@ -72,7 +72,9 @@
 		<div v-else class="space-y-8">
 			<section v-if="pinned.length">
 				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Pinned</h2>
-				<ul class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+				<ul
+					class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
+				>
 					<li v-for="page in pinned" :key="page.id">
 						<PageRow :page="page" :workspace-code="workspaceCode" />
 					</li>
@@ -80,7 +82,9 @@
 			</section>
 			<section v-if="roots.length">
 				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Root pages</h2>
-				<ul class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface">
+				<ul
+					class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
+				>
 					<li v-for="page in roots" :key="page.id">
 						<PageRow :page="page" :workspace-code="workspaceCode" />
 					</li>
@@ -146,9 +150,7 @@
 				() => load(false),
 			);
 
-			const pinned = computed(() =>
-				pages.value.filter((page) => page.pinned),
-			);
+			const pinned = computed(() => pages.value.filter((page) => page.pinned));
 			const roots = computed(() =>
 				childrenOf(pages.value, null).filter((page) => !page.pinned),
 			);

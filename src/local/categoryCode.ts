@@ -5,20 +5,72 @@
  */
 
 const CYRILLIC_TRANSLIT: Record<string, string> = {
-	а: 'a', б: 'b', в: 'v', г: 'g', д: 'd',
-	е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i',
-	й: 'y', к: 'k', л: 'l', м: 'm', н: 'n',
-	о: 'o', п: 'p', р: 'r', с: 's', т: 't',
-	у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch',
-	ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '',
-	э: 'e', ю: 'yu', я: 'ya',
-	А: 'A', Б: 'B', В: 'V', Г: 'G', Д: 'D',
-	Е: 'E', Ё: 'E', Ж: 'Zh', З: 'Z', И: 'I',
-	Й: 'Y', К: 'K', Л: 'L', М: 'M', Н: 'N',
-	О: 'O', П: 'P', Р: 'R', С: 'S', Т: 'T',
-	У: 'U', Ф: 'F', Х: 'H', Ц: 'Ts', Ч: 'Ch',
-	Ш: 'Sh', Щ: 'Sch', Ъ: '', Ы: 'Y', Ь: '',
-	Э: 'E', Ю: 'Yu', Я: 'Ya',
+	а: 'a',
+	б: 'b',
+	в: 'v',
+	г: 'g',
+	д: 'd',
+	е: 'e',
+	ё: 'e',
+	ж: 'zh',
+	з: 'z',
+	и: 'i',
+	й: 'y',
+	к: 'k',
+	л: 'l',
+	м: 'm',
+	н: 'n',
+	о: 'o',
+	п: 'p',
+	р: 'r',
+	с: 's',
+	т: 't',
+	у: 'u',
+	ф: 'f',
+	х: 'h',
+	ц: 'ts',
+	ч: 'ch',
+	ш: 'sh',
+	щ: 'sch',
+	ъ: '',
+	ы: 'y',
+	ь: '',
+	э: 'e',
+	ю: 'yu',
+	я: 'ya',
+	А: 'A',
+	Б: 'B',
+	В: 'V',
+	Г: 'G',
+	Д: 'D',
+	Е: 'E',
+	Ё: 'E',
+	Ж: 'Zh',
+	З: 'Z',
+	И: 'I',
+	Й: 'Y',
+	К: 'K',
+	Л: 'L',
+	М: 'M',
+	Н: 'N',
+	О: 'O',
+	П: 'P',
+	Р: 'R',
+	С: 'S',
+	Т: 'T',
+	У: 'U',
+	Ф: 'F',
+	Х: 'H',
+	Ц: 'Ts',
+	Ч: 'Ch',
+	Ш: 'Sh',
+	Щ: 'Sch',
+	Ъ: '',
+	Ы: 'Y',
+	Ь: '',
+	Э: 'E',
+	Ю: 'Yu',
+	Я: 'Ya',
 };
 
 const transliterate = (input: string): string =>
@@ -33,7 +85,9 @@ const MAX_CODE_LENGTH = 50;
  * non-alphanumerics with hyphens, collapses repeats, trims edges and uppercases. Falls
  * back to `CAT` when nothing usable remains.
  */
-export const sanitizeCategoryCode = (input: string | null | undefined): string => {
+export const sanitizeCategoryCode = (
+	input: string | null | undefined,
+): string => {
 	if (!input) return 'CAT';
 	const hyphenated = transliterate(input)
 		.replace(/[^a-zA-Z0-9]+/g, '-')
@@ -53,14 +107,17 @@ export const generateUniqueCategoryCode = (
 ): string => {
 	let base = sanitizedBase ? sanitizedBase.toUpperCase() : 'CAT';
 	if (base.length > MAX_CODE_LENGTH) base = base.slice(0, MAX_CODE_LENGTH);
-	const existing = new Set(Array.from(existingCodes, (code) => code.toUpperCase()));
+	const existing = new Set(
+		Array.from(existingCodes, (code) => code.toUpperCase()),
+	);
 	if (!existing.has(base)) return base;
 	let i = 1;
 	// eslint-disable-next-line no-constant-condition
 	while (true) {
 		const suffix = `-${i}`;
 		const maxBaseLen = MAX_CODE_LENGTH - suffix.length;
-		const truncated = base.length > maxBaseLen ? base.slice(0, maxBaseLen) : base;
+		const truncated =
+			base.length > maxBaseLen ? base.slice(0, maxBaseLen) : base;
 		const candidate = truncated + suffix;
 		if (!existing.has(candidate)) return candidate;
 		i++;

@@ -29,9 +29,15 @@ it('forgets where a removed plugin was on and its settings, and nothing of other
 
 it('remembers "Always" per plugin, command and version', () => {
 	deepLinkConsentStore.remember('acme.board', 'acme.board.go', '1.0.0');
-	expect(deepLinkConsentStore.has('acme.board', 'acme.board.go', '1.0.0')).toBe(true);
-	expect(deepLinkConsentStore.has('acme.board', 'acme.board.go', '1.0.1')).toBe(false);
-	expect(deepLinkConsentStore.has('acme.board', 'acme.board.other', '1.0.0')).toBe(false);
+	expect(deepLinkConsentStore.has('acme.board', 'acme.board.go', '1.0.0')).toBe(
+		true,
+	);
+	expect(deepLinkConsentStore.has('acme.board', 'acme.board.go', '1.0.1')).toBe(
+		false,
+	);
+	expect(
+		deepLinkConsentStore.has('acme.board', 'acme.board.other', '1.0.0'),
+	).toBe(false);
 });
 
 it('forgets a removed plugin\'s "Always" deep links and gives up the menu bar text if it held it', () => {
@@ -39,8 +45,12 @@ it('forgets a removed plugin\'s "Always" deep links and gives up the menu bar te
 	deepLinkConsentStore.remember('acme.boardx', 'acme.boardx.go', '1.0.0');
 	trayTitlePluginStore.set('acme.board');
 	forgetPlugin('acme.board');
-	expect(deepLinkConsentStore.has('acme.board', 'acme.board.go', '1.0.0')).toBe(false);
-	expect(deepLinkConsentStore.has('acme.boardx', 'acme.boardx.go', '1.0.0')).toBe(true);
+	expect(deepLinkConsentStore.has('acme.board', 'acme.board.go', '1.0.0')).toBe(
+		false,
+	);
+	expect(
+		deepLinkConsentStore.has('acme.boardx', 'acme.boardx.go', '1.0.0'),
+	).toBe(true);
 	expect(trayTitlePluginStore.get()).toBeNull();
 });
 
@@ -50,11 +60,13 @@ it('keeps the menu bar text choice when a different plugin is forgotten', () => 
 	expect(trayTitlePluginStore.get()).toBe('acme.boardx');
 });
 
-it('forgets an installed plugin\'s consent and menu bar text by its storage id, not the bare id', () => {
+it("forgets an installed plugin's consent and menu bar text by its storage id, not the bare id", () => {
 	const storageId = 'acme.board@github.com/acme/board';
 	deepLinkConsentStore.remember(storageId, 'acme.board.go', '1.0.0');
 	trayTitlePluginStore.set(storageId);
 	forgetPlugin('acme.board', storageId);
-	expect(deepLinkConsentStore.has(storageId, 'acme.board.go', '1.0.0')).toBe(false);
+	expect(deepLinkConsentStore.has(storageId, 'acme.board.go', '1.0.0')).toBe(
+		false,
+	);
 	expect(trayTitlePluginStore.get()).toBeNull();
 });

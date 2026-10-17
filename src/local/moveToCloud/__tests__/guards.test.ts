@@ -103,7 +103,11 @@ describe('removeLocalCopyGuards', () => {
 	});
 });
 
-const session: RemoveSession = { userId: 7, token: 'tok', apiBase: 'https://x.test/api/' };
+const session: RemoveSession = {
+	userId: 7,
+	token: 'tok',
+	apiBase: 'https://x.test/api/',
+};
 
 describe('removal', () => {
 	const setup = (p: PublishedMove | null) => {

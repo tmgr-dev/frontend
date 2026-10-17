@@ -134,7 +134,8 @@ describe('parseSkillFrontMatter', () => {
 	});
 
 	it('returns an empty actions list when actions is missing', () => {
-		const markdown = '---\nslug: triage\ntitle: Triage\nwhen: sort it\n---\nbody\n';
+		const markdown =
+			'---\nslug: triage\ntitle: Triage\nwhen: sort it\n---\nbody\n';
 		expect(parseSkillFrontMatter(markdown)?.actions).toEqual([]);
 	});
 
@@ -166,7 +167,9 @@ describe('validateSkillMarkdown', () => {
 	});
 
 	it('rejects a title over 120 characters', () => {
-		const markdown = `---\nslug: triage\ntitle: ${'x'.repeat(121)}\nwhen: w\n---\nbody\n`;
+		const markdown = `---\nslug: triage\ntitle: ${'x'.repeat(
+			121,
+		)}\nwhen: w\n---\nbody\n`;
 		expect(validateSkillMarkdown(markdown, 'triage')?.title).toBeDefined();
 	});
 
@@ -177,7 +180,9 @@ describe('validateSkillMarkdown', () => {
 	});
 
 	it('rejects markdown missing the closing delimiter', () => {
-		expect(validateSkillMarkdown('---\nslug: triage\nno closing', 'triage')?.body).toBeDefined();
+		expect(
+			validateSkillMarkdown('---\nslug: triage\nno closing', 'triage')?.body,
+		).toBeDefined();
 	});
 });
 
@@ -333,17 +338,12 @@ describe('matchesAuthorFilter', () => {
 	});
 
 	it('"plugins" matches only plugin authors', () => {
-		expect(matchesAuthorFilter({ actor: PLUGIN_AUTHOR }, 'plugins')).toBe(
-			true,
-		);
+		expect(matchesAuthorFilter({ actor: PLUGIN_AUTHOR }, 'plugins')).toBe(true);
 	});
 
 	it('a specific persona filter matches only that persona uuid', () => {
 		expect(
-			matchesAuthorFilter(
-				{ author: PERSONA_AUTHOR },
-				{ persona: 'uuid-1' },
-			),
+			matchesAuthorFilter({ author: PERSONA_AUTHOR }, { persona: 'uuid-1' }),
 		).toBe(true);
 		expect(
 			matchesAuthorFilter(
@@ -391,7 +391,9 @@ describe('buildMcpUrl', () => {
 
 describe('buildPersonaTokenSnippet', () => {
 	it('contains the env var placeholder and never a real secret', () => {
-		const snippet = buildPersonaTokenSnippet('http://taskmanager.localhost/mcp');
+		const snippet = buildPersonaTokenSnippet(
+			'http://taskmanager.localhost/mcp',
+		);
 
 		expect(snippet).toContain(`\${${PERSONA_TOKEN_ENV_VAR}}`);
 		expect(snippet).toContain('X-Persona-Token');

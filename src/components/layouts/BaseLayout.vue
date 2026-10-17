@@ -25,9 +25,9 @@
 </template>
 
 <script>
-	import { defineComponent } from 'vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import { defineComponent } from 'vue';
 
 	export default defineComponent({
 		name: 'BaseLayout',

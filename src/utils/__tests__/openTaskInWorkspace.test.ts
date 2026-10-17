@@ -1,4 +1,7 @@
-import { openTaskInWorkspace, openTaskPreferringWindow } from '../openTaskInWorkspace';
+import {
+	openTaskInWorkspace,
+	openTaskPreferringWindow,
+} from '../openTaskInWorkspace';
 
 const workspaces = [
 	{ id: 1, code: 'cloud' },

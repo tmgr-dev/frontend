@@ -50,21 +50,21 @@
 							Not available in local workspaces
 						</p>
 						<template v-else>
-						<!-- Description -->
-						<p class="mb-6 text-gray-600 dark:text-gray-400">
-							{{ description }}
-						</p>
+							<!-- Description -->
+							<p class="mb-6 text-gray-600 dark:text-gray-400">
+								{{ description }}
+							</p>
 
-						<router-link
-							v-if="copy.kind === 'link'"
-							:to="copy.to"
-							class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-						>
-							{{ copy.text }}
-						</router-link>
-						<p v-else class="text-sm text-gray-500 dark:text-gray-400">
-							{{ copy.text }}
-						</p>
+							<router-link
+								v-if="copy.kind === 'link'"
+								:to="copy.to"
+								class="inline-flex items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+							>
+								{{ copy.text }}
+							</router-link>
+							<p v-else class="text-sm text-gray-500 dark:text-gray-400">
+								{{ copy.text }}
+							</p>
 						</template>
 					</div>
 				</div>

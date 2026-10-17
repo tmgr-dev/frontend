@@ -1,9 +1,13 @@
-import { readFileSync } from 'fs';
-import { ModuleKind, transpileModule } from 'typescript';
 import * as firstRun from '@/onboarding/localFirstRun';
 import * as workspaceContext from '@/utils/workspaceContext';
+import { readFileSync } from 'fs';
+import { ModuleKind, transpileModule } from 'typescript';
 
-function evaluate(path: string, dependencies: Record<string, unknown>, storage?: unknown) {
+function evaluate(
+	path: string,
+	dependencies: Record<string, unknown>,
+	storage?: unknown,
+) {
 	const source = transpileModule(readFileSync(require.resolve(path), 'utf8'), {
 		compilerOptions: { module: ModuleKind.CommonJS },
 	}).outputText;
@@ -12,12 +16,21 @@ function evaluate(path: string, dependencies: Record<string, unknown>, storage?:
 		(name: string) => dependencies[name] ?? { default: {} },
 		loaded,
 		loaded.exports,
-		storage ?? { getItem: () => null, setItem: jest.fn(), removeItem: jest.fn() },
+		storage ?? {
+			getItem: () => null,
+			setItem: jest.fn(),
+			removeItem: jest.fn(),
+		},
 	);
 	return loaded.exports;
 }
 
-const PROFILE = { id: -1, uuid: 'u-1', name: 'Ada', created_at: '2026-10-11T10:00:00Z' };
+const PROFILE = {
+	id: -1,
+	uuid: 'u-1',
+	name: 'Ada',
+	created_at: '2026-10-11T10:00:00Z',
+};
 
 function fixture(desktop = true) {
 	const data = new Map<string, string>();
@@ -30,35 +43,52 @@ function fixture(desktop = true) {
 		loadLocalProfile: jest.fn(),
 		createLocalProfile: jest.fn(async () => PROFILE),
 		listLocalWorkspaces: jest.fn(async () => [] as any[]),
-		createLocalWorkspace: jest.fn(async (name: string) => ({ id: -5, name, code: 'my-workspace' })),
+		createLocalWorkspace: jest.fn(async (name: string) => ({
+			id: -5,
+			name,
+			code: 'my-workspace',
+		})),
 		setActiveLocalWorkspace: jest.fn(),
 		push: jest.fn(async () => {}),
 		invoke: jest.fn(async (_command: string) => [] as any[]),
 	};
-	const config = evaluate('../index.js', {
-		vuex: { createStore: (options: any) => options },
-		'@/actions/tmgr/workspaces': { getWorkspaces: jest.fn() },
-		'@/utils/requestCache': { requestCache: { clear: jest.fn(), setContext: jest.fn(), invalidate: jest.fn() } },
-		'@/utils/workspaceContext': workspaceContext,
-		'@/composable/usePusher': { disconnectRealtime: jest.fn() },
-		'@/utils/desktop': { isDesktopApp: () => desktop },
-		'@/utils/localProfile': {
-			loadLocalProfile: mocks.loadLocalProfile,
-			createLocalProfile: mocks.createLocalProfile,
+	const config = evaluate(
+		'../index.js',
+		{
+			vuex: { createStore: (options: any) => options },
+			'@/actions/tmgr/workspaces': { getWorkspaces: jest.fn() },
+			'@/utils/requestCache': {
+				requestCache: {
+					clear: jest.fn(),
+					setContext: jest.fn(),
+					invalidate: jest.fn(),
+				},
+			},
+			'@/utils/workspaceContext': workspaceContext,
+			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
+			'@/utils/desktop': { isDesktopApp: () => desktop },
+			'@/utils/localProfile': {
+				loadLocalProfile: mocks.loadLocalProfile,
+				createLocalProfile: mocks.createLocalProfile,
+			},
+			'@/local/runtime': {
+				listLocalWorkspaces: mocks.listLocalWorkspaces,
+				createLocalWorkspace: mocks.createLocalWorkspace,
+				setActiveLocalWorkspace: mocks.setActiveLocalWorkspace,
+			},
+			'@tauri-apps/api/core': { invoke: mocks.invoke },
+			'@/router': { default: { push: mocks.push } },
+			'@/onboarding/localFirstRun': firstRun,
 		},
-		'@/local/runtime': {
-			listLocalWorkspaces: mocks.listLocalWorkspaces,
-			createLocalWorkspace: mocks.createLocalWorkspace,
-			setActiveLocalWorkspace: mocks.setActiveLocalWorkspace,
-		},
-		'@tauri-apps/api/core': { invoke: mocks.invoke },
-		'@/router': { default: { push: mocks.push } },
-		'@/onboarding/localFirstRun': firstRun,
-	}, storage).default;
+		storage,
+	).default;
 	const getters = (state: any) => {
 		const bound: any = {};
 		for (const [key, fn] of Object.entries<any>(config.getters)) {
-			Object.defineProperty(bound, key, { get: () => fn(state, bound), enumerable: true });
+			Object.defineProperty(bound, key, {
+				get: () => fn(state, bound),
+				enumerable: true,
+			});
 		}
 		return bound;
 	};
@@ -103,8 +133,13 @@ describe('account mode', () => {
 
 describe('startWithoutAccount', () => {
 	const run = async (fx: ReturnType<typeof fixture>, payload: any) => {
-		const commit = jest.fn((name: string, value: any) => fx.config.mutations[name](fx.config.state, value));
-		await fx.config.actions.startWithoutAccount({ commit, state: fx.config.state }, payload);
+		const commit = jest.fn((name: string, value: any) =>
+			fx.config.mutations[name](fx.config.state, value),
+		);
+		await fx.config.actions.startWithoutAccount(
+			{ commit, state: fx.config.state },
+			payload,
+		);
 		return commit;
 	};
 
@@ -115,53 +150,84 @@ describe('startWithoutAccount', () => {
 		expect(fx.mocks.createLocalProfile).toHaveBeenCalledWith('Ada');
 		expect(commit).toHaveBeenCalledWith('setLocalProfile', PROFILE);
 		expect(fx.mocks.createLocalWorkspace).toHaveBeenCalledWith('My workspace');
-		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(expect.objectContaining({ id: -5 }));
+		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(
+			expect.objectContaining({ id: -5 }),
+		);
 		expect(fx.mocks.push).toHaveBeenCalledWith('/app');
 	});
 
 	it('keeps the workspaces that already exist', async () => {
 		const fx = fixture();
-		fx.mocks.listLocalWorkspaces.mockResolvedValue([{ id: -9, name: 'Old', code: 'old' }]);
+		fx.mocks.listLocalWorkspaces.mockResolvedValue([
+			{ id: -9, name: 'Old', code: 'old' },
+		]);
 		await run(fx, { name: 'Ada' });
 
 		expect(fx.mocks.createLocalWorkspace).not.toHaveBeenCalled();
-		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(expect.objectContaining({ id: -9 }));
+		expect(fx.mocks.setActiveLocalWorkspace).toHaveBeenCalledWith(
+			expect.objectContaining({ id: -9 }),
+		);
 	});
 });
 
 describe('startWithoutAccount fresh-install marker', () => {
 	const MARKER = 'tmgr:onboarding:local-fresh';
 	const start = async (fx: ReturnType<typeof fixture>) => {
-		const commit = jest.fn((name: string, value: any) => fx.config.mutations[name](fx.config.state, value));
-		await fx.config.actions.startWithoutAccount({ commit, state: fx.config.state }, { name: 'Ada' });
+		const commit = jest.fn((name: string, value: any) =>
+			fx.config.mutations[name](fx.config.state, value),
+		);
+		await fx.config.actions.startWithoutAccount(
+			{ commit, state: fx.config.state },
+			{ name: 'Ada' },
+		);
 	};
 
 	it('writes the marker on a truly fresh install', async () => {
 		const fx = fixture();
 		await start(fx);
-		expect(JSON.parse(fx.data.get(MARKER)!)).toMatchObject({ code: 'my-workspace' });
+		expect(JSON.parse(fx.data.get(MARKER)!)).toMatchObject({
+			code: 'my-workspace',
+		});
 	});
 
 	it.each([
-		['a profile in the app state', (fx: ReturnType<typeof fixture>) => (fx.config.state.localProfile = PROFILE)],
-		['a profile on disk', (fx: ReturnType<typeof fixture>) => fx.mocks.loadLocalProfile.mockResolvedValue(PROFILE)],
-		['an unreadable profile', (fx: ReturnType<typeof fixture>) => fx.mocks.loadLocalProfile.mockRejectedValue(new Error('x'))],
+		[
+			'a profile in the app state',
+			(fx: ReturnType<typeof fixture>) =>
+				(fx.config.state.localProfile = PROFILE),
+		],
+		[
+			'a profile on disk',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.loadLocalProfile.mockResolvedValue(PROFILE),
+		],
+		[
+			'an unreadable profile',
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.loadLocalProfile.mockRejectedValue(new Error('x')),
+		],
 		[
 			'an existing local workspace',
-			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockResolvedValue([{ id: -9, code: 'old' }]),
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.invoke.mockResolvedValue([{ id: -9, code: 'old' }]),
 		],
 		[
 			'a failing workspace listing',
-			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockRejectedValue(new Error('ipc down')),
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.invoke.mockRejectedValue(new Error('ipc down')),
 		],
 		[
 			'a listing that is not an array',
-			(fx: ReturnType<typeof fixture>) => fx.mocks.invoke.mockResolvedValue(null as any),
+			(fx: ReturnType<typeof fixture>) =>
+				fx.mocks.invoke.mockResolvedValue(null as any),
 		],
 		[
 			'a starter_seeded_at in the onboarding state',
 			(fx: ReturnType<typeof fixture>) =>
-				fx.data.set('tmgr:onboarding:v1', JSON.stringify({ starter_seeded_at: '2026-10-12T10:00:00Z' })),
+				fx.data.set(
+					'tmgr:onboarding:v1',
+					JSON.stringify({ starter_seeded_at: '2026-10-12T10:00:00Z' }),
+				),
 		],
 	])('never writes the marker for %s', async (_name, arrange) => {
 		const fx = fixture();
@@ -175,8 +241,13 @@ describe('startWithoutAccount stale marker', () => {
 	const MARKER = 'tmgr:onboarding:local-fresh';
 	const stale = JSON.stringify({ code: 'old', at: '2026-10-01T10:00:00.000Z' });
 	const start = async (fx: ReturnType<typeof fixture>) => {
-		const commit = jest.fn((name: string, value: any) => fx.config.mutations[name](fx.config.state, value));
-		await fx.config.actions.startWithoutAccount({ commit, state: fx.config.state }, { name: 'Ada' });
+		const commit = jest.fn((name: string, value: any) =>
+			fx.config.mutations[name](fx.config.state, value),
+		);
+		await fx.config.actions.startWithoutAccount(
+			{ commit, state: fx.config.state },
+			{ name: 'Ada' },
+		);
 	};
 
 	it('clears a stale marker when the install is not fresh', async () => {

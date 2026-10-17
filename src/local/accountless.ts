@@ -25,7 +25,9 @@ const read = (key: string): Record<string, any> => {
 	try {
 		const raw = localStorage.getItem(key);
 		const value = raw ? JSON.parse(raw) : null;
-		return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+		return value && typeof value === 'object' && !Array.isArray(value)
+			? value
+			: {};
 	} catch {
 		return {};
 	}
@@ -88,21 +90,30 @@ export const saveLocalSettings = (payload: unknown) => {
 	if (!Array.isArray(payload)) return;
 	const saved = read(SETTINGS_KEY);
 	for (const entry of payload) {
-		if (entry?.id === LOCAL_SETTING_IDS.theme) saved.theme = String(entry.value);
-		if (entry?.id === LOCAL_SETTING_IDS.colorScheme) saved.colorScheme = String(entry.value);
+		if (entry?.id === LOCAL_SETTING_IDS.theme)
+			saved.theme = String(entry.value);
+		if (entry?.id === LOCAL_SETTING_IDS.colorScheme)
+			saved.colorScheme = String(entry.value);
 	}
 	write(SETTINGS_KEY, saved);
 };
 
 export const requestedLocalWorkspace = (payload: unknown): number | null => {
 	if (!Array.isArray(payload)) return null;
-	const entry = payload.find((item) => item?.id === LOCAL_SETTING_IDS[CURRENT_WORKSPACE]);
-	return entry && entry.value !== null && entry.value !== undefined ? Number(entry.value) : null;
+	const entry = payload.find(
+		(item) => item?.id === LOCAL_SETTING_IDS[CURRENT_WORKSPACE],
+	);
+	return entry && entry.value !== null && entry.value !== undefined
+		? Number(entry.value)
+		: null;
 };
 
 export const userToggleDefaults = { default_landing_page: 'list', mcp: true };
 
-export const readUserToggles = (): { default_landing_page: string; mcp: boolean } => {
+export const readUserToggles = (): {
+	default_landing_page: string;
+	mcp: boolean;
+} => {
 	const saved = read(TOGGLES_KEY);
 	return {
 		default_landing_page: LANDINGS.includes(saved.default_landing_page)
@@ -124,7 +135,12 @@ export const userFeatureToggles = () => {
 			default: userToggleDefaults.default_landing_page,
 			options: LANDINGS,
 		},
-		mcp: { key: 'mcp', name: 'MCP & API tokens', group: 'account', enabled: toggles.mcp },
+		mcp: {
+			key: 'mcp',
+			name: 'MCP & API tokens',
+			group: 'account',
+			enabled: toggles.mcp,
+		},
 	};
 };
 
@@ -139,10 +155,15 @@ export const saveUserToggles = (body: any) => {
 	write(TOGGLES_KEY, saved);
 };
 
-export const readPreferences = () => ({ showTooltips: true, ...read(PREFS_KEY) });
+export const readPreferences = () => ({
+	showTooltips: true,
+	...read(PREFS_KEY),
+});
 
 export const savePreferences = (body: any) => {
-	const incoming = body?.settings && typeof body.settings === 'object' ? body.settings : body;
-	if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming)) return;
+	const incoming =
+		body?.settings && typeof body.settings === 'object' ? body.settings : body;
+	if (!incoming || typeof incoming !== 'object' || Array.isArray(incoming))
+		return;
 	write(PREFS_KEY, { ...read(PREFS_KEY), ...incoming });
 };

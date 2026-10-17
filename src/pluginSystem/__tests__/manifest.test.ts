@@ -134,16 +134,43 @@ it.each([
 	[{ permissions: ['tasks:read', 'shell:exec'] }, 'shell:exec'],
 	[{ engines: { tmgr: '^2.0' } }, 'engines'],
 	[{ engines: { tmgr: '^1.7' } }, 'engines'],
-	[{ permissions: ['menus:task'], engines: { tmgr: '^1.5' } }, 'menus:task needs engines.tmgr ^1.6'],
-	[{ permissions: ['pages:read'], engines: { tmgr: '^1.4' } }, 'pages:read needs engines.tmgr ^1.5'],
-	[{ permissions: ['pages:write'], engines: { tmgr: '^1.4' } }, 'pages:write needs engines.tmgr ^1.5'],
-	[{ permissions: ['pages:sections'], engines: { tmgr: '^1.0' } }, 'pages:sections needs engines.tmgr ^1.5'],
-	[{ permissions: ['pages:write'], engines: { tmgr: '^1.5' } }, 'pages:write needs pages:read'],
-	[{ permissions: ['pages:sections', 'tasks:read'], engines: { tmgr: '^1.5' } }, 'pages:sections needs pages:read'],
-	[{ permissions: ['views:badge'], engines: { tmgr: '^1.3' } }, 'views:badge needs engines.tmgr ^1.4'],
+	[
+		{ permissions: ['menus:task'], engines: { tmgr: '^1.5' } },
+		'menus:task needs engines.tmgr ^1.6',
+	],
+	[
+		{ permissions: ['pages:read'], engines: { tmgr: '^1.4' } },
+		'pages:read needs engines.tmgr ^1.5',
+	],
+	[
+		{ permissions: ['pages:write'], engines: { tmgr: '^1.4' } },
+		'pages:write needs engines.tmgr ^1.5',
+	],
+	[
+		{ permissions: ['pages:sections'], engines: { tmgr: '^1.0' } },
+		'pages:sections needs engines.tmgr ^1.5',
+	],
+	[
+		{ permissions: ['pages:write'], engines: { tmgr: '^1.5' } },
+		'pages:write needs pages:read',
+	],
+	[
+		{
+			permissions: ['pages:sections', 'tasks:read'],
+			engines: { tmgr: '^1.5' },
+		},
+		'pages:sections needs pages:read',
+	],
+	[
+		{ permissions: ['views:badge'], engines: { tmgr: '^1.3' } },
+		'views:badge needs engines.tmgr ^1.4',
+	],
 	[{ links: { allowedDomains: ['gitlab.com'] } }, 'links:open'],
 	[
-		{ permissions: ['links:open'], links: { allowedDomains: ['https://x.io'] } },
+		{
+			permissions: ['links:open'],
+			links: { allowedDomains: ['https://x.io'] },
+		},
 		'links domain',
 	],
 	[
@@ -156,13 +183,27 @@ it.each([
 });
 
 it('accepts plugins written for 1.0, 1.1, 1.2, 1.3, 1.4, 1.5 and 1.6', () => {
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(valid.id);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.1' } }).id).toBe(valid.id);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).id).toBe(valid.id);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).id).toBe(valid.id);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.4' } }).id).toBe(valid.id);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.5' } }).id).toBe(valid.id);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.6' } }).id).toBe(valid.id);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).id).toBe(
+		valid.id,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.1' } }).id).toBe(
+		valid.id,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).id).toBe(
+		valid.id,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).id).toBe(
+		valid.id,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.4' } }).id).toBe(
+		valid.id,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.5' } }).id).toBe(
+		valid.id,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.6' } }).id).toBe(
+		valid.id,
+	);
 });
 
 it('accepts the pages permissions for ^1.5', () => {
@@ -177,19 +218,32 @@ it('accepts the pages permissions for ^1.5', () => {
 
 it('accepts views:badge for ^1.4', () => {
 	expect(
-		parseManifest({ ...valid, engines: { tmgr: '^1.4' }, permissions: ['views:badge'] }).permissions,
+		parseManifest({
+			...valid,
+			engines: { tmgr: '^1.4' },
+			permissions: ['views:badge'],
+		}).permissions,
 	).toEqual(['views:badge']);
 });
 
 it('parses apiMinor from engines.tmgr', () => {
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).apiMinor).toBe(0);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).apiMinor).toBe(2);
-	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).apiMinor).toBe(3);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.0' } }).apiMinor).toBe(
+		0,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.2' } }).apiMinor).toBe(
+		2,
+	);
+	expect(parseManifest({ ...valid, engines: { tmgr: '^1.3' } }).apiMinor).toBe(
+		3,
+	);
 });
 
 it('accepts the routines permissions', () => {
 	expect(
-		parseManifest({ ...valid, permissions: ['routines:read', 'routines:write'] }).permissions,
+		parseManifest({
+			...valid,
+			permissions: ['routines:read', 'routines:write'],
+		}).permissions,
 	).toEqual(['routines:read', 'routines:write']);
 });
 
@@ -198,7 +252,9 @@ it('keeps link domains of a plugin allowed to open links', () => {
 		parseManifest({
 			...valid,
 			permissions: ['links:open'],
-			links: { allowedDomains: ['gitlab.com', 'gitlab.com', 'jira.example.org'] },
+			links: {
+				allowedDomains: ['gitlab.com', 'gitlab.com', 'jira.example.org'],
+			},
 		}).links,
 	).toEqual({ allowedDomains: ['gitlab.com', 'jira.example.org'] });
 });
@@ -247,8 +303,10 @@ it('accepts network origins only on this computer', () => {
 it('defaults companion to null and accepts a description with an optional homepage', () => {
 	expect(parseManifest(valid).companion).toBeNull();
 	expect(
-		parseManifest({ ...valid, companion: { description: 'A CLI you run locally' } })
-			.companion,
+		parseManifest({
+			...valid,
+			companion: { description: 'A CLI you run locally' },
+		}).companion,
 	).toEqual({ description: 'A CLI you run locally' });
 	expect(
 		parseManifest({
@@ -368,14 +426,19 @@ describe('contributes.menus', () => {
 	it('needs the menus:task permission for any item', () => {
 		expect(() =>
 			parseManifest(
-				menuManifest({ 'task/card': [item('a')] }, { permissions: ['tasks:read'] }),
+				menuManifest(
+					{ 'task/card': [item('a')] },
+					{ permissions: ['tasks:read'] },
+				),
 			),
 		).toThrow('menus:task');
 	});
 
 	it('refuses a location it does not know', () => {
 		expect(() =>
-			parseManifest(menuManifest({ 'task/card': [], 'board/top': [item('a')] })),
+			parseManifest(
+				menuManifest({ 'task/card': [], 'board/top': [item('a')] }),
+			),
 		).toThrow('"board/top" is not supported');
 	});
 

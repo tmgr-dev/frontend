@@ -16,9 +16,14 @@ const loadRoutes = (canUseApp: boolean, workspaceCode?: string) => {
 	};
 	(globalThis as any).window = { app: { $store: store } };
 	const dependencies: Record<string, unknown> = {
-		'@/router/moduleGate': { gatedPage: (_k: string, _t: string, f: unknown) => f },
+		'@/router/moduleGate': {
+			gatedPage: (_k: string, _t: string, f: unknown) => f,
+		},
 		'@/store': { default: { getters: {} } },
-		'@/utils/simpleStatus': { boardRedirect: () => undefined, isSimpleMode: () => false },
+		'@/utils/simpleStatus': {
+			boardRedirect: () => undefined,
+			isSimpleMode: () => false,
+		},
 	};
 	new Function('require', 'module', 'exports', source)(
 		(name: string) => dependencies[name],
@@ -28,7 +33,8 @@ const loadRoutes = (canUseApp: boolean, workspaceCode?: string) => {
 	return loaded.exports.default as any[];
 };
 
-const find = (routes: any[], path: string) => routes.find((r) => r.path === path);
+const find = (routes: any[], path: string) =>
+	routes.find((r) => r.path === path);
 
 describe('app home route', () => {
 	it('keeps the Dashboard record on /app with the old root meta', () => {

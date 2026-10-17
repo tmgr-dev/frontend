@@ -10,7 +10,10 @@
 					label="Loading settings"
 				>
 					<div class="flex flex-col gap-6">
-						<div v-if="isNotification && !localOnly" class="flex flex-col gap-6">
+						<div
+							v-if="isNotification && !localOnly"
+							class="flex flex-col gap-6"
+						>
 							<NotificationSettingsForm />
 
 							<SettingsSection title="Push notifications (legacy)">
@@ -96,7 +99,12 @@
 
 						<AgentUsageSync v-if="isAgentWork" />
 
-						<SettingsSection v-if="isTheme" data-tour="settings.theme" title="Theme" description="Pick a color theme and light/dark mode.">
+						<SettingsSection
+							v-if="isTheme"
+							data-tour="settings.theme"
+							title="Theme"
+							description="Pick a color theme and light/dark mode."
+						>
 							<ThemePicker />
 						</SettingsSection>
 
@@ -110,9 +118,16 @@
 						</div>
 
 						<div v-if="isProfile && !localOnly" class="flex flex-col gap-6">
-							<profile :standalone="false" @password-changed="onPasswordChanged" />
+							<profile
+								:standalone="false"
+								@password-changed="onPasswordChanged"
+							/>
 
-							<SettingsSection v-if="telegramEnabled" data-tour="settings.telegram" title="Telegram">
+							<SettingsSection
+								v-if="telegramEnabled"
+								data-tour="settings.telegram"
+								title="Telegram"
+							>
 								<div
 									v-if="user.telegram_username"
 									class="flex flex-wrap items-center gap-3"
@@ -136,7 +151,11 @@
 						</div>
 
 						<div v-if="isDevice && !localOnly" class="flex flex-col gap-6">
-							<SettingsSection v-if="mcpEnabled" data-tour="settings.device-token" title="API token">
+							<SettingsSection
+								v-if="mcpEnabled"
+								data-tour="settings.device-token"
+								title="API token"
+							>
 								<div class="flex max-w-xl flex-col gap-1.5">
 									<Label for="smart-device-token">API token</Label>
 									<div class="flex flex-wrap items-center gap-2">
@@ -181,11 +200,15 @@
 											{{ showToken ? 'Hide' : 'Show' }}
 										</Button>
 									</div>
-									<p v-if="tokenState === 'fresh'" class="text-xs text-ink-subtle">
+									<p
+										v-if="tokenState === 'fresh'"
+										class="text-xs text-ink-subtle"
+									>
 										Copy it now — it won't be shown again.
 									</p>
 									<p v-if="hasSmartDeviceToken" class="text-xs text-ink-subtle">
-										Created: {{ formatDate(user.smart_device_token_created_at) }}
+										Created:
+										{{ formatDate(user.smart_device_token_created_at) }}
 									</p>
 								</div>
 								<template #footer>
@@ -210,8 +233,8 @@
 								<div class="flex flex-col gap-2 text-sm text-ink-subtle">
 									<p>1. Generate a token using the button above</p>
 									<p>
-										2. Include the token in your device's API requests using
-										the header:
+										2. Include the token in your device's API requests using the
+										header:
 									</p>
 									<code
 										class="block overflow-x-auto rounded-md border border-border bg-muted px-3 py-2 font-mono text-xs text-ink"
@@ -229,9 +252,9 @@
 								<div class="flex flex-col gap-3 text-sm text-ink-subtle">
 									<p>
 										TMGR MCP uses the smart device token as a custom header.
-										Generate the token above, then configure an MCP client
-										that supports remote Streamable HTTP servers with headers
-										(Claude Code:
+										Generate the token above, then configure an MCP client that
+										supports remote Streamable HTTP servers with headers (Claude
+										Code:
 										<CommandChip :command="mcpAddCommand" />).
 									</p>
 									<div>
@@ -327,6 +350,7 @@
 <script>
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
+	import { withCurrentAgentUsageSync } from '@/actions/tmgr/agentUsage';
 	import { sendNotification } from '@/actions/tmgr/notifications';
 	import {
 		generateSmartDeviceToken,
@@ -339,22 +363,20 @@
 		updateUserSettings,
 		updateUserSettingsV2,
 	} from '@/actions/tmgr/user';
-	import CommandChip from '@/components/general/CommandChip.vue';
-	import Confirm from '@/components/general/Confirm.vue';
-	import ThemePicker from '@/components/general/ThemePicker.vue';
-	import PromotionsList from '@/components/promotions/PromotionsList.vue';
-	import RunnerExperimentalSettings from '@/components/runner/RunnerExperimentalSettings.vue';
 	import DesktopShortcutsSettings from '@/components/desktop/DesktopShortcutsSettings.vue';
 	import LocalAccountSection from '@/components/desktop/LocalAccountSection.vue';
 	import LocalDataSettings from '@/components/desktop/LocalDataSettings.vue';
 	import LocalProfileSettings from '@/components/desktop/LocalProfileSettings.vue';
+	import CommandChip from '@/components/general/CommandChip.vue';
+	import Confirm from '@/components/general/Confirm.vue';
+	import ThemePicker from '@/components/general/ThemePicker.vue';
 	import SettingsRow from '@/components/layouts/SettingsRow.vue';
-	import { withCurrentAgentUsageSync } from '@/actions/tmgr/agentUsage';
-	import PrivacySettings from '@/components/privacy/PrivacySettings.vue';
-	import AgentUsageSync from '@/components/settings/AgentUsageSync.vue';
-	import TipsSettings from '@/tours/ui/TipsSettings.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import NotificationSettingsForm from '@/components/notifications/NotificationSettingsForm.vue';
+	import PrivacySettings from '@/components/privacy/PrivacySettings.vue';
+	import PromotionsList from '@/components/promotions/PromotionsList.vue';
+	import RunnerExperimentalSettings from '@/components/runner/RunnerExperimentalSettings.vue';
+	import AgentUsageSync from '@/components/settings/AgentUsageSync.vue';
 	import {
 		BreadcrumbItem,
 		BreadcrumbLink,
@@ -367,10 +389,14 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import Profile from '@/pages/Profile.vue';
 	import { isRunnerSupported } from '@/runner/api';
+	import TipsSettings from '@/tours/ui/TipsSettings.vue';
 	import { isDesktopApp } from '@/utils/desktop';
-	import { hasSmartDeviceToken, smartDeviceTokenState } from '@/utils/smartDeviceToken';
 	import { resolveMcpUrl } from '@/utils/mcpConnectSnippets';
 	import { writeNtfySubscribed } from '@/utils/ntfySubscription';
+	import {
+		hasSmartDeviceToken,
+		smartDeviceTokenState,
+	} from '@/utils/smartDeviceToken';
 	import { Check, Copy, Eye, EyeOff } from 'lucide-vue-next';
 
 	export default {

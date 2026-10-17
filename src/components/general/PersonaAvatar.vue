@@ -41,8 +41,7 @@
 				if (!props.hasAvatar || !props.uuid) return;
 				try {
 					url.value = await personaAvatarObjectUrl(props.uuid);
-				} catch {
-				}
+				} catch {}
 			};
 
 			watch(() => [props.uuid, props.hasAvatar], load, { immediate: true });

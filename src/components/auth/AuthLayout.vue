@@ -119,9 +119,9 @@
 </template>
 
 <script lang="ts">
+	import logoUrl from '@/assets/img/simple-logo.svg';
 	import ThemeSwitch from '@/components/auth/ThemeSwitch.vue';
 	import PrivacyLinks from '@/components/privacy/PrivacyLinks.vue';
-	import logoUrl from '@/assets/img/simple-logo.svg';
 	import { KanbanSquare, Timer, Users } from 'lucide-vue-next';
 	import { defineComponent, h, onBeforeUnmount, onMounted, ref } from 'vue';
 

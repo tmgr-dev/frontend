@@ -72,10 +72,10 @@
 	import { getActivityFeed } from '@/actions/tmgr/dashboard';
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
-	import MemberHeader from '@/components/member/MemberHeader.vue';
-	import MemberTasksPanel from '@/components/member/MemberTasksPanel.vue';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
+	import MemberHeader from '@/components/member/MemberHeader.vue';
+	import MemberTasksPanel from '@/components/member/MemberTasksPanel.vue';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useMemberPage } from '@/composable/useMemberPage';
 	import store from '@/store';

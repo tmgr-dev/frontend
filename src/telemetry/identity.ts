@@ -33,8 +33,13 @@ const parseJson = (raw: string | null): unknown => {
 };
 
 export const sha256Hex = async (text: string): Promise<string> => {
-	const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-	return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+	const digest = await crypto.subtle.digest(
+		'SHA-256',
+		new TextEncoder().encode(text),
+	);
+	return Array.from(new Uint8Array(digest), (b) =>
+		b.toString(16).padStart(2, '0'),
+	).join('');
 };
 
 export const randomSecret = (): string => {
@@ -42,12 +47,21 @@ export const randomSecret = (): string => {
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 };
 
-const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_V4 =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SECRET = /^[0-9a-f]{64}$/;
-const validId = (value: unknown): value is string => typeof value === 'string' && UUID_V4.test(value);
-const validSecret = (value: unknown): value is string => typeof value === 'string' && SECRET.test(value);
+const validId = (value: unknown): value is string =>
+	typeof value === 'string' && UUID_V4.test(value);
+const validSecret = (value: unknown): value is string =>
+	typeof value === 'string' && SECRET.test(value);
 
-export const createIdentityStore = ({ storage, locks, now, uuid, secret }: IdentityDeps) => {
+export const createIdentityStore = ({
+	storage,
+	locks,
+	now,
+	uuid,
+	secret,
+}: IdentityDeps) => {
 	const write = (key: string, value: unknown): boolean => {
 		try {
 			if (!storage) return false;
@@ -78,7 +92,11 @@ export const createIdentityStore = ({ storage, locks, now, uuid, secret }: Ident
 	const read = (): Identity | null => {
 		const data = parseJson(get(IDENTITY_KEY)) as Partial<Identity> | null;
 		return data && validId(data.install_id) && validSecret(data.secret)
-			? { install_id: data.install_id, secret: data.secret, registered: data.registered === true }
+			? {
+					install_id: data.install_id,
+					secret: data.secret,
+					registered: data.registered === true,
+			  }
 			: null;
 	};
 
@@ -95,9 +113,17 @@ export const createIdentityStore = ({ storage, locks, now, uuid, secret }: Ident
 		const live: Receipt[] = [];
 		for (const key of keys) {
 			const raw = get(key);
-			const data = parseJson(raw) as { secret?: unknown; expiresAt?: unknown } | null;
+			const data = parseJson(raw) as {
+				secret?: unknown;
+				expiresAt?: unknown;
+			} | null;
 			const installId = key.slice(RECEIPT_PREFIX.length);
-			if (validId(installId) && validSecret(data?.secret) && typeof data?.expiresAt === 'number' && data.expiresAt > now()) {
+			if (
+				validId(installId) &&
+				validSecret(data?.secret) &&
+				typeof data?.expiresAt === 'number' &&
+				data.expiresAt > now()
+			) {
 				live.push({ install_id: installId, secret: data.secret });
 			} else if (get(key) === raw) remove(key);
 		}
@@ -109,32 +135,58 @@ export const createIdentityStore = ({ storage, locks, now, uuid, secret }: Ident
 
 	const retire = (installId?: string): boolean => {
 		const current = read();
-		if (!current || (installId !== undefined && current.install_id !== installId)) return true;
+		if (
+			!current ||
+			(installId !== undefined && current.install_id !== installId)
+		)
+			return true;
 		const key = RECEIPT_PREFIX + current.install_id;
-		const receipt = { secret: current.secret, expiresAt: now() + RECEIPT_TTL_MS };
-		return write(key, receipt) && get(key) === JSON.stringify(receipt) && removeIfSame(current.install_id);
+		const receipt = {
+			secret: current.secret,
+			expiresAt: now() + RECEIPT_TTL_MS,
+		};
+		return (
+			write(key, receipt) &&
+			get(key) === JSON.stringify(receipt) &&
+			removeIfSame(current.install_id)
+		);
 	};
 
 	const create = (): Identity | null => {
-		const identity: Identity = { install_id: uuid(), secret: secret(), registered: false };
-		if (!validId(identity.install_id) || !validSecret(identity.secret)) return null;
+		const identity: Identity = {
+			install_id: uuid(),
+			secret: secret(),
+			registered: false,
+		};
+		if (!validId(identity.install_id) || !validSecret(identity.secret))
+			return null;
 		return write(IDENTITY_KEY, identity) ? identity : null;
 	};
 
 	return {
 		read,
-		create: (allowed = () => true) => withLock(locks, 'identity', () => allowed() ? read() ?? create() : null),
+		create: (allowed = () => true) =>
+			withLock(locks, 'identity', () =>
+				allowed() ? read() ?? create() : null,
+			),
 		receipts: () => withLock(locks, 'identity', receipts),
-		markRegistered: (installId: string, registered: boolean) => withLock(locks, 'identity', () => {
-			const current = read();
-			if (current?.install_id === installId) write(IDENTITY_KEY, { ...current, registered });
-		}),
-		retire: (installId?: string) => withLock(locks, 'identity', () => retire(installId)),
-		rotate: (allowed = () => true) => withLock(locks, 'identity', () => allowed() && retire() ? create() : null),
-		forget: (installId: string) => withLock(locks, 'identity', () => {
-			remove(RECEIPT_PREFIX + installId);
-			removeIfSame(installId);
-		}),
+		markRegistered: (installId: string, registered: boolean) =>
+			withLock(locks, 'identity', () => {
+				const current = read();
+				if (current?.install_id === installId)
+					write(IDENTITY_KEY, { ...current, registered });
+			}),
+		retire: (installId?: string) =>
+			withLock(locks, 'identity', () => retire(installId)),
+		rotate: (allowed = () => true) =>
+			withLock(locks, 'identity', () =>
+				allowed() && retire() ? create() : null,
+			),
+		forget: (installId: string) =>
+			withLock(locks, 'identity', () => {
+				remove(RECEIPT_PREFIX + installId);
+				removeIfSame(installId);
+			}),
 	};
 };
 

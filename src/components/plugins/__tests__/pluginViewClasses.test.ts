@@ -101,12 +101,13 @@ describe('class maps', () => {
 		`);
 	});
 
-	it('buttonVariantProp/buttonSizeProp default to today\'s outline/sm when absent', () => {
+	it("buttonVariantProp/buttonSizeProp default to today's outline/sm when absent", () => {
 		expect(buttonVariantProp(undefined)).toBe('outline');
 		expect(buttonSizeProp(undefined)).toBe('sm');
 	});
 
-	const COLOR_CLASS = /\b(?:bg|text|border)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+/;
+	const COLOR_CLASS =
+		/\b(?:bg|text|border)-(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d+/;
 
 	it('every hardcoded color class in the maps has a dark: pair, or is a theme token', () => {
 		const allClasses = [

@@ -1,9 +1,9 @@
 import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
-import type { PersonaAssignee } from '@/utils/personas';
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import objectToQueryString from '@/utils/objectToQueryString';
+import type { PersonaAssignee } from '@/utils/personas';
 import { requestCache } from '@/utils/requestCache';
 import { AxiosRequestConfig } from 'axios';
 
@@ -364,7 +364,11 @@ export const startTaskTimeCounter = async (
 ) => {
 	const {
 		data: { data },
-	} = await $axios.post(`tasks/${taskId}/countdown`, undefined, timerTarget(workspaceId));
+	} = await $axios.post(
+		`tasks/${taskId}/countdown`,
+		undefined,
+		timerTarget(workspaceId),
+	);
 
 	requestCache.invalidate(`task-${taskId}`);
 	store.commit('incrementReloadActiveTasksKey');
@@ -378,7 +382,10 @@ export const stopTaskTimeCounter = async (
 ) => {
 	const {
 		data: { data },
-	} = await $axios.delete(`tasks/${taskId}/countdown`, timerTarget(workspaceId));
+	} = await $axios.delete(
+		`tasks/${taskId}/countdown`,
+		timerTarget(workspaceId),
+	);
 
 	requestCache.invalidate(`task-${taskId}`);
 	store.commit('incrementReloadActiveTasksKey');

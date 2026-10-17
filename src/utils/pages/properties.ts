@@ -156,8 +156,7 @@ export const parsePropertyErrors = (error: any): PropertyErrors | null => {
 		}
 	} else if (source && typeof source === 'object') {
 		for (const [field, value] of Object.entries(source)) {
-			result[normalizeField(field)] =
-				messageOf(value) || 'Invalid value';
+			result[normalizeField(field)] = messageOf(value) || 'Invalid value';
 		}
 	}
 	if (!Object.keys(result).length) {

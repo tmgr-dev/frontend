@@ -1,5 +1,5 @@
-import { createToursStore, normalizeOnboarding } from '../store';
 import type { OnboardingApi } from '../api';
+import { createToursStore, normalizeOnboarding } from '../store';
 
 const fakeApi = (state: unknown = {}): jest.Mocked<OnboardingApi> => ({
 	fetchState: jest.fn().mockResolvedValue(state),
@@ -15,18 +15,21 @@ const make = (api = fakeApi()) =>
 	createToursStore({ api, platform: () => 'web' });
 
 describe('normalizeOnboarding', () => {
-	it.each([[[]], [null], [undefined], ['x'], [42]])('malformed %p gives defaults', (raw) => {
-		expect(normalizeOnboarding(raw)).toEqual({
-			intent: null,
-			tips_mode: 'auto',
-			hub_hidden: false,
-			checklist_hidden: false,
-			tours_generation: 0,
-			tours: {},
-			facts: {},
-			malformed: true,
-		});
-	});
+	it.each([[[]], [null], [undefined], ['x'], [42]])(
+		'malformed %p gives defaults',
+		(raw) => {
+			expect(normalizeOnboarding(raw)).toEqual({
+				intent: null,
+				tips_mode: 'auto',
+				hub_hidden: false,
+				checklist_hidden: false,
+				tours_generation: 0,
+				tours: {},
+				facts: {},
+				malformed: true,
+			});
+		},
+	);
 
 	it('keeps valid fields and drops invalid ones', () => {
 		const state = normalizeOnboarding({
@@ -36,7 +39,12 @@ describe('normalizeOnboarding', () => {
 			tours_generation: 2,
 			tours: {
 				'a.b': { status: 'paused', step_id: 'x', version: 1, generation: 2 },
-				'old.one': { status: 'completed', step_id: null, version: 1, generation: 1 },
+				'old.one': {
+					status: 'completed',
+					step_id: null,
+					version: 1,
+					generation: 1,
+				},
 				bad: { status: 'nope' },
 				worse: 'x',
 				legacy: { status: 'paused', step_index: 2, version: 1 },
@@ -64,7 +72,10 @@ describe('store', () => {
 		const store = createToursStore({ api, platform: () => client });
 		store.saveTour('a.b', { status: 'paused', step_id: 'x', version: 1 });
 		await store.flush();
-		expect(api.putTour).toHaveBeenCalledWith('a.b', expect.objectContaining({ platform: sent }));
+		expect(api.putTour).toHaveBeenCalledWith(
+			'a.b',
+			expect.objectContaining({ platform: sent }),
+		);
 	});
 
 	it('loads and exposes state; load failure leaves defaults flagged', async () => {
@@ -83,8 +94,17 @@ describe('store', () => {
 		const api = fakeApi({ tours_generation: 2 });
 		const store = make(api);
 		await store.load();
-		const saved = store.saveTour('time.timer', { status: 'in_progress', step_id: 'start', version: 1 });
-		expect(store.tourState('time.timer')).toEqual({ status: 'in_progress', step_id: 'start', version: 1, generation: 2 });
+		const saved = store.saveTour('time.timer', {
+			status: 'in_progress',
+			step_id: 'start',
+			version: 1,
+		});
+		expect(store.tourState('time.timer')).toEqual({
+			status: 'in_progress',
+			step_id: 'start',
+			version: 1,
+			generation: 2,
+		});
 		expect(saved?.generation).toBe(2);
 		await store.flush();
 		expect(api.putTour).toHaveBeenCalledWith('time.timer', {
@@ -100,7 +120,9 @@ describe('store', () => {
 		const api = fakeApi();
 		const order: string[] = [];
 		api.putTour.mockImplementation(async (_id, body) => {
-			await new Promise((r) => setTimeout(r, body.status === 'in_progress' ? 20 : 0));
+			await new Promise((r) =>
+				setTimeout(r, body.status === 'in_progress' ? 20 : 0),
+			);
 			order.push(body.status);
 		});
 		const store = make(api);
@@ -111,26 +133,75 @@ describe('store', () => {
 	});
 
 	it('never downgrades a completed tour of the same version', async () => {
-		const api = fakeApi({ tours: { a: { status: 'completed', step_id: null, version: 1, generation: 0 } } });
+		const api = fakeApi({
+			tours: {
+				a: { status: 'completed', step_id: null, version: 1, generation: 0 },
+			},
+		});
 		const store = make(api);
 		await store.load();
-		expect(store.saveTour('a', { status: 'in_progress', step_id: 's', version: 1 })).toBeNull();
-		expect(store.saveTour('a', { status: 'paused', step_id: 's', version: 1 })).toBeNull();
+		expect(
+			store.saveTour('a', { status: 'in_progress', step_id: 's', version: 1 }),
+		).toBeNull();
+		expect(
+			store.saveTour('a', { status: 'paused', step_id: 's', version: 1 }),
+		).toBeNull();
 		expect(store.tourState('a')?.status).toBe('completed');
 		expect(api.putTour).not.toHaveBeenCalled();
-		expect(store.saveTour('a', { status: 'in_progress', step_id: 's', version: 2 })?.status).toBe('in_progress');
-		expect(store.saveTour('a', { status: 'completed', step_id: null, version: 2 })?.status).toBe('completed');
+		expect(
+			store.saveTour('a', { status: 'in_progress', step_id: 's', version: 2 })
+				?.status,
+		).toBe('in_progress');
+		expect(
+			store.saveTour('a', { status: 'completed', step_id: null, version: 2 })
+				?.status,
+		).toBe('completed');
 	});
 
 	it('drops remote states of an older generation and applies newer ones', async () => {
 		const store = make(fakeApi({ tours_generation: 2 }));
 		await store.load();
-		expect(store.applyRemote('a', { status: 'paused', step_id: 'x', version: 1, generation: 1 })).toBe(false);
+		expect(
+			store.applyRemote('a', {
+				status: 'paused',
+				step_id: 'x',
+				version: 1,
+				generation: 1,
+			}),
+		).toBe(false);
 		expect(store.tourState('a')).toBeNull();
-		expect(store.applyRemote('a', { status: 'paused', step_id: 'x', version: 1, generation: 2 })).toBe(true);
-		expect(store.applyRemote('a', { status: 'completed', step_id: null, version: 1, generation: 2 })).toBe(true);
-		expect(store.applyRemote('a', { status: 'paused', step_id: 'x', version: 1, generation: 2 })).toBe(false);
-		expect(store.applyRemote('a', { status: 'paused', step_id: 'x', version: 1, generation: 5 })).toBe(true);
+		expect(
+			store.applyRemote('a', {
+				status: 'paused',
+				step_id: 'x',
+				version: 1,
+				generation: 2,
+			}),
+		).toBe(true);
+		expect(
+			store.applyRemote('a', {
+				status: 'completed',
+				step_id: null,
+				version: 1,
+				generation: 2,
+			}),
+		).toBe(true);
+		expect(
+			store.applyRemote('a', {
+				status: 'paused',
+				step_id: 'x',
+				version: 1,
+				generation: 2,
+			}),
+		).toBe(false);
+		expect(
+			store.applyRemote('a', {
+				status: 'paused',
+				step_id: 'x',
+				version: 1,
+				generation: 5,
+			}),
+		).toBe(true);
 		expect(store.state.value?.tours_generation).toBe(5);
 	});
 
@@ -138,14 +209,23 @@ describe('store', () => {
 		const api = fakeApi({ tours_generation: 4 });
 		const store = make(api);
 		await store.load();
-		api.fetchState.mockResolvedValue({ tours_generation: 1, tours: { z: { status: 'paused', step_id: 'a', version: 1, generation: 1 } } });
+		api.fetchState.mockResolvedValue({
+			tours_generation: 1,
+			tours: {
+				z: { status: 'paused', step_id: 'a', version: 1, generation: 1 },
+			},
+		});
 		await store.load();
 		expect(store.state.value?.tours_generation).toBe(4);
 		expect(store.tourState('z')).toBeNull();
 	});
 
 	it('resetAll clears tours and takes the new generation', async () => {
-		const api = fakeApi({ tours: { a: { status: 'completed', step_id: null, version: 1, generation: 0 } } });
+		const api = fakeApi({
+			tours: {
+				a: { status: 'completed', step_id: null, version: 1, generation: 0 },
+			},
+		});
 		const store = make(api);
 		await store.load();
 		await store.resetAll();
@@ -160,7 +240,9 @@ describe('store', () => {
 		await store.setPreferences({ tips_mode: 'off' });
 		expect(store.state.value?.tips_mode).toBe('off');
 		api.putPreferences.mockRejectedValue(new Error('x'));
-		await expect(store.setPreferences({ tips_mode: 'hub_only' })).rejects.toThrow();
+		await expect(
+			store.setPreferences({ tips_mode: 'hub_only' }),
+		).rejects.toThrow();
 		expect(store.state.value?.tips_mode).toBe('off');
 	});
 
@@ -188,7 +270,10 @@ describe('store', () => {
 		const store = make(api);
 		await store.load();
 		store.clear();
-		api.fetchState.mockResolvedValue({ tours_generation: 1, tours: { a: { status: 'paused', version: 1, generation: 1 } } });
+		api.fetchState.mockResolvedValue({
+			tours_generation: 1,
+			tours: { a: { status: 'paused', version: 1, generation: 1 } },
+		});
 		await store.load();
 		expect(store.state.value?.tours_generation).toBe(1);
 		expect(Object.keys(store.state.value?.tours ?? {})).toEqual(['a']);
@@ -207,7 +292,9 @@ describe('store intent, checklist and facts', () => {
 	});
 
 	it('normalize keeps the invited flag', () => {
-		expect(normalizeOnboarding({ intent: null, invited: true }).invited).toBe(true);
+		expect(normalizeOnboarding({ intent: null, invited: true }).invited).toBe(
+			true,
+		);
 		expect(normalizeOnboarding({ intent: null }).invited).toBeUndefined();
 	});
 
@@ -226,7 +313,9 @@ describe('store intent, checklist and facts', () => {
 		const store = make(fakeApi({ facts: { has_task: true } }));
 		await store.load();
 		store.patchFacts({ mcp_first_call_at: 'x' });
-		expect(store.state.value?.facts).toEqual({ has_task: true, mcp_first_call_at: 'x' });
+		expect(store.state.value?.facts).toEqual({
+			has_task: true,
+			mcp_first_call_at: 'x',
+		});
 	});
 });
-

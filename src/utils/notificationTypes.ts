@@ -33,9 +33,7 @@ export const normalizeNotificationType = (type: string): string =>
 	(type || '').replace(/\./g, '_');
 
 const humanizeType = (type: string): string => {
-	const words = normalizeNotificationType(type)
-		.replace(/[_-]+/g, ' ')
-		.trim();
+	const words = normalizeNotificationType(type).replace(/[_-]+/g, ' ').trim();
 	return words ? words.charAt(0).toUpperCase() + words.slice(1) : '';
 };
 

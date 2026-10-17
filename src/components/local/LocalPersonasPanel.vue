@@ -1,13 +1,18 @@
 <template>
-	<div id="local-personas-panel" data-tour="local-personas.panel" class="flex flex-col gap-4 border-t border-border pt-6">
+	<div
+		id="local-personas-panel"
+		data-tour="local-personas.panel"
+		class="flex flex-col gap-4 border-t border-border pt-6"
+	>
 		<header class="flex flex-col gap-1">
 			<h4 class="text-sm font-semibold">
 				{{ localOnly ? 'Agents on this device' : 'On this device' }}
 			</h4>
 			<p v-if="localOnly" class="text-sm text-muted-foreground">
-				Connect Claude Code or any MCP client to this workspace without an account.
-				Each agent is a local persona: press “Connect an agent”, copy the command
-				into your terminal, and the agent works through its own permissions.
+				Connect Claude Code or any MCP client to this workspace without an
+				account. Each agent is a local persona: press “Connect an agent”, copy
+				the command into your terminal, and the agent works through its own
+				permissions.
 			</p>
 			<p v-else class="text-sm text-muted-foreground">
 				Personas from your account, snapshotted into this local workspace. Their
@@ -24,10 +29,13 @@
 			class="flex items-start justify-between gap-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-700 dark:bg-amber-950/40"
 		>
 			<p class="text-amber-800 dark:text-amber-200">
-				The plugin <strong>{{ pendingConnect.pluginName }}</strong> asks to connect
-				its companion. Choose a persona below and press “Connect an agent”.
+				The plugin <strong>{{ pendingConnect.pluginName }}</strong> asks to
+				connect its companion. Choose a persona below and press “Connect an
+				agent”.
 			</p>
-			<Button size="sm" variant="outline" @click="cancelPendingConnect">Decline</Button>
+			<Button size="sm" variant="outline" @click="cancelPendingConnect"
+				>Decline</Button
+			>
 		</div>
 
 		<section
@@ -46,7 +54,11 @@
 			<label class="flex flex-col gap-1 text-sm">
 				API key
 				<span class="text-xs text-muted-foreground">
-					{{ llmStatus.hasApiKey ? 'A key is already saved; leave blank to keep it.' : 'Optional.' }}
+					{{
+						llmStatus.hasApiKey
+							? 'A key is already saved; leave blank to keep it.'
+							: 'Optional.'
+					}}
 				</span>
 				<Input v-model="llmForm.apiKey" type="password" placeholder="sk-…" />
 			</label>
@@ -54,14 +66,20 @@
 				v-if="llmForm.baseUrl && !isTypedUrlLocal"
 				class="text-sm text-amber-600 dark:text-amber-400"
 			>
-				This URL is not on localhost or your LAN — the persona's traffic (and any
-				key you set) will leave this machine.
+				This URL is not on localhost or your LAN — the persona's traffic (and
+				any key you set) will leave this machine.
 			</p>
 			<div class="flex gap-2">
 				<Button size="sm" :disabled="savingLlm" @click="saveLlmConfig">
 					{{ savingLlm ? 'Saving…' : 'Save' }}
 				</Button>
-				<Button v-if="llmStatus.hasApiKey" size="sm" variant="outline" :disabled="savingLlm" @click="removeApiKey">
+				<Button
+					v-if="llmStatus.hasApiKey"
+					size="sm"
+					variant="outline"
+					:disabled="savingLlm"
+					@click="removeApiKey"
+				>
 					Remove key
 				</Button>
 			</div>
@@ -73,7 +91,13 @@
 		>
 			<div class="flex items-center justify-between">
 				<h5 class="text-sm font-semibold">Personas in this workspace</h5>
-				<Button v-if="!localOnly" size="sm" variant="outline" :disabled="syncing" @click="sync">
+				<Button
+					v-if="!localOnly"
+					size="sm"
+					variant="outline"
+					:disabled="syncing"
+					@click="sync"
+				>
 					{{ syncing ? 'Syncing…' : 'Sync now' }}
 				</Button>
 				<Button
@@ -93,23 +117,43 @@
 			>
 				<label class="flex flex-col gap-1 text-sm">
 					Name
-					<Input v-model="addForm.name" maxlength="60" placeholder="Claude Code" />
+					<Input
+						v-model="addForm.name"
+						maxlength="60"
+						placeholder="Claude Code"
+					/>
 				</label>
 				<label class="flex flex-col gap-1 text-sm">
 					Description (optional)
-					<Input v-model="addForm.description" placeholder="What this agent is for" />
+					<Input
+						v-model="addForm.description"
+						placeholder="What this agent is for"
+					/>
 				</label>
-				<p v-if="addError" class="text-sm text-red-600 dark:text-red-400">{{ addError }}</p>
+				<p v-if="addError" class="text-sm text-red-600 dark:text-red-400">
+					{{ addError }}
+				</p>
 				<div class="flex gap-2">
-					<Button type="submit" size="sm" :disabled="adding || !addForm.name.trim()">
+					<Button
+						type="submit"
+						size="sm"
+						:disabled="adding || !addForm.name.trim()"
+					>
 						{{ adding ? 'Adding…' : 'Add agent' }}
 					</Button>
-					<Button type="button" size="sm" variant="outline" @click="showAddForm = false">
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						@click="showAddForm = false"
+					>
 						Cancel
 					</Button>
 				</div>
 			</form>
-			<p v-if="syncError" class="text-sm text-red-600 dark:text-red-400">{{ syncError }}</p>
+			<p v-if="syncError" class="text-sm text-red-600 dark:text-red-400">
+				{{ syncError }}
+			</p>
 			<p v-if="!personas.length" class="text-sm text-muted-foreground">
 				{{ localOnly ? 'No local agents yet.' : 'No personas synced yet.' }}
 			</p>
@@ -122,11 +166,16 @@
 					<div>
 						<div class="text-sm font-medium">
 							{{ persona.name }}
-							<span v-if="persona.archived_at && !localOnly" class="ml-2 text-xs text-muted-foreground">
+							<span
+								v-if="persona.archived_at && !localOnly"
+								class="ml-2 text-xs text-muted-foreground"
+							>
 								(archived in the cloud)
 							</span>
 						</div>
-						<div class="text-xs text-muted-foreground">{{ persona.description }}</div>
+						<div class="text-xs text-muted-foreground">
+							{{ persona.description }}
+						</div>
 					</div>
 					<Switch
 						:checked="isEnabled(persona)"
@@ -134,7 +183,10 @@
 						@update:checked="(value: boolean) => toggle(persona, value)"
 					/>
 				</div>
-				<div v-if="isEnabled(persona)" class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+				<div
+					v-if="isEnabled(persona)"
+					class="flex flex-wrap gap-x-4 gap-y-1 text-xs"
+				>
 					<label
 						v-for="perm in PERSONA_PERMISSIONS"
 						:key="perm"
@@ -149,9 +201,17 @@
 					</label>
 				</div>
 
-				<div v-if="canConnect(persona) && localAccessAvailable" class="flex flex-col gap-2 border-t border-border pt-2">
+				<div
+					v-if="canConnect(persona) && localAccessAvailable"
+					class="flex flex-col gap-2 border-t border-border pt-2"
+				>
 					<div class="flex items-center justify-between">
-						<Button size="sm" variant="outline" data-tour="local-personas.connect" @click="openConnect(persona)">
+						<Button
+							size="sm"
+							variant="outline"
+							data-tour="local-personas.connect"
+							@click="openConnect(persona)"
+						>
 							Connect an agent
 						</Button>
 						<Button
@@ -163,7 +223,10 @@
 							Revoke all
 						</Button>
 					</div>
-					<p v-if="!tokensFor(persona).length" class="text-xs text-muted-foreground">
+					<p
+						v-if="!tokensFor(persona).length"
+						class="text-xs text-muted-foreground"
+					>
 						No agent connections yet.
 					</p>
 					<div
@@ -189,7 +252,8 @@
 								</span>
 							</p>
 							<p class="truncate text-2xs text-muted-foreground">
-								{{ token.prefix }}… · created {{ formatDate(token.createdAt) }} · expires
+								{{ token.prefix }}… · created
+								{{ formatDate(token.createdAt) }} · expires
 								{{ formatDate(token.expiresAt) }} · last used
 								{{ token.lastUsedAt ? formatDate(token.lastUsedAt) : 'never' }}
 							</p>
@@ -260,7 +324,11 @@
 		type TokenInfo,
 	} from '@/local/localTokens';
 	import { tauriPersonaCache } from '@/local/personaCache';
-	import { LOCAL_OWNER_ID, PERSONA_PERMISSIONS, type PersonaPermission } from '@/local/personaGate';
+	import {
+		LOCAL_OWNER_ID,
+		PERSONA_PERMISSIONS,
+		type PersonaPermission,
+	} from '@/local/personaGate';
 	import {
 		createLocalPersona,
 		disableLocalPersona,
@@ -271,7 +339,10 @@
 		type WorkspacePersonaRow,
 	} from '@/local/personas';
 	import { activeLocalWorkspace, localContext } from '@/local/runtime';
-	import { localAccessConnect, resolveLocalAccessConnect } from '@/pluginSystem/state';
+	import {
+		localAccessConnect,
+		resolveLocalAccessConnect,
+	} from '@/pluginSystem/state';
 	import { supportsLocalAccess } from '@/utils/desktop';
 	import { computed, defineComponent, onMounted, reactive, ref } from 'vue';
 	import { useStore } from 'vuex';
@@ -281,11 +352,18 @@
 		try {
 			const { hostname } = new URL(input);
 			const host = hostname.replace(/^\[|\]$/g, '');
-			if (host === 'localhost' || host === '::1' || host.endsWith('.local')) return true;
+			if (host === 'localhost' || host === '::1' || host.endsWith('.local'))
+				return true;
 			const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/);
 			if (v4) {
 				const [a, b] = [Number(v4[1]), Number(v4[2])];
-				return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+				return (
+					a === 127 ||
+					a === 10 ||
+					(a === 172 && b >= 16 && b <= 31) ||
+					(a === 192 && b === 168) ||
+					(a === 169 && b === 254)
+				);
 			}
 			return false;
 		} catch {
@@ -330,14 +408,15 @@
 				localOnly
 					? {
 							id: LOCAL_OWNER_ID,
-							name: store.state.user?.name || store.state.localProfile?.name || '',
+							name:
+								store.state.user?.name || store.state.localProfile?.name || '',
 							email: '',
-						}
+					  }
 					: {
 							id: Number(store.state.user?.id) || 0,
 							name: store.state.user?.name ?? '',
 							email: store.state.user?.email ?? '',
-						};
+					  };
 
 			const ctxFor = async () => {
 				if (!workspace) throw new Error('No local workspace is open');
@@ -357,7 +436,8 @@
 					showAddForm.value = false;
 					await refreshPersonas();
 				} catch (error) {
-					addError.value = error instanceof Error ? error.message : String(error);
+					addError.value =
+						error instanceof Error ? error.message : String(error);
 				} finally {
 					adding.value = false;
 				}
@@ -367,19 +447,25 @@
 				if (!workspace) return;
 				const ctx = await ctxFor();
 				personas.value = await listLocalPersonas(ctx);
-				for (const persona of personas.value) drafts[persona.uuid] = persona.permissions ?? [];
+				for (const persona of personas.value)
+					drafts[persona.uuid] = persona.permissions ?? [];
 			};
 
-			const invoke = async <T,>(command: string, args?: Record<string, unknown>): Promise<T> => {
+			const invoke = async <T>(
+				command: string,
+				args?: Record<string, unknown>,
+			): Promise<T> => {
 				const core = await import('@tauri-apps/api/core');
 				return core.invoke<T>(command, args);
 			};
 
 			const refreshLlmConfig = async () => {
-				const config = await invoke<{ base_url: string; model: string; has_api_key: boolean; is_local: boolean }>(
-					'llm_config_get',
-					{ userId: currentUser().id },
-				);
+				const config = await invoke<{
+					base_url: string;
+					model: string;
+					has_api_key: boolean;
+					is_local: boolean;
+				}>('llm_config_get', { userId: currentUser().id });
 				llmForm.baseUrl = config.base_url;
 				llmForm.model = config.model;
 				llmStatus.hasApiKey = config.has_api_key;
@@ -397,12 +483,19 @@
 			onMounted(async () => {
 				if (!workspace) return;
 				if (localOnly) await ensureDefaultLocalPersona(await ctxFor());
-				await Promise.all([refreshPersonas(), refreshLlmConfig(), refreshTokens(), localAccessAvailable && refreshAccessStatus()]);
+				await Promise.all([
+					refreshPersonas(),
+					refreshLlmConfig(),
+					refreshTokens(),
+					localAccessAvailable && refreshAccessStatus(),
+				]);
 			});
 
-			const isEnabled = (persona: WorkspacePersonaRow) => !!persona.enabled_at && !persona.disabled_at;
+			const isEnabled = (persona: WorkspacePersonaRow) =>
+				!!persona.enabled_at && !persona.disabled_at;
 
-			const canConnect = (persona: WorkspacePersonaRow) => isEnabled(persona) && !persona.archived_at;
+			const canConnect = (persona: WorkspacePersonaRow) =>
+				isEnabled(persona) && !persona.archived_at;
 
 			const tokensFor = (persona: WorkspacePersonaRow) =>
 				tokens.value.filter((t) => t.personaUuid === persona.uuid);
@@ -413,11 +506,19 @@
 
 			const pendingConnect = computed(() => localAccessConnect.current);
 
-			const cancelPendingConnect = () => resolveLocalAccessConnect({ status: 'cancelled' });
+			const cancelPendingConnect = () =>
+				resolveLocalAccessConnect({ status: 'cancelled' });
 
 			const onIssued = async (token: TokenInfo) => {
-				if (pendingConnect.value && token.pluginId === pendingConnect.value.pluginId) {
-					resolveLocalAccessConnect({ status: 'connected', tokenId: token.id, prefix: token.prefix });
+				if (
+					pendingConnect.value &&
+					token.pluginId === pendingConnect.value.pluginId
+				) {
+					resolveLocalAccessConnect({
+						status: 'connected',
+						tokenId: token.id,
+						prefix: token.prefix,
+					});
 				}
 				await refreshTokens();
 			};
@@ -432,15 +533,20 @@
 
 			const revokeAllForPersona = async (persona: WorkspacePersonaRow) => {
 				if (!workspace) return;
-				if (!window.confirm('Revoke every agent connection for this persona?')) return;
-				await revokeAllLocalTokens({ personaUuid: persona.uuid, workspaceCode: workspace.code });
+				if (!window.confirm('Revoke every agent connection for this persona?'))
+					return;
+				await revokeAllLocalTokens({
+					personaUuid: persona.uuid,
+					workspaceCode: workspace.code,
+				});
 				await refreshTokens();
 			};
 
 			const accessStatusLine = computed(() => {
 				if (accessStatus.safeMode) return 'safe mode — closed';
 				if (!accessStatus.enabled) return 'off';
-				if (accessStatus.listening && accessStatus.socketPath) return `listening at ${accessStatus.socketPath}`;
+				if (accessStatus.listening && accessStatus.socketPath)
+					return `listening at ${accessStatus.socketPath}`;
 				return 'off';
 			});
 
@@ -454,16 +560,25 @@
 				}
 			};
 
-			const draftPermissions = (persona: WorkspacePersonaRow) => drafts[persona.uuid] ?? [];
+			const draftPermissions = (persona: WorkspacePersonaRow) =>
+				drafts[persona.uuid] ?? [];
 
 			const toggle = async (persona: WorkspacePersonaRow, value: boolean) => {
 				const ctx = await ctxFor();
-				if (value) await enableLocalPersona(ctx, persona.uuid, draftPermissions(persona));
+				if (value)
+					await enableLocalPersona(
+						ctx,
+						persona.uuid,
+						draftPermissions(persona),
+					);
 				else await disableLocalPersona(ctx, persona.uuid);
 				await refreshPersonas();
 			};
 
-			const togglePermission = async (persona: WorkspacePersonaRow, permission: PersonaPermission) => {
+			const togglePermission = async (
+				persona: WorkspacePersonaRow,
+				permission: PersonaPermission,
+			) => {
 				const current = draftPermissions(persona);
 				drafts[persona.uuid] = current.includes(permission)
 					? current.filter((p) => p !== permission)
@@ -479,10 +594,15 @@
 				syncError.value = null;
 				try {
 					const ctx = await ctxFor();
-					await syncPersonasSnapshot(ctx, () => listPersonas(true, false), tauriPersonaCache);
+					await syncPersonasSnapshot(
+						ctx,
+						() => listPersonas(true, false),
+						tauriPersonaCache,
+					);
 					await refreshPersonas();
 				} catch (error) {
-					syncError.value = error instanceof Error ? error.message : String(error);
+					syncError.value =
+						error instanceof Error ? error.message : String(error);
 				} finally {
 					syncing.value = false;
 				}

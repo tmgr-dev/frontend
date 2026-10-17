@@ -63,7 +63,9 @@
 								:size="20"
 							/>
 						</MemberAvatarLink>
-						<span class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-400">
+						<span
+							class="min-w-0 truncate text-xs text-gray-600 dark:text-gray-400"
+						>
 							by {{ activity.user.name }}
 						</span>
 					</template>
