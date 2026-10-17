@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.45 — 2026-10-17
+
+- Block editor: lists and checklists can now be nested. Lists and checklists from older tasks open and save as before.
+- Block editor: clicking Create right after typing keeps the description, Done on a description you didn't change no longer re-saves the task, and Enter right after picking a block type starts a new block.
+- Descriptions written in the old HTML format show in the preview and open in the block editor whatever editor you prefer; a description with only empty lists shows "No description".
+- Markdown editor updated. Embedded frames in Markdown descriptions are limited to YouTube, CodePen and Figma and run sandboxed.
+- Dashboard: clicking a task in the team activity widget opens that task.
+
 ## 0.9.44 — 2026-10-16
 
 - Pages: images work like in Outline. Drag the side handles to resize (corners keep the proportions), align left, center, right or full width from the image toolbar, add a caption under the image, and click a selected image to open it full screen.
