@@ -133,7 +133,6 @@ test('header, quote, table, embed and paragraph blocks survive create and reopen
   await openToolbox(page, 'header');
   await page.keyboard.type('Roundtrip header');
 
-  // Plus button, not Enter: Enter right after a toolbox conversion adds a line break (see the skipped test below).
   await addBlock(page, 'paragraph');
   await page.keyboard.type('Plain paragraph text');
 
@@ -321,14 +320,37 @@ test('Create right after the last keystroke in Block MD keeps that text in the r
   expect(created[0].description).toContain('Typed just before Create');
 });
 
-test('Enter after picking Heading from the toolbox starts a new block', async ({
-  page,
-}) => {
-  test.skip(
-    !process.env.RUN_KNOWN_BUGS,
-    'Known bug: Enter in a block just converted via the toolbox inserts a line break inside the header instead of a new block',
-  );
-  await setup(page);
+// TM-585: holds back Editor.js's deferred block event binding 3 s and counts pending binds, so a
+// test can prove an Enter landed before the bind (pending > 0) or after it (pending 0).
+const trackBlockEventBinding = (page) =>
+  page.addInitScript(() => {
+    const original = window.requestIdleCallback;
+    window.__pendingBlockBinds = 0;
+    window.requestIdleCallback = (callback, options) => {
+      if (!String(callback).includes('bindBlockEvents'))
+        return original(callback, options);
+      window.__pendingBlockBinds += 1;
+      const bind = (...args) => {
+        window.__pendingBlockBinds -= 1;
+        return callback(...args);
+      };
+      return setTimeout(() => original(bind, options), 3000);
+    };
+  });
+
+const pendingBinds = (page) => page.evaluate(() => window.__pendingBlockBinds);
+
+const pressUnboundEnter = async (page) => {
+  expect(await pendingBinds(page)).toBeGreaterThan(0);
+  await page.keyboard.press('Enter');
+};
+
+const paragraphHtml = (editor) =>
+  editor
+    .locator('.ce-paragraph')
+    .evaluateAll((nodes) => nodes.map((node) => node.innerHTML));
+
+const typeInNewTask = async (page) => {
   await page.evaluate(() =>
     document
       .querySelector('#app')
@@ -338,13 +360,223 @@ test('Enter after picking Heading from the toolbox starts a new block', async ({
       ),
   );
   const editor = page.locator('.new-form-container .codex-editor');
+  await editor.locator('.ce-paragraph').first().waitFor();
+  await expect.poll(() => pendingBinds(page)).toBe(0);
   await editor.locator('.ce-paragraph').first().click();
+  return editor;
+};
+
+const createTask = async (page, created) => {
+  await page.locator('.new-form-container button[title="Create"]').click();
+  await expect.poll(() => created.length).toBe(1);
+  return created[0].description_json.blocks.map((block) => [
+    block.type,
+    block.data.text,
+  ]);
+};
+
+test('Enter after picking Heading from the toolbox starts a new block', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  await setup(page);
+  const editor = await typeInNewTask(page);
   await openToolbox(page, 'header');
   await page.keyboard.type('Heading');
-  await page.keyboard.press('Enter');
+  await pressUnboundEnter(page);
   await page.keyboard.type('Next line');
   await expect(editor.locator('.ce-block')).toHaveCount(2);
   await expect(editor.locator('.ce-header')).toHaveText('Heading');
+  await expect(editor.locator('.ce-paragraph')).toHaveText('Next line');
+});
+
+test('Shift+Enter in a just-created paragraph keeps a line break in it', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  await setup(page);
+  const editor = await typeInNewTask(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('b');
+  expect(await pendingBinds(page)).toBeGreaterThan(0);
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('c');
+  await expect(editor.locator('.ce-block')).toHaveCount(2);
+  expect((await paragraphHtml(editor))[1]).toMatch(/^b<br>c/);
+});
+
+test('Enter in a just-created quote stays inside the quote', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  await setup(page);
+  const editor = await typeInNewTask(page);
+  await openToolbox(page, 'quote');
+  await page.keyboard.type('first');
+  await pressUnboundEnter(page);
+  await page.keyboard.type('second');
+  await expect(editor.locator('.ce-block')).toHaveCount(1);
+  await expect(editor.locator('.cdx-quote')).toHaveCount(1);
+  expect(
+    await editor.locator('.cdx-quote__text').evaluate((node) => node.innerText),
+  ).toMatch(/^first\n+second$/);
+});
+
+test('Enter in the middle of a just-created heading splits it', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  await setup(page);
+  const editor = await typeInNewTask(page);
+  await openToolbox(page, 'header');
+  await page.keyboard.type('HeadTail');
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowLeft');
+  await pressUnboundEnter(page);
+  await page.keyboard.type('X');
+  await expect(editor.locator('.ce-block')).toHaveCount(2);
+  await expect(editor.locator('.ce-header')).toHaveText('Head');
+  await expect(editor.locator('.ce-paragraph')).toHaveText('XTail');
+});
+
+test('fast Enter in the unbound window posts three paragraphs on Create', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  const { created, errors } = await setup(page);
+  const editor = await typeInNewTask(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('b');
+  await pressUnboundEnter(page);
+  await page.keyboard.type('c');
+  await expect(editor.locator('.ce-paragraph')).toHaveText(['a', 'b', 'c']);
+  expect(await createTask(page, created)).toEqual([
+    ['paragraph', 'a'],
+    ['paragraph', 'b'],
+    ['paragraph', 'c'],
+  ]);
+  expect(pageErrors(errors)).toEqual([]);
+  expect(editorErrors(errors)).toEqual([]);
+});
+
+test('Enter in blocks whose handlers are proven bound adds one block each', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  await setup(page);
+  const editor = await typeInNewTask(page);
+  await page.keyboard.type('one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('two');
+  await expect.poll(() => pendingBinds(page)).toBe(0);
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('three');
+  await expect.poll(() => pendingBinds(page)).toBe(0);
+  for (let i = 0; i < 5; i += 1) await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Enter');
+  await expect(editor.locator('.ce-block')).toHaveCount(4);
+  await expect(editor.locator('.ce-paragraph')).toHaveText([
+    'one',
+    'two',
+    '',
+    'three',
+  ]);
+});
+
+test('Enter at the start of a just-created paragraph adds an empty paragraph above', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  const { created } = await setup(page);
+  const editor = await typeInNewTask(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('text');
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowLeft');
+  await pressUnboundEnter(page);
+  await page.keyboard.type('X');
+  await expect(editor.locator('.ce-paragraph')).toHaveText(['a', '', 'Xtext']);
+  for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowRight');
+  await pressUnboundEnter(page);
+  await page.keyboard.type('Y');
+  await expect(editor.locator('.ce-paragraph')).toHaveText([
+    'a',
+    '',
+    'Xtext',
+    'Y',
+  ]);
+  // Empty paragraphs are not saved (Paragraph tool, preserveBlank false).
+  expect(await createTask(page, created)).toEqual([
+    ['paragraph', 'a'],
+    ['paragraph', 'Xtext'],
+    ['paragraph', 'Y'],
+  ]);
+});
+
+test('Enter inside bold text of a just-created paragraph keeps the markup on both halves', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  const { created } = await setup(page);
+  const editor = await typeInNewTask(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  await editor
+    .locator('.ce-paragraph')
+    .nth(1)
+    .evaluate((node) => {
+      node.innerHTML = 'one<b>BOLD</b>two';
+      const range = document.createRange();
+      range.setStart(node.querySelector('b').firstChild, 2);
+      range.collapse(true);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+    });
+  await pressUnboundEnter(page);
+  await page.keyboard.type('Z');
+  const html = await paragraphHtml(editor);
+  expect(html.slice(0, 2)).toEqual(['a', 'one<b>BO</b>']);
+  expect(html[2]).toMatch(/^(<b>)?Z(<\/b><b>)?LD<\/b>two$/);
+  const saved = await createTask(page, created);
+  expect(saved.slice(0, 2)).toEqual([
+    ['paragraph', 'a'],
+    ['paragraph', 'one<b>BO</b>'],
+  ]);
+  expect(saved[2][1]).toMatch(/LD<\/b>two$/);
+});
+
+test('Enter in the toolbox opened over a just-created block picks the item, no extra block', async ({
+  page,
+}) => {
+  await trackBlockEventBinding(page);
+  await setup(page);
+  const editor = await typeInNewTask(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  const blocks = editor.locator('.ce-block');
+  await blocks.first().hover();
+  await blocks.last().hover();
+  await page.locator('.new-form-container .ce-toolbar__plus').click();
+  await expect(page.locator('.ce-popover--opened')).toHaveCount(1);
+  await pressUnboundEnter(page);
+  await expect(page.locator('.ce-popover--opened')).toHaveCount(1);
+  expect(await paragraphHtml(editor)).toEqual(['a', '']);
+  const header = page.locator(
+    '.ce-popover--opened .ce-popover-item--focused[data-item-name="header"]',
+  );
+  for (let i = 0; i < 20 && !(await header.count()); i += 1)
+    await page.keyboard.press('ArrowDown');
+  await expect(header).toHaveCount(1);
+  await pressUnboundEnter(page);
+  await expect(page.locator('.ce-popover--opened')).toHaveCount(0);
+  await expect(blocks).toHaveCount(2);
+  await page.keyboard.type('H');
+  await pressUnboundEnter(page);
+  await page.keyboard.type('next');
+  await expect(blocks).toHaveCount(3);
+  await expect(editor.locator('.ce-header')).toHaveText('H');
+  await expect(editor.locator('.ce-paragraph')).toHaveText(['a', 'next']);
 });
 
 // TM-582: description_json stored by list@1 and the old checklist tool.
