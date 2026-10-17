@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.46 — 2026-10-17
+
+- Wide windows: page content now sits in one centered column up to 1280px wide instead of hugging the left edge. The board and the workspace map still use the full width.
+
 ## 0.9.45 — 2026-10-17
 
 - Block editor: lists and checklists can now be nested. Lists and checklists from older tasks open and save as before.
