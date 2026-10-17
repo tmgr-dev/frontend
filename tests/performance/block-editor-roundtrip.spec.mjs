@@ -170,8 +170,6 @@ test('header, quote, table, embed and paragraph blocks survive create and reopen
     /youtube\.com\/embed\/dQw4w9WgXcQ/,
   );
 
-  // Editor.js batches onChange for 400ms and Create does not flush the editor.
-  await page.waitForTimeout(1000);
   await page.locator('.new-form-container button[title="Create"]').click();
   await expect.poll(() => created.length).toBe(1);
 
@@ -259,10 +257,6 @@ test('legacy HTML string description renders through renderFromHTML', async ({
 test('Create right after the last keystroke keeps that text in the request', async ({
   page,
 }) => {
-  test.skip(
-    !process.env.RUN_KNOWN_BUGS,
-    'Known bug: createTask in src/pages/NewForm.vue does not flush BlockEditor, so edits inside the 400ms Editor.js onChange batch are not sent',
-  );
   const { created } = await setup(page);
   await page.evaluate(() =>
     document
@@ -282,6 +276,26 @@ test('Create right after the last keystroke keeps that text in the request', asy
   expect(
     created[0].description_json?.blocks?.map((block) => block.data.text),
   ).toContain('Typed just before Create');
+});
+
+test('Create right after the last keystroke in Block MD keeps that text in the request', async ({
+  page,
+}) => {
+  const { created } = await setup(page);
+  await page.evaluate(() => {
+    localStorage.setItem('preferred_editor', 'blockmd');
+    document
+      .querySelector('#app')
+      .__vue_app__.config.globalProperties.$store.commit(
+        'setShowCreatingTaskModal',
+        1,
+      );
+  });
+  await page.locator('.new-form-container .milkdown .ProseMirror').click();
+  await page.keyboard.type('Typed just before Create');
+  await page.locator('.new-form-container button[title="Create"]').click();
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0].description).toContain('Typed just before Create');
 });
 
 test('Enter after picking Heading from the toolbox starts a new block', async ({
