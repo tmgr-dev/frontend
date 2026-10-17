@@ -61,11 +61,11 @@ const stripHtml = (html: string) =>
 		.replace(/&gt;/g, '>')
 		.replace(/&amp;/g, '&');
 
-const listItems = (items: ListItem[], style: string, depth = 0, start = 1): string[] =>
-	items.flatMap((item, index) => {
+const listItems = (items: unknown, style: string, depth = 0, start = 1): string[] =>
+	(Array.isArray(items) ? items : []).filter((item): item is Partial<ListItem> => item && typeof item === 'object').flatMap((item, index) => {
 		const marker =
-			style === 'checklist' ? `- [${item.meta.checked ? 'x' : ' '}]` : style === 'ordered' ? `${start + index}.` : '-';
-		const line = `${'  '.repeat(depth)}${marker} ${stripHtml(item.content)}`;
+			style === 'checklist' ? `- [${item.meta?.checked ? 'x' : ' '}]` : style === 'ordered' ? `${start + index}.` : '-';
+		const line = `${'  '.repeat(depth)}${marker} ${stripHtml(typeof item.content === 'string' ? item.content : '')}`;
 		return [line, ...listItems(item.items, style, depth + 1)];
 	});
 

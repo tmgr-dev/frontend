@@ -169,8 +169,38 @@ describe('editorJsToHtml', () => {
 	it('renders nothing for empty or malformed lists', () => {
 		expect(render({ type: 'list', data: { style: 'unordered', items: [] } })).toBe('');
 		expect(render({ type: 'checklist', data: { items: [] } })).toBe('');
-		expect(render({ type: 'checklist', data: { items: [null, 1] } })).toBe('');
+		expect(render({ type: 'checklist', data: { items: [null, undefined] } })).toBe('');
 		expect(render({ type: 'list', data: { style: 'checklist', meta: {}, items: [] } })).toBe('');
+	});
+
+	it('renders readable siblings of a list kept raw as malformed', () => {
+		const out = render(
+			{ type: 'list', data: { style: 'checklist', items: { content: 'a', items: 'x' } } },
+			{ type: 'list', data: { items: 'abc' } },
+			{ type: 'checklist', data: { items: 5 } },
+			{ type: 'paragraph', data: { text: 'readable' } },
+		);
+		expect(out).toBe('<p>readable</p>');
+		expect(parse(render({ type: 'checklist', data: { items: [null, 1] } })).textContent).toBe(' 1');
+	});
+
+	it('previews unreadable list values as text', () => {
+		const root = parse(
+			render({
+				type: 'list',
+				data: {
+					style: 'checklist',
+					items: ['skipped', { content: {}, items: 'x' }, { content: 'ok', items: [7] }],
+				},
+			}),
+		);
+		expect([...root.querySelectorAll('ul.checklist > li > div')].map((div) => div.textContent)).toEqual([
+			'skipped',
+			'{} x',
+			'x',
+			'ok 7',
+			'7',
+		]);
 	});
 
 	it('renders quote, warning, delimiter and code', () => {
