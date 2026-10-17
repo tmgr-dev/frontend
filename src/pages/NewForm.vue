@@ -1508,9 +1508,11 @@
 			return;
 		}
 		isCreatingTask.value = true;
-		updateFormBeforeQuery();
 
 		try {
+			blockMdEditorRef.value?.flush?.();
+			await blockEditorRef.value?.flush?.();
+			updateFormBeforeQuery();
 			suppressAutoSavingForOnce.value = true;
 			const created = await createTaskAction(form.value as Task);
 			if (created.id) {

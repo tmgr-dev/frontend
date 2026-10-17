@@ -23,10 +23,12 @@
 	let crepe: Crepe | null = null;
 	let lastMarkdown = '';
 	let hasUserEdits = false;
+	let ready = false;
 
 	// markdownUpdated is debounced (200ms) and cancelled on destroy.
 	defineExpose({
 		flush: () => {
+			if (!ready) return;
 			const markdown = crepe?.getMarkdown();
 			if (markdown === undefined || markdown === lastMarkdown) return;
 			lastMarkdown = markdown;
@@ -81,6 +83,7 @@
 			});
 		});
 		await crepe.create();
+		ready = true;
 	});
 
 	// model -> view (external change, e.g. task reload)
