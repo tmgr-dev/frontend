@@ -652,6 +652,95 @@ test('criterion 10: script-bearing markdown does not execute in preview or edito
   await expectNoXssInDom(page);
 });
 
+// TM-593: only https embeds of the Editor.js embed hosts (BlockEditor.vue) keep their src,
+// always with the forced sandbox; every other iframe loses its src.
+const SANDBOX = 'allow-scripts allow-same-origin allow-popups';
+const ALLOWED_IFRAMES = {
+  youtube: ['https://www.youtube.com/embed/abc', 'https://www.youtube.com/embed/abc'],
+  codepen: ['https://codepen.io/u/embed/p?height=300', 'https://codepen.io/u/embed/p?height=300'],
+  figma: ['https://www.figma.com/embed?embed_host=share&url=x', 'https://www.figma.com/embed?embed_host=share&url=x'],
+  entities: ['https://www.youtube.com/embed/ent?a=1&amp;b=2', 'https://www.youtube.com/embed/ent?a=1&b=2'],
+  'author-sandbox': ['https://www.youtube.com/embed/sb" sandbox="" srcdoc="x', 'https://www.youtube.com/embed/sb'],
+  'author-allow': ['https://www.youtube.com/embed/al" allow="camera; microphone', 'https://www.youtube.com/embed/al'],
+  'bad-then-good': ['https://evil.example/a" src="https://www.youtube.com/embed/bg', 'https://www.youtube.com/embed/bg'],
+  'good-then-bad': ['https://www.youtube.com/embed/gb" src="https://evil.example/b', 'https://www.youtube.com/embed/gb'],
+};
+const BLOCKED_IFRAMES = {
+  http: 'http://www.youtube.com/embed/abc',
+  'off-list': 'https://evil.example/page',
+  lookalike: 'https://www.youtube.com.evil.example/embed/abc',
+  relative: '/demo/list',
+  'protocol-relative': '//evil.example/proto',
+  data: 'data:image/svg+xml;base64,PHN2Zy8+',
+  'app-origin': 'http://127.0.0.1:4179/demo/list',
+  'encoded-scheme': 'https&#58;//evil.example/encoded',
+  javascript: 'javascript:window.__xss=6',
+  port: 'https://www.youtube.com:8443/embed/abc',
+  userinfo: 'https://user:pw@www.youtube.com/embed/abc',
+};
+const IFRAME_MD = [
+  'Iframe marker',
+  ...Object.entries(ALLOWED_IFRAMES).map(
+    ([title, [src]]) => `<iframe title="${title}" src="${src}"></iframe>`,
+  ),
+  ...Object.entries(BLOCKED_IFRAMES).map(
+    ([title, src]) => `<iframe title="${title}" src="${src}" sandbox=""></iframe>`,
+  ),
+  '<iframe title="srcdoc" srcdoc="hello"></iframe>',
+].join('\n\n');
+
+const iframesIn = (page, selector) =>
+  page.locator(selector).evaluateAll((els) =>
+    Object.fromEntries(
+      els.map((el) => [
+        el.title,
+        ['src', 'sandbox', 'srcdoc', 'allow'].map((name) => el.getAttribute(name)),
+      ]),
+    ),
+  );
+
+test('TM-593: preview keeps only allowlisted https iframes, sandboxed; editor renders none', async ({
+  page,
+}) => {
+  const ctx = track(await setup(page, { description: IFRAME_MD }));
+  const form = await openTask(page);
+  const wrapper = form.locator('.description-editor-wrapper');
+  await expect(wrapper).toContainText('Iframe marker');
+  const iframes = await iframesIn(page, '.new-form-container .description-markdown iframe');
+  record('iframes', iframes);
+  expect(iframes).toEqual({
+    ...Object.fromEntries(
+      Object.entries(ALLOWED_IFRAMES).map(([title, [, href]]) => [title, [href, SANDBOX, null, null]]),
+    ),
+    ...Object.fromEntries(
+      Object.keys(BLOCKED_IFRAMES).map((title) => [title, [null, null, null, null]]),
+    ),
+    srcdoc: [null, null, null, null],
+  });
+
+  // The browser asked only the allowlisted hosts for frames.
+  await page.waitForTimeout(500);
+  const frameHosts = page
+    .frames()
+    .slice(1)
+    .map((frame) => frame.url())
+    .filter((url) => url !== 'about:blank')
+    .map((url) => new URL(url).hostname);
+  record('frame hosts', frameHosts);
+  expect([...new Set(frameHosts)].sort()).toEqual(['codepen.io', 'www.figma.com', 'www.youtube.com']);
+  expect([...ctx.external].filter((url) => url.includes('evil.example'))).toEqual([]);
+  expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+  // Allowed embeds are expected traffic here, not new CDN hosts (afterEach check).
+  for (const url of [...ctx.external])
+    if (/^(www\.youtube\.com|codepen\.io|www\.figma\.com)\//.test(url)) ctx.external.delete(url);
+
+  await form.getByRole('button', { name: 'Edit description' }).click();
+  await expect.poll(() => docText(page)).toBe(IFRAME_MD);
+  await page.waitForTimeout(500);
+  expect(await iframesIn(page, '.new-form-container iframe')).toEqual({});
+  expect(await page.evaluate(() => window.__xss)).toBeUndefined();
+});
+
 test('criterion 11: empty description shows the empty preview and the editor placeholder', async ({
   page,
 }) => {
