@@ -19,6 +19,7 @@ const PAGES = [
   ['plugins-help', '/settings/plugins/help', 'narrow'],
   ['profile', '/profile', 'narrow'],
   ['stats', '/stats', 'wide'],
+  ['pages', '/demo/pages', 'wide'],
   ['push-guide', '/push-notifications-enable-guide', 'narrow'],
 ];
 
@@ -41,6 +42,7 @@ async function mockExtras(page) {
             dashboard: { enabled: true },
             categories: { enabled: true },
             daily_routines: { enabled: true },
+            pages: { enabled: true },
           },
         },
       }),
@@ -70,6 +72,14 @@ async function mockExtras(page) {
   );
 }
 
+async function expectNarrowColumn(page) {
+  const columnWidth = await page
+    .locator('[data-page-header]')
+    .first()
+    .evaluate((h) => Math.round(h.getBoundingClientRect().width));
+  expect(columnWidth).toBe(720);
+}
+
 for (const vp of VIEWPORTS) {
   for (const [name, path, width] of PAGES) {
     test(`${name} @${vp.width}: ${width} column, heading on the left edge`, async ({
@@ -92,6 +102,51 @@ for (const vp of VIEWPORTS) {
       });
       expect(Math.round(offset)).toBe(vp.edge);
       await expect(container).toBeVisible();
+      if (width === 'narrow' && vp.width >= 768) await expectNarrowColumn(page);
+
+      const overflow = await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth >
+          document.documentElement.clientWidth,
+      );
+      expect(overflow).toBe(false);
+    });
+  }
+}
+
+const WIDE_VIEWPORTS = [
+  { width: 1920, height: 1080 },
+  { width: 2560, height: 1440 },
+];
+
+for (const vp of WIDE_VIEWPORTS) {
+  for (const [name, path, width] of PAGES) {
+    test(`${name} @${vp.width}: ${width} page in the centered 1280 frame`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await mockApp(page, { taskCount: 3, multiStatus: true });
+      await mockExtras(page);
+      await page.goto(path);
+
+      const heading = page.locator('[data-page-header] h1').first();
+      await expect(heading).toBeVisible();
+
+      const box = await heading.evaluate((h, sel) => {
+        const main = document.querySelector('main').getBoundingClientRect();
+        const frame = document.querySelector(sel).getBoundingClientRect();
+        return {
+          offset: h.getBoundingClientRect().left - main.left,
+          expected: (main.width - 1280) / 2 + 24,
+          frameWidth: frame.width,
+          leftGap: frame.left - main.left,
+          rightGap: main.right - frame.right,
+        };
+      }, `[data-page-width="${width}"]`);
+      expect(Math.abs(box.offset - box.expected)).toBeLessThanOrEqual(1);
+      expect(box.frameWidth).toBeLessThanOrEqual(1280);
+      expect(Math.abs(box.leftGap - box.rightGap)).toBeLessThanOrEqual(1);
+      if (width === 'narrow') await expectNarrowColumn(page);
 
       const overflow = await page.evaluate(
         () =>
