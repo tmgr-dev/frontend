@@ -215,7 +215,33 @@ describe('resolveEditorType', () => {
 				{ description: '', description_json: 'not json' },
 				'markdown',
 			),
-		).toBe('markdown');
+		).toBe('block');
+	});
+
+	it('opens a legacy HTML description in Editor.js whatever the preference (TM-595)', () => {
+		for (const pref of ['markdown', 'blockmd', 'block'] as const)
+			for (const text of emptyTexts)
+				expect(
+					resolveEditorType(
+						{ description: text, description_json: '<p>Legacy</p>' },
+						pref,
+					),
+				).toBe('block');
+	});
+
+	it('does not count blank strings or JSON null, object and array strings as legacy HTML', () => {
+		for (const json of ['', '  \n', 'null', '{}', '[]', '{"blocks":[]}'])
+			for (const pref of ['markdown', 'blockmd', 'block'] as const)
+				expect(
+					resolveEditorType({ description: null, description_json: json }, pref),
+				).toBe(pref);
+	});
+
+	it('lets the preference pick between legacy HTML and markdown text (dual-write)', () => {
+		const task = { description: 'md', description_json: '<p>html</p>' };
+		expect(resolveEditorType(task, 'block')).toBe('block');
+		expect(resolveEditorType(task, 'markdown')).toBe('markdown');
+		expect(resolveEditorType(task, 'blockmd')).toBe('blockmd');
 	});
 });
 

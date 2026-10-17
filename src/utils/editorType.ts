@@ -65,11 +65,22 @@ export const hasBlockContent = (json: unknown): boolean =>
 		return !Array.isArray(list.data?.items) || hasItemText(list.data.items);
 	});
 
+/** Old tasks keep HTML (not JSON) in description_json; Editor.js loads it with renderFromHTML. */
+export const isLegacyHtml = (json: unknown): json is string => {
+	if (typeof json !== 'string' || !json.trim()) return false;
+	try {
+		const parsed = JSON.parse(json);
+		return parsed !== null && typeof parsed !== 'object';
+	} catch {
+		return true;
+	}
+};
+
 export const hasMarkdownContent = (description: unknown): boolean =>
 	typeof description === 'string' && description.trim() !== '';
 
 /**
- * Stored data decides the editor. Block content only: Editor.js. Markdown text only:
+ * Stored data decides the editor. Block content (or legacy HTML) only: Editor.js. Markdown text only:
  * Markdown or Block MD (same stored text), Block MD only when preferred. Nothing stored,
  * or both fields filled (legacy dual-write), falls back to the preference.
  */
@@ -80,7 +91,9 @@ export const resolveEditorType = (
 		| undefined,
 	preferred: EditorType,
 ): EditorType => {
-	const hasJson = hasBlockContent(task?.description_json);
+	const hasJson =
+		hasBlockContent(task?.description_json) ||
+		isLegacyHtml(task?.description_json);
 	const hasText = hasMarkdownContent(task?.description);
 	if (hasJson && !hasText) return 'block';
 	if (hasText && !hasJson)

@@ -1,4 +1,5 @@
 import { listStart, normalizeBlocks, type ListItem } from '@/utils/editor';
+import { isLegacyHtml } from '@/utils/editorType';
 import DOMPurify from 'dompurify';
 
 interface Block {
@@ -151,12 +152,7 @@ export default function editorJsToHtml(data: unknown): string {
 	return body ? sanitize(body) : '';
 }
 
-// Old tasks keep HTML (not JSON) in description_json; the editor loads it with renderFromHTML.
-export const legacyHtmlToHtml = (value: unknown): string => {
-	if (typeof value !== 'string' || !value.trim()) return '';
-	try {
-		const parsed = JSON.parse(value);
-		if (parsed === null || typeof parsed === 'object') return '';
-	} catch {}
-	return editorJsToHtml({ blocks: [{ type: 'raw', data: { html: value } }] });
-};
+export const legacyHtmlToHtml = (value: unknown): string =>
+	isLegacyHtml(value)
+		? editorJsToHtml({ blocks: [{ type: 'raw', data: { html: value } }] })
+		: '';
