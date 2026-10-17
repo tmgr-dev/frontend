@@ -1,17 +1,25 @@
 <template>
 	<div :class="classes" :data-page-width="width">
-		<slot />
+		<div
+			v-if="width === 'narrow'"
+			class="flex w-full min-w-0 max-w-[46rem] flex-1 flex-col md:max-w-[45rem]"
+		>
+			<slot />
+		</div>
+		<slot v-else />
 	</div>
 </template>
 
 <script>
 	import { computed, defineComponent } from 'vue';
 
+	const FRAME =
+		'mx-auto flex w-full min-w-0 max-w-7xl flex-1 flex-col px-4 pb-10 pt-4 md:px-6 md:pt-6';
+
 	const WIDTHS = {
 		full: 'flex min-w-0 flex-1 flex-col',
-		wide: 'flex w-full min-w-0 max-w-7xl flex-1 flex-col px-4 pb-10 pt-4 md:px-6 md:pt-6',
-		narrow:
-			'flex w-full min-w-0 max-w-3xl flex-1 flex-col px-4 pb-10 pt-4 md:px-6 md:pt-6',
+		wide: FRAME,
+		narrow: FRAME,
 	};
 
 	export default defineComponent({

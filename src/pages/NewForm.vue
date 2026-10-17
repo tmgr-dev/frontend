@@ -2233,6 +2233,7 @@
 	<div
 		v-else-if="!taskReady"
 		class="min-h-[500px] space-y-4 p-6"
+		:class="{ 'mx-auto w-full max-w-7xl': !isModal }"
 		:aria-busy="!taskLoadError"
 	>
 		<div v-if="taskLoadError" role="alert">
@@ -2255,7 +2256,7 @@
 			:class="[
 				isModal
 					? 'h-full max-h-[100dvh] w-full flex-col overflow-hidden'
-					: 'w-full flex-col lg:h-[calc(100dvh-var(--app-chrome-h,4rem))] lg:flex-row lg:overflow-hidden',
+					: 'mx-auto w-full max-w-7xl flex-col border-line lg:h-[calc(100dvh-var(--app-chrome-h,4rem))] lg:flex-row lg:overflow-hidden min-[1537px]:border-x',
 			]"
 		>
 			<!-- Form Panel (main / left column) -->
