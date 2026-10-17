@@ -24,17 +24,20 @@ const baseTask = {
   updated_at: '2026-09-13T10:00:00Z',
 };
 
-const setup = async (page, { task, scheme } = {}) => {
+const setup = async (page, { task, scheme, preferred = 'block' } = {}) => {
   const errors = [];
   page.on('pageerror', (error) => errors.push(`pageerror: ${error.message}`));
   page.on('console', (message) => {
     if (message.type() === 'error') errors.push(`console: ${message.text()}`);
   });
-  await page.addInitScript((scheme) => {
-    localStorage.setItem('preferred_editor', 'block');
-    sessionStorage.setItem('tmgr:tours:auto', 'true');
-    if (scheme) localStorage.setItem('colorScheme', scheme);
-  }, scheme);
+  await page.addInitScript(
+    ({ scheme, preferred }) => {
+      localStorage.setItem('preferred_editor', preferred);
+      sessionStorage.setItem('tmgr:tours:auto', 'true');
+      if (scheme) localStorage.setItem('colorScheme', scheme);
+    },
+    { scheme, preferred },
+  );
   await mockApp(page);
   await page.route(
     /^https:\/\/(www\.youtube\.com|cdn\.jsdelivr\.net)\//,
@@ -864,6 +867,70 @@ test('clearing a legacy HTML description and pressing Done saves the empty descr
   expect(
     (saved?.blocks ?? []).filter((block) => block.data?.text),
   ).toEqual([]);
+  expect(pageErrors(errors)).toEqual([]);
+  expect(editorErrors(errors)).toEqual([]);
+});
+
+// TM-595: a Markdown or Block MD user must not get an empty editor whose save clears the HTML.
+for (const preferred of ['markdown', 'blockmd'])
+  test(`legacy HTML opens in Editor.js for a ${preferred} user and Done keeps it`, async ({
+    page,
+  }) => {
+    const { errors, writes } = await setup(page, {
+      preferred,
+      task: () => ({
+        description: null,
+        description_json: '<p>Legacy HTML kept</p>',
+      }),
+    });
+    await openTask(page, 2);
+    await expect(page.locator('.description-editor-wrapper')).toContainText(
+      'Legacy HTML kept',
+    );
+    const editor = await openEditor(page);
+    await expect(editor.locator('.ce-paragraph').first()).toHaveText(
+      'Legacy HTML kept',
+    );
+    await page.waitForTimeout(1500);
+    await doneButton(page).click();
+    await expect(editor).toHaveCount(0);
+    await page.waitForTimeout(2500);
+    // A write is optional (Done may convert the HTML to blocks); any write must keep the text.
+    for (const { body } of writes) {
+      expect(body.clear_description_json).toBeUndefined();
+      expect(
+        body.description_json.blocks.map((block) => block.data.text),
+      ).toEqual(['Legacy HTML kept']);
+    }
+    expect(pageErrors(errors)).toEqual([]);
+    expect(editorErrors(errors)).toEqual([]);
+  });
+
+test('an edited legacy HTML description of a markdown user saves as blocks and keeps the text', async ({
+  page,
+}) => {
+  const { errors, writes } = await setup(page, {
+    preferred: 'markdown',
+    task: () => ({
+      description: null,
+      description_json: '<p>Legacy HTML kept</p>',
+    }),
+  });
+  await openTask(page, 2);
+  const editor = await openEditor(page);
+  const paragraph = editor.locator('.ce-paragraph').first();
+  await expect(paragraph).toHaveText('Legacy HTML kept');
+  await paragraph.click();
+  await caretAtEnd(paragraph);
+  await page.keyboard.type('!');
+  await doneButton(page).click();
+  await expect.poll(() => writes.length, { timeout: 8000 }).toBeGreaterThan(0);
+  const { body } = writes.at(-1);
+  expect(body.clear_description_json).toBeUndefined();
+  expect(body.clear_description).toBe(true);
+  expect(body.description_json.blocks.map((block) => block.data.text)).toEqual(
+    ['Legacy HTML kept!'],
+  );
   expect(pageErrors(errors)).toEqual([]);
   expect(editorErrors(errors)).toEqual([]);
 });
