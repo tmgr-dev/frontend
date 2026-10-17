@@ -9,7 +9,7 @@
 		createEditorOperationQueue,
 		createSerialEditor,
 	} from '@/utils/serialEditor';
-	import { normalizeBlocks } from '@/utils/editor';
+	import { normalizeBlocks, sameBlocks } from '@/utils/editor';
 	import CodeTool from '@bomdi/codebox';
 	import Delimiter from '@editorjs/delimiter';
 	import EditorJS from '@editorjs/editorjs';
@@ -44,6 +44,11 @@
 				return editor.save();
 			}),
 		(output) => {
+			if (
+				typeof props.modelValue !== 'string' &&
+				sameBlocks(output.blocks, props.modelValue)
+			)
+				return;
 			lastPublished = output;
 			if (!disposed) emit('update:modelValue', output);
 		},

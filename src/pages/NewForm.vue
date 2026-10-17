@@ -129,7 +129,7 @@
 		isTaskDone,
 		openTarget,
 	} from '@/utils/simpleStatus';
-	import { getBlockEditorDescription, normalizeBlocks } from '@/utils/editor';
+	import { getBlockEditorDescription, sameBlocks } from '@/utils/editor';
 	import {
 		EDITOR_LABELS,
 		buildDescriptionPayload,
@@ -1628,6 +1628,10 @@
 		);
 		form.value = { ...form.value, ...recoverableDraft.value };
 		applyResolvedEditor(form.value);
+		const draft = recoverableDraft.value as Record<string, unknown>;
+		descriptionDirty.value = !!(
+			draft.clear_description || draft.clear_description_json
+		);
 		recoverableDraft.value = null;
 		try {
 			// Queue replacement before any forced read of the editor DOM.
@@ -1913,11 +1917,7 @@
 				.then((content: any) => {
 					if (
 						content &&
-						JSON.stringify(content.blocks) !==
-							JSON.stringify(
-								snapshot.description_json &&
-									normalizeBlocks(snapshot.description_json).blocks,
-							)
+						!sameBlocks(content.blocks, snapshot.description_json)
 					) {
 						snapshot.description_json = content;
 						snapshot.description = null;
