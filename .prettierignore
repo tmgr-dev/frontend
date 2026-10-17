@@ -25,6 +25,9 @@ crates
 # Signed fixtures: the .minisig files sign these exact bytes.
 src-tauri/tests/fixtures
 
+# Emitted by plugin-sdk/testing/sync-prelude.mjs; a test compares them byte for byte.
+plugin-sdk/**/*.generated.js
+
 # Written by scripts/nix-bump.sh (CI desktop-nix job) in its own layout.
 nix/source.json
 
