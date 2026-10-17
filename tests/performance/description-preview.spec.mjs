@@ -212,6 +212,24 @@ test('an empty description shows a placeholder that opens the editor', async ({
   ).toBeVisible();
 });
 
+test('an Editor.js description with only empty lists shows the placeholder', async ({
+  page,
+}) => {
+  const { form } = await openTask(
+    page,
+    {
+      description_json: blocks(
+        { type: 'list', data: { style: 'unordered', items: ['', '<br>'] } },
+        { type: 'checklist', data: { items: [{ text: '', checked: true }] } },
+      ),
+    },
+    { editor: 'block' },
+  );
+  await expect(
+    form.getByRole('button', { name: 'No description — click to add' }),
+  ).toBeVisible();
+});
+
 test('the new task form opens the editor immediately, without a preview', async ({
   page,
 }) => {

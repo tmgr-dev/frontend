@@ -1,4 +1,5 @@
 import type { EditorType } from '@/types';
+import { normalizeBlocks, type ListItem } from '@/utils/editor';
 
 const EDITOR_TYPES: readonly EditorType[] = ['markdown', 'block', 'blockmd'];
 
@@ -45,15 +46,23 @@ const parseBlocks = (json: unknown): unknown[] => {
 	return Array.isArray(blocks) ? blocks : [];
 };
 
+const isFilled = (value: unknown): boolean =>
+	String(value ?? '')
+		.replace(/&nbsp;|<br\s*\/?>/gi, '')
+		.trim() !== '';
+
+const hasItemText = (items: ListItem[]): boolean =>
+	items.some((item) => isFilled(item.content) || hasItemText(item.items));
+
 export const hasBlockContent = (json: unknown): boolean =>
 	parseBlocks(json).some((block: any) => {
 		if (!block) return false;
-		if (block.type !== 'paragraph') return true;
-		return (
-			String(block.data?.text ?? '')
-				.replace(/&nbsp;|<br\s*\/?>/gi, '')
-				.trim() !== ''
-		);
+		if (block.type === 'paragraph') return isFilled(block.data?.text);
+		if (block.type !== 'list' && block.type !== 'checklist') return true;
+		// Same rules as normalizeBlocks (TM-589): a stub it keeps as is stays content.
+		const [list] = normalizeBlocks({ blocks: [block] }).blocks;
+		if (!list) return false;
+		return !Array.isArray(list.data?.items) || hasItemText(list.data.items);
 	});
 
 export const hasMarkdownContent = (description: unknown): boolean =>

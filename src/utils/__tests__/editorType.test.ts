@@ -3,6 +3,7 @@ import {
 	buildDescriptionPayload,
 	toUpdateBody,
 	editorOptionLabel,
+	hasBlockContent,
 	normalizeEditorType,
 	resolveEditorType,
 } from '@/utils/editorType';
@@ -54,8 +55,81 @@ const emptyJsons = [
 	{ blocks: [] },
 	blocks('  '),
 	blocks('<br>'),
+	{ blocks: [{ type: 'list', data: { items: [] } }] },
+	{
+		blocks: [
+			{ type: 'checklist', data: { items: [{ text: '', checked: true }] } },
+		],
+	},
 ];
 const emptyTexts = [null, undefined, '', '  \n'];
+
+describe('hasBlockContent', () => {
+	const list = (data: unknown, type = 'list') => ({ blocks: [{ type, data }] });
+	const item = (content: string, items: unknown[] = []) => ({
+		content,
+		meta: {},
+		items,
+	});
+
+	it('does not count empty lists and checklists as content (TM-589)', () => {
+		for (const json of [
+			list(undefined),
+			list(null),
+			list({}),
+			list({ items: [] }),
+			list({ items: [null, undefined] }),
+			list({ style: 'ordered', items: [item(''), item('  ', [item('<br>')])] }),
+			list({ items: ['', ' &nbsp; '] }),
+			list({ items: [{ text: '', checked: true }] }, 'checklist'),
+			list({
+				style: 'checklist',
+				items: [{ content: '', meta: { checked: true }, items: [] }],
+			}),
+			{
+				blocks: [
+					list({ items: [] }).blocks[0],
+					{ type: 'paragraph', data: { text: '' } },
+				],
+			},
+		])
+			expect(hasBlockContent(json)).toBe(false);
+	});
+
+	it('counts a list as content when any item, at any depth, has text', () => {
+		expect(hasBlockContent(list({ items: [item(''), item('a')] }))).toBe(true);
+		expect(
+			hasBlockContent(list({ items: [item('', [item('', [item('deep')])])] })),
+		).toBe(true);
+		expect(hasBlockContent(list({ items: [null, 'plain'] }))).toBe(true);
+		expect(
+			hasBlockContent(list({ items: [{ text: 'todo' }] }, 'checklist')),
+		).toBe(true);
+		expect(hasBlockContent(JSON.stringify(list({ items: ['x'] })))).toBe(true);
+	});
+
+	it('counts unreadable items kept as visible text as content', () => {
+		expect(hasBlockContent(list({ items: [{ content: { a: 1 } }] }))).toBe(
+			true,
+		);
+		expect(hasBlockContent(list({ items: [{ foo: 'bar' }] }))).toBe(true);
+	});
+
+	it('counts stub blocks the editor keeps as is as content', () => {
+		expect(hasBlockContent(list({ items: 'x' }))).toBe(true);
+		expect(hasBlockContent(list({ items: {} }))).toBe(true);
+		expect(hasBlockContent(list('raw'))).toBe(true);
+		expect(hasBlockContent(list([1]))).toBe(true);
+	});
+
+	it('keeps the paragraph and other block rules', () => {
+		expect(hasBlockContent(blocks('&nbsp;<br/>'))).toBe(false);
+		expect(hasBlockContent(blocks('hi'))).toBe(true);
+		expect(hasBlockContent({ blocks: [{ type: 'image', data: {} }] })).toBe(
+			true,
+		);
+	});
+});
 
 describe('resolveEditorType', () => {
 	it('opens block-only tasks in Editor.js whatever the preference', () => {
@@ -72,7 +146,7 @@ describe('resolveEditorType', () => {
 	});
 
 	it('treats a non-paragraph block as content', () => {
-		const json = { blocks: [{ type: 'list', data: { items: [] } }] };
+		const json = { blocks: [{ type: 'header', data: { text: '' } }] };
 		expect(
 			resolveEditorType(
 				{ description: null, description_json: json },
