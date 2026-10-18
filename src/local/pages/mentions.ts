@@ -24,7 +24,7 @@ const marks = (ids: number[]) => ids.map(() => '?').join(',');
 const promiseLine = (row: any): string => {
 	const key = taskKeyOf(row.title, row.code, row.seq, row.id);
 	const full = String(row.title ?? '');
-	const title = (withoutTitleKey(full).trim() || full)
+	const title = (withoutTitleKey(full, row.code).trim() || full)
 		.replace(/\s+/g, ' ')
 		.replace(/</g, '&lt;')
 		.trim();

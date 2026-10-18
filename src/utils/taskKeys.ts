@@ -41,19 +41,39 @@ export const taskKeyPrefixes = (categories: CategoryLike[]): string[] => {
 };
 
 // Only ASCII spaces around the key: the local SQL candidate filter in
-// resolveTaskKey selects exactly these titles, so both must agree.
-const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?=[: ]|$)/;
+// resolveTaskKey selects every title this accepts, so both must agree.
+const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?:( *:)|(?= |$))/;
 
-/** The key a title is stamped with ("TM-242: …" or "TM-242 …"), upper-cased. */
-export const titleKey = (title: string | null | undefined): string | null => {
+/**
+ * "TM-242: …" stamps any key; "TM-242 …" only a key in the task's own
+ * category, so "UTF-8 encoding bug" is a title, not a key.
+ */
+const stampOf = (
+	title: string | null | undefined,
+	code: string | null | undefined,
+): { key: string; length: number } | null => {
 	const match = TITLE_KEY.exec(title || '');
-	return match ? match[1].toUpperCase() : null;
+	if (!match) return null;
+	const key = match[1].toUpperCase();
+	const own = (code || '').trim().toUpperCase();
+	const accepted =
+		!!match[2] || (!!own && key.slice(0, key.lastIndexOf('-')) === own);
+	return accepted ? { key, length: match[0].length } : null;
 };
 
+/** The key a title is stamped with, upper-cased; without a code only "KEY:" counts. */
+export const titleKey = (
+	title: string | null | undefined,
+	code?: string | null,
+): string | null => stampOf(title, code)?.key ?? null;
+
 /** The title without its key stamp: "TM-242: Fix login" reads "Fix login". */
-export const withoutTitleKey = (title: string): string => {
-	const match = TITLE_KEY.exec(title);
-	return match ? title.slice(match[0].length).replace(/^[: ]+/, '') : title;
+export const withoutTitleKey = (
+	title: string,
+	code?: string | null,
+): string => {
+	const stamp = stampOf(title, code);
+	return stamp ? title.slice(stamp.length).replace(/^[: ]+/, '') : title;
 };
 
 /**
@@ -65,7 +85,7 @@ export const taskKeyFrom = (
 	code: string | null | undefined,
 	sequence: number | null | undefined,
 ): string | null =>
-	titleKey(title) ??
+	titleKey(title, code) ??
 	(code && code.trim() && sequence != null ? `${code}-${sequence}` : null);
 
 /** Whether a task answers to a key — exactly the key it is shown with. */

@@ -538,10 +538,11 @@ export const resolveTaskKey = async (
 		`SELECT t.id, t.title, c.code, t.category_tasks_sequence_id AS seq FROM tasks t
 		 LEFT JOIN categories c ON c.id = t.project_category_id
 		 WHERE t.deleted_at IS NULL AND (
-		   (LTRIM(t.title) LIKE ? AND SUBSTR(LTRIM(t.title), ?, 1) IN ('', ':', ' '))
+		   (LTRIM(t.title) LIKE ? AND SUBSTR(LTRIM(t.title), ?, 1) IN ('', ':', ' ')
+		    AND (LTRIM(SUBSTR(LTRIM(t.title), ?)) LIKE ':%' OR UPPER(TRIM(c.code)) = UPPER(?)))
 		   OR (UPPER(c.code) = UPPER(?) AND t.category_tasks_sequence_id = ?)
 		 ) LIMIT 20`,
-		[`${key}%`, key.length + 1, code, sequence],
+		[`${key}%`, key.length + 1, key.length + 1, code, code, sequence],
 	);
 	const hit = onlyCarrier(rows, (r) =>
 		taskCarriesKey(r.title, r.code, r.seq, key),

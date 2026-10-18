@@ -259,7 +259,10 @@ it('gives tasks the key the app gives them', async () => {
 		},
 		code: `tmgr.commands.register('tmgr-dev.ui-minor-test.keys', async () =>
 			(await tmgr.tasks.list({})).items.map((t) => t.key));`,
-		categories: [{ title: 'Team', code: 'TM' }],
+		categories: [
+			{ title: 'Team', code: 'TM' },
+			{ title: 'Backend', code: 'TMBE' },
+		],
 		tasks: [
 			{
 				title: 'TM-242 example',
@@ -277,6 +280,23 @@ it('gives tasks the key the app gives them', async () => {
 				category_tasks_sequence_id: 6,
 			},
 			{ title: 'Loose' },
+			{
+				title: 'UTF-8 encoding bug',
+				project_category_id: 1,
+				category_tasks_sequence_id: 7,
+			},
+			{
+				title: 'TMBE-3 x',
+				project_category_id: 1,
+				category_tasks_sequence_id: 8,
+			},
+			{
+				title: 'TM-5: x',
+				project_category_id: 2,
+				category_tasks_sequence_id: 2,
+			},
+			{ title: 'TM-9 x' },
+			{ title: 'TM-9: x' },
 		],
 		quickjs,
 	});
@@ -285,6 +305,11 @@ it('gives tasks the key the app gives them', async () => {
 		'TM-5',
 		'TM-6',
 		null,
+		'TM-7',
+		'TM-8',
+		'TM-5',
+		null,
+		'TM-9',
 	]);
 	host.dispose();
 });

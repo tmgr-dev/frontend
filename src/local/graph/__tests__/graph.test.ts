@@ -206,7 +206,10 @@ describeSqlite('local graph on SQLite', () => {
 		});
 		await task('TM-406 В Спендли', { category: tm, seq: 242 });
 		await task('Fix login', { category: tm, seq: 5 });
-		await task('TM-5 x');
+		await task('TM-5: x');
+		const utf = await task('UTF-8 encoding bug', { category: tm, seq: 6 });
+		expect((await ok('graph/related?entity=TM-6')).center).toBe(`task:${utf}`);
+		expect((await get('graph/related?entity=UTF-8')).status).toBe(404);
 		expect((await ok('graph/related?entity=TM-242')).center).toBe(
 			`task:${stamped}`,
 		);
@@ -224,7 +227,7 @@ describeSqlite('local graph on SQLite', () => {
 	it('resolves TM-1 past twenty longer keys and skips deleted carriers', async () => {
 		for (let n = 10; n < 35; n++) await task(`TM-${n}: decoy`);
 		const real = await task('TM-1: real');
-		const gone = await task('TM-1 gone');
+		const gone = await task('TM-1: gone');
 		await run(`UPDATE tasks SET deleted_at = ? WHERE id = ?`, [stamp(), gone]);
 		expect((await ok('graph/related?entity=TM-1')).center).toBe(`task:${real}`);
 	});

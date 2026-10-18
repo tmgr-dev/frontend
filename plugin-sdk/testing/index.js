@@ -44,11 +44,17 @@ const toWireTask = (state, task) => {
 };
 
 // Same rule as the app's src/utils/taskKeys.ts taskKeyFrom.
-const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?=[: ]|$)/;
+const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?:( *:)|(?= |$))/;
 
 const taskKeyOf = (task, category) => {
 	const stamp = TITLE_KEY.exec(task.title || '');
-	if (stamp) return stamp[1].toUpperCase();
+	if (stamp) {
+		const key = stamp[1].toUpperCase();
+		const own = (category?.code || '').trim().toUpperCase();
+		if (stamp[2] || (own && key.slice(0, key.lastIndexOf('-')) === own)) {
+			return key;
+		}
+	}
 	return category?.code &&
 		category.code.trim() &&
 		task.category_tasks_sequence_id != null

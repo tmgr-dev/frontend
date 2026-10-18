@@ -1157,10 +1157,29 @@ describeSqlite('local pages API on SQLite', () => {
 			});
 
 			it('links a title stamped without a colon like one with it', async () => {
-				await insertTask(41, 'TM-241 foo');
+				await insertTask(41, 'TM-241 foo', tm, 1);
 				await insertTask(42, 'TM-243: bar');
 				expect(await linked('TM-241 and TM-243')).toBe(
 					'[TM-241](tmgr://task/41) and [TM-243](tmgr://task/42)',
+				);
+			});
+
+			it('takes a spaced key only from a task in that category, a colon key from any', async () => {
+				const tmbe = (
+					await data('POST', 'project_categories', {
+						title: 'Backend',
+						code: 'TMBE',
+					})
+				).id;
+				await insertTask(81, 'UTF-8 encoding bug', tm, 5);
+				await insertTask(82, 'TMBE-3 x', tm, 6);
+				await insertTask(83, 'TM-7: x', tmbe, 2);
+				await insertTask(84, 'TM-9 x');
+				await insertTask(85, 'TM-10: x');
+				expect(
+					await linked('TM-5 UTF-8 TM-6 TMBE-3 TM-7 TMBE-2 TM-9 TM-10'),
+				).toBe(
+					'[TM-5](tmgr://task/81) UTF-8 [TM-6](tmgr://task/82) TMBE-3 [TM-7](tmgr://task/83) TMBE-2 TM-9 [TM-10](tmgr://task/85)',
 				);
 			});
 
@@ -1171,10 +1190,22 @@ describeSqlite('local pages API on SQLite', () => {
 
 			it('leaves a key plain when two tasks carry it, or none does', async () => {
 				await insertTask(50, 'Fix login', tm, 5);
-				await insertTask(51, 'TM-5 x');
-				await insertTask(70, 'TM-7 one');
+				await insertTask(51, 'TM-5 x', tm, 1);
+				await insertTask(70, 'TM-7 one', tm, 2);
 				await insertTask(71, 'TM-7: two');
 				expect(await linked('TM-5, TM-7 and TM-8')).toBe('TM-5, TM-7 and TM-8');
+			});
+
+			it('finds TM-5 behind more than twenty spaced TM-5 titles in another category', async () => {
+				const tmbe = (
+					await data('POST', 'project_categories', {
+						title: 'Backend',
+						code: 'TMBE',
+					})
+				).id;
+				for (let n = 1; n <= 25; n++) await insertTask(n, 'TM-5 x', tmbe, n);
+				await insertTask(100, 'TM-5 x', tm, 1);
+				expect(await linked('TM-5')).toBe('[TM-5](tmgr://task/100)');
 			});
 
 			it('finds TM-1 behind more than twenty tasks whose number starts with 1', async () => {
@@ -1206,8 +1237,8 @@ describeSqlite('local pages API on SQLite', () => {
 
 			it('ignores deleted tasks', async () => {
 				await insertTask(50, 'Fix login', tm, 5);
-				await insertTask(51, 'TM-5 x');
-				await insertTask(52, 'TM-9 gone');
+				await insertTask(51, 'TM-5 x', tm, 1);
+				await insertTask(52, 'TM-9 gone', tm, 2);
 				await ctx.db.execute(
 					`UPDATE tasks SET deleted_at = 'b' WHERE id IN (51, 52)`,
 				);
@@ -1230,11 +1261,13 @@ describeSqlite('local pages API on SQLite', () => {
 			it('resolves every shown key back to its task', async () => {
 				const sample: [number, string, number | null, number | null][] = [
 					[301, 'TM-301: colon', null, null],
-					[302, 'TM-302 space', null, null],
-					[303, 'TM-303', null, null],
-					[304, ' TM-304 leading space', null, null],
+					[302, 'TM-302 space', tm, 10],
+					[303, 'TM-303', tm, 11],
+					[304, ' TM-304 leading space', tm, 12],
 					[305, 'TM-305 : spaced colon', null, null],
-					[306, 'tm-306 lower', null, null],
+					[306, 'tm-306 lower', tm, 13],
+					[312, 'UTF-8 encoding bug', tm, 14],
+					[313, 'TMBE-3 other code', tm, 15],
 					[307, 'Fix login', tm, 5],
 					[308, 'TM-900\u00a0nbsp', tm, 6],
 					[309, 'TM-901\ttab', tm, 7],
@@ -1249,10 +1282,12 @@ describeSqlite('local pages API on SQLite', () => {
 				}
 				expect(await resolveTaskKey(ctx, 'TM-900')).toBeNull();
 				expect(await resolveTaskKey(ctx, 'TM-9')).toBeNull();
+				expect(await resolveTaskKey(ctx, 'UTF-8')).toBeNull();
+				expect(await resolveTaskKey(ctx, 'TMBE-3')).toBeNull();
 			});
 
 			it('reads a key followed by NBSP or tab, or after a tab, as no stamp', async () => {
-				await insertTask(51, 'TM-5 x');
+				await insertTask(51, 'TM-5 x', tm, 1);
 				await insertTask(52, 'TM-5 x', tm, 5);
 				await insertTask(60, 'TM-6 x', tm, 9);
 				await insertTask(70, '\tTM-7 x', tm, 3);
@@ -1264,18 +1299,33 @@ describeSqlite('local pages API on SQLite', () => {
 		});
 
 		it('shows a promise under the key its task resolves by', async () => {
+			const category = await data('POST', 'project_categories', {
+				title: 'Team',
+				code: 'TM',
+			});
 			const person = await create('Иван', { type: 'person' });
 			const task = await makeTask('TM-242 example', {
+				project_category_id: category.id,
 				description: `Promised to [Иван](tmgr://page/${person.id})`,
 			});
-			expect((await data('GET', `pages/${person.id}`)).body).toContain(
-				`- [TM-242](tmgr://task/${task.id}) — example`,
+			const loose = await makeTask('UTF-8 encoding bug', {
+				description: `Promised to [Иван](tmgr://page/${person.id})`,
+			});
+			const body = (await data('GET', `pages/${person.id}`)).body;
+			expect(body).toContain(`- [TM-242](tmgr://task/${task.id}) — example`);
+			expect(body).toContain(
+				`- [T${loose.id}](tmgr://task/${loose.id}) — UTF-8 encoding bug`,
 			);
 		});
 
 		it('keeps the whole title of a promise whose title is only its key', async () => {
+			const category = await data('POST', 'project_categories', {
+				title: 'Team',
+				code: 'TM',
+			});
 			const person = await create('Иван', { type: 'person' });
 			const task = await makeTask('TM-5', {
+				project_category_id: category.id,
 				description: `Promised to [Иван](tmgr://page/${person.id})`,
 			});
 			expect((await data('GET', `pages/${person.id}`)).body).toContain(
