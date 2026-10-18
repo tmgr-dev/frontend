@@ -262,6 +262,7 @@ it('gives tasks the key the app gives them', async () => {
 		categories: [
 			{ title: 'Team', code: 'TM' },
 			{ title: 'Backend', code: 'TMBE' },
+			{ title: 'Mobile', code: 'MOBILE-APP' },
 		],
 		tasks: [
 			{
@@ -297,6 +298,21 @@ it('gives tasks the key the app gives them', async () => {
 			},
 			{ title: 'TM-9 x' },
 			{ title: 'TM-9: x' },
+			{
+				title: 'MOBILE-APP-24 x',
+				project_category_id: 3,
+				category_tasks_sequence_id: 1,
+			},
+			{
+				title: 'MOBILE-APP-25: y',
+				project_category_id: 3,
+				category_tasks_sequence_id: 2,
+			},
+			{
+				title: 'MOBILE-APP-26 z',
+				project_category_id: 1,
+				category_tasks_sequence_id: 9,
+			},
 		],
 		quickjs,
 	});
@@ -309,6 +325,9 @@ it('gives tasks the key the app gives them', async () => {
 		'TM-8',
 		'TM-5',
 		null,
+		'TM-9',
+		'MOBILE-APP-24',
+		'MOBILE-APP-25',
 		'TM-9',
 	]);
 	host.dispose();

@@ -1286,6 +1286,27 @@ describeSqlite('local pages API on SQLite', () => {
 				expect(await resolveTaskKey(ctx, 'TMBE-3')).toBeNull();
 			});
 
+			it('resolves a key of a hyphenated category code', async () => {
+				const mobile = (
+					await data('POST', 'project_categories', {
+						title: 'Mobile',
+						code: 'MOBILE-APP',
+					})
+				).id;
+				await insertTask(401, 'MOBILE-APP-24 x', mobile, 3);
+				await insertTask(402, 'MOBILE-APP-25: y', mobile, 4);
+				await insertTask(403, 'MOBILE-APP-26 z', tm, 7);
+				expect(taskKeyOf('MOBILE-APP-24 x', 'MOBILE-APP', 3, 401)).toBe(
+					'MOBILE-APP-24',
+				);
+				expect(await resolveTaskKey(ctx, 'MOBILE-APP-24')).toBe(401);
+				expect(await resolveTaskKey(ctx, 'mobile-app-25')).toBe(402);
+				expect(await resolveTaskKey(ctx, 'MOBILE-APP-3')).toBeNull();
+				expect(taskKeyOf('MOBILE-APP-26 z', 'TM', 7, 403)).toBe('TM-7');
+				expect(await resolveTaskKey(ctx, 'TM-7')).toBe(403);
+				expect(await resolveTaskKey(ctx, 'MOBILE-APP-26')).toBeNull();
+			});
+
 			it('reads a key followed by NBSP or tab, or after a tab, as no stamp', async () => {
 				await insertTask(51, 'TM-5 x', tm, 1);
 				await insertTask(52, 'TM-5 x', tm, 5);

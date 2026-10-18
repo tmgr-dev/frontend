@@ -44,17 +44,22 @@ const toWireTask = (state, task) => {
 };
 
 // Same rule as the app's src/utils/taskKeys.ts taskKeyFrom.
-const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?:( *:)|(?= |$))/;
+const COLON_PREFIX = /^ *([A-Za-z][A-Za-z0-9]*-\d+) *:/;
+
+const titleKeyOf = (title, code) => {
+	if (title == null) return null;
+	if (code && code.trim()) {
+		const quoted = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		const own = new RegExp(`^ *(${quoted}-\\d+)(?=[ :]|$)`, 'i').exec(title);
+		if (own) return own[1].toUpperCase();
+	}
+	const colon = COLON_PREFIX.exec(title);
+	return colon ? colon[1].toUpperCase() : null;
+};
 
 const taskKeyOf = (task, category) => {
-	const stamp = TITLE_KEY.exec(task.title || '');
-	if (stamp) {
-		const key = stamp[1].toUpperCase();
-		const own = (category?.code || '').trim().toUpperCase();
-		if (stamp[2] || (own && key.slice(0, key.lastIndexOf('-')) === own)) {
-			return key;
-		}
-	}
+	const stamp = titleKeyOf(task.title, category?.code);
+	if (stamp) return stamp;
 	return category?.code &&
 		category.code.trim() &&
 		task.category_tasks_sequence_id != null

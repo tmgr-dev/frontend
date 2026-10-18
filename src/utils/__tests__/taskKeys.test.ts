@@ -254,6 +254,41 @@ describe('taskKeyFrom', () => {
 	});
 });
 
+describe('backend TaskKey parity', () => {
+	it('stamps a hyphenated own code with or without a colon', () => {
+		for (const title of ['MOBILE-APP-24 x', 'MOBILE-APP-24: x']) {
+			expect(taskKeyFrom(title, 'MOBILE-APP', 3)).toBe('MOBILE-APP-24');
+			expect(taskCarriesKey(title, 'MOBILE-APP', 3, 'MOBILE-APP-24')).toBe(
+				true,
+			);
+			expect(taskCarriesKey(title, 'MOBILE-APP', 3, 'MOBILE-APP-3')).toBe(
+				false,
+			);
+			expect(withoutTitleKey(title, 'MOBILE-APP')).toBe('x');
+		}
+		expect(taskKeyFrom('mobile-app-24 x', 'MOBILE-APP', 3)).toBe(
+			'MOBILE-APP-24',
+		);
+	});
+
+	it('gives a hyphenated key from another category no stamp', () => {
+		expect(taskKeyFrom('MOBILE-APP-24 x', 'TM', 9)).toBe('TM-9');
+		expect(taskCarriesKey('MOBILE-APP-24 x', 'TM', 9, 'MOBILE-APP-24')).toBe(
+			false,
+		);
+		expect(withoutTitleKey('MOBILE-APP-24 x', 'TM')).toBe('MOBILE-APP-24 x');
+	});
+
+	it('strips the key and the separator after it', () => {
+		expect(withoutTitleKey('TM-1: x', 'TM')).toBe('x');
+		expect(withoutTitleKey('TM-1 x', 'TM')).toBe('x');
+		expect(withoutTitleKey('TM-1: x')).toBe('x');
+		expect(withoutTitleKey('TM-1 :\t x', 'TM')).toBe('x');
+		expect(withoutTitleKey('TM-1 :: x', 'TM')).toBe(': x');
+		expect(withoutTitleKey('TM-1 x', 'TMBE')).toBe('TM-1 x');
+	});
+});
+
 describe('onlyCarrier', () => {
 	it('answers only when exactly one item carries the key', () => {
 		const even = (n: number) => n % 2 === 0;

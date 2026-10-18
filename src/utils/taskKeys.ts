@@ -40,25 +40,35 @@ export const taskKeyPrefixes = (categories: CategoryLike[]): string[] => {
 	return [...seen];
 };
 
-// Only ASCII spaces around the key: the local SQL candidate filter in
-// resolveTaskKey selects every title this accepts, so both must agree.
-const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?:( *:)|(?= |$))/;
+// Mirrors the backend's TaskKey (backend-java tasks/util/TaskKey.java): ASCII
+// spaces only, and the local SQL in resolveTaskKey selects every title this accepts.
+const COLON_PREFIX = /^ *([A-Za-z][A-Za-z0-9]*-\d+) *:/;
+const SEPARATOR = /^ *:?[ \t\n\x0B\f\r]*/;
+
+const escapeRegExp = (text: string) =>
+	text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * "TM-242: …" stamps any key; "TM-242 …" only a key in the task's own
- * category, so "UTF-8 encoding bug" is a title, not a key.
+ * "TM-242 …" or "TM-242: …" in the task's own category (the code as stored,
+ * so "MOBILE-APP-24 x" works), else any "KEY: …". "UTF-8 encoding bug" in TM
+ * has no stamp.
  */
 const stampOf = (
 	title: string | null | undefined,
 	code: string | null | undefined,
 ): { key: string; length: number } | null => {
-	const match = TITLE_KEY.exec(title || '');
-	if (!match) return null;
-	const key = match[1].toUpperCase();
-	const own = (code || '').trim().toUpperCase();
-	const accepted =
-		!!match[2] || (!!own && key.slice(0, key.lastIndexOf('-')) === own);
-	return accepted ? { key, length: match[0].length } : null;
+	if (title == null) return null;
+	if (code && code.trim()) {
+		const own = new RegExp(
+			`^ *(${escapeRegExp(code)}-\\d+)(?=[ :]|$)`,
+			'i',
+		).exec(title);
+		if (own) return { key: own[1].toUpperCase(), length: own[0].length };
+	}
+	const colon = COLON_PREFIX.exec(title);
+	return colon
+		? { key: colon[1].toUpperCase(), length: colon[0].length }
+		: null;
 };
 
 /** The key a title is stamped with, upper-cased; without a code only "KEY:" counts. */
@@ -73,7 +83,7 @@ export const withoutTitleKey = (
 	code?: string | null,
 ): string => {
 	const stamp = stampOf(title, code);
-	return stamp ? title.slice(stamp.length).replace(/^[: ]+/, '') : title;
+	return stamp ? title.slice(stamp.length).replace(SEPARATOR, '') : title;
 };
 
 /**
