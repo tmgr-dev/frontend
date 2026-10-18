@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.47 — 2026-10-18
+
+- Task keys: a key like TM-242 on a page, in the graph or in a link now opens the task whose title starts with it, with or without a colon, instead of an unrelated task with the same number. A key that several tasks carry stays plain text.
+- The key shown for a task (pages, files, graph, plugins) is now the one from its title, so copying it finds the same task again.
+
 ## 0.9.46 — 2026-10-17
 
 - Wide windows: page content now sits in one centered column up to 1280px wide instead of hugging the left edge. The board and the workspace map still use the full width.
