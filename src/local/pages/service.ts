@@ -1,3 +1,4 @@
+import { onlyCarrier, taskCarriesKey } from '@/utils/taskKeys';
 import { journaledBatch, journaledCreate } from '../journal';
 import { parseJson } from '../serialize';
 import {
@@ -530,28 +531,39 @@ const linkStatements = (plan: LinkPlan, page: PageRef): BatchStatement[] => [
 	})),
 ];
 
+const TITLE_SPACE = ' \t\n\r';
+
+export const resolveTaskKey = async (
+	ctx: LocalContext,
+	key: string,
+): Promise<number | null> => {
+	const dash = key.lastIndexOf('-');
+	const code = key.substring(0, dash);
+	const sequence = Number(key.substring(dash + 1));
+	if (!Number.isSafeInteger(sequence)) return null;
+	const rows = await ctx.db.select<any>(
+		`SELECT t.id, t.title, c.code, t.category_tasks_sequence_id AS seq FROM tasks t
+		 LEFT JOIN categories c ON c.id = t.project_category_id
+		 WHERE t.deleted_at IS NULL AND (
+		   (LTRIM(t.title, ?) LIKE ? AND SUBSTR(LTRIM(t.title, ?), ?, 1) IN ('', ':', ' ', char(9), char(10), char(13)))
+		   OR (UPPER(c.code) = UPPER(?) AND t.category_tasks_sequence_id = ?)
+		 ) LIMIT 20`,
+		[TITLE_SPACE, `${key}%`, TITLE_SPACE, key.length + 1, code, sequence],
+	);
+	const hit = onlyCarrier(rows, (r) =>
+		taskCarriesKey(r.title, r.code, r.seq, key),
+	);
+	return hit ? hit.id : null;
+};
+
 const resolveTaskKeys = async (
 	ctx: LocalContext,
 	keys: string[],
 ): Promise<Map<string, number>> => {
 	const out = new Map<string, number>();
 	for (const key of keys) {
-		const dash = key.lastIndexOf('-');
-		const code = key.substring(0, dash);
-		const sequence = Number(key.substring(dash + 1));
-		if (!Number.isSafeInteger(sequence)) continue;
-		const rows = await ctx.db.select<any>(
-			`SELECT t.id, t.title, c.code, t.category_tasks_sequence_id AS seq FROM tasks t
-			 LEFT JOIN categories c ON c.id = t.project_category_id
-			 WHERE t.deleted_at IS NULL AND (t.title LIKE ? OR (c.code = ? AND t.category_tasks_sequence_id = ?)) LIMIT 20`,
-			[`${key}:%`, code, sequence],
-		);
-		const hit = rows.find(
-			(r) =>
-				taskKeyOf(r.title, r.code, r.seq, r.id).toLowerCase() ===
-				key.toLowerCase(),
-		);
-		if (hit) out.set(key, hit.id);
+		const id = await resolveTaskKey(ctx, key);
+		if (id != null) out.set(key, id);
 	}
 	return out;
 };

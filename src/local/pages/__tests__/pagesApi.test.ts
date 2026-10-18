@@ -1118,6 +1118,116 @@ describeSqlite('local pages API on SQLite', () => {
 			);
 		});
 
+		describe('which task a key names', () => {
+			let tm: number;
+			const insertTask = (
+				id: number,
+				title: string,
+				category: number | null = null,
+				seq: number | null = null,
+			) =>
+				ctx.db.execute(
+					`INSERT INTO tasks (id, title, project_category_id, category_tasks_sequence_id, created_at, updated_at)
+					 VALUES (?, ?, ?, ?, 'a', 'a')`,
+					[id, title, category, seq],
+				);
+			const linked = async (body: string) =>
+				(await create('Notes', { body })).body;
+
+			beforeEach(async () => {
+				tm = (
+					await data('POST', 'project_categories', {
+						title: 'Team',
+						code: 'TM',
+					})
+				).id;
+			});
+
+			it('links the task stamped with the key, not the one whose ticket number spells it', async () => {
+				await insertTask(
+					9204,
+					'TM-242 сделать аватарки юзеров кликабельными',
+					tm,
+					78,
+				);
+				await insertTask(9605, 'TM-406 В Спендли', tm, 242);
+				expect(await linked('See TM-242.')).toBe(
+					'See [TM-242](tmgr://task/9204).',
+				);
+			});
+
+			it('links a title stamped without a colon like one with it', async () => {
+				await insertTask(41, 'TM-241 foo');
+				await insertTask(42, 'TM-243: bar');
+				expect(await linked('TM-241 and TM-243')).toBe(
+					'[TM-241](tmgr://task/41) and [TM-243](tmgr://task/42)',
+				);
+			});
+
+			it('links an unstamped task by its ticket number', async () => {
+				await insertTask(50, 'Fix login', tm, 5);
+				expect(await linked('TM-5')).toBe('[TM-5](tmgr://task/50)');
+			});
+
+			it('leaves a key plain when two tasks carry it, or none does', async () => {
+				await insertTask(50, 'Fix login', tm, 5);
+				await insertTask(51, 'TM-5 x');
+				await insertTask(70, 'TM-7 one');
+				await insertTask(71, 'TM-7: two');
+				expect(await linked('TM-5, TM-7 and TM-8')).toBe('TM-5, TM-7 and TM-8');
+			});
+
+			it('finds TM-1 behind more than twenty tasks whose number starts with 1', async () => {
+				for (let n = 10; n < 35; n++) await insertTask(n, `TM-${n}: decoy`);
+				await insertTask(100, 'TM-1: real');
+				expect(await linked('TM-1')).toBe('[TM-1](tmgr://task/100)');
+			});
+
+			it('links a title with a space before the colon or leading whitespace', async () => {
+				await insertTask(60, 'TM-129 : foo');
+				await insertTask(61, '  TM-130: bar');
+				expect(await linked('TM-129 TM-130')).toBe(
+					'[TM-129](tmgr://task/60) [TM-130](tmgr://task/61)',
+				);
+			});
+
+			it('matches the ticket number whatever the case of the category code', async () => {
+				await ctx.db.execute(`UPDATE categories SET code = 'tm' WHERE id = ?`, [
+					tm,
+				]);
+				await insertTask(50, 'Fix login', tm, 5);
+				expect(await linked('TM-5')).toBe('[TM-5](tmgr://task/50)');
+			});
+
+			it('never links by the ticket number of a task stamped with another key', async () => {
+				await insertTask(9605, 'TM-406 В Спендли', tm, 242);
+				expect(await linked('TM-242')).toBe('TM-242');
+			});
+
+			it('ignores deleted tasks', async () => {
+				await insertTask(50, 'Fix login', tm, 5);
+				await insertTask(51, 'TM-5 x');
+				await insertTask(52, 'TM-9 gone');
+				await ctx.db.execute(
+					`UPDATE tasks SET deleted_at = 'b' WHERE id IN (51, 52)`,
+				);
+				expect(await linked('TM-5 TM-9')).toBe('[TM-5](tmgr://task/50) TM-9');
+			});
+
+			it('leaves a key that already is a link alone', async () => {
+				await insertTask(
+					9204,
+					'TM-242 сделать аватарки юзеров кликабельными',
+					tm,
+					78,
+				);
+				await insertTask(9605, 'TM-406 В Спендли', tm, 242);
+				expect(await linked('[TM-242](tmgr://task/9605) and TM-242')).toBe(
+					'[TM-242](tmgr://task/9605) and [TM-242](tmgr://task/9204)',
+				);
+			});
+		});
+
 		it('ignores links to targets that do not exist', async () => {
 			const page = await create('Notes', {
 				body: '[x](tmgr://page/999) [y](tmgr://task/999) [me](tmgr://user/7) [z](tmgr://user/8)',

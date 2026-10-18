@@ -198,6 +198,35 @@ describeSqlite('local graph on SQLite', () => {
 		);
 	});
 
+	it('resolves a task key to the task stamped with it, and an ambiguous key to nothing', async () => {
+		const tm = await category('Team', 'TM');
+		const stamped = await task('TM-242 сделать аватарки юзеров кликабельными', {
+			category: tm,
+			seq: 78,
+		});
+		await task('TM-406 В Спендли', { category: tm, seq: 242 });
+		await task('Fix login', { category: tm, seq: 5 });
+		await task('TM-5 x');
+		expect((await ok('graph/related?entity=TM-242')).center).toBe(
+			`task:${stamped}`,
+		);
+		expect((await get('graph/related?entity=TM-5')).status).toBe(404);
+		expect((await get('graph/related?entity=TM-406')).status).toBe(200);
+		expect((await get('graph/related?entity=TM-78')).status).toBe(404);
+		expect((await get('graph/related?entity=TM-999')).status).toBe(404);
+		expect((await ok('graph/related?entity=tm-242')).center).toBe(
+			`task:${stamped}`,
+		);
+	});
+
+	it('resolves TM-1 past twenty longer keys and skips deleted carriers', async () => {
+		for (let n = 10; n < 35; n++) await task(`TM-${n}: decoy`);
+		const real = await task('TM-1: real');
+		const gone = await task('TM-1 gone');
+		await run(`UPDATE tasks SET deleted_at = ? WHERE id = ?`, [stamp(), gone]);
+		expect((await ok('graph/related?entity=TM-1')).center).toBe(`task:${real}`);
+	});
+
 	it('answers 404 for a missing or deleted entity and 422 for a malformed one', async () => {
 		const t = await task('Gone');
 		await run(`UPDATE tasks SET deleted_at = ? WHERE id = ?`, [stamp(), t]);

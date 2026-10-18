@@ -7,6 +7,7 @@ import type {
 	GraphRanking,
 	GraphResult,
 } from '@/types/graph';
+import { resolveTaskKey } from '../pages/service';
 import { LocalHttpError, type LocalContext } from '../types';
 import {
 	EDGE_SPEC,
@@ -159,13 +160,9 @@ export const resolveEntity = async (
 		if (!row) throw notFound();
 		id = `page:${row.id}`;
 	} else if ((m = /^([A-Za-z][A-Za-z0-9_]*)-(\d+)$/.exec(value))) {
-		const [row] = await ctx.db.select<{ id: number }>(
-			`SELECT t.id FROM tasks t JOIN categories c ON c.id = t.project_category_id
-			 WHERE UPPER(c.code) = UPPER(?) AND t.category_tasks_sequence_id = ? AND t.deleted_at IS NULL`,
-			[m[1], Number(m[2])],
-		);
-		if (!row) throw notFound();
-		id = `task:${row.id}`;
+		const taskId = await resolveTaskKey(ctx, value);
+		if (taskId == null) throw notFound();
+		id = `task:${taskId}`;
 	}
 	if (!id)
 		throw new LocalHttpError(

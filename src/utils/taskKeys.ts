@@ -10,6 +10,8 @@ interface CategoryLike {
 interface TaskLike {
 	id?: number | null;
 	title?: string | null;
+	category?: number | { code?: string | null } | null;
+	category_tasks_sequence_id?: number | null;
 }
 
 const TITLE_PATTERN_SETTING = 'task_name_pattern_date&time';
@@ -38,22 +40,60 @@ export const taskKeyPrefixes = (categories: CategoryLike[]): string[] => {
 	return [...seen];
 };
 
+const KEY_LIKE_PREFIX = /^\s*[A-Za-z][A-Za-z0-9]*-\d+(?=[:\s]|$)/;
+
 /**
- * The task a key names. The key lives in the title prefix ("TM-129: …"), so a
- * search hit that merely mentions the key, or one whose number merely starts
- * with it, is not the task the reader asked for.
+ * Whether a task answers to a key: its title starts with the key, or — only
+ * when the title starts with no key at all — its category code and ticket
+ * number spell it. A title stamped with another key keeps that key.
+ */
+export const taskCarriesKey = (
+	title: string | null | undefined,
+	code: string | null | undefined,
+	sequence: number | null | undefined,
+	key: string,
+): boolean => {
+	const wanted = (key || '').trim().toUpperCase();
+	if (!wanted) {
+		return false;
+	}
+	const head = (title || '').trimStart().toUpperCase();
+	if (head.startsWith(wanted)) {
+		const next = head.charAt(wanted.length);
+		if (next === '' || next === ':' || /\s/.test(next)) {
+			return true;
+		}
+	}
+	if (KEY_LIKE_PREFIX.test(title || '')) {
+		return false;
+	}
+	return (
+		!!code && sequence != null && `${code}-${sequence}`.toUpperCase() === wanted
+	);
+};
+
+/** The one item that carries the key; none or several mean the key names nothing. */
+export const onlyCarrier = <T>(
+	items: T[],
+	carries: (item: T) => boolean,
+): T | null => {
+	const hits = (items || []).filter(carries);
+	return hits.length === 1 ? hits[0] : null;
+};
+
+/**
+ * The task a key names, among search hits. A hit that merely mentions the key,
+ * or whose number merely starts with it, is not the task the reader asked for.
  */
 export const pickTaskByKey = <T extends TaskLike>(
 	tasks: T[],
 	key: string,
-): T | null => {
-	const wanted = (key || '').trim().toUpperCase();
-	if (!wanted) {
-		return null;
-	}
-	const found = (tasks || []).find((task) => {
-		const title = (task?.title || '').trim().toUpperCase();
-		return title.startsWith(`${wanted}:`) || title.startsWith(`${wanted} :`);
-	});
-	return found ?? null;
-};
+): T | null =>
+	onlyCarrier(tasks, (task) =>
+		taskCarriesKey(
+			task?.title,
+			typeof task?.category === 'object' ? task.category?.code : null,
+			task?.category_tasks_sequence_id,
+			key,
+		),
+	);
