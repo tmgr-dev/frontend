@@ -155,6 +155,7 @@
 		openTarget,
 	} from '@/utils/simpleStatus';
 	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
+	import { taskKeyFrom } from '@/utils/taskKeys';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import {
@@ -653,15 +654,14 @@
 
 	const taskKeyError = ref<string | null>(null);
 
-	const taskDisplayKey = computed(() => {
-		if (
-			currentCategoryCode.value &&
-			form.value.category_tasks_sequence_id != null
-		) {
-			return `${currentCategoryCode.value}-${form.value.category_tasks_sequence_id}`;
-		}
-		return `TMGR-T${taskId.value || form.value.id}`;
-	});
+	const taskDisplayKey = computed(
+		() =>
+			taskKeyFrom(
+				form.value.title,
+				currentCategoryCode.value,
+				form.value.category_tasks_sequence_id,
+			) ?? `TMGR-T${taskId.value || form.value.id}`,
+	);
 
 	/** TM-232: keep creating in the same category - opens the new-task form with it preselected. */
 	const createAnotherInCategory = () => {

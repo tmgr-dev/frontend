@@ -3,7 +3,10 @@ import {
 	onlyCarrier,
 	pickTaskByKey,
 	taskCarriesKey,
+	taskKeyFrom,
 	taskKeyPrefixes,
+	titleKey,
+	withoutTitleKey,
 } from '../taskKeys';
 
 describe('keyPrefixFromPattern', () => {
@@ -132,7 +135,6 @@ describe('taskCarriesKey', () => {
 	it('reads the key from the title prefix', () => {
 		expect(taskCarriesKey('TM-242: x', null, null, 'TM-242')).toBe(true);
 		expect(taskCarriesKey('TM-242 x', null, null, 'TM-242')).toBe(true);
-		expect(taskCarriesKey('TM-242\tx', null, null, 'TM-242')).toBe(true);
 		expect(taskCarriesKey('TM-242', null, null, 'TM-242')).toBe(true);
 		expect(taskCarriesKey('  TM-242: x', null, null, 'TM-242')).toBe(true);
 		expect(taskCarriesKey('tm-242 x', null, null, 'TM-242')).toBe(true);
@@ -158,6 +160,63 @@ describe('taskCarriesKey', () => {
 		expect(taskCarriesKey('Fix login', 'TM', null, 'TM-5')).toBe(false);
 		expect(taskCarriesKey('Fix login', null, 5, 'TM-5')).toBe(false);
 		expect(taskCarriesKey('Fix login', 'TM', 6, 'TM-5')).toBe(false);
+	});
+
+	it('takes a key only after ASCII spaces and before a colon, a space or the end', () => {
+		expect(taskCarriesKey(' TM-242 x', null, null, 'TM-242')).toBe(true);
+		expect(taskCarriesKey('TM-242 x', null, null, 'TM-242')).toBe(false);
+		expect(taskCarriesKey('TM-242\tx', null, null, 'TM-242')).toBe(false);
+		expect(taskCarriesKey('\tTM-242 x', null, null, 'TM-242')).toBe(false);
+	});
+
+	it('treats a key followed by NBSP or tab, or after a tab, as no stamp', () => {
+		expect(taskCarriesKey('TM-242 x', 'TM', 5, 'TM-5')).toBe(true);
+		expect(taskCarriesKey('TM-242\tx', 'TM', 5, 'TM-5')).toBe(true);
+		expect(taskCarriesKey('\tTM-242 x', 'TM', 5, 'TM-5')).toBe(true);
+		expect(taskCarriesKey(' TM-242 x', 'TM', 5, 'TM-5')).toBe(false);
+	});
+});
+
+describe('titleKey and withoutTitleKey', () => {
+	it('read and strip the stamp the matcher reads', () => {
+		expect(titleKey('tm-242 example')).toBe('TM-242');
+		expect(titleKey('  TM-242: example')).toBe('TM-242');
+		expect(titleKey('TM-242')).toBe('TM-242');
+		expect(titleKey('TM-242 example')).toBeNull();
+		expect(titleKey('\tTM-242 example')).toBeNull();
+		expect(titleKey('TM-242x')).toBeNull();
+		expect(titleKey(null)).toBeNull();
+		expect(withoutTitleKey('TM-242 example')).toBe('example');
+		expect(withoutTitleKey('TM-242: example')).toBe('example');
+		expect(withoutTitleKey(' TM-242 : example')).toBe('example');
+		expect(withoutTitleKey('TM-242 example')).toBe('TM-242 example');
+		expect(withoutTitleKey('Fix login')).toBe('Fix login');
+	});
+});
+
+describe('taskKeyFrom', () => {
+	it('shows the stamped key, else code and ticket number, else nothing', () => {
+		expect(taskKeyFrom('TM-242 example', 'TM', 78)).toBe('TM-242');
+		expect(taskKeyFrom('TM-242: example', 'TM', 78)).toBe('TM-242');
+		expect(taskKeyFrom('Fix login', 'TM', 5)).toBe('TM-5');
+		expect(taskKeyFrom('TM-242 example', 'TM', 78)).toBe('TM-78');
+		expect(taskKeyFrom('Fix login', ' ', 5)).toBeNull();
+		expect(taskKeyFrom('Fix login', 'TM', null)).toBeNull();
+	});
+
+	it('round-trips: every shown key resolves back to its task', () => {
+		const tasks: [string, string | null, number | null][] = [
+			['TM-242 example', 'TM', 78],
+			['TM-242: example', 'TM', 78],
+			['  TM-9', null, null],
+			['Fix login', 'TM', 5],
+			['TM-1 x', 'TM', 3],
+			['\tTM-1 x', 'TM', 4],
+		];
+		for (const [title, code, seq] of tasks) {
+			const key = taskKeyFrom(title, code, seq)!;
+			expect(taskCarriesKey(title, code, seq, key)).toBe(true);
+		}
 	});
 });
 

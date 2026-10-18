@@ -217,6 +217,8 @@ describeSqlite('local graph on SQLite', () => {
 		expect((await ok('graph/related?entity=tm-242')).center).toBe(
 			`task:${stamped}`,
 		);
+		const node = (await ok(`graph/related?entity=task:${stamped}`)).nodes[0];
+		expect(node.key).toBe('TM-242');
 	});
 
 	it('resolves TM-1 past twenty longer keys and skips deleted carriers', async () => {

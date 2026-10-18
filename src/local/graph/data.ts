@@ -1,4 +1,5 @@
 import type { GraphNode, GraphNodeType } from '@/types/graph';
+import { taskKeyFrom } from '@/utils/taskKeys';
 import type { LocalContext } from '../types';
 
 export type Group =
@@ -262,7 +263,7 @@ export const loadInfos = async (
 		taskIds.map(Number),
 	)) {
 		const node = baseNode(`task:${r.id}`, 'task', r.id, r.title);
-		node.key = r.ccode && r.seq ? `${r.ccode}-${r.seq}` : null;
+		node.key = taskKeyFrom(r.title, r.ccode, r.seq);
 		node.status = r.sname ? { name: r.sname, type: r.stype } : null;
 		node.category_id = r.cid ?? null;
 		node.category = r.ctitle ?? null;

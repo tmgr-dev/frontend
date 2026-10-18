@@ -1,9 +1,9 @@
+import { withoutTitleKey } from '@/utils/taskKeys';
 import type { LocalContext } from '../types';
 import { PROMISES_SECTION } from './markdown';
 import { refreshManagedSection, taskKeyOf } from './service';
 
 const PAGE_LINK = /tmgr:\\?\/\\?\/page\\?\/(\d+)/g;
-const KEY_PREFIX = /^\s*[A-Za-z][A-Za-z0-9]*-\d+\s*:\s*/;
 const MAX_PAGES_PER_TASK = 100;
 const PROMISES_SUMMARY = 'Promises updated';
 
@@ -23,8 +23,8 @@ const marks = (ids: number[]) => ids.map(() => '?').join(',');
 
 const promiseLine = (row: any): string => {
 	const key = taskKeyOf(row.title, row.code, row.seq, row.id);
-	const title = String(row.title ?? '')
-		.replace(KEY_PREFIX, '')
+	const full = String(row.title ?? '');
+	const title = (withoutTitleKey(full).trim() || full)
 		.replace(/\s+/g, ' ')
 		.replace(/</g, '&lt;')
 		.trim();

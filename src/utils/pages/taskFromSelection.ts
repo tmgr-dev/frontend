@@ -1,12 +1,12 @@
-export const LAST_CATEGORY_KEY = 'tmgr.pages.taskFromSelection.category';
+import { titleKey } from '@/utils/taskKeys';
 
-const KEY = /^([A-Z][A-Z0-9]+-\d+)\b/;
+export const LAST_CATEGORY_KEY = 'tmgr.pages.taskFromSelection.category';
 
 export const taskKeyLabel = (task: {
 	id: number;
 	key?: string | null;
 	title?: string | null;
-}): string => task.key || KEY.exec(task.title ?? '')?.[1] || `#${task.id}`;
+}): string => task.key || titleKey(task.title) || `#${task.id}`;
 
 export const pickDefaultCategory = (
 	categories: { id: number }[],

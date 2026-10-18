@@ -1,5 +1,6 @@
 /** Markdown export of local workspaces: one file per task plus a README index. Pure functions. */
 import { listStart, normalizeBlocks, type ListItem } from '@/utils/editor';
+import { taskKeyFrom } from '@/utils/taskKeys';
 
 export interface ExportTask {
 	id: number;
@@ -25,11 +26,16 @@ export interface ExportFile {
 }
 
 export const taskKey = (
-	task: Pick<ExportTask, 'id' | 'category' | 'category_tasks_sequence_id'>,
+	task: Pick<
+		ExportTask,
+		'id' | 'title' | 'category' | 'category_tasks_sequence_id'
+	>,
 ) =>
-	task.category?.code && task.category_tasks_sequence_id
-		? `${task.category.code}-${task.category_tasks_sequence_id}`
-		: `T-${task.id}`;
+	taskKeyFrom(
+		task.title,
+		task.category?.code,
+		task.category_tasks_sequence_id,
+	) ?? `T-${task.id}`;
 
 const slug = (text: string) =>
 	text
@@ -39,8 +45,14 @@ const slug = (text: string) =>
 		.replace(/^-+|-+$/g, '')
 		.slice(0, 60) || 'task';
 
+// Title stamps repeat across tasks; file names need the unique ticket identity.
+const fileKey = (task: ExportTask) =>
+	task.category?.code && task.category_tasks_sequence_id
+		? `${task.category.code}-${task.category_tasks_sequence_id}`
+		: `T-${task.id}`;
+
 export const taskFileName = (task: ExportTask) =>
-	`${taskKey(task)}-${slug(task.title)}.md`;
+	`${fileKey(task)}-${slug(task.title)}.md`;
 
 export const formatDuration = (seconds: number) => {
 	const total = Math.max(0, Math.floor(seconds || 0));

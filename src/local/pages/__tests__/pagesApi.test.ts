@@ -5,7 +5,7 @@ import { dispatchLocal } from '../../dispatch';
 import { enableLocalPersona } from '../../personas';
 import { migrate } from '../../schema';
 import type { LocalActor, LocalContext } from '../../types';
-import { ensureContextPage } from '../service';
+import { ensureContextPage, resolveTaskKey, taskKeyOf } from '../service';
 
 const describeSqlite = nodeSqliteAvailable ? describe : describe.skip;
 
@@ -1226,6 +1226,61 @@ describeSqlite('local pages API on SQLite', () => {
 					'[TM-242](tmgr://task/9605) and [TM-242](tmgr://task/9204)',
 				);
 			});
+
+			it('resolves every shown key back to its task', async () => {
+				const sample: [number, string, number | null, number | null][] = [
+					[301, 'TM-301: colon', null, null],
+					[302, 'TM-302 space', null, null],
+					[303, 'TM-303', null, null],
+					[304, ' TM-304 leading space', null, null],
+					[305, 'TM-305 : spaced colon', null, null],
+					[306, 'tm-306 lower', null, null],
+					[307, 'Fix login', tm, 5],
+					[308, 'TM-900\u00a0nbsp', tm, 6],
+					[309, 'TM-901\ttab', tm, 7],
+					[310, '\tTM-902 leading tab', tm, 8],
+					[311, 'TM-310: stamped over ticket number', tm, 9],
+				];
+				for (const [id, title, category, seq] of sample)
+					await insertTask(id, title, category, seq);
+				for (const [id, title, , seq] of sample) {
+					const key = taskKeyOf(title, seq == null ? null : 'TM', seq, id);
+					expect([key, await resolveTaskKey(ctx, key)]).toEqual([key, id]);
+				}
+				expect(await resolveTaskKey(ctx, 'TM-900')).toBeNull();
+				expect(await resolveTaskKey(ctx, 'TM-9')).toBeNull();
+			});
+
+			it('reads a key followed by NBSP or tab, or after a tab, as no stamp', async () => {
+				await insertTask(51, 'TM-5 x');
+				await insertTask(52, 'TM-5 x', tm, 5);
+				await insertTask(60, 'TM-6 x', tm, 9);
+				await insertTask(70, '\tTM-7 x', tm, 3);
+				await insertTask(80, 'TM-8\tx', tm, 4);
+				expect(await linked('TM-5 TM-6 TM-9 TM-7 TM-3 TM-8 TM-4')).toBe(
+					'TM-5 TM-6 [TM-9](tmgr://task/60) TM-7 [TM-3](tmgr://task/70) TM-8 [TM-4](tmgr://task/80)',
+				);
+			});
+		});
+
+		it('shows a promise under the key its task resolves by', async () => {
+			const person = await create('Иван', { type: 'person' });
+			const task = await makeTask('TM-242 example', {
+				description: `Promised to [Иван](tmgr://page/${person.id})`,
+			});
+			expect((await data('GET', `pages/${person.id}`)).body).toContain(
+				`- [TM-242](tmgr://task/${task.id}) — example`,
+			);
+		});
+
+		it('keeps the whole title of a promise whose title is only its key', async () => {
+			const person = await create('Иван', { type: 'person' });
+			const task = await makeTask('TM-5', {
+				description: `Promised to [Иван](tmgr://page/${person.id})`,
+			});
+			expect((await data('GET', `pages/${person.id}`)).body).toContain(
+				`- [TM-5](tmgr://task/${task.id}) — [TM-5](tmgr://task/${task.id}) · `,
+			);
 		});
 
 		it('ignores links to targets that do not exist', async () => {

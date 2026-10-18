@@ -49,6 +49,12 @@ it('writes a task with frontmatter, checkpoints, attachments and comments', () =
 	expect(md).toContain('**Yurij** · 2026-09-26T11:00:00Z\n\nLooks good');
 });
 
+it('keys a task by the key its title is stamped with', () => {
+	const t = task({ title: 'TM-242 example', category_tasks_sequence_id: 78 });
+	expect(taskFileName(t)).toBe('TM-78-tm-242-example.md');
+	expect(taskToMarkdown(t, '..')).toContain('key: TM-242\n');
+});
+
 it('escapes titles safely in YAML and names files by key and title', () => {
 	const t = task({
 		title: 'Fix: "quotes" & colons',
@@ -189,6 +195,20 @@ it('numbers ordered lists from meta.start at the top level only', () => {
 	expect(ordered(5)).toBe('5. a\n  1. a1\n6. b');
 	expect(ordered(0)).toBe('1. a\n  1. a1\n2. b');
 	expect(ordered('3')).toBe('1. a\n  1. a1\n2. b');
+});
+
+it('gives two tasks stamped with the same key and title separate files', () => {
+	const twin = (id: number) =>
+		task({
+			id,
+			title: 'TM-5: x',
+			category: null,
+			category_tasks_sequence_id: null,
+		});
+	const paths = exportWorkspaceFiles('Personal', [], [twin(1), twin(2)], 'now')
+		.map((f) => f.path)
+		.filter((p) => p.startsWith('tasks/'));
+	expect(new Set(paths).size).toBe(2);
 });
 
 it('exports a workspace as a README index plus one file per task', () => {

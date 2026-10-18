@@ -1,3 +1,4 @@
+import { taskKeyFrom } from '@/utils/taskKeys';
 import type { AxiosInstance } from 'axios';
 import { PluginError, type DataApi } from './broker';
 import { encodeFile, MAX_FILE_BYTES } from './fileData';
@@ -39,11 +40,13 @@ const relationTypeId = (name: string): number => {
  * The headers mark the write as the plugin's for domain events and comment/reaction authorship.
  */
 /** `storageId` namespaces the plugin's storage; installed plugins include their repository in it. */
-/** `key: "CODE-N"` from the category's code and this task's ticket number in it, else null. */
+/** `key`: the key the title is stamped with, else "CODE-N" from the category's code and ticket number, else null. */
 export const taskKey = (task: any): string | null =>
-	task?.category?.code && task?.category_tasks_sequence_id != null
-		? `${task.category.code}-${task.category_tasks_sequence_id}`
-		: null;
+	taskKeyFrom(
+		task?.title,
+		task?.category?.code,
+		task?.category_tasks_sequence_id,
+	);
 
 const withKey = (task: any) =>
 	task && typeof task === 'object' ? { ...task, key: taskKey(task) } : task;

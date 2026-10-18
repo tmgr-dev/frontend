@@ -47,10 +47,7 @@ const activeStatusIds = async () => {
 	return new Set(statuses.filter((s) => s.type === 'active').map((s) => s.id));
 };
 
-const taskKey = (task) =>
-	task.category && task.category.code && task.category_tasks_sequence_id
-		? `${task.category.code}-${task.category_tasks_sequence_id}`
-		: `#${task.id}`;
+const taskKey = (task) => task.key || `#${task.id}`;
 
 const overrunTasks = async () => {
 	const [tasks, threshold] = await Promise.all([allTasks(), warnAt()]);

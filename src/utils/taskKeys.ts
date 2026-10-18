@@ -40,13 +40,35 @@ export const taskKeyPrefixes = (categories: CategoryLike[]): string[] => {
 	return [...seen];
 };
 
-const KEY_LIKE_PREFIX = /^\s*[A-Za-z][A-Za-z0-9]*-\d+(?=[:\s]|$)/;
+// Only ASCII spaces around the key: the local SQL candidate filter in
+// resolveTaskKey selects exactly these titles, so both must agree.
+const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?=[: ]|$)/;
+
+/** The key a title is stamped with ("TM-242: …" or "TM-242 …"), upper-cased. */
+export const titleKey = (title: string | null | undefined): string | null => {
+	const match = TITLE_KEY.exec(title || '');
+	return match ? match[1].toUpperCase() : null;
+};
+
+/** The title without its key stamp: "TM-242: Fix login" reads "Fix login". */
+export const withoutTitleKey = (title: string): string => {
+	const match = TITLE_KEY.exec(title);
+	return match ? title.slice(match[0].length).replace(/^[: ]+/, '') : title;
+};
 
 /**
- * Whether a task answers to a key: its title starts with the key, or — only
- * when the title starts with no key at all — its category code and ticket
- * number spell it. A title stamped with another key keeps that key.
+ * A task's key: the one its title is stamped with, else its category code and
+ * ticket number. A title stamped with another key keeps that key.
  */
+export const taskKeyFrom = (
+	title: string | null | undefined,
+	code: string | null | undefined,
+	sequence: number | null | undefined,
+): string | null =>
+	titleKey(title) ??
+	(code && code.trim() && sequence != null ? `${code}-${sequence}` : null);
+
+/** Whether a task answers to a key — exactly the key it is shown with. */
 export const taskCarriesKey = (
 	title: string | null | undefined,
 	code: string | null | undefined,
@@ -54,21 +76,8 @@ export const taskCarriesKey = (
 	key: string,
 ): boolean => {
 	const wanted = (key || '').trim().toUpperCase();
-	if (!wanted) {
-		return false;
-	}
-	const head = (title || '').trimStart().toUpperCase();
-	if (head.startsWith(wanted)) {
-		const next = head.charAt(wanted.length);
-		if (next === '' || next === ':' || /\s/.test(next)) {
-			return true;
-		}
-	}
-	if (KEY_LIKE_PREFIX.test(title || '')) {
-		return false;
-	}
 	return (
-		!!code && sequence != null && `${code}-${sequence}`.toUpperCase() === wanted
+		!!wanted && taskKeyFrom(title, code, sequence)?.toUpperCase() === wanted
 	);
 };
 

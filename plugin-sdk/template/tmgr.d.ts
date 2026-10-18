@@ -79,7 +79,7 @@ interface TmgrTask {
 	project_category_id: number | null;
 	category: { code: string | null; title?: string } | null;
 	category_tasks_sequence_id: number | null;
-	/** "CODE-N" from the category's code and category_tasks_sequence_id, or null without a category. */
+	/** The key the title is stamped with ("TM-242: …" or "TM-242 …"), else "CODE-N" from the category's code and category_tasks_sequence_id, else null. */
 	key: string | null;
 	priority: string | null;
 	/** Seconds tracked before the current run. */

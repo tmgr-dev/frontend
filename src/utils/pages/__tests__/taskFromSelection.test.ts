@@ -12,6 +12,8 @@ describe('taskKeyLabel', () => {
 		expect(taskKeyLabel({ id: 3, key: 'TM-9', title: 'x' })).toBe('TM-9');
 		expect(taskKeyLabel({ id: 3, title: 'TM-213: do it' })).toBe('TM-213');
 		expect(taskKeyLabel({ id: 3, title: 'do it' })).toBe('#3');
+		expect(taskKeyLabel({ id: 3, title: 'TM-213 do it' })).toBe('TM-213');
+		expect(taskKeyLabel({ id: 3, title: 'TM-213 do it' })).toBe('#3');
 	});
 });
 

@@ -247,3 +247,44 @@ tmgr.commands.register('tmgr-dev.menu-test.other', (args) => args);
 		).rejects.toThrow('menus:task');
 	});
 });
+
+it('gives tasks the key the app gives them', async () => {
+	const host = await createTestHost({
+		manifest: {
+			...manifest('^1.3'),
+			permissions: ['tasks:read'],
+			contributes: {
+				commands: [{ id: 'tmgr-dev.ui-minor-test.keys', title: 'Keys' }],
+			},
+		},
+		code: `tmgr.commands.register('tmgr-dev.ui-minor-test.keys', async () =>
+			(await tmgr.tasks.list({})).items.map((t) => t.key));`,
+		categories: [{ title: 'Team', code: 'TM' }],
+		tasks: [
+			{
+				title: 'TM-242 example',
+				project_category_id: 1,
+				category_tasks_sequence_id: 78,
+			},
+			{
+				title: 'Fix login',
+				project_category_id: 1,
+				category_tasks_sequence_id: 5,
+			},
+			{
+				title: 'TM-9 x',
+				project_category_id: 1,
+				category_tasks_sequence_id: 6,
+			},
+			{ title: 'Loose' },
+		],
+		quickjs,
+	});
+	expect(await host.runCommand('tmgr-dev.ui-minor-test.keys')).toEqual([
+		'TM-242',
+		'TM-5',
+		'TM-6',
+		null,
+	]);
+	host.dispose();
+});

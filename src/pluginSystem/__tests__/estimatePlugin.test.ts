@@ -30,6 +30,7 @@ const tasks = [
 	{
 		id: 1,
 		title: 'Over',
+		key: 'TM-242',
 		status_id: 2,
 		common_time: 3 * HOUR,
 		approximately_time: 2 * HOUR,
@@ -141,6 +142,8 @@ it('renders a report page and a task section the host accepts', async () => {
 	});
 	const table = page.children.find((c: any) => c.type === 'table');
 	expect(table.rows.map((r: any) => r.taskId)).toEqual([5, 1, 2, 3]);
+	expect(table.rows[1].cells.task.text).toBe('TM-242 Over');
+	expect(table.rows[0].cells.task.text).toBe('#5 Done late');
 	expect(page.children[page.children.length - 1]).toEqual({
 		type: 'button',
 		text: 'Recalculate',

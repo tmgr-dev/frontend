@@ -39,11 +39,21 @@ const toWireTask = (state, task) => {
 	return {
 		...task,
 		category: category ? { code: category.code, title: category.title } : null,
-		key:
-			category?.code && task.category_tasks_sequence_id != null
-				? `${category.code}-${task.category_tasks_sequence_id}`
-				: null,
+		key: taskKeyOf(task, category),
 	};
+};
+
+// Same rule as the app's src/utils/taskKeys.ts taskKeyFrom.
+const TITLE_KEY = /^ *([A-Za-z][A-Za-z0-9]*-\d+)(?=[: ]|$)/;
+
+const taskKeyOf = (task, category) => {
+	const stamp = TITLE_KEY.exec(task.title || '');
+	if (stamp) return stamp[1].toUpperCase();
+	return category?.code &&
+		category.code.trim() &&
+		task.category_tasks_sequence_id != null
+		? `${category.code}-${task.category_tasks_sequence_id}`
+		: null;
 };
 
 const findTask = (state, id) => {

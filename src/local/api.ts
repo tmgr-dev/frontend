@@ -1,3 +1,4 @@
+import { taskKeyFrom } from '@/utils/taskKeys';
 import {
 	generateUniqueCategoryCode,
 	sanitizeCategoryCode,
@@ -1387,7 +1388,7 @@ export const createLocalApi = () => {
 					created_at: row.created_at,
 					task: {
 						id: row.task_id,
-						key: row.c_code && row.seq ? `${row.c_code}-${row.seq}` : null,
+						key: taskKeyFrom(row.task_title, row.c_code, row.seq),
 						title: row.task_title,
 					},
 				})),

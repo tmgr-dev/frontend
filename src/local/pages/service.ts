@@ -1,4 +1,4 @@
-import { onlyCarrier, taskCarriesKey } from '@/utils/taskKeys';
+import { onlyCarrier, taskCarriesKey, taskKeyFrom } from '@/utils/taskKeys';
 import { journaledBatch, journaledCreate } from '../journal';
 import { parseJson } from '../serialize';
 import {
@@ -168,12 +168,7 @@ export const taskKeyOf = (
 	code: string | null,
 	sequence: number | null,
 	id: number,
-): string => {
-	const prefix = /^\s*([A-Za-z][A-Za-z0-9]*-\d+)\s*:/.exec(title ?? '');
-	if (prefix) return prefix[1].toUpperCase();
-	if (code && code.trim() && sequence != null) return `${code}-${sequence}`;
-	return `T${id}`;
-};
+): string => taskKeyFrom(title, code, sequence) ?? `T${id}`;
 
 // ───────────────────────────────────────────────────────────── reads
 
@@ -531,8 +526,6 @@ const linkStatements = (plan: LinkPlan, page: PageRef): BatchStatement[] => [
 	})),
 ];
 
-const TITLE_SPACE = ' \t\n\r';
-
 export const resolveTaskKey = async (
 	ctx: LocalContext,
 	key: string,
@@ -545,10 +538,10 @@ export const resolveTaskKey = async (
 		`SELECT t.id, t.title, c.code, t.category_tasks_sequence_id AS seq FROM tasks t
 		 LEFT JOIN categories c ON c.id = t.project_category_id
 		 WHERE t.deleted_at IS NULL AND (
-		   (LTRIM(t.title, ?) LIKE ? AND SUBSTR(LTRIM(t.title, ?), ?, 1) IN ('', ':', ' ', char(9), char(10), char(13)))
+		   (LTRIM(t.title) LIKE ? AND SUBSTR(LTRIM(t.title), ?, 1) IN ('', ':', ' '))
 		   OR (UPPER(c.code) = UPPER(?) AND t.category_tasks_sequence_id = ?)
 		 ) LIMIT 20`,
-		[TITLE_SPACE, `${key}%`, TITLE_SPACE, key.length + 1, code, sequence],
+		[`${key}%`, key.length + 1, code, sequence],
 	);
 	const hit = onlyCarrier(rows, (r) =>
 		taskCarriesKey(r.title, r.code, r.seq, key),
