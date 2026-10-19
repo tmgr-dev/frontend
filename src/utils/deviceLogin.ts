@@ -13,6 +13,8 @@ export const SCOPE_DESCRIPTIONS: Record<string, string> = {
 	'pages:write': 'Edit Pages',
 	'pages:append': 'Append to Pages',
 	'notify:send': 'Send notifications and phone alarms to your devices',
+	'agent-approvals:write':
+		"Sign agent-run approvals with this computer's key",
 };
 
 export const describeScope = (scope: string): string =>
