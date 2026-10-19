@@ -157,8 +157,8 @@
 		isTaskDone,
 		openTarget,
 	} from '@/utils/simpleStatus';
-	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
 	import { taskCreator } from '@/utils/taskCreator';
+	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import {

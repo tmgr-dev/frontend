@@ -484,18 +484,14 @@
 				}
 			},
 			handleModalClose() {
-				// Restore original URL if it was changed for the modal
+				// The modal swapped the URL behind the router; the route still
+				// holds the page underneath it.
 				if (this.$store.state.urlManuallyChanged) {
-					// Get the URL without the task ID
-					const currentPath = window.location.pathname;
-					const pathParts = currentPath.split('/');
-
-					// If we have a numeric task ID at the end, remove it
-					if (/^\d+$/.test(pathParts[pathParts.length - 1])) {
-						pathParts.pop();
-						const newPath = pathParts.join('/') || '/';
-						history.replaceState({}, '', newPath);
-					}
+					history.replaceState(
+						history.state,
+						'',
+						this.$router.resolve(this.$route.fullPath).href,
+					);
 				}
 
 				// Close the modal

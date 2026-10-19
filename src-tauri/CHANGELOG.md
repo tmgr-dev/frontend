@@ -3,6 +3,13 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.50 — 2026-10-19
+
+- Task form: the footer shows who created the task (hidden on phone widths).
+- Dashboard: clicking a day on the activity heatmap filters the activity feed to that day.
+- Pages: clicking a task mention opens the task in a modal over the page instead of the full task form; closing it keeps you on the same page.
+- Telegram sign-in no longer accepts a login token passed in the page link.
+
 ## 0.9.49 — 2026-10-19
 
 - Cloud runs in several repositories: Category settings has an "Agent run repositories" list (shown when "Let my agents run my tasks" is on). "Confirm for agent runs" shows the repositories the approval covers.

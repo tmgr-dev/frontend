@@ -1,4 +1,8 @@
-import { extractTaskLinkRefs, routeForTmgr } from '../taskLinks';
+import {
+	extractTaskLinkRefs,
+	routeForTmgr,
+	taskIdForModal,
+} from '../taskLinks';
 import { parseTmgrUrl } from '../tmgrLinks';
 
 describe('extractTaskLinkRefs', () => {
@@ -34,5 +38,21 @@ describe('routeForTmgr', () => {
 
 	it('has no route for files', () => {
 		expect(route('tmgr://file/3')).toBeNull();
+	});
+});
+
+describe('taskIdForModal', () => {
+	const id = (url: string, detached = false) =>
+		taskIdForModal(parseTmgrUrl(url)!, detached);
+
+	it('opens task links in the modal', () => {
+		expect(id('tmgr://task/7')).toBe(7);
+	});
+
+	it('leaves pages, other kinds and detached windows to the router', () => {
+		expect(id('tmgr://page/5')).toBeNull();
+		expect(id('tmgr://page/other/notes')).toBeNull();
+		expect(id('tmgr://user/3')).toBeNull();
+		expect(id('tmgr://task/7', true)).toBeNull();
 	});
 });

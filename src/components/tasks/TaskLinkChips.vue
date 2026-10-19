@@ -21,6 +21,7 @@
 
 <script lang="ts">
 	import { useTmgrDirectory } from '@/components/pages/useTmgrDirectory';
+	import { openTaskLinkInModal } from '@/composable/useTaskKeyLinks';
 	import store from '@/store';
 	import {
 		extractTaskLinkRefs,
@@ -59,10 +60,9 @@
 				(ref.kind === 'task' ? `#${ref.id}` : `Page ${ref.id}`);
 
 			const open = (ref: TaskLinkRef) => {
-				const path = routeForTmgr(
-					{ form: 'storage', kind: ref.kind, id: ref.id },
-					workspaceCode.value,
-				);
+				const parsed = { form: 'storage' as const, kind: ref.kind, id: ref.id };
+				if (openTaskLinkInModal(parsed)) return;
+				const path = routeForTmgr(parsed, workspaceCode.value);
 				if (path) void router.push(path);
 			};
 

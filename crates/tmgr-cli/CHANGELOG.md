@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.11
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Fix: a queue rule started tasks that had no persona at all (owner-action tasks included), because only a different persona counted as "taken". A task is now a candidate only while the rule's persona is among its persona assignees, for cloud and local workspaces alike. This is checked when the task is first seen and again on a fresh read right before the start.
+- A task without the rule's persona is skipped with the audit reason `persona_missing` and gets no comment. Pickups waiting for approval or already approved whose task has no such persona expire on the next pass (`tmgr queue run-once`), so nothing started by mistake is left in the list.
+
 ## 1.0.10
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
