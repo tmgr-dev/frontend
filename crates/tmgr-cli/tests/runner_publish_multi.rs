@@ -482,3 +482,79 @@ async fn without_a_terminal_unbound_repositories_are_refused_and_no_folder_is_ma
     let after = std::fs::read_to_string(&path).unwrap();
     assert!(!after.contains("tmgr-dev/backend"));
 }
+
+fn start_multi_run(rig: &Rig) -> std::process::Output {
+    let agents = rig.env.config_dir().join("agents");
+    std::fs::create_dir_all(&agents).unwrap();
+    std::fs::write(
+        agents.join("fake.toml"),
+        "id = \"fake\"\nname = \"fake\"\ncommand = [\"/bin/sh\", \"-c\", \"exit 0\", \"fake\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+    )
+    .unwrap();
+    std::fs::remove_dir_all(&rig.run).unwrap();
+    std::fs::remove_file(rig.env.tmp.path().join(".gitconfig")).unwrap();
+    rig.cmd(&[
+        "--json",
+        "--ws",
+        "tmgrdev",
+        "run",
+        "9100",
+        "--agent",
+        "fake",
+        "--mode",
+        "ask",
+        "--yes",
+        "--no-attach",
+    ])
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_multi_run_makes_every_clone_and_records_their_identity() {
+    let rig = Rig::new().await;
+    let out = start_multi_run(&rig);
+    let _ = out.status;
+    for name in ["backend", "frontend"] {
+        let clone = rig.run.join(name);
+        assert!(
+            clone.join(".git").is_dir(),
+            "{name}: {} {}",
+            stderr(&out),
+            common::text(&out.stdout)
+        );
+        assert_eq!(git(&clone, &["rev-parse", "--abbrev-ref", "HEAD"]), BRANCH);
+    }
+    assert!(!rig.run.join(".git").exists());
+    let record: Value = serde_json::from_str(
+        &std::fs::read_to_string(rig.env.state_dir().join("task-runs/tmgrdev-9100.json")).unwrap(),
+    )
+    .unwrap();
+    let clones = record["clones"].as_array().unwrap();
+    assert_eq!(clones.len(), 2);
+    for (c, full) in clones.iter().zip(NAMES) {
+        let m = std::fs::metadata(rig.run.join(c["name"].as_str().unwrap())).unwrap();
+        assert_eq!(c["repo"], full);
+        assert_eq!(c["dev"].as_u64(), Some(m.dev()));
+        assert_eq!(c["ino"].as_u64(), Some(m.ino()));
+    }
+    assert_eq!(
+        record["clone"],
+        json!(std::fs::canonicalize(&rig.run).unwrap())
+    );
+}
+
+/// Needs the multi-clone side of the runner (feat/tm-614-runner): a daemon that accepts `clones`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "needs the tmgr-runner multi-clone side; run after merging feat/tm-614-runner"]
+async fn a_multi_run_is_accepted_by_the_runner_and_its_session_is_recorded() {
+    let rig = Rig::new().await;
+    let out = start_multi_run(&rig);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let v: Value = common::stdout_json(&out);
+    assert_eq!(v["data"]["repos"].as_array().map(Vec::len), Some(2));
+    let record: Value = serde_json::from_str(
+        &std::fs::read_to_string(rig.env.state_dir().join("task-runs/tmgrdev-9100.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(record["session"], v["data"]["session"]["id"]);
+    assert_eq!(record["agent"], "fake");
+}

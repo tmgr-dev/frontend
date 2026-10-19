@@ -941,13 +941,13 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     rollback
         .save()
         .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
-    let branch = branch_name(&ok.task_key, &ok.title)?;
-    let layout = match &ok.repos {
+    let (layout, branch) = match &ok.repos {
         None => {
             let repo = bound_repo(&mut allow, &entry, &ok, a.cwd.as_ref())?;
+            let branch = branch_name(&ok.task_key, &ok.title)?;
             let clone = workdir::run_clone_dir(&repo, &branch)
                 .ok_or_else(|| Error::usage("the repository path has no parent directory"))?;
-            Layout::Single { repo, clone }
+            (Layout::Single { repo, clone }, branch)
         }
         Some(list) => {
             let category = ok.category.as_ref().ok_or_else(|| {
@@ -959,9 +959,10 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             let hint = format!("tmgr run {reference}");
             let bound = bound_set(&mut allow, &entry, category, list, &hint)?;
             let plans = plan_clones(&bound)?;
+            let branch = branch_name(&ok.task_key, &ok.title)?;
             let run_dir = workdir::run_clone_dir(&plans[0].path, &branch)
                 .ok_or_else(|| Error::usage("the repository path has no parent directory"))?;
-            Layout::Multi { run_dir, plans }
+            (Layout::Multi { run_dir, plans }, branch)
         }
     };
     let target = layout.folder().to_path_buf();
@@ -1004,8 +1005,8 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         )
         .hint("remove the folder and run again"));
     }
-    let cfg = runner_config()?;
     if matches!(layout, Layout::Multi { .. }) {
+        let cfg = runner_config()?;
         daemon::start_background(&cfg).map_err(rerr)?;
         let early = connect(&cfg)?;
         if !early
@@ -1107,6 +1108,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     bundle.validate().map_err(Error::usage)?;
     let sha = bundle.sha256();
     let (cols, rows) = super::ops::terminal_size();
+    let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut rc = connect(&cfg)?;
     let have = &rc.welcome().caps;
@@ -2072,6 +2074,52 @@ mod tests {
             serde_json::to_string(&req).unwrap(),
             r#"{"profile":"claude-code","task":{"workspace_id":56,"task_id":9002},"cwd":"/work/repo-worktrees/tmgr-tm-410-fix","name":"TM-410","model":"opus","cols":120,"rows":40,"bundle":{"v":1,"task":{"workspace_id":56,"task_id":9002},"title":"t","body":"b","author":{"kind":"human"},"comments":[],"pages":[],"launch":{"profile":"claude-code","cwd":"/work/repo-worktrees/tmgr-tm-410-fix","permission_mode":"accept-edits"}},"bundle_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","permission_mode":"accept-edits","clone_of":"/work/repo","trust_via_repo":true,"exe_pin":{"path":"/bin/claude","sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},"argv_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","agent_work":true,"cloud":{"host":"api.tmgr.dev","user_id":1,"workspace_id":56,"task_id":9002,"category_id":127,"content_sha256":"h","key_id":"k","signed_at":1,"signature":"s","kind":"author"}}"#
         );
+    }
+
+    #[test]
+    fn a_multi_request_has_clones_primary_first_and_no_clone_of() {
+        let mut claim = plan_claim();
+        claim.repos_sha256 = Some("r".repeat(64));
+        let req = run_request(&RunPlan {
+            profile: "claude-code",
+            task: TaskRef {
+                workspace_id: 56,
+                task_id: 9100,
+            },
+            cwd: "/work/be-worktrees/tmgr-tm-411",
+            name: "TM-411".into(),
+            model: None,
+            cols: 120,
+            rows: 40,
+            bundle: plan_bundle(),
+            bundle_sha256: "b".repeat(64),
+            mode: "accept-edits",
+            clone_of: None,
+            clones: vec![
+                CloneSpec {
+                    name: "backend".into(),
+                    clone_of: "/work/be".into(),
+                },
+                CloneSpec {
+                    name: "frontend".into(),
+                    clone_of: "/work/fe".into(),
+                },
+            ],
+            via_repo: true,
+            claim,
+            unattended: false,
+            exe_pin: ExePin {
+                path: "/bin/claude".into(),
+                sha256: "e".repeat(64),
+            },
+            argv_sha256: "a".repeat(64),
+        });
+        let v = serde_json::to_value(&req).unwrap();
+        assert!(v.get("clone_of").is_none());
+        assert_eq!(v["clones"][0]["name"], "backend");
+        assert_eq!(v["clones"][1]["clone_of"], "/work/fe");
+        assert_eq!(v["cloud"]["repos_sha256"], "r".repeat(64));
+        assert_eq!(v["trust_via_repo"], true);
     }
 
     #[test]
