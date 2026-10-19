@@ -14,7 +14,13 @@ pub fn disable(paths: &Paths, reason: Option<&str>) -> Result<()> {
     if let Some(reason) = reason {
         fields["reason"] = json!(reason);
     }
-    Audit::new(paths).append("disable", fields)
+    Audit::new(paths).append("disable", fields)?;
+    forget_queue_loop(paths);
+    Ok(())
+}
+
+pub fn forget_queue_loop(paths: &Paths) {
+    let _ = std::fs::remove_file(paths.dir.join("autopilot/settings/queue.json"));
 }
 
 #[cfg(test)]
@@ -37,5 +43,18 @@ mod tests {
         assert_eq!(last["event"], "disable");
         assert_eq!(last["reason"], "autopilot crashed");
         assert!(Audit::new(&paths).verify().unwrap().is_ok());
+    }
+
+    #[test]
+    fn disable_removes_the_saved_queue_loop_settings_and_only_those() {
+        let d = tempfile::tempdir().unwrap();
+        let paths = Paths::at(d.path());
+        let dir = d.path().join("autopilot/settings");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("queue.json"), "{}").unwrap();
+        std::fs::write(dir.join("ap-1.json"), "{}").unwrap();
+        disable(&paths, None).unwrap();
+        assert!(!dir.join("queue.json").exists());
+        assert!(dir.join("ap-1.json").exists());
     }
 }

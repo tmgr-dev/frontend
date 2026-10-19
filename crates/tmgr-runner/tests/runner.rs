@@ -5731,3 +5731,90 @@ fn a_kill_reason_becomes_the_cancelled_summary() {
     assert_eq!(finish["status"], "cancelled");
     assert_eq!(finish["summary"], "Paused: usage limit? reached at 81%");
 }
+
+#[test]
+fn a_drain_that_took_over_from_the_queue_loop_hands_back_to_it_when_it_stops() {
+    let mut h = Harness::new();
+    h.queue_loop_files(true, true);
+    h.start(5000);
+    h.stop_autopilot();
+    h.settings_file("handback");
+    let mut cli = h.client();
+    cli.autopilot_start("handback").unwrap();
+    wait_for("drain running", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["scenario"] == "handback"
+    });
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("queue loop again", || {
+        let s = h.autopilot_status_file();
+        s["scenario"] == "queue" && s["state"] == "running"
+    });
+    assert!(h.queue_enabled());
+    h.stop_autopilot();
+}
+
+#[test]
+fn a_stopped_drain_hands_back_to_nothing_when_the_queue_is_off() {
+    let mut h = Harness::new();
+    h.queue_loop_files(false, true);
+    h.start(5000);
+    h.settings_file("handback");
+    let mut cli = h.client();
+    cli.autopilot_start("handback").unwrap();
+    wait_for("drain running", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("gone", || !h.client().autopilot_status().unwrap().running);
+    thread::sleep(Duration::from_millis(600));
+    assert!(!h.client().autopilot_status().unwrap().running);
+}
+
+#[test]
+fn a_suspended_loop_is_not_started_again_when_the_queue_is_off() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    h.settings_file("resume-me");
+    let mut cli = h.client();
+    cli.autopilot_start("resume-me").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.stop().unwrap();
+    wait_for("suspended", || {
+        h.autopilot_status_file()["state"] == "suspended"
+    });
+    h.kill_runner();
+    h.queue_loop_files(false, false);
+    h.start(5000);
+    thread::sleep(Duration::from_millis(600));
+    assert!(!h.client().autopilot_status().unwrap().running);
+}
+
+#[test]
+fn the_queue_loop_keeps_the_status_it_left_behind_when_it_starts_again() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.settings_file("queue");
+    h.settings_file("other");
+    fs::write(
+        h.autopilot_dir().join("status.json"),
+        r#"{"version":1,"state":"running","settings_id":"queue","scenario":"old"}"#,
+    )
+    .unwrap();
+    h.client().autopilot_start("queue").unwrap();
+    wait_for("new status", || {
+        h.autopilot_status_file()["scenario"] == "queue"
+    });
+    assert!(!h.autopilot_dir().join("status.prev.json").exists());
+    h.stop_autopilot();
+    h.client().autopilot_start("other").unwrap();
+    wait_for("other", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["scenario"] == "other"
+    });
+    assert!(h.autopilot_dir().join("status.prev.json").exists());
+    h.stop_autopilot();
+}

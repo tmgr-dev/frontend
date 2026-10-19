@@ -115,8 +115,20 @@ fn queue_on(dir: &Path) -> bool {
 }
 
 fn resume_id(dir: &Path) -> Option<String> {
-    suspended_id(dir)
-        .or_else(|| (queue_on(dir) && settings_exist(dir, QUEUE_ID)).then(|| QUEUE_ID.to_string()))
+    if !queue_on(dir) {
+        return None;
+    }
+    suspended_id(dir).or_else(|| settings_exist(dir, QUEUE_ID).then(|| QUEUE_ID.to_string()))
+}
+
+fn keeps_status(dir: &Path, id: &str) -> bool {
+    id == QUEUE_ID || suspended_id(dir).as_deref() == Some(id)
+}
+
+fn hands_back_to_queue(dir: &Path) -> bool {
+    read_status(dir).is_some_and(|s| s["state"] == "stopped" && s["resume_queue"] == true)
+        && queue_on(dir)
+        && settings_exist(dir, QUEUE_ID)
 }
 
 fn now_iso() -> String {
@@ -229,6 +241,46 @@ impl Inner {
         }
     }
 
+    fn launch(&mut self, self_exe: &Path, dir: &Path, settings_id: &str) -> Result<u32, Fail> {
+        if self.running() || lock_held(dir) {
+            return Err(fail(ErrorCode::Busy, "autopilot is already running"));
+        }
+        if !keeps_status(dir, settings_id) {
+            let _ = fs::rename(dir.join(STATUS), dir.join("status.prev.json"));
+        }
+        let _ = fs::remove_file(dir.join(CONTROL));
+        rotate_serve_log(dir);
+        let out = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .mode(0o600)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(dir.join(SERVE_LOG))
+            .map_err(internal)?;
+        let mut cmd = Command::new(self_exe);
+        cmd.args(["queue", "autopilot", "serve", "--settings", settings_id])
+            .env_clear()
+            .envs(daemon_env())
+            .env(ENV_CLEAN, "1")
+            .current_dir(dir)
+            .stdin(Stdio::null())
+            .stdout(out.try_clone().map_err(internal)?)
+            .stderr(out);
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+        let child = cmd
+            .spawn()
+            .map_err(|e| internal(format!("cannot start autopilot: {e}")))?;
+        let pid = child.id();
+        self.child = Some(child);
+        self.stop_requested = false;
+        Ok(pid)
+    }
+
     fn refresh(&mut self, self_exe: &Path, dir: &Path) {
         let gone = match self.child.as_mut() {
             Some(c) => match c.try_wait() {
@@ -247,6 +299,12 @@ impl Inner {
         self.child = None;
         self.adopted = false;
         let asked = std::mem::take(&mut self.stop_requested);
+        if hands_back_to_queue(dir) {
+            if let Err((_, msg)) = self.launch(self_exe, dir, QUEUE_ID) {
+                log(&format!("autopilot: queue loop not started again: {msg}"));
+            }
+            return;
+        }
         let how = match gone {
             Gone::Exited(st) if st.success() => return,
             Gone::Exited(st) => {
@@ -284,43 +342,7 @@ impl Host {
         ensure_private_dir(&dir).map_err(internal)?;
         let mut g = guard(&self.inner);
         g.refresh(self_exe, &dir);
-        if g.running() || lock_held(&dir) {
-            return Err(fail(ErrorCode::Busy, "autopilot is already running"));
-        }
-        if suspended_id(&dir).as_deref() != Some(settings_id) {
-            let _ = fs::rename(dir.join(STATUS), dir.join("status.prev.json"));
-        }
-        let _ = fs::remove_file(dir.join(CONTROL));
-        rotate_serve_log(&dir);
-        let out = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .mode(0o600)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(dir.join(SERVE_LOG))
-            .map_err(internal)?;
-        let mut cmd = Command::new(self_exe);
-        cmd.args(["queue", "autopilot", "serve", "--settings", settings_id])
-            .env_clear()
-            .envs(daemon_env())
-            .env(ENV_CLEAN, "1")
-            .current_dir(&dir)
-            .stdin(Stdio::null())
-            .stdout(out.try_clone().map_err(internal)?)
-            .stderr(out);
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
-        let child = cmd
-            .spawn()
-            .map_err(|e| internal(format!("cannot start autopilot: {e}")))?;
-        let pid = child.id();
-        g.child = Some(child);
-        g.stop_requested = false;
-        Ok(pid)
+        g.launch(self_exe, &dir, settings_id)
     }
 
     pub fn status(&self, self_exe: &Path) -> Result<AutopilotStatus, Fail> {
