@@ -350,6 +350,8 @@ pub struct RepoPublish {
     pub body: String,
     pub steps: PublishSteps,
     pub list: Vec<String>,
+    pub wip: Option<String>,
+    pub ready: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -362,6 +364,20 @@ impl PublishAllPlan {
     pub fn draft(mut self) -> Self {
         for r in &mut self.repos {
             r.steps = r.steps.clone().draft();
+            r.ready = false;
+        }
+        self
+    }
+
+    /// Continues a pull request opened as a draft by a paused run: `wip` lists `(repository, commit pushed
+    /// when the run paused)`. The existing pull request is accepted while it still shows that commit, and is
+    /// marked ready once the new commits are pushed.
+    pub fn resuming(mut self, wip: &[(String, String)]) -> Self {
+        for r in &mut self.repos {
+            if let Some((_, sha)) = wip.iter().find(|(f, _)| *f == r.full_name) {
+                r.wip = Some(sha.clone());
+                r.ready = true;
+            }
         }
         self
     }
@@ -404,6 +420,8 @@ pub fn publish_all_plan(
                 "--json".into(),
                 "url,headRefOid,isCrossRepository,headRepositoryOwner".into(),
             ],
+            wip: None,
+            ready: false,
             steps,
         });
     }
@@ -430,6 +448,17 @@ pub fn reuse_pr(
     full_name: &str,
     sha: &str,
 ) -> std::result::Result<Option<String>, String> {
+    reuse_pr_continuing(list_json, full_name, sha, None)
+}
+
+/// Like `reuse_pr`, and a pull request still showing `wip` (the commit a paused run pushed before `sha`
+/// was pushed on top of it) counts as the one just pushed.
+pub fn reuse_pr_continuing(
+    list_json: &str,
+    full_name: &str,
+    sha: &str,
+    wip: Option<&str>,
+) -> std::result::Result<Option<String>, String> {
     let text = list_json.trim();
     if text.is_empty() {
         return Ok(None);
@@ -448,9 +477,9 @@ pub fn reuse_pr(
             .is_some_and(|l| l.eq_ignore_ascii_case(owner));
         let good = pr["isCrossRepository"] == serde_json::Value::Bool(false)
             && same_owner
-            && pr["headRefOid"]
-                .as_str()
-                .is_some_and(|o| o.eq_ignore_ascii_case(sha))
+            && pr["headRefOid"].as_str().is_some_and(|o| {
+                o.eq_ignore_ascii_case(sha) || wip.is_some_and(|w| o.eq_ignore_ascii_case(w))
+            })
             && pr_url_of(full_name, url);
         if !good {
             return Err(format!(
@@ -488,16 +517,25 @@ fn publish_all_after(
     for r in &plan.repos {
         exec(&r.steps.push, &r.steps.repo)?;
         let listed = exec(&r.list, &r.steps.repo)?;
-        let reuse = match reuse_pr(&listed, &r.full_name, &r.sha) {
+        let wip = r.wip.as_deref();
+        let reuse = match reuse_pr_continuing(&listed, &r.full_name, &r.sha, wip) {
             Ok(reuse) => Ok(reuse),
             Err(_) => {
                 std::thread::sleep(requery_after);
                 let listed = exec(&r.list, &r.steps.repo)?;
-                reuse_pr(&listed, &r.full_name, &r.sha)
+                reuse_pr_continuing(&listed, &r.full_name, &r.sha, wip)
             }
         };
         let url = match reuse.map_err(|m| Error::new(tmgr_core::error::Kind::Forbidden, m))? {
-            Some(url) => url,
+            Some(url) => {
+                if r.ready {
+                    exec(
+                        &["gh".to_string(), "pr".into(), "ready".into(), url.clone()],
+                        &r.steps.repo,
+                    )?;
+                }
+                url
+            }
             None => {
                 let out = exec(&r.steps.pr, &r.steps.repo)?;
                 let url = out.lines().last().unwrap_or("").trim().to_string();
@@ -1168,6 +1206,67 @@ mod tests {
             .iter()
             .filter(|a| a.get(2).map(String::as_str) == Some("edit"))
             .all(|a| !a.contains(&"--draft".to_string())));
+    }
+
+    fn wip_pairs() -> Vec<(String, String)> {
+        vec![("tmgr-dev/backend".to_string(), "c".repeat(40))]
+    }
+
+    fn calls(log: &std::cell::RefCell<Vec<Vec<String>>>, what: &str) -> usize {
+        log.borrow()
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some(what))
+            .count()
+    }
+
+    #[test]
+    fn a_resumed_run_reuses_the_pull_request_of_its_saved_commit_and_marks_it_ready() {
+        let url = "https://github.com/tmgr-dev/backend/pull/5";
+        for oid in ["c".repeat(40), "a".repeat(40)] {
+            let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+            let be = open_pr(url, false, "tmgr-dev", &oid);
+            let log = std::cell::RefCell::new(Vec::new());
+            let urls =
+                publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+            assert_eq!(urls[0].1, url);
+            assert_eq!(calls(&log, "ready"), 1, "{oid}");
+            assert!(log
+                .borrow()
+                .iter()
+                .any(|a| a[..3] == ["gh", "pr", "ready"] && a[3] == url));
+            assert_eq!(calls(&log, "create"), 1);
+        }
+    }
+
+    #[test]
+    fn a_resumed_run_still_refuses_a_pull_request_of_any_other_commit() {
+        let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+        let be = open_pr(
+            "https://github.com/tmgr-dev/backend/pull/5",
+            false,
+            "tmgr-dev",
+            &"d".repeat(40),
+        );
+        let log = std::cell::RefCell::new(Vec::new());
+        assert!(publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).is_err());
+        assert_eq!(calls(&log, "ready"), 0);
+        assert_eq!(calls(&log, "create"), 0);
+    }
+
+    #[test]
+    fn a_plan_without_a_resume_or_a_paused_again_resume_marks_nothing_ready() {
+        let url = "https://github.com/tmgr-dev/backend/pull/5";
+        let be = open_pr(url, false, "tmgr-dev", &"a".repeat(40));
+        let plain = publish_all_plan(&both()).unwrap();
+        let again = publish_all_plan(&both())
+            .unwrap()
+            .resuming(&wip_pairs())
+            .draft();
+        for plan in [plain, again] {
+            let log = std::cell::RefCell::new(Vec::new());
+            publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+            assert_eq!(calls(&log, "ready"), 0);
+        }
     }
 
     #[test]
