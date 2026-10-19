@@ -31,6 +31,9 @@ ratatui.workspace = true
 unicode-width.workspace = true
 toml_edit.workspace = true
 sha2.workspace = true
+base64.workspace = true
+getrandom.workspace = true
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }
 tmgr-runner = { workspace = true, optional = true }
 tmgr-ipc = { workspace = true, optional = true }
 tmgr-queue = { workspace = true, optional = true }
@@ -48,5 +51,4 @@ portable-pty.workspace = true
 vt100.workspace = true
 rusqlite.workspace = true
 tmgr-local = { path = "../tmgr-local" }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }
-base64.workspace = true
+keyring.workspace = true

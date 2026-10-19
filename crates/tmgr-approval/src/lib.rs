@@ -10,3 +10,4 @@ pub use store::{
     allow_path, check_claim, claim_message, rollback_path, AllowFile, Entry, PinnedKey, Refusal,
     RepoBinding, Rollback,
 };
+pub use tmgr_ipc::api::CloudApproval;
