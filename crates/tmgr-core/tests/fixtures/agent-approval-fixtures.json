@@ -212,5 +212,143 @@
     [
       "acme/web/x"
     ]
-  ]
+  ],
+  "cases_v3": [
+    {
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "title": "Persona and rules",
+      "description": "Do it",
+      "task_id": 9200,
+      "signed_at": 1760000200,
+      "persona": {
+        "id": "993c30a6-3528-42bf-9a70-507841cebc08",
+        "name": "Agent · Team",
+        "instructions": "Follow the rules.\r\nOpen a PR, never merge."
+      },
+      "context": [
+        {
+          "id": 125,
+          "version": 14,
+          "title": "Rules for parallel teams",
+          "body": "# Rules\r\n\r\n- Take only Backlog tasks.\n- Emoji 🚀 and U+2028  stay.",
+          "sha256": "5861fb44c39869a552d9458671319932c4f2696891f93eeeec300eab5e3c0eca"
+        }
+      ],
+      "content_sha256": "1df87a7303e3cd704df0011e3673ffe73786b06cbc5fcbad6c650d0fc9d0c5ac",
+      "repos_sha256": null,
+      "persona_sha256": "28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34",
+      "context_sha256": "245216ae731328b31f7f0ed3145954d0587ce7dc5153e79e20085f9a4c8ff479",
+      "message": "tmgr-agent-approval:v3:api.tmgr.dev:1:56:9200:127:1df87a7303e3cd704df0011e3673ffe73786b06cbc5fcbad6c650d0fc9d0c5ac:-:28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34:245216ae731328b31f7f0ed3145954d0587ce7dc5153e79e20085f9a4c8ff479:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000200",
+      "signature": "2E8NNf9brR7+kNpXAo02rICEIXAkAgxlN0nK6SUUqZcPytmJBUyt0VwdEZNhMa9KOuC3GgSRr+qYdvhQED+Slw==",
+      "tampered_signature": "2E8NNf9arR7+kNpXAo02rICEIXAkAgxlN0nK6SUUqZcPytmJBUyt0VwdEZNhMa9KOuC3GgSRr+qYdvhQED+Slw=="
+    },
+    {
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "title": "Persona only",
+      "description": null,
+      "task_id": 9201,
+      "signed_at": 1760000201,
+      "persona": {
+        "id": "993c30a6-3528-42bf-9a70-507841cebc08",
+        "name": "Agent · Team",
+        "instructions": "Follow the rules.\r\nOpen a PR, never merge."
+      },
+      "content_sha256": "46391e13de61f07bccde087d36ecde8b45cea1930c597646a0cfd4715d9e91ee",
+      "repos_sha256": null,
+      "persona_sha256": "28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34",
+      "context_sha256": null,
+      "message": "tmgr-agent-approval:v3:api.tmgr.dev:1:56:9201:127:46391e13de61f07bccde087d36ecde8b45cea1930c597646a0cfd4715d9e91ee:-:28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34:-:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000201",
+      "signature": "6VCY1g5NwoC8oFss/XZepiKLn51EW4pad5PfnnhcjGCsNJb1Cf75JhrsaFLaHC2rKVosWmXgurVGZ+cCqxgDEw==",
+      "tampered_signature": "6VCY1g5MwoC8oFss/XZepiKLn51EW4pad5PfnnhcjGCsNJb1Cf75JhrsaFLaHC2rKVosWmXgurVGZ+cCqxgDEw=="
+    },
+    {
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "title": "Rules only, two pages, with repos",
+      "description": "x\r\ny",
+      "task_id": 9202,
+      "signed_at": 1760000202,
+      "context": [
+        {
+          "id": 125,
+          "version": 14,
+          "title": "Rules for parallel teams",
+          "body": "# Rules\r\n\r\n- Take only Backlog tasks.\n- Emoji 🚀 and U+2028  stay.",
+          "sha256": "5861fb44c39869a552d9458671319932c4f2696891f93eeeec300eab5e3c0eca"
+        },
+        {
+          "id": 7,
+          "version": 1,
+          "title": "Workspace context",
+          "body": "",
+          "sha256": "82aae09dcc7b29aa9fb2696e297bdf44f5bd69a5435d015157f6ffbb7570600d"
+        }
+      ],
+      "repositories": [
+        "tmgr-dev/frontend",
+        "tmgr-dev/backend"
+      ],
+      "content_sha256": "b9467dad1b4e1223eb8d54dcc205e2c23286b267bbb4da9163b0cd1e724cf07d",
+      "repos_sha256": "cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc",
+      "persona_sha256": null,
+      "context_sha256": "f00349e151d5d105790aade83284a9c4ca76637bace6a795d22a34984ed7ae59",
+      "message": "tmgr-agent-approval:v3:api.tmgr.dev:1:56:9202:127:b9467dad1b4e1223eb8d54dcc205e2c23286b267bbb4da9163b0cd1e724cf07d:cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc:-:f00349e151d5d105790aade83284a9c4ca76637bace6a795d22a34984ed7ae59:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000202",
+      "signature": "V3p/ICpScN2iws3Vc7AysxmvS+F50MdX2/iT35+KBQvXr4E//+lbQRtwHb5MrTLSjhY2o5YgMt8bXymRn2ZU/w==",
+      "tampered_signature": "V3p/ICpTcN2iws3Vc7AysxmvS+F50MdX2/iT35+KBQvXr4E//+lbQRtwHb5MrTLSjhY2o5YgMt8bXymRn2ZU/w=="
+    },
+    {
+      "host": "api.tmgr.dev",
+      "category_id": 0,
+      "user_id": 1,
+      "workspace_id": 56,
+      "title": "Everything",
+      "description": "All",
+      "task_id": 9203,
+      "signed_at": 1760000203,
+      "persona": {
+        "id": "993c30a6-3528-42bf-9a70-507841cebc08",
+        "name": "Agent · Team",
+        "instructions": "Follow the rules.\r\nOpen a PR, never merge."
+      },
+      "context": [
+        {
+          "id": 7,
+          "version": 1,
+          "title": "Workspace context",
+          "body": "",
+          "sha256": "82aae09dcc7b29aa9fb2696e297bdf44f5bd69a5435d015157f6ffbb7570600d"
+        }
+      ],
+      "repositories": [
+        "tmgr-dev/backend"
+      ],
+      "content_sha256": "9e1fdbdcdf912574e7c8eb026c13cad822c254864c8d7c66de1aa4e878e9a719",
+      "repos_sha256": "27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0",
+      "persona_sha256": "28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34",
+      "context_sha256": "0b2cea8547c9877c2581d55d74a05d5bab0bdbf3ccf6b50612b8033dbe23805d",
+      "message": "tmgr-agent-approval:v3:api.tmgr.dev:1:56:9203:0:9e1fdbdcdf912574e7c8eb026c13cad822c254864c8d7c66de1aa4e878e9a719:27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0:28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34:0b2cea8547c9877c2581d55d74a05d5bab0bdbf3ccf6b50612b8033dbe23805d:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000203",
+      "signature": "kgGOe2zIhes0KoR0KCBK2vvWq2AsniKSiBf4HFuattLEabrPFGG70Ynh/m1PXOGrgKldzFZyLZovCGHBBlQ8nA==",
+      "tampered_signature": "kgGOe2zJhes0KoR0KCBK2vvWq2AsniKSiBf4HFuattLEabrPFGG70Ynh/m1PXOGrgKldzFZyLZovCGHBBlQ8nA=="
+    }
+  ],
+  "invalid_persona_ids": [
+    "993C30A6-3528-42BF-9A70-507841CEBC08",
+    "993c30a6352842bf9a70507841cebc08",
+    "",
+    "x:y",
+    "993c30a6-3528-42bf-9a70-507841cebc0"
+  ],
+  "limits": {
+    "max_persona_bytes": 32768,
+    "max_context_pages": 5,
+    "max_context_bytes": 65536
+  }
 }
