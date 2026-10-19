@@ -53,6 +53,7 @@ fn open_read(path: &Path) -> io::Result<File> {
         .open(path)
 }
 
+#[allow(clippy::unnecessary_cast)]
 fn lock_owner(dir: &Path) -> Option<u32> {
     let f = open_read(&dir.join(LOCK)).ok()?;
     let mut fl: libc::flock = unsafe { std::mem::zeroed() };
@@ -61,7 +62,7 @@ fn lock_owner(dir: &Path) -> Option<u32> {
     if unsafe { libc::fcntl(f.as_raw_fd(), libc::F_GETLK, &mut fl) } != 0 {
         return None;
     }
-    (fl.l_type != libc::F_UNLCK)
+    (fl.l_type as i32 != libc::F_UNLCK as i32)
         .then(|| u32::try_from(fl.l_pid).ok())
         .flatten()
 }

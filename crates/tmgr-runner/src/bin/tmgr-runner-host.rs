@@ -57,8 +57,8 @@ fn fake_queue_disable(reason: &str) -> i32 {
     let dir = std::path::Path::new(&base).join("tmgr");
     let rules = dir.join("queue.toml");
     let text = std::fs::read_to_string(&rules).unwrap_or_default();
-    std::fs::write(&rules, text.replace("enabled = true", "enabled = false")).unwrap();
     std::fs::write(dir.join("disabled.reason"), reason).unwrap();
+    std::fs::write(&rules, text.replace("enabled = true", "enabled = false")).unwrap();
     0
 }
 
