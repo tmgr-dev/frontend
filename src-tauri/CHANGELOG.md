@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.49 — 2026-10-19
+
+- Cloud runs in several repositories: Category settings has an "Agent run repositories" list (shown when "Let my agents run my tasks" is on). "Confirm for agent runs" shows the repositories the approval covers.
+- Runner settings list the repositories bound on this computer under each allowed workspace (read-only).
+
 ## 0.9.48 — 2026-10-19
 
 - Cloud runs: Runner settings list the cloud workspaces this computer allows your agents to work in, with the expiry date and a copyable `tmgr runner allow <code>` command (allowing happens only in a terminal). Three days before an allow expires the app reminds you once a day.

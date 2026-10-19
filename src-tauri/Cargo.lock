@@ -5155,7 +5155,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmgr"
-version = "0.9.48"
+version = "0.9.49"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -5206,7 +5206,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -5220,7 +5220,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.7"
+version = "1.0.8"
 dependencies = [
  "chrono",
  "memchr",
