@@ -114,6 +114,7 @@ fn bundle() -> RunBundle {
             instructions: None,
         }),
         context: vec![],
+        team: None,
         launch: BundleLaunch {
             profile: "codex".into(),
             model: Some("gpt-5".into()),
@@ -818,7 +819,8 @@ fn constants_are_pinned() {
             "trust_via_repo.v1",
             "multi_clone.v1",
             "autopilot.v1",
-            "signed_context.v1"
+            "signed_context.v1",
+            "team.v1"
         ]
     );
     let methods = [
@@ -900,7 +902,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 25);
+    assert_eq!(w.caps.len(), 26);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1291,4 +1293,31 @@ fn cloud_approval_hashes_are_skipped_when_absent() {
         (None, None)
     );
     assert_eq!(serde_json::to_value(&c).unwrap(), v);
+}
+
+#[test]
+fn a_team_changes_the_hash_only_when_present_and_is_validated() {
+    let b = bundle();
+    assert!(serde_json::to_value(&b).unwrap().get("team").is_none());
+    assert_eq!(b.sha256(), BUNDLE_SHA256);
+    let mut t = bundle();
+    t.team = Some(BundleTeam {
+        size: 3,
+        mode: TeamMode::Heavy,
+    });
+    assert_eq!(t.validate(), Ok(()));
+    assert_ne!(t.sha256(), BUNDLE_SHA256);
+    assert!(t.canonical().contains(r#""team":{"mode":"heavy","size":3}"#));
+    let back: RunBundle = serde_json::from_str(&t.canonical()).unwrap();
+    assert_eq!(back, t);
+    for size in [0u8, 6] {
+        t.team = Some(BundleTeam {
+            size,
+            mode: TeamMode::Eco,
+        });
+        assert!(t.validate().unwrap_err().contains("team.size"));
+    }
+    let mut v = serde_json::to_value(bundle()).unwrap();
+    v["team"] = json!({"size": 2, "mode": "eco", "extra": 1});
+    assert!(serde_json::from_value::<RunBundle>(v).is_err());
 }

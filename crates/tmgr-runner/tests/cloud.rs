@@ -65,6 +65,7 @@ fn req() -> RunCreateReq {
         pages: vec![],
         persona: None,
         context: vec![],
+        team: None,
         launch: BundleLaunch {
             profile: "claude-code".into(),
             model: None,

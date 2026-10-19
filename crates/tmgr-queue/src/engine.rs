@@ -136,6 +136,7 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
         pages: c.pages.clone(),
         persona,
         context,
+        team: None,
         launch: BundleLaunch {
             profile: rule.profile.clone(),
             model: rule.model.clone(),

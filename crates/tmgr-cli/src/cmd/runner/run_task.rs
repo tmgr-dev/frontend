@@ -226,6 +226,7 @@ fn bundle(
             instructions: None,
         }),
         context: Vec::new(),
+        team: None,
         launch: BundleLaunch {
             profile: profile.to_string(),
             model: model.map(str::to_string),

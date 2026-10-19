@@ -1230,6 +1230,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         pages: Vec::new(),
         persona: ok.persona.clone(),
         context: ok.context.clone(),
+        team: None,
         launch: BundleLaunch {
             profile: profile.clone(),
             model: a.model.clone(),

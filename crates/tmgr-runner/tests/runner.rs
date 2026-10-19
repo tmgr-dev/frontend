@@ -1136,6 +1136,7 @@ impl Harness {
             }],
             persona: None,
             context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: profile.into(),
                 model: None,
@@ -4670,6 +4671,7 @@ impl CloudFx {
             pages: vec![],
             persona: None,
             context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: "cloudy".into(),
                 model: None,
@@ -4926,6 +4928,7 @@ impl MultiFx {
             pages: vec![],
             persona: None,
             context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: "multi".into(),
                 model: None,

@@ -52,8 +52,9 @@ pub mod caps {
     pub const MULTI_CLONE_V1: &str = "multi_clone.v1";
     pub const AUTOPILOT_V1: &str = "autopilot.v1";
     pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
+    pub const TEAM_V1: &str = "team.v1";
 
-    pub const ALL: [&str; 25] = [
+    pub const ALL: [&str; 26] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -79,6 +80,7 @@ pub mod caps {
         MULTI_CLONE_V1,
         AUTOPILOT_V1,
         SIGNED_CONTEXT_V1,
+        TEAM_V1,
     ];
 }
 

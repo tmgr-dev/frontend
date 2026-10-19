@@ -64,6 +64,30 @@ pub struct BundleLaunch {
     pub permission_mode: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamMode {
+    Eco,
+    Heavy,
+}
+
+impl TeamMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeamMode::Eco => "eco",
+            TeamMode::Heavy => "heavy",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BundleTeam {
+    pub size: u8,
+    pub mode: TeamMode,
+}
+
+pub const MAX_TEAM_SIZE: u8 = 5;
 pub const MAX_PERSONA_INSTRUCTIONS: usize = 32768;
 pub const MAX_CONTEXT_PAGES: usize = 5;
 pub const MAX_CONTEXT_BYTES: usize = 65536;
@@ -82,6 +106,8 @@ pub struct RunBundle {
     pub persona: Option<BundlePersona>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub context: Vec<BundlePage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<BundleTeam>,
     pub launch: BundleLaunch,
 }
 
@@ -100,6 +126,11 @@ impl RunBundle {
                 return Err(
                     "launch.permission_mode must be ask, accept-edits, plan or bypass".into(),
                 );
+            }
+        }
+        if let Some(t) = &self.team {
+            if !(1..=MAX_TEAM_SIZE).contains(&t.size) {
+                return Err(format!("team.size must be 1 to {MAX_TEAM_SIZE}"));
             }
         }
         valid_author("author.id", &self.author)?;

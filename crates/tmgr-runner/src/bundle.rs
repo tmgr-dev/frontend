@@ -724,6 +724,7 @@ mod tests {
             pages: vec![],
             persona: None,
             context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: "p".into(),
                 model: None,
