@@ -62,12 +62,7 @@ pub const SCHEMA: &str = r#"{
 }
 "#;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum TeamMode {
-    Eco,
-    Heavy,
-}
+pub use tmgr_ipc::api::TeamMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

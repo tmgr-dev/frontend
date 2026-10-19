@@ -841,6 +841,7 @@ impl<'a> Autopilot<'a> {
                 .map(|c| c.repos.iter().map(|r| r.full_name.clone()).collect())
                 .unwrap_or_default(),
             step: step.into(),
+            ..ActiveRun::default()
         });
     }
 
@@ -1475,6 +1476,13 @@ impl<'a> Autopilot<'a> {
             failures_in_row: self.failures,
             prs: self.prs.clone(),
             events: self.events.clone(),
+            plan: None,
+            triage: Vec::new(),
+            not_planned: Vec::new(),
+            agents_planned: None,
+            needs_feedback_tasks: None,
+            blocked_tasks: None,
+            queued_tasks: None,
             extra,
         };
         if let Err(e) = self.store.write_status(&doc) {

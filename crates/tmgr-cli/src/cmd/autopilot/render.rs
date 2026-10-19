@@ -270,6 +270,7 @@ pub(super) mod tests {
                 started_at: Some(utc(19, 49)),
                 repos: vec!["o/api".into(), "o/web".into()],
                 step: "running".into(),
+                ..ActiveRun::default()
             }],
             limits: vec![
                 LimitRow {
@@ -306,6 +307,13 @@ pub(super) mod tests {
             failures_in_row: 0,
             prs: vec![],
             events: vec![],
+            plan: None,
+            triage: Vec::new(),
+            not_planned: Vec::new(),
+            agents_planned: None,
+            needs_feedback_tasks: None,
+            blocked_tasks: None,
+            queued_tasks: None,
             extra: Default::default(),
         }
     }

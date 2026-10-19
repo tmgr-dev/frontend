@@ -49,6 +49,8 @@ pub fn settings_for(file: &QueueFile, now: DateTime<Utc>) -> Settings {
         windows: Vec::new(),
         kind: LoopKind::Queue,
         resume_queue: false,
+        order: Vec::new(),
+        dry_run: false,
     }
 }
 

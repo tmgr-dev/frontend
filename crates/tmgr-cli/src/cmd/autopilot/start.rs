@@ -817,6 +817,8 @@ fn launch(
         },
         kind: LoopKind::Drain,
         resume_queue: handover,
+        order: Vec::new(),
+        dry_run: false,
     };
     store.save_settings(&settings)?;
     tmgr_queue::switch::forget_queue_loop(paths);

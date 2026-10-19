@@ -370,6 +370,8 @@ fn settings(tasks: &[i64], tweak: impl Fn(&mut Answers)) -> Settings {
         windows: vec!["five_hour".into(), "seven_day".into()],
         kind: LoopKind::Drain,
         resume_queue: false,
+        order: vec![],
+        dry_run: false,
     }
 }
 
