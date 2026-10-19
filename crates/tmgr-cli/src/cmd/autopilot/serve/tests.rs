@@ -945,3 +945,70 @@ fn run_starts_waits_for_the_run_publishes_and_stops_when_nothing_is_left() {
     assert_eq!(w.order.last().unwrap(), "disable");
     assert_eq!(w.disabled.len(), 1);
 }
+
+#[test]
+fn with_the_usage_guard_off_a_hot_limit_neither_blocks_starts_nor_drains_runs() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    rig.fake.w().probe = Ok(vec![(99.0, 99.0)]);
+    let s = settings(&[1, 2], |a| a.usage_guard = false);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        assert!(rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+        assert!(rig.fake.0.borrow().kills.is_empty());
+        assert!(ap.blockers.is_empty(), "{:?}", ap.blockers);
+        assert!(!ap.limit_rows().is_empty(), "limits are still shown");
+    });
+}
+
+#[test]
+fn with_the_usage_guard_off_unknown_numbers_never_stop_the_run() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    rig.fake.w().probe = Err(Error::conflict("no usage"));
+    let s = settings(&[2], |a| a.usage_guard = false);
+    with_ap(&rig, &s, |ap| {
+        for _ in 0..3 {
+            tick_on(ap);
+            rig.fake.advance(Duration::minutes(10));
+        }
+        assert!(ap.blockers.is_empty());
+    });
+}
+
+#[test]
+fn a_pickup_expired_as_taken_is_skipped_not_failed() {
+    let rig = Rig::new();
+    let mut p = pickup("q1", 1, "expired", None);
+    p.reason =
+        Some("skipped_taken: the task was taken before the run started (Anna (assignee))".into());
+    rig.fake.add(p);
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    let s = settings(&[1, 2], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_on(ap);
+        let st = rig.status();
+        assert_eq!(st.tasks.skipped, 1);
+        assert_eq!(st.tasks.failed, 0);
+        assert_eq!(ap.failures, 0);
+        let taken: Vec<_> = ap
+            .events
+            .iter()
+            .filter(|e| e.text == "skipped TM-1: taken by someone else")
+            .collect();
+        assert_eq!(taken.len(), 1);
+        let pushes = rig.fake.0.borrow().pushes.clone();
+        assert_eq!(
+            pushes
+                .iter()
+                .filter(|p| p.contains("skipped TM-1: taken by someone else"))
+                .count(),
+            1,
+            "{pushes:?}"
+        );
+        let summary = ap.build_summary(&ap.p.queue.state().unwrap(), &StopReason::NothingLeft);
+        assert_eq!(summary.skipped[0].reason, "taken by someone else");
+    });
+}

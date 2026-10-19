@@ -44,6 +44,7 @@ enum Class {
     InWork,
     Approved,
     Pending,
+    Taken,
     Gone,
 }
 
@@ -66,7 +67,17 @@ fn classify(p: &Pickup, killed: &BTreeSet<String>) -> Class {
                     .unwrap_or_else(|| "the start failed".into()),
             )
         }
-        Status::Expired => return Class::Gone,
+        Status::Expired => {
+            return if p
+                .reason
+                .as_deref()
+                .is_some_and(|r| r.starts_with("skipped_taken"))
+            {
+                Class::Taken
+            } else {
+                Class::Gone
+            }
+        }
         _ => {}
     }
     if exited && !p.run_clean {
@@ -504,6 +515,7 @@ impl<'a> Autopilot<'a> {
             paused: self.state == RunState::Paused,
             soft: self.s.answers.usage_soft,
             hard: self.s.answers.usage_hard,
+            guard: self.s.answers.usage_guard,
             tool: self.tool,
             limits: &self.guard,
             billing: self.billing,
@@ -600,6 +612,10 @@ impl<'a> Autopilot<'a> {
                 (Some(p), Some(Class::Failed(reason))) => {
                     view.counts.failed += 1;
                     self.note_failure(p, &reason);
+                }
+                (Some(p), Some(Class::Taken)) => {
+                    view.counts.skipped += 1;
+                    self.note_taken(p);
                 }
                 (Some(p), Some(Class::InWork)) => {
                     view.counts.in_work += 1;
@@ -764,6 +780,15 @@ impl<'a> Autopilot<'a> {
         });
         let text = format!("{} failed: {reason}", p.key);
         self.event("failed", Some(&p.key.clone()), text);
+    }
+
+    fn note_taken(&mut self, p: &Pickup) {
+        if !self.noted_skips.insert(p.task.task_id) {
+            return;
+        }
+        let text = format!("skipped {}: taken by someone else", p.key);
+        self.event("skipped", Some(&p.key.clone()), text.clone());
+        self.push("Autopilot: task taken", &text);
     }
 
     fn note_skip(&mut self, id: i64, st: &State) {
@@ -1102,12 +1127,16 @@ impl<'a> Autopilot<'a> {
             let class = latest(st, *id).map(|p| classify(p, &self.killed));
             if matches!(
                 class,
-                None | Some(Class::Gone) | Some(Class::Pending) | Some(Class::Approved)
+                None | Some(Class::Gone)
+                    | Some(Class::Taken)
+                    | Some(Class::Pending)
+                    | Some(Class::Approved)
             ) {
                 let key = latest(st, *id).map_or_else(|| format!("#{id}"), |p| p.key.clone());
                 let why = match class {
                     Some(Class::Pending) => "waiting for approval".to_string(),
                     Some(Class::Approved) => "not started".to_string(),
+                    Some(Class::Taken) => "taken by someone else".to_string(),
                     _ => {
                         let r = skip_reason(st, *id);
                         if r.is_empty() {

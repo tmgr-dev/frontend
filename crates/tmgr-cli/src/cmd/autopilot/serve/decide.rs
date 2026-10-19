@@ -31,6 +31,7 @@ pub struct Inputs<'a> {
     pub paused: bool,
     pub soft: u32,
     pub hard: u32,
+    pub guard: bool,
     pub tool: Option<Tool>,
     pub limits: &'a [GuardLimit],
     pub billing: Billing,
@@ -89,7 +90,7 @@ pub fn decide(i: &Inputs) -> Decision {
         blockers.push(Blocker::Paused);
     }
     let mut hard_limit = None;
-    if i.billing != Billing::ApiKey && i.tool.is_some() {
+    if i.guard && i.billing != Billing::ApiKey && i.tool.is_some() {
         let rows: Vec<&GuardLimit> = i
             .limits
             .iter()
@@ -303,6 +304,7 @@ mod tests {
         max_hours: Option<f64>,
         elapsed_min: i64,
         failures: u32,
+        guard: bool,
     }
 
     impl<'a> Case<'a> {
@@ -318,6 +320,7 @@ mod tests {
                 max_hours: None,
                 elapsed_min: 10,
                 failures: 0,
+                guard: true,
             }
         }
 
@@ -328,6 +331,7 @@ mod tests {
                 paused: self.paused,
                 soft: 50,
                 hard: 80,
+                guard: self.guard,
                 tool: Some(Tool::Claude),
                 limits: self.limits,
                 billing: self.billing,
@@ -402,6 +406,17 @@ mod tests {
         assert!(Case::new(&l).decide().starts_allowed());
         l.push(row("model:sonnet", Some(70.0)));
         assert_eq!(kinds(&Case::new(&l).decide()), ["limit"]);
+    }
+
+    #[test]
+    fn with_the_guard_off_no_limit_blocks_or_turns_hard() {
+        for l in [rows(Some(95.0), Some(99.0)), rows(None, None), vec![]] {
+            let mut c = Case::new(&l);
+            c.guard = false;
+            let d = c.decide();
+            assert!(d.starts_allowed(), "{:?}", kinds(&d));
+            assert!(d.hard_limit.is_none());
+        }
     }
 
     #[test]
