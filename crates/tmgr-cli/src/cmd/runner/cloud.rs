@@ -2986,7 +2986,7 @@ mod tests {
             .repos
             .insert("127".into(), RepoBinding::Path("/repo".into()));
         let request = |c: &Candidate| {
-            let bundle = bundle_of(&rule, c, "/tmp/clone");
+            let bundle = bundle_of(&rule, c, "/tmp/clone", &Default::default());
             let mut r = RunCreateReq {
                 clones: Vec::new(),
                 profile: "claude-code".into(),

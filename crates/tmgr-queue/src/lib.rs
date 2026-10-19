@@ -15,7 +15,7 @@ pub mod wip;
 pub mod workdir;
 
 pub use engine::{
-    approve, needs_runner, pause_to_draft, release, run_once, Deps, PassReport, PausedDraft,
-    PickupOutcome, Publisher, StartPolicy,
+    approve, effective_rule, needs_runner, pause_to_draft, release, run_once, Deps, PassReport,
+    PausedDraft, PickupOutcome, Publisher, StartPolicy, TaskPlan,
 };
 pub use paths::Paths;

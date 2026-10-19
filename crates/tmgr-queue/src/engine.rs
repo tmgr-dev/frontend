@@ -11,9 +11,10 @@ use crate::workdir::{clone_dir, WorkDirs};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{BundleLaunch, BundlePersona, CloneSpec, RunBundle};
+use tmgr_ipc::api::{BundleLaunch, BundlePersona, BundleTeam, CloneSpec, RunBundle};
 
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
@@ -46,12 +47,21 @@ pub struct Deps<'a> {
     pub policy: StartPolicy,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TaskPlan {
+    pub order: Vec<i64>,
+    pub groups: BTreeMap<i64, String>,
+    pub teams: BTreeMap<i64, BundleTeam>,
+    pub profile: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub struct StartPolicy {
     pub starts_allowed: bool,
     pub max_live: Option<usize>,
     pub max_new_starts: Option<usize>,
     pub only: Option<BTreeSet<i64>>,
+    pub plan: Option<Arc<TaskPlan>>,
 }
 
 impl Default for StartPolicy {
@@ -61,13 +71,58 @@ impl Default for StartPolicy {
             max_live: None,
             max_new_starts: None,
             only: None,
+            plan: None,
         }
     }
+}
+
+fn plan_rule(rule: &Rule, policy: &StartPolicy) -> Rule {
+    let mut r = rule.clone();
+    if let Some(profile) = policy.plan.as_ref().and_then(|p| p.profile.as_ref()) {
+        r.profile = profile.clone();
+    }
+    r
+}
+
+pub fn effective_rule(rule: &Rule, policy: &StartPolicy, _task_id: i64) -> Rule {
+    plan_rule(rule, policy)
 }
 
 impl StartPolicy {
     fn selects(&self, task_id: i64) -> bool {
         self.only.as_ref().is_none_or(|o| o.contains(&task_id))
+    }
+
+    fn start_order(&self, state: &State) -> Vec<usize> {
+        let mut idx: Vec<usize> = (0..state.pickups.len()).collect();
+        if let Some(plan) = &self.plan {
+            let pos = |i: usize| {
+                let id = state.pickups[i].task.task_id;
+                (
+                    plan.order
+                        .iter()
+                        .position(|t| *t == id)
+                        .unwrap_or(usize::MAX),
+                    id,
+                )
+            };
+            idx.sort_by_key(|&i| pos(i));
+        }
+        idx
+    }
+
+    fn group_busy(&self, state: &State, task_id: i64) -> bool {
+        let Some(plan) = &self.plan else {
+            return false;
+        };
+        let Some(group) = plan.groups.get(&task_id) else {
+            return false;
+        };
+        state.pickups.iter().any(|q| {
+            q.task.task_id != task_id
+                && plan.groups.get(&q.task.task_id) == Some(group)
+                && (q.occupies() || q.awaits_publish())
+        })
     }
 
     fn blocks_start(&self, live: usize, begun: usize, task_id: i64) -> bool {
@@ -110,7 +165,8 @@ fn ts(now: DateTime<Utc>) -> String {
     now.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
+pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str, policy: &StartPolicy) -> RunBundle {
+    let rule = &effective_rule(rule, policy, c.task.task_id);
     let (persona, context) = match &c.cloud {
         Some(cloud) => (cloud.persona.clone(), cloud.context.clone()),
         None => (
@@ -136,7 +192,10 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
         pages: c.pages.clone(),
         persona,
         context,
-        team: None,
+        team: policy
+            .plan
+            .as_ref()
+            .and_then(|p| p.teams.get(&c.task.task_id).copied()),
         launch: BundleLaunch {
             profile: rule.profile.clone(),
             model: rule.model.clone(),
@@ -150,6 +209,7 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
 }
 
 fn pin_of(rule: &Rule, cloud: bool, deps: &Deps) -> std::result::Result<ProfilePin, String> {
+    let rule = &plan_rule(rule, &deps.policy);
     if cloud {
         deps.profiles.pin_for(
             &rule.profile,
@@ -175,6 +235,7 @@ fn run_dir(rule: &Rule, cloud: Option<&CloudClaim>, pickup_id: &str) -> Option<s
 }
 
 fn check_rule(rule: &Rule, deps: &Deps) -> Result<()> {
+    let rule = &plan_rule(rule, &deps.policy);
     rules::validate_rule_with(rule, deps.profiles, Some(deps.cloud), deps.now)?;
     for repo in &rule.repos {
         match std::fs::canonicalize(repo) {
@@ -576,7 +637,8 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                 && p.status == Status::Failed
                 && p.run_id.is_none()
                 && p.reason.as_deref().is_some_and(is_fixed_refusal)
-                && p.bundle_sha256 != bundle_of(rule, c, &p.bundle.launch.cwd).sha256()
+                && p.bundle_sha256
+                    != bundle_of(rule, c, &p.bundle.launch.cwd, &deps.policy).sha256()
         });
         if let Some(i) = stale {
             let (old, cwd) = (
@@ -646,7 +708,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                 (id, dir.to_string_lossy().into_owned())
             }
         };
-        let bundle = bundle_of(rule, c, &cwd);
+        let bundle = bundle_of(rule, c, &cwd, &deps.policy);
         if let Err(m) = bundle.validate() {
             pass.skip_once(
                 skey,
@@ -815,7 +877,7 @@ fn start_phase(
     deps: &Deps,
 ) -> Result<()> {
     let mut begun = 0usize;
-    for i in 0..pass.state.pickups.len() {
+    for i in deps.policy.start_order(&pass.state) {
         let p = &pass.state.pickups[i];
         if p.status != Status::Approved || p.released {
             continue;
@@ -833,6 +895,8 @@ fn start_phase(
             )?;
             continue;
         };
+        let task_id = pass.state.pickups[i].task.task_id;
+        let rule = &effective_rule(rule, &deps.policy, task_id);
         if let Err(e) = check_rule(rule, deps) {
             pass.set(
                 i,
@@ -861,6 +925,9 @@ fn start_phase(
         {
             continue;
         }
+        if deps.policy.group_busy(&pass.state, task_id) {
+            continue;
+        }
         let cwd = pass.state.pickups[i].bundle.launch.cwd.clone();
         if run_dir(rule, pass.state.pickups[i].cloud.as_ref(), &id)
             .is_none_or(|d| d.to_string_lossy() != cwd)
@@ -883,7 +950,7 @@ fn start_phase(
                 cs.iter()
                     .find(|c| c.task.task_id == pass.state.pickups[i].task.task_id)
             })
-            .map(|c| bundle_of(rule, c, &cwd).sha256());
+            .map(|c| bundle_of(rule, c, &cwd, &deps.policy).sha256());
         if current.as_deref() != Some(pass.state.pickups[i].bundle_sha256.as_str()) {
             back_to_pending(
                 pass,
@@ -2632,6 +2699,105 @@ mod tests {
         })
         .unwrap();
         assert_eq!(fx.runs.created.borrow().len(), 2);
+    }
+
+    fn plan(f: impl FnOnce(&mut TaskPlan)) -> StartPolicy {
+        let mut p = TaskPlan::default();
+        f(&mut p);
+        StartPolicy {
+            plan: Some(Arc::new(p)),
+            ..StartPolicy::default()
+        }
+    }
+
+    fn started_tasks(fx: &Fx) -> Vec<i64> {
+        fx.runs
+            .requests
+            .borrow()
+            .iter()
+            .map(|r| r.task.task_id)
+            .collect()
+    }
+
+    #[test]
+    fn the_plan_order_beats_the_id_order_and_state_order_is_untouched() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        fx.pass_with(StartPolicy {
+            starts_allowed: false,
+            ..StartPolicy::default()
+        })
+        .unwrap();
+        let before: Vec<i64> = fx.pickups().iter().map(|p| p.task.task_id).collect();
+        let policy = plan(|p| p.order = vec![3, 1]);
+        fx.pass_with(policy).unwrap();
+        assert_eq!(started_tasks(&fx), [3, 1, 2]);
+        let after: Vec<i64> = fx.pickups().iter().map(|p| p.task.task_id).collect();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn a_group_runs_one_task_at_a_time_and_released_members_free_it() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        let policy = plan(|p| {
+            p.groups = [(1, "g".into()), (2, "g".into())].into();
+        });
+        fx.pass_with(policy.clone()).unwrap();
+        assert_eq!(started_tasks(&fx), [1, 3]);
+        fx.pass_with(policy.clone()).unwrap();
+        assert_eq!(started_tasks(&fx), [1, 3]);
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.runs.failed.borrow_mut().push("mock-1".into());
+        fx.pass_with(policy.clone()).unwrap();
+        fx.pass_with(policy).unwrap();
+        assert_eq!(started_tasks(&fx), [1, 3, 2]);
+    }
+
+    #[test]
+    fn a_planned_pickup_never_exceeds_max_live() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        let mut policy = plan(|p| p.order = vec![3, 2, 1]);
+        policy.max_live = Some(2);
+        fx.pass_with(policy.clone()).unwrap();
+        fx.pass_with(policy).unwrap();
+        assert_eq!(started_tasks(&fx), [3, 2]);
+    }
+
+    #[test]
+    fn the_plan_profile_and_team_reach_the_start_and_both_passes_agree() {
+        let fx = busy_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "a")]);
+        let policy = plan(|p| {
+            p.profile = Some("other".into());
+            p.teams = [(
+                1,
+                BundleTeam {
+                    size: 3,
+                    mode: tmgr_ipc::api::TeamMode::Heavy,
+                },
+            )]
+            .into();
+        });
+        let mut closed = policy.clone();
+        closed.starts_allowed = false;
+        fx.pass_with(closed).unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        fx.pass_with(policy).unwrap();
+        assert_eq!(fx.audit_events("start_refused"), 0);
+        let reqs = fx.runs.requests.borrow();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].profile, "other");
+        assert_eq!(reqs[0].bundle.launch.profile, "other");
+        assert_eq!(reqs[0].bundle.team.map(|t| t.size), Some(3));
+        assert_eq!(reqs[0].bundle.sha256(), reqs[0].bundle_sha256);
     }
 
     #[test]
