@@ -3969,7 +3969,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmgr-approval"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3984,7 +3984,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-cli"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
@@ -4020,7 +4020,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-core"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "chrono",
  "flate2",
@@ -4048,7 +4048,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -4063,7 +4063,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-link"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "chrono",
  "keyring",
@@ -4081,7 +4081,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-local"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4097,7 +4097,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-queue"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4108,15 +4108,17 @@ dependencies = [
  "serde_json",
  "sha2 0.11.1",
  "tempfile",
+ "tmgr-approval",
  "tmgr-core",
  "tmgr-ipc",
  "tmgr-local",
+ "tmgr-runner",
  "toml",
 ]
 
 [[package]]
 name = "tmgr-runner"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4142,7 +4144,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.9"
+version = "1.0.10"
 dependencies = [
  "chrono",
  "memchr",
