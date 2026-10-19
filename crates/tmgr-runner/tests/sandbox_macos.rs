@@ -136,3 +136,123 @@ fn profile_directory_is_neither_readable_nor_writable() {
     assert_eq!(fs::read_to_string(agents.join("p.toml")).unwrap(), SECRET);
     assert!(!agents.join("new.toml").exists());
 }
+
+const KC_SERVICE: &str = "dev.tmgr.cli.sandbox-test";
+
+fn security(args: &[&str]) -> std::process::Output {
+    Command::new("/usr/bin/security")
+        .args(args)
+        .output()
+        .unwrap()
+}
+
+fn user_keychains() -> Vec<String> {
+    let o = security(&["list-keychains", "-d", "user"]);
+    String::from_utf8_lossy(&o.stdout)
+        .lines()
+        .map(|l| l.trim().trim_matches('"').to_string())
+        .filter(|l| !l.is_empty())
+        .collect()
+}
+
+struct TempKeychains {
+    saved: Vec<String>,
+    created: Vec<std::path::PathBuf>,
+}
+
+impl TempKeychains {
+    fn new() -> Self {
+        Self {
+            saved: user_keychains(),
+            created: Vec::new(),
+        }
+    }
+
+    fn create(&mut self, path: &std::path::Path, password: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let p = path.to_str().unwrap();
+        self.created.push(path.to_path_buf());
+        let o = security(&["create-keychain", "-p", password, p]);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        let o = security(&["unlock-keychain", "-p", password, p]);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+        let o = security(&[
+            "add-generic-password",
+            "-s",
+            KC_SERVICE,
+            "-a",
+            "test",
+            "-w",
+            SECRET,
+            p,
+        ]);
+        assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
+    }
+}
+
+impl Drop for TempKeychains {
+    fn drop(&mut self) {
+        for p in &self.created {
+            let _ = security(&["delete-keychain", p.to_str().unwrap()]);
+        }
+        let mut args = vec!["list-keychains", "-d", "user", "-s"];
+        args.extend(self.saved.iter().map(String::as_str));
+        let _ = security(&args);
+    }
+}
+
+fn random_password() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    format!("{nanos:x}{:x}", std::process::id())
+}
+
+#[test]
+fn a_keychain_under_the_real_home_cannot_be_read_by_path_but_one_in_the_session_can() {
+    let f = fx();
+    assert_ne!(f.home, f.real_home);
+    assert!(!f.home.starts_with(&f.real_home));
+    let mut kcs = TempKeychains::new();
+    let password = random_password();
+    let denied = f.real_home.join("Library/Keychains/tmgr-test.keychain-db");
+    let allowed = f.cwd.join("tmgr-allowed.keychain-db");
+    kcs.create(&denied, &password);
+    kcs.create(&allowed, &password);
+
+    let read = |path: &std::path::Path| {
+        format!(
+            "/usr/bin/security find-generic-password -s {KC_SERVICE} -w {}",
+            f.path(path)
+        )
+    };
+    let outside = security(&[
+        "find-generic-password",
+        "-s",
+        KC_SERVICE,
+        "-w",
+        denied.to_str().unwrap(),
+    ]);
+    assert!(
+        outside.status.success() && String::from_utf8_lossy(&outside.stdout).trim() == SECRET,
+        "control failed: {}",
+        String::from_utf8_lossy(&outside.stderr)
+    );
+
+    let inside_allowed = f.run(&read(&allowed));
+    assert!(
+        inside_allowed.ok() && inside_allowed.stdout.trim() == SECRET,
+        "the sandbox cannot run security at all, the test would prove nothing: {} {}",
+        inside_allowed.stdout,
+        inside_allowed.stderr
+    );
+
+    let inside = f.run(&read(&denied));
+    assert!(
+        !inside.ok() && !inside.stdout.contains(SECRET),
+        "sandboxed run read a keychain under the real home: {} {}",
+        inside.stdout,
+        inside.stderr
+    );
+}
