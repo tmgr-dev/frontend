@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.7
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Cloud runs (off until you turn them on): your agents can start tasks of a cloud workspace on this machine. Three locks: "Let my agents run my tasks" in the workspace settings (per person, off by default), `tmgr runner allow <workspace> [--for 8h|7d|30d|forever]` in a terminal (default 30 days, re-type the workspace code, refused inside agent sessions), and a signed approval on each task. Tasks you write in the web or desktop app are approved automatically; other people's tasks, older tasks and tasks made by agents need one "Confirm for agent runs" click (also for several tasks at once).
+- Approvals are signed on your own devices and checked on this machine against the keys pinned by `tmgr runner allow`, so the server cannot invent or change an approved task. Any edit or comment by someone else or by an agent cancels it. `tmgr runner allowed [--json]` shows what is allowed and when it expires, `tmgr runner disallow <workspace>` removes it.
+- `tmgr run <cloud task>`: the agent gets only the title and description, works only in the repository bound to the task's category (its GitHub link; asked once), and you get a push notification for every start. `--mode bypass` is accepted for these tasks only, always inside the sandbox.
+- Network for cloud runs on macOS: the agent can reach only its model API and GitHub (fetch) through a local proxy; everything else, DNS included, is blocked. On Linux the network cannot be limited this way, so unattended runs never use bypass there.
+- `tmgr run <cloud task> --publish` and the queue: when the agent finished cleanly, the CLI pushes its `tmgr/<key>-...` branch to the bound repository and opens a pull request with `gh`. It never pushes the default branch, never merges, refuses changes under `.github/`, and moves the task to Review with a comment linking the PR.
+- Queue rules may now use an allowed cloud workspace (`auto = true`, a project and a bound repository required); tasks without a valid approval are skipped and logged.
+- The sandbox also denies `~/.config/gh`, `~/.git-credentials` and `~/.config/git/credentials`.
+
 ## 1.0.6
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
