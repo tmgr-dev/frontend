@@ -24,6 +24,7 @@ import { startUpdateChecks } from '@/utils/desktopUpdater';
 import { domainEvents, installDomainEvents } from '@/utils/domainEvents';
 import { installFileDropGuard } from '@/utils/fileDrag';
 import { installFocusSource } from '@/utils/focusSource';
+import { findInjectedScripts } from '@/utils/injectedScripts';
 import { requestCache } from '@/utils/requestCache';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
@@ -229,6 +230,25 @@ const start = async () => {
 	void import('@/telemetry/start').then(({ startTelemetry }) =>
 		startTelemetry({ router, accountMode: () => store.getters.accountMode }),
 	);
+	if (import.meta.env.PROD) {
+		try {
+			const injected = findInjectedScripts(
+				Array.from(document.scripts, (s) =>
+					s.getAttribute('src') ? s.src : '',
+				),
+				location.href,
+			);
+			// window.console, not console: terser drop_console strips console.* in prod.
+			if (injected.length)
+				window.console.warn(
+					`[tmgr] This page is being modified by third-party software (e.g. antivirus/VPN web protection); injected scripts can slow the app down: ${injected.join(
+						', ',
+					)}`,
+				);
+		} catch {
+			/* diagnostics must never break boot */
+		}
+	}
 };
 
 void start();
