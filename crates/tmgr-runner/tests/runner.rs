@@ -4818,13 +4818,11 @@ fn multi_fx() -> MultiFx {
         .unwrap();
     fs::write(
         h.agents.join("multi.toml"),
-        format!(
-            "id = \"multi\"\nname = \"multi\"\ncommand = [\"/bin/sh\", \"./multi-agent.sh\"]\n\
-             [permission_modes]\nask = [\"--ask\"]\naccept-edits = [\"--edits\"]\n\
-             [[sandbox.seed]]\nfrom = \"~/.claude.json\"\nto = \".claude.json\"\n\
-             json_keys = [\"hasCompletedOnboarding\", \"theme\", \"oauthAccount\"]\n\
-             [trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{{cwd}}\", \"hasTrustDialogAccepted\"]\n"
-        ),
+        "id = \"multi\"\nname = \"multi\"\ncommand = [\"/bin/sh\", \"./multi-agent.sh\"]\n\
+         [permission_modes]\nask = [\"--ask\"]\naccept-edits = [\"--edits\"]\n\
+         [[sandbox.seed]]\nfrom = \"~/.claude.json\"\nto = \".claude.json\"\n\
+         json_keys = [\"hasCompletedOnboarding\", \"theme\", \"oauthAccount\"]\n\
+         [trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{cwd}\", \"hasTrustDialogAccepted\"]\n",
     )
     .unwrap();
     h.real_home = Some(home);
