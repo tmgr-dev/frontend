@@ -383,4 +383,23 @@ mod key_tests {
         assert!(e.hint.unwrap_or_default().contains("delete that key"));
         key_conflict(&entry(), &[(pin("k1", A), None), (pin("k2", B), None)]).unwrap();
     }
+
+    #[test]
+    fn a_set_binding_is_listed_with_its_paths_and_a_single_path_is_not() {
+        let mut e = entry();
+        e.repos.insert("1".into(), RepoBinding::Path("/one".into()));
+        e.repos.insert(
+            "2".into(),
+            RepoBinding::Set(
+                [("a/x", "/p1"), ("a/y", "/p2")]
+                    .iter()
+                    .map(|(n, p)| (n.to_string(), p.to_string()))
+                    .collect(),
+            ),
+        );
+        assert_eq!(
+            set_lines(&[e]),
+            ["w category 2:", "  a/x  /p1", "  a/y  /p2"]
+        );
+    }
 }

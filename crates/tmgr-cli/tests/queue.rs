@@ -612,6 +612,31 @@ fn a_wrong_phrase_changes_nothing_and_the_right_one_adds_a_private_rule() {
 }
 
 #[test]
+fn several_repos_are_refused_for_a_local_rule_and_leave_no_file() {
+    let fx = Fx::new();
+    let repo = fx.repo();
+    let other = private_tmp("second");
+    let args = [
+        "queue",
+        "rules",
+        "add",
+        "two",
+        "--workspace",
+        "local:personal",
+        "--persona",
+        "builder",
+        "--profile",
+        "sh-agent",
+        "--repo",
+        repo.to_str().unwrap(),
+        "--repo",
+        other.path().to_str().unwrap(),
+    ];
+    assert_eq!(fx.pty(&args, &[]).exit(), 2);
+    assert!(!fx.cfg().join("queue.toml").exists());
+}
+
+#[test]
 fn cloud_workspaces_and_bypass_profiles_are_refused() {
     let fx = Fx::new();
     let repo = fx.repo();

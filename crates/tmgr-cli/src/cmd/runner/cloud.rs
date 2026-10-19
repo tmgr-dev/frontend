@@ -589,13 +589,24 @@ pub fn bound_set(
     list: &[String],
     hint: &str,
 ) -> Result<Vec<ClaimRepo>> {
+    bound_set_in(terminal_session(), allow, entry, category, list, hint)
+}
+
+fn bound_set_in(
+    terminal: bool,
+    allow: &mut AllowFile,
+    entry: &Entry,
+    category: &Category,
+    list: &[String],
+    hint: &str,
+) -> Result<Vec<ClaimRepo>> {
     if let Ok(found) = bound_set_paths(entry, category, list) {
         for r in &found {
             verify_repo(&canonical_root(Path::new(&r.path))?, &r.full_name)?;
         }
         return Ok(found);
     }
-    if !terminal_session() {
+    if !terminal {
         return Err(bind_failure(entry, category, hint));
     }
     if entry.repo(category.id).is_some() {
@@ -2080,6 +2091,405 @@ mod tests {
             )
             .to_string(),
             r#"{"repo":"/work/repo","clone":"/work/repo-worktrees/tmgr-tm-410-fix","branch":"tmgr/tm-410-fix","cloud":true,"session":"s_1","agent":"claude-code"}"#
+        );
+    }
+
+    fn bundle_v2() -> Value {
+        let c = &fx()["cases_v2"][0];
+        json!({
+            "task_id": 9100, "workspace_id": 56, "workspace_code": "tmgrdev",
+            "viewer_user_id": 1, "author_user_id": 1,
+            "title": c["title"], "description": c["description"],
+            "task_key": "TM-411",
+            "category": {"id": 127, "code": "TM", "github_full_name": null, "default_branch": null,
+                "repositories": c["repositories"], "repos_sha256": c["repos_sha256"]},
+            "setting_enabled": true,
+            "approval": {"kind": "author", "key_id": key_id(),
+                "content_sha256": c["content_sha256"], "repos_sha256": c["repos_sha256"],
+                "signed_at": 1760000100, "signature": c["signature"],
+                "revoked_at": null, "revoked_reason": null}
+        })
+    }
+
+    #[test]
+    fn a_signed_set_builds_a_v2_claim_from_the_local_hash() {
+        let c = &fx()["cases_v2"][0];
+        let ok = gate(&ok_allow(), bundle_v2(), &live(), None).unwrap();
+        assert_eq!(ok.claim.repos_sha256.as_deref(), c["repos_sha256"].as_str());
+        assert_eq!(
+            ok.repos.as_deref(),
+            Some(
+                &[
+                    "tmgr-dev/backend".to_string(),
+                    "tmgr-dev/frontend".to_string()
+                ][..]
+            )
+        );
+        assert_eq!(ok.claim.task_id, 9100);
+    }
+
+    #[test]
+    fn an_added_dropped_or_swapped_repository_is_refused() {
+        for list in [
+            json!(["tmgr-dev/frontend", "tmgr-dev/backend", "tmgr-dev/extra"]),
+            json!(["tmgr-dev/backend"]),
+            json!(["tmgr-dev/backend", "tmgr-dev/other"]),
+            json!(["tmgr-dev/backend", "evil/frontend"]),
+        ] {
+            let mut b = bundle_v2();
+            b["category"]["repositories"] = list.clone();
+            let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+            assert!(
+                r.message.contains("changed since the approval"),
+                "{list}: {}",
+                r.message
+            );
+        }
+    }
+
+    #[test]
+    fn the_hash_the_server_reports_is_never_trusted() {
+        let mut b = bundle_v2();
+        b["category"]["repositories"] = json!(["tmgr-dev/backend"]);
+        b["category"]["repos_sha256"] = fx()["cases_v2"][0]["repos_sha256"].clone();
+        assert!(gate(&ok_allow(), b, &live(), None).is_err());
+        let mut b = bundle_v2();
+        b["category"]["repos_sha256"] = json!("0".repeat(64));
+        assert!(gate(&ok_allow(), b, &live(), None).is_ok());
+    }
+
+    #[test]
+    fn a_list_that_is_not_canonical_is_an_invalid_list() {
+        for list in [
+            json!([]),
+            json!(["Tmgr-dev/Backend", "tmgr-dev/frontend"]),
+            json!(["tmgr-dev/backend", "tmgr-dev/backend"]),
+            json!(["tmgr-dev/backend.git"]),
+            json!(["a/1", "a/2", "a/3", "a/4", "a/5", "a/6"]),
+            json!([" tmgr-dev/backend"]),
+        ] {
+            let mut b = bundle_v2();
+            b["category"]["repositories"] = list.clone();
+            let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+            assert!(
+                r.message.contains("invalid repository list"),
+                "{list}: {}",
+                r.message
+            );
+        }
+    }
+
+    #[test]
+    fn a_v2_approval_without_a_list_is_refused() {
+        let mut b = bundle_v2();
+        b["category"]["repositories"] = Value::Null;
+        let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+        assert!(r.message.contains("no longer reports"), "{}", r.message);
+    }
+
+    #[test]
+    fn a_v1_approval_with_a_list_is_refused() {
+        let mut b = bundle_v2();
+        b["approval"]["repos_sha256"] = Value::Null;
+        let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+        assert!(
+            r.message.contains("changed since the approval"),
+            "{}",
+            r.message
+        );
+        let mut b = bundle();
+        b["category"]["repositories"] = json!(["tmgr-dev/backend"]);
+        assert!(gate(&ok_allow(), b, &live(), None).is_err());
+    }
+
+    #[test]
+    fn a_forged_v2_signature_is_refused() {
+        let mut b = bundle_v2();
+        b["approval"]["signature"] = fx()["cases_v2"][0]["tampered_signature"].clone();
+        let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+        assert!(
+            r.message.contains("signature is not valid"),
+            "{}",
+            r.message
+        );
+    }
+
+    #[test]
+    fn the_rollback_stamp_of_a_set_covers_the_repositories() {
+        let c = &fx()["cases_v2"][0];
+        let content = c["content_sha256"].as_str().unwrap();
+        let repos = c["repos_sha256"].as_str().unwrap();
+        let stamp = format!("{content}:{repos}");
+        assert!(gate(
+            &ok_allow(),
+            bundle_v2(),
+            &live(),
+            Some((1760000100, Some(&stamp)))
+        )
+        .is_ok());
+        let r = gate(
+            &ok_allow(),
+            bundle_v2(),
+            &live(),
+            Some((1760000100, Some(content))),
+        )
+        .unwrap_err();
+        assert!(r.message.contains("older"), "{}", r.message);
+        assert!(gate(&ok_allow(), bundle_v2(), &live(), Some((1760000101, None))).is_err());
+    }
+
+    fn git_repo(dir: &Path, origin: &str) {
+        std::fs::create_dir_all(dir).unwrap();
+        for args in [
+            vec!["init", "-q", "-b", "main"],
+            vec!["remote", "add", "origin", origin],
+        ] {
+            let ok = std::process::Command::new("git")
+                .current_dir(dir)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .args(&args)
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "{args:?}");
+        }
+    }
+
+    fn category() -> Category {
+        serde_json::from_value(json!({"id": 127, "code": "TM"})).unwrap()
+    }
+
+    fn set_entry(pairs: &[(&str, &Path)]) -> Entry {
+        let mut e = allow(None, true).entries[0].clone();
+        e.repos.insert(
+            "127".into(),
+            RepoBinding::Set(
+                pairs
+                    .iter()
+                    .map(|(n, p)| (n.to_string(), p.display().to_string()))
+                    .collect(),
+            ),
+        );
+        e
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn a_binding_must_hold_exactly_the_listed_names() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let (be, fe) = (root.join("be"), root.join("fe"));
+        git_repo(&be, "https://github.com/tmgr-dev/backend.git");
+        git_repo(&fe, "git@github.com:tmgr-dev/frontend.git");
+        let entry = set_entry(&[("tmgr-dev/backend", &be), ("tmgr-dev/frontend", &fe)]);
+        let ok = bound_set_paths(
+            &entry,
+            &category(),
+            &names(&["tmgr-dev/backend", "tmgr-dev/frontend"]),
+        )
+        .unwrap();
+        assert_eq!(ok[0].path, be.display().to_string());
+        assert_eq!(ok[1].full_name, "tmgr-dev/frontend");
+        for list in [
+            names(&["tmgr-dev/backend"]),
+            names(&["tmgr-dev/backend", "tmgr-dev/frontend", "tmgr-dev/extra"]),
+            names(&["tmgr-dev/backend", "tmgr-dev/other"]),
+        ] {
+            assert!(
+                bound_set_paths(&entry, &category(), &list).is_err(),
+                "{list:?}"
+            );
+        }
+        let mut single = entry.clone();
+        single
+            .repos
+            .insert("127".into(), RepoBinding::Path(be.display().to_string()));
+        assert!(bound_set_paths(&single, &category(), &names(&["tmgr-dev/backend"])).is_err());
+        let gone = set_entry(&[("tmgr-dev/backend", &root.join("nope"))]);
+        assert!(bound_set_paths(&gone, &category(), &names(&["tmgr-dev/backend"])).is_err());
+    }
+
+    #[test]
+    fn without_a_terminal_a_missing_or_different_set_is_refused_and_nothing_is_stored() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let be = root.join("be");
+        git_repo(&be, "https://github.com/tmgr-dev/backend.git");
+        let entry = set_entry(&[("tmgr-dev/backend", &be)]);
+        let mut file = AllowFile::default();
+        let before = file.clone();
+        let e = bound_set_in(
+            false,
+            &mut file,
+            &entry,
+            &category(),
+            &names(&["tmgr-dev/backend", "tmgr-dev/frontend"]),
+            "tmgr run TM-1",
+        )
+        .unwrap_err();
+        assert!(e
+            .hint
+            .unwrap_or_default()
+            .contains("tmgr run TM-1 once in a terminal to bind the repositories of category TM"));
+        assert_eq!(file, before);
+        let plain = allow(None, true).entries[0].clone();
+        assert!(bound_set_in(
+            false,
+            &mut file,
+            &plain,
+            &category(),
+            &names(&["tmgr-dev/backend"]),
+            "x"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn an_exact_binding_is_verified_against_origin_and_returned() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let (be, fe) = (root.join("be"), root.join("fe"));
+        git_repo(&be, "https://github.com/tmgr-dev/backend.git");
+        git_repo(&fe, "https://github.com/evil/frontend.git");
+        let mut file = AllowFile::default();
+        let good = set_entry(&[("tmgr-dev/backend", &be)]);
+        let found = bound_set_in(
+            false,
+            &mut file,
+            &good,
+            &category(),
+            &names(&["tmgr-dev/backend"]),
+            "x",
+        )
+        .unwrap();
+        assert_eq!(found.len(), 1);
+        let bad = set_entry(&[("tmgr-dev/backend", &be), ("tmgr-dev/frontend", &fe)]);
+        let e = bound_set_in(
+            false,
+            &mut file,
+            &bad,
+            &category(),
+            &names(&["tmgr-dev/backend", "tmgr-dev/frontend"]),
+            "x",
+        )
+        .unwrap_err();
+        assert!(
+            e.message.contains("does not fetch from and push to"),
+            "{}",
+            e.message
+        );
+    }
+
+    #[test]
+    fn a_set_change_names_what_to_ask_keep_and_drop() {
+        let current: BTreeMap<String, String> = [("a/x", "/p1"), ("a/y", "/p2")]
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        let c = set_change(Some(&current), &names(&["a/y", "a/z"]));
+        assert_eq!(c.kept, ["a/y"]);
+        assert_eq!(c.missing, ["a/z"]);
+        assert_eq!(c.dropped, ["a/x"]);
+        let none = set_change(None, &names(&["a/y"]));
+        assert_eq!(
+            (none.kept.len(), none.missing.len(), none.dropped.len()),
+            (0, 1, 0)
+        );
+    }
+
+    #[test]
+    fn mixed_visibility_owners_or_unknown_need_the_warning() {
+        let info = |json: &str| parse_repo_info(json);
+        let a = info(r#"{"visibility":"PRIVATE","owner":{"login":"Acme"}}"#);
+        let b = info(r#"{"visibility":"private","owner":{"login":"acme"}}"#);
+        let public = info(r#"{"visibility":"PUBLIC","owner":{"login":"acme"}}"#);
+        let other = info(r#"{"visibility":"PRIVATE","owner":{"login":"someone"}}"#);
+        assert!(a.is_some() && a == b);
+        assert!(!mixed(&[a.clone(), b.clone()]));
+        assert!(mixed(&[a.clone(), public]));
+        assert!(mixed(&[a.clone(), other]));
+        assert!(mixed(&[a.clone(), None]));
+        assert!(mixed(&[None]));
+        assert!(info("not json").is_none() && info("{}").is_none());
+    }
+
+    #[test]
+    fn publishing_refuses_a_clone_that_is_not_the_folder_the_run_started_with() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let (be, fe) = (root.join("be"), root.join("fe"));
+        git_repo(&be, "https://github.com/tmgr-dev/backend.git");
+        git_repo(&fe, "https://github.com/tmgr-dev/frontend.git");
+        let entry = set_entry(&[("tmgr-dev/backend", &be), ("tmgr-dev/frontend", &fe)]);
+        let run = root.join("be-worktrees/tmgr-x");
+        std::fs::create_dir_all(run.join("backend")).unwrap();
+        std::fs::create_dir_all(run.join("frontend")).unwrap();
+        let target = |clones: Vec<CloneRef>| PublishTarget {
+            workspace_code: "tmgrdev".into(),
+            task_id: 9100,
+            clone_dir: run.clone(),
+            branch: "tmgr/tm-411".into(),
+            session_id: None,
+            agent: None,
+            repo: None,
+            clones,
+        };
+        let refs = || {
+            ["backend", "frontend"]
+                .iter()
+                .map(|n| CloneRef {
+                    name: n.to_string(),
+                    identity: workdir::clone_identity(&run.join(n)),
+                })
+                .collect::<Vec<_>>()
+        };
+        let list = names(&["tmgr-dev/backend", "tmgr-dev/frontend"]);
+        let go = |t: &PublishTarget| publish_multi(t, &entry, &category(), &list, "t", "b");
+        std::fs::rename(run.join("backend"), run.join("backend-moved")).unwrap();
+        std::fs::create_dir(run.join("backend")).unwrap();
+        let mut swapped = refs();
+        swapped[0].identity = Some((0, 1));
+        let e = go(&target(swapped)).unwrap_err();
+        assert!(
+            e.message.contains("not the folder this run started with"),
+            "{}",
+            e.message
+        );
+        let mut unidentified = refs();
+        unidentified[1].identity = None;
+        assert!(go(&target(unidentified)).is_err());
+        let mut renamed = refs();
+        renamed[0].name = "api".into();
+        let e = go(&target(renamed)).unwrap_err();
+        assert!(e.message.contains("recorded for this run"), "{}", e.message);
+        assert!(go(&target(refs()[..1].to_vec())).is_err());
+        std::fs::remove_dir(run.join("frontend")).unwrap();
+        std::os::unix::fs::symlink(&fe, run.join("frontend")).unwrap();
+        let e = go(&target(vec![
+            refs()[0].clone(),
+            CloneRef {
+                name: "frontend".into(),
+                identity: Some((1, 1)),
+            },
+        ]))
+        .unwrap_err();
+        assert!(e.message.contains("not the folder"), "{}", e.message);
+    }
+
+    #[test]
+    fn the_record_keeps_the_clones_and_their_identity() {
+        let clone = Path::new("/work/be-worktrees/tmgr-x");
+        let rec = [CloneRecord {
+            name: "backend".into(),
+            repo: "tmgr-dev/backend".into(),
+            identity: Some((7, 9)),
+        }];
+        assert_eq!(
+            record_body("/work/be", clone, "tmgr/x", None, &rec).to_string(),
+            r#"{"repo":"/work/be","clone":"/work/be-worktrees/tmgr-x","branch":"tmgr/x","cloud":true,"clones":[{"name":"backend","repo":"tmgr-dev/backend","dev":7,"ino":9}]}"#
         );
     }
 }

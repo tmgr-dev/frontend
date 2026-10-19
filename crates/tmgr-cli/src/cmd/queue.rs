@@ -788,68 +788,9 @@ impl CloudApi for CliCloud<'_> {
                 "the task has no category, so no repository is known".into(),
             ));
         };
-        let claim_repos = match &ok.repos {
-            Some(list) => {
-                let bound = match bound_set_paths(entry, category, list) {
-                    Ok(bound) => bound,
-                    Err(m) => {
-                        return Ok(refused(format!(
-                            "{m}; run `tmgr run {}:{task_id}` once in a terminal to bind the repositories of category {}",
-                            ws.code, category.code
-                        )))
-                    }
-                };
-                let canonical = |p: &str| {
-                    std::fs::canonicalize(p)
-                        .ok()
-                        .and_then(|c| c.to_str().map(str::to_string))
-                        .unwrap_or_else(|| p.to_string())
-                };
-                let bound_paths: BTreeSet<String> = bound.iter().map(|r| r.path.clone()).collect();
-                let rule_paths: BTreeSet<String> =
-                    rule.repos.iter().map(|r| canonical(r)).collect();
-                if bound_paths != rule_paths || rule.repos.len() != bound.len() {
-                    return Ok(refused(format!(
-                        "category {} is bound to other repositories than the rule's",
-                        category.code
-                    )));
-                }
-                bound
-            }
-            None => {
-                let bind = format!(
-                    "run `tmgr run {}:{task_id}` once in a terminal to bind a repository",
-                    ws.code
-                );
-                if category.github_full_name.is_none() {
-                    return Ok(refused(format!(
-                        "category {} has no linked GitHub repository",
-                        category.code
-                    )));
-                }
-                match entry.repo(category.id) {
-                    None if entry.repo_set(category.id).is_some() => {
-                        return Ok(refused(format!(
-                        "category {} is bound to a set of repositories, but the server lists none",
-                        category.code
-                    )))
-                    }
-                    None => {
-                        return Ok(refused(format!(
-                            "no repository is bound to category {}; {bind}",
-                            category.code
-                        )))
-                    }
-                    Some(bound) if rule.repos.len() != 1 || bound != rule.repos[0] => {
-                        return Ok(refused(format!(
-                            "category {} is bound to another repository than the rule's",
-                            category.code
-                        )))
-                    }
-                    Some(_) => {}
-                }
-                Vec::new()
-            }
+        let claim_repos = match rule_binding(rule, &ok, entry, category, &ws.code, task_id) {
+            Ok(repos) => repos,
+            Err(reason) => return Ok(refused(reason)),
         };
         rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
         rollback
@@ -863,6 +804,64 @@ impl CloudApi for CliCloud<'_> {
             repos: claim_repos,
         })))
     }
+}
+
+/// The repositories a queue pickup works on, or why the category's binding does not match the rule.
+/// Explicit set: the rule lists exactly the bound folders. No list: exactly the one bound folder.
+fn rule_binding(
+    rule: &Rule,
+    ok: &crate::cmd::runner::cloud::GateOk,
+    entry: &tmgr_core::approval::Entry,
+    category: &crate::cmd::runner::cloud::Category,
+    ws_code: &str,
+    task_id: i64,
+) -> std::result::Result<Vec<tmgr_queue::clones::ClaimRepo>, String> {
+    let Some(list) = &ok.repos else {
+        let bind =
+            format!("run `tmgr run {ws_code}:{task_id}` once in a terminal to bind a repository");
+        if category.github_full_name.is_none() {
+            return Err(format!(
+                "category {} has no linked GitHub repository",
+                category.code
+            ));
+        }
+        return match entry.repo(category.id) {
+            None if entry.repo_set(category.id).is_some() => Err(format!(
+                "category {} is bound to a set of repositories, but the server lists none",
+                category.code
+            )),
+            None => Err(format!(
+                "no repository is bound to category {}; {bind}",
+                category.code
+            )),
+            Some(bound) if rule.repos.len() != 1 || bound != rule.repos[0] => Err(format!(
+                "category {} is bound to another repository than the rule's",
+                category.code
+            )),
+            Some(_) => Ok(Vec::new()),
+        };
+    };
+    let bound = bound_set_paths(entry, category, list).map_err(|m| {
+        format!(
+            "{m}; run `tmgr run {ws_code}:{task_id}` once in a terminal to bind the repositories of category {}",
+            category.code
+        )
+    })?;
+    let canonical = |p: &str| {
+        std::fs::canonicalize(p)
+            .ok()
+            .and_then(|c| c.to_str().map(str::to_string))
+            .unwrap_or_else(|| p.to_string())
+    };
+    let bound_paths: BTreeSet<String> = bound.iter().map(|r| r.path.clone()).collect();
+    let rule_paths: BTreeSet<String> = rule.repos.iter().map(|r| canonical(r)).collect();
+    if bound_paths != rule_paths || rule.repos.len() != bound.len() {
+        return Err(format!(
+            "category {} is bound to other repositories than the rule's",
+            category.code
+        ));
+    }
+    Ok(bound)
 }
 
 struct CliPublisher<'a> {
@@ -1202,5 +1201,170 @@ mod run_request_tests {
             text,
             r#"{"profile":"claude-code","task":{"workspace_id":56,"task_id":9002},"cwd":"/work/repo-worktrees/queue/q_1","name":"TM-410 rule:r","model":"opus","cols":120,"rows":40,"bundle":{"v":1,"task":{"workspace_id":56,"task_id":9002},"title":"t","body":"b","author":{"kind":"human"},"comments":[],"pages":[],"launch":{"profile":"claude-code","cwd":"/work/repo-worktrees/queue/q_1"}},"bundle_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","permission_mode":"accept-edits","start_key":"q_1-1","clone_of":"/work/repo","exe_pin":{"path":"/bin/claude","sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},"argv_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","agent_work":true,"cloud":{"host":"api.tmgr.dev","user_id":1,"workspace_id":56,"task_id":9002,"category_id":127,"content_sha256":"h","key_id":"k","signed_at":1,"signature":"s","kind":"author"},"unattended":true}"#
         );
+    }
+
+    #[test]
+    fn a_multi_request_sends_the_clones_and_no_clone_of() {
+        let mut req = start_request();
+        req.clones = vec![
+            tmgr_ipc::api::CloneSpec {
+                name: "backend".into(),
+                clone_of: "/work/be".into(),
+            },
+            tmgr_ipc::api::CloneSpec {
+                name: "frontend".into(),
+                clone_of: "/work/fe".into(),
+            },
+        ];
+        let v = serde_json::to_value(run_create_req(&req)).unwrap();
+        assert!(v.get("clone_of").is_none());
+        assert_eq!(
+            v["clones"],
+            json!([
+                {"name": "backend", "clone_of": "/work/be"},
+                {"name": "frontend", "clone_of": "/work/fe"}
+            ])
+        );
+        assert_eq!(v["agent_work"], json!(true));
+    }
+}
+
+#[cfg(test)]
+mod rule_binding_tests {
+    use super::*;
+    use crate::cmd::runner::cloud::{Category, GateOk};
+    use std::collections::BTreeMap;
+    use std::path::Path;
+    use tmgr_core::approval::{Entry, RepoBinding};
+
+    fn rule(repos: &[&Path]) -> Rule {
+        Rule {
+            name: "r".into(),
+            workspace: "tmgrdev".into(),
+            project: Some("TM".into()),
+            status_type: "backlog".into(),
+            persona: "p".into(),
+            profile: "claude-code".into(),
+            model: None,
+            repos: repos.iter().map(|p| p.display().to_string()).collect(),
+            max_concurrent: 1,
+            hours: None,
+            trusted_authors: vec!["human".into()],
+            auto: true,
+            mode: None,
+        }
+    }
+
+    fn entry(binding: Option<RepoBinding>) -> Entry {
+        let mut repos = BTreeMap::new();
+        if let Some(b) = binding {
+            repos.insert("127".to_string(), b);
+        }
+        Entry {
+            server: "s".into(),
+            user_id: 1,
+            workspace_id: 56,
+            workspace_code: "tmgrdev".into(),
+            allowed_at: "2025-10-01T00:00:00Z".into(),
+            expires_at: None,
+            keys: vec![],
+            repos,
+        }
+    }
+
+    fn category(github: Option<&str>) -> Category {
+        serde_json::from_value(json!({"id": 127, "code": "TM", "github_full_name": github}))
+            .unwrap()
+    }
+
+    fn gate_ok(repos: Option<&[&str]>) -> GateOk {
+        GateOk {
+            claim: serde_json::from_value(json!({
+                "host": "s", "user_id": 1, "workspace_id": 56, "task_id": 1, "category_id": 127,
+                "content_sha256": "h", "key_id": "k", "signed_at": 1, "signature": "s", "kind": "author"
+            }))
+            .unwrap(),
+            title: "t".into(),
+            body: String::new(),
+            category: None,
+            task_key: "TM-1".into(),
+            repos: repos.map(|r| r.iter().map(|s| s.to_string()).collect()),
+        }
+    }
+
+    fn set(pairs: &[(&str, &Path)]) -> RepoBinding {
+        RepoBinding::Set(
+            pairs
+                .iter()
+                .map(|(n, p)| (n.to_string(), p.display().to_string()))
+                .collect(),
+        )
+    }
+
+    fn check(
+        rule: &Rule,
+        ok: &GateOk,
+        e: &Entry,
+        github: Option<&str>,
+    ) -> std::result::Result<Vec<tmgr_queue::clones::ClaimRepo>, String> {
+        rule_binding(rule, ok, e, &category(github), "tmgrdev", 1)
+    }
+
+    #[test]
+    fn an_explicit_set_needs_the_rule_to_hold_exactly_the_bound_folders() {
+        let d = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(d.path()).unwrap();
+        let (be, fe, extra) = (root.join("be"), root.join("fe"), root.join("extra"));
+        for p in [&be, &fe, &extra] {
+            std::fs::create_dir(p).unwrap();
+        }
+        let names = ["tmgr-dev/backend", "tmgr-dev/frontend"];
+        let ok = gate_ok(Some(&names));
+        let e = entry(Some(set(&[(names[0], &be), (names[1], &fe)])));
+        let found = check(&rule(&[&fe, &be]), &ok, &e, None).unwrap();
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].full_name, "tmgr-dev/backend");
+        assert!(check(&rule(&[&be]), &ok, &e, None).is_err());
+        assert!(check(&rule(&[&be, &fe, &extra]), &ok, &e, None).is_err());
+        assert!(check(&rule(&[&be, &extra]), &ok, &e, None).is_err());
+        assert!(check(&rule(&[&be, &be]), &ok, &e, None).is_err());
+        let path_bound = entry(Some(RepoBinding::Path(be.display().to_string())));
+        let m = check(&rule(&[&be, &fe]), &ok, &path_bound, None).unwrap_err();
+        assert!(
+            m.contains(
+                "`tmgr run tmgrdev:1` once in a terminal to bind the repositories of category TM"
+            ),
+            "{m}"
+        );
+        assert!(check(&rule(&[&be, &fe]), &ok, &entry(None), None).is_err());
+    }
+
+    #[test]
+    fn a_set_with_one_name_still_needs_the_rule_to_match() {
+        let d = tempfile::tempdir().unwrap();
+        let be = std::fs::canonicalize(d.path()).unwrap();
+        let ok = gate_ok(Some(&["tmgr-dev/backend"]));
+        let e = entry(Some(set(&[("tmgr-dev/backend", &be)])));
+        assert_eq!(check(&rule(&[&be]), &ok, &e, None).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_legacy_category_needs_exactly_one_rule_repo_equal_to_the_bound_path() {
+        let d = tempfile::tempdir().unwrap();
+        let be = std::fs::canonicalize(d.path()).unwrap();
+        let other = be.join("other");
+        let ok = gate_ok(None);
+        let e = entry(Some(RepoBinding::Path(be.display().to_string())));
+        assert!(check(&rule(&[&be]), &ok, &e, Some("acme/x"))
+            .unwrap()
+            .is_empty());
+        assert!(check(&rule(&[&other]), &ok, &e, Some("acme/x")).is_err());
+        assert!(check(&rule(&[&be, &other]), &ok, &e, Some("acme/x")).is_err());
+        assert!(check(&rule(&[&be]), &ok, &e, None).is_err());
+        let m = check(&rule(&[&be]), &ok, &entry(None), Some("acme/x")).unwrap_err();
+        assert!(m.contains("once in a terminal to bind a repository"), "{m}");
+        let s = entry(Some(set(&[("acme/x", &be)])));
+        let m = check(&rule(&[&be]), &ok, &s, Some("acme/x")).unwrap_err();
+        assert!(m.contains("set of repositories"), "{m}");
     }
 }
