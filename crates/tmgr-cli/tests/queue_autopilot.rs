@@ -801,6 +801,13 @@ async fn a_usage_jump_over_the_hard_limit_kills_the_agent_and_pauses_the_task_as
     )
     .unwrap();
     let done = cloud.wait_status("stopped", |s| s["state"] == "stopped");
+    assert_eq!(
+        done["stop_reason"], "hard usage limit reached: five_hour at 90%",
+        "{done}"
+    );
+    assert_eq!(
+        done["summary"]["stopped_by"], "hard usage limit reached: five_hour at 90%"
+    );
     let events = done["events"].to_string();
     assert!(
         events.contains("Hard usage limit: five_hour at 90%"),

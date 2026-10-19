@@ -232,6 +232,7 @@ pub struct Autopilot<'a> {
     blockers: Vec<String>,
     stop_reason: Option<String>,
     summary: Option<Summary>,
+    limit_paused: Option<Hit>,
 }
 
 pub fn serve(
@@ -299,6 +300,7 @@ impl<'a> Autopilot<'a> {
             blockers: Vec::new(),
             stop_reason: None,
             summary: None,
+            limit_paused: None,
         }
     }
 
@@ -437,6 +439,7 @@ impl<'a> Autopilot<'a> {
         if let Some(hit) = decision.hard_limit.clone() {
             if !self.view.live.is_empty() {
                 self.note_limit(&hit, true);
+                self.limit_paused = Some(hit.clone());
                 self.drain(&Why::limit(&hit));
             }
         }
@@ -539,6 +542,7 @@ impl<'a> Autopilot<'a> {
             resume_after_reset: self.s.answers.resume_after_reset,
             unknown_for: self.unknown_since.map(|t| now - t),
             hard: self.s.answers.usage_hard,
+            limit_paused: self.limit_paused.clone(),
         };
         self.blockers = decision
             .blockers

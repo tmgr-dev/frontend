@@ -155,6 +155,7 @@ pub struct Facts {
     pub resume_after_reset: bool,
     pub unknown_for: Option<Duration>,
     pub hard: u32,
+    pub limit_paused: Option<Hit>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -200,34 +201,33 @@ pub fn verdict(d: &Decision, f: &Facts, now: DateTime<Utc>) -> Option<StopReason
     if d.blockers.contains(&Blocker::Failures) {
         return Some(StopReason::Failures);
     }
-    if f.settled && f.eligible == 0 && !d.blockers.contains(&Blocker::Paused) {
-        return Some(StopReason::NothingLeft);
+    let waits_for = |hit: &Hit| f.resume_after_reset && hit.resets_at.is_some_and(|r| r > now);
+    if let Some(hit) = f.limit_paused.as_ref().filter(|h| !waits_for(h)) {
+        return Some(StopReason::HardLimit(hit.clone()));
     }
     for b in &d.blockers {
         match b {
-            Blocker::Paused => {}
             Blocker::Hours => return Some(StopReason::Hours),
-            Blocker::Failures => return Some(StopReason::Failures),
             Blocker::CostCap => return Some(StopReason::CostCap),
             Blocker::MaxTasks => return Some(StopReason::MaxTasks),
-            Blocker::Limit(hit) => {
-                let waits = f.resume_after_reset && hit.resets_at.is_some_and(|r| r > now);
-                if !waits {
-                    return Some(if hit.pct >= f64::from(f.hard) {
-                        StopReason::HardLimit(hit.clone())
-                    } else {
-                        StopReason::SoftLimit(hit.clone())
-                    });
-                }
+            Blocker::Limit(hit) if !waits_for(hit) => {
+                return Some(if hit.pct >= f64::from(f.hard) {
+                    StopReason::HardLimit(hit.clone())
+                } else {
+                    StopReason::SoftLimit(hit.clone())
+                });
             }
-            Blocker::UsageUnknown => {
-                if f.unknown_for
-                    .is_some_and(|u| u >= Duration::minutes(UNKNOWN_STOP_MINUTES))
-                {
-                    return Some(StopReason::UsageUnknown);
-                }
-            }
+            _ => {}
         }
+    }
+    if f.settled && f.eligible == 0 && !d.blockers.contains(&Blocker::Paused) {
+        return Some(StopReason::NothingLeft);
+    }
+    if d.blockers.contains(&Blocker::UsageUnknown)
+        && f.unknown_for
+            .is_some_and(|u| u >= Duration::minutes(UNKNOWN_STOP_MINUTES))
+    {
+        return Some(StopReason::UsageUnknown);
     }
     None
 }
@@ -474,6 +474,7 @@ mod tests {
             resume_after_reset: false,
             unknown_for: None,
             hard: 80,
+            limit_paused: None,
         }
     }
 
@@ -563,6 +564,39 @@ mod tests {
             verdict_of(&l, |_, _| {}),
             Some(StopReason::HardLimit(_))
         ));
+    }
+
+    #[test]
+    fn a_limit_that_paused_the_last_task_is_the_stop_reason_not_nothing_left() {
+        let l = rows(Some(1.0), Some(1.0));
+        let hit = Hit {
+            window: "five_hour".into(),
+            pct: 90.0,
+            resets_at: Some(now() + Duration::hours(1)),
+        };
+        let reason = verdict_of(&l, |_, f| {
+            f.eligible = 0;
+            f.limit_paused = Some(hit.clone());
+        });
+        assert_eq!(reason, Some(StopReason::HardLimit(hit.clone())));
+    }
+
+    #[test]
+    fn blockers_that_do_not_wait_win_over_nothing_left() {
+        let hot = rows(Some(60.0), Some(1.0));
+        assert!(matches!(
+            verdict_of(&hot, |_, f| f.eligible = 0),
+            Some(StopReason::SoftLimit(_))
+        ));
+        let cold = rows(Some(1.0), Some(1.0));
+        assert_eq!(
+            verdict_of(&cold, |c, f| {
+                f.eligible = 0;
+                c.max_tasks = Some(1);
+                c.started = 1;
+            }),
+            Some(StopReason::MaxTasks)
+        );
     }
 
     #[test]
