@@ -439,19 +439,17 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Whether `head` descends from `base`, and how many merge commits `base..head` holds.
+/// Whether the new commits `base..head` sit on `base`'s history (no root commit among them, a shared
+/// merge base; `base` may have moved on since), and how many of them are merge commits.
 pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize)> {
-    let descends = git(Some(repo), &["merge-base", "--is-ancestor", base, head]).is_ok();
-    let merges = git(
-        Some(repo),
-        &[
-            "rev-list",
-            "--merges",
-            "--count",
-            &format!("{base}..{head}"),
-        ],
-    )?;
-    Ok((descends, merges.trim().parse().unwrap_or(usize::MAX)))
+    let range = format!("{base}..{head}");
+    let count = |extra: &str| -> Result<usize> {
+        let out = git(Some(repo), &["rev-list", extra, "--count", &range])?;
+        Ok(out.trim().parse().unwrap_or(usize::MAX))
+    };
+    let shared = git(Some(repo), &["merge-base", base, head]).is_ok();
+    let roots = count("--max-parents=0")?;
+    Ok((shared && roots == 0, count("--merges")?))
 }
 
 /// The commit `refs/heads/<branch>` points at in `repo`, or `None` when the branch does not exist.
@@ -895,6 +893,11 @@ mod tests {
         commit_file(&repo, "c.txt");
         let other = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
         assert!(!history_facts(&repo, &base, &other).unwrap().0);
+
+        run_git(&repo, &["checkout", "-q", "-b", "moved", &base]);
+        commit_file(&repo, "d.txt");
+        let moved = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(history_facts(&repo, &moved, &line).unwrap(), (true, 0));
     }
 
     #[test]
