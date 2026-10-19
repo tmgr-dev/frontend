@@ -860,3 +860,41 @@ async fn a_usage_jump_over_the_hard_limit_kills_the_agent_and_pauses_the_task_as
         "{comments:?}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn starting_a_drain_suspends_the_queue_loop_first_and_leaves_the_queue_on() {
+    if !sandbox_usable() {
+        return;
+    }
+    let cloud = Cloud::new().await;
+    cloud.add_rule();
+    let mut enable = cloud.pty(&["queue", "enable"]);
+    enable.wait_for("Type I AGREE");
+    enable.line("I AGREE");
+    assert_eq!(enable.exit(), 0, "{}", enable.text());
+    let queue = cloud.wait_status("the queue loop", |s| {
+        s["settings_id"] == "queue" && s["state"] == "running"
+    });
+    assert_eq!(queue["kind"], "queue");
+
+    let mut p = cloud.start_pty(&[]);
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    let drain = cloud.wait_status("the drain", |s| {
+        s["settings_id"]
+            .as_str()
+            .is_some_and(|id| id.starts_with("ap-"))
+            && s["tasks"]["in_work"] == 1
+    });
+    assert_eq!(drain["state"], "running");
+    let prev: Value = serde_json::from_str(
+        &std::fs::read_to_string(cloud.cfg().join("autopilot/status.prev.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(prev["settings_id"], "queue");
+    assert_eq!(prev["state"], "suspended");
+    assert!(cloud.queue_enabled());
+
+    let stop = cloud.cmd(&["queue", "autopilot", "stop"]);
+    assert_eq!(stop.status.code(), Some(0), "{}", text(&stop.stderr));
+    cloud.wait_status("stopped", |s| s["state"] == "stopped");
+}

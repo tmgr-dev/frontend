@@ -113,7 +113,7 @@ mod tests {
     #[test]
     fn identical_lines_are_counted_by_position() {
         let a = line(1);
-        let mut f = Follow::new(&[a.clone()]);
+        let mut f = Follow::new(std::slice::from_ref(&a));
         assert_eq!(f.fresh(vec![a.clone(), a.clone()]), vec![a.clone()]);
         assert_eq!(
             f.fresh(vec![a.clone(), a.clone(), a.clone(), a.clone()]),
