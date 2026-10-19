@@ -372,6 +372,18 @@ fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
 /// configuration and hooks were writable by the agent. A fresh bare repository of ours gets a copy
 /// of the clone's objects and borrows the rest from `repo`, which fetches from it. Returns the
 /// imported commit.
+pub fn git_query(repo: &Path, args: &[&str]) -> Result<String> {
+    git(Some(repo), args)
+}
+
+/// The branch a clone's HEAD names, read from `.git/HEAD` as data without running git there.
+pub fn clone_head_branch(clone: &Path) -> Option<String> {
+    let head = read_small(clone, ".git/HEAD")?;
+    head.trim()
+        .strip_prefix("ref: refs/heads/")
+        .map(str::to_string)
+}
+
 pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     crate::workdir::validate_branch(branch)?;
     let sha = clone_tip(clone, branch)

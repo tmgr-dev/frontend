@@ -11,7 +11,6 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tmgr_core::approval::{check_claim, content_sha256, AllowFile, Entry, Refusal, Rollback};
-use tmgr_core::branch;
 use tmgr_core::config;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::notify::build_push;
@@ -20,6 +19,7 @@ use tmgr_ipc::api::{
     caps, AuthorKind, BundleAuthor, BundleLaunch, CloudApproval, RunBundle, RunCreateReq, TaskRef,
 };
 use tmgr_link::privileged;
+use tmgr_queue::publish::{branch_slug, publish, publish_plan, PublishInput};
 use tmgr_queue::workdir;
 use tmgr_runner::daemon;
 
@@ -32,6 +32,8 @@ pub struct Category {
     pub code: String,
     #[serde(default)]
     pub github_full_name: Option<String>,
+    #[serde(default)]
+    pub default_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,29 +185,11 @@ fn refused(r: Refusal) -> Error {
 }
 
 pub fn branch_name(task_key: &str, title: &str) -> Result<String> {
-    let key: String = task_key
-        .to_ascii_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    let slug = branch::slug(title);
-    let name = if slug.is_empty() {
-        format!("tmgr/{key}")
-    } else {
-        format!("tmgr/{key}-{slug}")
-    };
-    let name = name.trim_end_matches('-').to_string();
-    let rest = name.strip_prefix("tmgr/").unwrap_or("");
-    let ok = !rest.is_empty()
-        && rest.len() <= 81
-        && rest.as_bytes()[0].is_ascii_alphanumeric()
-        && rest.bytes().all(|b| {
-            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-')
-        });
-    if !ok {
+    let name = branch_slug(task_key, title);
+    if name.len() <= "tmgr/".len() {
         return Err(Error::usage("the task has no usable key for a branch name"));
     }
-    branch::validate_branch_name(&name)?;
+    tmgr_core::branch::validate_branch_name(&name)?;
     Ok(name)
 }
 
@@ -393,12 +377,64 @@ fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
         .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
 }
 
+fn write_record(
+    code: &str,
+    task_id: i64,
+    repo: &str,
+    clone: &Path,
+    branch: &str,
+    session: Option<(&str, &str)>,
+) -> Result<()> {
+    let Some(path) = record_path(code, task_id) else {
+        return Ok(());
+    };
+    if let Some(dir) = path.parent() {
+        config::ensure_private_dir(dir)?;
+    }
+    let mut body = json!({ "repo": repo, "clone": clone, "branch": branch, "cloud": true });
+    if let Some((id, agent)) = session {
+        body["session"] = json!(id);
+        body["agent"] = json!(agent);
+    }
+    config::write_atomic(&path, body.to_string().as_bytes(), 0o600)
+}
+
+struct Record {
+    repo: String,
+    clone: PathBuf,
+    branch: String,
+    session: Option<String>,
+    agent: Option<String>,
+}
+
+fn read_record(code: &str, task_id: i64) -> Result<Record> {
+    let missing = || {
+        Error::not_found("no cloud run of this task is recorded on this machine")
+            .hint("start it with tmgr run <task> --agent <profile>")
+    };
+    let path = record_path(code, task_id).ok_or_else(missing)?;
+    let text = std::fs::read_to_string(path).map_err(|_| missing())?;
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|_| missing())?;
+    if v["cloud"] != json!(true) {
+        return Err(missing());
+    }
+    let text_of = |k: &str| v[k].as_str().map(str::to_string);
+    Ok(Record {
+        repo: text_of("repo").ok_or_else(missing)?,
+        clone: PathBuf::from(text_of("clone").ok_or_else(missing)?),
+        branch: text_of("branch").ok_or_else(missing)?,
+        session: text_of("session"),
+        agent: text_of("agent"),
+    })
+}
+
 pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     let profile = a
         .agent
         .clone()
         .ok_or_else(|| Error::usage("pass --agent <profile> to run a task"))?;
-    let mode = a.mode.unwrap_or(PermissionMode::AcceptEdits).as_str();
+    let mode_arg = a.mode.unwrap_or(PermissionMode::AcceptEdits);
+    let mode = mode_arg.as_str();
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
     let task = resolve_task(&ctx, client, reference)?;
@@ -462,6 +498,11 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             sanitize_line(&profile)
         );
     }
+    if mode_arg == PermissionMode::Bypass {
+        eprintln!(
+            "warning: bypass mode: the agent will not ask before running commands; only the OS sandbox and a restricted network limit it."
+        );
+    }
     crate::interact::confirm("Start this run?", true, a.yes)?;
     super::ops::login_preflight(&profile)?;
     let (exe_pin, argv_digest) = super::run_task::launch_pin(&profile, a.model.as_deref(), mode)?;
@@ -472,13 +513,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         )
         .hint("remove the folder and run again"));
     }
-    if let Some(path) = record_path(&ws.code, task_id) {
-        if let Some(dir) = path.parent() {
-            config::ensure_private_dir(dir)?;
-        }
-        let body = json!({ "repo": repo, "clone": clone, "branch": branch, "cloud": true });
-        config::write_atomic(&path, body.to_string().as_bytes(), 0o600)?;
-    }
+    write_record(&ws.code, task_id, &repo, &clone, &branch, None)?;
     workdir::prepare_clone(&repo, &clone, &branch, a.base.as_deref())?;
     let cwd = std::fs::canonicalize(&clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", clone.display())))?
@@ -554,6 +589,14 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             argv_sha256: Some(argv_digest),
         })
         .map_err(rerr)?;
+    write_record(
+        &ws.code,
+        task_id,
+        &repo,
+        &clone,
+        &branch,
+        Some((&info.id, &profile)),
+    )?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
     }
@@ -569,6 +612,239 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         o,
         json!({ "session": info, "repo": repo, "clone": cwd, "branch": branch }),
         human,
+    ))
+}
+
+struct RepoState {
+    default_branch: String,
+    fetch_url: String,
+    push_url: String,
+    commit_count: usize,
+    changed_paths: Vec<String>,
+}
+
+fn repo_state(repo: &Path, branch: &str, server_default: Option<&str>) -> Result<RepoState> {
+    let q = |args: &[&str]| workdir::git_query(repo, args);
+    let default_branch = q(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+        .ok()
+        .and_then(|b| b.strip_prefix("origin/").map(str::to_string))
+        .or_else(|| server_default.map(str::to_string))
+        .ok_or_else(|| {
+            Error::new(
+                Kind::Forbidden,
+                "cannot tell the default branch of the repository",
+            )
+            .hint("run git remote set-head origin --auto in it")
+        })?;
+    tmgr_core::branch::validate_branch_name(&default_branch)?;
+    let remote_ref = format!("refs/remotes/origin/{default_branch}");
+    let base = if q(&["rev-parse", "--verify", "-q", &remote_ref]).is_ok() {
+        remote_ref
+    } else {
+        format!("refs/heads/{default_branch}")
+    };
+    let head = format!("refs/heads/{branch}");
+    let count = q(&["rev-list", "--count", &format!("{base}..{head}")])?;
+    let diff = q(&[
+        "diff",
+        "--name-only",
+        "-z",
+        "--no-renames",
+        &format!("{base}...{head}"),
+    ])?;
+    Ok(RepoState {
+        default_branch,
+        fetch_url: q(&["remote", "get-url", "origin"])?,
+        push_url: q(&["remote", "get-url", "--push", "origin"])?,
+        commit_count: count.trim().parse().unwrap_or(0),
+        changed_paths: diff
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect(),
+    })
+}
+
+fn ensure_not_live(task: TaskRef, session: Option<&str>) -> Result<()> {
+    let cfg = runner_config()?;
+    let mut rc = tmgr_runner::client::Client::connect(&cfg.dir).map_err(|_| {
+        Error::new(
+            Kind::Conflict,
+            "cannot check whether the run has ended: the runner is not running",
+        )
+        .hint(format!("{} runner start", super::bin()))
+    })?;
+    let live = rc.list().map_err(rerr)?.into_iter().any(|s| {
+        s.state.kind != tmgr_ipc::api::StateKind::Exited
+            && (session == Some(s.id.as_str()) || s.task == Some(task))
+    });
+    if live {
+        return Err(
+            Error::new(Kind::Conflict, "the run of this task is still live")
+                .hint("wait for the agent to finish or stop it, then publish again"),
+        );
+    }
+    Ok(())
+}
+
+pub struct Published<'a> {
+    pub task_id: u64,
+    pub workspace_id: i64,
+    pub pr_url: &'a str,
+    pub agent: Option<&'a str>,
+    pub branch: &'a str,
+}
+
+pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<String> {
+    use tmgr_core::agentwork;
+    let mut warnings = Vec::new();
+    let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
+    let running = client
+        .agent_work(p.task_id)
+        .ok()
+        .and_then(|v| v.get("runs").and_then(|r| r.as_array()).cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|r| agentwork::parse_run(r).ok())
+        .find(|r| {
+            r.status == "running"
+                && p.agent.is_none_or(|a| r.agent.as_deref() == Some(a))
+                && r.branch.as_deref().is_none_or(|b| b == p.branch)
+        });
+    match running {
+        Some(run) => {
+            let progress = agentwork::Progress {
+                pr_url: Some(p.pr_url.to_string()),
+                summary: Some(format!("Opened {}", p.pr_url)),
+                ..Default::default()
+            };
+            if let Err(e) = agentwork::finish(client, run.id, "succeeded", &progress) {
+                warnings.push(note("could not finish the agent work run", &e));
+            }
+        }
+        None => warnings.push(
+            "no running agent work run to finish; the pull request link is in the comment".into(),
+        ),
+    }
+    match client.statuses(p.workspace_id) {
+        Ok(list) => {
+            if let Some(review) = list.iter().find(|s| s.kind == "review") {
+                if let Err(e) = client.set_task_status(p.task_id, review.id) {
+                    warnings.push(note("could not move the task to review", &e));
+                }
+            }
+        }
+        Err(e) => warnings.push(note("could not read the workspace statuses", &e)),
+    }
+    if let Err(e) = client.add_comment(
+        p.task_id,
+        &format!("The agent finished. Pull request: {}", p.pr_url),
+    ) {
+        warnings.push(note("could not add the comment", &e));
+    }
+    warnings
+}
+
+pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
+    let ctx = Ctx::new(o.cli)?;
+    let client = ctx.cloud_client()?;
+    let task = resolve_task(&ctx, client, reference)?;
+    let ws = ctx.workspace(client)?;
+    let host = host_of(&ctx.server()?)?;
+    let user_id = client
+        .current_user_id()?
+        .ok_or_else(|| Error::auth("cannot tell which account is logged in").hint("tmgr login"))?;
+    let task_id = i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?;
+    let rec = read_record(&ws.code, task_id)?;
+    let task_ref = TaskRef {
+        workspace_id: ws.id,
+        task_id,
+    };
+    ensure_not_live(task_ref, rec.session.as_deref())?;
+    let elig = parse_eligibility(client.agent_run_task(task_id)?)?;
+    if elig.task_id != task_id || elig.workspace_id != ws.id || elig.viewer_user_id != user_id {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the server answered for another task, workspace or account",
+        ));
+    }
+    let allow =
+        AllowFile::load().map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+    let entry = allow
+        .find_live(&host, user_id, ws.id, &ws.code, Utc::now())
+        .map_err(refused)?;
+    let category = elig.category.as_ref().ok_or_else(|| {
+        Error::new(
+            Kind::Forbidden,
+            "the task has no category, so no repository is known",
+        )
+    })?;
+    let full_name = category.github_full_name.as_deref().ok_or_else(|| {
+        Error::new(
+            Kind::Forbidden,
+            "the category has no linked GitHub repository",
+        )
+    })?;
+    let bound = entry
+        .repos
+        .get(&category.id.to_string())
+        .and_then(|b| std::fs::canonicalize(b).ok());
+    if bound != std::fs::canonicalize(&rec.repo).ok() || bound.is_none() {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the recorded repository is not the one bound to this category",
+        ));
+    }
+    let repo = bound.unwrap_or_default();
+    let repo_str = repo
+        .to_str()
+        .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
+    workdir::import_branch(repo_str, &rec.clone, &rec.branch)?;
+    let state = repo_state(&repo, &rec.branch, category.default_branch.as_deref())?;
+    let task_key = elig
+        .task_key
+        .clone()
+        .unwrap_or_else(|| format!("task-{task_id}"));
+    let input = PublishInput {
+        pinned_branch: rec.branch.clone(),
+        clone_branch: workdir::clone_head_branch(&rec.clone).unwrap_or_default(),
+        clone_dir: rec.clone.clone(),
+        repo: repo.clone(),
+        default_branch: state.default_branch,
+        origin_fetch_url: state.fetch_url,
+        origin_push_url: state.push_url,
+        github_full_name: full_name.to_string(),
+        changed_paths: state.changed_paths,
+        commit_count: state.commit_count,
+        pr_title: format!("{task_key}: {}", elig.title),
+        pr_body: format!(
+            "Opened by an agent run of {task_key}: {}\n\nReview before merging.",
+            sanitize_line(&elig.title)
+        ),
+    };
+    let steps = publish_plan(&input).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    let pr_url = publish(&steps)?;
+    for w in report_published(
+        client,
+        &Published {
+            task_id: task.id,
+            workspace_id: ws.id,
+            pr_url: &pr_url,
+            agent: rec.agent.as_deref(),
+            branch: &rec.branch,
+        },
+    ) {
+        eprintln!("warning: {w}");
+    }
+    Ok(pr_url)
+}
+
+pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
+    let url = publish_cloud_run(o, reference)?;
+    Ok(emit(
+        o,
+        json!({ "pr_url": url }),
+        format!("opened {}", sanitize_line(&url)),
     ))
 }
 

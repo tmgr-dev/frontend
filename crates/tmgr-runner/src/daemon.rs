@@ -794,6 +794,7 @@ impl Session {
             &intent.agent,
             intent.model.as_deref(),
             &self.id,
+            intent.hold_success,
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -2211,6 +2212,7 @@ impl Runner {
             restore_from,
         )?;
         let mut recorded = false;
+        let cloud_run = matches!(cloud, Some(Ok(())));
         let info_model = req.model.clone();
         if let Some(cwd_pin) = pin {
             let intent = restore::Intent {
@@ -2259,6 +2261,7 @@ impl Runner {
                 task,
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
+                hold_success: cloud_run,
             });
             s.prepare_agent_work();
         }
