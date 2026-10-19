@@ -1,6 +1,19 @@
+import { norm } from '@/utils/agentApproval';
+
 export type ApprovalState = 'none' | 'active' | 'stale' | 'revoked';
 
+export interface TaskText {
+	title: string | null | undefined;
+	description: string | null | undefined;
+}
+
+export const sameText = (a: TaskText, b: TaskText): boolean =>
+	norm(a.title) === norm(b.title) &&
+	norm(a.description) === norm(b.description);
+
 export const shouldAutoSign = (input: {
+	submitted: TaskText;
+	saved: TaskText;
 	isOwnerSave: boolean;
 	authorId: number | null | undefined;
 	meId: number | null | undefined;
@@ -9,6 +22,7 @@ export const shouldAutoSign = (input: {
 	ownerAuthored: boolean;
 }): boolean => {
 	if (!input.settingEnabled || !input.isOwnerSave) return false;
+	if (!sameText(input.submitted, input.saved)) return false;
 	if (input.state === 'active' || input.state === 'stale') return true;
 	return (
 		input.state === 'none' &&

@@ -19,7 +19,7 @@ import {
 	signMessage,
 } from '@/utils/agentApproval';
 import { buildBulkItems } from '@/utils/agentApprovalBulk';
-import { shouldAutoSign } from '@/utils/agentApprovalPolicy';
+import { shouldAutoSign, type TaskText } from '@/utils/agentApprovalPolicy';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 
 export const APPROVAL_CHANGED = 'tmgr:agent-approval-changed';
@@ -202,6 +202,7 @@ const settingFor = async (workspaceId: number): Promise<boolean> => {
 
 export const autoSignAfterSave = async (
 	task: (SignableTask & { user_id?: number | null }) | null | undefined,
+	submitted: TaskText,
 ): Promise<void> => {
 	if (!task?.id) return;
 	const workspaceId = Number(
@@ -213,6 +214,8 @@ export const autoSignAfterSave = async (
 	const sha = await contentSha256(task.title, task.description);
 	if (
 		!shouldAutoSign({
+			submitted,
+			saved: task,
 			isOwnerSave: true,
 			authorId: task.user_id,
 			meId: currentUserId() || null,
@@ -231,8 +234,9 @@ export const autoSignAfterSave = async (
 
 export const autoSignQuietly = (
 	task: Parameters<typeof autoSignAfterSave>[0],
+	submitted: TaskText,
 ): void => {
-	void autoSignAfterSave(task).catch((error) => {
+	void autoSignAfterSave(task, submitted).catch((error) => {
 		if (agentRunErrorCode(error) !== 'confirm_required')
 			console.warn('agent approval auto-sign skipped', error);
 	});

@@ -1516,9 +1516,13 @@
 			await blockEditorRef.value?.flush?.();
 			updateFormBeforeQuery();
 			suppressAutoSavingForOnce.value = true;
+			const submittedText = {
+				title: form.value.title,
+				description: form.value.description,
+			};
 			const created = await createTaskAction(form.value as Task);
 			if (created.id) {
-				autoSignQuietly(created);
+				autoSignQuietly(created, submittedText);
 				rememberTaskSettings(created);
 				await attachPendingFiles(created.id as number);
 			}
@@ -1678,7 +1682,10 @@
 			/* Storage unavailable. */
 		}
 		store.commit('updateSingleTask', saved);
-		autoSignQuietly(saved);
+		autoSignQuietly(saved, {
+			title: body.title,
+			description: body.description,
+		});
 		if (!formDisposed && form.value.id === snapshot.id) {
 			saveError.value = '';
 			suppressAutoSavingForOnce.value = true;
