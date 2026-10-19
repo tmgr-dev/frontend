@@ -152,21 +152,15 @@ export const formatDuration = (value: string | number | null | undefined) => {
 	return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
 };
 
-export const categoryMeta = (category: CategoryLike) => {
-	const rate = settingValue(category, RATE_KEY);
-	return [
-		renderTitlePrefix(settingValue(category, TITLE_PATTERN_KEY)),
-		rate && Number(rate) !== 0 ? `${rate}/h` : '',
-		formatDuration(settingValue(category, ESTIMATE_KEY)),
-	]
-		.filter(Boolean)
-		.join(' · ');
+export const parseDuration = (text: string) => {
+	const value = (text ?? '').trim().toLowerCase();
+	if (/^\d+$/.test(value)) return Number(value) * 60;
+	const match = /^(?:(\d+(?:\.\d+)?)\s*h)?\s*(?:(\d+(?:\.\d+)?)\s*m)?$/.exec(
+		value,
+	);
+	if (!match || (match[1] == null && match[2] == null)) return null;
+	return Math.round(Number(match[1] ?? 0) * 3600 + Number(match[2] ?? 0) * 60);
 };
-
-export const crumbOf = (ancestors: CategoryLike[], workspaceName: string) =>
-	ancestors.length
-		? `${ancestors.map((a) => a.title).join(' / ')} /`
-		: `${workspaceName} · top level`;
 
 export const literalIssues = <T extends CategoryLike>(
 	nodes: CategoryNode<T>[],

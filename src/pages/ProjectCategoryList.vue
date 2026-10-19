@@ -15,10 +15,8 @@
 	} from '@/actions/tmgr/workspaces';
 	import EmptyState from '@/components/EmptyState.vue';
 	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
-	import FeatureGate from '@/components/general/FeatureGate.vue';
 	import MobilePagination from '@/components/general/MobilePagination.vue';
 	import Select from '@/components/general/Select.vue';
-	import CategoriesPreview from '@/components/previews/CategoriesPreview.vue';
 	import TasksListComponent from '@/components/tasks/TasksListComponent.vue';
 	import { Button } from '@/components/ui/button';
 	import {
@@ -49,24 +47,22 @@
 		ClipboardListIcon,
 		EllipsisIcon,
 		FolderClosedIcon,
-		FolderOpen,
 		FolderPenIcon,
-		FolderPlusIcon,
 		Trash2Icon,
 	} from 'lucide-vue-next';
 	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
-	import Breadcrumbs from '../components/general/Breadcrumbs.vue';
-	import extractParents from '../utils/extractParents';
-	import getBreadcrumbs from '../utils/getBreadcrumbs';
 
+	const props = defineProps({
+		section: { type: String, default: 'tasks' },
+	});
+	const emit = defineEmits(['changed']);
 	const route = useRoute();
 	const router = useRouter();
 	const item = ref(true);
 	const tasks = ref(null);
 	const categories = ref(null);
 	const category = ref(null);
-	const parentCategories = ref([]);
 	const isCategoriesFirstLoading = ref(true);
 	const isTasksFirstLoading = ref(true);
 	const categoriesPending = ref(true),
@@ -315,7 +311,6 @@
 					links: response.links || categoriesPagination.value.links,
 				};
 			category.value = parent;
-			parentCategories.value = parent ? extractParents(parent) : [];
 			isCategoriesFirstLoading.value = false;
 		} catch (error) {
 			if (current()) {
@@ -331,6 +326,7 @@
 	const deleteCategory = async (category) => {
 		try {
 			category.deleted_at = await deleteCategoryAction(category.id);
+			emit('changed');
 			await loadTasks();
 		} catch (e) {
 			console.error(e);
@@ -340,6 +336,7 @@
 	const restoreCategory = async (category) => {
 		try {
 			category.deleted_at = await restoreCategoryAction(category.id);
+			emit('changed');
 			await loadTasks();
 		} catch (e) {
 			console.error(e);
@@ -390,6 +387,7 @@
 				targetWorkspaceId: null,
 				busy: false,
 			};
+			emit('changed');
 			await loadCategories();
 			await loadTasks();
 		} catch (e) {
@@ -471,10 +469,6 @@
 		return currentWorkspace?.code;
 	};
 
-	const pageTitle = computed(() =>
-		category.value ? category.value.title : 'Categories',
-	);
-
 	watch(
 		category,
 		(newCategory) => {
@@ -525,447 +519,362 @@
 	<div>
 		<ForbiddenAccess v-if="permissionDenied" />
 
-		<FeatureGate
-			v-else
-			feature-key="categories"
-			title="Project Categories"
-			description="Organize your tasks into categories and subcategories. Create a hierarchical structure for better project management."
-			:icon="FolderOpen"
-		>
-			<template #preview>
-				<CategoriesPreview />
-			</template>
-
-			<BaseLayout :title="pageTitle">
-				<template #action>
-					<div
-						class="flex flex-col justify-between gap-2 sm:flex-row sm:items-center sm:gap-4"
-					>
-						<div class="flex items-center gap-2">
-							<breadcrumbs
-								:current="category ? category.title : ''"
-								:drop="drop"
-								:items="getBreadcrumbs(parentCategories)"
-							/>
-						</div>
-
-						<div class="flex gap-3">
-							<Button
-								v-if="category"
-								:title="`Edit ${category.title} category`"
-								variant="outline"
-								@click="
-									() => {
-										if (workspaceCode) {
-											router.push(
-												`/${workspaceCode}/categories?category=${category.id}`,
-											);
-										} else {
-											router.push(`/projects-categories/${category.id}`);
-										}
-									}
-								"
-							>
-								<FolderPenIcon />
-								{{ category.title }}
-							</Button>
-
-							<Button
-								data-tour="categories.create"
-								@click="
-									() => {
-										if (workspaceCode) {
-											router.push(
-												`/${workspaceCode}/categories?create=${
-													route.params.id || 'top'
-												}`,
-											);
-										} else {
-											router.push(
-												`/projects-categories/${
-													route.params.id ? `${route.params.id}/` : ''
-												}create`,
-											);
-										}
-									}
-								"
-							>
-								<FolderPlusIcon />
-								{{ route.params.id ? 'Create subcategory' : 'Create category' }}
-							</Button>
-						</div>
+		<div v-else-if="section === 'subcategories'">
+			<AsyncContent
+				:pending="categoriesPending"
+				:loaded="!isCategoriesFirstLoading"
+				:error="categoriesError"
+				:retry="loadCategories"
+				label="Loading categories"
+			>
+				<template #skeleton>
+					<div class="grid min-h-48 gap-4 sm:grid-cols-2">
+						<Skeleton class="h-24 w-full" />
+						<Skeleton class="hidden h-24 w-full lg:block" />
+						<Skeleton class="hidden h-24 w-full 2xl:block" />
 					</div>
 				</template>
-
-				<template #body>
-					<AsyncContent
-						:pending="categoriesPending"
-						:loaded="!isCategoriesFirstLoading"
-						:error="categoriesError"
-						:retry="loadCategories"
-						label="Loading categories"
+				<div>
+					<p
+						v-if="categories && categories.length === 0"
+						class="text-sm text-ink-muted"
 					>
-						<template #skeleton>
+						No subcategories yet.
+					</p>
+					<div
+						class="grid gap-4 sm:grid-cols-2"
+						v-if="categories && categories.length > 0"
+					>
+						<div
+							v-for="category in categories"
+							:key="category.id"
+							class="h-full"
+							:class="[
+								category.deleted_at !== null && 'opacity-40 hover:opacity-50',
+							]"
+							@dragleave="category.hoverClass = ''"
+							@drop="drop($event, category)"
+							@dragenter.prevent="
+								category.hoverClass = 'ring-2 ring-status-fix/60'
+							"
+							@dragover.prevent="
+								category.hoverClass = 'ring-2 ring-status-fix/60'
+							"
+						>
 							<div
-								class="mt-8 grid min-h-48 gap-4 lg:grid-cols-2 2xl:grid-cols-3"
-							>
-								<Skeleton class="h-24 w-full" />
-								<Skeleton class="hidden h-24 w-full lg:block" />
-								<Skeleton class="hidden h-24 w-full 2xl:block" />
-							</div>
-						</template>
-						<div>
-							<div
-								class="mt-6 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
-								v-if="categories && categories.length > 0"
-							>
-								<div
-									v-for="category in categories"
-									:key="category.id"
-									data-tour="categories.row"
-									class="mt-2 h-full"
-									:class="[
-										category.deleted_at !== null &&
-											'opacity-40 hover:opacity-50',
-									]"
-									@dragleave="category.hoverClass = ''"
-									@drop="drop($event, category)"
-									@dragenter.prevent="
-										category.hoverClass = 'ring-2 ring-status-fix/60'
-									"
-									@dragover.prevent="
-										category.hoverClass = 'ring-2 ring-status-fix/60'
-									"
-								>
-									<div
-										class="relative h-full cursor-pointer rounded-card border border-line bg-surface p-5 pr-12 shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md"
-										:class="category.hoverClass"
-										@click="
-											if (workspaceCode) {
-												$router.push({
-													name: 'WorkspaceCategoryChildren',
-													params: {
-														workspace_code: workspaceCode,
-														id: category.id,
-													},
-												});
-											} else {
-												$router.push({
-													name: 'ProjectCategoryChildrenList',
-													params: { id: category.id },
-												});
-											}
-										"
-									>
-										<h3 class="mb-3 text-lg font-semibold text-ink">
-											{{ category.title }}
-										</h3>
-
-										<p
-											v-if="category.deleted_at !== null"
-											class="mb-2 text-sm italic text-ink-subtle"
-										>
-											(deleted, but can be restored)
-										</p>
-
-										<div
-											class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-muted"
-										>
-											<div
-												class="flex items-center gap-1.5"
-												title="subcategories"
-											>
-												<FolderClosedIcon class="h-4 w-4 text-ink-subtle" />
-												<span class="font-medium text-ink">{{
-													category.children_count
-												}}</span>
-											</div>
-
-											<div class="flex items-center gap-1.5" title="tasks">
-												<ClipboardListIcon class="h-4 w-4 text-ink-subtle" />
-												<span class="font-medium text-ink">{{
-													category.tasks_count
-												}}</span>
-											</div>
-
-											<span
-												v-if="category.user?.name"
-												class="flex items-center gap-1.5"
-												title="author"
-											>
-												<CircleUserRoundIcon class="h-4 w-4 text-ink-subtle" />
-												<span class="font-medium text-ink">{{
-													category.user.name
-												}}</span>
-											</span>
-										</div>
-
-										<div class="absolute right-3 top-3 z-50">
-											<DropdownMenu>
-												<DropdownMenuTrigger
-													class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
-													@click.stop
-												>
-													<EllipsisIcon class="h-4 w-4" />
-												</DropdownMenuTrigger>
-
-												<DropdownMenuContent class="mr-4 mt-1">
-													<DropdownMenuItem
-														@click="
-															() => {
-																if (workspaceCode) {
-																	router.push(
-																		`/${workspaceCode}/categories?category=${category.id}`,
-																	);
-																} else {
-																	router.push(
-																		`/projects-categories/${category.id}`,
-																	);
-																}
-															}
-														"
-													>
-														<FolderPenIcon />
-														<span>Edit</span>
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														v-if="category.deleted_at === null"
-														@click="openTransferDialog(category)"
-													>
-														<ArrowRightLeftIcon />
-														<span>Move to workspace</span>
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														v-if="category.deleted_at === null"
-														@click="deleteCategory(category)"
-													>
-														<Trash2Icon />
-														<span>Delete</span>
-													</DropdownMenuItem>
-
-													<DropdownMenuItem
-														v-else
-														@click="restoreCategory(category)"
-													>
-														<ArchiveRestoreIcon />
-														<span>Restore</span>
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</div>
-									</div>
-								</div>
-							</div>
-
-							<Dialog v-model:open="transferDialog.open">
-								<DialogContent class="sm:max-w-[425px]">
-									<DialogHeader>
-										<DialogTitle
-											>Move category to another workspace</DialogTitle
-										>
-										<DialogDescription>
-											"{{ transferDialog.category?.title }}" will be moved with
-											all its subcategories and tasks. Task statuses are matched
-											to the target workspace by name, then by type; assignees
-											who are not members of the target workspace are removed.
-										</DialogDescription>
-									</DialogHeader>
-
-									<Select
-										v-model="transferDialog.targetWorkspaceId"
-										:options="transferTargets"
-										label-key="name"
-										value-key="id"
-										placeholder="Select workspace"
-										class="w-full"
-									/>
-									<p
-										v-if="transferTargets.length === 0"
-										class="text-sm text-ink-subtle"
-									>
-										You are not a member of any other workspace.
-									</p>
-
-									<DialogFooter>
-										<Button
-											variant="default"
-											:disabled="
-												!transferDialog.targetWorkspaceId || transferDialog.busy
-											"
-											@click="transferCategory"
-										>
-											{{ transferDialog.busy ? 'Moving...' : 'Move' }}
-										</Button>
-									</DialogFooter>
-								</DialogContent>
-							</Dialog>
-
-							<MobilePagination
-								v-if="
-									categories &&
-									categories.length > 0 &&
-									categoriesPagination.total > categoriesPagination.per_page
+								class="relative h-full cursor-pointer rounded-card border border-line bg-surface p-5 pr-12 shadow-tmgr-xs transition-all duration-150 hover:border-line-strong hover:shadow-tmgr-md"
+								:class="category.hoverClass"
+								@click="
+									if (workspaceCode) {
+										$router.push({
+											name: 'WorkspaceCategoryChildren',
+											params: {
+												workspace_code: workspaceCode,
+												id: category.id,
+											},
+										});
+									} else {
+										$router.push({
+											name: 'ProjectCategoryChildrenList',
+											params: { id: category.id },
+										});
+									}
 								"
-								class="mt-6 sm:hidden"
-								:current="categoriesPagination.current_page"
-								:last="categoriesPagination.last_page"
-								:from="categoriesPagination.from"
-								:to="categoriesPagination.to"
-								:total="categoriesPagination.total"
-								:per-page="categoriesPagination.per_page"
-								@page="handleCategoriesPageChange"
-								@per-page="handleCategoriesPerPageChange"
-							/>
-							<!-- Add categories pagination controls -->
-							<div
-								v-if="categories && categories.length > 0"
-								:class="[
-									'mt-6 items-center justify-between px-2 sm:flex',
-									categoriesPagination.total > categoriesPagination.per_page
-										? 'hidden'
-										: 'flex',
-								]"
 							>
-								<div class="flex items-center gap-3">
-									<span class="text-sm text-ink-subtle">
-										Showing {{ categoriesPagination.from }} to
-										{{ categoriesPagination.to }} of
-										{{ categoriesPagination.total }} categories
-									</span>
+								<h3 class="mb-3 text-lg font-semibold text-ink">
+									{{ category.title }}
+								</h3>
 
-									<Select
-										v-model="categoriesPagination.per_page"
-										:options="categoriesPerPageOptions"
-										class="w-36"
-										label-key="label"
-										value-key="value"
-										@update:modelValue="handleCategoriesPerPageChange"
-									/>
-								</div>
+								<p
+									v-if="category.deleted_at !== null"
+									class="mb-2 text-sm italic text-ink-subtle"
+								>
+									(deleted, but can be restored)
+								</p>
 
 								<div
-									v-if="
-										categoriesPagination.total > categoriesPagination.per_page
-									"
-									class="flex items-center gap-2"
+									class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-ink-muted"
 								>
-									<Button
-										:disabled="categoriesPagination.current_page === 1"
-										@click="
-											handleCategoriesPageChange(
-												categoriesPagination.current_page - 1,
-											)
-										"
-										variant="outline"
-										class="h-9 rounded-pill"
-									>
-										Previous
-									</Button>
+									<div class="flex items-center gap-1.5" title="subcategories">
+										<FolderClosedIcon class="h-4 w-4 text-ink-subtle" />
+										<span class="font-medium text-ink">{{
+											category.children_count
+										}}</span>
+									</div>
 
-									<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
-										Page {{ categoriesPagination.current_page }} of
-										{{ categoriesPagination.last_page }}
+									<div class="flex items-center gap-1.5" title="tasks">
+										<ClipboardListIcon class="h-4 w-4 text-ink-subtle" />
+										<span class="font-medium text-ink">{{
+											category.tasks_count
+										}}</span>
+									</div>
+
+									<span
+										v-if="category.user?.name"
+										class="flex items-center gap-1.5"
+										title="author"
+									>
+										<CircleUserRoundIcon class="h-4 w-4 text-ink-subtle" />
+										<span class="font-medium text-ink">{{
+											category.user.name
+										}}</span>
 									</span>
+								</div>
 
-									<Button
-										:disabled="
-											categoriesPagination.current_page ===
-											categoriesPagination.last_page
-										"
-										@click="
-											handleCategoriesPageChange(
-												categoriesPagination.current_page + 1,
-											)
-										"
-										variant="outline"
-										class="h-9 rounded-pill"
-									>
-										Next
-									</Button>
+								<div class="absolute right-3 top-3 z-50">
+									<DropdownMenu>
+										<DropdownMenuTrigger
+											class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle transition-colors hover:bg-surface-hover hover:text-ink"
+											@click.stop
+										>
+											<EllipsisIcon class="h-4 w-4" />
+										</DropdownMenuTrigger>
+
+										<DropdownMenuContent class="mr-4 mt-1">
+											<DropdownMenuItem
+												@click="
+													() => {
+														if (workspaceCode) {
+															router.push(
+																`/${workspaceCode}/categories?category=${category.id}`,
+															);
+														} else {
+															router.push(
+																`/projects-categories/${category.id}`,
+															);
+														}
+													}
+												"
+											>
+												<FolderPenIcon />
+												<span>Edit</span>
+											</DropdownMenuItem>
+
+											<DropdownMenuItem
+												v-if="category.deleted_at === null"
+												@click="openTransferDialog(category)"
+											>
+												<ArrowRightLeftIcon />
+												<span>Move to workspace</span>
+											</DropdownMenuItem>
+
+											<DropdownMenuItem
+												v-if="category.deleted_at === null"
+												@click="deleteCategory(category)"
+											>
+												<Trash2Icon />
+												<span>Delete</span>
+											</DropdownMenuItem>
+
+											<DropdownMenuItem
+												v-else
+												@click="restoreCategory(category)"
+											>
+												<ArchiveRestoreIcon />
+												<span>Restore</span>
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
 								</div>
 							</div>
 						</div>
-					</AsyncContent>
-					<div v-if="route.params.id" class="mt-10">
-						<div class="grid grid-cols-2 items-center sm:flex">
-							<h2 class="text-white-800 text-left text-3xl lg:text-center">
-								Tasks
-							</h2>
+					</div>
+
+					<Dialog v-model:open="transferDialog.open">
+						<DialogContent class="sm:max-w-[425px]">
+							<DialogHeader>
+								<DialogTitle>Move category to another workspace</DialogTitle>
+								<DialogDescription>
+									"{{ transferDialog.category?.title }}" will be moved with all
+									its subcategories and tasks. Task statuses are matched to the
+									target workspace by name, then by type; assignees who are not
+									members of the target workspace are removed.
+								</DialogDescription>
+							</DialogHeader>
 
 							<Select
-								v-model="workspaceStatus"
-								:options="workspaceStatuses"
-								class="ml-auto w-36"
+								v-model="transferDialog.targetWorkspaceId"
+								:options="transferTargets"
 								label-key="name"
 								value-key="id"
+								placeholder="Select workspace"
+								class="w-full"
 							/>
+							<p
+								v-if="transferTargets.length === 0"
+								class="text-sm text-ink-subtle"
+							>
+								You are not a member of any other workspace.
+							</p>
 
-							<div class="col-span-2 ml-auto flex items-center gap-2 sm:ml-2">
-								<button class="opacity-25 hover:opacity-100" @click="selectAll">
-									<span class="material-icons text-3xl">done_all</span>
-								</button>
-
+							<DialogFooter>
 								<Button
-									title="Create a task in this category"
-									@click="
-										$store.commit('createTaskInProjectCategoryId', {
-											projectCategoryId: Number(route.params.id),
-											statusId: null,
-										})
+									variant="default"
+									:disabled="
+										!transferDialog.targetWorkspaceId || transferDialog.busy
 									"
+									@click="transferCategory"
 								>
-									<span class="material-icons mr-1 text-lg"
-										>add_circle_outline</span
-									>
-									Create task
+									{{ transferDialog.busy ? 'Moving...' : 'Move' }}
 								</Button>
-							</div>
+							</DialogFooter>
+						</DialogContent>
+					</Dialog>
+
+					<MobilePagination
+						v-if="
+							categories &&
+							categories.length > 0 &&
+							categoriesPagination.total > categoriesPagination.per_page
+						"
+						class="mt-6 sm:hidden"
+						:current="categoriesPagination.current_page"
+						:last="categoriesPagination.last_page"
+						:from="categoriesPagination.from"
+						:to="categoriesPagination.to"
+						:total="categoriesPagination.total"
+						:per-page="categoriesPagination.per_page"
+						@page="handleCategoriesPageChange"
+						@per-page="handleCategoriesPerPageChange"
+					/>
+					<!-- Add categories pagination controls -->
+					<div
+						v-if="categories && categories.length > 0"
+						:class="[
+							'mt-6 items-center justify-between px-2 sm:flex',
+							categoriesPagination.total > categoriesPagination.per_page
+								? 'hidden'
+								: 'flex',
+						]"
+					>
+						<div class="flex items-center gap-3">
+							<span class="text-sm text-ink-subtle">
+								Showing {{ categoriesPagination.from }} to
+								{{ categoriesPagination.to }} of
+								{{ categoriesPagination.total }} categories
+							</span>
+
+							<Select
+								v-model="categoriesPagination.per_page"
+								:options="categoriesPerPageOptions"
+								class="w-36"
+								label-key="label"
+								value-key="value"
+								@update:modelValue="handleCategoriesPerPageChange"
+							/>
 						</div>
 
-						<AsyncContent
-							:pending="tasksPending"
-							:loaded="!isTasksFirstLoading"
-							:error="tasksError"
-							:retry="loadTasks"
-							label="Loading category tasks"
-							><template #skeleton>
-								<div class="mt-6 min-h-96 space-y-2 px-2">
-									<Skeleton class="h-28 w-full" />
-									<Skeleton class="h-28 w-full" />
-									<Skeleton class="h-28 w-full" />
-								</div>
-							</template>
-							<tasks-list-component
-								v-if="tasks && tasks.length > 0"
-								:tasks="tasks"
-								:is-loading-actions="isLoadingActions"
-								:loading-action-tasks-ids="loadingActionTasksIds"
-								:pagination="pagination"
-								@reload-tasks="loadTasks"
-								@page-change="handlePageChange"
-								@per-page-change="handlePerPageChange"
-								ref="tasksListComponent"
-								draggable
-							/>
-
-							<div
-								v-else-if="!isTasksFirstLoading"
-								class="mt-5 text-center text-xl italic"
+						<div
+							v-if="categoriesPagination.total > categoriesPagination.per_page"
+							class="flex items-center gap-2"
+						>
+							<Button
+								:disabled="categoriesPagination.current_page === 1"
+								@click="
+									handleCategoriesPageChange(
+										categoriesPagination.current_page - 1,
+									)
+								"
+								variant="outline"
+								class="h-9 rounded-pill"
 							>
-								<EmptyState
-									description="Create your first task in this category"
-									:action="{
-										label: '+ Create task',
-										onClick: () => store.commit('setShowCreatingTaskModal'),
-									}"
-								/>
-							</div>
-						</AsyncContent>
+								Previous
+							</Button>
+
+							<span class="whitespace-nowrap px-2 text-sm text-ink-subtle">
+								Page {{ categoriesPagination.current_page }} of
+								{{ categoriesPagination.last_page }}
+							</span>
+
+							<Button
+								:disabled="
+									categoriesPagination.current_page ===
+									categoriesPagination.last_page
+								"
+								@click="
+									handleCategoriesPageChange(
+										categoriesPagination.current_page + 1,
+									)
+								"
+								variant="outline"
+								class="h-9 rounded-pill"
+							>
+								Next
+							</Button>
+						</div>
+					</div>
+				</div>
+			</AsyncContent>
+		</div>
+		<div v-else>
+			<div class="flex flex-wrap items-center justify-end gap-2">
+				<Select
+					v-model="workspaceStatus"
+					:options="workspaceStatuses"
+					class="ml-auto w-36"
+					label-key="name"
+					value-key="id"
+				/>
+
+				<div class="col-span-2 ml-auto flex items-center gap-2 sm:ml-2">
+					<button class="opacity-25 hover:opacity-100" @click="selectAll">
+						<span class="material-icons text-3xl">done_all</span>
+					</button>
+
+					<Button
+						title="Create a task in this category"
+						@click="
+							$store.commit('createTaskInProjectCategoryId', {
+								projectCategoryId: Number(route.params.id),
+								statusId: null,
+							})
+						"
+					>
+						<span class="material-icons mr-1 text-lg">add_circle_outline</span>
+						Create task
+					</Button>
+				</div>
+			</div>
+
+			<AsyncContent
+				:pending="tasksPending"
+				:loaded="!isTasksFirstLoading"
+				:error="tasksError"
+				:retry="loadTasks"
+				label="Loading category tasks"
+				><template #skeleton>
+					<div class="mt-6 min-h-96 space-y-2 px-2">
+						<Skeleton class="h-28 w-full" />
+						<Skeleton class="h-28 w-full" />
+						<Skeleton class="h-28 w-full" />
 					</div>
 				</template>
-			</BaseLayout>
-		</FeatureGate>
+				<tasks-list-component
+					v-if="tasks && tasks.length > 0"
+					:tasks="tasks"
+					:is-loading-actions="isLoadingActions"
+					:loading-action-tasks-ids="loadingActionTasksIds"
+					:pagination="pagination"
+					@reload-tasks="loadTasks"
+					@page-change="handlePageChange"
+					@per-page-change="handlePerPageChange"
+					ref="tasksListComponent"
+					draggable
+				/>
+
+				<div
+					v-else-if="!isTasksFirstLoading"
+					class="mt-5 text-center text-xl italic"
+				>
+					<EmptyState
+						description="Create your first task in this category"
+						:action="{
+							label: '+ Create task',
+							onClick: () => store.commit('setShowCreatingTaskModal'),
+						}"
+					/>
+				</div>
+			</AsyncContent>
+		</div>
 	</div>
 </template>

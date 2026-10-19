@@ -157,6 +157,24 @@ test('category task read errors end loading and retry without replacing category
       },
     }),
   );
+  await page.route(
+    (u) => u.pathname.endsWith('/api/project_categories'),
+    (route) =>
+      route.fulfill({
+        json: {
+          data: [
+            {
+              id: 1,
+              title: 'Visible parent',
+              code: 'VP',
+              project_category_id: null,
+              deleted_at: null,
+              settings: [],
+            },
+          ],
+        },
+      }),
+  );
   await page.route('**/api/project_categories/1/with/parents', (route) =>
     route.fulfill({
       json: { data: { id: 1, title: 'Visible parent', parent: null } },
@@ -178,7 +196,9 @@ test('category task read errors end loading and retry without replacing category
   await expect(page.getByRole('alert')).toContainText(
     'Category tasks unavailable',
   );
-  await expect(page.getByTitle('Edit Visible parent category')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Visible parent' }),
+  ).toBeVisible();
   await expect(
     page.getByText('Create your first task in this category'),
   ).toHaveCount(0);
@@ -187,5 +207,7 @@ test('category task read errors end loading and retry without replacing category
   await expect(
     page.getByText('Create your first task in this category'),
   ).toBeVisible();
-  await expect(page.getByTitle('Edit Visible parent category')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Visible parent' }),
+  ).toBeVisible();
 });

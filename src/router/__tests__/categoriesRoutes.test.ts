@@ -28,31 +28,67 @@ const loadRoutes = () => {
 
 const byName = (name: string) => loadRoutes().find((r) => r.name === name);
 
-describe('old category form routes open the settings pane', () => {
-	it.each([
-		['WorkspaceCategoryCreate', { workspace_code: 'demo' }, { create: 'top' }],
-		[
-			'WorkspaceCategoryEdit',
-			{ workspace_code: 'demo', id: '101' },
-			{ category: '101' },
-		],
-		[
-			'WorkspaceCategoryCreateInCategory',
-			{ workspace_code: 'demo', category_id: '27' },
-			{ create: '27' },
-		],
-		[
-			'WorkspaceCategoryListWithStatus',
-			{ workspace_code: 'demo', status: 'x' },
-			{},
-		],
-	])('%s keeps its name and redirects into the pane', (name, params, query) => {
-		const route = byName(name);
-		expect(route.redirect({ params, query: { tab: '1' } })).toEqual({
+describe('category routes land on the category page', () => {
+	it('sends the old edit URL to the Settings tab of the category page', () => {
+		expect(
+			byName('WorkspaceCategoryEdit').redirect({
+				params: { workspace_code: 'demo', id: '101' },
+				query: { from: 'x' },
+			}),
+		).toEqual({
+			name: 'WorkspaceCategoryChildren',
+			params: { workspace_code: 'demo', id: '101' },
+			query: { from: 'x', tab: 'settings' },
+		});
+	});
+
+	it('sends the old status list to the categories root', () => {
+		expect(
+			byName('WorkspaceCategoryListWithStatus').redirect({
+				params: { workspace_code: 'demo', status: 'x' },
+				query: {},
+			}),
+		).toEqual({
 			name: 'WorkspaceCategories',
 			params: { workspace_code: 'demo' },
-			query: { tab: '1', ...query },
+			query: {},
 		});
+	});
+
+	it.each([
+		[
+			{ category: '101', tab: '1' },
+			{
+				name: 'WorkspaceCategoryChildren',
+				params: { workspace_code: 'demo', id: '101' },
+				query: { tab: 'settings' },
+			},
+		],
+		[
+			{ create: 'top', x: '1' },
+			{
+				name: 'WorkspaceCategoryCreate',
+				params: { workspace_code: 'demo' },
+				query: { x: '1' },
+			},
+		],
+		[
+			{ create: '27' },
+			{
+				name: 'WorkspaceCategoryCreateInCategory',
+				params: { workspace_code: 'demo', category_id: '27' },
+				query: {},
+			},
+		],
+		[{}, true],
+		[{ category: '' }, true],
+	])('/demo/categories?%o redirects to %o', (query, target) => {
+		expect(
+			byName('WorkspaceCategories').beforeEnter({
+				params: { workspace_code: 'demo' },
+				query,
+			}),
+		).toEqual(target);
 	});
 
 	it('sends the fallback create route to the fallback list in create mode', () => {
@@ -64,11 +100,17 @@ describe('old category form routes open the settings pane', () => {
 		});
 	});
 
-	it('serves the root list and the fallback list from the new page', () => {
-		for (const name of ['WorkspaceCategories', 'FallbackCategoriesList']) {
-			expect(String(byName(name).component)).toContain(
-				'CategoriesSettingsPage',
-			);
+	it('serves every category screen from the category page', () => {
+		for (const name of [
+			'WorkspaceCategories',
+			'WorkspaceCategory',
+			'WorkspaceCategoryChildren',
+			'WorkspaceCategoryCreate',
+			'WorkspaceCategoryCreateInCategory',
+			'FallbackCategoriesList',
+			'ProjectCategoryChildrenList',
+		]) {
+			expect(String(byName(name).component)).toContain('CategoryPage');
 		}
 	});
 });

@@ -4,14 +4,31 @@ import { boardRedirect, isSimpleMode } from '@/utils/simpleStatus';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
 const TasksListPage = () => import('@/pages/TasksListPage.vue');
-const ProjectCategoryList = () => import('@/pages/ProjectCategoryList.vue');
-const CategoriesSettingsPage = () =>
-	import('@/pages/CategoriesSettingsPage.vue');
-const categoriesPane = (query) => (to) => ({
-	name: 'WorkspaceCategories',
-	params: { workspace_code: to.params.workspace_code },
-	query: { ...to.query, ...query(to) },
+const CategoryPage = () => import('@/pages/CategoryPage.vue');
+const categorySettings = (id) => (to) => ({
+	name: 'WorkspaceCategoryChildren',
+	params: { workspace_code: to.params.workspace_code, id: id(to) },
+	query: { ...to.query, tab: 'settings' },
 });
+const categoriesQueryRedirect = (to) => {
+	const { category, create, ...query } = to.query;
+	const workspace_code = to.params.workspace_code;
+	if (create != null && create !== '')
+		return create === 'top'
+			? { name: 'WorkspaceCategoryCreate', params: { workspace_code }, query }
+			: {
+					name: 'WorkspaceCategoryCreateInCategory',
+					params: { workspace_code, category_id: String(create) },
+					query,
+			  };
+	if (category != null && category !== '')
+		return {
+			name: 'WorkspaceCategoryChildren',
+			params: { workspace_code, id: String(category) },
+			query: { ...query, tab: 'settings' },
+		};
+	return true;
+};
 const DashboardPage = () => import('@/pages/DashboardPage.vue');
 
 // Helper function to get current workspace
@@ -766,7 +783,7 @@ const routes = [
 	},
 	{
 		path: '/:workspace_code/:category_code',
-		component: ProjectCategoryList,
+		component: CategoryPage,
 		meta: {
 			title: 'Category View',
 			transitionName: 'slide',
@@ -794,27 +811,37 @@ const routes = [
 	},
 	{
 		path: '/:workspace_code/categories',
-		component: CategoriesSettingsPage,
+		component: CategoryPage,
 		meta: {
 			title: 'Categories',
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
 		name: 'WorkspaceCategories',
+		beforeEnter: categoriesQueryRedirect,
 	},
 	{
 		path: '/:workspace_code/categories/create',
-		redirect: categoriesPane(() => ({ create: 'top' })),
+		component: CategoryPage,
+		meta: {
+			title: 'New category',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
 		name: 'WorkspaceCategoryCreate',
 	},
 	{
 		path: '/:workspace_code/categories/:id',
-		redirect: categoriesPane((to) => ({ category: to.params.id })),
+		redirect: categorySettings((to) => to.params.id),
 		name: 'WorkspaceCategoryEdit',
 	},
 	{
 		path: '/:workspace_code/categories/status/:status?',
-		redirect: categoriesPane(() => ({})),
+		redirect: (to) => ({
+			name: 'WorkspaceCategories',
+			params: { workspace_code: to.params.workspace_code },
+			query: to.query,
+		}),
 		name: 'WorkspaceCategoryListWithStatus',
 	},
 	{
@@ -824,19 +851,24 @@ const routes = [
 			transitionName: 'slide',
 			navbarHidden: true,
 		},
-		component: ProjectCategoryList,
+		component: CategoryPage,
 		name: 'WorkspaceCategoryChildren',
 	},
 	{
 		path: '/:workspace_code/categories/:category_id/create',
-		redirect: categoriesPane((to) => ({ create: to.params.category_id })),
+		component: CategoryPage,
+		meta: {
+			title: 'New category',
+			transitionName: 'slide',
+			navbarHidden: true,
+		},
 		name: 'WorkspaceCategoryCreateInCategory',
 	},
 
 	// Fallback route for categories when no workspace is available
 	{
 		path: '/fallback-categories',
-		component: CategoriesSettingsPage,
+		component: CategoryPage,
 		meta: {
 			title: 'Categories',
 			transitionName: 'slide',
@@ -865,7 +897,7 @@ const routes = [
 	// Add missing ProjectCategoryChildrenList route
 	{
 		path: '/projects-categories/:id/children',
-		component: ProjectCategoryList,
+		component: CategoryPage,
 		meta: {
 			title: 'Category Children',
 			transitionName: 'slide',

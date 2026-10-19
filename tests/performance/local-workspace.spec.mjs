@@ -119,21 +119,29 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     params: [],
   });
   await page.goto('/local-personal/categories/1/children');
-  await expect(page.getByText('Nested').first()).toBeVisible();
   await expect(page.getByText('Written offline').first()).toBeVisible();
+  await page
+    .getByRole('navigation', { name: 'Category' })
+    .getByRole('link', { name: 'Subcategories' })
+    .click();
+  await expect(
+    page.getByRole('main').getByText('Nested').first(),
+  ).toBeVisible();
   await expect(page.getByText(/Not available in local workspaces/)).toHaveCount(
     0,
   );
-  await page.getByRole('button', { name: 'Create subcategory' }).click();
-  await expect(page).toHaveURL(/\/local-personal\/categories\?create=1$/);
+  await page.getByRole('button', { name: 'Subcategory', exact: true }).click();
+  await expect(page).toHaveURL(/\/local-personal\/categories\/1\/create$/);
   await expect(page.getByRole('combobox', { name: 'Parent' })).toHaveText(
     'Parent',
   );
   await page.getByPlaceholder('Name').fill('Fresh child');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page).toHaveURL(/\/local-personal\/categories\?category=3$/);
+  await expect(page).toHaveURL(
+    /\/local-personal\/categories\/3\/children\?tab=settings$/,
+  );
   await expect(
-    page.getByRole('heading', { name: 'Fresh child', level: 2 }),
+    page.getByRole('heading', { name: 'Fresh child', level: 1 }),
   ).toBeVisible();
   expect(
     (

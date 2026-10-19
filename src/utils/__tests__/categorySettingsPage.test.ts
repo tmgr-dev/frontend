@@ -1,8 +1,6 @@
 import {
 	buildCategoryGroups,
-	categoryMeta,
 	composeTitle,
-	crumbOf,
 	fixedSettingsPayload,
 	flattenGroups,
 	formatDuration,
@@ -11,6 +9,7 @@ import {
 	literalIssues,
 	literalPatternFix,
 	parentOptions,
+	parseDuration,
 	pickCopySource,
 	renderTitlePrefix,
 	sanitizeCategoryCode,
@@ -107,8 +106,7 @@ describe('category tree', () => {
 	it('records ancestors for the crumb', () => {
 		const nodes = flattenGroups(buildCategoryGroups(PERSONAL));
 		const fcpp = nodes.find((n) => n.category.id === 151)!;
-		expect(crumbOf(fcpp.ancestors, 'Personal')).toBe('Work / Freelance /');
-		expect(crumbOf([], 'Personal')).toBe('Personal · top level');
+		expect(fcpp.ancestors.map((a) => a.title)).toEqual(['Work', 'Freelance']);
 	});
 });
 
@@ -158,15 +156,6 @@ describe('title pattern', () => {
 		expect(renderTitlePrefix(literalPatternFix('DD.MM.YYYY'))).toBe(
 			'12.10.2026',
 		);
-	});
-
-	it('builds the list meta line from prefix, rate and estimate', () => {
-		const nodes = flattenGroups(buildCategoryGroups(PERSONAL));
-		const meta = (id: number) =>
-			categoryMeta(nodes.find((n) => n.category.id === id)!.category);
-		expect(meta(101)).toBe('12.10.2026 Mon · 700/h · 8h');
-		expect(meta(47)).toBe('DD.MM.YYYY ddd · 5h');
-		expect(meta(24)).toBe('');
 	});
 });
 
@@ -226,5 +215,42 @@ describe('helpers', () => {
 			caret: 19,
 		});
 		expect(insertAt('abc', 'X', 1, 2)).toEqual({ value: 'aXc', caret: 2 });
+	});
+});
+
+describe('parseDuration', () => {
+	test('accepts hours, minutes, both, decimals and bare minutes', () => {
+		expect(parseDuration('4h')).toBe(14400);
+		expect(parseDuration('20m')).toBe(1200);
+		expect(parseDuration('1h 30m')).toBe(5400);
+		expect(parseDuration('1h30m')).toBe(5400);
+		expect(parseDuration('90m')).toBe(5400);
+		expect(parseDuration('1.5h')).toBe(5400);
+		expect(parseDuration('90')).toBe(5400);
+		expect(parseDuration('  1H 30M ')).toBe(5400);
+		expect(parseDuration('0')).toBe(0);
+	});
+
+	test('returns null for anything else, empty included (the field treats empty as unset)', () => {
+		for (const text of [
+			'',
+			'   ',
+			'abc',
+			'4x',
+			'h',
+			'm',
+			'-1h',
+			'1h 1h',
+			'30m 1h',
+			'1.5',
+			'.5h',
+			'1h 30',
+		])
+			expect(parseDuration(text)).toBeNull();
+	});
+
+	test('round-trips formatDuration for whole minutes', () => {
+		for (const seconds of [60, 1200, 3600, 5400, 14400, 90060])
+			expect(parseDuration(formatDuration(seconds))).toBe(seconds);
 	});
 });

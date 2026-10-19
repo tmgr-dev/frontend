@@ -14,8 +14,11 @@ const ANCHORS: Record<string, string[]> = {
 		'export.download',
 	],
 	'components/general/FiltersBoard.vue': ['statuses.editor'],
-	'pages/ProjectCategoryList.vue': ['categories.create', 'categories.row'],
-	'pages/CategoriesSettingsPage.vue': ['categories.create', 'categories.row'],
+	'components/categories/SidebarCategoriesSection.vue': [
+		'categories.create',
+		'categories.row',
+	],
+	'pages/CategoryPage.vue': ['categories.create'],
 	'pages/WorkspaceFilesPage.vue': ['files.list'],
 };
 

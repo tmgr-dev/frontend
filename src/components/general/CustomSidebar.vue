@@ -12,7 +12,6 @@
 	} from '@/utils/desktop';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
-	import { Category, getTopCategories } from '@/actions/tmgr/categories.ts';
 	import {
 		getUser,
 		getUserSettings,
@@ -24,6 +23,7 @@
 		getWorkspaces,
 		Workspace,
 	} from '@/actions/tmgr/workspaces.ts';
+	import SidebarCategoriesSection from '@/components/categories/SidebarCategoriesSection.vue';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
 	import LocalMoveBanner from '@/components/desktop/LocalMoveBanner.vue';
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
@@ -90,7 +90,6 @@
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { pagesAvailable } from '@/utils/pagesTree';
 	import { requestCache } from '@/utils/requestCache';
-	import { generateCategoryUrl } from '@/utils/url';
 	import {
 		ArchiveIcon,
 		ArrowLeft,
@@ -105,7 +104,6 @@
 		CloudUpload,
 		FileDown,
 		FlaskConical,
-		FolderClosedIcon,
 		FolderOpen,
 		Gauge,
 		HardDrive,
@@ -215,7 +213,6 @@
 		{ immediate: true },
 	);
 	const user = ref<User>((store.state.user || {}) as User);
-	const categories = ref<Category[]>([]);
 	const workspaces = ref<Workspace[]>(store.state.workspaces || []);
 	const showExitConfirm = ref(false);
 	const workspaceToExit = ref<Workspace | null>(null);
@@ -237,7 +234,6 @@
 	const activeWorkspace = ref(workspaces.value[0]);
 
 	const sidebarPending = ref(false),
-		categoriesLoaded = ref(false),
 		sidebarError = ref<string | null>(null);
 	let sidebarDisposed = false,
 		sidebarRequest = 0,
@@ -284,12 +280,6 @@
 		sidebarPending.value = true;
 		sidebarError.value = null;
 		const results = await Promise.allSettled([
-			getTopCategories().then((rows) => {
-				if (current()) {
-					categories.value = rows.slice(0, 4);
-					categoriesLoaded.value = true;
-				}
-			}),
 			(userJustLoaded
 				? Promise.resolve(store.state.user as any)
 				: getUser()
@@ -333,8 +323,6 @@
 			)?.value,
 		() => {
 			if (sidebarBooting) return;
-			categories.value = [];
-			categoriesLoaded.value = false;
 			void loadSidebar();
 		},
 	);
@@ -393,6 +381,12 @@
 		},
 	);
 
+	const CATEGORY_PAGES = [
+		'WorkspaceCategory',
+		'WorkspaceCategoryChildren',
+		'WorkspaceCategoryCreateInCategory',
+	];
+
 	const setActiveWorkspace = async (workspace: Workspace) => {
 		// Update UI immediately
 		activeWorkspace.value = workspace;
@@ -406,7 +400,13 @@
 			const currentPath = window.location.pathname;
 			const pathParts = currentPath.split('/');
 
-			if (pathParts.length > 1 && route.params.workspace_code) {
+			if (CATEGORY_PAGES.includes(String(route.name))) {
+				nextWorkspaceRoute = {
+					path: `/${workspace.code}/categories`,
+					query: {},
+					hash: '',
+				};
+			} else if (pathParts.length > 1 && route.params.workspace_code) {
 				pathParts[1] = workspace.code;
 				const newPath = pathParts.join('/');
 
@@ -838,52 +838,13 @@
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
-
-							<SidebarMenuItem v-if="isFeatureEnabled('categories')">
-								<SidebarMenuButton as-child>
-									<router-link
-										:to="
-											activeWorkspace?.code
-												? `/${activeWorkspace.code}/categories`
-												: '/projects-categories'
-										"
-									>
-										<FolderClosedIcon />
-										<span>Categories</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
 
-					<SidebarGroup
-						v-if="isFeatureEnabled('categories')"
-						class="group-data-[collapsible=icon]:hidden"
-					>
-						<SidebarGroupLabel>Recent categories</SidebarGroupLabel>
-						<AsyncContent
-							:pending="sidebarPending"
-							:loaded="categoriesLoaded"
-							:error="sidebarError"
-							label="Loading categories"
-						>
-							<SidebarMenu>
-								<SidebarMenuItem v-for="item in categories" :key="item.title">
-									<SidebarMenuButton as-child>
-										<router-link
-											:to="
-												activeWorkspace?.code
-													? generateCategoryUrl(item.id, activeWorkspace)
-													: `/projects-categories/${item.id}/children`
-											"
-										>
-											<span>{{ item.title }}</span>
-										</router-link>
-									</SidebarMenuButton>
-								</SidebarMenuItem>
-							</SidebarMenu>
-						</AsyncContent>
-					</SidebarGroup>
+					<SidebarCategoriesSection
+						v-if="isFeatureEnabled('categories') && activeWorkspace?.code"
+						:workspace-code="activeWorkspace.code"
+					/>
 
 					<SidebarPagesSection
 						v-if="pagesEnabled && activeWorkspace?.code"

@@ -225,6 +225,10 @@ describe('S4b catalog', () => {
 			kind: 'first_visit',
 			routeName: 'WorkspaceCategories',
 		});
+		expect(tour('tasks.categories').triggers).toContainEqual({
+			kind: 'first_visit',
+			routeName: 'WorkspaceCategoryChildren',
+		});
 		expect(tour('tasks.files-page').triggers).toContainEqual({
 			kind: 'first_visit',
 			routeName: 'WorkspaceFiles',
@@ -301,10 +305,7 @@ describe('S4b catalog', () => {
 			name: 'WorkspaceCategories',
 			params: 'currentWorkspace',
 		});
-		expect(tour('tasks.categories').steps[1].route).toEqual({
-			name: 'WorkspaceCategories',
-			params: 'currentWorkspace',
-		});
+		expect(tour('tasks.categories').steps[1].route).toBeUndefined();
 		expect(tour('tasks.relations').steps[0].takeMeRoute).toEqual(LIST);
 		expect(tour('tasks.files-page').steps[0].route).toEqual({
 			name: 'WorkspaceFiles',

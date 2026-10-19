@@ -216,6 +216,7 @@ export const tasksTours: TourDef[] = [
 		minutes: 1,
 		triggers: [
 			{ kind: 'first_visit', routeName: 'WorkspaceCategories' },
+			{ kind: 'first_visit', routeName: 'WorkspaceCategoryChildren' },
 			{ kind: 'hub' },
 		],
 		requires: { modules: ['categories'], platforms: [...ALL_WEB] },
@@ -224,19 +225,24 @@ export const tasksTours: TourDef[] = [
 				id: 's1',
 				type: 'wait',
 				anchor: 'categories.create',
+				mobileAnchor: 'nav.menu-button',
 				waitFor: { event: 'category.created' },
 				takeMeRoute: CATEGORIES,
 				title: 'Create a category',
 				body: 'Create a category. Its short code becomes the prefix of every task number in it.',
+				mobileBody:
+					'Open the menu and tap + next to Categories. The short code becomes the prefix of every task number in it.',
 			},
 			{
 				id: 's2',
 				type: 'tip',
 				anchor: 'categories.row',
-				route: CATEGORIES,
+				mobileAnchor: 'nav.menu-button',
 				optional: true,
 				title: 'Open a category',
 				body: 'Open a category to see only its tasks. Categories can nest.',
+				mobileBody:
+					'Your categories live in the menu. Open one to see only its tasks.',
 			},
 		],
 	},

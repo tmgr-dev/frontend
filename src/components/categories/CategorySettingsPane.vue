@@ -1,94 +1,82 @@
 <template>
-	<section
-		class="flex min-w-0 flex-1 flex-col lg:min-h-0"
-		:aria-label="heading"
-	>
+	<div class="flex min-w-0 flex-col gap-8">
 		<div
-			v-if="!isCreate"
-			class="-mx-4 -mt-4 flex items-center gap-1 border-b border-line px-3 py-2.5 lg:hidden"
+			v-if="!isCreate && issues.length"
+			class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-status-progress-bg px-3 py-2.5 text-[13px] text-ink dark:bg-[oklch(0.3_0.05_75/0.35)]"
 		>
+			<TriangleAlert
+				class="size-4 shrink-0 text-status-progress"
+				aria-hidden="true"
+			/>
+			<span class="min-w-0 flex-1">{{ issuesText }}</span>
 			<Button
+				v-if="catalogueState === 'ready'"
 				type="button"
-				variant="ghost"
-				class="h-8 gap-1 px-1.5 text-ink hover:bg-surface-hover"
-				aria-label="Back to categories"
-				@click="$emit('close')"
-			>
-				<ChevronLeft class="!size-[18px]" />
-				Categories
-			</Button>
-			<span class="flex-1" />
-			<Button
-				v-if="!isCreate && tasksLink"
-				as-child
 				variant="outline"
 				size="sm"
-				class="h-[30px] border-line-strong bg-surface text-xs text-ink"
+				class="h-7 border-line-strong bg-surface text-xs text-ink"
+				:disabled="fixing || dirty"
+				:title="dirty ? 'Save or discard your changes first' : undefined"
+				@click="fixAll"
 			>
-				<router-link :to="tasksLink">Tasks →</router-link>
+				Fix all {{ issues.length }}
 			</Button>
 		</div>
 
-		<div
-			class="flex items-start gap-2 pt-4 lg:border-b lg:border-line lg:px-7 lg:pb-4 lg:pt-[18px]"
+		<form
+			:id="formId"
+			novalidate
+			class="flex flex-col gap-8"
+			@submit.prevent="submit"
 		>
-			<div class="flex min-w-0 flex-1 flex-col gap-0.5">
-				<span class="truncate text-xs text-ink-subtle">{{ crumb }}</span>
-				<h2
-					class="truncate text-[22px] font-semibold leading-snug text-ink lg:text-xl"
-				>
-					{{ heading }}
-				</h2>
-			</div>
-			<template v-if="!isCreate">
-				<Button
-					v-if="tasksLink"
-					as-child
-					variant="outline"
-					class="hidden h-8 border-line-strong bg-surface px-3 text-[13px] text-ink lg:inline-flex"
-				>
-					<router-link :to="tasksLink">Tasks →</router-link>
-				</Button>
-				<Button
-					type="button"
-					variant="outline"
-					class="hidden h-8 border-line-strong bg-surface px-3 text-[13px] text-ink lg:inline-flex"
-					@click="$emit('add-sub')"
-				>
-					+ Subcategory
-				</Button>
-			</template>
-		</div>
-
-		<div class="pb-6 pt-1 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-7">
-			<form :id="formId" novalidate @submit.prevent="submit">
-				<SectionHead title="General" class="max-lg:hidden" />
-				<SettingRow label="Name">
-					<div ref="nameField">
-						<TextField
-							v-model="form.title"
-							placeholder="Name"
-							input-class="h-9 text-sm"
-							:class="inputSkin"
-							:errors="errors.title"
-							:show-error-in-tooltip="false"
-						/>
-					</div>
-				</SettingRow>
-				<SettingRow label="Code" hint="Letters and digits" width="md">
-					<TextField
-						:model-value="form.code"
-						placeholder="e.g., PROJ, FEAT, BUG"
-						input-class="h-9 font-mono text-[13px]"
-						:class="inputSkin"
-						:errors="errors.code"
-						:show-error-in-tooltip="false"
-						@update:model-value="form.code = sanitizeCategoryCode($event)"
+			<section :aria-labelledby="`${formId}-general`" class="flex flex-col">
+				<SectionHead :id="`${formId}-general`" title="General" />
+				<SettingRow label="Name" :label-for="`${formId}-name`">
+					<input
+						:id="`${formId}-name`"
+						ref="nameField"
+						v-model="form.title"
+						type="text"
+						autocomplete="off"
+						placeholder="Name"
+						:aria-invalid="!!errors.title || undefined"
+						:class="[inputClass, 'max-w-[360px]', errors.title && errorClass]"
 					/>
+					<p v-if="errors.title" class="text-sm text-status-fix-fg">
+						{{ errors.title[0] }}
+					</p>
 				</SettingRow>
-				<SettingRow label="Parent" width="lg">
+				<SettingRow
+					label="Code"
+					hint="Letters and digits"
+					:label-for="`${formId}-code`"
+				>
+					<input
+						:id="`${formId}-code`"
+						:value="form.code"
+						type="text"
+						autocomplete="off"
+						spellcheck="false"
+						placeholder="e.g., PROJ, FEAT, BUG"
+						:aria-invalid="!!errors.code || undefined"
+						:class="[
+							inputClass,
+							'max-w-[160px] font-mono text-[13px]',
+							errors.code && errorClass,
+						]"
+						@input="onCode"
+					/>
+					<p v-if="errors.code" class="text-sm text-status-fix-fg">
+						{{ errors.code[0] }}
+					</p>
+				</SettingRow>
+				<SettingRow label="Parent" :label-for="`${formId}-parent`">
 					<Select v-model="form.parent">
-						<SelectTrigger :class="fieldClass" aria-label="Parent">
+						<SelectTrigger
+							:id="`${formId}-parent`"
+							:class="[fieldClass, 'max-w-[260px]']"
+							aria-label="Parent"
+						>
 							<SelectValue placeholder="No parent" />
 						</SelectTrigger>
 						<SelectContent>
@@ -105,151 +93,252 @@
 					</Select>
 					<p
 						v-if="errors.project_category_id"
-						class="mt-1 text-sm text-red-500"
+						class="text-sm text-status-fix-fg"
 					>
 						{{ errors.project_category_id[0] }}
 					</p>
 				</SettingRow>
+			</section>
 
-				<template v-if="catalogueState !== 'unavailable'">
-					<SectionHead
-						title="New tasks"
-						hint="Defaults for tasks created in this category"
-						class="max-lg:pt-2"
-					/>
-					<div v-if="catalogueState === 'loading'" class="space-y-3 py-3">
-						<Skeleton v-for="n in 3" :key="n" class="h-9 w-full" />
-					</div>
-					<template v-else>
-						<SettingRow
-							v-if="isCreate && copyDefault"
-							label="Copy settings from"
-							tag="Proposal"
-							width="lg"
-						>
-							<Select :model-value="copyFrom" @update:model-value="applyCopy">
-								<SelectTrigger
-									:class="fieldClass"
-									aria-label="Copy settings from"
-								>
-									<SelectValue />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="none">Nothing</SelectItem>
-									<SelectItem
-										v-for="option in copyChoices"
-										:key="option.id"
-										:value="String(option.id)"
-									>
-										{{ option.title }}
-									</SelectItem>
-								</SelectContent>
-							</Select>
-						</SettingRow>
-
-						<SettingRow
-							v-if="patternDef"
-							:label="labelOf(patternDef)"
-							:hint="hintOf(patternDef)"
-						>
-							<TitlePatternField
-								v-model="values[patternDef.id]"
-								:label="labelOf(patternDef)"
-							/>
-						</SettingRow>
-
-						<div
-							v-if="compactDefs.length"
-							class="grid grid-cols-3 gap-2.5 lg:block"
-						>
-							<SettingRow
-								v-for="def in compactDefs"
-								:key="def.id"
-								:label="labelOf(def)"
-								:short-label="shortLabelOf(def)"
-								:hint="hintOf(def)"
-								width="sm"
-							>
-								<component :is="SettingControl" :def="def" />
-							</SettingRow>
-						</div>
-
-						<SettingRow
-							v-for="def in otherDefs"
-							:key="def.id"
-							:label="labelOf(def)"
-							:hint="hintOf(def)"
-						>
-							<component :is="SettingControl" :def="def" />
-						</SettingRow>
-					</template>
-				</template>
-			</form>
-
-			<template v-if="!isCreate && category">
-				<div v-if="cursorEnabled || githubEnabled" class="max-lg:hidden">
-					<SectionHead title="Integrations" />
-					<CategoryCursorSettings
-						v-if="cursorEnabled"
-						:category-id="category.id"
-						:is-create="false"
-						class="!mt-2 !border-t-0 !pt-2"
-						@cursor-configured="
-							onCursor('Cursor API key configured successfully')
-						"
-						@cursor-removed="onCursor('Cursor API key removed')"
-					/>
-					<CategoryGitHubSettings
-						v-if="githubEnabled"
-						:category-id="category.id"
-						:is-create="false"
-						@connected="notify('Success', `Connected to ${$event}`)"
-						@disconnected="notify('Success', 'Repository disconnected')"
-						@synced="notify('Success', 'Repository synced successfully')"
-						@relinked="onRelinked"
-					/>
-				</div>
-				<CategoryAgentRepositories
-					class="max-lg:hidden"
-					:category-id="category.id"
+			<section
+				v-if="catalogueState !== 'unavailable'"
+				:aria-labelledby="`${formId}-new`"
+				class="flex flex-col"
+			>
+				<SectionHead
+					:id="`${formId}-new`"
+					title="New tasks"
+					hint="Defaults for tasks created in this category"
 				/>
+				<div
+					v-if="catalogueState === 'loading'"
+					class="space-y-3 border-t border-line py-4"
+				>
+					<Skeleton v-for="n in 3" :key="n" class="h-9 w-full" />
+				</div>
+				<template v-else>
+					<SettingRow
+						v-if="isCreate && copyDefault"
+						label="Copy settings from"
+						hint="Fills the fields below, you can still change them"
+						:label-for="`${formId}-copy`"
+					>
+						<Select :model-value="copyFrom" @update:model-value="applyCopy">
+							<SelectTrigger
+								:id="`${formId}-copy`"
+								:class="[fieldClass, 'max-w-[260px]']"
+								aria-label="Copy settings from"
+							>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="none">Don’t copy</SelectItem>
+								<SelectItem
+									v-for="option in copyChoices"
+									:key="option.id"
+									:value="String(option.id)"
+								>
+									{{ option.title }}
+								</SelectItem>
+							</SelectContent>
+						</Select>
+					</SettingRow>
 
-				<SectionHead title="Danger zone" danger />
+					<SettingRow
+						v-if="patternDef"
+						:label="labelOf(patternDef)"
+						:hint="hintOf(patternDef)"
+					>
+						<TitlePatternField
+							v-model="values[patternDef.id]"
+							:label="labelOf(patternDef)"
+						/>
+					</SettingRow>
+
+					<SettingRow
+						v-for="def in [...compactDefs, ...otherDefs]"
+						:key="def.id"
+						:label="labelOf(def)"
+						:hint="hintOf(def)"
+						:label-for="controlId(def)"
+					>
+						<component :is="SettingControl" :def="def" />
+					</SettingRow>
+				</template>
+			</section>
+		</form>
+
+		<p v-if="isCreate" class="text-[13px] text-ink-muted">
+			Integrations and the danger zone appear after the category is created.
+		</p>
+
+		<template v-if="!isCreate && category">
+			<section
+				v-if="cursorEnabled || githubEnabled || agentRuns"
+				:aria-labelledby="`${formId}-int`"
+				class="flex flex-col max-lg:hidden"
+			>
+				<SectionHead :id="`${formId}-int`" title="Integrations" />
 				<SettingRow
-					label="Move category"
+					v-if="cursorEnabled"
+					label="Cursor AI agent"
+					hint="Send tasks from this category to Cursor agents"
+					inline
+				>
+					<StatusPill
+						:done="!!category.cursor_connected"
+						:text="category.cursor_connected ? 'Connected' : 'Not connected'"
+					/>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						:class="[smallButtonClass, 'ml-auto']"
+						:aria-expanded="open.cursor"
+						@click="toggle('cursor')"
+					>
+						{{
+							open.cursor
+								? 'Close'
+								: category.cursor_connected
+								? 'Manage'
+								: 'Connect'
+						}}
+					</Button>
+					<template v-if="open.cursor" #below>
+						<CategoryCursorSettings
+							:category-id="category.id"
+							:is-create="false"
+							class="!mt-0 !border-t-0 !pt-0"
+							@cursor-configured="
+								onCursor('Cursor API key configured successfully')
+							"
+							@cursor-removed="onCursor('Cursor API key removed')"
+						/>
+					</template>
+				</SettingRow>
+				<SettingRow
+					v-if="githubEnabled"
+					label="GitHub"
+					hint="Link tasks to a repository"
+					inline
+				>
+					<StatusPill
+						v-if="github !== undefined"
+						:done="!!github?.repository"
+						:text="
+							github === null
+								? 'Unavailable'
+								: github.repository?.full_name || 'Not connected'
+						"
+					/>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						:class="[smallButtonClass, 'ml-auto']"
+						:aria-expanded="open.github"
+						@click="toggle('github')"
+					>
+						{{
+							open.github
+								? 'Close'
+								: github && !github.has_installation
+								? 'Install GitHub App'
+								: 'Manage'
+						}}
+					</Button>
+					<template v-if="open.github" #below>
+						<CategoryGitHubSettings
+							:category-id="category.id"
+							:is-create="false"
+							class="!mt-0 !border-t-0 !pt-0"
+							@connected="onGitHub(`Connected to ${$event}`)"
+							@disconnected="onGitHub('Repository disconnected')"
+							@synced="notify('Success', 'Repository synced successfully')"
+							@relinked="onRelinked"
+						/>
+					</template>
+				</SettingRow>
+				<SettingRow
+					v-if="agentRuns"
+					label="Agent repositories"
+					hint="Where agent runs may work, as owner/name"
+					inline
+				>
+					<StatusPill v-if="repos" :text="reposText" />
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						:class="[smallButtonClass, 'ml-auto']"
+						:aria-expanded="open.repos"
+						@click="toggle('repos')"
+					>
+						{{
+							open.repos ? 'Close' : repos?.length ? 'Edit' : 'Add repository'
+						}}
+					</Button>
+					<template v-if="open.repos" #below>
+						<CategoryAgentRepositories
+							:category-id="category.id"
+							class="!mt-0 !border-t-0 !pt-0"
+						/>
+					</template>
+				</SettingRow>
+			</section>
+
+			<section :aria-labelledby="`${formId}-danger`" class="flex flex-col">
+				<SectionHead :id="`${formId}-danger`" title="Danger zone" danger />
+				<SettingRow
+					label="Move to another workspace"
 					hint="With its subcategories and tasks"
+					inline
 				>
 					<Button
 						type="button"
 						variant="outline"
-						class="h-8 border-line-strong bg-surface px-3 text-[13px] text-ink"
+						size="sm"
+						:class="[smallButtonClass, 'ml-auto']"
 						@click="openTransfer"
 					>
-						Move to workspace…
+						<ArrowRightLeft aria-hidden="true" />
+						Move…
 					</Button>
 				</SettingRow>
-				<SettingRow label="Delete category">
+				<SettingRow
+					label="Delete category"
+					hint="The category is removed from the list"
+					inline
+				>
 					<Button
 						type="button"
 						variant="outline"
-						class="h-8 border-line-strong bg-surface px-3 text-[13px] text-destructive hover:text-destructive"
+						size="sm"
+						:class="[
+							smallButtonClass,
+							'ml-auto !text-status-fix-fg hover:!text-status-fix-fg',
+						]"
 						@click="deleteOpen = true"
 					>
+						<Trash2 aria-hidden="true" />
 						Delete…
 					</Button>
 				</SettingRow>
-			</template>
-		</div>
+			</section>
+		</template>
 
 		<div
-			class="flex items-center justify-end gap-2 border-t border-line pb-5 pt-3 max-lg:-mx-4 max-lg:px-4 lg:px-7 lg:pb-3 max-lg:[body:has(.tour-host--sheet)_&]:mb-[50vh]"
+			v-if="isCreate || dirty"
+			class="sticky bottom-[calc(var(--statusbar-h,0px)+1rem)] z-10 flex flex-wrap items-center gap-x-3 gap-y-2.5 rounded-xl border border-line-strong bg-surface py-2.5 pl-4 pr-2.5 shadow-tmgr-lg max-lg:[body:has(.tour-host--sheet)_&]:mb-[50vh]"
 		>
+			<span class="text-[13px] font-medium text-ink">{{ barText }}</span>
 			<Button
 				type="button"
 				variant="ghost"
-				class="h-10 text-ink-muted hover:bg-surface-hover lg:h-9"
-				:class="!isCreate && 'max-lg:hidden'"
-				:disabled="saving || (!isCreate && !dirty)"
+				size="sm"
+				class="ml-auto h-8 px-3 text-[13px] text-ink-muted hover:bg-surface-hover hover:text-ink"
+				:disabled="saving"
 				@click="isCreate ? $emit('close') : discard()"
 			>
 				{{ isCreate ? 'Cancel' : 'Discard' }}
@@ -257,8 +346,9 @@
 			<Button
 				type="submit"
 				:form="formId"
-				class="h-10 flex-1 px-[18px] text-sm font-semibold lg:h-9 lg:flex-none"
-				:disabled="saving"
+				size="sm"
+				class="h-8 px-4 text-[13px] font-semibold"
+				:disabled="saving || invalid"
 			>
 				{{ isCreate ? 'Create' : 'Save' }}
 			</Button>
@@ -317,16 +407,21 @@
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>
-	</section>
+	</div>
 </template>
 
 <script>
+	import {
+		getAgentRunsSetting,
+		getCategoryAgentRepositories,
+	} from '@/actions/tmgr/agentRuns';
 	import {
 		changeCategoryWorkspace,
 		createCategory,
 		deleteCategory,
 		updateCategory,
 	} from '@/actions/tmgr/categories';
+	import { getCategoryGitHubStatus } from '@/actions/tmgr/github';
 	import { updateCategorySettings } from '@/actions/tmgr/settings';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import CategoryAgentRepositories from '@/components/categories/CategoryAgentRepositories.vue';
@@ -334,8 +429,6 @@
 	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
 	import TitlePatternField from '@/components/categories/TitlePatternField.vue';
 	import LegacySelect from '@/components/general/Select.vue';
-	import TextField from '@/components/general/TextField.vue';
-	import TimeField from '@/components/general/TimeField.vue';
 	import {
 		AlertDialog,
 		AlertDialogAction,
@@ -366,11 +459,13 @@
 	import { Switch } from '@/components/ui/switch';
 	import { useToast } from '@/components/ui/toast';
 	import {
-		crumbOf,
 		ESTIMATE_KEY,
+		fixedSettingsPayload,
 		formatDuration,
 		hasSettings,
+		literalIssues,
 		parentOptions,
+		parseDuration,
 		pickCopySource,
 		RATE_KEY,
 		REMINDER_KEY,
@@ -379,7 +474,7 @@
 	} from '@/utils/categorySettingsPage';
 	import { describeCategoryTransfer } from '@/utils/categoryTransfer';
 	import generateSlugFromRu from '@/utils/generateSlugFromRu';
-	import { ChevronLeft } from 'lucide-vue-next';
+	import { ArrowRightLeft, Trash2, TriangleAlert } from 'lucide-vue-next';
 	import {
 		computed,
 		defineComponent,
@@ -397,104 +492,125 @@
 			label: 'Task title pattern',
 			hint: 'Prefix for every new task title',
 		},
-		[RATE_KEY]: { label: 'Rate per hour', short: 'Rate / h' },
-		[ESTIMATE_KEY]: { label: 'Default estimate', short: 'Estimate' },
+		[RATE_KEY]: { label: 'Rate per hour' },
+		[ESTIMATE_KEY]: { label: 'Default estimate' },
 		[REMINDER_KEY]: {
 			label: 'Timer reminder every',
-			short: 'Reminder',
 			hint: 'Sound each time the running timer passes it',
 		},
 	};
 	const COMPACT_KEYS = [RATE_KEY, ESTIMATE_KEY, REMINDER_KEY];
-	const WIDTHS = {
-		sm: 'lg:max-w-[160px]',
-		md: 'lg:max-w-[220px]',
-		lg: 'lg:max-w-[280px]',
-	};
+	const DURATION_ERROR = 'Use a duration like 45m, 2h or 1h 30m';
 	const FIELD_CLASS =
 		'h-9 rounded-lg border-line-strong bg-surface-base px-2.5 text-sm text-ink';
-	const INPUT_SKIN =
-		'[&_input]:!rounded-lg [&_input]:!border-line-strong [&_input]:!bg-surface-base [&_input:focus]:!border-line-focus';
+	const INPUT_CLASS =
+		'h-9 w-full rounded-lg border border-line-strong bg-surface-base px-2.5 text-sm text-ink outline-none transition-colors placeholder:text-ink-faint focus:border-line-focus';
+	const ERROR_CLASS = '!border-status-fix';
+	const SMALL_BUTTON_CLASS =
+		'h-8 border-line-strong bg-surface px-3 text-[13px] text-ink hover:bg-surface-hover hover:text-ink';
 
 	const SectionHead = defineComponent({
-		props: { title: String, hint: String, danger: Boolean },
+		props: { id: String, title: String, hint: String, danger: Boolean },
 		setup(props) {
-			return () =>
-				h('div', { class: 'flex flex-col gap-0.5 pb-1 pt-[22px]' }, [
+			return () => [
+				h(
+					'h2',
+					{
+						id: props.id,
+						class: [
+							'text-[11px] font-semibold uppercase leading-tight tracking-[.04em]',
+							props.danger ? 'text-status-fix-fg' : 'text-ink-muted',
+							!props.hint && 'pb-2.5',
+						],
+					},
+					props.title,
+				),
+				props.hint &&
 					h(
-						'span',
-						{
-							class: [
-								'text-[11px] font-semibold uppercase tracking-[.06em]',
-								props.danger ? 'text-destructive' : 'text-ink-subtle',
-							],
-						},
-						props.title,
+						'p',
+						{ class: 'mb-2.5 mt-1 text-[13px] text-ink-muted' },
+						props.hint,
 					),
-					props.hint &&
-						h(
-							'span',
-							{ class: 'text-xs text-ink-subtle max-lg:hidden' },
-							props.hint,
-						),
-				]);
+			];
 		},
 	});
 
 	const SettingRow = defineComponent({
 		props: {
 			label: String,
-			shortLabel: String,
 			hint: String,
-			tag: String,
-			width: String,
+			labelFor: String,
+			inline: Boolean,
 		},
 		setup(props, { slots }) {
 			return () =>
 				h(
 					'div',
 					{
-						class:
-							'grid min-w-0 content-start gap-1.5 py-2 lg:border-b lg:border-line lg:py-3.5 xl:grid-cols-[240px_minmax(0,1fr)] xl:gap-6',
+						class: [
+							'flex flex-wrap gap-x-8 gap-y-2 border-t border-line py-4',
+							props.inline && 'items-center',
+						],
 					},
 					[
+						h('div', { class: 'min-w-0 max-w-[240px] flex-[1_1_200px]' }, [
+							h(
+								props.labelFor ? 'label' : 'span',
+								{
+									for: props.labelFor,
+									class: 'block text-sm font-medium text-ink',
+								},
+								props.label,
+							),
+							props.hint &&
+								h(
+									'span',
+									{
+										class: 'mt-0.5 block text-xs leading-normal text-ink-muted',
+									},
+									props.hint,
+								),
+						]),
 						h(
 							'div',
-							{ class: 'flex min-w-0 flex-col items-start gap-[3px] xl:pt-2' },
-							[
-								h('span', { class: 'text-[13px] font-semibold text-ink' }, [
-									props.shortLabel
-										? [
-												h('span', { class: 'lg:hidden' }, props.shortLabel),
-												h('span', { class: 'hidden lg:inline' }, props.label),
-										  ]
-										: props.label,
-								]),
-								props.tag &&
-									h(
-										'span',
-										{
-											class:
-												'rounded bg-tag-bg px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-[.06em] text-tag-fg',
-										},
-										props.tag,
-									),
-								props.hint &&
-									h(
-										'span',
-										{
-											class:
-												'hidden text-xs leading-snug text-ink-subtle lg:block',
-										},
-										props.hint,
-									),
-							],
-						),
-						h(
-							'div',
-							{ class: ['min-w-0', WIDTHS[props.width] ?? 'lg:max-w-[460px]'] },
+							{
+								class: [
+									'flex min-w-0 flex-[999_1_320px]',
+									props.inline
+										? 'flex-wrap items-center gap-3'
+										: 'flex-col gap-2',
+								],
+							},
 							slots.default?.(),
 						),
+						slots.below &&
+							h('div', { class: 'w-full min-w-0 pt-2' }, slots.below()),
+					],
+				);
+		},
+	});
+
+	const StatusPill = defineComponent({
+		props: { text: String, done: Boolean },
+		setup(props) {
+			return () =>
+				h(
+					'span',
+					{
+						class: [
+							'inline-flex h-[22px] max-w-full items-center gap-1.5 truncate rounded-full px-2.5 text-xs font-medium',
+							props.done
+								? 'bg-status-done-bg text-status-done-fg'
+								: 'bg-tag-bg text-tag-fg',
+						],
+					},
+					[
+						props.done &&
+							h('span', {
+								'aria-hidden': 'true',
+								class: 'size-1.5 shrink-0 rounded-full bg-current',
+							}),
+						props.text,
 					],
 				);
 		},
@@ -511,11 +627,11 @@
 			AlertDialogFooter,
 			AlertDialogHeader,
 			AlertDialogTitle,
+			ArrowRightLeft,
 			Button,
 			CategoryCursorSettings,
 			CategoryAgentRepositories,
 			CategoryGitHubSettings,
-			ChevronLeft,
 			Dialog,
 			DialogContent,
 			DialogDescription,
@@ -531,8 +647,10 @@
 			SelectValue,
 			SettingRow,
 			Skeleton,
-			TextField,
+			StatusPill,
 			TitlePatternField,
+			Trash2,
+			TriangleAlert,
 		},
 		props: {
 			node: { type: Object, default: null },
@@ -542,12 +660,10 @@
 			catalogue: { type: Array, default: null },
 			catalogueState: { type: String, default: 'loading' },
 			workspaceName: { type: String, default: '' },
-			tasksLink: { type: [Object, String], default: null },
 		},
 		emits: [
 			'dirty',
 			'close',
-			'add-sub',
 			'saved',
 			'created',
 			'deleted',
@@ -563,8 +679,11 @@
 			const form = reactive({ title: '', code: '', parent: 'none' });
 			const values = reactive({});
 			const custom = reactive({});
+			const durationText = reactive({});
+			const focusedDuration = ref(null);
 			const errors = ref({});
 			const saving = ref(false);
+			const fixing = ref(false);
 			const initial = ref(null);
 			const copyFrom = ref('none');
 			const nameField = ref(null);
@@ -575,6 +694,10 @@
 				targetWorkspaceId: null,
 				busy: false,
 			});
+			const open = reactive({ cursor: false, github: false, repos: false });
+			const github = ref(undefined);
+			const agentRuns = ref(false);
+			const repos = ref(null);
 
 			const cursorEnabled = computed(() =>
 				store.getters['featureToggles/isFeatureEnabled']('cursor'),
@@ -583,21 +706,16 @@
 				store.getters['featureToggles/isFeatureEnabled']('github'),
 			);
 
-			const heading = computed(() => {
-				if (props.isCreate)
-					return parent.value ? 'New subcategory' : 'New category';
-				return category.value?.title ?? '';
-			});
-			const crumb = computed(() => {
-				if (props.isCreate) {
-					return parent.value
-						? crumbOf(
-								[...props.parentNode.ancestors, parent.value],
-								props.workspaceName,
-						  )
-						: crumbOf([], props.workspaceName);
-				}
-				return crumbOf(props.node?.ancestors ?? [], props.workspaceName);
+			const issues = computed(() => literalIssues(props.nodes));
+			const issuesText = computed(() =>
+				issues.value.length === 1
+					? '1 category names new tasks literally'
+					: `${issues.value.length} categories name new tasks literally`,
+			);
+			const reposText = computed(() => {
+				const count = repos.value?.length ?? 0;
+				if (!count) return 'None';
+				return count === 1 ? '1 repository' : `${count} repositories`;
 			});
 
 			const parentChoices = computed(() =>
@@ -627,8 +745,24 @@
 			);
 
 			const labelOf = (def) => LABELS[def.key]?.label ?? def.name;
-			const shortLabelOf = (def) => LABELS[def.key]?.short ?? def.name;
 			const hintOf = (def) => LABELS[def.key]?.hint ?? '';
+			const controlId = (def) => `${formId}-setting-${def.id}`;
+			const isDuration = (def) => def.component_type === 'time_in_seconds';
+			const showsCustom = (def) =>
+				!!custom[def.id] && def.custom_value_available !== false;
+
+			const invalidIds = computed(() =>
+				defs.value
+					.filter(
+						(d) =>
+							isDuration(d) &&
+							showsCustom(d) &&
+							(durationText[d.id] ?? '').trim() !== '' &&
+							parseDuration(durationText[d.id]) === null,
+					)
+					.map((d) => d.id),
+			);
+			const invalid = computed(() => invalidIds.value.length > 0);
 
 			const current = () => ({
 				title: form.title,
@@ -636,18 +770,38 @@
 				parent: form.parent,
 				values: defs.value.map((d) => String(values[d.id] ?? '')),
 			});
-			const dirty = computed(
-				() =>
-					!!initial.value &&
-					JSON.stringify(current()) !== JSON.stringify(initial.value),
-			);
+			const changes = computed(() => {
+				if (!initial.value) return 0;
+				const now = current();
+				const fields = ['title', 'code', 'parent'].filter(
+					(key) => now[key] !== initial.value[key],
+				).length;
+				const settings = defs.value.filter(
+					(d, i) =>
+						now.values[i] !== initial.value.values[i] ||
+						invalidIds.value.includes(d.id),
+				).length;
+				return fields + settings;
+			});
+			const dirty = computed(() => changes.value > 0);
 			watch(dirty, (value) => emit('dirty', value), { immediate: true });
+
+			const barText = computed(() => {
+				if (props.isCreate)
+					return parent.value
+						? `New subcategory of ${parent.value.title}`
+						: 'New top-level category';
+				return `${changes.value} unsaved ${
+					changes.value === 1 ? 'change' : 'changes'
+				}`;
+			});
 
 			const fillSettings = (source) => {
 				for (const def of defs.value) {
 					const found = (source?.settings || []).find((s) => s.id === def.id);
 					const value = found?.value ?? '';
 					values[def.id] = value;
+					if (isDuration(def)) durationText[def.id] = formatDuration(value);
 					custom[def.id] =
 						!def.default_values?.length ||
 						!def.default_values.some((v) => String(v.value) === String(value));
@@ -690,11 +844,41 @@
 				},
 			);
 
+			watch(
+				[
+					() => props.isCreate,
+					() => props.node,
+					() => props.parentNode?.category?.id ?? null,
+				],
+				([isCreate, node, parentId], [wasCreate, oldNode, oldParentId]) => {
+					const same =
+						isCreate === wasCreate &&
+						parentId === oldParentId &&
+						node?.category?.id === oldNode?.category?.id;
+					if (!same || (!isCreate && !dirty.value)) reset();
+				},
+			);
+
 			const applyCopy = (id) => {
 				copyFrom.value = id;
 				fillSettings(
 					props.nodes.find((n) => String(n.category.id) === id)?.category,
 				);
+			};
+
+			const onCode = (event) => {
+				form.code = sanitizeCategoryCode(event.target.value);
+				if (event.target.value !== form.code) event.target.value = form.code;
+			};
+
+			const onDurationInput = (def, text) => {
+				durationText[def.id] = text;
+				if (!text.trim()) {
+					values[def.id] = '';
+					return;
+				}
+				const seconds = parseDuration(text);
+				if (seconds !== null) values[def.id] = String(seconds);
 			};
 
 			const discard = () => reset();
@@ -828,13 +1012,46 @@
 			};
 
 			const submit = async () => {
-				if (saving.value) return;
+				if (saving.value || invalid.value) return;
+				if (!props.isCreate && !dirty.value) return;
 				errors.value = {};
 				saving.value = true;
 				try {
 					await (props.isCreate ? create() : save());
 				} finally {
 					saving.value = false;
+				}
+			};
+
+			const fixAll = async () => {
+				const targets = issues.value.map((i) => i.category);
+				fixing.value = true;
+				let fixed = 0;
+				for (const target of targets) {
+					try {
+						await updateCategorySettings(
+							target.id,
+							fixedSettingsPayload(target),
+						);
+						fixed += 1;
+					} catch (e) {
+						console.error(e);
+					}
+				}
+				fixing.value = false;
+				emit('saved', category.value?.id);
+				if (fixed === targets.length) {
+					notify(
+						`Fixed ${fixed} title ${fixed === 1 ? 'pattern' : 'patterns'}`,
+					);
+				} else {
+					notify(
+						`Fixed ${fixed} of ${targets.length} title patterns`,
+						`${
+							targets.length - fixed
+						} could not be saved. Try again for the rest.`,
+						'destructive',
+					);
 				}
 			};
 
@@ -905,9 +1122,58 @@
 				}
 			};
 
+			const loadGitHub = async (id) => {
+				if (!githubEnabled.value) return;
+				try {
+					const status = await getCategoryGitHubStatus(id);
+					if (category.value?.id === id) github.value = status;
+				} catch {
+					if (category.value?.id === id) github.value = null;
+				}
+			};
+
+			const loadRepos = async (id) => {
+				try {
+					const enabled = await getAgentRunsSetting(
+						store.getters.currentWorkspaceId,
+					);
+					const list = enabled ? await getCategoryAgentRepositories(id) : null;
+					if (category.value?.id !== id) return;
+					agentRuns.value = enabled;
+					repos.value = list;
+				} catch {
+					if (category.value?.id === id) agentRuns.value = false;
+				}
+			};
+
+			watch(
+				() => (props.isCreate ? null : category.value?.id ?? null),
+				(id) => {
+					open.cursor = open.github = open.repos = false;
+					github.value = undefined;
+					repos.value = null;
+					if (id == null) return;
+					loadGitHub(id);
+					loadRepos(id);
+				},
+				{ immediate: true },
+			);
+
+			const toggle = (key) => {
+				open[key] = !open[key];
+				if (open[key] || !category.value) return;
+				if (key === 'github') loadGitHub(category.value.id);
+				if (key === 'repos') loadRepos(category.value.id);
+			};
+
 			const onCursor = (message) => {
 				notify('Success', message);
 				emit('integration-changed');
+			};
+
+			const onGitHub = (message) => {
+				notify('Success', message);
+				if (category.value) loadGitHub(category.value.id);
 			};
 
 			const onRelinked = (stats) => {
@@ -918,46 +1184,89 @@
 				);
 			};
 
+			const DurationInput = (def, id) => {
+				const showError =
+					invalidIds.value.includes(def.id) && focusedDuration.value !== def.id;
+				const hint = def.key === ESTIMATE_KEY ? 'Like 45m, 2h or 1h 30m' : '';
+				const noteId = `${id}-note`;
+				return h('div', { class: 'flex min-w-0 flex-col gap-1.5' }, [
+					h('input', {
+						id,
+						type: 'text',
+						autocomplete: 'off',
+						spellcheck: 'false',
+						placeholder: 'e.g., 45m',
+						value: durationText[def.id] ?? '',
+						'aria-invalid': showError || undefined,
+						'aria-describedby': showError || hint ? noteId : undefined,
+						class: [
+							INPUT_CLASS,
+							'max-w-[180px] font-mono text-[13px]',
+							showError && ERROR_CLASS,
+						],
+						onInput: (e) => onDurationInput(def, e.target.value),
+						onFocus: () => (focusedDuration.value = def.id),
+						onBlur: () => (focusedDuration.value = null),
+					}),
+					showError
+						? h(
+								'p',
+								{ id: noteId, class: 'text-xs text-status-fix-fg' },
+								DURATION_ERROR,
+						  )
+						: hint &&
+						  h('p', { id: noteId, class: 'text-xs text-ink-muted' }, hint),
+				]);
+			};
+
 			const SettingControl = defineComponent({
 				props: { def: { type: Object, required: true } },
 				setup(p) {
 					return () => {
 						const def = p.def;
+						const id = controlId(def);
 						const label = labelOf(def);
 						const canCustom = def.custom_value_available !== false;
 						const withDefaults = def.default_values?.length > 0;
-						const showCustom = custom[def.id] && canCustom;
-						const control = showCustom
-							? def.component_type === 'time_in_seconds'
-								? h(TimeField, {
-										modelValue: values[def.id],
-										'onUpdate:modelValue': (v) => (values[def.id] = v),
-										placeholder: def.description,
-										extraClass: 'h-9 font-mono text-[13px]',
-										class: INPUT_SKIN,
-								  })
-								: h('div', { class: ['relative', INPUT_SKIN] }, [
-										h(TextField, {
-											modelValue: values[def.id],
-											'onUpdate:modelValue': (v) => (values[def.id] = v),
-											placeholder:
-												def.key === RATE_KEY ? '—' : def.description || '',
-											inputClass: [
-												'h-9 font-mono text-[13px]',
-												def.key === RATE_KEY ? 'pr-9' : '',
-											].join(' '),
-											showErrorInTooltip: false,
-										}),
-										def.key === RATE_KEY &&
-											h(
-												'span',
-												{
-													class:
-														'pointer-events-none absolute right-2.5 top-2 text-[13px] text-ink-subtle',
-												},
-												'/ h',
-											),
-								  ])
+						const control = showsCustom(def)
+							? isDuration(def)
+								? DurationInput(def, id)
+								: h(
+										'div',
+										{
+											class: [
+												'relative',
+												def.key === RATE_KEY
+													? 'max-w-[180px]'
+													: 'max-w-[360px]',
+											],
+										},
+										[
+											h('input', {
+												id,
+												type: 'text',
+												autocomplete: 'off',
+												value: values[def.id] ?? '',
+												placeholder:
+													def.key === RATE_KEY ? '—' : def.description || '',
+												class: [
+													INPUT_CLASS,
+													'font-mono text-[13px]',
+													def.key === RATE_KEY ? 'pr-10' : '',
+												],
+												onInput: (e) => (values[def.id] = e.target.value),
+											}),
+											def.key === RATE_KEY &&
+												h(
+													'span',
+													{
+														class:
+															'pointer-events-none absolute right-3 top-2 text-[13px] text-ink-muted',
+													},
+													'/ h',
+												),
+										],
+								  )
 							: h(
 									Select,
 									{
@@ -965,12 +1274,20 @@
 											values[def.id] === '' || values[def.id] == null
 												? undefined
 												: String(values[def.id]),
-										'onUpdate:modelValue': (v) => (values[def.id] = v),
+										'onUpdate:modelValue': (v) => {
+											values[def.id] = v;
+											if (isDuration(def))
+												durationText[def.id] = formatDuration(v);
+										},
 									},
 									() => [
 										h(
 											SelectTrigger,
-											{ class: FIELD_CLASS, 'aria-label': label },
+											{
+												id,
+												class: [FIELD_CLASS, 'max-w-[260px]'],
+												'aria-label': label,
+											},
 											() =>
 												h(SelectValue, {
 													placeholder: def.description || 'Select',
@@ -985,7 +1302,7 @@
 														value: String(option.value),
 													},
 													() =>
-														def.component_type === 'time_in_seconds'
+														isDuration(def)
 															? formatDuration(option.value) ||
 															  String(option.value)
 															: String(option.value),
@@ -1018,7 +1335,7 @@
 				reset();
 				if (props.isCreate) {
 					await nextTick();
-					nameField.value?.querySelector('input')?.focus();
+					nameField.value?.focus();
 				}
 			});
 
@@ -1029,15 +1346,23 @@
 				values,
 				errors,
 				saving,
+				fixing,
 				dirty,
+				invalid,
+				barText,
 				copyFrom,
 				nameField,
 				deleteOpen,
 				transfer,
+				open,
+				github,
+				agentRuns,
+				repos,
+				reposText,
 				cursorEnabled,
 				githubEnabled,
-				heading,
-				crumb,
+				issues,
+				issuesText,
 				parentChoices,
 				patternDef,
 				compactDefs,
@@ -1045,19 +1370,24 @@
 				copyChoices,
 				copyDefault,
 				fieldClass: FIELD_CLASS,
-				inputSkin: INPUT_SKIN,
+				inputClass: INPUT_CLASS,
+				errorClass: ERROR_CLASS,
+				smallButtonClass: SMALL_BUTTON_CLASS,
 				labelOf,
-				shortLabelOf,
 				hintOf,
-				sanitizeCategoryCode,
+				controlId,
 				applyCopy,
+				onCode,
 				discard,
 				notify,
 				submit,
+				fixAll,
 				remove,
 				openTransfer,
 				move,
+				toggle,
 				onCursor,
+				onGitHub,
 				onRelinked,
 				SettingControl,
 			};

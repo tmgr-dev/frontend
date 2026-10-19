@@ -110,7 +110,12 @@ const TOURS = [
     url: /\/demo\/board$/,
     anchor: 'statuses.editor',
   },
-  { id: 'tasks.categories', mobile: true, take: 'categories.create' },
+  {
+    id: 'tasks.categories',
+    mobile: true,
+    anchor: 'categories.create',
+    mobileAnchor: 'nav.menu-button',
+  },
   { id: 'tasks.relations', mobile: false, take: 'task-form.relations' },
   {
     id: 'tasks.files-page',
@@ -298,30 +303,42 @@ const driveTour = (name, run, { phone = true } = {}) => {
   }
 };
 
+const openCategoryCreate = async (page, mobile) => {
+  if (mobile) {
+    await expectClear(page, 'nav.menu-button');
+    await page.locator('[data-tour="nav.menu-button"]').first().click();
+  } else {
+    await expectClear(page, 'categories.create');
+  }
+  await page.locator('[data-tour="categories.create"]').first().click();
+  await expect(page).toHaveURL(/\/demo\/categories\/create$/);
+  await page.getByRole('textbox', { name: 'Name' }).fill('Fixture');
+  await page.getByPlaceholder('e.g., PROJ, FEAT, BUG').fill('FIX');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+};
+
 driveTour(
   'tasks.categories: create a category, tip on the row, done',
-  async ({ page, size }) => {
+  async ({ page, size, mobile }) => {
     const { writes, calls, errors } = await boot(page, size);
     await startFromHub(page, 'tasks.categories');
-    await primary(page, 'Take me there').click();
-    await expect(page).toHaveURL(/\/demo\/categories$/);
-    await attached(page, ['categories.create', 'categories.row']);
-    await expectClear(page, 'categories.create');
+    await expect(popover(page)).not.toContainText('could not find this');
+    if (!mobile) await attached(page, ['categories.create', 'categories.row']);
     await shots(page, 'tasks.categories-s1', size);
-    await page.locator('[data-tour="categories.create"]').first().click();
-    await expect(page).toHaveURL(/\/demo\/categories\?create=top$/);
-    await page.getByPlaceholder('Name').fill('Fixture');
-    await page.getByPlaceholder('e.g., PROJ, FEAT, BUG').fill('FIX');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await openCategoryCreate(page, mobile);
     await expect
       .poll(() => calls.includes('POST project_categories'))
       .toBe(true);
     await expect
       .poll(() => lastWrite(writes, 'tasks.categories')?.step_id)
       .toBe('s2');
-    await expect(page).toHaveURL(/\/demo\/categories\?category=10$/);
-    await expect(popover(page)).toContainText('Open a category');
-    await expectClear(page, 'categories.row');
+    await expect(page).toHaveURL(
+      /\/demo\/categories\/10\/children\?tab=settings$/,
+    );
+    await expect(popover(page)).toContainText(
+      mobile ? 'Your categories live in the menu' : 'Open a category',
+    );
+    await expectClear(page, mobile ? 'nav.menu-button' : 'categories.row');
     await shots(page, 'tasks.categories-s2', size);
     await primary(page, 'Done').click();
     await expect
@@ -333,7 +350,7 @@ driveTour(
 
 driveTour(
   'tasks.categories: with no row to point at the optional tip is skipped and the tour completes',
-  async ({ page, size }) => {
+  async ({ page, size, mobile }) => {
     const { writes, calls, errors } = await boot(page, size);
     await page.route(
       (url) => url.pathname === '/api/project_categories',
@@ -343,17 +360,20 @@ driveTour(
           : route.fallback(),
     );
     await startFromHub(page, 'tasks.categories');
-    await primary(page, 'Take me there').click();
-    await expect(page).toHaveURL(/\/demo\/categories$/);
-    await expect(popover(page)).toContainText('Create a category');
+    await expect(popover(page)).toContainText(
+      mobile ? 'Open the menu and tap +' : 'Create a category',
+    );
     await shots(page, 'tasks.categories-empty', size);
-    await page.locator('[data-tour="categories.create"]').first().click();
-    await page.getByPlaceholder('Name').fill('Fixture');
-    await page.getByPlaceholder('e.g., PROJ, FEAT, BUG').fill('FIX');
-    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await openCategoryCreate(page, mobile);
     await expect
       .poll(() => calls.includes('POST project_categories'))
       .toBe(true);
+    if (mobile) {
+      await expect(popover(page)).toContainText(
+        'Your categories live in the menu',
+      );
+      await primary(page, 'Done').click();
+    }
     await expect
       .poll(() => lastWrite(writes, 'tasks.categories')?.status, {
         timeout: 15000,

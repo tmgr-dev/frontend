@@ -248,10 +248,26 @@ const boot = async (
   return { state, errors };
 };
 
-const row = (page, name) =>
-  page.getByRole('option', { name: new RegExp(`^${name}\\b`) });
-const pane = (page) =>
-  page.locator('section').filter({ has: page.locator('form') });
+const DESK = { width: 1440, height: 900 };
+const LITERAL = 'Title pattern has no placeholders';
+const escapeRe = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const linkName = (name) => new RegExp(`^${escapeRe(name)}(\\s|$)`);
+const sidebar = (page) => page.getByTestId('categories-sidebar-section');
+const treeRow = (page, name) =>
+  sidebar(page).getByRole('link', { name: linkName(name) });
+const expand = (page, name) =>
+  sidebar(page)
+    .locator('li')
+    .filter({ has: page.getByRole('link', { name: linkName(name) }) })
+    .getByRole('button', { name: 'Expand' })
+    .click();
+const header = (page) => page.locator('[data-page-header]');
+const tabs = (page) => page.getByRole('navigation', { name: 'Category' });
+const bar = (page) => page.getByText(/^\d+ unsaved changes?$/);
+const nameField = (page) =>
+  page.getByRole('textbox', { name: 'Name', exact: true });
+const preview = (page) =>
+  page.getByText('Preview', { exact: true }).locator('..');
 const patternField = (page) =>
   page.getByRole('textbox', { name: 'Task title pattern' });
 const writes = (state, re) =>
@@ -265,125 +281,164 @@ const noHorizontalScroll = (page) =>
 
 test.describe.configure({ timeout: 90_000 });
 
-test('nothing selected: subtitle, list marks, literal-pattern card; selection lives in the URL', async ({
+test('index opens the first root; the sidebar tree marks literal patterns; filter keeps ancestors; tabs live in the URL', async ({
   page,
 }) => {
-  const { errors } = await boot(page, { size: { width: 1440, height: 900 } });
+  const { errors } = await boot(page, { size: DESK });
   await page.goto('/demo/categories');
-  await expect(page.locator('[data-page-header] p')).toHaveText(
-    '13 categories · 3 at the top level',
+  await expect(page).toHaveURL(/\/demo\/categories\/47\/children$/);
+  await expect(header(page).locator('h1')).toHaveText('Common projects');
+  await expect(header(page).locator('p')).toHaveText('Top level');
+  await expect(sidebar(page).getByRole('link')).toHaveCount(3);
+  await expect(treeRow(page, 'Common projects')).toHaveAttribute(
+    'aria-current',
+    'page',
   );
   await expect(
-    page.getByRole('listbox', { name: 'Categories' }).getByRole('option'),
-  ).toHaveCount(13);
-  await expect(page.getByRole('option', { selected: true })).toHaveCount(0);
-  await expect(page).toHaveURL(/\/demo\/categories$/);
-  await expect(
-    page.getByRole('heading', { name: 'Select a category' }),
-  ).toBeVisible();
-  await expect(
-    page.getByText('Its name, parent and defaults for new tasks open here.'),
+    treeRow(page, 'Common projects').getByRole('img', { name: LITERAL }),
   ).toBeVisible();
 
-  await expect(row(page, 'Cove')).toContainText('12.10.2026 Mon · 700/h · 8h');
-  await expect(row(page, 'suncityarena')).toContainText(
-    'DD.MM.YYYY · 700/h · 8h',
-  );
+  await expand(page, 'Work');
+  await expect(sidebar(page).getByRole('link')).toHaveCount(6);
   await expect(
-    row(page, 'suncityarena').getByLabel('Title pattern has no placeholders'),
+    treeRow(page, 'Freelance').getByRole('img', { name: LITERAL }),
   ).toBeVisible();
   await expect(
-    row(page, 'Cove').getByLabel('Title pattern has no placeholders'),
+    treeRow(page, 'Cove').getByRole('img', { name: LITERAL }),
   ).toHaveCount(0);
-  await expect(row(page, 'Work')).not.toContainText('·');
 
-  await page.keyboard.press('/');
-  const filter = page.getByRole('searchbox', { name: 'Filter categories' });
+  await sidebar(page)
+    .getByRole('button', { name: 'Filter categories' })
+    .click();
+  const filter = sidebar(page).getByRole('searchbox', {
+    name: 'Filter categories',
+  });
   await expect(filter).toBeFocused();
-  await page.keyboard.type('cove');
-  await expect(page.getByRole('option')).toHaveCount(2);
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('option')).toHaveCount(13);
+  await filter.fill('fcpp');
+  await expect(sidebar(page).getByRole('link')).toHaveCount(3);
+  await expect(treeRow(page, 'Freelance')).toBeVisible();
+  await expect(treeRow(page, 'FCPP')).toBeVisible();
+  await filter.press('Escape');
+  await expect(filter).toBeHidden();
+  await expect(sidebar(page).getByRole('link')).toHaveCount(6);
 
-  const card = page
-    .getByText('7 categories name new tasks literally')
-    .locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
-  await expect(card.getByRole('button', { name: 'Fix all 7' })).toBeVisible();
-  await expect(card.getByRole('button', { name: /Open →/ })).toHaveCount(7);
-  const issue = card.getByRole('button', { name: /^suncityarena/ });
-  await expect(issue).toContainText('Work / Freelance');
-  await expect(issue).toContainText('DD.MM.YYYY');
-  await issue.click();
-
-  await expect(page).toHaveURL(/\/demo\/categories\?category=123$/);
-  await expect(row(page, 'suncityarena')).toHaveAttribute(
-    'aria-selected',
-    'true',
+  await treeRow(page, 'Cove').click();
+  await expect(page).toHaveURL(/\/demo\/categories\/101\/children$/);
+  await expect(header(page).locator('h1')).toHaveText('Cove');
+  await expect(header(page).locator('p')).toHaveText('Work');
+  await expect(treeRow(page, 'Cove')).toHaveAttribute('aria-current', 'page');
+  await expect(tabs(page).getByRole('link', { name: 'Tasks' })).toHaveAttribute(
+    'aria-current',
+    'page',
   );
-  await expect(
-    page.getByRole('heading', { name: 'suncityarena', level: 2 }),
-  ).toBeVisible();
-  await expect(pane(page)).toContainText('Work / Freelance /');
-  await expect(
-    page.locator('a:visible', { hasText: 'Tasks →' }),
-  ).toHaveAttribute('href', '/demo/categories/123/children');
-
+  await tabs(page).getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/101\/children\?tab=settings$/);
+  await expect(nameField(page)).toHaveValue('Cove');
   await page.reload();
   await expect(
-    page.getByRole('heading', { name: 'suncityarena', level: 2 }),
-  ).toBeVisible();
-  await row(page, 'Cove').click();
-  await expect(page).toHaveURL(/\?category=101$/);
+    tabs(page).getByRole('link', { name: 'Settings' }),
+  ).toHaveAttribute('aria-current', 'page');
+  await expect(nameField(page)).toHaveValue('Cove');
   await page.goBack();
-  await expect(page).toHaveURL(/\?category=123$/);
-  await expect(
-    page.getByRole('heading', { name: 'suncityarena', level: 2 }),
-  ).toBeVisible();
-  await page.goBack();
-  await expect(
-    page.getByRole('heading', { name: 'Select a category' }),
-  ).toBeVisible();
-  await page.goForward();
-  await expect(
-    page.getByRole('heading', { name: 'suncityarena', level: 2 }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/101\/children$/);
+  await expect(nameField(page)).toHaveCount(0);
 
-  await page.goto('/demo/categories?category=99999');
-  await expect(
-    page.getByRole('heading', { name: 'Select a category' }),
-  ).toBeVisible();
+  await page.goto('/demo/categories');
+  await expect(page).toHaveURL(/\/demo\/categories\/101\/children$/);
+  await page.goto('/demo/categories/99999/children');
+  await expect(page.getByTestId('category-missing')).toContainText(
+    'Category not found',
+  );
   await expect(page.getByText(/Could not/)).toHaveCount(0);
   expect(await noHorizontalScroll(page)).toBe(true);
   expect(errors).toEqual([]);
 });
 
-test('flat workspace: plain subtitle, Cursor dots, no literal-pattern card', async ({
+test('flat workspace: Cursor marks, no literal notice, durations read as durations', async ({
   page,
 }) => {
   const { errors } = await boot(page, {
     list: FLAT(),
     workspace: 'TMGR.DEV',
-    size: { width: 1440, height: 900 },
+    size: DESK,
   });
   await page.goto('/demo/categories');
-  await expect(page.locator('[data-page-header] p')).toHaveText('6 categories');
-  await expect(page.getByRole('option')).toHaveCount(6);
-  await expect(page.getByTitle('Cursor connected')).toHaveCount(2);
-  await expect(row(page, 'TC')).toContainText('TC-#: · 12/h · 3h');
-  await expect(page.getByText(/name new tasks literally/)).toHaveCount(0);
-  await row(page, 'TM').click();
-  await expect(pane(page)).toContainText('TMGR.DEV · top level');
+  await expect(page).toHaveURL(/\/demo\/categories\/165\/children$/);
+  await expect(sidebar(page).getByRole('link')).toHaveCount(6);
   await expect(
-    page.getByText('Preview', { exact: true }).locator('..'),
-  ).toContainText('TM-#: Task title');
+    sidebar(page).getByRole('img', { name: 'Cursor connected' }),
+  ).toHaveCount(2);
+  await expect(sidebar(page).getByRole('img', { name: LITERAL })).toHaveCount(
+    0,
+  );
+
+  await treeRow(page, 'TM').click();
+  await tabs(page).getByRole('link', { name: 'Settings' }).click();
+  await expect(page).toHaveURL(/\/127\/children\?tab=settings$/);
+  await expect(page.getByText(/new tasks literally/)).toHaveCount(0);
+  await expect(preview(page)).toContainText('TM-#: Task title');
+  await expect(
+    page.getByRole('textbox', { name: 'Rate per hour' }),
+  ).toHaveValue('123');
+  await expect(
+    page.getByRole('textbox', { name: 'Default estimate' }),
+  ).toHaveValue('4h');
+  await expect(
+    page.getByRole('textbox', { name: 'Timer reminder every' }),
+  ).toHaveValue('20m');
+  await expect(page.getByText('Cursor AI agent')).toBeVisible();
+  await expect(page.getByText('Connected', { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Manage', exact: true }),
+  ).toBeVisible();
+  await expect(bar(page)).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('durations: invalid text blocks Save; a valid one is saved as seconds', async ({
+  page,
+}) => {
+  const { state, errors } = await boot(page, { list: FLAT(), size: DESK });
+  await page.goto('/demo/categories/127/children?tab=settings');
+  const estimate = page.getByRole('textbox', { name: 'Default estimate' });
+  const reminder = page.getByRole('textbox', { name: 'Timer reminder every' });
+  const error = page.getByText('Use a duration like 45m, 2h or 1h 30m');
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+
+  await estimate.fill('abc');
+  await estimate.blur();
+  await expect(error).toBeVisible();
+  await expect(estimate).toHaveAttribute('aria-invalid', 'true');
+  await expect(bar(page)).toHaveText('1 unsaved change');
+  await expect(save).toBeDisabled();
+
+  await estimate.fill('1h 30m');
+  await reminder.fill('90');
+  await reminder.blur();
+  await expect(error).toHaveCount(0);
+  await expect(bar(page)).toHaveText('2 unsaved changes');
+  await expect(save).toBeEnabled();
+  await save.click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  expect(
+    writes(state, /^PUT project_categories\/127\/settings$/)[0].body,
+  ).toEqual([
+    { id: 1, value: 'TM-{index#category}' },
+    { id: 2, value: '123' },
+    { id: 3, value: '5400' },
+    { id: 4, value: '5400' },
+  ]);
+  await expect(bar(page)).toHaveCount(0);
+  await expect(estimate).toHaveValue('1h 30m');
+  await expect(reminder).toHaveValue('1h 30m');
   expect(errors).toEqual([]);
 });
 
 test('literal pattern: the fix button rewrites the field without saving; chips insert at the cursor', async ({
   page,
 }) => {
-  const { state, errors } = await boot(page);
-  await page.goto('/demo/categories?category=123');
+  const { state, errors } = await boot(page, { size: DESK });
+  await page.goto('/demo/categories/123/children?tab=settings');
   const field = patternField(page);
   await expect(field).toHaveValue('DD.MM.YYYY');
   await expect(field).toHaveAttribute('aria-invalid', 'true');
@@ -392,18 +447,14 @@ test('literal pattern: the fix button rewrites the field without saving; chips i
       /No placeholders\. Every new task will literally start with “DD\.MM\.YYYY”/,
     ),
   ).toBeVisible();
-  await expect(
-    page.getByText('Preview', { exact: true }).locator('..'),
-  ).toContainText('DD.MM.YYYY: Task title');
-  await expect(page.getByRole('button', { name: 'Discard' })).toBeDisabled();
+  await expect(preview(page)).toContainText('DD.MM.YYYY: Task title');
+  await expect(bar(page)).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Use {dts#dd.mm.yyyy#dte}' }).click();
   await expect(field).toHaveValue('{dts#dd.mm.yyyy#dte}');
   await expect(field).not.toHaveAttribute('aria-invalid', 'true');
-  await expect(
-    page.getByText('Preview', { exact: true }).locator('..'),
-  ).toContainText('12.10.2026: Task title');
-  await expect(page.getByRole('button', { name: 'Discard' })).toBeEnabled();
+  await expect(preview(page)).toContainText('12.10.2026: Task title');
+  await expect(bar(page)).toHaveText('1 unsaved change');
   await page.waitForTimeout(300);
   expect(writes(state, /^PUT /)).toEqual([]);
 
@@ -411,8 +462,9 @@ test('literal pattern: the fix button rewrites the field without saving; chips i
   await page.getByRole('button', { name: '+ category number' }).click();
   await expect(field).toHaveValue('{index#category}{dts#dd.mm.yyyy#dte}');
 
-  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
   await expect(field).toHaveValue('DD.MM.YYYY');
+  await expect(bar(page)).toHaveCount(0);
   expect(writes(state, /^PUT /)).toEqual([]);
   expect(errors).toEqual([]);
 });
@@ -420,38 +472,51 @@ test('literal pattern: the fix button rewrites the field without saving; chips i
 test('typing words before a date token keeps the preview working', async ({
   page,
 }) => {
-  const { errors } = await boot(page, { list: FLAT() });
-  await page.goto('/demo/categories?category=127');
+  const { errors } = await boot(page, { list: FLAT(), size: DESK });
+  await page.goto('/demo/categories/127/children?tab=settings');
   await patternField(page).fill('Sprint {dts#dd#dte}');
-  await expect(
-    page.getByText('Preview', { exact: true }).locator('..'),
-  ).toContainText('Sprint 12: Task title');
+  await expect(preview(page)).toContainText('Sprint 12: Task title');
   await expect(patternField(page)).toBeVisible();
   expect(errors).toEqual([]);
 });
 
-test('a stored pattern with words before a date token does not break the list', async ({
+test('a stored pattern with words before a date token does not break the tree or the preview', async ({
   page,
 }) => {
-  await boot(page, {
+  const { errors } = await boot(page, {
     list: [
       ...FLAT(),
       cat(300, 'Reports', 'REP', null, { pat: 'Report {dts#dd.mm#dte}' }),
     ],
+    size: DESK,
   });
-  await page.goto('/demo/categories');
-  await expect(row(page, 'Reports')).toContainText('Report 12.10');
+  await page.goto('/demo/categories/300/children?tab=settings');
+  await expect(treeRow(page, 'Reports')).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(
+    treeRow(page, 'Reports').getByRole('img', { name: LITERAL }),
+  ).toHaveCount(0);
+  await expect(preview(page)).toContainText('Report 12.10: Task title');
+  expect(errors).toEqual([]);
 });
 
 test('Fix all rewrites every literal pattern; a partial failure reports the count', async ({
   page,
 }) => {
-  const { state, errors } = await boot(page);
+  const { state, errors } = await boot(page, { size: DESK });
   state.fail['PUT project_categories/94/settings'] = {
     status: 400,
     json: { message: 'Nope' },
   };
-  await page.goto('/demo/categories');
+  await page.goto('/demo/categories/101/children?tab=settings');
+  await expect(
+    page.getByText('7 categories name new tasks literally'),
+  ).toBeVisible();
+  await expect(sidebar(page).getByRole('img', { name: LITERAL })).toHaveCount(
+    3,
+  );
   await page.getByRole('button', { name: 'Fix all 7' }).click();
   await expect(
     page.getByText('Fixed 6 of 7 title patterns', { exact: true }),
@@ -460,10 +525,9 @@ test('Fix all rewrites every literal pattern; a partial failure reports the coun
   expect(puts.map((c) => Number(c.path.split('/')[1])).sort()).toEqual(
     [...LITERAL_IDS].sort(),
   );
-  const suncity = puts.find(
-    (c) => c.path === 'project_categories/123/settings',
-  ).body;
-  expect(suncity).toEqual([
+  expect(
+    puts.find((c) => c.path === 'project_categories/123/settings').body,
+  ).toEqual([
     { id: 1, value: '{dts#dd.mm.yyyy#dte}' },
     { id: 2, value: '700' },
     { id: 3, value: '28800' },
@@ -473,21 +537,31 @@ test('Fix all rewrites every literal pattern; a partial failure reports the coun
     page.getByText('1 category names new tasks literally'),
   ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Fix all 1' })).toBeVisible();
+  await expect(sidebar(page).getByRole('img', { name: LITERAL })).toHaveCount(
+    0,
+  );
+  await expect(bar(page)).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
-test('create at the top level and a subcategory: exact buttons, draft row, copy default, select the new one', async ({
+test('create at the top level and a subcategory: sidebar +, header + Subcategory, draft row, copy default, land on the new Settings tab', async ({
   page,
 }) => {
-  const { state, errors } = await boot(page);
+  const { state, errors } = await boot(page, { size: DESK });
   await page.goto('/demo/categories');
-  await page.getByRole('button', { name: 'New category' }).click();
-  await expect(page).toHaveURL(/\?create=top$/);
-  await expect(
-    page.getByRole('heading', { name: 'New category', level: 2 }),
-  ).toBeVisible();
-  await expect(pane(page)).toContainText('Personal · top level');
-  await expect(page.getByPlaceholder('Name')).toBeFocused();
+  await expect(page).toHaveURL(/\/demo\/categories\/47\/children$/);
+  const plus = sidebar(page).getByRole('button', { name: 'New category' });
+  await expect(plus).toHaveAttribute('data-tour', 'categories.create');
+  await plus.click();
+  await expect(page).toHaveURL(/\/demo\/categories\/create$/);
+  await expect(header(page).locator('h1')).toHaveText('New category');
+  await expect(header(page).locator('p')).toHaveText('Top level');
+  const draft = sidebar(page).locator('[aria-current="page"]');
+  await expect(draft).toHaveText('New category');
+  await expect(draft).toHaveCSS('font-style', 'italic');
+  await expect(tabs(page)).toHaveCount(0);
+  await expect(nameField(page)).toBeFocused();
+  await expect(page.getByText('New top-level category')).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Cancel', exact: true }),
   ).toBeVisible();
@@ -495,20 +569,27 @@ test('create at the top level and a subcategory: exact buttons, draft row, copy 
     page.getByRole('button', { name: 'Create', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('Copy settings from')).toHaveCount(0);
+  await expect(
+    page.getByText(
+      'Integrations and the danger zone appear after the category is created.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByText('Danger zone', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await expect(page).toHaveURL(/\/demo\/categories$/);
-  await expect(
-    page.getByRole('heading', { name: 'Select a category' }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/demo\/categories\/47\/children$/);
 
-  await row(page, 'Freelance').click();
-  await page.getByRole('button', { name: '+ Subcategory' }).click();
-  await expect(page).toHaveURL(/\?create=27$/);
+  await page.goto('/demo/categories/27/children');
+  await header(page).getByRole('button', { name: 'Subcategory' }).click();
+  await expect(page).toHaveURL(/\/demo\/categories\/27\/create$/);
+  await expect(draft).toHaveText('New category');
   await expect(
-    page.getByRole('option', { name: 'New subcategory' }),
-  ).toBeVisible();
-  await expect(pane(page)).toContainText('Work / Freelance /');
-  await expect(page.getByPlaceholder('Name')).toBeFocused();
+    sidebar(page)
+      .locator('li')
+      .filter({ has: page.locator('[aria-current="page"]') })
+      .locator('xpath=preceding-sibling::li[1]'),
+  ).toContainText('Freelance');
+  await expect(header(page).locator('p')).toHaveText('Work / Freelance');
+  await expect(nameField(page)).toBeFocused();
   await expect(page.getByRole('combobox', { name: 'Parent' })).toHaveText(
     'Freelance',
   );
@@ -516,16 +597,18 @@ test('create at the top level and a subcategory: exact buttons, draft row, copy 
     page.getByRole('combobox', { name: 'Copy settings from' }),
   ).toHaveText('FCPP');
   await expect(patternField(page)).toHaveValue(DATE_DAY);
+  await expect(page.getByText('New subcategory of Freelance')).toBeVisible();
 
-  await page.getByPlaceholder('Name').fill('Newco');
+  await nameField(page).fill('Newco');
   await page.getByPlaceholder('e.g., PROJ, FEAT, BUG').fill('new co');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page).toHaveURL(/\?category=900$/);
-  await expect(
-    page.getByRole('heading', { name: 'Newco', level: 2 }),
-  ).toBeVisible();
-  await expect(row(page, 'Newco')).toHaveAttribute('aria-selected', 'true');
-  await expect(pane(page)).toContainText('Work / Freelance /');
+  await expect(page).toHaveURL(
+    /\/demo\/categories\/900\/children\?tab=settings$/,
+  );
+  await expect(header(page).locator('h1')).toHaveText('Newco');
+  await expect(header(page).locator('p')).toHaveText('Work / Freelance');
+  await expect(treeRow(page, 'Newco')).toHaveAttribute('aria-current', 'page');
+  await expect(nameField(page)).toHaveValue('Newco');
   const post = writes(state, /^POST project_categories$/)[0].body;
   expect(post).toMatchObject({
     title: 'Newco',
@@ -543,44 +626,47 @@ test('create at the top level and a subcategory: exact buttons, draft row, copy 
   expect(errors).toEqual([]);
 });
 
-test('a dirty form asks before switching selection, starting a create or going back', async ({
+test('a dirty form asks before switching tab, another tree row, starting a create or going back', async ({
   page,
 }) => {
-  const { errors } = await boot(page);
-  await page.goto('/demo/categories');
-  await row(page, 'Cove').click();
-  await page.getByPlaceholder('Name').fill('Cove 2');
+  const { errors } = await boot(page, { size: DESK });
+  await page.goto('/demo/categories/101/children');
+  await tabs(page).getByRole('link', { name: 'Settings' }).click();
+  await nameField(page).fill('Cove 2');
+  await expect(bar(page)).toHaveText('1 unsaved change');
   const dialog = page.getByRole('alertdialog');
+  const keep = async () => {
+    await expect(dialog).toContainText('Discard unsaved changes?');
+    await dialog.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page).toHaveURL(/\/101\/children\?tab=settings$/);
+    await expect(nameField(page)).toHaveValue('Cove 2');
+  };
 
-  await row(page, 'FCPP').click();
-  await expect(dialog).toContainText('Discard unsaved changes?');
-  await dialog.getByRole('button', { name: 'Keep editing' }).click();
-  await expect(dialog).toBeHidden();
-  await expect(page).toHaveURL(/\?category=101$/);
-  await expect(page.getByPlaceholder('Name')).toHaveValue('Cove 2');
-
-  await page.getByRole('button', { name: 'New category' }).click();
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Keep editing' }).click();
+  await treeRow(page, 'Freelance').click();
+  await keep();
+  await tabs(page).getByRole('link', { name: 'Tasks' }).click();
+  await keep();
+  await sidebar(page).getByRole('button', { name: 'New category' }).click();
+  await keep();
   await page.goBack();
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Keep editing' }).click();
-  await expect(page).toHaveURL(/\?category=101$/);
+  await keep();
 
-  await row(page, 'FCPP').click();
+  await treeRow(page, 'Freelance').click();
   await dialog.getByRole('button', { name: 'Discard' }).click();
-  await expect(page).toHaveURL(/\?category=151$/);
-  await expect(page.getByPlaceholder('Name')).toHaveValue('FCPP');
+  await expect(page).toHaveURL(/\/demo\/categories\/27\/children$/);
+  await expect(header(page).locator('h1')).toHaveText('Freelance');
   expect(errors).toEqual([]);
 });
 
-test('save sends the category and its full settings, then the list shows the new values', async ({
+test('save sends the category and its full settings, then the header and the tree show the new values', async ({
   page,
 }) => {
-  const { state, errors } = await boot(page);
-  await page.goto('/demo/categories?category=101');
-  await page.getByPlaceholder('Name').fill('Cove Ltd');
+  const { state, errors } = await boot(page, { size: DESK });
+  await page.goto('/demo/categories/101/children?tab=settings');
+  await nameField(page).fill('Cove Ltd');
   await page.getByPlaceholder('—').fill('800');
+  await expect(bar(page)).toHaveText('2 unsaved changes');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('Saved', { exact: true })).toBeVisible();
   expect(writes(state, /^PUT project_categories\/101$/)[0].body).toMatchObject({
@@ -597,20 +683,20 @@ test('save sends the category and its full settings, then the list shows the new
     { id: 3, value: '28800' },
     { id: 4, value: '3600' },
   ]);
-  await expect(page.getByRole('button', { name: 'Discard' })).toBeDisabled();
-  await expect(row(page, 'Cove Ltd')).toContainText(
-    '12.10.2026 Mon · 800/h · 8h',
+  await expect(bar(page)).toHaveCount(0);
+  await expect(header(page).locator('h1')).toHaveText('Cove Ltd');
+  await expect(treeRow(page, 'Cove Ltd')).toHaveAttribute(
+    'aria-current',
+    'page',
   );
-  await expect(
-    page.getByRole('heading', { name: 'Cove Ltd', level: 2 }),
-  ).toBeVisible();
+  await expect(page.getByPlaceholder('—')).toHaveValue('800');
   expect(errors).toEqual([]);
 });
 
-test('a 422 shows inline errors and keeps the form dirty; delete returns to nothing selected', async ({
+test('a 422 shows inline errors and keeps the form dirty; delete goes to the parent, or to the first root', async ({
   page,
 }) => {
-  const { state, errors } = await boot(page);
+  const { state, errors } = await boot(page, { size: DESK });
   state.fail['PUT project_categories/101'] = {
     status: 422,
     json: {
@@ -618,105 +704,130 @@ test('a 422 shows inline errors and keeps the form dirty; delete returns to noth
       errors: { title: ['The title has already been taken.'] },
     },
   };
-  await page.goto('/demo/categories?category=101');
-  await page.getByPlaceholder('Name').fill('FCPP');
+  await page.goto('/demo/categories/101/children?tab=settings');
+  await nameField(page).fill('FCPP');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(
     page.getByText('The title has already been taken.'),
   ).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Discard' })).toBeEnabled();
-  await expect(page.getByPlaceholder('Name')).toHaveValue('FCPP');
+  await expect(nameField(page)).toHaveAttribute('aria-invalid', 'true');
+  await expect(bar(page)).toHaveText('1 unsaved change');
+  await expect(nameField(page)).toHaveValue('FCPP');
   expect(writes(state, /settings$/)).toEqual([]);
 
-  await page.getByRole('button', { name: 'Discard' }).click();
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(bar(page)).toHaveCount(0);
   await page.getByRole('button', { name: 'Delete…' }).click();
   await page
     .getByRole('alertdialog')
     .getByRole('button', { name: 'Delete', exact: true })
     .click();
-  await expect(page).toHaveURL(/\/demo\/categories$/);
-  await expect(
-    page.getByRole('heading', { name: 'Select a category' }),
-  ).toBeVisible();
-  await expect(row(page, 'Cove')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/demo\/categories\/24\/children$/);
+  await expect(header(page).locator('h1')).toHaveText('Work');
+  await expect(treeRow(page, 'Cove')).toHaveCount(0);
+
+  await page.goto('/demo/categories/50/children?tab=settings');
+  await page.getByRole('button', { name: 'Delete…' }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/demo\/categories\/47\/children$/);
   expect(writes(state, /^DELETE /).map((c) => c.path)).toEqual([
     'project_categories/101',
+    'project_categories/50',
   ]);
   expect(errors).toEqual([]);
 });
 
-test('empty workspace: one centred call to action, no two-pane card', async ({
+test('empty workspace: one centred call to action, the sidebar section shows only its header', async ({
   page,
 }) => {
-  const { errors } = await boot(page, { list: [] });
+  const { errors } = await boot(page, { list: [], size: DESK });
   await page.goto('/demo/categories');
+  const empty = page.getByTestId('category-empty');
   await expect(
-    page.getByRole('heading', { name: 'No categories yet' }),
+    empty.getByRole('heading', { name: 'No categories yet' }),
   ).toBeVisible();
-  await expect(page.locator('[data-tour="categories.create"]')).toHaveCount(1);
-  await expect(page.locator('[data-tour="categories.create"]')).toHaveText(
-    'New category',
-  );
-  await expect(page.getByRole('listbox')).toHaveCount(0);
-  await page.locator('[data-tour="categories.create"]').click();
-  await expect(page).toHaveURL(/\?create=top$/);
+  await expect(empty).toHaveCSS('text-align', 'center');
+  await expect(sidebar(page).getByRole('link')).toHaveCount(0);
+  await expect(
+    sidebar(page).getByRole('button', { name: 'New category' }),
+  ).toBeVisible();
+  await expect(tabs(page)).toHaveCount(0);
+  await empty.getByRole('button', { name: 'New category' }).click();
+  await expect(page).toHaveURL(/\/demo\/categories\/create$/);
+  await expect(header(page).locator('h1')).toHaveText('New category');
   expect(errors).toEqual([]);
 });
 
-test('old category URLs land on the pane in the right state', async ({
-  page,
-}) => {
-  await boot(page);
+test('old category URLs land on the right page', async ({ page }) => {
+  await boot(page, { size: DESK });
   for (const [from, to] of [
-    ['/demo/categories/create', /\/demo\/categories\?create=top$/],
-    ['/demo/categories/101', /\/demo\/categories\?category=101$/],
-    ['/demo/categories/27/create', /\/demo\/categories\?create=27$/],
-    ['/demo/categories/status/active', /\/demo\/categories$/],
+    ['/demo/categories/status/x', /\/demo\/categories\/47\/children$/],
+    ['/demo/categories/create', /\/demo\/categories\/create$/],
+    [
+      '/demo/categories/101',
+      /\/demo\/categories\/101\/children\?tab=settings$/,
+    ],
+    ['/demo/categories/27/create', /\/demo\/categories\/27\/create$/],
+    [
+      '/demo/categories?category=101',
+      /\/demo\/categories\/101\/children\?tab=settings$/,
+    ],
+    ['/demo/categories?create=top', /\/demo\/categories\/create$/],
+    ['/demo/categories?create=27', /\/demo\/categories\/27\/create$/],
+    ['/demo/WORK', /\/demo\/categories\/24\/children$/],
   ]) {
     await page.goto(from);
     await expect(page, from).toHaveURL(to);
   }
-  await expect(
-    page.getByRole('heading', { name: 'Select a category' }),
-  ).toBeVisible();
+  await expect(header(page).locator('h1')).toHaveText('Work');
+  await page.goto('/demo/NOPE');
+  await expect(page.getByTestId('category-missing')).toContainText(
+    'Category not found',
+  );
 });
 
-test('phone: list of group cards, full-screen settings, back to the list', async ({
+test('phone: tree in the sidebar drawer, no page-level horizontal scroll, full-width save bar', async ({
   page,
 }) => {
   const { errors } = await boot(page, { size: { width: 390, height: 844 } });
-  await page.goto('/demo/categories');
-  await expect(page.locator('[data-tour="categories.create"]')).toBeVisible();
-  await expect(page.getByRole('listbox').getByRole('group')).toHaveCount(3);
-  expect(
-    Math.round((await row(page, 'Cove').boundingBox()).height),
-  ).toBeGreaterThanOrEqual(52);
+  await page.goto('/demo/categories/101/children?tab=settings');
+  await expect(header(page).locator('h1')).toHaveText('Cove');
+  await expect(tabs(page)).toBeVisible();
   expect(await noHorizontalScroll(page)).toBe(true);
-  await row(page, 'Cove').click();
-  await expect(page.getByRole('listbox')).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Tasks →' })).toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Save', exact: true }),
-  ).toBeVisible();
+
+  await nameField(page).fill('Cove 2');
+  await expect(bar(page)).toBeVisible();
+  const box = await bar(page).locator('..').boundingBox();
+  expect(box.width).toBeGreaterThanOrEqual(390 - 48);
+  expect(box.x + box.width).toBeLessThanOrEqual(390);
   expect(await noHorizontalScroll(page)).toBe(true);
-  await page.getByRole('button', { name: 'Back to categories' }).click();
-  await expect(page).toHaveURL(/\/demo\/categories$/);
-  await expect(row(page, 'Cove')).toBeVisible();
+  await page.getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(bar(page)).toHaveCount(0);
+
+  await page.locator('[data-tour="nav.menu-button"]').click();
+  await expect(treeRow(page, 'Cove')).toBeVisible();
+  await expect(treeRow(page, 'Cove')).toHaveAttribute('aria-current', 'page');
+  await treeRow(page, 'Freelance').click();
+  await expect(page).toHaveURL(/\/demo\/categories\/27\/children$/);
+  await expect(header(page).locator('h1')).toHaveText('Freelance');
+  expect(await noHorizontalScroll(page)).toBe(true);
   expect(errors).toEqual([]);
 });
 
 const SHOTS = process.env.CATEGORIES_SHOTS;
 const STATES = [
-  ['None', '/demo/categories', NESTED, 'Personal', 'Phone'],
-  ['NoneClean', '/demo/categories', FLAT, 'TMGR.DEV'],
-  ['Edit', '/demo/categories?category=101', NESTED, 'Personal', 'PhoneEdit'],
-  ['Warn', '/demo/categories?category=123', NESTED, 'Personal'],
-  ['Create', '/demo/categories?create=27', NESTED, 'Personal'],
-  ['Flat', '/demo/categories?category=127', FLAT, 'TMGR.DEV'],
+  ['Tasks', '/demo/categories/101/children', NESTED, 'Personal'],
+  ['Edit', '/demo/categories/101/children?tab=settings', NESTED, 'Personal'],
+  ['Warn', '/demo/categories/123/children?tab=settings', NESTED, 'Personal'],
+  ['Create', '/demo/categories/27/create', NESTED, 'Personal'],
+  ['Flat', '/demo/categories/127/children?tab=settings', FLAT, 'TMGR.DEV'],
   ['Empty', '/demo/categories', () => [], 'Personal'],
 ];
 
-for (const [state, url, list, workspace, phoneName] of STATES) {
+for (const [state, url, list, workspace] of STATES) {
   for (const width of [1440, 390]) {
     for (const scheme of ['light', 'dark']) {
       test(`screenshot ${state} @${width} ${scheme}`, async ({ page }) => {
@@ -730,18 +841,14 @@ for (const [state, url, list, workspace, phoneName] of STATES) {
         await page.goto(url);
         await expect(
           page
-            .locator('[data-page-header] h1:visible, section h2:visible')
+            .locator(
+              '[data-page-header] h1:visible, [data-testid="category-empty"] h1:visible',
+            )
             .first(),
         ).toBeVisible();
         await page.waitForLoadState('networkidle');
         await page.waitForTimeout(500);
-        const base = state === 'Empty' ? 'R3-Empty' : `R3A-${state}`;
-        const name =
-          width === 1440
-            ? base
-            : phoneName
-            ? `R3A-${phoneName}`
-            : `${base}-390`;
+        const name = width === 1440 ? `R4-${state}` : `R4-${state}-390`;
         await page.screenshot({ path: `${SHOTS}/${name}-${scheme}.png` });
       });
     }

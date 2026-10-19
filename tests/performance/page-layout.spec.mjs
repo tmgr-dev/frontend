@@ -5,7 +5,7 @@ const PAGES = [
   ['list', '/demo/list', 'wide'],
   ['archive', '/demo/archive', 'wide'],
   ['dashboard', '/demo/dashboard', 'wide'],
-  ['categories', '/demo/categories', 'wide'],
+  ['categories', '/demo/categories', 'narrow'],
   ['notifications', '/demo/notifications', 'wide'],
   ['files', '/demo/files', 'wide'],
   ['member', '/demo/team/1', 'wide'],
@@ -44,6 +44,24 @@ async function mockExtras(page) {
             daily_routines: { enabled: true },
             pages: { enabled: true },
           },
+        },
+      }),
+  );
+  await page.route(
+    (u) => u.pathname.endsWith('/api/project_categories'),
+    (r) =>
+      r.fulfill({
+        json: {
+          data: [
+            {
+              id: 1,
+              title: 'Work',
+              code: 'WORK',
+              project_category_id: null,
+              deleted_at: null,
+              settings: [],
+            },
+          ],
         },
       }),
   );
