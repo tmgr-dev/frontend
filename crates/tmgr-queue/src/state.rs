@@ -113,6 +113,8 @@ pub struct Pickup {
     pub clones: Vec<PickupClone>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<Held>,
+    #[serde(default)]
+    pub paused_draft: bool,
 }
 
 fn one() -> u32 {
@@ -132,6 +134,7 @@ impl Pickup {
             && self.pr_url.is_none()
             && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
             && self.held.is_none()
+            && !self.paused_draft
     }
 
     pub fn occupies(&self) -> bool {

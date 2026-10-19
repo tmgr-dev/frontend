@@ -86,6 +86,13 @@ pub struct PublishSteps {
     pub pr: Vec<String>,
 }
 
+impl PublishSteps {
+    pub fn draft(mut self) -> Self {
+        self.pr.push("--draft".into());
+        self
+    }
+}
+
 pub fn branch_slug(task_key: &str, title: &str) -> String {
     let key = slug(task_key);
     let key = if key.is_empty() {
@@ -352,6 +359,13 @@ pub struct PublishAllPlan {
 }
 
 impl PublishAllPlan {
+    pub fn draft(mut self) -> Self {
+        for r in &mut self.repos {
+            r.steps = r.steps.clone().draft();
+        }
+        self
+    }
+
     pub fn links(&self) -> bool {
         self.repos.len() >= 2
     }
@@ -594,6 +608,26 @@ mod tests {
         assert_eq!(s.branch, "tmgr/tm-410-fix-login");
         assert_eq!(s.repo, PathBuf::from("/work/repo"));
         assert_eq!(s.clone_dir, PathBuf::from("/work/repo-worktrees/queue/p1"));
+    }
+
+    #[test]
+    fn a_draft_plan_adds_the_flag_to_every_pr_create_and_nothing_else() {
+        let plain = publish_plan(&input()).unwrap();
+        let draft = publish_plan(&input()).unwrap().draft();
+        assert_eq!(draft.push, plain.push);
+        assert_eq!(draft.pr[..draft.pr.len() - 1], plain.pr[..]);
+        assert_eq!(draft.pr.last().map(String::as_str), Some("--draft"));
+        let all = publish_all_plan(&[repo_input("o/a", 1), repo_input("o/b", 2)])
+            .unwrap()
+            .draft();
+        assert!(all
+            .repos
+            .iter()
+            .all(|r| r.steps.pr.last().map(String::as_str) == Some("--draft")));
+        assert!(all
+            .repos
+            .iter()
+            .all(|r| !r.list.contains(&"--draft".to_string())));
     }
 
     #[test]
@@ -1109,6 +1143,31 @@ mod tests {
             .filter(|a| a.get(2).map(String::as_str) == Some("create"))
             .count();
         assert_eq!(creates, 1);
+    }
+
+    #[test]
+    fn a_draft_publish_opens_drafts_and_leaves_an_existing_pull_request_alone() {
+        let plan = publish_all_plan(&both()).unwrap().draft();
+        let be = open_pr(
+            "https://github.com/tmgr-dev/backend/pull/5",
+            false,
+            "TMGR-dev",
+            &"A".repeat(40),
+        );
+        let log = std::cell::RefCell::new(Vec::new());
+        let urls = publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+        assert_eq!(urls[0].1, "https://github.com/tmgr-dev/backend/pull/5");
+        let log = log.borrow();
+        let creates: Vec<&Vec<String>> = log
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some("create"))
+            .collect();
+        assert_eq!(creates.len(), 1);
+        assert_eq!(creates[0].last().map(String::as_str), Some("--draft"));
+        assert!(log
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some("edit"))
+            .all(|a| !a.contains(&"--draft".to_string())));
     }
 
     #[test]

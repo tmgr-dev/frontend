@@ -902,9 +902,9 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
     })
 }
 
-impl Publisher for CliPublisher<'_> {
-    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
-        match publish_outcome(self.opts, &publish_target(pickup)?, Mode::Publish)? {
+impl CliPublisher<'_> {
+    fn publish_as(&self, pickup: &state::Pickup, mode: Mode) -> Result<String> {
+        match publish_outcome(self.opts, &publish_target(pickup)?, mode)? {
             Outcome::Published(urls) => {
                 Ok(urls.into_iter().next().map(|(_, u)| u).unwrap_or_default())
             }
@@ -914,6 +914,16 @@ impl Publisher for CliPublisher<'_> {
             }
             Outcome::Reviewed => Err(Error::internal("unexpected outcome of a publish")),
         }
+    }
+}
+
+impl Publisher for CliPublisher<'_> {
+    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
+        self.publish_as(pickup, Mode::Publish)
+    }
+
+    fn publish_draft(&self, pickup: &state::Pickup) -> Result<String> {
+        self.publish_as(pickup, Mode::Draft)
     }
 
     fn take_held(&self) -> Option<state::Held> {
@@ -1118,6 +1128,7 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
             workdirs: &GitClone,
             now: Utc::now(),
             local_minutes: now.hour() * 60 + now.minute(),
+            policy: tmgr_queue::engine::StartPolicy::default(),
         },
     )?;
     let mut lines = Vec::new();
