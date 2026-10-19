@@ -3,9 +3,7 @@
 		"key_id": "0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60",
 		"public_key": "BImU1e2SPEdD/HKLzjfuQlNuLgKE44/qEF5a+626Bj0KtbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE=",
 		"private_jwk": {
-			"key_ops": [
-				"sign"
-			],
+			"key_ops": ["sign"],
 			"ext": true,
 			"kty": "EC",
 			"x": "iZTV7ZI8R0P8covON-5CU24uAoTjj-oQXlr7rboGPQo",
@@ -125,10 +123,7 @@
 			"workspace_id": 56,
 			"task_id": 9100,
 			"signed_at": 1760000100,
-			"repositories": [
-				"tmgr-dev/frontend",
-				"tmgr-dev/backend"
-			],
+			"repositories": ["tmgr-dev/frontend", "tmgr-dev/backend"],
 			"content_sha256": "d99a9f8910c85bf540144eda48e1ffd22424fab7fb4a15de44a4493c8a508511",
 			"repos_sha256": "cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc",
 			"message": "tmgr-agent-approval:v2:api.tmgr.dev:1:56:9100:127:d99a9f8910c85bf540144eda48e1ffd22424fab7fb4a15de44a4493c8a508511:cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000100",
@@ -144,11 +139,7 @@
 			"workspace_id": 7,
 			"task_id": 9101,
 			"signed_at": 1760000101,
-			"repositories": [
-				"acme/web",
-				"acme/api",
-				"acme-2/web.site"
-			],
+			"repositories": ["acme/web", "acme/api", "acme-2/web.site"],
 			"content_sha256": "b1a83b362c08d2d971aca4a16ae15aba93c5c2bb8cef6d3eb128dc20ba68ed42",
 			"repos_sha256": "baefcb760de55421daa101a093cc38aacf65694c4e10229702b7e08f24f43ee7",
 			"message": "tmgr-agent-approval:v2:localhost:8080:2:7:9101:5:b1a83b362c08d2d971aca4a16ae15aba93c5c2bb8cef6d3eb128dc20ba68ed42:baefcb760de55421daa101a093cc38aacf65694c4e10229702b7e08f24f43ee7:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000101",
@@ -164,9 +155,7 @@
 			"workspace_id": 56,
 			"task_id": 9102,
 			"signed_at": 1760000102,
-			"repositories": [
-				"tmgr-dev/backend"
-			],
+			"repositories": ["tmgr-dev/backend"],
 			"content_sha256": "3e540ad5d2342aa428b844012f8341cf984534a3aa22db46f14aedab28d62ab6",
 			"repos_sha256": "27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0",
 			"message": "tmgr-agent-approval:v2:api.tmgr.dev:1:56:9102:127:3e540ad5d2342aa428b844012f8341cf984534a3aa22db46f14aedab28d62ab6:27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000102",
@@ -176,42 +165,16 @@
 	],
 	"invalid_repositories": [
 		[],
-		[
-			"Acme/web"
-		],
-		[
-			"acme/web",
-			"acme/web"
-		],
-		[
-			"acme/web.git"
-		],
-		[
-			"acme/"
-		],
-		[
-			"-acme/web"
-		],
-		[
-			" acme/web"
-		],
-		[
-			"acme/we b"
-		],
-		[
-			"acme/webK"
-		],
-		[
-			"a/1",
-			"a/2",
-			"a/3",
-			"a/4",
-			"a/5",
-			"a/6"
-		],
-		[
-			"acme/web/x"
-		]
+		["Acme/web"],
+		["acme/web", "acme/web"],
+		["acme/web.git"],
+		["acme/"],
+		["-acme/web"],
+		[" acme/web"],
+		["acme/we b"],
+		["acme/webK"],
+		["a/1", "a/2", "a/3", "a/4", "a/5", "a/6"],
+		["acme/web/x"]
 	],
 	"cases_v3": [
 		{
@@ -292,10 +255,7 @@
 					"sha256": "82aae09dcc7b29aa9fb2696e297bdf44f5bd69a5435d015157f6ffbb7570600d"
 				}
 			],
-			"repositories": [
-				"tmgr-dev/frontend",
-				"tmgr-dev/backend"
-			],
+			"repositories": ["tmgr-dev/frontend", "tmgr-dev/backend"],
 			"content_sha256": "b9467dad1b4e1223eb8d54dcc205e2c23286b267bbb4da9163b0cd1e724cf07d",
 			"repos_sha256": "cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc",
 			"persona_sha256": null,
@@ -327,9 +287,7 @@
 					"sha256": "82aae09dcc7b29aa9fb2696e297bdf44f5bd69a5435d015157f6ffbb7570600d"
 				}
 			],
-			"repositories": [
-				"tmgr-dev/backend"
-			],
+			"repositories": ["tmgr-dev/backend"],
 			"content_sha256": "9e1fdbdcdf912574e7c8eb026c13cad822c254864c8d7c66de1aa4e878e9a719",
 			"repos_sha256": "27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0",
 			"persona_sha256": "28ee2ecca050fe1a06afe122fdddda827e9b2bb6c6d467c8a5b5a9d322ec9f34",
