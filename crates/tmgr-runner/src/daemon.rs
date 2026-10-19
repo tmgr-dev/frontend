@@ -266,6 +266,8 @@ struct Meta {
     trust_file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     learn_trust: Option<LearnTrust>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    multi: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -279,7 +281,8 @@ struct LearnTrust {
 struct RunExtra {
     permission_mode: Option<String>,
     clone_of: Option<String>,
-    objects: Option<clone::Objects>,
+    objects: Vec<clone::Objects>,
+    multi: bool,
     start: Option<(String, String)>,
     trust: Option<profile::TrustDecl>,
     trust_note: Option<&'static str>,
@@ -1408,6 +1411,30 @@ fn plan_mode(
     })
 }
 
+fn check_multi_request(req: &RunCreateReq) -> Result<(), ApiErr> {
+    if !req.agent_work {
+        return Err(api(
+            ErrorCode::Forbidden,
+            "clones are accepted only for agent work runs",
+        ));
+    }
+    if req.origin.is_some() || req.clone_of.is_some() || req.trust_cwd.is_some() {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            "clones cannot be combined with origin, clone_of or trust_cwd",
+        ));
+    }
+    if req.clones.len() > tmgr_approval::MAX_REPOS
+        || req.cloud.as_ref().is_none_or(|c| c.repos_sha256.is_none())
+    {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            "clones need an approval of a repository set and are limited to five repositories",
+        ));
+    }
+    Ok(())
+}
+
 fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr> {
     if req.origin.is_some() {
         return Err(api(
@@ -1524,10 +1551,14 @@ impl Runner {
                             "trust_cwd is accepted only from the tmgr CLI",
                         ));
                     }
-                    if req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some() {
+                    if req.start_key.is_some()
+                        || req.clone_of.is_some()
+                        || req.origin.is_some()
+                        || !req.clones.is_empty()
+                    {
                         return Err(api(
                             ErrorCode::InvalidParams,
-                            "trust_cwd cannot be combined with start_key, clone_of or origin",
+                            "trust_cwd cannot be combined with start_key, clone_of, clones or origin",
                         ));
                     }
                 }
@@ -1538,14 +1569,14 @@ impl Runner {
                             "trust_via_repo is accepted only from the tmgr CLI",
                         ));
                     }
-                    if req.clone_of.is_none()
+                    if req.clone_of.is_none() == req.clones.is_empty()
                         || req.start_key.is_some()
                         || req.origin.is_some()
                         || req.trust_cwd.is_some()
                     {
                         return Err(api(
                             ErrorCode::InvalidParams,
-                            "trust_via_repo needs clone_of and cannot be combined with start_key, origin or trust_cwd",
+                            "trust_via_repo needs clone_of or clones (not both) and cannot be combined with start_key, origin or trust_cwd",
                         ));
                     }
                 }
@@ -1999,6 +2030,10 @@ impl Runner {
             None => None,
         };
         let keyed = start.is_some();
+        let multi = !req.clones.is_empty();
+        if multi {
+            check_multi_request(&req)?;
+        }
         let prechecked = self.precheck_pin(&req)?;
         let _keyed = start.as_ref().map(|_| lock(&self.key_lock));
         if let Some((key, hash)) = &start {
@@ -2076,8 +2111,35 @@ impl Runner {
                     "clone_of is not accepted for link runs",
                 ))
             }
-            (Some(repo), Some(d)) => Some(clone::check(d, repo).map_err(|(code, m)| api(code, m))?),
-            _ => None,
+            (Some(repo), Some(d)) => {
+                vec![clone::check(d, repo).map_err(|(code, m)| api(code, m))?]
+            }
+            _ if multi => {
+                let task = req
+                    .task
+                    .ok_or_else(|| api(ErrorCode::InvalidParams, "agent_work needs a task"))?;
+                let primary = crate::cloud::check_primary(&req, task)
+                    .map_err(|m| api(ErrorCode::Forbidden, m))?
+                    .ok_or_else(|| {
+                        api(
+                            ErrorCode::Forbidden,
+                            "clones need an approval of a repository set",
+                        )
+                    })?;
+                let dir = dir.ok_or_else(|| {
+                    api(
+                        ErrorCode::InvalidParams,
+                        "cwd must be an existing directory",
+                    )
+                })?;
+                let specs: Vec<(String, String)> = req
+                    .clones
+                    .iter()
+                    .map(|c| (c.name.clone(), c.clone_of.clone()))
+                    .collect();
+                clone::check_multi(dir, &primary, &specs).map_err(|(code, m)| api(code, m))?
+            }
+            _ => Vec::new(),
         };
         let resume = match restore_from {
             Some(old) if self.cfg.homes.join(old).is_dir() => {
@@ -2106,7 +2168,8 @@ impl Runner {
                 ))
             }
         };
-        let unattended = req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some();
+        let unattended =
+            req.start_key.is_some() || req.clone_of.is_some() || req.origin.is_some() || multi;
         let remembered = explicit.is_none()
             && !unattended
             && dir.is_some_and(|d| folders::is_trusted(&self.cfg.homes, &d.path, d.id()));
@@ -2114,12 +2177,23 @@ impl Runner {
             && req.trust_via_repo == Some(true)
             && req.start_key.is_none()
             && req.origin.is_none()
-            && objects.as_ref().is_some_and(|o| {
-                o.task_clone
-                    && req.clone_of.as_deref().is_some_and(|r| {
-                        folders::is_trusted(&self.cfg.homes, Path::new(r), o.repo_id)
-                    })
-            });
+            && match (&req.clone_of, multi) {
+                (Some(r), false) => objects.first().is_some_and(|o| {
+                    o.task_clone && folders::is_trusted(&self.cfg.homes, Path::new(r), o.repo_id)
+                }),
+                (None, true) => {
+                    objects.len() == req.clones.len()
+                        && objects.iter().zip(&req.clones).all(|(o, c)| {
+                            o.task_clone
+                                && folders::is_trusted(
+                                    &self.cfg.homes,
+                                    Path::new(&c.clone_of),
+                                    o.repo_id,
+                                )
+                        })
+                }
+                _ => false,
+            };
         let (trust, trust_note) = match (explicit, &prof.trust) {
             (Some(t), _) => (Some(t), Some(worklog::TRUST_PRE_ACCEPTED)),
             (None, Some(t)) if remembered => (Some(t.clone()), Some(worklog::TRUST_REMEMBERED)),
@@ -2140,6 +2214,7 @@ impl Runner {
             permission_mode: mode.clone(),
             clone_of: req.clone_of.clone(),
             objects,
+            multi,
             start,
             prompt_at: None,
             egress: None,
@@ -2214,7 +2289,13 @@ impl Runner {
         let mut recorded = false;
         let cloud_run = matches!(cloud, Some(Ok(())));
         let info_model = req.model.clone();
-        if let Some(cwd_pin) = pin {
+        if multi {
+            log(&format!(
+                "session {}: a multi-repository run is not restored after a restart",
+                info.id
+            ));
+        }
+        if let Some(cwd_pin) = pin.filter(|_| !multi) {
             let intent = restore::Intent {
                 v: 1,
                 session: info.id.clone(),
@@ -2490,9 +2571,16 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
-        if let Some(o) = &extra.objects {
+        for o in &extra.objects {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
             grants.objects_ro.push((o.path.clone(), o.id));
+        }
+        if extra.multi {
+            let above = cwd.parent().unwrap_or(cwd);
+            grants.env.push((
+                "GIT_CEILING_DIRECTORIES".into(),
+                format!("{}:{}", cwd.display(), above.display()),
+            ));
         }
         let proxy = match &extra.egress {
             Some(allow) => Some(
@@ -2552,7 +2640,7 @@ impl Runner {
             *installed = Some(bundle::install(sdir, b).map_err(|(code, m)| api(code, m))?);
         }
         hold_before_spawn();
-        if let Some(o) = &extra.objects {
+        for o in &extra.objects {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
         }
         let log_file = OpenOptions::new()
@@ -2647,6 +2735,7 @@ impl Runner {
                 }),
                 _ => None,
             },
+            multi: extra.multi,
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
@@ -2664,7 +2753,7 @@ impl Runner {
             id: meta.id.clone(),
             dir: sdir.to_path_buf(),
             hub: self.hub.clone(),
-            worklog: worklog::Log::open(sdir, PathBuf::from(&meta.cwd)),
+            worklog: worklog::Log::open(sdir, PathBuf::from(&meta.cwd), !meta.multi),
             inner: Mutex::new(Inner {
                 meta,
                 screen,

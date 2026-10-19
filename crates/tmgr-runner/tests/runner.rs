@@ -4749,3 +4749,566 @@ fn cloud_runs_are_restricted_and_plain_runs_stay_open() {
     assert!(!env.iter().any(|(k, _)| k == "HTTPS_PROXY"));
     let _ = fx.h.client().kill(&info.id, "kill");
 }
+
+const MULTI_TASK: TaskRef = TaskRef {
+    workspace_id: 56,
+    task_id: 9100,
+};
+
+struct MultiFx {
+    h: Harness,
+    base: PathBuf,
+    backend: PathBuf,
+    frontend: PathBuf,
+    next: std::cell::Cell<u32>,
+}
+
+fn multi_fx() -> MultiFx {
+    let mut h = Harness::new();
+    let f: Value = serde_json::from_str(APPROVAL_FIXTURES).unwrap();
+    let root = fs::canonicalize(h.tmp.path()).unwrap();
+    let home = root.join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::write(
+        home.join(".claude.json"),
+        r#"{"theme":"dark","hasCompletedOnboarding":true,"oauthAccount":{"id":"u"}}"#,
+    )
+    .unwrap();
+    let base = root.join("code");
+    let backend = base.join("backend");
+    let frontend = base.join("frontend");
+    for r in [&backend, &frontend] {
+        fs::create_dir_all(r).unwrap();
+        init_repo(r);
+    }
+    let mut allow = tmgr_approval::AllowFile::default();
+    allow.upsert(tmgr_approval::Entry {
+        server: "api.tmgr.dev".into(),
+        user_id: 1,
+        workspace_id: 56,
+        workspace_code: "tmgrdev".into(),
+        allowed_at: "2025-10-01T00:00:00Z".into(),
+        expires_at: None,
+        keys: vec![tmgr_approval::PinnedKey {
+            key_id: f["key"]["key_id"].as_str().unwrap().into(),
+            public_key: f["key"]["public_key"].as_str().unwrap().into(),
+            device_name: "laptop".into(),
+        }],
+        repos: [(
+            "127".to_string(),
+            tmgr_approval::RepoBinding::Set(
+                [
+                    (
+                        "tmgr-dev/backend".to_string(),
+                        backend.display().to_string(),
+                    ),
+                    (
+                        "tmgr-dev/frontend".to_string(),
+                        frontend.display().to_string(),
+                    ),
+                ]
+                .into(),
+            ),
+        )]
+        .into(),
+    });
+    allow
+        .save_to(&h.cfg.join("tmgr/runner-allow.json"))
+        .unwrap();
+    let script = h.script(
+        "multi-agent.sh",
+        "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\n[ -f body.sh ] && /bin/sh ./body.sh\n\
+         cp \"$HOME/.claude.json\" seen.tmp && mv seen.tmp seen.json\nwhile true; do sleep 0.2; done\n",
+    );
+    fs::write(
+        h.agents.join("multi.toml"),
+        format!(
+            "id = \"multi\"\nname = \"multi\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [permission_modes]\nask = [\"--ask\"]\naccept-edits = [\"--edits\"]\n\
+             [[sandbox.seed]]\nfrom = \"~/.claude.json\"\nto = \".claude.json\"\n\
+             json_keys = [\"hasCompletedOnboarding\", \"theme\", \"oauthAccount\"]\n\
+             [trust]\nfile = \".claude.json\"\npath = [\"projects\", \"{{cwd}}\", \"hasTrustDialogAccepted\"]\n"
+        ),
+    )
+    .unwrap();
+    h.real_home = Some(home);
+    h.agent_work_log();
+    h.start(5000);
+    MultiFx {
+        h,
+        base,
+        backend,
+        frontend,
+        next: std::cell::Cell::new(1),
+    }
+}
+
+impl MultiFx {
+    fn trees(&self) -> PathBuf {
+        self.base.join("backend-worktrees")
+    }
+
+    fn folder(&self) -> PathBuf {
+        let n = self.next.get();
+        self.next.set(n + 1);
+        let dir = self.trees().join(format!("tm-{n}"));
+        clone_into(&self.backend, &dir.join("backend"), true);
+        clone_into(&self.frontend, &dir.join("frontend"), true);
+        dir
+    }
+
+    fn req(&self, dir: &Path) -> RunCreateReq {
+        let f: Value = serde_json::from_str(APPROVAL_FIXTURES).unwrap();
+        let c = &f["cases_v2"][0];
+        let cwd = dir.display().to_string();
+        let bundle = RunBundle {
+            v: 1,
+            task: MULTI_TASK,
+            title: c["title"].as_str().unwrap().into(),
+            body: c["description"].as_str().unwrap().into(),
+            author: BundleAuthor {
+                kind: AuthorKind::Human,
+                id: None,
+            },
+            comments: vec![],
+            pages: vec![],
+            persona: None,
+            launch: BundleLaunch {
+                profile: "multi".into(),
+                model: None,
+                cwd: cwd.clone(),
+                permission_mode: Some("accept-edits".into()),
+            },
+        };
+        let mut r = self.h.run_req("multi");
+        r.task = Some(MULTI_TASK);
+        r.cwd = cwd;
+        r.bundle_sha256 = Some(bundle.sha256());
+        r.bundle = Some(bundle);
+        r.permission_mode = Some("accept-edits".into());
+        r.agent_work = true;
+        r.clones = vec![
+            tmgr_ipc::api::CloneSpec {
+                name: "backend".into(),
+                clone_of: self.backend.display().to_string(),
+            },
+            tmgr_ipc::api::CloneSpec {
+                name: "frontend".into(),
+                clone_of: self.frontend.display().to_string(),
+            },
+        ];
+        r.cloud = Some(tmgr_ipc::api::CloudApproval {
+            repos_sha256: Some(c["repos_sha256"].as_str().unwrap().into()),
+            host: "api.tmgr.dev".into(),
+            user_id: 1,
+            workspace_id: 56,
+            task_id: 9100,
+            category_id: 127,
+            content_sha256: c["content_sha256"].as_str().unwrap().into(),
+            key_id: f["key"]["key_id"].as_str().unwrap().into(),
+            signed_at: 1760000100,
+            signature: c["signature"].as_str().unwrap().into(),
+            kind: "author".into(),
+        });
+        r
+    }
+
+    fn trust(&self, dir: &Path) {
+        self.h
+            .client()
+            .call("trust.add", json!({ "path": dir }))
+            .unwrap();
+    }
+
+    fn refused(&self, req: RunCreateReq, what: &str) {
+        let e = err_text(self.h.client().create_run(req));
+        assert!(
+            e.starts_with("invalid_params: ") || e.starts_with("forbidden: "),
+            "{what}: {e}"
+        );
+        assert!(
+            self.h
+                .client()
+                .list()
+                .unwrap()
+                .iter()
+                .all(|s| s.state.kind == StateKind::Exited),
+            "{what}"
+        );
+    }
+
+    fn home_of(&self, id: &str) -> Value {
+        let text = fs::read_to_string(self.h.homes.path().join(id).join(".claude.json")).unwrap();
+        serde_json::from_str(&text).unwrap()
+    }
+}
+
+fn wait_file(dir: &Path, name: &str) -> String {
+    wait_for(name, || dir.join(name).exists());
+    thread::sleep(Duration::from_millis(200));
+    read_in(dir, name)
+}
+
+#[test]
+fn a_signed_set_run_starts_in_its_run_folder_with_a_git_ceiling() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    let dir = fx.folder();
+    let info = fx.h.client().create_run(fx.req(&dir)).unwrap();
+    assert_eq!(info.cwd, dir.display().to_string());
+    wait_file(&dir, "seen.json");
+    let env = fs::read_to_string(dir.join("env.txt")).unwrap();
+    assert!(
+        env.lines().any(|l| l
+            == format!(
+                "GIT_CEILING_DIRECTORIES={}:{}",
+                dir.display(),
+                dir.parent().unwrap().display()
+            )),
+        "{env}"
+    );
+    let store = tmgr_runner::restore::store(fx.h.homes.path());
+    assert!(!store.join(format!("{}.json", info.id)).exists());
+    let work = fx.h.client().worklog(&info.id).unwrap();
+    assert_eq!(work.trust, None);
+    let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+#[test]
+fn a_set_run_in_a_queue_folder_starts() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    let dir = fx.trees().join("queue/q_1");
+    clone_into(&fx.backend, &dir.join("backend"), true);
+    clone_into(&fx.frontend, &dir.join("frontend"), true);
+    let info = fx.h.client().create_run(fx.req(&dir)).unwrap();
+    wait_file(&dir, "seen.json");
+    let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+#[test]
+fn a_set_run_with_a_changed_repository_list_never_starts() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    let third = fx.base.join("third");
+    fs::create_dir_all(&third).unwrap();
+    init_repo(&third);
+    let dir = fx.folder();
+    clone_into(&third, &dir.join("third"), true);
+    let spec = |name: &str, of: &Path| tmgr_ipc::api::CloneSpec {
+        name: name.into(),
+        clone_of: of.display().to_string(),
+    };
+    let mut added = fx.req(&dir);
+    added.clones.push(spec("third", &third));
+    let mut dropped = fx.req(&dir);
+    dropped.clones.pop();
+    let mut swapped = fx.req(&dir);
+    swapped.clones = vec![spec("backend", &fx.frontend), spec("frontend", &fx.backend)];
+    let mut renamed = fx.req(&dir);
+    renamed.clones[1].name = "third".into();
+    let mut duplicated = fx.req(&dir);
+    duplicated.clones[1] = spec("backend", &fx.frontend);
+    let mut no_clones = fx.req(&dir);
+    no_clones.clones.clear();
+    no_clones.clone_of = Some(fx.backend.display().to_string());
+    let mut plain_claim = fx.req(&dir);
+    plain_claim.cloud.as_mut().unwrap().repos_sha256 = None;
+    let mut not_agent_work = fx.req(&dir);
+    not_agent_work.agent_work = false;
+    not_agent_work.cloud = None;
+    let mut with_clone_of = fx.req(&dir);
+    with_clone_of.clone_of = Some(fx.backend.display().to_string());
+    let mut too_many = fx.req(&dir);
+    too_many.clones = (0..6).map(|i| spec(&format!("r{i}"), &third)).collect();
+    for (what, r) in [
+        ("added", added),
+        ("dropped", dropped),
+        ("swapped", swapped),
+        ("renamed", renamed),
+        ("duplicate names", duplicated),
+        ("claim without clones", no_clones),
+        ("clones without a set claim", plain_claim),
+        ("not agent work", not_agent_work),
+        ("clone_of and clones", with_clone_of),
+        ("six clones", too_many),
+    ] {
+        fx.refused(r, what);
+    }
+}
+
+#[test]
+fn a_set_claim_on_a_single_repository_binding_never_starts() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    let mut allow =
+        tmgr_approval::AllowFile::load_from(&fx.h.cfg.join("tmgr/runner-allow.json")).unwrap();
+    let mut entry = allow.find("api.tmgr.dev", 1, 56).unwrap().clone();
+    entry.repos.insert(
+        "127".into(),
+        tmgr_approval::RepoBinding::Path(fx.backend.display().to_string()),
+    );
+    allow.upsert(entry);
+    allow
+        .save_to(&fx.h.cfg.join("tmgr/runner-allow.json"))
+        .unwrap();
+    let dir = fx.folder();
+    fx.refused(fx.req(&dir), "path binding");
+}
+
+#[test]
+fn a_run_folder_must_sit_directly_in_the_primary_worktrees_and_have_no_git() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    let beside = fx.base.join("elsewhere");
+    clone_into(&fx.backend, &beside.join("backend"), true);
+    clone_into(&fx.frontend, &beside.join("frontend"), true);
+    fx.refused(fx.req(&beside), "outside the worktrees folder");
+
+    let frontend_trees = fx.base.join("frontend-worktrees/tm-1");
+    clone_into(&fx.backend, &frontend_trees.join("backend"), true);
+    clone_into(&fx.frontend, &frontend_trees.join("frontend"), true);
+    fx.refused(fx.req(&frontend_trees), "worktrees of the other repository");
+
+    let deep = fx.trees().join("a/b/c");
+    clone_into(&fx.backend, &deep.join("backend"), true);
+    clone_into(&fx.frontend, &deep.join("frontend"), true);
+    fx.refused(fx.req(&deep), "too deep");
+
+    let queue_itself = fx.trees().join("queue");
+    clone_into(&fx.backend, &queue_itself.join("backend"), true);
+    clone_into(&fx.frontend, &queue_itself.join("frontend"), true);
+    fx.refused(fx.req(&queue_itself), "the queue folder itself");
+
+    fx.refused(fx.req(&fx.trees()), "the worktrees folder itself");
+
+    let with_git = fx.folder();
+    git_in(&with_git, &["init", "-q", "-b", "main"]);
+    fx.refused(fx.req(&with_git), "a .git in the run folder");
+
+    let with_git_file = fx.folder();
+    fs::write(
+        with_git_file.join(".git"),
+        "gitdir: ../../../backend/.git\n",
+    )
+    .unwrap();
+    fx.refused(fx.req(&with_git_file), "a .git file in the run folder");
+
+    let with_git_link = fx.folder();
+    std::os::unix::fs::symlink("nowhere", with_git_link.join(".git")).unwrap();
+    fx.refused(fx.req(&with_git_link), "a dangling .git link");
+
+    let real = fx.folder();
+    let link = fx.trees().join("tm-link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    fx.refused(fx.req(&link), "a run folder reached through a link");
+}
+
+#[test]
+fn every_clone_must_be_a_real_reference_clone_of_its_repository() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+
+    let linked = fx.folder();
+    let moved = fx.base.join("moved-frontend");
+    fs::rename(linked.join("frontend"), &moved).unwrap();
+    std::os::unix::fs::symlink(&moved, linked.join("frontend")).unwrap();
+    fx.refused(fx.req(&linked), "a clone that is a symlink");
+
+    let crossed = fx.folder();
+    fs::write(
+        crossed.join("frontend/.git/objects/info/alternates"),
+        format!("{}/.git/objects\n", fx.backend.display()),
+    )
+    .unwrap();
+    fx.refused(fx.req(&crossed), "alternates of another repository");
+
+    let extra_alt = fx.folder();
+    let alt = extra_alt.join("backend/.git/objects/info/alternates");
+    let text = fs::read_to_string(&alt).unwrap();
+    fs::write(&alt, format!("{text}/somewhere/else/.git/objects\n")).unwrap();
+    fx.refused(fx.req(&extra_alt), "an extra alternate");
+
+    let no_git = fx.folder();
+    fs::remove_dir_all(no_git.join("backend/.git")).unwrap();
+    fx.refused(fx.req(&no_git), "a clone without .git");
+
+    let worktree_like = fx.folder();
+    fs::remove_dir_all(worktree_like.join("backend/.git")).unwrap();
+    fs::write(
+        worktree_like.join("backend/.git"),
+        format!("gitdir: {}/.git/worktrees/x\n", fx.backend.display()),
+    )
+    .unwrap();
+    fx.refused(fx.req(&worktree_like), "a worktree instead of a clone");
+
+    let missing = fx.folder();
+    fs::remove_dir_all(missing.join("frontend")).unwrap();
+    fx.refused(fx.req(&missing), "a missing clone");
+}
+
+#[test]
+fn a_set_run_never_remembers_trust_and_trusts_through_repositories_only_when_all_are_trusted() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    let started = |req: RunCreateReq| -> (bool, Option<String>) {
+        let cwd = req.cwd.clone();
+        let info = fx.h.client().create_run(req).unwrap();
+        let trusted = fx.home_of(&info.id)["projects"].get(&cwd).is_some();
+        let note = fx.h.client().worklog(&info.id).unwrap().trust;
+        let _ = fx.h.client().kill(&info.id, "kill");
+        (trusted, note)
+    };
+    let ask = |dir: &Path| {
+        let mut r = fx.req(dir);
+        r.trust_via_repo = Some(true);
+        r
+    };
+
+    let d1 = fx.folder();
+    assert_eq!(started(ask(&d1)), (false, None));
+    fx.trust(&fx.backend);
+    let d2 = fx.folder();
+    assert_eq!(started(ask(&d2)), (false, None));
+    fx.trust(&fx.frontend);
+    let d3 = fx.folder();
+    assert_eq!(started(fx.req(&d3)), (false, None));
+    assert_eq!(started(ask(&d3)), (true, Some("repo".into())));
+
+    let d4 = fx.folder();
+    fx.trust(&d4);
+    assert_eq!(started(fx.req(&d4)), (false, None));
+}
+
+#[test]
+fn trust_through_repositories_never_covers_an_unreferenced_clone_of_a_set() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    fx.trust(&fx.backend);
+    fx.trust(&fx.frontend);
+    let dir = fx.trees().join("tm-plain");
+    clone_into(&fx.backend, &dir.join("backend"), true);
+    clone_into(&fx.frontend, &dir.join("frontend"), false);
+    let mut r = fx.req(&dir);
+    r.trust_via_repo = Some(true);
+    let cwd = r.cwd.clone();
+    let info = fx.h.client().create_run(r).unwrap();
+    assert!(fx.home_of(&info.id)["projects"].get(&cwd).is_none());
+    let _ = fx.h.client().kill(&info.id, "kill");
+
+    let mut mixed = fx.req(&fx.folder());
+    mixed.trust_via_repo = Some(true);
+    mixed.clone_of = Some(fx.backend.display().to_string());
+    fx.refused(mixed, "clone_of with clones and trust_via_repo");
+    let mut cwd_too = fx.req(&fx.folder());
+    cwd_too.trust_cwd = Some(true);
+    fx.refused(cwd_too, "trust_cwd with clones");
+}
+
+#[test]
+fn a_set_run_does_not_take_git_facts_from_above_the_run_folder() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = multi_fx();
+    git_in(&fx.base, &["init", "-q", "-b", "outer"]);
+    git_in(&fx.base, &["commit", "-q", "--allow-empty", "-m", "outer"]);
+    let dir = fx.folder();
+    fs::write(
+        dir.join("body.sh"),
+        "git rev-parse --show-toplevel > top.txt 2>&1; echo $? > top_rc\n\
+         git -C backend rev-parse --show-toplevel > top_b.txt 2>&1\n",
+    )
+    .unwrap();
+    let info = fx.h.client().create_run(fx.req(&dir)).unwrap();
+    assert_ne!(
+        wait_file(&dir, "top_rc"),
+        "0",
+        "{}",
+        read_in(&dir, "top.txt")
+    );
+    wait_file(&dir, "seen.json");
+    assert_eq!(
+        read_in(&dir, "top_b.txt"),
+        dir.join("backend").display().to_string()
+    );
+    let log = fs::read_to_string(
+        fx.h.run
+            .join("sessions")
+            .join(&info.id)
+            .join("worklog.jsonl"),
+    )
+    .unwrap();
+    assert!(log.contains("\"cwd_branch\":null"), "{log}");
+    let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+#[test]
+fn a_set_run_reads_both_object_stores_and_writes_only_in_its_folder() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let fx = multi_fx();
+    let dir = fx.folder();
+    let sibling = fx.trees().join("tm-other");
+    fs::create_dir_all(&sibling).unwrap();
+    let outside = fx.base.join("not-a-repo");
+    fs::create_dir_all(&outside).unwrap();
+    let (b, f) = (fx.backend.display(), fx.frontend.display());
+    fs::write(
+        dir.join("body.sh"),
+        format!(
+            "echo x > backend/w.txt; echo $? > rc_wb\n\
+             echo x > frontend/w.txt; echo $? > rc_wf\n\
+             echo x > run.txt; echo $? > rc_wr\n\
+             (echo x > {b}/hack.txt) 2>/dev/null; echo $? > rc_rb\n\
+             (echo x > {f}/hack.txt) 2>/dev/null; echo $? > rc_rf\n\
+             (echo x > {b}/.git/objects/zz) 2>/dev/null; echo $? > rc_ob\n\
+             (echo x > {s}/hack.txt) 2>/dev/null; echo $? > rc_sib\n\
+             (echo x > {o}/hack.txt) 2>/dev/null; echo $? > rc_out\n\
+             (echo x > {t}/hack.txt) 2>/dev/null; echo $? > rc_trees\n\
+             git -C backend log -1 --format=%s > log_b 2>&1; echo $? > rc_lb\n\
+             git -C frontend log -1 --format=%s > log_f 2>&1; echo $? > rc_lf\n\
+             git -C backend commit -q --allow-empty -m inside > commit_b 2>&1; echo $? > rc_cb\n\
+",
+            s = sibling.display(),
+            o = outside.display(),
+            t = fx.trees().display(),
+        ),
+    )
+    .unwrap();
+    let info = fx.h.client().create_run(fx.req(&dir)).unwrap();
+    wait_file(&dir, "seen.json");
+    let rc = |n: &str| read_in(&dir, n);
+    for ok in ["rc_wb", "rc_wf", "rc_wr", "rc_lb", "rc_lf"] {
+        assert_eq!(rc(ok), "0", "{ok}");
+    }
+    for denied in ["rc_rb", "rc_rf", "rc_ob", "rc_sib", "rc_out", "rc_trees"] {
+        assert_ne!(rc(denied), "0", "{denied}");
+    }
+    assert_eq!(rc("log_b"), "initial");
+    assert_eq!(rc("log_f"), "initial");
+    assert!(dir.join("backend/w.txt").is_file() && dir.join("frontend/w.txt").is_file());
+    for p in [&fx.backend, &fx.frontend, &sibling, &outside, &fx.trees()] {
+        assert!(!p.join("hack.txt").exists(), "{}", p.display());
+    }
+    assert!(!fx.backend.join(".git/objects/zz").exists());
+    let _ = fx.h.client().kill(&info.id, "kill");
+}

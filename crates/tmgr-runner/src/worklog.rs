@@ -70,6 +70,7 @@ struct St {
 pub struct Log {
     path: PathBuf,
     cwd: PathBuf,
+    facts: bool,
     st: Mutex<St>,
 }
 
@@ -123,7 +124,7 @@ fn git_facts(cwd: &Path) -> Option<(GitEnv, Option<String>, Option<String>)> {
 }
 
 impl Log {
-    pub fn open(dir: &Path, cwd: PathBuf) -> Log {
+    pub fn open(dir: &Path, cwd: PathBuf, facts: bool) -> Log {
         let path = dir.join(FILE);
         let (events, lines, bytes, broken_tail) = read_all(&path);
         let mut st = St {
@@ -152,8 +153,13 @@ impl Log {
         Log {
             path,
             cwd,
+            facts,
             st: Mutex::new(st),
         }
+    }
+
+    fn facts(&self) -> Option<(GitEnv, Option<String>, Option<String>)> {
+        self.facts.then(|| git_facts(&self.cwd)).flatten()
     }
 
     fn append(&self, ev: &Ev, lifecycle: bool) {
@@ -203,7 +209,7 @@ impl Log {
             }
             st.created = true;
         }
-        let (branch, head) = git_facts(&self.cwd).map_or((None, None), |(_, b, h)| (b, h));
+        let (branch, head) = self.facts().map_or((None, None), |(_, b, h)| (b, h));
         {
             let mut st = lock(&self.st);
             st.head = head.clone();
@@ -266,7 +272,7 @@ impl Log {
             st.exited = true;
             (st.head.clone(), st.branch.clone())
         };
-        if let Some((git, now_branch, _)) = git_facts(&self.cwd) {
+        if let Some((git, now_branch, _)) = self.facts() {
             let range = match (&head, &branch) {
                 (Some(h), _) => Some(format!("{h}..HEAD")),
                 (None, Some(_)) => Some("HEAD".to_string()),
@@ -466,7 +472,7 @@ mod tests {
         std::fs::write(d.path().join(FILE), text).unwrap();
         let s = summary_at(d.path(), 4000);
         assert_eq!((s.waiting_s, s.duration_s), (3, 4));
-        let log = Log::open(d.path(), d.path().to_path_buf());
+        let log = Log::open(d.path(), d.path().to_path_buf(), true);
         log.record(&st(StateKind::Working, 5000, None));
         assert_eq!(summary_at(d.path(), 6000).working_s, 1);
     }
@@ -496,7 +502,7 @@ mod tests {
     #[test]
     fn the_log_is_bounded_and_keeps_room_for_the_exit() {
         let d = tempfile::tempdir().unwrap();
-        let log = Log::open(d.path(), d.path().to_path_buf());
+        let log = Log::open(d.path(), d.path().to_path_buf(), true);
         for i in 0..MAX_LINES + 50 {
             let kind = if i % 2 == 0 {
                 StateKind::Working
@@ -514,7 +520,7 @@ mod tests {
         let s = summary_at(d.path(), 0);
         assert!(s.truncated);
         assert_eq!(s.exit.map(|e| e.code), Some(Some(0)));
-        let reopened = Log::open(d.path(), d.path().to_path_buf());
+        let reopened = Log::open(d.path(), d.path().to_path_buf(), true);
         reopened.record(&st(StateKind::Blocked, 1, None));
         assert_eq!(std::fs::read_to_string(d.path().join(FILE)).unwrap(), text);
     }
@@ -522,7 +528,7 @@ mod tests {
     #[test]
     fn only_kind_changes_are_logged_and_details_carry_no_screen_text() {
         let d = tempfile::tempdir().unwrap();
-        let log = Log::open(d.path(), d.path().to_path_buf());
+        let log = Log::open(d.path(), d.path().to_path_buf(), true);
         log.record(&st(StateKind::Starting, 1, None));
         log.record(&st(StateKind::Working, 1, None));
         log.record(&st(StateKind::Working, 1, Some("x")));
@@ -552,7 +558,7 @@ mod tests {
             .env("GIT_COMMITTER_EMAIL", "t@example.com");
         g.run(&["init", "-b", "main"]).unwrap();
         g.run(&["commit", "--allow-empty", "-m", "first"]).unwrap();
-        let log = Log::open(&logs, repo.clone());
+        let log = Log::open(&logs, repo.clone(), true);
         std::fs::write(d.path().join("msg"), "x".repeat(5 * 1024 * 1024)).unwrap();
         let msg = d.path().join("msg");
         g.run(&["commit", "--allow-empty", "-F", msg.to_str().unwrap()])
@@ -574,7 +580,7 @@ mod tests {
         let sdir = d.path().join("s");
         std::fs::create_dir(&sdir).unwrap();
         std::os::unix::fs::symlink(&target, sdir.join(FILE)).unwrap();
-        let log = Log::open(&sdir, sdir.clone());
+        let log = Log::open(&sdir, sdir.clone(), true);
         log.record(&st(StateKind::Working, 1, None));
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep");
     }
