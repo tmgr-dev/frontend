@@ -303,3 +303,26 @@ fn codex_probe_reports_rpc_errors_and_timeouts() {
     let err = codex_usage(&bin, Duration::from_millis(500)).unwrap_err();
     assert!(err.to_string().contains("timed out"));
 }
+
+#[test]
+fn a_timed_out_probe_kills_grandchildren_too_and_returns_promptly() {
+    let dir = tempfile::tempdir().unwrap();
+    let pidfile = dir.path().join("grandchild");
+    let bin = script(
+        dir.path(),
+        &format!("sleep 30 &\necho $! > '{}'\nwait", pidfile.display()),
+    );
+    let started = Instant::now();
+    let err = claude_usage(&bin, Duration::from_secs(2)).unwrap_err();
+    assert!(started.elapsed() < Duration::from_secs(6));
+    assert!(err.to_string().contains("timed out"));
+    let pid = std::fs::read_to_string(&pidfile).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    let alive = std::process::Command::new("kill")
+        .args(["-0", pid.trim()])
+        .stderr(std::process::Stdio::null())
+        .status()
+        .unwrap()
+        .success();
+    assert!(!alive, "the grandchild survived the timeout");
+}

@@ -250,12 +250,15 @@ fn converse(
     timeout: Duration,
     want: impl Fn(&Value) -> Option<Value> + Send + 'static,
 ) -> Result<Value> {
-    let mut child = Command::new(bin)
+    let mut command = Command::new(bin);
+    command
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()?;
+        .stderr(Stdio::null());
+    #[cfg(unix)]
+    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let mut child = command.spawn()?;
     let stdout = child.stdout.take().ok_or_else(bad_reply)?;
     let (tx, rx) = mpsc::channel();
     let reader = std::thread::spawn(move || {
@@ -281,9 +284,13 @@ fn converse(
     let started = Instant::now();
     let outcome = rx.recv_timeout(timeout);
     drop(stdin);
+    #[cfg(unix)]
+    if let Ok(pgid) = i32::try_from(child.id()) {
+        unsafe { libc::killpg(pgid, libc::SIGKILL) };
+    }
     let _ = child.kill();
     let _ = child.wait();
-    let _ = reader.join();
+    drop(reader);
     match outcome {
         Ok(v) => Ok(v),
         Err(mpsc::RecvTimeoutError::Timeout) => Err(UsageError::Invalid(format!(

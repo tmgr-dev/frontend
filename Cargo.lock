@@ -4161,6 +4161,7 @@ name = "tmgr-usage"
 version = "1.0.10"
 dependencies = [
  "chrono",
+ "libc",
  "memchr",
  "rusqlite",
  "serde",
