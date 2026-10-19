@@ -24,8 +24,11 @@ use tmgr_queue::audit::Audit;
 use tmgr_queue::cloud::{CloudApi, CloudTask, CloudWorkspace, Gated};
 use tmgr_queue::rules::{self, ProfilePin, ProfileResolver, QueueFile, Rule};
 use tmgr_queue::runs::{self, Lookup, RunState, RunsClient, StartRequest};
-use tmgr_queue::source::LocalSource;
+use tmgr_queue::source::{LocalSource, LocalTasks};
 use tmgr_queue::state::{self, Status};
+use tmgr_queue::taken::{
+    assess, owners_of, people_of, personas_of, running_agents_of, Facts, Fresh, FreshTask,
+};
 use tmgr_queue::workdir::GitClone;
 use tmgr_queue::{Deps, Paths, Publisher};
 
@@ -916,6 +919,104 @@ pub(crate) fn rule_binding(
     Ok(bound)
 }
 
+struct CliFresh<'a> {
+    ctx: &'a Ctx,
+    local_user_id: Option<i64>,
+}
+
+fn wanted_kind(rule: &Rule) -> &str {
+    match rule.status_type.as_str() {
+        "backlog" => "default",
+        other => other,
+    }
+}
+
+impl FreshTask for CliFresh<'_> {
+    fn look(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+        let id = task.task_id;
+        if rules::is_cloud(rule) {
+            let client = self.ctx.cloud_client()?;
+            let t =
+                client.task_by_id(u64::try_from(id).map_err(|_| Error::usage("bad task id"))?)?;
+            let wanted = wanted_kind(rule);
+            let status_ok = client
+                .statuses(task.workspace_id)?
+                .iter()
+                .any(|s| Some(s.id) == t.status_id && s.kind == wanted);
+            let runs = match client.agent_work(t.id) {
+                Ok(body) => running_agents_of(&body),
+                Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
+                Err(e) => return Err(e),
+            };
+            let persona_json = json!({"persona_assignees": t.persona_assignees});
+            return Ok(assess(Facts {
+                rule_persona: &rule.persona,
+                me: client
+                    .current_user_id()?
+                    .ok_or_else(|| Error::auth("cannot tell which account is logged in"))?,
+                owners: owners_of(&persona_json, &rule.persona),
+                assignees: t
+                    .assignees
+                    .iter()
+                    .map(|p| (p.id, p.name.clone().unwrap_or_else(|| "unknown".into())))
+                    .collect(),
+                personas: personas_of(&persona_json),
+                running_agents: runs,
+                status_ok,
+            }));
+        }
+        let code = rules::workspace_code(&rule.workspace)?;
+        let local = LocalTasks::open(code, self.local_user_id)?;
+        let t = local.fetch(&format!("/api/tasks/{id}"))?;
+        let wanted = wanted_kind(rule);
+        let status_id = t.get("status_id").and_then(Value::as_i64);
+        let status_ok = local
+            .fetch("/api/workspaces/statuses")?
+            .as_array()
+            .is_some_and(|a| {
+                a.iter().any(|s| {
+                    s.get("id").and_then(Value::as_i64) == status_id
+                        && s.get("type").and_then(Value::as_str) == Some(wanted)
+                })
+            });
+        let runs = match local.fetch(&format!("/api/tasks/{id}/agent-work")) {
+            Ok(body) => running_agents_of(&body),
+            Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
+            Err(e) => return Err(e),
+        };
+        Ok(assess(Facts {
+            rule_persona: &rule.persona,
+            me: local
+                .owner_id()
+                .ok_or_else(|| Error::auth("cannot tell which local account runs the queue"))?,
+            owners: owners_of(&t, &rule.persona),
+            assignees: people_of(&t),
+            personas: personas_of(&t),
+            running_agents: runs,
+            status_ok,
+        }))
+    }
+
+    fn comment(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef, text: &str) -> Result<()> {
+        if rules::is_cloud(rule) {
+            let id = u64::try_from(task.task_id).map_err(|_| Error::usage("bad task id"))?;
+            return self.ctx.cloud_client()?.add_comment(id, text);
+        }
+        let code = rules::workspace_code(&rule.workspace)?;
+        let local = LocalTasks::open(code, self.local_user_id)?;
+        let (status, body) = local.client().call(
+            "POST",
+            &format!("/api/tasks/{}/comments", task.task_id),
+            Some(&json!({"message": text})),
+            false,
+        )?;
+        if status >= 400 {
+            return Err(tmgr_core::local::status_error(status, &body));
+        }
+        Ok(())
+    }
+}
+
 struct CliPublisher<'a> {
     opts: &'a Opts<'a>,
     held: RefCell<Option<state::Held>>,
@@ -1169,6 +1270,10 @@ pub(crate) fn with_deps<T>(
         local_user_id: ctx.cfg.local_user_id,
     };
     let cloud = CliCloud::new(ctx);
+    let fresh = CliFresh {
+        ctx,
+        local_user_id: ctx.cfg.local_user_id,
+    };
     let opts = Opts {
         cli,
         ws: cli.ws.clone(),
@@ -1188,6 +1293,7 @@ pub(crate) fn with_deps<T>(
         runs,
         profiles: &RunnerProfiles,
         workdirs: &GitClone,
+        fresh: &fresh,
         now: Utc::now(),
         local_minutes: now.hour() * 60 + now.minute(),
         policy,

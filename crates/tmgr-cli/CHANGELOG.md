@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.10
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Fix: every pickup of a cloud workspace failed to start with `a cloud task run carries only the title and description`. The queue no longer puts the rule's persona into the bundle of a cloud task, and the bundle now names the same permission mode as the start request. The runner's check is unchanged.
+- Pickups that failed with that error (or with `bundle permission_mode differs from the effective mode`) are proposed and started again by the next `tmgr queue run-once` after updating; nothing to retry by hand. Their empty run folders are removed, and a start that the runner refuses no longer leaves its run folder behind.
+- Before it starts an agent, the queue re-reads the task and skips it when it was taken: a person other than you is assigned, a persona other than the rule's is assigned, an agent run is running, or the status no longer matches the rule. The pickup ends as `skipped_taken`, frees its slot, and the task gets one comment `Auto-run skipped: this task was taken by <names>.` (no repeat while it stays taken). When the task is free again it is picked up normally. A change of status alone skips silently.
+
 ## 1.0.9
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
