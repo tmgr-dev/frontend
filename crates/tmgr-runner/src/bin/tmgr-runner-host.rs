@@ -95,7 +95,7 @@ fn fake_autopilot(scenario: &str) -> i32 {
     let write = |state: &str, seq: u64, reason: Option<&str>| {
         let body = serde_json::json!({
             "version": 1, "state": state, "pid": sleeper.unwrap_or_else(std::process::id), "rule": "tm",
-            "control_seq": seq, "stop_reason": reason, "scenario": scenario,
+            "control_seq": seq, "stop_reason": reason, "scenario": scenario, "settings_id": scenario,
         });
         let tmp = dir.join(".status.tmp");
         std::fs::write(&tmp, body.to_string()).unwrap();
@@ -126,6 +126,10 @@ fn fake_autopilot(scenario: &str) -> i32 {
         match v["command"].as_str() {
             Some("pause") => write("paused", seq, None),
             Some("resume") => write("running", seq, None),
+            Some("suspend") => {
+                write("suspended", seq, None);
+                return 0;
+            }
             _ if scenario == "crash-after-stop" => return 4,
             _ => {
                 write("stopped", seq, Some("user"));

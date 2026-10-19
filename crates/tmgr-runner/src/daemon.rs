@@ -36,11 +36,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    limits, method, AutopilotControlParams, AutopilotControlled, AutopilotLog, AutopilotLogParams,
-    AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode, EventMsg, ExePin,
-    LookupParams, Origin, OriginRevokeParams, OriginRevoked, PathParams, RestoredRun, RunCreateReq,
-    RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef,
-    TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
+    AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
+    EventMsg, ExePin, LookupParams, Origin, OriginRevokeParams, OriginRevoked, PathParams,
+    RestoredRun, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
+    StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -1701,6 +1701,12 @@ impl Runner {
                         .map(|v| to_json(&v)),
                     method::AUTOPILOT_CONTROL => {
                         let q: AutopilotControlParams = params(p)?;
+                        if q.command == AutopilotCommand::Suspend && conn.client != CLIENT_CLI {
+                            return Err(api(
+                                ErrorCode::Forbidden,
+                                "autopilot suspend is accepted only from the tmgr CLI",
+                            ));
+                        }
                         self.autopilot
                             .control(&self.cfg.self_exe, q.command)
                             .map(|seq| to_json(&AutopilotControlled { seq }))
@@ -3317,6 +3323,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let ep = Endpoint::new_runner(&cfg.dir)?;
     let listener: UnixListener = endpoint::bind(&ep)?;
     listener.set_nonblocking(true)?;
+
+    rt.autopilot.resume(&cfg.self_exe);
 
     let ticker = rt.clone();
     thread::spawn(move || {

@@ -28,6 +28,7 @@ pub enum AutopilotCommand {
     Pause,
     Resume,
     Stop,
+    Suspend,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

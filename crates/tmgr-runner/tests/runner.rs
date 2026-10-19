@@ -5529,9 +5529,10 @@ fn an_adopted_autopilot_is_never_signalled_through_a_pid_that_does_not_hold_its_
 }
 
 #[test]
-fn stopping_the_runner_stops_autopilot_first() {
+fn stopping_the_runner_suspends_autopilot_first() {
     let mut h = Harness::new();
     h.start(5000);
+    h.enable_queue();
     let mut cli = h.client();
     let pid = cli.autopilot_start("default").unwrap().pid;
     wait_for("status file", || {
@@ -5539,8 +5540,127 @@ fn stopping_the_runner_stops_autopilot_first() {
     });
     cli.stop().unwrap();
     wait_for("autopilot gone", || !alive(pid));
+    assert_eq!(h.autopilot_status_file()["state"], "suspended");
+    assert!(h.queue_enabled(), "a suspend is not a crash");
+    h.kill_runner();
+}
+
+#[test]
+fn only_the_cli_may_suspend_autopilot() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    cli.autopilot_start("default").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    for client in ["desktop", "worker"] {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        let e = err_text(c.autopilot_control(AutopilotCommand::Suspend));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    assert!(cli.autopilot_status().unwrap().running);
+    cli.autopilot_control(AutopilotCommand::Suspend).unwrap();
+    wait_for("suspended", || {
+        !h.client().autopilot_status().unwrap().running
+    });
+    assert_eq!(h.autopilot_status_file()["state"], "suspended");
+    assert!(h.queue_enabled());
+}
+
+#[test]
+fn a_suspended_autopilot_starts_again_with_the_same_settings_when_the_runner_starts() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    h.settings_file("resume-me");
+    cli.autopilot_start("resume-me").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.stop().unwrap();
+    wait_for("suspended", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["state"] == "suspended"
+    });
+    h.kill_runner();
+    h.start(5000);
+    wait_for("running again", || {
+        let s = h.autopilot_status_file();
+        s["state"] == "running" && s["scenario"] == "resume-me"
+    });
+    assert!(h.client().autopilot_status().unwrap().running);
+    assert!(
+        !h.autopilot_dir().join("status.prev.json").exists(),
+        "a suspended status stays in place for the next loop"
+    );
+    h.stop_autopilot();
+}
+
+#[test]
+fn a_stopped_autopilot_is_not_started_again_with_the_runner() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut cli = h.client();
+    cli.autopilot_start("default").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    h.stop_autopilot();
     assert_eq!(h.autopilot_status_file()["state"], "stopped");
     h.kill_runner();
+    h.start(5000);
+    thread::sleep(Duration::from_millis(600));
+    assert!(!h.client().autopilot_status().unwrap().running);
+}
+
+impl Harness {
+    fn queue_loop_files(&self, enabled: bool, settings: bool) {
+        fs::write(
+            self.cfg.join("tmgr/queue.toml"),
+            format!("version = 1\nenabled = {enabled}\n"),
+        )
+        .unwrap();
+        if settings {
+            self.settings_file("queue");
+        }
+    }
+
+    fn settings_file(&self, id: &str) {
+        let dir = self.autopilot_dir().join("settings");
+        fs::create_dir_all(&dir).unwrap();
+        for d in [self.autopilot_dir(), dir.clone()] {
+            fs::set_permissions(d, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        fs::write(dir.join(format!("{id}.json")), "{}").unwrap();
+    }
+}
+
+#[test]
+fn the_queue_loop_starts_with_the_runner_when_the_queue_is_on_and_its_settings_exist() {
+    let mut h = Harness::new();
+    h.queue_loop_files(true, true);
+    h.start(5000);
+    wait_for("queue loop", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["scenario"] == "queue"
+    });
+    assert!(h.client().autopilot_status().unwrap().running);
+    h.stop_autopilot();
+}
+
+#[test]
+fn the_queue_loop_does_not_start_with_the_runner_when_the_queue_is_off_or_has_no_settings() {
+    for (enabled, settings) in [(false, true), (true, false)] {
+        let mut h = Harness::new();
+        h.queue_loop_files(enabled, settings);
+        h.start(5000);
+        thread::sleep(Duration::from_millis(600));
+        assert!(!h.client().autopilot_status().unwrap().running);
+        assert!(!h.autopilot_dir().join("status.json").exists());
+    }
 }
 
 #[test]

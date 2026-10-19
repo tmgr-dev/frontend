@@ -74,14 +74,49 @@ fn lock_held(dir: &Path) -> bool {
     unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_SH | libc::LOCK_NB) != 0 }
 }
 
-fn read_status(dir: &Path) -> Option<Value> {
+const QUEUE_ID: &str = "queue";
+const QUEUE_FILE: &str = "queue.toml";
+
+fn read_text(path: &Path) -> Option<String> {
     let mut text = String::new();
-    open_read(&dir.join(STATUS))
+    open_read(path)
         .ok()?
         .take(READ_CAP)
         .read_to_string(&mut text)
         .ok()?;
-    serde_json::from_str(&text).ok()
+    Some(text)
+}
+
+fn read_status(dir: &Path) -> Option<Value> {
+    serde_json::from_str(&read_text(&dir.join(STATUS))?).ok()
+}
+
+fn left_for_good(dir: &Path) -> bool {
+    read_status(dir).is_some_and(|s| s["state"] == "stopped" || s["state"] == "suspended")
+}
+
+fn settings_exist(dir: &Path, id: &str) -> bool {
+    valid_settings_id(id)
+        && fs::symlink_metadata(dir.join("settings").join(format!("{id}.json")))
+            .is_ok_and(|m| m.is_file())
+}
+
+fn suspended_id(dir: &Path) -> Option<String> {
+    let s = read_status(dir)?;
+    let id = s["settings_id"].as_str()?;
+    (s["state"] == "suspended" && settings_exist(dir, id)).then(|| id.to_string())
+}
+
+fn queue_on(dir: &Path) -> bool {
+    dir.parent()
+        .and_then(|d| read_text(&d.join(QUEUE_FILE)))
+        .and_then(|t| t.parse::<toml::Table>().ok())
+        .is_some_and(|t| t.get("enabled").and_then(toml::Value::as_bool) == Some(true))
+}
+
+fn resume_id(dir: &Path) -> Option<String> {
+    suspended_id(dir)
+        .or_else(|| (queue_on(dir) && settings_exist(dir, QUEUE_ID)).then(|| QUEUE_ID.to_string()))
 }
 
 fn now_iso() -> String {
@@ -215,14 +250,13 @@ impl Inner {
         let how = match gone {
             Gone::Exited(st) if st.success() => return,
             Gone::Exited(st) => {
-                if read_status(dir).is_some_and(|s| s["state"] == "stopped") {
+                if left_for_good(dir) {
                     return;
                 }
                 describe(&st)
             }
             Gone::Unseen => {
-                let stopped = read_status(dir).is_some_and(|s| s["state"] == "stopped");
-                if asked || stopped {
+                if asked || left_for_good(dir) {
                     return;
                 }
                 "lost without a final status".into()
@@ -253,7 +287,9 @@ impl Host {
         if g.running() || lock_held(&dir) {
             return Err(fail(ErrorCode::Busy, "autopilot is already running"));
         }
-        let _ = fs::rename(dir.join(STATUS), dir.join("status.prev.json"));
+        if suspended_id(&dir).as_deref() != Some(settings_id) {
+            let _ = fs::rename(dir.join(STATUS), dir.join("status.prev.json"));
+        }
         let _ = fs::remove_file(dir.join(CONTROL));
         rotate_serve_log(&dir);
         let out = OpenOptions::new()
@@ -306,7 +342,7 @@ impl Host {
             return Err(fail(ErrorCode::NotRunning, "autopilot is not running"));
         }
         let seq = write_control(&dir, command).map_err(internal)?;
-        if command == AutopilotCommand::Stop {
+        if matches!(command, AutopilotCommand::Stop | AutopilotCommand::Suspend) {
             g.stop_requested = true;
         }
         Ok(seq)
@@ -340,6 +376,16 @@ impl Host {
         Ok(all.into_iter().skip(skip).collect())
     }
 
+    pub fn resume(&self, self_exe: &Path) {
+        let Ok(dir) = state_dir() else { return };
+        let Some(id) = resume_id(&dir) else { return };
+        match self.start(self_exe, &id) {
+            Ok(pid) => log(&format!("autopilot: {id} started again (pid {pid})")),
+            Err((ErrorCode::Busy, _)) => {}
+            Err((_, msg)) => log(&format!("autopilot: {id} not started again: {msg}")),
+        }
+    }
+
     pub fn shutdown(&self, self_exe: &Path) {
         let Ok(dir) = state_dir() else { return };
         let pid = {
@@ -348,8 +394,8 @@ impl Host {
             if !g.running() {
                 return;
             }
-            if let Err(e) = write_control(&dir, AutopilotCommand::Stop) {
-                log(&format!("autopilot: stop not sent: {e}"));
+            if let Err(e) = write_control(&dir, AutopilotCommand::Suspend) {
+                log(&format!("autopilot: suspend not sent: {e}"));
             }
             g.stop_requested = true;
             (g.pid(&dir), g.child.is_some())

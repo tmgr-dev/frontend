@@ -1150,6 +1150,12 @@ fn autopilot_messages() {
             command: AutopilotCommand::Pause,
         },
     );
+    golden(
+        "autopilot_control_params_suspend",
+        &AutopilotControlParams {
+            command: AutopilotCommand::Suspend,
+        },
+    );
     golden("autopilot_controlled", &AutopilotControlled { seq: 3 });
     golden("autopilot_log_params", &AutopilotLogParams { tail: 50 });
     golden(
