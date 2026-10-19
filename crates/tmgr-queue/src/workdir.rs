@@ -17,7 +17,7 @@ pub fn branch_name(pickup_id: &str) -> String {
     format!("queue/{pickup_id}")
 }
 
-fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
+fn git_command(dir: Option<&Path>) -> Command {
     let mut cmd = Command::new("git");
     cmd.env_clear()
         .env(
@@ -48,6 +48,26 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
     if let Some(d) = dir {
         cmd.arg("-C").arg(d);
     }
+    cmd
+}
+
+pub(crate) fn git_bytes(dir: &Path, args: &[&str], input: Option<Vec<u8>>) -> Result<Vec<u8>> {
+    let mut cmd = git_command(Some(dir));
+    cmd.args(["-c", "core.quotepath=off"]).args(args);
+    let out = output_within_input(&mut cmd, GIT_TIMEOUT, input)?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        let line = msg.lines().next().unwrap_or("git failed");
+        return Err(Error::new(
+            Kind::Internal,
+            format!("git {}: {line}", args.first().unwrap_or(&"")),
+        ));
+    }
+    Ok(out.stdout)
+}
+
+fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
+    let mut cmd = git_command(dir);
     let out = output_within(cmd.args(args), GIT_TIMEOUT)?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
@@ -66,14 +86,31 @@ pub(crate) fn output_within(
     cmd: &mut Command,
     limit: std::time::Duration,
 ) -> Result<std::process::Output> {
-    use std::io::Read;
+    output_within_input(cmd, limit, None)
+}
+
+fn output_within_input(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+    input: Option<Vec<u8>>,
+) -> Result<std::process::Output> {
+    use std::io::{Read, Write};
     use std::process::Stdio;
     let mut child = cmd
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| Error::internal(format!("cannot run git: {e}")))?;
+    if let (Some(data), Some(mut stdin)) = (input, child.stdin.take()) {
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&data);
+        });
+    }
     let drain = |pipe: Option<Box<dyn Read + Send>>| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();

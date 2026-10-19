@@ -4099,8 +4099,10 @@ dependencies = [
 name = "tmgr-queue"
 version = "1.0.8"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "libc",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
