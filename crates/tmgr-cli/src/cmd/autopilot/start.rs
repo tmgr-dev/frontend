@@ -26,7 +26,7 @@ use crate::cmd::notifyenv::NotifyEnv;
 use crate::cmd::queue::{self, CliCloud};
 use crate::cmd::runner::cloud::{cloud_gate, parse_eligibility, Eligibility, GateOk};
 use crate::cmd::runner::{connect, rerr, runner_config};
-use crate::cmd::signer::{device_name, SignTask, Signed, Signer};
+use crate::cmd::signer::{device_name, read_offer, Offer, SignTask, Signed, Signer};
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
 
@@ -84,6 +84,8 @@ fn placeholder_claim(task_id: i64, f: &Facts) -> CloudApproval {
         signature: String::new(),
         kind: String::new(),
         repos_sha256: None,
+        persona_sha256: None,
+        context_sha256: None,
     }
 }
 
@@ -141,6 +143,8 @@ pub fn classify(task_id: i64, elig: &Eligibility, f: &Facts) -> Found {
         category: Some(category.clone()),
         task_key: key.clone(),
         repos: listed,
+        persona: None,
+        context: Vec::new(),
     };
     if let Err(why) = queue::rule_binding(f.rule, &probe, entry, category, &f.ws.code, task_id) {
         return refused(&why);
@@ -159,6 +163,7 @@ pub fn classify(task_id: i64, elig: &Eligibility, f: &Facts) -> Found {
                     .repositories
                     .as_deref()
                     .and_then(|list| tmgr_core::approval::repos_sha256(list).ok()),
+                offer: Offer::default(),
             }),
         ),
     }
@@ -181,6 +186,26 @@ fn not_free(found: Found, look: impl FnOnce(&Found) -> Result<Fresh>) -> Found {
         approval: Approval::Refused(why),
         sign: None,
         ..found
+    }
+}
+
+fn with_offer(client: &Client, mut found: Found) -> Found {
+    let Some(sign) = found.sign.as_mut() else {
+        return found;
+    };
+    match read_offer(client, found.id) {
+        Ok(offered) => {
+            sign.offer = offered.offer;
+            found
+        }
+        Err(code) => Found {
+            approval: Approval::Refused(format!(
+                "could not read the approval offer ({})",
+                sanitize_line(&code)
+            )),
+            sign: None,
+            ..found
+        },
     }
 }
 
@@ -209,9 +234,12 @@ fn discover(
         .into_iter()
         .map(
             |id| match client.agent_run_task(id).and_then(parse_eligibility) {
-                Ok(elig) => not_free(classify(id, &elig, &facts), |f| {
-                    queue::fresh_look(ctx, rule, ws.id, f.id)
-                }),
+                Ok(elig) => with_offer(
+                    client,
+                    not_free(classify(id, &elig, &facts), |f| {
+                        queue::fresh_look(ctx, rule, ws.id, f.id)
+                    }),
+                ),
                 Err(e) => Found {
                     id,
                     key: format!("task-{id}"),
@@ -321,6 +349,72 @@ fn limit_text(plan: &Plan) -> Vec<String> {
     lines
 }
 
+const TEXT_CLIP: usize = 2000;
+
+fn shown_text(text: &str) -> String {
+    let plain = text.replace("\r\n", "\n");
+    let clean = tmgr_core::text::sanitize(&plain);
+    let hidden = if clean.chars().count() != plain.chars().count() {
+        "\n(hidden control characters were removed from this display)"
+    } else {
+        ""
+    };
+    let (head, cut) = tmgr_core::text::truncate_chars(&clean, TEXT_CLIP);
+    let more = if cut {
+        format!(
+            "\n... ({} more characters are signed too; open the task in the web app to read all of it)",
+            clean.chars().count() - TEXT_CLIP
+        )
+    } else {
+        String::new()
+    };
+    let body: Vec<String> = head.lines().map(|l| format!("      {l}")).collect();
+    format!("{}{more}{hidden}", body.join("\n"))
+}
+
+fn signed_texts(plan: &Plan) -> Vec<String> {
+    let mut personas: Vec<(&crate::cmd::signer::OfferPersona, Vec<&str>)> = Vec::new();
+    let mut contexts: Vec<(&[crate::cmd::signer::OfferPage], Vec<&str>)> = Vec::new();
+    for f in &plan.chosen {
+        let Some(sign) = &f.sign else { continue };
+        if let Some(p) = &sign.offer.persona {
+            match personas.iter_mut().find(|(q, _)| *q == p) {
+                Some((_, keys)) => keys.push(&f.key),
+                None => personas.push((p, vec![&f.key])),
+            }
+        }
+        if let Some(pages) = &sign.offer.context {
+            match contexts.iter_mut().find(|(q, _)| *q == pages.as_slice()) {
+                Some((_, keys)) => keys.push(&f.key),
+                None => contexts.push((pages, vec![&f.key])),
+            }
+        }
+    }
+    let mut lines = Vec::new();
+    for (p, keys) in personas {
+        lines.push(format!(
+            "Persona    signing the instructions of persona \"{}\" for {}:\n{}",
+            sanitize_line(&p.name),
+            keys.join(", "),
+            shown_text(&p.instructions)
+        ));
+    }
+    for (pages, keys) in contexts {
+        lines.push(format!(
+            "Rules      signing the workspace rules for {}:",
+            keys.join(", ")
+        ));
+        for page in pages {
+            lines.push(format!(
+                "    {}\n{}",
+                sanitize_line(&page.title),
+                shown_text(&page.body)
+            ));
+        }
+    }
+    lines
+}
+
 pub fn summary_text(plan: &Plan) -> String {
     let a = &plan.answers;
     let sign = plan.to_sign();
@@ -361,6 +455,7 @@ pub fn summary_text(plan: &Plan) -> String {
             plan.ws.code
         ));
     }
+    lines.extend(signed_texts(plan));
     lines.push(format!(
         "Agents     turns the queue ON for every rule below and runs agents in the background on this machine, up to {} at the same time ({} is the rule's own limit)",
         a.max_concurrent.min(plan.rule.max_concurrent),
@@ -817,6 +912,7 @@ mod tests {
                 title: "t".into(),
                 description: String::new(),
                 repos_sha256: None,
+                offer: Offer::default(),
             }),
         }
     }
@@ -962,6 +1058,7 @@ mod tests {
                 title: "t".into(),
                 description: String::new(),
                 repos_sha256: None,
+                offer: Offer::default(),
             }),
         };
         Plan {
@@ -1009,6 +1106,42 @@ mod tests {
         let s = summary_text(&plan(false, false));
         assert!(s.contains("nothing to sign"));
         assert!(s.contains("NO usage limit"));
+    }
+
+    #[test]
+    fn the_summary_shows_the_persona_and_rules_texts_that_get_signed() {
+        use crate::cmd::signer::{OfferPage, OfferPersona};
+        let mut p = plan(true, true);
+        let sign = p.chosen[1].sign.as_mut().unwrap();
+        sign.offer = Offer {
+            persona: Some(OfferPersona {
+                id: "993c30a6-3528-42bf-9a70-507841cebc08".into(),
+                name: "Agent".into(),
+                instructions: format!(
+                    "Follow the rules.\r\nBe \u{1b}[31mred\n{}",
+                    "x".repeat(2500)
+                ),
+            }),
+            context: Some(vec![OfferPage {
+                id: 1,
+                title: "Team rules".into(),
+                body: "Open a PR.".into(),
+            }]),
+        };
+        let s = summary_text(&p);
+        for needle in [
+            "persona \"Agent\" for TM-2",
+            "      Follow the rules.",
+            "hidden control characters were removed",
+            "more characters are signed too",
+            "workspace rules for TM-2",
+            "Team rules",
+            "      Open a PR.",
+        ] {
+            assert!(s.contains(needle), "missing {needle:?} in\n{s}");
+        }
+        assert!(!s.contains('\u{1b}'));
+        assert!(!summary_text(&plan(true, true)).contains("Persona "));
     }
 
     #[test]
@@ -1061,6 +1194,7 @@ mod tests {
             title: "Fix it".into(),
             description: "body".into(),
             repos_sha256: None,
+            offer: Offer::default(),
         }
     }
 

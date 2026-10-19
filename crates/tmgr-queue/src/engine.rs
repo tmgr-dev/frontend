@@ -17,6 +17,7 @@ use tmgr_ipc::api::{BundleLaunch, BundlePersona, CloneSpec, RunBundle};
 
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
+const MAX_CLOUD_BUNDLE: usize = 512 * 1024;
 
 pub trait Publisher {
     fn publish(&self, pickup: &Pickup) -> Result<String>;
@@ -110,6 +111,18 @@ fn ts(now: DateTime<Utc>) -> String {
 }
 
 pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
+    let (persona, context) = match &c.cloud {
+        Some(cloud) => (cloud.persona.clone(), cloud.context.clone()),
+        None => (
+            Some(BundlePersona {
+                name: rule.persona.clone(),
+                instructions_sha256: sha256_hex(c.persona_text.as_bytes()),
+                id: None,
+                instructions: None,
+            }),
+            Vec::new(),
+        ),
+    };
     RunBundle {
         v: 1,
         task: c.task,
@@ -121,10 +134,8 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
         },
         comments: c.comments.clone(),
         pages: c.pages.clone(),
-        persona: c.cloud.is_none().then(|| BundlePersona {
-            name: rule.persona.clone(),
-            instructions_sha256: sha256_hex(c.persona_text.as_bytes()),
-        }),
+        persona,
+        context,
         launch: BundleLaunch {
             profile: rule.profile.clone(),
             model: rule.model.clone(),
@@ -646,7 +657,12 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
             )?;
             continue;
         }
-        if bundle.canonical().len() > MAX_BUNDLE || c.persona_text.len() > MAX_BUNDLE {
+        let limit = if c.cloud.is_some() {
+            MAX_CLOUD_BUNDLE
+        } else {
+            MAX_BUNDLE
+        };
+        if bundle.canonical().len() > limit || c.persona_text.len() > MAX_BUNDLE {
             pass.skip_once(
                 skey,
                 "too_large".into(),
@@ -1661,6 +1677,7 @@ mod tests {
         allow: Cell<u8>,
         repos: RefCell<Vec<String>>,
         claim_repos: RefCell<Vec<crate::clones::ClaimRepo>>,
+        signed: RefCell<(Option<BundlePersona>, Vec<tmgr_ipc::api::BundlePage>)>,
         tasks: RefCell<Vec<FakeTask>>,
     }
 
@@ -1704,6 +1721,8 @@ mod tests {
                 body: t.body,
                 claim: CloudApproval {
                     repos_sha256: None,
+                    persona_sha256: None,
+                    context_sha256: None,
                     host: "api.example.com".into(),
                     user_id: 1,
                     workspace_id: ws.id,
@@ -1716,6 +1735,8 @@ mod tests {
                     kind: "confirm".into(),
                 },
                 repos: self.claim_repos.borrow().clone(),
+                persona: self.signed.borrow().0.clone(),
+                context: self.signed.borrow().1.clone(),
             })))
         }
     }
@@ -2155,6 +2176,8 @@ mod tests {
         st.pickups[0].bundle.persona = Some(tmgr_ipc::api::BundlePersona {
             name: "Agent".into(),
             instructions_sha256: "0".repeat(64),
+            id: None,
+            instructions: None,
         });
         st.pickups[0].bundle_sha256 = st.pickups[0].bundle.sha256();
         state::save(&fx.paths, &mut st).unwrap();
@@ -2232,6 +2255,8 @@ mod tests {
             agent_work: true,
             cloud: Some(Claim {
                 repos_sha256: None,
+                persona_sha256: None,
+                context_sha256: None,
                 host: "api.tmgr.dev".into(),
                 user_id: 1,
                 workspace_id: 56,
@@ -2297,6 +2322,101 @@ mod tests {
             None,
         );
         assert_eq!(verdict, Ok(()));
+    }
+
+    fn owner_persona(text: &str) -> BundlePersona {
+        BundlePersona {
+            name: "Agent".into(),
+            instructions_sha256: sha256_hex(text.as_bytes()),
+            id: Some("993c30a6-3528-42bf-9a70-507841cebc08".into()),
+            instructions: Some(text.into()),
+        }
+    }
+
+    fn rules_page(body: &str) -> tmgr_ipc::api::BundlePage {
+        tmgr_ipc::api::BundlePage {
+            id: 125,
+            revision: 14,
+            title: "Rules".into(),
+            body: body.into(),
+        }
+    }
+
+    #[test]
+    fn a_cloud_bundle_has_no_persona_unless_the_approval_signed_one() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let reqs = fx.runs.requests.borrow();
+        assert!(reqs[0].bundle.persona.is_none() && reqs[0].bundle.context.is_empty());
+        assert!(reqs[0].bundle.validate().is_ok());
+    }
+
+    #[test]
+    fn a_signed_persona_and_rules_ride_in_the_cloud_bundle() {
+        let fx = cloud_fx();
+        fx.cloud.signed.replace((
+            Some(owner_persona("Open a PR.")),
+            vec![rules_page("# Rules")],
+        ));
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let reqs = fx.runs.requests.borrow();
+        let b = &reqs[0].bundle;
+        let p = b.persona.as_ref().expect("persona");
+        assert_eq!(p.instructions.as_deref(), Some("Open a PR."));
+        assert_eq!(
+            p.id.as_deref(),
+            Some("993c30a6-3528-42bf-9a70-507841cebc08")
+        );
+        assert_eq!(b.context, vec![rules_page("# Rules")]);
+        assert!(b.validate().is_ok());
+        assert_eq!(reqs[0].bundle_sha256, b.sha256());
+        let kept = fx.pickups();
+        assert_eq!(kept[0].bundle.context.len(), 1);
+        let again: State = serde_json::from_str(
+            &serde_json::to_string(&State {
+                pickups: kept.clone(),
+                ..State::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(again.pickups[0].cloud.as_ref().unwrap().context.len(), 1);
+    }
+
+    #[test]
+    fn a_changed_signed_text_voids_the_approval_and_changes_the_bundle() {
+        let fx = Fx::new(|r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.hours = Some("09-19".into());
+        });
+        fx.cloud
+            .signed
+            .replace((Some(owner_persona("Open a PR.")), Vec::new()));
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass_at(3 * 60).unwrap();
+        let first = fx.pickups()[0].bundle_sha256.clone();
+        fx.cloud
+            .signed
+            .replace((Some(owner_persona("Merge it.")), Vec::new()));
+        fx.pass_at(3 * 60).unwrap();
+        assert_eq!(fx.audit_events("approval_voided"), 1);
+        assert_ne!(fx.pickups()[0].bundle_sha256, first);
+    }
+
+    #[test]
+    fn a_local_candidate_keeps_the_rule_persona_hash_only() {
+        let fx = Fx::new(|r| r.persona = "reviewer".into());
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        let pickups = fx.pickups();
+        let p = pickups[0].bundle.persona.as_ref().expect("persona");
+        assert_eq!(p.name, "reviewer");
+        assert!(p.id.is_none() && p.instructions.is_none());
+        assert!(pickups[0].bundle.context.is_empty());
     }
 
     fn multi_fx() -> (Fx, String) {

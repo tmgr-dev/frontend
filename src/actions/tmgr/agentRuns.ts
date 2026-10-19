@@ -11,6 +11,29 @@ export interface AgentRunKey {
 	public_key?: string;
 }
 
+export interface ApprovalPersona {
+	id: string;
+	name: string;
+	instructions: string;
+	sha256: string;
+}
+
+export interface ApprovalContextPage {
+	id: number;
+	slug: string;
+	version: number;
+	title: string;
+	body: string;
+	sha256: string;
+}
+
+export interface ApprovalContext {
+	pages: ApprovalContextPage[];
+	sha256: string;
+}
+
+export type StaleReason = 'content' | 'repositories' | 'persona' | 'context';
+
 export interface TaskApproval {
 	state: ApprovalState;
 	kind: ApprovalKind | null;
@@ -22,6 +45,12 @@ export interface TaskApproval {
 	owner_authored: boolean;
 	repositories?: string[] | null;
 	repos_sha256?: string | null;
+	persona?: ApprovalPersona | null;
+	persona_too_large?: boolean;
+	context?: ApprovalContext | null;
+	context_too_large?: boolean;
+	covers?: { persona: boolean; context: boolean };
+	stale_reasons?: StaleReason[];
 }
 
 export interface ApprovalSubmission {
@@ -31,6 +60,8 @@ export interface ApprovalSubmission {
 	category_id: number;
 	content_sha256: string;
 	repos_sha256?: string;
+	persona_sha256?: string;
+	context_sha256?: string;
 	signed_at: number;
 	signature: string;
 }
@@ -46,7 +77,10 @@ export type AgentRunErrorCode =
 	| 'category_mismatch'
 	| 'confirm_required'
 	| 'repositories_changed'
-	| 'invalid_repositories';
+	| 'invalid_repositories'
+	| 'persona_changed'
+	| 'context_changed'
+	| 'invalid_persona';
 
 export const agentRunErrorCode = (error: any): string | null => {
 	const body = error?.response?.data;

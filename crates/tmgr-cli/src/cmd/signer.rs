@@ -5,7 +5,10 @@ use p256::ecdsa::{Signature, SigningKey};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tmgr_core::api::{map_error, unwrap_data, Client};
-use tmgr_core::approval::{claim_message, content_sha256, repos_sha256, CloudApproval};
+use tmgr_core::approval::{
+    approval_message, content_sha256, context_sha256, page_sha256, persona_sha256, repos_sha256,
+    Payload,
+};
 #[cfg(debug_assertions)]
 use tmgr_core::creds::KeyringError;
 use tmgr_core::creds::{classify, Failure, Keychain, OsKeychain, STORE_ENV};
@@ -47,6 +50,116 @@ pub struct SignTask {
     pub title: String,
     pub description: String,
     pub repos_sha256: Option<String>,
+    pub offer: Offer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferPersona {
+    pub id: String,
+    pub name: String,
+    pub instructions: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferPage {
+    pub id: i64,
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Offer {
+    pub persona: Option<OfferPersona>,
+    pub context: Option<Vec<OfferPage>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Offered {
+    pub repositories: Option<Vec<String>>,
+    pub offer: Offer,
+}
+
+fn offer_of(data: &Value) -> std::result::Result<Offer, String> {
+    let persona = match data.get("persona") {
+        None | Some(Value::Null) => None,
+        Some(p) => {
+            let text = |k: &str| p.get(k).and_then(Value::as_str).map(str::to_string);
+            Some(OfferPersona {
+                id: text("id").ok_or("invalid_persona")?,
+                name: text("name").ok_or("invalid_persona")?,
+                instructions: text("instructions").ok_or("invalid_persona")?,
+            })
+        }
+    };
+    let context = match data.get("context") {
+        None | Some(Value::Null) => None,
+        Some(c) => {
+            let pages = c
+                .get("pages")
+                .and_then(Value::as_array)
+                .ok_or("context_changed")?;
+            let mut out = Vec::new();
+            for page in pages {
+                let text = |k: &str| page.get(k).and_then(Value::as_str).map(str::to_string);
+                out.push(OfferPage {
+                    id: page
+                        .get("id")
+                        .and_then(Value::as_i64)
+                        .ok_or("context_changed")?,
+                    title: text("title").ok_or("context_changed")?,
+                    body: text("body").ok_or("context_changed")?,
+                });
+            }
+            Some(out)
+        }
+    };
+    Ok(Offer { persona, context })
+}
+
+fn coverage(offer: &Offer) -> std::result::Result<(Option<String>, Option<String>), String> {
+    let persona = match &offer.persona {
+        Some(p) => Some(
+            persona_sha256(&p.id, &p.name, &p.instructions)
+                .map_err(|_| "invalid_persona".to_string())?,
+        ),
+        None => None,
+    };
+    let context = match &offer.context {
+        Some(pages) => {
+            let hashes: Vec<String> = pages
+                .iter()
+                .map(|p| page_sha256(p.id, &p.title, &p.body))
+                .collect();
+            Some(context_sha256(&hashes).map_err(|_| "context_changed".to_string())?)
+        }
+        None => None,
+    };
+    Ok((persona, context))
+}
+
+pub fn read_offer(client: &Client, task_id: i64) -> std::result::Result<Offered, String> {
+    let (status, value) = client
+        .call(
+            "GET",
+            &format!("/api/tasks/{task_id}/agent-approval"),
+            None,
+            true,
+        )
+        .map_err(|_| "failed".to_string())?;
+    if !(200..300).contains(&status) {
+        return Err(error_code(&value).unwrap_or("failed").to_string());
+    }
+    let data = unwrap_data(value);
+    let repositories = match data.get("repositories") {
+        None | Some(Value::Null) => None,
+        Some(list) => Some(
+            serde_json::from_value(list.clone()).map_err(|_| "invalid_repositories".to_string())?,
+        ),
+    };
+    Ok(Offered {
+        repositories,
+        offer: offer_of(&data)?,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,10 +318,16 @@ fn key_rejected(code: Option<&str>) -> bool {
     matches!(code, Some("key_unknown" | "key_revoked"))
 }
 
+struct Covered {
+    repos: Option<String>,
+    persona: Option<String>,
+    context: Option<String>,
+}
+
 struct Prepared {
     task: SignTask,
     sha: String,
-    repos: Option<String>,
+    covered: Covered,
 }
 
 enum Upload {
@@ -355,10 +474,10 @@ impl<'a> Signer<'a> {
         let mut ready = Vec::new();
         let mut refused = Vec::new();
         for task in tasks {
-            match self.repositories(task) {
-                Ok(repos) => ready.push(Prepared {
+            match self.coverage(task) {
+                Ok(covered) => ready.push(Prepared {
                     sha: content_sha256(&task.title, &task.description),
-                    repos,
+                    covered,
                     task: task.clone(),
                 }),
                 Err(code) => refused.push(Signed {
@@ -371,33 +490,29 @@ impl<'a> Signer<'a> {
         (ready, refused)
     }
 
-    fn repositories(&self, task: &SignTask) -> std::result::Result<Option<String>, String> {
-        let task_id = task.id;
-        let (status, value) = self
-            .client
-            .call(
-                "GET",
-                &format!("/api/tasks/{task_id}/agent-approval"),
-                None,
-                true,
-            )
-            .map_err(|_| "failed".to_string())?;
-        if !(200..300).contains(&status) {
-            return Err(error_code(&value).unwrap_or("failed").to_string());
-        }
-        let data = unwrap_data(value);
-        let hash = match data.get("repositories") {
-            None | Some(Value::Null) => None,
-            Some(list) => {
-                let names: Vec<String> = serde_json::from_value(list.clone())
-                    .map_err(|_| "invalid_repositories".to_string())?;
-                Some(repos_sha256(&names).map_err(|_| "invalid_repositories".to_string())?)
+    fn coverage(&self, task: &SignTask) -> std::result::Result<Covered, String> {
+        let offered = read_offer(self.client, task.id)?;
+        let repos = match &offered.repositories {
+            None => None,
+            Some(names) => {
+                Some(repos_sha256(names).map_err(|_| "invalid_repositories".to_string())?)
             }
         };
-        if hash != task.repos_sha256 {
+        if repos != task.repos_sha256 {
             return Err("repositories_changed".to_string());
         }
-        Ok(hash)
+        if offered.offer.persona != task.offer.persona {
+            return Err("persona_changed".to_string());
+        }
+        if offered.offer.context != task.offer.context {
+            return Err("context_changed".to_string());
+        }
+        let (persona, context) = coverage(&offered.offer)?;
+        Ok(Covered {
+            repos,
+            persona,
+            context,
+        })
     }
 
     fn upload(
@@ -443,33 +558,38 @@ impl<'a> Signer<'a> {
     }
 
     fn item(&self, own: &OwnKey, key: &SigningKey, p: &Prepared, signed_at: i64) -> Value {
-        let mut claim = CloudApproval {
+        let message = approval_message(&Payload {
             host: self.host.clone(),
             user_id: self.user_id,
             workspace_id: p.task.workspace_id,
             task_id: p.task.id,
             category_id: p.task.category_id,
             content_sha256: p.sha.clone(),
+            repos_sha256: p.covered.repos.clone(),
+            persona_sha256: p.covered.persona.clone(),
+            context_sha256: p.covered.context.clone(),
             key_id: own.key_id.clone(),
             signed_at,
-            signature: String::new(),
-            kind: KIND.to_string(),
-            repos_sha256: p.repos.clone(),
-        };
-        let signature: Signature = key.sign(claim_message(&claim).as_bytes());
-        claim.signature = STANDARD.encode(signature.to_bytes());
-        let mut item = json!({
-            "task_id": claim.task_id,
-            "kind": claim.kind,
-            "key_id": claim.key_id,
-            "host": claim.host,
-            "category_id": claim.category_id,
-            "content_sha256": claim.content_sha256,
-            "signed_at": claim.signed_at,
-            "signature": claim.signature,
         });
-        if let Some(repos) = &claim.repos_sha256 {
-            item["repos_sha256"] = json!(repos);
+        let signature: Signature = key.sign(message.as_bytes());
+        let mut item = json!({
+            "task_id": p.task.id,
+            "kind": KIND,
+            "key_id": own.key_id,
+            "host": self.host,
+            "category_id": p.task.category_id,
+            "content_sha256": p.sha,
+            "signed_at": signed_at,
+            "signature": STANDARD.encode(signature.to_bytes()),
+        });
+        for (name, hash) in [
+            ("repos_sha256", &p.covered.repos),
+            ("persona_sha256", &p.covered.persona),
+            ("context_sha256", &p.covered.context),
+        ] {
+            if let Some(hash) = hash {
+                item[name] = json!(hash);
+            }
         }
         item
     }
@@ -537,7 +657,7 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
-    use tmgr_core::approval::{check_claim, verify, Entry, PinnedKey};
+    use tmgr_core::approval::{check_claim, verify, CloudApproval, Entry, PinnedKey};
     use tmgr_core::redact::Secret;
     use wiremock::matchers::{method, path, path_regex};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -583,6 +703,7 @@ mod tests {
             title: title.into(),
             description: "body".into(),
             repos_sha256: None,
+            offer: Offer::default(),
         }
     }
 
@@ -655,6 +776,8 @@ mod tests {
             signature: item["signature"].as_str().unwrap().into(),
             kind: item["kind"].as_str().unwrap().into(),
             repos_sha256: item["repos_sha256"].as_str().map(str::to_string),
+            persona_sha256: item["persona_sha256"].as_str().map(str::to_string),
+            context_sha256: item["context_sha256"].as_str().map(str::to_string),
         }
     }
 
@@ -806,6 +929,121 @@ mod tests {
         assert!(bodies(&server, "/api/agent-runs/approvals/bulk")
             .await
             .is_empty());
+    }
+
+    fn offer_fixture() -> (Offer, Value) {
+        let persona = OfferPersona {
+            id: "993c30a6-3528-42bf-9a70-507841cebc08".into(),
+            name: "Agent".into(),
+            instructions: "Follow the rules.\r\nOpen a PR.".into(),
+        };
+        let pages = vec![OfferPage {
+            id: 125,
+            title: "Rules".into(),
+            body: "- Take only Backlog tasks.".into(),
+        }];
+        let served = json!({
+            "repositories": null,
+            "persona": {"id": persona.id, "name": persona.name, "instructions": persona.instructions, "sha256": "x"},
+            "context": {"pages": [{"id": 125, "slug": "r", "version": 1, "title": "Rules", "body": "- Take only Backlog tasks.", "sha256": "x"}], "sha256": "x"},
+        });
+        (
+            Offer {
+                persona: Some(persona),
+                context: Some(pages),
+            },
+            served,
+        )
+    }
+
+    async fn mount_offer(server: &MockServer, served: Value) {
+        Mock::given(method("GET"))
+            .and(path_regex(r"^/api/tasks/\d+/agent-approval$"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(served))
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_persona_and_rules_offer_makes_a_v3_signature_that_check_claim_accepts() {
+        let (offer, served) = offer_fixture();
+        let server = MockServer::start().await;
+        mount_register(&server, "key-1").await;
+        mount_offer(&server, served).await;
+        mount_bulk_ok(&server).await;
+        let uri = server.uri();
+        let fake = Fake::default();
+        let own = on_thread(move || {
+            let c = client_for(&uri);
+            let s = signer(&c, &uri, &fake);
+            let mut t = task(13, "T");
+            t.offer = offer;
+            let r = s.sign_tasks(&[t]).unwrap();
+            assert!(r[0].ok, "{r:?}");
+            s.ensure_key().unwrap()
+        })
+        .await;
+        let items = bodies(&server, "/api/agent-runs/approvals/bulk").await;
+        let item = &items[0]["items"][0];
+        let claim = claim_of(item, 1, 56);
+        let (offer, _) = offer_fixture();
+        let (persona, context) = coverage(&offer).unwrap();
+        assert_eq!(claim.persona_sha256, persona);
+        assert_eq!(claim.context_sha256, context);
+        assert!(persona.is_some() && context.is_some());
+        check_claim(&pinned(&claim.host, &own), &claim, "T", "body").unwrap();
+        let mut other = claim.clone();
+        other.persona_sha256 = Some("0".repeat(64));
+        assert!(check_claim(&pinned(&claim.host, &own), &other, "T", "body").is_err());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn persona_or_rules_changed_since_shown_are_refused_and_nothing_is_sent() {
+        let (offer, mut served) = offer_fixture();
+        served["persona"]["instructions"] = json!("Changed.");
+        let server = MockServer::start().await;
+        mount_register(&server, "key-1").await;
+        mount_offer(&server, served.clone()).await;
+        mount_bulk_ok(&server).await;
+        let uri = server.uri();
+        let fake = Fake::default();
+        let shown = offer.clone();
+        let results = on_thread(move || {
+            let c = client_for(&uri);
+            let mut t = task(13, "T");
+            t.offer = shown;
+            let mut u = task(14, "U");
+            u.offer = Offer {
+                persona: t.offer.persona.clone(),
+                context: None,
+            };
+            signer(&c, &uri, &fake).sign_tasks(&[t, u]).unwrap()
+        })
+        .await;
+        let codes: Vec<_> = results.iter().map(|r| r.code.as_deref()).collect();
+        assert_eq!(
+            codes,
+            vec![Some("persona_changed"), Some("persona_changed")]
+        );
+        assert!(bodies(&server, "/api/agent-runs/approvals/bulk")
+            .await
+            .is_empty());
+
+        let (_, mut served) = offer_fixture();
+        served["context"]["pages"][0]["body"] = json!("Changed.");
+        let server = MockServer::start().await;
+        mount_register(&server, "key-1").await;
+        mount_offer(&server, served).await;
+        let uri = server.uri();
+        let fake = Fake::default();
+        let results = on_thread(move || {
+            let c = client_for(&uri);
+            let mut t = task(13, "T");
+            t.offer = offer;
+            signer(&c, &uri, &fake).sign_tasks(&[t]).unwrap()
+        })
+        .await;
+        assert_eq!(results[0].code.as_deref(), Some("context_changed"));
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -499,6 +499,7 @@ pub fn bundle_from_local(
         comments,
         pages,
         persona: None,
+        context: Vec::new(),
         launch,
     };
     bundle.validate().map_err(Error::usage)?;

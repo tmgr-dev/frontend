@@ -235,8 +235,23 @@ impl Respond for Eligibility {
             "setting_enabled": true,
             "category": {"id": CATEGORY, "code": "TM", "github_full_name": "acme/widgets", "default_branch": "main"},
             "approval": self.0.lock().unwrap().approval.clone(),
+            "persona": persona_json(),
+            "context": {"pages": context_pages()},
         }}))
     }
+}
+
+fn v3_case() -> Value {
+    let f: Value = serde_json::from_str(FIXTURES).unwrap();
+    f["cases_v3"][0].clone()
+}
+
+fn persona_json() -> Value {
+    v3_case()["persona"].clone()
+}
+
+fn context_pages() -> Value {
+    v3_case()["context"].clone()
 }
 
 fn open_task() -> Value {
@@ -462,7 +477,7 @@ impl Cloud {
         get(&format!("/api/tasks/{TASK}"), open_task()).await;
         get(
             &format!("/api/tasks/{TASK}/agent-approval"),
-            json!({"data": {"repositories": null}}),
+            json!({"data": {"repositories": null, "persona": persona_json(), "context": {"pages": context_pages()}}}),
         )
         .await;
         get(
@@ -732,25 +747,45 @@ async fn starting_signs_pins_enables_and_hosts_the_loop_until_stop() {
     assert_eq!(uploaded, 1, "{calls:?}");
     let item = cloud.remote.lock().unwrap().bulk[0].clone();
     let public_key = cloud.remote.lock().unwrap().public_key.clone().unwrap();
-    let claim = tmgr_core::approval::CloudApproval {
+    let case = v3_case();
+    let persona_hash = tmgr_core::approval::persona_sha256(
+        case["persona"]["id"].as_str().unwrap(),
+        case["persona"]["name"].as_str().unwrap(),
+        case["persona"]["instructions"].as_str().unwrap(),
+    )
+    .unwrap();
+    let page = &case["context"][0];
+    let context_hash = tmgr_core::approval::context_sha256(&[tmgr_core::approval::page_sha256(
+        page["id"].as_i64().unwrap(),
+        page["title"].as_str().unwrap(),
+        page["body"].as_str().unwrap(),
+    )])
+    .unwrap();
+    assert_eq!(item["persona_sha256"], persona_hash.as_str());
+    assert_eq!(item["context_sha256"], context_hash.as_str());
+    assert!(item.get("repos_sha256").is_none());
+    assert_eq!(item["key_id"], OWN_KEY_ID);
+    let message = tmgr_core::approval::approval_message(&tmgr_core::approval::Payload {
         host: cloud.env.server.address().to_string(),
         user_id: 1,
         workspace_id: WS,
         task_id: TASK,
         category_id: CATEGORY,
         content_sha256: item["content_sha256"].as_str().unwrap().to_string(),
-        key_id: item["key_id"].as_str().unwrap().to_string(),
-        signed_at: item["signed_at"].as_i64().unwrap(),
-        signature: String::new(),
-        kind: "confirm".into(),
         repos_sha256: None,
-    };
-    assert_eq!(claim.key_id, OWN_KEY_ID);
+        persona_sha256: Some(persona_hash),
+        context_sha256: Some(context_hash),
+        key_id: OWN_KEY_ID.to_string(),
+        signed_at: item["signed_at"].as_i64().unwrap(),
+    });
+    assert!(message.starts_with("tmgr-agent-approval:v3:"), "{message}");
     assert!(tmgr_core::approval::verify(
         &public_key,
-        &tmgr_core::approval::claim_message(&claim),
+        &message,
         item["signature"].as_str().unwrap()
     ));
+    assert!(screen.contains("Follow the rules."), "{screen}");
+    assert!(screen.contains("Rules for parallel teams"), "{screen}");
 
     let allow: Value = serde_json::from_str(
         &std::fs::read_to_string(cloud.cfg().join("runner-allow.json")).unwrap(),

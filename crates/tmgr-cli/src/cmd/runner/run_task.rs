@@ -222,7 +222,10 @@ fn bundle(
         persona: p.persona.as_ref().map(|name| BundlePersona {
             name: name.clone(),
             instructions_sha256: sha256_hex(c.persona_text.as_bytes()),
+            id: None,
+            instructions: None,
         }),
+        context: Vec::new(),
         launch: BundleLaunch {
             profile: profile.to_string(),
             model: model.map(str::to_string),

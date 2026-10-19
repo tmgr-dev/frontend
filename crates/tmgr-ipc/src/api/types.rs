@@ -124,6 +124,10 @@ pub struct CloudApproval {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repos_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_sha256: Option<String>,
 }
 
 /// The leader to follower link a run was started for, and the link's generation at that time.

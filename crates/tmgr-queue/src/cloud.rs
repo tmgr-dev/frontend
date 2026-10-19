@@ -4,7 +4,7 @@ use crate::source::{Author, Candidate, Refusal, Scan, TaskSource};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{CloudApproval, TaskRef};
+use tmgr_ipc::api::{BundlePage, BundlePersona, CloudApproval, TaskRef};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloudClaim {
@@ -13,6 +13,10 @@ pub struct CloudClaim {
     pub branch: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub repos: Vec<ClaimRepo>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona: Option<BundlePersona>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context: Vec<BundlePage>,
 }
 
 #[derive(Clone, Debug)]
@@ -29,6 +33,8 @@ pub struct CloudTask {
     pub body: String,
     pub claim: CloudApproval,
     pub repos: Vec<ClaimRepo>,
+    pub persona: Option<BundlePersona>,
+    pub context: Vec<BundlePage>,
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +98,8 @@ impl TaskSource for CloudSource<'_> {
                             workspace_code: ws.code.clone(),
                             branch,
                             repos: t.repos,
+                            persona: t.persona,
+                            context: t.context,
                         }),
                     });
                 }

@@ -51,8 +51,9 @@ pub mod caps {
     pub const TRUST_VIA_REPO_V1: &str = "trust_via_repo.v1";
     pub const MULTI_CLONE_V1: &str = "multi_clone.v1";
     pub const AUTOPILOT_V1: &str = "autopilot.v1";
+    pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
 
-    pub const ALL: [&str; 24] = [
+    pub const ALL: [&str; 25] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -77,6 +78,7 @@ pub mod caps {
         TRUST_VIA_REPO_V1,
         MULTI_CLONE_V1,
         AUTOPILOT_V1,
+        SIGNED_CONTEXT_V1,
     ];
 }
 
