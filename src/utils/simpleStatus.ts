@@ -1,5 +1,6 @@
 export interface StatusLike {
 	id: number | string;
+	name?: string | null;
 	type?: string | null;
 }
 

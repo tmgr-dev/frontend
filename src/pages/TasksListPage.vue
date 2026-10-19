@@ -52,6 +52,11 @@
 		paginateLocally,
 		type TaskStateFilter,
 	} from '@/utils/taskStateFilter';
+	import {
+		filterableStatuses,
+		filterTasksByStatusIds,
+		matchesStatusIds,
+	} from '@/utils/taskStatusFilter';
 	import { formatTime } from '@/utils/timeUtils.js';
 	import {
 		ArrowDownWideNarrowIcon,
@@ -96,6 +101,7 @@
 	];
 	const ALL_TASKS_PER_PAGE = 100000;
 	const stateFilter = ref<TaskStateFilter>('all');
+	const selectedStatusIds = ref<number[]>([]);
 	const archiveDoneIds = ref<number[] | null>(null);
 	const categories = ref<Category[]>([]);
 	const selectedCategory = ref(null);
@@ -131,6 +137,14 @@
 
 	const status = computed(() => route.meta.status as string | undefined);
 	const isActiveList = computed(() => !status.value);
+	const statusFilterOptions = computed(() =>
+		simpleMode.value || !isActiveList.value
+			? []
+			: filterableStatuses(workspaceStatuses.value),
+	);
+	const activeStatusIds = computed(() =>
+		statusFilterOptions.value.length ? selectedStatusIds.value : [],
+	);
 	const pageTitle = computed(
 		() => (h1 as Record<string, string>)[route.name as string] || 'Task List',
 	);
@@ -168,6 +182,7 @@
 		) {
 			return false;
 		}
+		if (!matchesStatusIds(task, activeStatusIds.value)) return false;
 		return true;
 	}
 
@@ -396,6 +411,21 @@
 			loadTasks();
 		}
 	});
+	watch(selectedStatusIds, () => {
+		pagination.value.current_page = 1;
+		if (route.query.page && String(route.query.page) !== '1') {
+			updateRouteQuery();
+		} else {
+			loadTasks();
+		}
+	});
+	watch(statusFilterOptions, (options) => {
+		const known = new Set(options.map((option) => Number(option.id)));
+		const kept = selectedStatusIds.value.filter((id) => known.has(id));
+		if (kept.length !== selectedStatusIds.value.length) {
+			selectedStatusIds.value = kept;
+		}
+	});
 	watch(() => store.state.reloadTasksKey, loadTasks);
 	watch(
 		() => store.state.updatedTaskKey,
@@ -488,17 +518,22 @@
 			let response;
 			if (status.value) {
 				response = await getTasksByStatus(status.value, params);
-			} else if (simpleMode.value && stateFilter.value !== 'all') {
+			} else if (
+				(simpleMode.value && stateFilter.value !== 'all') ||
+				activeStatusIds.value.length
+			) {
 				const everything = await getTasks({
 					params: params.params,
 					page: 1,
 					per_page: ALL_TASKS_PER_PAGE,
 				});
-				const matching = filterTasksByState(
-					everything.data,
-					stateFilter.value,
-					workspaceStatuses.value,
-				);
+				const matching = simpleMode.value
+					? filterTasksByState(
+							everything.data,
+							stateFilter.value,
+							workspaceStatuses.value,
+					  )
+					: filterTasksByStatusIds(everything.data, activeStatusIds.value);
 				const paged = paginateLocally(
 					matching,
 					pagination.value.current_page,
@@ -569,11 +604,26 @@
 
 	function resetFilters() {
 		selectedCategory.value = null;
+		selectedStatusIds.value = [];
 	}
+
+	function toggleStatus(id: number) {
+		selectedStatusIds.value = selectedStatusIds.value.includes(id)
+			? selectedStatusIds.value.filter((x) => x !== id)
+			: [...selectedStatusIds.value, id];
+	}
+
+	const hasStatusFilter = computed(() => activeStatusIds.value.length > 0);
+	const showFiltersDialog = computed(
+		() =>
+			showSurface('categories.list-filter') ||
+			statusFilterOptions.value.length > 0,
+	);
 
 	const hasActiveSearch = computed(
 		() =>
 			!!searchText.value ||
+			hasStatusFilter.value ||
 			(selectedCategory.value !== null && selectedCategory.value !== -1),
 	);
 
@@ -822,7 +872,7 @@
 							</button>
 						</div>
 
-						<Dialog v-if="showSurface('categories.list-filter')">
+						<Dialog v-if="showFiltersDialog">
 							<DialogTrigger as-child>
 								<button
 									@click="showCategorySelect = !showCategorySelect"
@@ -830,7 +880,8 @@
 									title="filters"
 									class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
 									:class="[
-										selectedCategory && selectedCategory !== -1
+										(selectedCategory && selectedCategory !== -1) ||
+										hasStatusFilter
 											? 'border-brand text-brand'
 											: 'border-line',
 									]"
@@ -847,10 +898,40 @@
 								</DialogHeader>
 
 								<CategoriesCombobox
+									v-if="showSurface('categories.list-filter')"
 									:categories="categories"
 									v-model="selectedCategory"
 									class="!w-full"
 								/>
+								<div
+									v-if="statusFilterOptions.length"
+									class="flex flex-col gap-2"
+								>
+									<span class="text-sm font-medium text-ink">Status</span>
+									<div
+										class="flex flex-wrap gap-2"
+										role="group"
+										aria-label="Status"
+									>
+										<button
+											v-for="option in statusFilterOptions"
+											:key="option.id"
+											type="button"
+											class="h-8 rounded-pill border px-3 text-sm transition-colors"
+											:class="
+												selectedStatusIds.includes(Number(option.id))
+													? 'border-brand bg-surface-sunken font-medium text-brand'
+													: 'border-line text-ink-subtle hover:text-ink'
+											"
+											:aria-pressed="
+												selectedStatusIds.includes(Number(option.id))
+											"
+											@click="toggleStatus(Number(option.id))"
+										>
+											{{ option.name }}
+										</button>
+									</div>
+								</div>
 								<DialogFooter>
 									<Button variant="outline" @click="resetFilters">
 										reset
@@ -910,8 +991,8 @@
 				<div v-else-if="!isLoading && !errorLoading" class="">
 					<EmptyState
 						v-if="hasActiveSearch"
-						title="No tasks match your search"
-						:action="{ label: 'Clear search', onClick: clearSearch }"
+						title="No tasks match your filters"
+						:action="{ label: 'Clear filters', onClick: clearSearch }"
 					/>
 					<EmptyState
 						v-else
