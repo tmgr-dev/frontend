@@ -21,6 +21,15 @@ import {
 } from '@/utils/agentApproval';
 import { buildBulkItems } from '@/utils/agentApprovalBulk';
 import {
+	coded,
+	coverageToSign,
+	isQuietAuthorCode,
+	prepareCoverage,
+	type CoverageHashes,
+	type CoverageTexts,
+	type ShownCoverage,
+} from '@/utils/agentApprovalCoverage';
+import {
 	categoryIdOf,
 	shouldAutoSign,
 	type TaskText,
@@ -138,9 +147,6 @@ export interface SignableTask {
 
 const currentUserId = (): number => Number(store.state.user?.id) || 0;
 
-const coded = (code: string, message: string): Error =>
-	Object.assign(new Error(message), { response: { data: { code } } });
-
 const sameRepositories = (
 	a: readonly string[] | null,
 	b: readonly string[] | null,
@@ -150,11 +156,11 @@ const sameRepositories = (
 		: a.length === b.length &&
 		  [...a].sort().join('\n') === [...b].sort().join('\n');
 
-const repositoriesFor = async (
-	taskId: number,
+const repositoriesFor = (
+	approval: TaskApproval,
 	shown?: readonly string[] | null,
-): Promise<string[] | null> => {
-	const current = (await getTaskApproval(taskId)).repositories ?? null;
+): string[] | null => {
+	const current = approval.repositories ?? null;
 	if (shown !== undefined && !sameRepositories(shown, current))
 		throw coded(
 			'repositories_changed',
@@ -181,6 +187,7 @@ export const signTaskApproval = async (
 	task: SignableTask,
 	kind: ApprovalKind,
 	shownRepositories?: readonly string[] | null,
+	shownCoverage?: ShownCoverage,
 ): Promise<void> => {
 	const userId = currentUserId();
 	const workspaceId = Number(
@@ -189,8 +196,12 @@ export const signTaskApproval = async (
 	const sha = await contentSha256(task.title, task.description);
 	const host = apiHost();
 	const categoryId = categoryIdOf(task);
-	const repos = await reposHashOf(
-		await repositoriesFor(task.id, shownRepositories),
+	const approval = await getTaskApproval(task.id);
+	const repos = await reposHashOf(repositoriesFor(approval, shownRepositories));
+	const covered: CoverageHashes = await prepareCoverage(
+		kind,
+		approval,
+		shownCoverage,
 	);
 	const attempt = async (forceNew: boolean) => {
 		const key = await signingKey(userId, forceNew);
@@ -205,6 +216,8 @@ export const signTaskApproval = async (
 			key.keyId,
 			signedAt,
 			repos,
+			covered.persona_sha256,
+			covered.context_sha256,
 		);
 		await submitTaskApproval(task.id, {
 			kind,
@@ -213,6 +226,7 @@ export const signTaskApproval = async (
 			category_id: categoryId,
 			content_sha256: sha,
 			...(repos ? { repos_sha256: repos } : {}),
+			...covered,
 			signed_at: signedAt,
 			signature: await signMessage(key.privateKey, message),
 		});
@@ -272,8 +286,7 @@ export const autoSignAfterSave = async (
 		await signTaskApproval(task, 'author');
 	} catch (error) {
 		const code = agentRunErrorCode(error);
-		if (code !== 'confirm_required' && code !== 'repositories_changed')
-			throw error;
+		if (!isQuietAuthorCode(code)) throw error;
 		window.dispatchEvent(
 			new CustomEvent(APPROVAL_CHANGED, {
 				detail: {
@@ -304,23 +317,35 @@ export const autoSignQuietly = (
 export const signTaskApprovalsBulk = async (
 	tasks: SignableTask[],
 	shownRepositories: Record<number, string[] | null> = {},
+	shownCoverage: Record<number, ShownCoverage> = {},
 ): Promise<BulkApprovalResult[]> => {
 	const userId = currentUserId();
 	const host = apiHost();
 	const refused: BulkApprovalResult[] = [];
-	const ready: { task: SignableTask; repositories: string[] | null }[] = [];
+	const ready: {
+		task: SignableTask;
+		repositories: string[] | null;
+		coverage: CoverageTexts;
+	}[] = [];
 	const queue = [...tasks];
 	await Promise.all(
 		Array.from({ length: 6 }, async () => {
 			while (queue.length) {
 				const task = queue.shift()!;
 				try {
-					const repositories = await repositoriesFor(
-						task.id,
+					const approval = await getTaskApproval(task.id);
+					const repositories = repositoriesFor(
+						approval,
 						shownRepositories[task.id],
 					);
 					await reposHashOf(repositories);
-					ready.push({ task, repositories });
+					const shown = shownCoverage[task.id] ?? {};
+					await prepareCoverage('confirm', approval, shown);
+					ready.push({
+						task,
+						repositories,
+						coverage: coverageToSign('confirm', approval, shown),
+					});
 				} catch (error) {
 					refused.push({
 						task_id: task.id,
@@ -336,7 +361,7 @@ export const signTaskApprovalsBulk = async (
 	const attempt = async (forceNew: boolean) => {
 		const key = await signingKey(userId, forceNew);
 		const items = await buildBulkItems({
-			tasks: ready.map(({ task, repositories }) => ({
+			tasks: ready.map(({ task, repositories, coverage }) => ({
 				id: task.id,
 				title: task.title,
 				description: task.description,
@@ -345,6 +370,7 @@ export const signTaskApprovalsBulk = async (
 				),
 				categoryId: categoryIdOf(task),
 				repositories,
+				coverage,
 			})),
 			host,
 			userId,
