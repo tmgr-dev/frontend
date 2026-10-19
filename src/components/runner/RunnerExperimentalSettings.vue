@@ -59,6 +59,8 @@
 			<AgentSessionsPanel />
 		</SettingsSection>
 
+		<RunnerAllowedWorkspaces v-if="runner.enabled.value" />
+
 		<BypassConsentDialog
 			v-model:open="bypassOpen"
 			@confirm="bypassOpen = false"
@@ -73,6 +75,7 @@
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
 	import AgentSessionsPanel from '@/components/runner/AgentSessionsPanel.vue';
 	import BypassConsentDialog from '@/components/runner/BypassConsentDialog.vue';
+	import RunnerAllowedWorkspaces from '@/components/runner/RunnerAllowedWorkspaces.vue';
 	import { Button } from '@/components/ui/button';
 	import { Switch } from '@/components/ui/switch';
 	import { bypassAvailable } from '@/runner/bypass';
@@ -92,6 +95,7 @@
 			Button,
 			CommandChip,
 			CommandText,
+			RunnerAllowedWorkspaces,
 			SettingsRow,
 			SettingsSection,
 			Switch,

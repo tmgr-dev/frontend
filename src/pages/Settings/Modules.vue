@@ -261,6 +261,11 @@
 					:is-creator="isOwner"
 				/>
 
+				<AgentRunsSetting
+					v-if="currentWorkspaceId && Number(currentWorkspaceId) > 0"
+					:workspace-id="Number(currentWorkspaceId)"
+				/>
+
 				<PagesAnalystSetting
 					v-if="
 						currentWorkspaceId &&
@@ -311,6 +316,7 @@
 	} from '@/components/ui/select';
 	import { Switch } from '@/components/ui/switch';
 	import { useToast } from '@/components/ui/toast';
+	import AgentRunsSetting from '@/components/workspace/AgentRunsSetting.vue';
 	import PagesAnalystSetting from '@/components/workspace/PagesAnalystSetting.vue';
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';

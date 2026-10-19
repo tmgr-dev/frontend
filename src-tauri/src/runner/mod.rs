@@ -1,3 +1,4 @@
+mod allowed;
 mod api;
 mod bundle;
 pub(crate) mod commands;

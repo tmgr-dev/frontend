@@ -52,6 +52,11 @@ async fn confirm<R: Runtime>(app: &AppHandle<R>, title: &'static str, message: S
 }
 
 #[tauri::command]
+pub async fn runner_allowed_list() -> Result<super::allowed::AllowedList, String> {
+  blocking(|| Ok(super::allowed::read_allowed(chrono::Utc::now()))).await
+}
+
+#[tauri::command]
 pub fn runner_enabled(runner: State<'_, Runner>) -> bool {
   runner.enabled()
 }

@@ -287,6 +287,7 @@ pub fn run() {
       local_access::local_access_reply,
       local_access::local_access_event,
       runner::commands::runner_enabled,
+      runner::commands::runner_allowed_list,
       runner::commands::runner_set_enabled,
       runner::commands::runner_status,
       runner::commands::runner_profiles,

@@ -59,6 +59,7 @@
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
+	import CloudAgentApproval from '@/components/tasks/CloudAgentApproval.vue';
 	import ConfirmForAgentRuns from '@/components/tasks/ConfirmForAgentRuns.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import PomodoroBlock from '@/components/tasks/PomodoroBlock.vue';
@@ -156,6 +157,7 @@
 	} from '@/utils/simpleStatus';
 	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
+	import { autoSignQuietly } from '@/utils/agentApprovalClient';
 	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import {
 		openTaskWindow,
@@ -1516,6 +1518,7 @@
 			suppressAutoSavingForOnce.value = true;
 			const created = await createTaskAction(form.value as Task);
 			if (created.id) {
+				autoSignQuietly(created);
 				rememberTaskSettings(created);
 				await attachPendingFiles(created.id as number);
 			}
@@ -1675,6 +1678,7 @@
 			/* Storage unavailable. */
 		}
 		store.commit('updateSingleTask', saved);
+		autoSignQuietly(saved);
 		if (!formDisposed && form.value.id === snapshot.id) {
 			saveError.value = '';
 			suppressAutoSavingForOnce.value = true;
@@ -2868,6 +2872,12 @@
 					<ConfirmForAgentRuns
 						v-if="isDesktopApp() && isLocalWorkspaceTask && (taskId || form.id)"
 						:task-id="Number(taskId || form.id)"
+					/>
+
+					<CloudAgentApproval
+						v-if="!isLocalWorkspaceTask && (taskId || form.id)"
+						:task-id="Number(taskId || form.id)"
+						:workspace-id="Number(form.workspace_id || store.getters.currentWorkspaceId)"
 					/>
 
 					<TaskAgentRunner
