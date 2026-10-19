@@ -60,7 +60,11 @@ fn recalled(p: &mut Plan) {
     }
 }
 
-fn launch_pin(profile: &str, model: Option<&str>, mode: &str) -> Result<(ExePin, String)> {
+pub(super) fn launch_pin(
+    profile: &str,
+    model: Option<&str>,
+    mode: &str,
+) -> Result<(ExePin, String)> {
     let dir = tmgr_runner::profile::user_dir();
     let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
     let p = set.lookup(profile).map_err(Error::usage)?;
@@ -262,6 +266,10 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         .agent
         .clone()
         .ok_or_else(|| Error::usage("pass --agent <profile> to run a task"))?;
+    let local = local_code(o, &Config::load(&config::config_dir()?)?).is_ok();
+    if !local {
+        return super::cloud::run(o, a, reference);
+    }
     let mode = a.mode.unwrap_or(PermissionMode::Ask).as_str();
     let p = plan(o, a, reference)?;
     if !o.json && !o.quiet {

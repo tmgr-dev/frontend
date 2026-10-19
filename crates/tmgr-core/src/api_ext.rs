@@ -186,6 +186,26 @@ impl Client {
         out
     }
 
+    pub fn agent_run_keys(&self) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::GET,
+            "/api/agent-runs/keys",
+            &[],
+            None,
+            "tasks:read",
+        )?))
+    }
+
+    pub fn agent_run_task(&self, task_id: i64) -> Result<Value> {
+        Ok(unwrap_data(self.request(
+            Method::GET,
+            &format!("/api/agent-runs/tasks/{task_id}"),
+            &[],
+            None,
+            "tasks:read",
+        )?))
+    }
+
     pub fn pages_flat(&self, workspace_id: i64) -> Result<Vec<ApiPage>> {
         self.in_workspace(workspace_id, || {
             items(self.request(Method::GET, "/api/pages/tree", &[], None, "pages:read")?)

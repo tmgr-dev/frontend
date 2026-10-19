@@ -54,6 +54,8 @@ fn fingerprint_is_sixteen_hex_chars_of_the_key_hash() {
     let a = fingerprint(s(&f["key"], "public_key"));
     let b = fingerprint(s(&f, "other_public_key"));
     assert_eq!(a.len(), 16);
-    assert!(a.chars().all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()));
+    assert!(a
+        .chars()
+        .all(|c| c.is_ascii_hexdigit() && !c.is_uppercase()));
     assert_ne!(a, b);
 }

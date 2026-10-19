@@ -4249,7 +4249,7 @@ fn agent_work_is_refused_for_cloud_tasks_runs_without_a_task_and_profiles_withou
     });
     let e = err_text(c.create_run(cloud));
     assert!(
-        e.starts_with("invalid_params") && e.contains("16a.11"),
+        e.starts_with("forbidden") && e.contains("signed approval"),
         "{e}"
     );
     let mut none = h.task_run("aw");

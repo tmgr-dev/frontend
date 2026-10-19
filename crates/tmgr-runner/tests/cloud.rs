@@ -123,8 +123,10 @@ fn missing_approval_is_refused() {
 #[test]
 fn forged_signature_is_refused() {
     let mut r = req();
-    r.cloud.as_mut().unwrap().signature =
-        fx()["cases"][2]["tampered_signature"].as_str().unwrap().into();
+    r.cloud.as_mut().unwrap().signature = fx()["cases"][2]["tampered_signature"]
+        .as_str()
+        .unwrap()
+        .into();
     let e = check_with(&r, TASK, Ok(good()), now()).unwrap_err();
     assert!(e.contains("signature is not valid"), "{e}");
 }
@@ -209,7 +211,17 @@ fn runner_dependency_closure_has_no_http_client() {
         }
     }
     assert!(seen.contains("tmgr-approval") && seen.contains("p256"));
-    for banned in ["reqwest", "hyper", "ureq", "isahc", "attohttpc", "tmgr-core"] {
-        assert!(!seen.contains(banned), "{banned} is reachable from tmgr-runner");
+    for banned in [
+        "reqwest",
+        "hyper",
+        "ureq",
+        "isahc",
+        "attohttpc",
+        "tmgr-core",
+    ] {
+        assert!(
+            !seen.contains(banned),
+            "{banned} is reachable from tmgr-runner"
+        );
     }
 }

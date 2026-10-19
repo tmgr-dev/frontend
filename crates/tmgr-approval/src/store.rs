@@ -186,7 +186,6 @@ impl AllowFile {
     }
 }
 
-/// Everything about a claim that needs no network: the pinned key, the signature, the text hash and the identity fields.
 pub fn check_claim(
     entry: &Entry,
     claim: &CloudApproval,

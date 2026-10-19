@@ -1,4 +1,6 @@
+mod allow;
 mod attach;
+mod cloud;
 mod local;
 mod observe;
 mod ops;
@@ -61,8 +63,31 @@ pub enum RunnerCmd {
     Untrust(FolderArgs),
     /// [experimental] List the trusted folders
     Trusted,
+    /// [experimental] Let this machine start agents on tasks of a cloud workspace that you approved in the web app (terminal only, asks you to type the workspace code)
+    Allow(AllowArgs),
+    /// [experimental] Stop letting this machine start agents on tasks of a cloud workspace
+    Disallow(DisallowArgs),
+    /// [experimental] List the cloud workspaces allowed here, with expiry and pinned keys
+    Allowed,
     #[command(hide = true)]
     Serve,
+}
+
+#[derive(Args)]
+pub struct AllowArgs {
+    /// Workspace code
+    #[arg(value_name = "WS")]
+    pub workspace: String,
+    /// How long the permission lasts: 8h, 7d, 30d or forever
+    #[arg(long = "for", value_name = "DURATION", default_value = "30d", value_parser = allow::Lifetime::parse)]
+    pub lifetime: allow::Lifetime,
+}
+
+#[derive(Args)]
+pub struct DisallowArgs {
+    /// Workspace code
+    #[arg(value_name = "WS")]
+    pub workspace: String,
 }
 
 #[derive(Args)]
@@ -82,8 +107,9 @@ pub struct InstallServiceArgs {
 #[derive(Args)]
 #[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent", "fetch"])))]
 pub struct RunArgs {
-    /// Task to run, in a local workspace (--ws local:<code>): the agent works in its own clone of the
-    /// project's repository on the task's branch, and the run is recorded as Agent work of the task
+    /// Task to run, in a local workspace (--ws local:<code>) or an allowed cloud workspace (see
+    /// `runner allow`): the agent works in its own clone of the project's repository on the task's branch,
+    /// and the run is recorded as Agent work of the task
     #[arg(value_name = "REF", conflicts_with = "agent_cmd")]
     pub task: Option<String>,
     /// [experimental] Run on this follower (a pinned link) through its own runner
@@ -122,7 +148,7 @@ pub struct RunArgs {
     /// [experimental] Pre-accept the agent's folder-trust prompt for this folder, for this run only
     #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on", "task"])]
     pub trust: bool,
-    /// Permission mode for a task run (default ask)
+    /// Permission mode for a task run (default ask; accept-edits for a cloud task)
     #[arg(long, value_enum, requires = "task", conflicts_with = "on")]
     pub mode: Option<PermissionMode>,
     /// Branch or commit the task's clone starts from (default: the repository's current branch)
@@ -298,7 +324,8 @@ pub struct RmArgs {
     pub session: String,
 }
 
-pub struct Opts {
+pub struct Opts<'a> {
+    pub cli: &'a Cli,
     pub ws: Option<String>,
     pub json: bool,
     pub quiet: bool,
@@ -320,6 +347,7 @@ pub fn internal_entry() -> Option<i32> {
 
 pub fn run(cli: &Cli, cmd: &RunnerCommands) -> i32 {
     let o = Opts {
+        cli,
         ws: cli.ws.clone(),
         json: cli.json,
         quiet: cli.quiet,

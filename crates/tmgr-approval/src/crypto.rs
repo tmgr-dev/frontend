@@ -55,3 +55,10 @@ pub fn fingerprint(public_key_b64: &str) -> String {
         .map(|b| format!("{b:02x}"))
         .collect()
 }
+
+pub fn valid_public_key(public_key_b64: &str) -> bool {
+    STANDARD
+        .decode(public_key_b64)
+        .ok()
+        .is_some_and(|k| VerifyingKey::from_sec1_bytes(&k).is_ok())
+}

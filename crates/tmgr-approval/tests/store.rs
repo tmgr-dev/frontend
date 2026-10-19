@@ -63,7 +63,10 @@ fn valid_claim_passes() {
 #[test]
 fn forged_signature_is_refused() {
     let (mut c, t, b) = claim();
-    c.signature = fx()["cases"][2]["tampered_signature"].as_str().unwrap().into();
+    c.signature = fx()["cases"][2]["tampered_signature"]
+        .as_str()
+        .unwrap()
+        .into();
     let r = check_claim(&entry(None), &c, &t, &b).unwrap_err();
     assert!(r.message.contains("signature is not valid"), "{r}");
 }
@@ -113,18 +116,24 @@ fn identity_mismatch_is_refused() {
 #[test]
 fn find_live_refuses_missing_and_expired_and_names_the_fix() {
     let mut f = AllowFile::default();
-    let r = f.find_live("api.tmgr.dev", 1, 56, "tmgrdev", now()).unwrap_err();
+    let r = f
+        .find_live("api.tmgr.dev", 1, 56, "tmgrdev", now())
+        .unwrap_err();
     assert!(r.message.contains("not allowed"));
     assert_eq!(r.fix, "tmgr runner allow tmgrdev");
     f.upsert(entry(Some("2025-10-09T00:00:00Z")));
-    let r = f.find_live("api.tmgr.dev", 1, 56, "tmgrdev", now()).unwrap_err();
+    let r = f
+        .find_live("api.tmgr.dev", 1, 56, "tmgrdev", now())
+        .unwrap_err();
     assert!(r.message.contains("expired on 2025-10-09"));
     f.upsert(entry(Some("2025-10-11T00:00:00Z")));
     assert!(f.find_live("api.tmgr.dev", 1, 56, "tmgrdev", now()).is_ok());
     assert_eq!(f.entries.len(), 1);
     f.upsert(entry(None));
     assert!(f.find_live("api.tmgr.dev", 1, 56, "tmgrdev", now()).is_ok());
-    assert!(f.find_live("api.tmgr.dev", 2, 56, "tmgrdev", now()).is_err());
+    assert!(f
+        .find_live("api.tmgr.dev", 2, 56, "tmgrdev", now())
+        .is_err());
     assert!(f.find_live("other", 1, 56, "tmgrdev", now()).is_err());
 }
 
@@ -144,13 +153,22 @@ fn store_round_trips_with_private_modes() {
     f.save_to(&path).unwrap();
     assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
     assert_eq!(
-        path.parent().unwrap().metadata().unwrap().permissions().mode() & 0o777,
+        path.parent()
+            .unwrap()
+            .metadata()
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
         0o700
     );
     let back = AllowFile::load_from(&path).unwrap();
     assert_eq!(back, f);
     assert_eq!(back.entries[0].repo(127), Some("/abs/repo"));
-    assert!(AllowFile::load_from(&dir.path().join("none.json")).unwrap().entries.is_empty());
+    assert!(AllowFile::load_from(&dir.path().join("none.json"))
+        .unwrap()
+        .entries
+        .is_empty());
     std::fs::write(&path, "{").unwrap();
     assert!(AllowFile::load_from(&path).is_err());
     std::fs::write(&path, r#"{"version":2,"entries":[]}"#).unwrap();

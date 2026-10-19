@@ -31,6 +31,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Trust(a) => super::trusted::trust(o, &a.dir),
             RunnerCmd::Untrust(a) => super::trusted::untrust(o, &a.dir),
             RunnerCmd::Trusted => super::trusted::list(o),
+            RunnerCmd::Allow(a) => super::allow::allow(o, &a.workspace, a.lifetime),
+            RunnerCmd::Disallow(a) => super::allow::disallow(o, &a.workspace),
+            RunnerCmd::Allowed => super::allow::allowed(o),
             RunnerCmd::Serve => serve(),
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {

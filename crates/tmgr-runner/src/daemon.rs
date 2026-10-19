@@ -1316,7 +1316,9 @@ fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr
     }
     match req.task {
         None => return Err(api(ErrorCode::InvalidParams, "agent_work needs a task")),
-        Some(t) if t.workspace_id >= 0 => crate::cloud::check(req, t).map_err(|m| api(ErrorCode::Forbidden, m))?,
+        Some(t) if t.workspace_id >= 0 => {
+            crate::cloud::check(req, t).map_err(|m| api(ErrorCode::Forbidden, m))?
+        }
         Some(_) if req.cloud.is_some() => {
             return Err(api(
                 ErrorCode::Forbidden,

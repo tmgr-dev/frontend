@@ -396,26 +396,6 @@ fn a_task_clone_of_a_trusted_repository_starts_without_the_trust_question() {
 }
 
 #[test]
-fn a_cloud_workspace_is_refused_with_the_local_only_rule() {
-    let fx = Fx::new();
-    fx.agent("exit 0\n");
-    let (ok, v) = fx.json(&[
-        "--json", "--ws", "tmgrdev", "run", "TM-123", "--agent", "fake", "--yes",
-    ]);
-    assert!(!ok);
-    assert_eq!(v["error"]["code"], "usage", "{v}");
-    let msg = v["error"]["message"].as_str().unwrap();
-    assert!(
-        msg.contains("local workspaces only") && msg.contains("16a.11"),
-        "{msg}"
-    );
-    let out = fx.tmgr(&[
-        "--ws", "tmgrdev", "run", "TM-123", "--agent", "fake", "--yes",
-    ]);
-    assert_eq!(out.status.code(), Some(2));
-}
-
-#[test]
 fn an_unmapped_project_and_a_foreign_folder_at_the_clone_path_are_refused() {
     let fx = Fx::new();
     fx.agent("exit 0\n");
