@@ -340,6 +340,8 @@ impl Cloud {
         let env = Env::new().await;
         env.login_seed();
         let root = env.tmp.path().to_path_buf();
+        std::fs::set_permissions(&root, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+            .unwrap();
         std::fs::create_dir_all(env.config_dir()).unwrap();
         std::fs::write(
             env.config_dir().join("config.toml"),
