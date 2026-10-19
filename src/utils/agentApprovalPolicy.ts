@@ -138,3 +138,27 @@ export const revokedReasonLabel = (reason: string | null | undefined) => {
 			return reason ? reason.replace(/_/g, ' ') : 'changed';
 	}
 };
+
+export interface CategoryFields {
+	project_category_id?: number | null;
+	category?: number | { id: number; code?: string; title?: string } | null;
+}
+
+export const categoryIdOf = (task: CategoryFields): number => {
+	const fromCategory =
+		task.category && typeof task.category === 'object'
+			? task.category.id
+			: task.category;
+	return Number(task.project_category_id ?? fromCategory ?? 0) || 0;
+};
+
+export const categoryLabel = (task: CategoryFields): string => {
+	const id = categoryIdOf(task);
+	if (!id) return 'No category';
+	const category = task.category;
+	if (category && typeof category === 'object' && category.id === id) {
+		const parts = [category.code, category.title].filter(Boolean);
+		if (parts.length) return parts.join(' - ');
+	}
+	return `Category #${id}`;
+};

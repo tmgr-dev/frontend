@@ -1,4 +1,6 @@
 import {
+	categoryIdOf,
+	categoryLabel,
 	expiringSoon,
 	shouldAutoSign,
 	splitInvisible,
@@ -167,5 +169,25 @@ describe('splitInvisible', () => {
 			{ text: '<U+202E>', flagged: true },
 			{ text: 'c', flagged: false },
 		]);
+	});
+});
+
+describe('category display matches the signed id', () => {
+	const cases: [any, number, string][] = [
+		[{ category: { id: 127, code: 'TM', title: 'Tasks' } }, 127, 'TM - Tasks'],
+		[{ project_category_id: 5, category: { id: 5, code: 'X' } }, 5, 'X'],
+		[
+			{ project_category_id: 9, category: { id: 5, code: 'X' } },
+			9,
+			'Category #9',
+		],
+		[{ category: 12 }, 12, 'Category #12'],
+		[{ category: null }, 0, 'No category'],
+		[{}, 0, 'No category'],
+		[{ project_category_id: null, category: { id: 0 } }, 0, 'No category'],
+	];
+	it.each(cases)('%j -> %s / %s', (task, id, label) => {
+		expect(categoryIdOf(task)).toBe(id);
+		expect(categoryLabel(task)).toBe(label);
 	});
 });

@@ -19,7 +19,11 @@ import {
 	signMessage,
 } from '@/utils/agentApproval';
 import { buildBulkItems } from '@/utils/agentApprovalBulk';
-import { shouldAutoSign, type TaskText } from '@/utils/agentApprovalPolicy';
+import {
+	categoryIdOf,
+	shouldAutoSign,
+	type TaskText,
+} from '@/utils/agentApprovalPolicy';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 
 export const APPROVAL_CHANGED = 'tmgr:agent-approval-changed';
@@ -130,14 +134,6 @@ export interface SignableTask {
 	project_category_id?: number | null;
 	category?: number | { id: number } | null;
 }
-
-export const categoryIdOf = (task: SignableTask): number => {
-	const fromCategory =
-		task.category && typeof task.category === 'object'
-			? task.category.id
-			: task.category;
-	return Number(task.project_category_id ?? fromCategory ?? 0) || 0;
-};
 
 const currentUserId = (): number => Number(store.state.user?.id) || 0;
 
