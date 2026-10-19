@@ -106,7 +106,8 @@ pub fn split_cli_keys(
     own: Option<&OwnKey>,
 ) -> (Vec<ListedKey>, Vec<ListedKey>) {
     keys.into_iter().partition(|(k, _)| {
-        !cli_ids.contains(&k.key_id) || own.is_some_and(|o| o.public_key == k.public_key)
+        !cli_ids.contains(&k.key_id)
+            || own.is_some_and(|o| o.public_key == k.public_key && o.key_id == k.key_id)
     })
 }
 
@@ -511,8 +512,8 @@ mod key_tests {
         assert_eq!(ids_of(&pinned), ["k1", "k2"]);
         assert_eq!(ids_of(&foreign), ["c1", "c2"]);
         let (pinned, foreign) = split_cli_keys(all(), &ids, Some(&own()));
-        assert_eq!(ids_of(&pinned), ["k1", "k2", "c1", "c2"]);
-        assert!(foreign.is_empty());
+        assert_eq!(ids_of(&pinned), ["k1", "k2", "c1"]);
+        assert_eq!(ids_of(&foreign), ["c2"]);
         let other = OwnKey {
             key_id: "c9".into(),
             public_key: A.into(),

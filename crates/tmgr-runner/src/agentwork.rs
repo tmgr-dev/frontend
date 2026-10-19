@@ -49,11 +49,17 @@ pub struct Exit {
     pub interrupted: bool,
 }
 
+#[cfg(debug_assertions)]
 pub fn retry_ms() -> u64 {
     std::env::var("TMGR_TEST_AGENT_WORK_RETRY_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(RETRY_MS)
+}
+
+#[cfg(not(debug_assertions))]
+pub fn retry_ms() -> u64 {
+    RETRY_MS
 }
 
 pub fn wanted(dir: &Path) -> bool {
