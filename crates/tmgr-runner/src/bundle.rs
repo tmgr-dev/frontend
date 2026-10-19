@@ -654,6 +654,7 @@ mod tests {
             trust_cwd: None,
             trust_via_repo: None,
             agent_work: false,
+            cloud: None,
             exe_pin: None,
             argv_sha256: None,
             bundle_sha256: Some(bundle.sha256()),

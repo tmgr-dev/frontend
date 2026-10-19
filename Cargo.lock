@@ -3968,6 +3968,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
+name = "tmgr-approval"
+version = "1.0.6"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "libc",
+ "p256",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+ "tempfile",
+ "tmgr-ipc",
+]
+
+[[package]]
 name = "tmgr-cli"
 version = "1.0.6"
 dependencies = [
@@ -4021,6 +4036,7 @@ dependencies = [
  "sha2 0.11.1",
  "tar",
  "tempfile",
+ "tmgr-approval",
  "tmgr-local",
  "tokio",
  "toml",
@@ -4112,6 +4128,7 @@ dependencies = [
  "sha2 0.11.1",
  "shell-words",
  "tempfile",
+ "tmgr-approval",
  "tmgr-ipc",
  "toml",
  "unicode-width",

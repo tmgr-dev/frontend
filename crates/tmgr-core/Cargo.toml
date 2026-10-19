@@ -24,6 +24,7 @@ tar = { version = "0.4", default-features = false }
 semver = "1"
 libc.workspace = true
 tmgr-local = { path = "../tmgr-local" }
+tmgr-approval.workspace = true
 rusqlite.workspace = true
 form_urlencoded.workspace = true
 

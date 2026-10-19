@@ -42,6 +42,7 @@ tmgr-ipc = { path = "crates/tmgr-ipc" }
 tmgr-runner = { path = "crates/tmgr-runner" }
 tmgr-usage = { path = "crates/tmgr-usage" }
 tmgr-queue = { path = "crates/tmgr-queue" }
+tmgr-approval = { path = "crates/tmgr-approval" }
 portable-pty = "0.9"
 vt100 = "0.16"
 vte = "0.15"

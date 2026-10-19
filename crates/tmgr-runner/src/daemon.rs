@@ -1316,10 +1316,11 @@ fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr
     }
     match req.task {
         None => return Err(api(ErrorCode::InvalidParams, "agent_work needs a task")),
-        Some(t) if t.workspace_id >= 0 => {
+        Some(t) if t.workspace_id >= 0 => crate::cloud::check(req, t).map_err(|m| api(ErrorCode::Forbidden, m))?,
+        Some(_) if req.cloud.is_some() => {
             return Err(api(
-                ErrorCode::InvalidParams,
-                "agent_work: the runner starts tasks of local workspaces only (decision 16a.11); run the task in a local workspace",
+                ErrorCode::Forbidden,
+                "agent_work: a cloud approval does not belong to a task of a local workspace",
             ))
         }
         Some(_) => {}
@@ -1936,6 +1937,11 @@ impl Runner {
         let (mode, perm_args) = resolve_mode(prof, req.permission_mode.as_deref())?;
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
+        } else if req.cloud.is_some() {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "a cloud approval is only accepted for agent work runs",
+            ));
         }
         if let Some(b) = &req.bundle {
             match (b.launch.permission_mode.as_deref(), mode.as_deref()) {

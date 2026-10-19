@@ -1,0 +1,22 @@
+[package]
+name = "tmgr-approval"
+description = "Signed approvals of cloud tasks and the local allow store; no network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+tmgr-ipc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+base64.workspace = true
+chrono.workspace = true
+libc.workspace = true
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }
+
+[dev-dependencies]
+tempfile.workspace = true

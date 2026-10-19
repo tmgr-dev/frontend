@@ -1,0 +1,118 @@
+{
+  "key": {
+    "key_id": "0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60",
+    "public_key": "BImU1e2SPEdD/HKLzjfuQlNuLgKE44/qEF5a+626Bj0KtbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE=",
+    "private_jwk": {
+      "key_ops": [
+        "sign"
+      ],
+      "ext": true,
+      "kty": "EC",
+      "x": "iZTV7ZI8R0P8covON-5CU24uAoTjj-oQXlr7rboGPQo",
+      "y": "tbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE",
+      "crv": "P-256",
+      "d": "tcWMl8R9Tfq7pwve1i4O1azrxO1X_y-8ulca-hgWfPc"
+    }
+  },
+  "other_public_key": "BD7GudbwbOUVIvsBsw0CvYo7MXeWK1HUMFt+qGPDXCqeED93aEkCI5814pbvM3gcEwEBre/NlqieFT46CB9RzdA=",
+  "cases": [
+    {
+      "title": "Lone CR",
+      "description": "a\rb\r\nc",
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9000,
+      "signed_at": 1760000000,
+      "content_sha256": "699049db79f506346c009af98057525db5d921b5a17414675c925b9ef41c2a7b",
+      "message": "tmgr-agent-approval:v1:api.tmgr.dev:1:56:9000:127:699049db79f506346c009af98057525db5d921b5a17414675c925b9ef41c2a7b:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000000",
+      "signature": "cQHdWAoHEUnSeMsYdz2ThpLvOT9xy1+0KuGf2Vm7UorV8bnz5FMSag2CB4HGYakuPxCAuZiHk5ycl8bPh+ZhEQ==",
+      "tampered_signature": "cQHdWAoHEUnSeMoYdz2ThpLvOT9xy1+0KuGf2Vm7UorV8bnz5FMSag2CB4HGYakuPxCAuZiHk5ycl8bPh+ZhEQ=="
+    },
+    {
+      "title": "Non-NFC é",
+      "description": "café vs café",
+      "host": "localhost:8080",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9001,
+      "signed_at": 1760000001,
+      "content_sha256": "c95a2752ad1fc388dbb3822c48106f885f2b11fc0691ccaf0411c5d03132d56d",
+      "message": "tmgr-agent-approval:v1:localhost:8080:1:56:9001:127:c95a2752ad1fc388dbb3822c48106f885f2b11fc0691ccaf0411c5d03132d56d:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000001",
+      "signature": "vadsB2+4g76FSvfi6nzhMuiBSaS+wk1OB+cHMrDxCohzp+qiAwzOjPrXTvB6xpx++P+1nUZjEQSE1SWOgr2T7g==",
+      "tampered_signature": "vadsB2+4g76FSvbi6nzhMuiBSaS+wk1OB+cHMrDxCohzp+qiAwzOjPrXTvB6xpx++P+1nUZjEQSE1SWOgr2T7g=="
+    },
+    {
+      "title": "Fix login",
+      "description": "Steps:\n1. a\n2. b",
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9002,
+      "signed_at": 1760000002,
+      "content_sha256": "cf7dd93e11d5731258383b35210012ebca56f85043454a8f79014532a8268ff2",
+      "message": "tmgr-agent-approval:v1:api.tmgr.dev:1:56:9002:127:cf7dd93e11d5731258383b35210012ebca56f85043454a8f79014532a8268ff2:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000002",
+      "signature": "cP5FUtM76ZHDwBIeWyRjZatH/9TW69Z+5eShLwbK0pjP16OTohz3Y0sjZWKWF+DnBk3uSH13HmYGT6b86iMxcQ==",
+      "tampered_signature": "cP5FUtM76ZHDwBMeWyRjZatH/9TW69Z+5eShLwbK0pjP16OTohz3Y0sjZWKWF+DnBk3uSH13HmYGT6b86iMxcQ=="
+    },
+    {
+      "title": "CRLF",
+      "description": "line1\r\nline2\r\n",
+      "host": "localhost:8080",
+      "category_id": 0,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9003,
+      "signed_at": 1760000003,
+      "content_sha256": "2e1601035b1de821f2d1ab707e5222d5bc69961badb302da46e40371f587c0e7",
+      "message": "tmgr-agent-approval:v1:localhost:8080:1:56:9003:0:2e1601035b1de821f2d1ab707e5222d5bc69961badb302da46e40371f587c0e7:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000003",
+      "signature": "Hok6wYWdYqPOYk3Sym8HmiNEqkAuHrJOrLwm4D5lrWh/GQxfdD+PMtGTEpU3BOPr1C3khMt+f8Bl0Rg/88bDWw==",
+      "tampered_signature": "Hok6wYWdYqPOYkzSym8HmiNEqkAuHrJOrLwm4D5lrWh/GQxfdD+PMtGTEpU3BOPr1C3khMt+f8Bl0Rg/88bDWw=="
+    },
+    {
+      "title": "Emoji 🚀 “quotes” \\ back",
+      "description": "U+2028:  tab:\t",
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9004,
+      "signed_at": 1760000004,
+      "content_sha256": "2665479a591e461f38b4d7c0f4accf17dfc8740b887356c32ea3eb578431a6c0",
+      "message": "tmgr-agent-approval:v1:api.tmgr.dev:1:56:9004:127:2665479a591e461f38b4d7c0f4accf17dfc8740b887356c32ea3eb578431a6c0:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000004",
+      "signature": "Q0hj6ZAwwNdANQ0xZ9NPDJMUcSFIv7myDlNjbpCygtTLCrbtnf/ktEM7f/AD3vECe+NFphVdg+chJfISIfeJJw==",
+      "tampered_signature": "Q0hj6ZAwwNdANQwxZ9NPDJMUcSFIv7myDlNjbpCygtTLCrbtnf/ktEM7f/AD3vECe+NFphVdg+chJfISIfeJJw=="
+    },
+    {
+      "title": "Empty",
+      "description": "",
+      "host": "localhost:8080",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9005,
+      "signed_at": 1760000005,
+      "content_sha256": "4ce4708901a0d76c05faa0fa1d7ef2827a0abbd0a53f9d420da4c251a7f69a88",
+      "message": "tmgr-agent-approval:v1:localhost:8080:1:56:9005:127:4ce4708901a0d76c05faa0fa1d7ef2827a0abbd0a53f9d420da4c251a7f69a88:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000005",
+      "signature": "EYSfXqEpQXQrOKivGT4y6L9uBoDdZo2bRi2Yn3OaHt8FBt8ffpLlIxERvX36m2m0EsEgcm3vTqzjo314JaXIsA==",
+      "tampered_signature": "EYSfXqEpQXQrOKmvGT4y6L9uBoDdZo2bRi2Yn3OaHt8FBt8ffpLlIxERvX36m2m0EsEgcm3vTqzjo314JaXIsA=="
+    },
+    {
+      "title": "Null description",
+      "description": null,
+      "host": "api.tmgr.dev",
+      "category_id": 127,
+      "user_id": 1,
+      "workspace_id": 56,
+      "task_id": 9006,
+      "signed_at": 1760000006,
+      "content_sha256": "04eec9e5e3fec691425e1d5950b64152fef014162a2281ab73efa883f9086929",
+      "message": "tmgr-agent-approval:v1:api.tmgr.dev:1:56:9006:127:04eec9e5e3fec691425e1d5950b64152fef014162a2281ab73efa883f9086929:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000006",
+      "signature": "feLdR1R37xfl/XampZzPt1cihWS+s5+pu8WDt8YwUucsFluVaEs/KQB4SvOBt5j4ODCcTXaNCtB50i/bPayEig==",
+      "tampered_signature": "feLdR1R37xfl/XempZzPt1cihWS+s5+pu8WDt8YwUucsFluVaEs/KQB4SvOBt5j4ODCcTXaNCtB50i/bPayEig=="
+    }
+  ]
+}

@@ -243,6 +243,7 @@ fn requests_and_responses() {
         trust_cwd: None,
         trust_via_repo: None,
         agent_work: false,
+        cloud: None,
         exe_pin: None,
         argv_sha256: None,
     };
@@ -341,6 +342,7 @@ fn requests_and_responses() {
             permission_mode: Some("ask".into()),
             start_key: Some("run-3-412-1a2b3c4d".into()),
             agent_work: true,
+            cloud: None,
             ..run.clone()
         },
     );

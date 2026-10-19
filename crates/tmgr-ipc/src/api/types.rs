@@ -94,6 +94,23 @@ pub struct RunCreateReq {
     pub argv_sha256: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub agent_work: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudApproval>,
+}
+
+/// The owner's signed approval of a task of a cloud workspace, checked again by the runner against its local allow store.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloudApproval {
+    pub host: String,
+    pub user_id: i64,
+    pub workspace_id: i64,
+    pub task_id: i64,
+    pub category_id: i64,
+    pub content_sha256: String,
+    pub key_id: String,
+    pub signed_at: i64,
+    pub signature: String,
+    pub kind: String,
 }
 
 /// The leader to follower link a run was started for, and the link's generation at that time.

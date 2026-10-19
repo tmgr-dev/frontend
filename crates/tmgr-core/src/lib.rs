@@ -2,6 +2,7 @@ pub mod active;
 pub mod agent_status;
 pub mod agentwork;
 pub mod api;
+pub mod approval;
 pub mod api_ext;
 pub mod branch;
 pub mod config;

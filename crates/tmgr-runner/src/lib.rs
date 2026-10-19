@@ -14,6 +14,8 @@ pub mod agentwork;
 #[cfg(unix)]
 pub mod bundle;
 #[cfg(unix)]
+pub mod cloud;
+#[cfg(unix)]
 pub mod client;
 #[cfg(unix)]
 pub mod clone;
