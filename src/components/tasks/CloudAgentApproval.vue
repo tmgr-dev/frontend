@@ -66,6 +66,14 @@
 							data-testid="cloud-confirm-description"
 						><template v-if="!descriptionPieces.length">(empty)</template><template v-for="(piece, i) in descriptionPieces" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
 					</div>
+					<div>
+						<div class="text-2xs font-bold uppercase text-ink-subtle">
+							Category
+						</div>
+						<div class="text-sm" data-testid="cloud-confirm-category">
+							{{ categoryText }}
+						</div>
+					</div>
 					<div class="text-xs text-ink-subtle">Snapshot {{ shortHash }}</div>
 				</div>
 				<p
@@ -114,6 +122,7 @@
 		signTaskApproval,
 	} from '@/utils/agentApprovalClient';
 	import {
+		categoryLabel,
 		hasInvisible,
 		revokedByLabel,
 		revokedReasonLabel,
@@ -221,6 +230,9 @@
 			const descriptionPieces = computed(() =>
 				splitInvisible(fresh.value?.description ?? ''),
 			);
+			const categoryText = computed(() =>
+				fresh.value ? categoryLabel(fresh.value as any) : '',
+			);
 			const warn = computed(
 				() =>
 					hasInvisible(fresh.value?.title ?? '') ||
@@ -284,6 +296,7 @@
 				titlePieces,
 				descriptionPieces,
 				warn,
+				categoryText,
 				openDialog,
 				submit,
 			};

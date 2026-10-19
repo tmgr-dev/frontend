@@ -28,6 +28,12 @@
 					class="rounded border border-line p-2"
 					:data-testid="`bulk-row-${row.id}`"
 				>
+					<div
+						class="text-2xs font-bold uppercase text-ink-subtle"
+						:data-testid="`bulk-category-${row.id}`"
+					>
+						Category: {{ row.category }}
+					</div>
 					<pre
 						class="whitespace-pre-wrap break-words font-mono text-xs font-bold"
 					><template v-for="(piece, i) in row.title" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
@@ -45,9 +51,7 @@
 						:data-testid="`bulk-result-${row.id}`"
 					>
 						{{
-							results[row.id].ok
-								? 'Confirmed'
-								: describe(results[row.id].code)
+							results[row.id].ok ? 'Confirmed' : describe(results[row.id].code)
 						}}
 					</p>
 				</div>
@@ -85,7 +89,11 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { signTaskApprovalsBulk } from '@/utils/agentApprovalClient';
-	import { hasInvisible, splitInvisible } from '@/utils/agentApprovalPolicy';
+	import {
+		categoryLabel,
+		hasInvisible,
+		splitInvisible,
+	} from '@/utils/agentApprovalPolicy';
 	import { computed, defineComponent, onMounted, ref } from 'vue';
 
 	const CODES: Record<string, string> = {
@@ -145,6 +153,7 @@
 			const rows = computed(() =>
 				tasks.value.map((task) => ({
 					id: task.id as number,
+					category: categoryLabel(task as any),
 					title: splitInvisible(task.title ?? ''),
 					description: splitInvisible(task.description ?? ''),
 				})),
