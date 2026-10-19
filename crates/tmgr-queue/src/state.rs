@@ -20,6 +20,7 @@ pub enum Status {
     Started,
     Failed,
     Expired,
+    SkippedTaken,
 }
 
 impl Status {
@@ -32,6 +33,7 @@ impl Status {
             Status::Started => "started",
             Status::Failed => "failed",
             Status::Expired => "expired",
+            Status::SkippedTaken => "skipped_taken",
         }
     }
 

@@ -218,6 +218,14 @@ impl LocalTasks {
         self.chain.ok
     }
 
+    pub fn client(&self) -> &tmgr_core::api::Client {
+        &self.client
+    }
+
+    pub fn owner_id(&self) -> Option<i64> {
+        self.owner.parse().ok()
+    }
+
     pub fn fetch(&self, path: &str) -> Result<Value> {
         let (status, body) = self.client.call("GET", path, None, false)?;
         if status >= 400 {

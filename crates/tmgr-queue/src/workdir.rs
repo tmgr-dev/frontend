@@ -170,6 +170,8 @@ pub trait WorkDirs {
         clone_identity(dir)
     }
 
+    fn discard(&self, _pickup_id: &str, _cwd: &str) {}
+
     fn prepare_multi(
         &self,
         _primary: &str,
@@ -561,7 +563,29 @@ fn validate_branch(branch: &str) -> Result<()> {
 
 pub struct GitClone;
 
+pub fn discard_run_dir(pickup_id: &str, cwd: &str) {
+    let dir = Path::new(cwd);
+    let named = |p: Option<&Path>, want: &dyn Fn(&str) -> bool| {
+        p.and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .is_some_and(want)
+    };
+    let ours = named(Some(dir), &|n| n == pickup_id)
+        && named(dir.parent(), &|n| n == "queue")
+        && named(dir.parent().and_then(Path::parent), &|n| {
+            n.ends_with("-worktrees")
+        });
+    let real = std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir());
+    if ours && real {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
 impl WorkDirs for GitClone {
+    fn discard(&self, pickup_id: &str, cwd: &str) {
+        discard_run_dir(pickup_id, cwd);
+    }
+
     fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()> {
         let dest = clone_dir(repo, pickup_id)
             .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;

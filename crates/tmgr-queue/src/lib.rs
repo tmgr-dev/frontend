@@ -9,6 +9,7 @@ pub mod rules;
 pub mod runs;
 pub mod source;
 pub mod state;
+pub mod taken;
 pub mod workdir;
 
 pub use engine::{approve, needs_runner, release, run_once, Deps, PassReport, Publisher};
