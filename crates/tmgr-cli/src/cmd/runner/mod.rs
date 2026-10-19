@@ -105,7 +105,7 @@ pub struct InstallServiceArgs {
 }
 
 #[derive(Args)]
-#[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent", "fetch"])))]
+#[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent", "fetch", "publish"])))]
 pub struct RunArgs {
     /// Task to run, in a local workspace (--ws local:<code>) or an allowed cloud workspace (see
     /// `runner allow`): the agent works in its own clone of the project's repository on the task's branch,
@@ -148,7 +148,7 @@ pub struct RunArgs {
     /// [experimental] Pre-accept the agent's folder-trust prompt for this folder, for this run only
     #[arg(long, requires = "agent", conflicts_with_all = ["agent_cmd", "on", "task"])]
     pub trust: bool,
-    /// Permission mode for a task run (default ask; accept-edits for a cloud task)
+    /// Permission mode for a task run (default ask; accept-edits for a cloud task; bypass only for a cloud task)
     #[arg(long, value_enum, requires = "task", conflicts_with = "on")]
     pub mode: Option<PermissionMode>,
     /// Branch or commit the task's clone starts from (default: the repository's current branch)
@@ -160,6 +160,9 @@ pub struct RunArgs {
     /// Bring the task's branch from the agent's clone into your repository (runs nothing)
     #[arg(long, requires = "task", conflicts_with_all = ["on", "agent", "agent_cmd"])]
     pub fetch: bool,
+    /// Push the finished cloud run's branch and open a pull request (runs nothing)
+    #[arg(long, requires = "task", conflicts_with_all = ["on", "agent", "agent_cmd", "fetch"])]
+    pub publish: bool,
 }
 
 #[derive(Args)]
@@ -231,11 +234,12 @@ pub enum AgentsCmd {
     },
 }
 
-#[derive(Clone, Copy, ValueEnum)]
+#[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum PermissionMode {
     Ask,
     AcceptEdits,
     Plan,
+    Bypass,
 }
 
 impl PermissionMode {
@@ -244,6 +248,7 @@ impl PermissionMode {
             Self::Ask => "ask",
             Self::AcceptEdits => "accept-edits",
             Self::Plan => "plan",
+            Self::Bypass => "bypass",
         }
     }
 }

@@ -179,6 +179,7 @@ fn log(msg: &str) {
     eprintln!("{} {msg}", now_ms() / 1000);
 }
 
+#[derive(Debug)]
 struct ApiErr {
     code: ErrorCode,
     msg: String,
@@ -284,6 +285,8 @@ struct RunExtra {
     trust_note: Option<&'static str>,
     learn_trust: bool,
     prompt_at: Option<usize>,
+    egress: Option<Vec<crate::egress::HostPattern>>,
+    mode_note: Option<String>,
 }
 
 fn shown_argv(argv: &[String], prompt_at: Option<usize>) -> Vec<String> {
@@ -367,6 +370,7 @@ struct Session {
     aw_next: AtomicU64,
     aw_busy: Arc<AtomicBool>,
     aw_pending: Mutex<Option<agentwork::Intent>>,
+    proxy: Mutex<Option<crate::egress::Proxy>>,
     halted: AtomicBool,
     foreign_input: AtomicBool,
 }
@@ -790,6 +794,7 @@ impl Session {
             &intent.agent,
             intent.model.as_deref(),
             &self.id,
+            intent.hold_success,
         ) {
             Ok(()) => *pending = None,
             Err(e) => {
@@ -848,6 +853,9 @@ impl Session {
     }
 
     fn agent_work(self: &Arc<Self>) {
+        if self.is_exited() {
+            lock(&self.proxy).take();
+        }
         let now = now_ms();
         if now < self.aw_next.load(Ordering::SeqCst) {
             return;
@@ -1305,6 +1313,99 @@ fn resolve_mode(
             .map(|a| (Some(m.to_string()), a.to_vec()))
             .map_err(|e| api(ErrorCode::InvalidParams, e)),
     }
+}
+
+struct ModePlan {
+    requested: Option<String>,
+    mode: Option<String>,
+    args: Vec<String>,
+    pin_args: Vec<String>,
+    restricted: bool,
+    bypass: bool,
+    note: Option<String>,
+}
+
+fn cloud_verdict(req: &RunCreateReq) -> Option<Result<(), String>> {
+    match req.task {
+        Some(t) if req.agent_work && req.origin.is_none() && t.workspace_id >= 0 => {
+            Some(crate::cloud::check(req, t))
+        }
+        _ => None,
+    }
+}
+
+fn plan_mode(
+    prof: &Profile,
+    req: &RunCreateReq,
+    cloud: &Option<Result<(), String>>,
+    sandbox: bool,
+    net_enforced: bool,
+) -> Result<ModePlan, ApiErr> {
+    use tmgr_ipc::api::policy::{decide_mode, Mode, NetworkPolicy, Origin as Orig};
+    let verified = matches!(cloud, Some(Ok(())));
+    let restricted = verified && net_enforced;
+    if req.permission_mode.as_deref() != Some("bypass") {
+        let (mode, args) = resolve_mode(prof, req.permission_mode.as_deref())?;
+        return Ok(ModePlan {
+            requested: mode.clone(),
+            mode,
+            pin_args: args.clone(),
+            args,
+            restricted,
+            bypass: false,
+            note: None,
+        });
+    }
+    match cloud {
+        None => {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "permission_mode must be ask, accept-edits or plan",
+            ))
+        }
+        Some(Err(m)) => return Err(api(ErrorCode::Forbidden, m.clone())),
+        Some(Ok(())) => {}
+    }
+    let bypass_args = prof
+        .bypass_args()
+        .ok_or_else(|| {
+            api(
+                ErrorCode::InvalidParams,
+                format!("profile {} cannot run in mode bypass", prof.id),
+            )
+        })?
+        .to_vec();
+    let origin = if req.unattended {
+        Orig::Auto
+    } else {
+        Orig::Manual
+    };
+    let d = decide_mode(origin, Mode::Bypass, true, sandbox, net_enforced)
+        .map_err(|r| api(ErrorCode::Forbidden, r.0))?;
+    if d.mode == Mode::Bypass {
+        return Ok(ModePlan {
+            requested: Some("bypass".into()),
+            mode: Some("bypass".into()),
+            args: bypass_args.clone(),
+            pin_args: bypass_args,
+            restricted: d.network == NetworkPolicy::Restricted,
+            bypass: true,
+            note: None,
+        });
+    }
+    let args = prof
+        .permission_args("accept-edits")
+        .map_err(|e| api(ErrorCode::InvalidParams, e))?
+        .to_vec();
+    Ok(ModePlan {
+        requested: Some("bypass".into()),
+        mode: Some("accept-edits".into()),
+        args,
+        pin_args: bypass_args,
+        restricted: false,
+        bypass: false,
+        note: d.downgraded_reason,
+    })
 }
 
 fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr> {
@@ -1936,7 +2037,15 @@ impl Runner {
                 "the agent's resume arguments changed since the run was approved",
             ));
         }
-        let (mode, perm_args) = resolve_mode(prof, req.permission_mode.as_deref())?;
+        let cloud = cloud_verdict(&req);
+        let plan = plan_mode(
+            prof,
+            &req,
+            &cloud,
+            true,
+            sandbox::network_restriction_enforced(),
+        )?;
+        let (mode, perm_args) = (plan.mode.clone(), plan.args.clone());
         if req.agent_work {
             check_agent_work(&req, mode.as_deref())?;
         } else if req.cloud.is_some() {
@@ -1946,7 +2055,10 @@ impl Runner {
             ));
         }
         if let Some(b) = &req.bundle {
-            match (b.launch.permission_mode.as_deref(), mode.as_deref()) {
+            match (
+                b.launch.permission_mode.as_deref(),
+                plan.requested.as_deref(),
+            ) {
                 (Some(x), Some(y)) if x == y => {}
                 (None, None | Some("ask")) => {}
                 _ => {
@@ -2030,7 +2142,15 @@ impl Runner {
             objects,
             start,
             prompt_at: None,
+            egress: None,
+            mode_note: plan.note.clone(),
         };
+        if plan.restricted {
+            extra.egress = Some(
+                prof.egress_allow()
+                    .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+            );
+        }
         if argv.is_empty() {
             return Err(api(ErrorCode::InvalidParams, "profile has no command"));
         }
@@ -2045,7 +2165,7 @@ impl Runner {
         };
         if let Some(want) = &req.argv_sha256 {
             let mut basis = prof
-                .approved_argv(req.model.as_deref(), &perm_args)
+                .approved_argv(req.model.as_deref(), &plan.pin_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?;
             basis[0].clone_from(&argv[0]);
             if tmgr_ipc::api::argv_sha256(&basis) != *want {
@@ -2092,6 +2212,7 @@ impl Runner {
             restore_from,
         )?;
         let mut recorded = false;
+        let cloud_run = matches!(cloud, Some(Ok(())));
         let info_model = req.model.clone();
         if let Some(cwd_pin) = pin {
             let intent = restore::Intent {
@@ -2115,7 +2236,7 @@ impl Runner {
                     .and_then(|_| prof.resume.as_ref().map(resume_rec)),
                 exe_pin: req.exe_pin,
                 argv_sha256: req.argv_sha256,
-                bypass: false,
+                bypass: plan.bypass,
                 boot: restore::boot_marker(),
                 pids: vec![info.shim_pid, info.child_pid],
                 created_ms: info.created_ms,
@@ -2140,6 +2261,7 @@ impl Runner {
                 task,
                 agent: info.profile.clone().unwrap_or_default(),
                 model: info_model,
+                hold_success: cloud_run,
             });
             s.prepare_agent_work();
         }
@@ -2372,6 +2494,13 @@ impl Runner {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
             grants.objects_ro.push((o.path.clone(), o.id));
         }
+        let proxy = match &extra.egress {
+            Some(allow) => Some(
+                crate::egress::Proxy::start(allow.clone())
+                    .map_err(|e| api(ErrorCode::Sandbox, format!("egress proxy: {e}")))?,
+            ),
+            None => None,
+        };
         let launch = sandbox::prepare(&SandboxSpec {
             session_id: id.to_string(),
             argv: req.argv.clone(),
@@ -2384,9 +2513,16 @@ impl Runner {
             base_env: base,
             grants,
             cwd_id: Some(dir.id()),
-            network: Default::default(),
+            network: proxy.as_ref().map_or(sandbox::Network::Open, |p| {
+                sandbox::Network::Restricted { proxy_port: p.port }
+            }),
         })
         .map_err(|e| api(ErrorCode::Sandbox, e))?;
+        if let Some(note) = &extra.mode_note {
+            log(&format!(
+                "session {id}: bypass downgraded to accept-edits: {note}"
+            ));
+        }
         for n in &launch.notes {
             log(&format!("session {id}: {n}"));
         }
@@ -2514,6 +2650,7 @@ impl Runner {
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
+        *lock(&session.proxy) = proxy;
         session.worklog.created(&session.info(), extra.trust_note);
         session.attach_shim(stream, hello, true);
         lock(&self.sessions).insert(id.to_string(), session.clone());
@@ -2553,6 +2690,7 @@ impl Runner {
             aw_next: AtomicU64::new(0),
             aw_busy: Arc::new(AtomicBool::new(false)),
             aw_pending: Mutex::new(None),
+            proxy: Mutex::new(None),
             halted: AtomicBool::new(false),
             foreign_input: AtomicBool::new(false),
         })
@@ -3212,6 +3350,84 @@ mod tests {
         let mut small = vec!["a".to_string()];
         cap_text(&mut small, 100);
         assert_eq!(small, ["a"]);
+    }
+
+    fn plan_req(mode: &str, unattended: bool) -> RunCreateReq {
+        serde_json::from_value(serde_json::json!({
+            "profile": "claude-code", "task": {"workspace_id": 56, "task_id": 1},
+            "cwd": "/x", "cols": 80, "rows": 24, "permission_mode": mode,
+            "agent_work": true, "unattended": unattended
+        }))
+        .unwrap()
+    }
+
+    fn plan(
+        mode: &str,
+        unattended: bool,
+        cloud: Option<Result<(), String>>,
+        sandbox: bool,
+        net: bool,
+    ) -> Result<ModePlan, ApiErr> {
+        let (set, _) = ProfileSet::load(None);
+        plan_mode(
+            set.get("claude-code").unwrap(),
+            &plan_req(mode, unattended),
+            &cloud,
+            sandbox,
+            net,
+        )
+    }
+
+    #[test]
+    fn bypass_needs_a_verified_cloud_approval() {
+        let none = plan("bypass", false, None, true, true).err().unwrap();
+        assert!(none.msg.contains("permission_mode must be"), "{}", none.msg);
+        let forged = plan("bypass", false, Some(Err("forged".into())), true, true)
+            .err()
+            .unwrap();
+        assert!(
+            matches!(forged.code, ErrorCode::Forbidden),
+            "{}",
+            forged.msg
+        );
+        let ok = plan("bypass", false, Some(Ok(())), true, true).unwrap();
+        assert!(ok.bypass && ok.restricted && ok.mode.as_deref() == Some("bypass"));
+        assert_eq!(ok.args, ["--permission-mode", "bypassPermissions"]);
+    }
+
+    #[test]
+    fn unattended_bypass_without_enforced_network_is_downgraded() {
+        let p = plan("bypass", true, Some(Ok(())), true, false).unwrap();
+        assert!(!p.bypass && !p.restricted);
+        assert_eq!(p.mode.as_deref(), Some("accept-edits"));
+        assert_eq!(p.requested.as_deref(), Some("bypass"));
+        assert!(p.note.is_some());
+        let m = plan("bypass", false, Some(Ok(())), true, false).unwrap();
+        assert!(m.bypass && !m.restricted);
+        let a = plan("bypass", true, Some(Ok(())), true, true).unwrap();
+        assert!(a.bypass && a.restricted);
+    }
+
+    #[test]
+    fn cloud_runs_are_restricted_whenever_enforced_and_others_never() {
+        for mode in ["ask", "accept-edits", "plan"] {
+            assert!(
+                plan(mode, false, Some(Ok(())), true, true)
+                    .unwrap()
+                    .restricted
+            );
+            assert!(
+                !plan(mode, false, Some(Ok(())), true, false)
+                    .unwrap()
+                    .restricted
+            );
+            assert!(!plan(mode, false, None, true, true).unwrap().restricted);
+            assert!(
+                !plan(mode, false, Some(Err("x".into())), true, true)
+                    .unwrap()
+                    .restricted
+            );
+        }
     }
 
     #[test]

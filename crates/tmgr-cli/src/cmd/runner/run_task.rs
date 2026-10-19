@@ -270,7 +270,13 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     if !local {
         return super::cloud::run(o, a, reference);
     }
-    let mode = a.mode.unwrap_or(PermissionMode::Ask).as_str();
+    let mode = a.mode.unwrap_or(PermissionMode::Ask);
+    if mode == PermissionMode::Bypass {
+        return Err(Error::usage(
+            "bypass mode is only for tasks of an allowed cloud workspace",
+        ));
+    }
+    let mode = mode.as_str();
     let p = plan(o, a, reference)?;
     if !o.json && !o.quiet {
         eprintln!("{}", summary(&p, &profile, mode));

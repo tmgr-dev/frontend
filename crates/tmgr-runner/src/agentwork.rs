@@ -31,6 +31,8 @@ pub struct State {
     pub finished: bool,
     #[serde(default)]
     pub last_update_ms: u64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hold_success: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -38,6 +40,7 @@ pub struct Intent {
     pub task: TaskRef,
     pub agent: String,
     pub model: Option<String>,
+    pub hold_success: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -71,6 +74,7 @@ pub fn begin(
     agent: &str,
     model: Option<&str>,
     session: &str,
+    hold_success: bool,
 ) -> io::Result<()> {
     save(
         dir,
@@ -83,6 +87,7 @@ pub fn begin(
             run_id: None,
             finished: false,
             last_update_ms: 0,
+            hold_success,
         },
     )
 }
@@ -213,6 +218,22 @@ pub fn step(
     };
     if let Some(exit) = exit {
         let status = status_of(exit, dir.join(HALTED).exists());
+        if status == "succeeded" && s.hold_success {
+            call(
+                helper,
+                &json!({
+                    "op": "update",
+                    "workspace": s.workspace,
+                    "task_id": s.task_id,
+                    "run_id": run_id,
+                    "branch": summary.branch,
+                    "commits": commit_lines(&summary),
+                }),
+            )?;
+            s.finished = true;
+            save(dir, &s)?;
+            return Ok(Some("hold"));
+        }
         let text = format!(
             "{} by the runner after {} ({} working), {} commit(s)",
             match status {
@@ -303,7 +324,7 @@ mod tests {
             workspace_id: -2,
             task_id: 7,
         };
-        begin(&dir, task, "claude-code", Some("opus"), "s_abc").unwrap();
+        begin(&dir, task, "claude-code", Some("opus"), "s_abc", false).unwrap();
         let t0 = 1_000_000;
         let ended = Some(Exit {
             code: Some(0),
@@ -334,6 +355,53 @@ mod tests {
             })
             .collect();
         assert_eq!(ops, ["start", "update", "finish"]);
+    }
+
+    #[test]
+    fn a_held_run_stays_open_after_a_clean_exit_and_closes_on_failure() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let calls = tmp.path().join("calls");
+        let helper = tmp.path().join("helper.sh");
+        std::fs::write(
+            &helper,
+            format!("#!/bin/sh\ncat >> {calls:?}\necho >> {calls:?}\necho '{{\"run_id\":5}}'\n"),
+        )
+        .unwrap();
+        std::fs::set_permissions(&helper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let task = TaskRef {
+            workspace_id: 56,
+            task_id: 7,
+        };
+        let ops = || -> Vec<String> {
+            std::fs::read_to_string(&calls)
+                .unwrap_or_default()
+                .lines()
+                .map(|l| {
+                    serde_json::from_str::<Value>(l).unwrap()["op"]
+                        .as_str()
+                        .unwrap()
+                        .to_string()
+                })
+                .collect()
+        };
+        let ok = Some(Exit {
+            code: Some(0),
+            interrupted: false,
+        });
+        let bad = Some(Exit {
+            code: Some(1),
+            interrupted: false,
+        });
+        for (exit, want) in [(ok, "hold"), (bad, "finish")] {
+            let dir = tmp.path().join(want);
+            std::fs::create_dir(&dir).unwrap();
+            begin(&dir, task, "claude-code", None, "s_abc", true).unwrap();
+            assert_eq!(step(&helper, &dir, 1, None).unwrap(), Some("start"));
+            assert_eq!(step(&helper, &dir, 2, exit).unwrap(), Some(want));
+            assert_eq!(step(&helper, &dir, 3, exit).unwrap(), None);
+        }
+        assert_eq!(ops(), ["start", "update", "start", "finish"]);
     }
 
     #[test]

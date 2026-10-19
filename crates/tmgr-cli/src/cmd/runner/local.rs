@@ -530,6 +530,11 @@ pub fn bundle_cmd(
     cwd: &Path,
     mode: super::PermissionMode,
 ) -> Result<i32> {
+    if mode == super::PermissionMode::Bypass {
+        return Err(Error::usage(
+            "bypass mode is only for tasks of an allowed cloud workspace",
+        ));
+    }
     let reference = o.ws.as_deref().ok_or_else(|| {
         Error::usage("pass --ws local:<code>").hint("run bundles are built from local workspaces")
     })?;
