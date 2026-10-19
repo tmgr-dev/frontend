@@ -1,4 +1,5 @@
 use crate::agentwork;
+use crate::autopilot;
 use crate::bundle;
 use crate::client::Client;
 use crate::clone;
@@ -35,10 +36,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    limits, method, CreateReq, CwdPin, ErrorCode, EventMsg, ExePin, LookupParams, Origin,
-    OriginRevokeParams, OriginRevoked, PathParams, RestoredRun, RunCreateReq, RunStatus,
-    SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams,
-    TrustRemoved, CLIENT_CLI, CLIENT_WORKER,
+    limits, method, AutopilotControlParams, AutopilotControlled, AutopilotLog, AutopilotLogParams,
+    AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode, EventMsg, ExePin,
+    LookupParams, Origin, OriginRevokeParams, OriginRevoked, PathParams, RestoredRun, RunCreateReq,
+    RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef,
+    TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -175,7 +177,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn log(msg: &str) {
+pub(crate) fn log(msg: &str) {
     eprintln!("{} {msg}", now_ms() / 1000);
 }
 
@@ -811,9 +813,9 @@ impl Session {
         }
     }
 
-    fn halt(&self) {
+    fn halt(&self, reason: Option<&str>) {
         self.halted.store(true, Ordering::SeqCst);
-        agentwork::mark_halted(&self.dir);
+        agentwork::mark_halted(&self.dir, reason);
     }
 
     fn exit_for_agent_work(&self) -> Option<agentwork::Exit> {
@@ -840,7 +842,7 @@ impl Session {
             thread::sleep(Duration::from_millis(50));
         }
         if self.halted.load(Ordering::SeqCst) {
-            agentwork::mark_halted(&self.dir);
+            agentwork::mark_halted(&self.dir, None);
         }
         if let Err(e) = agentwork::step(
             &self.helper,
@@ -873,7 +875,7 @@ impl Session {
         self.aw_next
             .store(now + agentwork::retry_ms(), Ordering::SeqCst);
         if self.halted.load(Ordering::SeqCst) {
-            agentwork::mark_halted(&self.dir);
+            agentwork::mark_halted(&self.dir, None);
         }
         let exit = self.exit_for_agent_work();
         let s = self.clone();
@@ -1013,7 +1015,7 @@ impl Session {
 
     fn mark_revoking(&self) {
         self.revoking.store(true, Ordering::SeqCst);
-        self.halt();
+        self.halt(None);
         if let Err(e) = write_atomic(&self.dir.join(REVOKING_MARK), b"1") {
             log(&format!(
                 "session {} revocation not persisted: {e}",
@@ -1180,6 +1182,7 @@ struct Runner {
     pending: Arc<AtomicUsize>,
     rejects: Mutex<Rejects>,
     next_conn: AtomicU64,
+    autopilot: autopilot::Host,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -1467,6 +1470,23 @@ fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr
     Ok(())
 }
 
+fn kill_reason(p: &Value) -> Result<Option<String>, ApiErr> {
+    let Some(raw) = p.get("reason").filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let raw = raw
+        .as_str()
+        .ok_or_else(|| api(ErrorCode::InvalidParams, "reason must be a string"))?;
+    if raw.chars().count() > limits::MAX_KILL_REASON {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            format!("reason is at most {} characters", limits::MAX_KILL_REASON),
+        ));
+    }
+    let clean = crate::sanitize::sanitize_text(raw).trim().to_string();
+    Ok((!clean.is_empty()).then_some(clean))
+}
+
 fn session_id_param(v: &Value) -> Result<String, ApiErr> {
     let id = v
         .get("id")
@@ -1647,11 +1667,52 @@ impl Runner {
                         "signal must be term, kill, int or hup",
                     )
                 })?;
+                let reason = kill_reason(p)?;
                 let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
-                s.halt();
+                s.halt(reason.as_deref());
                 s.shim_msg(&ToShim::Signal { sig, id });
                 restore::forget(&self.intents(), &s.id);
                 Ok(Value::Null)
+            }
+            method::AUTOPILOT_START => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "autopilot.start is accepted only from the tmgr CLI",
+                    ));
+                }
+                let q: AutopilotStartParams = params(p)?;
+                self.autopilot
+                    .start(&self.cfg.self_exe, &q.settings_id)
+                    .map(|pid| to_json(&AutopilotStarted { pid }))
+                    .map_err(|(code, msg)| api(code, msg))
+            }
+            method::AUTOPILOT_STATUS | method::AUTOPILOT_CONTROL | method::AUTOPILOT_LOG => {
+                if conn.client != CLIENT_CLI && conn.client != CLIENT_DESKTOP {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "autopilot is available only to the tmgr CLI and the desktop app",
+                    ));
+                }
+                let out = match req.method.as_str() {
+                    method::AUTOPILOT_STATUS => self
+                        .autopilot
+                        .status(&self.cfg.self_exe)
+                        .map(|v| to_json(&v)),
+                    method::AUTOPILOT_CONTROL => {
+                        let q: AutopilotControlParams = params(p)?;
+                        self.autopilot
+                            .control(&self.cfg.self_exe, q.command)
+                            .map(|seq| to_json(&AutopilotControlled { seq }))
+                    }
+                    _ => {
+                        let q: AutopilotLogParams = params(p)?;
+                        self.autopilot
+                            .log(q.tail)
+                            .map(|lines| to_json(&AutopilotLog { lines }))
+                    }
+                };
+                out.map_err(|(code, msg)| api(code, msg))
             }
             method::SESSIONS_SEND => {
                 let s = self.live(&session_id_param(p)?)?;
@@ -3238,6 +3299,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         pending: Arc::new(AtomicUsize::new(0)),
         rejects: Mutex::new(Rejects::default()),
         next_conn: AtomicU64::new(1),
+        autopilot: autopilot::Host::default(),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -3264,6 +3326,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             for s in ticker.all() {
                 s.tick();
             }
+            ticker.autopilot.tick(&ticker.cfg.self_exe);
         }
     });
 
@@ -3306,6 +3369,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             }
         }
     }
+    rt.autopilot.shutdown(&cfg.self_exe);
     thread::sleep(Duration::from_millis(100));
     match &ep {
         Endpoint::Path(p) => {

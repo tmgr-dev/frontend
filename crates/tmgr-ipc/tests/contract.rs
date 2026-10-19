@@ -598,6 +598,15 @@ fn method_params_and_results() {
         &KillParams {
             id: SID.into(),
             signal: "term".into(),
+            reason: None,
+        },
+    );
+    golden(
+        "kill_params_reason",
+        &KillParams {
+            id: SID.into(),
+            signal: "int".into(),
+            reason: Some("Paused: usage limit reached at 81%".into()),
         },
     );
     golden(
@@ -804,7 +813,8 @@ fn constants_are_pinned() {
             "argv_pin.v1",
             "trusted_folders.v1",
             "trust_via_repo.v1",
-            "multi_clone.v1"
+            "multi_clone.v1",
+            "autopilot.v1"
         ]
     );
     let methods = [
@@ -830,6 +840,10 @@ fn constants_are_pinned() {
         method::TRUST_LIST,
         method::TRUST_ADD,
         method::TRUST_REMOVE,
+        method::AUTOPILOT_START,
+        method::AUTOPILOT_STATUS,
+        method::AUTOPILOT_CONTROL,
+        method::AUTOPILOT_LOG,
     ];
     assert_eq!(
         methods,
@@ -856,6 +870,10 @@ fn constants_are_pinned() {
             "trust.list",
             "trust.add",
             "trust.remove",
+            "autopilot.start",
+            "autopilot.status",
+            "autopilot.control",
+            "autopilot.log",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -878,7 +896,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 23);
+    assert_eq!(w.caps.len(), 24);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1099,4 +1117,48 @@ fn bundle_metadata_validation() {
     let mut b = bundle();
     b.author.id = Some("u_7.a:b@c-d".repeat(6)[..64].into());
     assert_eq!(b.validate(), Ok(()));
+}
+
+#[test]
+fn autopilot_messages() {
+    golden(
+        "autopilot_start_params",
+        &AutopilotStartParams {
+            settings_id: "default-1".into(),
+        },
+    );
+    golden("autopilot_started", &AutopilotStarted { pid: 4242 });
+    golden(
+        "autopilot_status_running",
+        &AutopilotStatus {
+            running: true,
+            pid: Some(4242),
+            status: json!({"version": 1, "state": "running", "control_seq": 2}),
+        },
+    );
+    golden(
+        "autopilot_status_idle",
+        &AutopilotStatus {
+            running: false,
+            pid: None,
+            status: Value::Null,
+        },
+    );
+    golden(
+        "autopilot_control_params",
+        &AutopilotControlParams {
+            command: AutopilotCommand::Pause,
+        },
+    );
+    golden("autopilot_controlled", &AutopilotControlled { seq: 3 });
+    golden("autopilot_log_params", &AutopilotLogParams { tail: 50 });
+    golden(
+        "autopilot_log",
+        &AutopilotLog {
+            lines: vec![json!({"at": "2026-10-19T10:00:00Z", "kind": "picked", "task": "TM-1"})],
+        },
+    );
+    assert!(serde_json::from_value::<AutopilotControlParams>(json!({"command": "kill"})).is_err());
+    let old: KillParams = serde_json::from_value(json!({"id": SID, "signal": "term"})).unwrap();
+    assert_eq!(old.reason, None);
 }

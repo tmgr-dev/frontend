@@ -9,6 +9,7 @@ pub mod rules;
 pub mod runs;
 pub mod source;
 pub mod state;
+pub mod switch;
 pub mod wip;
 pub mod workdir;
 

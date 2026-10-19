@@ -48,7 +48,10 @@ pub enum QueueCommand {
     /// Turn the queue on (needs a terminal and a typed confirmation)
     Enable,
     /// Turn the queue off
-    Disable,
+    Disable {
+        #[arg(long, hide = true)]
+        reason: Option<String>,
+    },
     /// List, add or remove rules
     Rules {
         #[command(subcommand)]
@@ -248,7 +251,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
             set_paused(&paths, false)
         }
         QueueCommand::Enable => enable(ctx, &paths),
-        QueueCommand::Disable => disable(&paths),
+        QueueCommand::Disable { reason } => disable(&paths, reason.as_deref()),
         QueueCommand::Rules { command } => match command {
             RulesCmd::List => list(&paths),
             RulesCmd::Add(a) => add(ctx, &paths, a),
@@ -383,12 +386,8 @@ fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     Ok(Output::new(json!({"enabled": true}), "Queue is on."))
 }
 
-fn disable(paths: &Paths) -> Result<Output> {
-    let _lock = paths.lock()?;
-    let mut file = rules::load(paths)?.file;
-    file.enabled = false;
-    let sha = rules::save(paths, &file)?;
-    record(paths, "disable", &sha, json!({}))?;
+fn disable(paths: &Paths, reason: Option<&str>) -> Result<Output> {
+    tmgr_queue::switch::disable(paths, reason)?;
     Ok(Output::new(json!({"enabled": false}), "Queue is off."))
 }
 
