@@ -110,6 +110,7 @@
 	import { EditorType } from '@/types';
 	import type { AgentStep } from '@/types/agent';
 	import type { CursorAgent } from '@/types/cursor';
+	import { autoSignQuietly } from '@/utils/agentApprovalClient';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
 	import {
 		backlogTimerPrompt,
@@ -157,7 +158,6 @@
 	} from '@/utils/simpleStatus';
 	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
-	import { autoSignQuietly } from '@/utils/agentApprovalClient';
 	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import {
 		openTaskWindow,
@@ -2884,7 +2884,9 @@
 					<CloudAgentApproval
 						v-if="!isLocalWorkspaceTask && (taskId || form.id)"
 						:task-id="Number(taskId || form.id)"
-						:workspace-id="Number(form.workspace_id || store.getters.currentWorkspaceId)"
+						:workspace-id="
+							Number(form.workspace_id || store.getters.currentWorkspaceId)
+						"
 					/>
 
 					<TaskAgentRunner

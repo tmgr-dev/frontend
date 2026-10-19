@@ -511,9 +511,9 @@
 	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
+	import BulkAgentConfirmDialog from '@/components/tasks/BulkAgentConfirmDialog.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
-	import BulkAgentConfirmDialog from '@/components/tasks/BulkAgentConfirmDialog.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
