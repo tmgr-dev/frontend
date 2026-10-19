@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tmgr_core::api::{map_error, unwrap_data, Client};
 use tmgr_core::approval::{claim_message, content_sha256, repos_sha256, CloudApproval};
+#[cfg(debug_assertions)]
+use tmgr_core::creds::KeyringError;
 use tmgr_core::creds::{classify, Failure, Keychain, OsKeychain, STORE_ENV};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_link::privileged;
@@ -88,6 +90,65 @@ fn forced_file() -> bool {
     std::env::var(STORE_ENV).as_deref() == Ok("file")
 }
 
+#[cfg(debug_assertions)]
+type KeyResult<T> = std::result::Result<T, KeyringError>;
+
+#[cfg(debug_assertions)]
+struct FileKeychain(std::path::PathBuf);
+
+#[cfg(debug_assertions)]
+impl FileKeychain {
+    fn load(&self) -> std::collections::BTreeMap<String, String> {
+        std::fs::read(&self.0)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default()
+    }
+
+    fn store(&self, map: &std::collections::BTreeMap<String, String>) -> KeyResult<()> {
+        let body =
+            serde_json::to_vec(map).map_err(|e| KeyringError::PlatformFailure(Box::new(e)))?;
+        std::fs::write(&self.0, body).map_err(|e| KeyringError::PlatformFailure(Box::new(e)))
+    }
+}
+
+#[cfg(debug_assertions)]
+impl Keychain for FileKeychain {
+    fn get(&self, account: &str) -> KeyResult<String> {
+        self.load().remove(account).ok_or(KeyringError::NoEntry)
+    }
+
+    fn set(&self, account: &str, blob: &str) -> KeyResult<()> {
+        let mut map = self.load();
+        map.insert(account.to_string(), blob.to_string());
+        self.store(&map)
+    }
+
+    fn delete(&self, account: &str) -> KeyResult<()> {
+        let mut map = self.load();
+        map.remove(account);
+        self.store(&map)
+    }
+}
+
+#[cfg(debug_assertions)]
+fn test_keychain() -> Option<Box<dyn Keychain>> {
+    let path = std::env::var_os("TMGR_TEST_KEYCHAIN_FILE")?;
+    Some(Box::new(FileKeychain(path.into())))
+}
+
+#[cfg(not(debug_assertions))]
+fn test_keychain() -> Option<Box<dyn Keychain>> {
+    None
+}
+
+fn default_keychain() -> (Box<dyn Keychain>, bool) {
+    match test_keychain() {
+        Some(k) => (k, false),
+        None => (Box::new(OsKeychain), forced_file()),
+    }
+}
+
 fn read_stored(keychain: &dyn Keychain, host: &str, user_id: i64) -> Result<Option<String>> {
     match keychain.get(&account(host, user_id)) {
         Ok(blob) => Ok(Some(blob)),
@@ -101,10 +162,11 @@ fn read_stored(keychain: &dyn Keychain, host: &str, user_id: i64) -> Result<Opti
 
 /// The CLI key of this machine for a server and user; never creates one and never reads a file.
 pub fn own_key(server: &str, user_id: i64) -> Result<Option<OwnKey>> {
-    if forced_file() {
+    let (keychain, file_forced) = default_keychain();
+    if file_forced {
         return Ok(None);
     }
-    own_key_in(&OsKeychain, &host_of(server)?, user_id)
+    own_key_in(&*keychain, &host_of(server)?, user_id)
 }
 
 pub fn own_key_in(keychain: &dyn Keychain, host: &str, user_id: i64) -> Result<Option<OwnKey>> {
@@ -164,7 +226,8 @@ pub struct Signer<'a> {
 
 impl<'a> Signer<'a> {
     pub fn new(client: &'a Client, server: &str, user_id: i64) -> Result<Self> {
-        Self::with_keychain(client, server, user_id, Box::new(OsKeychain), forced_file())
+        let (keychain, file_forced) = default_keychain();
+        Self::with_keychain(client, server, user_id, keychain, file_forced)
     }
 
     pub fn with_keychain(
@@ -452,6 +515,25 @@ fn generate() -> SigningKey {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn release_builds_have_no_test_keychain() {
+        std::env::set_var("TMGR_TEST_KEYCHAIN_FILE", "/nonexistent");
+        assert!(super::test_keychain().is_none());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn the_test_keychain_round_trips_and_reports_a_missing_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = super::FileKeychain(dir.path().join("k.json"));
+        assert!(matches!(k.get("a"), Err(keyring::Error::NoEntry)));
+        k.set("a", "1").unwrap();
+        assert_eq!(k.get("a").unwrap(), "1");
+        k.delete("a").unwrap();
+        assert!(matches!(k.get("a"), Err(keyring::Error::NoEntry)));
+    }
+
     use super::*;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};

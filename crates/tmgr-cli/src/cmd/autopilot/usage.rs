@@ -1,5 +1,6 @@
 use chrono::{DateTime, Duration, Utc};
 use tmgr_core::error::{Error, Kind};
+use tmgr_usage::cost::Billing;
 use tmgr_usage::guard::{guard_limits, GuardLimit};
 use tmgr_usage::limits::LimitSnapshot;
 use tmgr_usage::{probe, Tool};
@@ -16,8 +17,50 @@ pub trait Source {
 
 pub struct Real;
 
+#[cfg(debug_assertions)]
+pub fn injected(tool: Tool) -> Option<(Vec<LimitSnapshot>, Billing)> {
+    use tmgr_usage::limits::{LimitSource, LimitWindow};
+    let path = std::env::var_os("TMGR_TEST_AUTOPILOT_USAGE")?;
+    let v: serde_json::Value = serde_json::from_slice(&std::fs::read(path).ok()?).ok()?;
+    let now = Utc::now();
+    let snap = |window: LimitWindow, key: &str| {
+        v[key].as_f64().map(|used_pct| LimitSnapshot {
+            tool,
+            account: "test".into(),
+            window,
+            used_pct,
+            resets_at: Some(now + Duration::hours(2)),
+            plan: None,
+            observed_at: now,
+            source: LimitSource::Probe,
+            tool_session_id: String::new(),
+        })
+    };
+    let windows = [
+        snap(LimitWindow::Session, "session"),
+        snap(LimitWindow::Weekly, "weekly"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let billing = match v["billing"].as_str() {
+        Some("api_key") => Billing::ApiKey,
+        Some("subscription") => Billing::Subscription,
+        _ => Billing::Unknown,
+    };
+    Some((windows, billing))
+}
+
+#[cfg(not(debug_assertions))]
+pub fn injected(_: Tool) -> Option<(Vec<LimitSnapshot>, Billing)> {
+    None
+}
+
 impl Source for Real {
     fn probe(&self, tool: Tool) -> Vec<LimitSnapshot> {
+        if let Some((windows, _)) = injected(tool) {
+            return windows;
+        }
         let Ok(bin) = tmgr_queue::rules::resolve_exe(tool.as_str()) else {
             return Vec::new();
         };

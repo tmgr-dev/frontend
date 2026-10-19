@@ -3387,6 +3387,16 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
 // Same-user processes can read each other's initial environment on macOS, so the runner and shims start from an allowlist.
 pub const ENV_CLEAN: &str = "TMGR_RUNNER_ENV_CLEAN";
 
+#[cfg(debug_assertions)]
+fn test_passthrough(key: &str) -> bool {
+    key.starts_with("TMGR_TEST_AUTOPILOT_")
+}
+
+#[cfg(not(debug_assertions))]
+fn test_passthrough(_: &str) -> bool {
+    false
+}
+
 pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     const KEEP: &[&str] = &[
         "HOME",
@@ -3416,7 +3426,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     std::env::vars_os()
         .filter(|(k, _)| {
             k.to_str()
-                .is_some_and(|k| KEEP.contains(&k) || k.starts_with("LC_"))
+                .is_some_and(|k| KEEP.contains(&k) || k.starts_with("LC_") || test_passthrough(k))
         })
         .collect()
 }

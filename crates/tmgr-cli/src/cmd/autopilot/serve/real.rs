@@ -200,6 +200,9 @@ impl RealUsage<'_> {
 
 impl UsagePort for RealUsage<'_> {
     fn probe(&self, tool: Tool) -> Result<Probed> {
+        if let Some((windows, billing)) = crate::cmd::autopilot::usage::injected(tool) {
+            return Ok(Probed { windows, billing });
+        }
         let missing = || Error::not_found(format!("{} is not installed", tool.as_str()));
         match tool {
             Tool::Claude => {
@@ -290,6 +293,12 @@ fn timing() -> Timing {
         .and_then(|v| v.parse::<i64>().ok())
     {
         t.tick = Duration::milliseconds(ms);
+    }
+    if let Some(ms) = std::env::var("TMGR_TEST_AUTOPILOT_PROBE_MS")
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+    {
+        t.probe_every = Duration::milliseconds(ms);
     }
     t
 }
