@@ -11,10 +11,6 @@
 			type: String,
 			required: true,
 		},
-		authUrl: {
-			type: String,
-			default: '',
-		},
 		callback: {
 			type: Boolean,
 			default: false,
@@ -28,13 +24,26 @@
 	const widgetContainerId = ref(`tg-widget-container-${nanoid(5)}`);
 	const widgetScriptId = ref(`tg-widget-script-${nanoid(5)}`);
 	const widgetContainer = ref<HTMLDivElement | null>(null);
-	const emit = defineEmits<{ auth: [user: Record<string, unknown>] }>();
+	const emit = defineEmits<{
+		auth: [user: Record<string, string | number>];
+	}>();
 	const callbackName = `__tmgrTelegramAuth_${nanoid(8).replace(
 		/[^A-Za-z0-9]/g,
 		'',
 	)}`;
 
+	const dropTelegramAuthResult = () => {
+		if (location.hash.includes('tgAuthResult')) {
+			history.replaceState(
+				history.state,
+				'',
+				location.pathname + location.search,
+			);
+		}
+	};
+
 	const loadWidgetScript = () => {
+		dropTelegramAuthResult();
 		if (
 			!document.getElementById(widgetScriptId.value) &&
 			widgetContainer.value &&
@@ -50,11 +59,15 @@
 			script.setAttribute('data-telegram-login', props.botName);
 			script.setAttribute('data-size', props.widgetSize);
 			if (props.callback) {
-				(window as any)[callbackName] = (user: Record<string, unknown>) =>
+				// telegram-widget.js redeems a URL-borne #tgAuthResult synchronously
+				// while it evaluates; real iframe/popup results arrive from events.
+				(window as any)[callbackName] = (
+					user: Record<string, string | number>,
+				) => {
+					if (document.currentScript) return;
 					emit('auth', user);
+				};
 				script.setAttribute('data-onauth', `${callbackName}(user)`);
-			} else {
-				script.setAttribute('data-auth-url', props.authUrl);
 			}
 			script.setAttribute('data-userpic', 'false');
 			script.setAttribute('data-request-access', 'write');
@@ -104,7 +117,7 @@
 	});
 
 	// Optional: Watch for prop changes if needed, though might be less critical now
-	// watch(() => [props.botName, props.authUrl, props.widgetSize], () => {
+	// watch(() => [props.botName, props.widgetSize], () => {
 	//   cleanupWidget();
 	//   loadWidgetScript();
 	// });

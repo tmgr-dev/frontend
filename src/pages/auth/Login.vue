@@ -37,9 +37,11 @@
 			class="mt-3 flex justify-center"
 		>
 			<TelegramLoginWidget
+				:key="telegramWidgetKey"
 				:bot-name="telegramBotName"
-				:auth-url="telegramAuthUrl"
+				callback
 				widget-size="medium"
+				@auth="loginWithTelegram"
 			/>
 		</div>
 
@@ -105,7 +107,11 @@
 </template>
 
 <script setup lang="ts">
-	import { LoginRequest, login as loginAction } from '@/actions/tmgr/auth';
+	import {
+		LoginRequest,
+		login as loginAction,
+		loginTelegramWidget,
+	} from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
 	import AuthLayout from '@/components/auth/AuthLayout.vue';
@@ -138,9 +144,7 @@
 	const router = useRouter();
 	const isDesktop = isDesktopApp();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
-	const telegramAuthUrl = `${
-		import.meta.env.VITE_API_BASE_URL
-	}auth/login/telegram/redirect`;
+	const telegramWidgetKey = ref(0);
 
 	const form = ref({
 		email: '',
@@ -158,48 +162,7 @@
 			errors.value = {};
 			isLoading.value = true;
 			await loginAction(form.value);
-			await getUser();
-			const returnPath = takeReturnPath();
-
-			if (localStorage.getItem('workspace.invitation')) {
-				const token = localStorage.getItem('workspace.invitation');
-				await router.push({
-					name: 'WorkspaceInvitation',
-					params: {
-						token,
-					},
-				});
-			} else if (returnPath) {
-				await router.push(returnPath);
-			} else {
-				if (store.state.user) {
-					await Promise.all([
-						getUserSettings(),
-						getWorkspaceStatuses(),
-						store.dispatch('featureToggles/loadUserToggles'),
-					]);
-				}
-
-				const landingPage =
-					store.getters['featureToggles/getUserFeatureValue'](
-						'default_landing_page',
-					) || 'list';
-				const currentWorkspaceId = store.state.user?.settings?.find(
-					(s) => s.key === 'current_workspace',
-				)?.value;
-				const workspace = store.state.workspaces?.find(
-					(w) => w.id == currentWorkspaceId,
-				);
-				const workspaceCode = workspace?.code;
-
-				if (workspaceCode) {
-					await router.push(`/${workspaceCode}/${landingPage}`);
-				} else {
-					await router.push({ name: 'CurrentTasksList' });
-				}
-			}
-
-			store.commit('rerenderApp');
+			await enterApp();
 		} catch (error: unknown) {
 			if (error instanceof AxiosError) {
 				errors.value = error.response?.data?.errors;
@@ -209,6 +172,65 @@
 		} finally {
 			isLoading.value = false;
 		}
+	}
+
+	async function loginWithTelegram(user: Record<string, string | number>) {
+		if (isLoading.value) return;
+		try {
+			isLoading.value = true;
+			if (!(await loginTelegramWidget(user))) return;
+			await enterApp();
+		} catch {
+			message.value = 'Telegram sign-in failed, try again';
+			telegramWidgetKey.value++;
+		} finally {
+			isLoading.value = false;
+		}
+	}
+
+	async function enterApp() {
+		await getUser();
+		const returnPath = takeReturnPath();
+
+		if (localStorage.getItem('workspace.invitation')) {
+			const token = localStorage.getItem('workspace.invitation');
+			await router.push({
+				name: 'WorkspaceInvitation',
+				params: {
+					token,
+				},
+			});
+		} else if (returnPath) {
+			await router.push(returnPath);
+		} else {
+			if (store.state.user) {
+				await Promise.all([
+					getUserSettings(),
+					getWorkspaceStatuses(),
+					store.dispatch('featureToggles/loadUserToggles'),
+				]);
+			}
+
+			const landingPage =
+				store.getters['featureToggles/getUserFeatureValue'](
+					'default_landing_page',
+				) || 'list';
+			const currentWorkspaceId = store.state.user?.settings?.find(
+				(s) => s.key === 'current_workspace',
+			)?.value;
+			const workspace = store.state.workspaces?.find(
+				(w) => w.id == currentWorkspaceId,
+			);
+			const workspaceCode = workspace?.code;
+
+			if (workspaceCode) {
+				await router.push(`/${workspaceCode}/${landingPage}`);
+			} else {
+				await router.push({ name: 'CurrentTasksList' });
+			}
+		}
+
+		store.commit('rerenderApp');
 	}
 
 	async function loginWithSocialite(platform: DesktopAuthProvider) {
@@ -238,18 +260,6 @@
 		if ('error' in route.query) {
 			const { error: _error, ...query } = route.query;
 			router.replace({ query });
-		}
-		if (document.getElementById('telegram-login-widget-container')) {
-			const script = document.createElement('script');
-			script.async = true;
-			script.src = 'https://telegram.org/js/telegram-widget.js?22';
-			script.setAttribute('data-telegram-login', telegramBotName || '');
-			script.setAttribute('data-size', 'medium');
-			script.setAttribute('data-auth-url', telegramAuthUrl);
-			script.setAttribute('data-request-access', 'write');
-			document
-				.getElementById('telegram-login-widget-container')
-				?.appendChild(script);
 		}
 	});
 </script>

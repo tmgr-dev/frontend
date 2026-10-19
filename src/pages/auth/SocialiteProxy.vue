@@ -24,7 +24,6 @@
 		LoginGithubRequest,
 		loginGoogle,
 		LoginGoogleRequest,
-		loginTelegram,
 		LoginWithCodeRequest,
 	} from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
@@ -107,14 +106,9 @@
 					};
 					await loginGoogle(googlePayload);
 					break;
-				case 'telegram':
-					const telegramPayload: LoginWithCodeRequest = {
-						code: route.query?.code as string,
-					};
-					await loginTelegram(telegramPayload);
-					break;
 				default:
-					await router.push('login');
+					await router.replace('/login');
+					return;
 			}
 			await getUser();
 

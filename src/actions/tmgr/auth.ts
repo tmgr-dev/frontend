@@ -74,10 +74,19 @@ export const loginApple = (payload: LoginWithCodeRequest): Promise<void> => {
 		.then(setAxiosHeaderBearerToken);
 };
 
-export const loginTelegram = (payload: LoginWithCodeRequest): Promise<void> => {
+const postedTelegramHashes = new Set<string>();
+
+/** Resolves false without a request for a payload already posted in this page lifetime: each one is accepted once. */
+export const loginTelegramWidget = (
+	user: Record<string, string | number>,
+): Promise<boolean> => {
+	const hash = String(user.hash);
+	if (postedTelegramHashes.has(hash)) return Promise.resolve(false);
+	postedTelegramHashes.add(hash);
 	return $axios
-		.post(`auth/login/telegram/redirect`, payload)
-		.then(setAxiosHeaderBearerToken);
+		.post('auth/login/telegram/widget', user)
+		.then(setAxiosHeaderBearerToken)
+		.then(() => true);
 };
 
 export interface Register {
