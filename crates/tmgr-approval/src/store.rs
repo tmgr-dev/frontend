@@ -267,6 +267,32 @@ impl AllowFile {
     }
 }
 
+pub fn claim_message(claim: &CloudApproval) -> String {
+    match &claim.repos_sha256 {
+        Some(repos) => message_v2(
+            &claim.host,
+            claim.user_id,
+            claim.workspace_id,
+            claim.task_id,
+            claim.category_id,
+            &claim.content_sha256,
+            repos,
+            &claim.key_id,
+            claim.signed_at,
+        ),
+        None => message(
+            &claim.host,
+            claim.user_id,
+            claim.workspace_id,
+            claim.task_id,
+            claim.category_id,
+            &claim.content_sha256,
+            &claim.key_id,
+            claim.signed_at,
+        ),
+    }
+}
+
 pub fn check_claim(
     entry: &Entry,
     claim: &CloudApproval,
@@ -309,29 +335,7 @@ pub fn check_claim(
             "open the task in the web app and click Confirm for agent runs",
         ));
     }
-    let msg = match &claim.repos_sha256 {
-        Some(repos) => message_v2(
-            &claim.host,
-            claim.user_id,
-            claim.workspace_id,
-            claim.task_id,
-            claim.category_id,
-            &claim.content_sha256,
-            repos,
-            &claim.key_id,
-            claim.signed_at,
-        ),
-        None => message(
-            &claim.host,
-            claim.user_id,
-            claim.workspace_id,
-            claim.task_id,
-            claim.category_id,
-            &claim.content_sha256,
-            &claim.key_id,
-            claim.signed_at,
-        ),
-    };
+    let msg = claim_message(claim);
     if !verify(&key.public_key, &msg, &claim.signature) {
         return Err(Refusal::new(
             "the approval signature is not valid",
