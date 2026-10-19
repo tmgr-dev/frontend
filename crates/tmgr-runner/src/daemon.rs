@@ -2384,6 +2384,7 @@ impl Runner {
             base_env: base,
             grants,
             cwd_id: Some(dir.id()),
+            network: Default::default(),
         })
         .map_err(|e| api(ErrorCode::Sandbox, e))?;
         for n in &launch.notes {

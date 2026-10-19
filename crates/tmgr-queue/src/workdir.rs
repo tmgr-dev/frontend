@@ -62,7 +62,10 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
 
 const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
-fn output_within(cmd: &mut Command, limit: std::time::Duration) -> Result<std::process::Output> {
+pub(crate) fn output_within(
+    cmd: &mut Command,
+    limit: std::time::Duration,
+) -> Result<std::process::Output> {
     use std::io::Read;
     use std::process::Stdio;
     let mut child = cmd

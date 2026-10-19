@@ -212,6 +212,7 @@ fn launch_with(f: &Fx, script: &str, edit: impl FnOnce(&mut serde_json::Value)) 
         base_env: vec![("PATH".into(), "/usr/bin:/bin".into())],
         grants: Default::default(),
         cwd_id: None,
+        network: Default::default(),
     };
     let l = prepare(&spec).expect("prepare");
     let pol = std::path::Path::new(&l.argv[2]);

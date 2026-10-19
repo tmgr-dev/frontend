@@ -3,6 +3,19 @@ use std::fs::DirBuilder;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Network {
+    #[default]
+    Open,
+    Restricted {
+        proxy_port: u16,
+    },
+}
+
+pub fn network_restriction_enforced() -> bool {
+    cfg!(target_os = "macos")
+}
+
 pub struct SandboxSpec {
     pub session_id: String,
     pub argv: Vec<String>,
@@ -15,6 +28,7 @@ pub struct SandboxSpec {
     pub base_env: Vec<(String, String)>,
     pub grants: Grants,
     pub cwd_id: Option<(u64, u64)>,
+    pub network: Network,
 }
 
 #[derive(Default)]
@@ -99,6 +113,9 @@ const HOME_DENY: &[&str] = &[
     ".local/share/keyrings",
     ".cargo/credentials",
     ".cargo/credentials.toml",
+    ".config/gh",
+    ".git-credentials",
+    ".config/git/credentials",
 ];
 
 const HOME_READ: &[&str] = &[
@@ -165,6 +182,17 @@ pub fn drop_overlapping(
         })
         .collect()
 }
+
+const PROXY_ENV: &[&str] = &[
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "https_proxy",
+    "http_proxy",
+    "ALL_PROXY",
+    "all_proxy",
+    "NO_PROXY",
+    "no_proxy",
+];
 
 fn env_name_valid(name: &str) -> bool {
     !name.is_empty() && !name.contains(['=', '\0'])
@@ -255,6 +283,7 @@ pub struct PolicyPaths {
     pub write: Vec<PathBuf>,
     pub deny: Vec<PathBuf>,
     pub write_prefixes: Vec<String>,
+    pub network: Network,
 }
 
 #[cfg(target_os = "macos")]
@@ -452,7 +481,28 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
             self_exe.display()
         ));
     }
-    let env = build_env(spec, &home, &tmp)?;
+    let mut env = build_env(spec, &home, &tmp)?;
+    if let Network::Restricted { proxy_port } = spec.network {
+        if proxy_port == 0 {
+            return Err("the egress proxy port is not set".into());
+        }
+        if !network_restriction_enforced() {
+            return Err(
+                "network restriction is not enforced on this platform; the run does not start"
+                    .into(),
+            );
+        }
+        let proxy = format!("http://127.0.0.1:{proxy_port}");
+        env.retain(|(k, _)| !PROXY_ENV.iter().any(|n| n.eq_ignore_ascii_case(k)));
+        for n in PROXY_ENV {
+            let v = if n.eq_ignore_ascii_case("NO_PROXY") {
+                String::new()
+            } else {
+                proxy.clone()
+            };
+            env.push((n.to_string(), v));
+        }
+    }
     Ok(Plan {
         cwd,
         cwd_id,
@@ -466,6 +516,7 @@ fn plan(spec: &SandboxSpec) -> Result<Plan, String> {
             write,
             deny,
             write_prefixes: xcrun_cache_prefix().into_iter().collect(),
+            network: spec.network,
         },
         env,
     })
@@ -567,6 +618,17 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/ttys[0-9]+$\"))\n");
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/pty[p-w][0-9a-f]$\"))\n");
     s.push_str("(deny file-read-data file-write* (regex #\"^/dev/tty[p-w][0-9a-f]$\"))\n");
+    if let Network::Restricted { proxy_port } = p.network {
+        s.push_str("(deny network-outbound)\n");
+        s.push_str(&format!(
+            "(allow network-outbound (remote unix-socket (subpath {home})))\n"
+        ));
+        s.push_str(&format!(
+            "(allow network-outbound (remote tcp \"localhost:{proxy_port}\"))\n"
+        ));
+        s.push_str("(deny network-inbound)\n");
+        s.push_str("(allow network-inbound (local ip \"localhost:*\"))\n");
+    }
     Ok(s)
 }
 
@@ -977,6 +1039,7 @@ mod tests {
             base_env: vec![],
             grants: Default::default(),
             cwd_id: None,
+            network: Network::Open,
         };
         Fx { _t: t, spec }
     }
@@ -1349,6 +1412,95 @@ mod tests {
         assert!(deny_sig < allow_sig);
         let reallow_home = s.rfind("(allow file-read* file-write* (subpath").unwrap();
         assert!(reallow_home > first_deny);
+    }
+
+    #[test]
+    fn open_network_adds_no_network_rules() {
+        let f = fx();
+        let s = seatbelt_profile(&plan(&f.spec).unwrap().paths).unwrap();
+        assert!(!s.contains("(deny network-outbound)\n"));
+        assert!(!s.contains("network-inbound"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn restricted_network_rules_come_last_and_name_the_proxy_port() {
+        let mut f = fx();
+        f.spec.network = Network::Restricted { proxy_port: 18999 };
+        let p = plan(&f.spec).unwrap().paths;
+        let s = seatbelt_profile(&p).unwrap();
+        let deny = s.find("(deny network-outbound)\n").unwrap();
+        let home = sbpl_quote(&p.home).unwrap();
+        let unix = s
+            .rfind(&format!(
+                "(allow network-outbound (remote unix-socket (subpath {home})))\n"
+            ))
+            .unwrap();
+        let tcp = s
+            .find("(allow network-outbound (remote tcp \"localhost:18999\"))\n")
+            .unwrap();
+        let inbound_deny = s.find("(deny network-inbound)\n").unwrap();
+        let inbound_allow = s
+            .find("(allow network-inbound (local ip \"localhost:*\"))\n")
+            .unwrap();
+        assert!(deny < unix && deny < tcp && inbound_deny < inbound_allow);
+        assert!(s.rfind("(deny file-read-data").unwrap() < deny);
+        assert_eq!(s.matches("remote tcp").count(), 1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn restricted_network_sets_proxy_variables_and_empty_no_proxy() {
+        let mut f = fx();
+        f.spec.network = Network::Restricted { proxy_port: 4321 };
+        f.spec.base_env = vec![kv("HTTPS_PROXY", "http://evil:1")];
+        f.spec.env_pass = vec!["HTTPS_PROXY".into()];
+        let env = env_of(&f.spec);
+        for n in [
+            "HTTPS_PROXY",
+            "HTTP_PROXY",
+            "https_proxy",
+            "http_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ] {
+            assert_eq!(env[n], "http://127.0.0.1:4321", "{n}");
+        }
+        assert_eq!(env["NO_PROXY"], "");
+        assert_eq!(env["no_proxy"], "");
+    }
+
+    #[test]
+    fn restricted_network_needs_a_port() {
+        let mut f = fx();
+        f.spec.network = Network::Restricted { proxy_port: 0 };
+        assert!(plan(&f.spec).is_err());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn restricted_network_is_refused_where_it_is_not_enforced() {
+        let mut f = fx();
+        f.spec.network = Network::Restricted { proxy_port: 4321 };
+        let e = plan(&f.spec).err().unwrap();
+        assert!(e.contains("network restriction is not enforced"), "{e}");
+    }
+
+    #[test]
+    fn network_restriction_is_enforced_only_on_macos() {
+        assert_eq!(network_restriction_enforced(), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn home_deny_list_covers_git_and_gh_credentials() {
+        let f = fx();
+        let deny = home_deny_paths(&f.spec.real_home);
+        for rel in [".config/gh", ".git-credentials", ".config/git/credentials"] {
+            assert!(
+                deny.contains(&canon_lossy(&f.spec.real_home).join(rel)),
+                "{rel}"
+            );
+        }
     }
 
     #[test]
