@@ -163,7 +163,7 @@ const statusHeader = (
 	const updatedMs = timeMs(d.updated_at);
 	const startedMs = timeMs(d.started_at);
 
-	let word = state || '—';
+	let word = state ? cleanText(state, 32) : '—';
 	if (!needsUpdate) {
 		if (running) word = state;
 		else word = stopped ? 'stopped' : 'not running';
@@ -321,7 +321,8 @@ export const buildView = (
 		const agents = runAgents(r.agents);
 		if (agents !== undefined) view.agents = agents;
 		const workspaceCode = optText(r.workspace_code, 64);
-		if (workspaceCode) view.workspaceCode = workspaceCode;
+		if (workspaceCode && /^[A-Za-z0-9_-]+$/.test(workspaceCode))
+			view.workspaceCode = workspaceCode;
 		const sessionId = optText(r.session_id, 128);
 		if (sessionId) view.sessionId = sessionId;
 		const prUrl = prByTask.get(task);

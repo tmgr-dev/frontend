@@ -250,12 +250,12 @@
 							<span
 								v-if="l.soft != null"
 								class="absolute -top-0.5 h-3 w-px bg-ink-subtle"
-								:style="{ left: l.soft + '%' }"
+								:style="{ left: Math.min(100, l.soft) + '%' }"
 							/>
 							<span
 								v-if="l.hard != null"
 								class="absolute -top-0.5 h-3 w-px bg-destructive"
-								:style="{ left: l.hard + '%' }"
+								:style="{ left: Math.min(100, l.hard) + '%' }"
 							/>
 						</div>
 					</div>
@@ -397,7 +397,15 @@
 				if (!disposed) timer = setTimeout(poll, delay);
 			};
 
+			const onVisible = () => {
+				if (!document.hidden && !disposed) {
+					clearTimeout(timer);
+					void poll();
+				}
+			};
+
 			onMounted(() => {
+				document.addEventListener('visibilitychange', onVisible);
 				void poll();
 				tick = setInterval(() => {
 					now.value = Date.now();
@@ -406,6 +414,7 @@
 			});
 			onBeforeUnmount(() => {
 				disposed = true;
+				document.removeEventListener('visibilitychange', onVisible);
 				clearTimeout(timer);
 				clearInterval(tick);
 			});
@@ -415,8 +424,12 @@
 				busy.value = true;
 				try {
 					await runnerAutopilotControl(command);
-					raw = await runnerAutopilotStatus();
-					rebuild();
+					try {
+						raw = await runnerAutopilotStatus();
+						rebuild();
+					} catch {
+						// the next poll refreshes it
+					}
 				} catch (error) {
 					const e = describeRunnerError(error, 'stop');
 					if (!e.cancelled) actionError.value = e.text;
