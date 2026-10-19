@@ -9,8 +9,8 @@ use tmgr_ipc::api::{
     method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
     CandidateInfo, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line, LookupParams,
-    RestoredRun, RunCreateReq, RunStatus, ScreenPush, SendParams, SessionInfo, SessionText,
-    Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
+    OrchestratorCreateReq, RestoredRun, RunCreateReq, RunStatus, ScreenPush, SendParams,
+    SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -128,6 +128,10 @@ impl Client {
     pub fn create_run(&mut self, req: RunCreateReq) -> io::Result<SessionInfo> {
         let params = serde_json::to_value(req).map_err(io::Error::other)?;
         from_value(self.call(method::RUNS_CREATE, params)?)
+    }
+
+    pub fn create_orchestrator(&mut self, req: OrchestratorCreateReq) -> io::Result<SessionInfo> {
+        from_value(self.call(method::ORCHESTRATOR_CREATE, to_params(&req)?)?)
     }
 
     pub fn run_status(&mut self, id: &str) -> io::Result<RunStatus> {

@@ -53,8 +53,9 @@ pub mod caps {
     pub const AUTOPILOT_V1: &str = "autopilot.v1";
     pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
     pub const TEAM_V1: &str = "team.v1";
+    pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
 
-    pub const ALL: [&str; 26] = [
+    pub const ALL: [&str; 27] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -81,6 +82,7 @@ pub mod caps {
         AUTOPILOT_V1,
         SIGNED_CONTEXT_V1,
         TEAM_V1,
+        ORCHESTRATOR_V1,
     ];
 }
 
@@ -111,6 +113,7 @@ pub mod method {
     pub const AUTOPILOT_STATUS: &str = "autopilot.status";
     pub const AUTOPILOT_CONTROL: &str = "autopilot.control";
     pub const AUTOPILOT_LOG: &str = "autopilot.log";
+    pub const ORCHESTRATOR_CREATE: &str = "orchestrator.create";
 }
 
 pub mod limits {

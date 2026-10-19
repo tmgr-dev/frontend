@@ -102,6 +102,46 @@ pub struct RunCreateReq {
     pub clones: Vec<CloneSpec>,
 }
 
+/// Params of `orchestrator.create` (`client: "cli"` only): the runner builds the command and the prompt itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrchestratorCreateReq {
+    pub profile: String,
+    pub cwd: String,
+    pub start_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+impl OrchestratorCreateReq {
+    pub fn as_run(&self) -> RunCreateReq {
+        RunCreateReq {
+            profile: self.profile.clone(),
+            task: None,
+            cwd: self.cwd.clone(),
+            name: self.name.clone(),
+            model: None,
+            cols: default_cols(),
+            rows: default_rows(),
+            bundle: None,
+            bundle_sha256: None,
+            cwd_pin: None,
+            origin: None,
+            permission_mode: None,
+            start_key: Some(self.start_key.clone()),
+            clone_of: None,
+            trust_cwd: None,
+            trust_via_repo: None,
+            exe_pin: None,
+            argv_sha256: None,
+            agent_work: false,
+            cloud: None,
+            unattended: true,
+            clones: Vec::new(),
+        }
+    }
+}
+
 /// One clone of a multi-repository run: the folder `<cwd>/<name>` cloned from the repository `clone_of`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloneSpec {

@@ -820,7 +820,8 @@ fn constants_are_pinned() {
             "multi_clone.v1",
             "autopilot.v1",
             "signed_context.v1",
-            "team.v1"
+            "team.v1",
+            "orchestrator.v1"
         ]
     );
     let methods = [
@@ -850,6 +851,7 @@ fn constants_are_pinned() {
         method::AUTOPILOT_STATUS,
         method::AUTOPILOT_CONTROL,
         method::AUTOPILOT_LOG,
+        method::ORCHESTRATOR_CREATE,
     ];
     assert_eq!(
         methods,
@@ -880,6 +882,7 @@ fn constants_are_pinned() {
             "autopilot.status",
             "autopilot.control",
             "autopilot.log",
+            "orchestrator.create",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -1123,6 +1126,25 @@ fn bundle_metadata_validation() {
     let mut b = bundle();
     b.author.id = Some("u_7.a:b@c-d".repeat(6)[..64].into());
     assert_eq!(b.validate(), Ok(()));
+}
+
+#[test]
+fn orchestrator_create_request() {
+    let req = OrchestratorCreateReq {
+        profile: "claude-code".into(),
+        cwd: "/work/project-worktrees/queue/orchestrator-1".into(),
+        start_key: "orch-1-1".into(),
+        name: None,
+    };
+    golden("orchestrator_create_req", &req);
+    let named = OrchestratorCreateReq {
+        name: Some("orchestrator".into()),
+        ..req
+    };
+    golden("orchestrator_create_req_name", &named);
+    let mut extra = fixture("orchestrator_create_req");
+    extra["argv"] = json!(["/bin/sh"]);
+    assert!(serde_json::from_value::<OrchestratorCreateReq>(extra).is_err());
 }
 
 #[test]
