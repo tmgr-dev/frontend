@@ -428,7 +428,6 @@
 						raw = await runnerAutopilotStatus();
 						rebuild();
 					} catch {
-						// the next poll refreshes it
 					}
 				} catch (error) {
 					const e = describeRunnerError(error, 'stop');
