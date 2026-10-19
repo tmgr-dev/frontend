@@ -4540,3 +4540,204 @@ fn an_argv_digest_is_part_of_the_start_key() {
     assert!(e.starts_with("busy: "), "{e}");
     assert_eq!(c.list().unwrap().len(), 1);
 }
+
+const APPROVAL_FIXTURES: &str =
+    include_str!("../../tmgr-core/tests/fixtures/agent-approval-fixtures.json");
+const CLOUD_TASK: TaskRef = TaskRef {
+    workspace_id: 56,
+    task_id: 9002,
+};
+
+struct CloudFx {
+    h: Harness,
+    repo: PathBuf,
+    clone: PathBuf,
+}
+
+fn cloud_fx(signed_repo: bool) -> CloudFx {
+    let mut h = Harness::new();
+    let f: Value = serde_json::from_str(APPROVAL_FIXTURES).unwrap();
+    let base = fs::canonicalize(h.tmp.path()).unwrap().join("code");
+    let repo = base.join("repo");
+    fs::create_dir_all(&repo).unwrap();
+    init_repo(&repo);
+    let clone = clone_into(&repo, &base.join("repo-worktrees/tm-1"), true);
+    let mut allow = tmgr_approval::AllowFile::default();
+    let mut repos = std::collections::BTreeMap::new();
+    if signed_repo {
+        repos.insert("127".to_string(), repo.display().to_string());
+    }
+    allow.upsert(tmgr_approval::Entry {
+        server: "api.tmgr.dev".into(),
+        user_id: 1,
+        workspace_id: 56,
+        workspace_code: "tmgrdev".into(),
+        allowed_at: "2025-10-01T00:00:00Z".into(),
+        expires_at: None,
+        keys: vec![tmgr_approval::PinnedKey {
+            key_id: f["key"]["key_id"].as_str().unwrap().into(),
+            public_key: f["key"]["public_key"].as_str().unwrap().into(),
+            device_name: "laptop".into(),
+        }],
+        repos,
+    });
+    allow
+        .save_to(&h.cfg.join("tmgr/runner-allow.json"))
+        .unwrap();
+    let script = h.script(
+        "cloud-agent.sh",
+        "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\nwhile true; do sleep 0.2; done\n",
+    );
+    fs::write(
+        h.agents.join("cloudy.toml"),
+        format!(
+            "id = \"cloudy\"\nname = \"cloudy\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+             [permission_modes]\nask = [\"--ask\"]\naccept-edits = [\"--edits\"]\nbypass = [\"--yolo\"]\n"
+        ),
+    )
+    .unwrap();
+    h.agent_work_log();
+    h.start(5000);
+    CloudFx { h, repo, clone }
+}
+
+impl CloudFx {
+    fn req(&self, mode: &str, unattended: bool) -> RunCreateReq {
+        let f: Value = serde_json::from_str(APPROVAL_FIXTURES).unwrap();
+        let c = &f["cases"][2];
+        let cwd = self.clone.display().to_string();
+        let bundle = RunBundle {
+            v: 1,
+            task: CLOUD_TASK,
+            title: c["title"].as_str().unwrap().into(),
+            body: c["description"].as_str().unwrap().into(),
+            author: BundleAuthor {
+                kind: AuthorKind::Human,
+                id: None,
+            },
+            comments: vec![],
+            pages: vec![],
+            persona: None,
+            launch: BundleLaunch {
+                profile: "cloudy".into(),
+                model: None,
+                cwd: cwd.clone(),
+                permission_mode: Some(mode.into()),
+            },
+        };
+        let mut r = self.h.run_req("cloudy");
+        r.task = Some(CLOUD_TASK);
+        r.cwd = cwd;
+        r.bundle_sha256 = Some(bundle.sha256());
+        r.bundle = Some(bundle);
+        r.permission_mode = Some(mode.into());
+        r.clone_of = Some(self.repo.display().to_string());
+        r.agent_work = true;
+        r.unattended = unattended;
+        r.cloud = Some(tmgr_ipc::api::CloudApproval {
+            host: "api.tmgr.dev".into(),
+            user_id: 1,
+            workspace_id: 56,
+            task_id: 9002,
+            category_id: 127,
+            content_sha256: c["content_sha256"].as_str().unwrap().into(),
+            key_id: f["key"]["key_id"].as_str().unwrap().into(),
+            signed_at: 1760000002,
+            signature: c["signature"].as_str().unwrap().into(),
+            kind: "author".into(),
+        });
+        r
+    }
+
+    fn launch_env(&self, dir: &Path) -> Vec<(String, String)> {
+        let path = dir.join("env.txt");
+        wait_for("agent env", || path.exists());
+        thread::sleep(Duration::from_millis(200));
+        fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .filter_map(|l| l.split_once('='))
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    fn proxy_port(&self, dir: &Path) -> Option<u16> {
+        let env = self.launch_env(dir);
+        env.iter()
+            .find(|(k, _)| k == "HTTPS_PROXY")
+            .and_then(|(_, v)| v.strip_prefix("http://127.0.0.1:")?.parse().ok())
+    }
+}
+
+#[test]
+fn bypass_is_refused_without_a_verified_cloud_approval() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let mut none = fx.req("bypass", false);
+    none.cloud = None;
+    let mut forged = fx.req("bypass", false);
+    forged.cloud.as_mut().unwrap().signature = "AAAA".into();
+    let mut unbound = fx.req("bypass", false);
+    unbound.clone_of = Some(fx.h.work.display().to_string());
+    let mut plain = fx.h.run_req("cloudy");
+    plain.permission_mode = Some("bypass".into());
+    for (name, r) in [
+        ("missing", none),
+        ("forged", forged),
+        ("other repo", unbound),
+        ("not a task run", plain),
+    ] {
+        let e = err_text(fx.h.client().create_run(r));
+        assert!(
+            e.starts_with("forbidden: ") || e.starts_with("invalid_params: "),
+            "{name}: {e}"
+        );
+    }
+    assert!(fx.h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn a_verified_manual_bypass_run_is_restricted_to_the_proxy_and_never_restored() {
+    if !sessions_available() {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let info = fx.h.client().create_run(fx.req("bypass", false)).unwrap();
+    assert_eq!(info.permission_mode.as_deref(), Some("bypass"));
+    let env = fx.launch_env(&fx.clone);
+    let args = fs::read_to_string(fx.clone.join("args.txt")).unwrap();
+    assert!(args.contains("--yolo"), "{args}");
+    if cfg!(target_os = "macos") {
+        let port = fx.proxy_port(&fx.clone).expect("proxy env");
+        assert_ne!(port, 0);
+        assert!(env.iter().any(|(k, v)| k == "NO_PROXY" && v.is_empty()));
+    } else {
+        assert!(fx.proxy_port(&fx.clone).is_none());
+    }
+    let store = tmgr_runner::restore::store(fx.h.homes.path());
+    let t = fs::read_to_string(store.join(format!("{}.json", info.id))).unwrap();
+    assert!(t.contains("\"bypass\":true"), "{t}");
+    let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+#[test]
+fn cloud_runs_are_restricted_and_plain_runs_stay_open() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let fx = cloud_fx(true);
+    let info =
+        fx.h.client()
+            .create_run(fx.req("accept-edits", false))
+            .unwrap();
+    assert!(fx.proxy_port(&fx.clone).is_some());
+    let _ = fx.h.client().kill(&info.id, "kill");
+    let mut plain = fx.h.run_req("cloudy");
+    plain.permission_mode = Some("accept-edits".into());
+    let info = fx.h.client().create_run(plain).unwrap();
+    let env = fx.launch_env(&fx.h.work);
+    assert!(!env.iter().any(|(k, _)| k == "HTTPS_PROXY"));
+    let _ = fx.h.client().kill(&info.id, "kill");
+}

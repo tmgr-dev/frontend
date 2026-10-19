@@ -86,8 +86,10 @@ impl RunBundle {
 
     pub fn validate(&self) -> Result<(), String> {
         if let Some(m) = &self.launch.permission_mode {
-            if !valid_permission_mode(m) {
-                return Err("launch.permission_mode must be ask, accept-edits or plan".into());
+            if !valid_permission_mode(m) && m != "bypass" {
+                return Err(
+                    "launch.permission_mode must be ask, accept-edits, plan or bypass".into(),
+                );
             }
         }
         valid_author("author.id", &self.author)?;
