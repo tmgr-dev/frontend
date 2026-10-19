@@ -41,7 +41,7 @@ pub enum AutopilotCmd {
     Pause,
     /// Continue after a pause (needs a normal terminal)
     Resume,
-    /// Stop autopilot and turn the queue off
+    /// Stop autopilot (the queue goes off, or back to its background loop if that was running)
     Stop,
     /// Show the last log lines
     Log {
