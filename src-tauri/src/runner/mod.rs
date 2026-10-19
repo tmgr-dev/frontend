@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tmgr_ipc::api::{method, ClientMsg, Resize, Scroll};
+use tmgr_ipc::api::{caps, method, AutopilotCommand, AutopilotStatus, ClientMsg, Resize, Scroll};
 
 use api::{find_session, list_sessions, session_from_value, state_from_value, Detail, RunnerSession, RunnerState, StartRun, TaskRef};
 use conn::{input_frame, write_frame, write_json, Conn, ConnError, Welcome, MAX_INPUT, UPDATE_RUNNER};
@@ -187,6 +187,27 @@ impl Runner {
       return Err(UPDATE_RUNNER.to_owned());
     }
     api::create_run(&mut conn, r, &welcome).map_err(err)
+  }
+
+  fn autopilot_conn(&self) -> Result<Conn, String> {
+    self.gate()?;
+    let (conn, welcome) = self.connect()?;
+    if welcome.has(caps::AUTOPILOT_V1) {
+      Ok(conn)
+    } else {
+      Err(UPDATE_RUNNER.to_owned())
+    }
+  }
+
+  pub fn autopilot_status(&self) -> Result<AutopilotStatus, String> {
+    api::autopilot_status(&mut self.autopilot_conn()?).map_err(err)
+  }
+
+  pub fn autopilot_control(&self, command: AutopilotCommand) -> Result<u64, String> {
+    if !matches!(command, AutopilotCommand::Pause | AutopilotCommand::Resume | AutopilotCommand::Stop) {
+      return Err("This autopilot command is not available from the desktop app".to_owned());
+    }
+    api::autopilot_control(&mut self.autopilot_conn()?, command).map_err(err)
   }
 
   pub fn config_path(&self) -> &std::path::Path {
@@ -699,6 +720,74 @@ mod tests {
     drop(busy);
     assert!(t.shared.stopped.load(Ordering::SeqCst));
     assert_eq!(r.term_input(SID, "x").unwrap_err(), "not attached");
+  }
+
+  fn autopilot_runner(caps: Vec<String>) -> (Runner, Servers, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let servers: Servers = Arc::default();
+    let s = servers.clone();
+    let connector: Connector = Arc::new(move || {
+      let (a, b) = UnixStream::pair().unwrap();
+      a.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+      let mut m = Mock::new("secret");
+      m.caps = Some(caps.clone());
+      s.lock().unwrap().push(mock::spawn(b, m));
+      Conn::handshake(a, "secret", "desktop")
+    });
+    let r = Runner::new(dir.path().join("runner.json"), connector);
+    r.set_enabled(true).unwrap();
+    (r, servers, dir)
+  }
+
+  fn autopilot_requests(servers: &Servers) -> Vec<Value> {
+    let handles: Vec<_> = servers.lock().unwrap().drain(..).collect();
+    handles.into_iter().flat_map(|h| h.join().unwrap().requests).filter(|q| q["method"].as_str().is_some_and(|m| m.starts_with("autopilot."))).collect()
+  }
+
+  #[test]
+  fn autopilot_status_returns_the_runner_document() {
+    let (r, servers, _d) = autopilot_runner(caps_vec(&["autopilot.v1"]));
+    let st = r.autopilot_status().unwrap();
+    assert_eq!((st.running, st.pid), (true, Some(4242)));
+    assert_eq!(st.status["rule"], "all");
+    drop(r);
+    assert_eq!(autopilot_requests(&servers).len(), 1);
+  }
+
+  #[test]
+  fn autopilot_pause_resume_stop_each_send_one_request() {
+    let (r, servers, _d) = autopilot_runner(caps_vec(&["autopilot.v1"]));
+    for cmd in [AutopilotCommand::Pause, AutopilotCommand::Resume, AutopilotCommand::Stop] {
+      assert_eq!(r.autopilot_control(cmd).unwrap(), 7);
+    }
+    drop(r);
+    let sent: Vec<_> = autopilot_requests(&servers).iter().map(|q| (q["method"].clone(), q["params"]["command"].clone())).collect();
+    assert_eq!(sent, vec![(json!("autopilot.control"), json!("pause")), (json!("autopilot.control"), json!("resume")), (json!("autopilot.control"), json!("stop"))]);
+  }
+
+  #[test]
+  fn autopilot_suspend_is_never_sent() {
+    let (r, servers, _d) = autopilot_runner(caps_vec(&["autopilot.v1"]));
+    assert!(r.autopilot_control(AutopilotCommand::Suspend).is_err());
+    drop(r);
+    assert!(servers.lock().unwrap().is_empty());
+  }
+
+  #[test]
+  fn autopilot_without_the_capability_sends_nothing() {
+    let (r, servers, _d) = autopilot_runner(caps_vec(&["runs.create.v1"]));
+    assert_eq!(r.autopilot_status().unwrap_err(), "Update the TMGR runner");
+    assert_eq!(r.autopilot_control(AutopilotCommand::Pause).unwrap_err(), "Update the TMGR runner");
+    drop(r);
+    assert!(autopilot_requests(&servers).is_empty());
+  }
+
+  #[test]
+  fn autopilot_is_refused_when_disabled_without_touching_the_socket() {
+    let (r, calls, _s, _d) = mock_runner(false);
+    assert_eq!(r.autopilot_status().unwrap_err(), "disabled");
+    assert_eq!(r.autopilot_control(AutopilotCommand::Pause).unwrap_err(), "disabled");
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
   }
 
   #[test]

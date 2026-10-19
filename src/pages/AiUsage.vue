@@ -6,6 +6,7 @@
 		>
 			<template #body>
 				<div class="flex flex-col gap-6">
+					<AutopilotPanel v-if="showAutopilot" />
 					<div
 						v-if="error"
 						role="alert"
@@ -367,8 +368,11 @@
 <script lang="ts">
 	import CommandChip from '@/components/general/CommandChip.vue';
 	import SettingsSection from '@/components/layouts/SettingsSection.vue';
+	import AutopilotPanel from '@/components/runner/AutopilotPanel.vue';
 	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
+	import { isRunnerSupported } from '@/runner/api';
+	import { useRunner } from '@/runner/store';
 	import store from '@/store';
 	import {
 		errorText,
@@ -390,6 +394,7 @@
 		toolName,
 	} from '@/usage/format';
 	import { fetchRuns, taskInfoFor, type TaskInfo } from '@/usage/runs';
+	import { desktopWindowLabel } from '@/utils/desktop';
 	import {
 		computed,
 		defineComponent,
@@ -407,8 +412,15 @@
 
 	export default defineComponent({
 		name: 'AiUsage',
-		components: { Button, CommandChip, SettingsSection },
+		components: { AutopilotPanel, Button, CommandChip, SettingsSection },
 		setup() {
+			const runner = useRunner();
+			const showAutopilot = computed(
+				() =>
+					isRunnerSupported() &&
+					desktopWindowLabel() === 'main' &&
+					runner.enabled.value,
+			);
 			const overview = ref<UsageOverview | null>(null),
 				error = ref<string | null>(null),
 				scanning = ref(false),
@@ -527,6 +539,7 @@
 				!!overview.value?.limits.some((l) => l.tool === tool);
 
 			return {
+				showAutopilot,
 				overview,
 				error,
 				scanning,

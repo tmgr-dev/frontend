@@ -113,6 +113,11 @@ fn handle(mock: &Mock, method: &str, params: &Value) -> Result<Value, ErrorBody>
       _ => Err(err(ErrorCode::InvalidParams, "bad signal")),
     },
     "sessions.send" | "sessions.remove" if mock.busy => Err(err(ErrorCode::Busy, "input queue is full")),
+    "autopilot.status" => Ok(json!({"running": true, "pid": 4242, "status": {"rule": "all", "mode": "pr", "runs": [{"task": "TM-1"}]}})),
+    "autopilot.control" => match params["command"].as_str() {
+      Some("pause" | "resume" | "stop" | "suspend") => Ok(json!({"seq": 7})),
+      _ => Err(err(ErrorCode::InvalidParams, "bad command")),
+    },
     "attach.open" | "attach.set" => Ok(Value::Null),
     other => Err(err(ErrorCode::UnknownMethod, other)),
   }

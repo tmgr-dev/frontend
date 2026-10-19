@@ -296,6 +296,8 @@ pub fn run() {
       runner::commands::runner_project_folder,
       runner::commands::runner_pick_folder,
       runner::commands::runner_halt,
+      runner::commands::runner_autopilot_status,
+      runner::commands::runner_autopilot_control,
       runner::commands::runner_open_terminal,
       runner::commands::runner_watch,
       runner::commands::runner_unwatch,

@@ -160,3 +160,18 @@ export interface RunnerAllowedList {
 
 export const runnerAllowedList = (): Promise<RunnerAllowedList> =>
 	invoke<RunnerAllowedList>('runner_allowed_list');
+
+export interface RunnerAutopilotStatus {
+	running: boolean;
+	pid: number | null;
+	status: any;
+}
+
+export type RunnerAutopilotCommand = 'pause' | 'resume' | 'stop';
+
+export const runnerAutopilotStatus = (): Promise<RunnerAutopilotStatus> =>
+	invoke<RunnerAutopilotStatus>('runner_autopilot_status');
+
+export const runnerAutopilotControl = (
+	command: RunnerAutopilotCommand,
+): Promise<number> => invoke<number>('runner_autopilot_control', { command });

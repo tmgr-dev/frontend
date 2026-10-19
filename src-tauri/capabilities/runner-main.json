@@ -13,6 +13,8 @@
 		"allow-runner-project-folder",
 		"allow-runner-pick-folder",
 		"allow-runner-halt",
+		"allow-runner-autopilot-status",
+		"allow-runner-autopilot-control",
 		"allow-runner-open-terminal",
 		"allow-runner-watch",
 		"allow-runner-unwatch"
