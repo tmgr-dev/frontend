@@ -42,7 +42,7 @@ impl Fresh {
         if !self.status_ok {
             parts.push("status".into());
         }
-        if !self.has_persona {
+        if !self.has_persona && self.holders.is_empty() {
             parts.push("persona".into());
         }
         format!("taken:{}", parts.join("|"))
