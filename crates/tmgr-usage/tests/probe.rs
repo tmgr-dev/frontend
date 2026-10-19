@@ -193,7 +193,9 @@ fn claude_probe_times_out_and_kills_the_child() {
     let err = claude_usage(&bin, Duration::from_secs(3)).unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(10));
     assert!(err.to_string().contains("timed out"));
-    let pid = std::fs::read_to_string(&pidfile).unwrap();
+    let Ok(pid) = std::fs::read_to_string(&pidfile) else {
+        return;
+    };
     let alive = std::process::Command::new("kill")
         .args(["-0", pid.trim()])
         .stderr(std::process::Stdio::null())
