@@ -66,6 +66,8 @@ pub enum QueueCommand {
     Release { pickup: String },
     /// Run one pickup pass now
     RunOnce,
+    /// Work through the backlog in the background: interview, one agreement, then the runner hosts the loop
+    Autopilot(Box<super::autopilot::AutopilotArgs>),
 }
 
 #[derive(Subcommand)]
@@ -171,7 +173,7 @@ fn in_agent_session() -> bool {
         .any(|k| std::env::var_os(k).is_some())
 }
 
-fn not_in_agent_session() -> Result<()> {
+pub(crate) fn not_in_agent_session() -> Result<()> {
     if in_agent_session() {
         return Err(
             Error::new(Kind::Forbidden, "refused inside an agent session")
@@ -181,7 +183,7 @@ fn not_in_agent_session() -> Result<()> {
     Ok(())
 }
 
-fn agree(summary: &str) -> Result<()> {
+pub(crate) fn agree(summary: &str) -> Result<()> {
     privileged::guard()?;
     eprintln!("{WARNING}");
     if !summary.is_empty() {
@@ -215,7 +217,7 @@ fn describe(r: &Rule) -> String {
     )
 }
 
-fn rules_summary(f: &QueueFile) -> String {
+pub(crate) fn rules_summary(f: &QueueFile) -> String {
     if f.rules.is_empty() {
         return "No rules yet.".into();
     }
@@ -269,6 +271,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
             ))
         }
         QueueCommand::RunOnce => run_once(ctx, cli, &paths),
+        QueueCommand::Autopilot(a) => super::autopilot::run(ctx, cli, a),
     }
 }
 
@@ -357,6 +360,12 @@ fn set_paused(paths: &Paths, paused: bool) -> Result<Output> {
 
 fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     privileged::guard()?;
+    let shown = validated_rules(ctx, paths)?;
+    agree(&rules_summary(&shown.file))?;
+    commit_enable(paths, shown.sha256.as_deref())
+}
+
+pub(crate) fn validated_rules(ctx: &Ctx, paths: &Paths) -> Result<rules::Loaded> {
     let shown = rules::load(paths)?;
     rules::validate_file_with(
         &shown.file,
@@ -364,10 +373,13 @@ fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
         Some(&CliCloud::new(ctx)),
         Utc::now(),
     )?;
-    agree(&rules_summary(&shown.file))?;
+    Ok(shown)
+}
+
+pub(crate) fn commit_enable(paths: &Paths, shown_sha: Option<&str>) -> Result<Output> {
     let _lock = paths.lock()?;
     let now = rules::load(paths)?;
-    if now.sha256 != shown.sha256 {
+    if now.sha256.as_deref() != shown_sha {
         return Err(Error::conflict(
             "queue.toml changed while you were reading it; nothing was enabled",
         )
@@ -648,20 +660,20 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
 
 const REFRESH_PAGES: u64 = 50;
 
-struct CliCloud<'a> {
+pub(crate) struct CliCloud<'a> {
     ctx: &'a Ctx,
     live_keys: RefCell<Option<Vec<String>>>,
 }
 
 impl<'a> CliCloud<'a> {
-    fn new(ctx: &'a Ctx) -> Self {
+    pub(crate) fn new(ctx: &'a Ctx) -> Self {
         CliCloud {
             ctx,
             live_keys: RefCell::new(None),
         }
     }
 
-    fn identity(&self) -> Result<(String, i64)> {
+    pub(crate) fn identity(&self) -> Result<(String, i64)> {
         let host = host_of(&self.ctx.server()?)?;
         let user = self.ctx.cloud_client()?.current_user_id()?.ok_or_else(|| {
             Error::auth("cannot tell which account is logged in").hint("tmgr login")
@@ -669,7 +681,7 @@ impl<'a> CliCloud<'a> {
         Ok((host, user))
     }
 
-    fn keys(&self) -> Result<Vec<String>> {
+    pub(crate) fn keys(&self) -> Result<Vec<String>> {
         if let Some(k) = self.live_keys.borrow().clone() {
             return Ok(k);
         }
@@ -816,7 +828,7 @@ impl CloudApi for CliCloud<'_> {
 
 /// The repositories a queue pickup works on, or why the category's binding does not match the rule.
 /// Explicit set: the rule lists exactly the bound folders. No list: exactly the one bound folder.
-fn rule_binding(
+pub(crate) fn rule_binding(
     rule: &Rule,
     ok: &crate::cmd::runner::cloud::GateOk,
     entry: &tmgr_core::approval::Entry,

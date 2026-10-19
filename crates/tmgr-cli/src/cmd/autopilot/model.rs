@@ -18,6 +18,7 @@ pub struct Answers {
     pub max_cost_usd: Option<f64>,
     pub max_hours: Option<f64>,
     pub max_tasks: Option<u32>,
+    pub usage_guard: bool,
     pub feedback_status: String,
     pub blocked_status: String,
 }
@@ -34,6 +35,7 @@ impl Default for Answers {
             max_cost_usd: None,
             max_hours: None,
             max_tasks: None,
+            usage_guard: true,
             feedback_status: "Needs feedback".into(),
             blocked_status: "Blocked".into(),
         }

@@ -121,7 +121,7 @@ pub fn own_key_in(keychain: &dyn Keychain, host: &str, user_id: i64) -> Result<O
     }))
 }
 
-fn device_name() -> String {
+pub fn device_name() -> String {
     let os = match std::env::consts::OS {
         "macos" => "macOS",
         "linux" => "Linux",
@@ -185,7 +185,7 @@ impl<'a> Signer<'a> {
     }
 
     #[cfg(test)]
-    fn with_guard(mut self, guard: impl Fn() -> Result<()> + 'static) -> Self {
+    pub(crate) fn with_guard(mut self, guard: impl Fn() -> Result<()> + 'static) -> Self {
         self.guard = Box::new(guard);
         self
     }
