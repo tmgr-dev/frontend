@@ -13,6 +13,8 @@ pub mod t0;
 #[cfg(unix)]
 pub mod agentwork;
 #[cfg(unix)]
+pub mod autopilot;
+#[cfg(unix)]
 pub mod bundle;
 #[cfg(unix)]
 pub mod client;

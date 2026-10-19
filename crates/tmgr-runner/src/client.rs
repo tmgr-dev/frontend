@@ -6,10 +6,11 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
-    method, AttachParams, CandidateInfo, CreateReq, EventMsg, IdParams, KillParams,
-    LayoutSetParams, Line, LookupParams, RestoredRun, RunCreateReq, RunStatus, ScreenPush,
-    SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary,
-    CLIENT_CLI,
+    method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
+    AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
+    CandidateInfo, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line, LookupParams,
+    RestoredRun, RunCreateReq, RunStatus, ScreenPush, SendParams, SessionInfo, SessionText,
+    Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -147,12 +148,46 @@ impl Client {
     }
 
     pub fn kill(&mut self, id: &str, signal: &str) -> io::Result<()> {
+        self.kill_with_reason(id, signal, None)
+    }
+
+    pub fn kill_with_reason(
+        &mut self,
+        id: &str,
+        signal: &str,
+        reason: Option<&str>,
+    ) -> io::Result<()> {
         let params = KillParams {
             id: id.into(),
             signal: signal.into(),
+            reason: reason.map(Into::into),
         };
         self.call(method::SESSIONS_KILL, to_params(&params)?)
             .map(drop)
+    }
+
+    pub fn autopilot_start(&mut self, settings_id: &str) -> io::Result<AutopilotStarted> {
+        let params = AutopilotStartParams {
+            settings_id: settings_id.into(),
+        };
+        from_value(self.call(method::AUTOPILOT_START, to_params(&params)?)?)
+    }
+
+    pub fn autopilot_status(&mut self) -> io::Result<AutopilotStatus> {
+        from_value(self.call(method::AUTOPILOT_STATUS, Value::Null)?)
+    }
+
+    pub fn autopilot_control(&mut self, command: AutopilotCommand) -> io::Result<u64> {
+        let params = AutopilotControlParams { command };
+        let out: AutopilotControlled =
+            from_value(self.call(method::AUTOPILOT_CONTROL, to_params(&params)?)?)?;
+        Ok(out.seq)
+    }
+
+    pub fn autopilot_log(&mut self, tail: u32) -> io::Result<Vec<Value>> {
+        let params = AutopilotLogParams { tail };
+        let out: AutopilotLog = from_value(self.call(method::AUTOPILOT_LOG, to_params(&params)?)?)?;
+        Ok(out.lines)
     }
 
     pub fn send(&mut self, id: &str, text: &str) -> io::Result<()> {
