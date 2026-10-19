@@ -113,5 +113,7 @@ test('shows a readable empty state and clears the status filter', async ({
 test('hides the status filter in simple mode', async ({ page }) => {
   await openList(page, { workflow: false });
   await expect(page.getByRole('group', { name: 'Show tasks' })).toBeVisible();
+  await page.getByTitle('filters').click();
+  await expect(page.getByRole('heading', { name: 'Filters' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Status' })).toHaveCount(0);
 });
