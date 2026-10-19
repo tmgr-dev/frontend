@@ -27,7 +27,7 @@ use tmgr_queue::runs::{self, Lookup, RunState, RunsClient, StartRequest};
 use tmgr_queue::source::{LocalSource, LocalTasks};
 use tmgr_queue::state::{self, Status};
 use tmgr_queue::taken::{
-    assess, people_of, personas_of, running_agents_of, Facts, Fresh, FreshTask,
+    assess, owners_of, people_of, personas_of, running_agents_of, Facts, Fresh, FreshTask,
 };
 use tmgr_queue::workdir::GitClone;
 use tmgr_queue::{Deps, Paths, Publisher};
