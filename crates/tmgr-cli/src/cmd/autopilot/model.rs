@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const STATUS_VERSION: u32 = 1;
+pub const QUEUE_SETTINGS_ID: &str = "queue";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -48,6 +49,14 @@ pub enum Finish {
     PrOnly,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoopKind {
+    #[default]
+    Drain,
+    Queue,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub id: String,
@@ -61,6 +70,8 @@ pub struct Settings {
     pub signed: Vec<i64>,
     #[serde(default)]
     pub windows: Vec<String>,
+    #[serde(default)]
+    pub kind: LoopKind,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +81,7 @@ pub enum RunState {
     Paused,
     Stopping,
     Stopped,
+    Suspended,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]

@@ -2,7 +2,7 @@ use super::ports::{
     Clock, Notifier, Ports, Probed, Queue, Remote, RunControl, Timing, Usage as UsagePort,
 };
 use super::*;
-use crate::cmd::autopilot::model::Answers;
+use crate::cmd::autopilot::model::{Answers, LoopKind, QUEUE_SETTINGS_ID};
 use chrono::TimeZone;
 use std::cell::RefCell;
 use tmgr_core::error::Error;
@@ -363,7 +363,20 @@ fn settings(tasks: &[i64], tweak: impl Fn(&mut Answers)) -> Settings {
         tasks: tasks.iter().copied().collect(),
         signed: vec![],
         windows: vec!["five_hour".into(), "seven_day".into()],
+        kind: LoopKind::Drain,
     }
+}
+
+fn queue_settings() -> Settings {
+    let mut s = settings(&[], |a| {
+        a.usage_guard = false;
+        a.rule = None;
+    });
+    s.id = QUEUE_SETTINGS_ID.into();
+    s.rule = "all".into();
+    s.windows = vec![];
+    s.kind = LoopKind::Queue;
+    s
 }
 
 fn timing() -> Timing {
@@ -501,15 +514,230 @@ fn stop_always_disables_the_queue_last_and_writes_the_summary() {
 }
 
 #[test]
-fn sigterm_stops_like_the_stop_command() {
+fn sigterm_suspends_without_draining_or_turning_the_queue_off() {
     let rig = Rig::new();
     rig.fake.add(running("q1", 1));
     let s = settings(&[1], |_| {});
     let out = with_ap(&rig, &s, |ap| {
         rig.term.store(true, Ordering::SeqCst);
+        ap.tick().unwrap().expect("suspended")
+    });
+    assert_eq!(out.reason, "suspended");
+    let w = rig.fake.0.borrow();
+    assert!(w.kills.is_empty() && w.disabled.is_empty() && w.drafts.is_empty());
+    assert!(w.enabled);
+    drop(w);
+    let st = rig.status();
+    assert_eq!(st.state, RunState::Suspended);
+    assert_eq!(rig.log_kinds().last().unwrap(), "suspended");
+}
+
+#[test]
+fn the_suspend_command_does_the_same_as_sigterm() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    let s = settings(&[1], |_| {});
+    let out = with_ap(&rig, &s, |ap| {
+        rig.control(1, "suspend");
+        ap.tick().unwrap().expect("suspended")
+    });
+    assert_eq!(out.reason, "suspended");
+    assert!(rig.fake.0.borrow().kills.is_empty());
+    assert_eq!(rig.status().state, RunState::Suspended);
+    assert_eq!(rig.status().control_seq, 1);
+}
+
+#[test]
+fn a_resumed_loop_keeps_the_start_time_events_pull_requests_and_counters() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    let mut done = running("q2", 2);
+    done.run_exited = true;
+    done.run_clean = true;
+    rig.fake.add(done);
+    {
+        let mut w = rig.fake.w();
+        w.start_on_pass.push(("q1".into(), 1));
+        w.alive.remove("run-q2");
+    }
+    let s = settings(&[1, 2], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_on(ap);
+        assert_eq!(ap.started_ids.len(), 1);
+        rig.term.store(true, Ordering::SeqCst);
+        assert!(ap.tick().unwrap().is_some());
+    });
+    let first = rig.status();
+    assert_eq!(first.state, RunState::Suspended);
+    assert_eq!(first.prs.len(), 1);
+    rig.term.store(false, Ordering::SeqCst);
+    rig.fake.advance(Duration::minutes(7));
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    assert_eq!(ap.started_at, first.started_at);
+    assert_eq!(ap.started_ids.len(), 1);
+    assert_eq!(ap.prs.len(), 1);
+    assert!(ap.events.iter().any(|e| e.kind == "picked"));
+    assert!(ap.events.iter().any(|e| e.kind == "resumed"));
+    assert!(!ap
+        .events
+        .iter()
+        .any(|e| e.kind == "started" && e.at > Some(t0())));
+    let picked = ap.events.iter().filter(|e| e.kind == "picked").count();
+    tick_on(&mut ap);
+    assert_eq!(
+        ap.events.iter().filter(|e| e.kind == "picked").count(),
+        picked
+    );
+    assert_eq!(ap.prs.len(), 1);
+    assert_eq!(rig.status().state, RunState::Running);
+    assert_eq!(rig.status().started_at, first.started_at);
+}
+
+#[test]
+fn a_stopped_status_or_another_settings_id_is_not_resumed() {
+    let rig = Rig::new();
+    let s = settings(&[1], |_| {});
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    with_ap(&rig, &s, |ap| {
+        rig.control(1, "stop");
+        assert!(ap.tick().unwrap().is_some());
+    });
+    let stopped = rig.status();
+    rig.fake.advance(Duration::minutes(3));
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    assert_ne!(ap.started_at, stopped.started_at);
+    assert!(!ap.events.iter().any(|e| e.kind == "resumed"));
+}
+
+fn tick_n(ap: &mut Autopilot, rig: &Rig, n: usize) {
+    for _ in 0..n {
+        tick_on(ap);
+        rig.fake.advance(Duration::seconds(30));
+    }
+}
+
+#[test]
+fn the_queue_loop_keeps_ticking_when_nothing_is_left() {
+    let rig = Rig::new();
+    let mut done = running("q1", 1);
+    done.run_exited = true;
+    done.run_clean = true;
+    rig.fake.add(done);
+    let s = queue_settings();
+    with_ap(&rig, &s, |ap| {
+        tick_n(ap, &rig, 5);
+        assert_eq!(rig.status().state, RunState::Running);
+        assert!(rig.fake.0.borrow().disabled.is_empty());
+        assert_eq!(rig.fake.0.borrow().passes.len(), 5);
+    });
+}
+
+#[test]
+fn the_queue_loop_hands_the_engine_a_default_policy_and_keeps_starting_after_failures() {
+    let rig = Rig::new();
+    for t in 1..=3 {
+        let mut p = pickup(&format!("f{t}"), t, "failed", None);
+        p.reason = Some("clone failed".into());
+        rig.fake.add(p);
+    }
+    let s = queue_settings();
+    with_ap(&rig, &s, |ap| {
+        tick_n(ap, &rig, 3);
+        let w = rig.fake.0.borrow();
+        let policy = w.passes.last().unwrap();
+        assert!(policy.starts_allowed);
+        assert!(policy.only.is_none());
+        assert!(policy.max_live.is_none());
+        assert!(policy.max_new_starts.is_none());
+    });
+    assert_eq!(rig.status().tasks.failed, 3);
+}
+
+#[test]
+fn the_queue_loop_follows_every_task_the_queue_picks_and_reports_each_step() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q9", 9, "approved", None));
+    rig.fake.w().start_on_pass.push(("q9".into(), 9));
+    let s = queue_settings();
+    with_ap(&rig, &s, |ap| {
+        tick_n(ap, &rig, 2);
+        let st = rig.status();
+        assert_eq!(st.tasks.total, 1);
+        assert_eq!(st.tasks.in_work, 1);
+        assert_eq!(st.extra["kind"], "queue");
+        rig.fake.w().alive.clear();
+        rig.fake.w().clean_exit.insert("run-q9".into());
+        tick_n(ap, &rig, 2);
+    });
+    let kinds = rig.log_kinds();
+    for kind in ["started", "picked", "running", "pr"] {
+        assert!(kinds.iter().any(|k| k == kind), "{kind} in {kinds:?}");
+    }
+    assert_eq!(rig.status().tasks.done_pr, 1);
+}
+
+#[test]
+fn a_step_is_reported_once_per_change() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    rig.fake.w().start_on_pass.push(("q1".into(), 1));
+    let s = queue_settings();
+    with_ap(&rig, &s, |ap| tick_n(ap, &rig, 4));
+    let running = rig.log_kinds().iter().filter(|k| *k == "running").count();
+    assert_eq!(running, 1);
+}
+
+#[test]
+fn a_clean_exit_without_a_pull_request_is_logged_as_done() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    rig.fake.w().start_on_pass.push(("q1".into(), 1));
+    let s = queue_settings();
+    with_ap(&rig, &s, |ap| {
+        tick_n(ap, &rig, 2);
+        {
+            let mut w = rig.fake.w();
+            w.alive.clear();
+            w.clean_exit.insert("run-q1".into());
+            for p in w.state.pickups.iter_mut() {
+                p.cloud = None;
+            }
+        }
+        tick_n(ap, &rig, 2);
+    });
+    assert!(rig.log_kinds().iter().any(|k| k == "done"));
+}
+
+#[test]
+fn the_queue_loop_ends_when_the_queue_is_turned_off_and_does_not_drain() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    let s = queue_settings();
+    let out = with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        rig.fake.w().enabled = false;
+        ap.tick().unwrap().expect("ended")
+    });
+    assert_eq!(out.reason, "the queue was turned off");
+    assert!(rig.fake.0.borrow().kills.is_empty());
+    assert_eq!(rig.status().state, RunState::Stopped);
+}
+
+#[test]
+fn the_stop_command_still_drains_and_turns_the_queue_off_in_queue_mode() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    let s = queue_settings();
+    let out = with_ap(&rig, &s, |ap| {
+        rig.control(1, "stop");
         ap.tick().unwrap().expect("stopped")
     });
-    assert_eq!(out.reason, "stopped by SIGTERM");
+    assert_eq!(out.reason, "stopped by you");
     assert_eq!(rig.fake.order().last().unwrap(), "disable");
     assert_eq!(rig.fake.0.borrow().kills[0].1, "int");
 }

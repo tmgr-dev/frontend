@@ -13,7 +13,7 @@
       "properties": {
         "running": { "type": "boolean" },
         "version": { "type": "integer" },
-        "state": { "enum": ["running", "paused", "stopping", "stopped"] },
+        "state": { "enum": ["running", "paused", "stopping", "stopped", "suspended"] },
         "pid": { "type": "integer" },
         "control_seq": { "type": "integer" },
         "settings_id": { "type": "string" },

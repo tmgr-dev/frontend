@@ -3,8 +3,8 @@ pub mod ports;
 pub mod real;
 
 use super::model::{
-    ActiveRun, Cost, Event, LimitRow, NextStop, PrLink, Reasoned, RunState, Settings, Slots,
-    StatusDoc, Summary, TaskCounts, STATUS_VERSION,
+    ActiveRun, Cost, Event, LimitRow, LoopKind, NextStop, PrLink, Reasoned, RunState, Settings,
+    Slots, StatusDoc, Summary, TaskCounts, STATUS_VERSION,
 };
 use super::store::Store;
 use chrono::{DateTime, Duration, Utc};
@@ -12,6 +12,7 @@ use decide::{
     deadline, decide, next_stop, verdict, Blocker, Decision, Facts, Hit, Inputs, StopReason,
 };
 use ports::{Ports, Timing};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,6 +34,26 @@ const MAX_STATUS_LOOKUPS: usize = 100;
 pub struct Outcome {
     pub reason: String,
     pub summary: Summary,
+    pub suspended: bool,
+}
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+struct Carry {
+    started: Vec<String>,
+    held: Vec<Reasoned>,
+    failed: Vec<Reasoned>,
+    paused: Vec<Reasoned>,
+}
+
+fn step_of(p: &Pickup) -> &'static str {
+    if p.awaits_publish() || (p.run_exited && p.status == Status::Started) {
+        "publishing"
+    } else if p.status == Status::Started {
+        "running"
+    } else {
+        "starting"
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -201,6 +222,9 @@ pub struct Autopilot<'a> {
     state: RunState,
     last_seq: u64,
     stop_req: Option<(Why, String)>,
+    suspend_req: bool,
+    queue_mode: bool,
+    steps: BTreeMap<String, &'static str>,
     events: Vec<Event>,
     prs: Vec<PrLink>,
     baseline: BTreeSet<String>,
@@ -270,6 +294,9 @@ impl<'a> Autopilot<'a> {
             state: RunState::Running,
             last_seq: 0,
             stop_req: None,
+            suspend_req: false,
+            queue_mode: s.kind == LoopKind::Queue,
+            steps: BTreeMap::new(),
             events: Vec::new(),
             prs: Vec::new(),
             baseline: BTreeSet::new(),
@@ -310,6 +337,39 @@ impl<'a> Autopilot<'a> {
         self.p.clock.now()
     }
 
+    fn selected(&self, st: &State) -> BTreeSet<i64> {
+        if self.queue_mode {
+            st.pickups
+                .iter()
+                .filter(|p| !p.released)
+                .map(|p| p.task.task_id)
+                .collect()
+        } else {
+            self.s.tasks.clone()
+        }
+    }
+
+    fn previous(&self) -> Option<StatusDoc> {
+        let doc = self.store.read_status().ok().flatten()?;
+        (doc.state == RunState::Suspended && doc.settings_id == self.s.id).then_some(doc)
+    }
+
+    fn restore(&mut self, doc: StatusDoc) {
+        self.started_at = doc.started_at;
+        self.events = doc.events;
+        self.prs = doc.prs;
+        self.failures = doc.failures_in_row;
+        let carry: Carry = doc
+            .extra
+            .get("resume")
+            .and_then(|v| serde_json::from_value(v.clone()).ok())
+            .unwrap_or_default();
+        self.started_ids = carry.started.into_iter().collect();
+        self.held_log = carry.held;
+        self.failed_log = carry.failed;
+        self.paused_log = carry.paused;
+    }
+
     fn event(&mut self, kind: &str, task: Option<&str>, text: impl Into<String>) {
         let ev = Event {
             at: Some(self.now()),
@@ -342,23 +402,39 @@ impl<'a> Autopilot<'a> {
     }
 
     fn begin(&mut self) {
+        let resumed = match self.previous() {
+            Some(doc) => {
+                self.restore(doc);
+                true
+            }
+            None => false,
+        };
         let n = self.s.tasks.len();
-        self.event(
-            "started",
-            None,
-            format!(
-                "Autopilot started: {n} task{}, up to {} at once",
-                if n == 1 { "" } else { "s" },
-                self.s.answers.max_concurrent
-            ),
-        );
+        if resumed {
+            self.event("resumed", None, "Autopilot resumed");
+        } else if self.queue_mode {
+            self.event(
+                "started",
+                None,
+                "Queue loop started: every rule, within the limits of each rule",
+            );
+        } else {
+            self.event(
+                "started",
+                None,
+                format!(
+                    "Autopilot started: {n} task{}, up to {} at once",
+                    if n == 1 { "" } else { "s" },
+                    self.s.answers.max_concurrent
+                ),
+            );
+        }
         if let Ok(st) = self.p.queue.state() {
-            for p in st
-                .pickups
-                .iter()
-                .filter(|p| self.s.tasks.contains(&p.task.task_id))
-            {
-                if p.run_id.is_some() || p.status == Status::UnknownStart {
+            let sel = self.selected(&st);
+            for p in st.pickups.iter().filter(|p| sel.contains(&p.task.task_id)) {
+                if (p.run_id.is_some() || p.status == Status::UnknownStart)
+                    && !self.started_ids.contains(&p.id)
+                {
                     self.baseline.insert(p.id.clone());
                 }
                 match classify(p, &self.killed) {
@@ -371,12 +447,21 @@ impl<'a> Autopilot<'a> {
                     Class::Failed(_) => {
                         self.counted_fail.insert(p.id.clone());
                     }
+                    Class::InWork => {
+                        self.steps.insert(p.id.clone(), step_of(p));
+                    }
                     _ => {}
                 }
             }
         }
-        let body = format!("{n} task{} selected", if n == 1 { "" } else { "s" });
-        self.push("Autopilot started", &body);
+        if !resumed {
+            let body = if self.queue_mode {
+                "the queue is on".to_string()
+            } else {
+                format!("{n} task{} selected", if n == 1 { "" } else { "s" })
+            };
+            self.push("Autopilot started", &body);
+        }
         self.write_status();
     }
 
@@ -442,6 +527,10 @@ impl<'a> Autopilot<'a> {
                 self.stop_req = Some((Why::stopped(), "stopped by you".into()));
                 self.event("control", None, "Stop requested");
             }
+            Some("suspend") => {
+                self.suspend_req = true;
+                self.event("control", None, "Suspend requested");
+            }
             other => {
                 let text = format!("Unknown control command {other:?}");
                 self.event("error", None, text);
@@ -451,17 +540,18 @@ impl<'a> Autopilot<'a> {
 
     fn tick(&mut self) -> Result<Option<Outcome>> {
         self.read_control();
-        if self.term.load(Ordering::SeqCst) && self.stop_req.is_none() {
-            self.stop_req = Some((Why::stopped(), "stopped by SIGTERM".into()));
-            self.event("control", None, "Stop requested (SIGTERM)");
-        }
         if let Some((why, text)) = self.stop_req.take() {
             return self.finish(StopReason::Requested(text), Some(why));
         }
+        if self.term.load(Ordering::SeqCst) || self.suspend_req {
+            return Ok(Some(self.suspend()));
+        }
         let now = self.now();
         self.refresh_usage(now);
-        if let Ok(st) = self.p.queue.state() {
-            self.refresh_remote(now, &st);
+        if !self.queue_mode {
+            if let Ok(st) = self.p.queue.state() {
+                self.refresh_remote(now, &st);
+            }
         }
         let Some((decision, _)) = self.evaluate_tolerant(now)? else {
             self.write_status();
@@ -477,15 +567,22 @@ impl<'a> Autopilot<'a> {
                 self.drain(&Why::limit(&hit));
             }
         }
-        let policy = StartPolicy {
-            starts_allowed: decision.starts_allowed(),
-            max_live: Some(self.s.answers.max_concurrent as usize),
-            max_new_starts: self
-                .s
-                .answers
-                .max_tasks
-                .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
-            only: Some(self.s.tasks.clone()),
+        let policy = if self.queue_mode {
+            StartPolicy {
+                starts_allowed: decision.starts_allowed(),
+                ..StartPolicy::default()
+            }
+        } else {
+            StartPolicy {
+                starts_allowed: decision.starts_allowed(),
+                max_live: Some(self.s.answers.max_concurrent as usize),
+                max_new_starts: self
+                    .s
+                    .answers
+                    .max_tasks
+                    .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
+                only: Some(self.s.tasks.clone()),
+            }
         };
         match self.p.queue.pass(policy) {
             Ok(report) => {
@@ -538,7 +635,11 @@ impl<'a> Autopilot<'a> {
             return Ok(None);
         };
         self.note_decision(&decision);
-        let reason = verdict(&decision, &facts, now);
+        let reason = if self.queue_mode {
+            None
+        } else {
+            verdict(&decision, &facts, now)
+        };
         self.write_status();
         match reason {
             Some(r) => self.finish(r, None),
@@ -555,17 +656,17 @@ impl<'a> Autopilot<'a> {
             paused: self.state == RunState::Paused,
             soft: self.s.answers.usage_soft,
             hard: self.s.answers.usage_hard,
-            guard: self.s.answers.usage_guard,
+            guard: self.s.answers.usage_guard && !self.queue_mode,
             tool: self.tool,
             limits: &self.guard,
             required: &self.s.windows,
             billing: self.billing,
             api_usd: self.cost.api_usd,
-            cost_cap: self.s.answers.max_cost_usd,
+            cost_cap: self.s.answers.max_cost_usd.filter(|_| !self.queue_mode),
             started: self.started_ids.len() as u32,
-            max_tasks: self.s.answers.max_tasks,
-            max_hours: self.s.answers.max_hours,
-            failures: self.failures,
+            max_tasks: self.s.answers.max_tasks.filter(|_| !self.queue_mode),
+            max_hours: self.s.answers.max_hours.filter(|_| !self.queue_mode),
+            failures: if self.queue_mode { 0 } else { self.failures },
         });
         if decision.unknown() {
             self.unknown_since.get_or_insert(now);
@@ -629,7 +730,8 @@ impl<'a> Autopilot<'a> {
     fn observe(&mut self, st: &State, now: DateTime<Utc>) {
         let mut view = View::default();
         let skips = skipped_ids(st);
-        let sel: Vec<i64> = self.s.tasks.iter().copied().collect();
+        let sel_set = self.selected(st);
+        let sel: Vec<i64> = sel_set.iter().copied().collect();
         view.counts.total = sel.len() as u32;
         for id in sel {
             let p = latest(st, id);
@@ -642,6 +744,7 @@ impl<'a> Autopilot<'a> {
                 (Some(p), Some(Class::Done)) => {
                     view.counts.done_pr += 1;
                     self.note_pr(p);
+                    self.note_done(p);
                 }
                 (Some(p), Some(Class::Paused)) => {
                     view.paused += 1;
@@ -661,6 +764,7 @@ impl<'a> Autopilot<'a> {
                 }
                 (Some(p), Some(Class::InWork)) => {
                     view.counts.in_work += 1;
+                    self.note_step(p);
                     self.add_active(&mut view, p);
                 }
                 (_, class) => {
@@ -686,14 +790,12 @@ impl<'a> Autopilot<'a> {
         view.awaiting = st
             .pickups
             .iter()
-            .filter(|p| self.s.tasks.contains(&p.task.task_id) && p.awaits_publish())
+            .filter(|p| sel_set.contains(&p.task.task_id) && p.awaits_publish())
             .count();
         view.live = st
             .pickups
             .iter()
-            .filter(|p| {
-                self.s.tasks.contains(&p.task.task_id) && p.occupies() && p.run_id.is_some()
-            })
+            .filter(|p| sel_set.contains(&p.task.task_id) && p.occupies() && p.run_id.is_some())
             .map(|p| Live {
                 pickup: p.id.clone(),
                 run: p.run_id.clone().unwrap_or_default(),
@@ -706,13 +808,7 @@ impl<'a> Autopilot<'a> {
     }
 
     fn add_active(&self, view: &mut View, p: &Pickup) {
-        let step = if p.awaits_publish() || (p.run_exited && p.status == Status::Started) {
-            "publishing"
-        } else if p.status == Status::Started {
-            "running"
-        } else {
-            "starting"
-        };
+        let step = step_of(p);
         view.runs.push(ActiveRun {
             task: p.key.clone(),
             task_id: p.task.task_id,
@@ -791,6 +887,24 @@ impl<'a> Autopilot<'a> {
         );
         self.event("pr", Some(&p.key.clone()), text.clone());
         self.push("Autopilot: pull request", &text);
+    }
+
+    fn note_done(&mut self, p: &Pickup) {
+        if p.pr_url.is_some() || !self.counted_pr.insert(p.id.clone()) {
+            return;
+        }
+        let text = format!("{} is done", p.key);
+        self.event("done", Some(&p.key.clone()), text);
+    }
+
+    fn note_step(&mut self, p: &Pickup) {
+        let step = step_of(p);
+        if self.steps.get(&p.id) == Some(&step) {
+            return;
+        }
+        self.steps.insert(p.id.clone(), step);
+        let text = format!("{} is {step}", p.key);
+        self.event(step, Some(&p.key.clone()), text);
     }
 
     fn note_held(&mut self, p: &Pickup) {
@@ -1160,12 +1274,28 @@ impl<'a> Autopilot<'a> {
         Ok(Some(Outcome {
             reason: reason.text(),
             summary,
+            suspended: false,
         }))
+    }
+
+    fn suspend(&mut self) -> Outcome {
+        self.state = RunState::Suspended;
+        self.event(
+            "suspended",
+            None,
+            "Suspended: the queue stays on and running tasks keep going",
+        );
+        self.write_status();
+        Outcome {
+            reason: "suspended".into(),
+            summary: Summary::default(),
+            suspended: true,
+        }
     }
 
     fn build_summary(&self, st: &State, reason: &StopReason) -> Summary {
         let mut skipped = Vec::new();
-        for id in &self.s.tasks {
+        for id in &self.selected(st) {
             let class = latest(st, *id).map(|p| classify(p, &self.killed));
             if matches!(
                 class,
@@ -1253,6 +1383,20 @@ impl<'a> Autopilot<'a> {
             },
         );
         extra.insert("agent".into(), json!(self.s.agent));
+        if self.queue_mode {
+            extra.insert("kind".into(), json!("queue"));
+        }
+        if self.state == RunState::Suspended {
+            let carry = Carry {
+                started: self.started_ids.iter().cloned().collect(),
+                held: self.held_log.clone(),
+                failed: self.failed_log.clone(),
+                paused: self.paused_log.clone(),
+            };
+            if let Ok(v) = serde_json::to_value(carry) {
+                extra.insert("resume".into(), v);
+            }
+        }
         if let Some(d) = deadline(self.started_at, self.s.answers.max_hours) {
             extra.insert("deadline".into(), json!(d));
         }

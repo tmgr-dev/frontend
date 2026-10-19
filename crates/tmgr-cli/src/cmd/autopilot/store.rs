@@ -77,7 +77,6 @@ impl Store {
         write_json(&self.status_path(), doc)
     }
 
-    #[cfg(test)]
     pub fn read_status(&self) -> Result<Option<StatusDoc>> {
         read_json(&self.status_path())
     }

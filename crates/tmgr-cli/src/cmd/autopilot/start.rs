@@ -15,7 +15,7 @@ use tmgr_queue::Paths;
 use tmgr_usage::Tool;
 
 use super::interview::{self, Draft};
-use super::model::{Answers, Finish, Settings};
+use super::model::{Answers, Finish, LoopKind, Settings};
 use super::store::Store;
 use super::usage;
 use super::{render, StartArgs};
@@ -629,6 +629,7 @@ fn launch(
         } else {
             Vec::new()
         },
+        kind: LoopKind::Drain,
     };
     store.save_settings(&settings)?;
     let pid = start_hosted(&id)?;

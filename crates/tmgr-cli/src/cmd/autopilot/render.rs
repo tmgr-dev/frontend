@@ -101,8 +101,10 @@ fn header(d: &StatusDoc, running: bool, now: DateTime<Utc>, tz: FixedOffset) -> 
         (true, RunState::Paused) => "paused",
         (true, RunState::Stopping) => "stopping",
         (true, RunState::Stopped) => "stopped",
+        (_, RunState::Suspended) => "suspended",
     };
-    let mut s = format!("Autopilot {word}");
+    let queue = d.extra.get("kind").and_then(Value::as_str) == Some("queue");
+    let mut s = format!("{} {word}", if queue { "Queue loop" } else { "Autopilot" });
     if !running && d.state != RunState::Stopped {
         s.push_str(&format!(
             " (last state {}, updated {} ago)",
@@ -129,6 +131,7 @@ fn state_word(s: RunState) -> &'static str {
         RunState::Paused => "paused",
         RunState::Stopping => "stopping",
         RunState::Stopped => "stopped",
+        RunState::Suspended => "suspended",
     }
 }
 

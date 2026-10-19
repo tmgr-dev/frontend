@@ -345,6 +345,10 @@ pub fn run(ctx: &Ctx, cli: &Cli, settings_id: &str) -> Result<Output> {
         clock: &RealClock,
     };
     match serve(&store, &settings, ports, timing(), &TERM) {
+        Ok(out) if out.suspended => Ok(Output::new(
+            json!({"suspended": true}),
+            "Autopilot suspended: the queue stays on.",
+        )),
         Ok(out) => Ok(Output::new(
             json!({"stopped": true, "reason": out.reason, "summary": out.summary}),
             format!("Autopilot stopped: {}", out.summary.text),

@@ -126,6 +126,10 @@ pub fn control_output(host: &mut dyn Hosted, command: AutopilotCommand) -> Resul
         ),
         AutopilotCommand::Resume => ("resume", "Autopilot will resume."),
         AutopilotCommand::Stop => ("stop", "Autopilot will stop and turn the queue off."),
+        AutopilotCommand::Suspend => (
+            "suspend",
+            "Autopilot will suspend: the queue stays on and nothing is interrupted.",
+        ),
     };
     Ok(Output::new(
         json!({"command": word, "seq": seq}),
