@@ -48,12 +48,6 @@ const setAxiosHeaderBearerToken = ({
 	$axios.defaults.headers.common.Authorization = `Bearer ${token.token}`;
 };
 
-export const setTokenAndHeaders = (token: string): void => {
-	const tokenData = { token: token }; // Wrap the string in an object to match LoginToken structure if needed by store
-	store.commit('setToken', tokenData);
-	$axios.defaults.headers.common.Authorization = `Bearer ${token}`;
-};
-
 export const login = (payload: LoginRequest): Promise<void> => {
 	// No "remember me" checkbox by design: every session gets the long
 	// (30d) refresh TTL instead of the 1-day no-remember fallback.

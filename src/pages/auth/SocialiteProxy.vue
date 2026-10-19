@@ -26,7 +26,6 @@
 		LoginGoogleRequest,
 		loginTelegram,
 		LoginWithCodeRequest,
-		setTokenAndHeaders,
 	} from '@/actions/tmgr/auth';
 	import { getUser, getUserSettings } from '@/actions/tmgr/user';
 	import { getWorkspaceStatuses } from '@/actions/tmgr/workspaces';
@@ -75,53 +74,6 @@
 	async function login() {
 		const desktopTx = desktopTxFromState(route.query.state);
 		if (desktopTx) return relayToDesktop(desktopTx);
-
-		// Check for token from Telegram Widget redirect
-		if (route.query.token) {
-			try {
-				isLoading.value = true;
-				const token = route.query.token as string;
-				setTokenAndHeaders(token);
-
-				// Fetch user data and redirect
-				await getUser();
-				if (store.state.user) {
-					await Promise.all([
-						getUserSettings(),
-						getWorkspaceStatuses(),
-						store.dispatch('featureToggles/loadUserToggles'),
-					]);
-				}
-
-				const landingPage =
-					store.getters['featureToggles/getUserFeatureValue'](
-						'default_landing_page',
-					) || 'list';
-				const currentWorkspaceId = store.state.user?.settings?.find(
-					(s) => s.key === 'current_workspace',
-				)?.value;
-				const workspace = store.state.workspaces?.find(
-					(w) => w.id == currentWorkspaceId,
-				);
-				const workspaceCode = workspace?.code;
-
-				if (workspaceCode) {
-					await router.push(`/${workspaceCode}/${landingPage}`);
-				} else {
-					await router.push({ name: 'CurrentTasksList' });
-				}
-
-				store.commit('rerenderApp');
-				return; // Exit early
-			} catch (error: unknown) {
-				message.value = 'Failed to process Telegram login. Redirecting...';
-				console.error('Telegram token processing error:', error);
-				setTimeout(() => router.push('/login'), 3000);
-				// The status above reports the error; OAuth codes must not be retried.
-			} finally {
-				isLoading.value = false;
-			}
-		}
 
 		const platform = route.params.platform;
 		try {
