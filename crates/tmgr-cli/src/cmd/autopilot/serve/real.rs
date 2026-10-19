@@ -58,6 +58,10 @@ pub fn acquire_lock(store: &Store) -> Result<File> {
     let end = std::time::Instant::now() + LOCK_RETRY;
     loop {
         if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            let mut fl: libc::flock = unsafe { std::mem::zeroed() };
+            fl.l_type = libc::F_WRLCK as _;
+            fl.l_whence = libc::SEEK_SET as _;
+            unsafe { libc::fcntl(f.as_raw_fd(), libc::F_SETLK, &fl) };
             return Ok(f);
         }
         if std::time::Instant::now() >= end {

@@ -84,6 +84,9 @@ impl Harness {
         fs::create_dir(&agents).unwrap();
         let cfg = tmp.path().join("c");
         fs::create_dir(&cfg).unwrap();
+        fs::set_permissions(&cfg, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::create_dir(cfg.join("tmgr")).unwrap();
+        fs::set_permissions(cfg.join("tmgr"), fs::Permissions::from_mode(0o700)).unwrap();
         let homes = tempfile::Builder::new()
             .prefix("th")
             .tempdir_in("/tmp")
@@ -5478,6 +5481,51 @@ fn a_crash_marks_the_status_stopped_and_disables_the_queue() {
     );
     cli.autopilot_start("default").unwrap();
     h.stop_autopilot();
+}
+
+#[test]
+fn a_crash_after_a_stop_request_without_a_final_status_still_disables_the_queue() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    cli.autopilot_start("crash-after-stop").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("crash noticed", || {
+        let st = cli.autopilot_status().unwrap();
+        !st.running && st.status["stop_reason"] == "crashed"
+    });
+    wait_for("queue disabled", || !h.queue_enabled());
+}
+
+#[test]
+fn an_adopted_autopilot_is_never_signalled_through_a_pid_that_does_not_hold_its_lock() {
+    let mut h = Harness::new();
+    h.env
+        .push(("TMGR_TEST_AUTOPILOT_GRACE_MS".into(), "300".into()));
+    h.start(5000);
+    let fake = h.client().autopilot_start("wrong-pid").unwrap().pid;
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    let victim = h.autopilot_status_file()["pid"].as_u64().unwrap() as u32;
+    assert_ne!(victim, fake);
+    h.kill_runner();
+    h.start(5000);
+    let mut cli = h.client();
+    assert!(cli.autopilot_status().unwrap().running);
+    cli.stop().unwrap();
+    thread::sleep(Duration::from_millis(1500));
+    let spared = alive(victim);
+    unsafe {
+        libc::kill(victim as i32, libc::SIGKILL);
+        libc::kill(fake as i32, libc::SIGKILL);
+    }
+    h.kill_runner();
+    assert!(spared, "the process behind a wrong pid was signalled");
 }
 
 #[test]

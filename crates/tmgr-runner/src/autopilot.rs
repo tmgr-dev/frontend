@@ -53,6 +53,19 @@ fn open_read(path: &Path) -> io::Result<File> {
         .open(path)
 }
 
+fn lock_owner(dir: &Path) -> Option<u32> {
+    let f = open_read(&dir.join(LOCK)).ok()?;
+    let mut fl: libc::flock = unsafe { std::mem::zeroed() };
+    fl.l_type = libc::F_RDLCK as _;
+    fl.l_whence = libc::SEEK_SET as _;
+    if unsafe { libc::fcntl(f.as_raw_fd(), libc::F_GETLK, &mut fl) } != 0 {
+        return None;
+    }
+    (fl.l_type != libc::F_UNLCK)
+        .then(|| u32::try_from(fl.l_pid).ok())
+        .flatten()
+}
+
 fn lock_held(dir: &Path) -> bool {
     let Ok(f) = open_read(&dir.join(LOCK)) else {
         return false;
@@ -199,8 +212,13 @@ impl Inner {
         self.adopted = false;
         let asked = std::mem::take(&mut self.stop_requested);
         let how = match gone {
-            Gone::Exited(st) if st.success() || asked => return,
-            Gone::Exited(st) => describe(&st),
+            Gone::Exited(st) if st.success() => return,
+            Gone::Exited(st) => {
+                if read_status(dir).is_some_and(|s| s["state"] == "stopped") {
+                    return;
+                }
+                describe(&st)
+            }
             Gone::Unseen => {
                 let stopped = read_status(dir).is_some_and(|s| s["state"] == "stopped");
                 if asked || stopped {
@@ -333,12 +351,14 @@ impl Host {
                 log(&format!("autopilot: stop not sent: {e}"));
             }
             g.stop_requested = true;
-            g.pid(&dir)
+            (g.pid(&dir), g.child.is_some())
         };
+        let (pid, spawned_here) = pid;
         if self.wait_gone(self_exe, &dir, stop_grace()) {
             return;
         }
-        if let Some(pid) = pid.and_then(|p| i32::try_from(p).ok()) {
+        if let Some(pid) = pid.filter(|p| spawned_here || lock_owner(&dir) == Some(*p)) {
+            let Ok(pid) = i32::try_from(pid) else { return };
             log("autopilot: did not stop in time, sending SIGTERM");
             unsafe { libc::kill(pid, libc::SIGTERM) };
             if self.wait_gone(self_exe, &dir, TERM_GRACE) {
@@ -382,6 +402,39 @@ fn stop_grace() -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_process_holding_the_lock_is_its_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(LOCK);
+        fs::write(&path, "").unwrap();
+        assert_eq!(lock_owner(dir.path()), None);
+        let mut gate = [0 as libc::c_int; 2];
+        assert_eq!(unsafe { libc::pipe(gate.as_mut_ptr()) }, 0);
+        let c_path = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
+        let pid = unsafe { libc::fork() };
+        if pid == 0 {
+            unsafe {
+                let fd = libc::open(c_path.as_ptr(), libc::O_RDWR);
+                let mut fl: libc::flock = std::mem::zeroed();
+                fl.l_type = libc::F_WRLCK as _;
+                fl.l_whence = libc::SEEK_SET as _;
+                libc::fcntl(fd, libc::F_SETLK, &fl);
+                libc::write(gate[1], b"x".as_ptr().cast(), 1);
+                libc::pause();
+                libc::_exit(0);
+            }
+        }
+        assert!(pid > 0);
+        let mut byte = [0u8; 1];
+        unsafe { libc::read(gate[0], byte.as_mut_ptr().cast(), 1) };
+        assert_eq!(lock_owner(dir.path()), Some(pid as u32));
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+            libc::waitpid(pid, std::ptr::null_mut(), 0);
+        }
+        assert_eq!(lock_owner(dir.path()), None);
+    }
 
     #[test]
     fn settings_ids_are_lowercase_words() {

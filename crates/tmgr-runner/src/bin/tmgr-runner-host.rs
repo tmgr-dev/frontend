@@ -77,13 +77,24 @@ fn fake_autopilot(scenario: &str) -> i32 {
         .unwrap();
     for _ in 0..50 {
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            let mut fl: libc::flock = unsafe { std::mem::zeroed() };
+            fl.l_type = libc::F_WRLCK as _;
+            fl.l_whence = libc::SEEK_SET as _;
+            unsafe { libc::fcntl(lock.as_raw_fd(), libc::F_SETLK, &fl) };
             break;
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+    let sleeper = (scenario == "wrong-pid").then(|| {
+        std::process::Command::new("sleep")
+            .arg("120")
+            .spawn()
+            .unwrap()
+            .id()
+    });
     let write = |state: &str, seq: u64, reason: Option<&str>| {
         let body = serde_json::json!({
-            "version": 1, "state": state, "pid": std::process::id(), "rule": "tm",
+            "version": 1, "state": state, "pid": sleeper.unwrap_or_else(std::process::id), "rule": "tm",
             "control_seq": seq, "stop_reason": reason, "scenario": scenario,
         });
         let tmp = dir.join(".status.tmp");
@@ -98,7 +109,7 @@ fn fake_autopilot(scenario: &str) -> i32 {
     let mut seen = 0;
     loop {
         std::thread::sleep(Duration::from_millis(50));
-        if scenario == "ignore-stop" {
+        if matches!(scenario, "ignore-stop" | "wrong-pid") {
             continue;
         }
         let Some(v) = std::fs::read(dir.join("control.json"))
@@ -115,6 +126,7 @@ fn fake_autopilot(scenario: &str) -> i32 {
         match v["command"].as_str() {
             Some("pause") => write("paused", seq, None),
             Some("resume") => write("running", seq, None),
+            _ if scenario == "crash-after-stop" => return 4,
             _ => {
                 write("stopped", seq, Some("user"));
                 return 0;
