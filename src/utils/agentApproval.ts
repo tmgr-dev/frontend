@@ -44,6 +44,52 @@ export const canonicalRepos = (names: readonly string[]): string[] => {
 export const reposSha256 = async (names: readonly string[]): Promise<string> =>
 	sha256Hex(`tmgr-repos:v1:${canonicalRepos(names).join('\n')}`);
 
+const PERSONA_ID =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+export const MAX_CONTEXT_PAGES = 5;
+
+export const personaSha256 = async (
+	id: string,
+	name: string | null | undefined,
+	instructions: string | null | undefined,
+): Promise<string> => {
+	if (typeof id !== 'string' || !PERSONA_ID.test(id))
+		throw new Error('invalid persona id');
+	return sha256Hex(
+		`tmgr-persona:v1:${id}:${await sha256Hex(norm(name))}:${await sha256Hex(
+			norm(instructions),
+		)}`,
+	);
+};
+
+export const pageSha256 = async (
+	id: number,
+	title: string | null | undefined,
+	body: string | null | undefined,
+): Promise<string> =>
+	sha256Hex(
+		`tmgr-page:v1:${id}:${await sha256Hex(norm(title))}:${await sha256Hex(
+			norm(body),
+		)}`,
+	);
+
+export interface ContextPageText {
+	id: number;
+	title: string | null | undefined;
+	body: string | null | undefined;
+}
+
+export const contextSha256 = async (
+	pages: readonly ContextPageText[],
+): Promise<string> => {
+	if (pages.length === 0 || pages.length > MAX_CONTEXT_PAGES)
+		throw new Error('context must have 1 to 5 pages');
+	const hashes = await Promise.all(
+		pages.map((page) => pageSha256(page.id, page.title, page.body)),
+	);
+	return sha256Hex(`tmgr-context:v1:${hashes.join('\n')}`);
+};
+
 export const approvalMessage = (
 	host: string,
 	userId: number,
@@ -54,14 +100,20 @@ export const approvalMessage = (
 	keyId: string,
 	signedAt: number,
 	reposSha?: string | null,
-): string =>
-	reposSha
-		? `tmgr-agent-approval:v2:${host}:${userId}:${workspaceId}:${taskId}:${
-				categoryId ?? 0
-		  }:${sha}:${reposSha}:${keyId}:${signedAt}`
-		: `tmgr-agent-approval:v1:${host}:${userId}:${workspaceId}:${taskId}:${
-				categoryId ?? 0
-		  }:${sha}:${keyId}:${signedAt}`;
+	personaSha?: string | null,
+	contextSha?: string | null,
+): string => {
+	const head = `${host}:${userId}:${workspaceId}:${taskId}:${
+		categoryId ?? 0
+	}:${sha}`;
+	if (personaSha || contextSha)
+		return `tmgr-agent-approval:v3:${head}:${reposSha || '-'}:${
+			personaSha || '-'
+		}:${contextSha || '-'}:${keyId}:${signedAt}`;
+	return reposSha
+		? `tmgr-agent-approval:v2:${head}:${reposSha}:${keyId}:${signedAt}`
+		: `tmgr-agent-approval:v1:${head}:${keyId}:${signedAt}`;
+};
 
 export const toBase64 = (bytes: ArrayBuffer | Uint8Array): string => {
 	const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
