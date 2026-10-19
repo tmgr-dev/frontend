@@ -170,7 +170,7 @@ pub struct RunArgs {
     /// Push a run held by the leak gate after you reviewed it (asks you to type the repository names)
     #[arg(long, requires = "review", conflicts_with = "drop")]
     pub push: bool,
-    /// Discard a run held by the leak gate; local branches stay (asks you to type the task key)
+    /// Discard a run held by the leak gate (asks you to type the task key); the run folder stays
     #[arg(long, requires = "review", conflicts_with = "push")]
     pub drop: bool,
 }

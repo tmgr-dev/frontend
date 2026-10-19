@@ -67,7 +67,10 @@ fn verbatim_copy_is_flagged_with_public_excerpt_only() {
     let src = code("a", 20);
     let f = scan_block(vec![file("src/Ledger.java", &src)], &code("a", 20));
     let hit = f.iter().find(|x| x.category == Category::Overlap).unwrap();
-    assert_eq!(hit.private_ref.as_deref(), Some("src/Ledger.java"));
+    assert_eq!(
+        hit.private_ref.as_deref(),
+        Some("acme/backend:src/Ledger.java")
+    );
     assert_eq!(
         hit.location,
         Location::File {
@@ -561,4 +564,190 @@ fn lockfile_content_does_not_overlap() {
     let lock = code("lk", 30);
     let f = scan_block(vec![file("web/package-lock.json", &lock)], &lock);
     assert!(!overlap(&f), "{f:?}");
+}
+
+#[test]
+fn commit_text_cannot_forge_records_or_inject_git_arguments() {
+    let d = repo();
+    write(d.path(), "keep.ts", b"let a = 1;\n");
+    let base = commit(d.path(), "base");
+    let out = d.path().join("..").join(format!(
+        "forged-{}.txt",
+        d.path().file_name().unwrap().to_string_lossy()
+    ));
+    let msg = format!(
+        "hello\x1e{base}\x1f--output={}\x1fX <x@example.com>\x1fY <y@example.com>\x1fforged",
+        out.display()
+    );
+    write(d.path(), "b.ts", b"let b = 2;\n");
+    let head = commit(d.path(), &msg);
+    let side = load_public(d.path(), "acme/frontend", &base, &head, vec![]).unwrap();
+    assert!(!out.exists());
+    let messages: Vec<&(String, String)> = side
+        .texts
+        .iter()
+        .filter(|t| t.0.ends_with("message"))
+        .collect();
+    assert_eq!(messages.len(), 1);
+    assert!(messages[0].1.contains("--output="));
+    assert!(messages[0].1.contains('\x1e') && messages[0].1.contains('\x1f'));
+    assert!(messages[0].1.ends_with("forged"));
+}
+
+#[test]
+fn code_copied_with_junk_lines_that_a_later_commit_removes_is_caught() {
+    let d = repo();
+    write(d.path(), "keep.ts", b"let a = 1;\n");
+    let base = commit(d.path(), "base");
+    let src = code("n", 20);
+    let junked: String = src
+        .lines()
+        .enumerate()
+        .map(|(i, l)| format!("{l}\nlet junk{i} = {i};\n"))
+        .collect();
+    write(d.path(), "src/copy.ts", junked.as_bytes());
+    commit(d.path(), "add");
+    write(d.path(), "src/copy.ts", format!("{src}\n").as_bytes());
+    let head = commit(d.path(), "tidy");
+    let side = load_public(d.path(), "acme/frontend", &base, &head, vec![]).unwrap();
+    let idx = Index::build(&[private(vec![file("Ledger.java", &src)])]);
+    assert!(overlap(&scan(&idx, &side)));
+}
+
+#[test]
+fn a_modified_existing_lockfile_is_exempt_from_the_size_limit() {
+    let d = repo();
+    write(d.path(), "web/package-lock.json", &vec![b'a'; 600 * 1024]);
+    let base = commit(d.path(), "base");
+    write(d.path(), "web/package-lock.json", &vec![b'b'; 700 * 1024]);
+    let head = commit(d.path(), "bump");
+    let side = load_public(d.path(), "acme/frontend", &base, &head, vec![]).unwrap();
+    assert!(side.unscannable.is_empty(), "{:?}", side.unscannable);
+}
+
+#[test]
+fn a_new_or_misplaced_oversized_lockfile_is_unscannable() {
+    let d = repo();
+    write(d.path(), "web/package-lock.json", b"{}\n");
+    let base = commit(d.path(), "base");
+    write(d.path(), "package-lock.json", &vec![b'c'; 700 * 1024]);
+    write(d.path(), "other/yarn.lock", &vec![b'd'; 700 * 1024]);
+    let head = commit(d.path(), "add");
+    let side = load_public(d.path(), "acme/frontend", &base, &head, vec![]).unwrap();
+    let paths: Vec<&str> = side.unscannable.iter().map(|u| u.0.as_str()).collect();
+    assert_eq!(paths, vec!["other/yarn.lock", "package-lock.json"]);
+}
+
+#[test]
+fn zero_width_characters_do_not_hide_a_copy() {
+    let src = code("zw", 20);
+    let idx = vec![file("a.java", &src)];
+    let hidden = src
+        .replace("ledger", "led\u{200b}ger")
+        .replace("total", "to\u{200d}tal")
+        .replace("entry", "en\u{feff}try")
+        .replace("rate", "ra\u{2060}te")
+        .replace("apply", "ap\u{ad}ply");
+    assert!(overlap(&scan_block(idx, &hidden)));
+}
+
+#[test]
+fn require_inside_a_long_line_is_not_trivial() {
+    let long: String = (0..8)
+        .map(|i| {
+            format!(
+                "register{i}(require(\"./ledger{i}\"), ledger.apply(entry{i}, rate{i} * 3), ledger.apply(other{i}, level{i} * 4), ledger.apply(third{i}, step{i} * 5), total{i});\n"
+            )
+        })
+        .collect();
+    assert!(overlap(&scan_block(vec![file("a.js", &long)], &long)));
+    let plain: String = (0..30)
+        .map(|i| format!("const mod{i} = require('./module{i}/index');\n"))
+        .collect();
+    assert!(!overlap(&scan_block(vec![file("a.js", &plain)], &plain)));
+}
+
+#[test]
+fn names_next_to_non_ascii_letters_are_still_flagged() {
+    let f = name_hits("const x = \"\u{e9}ACME_LEDGER_SECRET\u{e9}\";");
+    assert_eq!(cats(&f), vec![Category::InternalName]);
+}
+
+fn b64(s: &str) -> String {
+    base64::engine::general_purpose::STANDARD.encode(s)
+}
+
+#[test]
+fn encoded_secrets_are_flagged_at_the_original_location() {
+    let gh = format!("{}{}", "ghp_", "a1B2".repeat(9));
+    let aws = format!("{}{}", "AKIA", "ABCDEFGH23456789");
+    let esc: String = aws.bytes().map(|b| format!("\\x{b:02x}")).collect();
+    let ox: String = aws.bytes().map(|b| format!("0x{b:02x}, ")).collect();
+    let spaced: String = aws
+        .bytes()
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let uni: String = aws
+        .chars()
+        .map(|c| format!("\\u{:04x}", c as u32))
+        .collect();
+    let cases = [
+        format!("const k = \"{}\";", b64(&format!("token {gh} end"))),
+        format!("const k = \"{esc}\";"),
+        format!("const k = [{ox}];"),
+        format!("// bytes: {spaced}"),
+        format!("const k = \"{uni}\";"),
+    ];
+    for text in cases {
+        let f = secret_findings(&format!("let first = 1;\n{text}"));
+        assert_eq!(cats(&f), vec![Category::Secret], "{text}");
+        assert_eq!(
+            f[0].location,
+            Location::File {
+                path: "src/view.ts".into(),
+                line: 11
+            },
+            "{text}"
+        );
+        assert!(!f[0].excerpt.contains(&aws), "{text}");
+    }
+}
+
+#[test]
+fn encoded_internal_names_are_flagged() {
+    let name = "db01.acme-internal.io";
+    let esc: String = name.bytes().map(|b| format!("\\x{b:02x}")).collect();
+    let uni: String = name
+        .chars()
+        .map(|c| format!("\\u{:04x}", c as u32))
+        .collect();
+    for text in [
+        format!("const h = \"{}\";", b64(&format!("https://{name}/path"))),
+        format!("const h = \"{esc}\";"),
+        format!("const h = \"{uni}\";"),
+    ] {
+        let f = name_hits(&text);
+        assert_eq!(cats(&f), vec![Category::InternalName], "{text}");
+    }
+}
+
+#[test]
+fn changed_public_paths_are_scanned_as_text() {
+    let d = repo();
+    write(d.path(), "keep.ts", b"x\n");
+    let base = commit(d.path(), "base");
+    let name = format!("keys/{}{}.txt", "AKIA", "ABCDEFGH23456789");
+    write(d.path(), &name, b"harmless\n");
+    let head = commit(d.path(), "add");
+    let side = load_public(d.path(), "acme/frontend", &base, &head, vec![]).unwrap();
+    assert!(side.texts.iter().any(|t| t.0 == "path" && t.1 == name));
+    let f = scan(&Index::build(&[]), &side);
+    assert_eq!(cats(&f), vec![Category::Secret]);
+    assert_eq!(
+        f[0].location,
+        Location::Text {
+            label: "path".into()
+        }
+    );
 }

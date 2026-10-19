@@ -1437,6 +1437,25 @@ fn running_run(
         })
 }
 
+fn already_held(t: &PublishTarget, held: &Held) -> bool {
+    let same = |h: &Option<Held>| h.as_ref().is_some_and(|h| h.shas == held.shas);
+    if read_record(&t.workspace_code, t.task_id).is_ok_and(|r| same(&r.held)) {
+        return true;
+    }
+    tmgr_queue::Paths::from_env()
+        .and_then(|paths| tmgr_queue::state::load(&paths))
+        .is_ok_and(|st| {
+            st.pickups.iter().any(|p| {
+                !p.released
+                    && p.task.task_id == t.task_id
+                    && p.cloud
+                        .as_ref()
+                        .is_some_and(|c| c.workspace_code == t.workspace_code)
+                    && same(&p.held)
+            })
+        })
+}
+
 fn report_held(
     client: &tmgr_core::api::Client,
     t: &PublishTarget,
@@ -1625,7 +1644,11 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
                         eprintln!("warning: {w}");
                     }
                 }
-                Outcome::Held { held, text } => report_held(client, t, &task_key, held, text),
+                Outcome::Held { held, text } => {
+                    if !already_held(t, held) {
+                        report_held(client, t, &task_key, held, text);
+                    }
+                }
                 Outcome::Reviewed => {}
             }
             return Ok(outcome);
@@ -1796,6 +1819,7 @@ fn finish_multi(
                 return publish_all(&staged.plan).map(Outcome::Published);
             }
             let (held, text) = gate::held_outcome(&scanned, &staged.touched);
+            restore_touched(&t.branch, &staged.touched);
             Ok(Outcome::Held { held, text })
         }
         Mode::Review => {

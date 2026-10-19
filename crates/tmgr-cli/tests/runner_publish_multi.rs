@@ -679,15 +679,15 @@ async fn a_leak_into_the_public_repository_holds_everything_back() {
     assert!(!rig.pushed(0) && !rig.pushed(1));
     assert!(rig.gh_calls().is_empty());
     assert_eq!(rig.views().len(), 2);
-    assert!(branch_exists(&rig.repos[0]) && branch_exists(&rig.repos[1]));
+    assert!(!branch_exists(&rig.repos[0]) && !branch_exists(&rig.repos[1]));
     let held = &rig.read_record()["held"];
     assert_eq!(held["categories"], json!(["overlap"]));
     assert_eq!(held["shas"].as_object().unwrap().len(), 2);
-    for (i, name) in NAMES.iter().enumerate() {
+    for (name, dir) in NAMES.iter().zip(["backend", "frontend"]) {
         assert_eq!(
             held["shas"][name],
             git(
-                &rig.repos[i],
+                &rig.run.join(dir),
                 &["rev-parse", &format!("refs/heads/{BRANCH}")]
             )
         );
@@ -699,7 +699,10 @@ async fn a_leak_into_the_public_repository_holds_everything_back() {
         .collect();
     assert_eq!(comments.len(), 1);
     let comment = &comments[0].2;
-    assert!(comment.contains("Publish held: the leak gate found 1 finding(s) (overlap) in tmgr-dev/frontend. Nothing was pushed."));
+    assert!(comment.contains(
+        "Publish held: the leak gate found 1 finding(s) (overlap x1). Nothing was pushed."
+    ));
+    assert!(!comment.contains("tmgr-dev/"));
     assert!(comment.contains("tmgr run TM-411 --review"));
     let finishes: Vec<_> = api
         .iter()
@@ -1027,9 +1030,24 @@ async fn dropping_a_hold_clears_it_comments_and_keeps_the_branches() {
     assert_eq!(p.exit(), 0, "{}", p.text());
     assert!(rig.read_record().get("held").is_none());
     assert!(!rig.pushed(0) && !rig.pushed(1));
-    assert!(branch_exists(&rig.repos[0]) && branch_exists(&rig.repos[1]));
+    assert!(rig.run.join("frontend").is_dir());
     let api = rig.calls().await;
     assert!(api.iter().any(|c| c.1 == "/api/tasks/9100/comments"
         && c.2
             .contains("Dropped by the owner after the leak gate; nothing was pushed.")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn publishing_a_run_that_is_already_held_again_does_not_comment_twice() {
+    let rig = Rig::new().await;
+    rig.held().await;
+    assert_eq!(rig.publish().status.code(), Some(6));
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    let api = rig.calls().await;
+    let comments = api
+        .iter()
+        .filter(|c| c.1 == "/api/tasks/9100/comments")
+        .count();
+    assert_eq!(comments, 1);
+    assert!(!branch_exists(&rig.repos[0]) && !branch_exists(&rig.repos[1]));
 }

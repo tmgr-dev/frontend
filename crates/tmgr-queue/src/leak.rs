@@ -134,7 +134,14 @@ fn is_trivial(t: &str) -> bool {
     if LEADS.iter().any(|p| t.starts_with(p)) {
         return true;
     }
-    (t.starts_with("from ") && t.contains(" import ")) || t.contains("require(")
+    (t.starts_with("from ") && t.contains(" import ")) || require_line().is_match(t)
+}
+
+fn require_line() -> &'static Regex {
+    static R: OnceLock<Regex> = OnceLock::new();
+    R.get_or_init(|| {
+        re(r"^(?:(?:const|let|var)\s+[^=;]+=\s*)?require\([^()]*\)(?:\.[A-Za-z_$][\w$]*)*[;\s]*$")
+    })
 }
 
 struct Tokens {
@@ -156,6 +163,12 @@ fn tokenize(text: &str) -> Tokens {
             lines.push(ln as u32);
         };
         for c in line.chars() {
+            if matches!(
+                c,
+                '\u{200b}'..='\u{200d}' | '\u{2060}' | '\u{feff}' | '\u{ad}'
+            ) {
+                continue;
+            }
             if c.is_alphanumeric() || c == '_' || c == '$' {
                 let mut h = word.unwrap_or(0xcbf2_9ce4_8422_2325);
                 for lc in c.to_lowercase() {
@@ -372,7 +385,7 @@ fn name_set(
     let flag = if case_insensitive { "(?i)" } else { "" };
     Some(NameSet {
         kind,
-        re: re(&format!(r"{flag}\b(?:{alt})\b")),
+        re: re(&format!(r"{flag}(?-u:\b)(?:{alt})(?-u:\b)")),
     })
 }
 
@@ -436,7 +449,7 @@ impl Index {
                 let mut idx: Option<u32> = None;
                 for pos in winnow(&all) {
                     let i = *idx.get_or_insert_with(|| {
-                        paths.push(f.path.clone());
+                        paths.push(format!("{}:{}", side.full_name, f.path));
                         (paths.len() - 1) as u32
                     });
                     grams.entry(all[pos]).or_insert(i);
@@ -474,9 +487,20 @@ struct Unit<'a> {
     loc: Location,
     text: &'a str,
     first_line: u32,
+    shown: Option<String>,
+}
+
+impl Unit<'_> {
+    fn line_text(&self, idx: u32) -> &str {
+        match &self.shown {
+            Some(s) => s,
+            None => self.text.lines().nth(idx as usize).unwrap_or(""),
+        }
+    }
 }
 
 fn line_loc(unit: &Unit, idx: u32) -> Location {
+    let idx = if unit.shown.is_some() { 0 } else { idx };
     match &unit.loc {
         Location::File { path, .. } => Location::File {
             path: path.clone(),
@@ -565,23 +589,40 @@ fn scan_secrets(unit: &Unit, repo: &str, out: &mut Vec<Finding>) {
                 rule.re.find(line).map(|m| (m.start(), m.end()))
             };
             if let Some((s, e)) = hit {
+                let shown = if unit.shown.is_some() {
+                    "[redacted decoded payload]".to_string()
+                } else {
+                    excerpt(&redact(line, s, e))
+                };
                 out.push(Finding {
                     category: Category::Secret,
                     public_repo: repo.to_string(),
                     location: line_loc(unit, i as u32),
                     private_ref: Some(rule.name.to_string()),
-                    excerpt: excerpt(&redact(line, s, e)),
+                    excerpt: shown,
                 });
             }
         }
     }
 }
 
-fn line_of(text: &str, offset: usize) -> u32 {
-    text.as_bytes()[..offset]
-        .iter()
-        .filter(|&&b| b == b'\n')
-        .count() as u32
+struct Lines(Vec<usize>);
+
+impl Lines {
+    fn new(text: &str) -> Lines {
+        let mut starts = vec![0];
+        starts.extend(
+            text.bytes()
+                .enumerate()
+                .filter(|&(_, b)| b == b'\n')
+                .map(|(i, _)| i + 1),
+        );
+        Lines(starts)
+    }
+
+    fn of(&self, offset: usize) -> u32 {
+        (self.0.partition_point(|&s| s <= offset) - 1) as u32
+    }
 }
 
 struct NameHit {
@@ -594,13 +635,14 @@ struct NameHit {
 fn collect_names(index: &Index, units: &[Unit]) -> Vec<NameHit> {
     let mut hits = Vec::new();
     for (ui, unit) in units.iter().enumerate() {
+        let lines = Lines::new(unit.text);
         for set in &index.names {
             for m in set.re.find_iter(unit.text) {
                 hits.push(NameHit {
                     kind: set.kind,
                     name: m.as_str().to_string(),
                     unit: ui,
-                    line: line_of(unit.text, m.start()),
+                    line: lines.of(m.start()),
                 });
             }
         }
@@ -608,14 +650,12 @@ fn collect_names(index: &Index, units: &[Unit]) -> Vec<NameHit> {
     hits
 }
 
-fn in_base(base: &[SourceFile], name: &str, cache: &mut HashMap<String, bool>) -> bool {
+fn in_base(lower_base: &[String], name: &str, cache: &mut HashMap<String, bool>) -> bool {
     if let Some(&v) = cache.get(name) {
         return v;
     }
     let lower = name.to_ascii_lowercase();
-    let found = base
-        .iter()
-        .any(|f| f.text.contains(name) || f.text.to_ascii_lowercase().contains(&lower));
+    let found = lower_base.iter().any(|t| t.contains(&lower));
     cache.insert(name.to_string(), found);
     found
 }
@@ -665,19 +705,70 @@ struct Decoded {
     line: u32,
 }
 
+fn hex_bytes(s: &str) -> Vec<u8> {
+    let digits: Vec<u8> = s.bytes().filter(u8::is_ascii_hexdigit).collect();
+    digits
+        .chunks_exact(2)
+        .filter_map(|p| u8::from_str_radix(std::str::from_utf8(p).ok()?, 16).ok())
+        .collect()
+}
+
+fn decode_unicode(s: &str) -> Option<String> {
+    let mut out = String::new();
+    for part in s.split("\\u").filter(|p| !p.is_empty()) {
+        let digits = part.trim_matches(|c| c == '{' || c == '}');
+        out.push(char::from_u32(u32::from_str_radix(digits, 16).ok()?)?);
+    }
+    looks_like_text(out.as_bytes())
+}
+
 fn decoded_variants(text: &str) -> Vec<Decoded> {
     static B64: OnceLock<Regex> = OnceLock::new();
     static HEX: OnceLock<Regex> = OnceLock::new();
     static LINE: OnceLock<Regex> = OnceLock::new();
+    static SEPARATED: OnceLock<[Regex; 3]> = OnceLock::new();
+    static UNICODE: OnceLock<Regex> = OnceLock::new();
     let b64 = B64.get_or_init(|| re(r"[A-Za-z0-9+/_-]{40,}={0,2}"));
     let hex = HEX.get_or_init(|| re(r"(?:[0-9a-fA-F]{2}){32,}"));
     let whole = LINE.get_or_init(|| re(r"^[A-Za-z0-9+/_-]{16,}={0,2}$"));
+    let separated = SEPARATED.get_or_init(|| {
+        [
+            re(r"(?:\\x[0-9a-fA-F]{2}){16,}"),
+            re(r"(?:0[xX][0-9a-fA-F]{2}[ \t]*,?[ \t]*){16,}"),
+            re(r"(?-u:\b)(?:[0-9a-fA-F]{2}[ \t:,-]+){15,}[0-9a-fA-F]{2}(?-u:\b)"),
+        ]
+    });
+    let unicode = UNICODE.get_or_init(|| re(r"(?:\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]{1,6}\}){16,}"));
+    let lines = Lines::new(text);
     let mut out = Vec::new();
     for m in hex.find_iter(text) {
         if let Some(d) = decode_hex(m.as_str()) {
             out.push(Decoded {
                 text: d,
-                line: line_of(text, m.start()),
+                line: lines.of(m.start()),
+            });
+        }
+    }
+    for r in separated {
+        for m in r.find_iter(text) {
+            let cleaned = m
+                .as_str()
+                .replace("\\x", "")
+                .replace("0x", "")
+                .replace("0X", "");
+            if let Some(d) = looks_like_text(&hex_bytes(&cleaned)) {
+                out.push(Decoded {
+                    text: d,
+                    line: lines.of(m.start()),
+                });
+            }
+        }
+    }
+    for m in unicode.find_iter(text) {
+        if let Some(d) = decode_unicode(m.as_str()) {
+            out.push(Decoded {
+                text: d,
+                line: lines.of(m.start()),
             });
         }
     }
@@ -685,7 +776,7 @@ fn decoded_variants(text: &str) -> Vec<Decoded> {
         if let Some(d) = decode_b64(m.as_str()) {
             out.push(Decoded {
                 text: d,
-                line: line_of(text, m.start()),
+                line: lines.of(m.start()),
             });
         }
     }
@@ -721,9 +812,7 @@ fn decoded_variants(text: &str) -> Vec<Decoded> {
 
 struct OverlapUnit<'a> {
     unit: &'a Unit<'a>,
-    line_offset: u32,
     tokens: Tokens,
-    shown: String,
     matches: Vec<(usize, u64)>,
 }
 
@@ -751,39 +840,22 @@ fn first_run(matches: &[(usize, u64)], skip: &HashSet<u64>, exclude: bool) -> Op
 fn scan_overlap(index: &Index, public: &PublicSide, units: &[Unit], out: &mut Vec<Finding>) {
     let mut cands: Vec<OverlapUnit> = Vec::new();
     for unit in units {
-        let mut variants: Vec<(String, u32)> = vec![(unit.text.to_string(), 0)];
-        for d in decoded_variants(unit.text) {
-            variants.push((d.text, d.line));
+        let tokens = tokenize(unit.text);
+        let grams = kgrams(&tokens.hashes);
+        let matches: Vec<(usize, u64)> = grams
+            .iter()
+            .enumerate()
+            .filter(|(_, h)| index.grams.contains_key(h))
+            .map(|(p, h)| (p, *h))
+            .collect();
+        if matches.len() < M {
+            continue;
         }
-        for (i, (text, line_offset)) in variants.into_iter().enumerate() {
-            let tokens = tokenize(&text);
-            let grams = kgrams(&tokens.hashes);
-            let matches: Vec<(usize, u64)> = grams
-                .iter()
-                .enumerate()
-                .filter(|(_, h)| index.grams.contains_key(h))
-                .map(|(p, h)| (p, *h))
-                .collect();
-            if matches.len() < M {
-                continue;
-            }
-            let shown = if i == 0 {
-                String::new()
-            } else {
-                unit.text
-                    .lines()
-                    .nth(line_offset as usize)
-                    .unwrap_or("")
-                    .to_string()
-            };
-            cands.push(OverlapUnit {
-                unit,
-                line_offset,
-                tokens,
-                shown,
-                matches,
-            });
-        }
+        cands.push(OverlapUnit {
+            unit,
+            tokens,
+            matches,
+        });
     }
     if cands.is_empty() {
         return;
@@ -802,16 +874,6 @@ fn scan_overlap(index: &Index, public: &PublicSide, units: &[Unit], out: &mut Ve
             continue;
         };
         let rel = c.tokens.lines[pos];
-        let line_idx = if c.shown.is_empty() {
-            rel
-        } else {
-            c.line_offset
-        };
-        let line_text = if c.shown.is_empty() {
-            c.unit.text.lines().nth(rel as usize).unwrap_or("")
-        } else {
-            &c.shown
-        };
         let path = index
             .grams
             .get(&hash)
@@ -819,17 +881,26 @@ fn scan_overlap(index: &Index, public: &PublicSide, units: &[Unit], out: &mut Ve
         out.push(Finding {
             category: Category::Overlap,
             public_repo: public.full_name.clone(),
-            location: line_loc(c.unit, line_idx),
+            location: line_loc(c.unit, rel),
             private_ref: path,
-            excerpt: excerpt(line_text),
+            excerpt: excerpt(c.unit.line_text(rel)),
         });
     }
 }
 
 fn scan_names(index: &Index, public: &PublicSide, units: &[Unit], out: &mut Vec<Finding>) {
+    let hits = collect_names(index, units);
+    if hits.is_empty() {
+        return;
+    }
+    let lower_base: Vec<String> = public
+        .base_files
+        .iter()
+        .map(|f| f.text.to_ascii_lowercase())
+        .collect();
     let mut cache = HashMap::new();
-    for h in collect_names(index, units) {
-        if in_base(&public.base_files, &h.name, &mut cache) {
+    for h in hits {
+        if in_base(&lower_base, &h.name, &mut cache) {
             continue;
         }
         let unit = &units[h.unit];
@@ -838,7 +909,7 @@ fn scan_names(index: &Index, public: &PublicSide, units: &[Unit], out: &mut Vec<
             public_repo: public.full_name.clone(),
             location: line_loc(unit, h.line),
             private_ref: Some(h.kind.to_string()),
-            excerpt: excerpt(unit.text.lines().nth(h.line as usize).unwrap_or("")),
+            excerpt: excerpt(unit.line_text(h.line)),
         });
     }
 }
@@ -924,6 +995,7 @@ pub fn scan(index: &Index, public: &PublicSide) -> Vec<Finding> {
             },
             text: &b.text,
             first_line: b.line,
+            shown: None,
         })
         .collect();
     units.extend(public.texts.iter().map(|(label, text)| Unit {
@@ -932,7 +1004,26 @@ pub fn scan(index: &Index, public: &PublicSide) -> Vec<Finding> {
         },
         text,
         first_line: 1,
+        shown: None,
     }));
+    let decoded: Vec<(usize, Decoded)> = units
+        .iter()
+        .enumerate()
+        .flat_map(|(i, u)| decoded_variants(u.text).into_iter().map(move |d| (i, d)))
+        .collect();
+    let extra: Vec<Unit> = decoded
+        .iter()
+        .map(|(i, d)| {
+            let parent = &units[*i];
+            Unit {
+                loc: parent.loc.clone(),
+                text: &d.text,
+                first_line: parent.first_line + d.line,
+                shown: Some(excerpt(parent.line_text(d.line))),
+            }
+        })
+        .collect();
+    units.extend(extra);
     for unit in &units {
         scan_secrets(unit, &public.full_name, &mut out);
     }
@@ -958,7 +1049,11 @@ struct TreeEntry {
 }
 
 fn list_tree(repo: &Path, rev: &str) -> Result<Vec<TreeEntry>> {
-    let raw = git_bytes(repo, &["ls-tree", "-r", "-z", "-l", rev], None)?;
+    let raw = git_bytes(
+        repo,
+        &["ls-tree", "-r", "-z", "-l", "--end-of-options", rev],
+        None,
+    )?;
     let mut out = Vec::new();
     for rec in raw.split(|&b| b == 0).filter(|r| !r.is_empty()) {
         let s = String::from_utf8_lossy(rec);
@@ -1239,6 +1334,69 @@ fn sizes(repo: &Path, oids: &[String]) -> Result<HashMap<String, u64>> {
     Ok(out)
 }
 
+fn is_sha(s: &str) -> bool {
+    (s.len() == 40 || s.len() == 64) && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+struct CommitInfo {
+    parent: Option<String>,
+    author: String,
+    committer: String,
+    message: String,
+}
+
+fn identity(rest: &str) -> String {
+    let mut parts = rest.rsplitn(3, ' ');
+    parts.next();
+    parts.next();
+    parts.next().unwrap_or(rest).to_string()
+}
+
+fn parse_commit(raw: &[u8]) -> Result<CommitInfo> {
+    let text = String::from_utf8_lossy(raw);
+    let (head, message) = text.split_once("\n\n").unwrap_or((&text, ""));
+    let mut info = CommitInfo {
+        parent: None,
+        author: String::new(),
+        committer: String::new(),
+        message: message.trim_end().to_string(),
+    };
+    for line in head.lines().filter(|l| !l.starts_with(' ')) {
+        if let Some(p) = line.strip_prefix("parent ") {
+            if !is_sha(p) {
+                return Err(Error::internal("unexpected git commit header"));
+            }
+            info.parent.get_or_insert_with(|| p.to_string());
+        } else if let Some(a) = line.strip_prefix("author ") {
+            info.author = identity(a);
+        } else if let Some(c) = line.strip_prefix("committer ") {
+            info.committer = identity(c);
+        }
+    }
+    Ok(info)
+}
+
+fn patch_args<'a>(revs: &[&'a str], root: bool) -> Vec<&'a str> {
+    let mut args = vec![
+        "diff-tree",
+        "-p",
+        "-r",
+        "--no-renames",
+        "--no-textconv",
+        "--no-ext-diff",
+        "--no-color",
+        "--no-commit-id",
+        "--full-index",
+        "-U0",
+    ];
+    if root {
+        args.push("--root");
+    }
+    args.push("--end-of-options");
+    args.extend(revs);
+    args
+}
+
 pub fn load_public(
     repo: &Path,
     full_name: &str,
@@ -1247,57 +1405,39 @@ pub fn load_public(
     texts: Vec<(String, String)>,
 ) -> Result<PublicSide> {
     let base_files = load_files(repo, &[base])?;
+    let base_lockfiles: HashSet<String> = list_tree(repo, base)?
+        .into_iter()
+        .filter(|e| is_regular(&e.mode) && is_lockfile(&e.path))
+        .map(|e| e.path)
+        .collect();
     let range = format!("{base}..{head}");
-    let log = git_bytes(
+    let listed = git_bytes(
         repo,
-        &[
-            "log",
-            "--reverse",
-            "--no-color",
-            "--format=%H%x1f%P%x1f%an <%ae>%x1f%cn <%ce>%x1f%B%x1e",
-            &range,
-        ],
+        &["rev-list", "--reverse", "--end-of-options", &range],
         None,
     )?;
-    let log = String::from_utf8_lossy(&log).into_owned();
     let mut all_texts = Vec::new();
     let mut changes: Vec<FileChange> = Vec::new();
-    for rec in log.split('\x1e').map(|r| r.trim_start_matches('\n')) {
-        let f: Vec<&str> = rec.splitn(5, '\x1f').collect();
-        if f.len() != 5 {
-            continue;
+    for sha in String::from_utf8_lossy(&listed).lines() {
+        if !is_sha(sha) {
+            return Err(Error::internal("unexpected git rev-list output"));
         }
-        let sha = f[0];
-        let short = &sha[..sha.len().min(7)];
-        all_texts.push((format!("commit {short} author"), f[2].to_string()));
-        all_texts.push((format!("commit {short} committer"), f[3].to_string()));
-        if !f[4].trim().is_empty() {
-            all_texts.push((
-                format!("commit {short} message"),
-                f[4].trim_end().to_string(),
-            ));
+        let raw = git_bytes(repo, &["cat-file", "commit", "--end-of-options", sha], None)?;
+        let info = parse_commit(&raw)?;
+        let short = &sha[..7];
+        all_texts.push((format!("commit {short} author"), info.author));
+        all_texts.push((format!("commit {short} committer"), info.committer));
+        if !info.message.trim().is_empty() {
+            all_texts.push((format!("commit {short} message"), info.message));
         }
-        let mut args = vec![
-            "diff-tree",
-            "-p",
-            "-r",
-            "--no-renames",
-            "--no-textconv",
-            "--no-ext-diff",
-            "--no-color",
-            "--no-commit-id",
-            "--full-index",
-            "-U0",
-        ];
-        let parent = f[1].split(' ').next().unwrap_or("");
-        if parent.is_empty() {
-            args.extend(["--root", sha]);
-        } else {
-            args.extend([parent, sha]);
-        }
-        let patch = git_bytes(repo, &args, None)?;
+        let patch = match &info.parent {
+            Some(parent) => git_bytes(repo, &patch_args(&[parent, sha], false), None)?,
+            None => git_bytes(repo, &patch_args(&[sha], true), None)?,
+        };
         changes.extend(parse_patch(&String::from_utf8_lossy(&patch)));
     }
+    let net = git_bytes(repo, &patch_args(&[base, head], false), None)?;
+    changes.extend(parse_patch(&String::from_utf8_lossy(&net)));
     all_texts.extend(texts);
 
     let to_size: Vec<String> = changes
@@ -1310,6 +1450,8 @@ pub fn load_public(
     let size_of = sizes(repo, &to_size)?;
 
     let mut new_files = BTreeSet::new();
+    let mut paths = BTreeSet::new();
+    let mut seen: HashSet<(String, u32, String)> = HashSet::new();
     let mut added = Vec::new();
     let mut unscannable: BTreeSet<(String, String)> = BTreeSet::new();
     for c in changes {
@@ -1323,13 +1465,15 @@ pub fn load_public(
         if c.deleted {
             continue;
         }
+        paths.insert(c.path.clone());
+        let exempt = is_lockfile(&c.path) && base_lockfiles.contains(&c.path);
         let reason = if c.mode == "160000" {
             Some("gitlink (submodule)")
         } else if c.mode == "120000" {
             Some("symlink")
         } else if c.binary {
             Some("binary file")
-        } else if !is_lockfile(&c.path) && size_of.get(&c.oid).is_some_and(|&n| n > MAX_FILE) {
+        } else if !exempt && size_of.get(&c.oid).is_some_and(|&n| n > MAX_FILE) {
             Some("larger than 512 KiB")
         } else {
             None
@@ -1339,13 +1483,16 @@ pub fn load_public(
             continue;
         }
         for (line, text) in c.blocks {
-            added.push(AddedBlock {
-                path: c.path.clone(),
-                line,
-                text,
-            });
+            if seen.insert((c.path.clone(), line, text.clone())) {
+                added.push(AddedBlock {
+                    path: c.path.clone(),
+                    line,
+                    text,
+                });
+            }
         }
     }
+    all_texts.extend(paths.into_iter().map(|p| ("path".to_string(), p)));
     Ok(PublicSide {
         full_name: full_name.to_string(),
         base_files,

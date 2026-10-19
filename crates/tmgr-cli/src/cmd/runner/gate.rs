@@ -115,13 +115,13 @@ pub(super) fn held_outcome(scanned: &Scanned, touched: &[TouchedBranch]) -> (Hel
         .iter()
         .map(|c| c.name().to_string())
         .collect();
-    let mut repos: Vec<&str> = scanned
-        .findings
+    let counts: Vec<String> = categories(&scanned.findings)
         .iter()
-        .map(|f| f.public_repo.as_str())
+        .map(|c| {
+            let n = scanned.findings.iter().filter(|f| f.category == *c).count();
+            format!("{} x{n}", c.name())
+        })
         .collect();
-    repos.sort();
-    repos.dedup();
     let held = Held {
         at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
         shas: touched
@@ -129,14 +129,13 @@ pub(super) fn held_outcome(scanned: &Scanned, touched: &[TouchedBranch]) -> (Hel
             .filter(|t| t.commits > 0)
             .map(|t| (t.full_name.clone(), t.imported.clone()))
             .collect(),
-        categories: cats.clone(),
+        categories: cats,
         findings: scanned.findings.len(),
     };
     let text = format!(
-        "the leak gate found {} finding(s) ({}) in {}. Nothing was pushed.",
+        "the leak gate found {} finding(s) ({}). Nothing was pushed.",
         held.findings,
-        cats.join(", "),
-        repos.join(", ")
+        counts.join(", ")
     );
     (held, text)
 }
@@ -199,6 +198,7 @@ pub(super) fn print_review(scanned: &Scanned, touched: &[TouchedBranch]) {
                 "--no-color",
                 "--no-renames",
                 flag,
+                "--end-of-options",
                 &range,
             ];
             match workdir::git_query(&t.repo, &args) {
@@ -288,7 +288,7 @@ pub fn drop_held(o: &Opts, reference: &str) -> Result<i32> {
         o,
         serde_json::json!({ "dropped": true }),
         format!(
-            "dropped; the local branch and the run folder {} are left in place",
+            "dropped; the run folder {} is left in place",
             sanitize_line(&loc.target.clone_dir.display().to_string())
         ),
     ))

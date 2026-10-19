@@ -283,7 +283,7 @@ fn publish_phase(pass: &mut Pass, deps: &Deps) -> Result<()> {
             Err(e) if state::is_held(&e) => {
                 let mut held = deps.publisher.take_held().unwrap_or_default();
                 held.at = ts(deps.now);
-                pass.state.pickups[i].publish_attempts -= 1;
+                pass.state.pickups[i].publish_attempts = state::MAX_PUBLISH_ATTEMPTS;
                 pass.state.pickups[i].publish_error = None;
                 pass.audit.append(
                     "publish_held",
@@ -1574,7 +1574,7 @@ mod tests {
         assert_eq!(fx.publisher.calls.borrow().len(), 1);
         let p = &fx.pickups()[0];
         assert!(p.pr_url.is_none() && p.publish_error.is_none() && !p.released);
-        assert_eq!(p.publish_attempts, 0);
+        assert_eq!(p.publish_attempts, state::MAX_PUBLISH_ATTEMPTS);
         let held = p.held.as_ref().expect("held");
         assert_eq!(held.categories, ["overlap"]);
         assert_eq!(held.shas["o/r"], "abc");
