@@ -14,6 +14,7 @@ pub trait Queue {
     fn pause_to_draft(&self, pickup: &str, note: &str) -> Result<PausedDraft>;
     fn set_paused(&self, paused: bool) -> Result<()>;
     fn disable(&self, reason: &str) -> Result<()>;
+    fn keep_on(&self) -> Result<()>;
     fn workspace_code(&self, rule: &str) -> Option<String>;
     fn unconfirmed(&self, rule: &str, selected: &BTreeSet<i64>) -> Result<u32>;
 }

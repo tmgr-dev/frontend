@@ -117,6 +117,10 @@ impl Queue for RealQueue<'_> {
         tmgr_queue::switch::disable(self.paths, Some(reason))
     }
 
+    fn keep_on(&self) -> Result<()> {
+        crate::cmd::autopilot::queue_loop::save_settings(self.paths)
+    }
+
     fn workspace_code(&self, rule: &str) -> Option<String> {
         tmgr_queue::rules::load(self.paths)
             .ok()?

@@ -1533,6 +1533,7 @@ fn disabling_the_queue_ends_the_loop() {
     assert_eq!(fx.json(&["disable"])["data"]["enabled"], false);
     let s = fx.wait_autopilot("stopped", |s| s["state"] == "stopped");
     assert_eq!(s["stop_reason"], "the queue was turned off");
+    assert!(!fx.autopilot_dir().join("settings/queue.json").exists());
     let end = Instant::now() + Duration::from_secs(20);
     loop {
         let human = text(&fx.run(&["queue", "status"]).stdout);

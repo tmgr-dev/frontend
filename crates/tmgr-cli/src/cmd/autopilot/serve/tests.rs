@@ -236,6 +236,11 @@ impl Queue for Fake {
         Some("ws".into())
     }
 
+    fn keep_on(&self) -> Result<()> {
+        self.w().order.push("keep_on".into());
+        Ok(())
+    }
+
     fn unconfirmed(&self, _rule: &str, _selected: &BTreeSet<i64>) -> Result<u32> {
         Ok(self.0.borrow().unconfirmed)
     }
@@ -364,6 +369,7 @@ fn settings(tasks: &[i64], tweak: impl Fn(&mut Answers)) -> Settings {
         signed: vec![],
         windows: vec!["five_hour".into(), "seven_day".into()],
         kind: LoopKind::Drain,
+        resume_queue: false,
     }
 }
 
@@ -594,6 +600,129 @@ fn a_resumed_loop_keeps_the_start_time_events_pull_requests_and_counters() {
     assert_eq!(ap.prs.len(), 1);
     assert_eq!(rig.status().state, RunState::Running);
     assert_eq!(rig.status().started_at, first.started_at);
+}
+
+#[test]
+fn a_pause_survives_a_suspend() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        rig.control(1, "pause");
+        tick_on(ap);
+        rig.control(2, "suspend");
+        assert!(ap.tick().unwrap().is_some());
+    });
+    assert_eq!(rig.status().state, RunState::Suspended);
+    let store = rig.store();
+    let _ = std::fs::remove_file(store.control_path());
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    assert_eq!(ap.state, RunState::Paused);
+    tick_on(&mut ap);
+    assert!(!rig.fake.0.borrow().passes.last().unwrap().starts_allowed);
+}
+
+#[test]
+fn what_happened_while_suspended_is_reported_after_the_resume() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        rig.control(1, "suspend");
+        assert!(ap.tick().unwrap().is_some());
+    });
+    {
+        let mut w = rig.fake.w();
+        w.alive.clear();
+        w.clean_exit.insert("run-q1".into());
+    }
+    let store = rig.store();
+    let _ = std::fs::remove_file(store.control_path());
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    assert!(ap.prs.is_empty());
+    let _ = ap.tick().unwrap();
+    assert_eq!(ap.prs.len(), 1);
+    assert!(rig.log_kinds().iter().any(|k| k == "pr"));
+    assert!(rig
+        .fake
+        .0
+        .borrow()
+        .pushes
+        .iter()
+        .any(|p| p.starts_with("Autopilot: pull request")));
+}
+
+#[test]
+fn a_failure_that_happened_while_suspended_counts_after_the_resume() {
+    let rig = Rig::new();
+    let s = settings(&[1, 2], |_| {});
+    rig.fake.add(pickup("q2", 2, "approved", None));
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        rig.control(1, "suspend");
+        assert!(ap.tick().unwrap().is_some());
+    });
+    let mut p = pickup("q1", 1, "failed", None);
+    p.reason = Some("clone failed".into());
+    rig.fake.add(p);
+    let store = rig.store();
+    let _ = std::fs::remove_file(store.control_path());
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    tick_on(&mut ap);
+    assert_eq!(ap.failures, 1);
+    assert_eq!(ap.failed_log.len(), 1);
+}
+
+#[test]
+fn a_queue_loop_left_running_by_a_crash_continues_from_its_status_but_a_drain_does_not() {
+    let rig = Rig::new();
+    let mut done = running("q1", 1);
+    done.run_exited = true;
+    done.run_clean = true;
+    rig.fake.add(done);
+    let q = queue_settings();
+    let first = {
+        let store = rig.store();
+        let mut ap = Autopilot::new(&store, &q, rig.fake.ports(), timing(), &rig.term);
+        ap.begin();
+        tick_on(&mut ap);
+        rig.status()
+    };
+    assert_eq!(first.state, RunState::Running);
+    rig.fake.advance(Duration::minutes(3));
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &q, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    assert_eq!(ap.started_at, first.started_at);
+    assert!(ap.events.iter().any(|e| e.kind == "resumed"));
+    let d = settings(&[1], |_| {});
+    let mut ap = Autopilot::new(&store, &d, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    assert!(!ap.events.iter().any(|e| e.kind == "resumed"));
+}
+
+#[test]
+fn a_drain_that_took_over_from_the_queue_loop_keeps_the_queue_on_and_says_so() {
+    let rig = Rig::new();
+    let mut s = settings(&[1], |_| {});
+    s.resume_queue = true;
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    let out = with_ap(&rig, &s, |ap| {
+        rig.control(1, "stop");
+        ap.tick().unwrap().expect("stopped")
+    });
+    assert_eq!(out.reason, "stopped by you");
+    let w = rig.fake.0.borrow();
+    assert!(w.disabled.is_empty());
+    assert_eq!(w.order.last().unwrap(), "keep_on");
+    drop(w);
+    let st = rig.status();
+    assert_eq!(st.state, RunState::Stopped);
+    assert_eq!(st.extra["resume_queue"], true);
 }
 
 #[test]

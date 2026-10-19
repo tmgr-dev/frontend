@@ -72,6 +72,8 @@ pub struct Settings {
     pub windows: Vec<String>,
     #[serde(default)]
     pub kind: LoopKind,
+    #[serde(default)]
+    pub resume_queue: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

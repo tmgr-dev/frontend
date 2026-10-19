@@ -896,8 +896,17 @@ async fn starting_a_drain_suspends_the_queue_loop_first_and_leaves_the_queue_on(
     assert_eq!(prev["settings_id"], "queue");
     assert_eq!(prev["state"], "suspended");
     assert!(cloud.queue_enabled());
+    assert!(
+        !cloud.cfg().join("autopilot/settings/queue.json").exists(),
+        "the uncapped loop settings are gone while the drain runs"
+    );
 
     let stop = cloud.cmd(&["queue", "autopilot", "stop"]);
     assert_eq!(stop.status.code(), Some(0), "{}", text(&stop.stderr));
-    cloud.wait_status("stopped", |s| s["state"] == "stopped");
+    let back = cloud.wait_status("the queue loop is back", |s| {
+        s["settings_id"] == "queue" && s["state"] == "running"
+    });
+    assert_eq!(back["kind"], "queue");
+    assert!(cloud.queue_enabled());
+    assert!(cloud.cfg().join("autopilot/settings/queue.json").exists());
 }

@@ -48,6 +48,7 @@ pub fn settings_for(file: &QueueFile, now: DateTime<Utc>) -> Settings {
         signed: Vec::new(),
         windows: Vec::new(),
         kind: LoopKind::Queue,
+        resume_queue: false,
     }
 }
 
@@ -61,12 +62,16 @@ fn off_for_tests() -> bool {
     false
 }
 
+pub fn save_settings(paths: &Paths) -> Result<()> {
+    let file = tmgr_queue::rules::load(paths)?.file;
+    Store::from_env()?.save_settings(&settings_for(&file, Utc::now()))
+}
+
 pub fn ensure_running(paths: &Paths) -> Result<Hosting> {
     if off_for_tests() {
         return Ok(Hosting::Skipped);
     }
-    let file = tmgr_queue::rules::load(paths)?.file;
-    Store::from_env()?.save_settings(&settings_for(&file, Utc::now()))?;
+    save_settings(paths)?;
     let mut client = hosted_client()?;
     let status = client.autopilot_status().map_err(rerr)?;
     if status.running {

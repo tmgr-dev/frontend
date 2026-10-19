@@ -33,7 +33,6 @@ use crate::out::{table, Output};
 const LIST_CAP: usize = 40;
 const TITLE_WIDTH: usize = 48;
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-const HANDOVER_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Approval {
@@ -451,21 +450,20 @@ pub fn start_hosted(id: &str) -> Result<u32> {
         .map_err(rerr)
 }
 
+fn answered(e: &std::io::Error, code: &str) -> bool {
+    e.to_string()
+        .split_once(": ")
+        .is_some_and(|(c, _)| c == code)
+}
+
 pub fn hand_over() -> Result<()> {
     let mut client = hosted_client()?;
     match client.autopilot_control(AutopilotCommand::Suspend) {
         Ok(_) => {}
-        Err(e) if e.to_string().starts_with("not_running: ") => return Ok(()),
+        Err(e) if answered(&e, "not_running") => return Ok(()),
         Err(e) => return Err(rerr(e)),
     }
-    let end = std::time::Instant::now() + HANDOVER_WAIT;
     while client.autopilot_status().map_err(rerr)?.running {
-        if std::time::Instant::now() >= end {
-            return Err(Error::new(
-                Kind::Conflict,
-                "the queue loop did not suspend in time",
-            ));
-        }
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     Ok(())
@@ -628,6 +626,24 @@ fn begin(
     shown_sha: Option<&str>,
     handover: bool,
 ) -> Result<Output> {
+    if handover {
+        hand_over()?;
+    }
+    let started = begin_after_handover(ctx, paths, store, plan, shown_sha, handover);
+    if started.is_err() && handover {
+        let _ = super::queue_loop::ensure_running(paths);
+    }
+    started
+}
+
+fn begin_after_handover(
+    ctx: &Ctx,
+    paths: &Paths,
+    store: &Store,
+    plan: &Plan,
+    shown_sha: Option<&str>,
+    handover: bool,
+) -> Result<Output> {
     let client = ctx.cloud_client()?;
     let cloud = CliCloud::new(ctx);
     let (host, user) = cloud.identity()?;
@@ -653,12 +669,10 @@ fn begin(
             .hint(failure_text(&report, &plan.chosen)));
     }
     queue::commit_enable(paths, shown_sha)?;
-    match launch(store, plan, &tasks, &report, handover) {
+    match launch(paths, store, plan, &tasks, &report, handover) {
         Ok(out) => Ok(attach_failures(out, &report, &plan.chosen)),
         Err(e) => {
-            if handover {
-                let _ = start_hosted(QUEUE_SETTINGS_ID);
-            } else {
+            if !handover {
                 let _ = tmgr_queue::switch::disable(paths, Some("autopilot did not start"));
             }
             Err(e)
@@ -667,6 +681,7 @@ fn begin(
 }
 
 fn launch(
+    paths: &Paths,
     store: &Store,
     plan: &Plan,
     tasks: &BTreeSet<i64>,
@@ -693,11 +708,10 @@ fn launch(
             Vec::new()
         },
         kind: LoopKind::Drain,
+        resume_queue: handover,
     };
     store.save_settings(&settings)?;
-    if handover {
-        hand_over()?;
-    }
+    tmgr_queue::switch::forget_queue_loop(paths);
     let pid = start_hosted(&id)?;
     Ok(Output::new(
         json!({"id": id, "pid": pid, "tasks": tasks, "signed": report.signed}),

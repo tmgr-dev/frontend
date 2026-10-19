@@ -44,6 +44,10 @@ struct Carry {
     held: Vec<Reasoned>,
     failed: Vec<Reasoned>,
     paused: Vec<Reasoned>,
+    was_paused: bool,
+    counted_pr: Vec<String>,
+    counted_held: Vec<String>,
+    counted_fail: Vec<String>,
 }
 
 fn step_of(p: &Pickup) -> &'static str {
@@ -223,6 +227,7 @@ pub struct Autopilot<'a> {
     last_seq: u64,
     stop_req: Option<(Why, String)>,
     suspend_req: bool,
+    paused_before_suspend: bool,
     queue_mode: bool,
     steps: BTreeMap<String, &'static str>,
     events: Vec<Event>,
@@ -295,6 +300,7 @@ impl<'a> Autopilot<'a> {
             last_seq: 0,
             stop_req: None,
             suspend_req: false,
+            paused_before_suspend: false,
             queue_mode: s.kind == LoopKind::Queue,
             steps: BTreeMap::new(),
             events: Vec::new(),
@@ -347,7 +353,9 @@ impl<'a> Autopilot<'a> {
 
     fn previous(&self) -> Option<StatusDoc> {
         let doc = self.store.read_status().ok().flatten()?;
-        (doc.state == RunState::Suspended && doc.settings_id == self.s.id).then_some(doc)
+        let resumable =
+            doc.state == RunState::Suspended || (self.queue_mode && doc.state != RunState::Stopped);
+        (resumable && doc.settings_id == self.s.id).then_some(doc)
     }
 
     fn restore(&mut self, doc: StatusDoc) {
@@ -355,6 +363,7 @@ impl<'a> Autopilot<'a> {
         self.events = doc.events;
         self.prs = doc.prs;
         self.failures = doc.failures_in_row;
+        let was_paused = doc.state == RunState::Paused;
         let carry: Carry = doc
             .extra
             .get("resume")
@@ -364,6 +373,12 @@ impl<'a> Autopilot<'a> {
         self.held_log = carry.held;
         self.failed_log = carry.failed;
         self.paused_log = carry.paused;
+        self.counted_pr = carry.counted_pr.into_iter().collect();
+        self.counted_held = carry.counted_held.into_iter().collect();
+        self.counted_fail = carry.counted_fail.into_iter().collect();
+        if was_paused || carry.was_paused {
+            self.state = RunState::Paused;
+        }
     }
 
     fn event(&mut self, kind: &str, task: Option<&str>, text: impl Into<String>) {
@@ -434,13 +449,13 @@ impl<'a> Autopilot<'a> {
                     self.baseline.insert(p.id.clone());
                 }
                 match classify(p, &self.killed) {
-                    Class::Done | Class::Paused => {
+                    Class::Done | Class::Paused if !resumed => {
                         self.counted_pr.insert(p.id.clone());
                     }
-                    Class::Held => {
+                    Class::Held if !resumed => {
                         self.counted_held.insert(p.id.clone());
                     }
-                    Class::Failed(_) => {
+                    Class::Failed(_) if !resumed => {
                         self.counted_fail.insert(p.id.clone());
                     }
                     Class::InWork => {
@@ -1257,7 +1272,12 @@ impl<'a> Autopilot<'a> {
             self.observe(&st, now);
             self.summary = Some(self.build_summary(&st, &reason));
         }
-        if let Err(e) = self
+        if self.s.resume_queue {
+            if let Err(e) = self.p.queue.keep_on() {
+                let text = format!("Could not keep the queue loop's settings: {}", e.message);
+                self.event("error", None, text);
+            }
+        } else if let Err(e) = self
             .p
             .queue
             .disable(&format!("autopilot: {}", reason.text()))
@@ -1283,6 +1303,7 @@ impl<'a> Autopilot<'a> {
     }
 
     fn suspend(&mut self) -> Outcome {
+        self.paused_before_suspend = self.state == RunState::Paused;
         self.state = RunState::Suspended;
         self.event(
             "suspended",
@@ -1390,16 +1411,21 @@ impl<'a> Autopilot<'a> {
         if self.queue_mode {
             extra.insert("kind".into(), json!("queue"));
         }
-        if self.state == RunState::Suspended {
-            let carry = Carry {
-                started: self.started_ids.iter().cloned().collect(),
-                held: self.held_log.clone(),
-                failed: self.failed_log.clone(),
-                paused: self.paused_log.clone(),
-            };
-            if let Ok(v) = serde_json::to_value(carry) {
-                extra.insert("resume".into(), v);
-            }
+        let carry = Carry {
+            started: self.started_ids.iter().cloned().collect(),
+            held: self.held_log.clone(),
+            failed: self.failed_log.clone(),
+            paused: self.paused_log.clone(),
+            was_paused: self.state == RunState::Paused || self.paused_before_suspend,
+            counted_pr: self.counted_pr.iter().cloned().collect(),
+            counted_held: self.counted_held.iter().cloned().collect(),
+            counted_fail: self.counted_fail.iter().cloned().collect(),
+        };
+        if let Ok(v) = serde_json::to_value(carry) {
+            extra.insert("resume".into(), v);
+        }
+        if self.s.resume_queue && self.state == RunState::Stopped {
+            extra.insert("resume_queue".into(), json!(true));
         }
         if let Some(d) = deadline(self.started_at, self.s.answers.max_hours) {
             extra.insert("deadline".into(), json!(d));
