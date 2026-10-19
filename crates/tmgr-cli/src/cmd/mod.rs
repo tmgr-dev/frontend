@@ -26,7 +26,7 @@ pub mod routine;
 pub mod runner;
 pub mod self_update;
 pub mod shared;
-#[allow(dead_code)]
+#[cfg(feature = "runner")]
 pub mod signer;
 pub mod status;
 pub mod task;

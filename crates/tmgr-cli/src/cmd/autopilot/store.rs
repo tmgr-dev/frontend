@@ -21,6 +21,7 @@ impl Store {
         })
     }
 
+    #[cfg(test)]
     pub fn at(config: &Path) -> Store {
         Store {
             config: config.to_path_buf(),
@@ -76,6 +77,7 @@ impl Store {
         write_json(&self.status_path(), doc)
     }
 
+    #[cfg(test)]
     pub fn read_status(&self) -> Result<Option<StatusDoc>> {
         read_json(&self.status_path())
     }

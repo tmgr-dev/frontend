@@ -253,10 +253,6 @@ impl<'a> Signer<'a> {
         self
     }
 
-    pub fn host(&self) -> &str {
-        &self.host
-    }
-
     pub fn ensure_key(&self) -> Result<OwnKey> {
         (self.guard)()?;
         self.ready_key().map(|(own, _)| own)

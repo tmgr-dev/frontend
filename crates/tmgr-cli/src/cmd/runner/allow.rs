@@ -110,7 +110,6 @@ pub fn split_cli_keys(
     })
 }
 
-#[allow(dead_code)]
 pub fn pin_own_key(
     host: &str,
     user_id: i64,
@@ -123,7 +122,6 @@ pub fn pin_own_key(
         .map_err(store_error)
 }
 
-#[allow(dead_code)]
 pub fn pin_into(
     file: &mut AllowFile,
     host: &str,
