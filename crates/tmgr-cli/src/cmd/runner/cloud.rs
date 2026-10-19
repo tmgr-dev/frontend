@@ -13,16 +13,17 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tmgr_core::approval::{
-    canonical_repos, check_claim, content_sha256, repos_sha256, AllowFile, Entry, Refusal,
-    RepoBinding, Rollback,
+    canonical_repos, check_claim, content_sha256, context_sha256, page_sha256, persona_sha256,
+    repos_sha256, AllowFile, Entry, Refusal, RepoBinding, Rollback, MAX_CONTEXT_BYTES,
+    MAX_PERSONA_BYTES,
 };
 use tmgr_core::config;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::notify::build_push;
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{
-    caps, AuthorKind, BundleAuthor, BundleLaunch, CloneSpec, CloudApproval, ExePin, RunBundle,
-    RunCreateReq, TaskRef,
+    caps, sha256_hex, AuthorKind, BundleAuthor, BundleLaunch, BundlePage, BundlePersona, CloneSpec,
+    CloudApproval, ExePin, RunBundle, RunCreateReq, TaskRef,
 };
 use tmgr_link::privileged;
 use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
@@ -64,6 +65,35 @@ pub struct Approval {
     pub revoked_reason: Option<String>,
     #[serde(default)]
     pub repos_sha256: Option<String>,
+    #[serde(default)]
+    pub persona_sha256: Option<String>,
+    #[serde(default)]
+    pub context_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServedPersona {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub instructions: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServedPage {
+    pub id: i64,
+    #[serde(default)]
+    pub version: i64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ServedContext {
+    #[serde(default)]
+    pub pages: Vec<ServedPage>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,6 +114,10 @@ pub struct Eligibility {
     pub setting_enabled: bool,
     #[serde(default)]
     pub approval: Option<Approval>,
+    #[serde(default)]
+    pub persona: Option<ServedPersona>,
+    #[serde(default)]
+    pub context: Option<ServedContext>,
 }
 
 pub fn parse_eligibility(v: serde_json::Value) -> Result<Eligibility> {
@@ -99,6 +133,8 @@ pub struct GateOk {
     pub category: Option<Category>,
     pub task_key: String,
     pub repos: Option<Vec<String>>,
+    pub persona: Option<BundlePersona>,
+    pub context: Vec<BundlePage>,
 }
 
 const CONFIRM: &str = "open the task in the web app and click Confirm for agent runs";
@@ -197,12 +233,16 @@ pub fn cloud_gate(
             None
         }
     };
+    let persona = signed_persona(e, a.persona_sha256.as_deref())?;
+    let context = signed_context(e, a.context_sha256.as_deref())?;
     let (repo_list, repos_hash) = match repos {
         Some((list, hash)) => (Some(list), Some(hash)),
         None => (None, None),
     };
     let claim = CloudApproval {
         repos_sha256: repos_hash,
+        persona_sha256: a.persona_sha256.clone(),
+        context_sha256: a.context_sha256.clone(),
         host: entry.server.clone(),
         user_id: entry.user_id,
         workspace_id: entry.workspace_id,
@@ -234,7 +274,67 @@ pub fn cloud_gate(
             .clone()
             .unwrap_or_else(|| format!("task-{}", e.task_id)),
         repos: repo_list,
+        persona,
+        context,
     })
+}
+
+fn signed_persona(
+    e: &Eligibility,
+    covered: Option<&str>,
+) -> std::result::Result<Option<BundlePersona>, Refusal> {
+    let Some(want) = covered else {
+        return Ok(None);
+    };
+    let changed = || {
+        Refusal::new(
+            "the persona instructions changed since the approval",
+            CONFIRM,
+        )
+    };
+    let p = e.persona.as_ref().ok_or_else(changed)?;
+    if p.instructions.len() > MAX_PERSONA_BYTES
+        || persona_sha256(&p.id, &p.name, &p.instructions).as_deref() != Ok(want)
+    {
+        return Err(changed());
+    }
+    Ok(Some(BundlePersona {
+        name: p.name.clone(),
+        instructions_sha256: sha256_hex(p.instructions.as_bytes()),
+        id: Some(p.id.clone()),
+        instructions: Some(p.instructions.clone()),
+    }))
+}
+
+fn signed_context(
+    e: &Eligibility,
+    covered: Option<&str>,
+) -> std::result::Result<Vec<BundlePage>, Refusal> {
+    let Some(want) = covered else {
+        return Ok(Vec::new());
+    };
+    let changed = || Refusal::new("the workspace rules changed since the approval", CONFIRM);
+    let pages = e.context.as_ref().map_or(&[][..], |c| &c.pages[..]);
+    let hashes: Vec<String> = pages
+        .iter()
+        .map(|p| page_sha256(p.id, &p.title, &p.body))
+        .collect();
+    let bytes: usize = pages
+        .iter()
+        .map(|p| p.title.replace("\r\n", "\n").len() + p.body.replace("\r\n", "\n").len())
+        .sum();
+    if bytes > MAX_CONTEXT_BYTES || context_sha256(&hashes).as_deref() != Ok(want) {
+        return Err(changed());
+    }
+    Ok(pages
+        .iter()
+        .map(|p| BundlePage {
+            id: p.id,
+            revision: p.version,
+            title: p.title.clone(),
+            body: p.body.clone(),
+        })
+        .collect())
 }
 
 pub fn bypass_needs_consent(
@@ -1128,7 +1228,8 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         },
         comments: Vec::new(),
         pages: Vec::new(),
-        persona: None,
+        persona: ok.persona.clone(),
+        context: ok.context.clone(),
         launch: BundleLaunch {
             profile: profile.clone(),
             model: a.model.clone(),
@@ -1143,6 +1244,15 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut rc = connect(&cfg)?;
     let have = &rc.welcome().caps;
+    if tmgr_runner::bundle::has_owner_text(&bundle)
+        && !have.iter().any(|h| h == caps::SIGNED_CONTEXT_V1)
+    {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the running runner is older than this tmgr and cannot deliver the persona instructions and workspace rules of this task",
+        )
+        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+    }
     if [caps::EXE_PIN_V1, caps::ARGV_PIN_V1]
         .iter()
         .any(|c| !have.iter().any(|h| h == c))
@@ -2107,6 +2217,7 @@ mod tests {
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
     use tmgr_core::approval::PinnedKey;
+    use tmgr_ipc::api::sha256_hex;
 
     const FIXTURES: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -2391,6 +2502,8 @@ mod tests {
     fn plan_claim() -> CloudApproval {
         CloudApproval {
             repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -2621,6 +2734,277 @@ mod tests {
             "{}",
             r.message
         );
+    }
+
+    fn bundle_v3(i: usize) -> Value {
+        let c = &fx()["cases_v3"][i];
+        let mut approval = json!({"kind": "confirm", "key_id": key_id(),
+            "content_sha256": c["content_sha256"], "signed_at": c["signed_at"],
+            "signature": c["signature"], "revoked_at": null, "revoked_reason": null});
+        let mut b = json!({
+            "task_id": c["task_id"], "workspace_id": 56, "workspace_code": "tmgrdev",
+            "viewer_user_id": 1, "title": c["title"], "description": c["description"],
+            "task_key": "TM-412",
+            "category": {"id": 127, "code": "TM", "github_full_name": "tmgr-dev/backend", "default_branch": "master"},
+            "setting_enabled": true
+        });
+        if let Some(p) = c.get("persona") {
+            b["persona"] = json!({"id": p["id"], "name": p["name"], "instructions": p["instructions"], "sha256": c["persona_sha256"]});
+            approval["persona_sha256"] = c["persona_sha256"].clone();
+        }
+        if let Some(pages) = c.get("context") {
+            b["context"] = json!({"pages": pages, "sha256": c["context_sha256"]});
+            approval["context_sha256"] = c["context_sha256"].clone();
+        }
+        b["approval"] = approval;
+        b
+    }
+
+    const RECONFIRM: &str = "open the task in the web app and click Confirm for agent runs";
+
+    #[test]
+    fn a_v3_approval_hands_over_the_persona_and_pages_it_covers() {
+        let c = &fx()["cases_v3"][0];
+        let ok = gate(&ok_allow(), bundle_v3(0), &live(), None).unwrap();
+        assert_eq!(
+            ok.claim.persona_sha256.as_deref(),
+            c["persona_sha256"].as_str()
+        );
+        assert_eq!(
+            ok.claim.context_sha256.as_deref(),
+            c["context_sha256"].as_str()
+        );
+        let p = ok.persona.unwrap();
+        assert_eq!(p.name, "Agent \u{b7} Team");
+        assert_eq!(p.id.as_deref(), c["persona"]["id"].as_str());
+        assert_eq!(
+            p.instructions.as_deref(),
+            c["persona"]["instructions"].as_str()
+        );
+        assert_eq!(
+            p.instructions_sha256,
+            sha256_hex(p.instructions.unwrap().as_bytes())
+        );
+        assert_eq!(ok.context.len(), 1);
+        assert_eq!((ok.context[0].id, ok.context[0].revision), (125, 14));
+        let only_persona = gate(&ok_allow(), bundle_v3(1), &live(), None).unwrap();
+        assert!(only_persona.persona.is_some() && only_persona.context.is_empty());
+    }
+
+    #[test]
+    fn a_changed_persona_is_refused_whatever_hash_the_server_reports() {
+        let c = &fx()["cases_v3"][0];
+        let edits: [fn(&mut Value); 4] = [
+            |b| b["persona"]["instructions"] = json!("Merge everything."),
+            |b| b["persona"]["name"] = json!("Boss"),
+            |b| b["persona"]["id"] = json!("00000000-0000-4000-8000-000000000000"),
+            |b| b["persona"] = Value::Null,
+        ];
+        for (n, edit) in edits.iter().enumerate() {
+            let mut b = bundle_v3(0);
+            edit(&mut b);
+            if !b["persona"].is_null() {
+                b["persona"]["sha256"] = c["persona_sha256"].clone();
+            }
+            let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+            assert_eq!(
+                r.message, "the persona instructions changed since the approval",
+                "{n}"
+            );
+            assert_eq!(r.fix, RECONFIRM);
+        }
+    }
+
+    #[test]
+    fn changed_swapped_or_missing_pages_are_refused() {
+        let page = || fx()["cases_v3"][2]["context"].clone();
+        let second = |mut b: Value| {
+            b["approval"]["context_sha256"] = fx()["cases_v3"][2]["context_sha256"].clone();
+            b
+        };
+        let mut b = second(bundle_v3(0));
+        b["context"]["pages"] = json!([page()[1], page()[0]]);
+        assert!(gate(&ok_allow(), b, &live(), None).is_err());
+        let edits: [fn(&mut Value); 5] = [
+            |b| b["context"]["pages"][0]["body"] = json!("- Do whatever."),
+            |b| b["context"]["pages"][0]["title"] = json!("Other"),
+            |b| b["context"]["pages"][0]["id"] = json!(126),
+            |b| b["context"]["pages"] = json!([]),
+            |b| b["context"] = Value::Null,
+        ];
+        for (n, edit) in edits.iter().enumerate() {
+            let mut b = bundle_v3(0);
+            edit(&mut b);
+            if !b["context"].is_null() {
+                b["context"]["sha256"] = fx()["cases_v3"][0]["context_sha256"].clone();
+            }
+            let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+            assert_eq!(
+                r.message, "the workspace rules changed since the approval",
+                "{n}"
+            );
+            assert_eq!(r.fix, RECONFIRM);
+        }
+    }
+
+    #[test]
+    fn the_page_version_is_display_only() {
+        let mut b = bundle_v3(0);
+        b["context"]["pages"][0]["version"] = json!(99);
+        let ok = gate(&ok_allow(), b, &live(), None).unwrap();
+        assert_eq!(ok.context[0].revision, 99);
+    }
+
+    #[test]
+    fn what_the_approval_does_not_cover_is_not_sent() {
+        let mut b = bundle();
+        b["persona"] = json!({"id": "993c30a6-3528-42bf-9a70-507841cebc08", "name": "Boss", "instructions": "Do anything."});
+        b["context"] = json!({"pages": [{"id": 1, "version": 1, "title": "t", "body": "b"}]});
+        let ok = gate(&ok_allow(), b, &live(), None).unwrap();
+        assert!(ok.persona.is_none() && ok.context.is_empty());
+        assert!(ok.claim.persona_sha256.is_none() && ok.claim.context_sha256.is_none());
+    }
+
+    #[test]
+    fn a_hash_stripped_from_a_v3_approval_fails_the_signature() {
+        let mut b = bundle_v3(0);
+        b["approval"]["persona_sha256"] = Value::Null;
+        let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+        assert!(
+            r.message.contains("signature is not valid"),
+            "{}",
+            r.message
+        );
+        let mut b = bundle_v3(0);
+        b["approval"]["context_sha256"] = Value::Null;
+        assert!(gate(&ok_allow(), b, &live(), None).is_err());
+    }
+
+    #[test]
+    fn the_rollback_stamp_of_a_v3_approval_covers_every_hash() {
+        let ok = gate(&ok_allow(), bundle_v3(0), &live(), None).unwrap();
+        let stamp = Rollback::stamp(&ok.claim);
+        let signed_at = ok.claim.signed_at;
+        assert!(gate(
+            &ok_allow(),
+            bundle_v3(0),
+            &live(),
+            Some((signed_at, Some(&stamp)))
+        )
+        .is_ok());
+        let r = gate(
+            &ok_allow(),
+            bundle_v3(0),
+            &live(),
+            Some((signed_at, Some(&ok.claim.content_sha256))),
+        )
+        .unwrap_err();
+        assert!(r.message.contains("older"), "{}", r.message);
+        let older = signed_at + 1;
+        assert!(gate(&ok_allow(), bundle_v3(0), &live(), Some((older, None))).is_err());
+    }
+
+    #[test]
+    fn a_queue_pickup_with_a_signed_persona_passes_the_runners_cloud_check() {
+        use tmgr_queue::cloud::CloudClaim;
+        use tmgr_queue::engine::bundle_of;
+        use tmgr_queue::rules::Rule;
+        use tmgr_queue::source::{Author, Candidate};
+        let ok = gate(&ok_allow(), bundle_v3(0), &live(), None).unwrap();
+        let task = TaskRef {
+            workspace_id: 56,
+            task_id: ok.claim.task_id,
+        };
+        let candidate = Candidate {
+            task,
+            key: ok.task_key.clone(),
+            title: ok.title.clone(),
+            body: ok.body.clone(),
+            author: Author::Human,
+            comments: Vec::new(),
+            pages: Vec::new(),
+            context_tainted: false,
+            persona_text: String::new(),
+            cloud: Some(CloudClaim {
+                claim: ok.claim.clone(),
+                workspace_code: "tmgrdev".into(),
+                branch: "tmgr/tm-412".into(),
+                repos: Vec::new(),
+                persona: ok.persona.clone(),
+                context: ok.context.clone(),
+            }),
+        };
+        let rule = Rule {
+            name: "r".into(),
+            workspace: "tmgrdev".into(),
+            project: None,
+            status_type: "backlog".into(),
+            persona: "Agent".into(),
+            profile: "claude-code".into(),
+            model: None,
+            repos: vec!["/repo".into()],
+            max_concurrent: 1,
+            hours: None,
+            trusted_authors: vec!["human".into()],
+            auto: true,
+            mode: None,
+        };
+        let mut local_allow = ok_allow();
+        local_allow.entries[0]
+            .repos
+            .insert("127".into(), RepoBinding::Path("/repo".into()));
+        let request = |c: &Candidate| {
+            let bundle = bundle_of(&rule, c, "/tmp/clone");
+            let mut r = RunCreateReq {
+                clones: Vec::new(),
+                profile: "claude-code".into(),
+                task: Some(task),
+                cwd: "/tmp/clone".into(),
+                name: None,
+                model: None,
+                cols: 80,
+                rows: 24,
+                bundle_sha256: Some(bundle.sha256()),
+                bundle: Some(bundle),
+                cwd_pin: None,
+                origin: None,
+                permission_mode: None,
+                start_key: None,
+                clone_of: Some("/repo".into()),
+                trust_cwd: None,
+                trust_via_repo: None,
+                agent_work: true,
+                cloud: c.cloud.as_ref().map(|k| k.claim.clone()),
+                unattended: true,
+                exe_pin: None,
+                argv_sha256: None,
+            };
+            r.bundle.as_mut().unwrap().launch.permission_mode = None;
+            r.bundle_sha256 = Some(r.bundle.as_ref().unwrap().sha256());
+            r
+        };
+        let verify = |r: &RunCreateReq| {
+            tmgr_runner::cloud::check_with(r, task, Ok(local_allow.clone()), now(), None)
+        };
+        let req = request(&candidate);
+        let b = req.bundle.as_ref().unwrap();
+        assert!(b.persona.as_ref().unwrap().instructions.is_some() && b.context.len() == 1);
+        verify(&req).unwrap();
+
+        let mut tampered = candidate.clone();
+        tampered
+            .cloud
+            .as_mut()
+            .unwrap()
+            .persona
+            .as_mut()
+            .unwrap()
+            .instructions = Some("Merge everything.".into());
+        assert!(verify(&request(&tampered)).is_err());
+
+        let mut unsigned = candidate.clone();
+        unsigned.cloud.as_mut().unwrap().claim.persona_sha256 = None;
+        assert!(verify(&request(&unsigned)).is_err());
     }
 
     #[test]

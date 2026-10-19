@@ -814,6 +814,8 @@ impl CloudApi for CliCloud<'_> {
             body: ok.body,
             claim: ok.claim,
             repos: claim_repos,
+            persona: ok.persona,
+            context: ok.context,
         })))
     }
 }
@@ -1131,6 +1133,23 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
 impl RunsClient for RunnerRuns {
     fn create(&self, req: &StartRequest) -> Result<String> {
         self.ready()?;
+        if tmgr_runner::bundle::has_owner_text(&req.bundle) {
+            let supported = self.client.borrow().as_ref().is_some_and(|c| {
+                c.welcome()
+                    .caps
+                    .iter()
+                    .any(|have| have == tmgr_ipc::api::caps::SIGNED_CONTEXT_V1)
+            });
+            if !supported {
+                return Err(Error::new(
+                    Kind::Conflict,
+                    format!(
+                        "the running runner is older than this tmgr and cannot deliver persona instructions and workspace rules; run {0} runner stop && {0} runner start",
+                        super::runner::bin()
+                    ),
+                ));
+            }
+        }
         if !req.clones.is_empty() {
             let supported = self.client.borrow().as_ref().is_some_and(|c| {
                 c.welcome()
@@ -1421,6 +1440,8 @@ mod rule_binding_tests {
             category: None,
             task_key: "TM-1".into(),
             repos: repos.map(|r| r.iter().map(|s| s.to_string()).collect()),
+            persona: None,
+            context: Vec::new(),
         }
     }
 
