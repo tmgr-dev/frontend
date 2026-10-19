@@ -1316,7 +1316,7 @@
 				</header>
 
 				<div
-					class="flex min-h-max flex-1 flex-col gap-4 max-sm:overflow-x-hidden"
+					class="flex min-h-max flex-1 flex-col gap-4 max-sm:overflow-x-clip"
 				>
 					<slot />
 				</div>

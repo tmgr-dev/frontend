@@ -66,7 +66,7 @@
 					<div
 						class="flex items-center rounded-md pr-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 						:class="
-							row.current &&
+							(row.current || row.draft) &&
 							'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
 						"
 						:style="{ paddingLeft: `${row.depth * 12}px` }"
@@ -75,7 +75,9 @@
 							v-if="row.hasChildren"
 							type="button"
 							class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-sidebar-foreground/60 hover:text-sidebar-foreground"
-							:aria-label="row.expanded ? 'Collapse' : 'Expand'"
+							:aria-label="`${row.expanded ? 'Collapse' : 'Expand'} ${
+								row.title
+							}`"
 							:aria-expanded="row.expanded"
 							@click="toggle(row.id)"
 						>

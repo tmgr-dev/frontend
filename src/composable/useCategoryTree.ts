@@ -52,7 +52,9 @@ async function refresh(): Promise<void> {
 }
 
 function ensure(): void {
-	if (loadedFor === workspaceKey() && (loaded.value || pending.value)) return;
+	const key = workspaceKey();
+	if (key === null) return;
+	if (loadedFor === key && (loaded.value || pending.value)) return;
 	void refresh();
 }
 

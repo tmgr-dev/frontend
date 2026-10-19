@@ -36,6 +36,7 @@
 						:id="`${formId}-name`"
 						ref="nameField"
 						v-model="form.title"
+						:data-autofocus="isCreate || undefined"
 						type="text"
 						autocomplete="off"
 						placeholder="Name"
@@ -61,7 +62,7 @@
 						:aria-invalid="!!errors.code || undefined"
 						:class="[
 							inputClass,
-							'max-w-[160px] font-mono text-[13px]',
+							'max-w-[220px] font-mono text-[13px]',
 							errors.code && errorClass,
 						]"
 						@input="onCode"

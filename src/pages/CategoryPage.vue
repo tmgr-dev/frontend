@@ -363,7 +363,13 @@
 
 			watch(
 				() =>
-					state.value === 'create' ? heading.value : node.value?.category.title,
+					state.value === 'missing'
+						? 'Category not found'
+						: state.value === 'empty'
+						? 'Categories'
+						: state.value === 'create'
+						? heading.value
+						: node.value?.category.title,
 				(title) => {
 					if (!title) return;
 					store.commit('setMetaTitle', title);

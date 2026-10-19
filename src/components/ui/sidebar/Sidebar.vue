@@ -2,7 +2,8 @@
 	import Sheet from '@/components/ui/sheet/Sheet.vue';
 	import SheetContent from '@/components/ui/sheet/SheetContent.vue';
 	import { cn } from '@/utils';
-	import type { HTMLAttributes } from 'vue';
+	import { type HTMLAttributes, watch } from 'vue';
+	import { useRoute } from 'vue-router';
 	import { SIDEBAR_WIDTH_MOBILE, useSidebar } from './utils';
 
 	defineOptions({
@@ -24,6 +25,18 @@
 	);
 
 	const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
+
+	const route = useRoute();
+	let openedAt = '';
+	watch(openMobile, (open) => {
+		if (open) openedAt = route.fullPath;
+	});
+	// After a drawer link navigates, focus belongs to the new page, not the menu button.
+	const onCloseAutoFocus = (event: Event) => {
+		if (route.fullPath === openedAt) return;
+		event.preventDefault();
+		document.querySelector<HTMLElement>('[data-autofocus]')?.focus();
+	};
 </script>
 
 <template>
@@ -54,6 +67,7 @@
 			:style="{
 				'--sidebar-width': SIDEBAR_WIDTH_MOBILE,
 			}"
+			@close-auto-focus="onCloseAutoFocus"
 		>
 			<div class="flex h-full w-full flex-col">
 				<slot />
