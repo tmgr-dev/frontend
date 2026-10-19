@@ -43,6 +43,13 @@ impl Status {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PickupClone {
+    pub name: String,
+    pub dev: u64,
+    pub ino: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pickup {
     pub id: String,
@@ -81,6 +88,8 @@ pub struct Pickup {
     pub publish_attempts: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub publish_error: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clones: Vec<PickupClone>,
 }
 
 fn one() -> u32 {

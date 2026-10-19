@@ -1,17 +1,18 @@
 use crate::audit::{sha256_hex, Audit};
-use crate::cloud::{CloudApi, CloudSource};
+use crate::clones::plan_clones;
+use crate::cloud::{CloudApi, CloudClaim, CloudSource};
 use crate::paths::Paths;
 use crate::rules::{self, hours_contains, ProfilePin, ProfileResolver, Rule, GLOBAL_MAX};
 use crate::runs::{mode_name, Lookup, RunState, RunsClient, StartRequest, PERMISSION_MODE};
 use crate::source::{Candidate, TaskSource};
-use crate::state::{self, Pickup, State, Status};
+use crate::state::{self, Pickup, PickupClone, State, Status};
 use crate::workdir::{clone_dir, WorkDirs};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{BundleLaunch, BundlePersona, RunBundle};
+use tmgr_ipc::api::{BundleLaunch, BundlePersona, CloneSpec, RunBundle};
 
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
@@ -79,15 +80,33 @@ fn pin_of(rule: &Rule, cloud: bool, deps: &Deps) -> std::result::Result<ProfileP
     }
 }
 
+fn run_dir(rule: &Rule, cloud: Option<&CloudClaim>, pickup_id: &str) -> Option<std::path::PathBuf> {
+    match cloud.filter(|c| !c.repos.is_empty()) {
+        Some(c) => {
+            let primary = c
+                .repos
+                .iter()
+                .min_by(|a, b| a.full_name.cmp(&b.full_name))?;
+            clone_dir(&primary.path, pickup_id)
+        }
+        None => clone_dir(rule.repos.first()?, pickup_id),
+    }
+}
+
 fn check_rule(rule: &Rule, deps: &Deps) -> Result<()> {
     rules::validate_rule_with(rule, deps.profiles, Some(deps.cloud), deps.now)?;
-    match std::fs::canonicalize(&rule.repo) {
-        Ok(p) if p.to_string_lossy() == rule.repo => Ok(()),
-        _ => Err(Error::new(
-            Kind::Forbidden,
-            "repo is not a canonical directory path",
-        )),
+    for repo in &rule.repos {
+        match std::fs::canonicalize(repo) {
+            Ok(p) if p.to_string_lossy() == *repo => {}
+            _ => {
+                return Err(Error::new(
+                    Kind::Forbidden,
+                    "repo is not a canonical directory path",
+                ))
+            }
+        }
     }
+    Ok(())
 }
 
 struct Pass<'a> {
@@ -365,7 +384,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
             ),
             None => {
                 let id = new_id(&pass.state, &rule.name, c.task.task_id, pass.now);
-                let Some(dir) = clone_dir(&rule.repo, &id) else {
+                let Some(dir) = run_dir(rule, c.cloud.as_ref(), &id) else {
                     continue;
                 };
                 (id, dir.to_string_lossy().into_owned())
@@ -476,6 +495,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     pr_url: None,
                     publish_attempts: 0,
                     publish_error: None,
+                    clones: Vec::new(),
                 });
                 pass.audit.append(
                     "candidate",
@@ -574,7 +594,9 @@ fn start_phase(
             continue;
         }
         let cwd = pass.state.pickups[i].bundle.launch.cwd.clone();
-        if clone_dir(&rule.repo, &id).is_none_or(|d| d.to_string_lossy() != cwd) {
+        if run_dir(rule, pass.state.pickups[i].cloud.as_ref(), &id)
+            .is_none_or(|d| d.to_string_lossy() != cwd)
+        {
             pass.set(
                 i,
                 Status::Failed,
@@ -624,11 +646,27 @@ fn start_phase(
             "starting",
             json!({"pickup": id, "rule": rule_name, "task": key, "bundle_sha256": p.bundle_sha256, "approved_by": p.approved_by, "cwd": cwd}),
         )?;
-        let prepared = match &p.cloud {
-            Some(c) => deps
+        let plans = p
+            .cloud
+            .as_ref()
+            .filter(|c| !c.repos.is_empty())
+            .map(|c| plan_clones(&c.repos).map_err(|e| e.message));
+        let prepared = match (&p.cloud, &plans) {
+            (_, Some(Err(m))) => Err(Error::new(Kind::Forbidden, m.clone())),
+            (Some(c), Some(Ok(plans))) => deps.workdirs.prepare_multi(
+                &plans[0].path,
+                &id,
+                &cwd,
+                &plans
+                    .iter()
+                    .map(|c| (c.name.clone(), c.path.clone()))
+                    .collect::<Vec<_>>(),
+                &c.branch,
+            ),
+            (Some(c), None) => deps
                 .workdirs
-                .prepare_branch(&rule.repo, &id, &cwd, &c.branch),
-            None => deps.workdirs.prepare(&rule.repo, &id, &cwd),
+                .prepare_branch(&rule.repos[0], &id, &cwd, &c.branch),
+            (None, _) => deps.workdirs.prepare(&rule.repos[0], &id, &cwd),
         };
         if let Err(e) = prepared {
             pass.set(i, Status::Failed, Some(e.message.clone()));
@@ -656,6 +694,43 @@ fn start_phase(
             pass.event(&p, "failed");
             continue;
         }
+        let mut clone_specs = Vec::new();
+        if let Some(Ok(plans)) = &plans {
+            let mut ids = Vec::new();
+            for plan in plans {
+                let dir = std::path::Path::new(&cwd).join(&plan.name);
+                match deps.workdirs.identity(&dir) {
+                    Some((dev, ino)) => ids.push(PickupClone {
+                        name: plan.name.clone(),
+                        dev,
+                        ino,
+                    }),
+                    None => break,
+                }
+                clone_specs.push(CloneSpec {
+                    name: plan.name.clone(),
+                    clone_of: plan.path.clone(),
+                });
+            }
+            if ids.len() != plans.len() {
+                pass.set(
+                    i,
+                    Status::Failed,
+                    Some("a clone of the run is missing after it was prepared".into()),
+                );
+                state::save(pass.paths, &mut pass.state)?;
+                pass.audit.append(
+                    "start_failed",
+                    json!({"pickup": id, "rule": rule_name, "error": "clone_missing", "stage": "clone"}),
+                )?;
+                let p = pass.state.pickups[i].clone();
+                pass.event(&p, "failed");
+                continue;
+            }
+            pass.state.pickups[i].clones = ids;
+            state::save(pass.paths, &mut pass.state)?;
+        }
+        let p = pass.state.pickups[i].clone();
         let req = StartRequest {
             permission_mode: if p.cloud.is_some() {
                 mode_name(rule.mode.as_deref())
@@ -668,7 +743,11 @@ fn start_phase(
             profile: rule.profile.clone(),
             model: rule.model.clone(),
             cwd,
-            clone_of: rule.repo.clone(),
+            clone_of: match &plans {
+                Some(Ok(plans)) => plans[0].path.clone(),
+                _ => rule.repos[0].clone(),
+            },
+            clones: clone_specs,
             exe_path: pin.exe_path.clone(),
             exe_sha256: pin.exe_sha256.clone(),
             argv_sha256: pin.argv_sha256(),
@@ -754,9 +833,7 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         )
         .hint("review the files, then confirm with `tmgr queue enable`"));
     }
-    if loaded.file.version != rules::VERSION {
-        return Err(Error::usage("queue.toml version is not supported"));
-    }
+    rules::check_version(&loaded.file)?;
     let mut pass = Pass {
         paths,
         audit,
@@ -990,7 +1067,7 @@ mod tests {
                 persona: "builder".into(),
                 profile: "claude-code".into(),
                 model: None,
-                repo: repo.clone(),
+                repos: vec![repo.clone()],
                 max_concurrent: 1,
                 hours: None,
                 trusted_authors: vec!["human".into()],
@@ -1087,6 +1164,7 @@ mod tests {
     struct CloudFake {
         allow: Cell<u8>,
         repos: RefCell<Vec<String>>,
+        claim_repos: RefCell<Vec<crate::clones::ClaimRepo>>,
         tasks: RefCell<Vec<FakeTask>>,
     }
 
@@ -1141,6 +1219,7 @@ mod tests {
                     signature: "sig".into(),
                     kind: "confirm".into(),
                 },
+                repos: self.claim_repos.borrow().clone(),
             })))
         }
     }
@@ -1314,6 +1393,115 @@ mod tests {
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), branch);
         assert_eq!(fx.pickups()[0].approved_by.as_deref(), Some("rule-auto"));
+    }
+
+    fn multi_fx() -> (Fx, String) {
+        let tmp = tempfile::tempdir().unwrap();
+        let second = std::fs::canonicalize(tmp.path())
+            .unwrap()
+            .join("front")
+            .to_string_lossy()
+            .into_owned();
+        std::fs::create_dir(&second).unwrap();
+        init_repo(std::path::Path::new(&second));
+        let second_for_rule = second.clone();
+        let fx = Fx::new(move |r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.mode = Some("bypass".into());
+            r.repos.push(second_for_rule.clone());
+        });
+        std::mem::forget(tmp);
+        fx.cloud
+            .repos
+            .replace(vec![fx.repo.clone(), second.clone()]);
+        fx.cloud.claim_repos.replace(vec![
+            crate::clones::ClaimRepo {
+                full_name: "tmgr-dev/frontend".into(),
+                path: second.clone(),
+            },
+            crate::clones::ClaimRepo {
+                full_name: "tmgr-dev/backend".into(),
+                path: fx.repo.clone(),
+            },
+        ]);
+        (fx, second)
+    }
+
+    #[test]
+    fn a_multi_pickup_prepares_every_clone_and_sends_them_with_their_identity() {
+        use std::os::unix::fs::MetadataExt;
+        let (fx, second) = multi_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let reqs = fx.runs.requests.borrow();
+        assert_eq!(reqs.len(), 1);
+        let cwd = reqs[0].cwd.clone();
+        assert!(cwd.starts_with(&format!("{}-worktrees/queue/", fx.repo)));
+        assert_eq!(
+            reqs[0].clones,
+            [
+                CloneSpec {
+                    name: "backend".into(),
+                    clone_of: fx.repo.clone()
+                },
+                CloneSpec {
+                    name: "frontend".into(),
+                    clone_of: second.clone()
+                }
+            ]
+        );
+        assert!(!std::path::Path::new(&cwd).join(".git").exists());
+        let branch = crate::publish::branch_slug("TM-1", "Task 1");
+        for name in ["backend", "frontend"] {
+            let out = std::process::Command::new("git")
+                .args([
+                    "-C",
+                    &format!("{cwd}/{name}"),
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "HEAD",
+                ])
+                .output()
+                .unwrap();
+            assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), branch);
+        }
+        let p = &fx.pickups()[0];
+        assert_eq!(p.clones.len(), 2);
+        for c in &p.clones {
+            let m = std::fs::metadata(format!("{cwd}/{}", c.name)).unwrap();
+            assert_eq!((c.dev, c.ino), (m.dev(), m.ino()));
+        }
+        assert_eq!(p.cloud.as_ref().unwrap().repos.len(), 2);
+    }
+
+    #[test]
+    fn a_failed_second_clone_leaves_no_run_folder_and_no_run() {
+        let (fx, second) = multi_fx();
+        std::fs::remove_dir_all(std::path::Path::new(&second).join(".git")).unwrap();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        let p = &fx.pickups()[0];
+        assert_eq!(p.status, Status::Failed);
+        assert!(!std::path::Path::new(&p.bundle.launch.cwd).exists());
+        assert!(p.clones.is_empty());
+    }
+
+    #[test]
+    fn single_repo_pickups_keep_their_state_shape() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let text = std::fs::read_to_string(fx.paths.state()).unwrap();
+        assert!(
+            !text.contains("\"clones\"") && !text.contains("\"repos\""),
+            "{text}"
+        );
+        let reqs = fx.runs.requests.borrow();
+        assert!(reqs[0].clones.is_empty());
+        assert_eq!(reqs[0].clone_of, fx.repo);
     }
 
     #[test]

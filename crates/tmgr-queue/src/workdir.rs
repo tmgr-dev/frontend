@@ -128,6 +128,23 @@ pub trait WorkDirs {
             "this work directory provider cannot pin a branch",
         ))
     }
+
+    fn identity(&self, dir: &Path) -> Option<(u64, u64)> {
+        clone_identity(dir)
+    }
+
+    fn prepare_multi(
+        &self,
+        _primary: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _clones: &[(String, String)],
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot make several clones",
+        ))
+    }
 }
 
 /// Where `tmgr run` keeps the clone for a branch: `<repo>-worktrees/<branch with / as ->`.
@@ -206,6 +223,32 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
         let _ = std::fs::remove_dir_all(dest);
     }
     result
+}
+
+/// A run folder holding one hardened clone per `(name, repository)`. The folder must not exist yet and is
+/// removed again when any clone fails.
+pub fn prepare_run_folder(run_dir: &Path, clones: &[(String, String)], branch: &str) -> Result<()> {
+    if run_dir.exists() {
+        return Err(Error::conflict("the run directory already exists"));
+    }
+    std::fs::create_dir_all(run_dir)?;
+    let result = clones
+        .iter()
+        .try_for_each(|(name, repo)| prepare_clone(repo, &run_dir.join(name), branch, None));
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
+    result
+}
+
+/// `(device, inode)` of a clone folder, opened without following a symlink; `None` when it is not a real directory.
+pub fn clone_identity(dir: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    let name = dir.file_name()?.to_str()?;
+    let meta = open_beneath(dir.parent()?, name, libc::O_DIRECTORY)?
+        .metadata()
+        .ok()?;
+    Some((meta.dev(), meta.ino()))
 }
 
 fn open_beneath(root: &Path, rel: &str, last_flags: libc::c_int) -> Option<std::fs::File> {
@@ -457,6 +500,24 @@ impl WorkDirs for GitClone {
         }
         prepare_clone(repo, &dest, branch, None)
     }
+
+    fn prepare_multi(
+        &self,
+        primary: &str,
+        pickup_id: &str,
+        cwd: &str,
+        clones: &[(String, String)],
+        branch: &str,
+    ) -> Result<()> {
+        let dest = clone_dir(primary, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        if dest != Path::new(cwd) {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_run_folder(&dest, clones, branch)
+    }
 }
 
 #[cfg(test)]
@@ -681,5 +742,61 @@ mod tests {
             .prepare(&r, "q_x", &dest.to_string_lossy())
             .is_err());
         assert!(!dest.exists());
+    }
+
+    #[test]
+    fn a_run_folder_holds_every_clone_and_a_failure_removes_all_of_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let (a, b) = (root.join("a"), root.join("b"));
+        for r in [&a, &b] {
+            std::fs::create_dir(r).unwrap();
+            init_repo(r);
+        }
+        let run = root.join("a-worktrees/queue/p1");
+        let clones = vec![
+            ("a".to_string(), a.to_string_lossy().into_owned()),
+            ("b".to_string(), b.to_string_lossy().into_owned()),
+        ];
+        prepare_run_folder(&run, &clones, "tmgr/x").unwrap();
+        assert!(run.join("a/.git").is_dir() && run.join("b/.git").is_dir());
+        assert!(!run.join(".git").exists());
+        assert!(prepare_run_folder(&run, &clones, "tmgr/x").is_err());
+        assert!(run.join("a/.git").is_dir());
+        let run2 = root.join("a-worktrees/queue/p2");
+        let broken = vec![
+            clones[0].clone(),
+            (
+                "c".to_string(),
+                root.join("missing").to_string_lossy().into_owned(),
+            ),
+        ];
+        assert!(prepare_run_folder(&run2, &broken, "tmgr/x").is_err());
+        assert!(!run2.exists());
+    }
+
+    #[test]
+    fn a_clone_identity_follows_the_directory_and_never_a_symlink() {
+        use std::os::unix::fs::MetadataExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let dir = root.join("run/backend");
+        std::fs::create_dir_all(&dir).unwrap();
+        let m = std::fs::metadata(&dir).unwrap();
+        assert_eq!(clone_identity(&dir), Some((m.dev(), m.ino())));
+        std::fs::rename(&dir, root.join("run/moved")).unwrap();
+        let other = root.join("other");
+        std::fs::create_dir(&other).unwrap();
+        std::os::unix::fs::symlink(&other, &dir).unwrap();
+        assert_eq!(clone_identity(&dir), None);
+        std::fs::remove_file(&dir).unwrap();
+        std::fs::create_dir(&dir).unwrap();
+        assert_ne!(
+            clone_identity(&dir),
+            Some((m.dev(), m.ino())),
+            "a replacement directory is another inode"
+        );
+        std::fs::write(root.join("run/file"), "x").unwrap();
+        assert_eq!(clone_identity(&root.join("run/file")), None);
     }
 }

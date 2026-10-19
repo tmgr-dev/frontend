@@ -1,3 +1,4 @@
+use crate::clones::ClaimRepo;
 use crate::rules::Rule;
 use crate::source::{Author, Candidate, Refusal, Scan, TaskSource};
 use chrono::{DateTime, Utc};
@@ -10,6 +11,8 @@ pub struct CloudClaim {
     pub claim: CloudApproval,
     pub workspace_code: String,
     pub branch: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub repos: Vec<ClaimRepo>,
 }
 
 #[derive(Clone, Debug)]
@@ -25,6 +28,7 @@ pub struct CloudTask {
     pub title: String,
     pub body: String,
     pub claim: CloudApproval,
+    pub repos: Vec<ClaimRepo>,
 }
 
 #[derive(Clone, Debug)]
@@ -48,13 +52,12 @@ pub struct CloudSource<'a> {
 }
 
 pub fn repo_check(rule: &Rule, ws: &CloudWorkspace) -> std::result::Result<(), String> {
-    if ws.repos.contains(&rule.repo) {
-        Ok(())
-    } else {
-        Err(format!(
-            "repo {} is not bound to a category of workspace {}; run `tmgr run <task>` once in a terminal to bind it",
-            rule.repo, ws.code
-        ))
+    match rule.repos.iter().find(|r| !ws.repos.contains(r)) {
+        None => Ok(()),
+        Some(repo) => Err(format!(
+            "repo {repo} is not bound to a category of workspace {}; run `tmgr run <task>` once in a terminal to bind it",
+            ws.code
+        )),
     }
 }
 
@@ -88,6 +91,7 @@ impl TaskSource for CloudSource<'_> {
                             claim: t.claim,
                             workspace_code: ws.code.clone(),
                             branch,
+                            repos: t.repos,
                         }),
                     });
                 }
@@ -105,5 +109,43 @@ impl TaskSource for CloudSource<'_> {
             complete,
             refusals,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rule(repos: &[&str]) -> Rule {
+        Rule {
+            name: "r".into(),
+            workspace: "tmgrdev".into(),
+            project: Some("TM".into()),
+            status_type: "backlog".into(),
+            persona: "p".into(),
+            profile: "claude-code".into(),
+            model: None,
+            repos: repos.iter().map(|s| s.to_string()).collect(),
+            max_concurrent: 1,
+            hours: None,
+            trusted_authors: vec!["human".into()],
+            auto: true,
+            mode: None,
+        }
+    }
+
+    fn ws(repos: &[&str]) -> CloudWorkspace {
+        CloudWorkspace {
+            id: 56,
+            code: "tmgrdev".into(),
+            repos: repos.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn every_repo_of_the_rule_must_be_bound() {
+        assert!(repo_check(&rule(&["/a", "/b"]), &ws(&["/b", "/a", "/c"])).is_ok());
+        let e = repo_check(&rule(&["/a", "/b"]), &ws(&["/a"])).unwrap_err();
+        assert!(e.contains("/b") && e.contains("tmgrdev"), "{e}");
     }
 }

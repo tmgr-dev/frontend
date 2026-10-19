@@ -7,22 +7,27 @@ use crate::gitx::{parse_remote, Git};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
+use std::collections::BTreeMap;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tmgr_core::approval::{
-    check_claim, content_sha256, AllowFile, Entry, Refusal, RepoBinding, Rollback,
+    canonical_repos, check_claim, content_sha256, repos_sha256, AllowFile, Entry, Refusal,
+    RepoBinding, Rollback,
 };
 use tmgr_core::config;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::notify::build_push;
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{
-    caps, AuthorKind, BundleAuthor, BundleLaunch, CloudApproval, ExePin, RunBundle, RunCreateReq,
-    TaskRef,
+    caps, AuthorKind, BundleAuthor, BundleLaunch, CloneSpec, CloudApproval, ExePin, RunBundle,
+    RunCreateReq, TaskRef,
 };
 use tmgr_link::privileged;
-use tmgr_queue::publish::{branch_slug, publish, publish_plan, PublishInput};
+use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
+use tmgr_queue::publish::{
+    branch_slug, publish, publish_all, publish_all_plan, publish_plan, PublishInput,
+};
 use tmgr_queue::workdir;
 use tmgr_runner::daemon;
 
@@ -37,6 +42,11 @@ pub struct Category {
     pub github_full_name: Option<String>,
     #[serde(default)]
     pub default_branch: Option<String>,
+    #[serde(default)]
+    pub repositories: Option<Vec<String>>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub repos_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -50,6 +60,8 @@ pub struct Approval {
     pub revoked_at: Option<String>,
     #[serde(default)]
     pub revoked_reason: Option<String>,
+    #[serde(default)]
+    pub repos_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,6 +96,7 @@ pub struct GateOk {
     pub body: String,
     pub category: Option<Category>,
     pub task_key: String,
+    pub repos: Option<Vec<String>>,
 }
 
 const CONFIRM: &str = "open the task in the web app and click Confirm for agent runs";
@@ -152,8 +165,42 @@ pub fn cloud_gate(
         ));
     }
     let category_id = e.category.as_ref().map_or(0, |c| c.id);
+    let repos = match e.category.as_ref().and_then(|c| c.repositories.as_deref()) {
+        Some(list) => {
+            let invalid = || {
+                Refusal::new(
+                    "the server sent an invalid repository list",
+                    format!("{CONFIRM} again"),
+                )
+            };
+            let hash = repos_sha256(list).map_err(|_| invalid())?;
+            if a.repos_sha256.as_deref() != Some(hash.as_str()) {
+                return Err(Refusal::new(
+                    format!(
+                        "the repositories of category {} changed since the approval",
+                        sanitize_line(e.category.as_ref().map_or("", |c| c.code.as_str()))
+                    ),
+                    format!("{CONFIRM} again"),
+                ));
+            }
+            Some((canonical_repos(list).map_err(|_| invalid())?, hash))
+        }
+        None => {
+            if a.repos_sha256.is_some() {
+                return Err(Refusal::new(
+                    "the approval covers a repository set the server no longer reports",
+                    format!("{CONFIRM} again"),
+                ));
+            }
+            None
+        }
+    };
+    let (repo_list, repos_hash) = match repos {
+        Some((list, hash)) => (Some(list), Some(hash)),
+        None => (None, None),
+    };
     let claim = CloudApproval {
-        repos_sha256: None,
+        repos_sha256: repos_hash,
         host: entry.server.clone(),
         user_id: entry.user_id,
         workspace_id: entry.workspace_id,
@@ -166,8 +213,9 @@ pub fn cloud_gate(
         kind: a.kind.clone(),
     };
     check_claim(entry, &claim, &e.title, &body)?;
+    let stamp = Rollback::stamp(&claim);
     if seen.is_some_and(|(at, hash)| {
-        a.signed_at < at || (a.signed_at == at && hash.is_some_and(|h| h != a.content_sha256))
+        a.signed_at < at || (a.signed_at == at && hash.is_some_and(|h| h != stamp))
     }) {
         return Err(Refusal::new(
             "an older approved version of this task was served",
@@ -183,6 +231,7 @@ pub fn cloud_gate(
             .task_key
             .clone()
             .unwrap_or_else(|| format!("task-{}", e.task_id)),
+        repos: repo_list,
     })
 }
 
@@ -354,6 +403,13 @@ fn bound_repo(
             bound
         }
         None => {
+            if entry.repo_set(category.id).is_some() {
+                confirm_replace(
+                    &entry.workspace_code,
+                    category,
+                    "is bound to a set of repositories, but the server reports none now; replace it with one repository",
+                )?;
+            }
             let repo = ask_repo(&entry.workspace_code, category, full_name, cwd)?;
             let path = repo.display().to_string();
             let (server, user, ws_id) = (entry.server.clone(), entry.user_id, entry.workspace_id);
@@ -373,6 +429,254 @@ fn bound_repo(
     repo.to_str()
         .map(str::to_string)
         .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))
+}
+
+fn terminal_session() -> bool {
+    let in_agent = privileged::RUN_ENV
+        .iter()
+        .any(|k| std::env::var_os(k).is_some());
+    !in_agent && crate::interact::is_interactive()
+}
+
+fn confirm_replace(code: &str, category: &Category, what: &str) -> Result<()> {
+    let name = sanitize_line(&category.code);
+    if !terminal_session() {
+        return Err(Error::needs_confirmation(format!(
+            "category {name} of workspace {code} {what}"
+        ))
+        .hint(format!(
+            "run tmgr run <task> once in a terminal to bind the repositories of category {name}"
+        )));
+    }
+    crate::interact::confirm(
+        &format!("Category {name} {what}. Replace it?"),
+        false,
+        false,
+    )
+}
+
+/// The repositories bound to a category when the server lists them: exactly the listed names, each
+/// with an existing path. Never asks anything.
+pub fn bound_set_paths(
+    entry: &Entry,
+    category: &Category,
+    list: &[String],
+) -> std::result::Result<Vec<ClaimRepo>, String> {
+    let name = sanitize_line(&category.code);
+    let Some(set) = entry.repo_set(category.id) else {
+        return Err(format!(
+            "no repositories are bound to category {name} of workspace {}",
+            entry.workspace_code
+        ));
+    };
+    let mut bound: Vec<&String> = set.keys().collect();
+    bound.sort();
+    if bound.len() != list.len() || bound.iter().zip(list).any(|(a, b)| *a != b) {
+        return Err(format!(
+            "the repositories bound to category {name} are not the ones the task is approved for"
+        ));
+    }
+    list.iter()
+        .map(|full_name| {
+            let path = set.get(full_name).ok_or("a bound repository disappeared")?;
+            let canonical = std::fs::canonicalize(path)
+                .ok()
+                .and_then(|p| p.to_str().map(str::to_string))
+                .ok_or_else(|| {
+                    format!(
+                        "the folder bound to {} does not exist",
+                        sanitize_line(full_name)
+                    )
+                })?;
+            Ok(ClaimRepo {
+                full_name: full_name.clone(),
+                path: canonical,
+            })
+        })
+        .collect()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SetChange {
+    pub kept: Vec<String>,
+    pub missing: Vec<String>,
+    pub dropped: Vec<String>,
+}
+
+pub fn set_change(current: Option<&BTreeMap<String, String>>, list: &[String]) -> SetChange {
+    let has = |n: &String| current.is_some_and(|c| c.contains_key(n));
+    SetChange {
+        kept: list.iter().filter(|n| has(n)).cloned().collect(),
+        missing: list.iter().filter(|n| !has(n)).cloned().collect(),
+        dropped: current
+            .map(|c| c.keys().filter(|n| !list.contains(n)).cloned().collect())
+            .unwrap_or_default(),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoInfo {
+    pub visibility: String,
+    pub owner: String,
+}
+
+pub fn parse_repo_info(json: &str) -> Option<RepoInfo> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    Some(RepoInfo {
+        visibility: v["visibility"].as_str()?.to_ascii_lowercase(),
+        owner: v["owner"]["login"].as_str()?.to_ascii_lowercase(),
+    })
+}
+
+/// Whether the repositories differ in visibility or owner; one that could not be looked up counts as different.
+pub fn mixed(infos: &[Option<RepoInfo>]) -> bool {
+    match infos.first() {
+        Some(Some(first)) => infos.iter().any(|i| i.as_ref() != Some(first)),
+        _ => true,
+    }
+}
+
+fn lookup_info(full_name: &str, cwd: &Path) -> Option<RepoInfo> {
+    let argv: Vec<String> = [
+        "gh",
+        "repo",
+        "view",
+        full_name,
+        "--json",
+        "visibility,owner",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    tmgr_queue::publish::run_hardened(&argv, cwd)
+        .ok()
+        .and_then(|out| parse_repo_info(&out))
+}
+
+fn prompt_path(full_name: &str, category: &Category) -> Result<PathBuf> {
+    eprint!(
+        "Path of your clone of github.com/{} (agents of category {} will work on it): ",
+        sanitize_line(full_name),
+        sanitize_line(&category.code)
+    );
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
+    Ok(PathBuf::from(line.trim()))
+}
+
+fn bind_failure(entry: &Entry, category: &Category, hint: &str) -> Error {
+    Error::needs_confirmation(format!(
+        "the repositories of category {} of workspace {} are not bound on this machine",
+        sanitize_line(&category.code),
+        sanitize_line(&entry.workspace_code)
+    ))
+    .hint(format!(
+        "run {hint} once in a terminal to bind the repositories of category {}",
+        sanitize_line(&category.code)
+    ))
+}
+
+/// The folders of a category's explicit repository set. Missing or different bindings are asked for in a
+/// terminal, confirmed as a whole and stored; without a terminal they are refused.
+pub fn bound_set(
+    allow: &mut AllowFile,
+    entry: &Entry,
+    category: &Category,
+    list: &[String],
+    hint: &str,
+) -> Result<Vec<ClaimRepo>> {
+    if let Ok(found) = bound_set_paths(entry, category, list) {
+        for r in &found {
+            verify_repo(&canonical_root(Path::new(&r.path))?, &r.full_name)?;
+        }
+        return Ok(found);
+    }
+    if !terminal_session() {
+        return Err(bind_failure(entry, category, hint));
+    }
+    if entry.repo(category.id).is_some() {
+        confirm_replace(
+            &entry.workspace_code,
+            category,
+            "is bound to one repository, but the server lists several now; replace it with the set",
+        )?;
+    }
+    let current = entry.repo_set(category.id);
+    let change = set_change(current, list);
+    let mut bound: BTreeMap<String, String> = BTreeMap::new();
+    for name in &change.kept {
+        let path = current
+            .and_then(|c| c.get(name))
+            .cloned()
+            .unwrap_or_default();
+        let repo = canonical_root(Path::new(&path))?;
+        verify_repo(&repo, name)?;
+        bound.insert(name.clone(), repo.display().to_string());
+    }
+    for name in &change.missing {
+        let repo = canonical_root(&prompt_path(name, category)?)?;
+        verify_repo(&repo, name)?;
+        bound.insert(name.clone(), repo.display().to_string());
+    }
+    let mut paths: Vec<&String> = bound.values().collect();
+    paths.sort();
+    paths.dedup();
+    if paths.len() != bound.len() {
+        return Err(Error::usage(
+            "every repository needs its own folder; two names point at the same one",
+        ));
+    }
+    eprintln!(
+        "Category {} will work on these repositories:",
+        sanitize_line(&category.code)
+    );
+    for (name, path) in &bound {
+        eprintln!("  {}  {}", sanitize_line(name), sanitize_line(path));
+    }
+    for name in &change.dropped {
+        eprintln!("  (no longer bound: {})", sanitize_line(name));
+    }
+    let first = bound.values().next().map(PathBuf::from).unwrap_or_default();
+    let infos: Vec<Option<RepoInfo>> = list.iter().map(|n| lookup_info(n, &first)).collect();
+    if mixed(&infos) {
+        eprintln!(
+            "warning: these repositories differ in visibility or owner, or could not be looked up. The agent can read all of them, so private code from one repository can end up in a pull request of another."
+        );
+        crate::interact::confirm_typed(
+            &format!(
+                "Type the category code ({}) to bind them anyway: ",
+                sanitize_line(&category.code)
+            ),
+            &category.code,
+        )?;
+    } else {
+        crate::interact::confirm(
+            &format!("Bind these to category {}?", sanitize_line(&category.code)),
+            false,
+            false,
+        )?;
+    }
+    let (server, user, ws_id) = (entry.server.clone(), entry.user_id, entry.workspace_id);
+    let key = category.id.to_string();
+    let stored = bound.clone();
+    *allow = AllowFile::update(|file| {
+        let mut updated = file
+            .find(&server, user, ws_id)
+            .cloned()
+            .ok_or("the allow entry disappeared")?;
+        updated.repos.insert(key, RepoBinding::Set(stored));
+        file.upsert(updated);
+        Ok(file.clone())
+    })
+    .map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+    Ok(bound
+        .into_iter()
+        .map(|(full_name, path)| ClaimRepo { full_name, path })
+        .collect())
 }
 
 fn machine_name() -> String {
@@ -414,13 +718,34 @@ fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
         .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct CloneRecord {
+    name: String,
+    repo: String,
+    identity: Option<(u64, u64)>,
+}
+
 fn record_body(
     repo: &str,
     clone: &Path,
     branch: &str,
     session: Option<(&str, &str)>,
+    clones: &[CloneRecord],
 ) -> serde_json::Value {
     let mut body = json!({ "repo": repo, "clone": clone, "branch": branch, "cloud": true });
+    if !clones.is_empty() {
+        body["clones"] = json!(clones
+            .iter()
+            .map(|c| {
+                let mut v = json!({ "name": c.name, "repo": c.repo });
+                if let Some((dev, ino)) = c.identity {
+                    v["dev"] = json!(dev);
+                    v["ino"] = json!(ino);
+                }
+                v
+            })
+            .collect::<Vec<_>>());
+    }
     if let Some((id, agent)) = session {
         body["session"] = json!(id);
         body["agent"] = json!(agent);
@@ -435,6 +760,7 @@ fn write_record(
     clone: &Path,
     branch: &str,
     session: Option<(&str, &str)>,
+    clones: &[CloneRecord],
 ) -> Result<()> {
     let Some(path) = record_path(code, task_id) else {
         return Ok(());
@@ -442,7 +768,7 @@ fn write_record(
     if let Some(dir) = path.parent() {
         config::ensure_private_dir(dir)?;
     }
-    let body = record_body(repo, clone, branch, session);
+    let body = record_body(repo, clone, branch, session, clones);
     config::write_atomic(&path, body.to_string().as_bytes(), 0o600)
 }
 
@@ -452,6 +778,7 @@ struct Record {
     branch: String,
     session: Option<String>,
     agent: Option<String>,
+    clones: Vec<CloneRecord>,
 }
 
 fn read_record(code: &str, task_id: i64) -> Result<Record> {
@@ -472,6 +799,20 @@ fn read_record(code: &str, task_id: i64) -> Result<Record> {
         branch: text_of("branch").ok_or_else(missing)?,
         session: text_of("session"),
         agent: text_of("agent"),
+        clones: v["clones"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .filter_map(|c| {
+                        Some(CloneRecord {
+                            name: c["name"].as_str()?.to_string(),
+                            repo: c["repo"].as_str()?.to_string(),
+                            identity: c["dev"].as_u64().zip(c["ino"].as_u64()),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     })
 }
 
@@ -487,6 +828,7 @@ struct RunPlan<'a> {
     bundle_sha256: String,
     mode: &'a str,
     clone_of: Option<String>,
+    clones: Vec<CloneSpec>,
     via_repo: bool,
     claim: CloudApproval,
     unattended: bool,
@@ -496,7 +838,7 @@ struct RunPlan<'a> {
 
 fn run_request(p: &RunPlan) -> RunCreateReq {
     RunCreateReq {
-        clones: Vec::new(),
+        clones: p.clones.clone(),
         profile: p.profile.to_string(),
         task: Some(p.task),
         cwd: p.cwd.to_string(),
@@ -572,21 +914,52 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         .find(&host, user_id, ws.id)
         .cloned()
         .ok_or_else(|| Error::internal("the allow entry disappeared"))?;
-    rollback.record(rkey, ok.claim.signed_at, &ok.claim.content_sha256);
+    if ok.repos.is_some() {
+        if a.cwd.is_some() {
+            return Err(Error::usage(
+                "--cwd is not accepted for a category with a list of repositories",
+            ));
+        }
+        if a.base.is_some() {
+            return Err(Error::usage(
+                "--base is not accepted for a category with a list of repositories",
+            ));
+        }
+    }
+    rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
     rollback
         .save()
         .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
-    let repo = bound_repo(&mut allow, &entry, &ok, a.cwd.as_ref())?;
     let branch = branch_name(&ok.task_key, &ok.title)?;
-    let clone = workdir::run_clone_dir(&repo, &branch)
-        .ok_or_else(|| Error::usage("the repository path has no parent directory"))?;
+    let layout = match &ok.repos {
+        None => {
+            let repo = bound_repo(&mut allow, &entry, &ok, a.cwd.as_ref())?;
+            let clone = workdir::run_clone_dir(&repo, &branch)
+                .ok_or_else(|| Error::usage("the repository path has no parent directory"))?;
+            Layout::Single { repo, clone }
+        }
+        Some(list) => {
+            let category = ok.category.as_ref().ok_or_else(|| {
+                Error::new(
+                    Kind::Forbidden,
+                    "the task has no category, so no repository is known",
+                )
+            })?;
+            let hint = format!("tmgr run {reference}");
+            let bound = bound_set(&mut allow, &entry, category, list, &hint)?;
+            let plans = plan_clones(&bound)?;
+            let run_dir = workdir::run_clone_dir(&plans[0].path, &branch)
+                .ok_or_else(|| Error::usage("the repository path has no parent directory"))?;
+            Layout::Multi { run_dir, plans }
+        }
+    };
+    let target = layout.folder().to_path_buf();
     if !o.json && !o.quiet {
         eprintln!(
-            "Task:    {} {}\nRepo:    {}\nClone:   {}\nBranch:  {}\nAgent:   {} in {mode} mode",
+            "Task:    {} {}\n{}Branch:  {}\nAgent:   {} in {mode} mode",
             sanitize_line(&ok.task_key),
             sanitize_line(&ok.title),
-            sanitize_line(&repo),
-            sanitize_line(&clone.display().to_string()),
+            layout.describe(),
             branch,
             sanitize_line(&profile)
         );
@@ -613,15 +986,86 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     crate::interact::confirm("Start this run?", true, a.yes)?;
     super::ops::login_preflight(&profile)?;
     let (exe_pin, argv_digest) = super::run_task::launch_pin(&profile, a.model.as_deref(), mode)?;
-    if clone.exists() {
+    if target.exists() {
         return Err(Error::new(
             Kind::Conflict,
-            format!("{} already exists", clone.display()),
+            format!("{} already exists", target.display()),
         )
         .hint("remove the folder and run again"));
     }
-    write_record(&ws.code, task_id, &repo, &clone, &branch, None)?;
-    workdir::prepare_clone(&repo, &clone, &branch, a.base.as_deref())?;
+    let cfg = runner_config()?;
+    if matches!(layout, Layout::Multi { .. }) {
+        daemon::start_background(&cfg).map_err(rerr)?;
+        let early = connect(&cfg)?;
+        if !early
+            .welcome()
+            .caps
+            .iter()
+            .any(|c| c == caps::MULTI_CLONE_V1)
+        {
+            return Err(Error::new(
+                Kind::Conflict,
+                "the running runner is older than this tmgr and cannot run several repositories in one run",
+            )
+            .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+        }
+    }
+    let (repo, clone, clone_records) = match &layout {
+        Layout::Single { repo, clone } => {
+            write_record(&ws.code, task_id, repo, clone, &branch, None, &[])?;
+            workdir::prepare_clone(repo, clone, &branch, a.base.as_deref())?;
+            (repo.clone(), clone.clone(), Vec::new())
+        }
+        Layout::Multi { run_dir, plans } => {
+            let unidentified: Vec<CloneRecord> = plans
+                .iter()
+                .map(|p| CloneRecord {
+                    name: p.name.clone(),
+                    repo: p.full_name.clone(),
+                    identity: None,
+                })
+                .collect();
+            write_record(
+                &ws.code,
+                task_id,
+                &plans[0].path,
+                run_dir,
+                &branch,
+                None,
+                &unidentified,
+            )?;
+            let pairs: Vec<(String, String)> = plans
+                .iter()
+                .map(|p| (p.name.clone(), p.path.clone()))
+                .collect();
+            workdir::prepare_run_folder(run_dir, &pairs, &branch)?;
+            let identified = plans
+                .iter()
+                .map(|p| {
+                    let identity = workdir::clone_identity(&run_dir.join(&p.name));
+                    identity
+                        .map(|id| CloneRecord {
+                            name: p.name.clone(),
+                            repo: p.full_name.clone(),
+                            identity: Some(id),
+                        })
+                        .ok_or_else(|| {
+                            Error::internal(format!("clone {} is not a real directory", p.name))
+                        })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            write_record(
+                &ws.code,
+                task_id,
+                &plans[0].path,
+                run_dir,
+                &branch,
+                None,
+                &identified,
+            )?;
+            (plans[0].path.clone(), run_dir.clone(), identified)
+        }
+    };
     let cwd = std::fs::canonicalize(&clone)
         .map_err(|e| Error::internal(format!("clone {}: {e}", clone.display())))?
         .to_string_lossy()
@@ -652,7 +1096,6 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     bundle.validate().map_err(Error::usage)?;
     let sha = bundle.sha256();
     let (cols, rows) = super::ops::terminal_size();
-    let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut rc = connect(&cfg)?;
     let have = &rc.welcome().caps;
@@ -671,6 +1114,19 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             .iter()
             .any(|k| std::env::var_os(k).is_some());
     notify_started(&ctx, &ok);
+    let (clone_of, clones) = match &layout {
+        Layout::Single { repo, .. } => (Some(repo.clone()), Vec::new()),
+        Layout::Multi { plans, .. } => (
+            None,
+            plans
+                .iter()
+                .map(|p| CloneSpec {
+                    name: p.name.clone(),
+                    clone_of: p.path.clone(),
+                })
+                .collect(),
+        ),
+    };
     let info = rc
         .create_run(run_request(&RunPlan {
             profile: &profile,
@@ -683,7 +1139,8 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             bundle,
             bundle_sha256: sha,
             mode,
-            clone_of: Some(repo.clone()),
+            clone_of,
+            clones,
             via_repo,
             claim: ok.claim.clone(),
             unattended: a.yes || !interactive,
@@ -698,6 +1155,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         &clone,
         &branch,
         Some((&info.id, &profile)),
+        &clone_records,
     )?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         return attach::run(&cfg, &info.id);
@@ -710,11 +1168,63 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         sanitize_line(&cwd),
         info.id
     );
-    Ok(emit(
-        o,
-        json!({ "session": info, "repo": repo, "clone": cwd, "branch": branch }),
-        human,
-    ))
+    let mut data = json!({ "session": info, "repo": repo, "clone": cwd, "branch": branch });
+    if let Layout::Multi { run_dir, plans } = &layout {
+        data["repos"] = json!(plans
+            .iter()
+            .map(|p| json!({
+                "name": p.full_name,
+                "repo": p.path,
+                "clone": run_dir.join(&p.name),
+            }))
+            .collect::<Vec<_>>());
+    }
+    Ok(emit(o, data, human))
+}
+
+enum Layout {
+    Single {
+        repo: String,
+        clone: PathBuf,
+    },
+    Multi {
+        run_dir: PathBuf,
+        plans: Vec<ClonePlan>,
+    },
+}
+
+impl Layout {
+    fn folder(&self) -> &Path {
+        match self {
+            Layout::Single { clone, .. } => clone,
+            Layout::Multi { run_dir, .. } => run_dir,
+        }
+    }
+
+    fn describe(&self) -> String {
+        match self {
+            Layout::Single { repo, clone } => format!(
+                "Repo:    {}\nClone:   {}\n",
+                sanitize_line(repo),
+                sanitize_line(&clone.display().to_string())
+            ),
+            Layout::Multi { run_dir, plans } => {
+                let mut out = format!(
+                    "Folder:  {}\n",
+                    sanitize_line(&run_dir.display().to_string())
+                );
+                for p in plans {
+                    out.push_str(&format!(
+                        "Repo:    {} ({}) -> clone {}\n",
+                        sanitize_line(&p.full_name),
+                        sanitize_line(&p.path),
+                        sanitize_line(&run_dir.join(&p.name).display().to_string())
+                    ));
+                }
+                out
+            }
+        }
+    }
 }
 
 struct RepoState {
@@ -796,7 +1306,62 @@ pub struct Published<'a> {
     pub branch: &'a str,
 }
 
+pub struct PublishedAll<'a> {
+    pub task_id: u64,
+    pub workspace_id: i64,
+    pub urls: &'a [(String, String)],
+    pub agent: Option<&'a str>,
+    pub branch: &'a str,
+}
+
 pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<String> {
+    report_with(
+        client,
+        &Report {
+            task_id: p.task_id,
+            workspace_id: p.workspace_id,
+            pr_url: p.pr_url,
+            agent: p.agent,
+            branch: p.branch,
+            summary: format!("Opened {}", p.pr_url),
+            comment: format!("The agent finished. Pull request: {}", p.pr_url),
+        },
+    )
+}
+
+pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<String> {
+    let first = p.urls.first().map_or("", |(_, u)| u.as_str());
+    let joined: Vec<&str> = p.urls.iter().map(|(_, u)| u.as_str()).collect();
+    let list: Vec<String> = p
+        .urls
+        .iter()
+        .map(|(repo, url)| format!("- {repo}: {url}"))
+        .collect();
+    report_with(
+        client,
+        &Report {
+            task_id: p.task_id,
+            workspace_id: p.workspace_id,
+            pr_url: first,
+            agent: p.agent,
+            branch: p.branch,
+            summary: format!("Opened {}", joined.join(", ")),
+            comment: format!("The agent finished. Pull requests:\n{}", list.join("\n")),
+        },
+    )
+}
+
+struct Report<'a> {
+    task_id: u64,
+    workspace_id: i64,
+    pr_url: &'a str,
+    agent: Option<&'a str>,
+    branch: &'a str,
+    summary: String,
+    comment: String,
+}
+
+fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
     use tmgr_core::agentwork;
     let mut warnings = Vec::new();
     let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
@@ -816,7 +1381,7 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
         Some(run) => {
             let progress = agentwork::Progress {
                 pr_url: Some(p.pr_url.to_string()),
-                summary: Some(format!("Opened {}", p.pr_url)),
+                summary: Some(p.summary.clone()),
                 ..Default::default()
             };
             if let Err(e) = agentwork::finish(client, run.id, "succeeded", &progress) {
@@ -837,10 +1402,7 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
         }
         Err(e) => warnings.push(note("could not read the workspace statuses", &e)),
     }
-    if let Err(e) = client.add_comment(
-        p.task_id,
-        &format!("The agent finished. Pull request: {}", p.pr_url),
-    ) {
+    if let Err(e) = client.add_comment(p.task_id, &p.comment) {
         warnings.push(note("could not add the comment", &e));
     }
     warnings
@@ -854,9 +1416,25 @@ pub struct PublishTarget {
     pub session_id: Option<String>,
     pub agent: Option<String>,
     pub repo: Option<String>,
+    pub clones: Vec<CloneRef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CloneRef {
+    pub name: String,
+    pub identity: Option<(u64, u64)>,
 }
 
 pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
+    let prs = publish_cloud_prs(o, t)?;
+    Ok(prs
+        .into_iter()
+        .next()
+        .map(|(_, url)| url)
+        .unwrap_or_default())
+}
+
+pub fn publish_cloud_prs(o: &Opts, t: &PublishTarget) -> Result<Vec<(String, String)>> {
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
     let ws = client
@@ -919,6 +1497,48 @@ pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
             "the task has no category, so no repository is known",
         )
     })?;
+    match (&verified.repos, t.clones.is_empty()) {
+        (Some(list), false) => {
+            let task_key = verified.task_key.clone();
+            let urls = publish_multi(
+                t,
+                entry,
+                category,
+                list,
+                &format!("{task_key}: {}", verified.title),
+                &format!(
+                    "Opened by an agent run of {task_key}: {}\n\nReview before merging.",
+                    sanitize_line(&verified.title)
+                ),
+            )?;
+            for w in report_published_all(
+                client,
+                &PublishedAll {
+                    task_id: u64::try_from(task_id).unwrap_or_default(),
+                    workspace_id: ws.id,
+                    urls: &urls,
+                    agent: t.agent.as_deref(),
+                    branch: &t.branch,
+                },
+            ) {
+                eprintln!("warning: {w}");
+            }
+            return Ok(urls);
+        }
+        (Some(_), true) => {
+            return Err(Error::new(
+                Kind::Forbidden,
+                "this run was recorded without its clones, so its repositories cannot be checked",
+            ))
+        }
+        (None, false) => {
+            return Err(Error::new(
+                Kind::Forbidden,
+                "this run has several clones, but the server no longer lists repositories for the category",
+            ))
+        }
+        (None, true) => {}
+    }
     let full_name = category.github_full_name.as_deref().ok_or_else(|| {
         Error::new(
             Kind::Forbidden,
@@ -980,17 +1600,83 @@ pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
     ) {
         eprintln!("warning: {w}");
     }
-    Ok(pr_url)
+    Ok(vec![(full_name.to_string(), pr_url)])
 }
 
-pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
+fn publish_multi(
+    t: &PublishTarget,
+    entry: &Entry,
+    category: &Category,
+    list: &[String],
+    pr_title: &str,
+    pr_body: &str,
+) -> Result<Vec<(String, String)>> {
+    let forbidden = |m: String| Error::new(Kind::Forbidden, m);
+    let bound = bound_set_paths(entry, category, list).map_err(forbidden)?;
+    let plans = plan_clones(&bound)?;
+    let mut recorded: Vec<&CloneRef> = t.clones.iter().collect();
+    recorded.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut live_names: Vec<&String> = plans.iter().map(|p| &p.name).collect();
+    live_names.sort();
+    if recorded.len() != live_names.len()
+        || recorded.iter().zip(&live_names).any(|(r, n)| &r.name != *n)
+    {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the clones recorded for this run are not the ones of the bound repositories",
+        ));
+    }
+    for plan in &plans {
+        let dir = t.clone_dir.join(&plan.name);
+        let expected = t
+            .clones
+            .iter()
+            .find(|c| c.name == plan.name)
+            .and_then(|c| c.identity);
+        if expected.is_none() || workdir::clone_identity(&dir) != expected {
+            return Err(Error::new(
+                Kind::Forbidden,
+                format!(
+                    "the clone {} is not the folder this run started with",
+                    sanitize_line(&plan.name)
+                ),
+            ));
+        }
+    }
+    let mut inputs = Vec::new();
+    for plan in &plans {
+        let dir = t.clone_dir.join(&plan.name);
+        let repo = PathBuf::from(&plan.path);
+        let sha = workdir::import_branch(&plan.path, &dir, &t.branch)?;
+        let state = repo_state(&repo, &sha, None)?;
+        inputs.push(PublishInput {
+            sha,
+            pinned_branch: t.branch.clone(),
+            clone_branch: workdir::clone_head_branch(&dir).unwrap_or_default(),
+            clone_dir: dir,
+            repo,
+            default_branch: state.default_branch,
+            origin_fetch_url: state.fetch_url,
+            origin_push_url: state.push_url,
+            github_full_name: plan.full_name.clone(),
+            changed_paths: state.changed_paths,
+            commit_count: state.commit_count,
+            pr_title: pr_title.to_string(),
+            pr_body: pr_body.to_string(),
+        });
+    }
+    let plan = publish_all_plan(&inputs).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    publish_all(&plan)
+}
+
+pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<Vec<(String, String)>> {
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
     let task = resolve_task(&ctx, client, reference)?;
     let ws = ctx.workspace(client)?;
     let task_id = i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?;
     let rec = read_record(&ws.code, task_id)?;
-    publish_cloud(
+    publish_cloud_prs(
         o,
         &PublishTarget {
             workspace_code: ws.code,
@@ -1000,16 +1686,43 @@ pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
             session_id: rec.session,
             agent: rec.agent,
             repo: Some(rec.repo),
+            clones: rec
+                .clones
+                .into_iter()
+                .map(|c| CloneRef {
+                    name: c.name,
+                    identity: c.identity,
+                })
+                .collect(),
         },
     )
 }
 
 pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
-    let url = publish_cloud_run(o, reference)?;
+    let prs = publish_cloud_run(o, reference)?;
+    let first = prs.first().map(|(_, u)| u.clone()).unwrap_or_default();
+    if prs.len() <= 1 {
+        return Ok(emit(
+            o,
+            json!({ "pr_url": first }),
+            format!("opened {}", sanitize_line(&first)),
+        ));
+    }
+    let human = prs
+        .iter()
+        .map(|(repo, url)| format!("opened {} ({})", sanitize_line(url), sanitize_line(repo)))
+        .collect::<Vec<_>>()
+        .join("\n");
     Ok(emit(
         o,
-        json!({ "pr_url": url }),
-        format!("opened {}", sanitize_line(&url)),
+        json!({
+            "pr_url": first,
+            "pull_requests": prs
+                .iter()
+                .map(|(repo, url)| json!({ "repo": repo, "url": url }))
+                .collect::<Vec<_>>(),
+        }),
+        human,
     ))
 }
 
@@ -1334,6 +2047,7 @@ mod tests {
             bundle_sha256: "b".repeat(64),
             mode: "accept-edits",
             clone_of: Some("/work/repo".into()),
+            clones: Vec::new(),
             via_repo: true,
             claim: plan_claim(),
             unattended: false,
@@ -1353,7 +2067,7 @@ mod tests {
     fn golden_single_repo_record() {
         let clone = Path::new("/work/repo-worktrees/tmgr-tm-410-fix");
         assert_eq!(
-            record_body("/work/repo", clone, "tmgr/tm-410-fix", None).to_string(),
+            record_body("/work/repo", clone, "tmgr/tm-410-fix", None, &[]).to_string(),
             r#"{"repo":"/work/repo","clone":"/work/repo-worktrees/tmgr-tm-410-fix","branch":"tmgr/tm-410-fix","cloud":true}"#
         );
         assert_eq!(
@@ -1361,7 +2075,8 @@ mod tests {
                 "/work/repo",
                 clone,
                 "tmgr/tm-410-fix",
-                Some(("s_1", "claude-code"))
+                Some(("s_1", "claude-code")),
+                &[]
             )
             .to_string(),
             r#"{"repo":"/work/repo","clone":"/work/repo-worktrees/tmgr-tm-410-fix","branch":"tmgr/tm-410-fix","cloud":true,"session":"s_1","agent":"claude-code"}"#

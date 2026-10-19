@@ -1,5 +1,5 @@
 use tmgr_core::error::Result;
-use tmgr_ipc::api::{caps, CloudApproval, RunBundle, TaskRef};
+use tmgr_ipc::api::{caps, CloneSpec, CloudApproval, RunBundle, TaskRef};
 
 pub const PERMISSION_MODE: &str = "ask";
 
@@ -46,6 +46,7 @@ pub struct StartRequest {
     pub bundle_sha256: String,
     pub cloud: Option<CloudApproval>,
     pub unattended: bool,
+    pub clones: Vec<CloneSpec>,
 }
 
 pub trait RunsClient {

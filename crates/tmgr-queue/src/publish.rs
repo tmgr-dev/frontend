@@ -181,6 +181,10 @@ fn abs_clean(what: &str, p: &Path) -> std::result::Result<String, Refusal> {
     }
 }
 
+fn clean_body(body: &str) -> String {
+    body.chars().filter(|c| *c != '\0').take(MAX_BODY).collect()
+}
+
 pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, Refusal> {
     let branch = input.pinned_branch.as_str();
     if !branch_shape_ok(branch) {
@@ -222,12 +226,7 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
     if title.is_empty() {
         return Err(Refusal::BadInput("the pull request title is empty".into()));
     }
-    let body: String = input
-        .pr_body
-        .chars()
-        .filter(|c| *c != '\0')
-        .take(MAX_BODY)
-        .collect();
+    let body = clean_body(&input.pr_body);
     if !matches!(input.sha.len(), 40 | 64) || !input.sha.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err(Refusal::BadInput(
             "the commit to push is not a full object id".into(),
@@ -307,6 +306,197 @@ pub fn publish(steps: &PublishSteps) -> Result<String> {
     run(&steps.push, &steps.repo)?;
     let out = run(&steps.pr, &steps.repo)?;
     Ok(out.lines().last().unwrap_or("").trim().to_string())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AllRefusal {
+    pub repo: Option<String>,
+    pub refusal: Refusal,
+}
+
+impl std::fmt::Display for AllRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.repo {
+            Some(r) => write!(f, "{r}: {}", self.refusal),
+            None => write!(f, "{}", self.refusal),
+        }
+    }
+}
+
+impl std::error::Error for AllRefusal {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepoPublish {
+    pub full_name: String,
+    pub sha: String,
+    pub body: String,
+    pub steps: PublishSteps,
+    pub list: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PublishAllPlan {
+    pub repos: Vec<RepoPublish>,
+    pub skipped: Vec<String>,
+}
+
+impl PublishAllPlan {
+    pub fn links(&self) -> bool {
+        self.repos.len() >= 2
+    }
+}
+
+/// Plans the publish of every repository of a multi-repository run. A repository without new commits is
+/// skipped; any other refusal refuses the whole publish, so nothing is pushed.
+pub fn publish_all_plan(
+    inputs: &[PublishInput],
+) -> std::result::Result<PublishAllPlan, AllRefusal> {
+    let mut repos = Vec::new();
+    let mut skipped = Vec::new();
+    for input in inputs {
+        if input.commit_count == 0 {
+            skipped.push(input.github_full_name.clone());
+            continue;
+        }
+        let steps = publish_plan(input).map_err(|refusal| AllRefusal {
+            repo: Some(input.github_full_name.clone()),
+            refusal,
+        })?;
+        repos.push(RepoPublish {
+            full_name: input.github_full_name.clone(),
+            sha: input.sha.clone(),
+            body: clean_body(&input.pr_body),
+            list: vec![
+                "gh".to_string(),
+                "pr".into(),
+                "list".into(),
+                "--repo".into(),
+                input.github_full_name.clone(),
+                "--head".into(),
+                steps.branch.clone(),
+                "--state".into(),
+                "open".into(),
+                "--json".into(),
+                "url,headRefOid,isCrossRepository,headRepositoryOwner".into(),
+            ],
+            steps,
+        });
+    }
+    if repos.is_empty() {
+        return Err(AllRefusal {
+            repo: None,
+            refusal: Refusal::NoCommits,
+        });
+    }
+    Ok(PublishAllPlan { repos, skipped })
+}
+
+fn pr_url_of(full_name: &str, url: &str) -> bool {
+    let prefix = format!("https://github.com/{full_name}/pull/");
+    url.len() > prefix.len()
+        && url[..prefix.len()].eq_ignore_ascii_case(&prefix)
+        && url[prefix.len()..].bytes().all(|b| b.is_ascii_digit())
+}
+
+/// The open pull request to reuse for a pushed head, if there is one. Any open pull request for that head
+/// name that comes from a fork, another owner or another commit refuses the publish.
+pub fn reuse_pr(
+    list_json: &str,
+    full_name: &str,
+    sha: &str,
+) -> std::result::Result<Option<String>, String> {
+    let text = list_json.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let found: serde_json::Value = serde_json::from_str(text)
+        .map_err(|_| "gh answered with something unreadable".to_string())?;
+    let list = found
+        .as_array()
+        .ok_or_else(|| "gh answered with something unreadable".to_string())?;
+    let owner = full_name.split('/').next().unwrap_or_default();
+    let mut reuse = None;
+    for pr in list {
+        let url = pr["url"].as_str().unwrap_or_default();
+        let same_owner = pr["headRepositoryOwner"]["login"]
+            .as_str()
+            .is_some_and(|l| l.eq_ignore_ascii_case(owner));
+        let good = pr["isCrossRepository"] == serde_json::Value::Bool(false)
+            && same_owner
+            && pr["headRefOid"]
+                .as_str()
+                .is_some_and(|o| o.eq_ignore_ascii_case(sha))
+            && pr_url_of(full_name, url);
+        if !good {
+            return Err(format!(
+                "an open pull request for this branch in {full_name} is not the one just pushed; close or rename it first"
+            ));
+        }
+        reuse.get_or_insert_with(|| url.to_string());
+    }
+    Ok(reuse)
+}
+
+pub fn link_body(body: &str, others: &[&str]) -> String {
+    let list: Vec<String> = others.iter().map(|u| format!("- {u}")).collect();
+    format!("{body}\n\nRelated pull requests:\n{}", list.join("\n"))
+}
+
+/// Pushes and opens (or reuses) the pull request of every planned repository, then links them to each
+/// other when there are two or more. Returns `(repository, url)` in plan order.
+pub fn publish_all_with(
+    plan: &PublishAllPlan,
+    exec: &mut dyn FnMut(&[String], &Path) -> Result<String>,
+) -> Result<Vec<(String, String)>> {
+    let mut urls: Vec<(String, String)> = Vec::new();
+    for r in &plan.repos {
+        exec(&r.steps.push, &r.steps.repo)?;
+        let listed = exec(&r.list, &r.steps.repo)?;
+        let url = match reuse_pr(&listed, &r.full_name, &r.sha)
+            .map_err(|m| Error::new(tmgr_core::error::Kind::Forbidden, m))?
+        {
+            Some(url) => url,
+            None => {
+                let out = exec(&r.steps.pr, &r.steps.repo)?;
+                let url = out.lines().last().unwrap_or("").trim().to_string();
+                if !pr_url_of(&r.full_name, &url) {
+                    return Err(Error::internal(format!(
+                        "gh did not return a pull request link for {}",
+                        r.full_name
+                    )));
+                }
+                url
+            }
+        };
+        urls.push((r.full_name.clone(), url));
+    }
+    if plan.links() {
+        for (r, (_, url)) in plan.repos.iter().zip(&urls) {
+            let others: Vec<&str> = urls
+                .iter()
+                .filter(|(_, u)| u != url)
+                .map(|(_, u)| u.as_str())
+                .collect();
+            let edit = vec![
+                "gh".to_string(),
+                "pr".into(),
+                "edit".into(),
+                url.clone(),
+                format!("--body={}", link_body(&r.body, &others)),
+            ];
+            exec(&edit, &r.steps.repo)?;
+        }
+    }
+    Ok(urls)
+}
+
+pub fn publish_all(plan: &PublishAllPlan) -> Result<Vec<(String, String)>> {
+    publish_all_with(plan, &mut |argv, cwd| run(argv, cwd))
+}
+
+/// Runs a command the way the publish steps do: cleaned environment, bounded time, in `cwd`.
+pub fn run_hardened(argv: &[String], cwd: &Path) -> Result<String> {
+    run(argv, cwd)
 }
 
 #[cfg(test)]
@@ -674,5 +864,262 @@ mod tests {
         for title in ["../../etc", "$(rm -rf)", "a/b", "A.B_C", "-x", "x-"] {
             assert!(branch_shape_ok(&branch_slug("TM-1", title)), "{title}");
         }
+    }
+
+    fn repo_input(full: &str, commits: usize) -> PublishInput {
+        let name = full.split('/').nth(1).unwrap();
+        let mut i = input();
+        i.github_full_name = full.into();
+        i.repo = format!("/work/{name}").into();
+        i.clone_dir = format!("/work/{name}-worktrees/queue/p1/{name}").into();
+        i.origin_fetch_url = format!("https://github.com/{full}.git");
+        i.origin_push_url = format!("git@github.com:{full}.git");
+        i.commit_count = commits;
+        i.sha = if name == "backend" {
+            "a".repeat(40)
+        } else {
+            "b".repeat(40)
+        };
+        i
+    }
+
+    fn both() -> Vec<PublishInput> {
+        vec![
+            repo_input("tmgr-dev/backend", 2),
+            repo_input("tmgr-dev/frontend", 1),
+        ]
+    }
+
+    #[test]
+    fn one_refused_repository_refuses_everything_and_names_it() {
+        let mut inputs = both();
+        inputs[1].changed_paths = vec![".github/workflows/ci.yml".into()];
+        let e = publish_all_plan(&inputs).unwrap_err();
+        assert_eq!(e.repo.as_deref(), Some("tmgr-dev/frontend"));
+        assert!(matches!(e.refusal, Refusal::WorkflowChange(_)));
+        assert!(e
+            .to_string()
+            .starts_with("tmgr-dev/frontend: publish refused"));
+        let mut inputs = both();
+        inputs[0].clone_branch = "main".into();
+        assert!(matches!(
+            publish_all_plan(&inputs).unwrap_err().refusal,
+            Refusal::BranchNotPinned
+        ));
+        let mut inputs = both();
+        inputs[1].origin_push_url = "https://github.com/evil/frontend.git".into();
+        assert!(matches!(
+            publish_all_plan(&inputs).unwrap_err().refusal,
+            Refusal::RemoteMismatch { .. }
+        ));
+    }
+
+    #[test]
+    fn a_repository_without_commits_is_skipped_and_all_empty_is_todays_error() {
+        let mut inputs = both();
+        inputs[0].commit_count = 0;
+        let p = publish_all_plan(&inputs).unwrap();
+        assert_eq!(p.skipped, ["tmgr-dev/backend"]);
+        assert_eq!(p.repos.len(), 1);
+        assert!(!p.links());
+        let mut none = both();
+        none[0].commit_count = 0;
+        none[1].commit_count = 0;
+        let e = publish_all_plan(&none).unwrap_err();
+        assert_eq!(e.refusal, Refusal::NoCommits);
+        assert_eq!(e.to_string(), Refusal::NoCommits.to_string());
+        assert_eq!(
+            publish_all_plan(&[]).unwrap_err().refusal,
+            Refusal::NoCommits
+        );
+    }
+
+    #[test]
+    fn refspecs_are_exact_per_repository_and_never_merge() {
+        let p = publish_all_plan(&both()).unwrap();
+        assert!(p.links());
+        for (r, sha) in p.repos.iter().zip(["a", "b"]) {
+            assert_eq!(
+                r.steps.push.last().unwrap(),
+                &format!("{}:refs/heads/tmgr/tm-410-fix-login", sha.repeat(40))
+            );
+            assert_eq!(
+                r.steps.push[4],
+                format!("/work/{}", r.full_name.split('/').nth(1).unwrap())
+            );
+            assert_eq!(
+                r.list,
+                [
+                    "gh",
+                    "pr",
+                    "list",
+                    "--repo",
+                    &r.full_name,
+                    "--head",
+                    "tmgr/tm-410-fix-login",
+                    "--state",
+                    "open",
+                    "--json",
+                    "url,headRefOid,isCrossRepository,headRepositoryOwner"
+                ]
+            );
+            assert_eq!(&r.steps.pr[1..3], ["pr", "create"]);
+        }
+    }
+
+    fn fake<'a>(
+        lists: &[(&str, &str)],
+        log: &'a std::cell::RefCell<Vec<Vec<String>>>,
+    ) -> impl FnMut(&[String], &Path) -> Result<String> + 'a {
+        let lists: Vec<(String, String)> = lists
+            .iter()
+            .map(|(a, b)| (a.to_string(), b.to_string()))
+            .collect();
+        move |argv, _cwd| {
+            log.borrow_mut().push(argv.to_vec());
+            match (argv[0].as_str(), argv[1].as_str()) {
+                ("gh", "pr") if argv[2] == "list" => Ok(lists
+                    .iter()
+                    .find(|(r, _)| *r == argv[4])
+                    .map(|(_, j)| j.clone())
+                    .unwrap_or_else(|| "[]".into())),
+                ("gh", "pr") if argv[2] == "create" => {
+                    let n = if argv[4] == "tmgr-dev/backend" {
+                        11
+                    } else {
+                        12
+                    };
+                    Ok(format!(
+                        "warning line\nhttps://github.com/{}/pull/{n}",
+                        argv[4]
+                    ))
+                }
+                _ => Ok(String::new()),
+            }
+        }
+    }
+
+    #[test]
+    fn two_pull_requests_are_pushed_opened_and_linked_without_a_merge() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let log = std::cell::RefCell::new(Vec::new());
+        let urls = publish_all_with(&plan, &mut fake(&[], &log)).unwrap();
+        assert_eq!(
+            urls,
+            [
+                (
+                    "tmgr-dev/backend".to_string(),
+                    "https://github.com/tmgr-dev/backend/pull/11".to_string()
+                ),
+                (
+                    "tmgr-dev/frontend".to_string(),
+                    "https://github.com/tmgr-dev/frontend/pull/12".to_string()
+                )
+            ]
+        );
+        let log = log.borrow();
+        let kinds: Vec<String> = log
+            .iter()
+            .map(|a| {
+                if a[0] == "git" {
+                    "push".to_string()
+                } else {
+                    a[2].clone()
+                }
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            ["push", "list", "create", "push", "list", "create", "edit", "edit"]
+        );
+        assert!(log.iter().flatten().all(|a| !a.contains("merge")));
+        let edit = &log[6];
+        assert_eq!(edit[3], "https://github.com/tmgr-dev/backend/pull/11");
+        assert!(edit[4].starts_with("--body=Done by an agent."));
+        assert!(edit[4]
+            .ends_with("Related pull requests:\n- https://github.com/tmgr-dev/frontend/pull/12"));
+        assert!(log[7][4].ends_with("- https://github.com/tmgr-dev/backend/pull/11"));
+    }
+
+    #[test]
+    fn one_pull_request_gets_no_link_step() {
+        let mut inputs = both();
+        inputs[1].commit_count = 0;
+        let plan = publish_all_plan(&inputs).unwrap();
+        let log = std::cell::RefCell::new(Vec::new());
+        let urls = publish_all_with(&plan, &mut fake(&[], &log)).unwrap();
+        assert_eq!(urls.len(), 1);
+        assert!(log
+            .borrow()
+            .iter()
+            .all(|a| a[1] != "edit" && a.get(2).map(String::as_str) != Some("edit")));
+    }
+
+    fn open_pr(url: &str, cross: bool, owner: &str, oid: &str) -> String {
+        serde_json::json!([{"url": url, "headRefOid": oid, "isCrossRepository": cross,
+            "headRepositoryOwner": {"login": owner}}])
+        .to_string()
+    }
+
+    #[test]
+    fn an_open_pull_request_of_the_same_commit_is_reused() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let be = open_pr(
+            "https://github.com/tmgr-dev/backend/pull/5",
+            false,
+            "TMGR-dev",
+            &"A".repeat(40),
+        );
+        let log = std::cell::RefCell::new(Vec::new());
+        let urls = publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+        assert_eq!(urls[0].1, "https://github.com/tmgr-dev/backend/pull/5");
+        let creates = log
+            .borrow()
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some("create"))
+            .count();
+        assert_eq!(creates, 1);
+    }
+
+    #[test]
+    fn a_fork_another_owner_or_another_commit_is_never_reused() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let url = "https://github.com/tmgr-dev/backend/pull/5";
+        let sha = "a".repeat(40);
+        for bad in [
+            open_pr(url, true, "tmgr-dev", &sha),
+            open_pr(url, false, "someone", &sha),
+            open_pr(url, false, "tmgr-dev", &"c".repeat(40)),
+            open_pr(
+                "https://github.com/other/backend/pull/5",
+                false,
+                "tmgr-dev",
+                &sha,
+            ),
+            "not json".to_string(),
+        ] {
+            let log = std::cell::RefCell::new(Vec::new());
+            let e = publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &bad)], &log))
+                .unwrap_err();
+            assert_eq!(e.kind, tmgr_core::error::Kind::Forbidden.clone(), "{bad}");
+            assert!(log
+                .borrow()
+                .iter()
+                .all(|a| a.get(2).map(String::as_str) != Some("create")
+                    && a.get(2).map(String::as_str) != Some("edit")));
+        }
+    }
+
+    #[test]
+    fn a_link_that_is_not_a_pull_request_of_that_repository_is_refused() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let mut bad = |argv: &[String], _: &Path| -> Result<String> {
+            Ok(if argv.get(2).map(String::as_str) == Some("create") {
+                "https://evil.example/x".into()
+            } else {
+                String::new()
+            })
+        };
+        assert!(publish_all_with(&plan, &mut bad).is_err());
     }
 }

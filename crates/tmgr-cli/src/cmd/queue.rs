@@ -1,6 +1,8 @@
 use crate::cli::Cli;
 use crate::cmd::runner::allow::host_of;
-use crate::cmd::runner::cloud::{cloud_gate, parse_eligibility, publish_cloud, PublishTarget};
+use crate::cmd::runner::cloud::{
+    bound_set_paths, cloud_gate, parse_eligibility, publish_cloud, CloneRef, PublishTarget,
+};
 use crate::cmd::runner::Opts;
 use crate::ctx::Ctx;
 use crate::out::{stdout_style, table, Output};
@@ -8,6 +10,7 @@ use chrono::{DateTime, Local, Timelike, Utc};
 use clap::{Args, Subcommand};
 use serde_json::{json, Value};
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::time::Duration;
 use tmgr_core::approval::{AllowFile, Rollback};
 use tmgr_core::error::{Error, Kind, Result};
@@ -84,9 +87,9 @@ pub struct RuleArgs {
     /// Agent profile id
     #[arg(long, value_name = "PROFILE")]
     pub profile: String,
-    /// Existing directory the agent works in
-    #[arg(long, value_name = "DIR")]
-    pub repo: String,
+    /// Existing directory the agent works in; repeat it for a cloud category that lists several repositories
+    #[arg(long, value_name = "DIR", required = true)]
+    pub repo: Vec<String>,
     /// Project (category) code; default: every project
     #[arg(long, value_name = "CODE")]
     pub project: Option<String>,
@@ -185,7 +188,7 @@ fn agree(summary: &str) -> Result<()> {
 
 fn describe(r: &Rule) -> String {
     format!(
-        "{}: {} {} persona {} profile {}{} repo {} max {} hours {} authors {}{}{}",
+        "{}: {} {} persona {} profile {}{} {} {} max {} hours {} authors {}{}{}",
         r.name,
         r.workspace,
         r.project
@@ -196,7 +199,8 @@ fn describe(r: &Rule) -> String {
         r.model
             .as_deref()
             .map_or(String::new(), |m| format!(" model {m}")),
-        r.repo,
+        if r.repos.len() > 1 { "repos" } else { "repo" },
+        r.repos.join(", "),
         r.max_concurrent,
         r.hours.as_deref().unwrap_or("any"),
         r.trusted_authors.join("+"),
@@ -389,8 +393,15 @@ fn list(paths: &Paths) -> Result<Output> {
 
 fn add(ctx: &Ctx, paths: &Paths, a: &RuleArgs) -> Result<Output> {
     privileged::guard()?;
-    let repo = std::fs::canonicalize(&a.repo)
-        .map_err(|_| Error::usage("repo is not an existing directory"))?;
+    let repos = a
+        .repo
+        .iter()
+        .map(|r| {
+            std::fs::canonicalize(r)
+                .map(|p| p.to_string_lossy().into_owned())
+                .map_err(|_| Error::usage("repo is not an existing directory"))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let rule = Rule {
         name: a.name.clone(),
         workspace: a.workspace.clone(),
@@ -399,7 +410,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &RuleArgs) -> Result<Output> {
         persona: a.persona.clone(),
         profile: a.profile.clone(),
         model: a.model.clone(),
-        repo: repo.to_string_lossy().into_owned(),
+        repos,
         max_concurrent: a.max_concurrent,
         hours: a.hours.clone(),
         trusted_authors: if a.trusted_authors.is_empty() {
@@ -777,32 +788,70 @@ impl CloudApi for CliCloud<'_> {
                 "the task has no category, so no repository is known".into(),
             ));
         };
-        let bind = format!(
-            "run `tmgr run {}:{task_id}` once in a terminal to bind a repository",
-            ws.code
-        );
-        if category.github_full_name.is_none() {
-            return Ok(refused(format!(
-                "category {} has no linked GitHub repository",
-                category.code
-            )));
-        }
-        match entry.repo(category.id) {
+        let claim_repos = match &ok.repos {
+            Some(list) => {
+                let bound = match bound_set_paths(entry, category, list) {
+                    Ok(bound) => bound,
+                    Err(m) => {
+                        return Ok(refused(format!(
+                            "{m}; run `tmgr run {}:{task_id}` once in a terminal to bind the repositories of category {}",
+                            ws.code, category.code
+                        )))
+                    }
+                };
+                let canonical = |p: &str| {
+                    std::fs::canonicalize(p)
+                        .ok()
+                        .and_then(|c| c.to_str().map(str::to_string))
+                        .unwrap_or_else(|| p.to_string())
+                };
+                let bound_paths: BTreeSet<String> = bound.iter().map(|r| r.path.clone()).collect();
+                let rule_paths: BTreeSet<String> =
+                    rule.repos.iter().map(|r| canonical(r)).collect();
+                if bound_paths != rule_paths || rule.repos.len() != bound.len() {
+                    return Ok(refused(format!(
+                        "category {} is bound to other repositories than the rule's",
+                        category.code
+                    )));
+                }
+                bound
+            }
             None => {
-                return Ok(refused(format!(
-                    "no repository is bound to category {}; {bind}",
-                    category.code
-                )))
+                let bind = format!(
+                    "run `tmgr run {}:{task_id}` once in a terminal to bind a repository",
+                    ws.code
+                );
+                if category.github_full_name.is_none() {
+                    return Ok(refused(format!(
+                        "category {} has no linked GitHub repository",
+                        category.code
+                    )));
+                }
+                match entry.repo(category.id) {
+                    None if entry.repo_set(category.id).is_some() => {
+                        return Ok(refused(format!(
+                        "category {} is bound to a set of repositories, but the server lists none",
+                        category.code
+                    )))
+                    }
+                    None => {
+                        return Ok(refused(format!(
+                            "no repository is bound to category {}; {bind}",
+                            category.code
+                        )))
+                    }
+                    Some(bound) if rule.repos.len() != 1 || bound != rule.repos[0] => {
+                        return Ok(refused(format!(
+                            "category {} is bound to another repository than the rule's",
+                            category.code
+                        )))
+                    }
+                    Some(_) => {}
+                }
+                Vec::new()
             }
-            Some(bound) if bound != rule.repo => {
-                return Ok(refused(format!(
-                    "category {} is bound to another repository than the rule's",
-                    category.code
-                )))
-            }
-            Some(_) => {}
-        }
-        rollback.record(rkey, ok.claim.signed_at, &ok.claim.content_sha256);
+        };
+        rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
         rollback
             .save()
             .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
@@ -811,6 +860,7 @@ impl CloudApi for CliCloud<'_> {
             title: ok.title,
             body: ok.body,
             claim: ok.claim,
+            repos: claim_repos,
         })))
     }
 }
@@ -832,6 +882,14 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
         session_id: pickup.run_id.clone(),
         agent: Some(pickup.bundle.launch.profile.clone()),
         repo: None,
+        clones: pickup
+            .clones
+            .iter()
+            .map(|c| CloneRef {
+                name: c.name.clone(),
+                identity: Some((c.dev, c.ino)),
+            })
+            .collect(),
     })
 }
 
@@ -919,7 +977,7 @@ impl RunnerRuns {
 
 fn run_create_req(req: &StartRequest) -> RunCreateReq {
     RunCreateReq {
-        clones: Vec::new(),
+        clones: req.clones.clone(),
         profile: req.profile.clone(),
         task: Some(req.task),
         cwd: req.cwd.clone(),
@@ -933,7 +991,7 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
         origin: None,
         permission_mode: Some(req.permission_mode.to_string()),
         start_key: Some(req.start_key.clone()),
-        clone_of: Some(req.clone_of.clone()),
+        clone_of: req.clones.is_empty().then(|| req.clone_of.clone()),
         trust_cwd: None,
         trust_via_repo: None,
         agent_work: true,
@@ -950,6 +1008,23 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
 impl RunsClient for RunnerRuns {
     fn create(&self, req: &StartRequest) -> Result<String> {
         self.ready()?;
+        if !req.clones.is_empty() {
+            let supported = self.client.borrow().as_ref().is_some_and(|c| {
+                c.welcome()
+                    .caps
+                    .iter()
+                    .any(|have| have == tmgr_ipc::api::caps::MULTI_CLONE_V1)
+            });
+            if !supported {
+                return Err(Error::new(
+                    Kind::Conflict,
+                    format!(
+                        "the running runner is older than this tmgr and cannot run several repositories; run {0} runner stop && {0} runner start",
+                        super::runner::bin()
+                    ),
+                ));
+            }
+        }
         self.with(|c| c.create_run(run_create_req(req)))
             .map(|info| info.id)
             .map_err(|e| {
@@ -1116,6 +1191,7 @@ mod run_request_tests {
             }))
             .unwrap(),
             unattended: true,
+            clones: Vec::new(),
         }
     }
 

@@ -8,6 +8,7 @@ use tmgr_core::config::{ensure_private_dir, write_atomic};
 use tmgr_core::error::{Error, Kind, Result};
 
 pub const VERSION: u32 = 1;
+pub const VERSION_MULTI: u32 = 2;
 pub const MAX_CONCURRENT_CAP: u32 = 3;
 pub const GLOBAL_MAX: usize = 3;
 pub const CONFIG_EVENTS: &[&str] = &["enable", "disable", "rule_add", "rule_rm", "rules_reviewed"];
@@ -50,29 +51,103 @@ fn trusted() -> Vec<String> {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "RuleWire", into = "RuleWire")]
 pub struct Rule {
     pub name: String,
     pub workspace: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub project: Option<String>,
-    #[serde(default = "status_type")]
     pub status_type: String,
     pub persona: String,
     pub profile: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
-    pub repo: String,
-    #[serde(default = "max_concurrent")]
+    pub repos: Vec<String>,
     pub max_concurrent: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hours: Option<String>,
-    #[serde(default = "trusted")]
     pub trusted_authors: Vec<String>,
-    #[serde(default)]
     pub auto: bool,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RuleWire {
+    name: String,
+    workspace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    project: Option<String>,
+    #[serde(default = "status_type")]
+    status_type: String,
+    persona: String,
+    profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    repo: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    repos: Option<Vec<String>>,
+    #[serde(default = "max_concurrent")]
+    max_concurrent: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hours: Option<String>,
+    #[serde(default = "trusted")]
+    trusted_authors: Vec<String>,
+    #[serde(default)]
+    auto: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+}
+
+impl TryFrom<RuleWire> for Rule {
+    type Error = String;
+
+    fn try_from(w: RuleWire) -> std::result::Result<Self, String> {
+        let repos = match (w.repo, w.repos) {
+            (Some(one), None) => vec![one],
+            (None, Some(list)) => list,
+            (None, None) => return Err("rule needs repo or repos".into()),
+            (Some(_), Some(_)) => return Err("rule has both repo and repos".into()),
+        };
+        Ok(Rule {
+            name: w.name,
+            workspace: w.workspace,
+            project: w.project,
+            status_type: w.status_type,
+            persona: w.persona,
+            profile: w.profile,
+            model: w.model,
+            repos,
+            max_concurrent: w.max_concurrent,
+            hours: w.hours,
+            trusted_authors: w.trusted_authors,
+            auto: w.auto,
+            mode: w.mode,
+        })
+    }
+}
+
+impl From<Rule> for RuleWire {
+    fn from(r: Rule) -> Self {
+        let (repo, repos) = match <[String; 1]>::try_from(r.repos) {
+            Ok([one]) => (Some(one), None),
+            Err(list) => (None, Some(list)),
+        };
+        RuleWire {
+            name: r.name,
+            workspace: r.workspace,
+            project: r.project,
+            status_type: r.status_type,
+            persona: r.persona,
+            profile: r.profile,
+            model: r.model,
+            repo,
+            repos,
+            max_concurrent: r.max_concurrent,
+            hours: r.hours,
+            trusted_authors: r.trusted_authors,
+            auto: r.auto,
+            mode: r.mode,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -216,6 +291,26 @@ pub fn target(reference: &str) -> Result<Target<'_>> {
         .hint("local:<code> or a cloud workspace code"))
 }
 
+pub fn is_multi(file: &QueueFile) -> bool {
+    file.rules.iter().any(|r| r.repos.len() > 1)
+}
+
+pub fn check_version(file: &QueueFile) -> Result<()> {
+    if !matches!(file.version, VERSION | VERSION_MULTI) {
+        return Err(Error::usage(format!(
+            "queue.toml version {} is not supported",
+            file.version
+        )));
+    }
+    if file.version == VERSION && is_multi(file) {
+        return Err(
+            Error::usage("queue.toml version 1 lists a rule with several repositories")
+                .hint("a file with several repositories per rule is version 2"),
+        );
+    }
+    Ok(())
+}
+
 pub fn is_cloud(rule: &Rule) -> bool {
     matches!(target(&rule.workspace), Ok(Target::Cloud(_)))
 }
@@ -236,6 +331,9 @@ pub fn validate_rule_with(
     }
     match target(&rule.workspace)? {
         Target::Local(_) => {
+            if rule.repos.len() > 1 {
+                return usage("a rule on a local workspace takes one repo");
+            }
             if rule.mode.is_some() {
                 return Err(refuse(format!(
                     "rule {:?}: a rule on a local workspace never sets a permission mode",
@@ -295,8 +393,26 @@ pub fn validate_rule_with(
             return usage("model has invalid characters");
         }
     }
-    if !Path::new(&rule.repo).is_absolute() || !Path::new(&rule.repo).is_dir() {
+    if rule.repos.is_empty() || rule.repos.len() > tmgr_core::approval::MAX_REPOS {
+        return usage(&format!(
+            "repo lists 1 to {} directories",
+            tmgr_core::approval::MAX_REPOS
+        ));
+    }
+    if rule
+        .repos
+        .iter()
+        .any(|r| !Path::new(r).is_absolute() || !Path::new(r).is_dir())
+    {
         return usage("repo is an absolute path of an existing directory");
+    }
+    if rule
+        .repos
+        .iter()
+        .enumerate()
+        .any(|(i, r)| rule.repos[..i].contains(r))
+    {
+        return usage("repo lists a directory twice");
     }
     if !(1..=MAX_CONCURRENT_CAP).contains(&rule.max_concurrent) {
         return usage(&format!("max_concurrent is 1 to {MAX_CONCURRENT_CAP}"));
@@ -340,12 +456,7 @@ pub fn validate_file_with(
     cloud: Option<&dyn CloudApi>,
     now: DateTime<Utc>,
 ) -> Result<()> {
-    if file.version != VERSION {
-        return Err(Error::usage(format!(
-            "queue.toml version {} is not supported",
-            file.version
-        )));
-    }
+    check_version(file)?;
     let mut seen = std::collections::BTreeSet::new();
     for r in &file.rules {
         if !seen.insert(&r.name) {
@@ -372,6 +483,7 @@ pub fn load(paths: &Paths) -> Result<Loaded> {
         Error::usage(format!("queue.toml is invalid: {}", e.message()))
             .hint("fields unknown to tmgr are refused on purpose")
     })?;
+    check_version(&file)?;
     if file.rules.iter().any(|r| r.mode.is_some() && !is_cloud(r)) {
         return Err(
             Error::usage("queue.toml: only a rule on a cloud workspace has a mode")
@@ -386,7 +498,13 @@ pub fn load(paths: &Paths) -> Result<Loaded> {
 
 pub fn save(paths: &Paths, file: &QueueFile) -> Result<String> {
     ensure_private_dir(&paths.dir)?;
-    let text = toml::to_string_pretty(file).map_err(|e| Error::internal(e.to_string()))?;
+    let mut out = file.clone();
+    out.version = if is_multi(file) {
+        VERSION_MULTI
+    } else {
+        VERSION
+    };
+    let text = toml::to_string_pretty(&out).map_err(|e| Error::internal(e.to_string()))?;
     write_atomic(&paths.rules(), text.as_bytes(), 0o600)?;
     Ok(sha256_hex(text.as_bytes()))
 }
@@ -447,7 +565,7 @@ mod tests {
             persona: "builder".into(),
             profile: "claude-code".into(),
             model: None,
-            repo: repo.to_string_lossy().into(),
+            repos: vec![repo.to_string_lossy().into()],
             max_concurrent: 1,
             hours: None,
             trusted_authors: vec!["human".into()],
@@ -529,8 +647,10 @@ mod tests {
         assert!(bad(&|r| r.hours = Some("9-19".into())));
         assert!(bad(&|r| r.hours = Some("09-09".into())));
         assert!(bad(&|r| r.hours = Some("09-25".into())));
-        assert!(bad(&|r| r.repo = "relative/dir".into()));
-        assert!(bad(&|r| r.repo = "/nonexistent-dir-for-queue-test".into()));
+        assert!(bad(&|r| r.repos = vec!["relative/dir".into()]));
+        assert!(bad(
+            &|r| r.repos = vec!["/nonexistent-dir-for-queue-test".into()]
+        ));
         assert!(bad(&|r| r.name = "Bad Name".into()));
         assert!(bad(&|r| r.trusted_authors = vec![]));
         assert!(bad(&|r| r.trusted_authors = vec!["anyone".into()]));
@@ -638,5 +758,106 @@ mod tests {
             std::fs::read_to_string(p.rules()).unwrap(),
             "version = 1\nenabled = true\n\n[[rule]]\nname = \"backlog-builder\"\nworkspace = \"local:personal\"\nproject = \"TM\"\nstatus_type = \"backlog\"\npersona = \"builder\"\nprofile = \"claude-code\"\nmodel = \"opus\"\nrepo = \"/work/repo\"\nmax_concurrent = 1\nhours = \"09-19\"\ntrusted_authors = [\"human\"]\nauto = false\n"
         );
+    }
+
+    fn write_rules(p: &Paths, text: &str) {
+        std::fs::write(p.rules(), text).unwrap();
+        std::fs::set_permissions(
+            p.rules(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o600),
+        )
+        .unwrap();
+    }
+
+    const RULE_HEAD: &str = "[[rule]]\nname = \"a\"\nworkspace = \"tmgrdev\"\npersona = \"b\"\nprofile = \"claude-code\"\n";
+
+    #[test]
+    fn a_version_1_file_reads_repo_as_a_list_of_one_and_is_written_back_unchanged() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        let text = format!(
+            "version = 1\nenabled = true\n\n{RULE_HEAD}status_type = \"backlog\"\nrepo = \"/work/repo\"\nmax_concurrent = 1\ntrusted_authors = [\"human\"]\nauto = false\n"
+        );
+        let text = text.replace(
+            "name = \"a\"\nworkspace = \"tmgrdev\"\npersona = \"b\"\nprofile = \"claude-code\"\nstatus_type = \"backlog\"",
+            "name = \"a\"\nworkspace = \"tmgrdev\"\nstatus_type = \"backlog\"\npersona = \"b\"\nprofile = \"claude-code\"",
+        );
+        write_rules(&p, &text);
+        let loaded = load(&p).unwrap();
+        assert_eq!(loaded.file.rules[0].repos, ["/work/repo"]);
+        save(&p, &loaded.file).unwrap();
+        assert_eq!(std::fs::read_to_string(p.rules()).unwrap(), text);
+    }
+
+    #[test]
+    fn a_rule_with_several_repos_makes_the_file_version_2_and_back_to_1_without_it() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        let mut multi = rule(Path::new("/work/back"));
+        multi.workspace = "tmgrdev".into();
+        multi.repos.push("/work/front".into());
+        let one = rule(Path::new("/work/solo"));
+        let mut one = one;
+        one.name = "solo".into();
+        let file = QueueFile {
+            version: VERSION,
+            enabled: true,
+            rules: vec![multi.clone(), one.clone()],
+        };
+        save(&p, &file).unwrap();
+        let text = std::fs::read_to_string(p.rules()).unwrap();
+        assert!(text.starts_with("version = 2\n"), "{text}");
+        assert!(text.contains("repos = ["), "{text}");
+        assert!(text.contains("\"/work/back\"") && text.contains("\"/work/front\""));
+        assert!(text.contains("repo = \"/work/solo\""));
+        let loaded = load(&p).unwrap();
+        assert_eq!(loaded.file.version, VERSION_MULTI);
+        assert_eq!(loaded.file.rules[0], multi);
+        assert_eq!(loaded.file.rules[1], one);
+        let mut file = loaded.file;
+        file.rules.remove(0);
+        save(&p, &file).unwrap();
+        let text = std::fs::read_to_string(p.rules()).unwrap();
+        assert!(
+            text.starts_with("version = 1\n") && !text.contains("repos"),
+            "{text}"
+        );
+        assert!(load(&p).is_ok());
+    }
+
+    #[test]
+    fn repo_and_repos_together_neither_or_several_in_a_version_1_file_are_refused() {
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        for (version, extra) in [
+            (2, "repo = \"/a\"\nrepos = [\"/b\"]\n"),
+            (2, ""),
+            (1, "repos = [\"/a\", \"/b\"]\n"),
+            (3, "repo = \"/a\"\n"),
+        ] {
+            write_rules(&p, &format!("version = {version}\n{RULE_HEAD}{extra}"));
+            assert!(load(&p).is_err(), "{version} {extra}");
+        }
+        write_rules(
+            &p,
+            &format!("version = 2\n{RULE_HEAD}repos = [\"/a\", \"/b\"]\nbypass = true\n"),
+        );
+        assert!(load(&p).is_err());
+    }
+
+    #[test]
+    fn several_repos_are_only_for_cloud_rules_and_are_bounded() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let f = Fake(vec![]);
+        let mut r = rule(a.path());
+        r.repos.push(b.path().to_string_lossy().into());
+        assert_eq!(validate_rule(&r, &f).unwrap_err().exit_code(), 2);
+        let mut r = rule(a.path());
+        r.repos.push(r.repos[0].clone());
+        assert!(validate_rule(&r, &f).is_err());
+        let mut r = rule(a.path());
+        r.repos.clear();
+        assert!(validate_rule(&r, &f).is_err());
     }
 }

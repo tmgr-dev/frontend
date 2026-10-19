@@ -3,7 +3,9 @@ use crate::ctx::Ctx;
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
-use tmgr_core::approval::{fingerprint, valid_public_key, AllowFile, Entry, PinnedKey};
+use tmgr_core::approval::{
+    fingerprint, valid_public_key, AllowFile, Entry, PinnedKey, RepoBinding,
+};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
 use tmgr_link::privileged;
@@ -253,6 +255,29 @@ pub fn describe(e: &Entry, now: DateTime<Utc>) -> Value {
     })
 }
 
+pub fn set_lines(entries: &[Entry]) -> Vec<String> {
+    let mut lines = Vec::new();
+    for e in entries {
+        for (category, binding) in &e.repos {
+            if let RepoBinding::Set(set) = binding {
+                lines.push(format!(
+                    "{} category {}:",
+                    sanitize_line(&e.workspace_code),
+                    sanitize_line(category)
+                ));
+                for (name, path) in set {
+                    lines.push(format!(
+                        "  {}  {}",
+                        sanitize_line(name),
+                        sanitize_line(path)
+                    ));
+                }
+            }
+        }
+    }
+    lines
+}
+
 pub fn allowed(o: &Opts) -> Result<i32> {
     let file = AllowFile::load().map_err(store_error)?;
     let now = Utc::now();
@@ -283,7 +308,12 @@ pub fn allowed(o: &Opts) -> Result<i32> {
                     .join(", "),
             ]);
         }
-        crate::out::table(&rows)
+        let mut out = crate::out::table(&rows);
+        for line in set_lines(&file.entries) {
+            out.push('\n');
+            out.push_str(&line);
+        }
+        out
     };
     Ok(emit(o, data, human))
 }
