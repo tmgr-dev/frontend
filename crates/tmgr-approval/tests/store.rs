@@ -305,3 +305,37 @@ fn rollback_keeps_the_highest_signed_at() {
         Some((10, Some("h")))
     );
 }
+
+#[test]
+fn claim_message_is_v1_without_repos_and_v2_with_them() {
+    let (mut c, _, _) = claim();
+    assert_eq!(
+        tmgr_approval::claim_message(&c),
+        tmgr_approval::message(
+            &c.host,
+            c.user_id,
+            c.workspace_id,
+            c.task_id,
+            c.category_id,
+            &c.content_sha256,
+            &c.key_id,
+            c.signed_at
+        )
+    );
+    let repos = "a".repeat(64);
+    c.repos_sha256 = Some(repos.clone());
+    assert_eq!(
+        tmgr_approval::claim_message(&c),
+        tmgr_approval::message_v2(
+            &c.host,
+            c.user_id,
+            c.workspace_id,
+            c.task_id,
+            c.category_id,
+            &c.content_sha256,
+            &repos,
+            &c.key_id,
+            c.signed_at
+        )
+    );
+}

@@ -7,6 +7,6 @@ pub use crypto::{
     valid_public_key, valid_repo_name, valid_sha256_hex, verify, MAX_REPOS,
 };
 pub use store::{
-    allow_path, check_claim, rollback_path, AllowFile, Entry, PinnedKey, Refusal, RepoBinding,
-    Rollback,
+    allow_path, check_claim, claim_message, rollback_path, AllowFile, Entry, PinnedKey, Refusal,
+    RepoBinding, Rollback,
 };
