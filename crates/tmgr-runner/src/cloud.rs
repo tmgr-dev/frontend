@@ -7,13 +7,7 @@ pub fn check(req: &RunCreateReq, task: TaskRef) -> Result<(), String> {
 }
 
 pub fn check_primary(req: &RunCreateReq, task: TaskRef) -> Result<Option<String>, String> {
-    verify_state(
-        req,
-        task,
-        AllowFile::load(),
-        Utc::now(),
-        Rollback::load(),
-    )
+    verify_state(req, task, AllowFile::load(), Utc::now(), Rollback::load())
 }
 
 /// The folder name of each repository of a set: its lowercase repo part, or `<owner>-<repo>` when two share it.
@@ -123,8 +117,8 @@ fn verify_state(
     now: DateTime<Utc>,
     rollback: Result<Rollback, String>,
 ) -> Result<Option<String>, String> {
-    let rollback = rollback
-        .map_err(|e| format!("agent_work: cloud approvals state is unreadable: {e}"))?;
+    let rollback =
+        rollback.map_err(|e| format!("agent_work: cloud approvals state is unreadable: {e}"))?;
     verify(req, task, allow, now, Some(rollback))
 }
 

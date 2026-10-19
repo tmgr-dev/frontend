@@ -83,6 +83,7 @@ impl Rig {
         std::fs::write(root.join(".gitconfig"), config).unwrap();
         let run = root.join("code/backend-worktrees/tmgr-tm-411-backend-and-frontend");
         std::fs::create_dir_all(&run).unwrap();
+        let run = std::fs::canonicalize(run).unwrap();
         for (repo, name) in repos.iter().zip(["backend", "frontend"]) {
             git(
                 &root,
@@ -376,6 +377,65 @@ async fn one_refused_repository_pushes_nothing() {
     );
     assert!(!rig.pushed(0) && !rig.pushed(1));
     assert!(rig.gh_calls().is_empty());
+}
+
+fn branch_exists(repo: &Path) -> bool {
+    !git(repo, &["branch", "--list", BRANCH]).is_empty()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_publish_leaves_no_branch_in_the_owners_repositories() {
+    let rig = Rig::new().await;
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit("frontend", ".github/workflows/ci.yml");
+    let out = rig.publish();
+    assert_ne!(out.status.code(), Some(0));
+    assert!(!branch_exists(&rig.repos[0]) && !branch_exists(&rig.repos[1]));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn merge_commits_are_refused_and_nothing_is_left_behind() {
+    let rig = Rig::new().await;
+    rig.start();
+    rig.commit("backend", "api.txt");
+    let clone = rig.run.join("frontend");
+    git(&clone, &["branch", "side"]);
+    rig.commit("frontend", "ui.txt");
+    git(&clone, &["checkout", "-q", "side"]);
+    rig.commit("frontend", "other.txt");
+    git(&clone, &["checkout", "-q", BRANCH]);
+    git(&clone, &["merge", "-q", "--no-ff", "-m", "merge", "side"]);
+    let out = rig.publish();
+    assert_ne!(out.status.code(), Some(0));
+    assert!(
+        stderr(&out).contains("must be a straight line of new commits"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(!branch_exists(&rig.repos[0]) && !branch_exists(&rig.repos[1]));
+    assert!(rig.gh_calls().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unrelated_history_is_refused() {
+    let rig = Rig::new().await;
+    rig.start();
+    rig.commit("backend", "api.txt");
+    let clone = rig.run.join("frontend");
+    git(&clone, &["checkout", "-q", "--orphan", "foreign"]);
+    rig.commit("frontend", "ui.txt");
+    git(&clone, &["branch", "-M", "foreign", BRANCH]);
+    let out = rig.publish();
+    assert_ne!(out.status.code(), Some(0));
+    assert!(
+        stderr(&out).contains("unrelated history are refused"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(!branch_exists(&rig.repos[0]));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

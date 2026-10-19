@@ -345,6 +345,36 @@ async fn a_workflow_change_or_an_empty_run_publishes_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_merge_commit_in_the_run_publishes_nothing() {
+    let rig = Rig::new(running_run()).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let commit = |file: &str| {
+        std::fs::write(rig.clone.join(file), "x\n").unwrap();
+        git(&rig.clone, &["add", "-A"]);
+        git(&rig.clone, &["commit", "-q", "-m", file]);
+    };
+    let run_branch = git(&rig.clone, &["symbolic-ref", "--short", "HEAD"]);
+    git(&rig.clone, &["branch", "side"]);
+    commit("a.txt");
+    git(&rig.clone, &["checkout", "-q", "side"]);
+    commit("b.txt");
+    git(&rig.clone, &["checkout", "-q", &run_branch]);
+    git(
+        &rig.clone,
+        &["merge", "-q", "--no-ff", "-m", "merge", "side"],
+    );
+    let out = rig.publish();
+    assert_ne!(out.status.code(), Some(0));
+    assert!(
+        stderr(&out).contains("must be a straight line of new commits"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(rig.gh_argv().is_none());
+    assert!(git(&rig.bare, &["branch", "--list"]).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn publish_is_refused_while_the_run_is_live() {
     let rig = Rig::new(running_run()).await;
     assert!(rig.cmd(&["runner", "start"]).status.success());

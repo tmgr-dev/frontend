@@ -26,7 +26,7 @@ use tmgr_ipc::api::{
 use tmgr_link::privileged;
 use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
 use tmgr_queue::publish::{
-    branch_slug, publish, publish_all, publish_all_plan, publish_plan, PublishInput,
+    branch_slug, publish, publish_all, publish_all_plan, publish_plan, PublishAllPlan, PublishInput,
 };
 use tmgr_queue::workdir;
 use tmgr_runner::daemon;
@@ -1245,6 +1245,8 @@ struct RepoState {
     fetch_url: String,
     push_url: String,
     commit_count: usize,
+    descends_from_base: bool,
+    merge_commits: usize,
     changed_paths: Vec<String>,
 }
 
@@ -1268,19 +1270,26 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
     } else {
         format!("refs/heads/{default_branch}")
     };
+    let (descends_from_base, merge_commits) = workdir::history_facts(repo, &base, head)?;
     let count = q(&["rev-list", "--count", &format!("{base}..{head}")])?;
-    let diff = q(&[
-        "diff",
-        "--name-only",
-        "-z",
-        "--no-renames",
-        &format!("{base}...{head}"),
-    ])?;
+    let diff = if descends_from_base {
+        q(&[
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            &format!("{base}...{head}"),
+        ])?
+    } else {
+        String::new()
+    };
     Ok(RepoState {
         default_branch,
         fetch_url: q(&["remote", "get-url", "origin"])?,
         push_url: q(&["remote", "get-url", "--push", "origin"])?,
         commit_count: count.trim().parse().unwrap_or(0),
+        descends_from_base,
+        merge_commits,
         changed_paths: diff
             .split('\0')
             .filter(|p| !p.is_empty())
@@ -1593,6 +1602,8 @@ pub fn publish_cloud_prs(o: &Opts, t: &PublishTarget) -> Result<Vec<(String, Str
         github_full_name: full_name.to_string(),
         changed_paths: state.changed_paths,
         commit_count: state.commit_count,
+        descends_from_base: state.descends_from_base,
+        merge_commits: state.merge_commits,
         pr_title: format!("{task_key}: {}", verified.title),
         pr_body: format!(
             "Opened by an agent run of {task_key}: {}\n\nReview before merging.",
@@ -1639,7 +1650,52 @@ fn publish_multi(
             "the clones recorded for this run are not the ones of the bound repositories",
         ));
     }
-    for plan in &plans {
+    let live_folder = plans
+        .first()
+        .and_then(|p| workdir::run_clone_dir(&p.path, &t.branch));
+    if live_folder.as_deref() != Some(t.clone_dir.as_path()) {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "the recorded run folder is not the one of the bound primary repository",
+        ));
+    }
+    let mut touched: Vec<TouchedBranch> = Vec::new();
+    let planned = import_and_plan(t, &plans, &mut touched, pr_title, pr_body);
+    let plan = match planned {
+        Ok(plan) => plan,
+        Err(e) => {
+            for b in touched.iter().rev() {
+                if let Err(r) =
+                    workdir::restore_branch(&b.repo, &t.branch, b.before.as_deref(), &b.imported)
+                {
+                    eprintln!(
+                        "warning: could not restore branch {} in {}: {r}",
+                        sanitize_line(&t.branch),
+                        sanitize_line(&b.repo.display().to_string())
+                    );
+                }
+            }
+            return Err(e);
+        }
+    };
+    publish_all(&plan)
+}
+
+struct TouchedBranch {
+    repo: PathBuf,
+    before: Option<String>,
+    imported: String,
+}
+
+fn import_and_plan(
+    t: &PublishTarget,
+    plans: &[ClonePlan],
+    touched: &mut Vec<TouchedBranch>,
+    pr_title: &str,
+    pr_body: &str,
+) -> Result<PublishAllPlan> {
+    let mut inputs = Vec::new();
+    for plan in plans {
         let dir = t.clone_dir.join(&plan.name);
         let expected = t
             .clones
@@ -1655,12 +1711,14 @@ fn publish_multi(
                 ),
             ));
         }
-    }
-    let mut inputs = Vec::new();
-    for plan in &plans {
-        let dir = t.clone_dir.join(&plan.name);
         let repo = PathBuf::from(&plan.path);
+        let before = workdir::branch_tip(&repo, &t.branch)?;
         let sha = workdir::import_branch(&plan.path, &dir, &t.branch)?;
+        touched.push(TouchedBranch {
+            repo: repo.clone(),
+            before,
+            imported: sha.clone(),
+        });
         let state = repo_state(&repo, &sha, None)?;
         inputs.push(PublishInput {
             sha,
@@ -1674,12 +1732,13 @@ fn publish_multi(
             github_full_name: plan.full_name.clone(),
             changed_paths: state.changed_paths,
             commit_count: state.commit_count,
+            descends_from_base: state.descends_from_base,
+            merge_commits: state.merge_commits,
             pr_title: pr_title.to_string(),
             pr_body: pr_body.to_string(),
         });
     }
-    let plan = publish_all_plan(&inputs).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
-    publish_all(&plan)
+    publish_all_plan(&inputs).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))
 }
 
 pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<Vec<(String, String)>> {

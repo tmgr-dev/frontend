@@ -9,6 +9,7 @@ const PREFIX: &str = "tmgr/";
 const PROTECTED: &[&str] = &["main", "master", "develop"];
 const MAX_TITLE: usize = 200;
 const MAX_BODY: usize = 20_000;
+const PR_REQUERY_DELAY: Duration = Duration::from_secs(2);
 const STEP_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +20,7 @@ pub enum Refusal {
     ProtectedBranch(String),
     NoCommits,
     WorkflowChange(String),
+    ForeignHistory(String),
     RemoteMismatch { which: &'static str, url: String },
 }
 
@@ -41,6 +43,10 @@ impl std::fmt::Display for Refusal {
             Refusal::WorkflowChange(p) => write!(
                 f,
                 "publish refused: the run changed {p:?} under .github/, which needs a human"
+            ),
+            Refusal::ForeignHistory(base) => write!(
+                f,
+                "publish refused: the agent's branch must be a straight line of new commits on {base}; merge commits and unrelated history are refused"
             ),
             Refusal::RemoteMismatch { which, url } => write!(
                 f,
@@ -65,6 +71,8 @@ pub struct PublishInput {
     pub github_full_name: String,
     pub changed_paths: Vec<String>,
     pub commit_count: usize,
+    pub descends_from_base: bool,
+    pub merge_commits: usize,
     pub pr_title: String,
     pub pr_body: String,
 }
@@ -203,6 +211,9 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
     }
     if input.commit_count == 0 {
         return Err(Refusal::NoCommits);
+    }
+    if !input.descends_from_base || input.merge_commits > 0 {
+        return Err(Refusal::ForeignHistory(input.default_branch.clone()));
     }
     if let Some(p) = input.changed_paths.iter().find(|p| under_dot_github(p)) {
         return Err(Refusal::WorkflowChange(p.clone()));
@@ -439,7 +450,10 @@ pub fn reuse_pr(
 
 pub fn link_body(body: &str, others: &[&str]) -> String {
     let list: Vec<String> = others.iter().map(|u| format!("- {u}")).collect();
-    format!("{body}\n\nRelated pull requests:\n{}", list.join("\n"))
+    let section = format!("\n\nRelated pull requests:\n{}", list.join("\n"));
+    let room = MAX_BODY.saturating_sub(section.chars().count());
+    let all = format!("{}{section}", body.chars().take(room).collect::<String>());
+    all.chars().take(MAX_BODY).collect()
 }
 
 /// Pushes and opens (or reuses) the pull request of every planned repository, then links them to each
@@ -448,13 +462,27 @@ pub fn publish_all_with(
     plan: &PublishAllPlan,
     exec: &mut dyn FnMut(&[String], &Path) -> Result<String>,
 ) -> Result<Vec<(String, String)>> {
+    publish_all_after(plan, exec, Duration::ZERO)
+}
+
+fn publish_all_after(
+    plan: &PublishAllPlan,
+    exec: &mut dyn FnMut(&[String], &Path) -> Result<String>,
+    requery_after: Duration,
+) -> Result<Vec<(String, String)>> {
     let mut urls: Vec<(String, String)> = Vec::new();
     for r in &plan.repos {
         exec(&r.steps.push, &r.steps.repo)?;
         let listed = exec(&r.list, &r.steps.repo)?;
-        let url = match reuse_pr(&listed, &r.full_name, &r.sha)
-            .map_err(|m| Error::new(tmgr_core::error::Kind::Forbidden, m))?
-        {
+        let reuse = match reuse_pr(&listed, &r.full_name, &r.sha) {
+            Ok(reuse) => Ok(reuse),
+            Err(_) => {
+                std::thread::sleep(requery_after);
+                let listed = exec(&r.list, &r.steps.repo)?;
+                reuse_pr(&listed, &r.full_name, &r.sha)
+            }
+        };
+        let url = match reuse.map_err(|m| Error::new(tmgr_core::error::Kind::Forbidden, m))? {
             Some(url) => url,
             None => {
                 let out = exec(&r.steps.pr, &r.steps.repo)?;
@@ -491,7 +519,7 @@ pub fn publish_all_with(
 }
 
 pub fn publish_all(plan: &PublishAllPlan) -> Result<Vec<(String, String)>> {
-    publish_all_with(plan, &mut |argv, cwd| run(argv, cwd))
+    publish_all_after(plan, &mut |argv, cwd| run(argv, cwd), PR_REQUERY_DELAY)
 }
 
 /// Runs a command the way the publish steps do: cleaned environment, bounded time, in `cwd`.
@@ -518,6 +546,8 @@ mod tests {
             github_full_name: "tmgr-dev/backend".into(),
             changed_paths: vec!["src/a.rs".into(), "README.md".into()],
             commit_count: 2,
+            descends_from_base: true,
+            merge_commits: 0,
             pr_title: "TM-410: Fix login".into(),
             pr_body: "Done by an agent.\nhttps://tmgr.dev/x/tasks/1".into(),
         }
@@ -1121,5 +1151,69 @@ mod tests {
             })
         };
         assert!(publish_all_with(&plan, &mut bad).is_err());
+    }
+
+    #[test]
+    fn history_that_is_not_a_straight_line_on_the_default_branch_is_refused() {
+        let msg = |r: Refusal| r.to_string();
+        let e = refused(|i| i.merge_commits = 1);
+        assert_eq!(
+            msg(e),
+            "publish refused: the agent's branch must be a straight line of new commits on master; merge commits and unrelated history are refused"
+        );
+        assert!(matches!(
+            refused(|i| i.descends_from_base = false),
+            Refusal::ForeignHistory(_)
+        ));
+        let mut inputs = both();
+        inputs[1].descends_from_base = false;
+        let e = publish_all_plan(&inputs).unwrap_err();
+        assert_eq!(e.repo.as_deref(), Some("tmgr-dev/frontend"));
+        assert!(matches!(e.refusal, Refusal::ForeignHistory(_)));
+    }
+
+    #[test]
+    fn a_stale_list_is_queried_once_more_before_refusing() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let url = "https://github.com/tmgr-dev/backend/pull/5";
+        let stale = open_pr(url, false, "tmgr-dev", &"c".repeat(40));
+        let fresh = open_pr(url, false, "tmgr-dev", &"a".repeat(40));
+        let lists = std::cell::RefCell::new(vec![stale.clone(), fresh]);
+        let mut exec = |argv: &[String], _: &Path| -> Result<String> {
+            if argv.get(2).map(String::as_str) == Some("list") && argv[4] == "tmgr-dev/backend" {
+                let mut l = lists.borrow_mut();
+                return Ok(if l.len() > 1 {
+                    l.remove(0)
+                } else {
+                    l[0].clone()
+                });
+            }
+            Ok(if argv.get(2).map(String::as_str) == Some("create") {
+                "https://github.com/tmgr-dev/frontend/pull/12".into()
+            } else {
+                "[]".into()
+            })
+        };
+        let urls = publish_all_with(&plan, &mut exec).unwrap();
+        assert_eq!(urls[0].1, url);
+
+        let log = std::cell::RefCell::new(Vec::new());
+        let e =
+            publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &stale)], &log)).unwrap_err();
+        assert_eq!(e.kind, tmgr_core::error::Kind::Forbidden);
+        let lists = log
+            .borrow()
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some("list"))
+            .count();
+        assert_eq!(lists, 2);
+    }
+
+    #[test]
+    fn the_linked_body_never_passes_the_body_limit() {
+        let body = "x".repeat(MAX_BODY);
+        let linked = link_body(&body, &["https://github.com/tmgr-dev/frontend/pull/12"]);
+        assert_eq!(linked.chars().count(), MAX_BODY);
+        assert!(linked.ends_with("- https://github.com/tmgr-dev/frontend/pull/12"));
     }
 }

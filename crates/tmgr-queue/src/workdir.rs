@@ -439,6 +439,54 @@ pub fn clone_head_branch(clone: &Path) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Whether `head` descends from `base`, and how many merge commits `base..head` holds.
+pub fn history_facts(repo: &Path, base: &str, head: &str) -> Result<(bool, usize)> {
+    let descends = git(Some(repo), &["merge-base", "--is-ancestor", base, head]).is_ok();
+    let merges = git(
+        Some(repo),
+        &[
+            "rev-list",
+            "--merges",
+            "--count",
+            &format!("{base}..{head}"),
+        ],
+    )?;
+    Ok((descends, merges.trim().parse().unwrap_or(usize::MAX)))
+}
+
+/// The commit `refs/heads/<branch>` points at in `repo`, or `None` when the branch does not exist.
+pub fn branch_tip(repo: &Path, branch: &str) -> Result<Option<String>> {
+    validate_branch(branch)?;
+    let reference = format!("refs/heads/{branch}");
+    Ok(git(
+        Some(repo),
+        &[
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("{reference}^{{commit}}"),
+        ],
+    )
+    .ok())
+}
+
+/// Puts `refs/heads/<branch>` back to what `branch_tip` saw before an import. It only acts while the
+/// branch still points at the `imported` commit.
+pub fn restore_branch(
+    repo: &Path,
+    branch: &str,
+    before: Option<&str>,
+    imported: &str,
+) -> Result<()> {
+    validate_branch(branch)?;
+    let reference = format!("refs/heads/{branch}");
+    match before {
+        None => git(Some(repo), &["update-ref", "-d", &reference, imported])?,
+        Some(old) => git(Some(repo), &["update-ref", &reference, old, imported])?,
+    };
+    Ok(())
+}
+
 pub fn import_branch(repo: &str, clone: &Path, branch: &str) -> Result<String> {
     crate::workdir::validate_branch(branch)?;
     let sha = clone_tip(clone, branch)
@@ -798,5 +846,75 @@ mod tests {
         );
         std::fs::write(root.join("run/file"), "x").unwrap();
         assert_eq!(clone_identity(&root.join("run/file")), None);
+    }
+
+    fn run_git(dir: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_AUTHOR_NAME", "t")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "t")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    fn commit_file(dir: &Path, name: &str) {
+        std::fs::write(dir.join(name), name).unwrap();
+        run_git(dir, &["add", name]);
+        run_git(dir, &["commit", "-q", "-m", name]);
+    }
+
+    #[test]
+    fn history_facts_tell_a_straight_line_from_merges_and_unrelated_history() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let base = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(&repo, &["checkout", "-q", "-b", "line"]);
+        commit_file(&repo, "a.txt");
+        let line = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(history_facts(&repo, &base, &line).unwrap(), (true, 0));
+
+        run_git(&repo, &["checkout", "-q", "-b", "side", &base]);
+        commit_file(&repo, "b.txt");
+        run_git(&repo, &["checkout", "-q", "line"]);
+        run_git(&repo, &["merge", "-q", "--no-ff", "-m", "merge", "side"]);
+        let merged = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(history_facts(&repo, &base, &merged).unwrap(), (true, 1));
+
+        run_git(&repo, &["checkout", "-q", "--orphan", "other"]);
+        commit_file(&repo, "c.txt");
+        let other = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        assert!(!history_facts(&repo, &base, &other).unwrap().0);
+    }
+
+    #[test]
+    fn a_restored_branch_is_deleted_or_reset_and_only_while_it_is_the_imported_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = std::fs::canonicalize(tmp.path()).unwrap().join("proj");
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let first = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), None);
+        run_git(&repo, &["branch", "tm-1-fix"]);
+        assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), Some(first.clone()));
+        commit_file(&repo, "a.txt");
+        let second = git(Some(&repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(&repo, &["branch", "-f", "tm-1-fix", &second]);
+        assert!(restore_branch(&repo, "tm-1-fix", Some(&first), &first).is_err());
+        restore_branch(&repo, "tm-1-fix", Some(&first), &second).unwrap();
+        assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), Some(first));
+        run_git(&repo, &["branch", "-f", "tm-1-fix", &second]);
+        restore_branch(&repo, "tm-1-fix", None, &second).unwrap();
+        assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), None);
     }
 }
