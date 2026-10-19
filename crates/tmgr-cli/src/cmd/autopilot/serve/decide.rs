@@ -34,6 +34,7 @@ pub struct Inputs<'a> {
     pub guard: bool,
     pub tool: Option<Tool>,
     pub limits: &'a [GuardLimit],
+    pub required: &'a [String],
     pub billing: Billing,
     pub api_usd: Option<f64>,
     pub cost_cap: Option<f64>,
@@ -67,8 +68,6 @@ impl Decision {
         })
     }
 }
-
-const CLAUDE_WINDOWS: [&str; 2] = ["five_hour", "seven_day"];
 
 fn is_model_window(w: &str) -> bool {
     w.starts_with("model:")
@@ -112,10 +111,10 @@ pub fn decide(i: &Inputs) -> Decision {
         let unknown_row = rows
             .iter()
             .any(|l| l.used_pct.is_none() && !is_model_window(&l.window));
-        let missing = i.tool == Some(Tool::Claude)
-            && CLAUDE_WINDOWS
-                .iter()
-                .any(|w| !rows.iter().any(|l| l.window == *w));
+        let missing = i
+            .required
+            .iter()
+            .any(|w| !rows.iter().any(|l| l.window == *w));
         if rows.is_empty() || unknown_row || missing {
             blockers.push(Blocker::UsageUnknown);
         }
@@ -305,6 +304,7 @@ mod tests {
         elapsed_min: i64,
         failures: u32,
         guard: bool,
+        required: Vec<String>,
     }
 
     impl<'a> Case<'a> {
@@ -321,6 +321,7 @@ mod tests {
                 elapsed_min: 10,
                 failures: 0,
                 guard: true,
+                required: vec!["five_hour".into(), "seven_day".into()],
             }
         }
 
@@ -334,6 +335,7 @@ mod tests {
                 guard: self.guard,
                 tool: Some(Tool::Claude),
                 limits: self.limits,
+                required: &self.required,
                 billing: self.billing,
                 api_usd: self.api_usd,
                 cost_cap: self.cost_cap,
@@ -397,6 +399,16 @@ mod tests {
         ] {
             assert_eq!(kinds(&Case::new(&l).decide()), ["unknown"]);
         }
+    }
+
+    #[test]
+    fn a_window_the_tool_never_reported_is_not_required() {
+        let l = vec![row("five_hour", Some(10.0))];
+        let mut c = Case::new(&l);
+        c.required = vec!["five_hour".into()];
+        assert!(c.decide().starts_allowed());
+        c.required = vec!["five_hour".into(), "seven_day".into()];
+        assert_eq!(kinds(&c.decide()), ["unknown"]);
     }
 
     #[test]

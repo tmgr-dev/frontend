@@ -620,6 +620,11 @@ fn launch(
         finish: Finish::PrOnly,
         tasks: tasks.clone(),
         signed: report.signed.clone(),
+        windows: if plan.answers.usage_guard {
+            plan.limits.iter().map(|l| l.window.clone()).collect()
+        } else {
+            Vec::new()
+        },
     };
     store.save_settings(&settings)?;
     let pid = start_hosted(&id)?;

@@ -357,6 +357,7 @@ fn settings(tasks: &[i64], tweak: impl Fn(&mut Answers)) -> Settings {
         finish: crate::cmd::autopilot::model::Finish::PrOnly,
         tasks: tasks.iter().copied().collect(),
         signed: vec![],
+        windows: vec!["five_hour".into(), "seven_day".into()],
     }
 }
 

@@ -59,6 +59,8 @@ pub struct Settings {
     pub finish: Finish,
     pub tasks: BTreeSet<i64>,
     pub signed: Vec<i64>,
+    #[serde(default)]
+    pub windows: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -521,6 +521,7 @@ impl<'a> Autopilot<'a> {
             guard: self.s.answers.usage_guard,
             tool: self.tool,
             limits: &self.guard,
+            required: &self.s.windows,
             billing: self.billing,
             api_usd: self.cost.api_usd,
             cost_cap: self.s.answers.max_cost_usd,
