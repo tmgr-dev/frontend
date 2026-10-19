@@ -917,49 +917,51 @@ impl RunnerRuns {
     }
 }
 
+fn run_create_req(req: &StartRequest) -> RunCreateReq {
+    RunCreateReq {
+        clones: Vec::new(),
+        profile: req.profile.clone(),
+        task: Some(req.task),
+        cwd: req.cwd.clone(),
+        name: Some(req.name.clone()),
+        model: req.model.clone(),
+        cols: 120,
+        rows: 40,
+        bundle: Some(req.bundle.clone()),
+        bundle_sha256: Some(req.bundle_sha256.clone()),
+        cwd_pin: None,
+        origin: None,
+        permission_mode: Some(req.permission_mode.to_string()),
+        start_key: Some(req.start_key.clone()),
+        clone_of: Some(req.clone_of.clone()),
+        trust_cwd: None,
+        trust_via_repo: None,
+        agent_work: true,
+        cloud: req.cloud.clone(),
+        unattended: req.unattended,
+        exe_pin: Some(ExePin {
+            path: req.exe_path.clone(),
+            sha256: req.exe_sha256.clone(),
+        }),
+        argv_sha256: Some(req.argv_sha256.clone()),
+    }
+}
+
 impl RunsClient for RunnerRuns {
     fn create(&self, req: &StartRequest) -> Result<String> {
         self.ready()?;
-        self.with(|c| {
-            c.create_run(RunCreateReq {
-                clones: Vec::new(),
-                profile: req.profile.clone(),
-                task: Some(req.task),
-                cwd: req.cwd.clone(),
-                name: Some(req.name.clone()),
-                model: req.model.clone(),
-                cols: 120,
-                rows: 40,
-                bundle: Some(req.bundle.clone()),
-                bundle_sha256: Some(req.bundle_sha256.clone()),
-                cwd_pin: None,
-                origin: None,
-                permission_mode: Some(req.permission_mode.to_string()),
-                start_key: Some(req.start_key.clone()),
-                clone_of: Some(req.clone_of.clone()),
-                trust_cwd: None,
-                trust_via_repo: None,
-                agent_work: true,
-                cloud: req.cloud.clone(),
-                unattended: req.unattended,
-                exe_pin: Some(ExePin {
-                    path: req.exe_path.clone(),
-                    sha256: req.exe_sha256.clone(),
-                }),
-                argv_sha256: Some(req.argv_sha256.clone()),
+        self.with(|c| c.create_run(run_create_req(req)))
+            .map(|info| info.id)
+            .map_err(|e| {
+                if runner_refused(&e) {
+                    super::runner::rerr(e)
+                } else {
+                    Error::new(
+                        Kind::Offline,
+                        format!("the runner did not confirm the start: {e}"),
+                    )
+                }
             })
-        })
-        .map(|info| info.id)
-        .map_err(|e| {
-            if runner_refused(&e) {
-                super::runner::rerr(e)
-            } else {
-                Error::new(
-                    Kind::Offline,
-                    format!("the runner did not confirm the start: {e}"),
-                )
-            }
-        })
     }
 
     fn status(&self, run_id: &str) -> RunState {
@@ -1075,5 +1077,54 @@ mod publish_target_tests {
         );
         assert_eq!(t.session_id.as_deref(), Some("s_abc"));
         assert!(publish_target(&pickup(false)).is_err());
+    }
+}
+
+#[cfg(test)]
+mod run_request_tests {
+    use super::*;
+
+    fn start_request() -> StartRequest {
+        StartRequest {
+            start_key: "q_1-1".into(),
+            permission_mode: "accept-edits",
+            rule: "r".into(),
+            trigger: "rule:r".into(),
+            profile: "claude-code".into(),
+            model: Some("opus".into()),
+            cwd: "/work/repo-worktrees/queue/q_1".into(),
+            clone_of: "/work/repo".into(),
+            exe_path: "/bin/claude".into(),
+            exe_sha256: "e".repeat(64),
+            argv_sha256: "a".repeat(64),
+            name: "TM-410 rule:r".into(),
+            task: tmgr_ipc::api::TaskRef {
+                workspace_id: 56,
+                task_id: 9002,
+            },
+            bundle: serde_json::from_value(json!({
+                "v": 1, "task": {"workspace_id": 56, "task_id": 9002}, "title": "t", "body": "b",
+                "author": {"kind": "human"}, "comments": [], "pages": [],
+                "launch": {"profile": "claude-code", "cwd": "/work/repo-worktrees/queue/q_1"}
+            }))
+            .unwrap(),
+            bundle_sha256: "b".repeat(64),
+            cloud: serde_json::from_value(json!({
+                "host": "api.tmgr.dev", "user_id": 1, "workspace_id": 56, "task_id": 9002,
+                "category_id": 127, "content_sha256": "h", "key_id": "k", "signed_at": 1,
+                "signature": "s", "kind": "author"
+            }))
+            .unwrap(),
+            unattended: true,
+        }
+    }
+
+    #[test]
+    fn golden_single_repo_queue_request() {
+        let text = serde_json::to_string(&run_create_req(&start_request())).unwrap();
+        assert_eq!(
+            text,
+            r#"{"profile":"claude-code","task":{"workspace_id":56,"task_id":9002},"cwd":"/work/repo-worktrees/queue/q_1","name":"TM-410 rule:r","model":"opus","cols":120,"rows":40,"bundle":{"v":1,"task":{"workspace_id":56,"task_id":9002},"title":"t","body":"b","author":{"kind":"human"},"comments":[],"pages":[],"launch":{"profile":"claude-code","cwd":"/work/repo-worktrees/queue/q_1"}},"bundle_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","permission_mode":"accept-edits","start_key":"q_1-1","clone_of":"/work/repo","exe_pin":{"path":"/bin/claude","sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},"argv_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","agent_work":true,"cloud":{"host":"api.tmgr.dev","user_id":1,"workspace_id":56,"task_id":9002,"category_id":127,"content_sha256":"h","key_id":"k","signed_at":1,"signature":"s","kind":"author"},"unattended":true}"#
+        );
     }
 }

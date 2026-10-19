@@ -621,4 +621,22 @@ mod tests {
         .unwrap();
         assert_eq!(load(&p).err().unwrap().exit_code(), 5);
     }
+    #[test]
+    fn golden_rules_file_bytes() {
+        let mut r = rule(Path::new("/work/repo"));
+        r.model = Some("opus".into());
+        r.hours = Some("09-19".into());
+        let file = QueueFile {
+            version: VERSION,
+            enabled: true,
+            rules: vec![r],
+        };
+        let d = tempfile::tempdir().unwrap();
+        let p = Paths::at(d.path());
+        save(&p, &file).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(p.rules()).unwrap(),
+            "version = 1\nenabled = true\n\n[[rule]]\nname = \"backlog-builder\"\nworkspace = \"local:personal\"\nproject = \"TM\"\nstatus_type = \"backlog\"\npersona = \"builder\"\nprofile = \"claude-code\"\nmodel = \"opus\"\nrepo = \"/work/repo\"\nmax_concurrent = 1\nhours = \"09-19\"\ntrusted_authors = [\"human\"]\nauto = false\n"
+        );
+    }
 }

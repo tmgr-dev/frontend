@@ -18,7 +18,8 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::notify::build_push;
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{
-    caps, AuthorKind, BundleAuthor, BundleLaunch, CloudApproval, RunBundle, RunCreateReq, TaskRef,
+    caps, AuthorKind, BundleAuthor, BundleLaunch, CloudApproval, ExePin, RunBundle, RunCreateReq,
+    TaskRef,
 };
 use tmgr_link::privileged;
 use tmgr_queue::publish::{branch_slug, publish, publish_plan, PublishInput};
@@ -413,6 +414,20 @@ fn record_path(code: &str, task_id: i64) -> Option<PathBuf> {
         .map(|d| d.join("task-runs").join(format!("{code}-{task_id}.json")))
 }
 
+fn record_body(
+    repo: &str,
+    clone: &Path,
+    branch: &str,
+    session: Option<(&str, &str)>,
+) -> serde_json::Value {
+    let mut body = json!({ "repo": repo, "clone": clone, "branch": branch, "cloud": true });
+    if let Some((id, agent)) = session {
+        body["session"] = json!(id);
+        body["agent"] = json!(agent);
+    }
+    body
+}
+
 fn write_record(
     code: &str,
     task_id: i64,
@@ -427,11 +442,7 @@ fn write_record(
     if let Some(dir) = path.parent() {
         config::ensure_private_dir(dir)?;
     }
-    let mut body = json!({ "repo": repo, "clone": clone, "branch": branch, "cloud": true });
-    if let Some((id, agent)) = session {
-        body["session"] = json!(id);
-        body["agent"] = json!(agent);
-    }
+    let body = record_body(repo, clone, branch, session);
     config::write_atomic(&path, body.to_string().as_bytes(), 0o600)
 }
 
@@ -462,6 +473,52 @@ fn read_record(code: &str, task_id: i64) -> Result<Record> {
         session: text_of("session"),
         agent: text_of("agent"),
     })
+}
+
+struct RunPlan<'a> {
+    profile: &'a str,
+    task: TaskRef,
+    cwd: &'a str,
+    name: String,
+    model: Option<&'a str>,
+    cols: u16,
+    rows: u16,
+    bundle: RunBundle,
+    bundle_sha256: String,
+    mode: &'a str,
+    clone_of: Option<String>,
+    via_repo: bool,
+    claim: CloudApproval,
+    unattended: bool,
+    exe_pin: ExePin,
+    argv_sha256: String,
+}
+
+fn run_request(p: &RunPlan) -> RunCreateReq {
+    RunCreateReq {
+        clones: Vec::new(),
+        profile: p.profile.to_string(),
+        task: Some(p.task),
+        cwd: p.cwd.to_string(),
+        name: Some(p.name.clone()),
+        model: p.model.map(str::to_string),
+        cols: p.cols,
+        rows: p.rows,
+        bundle: Some(p.bundle.clone()),
+        bundle_sha256: Some(p.bundle_sha256.clone()),
+        cwd_pin: None,
+        origin: None,
+        permission_mode: Some(p.mode.to_string()),
+        start_key: None,
+        clone_of: p.clone_of.clone(),
+        trust_cwd: None,
+        trust_via_repo: p.via_repo.then_some(true),
+        agent_work: true,
+        cloud: Some(p.claim.clone()),
+        unattended: p.unattended,
+        exe_pin: Some(p.exe_pin.clone()),
+        argv_sha256: Some(p.argv_sha256.clone()),
+    }
 }
 
 pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
@@ -615,30 +672,24 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             .any(|k| std::env::var_os(k).is_some());
     notify_started(&ctx, &ok);
     let info = rc
-        .create_run(RunCreateReq {
-            clones: Vec::new(),
-            profile: profile.clone(),
-            task: Some(task_ref),
-            cwd: cwd.clone(),
-            name: Some(a.name.clone().unwrap_or_else(|| ok.task_key.clone())),
-            model: a.model.clone(),
+        .create_run(run_request(&RunPlan {
+            profile: &profile,
+            task: task_ref,
+            cwd: &cwd,
+            name: a.name.clone().unwrap_or_else(|| ok.task_key.clone()),
+            model: a.model.as_deref(),
             cols,
             rows,
-            bundle: Some(bundle),
-            bundle_sha256: Some(sha),
-            cwd_pin: None,
-            origin: None,
-            permission_mode: Some(mode.to_string()),
-            start_key: None,
+            bundle,
+            bundle_sha256: sha,
+            mode,
             clone_of: Some(repo.clone()),
-            trust_cwd: None,
-            trust_via_repo: via_repo.then_some(true),
-            agent_work: true,
-            cloud: Some(ok.claim.clone()),
+            via_repo,
+            claim: ok.claim.clone(),
             unattended: a.yes || !interactive,
-            exe_pin: Some(exe_pin),
-            argv_sha256: Some(argv_digest),
-        })
+            exe_pin,
+            argv_sha256: argv_digest,
+        }))
         .map_err(rerr)?;
     write_record(
         &ws.code,
@@ -1238,5 +1289,82 @@ mod tests {
         let b = notification_body("TM-1", &format!("{}\nx", "a".repeat(200)), "box");
         assert!(b.starts_with("TM-1 aaaa") && b.ends_with(" on box") && !b.contains('\n'));
         assert!(b.chars().count() < 100);
+    }
+
+    fn plan_bundle() -> RunBundle {
+        serde_json::from_value(json!({
+            "v": 1, "task": {"workspace_id": 56, "task_id": 9002}, "title": "t", "body": "b",
+            "author": {"kind": "human"}, "comments": [], "pages": [],
+            "launch": {"profile": "claude-code", "cwd": "/work/repo-worktrees/tmgr-tm-410-fix",
+                "permission_mode": "accept-edits"}
+        }))
+        .unwrap()
+    }
+
+    fn plan_claim() -> CloudApproval {
+        CloudApproval {
+            repos_sha256: None,
+            host: "api.tmgr.dev".into(),
+            user_id: 1,
+            workspace_id: 56,
+            task_id: 9002,
+            category_id: 127,
+            content_sha256: "h".into(),
+            key_id: "k".into(),
+            signed_at: 1,
+            signature: "s".into(),
+            kind: "author".into(),
+        }
+    }
+
+    #[test]
+    fn golden_single_repo_run_request() {
+        let req = run_request(&RunPlan {
+            profile: "claude-code",
+            task: TaskRef {
+                workspace_id: 56,
+                task_id: 9002,
+            },
+            cwd: "/work/repo-worktrees/tmgr-tm-410-fix",
+            name: "TM-410".into(),
+            model: Some("opus"),
+            cols: 120,
+            rows: 40,
+            bundle: plan_bundle(),
+            bundle_sha256: "b".repeat(64),
+            mode: "accept-edits",
+            clone_of: Some("/work/repo".into()),
+            via_repo: true,
+            claim: plan_claim(),
+            unattended: false,
+            exe_pin: ExePin {
+                path: "/bin/claude".into(),
+                sha256: "e".repeat(64),
+            },
+            argv_sha256: "a".repeat(64),
+        });
+        assert_eq!(
+            serde_json::to_string(&req).unwrap(),
+            r#"{"profile":"claude-code","task":{"workspace_id":56,"task_id":9002},"cwd":"/work/repo-worktrees/tmgr-tm-410-fix","name":"TM-410","model":"opus","cols":120,"rows":40,"bundle":{"v":1,"task":{"workspace_id":56,"task_id":9002},"title":"t","body":"b","author":{"kind":"human"},"comments":[],"pages":[],"launch":{"profile":"claude-code","cwd":"/work/repo-worktrees/tmgr-tm-410-fix","permission_mode":"accept-edits"}},"bundle_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","permission_mode":"accept-edits","clone_of":"/work/repo","trust_via_repo":true,"exe_pin":{"path":"/bin/claude","sha256":"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},"argv_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","agent_work":true,"cloud":{"host":"api.tmgr.dev","user_id":1,"workspace_id":56,"task_id":9002,"category_id":127,"content_sha256":"h","key_id":"k","signed_at":1,"signature":"s","kind":"author"}}"#
+        );
+    }
+
+    #[test]
+    fn golden_single_repo_record() {
+        let clone = Path::new("/work/repo-worktrees/tmgr-tm-410-fix");
+        assert_eq!(
+            record_body("/work/repo", clone, "tmgr/tm-410-fix", None).to_string(),
+            r#"{"repo":"/work/repo","clone":"/work/repo-worktrees/tmgr-tm-410-fix","branch":"tmgr/tm-410-fix","cloud":true}"#
+        );
+        assert_eq!(
+            record_body(
+                "/work/repo",
+                clone,
+                "tmgr/tm-410-fix",
+                Some(("s_1", "claude-code"))
+            )
+            .to_string(),
+            r#"{"repo":"/work/repo","clone":"/work/repo-worktrees/tmgr-tm-410-fix","branch":"tmgr/tm-410-fix","cloud":true,"session":"s_1","agent":"claude-code"}"#
+        );
     }
 }
