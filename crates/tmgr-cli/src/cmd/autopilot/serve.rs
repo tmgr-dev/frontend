@@ -601,6 +601,7 @@ impl<'a> Autopilot<'a> {
                     .max_tasks
                     .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
                 only: Some(self.s.tasks.clone()),
+                plan: None,
             }
         };
         match self.p.queue.pass(policy) {

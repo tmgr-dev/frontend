@@ -1244,9 +1244,30 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
     }
 }
 
+fn team_supported(bundle: &tmgr_ipc::api::RunBundle, caps: &[String]) -> Result<()> {
+    if bundle.team.is_some() && !caps.iter().any(|c| c == tmgr_ipc::api::caps::TEAM_V1) {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the runner is too old for team runs; restart it after the update",
+        )
+        .hint(format!(
+            "{0} runner stop && {0} runner start",
+            super::runner::bin()
+        )));
+    }
+    Ok(())
+}
+
 impl RunsClient for RunnerRuns {
     fn create(&self, req: &StartRequest) -> Result<String> {
         self.ready()?;
+        let caps = self
+            .client
+            .borrow()
+            .as_ref()
+            .map(|c| c.welcome().caps.clone())
+            .unwrap_or_default();
+        team_supported(&req.bundle, &caps)?;
         if tmgr_runner::bundle::has_owner_text(&req.bundle) {
             let supported = self.client.borrow().as_ref().is_some_and(|c| {
                 c.welcome()
@@ -1647,5 +1668,37 @@ mod rule_binding_tests {
         let s = entry(Some(set(&[("acme/x", &be)])));
         let m = check(&rule(&[&be]), &ok, &s, Some("acme/x")).unwrap_err();
         assert!(m.contains("set of repositories"), "{m}");
+    }
+}
+
+#[cfg(test)]
+mod team_cap_tests {
+    use super::*;
+    use tmgr_ipc::api::{caps, BundleTeam, RunBundle, TeamMode};
+
+    fn bundle(team: Option<BundleTeam>) -> RunBundle {
+        let mut b: RunBundle = serde_json::from_str(include_str!(
+            "../../../tmgr-ipc/tests/fixtures/run_bundle.json"
+        ))
+        .unwrap();
+        b.team = team;
+        b
+    }
+
+    fn team() -> Option<BundleTeam> {
+        Some(BundleTeam {
+            size: 2,
+            mode: TeamMode::Eco,
+        })
+    }
+
+    #[test]
+    fn a_team_needs_the_team_capability() {
+        let old = vec![caps::SIGNED_CONTEXT_V1.to_string()];
+        let new = vec![caps::TEAM_V1.to_string()];
+        let e = team_supported(&bundle(team()), &old).unwrap_err();
+        assert!(e.message.contains("too old for team runs"), "{}", e.message);
+        assert!(team_supported(&bundle(team()), &new).is_ok());
+        assert!(team_supported(&bundle(None), &old).is_ok());
     }
 }
