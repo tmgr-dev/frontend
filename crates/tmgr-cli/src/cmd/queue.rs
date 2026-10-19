@@ -1,7 +1,8 @@
 use crate::cli::Cli;
 use crate::cmd::runner::allow::host_of;
 use crate::cmd::runner::cloud::{
-    bound_set_paths, cloud_gate, parse_eligibility, publish_cloud, CloneRef, PublishTarget,
+    bound_set_paths, cloud_gate, parse_eligibility, publish_outcome, CloneRef, Mode, Outcome,
+    PublishTarget,
 };
 use crate::cmd::runner::Opts;
 use crate::ctx::Ctx;
@@ -268,6 +269,14 @@ pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
     }
 }
 
+fn shown_status(p: &state::Pickup) -> &'static str {
+    if p.held.is_some() {
+        "held"
+    } else {
+        p.status.name()
+    }
+}
+
 fn status(paths: &Paths) -> Result<Output> {
     let loaded = rules::load(paths)?;
     let tampered = rules::is_tampered(paths, &loaded)?;
@@ -281,9 +290,9 @@ fn status(paths: &Paths) -> Result<Output> {
         .iter()
         .filter(|p| !p.released)
         .map(|p| {
-            json!({"id": p.id, "rule": p.rule, "task": p.key, "status": p.status.name(),
+            json!({"id": p.id, "rule": p.rule, "task": p.key, "status": shown_status(p),
                 "bundle_sha256": p.bundle_sha256, "tainted": p.context_tainted,
-                "run": p.run_id, "reason": p.reason})
+                "run": p.run_id, "reason": p.reason, "held": p.held})
         })
         .collect();
     let mut lines = vec![format!(
@@ -310,7 +319,7 @@ fn status(paths: &Paths) -> Result<Output> {
                 p.id.clone(),
                 p.rule.clone(),
                 p.key.clone(),
-                p.status.name().to_string(),
+                shown_status(p).to_string(),
                 p.bundle_sha256[..12].to_string(),
             ]
         })
@@ -866,6 +875,7 @@ fn rule_binding(
 
 struct CliPublisher<'a> {
     opts: &'a Opts<'a>,
+    held: RefCell<Option<state::Held>>,
 }
 
 pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
@@ -894,7 +904,20 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
 
 impl Publisher for CliPublisher<'_> {
     fn publish(&self, pickup: &state::Pickup) -> Result<String> {
-        publish_cloud(self.opts, &publish_target(pickup)?)
+        match publish_outcome(self.opts, &publish_target(pickup)?, Mode::Publish)? {
+            Outcome::Published(urls) => {
+                Ok(urls.into_iter().next().map(|(_, u)| u).unwrap_or_default())
+            }
+            Outcome::Held { held, text } => {
+                *self.held.borrow_mut() = Some(held);
+                Err(state::held_error(&text))
+            }
+            Outcome::Reviewed => Err(Error::internal("unexpected outcome of a publish")),
+        }
+    }
+
+    fn take_held(&self) -> Option<state::Held> {
+        self.held.borrow_mut().take()
     }
 }
 
@@ -1076,7 +1099,10 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
         quiet: cli.quiet,
         style: stdout_style(cli.no_color),
     };
-    let publisher = CliPublisher { opts: &opts };
+    let publisher = CliPublisher {
+        opts: &opts,
+        held: RefCell::new(None),
+    };
     if tmgr_queue::needs_runner(paths)? {
         client.ready()?;
     }

@@ -3,9 +3,13 @@
 mod common;
 
 use common::{git, init_repo, write_script, Env, ACCESS};
+use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
 use serde_json::{json, Value};
+use std::io::{Read, Write};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, ResponseTemplate};
 
@@ -101,8 +105,10 @@ impl Rig {
             &stub,
             "gh",
             &format!(
-                "printf '%s\\n' \"$@\" >> \"{log}\"\nprintf -- '---\\n' >> \"{log}\"\ncase \"$1 $2\" in\n  \"pr list\") echo '[]' ;;\n  \"pr create\") repo=\"\"; while [ $# -gt 0 ]; do if [ \"$1\" = \"--repo\" ]; then repo=\"$2\"; fi; shift; done; echo \"https://github.com/$repo/pull/7\" ;;\nesac",
-                log = root.join("gh-log.txt").display()
+                "if [ \"$1 $2\" = \"repo view\" ]; then\n  printf '%s\\n' \"$3\" >> \"{views}\"\n  f=\"{vis}/$(printf '%s' \"$3\" | tr / _)\"\n  if [ -f \"$f\" ]; then cat \"$f\"; exit 0; fi\n  exit 1\nfi\nprintf '%s\\n' \"$@\" >> \"{log}\"\nprintf -- '---\\n' >> \"{log}\"\ncase \"$1 $2\" in\n  \"pr list\") echo '[]' ;;\n  \"pr create\") repo=\"\"; while [ $# -gt 0 ]; do if [ \"$1\" = \"--repo\" ]; then repo=\"$2\"; fi; shift; done; echo \"https://github.com/$repo/pull/7\" ;;\nesac",
+                log = root.join("gh-log.txt").display(),
+                views = root.join("gh-views.txt").display(),
+                vis = root.join("visibility").display()
             ),
         );
         let rig = Rig {
@@ -126,6 +132,44 @@ impl Rig {
         std::fs::write(clone.join(file), "x\n").unwrap();
         git(&clone, &["add", "-A"]);
         git(&clone, &["commit", "-q", "-m", "work"]);
+    }
+
+    fn visibility(&self, name: &str, visibility: &str) {
+        let dir = self.env.tmp.path().join("visibility");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(name.replace('/', "_")),
+            json!({"visibility": visibility, "owner": {"login": "tmgr-dev"}}).to_string(),
+        )
+        .unwrap();
+    }
+
+    fn mixed_visibility(&self) {
+        self.visibility(NAMES[0], "PRIVATE");
+        self.visibility(NAMES[1], "PUBLIC");
+    }
+
+    fn commit_text(&self, name: &str, file: &str, text: &str, message: &str) {
+        let clone = self.run.join(name);
+        std::fs::write(clone.join(file), format!("{text}\n")).unwrap();
+        git(&clone, &["add", "-A"]);
+        git(&clone, &["commit", "-q", "-m", message]);
+    }
+
+    fn views(&self) -> Vec<String> {
+        std::fs::read_to_string(self.env.tmp.path().join("gh-views.txt"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn read_record(&self) -> Value {
+        serde_json::from_str(
+            &std::fs::read_to_string(self.env.state_dir().join("task-runs/tmgrdev-9100.json"))
+                .unwrap(),
+        )
+        .unwrap()
     }
 
     async fn seed(&self) {
@@ -617,4 +661,371 @@ async fn a_multi_run_is_accepted_by_the_runner_and_its_session_is_recorded() {
     .unwrap();
     assert_eq!(record["session"], v["data"]["session"]["id"]);
     assert_eq!(record["agent"], "fake");
+}
+
+const MARKER: &str = "LEAKTEST-PRIVATE-MARKER";
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_leak_into_the_public_repository_holds_everything_back() {
+    let rig = Rig::new().await;
+    rig.mixed_visibility();
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
+    assert!(stderr(&out).contains("held:"), "{}", stderr(&out));
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(rig.gh_calls().is_empty());
+    assert_eq!(rig.views().len(), 2);
+    assert!(branch_exists(&rig.repos[0]) && branch_exists(&rig.repos[1]));
+    let held = &rig.read_record()["held"];
+    assert_eq!(held["categories"], json!(["overlap"]));
+    assert_eq!(held["shas"].as_object().unwrap().len(), 2);
+    for (i, name) in NAMES.iter().enumerate() {
+        assert_eq!(
+            held["shas"][name],
+            git(
+                &rig.repos[i],
+                &["rev-parse", &format!("refs/heads/{BRANCH}")]
+            )
+        );
+    }
+    let api = rig.calls().await;
+    let comments: Vec<_> = api
+        .iter()
+        .filter(|c| c.1 == "/api/tasks/9100/comments")
+        .collect();
+    assert_eq!(comments.len(), 1);
+    let comment = &comments[0].2;
+    assert!(comment.contains("Publish held: the leak gate found 1 finding(s) (overlap) in tmgr-dev/frontend. Nothing was pushed."));
+    assert!(comment.contains("tmgr run TM-411 --review"));
+    let finishes: Vec<_> = api
+        .iter()
+        .filter(|c| c.1 == "/api/agent-work/77/finish")
+        .collect();
+    assert_eq!(finishes.len(), 1);
+    assert!(finishes[0].2.contains("cancelled"));
+    for (_, _, body) in &api {
+        assert!(!body.contains("ui.txt") && !body.contains(MARKER), "{body}");
+    }
+    assert!(api
+        .iter()
+        .all(|c| !(c.0 == "PUT" && c.1 == "/api/tasks/9100/4")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_leak_in_a_commit_message_is_held_too() {
+    let rig = Rig::new().await;
+    rig.mixed_visibility();
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit_text("frontend", "ui.txt", "x", MARKER);
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_clean_mixed_run_is_published_as_before() {
+    let rig = Rig::new().await;
+    rig.mixed_visibility();
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit("frontend", "ui.txt");
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(rig.pushed(0) && rig.pushed(1));
+    assert!(rig.read_record().get("held").is_none());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_marker_in_the_private_repository_itself_is_not_gated() {
+    let rig = Rig::new().await;
+    rig.mixed_visibility();
+    rig.start();
+    rig.commit_text("backend", "api.txt", MARKER, "work");
+    rig.commit("frontend", "ui.txt");
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(rig.pushed(0) && rig.pushed(1));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repositories_of_the_same_visibility_and_owner_are_not_gated() {
+    for visibility in ["PRIVATE", "PUBLIC"] {
+        let rig = Rig::new().await;
+        rig.visibility(NAMES[0], visibility);
+        rig.visibility(NAMES[1], visibility);
+        rig.start();
+        rig.commit("backend", "api.txt");
+        rig.commit_text("frontend", "ui.txt", MARKER, "work");
+        let out = rig.publish();
+        assert_eq!(out.status.code(), Some(0), "{visibility}: {}", stderr(&out));
+        assert!(rig.pushed(0) && rig.pushed(1));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn repositories_that_cannot_be_looked_up_are_gated() {
+    let rig = Rig::new().await;
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_private_repository_of_another_owner_is_a_source_for_a_private_one() {
+    let rig = Rig::new().await;
+    rig.visibility(NAMES[0], "PRIVATE");
+    let dir = rig.env.tmp.path().join("visibility");
+    std::fs::write(
+        dir.join(NAMES[1].replace('/', "_")),
+        json!({"visibility": "PRIVATE", "owner": {"login": "someone-else"}}).to_string(),
+    )
+    .unwrap();
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn review_push_and_drop_need_a_terminal_and_never_run_in_an_agent_session() {
+    let rig = Rig::new().await;
+    rig.mixed_visibility();
+    rig.start();
+    rig.commit("backend", "api.txt");
+    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    assert_eq!(rig.publish().status.code(), Some(6));
+    for flags in [
+        vec!["--review"],
+        vec!["--review", "--push"],
+        vec!["--review", "--drop"],
+    ] {
+        let mut args = vec!["--ws", "tmgrdev", "run", "9100"];
+        args.extend(flags.iter().copied());
+        let out = rig.cmd(&args);
+        assert_eq!(out.status.code(), Some(10), "{flags:?}: {}", stderr(&out));
+        let mut c = rig.env.cmd();
+        c.env("PATH", common::path_with(Some(&rig.stub)))
+            .env("TMGR_RUN_ID", "r1")
+            .args(&args);
+        let out = c.output().unwrap();
+        assert_eq!(out.status.code(), Some(5), "{flags:?}: {}", stderr(&out));
+    }
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(rig.read_record().get("held").is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_owner_flags_fit_together() {
+    let rig = Rig::new().await;
+    for args in [
+        vec!["run", "9100", "--push"],
+        vec!["run", "9100", "--drop"],
+        vec!["run", "9100", "--review", "--push", "--drop"],
+        vec!["run", "9100", "--review", "--publish"],
+        vec!["run", "--review"],
+    ] {
+        let out = rig.cmd(&args);
+        assert_eq!(out.status.code(), Some(2), "{args:?}: {}", stderr(&out));
+    }
+}
+
+struct Pty {
+    screen: Arc<Mutex<vt100::Parser>>,
+    writer: Box<dyn Write + Send>,
+    child: Box<dyn Child + Send + Sync>,
+    _master: Box<dyn portable_pty::MasterPty + Send>,
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+    }
+}
+
+impl Pty {
+    fn text(&self) -> String {
+        self.screen.lock().unwrap().screen().contents()
+    }
+
+    fn wait_for(&self, needle: &str) {
+        let end = Instant::now() + Duration::from_secs(30);
+        while !self.text().contains(needle) {
+            assert!(
+                Instant::now() < end,
+                "timed out waiting for {needle:?}; screen:\n{}",
+                self.text()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
+    fn line(&mut self, s: &str) {
+        self.writer.write_all(format!("{s}\r").as_bytes()).unwrap();
+        self.writer.flush().unwrap();
+    }
+
+    fn exit(&mut self) -> i32 {
+        let end = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Some(st) = self.child.try_wait().unwrap() {
+                return st.exit_code() as i32;
+            }
+            assert!(Instant::now() < end, "did not exit:\n{}", self.text());
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+impl Rig {
+    fn pty(&self, args: &[&str]) -> Pty {
+        let pair = native_pty_system()
+            .openpty(PtySize {
+                rows: 60,
+                cols: 160,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_tmgr"));
+        cmd.args(args);
+        cmd.env_clear();
+        for (k, v) in self.env.std_cmd().get_envs() {
+            if let Some(v) = v {
+                cmd.env(k, v);
+            }
+        }
+        cmd.env("PATH", common::path_with(Some(&self.stub)));
+        cmd.env("TMGR_RUNNER_DIR", self.run_dir.path().join("r"));
+        cmd.env("TMGR_RUNNER_HOMES", self.run_dir.path().join("h"));
+        let child = pair.slave.spawn_command(cmd).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let screen = Arc::new(Mutex::new(vt100::Parser::new(60, 160, 0)));
+        let sink = screen.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            while let Ok(n) = reader.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                sink.lock().unwrap().process(&buf[..n]);
+            }
+        });
+        Pty {
+            screen,
+            writer: pair.master.take_writer().unwrap(),
+            child,
+            _master: pair.master,
+        }
+    }
+
+    async fn held(&self) {
+        self.mixed_visibility();
+        self.start();
+        self.commit("backend", "api.txt");
+        self.commit_text("frontend", "ui.txt", MARKER, "work");
+        assert_eq!(self.publish().status.code(), Some(6));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_owner_reviews_the_findings_and_the_public_diff_in_a_terminal() {
+    let rig = Rig::new().await;
+    rig.held().await;
+    let mut p = rig.pty(&["--ws", "tmgrdev", "run", "9100", "--review"]);
+    p.wait_for("tmgr-dev/frontend diffstat");
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    let screen = p.text();
+    assert!(screen.contains("overlap | tmgr-dev/frontend | commit history"));
+    assert!(screen.contains("ui.txt"), "{screen}");
+    assert!(screen.contains(MARKER), "{screen}");
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(rig.read_record().get("held").is_some());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_wrong_confirmation_pushes_nothing_and_the_right_one_publishes_and_clears_the_hold() {
+    let rig = Rig::new().await;
+    rig.held().await;
+    let args = ["--ws", "tmgrdev", "run", "9100", "--review", "--push"];
+    let mut p = rig.pty(&args);
+    p.wait_for("to push the held branch:");
+    p.line("yes");
+    assert_ne!(p.exit(), 0);
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(rig.read_record().get("held").is_some());
+
+    let mut p = rig.pty(&args);
+    p.wait_for("Type tmgr-dev/frontend to push the held branch:");
+    p.line("tmgr-dev/frontend");
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    assert!(rig.pushed(0) && rig.pushed(1));
+    assert!(rig.read_record().get("held").is_none());
+    let kinds: Vec<String> = rig.gh_calls().iter().map(|c| c[..2].join(" ")).collect();
+    assert_eq!(
+        kinds,
+        [
+            "pr list",
+            "pr create",
+            "pr list",
+            "pr create",
+            "pr edit",
+            "pr edit"
+        ]
+    );
+    let api = rig.calls().await;
+    let comments: Vec<_> = api
+        .iter()
+        .filter(|c| c.1 == "/api/tasks/9100/comments")
+        .collect();
+    assert_eq!(comments.len(), 2);
+    assert!(comments[1].2.contains("The agent finished. Pull requests:"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_branch_that_changed_since_it_was_held_is_refused() {
+    let rig = Rig::new().await;
+    rig.held().await;
+    rig.commit("frontend", "more.txt");
+    let mut p = rig.pty(&["--ws", "tmgrdev", "run", "9100", "--review", "--push"]);
+    assert_ne!(p.exit(), 0);
+    assert!(
+        p.text().contains("changed since it was held"),
+        "{}",
+        p.text()
+    );
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dropping_a_hold_clears_it_comments_and_keeps_the_branches() {
+    let rig = Rig::new().await;
+    rig.held().await;
+    let args = ["--ws", "tmgrdev", "run", "9100", "--review", "--drop"];
+    let mut p = rig.pty(&args);
+    p.wait_for("to drop the held branch:");
+    p.line("nope");
+    assert_ne!(p.exit(), 0);
+    assert!(rig.read_record().get("held").is_some());
+
+    let mut p = rig.pty(&args);
+    p.wait_for("Type TM-342 to drop the held branch:");
+    p.line("TM-342");
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    assert!(rig.read_record().get("held").is_none());
+    assert!(!rig.pushed(0) && !rig.pushed(1));
+    assert!(branch_exists(&rig.repos[0]) && branch_exists(&rig.repos[1]));
+    let api = rig.calls().await;
+    assert!(api.iter().any(|c| c.1 == "/api/tasks/9100/comments"
+        && c.2
+            .contains("Dropped by the owner after the leak gate; nothing was pushed.")));
 }

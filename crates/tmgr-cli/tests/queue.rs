@@ -1178,3 +1178,27 @@ fn the_runner_refuses_a_command_line_other_than_the_approved_one() {
         .unwrap();
     assert!(failed.to_string().contains("command line"), "{failed}");
 }
+
+#[test]
+fn a_held_pickup_shows_as_held_in_the_status() {
+    let fx = Fx::new();
+    fx.task(1, "Write the report", "Summarise the quarter");
+    assert_eq!(fx.add_rule("r1", &[]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.json(&["run-once"]);
+    let file = fx.cfg().join("queue-state.json");
+    let mut state: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    state["pickups"][0]["held"] = json!({
+        "at": "2026-10-19T10:00:00Z",
+        "shas": {"o/r": "abc"},
+        "categories": ["overlap"],
+        "findings": 2
+    });
+    std::fs::write(&file, state.to_string()).unwrap();
+    let status = fx.json(&["status"]);
+    let pickup = &status["data"]["pickups"][0];
+    assert_eq!(pickup["status"], "held", "{status}");
+    assert_eq!(pickup["held"]["categories"], json!(["overlap"]));
+    let human = text(&fx.run(&["queue", "status"]).stdout);
+    assert!(human.contains("held"), "{human}");
+}

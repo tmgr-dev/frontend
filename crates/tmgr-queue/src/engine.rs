@@ -19,6 +19,10 @@ pub const MAX_BUNDLE: usize = 64 * 1024;
 
 pub trait Publisher {
     fn publish(&self, pickup: &Pickup) -> Result<String>;
+
+    fn take_held(&self) -> Option<state::Held> {
+        None
+    }
 }
 
 pub struct Deps<'a> {
@@ -276,6 +280,19 @@ fn publish_phase(pass: &mut Pass, deps: &Deps) -> Result<()> {
                 let p = pass.state.pickups[i].clone();
                 pass.event(&p, "published");
             }
+            Err(e) if state::is_held(&e) => {
+                let mut held = deps.publisher.take_held().unwrap_or_default();
+                held.at = ts(deps.now);
+                pass.state.pickups[i].publish_attempts -= 1;
+                pass.state.pickups[i].publish_error = None;
+                pass.audit.append(
+                    "publish_held",
+                    json!({"pickup": p.id, "rule": p.rule, "task": p.key, "categories": held.categories, "findings": held.findings}),
+                )?;
+                pass.state.pickups[i].held = Some(held);
+                let p = pass.state.pickups[i].clone();
+                pass.event(&p, "held");
+            }
             Err(e) => {
                 pass.state.pickups[i].publish_error = Some(e.message.clone());
                 let attempts = pass.state.pickups[i].publish_attempts;
@@ -496,6 +513,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     publish_attempts: 0,
                     publish_error: None,
                     clones: Vec::new(),
+                    held: None,
                 });
                 pass.audit.append(
                     "candidate",
@@ -1228,6 +1246,7 @@ mod tests {
     struct PublisherFake {
         calls: RefCell<Vec<String>>,
         fail: Cell<bool>,
+        hold: Cell<bool>,
     }
 
     impl Publisher for PublisherFake {
@@ -1236,10 +1255,28 @@ mod tests {
             if self.fail.get() {
                 return Err(Error::internal("push refused"));
             }
+            if self.hold.get() {
+                return Err(state::held_error("the leak gate found 2 finding(s)"));
+            }
             Ok(format!(
                 "https://github.com/o/r/pull/{}",
                 pickup.task.task_id
             ))
+        }
+
+        fn take_held(&self) -> Option<state::Held> {
+            self.held_by_gate()
+        }
+    }
+
+    impl PublisherFake {
+        fn held_by_gate(&self) -> Option<state::Held> {
+            self.hold.get().then(|| state::Held {
+                shas: [("o/r".to_string(), "abc".to_string())].into(),
+                categories: vec!["overlap".into()],
+                findings: 2,
+                ..Default::default()
+            })
         }
     }
 
@@ -1519,6 +1556,39 @@ mod tests {
         let p = &fx.pickups()[0];
         assert_eq!(p.pr_url.as_deref(), Some("https://github.com/o/r/pull/1"));
         assert_eq!(fx.audit_events("published"), 1);
+    }
+
+    #[test]
+    fn a_held_publish_is_kept_not_retried_and_frees_its_slot() {
+        let fx = cloud_fx();
+        fx.publisher.hold.set(true);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        for _ in 0..4 {
+            fx.pass().unwrap();
+        }
+        assert_eq!(fx.publisher.calls.borrow().len(), 1);
+        let p = &fx.pickups()[0];
+        assert!(p.pr_url.is_none() && p.publish_error.is_none() && !p.released);
+        assert_eq!(p.publish_attempts, 0);
+        let held = p.held.as_ref().expect("held");
+        assert_eq!(held.categories, ["overlap"]);
+        assert_eq!(held.shas["o/r"], "abc");
+        assert!(!p.awaits_publish() && !p.occupies());
+        assert_eq!(fx.audit_events("publish_held"), 1);
+        assert_eq!(fx.audit_events("publish_failed"), 0);
+        fx.publisher.hold.set(false);
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "do it"), signed(2, "next")]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert_eq!(fx.runs.created.borrow().len(), 2);
+        assert_eq!(fx.publisher.calls.borrow().len(), 1);
     }
 
     #[test]

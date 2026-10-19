@@ -1,6 +1,7 @@
 pub(crate) mod allow;
 mod attach;
 pub(crate) mod cloud;
+mod gate;
 mod local;
 mod observe;
 mod ops;
@@ -105,7 +106,7 @@ pub struct InstallServiceArgs {
 }
 
 #[derive(Args)]
-#[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent", "fetch", "publish"])))]
+#[command(group(ArgGroup::new("source").required(true).args(["agent_cmd", "agent", "fetch", "publish", "review"])))]
 pub struct RunArgs {
     /// Task to run, in a local workspace (--ws local:<code>) or an allowed cloud workspace (see
     /// `runner allow`): the agent works in its own clone of the project's repository on the task's branch,
@@ -163,6 +164,15 @@ pub struct RunArgs {
     /// Push the finished cloud run's branch and open a pull request (runs nothing)
     #[arg(long, requires = "task", conflicts_with_all = ["on", "agent", "agent_cmd", "fetch"])]
     pub publish: bool,
+    /// Show what the leak gate found in a finished multi-repository run and the public diff (terminal only)
+    #[arg(long, requires = "task", conflicts_with_all = ["on", "agent", "agent_cmd", "fetch", "publish"])]
+    pub review: bool,
+    /// Push a run held by the leak gate after you reviewed it (asks you to type the repository names)
+    #[arg(long, requires = "review", conflicts_with = "drop")]
+    pub push: bool,
+    /// Discard a run held by the leak gate; local branches stay (asks you to type the task key)
+    #[arg(long, requires = "review", conflicts_with = "push")]
+    pub drop: bool,
 }
 
 #[derive(Args)]

@@ -1,4 +1,5 @@
 use super::allow::host_of;
+use super::gate;
 use super::{attach, connect, emit, rerr, runner_config, Opts, PermissionMode, RunArgs};
 use crate::cmd::notifyenv::NotifyEnv;
 use crate::cmd::shared::resolve_task;
@@ -28,6 +29,7 @@ use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
 use tmgr_queue::publish::{
     branch_slug, publish, publish_all, publish_all_plan, publish_plan, PublishAllPlan, PublishInput,
 };
+use tmgr_queue::state::Held;
 use tmgr_queue::workdir;
 use tmgr_runner::daemon;
 
@@ -528,6 +530,14 @@ pub fn parse_repo_info(json: &str) -> Option<RepoInfo> {
     })
 }
 
+pub(super) fn known_public(i: &RepoInfo) -> bool {
+    i.visibility == "public"
+}
+
+pub(super) fn known_private(i: &RepoInfo) -> bool {
+    i.visibility == "private" || i.visibility == "internal"
+}
+
 /// Whether the repositories differ in visibility or owner; one that could not be looked up counts as different.
 pub fn mixed(infos: &[Option<RepoInfo>]) -> bool {
     match infos.first() {
@@ -536,7 +546,7 @@ pub fn mixed(infos: &[Option<RepoInfo>]) -> bool {
     }
 }
 
-fn lookup_info(full_name: &str, cwd: &Path) -> Option<RepoInfo> {
+pub(super) fn lookup_info(full_name: &str, cwd: &Path) -> Option<RepoInfo> {
     let argv: Vec<String> = [
         "gh",
         "repo",
@@ -790,6 +800,26 @@ struct Record {
     session: Option<String>,
     agent: Option<String>,
     clones: Vec<CloneRecord>,
+    held: Option<Held>,
+}
+
+fn set_held(code: &str, task_id: i64, held: Option<&Held>) -> Result<()> {
+    let Some(path) = record_path(code, task_id) else {
+        return Ok(());
+    };
+    let text = std::fs::read_to_string(&path)
+        .map_err(|_| Error::not_found("no cloud run of this task is recorded on this machine"))?;
+    let mut v: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|_| Error::internal("the run record of this task is damaged"))?;
+    match held {
+        Some(h) => v["held"] = json!(h),
+        None => {
+            if let Some(m) = v.as_object_mut() {
+                m.remove("held");
+            }
+        }
+    }
+    config::write_atomic(&path, v.to_string().as_bytes(), 0o600)
 }
 
 fn read_record(code: &str, task_id: i64) -> Result<Record> {
@@ -810,6 +840,7 @@ fn read_record(code: &str, task_id: i64) -> Result<Record> {
         branch: text_of("branch").ok_or_else(missing)?,
         session: text_of("session"),
         agent: text_of("agent"),
+        held: serde_json::from_value(v["held"].clone()).ok(),
         clones: v["clones"]
             .as_array()
             .map(|list| {
@@ -1242,6 +1273,7 @@ impl Layout {
 
 struct RepoState {
     default_branch: String,
+    base: String,
     fetch_url: String,
     push_url: String,
     commit_count: usize,
@@ -1285,6 +1317,7 @@ fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<R
     };
     Ok(RepoState {
         default_branch,
+        base,
         fetch_url: q(&["remote", "get-url", "origin"])?,
         push_url: q(&["remote", "get-url", "--push", "origin"])?,
         commit_count: count.trim().parse().unwrap_or(0),
@@ -1383,12 +1416,15 @@ struct Report<'a> {
     comment: String,
 }
 
-fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
+fn running_run(
+    client: &tmgr_core::api::Client,
+    task_id: u64,
+    agent: Option<&str>,
+    branch: &str,
+) -> Option<tmgr_core::agentwork::RunView> {
     use tmgr_core::agentwork;
-    let mut warnings = Vec::new();
-    let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
-    let running = client
-        .agent_work(p.task_id)
+    client
+        .agent_work(task_id)
         .ok()
         .and_then(|v| v.get("runs").and_then(|r| r.as_array()).cloned())
         .unwrap_or_default()
@@ -1396,9 +1432,51 @@ fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
         .filter_map(|r| agentwork::parse_run(r).ok())
         .find(|r| {
             r.status == "running"
-                && p.agent.is_none_or(|a| r.agent.as_deref() == Some(a))
-                && r.branch.as_deref().is_none_or(|b| b == p.branch)
-        });
+                && agent.is_none_or(|a| r.agent.as_deref() == Some(a))
+                && r.branch.as_deref().is_none_or(|b| b == branch)
+        })
+}
+
+fn report_held(
+    client: &tmgr_core::api::Client,
+    t: &PublishTarget,
+    task_key: &str,
+    held: &Held,
+    text: &str,
+) {
+    use tmgr_core::agentwork;
+    let task_id = u64::try_from(t.task_id).unwrap_or_default();
+    if let Some(run) = running_run(client, task_id, t.agent.as_deref(), &t.branch) {
+        let progress = agentwork::Progress {
+            summary: Some(format!(
+                "Held before publish by the leak gate: {}. Nothing was pushed.",
+                held.categories.join(", ")
+            )),
+            ..Default::default()
+        };
+        if let Err(e) = agentwork::finish(client, run.id, "cancelled", &progress) {
+            eprintln!(
+                "warning: could not finish the agent work run: {}",
+                sanitize_line(&e.message)
+            );
+        }
+    }
+    let comment = format!(
+        "Publish held: {text} Review on the runner machine with `tmgr run {task_key} --review`."
+    );
+    if let Err(e) = client.add_comment(task_id, &comment) {
+        eprintln!(
+            "warning: could not add the comment: {}",
+            sanitize_line(&e.message)
+        );
+    }
+}
+
+fn report_with(client: &tmgr_core::api::Client, p: &Report) -> Vec<String> {
+    use tmgr_core::agentwork;
+    let mut warnings = Vec::new();
+    let note = |what: &str, e: &Error| format!("{what}: {}", sanitize_line(&e.message));
+    let running = running_run(client, p.task_id, p.agent, p.branch);
     match running {
         Some(run) => {
             let progress = agentwork::Progress {
@@ -1447,16 +1525,19 @@ pub struct CloneRef {
     pub identity: Option<(u64, u64)>,
 }
 
-pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
-    let prs = publish_cloud_prs(o, t)?;
-    Ok(prs
-        .into_iter()
-        .next()
-        .map(|(_, url)| url)
-        .unwrap_or_default())
+pub(crate) enum Mode {
+    Publish,
+    Review,
+    Push(BTreeMap<String, String>),
 }
 
-pub fn publish_cloud_prs(o: &Opts, t: &PublishTarget) -> Result<Vec<(String, String)>> {
+pub(crate) enum Outcome {
+    Published(Vec<(String, String)>),
+    Held { held: Held, text: String },
+    Reviewed,
+}
+
+pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result<Outcome> {
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
     let ws = client
@@ -1522,30 +1603,32 @@ pub fn publish_cloud_prs(o: &Opts, t: &PublishTarget) -> Result<Vec<(String, Str
     match (&verified.repos, t.clones.is_empty()) {
         (Some(list), false) => {
             let task_key = verified.task_key.clone();
-            let urls = publish_multi(
-                t,
-                entry,
-                category,
-                list,
-                &format!("{task_key}: {}", verified.title),
-                &format!(
-                    "Opened by an agent run of {task_key}: {}\n\nReview before merging.",
-                    sanitize_line(&verified.title)
-                ),
-            )?;
-            for w in report_published_all(
-                client,
-                &PublishedAll {
-                    task_id: u64::try_from(task_id).unwrap_or_default(),
-                    workspace_id: ws.id,
-                    urls: &urls,
-                    agent: t.agent.as_deref(),
-                    branch: &t.branch,
-                },
-            ) {
-                eprintln!("warning: {w}");
+            let title = format!("{task_key}: {}", verified.title);
+            let body = format!(
+                "Opened by an agent run of {task_key}: {}\n\nReview before merging.",
+                sanitize_line(&verified.title)
+            );
+            let staged = stage_multi(t, entry, category, list, &title, &body)?;
+            let outcome = finish_multi(t, staged, &title, &body, mode)?;
+            match &outcome {
+                Outcome::Published(urls) => {
+                    for w in report_published_all(
+                        client,
+                        &PublishedAll {
+                            task_id: u64::try_from(task_id).unwrap_or_default(),
+                            workspace_id: ws.id,
+                            urls,
+                            agent: t.agent.as_deref(),
+                            branch: &t.branch,
+                        },
+                    ) {
+                        eprintln!("warning: {w}");
+                    }
+                }
+                Outcome::Held { held, text } => report_held(client, t, &task_key, held, text),
+                Outcome::Reviewed => {}
             }
-            return Ok(urls);
+            return Ok(outcome);
         }
         (Some(_), true) => {
             return Err(Error::new(
@@ -1560,6 +1643,11 @@ pub fn publish_cloud_prs(o: &Opts, t: &PublishTarget) -> Result<Vec<(String, Str
             ))
         }
         (None, true) => {}
+    }
+    if !matches!(mode, Mode::Publish) {
+        return Err(Error::usage(
+            "only a run over several repositories has a leak gate",
+        ));
     }
     let full_name = category.github_full_name.as_deref().ok_or_else(|| {
         Error::new(
@@ -1624,17 +1712,22 @@ pub fn publish_cloud_prs(o: &Opts, t: &PublishTarget) -> Result<Vec<(String, Str
     ) {
         eprintln!("warning: {w}");
     }
-    Ok(vec![(full_name.to_string(), pr_url)])
+    Ok(Outcome::Published(vec![(full_name.to_string(), pr_url)]))
 }
 
-fn publish_multi(
+struct Staged {
+    plan: PublishAllPlan,
+    touched: Vec<TouchedBranch>,
+}
+
+fn stage_multi(
     t: &PublishTarget,
     entry: &Entry,
     category: &Category,
     list: &[String],
     pr_title: &str,
     pr_body: &str,
-) -> Result<Vec<(String, String)>> {
+) -> Result<Staged> {
     let forbidden = |m: String| Error::new(Kind::Forbidden, m);
     let bound = bound_set_paths(entry, category, list).map_err(forbidden)?;
     let plans = plan_clones(&bound)?;
@@ -1664,27 +1757,73 @@ fn publish_multi(
     let plan = match planned {
         Ok(plan) => plan,
         Err(e) => {
-            for b in touched.iter().rev() {
-                if let Err(r) =
-                    workdir::restore_branch(&b.repo, &t.branch, b.before.as_deref(), &b.imported)
-                {
-                    eprintln!(
-                        "warning: could not restore branch {} in {}: {r}",
-                        sanitize_line(&t.branch),
-                        sanitize_line(&b.repo.display().to_string())
-                    );
-                }
-            }
+            restore_touched(&t.branch, &touched);
             return Err(e);
         }
     };
-    publish_all(&plan)
+    Ok(Staged { plan, touched })
 }
 
-struct TouchedBranch {
-    repo: PathBuf,
-    before: Option<String>,
-    imported: String,
+fn restore_touched(branch: &str, touched: &[TouchedBranch]) {
+    for b in touched.iter().rev() {
+        if let Err(r) = workdir::restore_branch(&b.repo, branch, b.before.as_deref(), &b.imported) {
+            eprintln!(
+                "warning: could not restore branch {} in {}: {r}",
+                sanitize_line(branch),
+                sanitize_line(&b.repo.display().to_string())
+            );
+        }
+    }
+}
+
+fn finish_multi(
+    t: &PublishTarget,
+    staged: Staged,
+    title: &str,
+    body: &str,
+    mode: Mode,
+) -> Result<Outcome> {
+    let scanned = match gate::scan_set(&staged.touched, &t.branch, title, body, &lookup_info) {
+        Ok(s) => s,
+        Err(e) => {
+            restore_touched(&t.branch, &staged.touched);
+            return Err(e);
+        }
+    };
+    match mode {
+        Mode::Publish => {
+            if scanned.findings.is_empty() {
+                return publish_all(&staged.plan).map(Outcome::Published);
+            }
+            let (held, text) = gate::held_outcome(&scanned, &staged.touched);
+            Ok(Outcome::Held { held, text })
+        }
+        Mode::Review => {
+            gate::print_review(&scanned, &staged.touched);
+            restore_touched(&t.branch, &staged.touched);
+            Ok(Outcome::Reviewed)
+        }
+        Mode::Push(expected) => {
+            let confirmed = gate::check_pinned(&expected, &staged.touched).and_then(|_| {
+                gate::print_review(&scanned, &staged.touched);
+                gate::confirm_push(&scanned, &staged.touched)
+            });
+            if let Err(e) = confirmed {
+                restore_touched(&t.branch, &staged.touched);
+                return Err(e);
+            }
+            publish_all(&staged.plan).map(Outcome::Published)
+        }
+    }
+}
+
+pub(super) struct TouchedBranch {
+    pub repo: PathBuf,
+    pub before: Option<String>,
+    pub imported: String,
+    pub full_name: String,
+    pub base: String,
+    pub commits: usize,
 }
 
 fn same_clone(t: &PublishTarget, plan: &ClonePlan) -> Result<PathBuf> {
@@ -1726,8 +1865,15 @@ fn import_and_plan(
             repo: repo.clone(),
             before,
             imported: sha.clone(),
+            full_name: plan.full_name.clone(),
+            base: String::new(),
+            commits: 0,
         });
         let state = repo_state(&repo, &sha, None)?;
+        if let Some(last) = touched.last_mut() {
+            last.base = state.base.clone();
+            last.commits = state.commit_count;
+        }
         inputs.push(PublishInput {
             sha,
             pinned_branch: t.branch.clone(),
@@ -1749,6 +1895,26 @@ fn import_and_plan(
     publish_all_plan(&inputs).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))
 }
 
+fn target_of(ws_code: String, task_id: i64, rec: Record) -> PublishTarget {
+    PublishTarget {
+        workspace_code: ws_code,
+        task_id,
+        clone_dir: rec.clone,
+        branch: rec.branch,
+        session_id: rec.session,
+        agent: rec.agent,
+        repo: Some(rec.repo),
+        clones: rec
+            .clones
+            .into_iter()
+            .map(|c| CloneRef {
+                name: c.name,
+                identity: c.identity,
+            })
+            .collect(),
+    }
+}
+
 pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<Vec<(String, String)>> {
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
@@ -1756,44 +1922,143 @@ pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<Vec<(String, Strin
     let ws = ctx.workspace(client)?;
     let task_id = i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?;
     let rec = read_record(&ws.code, task_id)?;
-    publish_cloud_prs(
-        o,
-        &PublishTarget {
-            workspace_code: ws.code,
-            task_id,
-            clone_dir: rec.clone,
-            branch: rec.branch,
-            session_id: rec.session,
-            agent: rec.agent,
-            repo: Some(rec.repo),
-            clones: rec
-                .clones
-                .into_iter()
-                .map(|c| CloneRef {
-                    name: c.name,
-                    identity: c.identity,
-                })
-                .collect(),
-        },
-    )
+    let was_held = rec.held.is_some();
+    let code = ws.code.clone();
+    match publish_outcome(o, &target_of(ws.code, task_id, rec), Mode::Publish)? {
+        Outcome::Published(urls) => {
+            if was_held {
+                set_held(&code, task_id, None)?;
+            }
+            Ok(urls)
+        }
+        Outcome::Held { held, text } => {
+            set_held(&code, task_id, Some(&held))?;
+            Err(tmgr_queue::state::held_error(&text).hint(format!("tmgr run {reference} --review")))
+        }
+        Outcome::Reviewed => Err(Error::internal("unexpected outcome of a publish")),
+    }
 }
 
-pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
-    let prs = publish_cloud_run(o, reference)?;
+pub(super) enum Origin {
+    Record,
+    Pickup(String),
+}
+
+pub(super) struct Located {
+    pub target: PublishTarget,
+    pub held: Option<Held>,
+    pub task_key: String,
+    pub origin: Origin,
+}
+
+pub(super) fn locate(o: &Opts, reference: &str) -> Result<Located> {
+    let ctx = Ctx::new(o.cli)?;
+    let client = ctx.cloud_client()?;
+    let task = resolve_task(&ctx, client, reference)?;
+    let ws = ctx.workspace(client)?;
+    let task_id = i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?;
+    let task_key = match (
+        task.category.as_ref().and_then(|c| c.code.as_ref()),
+        task.category_tasks_sequence_id,
+    ) {
+        (Some(code), Some(n)) => format!("{code}-{n}"),
+        _ => reference.to_string(),
+    };
+    let rec = read_record(&ws.code, task_id);
+    let picked = tmgr_queue::Paths::from_env()
+        .and_then(|paths| tmgr_queue::state::load(&paths))
+        .ok()
+        .and_then(|st| {
+            st.pickups
+                .into_iter()
+                .filter(|p| {
+                    !p.released
+                        && p.task.task_id == task_id
+                        && p.cloud
+                            .as_ref()
+                            .is_some_and(|c| c.workspace_code == ws.code)
+                })
+                .max_by_key(|p| p.held.is_some())
+        });
+    match (rec, picked) {
+        (Ok(r), _) if r.held.is_some() => Ok(Located {
+            held: r.held.clone(),
+            target: target_of(ws.code, task_id, r),
+            task_key,
+            origin: Origin::Record,
+        }),
+        (_, Some(p)) if p.held.is_some() => Ok(Located {
+            held: p.held.clone(),
+            target: crate::cmd::queue::publish_target(&p)?,
+            task_key,
+            origin: Origin::Pickup(p.id),
+        }),
+        (Ok(r), _) => Ok(Located {
+            held: None,
+            target: target_of(ws.code, task_id, r),
+            task_key,
+            origin: Origin::Record,
+        }),
+        (Err(_), Some(p)) => Ok(Located {
+            held: None,
+            target: crate::cmd::queue::publish_target(&p)?,
+            task_key,
+            origin: Origin::Pickup(p.id),
+        }),
+        (Err(e), None) => Err(e),
+    }
+}
+
+fn edit_pickup(id: &str, edit: impl FnOnce(&mut tmgr_queue::state::Pickup)) -> Result<()> {
+    let paths = tmgr_queue::Paths::from_env()?;
+    let _lock = paths.lock()?;
+    let mut st = tmgr_queue::state::load(&paths)?;
+    let p = st
+        .pickups
+        .iter_mut()
+        .find(|p| p.id == id)
+        .ok_or_else(|| Error::not_found(format!("no pickup {id}")))?;
+    edit(p);
+    tmgr_queue::state::save(&paths, &mut st)
+}
+
+pub(super) fn clear_held(loc: &Located, pr_url: Option<&str>) -> Result<()> {
+    match &loc.origin {
+        Origin::Record => set_held(&loc.target.workspace_code, loc.target.task_id, None),
+        Origin::Pickup(id) => edit_pickup(id, |p| {
+            p.held = None;
+            p.publish_error = None;
+            p.pr_url = pr_url.map(str::to_string);
+        }),
+    }
+}
+
+pub(super) fn release_held(loc: &Located) -> Result<()> {
+    match &loc.origin {
+        Origin::Record => set_held(&loc.target.workspace_code, loc.target.task_id, None),
+        Origin::Pickup(id) => edit_pickup(id, |p| {
+            p.held = None;
+            p.released = true;
+            p.reason = Some("dropped after the leak gate".into());
+        }),
+    }
+}
+
+pub(super) fn emit_prs(o: &Opts, prs: &[(String, String)]) -> i32 {
     let first = prs.first().map(|(_, u)| u.clone()).unwrap_or_default();
     if prs.len() <= 1 {
-        return Ok(emit(
+        return emit(
             o,
             json!({ "pr_url": first }),
             format!("opened {}", sanitize_line(&first)),
-        ));
+        );
     }
     let human = prs
         .iter()
         .map(|(repo, url)| format!("opened {} ({})", sanitize_line(url), sanitize_line(repo)))
         .collect::<Vec<_>>()
         .join("\n");
-    Ok(emit(
+    emit(
         o,
         json!({
             "pr_url": first,
@@ -1803,7 +2068,12 @@ pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
                 .collect::<Vec<_>>(),
         }),
         human,
-    ))
+    )
+}
+
+pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {
+    let prs = publish_cloud_run(o, reference)?;
+    Ok(emit_prs(o, &prs))
 }
 
 #[cfg(test)]
@@ -2562,7 +2832,9 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         let list = names(&["tmgr-dev/backend", "tmgr-dev/frontend"]);
-        let go = |t: &PublishTarget| publish_multi(t, &entry, &category(), &list, "t", "b");
+        let go = |t: &PublishTarget| {
+            stage_multi(t, &entry, &category(), &list, "t", "b").map(|s| s.touched.len())
+        };
         let mut elsewhere = target(refs());
         elsewhere.clone_dir = root.join("fe-worktrees/tmgr-tm-411");
         let e = go(&elsewhere).unwrap_err();

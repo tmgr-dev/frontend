@@ -50,6 +50,27 @@ pub struct PickupClone {
     pub ino: u64,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Held {
+    pub at: String,
+    #[serde(default)]
+    pub shas: BTreeMap<String, String>,
+    #[serde(default)]
+    pub categories: Vec<String>,
+    #[serde(default)]
+    pub findings: usize,
+}
+
+const HELD_PREFIX: &str = "held: ";
+
+pub fn held_error(text: &str) -> Error {
+    Error::conflict(format!("{HELD_PREFIX}{text}"))
+}
+
+pub fn is_held(e: &Error) -> bool {
+    e.message.starts_with(HELD_PREFIX)
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pickup {
     pub id: String,
@@ -90,6 +111,8 @@ pub struct Pickup {
     pub publish_error: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub clones: Vec<PickupClone>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<Held>,
 }
 
 fn one() -> u32 {
@@ -108,6 +131,7 @@ impl Pickup {
             && self.run_clean
             && self.pr_url.is_none()
             && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
+            && self.held.is_none()
     }
 
     pub fn occupies(&self) -> bool {
@@ -169,5 +193,31 @@ impl State {
             .iter()
             .filter(|p| p.occupies() && rule.is_none_or(|r| p.rule == r))
             .count()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn held_is_recognised_by_its_prefix_only() {
+        assert!(is_held(&held_error("the leak gate found 1 finding(s)")));
+        assert!(!is_held(&Error::conflict("push refused")));
+        assert!(!is_held(&Error::internal("x held: y")));
+    }
+
+    #[test]
+    fn a_hold_survives_the_state_file_and_a_short_one_still_loads() {
+        let held = Held {
+            at: "t".into(),
+            shas: [("o/r".to_string(), "abc".to_string())].into(),
+            categories: vec!["secret".into()],
+            findings: 1,
+        };
+        let text = serde_json::to_string(&held).unwrap();
+        assert_eq!(serde_json::from_str::<Held>(&text).unwrap(), held);
+        let short: Held = serde_json::from_str(r#"{"at":"t"}"#).unwrap();
+        assert!(short.shas.is_empty() && short.categories.is_empty());
     }
 }
