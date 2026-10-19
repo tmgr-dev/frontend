@@ -336,8 +336,8 @@ fn stderr(o: &std::process::Output) -> String {
 async fn both_repositories_are_pushed_opened_linked_and_reported_once() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit("frontend", "ui.txt");
+    rig.commit("backend", "api.md");
+    rig.commit("frontend", "ui.md");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     let stdout = common::text(&out.stdout);
@@ -398,7 +398,7 @@ async fn both_repositories_are_pushed_opened_linked_and_reported_once() {
 async fn a_repository_without_commits_is_skipped() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
+    rig.commit("backend", "api.md");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     assert!(rig.pushed(0) && !rig.pushed(1));
@@ -410,7 +410,7 @@ async fn a_repository_without_commits_is_skipped() {
 async fn one_refused_repository_pushes_nothing() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
+    rig.commit("backend", "api.md");
     rig.commit("frontend", ".github/workflows/ci.yml");
     let out = rig.publish();
     assert_ne!(out.status.code(), Some(0));
@@ -431,7 +431,7 @@ fn branch_exists(repo: &Path) -> bool {
 async fn a_refused_publish_leaves_no_branch_in_the_owners_repositories() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
+    rig.commit("backend", "api.md");
     rig.commit("frontend", ".github/workflows/ci.yml");
     let out = rig.publish();
     assert_ne!(out.status.code(), Some(0));
@@ -442,12 +442,12 @@ async fn a_refused_publish_leaves_no_branch_in_the_owners_repositories() {
 async fn merge_commits_are_refused_and_nothing_is_left_behind() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
+    rig.commit("backend", "api.md");
     let clone = rig.run.join("frontend");
     git(&clone, &["branch", "side"]);
-    rig.commit("frontend", "ui.txt");
+    rig.commit("frontend", "ui.md");
     git(&clone, &["checkout", "-q", "side"]);
-    rig.commit("frontend", "other.txt");
+    rig.commit("frontend", "other.md");
     git(&clone, &["checkout", "-q", BRANCH]);
     git(&clone, &["merge", "-q", "--no-ff", "-m", "merge", "side"]);
     let out = rig.publish();
@@ -466,10 +466,10 @@ async fn merge_commits_are_refused_and_nothing_is_left_behind() {
 async fn unrelated_history_is_refused() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
+    rig.commit("backend", "api.md");
     let clone = rig.run.join("frontend");
     git(&clone, &["checkout", "-q", "--orphan", "foreign"]);
-    rig.commit("frontend", "ui.txt");
+    rig.commit("frontend", "ui.md");
     git(&clone, &["branch", "-M", "foreign", BRANCH]);
     let out = rig.publish();
     assert_ne!(out.status.code(), Some(0));
@@ -496,8 +496,8 @@ async fn nothing_to_publish_is_todays_error() {
 async fn a_replaced_clone_folder_is_never_published() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit("frontend", "ui.txt");
+    rig.commit("backend", "api.md");
+    rig.commit("frontend", "ui.md");
     let copy = rig.run.with_extension("copy");
     git(
         rig.run.parent().unwrap(),
@@ -525,7 +525,7 @@ async fn a_replaced_clone_folder_is_never_published() {
 async fn a_binding_that_changed_since_the_run_is_refused() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
+    rig.commit("backend", "api.md");
     let path = rig.env.config_dir().join("runner-allow.json");
     let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     v["entries"][0]["repos"]["127"] = json!({ NAMES[0]: rig.repos[0].display().to_string() });
@@ -663,15 +663,16 @@ async fn a_multi_run_is_accepted_by_the_runner_and_its_session_is_recorded() {
     assert_eq!(record["agent"], "fake");
 }
 
-const MARKER: &str = "LEAKTEST-PRIVATE-MARKER";
+const MARKER: &str = "fn reconcile_ledger_entries(batch: &LedgerBatch, cutoff: Instant) -> Result<Settlement> {\n    let pending = batch.entries.iter().filter(|e| e.posted_at < cutoff && !e.voided).collect::<Vec<_>>();\n    let total = pending.iter().map(|e| e.amount_minor).sum::<i64>();\n    Settlement::new(batch.account_id, total, pending.len())\n}";
+const MARKER_NAME: &str = "reconcile_ledger_entries";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_leak_into_the_public_repository_holds_everything_back() {
     let rig = Rig::new().await;
     rig.mixed_visibility();
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    rig.commit_text("backend", "api.md", MARKER, "work");
+    rig.commit_text("frontend", "ui.md", MARKER, "work");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
     assert!(stderr(&out).contains("held:"), "{}", stderr(&out));
@@ -707,7 +708,10 @@ async fn a_leak_into_the_public_repository_holds_everything_back() {
     assert_eq!(finishes.len(), 1);
     assert!(finishes[0].2.contains("cancelled"));
     for (_, _, body) in &api {
-        assert!(!body.contains("ui.txt") && !body.contains(MARKER), "{body}");
+        assert!(
+            !body.contains("ui.md") && !body.contains(MARKER_NAME),
+            "{body}"
+        );
     }
     assert!(api
         .iter()
@@ -719,8 +723,8 @@ async fn a_leak_in_a_commit_message_is_held_too() {
     let rig = Rig::new().await;
     rig.mixed_visibility();
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit_text("frontend", "ui.txt", "x", MARKER);
+    rig.commit_text("backend", "api.md", MARKER, "work");
+    rig.commit_text("frontend", "ui.md", "x", MARKER);
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
     assert!(!rig.pushed(0) && !rig.pushed(1));
@@ -731,8 +735,8 @@ async fn a_clean_mixed_run_is_published_as_before() {
     let rig = Rig::new().await;
     rig.mixed_visibility();
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit("frontend", "ui.txt");
+    rig.commit("backend", "api.md");
+    rig.commit("frontend", "ui.md");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     assert!(rig.pushed(0) && rig.pushed(1));
@@ -744,8 +748,8 @@ async fn the_marker_in_the_private_repository_itself_is_not_gated() {
     let rig = Rig::new().await;
     rig.mixed_visibility();
     rig.start();
-    rig.commit_text("backend", "api.txt", MARKER, "work");
-    rig.commit("frontend", "ui.txt");
+    rig.commit_text("backend", "api.md", MARKER, "work");
+    rig.commit("frontend", "ui.md");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     assert!(rig.pushed(0) && rig.pushed(1));
@@ -758,8 +762,8 @@ async fn repositories_of_the_same_visibility_and_owner_are_not_gated() {
         rig.visibility(NAMES[0], visibility);
         rig.visibility(NAMES[1], visibility);
         rig.start();
-        rig.commit("backend", "api.txt");
-        rig.commit_text("frontend", "ui.txt", MARKER, "work");
+        rig.commit_text("backend", "api.md", MARKER, "work");
+        rig.commit_text("frontend", "ui.md", MARKER, "work");
         let out = rig.publish();
         assert_eq!(out.status.code(), Some(0), "{visibility}: {}", stderr(&out));
         assert!(rig.pushed(0) && rig.pushed(1));
@@ -770,8 +774,8 @@ async fn repositories_of_the_same_visibility_and_owner_are_not_gated() {
 async fn repositories_that_cannot_be_looked_up_are_gated() {
     let rig = Rig::new().await;
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    rig.commit_text("backend", "api.md", MARKER, "work");
+    rig.commit_text("frontend", "ui.md", MARKER, "work");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
     assert!(!rig.pushed(0) && !rig.pushed(1));
@@ -788,8 +792,8 @@ async fn a_private_repository_of_another_owner_is_a_source_for_a_private_one() {
     )
     .unwrap();
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    rig.commit_text("backend", "api.md", MARKER, "work");
+    rig.commit_text("frontend", "ui.md", MARKER, "work");
     let out = rig.publish();
     assert_eq!(out.status.code(), Some(6), "{}", stderr(&out));
     assert!(!rig.pushed(0) && !rig.pushed(1));
@@ -800,8 +804,8 @@ async fn review_push_and_drop_need_a_terminal_and_never_run_in_an_agent_session(
     let rig = Rig::new().await;
     rig.mixed_visibility();
     rig.start();
-    rig.commit("backend", "api.txt");
-    rig.commit_text("frontend", "ui.txt", MARKER, "work");
+    rig.commit_text("backend", "api.md", MARKER, "work");
+    rig.commit_text("frontend", "ui.md", MARKER, "work");
     assert_eq!(rig.publish().status.code(), Some(6));
     for flags in [
         vec!["--review"],
@@ -931,8 +935,8 @@ impl Rig {
     async fn held(&self) {
         self.mixed_visibility();
         self.start();
-        self.commit("backend", "api.txt");
-        self.commit_text("frontend", "ui.txt", MARKER, "work");
+        self.commit_text("backend", "api.md", MARKER, "work");
+        self.commit_text("frontend", "ui.md", MARKER, "work");
         assert_eq!(self.publish().status.code(), Some(6));
     }
 }
@@ -945,9 +949,9 @@ async fn the_owner_reviews_the_findings_and_the_public_diff_in_a_terminal() {
     p.wait_for("tmgr-dev/frontend diffstat");
     assert_eq!(p.exit(), 0, "{}", p.text());
     let screen = p.text();
-    assert!(screen.contains("overlap | tmgr-dev/frontend | commit history"));
-    assert!(screen.contains("ui.txt"), "{screen}");
-    assert!(screen.contains(MARKER), "{screen}");
+    assert!(screen.contains("overlap | tmgr-dev/frontend | ui.md:1"));
+    assert!(screen.contains("ui.md"), "{screen}");
+    assert!(screen.contains(MARKER_NAME), "{screen}");
     assert!(!rig.pushed(0) && !rig.pushed(1));
     assert!(rig.read_record().get("held").is_some());
 }
@@ -995,7 +999,7 @@ async fn a_wrong_confirmation_pushes_nothing_and_the_right_one_publishes_and_cle
 async fn a_branch_that_changed_since_it_was_held_is_refused() {
     let rig = Rig::new().await;
     rig.held().await;
-    rig.commit("frontend", "more.txt");
+    rig.commit("frontend", "more.md");
     let mut p = rig.pty(&["--ws", "tmgrdev", "run", "9100", "--review", "--push"]);
     assert_ne!(p.exit(), 0);
     assert!(
