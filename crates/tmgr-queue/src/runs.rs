@@ -1,7 +1,16 @@
 use tmgr_core::error::Result;
-use tmgr_ipc::api::{caps, RunBundle, TaskRef};
+use tmgr_ipc::api::{caps, CloudApproval, RunBundle, TaskRef};
 
 pub const PERMISSION_MODE: &str = "ask";
+
+pub fn mode_name(mode: Option<&str>) -> &'static str {
+    match mode {
+        Some("accept-edits") => "accept-edits",
+        Some("plan") => "plan",
+        Some("bypass") => "bypass",
+        _ => PERMISSION_MODE,
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Lookup {
@@ -34,6 +43,8 @@ pub struct StartRequest {
     pub task: TaskRef,
     pub bundle: RunBundle,
     pub bundle_sha256: String,
+    pub cloud: Option<CloudApproval>,
+    pub unattended: bool,
 }
 
 pub trait RunsClient {

@@ -1,3 +1,4 @@
+use crate::cloud::CloudClaim;
 use crate::paths::{read_private, Paths};
 use crate::rules::ProfilePin;
 use serde::{Deserialize, Serialize};
@@ -7,6 +8,7 @@ use tmgr_core::error::{Error, Result};
 use tmgr_ipc::api::{RunBundle, TaskRef};
 
 const KEEP_RELEASED: usize = 200;
+pub const MAX_PUBLISH_ATTEMPTS: u32 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -69,6 +71,14 @@ pub struct Pickup {
     pub run_exited: bool,
     #[serde(default = "one")]
     pub attempt: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cloud: Option<CloudClaim>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<String>,
+    #[serde(default)]
+    pub publish_attempts: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publish_error: Option<String>,
 }
 
 fn one() -> u32 {
@@ -78,6 +88,14 @@ fn one() -> u32 {
 impl Pickup {
     pub fn start_key(&self) -> String {
         format!("{}-{}", self.id, self.attempt)
+    }
+
+    pub fn awaits_publish(&self) -> bool {
+        self.cloud.is_some()
+            && self.status == Status::Started
+            && self.run_exited
+            && self.pr_url.is_none()
+            && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
     }
 
     pub fn occupies(&self) -> bool {

@@ -1,5 +1,7 @@
 use crate::audit::{sha256_hex, Audit};
+use crate::cloud::{repo_check, CloudApi};
 use crate::paths::{read_private, Paths};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use tmgr_core::config::{ensure_private_dir, write_atomic};
@@ -69,6 +71,8 @@ pub struct Rule {
     pub trusted_authors: Vec<String>,
     #[serde(default)]
     pub auto: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -93,6 +97,16 @@ impl ProfilePin {
 pub trait ProfileResolver {
     fn argv(&self, profile: &str, model: Option<&str>) -> std::result::Result<Vec<String>, String>;
     fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String>;
+
+    /// The pin of the command line the runner starts for the requested permission mode.
+    fn pin_for(
+        &self,
+        profile: &str,
+        model: Option<&str>,
+        _mode: &str,
+    ) -> std::result::Result<ProfilePin, String> {
+        self.pin(profile, model)
+    }
 }
 
 pub fn file_sha256(path: &Path) -> std::io::Result<String> {
@@ -186,12 +200,73 @@ pub fn workspace_code(reference: &str) -> Result<&str> {
     Err(Error::usage(format!("invalid workspace {reference:?}")).hint("local:<code>"))
 }
 
+pub enum Target<'a> {
+    Local(&'a str),
+    Cloud(&'a str),
+}
+
+pub fn target(reference: &str) -> Result<Target<'_>> {
+    if let Some(code) = tmgr_core::local::local_code(reference) {
+        return Ok(Target::Local(code));
+    }
+    if tmgr_core::refs::is_workspace_code(reference) {
+        return Ok(Target::Cloud(reference));
+    }
+    Err(Error::usage(format!("invalid workspace {reference:?}"))
+        .hint("local:<code> or a cloud workspace code"))
+}
+
+pub fn is_cloud(rule: &Rule) -> bool {
+    matches!(target(&rule.workspace), Ok(Target::Cloud(_)))
+}
+
 pub fn validate_rule(rule: &Rule, profiles: &dyn ProfileResolver) -> Result<()> {
+    validate_rule_with(rule, profiles, None, Utc::now())
+}
+
+pub fn validate_rule_with(
+    rule: &Rule,
+    profiles: &dyn ProfileResolver,
+    cloud: Option<&dyn CloudApi>,
+    now: DateTime<Utc>,
+) -> Result<()> {
     let usage = |m: &str| Err(Error::usage(format!("rule {:?}: {m}", rule.name)));
     if !word(&rule.name, 32, "-") {
         return usage("name is 1 to 32 characters of a-z, 0-9 and -");
     }
-    workspace_code(&rule.workspace)?;
+    match target(&rule.workspace)? {
+        Target::Local(_) => {
+            if rule.mode.is_some() {
+                return Err(refuse(format!(
+                    "rule {:?}: a rule on a local workspace never sets a permission mode",
+                    rule.name
+                )));
+            }
+        }
+        Target::Cloud(code) => {
+            let Some(api) = cloud else {
+                return Err(refuse("queue rules pick only tasks of local workspaces")
+                    .hint("write the workspace as local:<code>"));
+            };
+            let ws = api
+                .allow(code, now)
+                .map_err(|m| refuse(format!("rule {:?}: {m}", rule.name)))?;
+            if !rule.auto {
+                return usage(
+                    "a cloud rule is auto: the signed approval of each task is its approval",
+                );
+            }
+            if rule.project.is_none() {
+                return usage("a cloud rule names the project (category) it takes tasks from");
+            }
+            repo_check(rule, &ws).map_err(|m| refuse(format!("rule {:?}: {m}", rule.name)))?;
+            if let Some(m) = &rule.mode {
+                if !matches!(m.as_str(), "ask" | "accept-edits" | "plan" | "bypass") {
+                    return usage("mode is ask, accept-edits, plan or bypass");
+                }
+            }
+        }
+    }
     if let Some(p) = &rule.project {
         if !(1..=16).contains(&p.len())
             || !p
@@ -256,6 +331,15 @@ pub fn validate_rule(rule: &Rule, profiles: &dyn ProfileResolver) -> Result<()> 
 }
 
 pub fn validate_file(file: &QueueFile, profiles: &dyn ProfileResolver) -> Result<()> {
+    validate_file_with(file, profiles, None, Utc::now())
+}
+
+pub fn validate_file_with(
+    file: &QueueFile,
+    profiles: &dyn ProfileResolver,
+    cloud: Option<&dyn CloudApi>,
+    now: DateTime<Utc>,
+) -> Result<()> {
     if file.version != VERSION {
         return Err(Error::usage(format!(
             "queue.toml version {} is not supported",
@@ -267,7 +351,7 @@ pub fn validate_file(file: &QueueFile, profiles: &dyn ProfileResolver) -> Result
         if !seen.insert(&r.name) {
             return Err(Error::usage(format!("duplicate rule name {:?}", r.name)));
         }
-        validate_rule(r, profiles)?;
+        validate_rule_with(r, profiles, cloud, now)?;
     }
     Ok(())
 }
@@ -288,6 +372,12 @@ pub fn load(paths: &Paths) -> Result<Loaded> {
         Error::usage(format!("queue.toml is invalid: {}", e.message()))
             .hint("fields unknown to tmgr are refused on purpose")
     })?;
+    if file.rules.iter().any(|r| r.mode.is_some() && !is_cloud(r)) {
+        return Err(
+            Error::usage("queue.toml: only a rule on a cloud workspace has a mode")
+                .hint("fields unknown to tmgr are refused on purpose"),
+        );
+    }
     Ok(Loaded {
         file,
         sha256: Some(sha256_hex(text.as_bytes())),
@@ -362,6 +452,7 @@ mod tests {
             hours: None,
             trusted_authors: vec!["human".into()],
             auto: false,
+            mode: None,
         }
     }
 
@@ -375,6 +466,14 @@ mod tests {
         assert_eq!(validate_rule(&r, &f).unwrap_err().exit_code(), 5);
         r.workspace = "local:".into();
         assert_eq!(validate_rule(&r, &f).unwrap_err().exit_code(), 2);
+    }
+
+    #[test]
+    fn a_local_rule_never_sets_a_permission_mode() {
+        let d = tempfile::tempdir().unwrap();
+        let mut r = rule(d.path());
+        r.mode = Some("bypass".into());
+        assert_eq!(validate_rule(&r, &Fake(vec![])).unwrap_err().exit_code(), 5);
     }
 
     #[test]
@@ -457,11 +556,7 @@ mod tests {
     fn unknown_fields_in_the_file_are_refused() {
         let d = tempfile::tempdir().unwrap();
         let p = Paths::at(d.path());
-        for extra in [
-            "mode = \"bypass\"",
-            "bypass = true",
-            "dangerously_skip_permissions = true",
-        ] {
+        for extra in ["bypass = true", "dangerously_skip_permissions = true"] {
             let text = format!(
                 "version = 1\nenabled = true\n[[rule]]\nname = \"a\"\nworkspace = \"local:p\"\npersona = \"b\"\nprofile = \"claude-code\"\nrepo = \"/\"\n{extra}\n"
             );

@@ -116,6 +116,18 @@ pub(crate) fn output_within(
 
 pub trait WorkDirs {
     fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()>;
+
+    fn prepare_branch(
+        &self,
+        _repo: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _branch: &str,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot pin a branch",
+        ))
+    }
 }
 
 /// Where `tmgr run` keeps the clone for a branch: `<repo>-worktrees/<branch with / as ->`.
@@ -433,6 +445,17 @@ impl WorkDirs for GitClone {
             ));
         }
         prepare_clone(repo, &dest, &branch_name(pickup_id), None)
+    }
+
+    fn prepare_branch(&self, repo: &str, pickup_id: &str, cwd: &str, branch: &str) -> Result<()> {
+        let dest = clone_dir(repo, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        if dest != Path::new(cwd) {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        prepare_clone(repo, &dest, branch, None)
     }
 }
 

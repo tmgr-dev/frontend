@@ -1,22 +1,29 @@
+use crate::cli::Cli;
+use crate::cmd::runner::allow::host_of;
+use crate::cmd::runner::cloud::{cloud_gate, parse_eligibility};
+use crate::cmd::runner::Opts;
 use crate::ctx::Ctx;
-use crate::out::{table, Output};
-use chrono::{Local, Timelike, Utc};
+use crate::out::{stdout_style, table, Output};
+use chrono::{DateTime, Local, Timelike, Utc};
 use clap::{Args, Subcommand};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::time::Duration;
+use tmgr_core::approval::{AllowFile, Rollback};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize;
+use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::{ExePin, RunCreateReq, StateKind};
 use tmgr_link::privileged;
 use tmgr_queue::audit::sha256_hex;
 use tmgr_queue::audit::Audit;
+use tmgr_queue::cloud::{CloudApi, CloudTask, CloudWorkspace, Gated};
 use tmgr_queue::rules::{self, ProfilePin, ProfileResolver, QueueFile, Rule};
 use tmgr_queue::runs::{self, Lookup, RunState, RunsClient, StartRequest};
 use tmgr_queue::source::LocalSource;
 use tmgr_queue::state::{self, Status};
 use tmgr_queue::workdir::GitClone;
-use tmgr_queue::{Deps, Paths};
+use tmgr_queue::{Deps, Paths, Publisher};
 
 const WARNING: &str = "\
 RISK: with the queue on, tasks in your local workspaces start AI agents on this machine
@@ -68,8 +75,8 @@ pub enum RulesCmd {
 pub struct RuleArgs {
     /// Rule name: a-z, 0-9 and -, at most 32
     pub name: String,
-    /// Local workspace, written local:<code>
-    #[arg(long, value_name = "local:CODE")]
+    /// Local workspace written local:<code>, or an allowed cloud workspace code (see `tmgr runner allow`)
+    #[arg(long, value_name = "local:CODE|CODE")]
     pub workspace: String,
     /// Persona the task must be assigned to
     #[arg(long, value_name = "NAME")]
@@ -100,6 +107,9 @@ pub struct RuleArgs {
     /// Start without asking for each task (human authors only)
     #[arg(long)]
     pub auto: bool,
+    /// Permission mode of a cloud rule: ask, accept-edits, plan or bypass (the runner decides in the end)
+    #[arg(long, value_name = "MODE")]
+    pub mode: Option<String>,
 }
 
 pub struct RunnerProfiles;
@@ -119,10 +129,19 @@ impl ProfileResolver for RunnerProfiles {
     }
 
     fn pin(&self, profile: &str, model: Option<&str>) -> std::result::Result<ProfilePin, String> {
+        self.pin_for(profile, model, runs::PERMISSION_MODE)
+    }
+
+    fn pin_for(
+        &self,
+        profile: &str,
+        model: Option<&str>,
+        mode: &str,
+    ) -> std::result::Result<ProfilePin, String> {
         let dir = tmgr_runner::profile::user_dir();
         let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
         let p = set.lookup(profile)?;
-        let argv = launch_argv(p, model)?;
+        let argv = p.approved_argv(model, p.permission_args(mode)?)?;
         let profile_sha256 = match &p.source {
             tmgr_runner::profile::Source::User(path) => {
                 rules::file_sha256(path).map_err(|e| e.to_string())?
@@ -166,7 +185,7 @@ fn agree(summary: &str) -> Result<()> {
 
 fn describe(r: &Rule) -> String {
     format!(
-        "{}: {} {} persona {} profile {}{} repo {} max {} hours {} authors {}{}",
+        "{}: {} {} persona {} profile {}{} repo {} max {} hours {} authors {}{}{}",
         r.name,
         r.workspace,
         r.project
@@ -181,7 +200,10 @@ fn describe(r: &Rule) -> String {
         r.max_concurrent,
         r.hours.as_deref().unwrap_or("any"),
         r.trusted_authors.join("+"),
-        if r.auto { " AUTO" } else { " approval needed" }
+        if r.auto { " AUTO" } else { " approval needed" },
+        r.mode
+            .as_deref()
+            .map_or(String::new(), |m| format!(" mode {m}"))
     )
 }
 
@@ -211,7 +233,7 @@ fn record(paths: &Paths, event: &str, sha: &str, fields: Value) -> Result<()> {
     Audit::new(paths).append(event, f)
 }
 
-pub fn run(ctx: &Ctx, cmd: &QueueCommand) -> Result<Output> {
+pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
     let paths = Paths::from_env()?;
     match cmd {
         QueueCommand::Status => status(&paths),
@@ -220,11 +242,11 @@ pub fn run(ctx: &Ctx, cmd: &QueueCommand) -> Result<Output> {
             not_in_agent_session()?;
             set_paused(&paths, false)
         }
-        QueueCommand::Enable => enable(&paths),
+        QueueCommand::Enable => enable(ctx, &paths),
         QueueCommand::Disable => disable(&paths),
         QueueCommand::Rules { command } => match command {
             RulesCmd::List => list(&paths),
-            RulesCmd::Add(a) => add(&paths, a),
+            RulesCmd::Add(a) => add(ctx, &paths, a),
             RulesCmd::Rm { name } => remove(&paths, name),
         },
         QueueCommand::Approve { pickup } => approve(&paths, pickup),
@@ -238,7 +260,7 @@ pub fn run(ctx: &Ctx, cmd: &QueueCommand) -> Result<Output> {
                 format!("Pickup {pickup} released."),
             ))
         }
-        QueueCommand::RunOnce => run_once(ctx, &paths),
+        QueueCommand::RunOnce => run_once(ctx, cli, &paths),
     }
 }
 
@@ -317,10 +339,15 @@ fn set_paused(paths: &Paths, paused: bool) -> Result<Output> {
     ))
 }
 
-fn enable(paths: &Paths) -> Result<Output> {
+fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     privileged::guard()?;
     let shown = rules::load(paths)?;
-    rules::validate_file(&shown.file, &RunnerProfiles)?;
+    rules::validate_file_with(
+        &shown.file,
+        &RunnerProfiles,
+        Some(&CliCloud::new(ctx)),
+        Utc::now(),
+    )?;
     agree(&rules_summary(&shown.file))?;
     let _lock = paths.lock()?;
     let now = rules::load(paths)?;
@@ -360,7 +387,7 @@ fn list(paths: &Paths) -> Result<Output> {
     ))
 }
 
-fn add(paths: &Paths, a: &RuleArgs) -> Result<Output> {
+fn add(ctx: &Ctx, paths: &Paths, a: &RuleArgs) -> Result<Output> {
     privileged::guard()?;
     let repo = std::fs::canonicalize(&a.repo)
         .map_err(|_| Error::usage("repo is not an existing directory"))?;
@@ -381,8 +408,14 @@ fn add(paths: &Paths, a: &RuleArgs) -> Result<Output> {
             a.trusted_authors.clone()
         },
         auto: a.auto,
+        mode: a.mode.clone(),
     };
-    rules::validate_rule(&rule, &RunnerProfiles)?;
+    rules::validate_rule_with(
+        &rule,
+        &RunnerProfiles,
+        Some(&CliCloud::new(ctx)),
+        Utc::now(),
+    )?;
     let loaded = rules::load(paths)?;
     if rules::is_tampered(paths, &loaded)? {
         return Err(tamper_error());
@@ -544,6 +577,12 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
             p.status.name()
         )));
     }
+    if p.cloud.is_some() {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "a pickup of a cloud task is approved by the owner's signature, not here",
+        ));
+    }
     if p.bundle.canonical().len() > REVIEW_CAP {
         return Err(Error::usage("the bundle is too large to review")
             .hint("shorten the task text or its comments"));
@@ -586,6 +625,216 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
         json!({"approved": id, "bundle_sha256": sha}),
         format!("Pickup {id} approved. `tmgr queue run-once` starts it."),
     ))
+}
+
+const REFRESH_PAGES: u64 = 50;
+
+struct CliCloud<'a> {
+    ctx: &'a Ctx,
+    live_keys: RefCell<Option<Vec<String>>>,
+}
+
+impl<'a> CliCloud<'a> {
+    fn new(ctx: &'a Ctx) -> Self {
+        CliCloud {
+            ctx,
+            live_keys: RefCell::new(None),
+        }
+    }
+
+    fn identity(&self) -> Result<(String, i64)> {
+        let host = host_of(&self.ctx.server()?)?;
+        let user = self.ctx.cloud_client()?.current_user_id()?.ok_or_else(|| {
+            Error::auth("cannot tell which account is logged in").hint("tmgr login")
+        })?;
+        Ok((host, user))
+    }
+
+    fn keys(&self) -> Result<Vec<String>> {
+        if let Some(k) = self.live_keys.borrow().clone() {
+            return Ok(k);
+        }
+        let keys: Vec<String> = self
+            .ctx
+            .cloud_client()?
+            .agent_run_keys()?
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|k| k.get("key_id").and_then(Value::as_str).map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        *self.live_keys.borrow_mut() = Some(keys.clone());
+        Ok(keys)
+    }
+}
+
+impl CloudApi for CliCloud<'_> {
+    fn allow(&self, code: &str, now: DateTime<Utc>) -> std::result::Result<CloudWorkspace, String> {
+        let (host, user) = self.identity().map_err(|e| e.message)?;
+        let allow = AllowFile::load().map_err(|e| format!("runner allow list: {e}"))?;
+        let command = format!("tmgr runner allow {code}");
+        let Some(found) = allow.entries.iter().find(|e| {
+            e.server == host && e.user_id == user && e.workspace_code.eq_ignore_ascii_case(code)
+        }) else {
+            return Err(format!(
+                "workspace {code} is not allowed to run agents on this machine; run `{command}`"
+            ));
+        };
+        let entry = allow
+            .find_live(&host, user, found.workspace_id, &found.workspace_code, now)
+            .map_err(|r| format!("{}; run `{}`", sanitize_line(&r.message), r.fix))?;
+        Ok(CloudWorkspace {
+            id: entry.workspace_id,
+            code: entry.workspace_code.clone(),
+            repos: entry.repos.values().cloned().collect(),
+        })
+    }
+
+    fn list(&self, rule: &Rule, ws: &CloudWorkspace) -> Result<(Vec<i64>, bool)> {
+        let client = self.ctx.cloud_client()?;
+        let wanted = match rule.status_type.as_str() {
+            "backlog" => "default",
+            other => other,
+        };
+        let status_ids: Vec<u64> = client
+            .statuses(ws.id)?
+            .iter()
+            .filter(|s| s.kind == wanted)
+            .map(|s| s.id)
+            .collect();
+        let project = rule.project.as_deref().unwrap_or_default();
+        let Some(category) = client.categories(ws.id)?.into_iter().find(|c| {
+            c.code
+                .as_deref()
+                .is_some_and(|code| code.eq_ignore_ascii_case(project))
+        }) else {
+            return Ok((Vec::new(), true));
+        };
+        let mut ids = Vec::new();
+        let mut complete = true;
+        for status in status_ids {
+            let mut page = 1;
+            loop {
+                let got = client.tasks_page(ws.id, Some(category.id), Some(status), page, 100)?;
+                ids.extend(got.items.iter().filter_map(|t| i64::try_from(t.id).ok()));
+                if page >= got.last_page {
+                    break;
+                }
+                if page >= REFRESH_PAGES {
+                    complete = false;
+                    break;
+                }
+                page += 1;
+            }
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        Ok((ids, complete))
+    }
+
+    fn gate(&self, rule: &Rule, ws: &CloudWorkspace, task_id: i64) -> Result<Gated> {
+        let client = self.ctx.cloud_client()?;
+        let (host, user) = self.identity()?;
+        let elig = parse_eligibility(client.agent_run_task(task_id)?)?;
+        let key = sanitize_line(
+            elig.task_key
+                .as_deref()
+                .unwrap_or(&format!("task-{task_id}")),
+        );
+        let refused = |reason: String| Gated::Refused {
+            key: key.clone(),
+            reason: sanitize_line(&reason),
+        };
+        if elig.task_id != task_id || elig.workspace_id != ws.id {
+            return Ok(refused(
+                "the server answered for another task or workspace".into(),
+            ));
+        }
+        let allow =
+            AllowFile::load().map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+        let mut rollback =
+            Rollback::load().map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+        let rkey = Rollback::key(&host, user, ws.id, task_id);
+        let ok = match cloud_gate(
+            &allow,
+            &self.keys()?,
+            &elig,
+            &host,
+            user,
+            Utc::now(),
+            rollback.seen(&rkey),
+        ) {
+            Ok(ok) => ok,
+            Err(r) => return Ok(refused(format!("{} ({})", r.message, r.fix))),
+        };
+        let Some(entry) = allow.find(&host, user, ws.id) else {
+            return Ok(refused("the allow entry disappeared".into()));
+        };
+        let Some(category) = &ok.category else {
+            return Ok(refused(
+                "the task has no category, so no repository is known".into(),
+            ));
+        };
+        let bind = format!(
+            "run `tmgr run {}:{task_id}` once in a terminal to bind a repository",
+            ws.code
+        );
+        if category.github_full_name.is_none() {
+            return Ok(refused(format!(
+                "category {} has no linked GitHub repository",
+                category.code
+            )));
+        }
+        match entry.repos.get(&category.id.to_string()) {
+            None => {
+                return Ok(refused(format!(
+                    "no repository is bound to category {}; {bind}",
+                    category.code
+                )))
+            }
+            Some(bound) if *bound != rule.repo => {
+                return Ok(refused(format!(
+                    "category {} is bound to another repository than the rule's",
+                    category.code
+                )))
+            }
+            Some(_) => {}
+        }
+        rollback.record(rkey, ok.claim.signed_at);
+        rollback
+            .save()
+            .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+        Ok(Gated::Ready(CloudTask {
+            key: ok.task_key,
+            title: ok.title,
+            body: ok.body,
+            claim: ok.claim,
+        }))
+    }
+}
+
+struct CliPublisher<'a> {
+    opts: &'a Opts<'a>,
+}
+
+impl Publisher for CliPublisher<'_> {
+    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
+        let claim = pickup
+            .cloud
+            .as_ref()
+            .ok_or_else(|| Error::internal("only cloud pickups are published"))?;
+        publish_cloud_run(
+            self.opts,
+            &format!("{}:{}", claim.workspace_code, pickup.task.task_id),
+        )
+    }
+}
+
+/// Temporary stand-in: replace with `crate::cmd::runner::cloud::publish_cloud_run` once it exists.
+fn publish_cloud_run(_o: &Opts, _reference: &str) -> Result<String> {
+    Err(Error::internal("publish is not wired"))
 }
 
 struct RunnerRuns {
@@ -686,8 +935,8 @@ impl RunsClient for RunnerRuns {
                 trust_cwd: None,
                 trust_via_repo: None,
                 agent_work: true,
-                cloud: None,
-                unattended: false,
+                cloud: req.cloud.clone(),
+                unattended: req.unattended,
                 exe_pin: Some(ExePin {
                     path: req.exe_path.clone(),
                     sha256: req.exe_sha256.clone(),
@@ -726,12 +975,21 @@ impl RunsClient for RunnerRuns {
     }
 }
 
-fn run_once(ctx: &Ctx, paths: &Paths) -> Result<Output> {
+fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
     not_in_agent_session()?;
     let source = LocalSource {
         local_user_id: ctx.cfg.local_user_id,
     };
     let client = RunnerRuns::new()?;
+    let cloud = CliCloud::new(ctx);
+    let opts = Opts {
+        cli,
+        ws: cli.ws.clone(),
+        json: cli.json,
+        quiet: cli.quiet,
+        style: stdout_style(cli.no_color),
+    };
+    let publisher = CliPublisher { opts: &opts };
     if tmgr_queue::needs_runner(paths)? {
         client.ready()?;
     }
@@ -740,6 +998,8 @@ fn run_once(ctx: &Ctx, paths: &Paths) -> Result<Output> {
         paths,
         &Deps {
             source: &source,
+            cloud: &cloud,
+            publisher: &publisher,
             runs: &client,
             profiles: &RunnerProfiles,
             workdirs: &GitClone,
