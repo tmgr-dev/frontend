@@ -4816,15 +4816,10 @@ fn multi_fx() -> MultiFx {
     allow
         .save_to(&h.cfg.join("tmgr/runner-allow.json"))
         .unwrap();
-    let script = h.script(
-        "multi-agent.sh",
-        "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\n[ -f body.sh ] && /bin/sh ./body.sh\n\
-         cp \"$HOME/.claude.json\" seen.tmp && mv seen.tmp seen.json\nwhile true; do sleep 0.2; done\n",
-    );
     fs::write(
         h.agents.join("multi.toml"),
         format!(
-            "id = \"multi\"\nname = \"multi\"\ncommand = [\"/bin/sh\", {script:?}]\n\
+            "id = \"multi\"\nname = \"multi\"\ncommand = [\"/bin/sh\", \"./multi-agent.sh\"]\n\
              [permission_modes]\nask = [\"--ask\"]\naccept-edits = [\"--edits\"]\n\
              [[sandbox.seed]]\nfrom = \"~/.claude.json\"\nto = \".claude.json\"\n\
              json_keys = [\"hasCompletedOnboarding\", \"theme\", \"oauthAccount\"]\n\
@@ -4844,6 +4839,15 @@ fn multi_fx() -> MultiFx {
     }
 }
 
+fn agent_script(dir: &Path) {
+    fs::write(
+        dir.join("multi-agent.sh"),
+        "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\n[ -f body.sh ] && /bin/sh ./body.sh\n\
+         cp \"$HOME/.claude.json\" seen.tmp && mv seen.tmp seen.json\nwhile true; do sleep 0.2; done\n",
+    )
+    .unwrap();
+}
+
 impl MultiFx {
     fn trees(&self) -> PathBuf {
         self.base.join("backend-worktrees")
@@ -4855,6 +4859,7 @@ impl MultiFx {
         let dir = self.trees().join(format!("tm-{n}"));
         clone_into(&self.backend, &dir.join("backend"), true);
         clone_into(&self.frontend, &dir.join("frontend"), true);
+        agent_script(&dir);
         dir
     }
 
@@ -4986,6 +4991,7 @@ fn a_set_run_in_a_queue_folder_starts() {
     let dir = fx.trees().join("queue/q_1");
     clone_into(&fx.backend, &dir.join("backend"), true);
     clone_into(&fx.frontend, &dir.join("frontend"), true);
+    agent_script(&dir);
     let info = fx.h.client().create_run(fx.req(&dir)).unwrap();
     wait_file(&dir, "seen.json");
     let _ = fx.h.client().kill(&info.id, "kill");
