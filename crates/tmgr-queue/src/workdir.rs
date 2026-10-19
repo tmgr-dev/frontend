@@ -17,7 +17,7 @@ pub fn branch_name(pickup_id: &str) -> String {
     format!("queue/{pickup_id}")
 }
 
-fn git_command(dir: Option<&Path>) -> Command {
+pub(crate) fn git_command(dir: Option<&Path>) -> Command {
     let mut cmd = Command::new("git");
     cmd.env_clear()
         .env(
@@ -80,7 +80,7 @@ fn git(dir: Option<&Path>, args: &[&str]) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+pub(crate) const GIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 pub(crate) fn output_within(
     cmd: &mut Command,
@@ -89,7 +89,7 @@ pub(crate) fn output_within(
     output_within_input(cmd, limit, None)
 }
 
-fn output_within_input(
+pub(crate) fn output_within_input(
     cmd: &mut Command,
     limit: std::time::Duration,
     input: Option<Vec<u8>>,
@@ -288,7 +288,11 @@ pub fn clone_identity(dir: &Path) -> Option<(u64, u64)> {
     Some((meta.dev(), meta.ino()))
 }
 
-fn open_beneath(root: &Path, rel: &str, last_flags: libc::c_int) -> Option<std::fs::File> {
+pub(crate) fn open_beneath(
+    root: &Path,
+    rel: &str,
+    last_flags: libc::c_int,
+) -> Option<std::fs::File> {
     use std::ffi::CString;
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::ffi::OsStrExt;
@@ -322,7 +326,7 @@ fn open_beneath(root: &Path, rel: &str, last_flags: libc::c_int) -> Option<std::
     at(dir.as_raw_fd(), last.as_bytes(), last_flags)
 }
 
-fn open_in(
+pub(crate) fn open_in(
     dir: &std::fs::File,
     name: &std::ffi::OsStr,
     flags: libc::c_int,
@@ -340,7 +344,7 @@ fn open_in(
     (fd >= 0).then(|| unsafe { std::fs::File::from_raw_fd(fd) })
 }
 
-fn entries(dir: &std::fs::File) -> Vec<std::ffi::OsString> {
+pub(crate) fn entries(dir: &std::fs::File) -> Vec<std::ffi::OsString> {
     use std::os::fd::AsRawFd;
     use std::os::unix::ffi::OsStrExt;
     let mut names = Vec::new();
@@ -441,12 +445,12 @@ fn read_small(root: &Path, rel: &str) -> Option<String> {
     Some(text)
 }
 
-fn is_sha(s: &str) -> bool {
+pub(crate) fn is_sha(s: &str) -> bool {
     matches!(s.len(), 40 | 64) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// The commit `branch` points at in a clone, read from its ref files without running git there.
-fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
+pub(crate) fn clone_tip(clone: &Path, branch: &str) -> Option<String> {
     let reference = format!("refs/heads/{branch}");
     if let Some(text) = read_small(clone, &format!(".git/{reference}")) {
         let sha = text.trim();

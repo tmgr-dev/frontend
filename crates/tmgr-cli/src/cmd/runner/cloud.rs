@@ -1546,6 +1546,7 @@ pub struct CloneRef {
 
 pub(crate) enum Mode {
     Publish,
+    Draft,
     Review,
     Push(BTreeMap<String, String>),
 }
@@ -1667,7 +1668,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         }
         (None, true) => {}
     }
-    if !matches!(mode, Mode::Publish) {
+    if !matches!(mode, Mode::Publish | Mode::Draft) {
         return Err(Error::usage(
             "only a run over several repositories has a leak gate",
         ));
@@ -1722,6 +1723,11 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         ),
     };
     let steps = publish_plan(&input).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    let steps = if matches!(mode, Mode::Draft) {
+        steps.draft()
+    } else {
+        steps
+    };
     let pr_url = publish(&steps)?;
     for w in report_published(
         client,
@@ -1806,6 +1812,7 @@ fn finish_multi(
     body: &str,
     mode: Mode,
 ) -> Result<Outcome> {
+    let draft = matches!(mode, Mode::Draft);
     let scanned = match gate::scan_set(&staged.touched, &t.branch, title, body, &lookup_info) {
         Ok(s) => s,
         Err(e) => {
@@ -1814,9 +1821,14 @@ fn finish_multi(
         }
     };
     match mode {
-        Mode::Publish => {
+        Mode::Publish | Mode::Draft => {
             if scanned.findings.is_empty() {
-                return publish_all(&staged.plan).map(Outcome::Published);
+                let plan = if draft {
+                    staged.plan.clone().draft()
+                } else {
+                    staged.plan.clone()
+                };
+                return publish_all(&plan).map(Outcome::Published);
             }
             let (held, text) = gate::held_outcome(&scanned, &staged.touched);
             restore_touched(&t.branch, &staged.touched);
