@@ -49,9 +49,27 @@
 									<div
 										v-for="day in week"
 										:key="day.date"
-										:class="getSquareClass(day)"
-										class="cursor-pointer rounded-[2px] transition-transform duration-200 hover:scale-110"
+										:class="[
+											getSquareClass(day),
+											day.isInRange &&
+												'cursor-pointer transition-transform duration-200 hover:scale-110',
+											day.isInRange &&
+												day.date === selectedDate &&
+												'relative z-10 ring-2 ring-ink ring-offset-1 ring-offset-surface',
+										]"
+										class="rounded-[2px]"
 										:style="squareStyle"
+										:role="day.isInRange ? 'button' : undefined"
+										:tabindex="day.isInRange ? 0 : undefined"
+										:aria-pressed="
+											day.isInRange
+												? String(day.date === selectedDate)
+												: undefined
+										"
+										:aria-label="day.isInRange ? getDayLabel(day) : undefined"
+										@click="selectDay(day)"
+										@keydown.enter="selectDay(day)"
+										@keydown.space.prevent="selectDay(day)"
 										@mouseenter="handleSquareHover(day, $event)"
 										@mouseleave="handleSquareLeave"
 										:title="getTooltipText(day)"
@@ -105,6 +123,10 @@
 </template>
 
 <script>
+	import {
+		activityCountLabel,
+		formatDayLabel,
+	} from '@/utils/dashboard/activityDayFilter';
 	import { defineComponent } from 'vue';
 
 	export default defineComponent({
@@ -129,7 +151,12 @@
 				default: 'light',
 				validator: (value) => ['light', 'dark'].includes(value),
 			},
+			selectedDate: {
+				type: String,
+				default: null,
+			},
 		},
+		emits: ['select'],
 		data() {
 			return {
 				hoveredDate: null,
@@ -346,6 +373,16 @@
 				this.hoveredDate = null;
 			},
 
+			selectDay(day) {
+				if (day.isInRange) this.$emit('select', day.date);
+			},
+
+			getDayLabel(day) {
+				return `${activityCountLabel(day.count)} on ${formatDayLabel(
+					day.date,
+				)}`;
+			},
+
 			getTooltipText(day) {
 				if (!day.isInRange) return '';
 				return `${day.count} ${
@@ -354,24 +391,7 @@
 			},
 
 			formatDate(dateStr) {
-				const date = new Date(dateStr);
-				const months = [
-					'Jan',
-					'Feb',
-					'Mar',
-					'Apr',
-					'May',
-					'Jun',
-					'Jul',
-					'Aug',
-					'Sep',
-					'Oct',
-					'Nov',
-					'Dec',
-				];
-				return `${
-					months[date.getMonth()]
-				} ${date.getDate()}, ${date.getFullYear()}`;
+				return formatDayLabel(dateStr);
 			},
 
 			formatDateYMD(date) {

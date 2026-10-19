@@ -343,6 +343,7 @@ export interface ActivityFilters {
 	user_id?: number | 'all';
 	date_from?: string;
 	date_to?: string;
+	date?: string;
 	subject_type?: string;
 	search?: string;
 	limit?: number;

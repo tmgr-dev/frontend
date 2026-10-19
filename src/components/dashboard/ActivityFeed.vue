@@ -22,6 +22,22 @@
 			</div>
 		</div>
 
+		<div
+			v-if="selectedDate"
+			class="mb-3 flex items-center gap-2 text-sm text-ink-muted"
+		>
+			<span aria-live="polite">{{ dayFilterText }}</span>
+			<Button
+				variant="ghost"
+				size="sm"
+				class="h-6 w-6 p-0"
+				aria-label="Clear day filter"
+				@click="emit('clear-date')"
+			>
+				<XMarkIcon class="h-4 w-4" />
+			</Button>
+		</div>
+
 		<div v-if="hasNonUserActors" class="mb-3 flex gap-1">
 			<button
 				v-for="option in authorFilterOptions"
@@ -44,6 +60,14 @@
 			<template v-if="loading && activities.length === 0">
 				<ActivityItemSkeleton v-for="i in 5" :key="`skeleton-${i}`" />
 			</template>
+
+			<p
+				v-else-if="selectedDate && error && activities.length === 0"
+				role="alert"
+				class="py-4 text-center text-sm text-red-600 dark:text-red-400"
+			>
+				{{ error.message || "Couldn't load activities for this day" }}
+			</p>
 
 			<!-- Activities -->
 			<template v-else-if="visibleActivities.length > 0">
@@ -103,11 +127,16 @@
 	import EmptyState from '@/components/EmptyState.vue';
 	import Button from '@/components/ui/button/Button.vue';
 	import type {
+		ActionError,
 		Activity,
 		ActivityFilters as ActivityFiltersType,
 	} from '@/types/dashboard';
+	import {
+		activityCountLabel,
+		formatDayLabel,
+	} from '@/utils/dashboard/activityDayFilter';
 	import { type AuthorFilter, matchesAuthorFilter } from '@/utils/personas';
-	import { ArrowPathIcon } from '@heroicons/vue/24/outline';
+	import { ArrowPathIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 	import { computed, ref } from 'vue';
 	import ActivityFilters from './ActivityFilters.vue';
 	import ActivityItem from './ActivityItem.vue';
@@ -121,12 +150,18 @@
 		workspaceId: number;
 		connected?: boolean;
 		workspaceUsers?: Array<{ id: number; name: string; has_avatar?: boolean }>;
+		selectedDate?: string | null;
+		totalItems?: number;
+		error?: ActionError | null;
 	}
 
 	const props = withDefaults(defineProps<Props>(), {
 		hasMore: false,
 		loadingMore: false,
 		workspaceUsers: () => [],
+		selectedDate: null,
+		totalItems: 0,
+		error: null,
 	});
 
 	const emit = defineEmits<{
@@ -134,7 +169,16 @@
 		refresh: [];
 		'filter-change': [filters: ActivityFiltersType];
 		'activity-click': [activity: Activity];
+		'clear-date': [];
 	}>();
+
+	const dayFilterText = computed(() => {
+		if (!props.selectedDate) return '';
+		const day = formatDayLabel(props.selectedDate);
+		return props.loading || (props.error && props.activities.length === 0)
+			? `Activities on ${day}`
+			: `${activityCountLabel(props.totalItems)} on ${day}`;
+	});
 
 	const filters = ref<ActivityFiltersType>({
 		type: 'all',

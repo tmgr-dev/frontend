@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import store from '@/store';
+	import { toggleDay } from '@/utils/dashboard/activityDayFilter';
 	import { dashboardStatisticTarget, taskTarget } from '@/utils/dashboardLinks';
 	import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -150,7 +151,18 @@
 		canLoadMore,
 		loading: feedLoading,
 		loadingMore: feedLoadingMore,
+		filters: feedFilters,
+		totalItems: feedTotalItems,
+		error: feedError,
 	} = useActivityFeed(workspaceId);
+
+	const selectedDate = computed(() => feedFilters.value.date);
+	const handleHeatmapSelect = (date: string) =>
+		handleActivityFiltersChange({
+			date: toggleDay(selectedDate.value, date) ?? undefined,
+		});
+	const clearSelectedDate = () =>
+		handleActivityFiltersChange({ date: undefined });
 
 	// Pusher composable for real-time updates
 	const {
@@ -875,7 +887,7 @@
 
 								<div
 									class="heatmap-container"
-									role="img"
+									role="group"
 									:aria-label="
 										heatmapData
 											? `Activity heatmap showing ${heatmapData.total_contributions} total contributions`
@@ -911,6 +923,8 @@
 										v-else-if="heatmapData"
 										:data="heatmapData"
 										:theme="store.getters.isDarkTheme ? 'dark' : 'default'"
+										:selected-date="selectedDate"
+										@select="handleHeatmapSelect"
 									/>
 
 									<div
@@ -1053,6 +1067,10 @@
 										:workspace-id="workspaceId"
 										:workspace-users="workspaceUsersList"
 										:connected="isRealTimeActive"
+										:selected-date="selectedDate"
+										:total-items="feedTotalItems"
+										:error="feedError"
+										@clear-date="clearSelectedDate"
 										@load-more="loadMoreActivities"
 										@refresh="refreshActivities"
 										@filter-change="handleActivityFiltersChange"

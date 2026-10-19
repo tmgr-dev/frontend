@@ -253,6 +253,7 @@ export function useActivityFeed(
 			}
 		} catch (err) {
 			if (!isCurrent()) return;
+			if (filters.value.date) activities.value = [];
 			const errorMessage =
 				err instanceof Error ? err.message : 'Failed to load activities';
 			handleError({
@@ -328,6 +329,9 @@ export function useActivityFeed(
 	const applyFilters = async (
 		newFilters: Partial<ActivityFilters>,
 	): Promise<void> => {
+		if ('date' in newFilters && newFilters.date !== filters.value.date) {
+			activities.value = [];
+		}
 		// Update filters
 		filters.value = { ...filters.value, ...newFilters };
 
@@ -372,6 +376,7 @@ export function useActivityFeed(
 
 			const eventHandlers: EventHandlers = {
 				onActivityCreated: (activity: Activity) => {
+					if (filters.value.date) return;
 					// Add new activity to the beginning of the list
 					activities.value.unshift(activity);
 
