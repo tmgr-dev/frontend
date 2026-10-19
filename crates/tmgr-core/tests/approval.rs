@@ -51,7 +51,7 @@ fn v2_messages_cover_the_repository_set() {
             .iter()
             .map(|n| n.as_str().unwrap().to_string())
             .collect();
-        let repos = repos_sha256(&names);
+        let repos = repos_sha256(&names).unwrap();
         assert_eq!(repos, s(c, "repos_sha256"), "{}", s(c, "title"));
         let hash = content_sha256(s(c, "title"), c["description"].as_str().unwrap_or(""));
         assert_eq!(hash, s(c, "content_sha256"));
@@ -87,7 +87,7 @@ fn v2_messages_cover_the_repository_set() {
             c["signed_at"].as_i64().unwrap(),
         );
         assert!(!verify(public, &v1, s(c, "signature")));
-        let mut fewer = tmgr_core::approval::canonical_repos(&names);
+        let mut fewer = tmgr_core::approval::canonical_repos(&names).unwrap();
         fewer.pop();
         let other = message_v2(
             args.0,
@@ -96,7 +96,7 @@ fn v2_messages_cover_the_repository_set() {
             args.3,
             args.4,
             &hash,
-            &repos_sha256(&fewer),
+            &repos_sha256(&fewer).unwrap_or_default(),
             s(key, "key_id"),
             c["signed_at"].as_i64().unwrap(),
         );
@@ -105,14 +105,20 @@ fn v2_messages_cover_the_repository_set() {
 }
 
 #[test]
-fn repos_hash_ignores_order_case_and_duplicates() {
-    let a = repos_sha256(&["tmgr-dev/frontend".into(), "tmgr-dev/backend".into()]);
-    let b = repos_sha256(&[
-        "TMGR-dev/Backend".into(),
-        "tmgr-dev/frontend".into(),
-        "tmgr-dev/backend".into(),
-    ]);
+fn repos_hash_ignores_order_and_refuses_non_canonical_lists() {
+    let a = repos_sha256(&["tmgr-dev/frontend".into(), "tmgr-dev/backend".into()]).unwrap();
+    let b = repos_sha256(&["tmgr-dev/backend".into(), "tmgr-dev/frontend".into()]).unwrap();
     assert_eq!(a, b);
+    let f = fixtures();
+    for list in f["invalid_repositories"].as_array().unwrap() {
+        let names: Vec<String> = list
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n.as_str().unwrap().to_string())
+            .collect();
+        assert!(repos_sha256(&names).is_err(), "{names:?}");
+    }
 }
 
 #[test]

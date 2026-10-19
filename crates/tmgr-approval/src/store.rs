@@ -1,4 +1,6 @@
-use crate::crypto::{content_sha256, message, message_v2, verify};
+use crate::crypto::{
+    canonical_repos, content_sha256, message, message_v2, valid_sha256_hex, verify,
+};
 use crate::fsio;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -141,6 +143,8 @@ impl AllowFile {
             Some(text) => {
                 let f: Self = serde_json::from_str(&text)
                     .map_err(|e| format!("{} is not valid: {e}", path.display()))?;
+                f.validate_sets()
+                    .map_err(|e| format!("{} is not valid: {e}", path.display()))?;
                 if f.version != 1 && f.version != 2 {
                     return Err(format!(
                         "{} has version {}, this tmgr reads versions 1 and 2",
@@ -159,6 +163,7 @@ impl AllowFile {
     }
 
     pub fn save_to(&self, path: &Path) -> Result<(), String> {
+        self.validate_sets()?;
         let mut out = self.clone();
         out.version = if self.has_sets() { 2 } else { 1 };
         let body = serde_json::to_vec_pretty(&out).map_err(|e| e.to_string())?;
@@ -182,6 +187,26 @@ impl AllowFile {
         let out = f(&mut file)?;
         file.save_to(path)?;
         Ok(out)
+    }
+
+    fn validate_sets(&self) -> Result<(), String> {
+        for e in &self.entries {
+            for (category, b) in &e.repos {
+                if let RepoBinding::Set(set) = b {
+                    let names: Vec<String> = set.keys().cloned().collect();
+                    canonical_repos(&names).map_err(|m| format!("category {category}: {m}"))?;
+                    let mut paths: Vec<&String> = set.values().collect();
+                    paths.sort();
+                    paths.dedup();
+                    if paths.len() != set.len() || paths.iter().any(|p| !p.starts_with('/')) {
+                        return Err(format!(
+                            "category {category}: every repository needs its own absolute path"
+                        ));
+                    }
+                }
+            }
+        }
+        Ok(())
     }
 
     fn has_sets(&self) -> bool {
@@ -274,6 +299,16 @@ pub fn check_claim(
             format!("{allow} to re-pin your keys"),
         ));
     };
+    if claim
+        .repos_sha256
+        .as_deref()
+        .is_some_and(|r| !valid_sha256_hex(r))
+    {
+        return Err(Refusal::new(
+            "the approval names its repositories in an unreadable form",
+            "open the task in the web app and click Confirm for agent runs",
+        ));
+    }
     let msg = match &claim.repos_sha256 {
         Some(repos) => message_v2(
             &claim.host,
@@ -350,6 +385,14 @@ impl Rollback {
     pub fn save_to(&self, path: &Path) -> Result<(), String> {
         let body = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
         fsio::write_private(path, &body).map_err(|e| format!("{}: {e}", path.display()))
+    }
+
+    /// What `record` stores and `seen` returns for an approval: its content hash, plus the repository hash for v2.
+    pub fn stamp(claim: &CloudApproval) -> String {
+        match &claim.repos_sha256 {
+            Some(r) => format!("{}:{r}", claim.content_sha256),
+            None => claim.content_sha256.clone(),
+        }
     }
 
     pub fn seen(&self, key: &str) -> Option<(i64, Option<&str>)> {

@@ -132,11 +132,11 @@
 			"content_sha256": "d99a9f8910c85bf540144eda48e1ffd22424fab7fb4a15de44a4493c8a508511",
 			"repos_sha256": "cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc",
 			"message": "tmgr-agent-approval:v2:api.tmgr.dev:1:56:9100:127:d99a9f8910c85bf540144eda48e1ffd22424fab7fb4a15de44a4493c8a508511:cf4c0e608a093ef8dfe129f653f6d3bbd5cff45897ed6620dce73fbdc19cb4bc:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000100",
-			"signature": "D3mMt5ncHfZXIEOBvfm2qsGHkfDi82ydQGEdO2qldF+1q6rS+zRjoVJ4PpmnQ6sFYQAjCg8S0mcvdxjwdMfBoQ==",
-			"tampered_signature": "D3mMt5ndHfZXIEOBvfm2qsGHkfDi82ydQGEdO2qldF+1q6rS+zRjoVJ4PpmnQ6sFYQAjCg8S0mcvdxjwdMfBoQ=="
+			"signature": "W0KLecn5TNaaR2j5SYssR7IWqXnC/ojvbJlNHMSfpsToXLNcPgnZEpj2j+uivVXpXvUZDrA+BRVakgJDxlRBMQ==",
+			"tampered_signature": "W0KLecn4TNaaR2j5SYssR7IWqXnC/ojvbJlNHMSfpsToXLNcPgnZEpj2j+uivVXpXvUZDrA+BRVakgJDxlRBMQ=="
 		},
 		{
-			"title": "Mixed case and duplicates",
+			"title": "Three repositories, given unsorted",
 			"description": "",
 			"host": "localhost:8080",
 			"category_id": 5,
@@ -145,15 +145,15 @@
 			"task_id": 9101,
 			"signed_at": 1760000101,
 			"repositories": [
-				"Acme/Web",
+				"acme/web",
 				"acme/api",
-				"acme/web"
+				"acme-2/web.site"
 			],
-			"content_sha256": "34fef809e83c7aef28faacfea92ced53d7edc4e5cc4e91394681a4c8d6c2667e",
-			"repos_sha256": "1c4ce8cbaf324644a3853c8f3a39faf6e11c6b4a9ced819e1d4b182d4c6a06b2",
-			"message": "tmgr-agent-approval:v2:localhost:8080:2:7:9101:5:34fef809e83c7aef28faacfea92ced53d7edc4e5cc4e91394681a4c8d6c2667e:1c4ce8cbaf324644a3853c8f3a39faf6e11c6b4a9ced819e1d4b182d4c6a06b2:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000101",
-			"signature": "2gZ3gE5/m1tqlO8527vQCpe5yckN0w1XiT9it+Zhw2C9fFKjYeJbzmJaJD87bVjEVo76egZZn40DuZiSBdDn9A==",
-			"tampered_signature": "2gZ3gE5+m1tqlO8527vQCpe5yckN0w1XiT9it+Zhw2C9fFKjYeJbzmJaJD87bVjEVo76egZZn40DuZiSBdDn9A=="
+			"content_sha256": "b1a83b362c08d2d971aca4a16ae15aba93c5c2bb8cef6d3eb128dc20ba68ed42",
+			"repos_sha256": "baefcb760de55421daa101a093cc38aacf65694c4e10229702b7e08f24f43ee7",
+			"message": "tmgr-agent-approval:v2:localhost:8080:2:7:9101:5:b1a83b362c08d2d971aca4a16ae15aba93c5c2bb8cef6d3eb128dc20ba68ed42:baefcb760de55421daa101a093cc38aacf65694c4e10229702b7e08f24f43ee7:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000101",
+			"signature": "tjJ54SUN5aqK0wtoYxEKH4LHeBkvYCYLYqzB6Nb55AUemcSP2yZnMrLyqsn5Kxq5PfEJUijXxH/ejL59CgHP4Q==",
+			"tampered_signature": "tjJ54SUM5aqK0wtoYxEKH4LHeBkvYCYLYqzB6Nb55AUemcSP2yZnMrLyqsn5Kxq5PfEJUijXxH/ejL59CgHP4Q=="
 		},
 		{
 			"title": "One explicit repository",
@@ -170,8 +170,47 @@
 			"content_sha256": "3e540ad5d2342aa428b844012f8341cf984534a3aa22db46f14aedab28d62ab6",
 			"repos_sha256": "27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0",
 			"message": "tmgr-agent-approval:v2:api.tmgr.dev:1:56:9102:127:3e540ad5d2342aa428b844012f8341cf984534a3aa22db46f14aedab28d62ab6:27f7c8654049d819b2875a03ffd8846231e1224b5af6081f2796ec48b918a1f0:0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60:1760000102",
-			"signature": "LoeVXoVYEQtrnNaVTzVet6rbpsvyZZrlr/6HMBxgPxn2cCDtgc3Cd1FhB+v3yV2PI6uSQ36fP8jQBrxLBuO1jA==",
-			"tampered_signature": "LoeVXoVZEQtrnNaVTzVet6rbpsvyZZrlr/6HMBxgPxn2cCDtgc3Cd1FhB+v3yV2PI6uSQ36fP8jQBrxLBuO1jA=="
+			"signature": "Zy+/Cv+JlckmgRPax/hPKBUlEi8eW99VAAVrbLqxpqpPIbB1J2BiBq74cjJwrIbzn+a/8LgAaptVfZDhYCmzhA==",
+			"tampered_signature": "Zy+/Cv+IlckmgRPax/hPKBUlEi8eW99VAAVrbLqxpqpPIbB1J2BiBq74cjJwrIbzn+a/8LgAaptVfZDhYCmzhA=="
 		}
+	],
+	"invalid_repositories": [
+		[],
+		[
+			"Acme/web"
+		],
+		[
+			"acme/web",
+			"acme/web"
+		],
+		[
+			"acme/web.git"
+		],
+		[
+			"acme/"
+		],
+		[
+			"-acme/web"
+		],
+		[
+			" acme/web"
+		],
+		[
+			"acme/we b"
+		],
+		[
+			"acme/webK"
+		],
+		[
+			"a/1",
+			"a/2",
+			"a/3",
+			"a/4",
+			"a/5",
+			"a/6"
+		],
+		[
+			"acme/web/x"
+		]
 	]
 }

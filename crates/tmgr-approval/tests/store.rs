@@ -229,6 +229,27 @@ fn a_repository_set_is_saved_as_version_two() {
 }
 
 #[test]
+fn a_set_with_bad_names_or_shared_paths_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("runner-allow.json");
+    for set in [
+        serde_json::json!({}),
+        serde_json::json!({"Tmgr-dev/backend": "/a"}),
+        serde_json::json!({"tmgr-dev/backend": "/a", "tmgr-dev/frontend": "/a"}),
+        serde_json::json!({"tmgr-dev/backend": "relative"}),
+    ] {
+        let mut e = serde_json::to_value(entry(None)).unwrap();
+        e["repos"] = serde_json::json!({"127": set});
+        std::fs::write(
+            &path,
+            serde_json::json!({"version": 2, "entries": [e]}).to_string(),
+        )
+        .unwrap();
+        assert!(AllowFile::load_from(&path).is_err(), "{set}");
+    }
+}
+
+#[test]
 fn a_v2_claim_verifies_only_with_its_repository_set() {
     let f = fx();
     let c = &f["cases_v2"][0];
@@ -252,7 +273,9 @@ fn a_v2_claim_verifies_only_with_its_repository_set() {
         c["description"].as_str().unwrap(),
     );
     assert!(check_claim(&e, &claim, t, d).is_ok());
-    claim.repos_sha256 = Some(tmgr_approval::repos_sha256(&["tmgr-dev/backend".into()]));
+    claim.repos_sha256 = Some(tmgr_approval::repos_sha256(&["tmgr-dev/backend".into()]).unwrap());
+    assert!(check_claim(&e, &claim, t, d).is_err());
+    claim.repos_sha256 = Some("ZZ".into());
     assert!(check_claim(&e, &claim, t, d).is_err());
     claim.repos_sha256 = None;
     assert!(check_claim(&e, &claim, t, d).is_err());

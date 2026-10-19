@@ -31,19 +31,52 @@ pub fn message(
     )
 }
 
-pub fn canonical_repos(names: &[String]) -> Vec<String> {
-    let mut out: Vec<String> = names
-        .iter()
-        .map(|n| n.trim().to_ascii_lowercase())
-        .collect();
-    out.sort();
-    out.dedup();
-    out
+pub const MAX_REPOS: usize = 5;
+
+pub fn valid_repo_name(name: &str) -> bool {
+    let Some((owner, repo)) = name.split_once('/') else {
+        return false;
+    };
+    let lower_alnum = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
+    owner.len() <= 39
+        && owner.chars().next().is_some_and(lower_alnum)
+        && owner.chars().all(|c| lower_alnum(c) || c == '-')
+        && (1..=100).contains(&repo.len())
+        && repo
+            .chars()
+            .all(|c| lower_alnum(c) || matches!(c, '.' | '_' | '-'))
+        && !repo.ends_with(".git")
+        && repo != "."
+        && repo != ".."
 }
 
-pub fn repos_sha256(names: &[String]) -> String {
-    let joined = canonical_repos(names).join("\n");
-    sha256_hex(format!("tmgr-repos:v1:{joined}").as_bytes())
+/// The sorted set the signature covers; refuses instead of normalising so every client hashes the same bytes.
+pub fn canonical_repos(names: &[String]) -> Result<Vec<String>, String> {
+    if names.is_empty() || names.len() > MAX_REPOS {
+        return Err(format!("a repository set has 1 to {MAX_REPOS} names"));
+    }
+    if let Some(bad) = names.iter().find(|n| !valid_repo_name(n)) {
+        return Err(format!(
+            "{bad:?} is not a lowercase owner/name of a GitHub repository"
+        ));
+    }
+    let mut out = names.to_vec();
+    out.sort();
+    if out.windows(2).any(|w| w[0] == w[1]) {
+        return Err("a repository set lists a name twice".into());
+    }
+    Ok(out)
+}
+
+pub fn repos_sha256(names: &[String]) -> Result<String, String> {
+    let joined = canonical_repos(names)?.join("\n");
+    Ok(sha256_hex(format!("tmgr-repos:v1:{joined}").as_bytes()))
+}
+
+pub fn valid_sha256_hex(s: &str) -> bool {
+    s.len() == 64
+        && s.chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
 #[allow(clippy::too_many_arguments)]
