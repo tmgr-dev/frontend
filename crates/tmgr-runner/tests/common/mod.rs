@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use tmgr_runner::sandbox::{prepare, Grants, SandboxSpec};
+use tmgr_runner::sandbox::{prepare, Grants, Network, SandboxSpec};
 
 pub const SECRET: &str = "TOPSECRET-4711";
 pub const SID: &str = "s_abcdefghij";
@@ -76,6 +76,10 @@ pub fn fixture(self_exe: &str) -> Fx {
 
 impl Fx {
     pub fn run(&self, script: &str) -> Out {
+        self.run_net(script, Network::Open)
+    }
+
+    pub fn run_net(&self, script: &str, network: Network) -> Out {
         let spec = SandboxSpec {
             session_id: SID.into(),
             argv: vec!["/bin/sh".into(), "-c".into(), script.into()],
@@ -91,6 +95,7 @@ impl Fx {
                 ..Default::default()
             },
             cwd_id: None,
+            network,
         };
         let l = prepare(&spec).expect("prepare");
         let o = Command::new(&l.argv[0])
@@ -124,6 +129,7 @@ impl Fx {
                 ..Default::default()
             },
             cwd_id: None,
+            network: Default::default(),
         };
         let l = prepare(&spec).expect("prepare");
         let pair = native_pty_system().openpty(pty_size()).unwrap();

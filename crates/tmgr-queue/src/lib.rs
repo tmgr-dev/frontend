@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod engine;
 pub mod paths;
+pub mod publish;
 pub mod rules;
 pub mod runs;
 pub mod source;

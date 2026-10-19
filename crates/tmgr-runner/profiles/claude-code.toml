@@ -48,6 +48,10 @@ kind = "settings-file"
 ask = ["--permission-mode", "manual"]
 accept-edits = ["--permission-mode", "acceptEdits"]
 plan = ["--permission-mode", "plan"]
+bypass = ["--permission-mode", "bypassPermissions"]
+
+[network]
+allow = ["api.anthropic.com", "statsig.anthropic.com"]
 
 [trust]
 file = ".claude.json"

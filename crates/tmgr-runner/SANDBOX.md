@@ -149,7 +149,7 @@ is refused. Per-run homes must live in a dedicated directory `<homes>/<session i
 | Signals | own sandbox only (`deny signal` + `allow signal (target same-sandbox)`) | own domain only (Landlock `Scope::Signal`) |
 | Abstract unix sockets | not applicable | connecting to sockets created outside the domain is blocked (`Scope::AbstractUnixSocket`) |
 | Pathname unix sockets | connect denied under the deny list and the runner directory | blocked only on ABI >= 9 (`ResolveUnix`) |
-| Network | allowed | allowed |
+| Network | allowed, or restricted to the egress proxy (below) | allowed; restriction not supported |
 
 `/tmp` and `/var/folders` are not writable on either OS: tools must use `TMPDIR`. One exception on macOS: files starting with `xcrun_db` in the per-user temp dir (`getconf DARWIN_USER_TEMP_DIR`), the cache the `/usr/bin` Xcode shims (`python3`, `git`, …) write regardless of `TMPDIR`.
 
@@ -158,9 +158,36 @@ is refused. Per-run homes must live in a dedicated directory `<homes>/<session i
 Under the real home: `.ssh .gnupg .aws .config/tmgr .tmgr.dev .netrc .docker/config.json .kube Library/Keychains
 Library/Application Support/dev.tmgr.cli Library/Application Support/Google/Chrome
 Library/Application Support/Firefox Library/Safari .mozilla .config/google-chrome .config/chromium
-.local/share/keyrings`; the runner directory; the homes directory (other sessions' homes), with only this session's
+.local/share/keyrings .config/gh .git-credentials .config/git/credentials`; the runner directory; the homes directory (other sessions' homes), with only this session's
 home re-allowed. On macOS these are explicit deny rules placed after the allow rules; on Linux they are simply never
 granted.
+
+## Network restriction
+
+`SandboxSpec.network` is `Open` (default) or `Restricted { proxy_port }`. `sandbox::network_restriction_enforced()` is true
+on macOS only.
+
+macOS: after every other rule the profile appends `(deny network-outbound)`, then re-allows unix sockets under the run
+home and `(remote tcp "localhost:<proxy_port>")`, then `(deny network-inbound)` and
+`(allow network-inbound (local ip "localhost:*"))` (the last matching rule wins). Direct TCP, UDP and DNS lookups from the
+agent fail; only the proxy port on localhost is reachable. The environment gets `HTTPS_PROXY HTTP_PROXY https_proxy
+http_proxy ALL_PROXY all_proxy = http://127.0.0.1:<port>` and empty `NO_PROXY no_proxy` (a profile or `env_pass` cannot
+override them).
+
+Linux: Landlock filters TCP ports only (not hosts, not UDP), so the restriction is not enforced and `prepare` refuses a
+`Restricted` spec; the mode policy never asks for it there, so unattended bypass runs are not possible on Linux.
+
+Egress proxy (`src/egress.rs`, runs in the runner, outside the sandbox, one per restricted session, `127.0.0.1:0`,
+stopped on drop): only `CONNECT <host>:443`; other methods get 405, other ports, IP literals and hosts outside the
+allowlist get 403. The allowlist is the base set `github.com codeload.github.com objects.githubusercontent.com
+raw.githubusercontent.com` plus the profile's `[network] allow = [...]` (exact names or `*.suffix`, which does not match
+the bare suffix). The proxy resolves the name itself, refuses the whole host if any address is loopback, private,
+link-local, CGNAT (100.64/10), multicast, unspecified, reserved/documentation, IPv6 ULA or link-local, or an IPv4-mapped,
+NAT64 or 6to4 form of those, and connects to the exact address it checked. Requests are limited to 8 KiB of headers,
+64 concurrent connections and a 5 minute idle timeout. Refused CONNECTs are logged by host name only.
+
+Residual: any allowed host that accepts uploads with credentials the agent holds is an exfiltration channel; Mach/XPC
+services stay reachable on macOS because the profile starts from `allow default`.
 
 ## Linux helper
 
@@ -172,7 +199,7 @@ command (exec failure: exit 127).
 
 ## Known limitations
 
-- Network is open; this is not data-exfiltration protection for anything the agent can read.
+- Network is open unless the run is `Restricted` (macOS only, see above); an open network is not data-exfiltration protection for anything the agent can read.
 - The agent can use everything it is allowed to touch: its working dir, per-run home, the network, its own CLI
   credentials copied into the per-run home.
 - Linux, kernels with Landlock ABI < 9 (for example 6.17 is ABI 7): pathname unix sockets elsewhere (user ssh-agent,

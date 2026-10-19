@@ -148,6 +148,12 @@ pub struct TrustDecl {
     pub path: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct NetworkDecl {
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
@@ -181,6 +187,8 @@ pub struct Profile {
     pub permission_modes: Option<BTreeMap<String, Vec<String>>>,
     #[serde(default)]
     pub trust: Option<TrustDecl>,
+    #[serde(default)]
+    pub network: NetworkDecl,
     #[serde(skip)]
     pub source: Source,
 }
@@ -256,6 +264,17 @@ impl Profile {
             .and_then(|t| t.get(mode))
             .map(Vec::as_slice)
             .ok_or_else(|| format!("profile {} cannot run in mode {mode}", self.id))
+    }
+
+    pub fn bypass_args(&self) -> Option<&[String]> {
+        self.permission_modes
+            .as_ref()
+            .and_then(|t| t.get("bypass"))
+            .map(Vec::as_slice)
+    }
+
+    pub fn egress_allow(&self) -> Result<Vec<crate::egress::HostPattern>, String> {
+        crate::egress::allowlist(&self.network.allow)
     }
 
     pub fn resume_argv(&self, model: Option<&str>) -> Result<Option<Vec<String>>, String> {
@@ -342,9 +361,9 @@ fn check_launch(p: &Profile) -> Result<(), String> {
         _ => {}
     }
     for (mode, args) in p.permission_modes.iter().flatten() {
-        if !tmgr_ipc::api::valid_permission_mode(mode) {
+        if mode != "bypass" && !tmgr_ipc::api::valid_permission_mode(mode) {
             return Err(format!(
-                "permission_modes.{mode} is not a mode; use ask, accept-edits or plan"
+                "permission_modes.{mode} is not a mode; use ask, accept-edits, plan or bypass"
             ));
         }
         if (args.is_empty() && mode != "ask") || args.iter().any(|a| a.contains('{')) {
@@ -356,6 +375,8 @@ fn check_launch(p: &Profile) -> Result<(), String> {
     if let Some(t) = &p.trust {
         check_trust(t)?;
     }
+    p.egress_allow()
+        .map_err(|e| format!("network.allow: {e}"))?;
     if p.instruction_files.len() > MAX_INSTRUCTION_FILES {
         return Err(format!("at most {MAX_INSTRUCTION_FILES} instruction_files"));
     }
@@ -891,6 +912,85 @@ idle = ['^> $']
             p.resume_argv_with(None, extra).unwrap().unwrap(),
             ["claude", "--permission-mode", "plan", "--continue"]
         );
+    }
+
+    #[test]
+    fn builtin_bypass_args_and_egress_allowlists() {
+        let (set, warnings) = ProfileSet::load(None);
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(
+            set.get("claude-code").unwrap().bypass_args().unwrap(),
+            ["--permission-mode", "bypassPermissions"]
+        );
+        assert_eq!(
+            set.get("codex").unwrap().bypass_args().unwrap(),
+            [
+                "--ask-for-approval",
+                "never",
+                "--sandbox",
+                "workspace-write"
+            ]
+        );
+        for id in ["agy", "opencode", "cursor-agent", "aider"] {
+            assert!(set.get(id).unwrap().bypass_args().is_none(), "{id}");
+        }
+        let hosts = |id: &str, host: &str| {
+            set.get(id)
+                .unwrap()
+                .egress_allow()
+                .unwrap()
+                .iter()
+                .any(|p| p.matches(host))
+        };
+        for h in [
+            "api.anthropic.com",
+            "statsig.anthropic.com",
+            "github.com",
+            "codeload.github.com",
+        ] {
+            assert!(hosts("claude-code", h), "{h}");
+        }
+        assert!(!hosts("claude-code", "api.openai.com"));
+        for h in [
+            "api.openai.com",
+            "chatgpt.com",
+            "auth.openai.com",
+            "raw.githubusercontent.com",
+        ] {
+            assert!(hosts("codex", h), "{h}");
+        }
+        assert!(!hosts("codex", "api.anthropic.com"));
+        assert!(!hosts("aider", "registry.npmjs.org"));
+    }
+
+    #[test]
+    fn bypass_mode_and_network_declarations_are_checked() {
+        let dir = tempfile::tempdir().unwrap();
+        for (i, tail) in [
+            "[permission_modes]\nask = []\nbypass = []",
+            "[permission_modes]\nask = []\nbypass = [\"--x={model}\"]",
+            "[network]\nallow = [\"1.2.3.4\"]",
+            "[network]\nallow = [\"localhost\"]",
+            "[network]\nallow = [\"ok.example.com\", \"*.cdn.example.com\"]\n[permission_modes]\nask = []\nbypass = [\"--yes\"]",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let text = format!("id = \"p{i}\"\nname = \"p\"\ncommand = [\"p\"]\n{tail}\n");
+            std::fs::write(dir.path().join(format!("p{i}.toml")), text).unwrap();
+        }
+        let (set, warnings) = ProfileSet::load(Some(dir.path()));
+        assert_eq!(warnings.len(), 4, "{warnings:?}");
+        let ok = set.get("p4").unwrap();
+        assert_eq!(ok.bypass_args().unwrap(), ["--yes"]);
+        assert!(ok
+            .egress_allow()
+            .unwrap()
+            .iter()
+            .any(|p| p.matches("a.cdn.example.com")));
+        for i in 0..4 {
+            assert!(set.get(&format!("p{i}")).is_none());
+        }
     }
 
     #[test]

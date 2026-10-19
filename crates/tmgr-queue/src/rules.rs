@@ -388,6 +388,13 @@ mod tests {
             vec!["codex", "--yolo"],
             vec!["codex", "--sandbox", "danger-full-access"],
             vec!["codex", "-a", "never"],
+            vec![
+                "codex",
+                "--ask-for-approval",
+                "never",
+                "--sandbox",
+                "workspace-write",
+            ],
             vec!["codex", "-a=never"],
             vec!["codex", "-anever"],
             vec!["codex", "--ask-for-approval", "NEVER"],
