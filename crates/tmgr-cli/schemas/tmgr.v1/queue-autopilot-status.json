@@ -22,7 +22,15 @@
         "rule": { "type": "string" },
         "mode": { "type": "string" },
         "stop_reason": { "type": ["string", "null"] },
-        "settings": { "type": "object" },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "max_teams": { "type": "integer" },
+            "team_size": { "type": "integer" },
+            "team_mode": { "enum": ["eco", "heavy", "orchestrator"] },
+            "profile": { "type": ["string", "null"] }
+          }
+        },
         "tasks": {
           "type": "object",
           "required": [
@@ -50,6 +58,62 @@
         },
         "teams": { "$ref": "#/$defs/slots" },
         "agents": { "$ref": "#/$defs/slots" },
+        "agents_planned": { "$ref": "#/$defs/slots" },
+        "plan": {
+          "type": "object",
+          "properties": {
+            "state": { "enum": ["pending", "running", "done", "rejected", "skipped"] },
+            "dry_run": { "type": "boolean" },
+            "profile": { "type": "string" },
+            "made_at": { "type": ["string", "null"] },
+            "attempt": { "type": "integer" },
+            "error": { "type": ["string", "null"] },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "task": { "type": "string" },
+                  "task_id": { "type": "integer" },
+                  "position": { "type": "integer" },
+                  "group": { "type": ["string", "null"] },
+                  "mode": { "type": "string" },
+                  "reason": { "type": "string" },
+                  "state": { "enum": ["queued", "running", "pr", "failed", "held"] }
+                }
+              }
+            }
+          }
+        },
+        "triage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": { "type": "string" },
+              "task_id": { "type": "integer" },
+              "verdict": { "enum": ["needs_feedback", "blocked"] },
+              "reason": { "type": "string" },
+              "question": { "type": "string" },
+              "applied": { "type": "boolean" },
+              "error": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "not_planned": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": { "type": "string" },
+              "task_id": { "type": "integer" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "needs_feedback_tasks": { "type": "array", "items": { "$ref": "#/$defs/task_brief" } },
+        "blocked_tasks": { "type": "array", "items": { "$ref": "#/$defs/task_brief" } },
+        "queued_tasks": { "type": "array", "items": { "$ref": "#/$defs/task_brief" } },
         "runs": {
           "type": "array",
           "items": {
@@ -62,7 +126,13 @@
               "mode": { "type": "string" },
               "started_at": { "type": ["string", "null"] },
               "repos": { "type": "array", "items": { "type": "string" } },
-              "step": { "type": "string" }
+              "step": { "type": "string" },
+              "team_size": { "type": "integer" },
+              "team_mode": { "enum": ["eco", "heavy"] },
+              "agents": { "type": "integer" },
+              "workspace_code": { "type": "string" },
+              "workspace_id": { "type": "integer" },
+              "session_id": { "type": "string" }
             }
           }
         },
@@ -141,6 +211,16 @@
       "properties": {
         "running": { "type": "integer" },
         "max": { "type": "integer" }
+      }
+    },
+    "task_brief": {
+      "type": "object",
+      "required": ["key", "id"],
+      "properties": {
+        "key": { "type": "string" },
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "workspace_code": { "type": "string" }
       }
     },
     "warning": {

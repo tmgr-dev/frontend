@@ -355,6 +355,73 @@ mod tests {
     }
 
     #[test]
+    fn a_status_with_a_plan_validates_and_stays_additive() {
+        use crate::cmd::autopilot::model::{
+            NotPlanned, PlanDoc, PlanRow, Slots, TaskBrief, TriageRow,
+        };
+        let schema = status_schema();
+        let mut doc = super::super::render::tests::doc();
+        doc.runs[0].team_size = Some(3);
+        doc.runs[0].team_mode = Some("eco".into());
+        doc.runs[0].agents = Some(3);
+        doc.runs[0].workspace_code = Some("tm".into());
+        doc.runs[0].workspace_id = Some(7);
+        doc.runs[0].session_id = Some("s1".into());
+        doc.agents_planned = Some(Slots { running: 3, max: 6 });
+        doc.plan = Some(PlanDoc {
+            profile: "claude-code".into(),
+            items: vec![PlanRow {
+                task: "TM-12".into(),
+                position: 1,
+                mode: "eco".into(),
+                state: "queued".into(),
+                ..PlanRow::default()
+            }],
+            ..PlanDoc::default()
+        });
+        doc.triage = vec![TriageRow {
+            task: "TM-2".into(),
+            verdict: "blocked".into(),
+            ..TriageRow::default()
+        }];
+        doc.not_planned = vec![NotPlanned::default()];
+        doc.needs_feedback_tasks = Some(vec![TaskBrief::default()]);
+        let value = serde_json::to_value(&doc).unwrap();
+        for key in [
+            "plan",
+            "triage",
+            "not_planned",
+            "agents_planned",
+            "needs_feedback_tasks",
+        ] {
+            assert!(value.get(key).is_some(), "{key}");
+        }
+        let mut f = Fake {
+            status: Some(AutopilotStatus {
+                running: true,
+                pid: Some(1),
+                status: value,
+            }),
+            ..Fake::default()
+        };
+        let (o, _) = status_output(Some(&mut f), now(), tz()).unwrap();
+        jsonschema::validate(&schema, &envelope(&o.data)).unwrap();
+        assert!(o.human.contains("Plan "));
+        let bad = json!({"running": true, "plan": {"state": "later"}});
+        assert!(jsonschema::validate(&schema, &envelope(&bad)).is_err());
+        let old = serde_json::to_value(super::super::render::tests::doc()).unwrap();
+        for key in [
+            "plan",
+            "triage",
+            "not_planned",
+            "agents_planned",
+            "queued_tasks",
+        ] {
+            assert!(old.get(key).is_none(), "{key} leaks into an old status");
+        }
+    }
+
+    #[test]
     fn a_garbled_status_file_is_an_error_not_a_guess() {
         let mut f = Fake {
             status: Some(AutopilotStatus {

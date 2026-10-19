@@ -2,7 +2,9 @@ use chrono::{DateTime, FixedOffset, Utc};
 use serde_json::Value;
 use tmgr_core::text::sanitize_line;
 
-use super::model::{ActiveRun, Event, LimitRow, RunState, StatusDoc};
+use super::model::{
+    ActiveRun, Event, LimitRow, PlanDoc, PlanState, RunState, StatusDoc, TaskBrief, TriageRow,
+};
 
 const LAST_EVENTS: usize = 8;
 
@@ -67,14 +69,108 @@ fn run_line(r: &ActiveRun, now: DateTime<Utc>) -> String {
         .started_at
         .map(|t| span((now - t).num_seconds()))
         .unwrap_or_else(|| "-".into());
-    format!(
+    let mut line = format!(
         "  {}  {}  {}  {}  {}",
         sanitize_line(&r.task),
         sanitize_line(&r.mode),
         dur,
         sanitize_line(&r.repos.join(",")),
         sanitize_line(&r.step)
-    )
+    );
+    let agents = r.agents.or(r.team_size);
+    if r.team_mode.is_some() || agents.is_some() {
+        let mode = r.team_mode.as_deref().map(sanitize_line);
+        let count = agents.map(|n| format!("{n} agent{}", if n == 1 { "" } else { "s" }));
+        let parts: Vec<String> = mode.into_iter().chain(count).collect();
+        line.push_str(&format!(" · team {}", parts.join(", ")));
+    }
+    line
+}
+
+fn plan_state_word(s: PlanState) -> &'static str {
+    match s {
+        PlanState::Pending => "waiting for the orchestrator",
+        PlanState::Running => "the orchestrator is planning",
+        PlanState::Done => "ready",
+        PlanState::Rejected => "rejected",
+        PlanState::Skipped => "skipped",
+    }
+}
+
+fn plan_lines(plan: &PlanDoc, tz: FixedOffset) -> Vec<String> {
+    let mut head = format!("Plan {}", plan_state_word(plan.state));
+    if plan.dry_run {
+        head.push_str(" (dry run)");
+    }
+    if !plan.profile.is_empty() {
+        head.push_str(&format!(" · teams on {}", sanitize_line(&plan.profile)));
+    }
+    if let Some(t) = plan.made_at {
+        head.push_str(&format!(" · made {}", clock(t, tz)));
+    }
+    if let Some(e) = &plan.error {
+        head.push_str(&format!(" · {}", sanitize_line(e)));
+    }
+    let mut lines = vec![head];
+    for item in &plan.items {
+        let mut line = format!(
+            "  {}. {}  [{}]  {}",
+            item.position,
+            sanitize_line(&item.task),
+            sanitize_line(&item.state),
+            sanitize_line(&item.mode)
+        );
+        if let Some(g) = item.group.as_deref().filter(|g| !g.is_empty()) {
+            line.push_str(&format!("  group {}", sanitize_line(g)));
+        }
+        if !item.reason.is_empty() {
+            line.push_str(&format!("  {}", sanitize_line(&item.reason)));
+        }
+        lines.push(line);
+    }
+    lines
+}
+
+fn triage_line(r: &TriageRow) -> String {
+    let mut line = format!("  {}  {}", sanitize_line(&r.task), sanitize_line(&r.reason));
+    if !r.question.is_empty() {
+        line.push_str(&format!(" · asks: {}", sanitize_line(&r.question)));
+    }
+    match (&r.error, r.applied) {
+        (Some(e), _) => line.push_str(&format!(" · not applied: {}", sanitize_line(e))),
+        (None, true) => line.push_str(" · applied"),
+        (None, false) => line.push_str(" · not applied"),
+    }
+    line
+}
+
+fn brief_line(b: &TaskBrief) -> String {
+    format!("  {}  {}", sanitize_line(&b.key), sanitize_line(&b.title))
+}
+
+fn triage_lines(d: &StatusDoc) -> Vec<String> {
+    let mut lines = Vec::new();
+    for (verdict, title, briefs) in [
+        ("needs_feedback", "Needs feedback", &d.needs_feedback_tasks),
+        ("blocked", "Blocked", &d.blocked_tasks),
+    ] {
+        let rows: Vec<String> = d
+            .triage
+            .iter()
+            .filter(|r| r.verdict == verdict)
+            .map(triage_line)
+            .collect();
+        let rows = if rows.is_empty() {
+            briefs.iter().flatten().map(brief_line).collect::<Vec<_>>()
+        } else {
+            rows
+        };
+        if !rows.is_empty() {
+            lines.push(title.to_string());
+            lines.extend(rows);
+        }
+    }
+    lines
 }
 
 fn event_line(e: &Event, tz: FixedOffset) -> String {
@@ -148,7 +244,22 @@ pub fn status_text(d: &StatusDoc, running: bool, now: DateTime<Utc>, tz: FixedOf
             d.teams.running, d.teams.max, d.agents.running, d.agents.max
         ),
     ];
+    if let Some(a) = &d.agents_planned {
+        lines.push(format!("Agents planned {}/{}", a.running, a.max));
+    }
     lines.extend(d.runs.iter().map(|r| run_line(r, now)));
+    if let Some(plan) = &d.plan {
+        lines.extend(plan_lines(plan, tz));
+    }
+    lines.extend(triage_lines(d));
+    if !d.not_planned.is_empty() {
+        lines.push("Not planned".into());
+        lines.extend(
+            d.not_planned
+                .iter()
+                .map(|n| format!("  {}  {}", sanitize_line(&n.task), sanitize_line(&n.reason))),
+        );
+    }
     if !d.limits.is_empty() {
         let parts: Vec<String> = d.limits.iter().map(|l| limit_part(l, now, tz)).collect();
         lines.push(format!("Limits {}", parts.join(" / ")));
@@ -347,6 +458,114 @@ Last events
   21:48 picked TM-8 started
   21:49 picked TM-9 started";
         assert_eq!(status_text(&d, true, utc(20, 3), tz()), want);
+    }
+
+    fn planned() -> StatusDoc {
+        use crate::cmd::autopilot::model::{NotPlanned, PlanRow};
+        let mut d = doc();
+        d.agents_planned = Some(Slots { running: 3, max: 6 });
+        d.runs[0].team_mode = Some("heavy".into());
+        d.runs[0].team_size = Some(3);
+        d.runs[0].agents = Some(3);
+        d.plan = Some(PlanDoc {
+            state: PlanState::Done,
+            dry_run: false,
+            profile: "claude-code".into(),
+            made_at: Some(utc(19, 0)),
+            items: vec![
+                PlanRow {
+                    task: "TM-12".into(),
+                    position: 1,
+                    group: Some("api".into()),
+                    mode: "heavy".into(),
+                    reason: "touches auth".into(),
+                    state: "running".into(),
+                    ..PlanRow::default()
+                },
+                PlanRow {
+                    task: "TM-13".into(),
+                    position: 2,
+                    mode: "eco".into(),
+                    state: "queued".into(),
+                    ..PlanRow::default()
+                },
+            ],
+            ..PlanDoc::default()
+        });
+        d.triage = vec![
+            TriageRow {
+                task: "TM-20".into(),
+                verdict: "needs_feedback".into(),
+                reason: "no acceptance criteria".into(),
+                question: "Which endpoint?".into(),
+                applied: true,
+                ..TriageRow::default()
+            },
+            TriageRow {
+                task: "TM-21".into(),
+                verdict: "blocked".into(),
+                reason: "waits for TM-12".into(),
+                error: Some("status not found".into()),
+                ..TriageRow::default()
+            },
+        ];
+        d.not_planned = vec![NotPlanned {
+            task: "TM-30".into(),
+            reason: "needs confirm".into(),
+            ..NotPlanned::default()
+        }];
+        d
+    }
+
+    #[test]
+    fn a_plan_triage_and_team_details_are_shown_when_present() {
+        let t = status_text(&planned(), true, utc(20, 3), tz());
+        for line in [
+            "Agents planned 3/6",
+            "  TM-12  auto  14m  o/api,o/web  running · team heavy, 3 agents",
+            "Plan ready · teams on claude-code · made 21:00",
+            "  1. TM-12  [running]  heavy  group api  touches auth",
+            "  2. TM-13  [queued]  eco",
+            "Needs feedback\n  TM-20  no acceptance criteria · asks: Which endpoint? · applied",
+            "Blocked\n  TM-21  waits for TM-12 · not applied: status not found",
+            "Not planned\n  TM-30  needs confirm",
+        ] {
+            assert!(t.contains(line), "missing {line:?} in\n{t}");
+        }
+    }
+
+    #[test]
+    fn a_dry_run_plan_is_marked_and_a_rejected_one_shows_why() {
+        let mut d = planned();
+        let plan = d.plan.as_mut().unwrap();
+        plan.dry_run = true;
+        plan.state = PlanState::Rejected;
+        plan.error = Some("orchestrator output rejected".into());
+        let t = status_text(&d, true, utc(20, 3), tz());
+        assert!(t.contains("Plan rejected (dry run) · teams on claude-code · made 21:00 · orchestrator output rejected"));
+    }
+
+    #[test]
+    fn task_briefs_fill_the_lists_when_there_are_no_triage_rows() {
+        let mut d = doc();
+        d.needs_feedback_tasks = Some(vec![TaskBrief {
+            key: "TM-5".into(),
+            id: 5,
+            title: "Fix it".into(),
+            workspace_code: "tm".into(),
+        }]);
+        d.blocked_tasks = Some(vec![]);
+        let t = status_text(&d, true, utc(20, 3), tz());
+        assert!(t.contains("Needs feedback\n  TM-5  Fix it"));
+        assert!(!t.contains("Blocked\n"));
+    }
+
+    #[test]
+    fn a_status_without_a_plan_renders_no_plan_sections() {
+        let t = status_text(&doc(), true, utc(20, 3), tz());
+        for word in ["Plan ", "Agents planned", "Not planned", "team "] {
+            assert!(!t.contains(word), "{word} in\n{t}");
+        }
     }
 
     #[test]
