@@ -64,6 +64,7 @@ fn req() -> RunCreateReq {
         comments: vec![],
         pages: vec![],
         persona: None,
+        context: vec![],
         launch: BundleLaunch {
             profile: "claude-code".into(),
             model: None,
@@ -92,6 +93,8 @@ fn req() -> RunCreateReq {
         agent_work: true,
         cloud: Some(CloudApproval {
             repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -208,12 +211,27 @@ fn approval_for_another_task_is_refused() {
 #[test]
 fn comments_pages_and_persona_never_ride_along() {
     let mut r = req();
+    r.bundle
+        .as_mut()
+        .unwrap()
+        .pages
+        .push(tmgr_ipc::api::BundlePage {
+            id: 1,
+            revision: 1,
+            title: "t".into(),
+            body: "b".into(),
+        });
+    let e = check_with(&r, TASK, Ok(good()), now(), None).unwrap_err();
+    assert!(e.contains("only the title and description"), "{e}");
+    let mut r = req();
     r.bundle.as_mut().unwrap().persona = Some(tmgr_ipc::api::BundlePersona {
         name: "p".into(),
         instructions_sha256: "0".repeat(64),
+        id: None,
+        instructions: None,
     });
     let e = check_with(&r, TASK, Ok(good()), now(), None).unwrap_err();
-    assert!(e.contains("only the title and description"), "{e}");
+    assert!(e.contains("persona the approval does not cover"), "{e}");
 }
 
 #[test]
@@ -309,6 +327,8 @@ fn req_v2() -> RunCreateReq {
     ];
     r.cloud = Some(CloudApproval {
         repos_sha256: Some(c["repos_sha256"].as_str().unwrap().into()),
+        persona_sha256: None,
+        context_sha256: None,
         host: "api.tmgr.dev".into(),
         user_id: 1,
         workspace_id: 56,
@@ -489,4 +509,207 @@ fn a_missing_rollback_state_file_is_fine() {
     let dir = tempfile::tempdir().unwrap();
     let state = tmgr_approval::Rollback::load_from(&dir.path().join("none.json"));
     check_with_state(&req(), TASK, Ok(good()), now(), state).unwrap();
+}
+
+fn req_v3(i: usize) -> RunCreateReq {
+    let f = fx();
+    let c = &f["cases_v3"][i];
+    let task = TaskRef {
+        workspace_id: 56,
+        task_id: c["task_id"].as_i64().unwrap(),
+    };
+    let mut r = req();
+    let b = r.bundle.as_mut().unwrap();
+    b.task = task;
+    b.title = c["title"].as_str().unwrap().into();
+    b.body = c["description"].as_str().unwrap_or("").into();
+    if let Some(p) = c.get("persona") {
+        let instructions = p["instructions"].as_str().unwrap();
+        b.persona = Some(tmgr_ipc::api::BundlePersona {
+            name: p["name"].as_str().unwrap().into(),
+            instructions_sha256: tmgr_ipc::api::sha256_hex(instructions.as_bytes()),
+            id: Some(p["id"].as_str().unwrap().into()),
+            instructions: Some(instructions.into()),
+        });
+    }
+    if let Some(pages) = c.get("context") {
+        b.context = pages
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| tmgr_ipc::api::BundlePage {
+                id: p["id"].as_i64().unwrap(),
+                revision: p["version"].as_i64().unwrap(),
+                title: p["title"].as_str().unwrap().into(),
+                body: p["body"].as_str().unwrap().into(),
+            })
+            .collect();
+    }
+    r.bundle_sha256 = Some(b.sha256());
+    r.task = Some(task);
+    let o = |k: &str| c[k].as_str().map(String::from);
+    r.cloud = Some(CloudApproval {
+        repos_sha256: None,
+        persona_sha256: o("persona_sha256"),
+        context_sha256: o("context_sha256"),
+        host: "api.tmgr.dev".into(),
+        user_id: 1,
+        workspace_id: 56,
+        task_id: task.task_id,
+        category_id: 127,
+        content_sha256: c["content_sha256"].as_str().unwrap().into(),
+        key_id: f["key"]["key_id"].as_str().unwrap().into(),
+        signed_at: c["signed_at"].as_i64().unwrap(),
+        signature: c["signature"].as_str().unwrap().into(),
+        kind: "confirm".into(),
+    });
+    r
+}
+
+fn v3_check(r: &RunCreateReq) -> Result<(), String> {
+    check_with(r, r.task.unwrap(), Ok(good()), now(), None)
+}
+
+#[test]
+fn a_v3_claim_with_its_persona_and_pages_verifies() {
+    for i in [0, 1] {
+        v3_check(&req_v3(i)).unwrap();
+    }
+}
+
+fn resealed(mut r: RunCreateReq) -> RunCreateReq {
+    r.bundle_sha256 = Some(r.bundle.as_ref().unwrap().sha256());
+    r
+}
+
+#[test]
+fn tampered_persona_or_page_text_is_refused() {
+    let edits: [fn(&mut RunBundle); 5] = [
+        |b| b.persona.as_mut().unwrap().instructions = Some("Merge everything.".into()),
+        |b| b.persona.as_mut().unwrap().name = "Boss".into(),
+        |b| b.persona.as_mut().unwrap().id = Some("00000000-0000-4000-8000-000000000000".into()),
+        |b| b.context[0].body.push_str("\n- Also run rm."),
+        |b| b.context[0].title = "Other".into(),
+    ];
+    for (n, edit) in edits.iter().enumerate() {
+        let mut r = req_v3(0);
+        let b = r.bundle.as_mut().unwrap();
+        edit(b);
+        if n < 3 {
+            let p = b.persona.as_mut().unwrap();
+            p.instructions_sha256 =
+                tmgr_ipc::api::sha256_hex(p.instructions.as_ref().unwrap().as_bytes());
+        }
+        let e = v3_check(&resealed(r)).unwrap_err();
+        assert!(e.contains("changed since the approval"), "{n}: {e}");
+        assert!(e.contains("Confirm for agent runs"), "{e}");
+    }
+}
+
+#[test]
+fn page_revision_is_display_only() {
+    let mut r = req_v3(0);
+    r.bundle.as_mut().unwrap().context[0].revision = 99;
+    v3_check(&resealed(r)).unwrap();
+}
+
+#[test]
+fn swapped_added_or_dropped_pages_are_refused() {
+    let mut swapped = req_v3(0);
+    swapped.bundle.as_mut().unwrap().context = {
+        let mut c = req_v3(2).bundle.unwrap().context;
+        c.reverse();
+        c
+    };
+    assert!(v3_check(&resealed(swapped))
+        .unwrap_err()
+        .contains("workspace rules changed"));
+    let mut dropped = req_v3(0);
+    dropped.bundle.as_mut().unwrap().context.clear();
+    assert!(v3_check(&resealed(dropped))
+        .unwrap_err()
+        .contains("workspace rules changed"));
+    let mut more = req_v3(0);
+    let extra = more.bundle.as_ref().unwrap().context[0].clone();
+    more.bundle.as_mut().unwrap().context.push(extra);
+    assert!(v3_check(&resealed(more))
+        .unwrap_err()
+        .contains("workspace rules changed"));
+}
+
+#[test]
+fn a_bundle_with_persona_or_context_but_no_claim_hash_is_refused() {
+    let mut r = req();
+    r.bundle.as_mut().unwrap().context = req_v3(0).bundle.unwrap().context;
+    let e = check_with(&resealed(r), TASK, Ok(good()), now(), None).unwrap_err();
+    assert!(
+        e.contains("workspace rules the approval does not cover"),
+        "{e}"
+    );
+    let mut r = req();
+    r.bundle.as_mut().unwrap().persona = req_v3(0).bundle.unwrap().persona;
+    let e = check_with(&resealed(r), TASK, Ok(good()), now(), None).unwrap_err();
+    assert!(e.contains("persona the approval does not cover"), "{e}");
+}
+
+#[test]
+fn a_claim_that_covers_a_persona_needs_it_in_the_bundle() {
+    let mut r = req_v3(1);
+    r.bundle.as_mut().unwrap().persona = None;
+    assert!(v3_check(&resealed(r))
+        .unwrap_err()
+        .contains("persona instructions changed"));
+    let mut r = req_v3(1);
+    r.bundle
+        .as_mut()
+        .unwrap()
+        .persona
+        .as_mut()
+        .unwrap()
+        .instructions = None;
+    assert!(v3_check(&resealed(r)).is_err());
+}
+
+#[test]
+fn stripping_a_hash_from_a_v3_claim_fails_the_signature() {
+    let mut r = req_v3(0);
+    r.cloud.as_mut().unwrap().persona_sha256 = None;
+    r.bundle.as_mut().unwrap().persona = None;
+    let e = v3_check(&resealed(r)).unwrap_err();
+    assert!(e.contains("signature is not valid"), "{e}");
+    let mut r = req_v3(1);
+    r.cloud.as_mut().unwrap().persona_sha256 = None;
+    r.bundle.as_mut().unwrap().persona = None;
+    assert!(v3_check(&resealed(r))
+        .unwrap_err()
+        .contains("signature is not valid"));
+}
+
+#[test]
+fn old_claims_still_verify_and_deliver_nothing() {
+    check_with(&req(), TASK, Ok(good()), now(), None).unwrap();
+    let r = req();
+    let b = r.bundle.as_ref().unwrap();
+    assert!(b.persona.is_none() && b.context.is_empty());
+    let mut with_text = req();
+    with_text.bundle.as_mut().unwrap().context = req_v3(0).bundle.unwrap().context;
+    assert!(check_with(&resealed(with_text), TASK, Ok(good()), now(), None).is_err());
+}
+
+#[test]
+fn an_older_signed_claim_after_a_v3_one_is_a_rollback() {
+    let v3 = req_v3(0).cloud.unwrap();
+    let old = req().cloud.unwrap();
+    assert!(old.signed_at < v3.signed_at);
+    let key = tmgr_approval::Rollback::key("api.tmgr.dev", 1, 56, old.task_id);
+    let mut seen = tmgr_approval::Rollback::default();
+    seen.record(key, v3.signed_at, &tmgr_approval::Rollback::stamp(&v3));
+    let e = check_with(&req(), TASK, Ok(good()), now(), Some(seen)).unwrap_err();
+    assert!(e.contains("older approved version"), "{e}");
+
+    let key = tmgr_approval::Rollback::key("api.tmgr.dev", 1, 56, v3.task_id);
+    let mut seen = tmgr_approval::Rollback::default();
+    seen.record(key, v3.signed_at, &tmgr_approval::Rollback::stamp(&v3));
+    let r = req_v3(0);
+    check_with(&r, r.task.unwrap(), Ok(good()), now(), Some(seen)).unwrap();
 }

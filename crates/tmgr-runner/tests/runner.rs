@@ -1132,6 +1132,7 @@ impl Harness {
                 body: "cookies live 7 days".into(),
             }],
             persona: None,
+            context: vec![],
             launch: BundleLaunch {
                 profile: profile.into(),
                 model: None,
@@ -1454,6 +1455,43 @@ fn a_launch_that_fails_late_leaves_an_existing_context_untouched() {
 }
 
 #[test]
+fn a_local_run_with_owner_instructions_or_rules_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.bundle_runner();
+    let text = "Follow the rules.";
+    let edits: [Box<dyn Fn(&mut RunBundle)>; 2] = [
+        Box::new(move |b| {
+            b.persona = Some(BundlePersona {
+                name: "p".into(),
+                instructions_sha256: tmgr_ipc::api::sha256_hex(text.as_bytes()),
+                id: Some("993c30a6-3528-42bf-9a70-507841cebc08".into()),
+                instructions: Some(text.into()),
+            })
+        }),
+        Box::new(|b| {
+            b.context = vec![BundlePage {
+                id: 1,
+                revision: 1,
+                title: "Rules".into(),
+                body: "Do as told".into(),
+            }]
+        }),
+    ];
+    for edit in edits {
+        let mut r = h.bundled("fake");
+        edit(r.bundle.as_mut().unwrap());
+        rehash(&mut r);
+        let e = err_text(h.client().create_run(r));
+        assert!(e.contains("signed cloud approval"), "{e}");
+    }
+    assert!(h.client().list().unwrap().is_empty());
+    assert!(!h.work.join(".tmgr").exists());
+}
+
+#[test]
 fn runs_create_refuses_malformed_bundle_metadata_naming_the_field() {
     if !sessions_available() {
         return;
@@ -1467,6 +1505,8 @@ fn runs_create_refuses_malformed_bundle_metadata_naming_the_field() {
             b.persona = Some(BundlePersona {
                 name: name.clone(),
                 instructions_sha256: sha.clone(),
+                id: None,
+                instructions: None,
             })
         }
     };
@@ -4625,6 +4665,7 @@ impl CloudFx {
             comments: vec![],
             pages: vec![],
             persona: None,
+            context: vec![],
             launch: BundleLaunch {
                 profile: "cloudy".into(),
                 model: None,
@@ -4643,6 +4684,8 @@ impl CloudFx {
         r.unattended = unattended;
         r.cloud = Some(tmgr_ipc::api::CloudApproval {
             repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -4877,6 +4920,7 @@ impl MultiFx {
             comments: vec![],
             pages: vec![],
             persona: None,
+            context: vec![],
             launch: BundleLaunch {
                 profile: "multi".into(),
                 model: None,
@@ -4903,6 +4947,8 @@ impl MultiFx {
         ];
         r.cloud = Some(tmgr_ipc::api::CloudApproval {
             repos_sha256: Some(c["repos_sha256"].as_str().unwrap().into()),
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
