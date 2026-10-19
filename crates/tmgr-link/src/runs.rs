@@ -429,6 +429,7 @@ fn create(
         return deny(conn, method, args, id, r.code, &r.reason);
     }
     let mut req = RunCreateReq {
+        clones: Vec::new(),
         profile: agent.to_string(),
         task: Some(task),
         cwd: repo,

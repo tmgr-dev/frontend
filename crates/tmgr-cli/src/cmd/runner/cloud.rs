@@ -10,7 +10,9 @@ use serde_json::json;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
-use tmgr_core::approval::{check_claim, content_sha256, AllowFile, Entry, Refusal, Rollback};
+use tmgr_core::approval::{
+    check_claim, content_sha256, AllowFile, Entry, Refusal, RepoBinding, Rollback,
+};
 use tmgr_core::config;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::notify::build_push;
@@ -150,6 +152,7 @@ pub fn cloud_gate(
     }
     let category_id = e.category.as_ref().map_or(0, |c| c.id);
     let claim = CloudApproval {
+        repos_sha256: None,
         host: entry.server.clone(),
         user_id: entry.user_id,
         workspace_id: entry.workspace_id,
@@ -335,7 +338,7 @@ fn bound_repo(
         ))
     })?;
     let key = category.id.to_string();
-    let repo = match entry.repos.get(&key) {
+    let repo = match entry.repo(category.id) {
         Some(bound) => {
             let bound = canonical_root(Path::new(bound))?;
             if let Some(dir) = cwd {
@@ -358,7 +361,7 @@ fn bound_repo(
                     .find(&server, user, ws_id)
                     .cloned()
                     .ok_or("the allow entry disappeared")?;
-                updated.repos.insert(key, path);
+                updated.repos.insert(key, RepoBinding::Path(path));
                 file.upsert(updated);
                 Ok(file.clone())
             })
@@ -613,6 +616,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     notify_started(&ctx, &ok);
     let info = rc
         .create_run(RunCreateReq {
+            clones: Vec::new(),
             profile: profile.clone(),
             task: Some(task_ref),
             cwd: cwd.clone(),
@@ -871,8 +875,7 @@ pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
         )
     })?;
     let repo = entry
-        .repos
-        .get(&category.id.to_string())
+        .repo(category.id)
         .and_then(|b| std::fs::canonicalize(b).ok())
         .ok_or_else(|| {
             Error::new(

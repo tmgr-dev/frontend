@@ -359,6 +359,7 @@ pub fn read_bundle(store: &Path, i: &Intent) -> io::Result<Option<RunBundle>> {
 
 pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
     RunCreateReq {
+        clones: Vec::new(),
         profile: i.profile.clone(),
         task: i.task,
         cwd: i.cwd.clone(),

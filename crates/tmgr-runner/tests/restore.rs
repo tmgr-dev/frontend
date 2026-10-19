@@ -129,6 +129,7 @@ impl H {
 
     fn req(&self) -> RunCreateReq {
         RunCreateReq {
+            clones: Vec::new(),
             profile: "fake".into(),
             task: None,
             cwd: self.work.display().to_string(),

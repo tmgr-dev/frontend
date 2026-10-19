@@ -1,4 +1,4 @@
-use crate::crypto::{content_sha256, message, verify};
+use crate::crypto::{content_sha256, message, message_v2, verify};
 use crate::fsio;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,15 @@ pub struct PinnedKey {
     pub device_name: String,
 }
 
+/// A category's local binding: one path (the category's GitHub link, version 1) or a set of
+/// GitHub full names mapped to their local clones (an explicit repository set, version 2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RepoBinding {
+    Path(String),
+    Set(BTreeMap<String, String>),
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     pub server: String,
@@ -45,7 +54,7 @@ pub struct Entry {
     pub expires_at: Option<String>,
     pub keys: Vec<PinnedKey>,
     #[serde(default)]
-    pub repos: BTreeMap<String, String>,
+    pub repos: BTreeMap<String, RepoBinding>,
 }
 
 impl Entry {
@@ -73,7 +82,27 @@ impl Entry {
     }
 
     pub fn repo(&self, category_id: i64) -> Option<&str> {
-        self.repos.get(&category_id.to_string()).map(String::as_str)
+        match self.repos.get(&category_id.to_string()) {
+            Some(RepoBinding::Path(p)) => Some(p),
+            _ => None,
+        }
+    }
+
+    pub fn repo_set(&self, category_id: i64) -> Option<&BTreeMap<String, String>> {
+        match self.repos.get(&category_id.to_string()) {
+            Some(RepoBinding::Set(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn repo_paths(&self) -> Vec<String> {
+        self.repos
+            .values()
+            .flat_map(|b| match b {
+                RepoBinding::Path(p) => vec![p.clone()],
+                RepoBinding::Set(s) => s.values().cloned().collect(),
+            })
+            .collect()
     }
 }
 
@@ -112,9 +141,9 @@ impl AllowFile {
             Some(text) => {
                 let f: Self = serde_json::from_str(&text)
                     .map_err(|e| format!("{} is not valid: {e}", path.display()))?;
-                if f.version != 1 {
+                if f.version != 1 && f.version != 2 {
                     return Err(format!(
-                        "{} has version {}, this tmgr reads version 1",
+                        "{} has version {}, this tmgr reads versions 1 and 2",
                         path.display(),
                         f.version
                     ));
@@ -130,7 +159,9 @@ impl AllowFile {
     }
 
     pub fn save_to(&self, path: &Path) -> Result<(), String> {
-        let body = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
+        let mut out = self.clone();
+        out.version = if self.has_sets() { 2 } else { 1 };
+        let body = serde_json::to_vec_pretty(&out).map_err(|e| e.to_string())?;
         fsio::write_private(path, &body).map_err(|e| format!("{}: {e}", path.display()))
     }
 
@@ -151,6 +182,12 @@ impl AllowFile {
         let out = f(&mut file)?;
         file.save_to(path)?;
         Ok(out)
+    }
+
+    fn has_sets(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|e| e.repos.values().any(|b| matches!(b, RepoBinding::Set(_))))
     }
 
     pub fn find(&self, server: &str, user_id: i64, workspace_id: i64) -> Option<&Entry> {
@@ -237,16 +274,29 @@ pub fn check_claim(
             format!("{allow} to re-pin your keys"),
         ));
     };
-    let msg = message(
-        &claim.host,
-        claim.user_id,
-        claim.workspace_id,
-        claim.task_id,
-        claim.category_id,
-        &claim.content_sha256,
-        &claim.key_id,
-        claim.signed_at,
-    );
+    let msg = match &claim.repos_sha256 {
+        Some(repos) => message_v2(
+            &claim.host,
+            claim.user_id,
+            claim.workspace_id,
+            claim.task_id,
+            claim.category_id,
+            &claim.content_sha256,
+            repos,
+            &claim.key_id,
+            claim.signed_at,
+        ),
+        None => message(
+            &claim.host,
+            claim.user_id,
+            claim.workspace_id,
+            claim.task_id,
+            claim.category_id,
+            &claim.content_sha256,
+            &claim.key_id,
+            claim.signed_at,
+        ),
+    };
     if !verify(&key.public_key, &msg, &claim.signature) {
         return Err(Refusal::new(
             "the approval signature is not valid",

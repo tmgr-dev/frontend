@@ -98,6 +98,15 @@ pub struct RunCreateReq {
     pub cloud: Option<CloudApproval>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unattended: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clones: Vec<CloneSpec>,
+}
+
+/// One clone of a multi-repository run: the folder `<cwd>/<name>` cloned from the repository `clone_of`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CloneSpec {
+    pub name: String,
+    pub clone_of: String,
 }
 
 /// The owner's signed approval of a task of a cloud workspace, checked again by the runner against its local allow store.
@@ -113,6 +122,8 @@ pub struct CloudApproval {
     pub signed_at: i64,
     pub signature: String,
     pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repos_sha256: Option<String>,
 }
 
 /// The leader to follower link a run was started for, and the link's generation at that time.

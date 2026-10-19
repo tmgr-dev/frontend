@@ -1124,11 +1124,12 @@ mod tests {
                 return Ok(Gated::Refused { key, reason });
             }
             let sha = tmgr_core::approval::content_sha256(&t.title, &t.body);
-            Ok(Gated::Ready(CloudTask {
+            Ok(Gated::Ready(Box::new(CloudTask {
                 key,
                 title: t.title,
                 body: t.body,
                 claim: CloudApproval {
+                    repos_sha256: None,
                     host: "api.example.com".into(),
                     user_id: 1,
                     workspace_id: ws.id,
@@ -1140,7 +1141,7 @@ mod tests {
                     signature: "sig".into(),
                     kind: "confirm".into(),
                 },
-            }))
+            })))
         }
     }
 

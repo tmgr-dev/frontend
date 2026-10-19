@@ -326,6 +326,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             .any(|k| std::env::var_os(k).is_some());
     let info = client
         .create_run(RunCreateReq {
+            clones: Vec::new(),
             profile: profile.clone(),
             task: Some(p.candidate.task),
             cwd: cwd.clone(),

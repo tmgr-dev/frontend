@@ -31,6 +31,38 @@ pub fn message(
     )
 }
 
+pub fn canonical_repos(names: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = names
+        .iter()
+        .map(|n| n.trim().to_ascii_lowercase())
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
+
+pub fn repos_sha256(names: &[String]) -> String {
+    let joined = canonical_repos(names).join("\n");
+    sha256_hex(format!("tmgr-repos:v1:{joined}").as_bytes())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn message_v2(
+    host: &str,
+    user_id: i64,
+    workspace_id: i64,
+    task_id: i64,
+    category_id: i64,
+    content_sha256: &str,
+    repos_sha256: &str,
+    key_id: &str,
+    signed_at: i64,
+) -> String {
+    format!(
+        "tmgr-agent-approval:v2:{host}:{user_id}:{workspace_id}:{task_id}:{category_id}:{content_sha256}:{repos_sha256}:{key_id}:{signed_at}"
+    )
+}
+
 pub fn verify(public_key_b64: &str, msg: &str, signature_b64: &str) -> bool {
     let Ok(key) = STANDARD.decode(public_key_b64) else {
         return false;

@@ -639,6 +639,7 @@ mod tests {
             },
         };
         RunCreateReq {
+            clones: Vec::new(),
             profile: "p".into(),
             task: Some(task),
             cwd,

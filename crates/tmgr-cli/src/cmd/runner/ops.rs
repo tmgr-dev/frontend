@@ -239,6 +239,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             task: None,
         }),
         None => client.create_run(RunCreateReq {
+            clones: Vec::new(),
             profile: a.agent.clone().unwrap_or_default(),
             task: None,
             cwd: cwd_str,

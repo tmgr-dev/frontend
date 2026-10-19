@@ -41,7 +41,10 @@ fn allow(expires: Option<&str>, repo: Option<&str>) -> AllowFile {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
-        repos,
+        repos: repos
+            .into_iter()
+            .map(|(k, v)| (k, tmgr_approval::RepoBinding::Path(v)))
+            .collect(),
     });
     a
 }
@@ -69,6 +72,7 @@ fn req() -> RunCreateReq {
         },
     };
     RunCreateReq {
+        clones: Vec::new(),
         profile: "claude-code".into(),
         task: Some(TASK),
         cwd: "/tmp/clone".into(),
@@ -87,6 +91,7 @@ fn req() -> RunCreateReq {
         trust_via_repo: None,
         agent_work: true,
         cloud: Some(CloudApproval {
+            repos_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,

@@ -29,7 +29,7 @@ pub struct CloudTask {
 
 #[derive(Clone, Debug)]
 pub enum Gated {
-    Ready(CloudTask),
+    Ready(Box<CloudTask>),
     Refused { key: String, reason: String },
 }
 

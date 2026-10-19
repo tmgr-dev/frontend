@@ -2,7 +2,7 @@ use chrono::{TimeZone, Utc};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::os::unix::fs::PermissionsExt;
-use tmgr_approval::{check_claim, AllowFile, Entry, PinnedKey, Rollback};
+use tmgr_approval::{check_claim, AllowFile, Entry, PinnedKey, RepoBinding, Rollback};
 use tmgr_ipc::api::CloudApproval;
 
 const FIXTURES: &str = include_str!("../../tmgr-core/tests/fixtures/agent-approval-fixtures.json");
@@ -34,6 +34,7 @@ fn claim() -> (CloudApproval, String, String) {
     let c = &f["cases"][2];
     (
         CloudApproval {
+            repos_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -148,7 +149,10 @@ fn store_round_trips_with_private_modes() {
     let path = dir.path().join("tmgr").join("runner-allow.json");
     let mut f = AllowFile::default();
     let mut e = entry(None);
-    e.repos.insert("127".into(), "/abs/repo".into());
+    e.repos.insert(
+        "127".into(),
+        tmgr_approval::RepoBinding::Path("/abs/repo".into()),
+    );
     f.upsert(e.clone());
     f.save_to(&path).unwrap();
     assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
@@ -171,8 +175,87 @@ fn store_round_trips_with_private_modes() {
         .is_empty());
     std::fs::write(&path, "{").unwrap();
     assert!(AllowFile::load_from(&path).is_err());
-    std::fs::write(&path, r#"{"version":2,"entries":[]}"#).unwrap();
+    std::fs::write(&path, r#"{"version":3,"entries":[]}"#).unwrap();
     assert!(AllowFile::load_from(&path).is_err());
+}
+
+#[test]
+fn a_version_one_file_reads_unchanged_and_stays_version_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("runner-allow.json");
+    let mut e = serde_json::to_value(entry(None)).unwrap();
+    e["repos"] = serde_json::json!({"127": "/abs/repo"});
+    std::fs::write(
+        &path,
+        serde_json::json!({"version": 1, "entries": [e]}).to_string(),
+    )
+    .unwrap();
+    let f = AllowFile::load_from(&path).unwrap();
+    assert_eq!(f.entries[0].repo(127), Some("/abs/repo"));
+    assert!(f.entries[0].repo_set(127).is_none());
+    f.save_to(&path).unwrap();
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(raw["version"], 1);
+    assert_eq!(raw["entries"][0]["repos"]["127"], "/abs/repo");
+}
+
+#[test]
+fn a_repository_set_is_saved_as_version_two() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("runner-allow.json");
+    let mut f = AllowFile::default();
+    let mut e = entry(None);
+    e.repos
+        .insert("1".into(), RepoBinding::Path("/abs/one".into()));
+    e.repos.insert(
+        "127".into(),
+        RepoBinding::Set(BTreeMap::from([
+            ("tmgr-dev/backend".to_string(), "/abs/backend".to_string()),
+            ("tmgr-dev/frontend".to_string(), "/abs/frontend".to_string()),
+        ])),
+    );
+    f.upsert(e);
+    f.save_to(&path).unwrap();
+    let raw: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(raw["version"], 2);
+    let back = AllowFile::load_from(&path).unwrap();
+    let e = &back.entries[0];
+    assert_eq!(e.repo(1), Some("/abs/one"));
+    assert!(e.repo(127).is_none());
+    assert_eq!(e.repo_set(127).unwrap().len(), 2);
+    let mut paths = e.repo_paths();
+    paths.sort();
+    assert_eq!(paths, ["/abs/backend", "/abs/frontend", "/abs/one"]);
+}
+
+#[test]
+fn a_v2_claim_verifies_only_with_its_repository_set() {
+    let f = fx();
+    let c = &f["cases_v2"][0];
+    let mut e = entry(None);
+    e.workspace_id = 56;
+    let mut claim = CloudApproval {
+        host: "api.tmgr.dev".into(),
+        user_id: 1,
+        workspace_id: 56,
+        task_id: 9100,
+        category_id: 127,
+        content_sha256: c["content_sha256"].as_str().unwrap().into(),
+        key_id: f["key"]["key_id"].as_str().unwrap().into(),
+        signed_at: 1760000100,
+        signature: c["signature"].as_str().unwrap().into(),
+        kind: "author".into(),
+        repos_sha256: Some(c["repos_sha256"].as_str().unwrap().into()),
+    };
+    let (t, d) = (
+        c["title"].as_str().unwrap(),
+        c["description"].as_str().unwrap(),
+    );
+    assert!(check_claim(&e, &claim, t, d).is_ok());
+    claim.repos_sha256 = Some(tmgr_approval::repos_sha256(&["tmgr-dev/backend".into()]));
+    assert!(check_claim(&e, &claim, t, d).is_err());
+    claim.repos_sha256 = None;
+    assert!(check_claim(&e, &claim, t, d).is_err());
 }
 
 #[test]

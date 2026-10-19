@@ -688,7 +688,7 @@ impl CloudApi for CliCloud<'_> {
         Ok(CloudWorkspace {
             id: entry.workspace_id,
             code: entry.workspace_code.clone(),
-            repos: entry.repos.values().cloned().collect(),
+            repos: entry.repo_paths(),
         })
     }
 
@@ -787,14 +787,14 @@ impl CloudApi for CliCloud<'_> {
                 category.code
             )));
         }
-        match entry.repos.get(&category.id.to_string()) {
+        match entry.repo(category.id) {
             None => {
                 return Ok(refused(format!(
                     "no repository is bound to category {}; {bind}",
                     category.code
                 )))
             }
-            Some(bound) if *bound != rule.repo => {
+            Some(bound) if bound != rule.repo => {
                 return Ok(refused(format!(
                     "category {} is bound to another repository than the rule's",
                     category.code
@@ -806,12 +806,12 @@ impl CloudApi for CliCloud<'_> {
         rollback
             .save()
             .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
-        Ok(Gated::Ready(CloudTask {
+        Ok(Gated::Ready(Box::new(CloudTask {
             key: ok.task_key,
             title: ok.title,
             body: ok.body,
             claim: ok.claim,
-        }))
+        })))
     }
 }
 
@@ -922,6 +922,7 @@ impl RunsClient for RunnerRuns {
         self.ready()?;
         self.with(|c| {
             c.create_run(RunCreateReq {
+                clones: Vec::new(),
                 profile: req.profile.clone(),
                 task: Some(req.task),
                 cwd: req.cwd.clone(),

@@ -226,6 +226,7 @@ fn handshake_messages() {
 #[test]
 fn requests_and_responses() {
     let run = RunCreateReq {
+        clones: Vec::new(),
         profile: "codex".into(),
         task: Some(TASK),
         cwd: "/work/project".into(),
@@ -802,7 +803,8 @@ fn constants_are_pinned() {
             "exe_pin.v1",
             "argv_pin.v1",
             "trusted_folders.v1",
-            "trust_via_repo.v1"
+            "trust_via_repo.v1",
+            "multi_clone.v1"
         ]
     );
     let methods = [
@@ -876,7 +878,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 22);
+    assert_eq!(w.caps.len(), 23);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

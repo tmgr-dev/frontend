@@ -192,6 +192,7 @@ impl Harness {
 
     fn run_req(&self, profile: &str) -> RunCreateReq {
         RunCreateReq {
+            clones: Vec::new(),
             profile: profile.into(),
             task: None,
             cwd: self.work.display().to_string(),
@@ -4579,7 +4580,10 @@ fn cloud_fx(signed_repo: bool) -> CloudFx {
             public_key: f["key"]["public_key"].as_str().unwrap().into(),
             device_name: "laptop".into(),
         }],
-        repos,
+        repos: repos
+            .into_iter()
+            .map(|(k, v)| (k, tmgr_approval::RepoBinding::Path(v)))
+            .collect(),
     });
     allow
         .save_to(&h.cfg.join("tmgr/runner-allow.json"))
@@ -4638,6 +4642,7 @@ impl CloudFx {
         r.agent_work = true;
         r.unattended = unattended;
         r.cloud = Some(tmgr_ipc::api::CloudApproval {
+            repos_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
