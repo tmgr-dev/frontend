@@ -1,54 +1,46 @@
 import { expect, test } from '@playwright/test';
 import { mockApp } from './mockApp.mjs';
 
-const watchTelegram = async (page, response) => {
+/** Logged-out visitor whose every API call fails; the widget script is a no-op. */
+const loggedOut = async (page) => {
   const authHeaders = [];
   page.on('request', (request) =>
     authHeaders.push(request.headers().authorization ?? ''),
   );
-  await mockApp(page, { account: false });
-  const bodies = [];
-  await page.route('**/api/auth/login/telegram/redirect', async (route) => {
-    bodies.push(route.request().postDataJSON());
-    await route.fulfill(response);
-  });
-  return { authHeaders, bodies };
+  const apiRequests = [];
+  await mockApp(page, { account: false, apiRequests });
+  await page.route('https://telegram.org/**', (route) =>
+    route.fulfill({ contentType: 'text/javascript', body: '' }),
+  );
+  return { authHeaders, apiRequests };
 };
 
 const storedToken = (page) =>
   page.evaluate(() => localStorage.getItem('token'));
 
-test('a token in the Telegram callback URL is ignored', async ({ page }) => {
-  const { authHeaders, bodies } = await watchTelegram(page, {
-    status: 403,
-    json: { message: 'Invalid or expired code.' },
-  });
-
-  await page.goto('/login/telegram?token=evil', {
-    waitUntil: 'domcontentloaded',
-  });
-
-  await expect.poll(() => bodies.length).toBe(1);
-  expect(bodies[0].code).toBeUndefined();
-  await expect(page.getByText('Something went wrong')).toBeVisible();
-  await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
-  expect(await storedToken(page)).toBeNull();
-  expect(authHeaders.filter((h) => h.includes('evil'))).toEqual([]);
-});
-
-test('the Telegram one-time code is redeemed for a session', async ({
+test('an old Telegram code link lands on sign-in without any auth request', async ({
   page,
 }) => {
-  const { bodies } = await watchTelegram(page, {
-    json: { data: { token: 'from-code' } },
-  });
+  const { apiRequests } = await loggedOut(page);
 
-  await page.goto('/login/telegram?code=abc', {
-    waitUntil: 'domcontentloaded',
-  });
+  await page.goto('/login/telegram?code=abc');
 
-  await expect.poll(() => bodies).toEqual([{ code: 'abc' }]);
-  await expect
-    .poll(() => storedToken(page))
-    .toBe(JSON.stringify({ token: 'from-code' }));
+  await expect(page).toHaveURL(/\/login$/);
+  await page.waitForTimeout(300);
+  expect(apiRequests.filter((r) => /\/api\/(auth|user)/.test(r))).toEqual([]);
+  expect(await storedToken(page)).toBeNull();
 });
+
+for (const platform of ['github', 'google', 'apple', 'telegram', 'unknown']) {
+  test(`a token in the ${platform} callback URL is ignored`, async ({
+    page,
+  }) => {
+    const { authHeaders } = await loggedOut(page);
+
+    await page.goto(`/login/${platform}?token=evil`);
+
+    await expect(page).toHaveURL(/\/login$/, { timeout: 10_000 });
+    expect(await storedToken(page)).toBeNull();
+    expect(authHeaders.filter((h) => h.includes('evil'))).toEqual([]);
+  });
+}
