@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.8
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Cloud runs in several repositories (off until a category has a repository list): a category can name up to five GitHub repositories (Category settings > Agent run repositories in the web or desktop app). A task of that category then runs in one run folder with one clone per repository (`backend/`, `frontend/`, ...); the agent starts in the run folder and can write only into those clones. Categories without a list keep working exactly as before with their GitHub link.
+- Approvals now cover the repository list (signature v2): the server cannot add, drop or swap a repository after you approved a task. When the list of a category changes, its tasks need "Confirm for agent runs" again. Older approvals keep working in categories without a list.
+- `tmgr run <cloud task>` asks once, in a terminal, for the local clone of each listed repository and checks its origin. A list that mixes private and public repositories (or owners) needs the category code typed in: the agent can read every clone, so private code could end up in a PR of a public repository.
+- Publish opens one pull request per repository that has new commits, links them to each other and leaves one comment on the task with all links. If any repository is refused (default branch, `.github/` changes, merge commits or unrelated history), nothing is pushed.
+- Queue rules take `--repo` several times for a multi-repository category; the rule's repositories must match the category's bound clones exactly. `queue.toml` and `runner-allow.json` switch to version 2 only once you use a multi-repository rule or list; older tmgr versions refuse those files.
+- After updating, restart the runner (`tmgr runner stop && tmgr runner start`): an older runner refuses multi-repository runs.
+
 ## 1.0.7
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
