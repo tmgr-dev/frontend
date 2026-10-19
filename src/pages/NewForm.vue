@@ -3076,7 +3076,7 @@
 							<span
 								v-if="creator"
 								data-testid="task-form-creator"
-								class="flex min-w-0 items-center gap-1"
+								class="hidden min-w-0 items-center gap-1 sm:flex"
 								:title="'Created by ' + creator.name"
 							>
 								<UserAvatar
