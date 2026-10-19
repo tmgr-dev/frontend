@@ -46,6 +46,7 @@ pub struct SignTask {
     pub category_id: i64,
     pub title: String,
     pub description: String,
+    pub repos_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -354,7 +355,7 @@ impl<'a> Signer<'a> {
         let mut ready = Vec::new();
         let mut refused = Vec::new();
         for task in tasks {
-            match self.repositories(task.id) {
+            match self.repositories(task) {
                 Ok(repos) => ready.push(Prepared {
                     sha: content_sha256(&task.title, &task.description),
                     repos,
@@ -370,7 +371,8 @@ impl<'a> Signer<'a> {
         (ready, refused)
     }
 
-    fn repositories(&self, task_id: i64) -> std::result::Result<Option<String>, String> {
+    fn repositories(&self, task: &SignTask) -> std::result::Result<Option<String>, String> {
+        let task_id = task.id;
         let (status, value) = self
             .client
             .call(
@@ -384,16 +386,18 @@ impl<'a> Signer<'a> {
             return Err(error_code(&value).unwrap_or("failed").to_string());
         }
         let data = unwrap_data(value);
-        match data.get("repositories") {
-            None | Some(Value::Null) => Ok(None),
+        let hash = match data.get("repositories") {
+            None | Some(Value::Null) => None,
             Some(list) => {
                 let names: Vec<String> = serde_json::from_value(list.clone())
                     .map_err(|_| "invalid_repositories".to_string())?;
-                repos_sha256(&names)
-                    .map(Some)
-                    .map_err(|_| "invalid_repositories".to_string())
+                Some(repos_sha256(&names).map_err(|_| "invalid_repositories".to_string())?)
             }
+        };
+        if hash != task.repos_sha256 {
+            return Err("repositories_changed".to_string());
         }
+        Ok(hash)
     }
 
     fn upload(
@@ -578,6 +582,7 @@ mod tests {
             category_id: 127,
             title: title.into(),
             description: "body".into(),
+            repos_sha256: None,
         }
     }
 
@@ -757,7 +762,10 @@ mod tests {
         let own = on_thread(move || {
             let c = client_for(&uri);
             let s = signer(&c, &uri, &f);
-            s.sign_tasks(&[task(11, "T")]).unwrap();
+            let mut t = task(11, "T");
+            t.repos_sha256 = Some(repos_sha256(&["acme/api".into(), "acme/web".into()]).unwrap());
+            let r = s.sign_tasks(&[t]).unwrap();
+            assert!(r[0].ok, "{r:?}");
             s.ensure_key().unwrap()
         })
         .await;
@@ -772,6 +780,32 @@ mod tests {
             )
         );
         check_claim(&pinned(&claim.host, &own), &claim, "T", "body").unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_task_whose_repositories_differ_from_the_ones_shown_is_refused() {
+        let server = MockServer::start().await;
+        mount_register(&server, "key-1").await;
+        mount_repos(&server, json!(["acme/web", "acme/other"])).await;
+        mount_bulk_ok(&server).await;
+        let fake = Fake::default();
+        let uri = server.uri();
+        let f = fake.clone();
+        let results = on_thread(move || {
+            let c = client_for(&uri);
+            let s = signer(&c, &uri, &f);
+            let mut shown = task(11, "T");
+            shown.repos_sha256 =
+                Some(repos_sha256(&["acme/api".into(), "acme/web".into()]).unwrap());
+            s.sign_tasks(&[shown, task(12, "none shown")]).unwrap()
+        })
+        .await;
+        assert!(results
+            .iter()
+            .all(|r| !r.ok && r.code.as_deref() == Some("repositories_changed")));
+        assert!(bodies(&server, "/api/agent-runs/approvals/bulk")
+            .await
+            .is_empty());
     }
 
     #[tokio::test(flavor = "multi_thread")]

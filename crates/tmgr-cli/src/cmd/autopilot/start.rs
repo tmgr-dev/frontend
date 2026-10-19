@@ -153,6 +153,10 @@ pub fn classify(task_id: i64, elig: &Eligibility, f: &Facts) -> Found {
                 category_id: category.id,
                 title: elig.title.clone(),
                 description: elig.description.clone().unwrap_or_default(),
+                repos_sha256: category
+                    .repositories
+                    .as_deref()
+                    .and_then(|list| tmgr_core::approval::repos_sha256(list).ok()),
             }),
         ),
     }
@@ -827,6 +831,7 @@ mod tests {
                 category_id: 5,
                 title: "t".into(),
                 description: String::new(),
+                repos_sha256: None,
             }),
         };
         Plan {
@@ -925,6 +930,7 @@ mod tests {
             category_id: 5,
             title: "Fix it".into(),
             description: "body".into(),
+            repos_sha256: None,
         }
     }
 
