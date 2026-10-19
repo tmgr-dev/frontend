@@ -788,6 +788,10 @@ async fn a_usage_jump_over_the_hard_limit_kills_the_agent_and_pauses_the_task_as
     if !sandbox_usable() {
         return;
     }
+    if !cfg!(target_os = "macos") {
+        eprintln!("skipped: the Linux sandbox cannot read the stub agent in a temp directory");
+        return;
+    }
     let cloud = Cloud::new().await;
     cloud.add_rule();
     let mut p = cloud.start_pty(&[]);
