@@ -4584,10 +4584,13 @@ fn cloud_fx(signed_repo: bool) -> CloudFx {
     allow
         .save_to(&h.cfg.join("tmgr/runner-allow.json"))
         .unwrap();
-    let script = h.script(
-        "cloud-agent.sh",
+    let script_path = clone.join("cloud-agent.sh");
+    fs::write(
+        &script_path,
         "printf '%s\\n' \"$@\" > args.txt\nenv > env.txt\nwhile true; do sleep 0.2; done\n",
-    );
+    )
+    .unwrap();
+    let script = script_path.display().to_string();
     fs::write(
         h.agents.join("cloudy.toml"),
         format!(
