@@ -21,6 +21,26 @@
 				Some text contains invisible or direction-changing characters, shown
 				highlighted as code points.
 			</p>
+			<div
+				v-if="personaGroups.length || contextGroups.length"
+				class="flex flex-col gap-2"
+				data-testid="bulk-owner-texts"
+			>
+				<AgentOwnerTexts
+					v-for="group in personaGroups"
+					:key="group.key"
+					:persona="group.persona"
+					:persona-note="`${group.count} ${
+						group.count === 1 ? 'task' : 'tasks'
+					}`"
+				/>
+				<AgentOwnerTexts
+					v-for="group in contextGroups"
+					:key="group.key"
+					:context="group.context"
+					:rules-note="`${group.count} ${group.count === 1 ? 'task' : 'tasks'}`"
+				/>
+			</div>
 			<div class="flex max-h-[50vh] flex-col gap-3 overflow-y-auto text-sm">
 				<div
 					v-for="row in rows"
@@ -90,8 +110,14 @@
 </template>
 
 <script lang="ts">
-	import { agentRunErrorCode, getTaskApproval } from '@/actions/tmgr/agentRuns';
+	import {
+		agentRunErrorCode,
+		getTaskApproval,
+		type ApprovalContext,
+		type ApprovalPersona,
+	} from '@/actions/tmgr/agentRuns';
 	import { getTask, type Task } from '@/actions/tmgr/tasks';
+	import AgentOwnerTexts from '@/components/tasks/AgentOwnerTexts.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -102,6 +128,7 @@
 		DialogTitle,
 	} from '@/components/ui/dialog';
 	import { signTaskApprovalsBulk } from '@/utils/agentApprovalClient';
+	import type { ShownCoverage } from '@/utils/agentApprovalCoverage';
 	import {
 		categoryLabel,
 		hasInvisible,
@@ -119,11 +146,15 @@
 		key_unknown: 'Signing key not accepted',
 		repositories_changed: 'Repositories changed since it was shown',
 		invalid_repositories: 'Repositories of this category are not valid',
+		persona_changed: 'Persona instructions changed since they were shown',
+		context_changed: 'Workspace rules changed since they were shown',
+		invalid_persona: 'The persona cannot be signed',
 	};
 
 	export default defineComponent({
 		name: 'BulkAgentConfirmDialog',
 		components: {
+			AgentOwnerTexts,
 			Button,
 			Dialog,
 			DialogContent,
@@ -137,6 +168,7 @@
 		setup(props) {
 			const tasks = ref<Task[]>([]);
 			const repositories = ref<Record<number, string[] | null>>({});
+			const coverage = ref<Record<number, ShownCoverage>>({});
 			const loading = ref(true);
 			const busy = ref(false);
 			const done = ref(false);
@@ -153,6 +185,10 @@
 								const id = queue.shift()!;
 								const approval = await getTaskApproval(id);
 								repositories.value[id] = approval.repositories ?? null;
+								coverage.value[id] = {
+									persona: approval.persona ?? null,
+									context: approval.context ?? null,
+								};
 								loaded.push(await getTask(id, false));
 							}
 						}),
@@ -177,11 +213,57 @@
 					description: splitInvisible(task.description ?? ''),
 				})),
 			);
-			const anyInvisible = computed(() =>
-				tasks.value.some(
-					(t) =>
-						hasInvisible(t.title ?? '') || hasInvisible(t.description ?? ''),
-				),
+			const personaGroups = computed(() => {
+				const groups = new Map<
+					string,
+					{ key: string; persona: ApprovalPersona; count: number }
+				>();
+				for (const task of tasks.value) {
+					const persona = coverage.value[task.id as number]?.persona;
+					if (!persona) continue;
+					const key = JSON.stringify([
+						persona.id,
+						persona.name,
+						persona.instructions,
+					]);
+					const group = groups.get(key);
+					if (group) group.count++;
+					else groups.set(key, { key, persona, count: 1 });
+				}
+				return [...groups.values()];
+			});
+			const contextGroups = computed(() => {
+				const groups = new Map<
+					string,
+					{ key: string; context: ApprovalContext; count: number }
+				>();
+				for (const task of tasks.value) {
+					const context = coverage.value[task.id as number]?.context;
+					if (!context) continue;
+					const key = JSON.stringify([
+						task.workspace_id,
+						context.pages.map((p) => [p.id, p.title, p.body]),
+					]);
+					const group = groups.get(key);
+					if (group) group.count++;
+					else groups.set(key, { key, context, count: 1 });
+				}
+				return [...groups.values()];
+			});
+			const anyInvisible = computed(
+				() =>
+					tasks.value.some(
+						(t) =>
+							hasInvisible(t.title ?? '') || hasInvisible(t.description ?? ''),
+					) ||
+					personaGroups.value.some((g) =>
+						hasInvisible(g.persona.instructions),
+					) ||
+					contextGroups.value.some((g) =>
+						g.context.pages.some(
+							(p) => hasInvisible(p.title) || hasInvisible(p.body),
+						),
+					),
 			);
 
 			const submit = async () => {
@@ -198,6 +280,7 @@
 							category: task.category as any,
 						})),
 						repositories.value,
+						coverage.value,
 					);
 					results.value = Object.fromEntries(out.map((r) => [r.task_id, r]));
 					done.value = true;
@@ -222,6 +305,8 @@
 				rows,
 				results,
 				anyInvisible,
+				personaGroups,
+				contextGroups,
 				submit,
 				describe,
 			};
