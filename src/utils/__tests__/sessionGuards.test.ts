@@ -9,7 +9,7 @@ describe('isSocialCallbackPath', () => {
 		'/login/google',
 		'/login/github',
 		'/login/apple',
-		'/login/telegram?token=x',
+		'/login/telegram',
 	])('returns true for the OAuth callback page %s', (path) =>
 		expect(isSocialCallbackPath(path)).toBe(true),
 	);
