@@ -1,8 +1,11 @@
 use super::{emit, Opts};
+pub use crate::cmd::signer::host_of;
+use crate::cmd::signer::{self, OwnKey};
 use crate::ctx::Ctx;
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 use tmgr_core::approval::{
     fingerprint, valid_public_key, AllowFile, Entry, PinnedKey, RepoBinding,
 };
@@ -55,19 +58,6 @@ struct ServerKey {
     created_at: Option<String>,
 }
 
-pub fn host_of(server: &str) -> Result<String> {
-    let url = tmgr_core::Url::parse(server)
-        .map_err(|_| Error::usage("the server address is not a valid URL"))?;
-    let host = url
-        .host_str()
-        .ok_or_else(|| Error::usage("the server address has no host"))?
-        .to_ascii_lowercase();
-    Ok(match url.port() {
-        Some(p) => format!("{host}:{p}"),
-        None => host,
-    })
-}
-
 fn stamp(t: DateTime<Utc>) -> String {
     t.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
@@ -97,6 +87,74 @@ fn live_keys(raw: Value) -> Result<Vec<(PinnedKey, Option<String>)>> {
             )
         })
         .collect())
+}
+
+pub fn cli_key_ids(raw: &Value) -> BTreeSet<String> {
+    raw.as_array()
+        .into_iter()
+        .flatten()
+        .filter(|k| k.get("kind").and_then(Value::as_str) == Some("cli"))
+        .filter_map(|k| k.get("key_id").and_then(Value::as_str).map(str::to_string))
+        .collect()
+}
+
+type ListedKey = (PinnedKey, Option<String>);
+
+pub fn split_cli_keys(
+    keys: Vec<ListedKey>,
+    cli_ids: &BTreeSet<String>,
+    own: Option<&OwnKey>,
+) -> (Vec<ListedKey>, Vec<ListedKey>) {
+    keys.into_iter().partition(|(k, _)| {
+        !cli_ids.contains(&k.key_id) || own.is_some_and(|o| o.public_key == k.public_key)
+    })
+}
+
+#[allow(dead_code)]
+pub fn pin_own_key(
+    host: &str,
+    user_id: i64,
+    workspace_id: i64,
+    own: &OwnKey,
+    device_name: &str,
+) -> Result<bool> {
+    privileged::guard()?;
+    AllowFile::update(|file| pin_into(file, host, user_id, workspace_id, own, device_name))
+        .map_err(store_error)
+}
+
+#[allow(dead_code)]
+pub fn pin_into(
+    file: &mut AllowFile,
+    host: &str,
+    user_id: i64,
+    workspace_id: i64,
+    own: &OwnKey,
+    device_name: &str,
+) -> std::result::Result<bool, String> {
+    let entry = file
+        .entries
+        .iter_mut()
+        .find(|e| e.server == host && e.user_id == user_id && e.workspace_id == workspace_id)
+        .ok_or("this workspace is not allowed to run agents on this machine")?;
+    if let Some(old) = entry.key(&own.key_id) {
+        return if old.public_key == own.public_key {
+            Ok(false)
+        } else {
+            Err(format!(
+                "key {} is pinned with fingerprint {} but this machine's key has {}",
+                sanitize_line(&own.key_id),
+                fingerprint(&old.public_key),
+                fingerprint(&own.public_key)
+            ))
+        };
+    }
+    entry.keys.push(PinnedKey {
+        key_id: own.key_id.clone(),
+        public_key: own.public_key.clone(),
+        device_name: sanitize_line(device_name).chars().take(100).collect(),
+    });
+    Ok(true)
 }
 
 pub fn key_conflict(previous: &Entry, keys: &[(PinnedKey, Option<String>)]) -> Result<()> {
@@ -140,7 +198,17 @@ pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
             Error::not_found(format!("workspace {} not found", sanitize_line(workspace)))
                 .hint("tmgr ws list")
         })?;
-    let keys = live_keys(client.agent_run_keys()?)?;
+    let raw = client.agent_run_keys()?;
+    let cli_ids = cli_key_ids(&raw);
+    let own = if cli_ids.is_empty() {
+        None
+    } else {
+        signer::own_key(&ctx.server()?, user_id).unwrap_or_else(|e| {
+            eprintln!("Could not read this machine's CLI key: {}", e.message);
+            None
+        })
+    };
+    let (keys, foreign) = split_cli_keys(live_keys(raw)?, &cli_ids, own.as_ref());
     if keys.is_empty() {
         return Err(Error::new(
             Kind::Conflict,
@@ -179,6 +247,18 @@ These keys are pinned now; a key added later is not trusted until you run this a
             },
             created.as_deref().unwrap_or("unknown"),
             if fresh { "  NEW" } else { "" }
+        );
+    }
+    for (k, created) in &foreign {
+        eprintln!(
+            "  {}  {}  created {}  CLI key of another machine — not pinned",
+            fingerprint(&k.public_key),
+            if k.device_name.is_empty() {
+                "(unnamed device)"
+            } else {
+                &k.device_name
+            },
+            created.as_deref().unwrap_or("unknown"),
         );
     }
     privileged::confirm_typed_stdio(
@@ -401,5 +481,86 @@ mod key_tests {
             set_lines(&[e]),
             ["w category 2:", "  a/x  /p1", "  a/y  /p2"]
         );
+    }
+
+    fn own() -> OwnKey {
+        OwnKey {
+            key_id: "c1".into(),
+            public_key: B.into(),
+        }
+    }
+
+    #[test]
+    fn only_cli_keys_equal_to_this_machines_key_are_pinned() {
+        let raw = json!([
+            {"key_id": "k1", "kind": "browser"},
+            {"key_id": "k2"},
+            {"key_id": "c1", "kind": "cli"},
+            {"key_id": "c2", "kind": "cli"}
+        ]);
+        let ids = cli_key_ids(&raw);
+        assert_eq!(ids.iter().collect::<Vec<_>>(), ["c1", "c2"]);
+        let all = || {
+            vec![
+                (pin("k1", A), None),
+                (pin("k2", A), None),
+                (pin("c1", B), None),
+                (pin("c2", B), None),
+            ]
+        };
+        let ids_of = |v: &[ListedKey]| v.iter().map(|(k, _)| k.key_id.clone()).collect::<Vec<_>>();
+        let (pinned, foreign) = split_cli_keys(all(), &ids, None);
+        assert_eq!(ids_of(&pinned), ["k1", "k2"]);
+        assert_eq!(ids_of(&foreign), ["c1", "c2"]);
+        let (pinned, foreign) = split_cli_keys(all(), &ids, Some(&own()));
+        assert_eq!(ids_of(&pinned), ["k1", "k2", "c1", "c2"]);
+        assert!(foreign.is_empty());
+        let other = OwnKey {
+            key_id: "c9".into(),
+            public_key: A.into(),
+        };
+        let (pinned, foreign) = split_cli_keys(all(), &ids, Some(&other));
+        assert_eq!(ids_of(&pinned), ["k1", "k2"]);
+        assert_eq!(ids_of(&foreign), ["c1", "c2"]);
+    }
+
+    #[test]
+    fn pinning_own_key_adds_it_once_and_refuses_a_changed_key_or_an_unallowed_workspace() {
+        let mut file = AllowFile::default();
+        let err = pin_into(&mut file, "s", 1, 2, &own(), "CLI (macOS)").unwrap_err();
+        assert!(err.contains("not allowed"), "{err}");
+        file.upsert(entry());
+        assert_eq!(
+            pin_into(&mut file, "s", 1, 2, &own(), "CLI (macOS)"),
+            Ok(true)
+        );
+        assert_eq!(
+            pin_into(&mut file, "s", 1, 2, &own(), "CLI (macOS)"),
+            Ok(false)
+        );
+        let e = file.find("s", 1, 2).unwrap();
+        assert_eq!(e.keys.len(), 2);
+        assert_eq!(e.key("c1").unwrap().public_key, B);
+        assert_eq!(e.key("k1").unwrap().public_key, A);
+        let changed = OwnKey {
+            key_id: "c1".into(),
+            public_key: A.into(),
+        };
+        assert!(pin_into(&mut file, "s", 1, 2, &changed, "x").is_err());
+        assert!(pin_into(&mut file, "s", 1, 3, &own(), "x").is_err());
+    }
+
+    #[test]
+    fn pinning_goes_through_the_locked_update_and_survives_a_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("runner-allow.json");
+        AllowFile::update_at(&path, |f| {
+            f.upsert(entry());
+            Ok(())
+        })
+        .unwrap();
+        AllowFile::update_at(&path, |f| pin_into(f, "s", 1, 2, &own(), "CLI (macOS)")).unwrap();
+        let loaded = AllowFile::load_from(&path).unwrap();
+        assert!(loaded.find("s", 1, 2).unwrap().key("c1").is_some());
     }
 }
