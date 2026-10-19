@@ -1219,6 +1219,13 @@ pub fn pause_to_draft(
     st.pickups[i].paused_draft = true;
     st.pickups[i].publish_attempts += 1;
     state::save(paths, &mut st)?;
+    let source_repos: Vec<String> = loaded
+        .file
+        .rules
+        .iter()
+        .find(|r| r.name == p.rule)
+        .map(|r| r.repos.clone())
+        .unwrap_or_default();
     let mut commits = Vec::new();
     for (name, dir) in clone_dirs(&p) {
         if !name.is_empty() {
@@ -1237,7 +1244,7 @@ pub fn pause_to_draft(
                 );
             }
         }
-        match crate::wip::wip_commit(&dir, &branch, note) {
+        match crate::wip::wip_commit(&dir, &branch, note, &source_repos) {
             Ok(Some(sha)) => commits.push((name, sha)),
             Ok(None) => {}
             Err(e) => return fail_draft(&audit, paths, &mut st, i, &e.message),

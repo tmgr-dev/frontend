@@ -435,7 +435,7 @@ fn copy_objects(clone: &Path, into: &Path) -> Result<()> {
     Ok(())
 }
 
-fn read_small(root: &Path, rel: &str) -> Option<String> {
+pub(crate) fn read_small(root: &Path, rel: &str) -> Option<String> {
     use std::io::Read;
     let file = open_beneath(root, rel, libc::O_NONBLOCK)?;
     let meta = file.metadata().ok()?;
