@@ -20,7 +20,6 @@ pub enum Status {
     Started,
     Failed,
     Expired,
-    SkippedTaken,
 }
 
 impl Status {
@@ -33,7 +32,6 @@ impl Status {
             Status::Started => "started",
             Status::Failed => "failed",
             Status::Expired => "expired",
-            Status::SkippedTaken => "skipped_taken",
         }
     }
 
@@ -151,6 +149,8 @@ pub struct State {
     pub pickups: Vec<Pickup>,
     #[serde(default)]
     pub skips: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub taken_notes: BTreeMap<String, String>,
 }
 
 pub fn load(paths: &Paths) -> Result<State> {

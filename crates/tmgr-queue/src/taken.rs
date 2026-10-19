@@ -49,7 +49,8 @@ impl Fresh {
 
 pub struct Facts<'a> {
     pub rule_persona: &'a str,
-    pub me: Option<i64>,
+    pub me: i64,
+    pub owners: Vec<i64>,
     pub assignees: Vec<(Option<i64>, String)>,
     pub personas: Vec<String>,
     pub running_agents: Vec<String>,
@@ -59,7 +60,8 @@ pub struct Facts<'a> {
 pub fn assess(f: Facts) -> Fresh {
     let mut holders = Vec::new();
     for (id, name) in f.assignees {
-        if id.is_none() || id != f.me {
+        let own = id.is_some_and(|i| i == f.me || f.owners.contains(&i));
+        if !own {
             holders.push(Holder {
                 name,
                 kind: "assignee",
@@ -120,6 +122,21 @@ pub fn personas_of(task: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+pub fn owners_of(task: &Value, rule_persona: &str) -> Vec<i64> {
+    task.get("persona_assignees")
+        .or_else(|| task.get("personaAssignees"))
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter(|p| {
+                    str_of(p, &["name"]).is_some_and(|n| n.eq_ignore_ascii_case(rule_persona))
+                })
+                .filter_map(|p| p.pointer("/owner/id").and_then(Value::as_i64))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub fn running_agents_of(body: &Value) -> Vec<String> {
     let list = body
         .get("runs")
@@ -147,7 +164,8 @@ mod tests {
     fn facts<'a>() -> Facts<'a> {
         Facts {
             rule_persona: "Agent · Team",
-            me: Some(1),
+            me: 1,
+            owners: vec![],
             assignees: vec![],
             personas: vec![],
             running_agents: vec![],
@@ -158,11 +176,18 @@ mod tests {
     #[test]
     fn the_owner_implied_by_the_persona_and_the_rule_persona_do_not_hold_a_task() {
         let f = assess(Facts {
-            assignees: vec![(Some(1), "Owner".into())],
+            assignees: vec![(Some(7), "Owner".into()), (Some(1), "Me".into())],
             personas: vec!["agent · team".into()],
+            owners: vec![7],
             ..facts()
         });
         assert!(f.free());
+        let other = assess(Facts {
+            assignees: vec![(Some(8), "Anna".into())],
+            owners: vec![7],
+            ..facts()
+        });
+        assert!(!other.free());
     }
 
     #[test]
@@ -195,6 +220,8 @@ mod tests {
         let t = json!({"assignees":[{"id":2,"name":"Anna"}],"personaAssignees":[{"name":"P"}]});
         assert_eq!(people_of(&t), vec![(Some(2), "Anna".to_string())]);
         assert_eq!(personas_of(&t), vec!["P".to_string()]);
+        let owned = json!({"persona_assignees":[{"name":"Agent · Team","owner":{"id":7}},{"name":"X","owner":{"id":9}}]});
+        assert_eq!(owners_of(&owned, "agent · team"), vec![7]);
         let runs = json!({"runs":[{"agent":"codex","status":"running"},{"agent":"x","status":"succeeded"}]});
         assert_eq!(running_agents_of(&runs), vec!["codex".to_string()]);
     }

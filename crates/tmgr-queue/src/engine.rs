@@ -324,6 +324,10 @@ fn is_fixed_refusal(reason: &str) -> bool {
     FIXED_REFUSALS.iter().any(|r| reason.contains(r))
 }
 
+fn note_key(rule: &Rule, task: tmgr_ipc::api::TaskRef) -> String {
+    format!("{}/{}", rule.name, task.task_id)
+}
+
 fn taken(
     pass: &mut Pass,
     deps: &Deps,
@@ -332,15 +336,15 @@ fn taken(
     key: &str,
     f: &crate::taken::Fresh,
 ) -> Result<()> {
-    let skey = format!("{}/{}", rule.name, task.task_id);
     let holders: Vec<String> = f
         .holders
         .iter()
         .map(|h| format!("{} ({})", h.name, h.kind))
         .collect();
-    let first = pass.skip_once(
-        skey.clone(),
-        f.fingerprint(),
+    let fingerprint = f.fingerprint();
+    pass.skip_once(
+        format!("taken:{}", note_key(rule, task)),
+        fingerprint.clone(),
         &rule.name,
         key,
         if f.holders.is_empty() {
@@ -350,15 +354,34 @@ fn taken(
         },
         json!({"holders": holders}),
     )?;
-    if first && !f.holders.is_empty() {
+    let nkey = note_key(rule, task);
+    if !f.holders.is_empty() && pass.state.taken_notes.get(&nkey) != Some(&fingerprint) {
+        pass.state.taken_notes.insert(nkey, fingerprint);
         if let Err(e) = deps.fresh.comment(rule, task, &f.comment()) {
-            pass.state.skips.remove(&skey);
             pass.audit.append(
                 "taken_comment_failed",
                 json!({"rule": rule.name, "task": key, "error": e.message}),
             )?;
         }
     }
+    Ok(())
+}
+
+fn look_failed(
+    pass: &mut Pass,
+    rule: &Rule,
+    task: tmgr_ipc::api::TaskRef,
+    key: &str,
+    e: &Error,
+) -> Result<()> {
+    pass.skip_once(
+        format!("taken:{}", note_key(rule, task)),
+        format!("look:{}", e.message),
+        &rule.name,
+        key,
+        "taken_check_failed",
+        json!({"detail": e.message}),
+    )?;
     Ok(())
 }
 
@@ -398,6 +421,12 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
     }
     if scan.complete {
         let present: BTreeSet<i64> = candidates.iter().map(|c| c.task.task_id).collect();
+        let prefix = format!("{}/", rule.name);
+        pass.state.taken_notes.retain(|k, _| {
+            k.strip_prefix(&prefix)
+                .and_then(|id| id.parse::<i64>().ok())
+                .is_none_or(|id| present.contains(&id))
+        });
         for i in 0..pass.state.pickups.len() {
             let p = &pass.state.pickups[i];
             if p.rule == rule.name
@@ -472,12 +501,17 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
         });
         if existing.is_none() {
             match deps.fresh.look(rule, c.task) {
-                Ok(f) if f.free() => {}
+                Ok(f) if f.free() => {
+                    pass.state.taken_notes.remove(&note_key(rule, c.task));
+                }
                 Ok(f) => {
                     taken(pass, deps, rule, c.task, &c.key, &f)?;
                     continue;
                 }
-                Err(_) => continue,
+                Err(e) => {
+                    look_failed(pass, rule, c.task, &c.key, &e)?;
+                    continue;
+                }
             }
         }
         let (id, cwd) = match existing {
@@ -745,13 +779,26 @@ fn start_phase(
         };
         let task = pass.state.pickups[i].task;
         match deps.fresh.look(rule, task) {
-            Ok(f) if f.free() => {}
+            Ok(f) if f.free() => {
+                pass.state.taken_notes.remove(&note_key(rule, task));
+            }
             Ok(f) => {
                 taken(pass, deps, rule, task, &key, &f)?;
                 pass.set(
                     i,
-                    Status::SkippedTaken,
-                    Some("the task was taken before the run started".into()),
+                    Status::Expired,
+                    Some(if f.holders.is_empty() {
+                        "skipped_taken: the status changed before the run started".to_string()
+                    } else {
+                        format!(
+                            "skipped_taken: the task was taken before the run started ({})",
+                            f.holders
+                                .iter()
+                                .map(|h| format!("{} ({})", h.name, h.kind))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    }),
                 );
                 pass.state.pickups[i].released = true;
                 pass.audit.append(
@@ -762,7 +809,10 @@ fn start_phase(
                 pass.event(&p, "skipped_taken");
                 continue;
             }
-            Err(_) => continue,
+            Err(e) => {
+                look_failed(pass, rule, task, &key, &e)?;
+                continue;
+            }
         }
         let p = pass.state.pickups[i].clone();
         pass.set(i, Status::Starting, None);
@@ -1553,11 +1603,15 @@ mod tests {
         holders: RefCell<Vec<crate::taken::Holder>>,
         status_changed: Cell<bool>,
         comments: RefCell<Vec<String>>,
+        fail: Cell<bool>,
     }
 
     impl FreshTask for FreshFake {
         fn look(&self, _rule: &Rule, _task: TaskRef) -> Result<crate::taken::Fresh> {
             self.looks.set(self.looks.get() + 1);
+            if self.fail.get() {
+                return Err(Error::internal("task read failed"));
+            }
             let taken = self.taken_from.get() > 0 && self.looks.get() >= self.taken_from.get();
             Ok(crate::taken::Fresh {
                 holders: if taken {
@@ -1616,8 +1670,10 @@ mod tests {
         fx.fresh.status_changed.set(true);
         fx.cloud.tasks.replace(vec![signed(1, "do it")]);
         fx.pass().unwrap();
+        fx.pass().unwrap();
         assert!(fx.runs.requests.borrow().is_empty());
         assert!(fx.fresh.comments.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 1);
     }
 
     #[test]
@@ -1630,7 +1686,8 @@ mod tests {
         assert!(fx.runs.requests.borrow().is_empty());
         let p = fx.pickups();
         assert_eq!(p.len(), 1);
-        assert_eq!(p[0].status, Status::SkippedTaken);
+        assert_eq!(p[0].status, Status::Expired);
+        assert!(p[0].reason.as_deref().unwrap().starts_with("skipped_taken"));
         assert!(p[0].released);
         assert_eq!(fx.fresh.comments.borrow().len(), 1);
         assert_eq!(fx.audit_events("skipped_taken"), 1);
@@ -1649,8 +1706,38 @@ mod tests {
         fx.pass().unwrap();
         assert_eq!(fx.fresh.comments.borrow().len(), 1);
         fx.fresh.taken_from.set(0);
+        fx.fresh.looks.set(0);
+        fx.fresh.holders.replace(vec![holder("Bob", "assignee")]);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
         fx.pass().unwrap();
         assert_eq!(fx.runs.requests.borrow().len(), 1);
+        fx.runs.requests.borrow_mut().clear();
+        fx.cloud.tasks.replace(vec![signed(2, "other")]);
+        fx.pass().unwrap();
+        fx.fresh.taken_from.set(1);
+        fx.fresh.looks.set(0);
+        fx.cloud
+            .tasks
+            .replace(vec![signed(2, "other"), signed(3, "x")]);
+        fx.pass().unwrap();
+        assert_eq!(fx.fresh.comments.borrow().len(), 2);
+    }
+
+    #[test]
+    fn a_failed_task_read_or_source_error_does_not_repeat_the_comment() {
+        let fx = cloud_fx();
+        fx.fresh.taken_from.set(1);
+        fx.fresh.holders.replace(vec![holder("Anna", "assignee")]);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.fresh.fail.set(true);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert_eq!(fx.audit_events("skipped"), 2);
+        assert!(fx.runs.requests.borrow().is_empty());
+        fx.fresh.fail.set(false);
+        fx.pass().unwrap();
+        assert_eq!(fx.fresh.comments.borrow().len(), 1);
     }
 
     #[test]

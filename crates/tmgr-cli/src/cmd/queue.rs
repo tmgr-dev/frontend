@@ -908,7 +908,10 @@ impl FreshTask for CliFresh<'_> {
             let persona_json = json!({"persona_assignees": t.persona_assignees});
             return Ok(assess(Facts {
                 rule_persona: &rule.persona,
-                me: client.current_user_id()?,
+                me: client
+                    .current_user_id()?
+                    .ok_or_else(|| Error::auth("cannot tell which account is logged in"))?,
+                owners: owners_of(&persona_json, &rule.persona),
                 assignees: t
                     .assignees
                     .iter()
@@ -933,13 +936,17 @@ impl FreshTask for CliFresh<'_> {
                         && s.get("type").and_then(Value::as_str) == Some(wanted)
                 })
             });
-        let runs = local
-            .fetch(&format!("/api/tasks/{id}/agent-work"))
-            .map(|b| running_agents_of(&b))
-            .unwrap_or_default();
+        let runs = match local.fetch(&format!("/api/tasks/{id}/agent-work")) {
+            Ok(body) => running_agents_of(&body),
+            Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
+            Err(e) => return Err(e),
+        };
         Ok(assess(Facts {
             rule_persona: &rule.persona,
-            me: local.owner_id(),
+            me: local
+                .owner_id()
+                .ok_or_else(|| Error::auth("cannot tell which local account runs the queue"))?,
+            owners: owners_of(&t, &rule.persona),
             assignees: people_of(&t),
             personas: personas_of(&t),
             running_agents: runs,
