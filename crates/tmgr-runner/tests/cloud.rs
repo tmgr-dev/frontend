@@ -6,7 +6,7 @@ use tmgr_approval::{AllowFile, Entry, PinnedKey};
 use tmgr_ipc::api::{
     AuthorKind, BundleAuthor, BundleLaunch, CloudApproval, RunBundle, RunCreateReq, TaskRef,
 };
-use tmgr_runner::cloud::check_with;
+use tmgr_runner::cloud::{check_with, check_with_state};
 
 const FIXTURES: &str = include_str!("../../tmgr-core/tests/fixtures/agent-approval-fixtures.json");
 const TASK: TaskRef = TaskRef {
@@ -468,4 +468,25 @@ fn the_rollback_guard_compares_the_set_stamp() {
         let e = check_with(&req_v2(), TASK_V2, Ok(two()), now(), seen(stale)).unwrap_err();
         assert!(e.contains("older approved version"), "{e}");
     }
+}
+
+#[test]
+fn an_unreadable_or_corrupt_rollback_state_refuses_the_run() {
+    let dir = tempfile::tempdir().unwrap();
+    let corrupt = dir.path().join("corrupt.json");
+    std::fs::write(&corrupt, "{ not json").unwrap();
+    let unreadable = dir.path().join("a-directory");
+    std::fs::create_dir(&unreadable).unwrap();
+    for path in [corrupt, unreadable] {
+        let state = tmgr_approval::Rollback::load_from(&path);
+        let e = check_with_state(&req(), TASK, Ok(good()), now(), state).unwrap_err();
+        assert!(e.contains("cloud approvals state is unreadable"), "{e}");
+    }
+}
+
+#[test]
+fn a_missing_rollback_state_file_is_fine() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = tmgr_approval::Rollback::load_from(&dir.path().join("none.json"));
+    check_with_state(&req(), TASK, Ok(good()), now(), state).unwrap();
 }

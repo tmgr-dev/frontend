@@ -7,12 +7,12 @@ pub fn check(req: &RunCreateReq, task: TaskRef) -> Result<(), String> {
 }
 
 pub fn check_primary(req: &RunCreateReq, task: TaskRef) -> Result<Option<String>, String> {
-    verify(
+    verify_state(
         req,
         task,
         AllowFile::load(),
         Utc::now(),
-        Rollback::load().ok(),
+        Rollback::load(),
     )
 }
 
@@ -104,6 +104,28 @@ pub fn check_with(
     rollback: Option<Rollback>,
 ) -> Result<(), String> {
     verify(req, task, allow, now, rollback).map(|_| ())
+}
+
+pub fn check_with_state(
+    req: &RunCreateReq,
+    task: TaskRef,
+    allow: Result<AllowFile, String>,
+    now: DateTime<Utc>,
+    rollback: Result<Rollback, String>,
+) -> Result<(), String> {
+    verify_state(req, task, allow, now, rollback).map(|_| ())
+}
+
+fn verify_state(
+    req: &RunCreateReq,
+    task: TaskRef,
+    allow: Result<AllowFile, String>,
+    now: DateTime<Utc>,
+    rollback: Result<Rollback, String>,
+) -> Result<Option<String>, String> {
+    let rollback = rollback
+        .map_err(|e| format!("agent_work: cloud approvals state is unreadable: {e}"))?;
+    verify(req, task, allow, now, Some(rollback))
 }
 
 fn verify(
