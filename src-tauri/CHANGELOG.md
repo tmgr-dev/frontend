@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.52 — 2026-10-20
+
+- AI usage: an Autopilot panel (desktop only) shows the local runner's autopilot live: state, Pause / Resume / Stop, task counters, active runs with Open task / Open session / Open PR, usage limits with the stop marks, cost and an event feed. Open task and the needs feedback / blocked / queued lists light up with the next CLI release.
+- Includes the 0.9.51 changes below (0.9.51 was not published).
+
 ## 0.9.51 — 2026-10-20
 
 - Confirm for agent runs (single and bulk) shows the persona instructions and the workspace rules your approval covers, in full, with hidden characters flagged. Cloud agent runs receive exactly that signed text.
