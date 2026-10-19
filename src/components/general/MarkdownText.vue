@@ -9,6 +9,7 @@
 <script>
 	import {
 		openTaskByKey,
+		openTaskLinkInModal,
 		useTaskKeyPrefixes,
 	} from '@/composable/useTaskKeyLinks';
 	import store from '@/store';
@@ -68,6 +69,7 @@
 				if (chip) {
 					event.preventDefault();
 					const parsed = parseTmgrUrl(chip.getAttribute('data-tmgr') || '');
+					if (parsed && openTaskLinkInModal(parsed)) return;
 					const path =
 						parsed &&
 						routeForTmgr(parsed, store.getters.currentWorkspace?.code || '');
