@@ -164,9 +164,12 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
+	import store from '@/store';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import { diffLines, diffStats } from '@/utils/pages/lineDiff';
+	import { taskIdForModal } from '@/utils/pages/taskLinks';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
+	import { isInDetachedWindow } from '@/utils/taskWindow';
 	import { RotateCcw } from 'lucide-vue-next';
 	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
@@ -294,6 +297,11 @@
 
 			const onNavigate = async (parsed: ParsedTmgrUrl) => {
 				if (parsed.form === 'storage' && parsed.kind === 'file') return;
+				const taskId = taskIdForModal(parsed, isInDetachedWindow());
+				if (taskId) {
+					store.commit('setCurrentTaskIdForModal', taskId);
+					return;
+				}
 				if (parsed.form === 'storage') {
 					await directory.ensure([{ kind: parsed.kind, id: parsed.id }]);
 				}

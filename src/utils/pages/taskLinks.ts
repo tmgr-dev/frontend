@@ -23,6 +23,15 @@ export const extractTaskLinkRefs = (
 	return refs;
 };
 
+// Detached windows render no task modal, so links there keep routing.
+export const taskIdForModal = (
+	parsed: ParsedTmgrUrl,
+	detached: boolean,
+): number | null =>
+	!detached && parsed.form === 'storage' && parsed.kind === 'task'
+		? Number(parsed.id)
+		: null;
+
 export const routeForTmgr = (
 	parsed: ParsedTmgrUrl,
 	workspaceCode: string,

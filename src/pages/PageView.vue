@@ -344,6 +344,7 @@
 		taskFromSelectionError,
 		taskKeyLabel,
 	} from '@/utils/pages/taskFromSelection';
+	import { taskIdForModal } from '@/utils/pages/taskLinks';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 	import { extractToc, type TocEntry } from '@/utils/pages/toc';
 	import {
@@ -353,6 +354,7 @@
 		setPageWindowTitle,
 	} from '@/utils/pageWindow';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
+	import { isInDetachedWindow } from '@/utils/taskWindow';
 	import {
 		Bell,
 		BellOff,
@@ -989,6 +991,11 @@
 
 			const onNavigate = async (parsed: ParsedTmgrUrl) => {
 				if (parsed.form === 'storage' && parsed.kind === 'file') return;
+				const taskId = taskIdForModal(parsed, isInDetachedWindow());
+				if (taskId) {
+					store.commit('setCurrentTaskIdForModal', taskId);
+					return;
+				}
 				let target = directory.pathFor(parsed);
 				if (!target && parsed.form === 'storage') {
 					await directory.ensure([{ kind: parsed.kind, id: parsed.id }]);
