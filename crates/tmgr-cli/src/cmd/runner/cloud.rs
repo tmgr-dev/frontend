@@ -745,22 +745,39 @@ pub fn report_published(client: &tmgr_core::api::Client, p: &Published) -> Vec<S
     warnings
 }
 
-pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
+pub struct PublishTarget {
+    pub workspace_code: String,
+    pub task_id: i64,
+    pub clone_dir: PathBuf,
+    pub branch: String,
+    pub session_id: Option<String>,
+    pub agent: Option<String>,
+    pub repo: Option<String>,
+}
+
+pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
     let ctx = Ctx::new(o.cli)?;
     let client = ctx.cloud_client()?;
-    let task = resolve_task(&ctx, client, reference)?;
-    let ws = ctx.workspace(client)?;
+    let ws = client
+        .workspaces()?
+        .into_iter()
+        .find(|w| !w.local && w.code == t.workspace_code)
+        .ok_or_else(|| {
+            Error::not_found(format!(
+                "no cloud workspace {} on this account",
+                sanitize_line(&t.workspace_code)
+            ))
+        })?;
     let host = host_of(&ctx.server()?)?;
     let user_id = client
         .current_user_id()?
         .ok_or_else(|| Error::auth("cannot tell which account is logged in").hint("tmgr login"))?;
-    let task_id = i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?;
-    let rec = read_record(&ws.code, task_id)?;
+    let task_id = t.task_id;
     let task_ref = TaskRef {
         workspace_id: ws.id,
         task_id,
     };
-    ensure_not_live(task_ref, rec.session.as_deref())?;
+    ensure_not_live(task_ref, t.session_id.as_deref())?;
     let elig = parse_eligibility(client.agent_run_task(task_id)?)?;
     if elig.task_id != task_id || elig.workspace_id != ws.id || elig.viewer_user_id != user_id {
         return Err(Error::new(
@@ -785,30 +802,37 @@ pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
             "the category has no linked GitHub repository",
         )
     })?;
-    let bound = entry
+    let repo = entry
         .repos
         .get(&category.id.to_string())
-        .and_then(|b| std::fs::canonicalize(b).ok());
-    if bound != std::fs::canonicalize(&rec.repo).ok() || bound.is_none() {
-        return Err(Error::new(
-            Kind::Forbidden,
-            "the recorded repository is not the one bound to this category",
-        ));
+        .and_then(|b| std::fs::canonicalize(b).ok())
+        .ok_or_else(|| {
+            Error::new(
+                Kind::Forbidden,
+                "no repository is bound to the category of this task",
+            )
+        })?;
+    if let Some(expected) = &t.repo {
+        if std::fs::canonicalize(expected).ok().as_ref() != Some(&repo) {
+            return Err(Error::new(
+                Kind::Forbidden,
+                "the recorded repository is not the one bound to this category",
+            ));
+        }
     }
-    let repo = bound.unwrap_or_default();
     let repo_str = repo
         .to_str()
         .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
-    workdir::import_branch(repo_str, &rec.clone, &rec.branch)?;
-    let state = repo_state(&repo, &rec.branch, category.default_branch.as_deref())?;
+    workdir::import_branch(repo_str, &t.clone_dir, &t.branch)?;
+    let state = repo_state(&repo, &t.branch, category.default_branch.as_deref())?;
     let task_key = elig
         .task_key
         .clone()
         .unwrap_or_else(|| format!("task-{task_id}"));
     let input = PublishInput {
-        pinned_branch: rec.branch.clone(),
-        clone_branch: workdir::clone_head_branch(&rec.clone).unwrap_or_default(),
-        clone_dir: rec.clone.clone(),
+        pinned_branch: t.branch.clone(),
+        clone_branch: workdir::clone_head_branch(&t.clone_dir).unwrap_or_default(),
+        clone_dir: t.clone_dir.clone(),
         repo: repo.clone(),
         default_branch: state.default_branch,
         origin_fetch_url: state.fetch_url,
@@ -827,16 +851,37 @@ pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
     for w in report_published(
         client,
         &Published {
-            task_id: task.id,
+            task_id: u64::try_from(task_id).unwrap_or_default(),
             workspace_id: ws.id,
             pr_url: &pr_url,
-            agent: rec.agent.as_deref(),
-            branch: &rec.branch,
+            agent: t.agent.as_deref(),
+            branch: &t.branch,
         },
     ) {
         eprintln!("warning: {w}");
     }
     Ok(pr_url)
+}
+
+pub fn publish_cloud_run(o: &Opts, reference: &str) -> Result<String> {
+    let ctx = Ctx::new(o.cli)?;
+    let client = ctx.cloud_client()?;
+    let task = resolve_task(&ctx, client, reference)?;
+    let ws = ctx.workspace(client)?;
+    let task_id = i64::try_from(task.id).map_err(|_| Error::usage("invalid task id"))?;
+    let rec = read_record(&ws.code, task_id)?;
+    publish_cloud(
+        o,
+        &PublishTarget {
+            workspace_code: ws.code,
+            task_id,
+            clone_dir: rec.clone,
+            branch: rec.branch,
+            session_id: rec.session,
+            agent: rec.agent,
+            repo: Some(rec.repo),
+        },
+    )
 }
 
 pub fn publish_cmd(o: &Opts, reference: &str) -> Result<i32> {

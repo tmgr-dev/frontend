@@ -1,6 +1,6 @@
 use crate::cli::Cli;
 use crate::cmd::runner::allow::host_of;
-use crate::cmd::runner::cloud::{cloud_gate, parse_eligibility};
+use crate::cmd::runner::cloud::{cloud_gate, parse_eligibility, publish_cloud, PublishTarget};
 use crate::cmd::runner::Opts;
 use crate::ctx::Ctx;
 use crate::out::{stdout_style, table, Output};
@@ -819,22 +819,26 @@ struct CliPublisher<'a> {
     opts: &'a Opts<'a>,
 }
 
-impl Publisher for CliPublisher<'_> {
-    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
-        let claim = pickup
-            .cloud
-            .as_ref()
-            .ok_or_else(|| Error::internal("only cloud pickups are published"))?;
-        publish_cloud_run(
-            self.opts,
-            &format!("{}:{}", claim.workspace_code, pickup.task.task_id),
-        )
-    }
+pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
+    let claim = pickup
+        .cloud
+        .as_ref()
+        .ok_or_else(|| Error::internal("only cloud pickups are published"))?;
+    Ok(PublishTarget {
+        workspace_code: claim.workspace_code.clone(),
+        task_id: pickup.task.task_id,
+        clone_dir: std::path::PathBuf::from(&pickup.bundle.launch.cwd),
+        branch: claim.branch.clone(),
+        session_id: pickup.run_id.clone(),
+        agent: Some(pickup.bundle.launch.profile.clone()),
+        repo: None,
+    })
 }
 
-/// Temporary stand-in: replace with `crate::cmd::runner::cloud::publish_cloud_run` once it exists.
-fn publish_cloud_run(_o: &Opts, _reference: &str) -> Result<String> {
-    Err(Error::internal("publish is not wired"))
+impl Publisher for CliPublisher<'_> {
+    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
+        publish_cloud(self.opts, &publish_target(pickup)?)
+    }
 }
 
 struct RunnerRuns {
@@ -1024,4 +1028,45 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
         ));
     }
     Ok(Output::new(&report, lines.join("\n")))
+}
+
+#[cfg(test)]
+mod publish_target_tests {
+    use super::*;
+
+    fn pickup(cloud: bool) -> state::Pickup {
+        let mut v = json!({
+            "id": "q_1", "rule": "r", "task": {"workspace_id": 56, "task_id": 9002}, "key": "TM-410",
+            "status": "started",
+            "bundle": {"v": 1, "task": {"workspace_id": 56, "task_id": 9002}, "title": "t", "body": "b",
+                "author": {"kind": "human"}, "comments": [], "pages": [],
+                "launch": {"profile": "claude-code", "cwd": "/work/repo-worktrees/queue/q_1"}},
+            "bundle_sha256": "x", "context_tainted": false,
+            "created_at": "2026-10-19T00:00:00Z", "updated_at": "2026-10-19T00:00:00Z",
+            "run_id": "s_abc"
+        });
+        if cloud {
+            v["cloud"] = json!({
+                "claim": {"host": "api.tmgr.dev", "user_id": 1, "workspace_id": 56, "task_id": 9002,
+                    "category_id": 127, "content_sha256": "h", "key_id": "k", "signed_at": 1,
+                    "signature": "s", "kind": "author"},
+                "workspace_code": "other", "branch": "tmgr/tm-410-fix"
+            });
+        }
+        serde_json::from_value(v).unwrap()
+    }
+
+    #[test]
+    fn the_target_comes_from_the_pickup_and_its_rule_workspace() {
+        let t = publish_target(&pickup(true)).unwrap();
+        assert_eq!(t.workspace_code, "other");
+        assert_eq!(t.task_id, 9002);
+        assert_eq!(t.branch, "tmgr/tm-410-fix");
+        assert_eq!(
+            t.clone_dir,
+            std::path::Path::new("/work/repo-worktrees/queue/q_1")
+        );
+        assert_eq!(t.session_id.as_deref(), Some("s_abc"));
+        assert!(publish_target(&pickup(false)).is_err());
+    }
 }

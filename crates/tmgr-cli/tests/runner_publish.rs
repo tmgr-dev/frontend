@@ -117,7 +117,9 @@ impl Rig {
             env,
             "GET",
             "/api/workspaces",
-            json!({"data": [{"id": 56, "name": "Tmgr Dev", "code": "tmgrdev", "is_default": true}]}),
+            json!({"data": [
+                {"id": 99, "name": "Decoy", "code": "decoy", "is_default": true},
+                {"id": 56, "name": "Tmgr Dev", "code": "tmgrdev", "is_default": false}]}),
         )
         .await;
         mount(
@@ -282,6 +284,8 @@ async fn a_finished_run_is_pushed_opened_as_a_pr_and_reported_without_merging() 
         .find(|c| c.1 == "/api/tasks/9002/comments")
         .expect("comment");
     assert!(comment.2.contains(PR));
+    assert!(calls.iter().any(|c| c.1 == "/api/workspaces/56/statuses"));
+    assert!(calls.iter().all(|c| !c.1.contains("/99/")), "{calls:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
