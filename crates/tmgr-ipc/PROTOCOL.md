@@ -107,6 +107,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
 | `clone_dir.v1` | `clone_of` on `runs.create` (section 5, "Queue capabilities") |
 | `multi_clone.v1` | `clones` on `runs.create`; `repos_sha256` in `cloud` (section 5, "Queue capabilities") |
+| `signed_context.v1` | `persona.id`, `persona.instructions` and `context` in a bundle; `persona_sha256`, `context_sha256` in `cloud` (section 5, "Run bundles") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
 | `agent_work.v1` | `runs.create` `agent_work` (section 5, "Queue capabilities") |
@@ -369,6 +370,8 @@ on exactly what a human approved sends that bundle with `runs.create` (cap
  "persona":{"name":"reviewer","instructions_sha256":"<64 hex>"},
  "launch":{"profile":"codex","model":"gpt-5","cwd":"/work/project"}}
 ```
+
+Cloud runs (cap `signed_context.v1`) may add, all omitted when absent so other bundles and their hashes are unchanged: `persona.id` (lowercase UUID) with `persona.instructions` (at most 32768 bytes, and `persona.instructions_sha256` must be the SHA-256 of its UTF-8 bytes), and `context`, a list of at most 5 pages `{id, revision, title, body}` (`revision` is the page version, display only) with titles and bodies totalling at most 65536 UTF-8 bytes after `\r\n` became `\n`. These texts are the owner's: the runner refuses a bundle that carries them unless the request has a `cloud` approval that signs them (`cloud.persona_sha256` = `persona_sha256(id, name, instructions)` and `cloud.context_sha256` = `context_sha256(page hashes in order)`, formats in `tmgr-approval`; a bundle without the hash for a text it carries, or with a text whose hash differs, is `forbidden`). Only then does `task.md` start with the sections "Instructions from the owner (persona <name>)" and "Rules from the owner (workspace context)", labelled as signed by the owner; the persona name and page titles are collapsed to one cleaned line and `<<<` is escaped in all of them. The prompt then also says to read and follow them first.
 
 `launch.permission_mode` (`ask`, `accept-edits` or `plan`) is optional, omitted when absent, and part of the hash when present.
 

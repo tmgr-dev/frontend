@@ -1462,7 +1462,8 @@ fn a_local_run_with_owner_instructions_or_rules_is_refused() {
     let mut h = Harness::new();
     h.bundle_runner();
     let text = "Follow the rules.";
-    let edits: [Box<dyn Fn(&mut RunBundle)>; 2] = [
+    type Edit = Box<dyn Fn(&mut RunBundle)>;
+    let edits: Vec<Edit> = vec![
         Box::new(move |b| {
             b.persona = Some(BundlePersona {
                 name: "p".into(),
