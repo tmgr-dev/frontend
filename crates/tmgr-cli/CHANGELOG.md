@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.9
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Leak gate for mixed private/public cloud runs: before a publish pushes anything, the CLI looks up the visibility of every repository of the run (`gh repo view`). When a repository that is not known private gets commits and another repository of the run is not known public (or belongs to another owner), the commits, their messages, author and committer identities, the branch name, the pull request title and body and the changed file paths of the public side are checked against the files of the private side. It looks for copied code (token fingerprints that survive re-indenting, re-wrapping, comments, base64, hex and unicode escapes), foreign files, secrets, internal names (package prefixes, hostnames, IPs, environment variables) and content it cannot scan (binary or larger than 512 KiB files, submodules, symlinks). Single-repository runs and runs whose repositories share visibility and owner are not gated.
+- A publish that the gate stops is held: nothing is pushed, no branch is left in your repositories, and the task gets one comment and the agent run is cancelled, both with categories and counts only (no repository names, paths or code). A held queue pickup frees its slot and is not published again, also not by an older CLI.
+- `tmgr run <task> --review` (owner terminal only, refused in agent sessions) prints every finding with the public location, the private reference and the public diff. `--review --push` re-imports the run, refuses when a branch changed since it was held, shows the findings again and publishes after you type the repository names. `--review --drop` releases the hold after you type the task key; the run folder stays.
+- `tmgr queue status` shows the status `held` with the categories.
+- Known limits: the gate targets accidental and lazy copying, not a determined exfiltrator. It does not catch paraphrased code, renamed identifiers, fragments shorter than about 25 tokens, content that comes from private binary files or files over 512 KiB, or credentials outside the known patterns. The agent can still read both repositories; the environment and terminal guard on `--push` (unchanged since earlier releases) is the real barrier.
+
 ## 1.0.8
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
