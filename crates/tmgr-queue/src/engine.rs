@@ -347,11 +347,7 @@ fn taken(
         fingerprint.clone(),
         &rule.name,
         key,
-        if f.holders.is_empty() {
-            "status_changed"
-        } else {
-            "taken"
-        },
+        f.reason(),
         json!({"holders": holders}),
     )?;
     let nkey = note_key(rule, task);
@@ -499,6 +495,30 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
         let existing = pass.state.pickups.iter().position(|p| {
             p.rule == rule.name && p.task.task_id == c.task.task_id && (!p.released || p.occupies())
         });
+        if let Some(i) = existing.filter(|&i| {
+            !pass.state.pickups[i].released
+                && matches!(
+                    pass.state.pickups[i].status,
+                    Status::PendingApproval | Status::Approved
+                )
+        }) {
+            if deps.fresh.look(rule, c.task).is_ok_and(|f| !f.has_persona) {
+                let id = pass.state.pickups[i].id.clone();
+                pass.set(
+                    i,
+                    Status::Expired,
+                    Some("skipped_taken: persona_missing".into()),
+                );
+                pass.state.pickups[i].released = true;
+                pass.audit.append(
+                    "skipped_taken",
+                    json!({"pickup": id, "rule": rule.name, "task": c.key, "reason": "persona_missing"}),
+                )?;
+                let p = pass.state.pickups[i].clone();
+                pass.event(&p, "skipped_taken");
+                continue;
+            }
+        }
         if existing.is_none() {
             match deps.fresh.look(rule, c.task) {
                 Ok(f) if f.free() => {
@@ -788,7 +808,7 @@ fn start_phase(
                     i,
                     Status::Expired,
                     Some(if f.holders.is_empty() {
-                        "skipped_taken: the status changed before the run started".to_string()
+                        format!("skipped_taken: {}", f.reason())
                     } else {
                         format!(
                             "skipped_taken: the task was taken before the run started ({})",
@@ -803,7 +823,7 @@ fn start_phase(
                 pass.state.pickups[i].released = true;
                 pass.audit.append(
                     "skipped_taken",
-                    json!({"pickup": id, "rule": rule_name, "task": key}),
+                    json!({"pickup": id, "rule": rule_name, "task": key, "reason": f.reason()}),
                 )?;
                 let p = pass.state.pickups[i].clone();
                 pass.event(&p, "skipped_taken");
@@ -1600,6 +1620,7 @@ mod tests {
     struct FreshFake {
         looks: Cell<u32>,
         taken_from: Cell<u32>,
+        persona_missing_from: Cell<u32>,
         holders: RefCell<Vec<crate::taken::Holder>>,
         status_changed: Cell<bool>,
         comments: RefCell<Vec<String>>,
@@ -1620,6 +1641,8 @@ mod tests {
                     Vec::new()
                 },
                 status_ok: !(taken && self.status_changed.get()),
+                has_persona: !(self.persona_missing_from.get() > 0
+                    && self.looks.get() >= self.persona_missing_from.get()),
             })
         }
 
@@ -1661,6 +1684,62 @@ mod tests {
             );
             assert_eq!(fx.audit_events("skipped"), 1);
         }
+    }
+
+    #[test]
+    fn a_task_without_the_rule_persona_never_starts_and_is_not_commented() {
+        let fx = cloud_fx();
+        fx.fresh.persona_missing_from.set(1);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        assert!(fx.pickups().is_empty());
+        assert!(fx.fresh.comments.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 1);
+    }
+
+    #[test]
+    fn a_task_with_the_rule_persona_starts() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert_eq!(fx.runs.requests.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_persona_removed_between_listing_and_start_stops_the_start() {
+        let fx = cloud_fx();
+        fx.fresh.persona_missing_from.set(2);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        assert!(fx.fresh.comments.borrow().is_empty());
+        let p = fx.pickups();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].status, Status::Expired);
+        assert!(p[0].released);
+        assert_eq!(fx.audit_events("skipped_taken"), 1);
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_approved_pickup_whose_task_lost_the_persona_expires_even_outside_the_hours() {
+        let fx = Fx::new(|r| {
+            r.auto = true;
+            r.hours = Some("22-06".into());
+        });
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Approved);
+        fx.fresh.persona_missing_from.set(fx.fresh.looks.get() + 1);
+        fx.pass().unwrap();
+        let p = fx.pickups();
+        assert_eq!(p[0].status, Status::Expired);
+        assert!(p[0].released);
+        assert!(fx.runs.created.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped_taken"), 1);
     }
 
     #[test]

@@ -14,11 +14,22 @@ pub struct Holder {
 pub struct Fresh {
     pub holders: Vec<Holder>,
     pub status_ok: bool,
+    pub has_persona: bool,
 }
 
 impl Fresh {
     pub fn free(&self) -> bool {
-        self.holders.is_empty() && self.status_ok
+        self.holders.is_empty() && self.status_ok && self.has_persona
+    }
+
+    pub fn reason(&self) -> &'static str {
+        if !self.holders.is_empty() {
+            "taken"
+        } else if !self.has_persona {
+            "persona_missing"
+        } else {
+            "status_changed"
+        }
     }
 
     pub fn fingerprint(&self) -> String {
@@ -30,6 +41,9 @@ impl Fresh {
         parts.sort();
         if !self.status_ok {
             parts.push("status".into());
+        }
+        if !self.has_persona {
+            parts.push("persona".into());
         }
         format!("taken:{}", parts.join("|"))
     }
@@ -58,6 +72,10 @@ pub struct Facts<'a> {
 }
 
 pub fn assess(f: Facts) -> Fresh {
+    let has_persona = f
+        .personas
+        .iter()
+        .any(|n| n.eq_ignore_ascii_case(f.rule_persona));
     let mut holders = Vec::new();
     for (id, name) in f.assignees {
         let own = id.is_some_and(|i| i == f.me || f.owners.contains(&i));
@@ -85,6 +103,7 @@ pub fn assess(f: Facts) -> Fresh {
     Fresh {
         holders,
         status_ok: f.status_ok,
+        has_persona,
     }
 }
 
@@ -167,7 +186,7 @@ mod tests {
             me: 1,
             owners: vec![],
             assignees: vec![],
-            personas: vec![],
+            personas: vec!["Agent · Team".into()],
             running_agents: vec![],
             status_ok: true,
         }
@@ -194,7 +213,7 @@ mod tests {
     fn another_person_persona_or_running_agent_holds_the_task() {
         let f = assess(Facts {
             assignees: vec![(Some(2), "Anna".into())],
-            personas: vec!["Reviewer".into()],
+            personas: vec!["Agent · Team".into(), "Reviewer".into()],
             running_agents: vec!["codex".into()],
             ..facts()
         });
@@ -213,6 +232,31 @@ mod tests {
             ..facts()
         });
         assert!(f.holders.is_empty() && !f.free());
+    }
+
+    #[test]
+    fn a_task_without_the_rule_persona_is_not_free_and_has_no_holder() {
+        for personas in [vec![], vec!["Reviewer".to_string()]] {
+            let f = assess(Facts {
+                personas: personas.clone(),
+                ..facts()
+            });
+            assert!(!f.free());
+            assert_eq!(
+                f.reason(),
+                if personas.is_empty() {
+                    "persona_missing"
+                } else {
+                    "taken"
+                }
+            );
+        }
+        let none = assess(Facts {
+            personas: vec![],
+            ..facts()
+        });
+        assert!(none.holders.is_empty());
+        assert_eq!(none.fingerprint(), "taken:persona");
     }
 
     #[test]
