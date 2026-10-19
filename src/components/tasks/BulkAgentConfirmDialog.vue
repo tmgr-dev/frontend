@@ -256,8 +256,10 @@
 						(t) =>
 							hasInvisible(t.title ?? '') || hasInvisible(t.description ?? ''),
 					) ||
-					personaGroups.value.some((g) =>
-						hasInvisible(g.persona.instructions),
+					personaGroups.value.some(
+						(g) =>
+							hasInvisible(g.persona.name) ||
+							hasInvisible(g.persona.instructions),
 					) ||
 					contextGroups.value.some((g) =>
 						g.context.pages.some(

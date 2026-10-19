@@ -8,7 +8,14 @@
 			<summary
 				class="cursor-pointer text-2xs font-bold uppercase text-ink-subtle"
 			>
-				Persona instructions ({{ personaBlock.name }})
+				Persona instructions (<template
+					v-for="(piece, i) in personaBlock.name"
+					:key="i"
+					><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{
+						piece.text
+					}}</mark
+					><template v-else>{{ piece.text }}</template></template
+				>)
 				<span v-if="personaNote" class="font-normal normal-case">{{
 					personaNote
 				}}</span>
@@ -78,7 +85,7 @@
 			const personaBlock = computed(() =>
 				props.persona
 					? {
-							name: props.persona.name,
+							name: splitInvisible(props.persona.name),
 							pieces: splitInvisible(props.persona.instructions),
 					  }
 					: null,

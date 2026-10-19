@@ -315,6 +315,7 @@
 				() =>
 					hasInvisible(fresh.value?.title ?? '') ||
 					hasInvisible(fresh.value?.description ?? '') ||
+					hasInvisible(shownPersona.value?.name ?? '') ||
 					hasInvisible(shownPersona.value?.instructions ?? '') ||
 					(shownContext.value?.pages ?? []).some(
 						(page) => hasInvisible(page.title) || hasInvisible(page.body),

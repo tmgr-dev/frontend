@@ -136,6 +136,34 @@ describe('buildBulkItems', () => {
 		).rejects.toThrow();
 	});
 
+	it('sends no persona or context hashes for a task with no shown coverage', async () => {
+		const items = await build([
+			{ ...tasks[0], coverage: { persona: null, context: null } },
+			tasks[1],
+		]);
+		for (const item of items) {
+			expect(item).not.toHaveProperty('persona_sha256');
+			expect(item).not.toHaveProperty('context_sha256');
+			expect(
+				await verifyMessage(
+					fixtures.key.public_key,
+					approvalMessage(
+						'api.tmgr.dev',
+						1,
+						56,
+						item.task_id,
+						item.category_id,
+						item.content_sha256,
+						fixtures.key.key_id,
+						1760000000,
+						item.repos_sha256,
+					),
+					item.signature,
+				),
+			).toBe(true);
+		}
+	});
+
 	it('signs v3 per task with its own persona and rules, v1/v2 for the rest', async () => {
 		const c = fixtures.cases_v3[0];
 		const items = await build([
