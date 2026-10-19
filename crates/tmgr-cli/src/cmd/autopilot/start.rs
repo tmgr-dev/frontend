@@ -12,6 +12,7 @@ use tmgr_ipc::api::AutopilotCommand;
 use tmgr_link::privileged;
 use tmgr_queue::cloud::{CloudApi, CloudWorkspace};
 use tmgr_queue::rules::{self, Rule};
+use tmgr_queue::taken::Fresh;
 use tmgr_queue::Paths;
 use tmgr_usage::Tool;
 
@@ -164,6 +165,26 @@ pub fn classify(task_id: i64, elig: &Eligibility, f: &Facts) -> Found {
     }
 }
 
+fn not_free(found: Found, look: impl FnOnce(&Found) -> Result<Fresh>) -> Found {
+    if matches!(found.approval, Approval::Refused(_)) {
+        return found;
+    }
+    let why = match look(&found) {
+        Ok(fresh) if fresh.free() => return found,
+        Ok(fresh) => match fresh.reason() {
+            "taken" => "taken by someone else".to_string(),
+            "persona_missing" => "the rule's persona is not assigned to the task".to_string(),
+            _ => "the task is not in the rule's status".to_string(),
+        },
+        Err(e) => format!("could not check the task ({})", sanitize_line(&e.message)),
+    };
+    Found {
+        approval: Approval::Refused(why),
+        sign: None,
+        ..found
+    }
+}
+
 fn discover(
     ctx: &Ctx,
     cloud: &CliCloud,
@@ -189,7 +210,9 @@ fn discover(
         .into_iter()
         .map(
             |id| match client.agent_run_task(id).and_then(parse_eligibility) {
-                Ok(elig) => classify(id, &elig, &facts),
+                Ok(elig) => not_free(classify(id, &elig, &facts), |f| {
+                    queue::fresh_look(ctx, rule, ws.id, f.id)
+                }),
                 Err(e) => Found {
                     id,
                     key: format!("task-{id}"),
@@ -764,6 +787,55 @@ mod tests {
             v[k] = val.clone();
         }
         parse_eligibility(v).unwrap()
+    }
+
+    fn signable() -> Found {
+        Found {
+            id: 7,
+            key: "TM-7".into(),
+            title: "t".into(),
+            repos: vec![],
+            approval: Approval::NeedsSigning("not signed".into()),
+            sign: Some(SignTask {
+                id: 7,
+                workspace_id: 1,
+                category_id: 2,
+                title: "t".into(),
+                description: String::new(),
+                repos_sha256: None,
+            }),
+        }
+    }
+
+    fn fresh(personas_ok: bool, holders: bool) -> Fresh {
+        Fresh {
+            holders: if holders {
+                vec![tmgr_queue::taken::Holder {
+                    name: "Anna".into(),
+                    kind: "person",
+                }]
+            } else {
+                vec![]
+            },
+            status_ok: true,
+            has_persona: personas_ok,
+        }
+    }
+
+    #[test]
+    fn a_task_without_the_rule_persona_is_refused_and_never_signed() {
+        let f = not_free(signable(), |_| Ok(fresh(false, false)));
+        assert!(f.sign.is_none());
+        assert!(matches!(&f.approval, Approval::Refused(w) if w.contains("persona")));
+    }
+
+    #[test]
+    fn a_taken_task_is_refused_and_a_free_one_stays_signable() {
+        let f = not_free(signable(), |_| Ok(fresh(true, true)));
+        assert!(matches!(&f.approval, Approval::Refused(w) if w.contains("taken")));
+        assert!(not_free(signable(), |_| Ok(fresh(true, false)))
+            .sign
+            .is_some());
     }
 
     fn classify_with(e: &Eligibility, allow: &AllowFile) -> Found {

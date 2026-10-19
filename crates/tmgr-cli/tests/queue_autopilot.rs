@@ -245,6 +245,7 @@ fn open_task() -> Value {
     t["project_category_id"] = json!(CATEGORY);
     t["workspace_id"] = json!(WS);
     t["assignees"] = json!([]);
+    t["persona_assignees"] = json!([{"id": "p-1", "name": "builder"}]);
     t
 }
 

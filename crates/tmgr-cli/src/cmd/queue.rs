@@ -944,6 +944,20 @@ pub(crate) fn rule_binding(
     Ok(bound)
 }
 
+pub(crate) fn fresh_look(ctx: &Ctx, rule: &Rule, workspace_id: i64, task_id: i64) -> Result<Fresh> {
+    CliFresh {
+        ctx,
+        local_user_id: ctx.cfg.local_user_id,
+    }
+    .look(
+        rule,
+        tmgr_ipc::api::TaskRef {
+            workspace_id,
+            task_id,
+        },
+    )
+}
+
 struct CliFresh<'a> {
     ctx: &'a Ctx,
     local_user_id: Option<i64>,
