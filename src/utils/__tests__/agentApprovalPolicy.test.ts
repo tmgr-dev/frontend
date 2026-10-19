@@ -8,22 +8,24 @@ import {
 
 describe('shouldAutoSign', () => {
 	const states: ApprovalState[] = ['none', 'active', 'stale', 'revoked'];
-	const cases: [ApprovalState, boolean, boolean, boolean, boolean][] = [];
+	const cases: [ApprovalState, boolean, boolean, boolean, boolean, boolean][] =
+		[];
 	for (const state of states)
 		for (const own of [true, false])
-			for (const owner of [true, false])
-				for (const setting of [true, false]) {
-					const expected =
-						setting &&
-						owner &&
-						((state === 'none' && own) ||
-							state === 'active' ||
-							state === 'stale');
-					cases.push([state, own, owner, setting, expected]);
-				}
+			for (const authored of [true, false])
+				for (const owner of [true, false])
+					for (const setting of [true, false]) {
+						const expected =
+							setting &&
+							owner &&
+							((state === 'none' && own && authored) ||
+								state === 'active' ||
+								state === 'stale');
+						cases.push([state, own, authored, owner, setting, expected]);
+					}
 	it.each(cases)(
-		'state %s own=%s ownerSave=%s setting=%s -> %s',
-		(state, own, owner, setting, expected) => {
+		'state %s sameId=%s ownerAuthored=%s ownerSave=%s setting=%s -> %s',
+		(state, own, authored, owner, setting, expected) => {
 			expect(
 				shouldAutoSign({
 					isOwnerSave: owner,
@@ -31,31 +33,37 @@ describe('shouldAutoSign', () => {
 					meId: 7,
 					state,
 					settingEnabled: setting,
+					ownerAuthored: authored,
 				}),
 			).toBe(expected);
 		},
 	);
 
-	it('never signs a revoked approval', () => {
+	const base = {
+		isOwnerSave: true,
+		authorId: 7,
+		meId: 7,
+		settingEnabled: true,
+		ownerAuthored: true,
+	};
+
+	it('does not sign a legacy or MCP-created task in state none', () => {
 		expect(
-			shouldAutoSign({
-				isOwnerSave: true,
-				authorId: 7,
-				meId: 7,
-				state: 'revoked',
-				settingEnabled: true,
-			}),
+			shouldAutoSign({ ...base, state: 'none', ownerAuthored: false }),
 		).toBe(false);
+	});
+
+	it('never signs a revoked approval', () => {
+		expect(shouldAutoSign({ ...base, state: 'revoked' })).toBe(false);
 	});
 
 	it('does not treat missing ids as the author', () => {
 		expect(
 			shouldAutoSign({
-				isOwnerSave: true,
+				...base,
 				authorId: undefined,
 				meId: undefined,
 				state: 'none',
-				settingEnabled: true,
 			}),
 		).toBe(false);
 	});

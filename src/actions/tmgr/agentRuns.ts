@@ -19,6 +19,7 @@ export interface TaskApproval {
 	revoked_by_name: string | null;
 	content_sha256: string;
 	setting_enabled: boolean;
+	owner_authored: boolean;
 }
 
 export interface ApprovalSubmission {
@@ -39,7 +40,8 @@ export type AgentRunErrorCode =
 	| 'signed_at_skew'
 	| 'signature_invalid'
 	| 'setting_off'
-	| 'category_mismatch';
+	| 'category_mismatch'
+	| 'confirm_required';
 
 export const agentRunErrorCode = (error: any): string | null => {
 	const body = error?.response?.data;
@@ -100,4 +102,29 @@ export const withdrawTaskApproval = async (
 	taskId: number | string,
 ): Promise<void> => {
 	await $axios.delete(`/tasks/${taskId}/agent-approval`);
+};
+
+export interface BulkApprovalItem extends ApprovalSubmission {
+	task_id: number;
+}
+
+export interface BulkApprovalResult {
+	task_id: number;
+	ok: boolean;
+	code?: string;
+}
+
+export const BULK_MAX = 100;
+
+export const submitBulkApprovals = async (
+	items: BulkApprovalItem[],
+): Promise<BulkApprovalResult[]> => {
+	const results: BulkApprovalResult[] = [];
+	for (let i = 0; i < items.length; i += BULK_MAX) {
+		const { data } = await $axios.post('/agent-runs/approvals/bulk', {
+			items: items.slice(i, i + BULK_MAX),
+		});
+		results.push(...(data?.data ?? data ?? []));
+	}
+	return results;
 };

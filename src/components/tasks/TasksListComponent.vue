@@ -14,12 +14,19 @@
 			@export="exportSelectedTasks"
 			@remove="deleteSelectedTasks"
 			@updateStatus="updateStatusForSelectedTasks"
+			@confirm-agent-runs="openBulkAgentConfirm"
 		>
 			<p class="text-center text-gray-800 dark:text-gray-200">
 				<b>Selected tasks: </b>{{ selected.filter(Boolean).length }}<br />
 				{{ timeForModal }}
 			</p>
 		</TasksMultipleActionsModal>
+
+		<BulkAgentConfirmDialog
+			v-if="bulkConfirmIds.length"
+			:task-ids="bulkConfirmIds"
+			@close="closeBulkAgentConfirm"
+		/>
 
 		<div v-if="hasSelectable" class="flex items-center gap-2 px-2 pb-2">
 			<button
@@ -506,6 +513,7 @@
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
 	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
+	import BulkAgentConfirmDialog from '@/components/tasks/BulkAgentConfirmDialog.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
@@ -586,6 +594,7 @@
 	export default {
 		name: 'TasksListComponent',
 		components: {
+			BulkAgentConfirmDialog,
 			MobilePagination,
 			TaskTimeInfo,
 			Button,
@@ -749,6 +758,7 @@
 				settingsTask: null as Task | null,
 				isShowSelectedTasksCommonTime: false,
 				selected: [] as boolean[],
+				bulkConfirmIds: [] as number[],
 				selecting: [] as boolean[],
 				showTimeInModal: false,
 				timeForModal: null as string | null,
@@ -1291,6 +1301,16 @@
 				this.isShowSelectedTasksCommonTime = false;
 				this.selected = [];
 				this.selecting = [];
+			},
+			openBulkAgentConfirm() {
+				this.bulkConfirmIds = this.getSelectedTasks()
+					.map((task: any) => task.id)
+					.filter(Boolean);
+				this.isShowSelectedTasksCommonTime = false;
+			},
+			closeBulkAgentConfirm() {
+				this.bulkConfirmIds = [];
+				this.resetSelectedTasks();
 			},
 			closeTimeInModal() {
 				this.showTimeInModal = false;

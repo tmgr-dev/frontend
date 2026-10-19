@@ -39,7 +39,7 @@ const writeShown = (shown: Record<string, string>): void => {
 	try {
 		localStorage.setItem(STORAGE_KEY, JSON.stringify(shown));
 	} catch {
-		/* Reminders still work for this run without storage. */
+		return;
 	}
 };
 

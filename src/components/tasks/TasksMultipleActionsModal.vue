@@ -71,6 +71,9 @@
 								Delete
 							</option>
 						</optgroup>
+						<optgroup v-if="agentRunsOn" label="Agent runs">
+							<option value="agent-confirm">Confirm for agent runs</option>
+						</optgroup>
 						<optgroup label="Export">
 							<option value="export:csv">Export to CSV</option>
 							<option value="export:jpg">Export to JPEG</option>
@@ -96,13 +99,14 @@
 </template>
 
 <script>
+	import { getAgentRunsSetting } from '@/actions/tmgr/agentRuns';
 	import Modal from '@/components/Modal.vue';
 	import ExportSettingsPanel from '@/components/tasks/ExportSettingsPanel.vue';
 	import { archiveTarget, doneTarget, openTarget } from '@/utils/simpleStatus';
 
 	export default {
 		name: 'TasksMultipleActionsModal',
-		emits: ['export', 'remove', 'updateStatus', 'close'],
+		emits: ['export', 'remove', 'updateStatus', 'close', 'confirmAgentRuns'],
 		components: {
 			Modal,
 			ExportSettingsPanel,
@@ -113,7 +117,17 @@
 				selectedAction: 'export:csv',
 				elapsedTime: 0,
 				timerInterval: null,
+				agentRunsOn: false,
 			};
+		},
+		async mounted() {
+			const id = Number(this.$store.getters.currentWorkspaceId);
+			if (!(id > 0) || this.$store.getters.isLocalOnly) return;
+			try {
+				this.agentRunsOn = await getAgentRunsSetting(id);
+			} catch {
+				this.agentRunsOn = false;
+			}
 		},
 		props: {
 			status: {
@@ -183,6 +197,8 @@
 						type,
 						settings: this.exportSettings,
 					});
+				} else if (action === 'agent-confirm') {
+					this.$emit('confirmAgentRuns');
 				} else if (action === 'delete') {
 					this.$emit('remove');
 				}

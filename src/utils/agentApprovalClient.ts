@@ -3,8 +3,10 @@ import {
 	getAgentRunsSetting,
 	getTaskApproval,
 	registerAgentRunKey,
+	submitBulkApprovals,
 	submitTaskApproval,
 	type ApprovalKind,
+	type BulkApprovalResult,
 	type TaskApproval,
 } from '@/actions/tmgr/agentRuns';
 import store from '@/store';
@@ -16,6 +18,7 @@ import {
 	generateSigningKeyPair,
 	signMessage,
 } from '@/utils/agentApproval';
+import { buildBulkItems } from '@/utils/agentApprovalBulk';
 import { shouldAutoSign } from '@/utils/agentApprovalPolicy';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 
@@ -215,6 +218,7 @@ export const autoSignAfterSave = async (
 			meId: currentUserId() || null,
 			state: approval.state,
 			settingEnabled: approval.setting_enabled,
+			ownerAuthored: approval.owner_authored === true,
 		})
 	)
 		return;
@@ -228,7 +232,45 @@ export const autoSignAfterSave = async (
 export const autoSignQuietly = (
 	task: Parameters<typeof autoSignAfterSave>[0],
 ): void => {
-	void autoSignAfterSave(task).catch((error) =>
-		console.warn('agent approval auto-sign skipped', error),
-	);
+	void autoSignAfterSave(task).catch((error) => {
+		if (agentRunErrorCode(error) !== 'confirm_required')
+			console.warn('agent approval auto-sign skipped', error);
+	});
+};
+
+export const signTaskApprovalsBulk = async (
+	tasks: SignableTask[],
+): Promise<BulkApprovalResult[]> => {
+	const userId = currentUserId();
+	const host = apiHost();
+	const attempt = async (forceNew: boolean) => {
+		const key = await signingKey(userId, forceNew);
+		const items = await buildBulkItems({
+			tasks: tasks.map((task) => ({
+				id: task.id,
+				title: task.title,
+				description: task.description,
+				workspaceId: Number(
+					task.workspace_id ?? store.getters.currentWorkspaceId,
+				),
+				categoryId: categoryIdOf(task),
+			})),
+			host,
+			userId,
+			keyId: key.keyId,
+			signedAt: Math.floor(Date.now() / 1000),
+			sign: (message) => signMessage(key.privateKey, message),
+		});
+		return submitBulkApprovals(items);
+	};
+	let results: BulkApprovalResult[];
+	try {
+		results = await attempt(false);
+	} catch (error) {
+		if (agentRunErrorCode(error) !== 'key_unknown') throw error;
+		return attempt(true);
+	}
+	if (results.length && results.every((r) => r.code === 'key_unknown'))
+		return attempt(true);
+	return results;
 };

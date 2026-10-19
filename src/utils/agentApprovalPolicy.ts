@@ -6,11 +6,13 @@ export const shouldAutoSign = (input: {
 	meId: number | null | undefined;
 	state: ApprovalState;
 	settingEnabled: boolean;
+	ownerAuthored: boolean;
 }): boolean => {
 	if (!input.settingEnabled || !input.isOwnerSave) return false;
 	if (input.state === 'active' || input.state === 'stale') return true;
 	return (
 		input.state === 'none' &&
+		input.ownerAuthored === true &&
 		input.authorId != null &&
 		input.meId != null &&
 		input.authorId === input.meId
