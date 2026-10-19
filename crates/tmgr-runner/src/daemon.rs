@@ -6,6 +6,7 @@ use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
 use crate::folders;
 use crate::login;
+use crate::orchestrator;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
 use crate::sandbox::{self, SandboxSpec};
@@ -38,9 +39,10 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
-    EventMsg, ExePin, LookupParams, Origin, OriginRevokeParams, OriginRevoked, PathParams,
-    RestoredRun, RunCreateReq, RunStatus, SessionInfo, SessionText, Snapshot, State, StateKind,
-    StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
+    EventMsg, ExePin, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
+    OriginRevoked, PathParams, RestoredRun, RunCreateReq, RunStatus, SessionInfo, SessionText,
+    Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI,
+    CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -292,6 +294,7 @@ struct RunExtra {
     prompt_at: Option<usize>,
     egress: Option<Vec<crate::egress::HostPattern>>,
     mode_note: Option<String>,
+    run_id_env: bool,
 }
 
 fn shown_argv(argv: &[String], prompt_at: Option<usize>) -> Vec<String> {
@@ -1230,6 +1233,17 @@ fn signal_number(name: &str) -> Option<i32> {
     }
 }
 
+fn known_profile<'a>(set: &'a ProfileSet, id: &str) -> Result<&'a Profile, ApiErr> {
+    set.get(id).ok_or_else(|| {
+        let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
+        let what = profile::removed(id).unwrap_or_else(|| format!("unknown agent profile {id:?}"));
+        api(
+            ErrorCode::UnknownProfile,
+            format!("{what}; known profiles: {}", known.join(", ")),
+        )
+    })
+}
+
 fn valid_start_key(k: &str) -> bool {
     (1..=64).contains(&k.len())
         && k.bytes()
@@ -1601,6 +1615,15 @@ impl Runner {
                     }
                 }
                 self.create_run(req).map(|i| to_json(&i))
+            }
+            method::ORCHESTRATOR_CREATE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "orchestrator.create is accepted only from the tmgr CLI",
+                    ));
+                }
+                self.create_orchestrator(params(p)?).map(|i| to_json(&i))
             }
             method::TRUST_LIST => {
                 if conn.client == CLIENT_WORKER {
@@ -2062,6 +2085,71 @@ impl Runner {
         self.create_run_as(req, None, None).map(|(info, _, _)| info)
     }
 
+    fn create_orchestrator(
+        self: &Arc<Self>,
+        req: OrchestratorCreateReq,
+    ) -> Result<SessionInfo, ApiErr> {
+        if !valid_start_key(&req.start_key) {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "start_key must be 1 to 64 characters of A-Za-z0-9._:-",
+            ));
+        }
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        let prof = known_profile(&set, &req.profile)?;
+        let mut argv = orchestrator::argv(prof).map_err(|(code, m)| api(code, m))?;
+        if !sandbox::network_restriction_enforced() {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "the orchestrator needs network restriction, which this platform cannot enforce",
+            ));
+        }
+        let run = req.as_run();
+        let hash =
+            tmgr_ipc::api::sha256_hex(format!("orchestrator.v1\0{}", params_hash(&run)).as_bytes());
+        let _keyed = lock(&self.key_lock);
+        if let Some(existing) = self.by_key(&req.start_key) {
+            return if existing.start_key().is_some_and(|(_, h)| h == hash) {
+                Ok(existing.info())
+            } else {
+                Err(api(
+                    ErrorCode::Busy,
+                    "start key already used for a different request",
+                ))
+            };
+        }
+        let dir = bundle::open_dir(&run).map_err(|(code, m)| api(code, m))?;
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        argv[0] = resolve_exe(&argv[0], &path, None)
+            .map_err(|e| api(ErrorCode::InvalidParams, e))?
+            .display()
+            .to_string();
+        let extra = RunExtra {
+            start: Some((req.start_key.clone(), hash)),
+            egress: Some(
+                prof.egress_allow()
+                    .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+            ),
+            run_id_env: true,
+            ..RunExtra::default()
+        };
+        self.create_with(
+            CreateReq {
+                argv,
+                cwd: dir.path.display().to_string(),
+                name: req.name,
+                profile: Some(req.profile),
+                cols: run.cols,
+                rows: run.rows,
+                env_pass: Vec::new(),
+                task: None,
+            },
+            (None, Some(&dir), None),
+            (Some(prof), &extra),
+            None,
+        )
+    }
+
     fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<PinCheck>, ApiErr> {
         check_argv_sha256(req)?;
         let Some(pin) = &req.exe_pin else {
@@ -2123,15 +2211,7 @@ impl Runner {
         };
         let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-        let prof = set.get(&req.profile).ok_or_else(|| {
-            let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
-            let what = profile::removed(&req.profile)
-                .unwrap_or_else(|| format!("unknown agent profile {:?}", req.profile));
-            api(
-                ErrorCode::UnknownProfile,
-                format!("{what}; known profiles: {}", known.join(", ")),
-            )
-        })?;
+        let prof = known_profile(&set, &req.profile)?;
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         if pinned_resume.is_some_and(|want| prof.resume.as_ref().map(resume_rec) != *want) {
             return Err(api(
@@ -2286,6 +2366,7 @@ impl Runner {
             prompt_at: None,
             egress: None,
             mode_note: plan.note.clone(),
+            run_id_env: false,
         };
         if plan.restricted {
             extra.egress = Some(
@@ -2638,6 +2719,7 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
+        grants.run_id = extra.run_id_env;
         for o in &extra.objects {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
             grants.objects_ro.push((o.path.clone(), o.id));

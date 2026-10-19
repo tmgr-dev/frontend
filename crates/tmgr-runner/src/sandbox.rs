@@ -38,6 +38,7 @@ pub struct Grants {
     pub deny: Vec<PathBuf>,
     pub trusted_env_pass: Vec<String>,
     pub env: Vec<(String, String)>,
+    pub run_id: bool,
 }
 
 pub struct Launch {
@@ -231,6 +232,9 @@ fn build_env(spec: &SandboxSpec, home: &Path, tmp: &Path) -> Result<Vec<(String,
     env.insert("HOME".into(), h.clone());
     env.insert("TERM".into(), "xterm-256color".into());
     env.insert("TMGR_SESSION_ID".into(), spec.session_id.clone());
+    if spec.grants.run_id {
+        env.insert("TMGR_RUN_ID".into(), spec.session_id.clone());
+    }
     env.insert("XDG_CONFIG_HOME".into(), format!("{h}/.config"));
     env.insert("XDG_CACHE_HOME".into(), format!("{h}/.cache"));
     env.insert("XDG_DATA_HOME".into(), format!("{h}/.local/share"));

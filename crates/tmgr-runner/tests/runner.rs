@@ -10,8 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     caps, method, AuthorKind, BundleAuthor, BundleComment, BundleLaunch, BundlePage, BundlePersona,
-    CreateReq, CwdPin, ExePin, Origin, OriginRevokeParams, OriginRevoked, RunBundle, RunCreateReq,
-    SessionInfo, State, StateKind, TaskRef,
+    CreateReq, CwdPin, ExePin, OrchestratorCreateReq, Origin, OriginRevokeParams, OriginRevoked,
+    RunBundle, RunCreateReq, SessionInfo, State, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
@@ -5868,4 +5868,167 @@ fn the_queue_loop_keeps_the_status_it_left_behind_when_it_starts_again() {
     });
     assert!(h.autopilot_dir().join("status.prev.json").exists());
     h.stop_autopilot();
+}
+
+fn orch_fx() -> Harness {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    h.real_home = Some(home);
+    let bin = h.tmp.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let claude = bin.join("claude");
+    fs::write(
+        &claude,
+        "#!/bin/sh\nenv > env.tmp && mv env.tmp env.txt\nprintf '%s\\n' \"$@\" > args.tmp && mv args.tmp args.txt\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&claude, fs::Permissions::from_mode(0o755)).unwrap();
+    h.env
+        .push(("PATH".into(), format!("{}:/usr/bin:/bin", bin.display())));
+    h
+}
+
+fn orch_req(h: &Harness, key: &str) -> OrchestratorCreateReq {
+    OrchestratorCreateReq {
+        profile: "claude-code".into(),
+        cwd: h.work.display().to_string(),
+        start_key: key.into(),
+        name: None,
+    }
+}
+
+#[test]
+fn orchestrator_create_is_refused_for_clients_other_than_the_cli() {
+    let mut h = orch_fx();
+    h.start(5000);
+    for client in ["desktop", "worker"] {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        let e = err_text(c.create_orchestrator(orch_req(&h, "orch-1")));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("tmgr CLI"),
+            "{e}"
+        );
+    }
+    assert!(h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_refuses_bad_requests_and_profiles() {
+    let mut h = orch_fx();
+    fs::write(
+        h.agents.join("claude-code.toml"),
+        "id = \"claude-code\"\nname = \"mine\"\ncommand = [\"claude\"]\n[headless]\nargs = [\"-p\", \"{prompt}\"]\n",
+    )
+    .unwrap();
+    h.profile("plain", &["claude"]);
+    h.start(5000);
+    let mut c = h.client();
+    let e = err_text(c.call(
+        method::ORCHESTRATOR_CREATE,
+        json!({"profile": "claude-code", "cwd": h.work}),
+    ));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    let e = err_text(c.call(
+        method::ORCHESTRATOR_CREATE,
+        json!({"profile": "claude-code", "cwd": h.work, "start_key": "k1", "argv": ["/bin/sh"]}),
+    ));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    let mut bad_key = orch_req(&h, "a b");
+    let e = err_text(c.create_orchestrator(bad_key.clone()));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    bad_key.start_key = "k".repeat(65);
+    assert!(err_text(c.create_orchestrator(bad_key)).starts_with("invalid_params: "));
+    for (profile, want) in [
+        ("nope", "unknown_profile: "),
+        ("claude-code", "forbidden: "),
+        ("plain", "forbidden: "),
+        ("codex", "invalid_params: "),
+    ] {
+        let mut req = orch_req(&h, "k2");
+        req.profile = profile.into();
+        let e = err_text(c.create_orchestrator(req));
+        assert!(e.starts_with(want), "{profile}: {e}");
+        if profile == "codex" {
+            assert!(e.contains("claude-code only"), "{e}");
+        }
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_needs_an_enforced_network_restriction() {
+    if cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let e = err_text(h.client().create_orchestrator(orch_req(&h, "orch-1")));
+    assert!(e.starts_with("forbidden: ") && e.contains("network"), "{e}");
+    assert!(h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_runs_the_fixed_command_restricted_without_a_restore_record() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create_orchestrator(orch_req(&h, "orch-1")).unwrap();
+    let args = {
+        let path = h.work.join("args.txt");
+        wait_for("agent arguments", || path.exists());
+        fs::read_to_string(path).unwrap()
+    };
+    let want = [
+        "-p",
+        tmgr_runner::orchestrator::PROMPT,
+        "--permission-mode",
+        "acceptEdits",
+        "--tools",
+        "Read,Write",
+        "--strict-mcp-config",
+        "--max-turns",
+        "30",
+    ];
+    assert_eq!(args.lines().collect::<Vec<_>>(), want);
+    assert_eq!(info.profile.as_deref(), Some("claude-code"));
+    assert_eq!(info.permission_mode, None);
+    assert!(info.bundle_sha256.is_none() && info.task.is_none());
+    let path = h.work.join("env.txt");
+    wait_for("agent env", || path.exists());
+    thread::sleep(Duration::from_millis(200));
+    let env = fs::read_to_string(path).unwrap();
+    let get = |k: &str| {
+        env.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .map(String::from)
+    };
+    assert_eq!(get("TMGR_RUN_ID").as_deref(), Some(info.id.as_str()));
+    assert!(get("HTTPS_PROXY").is_some_and(|v| v.starts_with("http://127.0.0.1:")));
+    assert_eq!(get("NO_PROXY").as_deref(), Some(""));
+    let store = tmgr_runner::restore::store(h.homes.path());
+    assert!(!store.join(format!("{}.json", info.id)).exists());
+
+    assert_eq!(
+        c.create_orchestrator(orch_req(&h, "orch-1")).unwrap().id,
+        info.id
+    );
+    let mut other = orch_req(&h, "orch-1");
+    other.name = Some("other".into());
+    let e = err_text(c.create_orchestrator(other));
+    assert!(
+        e.starts_with("busy: ") && e.contains("different request"),
+        "{e}"
+    );
+    let mut same_key = h.run_req("claude-code");
+    same_key.start_key = Some("orch-1".into());
+    same_key.unattended = true;
+    let e = err_text(c.create_run(same_key));
+    assert!(e.starts_with("busy: "), "{e}");
+    assert_eq!(c.list().unwrap().len(), 1);
+    let _ = c.kill(&info.id, "kill");
 }

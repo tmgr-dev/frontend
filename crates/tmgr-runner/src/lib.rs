@@ -3,6 +3,7 @@ pub mod egress;
 #[cfg(unix)]
 pub mod exe;
 pub mod login;
+pub mod orchestrator;
 pub mod profile;
 pub mod sandbox;
 pub mod sanitize;
