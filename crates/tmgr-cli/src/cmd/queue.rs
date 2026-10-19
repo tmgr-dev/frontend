@@ -66,6 +66,11 @@ pub enum QueueCommand {
     Release { pickup: String },
     /// Run one pickup pass now
     RunOnce,
+    /// Run the autopilot
+    Autopilot {
+        #[command(subcommand)]
+        command: super::autopilot::AutopilotCmd,
+    },
 }
 
 #[derive(Subcommand)]
@@ -269,6 +274,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
             ))
         }
         QueueCommand::RunOnce => run_once(ctx, cli, &paths),
+        QueueCommand::Autopilot { command } => super::autopilot::run(ctx, cli, command),
     }
 }
 
@@ -816,6 +822,38 @@ impl CloudApi for CliCloud<'_> {
 
 /// The repositories a queue pickup works on, or why the category's binding does not match the rule.
 /// Explicit set: the rule lists exactly the bound folders. No list: exactly the one bound folder.
+pub(crate) fn count_unconfirmed(
+    ctx: &Ctx,
+    paths: &Paths,
+    rule_name: &str,
+    selected: &BTreeSet<i64>,
+) -> Result<u32> {
+    const LOOKUPS: usize = 50;
+    let loaded = rules::load(paths)?;
+    let rule = loaded
+        .file
+        .rules
+        .iter()
+        .find(|r| r.name == rule_name)
+        .ok_or_else(|| Error::not_found(format!("no rule {rule_name}")))?;
+    let cloud = CliCloud::new(ctx);
+    let ws = cloud
+        .allow(&rule.workspace, Utc::now())
+        .map_err(|m| Error::new(Kind::Forbidden, m))?;
+    let (ids, _) = cloud.list(rule, &ws)?;
+    let mut refused = 0;
+    for id in ids
+        .into_iter()
+        .filter(|i| !selected.contains(i))
+        .take(LOOKUPS)
+    {
+        if matches!(cloud.gate(rule, &ws, id)?, Gated::Refused { .. }) {
+            refused += 1;
+        }
+    }
+    Ok(refused)
+}
+
 fn rule_binding(
     rule: &Rule,
     ok: &crate::cmd::runner::cloud::GateOk,
@@ -1156,9 +1194,13 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
     if tmgr_queue::needs_runner(paths)? {
         client.ready()?;
     }
-    let report = with_deps(ctx, cli, &client, tmgr_queue::StartPolicy::default(), |deps| {
-        tmgr_queue::run_once(paths, deps)
-    })?;
+    let report = with_deps(
+        ctx,
+        cli,
+        &client,
+        tmgr_queue::StartPolicy::default(),
+        |deps| tmgr_queue::run_once(paths, deps),
+    )?;
     let mut lines = Vec::new();
     if !report.enabled {
         lines.push("Queue is off.".to_string());

@@ -193,3 +193,24 @@ pub struct StatusDoc {
     #[serde(flatten)]
     pub extra: serde_json::Map<String, Value>,
 }
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Reasoned {
+    pub task: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Summary {
+    pub text: String,
+    pub stopped_by: String,
+    pub started: u32,
+    pub prs: Vec<PrLink>,
+    pub held: Vec<Reasoned>,
+    pub skipped: Vec<Reasoned>,
+    pub failed: Vec<Reasoned>,
+    pub paused: Vec<Reasoned>,
+    pub unconfirmed_new: u32,
+}
