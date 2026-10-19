@@ -1,3 +1,4 @@
+use crate::cloud::CloudClaim;
 use crate::rules::{workspace_code, Rule};
 use serde_json::Value;
 use tmgr_core::error::{Error, Result};
@@ -41,11 +42,19 @@ pub struct Candidate {
     pub pages: Vec<BundlePage>,
     pub context_tainted: bool,
     pub persona_text: String,
+    pub cloud: Option<CloudClaim>,
+}
+
+pub struct Refusal {
+    pub task_id: i64,
+    pub key: String,
+    pub reason: String,
 }
 
 pub struct Scan {
     pub candidates: Vec<Candidate>,
     pub complete: bool,
+    pub refusals: Vec<Refusal>,
 }
 
 pub trait TaskSource {
@@ -86,6 +95,7 @@ pub fn assert_snapshot_scope(c: &Candidate) -> Result<()> {
         pages,
         context_tainted: _,
         persona_text: _,
+        cloud: _,
     } = c;
     if !pages.is_empty() {
         return Err(Error::internal(
@@ -299,6 +309,7 @@ impl LocalTasks {
             pages: Vec::new(),
             context_tainted: tainted,
             persona_text: text(persona, "description"),
+            cloud: None,
         };
         assert_snapshot_scope(&candidate)?;
         Ok(candidate)
@@ -340,6 +351,7 @@ impl TaskSource for LocalSource {
                         return Ok(Scan {
                             candidates: Vec::new(),
                             complete: true,
+                            refusals: Vec::new(),
                         })
                     }
                 }
@@ -377,6 +389,7 @@ impl TaskSource for LocalSource {
         Ok(Scan {
             candidates: out,
             complete,
+            refusals: Vec::new(),
         })
     }
 }
@@ -399,6 +412,7 @@ mod tests {
             pages: Vec::new(),
             context_tainted: false,
             persona_text: String::new(),
+            cloud: None,
         }
     }
 

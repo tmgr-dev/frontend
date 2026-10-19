@@ -1,7 +1,8 @@
 use crate::audit::{sha256_hex, Audit};
+use crate::cloud::{CloudApi, CloudSource};
 use crate::paths::Paths;
 use crate::rules::{self, hours_contains, ProfilePin, ProfileResolver, Rule, GLOBAL_MAX};
-use crate::runs::{Lookup, RunState, RunsClient, StartRequest, PERMISSION_MODE};
+use crate::runs::{mode_name, Lookup, RunState, RunsClient, StartRequest, PERMISSION_MODE};
 use crate::source::{Candidate, TaskSource};
 use crate::state::{self, Pickup, State, Status};
 use crate::workdir::{clone_dir, WorkDirs};
@@ -15,8 +16,14 @@ use tmgr_ipc::api::{BundleLaunch, BundlePersona, RunBundle};
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
 
+pub trait Publisher {
+    fn publish(&self, pickup: &Pickup) -> Result<String>;
+}
+
 pub struct Deps<'a> {
     pub source: &'a dyn TaskSource,
+    pub cloud: &'a dyn CloudApi,
+    pub publisher: &'a dyn Publisher,
     pub runs: &'a dyn RunsClient,
     pub profiles: &'a dyn ProfileResolver,
     pub workdirs: &'a dyn WorkDirs,
@@ -60,8 +67,20 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
     }
 }
 
-fn check_rule(rule: &Rule, profiles: &dyn ProfileResolver) -> Result<()> {
-    rules::validate_rule(rule, profiles)?;
+fn pin_of(rule: &Rule, cloud: bool, deps: &Deps) -> std::result::Result<ProfilePin, String> {
+    if cloud {
+        deps.profiles.pin_for(
+            &rule.profile,
+            rule.model.as_deref(),
+            mode_name(rule.mode.as_deref()),
+        )
+    } else {
+        deps.profiles.pin(&rule.profile, rule.model.as_deref())
+    }
+}
+
+fn check_rule(rule: &Rule, deps: &Deps) -> Result<()> {
+    rules::validate_rule_with(rule, deps.profiles, Some(deps.cloud), deps.now)?;
     match std::fs::canonicalize(&rule.repo) {
         Ok(p) if p.to_string_lossy() == rule.repo => Ok(()),
         _ => Err(Error::new(
@@ -217,8 +236,52 @@ fn refresh_runs(pass: &mut Pass, deps: &Deps) -> Result<()> {
     Ok(())
 }
 
+fn publish_phase(pass: &mut Pass, deps: &Deps) -> Result<()> {
+    for i in 0..pass.state.pickups.len() {
+        if !pass.state.pickups[i].awaits_publish() {
+            continue;
+        }
+        pass.state.pickups[i].publish_attempts += 1;
+        state::save(pass.paths, &mut pass.state)?;
+        let p = pass.state.pickups[i].clone();
+        match deps.publisher.publish(&p) {
+            Ok(url) => {
+                pass.state.pickups[i].pr_url = Some(url.clone());
+                pass.state.pickups[i].publish_error = None;
+                pass.audit.append(
+                    "published",
+                    json!({"pickup": p.id, "rule": p.rule, "task": p.key, "pr_url": url}),
+                )?;
+                let p = pass.state.pickups[i].clone();
+                pass.event(&p, "published");
+            }
+            Err(e) => {
+                pass.state.pickups[i].publish_error = Some(e.message.clone());
+                let attempts = pass.state.pickups[i].publish_attempts;
+                pass.audit.append(
+                    "publish_failed",
+                    json!({"pickup": p.id, "rule": p.rule, "task": p.key, "error": e.message, "attempt": attempts, "final": attempts >= state::MAX_PUBLISH_ATTEMPTS}),
+                )?;
+                let p = pass.state.pickups[i].clone();
+                pass.event(&p, "publish_failed");
+            }
+        }
+        state::save(pass.paths, &mut pass.state)?;
+    }
+    Ok(())
+}
+
 fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>> {
-    let scan = match deps.source.candidates(rule) {
+    let found = if rules::is_cloud(rule) {
+        CloudSource {
+            api: deps.cloud,
+            now: deps.now,
+        }
+        .candidates(rule)
+    } else {
+        deps.source.candidates(rule)
+    };
+    let scan = match found {
         Ok(c) => c,
         Err(e) => {
             pass.audit.append(
@@ -232,6 +295,16 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
         }
     };
     let candidates = scan.candidates;
+    for r in scan.refusals {
+        pass.skip_once(
+            format!("{}/{}", rule.name, r.task_id),
+            format!("gate:{}", r.reason),
+            &rule.name,
+            &r.key,
+            "cloud_gate_refused",
+            json!({"detail": r.reason}),
+        )?;
+    }
     if scan.complete {
         let present: BTreeSet<i64> = candidates.iter().map(|c| c.task.task_id).collect();
         for i in 0..pass.state.pickups.len() {
@@ -333,6 +406,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     p.bundle_sha256 = sha.clone();
                     p.context_tainted = c.context_tainted;
                     p.persona_text = c.persona_text.clone();
+                    p.cloud = c.cloud.clone();
                     p.approved_by = None;
                     p.profile_pin = None;
                     pass.set(i, Status::PendingApproval, None);
@@ -349,11 +423,24 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                             "bundle_changed"
                         },
                     );
+                    if c.cloud.is_some() && rule.auto {
+                        if let Ok(pin) = pin_of(rule, true, deps) {
+                            pass.state.pickups[i].approved_by = Some("rule-auto".into());
+                            pass.state.pickups[i].profile_pin = Some(pin);
+                            pass.set(i, Status::Approved, None);
+                            pass.audit.append(
+                                "auto_approved",
+                                json!({"pickup": id, "rule": rule.name, "task": c.key, "bundle_sha256": sha}),
+                            )?;
+                        }
+                    }
+                } else if matches!(p.status, Status::PendingApproval | Status::Approved) {
+                    pass.state.pickups[i].cloud = c.cloud.clone();
                 }
             }
             None => {
                 let pin = if rule.auto && !c.context_tainted {
-                    deps.profiles.pin(&rule.profile, rule.model.as_deref()).ok()
+                    pin_of(rule, c.cloud.is_some(), deps).ok()
                 } else {
                     None
                 };
@@ -382,6 +469,10 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     profile_pin: pin,
                     run_exited: false,
                     attempt: 1,
+                    cloud: c.cloud.clone(),
+                    pr_url: None,
+                    publish_attempts: 0,
+                    publish_error: None,
                 });
                 pass.audit.append(
                     "candidate",
@@ -455,7 +546,7 @@ fn start_phase(
             )?;
             continue;
         };
-        if let Err(e) = check_rule(rule, deps.profiles) {
+        if let Err(e) = check_rule(rule, deps) {
             pass.set(
                 i,
                 Status::Expired,
@@ -509,7 +600,8 @@ fn start_phase(
             )?;
             continue;
         }
-        let pin_now = deps.profiles.pin(&rule.profile, rule.model.as_deref());
+        let is_cloud = pass.state.pickups[i].cloud.is_some();
+        let pin_now = pin_of(rule, is_cloud, deps);
         let pin = match (pin_now, pass.state.pickups[i].profile_pin.clone()) {
             (Ok(now), Some(approved)) if now == approved => approved,
             _ => {
@@ -529,7 +621,13 @@ fn start_phase(
             "starting",
             json!({"pickup": id, "rule": rule_name, "task": key, "bundle_sha256": p.bundle_sha256, "approved_by": p.approved_by, "cwd": cwd}),
         )?;
-        if let Err(e) = deps.workdirs.prepare(&rule.repo, &id, &cwd) {
+        let prepared = match &p.cloud {
+            Some(c) => deps
+                .workdirs
+                .prepare_branch(&rule.repo, &id, &cwd, &c.branch),
+            None => deps.workdirs.prepare(&rule.repo, &id, &cwd),
+        };
+        if let Err(e) = prepared {
             pass.set(i, Status::Failed, Some(e.message.clone()));
             state::save(pass.paths, &mut pass.state)?;
             pass.audit.append(
@@ -540,7 +638,7 @@ fn start_phase(
             pass.event(&p, "failed");
             continue;
         }
-        if deps.profiles.pin(&rule.profile, rule.model.as_deref()).ok() != Some(pin.clone()) {
+        if pin_of(rule, p.cloud.is_some(), deps).ok() != Some(pin.clone()) {
             pass.set(
                 i,
                 Status::Failed,
@@ -556,7 +654,11 @@ fn start_phase(
             continue;
         }
         let req = StartRequest {
-            permission_mode: PERMISSION_MODE,
+            permission_mode: if p.cloud.is_some() {
+                mode_name(rule.mode.as_deref())
+            } else {
+                PERMISSION_MODE
+            },
             start_key: p.start_key(),
             rule: rule_name.clone(),
             trigger: format!("rule:{rule_name}"),
@@ -571,6 +673,8 @@ fn start_phase(
             task: p.task,
             bundle: p.bundle.clone(),
             bundle_sha256: p.bundle_sha256.clone(),
+            cloud: p.cloud.as_ref().map(|c| c.claim.clone()),
+            unattended: p.cloud.is_some(),
         };
         match deps.runs.create(&req) {
             Ok(run_id) => {
@@ -665,10 +769,11 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
         state::save(paths, &mut pass.state)?;
         return Ok(pass.report);
     }
+    publish_phase(&mut pass, deps)?;
     let mut valid: Vec<Rule> = Vec::new();
     let mut fresh: Vec<(String, Vec<Candidate>)> = Vec::new();
     for rule in &loaded.file.rules {
-        if let Err(e) = check_rule(rule, deps.profiles) {
+        if let Err(e) = check_rule(rule, deps) {
             let key = format!("rule:{}", rule.name);
             pass.skip_once(
                 key,
@@ -739,10 +844,12 @@ pub fn approve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cloud::{CloudTask, CloudWorkspace, Gated};
     use crate::rules::{QueueFile, VERSION};
     use crate::source::{Author, Scan};
     use crate::workdir::{init_repo, GitClone};
     use std::cell::{Cell, RefCell};
+    use tmgr_ipc::api::CloudApproval;
     use tmgr_ipc::api::TaskRef;
 
     struct Source(RefCell<Vec<Candidate>>, Cell<bool>);
@@ -752,6 +859,7 @@ mod tests {
             Ok(Scan {
                 candidates: self.0.borrow().clone(),
                 complete: self.1.get(),
+                refusals: Vec::new(),
             })
         }
     }
@@ -779,7 +887,10 @@ mod tests {
             self.keys.borrow_mut().push(req.start_key.clone());
             self.cwds.borrow_mut().push(req.cwd.clone());
             self.requests.borrow_mut().push(req.clone());
-            assert_eq!(req.permission_mode, "ask");
+            if req.cloud.is_none() {
+                assert_eq!(req.permission_mode, "ask");
+                assert!(!req.unattended);
+            }
             let id = format!("mock-{}", self.created.borrow().len() + 1);
             self.created
                 .borrow_mut()
@@ -839,6 +950,7 @@ mod tests {
             pages: vec![],
             context_tainted: false,
             persona_text: "persona rules".into(),
+            cloud: None,
         }
     }
 
@@ -849,6 +961,8 @@ mod tests {
         source: Source,
         runs: Runs,
         profiles: Profiles,
+        cloud: CloudFake,
+        publisher: PublisherFake,
     }
 
     impl Fx {
@@ -875,6 +989,7 @@ mod tests {
                 hours: None,
                 trusted_authors: vec!["human".into()],
                 auto: false,
+                mode: None,
             };
             edit(&mut rule);
             let fx = Fx {
@@ -884,7 +999,10 @@ mod tests {
                 source: Source(RefCell::new(vec![]), Cell::new(true)),
                 runs: Runs::default(),
                 profiles: Profiles(Cell::new(false), Cell::new(0)),
+                cloud: CloudFake::default(),
+                publisher: PublisherFake::default(),
             };
+            fx.cloud.repos.replace(vec![fx.repo.clone()]);
             fx.write(QueueFile {
                 version: VERSION,
                 enabled: true,
@@ -909,6 +1027,8 @@ mod tests {
                 &self.paths,
                 &Deps {
                     source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
                     runs: &self.runs,
                     profiles: &self.profiles,
                     workdirs: &GitClone,
@@ -947,6 +1067,293 @@ mod tests {
                 .unwrap();
             }
         }
+    }
+
+    #[derive(Clone)]
+    struct FakeTask {
+        id: i64,
+        title: String,
+        body: String,
+        refused: Option<String>,
+    }
+
+    #[derive(Default)]
+    struct CloudFake {
+        allow: Cell<u8>,
+        repos: RefCell<Vec<String>>,
+        tasks: RefCell<Vec<FakeTask>>,
+    }
+
+    impl CloudApi for CloudFake {
+        fn allow(
+            &self,
+            code: &str,
+            _now: DateTime<Utc>,
+        ) -> std::result::Result<CloudWorkspace, String> {
+            match self.allow.get() {
+                0 => Ok(CloudWorkspace {
+                    id: 56,
+                    code: code.into(),
+                    repos: self.repos.borrow().clone(),
+                }),
+                1 => Err(format!("workspace {code} is not allowed to run agents on this machine; run `tmgr runner allow {code}`")),
+                _ => Err(format!("the permission for workspace {code} expired; run `tmgr runner allow {code}`")),
+            }
+        }
+
+        fn list(&self, _rule: &Rule, _ws: &CloudWorkspace) -> Result<(Vec<i64>, bool)> {
+            Ok((self.tasks.borrow().iter().map(|t| t.id).collect(), true))
+        }
+
+        fn gate(&self, _rule: &Rule, ws: &CloudWorkspace, id: i64) -> Result<Gated> {
+            let t = self
+                .tasks
+                .borrow()
+                .iter()
+                .find(|t| t.id == id)
+                .cloned()
+                .expect("listed");
+            let key = format!("TM-{id}");
+            if let Some(reason) = t.refused {
+                return Ok(Gated::Refused { key, reason });
+            }
+            let sha = tmgr_core::approval::content_sha256(&t.title, &t.body);
+            Ok(Gated::Ready(CloudTask {
+                key,
+                title: t.title,
+                body: t.body,
+                claim: CloudApproval {
+                    host: "api.example.com".into(),
+                    user_id: 1,
+                    workspace_id: ws.id,
+                    task_id: id,
+                    category_id: 127,
+                    content_sha256: sha,
+                    key_id: "k1".into(),
+                    signed_at: 10,
+                    signature: "sig".into(),
+                    kind: "confirm".into(),
+                },
+            }))
+        }
+    }
+
+    #[derive(Default)]
+    struct PublisherFake {
+        calls: RefCell<Vec<String>>,
+        fail: Cell<bool>,
+    }
+
+    impl Publisher for PublisherFake {
+        fn publish(&self, pickup: &Pickup) -> Result<String> {
+            self.calls.borrow_mut().push(pickup.id.clone());
+            if self.fail.get() {
+                return Err(Error::internal("push refused"));
+            }
+            Ok(format!(
+                "https://github.com/o/r/pull/{}",
+                pickup.task.task_id
+            ))
+        }
+    }
+
+    fn signed(id: i64, body: &str) -> FakeTask {
+        FakeTask {
+            id,
+            title: format!("Task {id}"),
+            body: body.into(),
+            refused: None,
+        }
+    }
+
+    fn cloud_fx() -> Fx {
+        Fx::new(|r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.mode = Some("bypass".into());
+        })
+    }
+
+    #[test]
+    fn a_cloud_rule_is_refused_when_the_workspace_is_not_allowed_or_expired() {
+        for (state, word) in [(1u8, "not allowed"), (2, "expired")] {
+            let fx = cloud_fx();
+            fx.cloud.allow.set(state);
+            fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+            fx.pass().unwrap();
+            assert!(fx.pickups().is_empty());
+            assert!(fx.runs.created.borrow().is_empty());
+            let events = Audit::new(&fx.paths).events(1000).unwrap();
+            let skipped = events
+                .iter()
+                .find(|e| e["event"] == "skipped")
+                .expect("skipped");
+            assert_eq!(skipped["reason"], "rule_refused");
+            let detail = skipped["detail"].as_str().unwrap();
+            assert!(detail.contains(word) && detail.contains("tmgr runner allow tmgrdev"));
+        }
+    }
+
+    #[test]
+    fn a_cloud_rule_must_be_auto() {
+        let fx = cloud_fx();
+        let mut file = rules::load(&fx.paths).unwrap().file;
+        file.rules[0].auto = false;
+        fx.write(file);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert!(fx.pickups().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 1);
+    }
+
+    #[test]
+    fn a_cloud_rule_needs_a_bound_repo() {
+        let fx = cloud_fx();
+        fx.cloud.repos.replace(vec!["/elsewhere".into()]);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert!(fx.pickups().is_empty());
+        let events = Audit::new(&fx.paths).events(1000).unwrap();
+        let detail = events
+            .iter()
+            .find(|e| e["event"] == "skipped")
+            .and_then(|e| e["detail"].as_str().map(str::to_string))
+            .unwrap();
+        assert!(detail.contains("tmgr run <task>"));
+    }
+
+    #[test]
+    fn unsigned_revoked_or_edited_tasks_are_skipped_and_never_started() {
+        let fx = cloud_fx();
+        let mut t = signed(1, "do it");
+        t.refused = Some("the task has no approval for agent runs".into());
+        let mut u = signed(2, "do it");
+        u.refused = Some("the approval of this task was revoked".into());
+        let mut v = signed(3, "do it");
+        v.refused = Some("the task changed since it was approved".into());
+        fx.cloud.tasks.replace(vec![t, u, v]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert!(fx.pickups().is_empty());
+        assert!(fx.runs.created.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 3);
+        assert_eq!(fx.audit_events("started"), 0);
+    }
+
+    #[test]
+    fn a_task_edited_after_it_was_queued_is_not_started() {
+        let fx = Fx::new(|r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.hours = Some("09-19".into());
+        });
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass_at(3 * 60).unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Approved);
+        let mut edited = signed(1, "do it");
+        edited.refused = Some("the task changed since it was approved".into());
+        fx.cloud.tasks.replace(vec![edited]);
+        fx.pass_at(12 * 60).unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Expired);
+        assert!(fx.runs.created.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_re_signed_text_change_voids_the_approval() {
+        let fx = Fx::new(|r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.hours = Some("09-19".into());
+        });
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass_at(3 * 60).unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Approved);
+        let first = fx.pickups()[0].bundle_sha256.clone();
+        fx.cloud.tasks.replace(vec![signed(1, "do something else")]);
+        fx.pass_at(3 * 60).unwrap();
+        assert_eq!(fx.audit_events("approval_voided"), 1);
+        assert_eq!(fx.pickups()[0].status, Status::Approved);
+        assert_ne!(fx.pickups()[0].bundle_sha256, first);
+        fx.pass_at(12 * 60).unwrap();
+        let created = fx.runs.created.borrow();
+        assert_eq!(created.len(), 1);
+        assert!(created[0].ends_with(&fx.pickups()[0].bundle_sha256));
+    }
+
+    #[test]
+    fn a_signed_task_is_auto_approved_and_started_unattended_with_its_claim() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let reqs = fx.runs.requests.borrow();
+        assert_eq!(reqs.len(), 1);
+        assert!(reqs[0].unattended);
+        assert_eq!(reqs[0].permission_mode, "bypass");
+        let claim = reqs[0].cloud.clone().expect("claim");
+        assert_eq!(claim.task_id, 1);
+        assert_eq!(claim.workspace_id, 56);
+        assert_eq!(reqs[0].clone_of, fx.repo);
+        assert!(reqs[0].bundle.comments.is_empty() && reqs[0].bundle.pages.is_empty());
+        assert!(reqs[0]
+            .cwd
+            .starts_with(&format!("{}-worktrees/queue/", fx.repo)));
+        let branch = crate::publish::branch_slug("TM-1", "Task 1");
+        let out = std::process::Command::new("git")
+            .args(["-C", &reqs[0].cwd, "rev-parse", "--abbrev-ref", "HEAD"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), branch);
+        assert_eq!(fx.pickups()[0].approved_by.as_deref(), Some("rule-auto"));
+    }
+
+    #[test]
+    fn publish_runs_once_after_exit_and_records_the_pr() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert!(fx.publisher.calls.borrow().is_empty());
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert_eq!(fx.publisher.calls.borrow().len(), 1);
+        let p = &fx.pickups()[0];
+        assert_eq!(p.pr_url.as_deref(), Some("https://github.com/o/r/pull/1"));
+        assert_eq!(fx.audit_events("published"), 1);
+    }
+
+    #[test]
+    fn a_failed_publish_is_recorded_and_retried_a_bounded_number_of_times() {
+        let fx = cloud_fx();
+        fx.publisher.fail.set(true);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        for _ in 0..6 {
+            fx.pass().unwrap();
+        }
+        assert_eq!(fx.publisher.calls.borrow().len(), 3);
+        let p = &fx.pickups()[0];
+        assert!(p.pr_url.is_none());
+        assert_eq!(p.publish_error.as_deref(), Some("push refused"));
+        assert_eq!(fx.audit_events("publish_failed"), 3);
+    }
+
+    #[test]
+    fn local_pickups_are_never_published() {
+        let fx = Fx::new(|_| {});
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        fx.approve_all();
+        fx.pass().unwrap();
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
+        assert!(fx.publisher.calls.borrow().is_empty());
+        assert_eq!(fx.runs.requests.borrow()[0].cloud, None);
     }
 
     #[test]
@@ -1043,6 +1450,8 @@ mod tests {
             &fx.paths,
             &Deps {
                 source: &fx.source,
+                cloud: &fx.cloud,
+                publisher: &fx.publisher,
                 runs: &fx.runs,
                 profiles: &fx.profiles,
                 workdirs: &ChangesProfile(&fx.profiles),

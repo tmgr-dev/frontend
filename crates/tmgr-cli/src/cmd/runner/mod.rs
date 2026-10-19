@@ -1,6 +1,6 @@
-mod allow;
+pub(crate) mod allow;
 mod attach;
-mod cloud;
+pub(crate) mod cloud;
 mod local;
 mod observe;
 mod ops;
