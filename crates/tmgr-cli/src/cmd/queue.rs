@@ -171,7 +171,7 @@ fn in_agent_session() -> bool {
         .any(|k| std::env::var_os(k).is_some())
 }
 
-fn not_in_agent_session() -> Result<()> {
+pub(crate) fn not_in_agent_session() -> Result<()> {
     if in_agent_session() {
         return Err(
             Error::new(Kind::Forbidden, "refused inside an agent session")
@@ -930,9 +930,10 @@ impl Publisher for CliPublisher<'_> {
     }
 }
 
-struct RunnerRuns {
+pub(crate) struct RunnerRuns {
     cfg: tmgr_runner::daemon::RunnerConfig,
     client: RefCell<Option<tmgr_runner::client::Client>>,
+    autostart: bool,
 }
 
 fn runner_refused(e: &std::io::Error) -> bool {
@@ -960,18 +961,28 @@ fn answered_not_found(e: &std::io::Error) -> bool {
 }
 
 impl RunnerRuns {
-    fn new() -> Result<RunnerRuns> {
+    pub(crate) fn new() -> Result<RunnerRuns> {
         Ok(RunnerRuns {
             cfg: super::runner::runner_config()?,
             client: RefCell::new(None),
+            autostart: true,
         })
     }
 
-    fn ready(&self) -> Result<()> {
+    pub(crate) fn attach_only() -> Result<RunnerRuns> {
+        Ok(RunnerRuns {
+            autostart: false,
+            ..RunnerRuns::new()?
+        })
+    }
+
+    pub(crate) fn ready(&self) -> Result<()> {
         if self.client.borrow().is_some() {
             return Ok(());
         }
-        tmgr_runner::daemon::start_background(&self.cfg).map_err(super::runner::rerr)?;
+        if self.autostart {
+            tmgr_runner::daemon::start_background(&self.cfg).map_err(super::runner::rerr)?;
+        }
         let client = super::runner::connect(&self.cfg)?;
         client
             .set_timeouts(Duration::from_secs(30))
@@ -988,6 +999,15 @@ impl RunnerRuns {
         }
         *self.client.borrow_mut() = Some(client);
         Ok(())
+    }
+
+    pub(crate) fn kill(
+        &self,
+        run_id: &str,
+        signal: &str,
+        reason: &str,
+    ) -> std::result::Result<(), std::io::Error> {
+        self.with(|c| c.kill_with_reason(run_id, signal, Some(reason)))
     }
 
     fn with<T>(
@@ -1094,12 +1114,16 @@ impl RunsClient for RunnerRuns {
     }
 }
 
-fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
-    not_in_agent_session()?;
+pub(crate) fn with_deps<T>(
+    ctx: &Ctx,
+    cli: &Cli,
+    runs: &RunnerRuns,
+    policy: tmgr_queue::StartPolicy,
+    f: impl FnOnce(&Deps) -> Result<T>,
+) -> Result<T> {
     let source = LocalSource {
         local_user_id: ctx.cfg.local_user_id,
     };
-    let client = RunnerRuns::new()?;
     let cloud = CliCloud::new(ctx);
     let opts = Opts {
         cli,
@@ -1112,24 +1136,29 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
         opts: &opts,
         held: RefCell::new(None),
     };
+    let now = Local::now();
+    f(&Deps {
+        source: &source,
+        cloud: &cloud,
+        publisher: &publisher,
+        runs,
+        profiles: &RunnerProfiles,
+        workdirs: &GitClone,
+        now: Utc::now(),
+        local_minutes: now.hour() * 60 + now.minute(),
+        policy,
+    })
+}
+
+fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
+    not_in_agent_session()?;
+    let client = RunnerRuns::new()?;
     if tmgr_queue::needs_runner(paths)? {
         client.ready()?;
     }
-    let now = Local::now();
-    let report = tmgr_queue::run_once(
-        paths,
-        &Deps {
-            source: &source,
-            cloud: &cloud,
-            publisher: &publisher,
-            runs: &client,
-            profiles: &RunnerProfiles,
-            workdirs: &GitClone,
-            now: Utc::now(),
-            local_minutes: now.hour() * 60 + now.minute(),
-            policy: tmgr_queue::engine::StartPolicy::default(),
-        },
-    )?;
+    let report = with_deps(ctx, cli, &client, tmgr_queue::StartPolicy::default(), |deps| {
+        tmgr_queue::run_once(paths, deps)
+    })?;
     let mut lines = Vec::new();
     if !report.enabled {
         lines.push("Queue is off.".to_string());
