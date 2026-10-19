@@ -1,6 +1,7 @@
 pub mod control;
 pub mod interview;
 pub mod model;
+pub mod orchestrate;
 pub mod queue_loop;
 pub mod render;
 pub mod serve;
