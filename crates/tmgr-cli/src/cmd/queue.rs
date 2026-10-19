@@ -997,18 +997,17 @@ fn wanted_kind(rule: &Rule) -> &str {
     }
 }
 
-impl FreshTask for CliFresh<'_> {
-    fn look(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+impl CliFresh<'_> {
+    fn look_in(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef, kinds: &[&str]) -> Result<Fresh> {
         let id = task.task_id;
         if rules::is_cloud(rule) {
             let client = self.ctx.cloud_client()?;
             let t =
                 client.task_by_id(u64::try_from(id).map_err(|_| Error::usage("bad task id"))?)?;
-            let wanted = wanted_kind(rule);
             let status_ok = client
                 .statuses(task.workspace_id)?
                 .iter()
-                .any(|s| Some(s.id) == t.status_id && s.kind == wanted);
+                .any(|s| Some(s.id) == t.status_id && kinds.contains(&s.kind.as_str()));
             let runs = match client.agent_work(t.id) {
                 Ok(body) => running_agents_of(&body),
                 Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
@@ -1034,7 +1033,6 @@ impl FreshTask for CliFresh<'_> {
         let code = rules::workspace_code(&rule.workspace)?;
         let local = LocalTasks::open(code, self.local_user_id)?;
         let t = local.fetch(&format!("/api/tasks/{id}"))?;
-        let wanted = wanted_kind(rule);
         let status_id = t.get("status_id").and_then(Value::as_i64);
         let status_ok = local
             .fetch("/api/workspaces/statuses")?
@@ -1042,7 +1040,9 @@ impl FreshTask for CliFresh<'_> {
             .is_some_and(|a| {
                 a.iter().any(|s| {
                     s.get("id").and_then(Value::as_i64) == status_id
-                        && s.get("type").and_then(Value::as_str) == Some(wanted)
+                        && s.get("type")
+                            .and_then(Value::as_str)
+                            .is_some_and(|k| kinds.contains(&k))
                 })
             });
         let runs = match local.fetch(&format!("/api/tasks/{id}/agent-work")) {
@@ -1061,6 +1061,18 @@ impl FreshTask for CliFresh<'_> {
             running_agents: runs,
             status_ok,
         }))
+    }
+}
+
+const RESUMABLE_KINDS: [&str; 2] = ["review", "active"];
+
+impl FreshTask for CliFresh<'_> {
+    fn look(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+        self.look_in(rule, task, &[wanted_kind(rule)])
+    }
+
+    fn look_resumable(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+        self.look_in(rule, task, &RESUMABLE_KINDS)
     }
 
     fn comment(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef, text: &str) -> Result<()> {
@@ -1109,6 +1121,11 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
                 identity: Some((c.dev, c.ino)),
             })
             .collect(),
+        resume: if pickup.continues.is_some() {
+            pickup.wip_heads.clone()
+        } else {
+            Default::default()
+        },
     })
 }
 

@@ -1517,6 +1517,53 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
     )
 }
 
+const RESUMED_COMMENT: &str =
+    "Resumed after the usage limit reset; the pull request is ready for review.";
+
+fn resumed_comment(urls: &[(String, String)]) -> String {
+    match urls {
+        [_] => RESUMED_COMMENT.to_string(),
+        _ => {
+            let list: Vec<String> = urls
+                .iter()
+                .map(|(repo, url)| format!("- {repo}: {url}"))
+                .collect();
+            format!(
+                "Resumed after the usage limit reset; the pull requests are ready for review:\n{}",
+                list.join("\n")
+            )
+        }
+    }
+}
+
+pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<String> {
+    let first = p.urls.first().map_or("", |(_, u)| u.as_str());
+    let joined: Vec<&str> = p.urls.iter().map(|(_, u)| u.as_str()).collect();
+    report_with(
+        client,
+        &Report {
+            task_id: p.task_id,
+            workspace_id: p.workspace_id,
+            pr_url: first,
+            agent: p.agent,
+            branch: p.branch,
+            summary: format!("Resumed and updated {}", joined.join(", ")),
+            comment: resumed_comment(p.urls),
+        },
+    )
+}
+
+fn wip_by_repo(resume: &BTreeMap<String, String>, plans: &[ClonePlan]) -> Vec<(String, String)> {
+    plans
+        .iter()
+        .filter_map(|p| {
+            resume
+                .get(&p.name)
+                .map(|sha| (p.full_name.clone(), sha.clone()))
+        })
+        .collect()
+}
+
 struct Report<'a> {
     task_id: u64,
     workspace_id: i64,
@@ -1647,6 +1694,7 @@ pub struct PublishTarget {
     pub agent: Option<String>,
     pub repo: Option<String>,
     pub clones: Vec<CloneRef>,
+    pub resume: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1740,19 +1788,23 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
                 sanitize_line(&verified.title)
             );
             let staged = stage_multi(t, entry, category, list, &title, &body)?;
+            let resumed = !t.resume.is_empty() && matches!(mode, Mode::Publish);
             let outcome = finish_multi(t, staged, &title, &body, mode)?;
             match &outcome {
                 Outcome::Published(urls) => {
-                    for w in report_published_all(
-                        client,
-                        &PublishedAll {
-                            task_id: u64::try_from(task_id).unwrap_or_default(),
-                            workspace_id: ws.id,
-                            urls,
-                            agent: t.agent.as_deref(),
-                            branch: &t.branch,
-                        },
-                    ) {
+                    let published = PublishedAll {
+                        task_id: u64::try_from(task_id).unwrap_or_default(),
+                        workspace_id: ws.id,
+                        urls,
+                        agent: t.agent.as_deref(),
+                        branch: &t.branch,
+                    };
+                    let warnings = if resumed {
+                        report_resumed(client, &published)
+                    } else {
+                        report_published_all(client, &published)
+                    };
+                    for w in warnings {
                         eprintln!("warning: {w}");
                     }
                 }
@@ -1834,6 +1886,30 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         ),
     };
     let steps = publish_plan(&input).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    if let Some(wip) = t.resume.get("") {
+        let draft = matches!(mode, Mode::Draft);
+        let plan = publish_all_plan(std::slice::from_ref(&input))
+            .map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?
+            .resuming(&[(full_name.to_string(), wip.clone())]);
+        let plan = if draft { plan.draft() } else { plan };
+        let urls = publish_all(&plan)?;
+        let published = PublishedAll {
+            task_id: u64::try_from(task_id).unwrap_or_default(),
+            workspace_id: ws.id,
+            urls: &urls,
+            agent: t.agent.as_deref(),
+            branch: &t.branch,
+        };
+        let warnings = if draft {
+            report_published_all(client, &published)
+        } else {
+            report_resumed(client, &published)
+        };
+        for w in warnings {
+            eprintln!("warning: {w}");
+        }
+        return Ok(Outcome::Published(urls));
+    }
     let steps = if matches!(mode, Mode::Draft) {
         steps.draft()
     } else {
@@ -1895,7 +1971,7 @@ fn stage_multi(
     let mut touched: Vec<TouchedBranch> = Vec::new();
     let planned = import_and_plan(t, &plans, &mut touched, pr_title, pr_body);
     let plan = match planned {
-        Ok(plan) => plan,
+        Ok(plan) => plan.resuming(&wip_by_repo(&t.resume, &plans)),
         Err(e) => {
             restore_touched(&t.branch, &touched);
             return Err(e);
@@ -2059,6 +2135,7 @@ fn target_of(ws_code: String, task_id: i64, rec: Record) -> PublishTarget {
                 identity: c.identity,
             })
             .collect(),
+        resume: BTreeMap::new(),
     }
 }
 
@@ -3261,6 +3338,7 @@ mod tests {
             agent: None,
             repo: None,
             clones,
+            resume: BTreeMap::new(),
         };
         let refs = || {
             ["backend", "frontend"]
@@ -3312,6 +3390,48 @@ mod tests {
         ]))
         .unwrap_err();
         assert!(e.message.contains("not the folder"), "{}", e.message);
+    }
+
+    #[test]
+    fn the_resumed_comment_names_the_ready_pull_request_and_lists_several() {
+        let one = [(
+            "o/r".to_string(),
+            "https://github.com/o/r/pull/1".to_string(),
+        )];
+        assert_eq!(
+            resumed_comment(&one),
+            "Resumed after the usage limit reset; the pull request is ready for review."
+        );
+        let two = [
+            one[0].clone(),
+            (
+                "o/s".to_string(),
+                "https://github.com/o/s/pull/2".to_string(),
+            ),
+        ];
+        let text = resumed_comment(&two);
+        assert!(text.starts_with("Resumed after the usage limit reset;"));
+        assert!(text.contains("- o/r: https://github.com/o/r/pull/1"));
+        assert!(text.contains("- o/s: https://github.com/o/s/pull/2"));
+    }
+
+    #[test]
+    fn saved_heads_are_matched_to_repositories_by_clone_name() {
+        let plan = |name: &str, full: &str| ClonePlan {
+            name: name.into(),
+            path: format!("/work/{name}"),
+            full_name: full.into(),
+        };
+        let plans = [plan("backend", "o/backend"), plan("frontend", "o/frontend")];
+        let resume = BTreeMap::from([
+            ("frontend".to_string(), "b".repeat(40)),
+            ("gone".to_string(), "c".repeat(40)),
+        ]);
+        assert_eq!(
+            wip_by_repo(&resume, &plans),
+            [("o/frontend".to_string(), "b".repeat(40))]
+        );
+        assert!(wip_by_repo(&BTreeMap::new(), &plans).is_empty());
     }
 
     #[test]

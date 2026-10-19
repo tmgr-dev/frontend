@@ -172,6 +172,11 @@ pub fn running_agents_of(body: &Value) -> Vec<String> {
 
 pub trait FreshTask {
     fn look(&self, rule: &Rule, task: TaskRef) -> Result<Fresh>;
+
+    /// Like `look`, for a task a paused run left in review: that status is the expected one.
+    fn look_resumable(&self, rule: &Rule, task: TaskRef) -> Result<Fresh> {
+        self.look(rule, task)
+    }
     fn comment(&self, rule: &Rule, task: TaskRef, text: &str) -> Result<()>;
 }
 

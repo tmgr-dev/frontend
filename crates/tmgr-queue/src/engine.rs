@@ -586,6 +586,8 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                 && !p.released
                 && !present.contains(&p.task.task_id)
                 && p.status != Status::Starting
+                && !(p.continues.is_some()
+                    && matches!(p.status, Status::PendingApproval | Status::Approved))
             {
                 let (id, status) = (p.id.clone(), p.status);
                 if matches!(status, Status::PendingApproval | Status::Approved) {
@@ -821,6 +823,9 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     clones: Vec::new(),
                     held: None,
                     paused_draft: false,
+                    wip_heads: BTreeMap::new(),
+                    continues: None,
+                    continued_by: None,
                 });
                 pass.audit.append(
                     "candidate",
@@ -943,6 +948,7 @@ fn start_phase(
             )?;
             continue;
         }
+        let continuing = pass.state.pickups[i].continues.is_some();
         let current = fresh
             .iter()
             .find(|(n, _)| *n == rule_name)
@@ -951,7 +957,7 @@ fn start_phase(
                     .find(|c| c.task.task_id == pass.state.pickups[i].task.task_id)
             })
             .map(|c| bundle_of(rule, c, &cwd, &deps.policy).sha256());
-        if current.as_deref() != Some(pass.state.pickups[i].bundle_sha256.as_str()) {
+        if !continuing && current.as_deref() != Some(pass.state.pickups[i].bundle_sha256.as_str()) {
             back_to_pending(
                 pass,
                 i,
@@ -975,7 +981,12 @@ fn start_phase(
             }
         };
         let task = pass.state.pickups[i].task;
-        match deps.fresh.look(rule, task) {
+        let looked = if continuing {
+            deps.fresh.look_resumable(rule, task)
+        } else {
+            deps.fresh.look(rule, task)
+        };
+        match looked {
             Ok(f) if f.free() => {
                 pass.state.taken_notes.remove(&note_key(rule, task));
             }
@@ -1025,6 +1036,26 @@ fn start_phase(
             .map(|c| plan_clones(&c.repos).map_err(|e| e.message));
         let prepared = match (&p.cloud, &plans) {
             (_, Some(Err(m))) => Err(Error::new(Kind::Forbidden, m.clone())),
+            (Some(c), Some(Ok(plans))) if continuing => deps.workdirs.prepare_continue(
+                &plans[0].path,
+                &id,
+                &cwd,
+                &plans
+                    .iter()
+                    .map(|c| (c.name.clone(), c.path.clone()))
+                    .collect::<Vec<_>>(),
+                &c.branch,
+                &p.wip_heads,
+            ),
+            (Some(c), None) if continuing => deps.workdirs.prepare_continue(
+                &rule.repos[0],
+                &id,
+                &cwd,
+                &[],
+                &c.branch,
+                &p.wip_heads,
+            ),
+            (None, _) if continuing => Err(Error::internal("only a cloud run can be continued")),
             (Some(c), Some(Ok(plans))) => deps.workdirs.prepare_multi(
                 &plans[0].path,
                 &id,
@@ -1363,6 +1394,12 @@ pub fn pause_to_draft(
         Ok(url) => {
             st.pickups[i].pr_url = Some(url.clone());
             st.pickups[i].publish_error = None;
+            st.pickups[i].wip_heads = clone_dirs(&p)
+                .into_iter()
+                .filter_map(|(name, dir)| {
+                    crate::workdir::clone_tip(&dir, &branch).map(|sha| (name, sha))
+                })
+                .collect();
             audit.append(
                 "published_draft",
                 json!({"pickup": p.id, "rule": p.rule, "task": p.key, "pr_url": url}),
@@ -1398,6 +1435,125 @@ pub fn pause_to_draft(
     };
     state::save(paths, &mut st)?;
     out
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Requeued {
+    pub pickup: String,
+    pub continues: String,
+    pub task_id: i64,
+    pub key: String,
+}
+
+/// Queues the continuation of a run that paused to a draft: a new approved pickup of the same rule, task, bundle
+/// and cloud approval whose clone starts at the commit the draft pushed. It does not depend on the scan, because
+/// the task sits in review. The paused pickup is released and cannot be requeued twice.
+pub fn requeue_paused(
+    paths: &Paths,
+    deps: &Deps,
+    pickup_id: &str,
+    now: DateTime<Utc>,
+) -> Result<Requeued> {
+    let _lock = paths.lock()?;
+    let audit = Audit::new(paths);
+    let loaded = rules::load(paths)?;
+    if !loaded.file.enabled {
+        return Err(Error::conflict("the queue is off"));
+    }
+    if rules::is_tampered(paths, &loaded)? {
+        let _ = audit.append("config_tampered", json!({"config_sha256": loaded.sha256}));
+        return Err(Error::new(
+            Kind::Forbidden,
+            "queue.toml or the audit log changed outside `tmgr queue`",
+        ));
+    }
+    let mut st = state::load(paths)?;
+    let i = st
+        .pickups
+        .iter()
+        .position(|p| p.id == pickup_id)
+        .ok_or_else(|| Error::not_found(format!("no pickup {pickup_id}")))?;
+    let p = st.pickups[i].clone();
+    if let Some(next) = &p.continued_by {
+        return Err(Error::conflict(format!("already continued as {next}")));
+    }
+    if !p.paused_draft || p.held.is_some() || p.pr_url.is_none() || p.wip_heads.is_empty() {
+        return Err(Error::conflict(
+            "only a run paused to a published draft with a saved commit can be continued",
+        ));
+    }
+    if !deps.policy.selects(p.task.task_id) {
+        return Err(Error::conflict(
+            "the task is not selected by this autopilot run",
+        ));
+    }
+    if st.pickups.iter().any(|q| {
+        q.id != p.id
+            && q.task.task_id == p.task.task_id
+            && (q.occupies()
+                || (!q.released && matches!(q.status, Status::PendingApproval | Status::Approved)))
+    }) {
+        return Err(Error::conflict("the task already has an open pickup"));
+    }
+    let rule = loaded
+        .file
+        .rules
+        .iter()
+        .find(|r| r.name == p.rule)
+        .ok_or_else(|| Error::conflict("the rule was removed"))?;
+    let id = new_id(&st, &p.rule, p.task.task_id, now);
+    let cwd = run_dir(rule, p.cloud.as_ref(), &id)
+        .ok_or_else(|| Error::internal("no run directory for the continuation"))?
+        .to_string_lossy()
+        .into_owned();
+    let mut bundle = p.bundle.clone();
+    bundle.launch.cwd = cwd;
+    let stamp = ts(now);
+    let sha = bundle.sha256();
+    st.pickups.push(Pickup {
+        id: id.clone(),
+        rule: p.rule.clone(),
+        task: p.task,
+        key: p.key.clone(),
+        status: Status::Approved,
+        bundle,
+        bundle_sha256: sha,
+        context_tainted: p.context_tainted,
+        created_at: stamp.clone(),
+        updated_at: stamp,
+        approved_by: Some("resume-after-reset".into()),
+        run_id: None,
+        reason: None,
+        released: false,
+        persona_text: p.persona_text.clone(),
+        profile_pin: p.profile_pin.clone(),
+        run_exited: false,
+        run_clean: false,
+        attempt: 1,
+        cloud: p.cloud.clone(),
+        pr_url: None,
+        publish_attempts: 0,
+        publish_error: None,
+        clones: Vec::new(),
+        held: None,
+        paused_draft: false,
+        wip_heads: p.wip_heads.clone(),
+        continues: Some(p.id.clone()),
+        continued_by: None,
+    });
+    st.pickups[i].continued_by = Some(id.clone());
+    st.pickups[i].released = true;
+    audit.append(
+        "requeued",
+        json!({"pickup": id, "continues": p.id, "rule": p.rule, "task": p.key}),
+    )?;
+    state::save(paths, &mut st)?;
+    Ok(Requeued {
+        pickup: id,
+        continues: p.id,
+        task_id: p.task.task_id,
+        key: p.key,
+    })
 }
 
 fn fail_draft(
@@ -1660,6 +1816,44 @@ mod tests {
                     local_minutes: 12 * 60,
                     policy,
                 },
+            )
+        }
+
+        fn pass_dirs(&self, workdirs: &dyn WorkDirs, policy: StartPolicy) -> Result<PassReport> {
+            run_once(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs,
+                    fresh: &self.fresh,
+                    now: Utc::now(),
+                    local_minutes: 12 * 60,
+                    policy,
+                },
+            )
+        }
+
+        fn requeue(&self, id: &str, policy: StartPolicy) -> Result<Requeued> {
+            requeue_paused(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs: &GitClone,
+                    fresh: &self.fresh,
+                    now: Utc::now(),
+                    local_minutes: 12 * 60,
+                    policy,
+                },
+                id,
+                Utc::now(),
             )
         }
 
@@ -2014,9 +2208,18 @@ mod tests {
         status_changed: Cell<bool>,
         comments: RefCell<Vec<String>>,
         fail: Cell<bool>,
+        resume_looks: Cell<u32>,
+        review_gone: Cell<bool>,
     }
 
     impl FreshTask for FreshFake {
+        fn look_resumable(&self, rule: &Rule, task: TaskRef) -> Result<crate::taken::Fresh> {
+            self.resume_looks.set(self.resume_looks.get() + 1);
+            let mut f = self.look(rule, task)?;
+            f.status_ok = !self.review_gone.get();
+            Ok(f)
+        }
+
         fn look(&self, _rule: &Rule, _task: TaskRef) -> Result<crate::taken::Fresh> {
             self.looks.set(self.looks.get() + 1);
             if self.fail.get() {
@@ -3474,5 +3677,298 @@ mod tests {
         fx.approve_all();
         fx.pass().unwrap();
         assert!(Audit::new(&fx.paths).verify().unwrap().is_ok());
+    }
+
+    type ContinueCall = (String, String, String, usize, BTreeMap<String, String>);
+
+    #[derive(Default)]
+    struct Continuing {
+        calls: RefCell<Vec<ContinueCall>>,
+        refuse: Cell<bool>,
+    }
+
+    impl WorkDirs for Continuing {
+        fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()> {
+            GitClone.prepare(repo, pickup_id, cwd)
+        }
+
+        fn prepare_continue(
+            &self,
+            primary: &str,
+            pickup_id: &str,
+            cwd: &str,
+            clones: &[(String, String)],
+            branch: &str,
+            heads: &BTreeMap<String, String>,
+        ) -> Result<()> {
+            self.calls.borrow_mut().push((
+                pickup_id.to_string(),
+                cwd.to_string(),
+                branch.to_string(),
+                clones.len(),
+                heads.clone(),
+            ));
+            if self.refuse.get() {
+                return Err(Error::conflict(
+                    "the task branch on the remote is not at the commit saved when the run paused",
+                ));
+            }
+            if clones.is_empty() {
+                GitClone.prepare_branch(primary, pickup_id, cwd, branch)
+            } else {
+                GitClone.prepare_multi(primary, pickup_id, cwd, clones, branch)
+            }
+        }
+    }
+
+    fn paused_draft_of(fx: &Fx) -> Pickup {
+        let p = started_and_exited(fx);
+        fx.draft(&p.id).unwrap();
+        fx.pickups().remove(0)
+    }
+
+    #[test]
+    fn a_published_draft_records_the_pushed_head_of_every_clone() {
+        let fx = cloud_fx();
+        let p = paused_draft_of(&fx);
+        let tip = crate::workdir::clone_tip(
+            std::path::Path::new(&p.bundle.launch.cwd),
+            &p.cloud.as_ref().unwrap().branch,
+        )
+        .unwrap();
+        assert_eq!(p.wip_heads, BTreeMap::from([(String::new(), tip)]));
+        assert_eq!(
+            state::paused_resumable(&state::load(&fx.paths).unwrap()),
+            [p.id]
+        );
+    }
+
+    #[test]
+    fn a_failed_or_held_draft_records_no_head_and_is_not_resumable() {
+        let fx = cloud_fx();
+        let p = started_and_exited(&fx);
+        fx.publisher.hold.set(true);
+        fx.draft(&p.id).unwrap();
+        let p = fx.pickups().remove(0);
+        assert!(p.held.is_some() && p.wip_heads.is_empty());
+        assert!(state::paused_resumable(&state::load(&fx.paths).unwrap()).is_empty());
+        assert!(fx.requeue(&p.id, StartPolicy::default()).is_err());
+    }
+
+    #[test]
+    fn a_requeued_pause_becomes_an_approved_continuation_and_the_old_pickup_is_released() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        assert_eq!((out.continues.as_str(), out.task_id), (old.id.as_str(), 1));
+        let all = fx.pickups();
+        let (was, now) = (&all[0], &all[1]);
+        assert!(was.released && was.continued_by.as_deref() == Some(&out.pickup));
+        assert_eq!(now.id, out.pickup);
+        assert_eq!(now.continues.as_deref(), Some(old.id.as_str()));
+        assert_eq!(now.status, Status::Approved);
+        assert_eq!(now.rule, old.rule);
+        assert_eq!(now.task, old.task);
+        assert_eq!(now.cloud, old.cloud);
+        assert_eq!(now.profile_pin, old.profile_pin);
+        assert_eq!(now.wip_heads, old.wip_heads);
+        assert!(now.pr_url.is_none() && !now.paused_draft && now.held.is_none());
+        assert_ne!(now.bundle.launch.cwd, old.bundle.launch.cwd);
+        assert_eq!(now.bundle_sha256, now.bundle.sha256());
+        assert_eq!(fx.audit_events("requeued"), 1);
+        assert!(state::paused_resumable(&state::load(&fx.paths).unwrap()).is_empty());
+    }
+
+    #[test]
+    fn a_pause_is_requeued_once_and_only_when_it_has_a_published_draft_and_no_hold() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        let again = fx.requeue(&old.id, StartPolicy::default()).unwrap_err();
+        assert!(
+            again.message.contains("already continued"),
+            "{}",
+            again.message
+        );
+        assert_eq!(fx.pickups().len(), 2);
+
+        let no_pr = cloud_fx();
+        let p = paused_draft_of(&no_pr);
+        let mut st = state::load(&no_pr.paths).unwrap();
+        st.pickups[0].pr_url = None;
+        state::save(&no_pr.paths, &mut st).unwrap();
+        assert!(no_pr.requeue(&p.id, StartPolicy::default()).is_err());
+
+        let held = cloud_fx();
+        let p = paused_draft_of(&held);
+        let mut st = state::load(&held.paths).unwrap();
+        st.pickups[0].held = Some(state::Held::default());
+        state::save(&held.paths, &mut st).unwrap();
+        assert!(held.requeue(&p.id, StartPolicy::default()).is_err());
+
+        let plain = cloud_fx();
+        let p = started_and_exited(&plain);
+        assert!(plain.requeue(&p.id, StartPolicy::default()).is_err());
+        assert!(plain.requeue("q_nope", StartPolicy::default()).is_err());
+        for f in [&no_pr, &held, &plain] {
+            assert_eq!(f.pickups().len(), 1);
+        }
+    }
+
+    #[test]
+    fn a_continuation_must_be_selectable_by_the_start_policy() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let other = StartPolicy {
+            only: Some(BTreeSet::from([7])),
+            ..StartPolicy::default()
+        };
+        assert!(fx.requeue(&old.id, other).is_err());
+        let mine = StartPolicy {
+            only: Some(BTreeSet::from([1])),
+            ..StartPolicy::default()
+        };
+        fx.requeue(&old.id, mine.clone()).unwrap();
+        let dirs = Continuing::default();
+        fx.cloud.tasks.replace(vec![]);
+        fx.pass_dirs(&dirs, mine).unwrap();
+        assert_eq!(fx.runs.requests.borrow().len(), 2);
+    }
+
+    #[test]
+    fn a_task_left_in_review_is_resumed_without_the_scan_and_from_the_saved_head() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.tasks.replace(vec![]);
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let calls = dirs.calls.borrow();
+        assert_eq!(calls.len(), 1);
+        let (id, cwd, branch, clones, heads) = &calls[0];
+        assert_eq!(id, &out.pickup);
+        assert_eq!(cwd, &fx.pickups()[1].bundle.launch.cwd);
+        assert_eq!(branch, &old.cloud.as_ref().unwrap().branch);
+        assert_eq!((*clones, heads), (0, &old.wip_heads));
+        let reqs = fx.runs.requests.borrow();
+        assert_eq!(reqs.len(), 2);
+        assert_eq!(reqs[1].cwd, *cwd);
+        let p = &fx.pickups()[1];
+        assert_eq!(p.status, Status::Started);
+        assert_eq!(fx.fresh.resume_looks.get(), 1);
+        assert_eq!(fx.audit_events("expired"), 0);
+        let head = crate::workdir::clone_tip(std::path::Path::new(cwd), branch);
+        assert!(head.is_some());
+    }
+
+    #[test]
+    fn a_continuation_that_finishes_publishes_like_any_run_and_can_pause_again() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.tasks.replace(vec![]);
+        fx.pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        fx.runs.exited.borrow_mut().push("mock-2".into());
+        fx.pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        fx.pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        let now = fx.pickups().remove(1);
+        assert_eq!(now.id, out.pickup);
+        assert!(now.pr_url.is_some() && now.run_clean);
+        assert_eq!(
+            fx.publisher.calls.borrow().last().map(String::as_str),
+            Some(now.id.as_str())
+        );
+
+        let again = cloud_fx();
+        let old = paused_draft_of(&again);
+        let out = again.requeue(&old.id, StartPolicy::default()).unwrap();
+        again.cloud.tasks.replace(vec![]);
+        again
+            .pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        again.runs.exited.borrow_mut().push("mock-2".into());
+        again.runs.failed.borrow_mut().push("mock-2".into());
+        again
+            .pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        again.draft(&out.pickup).unwrap();
+        let p = again.pickups().remove(1);
+        assert!(p.paused_draft && p.pr_url.is_some() && !p.wip_heads.is_empty());
+        assert_eq!(
+            state::paused_resumable(&state::load(&again.paths).unwrap()),
+            [p.id]
+        );
+    }
+
+    #[test]
+    fn a_branch_that_moved_fails_the_continuation_without_a_run_and_never_pushes() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.tasks.replace(vec![]);
+        let dirs = Continuing::default();
+        dirs.refuse.set(true);
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Failed);
+        assert!(p.reason.as_deref().unwrap().contains("not at the commit"));
+        assert_eq!(fx.runs.requests.borrow().len(), 1);
+        assert_eq!(fx.publisher.calls.borrow().len(), 1);
+        assert!(!std::path::Path::new(&p.bundle.launch.cwd).exists());
+    }
+
+    #[test]
+    fn a_task_that_left_review_or_was_taken_is_not_resumed() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.tasks.replace(vec![]);
+        fx.fresh.review_gone.set(true);
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(p.reason.as_deref().unwrap().starts_with("skipped_taken"));
+    }
+
+    #[test]
+    fn a_multi_repository_pause_records_a_head_per_clone_and_resumes_them_all() {
+        let (fx, _second) = multi_fx();
+        let old = {
+            let p = started_and_exited(&fx);
+            fx.draft(&p.id).unwrap();
+            fx.pickups().remove(0)
+        };
+        assert_eq!(
+            old.wip_heads.keys().cloned().collect::<Vec<_>>(),
+            ["backend", "frontend"]
+        );
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.tasks.replace(vec![]);
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let calls = dirs.calls.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!((calls[0].3, &calls[0].4), (2, &old.wip_heads));
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Started);
+        assert_eq!(p.clones.len(), 2);
+    }
+
+    #[test]
+    fn without_a_requeue_nothing_continues_and_a_review_task_stays_untouched() {
+        let fx = cloud_fx();
+        paused_draft_of(&fx);
+        fx.cloud.tasks.replace(vec![]);
+        let dirs = Continuing::default();
+        for _ in 0..3 {
+            fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        }
+        assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
+        assert_eq!(fx.pickups().len(), 1);
     }
 }
