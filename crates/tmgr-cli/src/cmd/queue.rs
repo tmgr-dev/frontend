@@ -687,6 +687,7 @@ impl RunsClient for RunnerRuns {
                 trust_via_repo: None,
                 agent_work: true,
                 cloud: None,
+                unattended: false,
                 exe_pin: Some(ExePin {
                     path: req.exe_path.clone(),
                     sha256: req.exe_sha256.clone(),

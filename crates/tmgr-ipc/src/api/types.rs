@@ -96,6 +96,8 @@ pub struct RunCreateReq {
     pub agent_work: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloud: Option<CloudApproval>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unattended: bool,
 }
 
 /// The owner's signed approval of a task of a cloud workspace, checked again by the runner against its local allow store.

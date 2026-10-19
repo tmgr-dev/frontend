@@ -549,6 +549,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             trust_via_repo: via_repo.then_some(true),
             agent_work: true,
             cloud: Some(ok.claim.clone()),
+            unattended: false,
             exe_pin: Some(exe_pin),
             argv_sha256: Some(argv_digest),
         })

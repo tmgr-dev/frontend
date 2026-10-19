@@ -256,6 +256,7 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
             trust_via_repo: None,
             agent_work: false,
             cloud: None,
+            unattended: false,
             exe_pin: None,
             argv_sha256: None,
         }),

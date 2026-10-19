@@ -98,6 +98,7 @@ fn req() -> RunCreateReq {
             signature: c["signature"].as_str().unwrap().into(),
             kind: "author".into(),
         }),
+        unattended: false,
         exe_pin: None,
         argv_sha256: None,
     }
