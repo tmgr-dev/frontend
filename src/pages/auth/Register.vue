@@ -38,7 +38,15 @@
 			id="telegram-register-widget-container"
 			class="mt-3 flex justify-center"
 		>
+			<Button
+				v-if="telegramPaused"
+				variant="outline"
+				class="h-10"
+				@click="telegramPaused = false"
+				>Try again</Button
+			>
 			<TelegramLoginWidget
+				v-else
 				:key="telegramWidgetKey"
 				:bot-name="telegramBotName"
 				callback
@@ -171,6 +179,8 @@
 	const isDesktop = isDesktopApp();
 	const telegramBotName = import.meta.env.VITE_TELEGRAM_BOT_NAME;
 	const telegramWidgetKey = ref(0);
+	const telegramFailures = ref(0);
+	const telegramPaused = ref(false);
 
 	const isLoading = ref(false);
 	const message = ref('');
@@ -207,7 +217,11 @@
 			await enterApp();
 		} catch {
 			message.value = 'Telegram sign-in failed, try again';
-			telegramWidgetKey.value++;
+			// Re-render once by itself; later failures wait for a click, so a
+			// widget that fails on every load can't hammer the API.
+			telegramFailures.value++;
+			if (telegramFailures.value > 1) telegramPaused.value = true;
+			else telegramWidgetKey.value++;
 		} finally {
 			isLoading.value = false;
 		}

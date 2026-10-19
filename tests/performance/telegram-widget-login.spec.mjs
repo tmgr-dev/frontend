@@ -34,6 +34,13 @@ const WIDGET_STUB = `(function () {
     try { result = JSON.parse(window.atob(data)); } catch (e) {}
   }
   if (result) onauth(result);
+  // Like the iframe's init auth_user event: a freshly signed payload per load.
+  if (window.__tgInitAuth) {
+    var n = window.__tgLoads;
+    setTimeout(function () {
+      window.__tgFire({ id: 42, auth_date: 1700000000, hash: 'init' + n });
+    }, 0);
+  }
 })();`;
 
 const recordWidgetAppends = (page) =>
@@ -152,6 +159,35 @@ for (const [status, response] of [
     await expect(page.getByText(FAILED)).toBeVisible();
     await expect(page).toHaveURL(/\/login$/);
     expect(await storage(page)).toEqual(before);
+  });
+}
+
+for (const path of ['/login', '/register']) {
+  test(`${path}: after two failures the widget waits for "Try again"`, async ({
+    page,
+  }) => {
+    const posts = await loggedOut(page, {
+      status: 403,
+      json: { message: 'Forbidden', error: 'telegram_login_rejected' },
+    });
+    await page.addInitScript(() => (window.__tgInitAuth = true));
+    await stubWidget(page);
+    await page.goto(path);
+
+    const retry = page.getByRole('button', { name: 'Try again' });
+    await expect(retry).toBeVisible();
+    await page.waitForTimeout(3000);
+    expect(posts).toHaveLength(2);
+    expect(await loads(page)).toBe(2);
+    await expect(page.getByText(FAILED)).toBeVisible();
+
+    await retry.click();
+    await expect.poll(() => posts.length).toBe(3);
+    await expect(retry).toBeVisible();
+    await page.waitForTimeout(1000);
+    expect(posts.map((p) => p.body.hash)).toEqual(['init1', 'init2', 'init3']);
+    expect(await loads(page)).toBe(3);
+    expect(await page.evaluate(() => localStorage.getItem('token'))).toBeNull();
   });
 }
 
