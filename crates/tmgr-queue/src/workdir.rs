@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tmgr_core::error::{Error, Kind, Result};
@@ -184,6 +185,22 @@ pub trait WorkDirs {
             "this work directory provider cannot make several clones",
         ))
     }
+
+    /// Continues a paused run: a clone (`clones` empty: one clone of `primary`, saved under `""`) whose task branch
+    /// starts at the commit saved in `heads`. Refuses unless the remote branch is still there.
+    fn prepare_continue(
+        &self,
+        _primary: &str,
+        _pickup_id: &str,
+        _cwd: &str,
+        _clones: &[(String, String)],
+        _branch: &str,
+        _heads: &BTreeMap<String, String>,
+    ) -> Result<()> {
+        Err(Error::internal(
+            "this work directory provider cannot continue a paused run",
+        ))
+    }
 }
 
 /// Where `tmgr run` keeps the clone for a branch: `<repo>-worktrees/<branch with / as ->`.
@@ -230,6 +247,17 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
         )
         .or_else(|_| git(Some(Path::new(repo)), &["rev-parse", "HEAD"]))?,
     };
+    make_clone(repo, dest, &|dest| {
+        git(
+            Some(dest),
+            &["checkout", "-b", branch, &format!("origin/{base}")],
+        )
+        .or_else(|_| git(Some(dest), &["checkout", "-b", branch, &base]))
+        .map(|_| ())
+    })
+}
+
+fn make_clone(repo: &str, dest: &Path, checkout: &dyn Fn(&Path) -> Result<()>) -> Result<()> {
     let parent = dest
         .parent()
         .ok_or_else(|| Error::internal("the run directory has no parent"))?;
@@ -251,15 +279,100 @@ pub fn prepare_clone(repo: &str, dest: &Path, branch: &str, base: Option<&str>) 
         )?;
         git(Some(dest), &["config", "core.hooksPath", "/dev/null"])?;
         git(Some(dest), &["config", "core.fsmonitor", "false"])?;
-        git(
-            Some(dest),
-            &["checkout", "-b", branch, &format!("origin/{base}")],
-        )
-        .or_else(|_| git(Some(dest), &["checkout", "-b", branch, &base]))?;
-        Ok(())
+        checkout(dest)
     })();
     if result.is_err() {
         let _ = std::fs::remove_dir_all(dest);
+    }
+    result
+}
+
+/// The commit `refs/heads/<branch>` points at on the remote `origin` of `repo`, or `None` when the remote has no such branch.
+pub fn remote_branch_head(repo: &str, branch: &str) -> Result<Option<String>> {
+    validate_branch(branch)?;
+    let reference = format!("refs/heads/{branch}");
+    let argv: Vec<String> = ["git", "-C", repo, "ls-remote", "origin", &reference]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    let out = crate::publish::run_hardened(&argv, Path::new(repo))?;
+    Ok(out
+        .lines()
+        .filter_map(|l| l.split_once('\t'))
+        .find(|(_, r)| *r == reference)
+        .map(|(sha, _)| sha.to_string()))
+}
+
+fn moved_remotely(branch: &str) -> Error {
+    Error::conflict(format!(
+        "the task branch {branch} on the remote is not at the commit saved when the run paused; nothing was cloned or pushed"
+    ))
+}
+
+/// A hardened clone of `repo` at `dest` whose `branch` starts at `sha`, the commit the paused run pushed. Refuses
+/// unless the remote branch is still at `sha`.
+pub fn prepare_continue_clone(repo: &str, dest: &Path, branch: &str, sha: &str) -> Result<()> {
+    validate_branch(branch)?;
+    if dest.exists() {
+        return Err(Error::conflict("the run directory already exists"));
+    }
+    if !is_sha(sha) {
+        return Err(Error::internal("the saved commit is not a full object id"));
+    }
+    match remote_branch_head(repo, branch)? {
+        Some(head) if head.eq_ignore_ascii_case(sha) => {}
+        _ => return Err(moved_remotely(branch)),
+    }
+    let commit = format!("{sha}^{{commit}}");
+    let have = |r: &str| git(Some(Path::new(r)), &["cat-file", "-e", &commit]).is_ok();
+    if !have(repo) {
+        let argv: Vec<String> = [
+            "git",
+            "-C",
+            repo,
+            "fetch",
+            "--no-tags",
+            "origin",
+            &format!("refs/heads/{branch}"),
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        crate::publish::run_hardened(&argv, Path::new(repo))?;
+        if !have(repo) {
+            return Err(moved_remotely(branch));
+        }
+    }
+    make_clone(repo, dest, &|dest| {
+        git(Some(dest), &["checkout", "-b", branch, sha]).map(|_| ())
+    })
+}
+
+fn prepare_continue_folder(
+    run_dir: &Path,
+    clones: &[(String, String)],
+    branch: &str,
+    heads: &BTreeMap<String, String>,
+) -> Result<()> {
+    if run_dir.exists() {
+        return Err(Error::conflict("the run directory already exists"));
+    }
+    std::fs::create_dir_all(run_dir)?;
+    let result = clones.iter().try_for_each(|(name, repo)| {
+        let dest = run_dir.join(name);
+        match heads.get(name) {
+            Some(sha) => match remote_branch_head(repo, branch)? {
+                None => prepare_clone(repo, &dest, branch, None),
+                Some(_) => prepare_continue_clone(repo, &dest, branch, sha),
+            },
+            None => match remote_branch_head(repo, branch)? {
+                None => prepare_clone(repo, &dest, branch, None),
+                Some(_) => Err(moved_remotely(branch)),
+            },
+        }
+    });
+    if result.is_err() {
+        let _ = std::fs::remove_dir_all(run_dir);
     }
     result
 }
@@ -629,6 +742,31 @@ impl WorkDirs for GitClone {
         }
         prepare_run_folder(&dest, clones, branch)
     }
+
+    fn prepare_continue(
+        &self,
+        primary: &str,
+        pickup_id: &str,
+        cwd: &str,
+        clones: &[(String, String)],
+        branch: &str,
+        heads: &BTreeMap<String, String>,
+    ) -> Result<()> {
+        let dest = clone_dir(primary, pickup_id)
+            .ok_or_else(|| Error::internal("the repository path has no parent directory"))?;
+        if dest != Path::new(cwd) {
+            return Err(Error::internal(
+                "the run directory does not belong to this pickup",
+            ));
+        }
+        if clones.is_empty() {
+            let sha = heads
+                .get("")
+                .ok_or_else(|| Error::internal("no commit was saved for this run"))?;
+            return prepare_continue_clone(primary, &dest, branch, sha);
+        }
+        prepare_continue_folder(&dest, clones, branch, heads)
+    }
 }
 
 #[cfg(test)]
@@ -984,5 +1122,135 @@ mod tests {
         run_git(&repo, &["branch", "-f", "tm-1-fix", &second]);
         restore_branch(&repo, "tm-1-fix", None, &second).unwrap();
         assert_eq!(branch_tip(&repo, "tm-1-fix").unwrap(), None);
+    }
+
+    fn repo_with_origin(root: &Path, name: &str) -> String {
+        let repo = root.join(name);
+        std::fs::create_dir(&repo).unwrap();
+        init_repo(&repo);
+        let bare = root.join(format!("{name}-origin.git"));
+        run_git(root, &["init", "-q", "--bare", &bare.to_string_lossy()]);
+        run_git(&repo, &["remote", "add", "origin", &bare.to_string_lossy()]);
+        run_git(&repo, &["push", "-q", "origin", "main"]);
+        repo.to_string_lossy().into_owned()
+    }
+
+    fn push_branch_commit(repo: &str, branch: &str, file: &str) -> String {
+        let repo = Path::new(repo);
+        run_git(repo, &["checkout", "-q", "-B", branch]);
+        commit_file(repo, file);
+        run_git(repo, &["push", "-q", "-f", "origin", branch]);
+        let sha = git(Some(repo), &["rev-parse", "HEAD"]).unwrap();
+        run_git(repo, &["checkout", "-q", "main"]);
+        sha
+    }
+
+    #[test]
+    fn a_continuation_clone_starts_at_the_saved_commit_on_the_task_branch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_with_origin(&root, "proj");
+        let wip = push_branch_commit(&repo, "tmgr/tm-1-fix", "wip.txt");
+        let dest = clone_dir(&repo, "q_c1").unwrap();
+        let heads = BTreeMap::from([(String::new(), wip.clone())]);
+        GitClone
+            .prepare_continue(
+                &repo,
+                "q_c1",
+                &dest.to_string_lossy(),
+                &[],
+                "tmgr/tm-1-fix",
+                &heads,
+            )
+            .unwrap();
+        assert_eq!(git(Some(&dest), &["rev-parse", "HEAD"]).unwrap(), wip);
+        assert_eq!(
+            git(Some(&dest), &["symbolic-ref", "--short", "HEAD"]).unwrap(),
+            "tmgr/tm-1-fix"
+        );
+        assert!(dest.join("wip.txt").is_file());
+    }
+
+    #[test]
+    fn a_branch_that_moved_or_vanished_on_the_remote_is_refused_and_leaves_no_clone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let repo = repo_with_origin(&root, "proj");
+        let wip = push_branch_commit(&repo, "tmgr/tm-1-fix", "wip.txt");
+        let other = push_branch_commit(&repo, "tmgr/tm-1-fix", "other.txt");
+        assert_ne!(wip, other);
+        let dest = clone_dir(&repo, "q_c2").unwrap();
+        let heads = BTreeMap::from([(String::new(), wip)]);
+        let err = GitClone
+            .prepare_continue(
+                &repo,
+                "q_c2",
+                &dest.to_string_lossy(),
+                &[],
+                "tmgr/tm-1-fix",
+                &heads,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("not at the commit"), "{}", err.message);
+        assert!(!dest.exists());
+        let gone = BTreeMap::from([(String::new(), other)]);
+        let dest = clone_dir(&repo, "q_c3").unwrap();
+        assert!(GitClone
+            .prepare_continue(
+                &repo,
+                "q_c3",
+                &dest.to_string_lossy(),
+                &[],
+                "tmgr/tm-2-none",
+                &gone,
+            )
+            .is_err());
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn a_multi_repository_continuation_resumes_pushed_repos_and_starts_the_rest_fresh() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let a = repo_with_origin(&root, "alpha");
+        let b = repo_with_origin(&root, "beta");
+        let wip = push_branch_commit(&a, "tmgr/tm-3-x", "wip.txt");
+        let dest = clone_dir(&a, "q_c4").unwrap();
+        let clones = vec![("alpha".to_string(), a.clone()), ("beta".to_string(), b)];
+        let heads = BTreeMap::from([("alpha".to_string(), wip.clone())]);
+        GitClone
+            .prepare_continue(
+                &a,
+                "q_c4",
+                &dest.to_string_lossy(),
+                &clones,
+                "tmgr/tm-3-x",
+                &heads,
+            )
+            .unwrap();
+        assert_eq!(
+            git(Some(&dest.join("alpha")), &["rev-parse", "HEAD"]).unwrap(),
+            wip
+        );
+        let beta = dest.join("beta");
+        assert_eq!(
+            git(Some(&beta), &["symbolic-ref", "--short", "HEAD"]).unwrap(),
+            "tmgr/tm-3-x"
+        );
+        assert!(!beta.join("wip.txt").exists());
+        let moved = push_branch_commit(&a, "tmgr/tm-3-x", "more.txt");
+        assert_ne!(moved, wip);
+        let dest = clone_dir(&a, "q_c5").unwrap();
+        assert!(GitClone
+            .prepare_continue(
+                &a,
+                "q_c5",
+                &dest.to_string_lossy(),
+                &clones,
+                "tmgr/tm-3-x",
+                &heads,
+            )
+            .is_err());
+        assert!(!dest.exists());
     }
 }
