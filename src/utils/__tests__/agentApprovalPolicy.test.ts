@@ -6,6 +6,8 @@ import {
 	type ApprovalState,
 } from '../agentApprovalPolicy';
 
+const text = { title: 'T', description: 'a\nb' };
+
 describe('shouldAutoSign', () => {
 	const states: ApprovalState[] = ['none', 'active', 'stale', 'revoked'];
 	const cases: [ApprovalState, boolean, boolean, boolean, boolean, boolean][] =
@@ -34,12 +36,16 @@ describe('shouldAutoSign', () => {
 					state,
 					settingEnabled: setting,
 					ownerAuthored: authored,
+					submitted: text,
+					saved: text,
 				}),
 			).toBe(expected);
 		},
 	);
 
 	const base = {
+		submitted: text,
+		saved: text,
 		isOwnerSave: true,
 		authorId: 7,
 		meId: 7,
@@ -51,6 +57,57 @@ describe('shouldAutoSign', () => {
 		expect(
 			shouldAutoSign({ ...base, state: 'none', ownerAuthored: false }),
 		).toBe(false);
+	});
+
+	it('does not sign when the server returned different text', () => {
+		for (const state of ['none', 'active', 'stale'] as const) {
+			expect(
+				shouldAutoSign({
+					...base,
+					state,
+					saved: { ...text, title: 'Swapped' },
+				}),
+			).toBe(false);
+			expect(
+				shouldAutoSign({
+					...base,
+					state,
+					saved: { ...text, description: 'a\nb extra' },
+				}),
+			).toBe(false);
+			expect(
+				shouldAutoSign({
+					...base,
+					state,
+					submitted: { title: 'T', description: null },
+				}),
+			).toBe(false);
+		}
+	});
+
+	it('signs when the texts match', () => {
+		expect(shouldAutoSign({ ...base, state: 'stale' })).toBe(true);
+	});
+
+	it('signs when only CRLF differs', () => {
+		expect(
+			shouldAutoSign({
+				...base,
+				state: 'stale',
+				saved: { title: 'T', description: 'a\r\nb' },
+			}),
+		).toBe(true);
+	});
+
+	it('treats null and empty description as equal', () => {
+		expect(
+			shouldAutoSign({
+				...base,
+				state: 'stale',
+				submitted: { title: 'T', description: null },
+				saved: { title: 'T', description: '' },
+			}),
+		).toBe(true);
 	});
 
 	it('never signs a revoked approval', () => {
