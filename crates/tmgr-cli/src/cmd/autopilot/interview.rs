@@ -3,30 +3,99 @@ use std::io::{BufRead, Write};
 
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_queue::rules::GLOBAL_MAX;
+use tmgr_queue::runs::mode_name;
+use tmgr_usage::Tool;
 
 use super::model::Answers;
+use super::orchestrate::ModeSetting;
+use super::start::agent_tool;
 
 pub type Flags = BTreeMap<&'static str, String>;
 
 const TRIES: usize = 3;
+const MAX_TEAM_SIZE: u32 = 5;
 
 pub struct Draft {
     pub answers: Answers,
     pub picked: Option<Vec<String>>,
     pub known_keys: Vec<String>,
     pub rule_max: u32,
+    pub rule_profile: String,
+    pub rule_mode: Option<String>,
+    pub only: Option<Vec<String>>,
+    pub skip: Vec<String>,
+    pub order: Vec<String>,
 }
 
 impl Draft {
     pub fn new(remembered: Option<Answers>, known_keys: Vec<String>, rule_max: u32) -> Draft {
         let mut answers = remembered.unwrap_or_default();
         answers.all_tasks = true;
+        answers.max_teams = answers.max_concurrent;
         Draft {
             answers,
             picked: None,
             known_keys,
             rule_max,
+            rule_profile: "claude-code".into(),
+            rule_mode: None,
+            only: None,
+            skip: Vec::new(),
+            order: Vec::new(),
         }
+    }
+
+    pub fn with_rule(mut self, profile: &str, mode: Option<&str>) -> Draft {
+        self.rule_profile = profile.to_string();
+        self.rule_mode = mode.map(str::to_string);
+        self
+    }
+
+    pub fn profile(&self) -> &str {
+        self.answers
+            .profile
+            .as_deref()
+            .unwrap_or(&self.rule_profile)
+    }
+
+    pub fn is_codex(&self) -> bool {
+        agent_tool(self.profile()) == Some(Tool::Codex)
+    }
+
+    pub fn is_chosen(&self, key: &str) -> bool {
+        let has = |list: &[String]| list.iter().any(|k| k == key);
+        self.picked.as_deref().is_none_or(has)
+            && self.only.as_deref().is_none_or(has)
+            && !has(&self.skip)
+    }
+
+    pub fn restrict(
+        &mut self,
+        only: Option<&str>,
+        skip: Option<&str>,
+        order: Option<&str>,
+    ) -> Result<()> {
+        let keys = |flag: &str, s: Option<&str>| -> Result<Option<Vec<String>>> {
+            s.map(|s| parse_keys(&self.known_keys, s))
+                .transpose()
+                .map_err(|m| Error::usage(format!("--{flag}: {m}")))
+        };
+        let (only, skip, order) = (
+            keys("only", only)?,
+            keys("skip", skip)?,
+            keys("order", order)?,
+        );
+        self.only = only;
+        self.skip = skip.unwrap_or_default();
+        if let Some(order) = order {
+            if let Some(k) = order.iter().find(|k| !self.is_chosen(k)) {
+                return Err(Error::usage(format!(
+                    "--order: {k} is not among the chosen tasks"
+                )));
+            }
+            self.order = order;
+        }
+        Ok(())
     }
 
     pub fn concurrent_cap(&self) -> u32 {
@@ -106,15 +175,10 @@ pub fn parse_count(s: &str) -> std::result::Result<Option<u32>, String> {
     parse_range(s, 1, 100_000).map(Some)
 }
 
-fn tasks_apply(d: &mut Draft, s: &str) -> std::result::Result<(), String> {
-    if s.trim().eq_ignore_ascii_case("all") {
-        d.picked = None;
-        return Ok(());
-    }
+fn parse_keys(known: &[String], s: &str) -> std::result::Result<Vec<String>, String> {
     let mut keys = Vec::new();
     for part in s.split(',').map(str::trim).filter(|p| !p.is_empty()) {
-        let known = d
-            .known_keys
+        let known = known
             .iter()
             .find(|k| k.eq_ignore_ascii_case(part))
             .ok_or_else(|| format!("{part} is not in the list above"))?;
@@ -123,10 +187,41 @@ fn tasks_apply(d: &mut Draft, s: &str) -> std::result::Result<(), String> {
         }
     }
     if keys.is_empty() {
-        return Err("enter all, or task keys separated by commas".into());
+        return Err("enter task keys separated by commas".into());
     }
-    d.picked = Some(keys);
+    Ok(keys)
+}
+
+fn tasks_apply(d: &mut Draft, s: &str) -> std::result::Result<(), String> {
+    if s.trim().eq_ignore_ascii_case("all") {
+        d.picked = None;
+        return Ok(());
+    }
+    d.picked = Some(parse_keys(&d.known_keys, s)?);
     Ok(())
+}
+
+pub fn mode_word(m: ModeSetting) -> &'static str {
+    match m {
+        ModeSetting::Eco => "eco",
+        ModeSetting::Heavy => "heavy",
+        ModeSetting::Orchestrator => "orchestrator",
+    }
+}
+
+pub fn check_profile(name: &str, mode: Option<&str>) -> std::result::Result<Tool, String> {
+    let tool = agent_tool(name)
+        .ok_or_else(|| format!("{name} is not a profile the runner knows for claude or codex"))?;
+    let dir = tmgr_runner::profile::user_dir();
+    let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
+    let profile = set.lookup(name)?;
+    if profile.has_permission_modes() {
+        let wanted = mode_name(mode);
+        profile.permission_args(wanted).map_err(|_| {
+            format!("profile {name} cannot run in mode {wanted}, which the rule asks for")
+        })?;
+    }
+    Ok(tool)
 }
 
 fn soft_apply(d: &mut Draft, s: &str) -> std::result::Result<(), String> {
@@ -146,8 +241,6 @@ fn hard_apply(d: &mut Draft, s: &str) -> std::result::Result<(), String> {
     Ok(())
 }
 
-/// The questions after the rule and the task list. TM-623 adds max teams, team size, mode and
-/// the like by appending items here and a flag of the same name in `StartArgs::flags`.
 pub fn questions() -> Vec<Question> {
     vec![
         Question {
@@ -158,11 +251,48 @@ pub fn questions() -> Vec<Question> {
             enabled: always,
         },
         Question {
-            id: "max-concurrent",
-            label: "Agents at the same time",
-            current: |d| d.answers.max_concurrent.min(d.concurrent_cap()).to_string(),
+            id: "max-teams",
+            label: "Teams at the same time",
+            current: |d| d.answers.max_teams.min(d.concurrent_cap()).to_string(),
             apply: |d, s| {
-                d.answers.max_concurrent = parse_range(s, 1, d.concurrent_cap())?;
+                d.answers.max_teams = parse_range(s, 1, d.concurrent_cap())?;
+                Ok(())
+            },
+            enabled: always,
+        },
+        Question {
+            id: "profile",
+            label: "Agent profile for the teams",
+            current: |d| d.profile().to_string(),
+            apply: |d, s| {
+                let name = s.trim();
+                check_profile(name, d.rule_mode.as_deref())?;
+                d.answers.profile = Some(name.to_string());
+                Ok(())
+            },
+            enabled: always,
+        },
+        Question {
+            id: "team-size",
+            label: "Agents per team (lead and workers)",
+            current: |d| d.answers.team_size.to_string(),
+            apply: |d, s| {
+                d.answers.team_size = parse_range(s, 1, MAX_TEAM_SIZE)?;
+                Ok(())
+            },
+            enabled: |d| !d.is_codex(),
+        },
+        Question {
+            id: "team-mode",
+            label: "Team mode (orchestrator = the orchestrator chooses per task)",
+            current: |d| mode_word(d.answers.team_mode).into(),
+            apply: |d, s| {
+                d.answers.team_mode = match s.trim().to_ascii_lowercase().as_str() {
+                    "eco" => ModeSetting::Eco,
+                    "heavy" => ModeSetting::Heavy,
+                    "orchestrator" => ModeSetting::Orchestrator,
+                    _ => return Err("enter eco, heavy or orchestrator".into()),
+                };
                 Ok(())
             },
             enabled: always,
@@ -248,6 +378,9 @@ pub fn ask_all(
 ) -> Result<()> {
     for q in qs {
         if !(q.enabled)(d) {
+            if q.id == "team-size" {
+                let _ = writeln!(out, "codex runs one agent per team");
+            }
             continue;
         }
         if let Some(v) = flags.get(q.id) {
@@ -277,6 +410,7 @@ pub fn ask_all(
             }
         }
     }
+    settle(d)?;
     finish(d)
 }
 
@@ -289,11 +423,18 @@ pub fn finish(d: &Draft) -> Result<()> {
         ))
         .hint("pass --usage-soft and --usage-hard"));
     }
-    if a.max_concurrent > d.concurrent_cap() {
-        return Err(Error::usage(format!(
-            "at most {} agents at the same time",
-            d.concurrent_cap()
-        )));
+    Ok(())
+}
+
+pub fn settle(d: &mut Draft) -> Result<()> {
+    d.answers.max_teams = d.answers.max_teams.min(d.concurrent_cap());
+    d.answers.max_concurrent = d.answers.max_teams;
+    if d.answers.profile.is_some() {
+        check_profile(d.profile(), d.rule_mode.as_deref())
+            .map_err(|m| Error::usage(format!("--profile: {m}")))?;
+    }
+    if d.is_codex() {
+        d.answers.team_size = 1;
     }
     Ok(())
 }
@@ -372,16 +513,23 @@ mod tests {
     fn enter_keeps_the_remembered_answers() {
         let remembered = Answers {
             max_concurrent: 3,
+            max_teams: 3,
+            team_size: 4,
+            team_mode: ModeSetting::Heavy,
+            profile: Some("claude-code".into()),
             usage_soft: 40,
             usage_hard: 70,
             max_hours: Some(6.0),
             ..Answers::default()
         };
         let mut d = Draft::new(Some(remembered.clone()), vec!["TM-1".into()], 3);
-        let (r, shown) = run(&mut d, &Flags::new(), false, &"\n".repeat(8));
+        let (r, shown) = run(&mut d, &Flags::new(), false, &"\n".repeat(11));
         r.unwrap();
         assert_eq!(d.answers, remembered);
-        assert!(shown.contains("Agents at the same time [3]"));
+        assert!(shown.contains("Teams at the same time [3]"));
+        assert!(shown.contains("Agents per team (lead and workers) [4]"));
+        assert!(shown.contains("chooses per task) [heavy]"));
+        assert!(shown.contains("Agent profile for the teams [claude-code]"));
         assert!(shown.contains("Most hours to run [6]"));
         assert!(shown.contains("Most to spend in USD on runs paid by API key [none]"));
     }
@@ -389,10 +537,13 @@ mod tests {
     #[test]
     fn defaults_without_a_remembered_file() {
         let mut d = draft();
-        let (r, shown) = run(&mut d, &Flags::new(), false, &"\n".repeat(8));
+        let (r, shown) = run(&mut d, &Flags::new(), false, &"\n".repeat(11));
         r.unwrap();
         assert_eq!(d.answers, Answers::default());
-        assert!(shown.contains("Agents at the same time [2]"));
+        assert!(shown.contains("Teams at the same time [2]"));
+        assert!(shown.contains("Agents per team (lead and workers) [3]"));
+        assert!(shown.contains("chooses per task) [orchestrator]"));
+        assert!(shown.contains("Agent profile for the teams [claude-code]"));
         assert!(shown.contains("usage percent [50]"));
         assert!(shown.contains("usage percent [80]"));
         assert!(shown.contains("resets [no]"));
@@ -402,11 +553,15 @@ mod tests {
     #[test]
     fn typed_answers_replace_the_remembered_ones() {
         let mut d = draft();
-        let script = "tm-3, TM-1\n1\n30\n60\nyes\n$20\n4.5\n10\n";
+        let script = "tm-3, TM-1\n1\ncodex\neco\n30\n60\nyes\n$20\n4.5\n10\n";
         let (r, _) = run(&mut d, &Flags::new(), false, script);
         r.unwrap();
         assert_eq!(d.picked, Some(vec!["TM-3".into(), "TM-1".into()]));
         assert_eq!(d.answers.max_concurrent, 1);
+        assert_eq!(d.answers.max_teams, 1);
+        assert_eq!(d.answers.profile.as_deref(), Some("codex"));
+        assert_eq!(d.answers.team_size, 1);
+        assert_eq!(d.answers.team_mode, ModeSetting::Eco);
         assert_eq!(d.answers.usage_soft, 30);
         assert_eq!(d.answers.usage_hard, 60);
         assert!(d.answers.resume_after_reset);
@@ -437,13 +592,13 @@ mod tests {
     fn a_flag_answers_without_asking() {
         let mut d = draft();
         let mut flags = Flags::new();
-        flags.insert("max-concurrent", "1".into());
+        flags.insert("max-teams", "1".into());
         flags.insert("tasks", "TM-2".into());
-        let (r, shown) = run(&mut d, &flags, false, &"\n".repeat(6));
+        let (r, shown) = run(&mut d, &flags, false, &"\n".repeat(9));
         r.unwrap();
         assert_eq!(d.answers.max_concurrent, 1);
         assert_eq!(d.picked, Some(vec!["TM-2".into()]));
-        assert!(!shown.contains("Agents at the same time"));
+        assert!(!shown.contains("Teams at the same time"));
         assert!(!shown.contains("Which tasks"));
     }
 
@@ -451,6 +606,7 @@ mod tests {
     fn yes_reuses_everything_and_asks_nothing() {
         let remembered = Answers {
             max_concurrent: 1,
+            max_teams: 1,
             max_cost_usd: Some(5.0),
             ..Answers::default()
         };
@@ -481,11 +637,11 @@ mod tests {
     fn a_bad_flag_is_a_usage_error_naming_the_flag() {
         let mut d = draft();
         let mut flags = Flags::new();
-        flags.insert("max-concurrent", "9".into());
+        flags.insert("max-teams", "9".into());
         let (r, _) = run(&mut d, &flags, true, "");
         let e = r.unwrap_err();
         assert_eq!(e.exit_code(), 2);
-        assert!(e.message.contains("--max-concurrent"), "{}", e.message);
+        assert!(e.message.contains("--max-teams"), "{}", e.message);
     }
 
     #[test]
@@ -506,7 +662,7 @@ mod tests {
     fn the_concurrency_is_capped_by_the_rule() {
         let mut d = Draft::new(None, vec![], 1);
         let mut flags = Flags::new();
-        flags.insert("max-concurrent", "2".into());
+        flags.insert("max-teams", "2".into());
         assert!(run(&mut d, &flags, true, "").0.is_err());
     }
 
@@ -514,7 +670,7 @@ mod tests {
     fn no_usage_questions_without_the_guard() {
         let mut d = draft();
         d.answers.usage_guard = false;
-        let (r, shown) = run(&mut d, &Flags::new(), false, &"\n".repeat(5));
+        let (r, shown) = run(&mut d, &Flags::new(), false, &"\n".repeat(8));
         r.unwrap();
         assert!(!shown.contains("usage percent"));
         assert!(!shown.contains("resets"));
@@ -531,7 +687,7 @@ mod tests {
             &mut d,
             &Flags::new(),
             false,
-            "TM-9\nTM-1\n\nabc\n\n\n\n\n\n\n",
+            "TM-9\nTM-1\n\nabc\n\n\n\n\n\n\n\n\n\n\n",
         );
         r.unwrap();
         assert_eq!(d.picked, Some(vec!["TM-1".into()]));
@@ -542,6 +698,182 @@ mod tests {
         let mut d = draft();
         let e = run(&mut d, &Flags::new(), false, "").0.unwrap_err();
         assert!(e.message.contains("nothing was started"));
+    }
+
+    #[test]
+    fn the_old_max_concurrent_answer_seeds_max_teams() {
+        let d = Draft::new(
+            Some(Answers {
+                max_concurrent: 3,
+                ..Answers::default()
+            }),
+            vec![],
+            3,
+        );
+        assert_eq!(d.answers.max_teams, 3);
+    }
+
+    #[test]
+    fn max_teams_is_capped_by_the_rule_and_mirrors_into_max_concurrent() {
+        let mut d = Draft::new(
+            Some(Answers {
+                max_concurrent: 3,
+                ..Answers::default()
+            }),
+            vec![],
+            2,
+        );
+        run(&mut d, &Flags::new(), true, "").0.unwrap();
+        assert_eq!((d.answers.max_teams, d.answers.max_concurrent), (2, 2));
+        let mut d = draft();
+        let mut flags = Flags::new();
+        flags.insert("max-teams", "3".into());
+        run(&mut d, &flags, true, "").0.unwrap();
+        assert_eq!((d.answers.max_teams, d.answers.max_concurrent), (3, 3));
+        for bad in ["0", "4", "x"] {
+            let mut flags = Flags::new();
+            flags.insert("max-teams", bad.into());
+            assert!(run(&mut draft(), &flags, true, "").0.is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn team_size_and_mode_have_ranges_and_words() {
+        for (size, ok) in [("0", false), ("1", true), ("5", true), ("6", false)] {
+            let mut flags = Flags::new();
+            flags.insert("team-size", size.into());
+            assert_eq!(run(&mut draft(), &flags, true, "").0.is_ok(), ok, "{size}");
+        }
+        for (mode, want) in [
+            ("eco", Some(ModeSetting::Eco)),
+            ("HEAVY", Some(ModeSetting::Heavy)),
+            ("orchestrator", Some(ModeSetting::Orchestrator)),
+            ("fast", None),
+        ] {
+            let mut d = draft();
+            let mut flags = Flags::new();
+            flags.insert("team-mode", mode.into());
+            let (r, _) = run(&mut d, &flags, true, "");
+            match want {
+                Some(m) => assert_eq!(d.answers.team_mode, m),
+                None => assert!(r.unwrap_err().message.contains("--team-mode")),
+            }
+        }
+    }
+
+    #[test]
+    fn codex_forces_one_agent_per_team_and_says_so() {
+        let mut d = draft();
+        let mut flags = Flags::new();
+        flags.insert("profile", "codex".into());
+        flags.insert("team-size", "4".into());
+        let (r, shown) = run(&mut d, &flags, false, &"\n".repeat(9));
+        r.unwrap();
+        assert_eq!(d.answers.team_size, 1);
+        assert!(shown.contains("codex runs one agent per team"));
+        assert!(!shown.contains("Agents per team"));
+    }
+
+    #[test]
+    fn a_rule_that_is_already_on_codex_gets_one_agent_per_team() {
+        let mut d = draft().with_rule("codex", None);
+        run(&mut d, &Flags::new(), true, "").0.unwrap();
+        assert_eq!(d.answers.team_size, 1);
+        assert_eq!(d.profile(), "codex");
+    }
+
+    #[test]
+    fn codex_is_refused_when_the_rule_needs_a_mode_it_lacks() {
+        let mut flags = Flags::new();
+        flags.insert("profile", "codex".into());
+        let mut d = draft().with_rule("claude-code", Some("accept-edits"));
+        let e = run(&mut d, &flags, true, "").0.unwrap_err();
+        assert!(e.message.contains("--profile"), "{}", e.message);
+        assert!(e.message.contains("accept-edits"), "{}", e.message);
+        let mut d = draft().with_rule("claude-code", Some("bypass"));
+        run(&mut d, &flags, true, "").0.unwrap();
+        let mut d = draft().with_rule("claude-code", None);
+        run(&mut d, &flags, true, "").0.unwrap();
+    }
+
+    #[test]
+    fn a_remembered_codex_profile_is_rechecked_against_a_rule_mode() {
+        let mut d = Draft::new(
+            Some(Answers {
+                profile: Some("codex".into()),
+                ..Answers::default()
+            }),
+            vec![],
+            3,
+        )
+        .with_rule("claude-code", Some("plan"));
+        assert!(run(&mut d, &Flags::new(), true, "").0.is_err());
+    }
+
+    #[test]
+    fn only_claude_and_codex_profiles_are_accepted() {
+        for bad in ["agy", "nope", "opencode"] {
+            let mut flags = Flags::new();
+            flags.insert("profile", bad.into());
+            let e = run(&mut draft(), &flags, true, "").0.unwrap_err();
+            assert!(e.message.contains("--profile"), "{bad}: {}", e.message);
+        }
+        let mut flags = Flags::new();
+        flags.insert("profile", "claude-code".into());
+        run(&mut draft(), &flags, true, "").0.unwrap();
+    }
+
+    #[test]
+    fn only_skip_and_order_narrow_the_pick_and_are_never_remembered() {
+        let mut d = draft();
+        run(&mut d, &Flags::new(), true, "").0.unwrap();
+        let before = d.answers.clone();
+        d.restrict(Some("tm-1,TM-2"), Some("TM-1"), Some("TM-2"))
+            .unwrap();
+        assert!(!d.is_chosen("TM-1"));
+        assert!(d.is_chosen("TM-2"));
+        assert!(!d.is_chosen("TM-3"));
+        assert_eq!(d.order, vec!["TM-2".to_string()]);
+        assert_eq!(d.answers, before);
+        assert!(d.picked.is_none());
+    }
+
+    #[test]
+    fn only_works_on_top_of_the_picked_tasks() {
+        let mut d = draft();
+        d.picked = Some(vec!["TM-1".into(), "TM-2".into()]);
+        d.restrict(Some("TM-2,TM-3"), None, None).unwrap();
+        assert!(d.is_chosen("TM-2"));
+        assert!(!d.is_chosen("TM-1"));
+        assert!(!d.is_chosen("TM-3"));
+    }
+
+    #[test]
+    fn unknown_or_unchosen_keys_in_the_filters_are_usage_errors() {
+        let e = draft().restrict(Some("TM-9"), None, None).unwrap_err();
+        assert!(e.message.contains("--only") && e.message.contains("TM-9"));
+        let e = draft().restrict(None, Some("TM-9"), None).unwrap_err();
+        assert!(e.message.contains("--skip"));
+        let e = draft().restrict(None, None, Some("TM-9")).unwrap_err();
+        assert!(e.message.contains("--order"));
+        let e = draft()
+            .restrict(None, Some("TM-2"), Some("TM-1,TM-2"))
+            .unwrap_err();
+        assert!(e.message.contains("--order") && e.message.contains("TM-2"));
+        assert_eq!(e.exit_code(), 2);
+    }
+
+    #[test]
+    fn a_fresh_draft_carries_no_filters_from_the_remembered_answers() {
+        let mut d = draft();
+        d.restrict(Some("TM-1"), Some("TM-2"), Some("TM-1"))
+            .unwrap();
+        let json = serde_json::to_string(&d.answers).unwrap();
+        for word in ["only", "skip", "order", "dry"] {
+            assert!(!json.contains(word), "{word} in {json}");
+        }
+        let again = Draft::new(Some(d.answers.clone()), vec!["TM-1".into()], 3);
+        assert!(again.only.is_none() && again.skip.is_empty() && again.order.is_empty());
     }
 
     #[test]

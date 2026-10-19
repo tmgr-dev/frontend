@@ -155,7 +155,14 @@ fn the_help_lists_every_subcommand_and_flag() {
         "log",
         "--rule",
         "--tasks",
-        "--max-concurrent",
+        "--max-teams",
+        "--team-size",
+        "--team-mode",
+        "--profile",
+        "--only",
+        "--skip",
+        "--order",
+        "--dry-run",
         "--usage-soft",
         "--usage-hard",
         "--no-usage-limit",
@@ -618,8 +625,14 @@ impl Cloud {
             "r1",
             "--tasks",
             "all",
-            "--max-concurrent",
+            "--max-teams",
             "1",
+            "--profile",
+            "claude-code",
+            "--team-size",
+            "1",
+            "--team-mode",
+            "eco",
             "--usage-soft",
             "50",
             "--usage-hard",
@@ -823,6 +836,54 @@ async fn starting_signs_pins_enables_and_hosts_the_loop_until_stop() {
     let done = cloud.wait_status("stopped", |s| s["state"] == "stopped");
     assert_eq!(done["stop_reason"], "stopped by you");
     assert!(done["summary"].is_object(), "{done}");
+    assert!(!cloud.queue_enabled());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dry_run_signs_but_never_turns_the_queue_on() {
+    if !sandbox_usable() {
+        return;
+    }
+    let cloud = Cloud::new().await;
+    cloud.add_rule();
+    let mut p = cloud.start_pty(&["--dry-run"]);
+    let code = p.exit();
+    assert_eq!(code, 0, "{}", p.text());
+    let screen = p.text();
+    assert!(
+        screen.contains("Dry run: the orchestrator plans and triages only."),
+        "{screen}"
+    );
+    assert!(screen.contains("Dry run started"), "{screen}");
+    assert!(!screen.contains("turns the queue ON"), "{screen}");
+
+    let uploaded = cloud
+        .calls()
+        .await
+        .iter()
+        .filter(|c| c.1 == "/api/agent-runs/approvals/bulk")
+        .count();
+    assert_eq!(uploaded, 1);
+    assert!(!cloud.queue_enabled());
+    assert!(
+        cloud.audit().iter().all(|e| e["event"] != "enable"),
+        "{:?}",
+        cloud.audit()
+    );
+    let status = cloud.wait_status("a status file", |s| s["settings_id"].is_string());
+    let settings: Value = serde_json::from_str(
+        &std::fs::read_to_string(cloud.cfg().join(format!(
+            "autopilot/settings/{}.json",
+            status["settings_id"].as_str().unwrap()
+        )))
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(settings["dry_run"], true, "{settings}");
+    let answers = std::fs::read_to_string(cloud.cfg().join("autopilot-answers.json")).unwrap();
+    assert!(!answers.contains("dry"), "{answers}");
+    let stop = cloud.cmd(&["queue", "autopilot", "stop"]);
+    assert_eq!(stop.status.code(), Some(0), "{}", text(&stop.stderr));
     assert!(!cloud.queue_enabled());
 }
 

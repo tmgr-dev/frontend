@@ -18,6 +18,7 @@ use tmgr_usage::Tool;
 
 use super::interview::{self, Draft};
 use super::model::{Answers, Finish, LoopKind, Settings, QUEUE_SETTINGS_ID};
+use super::orchestrate::ModeSetting;
 use super::store::Store;
 use super::usage;
 use super::{render, StartArgs};
@@ -285,6 +286,20 @@ pub fn task_table(found: &[Found]) -> String {
     table(&rows)
 }
 
+const ORCHESTRATOR_PROFILE: &str = "claude-code";
+
+fn orchestrator_ready() -> Result<()> {
+    let dir = tmgr_runner::profile::user_dir();
+    let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
+    match set.get(ORCHESTRATOR_PROFILE) {
+        Some(p) if p.headless.is_some() => Ok(()),
+        _ => Err(Error::usage(
+            "the orchestrator needs the claude-code profile, which is not available",
+        )
+        .hint("tmgr agents list")),
+    }
+}
+
 pub fn agent_tool(profile: &str) -> Option<Tool> {
     let dir = tmgr_runner::profile::user_dir();
     let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
@@ -300,6 +315,9 @@ pub struct Plan {
     pub chosen: Vec<Found>,
     pub dropped: Vec<Found>,
     pub tool: Option<Tool>,
+    pub profile: String,
+    pub order: Vec<String>,
+    pub dry_run: bool,
     pub limits: Vec<super::model::LimitRow>,
     pub push: Option<String>,
     pub rules_text: String,
@@ -426,6 +444,36 @@ fn signed_texts(plan: &Plan) -> Vec<String> {
     warnings
 }
 
+const DRY_RUN_TEXT: &str = "Dry run: the orchestrator plans and triages only. Approvals are signed as usual so it can read the signed texts; nothing else changes: no status changes, no comments, no code, the queue stays off.";
+
+fn team_text(plan: &Plan) -> Vec<String> {
+    let a = &plan.answers;
+    let size = if plan.tool == Some(Tool::Codex) {
+        "1 agent per team (codex runs one agent per team)".to_string()
+    } else {
+        format!("{} agents per team (lead and workers)", a.team_size)
+    };
+    let mode = match a.team_mode {
+        ModeSetting::Orchestrator => "orchestrator (it chooses eco or heavy per task)",
+        m => interview::mode_word(m),
+    };
+    let mut lines = vec![
+        format!(
+            "Teams      up to {} at the same time, {size}, team mode {mode}",
+            a.max_teams.min(plan.rule.max_concurrent)
+        ),
+        format!("Profile    the teams run on {}", plan.profile),
+        "Orchestrator  runs on claude-code inside the runner sandbox and sees only the signed task texts (no comments, pages or other context); it plans the order and can name tasks that need feedback or are blocked".to_string(),
+    ];
+    if !plan.order.is_empty() {
+        lines.push(format!(
+            "Order      {} first, in this order, then the rest",
+            plan.order.join(", ")
+        ));
+    }
+    lines
+}
+
 pub fn summary_text(plan: &Plan) -> String {
     let a = &plan.answers;
     let sign = plan.to_sign();
@@ -467,19 +515,31 @@ pub fn summary_text(plan: &Plan) -> String {
         ));
     }
     lines.extend(signed_texts(plan));
-    lines.push(format!(
-        "Agents     turns the queue ON for every rule below and runs agents in the background on this machine, up to {} at the same time ({} is the rule's own limit)",
-        a.max_concurrent.min(plan.rule.max_concurrent),
-        plan.rule.max_concurrent
-    ));
+    lines.extend(team_text(plan));
+    if plan.dry_run {
+        lines.push(DRY_RUN_TEXT.into());
+    } else {
+        lines.push(format!(
+            "Agents     turns the queue ON for every rule below and runs agents in the background on this machine, up to {} teams at the same time ({} is the rule's own limit)",
+            a.max_teams.min(plan.rule.max_concurrent),
+            plan.rule.max_concurrent
+        ));
+    }
     lines.push(plan.rules_text.clone());
     lines.extend(limit_text(plan));
     lines.push(match &plan.push {
         Some(note) => format!("Push       {note}"),
         None => "Push       notifications are on".into(),
     });
-    lines.push("Finish     each task ends as a pull request; nothing is merged".into());
-    lines.push("Stop       `tmgr queue autopilot stop` (or `pause`); `tmgr queue autopilot status --watch` shows progress; stopping turns the queue off".into());
+    if plan.dry_run {
+        lines.push(
+            "Finish     nothing is started; the plan and the triage are shown in the status".into(),
+        );
+        lines.push("Stop       `tmgr queue autopilot stop`; `tmgr queue autopilot status --watch` shows the plan".into());
+    } else {
+        lines.push("Finish     each task ends as a pull request; nothing is merged".into());
+        lines.push("Stop       `tmgr queue autopilot stop` (or `pause`); `tmgr queue autopilot status --watch` shows progress; stopping turns the queue off".into());
+    }
     lines.join("\n")
 }
 
@@ -618,6 +678,14 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
             .hint("tmgr queue rules add --help"));
     }
     let handover = running_loop()?;
+    if args.dry_run && handover {
+        return Err(Error::new(
+            Kind::Conflict,
+            "a dry run cannot start while the queue loop is running",
+        )
+        .hint("tmgr queue disable"));
+    }
+    orchestrator_ready()?;
     let remembered = store.load_answers()?;
     let stdin = std::io::stdin();
     let mut err = std::io::stderr();
@@ -637,17 +705,6 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
 
     let now = Utc::now();
     let guard = !args.no_usage_limit;
-    let tool = agent_tool(&rule.profile);
-    let limits = if guard {
-        let tool = tool.ok_or_else(usage::unknown_tool)?;
-        let found = usage::read(&usage::Real, tool, now);
-        if !usage::has_real_number(&found) {
-            return Err(usage::refuse_without_numbers(tool));
-        }
-        found
-    } else {
-        Vec::new()
-    };
 
     let cloud = CliCloud::new(ctx);
     let ws = cloud
@@ -670,7 +727,8 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         remembered,
         found.iter().map(|f| f.key.clone()).collect(),
         rule.max_concurrent,
-    );
+    )
+    .with_rule(&rule.profile, rule.mode.as_deref());
     draft.answers.rule = Some(rule.name.clone());
     draft.answers.usage_guard = guard;
     interview::ask_all(
@@ -681,16 +739,37 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         &mut stdin.lock(),
         &mut err,
     )?;
+    draft.restrict(
+        args.only.as_deref(),
+        args.skip.as_deref(),
+        args.order.as_deref(),
+    )?;
+    let profile = draft.profile().to_string();
+    let tool = agent_tool(&profile);
+    let limits = if guard {
+        let tool = tool.ok_or_else(usage::unknown_tool)?;
+        let found = usage::read(&usage::Real, tool, now);
+        if !usage::has_real_number(&found) {
+            return Err(usage::refuse_without_numbers(tool));
+        }
+        found
+    } else {
+        Vec::new()
+    };
 
     let (chosen, dropped): (Vec<Found>, Vec<Found>) = found
         .into_iter()
-        .filter(|f| {
-            draft
-                .picked
-                .as_ref()
-                .is_none_or(|keys| keys.iter().any(|k| k == &f.key))
-        })
+        .filter(|f| draft.is_chosen(&f.key))
         .partition(|f| !matches!(f.approval, Approval::Refused(_)));
+    if let Some(k) = draft
+        .order
+        .iter()
+        .find(|k| !chosen.iter().any(|f| &f.key == *k))
+    {
+        return Err(Error::usage(format!(
+            "--order: {k} cannot be run, see the reasons in the list above"
+        )));
+    }
     if chosen.is_empty() {
         return Err(Error::usage("none of the chosen tasks can be run")
             .hint("see the reasons in the list above"));
@@ -706,6 +785,9 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         chosen,
         dropped,
         tool,
+        profile,
+        order: draft.order.clone(),
+        dry_run: args.dry_run,
         limits: usage::rows(&limits, soft, hard),
         push: push_note(ctx),
         rules_text: queue::rules_summary(&shown.file),
@@ -776,11 +858,13 @@ fn begin_after_handover(
         return Err(Error::new(Kind::Conflict, "no task could be approved")
             .hint(failure_text(&report, &plan.chosen)));
     }
-    queue::commit_enable(paths, shown_sha)?;
+    if !plan.dry_run {
+        queue::commit_enable(paths, shown_sha)?;
+    }
     match launch(paths, store, plan, &tasks, &report, handover) {
         Ok(out) => Ok(attach_failures(out, &report, &plan.chosen)),
         Err(e) => {
-            if !handover {
+            if !handover && !plan.dry_run {
                 let _ = tmgr_queue::switch::disable(paths, Some("autopilot did not start"));
             }
             Err(e)
@@ -798,6 +882,13 @@ fn launch(
 ) -> Result<Output> {
     store.save_answers(&plan.answers)?;
     let id = settings_id(Utc::now());
+    let order: Vec<i64> = plan
+        .order
+        .iter()
+        .filter_map(|k| plan.chosen.iter().find(|f| &f.key == k))
+        .map(|f| f.id)
+        .filter(|id| tasks.contains(id))
+        .collect();
     let settings = Settings {
         id: id.clone(),
         created_at: Utc::now(),
@@ -805,7 +896,7 @@ fn launch(
         rule: plan.rule.name.clone(),
         agent: plan
             .tool
-            .map_or_else(|| plan.rule.profile.clone(), |t| t.as_str().to_string()),
+            .map_or_else(|| plan.profile.clone(), |t| t.as_str().to_string()),
         mode: "auto".into(),
         finish: Finish::PrOnly,
         tasks: tasks.clone(),
@@ -817,18 +908,28 @@ fn launch(
         },
         kind: LoopKind::Drain,
         resume_queue: handover,
-        order: Vec::new(),
-        dry_run: false,
+        order,
+        dry_run: plan.dry_run,
     };
     store.save_settings(&settings)?;
-    tmgr_queue::switch::forget_queue_loop(paths);
+    if !plan.dry_run {
+        tmgr_queue::switch::forget_queue_loop(paths);
+    }
     let pid = start_hosted(&id)?;
-    Ok(Output::new(
-        json!({"id": id, "pid": pid, "tasks": tasks, "signed": report.signed}),
+    let human = if plan.dry_run {
+        format!(
+            "Dry run started ({} tasks). Watch the plan with `tmgr queue autopilot status --watch`; stop it with `tmgr queue autopilot stop`.",
+            tasks.len()
+        )
+    } else {
         format!(
             "Autopilot started ({} tasks). Watch it with `tmgr queue autopilot status --watch`; stop it with `tmgr queue autopilot stop`.",
             tasks.len()
-        ),
+        )
+    };
+    Ok(Output::new(
+        json!({"id": id, "pid": pid, "tasks": tasks, "signed": report.signed, "dry_run": plan.dry_run}),
+        human,
     ))
 }
 
@@ -1090,6 +1191,9 @@ mod tests {
                 ..found(3, false)
             }],
             tool: Some(Tool::Claude),
+            profile: "claude-code".into(),
+            order: vec![],
+            dry_run: false,
             limits: vec![],
             push: Some("push notifications are off".into()),
             rules_text: "Rules:\n  tm: TM project tm".into(),
@@ -1108,7 +1212,10 @@ mod tests {
             "TM-3  left out: refused: agent runs are off",
             "signs the approvals of the 1 tasks",
             "turns the queue ON",
-            "background on this machine, up to 2 at the same time",
+            "background on this machine, up to 2 teams at the same time",
+            "Teams      up to 2 at the same time, 3 agents per team (lead and workers), team mode orchestrator (it chooses eco or heavy per task)",
+            "Profile    the teams run on claude-code",
+            "runs on claude-code inside the runner sandbox and sees only the signed task texts",
             "tm: TM project tm",
             "no new tasks at 50%, running agents paused at 80%",
             "cost of API-key runs: $20, hours: none, tasks started: none",
@@ -1121,6 +1228,43 @@ mod tests {
         let s = summary_text(&plan(false, false));
         assert!(s.contains("nothing to sign"));
         assert!(s.contains("NO usage limit"));
+    }
+
+    #[test]
+    fn the_summary_lists_teams_profile_order_and_mode() {
+        let mut p = plan(false, true);
+        p.answers.max_teams = 1;
+        p.answers.team_size = 2;
+        p.answers.team_mode = ModeSetting::Heavy;
+        p.profile = "codex".into();
+        p.tool = Some(Tool::Codex);
+        p.order = vec!["TM-2".into(), "TM-1".into()];
+        let s = summary_text(&p);
+        for needle in [
+            "Teams      up to 1 at the same time, 1 agent per team (codex runs one agent per team), team mode heavy",
+            "Profile    the teams run on codex",
+            "Order      TM-2, TM-1 first, in this order, then the rest",
+            "up to 1 teams at the same time",
+        ] {
+            assert!(s.contains(needle), "missing {needle:?} in\n{s}");
+        }
+        assert!(!summary_text(&plan(false, true)).contains("Order "));
+    }
+
+    #[test]
+    fn the_dry_run_summary_says_nothing_but_planning_happens() {
+        let mut p = plan(true, true);
+        p.dry_run = true;
+        let s = summary_text(&p);
+        for needle in [
+            "Dry run: the orchestrator plans and triages only. Approvals are signed as usual so it can read the signed texts; nothing else changes: no status changes, no comments, no code, the queue stays off.",
+            "signs the approvals of the 1 tasks",
+            "tmgr queue autopilot status --watch",
+        ] {
+            assert!(s.contains(needle), "missing {needle:?} in\n{s}");
+        }
+        assert!(!s.contains("turns the queue ON"));
+        assert!(!s.contains("stopping turns the queue off"));
     }
 
     #[test]

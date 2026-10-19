@@ -64,9 +64,32 @@ pub struct StartArgs {
     /// all, or task keys separated by commas
     #[arg(long, value_name = "all|KEYS")]
     pub tasks: Option<String>,
-    /// Agents at the same time, at most the rule's limit
+    /// Teams at the same time, at most the rule's limit
     #[arg(long, value_name = "N")]
+    pub max_teams: Option<String>,
+    #[arg(long, value_name = "N", hide = true, conflicts_with = "max_teams")]
     pub max_concurrent: Option<String>,
+    /// Agents per team, lead and workers (1 to 5)
+    #[arg(long, value_name = "N")]
+    pub team_size: Option<String>,
+    /// Team mode: eco, heavy, or orchestrator (the orchestrator chooses per task)
+    #[arg(long, value_name = "eco|heavy|orchestrator")]
+    pub team_mode: Option<String>,
+    /// Agent profile for the teams: claude-code or codex (default: the rule's profile)
+    #[arg(long, value_name = "NAME")]
+    pub profile: Option<String>,
+    /// Work only on these task keys (within --tasks)
+    #[arg(long, value_name = "KEYS")]
+    pub only: Option<String>,
+    /// Leave these task keys out
+    #[arg(long, value_name = "KEYS")]
+    pub skip: Option<String>,
+    /// Start these task keys first, in this order
+    #[arg(long, value_name = "KEYS")]
+    pub order: Option<String>,
+    /// Plan and triage only: nothing is started, moved or commented
+    #[arg(long)]
+    pub dry_run: bool,
     /// Stop starting new tasks at this usage percent
     #[arg(long, value_name = "PCT")]
     pub usage_soft: Option<String>,
@@ -99,7 +122,17 @@ impl StartArgs {
             }
         };
         put("tasks", &self.tasks);
-        put("max-concurrent", &self.max_concurrent);
+        put(
+            "max-teams",
+            if self.max_teams.is_some() {
+                &self.max_teams
+            } else {
+                &self.max_concurrent
+            },
+        );
+        put("team-size", &self.team_size);
+        put("team-mode", &self.team_mode);
+        put("profile", &self.profile);
         put("usage-soft", &self.usage_soft);
         put("usage-hard", &self.usage_hard);
         put("resume-after-reset", &self.resume_after_reset);
