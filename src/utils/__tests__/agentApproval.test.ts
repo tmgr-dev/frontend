@@ -153,6 +153,14 @@ describe('repository sets (v2)', () => {
 		expect(() => canonicalRepos(list)).toThrow();
 		await expect(reposSha256(list)).rejects.toThrow();
 	});
+
+	it.each([['tmgr-dev/.'], ['tmgr-dev/..']])(
+		'a repo part of %s is refused',
+		async (name) => {
+			expect(() => canonicalRepos([name])).toThrow();
+			await expect(reposSha256([name])).rejects.toThrow();
+		},
+	);
 });
 
 describe('apiHostOf', () => {

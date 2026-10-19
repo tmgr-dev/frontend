@@ -276,7 +276,12 @@ export const autoSignAfterSave = async (
 			throw error;
 		window.dispatchEvent(
 			new CustomEvent(APPROVAL_CHANGED, {
-				detail: { taskId: task.id, repositoriesChanged: true },
+				detail: {
+					taskId: task.id,
+					...(code === 'repositories_changed'
+						? { repositoriesChanged: true }
+						: {}),
+				},
 			}),
 		);
 		return;

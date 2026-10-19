@@ -31,7 +31,8 @@ export const canonicalRepos = (names: readonly string[]): string[] => {
 		if (
 			typeof name !== 'string' ||
 			!REPO_NAME.test(name) ||
-			name.endsWith('.git')
+			name.endsWith('.git') ||
+			['.', '..'].includes(name.split('/')[1])
 		)
 			throw new Error(`invalid repository name: ${name}`);
 	}
