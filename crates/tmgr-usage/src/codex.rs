@@ -214,7 +214,7 @@ fn parse_ts(s: Option<&str>) -> Option<DateTime<Utc>> {
         .map(|t| t.with_timezone(&Utc))
 }
 
-fn classify(minutes: u64) -> LimitWindow {
+pub(crate) fn classify(minutes: u64) -> LimitWindow {
     match minutes {
         300 => LimitWindow::Session,
         10080 => LimitWindow::Weekly,

@@ -34,6 +34,7 @@ impl LimitWindow {
 pub enum LimitSource {
     Rollout,
     Statusline,
+    Probe,
 }
 
 impl LimitSource {
@@ -41,6 +42,7 @@ impl LimitSource {
         match self {
             LimitSource::Rollout => "rollout",
             LimitSource::Statusline => "statusline",
+            LimitSource::Probe => "probe",
         }
     }
 
@@ -48,6 +50,7 @@ impl LimitSource {
         match key {
             "rollout" => Some(LimitSource::Rollout),
             "statusline" => Some(LimitSource::Statusline),
+            "probe" => Some(LimitSource::Probe),
             _ => None,
         }
     }
