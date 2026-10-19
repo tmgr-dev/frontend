@@ -293,7 +293,7 @@ fn signed_persona(
         )
     };
     let p = e.persona.as_ref().ok_or_else(changed)?;
-    if p.instructions.len() > MAX_PERSONA_BYTES
+    if tmgr_core::approval::norm(&p.instructions).len() > MAX_PERSONA_BYTES
         || persona_sha256(&p.id, &p.name, &p.instructions).as_deref() != Ok(want)
     {
         return Err(changed());
@@ -2813,6 +2813,25 @@ mod tests {
             );
             assert_eq!(r.fix, RECONFIRM);
         }
+    }
+
+    #[test]
+    fn the_persona_size_cap_is_measured_after_crlf_becomes_lf() {
+        let id = fx()["cases_v3"][0]["persona"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let try_with = |text: String| {
+            let mut b = bundle_v3(0);
+            b["persona"]["instructions"] = json!(text);
+            let want = persona_sha256(&id, "Agent \u{b7} Team", &text).unwrap();
+            signed_persona(&parse_eligibility(b).unwrap(), Some(&want))
+        };
+        let crlf = "a\r\n".repeat(16384);
+        assert!(crlf.len() > MAX_PERSONA_BYTES);
+        assert!(try_with(crlf).unwrap().is_some());
+        let over = "a\r\n".repeat(16384) + "b";
+        assert!(try_with(over).is_err());
     }
 
     #[test]

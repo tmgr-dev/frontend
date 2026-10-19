@@ -1174,6 +1174,21 @@ fn owner_text_validation() {
     p.instructions_sha256 = sha256_hex(max.as_bytes());
     p.instructions = Some(max);
     assert_eq!(b.validate(), Ok(()));
+    let crlf = "a\r\n".repeat(16384);
+    let mut b = owner_bundle();
+    let p = b.persona.as_mut().unwrap();
+    p.instructions_sha256 = sha256_hex(crlf.as_bytes());
+    p.instructions = Some(crlf);
+    assert_eq!(b.validate(), Ok(()));
+    let over = "a\r\n".repeat(16384) + "b";
+    bad(
+        &|b| {
+            let p = b.persona.as_mut().unwrap();
+            p.instructions_sha256 = sha256_hex(over.as_bytes());
+            p.instructions = Some(over.clone());
+        },
+        "persona.instructions must be at most 32768",
+    );
 
     let page = |n: i64, body: String| BundlePage {
         id: n,

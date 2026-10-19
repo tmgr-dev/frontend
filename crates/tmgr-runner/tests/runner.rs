@@ -4748,6 +4748,7 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
         );
     }
     assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(!fx.clone.join(".tmgr/task.md").exists());
 }
 
 #[test]

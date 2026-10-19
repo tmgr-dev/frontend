@@ -123,7 +123,7 @@ impl RunBundle {
                 );
             }
             if let Some(i) = &p.instructions {
-                if i.len() > MAX_PERSONA_INSTRUCTIONS {
+                if i.replace("\r\n", "\n").len() > MAX_PERSONA_INSTRUCTIONS {
                     return Err(format!(
                         "persona.instructions must be at most {MAX_PERSONA_INSTRUCTIONS} bytes"
                     ));
