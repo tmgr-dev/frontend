@@ -43,12 +43,16 @@ prompts. Only the runner sandbox keeps an agent away from the rules in ~/.config
 #[derive(Subcommand)]
 pub enum QueueCommand {
     /// Show the queue: switch, rules, pickups, pending approvals and the audit chain
-    Status,
+    Status {
+        /// Print the summary, then new events of the background loop until Ctrl+C
+        #[arg(long, visible_aliases = ["watch", "follow"])]
+        tail: bool,
+    },
     /// Stop picking up work immediately
     Pause,
     /// Continue picking up work
     Resume,
-    /// Turn the queue on (needs a terminal and a typed confirmation)
+    /// Turn the queue on and let it run by itself in the background (needs a terminal and a typed confirmation)
     Enable,
     /// Turn the queue off
     Disable {
@@ -249,7 +253,14 @@ fn record(paths: &Paths, event: &str, sha: &str, fields: Value) -> Result<()> {
 pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
     let paths = Paths::from_env()?;
     match cmd {
-        QueueCommand::Status => status(&paths),
+        QueueCommand::Status { tail } => {
+            if *tail {
+                let line = queue_line(&paths)?;
+                super::autopilot::tail::run(&line, cli.json)
+            } else {
+                status(&paths)
+            }
+        }
         QueueCommand::Pause => set_paused(&paths, true),
         QueueCommand::Resume => {
             not_in_agent_session()?;
@@ -286,6 +297,16 @@ fn shown_status(p: &state::Pickup) -> &'static str {
     }
 }
 
+fn queue_line(paths: &Paths) -> Result<String> {
+    let loaded = rules::load(paths)?;
+    let st = state::load(paths)?;
+    Ok(format!(
+        "Queue is {}{}.",
+        if loaded.file.enabled { "on" } else { "off" },
+        if st.paused { " (paused)" } else { "" }
+    ))
+}
+
 fn status(paths: &Paths) -> Result<Output> {
     let loaded = rules::load(paths)?;
     let tampered = rules::is_tampered(paths, &loaded)?;
@@ -318,6 +339,8 @@ fn status(paths: &Paths) -> Result<Output> {
             audit["reason"].as_str().unwrap_or("")
         ));
     }
+    let (background, background_line) = super::autopilot::queue_loop::view();
+    lines.push(background_line);
     lines.push(rules_summary(&loaded.file));
     let rows: Vec<Vec<String>> = st
         .pickups
@@ -340,7 +363,8 @@ fn status(paths: &Paths) -> Result<Output> {
     }
     Ok(Output::new(
         json!({"enabled": loaded.file.enabled, "paused": st.paused, "tampered": tampered,
-            "audit": audit, "rules": loaded.file.rules, "pickups": pickups}),
+            "audit": audit, "rules": loaded.file.rules, "pickups": pickups,
+            "background": background}),
         lines.join("\n"),
     ))
 }
@@ -365,7 +389,8 @@ fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     privileged::guard()?;
     let shown = validated_rules(ctx, paths)?;
     agree(&rules_summary(&shown.file))?;
-    commit_enable(paths, shown.sha256.as_deref())
+    let out = commit_enable(paths, shown.sha256.as_deref())?;
+    Ok(super::autopilot::queue_loop::after_enable(paths, out))
 }
 
 pub(crate) fn validated_rules(ctx: &Ctx, paths: &Paths) -> Result<rules::Loaded> {

@@ -1,10 +1,12 @@
 pub mod control;
 pub mod interview;
 pub mod model;
+pub mod queue_loop;
 pub mod render;
 pub mod serve;
 pub mod start;
 pub mod store;
+pub mod tail;
 pub mod usage;
 
 use clap::{Args, Subcommand};

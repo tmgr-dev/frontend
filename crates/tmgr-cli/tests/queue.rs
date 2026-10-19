@@ -18,6 +18,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_tmgr");
 struct Fx {
     tmp: TempDir,
     homes: TempDir,
+    background: bool,
 }
 
 fn private_tmp(prefix: &str) -> TempDir {
@@ -116,6 +117,7 @@ impl Fx {
         let fx = Fx {
             tmp: private_tmp("qt"),
             homes: private_tmp("qh"),
+            background: false,
         };
         std::fs::create_dir(fx.runner_dir()).unwrap();
         std::fs::set_permissions(
@@ -349,9 +351,15 @@ impl Fx {
         );
     }
 
+    fn with_background_loop() -> Fx {
+        let mut fx = Fx::new();
+        fx.background = true;
+        fx
+    }
+
     fn envs(&self) -> Vec<(String, String)> {
         let t = self.tmp.path();
-        [
+        let mut list: Vec<(String, String)> = [
             ("HOME", t.to_path_buf()),
             ("XDG_CONFIG_HOME", t.join("xdg")),
             ("XDG_STATE_HOME", t.join("state")),
@@ -372,7 +380,13 @@ impl Fx {
         ]
         .into_iter()
         .map(|(k, v)| (k.to_string(), v.to_string_lossy().into_owned()))
-        .collect()
+        .collect();
+        if self.background {
+            list.push(("TMGR_TEST_AUTOPILOT_TICK_MS".into(), "200".into()));
+        } else {
+            list.push(("TMGR_TEST_NO_QUEUE_LOOP".into(), "1".into()));
+        }
+        list
     }
 
     fn cmd(&self) -> assert_cmd::Command {
@@ -1395,7 +1409,7 @@ fn autopilot_stop_command_interrupts_the_run_and_still_turns_the_queue_off() {
 }
 
 #[test]
-fn autopilot_sigterm_stops_it_like_the_stop_command() {
+fn autopilot_sigterm_suspends_it_and_leaves_the_queue_and_the_run_alone() {
     if !sandbox_usable() {
         return;
     }
@@ -1433,7 +1447,226 @@ fn autopilot_sigterm_stops_it_like_the_stop_command() {
     let status = fx.wait_exit(&mut child);
     assert!(status.success(), "{status:?}");
     let s = fx.autopilot_status().unwrap();
-    assert_eq!(s["state"], "stopped");
-    assert_eq!(s["stop_reason"], "stopped by SIGTERM");
-    assert!(!fx.queue_enabled());
+    assert_eq!(s["state"], "suspended");
+    assert!(s["stop_reason"].is_null());
+    assert!(fx.queue_enabled());
+    let mut c = tmgr_runner::client::Client::connect(&fx.runner_dir()).unwrap();
+    assert!(c
+        .list()
+        .unwrap()
+        .iter()
+        .any(|s| s.state.kind != tmgr_ipc::api::StateKind::Exited));
+}
+
+impl Fx {
+    fn background_rule(&self) {
+        self.task(1, "Write the report", "Summarise the quarter");
+        assert_eq!(self.add_rule("r1", &["--auto"]).0, 0);
+    }
+
+    fn enable_output(&self) -> String {
+        let (code, screen) = self.confirmed(&["queue", "enable"], "I AGREE");
+        assert_eq!(code, 0, "{screen}");
+        screen
+    }
+
+    fn log_kinds(&self) -> Vec<String> {
+        std::fs::read_to_string(self.autopilot_dir().join("log.jsonl"))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|v| v["kind"].as_str().map(str::to_string))
+            .collect()
+    }
+
+    fn wait_runner_gone(&self) {
+        let end = Instant::now() + Duration::from_secs(30);
+        while self.runner_dir().join("runner.pid").exists() {
+            assert!(Instant::now() < end, "the runner did not exit");
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    fn wait_loop_done(&self) -> Value {
+        self.wait_autopilot("the task done", |s| {
+            s["settings_id"] == "queue" && s["tasks"]["done_pr"] == 1
+        })
+    }
+}
+
+#[test]
+fn enabling_the_queue_starts_the_loop_that_works_the_queue_without_run_once() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::with_background_loop();
+    fx.background_rule();
+    let screen = fx.enable_output();
+    let flat = screen.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(flat.contains("runs by itself"), "{screen}");
+    let s = fx.wait_loop_done();
+    assert_eq!(s["kind"], "queue");
+    assert_eq!(s["state"], "running");
+    assert_eq!(s["rule"], "all");
+    assert!(fx.queue_enabled(), "nothing left does not stop the loop");
+    thread::sleep(Duration::from_millis(800));
+    assert_eq!(fx.autopilot_status().unwrap()["state"], "running");
+    let kinds = fx.log_kinds();
+    for kind in ["started", "picked", "running", "done"] {
+        assert!(kinds.iter().any(|k| k == kind), "{kind} in {kinds:?}");
+    }
+    let status = fx.json(&["status"]);
+    assert_eq!(status["data"]["background"]["running"], true, "{status}");
+    let human = text(&fx.run(&["queue", "status"]).stdout);
+    assert!(human.contains("Background loop: running"), "{human}");
+}
+
+#[test]
+fn disabling_the_queue_ends_the_loop() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::with_background_loop();
+    fx.background_rule();
+    fx.enable_output();
+    fx.wait_loop_done();
+    assert_eq!(fx.json(&["disable"])["data"]["enabled"], false);
+    let s = fx.wait_autopilot("stopped", |s| s["state"] == "stopped");
+    assert_eq!(s["stop_reason"], "the queue was turned off");
+    let end = Instant::now() + Duration::from_secs(20);
+    loop {
+        let human = text(&fx.run(&["queue", "status"]).stdout);
+        if human.contains("Background loop: not running") {
+            break;
+        }
+        assert!(Instant::now() < end, "{human}");
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn a_runner_restart_suspends_the_loop_and_starts_it_again_with_its_numbers() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::with_background_loop();
+    fx.background_rule();
+    fx.enable_output();
+    let before = fx.wait_loop_done();
+    let out = fx.run(&["runner", "stop"]);
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    fx.wait_runner_gone();
+    let s = fx.wait_autopilot("suspended", |s| s["state"] == "suspended");
+    assert_eq!(s["started_at"], before["started_at"]);
+    assert!(fx.queue_enabled());
+    fx.start_runner();
+    let after = fx.wait_autopilot("resumed", |s| {
+        s["state"] == "running" && s["events"].to_string().contains("\"resumed\"")
+    });
+    assert_eq!(after["started_at"], before["started_at"]);
+    assert_eq!(after["tasks"]["done_pr"], 1);
+    assert_eq!(
+        fx.log_kinds().iter().filter(|k| *k == "picked").count(),
+        1,
+        "the task is not picked a second time"
+    );
+    assert!(fx.queue_enabled());
+}
+
+#[test]
+fn a_runner_that_starts_with_the_queue_on_and_no_status_starts_the_loop() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::with_background_loop();
+    fx.background_rule();
+    fx.enable_output();
+    let before = fx.wait_loop_done();
+    assert!(fx.run(&["runner", "stop"]).status.success());
+    fx.wait_runner_gone();
+    fx.wait_autopilot("suspended", |s| s["state"] == "suspended");
+    std::fs::remove_file(fx.autopilot_dir().join("status.json")).unwrap();
+    fx.start_runner();
+    let s = fx.wait_autopilot("started again", |s| {
+        s["settings_id"] == "queue" && s["state"] == "running"
+    });
+    assert_ne!(s["started_at"], before["started_at"]);
+    assert!(!s["events"].to_string().contains("\"resumed\""));
+}
+
+#[test]
+fn the_tail_prints_the_summary_and_then_only_new_events() {
+    let fx = Fx::new();
+    fx.start_runner();
+    let dir = fx.autopilot_dir();
+    std::fs::create_dir_all(&dir).unwrap();
+    let log = dir.join("log.jsonl");
+    std::fs::write(
+        &log,
+        "{\"at\":\"2026-10-19T10:00:00Z\",\"kind\":\"picked\",\"task\":\"WK-1\",\"text\":\"old event\"}\n",
+    )
+    .unwrap();
+    let mut c = std::process::Command::new(BIN);
+    c.current_dir(fx.tmp.path()).env_clear();
+    for (k, v) in fx.envs() {
+        c.env(k, v);
+    }
+    let mut child = c
+        .args(["queue", "status", "--tail"])
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let out = child.stdout.take().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            if tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut seen = Vec::new();
+    let mut wait = |needle: &str| {
+        let end = Instant::now() + Duration::from_secs(20);
+        while !seen.iter().any(|l: &String| l.contains(needle)) {
+            let left = end.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left) {
+                Ok(l) => seen.push(l),
+                Err(_) => {
+                    let _ = child.kill();
+                    panic!("no {needle:?} in {seen:?}");
+                }
+            }
+        }
+    };
+    wait("New events");
+    {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(
+            f,
+            "{{\"at\":\"2026-10-19T10:01:00Z\",\"kind\":\"pr\",\"task\":\"WK-2\",\"text\":\"fresh event\"}}"
+        )
+        .unwrap();
+    }
+    wait("fresh event");
+    let _ = child.kill();
+    let _ = child.wait();
+    let after = seen.iter().position(|l| l.contains("New events")).unwrap();
+    assert!(
+        !seen[after..].iter().any(|l| l.contains("old event")),
+        "{seen:?}"
+    );
+}
+
+#[test]
+fn the_tail_is_not_available_as_json() {
+    let fx = Fx::new();
+    let out = fx.run(&["--json", "queue", "status", "--tail"]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out.stderr));
+    for alias in ["--watch", "--follow"] {
+        let out = fx.run(&["--json", "queue", "status", alias]);
+        assert_eq!(out.status.code(), Some(2), "{alias}");
+    }
 }

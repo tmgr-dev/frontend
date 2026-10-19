@@ -8,6 +8,7 @@ use tmgr_core::approval::{canonical_repos, AllowFile, CloudApproval};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::caps::AUTOPILOT_V1;
+use tmgr_ipc::api::AutopilotCommand;
 use tmgr_link::privileged;
 use tmgr_queue::cloud::{CloudApi, CloudWorkspace};
 use tmgr_queue::rules::{self, Rule};
@@ -15,7 +16,7 @@ use tmgr_queue::Paths;
 use tmgr_usage::Tool;
 
 use super::interview::{self, Draft};
-use super::model::{Answers, Finish, LoopKind, Settings};
+use super::model::{Answers, Finish, LoopKind, Settings, QUEUE_SETTINGS_ID};
 use super::store::Store;
 use super::usage;
 use super::{render, StartArgs};
@@ -31,6 +32,7 @@ use crate::out::{table, Output};
 const LIST_CAP: usize = 40;
 const TITLE_WIDTH: usize = 48;
 const IO_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+const HANDOVER_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Approval {
@@ -397,43 +399,68 @@ fn settings_id(now: DateTime<Utc>) -> String {
     format!("ap-{}", now.format("%Y%m%d-%H%M%S"))
 }
 
-fn already_running() -> Result<()> {
-    let Some(mut client) = super::control::connect_running()? else {
-        return Ok(());
-    };
-    if !client.welcome().caps.iter().any(|c| c == AUTOPILOT_V1) {
-        return Err(Error::new(
-            Kind::Conflict,
-            "the running runner is older than this tmgr and cannot host autopilot",
-        )
-        .hint(format!(
-            "{0} runner stop && {0} runner start",
-            crate::cmd::runner::bin()
-        )));
-    }
-    match client.autopilot_status() {
-        Ok(s) if s.running => Err(Error::new(Kind::Conflict, "autopilot is already running")
-            .hint("tmgr queue autopilot status")),
-        _ => Ok(()),
-    }
+fn too_old() -> Error {
+    Error::new(
+        Kind::Conflict,
+        "the running runner is older than this tmgr and cannot host autopilot",
+    )
+    .hint(format!(
+        "{0} runner stop && {0} runner start",
+        crate::cmd::runner::bin()
+    ))
 }
 
-fn start_hosted(id: &str) -> Result<u32> {
+pub fn hosted_client() -> Result<tmgr_runner::client::Client> {
     let cfg = runner_config()?;
     tmgr_runner::daemon::start_background(&cfg).map_err(rerr)?;
-    let mut client = connect(&cfg)?;
+    let client = connect(&cfg)?;
     client.set_timeouts(IO_TIMEOUT).map_err(rerr)?;
     if !client.welcome().caps.iter().any(|c| c == AUTOPILOT_V1) {
-        return Err(Error::new(
-            Kind::Conflict,
-            "the running runner is older than this tmgr and cannot host autopilot",
-        )
-        .hint(format!(
-            "{0} runner stop && {0} runner start",
-            crate::cmd::runner::bin()
-        )));
+        return Err(too_old());
     }
-    client.autopilot_start(id).map(|s| s.pid).map_err(rerr)
+    Ok(client)
+}
+
+pub fn start_hosted(id: &str) -> Result<u32> {
+    hosted_client()?
+        .autopilot_start(id)
+        .map(|s| s.pid)
+        .map_err(rerr)
+}
+
+pub fn hand_over() -> Result<()> {
+    let mut client = hosted_client()?;
+    match client.autopilot_control(AutopilotCommand::Suspend) {
+        Ok(_) => {}
+        Err(e) if e.to_string().starts_with("not_running: ") => return Ok(()),
+        Err(e) => return Err(rerr(e)),
+    }
+    let end = std::time::Instant::now() + HANDOVER_WAIT;
+    while client.autopilot_status().map_err(rerr)?.running {
+        if std::time::Instant::now() >= end {
+            return Err(Error::new(
+                Kind::Conflict,
+                "the queue loop did not suspend in time",
+            ));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Ok(())
+}
+
+fn running_loop() -> Result<bool> {
+    let Some(mut client) = super::control::connect_running()? else {
+        return Ok(false);
+    };
+    if !client.welcome().caps.iter().any(|c| c == AUTOPILOT_V1) {
+        return Err(too_old());
+    }
+    match client.autopilot_status() {
+        Ok(s) if s.running && s.status["settings_id"] == QUEUE_SETTINGS_ID => Ok(true),
+        Ok(s) if s.running => Err(Error::new(Kind::Conflict, "autopilot is already running")
+            .hint("tmgr queue autopilot status")),
+        _ => Ok(false),
+    }
 }
 
 fn push_note(ctx: &Ctx) -> Option<String> {
@@ -463,7 +490,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         return Err(Error::usage("autopilot needs a rule for a cloud workspace")
             .hint("tmgr queue rules add --help"));
     }
-    already_running()?;
+    let handover = running_loop()?;
     let remembered = store.load_answers()?;
     let stdin = std::io::stdin();
     let mut err = std::io::stderr();
@@ -560,7 +587,14 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         tz: super::control::local_offset(),
     };
     queue::agree(&summary_text(&plan))?;
-    begin(ctx, &paths, &store, &plan, shown.sha256.as_deref())
+    begin(
+        ctx,
+        &paths,
+        &store,
+        &plan,
+        shown.sha256.as_deref(),
+        handover,
+    )
 }
 
 fn begin(
@@ -569,6 +603,7 @@ fn begin(
     store: &Store,
     plan: &Plan,
     shown_sha: Option<&str>,
+    handover: bool,
 ) -> Result<Output> {
     let client = ctx.cloud_client()?;
     let cloud = CliCloud::new(ctx);
@@ -595,10 +630,14 @@ fn begin(
             .hint(failure_text(&report, &plan.chosen)));
     }
     queue::commit_enable(paths, shown_sha)?;
-    match launch(store, plan, &tasks, &report) {
+    match launch(store, plan, &tasks, &report, handover) {
         Ok(out) => Ok(attach_failures(out, &report, &plan.chosen)),
         Err(e) => {
-            let _ = tmgr_queue::switch::disable(paths, Some("autopilot did not start"));
+            if handover {
+                let _ = start_hosted(QUEUE_SETTINGS_ID);
+            } else {
+                let _ = tmgr_queue::switch::disable(paths, Some("autopilot did not start"));
+            }
             Err(e)
         }
     }
@@ -609,6 +648,7 @@ fn launch(
     plan: &Plan,
     tasks: &BTreeSet<i64>,
     report: &SignReport,
+    handover: bool,
 ) -> Result<Output> {
     store.save_answers(&plan.answers)?;
     let id = settings_id(Utc::now());
@@ -632,6 +672,9 @@ fn launch(
         kind: LoopKind::Drain,
     };
     store.save_settings(&settings)?;
+    if handover {
+        hand_over()?;
+    }
     let pid = start_hosted(&id)?;
     Ok(Output::new(
         json!({"id": id, "pid": pid, "tasks": tasks, "signed": report.signed}),

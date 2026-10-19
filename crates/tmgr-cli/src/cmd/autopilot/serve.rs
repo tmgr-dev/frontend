@@ -339,11 +339,7 @@ impl<'a> Autopilot<'a> {
 
     fn selected(&self, st: &State) -> BTreeSet<i64> {
         if self.queue_mode {
-            st.pickups
-                .iter()
-                .filter(|p| !p.released)
-                .map(|p| p.task.task_id)
-                .collect()
+            st.pickups.iter().map(|p| p.task.task_id).collect()
         } else {
             self.s.tasks.clone()
         }
@@ -450,8 +446,16 @@ impl<'a> Autopilot<'a> {
                     Class::InWork => {
                         self.steps.insert(p.id.clone(), step_of(p));
                     }
+                    Class::Taken if resumed => {
+                        self.noted_skips.insert(p.task.task_id);
+                    }
                     _ => {}
                 }
+            }
+            if resumed {
+                self.noted_skips.extend(skipped_ids(&st));
+                let now = self.now();
+                self.observe(&st, now);
             }
         }
         if !resumed {
