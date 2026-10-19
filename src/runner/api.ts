@@ -1,3 +1,4 @@
+import type { AllowedEntry } from '@/utils/agentApprovalPolicy';
 import { desktopPlatform, isDesktopApp } from '@/utils/desktop';
 import { Channel, invoke } from '@tauri-apps/api/core';
 
@@ -151,3 +152,11 @@ export const runnerTermDetach = (): Promise<void> =>
 
 export const runnerTermOpenLink = (url: string): Promise<void> =>
 	invoke<void>('runner_term_open_link', { url });
+
+export interface RunnerAllowedList {
+	entries: AllowedEntry[];
+	error: string | null;
+}
+
+export const runnerAllowedList = (): Promise<RunnerAllowedList> =>
+	invoke<RunnerAllowedList>('runner_allowed_list');
