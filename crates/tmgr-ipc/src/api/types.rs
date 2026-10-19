@@ -286,6 +286,8 @@ pub struct IdParams {
 pub struct KillParams {
     pub id: String,
     pub signal: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

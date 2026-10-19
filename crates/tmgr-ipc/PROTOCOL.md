@@ -114,6 +114,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
 | `trusted_folders.v1` | `trust.list`, `trust.add`, `trust.remove` (section 5, "Trusted folders") |
 | `trust_via_repo.v1` | `trust_via_repo` on `runs.create` (section 5, "Trusted folders") |
+| `autopilot.v1` | `autopilot.start`, `autopilot.status`, `autopilot.control`, `autopilot.log`; `reason` on `sessions.kill` (section 5, "Autopilot") |
 
 ## 5. Messages after the handshake
 
@@ -148,7 +149,11 @@ missing params) and `internal`.
 | `trust.list` | none | `[TrustedFolder]` (`{path, dev, ino, added_ms, how}`) | | any client except `worker`; cap `trusted_folders.v1` |
 | `trust.add` | `{path, dev?, ino?}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
 | `trust.remove` | `{path}` | `{removed}` | | `client: "cli"` only; cap `trusted_folders.v1` |
-| `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
+| `sessions.kill` | `{id, signal, reason?}` (`term`, `kill`, `int`, `hup`; `reason` at most 200 characters, control characters become `?`) | `null` | `not_found`, `not_running`, `invalid_params` | any |
+| `autopilot.start` | `{settings_id}` (`[a-z0-9-]`, 1 to 64) | `{pid}` | `forbidden`, `busy`, `invalid_params` | `client: "cli"` only; cap `autopilot.v1` |
+| `autopilot.status` | none | `{running, pid?, status}` (`status` is `status.json` or `null`) | `forbidden` | `cli` and `desktop`; cap `autopilot.v1` |
+| `autopilot.control` | `{command}` (`pause`, `resume`, `stop`) | `{seq}` | `forbidden`, `not_running` | `cli` and `desktop`; cap `autopilot.v1` |
+| `autopilot.log` | `{tail}` (1 to 1000) | `{lines}` (the last `tail` JSON lines of `log.jsonl`) | `forbidden`, `invalid_params` | `cli` and `desktop`; cap `autopilot.v1` |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
 | `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
@@ -306,6 +311,21 @@ All four are additive: new optional fields and methods, no change for clients th
 **`clone_dir.v1`.** `runs.create` takes an optional `clone_of`, the absolute path of a repository. Before the sandbox is prepared the runner checks, walking descriptors without following any symlink, that the repository is a work tree root with a real `.git` directory, that the canonical `cwd` lies strictly inside `<repo parent>/<repo name>-worktrees/` (any depth), that `cwd/.git` is a real directory (not a worktree file) and that `cwd/.git/objects/info/alternates`, if present (at most 4 KiB), lists only `<repo>/.git/objects`. Any violation is `invalid_params`. The sandbox then gets read-only access to `<repo>/.git/objects` and nothing else of the repository; writes stay limited to `cwd` and the per-run home.
 
 **`agent_work.v1`.** `runs.create` takes an optional `agent_work: true` (absent means false). The runner then records the run as Agent work of its task in the local workspace: it needs a `task` of a local workspace (negative `workspace_id`; a cloud task is `invalid_params`, owner decision 16a.11), a profile with a `permission_modes` table (otherwise `invalid_params` naming the profile), and is `forbidden` for link runs. The runner calls its own executable as `<self> __agent-work` with one JSON request on stdin (`op` `start`, `update` or `finish`) and keeps the run id with the session: `start` when the session is created (agent = profile id, model, branch, session id), `update` with the branch and commits from the work log at most every 10 minutes, and `finish` once when the child has exited: `succeeded` for exit code 0, `cancelled` after `sessions.kill`, a revocation or a session lost while the runner was down, otherwise `failed`, with a one-line summary and the commits. Failed calls are retried and never block the session; a session that ended while the runner was down is finished after the restart. A `start_key` replay returns the existing session and opens no second run. The flag is part of the start-key hash.
+
+### Autopilot
+
+**`autopilot.v1`.** The runner hosts at most one background loop, `<runner executable> queue autopilot serve --settings <settings_id>`. The client names only the saved settings; the runner builds the command line itself, so no argv or path ever comes from a client. It runs with the runner's cleaned environment (`TMGR_RUNNER_ENV_CLEAN=1`), in its own session, with stdin closed and stdout and stderr appended to `serve.log` (capped, rotated once at 5 MiB when a start finds it larger). The runner keeps the child, reaps it, and starts nothing on its own.
+
+State directory: `autopilot/` inside the tmgr config directory (`$XDG_CONFIG_HOME/tmgr` or `~/.config/tmgr`, the directory of `runner-allow.json`). Files, all private:
+
+- `autopilot.lock`: the loop takes an exclusive `flock` on it at startup and holds it until it exits. Probing the lock takes a shared lock for a moment, so the loop retries a refused lock for a few seconds before giving up. A runner that restarts finds a held lock, reads `pid` from `status.json` and reports the loop as running ("adopts" it).
+- `status.json`: written atomically by the loop; a JSON object that must carry `version`, `state` (`running`, `paused`, `stopping`, `stopped`), `pid` (the loop's pid) and `control_seq` (the last handled `control.json` `seq`). `autopilot.status` returns it as is, or `null`. A start moves a previous one to `status.prev.json`.
+- `control.json`: written atomically by the runner on `autopilot.control`, `{seq, command, at}`; `seq` counts up from 1 for each start (a start deletes the file). The loop handles a command when `seq` is above the last it handled (0 at startup) and echoes it in `control_seq`. `stop` also tells the runner not to treat the following exit as a crash.
+- `log.jsonl`: appended by the loop, one JSON object per line. `autopilot.log` returns the last `tail` lines that parse, looking at most 1 MiB back.
+
+`autopilot.start` is `busy` while a loop runs (own child, or a held lock). On an exit with a non-zero code or a signal, not after a stop was requested, the runner merges `state: "stopped"`, `stop_reason: "crashed"`, `exit` and `stopped_at` into `status.json` (creating it when missing) and disables the queue by running `<runner executable> queue disable --reason "autopilot crashed"`, the audited path of `tmgr queue disable`. When the runner stops it first sends `stop`, waits 20 seconds, then sends SIGTERM.
+
+`sessions.kill` takes an optional `reason`. When the session is an Agent work run, the runner uses it as the `summary` of the `cancelled` finish instead of the default text.
 
 ### Session text
 
@@ -518,7 +538,7 @@ capability has no log and returns an all-zero summary.
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
 (section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`;
-`trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
+`autopilot.start` only from `cli`; `autopilot.status`, `autopilot.control` and `autopilot.log` from `cli` and `desktop`; `trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
 "Pre-accepted folder trust", "Trusted folders"). This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user

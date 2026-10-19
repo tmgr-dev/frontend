@@ -286,6 +286,7 @@ impl Backend for RunnerClient {
         let p = KillParams {
             id: id.into(),
             signal: signal.into(),
+            reason: None,
         };
         self.call(method::SESSIONS_KILL, params(&p)?).map(drop)
     }
