@@ -54,6 +54,7 @@
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
+	import UserAvatar from '@/components/general/UserAvatar.vue';
 	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
@@ -157,6 +158,7 @@
 		openTarget,
 	} from '@/utils/simpleStatus';
 	import { loadTaskFormReferenceData } from '@/utils/taskFormReferenceData';
+	import { taskCreator } from '@/utils/taskCreator';
 	import { mergeSavedTask } from '@/utils/taskSaveSnapshot';
 	import { createTaskVersionGuard } from '@/utils/taskVersionGuard';
 	import {
@@ -1411,6 +1413,14 @@
 
 	const isLocalWorkspaceTask = computed(
 		() => Number(store.getters.currentWorkspaceId) < 0,
+	);
+
+	const creator = computed(() =>
+		taskCreator(
+			workspaceMembers.value,
+			form.value.user_id,
+			isLocalWorkspaceTask.value,
+		),
 	);
 
 	const exportTaskToMarkdown = async () => {
@@ -3063,6 +3073,22 @@
 							v-if="taskId || form.id"
 							class="flex min-w-0 flex-wrap items-center gap-x-2 text-[11px] text-ink-faint"
 						>
+							<span
+								v-if="creator"
+								data-testid="task-form-creator"
+								class="flex min-w-0 items-center gap-1"
+								:title="'Created by ' + creator.name"
+							>
+								<UserAvatar
+									:user-id="creator.id"
+									:name="creator.name"
+									:has-avatar="!!creator.has_avatar"
+									:size="14"
+								/>
+								<span class="max-w-[12rem] truncate">
+									Created by {{ creator.name }}
+								</span>
+							</span>
 							<TaskTimeInfo
 								:created-at="form.created_at"
 								:updated-at="form.updated_at"
