@@ -1,5 +1,5 @@
 use crate::crypto::{
-    canonical_repos, content_sha256, message, message_v2, valid_sha256_hex, verify,
+    approval_message, canonical_repos, content_sha256, valid_sha256_hex, verify, Payload,
 };
 use crate::fsio;
 use chrono::{DateTime, Utc};
@@ -299,39 +299,33 @@ pub fn check_claim(
             format!("{allow} to re-pin your keys"),
         ));
     };
-    if claim
-        .repos_sha256
-        .as_deref()
-        .is_some_and(|r| !valid_sha256_hex(r))
+    if [
+        &claim.repos_sha256,
+        &claim.persona_sha256,
+        &claim.context_sha256,
+    ]
+    .into_iter()
+    .flatten()
+    .any(|h| !valid_sha256_hex(h))
     {
         return Err(Refusal::new(
-            "the approval names its repositories in an unreadable form",
+            "the approval names its repositories, persona or rules in an unreadable form",
             "open the task in the web app and click Confirm for agent runs",
         ));
     }
-    let msg = match &claim.repos_sha256 {
-        Some(repos) => message_v2(
-            &claim.host,
-            claim.user_id,
-            claim.workspace_id,
-            claim.task_id,
-            claim.category_id,
-            &claim.content_sha256,
-            repos,
-            &claim.key_id,
-            claim.signed_at,
-        ),
-        None => message(
-            &claim.host,
-            claim.user_id,
-            claim.workspace_id,
-            claim.task_id,
-            claim.category_id,
-            &claim.content_sha256,
-            &claim.key_id,
-            claim.signed_at,
-        ),
-    };
+    let msg = approval_message(&Payload {
+        host: claim.host.clone(),
+        user_id: claim.user_id,
+        workspace_id: claim.workspace_id,
+        task_id: claim.task_id,
+        category_id: claim.category_id,
+        content_sha256: claim.content_sha256.clone(),
+        repos_sha256: claim.repos_sha256.clone(),
+        persona_sha256: claim.persona_sha256.clone(),
+        context_sha256: claim.context_sha256.clone(),
+        key_id: claim.key_id.clone(),
+        signed_at: claim.signed_at,
+    });
     if !verify(&key.public_key, &msg, &claim.signature) {
         return Err(Refusal::new(
             "the approval signature is not valid",
@@ -387,12 +381,19 @@ impl Rollback {
         fsio::write_private(path, &body).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    /// What `record` stores and `seen` returns for an approval: its content hash, plus the repository hash for v2.
+    /// What `record` stores and `seen` returns for an approval: its content hash, then the repository,
+    /// persona and context hashes it covers (`-` for one it does not, trailing ones omitted).
     pub fn stamp(claim: &CloudApproval) -> String {
-        match &claim.repos_sha256 {
-            Some(r) => format!("{}:{r}", claim.content_sha256),
-            None => claim.content_sha256.clone(),
+        let mut parts = vec![
+            claim.content_sha256.as_str(),
+            claim.repos_sha256.as_deref().unwrap_or("-"),
+            claim.persona_sha256.as_deref().unwrap_or("-"),
+            claim.context_sha256.as_deref().unwrap_or("-"),
+        ];
+        while parts.len() > 1 && parts.last() == Some(&"-") {
+            parts.pop();
         }
+        parts.join(":")
     }
 
     pub fn seen(&self, key: &str) -> Option<(i64, Option<&str>)> {

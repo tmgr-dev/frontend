@@ -35,6 +35,8 @@ fn claim() -> (CloudApproval, String, String) {
     (
         CloudApproval {
             repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -267,6 +269,8 @@ fn a_v2_claim_verifies_only_with_its_repository_set() {
         signature: c["signature"].as_str().unwrap().into(),
         kind: "author".into(),
         repos_sha256: Some(c["repos_sha256"].as_str().unwrap().into()),
+        persona_sha256: None,
+        context_sha256: None,
     };
     let (t, d) = (
         c["title"].as_str().unwrap(),
@@ -304,4 +308,103 @@ fn rollback_keeps_the_highest_signed_at() {
         Rollback::load_from(&path).unwrap().seen(&k),
         Some((10, Some("h")))
     );
+}
+
+fn v3_claim(i: usize) -> (CloudApproval, String, String) {
+    let f = fx();
+    let c = &f["cases_v3"][i];
+    let opt = |k: &str| c[k].as_str().map(String::from);
+    (
+        CloudApproval {
+            host: "api.tmgr.dev".into(),
+            user_id: 1,
+            workspace_id: 56,
+            task_id: c["task_id"].as_i64().unwrap(),
+            category_id: c["category_id"].as_i64().unwrap(),
+            content_sha256: c["content_sha256"].as_str().unwrap().into(),
+            key_id: f["key"]["key_id"].as_str().unwrap().into(),
+            signed_at: c["signed_at"].as_i64().unwrap(),
+            signature: c["signature"].as_str().unwrap().into(),
+            kind: "confirm".into(),
+            repos_sha256: opt("repos_sha256"),
+            persona_sha256: opt("persona_sha256"),
+            context_sha256: opt("context_sha256"),
+        },
+        c["title"].as_str().unwrap().into(),
+        c["description"].as_str().unwrap_or("").into(),
+    )
+}
+
+#[test]
+fn a_v3_claim_verifies_only_with_the_hashes_it_was_signed_with() {
+    for i in 0..4 {
+        let (c, t, b) = v3_claim(i);
+        check_claim(&entry(None), &c, &t, &b).unwrap();
+        for edit in [
+            |c: &mut CloudApproval| c.persona_sha256 = None,
+            |c: &mut CloudApproval| c.context_sha256 = None,
+            |c: &mut CloudApproval| c.repos_sha256 = Some("0".repeat(64)),
+        ] {
+            let mut forged = c.clone();
+            edit(&mut forged);
+            if forged != c {
+                assert!(check_claim(&entry(None), &forged, &t, &b).is_err(), "{i}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_v3_claim_with_a_changed_hash_or_a_non_hex_hash_is_refused() {
+    let (c, t, b) = v3_claim(0);
+    let mut other = c.clone();
+    other.persona_sha256 = Some(c.context_sha256.clone().unwrap());
+    assert!(check_claim(&entry(None), &other, &t, &b).is_err());
+    for bad in ["ZZ", "", &"A".repeat(64)] {
+        let mut x = c.clone();
+        x.persona_sha256 = Some(bad.into());
+        let r = check_claim(&entry(None), &x, &t, &b).unwrap_err();
+        assert!(r.message.contains("unreadable"), "{r}");
+        let mut x = c.clone();
+        x.context_sha256 = Some(bad.into());
+        assert!(check_claim(&entry(None), &x, &t, &b).is_err());
+    }
+}
+
+#[test]
+fn a_claim_without_persona_or_context_hashes_is_never_checked_as_v3() {
+    let (mut c, t, b) = v3_claim(2);
+    c.context_sha256 = None;
+    assert!(check_claim(&entry(None), &c, &t, &b).is_err());
+    let (v1, t, b) = claim();
+    assert_eq!(Rollback::stamp(&v1), v1.content_sha256);
+    check_claim(&entry(None), &v1, &t, &b).unwrap();
+}
+
+#[test]
+fn the_stamp_covers_every_hash_and_stays_compatible_with_v2() {
+    let (c, _, _) = v3_claim(3);
+    let h = &c.content_sha256;
+    assert_eq!(
+        Rollback::stamp(&c),
+        format!(
+            "{h}:{}:{}:{}",
+            c.repos_sha256.as_ref().unwrap(),
+            c.persona_sha256.as_ref().unwrap(),
+            c.context_sha256.as_ref().unwrap()
+        )
+    );
+    let (c, _, _) = v3_claim(1);
+    assert_eq!(
+        Rollback::stamp(&c),
+        format!(
+            "{h_}:-:{}",
+            c.persona_sha256.as_ref().unwrap(),
+            h_ = c.content_sha256
+        )
+    );
+    let mut v2 = c.clone();
+    v2.persona_sha256 = None;
+    v2.repos_sha256 = Some("r".into());
+    assert_eq!(Rollback::stamp(&v2), format!("{}:r", v2.content_sha256));
 }

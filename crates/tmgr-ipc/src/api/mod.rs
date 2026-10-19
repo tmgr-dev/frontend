@@ -48,8 +48,9 @@ pub mod caps {
     pub const TRUSTED_FOLDERS_V1: &str = "trusted_folders.v1";
     pub const TRUST_VIA_REPO_V1: &str = "trust_via_repo.v1";
     pub const MULTI_CLONE_V1: &str = "multi_clone.v1";
+    pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
 
-    pub const ALL: [&str; 23] = [
+    pub const ALL: [&str; 24] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -73,6 +74,7 @@ pub mod caps {
         TRUSTED_FOLDERS_V1,
         TRUST_VIA_REPO_V1,
         MULTI_CLONE_V1,
+        SIGNED_CONTEXT_V1,
     ];
 }
 

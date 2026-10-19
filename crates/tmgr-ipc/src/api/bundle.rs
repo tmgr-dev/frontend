@@ -48,6 +48,10 @@ pub struct BundlePage {
 pub struct BundlePersona {
     pub name: String,
     pub instructions_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +63,10 @@ pub struct BundleLaunch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
 }
+
+pub const MAX_PERSONA_INSTRUCTIONS: usize = 32768;
+pub const MAX_CONTEXT_PAGES: usize = 5;
+pub const MAX_CONTEXT_BYTES: usize = 65536;
 
 /// The immutable input of one agent run (see `PROTOCOL.md`, "Run bundles").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +80,8 @@ pub struct RunBundle {
     pub pages: Vec<BundlePage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persona: Option<BundlePersona>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context: Vec<BundlePage>,
     pub launch: BundleLaunch,
 }
 
@@ -112,6 +122,32 @@ impl RunBundle {
                     "persona.instructions_sha256 must be 64 lowercase hex characters".into(),
                 );
             }
+            if let Some(i) = &p.instructions {
+                if i.len() > MAX_PERSONA_INSTRUCTIONS {
+                    return Err(format!(
+                        "persona.instructions must be at most {MAX_PERSONA_INSTRUCTIONS} bytes"
+                    ));
+                }
+                if sha256_hex(i.as_bytes()) != p.instructions_sha256 {
+                    return Err(
+                        "persona.instructions_sha256 must be the SHA-256 of persona.instructions"
+                            .into(),
+                    );
+                }
+            }
+        }
+        if self.context.len() > MAX_CONTEXT_PAGES {
+            return Err(format!(
+                "context must have at most {MAX_CONTEXT_PAGES} pages"
+            ));
+        }
+        let context_bytes: usize = self
+            .context
+            .iter()
+            .map(|p| p.title.replace("\r\n", "\n").len() + p.body.replace("\r\n", "\n").len())
+            .sum();
+        if context_bytes > MAX_CONTEXT_BYTES {
+            return Err(format!("context must be at most {MAX_CONTEXT_BYTES} bytes"));
         }
         Ok(())
     }

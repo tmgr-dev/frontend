@@ -110,7 +110,10 @@ fn bundle() -> RunBundle {
         persona: Some(BundlePersona {
             name: "reviewer".into(),
             instructions_sha256: "0".repeat(64),
+            id: None,
+            instructions: None,
         }),
+        context: vec![],
         launch: BundleLaunch {
             profile: "codex".into(),
             model: Some("gpt-5".into()),
@@ -804,7 +807,8 @@ fn constants_are_pinned() {
             "argv_pin.v1",
             "trusted_folders.v1",
             "trust_via_repo.v1",
-            "multi_clone.v1"
+            "multi_clone.v1",
+            "signed_context.v1"
         ]
     );
     let methods = [
@@ -878,7 +882,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 23);
+    assert_eq!(w.caps.len(), 24);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1099,4 +1103,109 @@ fn bundle_metadata_validation() {
     let mut b = bundle();
     b.author.id = Some("u_7.a:b@c-d".repeat(6)[..64].into());
     assert_eq!(b.validate(), Ok(()));
+}
+
+fn owner_bundle() -> RunBundle {
+    let mut b = bundle();
+    let text = "Follow the rules.\r\nOpen a PR.";
+    b.persona = Some(BundlePersona {
+        name: "reviewer".into(),
+        instructions_sha256: sha256_hex(text.as_bytes()),
+        id: Some("993c30a6-3528-42bf-9a70-507841cebc08".into()),
+        instructions: Some(text.into()),
+    });
+    b.context = vec![BundlePage {
+        id: 125,
+        revision: 14,
+        title: "Rules".into(),
+        body: "# Rules".into(),
+    }];
+    b
+}
+
+#[test]
+fn a_bundle_without_owner_text_serializes_without_the_new_fields() {
+    let v = serde_json::to_value(bundle()).unwrap();
+    assert!(v.get("context").is_none());
+    assert!(v["persona"].get("id").is_none());
+    assert!(v["persona"].get("instructions").is_none());
+    assert_eq!(bundle().sha256(), BUNDLE_SHA256);
+    let back: RunBundle = serde_json::from_value(v).unwrap();
+    assert_eq!(back, bundle());
+}
+
+#[test]
+fn owner_text_is_part_of_the_bundle_hash_and_round_trips() {
+    let b = owner_bundle();
+    assert_eq!(b.validate(), Ok(()));
+    assert_ne!(b.sha256(), BUNDLE_SHA256);
+    let canonical = b.canonical();
+    assert!(canonical
+        .contains(r##""context":[{"body":"# Rules","id":125,"revision":14,"title":"Rules"}]"##));
+    assert!(canonical.contains(r#""id":"993c30a6-3528-42bf-9a70-507841cebc08""#));
+    let back: RunBundle = serde_json::from_str(&canonical).unwrap();
+    assert_eq!(back, b);
+}
+
+#[test]
+fn owner_text_validation() {
+    let bad = |edit: &dyn Fn(&mut RunBundle), field: &str| {
+        let mut b = owner_bundle();
+        edit(&mut b);
+        let e = b.validate().unwrap_err();
+        assert!(e.contains(field), "{e}");
+    };
+    bad(
+        &|b| b.persona.as_mut().unwrap().instructions = Some("changed".into()),
+        "SHA-256 of persona.instructions",
+    );
+    let big = "x".repeat(32769);
+    bad(
+        &|b| {
+            let p = b.persona.as_mut().unwrap();
+            p.instructions_sha256 = sha256_hex(big.as_bytes());
+            p.instructions = Some(big.clone());
+        },
+        "persona.instructions must be at most 32768",
+    );
+    let max = "x".repeat(32768);
+    let mut b = owner_bundle();
+    let p = b.persona.as_mut().unwrap();
+    p.instructions_sha256 = sha256_hex(max.as_bytes());
+    p.instructions = Some(max);
+    assert_eq!(b.validate(), Ok(()));
+
+    let page = |n: i64, body: String| BundlePage {
+        id: n,
+        revision: 1,
+        title: String::new(),
+        body,
+    };
+    bad(
+        &|b| b.context = (0..6).map(|n| page(n, String::new())).collect(),
+        "at most 5 pages",
+    );
+    bad(
+        &|b| b.context = vec![page(1, "y".repeat(65537))],
+        "at most 65536 bytes",
+    );
+    let mut b = owner_bundle();
+    b.context = vec![page(1, "y".repeat(65536))];
+    assert_eq!(b.validate(), Ok(()));
+    b.context = vec![page(1, "\r\n".repeat(32768))];
+    assert_eq!(b.validate(), Ok(()));
+    b.context = (0..5).map(|n| page(n, String::new())).collect();
+    assert_eq!(b.validate(), Ok(()));
+}
+
+#[test]
+fn cloud_approval_hashes_are_skipped_when_absent() {
+    let v = serde_json::json!({"host":"h","user_id":1,"workspace_id":2,"task_id":3,"category_id":4,
+        "content_sha256":"c","key_id":"k","signed_at":5,"signature":"s","kind":"author"});
+    let c: CloudApproval = serde_json::from_value(v.clone()).unwrap();
+    assert_eq!(
+        (c.persona_sha256.clone(), c.context_sha256.clone()),
+        (None, None)
+    );
+    assert_eq!(serde_json::to_value(&c).unwrap(), v);
 }
