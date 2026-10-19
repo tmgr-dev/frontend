@@ -311,6 +311,17 @@ struct Cloud {
 
 impl Drop for Cloud {
     fn drop(&mut self) {
+        if let Ok(mut c) = tmgr_runner::client::Client::connect(&self.runner.path().join("r")) {
+            let _ = c.set_timeouts(Duration::from_secs(5));
+            if let Ok(list) = c.list() {
+                for s in list
+                    .iter()
+                    .filter(|s| s.state.kind != tmgr_ipc::api::StateKind::Exited)
+                {
+                    let _ = c.kill(&s.id, "kill");
+                }
+            }
+        }
         let _ = self.cmd(&["runner", "stop"]);
     }
 }
