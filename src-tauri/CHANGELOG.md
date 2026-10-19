@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.51 — 2026-10-20
+
+- Confirm for agent runs (single and bulk) shows the persona instructions and the workspace rules your approval covers, in full, with hidden characters flagged. Cloud agent runs receive exactly that signed text.
+- Tasks show "Needs confirmation" when the persona instructions or the workspace rules changed after you confirmed.
+
 ## 0.9.50 — 2026-10-19
 
 - Task form: the footer shows who created the task (hidden on phone widths).
