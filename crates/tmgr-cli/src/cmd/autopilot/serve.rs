@@ -1,16 +1,18 @@
 pub mod decide;
+mod orch;
 pub mod ports;
 pub mod real;
 
 use super::model::{
     ActiveRun, Cost, Event, LimitRow, LoopKind, NextStop, PrLink, Reasoned, RunState, Settings,
-    Slots, StatusDoc, Summary, TaskCounts, STATUS_VERSION,
+    Slots, StatusDoc, Summary, TaskBrief, TaskCounts, STATUS_VERSION,
 };
 use super::store::Store;
 use chrono::{DateTime, Duration, Utc};
 use decide::{
     deadline, decide, next_stop, verdict, Blocker, Decision, Facts, Hit, Inputs, StopReason,
 };
+use orch::{Flow, Frozen, Orch};
 use ports::{Ports, Timing};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -48,6 +50,8 @@ struct Carry {
     counted_pr: Vec<String>,
     counted_held: Vec<String>,
     counted_fail: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    plan: Option<Frozen>,
 }
 
 fn step_of(p: &Pickup) -> &'static str {
@@ -161,6 +165,10 @@ struct View {
     eligible: usize,
     runs: Vec<ActiveRun>,
     needs_runner: bool,
+    needs_feedback: Vec<TaskBrief>,
+    blocked: Vec<TaskBrief>,
+    queued: Vec<TaskBrief>,
+    plan_states: BTreeMap<i64, &'static str>,
 }
 
 #[derive(Clone)]
@@ -263,6 +271,8 @@ pub struct Autopilot<'a> {
     stop_reason: Option<String>,
     summary: Option<Summary>,
     limit_paused: Option<Hit>,
+    orch: Orch,
+    ws_code: String,
 }
 
 pub fn serve(
@@ -336,6 +346,8 @@ impl<'a> Autopilot<'a> {
             stop_reason: None,
             summary: None,
             limit_paused: None,
+            orch: Orch::off(),
+            ws_code: String::new(),
         }
     }
 
@@ -376,6 +388,9 @@ impl<'a> Autopilot<'a> {
         self.counted_pr = carry.counted_pr.into_iter().collect();
         self.counted_held = carry.counted_held.into_iter().collect();
         self.counted_fail = carry.counted_fail.into_iter().collect();
+        if let Some(frozen) = carry.plan.filter(|_| self.orch.on()) {
+            self.orch.restore(frozen);
+        }
         if was_paused || carry.was_paused {
             self.state = RunState::Paused;
         }
@@ -413,6 +428,12 @@ impl<'a> Autopilot<'a> {
     }
 
     fn begin(&mut self) {
+        self.init_phase();
+        self.ws_code = self
+            .p
+            .queue
+            .workspace_code(&self.s.rule)
+            .unwrap_or_default();
         let resumed = match self.previous() {
             Some(doc) => {
                 self.restore(doc);
@@ -572,7 +593,7 @@ impl<'a> Autopilot<'a> {
                 self.refresh_remote(now, &st);
             }
         }
-        let Some((decision, _)) = self.evaluate_tolerant(now)? else {
+        let Some((decision, facts)) = self.evaluate_tolerant(now)? else {
             self.write_status();
             return Ok(None);
         };
@@ -580,17 +601,34 @@ impl<'a> Autopilot<'a> {
             return self.finish(StopReason::Hours, Some(Why::hours()));
         }
         if let Some(hit) = decision.hard_limit.clone() {
+            self.interrupt_phase();
             if !self.view.live.is_empty() {
                 self.note_limit(&hit, true);
                 self.limit_paused = Some(hit.clone());
                 self.drain(&Why::limit(&hit));
             }
         }
+        if self.orch.on() {
+            match self.drive_phase(&decision, &facts, now) {
+                Flow::Wait => {
+                    self.write_status();
+                    return Ok(None);
+                }
+                Flow::Stop(text) => return self.finish(StopReason::Requested(text), None),
+                Flow::Go => {}
+            }
+            if self.s.dry_run {
+                return self.finish(StopReason::Requested("dry run finished".into()), None);
+            }
+            self.apply_triage();
+        }
         let policy = if self.queue_mode {
             StartPolicy {
                 starts_allowed: decision.starts_allowed(),
                 ..StartPolicy::default()
             }
+        } else if self.orch.on() {
+            self.start_policy(decision.starts_allowed())
         } else {
             StartPolicy {
                 starts_allowed: decision.starts_allowed(),
@@ -753,6 +791,10 @@ impl<'a> Autopilot<'a> {
         let sel_set = self.selected(st);
         let sel: Vec<i64> = sel_set.iter().copied().collect();
         view.counts.total = sel.len() as u32;
+        let orchestrated = self.orch.on();
+        let excluded = self.orch.excluded();
+        let triage_feedback = self.orch.applied_ids("needs_feedback");
+        let triage_blocked = self.orch.applied_ids("blocked");
         for id in sel {
             let p = latest(st, id);
             if let Some(p) = p {
@@ -760,6 +802,17 @@ impl<'a> Autopilot<'a> {
                 self.track_run(p, now);
             }
             let class = p.map(|p| classify(p, &self.killed));
+            if orchestrated {
+                let state = match &class {
+                    Some(Class::Done) | Some(Class::Paused) => "pr",
+                    Some(Class::Held) => "held",
+                    Some(Class::Failed(_)) | Some(Class::Taken) => "failed",
+                    Some(Class::InWork) => "running",
+                    _ => "queued",
+                };
+                view.plan_states.insert(id, state);
+            }
+            let fallback = p.map(|p| (p.key.as_str(), p.bundle.title.as_str()));
             match (p, class) {
                 (Some(p), Some(Class::Done)) => {
                     view.counts.done_pr += 1;
@@ -789,20 +842,31 @@ impl<'a> Autopilot<'a> {
                 }
                 (_, class) => {
                     let sid = self.remote.task_status.get(&id).copied();
-                    if sid.is_some() && sid == self.remote.feedback {
+                    if (sid.is_some() && sid == self.remote.feedback)
+                        || triage_feedback.contains(&id)
+                    {
                         view.counts.needs_feedback += 1;
-                    } else if sid.is_some() && sid == self.remote.blocked {
+                        view.needs_feedback.push(self.brief(id, fallback));
+                    } else if (sid.is_some() && sid == self.remote.blocked)
+                        || triage_blocked.contains(&id)
+                    {
                         view.counts.blocked += 1;
+                        view.blocked.push(self.brief(id, fallback));
+                    } else if excluded.contains(&id) {
+                        view.counts.skipped += 1;
                     } else if class == Some(Class::Approved) {
                         view.counts.queued += 1;
                         view.eligible += 1;
+                        view.queued.push(self.brief(id, fallback));
                     } else if class == Some(Class::Pending) {
                         view.counts.queued += 1;
+                        view.queued.push(self.brief(id, fallback));
                     } else if skips.contains(&id) || self.settled {
                         view.counts.skipped += 1;
                         self.note_skip(id, st);
                     } else {
                         view.counts.queued += 1;
+                        view.queued.push(self.brief(id, fallback));
                     }
                 }
             }
@@ -829,6 +893,24 @@ impl<'a> Autopilot<'a> {
 
     fn add_active(&self, view: &mut View, p: &Pickup) {
         let step = step_of(p);
+        let mut team = ActiveRun::default();
+        if self.orch.on() {
+            let t = self.team_of(p.task.task_id);
+            let size = t.map_or(self.team_size(), |t| u32::from(t.size));
+            team = ActiveRun {
+                team_size: Some(size),
+                team_mode: t.map(|t| t.mode.as_str().to_string()),
+                agents: Some(size),
+                workspace_code: Some(
+                    p.cloud
+                        .as_ref()
+                        .map_or_else(|| self.ws_code.clone(), |c| c.workspace_code.clone()),
+                ),
+                workspace_id: Some(p.task.workspace_id),
+                session_id: p.run_id.clone(),
+                ..ActiveRun::default()
+            };
+        }
         view.runs.push(ActiveRun {
             task: p.key.clone(),
             task_id: p.task.task_id,
@@ -841,7 +923,7 @@ impl<'a> Autopilot<'a> {
                 .map(|c| c.repos.iter().map(|r| r.full_name.clone()).collect())
                 .unwrap_or_default(),
             step: step.into(),
-            ..ActiveRun::default()
+            ..team
         });
     }
 
@@ -1077,8 +1159,8 @@ impl<'a> Autopilot<'a> {
         let find = |name: &str| {
             statuses
                 .iter()
-                .find(|(_, n)| n.eq_ignore_ascii_case(name.trim()))
-                .map(|(id, _)| *id)
+                .find(|(_, n, _)| n.eq_ignore_ascii_case(name.trim()))
+                .map(|(id, _, _)| *id)
         };
         self.remote.feedback = find(&self.s.answers.feedback_status);
         self.remote.blocked = find(&self.s.answers.blocked_status);
@@ -1254,6 +1336,7 @@ impl<'a> Autopilot<'a> {
         self.stop_reason = Some(reason.text());
         let text = format!("Stopping: {}", reason.text());
         self.event("stopping", None, text);
+        self.kill_phase();
         self.write_status();
         let now = self.now();
         if let Ok(st) = self.p.queue.state() {
@@ -1262,30 +1345,34 @@ impl<'a> Autopilot<'a> {
         if let Some(why) = drain {
             self.drain(&why);
         }
-        if let Err(e) = self.p.queue.pass(StartPolicy {
-            starts_allowed: false,
-            ..StartPolicy::default()
-        }) {
-            let text = format!("Final queue pass failed: {}", e.message);
-            self.event("error", None, text);
+        if self.orch.accepted() && !self.s.dry_run {
+            if let Err(e) = self.p.queue.pass(StartPolicy {
+                starts_allowed: false,
+                ..StartPolicy::default()
+            }) {
+                let text = format!("Final queue pass failed: {}", e.message);
+                self.event("error", None, text);
+            }
         }
         let now = self.now();
         if let Ok(st) = self.p.queue.state() {
             self.observe(&st, now);
             self.summary = Some(self.build_summary(&st, &reason));
         }
-        if self.s.resume_queue {
-            if let Err(e) = self.p.queue.keep_on() {
-                let text = format!("Could not keep the queue loop's settings: {}", e.message);
+        if !self.s.dry_run {
+            if self.s.resume_queue {
+                if let Err(e) = self.p.queue.keep_on() {
+                    let text = format!("Could not keep the queue loop's settings: {}", e.message);
+                    self.event("error", None, text);
+                }
+            } else if let Err(e) = self
+                .p
+                .queue
+                .disable(&format!("autopilot: {}", reason.text()))
+            {
+                let text = format!("Could not turn the queue off: {}", e.message);
                 self.event("error", None, text);
             }
-        } else if let Err(e) = self
-            .p
-            .queue
-            .disable(&format!("autopilot: {}", reason.text()))
-        {
-            let text = format!("Could not turn the queue off: {}", e.message);
-            self.event("error", None, text);
         }
         let summary = self.summary.clone().unwrap_or_else(|| Summary {
             text: reason.text(),
@@ -1305,6 +1392,7 @@ impl<'a> Autopilot<'a> {
     }
 
     fn suspend(&mut self) -> Outcome {
+        self.kill_phase();
         self.paused_before_suspend = self.state == RunState::Paused;
         self.state = RunState::Suspended;
         self.event(
@@ -1364,8 +1452,20 @@ impl<'a> Autopilot<'a> {
                 parts.push(format!("{n} {label}"));
             }
         }
+        let text = if self.s.dry_run {
+            let plan = self.orch.plan.as_ref();
+            format!(
+                "dry run: {} planned, {} need a human, {} not planned - stopped: {}",
+                plan.map_or(0, |p| p.items.len()),
+                plan.map_or(0, |p| p.triage.len()),
+                self.orch.not_planned.len(),
+                reason.text()
+            )
+        } else {
+            format!("{} - stopped: {}", parts.join(", "), reason.text())
+        };
         Summary {
-            text: format!("{} - stopped: {}", parts.join(", "), reason.text()),
+            text,
             stopped_by: reason.text(),
             started: self.started_ids.len() as u32,
             prs: self.prs.clone(),
@@ -1399,6 +1499,7 @@ impl<'a> Autopilot<'a> {
 
     fn write_status(&mut self) {
         let now = self.now();
+        let orchestrated = self.orch.on();
         let mut extra = serde_json::Map::new();
         extra.insert("paused_tasks".into(), json!(self.view.paused));
         extra.insert("blockers".into(), json!(self.blockers));
@@ -1422,6 +1523,7 @@ impl<'a> Autopilot<'a> {
             counted_pr: self.counted_pr.iter().cloned().collect(),
             counted_held: self.counted_held.iter().cloned().collect(),
             counted_fail: self.counted_fail.iter().cloned().collect(),
+            plan: self.orch.frozen(),
         };
         if let Ok(v) = serde_json::to_value(carry) {
             extra.insert("resume".into(), v);
@@ -1476,13 +1578,13 @@ impl<'a> Autopilot<'a> {
             failures_in_row: self.failures,
             prs: self.prs.clone(),
             events: self.events.clone(),
-            plan: None,
-            triage: Vec::new(),
-            not_planned: Vec::new(),
-            agents_planned: None,
-            needs_feedback_tasks: None,
-            blocked_tasks: None,
-            queued_tasks: None,
+            plan: orchestrated.then(|| self.plan_doc()),
+            triage: self.orch.rows.clone(),
+            not_planned: self.orch.not_planned.clone(),
+            agents_planned: orchestrated.then(|| self.agents_planned()),
+            needs_feedback_tasks: orchestrated.then(|| self.view.needs_feedback.clone()),
+            blocked_tasks: orchestrated.then(|| self.view.blocked.clone()),
+            queued_tasks: orchestrated.then(|| self.view.queued.clone()),
             extra,
         };
         if let Err(e) = self.store.write_status(&doc) {

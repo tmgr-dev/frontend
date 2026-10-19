@@ -796,6 +796,27 @@ impl CloudApi for CliCloud<'_> {
     }
 
     fn gate(&self, rule: &Rule, ws: &CloudWorkspace, task_id: i64) -> Result<Gated> {
+        self.gate_with(rule, ws, task_id, true)
+    }
+}
+
+impl CliCloud<'_> {
+    pub(crate) fn gate_readonly(
+        &self,
+        rule: &Rule,
+        ws: &CloudWorkspace,
+        task_id: i64,
+    ) -> Result<Gated> {
+        self.gate_with(rule, ws, task_id, false)
+    }
+
+    fn gate_with(
+        &self,
+        rule: &Rule,
+        ws: &CloudWorkspace,
+        task_id: i64,
+        record: bool,
+    ) -> Result<Gated> {
         let client = self.ctx.cloud_client()?;
         let (host, user) = self.identity()?;
         let elig = parse_eligibility(client.agent_run_task(task_id)?)?;
@@ -842,10 +863,12 @@ impl CloudApi for CliCloud<'_> {
             Ok(repos) => repos,
             Err(reason) => return Ok(refused(reason)),
         };
-        rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
-        rollback
-            .save()
-            .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+        if record {
+            rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
+            rollback
+                .save()
+                .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+        }
         Ok(Gated::Ready(Box::new(CloudTask {
             key: ok.task_key,
             title: ok.title,
@@ -1198,7 +1221,7 @@ impl RunnerRuns {
         self.with(|c| c.kill_with_reason(run_id, signal, Some(reason)))
     }
 
-    fn with<T>(
+    pub(crate) fn with<T>(
         &self,
         f: impl FnOnce(&mut tmgr_runner::client::Client) -> std::io::Result<T>,
     ) -> std::result::Result<T, std::io::Error> {

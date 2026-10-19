@@ -1,5 +1,7 @@
+use super::super::orchestrate::{OrchInput, Poll, TaskText};
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use tmgr_core::error::Result;
 use tmgr_queue::state::State;
 use tmgr_queue::{PassReport, PausedDraft, StartPolicy};
@@ -27,8 +29,40 @@ pub trait RunControl {
 pub trait Remote {
     fn comment(&self, task_id: i64, text: &str) -> Result<()>;
     fn workspace_id(&self, code: &str) -> Result<i64>;
-    fn statuses(&self, workspace_id: i64) -> Result<Vec<(u64, String)>>;
+    fn statuses(&self, workspace_id: i64) -> Result<Vec<(u64, String, String)>>;
     fn task_status_id(&self, task_id: i64) -> Result<Option<u64>>;
+    fn set_status(&self, task_id: i64, status_id: u64) -> Result<()>;
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Planned {
+    pub text: TaskText,
+    pub content_sha256: String,
+    pub status_id: Option<u64>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PlanInputs {
+    pub tasks: Vec<Planned>,
+    pub not_planned: Vec<(i64, String, String)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PlanFresh {
+    pub content_sha256: String,
+    pub free: bool,
+    pub status_id: Option<u64>,
+}
+
+pub trait Planner {
+    fn enabled(&self, rule: &str) -> bool;
+    fn inputs(&self, rule: &str, tasks: &BTreeSet<i64>) -> Result<PlanInputs>;
+    fn start(&self, rule: &str, input: &OrchInput, nonce: &str) -> Result<(String, PathBuf)>;
+    fn poll(&self, run_id: &str) -> Result<Poll>;
+    fn read(&self, dir: &Path) -> Result<Vec<u8>>;
+    fn discard(&self, dir: &Path);
+    fn kill(&self, run_id: &str) -> Result<()>;
+    fn fresh(&self, rule: &str, task_id: i64) -> Result<PlanFresh>;
 }
 
 pub struct Probed {
@@ -63,6 +97,7 @@ pub struct Ports<'a> {
     pub queue: &'a dyn Queue,
     pub runs: &'a dyn RunControl,
     pub remote: &'a dyn Remote,
+    pub planner: &'a dyn Planner,
     pub usage: &'a dyn Usage,
     pub notify: &'a dyn Notifier,
     pub clock: &'a dyn Clock,
