@@ -2,6 +2,7 @@ pub mod control;
 pub mod interview;
 pub mod model;
 pub mod render;
+pub mod serve;
 pub mod start;
 pub mod store;
 pub mod usage;
@@ -44,6 +45,11 @@ pub enum AutopilotCmd {
     Log {
         #[arg(long, default_value_t = control::DEFAULT_TAIL, value_name = "N")]
         tail: u32,
+    },
+    #[command(hide = true)]
+    Serve {
+        #[arg(long)]
+        settings: String,
     },
 }
 
@@ -113,5 +119,6 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &AutopilotArgs) -> Result<Output> {
         }
         Some(AutopilotCmd::Stop) => control::control(AutopilotCommand::Stop),
         Some(AutopilotCmd::Log { tail }) => control::log(*tail),
+        Some(AutopilotCmd::Serve { settings }) => serve::real::run(ctx, cli, settings),
     }
 }

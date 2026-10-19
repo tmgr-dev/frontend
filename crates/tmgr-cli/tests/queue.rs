@@ -1202,3 +1202,238 @@ fn a_held_pickup_shows_as_held_in_the_status() {
     let human = text(&fx.run(&["queue", "status"]).stdout);
     assert!(human.contains("held"), "{human}");
 }
+
+impl Fx {
+    fn slow_agent(&self) {
+        std::fs::write(
+            self.tmp.path().join("agents/slow-agent.toml"),
+            "id = \"slow-agent\"\nname = \"Slow\"\ncommand = [\"/bin/sh\", \"-c\", \"sleep 60\", \"agent\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+        )
+        .unwrap();
+    }
+
+    fn autopilot_dir(&self) -> PathBuf {
+        self.cfg().join("autopilot")
+    }
+
+    fn autopilot_settings(&self, agent: &str, tasks: &[i64]) {
+        let dir = self.autopilot_dir().join("settings");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("t1.json"),
+            json!({
+                "id": "t1", "created_at": "2026-10-19T12:00:00Z", "answers": {},
+                "rule": "r1", "agent": agent, "mode": "auto", "finish": "pr_only",
+                "tasks": tasks, "signed": []
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    fn serve(&self) -> std::process::Child {
+        let log = std::fs::File::create(self.tmp.path().join("serve.log")).unwrap();
+        let mut c = std::process::Command::new(BIN);
+        c.current_dir(self.tmp.path()).env_clear();
+        for (k, v) in self.envs() {
+            c.env(k, v);
+        }
+        c.env("TMGR_TEST_AUTOPILOT_TICK_MS", "200")
+            .args(["queue", "autopilot", "serve", "--settings", "t1"])
+            .stdout(log.try_clone().unwrap())
+            .stderr(log)
+            .spawn()
+            .unwrap()
+    }
+
+    fn autopilot_status(&self) -> Option<Value> {
+        let text = std::fs::read_to_string(self.autopilot_dir().join("status.json")).ok()?;
+        serde_json::from_str(&text).ok()
+    }
+
+    fn wait_autopilot(&self, what: &str, ok: impl Fn(&Value) -> bool) -> Value {
+        let end = Instant::now() + Duration::from_secs(40);
+        loop {
+            if let Some(s) = self.autopilot_status() {
+                if ok(&s) {
+                    return s;
+                }
+            }
+            assert!(
+                Instant::now() < end,
+                "{what}: {:?}\nserve log:\n{}",
+                self.autopilot_status(),
+                std::fs::read_to_string(self.tmp.path().join("serve.log")).unwrap_or_default()
+            );
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    fn wait_exit(&self, child: &mut std::process::Child) -> std::process::ExitStatus {
+        let end = Instant::now() + Duration::from_secs(40);
+        loop {
+            if let Some(st) = child.try_wait().unwrap() {
+                return st;
+            }
+            if Instant::now() >= end {
+                let _ = child.kill();
+                panic!(
+                    "serve did not exit\n{}",
+                    std::fs::read_to_string(self.tmp.path().join("serve.log")).unwrap_or_default()
+                );
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+
+    fn queue_enabled(&self) -> bool {
+        std::fs::read_to_string(self.cfg().join("queue.toml"))
+            .unwrap()
+            .contains("enabled = true")
+    }
+
+    fn start_runner(&self) {
+        let out = self.run(&["runner", "start"]);
+        assert!(out.status.success(), "{}", text(&out.stderr));
+    }
+}
+
+#[test]
+fn autopilot_serve_runs_a_task_to_the_end_and_turns_the_queue_off() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    fx.task(1, "Write the report", "Summarise the quarter");
+    assert_eq!(fx.add_rule("r1", &["--auto"]).0, 0);
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.start_runner();
+    fx.autopilot_settings("sh-agent", &[1]);
+    let mut child = fx.serve();
+    let status = fx.wait_exit(&mut child);
+    assert!(status.success(), "{status:?}");
+    let s = fx.autopilot_status().unwrap();
+    assert_eq!(s["state"], "stopped");
+    assert_eq!(s["stop_reason"], "nothing left to do");
+    assert_eq!(s["tasks"]["total"], 1);
+    assert_eq!(s["tasks"]["done_pr"], 1);
+    assert_eq!(s["summary"]["started"], 1);
+    assert!(!fx.queue_enabled());
+    assert_eq!(fx.count("started"), 1);
+    let disable = fx
+        .audit_events()
+        .into_iter()
+        .rfind(|e| e["event"] == "disable")
+        .unwrap();
+    assert_eq!(disable["reason"], "autopilot: nothing left to do");
+    let log = std::fs::read_to_string(fx.autopilot_dir().join("log.jsonl")).unwrap();
+    for kind in ["started", "picked", "stopped"] {
+        assert!(
+            log.contains(&format!("\"kind\":\"{kind}\"")),
+            "{kind}: {log}"
+        );
+    }
+}
+
+#[test]
+fn autopilot_stop_command_interrupts_the_run_and_still_turns_the_queue_off() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    fx.slow_agent();
+    fx.task(1, "Write the report", "Summarise the quarter");
+    let repo = fx.repo();
+    let (code, screen) = fx.confirmed(
+        &[
+            "queue",
+            "rules",
+            "add",
+            "r1",
+            "--workspace",
+            "local:personal",
+            "--persona",
+            "builder",
+            "--profile",
+            "slow-agent",
+            "--repo",
+            repo.to_str().unwrap(),
+            "--project",
+            "WK",
+            "--auto",
+        ],
+        "I AGREE",
+    );
+    assert_eq!(code, 0, "{screen}");
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.start_runner();
+    fx.autopilot_settings("slow-agent", &[1]);
+    let mut child = fx.serve();
+    let running = fx.wait_autopilot("a running task", |s| s["tasks"]["in_work"] == 1);
+    assert_eq!(running["state"], "running");
+    assert_eq!(running["runs"][0]["task"], "WK-1");
+    assert_eq!(running["agents"]["running"], 1);
+    std::fs::write(
+        fx.autopilot_dir().join("control.json"),
+        json!({"seq": 1, "command": "stop", "at": "2026-10-19T12:00:00Z"}).to_string(),
+    )
+    .unwrap();
+    let status = fx.wait_exit(&mut child);
+    assert!(status.success(), "{status:?}");
+    let s = fx.autopilot_status().unwrap();
+    assert_eq!(s["state"], "stopped");
+    assert_eq!(s["control_seq"], 1);
+    assert_eq!(s["stop_reason"], "stopped by you");
+    assert!(s["stopped_at"].is_string());
+    assert!(!fx.queue_enabled());
+    let mut c = tmgr_runner::client::Client::connect(&fx.runner_dir()).unwrap();
+    assert!(c
+        .list()
+        .unwrap()
+        .iter()
+        .all(|s| s.state.kind == tmgr_ipc::api::StateKind::Exited));
+}
+
+#[test]
+fn autopilot_sigterm_stops_it_like_the_stop_command() {
+    if !sandbox_usable() {
+        return;
+    }
+    let fx = Fx::new();
+    fx.slow_agent();
+    fx.task(1, "Write the report", "Summarise the quarter");
+    let repo = fx.repo();
+    let (code, screen) = fx.confirmed(
+        &[
+            "queue",
+            "rules",
+            "add",
+            "r1",
+            "--workspace",
+            "local:personal",
+            "--persona",
+            "builder",
+            "--profile",
+            "slow-agent",
+            "--repo",
+            repo.to_str().unwrap(),
+            "--project",
+            "WK",
+            "--auto",
+        ],
+        "I AGREE",
+    );
+    assert_eq!(code, 0, "{screen}");
+    assert_eq!(fx.confirmed(&["queue", "enable"], "I AGREE").0, 0);
+    fx.start_runner();
+    fx.autopilot_settings("slow-agent", &[1]);
+    let mut child = fx.serve();
+    fx.wait_autopilot("a running task", |s| s["tasks"]["in_work"] == 1);
+    unsafe { libc::kill(child.id() as i32, libc::SIGTERM) };
+    let status = fx.wait_exit(&mut child);
+    assert!(status.success(), "{status:?}");
+    let s = fx.autopilot_status().unwrap();
+    assert_eq!(s["state"], "stopped");
+    assert_eq!(s["stop_reason"], "stopped by SIGTERM");
+    assert!(!fx.queue_enabled());
+}
