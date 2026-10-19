@@ -1687,6 +1687,25 @@ struct TouchedBranch {
     imported: String,
 }
 
+fn same_clone(t: &PublishTarget, plan: &ClonePlan) -> Result<PathBuf> {
+    let dir = t.clone_dir.join(&plan.name);
+    let expected = t
+        .clones
+        .iter()
+        .find(|c| c.name == plan.name)
+        .and_then(|c| c.identity);
+    if expected.is_none() || workdir::clone_identity(&dir) != expected {
+        return Err(Error::new(
+            Kind::Forbidden,
+            format!(
+                "the clone {} is not the folder this run started with",
+                sanitize_line(&plan.name)
+            ),
+        ));
+    }
+    Ok(dir)
+}
+
 fn import_and_plan(
     t: &PublishTarget,
     plans: &[ClonePlan],
@@ -1694,23 +1713,12 @@ fn import_and_plan(
     pr_title: &str,
     pr_body: &str,
 ) -> Result<PublishAllPlan> {
+    for plan in plans {
+        same_clone(t, plan)?;
+    }
     let mut inputs = Vec::new();
     for plan in plans {
-        let dir = t.clone_dir.join(&plan.name);
-        let expected = t
-            .clones
-            .iter()
-            .find(|c| c.name == plan.name)
-            .and_then(|c| c.identity);
-        if expected.is_none() || workdir::clone_identity(&dir) != expected {
-            return Err(Error::new(
-                Kind::Forbidden,
-                format!(
-                    "the clone {} is not the folder this run started with",
-                    sanitize_line(&plan.name)
-                ),
-            ));
-        }
+        let dir = same_clone(t, plan)?;
         let repo = PathBuf::from(&plan.path);
         let before = workdir::branch_tip(&repo, &t.branch)?;
         let sha = workdir::import_branch(&plan.path, &dir, &t.branch)?;
@@ -2531,7 +2539,7 @@ mod tests {
         git_repo(&be, "https://github.com/tmgr-dev/backend.git");
         git_repo(&fe, "https://github.com/tmgr-dev/frontend.git");
         let entry = set_entry(&[("tmgr-dev/backend", &be), ("tmgr-dev/frontend", &fe)]);
-        let run = root.join("be-worktrees/tmgr-x");
+        let run = root.join("be-worktrees/tmgr-tm-411");
         std::fs::create_dir_all(run.join("backend")).unwrap();
         std::fs::create_dir_all(run.join("frontend")).unwrap();
         let target = |clones: Vec<CloneRef>| PublishTarget {
@@ -2555,6 +2563,14 @@ mod tests {
         };
         let list = names(&["tmgr-dev/backend", "tmgr-dev/frontend"]);
         let go = |t: &PublishTarget| publish_multi(t, &entry, &category(), &list, "t", "b");
+        let mut elsewhere = target(refs());
+        elsewhere.clone_dir = root.join("fe-worktrees/tmgr-tm-411");
+        let e = go(&elsewhere).unwrap_err();
+        assert!(
+            e.message.contains("bound primary repository"),
+            "{}",
+            e.message
+        );
         std::fs::rename(run.join("backend"), run.join("backend-moved")).unwrap();
         std::fs::create_dir(run.join("backend")).unwrap();
         let mut swapped = refs();
