@@ -25,6 +25,15 @@
 					{{ expiryText(entry) }} · {{ entry.keys }}
 					{{ entry.keys === 1 ? 'key' : 'keys' }} · {{ entry.repos }}
 					{{ entry.repos === 1 ? 'repository' : 'repositories' }}
+					<span
+						v-for="item in entry.repositories"
+						:key="item.categoryId"
+						class="mt-0.5 block text-xs"
+						:data-testid="`allowed-repos-${entry.workspaceCode}-${item.categoryId}`"
+					>
+						Category {{ item.categoryId }}:
+						<span class="font-mono">{{ item.names.join(', ') }}</span>
+					</span>
 				</template>
 				<CommandChip :command="allowCommand(entry.workspaceCode)" />
 			</SettingsRow>

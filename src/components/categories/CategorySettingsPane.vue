@@ -209,6 +209,10 @@
 						@relinked="onRelinked"
 					/>
 				</div>
+				<CategoryAgentRepositories
+					class="max-lg:hidden"
+					:category-id="category.id"
+				/>
 
 				<SectionHead title="Danger zone" danger />
 				<SettingRow
@@ -325,6 +329,7 @@
 	} from '@/actions/tmgr/categories';
 	import { updateCategorySettings } from '@/actions/tmgr/settings';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
+	import CategoryAgentRepositories from '@/components/categories/CategoryAgentRepositories.vue';
 	import CategoryCursorSettings from '@/components/categories/CategoryCursorSettings.vue';
 	import CategoryGitHubSettings from '@/components/categories/CategoryGitHubSettings.vue';
 	import TitlePatternField from '@/components/categories/TitlePatternField.vue';
@@ -508,6 +513,7 @@
 			AlertDialogTitle,
 			Button,
 			CategoryCursorSettings,
+			CategoryAgentRepositories,
 			CategoryGitHubSettings,
 			ChevronLeft,
 			Dialog,

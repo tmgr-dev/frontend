@@ -4,8 +4,10 @@ import { join } from 'node:path';
 import {
 	apiHostOf,
 	approvalMessage,
+	canonicalRepos,
 	contentSha256,
 	fromBase64,
+	reposSha256,
 	signMessage,
 	toBase64,
 	verifyMessage,
@@ -92,6 +94,64 @@ describe('agent approval fixtures', () => {
 		expect(
 			await verifyMessage(fixtures.key.public_key, c.message, toBase64(bytes)),
 		).toBe(false);
+	});
+});
+
+describe('repository sets (v2)', () => {
+	const v2 = (fixtures.cases_v2 as any[]).map(
+		(c, i) => [i, c] as [number, any],
+	);
+
+	it.each(v2)('case %i hash, message and signature match', async (_i, c) => {
+		const sha = await contentSha256(c.title, c.description);
+		const repos = await reposSha256(c.repositories);
+		expect(repos).toBe(c.repos_sha256);
+		const message = approvalMessage(
+			c.host,
+			c.user_id,
+			c.workspace_id,
+			c.task_id,
+			c.category_id,
+			sha,
+			fixtures.key.key_id,
+			c.signed_at,
+			repos,
+		);
+		expect(message).toBe(c.message);
+		expect(
+			await verifyMessage(fixtures.key.public_key, c.message, c.signature),
+		).toBe(true);
+		expect(
+			await verifyMessage(
+				fixtures.key.public_key,
+				c.message,
+				c.tampered_signature,
+			),
+		).toBe(false);
+	});
+
+	it('does not depend on the order of the list', async () => {
+		expect(await reposSha256(['b/x', 'a/y'])).toBe(
+			await reposSha256(['a/y', 'b/x']),
+		);
+	});
+
+	it('without a repos hash the message stays v1', () => {
+		expect(approvalMessage('h', 1, 2, 3, 4, 'sha', 'k', 5)).toBe(
+			'tmgr-agent-approval:v1:h:1:2:3:4:sha:k:5',
+		);
+		expect(approvalMessage('h', 1, 2, 3, 4, 'sha', 'k', 5, null)).toBe(
+			'tmgr-agent-approval:v1:h:1:2:3:4:sha:k:5',
+		);
+	});
+
+	it.each(
+		(fixtures.invalid_repositories as string[][]).map(
+			(list, i) => [i, list] as [number, string[]],
+		),
+	)('invalid list %i is refused', async (_i, list) => {
+		expect(() => canonicalRepos(list)).toThrow();
+		await expect(reposSha256(list)).rejects.toThrow();
 	});
 });
 

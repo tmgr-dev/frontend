@@ -34,6 +34,19 @@
 					>
 						Category: {{ row.category }}
 					</div>
+					<div
+						v-if="row.repositories"
+						class="text-2xs font-bold uppercase text-ink-subtle"
+					>
+						Repositories
+					</div>
+					<ul
+						v-if="row.repositories"
+						class="mb-1 font-mono text-xs"
+						:data-testid="`bulk-repositories-${row.id}`"
+					>
+						<li v-for="name in row.repositories" :key="name">{{ name }}</li>
+					</ul>
 					<pre
 						class="whitespace-pre-wrap break-words font-mono text-xs font-bold"
 					><template v-for="(piece, i) in row.title" :key="i"><mark v-if="piece.flagged" class="bg-amber-300 text-black">{{ piece.text }}</mark><template v-else>{{ piece.text }}</template></template></pre>
@@ -77,7 +90,7 @@
 </template>
 
 <script lang="ts">
-	import { agentRunErrorCode } from '@/actions/tmgr/agentRuns';
+	import { agentRunErrorCode, getTaskApproval } from '@/actions/tmgr/agentRuns';
 	import { getTask, type Task } from '@/actions/tmgr/tasks';
 	import { Button } from '@/components/ui/button';
 	import {
@@ -104,6 +117,8 @@
 		signature_invalid: 'Signature rejected',
 		signed_at_skew: 'Your clock is off',
 		key_unknown: 'Signing key not accepted',
+		repositories_changed: 'Repositories changed since it was shown',
+		invalid_repositories: 'Repositories of this category are not valid',
 	};
 
 	export default defineComponent({
@@ -121,6 +136,7 @@
 		emits: ['close'],
 		setup(props) {
 			const tasks = ref<Task[]>([]);
+			const repositories = ref<Record<number, string[] | null>>({});
 			const loading = ref(true);
 			const busy = ref(false);
 			const done = ref(false);
@@ -135,6 +151,8 @@
 						Array.from({ length: 6 }, async () => {
 							while (queue.length) {
 								const id = queue.shift()!;
+								const approval = await getTaskApproval(id);
+								repositories.value[id] = approval.repositories ?? null;
 								loaded.push(await getTask(id, false));
 							}
 						}),
@@ -153,6 +171,7 @@
 			const rows = computed(() =>
 				tasks.value.map((task) => ({
 					id: task.id as number,
+					repositories: repositories.value[task.id as number] ?? null,
 					category: categoryLabel(task as any),
 					title: splitInvisible(task.title ?? ''),
 					description: splitInvisible(task.description ?? ''),
@@ -178,6 +197,7 @@
 							project_category_id: task.project_category_id,
 							category: task.category as any,
 						})),
+						repositories.value,
 					);
 					results.value = Object.fromEntries(out.map((r) => [r.task_id, r]));
 					done.value = true;

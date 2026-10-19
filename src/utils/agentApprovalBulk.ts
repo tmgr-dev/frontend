@@ -1,5 +1,9 @@
 import type { BulkApprovalItem } from '@/actions/tmgr/agentRuns';
-import { approvalMessage, contentSha256 } from '@/utils/agentApproval';
+import {
+	approvalMessage,
+	contentSha256,
+	reposSha256,
+} from '@/utils/agentApproval';
 
 export interface BulkTask {
 	id: number;
@@ -7,6 +11,7 @@ export interface BulkTask {
 	description: string | null;
 	workspaceId: number;
 	categoryId: number;
+	repositories?: string[] | null;
 }
 
 export const buildBulkItems = async (input: {
@@ -20,6 +25,9 @@ export const buildBulkItems = async (input: {
 	Promise.all(
 		input.tasks.map(async (task) => {
 			const sha = await contentSha256(task.title, task.description);
+			const repos = task.repositories
+				? await reposSha256(task.repositories)
+				: undefined;
 			const message = approvalMessage(
 				input.host,
 				input.userId,
@@ -29,6 +37,7 @@ export const buildBulkItems = async (input: {
 				sha,
 				input.keyId,
 				input.signedAt,
+				repos,
 			);
 			return {
 				task_id: task.id,
@@ -37,6 +46,7 @@ export const buildBulkItems = async (input: {
 				host: input.host,
 				category_id: task.categoryId,
 				content_sha256: sha,
+				...(repos ? { repos_sha256: repos } : {}),
 				signed_at: input.signedAt,
 				signature: await input.sign(message),
 			};

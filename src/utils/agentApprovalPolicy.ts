@@ -33,6 +33,11 @@ export const shouldAutoSign = (input: {
 	);
 };
 
+export interface CategoryRepositories {
+	categoryId: string;
+	names: string[];
+}
+
 export interface AllowedEntry {
 	workspaceCode: string;
 	workspaceId: number;
@@ -40,6 +45,7 @@ export interface AllowedEntry {
 	expired: boolean;
 	keys: number;
 	repos: number;
+	repositories?: CategoryRepositories[];
 }
 
 export const EXPIRING_DAYS = 3;

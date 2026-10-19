@@ -2,7 +2,7 @@ import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { approvalMessage, signMessage, verifyMessage } from '../agentApproval';
-import { buildBulkItems } from '../agentApprovalBulk';
+import { buildBulkItems, type BulkTask } from '../agentApprovalBulk';
 
 const fixtures = JSON.parse(
 	readFileSync(
@@ -28,7 +28,7 @@ const tasks = [
 	},
 ];
 
-const build = async (list = tasks) => {
+const build = async (list: BulkTask[] = tasks) => {
 	const key = await globalThis.crypto.subtle.importKey(
 		'jwk',
 		{ ...fixtures.key.private_jwk, key_ops: ['sign'] },
@@ -96,5 +96,43 @@ describe('buildBulkItems', () => {
 		]);
 		expect(after[0].content_sha256).not.toBe(before[0].content_sha256);
 		expect(after[1].content_sha256).toBe(before[1].content_sha256);
+	});
+
+	it('signs v2 with the repository hash for tasks with a set, v1 otherwise', async () => {
+		const c = fixtures.cases_v2[0];
+		const items = await build([
+			{
+				id: c.task_id,
+				title: c.title,
+				description: c.description,
+				workspaceId: c.workspace_id,
+				categoryId: c.category_id,
+				repositories: c.repositories,
+			},
+			{ ...tasks[0], repositories: null },
+		]);
+		expect(items[0].repos_sha256).toBe(c.repos_sha256);
+		expect(items[1].repos_sha256).toBeUndefined();
+		const message = approvalMessage(
+			'api.tmgr.dev',
+			1,
+			c.workspace_id,
+			c.task_id,
+			c.category_id,
+			items[0].content_sha256,
+			fixtures.key.key_id,
+			1760000000,
+			c.repos_sha256,
+		);
+		expect(message).toContain(':v2:');
+		expect(
+			await verifyMessage(fixtures.key.public_key, message, items[0].signature),
+		).toBe(true);
+	});
+
+	it('refuses a non-canonical repository list', async () => {
+		await expect(
+			build([{ ...tasks[0], repositories: ['Acme/web'] }]),
+		).rejects.toThrow();
 	});
 });

@@ -74,6 +74,17 @@
 							{{ categoryText }}
 						</div>
 					</div>
+					<div
+						v-if="shownRepositories"
+						data-testid="cloud-confirm-repositories"
+					>
+						<div class="text-2xs font-bold uppercase text-ink-subtle">
+							Repositories
+						</div>
+						<ul class="font-mono text-xs">
+							<li v-for="name in shownRepositories" :key="name">{{ name }}</li>
+						</ul>
+					</div>
 					<div class="text-xs text-ink-subtle">Snapshot {{ shortHash }}</div>
 				</div>
 				<p
@@ -138,6 +149,10 @@
 	} from 'vue';
 
 	const MESSAGES: Record<string, string> = {
+		repositories_changed:
+			'The repositories of this category changed. Reopen this dialog.',
+		invalid_repositories:
+			'The repositories of this category are not valid. Fix them in the category settings.',
 		hash_mismatch:
 			'The task changed since it was shown. Reopen this dialog to review it again.',
 		setting_off:
@@ -172,6 +187,8 @@
 			const error = ref<string | null>(null);
 			const fresh = ref<Task | null>(null);
 			const shortHash = ref('');
+			const shownRepositories = ref<string[] | null>(null);
+			const reposChanged = ref(false);
 
 			const refresh = async () => {
 				try {
@@ -186,8 +203,10 @@
 			};
 
 			const onChanged = (event: Event) => {
-				if ((event as CustomEvent).detail?.taskId === props.taskId)
-					void refresh();
+				const detail = (event as CustomEvent).detail;
+				if (detail?.taskId !== props.taskId) return;
+				reposChanged.value = detail.repositoriesChanged === true;
+				void refresh();
 			};
 			onMounted(() => {
 				void refresh();
@@ -204,6 +223,8 @@
 				const a = approval.value;
 				if (!a) return '';
 				if (a.state === 'active') return 'Approved for agent runs';
+				if (reposChanged.value && a.state === 'stale')
+					return 'Needs confirmation: the repositories of this category changed';
 				if (a.state === 'revoked') {
 					const who = a.revoked_by_name ? ` by ${a.revoked_by_name}` : '';
 					return `Approval cancelled: ${revokedReasonLabel(
@@ -242,8 +263,11 @@
 			const openDialog = async () => {
 				error.value = null;
 				fresh.value = null;
+				shownRepositories.value = null;
 				open.value = true;
 				try {
+					shownRepositories.value =
+						(await getTaskApproval(props.taskId)).repositories ?? null;
 					const task = await getTask(props.taskId, false);
 					fresh.value = task;
 					shortHash.value = (
@@ -269,15 +293,18 @@
 							category: fresh.value.category as any,
 						},
 						'confirm',
+						shownRepositories.value,
 					);
 					open.value = false;
+					reposChanged.value = false;
 					await refresh();
 				} catch (e) {
 					const code = agentRunErrorCode(e);
 					error.value =
 						(code && MESSAGES[code]) ||
 						(e instanceof Error ? e.message : String(e));
-					if (code === 'hash_mismatch') fresh.value = null;
+					if (code === 'hash_mismatch' || code === 'repositories_changed')
+						fresh.value = null;
 				} finally {
 					busy.value = false;
 				}
@@ -293,6 +320,7 @@
 				error,
 				fresh,
 				shortHash,
+				shownRepositories,
 				titlePieces,
 				descriptionPieces,
 				warn,

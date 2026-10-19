@@ -20,6 +20,8 @@ export interface TaskApproval {
 	content_sha256: string;
 	setting_enabled: boolean;
 	owner_authored: boolean;
+	repositories?: string[] | null;
+	repos_sha256?: string | null;
 }
 
 export interface ApprovalSubmission {
@@ -28,6 +30,7 @@ export interface ApprovalSubmission {
 	host: string;
 	category_id: number;
 	content_sha256: string;
+	repos_sha256?: string;
 	signed_at: number;
 	signature: string;
 }
@@ -41,7 +44,9 @@ export type AgentRunErrorCode =
 	| 'signature_invalid'
 	| 'setting_off'
 	| 'category_mismatch'
-	| 'confirm_required';
+	| 'confirm_required'
+	| 'repositories_changed'
+	| 'invalid_repositories';
 
 export const agentRunErrorCode = (error: any): string | null => {
 	const body = error?.response?.data;
@@ -127,4 +132,24 @@ export const submitBulkApprovals = async (
 		results.push(...(data?.data ?? data ?? []));
 	}
 	return results;
+};
+
+export const getCategoryAgentRepositories = async (
+	categoryId: number | string,
+): Promise<string[]> => {
+	const { data } = await $axios.get(
+		`/categories/${categoryId}/agent-run-repositories`,
+	);
+	return (data?.data ?? data)?.repositories ?? [];
+};
+
+export const setCategoryAgentRepositories = async (
+	categoryId: number | string,
+	repositories: string[],
+): Promise<string[]> => {
+	const { data } = await $axios.put(
+		`/categories/${categoryId}/agent-run-repositories`,
+		{ repositories },
+	);
+	return (data?.data ?? data)?.repositories ?? [];
 };

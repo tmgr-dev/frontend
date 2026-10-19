@@ -10,6 +10,13 @@ const MAX_BYTES: u64 = 1024 * 1024;
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct CategoryRepositories {
+  pub category_id: String,
+  pub names: Vec<String>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct AllowedEntry {
   pub workspace_code: String,
   pub workspace_id: i64,
@@ -17,6 +24,7 @@ pub struct AllowedEntry {
   pub expired: bool,
   pub keys: usize,
   pub repos: usize,
+  pub repositories: Vec<CategoryRepositories>,
 }
 
 #[derive(Serialize, Debug, PartialEq, Default)]
@@ -28,6 +36,24 @@ pub struct AllowedList {
 #[derive(Deserialize)]
 struct RawFile {
   entries: Vec<Value>,
+}
+
+fn names_of(binding: &Value) -> Option<Vec<String>> {
+  match binding {
+    Value::String(path) => {
+      let name = std::path::Path::new(path).file_name()?.to_str()?;
+      Some(vec![name.to_owned()])
+    }
+    Value::Object(set) => {
+      if set.values().any(|path| !path.is_string()) {
+        return None;
+      }
+      let mut names: Vec<String> = set.keys().cloned().collect();
+      names.sort();
+      Some(names)
+    }
+    _ => None,
+  }
 }
 
 fn entry_from(value: &Value, now: DateTime<Utc>) -> Option<AllowedEntry> {
@@ -43,8 +69,13 @@ fn entry_from(value: &Value, now: DateTime<Utc>) -> Option<AllowedEntry> {
     Some(_) => return None,
   };
   let keys = object.get("keys").and_then(Value::as_array).map_or(0, Vec::len);
-  let repos = object.get("repos").and_then(Value::as_object).map_or(0, |m| m.len());
-  Some(AllowedEntry { workspace_code, workspace_id, expires_at, expired, keys, repos })
+  let bound = object.get("repos").and_then(Value::as_object);
+  let repos = bound.map_or(0, |m| m.len());
+  let mut repositories = Vec::new();
+  for (category_id, binding) in bound.into_iter().flatten() {
+    repositories.push(CategoryRepositories { category_id: category_id.clone(), names: names_of(binding)? });
+  }
+  Some(AllowedEntry { workspace_code, workspace_id, expires_at, expired, keys, repos, repositories })
 }
 
 pub fn parse_allowed(bytes: &[u8], now: DateTime<Utc>) -> AllowedList {
@@ -111,6 +142,35 @@ mod tests {
     assert!(list.entries[1].expired);
     assert_eq!(list.entries[2].expires_at, None);
     assert!(!list.entries[2].expired);
+  }
+
+  #[test]
+  fn lists_repository_names_for_both_shapes() {
+    let sample = r#"{"version":2,"entries":[
+      {"workspace_code":"a","workspace_id":1,"keys":[],"repos":{"5":"/home/x/projects/web","7":{"tmgr-dev/frontend":"/f","acme/api":"/a"}}}]}"#;
+    let list = parse_allowed(sample.as_bytes(), now());
+    assert_eq!(list.error, None);
+    let entry = &list.entries[0];
+    assert_eq!(entry.repos, 2);
+    assert_eq!(
+      entry.repositories,
+      vec![
+        CategoryRepositories { category_id: "5".into(), names: vec!["web".into()] },
+        CategoryRepositories { category_id: "7".into(), names: vec!["acme/api".into(), "tmgr-dev/frontend".into()] },
+      ]
+    );
+    let json = serde_json::to_value(entry).unwrap();
+    assert_eq!(json["repositories"][0]["categoryId"], "5");
+  }
+
+  #[test]
+  fn other_repo_binding_shapes_are_invalid() {
+    for bad in [r#"1"#, r#"null"#, r#"["/r"]"#, r#"{"a/b":1}"#, r#""/""#] {
+      let text = format!(r#"{{"entries":[{{"workspace_code":"x","workspace_id":1,"repos":{{"5":{bad}}}}}]}}"#);
+      let list = parse_allowed(text.as_bytes(), now());
+      assert!(list.entries.is_empty(), "{bad}");
+      assert!(list.error.is_some(), "{bad}");
+    }
   }
 
   #[test]

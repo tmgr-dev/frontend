@@ -21,6 +21,28 @@ export const contentSha256 = async (
 		)}`,
 	);
 
+const REPO_NAME = /^[a-z0-9][a-z0-9-]{0,38}\/[a-z0-9._-]{1,100}$/;
+export const MAX_REPOSITORIES = 5;
+
+export const canonicalRepos = (names: readonly string[]): string[] => {
+	if (names.length === 0 || names.length > MAX_REPOSITORIES)
+		throw new Error('repository list must have 1 to 5 names');
+	for (const name of names) {
+		if (
+			typeof name !== 'string' ||
+			!REPO_NAME.test(name) ||
+			name.endsWith('.git')
+		)
+			throw new Error(`invalid repository name: ${name}`);
+	}
+	if (new Set(names).size !== names.length)
+		throw new Error('duplicate repository name');
+	return [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+};
+
+export const reposSha256 = async (names: readonly string[]): Promise<string> =>
+	sha256Hex(`tmgr-repos:v1:${canonicalRepos(names).join('\n')}`);
+
 export const approvalMessage = (
 	host: string,
 	userId: number,
@@ -30,10 +52,15 @@ export const approvalMessage = (
 	sha: string,
 	keyId: string,
 	signedAt: number,
+	reposSha?: string | null,
 ): string =>
-	`tmgr-agent-approval:v1:${host}:${userId}:${workspaceId}:${taskId}:${
-		categoryId ?? 0
-	}:${sha}:${keyId}:${signedAt}`;
+	reposSha
+		? `tmgr-agent-approval:v2:${host}:${userId}:${workspaceId}:${taskId}:${
+				categoryId ?? 0
+		  }:${sha}:${reposSha}:${keyId}:${signedAt}`
+		: `tmgr-agent-approval:v1:${host}:${userId}:${workspaceId}:${taskId}:${
+				categoryId ?? 0
+		  }:${sha}:${keyId}:${signedAt}`;
 
 export const toBase64 = (bytes: ArrayBuffer | Uint8Array): string => {
 	const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

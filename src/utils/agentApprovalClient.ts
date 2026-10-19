@@ -16,6 +16,7 @@ import {
 	contentSha256,
 	exportPublicKey,
 	generateSigningKeyPair,
+	reposSha256,
 	signMessage,
 } from '@/utils/agentApproval';
 import { buildBulkItems } from '@/utils/agentApprovalBulk';
@@ -137,9 +138,49 @@ export interface SignableTask {
 
 const currentUserId = (): number => Number(store.state.user?.id) || 0;
 
+const coded = (code: string, message: string): Error =>
+	Object.assign(new Error(message), { response: { data: { code } } });
+
+const sameRepositories = (
+	a: readonly string[] | null,
+	b: readonly string[] | null,
+): boolean =>
+	a === null || b === null
+		? a === b
+		: a.length === b.length &&
+		  [...a].sort().join('\n') === [...b].sort().join('\n');
+
+const repositoriesFor = async (
+	taskId: number,
+	shown?: readonly string[] | null,
+): Promise<string[] | null> => {
+	const current = (await getTaskApproval(taskId)).repositories ?? null;
+	if (shown !== undefined && !sameRepositories(shown, current))
+		throw coded(
+			'repositories_changed',
+			'The repositories of this category changed. Reopen this dialog.',
+		);
+	return current;
+};
+
+const reposHashOf = async (
+	repositories: readonly string[] | null,
+): Promise<string | undefined> => {
+	if (repositories === null) return undefined;
+	try {
+		return await reposSha256(repositories);
+	} catch {
+		throw coded(
+			'invalid_repositories',
+			'The repositories of this category are not valid. Fix them in the category settings.',
+		);
+	}
+};
+
 export const signTaskApproval = async (
 	task: SignableTask,
 	kind: ApprovalKind,
+	shownRepositories?: readonly string[] | null,
 ): Promise<void> => {
 	const userId = currentUserId();
 	const workspaceId = Number(
@@ -148,6 +189,9 @@ export const signTaskApproval = async (
 	const sha = await contentSha256(task.title, task.description);
 	const host = apiHost();
 	const categoryId = categoryIdOf(task);
+	const repos = await reposHashOf(
+		await repositoriesFor(task.id, shownRepositories),
+	);
 	const attempt = async (forceNew: boolean) => {
 		const key = await signingKey(userId, forceNew);
 		const signedAt = Math.floor(Date.now() / 1000);
@@ -160,6 +204,7 @@ export const signTaskApproval = async (
 			sha,
 			key.keyId,
 			signedAt,
+			repos,
 		);
 		await submitTaskApproval(task.id, {
 			kind,
@@ -167,6 +212,7 @@ export const signTaskApproval = async (
 			host,
 			category_id: categoryId,
 			content_sha256: sha,
+			...(repos ? { repos_sha256: repos } : {}),
 			signed_at: signedAt,
 			signature: await signMessage(key.privateKey, message),
 		});
@@ -222,7 +268,19 @@ export const autoSignAfterSave = async (
 	)
 		return;
 	if (approval.state === 'active' && approval.content_sha256 === sha) return;
-	await signTaskApproval(task, 'author');
+	try {
+		await signTaskApproval(task, 'author');
+	} catch (error) {
+		const code = agentRunErrorCode(error);
+		if (code !== 'confirm_required' && code !== 'repositories_changed')
+			throw error;
+		window.dispatchEvent(
+			new CustomEvent(APPROVAL_CHANGED, {
+				detail: { taskId: task.id, repositoriesChanged: true },
+			}),
+		);
+		return;
+	}
 	window.dispatchEvent(
 		new CustomEvent(APPROVAL_CHANGED, { detail: { taskId: task.id } }),
 	);
@@ -240,13 +298,40 @@ export const autoSignQuietly = (
 
 export const signTaskApprovalsBulk = async (
 	tasks: SignableTask[],
+	shownRepositories: Record<number, string[] | null> = {},
 ): Promise<BulkApprovalResult[]> => {
 	const userId = currentUserId();
 	const host = apiHost();
+	const refused: BulkApprovalResult[] = [];
+	const ready: { task: SignableTask; repositories: string[] | null }[] = [];
+	const queue = [...tasks];
+	await Promise.all(
+		Array.from({ length: 6 }, async () => {
+			while (queue.length) {
+				const task = queue.shift()!;
+				try {
+					const repositories = await repositoriesFor(
+						task.id,
+						shownRepositories[task.id],
+					);
+					await reposHashOf(repositories);
+					ready.push({ task, repositories });
+				} catch (error) {
+					refused.push({
+						task_id: task.id,
+						ok: false,
+						code: agentRunErrorCode(error) ?? 'failed',
+					});
+				}
+			}
+		}),
+	);
+	const order = new Map(tasks.map((task, i) => [task.id, i]));
+	ready.sort((a, b) => order.get(a.task.id)! - order.get(b.task.id)!);
 	const attempt = async (forceNew: boolean) => {
 		const key = await signingKey(userId, forceNew);
 		const items = await buildBulkItems({
-			tasks: tasks.map((task) => ({
+			tasks: ready.map(({ task, repositories }) => ({
 				id: task.id,
 				title: task.title,
 				description: task.description,
@@ -254,6 +339,7 @@ export const signTaskApprovalsBulk = async (
 					task.workspace_id ?? store.getters.currentWorkspaceId,
 				),
 				categoryId: categoryIdOf(task),
+				repositories,
 			})),
 			host,
 			userId,
@@ -263,14 +349,18 @@ export const signTaskApprovalsBulk = async (
 		});
 		return submitBulkApprovals(items);
 	};
-	let results: BulkApprovalResult[];
-	try {
-		results = await attempt(false);
-	} catch (error) {
-		if (agentRunErrorCode(error) !== 'key_unknown') throw error;
-		return attempt(true);
-	}
-	if (results.length && results.every((r) => r.code === 'key_unknown'))
-		return attempt(true);
-	return results;
+	const submit = async (): Promise<BulkApprovalResult[]> => {
+		if (!ready.length) return [];
+		let results: BulkApprovalResult[];
+		try {
+			results = await attempt(false);
+		} catch (error) {
+			if (agentRunErrorCode(error) !== 'key_unknown') throw error;
+			return attempt(true);
+		}
+		if (results.length && results.every((r) => r.code === 'key_unknown'))
+			return attempt(true);
+		return results;
+	};
+	return [...(await submit()), ...refused];
 };
