@@ -69,17 +69,20 @@ pub struct OfferPage {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Offer {
+    pub repositories: Option<Vec<String>>,
     pub persona: Option<OfferPersona>,
     pub context: Option<Vec<OfferPage>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Offered {
-    pub repositories: Option<Vec<String>>,
-    pub offer: Offer,
-}
+const MAX_SAFE_ID: i64 = 9_007_199_254_740_991;
 
 fn offer_of(data: &Value) -> std::result::Result<Offer, String> {
+    let repositories = match data.get("repositories") {
+        None | Some(Value::Null) => None,
+        Some(list) => Some(
+            serde_json::from_value(list.clone()).map_err(|_| "invalid_repositories".to_string())?,
+        ),
+    };
     let persona = match data.get("persona") {
         None | Some(Value::Null) => None,
         Some(p) => {
@@ -101,11 +104,15 @@ fn offer_of(data: &Value) -> std::result::Result<Offer, String> {
             let mut out = Vec::new();
             for page in pages {
                 let text = |k: &str| page.get(k).and_then(Value::as_str).map(str::to_string);
+                let id = page
+                    .get("id")
+                    .and_then(Value::as_i64)
+                    .ok_or("context_changed")?;
+                if !(0..=MAX_SAFE_ID).contains(&id) {
+                    return Err("invalid_context_page".to_string());
+                }
                 out.push(OfferPage {
-                    id: page
-                        .get("id")
-                        .and_then(Value::as_i64)
-                        .ok_or("context_changed")?,
+                    id,
                     title: text("title").ok_or("context_changed")?,
                     body: text("body").ok_or("context_changed")?,
                 });
@@ -113,7 +120,11 @@ fn offer_of(data: &Value) -> std::result::Result<Offer, String> {
             Some(out)
         }
     };
-    Ok(Offer { persona, context })
+    Ok(Offer {
+        repositories,
+        persona,
+        context,
+    })
 }
 
 fn coverage(offer: &Offer) -> std::result::Result<(Option<String>, Option<String>), String> {
@@ -137,7 +148,7 @@ fn coverage(offer: &Offer) -> std::result::Result<(Option<String>, Option<String
     Ok((persona, context))
 }
 
-pub fn read_offer(client: &Client, task_id: i64) -> std::result::Result<Offered, String> {
+pub fn read_offer(client: &Client, task_id: i64) -> std::result::Result<Offer, String> {
     let (status, value) = client
         .call(
             "GET",
@@ -149,17 +160,7 @@ pub fn read_offer(client: &Client, task_id: i64) -> std::result::Result<Offered,
     if !(200..300).contains(&status) {
         return Err(error_code(&value).unwrap_or("failed").to_string());
     }
-    let data = unwrap_data(value);
-    let repositories = match data.get("repositories") {
-        None | Some(Value::Null) => None,
-        Some(list) => Some(
-            serde_json::from_value(list.clone()).map_err(|_| "invalid_repositories".to_string())?,
-        ),
-    };
-    Ok(Offered {
-        repositories,
-        offer: offer_of(&data)?,
-    })
+    offer_of(&unwrap_data(value))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -501,13 +502,13 @@ impl<'a> Signer<'a> {
         if repos != task.repos_sha256 {
             return Err("repositories_changed".to_string());
         }
-        if offered.offer.persona != task.offer.persona {
+        if offered.persona != task.offer.persona {
             return Err("persona_changed".to_string());
         }
-        if offered.offer.context != task.offer.context {
+        if offered.context != task.offer.context {
             return Err("context_changed".to_string());
         }
-        let (persona, context) = coverage(&offered.offer)?;
+        let (persona, context) = coverage(&offered)?;
         Ok(Covered {
             repos,
             persona,
@@ -949,6 +950,7 @@ mod tests {
         });
         (
             Offer {
+                repositories: None,
                 persona: Some(persona),
                 context: Some(pages),
             },
@@ -997,6 +999,16 @@ mod tests {
         assert!(check_claim(&pinned(&claim.host, &own), &other, "T", "body").is_err());
     }
 
+    #[test]
+    fn page_ids_beyond_the_javascript_safe_integer_are_refused() {
+        let page = |id: i64| json!({"context": {"pages": [{"id": id, "title": "t", "body": "b"}]}});
+        assert!(offer_of(&page(9_007_199_254_740_991)).is_ok());
+        assert_eq!(
+            offer_of(&page(9_007_199_254_740_992)).unwrap_err(),
+            "invalid_context_page"
+        );
+    }
+
     #[tokio::test(flavor = "multi_thread")]
     async fn persona_or_rules_changed_since_shown_are_refused_and_nothing_is_sent() {
         let (offer, mut served) = offer_fixture();
@@ -1014,6 +1026,7 @@ mod tests {
             t.offer = shown;
             let mut u = task(14, "U");
             u.offer = Offer {
+                repositories: None,
                 persona: t.offer.persona.clone(),
                 context: None,
             };

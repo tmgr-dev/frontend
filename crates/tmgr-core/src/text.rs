@@ -111,9 +111,64 @@ fn strip_links(line: &str) -> String {
     out
 }
 
+const HIDDEN: [(u32, u32); 19] = [
+    (0x00, 0x08),
+    (0x0b, 0x0d),
+    (0x0e, 0x1f),
+    (0x7f, 0x9f),
+    (0xad, 0xad),
+    (0x34f, 0x34f),
+    (0x61c, 0x61c),
+    (0x115f, 0x1160),
+    (0x17b4, 0x17b5),
+    (0x180b, 0x180f),
+    (0x200b, 0x200f),
+    (0x2028, 0x202e),
+    (0x2060, 0x206f),
+    (0x3164, 0x3164),
+    (0xfe00, 0xfe0f),
+    (0xfeff, 0xfeff),
+    (0xffa0, 0xffa0),
+    (0xfff9, 0xfffb),
+    (0xe0000, 0xe0fff),
+];
+
+pub fn is_hidden(c: char) -> bool {
+    let n = c as u32;
+    HIDDEN.iter().any(|(lo, hi)| n >= *lo && n <= *hi)
+}
+
+pub fn flag_hidden(input: &str) -> (String, bool) {
+    let mut out = String::with_capacity(input.len());
+    let mut found = false;
+    for c in input.replace("\r\n", "\n").chars() {
+        if is_hidden(c) {
+            found = true;
+            out.push_str(&format!("[hidden U+{:04X}]", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    (out, found)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hidden_characters_are_marked_not_dropped() {
+        let (out, found) = flag_hidden("a\u{2028}b\u{ad}\u{2060}\u{e0041}\r\nc\rd\u{61c}");
+        assert!(found);
+        assert_eq!(
+            out,
+            "a[hidden U+2028]b[hidden U+00AD][hidden U+2060][hidden U+E0041]\nc[hidden U+000D]d[hidden U+061C]"
+        );
+        assert_eq!(
+            flag_hidden("plain\ttext\né"),
+            ("plain\ttext\né".into(), false)
+        );
+    }
 
     #[test]
     fn sanitize_strips_escape_sequences_but_keeps_newlines() {

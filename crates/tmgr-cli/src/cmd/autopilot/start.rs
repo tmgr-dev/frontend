@@ -195,7 +195,7 @@ fn with_offer(client: &Client, mut found: Found) -> Found {
     };
     match read_offer(client, found.id) {
         Ok(offered) => {
-            sign.offer = offered.offer;
+            sign.offer = offered;
             found
         }
         Err(code) => Found {
@@ -349,70 +349,81 @@ fn limit_text(plan: &Plan) -> Vec<String> {
     lines
 }
 
-const TEXT_CLIP: usize = 2000;
+fn shown_text(text: &str, hidden: &mut bool) -> String {
+    let (flagged, found) = tmgr_core::text::flag_hidden(text);
+    *hidden |= found;
+    flagged
+        .lines()
+        .map(|l| format!("      {l}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
-fn shown_text(text: &str) -> String {
-    let plain = text.replace("\r\n", "\n");
-    let clean = tmgr_core::text::sanitize(&plain);
-    let hidden = if clean.chars().count() != plain.chars().count() {
-        "\n(hidden control characters were removed from this display)"
-    } else {
-        ""
-    };
-    let (head, cut) = tmgr_core::text::truncate_chars(&clean, TEXT_CLIP);
-    let more = if cut {
-        format!(
-            "\n... ({} more characters are signed too; open the task in the web app to read all of it)",
-            clean.chars().count() - TEXT_CLIP
-        )
-    } else {
-        String::new()
-    };
-    let body: Vec<String> = head.lines().map(|l| format!("      {l}")).collect();
-    format!("{}{more}{hidden}", body.join("\n"))
+fn shown_line(text: &str, hidden: &mut bool) -> String {
+    let (flagged, found) = tmgr_core::text::flag_hidden(text);
+    *hidden |= found;
+    flagged.replace('\n', " ")
 }
 
 fn signed_texts(plan: &Plan) -> Vec<String> {
-    let mut personas: Vec<(&crate::cmd::signer::OfferPersona, Vec<&str>)> = Vec::new();
-    let mut contexts: Vec<(&[crate::cmd::signer::OfferPage], Vec<&str>)> = Vec::new();
+    let mut lines = Vec::new();
+    let mut warnings = Vec::new();
     for f in &plan.chosen {
         let Some(sign) = &f.sign else { continue };
-        if let Some(p) = &sign.offer.persona {
-            match personas.iter_mut().find(|(q, _)| *q == p) {
-                Some((_, keys)) => keys.push(&f.key),
-                None => personas.push((p, vec![&f.key])),
-            }
-        }
-        if let Some(pages) = &sign.offer.context {
-            match contexts.iter_mut().find(|(q, _)| *q == pages.as_slice()) {
-                Some((_, keys)) => keys.push(&f.key),
-                None => contexts.push((pages, vec![&f.key])),
-            }
-        }
-    }
-    let mut lines = Vec::new();
-    for (p, keys) in personas {
+        let mut hidden = false;
         lines.push(format!(
-            "Persona    signing the instructions of persona \"{}\" for {}:\n{}",
-            sanitize_line(&p.name),
-            keys.join(", "),
-            shown_text(&p.instructions)
+            "Signing    {} (task {}) signs exactly this:",
+            f.key, sign.id
         ));
-    }
-    for (pages, keys) in contexts {
         lines.push(format!(
-            "Rules      signing the workspace rules for {}:",
-            keys.join(", ")
+            "    Title: {}",
+            shown_line(&sign.title, &mut hidden)
         ));
-        for page in pages {
-            lines.push(format!(
-                "    {}\n{}",
-                sanitize_line(&page.title),
-                shown_text(&page.body)
+        lines.push("    Description:".to_string());
+        lines.push(shown_text(&sign.description, &mut hidden));
+        lines.push(match &sign.offer.repositories {
+            Some(list) => format!(
+                "    Repositories: {}",
+                list.iter()
+                    .map(|r| shown_line(r, &mut hidden))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            None => "    Repositories: no repository list signed".to_string(),
+        });
+        match &sign.offer.persona {
+            Some(p) => {
+                lines.push(format!(
+                    "    Persona instructions (\"{}\"):",
+                    shown_line(&p.name, &mut hidden)
+                ));
+                lines.push(shown_text(&p.instructions, &mut hidden));
+            }
+            None => lines.push("    Persona instructions: none signed".to_string()),
+        }
+        match &sign.offer.context {
+            Some(pages) => {
+                lines.push("    Workspace rules:".to_string());
+                for page in pages {
+                    lines.push(format!(
+                        "      Page {}: {}",
+                        page.id,
+                        shown_line(&page.title, &mut hidden)
+                    ));
+                    lines.push(shown_text(&page.body, &mut hidden));
+                }
+            }
+            None => lines.push("    Workspace rules: none signed".to_string()),
+        }
+        if hidden {
+            warnings.push(format!(
+                "WARNING    {} has hidden or control characters in what is signed; they are marked [hidden U+XXXX] below",
+                f.key
             ));
         }
     }
-    lines
+    warnings.extend(lines);
+    warnings
 }
 
 pub fn summary_text(plan: &Plan) -> String {
@@ -750,8 +761,10 @@ fn begin_after_handover(
     if !to_sign.is_empty() {
         let signer = Signer::new(client, &ctx.server()?, user)?;
         let own = signer.ensure_key().map_err(|e| scope_hint(client, e))?;
-        crate::cmd::runner::allow::pin_own_key(&host, user, plan.ws.id, &own, &plan.device)?;
         report = sign_chosen(&signer, client, &to_sign)?;
+        if !report.signed.is_empty() {
+            crate::cmd::runner::allow::pin_own_key(&host, user, plan.ws.id, &own, &plan.device)?;
+        }
     }
     let tasks: BTreeSet<i64> = plan
         .chosen
@@ -1109,18 +1122,18 @@ mod tests {
     }
 
     #[test]
-    fn the_summary_shows_the_persona_and_rules_texts_that_get_signed() {
+    fn the_summary_shows_everything_that_gets_signed_without_clipping() {
         use crate::cmd::signer::{OfferPage, OfferPersona};
         let mut p = plan(true, true);
         let sign = p.chosen[1].sign.as_mut().unwrap();
+        sign.title = "Fix login".into();
+        sign.description = format!("Line one\r\nLine two\n{}", "d".repeat(5000));
         sign.offer = Offer {
+            repositories: Some(vec!["acme/api".into(), "acme/web".into()]),
             persona: Some(OfferPersona {
                 id: "993c30a6-3528-42bf-9a70-507841cebc08".into(),
                 name: "Agent".into(),
-                instructions: format!(
-                    "Follow the rules.\r\nBe \u{1b}[31mred\n{}",
-                    "x".repeat(2500)
-                ),
+                instructions: format!("Follow the rules.\nEnd {}", "x".repeat(3000)),
             }),
             context: Some(vec![OfferPage {
                 id: 1,
@@ -1130,18 +1143,47 @@ mod tests {
         };
         let s = summary_text(&p);
         for needle in [
-            "persona \"Agent\" for TM-2",
+            "TM-2 (task 2) signs exactly this",
+            "Title: Fix login",
+            "      Line two",
+            &"d".repeat(5000),
+            "Repositories: acme/api, acme/web",
+            "Persona instructions (\"Agent\")",
             "      Follow the rules.",
-            "hidden control characters were removed",
-            "more characters are signed too",
-            "workspace rules for TM-2",
-            "Team rules",
+            &"x".repeat(3000),
+            "Page 1: Team rules",
             "      Open a PR.",
+        ] {
+            assert!(s.contains(needle), "missing {needle:?}");
+        }
+        assert!(!s.contains("WARNING"));
+        assert!(!s.contains('\r'));
+        let plain = summary_text(&plan(true, true));
+        assert!(plain.contains("Repositories: no repository list signed"));
+        assert!(plain.contains("Persona instructions: none signed"));
+    }
+
+    #[test]
+    fn hidden_characters_are_marked_and_named_in_a_warning() {
+        let mut p = plan(true, true);
+        let sign = p.chosen[1].sign.as_mut().unwrap();
+        sign.description = "ok\u{2028}bad \u{1b}[31m\u{e0041}".into();
+        sign.offer.persona = Some(crate::cmd::signer::OfferPersona {
+            id: "993c30a6-3528-42bf-9a70-507841cebc08".into(),
+            name: "A\u{202e}B".into(),
+            instructions: "fine".into(),
+        });
+        let s = summary_text(&p);
+        for needle in [
+            "WARNING    TM-2 has hidden or control characters",
+            "[hidden U+2028]",
+            "[hidden U+001B]",
+            "[hidden U+E0041]",
+            "[hidden U+202E]",
         ] {
             assert!(s.contains(needle), "missing {needle:?} in\n{s}");
         }
-        assert!(!s.contains('\u{1b}'));
-        assert!(!summary_text(&plan(true, true)).contains("Persona "));
+        assert!(!s.contains('\u{1b}') && !s.contains('\u{2028}'));
     }
 
     #[test]

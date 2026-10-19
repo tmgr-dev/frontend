@@ -784,6 +784,11 @@ async fn starting_signs_pins_enables_and_hosts_the_loop_until_stop() {
         &message,
         item["signature"].as_str().unwrap()
     ));
+    assert!(
+        screen.contains("The login form drops the session"),
+        "{screen}"
+    );
+    assert!(screen.contains("no repository list signed"), "{screen}");
     assert!(screen.contains("Follow the rules."), "{screen}");
     assert!(screen.contains("Rules for parallel teams"), "{screen}");
 

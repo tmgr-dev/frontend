@@ -194,7 +194,9 @@ pub(crate) fn agree(summary: &str) -> Result<()> {
     privileged::guard()?;
     eprintln!("{WARNING}");
     if !summary.is_empty() {
-        eprintln!("\n{summary}");
+        eprintln!();
+        let lines: Vec<String> = summary.lines().map(str::to_string).collect();
+        page_through(&lines)?;
     }
     privileged::confirm_typed_stdio("I AGREE", "\nType I AGREE to continue:")
 }
