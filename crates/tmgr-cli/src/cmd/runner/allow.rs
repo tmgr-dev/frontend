@@ -97,6 +97,26 @@ fn live_keys(raw: Value) -> Result<Vec<(PinnedKey, Option<String>)>> {
         .collect())
 }
 
+pub fn key_conflict(previous: &Entry, keys: &[(PinnedKey, Option<String>)]) -> Result<()> {
+    for (k, _) in keys {
+        if let Some(old) = previous.key(&k.key_id) {
+            if old.public_key != k.public_key {
+                return Err(Error::new(
+                    Kind::Conflict,
+                    format!(
+                        "key {} is pinned with fingerprint {} but the server now reports {} for it",
+                        sanitize_line(&k.key_id),
+                        fingerprint(&old.public_key),
+                        fingerprint(&k.public_key)
+                    ),
+                )
+                .hint("delete that key in the web app, then run this again"));
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
     privileged::guard()?;
     if workspace.starts_with(tmgr_core::local::PREFIX) {
@@ -126,8 +146,11 @@ pub fn allow(o: &Opts, workspace: &str, lifetime: Lifetime) -> Result<i32> {
         )
         .hint("open a task of this workspace in the web app or the desktop app once to create one, then run this again"));
     }
-    let mut file = AllowFile::load().map_err(store_error)?;
+    let file = AllowFile::load().map_err(store_error)?;
     let previous = file.find(&host, user_id, ws.id).cloned();
+    if let Some(p) = &previous {
+        key_conflict(p, &keys)?;
+    }
     let now = Utc::now();
     let expires = lifetime.expires_at(now);
     eprintln!(
@@ -160,19 +183,26 @@ These keys are pinned now; a key added later is not trusted until you run this a
         &ws.code,
         &format!("Type the workspace code ({}) to confirm:", ws.code),
     )?;
-    let entry = Entry {
-        server: host,
-        user_id,
-        workspace_id: ws.id,
-        workspace_code: ws.code.clone(),
-        allowed_at: stamp(now),
-        expires_at: expires.map(stamp),
-        keys: keys.iter().map(|(k, _)| k.clone()).collect(),
-        repos: previous.map(|p| p.repos).unwrap_or_default(),
-    };
+    let entry = AllowFile::update(|file| {
+        let current = file.find(&host, user_id, ws.id).cloned();
+        if let Some(p) = &current {
+            key_conflict(p, &keys).map_err(|e| e.message)?;
+        }
+        let entry = Entry {
+            server: host.clone(),
+            user_id,
+            workspace_id: ws.id,
+            workspace_code: ws.code.clone(),
+            allowed_at: stamp(now),
+            expires_at: expires.map(stamp),
+            keys: keys.iter().map(|(k, _)| k.clone()).collect(),
+            repos: current.map(|p| p.repos).unwrap_or_default(),
+        };
+        file.upsert(entry.clone());
+        Ok(entry)
+    })
+    .map_err(store_error)?;
     let data = describe(&entry, now);
-    file.upsert(entry);
-    file.save().map_err(store_error)?;
     let human = format!(
         "workspace {} is allowed{}",
         sanitize_line(&ws.code),
@@ -184,14 +214,13 @@ These keys are pinned now; a key added later is not trusted until you run this a
 pub fn disallow(o: &Opts, workspace: &str) -> Result<i32> {
     let ctx = Ctx::new(o.cli)?;
     let host = host_of(&ctx.server()?)?;
-    let mut file = AllowFile::load().map_err(store_error)?;
-    let before = file.entries.len();
-    file.entries
-        .retain(|e| !(e.server == host && e.workspace_code.eq_ignore_ascii_case(workspace)));
-    let removed = file.entries.len() != before;
-    if removed {
-        file.save().map_err(store_error)?;
-    }
+    let removed = AllowFile::update(|file| {
+        let before = file.entries.len();
+        file.entries
+            .retain(|e| !(e.server == host && e.workspace_code.eq_ignore_ascii_case(workspace)));
+        Ok(file.entries.len() != before)
+    })
+    .map_err(store_error)?;
     let human = if removed {
         format!(
             "workspace {} is no longer allowed",
@@ -282,5 +311,46 @@ mod tests {
         );
         assert_eq!(host_of("http://localhost:8080").unwrap(), "localhost:8080");
         assert!(host_of("nonsense").is_err());
+    }
+}
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    const A: &str =
+        "BImU1e2SPEdD/HKLzjfuQlNuLgKE44/qEF5a+626Bj0KtbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE=";
+    const B: &str =
+        "BD7GudbwbOUVIvsBsw0CvYo7MXeWK1HUMFt+qGPDXCqeED93aEkCI5814pbvM3gcEwEBre/NlqieFT46CB9RzdA=";
+
+    fn pin(id: &str, public: &str) -> PinnedKey {
+        PinnedKey {
+            key_id: id.into(),
+            public_key: public.into(),
+            device_name: "d".into(),
+        }
+    }
+
+    fn entry() -> Entry {
+        Entry {
+            server: "s".into(),
+            user_id: 1,
+            workspace_id: 2,
+            workspace_code: "w".into(),
+            allowed_at: "2025-10-01T00:00:00Z".into(),
+            expires_at: None,
+            keys: vec![pin("k1", A)],
+            repos: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn a_pinned_key_id_with_another_public_key_is_refused_naming_both_fingerprints() {
+        let e = key_conflict(&entry(), &[(pin("k1", B), None)]).unwrap_err();
+        assert!(e.message.contains("k1"), "{}", e.message);
+        assert!(e.message.contains(&fingerprint(A)) && e.message.contains(&fingerprint(B)));
+        assert!(e.hint.unwrap_or_default().contains("delete that key"));
+        key_conflict(&entry(), &[(pin("k1", A), None), (pin("k2", B), None)]).unwrap();
     }
 }

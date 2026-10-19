@@ -802,7 +802,7 @@ impl CloudApi for CliCloud<'_> {
             }
             Some(_) => {}
         }
-        rollback.record(rkey, ok.claim.signed_at);
+        rollback.record(rkey, ok.claim.signed_at, &ok.claim.content_sha256);
         rollback
             .save()
             .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
@@ -963,7 +963,13 @@ impl RunsClient for RunnerRuns {
 
     fn status(&self, run_id: &str) -> RunState {
         match self.with(|c| c.run_status(run_id)) {
-            Ok(s) if !s.alive || s.state == StateKind::Exited => RunState::Exited,
+            Ok(s) if !s.alive || s.state == StateKind::Exited => {
+                if s.exit_code == Some(0) && s.signal.is_none() {
+                    RunState::Succeeded
+                } else {
+                    RunState::Exited
+                }
+            }
             Ok(_) => RunState::Running,
             Err(e) if answered_not_found(&e) => RunState::Exited,
             Err(_) => RunState::Unknown,

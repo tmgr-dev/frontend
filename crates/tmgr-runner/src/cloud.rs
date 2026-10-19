@@ -1,9 +1,15 @@
 use chrono::{DateTime, Utc};
-use tmgr_approval::AllowFile;
+use tmgr_approval::{AllowFile, Rollback};
 use tmgr_ipc::api::{RunCreateReq, TaskRef};
 
 pub fn check(req: &RunCreateReq, task: TaskRef) -> Result<(), String> {
-    check_with(req, task, AllowFile::load(), Utc::now())
+    check_with(
+        req,
+        task,
+        AllowFile::load(),
+        Utc::now(),
+        Rollback::load().ok(),
+    )
 }
 
 pub fn check_with(
@@ -11,6 +17,7 @@ pub fn check_with(
     task: TaskRef,
     allow: Result<AllowFile, String>,
     now: DateTime<Utc>,
+    rollback: Option<Rollback>,
 ) -> Result<(), String> {
     let cloud = req.cloud.as_ref().ok_or(
         "agent_work: a task of a cloud workspace needs a signed approval; start it with tmgr run",
@@ -37,6 +44,21 @@ pub fn check_with(
         .map_err(|r| r.to_string())?;
     tmgr_approval::check_claim(entry, cloud, &bundle.title, &bundle.body)
         .map_err(|r| r.to_string())?;
+    if let Some(seen) = rollback.as_ref().and_then(|r| {
+        r.seen(&Rollback::key(
+            &cloud.host,
+            cloud.user_id,
+            cloud.workspace_id,
+            cloud.task_id,
+        ))
+    }) {
+        let (at, hash) = seen;
+        if cloud.signed_at < at
+            || (cloud.signed_at == at && hash.is_some_and(|h| h != cloud.content_sha256))
+        {
+            return Err("agent_work: an older approved version of this task was served".into());
+        }
+    }
     match (entry.repo(cloud.category_id), req.clone_of.as_deref()) {
         (Some(bound), Some(of)) if bound == of => Ok(()),
         _ => Err(format!(

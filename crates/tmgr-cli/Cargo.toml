@@ -48,3 +48,5 @@ portable-pty.workspace = true
 vt100.workspace = true
 rusqlite.workspace = true
 tmgr-local = { path = "../tmgr-local" }
+p256 = { version = "0.13", default-features = false, features = ["ecdsa", "sha256", "std"] }
+base64.workspace = true

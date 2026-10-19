@@ -172,7 +172,9 @@ home and `(remote tcp "localhost:<proxy_port>")`, then `(deny network-inbound)` 
 `(allow network-inbound (local ip "localhost:*"))` (the last matching rule wins). Direct TCP, UDP and DNS lookups from the
 agent fail; only the proxy port on localhost is reachable. The environment gets `HTTPS_PROXY HTTP_PROXY https_proxy
 http_proxy ALL_PROXY all_proxy = http://127.0.0.1:<port>` and empty `NO_PROXY no_proxy` (a profile or `env_pass` cannot
-override them).
+override them). A restricted profile also denies `appleevent-send`, `lsopen` and `mach-lookup` of
+`com.apple.coreservices.launchservicesd` and `com.apple.nsurlsessiond`, so the agent cannot hand a URL to the system
+opener (`open`) or to the system URL-session daemon; `tests/sandbox_network.rs` checks that `open` fails.
 
 Linux: Landlock filters TCP ports only (not hosts, not UDP), so the restriction is not enforced and `prepare` refuses a
 `Restricted` spec; the mode policy never asks for it there, so unattended bypass runs are not possible on Linux.
@@ -186,8 +188,14 @@ link-local, CGNAT (100.64/10), multicast, unspecified, reserved/documentation, I
 NAT64 or 6to4 form of those, and connects to the exact address it checked. Requests are limited to 8 KiB of headers,
 64 concurrent connections and a 5 minute idle timeout. Refused CONNECTs are logged by host name only.
 
-Residual: any allowed host that accepts uploads with credentials the agent holds is an exfiltration channel; Mach/XPC
-services stay reachable on macOS because the profile starts from `allow default`.
+Residual risks:
+- Any allowed host that accepts uploads with credentials the agent holds is an exfiltration channel.
+- Mach/XPC services other than the two denied above stay reachable on macOS because the profile starts from
+  `allow default`; a service that does network work on the agent's behalf is a theoretical channel.
+- CI secrets on same-repo PR branches: a published `tmgr/**` branch is in the owner's repository, so its existing
+  workflows run the agent-modified build and test scripts with the repository's secrets. Publishing refuses changes under
+  `.github/`, but not changes to the scripts those workflows call. Use environment-scoped secrets, or require approval
+  before workflows run on `tmgr/**` branches.
 
 ## Linux helper
 

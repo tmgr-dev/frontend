@@ -77,3 +77,28 @@ fn restricted_keeps_unix_sockets_in_the_run_home() {
     let o = f.run_net(&script, Network::Restricted { proxy_port: 4321 });
     assert_eq!(o.stdout.trim(), "connected", "{}", o.stderr);
 }
+
+#[test]
+fn restricted_cannot_hand_a_url_to_the_system_opener() {
+    let f = fx();
+    let o = f.run_net(
+        "/usr/bin/open https://example.com >/dev/null 2>&1; echo $?",
+        Network::Restricted { proxy_port: 4321 },
+    );
+    assert_ne!(o.stdout.trim(), "0", "{}", o.stderr);
+}
+
+#[test]
+fn restricted_still_runs_ordinary_tools() {
+    let f = fx();
+    let net = Network::Restricted { proxy_port: 4321 };
+    for script in [
+        "git --version",
+        "/usr/bin/python3 -c 'print(1)'",
+        "perl -e 'print 1'",
+        "if command -v node >/dev/null; then node -e 'console.log(1)'; fi",
+    ] {
+        let o = f.run_net(script, net);
+        assert!(o.ok(), "{script}: {}", o.stderr);
+    }
+}

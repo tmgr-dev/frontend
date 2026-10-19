@@ -190,9 +190,12 @@ fn rollback_keeps_the_highest_signed_at() {
     let k = Rollback::key("api.tmgr.dev", 1, 56, 9002);
     let mut r = Rollback::load_from(&path).unwrap();
     assert_eq!(r.seen(&k), None);
-    r.record(k.clone(), 10);
-    r.record(k.clone(), 5);
+    r.record(k.clone(), 10, "h");
+    r.record(k.clone(), 5, "h");
     r.save_to(&path).unwrap();
     assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
-    assert_eq!(Rollback::load_from(&path).unwrap().seen(&k), Some(10));
+    assert_eq!(
+        Rollback::load_from(&path).unwrap().seen(&k),
+        Some((10, Some("h")))
+    );
 }

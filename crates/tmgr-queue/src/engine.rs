@@ -226,9 +226,11 @@ fn refresh_runs(pass: &mut Pass, deps: &Deps) -> Result<()> {
         let Some(run) = p.run_id.clone() else {
             continue;
         };
-        if deps.runs.status(&run) == RunState::Exited {
+        let state = deps.runs.status(&run);
+        if matches!(state, RunState::Exited | RunState::Succeeded) {
             let id = p.id.clone();
             pass.state.pickups[i].run_exited = true;
+            pass.state.pickups[i].run_clean = state == RunState::Succeeded;
             pass.audit
                 .append("run_exited", json!({"pickup": id, "run": run}))?;
         }
@@ -468,6 +470,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     persona_text: c.persona_text.clone(),
                     profile_pin: pin,
                     run_exited: false,
+                    run_clean: false,
                     attempt: 1,
                     cloud: c.cloud.clone(),
                     pr_url: None,
@@ -869,6 +872,7 @@ mod tests {
         created: RefCell<Vec<String>>,
         fail: Cell<bool>,
         exited: RefCell<Vec<String>>,
+        failed: RefCell<Vec<String>>,
         lookup_mode: Cell<u8>,
         keys: RefCell<Vec<String>>,
         cwds: RefCell<Vec<String>>,
@@ -907,8 +911,10 @@ mod tests {
         }
 
         fn status(&self, run_id: &str) -> RunState {
-            if self.exited.borrow().iter().any(|r| r == run_id) {
+            if self.failed.borrow().iter().any(|r| r == run_id) {
                 RunState::Exited
+            } else if self.exited.borrow().iter().any(|r| r == run_id) {
+                RunState::Succeeded
             } else {
                 RunState::Running
             }
@@ -1327,6 +1333,21 @@ mod tests {
     }
 
     #[test]
+    fn a_run_that_did_not_end_cleanly_is_never_published() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        fx.runs.failed.borrow_mut().push("mock-1".into());
+        for _ in 0..4 {
+            fx.pass().unwrap();
+        }
+        assert!(fx.publisher.calls.borrow().is_empty());
+        let p = &fx.pickups()[0];
+        assert!(p.run_exited && !p.run_clean && p.pr_url.is_none());
+    }
+
+    #[test]
     fn a_failed_publish_is_recorded_and_retried_a_bounded_number_of_times() {
         let fx = cloud_fx();
         fx.publisher.fail.set(true);
@@ -1369,6 +1390,7 @@ mod tests {
         assert!(needs_runner(&fx.paths).unwrap());
         let mut st = state::load(&fx.paths).unwrap();
         st.pickups[0].run_exited = true;
+        st.pickups[0].run_clean = true;
         state::save(&fx.paths, &mut st).unwrap();
         assert!(!needs_runner(&fx.paths).unwrap());
 

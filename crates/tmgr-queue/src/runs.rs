@@ -23,6 +23,7 @@ pub enum Lookup {
 pub enum RunState {
     Running,
     Exited,
+    Succeeded,
     Unknown,
 }
 

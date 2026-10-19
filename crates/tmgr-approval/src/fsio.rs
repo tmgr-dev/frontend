@@ -72,3 +72,32 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     }
     fs::write(path, bytes)
 }
+
+#[cfg(unix)]
+pub struct Lock {
+    _file: std::fs::File,
+}
+
+#[cfg(unix)]
+impl Lock {
+    pub fn exclusive(path: &Path) -> std::io::Result<Lock> {
+        use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+        use std::os::unix::io::AsRawFd;
+        if let Some(dir) = path.parent().filter(|d| !d.exists()) {
+            fs::DirBuilder::new()
+                .recursive(true)
+                .mode(0o700)
+                .create(dir)?;
+        }
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .mode(0o600)
+            .open(path)?;
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(Lock { _file: file })
+    }
+}

@@ -628,6 +628,9 @@ pub fn seatbelt_profile(p: &PolicyPaths) -> Result<String, String> {
         ));
         s.push_str("(deny network-inbound)\n");
         s.push_str("(allow network-inbound (local ip \"localhost:*\"))\n");
+        s.push_str("(deny appleevent-send)\n");
+        s.push_str("(deny lsopen)\n");
+        s.push_str("(deny mach-lookup (global-name \"com.apple.coreservices.launchservicesd\") (global-name \"com.apple.nsurlsessiond\"))\n");
     }
     Ok(s)
 }

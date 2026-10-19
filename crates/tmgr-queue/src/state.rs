@@ -69,6 +69,8 @@ pub struct Pickup {
     pub profile_pin: Option<ProfilePin>,
     #[serde(default)]
     pub run_exited: bool,
+    #[serde(default)]
+    pub run_clean: bool,
     #[serde(default = "one")]
     pub attempt: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -94,6 +96,7 @@ impl Pickup {
         self.cloud.is_some()
             && self.status == Status::Started
             && self.run_exited
+            && self.run_clean
             && self.pr_url.is_none()
             && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
     }

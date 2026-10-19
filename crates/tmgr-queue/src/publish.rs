@@ -55,6 +55,7 @@ impl std::error::Error for Refusal {}
 #[derive(Debug, Clone)]
 pub struct PublishInput {
     pub pinned_branch: String,
+    pub sha: String,
     pub clone_branch: String,
     pub clone_dir: PathBuf,
     pub repo: PathBuf,
@@ -227,7 +228,12 @@ pub fn publish_plan(input: &PublishInput) -> std::result::Result<PublishSteps, R
         .filter(|c| *c != '\0')
         .take(MAX_BODY)
         .collect();
-    let spec = format!("refs/heads/{branch}:refs/heads/{branch}");
+    if !matches!(input.sha.len(), 40 | 64) || !input.sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(Refusal::BadInput(
+            "the commit to push is not a full object id".into(),
+        ));
+    }
+    let spec = format!("{}:refs/heads/{branch}", input.sha);
     let push = vec![
         "git".to_string(),
         "-c".into(),
@@ -298,11 +304,6 @@ fn run(argv: &[String], cwd: &Path) -> Result<String> {
 }
 
 pub fn publish(steps: &PublishSteps) -> Result<String> {
-    let repo = steps
-        .repo
-        .to_str()
-        .ok_or_else(|| Error::internal("the repository path is not valid UTF-8"))?;
-    workdir::import_branch(repo, &steps.clone_dir, &steps.branch)?;
     run(&steps.push, &steps.repo)?;
     let out = run(&steps.pr, &steps.repo)?;
     Ok(out.lines().last().unwrap_or("").trim().to_string())
@@ -316,6 +317,7 @@ mod tests {
 
     fn input() -> PublishInput {
         PublishInput {
+            sha: "0123456789abcdef0123456789abcdef01234567".into(),
             pinned_branch: "tmgr/tm-410-fix-login".into(),
             clone_branch: "tmgr/tm-410-fix-login".into(),
             clone_dir: "/work/repo-worktrees/queue/p1".into(),
@@ -350,7 +352,7 @@ mod tests {
                 "/work/repo",
                 "push",
                 "origin",
-                "refs/heads/tmgr/tm-410-fix-login:refs/heads/tmgr/tm-410-fix-login"
+                "0123456789abcdef0123456789abcdef01234567:refs/heads/tmgr/tm-410-fix-login"
             ]
         );
         assert_eq!(
@@ -372,6 +374,18 @@ mod tests {
         assert_eq!(s.branch, "tmgr/tm-410-fix-login");
         assert_eq!(s.repo, PathBuf::from("/work/repo"));
         assert_eq!(s.clone_dir, PathBuf::from("/work/repo-worktrees/queue/p1"));
+    }
+
+    #[test]
+    fn the_push_names_the_planned_commit_and_a_bad_id_is_refused() {
+        let s = publish_plan(&input()).unwrap();
+        assert!(s.push.last().unwrap().starts_with(&input().sha));
+        for bad in ["", "main", "0123", "refs/heads/x"] {
+            assert!(matches!(
+                refused(|i| i.sha = bad.into()),
+                Refusal::BadInput(_)
+            ));
+        }
     }
 
     #[test]
@@ -401,10 +415,7 @@ mod tests {
             }
             assert_eq!(s.push.iter().filter(|a| a.contains(':')).count(), 1);
             let spec = s.push.last().unwrap();
-            assert_eq!(
-                spec,
-                &format!("refs/heads/{0}:refs/heads/{0}", i.pinned_branch)
-            );
+            assert_eq!(spec, &format!("{}:refs/heads/{}", i.sha, i.pinned_branch));
             assert!(!spec.contains("master"));
             assert_eq!(&s.pr[1..3], ["pr", "create"]);
             assert!(s

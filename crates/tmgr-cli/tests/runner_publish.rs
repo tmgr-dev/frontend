@@ -8,9 +8,7 @@ use std::path::{Path, PathBuf};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, ResponseTemplate};
 
-const KEY: &str =
-    "BImU1e2SPEdD/HKLzjfuQlNuLgKE44/qEF5a+626Bj0KtbPSIGIwmRlfUMIyP75vzLHw7BUXRArO87Ad8xnmazE=";
-const KEY_ID: &str = "0b6f1c2e-6a7d-4e8f-9a10-1b2c3d4e5f60";
+const FIXTURES: &str = include_str!("../../tmgr-core/tests/fixtures/agent-approval-fixtures.json");
 const BRANCH: &str = "tmgr/tm-410-fix-login";
 const PR: &str = "https://github.com/acme/widgets/pull/5";
 
@@ -21,6 +19,23 @@ async fn mount(env: &Env, verb: &str, p: &str, body: Value) {
         .respond_with(ResponseTemplate::new(200).set_body_json(body))
         .mount(&env.server)
         .await;
+}
+
+fn sign(host: &str, f: &Value, c: &Value) -> String {
+    use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+    use base64::Engine;
+    use p256::ecdsa::{signature::Signer, Signature, SigningKey};
+    let d = URL_SAFE_NO_PAD
+        .decode(f["key"]["private_jwk"]["d"].as_str().unwrap())
+        .unwrap();
+    let key = SigningKey::from_slice(&d).unwrap();
+    let msg = format!(
+        "tmgr-agent-approval:v1:{host}:1:56:9002:127:{}:{}:1760000002",
+        c["content_sha256"].as_str().unwrap(),
+        f["key"]["key_id"].as_str().unwrap()
+    );
+    let sig: Signature = key.sign(msg.as_bytes());
+    STANDARD.encode(sig.to_bytes())
 }
 
 struct Rig {
@@ -34,6 +49,10 @@ struct Rig {
 
 impl Rig {
     async fn new(agent_runs: Value) -> Rig {
+        Rig::with(agent_runs, false).await
+    }
+
+    async fn with(agent_runs: Value, edited: bool) -> Rig {
         let env = Env::new().await;
         env.login_seed();
         let root = env.tmp.path().to_path_buf();
@@ -100,11 +119,11 @@ impl Rig {
             bare,
             stub,
         };
-        rig.seed(agent_runs).await;
+        rig.seed(agent_runs, edited).await;
         rig
     }
 
-    async fn seed(&self, agent_runs: Value) {
+    async fn seed(&self, agent_runs: Value, edited: bool) {
         let env = &self.env;
         mount(
             env,
@@ -129,15 +148,25 @@ impl Rig {
             common::task_json(9002, "Fix login"),
         )
         .await;
+        let f: Value = serde_json::from_str(FIXTURES).unwrap();
+        let c = &f["cases"][2];
+        mount(
+            env,
+            "GET",
+            "/api/agent-runs/keys",
+            json!({"data": [{"key_id": f["key"]["key_id"], "public_key": f["key"]["public_key"], "device_name": "laptop"}]}),
+        )
+        .await;
         mount(
             env,
             "GET",
             "/api/agent-runs/tasks/9002",
             json!({"data": {
                 "task_id": 9002, "workspace_id": 56, "workspace_code": "tmgrdev", "viewer_user_id": 1,
-                "title": "Fix login", "description": "x", "task_key": "TM-410", "setting_enabled": true,
+                "title": c["title"], "description": if edited { json!("edited after approval") } else { c["description"].clone() }, "task_key": "TM-410", "setting_enabled": true,
                 "category": {"id": 127, "code": "TM", "github_full_name": "acme/widgets", "default_branch": "main"},
-                "approval": null
+                "approval": {"kind": "author", "key_id": f["key"]["key_id"], "content_sha256": c["content_sha256"],
+                    "signed_at": 1760000002, "signature": sign(&env.server.address().to_string(), &f, c), "revoked_at": null, "revoked_reason": null}
             }}),
         )
         .await;
@@ -168,7 +197,7 @@ impl Rig {
         let allow = json!({"version": 1, "entries": [{
             "server": env.server.address().to_string(), "user_id": 1, "workspace_id": 56,
             "workspace_code": "tmgrdev", "allowed_at": "2025-10-01T00:00:00Z", "expires_at": null,
-            "keys": [{"key_id": KEY_ID, "public_key": KEY, "device_name": "laptop"}],
+            "keys": [{"key_id": f["key"]["key_id"], "public_key": f["key"]["public_key"], "device_name": "laptop"}],
             "repos": {"127": self.repo.display().to_string()}}]});
         std::fs::write(
             env.config_dir().join("runner-allow.json"),
@@ -343,4 +372,15 @@ async fn publish_is_refused_while_the_run_is_live() {
     assert!(stderr(&out).contains("still live"), "{}", stderr(&out));
     assert!(rig.gh_argv().is_none());
     let _ = rig.cmd(&["halt", &id, "--kill"]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_task_edited_after_approval_is_not_published() {
+    let rig = Rig::with(running_run(), true).await;
+    assert!(rig.cmd(&["runner", "start"]).status.success());
+    let out = rig.publish();
+    assert_eq!(out.status.code(), Some(5), "{}", stderr(&out));
+    assert!(stderr(&out).contains("changed since"), "{}", stderr(&out));
+    assert!(rig.gh_argv().is_none());
+    assert!(git(&rig.bare, &["branch", "--list"]).is_empty());
 }

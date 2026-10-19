@@ -92,7 +92,7 @@ pub fn cloud_gate(
     host: &str,
     user_id: i64,
     now: DateTime<Utc>,
-    seen: Option<i64>,
+    seen: Option<(i64, Option<&str>)>,
 ) -> std::result::Result<GateOk, Refusal> {
     let code = if e.workspace_code.is_empty() {
         "<workspace>"
@@ -162,7 +162,9 @@ pub fn cloud_gate(
         kind: a.kind.clone(),
     };
     check_claim(entry, &claim, &e.title, &body)?;
-    if seen.is_some_and(|s| a.signed_at < s) {
+    if seen.is_some_and(|(at, hash)| {
+        a.signed_at < at || (a.signed_at == at && hash.is_some_and(|h| h != a.content_sha256))
+    }) {
         return Err(Refusal::new(
             "an older approved version of this task was served",
             format!("{CONFIRM} again"),
@@ -178,6 +180,31 @@ pub fn cloud_gate(
             .clone()
             .unwrap_or_else(|| format!("task-{}", e.task_id)),
     })
+}
+
+pub fn bypass_needs_consent(
+    bypass: bool,
+    enforced: bool,
+    yes: bool,
+    interactive: bool,
+) -> Result<bool> {
+    if !bypass || enforced {
+        return Ok(false);
+    }
+    if yes {
+        return Err(Error::new(
+            Kind::Forbidden,
+            "--yes is not accepted for bypass mode where the network cannot be restricted",
+        )
+        .hint("run it in a terminal and confirm"));
+    }
+    if !interactive {
+        return Err(Error::needs_confirmation(
+            "bypass mode without network restriction needs a terminal",
+        )
+        .hint("run it in a terminal"));
+    }
+    Ok(true)
 }
 
 fn refused(r: Refusal) -> Error {
@@ -324,12 +351,18 @@ fn bound_repo(
         }
         None => {
             let repo = ask_repo(&entry.workspace_code, category, full_name, cwd)?;
-            let mut updated = entry.clone();
-            updated.repos.insert(key, repo.display().to_string());
-            allow.upsert(updated);
-            allow
-                .save()
-                .map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+            let path = repo.display().to_string();
+            let (server, user, ws_id) = (entry.server.clone(), entry.user_id, entry.workspace_id);
+            *allow = AllowFile::update(|file| {
+                let mut updated = file
+                    .find(&server, user, ws_id)
+                    .cloned()
+                    .ok_or("the allow entry disappeared")?;
+                updated.repos.insert(key, path);
+                file.upsert(updated);
+                Ok(file.clone())
+            })
+            .map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
             repo
         }
     };
@@ -479,7 +512,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         .find(&host, user_id, ws.id)
         .cloned()
         .ok_or_else(|| Error::internal("the allow entry disappeared"))?;
-    rollback.record(rkey, ok.claim.signed_at);
+    rollback.record(rkey, ok.claim.signed_at, &ok.claim.content_sha256);
     rollback
         .save()
         .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
@@ -502,6 +535,20 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         eprintln!(
             "warning: bypass mode: the agent will not ask before running commands; only the OS sandbox and a restricted network limit it."
         );
+    }
+    let interactive = crate::interact::is_interactive();
+    let open_bypass = bypass_needs_consent(
+        mode_arg == PermissionMode::Bypass,
+        tmgr_runner::sandbox::network_restriction_enforced(),
+        a.yes,
+        interactive,
+    )?;
+    if open_bypass {
+        crate::interact::confirm(
+            "Network restriction is not enforced on this platform: the agent will have open network access without asking. Start anyway?",
+            false,
+            false,
+        )?;
     }
     crate::interact::confirm("Start this run?", true, a.yes)?;
     super::ops::login_preflight(&profile)?;
@@ -584,7 +631,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             trust_via_repo: via_repo.then_some(true),
             agent_work: true,
             cloud: Some(ok.claim.clone()),
-            unattended: false,
+            unattended: a.yes || !interactive,
             exe_pin: Some(exe_pin),
             argv_sha256: Some(argv_digest),
         })
@@ -623,7 +670,7 @@ struct RepoState {
     changed_paths: Vec<String>,
 }
 
-fn repo_state(repo: &Path, branch: &str, server_default: Option<&str>) -> Result<RepoState> {
+fn repo_state(repo: &Path, head: &str, server_default: Option<&str>) -> Result<RepoState> {
     let q = |args: &[&str]| workdir::git_query(repo, args);
     let default_branch = q(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
         .ok()
@@ -643,7 +690,6 @@ fn repo_state(repo: &Path, branch: &str, server_default: Option<&str>) -> Result
     } else {
         format!("refs/heads/{default_branch}")
     };
-    let head = format!("refs/heads/{branch}");
     let count = q(&["rev-list", "--count", &format!("{base}..{head}")])?;
     let diff = q(&[
         "diff",
@@ -787,6 +833,28 @@ pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
     }
     let allow =
         AllowFile::load().map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+    let live: Vec<String> = client
+        .agent_run_keys()?
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|k| k.get("key_id").and_then(|v| v.as_str()).map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let rollback =
+        Rollback::load().map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+    let rkey = Rollback::key(&host, user_id, ws.id, task_id);
+    let verified = cloud_gate(
+        &allow,
+        &live,
+        &elig,
+        &host,
+        user_id,
+        Utc::now(),
+        rollback.seen(&rkey),
+    )
+    .map_err(refused)?;
     let entry = allow
         .find_live(&host, user_id, ws.id, &ws.code, Utc::now())
         .map_err(refused)?;
@@ -823,13 +891,11 @@ pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
     let repo_str = repo
         .to_str()
         .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
-    workdir::import_branch(repo_str, &t.clone_dir, &t.branch)?;
-    let state = repo_state(&repo, &t.branch, category.default_branch.as_deref())?;
-    let task_key = elig
-        .task_key
-        .clone()
-        .unwrap_or_else(|| format!("task-{task_id}"));
+    let sha = workdir::import_branch(repo_str, &t.clone_dir, &t.branch)?;
+    let state = repo_state(&repo, &sha, category.default_branch.as_deref())?;
+    let task_key = verified.task_key.clone();
     let input = PublishInput {
+        sha,
         pinned_branch: t.branch.clone(),
         clone_branch: workdir::clone_head_branch(&t.clone_dir).unwrap_or_default(),
         clone_dir: t.clone_dir.clone(),
@@ -840,10 +906,10 @@ pub fn publish_cloud(o: &Opts, t: &PublishTarget) -> Result<String> {
         github_full_name: full_name.to_string(),
         changed_paths: state.changed_paths,
         commit_count: state.commit_count,
-        pr_title: format!("{task_key}: {}", elig.title),
+        pr_title: format!("{task_key}: {}", verified.title),
         pr_body: format!(
             "Opened by an agent run of {task_key}: {}\n\nReview before merging.",
-            sanitize_line(&elig.title)
+            sanitize_line(&verified.title)
         ),
     };
     let steps = publish_plan(&input).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
@@ -961,7 +1027,7 @@ mod tests {
         a: &AllowFile,
         b: Value,
         live: &[String],
-        seen: Option<i64>,
+        seen: Option<(i64, Option<&str>)>,
     ) -> std::result::Result<GateOk, Refusal> {
         cloud_gate(
             a,
@@ -984,7 +1050,7 @@ mod tests {
 
     #[test]
     fn success_builds_the_claim_from_local_values() {
-        let ok = gate(&ok_allow(), bundle(), &live(), Some(1760000002)).unwrap();
+        let ok = gate(&ok_allow(), bundle(), &live(), Some((1760000002, None))).unwrap();
         assert_eq!(ok.claim.host, "api.tmgr.dev");
         assert_eq!(ok.claim.user_id, 1);
         assert_eq!(ok.claim.category_id, 127);
@@ -1083,9 +1149,35 @@ mod tests {
 
     #[test]
     fn older_approval_than_seen_is_refused_equal_is_fine() {
-        let r = gate(&ok_allow(), bundle(), &live(), Some(1760000003)).unwrap_err();
+        let r = gate(&ok_allow(), bundle(), &live(), Some((1760000003, None))).unwrap_err();
         assert!(r.message.contains("older approved version"));
-        assert!(gate(&ok_allow(), bundle(), &live(), Some(1760000002)).is_ok());
+        assert!(gate(&ok_allow(), bundle(), &live(), Some((1760000002, None))).is_ok());
+    }
+
+    #[test]
+    fn bypass_without_network_restriction_needs_a_terminal_and_never_takes_yes() {
+        assert!(!bypass_needs_consent(false, false, true, false).unwrap());
+        assert!(!bypass_needs_consent(true, true, true, false).unwrap());
+        assert!(bypass_needs_consent(true, false, true, true).is_err());
+        assert!(bypass_needs_consent(true, false, false, false).is_err());
+        assert!(bypass_needs_consent(true, false, false, true).unwrap());
+    }
+
+    #[test]
+    fn an_equal_stamp_with_another_hash_is_refused() {
+        let c = fx()["cases"][2]["content_sha256"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(gate(&ok_allow(), bundle(), &live(), Some((1760000002, Some(&c)))).is_ok());
+        let r = gate(
+            &ok_allow(),
+            bundle(),
+            &live(),
+            Some((1760000002, Some("deadbeef"))),
+        )
+        .unwrap_err();
+        assert!(r.message.contains("older"), "{}", r.message);
     }
 
     #[test]

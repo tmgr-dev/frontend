@@ -3987,12 +3987,14 @@ name = "tmgr-cli"
 version = "1.0.6"
 dependencies = [
  "assert_cmd",
+ "base64 0.22.1",
  "chrono",
  "clap",
  "ctrlc",
  "iana-time-zone",
  "jsonschema",
  "libc",
+ "p256",
  "portable-pty",
  "ratatui",
  "rpassword",

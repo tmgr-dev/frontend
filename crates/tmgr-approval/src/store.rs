@@ -134,6 +134,25 @@ impl AllowFile {
         fsio::write_private(path, &body).map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    pub fn update<T>(f: impl FnOnce(&mut Self) -> Result<T, String>) -> Result<T, String> {
+        let path = allow_path().ok_or("cannot locate the config directory")?;
+        Self::update_at(&path, f)
+    }
+
+    pub fn update_at<T>(
+        path: &Path,
+        f: impl FnOnce(&mut Self) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let mut lock_name = path.as_os_str().to_owned();
+        lock_name.push(".lock");
+        let _lock = fsio::Lock::exclusive(Path::new(&lock_name))
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        let mut file = Self::load_from(path)?;
+        let out = f(&mut file)?;
+        file.save_to(path)?;
+        Ok(out)
+    }
+
     pub fn find(&self, server: &str, user_id: i64, workspace_id: i64) -> Option<&Entry> {
         self.entries
             .iter()
@@ -241,6 +260,8 @@ pub fn check_claim(
 pub struct Rollback {
     pub version: u32,
     pub tasks: BTreeMap<String, i64>,
+    #[serde(default)]
+    pub hashes: BTreeMap<String, String>,
 }
 
 impl Default for Rollback {
@@ -248,6 +269,7 @@ impl Default for Rollback {
         Self {
             version: 1,
             tasks: BTreeMap::new(),
+            hashes: BTreeMap::new(),
         }
     }
 }
@@ -280,12 +302,85 @@ impl Rollback {
         fsio::write_private(path, &body).map_err(|e| format!("{}: {e}", path.display()))
     }
 
-    pub fn seen(&self, key: &str) -> Option<i64> {
-        self.tasks.get(key).copied()
+    pub fn seen(&self, key: &str) -> Option<(i64, Option<&str>)> {
+        let at = self.tasks.get(key).copied()?;
+        Some((at, self.hashes.get(key).map(String::as_str)))
     }
 
-    pub fn record(&mut self, key: String, signed_at: i64) {
-        let e = self.tasks.entry(key).or_insert(signed_at);
-        *e = (*e).max(signed_at);
+    pub fn record(&mut self, key: String, signed_at: i64, content_sha256: &str) {
+        let newer = self.tasks.get(&key).is_none_or(|cur| signed_at > *cur);
+        let unhashed = self.tasks.get(&key) == Some(&signed_at) && !self.hashes.contains_key(&key);
+        if newer || unhashed {
+            self.tasks.insert(key.clone(), signed_at);
+            self.hashes.insert(key, content_sha256.to_string());
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Barrier};
+
+    fn entry(ws: i64) -> Entry {
+        Entry {
+            server: "s".into(),
+            user_id: 1,
+            workspace_id: ws,
+            workspace_code: format!("w{ws}"),
+            allowed_at: "2025-10-01T00:00:00Z".into(),
+            expires_at: None,
+            keys: vec![],
+            repos: BTreeMap::new(),
+        }
+    }
+
+    #[test]
+    fn concurrent_updates_do_not_overwrite_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("allow.json");
+        AllowFile::update_at(&path, |f| {
+            f.upsert(entry(1));
+            f.upsert(entry(2));
+            Ok(())
+        })
+        .unwrap();
+        let barrier = Arc::new(Barrier::new(2));
+        let (p1, b1) = (path.clone(), barrier.clone());
+        let slow = std::thread::spawn(move || {
+            AllowFile::update_at(&p1, |f| {
+                b1.wait();
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                f.upsert(entry(3));
+                Ok(())
+            })
+        });
+        barrier.wait();
+        AllowFile::update_at(&path, |f| {
+            assert!(f.remove("s", 1, 1), "must see the first writer's result");
+            Ok(())
+        })
+        .unwrap();
+        slow.join().unwrap().unwrap();
+        let ids: Vec<i64> = AllowFile::load_from(&path)
+            .unwrap()
+            .entries
+            .iter()
+            .map(|e| e.workspace_id)
+            .collect();
+        assert_eq!(ids, [2, 3]);
+    }
+
+    #[test]
+    fn an_equal_stamp_with_another_hash_is_remembered_as_the_first_one() {
+        let mut r = Rollback::default();
+        r.record("k".into(), 10, "aaa");
+        assert_eq!(r.seen("k"), Some((10, Some("aaa"))));
+        r.record("k".into(), 10, "bbb");
+        assert_eq!(r.seen("k"), Some((10, Some("aaa"))));
+        r.record("k".into(), 9, "ccc");
+        assert_eq!(r.seen("k"), Some((10, Some("aaa"))));
+        r.record("k".into(), 11, "ddd");
+        assert_eq!(r.seen("k"), Some((11, Some("ddd"))));
     }
 }
