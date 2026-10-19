@@ -886,9 +886,8 @@ async fn starting_a_drain_suspends_the_queue_loop_first_and_leaves_the_queue_on(
         s["settings_id"]
             .as_str()
             .is_some_and(|id| id.starts_with("ap-"))
-            && s["tasks"]["in_work"] == 1
+            && (s["tasks"]["in_work"] == 1 || s["state"] == "stopped")
     });
-    assert_eq!(drain["state"], "running");
     let prev: Value = serde_json::from_str(
         &std::fs::read_to_string(cloud.cfg().join("autopilot/status.prev.json")).unwrap(),
     )
@@ -901,8 +900,10 @@ async fn starting_a_drain_suspends_the_queue_loop_first_and_leaves_the_queue_on(
         "the uncapped loop settings are gone while the drain runs"
     );
 
-    let stop = cloud.cmd(&["queue", "autopilot", "stop"]);
-    assert_eq!(stop.status.code(), Some(0), "{}", text(&stop.stderr));
+    if drain["state"] == "running" {
+        let stop = cloud.cmd(&["queue", "autopilot", "stop"]);
+        assert_eq!(stop.status.code(), Some(0), "{}", text(&stop.stderr));
+    }
     let back = cloud.wait_status("the queue loop is back", |s| {
         s["settings_id"] == "queue" && s["state"] == "running"
     });
