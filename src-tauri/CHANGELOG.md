@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.48 — 2026-10-19
+
+- Cloud runs: Runner settings list the cloud workspaces this computer allows your agents to work in, with the expiry date and a copyable `tmgr runner allow <code>` command (allowing happens only in a terminal). Three days before an allow expires the app reminds you once a day.
+- Tasks of cloud workspaces where "Let my agents run my tasks" is on show whether they are approved for agent runs. "Confirm for agent runs" shows the exact text and category that will be signed, with hidden characters marked; several tasks can be confirmed at once from Batch Actions.
+- Tasks you write here are approved automatically; an edit or comment by someone else or by an agent cancels the approval.
+
 ## 0.9.47 — 2026-10-18
 
 - Task keys: a key like TM-242 on a page, in the graph or in a link now opens the task whose title starts with it, with or without a colon, instead of an unrelated task with the same number. A key that several tasks carry stays plain text.
