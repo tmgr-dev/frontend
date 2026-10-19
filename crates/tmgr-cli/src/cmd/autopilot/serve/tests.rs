@@ -33,6 +33,7 @@ struct World {
     enabled: bool,
     draft_error: bool,
     finish_on_sleep: bool,
+    state_fail: bool,
 }
 
 struct Fake(RefCell<World>);
@@ -65,6 +66,7 @@ impl Fake {
             enabled: true,
             draft_error: false,
             finish_on_sleep: false,
+            state_fail: false,
         }))
     }
 
@@ -190,6 +192,9 @@ impl Queue for Fake {
 
     fn state(&self) -> Result<State> {
         let w = self.0.borrow();
+        if w.state_fail {
+            return Err(Error::internal("state file unreadable"));
+        }
         let text = serde_json::to_string(&w.state).unwrap();
         Ok(serde_json::from_str(&text).unwrap())
     }
@@ -1012,4 +1017,40 @@ fn a_pickup_expired_as_taken_is_skipped_not_failed() {
         let summary = ap.build_summary(&ap.p.queue.state().unwrap(), &StopReason::NothingLeft);
         assert_eq!(summary.skipped[0].reason, "taken by someone else");
     });
+}
+
+#[test]
+fn a_few_unreadable_states_are_tolerated_and_many_end_the_run_with_a_final_status() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    let s = settings(&[1], |_| {});
+    with_ap(&rig, &s, |ap| {
+        rig.fake.w().state_fail = true;
+        for _ in 0..(MAX_PASS_ERRORS - 1) {
+            assert!(ap.step().is_none());
+        }
+        rig.fake.w().state_fail = false;
+        assert!(ap.step().is_none());
+        assert_eq!(ap.state_errors, 0);
+        rig.fake.w().state_fail = true;
+        let mut out = None;
+        for _ in 0..MAX_PASS_ERRORS {
+            out = out.or(ap.step());
+        }
+        let out = out.expect("stopped");
+        assert!(out.reason.starts_with("error: "), "{}", out.reason);
+        rig.fake.w().state_fail = false;
+    });
+    let st = rig.status();
+    assert_eq!(st.state, RunState::Stopped);
+    assert!(st.stop_reason.unwrap().starts_with("error: "));
+    assert_eq!(rig.fake.order().last().unwrap(), "disable");
+    assert!(rig
+        .fake
+        .0
+        .borrow()
+        .pushes
+        .last()
+        .unwrap()
+        .starts_with("Autopilot stopped"));
 }

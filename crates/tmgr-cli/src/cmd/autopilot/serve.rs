@@ -225,6 +225,7 @@ pub struct Autopilot<'a> {
     pushes: Option<bool>,
     settled: bool,
     pass_errors: u32,
+    state_errors: u32,
     view: View,
     held_log: Vec<Reasoned>,
     failed_log: Vec<Reasoned>,
@@ -293,6 +294,7 @@ impl<'a> Autopilot<'a> {
             pushes: None,
             settled: false,
             pass_errors: 0,
+            state_errors: 0,
             view: View::default(),
             held_log: Vec::new(),
             failed_log: Vec::new(),
@@ -381,12 +383,41 @@ impl<'a> Autopilot<'a> {
     fn run(&mut self) -> Result<Outcome> {
         self.begin();
         loop {
-            if let Some(out) = self.tick()? {
+            if let Some(out) = self.step() {
                 return Ok(out);
             }
             let clock = self.p.clock;
             let tick = self.t.tick;
             clock.sleep(tick, &|| self.wake());
+        }
+    }
+
+    fn step(&mut self) -> Option<Outcome> {
+        match self.tick() {
+            Ok(out) => out,
+            Err(e) => {
+                let reason = StopReason::Requested(format!("error: {}", e.message));
+                self.finish(reason, Some(Why::stopped())).ok().flatten()
+            }
+        }
+    }
+
+    fn evaluate_tolerant(&mut self, now: DateTime<Utc>) -> Result<Option<(Decision, Facts)>> {
+        match self.evaluate(now) {
+            Ok(found) => {
+                self.state_errors = 0;
+                Ok(Some(found))
+            }
+            Err(e) => {
+                self.state_errors += 1;
+                let text = format!("Could not read the queue: {}", e.message);
+                self.event("error", None, text);
+                if self.state_errors >= MAX_PASS_ERRORS {
+                    Err(e)
+                } else {
+                    Ok(None)
+                }
+            }
         }
     }
 
@@ -432,7 +463,10 @@ impl<'a> Autopilot<'a> {
         if let Ok(st) = self.p.queue.state() {
             self.refresh_remote(now, &st);
         }
-        let (decision, _) = self.evaluate(now)?;
+        let Some((decision, _)) = self.evaluate_tolerant(now)? else {
+            self.write_status();
+            return Ok(None);
+        };
         if decision.hours_hard {
             return self.finish(StopReason::Hours, Some(Why::hours()));
         }
@@ -499,7 +533,10 @@ impl<'a> Autopilot<'a> {
             }
         }
         let now = self.now();
-        let (decision, facts) = self.evaluate(now)?;
+        let Some((decision, facts)) = self.evaluate_tolerant(now)? else {
+            self.write_status();
+            return Ok(None);
+        };
         self.note_decision(&decision);
         let reason = verdict(&decision, &facts, now);
         self.write_status();
