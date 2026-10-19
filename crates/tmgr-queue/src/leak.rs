@@ -693,7 +693,7 @@ fn decode_b64(s: &str) -> Option<String> {
 fn decode_hex(s: &str) -> Option<String> {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len() / 2);
-    for pair in b.chunks_exact(2) {
+    for pair in b.as_chunks::<2>().0 {
         let v = u8::from_str_radix(std::str::from_utf8(pair).ok()?, 16).ok()?;
         out.push(v);
     }
@@ -708,7 +708,9 @@ struct Decoded {
 fn hex_bytes(s: &str) -> Vec<u8> {
     let digits: Vec<u8> = s.bytes().filter(u8::is_ascii_hexdigit).collect();
     digits
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .filter_map(|p| u8::from_str_radix(std::str::from_utf8(p).ok()?, 16).ok())
         .collect()
 }
