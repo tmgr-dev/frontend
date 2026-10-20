@@ -1,6 +1,9 @@
 import type { RectLike } from './clamp';
 
 export const AVOID_ATTR = 'data-tour-avoid';
+// A passive step leaves the page clickable, so its card must not cover a dialog the user opens (Modal.vue cards, radix dialogs).
+const OPEN_DIALOGS =
+	'[data-name="overlay"] > :last-child, [role="dialog"], [role="alertdialog"]';
 const GAP = 12;
 const MARGIN = 4;
 
@@ -91,9 +94,14 @@ export function pickAvoidingPosition({
 
 export function visibleAvoidRects(ignore?: Element | null): RectLike[] {
 	if (typeof document === 'undefined') return [];
-	return [...document.querySelectorAll<HTMLElement>(`[${AVOID_ATTR}]`)]
+	return [
+		...document.querySelectorAll<HTMLElement>(
+			`[${AVOID_ATTR}], ${OPEN_DIALOGS}`,
+		),
+	]
 		.filter(
 			(el) =>
+				!el.closest('[data-tour-host]') &&
 				!(
 					ignore &&
 					(el === ignore || el.contains(ignore) || ignore.contains(el))

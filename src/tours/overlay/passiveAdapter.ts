@@ -131,9 +131,21 @@ export function createPassiveAdapter(): OverlayAdapter {
 		resize?.observe(host);
 		window.addEventListener('resize', clamp);
 		clamp();
+		// The page stays usable under a passive step: re-place the card when a dialog opens or closes.
+		let frame = 0;
+		const dialogs =
+			!sheet && typeof MutationObserver === 'function'
+				? new MutationObserver(() => {
+						cancelAnimationFrame(frame);
+						frame = requestAnimationFrame(clamp);
+				  })
+				: null;
+		dialogs?.observe(document.body, { childList: true, subtree: true });
 
 		cleanup = () => {
 			stopAuto?.();
+			dialogs?.disconnect();
+			cancelAnimationFrame(frame);
 			resize?.disconnect();
 			window.removeEventListener('resize', clamp);
 			unmount();
