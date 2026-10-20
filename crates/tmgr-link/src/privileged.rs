@@ -21,7 +21,9 @@ pub fn check(in_agent_session: bool, interactive: bool) -> Result<()> {
 
 pub fn guard() -> Result<()> {
     let in_agent = RUN_ENV.iter().any(|k| std::env::var_os(k).is_some());
-    let tty = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
+    let tty = std::io::stdin().is_terminal()
+        && std::io::stdout().is_terminal()
+        && std::io::stderr().is_terminal();
     check(in_agent, tty)
 }
 
