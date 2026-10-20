@@ -143,23 +143,6 @@
 			: null;
 	});
 
-	const workspaceStatuses = computed(() => {
-		if (simpleMode.value) {
-			return [
-				{ name: 'Open', id: 'open' },
-				{ name: 'Done', id: 'done' },
-				{ name: 'All', id: 'all' },
-			];
-		}
-		let statuses = store.state.workspaceStatuses;
-		return [
-			{
-				name: 'All',
-				id: 'all',
-			},
-		].concat(statuses);
-	});
-
 	watch(simpleStatuses, () => {
 		if (simpleFilter.value) loadTasks();
 	});
@@ -808,19 +791,7 @@
 		</div>
 		<div v-else>
 			<div class="flex flex-wrap items-center justify-end gap-2">
-				<Select
-					v-model="workspaceStatus"
-					:options="workspaceStatuses"
-					class="ml-auto w-36"
-					label-key="name"
-					value-key="id"
-				/>
-
-				<div class="col-span-2 ml-auto flex items-center gap-2 sm:ml-2">
-					<button class="opacity-25 hover:opacity-100" @click="selectAll">
-						<span class="material-icons text-3xl">done_all</span>
-					</button>
-
+				<div class="ml-auto flex items-center gap-2">
 					<Button
 						title="Create a task in this category"
 						@click="
