@@ -3,14 +3,18 @@
 	import store from '@/store';
 	import { toggleDay } from '@/utils/dashboard/activityDayFilter';
 	import { dashboardStatisticTarget, taskTarget } from '@/utils/dashboardLinks';
+	import type { Component } from 'vue';
 	import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 
 	// Dashboard components
+	import ActivityChart from '@/components/dashboard/ActivityChart.vue';
 	import ActivityFeed from '@/components/dashboard/ActivityFeed.vue';
 	import HeatmapSkeleton from '@/components/dashboard/HeatmapSkeleton.vue';
+	import KpiCard from '@/components/dashboard/KpiCard.vue';
 	import StatisticsGrid from '@/components/dashboard/StatisticsGrid.vue';
 	import TeamActivityWidget from '@/components/dashboard/TeamActivityWidget.vue';
+	import TopCategoriesCard from '@/components/dashboard/TopCategoriesCard.vue';
 	import HeatmapCalendar from '@/components/general/HeatmapCalendar.vue';
 
 	// UI components
@@ -20,6 +24,7 @@
 	// Composables
 	import { useActivityFeed } from '@/composable/useActivityFeed';
 	import { useDashboard } from '@/composable/useDashboard';
+	import { useDashboardTrends } from '@/composable/useDashboardTrends';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useErrorHandler } from '@/composable/useErrorHandler';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
@@ -30,9 +35,13 @@
 	import type {
 		Activity,
 		ActivityFilters,
+		DashboardPeriod,
 		DashboardStatistics,
+		DashboardTone,
 		TeamMemberStatus,
 	} from '@/types/dashboard';
+	import { secondsToHours } from '@/utils/dashboard/periodStats';
+	import { formatTrackedSeconds } from '@/utils/dashboard/teamActivityFormat';
 
 	// Icons
 	import {
@@ -41,7 +50,13 @@
 		SignalSlashIcon,
 		WifiIcon,
 	} from '@heroicons/vue/24/outline';
-	import { LayoutDashboard } from 'lucide-vue-next';
+	import {
+		Activity as ActivityIcon,
+		CircleCheck,
+		Clock,
+		LayoutDashboard,
+		Users,
+	} from 'lucide-vue-next';
 
 	// Feature Gate
 	import FeatureGate from '@/components/general/FeatureGate.vue';
@@ -266,10 +281,177 @@
 	);
 	const activityLoading = feedLoading;
 	const activityLoadingMore = feedLoadingMore;
-	const loadDashboard = () =>
-		Promise.all([loadDashboardSections(), refreshActivities()]);
+
+	const periods: { key: DashboardPeriod; label: string }[] = [
+		{ key: '7d', label: 'Last 7 days' },
+		{ key: '30d', label: 'Last 30 days' },
+	];
+	const period = ref<DashboardPeriod>('7d');
+	const periodDays = computed(() => (period.value === '30d' ? 30 : 7));
+	const trends = useDashboardTrends({
+		workspaceId,
+		period,
+		heatmapData,
+		teamActivity,
+		teamActivityWindow,
+		teamState: computed(() => loadingStates.value.teamActivity),
+	});
+	const setPeriod = (next: DashboardPeriod) => {
+		if (next === period.value) return;
+		period.value = next;
+		setTeamActivityWindow(next);
+	};
+	const retryTeam = () =>
+		teamActivityWindow.value === period.value
+			? refreshSection('teamActivity')
+			: setTeamActivityWindow(period.value);
+	const retryTrends = () =>
+		Promise.all([
+			refreshSection('heatmap'),
+			retryTeam(),
+			trends.loadTime(true),
+		]);
+
+	interface KpiCardView {
+		kpiKey: string;
+		label: string;
+		icon: Component;
+		tone: DashboardTone;
+		value: string | null;
+		loading: boolean;
+		error: boolean;
+		series: number[] | null;
+		delta: number | null;
+		hint: string;
+		retry: () => unknown;
+	}
+	const kpiCards = computed<KpiCardView[]>(() => {
+		const activity = trends.activity.value;
+		const members = trends.members.value;
+		const tracked = trends.tracked.value;
+		const completed = trends.completed.value;
+		const heatmapState = loadingStates.value.heatmap;
+		const cards: KpiCardView[] = [
+			{
+				kpiKey: 'activity',
+				label: 'Activity',
+				icon: ActivityIcon,
+				tone: 'brand',
+				value: activity ? String(activity.total) : null,
+				loading: !activity && heatmapState.status !== 'error',
+				error: !activity && heatmapState.status === 'error',
+				series: activity?.values ?? null,
+				delta: activity?.delta ?? null,
+				hint: 'Actions logged in the workspace',
+				retry: () => refreshSection('heatmap'),
+			},
+			{
+				kpiKey: 'members',
+				label: 'Active members',
+				icon: Users,
+				tone: 'done',
+				value: members ? String(members.count) : null,
+				loading: trends.teamPending.value,
+				error: trends.teamFailed.value,
+				series: members?.values ?? null,
+				delta: null,
+				hint: members ? `of ${members.total} members` : '',
+				retry: retryTeam,
+			},
+		];
+		if (trends.showTracked.value)
+			cards.push({
+				kpiKey: 'tracked',
+				label: 'Tracked hours',
+				icon: Clock,
+				tone: 'testing',
+				value:
+					tracked.seconds === null
+						? null
+						: formatTrackedSeconds(tracked.seconds),
+				loading: trends.trackedLoading.value,
+				error: trends.trackedFailed.value,
+				series: tracked.perDay?.map(secondsToHours) ?? null,
+				delta: tracked.delta,
+				hint: 'Time on task timers',
+				retry: () => Promise.all([retryTeam(), trends.loadTime(true)]),
+			});
+		cards.push({
+			kpiKey: 'completed',
+			label: 'Completed',
+			icon: CircleCheck,
+			tone: 'progress',
+			value: completed === null ? null : String(completed),
+			loading: trends.teamPending.value,
+			error: trends.teamFailed.value,
+			series: null,
+			delta: null,
+			hint: 'Tasks moved to done',
+			retry: retryTeam,
+		});
+		return cards;
+	});
+
+	const chartSeries = computed(() => {
+		const activity = trends.activity.value;
+		const members = trends.members.value;
+		const tracked = trends.tracked.value;
+		return [
+			activity && {
+				key: 'activity',
+				label: 'Activity',
+				tone: 'brand' as DashboardTone,
+				values: activity.values,
+				format: (v: number) => String(v),
+			},
+			members && {
+				key: 'members',
+				label: 'Active members',
+				tone: 'done' as DashboardTone,
+				values: members.values,
+				format: (v: number) => String(v),
+				showTotal: false,
+			},
+			trends.showTracked.value &&
+				tracked.perDay && {
+					key: 'tracked',
+					label: 'Tracked hours',
+					tone: 'testing' as DashboardTone,
+					values: tracked.perDay.map((s) => s / 3600),
+					format: (v: number) => `${Math.round(v * 10) / 10} h`,
+				},
+		].filter((s): s is Exclude<typeof s, false | null | undefined> => !!s);
+	});
+	const chartLoading = computed(
+		() =>
+			(!trends.activity.value &&
+				loadingStates.value.heatmap.status !== 'error') ||
+			(!trends.members.value && trends.teamPending.value) ||
+			(trends.timeState.value === 'loading' && !trends.tracked.value.perDay),
+	);
+	const chartError = computed(
+		() => !chartLoading.value && chartSeries.value.length === 0,
+	);
+	const showCategories = computed(
+		() =>
+			trends.showTracked.value &&
+			(trends.timeState.value === 'loading' || !!trends.categories.value),
+	);
+
+	const loadDashboard = () => {
+		teamActivityWindow.value = period.value;
+		return Promise.all([
+			loadDashboardSections(),
+			refreshActivities(),
+			trends.loadTime(),
+		]);
+	};
 	const refreshDashboard = () =>
-		Promise.all([refreshDashboardSections(), refreshActivities()]);
+		Promise.all([
+			refreshDashboardSections(),
+			refreshActivities(),
+			trends.loadTime(true),
+		]);
 
 	// Enhanced error handling
 	const handleError = (error: any, context: string) => {
@@ -695,11 +877,36 @@
 				<DashboardPreview />
 			</template>
 
-			<BaseLayout :title="pageTitle">
+			<BaseLayout
+				:title="pageTitle"
+				subtitle="Activity, members and tracked time across your workspace."
+			>
 				<template #header-actions>
 					<div
 						class="dashboard-header-actions flex flex-wrap items-center gap-2"
 					>
+						<div
+							class="inline-flex overflow-hidden rounded-md border border-line bg-surface text-xs"
+							role="group"
+							aria-label="Dashboard period"
+							data-dashboard-period
+						>
+							<button
+								v-for="option in periods"
+								:key="option.key"
+								type="button"
+								:aria-pressed="option.key === period"
+								:class="[
+									'px-3 py-1.5 font-medium transition-colors',
+									option.key === period
+										? 'bg-surface-sunken text-ink'
+										: 'text-ink-faint hover:text-ink',
+								]"
+								@click="setPeriod(option.key)"
+							>
+								{{ option.label }}
+							</button>
+						</div>
 						<!-- Connection Status Indicator -->
 						<div
 							v-if="showConnectionStatus || !isRealTimeActive"
@@ -861,6 +1068,95 @@
 								</div>
 							</div>
 
+							<section
+								class="dashboard-section"
+								aria-labelledby="kpi-heading"
+								tabindex="-1"
+								role="region"
+							>
+								<h2 id="kpi-heading" class="sr-only">
+									Key numbers, last {{ periodDays }} days
+								</h2>
+								<div
+									class="grid grid-cols-1 gap-4 sm:grid-cols-2"
+									:class="
+										kpiCards.length === 4 ? 'xl:grid-cols-4' : 'xl:grid-cols-3'
+									"
+								>
+									<KpiCard
+										v-for="card in kpiCards"
+										:key="card.kpiKey"
+										:kpi-key="card.kpiKey"
+										:label="card.label"
+										:icon="card.icon"
+										:tone="card.tone"
+										:value="card.value"
+										:loading="card.loading"
+										:error="card.error"
+										:series="card.series"
+										:delta="card.delta"
+										:delta-period="`vs previous ${periodDays} days`"
+										:hint="card.hint"
+										@retry="card.retry"
+									/>
+								</div>
+							</section>
+
+							<div
+								class="dashboard-row dashboard-section min-[1400px]:grid-cols-5"
+							>
+								<section
+									class="min-w-0 min-[1400px]:col-span-3"
+									aria-labelledby="team-activity-heading"
+									tabindex="-1"
+									role="region"
+								>
+									<h3 id="team-activity-heading" class="sr-only">
+										Team Activity
+									</h3>
+									<TeamActivityWidget
+										:team-activity="teamActivity"
+										:loading="loadingStates.teamActivity.isLoading"
+										:window="teamActivityWindow"
+										@refresh="() => refreshSection('teamActivity')"
+										@member-click="handleMemberClick"
+										@task-click="handleTaskClick"
+										@invite-members="() => router.push('/settings/workspaces')"
+										@window-change="setTeamActivityWindow"
+										:aria-describedby="
+											loadingStates.teamActivity.isLoading
+												? 'team-loading'
+												: 'team-description'
+										"
+									/>
+
+									<!-- Team activity description -->
+									<div id="team-description" class="sr-only">
+										Team member activity and status. Shows who is online and
+										their current tasks.
+									</div>
+
+									<!-- Loading announcement -->
+									<div
+										v-if="loadingStates.teamActivity.isLoading"
+										id="team-loading"
+										class="sr-only"
+										aria-live="polite"
+									>
+										Loading team activity
+									</div>
+								</section>
+								<ActivityChart
+									class="min-w-0 min-[1400px]:col-span-2"
+									:dates="trends.keys.value"
+									:series="chartSeries"
+									:subtitle="`Per day, last ${periodDays} days`"
+									:loading="chartLoading"
+									:error="chartError"
+									@retry="retryTrends"
+								/>
+							</div>
+
 							<!-- Activity Heatmap Section -->
 							<section
 								class="dashboard-section"
@@ -997,61 +1293,18 @@
 								</div>
 							</section>
 
-							<!-- Main Dashboard Grid -->
-							<div class="dashboard-grid" role="main">
-								<!-- Sidebar -->
-								<aside
-									class="dashboard-sidebar"
-									role="complementary"
-									aria-label="Dashboard sidebar with recent tasks and team activity"
-								>
-									<!-- Team Activity -->
-									<section
-										aria-labelledby="team-activity-heading"
-										tabindex="-1"
-										role="region"
-									>
-										<h3 id="team-activity-heading" class="sr-only">
-											Team Activity
-										</h3>
-										<TeamActivityWidget
-											:team-activity="teamActivity"
-											:loading="loadingStates.teamActivity.isLoading"
-											:window="teamActivityWindow"
-											@refresh="() => refreshSection('teamActivity')"
-											@member-click="handleMemberClick"
-											@task-click="handleTaskClick"
-											@invite-members="
-												() => router.push('/settings/workspaces')
-											"
-											@window-change="setTeamActivityWindow"
-											:aria-describedby="
-												loadingStates.teamActivity.isLoading
-													? 'team-loading'
-													: 'team-description'
-											"
-										/>
-
-										<!-- Team activity description -->
-										<div id="team-description" class="sr-only">
-											Team member activity and status. Shows who is online and
-											their current tasks.
-										</div>
-
-										<!-- Loading announcement -->
-										<div
-											v-if="loadingStates.teamActivity.isLoading"
-											id="team-loading"
-											class="sr-only"
-											aria-live="polite"
-										>
-											Loading team activity
-										</div>
-									</section>
-								</aside>
-								<!-- Activity feed, last and unbounded: it is the tallest block and reads as the page bottom (TM-235) -->
+							<!-- Activity feed, last and unbounded: it is the tallest block and reads as the page bottom (TM-235) -->
+							<div class="dashboard-row xl:grid-cols-3">
+								<TopCategoriesCard
+									v-if="showCategories"
+									class="min-w-0 xl:self-start"
+									:items="trends.categories.value ?? []"
+									:loading="trends.timeState.value === 'loading'"
+									:subtitle="`By tracked time · last ${periodDays} days`"
+								/>
 								<section
 									class="dashboard-main-content"
+									:class="showCategories ? 'xl:col-span-2' : 'xl:col-span-3'"
 									aria-labelledby="activity-heading"
 									tabindex="-1"
 									role="region"
@@ -1196,16 +1449,12 @@
 		@apply min-h-48 rounded-card border border-line bg-surface p-6 shadow-tmgr-xs;
 	}
 
-	.dashboard-grid {
-		@apply flex flex-col gap-6;
+	.dashboard-row {
+		@apply grid gap-6;
 	}
 
 	.dashboard-main-content {
-		@apply min-h-96 w-full;
-	}
-
-	.dashboard-sidebar {
-		@apply flex min-h-64 w-full flex-col space-y-6;
+		@apply min-h-96 w-full min-w-0;
 	}
 
 	/* Responsive Design */
