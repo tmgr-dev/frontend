@@ -177,6 +177,7 @@ fn the_help_lists_every_subcommand_and_flag() {
 
 const FIXTURES: &str = include_str!("../../tmgr-core/tests/fixtures/agent-approval-fixtures.json");
 const TASK: i64 = 9002;
+const TASK2: i64 = 9003;
 const WS: i64 = 56;
 const CATEGORY: i64 = 127;
 const OWN_KEY_ID: &str = "5d0e7c9a-2b1f-4a63-8c47-0a9e1f2b3c4d";
@@ -186,7 +187,7 @@ const PR: &str = "https://github.com/acme/widgets/pull/5";
 struct Remote {
     public_key: Option<String>,
     bulk: Vec<Value>,
-    approval: Option<Value>,
+    approvals: std::collections::BTreeMap<i64, Value>,
 }
 
 type Shared = Arc<Mutex<Remote>>;
@@ -225,23 +226,30 @@ impl Respond for Bulk {
             let mut approval = item.clone();
             approval["revoked_at"] = Value::Null;
             approval["revoked_reason"] = Value::Null;
-            remote.approval = Some(approval);
+            remote
+                .approvals
+                .insert(item["task_id"].as_i64().unwrap(), approval);
             answers.push(json!({"task_id": item["task_id"], "ok": true}));
         }
         ResponseTemplate::new(200).set_body_json(json!({ "data": answers }))
     }
 }
 
-struct Eligibility(Shared);
+struct Eligibility(Shared, i64);
 
 impl Respond for Eligibility {
     fn respond(&self, _: &Request) -> ResponseTemplate {
+        let (title, description, key) = if self.1 == TASK {
+            ("Fix login", "The login form drops the session", "TM-410")
+        } else {
+            ("Update docs", "The install guide is outdated", "TM-411")
+        };
         ResponseTemplate::new(200).set_body_json(json!({"data": {
-            "task_id": TASK, "workspace_id": WS, "workspace_code": "tmgrdev", "viewer_user_id": 1,
-            "title": "Fix login", "description": "The login form drops the session", "task_key": "TM-410",
+            "task_id": self.1, "workspace_id": WS, "workspace_code": "tmgrdev", "viewer_user_id": 1,
+            "title": title, "description": description, "task_key": key,
             "setting_enabled": true,
             "category": {"id": CATEGORY, "code": "TM", "github_full_name": "acme/widgets", "default_branch": "main"},
-            "approval": self.0.lock().unwrap().approval.clone(),
+            "approval": self.0.lock().unwrap().approvals.get(&self.1).cloned(),
             "persona": persona_json(),
             "context": {"pages": context_pages()},
         }}))
@@ -262,7 +270,12 @@ fn context_pages() -> Value {
 }
 
 fn open_task() -> Value {
-    let mut t = common::task_json(TASK as u64, "Fix login");
+    open_task_n(TASK, "Fix login", "The login form drops the session")
+}
+
+fn open_task_n(id: i64, title: &str, description: &str) -> Value {
+    let mut t = common::task_json(id as u64, title);
+    t["description"] = json!(description);
     t["status_id"] = json!(1);
     t["project_category_id"] = json!(CATEGORY);
     t["workspace_id"] = json!(WS);
@@ -301,6 +314,23 @@ impl Pty {
         }
     }
 
+    fn wait_for_paged(&mut self, needle: &str) {
+        let end = Instant::now() + Duration::from_secs(30);
+        let mut answered = 0;
+        while !self.text().contains(needle) {
+            assert!(
+                Instant::now() < end,
+                "timed out waiting for {needle:?}; screen:\n{}",
+                self.text()
+            );
+            if self.text().matches("press Enter").count() > answered {
+                answered += 1;
+                self.line("");
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     fn line(&mut self, s: &str) {
         self.writer.write_all(format!("{s}\r").as_bytes()).unwrap();
         self.writer.flush().unwrap();
@@ -330,6 +360,7 @@ struct Cloud {
     repo: PathBuf,
     bare: PathBuf,
     remote: Shared,
+    second: bool,
 }
 
 impl Drop for Cloud {
@@ -360,6 +391,10 @@ fn sandbox_usable() -> bool {
 
 impl Cloud {
     async fn new() -> Cloud {
+        Cloud::build(false).await
+    }
+
+    async fn build(second: bool) -> Cloud {
         let env = Env::new().await;
         env.login_seed();
         let root = env.tmp.path().to_path_buf();
@@ -415,7 +450,21 @@ impl Cloud {
         write_script(
             stub.path(),
             "claude",
-            "echo working >> README.md\necho done > agent-out.txt\nexec sleep 600",
+            r#"if [ "$1" = "-p" ]; then
+  triage=$(grep -B2 '"title": "Update docs"' orchestrator-input.json | grep -o '"ref": *[0-9]*' | grep -o '[0-9]*$')
+  plan=""
+  for n in $(grep -o '"ref": *[0-9]*' orchestrator-input.json | grep -o '[0-9]*$'); do
+    [ "$n" = "$triage" ] && continue
+    plan="${plan}${plan:+,}{\"ref\":$n,\"group\":\"\",\"mode\":\"eco\",\"reason\":\"ready\"}"
+  done
+  tri=""
+  [ -n "$triage" ] && tri="{\"ref\":$triage,\"verdict\":\"needs_feedback\",\"reason\":\"The goal is unclear\",\"question\":\"Which guide should change\"}"
+  printf '{"version":1,"plan":[%s],"triage":[%s]}' "$plan" "$tri" > orchestrator-plan.json
+  exit 0
+fi
+echo working >> README.md
+echo done > agent-out.txt
+exec sleep 600"#,
         );
         let f: Value = serde_json::from_str(FIXTURES).unwrap();
         let allow = json!({"version": 1, "entries": [{
@@ -441,6 +490,7 @@ impl Cloud {
             repo,
             bare,
             remote: Shared::default(),
+            second,
         };
         cloud.mount(&f["key"]).await;
         cloud
@@ -468,7 +518,7 @@ impl Cloud {
         .await;
         get(
             &format!("/api/workspaces/{WS}/statuses"),
-            json!({"data": [{"id": 1, "name": "Todo", "type": "default"}, {"id": 4, "name": "Review", "type": "review"}]}),
+            json!({"data": [{"id": 1, "name": "Todo", "type": "default"}, {"id": 4, "name": "Review", "type": "review"}, {"id": 5, "name": "Needs feedback", "type": "active"}]}),
         )
         .await;
         get(
@@ -476,9 +526,17 @@ impl Cloud {
             json!({"data": [{"id": CATEGORY, "title": "Tmgr", "code": "TM"}]}),
         )
         .await;
+        let mut listed = vec![open_task()];
+        if self.second {
+            listed.push(open_task_n(
+                TASK2,
+                "Update docs",
+                "The install guide is outdated",
+            ));
+        }
         get(
             "/api/tasks",
-            json!({"data": [open_task()], "meta": {"current_page": 1, "last_page": 1}}),
+            json!({"data": listed, "meta": {"current_page": 1, "last_page": 1}}),
         )
         .await;
         get(&format!("/api/tasks/{TASK}"), open_task()).await;
@@ -507,16 +565,41 @@ impl Cloud {
             .respond_with(Bulk(self.remote.clone()))
             .mount(server)
             .await;
-        Mock::given(method("GET"))
-            .and(path(format!("/api/agent-runs/tasks/{TASK}")))
-            .respond_with(Eligibility(self.remote.clone()))
-            .mount(server)
+        let tasks: &[i64] = if self.second { &[TASK, TASK2] } else { &[TASK] };
+        for &id in tasks {
+            Mock::given(method("GET"))
+                .and(path(format!("/api/agent-runs/tasks/{id}")))
+                .respond_with(Eligibility(self.remote.clone(), id))
+                .mount(server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path(format!("/api/tasks/{id}/comments")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}})))
+                .mount(server)
+                .await;
+        }
+        if self.second {
+            get(
+                &format!("/api/tasks/{TASK2}"),
+                open_task_n(TASK2, "Update docs", "The install guide is outdated"),
+            )
             .await;
-        Mock::given(method("POST"))
-            .and(path(format!("/api/tasks/{TASK}/comments")))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}})))
-            .mount(server)
+            get(
+                &format!("/api/tasks/{TASK2}/agent-approval"),
+                json!({"data": {"repositories": null, "persona": persona_json(), "context": {"pages": context_pages()}}}),
+            )
             .await;
+            get(
+                &format!("/api/tasks/{TASK2}/agent-work"),
+                json!({"data": {"runs": []}}),
+            )
+            .await;
+            Mock::given(method("PUT"))
+                .and(path(format!("/api/tasks/{TASK2}/5")))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {}})))
+                .mount(server)
+                .await;
+        }
     }
 
     fn root(&self) -> PathBuf {
@@ -558,7 +641,7 @@ impl Cloud {
     fn pty(&self, args: &[&str]) -> Pty {
         let pair = native_pty_system()
             .openpty(PtySize {
-                rows: 50,
+                rows: 200,
                 cols: 160,
                 pixel_width: 0,
                 pixel_height: 0,
@@ -574,7 +657,7 @@ impl Cloud {
         let child = pair.slave.spawn_command(cmd).unwrap();
         drop(pair.slave);
         let mut reader = pair.master.try_clone_reader().unwrap();
-        let screen = Arc::new(Mutex::new(vt100::Parser::new(50, 160, 0)));
+        let screen = Arc::new(Mutex::new(vt100::Parser::new(200, 160, 0)));
         let sink = screen.clone();
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
@@ -649,7 +732,7 @@ impl Cloud {
             p.wait_for(label);
             p.line("");
         }
-        p.wait_for("Type I AGREE");
+        p.wait_for_paged("Type I AGREE");
         p.line("I AGREE");
         p
     }
@@ -1011,4 +1094,93 @@ async fn starting_a_drain_suspends_the_queue_loop_first_and_leaves_the_queue_on(
     assert_eq!(back["kind"], "queue");
     assert!(cloud.queue_enabled());
     assert!(cloud.cfg().join("autopilot/settings/queue.json").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_orchestrator_triages_one_task_and_the_other_one_starts() {
+    if !sandbox_usable() {
+        return;
+    }
+    if !cfg!(target_os = "macos") {
+        eprintln!("skipped: the Linux sandbox cannot read the stub agent in a temp directory");
+        return;
+    }
+    let cloud = Cloud::build(true).await;
+    cloud.add_rule();
+    let mut p = cloud.start_pty(&[]);
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    let status = cloud.wait_status("a running planned task", |s| s["tasks"]["in_work"] == 1);
+    cloud.wait_for_agent_file();
+    assert_eq!(status["plan"]["state"], "done", "{status}");
+    assert_eq!(status["triage"][0]["task"], "TM-411", "{status}");
+    assert_eq!(status["triage"][0]["applied"], true, "{status}");
+    assert_eq!(status["runs"][0]["task"], "TM-410", "{status}");
+
+    let calls = cloud.calls().await;
+    let on = |m: &str, path: String| -> Vec<&(String, String, String)> {
+        calls.iter().filter(|c| c.0 == m && c.1 == path).collect()
+    };
+    let comments = on("POST", format!("/api/tasks/{TASK2}/comments"));
+    assert_eq!(comments.len(), 1, "{calls:?}");
+    assert!(
+        comments[0].2.contains("needs feedback"),
+        "{}",
+        comments[0].2
+    );
+    assert!(comments[0].2.contains("Which guide should change"));
+    assert_eq!(on("PUT", format!("/api/tasks/{TASK2}/5")).len(), 1);
+    assert!(on("PUT", format!("/api/tasks/{TASK}/5")).is_empty());
+    assert!(
+        on("POST", format!("/api/tasks/{TASK}/comments")).is_empty(),
+        "{calls:?}"
+    );
+
+    let stop = cloud.cmd(&["queue", "autopilot", "stop"]);
+    assert_eq!(stop.status.code(), Some(0), "{}", text(&stop.stderr));
+    cloud.wait_status("stopped", |s| s["state"] == "stopped");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_dry_run_plans_without_comments_status_changes_or_task_runs() {
+    if !sandbox_usable() {
+        return;
+    }
+    if !cfg!(target_os = "macos") {
+        eprintln!("skipped: the Linux sandbox cannot read the stub agent in a temp directory");
+        return;
+    }
+    let cloud = Cloud::build(true).await;
+    cloud.add_rule();
+    let mut p = cloud.start_pty(&["--dry-run"]);
+    assert_eq!(p.exit(), 0, "{}", p.text());
+    let done = cloud.wait_status("a finished dry run", |s| s["state"] == "stopped");
+    assert_eq!(done["stop_reason"], "dry run finished", "{done}");
+    assert_eq!(done["plan"]["state"], "done");
+    assert_eq!(done["plan"]["dry_run"], true);
+    assert_eq!(done["triage"][0]["applied"], false, "{done}");
+    assert!(!cloud.queue_enabled());
+
+    let calls = cloud.calls().await;
+    assert!(
+        calls
+            .iter()
+            .all(|c| c.0 != "PUT" && !c.1.ends_with("/comments")),
+        "{calls:?}"
+    );
+    assert!(cloud.gh_argv().is_empty());
+    let mut runner = tmgr_runner::client::Client::connect(&cloud.runner.path().join("r")).unwrap();
+    let sessions = runner.list().unwrap();
+    assert!(
+        sessions
+            .iter()
+            .all(|s| s.state.kind == tmgr_ipc::api::StateKind::Exited),
+        "{sessions:?}"
+    );
+    let agent_files = std::fs::read_dir(cloud.root().join("code/repo-worktrees/queue"))
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|d| d.path().join("agent-out.txt").exists())
+        .count();
+    assert_eq!(agent_files, 0);
 }
