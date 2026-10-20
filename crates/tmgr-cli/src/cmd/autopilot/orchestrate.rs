@@ -17,6 +17,7 @@ pub const MAX_PLAN_BYTES: u64 = 256 * 1024;
 pub const MAX_REASON_CHARS: usize = 300;
 pub const MAX_QUESTION_CHARS: usize = 500;
 pub const MAX_GROUP_CHARS: usize = 32;
+pub const MAX_TRIAGE: usize = 3;
 pub const NOT_PLANNED_REASON: &str = "not planned by the orchestrator";
 
 pub const SCHEMA: &str = r#"{
@@ -259,9 +260,27 @@ struct RawTriage {
     question: String,
 }
 
+fn has_bare_domain(lower: &str) -> bool {
+    let b = lower.as_bytes();
+    b.iter().enumerate().any(|(i, c)| {
+        if *c != b'/' {
+            return false;
+        }
+        let tld = b[..i].iter().rev().take_while(|c| c.is_ascii_lowercase()).count();
+        let dot = i.checked_sub(tld + 1).filter(|d| b[*d] == b'.');
+        tld >= 2
+            && dot.is_some_and(|d| {
+                d > 0 && (b[d - 1].is_ascii_lowercase() || b[d - 1].is_ascii_digit() || b[d - 1] == b'-')
+            })
+    })
+}
+
 fn text_problem(s: &str) -> Option<&'static str> {
     let lower = s.to_lowercase();
     if lower.contains("://") || lower.contains("www.") {
+        return Some("a link");
+    }
+    if has_bare_domain(&lower) {
         return Some("a link");
     }
     if s.contains("](") || s.contains("![") {
@@ -273,7 +292,7 @@ fn text_problem(s: &str) -> Option<&'static str> {
         if *c == '@' && next.is_some_and(|n| n.is_alphanumeric() || *n == '_') {
             return Some("a mention");
         }
-        if *c == '<' && next.is_some_and(|n| n.is_ascii_alphabetic() || *n == '/') {
+        if *c == '<' && next.is_some_and(|n| n.is_ascii_alphabetic() || matches!(*n, '/' | '!')) {
             return Some("an HTML tag");
         }
     }
@@ -403,7 +422,7 @@ pub fn validate(
             )?,
         });
     }
-    if triage.len() > 2.max(input.tasks.len() / 2) {
+    if triage.len() > (input.tasks.len() / 2).clamp(1, MAX_TRIAGE) {
         return Err(Reject::new("the orchestrator triaged too many tasks"));
     }
     for t in &input.tasks {
@@ -843,6 +862,10 @@ mod tests {
             (plan_with("ping @owner"), "contains a mention"),
             (plan_with("<b>bold</b>"), "contains an HTML tag"),
             (plan_with("a </div>"), "contains an HTML tag"),
+            (plan_with("<!-- hidden -->"), "contains an HTML tag"),
+            (plan_with("<!DOCTYPE x>"), "contains an HTML tag"),
+            (plan_with("see evil.com/x"), "contains a link"),
+            (plan_with("see Sub-Domain.Example.org/path"), "contains a link"),
             (plan_with("```rm -rf```"), "contains a code fence"),
             (plan_with("run `ls`"), "contains a backtick"),
             (triage_with("", "q"), "reason is empty"),
@@ -879,6 +902,8 @@ mod tests {
             "mail me at a@ b",
             "5 > 3 (maybe)",
             "colon: ok, ratio 3/4",
+            "read and/or write, v1.2 ready",
+            "an e.g. case",
         ] {
             let v = json!({"version": 1, "plan": [{"ref": 1, "mode": "eco", "reason": reason}]});
             assert!(run(&i, v, None).is_ok(), "{reason}");
@@ -898,6 +923,27 @@ mod tests {
             let m = rejected(&i, v);
             assert!(!m.contains(secret), "{m}");
         }
+    }
+
+    #[test]
+    fn invisible_format_characters_are_cleaned() {
+        let i = input(1);
+        let v = json!({"version": 1, "plan": [{"ref": 1, "mode": "eco", "reason": "a\u{2060}b\u{ad}c\u{2064}d\u{e0041}e"}]});
+        assert_eq!(run(&i, v, None).unwrap().items[0].reason, "a b c d e");
+    }
+
+    #[test]
+    fn the_triage_cap_is_at_most_three_and_half_the_board() {
+        let cap = |n: i64, k: u32| {
+            let i = input(n);
+            let v = json!({"version": 1, "triage": (1..=k).map(tri).collect::<Vec<_>>()});
+            run(&i, v, None).is_ok()
+        };
+        assert!(cap(2, 1) && !cap(2, 2));
+        assert!(cap(4, 2) && !cap(4, 3));
+        assert!(cap(1, 1));
+        assert!(cap(6, 3) && !cap(6, 4));
+        assert!(cap(20, 3) && !cap(20, 4));
     }
 
     #[test]

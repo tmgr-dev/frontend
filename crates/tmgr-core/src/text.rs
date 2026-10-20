@@ -1,6 +1,6 @@
 fn unsafe_char(c: char) -> bool {
     c.is_control()
-        || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{feff}')
+        || matches!(c, '\u{200b}'..='\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2060}'..='\u{206f}' | '\u{ad}' | '\u{61c}' | '\u{180e}' | '\u{feff}' | '\u{fff9}'..='\u{fffb}' | '\u{e0000}'..='\u{e007f}' | '\u{1d173}'..='\u{1d17a}')
 }
 
 pub fn sanitize(input: &str) -> String {
@@ -174,6 +174,10 @@ mod tests {
     fn sanitize_strips_escape_sequences_but_keeps_newlines() {
         assert_eq!(sanitize("a\u{1b}[31mb\nc\td\u{7}"), "a[31mb\nc\td");
         assert_eq!(sanitize_line("a\nb\u{1b}c"), "a b c");
+        assert_eq!(
+            sanitize_line("a\u{2060}b\u{ad}c\u{2064}d\u{e0041}e\u{61c}f"),
+            "a b c d e f"
+        );
     }
 
     #[test]
