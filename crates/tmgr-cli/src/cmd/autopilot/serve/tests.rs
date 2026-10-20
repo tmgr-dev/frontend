@@ -10,7 +10,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use tmgr_core::error::Error;
 use tmgr_queue::state::Held;
-use tmgr_queue::{PassReport, PausedDraft};
+use tmgr_queue::{PassReport, PausedDraft, Requeued};
 use tmgr_usage::cost::CostSummary;
 use tmgr_usage::limits::{LimitSnapshot, LimitSource, LimitWindow};
 
@@ -37,6 +37,8 @@ struct World {
     draft_error: bool,
     finish_on_sleep: bool,
     state_fail: bool,
+    requeues: Vec<(String, StartPolicy)>,
+    requeue_fails: BTreeSet<String>,
     orch_on: bool,
     orch_poll: Poll,
     orch_outputs: BTreeMap<u32, Vec<u8>>,
@@ -81,6 +83,8 @@ impl Fake {
             draft_error: false,
             finish_on_sleep: false,
             state_fail: false,
+            requeues: Vec::new(),
+            requeue_fails: BTreeSet::new(),
             orch_on: false,
             orch_poll: Poll::Running,
             orch_outputs: BTreeMap::new(),
@@ -239,11 +243,46 @@ impl Queue for Fake {
             return Err(Error::conflict("nothing to commit"));
         }
         p.pr_url = Some(format!("https://github.com/o/r/pull/{}", p.task.task_id));
+        p.wip_heads.insert("repo".into(), "abc".into());
         Ok(PausedDraft {
             pr_url: p.pr_url.clone(),
             held: false,
             commits: vec![],
         })
+    }
+
+    fn requeue_paused(&self, pickup: &str, policy: StartPolicy) -> Result<Requeued> {
+        let mut w = self.w();
+        w.order.push(format!("requeue {pickup}"));
+        w.requeues.push((pickup.into(), policy));
+        if w.requeue_fails.contains(pickup) {
+            return Err(Error::conflict("the task already has an open pickup"));
+        }
+        let old = w.state.pickups.iter().position(|p| p.id == pickup).unwrap();
+        let mut next = w.state.pickups[old].clone();
+        next.id = format!("{pickup}-again");
+        next.status = Status::Approved;
+        next.run_id = None;
+        next.run_exited = false;
+        next.paused_draft = false;
+        next.pr_url = None;
+        next.continues = Some(pickup.into());
+        next.continued_by = None;
+        w.state.pickups[old].continued_by = Some(next.id.clone());
+        w.state.pickups[old].released = true;
+        let out = Requeued {
+            pickup: next.id.clone(),
+            continues: pickup.into(),
+            task_id: next.task.task_id,
+            key: next.key.clone(),
+        };
+        w.start_on_pass.push((next.id.clone(), next.task.task_id));
+        w.state.pickups.push(next);
+        Ok(out)
+    }
+
+    fn resumable(&self) -> Result<Vec<String>> {
+        Ok(tmgr_queue::paused_resumable(&self.w().state))
     }
 
     fn set_paused(&self, paused: bool) -> Result<()> {
@@ -1160,6 +1199,97 @@ fn resume_after_reset_keeps_waiting_instead_of_stopping() {
             "starts again after the reset"
         );
     });
+}
+
+#[test]
+fn resume_after_reset_requeues_each_paused_task_once_after_the_reset_with_the_pass_policy() {
+    let rig = Rig::new();
+    let s = settings(&[1, 2], |a| a.resume_after_reset = true);
+    rig.fake.add(running("q1", 1));
+    rig.fake.add(running("q2", 2));
+    rig.fake.w().probe = Ok(vec![(85.0, 10.0)]);
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    tick_on(&mut ap);
+    assert!(rig.fake.0.borrow().requeues.is_empty());
+    rig.fake.advance(Duration::minutes(10));
+    tick_on(&mut ap);
+    assert!(
+        rig.fake.0.borrow().requeues.is_empty(),
+        "nothing is requeued before the window resets"
+    );
+    rig.fake.advance(Duration::hours(3));
+    rig.fake.w().probe = Ok(vec![(1.0, 10.0)]);
+    tick_on(&mut ap);
+    let w = rig.fake.0.borrow();
+    let ids: Vec<_> = w.requeues.iter().map(|(id, _)| id.as_str()).collect();
+    assert_eq!(ids, vec!["q1", "q2"]);
+    let pass = w.passes.last().unwrap();
+    assert!(pass.starts_allowed);
+    for (_, policy) in &w.requeues {
+        assert!(policy.starts_allowed);
+        assert_eq!(policy.only, pass.only);
+        assert_eq!(policy.max_live, pass.max_live);
+    }
+    let order = &w.order;
+    let at = |needle: &str| order.iter().rposition(|o| o == needle).unwrap();
+    assert!(at("requeue q2") < at("pass paused=false starts=true"));
+    assert!(w.pushes.iter().any(|p| p.contains("Resumed TM-1")));
+    drop(w);
+    assert_eq!(rig.status().tasks.in_work, 2);
+    rig.fake.advance(Duration::seconds(30));
+    tick_on(&mut ap);
+    assert_eq!(rig.fake.0.borrow().requeues.len(), 2, "each task once");
+}
+
+#[test]
+fn resume_after_reset_off_never_requeues() {
+    let rig = Rig::new();
+    let s = settings(&[1, 2], |_| {});
+    rig.fake.add(running("q1", 1));
+    rig.fake.add(running("q2", 2));
+    rig.fake.w().probe = Ok(vec![(85.0, 10.0)]);
+    with_ap(&rig, &s, |ap| {
+        let out = ap.tick().unwrap().expect("stopped");
+        assert!(out.reason.starts_with("hard usage limit"));
+    });
+    rig.fake.advance(Duration::hours(3));
+    rig.fake.w().probe = Ok(vec![(1.0, 10.0)]);
+    with_ap(&rig, &s, |ap| {
+        ap.tick().unwrap();
+    });
+    assert!(rig.fake.0.borrow().requeues.is_empty());
+}
+
+#[test]
+fn a_requeue_error_is_an_event_and_the_loop_goes_on() {
+    let rig = Rig::new();
+    let s = settings(&[1, 2], |a| a.resume_after_reset = true);
+    rig.fake.add(running("q1", 1));
+    rig.fake.add(running("q2", 2));
+    rig.fake.w().probe = Ok(vec![(85.0, 10.0)]);
+    rig.fake.w().requeue_fails.insert("q1".into());
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    tick_on(&mut ap);
+    rig.fake.advance(Duration::hours(3));
+    rig.fake.w().probe = Ok(vec![(1.0, 10.0)]);
+    tick_on(&mut ap);
+    let w = rig.fake.0.borrow();
+    assert_eq!(w.requeues.len(), 2);
+    assert!(w.state.pickups.iter().any(|p| p.id == "q2-again"));
+    drop(w);
+    let doc = rig.status();
+    assert!(
+        doc.events
+            .iter()
+            .any(|e| e.text.contains("Could not resume TM-1")),
+        "{:?}",
+        doc.events
+    );
+    assert_eq!(doc.tasks.in_work, 1);
 }
 
 #[test]

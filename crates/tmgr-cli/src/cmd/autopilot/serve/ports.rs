@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use tmgr_core::error::Result;
 use tmgr_queue::state::State;
-use tmgr_queue::{PassReport, PausedDraft, StartPolicy};
+use tmgr_queue::{PassReport, PausedDraft, Requeued, StartPolicy};
 use tmgr_usage::cost::{Billing, CostSummary};
 use tmgr_usage::limits::LimitSnapshot;
 use tmgr_usage::link::RunWindow;
@@ -14,6 +14,8 @@ pub trait Queue {
     fn pass(&self, policy: StartPolicy) -> Result<PassReport>;
     fn state(&self) -> Result<State>;
     fn pause_to_draft(&self, pickup: &str, note: &str) -> Result<PausedDraft>;
+    fn requeue_paused(&self, pickup: &str, policy: StartPolicy) -> Result<Requeued>;
+    fn resumable(&self) -> Result<Vec<String>>;
     fn set_paused(&self, paused: bool) -> Result<()>;
     fn disable(&self, reason: &str) -> Result<()>;
     fn keep_on(&self) -> Result<()>;

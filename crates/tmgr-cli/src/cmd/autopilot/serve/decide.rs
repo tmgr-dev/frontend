@@ -219,7 +219,8 @@ pub fn verdict(d: &Decision, f: &Facts, now: DateTime<Utc>) -> Option<StopReason
             _ => {}
         }
     }
-    if f.settled && f.eligible == 0 && !d.blockers.contains(&Blocker::Paused) {
+    let resuming = f.limit_paused.as_ref().is_some_and(waits_for);
+    if f.settled && f.eligible == 0 && !resuming && !d.blockers.contains(&Blocker::Paused) {
         return Some(StopReason::NothingLeft);
     }
     if d.blockers.contains(&Blocker::UsageUnknown)
@@ -618,6 +619,22 @@ mod tests {
         let mut no_reset = rows(Some(85.0), Some(1.0));
         no_reset[0].resets_at = None;
         assert!(verdict_of(&no_reset, |_, f| f.resume_after_reset = true).is_some());
+    }
+
+    #[test]
+    fn resume_after_reset_keeps_waiting_after_the_last_task_was_paused() {
+        let l = rows(Some(1.0), Some(1.0));
+        let hit = Hit {
+            window: "five_hour".into(),
+            pct: 90.0,
+            resets_at: Some(now() + Duration::hours(1)),
+        };
+        let reason = verdict_of(&l, |_, f| {
+            f.eligible = 0;
+            f.resume_after_reset = true;
+            f.limit_paused = Some(hit.clone());
+        });
+        assert_eq!(reason, None);
     }
 
     #[test]

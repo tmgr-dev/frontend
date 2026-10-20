@@ -642,6 +642,7 @@ impl<'a> Autopilot<'a> {
                 plan: None,
             }
         };
+        self.resume_paused(&decision, &policy, now);
         match self.p.queue.pass(policy) {
             Ok(report) => {
                 self.pass_errors = 0;
@@ -702,6 +703,49 @@ impl<'a> Autopilot<'a> {
         match reason {
             Some(r) => self.finish(r, None),
             None => Ok(None),
+        }
+    }
+
+    fn resume_paused(&mut self, decision: &Decision, policy: &StartPolicy, now: DateTime<Utc>) {
+        let Some(hit) = self.limit_paused.as_ref() else {
+            return;
+        };
+        let reset = hit.resets_at.is_some_and(|r| r <= now);
+        if !self.s.answers.resume_after_reset || !reset || !decision.starts_allowed() {
+            return;
+        }
+        self.limit_paused = None;
+        let paused: BTreeSet<String> = self.paused_log.iter().map(|r| r.task.clone()).collect();
+        let found = self.p.queue.resumable().and_then(|ids| {
+            let st = self.p.queue.state()?;
+            Ok(ids
+                .into_iter()
+                .filter_map(|id| {
+                    let p = st.pickups.iter().find(|p| p.id == id)?;
+                    paused.contains(&p.key).then(|| (id, p.key.clone()))
+                })
+                .collect::<Vec<_>>())
+        });
+        let found = match found {
+            Ok(found) => found,
+            Err(e) => {
+                let text = format!("Could not look for paused tasks to resume: {}", e.message);
+                self.event("error", None, text);
+                return;
+            }
+        };
+        for (id, key) in found {
+            match self.p.queue.requeue_paused(&id, policy.clone()) {
+                Ok(_) => {
+                    let text = format!("Resumed {key} after the usage limit reset");
+                    self.event("resumed", Some(&key), text.clone());
+                    self.push("Autopilot: task resumed", &text);
+                }
+                Err(e) => {
+                    let text = format!("Could not resume {key}: {}", e.message);
+                    self.event("error", Some(&key), text);
+                }
+            }
         }
     }
 

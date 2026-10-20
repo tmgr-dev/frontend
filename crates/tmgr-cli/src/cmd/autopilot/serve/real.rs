@@ -31,7 +31,7 @@ use tmgr_queue::rules::{is_cloud, Rule};
 use tmgr_queue::runs::{RunState, RunsClient};
 use tmgr_queue::state::{self, State};
 use tmgr_queue::workdir::clone_dir;
-use tmgr_queue::{PassReport, Paths, PausedDraft, StartPolicy};
+use tmgr_queue::{PassReport, Paths, PausedDraft, Requeued, StartPolicy};
 use tmgr_runner::client::Client;
 use tmgr_usage::cost::{cost_between, Billing, CostSummary};
 use tmgr_usage::limits::LimitSnapshot;
@@ -109,6 +109,19 @@ impl Queue for RealQueue<'_> {
             StartPolicy::default(),
             |deps| tmgr_queue::pause_to_draft(self.paths, deps, pickup, note),
         )
+    }
+
+    fn requeue_paused(&self, pickup: &str, policy: StartPolicy) -> Result<Requeued> {
+        if tmgr_queue::needs_runner(self.paths)? {
+            self.runs.ready()?;
+        }
+        with_deps(self.ctx, self.cli, self.runs, policy, |deps| {
+            tmgr_queue::requeue_paused(self.paths, deps, pickup, Utc::now())
+        })
+    }
+
+    fn resumable(&self) -> Result<Vec<String>> {
+        Ok(tmgr_queue::paused_resumable(&state::load(self.paths)?))
     }
 
     fn set_paused(&self, paused: bool) -> Result<()> {
