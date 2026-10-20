@@ -740,6 +740,66 @@ test('a 422 shows inline errors and keeps the form dirty; delete goes to the par
   expect(errors).toEqual([]);
 });
 
+const delayListAfterWrites = async (page, state, ms = 1500) => {
+  await page.route(
+    (u) => u.pathname.endsWith('/api/project_categories'),
+    async (route) => {
+      if (route.request().method() === 'GET' && state.calls.length)
+        await new Promise((resolve) => setTimeout(resolve, ms));
+      await route.fallback();
+    },
+  );
+};
+
+test('while the tree reloads after Create or Delete, the form stays locked: one POST, one DELETE', async ({
+  page,
+}) => {
+  const { state, errors } = await boot(page, { size: DESK });
+  await delayListAfterWrites(page, state);
+  await page.goto('/demo/categories/create');
+  await nameField(page).fill('Once');
+  const create = page.getByRole('button', { name: 'Create', exact: true });
+  await create.click();
+  await expect(page.getByText('Category created').first()).toBeVisible();
+  await expect(create).toBeDisabled({ timeout: 500 });
+  await nameField(page).press('Enter');
+  await expect(page).toHaveURL(
+    /\/demo\/categories\/900\/children\?tab=settings$/,
+  );
+  expect(writes(state, /^POST project_categories$/)).toHaveLength(1);
+
+  await page.getByRole('button', { name: 'Delete…' }).click();
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: 'Delete', exact: true })
+    .click();
+  await expect(page.getByRole('button', { name: 'Delete…' })).toBeDisabled();
+  await expect(page).not.toHaveURL(/\/900\//);
+  expect(writes(state, /^DELETE /).map((c) => c.path)).toEqual([
+    'project_categories/900',
+  ]);
+  expect(errors).toEqual([]);
+});
+
+test('a category created elsewhere after boot opens instead of "not found"', async ({
+  page,
+}) => {
+  const { state, errors } = await boot(page, { size: DESK });
+  await page.goto('/demo/categories/24/children');
+  await expect(header(page).locator('h1')).toHaveText('Work');
+  state.list = [...state.list, cat(777, 'Elsewhere', 'ELSE', null)];
+  await page.evaluate(() => {
+    const router =
+      document.querySelector('#app').__vue_app__.config.globalProperties
+        .$router;
+    return router.push('/demo/categories/777/children');
+  });
+  await expect(header(page).locator('h1')).toHaveText('Elsewhere');
+  await expect(page.getByTestId('category-missing')).toHaveCount(0);
+  await expect(treeRow(page, 'Elsewhere')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('empty workspace: one centred call to action, the sidebar section shows only its header', async ({
   page,
 }) => {

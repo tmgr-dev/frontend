@@ -5,7 +5,7 @@ const PAGES = [
   ['list', '/demo/list', 'wide'],
   ['archive', '/demo/archive', 'wide'],
   ['dashboard', '/demo/dashboard', 'wide'],
-  ['categories', '/demo/categories', 'narrow'],
+  ['categories', '/demo/categories', 'wide'],
   ['notifications', '/demo/notifications', 'wide'],
   ['files', '/demo/files', 'wide'],
   ['member', '/demo/team/1', 'wide'],

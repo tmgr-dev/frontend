@@ -144,8 +144,9 @@ export const composeTitle = (prefix: string, title: string) => {
 };
 
 export const formatDuration = (value: string | number | null | undefined) => {
+	if (value === '' || value == null) return '';
 	const seconds = Number(value);
-	if (!Number.isFinite(seconds) || seconds <= 0) return '';
+	if (!Number.isFinite(seconds) || seconds < 0) return '';
 	const hours = Math.floor(seconds / 3600);
 	const minutes = Math.floor((seconds % 3600) / 60);
 	if (!hours) return `${minutes}m`;

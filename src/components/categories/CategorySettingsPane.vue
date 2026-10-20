@@ -301,6 +301,7 @@
 						variant="outline"
 						size="sm"
 						:class="[smallButtonClass, 'ml-auto']"
+						:disabled="done"
 						@click="openTransfer"
 					>
 						<ArrowRightLeft aria-hidden="true" />
@@ -320,6 +321,7 @@
 							smallButtonClass,
 							'ml-auto !text-status-fix-fg hover:!text-status-fix-fg',
 						]"
+						:disabled="done"
 						@click="deleteOpen = true"
 					>
 						<Trash2 aria-hidden="true" />
@@ -339,7 +341,7 @@
 				variant="ghost"
 				size="sm"
 				class="ml-auto h-8 px-3 text-[13px] text-ink-muted hover:bg-surface-hover hover:text-ink"
-				:disabled="saving"
+				:disabled="saving || done"
 				@click="isCreate ? $emit('close') : discard()"
 			>
 				{{ isCreate ? 'Cancel' : 'Discard' }}
@@ -349,7 +351,7 @@
 				:form="formId"
 				size="sm"
 				class="h-8 px-4 text-[13px] font-semibold"
-				:disabled="saving || invalid"
+				:disabled="saving || done || invalid"
 			>
 				{{ isCreate ? 'Create' : 'Save' }}
 			</Button>
@@ -684,6 +686,7 @@
 			const focusedDuration = ref(null);
 			const errors = ref({});
 			const saving = ref(false);
+			const done = ref(false);
 			const fixing = ref(false);
 			const initial = ref(null);
 			const copyFrom = ref('none');
@@ -1009,11 +1012,12 @@
 				} else {
 					notify('Category created');
 				}
+				done.value = true;
 				emit('created', created.id);
 			};
 
 			const submit = async () => {
-				if (saving.value || invalid.value) return;
+				if (saving.value || done.value || invalid.value) return;
 				if (!props.isCreate && !dirty.value) return;
 				errors.value = {};
 				saving.value = true;
@@ -1057,6 +1061,8 @@
 			};
 
 			const remove = async () => {
+				if (done.value) return;
+				done.value = true;
 				try {
 					await deleteCategory(category.value.id);
 				} catch (e) {
@@ -1065,6 +1071,7 @@
 						e?.response?.data?.message || 'Please try again.',
 						'destructive',
 					);
+					done.value = false;
 					return;
 				}
 				initial.value = null;
@@ -1109,6 +1116,7 @@
 					);
 					transfer.open = false;
 					initial.value = null;
+					done.value = true;
 					emit('dirty', false);
 					emit('moved');
 				} catch (e) {
@@ -1347,6 +1355,7 @@
 				values,
 				errors,
 				saving,
+				done,
 				fixing,
 				dirty,
 				invalid,

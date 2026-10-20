@@ -199,7 +199,9 @@ describe('helpers', () => {
 		expect(formatDuration('5400')).toBe('1h 30m');
 		expect(formatDuration(1200)).toBe('20m');
 		expect(formatDuration('')).toBe('');
-		expect(formatDuration(0)).toBe('');
+		expect(formatDuration(0)).toBe('0m');
+		expect(formatDuration('0')).toBe('0m');
+		expect(formatDuration(null)).toBe('');
 	});
 
 	it('sanitizes codes, trimming a trailing hyphen only when final', () => {

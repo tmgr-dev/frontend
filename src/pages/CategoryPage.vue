@@ -14,7 +14,11 @@
 			</template>
 
 			<PageContainer
-				:width="state === 'empty' || state === 'missing' ? 'wide' : 'narrow'"
+				:width="
+					state === 'create' || (state === 'view' && tab === 'settings')
+						? 'narrow'
+						: 'wide'
+				"
 			>
 				<AsyncContent
 					:pending="pending"
@@ -248,7 +252,8 @@
 			const router = useRouter();
 			const store = useStore();
 			const tree = useCategoryTree();
-			tree.ensure();
+			if (route.meta.fallback && !tree.loaded.value) void tree.refresh();
+			else tree.ensure();
 			const catalogue = ref(null);
 			const catalogueState = ref('loading');
 			const dirty = ref(false);
@@ -285,7 +290,8 @@
 					: null,
 			);
 
-			const state = computed(() => {
+			const rechecked = ref(false);
+			const resolved = computed(() => {
 				if (!tree.loaded.value) return 'loading';
 				if (INDEX_ROUTES.includes(routeName.value))
 					return tree.nodes.value.length ? 'redirect' : 'empty';
@@ -295,6 +301,19 @@
 				if (!node.value) return 'missing';
 				return routeName.value === 'WorkspaceCategory' ? 'redirect' : 'view';
 			});
+			const state = computed(() =>
+				resolved.value === 'missing' && !rechecked.value
+					? 'loading'
+					: resolved.value,
+			);
+			watch(
+				resolved,
+				(value) => {
+					if (value !== 'missing' || rechecked.value) return;
+					void tree.refresh().finally(() => (rechecked.value = true));
+				},
+				{ immediate: true },
+			);
 
 			const tab = computed(() =>
 				TABS.some((t) => t.id === route.query.tab) ? route.query.tab : 'tasks',

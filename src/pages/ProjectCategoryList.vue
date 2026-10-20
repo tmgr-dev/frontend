@@ -528,7 +528,7 @@
 				label="Loading categories"
 			>
 				<template #skeleton>
-					<div class="grid min-h-48 gap-4 sm:grid-cols-2">
+					<div class="grid min-h-48 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
 						<Skeleton class="h-24 w-full" />
 						<Skeleton class="hidden h-24 w-full lg:block" />
 						<Skeleton class="hidden h-24 w-full 2xl:block" />
@@ -542,7 +542,7 @@
 						No subcategories yet.
 					</p>
 					<div
-						class="grid gap-4 sm:grid-cols-2"
+						class="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3"
 						v-if="categories && categories.length > 0"
 					>
 						<div
