@@ -158,6 +158,8 @@ pub enum Command {
     Refs,
     /// Full-screen kanban board of the workspace
     Board(BoardArgs),
+    /// Interactive menu: pick a command, fill its options, run it (also: `tmgr` in a terminal)
+    Ui,
     /// Local AI tool usage: cost, tokens, tasks and rate limits
     Usage(UsageArgs),
     /// Update tmgr to the newest signed release

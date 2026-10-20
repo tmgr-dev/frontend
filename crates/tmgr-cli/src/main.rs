@@ -34,6 +34,9 @@ fn run() -> i32 {
         Ok(cli) => cli,
         Err(e) => return usage_exit(e),
     };
+    if let Some(code) = cmd::ui::entry(&cli) {
+        return code;
+    }
     if let Some(code) = standalone(&cli) {
         return code;
     }
@@ -168,6 +171,7 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Note(args)) => cmd::note::run(ctx, args),
         Some(Command::Page { command }) => cmd::page::run(ctx, command),
         Some(Command::Board(args)) => cmd::board::run(ctx, args),
+        Some(Command::Ui) => Err(Error::internal("handled before the session starts")),
         Some(Command::Usage(args)) => cmd::usage::run(ctx, args),
         Some(Command::SelfUpdate(args)) => cmd::self_update::run(ctx, args),
         Some(Command::Refs) => Ok(Output::new(

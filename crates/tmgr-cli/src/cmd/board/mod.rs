@@ -1,7 +1,7 @@
 mod app;
 mod data;
 mod filters;
-mod theme;
+pub(crate) mod theme;
 mod view;
 
 use crate::cli::BoardArgs;
