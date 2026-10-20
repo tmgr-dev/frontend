@@ -1,7 +1,7 @@
 tmgr test
 
 ┌ Commands ────────────────────────────┐┌ Tasks ───────────────────────────────────────────────────┐
-│/ search commands                     ││  status                 Active task and today's time (def│
+│/ search commands                     ││  status                 Active task and today's time (wha│
 │                                      ││  task show              Show one task                    │
 │> Ta┌ Command palette ───────────────────────────────────────────────────────────────────────┐k: s│
 │  Ag│› done_                                                                                 │    │

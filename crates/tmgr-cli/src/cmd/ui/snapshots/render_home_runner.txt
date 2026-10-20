@@ -1,7 +1,7 @@
 tmgr test
 
 ┌ Commands ────────────────────────────┐┌ Tasks ───────────────────────────────────────────────────┐
-│/ search commands                     ││  status                 Active task and today's time (def│
+│/ search commands                     ││  status                 Active task and today's time (wha│
 │                                      ││  task show              Show one task                    │
 │> Tasks     status, task, add, start, ││  task confirm           Let agents run on a local task: s│
 │  Agents    run, agents, attach, send,││  task list              List tasks                       │
