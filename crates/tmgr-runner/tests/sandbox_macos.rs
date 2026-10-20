@@ -56,6 +56,21 @@ fn writes_only_in_cwd_and_home() {
 }
 
 #[test]
+fn the_session_temp_dir_is_private_and_writable_and_the_shared_tmp_is_not() {
+    let f = fx();
+    let o =
+        f.run("d=$(mktemp -d \"$TMPDIR/probe.XXXXXX\") && echo ok > \"$d/x\" && echo \"$d\"; echo \"$CLAUDE_CODE_TMPDIR\"");
+    assert!(o.ok(), "{} {}", o.stdout, o.stderr);
+    let lines: Vec<&str> = o.stdout.lines().collect();
+    assert_eq!(lines.len(), 2, "{} {}", o.stdout, o.stderr);
+    assert!(lines[0].starts_with(&f.path(&f.home)), "{}", o.stdout);
+    assert_eq!(lines[1], f.path(&f.home.join("tmp")), "{}", o.stdout);
+    let o = f.run("mkdir /private/tmp/claude-tm-probe");
+    assert!(!o.ok());
+    assert!(!std::path::Path::new("/private/tmp/claude-tm-probe").exists());
+}
+
+#[test]
 fn signals_to_outside_processes_fail() {
     let f = fx();
     let mut c = spawn_sleep();

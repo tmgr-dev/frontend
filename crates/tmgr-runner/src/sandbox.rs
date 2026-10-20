@@ -238,7 +238,9 @@ fn build_env(spec: &SandboxSpec, home: &Path, tmp: &Path) -> Result<Vec<(String,
     env.insert("XDG_CONFIG_HOME".into(), format!("{h}/.config"));
     env.insert("XDG_CACHE_HOME".into(), format!("{h}/.cache"));
     env.insert("XDG_DATA_HOME".into(), format!("{h}/.local/share"));
-    env.insert("TMPDIR".into(), path_str(tmp)?);
+    let t = path_str(tmp)?;
+    env.insert("CLAUDE_CODE_TMPDIR".into(), t.clone());
+    env.insert("TMPDIR".into(), t);
     Ok(env.into_iter().collect())
 }
 
@@ -1080,6 +1082,7 @@ mod tests {
         let home = e["HOME"].clone();
         assert!(home.ends_with("homes/s_abcdefghij"));
         assert_eq!(e["TMPDIR"], format!("{home}/tmp"));
+        assert_eq!(e["CLAUDE_CODE_TMPDIR"], format!("{home}/tmp"));
         assert_eq!(e["XDG_CONFIG_HOME"], format!("{home}/.config"));
         assert_eq!(e["TMGR_SESSION_ID"], "s_abcdefghij");
         assert_eq!(fs::metadata(&home).unwrap().mode() & 0o777, 0o700);
