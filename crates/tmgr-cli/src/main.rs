@@ -7,6 +7,7 @@ mod ctx;
 mod gitx;
 mod interact;
 mod out;
+mod paths;
 mod usage;
 
 use clap::error::ErrorKind;
