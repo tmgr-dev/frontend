@@ -288,7 +288,7 @@ pub struct AddArgs {
     #[arg(short, long, value_name = "NAME")]
     pub status: Option<String>,
     /// Read the description from a file (up to 64 KiB)
-    #[arg(long, value_name = "FILE")]
+    #[arg(long, value_name = "FILE", value_parser = crate::paths::expand)]
     pub desc_file: Option<std::path::PathBuf>,
 }
 
@@ -351,6 +351,7 @@ pub enum ProjectCommand {
     /// Map a project code to a local repository
     Map {
         code: String,
+        #[arg(value_parser = crate::paths::expand)]
         path: std::path::PathBuf,
     },
     /// Remove a mapping
@@ -484,6 +485,7 @@ pub struct NoteArgs {
 pub enum PageCommand {
     /// Write pages of the workspace as Markdown files into a directory
     Pull {
+        #[arg(value_parser = crate::paths::expand)]
         dir: std::path::PathBuf,
         /// Only this page and its children
         #[arg(long, value_name = "PAGE_ID", conflicts_with = "all")]
@@ -496,7 +498,13 @@ pub enum PageCommand {
         force: bool,
     },
     /// Upload changed files (default: the current directory)
-    Push { files: Vec<std::path::PathBuf> },
+    Push {
+        #[arg(value_parser = crate::paths::expand)]
+        files: Vec<std::path::PathBuf>,
+    },
     /// Show which files changed locally or remotely
-    Status { dir: Option<std::path::PathBuf> },
+    Status {
+        #[arg(value_parser = crate::paths::expand)]
+        dir: Option<std::path::PathBuf>,
+    },
 }

@@ -382,7 +382,7 @@ pub fn repo_matches(fetch_url: &str, push_url: &str, full_name: &str) -> bool {
     })
 }
 
-fn verify_repo(repo: &Path, full_name: &str) -> Result<()> {
+pub(crate) fn verify_repo(repo: &Path, full_name: &str) -> Result<()> {
     let git = Git::at(repo);
     let fetch = git.query(&["remote", "get-url", "origin"]);
     let push = git.query(&["remote", "get-url", "--push", "origin"]);
@@ -400,9 +400,16 @@ fn verify_repo(repo: &Path, full_name: &str) -> Result<()> {
     }
 }
 
-fn canonical_root(path: &Path) -> Result<PathBuf> {
+pub(crate) fn canonical_root(path: &Path) -> Result<PathBuf> {
     let repo = std::fs::canonicalize(path)
         .map_err(|e| Error::usage(format!("repository {}: {e}", path.display())))?;
+    if repo.join(".git").is_file() {
+        return Err(Error::usage(format!(
+            "{} is a git worktree, not a clone",
+            sanitize_line(&repo.display().to_string())
+        ))
+        .hint("bind the main clone of the repository"));
+    }
     if !repo.join(".git").is_dir() {
         return Err(Error::usage(format!(
             "{} is not the root of a git repository",
@@ -412,7 +419,7 @@ fn canonical_root(path: &Path) -> Result<PathBuf> {
     Ok(repo)
 }
 
-fn ask_repo(
+fn ask_path(
     code: &str,
     category: &Category,
     full_name: &str,
@@ -422,8 +429,9 @@ fn ask_repo(
         .iter()
         .any(|k| std::env::var_os(k).is_some());
     let bind = format!(
-        "tmgr run <task> once in a terminal to bind a repository to category {}",
-        sanitize_line(&category.code)
+        "tmgr run <task> once in a terminal to bind a repository to category {0}, or {1}",
+        sanitize_line(&category.code),
+        bind_command(code, category)
     );
     if in_agent || !crate::interact::is_interactive() {
         return Err(Error::needs_confirmation(format!(
@@ -432,33 +440,88 @@ fn ask_repo(
         ))
         .hint(format!("run {bind}")));
     }
-    let path = match suggested {
-        Some(p) => p.clone(),
+    match suggested {
+        Some(p) => Ok(p.clone()),
         None => {
             eprint!(
                 "Path of your clone of github.com/{} (agents of category {} will work on it): ",
                 sanitize_line(full_name),
                 sanitize_line(&category.code)
             );
-            let _ = std::io::stderr().flush();
-            let mut line = String::new();
-            std::io::stdin()
-                .lock()
-                .read_line(&mut line)
-                .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
-            PathBuf::from(line.trim())
+            read_path()
         }
-    };
-    let repo = canonical_root(&path)?;
+    }
+}
+
+fn read_path() -> Result<PathBuf> {
+    let _ = std::io::stderr().flush();
+    let mut line = String::new();
+    std::io::stdin()
+        .lock()
+        .read_line(&mut line)
+        .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
+    crate::paths::expand(line.trim()).map_err(Error::usage)
+}
+
+pub(crate) fn bind_command(code: &str, category: &Category) -> String {
+    format!(
+        "`tmgr runner bind {}:{} <path>`",
+        sanitize_line(code),
+        sanitize_line(&category.code)
+    )
+}
+
+pub(crate) fn store_binding(
+    allow: &mut AllowFile,
+    entry: &Entry,
+    category_id: i64,
+    binding: RepoBinding,
+) -> Result<()> {
+    let (server, user, ws_id) = (entry.server.clone(), entry.user_id, entry.workspace_id);
+    *allow = AllowFile::update(|file| {
+        let mut updated = file
+            .find(&server, user, ws_id)
+            .cloned()
+            .ok_or("the allow entry disappeared")?;
+        updated.repos.insert(category_id.to_string(), binding);
+        file.upsert(updated);
+        Ok(file.clone())
+    })
+    .map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+    Ok(())
+}
+
+/// Checks the folder is the root of a clone of the category's repository, asks (typed: the category code) and stores it.
+pub(crate) fn bind_checked(
+    allow: &mut AllowFile,
+    entry: &Entry,
+    category: &Category,
+    full_name: &str,
+    path: &Path,
+    typed: bool,
+) -> Result<PathBuf> {
+    let repo = canonical_root(path)?;
     verify_repo(&repo, full_name)?;
-    crate::interact::confirm(
-        &format!(
-            "Bind {} to category {}?",
-            sanitize_line(&repo.display().to_string()),
-            sanitize_line(&category.code)
-        ),
-        false,
-        false,
+    let shown = sanitize_line(&repo.display().to_string());
+    let name = sanitize_line(&category.code);
+    if typed {
+        crate::interact::confirm_typed(
+            &format!(
+                "Bind {shown} to category {name}? Type the category code ({name}) to confirm: "
+            ),
+            &category.code,
+        )?;
+    } else {
+        crate::interact::confirm(&format!("Bind {shown} to category {name}?"), false, false)?;
+    }
+    let stored = repo
+        .to_str()
+        .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))?;
+    store_binding(
+        allow,
+        entry,
+        category.id,
+        RepoBinding::Path(stored.to_string()),
     )?;
     Ok(repo)
 }
@@ -489,7 +552,6 @@ fn bound_repo(
             sanitize_line(&category.code)
         ))
     })?;
-    let key = category.id.to_string();
     let repo = match entry.repo(category.id) {
         Some(bound) => {
             let bound = canonical_root(Path::new(bound))?;
@@ -512,20 +574,8 @@ fn bound_repo(
                     "is bound to a set of repositories, but the server reports none now; replace it with one repository",
                 )?;
             }
-            let repo = ask_repo(&entry.workspace_code, category, full_name, cwd)?;
-            let path = repo.display().to_string();
-            let (server, user, ws_id) = (entry.server.clone(), entry.user_id, entry.workspace_id);
-            *allow = AllowFile::update(|file| {
-                let mut updated = file
-                    .find(&server, user, ws_id)
-                    .cloned()
-                    .ok_or("the allow entry disappeared")?;
-                updated.repos.insert(key, RepoBinding::Path(path));
-                file.upsert(updated);
-                Ok(file.clone())
-            })
-            .map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
-            repo
+            let path = ask_path(&entry.workspace_code, category, full_name, cwd)?;
+            bind_checked(allow, entry, category, full_name, &path, false)?
         }
     };
     repo.to_str()
@@ -540,14 +590,15 @@ fn terminal_session() -> bool {
     !in_agent && crate::interact::is_interactive()
 }
 
-fn confirm_replace(code: &str, category: &Category, what: &str) -> Result<()> {
+pub(crate) fn confirm_replace(code: &str, category: &Category, what: &str) -> Result<()> {
     let name = sanitize_line(&category.code);
     if !terminal_session() {
         return Err(Error::needs_confirmation(format!(
             "category {name} of workspace {code} {what}"
         ))
         .hint(format!(
-            "run tmgr run <task> once in a terminal to bind the repositories of category {name}"
+            "run tmgr run <task> once in a terminal to bind the repositories of category {name}, or {}",
+            bind_command(code, category)
         )));
     }
     crate::interact::confirm(
@@ -669,13 +720,7 @@ fn prompt_path(full_name: &str, category: &Category) -> Result<PathBuf> {
         sanitize_line(full_name),
         sanitize_line(&category.code)
     );
-    let _ = std::io::stderr().flush();
-    let mut line = String::new();
-    std::io::stdin()
-        .lock()
-        .read_line(&mut line)
-        .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
-    Ok(PathBuf::from(line.trim()))
+    read_path()
 }
 
 fn bind_failure(entry: &Entry, category: &Category, hint: &str) -> Error {
@@ -685,8 +730,9 @@ fn bind_failure(entry: &Entry, category: &Category, hint: &str) -> Error {
         sanitize_line(&entry.workspace_code)
     ))
     .hint(format!(
-        "run {hint} once in a terminal to bind the repositories of category {}",
-        sanitize_line(&category.code)
+        "run {hint} once in a terminal to bind the repositories of category {0}, or {1}",
+        sanitize_line(&category.code),
+        bind_command(&entry.workspace_code, category)
     ))
 }
 
@@ -710,11 +756,27 @@ fn bound_set_in(
     list: &[String],
     hint: &str,
 ) -> Result<Vec<ClaimRepo>> {
-    if let Ok(found) = bound_set_paths(entry, category, list) {
-        for r in &found {
-            verify_repo(&canonical_root(Path::new(&r.path))?, &r.full_name)?;
+    bound_set_with(terminal, allow, entry, category, list, hint, None)
+}
+
+/// `given` is a folder the user names for one repository of the set (`runner bind`): it replaces what is bound for
+/// that name and the whole change needs the typed category code.
+pub(crate) fn bound_set_with(
+    terminal: bool,
+    allow: &mut AllowFile,
+    entry: &Entry,
+    category: &Category,
+    list: &[String],
+    hint: &str,
+    given: Option<(&str, &Path)>,
+) -> Result<Vec<ClaimRepo>> {
+    if given.is_none() {
+        if let Ok(found) = bound_set_paths(entry, category, list) {
+            for r in &found {
+                verify_repo(&canonical_root(Path::new(&r.path))?, &r.full_name)?;
+            }
+            return Ok(found);
         }
-        return Ok(found);
     }
     if !terminal {
         return Err(bind_failure(entry, category, hint));
@@ -727,7 +789,13 @@ fn bound_set_in(
         )?;
     }
     let current = entry.repo_set(category.id);
-    let change = set_change(current, list);
+    let mut change = set_change(current, list);
+    if let Some((name, _)) = given {
+        change.kept.retain(|n| n != name);
+        if !change.missing.iter().any(|n| n == name) {
+            change.missing.push(name.to_string());
+        }
+    }
     let mut bound: BTreeMap<String, String> = BTreeMap::new();
     for name in &change.kept {
         let path = current
@@ -739,7 +807,11 @@ fn bound_set_in(
         bound.insert(name.clone(), repo.display().to_string());
     }
     for name in &change.missing {
-        let repo = canonical_root(&prompt_path(name, category)?)?;
+        let path = match given {
+            Some((g, p)) if g == name => p.to_path_buf(),
+            _ => prompt_path(name, category)?,
+        };
+        let repo = canonical_root(&path)?;
         verify_repo(&repo, name)?;
         bound.insert(name.clone(), repo.display().to_string());
     }
@@ -763,14 +835,18 @@ fn bound_set_in(
     }
     let first = bound.values().next().map(PathBuf::from).unwrap_or_default();
     let infos: Vec<Option<RepoInfo>> = list.iter().map(|n| lookup_info(n, &first)).collect();
-    if mixed(&infos) {
+    let differ = mixed(&infos);
+    if differ {
         eprintln!(
             "warning: these repositories differ in visibility or owner, or could not be looked up. The agent can read all of them, so private code from one repository can end up in a pull request of another."
         );
+    }
+    if differ || given.is_some() {
         crate::interact::confirm_typed(
             &format!(
-                "Type the category code ({}) to bind them anyway: ",
-                sanitize_line(&category.code)
+                "Type the category code ({}) to bind {}: ",
+                sanitize_line(&category.code),
+                if differ { "them anyway" } else { "these" }
             ),
             &category.code,
         )?;
@@ -781,19 +857,7 @@ fn bound_set_in(
             false,
         )?;
     }
-    let (server, user, ws_id) = (entry.server.clone(), entry.user_id, entry.workspace_id);
-    let key = category.id.to_string();
-    let stored = bound.clone();
-    *allow = AllowFile::update(|file| {
-        let mut updated = file
-            .find(&server, user, ws_id)
-            .cloned()
-            .ok_or("the allow entry disappeared")?;
-        updated.repos.insert(key, RepoBinding::Set(stored));
-        file.upsert(updated);
-        Ok(file.clone())
-    })
-    .map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
+    store_binding(allow, entry, category.id, RepoBinding::Set(bound.clone()))?;
     Ok(bound
         .into_iter()
         .map(|(full_name, path)| ClaimRepo { full_name, path })

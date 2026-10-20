@@ -50,7 +50,9 @@ mod tests {
 
     #[test]
     fn leaves_everything_else_alone() {
-        for raw in ["/a/~/b", "a/~", "~bob/x", "$HOMEX/y", "$OTHER/z", "x/$HOME", ""] {
+        for raw in [
+            "/a/~/b", "a/~", "~bob/x", "$HOMEX/y", "$OTHER/z", "x/$HOME", "",
+        ] {
             assert_eq!(x(raw).unwrap(), PathBuf::from(raw), "{raw}");
         }
     }

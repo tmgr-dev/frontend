@@ -101,7 +101,7 @@ pub struct RuleArgs {
     #[arg(long, value_name = "PROFILE")]
     pub profile: String,
     /// Existing directory the agent works in; repeat it for a cloud category that lists several repositories
-    #[arg(long, value_name = "DIR", required = true)]
+    #[arg(long, value_name = "DIR", required = true, value_parser = crate::paths::expand_str)]
     pub repo: Vec<String>,
     /// Project (category) code; default: every project
     #[arg(long, value_name = "CODE")]
@@ -471,6 +471,7 @@ fn add(ctx: &Ctx, paths: &Paths, a: &RuleArgs) -> Result<Output> {
         auto: a.auto,
         mode: a.mode.clone(),
     };
+    crate::cmd::runner::bind::offer_for_rule(ctx, &rule)?;
     rules::validate_rule_with(
         &rule,
         &RunnerProfiles,

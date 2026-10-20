@@ -1,5 +1,6 @@
 pub(crate) mod allow;
 mod attach;
+pub(crate) mod bind;
 pub(crate) mod cloud;
 mod gate;
 mod local;
@@ -78,6 +79,12 @@ pub enum RunnerCmd {
     Disallow(DisallowArgs),
     /// [experimental] List the cloud workspaces allowed here, with expiry and pinned keys
     Allowed,
+    /// [experimental] Bind your clone of a category's repository (terminal only, asks you to type the category code)
+    Bind(bind::BindArgs),
+    /// [experimental] Forget the clone bound to a category (terminal only)
+    Unbind(bind::UnbindArgs),
+    /// [experimental] List the repositories bound to categories on this machine
+    List,
     #[command(hide = true)]
     Serve,
 }
@@ -102,7 +109,7 @@ pub struct DisallowArgs {
 #[derive(Args)]
 pub struct FolderArgs {
     /// The folder (default: current directory)
-    #[arg(value_name = "DIR", default_value = ".")]
+    #[arg(value_name = "DIR", default_value = ".", value_parser = crate::paths::expand)]
     pub dir: PathBuf,
 }
 
@@ -153,7 +160,7 @@ pub struct RunArgs {
     #[arg(long, value_name = "MODEL", requires = "agent")]
     pub model: Option<String>,
     /// Working directory (default: current directory)
-    #[arg(long, value_name = "DIR")]
+    #[arg(long, value_name = "DIR", value_parser = crate::paths::expand)]
     pub cwd: Option<PathBuf>,
     /// Session name
     #[arg(long, value_name = "NAME")]
@@ -251,7 +258,7 @@ pub enum AgentsCmd {
         #[arg(long, value_name = "MODEL")]
         model: Option<String>,
         /// Working directory of the run
-        #[arg(long, value_name = "DIR")]
+        #[arg(long, value_name = "DIR", value_parser = crate::paths::expand)]
         cwd: PathBuf,
         /// Permission mode of the run
         #[arg(long, value_name = "MODE", default_value = "ask")]

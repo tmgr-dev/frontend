@@ -183,7 +183,7 @@ pub enum AccountsCommand {
         #[arg(long, value_enum)]
         tool: ToolArg,
         /// The tool's config directory (the one holding projects/ or sessions/)
-        #[arg(long, value_name = "DIR")]
+        #[arg(long, value_name = "DIR", value_parser = crate::paths::expand)]
         root: PathBuf,
         #[arg(long, value_name = "LABEL")]
         label: String,

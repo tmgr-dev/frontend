@@ -35,6 +35,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Allow(a) => super::allow::allow(o, &a.workspace, a.lifetime),
             RunnerCmd::Disallow(a) => super::allow::disallow(o, &a.workspace),
             RunnerCmd::Allowed => super::allow::allowed(o),
+            RunnerCmd::Bind(a) => super::bind::bind(o, &a.target, &a.path),
+            RunnerCmd::Unbind(a) => super::bind::unbind(o, &a.target),
+            RunnerCmd::List => super::bind::list(o),
             RunnerCmd::Serve => serve(),
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {

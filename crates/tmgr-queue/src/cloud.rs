@@ -61,7 +61,7 @@ pub fn repo_check(rule: &Rule, ws: &CloudWorkspace) -> std::result::Result<(), S
     match rule.repos.iter().find(|r| !ws.repos.contains(r)) {
         None => Ok(()),
         Some(repo) => Err(format!(
-            "repo {repo} is not bound to a category of workspace {}; run `tmgr run <task>` once in a terminal to bind it",
+            "repo {repo} is not bound to a category of workspace {}; run `tmgr run <task>` once in a terminal to bind it, or `tmgr runner bind <WS:CODE> <path>`",
             ws.code
         )),
     }
