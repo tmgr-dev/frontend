@@ -17,16 +17,19 @@ use app::{Action, App, Done};
 use clap::CommandFactory;
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::Show;
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::event::{
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, Event, KeyEventKind,
+};
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::Terminal;
-use std::io::{stdin, stdout, IsTerminal, Write};
+use std::io::{stdin, stdout, IsTerminal, Read, Write};
+use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result};
 
 pub fn agent_session() -> bool {
@@ -58,11 +61,18 @@ pub fn entry(cli: &Cli) -> Option<i32> {
     }
     if explicit {
         if let Err(e) = allowed(agent_session(), all_tty()) {
+            let message = if agent_session() {
+                "the interactive menu is refused inside an agent session"
+            } else {
+                "the interactive menu needs a terminal"
+            };
+            let mut refusal = Error::new(e.kind, message);
+            refusal.hint = e.hint;
             return Some(out::print_error(
                 cli.json,
                 cli.verbose,
                 out::stderr_style(cli.no_color),
-                &e,
+                &refusal,
             ));
         }
     }
@@ -84,12 +94,18 @@ impl Drop for Restore {
 
 fn leave_screen() {
     let _ = disable_raw_mode();
-    let _ = execute!(stdout(), LeaveAlternateScreen, Show);
+    let _ = execute!(
+        stdout(),
+        DisableBracketedPaste,
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+        Show
+    );
 }
 
 fn enter_screen() -> std::io::Result<()> {
     enable_raw_mode()?;
-    execute!(stdout(), EnterAlternateScreen)
+    execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste)
 }
 
 fn look(cli: &Cli) -> view::Look {
@@ -101,24 +117,46 @@ fn look(cli: &Cli) -> view::Look {
     }
 }
 
-fn header_probe() -> mpsc::Receiver<String> {
+fn header_probe(exe: PathBuf) -> mpsc::Receiver<String> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let Ok(exe) = std::env::current_exe() else {
-            return;
-        };
-        let out = std::process::Command::new(exe)
+        let Ok(mut child) = std::process::Command::new(exe)
             .args(["status", "--no-color"])
             .stdin(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .output();
-        if let Ok(o) = out {
-            if o.status.success() {
-                let text = String::from_utf8_lossy(&o.stdout);
-                if let Some(line) = text.lines().find(|l| !l.trim().is_empty()) {
-                    let _ = tx.send(line.trim().to_string());
+            .spawn()
+        else {
+            return;
+        };
+        let Some(mut stdout) = child.stdout.take() else {
+            return;
+        };
+        let reader = std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = stdout.read_to_string(&mut text);
+            text
+        });
+        let started = Instant::now();
+        let ok = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status.success(),
+                Ok(None) if started.elapsed() < Duration::from_secs(8) => {
+                    std::thread::sleep(Duration::from_millis(50))
+                }
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break false;
                 }
             }
+        };
+        if !ok {
+            return;
+        }
+        let text = reader.join().unwrap_or_default();
+        if let Some(line) = text.lines().find(|l| !l.trim().is_empty()) {
+            let _ = tx.send(line.trim().to_string());
         }
     });
     rx
@@ -130,7 +168,9 @@ fn run(cli: &Cli) -> Result<()> {
     let recents = hist.as_deref().map(history::load).unwrap_or_default();
     let mut app = App::new(root, recents);
     app.header = format!("tmgr {}", crate::cli::VERSION);
-    let probe = header_probe();
+    let exe = std::env::current_exe()
+        .map_err(|e| Error::internal(format!("cannot locate the tmgr binary: {e}")))?;
+    let probe = header_probe(exe.clone());
     let look = look(cli);
     let _ = ctrlc::set_handler(|| {});
     let previous = std::panic::take_hook();
@@ -138,8 +178,8 @@ fn run(cli: &Cli) -> Result<()> {
         leave_screen();
         previous(info);
     }));
-    enter_screen().map_err(|e| Error::internal(format!("cannot open the terminal: {e}")))?;
     let _restore = Restore;
+    enter_screen().map_err(|e| Error::internal(format!("cannot open the terminal: {e}")))?;
     let mut term: Term = Terminal::new(CrosstermBackend::new(stdout()))
         .map_err(|e| Error::internal(format!("cannot open the terminal: {e}")))?;
     loop {
@@ -151,10 +191,14 @@ fn run(cli: &Cli) -> Result<()> {
             continue;
         }
         let Ok(ev) = event::read() else { break };
-        let Event::Key(key) = ev else { continue };
-        if key.kind != KeyEventKind::Press {
-            continue;
-        }
+        let key = match ev {
+            Event::Key(key) if key.kind == KeyEventKind::Press => key,
+            Event::Paste(text) => {
+                app.on_paste(&text);
+                continue;
+            }
+            _ => continue,
+        };
         match app.on_key(key) {
             None => {}
             Some(Action::Quit) => break,
@@ -166,9 +210,13 @@ fn run(cli: &Cli) -> Result<()> {
                 });
             }
             Some(Action::Run { node, values, argv }) => {
-                let done = run_child(&mut term, node, values, argv, hist.as_deref());
+                let updated = node.path == ["self-update"];
+                let done = run_child(&mut term, &exe, node, values, argv, hist.as_deref());
                 if let Some(path) = hist.as_deref() {
                     app.recents = history::load(path);
+                }
+                if updated && done.code == Some(0) {
+                    break;
                 }
                 app.finish(done);
             }
@@ -179,6 +227,7 @@ fn run(cli: &Cli) -> Result<()> {
 
 fn run_child(
     term: &mut Term,
+    exe: &std::path::Path,
     node: model::Node,
     values: cmdline::Values,
     argv: Vec<String>,
@@ -191,11 +240,13 @@ fn run_child(
     };
     println!("$ {shown}\n");
     let _ = stdout().flush();
-    let code = std::env::current_exe()
+    let code = std::process::Command::new(exe)
+        .args(&argv)
+        .status()
         .ok()
-        .and_then(|exe| std::process::Command::new(exe).args(&argv).status().ok())
-        .map(|s| s.code().unwrap_or(1));
-    if let Some(path) = hist {
+        .map(exit_code);
+    leave_screen();
+    if let (Some(path), Some(0)) = (hist, code) {
         history::record(path, &node, &values);
     }
     println!(
@@ -216,6 +267,17 @@ fn run_child(
         command: shown,
         code,
     }
+}
+
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return 128 + signal;
+        }
+    }
+    status.code().unwrap_or(1)
 }
 
 fn copy(text: &str) -> bool {

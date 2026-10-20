@@ -1386,3 +1386,66 @@ fn render_done_snapshot() {
         include_str!("snapshots/render_done.txt"),
     );
 }
+
+#[test]
+fn a_paste_with_line_breaks_never_submits_and_lands_in_the_focused_field() {
+    let mut app = fresh();
+    app.open(&p(&["add"]), Values::new());
+    app.on_paste("first line\nsecond\r\n\x1b[31mred");
+    assert_eq!(
+        form(&app).values.get("title"),
+        Some(&text("first linesecond[31mred"))
+    );
+    assert!(matches!(app.screen, Screen::Form(_)));
+}
+
+#[test]
+fn a_paste_goes_into_the_palette_query_when_it_is_open() {
+    let mut app = fresh();
+    app.on_key(ch('/'));
+    app.on_paste("rest\nart");
+    assert_eq!(app.palette.as_ref().unwrap().query, "restart");
+}
+
+#[test]
+fn a_paste_is_ignored_during_the_guard_review() {
+    let mut app = fresh();
+    app.open(&p(&["task", "confirm"]), Values::new());
+    type_str(&mut app, "TM-1");
+    app.on_key(key(KeyCode::Enter));
+    assert!(form(&app).review);
+    app.on_paste("yes");
+    assert_eq!(form(&app).values.get("reference"), Some(&text("TM-1")));
+}
+
+#[test]
+fn history_leaves_no_temporary_file_behind() {
+    let root = tree();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("ui-history.json");
+    history::record(
+        &file,
+        node_at(&root, &["start"]),
+        &vals(&[("reference", text("TM-1"))]),
+    );
+    let names: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, ["ui-history.json"]);
+}
+
+#[test]
+fn history_round_trips_a_recorded_command() {
+    let root = tree();
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("ui-history.json");
+    history::record(
+        &file,
+        node_at(&root, &["start"]),
+        &vals(&[("reference", text("TM-1"))]),
+    );
+    let loaded = history::load(&file);
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].path, p(&["start"]));
+}

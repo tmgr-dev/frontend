@@ -73,19 +73,11 @@ pub fn record(path: &Path, node: &Node, values: &Values) {
 
 fn save(path: &Path, all: &[Recent]) -> std::io::Result<()> {
     use std::io::Write;
-    if let Some(dir) = path.parent() {
-        let _ = tmgr_core::config::ensure_private_dir(dir);
-    }
-    let tmp = path.with_extension("json.tmp");
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let mut f = opts.open(&tmp)?;
-    f.write_all(serde_json::to_string(all)?.as_bytes())?;
-    f.sync_all()?;
-    std::fs::rename(&tmp, path)
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let _ = tmgr_core::config::ensure_private_dir(dir);
+    let mut tmp = tempfile::NamedTempFile::new_in(dir)?;
+    tmp.write_all(serde_json::to_string(all)?.as_bytes())?;
+    tmp.as_file().sync_all()?;
+    tmp.persist(path).map_err(|e| e.error)?;
+    Ok(())
 }

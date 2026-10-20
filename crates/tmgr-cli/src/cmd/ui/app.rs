@@ -112,6 +112,9 @@ impl Form {
                 Some(Value::Count(n)) => n.to_string(),
                 _ => "0".into(),
             },
+            Kind::Multi if f.sensitive => {
+                "\u{2022}".repeat(multi_text(&self.values, &f.id).chars().count())
+            }
             Kind::Multi => multi_text(&self.values, &f.id),
             _ => {
                 let t = text_of(&self.values, &f.id);
@@ -298,6 +301,31 @@ impl App {
                 ),
                 String::new(),
             ),
+        }
+    }
+
+    pub fn on_paste(&mut self, text: &str) {
+        let clean: String = text.chars().filter(|c| !c.is_control()).collect();
+        if clean.is_empty() {
+            return;
+        }
+        if let Some(p) = self.palette.take() {
+            let mut p = p;
+            p.query.push_str(&clean);
+            p.cursor = 0;
+            self.refresh_palette(&mut p);
+            self.palette = Some(p);
+            return;
+        }
+        if self.help {
+            return;
+        }
+        if let Screen::Form(form) = &mut self.screen {
+            if !form.review {
+                for c in clean.chars() {
+                    form.type_char(c);
+                }
+            }
         }
     }
 
