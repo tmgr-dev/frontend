@@ -80,9 +80,11 @@ const postedTelegramHashes = new Set<string>();
 export const loginTelegramWidget = (
 	user: Record<string, string | number>,
 ): Promise<boolean> => {
-	const hash = String(user.hash);
-	if (postedTelegramHashes.has(hash)) return Promise.resolve(false);
-	postedTelegramHashes.add(hash);
+	if (user.hash !== undefined) {
+		const hash = String(user.hash);
+		if (postedTelegramHashes.has(hash)) return Promise.resolve(false);
+		postedTelegramHashes.add(hash);
+	}
 	return $axios
 		.post('auth/login/telegram/widget', user)
 		.then(setAxiosHeaderBearerToken)

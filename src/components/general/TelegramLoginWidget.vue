@@ -26,6 +26,7 @@
 	const widgetContainer = ref<HTMLDivElement | null>(null);
 	const emit = defineEmits<{
 		auth: [user: Record<string, string | number>];
+		resultDropped: [];
 	}>();
 	const callbackName = `__tmgrTelegramAuth_${nanoid(8).replace(
 		/[^A-Za-z0-9]/g,
@@ -39,6 +40,7 @@
 				'',
 				location.pathname + location.search,
 			);
+			emit('resultDropped');
 		}
 	};
 
@@ -115,10 +117,4 @@
 		console.log(`Unmounting ${widgetContainerId.value}`);
 		cleanupWidget();
 	});
-
-	// Optional: Watch for prop changes if needed, though might be less critical now
-	// watch(() => [props.botName, props.widgetSize], () => {
-	//   cleanupWidget();
-	//   loadWidgetScript();
-	// });
 </script>

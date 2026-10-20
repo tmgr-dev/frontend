@@ -12,6 +12,8 @@ const ATTACKER = {
 const b64url = (value) =>
   Buffer.from(JSON.stringify(value)).toString('base64url');
 const FAILED = 'Telegram sign-in failed, try again';
+const DROPPED =
+  "Telegram sign-in didn't finish. Allow pop-ups for this site and try again.";
 
 // The hash path of the live telegram-widget.js?22 (haveTgAuthResult + initWidget,
 // .team/telegram-widget.live.js): it redeems #tgAuthResult synchronously while it
@@ -253,6 +255,73 @@ for (const path of ['/login', '/register', `/desktop-auth/telegram?tx=${TX}`]) {
     });
   }
 }
+
+for (const path of ['/login', '/register']) {
+  test(`${path}: a dropped URL-borne result tells the user to allow pop-ups`, async ({
+    page,
+  }) => {
+    const posts = await loggedOut(page, {
+      json: { data: { token: 'attacker-jwt' } },
+    });
+    await stubWidget(page);
+
+    await page.goto(`${path}#tgAuthResult=${b64url(ATTACKER)}`);
+
+    await expect(page.getByText(DROPPED)).toBeVisible();
+    await page.waitForTimeout(300);
+    expect(posts).toHaveLength(0);
+    expect(page.url()).not.toContain('tgAuthResult');
+  });
+}
+
+test('/login?error=telegram shows the failure message and drops the param', async ({
+  page,
+}) => {
+  await loggedOut(page, { json: { data: { token: 'tg-jwt' } } });
+  await stubWidget(page);
+
+  await page.goto('/login?error=telegram');
+
+  await expect(page.getByText(FAILED)).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
+});
+
+test('a duplicate payload shows the failure, re-renders once, then waits for "Try again"', async ({
+  page,
+}) => {
+  const posts = await loggedOut(page, {
+    status: 403,
+    json: { error: 'telegram_login_rejected' },
+  });
+  await stubWidget(page);
+  await page.goto('/login');
+  await expect.poll(() => loads(page)).toBe(1);
+
+  await fire(page, USER);
+  await expect(page.getByText(FAILED)).toBeVisible();
+  await expect.poll(() => loads(page)).toBe(2);
+  await fire(page, USER);
+
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  expect(posts).toHaveLength(1);
+});
+
+test('a payload without a hash is posted every time', async ({ page }) => {
+  const posts = await loggedOut(page, {
+    status: 400,
+    json: { message: 'Bad request' },
+  });
+  await stubWidget(page);
+  await page.goto('/login');
+  await expect.poll(() => loads(page)).toBe(1);
+
+  await fire(page, { id: 1 });
+  await expect.poll(() => posts.length).toBe(1);
+  await expect.poll(() => loads(page)).toBe(2);
+  await fire(page, { id: 1 });
+
+  await expect.poll(() => posts.length).toBe(2);
+});
 
 test('a tgAuthResult in the query string is not redeemed', async ({ page }) => {
   const posts = await loggedOut(page, {

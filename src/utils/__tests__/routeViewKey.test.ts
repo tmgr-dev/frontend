@@ -10,6 +10,7 @@ describe('route view identity', () => {
 		'WorkspaceCategoryChildren',
 		'WorkspaceCategory',
 		'WorkspaceMember',
+		'Login',
 	])('%s retains its view when only filters change', (name) => {
 		const first = { name, path: '/demo/list', fullPath: '/demo/list?page=1' };
 		expect(routeViewKey(first)).toBe(

@@ -106,6 +106,9 @@
 					};
 					await loginGoogle(googlePayload);
 					break;
+				case 'telegram':
+					await router.replace('/login?error=telegram');
+					return;
 				default:
 					await router.replace('/login');
 					return;

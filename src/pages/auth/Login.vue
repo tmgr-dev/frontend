@@ -50,6 +50,7 @@
 				callback
 				widget-size="medium"
 				@auth="loginWithTelegram"
+				@result-dropped="telegramResultDropped"
 			/>
 		</div>
 
@@ -188,18 +189,30 @@
 		if (isLoading.value) return;
 		try {
 			isLoading.value = true;
-			if (!(await loginTelegramWidget(user))) return;
+			if (!(await loginTelegramWidget(user))) {
+				telegramFailed();
+				return;
+			}
 			await enterApp();
 		} catch {
-			message.value = 'Telegram sign-in failed, try again';
-			// Re-render once by itself; later failures wait for a click, so a
-			// widget that fails on every load can't hammer the API.
-			telegramFailures.value++;
-			if (telegramFailures.value > 1) telegramPaused.value = true;
-			else telegramWidgetKey.value++;
+			telegramFailed();
 		} finally {
 			isLoading.value = false;
 		}
+	}
+
+	function telegramFailed() {
+		message.value = 'Telegram sign-in failed, try again';
+		// Re-render once by itself; later failures wait for a click, so a
+		// widget that fails on every load can't hammer the API.
+		telegramFailures.value++;
+		if (telegramFailures.value > 1) telegramPaused.value = true;
+		else telegramWidgetKey.value++;
+	}
+
+	function telegramResultDropped() {
+		message.value =
+			"Telegram sign-in didn't finish. Allow pop-ups for this site and try again.";
 	}
 
 	async function enterApp() {
@@ -270,6 +283,9 @@
 		const linkProvider = linkConfirmationProvider(route.query.error);
 		if (linkProvider) {
 			message.value = linkConfirmationNotice(linkProvider);
+		}
+		if (route.query.error === 'telegram') {
+			message.value = 'Telegram sign-in failed, try again';
 		}
 		if ('error' in route.query) {
 			const { error: _error, ...query } = route.query;

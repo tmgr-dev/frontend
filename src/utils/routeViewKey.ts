@@ -15,6 +15,7 @@ const queryAwareViews = new Set([
 	'ArchiveTasksListWithWorkspace',
 	'WorkspaceTasksList',
 	'WorkspaceMember',
+	'Login',
 ]);
 
 export function routeViewKey(route: {

@@ -26,6 +26,9 @@ test('an old Telegram code link lands on sign-in without any auth request', asyn
   await page.goto('/login/telegram?code=abc');
 
   await expect(page).toHaveURL(/\/login$/);
+  await expect(
+    page.getByText('Telegram sign-in failed, try again'),
+  ).toBeVisible();
   await page.waitForTimeout(300);
   expect(apiRequests.filter((r) => /\/api\/(auth|user)/.test(r))).toEqual([]);
   expect(await storedToken(page)).toBeNull();
