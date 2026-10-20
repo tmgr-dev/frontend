@@ -351,6 +351,7 @@ pub struct RepoPublish {
     pub steps: PublishSteps,
     pub list: Vec<String>,
     pub wip: Option<String>,
+    pub verify: Option<Vec<String>>,
     pub ready: bool,
 }
 
@@ -377,6 +378,19 @@ impl PublishAllPlan {
             if let Some((_, sha)) = wip.iter().find(|(f, _)| *f == r.full_name) {
                 r.wip = Some(sha.clone());
                 r.ready = true;
+                let lease = format!("--force-with-lease=refs/heads/{}:{sha}", r.steps.branch);
+                if let Some(at) = r.steps.push.iter().position(|a| a == "push") {
+                    r.steps.push.insert(at + 1, lease);
+                }
+                r.verify = Some(vec![
+                    "git".to_string(),
+                    "-C".into(),
+                    r.steps.repo.to_string_lossy().into_owned(),
+                    "merge-base".into(),
+                    "--is-ancestor".into(),
+                    sha.clone(),
+                    r.sha.clone(),
+                ]);
             }
         }
         self
@@ -421,6 +435,7 @@ pub fn publish_all_plan(
                 "url,headRefOid,isCrossRepository,headRepositoryOwner".into(),
             ],
             wip: None,
+            verify: None,
             ready: false,
             steps,
         });
@@ -515,6 +530,17 @@ fn publish_all_after(
 ) -> Result<Vec<(String, String)>> {
     let mut urls: Vec<(String, String)> = Vec::new();
     for r in &plan.repos {
+        if let Some(verify) = &r.verify {
+            exec(verify, &r.steps.repo).map_err(|_| {
+                Error::new(
+                    tmgr_core::error::Kind::Forbidden,
+                    format!(
+                        "the new head of {} does not descend from the commit saved when the run paused; nothing was pushed",
+                        r.full_name
+                    ),
+                )
+            })?;
+        }
         exec(&r.steps.push, &r.steps.repo)?;
         let listed = exec(&r.list, &r.steps.repo)?;
         let wip = r.wip.as_deref();
@@ -1236,6 +1262,61 @@ mod tests {
                 .any(|a| a[..3] == ["gh", "pr", "ready"] && a[3] == url));
             assert_eq!(calls(&log, "create"), 1);
         }
+    }
+
+    #[test]
+    fn a_resumed_push_leases_the_saved_commit_and_checks_descent_first() {
+        let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+        let log = std::cell::RefCell::new(Vec::new());
+        publish_all_with(&plan, &mut fake(&[], &log)).unwrap();
+        let log = log.borrow();
+        let wip = "c".repeat(40);
+        let verify = log
+            .iter()
+            .position(|a| a.contains(&"merge-base".to_string()))
+            .unwrap();
+        assert_eq!(log[verify][4], "--is-ancestor");
+        assert_eq!(log[verify][5], wip);
+        assert_eq!(log[verify][6], "a".repeat(40));
+        let lease = format!("--force-with-lease=refs/heads/tmgr/tm-410-fix-login:{wip}");
+        let pushes: Vec<&Vec<String>> = log
+            .iter()
+            .filter(|a| a.contains(&"push".to_string()))
+            .collect();
+        assert_eq!(pushes.len(), 2);
+        assert!(pushes[0].contains(&lease) && !pushes[1].iter().any(|a| a.contains("lease")));
+        assert!(verify < log.iter().position(|a| a.contains(&lease)).unwrap());
+    }
+
+    #[test]
+    fn a_resumed_head_that_does_not_descend_from_the_saved_commit_pushes_nothing() {
+        let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+        let log = std::cell::RefCell::new(Vec::new());
+        let mut exec = |argv: &[String], _: &Path| -> Result<String> {
+            log.borrow_mut().push(argv.to_vec());
+            if argv.contains(&"merge-base".to_string()) {
+                return Err(Error::internal("git: not an ancestor"));
+            }
+            Ok(String::new())
+        };
+        let e = publish_all_with(&plan, &mut exec).unwrap_err();
+        assert!(e.message.contains("does not descend"), "{}", e.message);
+        assert!(log
+            .borrow()
+            .iter()
+            .all(|a| !a.contains(&"push".to_string())));
+    }
+
+    #[test]
+    fn a_plain_publish_has_no_lease_and_no_descent_check() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let log = std::cell::RefCell::new(Vec::new());
+        publish_all_with(&plan, &mut fake(&[], &log)).unwrap();
+        assert!(log
+            .borrow()
+            .iter()
+            .flatten()
+            .all(|a| !a.contains("lease") && a != "merge-base"));
     }
 
     #[test]

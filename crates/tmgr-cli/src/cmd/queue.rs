@@ -1064,7 +1064,7 @@ impl CliFresh<'_> {
     }
 }
 
-const RESUMABLE_KINDS: [&str; 2] = ["review", "active"];
+const RESUMABLE_KINDS: [&str; 1] = ["review"];
 
 impl FreshTask for CliFresh<'_> {
     fn look(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
@@ -1098,6 +1098,7 @@ impl FreshTask for CliFresh<'_> {
 struct CliPublisher<'a> {
     opts: &'a Opts<'a>,
     held: RefCell<Option<state::Held>>,
+    pushed: RefCell<Option<Vec<String>>>,
 }
 
 pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
@@ -1133,6 +1134,7 @@ impl CliPublisher<'_> {
     fn publish_as(&self, pickup: &state::Pickup, mode: Mode) -> Result<String> {
         match publish_outcome(self.opts, &publish_target(pickup)?, mode)? {
             Outcome::Published(urls) => {
+                *self.pushed.borrow_mut() = Some(urls.iter().map(|(n, _)| n.clone()).collect());
                 Ok(urls.into_iter().next().map(|(_, u)| u).unwrap_or_default())
             }
             Outcome::Held { held, text } => {
@@ -1155,6 +1157,10 @@ impl Publisher for CliPublisher<'_> {
 
     fn take_held(&self) -> Option<state::Held> {
         self.held.borrow_mut().take()
+    }
+
+    fn take_pushed(&self) -> Option<Vec<String>> {
+        self.pushed.borrow_mut().take()
     }
 }
 
@@ -1405,6 +1411,7 @@ pub(crate) fn with_deps<T>(
     let publisher = CliPublisher {
         opts: &opts,
         held: RefCell::new(None),
+        pushed: RefCell::new(None),
     };
     let now = Local::now();
     f(&Deps {
@@ -1456,6 +1463,11 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
 #[cfg(test)]
 mod publish_target_tests {
     use super::*;
+
+    #[test]
+    fn a_paused_task_may_only_be_resumed_from_review() {
+        assert_eq!(RESUMABLE_KINDS, ["review"]);
+    }
 
     fn pickup(cloud: bool) -> state::Pickup {
         let mut v = json!({

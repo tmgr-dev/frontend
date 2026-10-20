@@ -47,6 +47,7 @@ struct Carry {
     held: Vec<Reasoned>,
     failed: Vec<Reasoned>,
     paused: Vec<Reasoned>,
+    paused_pickups: Vec<String>,
     was_paused: bool,
     counted_pr: Vec<String>,
     counted_held: Vec<String>,
@@ -270,10 +271,12 @@ pub struct Autopilot<'a> {
     held_log: Vec<Reasoned>,
     failed_log: Vec<Reasoned>,
     paused_log: Vec<Reasoned>,
+    paused_ids: BTreeSet<String>,
     blockers: Vec<String>,
     stop_reason: Option<String>,
     summary: Option<Summary>,
     limit_paused: Option<Hit>,
+    resume_retry: bool,
     orch: Orch,
     ws_code: String,
 }
@@ -345,10 +348,12 @@ impl<'a> Autopilot<'a> {
             held_log: Vec::new(),
             failed_log: Vec::new(),
             paused_log: Vec::new(),
+            paused_ids: BTreeSet::new(),
             blockers: Vec::new(),
             stop_reason: None,
             summary: None,
             limit_paused: None,
+            resume_retry: false,
             orch: Orch::off(),
             ws_code: String::new(),
         }
@@ -388,6 +393,7 @@ impl<'a> Autopilot<'a> {
         self.held_log = carry.held;
         self.failed_log = carry.failed;
         self.paused_log = carry.paused;
+        self.paused_ids = carry.paused_pickups.into_iter().collect();
         self.counted_pr = carry.counted_pr.into_iter().collect();
         self.counted_held = carry.counted_held.into_iter().collect();
         self.counted_fail = carry.counted_fail.into_iter().collect();
@@ -745,15 +751,15 @@ impl<'a> Autopilot<'a> {
         if !self.s.answers.resume_after_reset || !reset || !decision.starts_allowed() {
             return;
         }
-        self.limit_paused = None;
-        let paused: BTreeSet<String> = self.paused_log.iter().map(|r| r.task.clone()).collect();
         let found = self.p.queue.resumable().and_then(|ids| {
             let st = self.p.queue.state()?;
             Ok(ids
                 .into_iter()
                 .filter_map(|id| {
                     let p = st.pickups.iter().find(|p| p.id == id)?;
-                    paused.contains(&p.key).then(|| (id, p.key.clone()))
+                    let mine =
+                        self.paused_ids.contains(&id) && (self.queue_mode || p.rule == self.s.rule);
+                    mine.then(|| (id, p.key.clone()))
                 })
                 .collect::<Vec<_>>())
         });
@@ -762,9 +768,12 @@ impl<'a> Autopilot<'a> {
             Err(e) => {
                 let text = format!("Could not look for paused tasks to resume: {}", e.message);
                 self.event("error", None, text);
+                self.resume_retry = true;
                 return;
             }
         };
+        self.resume_retry = false;
+        self.limit_paused = None;
         for (id, key) in found {
             match self.p.queue.requeue_paused(&id, policy.clone()) {
                 Ok(_) => {
@@ -814,7 +823,12 @@ impl<'a> Autopilot<'a> {
             resume_after_reset: self.s.answers.resume_after_reset,
             unknown_for: self.unknown_since.map(|t| now - t),
             hard: self.s.answers.usage_hard,
-            limit_paused: self.limit_paused.clone(),
+            limit_paused: self.limit_paused.clone().map(|mut h| {
+                if self.resume_retry {
+                    h.resets_at = Some(now + Duration::minutes(1));
+                }
+                h
+            }),
         };
         self.blockers = decision
             .blockers
@@ -1394,6 +1408,7 @@ impl<'a> Autopilot<'a> {
         } else {
             format!("{} ({detail})", why.note)
         };
+        self.paused_ids.insert(l.pickup.clone());
         self.paused_log.push(Reasoned {
             task: l.key.clone(),
             reason: reason.clone(),
@@ -1588,6 +1603,7 @@ impl<'a> Autopilot<'a> {
             held: self.held_log.clone(),
             failed: self.failed_log.clone(),
             paused: self.paused_log.clone(),
+            paused_pickups: self.paused_ids.iter().cloned().collect(),
             was_paused: self.state == RunState::Paused || self.paused_before_suspend,
             counted_pr: self.counted_pr.iter().cloned().collect(),
             counted_held: self.counted_held.iter().cloned().collect(),

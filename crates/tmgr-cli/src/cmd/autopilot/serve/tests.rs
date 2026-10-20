@@ -39,6 +39,7 @@ struct World {
     state_fail: bool,
     requeues: Vec<(String, StartPolicy)>,
     requeue_fails: BTreeSet<String>,
+    resumable_fails: bool,
     orch_on: bool,
     orch_poll: Poll,
     orch_outputs: BTreeMap<u32, Vec<u8>>,
@@ -89,6 +90,7 @@ impl Fake {
             state_fail: false,
             requeues: Vec::new(),
             requeue_fails: BTreeSet::new(),
+            resumable_fails: false,
             orch_on: false,
             orch_poll: Poll::Running,
             orch_outputs: BTreeMap::new(),
@@ -290,6 +292,9 @@ impl Queue for Fake {
     }
 
     fn resumable(&self) -> Result<Vec<String>> {
+        if self.w().resumable_fails {
+            return Err(Error::internal("the queue state is unreadable"));
+        }
         Ok(tmgr_queue::paused_resumable(&self.w().state))
     }
 
@@ -1263,6 +1268,68 @@ fn resume_after_reset_requeues_each_paused_task_once_after_the_reset_with_the_pa
     rig.fake.advance(Duration::seconds(30));
     tick_on(&mut ap);
     assert_eq!(rig.fake.0.borrow().requeues.len(), 2, "each task once");
+}
+
+#[test]
+fn only_pickups_this_run_paused_under_its_rule_are_requeued() {
+    let rig = Rig::new();
+    let s = settings(&[1, 2], |a| a.resume_after_reset = true);
+    rig.fake.add(running("q1", 1));
+    let mut other_rule = running("q2", 2);
+    other_rule.rule = "elsewhere".into();
+    rig.fake.add(other_rule);
+    let mut stale = running("q3", 3);
+    stale.paused_draft = true;
+    stale.pr_url = Some("https://github.com/o/r/pull/3".into());
+    stale.wip_heads.insert("repo".into(), "abc".into());
+    stale.status = Status::Started;
+    stale.run_exited = true;
+    rig.fake.add(stale);
+    rig.fake.w().probe = Ok(vec![(85.0, 10.0)]);
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    tick_on(&mut ap);
+    rig.fake.advance(Duration::hours(3));
+    rig.fake.w().probe = Ok(vec![(1.0, 10.0)]);
+    tick_on(&mut ap);
+    let w = rig.fake.0.borrow();
+    let ids: Vec<_> = w.requeues.iter().map(|(id, _)| id.as_str()).collect();
+    assert_eq!(ids, vec!["q1"]);
+}
+
+#[test]
+fn the_pickups_paused_by_a_run_survive_a_restart_of_the_loop() {
+    let rig = Rig::new();
+    let s = settings(&[1], |a| a.resume_after_reset = true);
+    rig.fake.add(running("q1", 1));
+    rig.fake.w().probe = Ok(vec![(85.0, 10.0)]);
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    tick_on(&mut ap);
+    assert_eq!(rig.status().extra["resume"]["paused_pickups"][0], "q1");
+}
+
+#[test]
+fn a_lookup_error_keeps_the_pause_marker_so_the_next_tick_resumes() {
+    let rig = Rig::new();
+    let s = settings(&[1], |a| a.resume_after_reset = true);
+    rig.fake.add(running("q1", 1));
+    rig.fake.w().probe = Ok(vec![(85.0, 10.0)]);
+    let store = rig.store();
+    let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    tick_on(&mut ap);
+    rig.fake.advance(Duration::hours(3));
+    rig.fake.w().probe = Ok(vec![(1.0, 10.0)]);
+    rig.fake.w().resumable_fails = true;
+    tick_on(&mut ap);
+    assert!(rig.fake.0.borrow().requeues.is_empty());
+    rig.fake.advance(Duration::seconds(30));
+    rig.fake.w().resumable_fails = false;
+    tick_on(&mut ap);
+    assert_eq!(rig.fake.0.borrow().requeues.len(), 1);
 }
 
 #[test]

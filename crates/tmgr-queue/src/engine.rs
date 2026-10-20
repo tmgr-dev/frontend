@@ -1,6 +1,6 @@
 use crate::audit::{sha256_hex, Audit};
 use crate::clones::plan_clones;
-use crate::cloud::{CloudApi, CloudClaim, CloudSource};
+use crate::cloud::{CloudApi, CloudClaim, CloudSource, Gated};
 use crate::paths::Paths;
 use crate::rules::{self, hours_contains, ProfilePin, ProfileResolver, Rule, GLOBAL_MAX};
 use crate::runs::{mode_name, Lookup, RunState, RunsClient, StartRequest, PERMISSION_MODE};
@@ -30,6 +30,11 @@ pub trait Publisher {
     }
 
     fn take_held(&self) -> Option<state::Held> {
+        None
+    }
+
+    /// Full names of the repositories the last publish pushed; `None` when the publisher cannot tell.
+    fn take_pushed(&self) -> Option<Vec<String>> {
         None
     }
 }
@@ -515,6 +520,33 @@ fn taken(
         }
     }
     Ok(())
+}
+
+fn continuation_refusal(
+    deps: &Deps,
+    rule: &Rule,
+    p: &Pickup,
+    now: DateTime<Utc>,
+) -> Result<Option<String>> {
+    let Some(stored) = p.cloud.as_ref() else {
+        return Ok(Some("only a cloud run can be continued".into()));
+    };
+    if stored.claim.signed_at < (now - Duration::hours(APPROVAL_TTL_HOURS)).timestamp() {
+        return Ok(Some(format!(
+            "the approval was signed more than {APPROVAL_TTL_HOURS} hours ago; confirm the task again"
+        )));
+    }
+    let ws = match deps.cloud.allow(&rule.workspace, now) {
+        Ok(ws) => ws,
+        Err(m) => return Ok(Some(m)),
+    };
+    match deps.cloud.gate(rule, &ws, p.task.task_id)? {
+        Gated::Ready(t) if t.claim == stored.claim => Ok(None),
+        Gated::Ready(_) => Ok(Some(
+            "the approval of the task changed since the run paused".into(),
+        )),
+        Gated::Refused { reason, .. } => Ok(Some(reason)),
+    }
 }
 
 fn look_failed(
@@ -1022,6 +1054,30 @@ fn start_phase(
                 continue;
             }
         }
+        if continuing {
+            match continuation_refusal(deps, rule, &pass.state.pickups[i], pass.now) {
+                Ok(None) => {}
+                Ok(Some(reason)) => {
+                    pass.set(
+                        i,
+                        Status::Expired,
+                        Some(format!("continuation refused: {reason}")),
+                    );
+                    pass.state.pickups[i].released = true;
+                    pass.audit.append(
+                        "start_refused",
+                        json!({"pickup": id, "rule": rule_name, "reason": reason}),
+                    )?;
+                    let p = pass.state.pickups[i].clone();
+                    pass.event(&p, "expired");
+                    continue;
+                }
+                Err(e) => {
+                    look_failed(pass, rule, task, &key, &e)?;
+                    continue;
+                }
+            }
+        }
         let p = pass.state.pickups[i].clone();
         pass.set(i, Status::Starting, None);
         state::save(pass.paths, &mut pass.state)?;
@@ -1394,8 +1450,22 @@ pub fn pause_to_draft(
         Ok(url) => {
             st.pickups[i].pr_url = Some(url.clone());
             st.pickups[i].publish_error = None;
+            let pushed_names: Option<BTreeSet<String>> = deps.publisher.take_pushed().map(|full| {
+                plan_clones(&claim.repos)
+                    .map(|plans| {
+                        plans
+                            .into_iter()
+                            .filter(|c| full.contains(&c.full_name))
+                            .map(|c| c.name)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
             st.pickups[i].wip_heads = clone_dirs(&p)
                 .into_iter()
+                .filter(|(name, _)| {
+                    name.is_empty() || pushed_names.as_ref().is_none_or(|n| n.contains(name))
+                })
                 .filter_map(|(name, dir)| {
                     crate::workdir::clone_tip(&dir, &branch).map(|sha| (name, sha))
                 })
@@ -1501,6 +1571,9 @@ pub fn requeue_paused(
         .iter()
         .find(|r| r.name == p.rule)
         .ok_or_else(|| Error::conflict("the rule was removed"))?;
+    if !rule.auto {
+        return Err(Error::conflict("resume needs an auto rule"));
+    }
     let id = new_id(&st, &p.rule, p.task.task_id, now);
     let cwd = run_dir(rule, p.cloud.as_ref(), &id)
         .ok_or_else(|| Error::internal("no run directory for the continuation"))?
@@ -1941,6 +2014,17 @@ mod tests {
         claim_repos: RefCell<Vec<crate::clones::ClaimRepo>>,
         signed: RefCell<(Option<BundlePersona>, Vec<tmgr_ipc::api::BundlePage>)>,
         tasks: RefCell<Vec<FakeTask>>,
+        hidden: RefCell<Vec<FakeTask>>,
+        gate_calls: Cell<u32>,
+        signed_at: Cell<i64>,
+        gate_error: Cell<bool>,
+    }
+
+    impl CloudFake {
+        fn hide_tasks(&self) {
+            let moved = self.tasks.replace(vec![]);
+            self.hidden.borrow_mut().extend(moved);
+        }
     }
 
     impl CloudApi for CloudFake {
@@ -1965,10 +2049,18 @@ mod tests {
         }
 
         fn gate(&self, _rule: &Rule, ws: &CloudWorkspace, id: i64) -> Result<Gated> {
+            self.gate_calls.set(self.gate_calls.get() + 1);
+            if self.signed_at.get() == 0 {
+                self.signed_at.set(Utc::now().timestamp());
+            }
+            if self.gate_error.get() {
+                return Err(Error::internal("the server is unreachable"));
+            }
             let t = self
                 .tasks
                 .borrow()
                 .iter()
+                .chain(self.hidden.borrow().iter())
                 .find(|t| t.id == id)
                 .cloned()
                 .expect("listed");
@@ -1992,7 +2084,7 @@ mod tests {
                     category_id: 127,
                     content_sha256: sha,
                     key_id: "k1".into(),
-                    signed_at: 10,
+                    signed_at: self.signed_at.get(),
                     signature: "sig".into(),
                     kind: "confirm".into(),
                 },
@@ -2009,9 +2101,14 @@ mod tests {
         fail: Cell<bool>,
         hold: Cell<bool>,
         drafts: RefCell<Vec<String>>,
+        pushed: RefCell<Option<Vec<String>>>,
     }
 
     impl Publisher for PublisherFake {
+        fn take_pushed(&self) -> Option<Vec<String>> {
+            self.pushed.borrow_mut().take()
+        }
+
         fn publish_draft(&self, pickup: &Pickup) -> Result<String> {
             self.drafts.borrow_mut().push(pickup.id.clone());
             self.publish(pickup)
@@ -3830,7 +3927,7 @@ mod tests {
         };
         fx.requeue(&old.id, mine.clone()).unwrap();
         let dirs = Continuing::default();
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         fx.pass_dirs(&dirs, mine).unwrap();
         assert_eq!(fx.runs.requests.borrow().len(), 2);
     }
@@ -3840,7 +3937,7 @@ mod tests {
         let fx = cloud_fx();
         let old = paused_draft_of(&fx);
         let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         let dirs = Continuing::default();
         fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
         let calls = dirs.calls.borrow();
@@ -3866,7 +3963,7 @@ mod tests {
         let fx = cloud_fx();
         let old = paused_draft_of(&fx);
         let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         fx.pass_dirs(&Continuing::default(), StartPolicy::default())
             .unwrap();
         fx.runs.exited.borrow_mut().push("mock-2".into());
@@ -3885,7 +3982,7 @@ mod tests {
         let again = cloud_fx();
         let old = paused_draft_of(&again);
         let out = again.requeue(&old.id, StartPolicy::default()).unwrap();
-        again.cloud.tasks.replace(vec![]);
+        again.cloud.hide_tasks();
         again
             .pass_dirs(&Continuing::default(), StartPolicy::default())
             .unwrap();
@@ -3908,7 +4005,7 @@ mod tests {
         let fx = cloud_fx();
         let old = paused_draft_of(&fx);
         fx.requeue(&old.id, StartPolicy::default()).unwrap();
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         let dirs = Continuing::default();
         dirs.refuse.set(true);
         fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
@@ -3925,7 +4022,7 @@ mod tests {
         let fx = cloud_fx();
         let old = paused_draft_of(&fx);
         fx.requeue(&old.id, StartPolicy::default()).unwrap();
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         fx.fresh.review_gone.set(true);
         let dirs = Continuing::default();
         fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
@@ -3948,7 +4045,7 @@ mod tests {
             ["backend", "frontend"]
         );
         fx.requeue(&old.id, StartPolicy::default()).unwrap();
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         let dirs = Continuing::default();
         fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
         let calls = dirs.calls.borrow();
@@ -3959,11 +4056,104 @@ mod tests {
         assert_eq!(p.clones.len(), 2);
     }
 
+    fn continuing_fx() -> (Fx, Pickup) {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        (fx, old)
+    }
+
+    #[test]
+    fn a_continuation_asks_the_cloud_gate_and_starts_on_the_same_approval() {
+        let (fx, _) = continuing_fx();
+        let before = fx.cloud.gate_calls.get();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        assert_eq!(fx.cloud.gate_calls.get(), before + 1);
+        assert_eq!(fx.pickups()[1].status, Status::Started);
+    }
+
+    #[test]
+    fn a_continuation_whose_approval_changed_or_was_withdrawn_expires_without_a_clone() {
+        let (fx, _) = continuing_fx();
+        fx.cloud.hidden.borrow_mut()[0].body = "edited after the pause".into();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(
+            p.reason.as_deref().unwrap().contains("approval"),
+            "{:?}",
+            p.reason
+        );
+        assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
+
+        let (fx, _) = continuing_fx();
+        fx.cloud.hidden.borrow_mut()[0].refused = Some("the approval was withdrawn".into());
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(p.reason.as_deref().unwrap().contains("withdrawn"));
+        assert!(dirs.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_continuation_waits_when_the_gate_cannot_be_reached() {
+        let (fx, _) = continuing_fx();
+        fx.cloud.gate_error.set(true);
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        assert_eq!(fx.pickups()[1].status, Status::Approved);
+        assert!(dirs.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_approval_older_than_the_limit_is_not_reused_even_when_the_pickup_is_fresh() {
+        let (fx, _) = continuing_fx();
+        let old = Utc::now().timestamp() - 25 * 3600;
+        fx.cloud.signed_at.set(old);
+        let mut st = state::load(&fx.paths).unwrap();
+        st.pickups[1].cloud.as_mut().unwrap().claim.signed_at = old;
+        state::save(&fx.paths, &mut st).unwrap();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(p.reason.as_deref().unwrap().contains("24 hours"));
+        assert!(dirs.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn resuming_needs_an_auto_rule() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let mut file = rules::load(&fx.paths).unwrap().file;
+        file.rules[0].auto = false;
+        fx.write(file);
+        let e = fx.requeue(&old.id, StartPolicy::default()).unwrap_err();
+        assert!(e.message.contains("auto rule"), "{}", e.message);
+        assert_eq!(fx.pickups().len(), 1);
+    }
+
+    #[test]
+    fn only_repositories_that_got_a_push_keep_a_saved_head() {
+        let (fx, _second) = multi_fx();
+        let p = started_and_exited(&fx);
+        fx.publisher
+            .pushed
+            .replace(Some(vec!["tmgr-dev/backend".to_string()]));
+        fx.draft(&p.id).unwrap();
+        let old = fx.pickups().remove(0);
+        assert_eq!(old.wip_heads.keys().collect::<Vec<_>>(), ["backend"]);
+    }
+
     #[test]
     fn without_a_requeue_nothing_continues_and_a_review_task_stays_untouched() {
         let fx = cloud_fx();
         paused_draft_of(&fx);
-        fx.cloud.tasks.replace(vec![]);
+        fx.cloud.hide_tasks();
         let dirs = Continuing::default();
         for _ in 0..3 {
             fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();

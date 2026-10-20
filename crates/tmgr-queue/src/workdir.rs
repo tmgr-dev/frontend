@@ -362,7 +362,7 @@ fn prepare_continue_folder(
         let dest = run_dir.join(name);
         match heads.get(name) {
             Some(sha) => match remote_branch_head(repo, branch)? {
-                None => prepare_clone(repo, &dest, branch, None),
+                None => Err(moved_remotely(branch)),
                 Some(_) => prepare_continue_clone(repo, &dest, branch, sha),
             },
             None => match remote_branch_head(repo, branch)? {
@@ -1251,6 +1251,35 @@ mod tests {
                 &heads,
             )
             .is_err());
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn a_saved_commit_whose_remote_branch_vanished_is_refused_never_cloned_fresh() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(tmp.path()).unwrap();
+        let a = repo_with_origin(&root, "alpha");
+        let b = repo_with_origin(&root, "beta");
+        let wip_a = push_branch_commit(&a, "tmgr/tm-6-x", "wip.txt");
+        let wip_b = push_branch_commit(&b, "tmgr/tm-6-x", "wip.txt");
+        run_git(
+            Path::new(&b),
+            &["push", "-q", "origin", "--delete", "tmgr/tm-6-x"],
+        );
+        let clones = vec![("alpha".to_string(), a.clone()), ("beta".to_string(), b)];
+        let heads = BTreeMap::from([("alpha".to_string(), wip_a), ("beta".to_string(), wip_b)]);
+        let dest = clone_dir(&a, "q_c6").unwrap();
+        let err = GitClone
+            .prepare_continue(
+                &a,
+                "q_c6",
+                &dest.to_string_lossy(),
+                &clones,
+                "tmgr/tm-6-x",
+                &heads,
+            )
+            .unwrap_err();
+        assert!(err.message.contains("not at the commit"), "{}", err.message);
         assert!(!dest.exists());
     }
 }
