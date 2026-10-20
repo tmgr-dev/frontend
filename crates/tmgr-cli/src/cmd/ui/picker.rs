@@ -1,10 +1,9 @@
+use super::capture;
 use super::fuzzy;
 use super::model::Field;
 use serde_json::Value as Json;
-use std::io::Read;
 use std::path::Path;
-use std::process::Stdio;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
@@ -47,14 +46,29 @@ impl Item {
     }
 }
 
+const PROFILE_PATHS: &[&[&str]] = &[
+    &["run"],
+    &["agents", "bundle"],
+    &["agents", "login"],
+    &["agents", "logout"],
+    &["agents", "sync"],
+    &["queue"],
+];
+
+fn profile_field(path: &[String]) -> bool {
+    cfg!(feature = "runner")
+        && PROFILE_PATHS
+            .iter()
+            .any(|h| path.len() >= h.len() && h.iter().zip(path).all(|(a, b)| a == b))
+}
+
 pub fn source_for(path: &[String], field: &Field) -> Option<Source> {
-    let id = field.id.as_str();
-    match id {
+    match field.id.as_str() {
         "reference" | "task" => Some(Source::Tasks),
         "session" => Some(Source::Sessions),
         "code" if path == ["ws", "use"] => Some(Source::Workspaces),
         "ws" => Some(Source::Workspaces),
-        "agent" | "profile" => Some(Source::Profiles),
+        "agent" | "profile" if profile_field(path) => Some(Source::Profiles),
         _ => None,
     }
 }
@@ -72,42 +86,17 @@ pub fn filter(items: &[Item], query: &str) -> Vec<usize> {
 }
 
 fn run_json(exe: &Path, args: &[String]) -> Result<Json, String> {
-    let mut child = std::process::Command::new(exe)
-        .args(args)
-        .arg("--json")
-        .arg("--no-color")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    let mut out = child.stdout.take().ok_or("no output")?;
-    let reader = std::thread::spawn(move || {
-        let mut buf = String::new();
-        let _ = out.read_to_string(&mut buf);
-        buf
-    });
-    let started = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if started.elapsed() > Duration::from_secs(20) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err("timed out".into());
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(40)),
-            Err(e) => return Err(e.to_string()),
-        }
-    }
-    let text = reader.join().map_err(|_| "reader failed".to_string())?;
+    let mut full = args.to_vec();
+    full.push("--json".into());
+    full.push("--no-color".into());
+    let (_, text) = capture::capture(exe, &full, Duration::from_secs(20))?;
     let json: Json =
         serde_json::from_str(text.trim()).map_err(|_| "unreadable answer".to_string())?;
     if json["ok"].as_bool() == Some(false) {
         let msg = json["error"]["message"]
             .as_str()
             .unwrap_or("the command failed");
-        return Err(msg.to_string());
+        return Err(clean(msg));
     }
     Ok(json)
 }
@@ -120,11 +109,15 @@ fn s(v: &Json, key: &str) -> String {
     clean(v[key].as_str().unwrap_or_default())
 }
 
-pub fn load(source: Source, ws: Option<&str>, exe: &Path) -> Result<Vec<Item>, String> {
-    let mut args: Vec<String> = Vec::new();
-    if let Some(w) = ws.filter(|w| !w.is_empty()) {
-        args.push(format!("--ws={w}"));
+pub(super) fn ws_args(source: Source, ws: Option<&str>) -> Vec<String> {
+    match ws.filter(|w| !w.is_empty() && source == Source::Tasks) {
+        Some(w) => vec![format!("--ws={w}")],
+        None => Vec::new(),
     }
+}
+
+pub fn load(source: Source, ws: Option<&str>, exe: &Path) -> Result<Vec<Item>, String> {
+    let mut args = ws_args(source, ws);
     match source {
         Source::Tasks => {
             args.extend(["task", "list", "--limit=100"].map(String::from));
@@ -194,11 +187,7 @@ pub fn sessions(json: &Json) -> Result<Vec<Item>, String> {
                 preview.push(format!("Profile:  {}", clean(p)));
             }
             Item {
-                value: if name.is_empty() {
-                    id.clone()
-                } else {
-                    name.clone()
-                },
+                value: id.clone(),
                 cols: vec![name, state, id],
                 preview,
             }
@@ -245,12 +234,12 @@ fn profiles() -> Result<Vec<Item>, String> {
         .list()
         .into_iter()
         .map(|p| Item {
-            value: p.id.clone(),
-            cols: vec![p.id.clone(), p.name.clone()],
+            value: clean(&p.id),
+            cols: vec![clean(&p.id), clean(&p.name)],
             preview: vec![
-                p.name.clone(),
+                clean(&p.name),
                 String::new(),
-                format!("Profile id: {}", p.id),
+                format!("Profile id: {}", clean(&p.id)),
             ],
         })
         .collect())

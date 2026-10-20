@@ -178,8 +178,8 @@ fn run(cli: &Cli) -> Result<()> {
         if let Ok(line) = probe.try_recv() {
             app.header = format!("tmgr {} \u{b7} {}", crate::cli::VERSION, line);
         }
-        while let Ok((source, result)) = loaded_rx.try_recv() {
-            app.picker_loaded(source, result);
+        while let Ok((generation, result)) = loaded_rx.try_recv() {
+            app.picker_loaded(generation, result);
         }
         let _ = term.draw(|f| view::draw(f, &app, look));
         if !event::poll(Duration::from_millis(150)).unwrap_or(false) {
@@ -204,11 +204,15 @@ fn run(cli: &Cli) -> Result<()> {
                     "Could not copy: select the command with the mouse".into()
                 });
             }
-            Some(Action::Load { source, ws }) => {
+            Some(Action::Load {
+                source,
+                generation,
+                ws,
+            }) => {
                 let tx = loaded_tx.clone();
                 let exe = exe.clone();
                 std::thread::spawn(move || {
-                    let _ = tx.send((source, picker::load(source, ws.as_deref(), &exe)));
+                    let _ = tx.send((generation, picker::load(source, ws.as_deref(), &exe)));
                 });
             }
             Some(Action::Run { node, values, argv }) => {

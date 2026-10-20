@@ -1,0 +1,30 @@
+┌ Pick a task ─────────────────────────────────────────────────────────────────────────────────────┐
+│› desk_                                                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Results ───────────────────────────────────────────────────────────┐┌ Preview ───────────────────┐
+│  key      title                              status        project ││TM-639                      │
+│> TM-639   Desktop: inventory of features     In progress   docs    ││Desktop: inventory of       │
+│  TM-438   Desktop without account, phase 2   Backlog       frontend││features                    │
+│  TM-644   Open in TMGR Desktop bar           In progress   frontend││                            │
+│                                                                    ││Status:   In progress       │
+│                                                                    ││Project:  docs              │
+│                                                                    ││Updated:  2026-10-19        │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+│                                                                    ││                            │
+└────────────────────────────────────────────────────────────────────┘└────────────────────────────┘
+ type filter   ↑↓ move   enter use it   esc back

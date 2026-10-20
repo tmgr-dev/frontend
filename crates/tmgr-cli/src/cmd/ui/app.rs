@@ -48,6 +48,7 @@ pub struct Palette {
 
 pub struct Picker {
     pub source: Source,
+    pub generation: u64,
     pub field: usize,
     pub query: String,
     pub items: Option<Vec<Item>>,
@@ -59,6 +60,7 @@ pub struct Picker {
 pub enum Action {
     Load {
         source: Source,
+        generation: u64,
         ws: Option<String>,
     },
     Run {
@@ -77,6 +79,7 @@ pub struct App {
     pub screen: Screen,
     pub palette: Option<Palette>,
     pub picker: Option<Picker>,
+    pub picker_generation: u64,
     pub help: bool,
     pub focus: Focus,
     pub group: usize,
@@ -223,7 +226,7 @@ impl Form {
                     _ => Vec::new(),
                 };
                 cur.retain(|s| !s.is_empty());
-                cur.push(value);
+                cur.push(value.replace(',', " "));
                 self.values.insert(f.id, Value::Multi(cur));
             }
             Kind::Select(_) | Kind::Bool | Kind::Count => {}
@@ -255,6 +258,7 @@ impl App {
             screen: Screen::Home,
             palette: None,
             picker: None,
+            picker_generation: 0,
             help: false,
             focus: Focus::Groups,
             group: 0,
@@ -355,7 +359,15 @@ impl App {
             self.palette = Some(p);
             return;
         }
-        if self.help || self.picker.is_some() {
+        if self.help {
+            return;
+        }
+        if let Some(p) = self.picker.as_mut() {
+            p.query.push_str(&clean);
+            if let Some(items) = &p.items {
+                p.shown = picker::filter(items, &p.query);
+            }
+            p.cursor = 0;
             return;
         }
         if let Screen::Form(form) = &mut self.screen {
@@ -519,8 +531,11 @@ impl App {
                     Some(Value::Text(t)) if !t.is_empty() => Some(t.clone()),
                     _ => None,
                 };
+                self.picker_generation += 1;
+                let generation = self.picker_generation;
                 self.picker = Some(Picker {
                     source,
+                    generation,
                     field: form.cursor,
                     query: String::new(),
                     items: None,
@@ -528,7 +543,11 @@ impl App {
                     cursor: 0,
                     error: None,
                 });
-                return Some(Action::Load { source, ws });
+                return Some(Action::Load {
+                    source,
+                    generation,
+                    ws,
+                });
             }
             KeyCode::Enter => {
                 if guard::is_guarded(&form.node, &form.values) {
@@ -551,13 +570,14 @@ impl App {
         None
     }
 
-    pub fn picker_loaded(&mut self, source: Source, result: Result<Vec<Item>, String>) {
-        let Some(p) = self.picker.as_mut().filter(|p| p.source == source) else {
+    pub fn picker_loaded(&mut self, generation: u64, result: Result<Vec<Item>, String>) {
+        let Some(p) = self.picker.as_mut().filter(|p| p.generation == generation) else {
             return;
         };
         match result {
             Ok(items) => {
                 p.shown = picker::filter(&items, &p.query);
+                p.cursor = 0;
                 p.items = Some(items);
             }
             Err(e) => p.error = Some(e),

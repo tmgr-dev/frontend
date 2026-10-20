@@ -1518,13 +1518,13 @@ fn workspace_answer_prefixes_local_codes() {
 }
 
 #[test]
-fn session_answer_uses_the_name_then_the_id() {
+fn session_answer_fills_the_session_id() {
     let json = serde_json::json!({"ok": true, "data": {"sessions": [
         {"id": "s1", "name": "cc", "cwd": "/w", "state": {"kind": "working"}, "profile": "claude-code"},
         {"id": "s2", "name": "", "cwd": "", "state": {"kind": "exited"}}
     ]}});
     let items = picker::sessions(&json).unwrap();
-    assert_eq!(items[0].value, "cc");
+    assert_eq!(items[0].value, "s1");
     assert_eq!(items[1].value, "s2");
 }
 
@@ -1549,12 +1549,13 @@ fn ctrl_o_on_a_bound_field_loads_and_enter_fills_the_field() {
         action,
         Some(app::Action::Load {
             source: picker::Source::Tasks,
-            ws: None
+            ws: None,
+            ..
         })
     ));
     assert!(app.picker.is_some());
     app.picker_loaded(
-        picker::Source::Tasks,
+        app.picker_generation,
         Ok(picker_items(&[
             ("TM-1", "Fix login"),
             ("TM-2", "Desktop bar"),
@@ -1572,7 +1573,7 @@ fn esc_closes_the_picker_without_touching_the_field() {
     let mut app = fresh();
     app.open(&p(&["start"]), Values::new());
     app.on_key(ctrl('o'));
-    app.picker_loaded(picker::Source::Tasks, Ok(picker_items(&[("TM-1", "a")])));
+    app.picker_loaded(app.picker_generation, Ok(picker_items(&[("TM-1", "a")])));
     app.on_key(key(KeyCode::Esc));
     assert!(app.picker.is_none());
     assert!(!form(&app).values.contains_key("reference"));
@@ -1601,9 +1602,9 @@ fn a_failed_load_shows_the_error_and_a_late_answer_for_another_source_is_ignored
     let mut app = fresh();
     app.open(&p(&["start"]), Values::new());
     app.on_key(ctrl('o'));
-    app.picker_loaded(picker::Source::Sessions, Ok(picker_items(&[("x", "y")])));
+    app.picker_loaded(app.picker_generation - 1, Ok(picker_items(&[("x", "y")])));
     assert!(app.picker.as_ref().unwrap().items.is_none());
-    app.picker_loaded(picker::Source::Tasks, Err("not logged in".into()));
+    app.picker_loaded(app.picker_generation, Err("not logged in".into()));
     assert_eq!(
         app.picker.as_ref().unwrap().error.as_deref(),
         Some("not logged in")
@@ -1643,4 +1644,100 @@ fn capture_kills_a_child_that_outlives_the_limit() {
     .unwrap_err();
     assert_eq!(err, "timed out");
     assert!(started.elapsed() < std::time::Duration::from_secs(5));
+}
+
+#[test]
+fn only_the_task_list_follows_the_workspace_field() {
+    assert_eq!(
+        picker::ws_args(picker::Source::Tasks, Some("local:notes")),
+        ["--ws=local:notes"]
+    );
+    assert!(picker::ws_args(picker::Source::Workspaces, Some("half typed")).is_empty());
+    assert!(picker::ws_args(picker::Source::Profiles, Some("x")).is_empty());
+    assert!(picker::ws_args(picker::Source::Tasks, Some("")).is_empty());
+}
+
+#[test]
+fn profile_pickers_skip_commands_whose_agent_is_not_a_profile_id() {
+    let root = tree();
+    let agent = |path: &[&str]| {
+        node_at(&root, path)
+            .fields
+            .iter()
+            .find(|f| f.id == "agent")
+            .cloned()
+            .map(|f| picker::source_for(&p(path), &f))
+    };
+    assert_eq!(agent(&["log"]), Some(None));
+    #[cfg(feature = "runner")]
+    assert_eq!(agent(&["run"]), Some(Some(picker::Source::Profiles)));
+    #[cfg(not(feature = "runner"))]
+    assert_eq!(agent(&["agent", "start"]), Some(None));
+}
+
+#[test]
+fn server_text_in_picker_items_has_no_control_characters() {
+    let json = serde_json::json!({"ok": true, "data": {"items": [
+        {"ref": "TM-1", "title": "a\u{1b}[31mred\u{7}", "status": {"name": "x\ny"}, "project": "P\tQ"}
+    ]}});
+    let items = picker::tasks(&json).unwrap();
+    let all = items[0].cols.iter().chain(items[0].preview.iter());
+    for text in all {
+        assert!(!text.chars().any(|c| c.is_control()), "{text:?}");
+    }
+    assert!(!items[0].value.chars().any(|c| c.is_control()));
+}
+
+#[test]
+fn a_paste_goes_into_the_picker_filter() {
+    let mut app = fresh();
+    app.open(&p(&["start"]), Values::new());
+    app.on_key(ctrl('o'));
+    app.picker_loaded(
+        app.picker_generation,
+        Ok(picker_items(&[
+            ("TM-1", "Fix login"),
+            ("TM-2", "Desktop bar"),
+        ])),
+    );
+    app.on_paste("desk\n");
+    assert_eq!(app.picker.as_ref().unwrap().query, "desk");
+    assert_eq!(app.picker.as_ref().unwrap().shown, [1]);
+}
+
+#[test]
+fn picking_into_a_multi_field_appends_without_commas() {
+    let mut app = fresh();
+    app.open(&p(&["page", "push"]), Values::new());
+    match &mut app.screen {
+        Screen::Form(f) => {
+            f.pick(0, "a,b".into());
+            f.pick(0, "c".into());
+            assert_eq!(
+                f.values.get("files"),
+                Some(&Value::Multi(vec!["a b".into(), "c".into()]))
+            );
+        }
+        _ => panic!("expected a form"),
+    }
+}
+
+#[test]
+fn render_task_picker_snapshot() {
+    let mut app = home_app();
+    app.open(&p(&["start"]), Values::new());
+    app.on_key(ctrl('o'));
+    let json = serde_json::json!({"ok": true, "data": {"items": [
+        {"ref": "TM-644", "title": "Open in TMGR Desktop bar", "status": {"name": "In progress"}, "project": "frontend", "updated_at": "2026-10-20"},
+        {"ref": "TM-639", "title": "Desktop: inventory of features", "status": {"name": "In progress"}, "project": "docs", "updated_at": "2026-10-19"},
+        {"ref": "TM-438", "title": "Desktop without account, phase 2", "status": {"name": "Backlog"}, "project": "frontend", "updated_at": "2026-10-01"},
+        {"ref": "TM-301", "title": "Fix login redirect", "status": {"name": "Review"}, "project": "web", "updated_at": "2026-09-30"}
+    ]}});
+    app.picker_loaded(app.picker_generation, picker::tasks(&json));
+    type_str(&mut app, "desk");
+    check_snapshot(
+        &screen_text(&app),
+        "render_task_picker.txt",
+        include_str!("snapshots/render_task_picker.txt"),
+    );
 }

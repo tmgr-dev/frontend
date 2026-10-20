@@ -457,7 +457,7 @@ fn picker_view(f: &mut Frame, area: Rect, p: &Picker, look: Look) {
         search,
     );
     let [list, preview] =
-        Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)]).areas(body);
+        Layout::horizontal([Constraint::Percentage(70), Constraint::Percentage(30)]).areas(body);
     let mut lines: Vec<Line> = Vec::new();
     let mut side: Vec<Line> = Vec::new();
     match (&p.items, &p.error) {
@@ -465,23 +465,51 @@ fn picker_view(f: &mut Frame, area: Rect, p: &Picker, look: Look) {
         (None, None) => lines.push(Line::from(Span::styled("Loading...", look.dim()))),
         (Some(items), None) => {
             let heads = p.source.heads();
+            let widths: Vec<usize> = (0..heads.len())
+                .map(|c| {
+                    p.shown
+                        .iter()
+                        .filter_map(|i| items.get(*i)?.cols.get(c))
+                        .map(|t| t.chars().count())
+                        .chain(std::iter::once(heads[c].len()))
+                        .max()
+                        .unwrap_or(0)
+                        .min(38)
+                })
+                .collect();
             lines.push(Line::from(Span::styled(
-                format!("  {}", heads.join("   ")),
+                format!("  {}", pad_row(heads.iter().copied(), &widths)),
                 look.dim(),
             )));
             let rows = list.height.saturating_sub(3) as usize;
             let start = p.cursor.saturating_sub(rows.saturating_sub(1));
             for (n, idx) in p.shown.iter().enumerate().skip(start).take(rows) {
-                let item = &items[*idx];
+                let Some(item) = items.get(*idx) else {
+                    continue;
+                };
                 let sel = n == p.cursor;
-                let text = format!("{} {}", if sel { ">" } else { " " }, item.cols.join("   "));
+                let text = format!(
+                    "{} {}",
+                    if sel { ">" } else { " " },
+                    pad_row(item.cols.iter().map(String::as_str), &widths)
+                );
                 lines.push(Line::from(Span::styled(
                     text,
                     if sel { look.selected() } else { Style::new() },
                 )));
             }
             if p.shown.is_empty() {
-                lines.push(Line::from(Span::styled("Nothing matches", look.dim())));
+                let note = if items.is_empty() {
+                    "Nothing to pick from"
+                } else {
+                    "Nothing matches"
+                };
+                lines.push(Line::from(Span::styled(note, look.dim())));
+            } else if items.len() >= 100 {
+                lines.push(Line::from(Span::styled(
+                    "Showing the first 100; keep typing to narrow it down",
+                    look.dim(),
+                )));
             }
             if let Some(item) = p.shown.get(p.cursor).and_then(|i| items.get(*i)) {
                 for (i, l) in item.preview.iter().enumerate() {
@@ -512,4 +540,22 @@ fn picker_view(f: &mut Frame, area: Rect, p: &Picker, look: Look) {
         )),
         foot,
     );
+}
+
+fn pad_row<'a>(cols: impl Iterator<Item = &'a str>, widths: &[usize]) -> String {
+    let cols: Vec<&str> = cols.collect();
+    let last = cols.len().saturating_sub(1);
+    cols.iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let w = widths.get(i).copied().unwrap_or(0);
+            let text: String = c.chars().take(w.max(1)).collect();
+            if i == last {
+                text
+            } else {
+                format!("{text:<w$}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("   ")
 }
