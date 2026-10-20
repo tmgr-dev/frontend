@@ -1,0 +1,63 @@
+tmgr add
+  title kind=text required=true default=- sensitive=false positional=true
+  project kind=text required=false default=- sensitive=false positional=false
+  status kind=text required=false default=- sensitive=false positional=false
+  desc_file kind=path required=false default=- sensitive=false positional=false
+tmgr start
+  reference kind=text required=true default=- sensitive=false positional=true
+  branch kind=text required=false default=- sensitive=false positional=false
+  no_branch kind=bool required=false default=false sensitive=false positional=false
+  from kind=text required=false default=- sensitive=false positional=false
+  no_timer kind=bool required=false default=false sensitive=false positional=false
+  status kind=text required=false default=- sensitive=false positional=false
+  stash kind=bool required=false default=false sensitive=false positional=false
+tmgr done
+  reference kind=text required=false default=- sensitive=false positional=true
+  status kind=text required=false default=- sensitive=false positional=false
+  no_pr kind=bool required=false default=false sensitive=false positional=false
+  comment kind=text required=false default=- sensitive=false positional=false
+  force kind=bool required=false default=false sensitive=false positional=false
+tmgr ws use
+  code kind=text required=false default=- sensitive=false positional=true
+tmgr task list
+  project kind=text required=false default=- sensitive=false positional=false
+  status_type kind=text required=false default=- sensitive=false positional=false
+  limit kind=text required=false default=50 sensitive=false positional=false
+  cursor kind=text required=false default=- sensitive=false positional=false
+tmgr board
+  project kind=text required=false default=- sensitive=false positional=false
+  mine kind=bool required=false default=false sensitive=false positional=false
+  ascii kind=bool required=false default=false sensitive=false positional=false
+tmgr page pull
+  dir kind=path required=true default=- sensitive=false positional=true
+  tree kind=text required=false default=- sensitive=false positional=false
+  all kind=bool required=false default=false sensitive=false positional=false
+  force kind=bool required=false default=false sensitive=false positional=false
+tmgr usage
+  today kind=bool required=false default=false sensitive=false positional=false
+  yesterday kind=bool required=false default=false sensitive=false positional=false
+  week kind=bool required=false default=false sensitive=false positional=false
+  month kind=bool required=false default=false sensitive=false positional=false
+  since kind=text required=false default=- sensitive=false positional=false
+  until kind=text required=false default=- sensitive=false positional=false
+  by kind=select(tool|model|account|project|branch|day|task) required=false default=- sensitive=false positional=false
+  task kind=text required=false default=- sensitive=false positional=false
+  tool kind=select(claude|codex) required=false default=- sensitive=false positional=false
+  account kind=text required=false default=- sensitive=false positional=false
+  no_scan kind=bool required=false default=false sensitive=false positional=false
+tmgr run
+  task kind=text required=false default=- sensitive=false positional=true
+  agent_cmd kind=text required=false default=- sensitive=false positional=false
+  agent kind=text required=false default=- sensitive=false positional=false
+  model kind=text required=false default=- sensitive=false positional=false
+  cwd kind=path required=false default=- sensitive=false positional=false
+  name kind=text required=false default=- sensitive=false positional=false
+  no_attach kind=bool required=false default=false sensitive=false positional=false
+  trust kind=bool required=false default=false sensitive=false positional=false
+  mode kind=select(ask|accept-edits|plan|bypass) required=false default=- sensitive=false positional=false
+  base kind=text required=false default=- sensitive=false positional=false
+  fetch kind=bool required=false default=false sensitive=false positional=false
+  publish kind=bool required=false default=false sensitive=false positional=false
+  review kind=bool required=false default=false sensitive=false positional=false
+  push kind=bool required=false default=false sensitive=false positional=false
+  drop kind=bool required=false default=false sensitive=false positional=false

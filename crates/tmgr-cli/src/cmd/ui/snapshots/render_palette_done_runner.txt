@@ -1,0 +1,30 @@
+tmgr test
+
+┌ Commands ────────────────────────────┐┌ Tasks ───────────────────────────────────────────────────┐
+│/ search commands                     ││  status                 Active task and today's time (def│
+│                                      ││  task show              Show one task                    │
+│> Ta┌ Command palette ───────────────────────────────────────────────────────────────────────┐k: s│
+│  Ag│› done_                                                                                 │    │
+│  Qu│                                                                                        │e an│
+│  Ru│done   Finish a task: stop the timer, move to review, link the PR                       │and │
+│  Pa│routine done   Mark a routine done (ID as shown by `routine list`)                      │    │
+│  Ti│                                                                                        │art │
+│  Us└────────────────────────────────────────────────────────────────────────────────────────┘, mo│
+│  Account   login, logout, whoami, aut││  board                  Full-screen kanban board of the w│
+│  Other     version, refs             ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+└──────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ ↑↓ move   enter open   / search   ? help   esc back   q quit

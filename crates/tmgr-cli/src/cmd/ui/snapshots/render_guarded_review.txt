@@ -1,0 +1,30 @@
+tmgr › task › confirm
+Let agents run on a local task: show its full text and confirm it (terminal only)
+
+┌ Options ─────────────────────────────────────────────────────────────────────────────────────────┐
+│> *reference       TM-1_                                                                          │
+│    TM-512, #8974 or 8974 (see `tmgr help refs`)                                                  │
+│                                                                                                  │
+│This command asks for a typed confirmation. The menu never types it for you:                      │
+│after enter you answer it in the terminal, exactly as without the menu.                           │
+│enter: continue    any other key: back to the form                                                │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Command ─────────────────────────────────────────────────────────────────────────────────────────┐
+│$ tmgr task confirm TM-1                                                                          │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab next field   space select   enter run   ctrl+y copy command   esc back

@@ -1,0 +1,30 @@
+tmgr › add
+Create a task (`-` reads title and description from stdin)
+
+┌ Options ─────────────────────────────────────────────────────────────────────────────────────────┐
+│> *title           Ship the menu_                                                                 │
+│    Task title, or `-` to read it from stdin (first line title, rest description)                 │
+│   project         tmgr                                                                           │
+│   status          Status name (default: the workspace's default status)                          │
+│   desc file       Read the description from a file (up to 64 KiB)                                │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌ Command ─────────────────────────────────────────────────────────────────────────────────────────┐
+│$ tmgr add --project=tmgr 'Ship the menu'                                                         │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab next field   space select   enter run   ctrl+y copy command   esc back

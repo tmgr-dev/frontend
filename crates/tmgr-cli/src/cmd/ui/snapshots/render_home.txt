@@ -1,0 +1,30 @@
+tmgr test
+
+┌ Commands ────────────────────────────┐┌ Tasks ───────────────────────────────────────────────────┐
+│/ search commands                     ││  status                 Active task and today's time (def│
+│                                      ││  task show              Show one task                    │
+│> Tasks     status, task, add, start, ││  task confirm           Let agents run on a local task: s│
+│  Agents    log, agent                ││  task list              List tasks                       │
+│  Pages     note, page                ││  add                    Create a task (`-` reads title an│
+│  Time      today, routine            ││  start                  Start a task: branch, status and │
+│  Usage     usage                     ││  stop                   Stop the running timer           │
+│  Account   login, logout, whoami, aut││  switch                 Stop the running timer and start │
+│  Other     version, refs             ││  done                   Finish a task: stop the timer, mo│
+│                                      ││  board                  Full-screen kanban board of the w│
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+│                                      ││                                                          │
+└──────────────────────────────────────┘└──────────────────────────────────────────────────────────┘
+ ↑↓ move   enter open   / search   ? help   esc back   q quit

@@ -1,0 +1,70 @@
+<root> | - | ws
+version | Other | -
+login | Account | scopes, with_token, label, no_browser
+logout | Account | -
+whoami | Account | -
+auth login | Account | scopes, with_token, label, no_browser
+auth logout | Account | -
+auth status | Account | -
+ws | Account | -
+ws list | Account | -
+ws use | Account | code
+status | Tasks | -
+task show | Tasks | reference, comments, max_desc
+task confirm | Tasks | reference
+task list | Tasks | project, status_type, limit, cursor
+add | Tasks | title, project, status, desc_file
+config list | Account | -
+config get | Account | key
+config set | Account | key, value
+config path | Account | -
+start | Tasks | reference, branch, no_branch, from, no_timer, status, stash
+stop | Tasks | -
+switch | Tasks | reference, branch, no_branch, from, no_timer, status, stash
+done | Tasks | reference, status, no_pr, comment, force
+project map | Account | code, path
+project unmap | Account | code
+project list | Account | -
+git install-hooks | Account | global
+init | Account | target, install, uninstall
+log | Agents | follow, task, since, agent, limit, cursor
+today | Time | date, yesterday, mine
+routine list | Time | date
+routine done | Time | id, date
+note | Pages | title, title_flag, task, parent
+page pull | Pages | dir, tree, all, force
+page push | Pages | files
+page status | Pages | dir
+agent start | Agents | reference, agent, model, branch
+agent update | Agents | run, branch, commits, pr, tests_passed, tests_failed, tests_cmd, summary, task
+agent finish | Agents | run, status, commits, pr, tests_passed, tests_failed, tests_cmd, summary, task
+agent status set | Agents | session_id, state, task, profile, since, started
+agent status clear | Agents | session_id
+agent status list | Agents | -
+hook install | Account | target, project, print
+hook uninstall | Account | target, project, print
+notify | Account | text, title, priority, link
+alarm | Account | text, title, ack_timeout, delivery_timeout, no_call, call_attempts, no_wait, max_wait
+alarm status | Account | id, wait
+refs | Other | -
+board | Tasks | project, mine, ascii
+usage | Usage | today, yesterday, week, month, since, until, by, task, tool, account, no_scan
+usage limits | Usage | no_scan
+usage task | Usage | reference, tree, days, no_scan
+usage scan | Usage | -
+usage accounts | Usage | -
+usage accounts list | Usage | -
+usage accounts add | Usage | tool, root, label
+usage accounts remove | Usage | label
+usage pricing | Usage | -
+usage pricing show | Usage | model
+usage pricing update | Usage | offline
+usage sync | Usage | task, days, dry_run, force, no_scan
+usage sync on | Usage | -
+usage sync off | Usage | -
+usage sync status | Usage | -
+usage sync forget | Usage | task
+usage reset | Usage | -
+usage statusline install | Usage | account, install
+usage statusline uninstall | Usage | account
+self-update | Account | check, channel, allow_downgrade
