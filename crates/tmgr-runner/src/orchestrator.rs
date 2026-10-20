@@ -41,6 +41,23 @@ pub fn check_cwd(path: &std::path::Path, uid: u32) -> Result<(), (ErrorCode, Str
     Ok(())
 }
 
+pub fn tools_pinned(argv: &[String]) -> bool {
+    let mut it = argv.iter().skip_while(|a| a.as_str() != "--tools");
+    it.next().is_some()
+        && it.next().is_some_and(|v| {
+            v.split(',')
+                .map(str::trim)
+                .all(|t| matches!(t, "Read" | "Write"))
+        })
+        && argv.iter().filter(|a| a.as_str() == "--tools").count() == 1
+        && !argv.iter().any(|a| {
+            a.starts_with("--tools=")
+                || a.starts_with("--allowedTools")
+                || a.starts_with("--allowed-tools")
+                || a.starts_with("--mcp-config")
+        })
+}
+
 pub fn argv(prof: &Profile) -> Result<Vec<String>, (ErrorCode, String)> {
     if prof.source != Source::Builtin {
         return Err((
@@ -79,6 +96,46 @@ pub fn argv(prof: &Profile) -> Result<Vec<String>, (ErrorCode, String)> {
 mod tests {
     use super::*;
     use crate::profile::ProfileSet;
+
+    #[test]
+    fn only_a_read_write_tool_list_counts_as_pinned() {
+        let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(tools_pinned(&v(&[
+            "claude",
+            "-p",
+            "x",
+            "--tools",
+            "Read,Write"
+        ])));
+        assert!(tools_pinned(&v(&["claude", "--tools", "Read"])));
+        assert!(!tools_pinned(&v(&["claude", "-p", "x"])));
+        assert!(!tools_pinned(&v(&["claude", "--tools", "Read,Bash"])));
+        assert!(!tools_pinned(&v(&["claude", "--tools"])));
+        assert!(!tools_pinned(&v(&[
+            "claude", "--tools", "Read", "--tools", "Bash"
+        ])));
+        assert!(!tools_pinned(&v(&[
+            "claude",
+            "--tools",
+            "Read",
+            "--allowedTools",
+            "Bash"
+        ])));
+        assert!(!tools_pinned(&v(&[
+            "claude",
+            "--tools",
+            "Read",
+            "--mcp-config",
+            "x"
+        ])));
+    }
+
+    #[test]
+    fn the_builtin_claude_headless_argv_is_pinned_to_read_and_write() {
+        let (set, _) = ProfileSet::load(None);
+        let argv = argv(set.get("claude-code").unwrap()).unwrap();
+        assert!(tools_pinned(&argv));
+    }
 
     #[cfg(unix)]
     mod folder {

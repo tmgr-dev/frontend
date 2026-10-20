@@ -2098,10 +2098,11 @@ impl Runner {
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = known_profile(&set, &req.profile)?;
         let mut argv = orchestrator::argv(prof).map_err(|(code, m)| api(code, m))?;
-        if !sandbox::network_restriction_enforced() {
+        let enforced = sandbox::network_restriction_enforced();
+        if !enforced && !orchestrator::tools_pinned(&argv) {
             return Err(api(
                 ErrorCode::Forbidden,
-                "the orchestrator needs network restriction, which this platform cannot enforce",
+                "the orchestrator needs network restriction or an agent limited to reading and writing files",
             ));
         }
         let run = req.as_run();
@@ -2135,10 +2136,14 @@ impl Runner {
         .to_string();
         let extra = RunExtra {
             start: Some((req.start_key.clone(), hash)),
-            egress: Some(
-                prof.egress_allow()
-                    .map_err(|e| api(ErrorCode::InvalidParams, e))?,
-            ),
+            egress: if enforced {
+                Some(
+                    prof.egress_allow()
+                        .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+                )
+            } else {
+                None
+            },
             run_id_env: true,
             ..RunExtra::default()
         };
