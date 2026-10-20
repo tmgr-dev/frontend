@@ -4,7 +4,10 @@
 		<div
 			class="team-activity-header mb-4 flex flex-wrap items-center justify-between gap-2"
 		>
-			<h3 class="text-lg font-semibold text-ink">Team Activity</h3>
+			<div class="min-w-0">
+				<h3 class="text-base font-semibold text-ink">Active members</h3>
+				<p class="text-xs text-ink-muted">{{ subtitle }}</p>
+			</div>
 			<div class="flex flex-wrap items-center gap-2 sm:gap-3">
 				<div
 					class="inline-flex overflow-hidden rounded-md border border-line text-xs"
@@ -71,7 +74,18 @@
 					teamActivity.members.length > 0
 				"
 			>
-				<div class="space-y-3">
+				<div
+					class="sticky top-0 z-10 hidden bg-surface px-2 pb-2 text-2xs uppercase tracking-wide text-ink-faint sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:gap-x-3 md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]"
+					aria-hidden="true"
+				>
+					<span>Member</span>
+					<span class="hidden md:block">Activity</span>
+					<span class="text-right">Done</span>
+					<span class="text-right">Tracked</span>
+					<span class="text-right">Active</span>
+					<span class="text-right">Last active</span>
+				</div>
+				<div class="divide-y divide-line">
 					<TeamMemberItem
 						v-for="member in teamActivity.members"
 						:key="member.id"
@@ -191,6 +205,12 @@
 		return windows.find((w) => w.key === key)?.label ?? key;
 	});
 
+	const subtitle = computed(() => {
+		const key = props.teamActivity?.window ?? props.window;
+		if (key === 'today') return 'Members’ activity today';
+		return `Members’ activity in the last ${key === '30d' ? 30 : 7} days`;
+	});
+
 	const onlineCount = computed(() => {
 		return props.teamActivity?.online_members || 0;
 	});
@@ -216,7 +236,7 @@
 
 <style scoped>
 	.team-activity-widget {
-		@apply rounded-card border border-line bg-surface p-6 shadow-tmgr-xs;
+		@apply rounded-card border border-line bg-surface p-4 shadow-tmgr-xs sm:p-6;
 	}
 
 	.team-activity-header {
