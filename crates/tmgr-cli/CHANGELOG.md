@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.13
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Autopilot has an orchestrator: one planning agent per run reads only the signed task texts, inside the runner sandbox (claude-code, tools limited to reading and writing files, no tmgr token or signing key), and returns the start order, groups of tasks that touch the same code, eco or heavy per task and a triage. The CLI checks that output strictly before it uses it; a bad plan stops the run with nothing written.
+- Triage: a task an autonomous team cannot do gets a comment with the reason and a question for you, and moves to "Needs feedback" or "Blocked" (at most 3 per run, only after the task is checked unchanged and free).
+- Parallel teams: `--max-teams` (default 2) runs at once, `--team-size` (default 3) agents per team (lead and workers), `--team-mode eco|heavy|orchestrator`, `--profile claude-code|codex` (codex runs one agent per team). Every task still ends as a pull request and moves to Review; nothing is merged.
+- New per-run flags: `--only`, `--skip`, `--order` and `--dry-run` (plan and triage preview only: no comments, no status changes, no code, the queue stays off). Try `tmgr queue autopilot --dry-run` first.
+- `--resume-after-reset yes` now continues tasks paused by a usage limit once the window resets: the team picks up the pushed work in progress and the draft pull request becomes ready for review.
+- `tmgr queue autopilot status` and `tmgr queue status --tail` show the plan order, needs feedback, blocked, and per team its step and agents. The status JSON only gains fields.
+- Runner: new `orchestrator.create` and `team.v1` capabilities; restart the runner after the update.
+
 ## 1.0.12
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
