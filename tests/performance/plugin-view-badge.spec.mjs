@@ -57,13 +57,13 @@ test('a view badge shows in the sidebar, collapses to a dot and clears', async (
   await desktopPage(page, {}, { devPlugins: [telegram] });
   await page.setViewportSize({ width: 1100, height: 700 });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   await page
@@ -149,12 +149,12 @@ test('a clickable stat is as tall as a plain one', async ({ page }) => {
   await desktopPage(page, {}, { devPlugins: [telegram] });
   await page.setViewportSize({ width: 1100, height: 500 });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   await page
@@ -225,13 +225,13 @@ test('a real plugin sets, clears and loses its sidebar badge', async ({
   await desktopPage(page, {}, { devPlugins: [live] });
   await page.setViewportSize({ width: 1100, height: 700 });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'Telegram' });

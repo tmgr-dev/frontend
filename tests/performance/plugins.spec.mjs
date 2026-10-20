@@ -13,7 +13,7 @@ test('the built-in estimate plugin draws its badge, status bar item, page and ta
 }) => {
   const shell = await desktopPage(page);
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -113,7 +113,7 @@ test('several badges compact to 3 + "+N", and a task section runs a confirmed co
   );
   const shell = await desktopPage(page, {}, { devPlugins: [multi] });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -129,7 +129,7 @@ test('several badges compact to 3 + "+N", and a task section runs a confirmed co
     params: [backlog.id],
   });
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   await page
@@ -185,7 +185,7 @@ test('a hostile folder plugin is refused writes, cut off when it spins and turne
   );
   const shell = await desktopPage(page, {}, { devPlugins: [hostile] });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -196,11 +196,7 @@ test('a hostile folder plugin is refused writes, cut off when it spins and turne
     params: [],
   });
 
-  await page
-    .getByRole('button', { name: 'Yurij' })
-    .or(page.locator('[data-sidebar="footer"] button'))
-    .first()
-    .click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'Hostile' });
@@ -266,7 +262,7 @@ test('badges for a 500-task board add little main-thread work', async ({
 }) => {
   const shell = await desktopPage(page);
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -336,13 +332,13 @@ test('a folder plugin talks to a local service it declared, and the settings say
     },
   );
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'Local LLM' });
@@ -403,7 +399,7 @@ test('a folder plugin exports into its own folder, reads an attachment and a fil
   };
   const shell = await desktopPage(page, {}, { devPlugins: [plugin] });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -420,7 +416,7 @@ test('a folder plugin exports into its own folder, reads an attachment and a fil
   });
   shell.files.set('personal/abc/notes.md', Buffer.from('# Notes'));
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'read a file you choose' });
@@ -467,13 +463,13 @@ test('a plugin view with its own page opens in a window whose calls go through t
   };
   const shell = await desktopPage(page, {}, { devPlugins: [plugin] });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   await page
@@ -515,7 +511,7 @@ test('a plugin view with its own page opens in a window whose calls go through t
     value: expect.stringContaining('UNKNOWN_METHOD'),
   });
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   await page
@@ -547,12 +543,12 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   };
   const shell = await desktopPage(page, {}, { releases });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
 
@@ -666,12 +662,12 @@ test('the signed TMGR blocklist stops an installed plugin and a built-in one', a
   };
   const shell = await desktopPage(page, {}, { releases });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
 
@@ -700,7 +696,7 @@ test('the signed TMGR blocklist stops an installed plugin and a built-in one', a
 });
 
 const openPluginSettings = async (page) => {
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
 };
@@ -994,13 +990,13 @@ test('cards and a grid use theme-aware backgrounds, work by mouse and keyboard, 
   await desktopPage(page, {}, { devPlugins: [uiNodes] });
   await page.setViewportSize({ width: 1100, height: 800 });
   await page.goto('/demo/board');
-  await page.getByTitle('Switch workspace').first().click();
+  await page.getByTestId('workspace-rail-add').click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
 
-  await page.locator('[data-sidebar="footer"] button').first().click();
+  await page.getByTestId('workspace-rail-user').click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   await page

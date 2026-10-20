@@ -85,9 +85,11 @@ async function routeApi(context, requests) {
 }
 
 async function mockTwoWorkspaces(page, requests) {
-  await page.addInitScript(() =>
-    localStorage.setItem('token', JSON.stringify({ token: 'fixture' })),
-  );
+  await page.addInitScript(() => {
+    localStorage.setItem('token', JSON.stringify({ token: 'fixture' }));
+    // The board's first-visit tour overlay would intercept the rail click.
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+  });
   await page.routeWebSocket(/.*/, () => {});
   await routeApi(page, requests);
 }
@@ -108,8 +110,9 @@ test('switching workspace on the board keeps the app rendering', async ({
   await expect(page.getByText('Task 11 in ws 1').first()).toBeVisible();
 
   requests.length = 0;
-  await page.getByTitle('Switch workspace').first().click();
-  await page.getByRole('menuitem', { name: /Other/ }).first().click();
+  await page
+    .locator('[data-testid="workspace-rail-chip"][aria-label="Other"]')
+    .click();
   await expect(page).toHaveURL(/\/other\/board/);
   await expect(page.getByText('Task 31 in ws 2').first()).toBeVisible();
   await expect(page.getByText('Task 11 in ws 1').first()).toBeHidden();
@@ -160,9 +163,11 @@ test('two tabs on different workspaces do not affect each other', async ({
 }) => {
   const context = await browser.newContext();
   await routeApi(context);
-  await context.addInitScript(() =>
-    localStorage.setItem('token', JSON.stringify({ token: 'fixture' })),
-  );
+  await context.addInitScript(() => {
+    localStorage.setItem('token', JSON.stringify({ token: 'fixture' }));
+    // The board's first-visit tour overlay would intercept the rail click.
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+  });
   await context.routeWebSocket(/.*/, () => {});
 
   const pageA = await context.newPage();
@@ -177,8 +182,9 @@ test('two tabs on different workspaces do not affect each other', async ({
   // Switch only B, through the real sidebar UI — same localStorage as A, independent
   // sessionStorage. A must not move, and the switch itself must never PUT.
   const requestsB = trackRequests(pageB);
-  await pageB.getByTitle('Switch workspace').first().click();
-  await pageB.getByRole('menuitem', { name: /Other/ }).first().click();
+  await pageB
+    .locator('[data-testid="workspace-rail-chip"][aria-label="Other"]')
+    .click();
   await expect(pageB).toHaveURL(/\/other\/board/);
   await expect(pageB.getByText('Task 31 in ws 2').first()).toBeVisible();
   expect(
