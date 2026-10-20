@@ -25,6 +25,7 @@ impl clap::builder::TypedValueParser for PathArg {
     }
 }
 
+#[cfg(feature = "runner")]
 pub fn expand_str(raw: &str) -> Result<String, String> {
     expand(raw).map(|p| p.to_string_lossy().into_owned())
 }
