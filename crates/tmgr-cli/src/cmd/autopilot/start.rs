@@ -903,11 +903,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         &mut stdin.lock(),
         &mut err,
     )?;
-    draft.restrict(
-        args.only.as_deref(),
-        args.skip.as_deref(),
-        args.order.as_deref(),
-    )?;
+    draft.restrict(None, args.skip.as_deref(), args.order.as_deref())?;
     let profile = draft.profile().to_string();
     let tool = agent_tool(&profile);
     let limits = if guard {
