@@ -3,7 +3,8 @@
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 
 	import WindowControls from '@/components/desktop/WindowControls.vue';
-	import UserAvatar from '@/components/general/UserAvatar.vue';
+	import SidebarUserMenu from '@/components/general/SidebarUserMenu.vue';
+	import WorkspaceRail from '@/components/general/WorkspaceRail.vue';
 	import {
 		hasNativeTitleBar,
 		isDesktopApp,
@@ -29,7 +30,6 @@
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
 	import MoveToCloudHost from '@/components/desktop/MoveToCloudHost.vue';
 	import Confirm from '@/components/general/Confirm.vue';
-	import DarkMode from '@/components/general/DarkMode.vue';
 	import EmailVerifyBanner from '@/components/general/EmailVerifyBanner.vue';
 	import GlobalSearch from '@/components/general/GlobalSearch.vue';
 	import ModulesPicker from '@/components/general/ModulesPicker.vue';
@@ -54,7 +54,6 @@
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
-		DropdownMenuGroup,
 		DropdownMenuItem,
 		DropdownMenuLabel,
 		DropdownMenuSeparator,
@@ -95,8 +94,8 @@
 		ArchiveIcon,
 		ArrowLeft,
 		ArrowRight,
-		BadgeCheck,
 		BarChart3,
+		ChevronDown,
 		ChevronsUpDown,
 		ClipboardListIcon,
 		CloudUpload,
@@ -115,7 +114,6 @@
 		Pin,
 		Plug,
 		Plus,
-		Settings2,
 		Sparkles,
 		SquareKanban,
 		UserPlus,
@@ -136,6 +134,10 @@
 		viewBadgeAriaLabel,
 		viewBadgeLabel,
 	} from './sidebarViewBadge';
+	import {
+		isWorkspaceRailVisible,
+		RAIL_SIDEBAR_WIDTH_CLASS,
+	} from './workspaceRail';
 
 	const AiAssistantPanel = defineAsyncComponent(
 		() => import('@/components/agent/AiAssistantPanel.vue'),
@@ -153,6 +155,14 @@
 	const { canBack, canForward } = navHistory;
 	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
 	const isMobile = useMediaQuery('(max-width: 768px)');
+	const sidebarOpen = ref(true);
+	const showRail = computed(() =>
+		isWorkspaceRailVisible({
+			isMobile: isMobile.value,
+			expanded: sidebarOpen.value,
+			canUseApp: store.getters.canUseApp,
+		}),
+	);
 	const showAskAi = computed(
 		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
 	);
@@ -545,611 +555,582 @@
 </script>
 
 <template>
-	<SidebarProvider>
+	<SidebarProvider
+		@update:open="sidebarOpen = $event"
+		:class="showRail ? RAIL_SIDEBAR_WIDTH_CLASS : undefined"
+	>
 		<SidebarMobileCloser>
 			<Sidebar
 				collapsible="icon"
 				v-if="store.getters.canUseApp"
 				data-tour="nav.sidebar"
 			>
-				<SidebarHeader>
-					<AsyncContent
-						:pending="sidebarPending"
-						:loaded="true"
-						:error="sidebarError"
-						:retry="loadSidebar"
-					/>
-					<SidebarMenu>
-						<SidebarMenuItem>
-							<DropdownMenu>
-								<DropdownMenuTrigger as-child>
-									<SidebarMenuButton
-										size="lg"
-										data-tour="nav.workspace-switcher"
-										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-									>
-										<div
-											class="flex min-w-0 flex-1 items-center gap-2"
-											@click="openWorkspaceHome"
-										>
-											<div
-												class="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+				<div class="flex min-h-0 w-full flex-1">
+					<WorkspaceRail
+						v-if="showRail"
+						:workspaces="workspaces"
+						:active-workspace="activeWorkspace"
+						:is-desktop="isDesktop"
+						@select="setActiveWorkspace"
+						@create-local="openLocalWorkspaceDialog"
+					>
+						<template #footer>
+							<SidebarUserMenu
+								variant="rail"
+								:user="user"
+								:is-local-only="isLocalOnly"
+								:hub-hidden="hubHidden"
+								:workspace-code="activeWorkspace?.code ?? ''"
+								@logout="logout"
+							/>
+						</template>
+					</WorkspaceRail>
+					<div class="flex min-h-0 min-w-0 flex-1 flex-col">
+						<SidebarHeader>
+							<AsyncContent
+								:pending="sidebarPending"
+								:loaded="true"
+								:error="sidebarError"
+								:retry="loadSidebar"
+							/>
+							<SidebarMenu>
+								<SidebarMenuItem>
+									<DropdownMenu>
+										<DropdownMenuTrigger as-child>
+											<SidebarMenuButton
+												size="lg"
+												:data-tour="
+													showRail ? undefined : 'nav.workspace-switcher'
+												"
+												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
-												<PackageOpen class="size-4" />
-											</div>
+												<div
+													class="flex min-w-0 flex-1 items-center gap-2"
+													@click="openWorkspaceHome"
+												>
+													<div
+														class="flex aspect-square size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground"
+													>
+														<PackageOpen class="size-4" />
+													</div>
 
-											<div class="grid flex-1 text-left text-sm leading-tight">
+													<div
+														class="grid flex-1 text-left text-sm leading-tight"
+													>
+														<span class="flex min-w-0 items-center gap-1.5">
+															<span class="truncate font-semibold">
+																{{ activeWorkspace?.name }}
+															</span>
+															<span
+																v-if="activeWorkspace?.is_local"
+																class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
+																data-testid="local-workspace-badge"
+																data-tour="local.badge"
+																>Local</span
+															>
+														</span>
+														<span class="truncate text-xs">{{
+															activeWorkspace?.is_local
+																? 'stored on this computer'
+																: 'current workspace'
+														}}</span>
+													</div>
+												</div>
+												<span
+													class="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-sidebar-border"
+													:title="
+														showRail ? 'Workspace actions' : 'Switch workspace'
+													"
+												>
+													<component
+														:is="showRail ? ChevronDown : ChevronsUpDown"
+														class="size-4"
+													/>
+												</span>
+											</SidebarMenuButton>
+										</DropdownMenuTrigger>
+
+										<DropdownMenuContent
+											class="max-h-[30rem] w-[--radix-dropdown-menu-trigger-width] min-w-56 overflow-y-auto rounded-lg"
+											align="start"
+											side="bottom"
+											:side-offset="4"
+										>
+											<template v-if="!showRail">
+												<DropdownMenuLabel
+													class="text-xs text-muted-foreground"
+												>
+													Workspaces
+												</DropdownMenuLabel>
+
+												<DropdownMenuItem
+													v-for="workspace in workspaces"
+													:key="workspace.name"
+													class="cursor-pointer gap-2 p-2"
+													@click="setActiveWorkspace(workspace)"
+												>
+													<div
+														class="flex size-6 items-center justify-center rounded-sm border"
+													>
+														<component
+															:is="
+																workspace.id === activeWorkspace.id
+																	? PackageOpen
+																	: Package
+															"
+															class="size-4 shrink-0"
+														/>
+													</div>
+
+													<span class="flex-1">{{ workspace.name }}</span>
+													<span
+														v-if="workspace.is_local"
+														class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground dark:bg-muted"
+														:title="workspace.path"
+														>Local</span
+													>
+
+													<button
+														v-if="canLeaveWorkspace(workspace)"
+														@click.stop="handleExitWorkspace(workspace, $event)"
+														class="ml-auto flex size-6 items-center justify-center rounded transition-colors hover:bg-destructive/10 hover:text-destructive"
+														title="Leave workspace"
+													>
+														<LogOut class="size-4" />
+													</button>
+												</DropdownMenuItem>
+
+												<DropdownMenuSeparator />
+
+												<DropdownMenuItem
+													class="cursor-pointer gap-2 p-2"
+													@click="$router.push('/settings/workspaces?create')"
+												>
+													<div
+														class="flex size-6 items-center justify-center rounded-md border bg-background"
+													>
+														<Plus class="size-4" />
+													</div>
+													<div class="font-medium text-muted-foreground">
+														Add workspace
+													</div>
+												</DropdownMenuItem>
+											</template>
+
+											<template v-if="isDesktop && activeWorkspace?.is_local">
+												<DropdownMenuItem
+													class="cursor-pointer gap-2 p-2"
+													@click="runLocalAction('reveal')"
+												>
+													<div
+														class="flex size-6 items-center justify-center rounded-md border bg-background"
+													>
+														<FolderOpen class="size-4" />
+													</div>
+													<div class="font-medium text-muted-foreground">
+														{{ revealLabel }}
+													</div>
+												</DropdownMenuItem>
+												<DropdownMenuItem
+													class="cursor-pointer gap-2 p-2"
+													@click="runLocalAction('export')"
+												>
+													<div
+														class="flex size-6 items-center justify-center rounded-md border bg-background"
+													>
+														<FileDown class="size-4" />
+													</div>
+													<div class="font-medium text-muted-foreground">
+														Export to Markdown
+													</div>
+												</DropdownMenuItem>
+												<DropdownMenuItem
+													v-if="!isLocalOnly"
+													class="cursor-pointer gap-2 p-2"
+													data-testid="move-to-cloud-menu-item"
+													@click="moveToCloud"
+												>
+													<div
+														class="flex size-6 items-center justify-center rounded-md border bg-background"
+													>
+														<CloudUpload class="size-4" />
+													</div>
+													<div class="font-medium text-muted-foreground">
+														Move to cloud…
+													</div>
+												</DropdownMenuItem>
+											</template>
+
+											<DropdownMenuItem
+												v-if="isDesktop && !showRail"
+												class="cursor-pointer gap-2 p-2"
+												@click="openLocalWorkspaceDialog"
+											>
+												<div
+													class="flex size-6 items-center justify-center rounded-md border bg-background"
+												>
+													<HardDrive class="size-4" />
+												</div>
+												<div class="font-medium text-muted-foreground">
+													New local workspace
+												</div>
+											</DropdownMenuItem>
+
+											<DropdownMenuItem
+												class="cursor-pointer gap-2 p-2"
+												@click="$router.push('/settings/workspaces?invite')"
+											>
+												<div
+													class="flex size-6 items-center justify-center rounded-md border bg-background"
+												>
+													<UserPlus class="size-4" />
+												</div>
+												<div class="font-medium text-muted-foreground">
+													Invite members
+												</div>
+											</DropdownMenuItem>
+
+											<DropdownMenuItem
+												v-if="
+													showRail &&
+													activeWorkspace &&
+													canLeaveWorkspace(activeWorkspace)
+												"
+												class="cursor-pointer gap-2 p-2"
+												data-testid="leave-workspace-menu-item"
+												@click="handleExitWorkspace(activeWorkspace, $event)"
+											>
+												<div
+													class="flex size-6 items-center justify-center rounded-md border bg-background"
+												>
+													<LogOut class="size-4" />
+												</div>
+												<div class="font-medium text-muted-foreground">
+													Leave this workspace
+												</div>
+											</DropdownMenuItem>
+										</DropdownMenuContent>
+									</DropdownMenu>
+								</SidebarMenuItem>
+							</SidebarMenu>
+							<SidebarMenu v-if="!isMobile" data-testid="sidebar-quick-actions">
+								<SidebarMenuItem v-if="activeWorkspace?.code">
+									<GlobalSearch
+										variant="sidebar"
+										:workspace-code="activeWorkspace.code"
+										:pages-enabled="pagesEnabled"
+									/>
+								</SidebarMenuItem>
+								<SidebarMenuItem
+									class="grid gap-2 group-data-[collapsible=icon]:grid-cols-1 group-data-[collapsible=icon]:gap-1"
+									:class="showAskAi ? 'grid-cols-2' : 'grid-cols-1'"
+								>
+									<SidebarMenuButton
+										variant="outline"
+										tooltip="New task"
+										data-tour="nav.create-task"
+										class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
+										@click="store.commit('setShowCreatingTaskModal')"
+									>
+										<FilePlus />
+										<span>New task</span>
+									</SidebarMenuButton>
+									<SidebarMenuButton
+										v-if="showAskAi"
+										variant="outline"
+										tooltip="Ask AI"
+										data-tour="nav.ask-ai"
+										:is-active="!!store.state.aiPanelOpen"
+										class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
+										@click="store.commit('toggleAiPanel')"
+									>
+										<Sparkles />
+										<span>Ask AI</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+							</SidebarMenu>
+						</SidebarHeader>
+
+						<SidebarContent>
+							<SidebarGroup
+								v-if="
+									pagesEnabled && pinnedPages.length && activeWorkspace?.code
+								"
+								data-testid="sidebar-pinned"
+							>
+								<SidebarGroupLabel>Pinned</SidebarGroupLabel>
+								<SidebarMenu>
+									<SidebarMenuItem v-for="page in pinnedPages" :key="page.id">
+										<SidebarMenuButton as-child :tooltip="page.title">
+											<router-link
+												:to="pageUrl(activeWorkspace.code, page.slug)"
+												:class="NAV_ACTIVE"
+											>
+												<Pin />
+												<span>{{ page.title }}</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+								</SidebarMenu>
+							</SidebarGroup>
+
+							<SidebarGroup>
+								<SidebarGroupLabel>Main</SidebarGroupLabel>
+
+								<SidebarMenu>
+									<SidebarMenuItem v-if="isFeatureEnabled('dashboard')">
+										<SidebarMenuButton as-child>
+											<router-link
+												:class="NAV_ACTIVE"
+												:to="
+													activeWorkspace?.code
+														? `/${activeWorkspace.code}/dashboard`
+														: '/app'
+												"
+											>
+												<LayoutDashboard />
+												<span>Dashboard</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+
+									<SidebarMenuItem>
+										<SidebarMenuButton as-child>
+											<router-link
+												:class="NAV_ACTIVE"
+												:to="
+													activeWorkspace?.code
+														? `/${activeWorkspace.code}/list`
+														: '/list'
+												"
+											>
+												<ClipboardListIcon />
+												<span>List</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+
+									<SidebarMenuItem v-if="showSurface('board.nav')">
+										<SidebarMenuButton as-child>
+											<router-link
+												:class="NAV_ACTIVE"
+												:to="
+													activeWorkspace?.code
+														? `/${activeWorkspace.code}/board`
+														: '/board'
+												"
+											>
+												<SquareKanban />
+												<span>Board</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+
+									<SidebarMenuItem v-if="isFeatureEnabled('daily_routines')">
+										<SidebarMenuButton
+											as-child
+											:tooltip="
+												activeWorkspace?.is_local
+													? 'Stored only on this device — not synced'
+													: undefined
+											"
+										>
+											<router-link
+												to="/routines"
+												:class="NAV_ACTIVE"
+												:title="
+													activeWorkspace?.is_local
+														? 'Stored only on this device — not synced'
+														: undefined
+												"
+											>
+												<Inbox />
 												<span class="flex min-w-0 items-center gap-1.5">
-													<span class="truncate font-semibold">
-														{{ activeWorkspace?.name }}
-													</span>
+													<span class="truncate">{{
+														activeWorkspace?.is_local
+															? 'Local routines'
+															: 'Daily Routines'
+													}}</span>
 													<span
 														v-if="activeWorkspace?.is_local"
 														class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
-														data-testid="local-workspace-badge"
-														data-tour="local.badge"
+														data-testid="local-routines-menu-badge"
 														>Local</span
 													>
 												</span>
-												<span class="truncate text-xs">{{
-													activeWorkspace?.is_local
-														? 'stored on this computer'
-														: 'current workspace'
-												}}</span>
-											</div>
-										</div>
-										<span
-											class="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md hover:bg-sidebar-border"
-											title="Switch workspace"
-										>
-											<ChevronsUpDown class="size-4" />
-										</span>
-									</SidebarMenuButton>
-								</DropdownMenuTrigger>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
 
-								<DropdownMenuContent
-									class="max-h-[30rem] w-[--radix-dropdown-menu-trigger-width] min-w-56 overflow-y-auto rounded-lg"
-									align="start"
-									side="bottom"
-									:side-offset="4"
-								>
-									<DropdownMenuLabel class="text-xs text-muted-foreground">
-										Workspaces
-									</DropdownMenuLabel>
-
-									<DropdownMenuItem
-										v-for="workspace in workspaces"
-										:key="workspace.name"
-										class="cursor-pointer gap-2 p-2"
-										@click="setActiveWorkspace(workspace)"
-									>
-										<div
-											class="flex size-6 items-center justify-center rounded-sm border"
-										>
-											<component
-												:is="
-													workspace.id === activeWorkspace.id
-														? PackageOpen
-														: Package
+									<SidebarMenuItem>
+										<SidebarMenuButton as-child>
+											<router-link
+												data-tour="nav.archive"
+												:class="NAV_ACTIVE"
+												:to="
+													activeWorkspace?.code
+														? `/${activeWorkspace.code}/archive`
+														: '/archive'
 												"
-												class="size-4 shrink-0"
-											/>
-										</div>
-
-										<span class="flex-1">{{ workspace.name }}</span>
-										<span
-											v-if="workspace.is_local"
-											class="rounded bg-muted px-1.5 py-0.5 text-2xs font-semibold text-muted-foreground dark:bg-muted"
-											:title="workspace.path"
-											>Local</span
-										>
-
-										<button
-											v-if="canLeaveWorkspace(workspace)"
-											@click.stop="handleExitWorkspace(workspace, $event)"
-											class="ml-auto flex size-6 items-center justify-center rounded transition-colors hover:bg-destructive/10 hover:text-destructive"
-											title="Leave workspace"
-										>
-											<LogOut class="size-4" />
-										</button>
-									</DropdownMenuItem>
-
-									<DropdownMenuSeparator />
-
-									<DropdownMenuItem
-										class="cursor-pointer gap-2 p-2"
-										@click="$router.push('/settings/workspaces?create')"
-									>
-										<div
-											class="flex size-6 items-center justify-center rounded-md border bg-background"
-										>
-											<Plus class="size-4" />
-										</div>
-										<div class="font-medium text-muted-foreground">
-											Add workspace
-										</div>
-									</DropdownMenuItem>
-
-									<template v-if="isDesktop && activeWorkspace?.is_local">
-										<DropdownMenuItem
-											class="cursor-pointer gap-2 p-2"
-											@click="runLocalAction('reveal')"
-										>
-											<div
-												class="flex size-6 items-center justify-center rounded-md border bg-background"
 											>
-												<FolderOpen class="size-4" />
-											</div>
-											<div class="font-medium text-muted-foreground">
-												{{ revealLabel }}
-											</div>
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											class="cursor-pointer gap-2 p-2"
-											@click="runLocalAction('export')"
-										>
-											<div
-												class="flex size-6 items-center justify-center rounded-md border bg-background"
-											>
-												<FileDown class="size-4" />
-											</div>
-											<div class="font-medium text-muted-foreground">
-												Export to Markdown
-											</div>
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="!isLocalOnly"
-											class="cursor-pointer gap-2 p-2"
-											data-testid="move-to-cloud-menu-item"
-											@click="moveToCloud"
-										>
-											<div
-												class="flex size-6 items-center justify-center rounded-md border bg-background"
-											>
-												<CloudUpload class="size-4" />
-											</div>
-											<div class="font-medium text-muted-foreground">
-												Move to cloud…
-											</div>
-										</DropdownMenuItem>
-									</template>
+												<ArchiveIcon />
+												<span>Archive</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+								</SidebarMenu>
+							</SidebarGroup>
 
-									<DropdownMenuItem
-										v-if="isDesktop"
-										class="cursor-pointer gap-2 p-2"
-										@click="openLocalWorkspaceDialog"
-									>
-										<div
-											class="flex size-6 items-center justify-center rounded-md border bg-background"
-										>
-											<HardDrive class="size-4" />
-										</div>
-										<div class="font-medium text-muted-foreground">
-											New local workspace
-										</div>
-									</DropdownMenuItem>
-
-									<DropdownMenuItem
-										class="cursor-pointer gap-2 p-2"
-										@click="$router.push('/settings/workspaces?invite')"
-									>
-										<div
-											class="flex size-6 items-center justify-center rounded-md border bg-background"
-										>
-											<UserPlus class="size-4" />
-										</div>
-										<div class="font-medium text-muted-foreground">
-											Invite members
-										</div>
-									</DropdownMenuItem>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</SidebarMenuItem>
-					</SidebarMenu>
-					<SidebarMenu v-if="!isMobile" data-testid="sidebar-quick-actions">
-						<SidebarMenuItem v-if="activeWorkspace?.code">
-							<GlobalSearch
-								variant="sidebar"
+							<SidebarCategoriesSection
+								v-if="isFeatureEnabled('categories') && activeWorkspace?.code"
 								:workspace-code="activeWorkspace.code"
-								:pages-enabled="pagesEnabled"
 							/>
-						</SidebarMenuItem>
-						<SidebarMenuItem
-							class="grid gap-2 group-data-[collapsible=icon]:grid-cols-1 group-data-[collapsible=icon]:gap-1"
-							:class="showAskAi ? 'grid-cols-2' : 'grid-cols-1'"
-						>
-							<SidebarMenuButton
-								variant="outline"
-								tooltip="New task"
-								data-tour="nav.create-task"
-								class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
-								@click="store.commit('setShowCreatingTaskModal')"
-							>
-								<FilePlus />
-								<span>New task</span>
-							</SidebarMenuButton>
-							<SidebarMenuButton
-								v-if="showAskAi"
-								variant="outline"
-								tooltip="Ask AI"
-								data-tour="nav.ask-ai"
-								:is-active="!!store.state.aiPanelOpen"
-								class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
-								@click="store.commit('toggleAiPanel')"
-							>
-								<Sparkles />
-								<span>Ask AI</span>
-							</SidebarMenuButton>
-						</SidebarMenuItem>
-					</SidebarMenu>
-				</SidebarHeader>
 
-				<SidebarContent>
-					<SidebarGroup
-						v-if="pagesEnabled && pinnedPages.length && activeWorkspace?.code"
-						data-testid="sidebar-pinned"
-					>
-						<SidebarGroupLabel>Pinned</SidebarGroupLabel>
-						<SidebarMenu>
-							<SidebarMenuItem v-for="page in pinnedPages" :key="page.id">
-								<SidebarMenuButton as-child :tooltip="page.title">
-									<router-link
-										:to="pageUrl(activeWorkspace.code, page.slug)"
-										:class="NAV_ACTIVE"
+							<SidebarPagesSection
+								v-if="pagesEnabled && activeWorkspace?.code"
+								:workspace-id="Number(activeWorkspace.id)"
+								:workspace-code="activeWorkspace.code"
+								@pinned="pinnedPages = $event"
+							/>
+
+							<SidebarGroup>
+								<SidebarGroupLabel>Tools</SidebarGroupLabel>
+
+								<SidebarMenu>
+									<SidebarMenuItem>
+										<SidebarMenuButton as-child>
+											<router-link to="/stats" :class="NAV_ACTIVE">
+												<BarChart3 />
+												<span>Statistics</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+									<SidebarMenuItem v-if="isDesktop">
+										<SidebarMenuButton as-child>
+											<router-link to="/ai-usage" :class="NAV_ACTIVE">
+												<Gauge />
+												<span>AI usage</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+									<SidebarMenuItem
+										v-if="activeWorkspace?.code && showSurface('files.nav')"
 									>
-										<Pin />
-										<span>{{ page.title }}</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
-					</SidebarGroup>
-
-					<SidebarGroup>
-						<SidebarGroupLabel>Main</SidebarGroupLabel>
-
-						<SidebarMenu>
-							<SidebarMenuItem v-if="isFeatureEnabled('dashboard')">
-								<SidebarMenuButton as-child>
-									<router-link
-										:class="NAV_ACTIVE"
-										:to="
-											activeWorkspace?.code
-												? `/${activeWorkspace.code}/dashboard`
-												: '/app'
-										"
-									>
-										<LayoutDashboard />
-										<span>Dashboard</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-
-							<SidebarMenuItem>
-								<SidebarMenuButton as-child>
-									<router-link
-										:class="NAV_ACTIVE"
-										:to="
-											activeWorkspace?.code
-												? `/${activeWorkspace.code}/list`
-												: '/list'
-										"
-									>
-										<ClipboardListIcon />
-										<span>List</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-
-							<SidebarMenuItem v-if="showSurface('board.nav')">
-								<SidebarMenuButton as-child>
-									<router-link
-										:class="NAV_ACTIVE"
-										:to="
-											activeWorkspace?.code
-												? `/${activeWorkspace.code}/board`
-												: '/board'
-										"
-									>
-										<SquareKanban />
-										<span>Board</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-
-							<SidebarMenuItem v-if="isFeatureEnabled('daily_routines')">
-								<SidebarMenuButton
-									as-child
-									:tooltip="
-										activeWorkspace?.is_local
-											? 'Stored only on this device — not synced'
-											: undefined
-									"
-								>
-									<router-link
-										to="/routines"
-										:class="NAV_ACTIVE"
-										:title="
-											activeWorkspace?.is_local
-												? 'Stored only on this device — not synced'
-												: undefined
-										"
-									>
-										<Inbox />
-										<span class="flex min-w-0 items-center gap-1.5">
-											<span class="truncate">{{
-												activeWorkspace?.is_local
-													? 'Local routines'
-													: 'Daily Routines'
-											}}</span>
-											<span
-												v-if="activeWorkspace?.is_local"
-												class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-2xs font-semibold uppercase text-amber-600 dark:text-amber-400"
-												data-testid="local-routines-menu-badge"
-												>Local</span
+										<SidebarMenuButton as-child>
+											<router-link
+												:to="`/${activeWorkspace.code}/files`"
+												:class="NAV_ACTIVE"
 											>
-										</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-
-							<SidebarMenuItem>
-								<SidebarMenuButton as-child>
-									<router-link
-										data-tour="nav.archive"
-										:class="NAV_ACTIVE"
-										:to="
-											activeWorkspace?.code
-												? `/${activeWorkspace.code}/archive`
-												: '/archive'
-										"
+												<PaperclipIcon />
+												<span>Files</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+									<SidebarMenuItem
+										v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
 									>
-										<ArchiveIcon />
-										<span>Archive</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
-					</SidebarGroup>
-
-					<SidebarCategoriesSection
-						v-if="isFeatureEnabled('categories') && activeWorkspace?.code"
-						:workspace-code="activeWorkspace.code"
-					/>
-
-					<SidebarPagesSection
-						v-if="pagesEnabled && activeWorkspace?.code"
-						:workspace-id="Number(activeWorkspace.id)"
-						:workspace-code="activeWorkspace.code"
-						@pinned="pinnedPages = $event"
-					/>
-
-					<SidebarGroup>
-						<SidebarGroupLabel>Tools</SidebarGroupLabel>
-
-						<SidebarMenu>
-							<SidebarMenuItem>
-								<SidebarMenuButton as-child>
-									<router-link to="/stats" :class="NAV_ACTIVE">
-										<BarChart3 />
-										<span>Statistics</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem v-if="isDesktop">
-								<SidebarMenuButton as-child>
-									<router-link to="/ai-usage" :class="NAV_ACTIVE">
-										<Gauge />
-										<span>AI usage</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem
-								v-if="activeWorkspace?.code && showSurface('files.nav')"
-							>
-								<SidebarMenuButton as-child>
-									<router-link
-										:to="`/${activeWorkspace.code}/files`"
-										:class="NAV_ACTIVE"
-									>
-										<PaperclipIcon />
-										<span>Files</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem
-								v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
-							>
-								<SidebarMenuButton as-child>
-									<router-link
-										:to="`/${activeWorkspace.code}/map`"
-										:class="NAV_ACTIVE"
-									>
-										<Waypoints />
-										<span>Map</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<template v-if="activeWorkspace?.code">
-								<SidebarMenuItem v-for="page in pluginPages" :key="page.key">
-									<SidebarMenuButton
-										as-child
-										:class="
-											page.badge && 'pr-11 group-data-[collapsible=icon]:!pr-2'
-										"
-									>
-										<router-link
-											:to="`/${activeWorkspace.code}/plugins/${page.key}`"
-											:class="NAV_ACTIVE"
-											:aria-label="viewBadgeAriaLabel(page.title, page.badge)"
+										<SidebarMenuButton as-child>
+											<router-link
+												:to="`/${activeWorkspace.code}/map`"
+												:class="NAV_ACTIVE"
+											>
+												<Waypoints />
+												<span>Map</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+									<template v-if="activeWorkspace?.code">
+										<SidebarMenuItem
+											v-for="page in pluginPages"
+											:key="page.key"
 										>
-											<span class="relative flex shrink-0">
-												<Plug />
-												<span
-													v-if="page.badge"
-													aria-hidden="true"
-													data-testid="plugin-view-badge-dot"
-													:class="[
-														'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
-														BADGE_DOT_CLASS[page.badge.tone],
-													]"
-												/>
-											</span>
-											<span>{{ page.title }}</span>
-										</router-link>
-									</SidebarMenuButton>
-									<SidebarMenuBadge
-										v-if="page.badge"
-										aria-hidden="true"
-										data-testid="plugin-view-badge"
-										:class="[
-											'rounded-full px-1.5 text-2xs font-semibold',
-											BADGE_TONE_CLASS[page.badge.tone],
-										]"
-									>
-										{{ viewBadgeLabel(page.badge) }}
-									</SidebarMenuBadge>
-								</SidebarMenuItem>
-							</template>
-							<SidebarMenuItem v-if="activeWorkspace?.code && !hubHidden">
-								<SidebarMenuButton as-child>
-									<router-link
-										data-tour="nav.getting-started"
-										:to="`/${activeWorkspace.code}/getting-started`"
-										:class="NAV_ACTIVE"
-									>
-										<LifeBuoy />
-										<span>Getting started</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
-					</SidebarGroup>
-				</SidebarContent>
-
-				<SidebarFooter>
-					<SidebarMenu>
-						<SidebarMenuItem
-							v-if="isLocalOnly"
-							class="group-data-[collapsible=icon]:hidden"
-						>
-							<Button
-								class="w-full"
-								size="sm"
-								data-testid="sidebar-create-account"
-								data-tour="nav.create-account"
-								@click="$router.push({ name: 'Login' })"
-							>
-								Create account
-							</Button>
-						</SidebarMenuItem>
-						<SidebarMenuItem>
-							<DropdownMenu>
-								<DropdownMenuTrigger as-child>
-									<SidebarMenuButton
-										size="lg"
-										data-tour="nav.user-menu"
-										class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-									>
-										<UserAvatar
-											:user-id="user?.id ?? 0"
-											:name="user?.name ?? ''"
-											:has-avatar="user?.has_avatar ?? false"
-											:size="32"
-										/>
-										<div class="grid flex-1 text-left text-sm leading-tight">
-											<span class="flex items-center gap-1.5">
-												<span class="truncate font-semibold">{{
-													user.name
-												}}</span>
-												<span
-													v-if="isLocalOnly"
-													data-testid="local-badge"
-													class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground"
-													>Local</span
+											<SidebarMenuButton
+												as-child
+												:class="
+													page.badge &&
+													'pr-11 group-data-[collapsible=icon]:!pr-2'
+												"
+											>
+												<router-link
+													:to="`/${activeWorkspace.code}/plugins/${page.key}`"
+													:class="NAV_ACTIVE"
+													:aria-label="
+														viewBadgeAriaLabel(page.title, page.badge)
+													"
 												>
-											</span>
-											<span v-if="!isLocalOnly" class="truncate text-xs">{{
-												user.email
-											}}</span>
-										</div>
-										<ChevronsUpDown class="ml-auto size-4" />
-									</SidebarMenuButton>
-								</DropdownMenuTrigger>
-
-								<DropdownMenuContent
-									class="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-									side="bottom"
-									align="end"
-									:side-offset="4"
-								>
-									<DropdownMenuLabel class="p-0 font-normal">
-										<div
-											class="flex items-center gap-2 px-1 py-1.5 text-left text-sm"
-										>
-											<UserAvatar
-												:user-id="user?.id ?? 0"
-												:name="user?.name ?? ''"
-												:has-avatar="user?.has_avatar ?? false"
-												:size="32"
-											/>
-											<div class="grid flex-1 text-left text-sm leading-tight">
-												<span class="truncate font-semibold">
-													{{ user.name }}
-												</span>
-												<span v-if="!isLocalOnly" class="truncate text-xs">{{
-													user.email
-												}}</span>
-											</div>
-										</div>
-									</DropdownMenuLabel>
-
-									<DropdownMenuSeparator />
-
-									<DropdownMenuGroup>
-										<DropdownMenuItem
-											@click="$router.push('/settings?tab=profile')"
-											class="cursor-pointer"
-										>
-											<BadgeCheck />
-											Profile
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/settings/sections')"
-											class="cursor-pointer"
-										>
-											<Settings2 />
-											Settings
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="activeWorkspace?.code && hubHidden"
-											data-tour="nav.getting-started"
-											@click="
-												$router.push(`/${activeWorkspace.code}/getting-started`)
-											"
-											class="cursor-pointer"
-										>
-											<LifeBuoy />
-											Getting started
-										</DropdownMenuItem>
-										<DropdownMenuItem>
-											<DarkMode />
-										</DropdownMenuItem>
-									</DropdownMenuGroup>
-
-									<template v-if="!isLocalOnly">
-										<DropdownMenuSeparator />
-
-										<DropdownMenuItem class="cursor-pointer" @click="logout">
-											<LogOut />
-											Log out
-										</DropdownMenuItem>
+													<span class="relative flex shrink-0">
+														<Plug />
+														<span
+															v-if="page.badge"
+															aria-hidden="true"
+															data-testid="plugin-view-badge-dot"
+															:class="[
+																'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
+																BADGE_DOT_CLASS[page.badge.tone],
+															]"
+														/>
+													</span>
+													<span>{{ page.title }}</span>
+												</router-link>
+											</SidebarMenuButton>
+											<SidebarMenuBadge
+												v-if="page.badge"
+												aria-hidden="true"
+												data-testid="plugin-view-badge"
+												:class="[
+													'rounded-full px-1.5 text-2xs font-semibold',
+													BADGE_TONE_CLASS[page.badge.tone],
+												]"
+											>
+												{{ viewBadgeLabel(page.badge) }}
+											</SidebarMenuBadge>
+										</SidebarMenuItem>
 									</template>
-								</DropdownMenuContent>
-							</DropdownMenu>
-						</SidebarMenuItem>
-					</SidebarMenu>
-				</SidebarFooter>
+									<SidebarMenuItem v-if="activeWorkspace?.code && !hubHidden">
+										<SidebarMenuButton as-child>
+											<router-link
+												data-tour="nav.getting-started"
+												:to="`/${activeWorkspace.code}/getting-started`"
+												:class="NAV_ACTIVE"
+											>
+												<LifeBuoy />
+												<span>Getting started</span>
+											</router-link>
+										</SidebarMenuButton>
+									</SidebarMenuItem>
+								</SidebarMenu>
+							</SidebarGroup>
+						</SidebarContent>
+
+						<SidebarFooter v-if="isLocalOnly || !showRail">
+							<SidebarMenu>
+								<SidebarMenuItem
+									v-if="isLocalOnly"
+									class="group-data-[collapsible=icon]:hidden"
+								>
+									<Button
+										class="w-full"
+										size="sm"
+										data-testid="sidebar-create-account"
+										data-tour="nav.create-account"
+										@click="$router.push({ name: 'Login' })"
+									>
+										Create account
+									</Button>
+								</SidebarMenuItem>
+								<SidebarMenuItem v-if="!showRail">
+									<SidebarUserMenu
+										:user="user"
+										:is-local-only="isLocalOnly"
+										:hub-hidden="hubHidden"
+										:workspace-code="activeWorkspace?.code ?? ''"
+										@logout="logout"
+									/>
+								</SidebarMenuItem>
+							</SidebarMenu>
+						</SidebarFooter>
+					</div>
+				</div>
 				<SidebarRail />
 			</Sidebar>
 

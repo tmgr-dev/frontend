@@ -452,6 +452,10 @@ html.tauri-desktop .is-scrolling::-webkit-scrollbar-thumb {
 	transition: left 200ms linear;
 }
 
+html:has([data-testid='workspace-rail']) .statusbar-offset {
+	left: 19.5rem;
+}
+
 html:has(.peer[data-state='collapsed']) .statusbar-offset {
 	left: 3rem;
 }
