@@ -385,6 +385,12 @@ impl Drop for Cloud {
                 {
                     let _ = c.kill(&s.id, "kill");
                 }
+                let end = Instant::now() + Duration::from_secs(5);
+                for s in &list {
+                    while c.remove(&s.id).is_err() && Instant::now() < end {
+                        thread::sleep(Duration::from_millis(100));
+                    }
+                }
             }
         }
         let _ = self.cmd(&["runner", "stop"]);
@@ -864,6 +870,10 @@ async fn starting_signs_pins_enables_and_hosts_the_loop_until_stop() {
     if !sandbox_usable() {
         return;
     }
+    if !cfg!(target_os = "macos") {
+        eprintln!("skipped: the Linux sandbox cannot read the stub agent in a temp directory");
+        return;
+    }
     let cloud = Cloud::new().await;
     cloud.add_rule();
     let mut p = cloud.start_pty(&[]);
@@ -1088,6 +1098,10 @@ async fn a_usage_jump_over_the_hard_limit_kills_the_agent_and_pauses_the_task_as
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn starting_a_drain_suspends_the_queue_loop_first_and_leaves_the_queue_on() {
     if !sandbox_usable() {
+        return;
+    }
+    if !cfg!(target_os = "macos") {
+        eprintln!("skipped: the Linux sandbox cannot read the stub agent in a temp directory");
         return;
     }
     let cloud = Cloud::new().await;
