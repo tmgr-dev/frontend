@@ -30,7 +30,6 @@
 			class="font-sans text-tmgr-blue dark:text-tmgr-gray"
 			:key="$store.state.appRerenderKey"
 		>
-			<DesktopAppBar />
 			<div class="flex min-h-screen">
 				<CustomSidebar>
 					<router-view v-slot="{ Component, route }">
@@ -101,7 +100,6 @@
 		getWorkspaces,
 	} from '@/actions/tmgr/workspaces';
 	import ActiveTasks from '@/components/ActiveTasks.vue';
-	import DesktopAppBar from '@/components/desktop/DesktopAppBar.vue';
 	import DesktopAuthLinks from '@/components/desktop/DesktopAuthLinks.vue';
 	import DesktopDownloads from '@/components/desktop/DesktopDownloads.vue';
 	import DesktopHotkeys from '@/components/desktop/DesktopHotkeys.vue';
@@ -173,7 +171,6 @@
 			CustomSidebar,
 			NewForm,
 			ActiveTasks,
-			DesktopAppBar,
 			DesktopAuthLinks,
 			DesktopDownloads,
 			DesktopHotkeys,

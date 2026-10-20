@@ -7,6 +7,7 @@ import featureTogglesModule from '@/store/modules/featureToggles';
 import pusherModule from '@/store/modules/pusher';
 import { applyThemeToDocument, isDarkTheme } from '@/theme/applyTheme';
 import { isDesktopApp } from '@/utils/desktop';
+import { DESKTOP_BAR_DISMISS_KEY } from '@/utils/openDesktopLink';
 import { requestCache } from '@/utils/requestCache';
 import { isInSecondaryWindow } from '@/utils/taskWindow';
 import {
@@ -211,11 +212,7 @@ const mutations = {
 	setToken(state, token) {
 		if ((state.token == null) !== (token == null)) {
 			state.sessionGeneration++;
-			try {
-				localStorage.removeItem('tmgr:desktop-bar-dismissed');
-			} catch {
-				/* storage unavailable */
-			}
+			localStorageSafe()?.removeItem(DESKTOP_BAR_DISMISS_KEY);
 		}
 		if (token == null) {
 			disconnectRealtime();

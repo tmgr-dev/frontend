@@ -25,6 +25,7 @@
 	} from '@/actions/tmgr/workspaces.ts';
 	import SidebarCategoriesSection from '@/components/categories/SidebarCategoriesSection.vue';
 	import ActiveCursorAgents from '@/components/cursor/ActiveCursorAgents.vue';
+	import DesktopAppBar from '@/components/desktop/DesktopAppBar.vue';
 	import LocalMoveBanner from '@/components/desktop/LocalMoveBanner.vue';
 	import LocalOnlyBanner from '@/components/desktop/LocalOnlyBanner.vue';
 	import MoveToCloudHost from '@/components/desktop/MoveToCloudHost.vue';
@@ -1194,6 +1195,7 @@
 			<SidebarInset
 				class="app-canvas pb-[var(--statusbar-h,0px)] pt-[var(--titlebar-h,0px)]"
 			>
+				<DesktopAppBar />
 				<EmailVerifyBanner />
 				<LocalOnlyBanner v-if="isDesktop" />
 				<LocalMoveBanner v-if="isDesktop && !isLocalOnly" />

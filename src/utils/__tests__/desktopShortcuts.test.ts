@@ -152,7 +152,7 @@ describe('parseDeepLink open', () => {
 		['tmgr://open/', null],
 		['tmgr://open?path=%2Fws%2Fboard', '/ws/board'],
 		['tmgr://open?path=/ws/board', '/ws/board'],
-		['tmgr://open?path=', ''],
+		['tmgr://open?path=', null],
 	])('parses %s', (url, path) => {
 		expect(parseDeepLink(url)).toEqual({ type: 'open', path });
 	});

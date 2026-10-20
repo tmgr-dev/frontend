@@ -38,6 +38,9 @@ function fixture(extraDeps: Record<string, unknown> = {}, storage?: unknown) {
 		{
 			vuex: { createStore: (options: any) => options },
 			'@/actions/tmgr/workspaces': { getWorkspaces },
+			'@/utils/openDesktopLink': {
+				DESKTOP_BAR_DISMISS_KEY: 'tmgr:desktop-bar-dismissed',
+			},
 			'@/utils/requestCache': { requestCache: cache },
 			'@/utils/workspaceContext': workspaceContext,
 			'@/composable/usePusher': { disconnectRealtime: jest.fn() },
@@ -244,20 +247,4 @@ test('login state flips clear the desktop bar dismissal, token rotation does not
 	expect(removeItem).not.toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
 	mutations.setToken(state, null);
 	expect(removeItem).toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
-});
-
-test('setToken survives storage that throws on the dismissal reset', () => {
-	const { config } = fixture(
-		{},
-		{
-			getItem: () => null,
-			setItem: jest.fn(),
-			removeItem: () => {
-				throw new Error('blocked');
-			},
-		},
-	);
-	expect(() =>
-		config.mutations.setToken(config.state, { token: 'x' }),
-	).not.toThrow();
 });

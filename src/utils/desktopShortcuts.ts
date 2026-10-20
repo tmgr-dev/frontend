@@ -267,7 +267,7 @@ export const parseDeepLink = (url: string): DeepLink | null => {
 	if (openMatch) {
 		if (openMatch[1] === undefined) return { type: 'open', path: null };
 		try {
-			return { type: 'open', path: decodeURIComponent(openMatch[1]) };
+			return { type: 'open', path: decodeURIComponent(openMatch[1]) || null };
 		} catch {
 			return null;
 		}
