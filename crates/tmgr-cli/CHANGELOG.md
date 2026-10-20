@@ -12,6 +12,7 @@
 - New `tmgr runner bind <WS:CODE|WS:TASK> <path>`, `unbind` and `list`: bind a local clone to a project (category) of an allowed cloud workspace without starting `tmgr run`. Terminal only, a typed confirmation, refused inside agent sessions; the folder must be a git clone whose origin matches the project's repository.
 - `tmgr queue rules add --repo <path>` offers to bind the folder right there when the project's repository is not bound yet.
 - Path arguments and prompts now expand `~` and `$HOME` (`--repo`, `--cwd`, bind paths, trusted folders and the path questions of `tmgr run`).
+- Sessions get `CLAUDE_CODE_TMPDIR` pointing at their private temp dir (as `TMPDIR` already did), so Claude Code's Bash tool no longer fails with EPERM under `/private/tmp` on macOS. Restart the runner after the update.
 
 ## 1.0.14
 
