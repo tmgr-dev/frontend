@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1');
+  });
+});
+
 test('the built-in estimate plugin draws its badge, status bar item, page and task section', async ({
   page,
 }) => {
@@ -123,7 +130,8 @@ test('several badges compact to 3 + "+N", and a task section runs a confirmed co
   });
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   await page
     .locator('article', { hasText: 'Multi badges' })
     .getByRole('switch')
@@ -193,7 +201,8 @@ test('a hostile folder plugin is refused writes, cut off when it spins and turne
     .or(page.locator('[data-sidebar="footer"] button'))
     .first()
     .click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'Hostile' });
   await expect(card.getByText('Off')).toBeVisible();
   await expect(card.getByText('read tasks')).toBeVisible();
@@ -334,7 +343,8 @@ test('a folder plugin talks to a local service it declared, and the settings say
   await expect(page).toHaveURL(/\/local-personal\//);
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'Local LLM' });
   await expect(
     card.getByText(
@@ -411,7 +421,8 @@ test('a folder plugin exports into its own folder, reads an attachment and a fil
   shell.files.set('personal/abc/notes.md', Buffer.from('# Notes'));
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'read a file you choose' });
   await expect(
     card.getByText("save files to this workspace's exports folder"),
@@ -463,7 +474,8 @@ test('a plugin view with its own page opens in a window whose calls go through t
   await expect(page).toHaveURL(/\/local-personal\//);
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   await page
     .locator('article', { hasText: 'Window plugin' })
     .getByRole('switch')
@@ -504,7 +516,8 @@ test('a plugin view with its own page opens in a window whose calls go through t
   });
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   await page
     .locator('article', { hasText: 'Window plugin' })
     .getByRole('switch')
@@ -540,7 +553,8 @@ test('a plugin is installed from a GitHub release only after the user agrees, an
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
 
   await page
     .getByLabel('Plugin repository')
@@ -658,7 +672,8 @@ test('the signed TMGR blocklist stops an installed plugin and a built-in one', a
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
 
   await page.getByLabel('Plugin repository').fill('acme/board');
   await page.getByRole('button', { name: 'Check', exact: true }).click();
@@ -686,7 +701,8 @@ test('the signed TMGR blocklist stops an installed plugin and a built-in one', a
 
 const openPluginSettings = async (page) => {
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
 };
 
 const sharedWorkspacePlugins = async (page, records) => {
@@ -749,6 +765,9 @@ test('the creator of a shared workspace turns a plugin on for everyone; it talks
     }),
   ]);
 
+  // Settings opens on General, then the nav pushes Plugins: two steps back.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/settings\/workspaces$/);
   await page.goBack();
   await expect(page).toHaveURL(/\/demo\/board/);
   await expect.poll(() => pluginCalls.length).toBeGreaterThan(0);
@@ -982,7 +1001,8 @@ test('cards and a grid use theme-aware backgrounds, work by mouse and keyboard, 
   await expect(page).toHaveURL(/\/local-personal\//);
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   await page
     .locator('article', { hasText: 'UI nodes' })
     .getByRole('switch')

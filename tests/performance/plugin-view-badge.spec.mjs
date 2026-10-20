@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1');
+  });
+});
+
 const shots = process.env.BADGE_SHOTS;
 
 const telegram = {
@@ -57,7 +64,8 @@ test('a view badge shows in the sidebar, collapses to a dot and clears', async (
   await expect(page).toHaveURL(/\/local-personal\//);
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   await page
     .locator('article', { hasText: 'Telegram' })
     .getByRole('switch')
@@ -147,7 +155,8 @@ test('a clickable stat is as tall as a plain one', async ({ page }) => {
   await page.getByRole('button', { name: 'Create' }).click();
   await expect(page).toHaveURL(/\/local-personal\//);
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   await page
     .locator('article', { hasText: 'Telegram' })
     .getByRole('switch')
@@ -223,7 +232,8 @@ test('a real plugin sets, clears and loses its sidebar badge', async ({
   await expect(page).toHaveURL(/\/local-personal\//);
 
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   const card = page.locator('article', { hasText: 'Telegram' });
   await card.getByRole('switch').click();
   await page.goto('/local-personal/plugins/dev.telegram/telegram');
