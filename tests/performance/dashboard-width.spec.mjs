@@ -161,7 +161,9 @@ for (const width of [1280, 1440, 1920]) {
           main: main.scrollWidth - main.clientWidth,
         };
       });
-      expect(m).toEqual({ page: 0, main: 0 });
+      // scrollbar-gutter: stable on <html> makes an unscrolled page read -7.
+      expect(m.page).toBeLessThanOrEqual(0);
+      expect(m.main).toBe(0);
     });
   }
 }
