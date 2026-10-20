@@ -7,6 +7,11 @@
 - `Ctrl-] x` stops the focused session after a y/n question, `Ctrl-] X` removes an exited one, `Ctrl-] r` renames the focused session.
 - Pane headers and hovered sidebar rows in `tmgr attach` show small buttons: ⏸ interrupts the agent's current turn (Esc for Claude Code and Codex, Ctrl-C otherwise; disabled unless it is working), ■ stops the session after a y/n question, ✕ closes it (an exited session is removed, a running one asks "stop and remove?"). Narrow panes hide the buttons; the keys stay.
 - New `tmgr rename <session> <new-name>` (same id, the name must be unique, `--json`). The runner gets `sessions.rename`; restart it after the update so attached clients and the desktop list show new names.
+- New `tmgr runner restart`: stops the running runner, waits until it has really exited and starts the installed version. Sessions keep running and reattach. It prints the old and new version and how many sessions were kept, works when the runner is down (it just starts it) and, when the runner is registered as a login service, starts it through the service (never a second copy). `--json` is supported; `--force` allows going back to an older version. `tmgr runner status` now says when the running runner is older than this tmgr and suggests `tmgr runner restart`.
+- The systemd login service unit now has `KillMode=process`, so stopping or restarting the runner no longer kills the sessions. Run `tmgr runner install-service --install` once to update an existing unit; `restart` warns when yours lacks it.
+- New `tmgr runner bind <WS:CODE|WS:TASK> <path>`, `unbind` and `list`: bind a local clone to a project (category) of an allowed cloud workspace without starting `tmgr run`. Terminal only, a typed confirmation, refused inside agent sessions; the folder must be a git clone whose origin matches the project's repository.
+- `tmgr queue rules add --repo <path>` offers to bind the folder right there when the project's repository is not bound yet.
+- Path arguments and prompts now expand `~` and `$HOME` (`--repo`, `--cwd`, bind paths, trusted folders and the path questions of `tmgr run`).
 
 ## 1.0.14
 
