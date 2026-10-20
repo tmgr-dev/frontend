@@ -1289,7 +1289,7 @@ fn only_a_busy_session_can_be_interrupted_and_agents_use_escape() {
     for kind in [StateKind::Waiting, StateKind::Exited, StateKind::Starting] {
         assert!(!row("x", "x", kind, "1s").can_interrupt());
     }
-    assert!(row("x", "x", StateKind::Blocked, "1s").can_interrupt());
+    assert!(!row("x", "x", StateKind::Blocked, "1s").can_interrupt());
 }
 
 #[test]
@@ -1302,4 +1302,35 @@ fn buttons_are_drawn_in_the_border_and_hovered_sidebar_row_shows_icons() {
     let line = hovered.lines().nth(2).unwrap();
     assert!(line.contains("■ ✕"), "{line}");
     assert!(!line.contains("18m"), "{line}");
+}
+
+#[test]
+fn hover_changes_ask_for_a_redraw_and_a_stray_click_drops_the_confirm() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let info = mouse_info(MouseMode::default(), 0);
+    assert!(v.on_mouse(AREA, ev(35, 3, 2, false), &info).redraw);
+    assert!(!v.on_mouse(AREA, ev(35, 3, 2, false), &info).redraw);
+    assert!(v.on_mouse(AREA, ev(35, 40, 10, false), &info).redraw);
+    v.confirm = Some(Confirm {
+        session: "a".into(),
+        name: "claude".into(),
+        remove: false,
+    });
+    v.on_mouse(AREA, ev(0, 40, 10, false), &info);
+    assert_eq!(v.confirm, None);
+}
+
+#[test]
+fn releasing_after_a_button_press_is_not_forwarded() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply(Cmd::Sidebar);
+    let outer = layout(AREA, &v).panes[0].outer;
+    let x = header_button(outer, Control::Stop).unwrap();
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    v.on_mouse(AREA, ev(0, x, 0, false), &info);
+    let out = v.on_mouse(AREA, ev(0, 40, 10, true), &info);
+    assert_eq!(out.forward, None);
+    assert_eq!(v.grab, None);
 }

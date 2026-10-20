@@ -20,7 +20,7 @@ pub struct SessionRow {
 
 impl SessionRow {
     pub fn can_interrupt(&self) -> bool {
-        matches!(self.state.kind, StateKind::Working | StateKind::Blocked)
+        self.state.kind == StateKind::Working
     }
 
     pub fn interrupt_bytes(&self) -> &'static [u8] {
@@ -54,6 +54,9 @@ pub fn header_button(outer: Rect, ctl: Control) -> Option<u16> {
 }
 
 pub fn sidebar_button(area: Rect, ctl: Control) -> Option<u16> {
+    if area.width < 12 {
+        return None;
+    }
     match ctl {
         Control::Interrupt => None,
         Control::Stop => area.right().checked_sub(5),
@@ -325,6 +328,14 @@ impl ViewState {
         Hit::None
     }
 
+    fn hover_key(&self, area: Rect) -> Option<Hit> {
+        let (c, r) = self.pointer?;
+        match self.hit(area, c, r) {
+            h @ (Hit::Button(..) | Hit::Session(_)) => Some(h),
+            _ => None,
+        }
+    }
+
     pub fn paste_target(&self, area: Rect) -> usize {
         match self.pointer.map(|(c, r)| self.hit(area, c, r)) {
             Some(Hit::Pane { idx, .. }) => idx,
@@ -347,7 +358,14 @@ impl ViewState {
     ) -> MouseOut {
         let mut out = MouseOut::default();
         let kind = ev.kind();
+        let before = self.hover_key(area);
         self.pointer = Some((ev.col, ev.row));
+        if self.hover_key(area) != before {
+            out.redraw = true;
+        }
+        if ev.is_left_press() && !matches!(self.hit(area, ev.col, ev.row), Hit::Button(..)) {
+            self.confirm = None;
+        }
         if self.help {
             if ev.is_left_press() {
                 self.help = false;
@@ -379,6 +397,7 @@ impl ViewState {
         match self.hit(area, ev.col, ev.row) {
             Hit::Button(id, ctl) => {
                 if ev.is_left_press() {
+                    self.grab = Some(String::new());
                     out.control = Some((id, ctl));
                 }
             }

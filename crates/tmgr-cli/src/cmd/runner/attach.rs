@@ -123,7 +123,7 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
             name: s.name.clone(),
             state: s.state.clone(),
             age: short_age(now, s.state.since_ms),
-            esc: s.argv.first().is_some_and(|a| {
+            esc: s.argv.iter().any(|a| {
                 let n = a.rsplit('/').next().unwrap_or(a);
                 n.contains("claude") || n.contains("codex")
             }),
@@ -141,6 +141,7 @@ struct App {
     prefs_tx: Sender<Value>,
     cfg: RunnerConfig,
     paste_to: Option<String>,
+    last_interrupt: Option<(String, Instant)>,
     dirty: bool,
     size: (u16, u16),
     sent_sizes: HashMap<String, (u16, u16)>,
@@ -259,10 +260,20 @@ impl App {
         };
         let exited = row.state.kind == StateKind::Exited;
         self.dirty = true;
+        self.view.confirm = None;
+        if ctl != Control::Interrupt {
+            self.leave_overlays();
+            self.view.rename = None;
+        }
         match ctl {
             Control::Interrupt => {
-                if row.can_interrupt() {
+                let recent = self
+                    .last_interrupt
+                    .as_ref()
+                    .is_some_and(|(s, t)| s == id && t.elapsed() < Duration::from_secs(1));
+                if row.can_interrupt() && !recent {
                     self.send_to(id, row.interrupt_bytes())?;
+                    self.last_interrupt = Some((id.to_string(), Instant::now()));
                 }
             }
             Control::Stop if exited => self.notify("already exited"),
@@ -293,16 +304,16 @@ impl App {
         let id = id.to_string();
         thread::spawn(move || {
             let Ok(mut c) = connect(&cfg) else { return };
-            let _ = c.kill(&id, "int");
-            for (signal, wait) in [("term", 10), ("kill", 5)] {
+            for (signal, wait) in [("int", 10), ("term", 5), ("kill", 3)] {
+                let _ = c.kill(&id, signal);
                 let end = Instant::now() + Duration::from_secs(wait);
                 while Instant::now() < end {
-                    let gone = c.list().map_or(true, |l| {
+                    let gone = c.list().ok().map(|l| {
                         l.iter()
                             .find(|s| s.id == id)
                             .is_none_or(|s| s.state.kind == StateKind::Exited)
                     });
-                    if gone {
+                    if gone == Some(true) {
                         if remove {
                             let _ = c.remove(&id);
                         }
@@ -310,7 +321,6 @@ impl App {
                     }
                     thread::sleep(Duration::from_millis(200));
                 }
-                let _ = c.kill(&id, signal);
             }
         });
     }
@@ -745,6 +755,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         prefs_tx,
         cfg: cfg.clone(),
         paste_to: None,
+        last_interrupt: None,
         dirty: true,
         size: (0, 0),
         sent_sizes: HashMap::new(),
