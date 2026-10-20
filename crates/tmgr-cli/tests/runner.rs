@@ -1563,3 +1563,35 @@ fn path_typed_by_the_terminal_on_drop_reaches_the_agent_as_a_paste() {
     wait_file(&out, format!("\x1b[200~{typed}\x1b[201~").as_bytes());
     pty.detach();
 }
+
+#[test]
+fn stop_asks_first_and_the_header_button_stops_after_yes() {
+    let env = Env::new();
+    let script = env.script("a.sh", "echo READY\nsleep 300\n");
+    let Some(id) = env.start(&script, "victim") else {
+        return;
+    };
+    let kind = |env: &Env| {
+        env.sessions()[0]["state"]["kind"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    let mut pty = env.pty(&["attach", &id]);
+    pty.wait_for("READY");
+    pty.type_bytes(b"\x1dx");
+    pty.wait_for("stop victim? y/n");
+    pty.type_bytes(b"n");
+    thread::sleep(Duration::from_millis(500));
+    assert_ne!(kind(&env), "exited");
+    pty.type_bytes(b"\x1b[<0;96;1M\x1b[<0;96;1m");
+    thread::sleep(Duration::from_millis(300));
+    pty.wait_for("stop victim? y/n");
+    pty.type_bytes(b"y");
+    let end = Instant::now() + Duration::from_secs(20);
+    while kind(&env) != "exited" {
+        assert!(Instant::now() < end, "{}", pty.text());
+        thread::sleep(Duration::from_millis(200));
+    }
+    pty.detach();
+}

@@ -199,6 +199,7 @@ fn row(id: &str, name: &str, kind: StateKind, age: &str) -> SessionRow {
         name: name.into(),
         state: st(kind, code),
         age: age.into(),
+        esc: false,
     }
 }
 
@@ -1211,4 +1212,94 @@ fn paste_in_scroll_mode_is_a_paste() {
     let got = s.feed(b"\x1b[200~q\x1b[201~");
     assert!(matches!(got.as_slice(), [Action::Paste { .. }]));
     assert_eq!(s.feed(b"x"), vec![forward(b"x")]);
+}
+
+#[test]
+fn header_buttons_are_hit_tested_on_the_top_border() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply(Cmd::Sidebar);
+    let lay = layout(AREA, &v);
+    let outer = lay.panes[0].outer;
+    let x = |c| header_button(outer, c).unwrap();
+    assert_eq!(
+        v.hit(AREA, x(Control::Interrupt), 0),
+        Hit::Button("a".into(), Control::Interrupt)
+    );
+    assert_eq!(
+        v.hit(AREA, x(Control::Stop), 0),
+        Hit::Button("a".into(), Control::Stop)
+    );
+    assert_eq!(
+        v.hit(AREA, x(Control::Close), 0),
+        Hit::Button("a".into(), Control::Close)
+    );
+    assert!(!matches!(
+        v.hit(AREA, x(Control::Close), 1),
+        Hit::Button(..)
+    ));
+    let out = v.on_mouse(
+        AREA,
+        ev(0, x(Control::Stop), 0, false),
+        &mouse_info(sgr_mode(MouseLevel::Any), 0),
+    );
+    assert_eq!(out.control, Some(("a".into(), Control::Stop)));
+    assert_eq!(out.forward, None);
+}
+
+#[test]
+fn header_buttons_hide_in_a_narrow_pane() {
+    let mut v = two_pane(90);
+    let area = Rect::new(0, 0, 90, 40);
+    let lay = layout(area, &v);
+    assert!(lay.panes[0].outer.width >= 40);
+    let mut w = ViewState::new(four(), "local");
+    w.width = 140;
+    let narrow = Rect::new(0, 0, 38, 20);
+    let lay = layout(narrow, &w);
+    assert_eq!(header_button(lay.panes[0].outer, Control::Close), None);
+    v.apply(Cmd::Split);
+    assert!(!matches!(w.hit(narrow, 30, 0), Hit::Button(..)));
+}
+
+#[test]
+fn sidebar_icons_are_hit_tested_and_the_row_still_switches() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let lay = layout(AREA, &v);
+    let sb = lay.sidebar.unwrap();
+    let stop = sidebar_button(sb, Control::Stop).unwrap();
+    let close = sidebar_button(sb, Control::Close).unwrap();
+    assert_eq!(v.hit(AREA, stop, 2), Hit::Button("a".into(), Control::Stop));
+    assert_eq!(
+        v.hit(AREA, close, 2),
+        Hit::Button("a".into(), Control::Close)
+    );
+    assert_eq!(v.hit(AREA, 3, 2), Hit::Session("a".into()));
+    assert_eq!(v.hit(AREA, stop, 0), Hit::None);
+}
+
+#[test]
+fn only_a_busy_session_can_be_interrupted_and_agents_use_escape() {
+    let mut r = row("x", "x", StateKind::Working, "1s");
+    assert!(r.can_interrupt());
+    assert_eq!(r.interrupt_bytes(), b"\x03");
+    r.esc = true;
+    assert_eq!(r.interrupt_bytes(), b"\x1b");
+    for kind in [StateKind::Waiting, StateKind::Exited, StateKind::Starting] {
+        assert!(!row("x", "x", kind, "1s").can_interrupt());
+    }
+    assert!(row("x", "x", StateKind::Blocked, "1s").can_interrupt());
+}
+
+#[test]
+fn buttons_are_drawn_in_the_border_and_hovered_sidebar_row_shows_icons() {
+    let mut v = two_pane(140);
+    let plain = draw(&v, &screens(), 140, 22);
+    assert!(plain.lines().next().unwrap().contains("⏸ ■ ✕"));
+    v.pointer = Some((3, 2));
+    let hovered = draw(&v, &screens(), 140, 22);
+    let line = hovered.lines().nth(2).unwrap();
+    assert!(line.contains("■ ✕"), "{line}");
+    assert!(!line.contains("18m"), "{line}");
 }
