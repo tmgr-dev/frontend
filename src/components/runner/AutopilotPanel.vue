@@ -427,8 +427,7 @@
 					try {
 						raw = await runnerAutopilotStatus();
 						rebuild();
-					} catch {
-					}
+					} catch {}
 				} catch (error) {
 					const e = describeRunnerError(error, 'stop');
 					if (!e.cancelled) actionError.value = e.text;
