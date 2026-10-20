@@ -112,8 +112,12 @@ fn run_json(exe: &Path, args: &[String]) -> Result<Json, String> {
     Ok(json)
 }
 
+fn clean(text: &str) -> String {
+    tmgr_core::text::sanitize_line(text).trim().to_string()
+}
+
 fn s(v: &Json, key: &str) -> String {
-    v[key].as_str().unwrap_or_default().to_string()
+    clean(v[key].as_str().unwrap_or_default())
 }
 
 pub fn load(source: Source, ws: Option<&str>, exe: &Path) -> Result<Vec<Item>, String> {
@@ -147,7 +151,7 @@ pub fn tasks(json: &Json) -> Result<Vec<Item>, String> {
         .map(|t| {
             let key = s(t, "ref");
             let title = s(t, "title");
-            let status = t["status"]["name"].as_str().unwrap_or_default().to_string();
+            let status = clean(t["status"]["name"].as_str().unwrap_or_default());
             let project = s(t, "project");
             let mut preview = vec![key.clone(), title.clone(), String::new()];
             if !status.is_empty() {
@@ -178,7 +182,7 @@ pub fn sessions(json: &Json) -> Result<Vec<Item>, String> {
         .map(|x| {
             let id = s(x, "id");
             let name = s(x, "name");
-            let state = x["state"]["kind"].as_str().unwrap_or_default().to_string();
+            let state = clean(x["state"]["kind"].as_str().unwrap_or_default());
             let mut preview = vec![name.clone(), String::new()];
             preview.push(format!("State:    {state}"));
             preview.push(format!("Id:       {id}"));
@@ -187,7 +191,7 @@ pub fn sessions(json: &Json) -> Result<Vec<Item>, String> {
                 preview.push(format!("Folder:   {cwd}"));
             }
             if let Some(p) = x["profile"].as_str() {
-                preview.push(format!("Profile:  {p}"));
+                preview.push(format!("Profile:  {}", clean(p)));
             }
             Item {
                 value: if name.is_empty() {
