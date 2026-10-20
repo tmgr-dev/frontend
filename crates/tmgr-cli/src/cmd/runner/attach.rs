@@ -1,3 +1,7 @@
+use super::attach_shell::{
+    cwd_candidates, is_shell_session, merge_pending, next_shell_name, process_cwd, reap_ids,
+    shell_argv, size_hint, watch_ids,
+};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -8,7 +12,7 @@ use ratatui::crossterm::terminal::{
 use ratatui::layout::Rect;
 use ratatui::Terminal;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, IsTerminal, Read, Write};
 use std::panic;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
@@ -16,11 +20,12 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{Modes, SessionInfo, Snapshot, StateKind};
+use tmgr_ipc::api::{CreateReq, Modes, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, Confirm, Control,
-    InputSplitter, LayoutPrefs, PaneInfo, RenameEdit, ScreenSource, SessionRow, ViewState,
+    InputSplitter, LayoutPrefs, PaneInfo, RenameEdit, ScreenSource, SessionRow, SplitDir,
+    ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -89,6 +94,11 @@ enum Msg {
     Server(ServerMsg),
     Down(String),
     Sessions(Vec<SessionInfo>),
+    Created {
+        result: std::result::Result<SessionInfo, String>,
+        dir: SplitDir,
+        target: String,
+    },
 }
 
 enum Exit {
@@ -140,12 +150,18 @@ struct App {
     writer: AttachWriter,
     prefs_tx: Sender<Value>,
     cfg: RunnerConfig,
+    tx: SyncSender<Msg>,
+    starts: HashMap<String, (String, u32)>,
+    pending: HashMap<String, Instant>,
+    creating: HashSet<String>,
+    removing: HashSet<String>,
+    shell_ids: HashSet<String>,
     paste_to: Option<String>,
     last_interrupt: Option<(String, Instant)>,
     dirty: bool,
     size: (u16, u16),
     sent_sizes: HashMap<String, (u16, u16)>,
-    watched: Vec<String>,
+    watched: Option<Vec<String>>,
     prev_modes: Option<Modes>,
     last_prefs: Option<LayoutPrefs>,
     scrolled: Option<(String, u32)>,
@@ -158,18 +174,12 @@ impl App {
             Msg::Stdin(bytes) => return self.on_stdin(&bytes),
             Msg::StdinClosed => return Ok(Some(Exit::Detached)),
             Msg::Down(why) => return Ok(Some(Exit::Lost(why))),
-            Msg::Sessions(list) => {
-                let new = rows(&list);
-                if new != self.view.sessions {
-                    for old in &self.view.sessions {
-                        if !new.iter().any(|r| r.id == old.id) {
-                            self.cache.remove(&old.id);
-                        }
-                    }
-                    self.view.sessions_changed(new);
-                    self.dirty = true;
-                }
-            }
+            Msg::Sessions(list) => self.on_sessions(&list),
+            Msg::Created {
+                result,
+                dir,
+                target,
+            } => self.on_created(result, dir, &target),
             Msg::Server(ServerMsg::Closed { reason }) => return Ok(Some(Exit::Lost(reason))),
             Msg::Server(msg) => {
                 if self.cache.apply(&msg).is_some() {
@@ -185,6 +195,130 @@ impl App {
             }
         }
         Ok(None)
+    }
+
+    fn on_sessions(&mut self, list: &[SessionInfo]) {
+        let new = merge_pending(
+            rows(list),
+            &self.view.sessions,
+            &mut self.pending,
+            Instant::now(),
+        );
+        self.starts
+            .retain(|id, _| list.iter().any(|s| &s.id == id) || self.pending.contains_key(id));
+        for s in list {
+            self.starts
+                .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
+        }
+        self.shell_ids = list
+            .iter()
+            .filter(|s| is_shell_session(&s.argv, &s.name))
+            .map(|s| s.id.clone())
+            .collect();
+        self.removing.retain(|id| new.iter().any(|r| &r.id == id));
+        if new == self.view.sessions {
+            return;
+        }
+        for old in &self.view.sessions {
+            if !new.iter().any(|r| r.id == old.id) {
+                self.cache.remove(&old.id);
+            }
+        }
+        let before = self.view.panes().len();
+        self.view.sessions_changed(new);
+        if self.view.panes().len() != before {
+            self.watched = None;
+        }
+        self.dirty = true;
+    }
+
+    fn is_shell(&self, id: &str) -> bool {
+        self.view.shells.iter().any(|s| s == id) || self.shell_ids.contains(id)
+    }
+
+    fn request_split(&mut self, dir: SplitDir) {
+        let Some(target) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        if self.creating.contains(&target) {
+            return;
+        }
+        let (start, pid) = match self.starts.get(&target) {
+            Some((cwd, pid)) => (Some(cwd.clone()), *pid),
+            None => (None, 0),
+        };
+        let mut cwds = cwd_candidates(process_cwd(pid), start.as_deref());
+        if cwds.is_empty() {
+            cwds.extend(
+                std::env::current_dir()
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned()),
+            );
+        }
+        let name = next_shell_name(self.view.sessions.iter().map(|r| r.name.as_str()));
+        let content = layout(self.area(), &self.view)
+            .panes
+            .iter()
+            .find(|p| p.session == target)
+            .map(|p| p.content())
+            .unwrap_or_default();
+        let (cols, rows) = size_hint(content, dir);
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        self.creating.insert(target.clone());
+        self.notify("starting shell…");
+        thread::spawn(move || {
+            let result = create_shell(&cfg, &cwds, &name, cols, rows);
+            let _ = tx.send(Msg::Created {
+                result,
+                dir,
+                target,
+            });
+        });
+    }
+
+    fn on_created(
+        &mut self,
+        result: std::result::Result<SessionInfo, String>,
+        dir: SplitDir,
+        target: &str,
+    ) {
+        self.creating.remove(target);
+        self.dirty = true;
+        let info = match result {
+            Ok(info) => info,
+            Err(e) => return self.notify(&e),
+        };
+        let Some(at) = self.view.panes().iter().position(|p| p == target) else {
+            self.stop_session(&info.id, true);
+            return;
+        };
+        if !self.view.sessions.iter().any(|r| r.id == info.id) {
+            self.view.sessions.extend(rows(std::slice::from_ref(&info)));
+        }
+        self.pending.insert(info.id.clone(), Instant::now());
+        self.starts
+            .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
+        self.view.focus_pane(at);
+        if !self.view.split_focused(dir, &info.id) {
+            self.pending.remove(&info.id);
+            self.view.sessions.retain(|r| r.id != info.id);
+            self.stop_session(&info.id, true);
+            self.notify("no room for another pane");
+            return;
+        }
+        self.view.shells.push(info.id.clone());
+        self.shell_ids.insert(info.id);
+    }
+
+    fn reap_shells(&mut self) {
+        let ids = reap_ids(&self.view.sessions, |id| self.is_shell(id), &self.removing);
+        for id in ids {
+            self.view.close_pane(&id);
+            self.removing.insert(id.clone());
+            self.remove_session(&id);
+            self.dirty = true;
+        }
     }
 
     fn page(&self) -> usize {
@@ -475,7 +609,12 @@ impl App {
                         .flatten()
                         .filter(|r| r.state.kind == StateKind::Exited)
                         .map(|r| r.id.clone());
-                    self.view.apply(cmd);
+                    match cmd {
+                        Cmd::SplitRight => self.request_split(SplitDir::Right),
+                        Cmd::SplitDown => self.request_split(SplitDir::Down),
+                        Cmd::Focus(nav) => self.view.focus_nav(self.area(), nav),
+                        _ => self.view.apply(cmd),
+                    }
                     if let Some(id) = removing {
                         self.remove_session(&id);
                     }
@@ -526,12 +665,29 @@ impl App {
             self.splitter.set_scroll_mode(false);
         }
         self.sync_scroll_max();
-        if self.view.panes != self.watched {
-            self.writer.set_sessions(&self.view.panes)?;
-            self.watched = self.view.panes.clone();
+        self.reap_shells();
+        let want = watch_ids(self.view.panes(), &self.view.sessions);
+        if self.watched.as_ref() != Some(&want) {
+            self.writer.set_sessions(&want)?;
+            self.watched = Some(want);
+        }
+        let panes = self.view.panes();
+        self.sent_sizes.retain(|id, _| panes.contains(id));
+        if self.paste_to.as_ref().is_some_and(|id| !panes.contains(id)) {
+            self.paste_to = None;
+        }
+        if self
+            .last_interrupt
+            .as_ref()
+            .is_some_and(|(id, _)| !panes.contains(id))
+        {
+            self.last_interrupt = None;
         }
         let lay = layout(Rect::new(0, 0, self.size.0, self.size.1), &self.view);
         for p in &lay.panes {
+            if p.content().is_empty() {
+                continue;
+            }
             let want = (p.inner.width, p.inner.height);
             if self.sent_sizes.get(&p.session) != Some(&want) {
                 self.writer.resize(&p.session, want.0, want.1)?;
@@ -680,22 +836,15 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let status = ctl.status().map_err(rerr)?;
     let list = ctl.list().map_err(rerr)?;
     let mut view = ViewState::new(rows(&list), &format!("pid {}", status.pid));
-    view.panes = vec![initial.to_string()];
     if let Some(prefs) = ctl
         .layout_get()
         .ok()
         .and_then(|v| serde_json::from_value::<LayoutPrefs>(v).ok())
     {
         view.apply_prefs(&prefs);
-        if !view.panes.iter().any(|p| p == initial) {
-            match view.panes.get_mut(view.focus) {
-                Some(slot) => *slot = initial.to_string(),
-                None => view.panes.push(initial.to_string()),
-            }
-        }
-        view.focus = view.panes.iter().position(|p| p == initial).unwrap_or(0);
     }
-    let (reader, writer) = connect(cfg)?.attach(&view.panes).map_err(rerr)?.split();
+    view.set_initial(initial);
+    let (reader, writer) = connect(cfg)?.attach(view.panes()).map_err(rerr)?.split();
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
@@ -742,10 +891,20 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         }
     });
     let _ = ctl.set_timeouts(RPC_TIMEOUT);
+    let app_tx = tx.clone();
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
-        watched: view.panes.clone(),
+        watched: Some(view.panes().to_vec()),
+        shell_ids: list
+            .iter()
+            .filter(|s| is_shell_session(&s.argv, &s.name))
+            .map(|s| s.id.clone())
+            .collect(),
+        starts: list
+            .iter()
+            .map(|s| (s.id.clone(), (s.cwd.clone(), s.child_pid)))
+            .collect(),
         view,
         mouse,
         cache: ScreenCache::new(),
@@ -754,6 +913,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         writer,
         prefs_tx,
         cfg: cfg.clone(),
+        tx: app_tx,
+        pending: HashMap::new(),
+        creating: HashSet::new(),
+        removing: HashSet::new(),
         paste_to: None,
         last_interrupt: None,
         dirty: true,
@@ -800,6 +963,34 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         )
         .hint(format!("{} runner status", super::bin()))),
     }
+}
+
+fn create_shell(
+    cfg: &RunnerConfig,
+    cwds: &[String],
+    name: &str,
+    cols: u16,
+    rows: u16,
+) -> std::result::Result<SessionInfo, String> {
+    let mut client = connect(cfg).map_err(|e| sanitize_text(&e.to_string()).into_owned())?;
+    let mut last = "no working directory for the new shell".to_string();
+    for cwd in cwds {
+        let req = CreateReq {
+            argv: shell_argv(),
+            cwd: cwd.clone(),
+            name: Some(name.to_string()),
+            profile: None,
+            cols,
+            rows,
+            env_pass: Vec::new(),
+            task: None,
+        };
+        match client.create(req) {
+            Ok(info) => return Ok(info),
+            Err(e) => last = sanitize_text(&rerr(e).to_string()).into_owned(),
+        }
+    }
+    Err(last)
 }
 
 fn dropped_path_exists(data: &[u8]) -> bool {

@@ -665,6 +665,35 @@ fn agents_without_a_runner_is_empty_and_does_not_start_one() {
 }
 
 #[test]
+fn a_login_shell_session_keeps_its_name_and_cwd() {
+    let env = Env::new();
+    let script = env.script("anchor.sh", "sleep 300\n");
+    let Some(_) = env.start(&script, "anchor") else {
+        return;
+    };
+    let mut client = Client::connect(&env.run).unwrap();
+    let info = client
+        .create(tmgr_ipc::api::CreateReq {
+            argv: vec!["/bin/sh".into(), "-l".into()],
+            cwd: env.proj.display().to_string(),
+            name: Some("sh-1".into()),
+            profile: None,
+            cols: 60,
+            rows: 20,
+            env_pass: Vec::new(),
+            task: None,
+        })
+        .unwrap();
+    assert_eq!(info.name, "sh-1");
+    assert_eq!(info.argv, vec!["/bin/sh", "-l"]);
+    assert_eq!(
+        fs::canonicalize(&info.cwd).unwrap(),
+        fs::canonicalize(&env.proj).unwrap()
+    );
+    assert_eq!((info.cols, info.rows), (60, 20));
+}
+
+#[test]
 fn halt_send_and_rm_manage_a_session() {
     let env = Env::new();
     let script = env.script("sleeper.sh", "sleep 300\n");

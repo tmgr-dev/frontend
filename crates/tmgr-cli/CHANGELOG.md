@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr attach` has real split panes: new shell panes open to the right or below the focused one, with the keys to move focus and resize them, and the layout is restored on the next attach. A shell is a sandboxed runner session started in the working directory of the focused pane, and the sandbox gives it its own home, so your shell rc files are not loaded. A shell that exits closes its pane and the neighbour takes the space. `Ctrl-] s` behaves as before (toggles two panes, or collapses back to one).
+
 ## 1.0.16
 
 - New interactive menu: `tmgr` with no arguments in a terminal (or `tmgr ui`) opens a full-screen menu built from the command tree, so new commands and flags show up without menu code. Pick a group and a command, fill a form made of its flags and arguments (toggles for flags, choices for enum values, `~` in paths), see the exact command line, copy it with `ctrl+y`, and run it. After a run the menu shows "Same command next time". `/` or `ctrl+p` opens a command palette over all commands and your recent commands (recent commands are stored locally in `ui-history.json`, never the values of token/password-like options, and never for `login`, `auth`, `config`, `link`, `mcp`, `notify`, `alarm`, `agents login|logout|sync`, `usage accounts|sync`).

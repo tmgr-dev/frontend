@@ -1,5 +1,6 @@
 pub(crate) mod allow;
 mod attach;
+mod attach_shell;
 pub(crate) mod bind;
 pub(crate) mod cloud;
 mod gate;

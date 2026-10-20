@@ -368,7 +368,7 @@ pub fn run(link: &str, mut client: Client, target: &RunView, input: bool) -> Res
         esc: false,
     };
     let mut view = ViewState::new(vec![row], &format!("link:{link}"));
-    view.panes = vec![target.id.clone()];
+    view.set_initial(&target.id);
     view.sidebar = Some(false);
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
@@ -553,7 +553,7 @@ mod tests {
             esc: false,
         };
         let mut view = ViewState::new(vec![row], "link:x");
-        view.panes = vec![SID.into()];
+        view.set_initial(SID);
         view.sidebar = Some(false);
         let mut term = Terminal::new(TestBackend::new(80, 12)).unwrap();
         term.draw(|f| render(f, &view, &Screens(&cache))).unwrap();
