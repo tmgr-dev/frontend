@@ -13,13 +13,7 @@
 				<CategoriesPreview />
 			</template>
 
-			<PageContainer
-				:width="
-					state === 'create' || (state === 'view' && tab === 'settings')
-						? 'narrow'
-						: 'wide'
-				"
-			>
+			<PageContainer width="wide">
 				<AsyncContent
 					:pending="pending"
 					:loaded="loaded"
@@ -119,14 +113,14 @@
 							<nav
 								v-if="state === 'view'"
 								aria-label="Category"
-								class="-mx-4 flex gap-6 overflow-x-auto border-b border-line px-4 md:mx-0 md:px-0"
+								class="-mx-4 flex gap-6 overflow-x-auto px-4 shadow-[inset_0_-1px_0_var(--line-color)] md:mx-0 md:px-0"
 							>
 								<router-link
 									v-for="item in tabs"
 									:key="item.id"
 									:to="{ query: item.id === 'tasks' ? {} : { tab: item.id } }"
 									:aria-current="tab === item.id ? 'page' : undefined"
-									class="-mb-px inline-flex h-10 shrink-0 items-center whitespace-nowrap border-b-2 px-0.5 text-sm font-medium transition-colors"
+									class="inline-flex h-10 shrink-0 items-center whitespace-nowrap border-b-2 px-0.5 text-sm font-medium transition-colors"
 									:class="
 										tab === item.id
 											? 'border-brand text-ink'
@@ -147,6 +141,7 @@
 						<CategorySettingsPane
 							v-else
 							:key="paneKey"
+							class="max-w-4xl"
 							:node="node"
 							:parent-node="parentNode"
 							:is-create="state === 'create'"
