@@ -241,7 +241,7 @@ const parseParams = (search: string): Record<string, string> | null => {
 const PLUGIN_LINK =
 	/^tmgr:\/\/plugin\/([^/?#]+)\/(view|command)\/([^/?#]+)(\?[^#]*)?$/;
 
-const PAGE_LINK =
+export const PAGE_LINK =
 	/^tmgr:\/\/page\/([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9_-]{1,120})\/?$/;
 
 export const parseDeepLink = (url: string): DeepLink | null => {

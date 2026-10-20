@@ -135,6 +135,14 @@
 								</button>
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" class="w-56">
+								<PageShareItems
+									v-if="sharePage"
+									:page="sharePage"
+									loaded
+									:workspace-code="workspaceCode"
+									submenu
+									open-in-app
+								/>
 								<DropdownMenuItem
 									data-testid="page-export-md"
 									@select="io.exportPage(page.id)"
@@ -294,6 +302,7 @@
 	import PageFilesPanel from '@/components/pages/PageFilesPanel.vue';
 	import PageProperties from '@/components/pages/PageProperties.vue';
 	import PageSection from '@/components/pages/PageSection.vue';
+	import PageShareItems from '@/components/pages/PageShareItems.vue';
 	import PageSidePanel from '@/components/pages/PageSidePanel.vue';
 	import TaskFromSelectionDialog from '@/components/pages/TaskFromSelectionDialog.vue';
 	import { useTmgrDirectory } from '@/components/pages/useTmgrDirectory';
@@ -396,6 +405,7 @@
 			PageHeader,
 			PageProperties,
 			PageSection,
+			PageShareItems,
 			PageSidePanel,
 			TaskFromSelectionDialog,
 		},
@@ -1062,8 +1072,13 @@
 				}
 			});
 
+			const sharePage = computed<Page | null>(() =>
+				page.value ? { ...page.value, ...form.value } : null,
+			);
+
 			return {
 				workspaceCode,
+				sharePage,
 				io,
 				directory,
 				page,

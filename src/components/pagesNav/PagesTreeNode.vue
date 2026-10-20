@@ -65,6 +65,12 @@
 						<ExternalLink class="mr-2 h-4 w-4" />
 						<span>Open in window</span>
 					</DropdownMenuItem>
+					<PageShareItems
+						:page="node"
+						:workspace-code="ctx.workspaceCode.value"
+						submenu
+						open-in-app
+					/>
 					<DropdownMenuItem @select="ctx.requestRename(node)">
 						<Pencil class="mr-2 h-4 w-4" />
 						<span>Rename</span>
@@ -122,6 +128,7 @@
 </template>
 
 <script lang="ts">
+	import PageShareItems from '@/components/pages/PageShareItems.vue';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -174,6 +181,7 @@
 			ExternalLink,
 			FilePlus,
 			MoreHorizontal,
+			PageShareItems,
 			Pencil,
 			Pin,
 			PinOff,
