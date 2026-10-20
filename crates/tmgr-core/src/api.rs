@@ -856,7 +856,7 @@ mod tests {
     }
 
     fn flaky_server(drop_first: usize) -> (String, std::thread::JoinHandle<usize>) {
-        use std::io::Write;
+        use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let handle = std::thread::spawn(move || {
@@ -868,9 +868,16 @@ mod tests {
                     drop(stream);
                     continue;
                 }
+                let mut head = Vec::new();
+                let mut byte = [0u8; 1];
+                while !head.ends_with(b"\r\n\r\n") && stream.read(&mut byte).unwrap_or(0) == 1 {
+                    head.push(byte[0]);
+                }
                 let _ = stream.write_all(
                     b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}",
                 );
+                let _ = stream.shutdown(std::net::Shutdown::Write);
+                let _ = stream.read(&mut byte);
                 break;
             }
             seen
