@@ -11,6 +11,7 @@ export interface UserSetting {
 }
 
 export interface User {
+	desktop_app_seen_at?: string | null;
 	has_avatar?: boolean;
 	is_local?: boolean;
 	id: number;
