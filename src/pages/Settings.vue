@@ -286,7 +286,7 @@
 										<router-link
 											to="/settings/agent-notifications"
 											class="text-primary hover:underline"
-											>Agent notifications</router-link
+											>Agent alerts</router-link
 										>.
 									</p>
 								</div>
