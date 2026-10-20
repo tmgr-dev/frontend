@@ -212,18 +212,29 @@ impl ViewState {
     }
 
     pub fn split_focused(&mut self, dir: SplitDir, new_id: &str) -> bool {
+        let Some(f) = self.focus_id.clone() else {
+            return false;
+        };
+        self.split_at(&f, dir, new_id, true)
+    }
+
+    pub fn split_at(&mut self, target: &str, dir: SplitDir, new_id: &str, focus_new: bool) -> bool {
         if self.panes.len() >= MAX_LEAVES {
             return false;
         }
-        let (Some(mut tree), Some(f)) = (self.tree.clone(), self.focus_id.clone()) else {
+        let Some(mut tree) = self.tree.clone() else {
             return false;
         };
-        if !tree.split_leaf(&f, dir, new_id) {
+        if !tree.split_leaf(target, dir, new_id) {
             return false;
         }
+        let focus = if focus_new {
+            Some(new_id.to_string())
+        } else {
+            self.focus_id.clone()
+        };
         self.zoom = false;
-        self.scroll = None;
-        self.commit(Some(tree), Some(new_id.to_string()));
+        self.commit(Some(tree), focus);
         true
     }
 
@@ -266,11 +277,11 @@ impl ViewState {
         }
     }
 
-    pub fn resize_focused(&mut self, nav: Nav) {
+    pub fn resize_focused(&mut self, area: Rect, nav: Nav) {
         let (Some(mut tree), Some(f)) = (self.tree.clone(), self.focus_id.clone()) else {
             return;
         };
-        if tree.resize(&f, nav, RESIZE_STEP) {
+        if tree.resize(body_rect(area, self), &f, nav, RESIZE_STEP) {
             self.tree = Some(tree);
         }
     }
@@ -304,8 +315,7 @@ impl ViewState {
             Cmd::Split => self.split(),
             Cmd::FocusOther => self.cycle_focus(true),
             Cmd::FocusPrev => self.cycle_focus(false),
-            Cmd::Resize(nav) => self.resize_focused(nav),
-            Cmd::SplitRight | Cmd::SplitDown | Cmd::Focus(_) => {}
+            Cmd::SplitRight | Cmd::SplitDown | Cmd::Focus(_) | Cmd::Resize(_) => {}
             Cmd::Zoom => self.zoom = !self.zoom,
             Cmd::Sidebar => {
                 let shown = self.sidebar.unwrap_or(self.width >= WIDE_COLS);
@@ -730,6 +740,10 @@ impl ViewState {
         self.shells
             .retain(|id| self.sessions.iter().any(|s| &s.id == id));
         if gone.is_empty() {
+            if self.tree.is_none() {
+                let tree = self.sessions.first().map(|s| Node::leaf(&s.id));
+                self.commit(tree, None);
+            }
             return;
         }
         let mut tree = self.tree.take();
@@ -879,6 +893,17 @@ fn pane(session: &str, outer: Rect) -> PaneRect {
     }
 }
 
+fn body_rect(area: Rect, st: &ViewState) -> Rect {
+    let mut body = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
+    if st.sidebar_shown() {
+        let w = SIDEBAR_WIDTH.min(body.width.saturating_sub(MIN_PANE_COLS));
+        if w > 0 {
+            body = Rect::new(body.x + w, body.y, body.width - w, body.height);
+        }
+    }
+    body
+}
+
 pub fn layout(area: Rect, st: &ViewState) -> Layout {
     let status = Rect::new(
         area.x,
@@ -886,15 +911,9 @@ pub fn layout(area: Rect, st: &ViewState) -> Layout {
         area.width,
         area.height.min(1),
     );
-    let mut body = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
-    let mut sidebar = None;
-    if st.sidebar_shown() {
-        let w = SIDEBAR_WIDTH.min(body.width.saturating_sub(MIN_PANE_COLS));
-        if w > 0 {
-            sidebar = Some(Rect::new(body.x, body.y, w, body.height));
-            body = Rect::new(body.x + w, body.y, body.width - w, body.height);
-        }
-    }
+    let body = body_rect(area, st);
+    let sidebar = (area.width > body.width)
+        .then(|| Rect::new(area.x, area.y, area.width - body.width, body.height));
     let focused = st.focused_session();
     let full = || focused.map(|id| vec![pane(id, body)]).unwrap_or_default();
     let panes = if st.zoom {

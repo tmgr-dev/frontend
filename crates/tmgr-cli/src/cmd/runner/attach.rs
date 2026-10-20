@@ -1,6 +1,7 @@
 use super::attach_shell::{
-    cwd_candidates, is_shell_session, merge_pending, next_shell_name, process_cwd, reap_ids,
-    shell_argv, size_hint, watch_ids,
+    can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
+    process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
+    KILL_ONLY,
 };
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
@@ -40,6 +41,8 @@ const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
 const RPC_TIMEOUT: Duration = Duration::from_secs(5);
 const CLEANUP_WAIT: Duration = Duration::from_secs(1);
+const CREATE_WAIT: Duration = Duration::from_secs(2);
+const SHELL_CLOSED: &str = "shell closed before it started";
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 static SIGNAL: AtomicI32 = AtomicI32::new(0);
@@ -153,7 +156,8 @@ struct App {
     tx: SyncSender<Msg>,
     starts: HashMap<String, (String, u32)>,
     pending: HashMap<String, Instant>,
-    creating: HashSet<String>,
+    creating: HashMap<String, String>,
+    typed: Option<(String, Vec<u8>)>,
     removing: HashSet<String>,
     shell_ids: HashSet<String>,
     paste_to: Option<String>,
@@ -240,7 +244,11 @@ impl App {
         let Some(target) = self.view.focused_session().map(str::to_string) else {
             return;
         };
-        if self.creating.contains(&target) {
+        if self.creating.contains_key(&target) {
+            return;
+        }
+        if !can_split(self.view.panes().len()) {
+            self.notify("no room for another pane");
             return;
         }
         let (start, pid) = match self.starts.get(&target) {
@@ -255,7 +263,7 @@ impl App {
                     .map(|p| p.to_string_lossy().into_owned()),
             );
         }
-        let name = next_shell_name(self.view.sessions.iter().map(|r| r.name.as_str()));
+        let name = shell_name(&self.view.sessions, &self.creating);
         let content = layout(self.area(), &self.view)
             .panes
             .iter()
@@ -265,16 +273,43 @@ impl App {
         let (cols, rows) = size_hint(content, dir);
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
-        self.creating.insert(target.clone());
+        self.creating.insert(target.clone(), name.clone());
         self.notify("starting shell…");
         thread::spawn(move || {
             let result = create_shell(&cfg, &cwds, &name, cols, rows);
-            let _ = tx.send(Msg::Created {
+            let sent = tx.send(Msg::Created {
                 result,
                 dir,
                 target,
             });
+            if let Err(mpsc::SendError(Msg::Created {
+                result: Ok(info), ..
+            })) = sent
+            {
+                run_ladder(&cfg, &info.id, true, KILL_ONLY);
+            }
         });
+    }
+
+    fn take_typed(&mut self, target: &str) -> Vec<u8> {
+        match self.typed.take() {
+            Some((t, buf)) if t == target => buf,
+            other => {
+                self.typed = other;
+                Vec::new()
+            }
+        }
+    }
+
+    fn hold_typed(&mut self, target: &str, data: &[u8]) {
+        let entry = self
+            .typed
+            .get_or_insert_with(|| (target.to_string(), Vec::new()));
+        if entry.0 != target {
+            *entry = (target.to_string(), Vec::new());
+        }
+        push_typed(&mut entry.1, data);
+        self.notify("starting shell...");
     }
 
     fn on_created(
@@ -285,27 +320,37 @@ impl App {
     ) {
         self.creating.remove(target);
         self.dirty = true;
+        let typed = self.take_typed(target);
+        let lost = |typed: &[u8], default: &str| {
+            if typed.is_empty() {
+                default.to_string()
+            } else {
+                SHELL_CLOSED.to_string()
+            }
+        };
         let info = match result {
             Ok(info) => info,
-            Err(e) => return self.notify(&e),
+            Err(e) => return self.notify(&lost(&typed, &e)),
         };
-        let Some(at) = self.view.panes().iter().position(|p| p == target) else {
-            self.stop_session(&info.id, true);
-            return;
-        };
+        if !self.view.panes().iter().any(|p| p == target) {
+            self.discard_session(&info.id);
+            return self.notify(&lost(&typed, "pane closed before the shell started"));
+        }
         if !self.view.sessions.iter().any(|r| r.id == info.id) {
             self.view.sessions.extend(rows(std::slice::from_ref(&info)));
         }
         self.pending.insert(info.id.clone(), Instant::now());
         self.starts
             .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
-        self.view.focus_pane(at);
-        if !self.view.split_focused(dir, &info.id) {
+        let focus_new = focus_new_pane(self.view.focused_session(), target);
+        if !self.view.split_at(target, dir, &info.id, focus_new) {
             self.pending.remove(&info.id);
             self.view.sessions.retain(|r| r.id != info.id);
-            self.stop_session(&info.id, true);
-            self.notify("no room for another pane");
-            return;
+            self.discard_session(&info.id);
+            return self.notify(&lost(&typed, "no room for another pane"));
+        }
+        if !typed.is_empty() {
+            let _ = self.writer.input(&info.id, &typed);
         }
         self.view.shells.push(info.id.clone());
         self.shell_ids.insert(info.id);
@@ -434,29 +479,17 @@ impl App {
     }
 
     fn stop_session(&self, id: &str, remove: bool) {
+        self.spawn_ladder(id, remove, ladder_for(true));
+    }
+
+    fn discard_session(&self, id: &str) {
+        self.spawn_ladder(id, true, ladder_for(false));
+    }
+
+    fn spawn_ladder(&self, id: &str, remove: bool, ladder: Ladder) {
         let cfg = self.cfg.clone();
         let id = id.to_string();
-        thread::spawn(move || {
-            let Ok(mut c) = connect(&cfg) else { return };
-            for (signal, wait) in [("int", 10), ("term", 5), ("kill", 3)] {
-                let _ = c.kill(&id, signal);
-                let end = Instant::now() + Duration::from_secs(wait);
-                while Instant::now() < end {
-                    let gone = c.list().ok().map(|l| {
-                        l.iter()
-                            .find(|s| s.id == id)
-                            .is_none_or(|s| s.state.kind == StateKind::Exited)
-                    });
-                    if gone == Some(true) {
-                        if remove {
-                            let _ = c.remove(&id);
-                        }
-                        return;
-                    }
-                    thread::sleep(Duration::from_millis(200));
-                }
-            }
-        });
+        thread::spawn(move || run_ladder(&cfg, &id, remove, ladder));
     }
 
     fn edit_rename_text(&mut self, data: &[u8]) {
@@ -512,7 +545,11 @@ impl App {
                         continue;
                     }
                     if let Some(id) = self.view.focused_session().map(str::to_string) {
-                        self.send_to(&id, &data)?;
+                        if self.creating.contains_key(&id) {
+                            self.hold_typed(&id, &data);
+                        } else {
+                            self.send_to(&id, &data)?;
+                        }
                     }
                 }
                 Action::Drop(data) if self.view.rename.is_some() => {
@@ -613,6 +650,7 @@ impl App {
                         Cmd::SplitRight => self.request_split(SplitDir::Right),
                         Cmd::SplitDown => self.request_split(SplitDir::Down),
                         Cmd::Focus(nav) => self.view.focus_nav(self.area(), nav),
+                        Cmd::Resize(nav) => self.view.resize_focused(self.area(), nav),
                         _ => self.view.apply(cmd),
                     }
                     if let Some(id) = removing {
@@ -660,12 +698,12 @@ impl App {
             self.view.notice = None;
             self.dirty = true;
         }
+        self.reap_shells();
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
         }
         self.sync_scroll_max();
-        self.reap_shells();
         let want = watch_ids(self.view.panes(), &self.view.sessions);
         if self.watched.as_ref() != Some(&want) {
             self.writer.set_sessions(&want)?;
@@ -836,6 +874,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let status = ctl.status().map_err(rerr)?;
     let list = ctl.list().map_err(rerr)?;
     let mut view = ViewState::new(rows(&list), &format!("pid {}", status.pid));
+    if let Ok((cols, _)) = ratatui::crossterm::terminal::size() {
+        view.width = cols;
+    }
     if let Some(prefs) = ctl
         .layout_get()
         .ok()
@@ -915,7 +956,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         cfg: cfg.clone(),
         tx: app_tx,
         pending: HashMap::new(),
-        creating: HashSet::new(),
+        creating: HashMap::new(),
+        typed: None,
         removing: HashSet::new(),
         paste_to: None,
         last_interrupt: None,
@@ -929,6 +971,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     };
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
+    let cfg_now = app.cfg.clone();
+    drain_creates(&mut app.creating, &rx, CREATE_WAIT, |info| {
+        run_ladder(&cfg_now, &info.id, true, KILL_ONLY)
+    });
     let target = app
         .view
         .focused_row()
@@ -962,6 +1008,53 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             format!("lost the connection to the runner: {why}"),
         )
         .hint(format!("{} runner status", super::bin()))),
+    }
+}
+
+fn run_ladder(cfg: &RunnerConfig, id: &str, remove: bool, ladder: Ladder) {
+    let Ok(mut c) = connect(cfg) else { return };
+    for (signal, wait) in ladder {
+        let _ = c.kill(id, signal);
+        let end = Instant::now() + Duration::from_secs(*wait);
+        while Instant::now() < end {
+            let gone = c.list().ok().map(|l| {
+                l.iter()
+                    .find(|s| s.id == id)
+                    .is_none_or(|s| s.state.kind == StateKind::Exited)
+            });
+            if gone == Some(true) {
+                if remove {
+                    let _ = c.remove(id);
+                }
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+    }
+}
+
+fn drain_creates(
+    creating: &mut HashMap<String, String>,
+    rx: &mpsc::Receiver<Msg>,
+    wait: Duration,
+    mut discard: impl FnMut(SessionInfo),
+) {
+    let end = Instant::now() + wait;
+    while !creating.is_empty() {
+        let left = end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return;
+        }
+        match rx.recv_timeout(left) {
+            Ok(Msg::Created { result, target, .. }) => {
+                creating.remove(&target);
+                if let Ok(info) = result {
+                    discard(info);
+                }
+            }
+            Ok(_) => {}
+            Err(_) => return,
+        }
     }
 }
 
@@ -1014,4 +1107,85 @@ fn dropped_path_exists(data: &[u8]) -> bool {
         None => std::path::PathBuf::from(path),
     };
     path.exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tmgr_ipc::api::State;
+
+    fn info(id: &str) -> SessionInfo {
+        SessionInfo {
+            id: id.into(),
+            name: id.into(),
+            argv: Vec::new(),
+            cwd: String::new(),
+            profile: None,
+            state: State {
+                kind: StateKind::Working,
+                since_ms: 0,
+                detail: None,
+                exit_code: None,
+            },
+            created_ms: 0,
+            cols: 80,
+            rows: 24,
+            shim_pid: 0,
+            child_pid: 0,
+            task: None,
+            bundle_sha256: None,
+            origin: None,
+            permission_mode: None,
+        }
+    }
+
+    fn created(id: &str, target: &str) -> Msg {
+        Msg::Created {
+            result: Ok(info(id)),
+            dir: SplitDir::Right,
+            target: target.into(),
+        }
+    }
+
+    #[test]
+    fn drain_discards_every_in_flight_shell() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let mut creating = HashMap::from([
+            ("a".to_string(), "sh-1".to_string()),
+            ("b".to_string(), "sh-2".to_string()),
+        ]);
+        tx.send(created("s1", "a")).unwrap();
+        tx.send(Msg::StdinClosed).unwrap();
+        tx.send(Msg::Created {
+            result: Err("boom".into()),
+            dir: SplitDir::Down,
+            target: "b".into(),
+        })
+        .unwrap();
+        let mut killed = Vec::new();
+        drain_creates(&mut creating, &rx, Duration::from_secs(1), |i| {
+            killed.push(i.id)
+        });
+        assert!(creating.is_empty());
+        assert_eq!(killed, vec!["s1"]);
+    }
+
+    #[test]
+    fn drain_returns_at_once_when_nothing_is_in_flight() {
+        let (_tx, rx) = mpsc::sync_channel(1);
+        let mut creating = HashMap::new();
+        let start = Instant::now();
+        drain_creates(&mut creating, &rx, Duration::from_secs(2), |_| {});
+        assert!(start.elapsed() < Duration::from_millis(200));
+    }
+
+    #[test]
+    fn drain_gives_up_after_the_deadline() {
+        let (_tx, rx) = mpsc::sync_channel(1);
+        let mut creating = HashMap::from([("a".to_string(), "sh-1".to_string())]);
+        let start = Instant::now();
+        drain_creates(&mut creating, &rx, Duration::from_millis(100), |_| {});
+        assert!(start.elapsed() < Duration::from_secs(1));
+        assert_eq!(creating.len(), 1);
+    }
 }

@@ -59,6 +59,7 @@ pub enum Action {
 #[derive(Default)]
 pub struct InputSplitter {
     prefix: bool,
+    swallow: bool,
     scroll: bool,
     paste: Option<bool>,
     held: Vec<u8>,
@@ -109,6 +110,17 @@ impl InputSplitter {
         let mut run: Vec<u8> = Vec::new();
         let mut i = 0;
         while i < bytes.len() {
+            if self.swallow {
+                match bytes[i] {
+                    0x20..=0x3f => i += 1,
+                    0x40..=0x7e => {
+                        i += 1;
+                        self.swallow = false;
+                    }
+                    _ => self.swallow = false,
+                }
+                continue;
+            }
             if let Some(first) = self.paste {
                 i = self.paste_chunk(bytes, i, first, &mut out);
                 continue;
@@ -159,6 +171,12 @@ impl InputSplitter {
                         }
                         PrefixEsc::Drop(used) => {
                             self.prefix = false;
+                            i += used;
+                            continue;
+                        }
+                        PrefixEsc::Overflow(used) => {
+                            self.prefix = false;
+                            self.swallow = true;
                             i += used;
                             continue;
                         }
@@ -297,6 +315,7 @@ pub fn looks_like_drop(data: &[u8]) -> bool {
 enum PrefixEsc {
     Cmd(Cmd, usize),
     Drop(usize),
+    Overflow(usize),
     Partial,
     Plain,
 }
@@ -332,7 +351,7 @@ fn prefix_esc(b: &[u8]) -> PrefixEsc {
                 return if j < MAX_PREFIX_ESC {
                     PrefixEsc::Partial
                 } else {
-                    PrefixEsc::Drop(j)
+                    PrefixEsc::Overflow(j)
                 };
             }
             if !(0x40..=0x7e).contains(&b[j]) {
@@ -346,6 +365,14 @@ fn prefix_esc(b: &[u8]) -> PrefixEsc {
                 _ => PrefixEsc::Drop(used),
             }
         }
+        0x1b => match prefix_esc(&b[1..]) {
+            PrefixEsc::Cmd(cmd, used) => PrefixEsc::Cmd(cmd, used + 1),
+            PrefixEsc::Drop(used) => PrefixEsc::Drop(used + 1),
+            PrefixEsc::Overflow(used) => PrefixEsc::Overflow(used + 1),
+            PrefixEsc::Partial => PrefixEsc::Partial,
+            PrefixEsc::Plain => PrefixEsc::Drop(1),
+        },
+        0x20..=0x7e => PrefixEsc::Drop(2),
         _ => PrefixEsc::Plain,
     }
 }

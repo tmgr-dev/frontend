@@ -4,7 +4,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::StateKind;
-use tmgr_runner::attach::{SessionRow, SplitDir};
+use tmgr_runner::attach::{SessionRow, SplitDir, MAX_LEAVES};
 
 pub(super) const PENDING_TTL: Duration = Duration::from_secs(5);
 const FALLBACK_SHELL: &str = "/bin/sh";
@@ -35,6 +35,41 @@ pub(super) fn next_shell_name<'a>(names: impl Iterator<Item = &'a str>) -> Strin
         .map(|n| format!("sh-{n}"))
         .find(|n| !used.contains(n.as_str()))
         .unwrap_or_else(|| "sh-0".to_string())
+}
+
+pub(super) fn shell_name(sessions: &[SessionRow], creating: &HashMap<String, String>) -> String {
+    next_shell_name(
+        sessions
+            .iter()
+            .map(|r| r.name.as_str())
+            .chain(creating.values().map(String::as_str)),
+    )
+}
+
+pub(super) const TYPED_CAP: usize = 4096;
+pub(super) type Ladder = &'static [(&'static str, u64)];
+pub(super) const STOP_LADDER: Ladder = &[("int", 10), ("term", 5), ("kill", 3)];
+pub(super) const KILL_ONLY: Ladder = &[("kill", 2)];
+
+pub(super) fn ladder_for(shown: bool) -> Ladder {
+    if shown {
+        STOP_LADDER
+    } else {
+        KILL_ONLY
+    }
+}
+
+pub(super) fn can_split(panes: usize) -> bool {
+    panes < MAX_LEAVES
+}
+
+pub(super) fn focus_new_pane(focused: Option<&str>, target: &str) -> bool {
+    focused == Some(target)
+}
+
+pub(super) fn push_typed(buf: &mut Vec<u8>, data: &[u8]) {
+    let room = TYPED_CAP.saturating_sub(buf.len());
+    buf.extend_from_slice(&data[..data.len().min(room)]);
 }
 
 pub(super) fn is_shell_session(argv: &[String], name: &str) -> bool {
@@ -208,6 +243,49 @@ mod tests {
         assert_eq!(next_shell_name(["sh-1", "sh-3"].into_iter()), "sh-2");
         assert_eq!(next_shell_name(["sh-2", "alpha"].into_iter()), "sh-1");
         assert_eq!(next_shell_name(["sh-x", "sh-"].into_iter()), "sh-1");
+    }
+
+    #[test]
+    fn concurrent_splits_reserve_distinct_names() {
+        let sessions = vec![row("a", "alpha", StateKind::Working)];
+        let mut creating = HashMap::new();
+        let first = shell_name(&sessions, &creating);
+        creating.insert("a".to_string(), first.clone());
+        let second = shell_name(&sessions, &creating);
+        assert_eq!(first, "sh-1");
+        assert_eq!(second, "sh-2");
+    }
+
+    #[test]
+    fn never_shown_shells_are_killed_directly() {
+        assert_eq!(ladder_for(false), KILL_ONLY);
+        assert_eq!(ladder_for(true), STOP_LADDER);
+        assert_eq!(KILL_ONLY.len(), 1);
+        assert_eq!(KILL_ONLY[0].0, "kill");
+    }
+
+    #[test]
+    fn splitting_is_refused_at_the_leaf_cap() {
+        assert!(can_split(MAX_LEAVES - 1));
+        assert!(!can_split(MAX_LEAVES));
+    }
+
+    #[test]
+    fn focus_moves_to_the_new_pane_only_from_the_target() {
+        assert!(focus_new_pane(Some("a"), "a"));
+        assert!(!focus_new_pane(Some("b"), "a"));
+        assert!(!focus_new_pane(None, "a"));
+    }
+
+    #[test]
+    fn typed_bytes_are_capped() {
+        let mut buf = Vec::new();
+        push_typed(&mut buf, b"ls");
+        assert_eq!(buf, b"ls");
+        push_typed(&mut buf, &vec![b'x'; TYPED_CAP]);
+        assert_eq!(buf.len(), TYPED_CAP);
+        push_typed(&mut buf, b"more");
+        assert_eq!(buf.len(), TYPED_CAP);
     }
 
     #[test]

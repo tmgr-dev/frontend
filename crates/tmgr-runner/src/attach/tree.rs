@@ -187,11 +187,14 @@ impl Node {
         }
     }
 
-    pub fn resize(&mut self, id: &str, nav: Nav, step_permille: u16) -> bool {
-        matches!(self.resize_in(id, nav, step_permille), Resized::Done(true))
+    pub fn resize(&mut self, rect: Rect, id: &str, nav: Nav, step_permille: u16) -> bool {
+        matches!(
+            self.resize_in(rect, id, nav, step_permille),
+            Resized::Done(true)
+        )
     }
 
-    fn resize_in(&mut self, id: &str, nav: Nav, step: u16) -> Resized {
+    fn resize_in(&mut self, rect: Rect, id: &str, nav: Nav, step: u16) -> Resized {
         let Node::Split { dir, ratio, a, b } = self else {
             return if self.contains(id) {
                 Resized::NoAxis
@@ -199,15 +202,21 @@ impl Node {
                 Resized::Missing
             };
         };
-        let inner = if a.contains(id) {
-            a.resize_in(id, nav, step)
-        } else if b.contains(id) {
-            b.resize_in(id, nav, step)
-        } else {
+        let dir = effective_dir(*dir, rect);
+        let in_a = a.contains(id);
+        if !in_a && !b.contains(id) {
             return Resized::Missing;
+        }
+        let Some((ra, rb)) = split_rects(dir, *ratio, a, b, rect) else {
+            return Resized::Done(false);
+        };
+        let inner = if in_a {
+            a.resize_in(ra, id, nav, step)
+        } else {
+            b.resize_in(rb, id, nav, step)
         };
         match inner {
-            Resized::NoAxis if *dir == nav.axis() => {
+            Resized::NoAxis if dir == nav.axis() => {
                 let next = if nav.forward() {
                     ratio.saturating_add(step)
                 } else {
@@ -248,29 +257,40 @@ impl Node {
             }
             return true;
         };
-        let dir = if *dir == SplitDir::Right && r.width < NARROW_ROW {
-            SplitDir::Down
-        } else {
-            *dir
+        let dir = effective_dir(*dir, r);
+        let Some((ra, rb)) = split_rects(dir, *ratio, a, b, r) else {
+            return false;
         };
-        let (amin, bmin) = (a.min_size(), b.min_size());
-        match dir {
-            SplitDir::Right => {
-                let Some(aw) = divide(r.width, *ratio, amin.0, bmin.0) else {
-                    return false;
-                };
-                a.place(Rect::new(r.x, r.y, aw, r.height), out)
-                    && b.place(Rect::new(r.x + aw, r.y, r.width - aw, r.height), out)
-            }
-            SplitDir::Down => {
-                let Some(ah) = divide(r.height, *ratio, amin.1, bmin.1) else {
-                    return false;
-                };
-                a.place(Rect::new(r.x, r.y, r.width, ah), out)
-                    && b.place(Rect::new(r.x, r.y + ah, r.width, r.height - ah), out)
-            }
-        }
+        a.place(ra, out) && b.place(rb, out)
     }
+}
+
+fn effective_dir(dir: SplitDir, r: Rect) -> SplitDir {
+    if dir == SplitDir::Right && r.width < NARROW_ROW {
+        SplitDir::Down
+    } else {
+        dir
+    }
+}
+
+fn split_rects(dir: SplitDir, ratio: u16, a: &Node, b: &Node, r: Rect) -> Option<(Rect, Rect)> {
+    let (amin, bmin) = (a.min_size(), b.min_size());
+    Some(match dir {
+        SplitDir::Right => {
+            let aw = divide(r.width, ratio, amin.0, bmin.0)?;
+            (
+                Rect::new(r.x, r.y, aw, r.height),
+                Rect::new(r.x + aw, r.y, r.width - aw, r.height),
+            )
+        }
+        SplitDir::Down => {
+            let ah = divide(r.height, ratio, amin.1, bmin.1)?;
+            (
+                Rect::new(r.x, r.y, r.width, ah),
+                Rect::new(r.x, r.y + ah, r.width, r.height - ah),
+            )
+        }
+    })
 }
 
 fn divide(total: u16, ratio: u16, amin: u16, bmin: u16) -> Option<u16> {

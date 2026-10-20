@@ -5,22 +5,22 @@
  ✓ tests            52m │>            │ n / p         next / previous session                        │                                     │
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
-                        │             │ | v           split right                                    │                                     │
-                        │             │ - h           split down                                     │                                     │
+                        │             │ | v / - h     split right / split down                       │                                     │
                         │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
-                        │             │ arrows        move focus                                     │                                     │
-                        │             │ Shift+arrows  resize the focused pane                        │                                     │
+                        │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
                         │             │ z             zoom the focused pane                          │                                     │
                         │             │ b             show or hide the sidebar                       │                                     │
                         │             │ r             rename the focused session                     │                                     │
-                        │             │ x             stop the focused session (asks first)          │                                     │
-                        │             │ X             remove an exited session                       │                                     │
+                        │             │ x / X         stop (asks first) / remove if exited           │                                     │
                         │             │ [             scroll back through history                    │                                     │
                         │             │ ?             this help                                      │                                     │
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
-                        │             │ ? again closes this box                                      │                                     │
+                        │             │ click         pick a session or a pane                       │                                     │
+                        │             │ wheel         scroll the history of the pane                 │                                     │
+                        │             │ buttons       header: pause, stop, close (hover)             │                                     │
+                        │             │ drop          a dropped file is pasted there                 │                                     │
+                        │             │ drag          Shift-drag selects (iTerm2: Option)            │                                     │
                         │             │                                                              │                                     │
-                        │             │                                                              │                                     │
-                        ╰─────────────│                                                              │─────────────────────────────────────╯
+                        ╰─────────────│ ? again closes this box                                      │─────────────────────────────────────╯
  tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯                        Ctrl-] ? help
