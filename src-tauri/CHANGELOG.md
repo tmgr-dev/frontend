@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.53 — 2026-10-20
+
+- Categories: the categories tree now lives in the sidebar, with a filter and "+" to create one. Each category has one page with Tasks, Subcategories and Settings tabs; the separate categories page with the list and the settings pane is gone.
+- Category settings are one flat page. The save bar appears only when you change something; Cursor, GitHub and agent repositories are one row each and open in place.
+- Default estimate and Timer reminder take durations like 4h, 20m or 1h 30m instead of a clock time.
+
 ## 0.9.52 — 2026-10-20
 
 - AI usage: an Autopilot panel (desktop only) shows the local runner's autopilot live: state, Pause / Resume / Stop, task counters, active runs with Open task / Open session / Open PR, usage limits with the stop marks, cost and an event feed. Open task and the needs feedback / blocked / queued lists light up with the next CLI release.
