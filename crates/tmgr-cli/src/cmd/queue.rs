@@ -111,7 +111,7 @@ pub struct RuleArgs {
     pub status_type: String,
     #[arg(long, value_name = "MODEL")]
     pub model: Option<String>,
-    /// At most this many agents of the rule at once (1 to 3)
+    /// At most this many agents of the rule at once (1 to 3); `tmgr queue autopilot` runs no more teams than this
     #[arg(long, default_value_t = 1, value_name = "N")]
     pub max_concurrent: u32,
     /// Working hours, HH-HH in local time, for example 09-19
@@ -614,6 +614,7 @@ fn page_through(lines: &[String]) -> Result<()> {
         }
         if (n + 1) * PAGE < lines.len() {
             eprint!("-- more, press Enter -- ");
+            let _ = std::io::Write::flush(&mut std::io::stderr());
             let mut sink = String::new();
             std::io::BufRead::read_line(&mut input, &mut sink)
                 .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
@@ -690,6 +691,45 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
 
 const REFRESH_PAGES: u64 = 50;
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Card {
+    pub id: i64,
+    pub key: String,
+}
+
+pub(crate) fn card_key(title: &str, code: &str, sequence: Option<u64>, id: i64) -> String {
+    let title = title.trim_start_matches(' ');
+    let digits = |s: &str| s.bytes().take_while(u8::is_ascii_digit).count();
+    if !code.is_empty() {
+        let n = code.len();
+        if title.len() > n + 1
+            && title.is_char_boundary(n)
+            && title[..n].to_lowercase() == code.to_lowercase()
+            && title.as_bytes()[n] == b'-'
+        {
+            let d = digits(&title[n + 1..]);
+            let rest = &title[n + 1 + d..];
+            if d > 0 && (rest.is_empty() || rest.starts_with([' ', ':'])) {
+                return title[..n + 1 + d].to_uppercase();
+            }
+        }
+    }
+    if let Some((head, _)) = title.split_once(':') {
+        let head = head.trim_end_matches(' ');
+        if let Some((word, num)) = head.split_once('-') {
+            let word_ok = word.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && word.chars().all(|c| c.is_ascii_alphanumeric());
+            if word_ok && !num.is_empty() && num.bytes().all(|b| b.is_ascii_digit()) {
+                return head.to_uppercase();
+            }
+        }
+    }
+    match sequence {
+        Some(seq) if !code.is_empty() => format!("{code}-{seq}"),
+        _ => format!("T{id}"),
+    }
+}
+
 pub(crate) struct CliCloud<'a> {
     ctx: &'a Ctx,
     live_keys: RefCell<Option<Vec<String>>>,
@@ -754,6 +794,17 @@ impl CloudApi for CliCloud<'_> {
     }
 
     fn list(&self, rule: &Rule, ws: &CloudWorkspace) -> Result<(Vec<i64>, bool)> {
+        let (cards, complete) = self.list_cards(rule, ws)?;
+        Ok((cards.into_iter().map(|c| c.id).collect(), complete))
+    }
+
+    fn gate(&self, rule: &Rule, ws: &CloudWorkspace, task_id: i64) -> Result<Gated> {
+        self.gate_with(rule, ws, task_id, true)
+    }
+}
+
+impl CliCloud<'_> {
+    pub(crate) fn list_cards(&self, rule: &Rule, ws: &CloudWorkspace) -> Result<(Vec<Card>, bool)> {
         let client = self.ctx.cloud_client()?;
         let wanted = match rule.status_type.as_str() {
             "backlog" => "default",
@@ -773,13 +824,20 @@ impl CloudApi for CliCloud<'_> {
         }) else {
             return Ok((Vec::new(), true));
         };
-        let mut ids = Vec::new();
+        let code = category.code.clone().unwrap_or_default();
+        let mut cards = Vec::new();
         let mut complete = true;
         for status in status_ids {
             let mut page = 1;
             loop {
                 let got = client.tasks_page(ws.id, Some(category.id), Some(status), page, 100)?;
-                ids.extend(got.items.iter().filter_map(|t| i64::try_from(t.id).ok()));
+                cards.extend(got.items.iter().filter_map(|t| {
+                    let id = i64::try_from(t.id).ok()?;
+                    Some(Card {
+                        id,
+                        key: card_key(&t.title, &code, t.category_tasks_sequence_id, id),
+                    })
+                }));
                 if page >= got.last_page {
                     break;
                 }
@@ -790,17 +848,11 @@ impl CloudApi for CliCloud<'_> {
                 page += 1;
             }
         }
-        ids.sort_unstable();
-        ids.dedup();
-        Ok((ids, complete))
+        cards.sort_unstable_by_key(|c| c.id);
+        cards.dedup_by_key(|c| c.id);
+        Ok((cards, complete))
     }
 
-    fn gate(&self, rule: &Rule, ws: &CloudWorkspace, task_id: i64) -> Result<Gated> {
-        self.gate_with(rule, ws, task_id, true)
-    }
-}
-
-impl CliCloud<'_> {
     pub(crate) fn gate_readonly(
         &self,
         rule: &Rule,
@@ -1752,5 +1804,24 @@ mod team_cap_tests {
         assert!(e.message.contains("too old for team runs"), "{}", e.message);
         assert!(team_supported(&bundle(team()), &new).is_ok());
         assert!(team_supported(&bundle(None), &old).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod card_key_tests {
+    use super::card_key as k;
+
+    #[test]
+    fn card_keys_follow_the_server_rule() {
+        assert_eq!(k("TM-210: x", "TM", Some(5), 9), "TM-210");
+        assert_eq!(k("tm-210 x", "TM", Some(5), 9), "TM-210");
+        assert_eq!(k("  TM-210", "TM", Some(5), 9), "TM-210");
+        assert_eq!(k("TM-2420x", "TM", Some(5), 9), "TM-5");
+        assert_eq!(k("ABC-7: x", "TM", Some(5), 9), "ABC-7");
+        assert_eq!(k("ABC-7 x", "TM", Some(5), 9), "TM-5");
+        assert_eq!(k("UTF-8 encoding bug", "TM", Some(5), 9), "TM-5");
+        assert_eq!(k("Fix: TM-1", "TM", Some(5), 9), "TM-5");
+        assert_eq!(k("plain", "TM", None, 9), "T9");
+        assert_eq!(k("plain", "", Some(3), 9), "T9");
     }
 }

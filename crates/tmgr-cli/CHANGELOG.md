@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.14
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Autopilot `--dry-run` no longer needs a real usage number: it starts nothing, so it only warns that the usage limits were not checked.
+- `--only` now narrows the task list before the tasks are fetched and checked, and an unknown key fails before the interview.
+- Checking candidates retries connection errors with a backoff, and a task that still cannot be checked is shown as "could not check, retry" instead of "refused"; the check stops with an error if the server stops answering. Progress lines are printed while the tasks are read and checked.
+- Two tasks that would show the same key (for example two TM-210) now show as `task-<id>`.
+- "Teams at the same time" now says that the rule's `--max-concurrent` caps it and how to change it (remove the rule and add it again).
 ## 1.0.13
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.

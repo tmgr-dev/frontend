@@ -70,6 +70,8 @@ pub struct Client {
     warnings: RefCell<Vec<Warning>>,
     workspace_header: Cell<Option<i64>>,
     local: Option<crate::local::Local>,
+    get_retries: Cell<u32>,
+    retry_pause: Cell<Duration>,
 }
 
 impl Client {
@@ -102,6 +104,8 @@ impl Client {
             warnings: RefCell::new(Vec::new()),
             workspace_header: Cell::new(None),
             local: None,
+            get_retries: Cell::new(0),
+            retry_pause: Cell::new(Duration::from_millis(250)),
         })
     }
 
@@ -122,6 +126,11 @@ impl Client {
             Some(local) => Ok(Some(local.user().id)),
             None => Ok(self.current_device()?.user.id),
         }
+    }
+
+    pub fn set_get_retries(&self, retries: u32, pause: Duration) {
+        self.get_retries.set(retries);
+        self.retry_pause.set(pause);
     }
 
     pub fn take_warnings(&self) -> Vec<Warning> {
@@ -163,6 +172,7 @@ impl Client {
         if self.verbose {
             eprintln!("> {method} {path}");
         }
+        let is_get = method == Method::GET;
         let mut req = self.http.request(method, &url).query(query);
         if let Some(b) = body {
             req = req.json(b);
@@ -178,7 +188,26 @@ impl Client {
                 req = req.header("X-Workspace-Id", id.to_string());
             }
         }
-        let resp = req.send().map_err(|e| self.network_error(&e))?;
+        let mut attempt = 0;
+        let resp = loop {
+            let again = if is_get && attempt < self.get_retries.get() {
+                req.try_clone()
+            } else {
+                None
+            };
+            let sent = match again {
+                Some(copy) => copy.send(),
+                None => break req.send().map_err(|e| self.network_error(&e))?,
+            };
+            match sent {
+                Ok(resp) => break resp,
+                Err(e) if e.is_timeout() => return Err(self.network_error(&e)),
+                Err(_) => {
+                    std::thread::sleep(self.retry_pause.get() * 3u32.pow(attempt));
+                    attempt += 1;
+                }
+            }
+        };
         let status = resp.status().as_u16();
         if self.verbose {
             eprintln!("< {status}");
@@ -824,5 +853,71 @@ mod tests {
         assert_eq!(a[0].id, b[0].id);
         let task = unwrap_data(json!({"id": 1, "title": "t", "data": 5}));
         assert_eq!(task["id"], 1);
+    }
+
+    fn flaky_server(drop_first: usize) -> (String, std::thread::JoinHandle<usize>) {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let mut seen = 0;
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                seen += 1;
+                if seen <= drop_first {
+                    drop(stream);
+                    continue;
+                }
+                let _ = stream.write_all(
+                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}",
+                );
+                break;
+            }
+            seen
+        });
+        (url, handle)
+    }
+
+    fn client_for(url: &str) -> Client {
+        let tokens = Tokens {
+            access: Secret::new("t"),
+            refresh: None,
+            expires_at: None,
+        };
+        Client::new(url, "test", Some(tokens), None, false).unwrap()
+    }
+
+    #[test]
+    fn a_get_is_retried_after_dropped_connections_when_asked() {
+        let (url, server) = flaky_server(2);
+        let client = client_for(&url);
+        client.set_get_retries(3, Duration::from_millis(1));
+        let (status, _) = client.call("GET", "/x", None, false).unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(server.join().unwrap(), 3);
+    }
+
+    #[test]
+    fn a_get_is_not_retried_by_default() {
+        let (url, server) = flaky_server(1);
+        let client = client_for(&url);
+        let e = client.call("GET", "/x", None, false).unwrap_err();
+        assert_eq!(e.kind, Kind::Offline);
+        let _ = std::net::TcpStream::connect(url.trim_start_matches("http://"));
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn retries_give_up_after_the_limit() {
+        let (url, server) = flaky_server(10);
+        let client = client_for(&url);
+        client.set_get_retries(2, Duration::from_millis(1));
+        let e = client.call("GET", "/x", None, false).unwrap_err();
+        assert_eq!(e.kind, Kind::Offline);
+        let _ = std::net::TcpStream::connect(url.trim_start_matches("http://"));
+        for _ in 0..8 {
+            let _ = std::net::TcpStream::connect(url.trim_start_matches("http://"));
+        }
+        let _ = server.join();
     }
 }

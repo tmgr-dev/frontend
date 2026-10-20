@@ -148,6 +148,8 @@ fn coverage(offer: &Offer) -> std::result::Result<(Option<String>, Option<String
     Ok((persona, context))
 }
 
+pub const OFFER_OFFLINE: &str = "offline";
+
 pub fn read_offer(client: &Client, task_id: i64) -> std::result::Result<Offer, String> {
     let (status, value) = client
         .call(
@@ -156,7 +158,13 @@ pub fn read_offer(client: &Client, task_id: i64) -> std::result::Result<Offer, S
             None,
             true,
         )
-        .map_err(|_| "failed".to_string())?;
+        .map_err(|e| {
+            if e.kind == tmgr_core::error::Kind::Offline {
+                OFFER_OFFLINE.to_string()
+            } else {
+                "failed".to_string()
+            }
+        })?;
     if !(200..300).contains(&status) {
         return Err(error_code(&value).unwrap_or("failed").to_string());
     }
