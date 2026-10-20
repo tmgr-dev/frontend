@@ -37,8 +37,8 @@ module.exports = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
-        isolatedModules: true,
         tsconfig: {
+          isolatedModules: true,
           target: 'ES2020',
           module: 'CommonJS',
           lib: ['ES2021', 'DOM'],
