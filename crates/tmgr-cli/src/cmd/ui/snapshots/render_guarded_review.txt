@@ -2,7 +2,7 @@ tmgr › task › confirm
 Let agents run on a local task: show its full text and confirm it (terminal only)
 
 ┌ Options ─────────────────────────────────────────────────────────────────────────────────────────┐
-│> *reference       TM-1_                                                                          │
+│> *reference       TM-1_   ctrl+o pick                                                            │
 │    TM-512, #8974 or 8974 (see `tmgr help refs`)                                                  │
 │   workspace       Workspace code, or local:<code> for a desktop workspace (default: `tmgr ws use`│
 │                                                                                                  │

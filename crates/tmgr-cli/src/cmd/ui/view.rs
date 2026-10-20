@@ -1,8 +1,9 @@
-use super::app::{App, Done, Focus, Form, Hit, Palette, Screen};
+use super::app::{App, Done, Focus, Form, Hit, Palette, Picker, Screen};
 use super::cmdline::Value;
 use super::fuzzy;
 use super::guard;
 use super::model::Kind;
+use super::picker;
 use crate::cmd::board::theme::ColorLevel;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -69,6 +70,9 @@ pub fn draw(f: &mut Frame, app: &App, look: Look) {
         Screen::Home => home(f, area, app, look),
         Screen::Form(form) => form_view(f, area, form, look),
         Screen::Done(done) => done_view(f, area, done, look),
+    }
+    if let Some(p) = &app.picker {
+        picker_view(f, area, p, look);
     }
     if let Some(p) = &app.palette {
         palette(f, area, app, p, look);
@@ -243,6 +247,9 @@ fn form_view(f: &mut Frame, area: Rect, form: &Form, look: Look) {
                 }
                 spans.push(Span::raw(v));
             }
+        }
+        if focused && picker::source_for(&form.node.path, field).is_some() {
+            spans.push(Span::styled("   ctrl+o pick", look.dim()));
         }
         lines.push(Line::from(spans));
         if focused && !field.help.is_empty() {
@@ -431,4 +438,78 @@ fn help(f: &mut Frame, area: Rect, look: Look) {
         })
         .collect();
     f.render_widget(Paragraph::new(lines).block(look.block("Keys")), rect);
+}
+
+fn picker_view(f: &mut Frame, area: Rect, p: &Picker, look: Look) {
+    f.render_widget(Clear, area);
+    let [search, body, foot] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Min(4),
+        Constraint::Length(1),
+    ])
+    .areas(area);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("\u{203a} ", look.accent()),
+            Span::raw(format!("{}_", p.query)),
+        ]))
+        .block(look.block(p.source.title())),
+        search,
+    );
+    let [list, preview] =
+        Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)]).areas(body);
+    let mut lines: Vec<Line> = Vec::new();
+    let mut side: Vec<Line> = Vec::new();
+    match (&p.items, &p.error) {
+        (_, Some(e)) => lines.push(Line::from(Span::styled(e.clone(), look.bad()))),
+        (None, None) => lines.push(Line::from(Span::styled("Loading...", look.dim()))),
+        (Some(items), None) => {
+            let heads = p.source.heads();
+            lines.push(Line::from(Span::styled(
+                format!("  {}", heads.join("   ")),
+                look.dim(),
+            )));
+            let rows = list.height.saturating_sub(3) as usize;
+            let start = p.cursor.saturating_sub(rows.saturating_sub(1));
+            for (n, idx) in p.shown.iter().enumerate().skip(start).take(rows) {
+                let item = &items[*idx];
+                let sel = n == p.cursor;
+                let text = format!("{} {}", if sel { ">" } else { " " }, item.cols.join("   "));
+                lines.push(Line::from(Span::styled(
+                    text,
+                    if sel { look.selected() } else { Style::new() },
+                )));
+            }
+            if p.shown.is_empty() {
+                lines.push(Line::from(Span::styled("Nothing matches", look.dim())));
+            }
+            if let Some(item) = p.shown.get(p.cursor).and_then(|i| items.get(*i)) {
+                for (i, l) in item.preview.iter().enumerate() {
+                    side.push(Line::from(Span::styled(
+                        l.clone(),
+                        if i == 0 { look.accent() } else { Style::new() },
+                    )));
+                }
+            }
+        }
+    }
+    f.render_widget(Paragraph::new(lines).block(look.block("Results")), list);
+    f.render_widget(
+        Paragraph::new(side)
+            .wrap(Wrap { trim: false })
+            .block(look.block("Preview")),
+        preview,
+    );
+    f.render_widget(
+        Paragraph::new(keys(
+            look,
+            &[
+                ("type", "filter"),
+                ("\u{2191}\u{2193}", "move"),
+                ("enter", "use it"),
+                ("esc", "back"),
+            ],
+        )),
+        foot,
+    );
 }

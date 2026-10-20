@@ -6,6 +6,7 @@ mod groups;
 mod guard;
 mod history;
 mod model;
+mod picker;
 mod view;
 
 #[cfg(test)]
@@ -160,6 +161,7 @@ fn run(cli: &Cli) -> Result<()> {
     let exe = std::env::current_exe()
         .map_err(|e| Error::internal(format!("cannot locate the tmgr binary: {e}")))?;
     let probe = header_probe(exe.clone());
+    let (loaded_tx, loaded_rx) = mpsc::channel();
     let look = look(cli);
     let _ = ctrlc::set_handler(|| {});
     let previous = std::panic::take_hook();
@@ -175,6 +177,9 @@ fn run(cli: &Cli) -> Result<()> {
     loop {
         if let Ok(line) = probe.try_recv() {
             app.header = format!("tmgr {} \u{b7} {}", crate::cli::VERSION, line);
+        }
+        while let Ok((source, result)) = loaded_rx.try_recv() {
+            app.picker_loaded(source, result);
         }
         let _ = term.draw(|f| view::draw(f, &app, look));
         if !event::poll(Duration::from_millis(150)).unwrap_or(false) {
@@ -197,6 +202,13 @@ fn run(cli: &Cli) -> Result<()> {
                     "Command copied".into()
                 } else {
                     "Could not copy: select the command with the mouse".into()
+                });
+            }
+            Some(Action::Load { source, ws }) => {
+                let tx = loaded_tx.clone();
+                let exe = exe.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send((source, picker::load(source, ws.as_deref(), &exe)));
                 });
             }
             Some(Action::Run { node, values, argv }) => {

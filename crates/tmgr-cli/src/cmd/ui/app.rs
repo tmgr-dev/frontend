@@ -4,6 +4,7 @@ use super::groups::{self, Group};
 use super::guard;
 use super::history::Recent;
 use super::model::{Kind, Node};
+use super::picker::{self, Item, Source};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -45,7 +46,21 @@ pub struct Palette {
     pub cursor: usize,
 }
 
+pub struct Picker {
+    pub source: Source,
+    pub field: usize,
+    pub query: String,
+    pub items: Option<Vec<Item>>,
+    pub shown: Vec<usize>,
+    pub cursor: usize,
+    pub error: Option<String>,
+}
+
 pub enum Action {
+    Load {
+        source: Source,
+        ws: Option<String>,
+    },
     Run {
         node: Node,
         values: Values,
@@ -61,6 +76,7 @@ pub struct App {
     pub recents: Vec<Recent>,
     pub screen: Screen,
     pub palette: Option<Palette>,
+    pub picker: Option<Picker>,
     pub help: bool,
     pub focus: Focus,
     pub group: usize,
@@ -196,6 +212,27 @@ impl Form {
         }
     }
 
+    pub fn pick(&mut self, idx: usize, value: String) {
+        let Some(f) = self.node.fields.get(idx).cloned() else {
+            return;
+        };
+        match f.kind {
+            Kind::Multi => {
+                let mut cur = match self.values.get(&f.id) {
+                    Some(Value::Multi(m)) => m.clone(),
+                    _ => Vec::new(),
+                };
+                cur.retain(|s| !s.is_empty());
+                cur.push(value);
+                self.values.insert(f.id, Value::Multi(cur));
+            }
+            Kind::Select(_) | Kind::Bool | Kind::Count => {}
+            _ => {
+                self.values.insert(f.id, Value::Text(value));
+            }
+        }
+    }
+
     fn types_text(&self) -> bool {
         self.node
             .fields
@@ -217,6 +254,7 @@ impl App {
             recents,
             screen: Screen::Home,
             palette: None,
+            picker: None,
             help: false,
             focus: Focus::Groups,
             group: 0,
@@ -317,7 +355,7 @@ impl App {
             self.palette = Some(p);
             return;
         }
-        if self.help {
+        if self.help || self.picker.is_some() {
             return;
         }
         if let Screen::Form(form) = &mut self.screen {
@@ -341,6 +379,9 @@ impl App {
         if self.help {
             self.help = false;
             return None;
+        }
+        if self.picker.is_some() {
+            return self.picker_key(key);
         }
         if self.palette.is_some() {
             return self.palette_key(key);
@@ -471,6 +512,24 @@ impl App {
         match key.code {
             KeyCode::Esc => self.screen = Screen::Home,
             KeyCode::Char('y') if ctrl => return Some(Action::Copy(form.display())),
+            KeyCode::Char('o') if ctrl => {
+                let field = form.node.fields.get(form.cursor)?;
+                let source = picker::source_for(&form.node.path, field)?;
+                let ws = match form.values.get("ws") {
+                    Some(Value::Text(t)) if !t.is_empty() => Some(t.clone()),
+                    _ => None,
+                };
+                self.picker = Some(Picker {
+                    source,
+                    field: form.cursor,
+                    query: String::new(),
+                    items: None,
+                    shown: Vec::new(),
+                    cursor: 0,
+                    error: None,
+                });
+                return Some(Action::Load { source, ws });
+            }
             KeyCode::Enter => {
                 if guard::is_guarded(&form.node, &form.values) {
                     match cmdline::build_argv(&form.node, &form.values, false) {
@@ -487,6 +546,59 @@ impl App {
             KeyCode::Left if n > 0 && !form.types_text() => form.cycle(-1),
             KeyCode::Backspace if n > 0 => form.backspace(),
             KeyCode::Char(c) if n > 0 && !ctrl => form.type_char(c),
+            _ => {}
+        }
+        None
+    }
+
+    pub fn picker_loaded(&mut self, source: Source, result: Result<Vec<Item>, String>) {
+        let Some(p) = self.picker.as_mut().filter(|p| p.source == source) else {
+            return;
+        };
+        match result {
+            Ok(items) => {
+                p.shown = picker::filter(&items, &p.query);
+                p.items = Some(items);
+            }
+            Err(e) => p.error = Some(e),
+        }
+    }
+
+    fn picker_key(&mut self, key: KeyEvent) -> Option<Action> {
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let p = self.picker.as_mut()?;
+        let refilter = |p: &mut Picker| {
+            if let Some(items) = &p.items {
+                p.shown = picker::filter(items, &p.query);
+            }
+            p.cursor = 0;
+        };
+        match key.code {
+            KeyCode::Esc => self.picker = None,
+            KeyCode::Up => p.cursor = p.cursor.saturating_sub(1),
+            KeyCode::Down => p.cursor = (p.cursor + 1).min(p.shown.len().saturating_sub(1)),
+            KeyCode::Backspace => {
+                p.query.pop();
+                refilter(p);
+            }
+            KeyCode::Char(c) if !ctrl => {
+                p.query.push(c);
+                refilter(p);
+            }
+            KeyCode::Enter => {
+                let value = p
+                    .items
+                    .as_ref()
+                    .and_then(|items| p.shown.get(p.cursor).and_then(|i| items.get(*i)))
+                    .map(|it| it.value.clone());
+                let field = p.field;
+                if let Some(v) = value {
+                    self.picker = None;
+                    if let Screen::Form(form) = &mut self.screen {
+                        form.pick(field, v);
+                    }
+                }
+            }
             _ => {}
         }
         None
