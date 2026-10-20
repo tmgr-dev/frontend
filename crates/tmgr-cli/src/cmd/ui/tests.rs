@@ -1448,6 +1448,7 @@ fn history_round_trips_a_recorded_command() {
     let loaded = history::load(&file);
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].path, p(&["start"]));
+}
 
 fn picker_items(n: &[(&str, &str)]) -> Vec<picker::Item> {
     n.iter()
