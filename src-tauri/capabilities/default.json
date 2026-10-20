@@ -70,6 +70,8 @@
 		"allow-take-quick-add",
 		"allow-tray-update",
 		"allow-dnd-update",
+		"allow-mark-update-relaunch",
+		"allow-relaunch-after-update",
 		"allow-plugin-page-put",
 		"allow-plugin-window-open",
 		"allow-plugin-window-reply",

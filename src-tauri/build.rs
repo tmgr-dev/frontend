@@ -52,6 +52,8 @@ const APP_COMMANDS: &[&str] = &[
   "take_quick_add",
   "tray_update",
   "dnd_update",
+  "mark_update_relaunch",
+  "relaunch_after_update",
   "plugin_page_put",
   "plugin_window_open",
   "plugin_window_call",

@@ -1,8 +1,10 @@
 const check = jest.fn();
-const relaunch = jest.fn();
+const invoke = jest.fn();
 
 jest.mock('@tauri-apps/plugin-updater', () => ({ check }));
-jest.mock('@tauri-apps/plugin-process', () => ({ relaunch }));
+jest.mock('@tauri-apps/api/core', () => ({
+	invoke: (...args: unknown[]) => invoke(...args),
+}));
 
 const fakeUpdate = (version: string) => ({
 	version,
@@ -20,8 +22,14 @@ const load = () => {
 
 beforeEach(() => {
 	check.mockReset();
-	relaunch.mockReset();
+	invoke.mockReset();
+	invoke.mockResolvedValue(undefined);
 });
+
+const callOrder = (command: string) =>
+	invoke.mock.invocationCallOrder[
+		invoke.mock.calls.findIndex(([name]) => name === command)
+	];
 
 it('stays idle when no update is published', async () => {
 	check.mockResolvedValue(null);
@@ -62,7 +70,7 @@ it('swallows network errors and stays idle', async () => {
 	expect(updateState.value.status).toBe('idle');
 });
 
-it('installs the downloaded update and relaunches', async () => {
+it('marks the relaunch, installs the update, then relaunches', async () => {
 	const update = fakeUpdate('0.1.1');
 	check.mockResolvedValue(update);
 	const { checkForUpdate, installUpdate, updateState } = load();
@@ -71,8 +79,29 @@ it('installs the downloaded update and relaunches', async () => {
 	await installUpdate();
 
 	expect(update.install).toHaveBeenCalledTimes(1);
-	expect(relaunch).toHaveBeenCalledTimes(1);
+	expect(invoke.mock.calls).toEqual([
+		['mark_update_relaunch'],
+		['relaunch_after_update'],
+	]);
+	const installOrder = update.install.mock.invocationCallOrder[0];
+	expect(callOrder('mark_update_relaunch')).toBeLessThan(installOrder);
+	expect(callOrder('relaunch_after_update')).toBeGreaterThan(installOrder);
 	expect(updateState.value.status).toBe('installing');
+});
+
+it('still installs and relaunches when the relaunch marker fails', async () => {
+	const update = fakeUpdate('0.1.1');
+	check.mockResolvedValue(update);
+	invoke.mockImplementation(async (command: string) => {
+		if (command === 'mark_update_relaunch') throw new Error('read-only');
+	});
+	const { checkForUpdate, installUpdate } = load();
+	await checkForUpdate();
+
+	await installUpdate();
+
+	expect(update.install).toHaveBeenCalledTimes(1);
+	expect(invoke).toHaveBeenCalledWith('relaunch_after_update');
 });
 
 it('returns to ready when installation fails', async () => {
@@ -84,7 +113,7 @@ it('returns to ready when installation fails', async () => {
 
 	await installUpdate();
 
-	expect(relaunch).not.toHaveBeenCalled();
+	expect(invoke).not.toHaveBeenCalledWith('relaunch_after_update');
 	expect(updateState.value.status).toBe('ready');
 });
 

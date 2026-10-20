@@ -61,9 +61,10 @@ export async function installUpdate(): Promise<void> {
 	if (!pending || updateState.value.status !== 'ready') return;
 	updateState.value = { ...updateState.value, status: 'installing' };
 	try {
+		const { invoke } = await import('@tauri-apps/api/core');
+		await invoke('mark_update_relaunch').catch(() => {});
 		await pending.install();
-		const { relaunch } = await import('@tauri-apps/plugin-process');
-		await relaunch();
+		await invoke('relaunch_after_update');
 	} catch {
 		updateState.value = { ...updateState.value, status: 'ready' };
 	}

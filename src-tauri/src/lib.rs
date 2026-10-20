@@ -31,6 +31,7 @@ mod usage;
 mod page_windows;
 mod task_windows;
 mod tray;
+mod update_relaunch;
 
 use std::path::{Path, PathBuf};
 
@@ -209,6 +210,8 @@ pub fn run() {
       usage::usage_task,
       tray::tray_update,
       tray::dnd_update,
+      update_relaunch::mark_update_relaunch,
+      update_relaunch::relaunch_after_update,
       task_windows::open_task_window,
       task_windows::focus_task_window,
       page_windows::open_page_window,
@@ -366,8 +369,12 @@ pub fn run() {
 
       #[cfg(target_os = "macos")]
       hide_traffic_lights(&window);
-      if std::env::args().any(|arg| arg == "--hidden") {
+      let marker_age = update_relaunch::consume_marker(app.handle());
+      if !update_relaunch::start_visible(std::env::args().any(|arg| arg == "--hidden"), marker_age) {
         log::info!("[window] started hidden (launch at login)");
+      } else if update_relaunch::is_fresh(marker_age) {
+        log::info!("[window] shown after update");
+        tray::show_main(app.handle());
       } else {
         window.show()?;
       }
@@ -398,6 +405,10 @@ pub fn run() {
       #[cfg(target_os = "macos")]
       if let RunEvent::Reopen { .. } = event {
         tray::show_main(app);
+      }
+      #[cfg(target_os = "macos")]
+      if let RunEvent::Exit = event {
+        update_relaunch::open_pending_bundle(app);
       }
       #[cfg(not(target_os = "macos"))]
       let _ = (app, event);
