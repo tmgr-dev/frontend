@@ -1,4 +1,5 @@
 mod app;
+mod capture;
 mod cmdline;
 mod fuzzy;
 mod groups;
@@ -25,11 +26,11 @@ use ratatui::crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
 };
 use ratatui::Terminal;
-use std::io::{stdin, stdout, IsTerminal, Read, Write};
+use std::io::{stdin, stdout, IsTerminal, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tmgr_core::error::{Error, Result};
 
 pub fn agent_session() -> bool {
@@ -120,46 +121,34 @@ fn look(cli: &Cli) -> view::Look {
 fn header_probe(exe: PathBuf) -> mpsc::Receiver<String> {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let Ok(mut child) = std::process::Command::new(exe)
-            .args(["status", "--no-color"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-        else {
-            return;
-        };
-        let Some(mut stdout) = child.stdout.take() else {
-            return;
-        };
-        let reader = std::thread::spawn(move || {
-            let mut text = String::new();
-            let _ = stdout.read_to_string(&mut text);
-            text
-        });
-        let started = Instant::now();
-        let ok = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status.success(),
-                Ok(None) if started.elapsed() < Duration::from_secs(8) => {
-                    std::thread::sleep(Duration::from_millis(50))
-                }
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break false;
-                }
+        let args = ["status".to_string(), "--no-color".to_string()];
+        if let Ok((true, text)) = capture::capture(&exe, &args, Duration::from_secs(8)) {
+            if let Some(line) = text.lines().find(|l| !l.trim().is_empty()) {
+                let _ = tx.send(tmgr_core::text::sanitize_line(line.trim()));
             }
-        };
-        if !ok {
-            return;
-        }
-        let text = reader.join().unwrap_or_default();
-        if let Some(line) = text.lines().find(|l| !l.trim().is_empty()) {
-            let _ = tx.send(line.trim().to_string());
         }
     });
     rx
+}
+
+fn tty_state() -> Option<String> {
+    let out = std::process::Command::new("stty")
+        .arg("-g")
+        .stdin(Stdio::inherit())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !text.is_empty()).then_some(text)
+}
+
+fn restore_tty(state: &str) {
+    let _ = std::process::Command::new("stty")
+        .arg(state)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 fn run(cli: &Cli) -> Result<()> {
@@ -178,6 +167,7 @@ fn run(cli: &Cli) -> Result<()> {
         leave_screen();
         previous(info);
     }));
+    let saved_tty = tty_state();
     let _restore = Restore;
     enter_screen().map_err(|e| Error::internal(format!("cannot open the terminal: {e}")))?;
     let mut term: Term = Terminal::new(CrosstermBackend::new(stdout()))
@@ -211,7 +201,15 @@ fn run(cli: &Cli) -> Result<()> {
             }
             Some(Action::Run { node, values, argv }) => {
                 let updated = node.path == ["self-update"];
-                let done = run_child(&mut term, &exe, node, values, argv, hist.as_deref());
+                let done = run_child(
+                    &mut term,
+                    &exe,
+                    saved_tty.as_deref(),
+                    node,
+                    values,
+                    argv,
+                    hist.as_deref(),
+                );
                 if let Some(path) = hist.as_deref() {
                     app.recents = history::load(path);
                 }
@@ -228,6 +226,7 @@ fn run(cli: &Cli) -> Result<()> {
 fn run_child(
     term: &mut Term,
     exe: &std::path::Path,
+    tty: Option<&str>,
     node: model::Node,
     values: cmdline::Values,
     argv: Vec<String>,
@@ -238,13 +237,16 @@ fn run_child(
         Ok(masked) => cmdline::render(&masked),
         Err(_) => cmdline::render(&node.path),
     };
-    println!("$ {shown}\n");
+    println!("$ {}\n", tmgr_core::text::sanitize_line(&shown));
     let _ = stdout().flush();
     let code = std::process::Command::new(exe)
         .args(&argv)
         .status()
         .ok()
         .map(exit_code);
+    if let Some(state) = tty {
+        restore_tty(state);
+    }
     leave_screen();
     if let (Some(path), Some(0)) = (hist, code) {
         history::record(path, &node, &values);

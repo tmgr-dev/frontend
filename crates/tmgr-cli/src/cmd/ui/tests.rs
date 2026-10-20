@@ -743,7 +743,7 @@ fn line_breaks_and_nul_in_values_are_rejected() {
         let v = vals(&[("title", text(bad))]);
         assert_eq!(
             cmdline::build_argv(add, &v, false).unwrap_err(),
-            "values cannot contain line breaks",
+            "values cannot contain line breaks or control characters",
             "{bad:?}"
         );
     }
@@ -1448,4 +1448,39 @@ fn history_round_trips_a_recorded_command() {
     let loaded = history::load(&file);
     assert_eq!(loaded.len(), 1);
     assert_eq!(loaded[0].path, p(&["start"]));
+}
+
+#[test]
+fn control_characters_in_values_are_rejected() {
+    let root = tree();
+    let node = node_at(&root, &["add"]);
+    for bad in ["a\tb", "a\x1b[31mb", "a\x07b", "a\x7fb"] {
+        let v = vals(&[("title", text(bad))]);
+        assert!(cmdline::build_argv(node, &v, false).is_err(), "{bad:?}");
+    }
+}
+
+#[test]
+fn capture_returns_output_and_status_of_a_quick_child() {
+    let (ok, text) = capture::capture(
+        std::path::Path::new("/bin/echo"),
+        &["hello".to_string()],
+        std::time::Duration::from_secs(5),
+    )
+    .unwrap();
+    assert!(ok);
+    assert_eq!(text.trim(), "hello");
+}
+
+#[test]
+fn capture_kills_a_child_that_outlives_the_limit() {
+    let started = std::time::Instant::now();
+    let err = capture::capture(
+        std::path::Path::new("/bin/sleep"),
+        &["30".to_string()],
+        std::time::Duration::from_millis(300),
+    )
+    .unwrap_err();
+    assert_eq!(err, "timed out");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
 }

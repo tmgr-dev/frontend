@@ -26,8 +26,8 @@ pub fn expand_tilde(value: &str) -> String {
 }
 
 fn clean(value: &str) -> Result<(), String> {
-    if value.chars().any(|c| matches!(c, '\0' | '\n' | '\r')) {
-        Err("values cannot contain line breaks".into())
+    if value.chars().any(|c| c.is_control()) {
+        Err("values cannot contain line breaks or control characters".into())
     } else {
         Ok(())
     }
