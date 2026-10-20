@@ -35,7 +35,7 @@ pub fn check_cwd(path: &std::path::Path, uid: u32) -> Result<(), (ErrorCode, Str
     if meta.permissions().mode() & 0o777 != 0o700 {
         return refuse("its mode must be 0700");
     }
-    if parent.permissions().mode() & 0o022 != 0 {
+    if parent.permissions().mode() & 0o002 != 0 {
         return refuse("the queue folder must not be writable by others");
     }
     Ok(())
@@ -93,6 +93,11 @@ mod tests {
             let dir = root.join(parent).join("queue").join(name);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+            std::fs::set_permissions(
+                dir.parent().unwrap(),
+                std::fs::Permissions::from_mode(0o775),
+            )
+            .unwrap();
             dir
         }
 
