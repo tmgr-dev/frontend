@@ -67,7 +67,7 @@ pub fn draw(f: &mut Frame, app: &App, look: Look) {
     let area = f.area();
     match &app.screen {
         Screen::Home => home(f, area, app, look),
-        Screen::Form(form) => form_view(f, area, app, form, look),
+        Screen::Form(form) => form_view(f, area, form, look),
         Screen::Done(done) => done_view(f, area, done, look),
     }
     if let Some(p) = &app.palette {
@@ -181,7 +181,7 @@ fn select_line(look: Look, options: &[String], current: &str) -> Vec<Span<'stati
     spans
 }
 
-fn form_view(f: &mut Frame, area: Rect, app: &App, form: &Form, look: Look) {
+fn form_view(f: &mut Frame, area: Rect, form: &Form, look: Look) {
     let [crumb, body, cmd, foot] = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(4),
@@ -281,7 +281,7 @@ fn form_view(f: &mut Frame, area: Rect, app: &App, form: &Form, look: Look) {
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("$ ", look.good()),
-            Span::styled(form.display(&app.root), look.good()),
+            Span::styled(form.display(), look.good()),
         ]))
         .wrap(Wrap { trim: false })
         .block(look.block("Command")),

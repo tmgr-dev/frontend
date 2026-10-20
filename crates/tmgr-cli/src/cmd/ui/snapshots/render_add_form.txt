@@ -7,7 +7,7 @@ Create a task (`-` reads title and description from stdin)
 │   project         tmgr                                                                           │
 │   status          Status name (default: the workspace's default status)                          │
 │   desc file       Read the description from a file (up to 64 KiB)                                │
-│                                                                                                  │
+│   workspace       Workspace code, or local:<code> for a desktop workspace (default: `tmgr ws use`│
 │                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │

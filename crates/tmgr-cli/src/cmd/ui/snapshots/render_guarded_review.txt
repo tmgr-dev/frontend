@@ -4,11 +4,11 @@ Let agents run on a local task: show its full text and confirm it (terminal only
 ┌ Options ─────────────────────────────────────────────────────────────────────────────────────────┐
 │> *reference       TM-1_                                                                          │
 │    TM-512, #8974 or 8974 (see `tmgr help refs`)                                                  │
+│   workspace       Workspace code, or local:<code> for a desktop workspace (default: `tmgr ws use`│
 │                                                                                                  │
 │This command asks for a typed confirmation. The menu never types it for you:                      │
 │after enter you answer it in the terminal, exactly as without the menu.                           │
 │enter: continue    any other key: back to the form                                                │
-│                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │

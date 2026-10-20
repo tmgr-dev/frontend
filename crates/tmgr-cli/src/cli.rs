@@ -61,7 +61,7 @@ pub enum Command {
         #[command(subcommand)]
         command: Option<WsCommand>,
     },
-    /// Active task and today's time (default command)
+    /// Active task and today's time (what plain `tmgr` prints outside a terminal)
     Status,
     /// Show and list tasks
     Task {

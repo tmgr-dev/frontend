@@ -41,19 +41,8 @@ fn texts(value: Option<&Value>) -> Vec<String> {
     }
 }
 
-pub fn build_argv(
-    root: &Node,
-    node: &Node,
-    values: &Values,
-    mask: bool,
-) -> Result<Vec<String>, String> {
+pub fn build_argv(node: &Node, values: &Values, mask: bool) -> Result<Vec<String>, String> {
     let mut argv = Vec::new();
-    for f in &root.fields {
-        for v in texts(values.get(&f.id)) {
-            clean(&v)?;
-            argv.push(format!("--{}={}", f.long.as_deref().unwrap_or(&f.id), v));
-        }
-    }
     argv.extend(node.path.iter().cloned());
     let mut positional: Vec<String> = Vec::new();
     let mut gap: Option<&Field> = None;

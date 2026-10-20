@@ -125,7 +125,6 @@ fn synth_field(id: &str, positional: bool, kind: Kind, required: bool) -> model:
         required,
         default: None,
         help: String::new(),
-        value_name: id.to_uppercase(),
         sensitive: false,
     }
 }
@@ -370,11 +369,6 @@ fn visible_local_args_have_fields_with_matching_shape() {
                 "{:?} {id} required",
                 node.path
             );
-            assert!(
-                !field.value_name.is_empty(),
-                "{:?} {id} value name",
-                node.path
-            );
             match arg.get_action() {
                 clap::ArgAction::SetTrue | clap::ArgAction::SetFalse => {
                     assert_eq!(field.kind, Kind::Bool, "{:?} {id}", node.path)
@@ -613,7 +607,7 @@ fn long_options_use_the_equals_form() {
     let node = node_at(&root, &["task", "list"]);
     let v = vals(&[("project", text("tmgr")), ("limit", text("10"))]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &v, false).unwrap(),
+        cmdline::build_argv(node, &v, false).unwrap(),
         ["task", "list", "--project=tmgr", "--limit=10"]
     );
 }
@@ -625,7 +619,7 @@ fn option_values_that_look_like_flags_stay_attached() {
     for raw in ["--yes", "-x"] {
         let v = vals(&[("project", text(raw))]);
         assert_eq!(
-            cmdline::build_argv(&root, node, &v, false).unwrap(),
+            cmdline::build_argv(node, &v, false).unwrap(),
             [
                 "task".to_string(),
                 "list".into(),
@@ -641,12 +635,12 @@ fn positional_starting_with_dash_gets_separator_after_options() {
     let node = node_at(&root, &["add"]);
     let with_option = vals(&[("title", text("-draft")), ("project", text("p"))]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &with_option, false).unwrap(),
+        cmdline::build_argv(node, &with_option, false).unwrap(),
         ["add", "--project=p", "--", "-draft"]
     );
     let bare = vals(&[("title", text("-draft"))]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &bare, false).unwrap(),
+        cmdline::build_argv(node, &bare, false).unwrap(),
         ["add", "--", "-draft"]
     );
 }
@@ -663,7 +657,7 @@ fn multi_values_repeat_the_flag_and_drop_empty_items() {
         ),
     ]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &v, false).unwrap(),
+        cmdline::build_argv(node, &v, false).unwrap(),
         ["link", "scope", "--repos=a", "--repos=b", "work"]
     );
 }
@@ -677,7 +671,7 @@ fn bool_flags_render_only_when_true() {
         ("no_branch", Value::Bool(true)),
     ]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &on, false).unwrap(),
+        cmdline::build_argv(node, &on, false).unwrap(),
         ["start", "--no-branch", "TM-1"]
     );
     let off = vals(&[
@@ -685,28 +679,24 @@ fn bool_flags_render_only_when_true() {
         ("no_branch", Value::Bool(false)),
     ]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &off, false).unwrap(),
+        cmdline::build_argv(node, &off, false).unwrap(),
         ["start", "TM-1"]
     );
 }
 
 #[test]
 fn count_flags_repeat_and_zero_is_omitted() {
-    let root = tree();
     let node = synth_node(
         &["x"],
         vec![synth_field("quiet", false, Kind::Count, false)],
     );
     let twice = vals(&[("quiet", Value::Count(2))]);
     assert_eq!(
-        cmdline::build_argv(&root, &node, &twice, false).unwrap(),
+        cmdline::build_argv(&node, &twice, false).unwrap(),
         ["x", "--quiet", "--quiet"]
     );
     let none = vals(&[("quiet", Value::Count(0))]);
-    assert_eq!(
-        cmdline::build_argv(&root, &node, &none, false).unwrap(),
-        ["x"]
-    );
+    assert_eq!(cmdline::build_argv(&node, &none, false).unwrap(), ["x"]);
 }
 
 #[test]
@@ -714,19 +704,18 @@ fn missing_required_positional_is_an_error() {
     let root = tree();
     let node = node_at(&root, &["add"]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &Values::new(), false).unwrap_err(),
+        cmdline::build_argv(node, &Values::new(), false).unwrap_err(),
         "title is required"
     );
     let init = node_at(&root, &["init"]);
     assert_eq!(
-        cmdline::build_argv(&root, init, &Values::new(), false).unwrap_err(),
+        cmdline::build_argv(init, &Values::new(), false).unwrap_err(),
         "target is required"
     );
 }
 
 #[test]
 fn gap_before_a_filled_positional_is_an_error() {
-    let root = tree();
     let node = synth_node(
         &["x"],
         vec![
@@ -736,12 +725,12 @@ fn gap_before_a_filled_positional_is_an_error() {
     );
     let v = vals(&[("beta", text("b"))]);
     assert_eq!(
-        cmdline::build_argv(&root, &node, &v, false).unwrap_err(),
+        cmdline::build_argv(&node, &v, false).unwrap_err(),
         "fill alpha first"
     );
     let filled = vals(&[("alpha", text("a")), ("beta", text("b"))]);
     assert_eq!(
-        cmdline::build_argv(&root, &node, &filled, false).unwrap(),
+        cmdline::build_argv(&node, &filled, false).unwrap(),
         ["x", "a", "b"]
     );
 }
@@ -753,14 +742,14 @@ fn line_breaks_and_nul_in_values_are_rejected() {
     for bad in ["a\nb", "a\rb", "a\0b"] {
         let v = vals(&[("title", text(bad))]);
         assert_eq!(
-            cmdline::build_argv(&root, add, &v, false).unwrap_err(),
+            cmdline::build_argv(add, &v, false).unwrap_err(),
             "values cannot contain line breaks",
             "{bad:?}"
         );
     }
     let list = node_at(&root, &["task", "list"]);
     let v = vals(&[("project", text("x\ny"))]);
-    assert!(cmdline::build_argv(&root, list, &v, false).is_err());
+    assert!(cmdline::build_argv(list, &v, false).is_err());
 }
 
 #[test]
@@ -775,7 +764,7 @@ fn tilde_expands_only_for_path_fields() {
     let map = node_at(&root, &["project", "map"]);
     let v = vals(&[("code", text("~/raw")), ("path", text("~/proj"))]);
     assert_eq!(
-        cmdline::build_argv(&root, map, &v, false).unwrap(),
+        cmdline::build_argv(map, &v, false).unwrap(),
         vec![
             "project".to_string(),
             "map".into(),
@@ -791,7 +780,7 @@ fn tilde_expands_only_for_path_fields() {
         ("label", text("~/label")),
     ]);
     assert_eq!(
-        cmdline::build_argv(&root, acc, &v, false).unwrap(),
+        cmdline::build_argv(acc, &v, false).unwrap(),
         [
             "usage".to_string(),
             "accounts".into(),
@@ -808,21 +797,25 @@ fn sensitive_fields_are_masked_only_when_asked() {
     let root = tree();
     let node = node_at(&root, &["config", "set"]);
     let v = vals(&[("key", text("api.token")), ("value", text("v"))]);
-    let masked = cmdline::build_argv(&root, node, &v, true).unwrap();
-    assert_eq!(masked, ["config", "set", "<hidden>", "v"]);
-    let raw = cmdline::build_argv(&root, node, &v, false).unwrap();
+    let masked = cmdline::build_argv(node, &v, true).unwrap();
+    assert_eq!(masked, ["config", "set", "api.token", "<hidden>"]);
+    let raw = cmdline::build_argv(node, &v, false).unwrap();
     assert_eq!(raw, ["config", "set", "api.token", "v"]);
-    assert_eq!(cmdline::render(&masked), "tmgr config set '<hidden>' v");
+    assert_eq!(
+        cmdline::render(&masked),
+        "tmgr config set api.token '<hidden>'"
+    );
 }
 
 #[test]
-fn ws_is_passed_before_the_command_path() {
+fn ws_is_passed_as_a_global_option_of_the_form() {
     let root = tree();
-    let node = node_at(&root, &["whoami"]);
+    let mut node = node_at(&root, &["whoami"]).clone();
+    node.fields.extend(root.fields.iter().cloned());
     let v = vals(&[("ws", text("tmgr-dev"))]);
     assert_eq!(
-        cmdline::build_argv(&root, node, &v, false).unwrap(),
-        ["--ws=tmgr-dev", "whoami"]
+        cmdline::build_argv(&node, &v, false).unwrap(),
+        ["whoami", "--ws=tmgr-dev"]
     );
 }
 
@@ -832,7 +825,7 @@ fn scrub_drops_sensitive_fields() {
     let node = node_at(&root, &["config", "set"]);
     let v = vals(&[("key", text("api.token")), ("value", text("v"))]);
     let scrubbed = history::scrub(node, &v);
-    assert_eq!(scrubbed, vals(&[("value", text("v"))]));
+    assert_eq!(scrubbed, vals(&[("key", text("api.token"))]));
 
     let login = node_at(&root, &["auth", "login"]);
     let v = vals(&[("with_token", Value::Bool(true)), ("label", text("ci"))]);
@@ -990,7 +983,6 @@ fn every_runner_guard_rule_resolves() {
 }
 
 #[test]
-#[ignore = "product bug: guard rule for self-update names the long flag 'allow-downgrade' but the field id is 'allow_downgrade'"]
 fn self_update_guard_follows_the_allow_downgrade_field() {
     let root = tree();
     let node = node_at(&root, &["self-update"]);
@@ -1190,12 +1182,12 @@ fn any_other_key_cancels_the_guard_review() {
 fn ctrl_y_copies_the_command_with_sensitive_values_masked() {
     let mut app = fresh();
     app.open(&p(&["config", "set"]), Values::new());
-    type_str(&mut app, "secret-key");
+    type_str(&mut app, "api.token");
     app.on_key(key(KeyCode::Tab));
-    type_str(&mut app, "v");
+    type_str(&mut app, "secretvalue");
     match app.on_key(ctrl('y')) {
         Some(Action::Copy(text)) => {
-            assert_eq!(text, "tmgr config set '<hidden>' v");
+            assert_eq!(text, "tmgr config set api.token '<hidden>'");
             assert!(!text.contains("secret"));
         }
         _ => panic!("expected a copy action"),

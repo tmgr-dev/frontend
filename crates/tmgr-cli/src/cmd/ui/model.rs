@@ -19,13 +19,13 @@ pub struct Field {
     pub required: bool,
     pub default: Option<String>,
     pub help: String,
-    pub value_name: String,
     pub sensitive: bool,
 }
 
 impl Field {
     pub fn label(&self) -> String {
         match &self.long {
+            Some(_) if self.id == "ws" => "workspace".into(),
             Some(l) => l.replace('-', " "),
             None => self.id.replace('_', " "),
         }
@@ -73,6 +73,7 @@ impl Node {
 
 const DENIED_FIELDS: [&str; 4] = ["yes", "json", "server", "verbose"];
 const ALLOWED_GLOBALS: [&str; 1] = ["ws"];
+const SENSITIVE_VALUES: &[(&[&str], &str)] = &[(&["config", "set"], "value")];
 const SENSITIVE_WORDS: [&str; 7] = [
     "token",
     "password",
@@ -84,6 +85,9 @@ const SENSITIVE_WORDS: [&str; 7] = [
 ];
 
 pub fn is_sensitive_name(name: &str) -> bool {
+    if name == "key" {
+        return false;
+    }
     let lower = name.to_ascii_lowercase();
     SENSITIVE_WORDS.iter().any(|w| lower.contains(w))
 }
@@ -111,10 +115,15 @@ fn node_of(cmd: &Command, path: Vec<String>) -> Node {
         p.push(name.to_string());
         children.push(node_of(sub, p));
     }
-    let fields = cmd
+    let mut fields: Vec<Field> = cmd
         .get_arguments()
         .filter_map(|a| field_of(a, false))
         .collect();
+    for f in &mut fields {
+        f.sensitive |= SENSITIVE_VALUES
+            .iter()
+            .any(|(p, id)| *id == f.id && p.iter().copied().eq(path.iter().map(String::as_str)));
+    }
     Node {
         path,
         about: cmd
@@ -167,11 +176,6 @@ fn field_of(arg: &Arg, allow_global: bool) -> Option<Field> {
         _ => Kind::Text,
     };
     let long = arg.get_long().map(str::to_string);
-    let value_name = arg
-        .get_value_names()
-        .and_then(|n| n.first())
-        .map(|n| n.to_string())
-        .unwrap_or_else(|| id.to_uppercase());
     let default = arg
         .get_default_values()
         .first()
@@ -192,7 +196,6 @@ fn field_of(arg: &Arg, allow_global: bool) -> Option<Field> {
             .next()
             .unwrap_or_default()
             .to_string(),
-        value_name,
         sensitive,
     })
 }

@@ -94,8 +94,8 @@ impl Form {
         }
     }
 
-    pub fn display(&self, root: &Node) -> String {
-        match cmdline::build_argv(root, &self.node, &self.values, true) {
+    pub fn display(&self) -> String {
+        match cmdline::build_argv(&self.node, &self.values, true) {
             Ok(argv) => cmdline::render(&argv),
             Err(_) => cmdline::render(&self.node.path),
         }
@@ -230,9 +230,15 @@ impl App {
             .map(|e| e.path.clone())
     }
 
+    fn form_node(&self, path: &[String]) -> Option<Node> {
+        let mut node = self.root.find(path)?.clone();
+        node.fields.extend(self.root.fields.iter().cloned());
+        Some(node)
+    }
+
     pub fn open(&mut self, path: &[String], values: Values) {
-        if let Some(node) = self.root.find(path) {
-            self.screen = Screen::Form(Form::new(node.clone(), values));
+        if let Some(node) = self.form_node(path) {
+            self.screen = Screen::Form(Form::new(node, values));
             self.palette = None;
         }
     }
@@ -265,8 +271,8 @@ impl App {
     }
 
     pub fn recent_line(&self, r: &Recent) -> String {
-        match self.root.find(&r.path) {
-            Some(n) => match cmdline::build_argv(&self.root, n, &r.values, true) {
+        match self.form_node(&r.path) {
+            Some(n) => match cmdline::build_argv(&n, &r.values, true) {
                 Ok(argv) => cmdline::render(&argv),
                 Err(_) => cmdline::render(&r.path),
             },
@@ -417,7 +423,6 @@ impl App {
 
     fn form_key(&mut self, key: KeyEvent) -> Option<Action> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
-        let root = self.root.clone();
         let Screen::Form(form) = &mut self.screen else {
             return None;
         };
@@ -426,7 +431,7 @@ impl App {
             match key.code {
                 KeyCode::Enter => {
                     form.review = false;
-                    return run_action(&root, form);
+                    return run_action(form);
                 }
                 _ => {
                     form.review = false;
@@ -437,16 +442,16 @@ impl App {
         let n = form.node.fields.len();
         match key.code {
             KeyCode::Esc => self.screen = Screen::Home,
-            KeyCode::Char('y') if ctrl => return Some(Action::Copy(form.display(&root))),
+            KeyCode::Char('y') if ctrl => return Some(Action::Copy(form.display())),
             KeyCode::Enter => {
                 if guard::is_guarded(&form.node, &form.values) {
-                    match cmdline::build_argv(&root, &form.node, &form.values, false) {
+                    match cmdline::build_argv(&form.node, &form.values, false) {
                         Ok(_) => form.review = true,
                         Err(e) => form.error = Some(e),
                     }
                     return None;
                 }
-                return run_action(&root, form);
+                return run_action(form);
             }
             KeyCode::Down | KeyCode::Tab if n > 0 => form.cursor = (form.cursor + 1) % n,
             KeyCode::Up | KeyCode::BackTab if n > 0 => form.cursor = (form.cursor + n - 1) % n,
@@ -454,7 +459,6 @@ impl App {
             KeyCode::Left if n > 0 && !form.types_text() => form.cycle(-1),
             KeyCode::Backspace if n > 0 => form.backspace(),
             KeyCode::Char(c) if n > 0 && !ctrl => form.type_char(c),
-            KeyCode::Char('?') => self.help = true,
             _ => {}
         }
         None
@@ -479,8 +483,8 @@ impl App {
     }
 }
 
-fn run_action(root: &Node, form: &mut Form) -> Option<Action> {
-    match cmdline::build_argv(root, &form.node, &form.values, false) {
+fn run_action(form: &mut Form) -> Option<Action> {
+    match cmdline::build_argv(&form.node, &form.values, false) {
         Ok(argv) => Some(Action::Run {
             node: form.node.clone(),
             values: form.values.clone(),

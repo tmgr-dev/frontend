@@ -166,7 +166,7 @@ fn run(cli: &Cli) -> Result<()> {
                 });
             }
             Some(Action::Run { node, values, argv }) => {
-                let done = run_child(&mut term, &app, node, values, argv, hist.as_deref());
+                let done = run_child(&mut term, node, values, argv, hist.as_deref());
                 if let Some(path) = hist.as_deref() {
                     app.recents = history::load(path);
                 }
@@ -179,14 +179,13 @@ fn run(cli: &Cli) -> Result<()> {
 
 fn run_child(
     term: &mut Term,
-    app: &App,
     node: model::Node,
     values: cmdline::Values,
     argv: Vec<String>,
     hist: Option<&std::path::Path>,
 ) -> Done {
     leave_screen();
-    let shown = match cmdline::build_argv(&app.root, &node, &values, true) {
+    let shown = match cmdline::build_argv(&node, &values, true) {
         Ok(masked) => cmdline::render(&masked),
         Err(_) => cmdline::render(&node.path),
     };

@@ -1,5 +1,5 @@
 use super::cmdline::{Value, Values};
-use super::model::{Kind, Node};
+use super::model::Node;
 
 pub struct Rule {
     pub path: &'static [&'static str],
@@ -31,7 +31,7 @@ pub const GUARDED: &[Rule] = &[
     rule(&["queue", "rules", "add"], None, None),
     rule(&["queue", "autopilot", "start"], None, None),
     rule(&["usage", "sync", "on"], None, None),
-    rule(&["self-update"], Some("allow-downgrade"), None),
+    rule(&["self-update"], Some("allow_downgrade"), None),
     rule(&["git", "install-hooks"], Some("global"), None),
     rule(&["init"], Some("install"), None),
     rule(&["hook", "install"], None, None),
@@ -59,6 +59,7 @@ pub fn is_guarded(node: &Node, values: &Values) -> bool {
 
 #[cfg(test)]
 pub fn rule_resolves(root: &Node, r: &Rule) -> bool {
+    use super::model::Kind;
     let path: Vec<String> = r.path.iter().map(|s| s.to_string()).collect();
     let Some(node) = root.find(&path) else {
         return false;
