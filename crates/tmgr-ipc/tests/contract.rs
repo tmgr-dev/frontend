@@ -911,7 +911,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 27);
+    assert_eq!(w.caps.len(), 28);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
