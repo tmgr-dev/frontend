@@ -784,13 +784,39 @@ exec sleep 600"#,
             }
             assert!(
                 Instant::now() < end,
-                "{what}: {:?}\nrunner log:\n{}",
+                "{what}: {:?}\nrunner log:\n{}\nsessions:\n{}",
                 self.autopilot_status(),
                 std::fs::read_to_string(self.runner.path().join("r/runner.log"))
                     .unwrap_or_default(),
+                self.session_logs(),
             );
             thread::sleep(Duration::from_millis(100));
         }
+    }
+
+    fn session_logs(&self) -> String {
+        let mut out = String::new();
+        let Ok(dirs) = std::fs::read_dir(self.runner.path().join("r/sessions")) else {
+            return out;
+        };
+        for d in dirs.flatten() {
+            for f in ["shim.log", "output.log"] {
+                let text = std::fs::read_to_string(d.path().join(f)).unwrap_or_default();
+                let tail: String = text
+                    .chars()
+                    .rev()
+                    .take(2000)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect();
+                out.push_str(&format!(
+                    "{} {f}:\n{tail}\n",
+                    d.file_name().to_string_lossy()
+                ));
+            }
+        }
+        out
     }
 
     fn queue_enabled(&self) -> bool {
