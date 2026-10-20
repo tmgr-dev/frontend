@@ -1794,6 +1794,14 @@ impl Runner {
                 restore::forget(&self.intents(), &id);
                 Ok(Value::Null)
             }
+            method::SESSIONS_RENAME => {
+                let q: tmgr_ipc::api::RenameParams = params(p)?;
+                if !valid_session_id(&q.id) {
+                    return Err(api(ErrorCode::InvalidParams, "invalid session id"));
+                }
+                self.rename(&q.id, &q.name)?;
+                Ok(Value::Null)
+            }
             method::LAYOUT_GET => Ok(self.layout_get()),
             method::LAYOUT_SET => self.layout_set(p).map(|_| Value::Null),
             method::ATTACH_OPEN => self.attach_open(conn, p),
@@ -2946,6 +2954,34 @@ impl Runner {
             halted: AtomicBool::new(false),
             foreign_input: AtomicBool::new(false),
         })
+    }
+
+    fn rename(&self, id: &str, name: &str) -> Result<(), ApiErr> {
+        let name: String = crate::sanitize::sanitize_text(name.trim())
+            .trim()
+            .to_string();
+        if name.is_empty() || name.chars().count() > 64 {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "name must be 1 to 64 characters",
+            ));
+        }
+        let s = self
+            .session(id)
+            .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+        let taken = self
+            .all()
+            .iter()
+            .any(|o| o.info().id != id && o.info().name == name);
+        if taken {
+            return Err(api(
+                ErrorCode::Busy,
+                format!("a session is already named {name:?}"),
+            ));
+        }
+        lock(&s.inner).meta.name = name;
+        s.persist();
+        Ok(())
     }
 
     fn remove(&self, id: &str) -> Result<(), ApiErr> {

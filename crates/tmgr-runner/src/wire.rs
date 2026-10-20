@@ -180,6 +180,7 @@ mod tests {
                 bracketed_paste: true,
                 alt_screen: false,
                 hide_cursor: false,
+                mouse: Default::default(),
             },
             scroll_offset: 2,
             scroll_max: 9,

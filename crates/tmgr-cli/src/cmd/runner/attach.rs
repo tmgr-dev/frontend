@@ -16,11 +16,11 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{Modes, SessionInfo, Snapshot};
+use tmgr_ipc::api::{Modes, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, layout, mode_changes, render, reset_modes, Action, Cmd, InputSplitter, LayoutPrefs,
-    ScreenSource, SessionRow, ViewState,
+    cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, InputSplitter,
+    LayoutPrefs, PaneInfo, RenameEdit, ScreenSource, SessionRow, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -129,11 +129,14 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
 
 struct App {
     view: ViewState,
+    mouse: bool,
     cache: ScreenCache,
     splitter: InputSplitter,
     scroll_mode: bool,
     writer: AttachWriter,
     prefs_tx: Sender<Value>,
+    cfg: RunnerConfig,
+    paste_to: Option<String>,
     dirty: bool,
     size: (u16, u16),
     sent_sizes: HashMap<String, (u16, u16)>,
@@ -206,15 +209,178 @@ impl App {
     }
 
     fn on_stdin(&mut self, bytes: &[u8]) -> io::Result<Option<Exit>> {
-        for action in self.splitter.feed(bytes) {
-            self.dirty = true;
+        let actions = self.splitter.feed(bytes);
+        self.handle(actions)
+    }
+
+    fn area(&self) -> Rect {
+        Rect::new(0, 0, self.size.0, self.size.1)
+    }
+
+    fn leave_overlays(&mut self) {
+        self.view.help = false;
+        if self.view.scroll.take().is_some() {
+            self.scroll_mode = false;
+            self.splitter.set_scroll_mode(false);
+        }
+    }
+
+    fn send_to(&mut self, session: &str, data: &[u8]) -> io::Result<()> {
+        if data.is_empty() {
+            return Ok(());
+        }
+        self.writer.input(session, data)
+    }
+
+    fn bracketed(&self, session: &str) -> bool {
+        self.cache
+            .snapshot(session)
+            .is_some_and(|s| s.modes.bracketed_paste)
+    }
+
+    fn confirm_key(&mut self, data: &[u8]) {
+        let Some(c) = self.view.confirm.take() else {
+            return;
+        };
+        self.dirty = true;
+        if matches!(data.first(), Some(b'y' | b'Y')) {
+            self.stop_session(&c.session);
+            self.notify(&format!("stopping {}", c.name));
+        }
+    }
+
+    fn stop_session(&self, id: &str) {
+        let cfg = self.cfg.clone();
+        let id = id.to_string();
+        thread::spawn(move || {
+            let Ok(mut c) = connect(&cfg) else { return };
+            let _ = c.kill(&id, "int");
+            for (signal, wait) in [("term", 10), ("kill", 5)] {
+                let end = Instant::now() + Duration::from_secs(wait);
+                while Instant::now() < end {
+                    let gone = c.list().map_or(true, |l| {
+                        l.iter()
+                            .find(|s| s.id == id)
+                            .is_none_or(|s| s.state.kind == StateKind::Exited)
+                    });
+                    if gone {
+                        return;
+                    }
+                    thread::sleep(Duration::from_millis(200));
+                }
+                let _ = c.kill(&id, signal);
+            }
+        });
+    }
+
+    fn rename_session(&mut self, id: &str, name: &str) {
+        let result = connect(&self.cfg).and_then(|mut c| c.rename(id, name).map_err(rerr));
+        match result {
+            Ok(()) => self.view.rename_done(id, name),
+            Err(e) => self.notify(&e.to_string()),
+        }
+    }
+
+    fn remove_session(&self, id: &str) {
+        let cfg = self.cfg.clone();
+        let id = id.to_string();
+        thread::spawn(move || {
+            if let Ok(mut c) = connect(&cfg) {
+                let _ = c.remove(&id);
+            }
+        });
+    }
+
+    fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        for action in actions {
+            if !matches!(action, Action::Mouse(_)) {
+                self.dirty = true;
+            }
             match action {
+                Action::Forward(data) if self.view.rename.is_some() => {
+                    match self.view.edit_rename(&data) {
+                        RenameEdit::Submit(id, name) => self.rename_session(&id, &name),
+                        RenameEdit::Editing | RenameEdit::Cancel => {}
+                    }
+                }
                 Action::Forward(data) => {
+                    if self.view.confirm.is_some() {
+                        self.confirm_key(&data);
+                        continue;
+                    }
                     if std::mem::take(&mut self.view.help) {
                         continue;
                     }
-                    if let Some(id) = self.view.focused_session() {
-                        self.writer.input(id, &data)?;
+                    if let Some(id) = self.view.focused_session().map(str::to_string) {
+                        self.send_to(&id, &data)?;
+                    }
+                }
+                Action::Drop(data) => {
+                    self.view.confirm = None;
+                    self.leave_overlays();
+                    let idx = self.view.paste_target(self.area());
+                    self.view.focus_pane(idx);
+                    if let Some(id) = self.view.focused_session().map(str::to_string) {
+                        let mut out = Vec::new();
+                        let wrap = self.bracketed(&id);
+                        if wrap {
+                            out.extend_from_slice(b"\x1b[200~");
+                        }
+                        out.extend_from_slice(&data);
+                        if wrap {
+                            out.extend_from_slice(b"\x1b[201~");
+                        }
+                        self.send_to(&id, &out)?;
+                    }
+                }
+                Action::Paste { data, start, end } => {
+                    if start {
+                        self.view.confirm = None;
+                        self.leave_overlays();
+                        let idx = self.view.paste_target(self.area());
+                        self.view.focus_pane(idx);
+                        self.paste_to = self.view.focused_session().map(str::to_string);
+                    }
+                    let Some(id) = self.paste_to.clone() else {
+                        continue;
+                    };
+                    let mut body: &[u8] = &data;
+                    if !self.bracketed(&id) {
+                        if start {
+                            body = &body[body.len().min(6)..];
+                        }
+                        if end {
+                            body = &body[..body.len().saturating_sub(6)];
+                        }
+                    }
+                    self.send_to(&id, body)?;
+                    if end {
+                        self.paste_to = None;
+                    }
+                }
+                Action::Mouse(ev) => {
+                    if !self.mouse {
+                        continue;
+                    }
+                    let area = self.area();
+                    let cache = &self.cache;
+                    let info = |id: &str| {
+                        cache
+                            .snapshot(id)
+                            .map(|s| PaneInfo {
+                                mouse: s.modes.mouse,
+                                scroll_max: s.scroll_max,
+                                alt_screen: s.modes.alt_screen,
+                                app_cursor: s.modes.app_cursor,
+                            })
+                            .unwrap_or_default()
+                    };
+                    let out = self.view.on_mouse(area, ev, &info);
+                    if out.redraw {
+                        self.dirty = true;
+                    }
+                    if let Some((id, bytes)) = out.forward {
+                        self.send_to(&id, &bytes)?;
                     }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
@@ -222,7 +388,17 @@ impl App {
                     self.notify("switch sessions with Ctrl-] n and Ctrl-] p")
                 }
                 Action::Cmd(cmd) => {
+                    self.view.confirm = None;
+                    self.view.rename = None;
+                    let removing = (cmd == Cmd::Remove)
+                        .then(|| self.view.focused_row())
+                        .flatten()
+                        .filter(|r| r.state.kind == StateKind::Exited)
+                        .map(|r| r.id.clone());
                     self.view.apply(cmd);
+                    if let Some(id) = removing {
+                        self.remove_session(&id);
+                    }
                     if cmd == Cmd::ScrollMode {
                         self.scroll_mode = self.view.scroll.is_some();
                         self.splitter.set_scroll_mode(self.scroll_mode);
@@ -254,6 +430,12 @@ impl App {
             }
         }
         self.view.width = self.size.0;
+        let stale = self.splitter.flush_stale(Instant::now());
+        if !stale.is_empty() {
+            if let Some(exit) = self.handle(stale)? {
+                let _ = exit;
+            }
+        }
         if self.notice_until.is_some_and(|t| Instant::now() >= t) {
             self.notice_until = None;
             self.view.notice = None;
@@ -282,7 +464,10 @@ impl App {
             .focused_session()
             .and_then(|id| self.cache.snapshot(id))
             .map(|s| s.modes);
-        if let Some(modes) = modes {
+        if let Some(modes) = modes.map(|m| Modes {
+            bracketed_paste: true,
+            ..m
+        }) {
             let bytes = mode_changes(self.prev_modes, modes);
             if !bytes.is_empty() {
                 let out = terminal.backend_mut();
@@ -404,6 +589,10 @@ fn poller(
 }
 
 pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
+    run_with(cfg, initial, true)
+}
+
+pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(Error::usage("attach needs an interactive terminal"));
     }
@@ -430,6 +619,11 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
+    if mouse {
+        let mut out = io::stdout();
+        let _ = out.write_all(enter_mouse());
+        let _ = out.flush();
+    }
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
         .map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     let _ = terminal.clear();
@@ -473,11 +667,14 @@ pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
     let mut app = App {
         watched: view.panes.clone(),
         view,
+        mouse,
         cache: ScreenCache::new(),
         splitter: InputSplitter::new(),
         scroll_mode: false,
         writer,
         prefs_tx,
+        cfg: cfg.clone(),
+        paste_to: None,
         dirty: true,
         size: (0, 0),
         sent_sizes: HashMap::new(),

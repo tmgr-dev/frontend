@@ -30,5 +30,14 @@ pub fn mode_changes(prev: Option<Modes>, next: Modes) -> Vec<u8> {
 pub fn reset_modes() -> Vec<u8> {
     let mut out = app_cursor(false).to_vec();
     out.extend_from_slice(bracketed_paste(false));
+    out.extend_from_slice(mouse_off());
     out
+}
+
+pub fn enter_mouse() -> &'static [u8] {
+    b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h"
+}
+
+fn mouse_off() -> &'static [u8] {
+    b"\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"
 }

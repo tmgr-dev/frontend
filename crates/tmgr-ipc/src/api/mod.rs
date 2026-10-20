@@ -94,6 +94,7 @@ pub mod method {
     pub const SESSIONS_KILL: &str = "sessions.kill";
     pub const SESSIONS_SEND: &str = "sessions.send";
     pub const SESSIONS_REMOVE: &str = "sessions.remove";
+    pub const SESSIONS_RENAME: &str = "sessions.rename";
     pub const SESSIONS_WORKLOG: &str = "sessions.worklog";
     pub const RUNS_CREATE: &str = "runs.create";
     pub const LAYOUT_GET: &str = "layout.get";

@@ -1,6 +1,7 @@
 use crate::sanitize::sanitize_text;
 use tmgr_ipc::api::{
-    Attr, Color, Line, Modes, Snapshot, Span, BOLD, DIM, INVERSE, ITALIC, UNDERLINE,
+    Attr, Color, Line, Modes, MouseEncoding, MouseLevel, MouseMode, Snapshot, Span, BOLD, DIM,
+    INVERSE, ITALIC, UNDERLINE,
 };
 
 const MAX_ROWS: u16 = 200;
@@ -246,6 +247,7 @@ impl ScreenModel {
             bracketed_paste: screen.bracketed_paste(),
             alt_screen: screen.alternate_screen(),
             hide_cursor: screen.hide_cursor(),
+            mouse: mouse_mode(screen),
         };
         let cursor = (offset == 0 && !modes.hide_cursor).then(|| screen.cursor_position());
         screen.set_scrollback(0);
@@ -300,6 +302,23 @@ fn row_texts(screen: &vt100::Screen, cols: u16) -> impl Iterator<Item = String> 
     screen
         .rows(0, cols)
         .map(|l| sanitize_text(l.trim_end()).into_owned())
+}
+
+fn mouse_mode(screen: &vt100::Screen) -> MouseMode {
+    let level = match screen.mouse_protocol_mode() {
+        vt100::MouseProtocolMode::None => MouseLevel::Off,
+        vt100::MouseProtocolMode::Press | vt100::MouseProtocolMode::PressRelease => {
+            MouseLevel::Press
+        }
+        vt100::MouseProtocolMode::ButtonMotion => MouseLevel::Drag,
+        vt100::MouseProtocolMode::AnyMotion => MouseLevel::Any,
+    };
+    let encoding = match screen.mouse_protocol_encoding() {
+        vt100::MouseProtocolEncoding::Default => MouseEncoding::Default,
+        vt100::MouseProtocolEncoding::Utf8 => MouseEncoding::Utf8,
+        vt100::MouseProtocolEncoding::Sgr => MouseEncoding::Sgr,
+    };
+    MouseMode { level, encoding }
 }
 
 fn convert_color(c: vt100::Color) -> Color {
@@ -574,7 +593,8 @@ mod tests {
                 app_cursor: false,
                 bracketed_paste: false,
                 alt_screen: false,
-                hide_cursor: false
+                hide_cursor: false,
+                mouse: Default::default()
             }
         );
         m.feed(b"\x1b[?1049h\x1b[?1h\x1b[?2004h\x1b[?25l");
@@ -585,7 +605,8 @@ mod tests {
                 app_cursor: true,
                 bracketed_paste: true,
                 alt_screen: true,
-                hide_cursor: true
+                hide_cursor: true,
+                mouse: Default::default()
             }
         );
         assert_eq!(s.cursor, None);

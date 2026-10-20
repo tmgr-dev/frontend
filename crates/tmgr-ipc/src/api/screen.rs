@@ -46,6 +46,45 @@ pub struct Modes {
     pub alt_screen: bool,
     #[serde(rename = "hc")]
     pub hide_cursor: bool,
+    #[serde(rename = "mo", default, skip_serializing_if = "MouseMode::is_off")]
+    pub mouse: MouseMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MouseMode {
+    #[serde(rename = "l")]
+    pub level: MouseLevel,
+    #[serde(rename = "e")]
+    pub encoding: MouseEncoding,
+}
+
+impl MouseMode {
+    pub fn is_off(&self) -> bool {
+        matches!(self.level, MouseLevel::Off | MouseLevel::Unknown)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MouseLevel {
+    #[default]
+    Off,
+    Press,
+    Drag,
+    Any,
+    #[serde(other)]
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MouseEncoding {
+    #[default]
+    Default,
+    Utf8,
+    Sgr,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

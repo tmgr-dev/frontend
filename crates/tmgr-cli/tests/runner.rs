@@ -1434,3 +1434,129 @@ fn trust_in_a_terminal_pre_accepts_only_this_folder_and_the_log_says_so() {
     let out = out_text(&run_bounded(log, Duration::from_secs(60)));
     assert!(out.contains("trust: pre-accepted"), "{out}");
 }
+
+const RAW_CAT: &str =
+    "stty raw -echo\nprintf '\\033[?2004h\\033[?1002h\\033[?1006h'\necho READY\ncat > \"$OUT\"\n";
+
+fn raw_agent(env: &Env, out: &Path, name: &str) -> String {
+    let body = RAW_CAT.replace("$OUT", &out.display().to_string());
+    env.script(name, &body)
+}
+
+fn wait_file(path: &Path, want: &[u8]) {
+    let end = Instant::now() + Duration::from_secs(10);
+    loop {
+        let got = fs::read(path).unwrap_or_default();
+        if got == want {
+            return;
+        }
+        assert!(Instant::now() < end, "got {:?}, want {:?}", got, want);
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn rename_changes_the_name_keeps_the_id_and_refuses_duplicates() {
+    let env = Env::new();
+    let a = env.script("a.sh", "echo READY-A\nsleep 300\n");
+    let b = env.script("b.sh", "exit 0\n");
+    let Some(ida) = env.start(&a, "alpha") else {
+        return;
+    };
+    let idb = env.start(&b, "beta").unwrap();
+    thread::sleep(Duration::from_millis(500));
+    let v = env.data(&["rename", "alpha", "gamma", "--json"]);
+    assert_eq!(v["id"], ida.as_str());
+    assert_eq!(v["name"], "gamma");
+    env.data(&["rename", &idb, "delta", "--json"]);
+    let names: Vec<String> = env
+        .sessions()
+        .iter()
+        .map(|s| s["name"].as_str().unwrap().to_string())
+        .collect();
+    assert!(names.contains(&"gamma".into()) && names.contains(&"delta".into()));
+    let dup = env.tmgr(&["rename", "gamma", "delta"]);
+    assert!(!dup.status.success());
+    assert!(String::from_utf8_lossy(&dup.stderr).contains("already named"));
+    let empty = env.tmgr(&["rename", "gamma", "  "]);
+    assert!(!empty.status.success());
+}
+
+#[test]
+fn dropped_path_with_spaces_reaches_the_agent_byte_for_byte() {
+    let env = Env::new();
+    let out = env.proj.join("got.bin");
+    let script = raw_agent(&env, &out, "raw.sh");
+    let Some(id) = env.start(&script, "raw") else {
+        return;
+    };
+    let mut pty = env.pty(&["attach", &id]);
+    pty.wait_for("READY");
+    thread::sleep(Duration::from_millis(500));
+    let path = "/tmp/Screen Shot \u{2013} 1.png";
+    let mut drop_bytes = b"\x1b[200~".to_vec();
+    drop_bytes.extend_from_slice(path.as_bytes());
+    drop_bytes.extend_from_slice(b"\x1b[201~");
+    pty.type_bytes(&drop_bytes);
+    wait_file(&out, &drop_bytes);
+    pty.detach();
+}
+
+#[test]
+fn mouse_is_captured_by_default_and_released_with_no_mouse() {
+    let env = Env::new();
+    let script = env.script("a.sh", "echo READY\nsleep 300\n");
+    let Some(id) = env.start(&script, "m") else {
+        return;
+    };
+    let mut on = env.pty(&["attach", &id]);
+    on.wait_for("READY");
+    assert!(
+        on.screen.lock().unwrap().screen().mouse_protocol_mode() != vt100::MouseProtocolMode::None
+    );
+    on.detach();
+    let mut off = env.pty(&["attach", &id, "--no-mouse"]);
+    off.wait_for("READY");
+    assert_eq!(
+        off.screen.lock().unwrap().screen().mouse_protocol_mode(),
+        vt100::MouseProtocolMode::None
+    );
+    off.detach();
+}
+
+#[test]
+fn clicking_a_sidebar_row_switches_the_session_and_forwards_agent_mouse() {
+    let env = Env::new();
+    let out = env.proj.join("click.bin");
+    let raw = raw_agent(&env, &out, "raw.sh");
+    let other = env.script("o.sh", "echo READY-B\nsleep 300\n");
+    let Some(ida) = env.start(&raw, "aaa-raw") else {
+        return;
+    };
+    env.start(&other, "bbb-other").unwrap();
+    let mut pty = env.pty(&["attach", &ida]);
+    pty.wait_for("READY");
+    thread::sleep(Duration::from_millis(500));
+    pty.type_bytes(b"\x1b[<0;40;5M");
+    pty.type_bytes(b"\x1b[<0;40;5m");
+    wait_file(&out, b"\x1b[<0;15;4M\x1b[<0;15;4m");
+    pty.type_bytes(b"\x1b[<0;5;3M");
+    pty.wait_for("READY-B");
+    pty.detach();
+}
+
+#[test]
+fn path_typed_by_the_terminal_on_drop_reaches_the_agent_as_a_paste() {
+    let env = Env::new();
+    let out = env.proj.join("typed.bin");
+    let script = raw_agent(&env, &out, "raw.sh");
+    let Some(id) = env.start(&script, "raw") else {
+        return;
+    };
+    let mut pty = env.pty(&["attach", &id]);
+    pty.wait_for("READY");
+    thread::sleep(Duration::from_millis(500));
+    pty.type_bytes(b"/tmp/Screen\\ Shot\\ 1.png ");
+    wait_file(&out, b"\x1b[200~/tmp/Screen\\ Shot\\ 1.png \x1b[201~");
+    pty.detach();
+}

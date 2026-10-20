@@ -4,7 +4,7 @@ use ratatui::layout::Rect;
 use ratatui::Terminal;
 use std::collections::HashMap;
 use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
-use tmgr_ipc::api::{State, StateKind};
+use tmgr_ipc::api::{MouseEncoding, MouseLevel, MouseMode, State, StateKind};
 
 fn forward(b: &[u8]) -> Action {
     Action::Forward(b.to_vec())
@@ -71,7 +71,7 @@ fn prefix_twice_sends_literal_ctrl_bracket() {
 #[test]
 fn unknown_byte_after_prefix_is_dropped() {
     let mut s = InputSplitter::new();
-    assert_eq!(s.feed(&[0x1d, b'x', b'y']), vec![forward(b"y")]);
+    assert_eq!(s.feed(&[0x1d, b'k', b'y']), vec![forward(b"y")]);
     assert_eq!(s.feed(&[0x1d, 0x1b, b'[', b'A']), vec![forward(b"[A")]);
 }
 
@@ -81,7 +81,14 @@ fn large_bracketed_paste_is_byte_exact() {
     data.extend((0..4096u32).map(|i| (i % 251) as u8).filter(|b| *b != 0x1d));
     data.extend_from_slice(b"\x1b[201~");
     let mut s = InputSplitter::new();
-    assert_eq!(s.feed(&data), vec![Action::Forward(data.clone())]);
+    assert_eq!(
+        s.feed(&data),
+        vec![Action::Paste {
+            data: data.clone(),
+            start: true,
+            end: true
+        }]
+    );
 }
 
 #[test]
@@ -467,6 +474,7 @@ fn snap(rows: u16, cols: u16, lines: &[Vec<(&str, Attr)>], cursor: Option<(u16, 
             bracketed_paste: false,
             alt_screen: false,
             hide_cursor: false,
+            mouse: Default::default(),
         },
         scroll_offset: 0,
         scroll_max: 0,
@@ -565,7 +573,7 @@ fn snapshot_zoom() {
 fn snapshot_help_overlay() {
     let mut v = two_pane(140);
     v.apply(Cmd::Help);
-    assert_snapshot("help", &draw(&v, &screens(), 140, 22));
+    assert_snapshot("help", &draw(&v, &screens(), 140, 26));
 }
 
 #[test]
@@ -704,6 +712,7 @@ fn mode_transitions_emit_only_the_four_sequences() {
         bracketed_paste: false,
         alt_screen: true,
         hide_cursor: true,
+        mouse: Default::default(),
     };
     let on = Modes {
         app_cursor: true,
@@ -735,5 +744,409 @@ fn mode_transitions_emit_only_the_four_sequences() {
     );
     assert_eq!(mode_changes(None, off), b"\x1b[?1l\x1b[?2004l");
     assert_eq!(mode_changes(None, on), b"\x1b[?1h\x1b[?2004h");
-    assert_eq!(reset_modes(), b"\x1b[?1l\x1b[?2004l");
+    assert_eq!(
+        reset_modes(),
+        b"\x1b[?1l\x1b[?2004l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l".as_slice()
+    );
+}
+
+fn sgr(cb: u16, col: u16, row: u16, release: bool) -> Vec<u8> {
+    format!(
+        "\x1b[<{};{};{}{}",
+        cb,
+        col + 1,
+        row + 1,
+        if release { 'm' } else { 'M' }
+    )
+    .into_bytes()
+}
+
+fn ev(cb: u16, col: u16, row: u16, release: bool) -> MouseEvent {
+    MouseEvent {
+        cb,
+        col,
+        row,
+        release,
+    }
+}
+
+fn mouse_info(mode: MouseMode, scroll_max: usize) -> impl Fn(&str) -> PaneInfo {
+    move |_| PaneInfo {
+        mouse: mode,
+        scroll_max,
+        alt_screen: false,
+        app_cursor: false,
+    }
+}
+
+const AREA: Rect = Rect {
+    x: 0,
+    y: 0,
+    width: 140,
+    height: 40,
+};
+
+fn sgr_mode(level: MouseLevel) -> MouseMode {
+    MouseMode {
+        level,
+        encoding: MouseEncoding::Sgr,
+    }
+}
+
+#[test]
+fn sgr_mouse_is_parsed_even_when_split_across_reads() {
+    let mut s = InputSplitter::new();
+    let bytes = sgr(0, 9, 4, false);
+    assert_eq!(s.feed(&bytes), vec![Action::Mouse(ev(0, 9, 4, false))]);
+    assert_eq!(s.feed(&bytes[..5]), vec![]);
+    assert_eq!(s.feed(&bytes[5..]), vec![Action::Mouse(ev(0, 9, 4, false))]);
+    assert_eq!(
+        s.feed(b"a\x1b[<0;1;1mb"),
+        vec![
+            forward(b"a"),
+            Action::Mouse(ev(0, 0, 0, true)),
+            forward(b"b")
+        ]
+    );
+}
+
+#[test]
+fn stale_held_escape_is_flushed_to_the_agent() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b[<0;1"), vec![]);
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(50);
+    assert_eq!(s.flush_stale(later), vec![forward(b"\x1b[<0;1")]);
+}
+
+#[test]
+fn paste_is_one_action_and_ignores_prefix_and_mouse_look_alikes() {
+    let mut s = InputSplitter::new();
+    let data = b"\x1b[200~/tmp/a b\x1d\x1b[<0;1;1M.png\x1b[201~".to_vec();
+    assert_eq!(
+        s.feed(&data),
+        vec![Action::Paste {
+            data: data.clone(),
+            start: true,
+            end: true
+        }]
+    );
+}
+
+#[test]
+fn paste_split_across_reads_keeps_one_target() {
+    let mut s = InputSplitter::new();
+    let first = s.feed(b"\x1b[200~/tmp/a");
+    let second = s.feed(b" b.png\x1b[20");
+    let third = s.feed(b"1~");
+    let all: Vec<u8> = [first, second, third]
+        .into_iter()
+        .flatten()
+        .flat_map(|a| match a {
+            Action::Paste { data, .. } => data,
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(all, b"\x1b[200~/tmp/a b.png\x1b[201~");
+}
+
+#[test]
+fn bare_dropped_path_is_a_drop() {
+    let mut s = InputSplitter::new();
+    assert_eq!(
+        s.feed(b"/tmp/my\\ file.png "),
+        vec![Action::Drop(b"/tmp/my\\ file.png ".to_vec())]
+    );
+    assert_eq!(s.feed(b"/ls"), vec![forward(b"/ls")]);
+}
+
+#[test]
+fn click_on_sidebar_row_switches_session() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let out = v.on_mouse(
+        AREA,
+        ev(0, 3, 1, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert!(out.redraw);
+    assert_eq!(ids(&v), vec!["c"]);
+    v.on_mouse(
+        AREA,
+        ev(0, 3, 3, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(ids(&v), vec!["b"]);
+    v.on_mouse(
+        AREA,
+        ev(0, 3, 0, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    v.on_mouse(
+        AREA,
+        ev(0, 3, 30, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(ids(&v), vec!["b"]);
+}
+
+#[test]
+fn hidden_sidebar_and_narrow_layout_have_no_sidebar_hits() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 90;
+    let area = Rect::new(0, 0, 90, 30);
+    assert!(matches!(
+        v.hit(area, 3, 1),
+        Hit::Pane {
+            idx: 0,
+            at: Some(_)
+        }
+    ));
+    v.width = 140;
+    v.apply(Cmd::Sidebar);
+    assert!(matches!(
+        v.hit(AREA, 3, 5),
+        Hit::Pane {
+            idx: 0,
+            at: Some(_)
+        }
+    ));
+}
+
+#[test]
+fn click_on_other_pane_moves_focus_in_wide_and_narrow_split() {
+    let mut v = two_pane(140);
+    assert_eq!(v.focus, 1);
+    v.on_mouse(
+        AREA,
+        ev(0, 40, 5, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.focus, 0);
+    let mut n = two_pane(90);
+    let area = Rect::new(0, 0, 90, 40);
+    n.on_mouse(
+        area,
+        ev(0, 40, 5, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(n.focus, 0);
+    n.on_mouse(
+        area,
+        ev(0, 40, 30, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(n.focus, 1);
+}
+
+#[test]
+fn zoom_hit_only_sees_the_focused_pane() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::Zoom);
+    assert!(matches!(v.hit(AREA, 40, 5), Hit::Pane { idx: 1, .. }));
+}
+
+#[test]
+fn clicks_are_forwarded_with_pane_relative_coordinates() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply(Cmd::Sidebar);
+    let out = v.on_mouse(
+        AREA,
+        ev(0, 10, 7, false),
+        &mouse_info(sgr_mode(MouseLevel::Press), 0),
+    );
+    assert_eq!(out.forward, Some(("a".into(), b"\x1b[<0;10;7M".to_vec())));
+    let out = v.on_mouse(
+        AREA,
+        ev(0, 12, 9, true),
+        &mouse_info(sgr_mode(MouseLevel::Press), 0),
+    );
+    assert_eq!(out.forward, Some(("a".into(), b"\x1b[<0;12;9m".to_vec())));
+}
+
+#[test]
+fn clicks_are_not_forwarded_when_the_agent_did_not_ask() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let out = v.on_mouse(
+        AREA,
+        ev(0, 40, 7, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(out.forward, None);
+}
+
+#[test]
+fn motion_needs_any_motion_and_drag_follows_the_grab() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply(Cmd::Sidebar);
+    let press = sgr_mode(MouseLevel::Drag);
+    assert_eq!(
+        v.on_mouse(AREA, ev(35, 5, 5, false), &mouse_info(press, 0))
+            .forward,
+        None
+    );
+    v.on_mouse(AREA, ev(0, 5, 5, false), &mouse_info(press, 0));
+    let out = v.on_mouse(AREA, ev(32, 400, 400, false), &mouse_info(press, 0));
+    assert_eq!(out.forward.map(|f| f.0), Some("a".to_string()));
+    let out = v.on_mouse(AREA, ev(0, 400, 400, true), &mouse_info(press, 0));
+    assert!(out.forward.is_some());
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn x10_and_utf8_encodings_translate_coordinates() {
+    let e = ev(0, 0, 0, false);
+    assert_eq!(encode(&e, 2, 3, MouseEncoding::Default), b"\x1b[M #$");
+    assert_eq!(encode(&e, 300, 3, MouseEncoding::Default), b"");
+    assert_eq!(
+        encode(&e, 300, 3, MouseEncoding::Utf8),
+        "\x1b[M \u{14d}$".as_bytes()
+    );
+}
+
+#[test]
+fn wheel_scrolls_locally_and_returns_to_live() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let info = mouse_info(MouseMode::default(), 10);
+    v.on_mouse(AREA, ev(64, 40, 5, false), &info);
+    assert_eq!(v.scroll.map(|s| s.offset), Some(3));
+    v.on_mouse(AREA, ev(64, 40, 5, false), &info);
+    assert_eq!(v.scroll.map(|s| s.offset), Some(6));
+    v.on_mouse(AREA, ev(65, 40, 5, false), &info);
+    v.on_mouse(AREA, ev(65, 40, 5, false), &info);
+    assert_eq!(v.scroll, None);
+}
+
+#[test]
+fn wheel_does_nothing_without_history_and_forwards_to_mouse_aware_agents() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.on_mouse(
+        AREA,
+        ev(64, 40, 5, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.scroll, None);
+    let out = v.on_mouse(
+        AREA,
+        ev(64, 40, 5, false),
+        &mouse_info(sgr_mode(MouseLevel::Press), 10),
+    );
+    assert!(out.forward.is_some());
+    assert_eq!(v.scroll, None);
+}
+
+#[test]
+fn wheel_on_alt_screen_without_mouse_sends_arrows() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let info = |_: &str| PaneInfo {
+        mouse: MouseMode::default(),
+        scroll_max: 0,
+        alt_screen: true,
+        app_cursor: true,
+    };
+    let out = v.on_mouse(AREA, ev(65, 40, 5, false), &info);
+    assert_eq!(
+        out.forward,
+        Some(("a".into(), b"\x1bOB\x1bOB\x1bOB".to_vec()))
+    );
+}
+
+#[test]
+fn wheel_over_other_pane_scrolls_it_and_moves_focus() {
+    let mut v = two_pane(140);
+    v.on_mouse(
+        AREA,
+        ev(64, 40, 5, false),
+        &mouse_info(MouseMode::default(), 10),
+    );
+    assert_eq!(v.focus, 0);
+    assert!(v.scroll.is_some());
+}
+
+#[test]
+fn paste_target_follows_the_pointer_and_falls_back_to_focus() {
+    let mut v = two_pane(140);
+    assert_eq!(v.paste_target(AREA), 1);
+    v.on_mouse(
+        AREA,
+        ev(35, 40, 5, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.paste_target(AREA), 0);
+    v.on_mouse(
+        AREA,
+        ev(35, 3, 1, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.paste_target(AREA), v.focus);
+}
+
+#[test]
+fn stop_asks_only_for_running_sessions() {
+    let mut v = ViewState::new(four(), "local");
+    v.apply(Cmd::Stop);
+    assert_eq!(v.confirm.as_ref().map(|c| c.session.as_str()), Some("a"));
+    let mut e = ViewState::new(four(), "local");
+    e.select("d");
+    e.apply(Cmd::Stop);
+    assert_eq!(e.confirm, None);
+    assert!(e.notice.is_some());
+}
+
+#[test]
+fn remove_needs_an_exited_session_and_focus_moves_to_a_neighbour() {
+    let mut v = ViewState::new(four(), "local");
+    v.apply(Cmd::Remove);
+    assert_eq!(v.sessions.len(), 4);
+    assert!(v.notice.is_some());
+    v.select("d");
+    v.apply(Cmd::Remove);
+    assert_eq!(v.sessions.len(), 3);
+    assert_eq!(ids(&v), vec!["c"]);
+}
+
+#[test]
+fn removing_the_last_session_empties_the_panes() {
+    let mut v = ViewState::new(vec![row("x", "one", StateKind::Exited, "1m")], "local");
+    v.apply(Cmd::Remove);
+    assert!(v.sessions.is_empty());
+    assert!(v.panes.is_empty());
+}
+
+#[test]
+fn mouse_mode_bytes_are_enabled_and_always_reset() {
+    assert_eq!(
+        enter_mouse(),
+        b"\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1006h"
+    );
+    assert!(reset_modes().ends_with(b"\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l"));
+}
+
+#[test]
+fn rename_prompt_edits_saves_and_cancels() {
+    let mut v = ViewState::new(four(), "local");
+    v.apply(Cmd::Rename);
+    assert_eq!(v.rename.as_ref().map(|r| r.text.as_str()), Some("claude"));
+    assert_eq!(v.edit_rename(b"\x7f\x7f"), RenameEdit::Editing);
+    assert_eq!(v.edit_rename("é!".as_bytes()), RenameEdit::Editing);
+    assert_eq!(
+        v.edit_rename(b"\r"),
+        RenameEdit::Submit("a".into(), "claué!".into())
+    );
+    assert_eq!(v.rename, None);
+    v.apply(Cmd::Rename);
+    assert_eq!(v.edit_rename(b"\x1b"), RenameEdit::Cancel);
+    assert_eq!(v.rename, None);
+}
+
+#[test]
+fn rename_done_updates_the_sidebar_name() {
+    let mut v = ViewState::new(four(), "local");
+    v.rename_done("b", "web");
+    assert_eq!(v.sessions[1].name, "web");
 }

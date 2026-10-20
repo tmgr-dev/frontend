@@ -1,11 +1,13 @@
 use super::keys::{Cmd, ScrollKey};
+use super::mouse::{encode, wants, Kind, MouseEvent};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
-use tmgr_ipc::api::State;
+use tmgr_ipc::api::{MouseMode, State, StateKind};
 
 pub const SIDEBAR_WIDTH: u16 = 24;
 pub const WIDE_COLS: u16 = 100;
 const MIN_PANE_COLS: u16 = 10;
+pub const WHEEL_LINES: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionRow {
@@ -33,6 +35,29 @@ pub struct ViewState {
     pub notice: Option<String>,
     pub runner_label: String,
     pub width: u16,
+    pub pointer: Option<(u16, u16)>,
+    pub grab: Option<String>,
+    pub confirm: Option<Confirm>,
+    pub rename: Option<Rename>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Rename {
+    pub session: String,
+    pub text: String,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum RenameEdit {
+    Editing,
+    Submit(String, String),
+    Cancel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Confirm {
+    pub session: String,
+    pub name: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +82,17 @@ impl ViewState {
             notice: None,
             runner_label: runner_label.to_string(),
             width: WIDE_COLS,
+            pointer: None,
+            grab: None,
+            confirm: None,
+            rename: None,
         }
+    }
+
+    pub fn sidebar_rows(&self) -> Vec<&SessionRow> {
+        let mut rows: Vec<&SessionRow> = self.sessions.iter().collect();
+        rows.sort_by_key(|r| r.state.kind != StateKind::Blocked);
+        rows
     }
 
     pub fn focused_session(&self) -> Option<&str> {
@@ -95,8 +130,256 @@ impl ViewState {
                     self.scroll = Some(ScrollState::default());
                 }
             }
+            Cmd::Stop => match self.focused_row() {
+                Some(r) if r.state.kind == StateKind::Exited => {
+                    self.notice = Some("already exited, Ctrl-] X removes it".into());
+                }
+                Some(r) => {
+                    self.confirm = Some(Confirm {
+                        session: r.id.clone(),
+                        name: r.name.clone(),
+                    });
+                }
+                None => {}
+            },
+            Cmd::Remove => match self.focused_row() {
+                Some(r) if r.state.kind != StateKind::Exited => {
+                    self.notice = Some("still running, stop it first with Ctrl-] x".into());
+                }
+                Some(r) => {
+                    let id = r.id.clone();
+                    self.remove_session(&id);
+                }
+                None => {}
+            },
+            Cmd::Rename => {
+                if let Some(r) = self.focused_row() {
+                    self.rename = Some(Rename {
+                        session: r.id.clone(),
+                        text: r.name.clone(),
+                    });
+                }
+            }
             Cmd::Detach | Cmd::Picker => {}
         }
+    }
+
+    pub fn edit_rename(&mut self, data: &[u8]) -> RenameEdit {
+        let Some(r) = self.rename.as_mut() else {
+            return RenameEdit::Cancel;
+        };
+        let text = String::from_utf8_lossy(data);
+        for ch in text.chars() {
+            match ch {
+                '\r' | '\n' => {
+                    let done = self.rename.take();
+                    return match done {
+                        Some(r) => RenameEdit::Submit(r.session, r.text.trim().to_string()),
+                        None => RenameEdit::Cancel,
+                    };
+                }
+                '\x1b' => {
+                    self.rename = None;
+                    return RenameEdit::Cancel;
+                }
+                '\x7f' | '\x08' => {
+                    r.text.pop();
+                }
+                c if !c.is_control() && r.text.chars().count() < 64 => r.text.push(c),
+                _ => {}
+            }
+        }
+        RenameEdit::Editing
+    }
+
+    pub fn rename_done(&mut self, id: &str, name: &str) {
+        if let Some(row) = self.sessions.iter_mut().find(|s| s.id == id) {
+            row.name = name.to_string();
+        }
+    }
+
+    pub fn remove_session(&mut self, id: &str) {
+        let Some(pos) = self.sessions.iter().position(|s| s.id == id) else {
+            return;
+        };
+        self.sessions.remove(pos);
+        if let Some(i) = self.panes.iter().position(|p| p == id) {
+            let neighbour = self.sessions[pos..]
+                .iter()
+                .chain(self.sessions[..pos].iter().rev())
+                .find(|s| !self.panes.contains(&s.id))
+                .map(|s| s.id.clone());
+            match neighbour {
+                Some(n) => self.panes[i] = n,
+                None => {
+                    self.panes.remove(i);
+                    self.focus = self.focus.min(self.panes.len().saturating_sub(1));
+                    self.zoom = false;
+                }
+            }
+            self.scroll = None;
+        }
+    }
+
+    pub fn select(&mut self, id: &str) {
+        if let Some(i) = self.panes.iter().position(|p| p == id) {
+            if self.focus != i {
+                self.focus = i;
+                self.scroll = None;
+            }
+            return;
+        }
+        match self.panes.get_mut(self.focus) {
+            Some(slot) => *slot = id.to_string(),
+            None => self.panes.push(id.to_string()),
+        }
+        self.scroll = None;
+    }
+
+    pub fn hit(&self, area: Rect, col: u16, row: u16) -> Hit {
+        let lay = layout(area, self);
+        if let Some(sb) = lay.sidebar {
+            if contains(sb, col, row) {
+                let idx = usize::from(row - sb.y);
+                return match idx
+                    .checked_sub(1)
+                    .and_then(|i| self.sidebar_rows().get(i).copied())
+                {
+                    Some(r) => Hit::Session(r.id.clone()),
+                    None => Hit::None,
+                };
+            }
+        }
+        for p in &lay.panes {
+            if contains(p.outer, col, row) {
+                let Some(idx) = self.panes.iter().position(|id| *id == p.session) else {
+                    return Hit::None;
+                };
+                let at = contains(p.inner, col, row).then(|| (col - p.inner.x, row - p.inner.y));
+                return Hit::Pane { idx, at };
+            }
+        }
+        Hit::None
+    }
+
+    pub fn paste_target(&self, area: Rect) -> usize {
+        match self.pointer.map(|(c, r)| self.hit(area, c, r)) {
+            Some(Hit::Pane { idx, .. }) => idx,
+            _ => self.focus,
+        }
+    }
+
+    pub fn focus_pane(&mut self, idx: usize) {
+        if idx < self.panes.len() && idx != self.focus {
+            self.focus = idx;
+            self.scroll = None;
+        }
+    }
+
+    pub fn on_mouse(
+        &mut self,
+        area: Rect,
+        ev: MouseEvent,
+        info: &dyn Fn(&str) -> PaneInfo,
+    ) -> MouseOut {
+        let mut out = MouseOut::default();
+        let kind = ev.kind();
+        self.pointer = Some((ev.col, ev.row));
+        if self.help {
+            if ev.is_left_press() {
+                self.help = false;
+                out.redraw = true;
+            }
+            return out;
+        }
+        if let Some(g) = self.grab.clone() {
+            if matches!(kind, Kind::Drag | Kind::Release) {
+                let lay = layout(area, self);
+                if let Some(p) = lay.panes.iter().find(|p| p.session == g) {
+                    let pane = info(&g);
+                    let c = ev.col.clamp(p.inner.x, p.inner.right() - 1) - p.inner.x;
+                    let r = ev.row.clamp(p.inner.y, p.inner.bottom() - 1) - p.inner.y;
+                    if wants(pane.mouse, kind) {
+                        out.forward = Some((g, encode(&ev, c, r, pane.mouse.encoding)));
+                    }
+                }
+                if kind == Kind::Release {
+                    self.grab = None;
+                }
+                return out;
+            }
+        }
+        match self.hit(area, ev.col, ev.row) {
+            Hit::Session(id) => {
+                if ev.is_left_press() {
+                    self.select(&id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Pane { idx, at } => {
+                let session = self.panes[idx].clone();
+                let pane = info(&session);
+                let local = self.scroll.is_some() && idx == self.focus;
+                if matches!(kind, Kind::WheelUp | Kind::WheelDown) {
+                    if wants(pane.mouse, kind) && !local {
+                        if let Some((c, r)) = at {
+                            out.forward = Some((session, encode(&ev, c, r, pane.mouse.encoding)));
+                        }
+                    } else if pane.alt_screen && pane.scroll_max == 0 {
+                        let key: &[u8] = match (kind == Kind::WheelUp, pane.app_cursor) {
+                            (true, true) => b"\x1bOA",
+                            (true, false) => b"\x1b[A",
+                            (false, true) => b"\x1bOB",
+                            (false, false) => b"\x1b[B",
+                        };
+                        out.forward = Some((session, key.repeat(WHEEL_LINES)));
+                    } else {
+                        out.redraw = self.wheel(idx, kind == Kind::WheelUp, pane.scroll_max);
+                    }
+                    return out;
+                }
+                if ev.is_left_press() && idx != self.focus {
+                    self.focus_pane(idx);
+                    out.redraw = true;
+                }
+                if !local && wants(pane.mouse, kind) {
+                    if let Some((c, r)) = at {
+                        if kind == Kind::Press {
+                            self.grab = Some(session.clone());
+                        }
+                        out.forward = Some((session, encode(&ev, c, r, pane.mouse.encoding)));
+                    }
+                }
+            }
+            Hit::None => {}
+        }
+        out
+    }
+
+    fn wheel(&mut self, idx: usize, up: bool, scroll_max: usize) -> bool {
+        self.focus_pane(idx);
+        if up {
+            if self.scroll.is_none() {
+                if scroll_max == 0 {
+                    return false;
+                }
+                self.scroll = Some(ScrollState::default());
+            }
+            if let Some(s) = self.scroll.as_mut() {
+                s.max = scroll_max;
+                s.offset = s.offset.saturating_add(WHEEL_LINES).min(s.max);
+            }
+            return true;
+        }
+        let Some(s) = self.scroll.as_mut() else {
+            return false;
+        };
+        s.max = scroll_max;
+        s.offset = s.offset.saturating_sub(WHEEL_LINES);
+        if s.offset == 0 {
+            self.scroll = None;
+        }
+        true
     }
 
     pub fn scroll_key(&mut self, key: ScrollKey, page: usize) {
@@ -234,6 +517,31 @@ impl ViewState {
         self.sidebar = prefs.sidebar;
         self.scroll = None;
     }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PaneInfo {
+    pub mouse: MouseMode,
+    pub scroll_max: usize,
+    pub alt_screen: bool,
+    pub app_cursor: bool,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct MouseOut {
+    pub redraw: bool,
+    pub forward: Option<(String, Vec<u8>)>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Hit {
+    Session(String),
+    Pane { idx: usize, at: Option<(u16, u16)> },
+    None,
+}
+
+fn contains(r: Rect, col: u16, row: u16) -> bool {
+    col >= r.x && col < r.right() && row >= r.y && row < r.bottom()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

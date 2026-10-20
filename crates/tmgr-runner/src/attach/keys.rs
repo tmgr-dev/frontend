@@ -1,4 +1,11 @@
+use super::mouse::{parse_sgr, MouseEvent};
+use std::time::{Duration, Instant};
+
 const PREFIX: u8 = 0x1d;
+const PASTE_BEGIN: &[u8] = b"\x1b[200~";
+const PASTE_END: &[u8] = b"\x1b[201~";
+const MAX_HELD: usize = 32;
+const HELD_FOR: Duration = Duration::from_millis(20);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cmd {
@@ -12,6 +19,9 @@ pub enum Cmd {
     ScrollMode,
     Help,
     Picker,
+    Stop,
+    Remove,
+    Rename,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,12 +40,22 @@ pub enum Action {
     Forward(Vec<u8>),
     Cmd(Cmd),
     Scroll(ScrollKey),
+    Mouse(MouseEvent),
+    Drop(Vec<u8>),
+    Paste {
+        data: Vec<u8>,
+        start: bool,
+        end: bool,
+    },
 }
 
 #[derive(Default)]
 pub struct InputSplitter {
     prefix: bool,
     scroll: bool,
+    paste: Option<bool>,
+    held: Vec<u8>,
+    held_at: Option<Instant>,
 }
 
 fn command(b: u8) -> Option<Cmd> {
@@ -50,6 +70,9 @@ fn command(b: u8) -> Option<Cmd> {
         b'[' => Cmd::ScrollMode,
         b'?' => Cmd::Help,
         b'w' => Cmd::Picker,
+        b'x' => Cmd::Stop,
+        b'X' => Cmd::Remove,
+        b'r' => Cmd::Rename,
         _ => return None,
     })
 }
@@ -65,10 +88,58 @@ impl InputSplitter {
     }
 
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Action> {
+        let joined;
+        self.held_at = None;
+        let bytes = if self.held.is_empty() {
+            bytes
+        } else {
+            joined = [std::mem::take(&mut self.held).as_slice(), bytes].concat();
+            &joined
+        };
         let mut out = Vec::new();
         let mut run: Vec<u8> = Vec::new();
         let mut i = 0;
         while i < bytes.len() {
+            if let Some(first) = self.paste {
+                i = self.paste_chunk(bytes, i, first, &mut out);
+                continue;
+            }
+            if bytes[i] == 0x1b && !self.prefix {
+                match mouse_at(&bytes[i..]) {
+                    Seq::Mouse(ev, used) => {
+                        flush(&mut run, &mut out);
+                        out.push(Action::Mouse(ev));
+                        i += used;
+                        continue;
+                    }
+                    Seq::Skip(used) => {
+                        flush(&mut run, &mut out);
+                        i += used;
+                        continue;
+                    }
+                    Seq::Partial => {
+                        flush(&mut run, &mut out);
+                        self.hold(&bytes[i..]);
+                        break;
+                    }
+                    Seq::None => {}
+                }
+                if !self.scroll {
+                    let rest = &bytes[i..];
+                    if rest.starts_with(PASTE_BEGIN) {
+                        flush(&mut run, &mut out);
+                        self.paste = Some(true);
+                        continue;
+                    }
+                    if rest.len() >= 3
+                        && rest.len() < PASTE_BEGIN.len()
+                        && PASTE_BEGIN.starts_with(rest)
+                    {
+                        self.held = rest.to_vec();
+                        break;
+                    }
+                }
+            }
             if self.scroll {
                 flush(&mut run, &mut out);
                 let (key, used) = scroll_key(&bytes[i..]);
@@ -101,8 +172,141 @@ impl InputSplitter {
             }
         }
         flush(&mut run, &mut out);
+        if let [Action::Forward(data)] = out.as_slice() {
+            if looks_like_drop(data) {
+                return vec![Action::Drop(out.remove(0).into_forward())];
+            }
+        }
         out
     }
+
+    fn hold(&mut self, rest: &[u8]) {
+        self.held = rest.to_vec();
+        self.held_at = (!rest.is_empty()).then(Instant::now);
+    }
+
+    pub fn flush_stale(&mut self, now: Instant) -> Vec<Action> {
+        let stale = self
+            .held_at
+            .is_some_and(|t| now.saturating_duration_since(t) >= HELD_FOR);
+        if !stale {
+            return Vec::new();
+        }
+        self.held_at = None;
+        let data = std::mem::take(&mut self.held);
+        match self.paste {
+            Some(first) => {
+                self.paste = Some(false);
+                vec![Action::Paste {
+                    data,
+                    start: first,
+                    end: false,
+                }]
+            }
+            None if self.scroll => Vec::new(),
+            None => vec![Action::Forward(data)],
+        }
+    }
+
+    fn paste_chunk(
+        &mut self,
+        bytes: &[u8],
+        from: usize,
+        first: bool,
+        out: &mut Vec<Action>,
+    ) -> usize {
+        let skip = if first { PASTE_BEGIN.len() } else { 0 };
+        let body = &bytes[from + skip..];
+        if let Some(p) = find(body, PASTE_END) {
+            let to = from + skip + p + PASTE_END.len();
+            out.push(Action::Paste {
+                data: bytes[from..to].to_vec(),
+                start: first,
+                end: true,
+            });
+            self.paste = None;
+            return to;
+        }
+        let keep = (1..PASTE_END.len().min(body.len() + 1))
+            .rev()
+            .find(|n| body.ends_with(&PASTE_END[..*n]))
+            .unwrap_or(0);
+        let to = bytes.len() - keep;
+        if to > from {
+            out.push(Action::Paste {
+                data: bytes[from..to].to_vec(),
+                start: first,
+                end: false,
+            });
+            self.paste = Some(false);
+        }
+        self.hold(&bytes[to..]);
+        bytes.len()
+    }
+}
+
+impl Action {
+    fn into_forward(self) -> Vec<u8> {
+        match self {
+            Action::Forward(d) => d,
+            _ => Vec::new(),
+        }
+    }
+}
+
+pub fn looks_like_drop(data: &[u8]) -> bool {
+    data.len() >= 4
+        && (data.starts_with(b"/") || data.starts_with(b"~/"))
+        && data.ends_with(b" ")
+        && data[1..data.len() - 1].contains(&b'/')
+        && data.iter().all(|b| *b >= 0x20 && *b != 0x7f)
+}
+
+enum Seq {
+    Mouse(MouseEvent, usize),
+    Partial,
+    Skip(usize),
+    None,
+}
+
+fn mouse_at(b: &[u8]) -> Seq {
+    if b.len() < 3 {
+        return Seq::None;
+    }
+    if b[1] == b'[' && b[2] == b'M' {
+        return if b.len() >= 6 {
+            Seq::Skip(6)
+        } else {
+            Seq::Partial
+        };
+    }
+    if b[1] != b'[' || b[2] != b'<' {
+        return Seq::None;
+    }
+    let mut j = 3;
+    while j < b.len() && (b[j].is_ascii_digit() || b[j] == b';') {
+        j += 1;
+    }
+    if j == b.len() {
+        return if j <= MAX_HELD {
+            Seq::Partial
+        } else {
+            Seq::None
+        };
+    }
+    let release = match b[j] {
+        b'M' => false,
+        b'm' => true,
+        _ => return Seq::None,
+    };
+    match parse_sgr(&b[3..j], release) {
+        Some(ev) => Seq::Mouse(ev, j + 1),
+        None => Seq::None,
+    }
+}
+
+fn find(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    hay.windows(needle.len()).position(|w| w == needle)
 }
 
 fn flush(run: &mut Vec<u8>, out: &mut Vec<Action>) {

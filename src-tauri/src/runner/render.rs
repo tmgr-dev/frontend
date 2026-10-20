@@ -149,7 +149,7 @@ mod tests {
   }
 
   fn no_modes() -> Modes {
-    Modes { app_cursor: false, bracketed_paste: false, alt_screen: false, hide_cursor: false }
+    Modes { app_cursor: false, bracketed_paste: false, alt_screen: false, hide_cursor: false, mouse: Default::default() }
   }
 
   fn span(t: &str) -> Span {

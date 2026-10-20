@@ -1,7 +1,7 @@
 use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
 use super::{
-    observe, remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RmArgs, RunnerCommands,
-    SendArgs,
+    observe, remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RenameArgs, RmArgs,
+    RunnerCommands, SendArgs,
 };
 use crate::out::table;
 use serde_json::json;
@@ -104,6 +104,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             None => halt(o, a),
         },
         RunnerCommands::Rm(a) => rm(o, a),
+        RunnerCommands::Rename(a) => rename(o, a),
     }
 }
 
@@ -703,7 +704,7 @@ fn attach_cmd(a: &AttachArgs) -> Result<i32> {
                 Error::not_found("no sessions to attach to").hint(format!("{} run", super::bin()))
             })?,
     };
-    attach::run(&cfg, &target.id)
+    attach::run_with(&cfg, &target.id, !a.no_mouse)
 }
 
 pub(super) fn with_session(key: &str) -> Result<(Client, SessionInfo)> {
@@ -829,6 +830,17 @@ fn work_log(o: &Opts, key: &str) -> Result<i32> {
         o,
         json!({"id": s.id, "name": s.name, "summary": w}),
         lines.join("\n"),
+    ))
+}
+
+fn rename(o: &Opts, a: &RenameArgs) -> Result<i32> {
+    let (mut c, s) = with_session(&a.session)?;
+    c.rename(&s.id, &a.name).map_err(rerr)?;
+    let name = a.name.trim();
+    Ok(emit(
+        o,
+        json!({"id": s.id, "name": name}),
+        format!("{} is now {}", clean(&s.name), clean(name)),
     ))
 }
 

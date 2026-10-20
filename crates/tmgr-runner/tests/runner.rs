@@ -590,6 +590,47 @@ fn resize_reaches_the_pty() {
 }
 
 #[test]
+fn sessions_can_be_renamed_and_names_stay_unique() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut c = h.client();
+    let mut other = h.client();
+    let mut req = h.req(&["/bin/sleep", "30"]);
+    req.name = Some("alpha".into());
+    let running = c.create(req).unwrap();
+    let mut req = h.req(&["/bin/sh", "-c", "exit 0"]);
+    req.name = Some("beta".into());
+    let done = c.create(req).unwrap();
+    wait_state(&mut c, &done.id, 5, |s| s.kind == StateKind::Exited);
+
+    c.rename(&running.id, "  gamma ").unwrap();
+    c.rename(&done.id, "delta").unwrap();
+    let names = |c: &mut Client| {
+        let mut v: Vec<(String, String)> = c
+            .list()
+            .unwrap()
+            .into_iter()
+            .map(|s| (s.id, s.name))
+            .collect();
+        v.sort();
+        v
+    };
+    let seen = names(&mut other);
+    assert!(seen.contains(&(running.id.clone(), "gamma".into())));
+    assert!(seen.contains(&(done.id.clone(), "delta".into())));
+    assert_eq!(names(&mut c), seen);
+
+    assert!(err_text(c.rename(&running.id, "delta")).contains("busy"));
+    assert!(err_text(c.rename(&running.id, "   ")).contains("invalid_params"));
+    assert!(err_text(c.rename(&running.id, &"x".repeat(65))).contains("invalid_params"));
+    c.rename(&running.id, "gamma").unwrap();
+    assert!(err_text(c.rename("s_aaaaaaaaaa", "z")).contains("not_found"));
+}
+
+#[test]
 fn exited_session_can_be_removed() {
     if !sessions_available() {
         return;

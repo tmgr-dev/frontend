@@ -160,6 +160,7 @@ missing params) and `internal`.
 | `autopilot.log` | `{tail}` (1 to 1000) | `{lines}` (the last `tail` JSON lines of `log.jsonl`) | `forbidden`, `invalid_params` | `cli` and `desktop`; cap `autopilot.v1` |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
+| `sessions.rename` | `{id, name}` (1 to 64 printable characters, unique among sessions) | `null` | `not_found`, `invalid_params`, `busy` (name taken) | any |
 | `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
 | `layout.get` | none | the stored JSON value or `null` | | any |
 | `layout.set` | `{layout}` (any JSON, at most 64 KiB serialized) | `null` | | any |

@@ -53,6 +53,7 @@ fn modes(ac: bool, bp: bool, alt: bool, hc: bool) -> Modes {
         bracketed_paste: bp,
         alt_screen: alt,
         hide_cursor: hc,
+        mouse: Default::default(),
     }
 }
 
@@ -832,6 +833,7 @@ fn constants_are_pinned() {
         method::SESSIONS_KILL,
         method::SESSIONS_SEND,
         method::SESSIONS_REMOVE,
+        method::SESSIONS_RENAME,
         method::RUNS_CREATE,
         method::LAYOUT_GET,
         method::LAYOUT_SET,
@@ -863,6 +865,7 @@ fn constants_are_pinned() {
             "sessions.kill",
             "sessions.send",
             "sessions.remove",
+            "sessions.rename",
             "runs.create",
             "layout.get",
             "layout.set",

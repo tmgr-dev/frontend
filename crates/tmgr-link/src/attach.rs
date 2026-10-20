@@ -310,6 +310,7 @@ mod tests {
             bracketed_paste: false,
             alt_screen: false,
             hide_cursor: false,
+            mouse: Default::default(),
         }
     }
 

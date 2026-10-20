@@ -35,6 +35,9 @@ pub enum RunnerCommands {
     /// [experimental] List sessions and what each agent is doing
     Agents(AgentsArgs),
     /// [experimental] Open the live full-screen view of sessions
+    #[command(
+        after_help = "Mouse: click a session in the sidebar or a pane to switch, wheel scrolls history, dropped files are pasted into the pane under the mouse.\nSelect text with Shift-drag (Option-drag in iTerm2), or start with --no-mouse."
+    )]
     Attach(AttachArgs),
     /// [experimental] Type a line of text into a session, optionally waiting for the agent to answer
     Send(SendArgs),
@@ -44,6 +47,8 @@ pub enum RunnerCommands {
     Halt(HaltArgs),
     /// [experimental] Delete a session that has already exited
     Rm(RmArgs),
+    /// [experimental] Give a session a new name (the id stays the same)
+    Rename(RenameArgs),
 }
 
 #[derive(Subcommand)]
@@ -279,6 +284,9 @@ pub struct AttachArgs {
     /// [experimental] Never type into the remote run (with --on)
     #[arg(long, requires = "on", hide = true)]
     pub read_only: bool,
+    /// Do not capture the mouse (keeps plain terminal text selection)
+    #[arg(long)]
+    pub no_mouse: bool,
 }
 
 #[derive(Args)]
@@ -331,6 +339,14 @@ pub struct HaltArgs {
     /// [experimental] Stop a run this leader started on a follower
     #[arg(long, value_name = "LINK", hide = true)]
     pub on: Option<String>,
+}
+
+#[derive(Args)]
+pub struct RenameArgs {
+    /// Session id or name
+    pub session: String,
+    /// New name, unique among sessions
+    pub name: String,
 }
 
 #[derive(Args)]

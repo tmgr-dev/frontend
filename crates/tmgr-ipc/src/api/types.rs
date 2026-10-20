@@ -328,6 +328,13 @@ pub struct IdParams {
     pub id: String,
 }
 
+/// Params of `sessions.rename`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenameParams {
+    pub id: String,
+    pub name: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KillParams {
     pub id: String,

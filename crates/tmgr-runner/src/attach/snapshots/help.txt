@@ -1,22 +1,26 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────────────────────────╮╭ 2  dev-server · waiting ───────────────────────────────╮
- ◆ codex             3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
- ● claude           18m │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
- ◌ dev-server       12m │✓ Tests 14 passed  ╭ Keys ────────────────────────────────────────────╮                                           │
- ✓ tests            52m │>                  │ Press Ctrl-] first, then:                        │                                           │
-                        │                   │                                                  │                                           │
-                        │                   │ d       detach, sessions keep running            │                                           │
-                        │                   │ n / p   next / previous session                  │                                           │
+ SESSIONS      Ctrl-] b ╭ 1  claude · workin╭ Keys ────────────────────────────────────────────╮r · waiting ───────────────────────────────╮
+ ◆ codex             3m │● Reading src/check│ Press Ctrl-] first, then:                        │                                           │
+ ● claude           18m │I will add an Apple│                                                  │in 412 ms                                  │
+ ◌ dev-server       12m │✓ Tests 14 passed  │ d       detach, sessions keep running            │                                           │
+ ✓ tests            52m │>                  │ n / p   next / previous session                  │                                           │
                         │                   │ w       session picker                           │                                           │
                         │                   │ s       split into two panes, or merge           │                                           │
                         │                   │ Tab     move focus to the other pane             │                                           │
                         │                   │ z       zoom the focused pane                    │                                           │
                         │                   │ b       show or hide the sidebar                 │                                           │
+                        │                   │ r       rename the focused session               │                                           │
+                        │                   │ x       stop the focused session (asks first)    │                                           │
+                        │                   │ X       remove an exited session                 │                                           │
                         │                   │ [       scroll back through history              │                                           │
                         │                   │ ?       this help                                │                                           │
                         │                   │ Ctrl-]  send a literal Ctrl-] to the session     │                                           │
                         │                   │                                                  │                                           │
+                        │                   │ click   pick a session or a pane                 │                                           │
+                        │                   │ wheel   scroll the history of the pane           │                                           │
+                        │                   │ drop    a dropped file is pasted there           │                                           │
+                        │                   │ drag    Shift-drag selects (iTerm2: Option)      │                                           │
                         │                   │ ? again closes this box                          │                                           │
-                        │                   ╰──────────────────────────────────────────────────╯                                           │
-                        │                                                        ││                                                        │
-                        ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+                        │                   │                                                  │                                           │
+                        │                   │                                                  │                                           │
+                        ╰───────────────────╰──────────────────────────────────────────────────╯───────────────────────────────────────────╯
  tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

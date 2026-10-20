@@ -9,8 +9,9 @@ use tmgr_ipc::api::{
     method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
     CandidateInfo, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line, LookupParams,
-    OrchestratorCreateReq, RestoredRun, RunCreateReq, RunStatus, ScreenPush, SendParams,
-    SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary, CLIENT_CLI,
+    OrchestratorCreateReq, RenameParams, RestoredRun, RunCreateReq, RunStatus, ScreenPush,
+    SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary,
+    CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -214,6 +215,15 @@ impl Client {
     pub fn remove(&mut self, id: &str) -> io::Result<()> {
         let params = IdParams { id: id.into() };
         self.call(method::SESSIONS_REMOVE, to_params(&params)?)
+            .map(drop)
+    }
+
+    pub fn rename(&mut self, id: &str, name: &str) -> io::Result<()> {
+        let params = RenameParams {
+            id: id.into(),
+            name: name.into(),
+        };
+        self.call(method::SESSIONS_RENAME, to_params(&params)?)
             .map(drop)
     }
 

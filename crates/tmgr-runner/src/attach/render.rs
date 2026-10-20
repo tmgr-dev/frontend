@@ -116,8 +116,7 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     if hx > end {
         put(buf, hx, area.y, hint, dim(), hint_w);
     }
-    let mut rows: Vec<&SessionRow> = st.sessions.iter().collect();
-    rows.sort_by_key(|r| r.state.kind != StateKind::Blocked);
+    let rows = st.sidebar_rows();
     let focused = st.focused_session();
     for (i, row) in rows.iter().enumerate() {
         let y = area.y + 1 + i as u16;
@@ -283,6 +282,11 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     if area.is_empty() {
         return;
     }
+    let note = match (&st.rename, &st.confirm) {
+        (Some(r), _) => Some(format!("rename: {}▏  Enter saves, Esc cancels", r.text)),
+        (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
+        _ => st.notice.clone(),
+    };
     let focused = match st.focused_row() {
         Some(r) => format!("{} · {}", r.name, state_label(r)),
         None => "no sessions".to_string(),
@@ -290,7 +294,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     let sep = || text(" · ", dim());
     let mut spans = vec![text(" ", Style::new())];
     if area.width < WIDE_COLS {
-        match &st.notice {
+        match &note {
             Some(n) => spans.push(text(n, Style::new().fg(Color::Yellow))),
             None => spans.push(text(&focused, Style::new())),
         }
@@ -308,7 +312,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         spans.push(text(&st.runner_label, dim()));
     }
     spans.push(sep());
-    match &st.notice {
+    match &note {
         Some(n) => spans.push(text(n, Style::new().fg(Color::Yellow))),
         None => {
             spans.push(text(&focused, Style::new()));
@@ -327,6 +331,13 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     put(buf, area.right() - hint_w, area.y, hint, dim(), hint_w - 1);
 }
 
+const MOUSE: &[(&str, &str)] = &[
+    ("click", "pick a session or a pane"),
+    ("wheel", "scroll the history of the pane"),
+    ("drop", "a dropped file is pasted there"),
+    ("drag", "Shift-drag selects (iTerm2: Option)"),
+];
+
 const HELP: &[(&str, &str)] = &[
     ("d", "detach, sessions keep running"),
     ("n / p", "next / previous session"),
@@ -335,6 +346,9 @@ const HELP: &[(&str, &str)] = &[
     ("Tab", "move focus to the other pane"),
     ("z", "zoom the focused pane"),
     ("b", "show or hide the sidebar"),
+    ("r", "rename the focused session"),
+    ("x", "stop the focused session (asks first)"),
+    ("X", "remove an exited session"),
     ("[", "scroll back through history"),
     ("?", "this help"),
     ("Ctrl-]", "send a literal Ctrl-] to the session"),
@@ -342,7 +356,7 @@ const HELP: &[(&str, &str)] = &[
 
 fn draw_help(buf: &mut Buffer, area: Rect) {
     let w = 52.min(area.width);
-    let h = (HELP.len() as u16 + 6).min(area.height);
+    let h = ((HELP.len() + MOUSE.len()) as u16 + 8).min(area.height);
     let r = Rect::new(
         area.x + (area.width - w) / 2,
         area.y + (area.height - h) / 2,
@@ -369,8 +383,12 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
         dim(),
         inner.width,
     );
-    for (i, (key, what)) in HELP.iter().enumerate() {
-        let y = inner.y + 2 + i as u16;
+    let rows = HELP
+        .iter()
+        .map(|r| (*r, false))
+        .chain(MOUSE.iter().map(|r| (*r, true)));
+    for (i, ((key, what), mouse)) in rows.enumerate() {
+        let y = inner.y + 2 + i as u16 + u16::from(mouse);
         if y >= inner.bottom() {
             return;
         }
@@ -387,7 +405,7 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
             put(buf, x, y, what, Style::new(), inner.right() - x);
         }
     }
-    let y = inner.y + 3 + HELP.len() as u16;
+    let y = inner.y + 3 + (HELP.len() + MOUSE.len()) as u16;
     if y < inner.bottom() {
         put(
             buf,

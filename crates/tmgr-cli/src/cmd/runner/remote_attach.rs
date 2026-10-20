@@ -185,6 +185,11 @@ impl App {
 
     fn on_stdin(&mut self, bytes: &[u8]) -> Option<Exit> {
         for action in self.splitter.feed(bytes) {
+            let action = match action {
+                Action::Mouse(_) => continue,
+                Action::Drop(data) | Action::Paste { data, .. } => Action::Forward(data),
+                other => other,
+            };
             self.dirty = true;
             match action {
                 Action::Forward(data) => {
@@ -210,6 +215,9 @@ impl App {
                 }
                 Action::Cmd(Cmd::Detach) => return Some(Exit::Detached),
                 Action::Cmd(Cmd::Picker) => self.notify("one run per remote attach"),
+                Action::Cmd(Cmd::Stop | Cmd::Remove | Cmd::Rename) => {
+                    self.notify("not available over a remote attach")
+                }
                 Action::Cmd(cmd) => {
                     self.view.apply(cmd);
                     if cmd == Cmd::ScrollMode {
@@ -225,6 +233,7 @@ impl App {
                     let page = self.page();
                     self.view.scroll_key(key, page);
                 }
+                Action::Mouse(_) | Action::Drop(_) | Action::Paste { .. } => {}
             }
         }
         None
@@ -492,6 +501,7 @@ mod tests {
             bracketed_paste: false,
             alt_screen: false,
             hide_cursor: false,
+            mouse: Default::default(),
         };
         ScreenPush {
             session: SID.into(),

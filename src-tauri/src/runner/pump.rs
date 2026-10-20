@@ -429,7 +429,7 @@ mod tests {
       cols: 80,
       lines: vec![big.clone(); 200],
       cursor: None,
-      modes: tmgr_ipc::api::Modes { app_cursor: false, bracketed_paste: false, alt_screen: false, hide_cursor: false },
+      modes: tmgr_ipc::api::Modes { app_cursor: false, bracketed_paste: false, alt_screen: false, hide_cursor: false, mouse: Default::default() },
       scroll_offset: 0,
       scroll_max: 0,
     };
