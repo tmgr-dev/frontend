@@ -500,3 +500,222 @@ test('phone: tapping a tree row or + closes the drawer', async ({ page }) => {
   );
   expect(nav).toBe(true);
 });
+
+const actions = (page) => page.getByTestId('category-header-actions');
+const storeState = (page) =>
+  page.evaluate(() => {
+    const { state } =
+      document.querySelector('#app').__vue_app__.config.globalProperties.$store;
+    return {
+      categoryId: state.createTaskInProjectCategoryId,
+      statusId: state.taskStatusId,
+      creating: state.showCreatingTaskModal,
+    };
+  });
+const seedTasks = (page) =>
+  page.route(
+    (u) => u.pathname.endsWith('/api/tasks/'),
+    (route) =>
+      route.fulfill({
+        json: {
+          data: [
+            {
+              id: 7,
+              title: 'Seeded task',
+              status_id: 1,
+              workspace_id: 1,
+              user_id: 1,
+              assignees: [],
+              settings: [],
+              checkpoints: [],
+              common_time: 0,
+              start_time: 0,
+              approximately_time: 0,
+              project_category_id: 101,
+              created_at: '2026-09-13T10:00:00Z',
+              updated_at: '2026-09-13T10:00:00Z',
+            },
+          ],
+          meta: {
+            current_page: 1,
+            last_page: 1,
+            per_page: 10,
+            total: 1,
+            from: 1,
+            to: 1,
+          },
+        },
+      }),
+  );
+
+test('header: Subcategory (outline) then Create task (primary) on every tab', async ({
+  page,
+}) => {
+  const { errors } = await boot(page);
+  for (const query of ['', '?tab=subcategories', '?tab=settings']) {
+    await page.goto(`/demo/categories/101/children${query}`);
+    await expect(header(page).locator('h1'), query).toHaveText('Cove');
+    await expect(actions(page).getByRole('button'), query).toHaveText([
+      'Subcategory',
+      'Create task',
+    ]);
+    await expect(
+      page.getByTitle('Create a task in this category'),
+      query,
+    ).toHaveCount(1);
+    await expect(
+      header(page).getByTitle('Create a task in this category'),
+      query,
+    ).toBeVisible();
+    for (const button of await actions(page).getByRole('button').all())
+      await expect(button.locator('svg.lucide-plus')).toHaveCount(1);
+    const [outline, primary] = await actions(page)
+      .getByRole('button')
+      .evaluateAll((els) =>
+        els.map((el) => getComputedStyle(el).backgroundColor),
+      );
+    expect(primary, query).not.toBe(outline);
+    expect(primary, query).not.toMatch(/^rgba\(0, 0, 0, 0\)$|transparent/);
+  }
+  expect(errors).toEqual([]);
+});
+
+test('Tasks tab: no toolbar row, the list comes first; the empty state keeps + Create task', async ({
+  page,
+}) => {
+  const { errors } = await boot(page);
+  await seedTasks(page);
+  await page.goto('/demo/categories/101/children');
+  await expect(page.getByText('Seeded task')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Create task/ })).toHaveCount(
+    1,
+  );
+  await expect(
+    header(page).getByRole('button', { name: 'Create task' }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: test.info().outputPath('cat-tasks-list-1440.png'),
+  });
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  const empty = await boot(page);
+  await page.goto('/demo/categories/47/children');
+  await expect(
+    page.getByText('Create your first task in this category'),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '+ Create task' }),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: /Create task/ })).toHaveCount(
+    2,
+  );
+  expect([...errors, ...empty.errors]).toEqual([]);
+});
+
+test('header Create task opens the new-task panel for this category; Subcategory opens create-in-category', async ({
+  page,
+}) => {
+  const { errors } = await boot(page);
+  await page.goto('/demo/categories/101/children?tab=subcategories');
+  await expect(header(page).locator('h1')).toHaveText('Cove');
+  await page.waitForLoadState('networkidle');
+  await header(page).getByRole('button', { name: 'Create task' }).click();
+  await expect(page.locator('[data-name="task-side-panel"]')).toBeVisible();
+  expect(await storeState(page)).toEqual({
+    categoryId: 101,
+    statusId: null,
+    creating: true,
+  });
+  await expect.soft(page.getByTitle('New task in COVE')).toBeVisible();
+
+  await page.goto('/demo/categories/101/children');
+  await header(page).getByRole('button', { name: 'Subcategory' }).click();
+  await expect(page).toHaveURL(/\/demo\/categories\/101\/create$/);
+  expect(errors).toEqual([]);
+});
+
+test('create pages, Category not found and No categories yet show no header actions', async ({
+  page,
+}) => {
+  await boot(page);
+  for (const url of [
+    '/demo/categories/create',
+    '/demo/categories/101/create',
+  ]) {
+    await page.goto(url);
+    await expect(nameField(page), url).toBeVisible();
+    await expect(actions(page), url).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Create task' }),
+      url,
+    ).toHaveCount(0);
+  }
+  await page.goto('/demo/categories/99999/children');
+  await expect(missing(page)).toContainText('Category not found');
+  await expect(actions(page)).toHaveCount(0);
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await boot(page, { list: [] });
+  await page.goto('/demo/categories');
+  await expect(
+    page.getByRole('heading', { name: 'No categories yet' }),
+  ).toBeVisible();
+  await expect(actions(page)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Create task' })).toHaveCount(
+    0,
+  );
+});
+
+for (const size of [
+  { width: 1440, height: 900 },
+  { width: 390, height: 844 },
+])
+  for (const scheme of ['default', 'dark'])
+    test(`header actions layout at ${size.width}x${size.height} (${scheme})`, async ({
+      page,
+    }) => {
+      const { errors } = await boot(page, { size });
+      await page.addInitScript(
+        (value) => localStorage.setItem('colorScheme', value),
+        scheme,
+      );
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.goto('/demo/categories/101/children');
+      await expect(header(page).locator('h1')).toHaveText('Cove');
+      await expect(
+        page.getByText('Create your first task in this category'),
+      ).toBeVisible();
+      await page.waitForLoadState('networkidle');
+      const html = expect(page.locator('html'));
+      if (scheme === 'dark') await html.toHaveClass(/\bdark\b/);
+      else await html.not.toHaveClass(/\bdark\b/);
+
+      const title = await header(page)
+        .locator('h1')
+        .locator('..')
+        .boundingBox();
+      const box = await actions(page).boundingBox();
+      if (size.width < 640)
+        expect(box.y).toBeGreaterThanOrEqual(title.y + title.height);
+      else expect(box.y).toBeLessThan(title.y + title.height);
+      for (const button of await actions(page).getByRole('button').all()) {
+        const b = await button.boundingBox();
+        expect(b.x).toBeGreaterThanOrEqual(0);
+        expect(b.x + b.width).toBeLessThanOrEqual(size.width);
+        await expect(button).toBeInViewport({ ratio: 1 });
+      }
+      expect(
+        await page.evaluate(() => {
+          const doc = document.scrollingElement;
+          const head = document.querySelector('[data-page-header]');
+          return [
+            doc.scrollWidth <= doc.clientWidth,
+            head.scrollWidth <= head.clientWidth,
+          ];
+        }),
+      ).toEqual([true, true]);
+      await page.screenshot({
+        path: test.info().outputPath(`cat-header-${size.width}-${scheme}.png`),
+      });
+      expect(errors).toEqual([]);
+    });
