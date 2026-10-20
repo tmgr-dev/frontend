@@ -221,6 +221,7 @@ fn non_bare_invocations_never_open_the_menu() {
     }
 }
 
+#[cfg(feature = "runner")]
 #[test]
 fn guarded_command_through_the_menu_keeps_its_typed_confirmation() {
     let fx = Fx::new();
