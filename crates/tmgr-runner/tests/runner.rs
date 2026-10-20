@@ -5968,15 +5968,19 @@ fn orchestrator_create_refuses_bad_requests_and_profiles() {
 }
 
 #[test]
-fn orchestrator_create_needs_an_enforced_network_restriction() {
-    if cfg!(target_os = "macos") {
+fn orchestrator_create_without_an_enforced_network_restriction_runs_with_read_and_write_tools_only()
+{
+    if !sessions_available() || cfg!(target_os = "macos") {
         return;
     }
     let mut h = orch_fx();
     h.start(5000);
-    let e = err_text(h.client().create_orchestrator(orch_req(&h, "orch-1")));
-    assert!(e.starts_with("forbidden: ") && e.contains("network"), "{e}");
-    assert!(h.client().list().unwrap().is_empty());
+    let info = h
+        .client()
+        .create_orchestrator(orch_req(&h, "orch-1"))
+        .unwrap();
+    let at = info.argv.iter().position(|a| a == "--tools").unwrap();
+    assert_eq!(info.argv[at + 1], "Read,Write");
 }
 
 #[test]
