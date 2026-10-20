@@ -1,10 +1,12 @@
 use super::mouse::{parse_sgr, MouseEvent};
+use super::tree::Nav;
 use std::time::{Duration, Instant};
 
 const PREFIX: u8 = 0x1d;
 const PASTE_BEGIN: &[u8] = b"\x1b[200~";
 const PASTE_END: &[u8] = b"\x1b[201~";
 const MAX_HELD: usize = 32;
+const MAX_PREFIX_ESC: usize = 8;
 const HELD_FOR: Duration = Duration::from_millis(20);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,7 +15,12 @@ pub enum Cmd {
     NextSession,
     PrevSession,
     Split,
+    SplitRight,
+    SplitDown,
     FocusOther,
+    FocusPrev,
+    Focus(Nav),
+    Resize(Nav),
     Zoom,
     Sidebar,
     ScrollMode,
@@ -64,6 +71,8 @@ fn command(b: u8) -> Option<Cmd> {
         b'n' => Cmd::NextSession,
         b'p' => Cmd::PrevSession,
         b's' => Cmd::Split,
+        b'|' | b'v' => Cmd::SplitRight,
+        b'-' | b'h' => Cmd::SplitDown,
         b'\t' => Cmd::FocusOther,
         b'z' => Cmd::Zoom,
         b'b' => Cmd::Sidebar,
@@ -139,6 +148,28 @@ impl InputSplitter {
                     self.hold(rest);
                     break;
                 }
+                if self.prefix && !self.scroll {
+                    match prefix_esc(rest) {
+                        PrefixEsc::Cmd(cmd, used) => {
+                            self.prefix = false;
+                            flush(&mut run, &mut out);
+                            out.push(Action::Cmd(cmd));
+                            i += used;
+                            continue;
+                        }
+                        PrefixEsc::Drop(used) => {
+                            self.prefix = false;
+                            i += used;
+                            continue;
+                        }
+                        PrefixEsc::Partial => {
+                            flush(&mut run, &mut out);
+                            self.hold(rest);
+                            break;
+                        }
+                        PrefixEsc::Plain => {}
+                    }
+                }
             }
             if self.scroll {
                 flush(&mut run, &mut out);
@@ -195,6 +226,10 @@ impl InputSplitter {
         }
         self.held_at = None;
         let data = std::mem::take(&mut self.held);
+        if self.prefix && data.first() == Some(&0x1b) {
+            self.prefix = false;
+            return Vec::new();
+        }
         if self.scroll {
             if data == b"\x1b" {
                 self.scroll = false;
@@ -257,6 +292,62 @@ pub fn looks_like_drop(data: &[u8]) -> bool {
         && data.ends_with(b" ")
         && data[1..data.len() - 1].contains(&b'/')
         && data.iter().all(|b| *b >= 0x20 && *b != 0x7f)
+}
+
+enum PrefixEsc {
+    Cmd(Cmd, usize),
+    Drop(usize),
+    Partial,
+    Plain,
+}
+
+fn nav_final(b: u8) -> Option<Nav> {
+    Some(match b {
+        b'A' => Nav::Up,
+        b'B' => Nav::Down,
+        b'C' => Nav::Right,
+        b'D' => Nav::Left,
+        _ => return None,
+    })
+}
+
+fn prefix_esc(b: &[u8]) -> PrefixEsc {
+    let Some(&kind) = b.get(1) else {
+        return PrefixEsc::Partial;
+    };
+    match kind {
+        b'O' => match b.get(2) {
+            None => PrefixEsc::Partial,
+            Some(&f) => match nav_final(f) {
+                Some(nav) => PrefixEsc::Cmd(Cmd::Focus(nav), 3),
+                None => PrefixEsc::Drop(3),
+            },
+        },
+        b'[' => {
+            let mut j = 2;
+            while j < b.len() && (0x20..=0x3f).contains(&b[j]) {
+                j += 1;
+            }
+            if j == b.len() {
+                return if j < MAX_PREFIX_ESC {
+                    PrefixEsc::Partial
+                } else {
+                    PrefixEsc::Drop(j)
+                };
+            }
+            if !(0x40..=0x7e).contains(&b[j]) {
+                return PrefixEsc::Drop(j);
+            }
+            let used = j + 1;
+            match (&b[2..j], nav_final(b[j])) {
+                (b"", Some(nav)) => PrefixEsc::Cmd(Cmd::Focus(nav), used),
+                (b"1;2", Some(nav)) => PrefixEsc::Cmd(Cmd::Resize(nav), used),
+                (b"", None) if b[j] == b'Z' => PrefixEsc::Cmd(Cmd::FocusPrev, used),
+                _ => PrefixEsc::Drop(used),
+            }
+        }
+        _ => PrefixEsc::Plain,
+    }
 }
 
 enum Seq {

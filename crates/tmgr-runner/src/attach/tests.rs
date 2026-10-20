@@ -72,7 +72,7 @@ fn prefix_twice_sends_literal_ctrl_bracket() {
 fn unknown_byte_after_prefix_is_dropped() {
     let mut s = InputSplitter::new();
     assert_eq!(s.feed(&[0x1d, b'k', b'y']), vec![forward(b"y")]);
-    assert_eq!(s.feed(&[0x1d, 0x1b, b'[', b'A']), vec![forward(b"[A")]);
+    assert_eq!(s.feed(&[0x1d, 0x1b, b'x']), vec![forward(b"x")]);
 }
 
 #[test]
@@ -213,7 +213,7 @@ fn four() -> Vec<SessionRow> {
 }
 
 fn ids(v: &ViewState) -> Vec<&str> {
-    v.panes.iter().map(String::as_str).collect()
+    v.panes().iter().map(String::as_str).collect()
 }
 
 #[test]
@@ -230,7 +230,7 @@ fn next_prev_cycle_and_skip_other_pane() {
 
     v.apply(Cmd::Split);
     assert_eq!(ids(&v), ["a", "b"]);
-    assert_eq!(v.focus, 1);
+    assert_eq!(v.focus(), 1);
     v.apply(Cmd::NextSession);
     assert_eq!(ids(&v), ["a", "c"]);
     v.apply(Cmd::FocusOther);
@@ -249,7 +249,7 @@ fn split_toggles_and_keeps_focused_session() {
     assert_eq!(v.focused_session(), Some("b"));
     v.apply(Cmd::Split);
     assert_eq!(ids(&v), ["b"]);
-    assert_eq!(v.focus, 0);
+    assert_eq!(v.focus(), 0);
 }
 
 #[test]
@@ -311,7 +311,7 @@ fn vanished_sessions_repair_panes() {
     v.apply(Cmd::Split);
     v.sessions_changed(four().into_iter().filter(|r| r.id != "b").collect());
     assert_eq!(ids(&v), ["a"]);
-    assert_eq!(v.focus, 0);
+    assert_eq!(v.focus(), 0);
 
     v.sessions_changed(
         four()
@@ -322,7 +322,7 @@ fn vanished_sessions_repair_panes() {
     assert_eq!(ids(&v), ["c"]);
 
     v.sessions_changed(vec![]);
-    assert!(v.panes.is_empty());
+    assert!(v.panes().is_empty());
     assert_eq!(v.focused_session(), None);
     v.apply(Cmd::NextSession);
     v.apply(Cmd::Split);
@@ -341,7 +341,7 @@ fn prefs_round_trip_ignores_unknown_ids() {
     fresh.apply_prefs(&prefs);
     assert_eq!(ids(&fresh), ["a", "b"]);
     assert_eq!(
-        (fresh.focus, fresh.zoom, fresh.sidebar),
+        (fresh.focus(), fresh.zoom, fresh.sidebar),
         (1, true, Some(false))
     );
 
@@ -349,25 +349,22 @@ fn prefs_round_trip_ignores_unknown_ids() {
     gone.apply_prefs(&LayoutPrefs {
         panes: vec!["zzz".into(), "d".into(), "d".into(), "qqq".into()],
         focus: 5,
-        zoom: false,
-        sidebar: None,
+        ..Default::default()
     });
     assert_eq!(ids(&gone), ["d"]);
-    assert_eq!(gone.focus, 0);
+    assert_eq!(gone.focus(), 0);
 
     gone.apply_prefs(&LayoutPrefs {
         panes: vec!["zzz".into()],
-        focus: 0,
-        zoom: false,
-        sidebar: None,
+        ..Default::default()
     });
     assert_eq!(ids(&gone), ["d"]);
 }
 
 fn two_pane(width: u16) -> ViewState {
     let mut v = ViewState::new(four(), "local");
-    v.apply(Cmd::Split);
     v.width = width;
+    v.apply(Cmd::Split);
     v
 }
 
@@ -408,11 +405,12 @@ fn layout_narrow_has_no_sidebar_and_stacks_panes() {
 }
 
 #[test]
-fn layout_wide_but_remaining_width_narrow_stacks() {
+fn layout_wide_with_sidebar_keeps_side_by_side_above_row_minimum() {
     let v = two_pane(110);
     let l = layout(r(0, 0, 110, 30), &v);
     assert_eq!(l.sidebar, Some(r(0, 0, 24, 29)));
-    assert_eq!(l.panes[0].outer, r(24, 0, 86, 14));
+    assert_eq!(l.panes[0].outer, r(24, 0, 43, 29));
+    assert_eq!(l.panes[1].outer, r(67, 0, 43, 29));
 }
 
 #[test]
@@ -925,13 +923,13 @@ fn hidden_sidebar_and_narrow_layout_have_no_sidebar_hits() {
 #[test]
 fn click_on_other_pane_moves_focus_in_wide_and_narrow_split() {
     let mut v = two_pane(140);
-    assert_eq!(v.focus, 1);
+    assert_eq!(v.focus(), 1);
     v.on_mouse(
         AREA,
         ev(0, 40, 5, false),
         &mouse_info(MouseMode::default(), 0),
     );
-    assert_eq!(v.focus, 0);
+    assert_eq!(v.focus(), 0);
     let mut n = two_pane(90);
     let area = Rect::new(0, 0, 90, 40);
     n.on_mouse(
@@ -939,13 +937,13 @@ fn click_on_other_pane_moves_focus_in_wide_and_narrow_split() {
         ev(0, 40, 5, false),
         &mouse_info(MouseMode::default(), 0),
     );
-    assert_eq!(n.focus, 0);
+    assert_eq!(n.focus(), 0);
     n.on_mouse(
         area,
         ev(0, 40, 30, false),
         &mouse_info(MouseMode::default(), 0),
     );
-    assert_eq!(n.focus, 1);
+    assert_eq!(n.focus(), 1);
 }
 
 #[test]
@@ -1074,7 +1072,7 @@ fn wheel_over_other_pane_scrolls_it_and_moves_focus() {
         ev(64, 40, 5, false),
         &mouse_info(MouseMode::default(), 10),
     );
-    assert_eq!(v.focus, 0);
+    assert_eq!(v.focus(), 0);
     assert!(v.scroll.is_some());
 }
 
@@ -1093,7 +1091,7 @@ fn paste_target_follows_the_pointer_and_falls_back_to_focus() {
         ev(35, 3, 1, false),
         &mouse_info(MouseMode::default(), 0),
     );
-    assert_eq!(v.paste_target(AREA), v.focus);
+    assert_eq!(v.paste_target(AREA), v.focus());
 }
 
 #[test]
@@ -1125,7 +1123,7 @@ fn removing_the_last_session_empties_the_panes() {
     let mut v = ViewState::new(vec![row("x", "one", StateKind::Exited, "1m")], "local");
     v.apply(Cmd::Remove);
     assert!(v.sessions.is_empty());
-    assert!(v.panes.is_empty());
+    assert!(v.panes().is_empty());
 }
 
 #[test]
@@ -1333,4 +1331,781 @@ fn releasing_after_a_button_press_is_not_forwarded() {
     let out = v.on_mouse(AREA, ev(0, 40, 10, true), &info);
     assert_eq!(out.forward, None);
     assert_eq!(v.grab, None);
+}
+
+fn leaf(id: &str) -> Node {
+    Node::leaf(id)
+}
+
+fn node(dir: SplitDir, ratio: u16, a: Node, b: Node) -> Node {
+    Node::Split {
+        dir,
+        ratio,
+        a: Box::new(a),
+        b: Box::new(b),
+    }
+}
+
+fn names(n: &Node) -> Vec<&str> {
+    n.leaves()
+}
+
+fn grid(width: u16) -> ViewState {
+    let rows: Vec<SessionRow> = ["a", "b", "c", "d", "e", "f"]
+        .iter()
+        .map(|id| row(id, id, StateKind::Working, "1m"))
+        .collect();
+    let mut v = ViewState::new(rows, "local");
+    v.width = width;
+    assert!(v.split_focused(SplitDir::Right, "b"));
+    v.focus_pane(0);
+    assert!(v.split_focused(SplitDir::Down, "c"));
+    v.focus_pane(2);
+    assert!(v.split_focused(SplitDir::Down, "d"));
+    v
+}
+
+#[test]
+fn tree_split_leaf_makes_the_new_leaf_the_second_child() {
+    let mut t = leaf("a");
+    assert!(t.split_leaf("a", SplitDir::Right, "b"));
+    assert_eq!(t, node(SplitDir::Right, 500, leaf("a"), leaf("b")));
+    assert!(t.split_leaf("b", SplitDir::Down, "c"));
+    assert_eq!(names(&t), ["a", "b", "c"]);
+    assert!(!t.split_leaf("a", SplitDir::Down, "c"));
+    assert!(!t.split_leaf("zzz", SplitDir::Down, "q"));
+    assert!(t.contains("c") && !t.contains("q"));
+}
+
+#[test]
+fn tree_remove_lets_the_sibling_take_the_space() {
+    let mut t = Some(node(
+        SplitDir::Right,
+        300,
+        leaf("a"),
+        node(SplitDir::Down, 500, leaf("b"), leaf("c")),
+    ));
+    assert!(Node::remove(&mut t, "b"));
+    assert_eq!(t, Some(node(SplitDir::Right, 300, leaf("a"), leaf("c"))));
+    assert!(!Node::remove(&mut t, "b"));
+    assert!(Node::remove(&mut t, "a"));
+    assert_eq!(t, Some(leaf("c")));
+    assert!(Node::remove(&mut t, "c"));
+    assert_eq!(t, None);
+    assert!(!Node::remove(&mut t, "c"));
+}
+
+#[test]
+fn tree_rename_refuses_an_id_already_present() {
+    let mut t = node(SplitDir::Right, 500, leaf("a"), leaf("b"));
+    assert!(!t.rename_leaf("a", "b"));
+    assert!(!t.rename_leaf("x", "y"));
+    assert!(t.rename_leaf("a", "z"));
+    assert_eq!(names(&t), ["z", "b"]);
+}
+
+#[test]
+fn tree_resize_moves_the_nearest_split_on_that_axis_and_clamps() {
+    let mut t = node(
+        SplitDir::Right,
+        500,
+        leaf("a"),
+        node(SplitDir::Down, 500, leaf("b"), leaf("c")),
+    );
+    assert!(t.resize("b", Nav::Right, 50));
+    assert!(t.resize("c", Nav::Down, 50));
+    let Node::Split { ratio, b, .. } = &t else {
+        panic!()
+    };
+    assert_eq!(*ratio, 550);
+    let Node::Split { ratio: inner, .. } = &**b else {
+        panic!()
+    };
+    assert_eq!(*inner, 550);
+    assert!(!t.resize("a", Nav::Up, 50));
+    assert!(t.resize("a", Nav::Left, 50));
+    for _ in 0..40 {
+        t.resize("a", Nav::Left, 50);
+    }
+    let Node::Split { ratio, .. } = &t else {
+        panic!()
+    };
+    assert_eq!(*ratio, 100);
+    assert!(!t.resize("a", Nav::Left, 50));
+    for _ in 0..40 {
+        t.resize("a", Nav::Right, 50);
+    }
+    let Node::Split { ratio, .. } = &t else {
+        panic!()
+    };
+    assert_eq!(*ratio, 900);
+    assert!(!t.resize("nope", Nav::Right, 50));
+}
+
+fn deep(depth: usize) -> Node {
+    let mut t = leaf("n0");
+    let mut last = "n0".to_string();
+    for i in 1..=depth {
+        let id = format!("n{i}");
+        let dir = if i % 2 == 0 {
+            SplitDir::Right
+        } else {
+            SplitDir::Down
+        };
+        assert!(t.split_leaf(&last, dir, &id));
+        last = id;
+    }
+    t
+}
+
+#[test]
+fn tree_layout_sums_exactly_for_odd_sizes_and_deep_trees() {
+    for (w, h) in [(101, 77), (157, 63), (200, 201), (99, 99)] {
+        let t = deep(5);
+        let rects = t.layout(Rect::new(3, 2, w, h)).unwrap();
+        assert_eq!(rects.len(), 6);
+        let area: u32 = rects
+            .iter()
+            .map(|(_, r)| u32::from(r.width) * u32::from(r.height))
+            .sum();
+        assert_eq!(area, u32::from(w) * u32::from(h));
+        for (i, (_, a)) in rects.iter().enumerate() {
+            assert!(a.width >= 3 && a.height >= 3, "{a:?}");
+            for (_, b) in &rects[i + 1..] {
+                assert!(!a.intersects(*b), "{a:?} {b:?}");
+            }
+        }
+    }
+    let flat = node(SplitDir::Right, 500, leaf("a"), leaf("b"));
+    let rects = flat.layout(Rect::new(0, 0, 101, 10)).unwrap();
+    assert_eq!(rects[0].1.width + rects[1].1.width, 101);
+}
+
+#[test]
+fn tree_layout_gives_up_when_the_minimum_does_not_fit() {
+    let t = node(SplitDir::Down, 500, leaf("a"), leaf("b"));
+    assert!(t.layout(Rect::new(0, 0, 80, 5)).is_none());
+    assert!(t.layout(Rect::new(0, 0, 80, 6)).is_some());
+    let skewed = node(SplitDir::Down, 100, leaf("a"), leaf("b"));
+    let rects = skewed.layout(Rect::new(0, 0, 80, 20)).unwrap();
+    assert_eq!(rects[0].1.height, 3);
+    assert_eq!(leaf("x").layout(Rect::new(0, 0, 1, 1)).unwrap().len(), 1);
+}
+
+#[test]
+fn tree_layout_stacks_a_row_split_narrower_than_fifty() {
+    let t = node(SplitDir::Right, 500, leaf("a"), leaf("b"));
+    let narrow = t.layout(Rect::new(0, 0, 49, 20)).unwrap();
+    assert_eq!(narrow[1].1, Rect::new(0, 10, 49, 10));
+    let wide = t.layout(Rect::new(0, 0, 50, 20)).unwrap();
+    assert_eq!(wide[1].1, Rect::new(25, 0, 25, 20));
+}
+
+#[test]
+fn view_falls_back_to_the_focused_pane_when_nothing_fits() {
+    let v = grid(140);
+    let l = layout(r(0, 0, 140, 5), &v);
+    assert_eq!(l.panes.len(), 1);
+    assert_eq!(l.panes[0].session, "d");
+    assert_eq!(l.panes[0].outer, r(24, 0, 116, 4));
+}
+
+#[test]
+fn neighbour_walks_a_two_by_two_grid() {
+    let v = grid(140);
+    assert_eq!(v.panes(), ["a", "c", "b", "d"]);
+    let rects: Vec<(String, Rect)> = layout(AREA, &v)
+        .panes
+        .into_iter()
+        .map(|p| (p.session, p.outer))
+        .collect();
+    let go = |from: &str, nav| neighbour(&rects, from, nav);
+    assert_eq!(go("a", Nav::Right), Some("b".into()));
+    assert_eq!(go("a", Nav::Down), Some("c".into()));
+    assert_eq!(go("d", Nav::Left), Some("c".into()));
+    assert_eq!(go("d", Nav::Up), Some("b".into()));
+    assert_eq!(go("a", Nav::Left), None);
+    assert_eq!(go("a", Nav::Up), None);
+    assert_eq!(go("d", Nav::Right), None);
+    assert_eq!(go("d", Nav::Down), None);
+    assert_eq!(go("zzz", Nav::Down), None);
+}
+
+#[test]
+fn neighbour_prefers_the_pane_with_most_overlap_on_uneven_layouts() {
+    let t = node(
+        SplitDir::Right,
+        500,
+        leaf("a"),
+        node(SplitDir::Down, 200, leaf("b"), leaf("c")),
+    );
+    let rects = t.layout(Rect::new(0, 0, 100, 40)).unwrap();
+    assert_eq!(neighbour(&rects, "a", Nav::Right), Some("c".into()));
+    assert_eq!(neighbour(&rects, "b", Nav::Left), Some("a".into()));
+    assert_eq!(neighbour(&rects, "c", Nav::Up), Some("b".into()));
+    let even = node(
+        SplitDir::Right,
+        500,
+        leaf("a"),
+        node(SplitDir::Down, 500, leaf("b"), leaf("c")),
+    );
+    let rects = even.layout(Rect::new(0, 0, 100, 40)).unwrap();
+    assert_eq!(neighbour(&rects, "a", Nav::Right), Some("b".into()));
+}
+
+#[test]
+fn focus_nav_and_cycling_cover_every_pane() {
+    let mut v = grid(140);
+    assert_eq!(v.focused_session(), Some("d"));
+    v.focus_nav(AREA, Nav::Up);
+    assert_eq!(v.focused_session(), Some("b"));
+    v.focus_nav(AREA, Nav::Left);
+    assert_eq!(v.focused_session(), Some("a"));
+    v.focus_nav(AREA, Nav::Left);
+    assert_eq!(v.focused_session(), Some("a"));
+    v.apply(Cmd::FocusOther);
+    assert_eq!(v.focused_session(), Some("c"));
+    v.apply(Cmd::FocusOther);
+    v.apply(Cmd::FocusOther);
+    v.apply(Cmd::FocusOther);
+    assert_eq!(v.focused_session(), Some("a"));
+    v.apply(Cmd::FocusPrev);
+    assert_eq!(v.focused_session(), Some("d"));
+}
+
+#[test]
+fn split_focused_focuses_the_new_pane_and_rejects_duplicates() {
+    let mut v = ViewState::new(four(), "local");
+    v.apply(Cmd::Zoom);
+    v.apply(Cmd::ScrollMode);
+    assert!(v.split_focused(SplitDir::Down, "b"));
+    assert!(!v.zoom);
+    assert!(v.scroll.is_none());
+    assert_eq!(v.focused_session(), Some("b"));
+    assert!(!v.split_focused(SplitDir::Down, "a"));
+    assert_eq!(ids(&v), ["a", "b"]);
+}
+
+#[test]
+fn close_pane_hands_focus_to_the_sibling() {
+    let mut v = grid(140);
+    v.close_pane("d");
+    assert_eq!(v.panes(), ["a", "c", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
+    v.close_pane("a");
+    assert_eq!(v.panes(), ["c", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
+    v.focus_pane(0);
+    v.close_pane("c");
+    assert_eq!(v.focused_session(), Some("b"));
+    assert_eq!(v.panes(), ["b"]);
+}
+
+#[test]
+fn closing_the_only_pane_swaps_in_another_session() {
+    let mut v = ViewState::new(four(), "local");
+    v.close_pane("a");
+    assert_eq!(ids(&v), ["b"]);
+}
+
+#[test]
+fn resize_focused_changes_the_layout() {
+    let mut v = grid(140);
+    v.focus_pane(0);
+    let before = layout(AREA, &v).panes[0].outer;
+    v.apply(Cmd::Resize(Nav::Down));
+    let after = layout(AREA, &v).panes[0].outer;
+    assert!(after.height > before.height);
+}
+
+#[test]
+fn removing_a_shell_pane_closes_it_but_other_panes_get_a_free_session() {
+    let mut v = grid(140);
+    v.shells.push("d".into());
+    v.remove_session("d");
+    assert_eq!(v.panes(), ["a", "c", "b"]);
+    assert!(v.shells.is_empty());
+    v.remove_session("c");
+    assert_eq!(v.panes(), ["a", "e", "b"]);
+}
+
+#[test]
+fn next_prev_and_select_never_duplicate_a_pane() {
+    let mut v = grid(140);
+    for _ in 0..8 {
+        v.apply(Cmd::NextSession);
+        let mut seen = v.panes().to_vec();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), v.panes().len());
+    }
+    for _ in 0..8 {
+        v.apply(Cmd::PrevSession);
+        let mut seen = v.panes().to_vec();
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), v.panes().len());
+    }
+    let n = v.panes().len();
+    v.select("a");
+    assert_eq!(v.panes().len(), n);
+    assert_eq!(v.focused_session(), Some("a"));
+    v.select("f");
+    assert!(v.panes().contains(&"f".to_string()));
+    assert_eq!(v.panes().len(), n);
+}
+
+#[test]
+fn next_does_nothing_when_every_session_is_shown() {
+    let rows: Vec<SessionRow> = ["a", "b", "c"]
+        .iter()
+        .map(|id| row(id, id, StateKind::Working, "1m"))
+        .collect();
+    let mut v = ViewState::new(rows, "");
+    v.split_focused(SplitDir::Right, "b");
+    v.split_focused(SplitDir::Right, "c");
+    let before = v.panes().to_vec();
+    v.apply(Cmd::NextSession);
+    v.apply(Cmd::PrevSession);
+    assert_eq!(v.panes(), before);
+}
+
+#[test]
+fn split_command_collapses_many_panes_to_the_focused_one() {
+    let mut v = grid(140);
+    v.shells.push("b".into());
+    v.apply(Cmd::Split);
+    assert_eq!(ids(&v), ["d"]);
+    assert!(v.notice.as_deref().is_some_and(|n| n.contains("shells")));
+    assert_eq!(v.shells, ["b"]);
+    let mut plain = grid(140);
+    plain.apply(Cmd::Split);
+    assert_eq!(plain.notice, None);
+}
+
+#[test]
+fn split_command_direction_follows_terminal_width() {
+    let mut wide = ViewState::new(four(), "");
+    wide.width = 160;
+    wide.apply(Cmd::Split);
+    let l = layout(r(0, 0, 160, 40), &wide);
+    assert_eq!(l.panes[0].outer.y, l.panes[1].outer.y);
+    let mut narrow = ViewState::new(four(), "");
+    narrow.width = 80;
+    narrow.apply(Cmd::Split);
+    let l = layout(r(0, 0, 80, 40), &narrow);
+    assert_eq!(l.panes[0].outer.x, l.panes[1].outer.x);
+}
+
+#[test]
+fn set_initial_focuses_or_replaces_without_duplicating() {
+    let mut v = ViewState::new(four(), "");
+    v.apply(Cmd::Split);
+    v.set_initial("a");
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focused_session(), Some("a"));
+    v.set_initial("c");
+    assert_eq!(ids(&v), ["c", "b"]);
+    assert_eq!(v.focused_session(), Some("c"));
+    let mut empty = ViewState::new(vec![], "");
+    empty.set_initial("x");
+    assert_eq!(ids(&empty), ["x"]);
+}
+
+#[test]
+fn vanished_sessions_collapse_the_tree_and_move_focus() {
+    let mut v = grid(140);
+    v.sessions_changed(
+        grid(140)
+            .sessions
+            .into_iter()
+            .filter(|s| s.id != "d" && s.id != "a")
+            .collect(),
+    );
+    assert_eq!(v.panes(), ["c", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
+    v.shells.push("c".into());
+    v.sessions_changed(vec![row("b", "b", StateKind::Working, "1m")]);
+    assert_eq!(v.panes(), ["b"]);
+    assert!(v.shells.is_empty());
+}
+
+#[test]
+fn prefs_round_trip_keeps_the_tree_and_shells() {
+    let mut v = grid(140);
+    v.shells.push("d".into());
+    v.apply(Cmd::Resize(Nav::Right));
+    v.focus_pane(1);
+    let json = serde_json::to_string(&v.prefs()).unwrap();
+    let prefs: LayoutPrefs = serde_json::from_str(&json).unwrap();
+    let mut fresh = ViewState::new(grid(140).sessions, "");
+    fresh.width = 140;
+    fresh.apply_prefs(&prefs);
+    assert_eq!(fresh.panes(), v.panes());
+    assert_eq!(fresh.focused_session(), Some("c"));
+    assert_eq!(fresh.shells, ["d"]);
+    assert_eq!(layout(AREA, &fresh), layout(AREA, &v));
+}
+
+#[test]
+fn prefs_without_a_tree_still_load() {
+    let old = r#"{"panes":["a","b"],"focus":1,"zoom":true,"sidebar":false}"#;
+    let prefs: LayoutPrefs = serde_json::from_str(old).unwrap();
+    assert_eq!(prefs.tree, None);
+    assert!(prefs.shells.is_empty());
+    let mut v = ViewState::new(four(), "");
+    v.width = 160;
+    v.apply_prefs(&prefs);
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focus(), 1);
+    assert!(v.zoom);
+    assert_eq!(v.sidebar, Some(false));
+    v.zoom = false;
+    let l = layout(r(0, 0, 160, 40), &v);
+    assert_eq!(l.panes[0].outer.y, l.panes[1].outer.y);
+}
+
+#[test]
+fn prefs_with_more_than_two_panes_build_a_chain() {
+    let prefs = LayoutPrefs {
+        panes: vec!["a".into(), "b".into(), "c".into()],
+        focus: 2,
+        ..Default::default()
+    };
+    let mut v = ViewState::new(four(), "");
+    v.width = 150;
+    v.apply_prefs(&prefs);
+    assert_eq!(ids(&v), ["a", "b", "c"]);
+    let l = layout(r(0, 0, 150, 40), &v);
+    let widths: Vec<u16> = l.panes.iter().map(|p| p.outer.width).collect();
+    assert_eq!(
+        widths.iter().sum::<u16>() + l.sidebar.map_or(0, |s| s.width),
+        150
+    );
+    assert!(widths.iter().all(|w| *w >= 30), "{widths:?}");
+}
+
+#[test]
+fn prefs_drop_missing_sessions_and_reject_bad_trees() {
+    let mut tree = node(
+        SplitDir::Right,
+        5000,
+        leaf("a"),
+        node(SplitDir::Down, 3, leaf("zzz"), leaf("c")),
+    );
+    let mut v = ViewState::new(four(), "");
+    v.apply_prefs(&LayoutPrefs {
+        tree: Some(tree.clone()),
+        focus: 9,
+        shells: vec!["zzz".into(), "c".into()],
+        ..Default::default()
+    });
+    assert_eq!(ids(&v), ["a", "c"]);
+    assert_eq!(v.focused_session(), Some("c"));
+    assert_eq!(v.shells, ["c"]);
+    let rects = layout(AREA, &v).panes;
+    assert!(rects.iter().all(|p| p.outer.width >= 3));
+
+    tree = node(SplitDir::Right, 500, leaf("a"), leaf("a"));
+    let mut dup = ViewState::new(four(), "");
+    dup.apply_prefs(&LayoutPrefs {
+        tree: Some(tree),
+        panes: vec!["b".into()],
+        ..Default::default()
+    });
+    assert_eq!(ids(&dup), ["b"]);
+
+    let mut big = leaf("s0");
+    for i in 1..20 {
+        big.split_leaf(&format!("s{}", i - 1), SplitDir::Right, &format!("s{i}"));
+    }
+    let mut capped = ViewState::new(four(), "");
+    capped.apply_prefs(&LayoutPrefs {
+        tree: Some(big),
+        panes: vec!["c".into()],
+        ..Default::default()
+    });
+    assert_eq!(ids(&capped), ["c"]);
+}
+
+fn cmds(bytes: &[&[u8]]) -> Vec<Action> {
+    let mut s = InputSplitter::new();
+    bytes.iter().flat_map(|b| s.feed(b)).collect()
+}
+
+#[test]
+fn prefix_split_and_navigation_keys() {
+    let table: &[(&[u8], Cmd)] = &[
+        (b"|", Cmd::SplitRight),
+        (b"v", Cmd::SplitRight),
+        (b"-", Cmd::SplitDown),
+        (b"h", Cmd::SplitDown),
+        (b"\x1b[A", Cmd::Focus(Nav::Up)),
+        (b"\x1b[B", Cmd::Focus(Nav::Down)),
+        (b"\x1b[C", Cmd::Focus(Nav::Right)),
+        (b"\x1b[D", Cmd::Focus(Nav::Left)),
+        (b"\x1bOA", Cmd::Focus(Nav::Up)),
+        (b"\x1bOD", Cmd::Focus(Nav::Left)),
+        (b"\x1b[1;2A", Cmd::Resize(Nav::Up)),
+        (b"\x1b[1;2D", Cmd::Resize(Nav::Left)),
+        (b"\x1b[Z", Cmd::FocusPrev),
+        (b"\t", Cmd::FocusOther),
+    ];
+    for (keys, cmd) in table {
+        let mut s = InputSplitter::new();
+        let mut input = vec![0x1d];
+        input.extend_from_slice(keys);
+        assert_eq!(s.feed(&input), vec![Action::Cmd(*cmd)], "{keys:?}");
+        assert_eq!(s.feed(b"x"), vec![forward(b"x")]);
+    }
+}
+
+#[test]
+fn prefix_arrows_survive_being_split_across_reads() {
+    let full = b"\x1b[1;2C";
+    for cut in 1..full.len() {
+        let mut s = InputSplitter::new();
+        assert_eq!(s.feed(b"\x1d"), vec![]);
+        assert_eq!(s.feed(&full[..cut]), vec![], "cut {cut}");
+        assert_eq!(
+            s.feed(&full[cut..]),
+            vec![Action::Cmd(Cmd::Resize(Nav::Right))],
+            "cut {cut}"
+        );
+        assert_eq!(s.feed(b"k"), vec![forward(b"k")]);
+    }
+    let mut s = InputSplitter::new();
+    let acts = cmds(&[b"\x1d", b"\x1b", b"O", b"B", b"z"]);
+    assert_eq!(
+        acts,
+        vec![Action::Cmd(Cmd::Focus(Nav::Down)), forward(b"z")]
+    );
+    assert_eq!(
+        s.feed(b"\x1d\x1b[B"),
+        vec![Action::Cmd(Cmd::Focus(Nav::Down))]
+    );
+}
+
+#[test]
+fn other_sequences_after_the_prefix_are_swallowed() {
+    for seq in [
+        &b"\x1b[1;5A"[..],
+        b"\x1b[3~",
+        b"\x1b[97;5u",
+        b"\x1bOP",
+        b"\x1b[1;2P",
+    ] {
+        let mut s = InputSplitter::new();
+        let mut input = vec![0x1d];
+        input.extend_from_slice(seq);
+        assert_eq!(s.feed(&input), vec![], "{seq:?}");
+        assert_eq!(s.feed(b"n"), vec![forward(b"n")], "{seq:?}");
+    }
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1d"), vec![]);
+    assert_eq!(s.feed(b"\x1b[1;"), vec![]);
+    assert_eq!(s.feed(b"5A"), vec![]);
+    assert_eq!(s.feed(b"n"), vec![forward(b"n")]);
+}
+
+#[test]
+fn overlong_sequence_after_the_prefix_is_dropped_not_forwarded() {
+    let mut s = InputSplitter::new();
+    let out = s.feed(b"\x1d\x1b[1;1;1;1;1;1;1;1;1");
+    assert!(out
+        .iter()
+        .all(|a| !matches!(a, Action::Forward(d) if d.contains(&0x1b))));
+}
+
+#[test]
+fn lone_escape_after_the_prefix_is_never_forwarded() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1d\x1b"), vec![]);
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(50);
+    assert_eq!(s.flush_stale(later), vec![]);
+    assert_eq!(s.feed(b"n"), vec![forward(b"n")]);
+
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1d\x1b[1;2"), vec![]);
+    assert_eq!(s.flush_stale(later), vec![]);
+    assert_eq!(s.feed(b"n"), vec![forward(b"n")]);
+}
+
+#[test]
+fn escape_without_the_prefix_still_flushes_to_the_agent() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b"), vec![]);
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(50);
+    assert_eq!(s.flush_stale(later), vec![forward(b"\x1b")]);
+}
+
+#[test]
+fn mouse_between_prefix_and_key_keeps_the_prefix() {
+    let mut s = InputSplitter::new();
+    let mut input = vec![0x1d];
+    input.extend(sgr(35, 3, 3, false));
+    input.extend_from_slice(b"\x1b[B");
+    assert_eq!(
+        s.feed(&input),
+        vec![
+            Action::Mouse(ev(35, 3, 3, false)),
+            Action::Cmd(Cmd::Focus(Nav::Down))
+        ]
+    );
+}
+
+#[test]
+fn bare_keys_and_arrows_without_the_prefix_pass_through() {
+    for seq in [
+        &b"\x1b[A"[..],
+        b"\x1bOB",
+        b"\x1b[1;2C",
+        b"\x1b[Z",
+        b"\t",
+        b"\x04",
+    ] {
+        let mut s = InputSplitter::new();
+        assert_eq!(s.feed(seq), vec![forward(seq)], "{seq:?}");
+    }
+}
+
+#[test]
+fn clicks_and_hits_land_in_the_right_pane_of_a_grid() {
+    let mut v = grid(140);
+    let lay = layout(AREA, &v);
+    let third = &lay.panes[2];
+    assert_eq!(third.session, "b");
+    let (c, rw) = (third.inner.x + 2, third.inner.y + 2);
+    assert!(matches!(v.hit(AREA, c, rw), Hit::Pane { idx: 2, .. }));
+    v.on_mouse(
+        AREA,
+        ev(0, c, rw, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.focused_session(), Some("b"));
+}
+
+#[test]
+fn drops_and_pastes_route_to_the_pane_under_the_pointer_in_a_grid() {
+    let mut v = grid(140);
+    assert_eq!(v.paste_target(AREA), v.focus());
+    let lay = layout(AREA, &v);
+    let second = &lay.panes[1];
+    v.on_mouse(
+        AREA,
+        ev(35, second.inner.x + 1, second.inner.y + 1, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.paste_target(AREA), 1);
+    assert_eq!(v.panes()[v.paste_target(AREA)], "c");
+}
+
+#[test]
+fn drag_from_one_pane_stays_clamped_to_it_when_over_another() {
+    let mut v = grid(140);
+    let lay = layout(AREA, &v);
+    let first = lay.panes[0].clone();
+    let second = lay.panes[2].clone();
+    let info = mouse_info(sgr_mode(MouseLevel::Drag), 0);
+    let out = v.on_mouse(
+        AREA,
+        ev(0, first.inner.x + 1, first.inner.y + 1, false),
+        &info,
+    );
+    assert_eq!(out.forward.as_ref().map(|f| f.0.as_str()), Some("a"));
+    let out = v.on_mouse(
+        AREA,
+        ev(32, second.inner.x + 3, second.inner.y + 3, false),
+        &info,
+    );
+    let (id, bytes) = out.forward.unwrap();
+    assert_eq!(id, "a");
+    let want = format!(
+        "\x1b[<32;{};{}M",
+        (first.inner.width - 1).min(second.inner.x + 3 - first.inner.x) + 1,
+        (first.inner.height - 1).min(second.inner.y + 3 - first.inner.y) + 1,
+    );
+    assert_eq!(String::from_utf8(bytes).unwrap(), want);
+    v.on_mouse(
+        AREA,
+        ev(0, second.inner.x + 3, second.inner.y + 3, true),
+        &info,
+    );
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn wheel_over_an_unfocused_grid_pane_focuses_and_scrolls_it() {
+    let mut v = grid(140);
+    let lay = layout(AREA, &v);
+    let p = &lay.panes[1];
+    v.on_mouse(
+        AREA,
+        ev(64, p.inner.x + 1, p.inner.y + 1, false),
+        &mouse_info(MouseMode::default(), 10),
+    );
+    assert_eq!(v.focused_session(), Some("c"));
+    assert!(v.scroll.is_some());
+}
+
+#[test]
+fn header_buttons_work_in_every_grid_pane() {
+    let v = grid(140);
+    let lay = layout(AREA, &v);
+    for p in &lay.panes {
+        let x = header_button(p.outer, Control::Stop).unwrap();
+        assert_eq!(
+            v.hit(AREA, x, p.outer.y),
+            Hit::Button(p.session.clone(), Control::Stop)
+        );
+    }
+}
+
+#[test]
+fn grab_is_cleared_when_its_session_leaves_the_panes() {
+    let mut v = grid(140);
+    let p = layout(AREA, &v).panes[0].clone();
+    v.on_mouse(
+        AREA,
+        ev(0, p.inner.x + 1, p.inner.y + 1, false),
+        &mouse_info(sgr_mode(MouseLevel::Drag), 0),
+    );
+    assert_eq!(v.grab.as_deref(), Some("a"));
+    v.close_pane("a");
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn scroll_resets_when_focus_changes_between_panes() {
+    let mut v = grid(140);
+    v.apply(Cmd::ScrollMode);
+    v.apply(Cmd::FocusOther);
+    assert!(v.scroll.is_none());
+}
+
+#[test]
+fn help_overlay_fits_a_24_row_terminal() {
+    let mut v = two_pane(100);
+    v.help = true;
+    let text = draw(&v, &screens(), 100, 24);
+    for key in [
+        "split right",
+        "split down",
+        "focus next pane",
+        "move focus",
+        "resize",
+    ] {
+        assert!(text.contains(key), "{key}");
+    }
+    assert_snapshot("help_short", &text);
+}
+
+#[test]
+fn grid_renders_without_panicking_at_many_sizes() {
+    for (w, h) in [(160, 45), (100, 24), (80, 24), (40, 10), (20, 6), (5, 3)] {
+        let mut v = grid(w);
+        v.help = true;
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render(f, &v, &Screens::default())).unwrap();
+    }
 }

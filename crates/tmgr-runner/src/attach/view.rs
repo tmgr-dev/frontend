@@ -1,5 +1,6 @@
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
+use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
 use tmgr_ipc::api::{MouseMode, State, StateKind};
@@ -73,8 +74,10 @@ pub struct ScrollState {
 #[derive(Clone, Debug)]
 pub struct ViewState {
     pub sessions: Vec<SessionRow>,
-    pub panes: Vec<String>,
-    pub focus: usize,
+    tree: Option<Node>,
+    panes: Vec<String>,
+    focus_id: Option<String>,
+    pub shells: Vec<String>,
     pub zoom: bool,
     pub sidebar: Option<bool>,
     pub help: bool,
@@ -108,21 +111,27 @@ pub struct Confirm {
     pub remove: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LayoutPrefs {
     pub panes: Vec<String>,
     pub focus: usize,
     pub zoom: bool,
     pub sidebar: Option<bool>,
+    #[serde(default)]
+    pub tree: Option<Node>,
+    #[serde(default)]
+    pub shells: Vec<String>,
 }
 
 impl ViewState {
     pub fn new(sessions: Vec<SessionRow>, runner_label: &str) -> Self {
-        let panes = sessions.first().map(|s| s.id.clone()).into_iter().collect();
+        let panes: Vec<String> = sessions.first().map(|s| s.id.clone()).into_iter().collect();
         Self {
+            tree: panes.first().map(|id| Node::leaf(id)),
+            focus_id: panes.first().cloned(),
             sessions,
             panes,
-            focus: 0,
+            shells: Vec::new(),
             zoom: false,
             sidebar: None,
             help: false,
@@ -143,8 +152,140 @@ impl ViewState {
         rows
     }
 
+    pub fn panes(&self) -> &[String] {
+        &self.panes
+    }
+
+    pub fn focus(&self) -> usize {
+        self.focus_id
+            .as_ref()
+            .and_then(|f| self.panes.iter().position(|p| p == f))
+            .unwrap_or(0)
+    }
+
     pub fn focused_session(&self) -> Option<&str> {
-        self.panes.get(self.focus).map(String::as_str)
+        self.focus_id.as_deref()
+    }
+
+    fn commit(&mut self, tree: Option<Node>, focus_id: Option<String>) {
+        let before = self.focus_id.take();
+        self.panes = tree
+            .as_ref()
+            .map(|t| t.leaves().into_iter().map(str::to_string).collect())
+            .unwrap_or_default();
+        self.tree = tree;
+        self.focus_id = focus_id
+            .filter(|f| self.panes.contains(f))
+            .or_else(|| self.panes.first().cloned());
+        if self.focus_id != before {
+            self.scroll = None;
+        }
+        if let Some(g) = &self.grab {
+            if !g.is_empty() && !self.panes.contains(g) {
+                self.grab = None;
+            }
+        }
+    }
+
+    fn auto_dir(&self) -> SplitDir {
+        if self.width >= WIDE_COLS {
+            SplitDir::Right
+        } else {
+            SplitDir::Down
+        }
+    }
+
+    pub fn set_initial(&mut self, id: &str) {
+        if self.panes.iter().any(|p| p == id) {
+            self.commit(self.tree.clone(), Some(id.to_string()));
+            return;
+        }
+        let mut tree = self.tree.take();
+        let swapped = match (&mut tree, self.focus_id.clone()) {
+            (Some(t), Some(f)) => t.rename_leaf(&f, id),
+            _ => false,
+        };
+        if !swapped {
+            tree = Some(Node::leaf(id));
+        }
+        self.commit(tree, Some(id.to_string()));
+    }
+
+    pub fn split_focused(&mut self, dir: SplitDir, new_id: &str) -> bool {
+        if self.panes.len() >= MAX_LEAVES {
+            return false;
+        }
+        let (Some(mut tree), Some(f)) = (self.tree.clone(), self.focus_id.clone()) else {
+            return false;
+        };
+        if !tree.split_leaf(&f, dir, new_id) {
+            return false;
+        }
+        self.zoom = false;
+        self.scroll = None;
+        self.commit(Some(tree), Some(new_id.to_string()));
+        true
+    }
+
+    pub fn close_pane(&mut self, id: &str) {
+        if !self.panes.iter().any(|p| p == id) {
+            return;
+        }
+        if self.panes.len() < 2 {
+            self.remove_session(id);
+            return;
+        }
+        self.drop_leaf(id);
+    }
+
+    fn drop_leaf(&mut self, id: &str) {
+        let mut tree = self.tree.take();
+        let mut focus = self.focus_id.clone();
+        if focus.as_deref() == Some(id) {
+            focus = tree.as_ref().and_then(|t| t.sibling_leaf(id));
+        }
+        Node::remove(&mut tree, id);
+        self.shells.retain(|s| s != id);
+        self.zoom = false;
+        self.commit(tree, focus);
+    }
+
+    pub fn focus_nav(&mut self, area: Rect, nav: Nav) {
+        let Some(f) = self.focus_id.clone() else {
+            return;
+        };
+        let rects: Vec<(String, Rect)> = layout(area, self)
+            .panes
+            .into_iter()
+            .map(|p| (p.session, p.outer))
+            .collect();
+        if let Some(next) = neighbour(&rects, &f, nav) {
+            if let Some(idx) = self.panes.iter().position(|p| *p == next) {
+                self.focus_pane(idx);
+            }
+        }
+    }
+
+    pub fn resize_focused(&mut self, nav: Nav) {
+        let (Some(mut tree), Some(f)) = (self.tree.clone(), self.focus_id.clone()) else {
+            return;
+        };
+        if tree.resize(&f, nav, RESIZE_STEP) {
+            self.tree = Some(tree);
+        }
+    }
+
+    fn cycle_focus(&mut self, forward: bool) {
+        let n = self.panes.len();
+        if n < 2 {
+            return;
+        }
+        let at = self.focus();
+        self.focus_pane(if forward {
+            (at + 1) % n
+        } else {
+            (at + n - 1) % n
+        });
     }
 
     pub fn focused_row(&self) -> Option<&SessionRow> {
@@ -161,12 +302,10 @@ impl ViewState {
             Cmd::NextSession => self.step(true),
             Cmd::PrevSession => self.step(false),
             Cmd::Split => self.split(),
-            Cmd::FocusOther => {
-                if self.panes.len() == 2 {
-                    self.focus ^= 1;
-                    self.scroll = None;
-                }
-            }
+            Cmd::FocusOther => self.cycle_focus(true),
+            Cmd::FocusPrev => self.cycle_focus(false),
+            Cmd::Resize(nav) => self.resize_focused(nav),
+            Cmd::SplitRight | Cmd::SplitDown | Cmd::Focus(_) => {}
             Cmd::Zoom => self.zoom = !self.zoom,
             Cmd::Sidebar => {
                 let shown = self.sidebar.unwrap_or(self.width >= WIDE_COLS);
@@ -252,36 +391,60 @@ impl ViewState {
             return;
         };
         self.sessions.remove(pos);
-        if let Some(i) = self.panes.iter().position(|p| p == id) {
-            let neighbour = self.sessions[pos..]
-                .iter()
-                .chain(self.sessions[..pos].iter().rev())
-                .find(|s| !self.panes.contains(&s.id))
-                .map(|s| s.id.clone());
-            match neighbour {
-                Some(n) => self.panes[i] = n,
-                None => {
-                    self.panes.remove(i);
-                    self.focus = self.focus.min(self.panes.len().saturating_sub(1));
-                    self.zoom = false;
+        let was_shell = self.shells.iter().any(|s| s == id);
+        if !self.panes.iter().any(|p| p == id) {
+            self.shells.retain(|s| s != id);
+            return;
+        }
+        if was_shell && self.panes.len() > 1 {
+            self.drop_leaf(id);
+            return;
+        }
+        self.shells.retain(|s| s != id);
+        let neighbour = self.sessions[pos..]
+            .iter()
+            .chain(self.sessions[..pos].iter().rev())
+            .find(|s| !self.panes.contains(&s.id))
+            .map(|s| s.id.clone());
+        match neighbour {
+            Some(n) => {
+                let mut tree = self.tree.take();
+                if let Some(t) = tree.as_mut() {
+                    t.rename_leaf(id, &n);
                 }
+                let focus = if self.focus_id.as_deref() == Some(id) {
+                    Some(n)
+                } else {
+                    self.focus_id.clone()
+                };
+                self.commit(tree, focus);
+                self.scroll = None;
             }
-            self.scroll = None;
+            None => {
+                self.drop_leaf(id);
+                self.scroll = None;
+            }
         }
     }
 
     pub fn select(&mut self, id: &str) {
         if let Some(i) = self.panes.iter().position(|p| p == id) {
-            if self.focus != i {
-                self.focus = i;
-                self.scroll = None;
-            }
+            self.focus_pane(i);
             return;
         }
-        match self.panes.get_mut(self.focus) {
-            Some(slot) => *slot = id.to_string(),
-            None => self.panes.push(id.to_string()),
+        self.replace_focused(id.to_string());
+    }
+
+    fn replace_focused(&mut self, id: String) {
+        let mut tree = self.tree.take();
+        let swapped = match (tree.as_mut(), self.focus_id.as_deref()) {
+            (Some(t), Some(f)) => t.rename_leaf(f, &id),
+            _ => false,
+        };
+        if !swapped {
+            tree = Some(Node::leaf(&id));
         }
+        self.commit(tree, Some(id));
         self.scroll = None;
     }
 
@@ -339,13 +502,13 @@ impl ViewState {
     pub fn paste_target(&self, area: Rect) -> usize {
         match self.pointer.map(|(c, r)| self.hit(area, c, r)) {
             Some(Hit::Pane { idx, .. }) => idx,
-            _ => self.focus,
+            _ => self.focus(),
         }
     }
 
     pub fn focus_pane(&mut self, idx: usize) {
-        if idx < self.panes.len() && idx != self.focus {
-            self.focus = idx;
+        if idx < self.panes.len() && idx != self.focus() {
+            self.focus_id = Some(self.panes[idx].clone());
             self.scroll = None;
         }
     }
@@ -410,7 +573,7 @@ impl ViewState {
             Hit::Pane { idx, at } => {
                 let session = self.panes[idx].clone();
                 let pane = info(&session);
-                let local = self.scroll.is_some() && idx == self.focus;
+                let local = self.scroll.is_some() && idx == self.focus();
                 if matches!(kind, Kind::WheelUp | Kind::WheelDown) {
                     if wants(pane.mouse, kind) && !local {
                         if let Some((c, r)) = at {
@@ -429,7 +592,7 @@ impl ViewState {
                     }
                     return out;
                 }
-                if ev.is_left_press() && idx != self.focus {
+                if ev.is_left_press() && idx != self.focus() {
                     self.focus_pane(idx);
                     out.redraw = true;
                 }
@@ -492,11 +655,7 @@ impl ViewState {
         s.offset = s.offset.min(s.max);
     }
 
-    fn other_pane(&self) -> Option<&str> {
-        (self.panes.len() == 2).then(|| self.panes[self.focus ^ 1].as_str())
-    }
-
-    fn next_free(&self, from: Option<usize>, forward: bool, skip: Option<&str>) -> Option<String> {
+    fn next_free(&self, from: Option<usize>, forward: bool) -> Option<String> {
         let n = self.sessions.len();
         if n == 0 {
             return None;
@@ -511,99 +670,148 @@ impl ViewState {
                 }
             })
             .map(|i| &self.sessions[i])
-            .find(|s| Some(s.id.as_str()) != skip)
+            .find(|s| !self.panes.contains(&s.id))
             .map(|s| s.id.clone())
     }
 
     fn step(&mut self, forward: bool) {
-        if self.sessions.is_empty() {
-            return;
-        }
-        let current = self.focused_session().map(str::to_string);
-        let from = current
-            .as_deref()
+        let from = self
+            .focused_session()
             .and_then(|id| self.sessions.iter().position(|s| s.id == id));
-        let skip = self.other_pane().map(str::to_string);
-        let Some(next) = self.next_free(from, forward, skip.as_deref()) else {
+        let Some(next) = self.next_free(from, forward) else {
             return;
         };
-        if Some(&next) == current.as_ref() {
-            return;
-        }
-        match self.panes.get_mut(self.focus) {
-            Some(slot) => *slot = next,
-            None => self.panes.push(next),
-        }
-        self.scroll = None;
+        self.replace_focused(next);
     }
 
     fn split(&mut self) {
         self.scroll = None;
-        if self.panes.len() == 2 {
-            let keep = self.panes.swap_remove(self.focus);
-            self.panes = vec![keep];
-            self.focus = 0;
-            self.zoom = false;
-            return;
-        }
-        let from = self
-            .focused_session()
-            .and_then(|id| self.sessions.iter().position(|s| s.id == id));
-        let skip = self.focused_session().map(str::to_string);
-        match self.next_free(from, true, skip.as_deref()) {
-            Some(id) if self.sessions.len() > 1 => {
-                self.panes.push(id);
-                self.focus = 1;
-                self.zoom = false;
+        match self.panes.len() {
+            0 => {
+                if let Some(id) = self.sessions.first().map(|s| s.id.clone()) {
+                    self.replace_focused(id);
+                }
             }
-            _ => self.notice = Some("only one session, nothing to split".into()),
+            1 => {
+                let from = self
+                    .focused_session()
+                    .and_then(|id| self.sessions.iter().position(|s| s.id == id));
+                match self.next_free(from, true) {
+                    Some(id) => {
+                        let dir = self.auto_dir();
+                        self.split_focused(dir, &id);
+                    }
+                    None => self.notice = Some("only one session, nothing to split".into()),
+                }
+            }
+            _ => {
+                let hidden = self
+                    .shells
+                    .iter()
+                    .any(|s| self.panes.contains(s) && self.focus_id.as_ref() != Some(s));
+                let keep = self.focus_id.clone();
+                self.commit(keep.as_deref().map(Node::leaf), keep);
+                self.zoom = false;
+                if hidden {
+                    self.notice = Some("hidden shells keep running, see the sidebar".into());
+                }
+            }
         }
     }
 
     pub fn sessions_changed(&mut self, rows: Vec<SessionRow>) {
         self.sessions = rows;
-        let focused = self.focused_session().map(str::to_string);
-        let exists = |id: &String| self.sessions.iter().any(|s| &s.id == id);
-        let kept: Vec<String> = self.panes.iter().filter(|id| exists(id)).cloned().collect();
-        let focus = focused
-            .and_then(|f| kept.iter().position(|id| *id == f))
-            .unwrap_or(0);
-        let before = self.panes.clone();
-        self.panes = kept;
-        self.focus = focus;
-        if self.panes.is_empty() {
-            self.panes = self
-                .sessions
-                .first()
-                .map(|s| s.id.clone())
-                .into_iter()
-                .collect();
+        let gone: Vec<String> = self
+            .panes
+            .iter()
+            .filter(|id| !self.sessions.iter().any(|s| &s.id == *id))
+            .cloned()
+            .collect();
+        self.shells
+            .retain(|id| self.sessions.iter().any(|s| &s.id == id));
+        if gone.is_empty() {
+            return;
         }
-        if self.panes != before {
-            self.scroll = None;
+        let mut tree = self.tree.take();
+        let mut focus = self.focus_id.clone();
+        for id in &gone {
+            if focus.as_deref() == Some(id.as_str()) {
+                focus = tree.as_ref().and_then(|t| t.sibling_leaf(id));
+            }
+            Node::remove(&mut tree, id);
         }
+        if tree.is_none() {
+            tree = self.sessions.first().map(|s| Node::leaf(&s.id));
+            focus = None;
+        }
+        self.commit(tree, focus);
     }
 
     pub fn prefs(&self) -> LayoutPrefs {
         LayoutPrefs {
             panes: self.panes.clone(),
-            focus: self.focus,
+            focus: self.focus(),
             zoom: self.zoom,
             sidebar: self.sidebar,
+            tree: self.tree.clone(),
+            shells: self.shells.clone(),
         }
     }
 
+    fn tree_from_panes(&self, panes: &[String]) -> Option<Node> {
+        let dir = self.auto_dir();
+        let n = panes.len();
+        let mut node = Node::leaf(panes.last()?);
+        for k in (0..n - 1).rev() {
+            node = Node::Split {
+                dir,
+                ratio: 1000 / (n - k) as u16,
+                a: Box::new(Node::leaf(&panes[k])),
+                b: Box::new(node),
+            };
+        }
+        Some(node)
+    }
+
     pub fn apply_prefs(&mut self, prefs: &LayoutPrefs) {
-        let mut panes: Vec<String> = Vec::new();
-        for id in &prefs.panes {
-            if self.sessions.iter().any(|s| &s.id == id) && !panes.contains(id) && panes.len() < 2 {
-                panes.push(id.clone());
+        let known = |id: &str| self.sessions.iter().any(|s| s.id == id);
+        let mut tree = prefs.tree.clone().filter(Node::is_valid);
+        if let Some(t) = tree.as_mut() {
+            t.clamp_ratios();
+        }
+        let missing: Vec<String> = tree
+            .iter()
+            .flat_map(Node::leaves)
+            .filter(|id| !known(id))
+            .map(str::to_string)
+            .collect();
+        for id in &missing {
+            Node::remove(&mut tree, id);
+        }
+        if tree.is_none() {
+            let mut panes: Vec<String> = Vec::new();
+            for id in &prefs.panes {
+                if known(id) && !panes.contains(id) && panes.len() < MAX_LEAVES {
+                    panes.push(id.clone());
+                }
             }
+            tree = self.tree_from_panes(&panes);
         }
-        if !panes.is_empty() {
-            self.panes = panes;
-        }
-        self.focus = prefs.focus.min(self.panes.len().saturating_sub(1));
+        let shells: Vec<String> = prefs
+            .shells
+            .iter()
+            .filter(|id| known(id))
+            .cloned()
+            .collect();
+        let tree = tree.or_else(|| self.tree.clone());
+        let leaves: Vec<String> = tree
+            .iter()
+            .flat_map(Node::leaves)
+            .map(str::to_string)
+            .collect();
+        let focus = leaves.get(prefs.focus).or_else(|| leaves.last()).cloned();
+        self.commit(tree, focus);
+        self.shells = shells;
         self.zoom = prefs.zoom;
         self.sidebar = prefs.sidebar;
         self.scroll = None;
@@ -687,35 +895,18 @@ pub fn layout(area: Rect, st: &ViewState) -> Layout {
             body = Rect::new(body.x + w, body.y, body.width - w, body.height);
         }
     }
-    let shown: Vec<&String> = if st.zoom {
-        st.panes.get(st.focus).into_iter().collect()
+    let focused = st.focused_session();
+    let full = || focused.map(|id| vec![pane(id, body)]).unwrap_or_default();
+    let panes = if st.zoom {
+        full()
     } else {
-        st.panes.iter().collect()
-    };
-    let panes = match shown.as_slice() {
-        [] => vec![],
-        [one] => vec![pane(one, body)],
-        [a, b] if body.width >= WIDE_COLS => {
-            let left = body.width / 2;
-            vec![
-                pane(a, Rect::new(body.x, body.y, left, body.height)),
-                pane(
-                    b,
-                    Rect::new(body.x + left, body.y, body.width - left, body.height),
-                ),
-            ]
+        match &st.tree {
+            None => vec![],
+            Some(t) => match t.layout(body) {
+                Some(rects) => rects.iter().map(|(id, r)| pane(id, *r)).collect(),
+                None => full(),
+            },
         }
-        [a, b] => {
-            let top = body.height / 2;
-            vec![
-                pane(a, Rect::new(body.x, body.y, body.width, top)),
-                pane(
-                    b,
-                    Rect::new(body.x, body.y + top, body.width, body.height - top),
-                ),
-            ]
-        }
-        _ => vec![],
     };
     Layout {
         sidebar,

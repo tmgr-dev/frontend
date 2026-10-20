@@ -209,7 +209,12 @@ fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
 }
 
 fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
-    let index = st.panes.iter().position(|id| *id == p.session).unwrap_or(0) + 1;
+    let index = st
+        .panes()
+        .iter()
+        .position(|id| *id == p.session)
+        .unwrap_or(0)
+        + 1;
     let mut spans = vec![
         text(" ", Style::new()),
         text(
@@ -402,8 +407,12 @@ const HELP: &[(&str, &str)] = &[
     ("d", "detach, sessions keep running"),
     ("n / p", "next / previous session"),
     ("w", "session picker"),
-    ("s", "split into two panes, or merge"),
-    ("Tab", "move focus to the other pane"),
+    ("s", "two panes, or collapse to one"),
+    ("| v", "split right"),
+    ("- h", "split down"),
+    ("Tab", "focus next pane (Shift-Tab previous)"),
+    ("arrows", "move focus"),
+    ("Shift+arrows", "resize the focused pane"),
     ("z", "zoom the focused pane"),
     ("b", "show or hide the sidebar"),
     ("r", "rename the focused session"),
@@ -415,7 +424,7 @@ const HELP: &[(&str, &str)] = &[
 ];
 
 fn draw_help(buf: &mut Buffer, area: Rect) {
-    let w = 52.min(area.width);
+    let w = 64.min(area.width);
     let h = ((HELP.len() + MOUSE.len()) as u16 + 8).min(area.height);
     let r = Rect::new(
         area.x + (area.width - w) / 2,
@@ -443,10 +452,11 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
         dim(),
         inner.width,
     );
+    let mouse_fits = inner.y + 3 + (HELP.len() + MOUSE.len()) as u16 <= inner.bottom();
     let rows = HELP
         .iter()
         .map(|r| (*r, false))
-        .chain(MOUSE.iter().map(|r| (*r, true)));
+        .chain(MOUSE.iter().filter(|_| mouse_fits).map(|r| (*r, true)));
     for (i, ((key, what), mouse)) in rows.enumerate() {
         let y = inner.y + 2 + i as u16 + u16::from(mouse);
         if y >= inner.bottom() {
@@ -460,12 +470,13 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
             Style::new().add_modifier(Modifier::BOLD),
             inner.width,
         );
-        let x = inner.x + 8;
+        let x = inner.x + 14;
         if x < inner.right() {
             put(buf, x, y, what, Style::new(), inner.right() - x);
         }
     }
-    let y = inner.y + 3 + (HELP.len() + MOUSE.len()) as u16;
+    let shown = HELP.len() + if mouse_fits { MOUSE.len() + 1 } else { 0 };
+    let y = inner.y + 3 + shown as u16;
     if y < inner.bottom() {
         put(
             buf,

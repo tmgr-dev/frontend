@@ -1,26 +1,26 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · workin╭ Keys ────────────────────────────────────────────╮r · waiting ──────────────────────── ⏸ ■ ✕ ╮
- ◆ codex             3m │● Reading src/check│ Press Ctrl-] first, then:                        │                                           │
- ● claude           18m │I will add an Apple│                                                  │in 412 ms                                  │
- ◌ dev-server       12m │✓ Tests 14 passed  │ d       detach, sessions keep running            │                                           │
- ✓ tests            52m │>                  │ n / p   next / previous session                  │                                           │
-                        │                   │ w       session picker                           │                                           │
-                        │                   │ s       split into two panes, or merge           │                                           │
-                        │                   │ Tab     move focus to the other pane             │                                           │
-                        │                   │ z       zoom the focused pane                    │                                           │
-                        │                   │ b       show or hide the sidebar                 │                                           │
-                        │                   │ r       rename the focused session               │                                           │
-                        │                   │ x       stop the focused session (asks first)    │                                           │
-                        │                   │ X       remove an exited session                 │                                           │
-                        │                   │ [       scroll back through history              │                                           │
-                        │                   │ ?       this help                                │                                           │
-                        │                   │ Ctrl-]  send a literal Ctrl-] to the session     │                                           │
-                        │                   │                                                  │                                           │
-                        │                   │ click   pick a session or a pane                 │                                           │
-                        │                   │ wheel   scroll the history of the pane           │                                           │
-                        │                   │ buttons header: pause, stop, close (hover)       │                                           │
-                        │                   │ drop    a dropped file is pasted there           │                                           │
-                        │                   │ drag    Shift-drag selects (iTerm2: Option)      │                                           │
-                        │                   │ ? again closes this box                          │                                           │
-                        │                   │                                                  │                                           │
-                        ╰───────────────────│                                                  │───────────────────────────────────────────╯
- tmgr runner · local · dev-server · waiting ╰──────────────────────────────────────────────────╯                              Ctrl-] ? help
+ SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex             3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
+ ● claude           18m │I will add an│                                                              │ ms                                  │
+ ◌ dev-server       12m │✓ Tests 14 pa│ d             detach, sessions keep running                  │                                     │
+ ✓ tests            52m │>            │ n / p         next / previous session                        │                                     │
+                        │             │ w             session picker                                 │                                     │
+                        │             │ s             two panes, or collapse to one                  │                                     │
+                        │             │ | v           split right                                    │                                     │
+                        │             │ - h           split down                                     │                                     │
+                        │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
+                        │             │ arrows        move focus                                     │                                     │
+                        │             │ Shift+arrows  resize the focused pane                        │                                     │
+                        │             │ z             zoom the focused pane                          │                                     │
+                        │             │ b             show or hide the sidebar                       │                                     │
+                        │             │ r             rename the focused session                     │                                     │
+                        │             │ x             stop the focused session (asks first)          │                                     │
+                        │             │ X             remove an exited session                       │                                     │
+                        │             │ [             scroll back through history                    │                                     │
+                        │             │ ?             this help                                      │                                     │
+                        │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
+                        │             │                                                              │                                     │
+                        │             │ ? again closes this box                                      │                                     │
+                        │             │                                                              │                                     │
+                        │             │                                                              │                                     │
+                        ╰─────────────│                                                              │─────────────────────────────────────╯
+ tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯                        Ctrl-] ? help

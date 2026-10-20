@@ -1,0 +1,24 @@
+ SESSIONS      Ctr╭ Keys ────────────────────────────────────────────────────────╮iting ───────────╮
+ ◆ codex          │ Press Ctrl-] first, then:                                    │                 │
+ ● claude         │                                                              │ ms              │
+ ◌ dev-server     │ d             detach, sessions keep running                  │                 │
+ ✓ tests          │ n / p         next / previous session                        │                 │
+                  │ w             session picker                                 │                 │
+                  │ s             two panes, or collapse to one                  │                 │
+                  │ | v           split right                                    │                 │
+                  │ - h           split down                                     │                 │
+                  │ Tab           focus next pane (Shift-Tab previous)           │                 │
+                  │ arrows        move focus                                     │                 │
+                  │ Shift+arrows  resize the focused pane                        │                 │
+                  │ z             zoom the focused pane                          │                 │
+                  │ b             show or hide the sidebar                       │                 │
+                  │ r             rename the focused session                     │                 │
+                  │ x             stop the focused session (asks first)          │                 │
+                  │ X             remove an exited session                       │                 │
+                  │ [             scroll back through history                    │                 │
+                  │ ?             this help                                      │                 │
+                  │ Ctrl-]        send a literal Ctrl-] to the session           │                 │
+                  │                                                              │                 │
+                  │ ? again closes this box                                      │                 │
+                  │                                                              │─────────────────╯
+ tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
