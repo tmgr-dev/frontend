@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.55 — 2026-10-21
+
+- "Open in TMGR Desktop": when you use the desktop app, tmgr.dev in a Mac browser shows a thin bar that opens the same page here. Links from the browser only navigate to regular pages (tasks, board, list, pages); they never open settings or forms and never run an action. The bar hides until your next sign-in.
+- Runner sessions understand the mouse mode of the latest CLI (needed for clickable sessions in `tmgr attach`).
+
 ## 0.9.54 — 2026-10-20
 
 - After you install an update, TMGR reopens in front of other apps with its window focused, also when it was started at login. This takes effect from the next update after this one.
