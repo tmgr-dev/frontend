@@ -1,6 +1,7 @@
 <root> | - | ws
 runner start | Runner | -
 runner stop | Runner | -
+runner restart | Runner | force
 runner status | Runner | -
 runner install-service | Runner | install
 runner uninstall-service | Runner | -
@@ -10,6 +11,9 @@ runner trusted | Runner | -
 runner allow | Runner | workspace, lifetime
 runner disallow | Runner | workspace
 runner allowed | Runner | -
+runner bind | Runner | target, path
+runner unbind | Runner | target
+runner list | Runner | -
 run | Agents | task, agent_cmd, agent, model, cwd, name, no_attach, trust, mode, base, fetch, publish, review, push, drop
 agents | Agents | -
 agents login | Agents | profile, replace

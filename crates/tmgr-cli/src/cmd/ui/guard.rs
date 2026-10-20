@@ -19,6 +19,8 @@ pub const GUARDED: &[Rule] = &[
     rule(&["task", "confirm"], None, None),
     rule(&["runner", "allow"], None, None),
     rule(&["runner", "trust"], None, None),
+    rule(&["runner", "bind"], None, None),
+    rule(&["runner", "unbind"], None, None),
     rule(&["runner", "install-service"], Some("install"), None),
     rule(&["run"], Some("mode"), Some("bypass")),
     rule(&["run"], Some("trust"), None),
