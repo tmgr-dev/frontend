@@ -249,7 +249,8 @@ test('time/daily 403 leaves tracked hours without sparkline and hides categories
       document.documentElement.scrollWidth -
       document.documentElement.clientWidth,
   );
-  expect(overflow).toBe(0);
+  // scrollbar-gutter: stable on <html> makes an unscrolled page read -7.
+  expect(overflow).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
 });
 

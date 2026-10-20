@@ -69,9 +69,9 @@ test('the footer fits a phone screen without horizontal scroll', async ({
   await mockApp(page);
   const form = await openTask(page);
   await expect(form.locator('footer').getByLabel('Delete')).toBeInViewport();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
-    390,
-  );
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
 });
 
 test('AI reply is a remembered toggle that routes Enter to the AI', async ({

@@ -12,6 +12,7 @@
 
 html {
 	background-color: var(--bg);
+	scrollbar-gutter: stable;
 
 	&.dark {
 		background-color: var(--bg);
