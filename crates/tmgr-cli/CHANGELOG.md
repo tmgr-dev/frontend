@@ -1,12 +1,7 @@
 # Changelog
 
-## Unreleased
+## 1.0.15
 
-- `tmgr attach` takes the mouse: click a session in the sidebar to switch to it, click a pane in split view to focus it, scroll the wheel to read the history (scroll back down to return to live). If the agent turned on mouse reporting itself, clicks and the wheel are passed to it with coordinates relative to its pane. Select text with Shift-drag (Option-drag in iTerm2) or start with `--no-mouse`.
-- Dropping a file into a session pastes its path into the pane under the mouse, exactly as without tmgr (paths with spaces and image files included). Pastes now always reach the agent in one piece, and a path that a terminal types instead of pasting (Warp) is delivered as a paste so Claude Code attaches the image.
-- `Ctrl-] x` stops the focused session after a y/n question, `Ctrl-] X` removes an exited one, `Ctrl-] r` renames the focused session.
-- Pane headers and hovered sidebar rows in `tmgr attach` show small buttons: ⏸ interrupts the agent's current turn (Esc for Claude Code and Codex, Ctrl-C otherwise; disabled unless it is working), ■ stops the session after a y/n question, ✕ closes it (an exited session is removed, a running one asks "stop and remove?"). Narrow panes hide the buttons; the keys stay.
-- New `tmgr rename <session> <new-name>` (same id, the name must be unique, `--json`). The runner gets `sessions.rename`; restart it after the update so attached clients and the desktop list show new names.
 - New `tmgr runner restart`: stops the running runner, waits until it has really exited and starts the installed version. Sessions keep running and reattach. It prints the old and new version and how many sessions were kept, works when the runner is down (it just starts it) and, when the runner is registered as a login service, starts it through the service (never a second copy). `--json` is supported; `--force` allows going back to an older version. `tmgr runner status` now says when the running runner is older than this tmgr and suggests `tmgr runner restart`.
 - The systemd login service unit now has `KillMode=process`, so stopping or restarting the runner no longer kills the sessions. Run `tmgr runner install-service --install` once to update an existing unit; `restart` warns when yours lacks it.
 - New `tmgr runner bind <WS:CODE|WS:TASK> <path>`, `unbind` and `list`: bind a local clone to a project (category) of an allowed cloud workspace without starting `tmgr run`. Terminal only, a typed confirmation, refused inside agent sessions; the folder must be a git clone whose origin matches the project's repository.
@@ -17,6 +12,11 @@
 ## 1.0.14
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- `tmgr attach` takes the mouse: click a session in the sidebar to switch to it, click a pane in split view to focus it, scroll the wheel to read the history (scroll back down to return to live). If the agent turned on mouse reporting itself, clicks and the wheel are passed to it with coordinates relative to its pane. Select text with Shift-drag (Option-drag in iTerm2) or start with `--no-mouse`.
+- Dropping a file into a session pastes its path into the pane under the mouse, exactly as without tmgr (paths with spaces and image files included). Pastes now always reach the agent in one piece, and a path that a terminal types instead of pasting (Warp) is delivered as a paste so Claude Code attaches the image.
+- `Ctrl-] x` stops the focused session after a y/n question, `Ctrl-] X` removes an exited one, `Ctrl-] r` renames the focused session.
+- Pane headers and hovered sidebar rows in `tmgr attach` show small buttons: ⏸ interrupts the agent's current turn (Esc for Claude Code and Codex, Ctrl-C otherwise; disabled unless it is working), ■ stops the session after a y/n question, ✕ closes it (an exited session is removed, a running one asks "stop and remove?"). Narrow panes hide the buttons; the keys stay.
+- New `tmgr rename <session> <new-name>` (same id, the name must be unique, `--json`). The runner gets `sessions.rename`; restart it after the update so attached clients and the desktop list show new names.
 - Autopilot `--dry-run` no longer needs a real usage number: it starts nothing, so it only warns that the usage limits were not checked.
 - `--only` now narrows the task list before the tasks are fetched and checked, and an unknown key fails before the interview.
 - Checking candidates retries connection errors with a backoff, and a task that still cannot be checked is shown as "could not check, retry" instead of "refused"; the check stops with an error if the server stops answering. Progress lines are printed while the tasks are read and checked.
