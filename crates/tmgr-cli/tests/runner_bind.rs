@@ -538,3 +538,132 @@ async fn rules_add_refuses_to_bind_without_a_terminal_or_for_a_foreign_origin() 
     );
     assert_eq!(fx.repos(), json!({}));
 }
+
+fn agents_dir(fx: &Fx) -> String {
+    let agents = fx.env.tmp.path().join("agents");
+    std::fs::create_dir_all(&agents).unwrap();
+    std::fs::write(
+        agents.join("sh-agent.toml"),
+        "id = \"sh-agent\"\nname = \"Shell\"\ncommand = [\"/bin/sh\", \"-c\", \"true\", \"agent\"]\n[permission_modes]\nask = [\"--ask\"]\n",
+    )
+    .unwrap();
+    s(&agents)
+}
+
+fn rule_args(repos: &[&str]) -> Vec<String> {
+    let mut a: Vec<String> = [
+        "queue",
+        "rules",
+        "add",
+        "cloud",
+        "--workspace",
+        "tmgrdev",
+        "--project",
+        "TM",
+        "--auto",
+        "--persona",
+        "builder",
+        "--profile",
+        "sh-agent",
+    ]
+    .iter()
+    .map(|x| x.to_string())
+    .collect();
+    for r in repos {
+        a.extend(["--repo".to_string(), r.to_string()]);
+    }
+    a
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rules_add_binds_only_into_the_entry_of_this_server_and_account() {
+    let fx = Fx::new(None).await;
+    let repo = fx.clone_of("widgets", WIDGETS);
+    let entry = |server: &str, user: i64| {
+        json!({
+            "server": server, "user_id": user, "workspace_id": WS,
+            "workspace_code": "tmgrdev", "allowed_at": "2025-10-01T00:00:00Z", "expires_at": null,
+            "keys": [], "repos": {}})
+    };
+    let mine = fx.env.server.address().to_string();
+    std::fs::write(
+        fx.allow_path(),
+        json!({"version": 1, "entries": [entry(&mine, 2), entry("other.example:443", 1), entry(&mine, 1)]})
+            .to_string(),
+    )
+    .unwrap();
+    let dir = agents_dir(&fx);
+    let args = rule_args(&[&s(&repo)]);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut p = fx.pty(&refs, &[("TMGR_AGENTS_DIR", dir.as_str())]);
+    p.wait_for("Type the category code");
+    p.line("TM");
+    p.wait_for("I AGREE");
+    let v: Value =
+        serde_json::from_str(&std::fs::read_to_string(fx.allow_path()).unwrap()).unwrap();
+    assert_eq!(v["entries"][0]["repos"], json!({}));
+    assert_eq!(v["entries"][1]["repos"], json!({}));
+    assert_eq!(
+        v["entries"][2]["repos"],
+        json!({ CAT.to_string(): s(&repo) })
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rules_add_refuses_several_unbound_repos_for_a_single_repository_category() {
+    let fx = Fx::new(None).await;
+    let one = fx.clone_of("widgets", WIDGETS);
+    let two = fx.clone_of("widgets2", WIDGETS);
+    let args = rule_args(&[&s(&one), &s(&two)]);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut p = fx.pty(&refs, &[]);
+    assert_eq!(p.exit(), 2, "{}", p.text());
+    assert!(p.text().contains("one repository"), "{}", p.text());
+    assert_eq!(fx.repos(), json!({}));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rules_add_binds_every_repo_of_a_set_with_one_typed_confirmation() {
+    let fx = Fx::new(Some(&["acme/widgets", "acme/gadgets"])).await;
+    let widgets = fx.clone_of("widgets", WIDGETS);
+    let gadgets = fx.clone_of("gadgets", "git@github.com:acme/gadgets.git");
+    let dir = agents_dir(&fx);
+    let args = rule_args(&[&s(&widgets), &s(&gadgets)]);
+    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut p = fx.pty(&refs, &[("TMGR_AGENTS_DIR", dir.as_str())]);
+    p.wait_for("Type the category code");
+    p.line("TM");
+    p.wait_for("I AGREE");
+    assert_eq!(
+        fx.repos(),
+        json!({ CAT.to_string(): {"acme/widgets": s(&widgets), "acme/gadgets": s(&gadgets)} })
+    );
+    assert_eq!(
+        p.text().matches("Type the category code").count(),
+        1,
+        "{}",
+        p.text()
+    );
+    assert!(!p.text().contains("Path of your clone"), "{}", p.text());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_bare_repository_found_in_several_bindings_asks_for_ws_code() {
+    let fx = Fx::new(Some(&["acme/widgets"])).await;
+    let new = fx.clone_of("widgets", WIDGETS);
+    let host = fx.env.server.address().to_string();
+    let entry = |ws: i64, code: &str| {
+        json!({
+            "server": host, "user_id": 1, "workspace_id": ws,
+            "workspace_code": code, "allowed_at": "2025-10-01T00:00:00Z", "expires_at": null,
+            "keys": [], "repos": { "127": {"acme/widgets": "/old"} }})
+    };
+    std::fs::write(
+        fx.allow_path(),
+        json!({"version": 1, "entries": [entry(WS, "tmgrdev"), entry(57, "other")]}).to_string(),
+    )
+    .unwrap();
+    let mut p = fx.pty(&["runner", "bind", "acme/widgets", &s(&new)], &[]);
+    assert_eq!(p.exit(), 2, "{}", p.text());
+    assert!(p.text().contains("WS:CODE"), "{}", p.text());
+}

@@ -26,7 +26,7 @@ pub struct BindArgs {
     #[arg(value_name = "TARGET")]
     pub target: String,
     /// Your clone of the category's repository
-    #[arg(value_name = "PATH", value_parser = crate::paths::expand)]
+    #[arg(value_name = "PATH", value_parser = crate::paths::PathArg)]
     pub path: PathBuf,
 }
 
@@ -107,7 +107,6 @@ fn task_category(client: &Client, ws_id: i64, task_id: i64) -> Result<Category> 
     })
 }
 
-/// The category a workspace's category code names, read from the eligibility answer of its first task.
 pub(crate) fn category_by_code(
     client: &Client,
     ws_id: i64,
@@ -201,19 +200,29 @@ fn resolve(ctx: &Ctx, raw: &str, live: bool) -> Result<Resolved> {
             Ok(Resolved { entry, category })
         }
         Target::Repo(name) => {
-            let (entry, key) = allow
+            let mut found: Vec<(&Entry, &String)> = allow
                 .entries
                 .iter()
                 .filter(|e| e.server == host && e.user_id == user)
                 .filter(|e| !live || !e.expired(Utc::now()))
-                .find_map(|e| {
-                    e.repos.iter().find_map(|(k, b)| match b {
-                        RepoBinding::Set(s) if s.contains_key(&name) => {
-                            Some((e.clone(), k.clone()))
-                        }
+                .flat_map(|e| {
+                    let name = &name;
+                    e.repos.iter().filter_map(move |(k, b)| match b {
+                        RepoBinding::Set(s) if s.contains_key(name) => Some((e, k)),
                         _ => None,
                     })
                 })
+                .collect();
+            if found.len() > 1 {
+                return Err(Error::usage(format!(
+                    "{} is part of more than one bound set of repositories",
+                    clean(&name)
+                ))
+                .hint("name the category: WS:CODE"));
+            }
+            let (entry, key) = found
+                .pop()
+                .map(|(e, k)| (e.clone(), k.clone()))
                 .ok_or_else(|| {
                     Error::not_found(format!(
                         "{} is not part of a bound set of repositories",
@@ -263,7 +272,8 @@ pub fn bind(o: &Opts, target: &str, path: &Path) -> Result<i32> {
         AllowFile::load().map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
     let hint = format!(
         "tmgr runner bind {}:{}",
-        entry.workspace_code, category.code
+        clean(&entry.workspace_code),
+        clean(&category.code)
     );
     let bound: Vec<Value> = match &category.repositories {
         Some(list) => {
@@ -289,7 +299,7 @@ pub fn bind(o: &Opts, target: &str, path: &Path) -> Result<i32> {
                 &category,
                 list,
                 &hint,
-                Some((name, &root)),
+                &[(name, &root)],
             )?
             .iter()
             .map(|r| bound_json(&category, &r.full_name, &r.path))
@@ -421,7 +431,6 @@ pub fn list(o: &Opts) -> Result<i32> {
     Ok(emit(o, json!({ "bindings": rows }), human))
 }
 
-/// Offers to bind the folders of a cloud rule that are not bound yet; any problem leaves the usual rule error to speak.
 pub(crate) fn offer_for_rule(ctx: &Ctx, rule: &Rule) -> Result<()> {
     if !tmgr_queue::rules::is_cloud(rule) {
         return Ok(());
@@ -430,7 +439,8 @@ pub(crate) fn offer_for_rule(ctx: &Ctx, rule: &Rule) -> Result<()> {
     let Some(project) = rule.project.as_deref().filter(|_| rule.auto) else {
         return Ok(());
     };
-    let Ok(ws_info) = CliCloud::new(ctx).allow(ws, Utc::now()) else {
+    let cloud = CliCloud::new(ctx);
+    let Ok(ws_info) = cloud.allow(ws, Utc::now()) else {
         return Ok(());
     };
     let unbound: Vec<&String> = rule
@@ -441,26 +451,39 @@ pub(crate) fn offer_for_rule(ctx: &Ctx, rule: &Rule) -> Result<()> {
     if unbound.is_empty() {
         return Ok(());
     }
-    let client = ctx.cloud_client()?;
+    let (Ok((host, user)), Ok(client)) = (cloud.identity(), ctx.cloud_client()) else {
+        return Ok(());
+    };
     let Ok(category) = category_by_code(client, ws_info.id, &ws_info.code, project) else {
         return Ok(());
     };
     let mut allow =
         AllowFile::load().map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
-    let hint = format!("tmgr runner bind {}:{}", ws_info.code, category.code);
-    for path in unbound {
-        let entry = allow
-            .entries
-            .iter()
-            .find(|e| e.workspace_id == ws_info.id)
-            .cloned()
-            .ok_or_else(|| Error::internal("the allow entry disappeared"))?;
-        match &category.repositories {
-            Some(list) => {
-                let root = canonical_root(Path::new(path))?;
+    let Ok(entry) = allow
+        .find_live(&host, user, ws_info.id, &ws_info.code, Utc::now())
+        .cloned()
+    else {
+        return Ok(());
+    };
+    let hint = format!(
+        "tmgr runner bind {}:{}",
+        clean(&ws_info.code),
+        clean(&category.code)
+    );
+    match &category.repositories {
+        Some(list) => {
+            let mut roots = Vec::new();
+            for path in &unbound {
+                let Ok(root) = canonical_root(Path::new(path)) else {
+                    return Ok(());
+                };
+                roots.push(root);
+            }
+            let mut given: Vec<(&str, &Path)> = Vec::new();
+            for root in &roots {
                 let name = list
                     .iter()
-                    .find(|n| verify_repo(&root, n).is_ok())
+                    .find(|n| verify_repo(root, n).is_ok())
                     .ok_or_else(|| {
                         Error::new(
                             Kind::Forbidden,
@@ -471,42 +494,48 @@ pub(crate) fn offer_for_rule(ctx: &Ctx, rule: &Rule) -> Result<()> {
                             ),
                         )
                     })?;
-                bound_set_with(
-                    true,
-                    &mut allow,
-                    &entry,
-                    &category,
-                    list,
-                    &hint,
-                    Some((name, &root)),
-                )?;
-            }
-            None => {
-                let full_name = category.github_full_name.as_deref().ok_or_else(|| {
-                    Error::new(
-                        Kind::Forbidden,
-                        format!(
-                            "category {} has no linked GitHub repository",
-                            clean(&category.code)
-                        ),
-                    )
-                })?;
-                if entry.repo_set(category.id).is_some() {
-                    confirm_replace(
-                        &entry.workspace_code,
-                        &category,
-                        "is bound to a set of repositories, but the server reports one repository now; replace it with that one",
-                    )?;
+                if given.iter().any(|(n, _)| n == name) {
+                    return Err(Error::usage(format!(
+                        "two folders are clones of {}; give one",
+                        clean(name)
+                    )));
                 }
-                bind_checked(
-                    &mut allow,
-                    &entry,
+                given.push((name, root));
+            }
+            bound_set_with(true, &mut allow, &entry, &category, list, &hint, &given)?;
+        }
+        None => {
+            if unbound.len() > 1 {
+                return Err(Error::usage(format!(
+                    "category {} has one repository, but {} unbound folders were given",
+                    clean(&category.code),
+                    unbound.len()
+                )));
+            }
+            let full_name = category.github_full_name.as_deref().ok_or_else(|| {
+                Error::new(
+                    Kind::Forbidden,
+                    format!(
+                        "category {} has no linked GitHub repository",
+                        clean(&category.code)
+                    ),
+                )
+            })?;
+            if entry.repo_set(category.id).is_some() {
+                confirm_replace(
+                    &entry.workspace_code,
                     &category,
-                    full_name,
-                    Path::new(path),
-                    true,
+                    "is bound to a set of repositories, but the server reports one repository now; replace it with that one",
                 )?;
             }
+            bind_checked(
+                &mut allow,
+                &entry,
+                &category,
+                full_name,
+                Path::new(unbound[0]),
+                true,
+            )?;
         }
     }
     Ok(())

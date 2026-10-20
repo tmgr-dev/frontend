@@ -188,22 +188,44 @@ pub(super) fn restart(
         Probe::Up(s) => (true, Some(s)),
     };
     let old_version = old.as_ref().map(|s| s.version.clone());
-    if let Some(v) = &old_version {
-        if is_ahead(v, cli_version) && !force {
+    match &old_version {
+        Some(v) if is_ahead(v, cli_version) && !force => {
             return Err(Error::usage(format!(
                 "the running runner (version {v}) is newer than this tmgr ({cli_version})"
             ))
             .hint("run the newer tmgr, or pass --force to downgrade"));
         }
+        None if was_running && !force => {
+            return Err(Error::usage(
+                "the running runner did not report its version, so it cannot be compared with this tmgr",
+            )
+            .hint("pass --force to restart it anyway"));
+        }
+        _ => {}
     }
     let old_pid = old.as_ref().map(|s| s.pid);
     let sessions_before = old.as_ref().map_or(0, |s| s.sessions);
     let autopilot_was_running = old.as_ref().is_some_and(|s| s.autopilot);
     if svc.unit_outdated() {
-        warnings.push(format!(
-            "the installed service file lets systemd kill agent sessions when the runner exits; run `{} runner {REINSTALL}`",
-            bin()
-        ));
+        let reinstall = format!("{} runner {REINSTALL}", bin());
+        if was_running && (sessions_before > 0 || old.is_none()) {
+            if !force {
+                return Err(Error::new(
+                    Kind::Conflict,
+                    "the installed service file lets systemd kill every agent session when the runner stops",
+                )
+                .hint(format!(
+                    "run `{reinstall}` first, or pass --force to restart anyway"
+                )));
+            }
+            warnings.push(format!(
+                "restarting with --force although the installed service file lets systemd kill agent sessions; run `{reinstall}`"
+            ));
+        } else {
+            warnings.push(format!(
+                "the installed service file lets systemd kill agent sessions when the runner exits; run `{reinstall}`"
+            ));
+        }
     }
     if was_running {
         if let Err(e) = ctl.stop() {
@@ -250,6 +272,13 @@ pub(super) fn restart(
             }
             sessions_after >= sessions_before
         });
+        if sessions_after < sessions_before {
+            let lost = sessions_before - sessions_after;
+            warnings.push(format!(
+                "{lost} session{} did not come back after the restart",
+                if lost == 1 { "" } else { "s" }
+            ));
+        }
     }
     if autopilot_was_running {
         warnings.push(format!(
@@ -682,9 +711,69 @@ mod tests {
         };
         ctl.probes.push_back(Ok(Probe::Unreadable));
         let mut svc = FakeSvc::new(Svc::None);
-        let o = go(&mut ctl, &mut svc, "1.0.13", false).unwrap();
+        let o = go(&mut ctl, &mut svc, "1.0.13", true).unwrap();
         assert!(ctl.stopped && ctl.lock_polls > 0 && ctl.alive_polls == 0);
         assert!(o.was_running && o.old_version.is_none());
+    }
+
+    #[test]
+    fn unreadable_status_needs_force() {
+        let mut ctl = Fake {
+            after: Some((20, "1.0.13", 0)),
+            ..Fake::default()
+        };
+        ctl.probes.push_back(Ok(Probe::Unreadable));
+        let mut svc = FakeSvc::new(Svc::None);
+        let e = go(&mut ctl, &mut svc, "1.0.13", false).unwrap_err();
+        assert!(e.hint.as_deref().unwrap_or_default().contains("--force"));
+        assert!(!ctl.stopped && !ctl.direct_started);
+    }
+
+    #[test]
+    fn outdated_unit_with_live_sessions_is_refused_before_stopping() {
+        let mut ctl = Fake::running(10, "1.0.12", 2);
+        ctl.after = Some((20, "1.0.13", 2));
+        let mut svc = FakeSvc::new(Svc::None);
+        svc.outdated = true;
+        let e = go(&mut ctl, &mut svc, "1.0.13", false).unwrap_err();
+        assert_eq!(e.kind, Kind::Conflict);
+        assert!(e
+            .hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("install-service --install"));
+        assert!(!ctl.stopped && !ctl.direct_started);
+    }
+
+    #[test]
+    fn outdated_unit_with_live_sessions_proceeds_with_force_and_a_warning() {
+        let mut ctl = Fake::running(10, "1.0.12", 2);
+        ctl.after = Some((20, "1.0.13", 2));
+        let mut svc = FakeSvc::new(Svc::None);
+        svc.outdated = true;
+        let o = go(&mut ctl, &mut svc, "1.0.13", true).unwrap();
+        assert!(ctl.stopped);
+        assert!(o.warnings.iter().any(|w| w.contains("--force")));
+    }
+
+    #[test]
+    fn outdated_unit_without_sessions_still_restarts() {
+        let mut ctl = Fake::running(10, "1.0.12", 0);
+        ctl.after = Some((20, "1.0.13", 0));
+        let mut svc = FakeSvc::new(Svc::None);
+        svc.outdated = true;
+        assert!(go(&mut ctl, &mut svc, "1.0.13", false).is_ok());
+        assert!(ctl.stopped);
+    }
+
+    #[test]
+    fn sessions_that_do_not_come_back_are_reported() {
+        let mut ctl = Fake::running(10, "1.0.12", 3);
+        ctl.after = Some((20, "1.0.13", 1));
+        let mut svc = FakeSvc::new(Svc::None);
+        let o = go(&mut ctl, &mut svc, "1.0.13", false).unwrap();
+        assert_eq!((o.sessions_before, o.sessions_after), (3, 1));
+        assert!(o.warnings.iter().any(|w| w.contains("2 sessions")));
     }
 
     #[test]

@@ -491,7 +491,6 @@ pub(crate) fn store_binding(
     Ok(())
 }
 
-/// Checks the folder is the root of a clone of the category's repository, asks (typed: the category code) and stores it.
 pub(crate) fn bind_checked(
     allow: &mut AllowFile,
     entry: &Entry,
@@ -756,11 +755,9 @@ fn bound_set_in(
     list: &[String],
     hint: &str,
 ) -> Result<Vec<ClaimRepo>> {
-    bound_set_with(terminal, allow, entry, category, list, hint, None)
+    bound_set_with(terminal, allow, entry, category, list, hint, &[])
 }
 
-/// `given` is a folder the user names for one repository of the set (`runner bind`): it replaces what is bound for
-/// that name and the whole change needs the typed category code.
 pub(crate) fn bound_set_with(
     terminal: bool,
     allow: &mut AllowFile,
@@ -768,9 +765,9 @@ pub(crate) fn bound_set_with(
     category: &Category,
     list: &[String],
     hint: &str,
-    given: Option<(&str, &Path)>,
+    given: &[(&str, &Path)],
 ) -> Result<Vec<ClaimRepo>> {
-    if given.is_none() {
+    if given.is_empty() {
         if let Ok(found) = bound_set_paths(entry, category, list) {
             for r in &found {
                 verify_repo(&canonical_root(Path::new(&r.path))?, &r.full_name)?;
@@ -790,7 +787,7 @@ pub(crate) fn bound_set_with(
     }
     let current = entry.repo_set(category.id);
     let mut change = set_change(current, list);
-    if let Some((name, _)) = given {
+    for (name, _) in given {
         change.kept.retain(|n| n != name);
         if !change.missing.iter().any(|n| n == name) {
             change.missing.push(name.to_string());
@@ -807,9 +804,9 @@ pub(crate) fn bound_set_with(
         bound.insert(name.clone(), repo.display().to_string());
     }
     for name in &change.missing {
-        let path = match given {
-            Some((g, p)) if g == name => p.to_path_buf(),
-            _ => prompt_path(name, category)?,
+        let path = match given.iter().find(|(g, _)| g == name) {
+            Some((_, p)) => p.to_path_buf(),
+            None => prompt_path(name, category)?,
         };
         let repo = canonical_root(&path)?;
         verify_repo(&repo, name)?;
@@ -841,7 +838,7 @@ pub(crate) fn bound_set_with(
             "warning: these repositories differ in visibility or owner, or could not be looked up. The agent can read all of them, so private code from one repository can end up in a pull request of another."
         );
     }
-    if differ || given.is_some() {
+    if differ || !given.is_empty() {
         crate::interact::confirm_typed(
             &format!(
                 "Type the category code ({}) to bind {}: ",

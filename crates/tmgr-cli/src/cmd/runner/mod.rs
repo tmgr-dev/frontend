@@ -109,7 +109,7 @@ pub struct DisallowArgs {
 #[derive(Args)]
 pub struct FolderArgs {
     /// The folder (default: current directory)
-    #[arg(value_name = "DIR", default_value = ".", value_parser = crate::paths::expand)]
+    #[arg(value_name = "DIR", default_value = ".", value_parser = crate::paths::PathArg)]
     pub dir: PathBuf,
 }
 
@@ -160,7 +160,7 @@ pub struct RunArgs {
     #[arg(long, value_name = "MODEL", requires = "agent")]
     pub model: Option<String>,
     /// Working directory (default: current directory)
-    #[arg(long, value_name = "DIR", value_parser = crate::paths::expand)]
+    #[arg(long, value_name = "DIR", value_parser = crate::paths::PathArg)]
     pub cwd: Option<PathBuf>,
     /// Session name
     #[arg(long, value_name = "NAME")]
@@ -258,7 +258,7 @@ pub enum AgentsCmd {
         #[arg(long, value_name = "MODEL")]
         model: Option<String>,
         /// Working directory of the run
-        #[arg(long, value_name = "DIR", value_parser = crate::paths::expand)]
+        #[arg(long, value_name = "DIR", value_parser = crate::paths::PathArg)]
         cwd: PathBuf,
         /// Permission mode of the run
         #[arg(long, value_name = "MODE", default_value = "ask")]
