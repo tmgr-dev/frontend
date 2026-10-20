@@ -255,7 +255,14 @@ pub fn questions() -> Vec<Question> {
             label: "Teams at the same time",
             current: |d| d.answers.max_teams.min(d.concurrent_cap()).to_string(),
             apply: |d, s| {
-                d.answers.max_teams = parse_range(s, 1, d.concurrent_cap())?;
+                let cap = d.concurrent_cap();
+                d.answers.max_teams = parse_range(s, 1, cap).map_err(|m| {
+                    if cap < GLOBAL_MAX as u32 {
+                        format!("{m}: the rule's --max-concurrent is {cap}; to allow more, remove the rule (tmgr queue rules rm) and add it again with a higher --max-concurrent")
+                    } else {
+                        m
+                    }
+                })?;
                 Ok(())
             },
             enabled: always,
@@ -734,6 +741,106 @@ mod tests {
             let mut flags = Flags::new();
             flags.insert("max-teams", bad.into());
             assert!(run(&mut draft(), &flags, true, "").0.is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_rule_capped_team_count_says_why_and_how_to_change_it() {
+        let mut d = Draft::new(None, vec!["TM-1".into()], 1);
+        let (r, out) = run(
+            &mut d,
+            &Flags::new(),
+            false,
+            "\n2\n1\n\n\n\n\n\n\n\n\n\n\n\n\n\n",
+        );
+        r.unwrap();
+        assert!(out.contains("enter a number from 1 to 1"), "{out}");
+        assert!(out.contains("--max-concurrent is 1"), "{out}");
+        assert!(out.contains("rules rm"), "{out}");
+        let mut d = Draft::new(None, vec!["TM-1".into()], 1);
+        let mut flags = Flags::new();
+        flags.insert("max-teams", "2".into());
+        let e = run(&mut d, &flags, true, "").0.unwrap_err();
+        assert!(e.message.contains("--max-concurrent is 1"), "{}", e.message);
+    }
+
+    #[test]
+    fn the_uncapped_range_error_stays_plain() {
+        let mut d = draft();
+        let mut flags = Flags::new();
+        flags.insert("max-teams", "9".into());
+        let e = run(&mut d, &flags, true, "").0.unwrap_err();
+        assert!(!e.message.contains("--max-concurrent"), "{}", e.message);
+    }
+
+    #[test]
+    fn every_prompt_is_flushed_before_the_answer_is_read() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        struct Out {
+            pending: Vec<u8>,
+            shown: Rc<RefCell<String>>,
+        }
+        impl Write for Out {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.pending.extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                let text = String::from_utf8_lossy(&self.pending).to_string();
+                self.shown.borrow_mut().push_str(&text);
+                self.pending.clear();
+                Ok(())
+            }
+        }
+        struct In {
+            shown: Rc<RefCell<String>>,
+            seen: Rc<RefCell<Vec<String>>>,
+        }
+        impl std::io::Read for In {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Ok(0)
+            }
+        }
+        impl BufRead for In {
+            fn fill_buf(&mut self) -> std::io::Result<&[u8]> {
+                Ok(&[])
+            }
+            fn consume(&mut self, _: usize) {}
+            fn read_line(&mut self, buf: &mut String) -> std::io::Result<usize> {
+                self.seen.borrow_mut().push(self.shown.borrow().clone());
+                buf.push('\n');
+                Ok(1)
+            }
+        }
+        let shown = Rc::new(RefCell::new(String::new()));
+        let seen = Rc::new(RefCell::new(Vec::new()));
+        let mut input = In {
+            shown: shown.clone(),
+            seen: seen.clone(),
+        };
+        let mut out = Out {
+            pending: Vec::new(),
+            shown: shown.clone(),
+        };
+        ask_all(
+            &questions(),
+            &mut draft(),
+            &Flags::new(),
+            false,
+            &mut input,
+            &mut out,
+        )
+        .unwrap();
+        let seen = seen.borrow();
+        assert!(!seen.is_empty());
+        assert!(seen.len() >= 5);
+        assert!(seen[0].starts_with("Which tasks?"), "{:?}", seen[0]);
+        for pair in seen.windows(2) {
+            assert!(pair[1].len() > pair[0].len());
+        }
+        for shown in seen.iter() {
+            assert!(shown.ends_with("]: "), "{shown:?}");
         }
     }
 

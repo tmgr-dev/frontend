@@ -89,12 +89,21 @@ pub fn status(watch: bool, json: bool) -> Result<Output> {
         return Err(Error::usage("--watch cannot be combined with --json"));
     }
     let tty = io::stdout().is_terminal();
+    if tty {
+        print!("\x1b[2J");
+    }
     loop {
         let (out, finished) = status_once_with_end()?;
+        let text = out.human.trim_end_matches('\n');
         if tty {
-            print!("\x1b[2J\x1b[H");
+            print!("\x1b[H");
+            for line in text.lines() {
+                println!("{line}\x1b[K");
+            }
+            print!("\x1b[J");
+        } else {
+            println!("{text}");
         }
-        println!("{}", out.human.trim_end_matches('\n'));
         let _ = io::stdout().flush();
         if finished {
             return Ok(Output::new(out.data, String::new()));

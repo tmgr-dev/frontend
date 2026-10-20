@@ -265,6 +265,8 @@ pub fn status_text(d: &StatusDoc, running: bool, now: DateTime<Utc>, tz: FixedOf
         lines.push(format!("Limits {}", parts.join(" / ")));
     } else if !d.settings.usage_guard {
         lines.push("Limits no usage limit (the guard is off)".into());
+    } else {
+        lines.push("Limits checking usage...".into());
     }
     lines.push(cost_line(d));
     if let Some(n) = &d.next_stop {
@@ -602,7 +604,7 @@ Last events
             ..Cost::default()
         };
         let t = status_text(&d, true, utc(20, 3), tz());
-        assert!(!t.contains("Limits"));
+        assert!(t.contains("Limits checking usage"));
         assert!(!t.contains("Next stop"));
         assert!(t.contains("Cost subscription: $12.30 (estimate (list price)) · API: n/a"));
         d.settings.usage_guard = false;
