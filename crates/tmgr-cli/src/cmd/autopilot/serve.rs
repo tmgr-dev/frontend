@@ -18,10 +18,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
 use tmgr_queue::state::{Pickup, State, Status, MAX_PUBLISH_ATTEMPTS};
-use tmgr_queue::StartPolicy;
+use tmgr_queue::{StartPolicy, TaskPlan};
 use tmgr_usage::cost::Billing;
 use tmgr_usage::guard::{guard_limits, GuardLimit};
 use tmgr_usage::limits::LimitSnapshot;
@@ -52,6 +53,8 @@ struct Carry {
     counted_fail: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     plan: Option<Frozen>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    orch_run: Option<String>,
 }
 
 fn step_of(p: &Pickup) -> &'static str {
@@ -388,8 +391,22 @@ impl<'a> Autopilot<'a> {
         self.counted_pr = carry.counted_pr.into_iter().collect();
         self.counted_held = carry.counted_held.into_iter().collect();
         self.counted_fail = carry.counted_fail.into_iter().collect();
+        if let Some(run) = carry.orch_run.filter(|_| self.orch.on()) {
+            if self.p.runs.alive(&run) {
+                if let Err(e) = self.p.planner.kill(&run) {
+                    let text = format!("Could not stop the old orchestrator: {}", e.message);
+                    self.event("error", None, text);
+                }
+            }
+        }
         if let Some(frozen) = carry.plan.filter(|_| self.orch.on()) {
-            self.orch.restore(frozen);
+            if !self.orch.restore(frozen, &self.s.tasks) {
+                self.event(
+                    "plan",
+                    None,
+                    "The saved plan was not trusted; planning again",
+                );
+            }
         }
         if was_paused || carry.was_paused {
             self.state = RunState::Paused;
@@ -620,28 +637,11 @@ impl<'a> Autopilot<'a> {
             if self.s.dry_run {
                 return self.finish(StopReason::Requested("dry run finished".into()), None);
             }
-            self.apply_triage();
+            if self.state != RunState::Paused {
+                self.apply_triage();
+            }
         }
-        let policy = if self.queue_mode {
-            StartPolicy {
-                starts_allowed: decision.starts_allowed(),
-                ..StartPolicy::default()
-            }
-        } else if self.orch.on() {
-            self.start_policy(decision.starts_allowed())
-        } else {
-            StartPolicy {
-                starts_allowed: decision.starts_allowed(),
-                max_live: Some(self.s.answers.max_concurrent as usize),
-                max_new_starts: self
-                    .s
-                    .answers
-                    .max_tasks
-                    .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
-                only: Some(self.s.tasks.clone()),
-                plan: None,
-            }
-        };
+        let policy = self.pass_policy(decision.starts_allowed());
         self.resume_paused(&decision, &policy, now);
         match self.p.queue.pass(policy) {
             Ok(report) => {
@@ -703,6 +703,37 @@ impl<'a> Autopilot<'a> {
         match reason {
             Some(r) => self.finish(r, None),
             None => Ok(None),
+        }
+    }
+
+    fn pass_policy(&self, starts_allowed: bool) -> StartPolicy {
+        if self.queue_mode {
+            return StartPolicy {
+                starts_allowed,
+                ..StartPolicy::default()
+            };
+        }
+        if self.orch.on() {
+            return self.start_policy(starts_allowed);
+        }
+        let profile = self.s.answers.profile.clone();
+        let plan = (profile.is_some() || !self.s.order.is_empty()).then(|| {
+            Arc::new(TaskPlan {
+                order: self.s.order.clone(),
+                profile,
+                ..TaskPlan::default()
+            })
+        });
+        StartPolicy {
+            starts_allowed,
+            max_live: Some(self.s.answers.max_concurrent as usize),
+            max_new_starts: self
+                .s
+                .answers
+                .max_tasks
+                .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
+            only: Some(self.s.tasks.clone()),
+            plan,
         }
     }
 
@@ -1294,10 +1325,7 @@ impl<'a> Autopilot<'a> {
             let text = format!("{} did not exit", l.key);
             self.event("error", Some(&l.key), text);
         }
-        if let Err(e) = self.p.queue.pass(StartPolicy {
-            starts_allowed: false,
-            ..StartPolicy::default()
-        }) {
+        if let Err(e) = self.p.queue.pass(self.pass_policy(false)) {
             let text = format!("Queue pass failed: {}", e.message);
             self.event("error", None, text);
         }
@@ -1390,10 +1418,7 @@ impl<'a> Autopilot<'a> {
             self.drain(&why);
         }
         if self.orch.accepted() && !self.s.dry_run {
-            if let Err(e) = self.p.queue.pass(StartPolicy {
-                starts_allowed: false,
-                ..StartPolicy::default()
-            }) {
+            if let Err(e) = self.p.queue.pass(self.pass_policy(false)) {
                 let text = format!("Final queue pass failed: {}", e.message);
                 self.event("error", None, text);
             }
@@ -1568,6 +1593,7 @@ impl<'a> Autopilot<'a> {
             counted_held: self.counted_held.iter().cloned().collect(),
             counted_fail: self.counted_fail.iter().cloned().collect(),
             plan: self.orch.frozen(),
+            orch_run: self.orch.running_run(),
         };
         if let Ok(v) = serde_json::to_value(carry) {
             extra.insert("resume".into(), v);
@@ -1631,7 +1657,18 @@ impl<'a> Autopilot<'a> {
             queued_tasks: orchestrated.then(|| self.view.queued.clone()),
             extra,
         };
-        if let Err(e) = self.store.write_status(&doc) {
+        let written = if self.queue_mode {
+            let mut v = serde_json::to_value(&doc).unwrap_or(Value::Null);
+            if let Some(settings) = v.get_mut("settings").and_then(Value::as_object_mut) {
+                for key in ["max_teams", "team_size", "team_mode", "profile"] {
+                    settings.remove(key);
+                }
+            }
+            self.store.write_status_json(&v)
+        } else {
+            self.store.write_status(&doc)
+        };
+        if let Err(e) = written {
             eprintln!("autopilot: status not written: {}", e.message);
         }
     }

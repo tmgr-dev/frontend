@@ -50,6 +50,10 @@ struct World {
     moved: BTreeSet<i64>,
     statuses: Vec<(u64, String, String)>,
     status_sets: Vec<(i64, u64)>,
+    input_failed: BTreeSet<i64>,
+    status_calls: u32,
+    statuses_fail_from: Option<u32>,
+    crash_on_set_status: bool,
 }
 
 struct Fake(RefCell<World>);
@@ -99,6 +103,10 @@ impl Fake {
                 (2, "blocked".into(), "active".into()),
             ],
             status_sets: Vec::new(),
+            input_failed: BTreeSet::new(),
+            status_calls: 0,
+            statuses_fail_from: None,
+            crash_on_set_status: false,
         }))
     }
 
@@ -343,11 +351,19 @@ impl Remote for Fake {
     }
 
     fn statuses(&self, _ws: i64) -> Result<Vec<(u64, String, String)>> {
-        Ok(self.0.borrow().statuses.clone())
+        let mut w = self.w();
+        w.status_calls += 1;
+        if w.statuses_fail_from.is_some_and(|n| w.status_calls >= n) {
+            return Err(Error::new(tmgr_core::error::Kind::Offline, "no network"));
+        }
+        Ok(w.statuses.clone())
     }
 
     fn set_status(&self, task_id: i64, status_id: u64) -> Result<()> {
         let mut w = self.w();
+        if w.crash_on_set_status {
+            panic!("crash");
+        }
         w.order.push(format!("set_status {task_id}"));
         w.status_sets.push((task_id, status_id));
         Ok(())
@@ -367,6 +383,10 @@ impl Planner for Fake {
         let w = self.0.borrow();
         let mut out = PlanInputs::default();
         for &id in tasks {
+            if w.input_failed.contains(&id) {
+                out.failed.push((id, "no network".into()));
+                continue;
+            }
             if w.unsigned.contains(&id) {
                 out.not_planned
                     .push((id, format!("TM-{id}"), "needs confirm".into()));
@@ -392,6 +412,7 @@ impl Planner for Fake {
         w.order.push("orch_start".into());
         w.orch_starts.push((nonce.into(), input.clone()));
         let n = w.orch_starts.len();
+        w.alive.insert(format!("orch-run-{n}"));
         Ok((
             format!("orch-run-{n}"),
             PathBuf::from(format!("/orch/orchestrator-{nonce}")),
@@ -424,6 +445,7 @@ impl Planner for Fake {
         let mut w = self.w();
         w.order.push(format!("orch_kill {run_id}"));
         w.orch_kills.push(run_id.into());
+        w.alive.remove(run_id);
         Ok(())
     }
 
@@ -1766,7 +1788,7 @@ fn a_task_counted_by_triage_and_by_the_server_status_is_counted_once() {
 }
 
 #[test]
-fn an_ambiguous_or_forbidden_status_refuses_that_item_only() {
+fn an_ambiguous_or_forbidden_status_rejects_the_plan_before_any_write() {
     let rig = orch_rig(&[(1, "", "eco")], &[(2, "needs_feedback"), (3, "blocked")]);
     rig.fake.w().statuses = vec![
         (1, "Needs feedback".into(), "active".into()),
@@ -1774,23 +1796,114 @@ fn an_ambiguous_or_forbidden_status_refuses_that_item_only() {
         (2, "Blocked".into(), "review".into()),
     ];
     let s = orch_settings(&[1, 2, 3]);
+    let out = with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+        ap.tick().unwrap().expect("stopped")
+    });
+    assert!(
+        out.reason.starts_with("orchestrator output rejected: "),
+        "{}",
+        out.reason
+    );
+    let w = rig.fake.0.borrow();
+    assert!(w.comments.is_empty() && w.status_sets.is_empty());
+    assert!(w.passes.is_empty(), "{:?}", w.order);
+    assert_eq!(w.orch_starts.len(), 2);
+}
+
+#[test]
+fn only_the_statuses_a_verdict_uses_are_checked() {
+    let rig = orch_rig(&[(1, "", "eco")], &[(2, "needs_feedback")]);
+    rig.fake.w().statuses = vec![(1, "Needs feedback".into(), "active".into())];
+    let s = orch_settings(&[1, 2]);
     with_ap(&rig, &s, |ap| {
         tick_on(ap);
         tick_any(ap);
     });
+    assert_eq!(rig.fake.0.borrow().status_sets, vec![(2, 1)]);
+}
+
+#[test]
+fn a_statuses_network_error_before_accepting_retries_next_tick_without_failing() {
+    let rig = orch_rig(&[(1, "", "eco")], &[(2, "needs_feedback")]);
+    rig.fake.w().statuses_fail_from = Some(1);
+    let s = orch_settings(&[1, 2]);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_on(ap);
+        tick_on(ap);
+        {
+            let w = rig.fake.0.borrow();
+            assert_eq!(w.orch_starts.len(), 1);
+            assert!(w.passes.is_empty() && w.comments.is_empty());
+        }
+        assert_eq!(
+            rig.status().plan.unwrap().state,
+            crate::cmd::autopilot::model::PlanState::Running
+        );
+        rig.fake.w().statuses_fail_from = None;
+        tick_any(ap);
+    });
     let w = rig.fake.0.borrow();
-    assert!(w.comments.is_empty() && w.status_sets.is_empty());
-    drop(w);
+    assert_eq!(w.orch_starts.len(), 1);
+    assert_eq!(w.status_sets, vec![(2, 1)]);
+}
+
+#[test]
+fn a_statuses_error_while_applying_keeps_the_rows_pending_and_retries() {
+    let rig = orch_rig(&[(1, "", "eco")], &[(2, "needs_feedback")]);
+    rig.fake.w().statuses_fail_from = Some(3);
+    let s = orch_settings(&[1, 2]);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+        let st = rig.status();
+        assert!(!st.triage[0].applied && st.triage[0].error.is_none());
+        assert!(rig.fake.0.borrow().comments.is_empty());
+        rig.fake.w().statuses_fail_from = None;
+        tick_any(ap);
+    });
     let st = rig.status();
-    assert!(st.triage[0]
-        .error
-        .as_deref()
-        .unwrap()
-        .contains("more than one"));
-    assert!(st.triage[1].error.as_deref().unwrap().contains("review"));
-    assert!(st.triage.iter().all(|r| !r.applied));
-    assert_eq!(st.tasks.needs_feedback, 0);
-    assert_eq!(last_policy(&rig).only.unwrap(), BTreeSet::from([1]));
+    assert!(st.triage[0].applied && st.triage[0].error.is_none());
+    assert_eq!(rig.fake.0.borrow().comments.len(), 1);
+}
+
+#[test]
+fn an_input_read_error_retries_next_tick_and_is_not_a_refusal() {
+    let rig = orch_rig(&[(1, "", "eco")], &[]);
+    rig.fake.w().input_failed.insert(2);
+    let s = orch_settings(&[1, 2]);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_on(ap);
+        assert!(rig.fake.0.borrow().orch_starts.is_empty());
+        assert!(rig.status().not_planned.is_empty());
+        rig.fake.w().input_failed.clear();
+        tick_on(ap);
+    });
+    let w = rig.fake.0.borrow();
+    assert_eq!(w.orch_starts.len(), 1);
+    assert_eq!(w.orch_starts[0].1.tasks.len(), 2);
+}
+
+#[test]
+fn a_persistent_input_read_error_ends_the_run() {
+    let rig = orch_rig(&[(1, "", "eco")], &[]);
+    rig.fake.w().input_failed.insert(2);
+    let s = orch_settings(&[1, 2]);
+    let out = with_ap(&rig, &s, |ap| {
+        let mut out = None;
+        for _ in 0..MAX_PASS_ERRORS {
+            out = out.or(ap.tick().unwrap());
+        }
+        out.expect("stopped")
+    });
+    assert!(
+        out.reason.starts_with("orchestrator input unavailable"),
+        "{}",
+        out.reason
+    );
 }
 
 #[test]
@@ -2126,4 +2239,225 @@ fn a_queue_mode_status_has_none_of_the_orchestrator_keys() {
         assert!(raw["runs"][0].get(key).is_none(), "{key}");
     }
     assert!(rig.fake.0.borrow().orch_starts.is_empty());
+}
+
+fn patch_status(rig: &Rig, f: impl FnOnce(&mut Value)) {
+    let path = rig.store().status_path();
+    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    f(&mut v);
+    std::fs::write(&path, v.to_string()).unwrap();
+}
+
+fn resumed<'a>(rig: &'a Rig, s: &'a Settings, store: &'a Store) -> Autopilot<'a> {
+    rig.term.store(false, Ordering::SeqCst);
+    let mut ap = Autopilot::new(store, s, rig.fake.ports(), timing(), &rig.term);
+    ap.begin();
+    ap
+}
+
+#[test]
+fn a_hard_limit_drain_and_the_final_pass_keep_the_planned_policy() {
+    let rig = orch_rig(&[(2, "", "heavy"), (1, "", "eco")], &[]);
+    let s = settings(&[1, 2], |_| {});
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+        rig.fake.add(running("q1", 1));
+        rig.fake.w().probe = Ok(vec![(95.0, 95.0)]);
+        rig.fake.advance(Duration::minutes(6));
+        let before = rig.fake.0.borrow().passes.len();
+        let _ = ap.tick();
+        let w = rig.fake.0.borrow();
+        let off: Vec<_> = w.passes[before..]
+            .iter()
+            .filter(|p| !p.starts_allowed)
+            .collect();
+        assert!(!off.is_empty());
+        for p in off {
+            let plan = p.plan.as_ref().expect("planned policy");
+            assert_eq!(plan.order, vec![2, 1]);
+            assert_eq!(plan.teams.len(), 2);
+        }
+    });
+}
+
+#[test]
+fn the_final_pass_of_a_stop_keeps_the_planned_policy() {
+    let rig = orch_rig(&[(1, "", "eco")], &[]);
+    let s = orch_settings(&[1]);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+        rig.control(1, "stop");
+        assert!(ap.tick().unwrap().is_some());
+    });
+    let w = rig.fake.0.borrow();
+    let last = w.passes.last().unwrap();
+    assert!(!last.starts_allowed);
+    assert_eq!(last.plan.as_ref().unwrap().teams.len(), 1);
+}
+
+#[test]
+fn the_profile_and_order_apply_without_the_orchestrator() {
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    let mut s = settings(&[1, 2], |a| a.profile = Some("claude-code".into()));
+    s.order = vec![2, 1];
+    with_ap(&rig, &s, tick_on);
+    let policy = rig.fake.0.borrow().passes[0].clone();
+    let plan = policy.plan.expect("a plan carries the profile");
+    assert_eq!(plan.profile.as_deref(), Some("claude-code"));
+    assert_eq!(plan.order, vec![2, 1]);
+    assert!(plan.teams.is_empty() && plan.groups.is_empty());
+
+    let rig = Rig::new();
+    rig.fake.add(pickup("q1", 1, "approved", None));
+    with_ap(&rig, &settings(&[1], |_| {}), tick_on);
+    assert!(rig.fake.0.borrow().passes[0].plan.is_none());
+}
+
+#[test]
+fn a_queue_mode_status_keeps_exactly_the_old_settings_keys() {
+    let rig = Rig::new();
+    rig.fake.add(running("q1", 1));
+    let s = queue_settings();
+    with_ap(&rig, &s, tick_on);
+    let raw: Value =
+        serde_json::from_str(&std::fs::read_to_string(rig.store().status_path()).unwrap()).unwrap();
+    let mut keys: Vec<&str> = raw["settings"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    let mut want = vec![
+        "all_tasks",
+        "blocked_status",
+        "feedback_status",
+        "max_concurrent",
+        "max_cost_usd",
+        "max_hours",
+        "max_tasks",
+        "resume_after_reset",
+        "rule",
+        "usage_guard",
+        "usage_hard",
+        "usage_soft",
+    ];
+    want.sort_unstable();
+    assert_eq!(keys, want);
+    assert!(rig.store().read_status().unwrap().is_some());
+}
+
+fn paused_before_apply(rig: &Rig, s: &Settings) {
+    with_ap(rig, s, |ap| {
+        tick_on(ap);
+        rig.control(1, "pause");
+        tick_any(ap);
+        let w = rig.fake.0.borrow();
+        assert!(w.comments.is_empty() && w.status_sets.is_empty());
+        drop(w);
+        rig.term.store(true, Ordering::SeqCst);
+        assert!(ap.tick().unwrap().unwrap().suspended);
+    });
+}
+
+#[test]
+fn triage_waits_while_paused_and_a_restored_plan_is_checked_again() {
+    let rig = orch_rig(&[(1, "", "eco")], &[(2, "blocked"), (3, "needs_feedback")]);
+    let s = orch_settings(&[1, 2, 3, 4, 5, 6]);
+    paused_before_apply(&rig, &s);
+    patch_status(&rig, |v| {
+        let plan = &mut v["resume"]["plan"];
+        plan["triage"][0]["reason"] = json!("see https://evil.example/x");
+        plan["items"].as_array_mut().unwrap().push(json!({
+            "num": 9, "task_id": 99, "key": "TM-99", "group": null, "mode": "eco", "reason": "x"
+        }));
+        plan["items"][0]["group"] = json!("Bad Group");
+        plan["triage"].as_array_mut().unwrap().push(json!({
+            "num": 8, "task_id": 98, "key": "TM-98", "verdict": "blocked", "reason": "r", "question": "q"
+        }));
+    });
+    rig.control(2, "resume");
+    let store = rig.store();
+    let mut ap = resumed(&rig, &s, &store);
+    tick_any(&mut ap);
+    let w = rig.fake.0.borrow();
+    assert_eq!(w.orch_starts.len(), 1);
+    assert_eq!(w.comments.len(), 1);
+    assert_eq!(w.comments[0].0, 3);
+    drop(w);
+    let plan = last_policy(&rig).plan.unwrap();
+    assert!(!plan.teams.contains_key(&99));
+    assert!(!plan.groups.contains_key(&1));
+    let st = rig.status();
+    assert_eq!(st.triage.len(), 1);
+    assert_eq!(st.triage[0].task_id, 3);
+}
+
+#[test]
+fn a_saved_plan_with_a_broken_input_hash_is_dropped_and_planned_again() {
+    let rig = orch_rig(&[(1, "", "eco")], &[]);
+    let s = orch_settings(&[1]);
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        tick_any(ap);
+        rig.term.store(true, Ordering::SeqCst);
+        assert!(ap.tick().unwrap().unwrap().suspended);
+    });
+    patch_status(&rig, |v| {
+        v["resume"]["plan"]["input_sha256"] = json!("nope")
+    });
+    let store = rig.store();
+    let mut ap = resumed(&rig, &s, &store);
+    tick_any(&mut ap);
+    assert_eq!(rig.fake.0.borrow().orch_starts.len(), 2);
+}
+
+#[test]
+fn a_crash_between_the_comment_and_the_status_does_not_comment_twice() {
+    let rig = orch_rig(&[(1, "", "eco")], &[(2, "blocked")]);
+    let s = orch_settings(&[1, 2]);
+    {
+        let store = rig.store();
+        let mut ap = Autopilot::new(&store, &s, rig.fake.ports(), timing(), &rig.term);
+        ap.begin();
+        tick_on(&mut ap);
+        rig.fake.w().crash_on_set_status = true;
+        let crashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _ = ap.tick();
+        }));
+        assert!(crashed.is_err());
+    }
+    assert_eq!(rig.fake.0.borrow().comments.len(), 1);
+    rig.fake.w().crash_on_set_status = false;
+    patch_status(&rig, |v| v["state"] = json!("suspended"));
+    let store = rig.store();
+    let mut ap = resumed(&rig, &s, &store);
+    tick_any(&mut ap);
+    let w = rig.fake.0.borrow();
+    assert_eq!(w.comments.len(), 1);
+    assert_eq!(w.status_sets, vec![(2, 2)]);
+}
+
+#[test]
+fn a_leftover_orchestrator_run_is_killed_on_restore_before_a_new_attempt() {
+    let rig = orch_rig(&[(1, "", "eco")], &[]);
+    rig.fake.w().orch_poll = Poll::Running;
+    let s = orch_settings(&[1]);
+    with_ap(&rig, &s, tick_on);
+    assert_eq!(rig.status().extra["resume"]["orch_run"], "orch-run-1");
+    patch_status(&rig, |v| v["state"] = json!("suspended"));
+    let store = rig.store();
+    let mut ap = resumed(&rig, &s, &store);
+    tick_on(&mut ap);
+    let order = rig.fake.order();
+    let kill = order
+        .iter()
+        .position(|o| o == "orch_kill orch-run-1")
+        .unwrap();
+    let start = order.iter().rposition(|o| o == "orch_start").unwrap();
+    assert!(kill < start, "{order:?}");
+    assert_eq!(rig.fake.0.borrow().orch_starts.len(), 2);
 }

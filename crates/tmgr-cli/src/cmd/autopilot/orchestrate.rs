@@ -266,11 +266,18 @@ fn has_bare_domain(lower: &str) -> bool {
         if *c != b'/' {
             return false;
         }
-        let tld = b[..i].iter().rev().take_while(|c| c.is_ascii_lowercase()).count();
+        let tld = b[..i]
+            .iter()
+            .rev()
+            .take_while(|c| c.is_ascii_lowercase())
+            .count();
         let dot = i.checked_sub(tld + 1).filter(|d| b[*d] == b'.');
         tld >= 2
             && dot.is_some_and(|d| {
-                d > 0 && (b[d - 1].is_ascii_lowercase() || b[d - 1].is_ascii_digit() || b[d - 1] == b'-')
+                d > 0
+                    && (b[d - 1].is_ascii_lowercase()
+                        || b[d - 1].is_ascii_digit()
+                        || b[d - 1] == b'-')
             })
     })
 }
@@ -448,6 +455,34 @@ pub fn validate(
         items: ordered,
         triage,
     })
+}
+
+pub fn recheck(plan: Plan, allowed: &BTreeSet<i64>) -> Plan {
+    let mut used = BTreeSet::new();
+    let items = plan
+        .items
+        .into_iter()
+        .filter(|i| allowed.contains(&i.task_id) && used.insert(i.task_id))
+        .map(|mut i| {
+            i.key = sanitize_line(&i.key);
+            i.group = i.group.and_then(|g| clean_group(Some(&g)).ok().flatten());
+            i.reason = clean_text("reason", &i.reason, MAX_REASON_CHARS, false)
+                .unwrap_or_else(|_| NOT_PLANNED_REASON.into());
+            i
+        })
+        .collect();
+    let triage = plan
+        .triage
+        .into_iter()
+        .filter(|t| allowed.contains(&t.task_id) && used.insert(t.task_id))
+        .filter_map(|mut t| {
+            t.key = sanitize_line(&t.key);
+            t.reason = clean_text("reason", &t.reason, MAX_REASON_CHARS, true).ok()?;
+            t.question = clean_text("question", &t.question, MAX_QUESTION_CHARS, true).ok()?;
+            Some(t)
+        })
+        .collect();
+    Plan { items, triage }
 }
 
 pub fn triage_comment(item: &TriageItem) -> String {
@@ -865,7 +900,10 @@ mod tests {
             (plan_with("<!-- hidden -->"), "contains an HTML tag"),
             (plan_with("<!DOCTYPE x>"), "contains an HTML tag"),
             (plan_with("see evil.com/x"), "contains a link"),
-            (plan_with("see Sub-Domain.Example.org/path"), "contains a link"),
+            (
+                plan_with("see Sub-Domain.Example.org/path"),
+                "contains a link",
+            ),
             (plan_with("```rm -rf```"), "contains a code fence"),
             (plan_with("run `ls`"), "contains a backtick"),
             (triage_with("", "q"), "reason is empty"),

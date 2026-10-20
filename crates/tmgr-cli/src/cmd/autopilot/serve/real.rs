@@ -277,10 +277,7 @@ impl Planner for RealPlanner<'_> {
                     });
                 }
                 Ok(Gated::Refused { key, reason }) => out.not_planned.push((id, key, reason)),
-                Err(e) => {
-                    out.not_planned
-                        .push((id, format!("task-{id}"), sanitize_line(&e.message)))
-                }
+                Err(e) => out.failed.push((id, sanitize_line(&e.message))),
             }
         }
         Ok(out)

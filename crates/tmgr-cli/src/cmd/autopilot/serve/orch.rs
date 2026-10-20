@@ -54,6 +54,14 @@ pub(super) struct Frozen {
     pub rows: Vec<TriageRow>,
     pub not_planned: Vec<NotPlanned>,
     pub applied: bool,
+    #[serde(default)]
+    pub commenting: BTreeSet<i64>,
+}
+
+enum Check {
+    Ok,
+    Retry(String),
+    Refuse(String),
 }
 
 pub(super) enum Flow {
@@ -74,6 +82,7 @@ pub(super) struct Orch {
     pub made_at: Option<DateTime<Utc>>,
     pub rows: Vec<TriageRow>,
     pub applied: bool,
+    pub commenting: BTreeSet<i64>,
 }
 
 impl Orch {
@@ -90,11 +99,19 @@ impl Orch {
             made_at: None,
             rows: Vec::new(),
             applied: false,
+            commenting: BTreeSet::new(),
         }
     }
 
     pub fn on(&self) -> bool {
         !matches!(self.phase, Phase::Off)
+    }
+
+    pub fn running_run(&self) -> Option<String> {
+        match &self.phase {
+            Phase::Running { run, .. } => Some(run.clone()),
+            _ => None,
+        }
     }
 
     pub fn accepted(&self) -> bool {
@@ -113,22 +130,58 @@ impl Orch {
             rows: self.rows.clone(),
             not_planned: self.not_planned.clone(),
             applied: self.applied,
+            commenting: self.commenting.clone(),
         })
     }
 
-    pub fn restore(&mut self, f: Frozen) {
+    pub fn restore(&mut self, f: Frozen, tasks: &BTreeSet<i64>) -> bool {
+        let sha_ok =
+            f.input_sha256.len() == 64 && f.input_sha256.bytes().all(|c| c.is_ascii_hexdigit());
+        if !sha_ok {
+            return false;
+        }
+        let plan = orchestrate::recheck(
+            Plan {
+                items: f.items,
+                triage: f.triage,
+            },
+            tasks,
+        );
+        let old = f.rows;
+        self.rows = plan
+            .triage
+            .iter()
+            .map(|t| {
+                let kept = old.iter().find(|r| r.task_id == t.task_id);
+                TriageRow {
+                    task: t.key.clone(),
+                    task_id: t.task_id,
+                    verdict: verdict_key(t.verdict).into(),
+                    reason: t.reason.clone(),
+                    question: t.question.clone(),
+                    applied: kept.is_some_and(|r| r.applied),
+                    error: kept.and_then(|r| r.error.clone()),
+                }
+            })
+            .collect();
         self.phase = Phase::Done;
         self.attempt = f.attempt;
         self.input_sha = f.input_sha256;
         self.made_at = Some(f.made_at);
-        self.seen = f.seen;
-        self.not_planned = f.not_planned;
-        self.rows = f.rows;
+        self.seen = f
+            .seen
+            .into_iter()
+            .filter(|s| tasks.contains(&s.task_id))
+            .collect();
+        self.not_planned = f
+            .not_planned
+            .into_iter()
+            .filter(|n| tasks.contains(&n.task_id))
+            .collect();
         self.applied = f.applied;
-        self.plan = Some(Plan {
-            items: f.items,
-            triage: f.triage,
-        });
+        self.commenting = f.commenting;
+        self.plan = Some(plan);
+        true
     }
 
     fn triaged(&self) -> BTreeSet<i64> {
@@ -300,6 +353,15 @@ impl Autopilot<'_> {
                 return Some(Flow::Wait);
             }
         };
+        if let Some((id, msg)) = inputs.failed.first() {
+            self.orch.errors += 1;
+            let text = format!("Could not read task {id} for planning: {}", short(msg));
+            self.event("error", None, text);
+            if self.orch.errors >= MAX_PASS_ERRORS {
+                return Some(self.fail(format!("orchestrator input unavailable: {}", short(msg))));
+            }
+            return Some(Flow::Wait);
+        }
         self.orch.not_planned = inputs
             .not_planned
             .iter()
@@ -408,13 +470,46 @@ impl Autopilot<'_> {
             return self.attempt_failed("the orchestrator input is missing", now);
         };
         match orchestrate::validate(&input, &raw, self.forced_mode()) {
-            Ok(plan) => {
-                self.p.planner.discard(dir);
-                self.accept(plan, now);
-                Flow::Go
-            }
+            Ok(plan) => match self.check_statuses(&plan) {
+                Check::Ok => {
+                    self.p.planner.discard(dir);
+                    self.accept(plan, now);
+                    Flow::Go
+                }
+                Check::Retry(msg) => {
+                    self.orch.errors += 1;
+                    self.event("error", None, msg.clone());
+                    if self.orch.errors >= MAX_PASS_ERRORS {
+                        return self.attempt_failed(&msg, now);
+                    }
+                    Flow::Wait
+                }
+                Check::Refuse(msg) => self.attempt_failed(&msg, now),
+            },
             Err(r) => self.attempt_failed(&short(r.message()), now),
         }
+    }
+
+    fn check_statuses(&mut self, plan: &Plan) -> Check {
+        let wanted: BTreeSet<&str> = plan.triage.iter().map(|t| verdict_key(t.verdict)).collect();
+        if wanted.is_empty() {
+            return Check::Ok;
+        }
+        let statuses = match self.load_statuses() {
+            Ok(list) => list,
+            Err(e) => return Check::Retry(e),
+        };
+        for key in wanted {
+            let name = if key == "blocked" {
+                self.s.answers.blocked_status.clone()
+            } else {
+                self.s.answers.feedback_status.clone()
+            };
+            if let Err(e) = self.resolve_status(&statuses, &name) {
+                return Check::Refuse(e);
+            }
+        }
+        Check::Ok
     }
 
     fn accept(&mut self, plan: Plan, now: DateTime<Utc>) {
@@ -449,12 +544,7 @@ impl Autopilot<'_> {
         }
     }
 
-    fn resolve_status(
-        &self,
-        statuses: &Result<Vec<(u64, String, String)>, String>,
-        name: &str,
-    ) -> Result<u64, String> {
-        let list = statuses.as_ref().map_err(|e| e.clone())?;
+    fn resolve_status(&self, list: &[(u64, String, String)], name: &str) -> Result<u64, String> {
         let wanted = name.trim();
         let mut found = list
             .iter()
@@ -492,7 +582,13 @@ impl Autopilot<'_> {
             })
             .collect();
         if !pending.is_empty() {
-            let statuses = self.load_statuses();
+            let statuses = match self.load_statuses() {
+                Ok(list) => list,
+                Err(e) => {
+                    self.event("error", None, e);
+                    return;
+                }
+            };
             for item in pending {
                 let name = match item.verdict {
                     Verdict::NeedsFeedback => self.s.answers.feedback_status.clone(),
@@ -571,7 +667,7 @@ impl Autopilot<'_> {
             .map_err(|e| format!("could not read the statuses: {}", short(&e.message)))
     }
 
-    fn apply_one(&self, item: &TriageItem, status_id: u64) -> Result<(), String> {
+    fn apply_one(&mut self, item: &TriageItem, status_id: u64) -> Result<(), String> {
         let seen = self
             .orch
             .seen
@@ -586,10 +682,13 @@ impl Autopilot<'_> {
         if fresh.content_sha256 != seen.sha256 || !fresh.free || fresh.status_id != seen.status_id {
             return Err("changed since planning".into());
         }
-        self.p
-            .remote
-            .comment(item.task_id, &orchestrate::triage_comment(item))
-            .map_err(|e| format!("could not comment: {}", short(&e.message)))?;
+        if self.orch.commenting.insert(item.task_id) {
+            self.write_status();
+            self.p
+                .remote
+                .comment(item.task_id, &orchestrate::triage_comment(item))
+                .map_err(|e| format!("could not comment: {}", short(&e.message)))?;
+        }
         self.p
             .remote
             .set_status(item.task_id, status_id)

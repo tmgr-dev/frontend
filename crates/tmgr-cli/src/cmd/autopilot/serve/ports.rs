@@ -47,6 +47,7 @@ pub struct Planned {
 pub struct PlanInputs {
     pub tasks: Vec<Planned>,
     pub not_planned: Vec<(i64, String, String)>,
+    pub failed: Vec<(i64, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

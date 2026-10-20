@@ -77,6 +77,10 @@ impl Store {
         write_json(&self.status_path(), doc)
     }
 
+    pub fn write_status_json(&self, doc: &Value) -> Result<()> {
+        write_json(&self.status_path(), doc)
+    }
+
     pub fn read_status(&self) -> Result<Option<StatusDoc>> {
         read_json(&self.status_path())
     }

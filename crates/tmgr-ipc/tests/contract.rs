@@ -1329,7 +1329,9 @@ fn a_team_changes_the_hash_only_when_present_and_is_validated() {
     });
     assert_eq!(t.validate(), Ok(()));
     assert_ne!(t.sha256(), BUNDLE_SHA256);
-    assert!(t.canonical().contains(r#""team":{"mode":"heavy","size":3}"#));
+    assert!(t
+        .canonical()
+        .contains(r#""team":{"mode":"heavy","size":3}"#));
     let back: RunBundle = serde_json::from_str(&t.canonical()).unwrap();
     assert_eq!(back, t);
     for size in [0u8, 6] {
