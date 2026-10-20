@@ -5,6 +5,7 @@ interface WorkspaceRef {
 
 interface ResolvedRoute {
 	name?: string | symbol | null;
+	params?: Record<string, unknown>;
 	matched: { path: string; name?: unknown }[];
 }
 
@@ -20,13 +21,17 @@ export const OPEN_ROUTE_NAMES: ReadonlySet<string> = new Set([
 	'WorkspacePages',
 	'WorkspacePage',
 	'WorkspaceCategories',
-	'WorkspaceCategoryEdit',
 	'WorkspaceCategoryListWithStatus',
 	'WorkspaceCategoryChildren',
 	'WorkspaceCategory',
 	'WorkspaceCategoryTask',
 	'WorkspaceTask',
 ]);
+
+const NUMERIC_PARAM: Record<string, string> = {
+	WorkspaceTask: 'task_id',
+	WorkspaceCategoryTask: 'task_number',
+};
 
 const OPEN_PATH = /^\/[A-Za-z0-9_-]{1,64}(\/[A-Za-z0-9_-]{1,120}){1,3}$/;
 
@@ -41,10 +46,15 @@ export const parseOpenPath = (
 	} catch {
 		return null;
 	}
-	return typeof resolved.name === 'string' &&
-		OPEN_ROUTE_NAMES.has(resolved.name)
-		? path
-		: null;
+	if (typeof resolved.name !== 'string' || !OPEN_ROUTE_NAMES.has(resolved.name))
+		return null;
+	const numericParam = NUMERIC_PARAM[resolved.name];
+	if (
+		numericParam &&
+		!/^\d{1,15}$/.test(String(resolved.params?.[numericParam]))
+	)
+		return null;
+	return path;
 };
 
 export const buildOpenUrl = (path: string | null): string =>
