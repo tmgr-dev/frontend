@@ -19,7 +19,7 @@ export function useDailyRoutineViewport(): RoutineViewport {
 	function compute(w: number) {
 		width.value = w;
 		isMobile.value = w < 640;
-		isTablet.value = w < 960;
+		isTablet.value = w < 900;
 	}
 
 	function bind(el: HTMLElement | null) {
