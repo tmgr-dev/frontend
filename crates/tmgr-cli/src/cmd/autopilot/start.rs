@@ -27,7 +27,7 @@ use crate::cmd::notifyenv::NotifyEnv;
 use crate::cmd::queue::{self, CliCloud};
 use crate::cmd::runner::cloud::{cloud_gate, parse_eligibility, Eligibility, GateOk};
 use crate::cmd::runner::{connect, rerr, runner_config};
-use crate::cmd::signer::{device_name, read_offer, Offer, SignTask, Signed, Signer};
+use crate::cmd::signer::{device_name, read_offer, Offer, SignTask, Signed, Signer, OFFER_OFFLINE};
 use crate::ctx::Ctx;
 use crate::out::{table, Output};
 
@@ -40,11 +40,17 @@ pub enum Approval {
     Valid,
     NeedsSigning(String),
     Refused(String),
+    Unchecked(String),
 }
 
 impl Approval {
+    pub fn runnable(&self) -> bool {
+        !matches!(self, Approval::Refused(_) | Approval::Unchecked(_))
+    }
+
     fn shown(&self) -> String {
         match self {
+            Approval::Unchecked(why) => format!("could not check, retry ({why})"),
             Approval::Valid => "signed".into(),
             Approval::NeedsSigning(_) => "needs signing".into(),
             Approval::Refused(why) => format!("refused: {why}"),
@@ -171,7 +177,7 @@ pub fn classify(task_id: i64, elig: &Eligibility, f: &Facts) -> Found {
 }
 
 fn not_free(found: Found, look: impl FnOnce(&Found) -> Result<Fresh>) -> Found {
-    if matches!(found.approval, Approval::Refused(_)) {
+    if !found.approval.runnable() {
         return found;
     }
     let why = match look(&found) {
@@ -181,6 +187,13 @@ fn not_free(found: Found, look: impl FnOnce(&Found) -> Result<Fresh>) -> Found {
             "persona_missing" => "the rule's persona is not assigned to the task".to_string(),
             _ => "the task is not in the rule's status".to_string(),
         },
+        Err(e) if e.kind == Kind::Offline => {
+            return Found {
+                approval: Approval::Unchecked(sanitize_line(&e.message)),
+                sign: None,
+                ..found
+            }
+        }
         Err(e) => format!("could not check the task ({})", sanitize_line(&e.message)),
     };
     Found {
@@ -199,6 +212,11 @@ fn with_offer(client: &Client, mut found: Found) -> Found {
             sign.offer = offered;
             found
         }
+        Err(code) if code == OFFER_OFFLINE => Found {
+            approval: Approval::Unchecked("the approval offer could not be read".into()),
+            sign: None,
+            ..found
+        },
         Err(code) => Found {
             approval: Approval::Refused(format!(
                 "could not read the approval offer ({})",
@@ -210,14 +228,43 @@ fn with_offer(client: &Client, mut found: Found) -> Found {
     }
 }
 
+const RETRIES: u32 = 3;
+const RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
+const OFFLINE_STREAK: usize = 3;
+
+pub fn unique_keys(found: &mut [Found]) {
+    let mut seen = std::collections::HashMap::<String, usize>::new();
+    for f in found.iter() {
+        *seen.entry(f.key.to_lowercase()).or_default() += 1;
+    }
+    for f in found.iter_mut() {
+        if seen[&f.key.to_lowercase()] > 1 {
+            f.key = format!("task-{}", f.id);
+        }
+    }
+}
+
+fn unreachable_error(e: &Error) -> Error {
+    Error::new(
+        Kind::Offline,
+        format!(
+            "the server stopped answering while the tasks were checked ({})",
+            sanitize_line(&e.message)
+        ),
+    )
+    .hint("check your connection and retry")
+}
+
 fn discover(
     ctx: &Ctx,
     cloud: &CliCloud,
     rule: &Rule,
     ws: &CloudWorkspace,
+    cards: &[queue::Card],
+    complete: bool,
 ) -> Result<(Vec<Found>, bool)> {
-    let (ids, complete) = cloud.list(rule, ws)?;
     let client = ctx.cloud_client()?;
+    client.set_get_retries(RETRIES, RETRY_PAUSE);
     let (host, user) = cloud.identity()?;
     let allow =
         AllowFile::load().map_err(|e| Error::internal(format!("runner allow list: {e}")))?;
@@ -231,30 +278,54 @@ fn discover(
         user,
         now: Utc::now(),
     };
-    let found = ids
-        .into_iter()
-        .map(
-            |id| match client.agent_run_task(id).and_then(parse_eligibility) {
-                Ok(elig) => with_offer(
-                    client,
-                    not_free(classify(id, &elig, &facts), |f| {
-                        queue::fresh_look(ctx, rule, ws.id, f.id)
-                    }),
-                ),
-                Err(e) => Found {
+    let total = cards.len();
+    let mut err = std::io::stderr();
+    let mut found = Vec::with_capacity(total);
+    let mut streak = 0;
+    for (n, card) in cards.iter().enumerate() {
+        if n > 0 && n % 10 == 0 {
+            let _ = writeln!(err, "Checked {n} of {total} tasks...");
+        }
+        let id = card.id;
+        let one = match client.agent_run_task(id).and_then(parse_eligibility) {
+            Ok(elig) => with_offer(
+                client,
+                not_free(classify(id, &elig, &facts), |f| {
+                    queue::fresh_look(ctx, rule, ws.id, f.id)
+                }),
+            ),
+            Err(e) if e.kind == Kind::Offline => {
+                streak += 1;
+                if streak >= OFFLINE_STREAK {
+                    return Err(unreachable_error(&e));
+                }
+                Found {
                     id,
-                    key: format!("task-{id}"),
+                    key: card.key.clone(),
                     title: String::new(),
                     repos: Vec::new(),
-                    approval: Approval::Refused(format!(
-                        "could not read the task ({})",
-                        sanitize_line(&e.message)
-                    )),
+                    approval: Approval::Unchecked(sanitize_line(&e.message)),
                     sign: None,
-                },
+                }
+            }
+            Err(e) => Found {
+                id,
+                key: card.key.clone(),
+                title: String::new(),
+                repos: Vec::new(),
+                approval: Approval::Refused(format!(
+                    "could not read the task ({})",
+                    sanitize_line(&e.message)
+                )),
+                sign: None,
             },
-        )
-        .collect();
+        };
+        if !matches!(one.approval, Approval::Unchecked(_)) {
+            streak = 0;
+        }
+        found.push(one);
+    }
+    unique_keys(&mut found);
     Ok((found, complete))
 }
 
@@ -284,6 +355,74 @@ pub fn task_table(found: &[Found]) -> String {
         rows.push(vec![format!("... and {} more", found.len() - LIST_CAP)]);
     }
     table(&rows)
+}
+
+const DRY_RUN_NO_USAGE: &str =
+    "No real usage number was found, so the usage limits are not applied. A dry run starts nothing.";
+
+fn usage_gate(
+    dry_run: bool,
+    tool: Option<Tool>,
+    read: impl FnOnce(Tool) -> Vec<tmgr_usage::guard::GuardLimit>,
+) -> Result<(Vec<tmgr_usage::guard::GuardLimit>, bool)> {
+    let Some(tool) = tool else {
+        return if dry_run {
+            Ok((Vec::new(), false))
+        } else {
+            Err(usage::unknown_tool())
+        };
+    };
+    let found = read(tool);
+    if usage::has_real_number(&found) {
+        Ok((found, true))
+    } else if dry_run {
+        Ok((Vec::new(), false))
+    } else {
+        Err(usage::refuse_without_numbers(tool))
+    }
+}
+
+pub fn narrow_cards(cards: Vec<queue::Card>, only: Option<&str>) -> Result<Vec<queue::Card>> {
+    let Some(only) = only else {
+        return Ok(cards);
+    };
+    let wanted: Vec<&str> = only
+        .split(',')
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .collect();
+    if wanted.is_empty() {
+        return Err(Error::usage("--only: enter task keys separated by commas"));
+    }
+    let matches = |c: &queue::Card, w: &str| {
+        c.key.eq_ignore_ascii_case(w)
+            || w.eq_ignore_ascii_case(&format!("task-{}", c.id))
+            || w.eq_ignore_ascii_case(&format!("T{}", c.id))
+            || w.parse::<i64>() == Ok(c.id)
+    };
+    for w in &wanted {
+        let hits: Vec<&queue::Card> = cards.iter().filter(|c| matches(c, w)).collect();
+        match hits.as_slice() {
+            [] => {
+                return Err(Error::usage(format!(
+                    "--only: {w} is not among the tasks this rule would run"
+                ))
+                .hint("tmgr queue autopilot --dry-run"))
+            }
+            [_] => {}
+            many => {
+                let ids: Vec<String> = many.iter().map(|c| format!("task-{}", c.id)).collect();
+                return Err(Error::usage(format!(
+                    "--only: {w} matches several tasks; use {}",
+                    ids.join(" or ")
+                )));
+            }
+        }
+    }
+    Ok(cards
+        .into_iter()
+        .filter(|c| wanted.iter().any(|w| matches(c, w)))
+        .collect())
 }
 
 const ORCHESTRATOR_PROFILE: &str = "claude-code";
@@ -373,6 +512,8 @@ fn limit_text(plan: &Plan) -> Vec<String> {
                 "stop"
             }
         ));
+    } else if plan.dry_run {
+        lines.push("Usage      not checked (dry run)".into());
     } else {
         lines.push("Usage      NO usage limit: the guard is off".into());
     }
@@ -729,7 +870,11 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
     let ws = cloud
         .allow(&rule.workspace, now)
         .map_err(|m| Error::new(Kind::Conflict, m))?;
-    let (found, complete) = discover(ctx, &cloud, &rule, &ws)?;
+    let _ = writeln!(err, "Reading the task list of rule {}...", rule.name);
+    let (cards, complete) = cloud.list_cards(&rule, &ws)?;
+    let cards = narrow_cards(cards, args.only.as_deref())?;
+    let _ = writeln!(err, "Checking {} tasks...", cards.len());
+    let (found, complete) = discover(ctx, &cloud, &rule, &ws, &cards, complete)?;
     let _ = writeln!(err, "Tasks found for rule {}:", rule.name);
     if found.is_empty() {
         return Err(Error::usage(format!(
@@ -766,12 +911,13 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
     let profile = draft.profile().to_string();
     let tool = agent_tool(&profile);
     let limits = if guard {
-        let tool = tool.ok_or_else(usage::unknown_tool)?;
-        let found = usage::read(&usage::Real, tool, now);
-        if !usage::has_real_number(&found) {
-            return Err(usage::refuse_without_numbers(tool));
+        let (limits, checked) =
+            usage_gate(args.dry_run, tool, |t| usage::read(&usage::Real, t, now))?;
+        if !checked {
+            let _ = writeln!(err, "{DRY_RUN_NO_USAGE}");
+            draft.answers.usage_guard = false;
         }
-        found
+        limits
     } else {
         Vec::new()
     };
@@ -779,14 +925,14 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
     let (chosen, dropped): (Vec<Found>, Vec<Found>) = found
         .into_iter()
         .filter(|f| draft.is_chosen(&f.key))
-        .partition(|f| !matches!(f.approval, Approval::Refused(_)));
+        .partition(|f| f.approval.runnable());
     if let Some(k) = draft
         .order
         .iter()
         .find(|k| !chosen.iter().any(|f| &f.key == *k))
     {
         return Err(Error::usage(format!(
-            "--order: {k} cannot be run, see the reasons in the list above"
+            "--order: {k} cannot be run, see the reasons in the list above; a task marked \"could not check\" can be retried"
         )));
     }
     if chosen.is_empty() {
@@ -1272,6 +1418,88 @@ mod tests {
         let s = summary_text(&plan(false, false));
         assert!(s.contains("nothing to sign"));
         assert!(s.contains("NO usage limit"));
+    }
+
+    #[test]
+    fn a_dry_run_needs_no_usage_number_but_a_real_run_does() {
+        let none = |_: Tool| Vec::new();
+        let (limits, checked) = usage_gate(true, Some(Tool::Claude), none).unwrap();
+        assert!(limits.is_empty() && !checked);
+        assert!(usage_gate(true, None, none).is_ok());
+        let e = usage_gate(false, Some(Tool::Claude), none).unwrap_err();
+        assert!(e.message.contains("no real usage number"), "{}", e.message);
+        assert!(usage_gate(false, None, none).is_err());
+    }
+
+    fn found_with(id: i64, key: &str) -> Found {
+        Found {
+            id,
+            key: key.into(),
+            title: String::new(),
+            repos: Vec::new(),
+            approval: Approval::Valid,
+            sign: None,
+        }
+    }
+
+    #[test]
+    fn colliding_keys_fall_back_to_the_task_id() {
+        let mut f = vec![
+            found_with(1, "TM-210"),
+            found_with(2, "tm-210"),
+            found_with(3, "TM-211"),
+        ];
+        unique_keys(&mut f);
+        let keys: Vec<&str> = f.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(keys, ["task-1", "task-2", "TM-211"]);
+    }
+
+    fn card(id: i64, key: &str) -> queue::Card {
+        queue::Card {
+            id,
+            key: key.into(),
+        }
+    }
+
+    #[test]
+    fn only_narrows_the_cards_before_anything_is_fetched() {
+        let cards = vec![card(1, "TM-430"), card(2, "TM-431"), card(3, "TM-432")];
+        let kept = narrow_cards(cards.clone(), Some("tm-430, TM-432")).unwrap();
+        assert_eq!(kept.iter().map(|c| c.id).collect::<Vec<_>>(), [1, 3]);
+        assert_eq!(narrow_cards(cards.clone(), None).unwrap().len(), 3);
+        let e = narrow_cards(cards, Some("TM-430,TM-999")).unwrap_err();
+        assert!(e.message.contains("TM-999"), "{}", e.message);
+        assert_eq!(e.exit_code(), 2);
+    }
+
+    #[test]
+    fn only_with_a_duplicated_key_names_the_ids_to_use() {
+        let cards = vec![card(7, "TM-210"), card(8, "TM-210"), card(9, "TM-1")];
+        let e = narrow_cards(cards.clone(), Some("TM-210")).unwrap_err();
+        assert!(e.message.contains("task-7 or task-8"), "{}", e.message);
+        let kept = narrow_cards(cards, Some("task-8")).unwrap();
+        assert_eq!(kept.iter().map(|c| c.id).collect::<Vec<_>>(), [8]);
+    }
+
+    #[test]
+    fn an_unchecked_task_is_not_runnable_and_not_called_refused() {
+        let a = Approval::Unchecked("cannot reach api".into());
+        assert!(!a.runnable());
+        let shown = a.shown();
+        assert!(shown.starts_with("could not check, retry"), "{shown}");
+        assert!(!shown.contains("refused"));
+        assert!(Approval::Valid.runnable());
+        assert!(Approval::NeedsSigning("x".into()).runnable());
+        assert!(!Approval::Refused("x".into()).runnable());
+    }
+
+    #[test]
+    fn a_dry_run_summary_does_not_claim_the_guard_is_off_by_choice() {
+        let mut p = plan(false, false);
+        p.dry_run = true;
+        let s = summary_text(&p);
+        assert!(s.contains("not checked (dry run)"), "{s}");
+        assert!(!s.contains("NO usage limit"));
     }
 
     #[test]
