@@ -25,6 +25,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Runner { command } => match command {
             RunnerCmd::Start => start(o),
             RunnerCmd::Stop => stop(o),
+            RunnerCmd::Restart(a) => super::restart::run(o, a.force),
             RunnerCmd::Status => status(o),
             RunnerCmd::InstallService(a) => super::service::install(o, a.install),
             RunnerCmd::UninstallService => super::service::uninstall(o),
@@ -154,7 +155,17 @@ fn stop(o: &Opts) -> Result<i32> {
 fn status(o: &Opts) -> Result<i32> {
     let cfg = runner_config()?;
     let st = connect(&cfg)?.status().map_err(rerr)?;
-    let human = format!(
+    let (data, human) = status_report(&st, env!("CARGO_PKG_VERSION"), &super::bin())?;
+    Ok(emit(o, data, human))
+}
+
+fn status_report(
+    st: &tmgr_ipc::api::StatusInfo,
+    installed: &str,
+    bin: &str,
+) -> Result<(serde_json::Value, String)> {
+    let behind = super::restart::is_behind(&st.version, installed);
+    let mut human = format!(
         "runner is up (pid {}, version {}, up {}, {} session{})",
         st.pid,
         clean(&st.version),
@@ -162,7 +173,14 @@ fn status(o: &Opts) -> Result<i32> {
         st.sessions,
         if st.sessions == 1 { "" } else { "s" }
     );
-    Ok(emit(o, st, human))
+    if behind {
+        human.push_str(&format!(
+            "\nthe runner is older than this tmgr ({installed}); run `{bin} runner restart`"
+        ));
+    }
+    let mut data = serde_json::to_value(st).map_err(|e| Error::internal(e.to_string()))?;
+    data["version_behind"] = json!(behind);
+    Ok((data, human))
 }
 
 fn resolve_exe(name: &str) -> Result<String> {
@@ -852,4 +870,35 @@ fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
         json!({"id": s.id}),
         format!("removed {}", clean(&s.name)),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn st(version: &str) -> tmgr_ipc::api::StatusInfo {
+        tmgr_ipc::api::StatusInfo {
+            pid: 7,
+            version: version.into(),
+            proto: 1,
+            uptime_s: 5,
+            sessions: 1,
+        }
+    }
+
+    #[test]
+    fn status_hints_a_restart_when_the_runner_is_older() {
+        let (data, human) = status_report(&st("1.0.12"), "1.0.13", "tmgr").unwrap();
+        assert_eq!(data["version_behind"], true);
+        assert!(human.contains("`tmgr runner restart`"));
+    }
+
+    #[test]
+    fn status_is_quiet_when_equal_or_newer() {
+        for v in ["1.0.13", "1.0.14"] {
+            let (data, human) = status_report(&st(v), "1.0.13", "tmgr").unwrap();
+            assert_eq!(data["version_behind"], false);
+            assert!(!human.contains("restart"));
+        }
+    }
 }

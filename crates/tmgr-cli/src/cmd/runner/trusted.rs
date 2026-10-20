@@ -25,7 +25,7 @@ fn client() -> Result<Client> {
             Kind::Conflict,
             "the running runner is older than this tmgr and keeps no trusted folders",
         )
-        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+        .hint(format!("{0} runner restart", super::bin())));
     }
     Ok(c)
 }

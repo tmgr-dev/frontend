@@ -322,7 +322,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             Kind::Conflict,
             "the running runner is older than this tmgr and cannot check the agent's command line",
         )
-        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+        .hint(format!("{0} runner restart", super::bin())));
     }
     let via_repo = have.iter().any(|h| h == caps::TRUST_VIA_REPO_V1)
         && !tmgr_link::privileged::RUN_ENV

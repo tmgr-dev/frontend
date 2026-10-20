@@ -9,7 +9,7 @@ use tmgr_runner::service::{self, Exists, Plan, Platform, Removed, RunOut, Servic
 
 const CONFIRM: &str = "yes, install service";
 
-struct RealSys;
+pub(super) struct RealSys;
 
 impl Sys for RealSys {
     fn run(&mut self, argv: &[String]) -> io::Result<RunOut> {
@@ -47,7 +47,7 @@ impl Sys for RealSys {
     }
 }
 
-fn paths() -> Result<ServicePaths> {
+pub(super) fn paths() -> Result<ServicePaths> {
     let home = std::env::var_os("HOME")
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)

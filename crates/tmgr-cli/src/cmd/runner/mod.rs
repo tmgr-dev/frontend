@@ -7,6 +7,7 @@ mod observe;
 mod ops;
 mod remote;
 mod remote_attach;
+mod restart;
 mod restore;
 mod run_task;
 mod service;
@@ -57,6 +58,8 @@ pub enum RunnerCmd {
     Start,
     /// [experimental] Stop the runner (sessions keep running)
     Stop,
+    /// [experimental] Restart the runner with the installed version (sessions keep running)
+    Restart(RestartArgs),
     /// [experimental] Show whether the runner is up
     Status,
     /// [experimental] Register the runner to start at login (shows a preview unless --install)
@@ -101,6 +104,13 @@ pub struct FolderArgs {
     /// The folder (default: current directory)
     #[arg(value_name = "DIR", default_value = ".")]
     pub dir: PathBuf,
+}
+
+#[derive(Args)]
+pub struct RestartArgs {
+    /// Replace a newer running runner with this older tmgr
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Args)]
@@ -427,7 +437,7 @@ pub fn rerr(e: io::Error) -> Error {
     let msg = e.to_string();
     if msg.starts_with("unknown_method: ") {
         return Error::new(Kind::Conflict, "the running runner is older than this tmgr")
-            .hint(format!("{0} runner stop && {0} runner start", bin()));
+            .hint(format!("{0} runner restart", bin()));
     }
     let Some((code, text)) = msg.split_once(": ") else {
         return Error::internal(msg);

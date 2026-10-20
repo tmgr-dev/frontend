@@ -1150,7 +1150,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
                 Kind::Conflict,
                 "the running runner is older than this tmgr and cannot run several repositories in one run",
             )
-            .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+            .hint(format!("{0} runner restart", super::bin())));
         }
     }
     let (repo, clone, clone_records) = match &layout {
@@ -1252,7 +1252,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             Kind::Conflict,
             "the running runner is older than this tmgr and cannot deliver the persona instructions and workspace rules of this task",
         )
-        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+        .hint(format!("{0} runner restart", super::bin())));
     }
     if [caps::EXE_PIN_V1, caps::ARGV_PIN_V1]
         .iter()
@@ -1262,7 +1262,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             Kind::Conflict,
             "the running runner is older than this tmgr and cannot check the agent's command line",
         )
-        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+        .hint(format!("{0} runner restart", super::bin())));
     }
     let via_repo = have.iter().any(|h| h == caps::TRUST_VIA_REPO_V1)
         && !privileged::RUN_ENV

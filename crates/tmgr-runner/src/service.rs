@@ -164,7 +164,7 @@ pub fn unit(exe: &str, path_env: &str) -> io::Result<String> {
         .replace('\\', "\\\\")
         .replace('"', "\\\"");
     Ok(format!(
-        "[Unit]\nDescription=tmgr runner ({LABEL})\n\n[Service]\nType=simple\nExecStart={} runner serve\nEnvironment=\"{env}\"\nRestart=no\n\n[Install]\nWantedBy=default.target\n",
+        "[Unit]\nDescription=tmgr runner ({LABEL})\n\n[Service]\nType=simple\nExecStart={} runner serve\nEnvironment=\"{env}\"\nRestart=no\nKillMode=process\n\n[Install]\nWantedBy=default.target\n",
         systemd_arg(exe)
     ))
 }
@@ -341,6 +341,28 @@ pub fn is_ours(platform: Platform, content: &str) -> bool {
     }
 }
 
+pub fn loaded_argv(paths: &ServicePaths) -> Vec<String> {
+    match paths.platform {
+        Platform::Launchd => argv(&[LAUNCHCTL, "print", &format!("gui/{}/{LABEL}", paths.uid)]),
+        Platform::Systemd => argv(&[SYSTEMCTL, "--user", "cat", UNIT]),
+    }
+}
+
+pub fn start_argv(paths: &ServicePaths) -> Vec<String> {
+    match paths.platform {
+        Platform::Launchd => argv(&[
+            LAUNCHCTL,
+            "kickstart",
+            &format!("gui/{}/{LABEL}", paths.uid),
+        ]),
+        Platform::Systemd => argv(&[SYSTEMCTL, "--user", "start", UNIT]),
+    }
+}
+
+pub fn unit_keeps_children(content: &str) -> bool {
+    content.lines().any(|l| l == "KillMode=process")
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Removed {
     NotInstalled,
@@ -438,8 +460,41 @@ mod tests {
     #[test]
     fn unit_snapshot() {
         let got = unit("/usr/local/bin/tmgr", "/usr/bin:/bin").unwrap();
-        let want = "[Unit]\nDescription=tmgr runner (dev.tmgr.runner)\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/tmgr runner serve\nEnvironment=\"PATH=/usr/bin:/bin\"\nRestart=no\n\n[Install]\nWantedBy=default.target\n";
+        let want = "[Unit]\nDescription=tmgr runner (dev.tmgr.runner)\n\n[Service]\nType=simple\nExecStart=/usr/local/bin/tmgr runner serve\nEnvironment=\"PATH=/usr/bin:/bin\"\nRestart=no\nKillMode=process\n\n[Install]\nWantedBy=default.target\n";
         assert_eq!(got, want);
+    }
+
+    #[test]
+    fn start_never_kills_the_running_job() {
+        let l = ServicePaths::new(Platform::Launchd, Path::new("/h"), None, 501);
+        assert_eq!(
+            start_argv(&l),
+            argv(&[LAUNCHCTL, "kickstart", "gui/501/dev.tmgr.runner"])
+        );
+        assert_eq!(
+            loaded_argv(&l),
+            argv(&[LAUNCHCTL, "print", "gui/501/dev.tmgr.runner"])
+        );
+        let s = ServicePaths::new(Platform::Systemd, Path::new("/h"), None, 501);
+        assert_eq!(
+            start_argv(&s),
+            argv(&[SYSTEMCTL, "--user", "start", "tmgr-runner.service"])
+        );
+        assert_eq!(
+            loaded_argv(&s),
+            argv(&[SYSTEMCTL, "--user", "cat", "tmgr-runner.service"])
+        );
+        for p in [&l, &s] {
+            let a = start_argv(p);
+            assert!(!a.iter().any(|x| x == "-k" || x == "restart"));
+        }
+    }
+
+    #[test]
+    fn unit_keeps_sessions_alive_when_the_runner_exits() {
+        let u = unit("/bin/tmgr", "/usr/bin").unwrap();
+        assert!(unit_keeps_children(&u));
+        assert!(!unit_keeps_children("[Service]\nType=simple\nRestart=no\n"));
     }
 
     #[test]

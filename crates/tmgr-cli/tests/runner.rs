@@ -575,6 +575,40 @@ fn hints_name_the_binary_that_was_invoked() {
 }
 
 #[test]
+fn restart_replaces_the_runner_and_keeps_sessions_running() {
+    let env = Env::new();
+    let script = env.script("idle.sh", "sleep 120\n");
+    let Some(id) = env.start(&script, "keeper") else {
+        return;
+    };
+    let old = env.data(&["runner", "status", "--json"]);
+    assert_eq!(old["version_behind"], false);
+    let home = env.tmp.path().display().to_string();
+    let mut cmd = env.cmd(&["runner", "restart", "--json"]);
+    cmd.env("HOME", &home);
+    let out = run_bounded(cmd, Duration::from_secs(90));
+    let v: Value = serde_json::from_slice(&out.stdout)
+        .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
+    assert_eq!(v["ok"], true, "{v}");
+    let d = &v["data"];
+    assert_eq!(d["restarted"], true);
+    assert_eq!(d["was_running"], true);
+    assert_eq!(d["via"], "direct");
+    assert_ne!(d["new_pid"], d["old_pid"]);
+    assert_eq!(d["old_pid"], old["pid"]);
+    assert_eq!(d["sessions_before"], d["sessions_after"]);
+    let now = env.data(&["runner", "status", "--json"]);
+    assert_eq!(now["pid"], d["new_pid"]);
+    let kept: Vec<Value> = env
+        .sessions()
+        .into_iter()
+        .filter(|s| s["id"] == id.as_str())
+        .collect();
+    assert_eq!(kept.len(), 1);
+    assert_ne!(kept[0]["state"]["kind"], "exited", "{}", kept[0]);
+}
+
+#[test]
 fn run_output_never_carries_control_sequences_from_file_names() {
     let env = Env::new();
     let script = env.script("evil\x1b]0;pwned\x07.sh", "sleep 5\n");
