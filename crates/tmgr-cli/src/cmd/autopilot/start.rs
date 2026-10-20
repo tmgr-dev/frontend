@@ -288,16 +288,35 @@ pub fn task_table(found: &[Found]) -> String {
 
 const ORCHESTRATOR_PROFILE: &str = "claude-code";
 
-fn orchestrator_ready() -> Result<()> {
+fn orchestrator_ready(rule: &Rule) -> Result<()> {
+    if !rules::is_cloud(rule) {
+        return Ok(());
+    }
     let dir = tmgr_runner::profile::user_dir();
     let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
-    match set.get(ORCHESTRATOR_PROFILE) {
-        Some(p) if p.headless.is_some() => Ok(()),
-        _ => Err(Error::usage(
-            "the orchestrator needs the claude-code profile, which is not available",
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    orchestrator_profile_ready(set.get(ORCHESTRATOR_PROFILE), &path)
+}
+
+fn orchestrator_profile_ready(
+    profile: Option<&tmgr_runner::profile::Profile>,
+    path: &std::ffi::OsStr,
+) -> Result<()> {
+    let missing = || {
+        Error::usage(
+            "the orchestrator needs the built-in claude-code profile, which is not available",
         )
-        .hint("tmgr agents list")),
-    }
+        .hint("tmgr agents list")
+    };
+    let profile = profile.ok_or_else(missing)?;
+    let argv = tmgr_runner::orchestrator::argv(profile).map_err(|(_, m)| {
+        Error::usage(format!("the orchestrator cannot run: {m}")).hint("tmgr agents list")
+    })?;
+    tmgr_runner::exe::resolve_exe(&argv[0], path, None).map_err(|m| {
+        Error::usage(format!("the orchestrator cannot run: {m}"))
+            .hint("install Claude Code and put `claude` on PATH")
+    })?;
+    Ok(())
 }
 
 pub fn agent_tool(profile: &str) -> Option<Tool> {
@@ -685,7 +704,6 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         )
         .hint("tmgr queue disable"));
     }
-    orchestrator_ready()?;
     let remembered = store.load_answers()?;
     let stdin = std::io::stdin();
     let mut err = std::io::stderr();
@@ -702,6 +720,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         .into_iter()
         .find(|r| r.name == rule_name)
         .ok_or_else(|| Error::internal("the chosen rule disappeared"))?;
+    orchestrator_ready(&rule)?;
 
     let now = Utc::now();
     let guard = !args.no_usage_limit;
@@ -973,6 +992,31 @@ mod tests {
 
     fn now() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 10, 19, 20, 0, 0).unwrap()
+    }
+
+    fn fake_claude(dir: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let exe = dir.join("claude");
+        std::fs::write(&exe, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn the_orchestrator_needs_the_builtin_claude_code_profile_and_claude_on_the_path() {
+        let (set, _) = tmgr_runner::profile::ProfileSet::load(None);
+        let builtin = set.get("claude-code").unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        let empty = tempfile::tempdir().unwrap();
+        assert!(orchestrator_profile_ready(Some(builtin), empty.path().as_os_str()).is_err());
+        fake_claude(bin.path());
+        assert!(orchestrator_profile_ready(Some(builtin), bin.path().as_os_str()).is_ok());
+        assert!(orchestrator_profile_ready(None, bin.path().as_os_str()).is_err());
+        let mut user = builtin.clone();
+        user.source = tmgr_runner::profile::Source::User("/x/claude-code.toml".into());
+        assert!(orchestrator_profile_ready(Some(&user), bin.path().as_os_str()).is_err());
+        let mut bare = builtin.clone();
+        bare.headless = None;
+        assert!(orchestrator_profile_ready(Some(&bare), bin.path().as_os_str()).is_err());
     }
 
     fn rule() -> Rule {
