@@ -936,7 +936,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
             .hint("see the reasons in the list above"));
     }
     let mut answers = draft.answers.clone();
-    answers.all_tasks = draft.picked.is_none();
+    answers.all_tasks = draft.picked.is_none() && args.only.is_none() && args.skip.is_none();
     let soft = answers.usage_guard.then_some(answers.usage_soft);
     let hard = answers.usage_guard.then_some(answers.usage_hard);
     let plan = Plan {

@@ -2142,6 +2142,33 @@ fn a_dry_run_plans_and_triages_without_any_write_or_pass() {
 }
 
 #[test]
+fn a_dry_run_ignores_old_failed_pickups_and_shows_the_tasks_as_planned() {
+    let rig = orch_rig(&[(1, "", "eco")], &[]);
+    rig.fake.add(pickup("old", 1, "failed", None));
+    let mut s = orch_settings(&[1]);
+    s.dry_run = true;
+    with_ap(&rig, &s, |ap| {
+        tick_on(ap);
+        ap.tick().unwrap();
+    });
+    let st = rig.status();
+    assert_eq!(st.tasks.failed, 0);
+    assert_eq!(st.plan.unwrap().items[0].state, "planned (dry run)");
+}
+
+#[test]
+fn a_run_limited_to_chosen_tasks_does_not_count_the_rest_as_new() {
+    let rig = Rig::new();
+    rig.fake.w().unconfirmed = 35;
+    let mut s = settings(&[1], |_| {});
+    s.answers.all_tasks = false;
+    with_ap(&rig, &s, |ap| {
+        ap.tick().unwrap();
+    });
+    assert_eq!(rig.status().unconfirmed_new, 0);
+}
+
+#[test]
 fn the_start_policy_carries_order_limits_groups_and_team_sizes() {
     let rig = orch_rig(&[(2, "db", "heavy"), (1, "db", "eco"), (3, "", "eco")], &[]);
     let mut s = orch_settings(&[1, 2, 3]);

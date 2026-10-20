@@ -885,7 +885,7 @@ impl<'a> Autopilot<'a> {
         let triage_feedback = self.orch.applied_ids("needs_feedback");
         let triage_blocked = self.orch.applied_ids("blocked");
         for id in sel {
-            let p = latest(st, id);
+            let p = latest(st, id).filter(|_| !self.s.dry_run);
             if let Some(p) = p {
                 self.note_start(p);
                 self.track_run(p, now);
@@ -893,6 +893,7 @@ impl<'a> Autopilot<'a> {
             let class = p.map(|p| classify(p, &self.killed));
             if orchestrated {
                 let state = match &class {
+                    _ if self.s.dry_run => "planned (dry run)",
                     Some(Class::Done) | Some(Class::Paused) => "pr",
                     Some(Class::Held) => "held",
                     Some(Class::Failed(_)) | Some(Class::Taken) => "failed",
@@ -1274,7 +1275,11 @@ impl<'a> Autopilot<'a> {
                 self.remote.task_status.insert(id, sid);
             }
         }
-        let n = self.p.queue.unconfirmed(&self.s.rule, &self.s.tasks)?;
+        let n = if self.s.answers.all_tasks {
+            self.p.queue.unconfirmed(&self.s.rule, &self.s.tasks)?
+        } else {
+            0
+        };
         if n > self.remote.unconfirmed {
             let text = format!("{n} new task{} need confirm", if n == 1 { "" } else { "s" });
             self.event("confirm", None, text.clone());
