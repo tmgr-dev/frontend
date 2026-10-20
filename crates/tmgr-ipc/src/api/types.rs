@@ -111,6 +111,8 @@ pub struct OrchestratorCreateReq {
     pub start_key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exe_pin: Option<ExePin>,
 }
 
 impl OrchestratorCreateReq {
@@ -132,7 +134,7 @@ impl OrchestratorCreateReq {
             clone_of: None,
             trust_cwd: None,
             trust_via_repo: None,
-            exe_pin: None,
+            exe_pin: self.exe_pin.clone(),
             argv_sha256: None,
             agent_work: false,
             cloud: None,

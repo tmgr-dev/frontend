@@ -2119,11 +2119,20 @@ impl Runner {
             };
         }
         let dir = bundle::open_dir(&run).map_err(|(code, m)| api(code, m))?;
+        orchestrator::check_cwd(&dir.path, unsafe { libc::getuid() })
+            .map_err(|(code, m)| api(code, m))?;
         let path = std::env::var_os("PATH").unwrap_or_default();
-        argv[0] = resolve_exe(&argv[0], &path, None)
-            .map_err(|e| api(ErrorCode::InvalidParams, e))?
-            .display()
-            .to_string();
+        argv[0] = match &req.exe_pin {
+            None => {
+                resolve_exe(&argv[0], &path, None).map_err(|e| api(ErrorCode::InvalidParams, e))?
+            }
+            Some(pin) => {
+                check_pin_fields(pin)?;
+                check_pin(&argv[0], &path, pin)?
+            }
+        }
+        .display()
+        .to_string();
         let extra = RunExtra {
             start: Some((req.start_key.clone(), hash)),
             egress: Some(

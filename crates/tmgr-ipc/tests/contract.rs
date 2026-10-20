@@ -1135,8 +1135,18 @@ fn orchestrator_create_request() {
         cwd: "/work/project-worktrees/queue/orchestrator-1".into(),
         start_key: "orch-1-1".into(),
         name: None,
+        exe_pin: None,
     };
     golden("orchestrator_create_req", &req);
+    let pinned = OrchestratorCreateReq {
+        exe_pin: Some(ExePin {
+            path: "/usr/local/bin/claude".into(),
+            sha256: "e".repeat(64),
+        }),
+        ..req.clone()
+    };
+    golden("orchestrator_create_req_pin", &pinned);
+    assert_eq!(pinned.as_run().exe_pin, pinned.exe_pin);
     let named = OrchestratorCreateReq {
         name: Some("orchestrator".into()),
         ..req

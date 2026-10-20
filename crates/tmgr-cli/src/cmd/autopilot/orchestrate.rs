@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
-use tmgr_ipc::api::{caps, OrchestratorCreateReq, RunStatus, SessionInfo, StateKind};
+use tmgr_ipc::api::{caps, ExePin, OrchestratorCreateReq, RunStatus, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 
 pub const INPUT_FILE: &str = "orchestrator-input.json";
@@ -573,6 +573,7 @@ pub fn read_plan(dir: &Path) -> Result<Vec<u8>> {
 
 pub trait OrchRunner {
     fn supports_orchestrator(&self) -> bool;
+    fn supports_exe_pin(&self) -> bool;
     fn create_orchestrator(&mut self, req: OrchestratorCreateReq) -> io::Result<SessionInfo>;
     fn run_status(&mut self, id: &str) -> io::Result<RunStatus>;
 }
@@ -583,6 +584,10 @@ impl OrchRunner for Client {
             .caps
             .iter()
             .any(|c| c == caps::ORCHESTRATOR_V1)
+    }
+
+    fn supports_exe_pin(&self) -> bool {
+        self.welcome().caps.iter().any(|c| c == caps::EXE_PIN_V1)
     }
 
     fn create_orchestrator(&mut self, req: OrchestratorCreateReq) -> io::Result<SessionInfo> {
@@ -605,6 +610,7 @@ pub fn start(
     profile: &str,
     dir: &Path,
     start_key: &str,
+    exe_pin: Option<ExePin>,
 ) -> Result<String> {
     if !client.supports_orchestrator() {
         return Err(Error::new(
@@ -623,6 +629,7 @@ pub fn start(
             .into(),
         start_key: start_key.into(),
         name: None,
+        exe_pin: exe_pin.filter(|_| client.supports_exe_pin()),
     };
     client
         .create_orchestrator(req)
@@ -637,6 +644,18 @@ pub fn start(
 
 fn answered_not_found(e: &io::Error) -> bool {
     e.kind() == io::ErrorKind::Other && e.to_string().starts_with("not_found: ")
+}
+
+pub fn launch_pin(profile: &str) -> Option<ExePin> {
+    let dir = tmgr_runner::profile::user_dir();
+    let (set, _) = tmgr_runner::profile::ProfileSet::load(dir.as_deref());
+    let argv = tmgr_runner::orchestrator::argv(set.get(profile)?).ok()?;
+    let exe = tmgr_queue::rules::resolve_exe(&argv[0]).ok()?;
+    let sha256 = tmgr_queue::rules::file_sha256(&exe).ok()?;
+    Some(ExePin {
+        path: exe.to_string_lossy().into_owned(),
+        sha256,
+    })
 }
 
 pub fn poll(client: &mut impl OrchRunner, run_id: &str) -> Result<Poll> {
@@ -1096,6 +1115,7 @@ mod tests {
 
     struct Fake {
         caps: bool,
+        pin_caps: bool,
         reply: io::Result<SessionInfo>,
         status: Vec<io::Result<RunStatus>>,
         seen: Vec<OrchestratorCreateReq>,
@@ -1116,6 +1136,9 @@ mod tests {
     impl OrchRunner for Fake {
         fn supports_orchestrator(&self) -> bool {
             self.caps
+        }
+        fn supports_exe_pin(&self) -> bool {
+            self.pin_caps
         }
         fn create_orchestrator(&mut self, req: OrchestratorCreateReq) -> io::Result<SessionInfo> {
             self.seen.push(req);
@@ -1141,6 +1164,7 @@ mod tests {
     fn fake(status: Vec<io::Result<RunStatus>>) -> Fake {
         Fake {
             caps: true,
+            pin_caps: true,
             reply: Ok(info()),
             status,
             seen: Vec::new(),
@@ -1155,6 +1179,7 @@ mod tests {
             "claude-code",
             Path::new("/w/orchestrator-n1"),
             "orch-1-1",
+            None,
         )
         .unwrap();
         assert_eq!(id, "s_abcdefghij");
@@ -1165,11 +1190,37 @@ mod tests {
                 cwd: "/w/orchestrator-n1".into(),
                 start_key: "orch-1-1".into(),
                 name: None,
+                exe_pin: None,
             }]
         );
+        let pin = ExePin {
+            path: "/bin/claude".into(),
+            sha256: "e".repeat(64),
+        };
+        let mut pinned = fake(vec![]);
+        start(
+            &mut pinned,
+            "claude-code",
+            Path::new("/w"),
+            "k",
+            Some(pin.clone()),
+        )
+        .unwrap();
+        assert_eq!(pinned.seen[0].exe_pin, Some(pin.clone()));
+        let mut no_pin_cap = fake(vec![]);
+        no_pin_cap.pin_caps = false;
+        start(
+            &mut no_pin_cap,
+            "claude-code",
+            Path::new("/w"),
+            "k",
+            Some(pin),
+        )
+        .unwrap();
+        assert_eq!(no_pin_cap.seen[0].exe_pin, None);
         let mut old = fake(vec![]);
         old.caps = false;
-        let e = start(&mut old, "claude-code", Path::new("/w"), "k").unwrap_err();
+        let e = start(&mut old, "claude-code", Path::new("/w"), "k", None).unwrap_err();
         assert!(
             e.message.contains("older than this tmgr") && old.seen.is_empty(),
             "{}",
@@ -1177,7 +1228,7 @@ mod tests {
         );
         let mut refused = fake(vec![]);
         refused.reply = Err(io::Error::other("forbidden: no"));
-        assert!(start(&mut refused, "codex", Path::new("/w"), "k")
+        assert!(start(&mut refused, "codex", Path::new("/w"), "k", None)
             .unwrap_err()
             .message
             .contains("forbidden: no"));

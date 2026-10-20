@@ -5890,12 +5890,22 @@ fn orch_fx() -> Harness {
     h
 }
 
+fn orch_dir(h: &Harness) -> PathBuf {
+    let queue = h.tmp.path().join("app-worktrees/queue");
+    let dir = queue.join("orchestrator-1");
+    fs::create_dir_all(&dir).unwrap();
+    fs::set_permissions(&queue, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+    dir
+}
+
 fn orch_req(h: &Harness, key: &str) -> OrchestratorCreateReq {
     OrchestratorCreateReq {
         profile: "claude-code".into(),
-        cwd: h.work.display().to_string(),
+        cwd: orch_dir(h).display().to_string(),
         start_key: key.into(),
         name: None,
+        exe_pin: None,
     }
 }
 
@@ -5979,7 +5989,7 @@ fn orchestrator_create_runs_the_fixed_command_restricted_without_a_restore_recor
     let mut c = h.client();
     let info = c.create_orchestrator(orch_req(&h, "orch-1")).unwrap();
     let args = {
-        let path = h.work.join("args.txt");
+        let path = orch_dir(&h).join("args.txt");
         wait_for("agent arguments", || path.exists());
         fs::read_to_string(path).unwrap()
     };
@@ -5998,7 +6008,7 @@ fn orchestrator_create_runs_the_fixed_command_restricted_without_a_restore_recor
     assert_eq!(info.profile.as_deref(), Some("claude-code"));
     assert_eq!(info.permission_mode, None);
     assert!(info.bundle_sha256.is_none() && info.task.is_none());
-    let path = h.work.join("env.txt");
+    let path = orch_dir(&h).join("env.txt");
     wait_for("agent env", || path.exists());
     thread::sleep(Duration::from_millis(200));
     let env = fs::read_to_string(path).unwrap();
@@ -6030,5 +6040,67 @@ fn orchestrator_create_runs_the_fixed_command_restricted_without_a_restore_recor
     let e = err_text(c.create_run(same_key));
     assert!(e.starts_with("busy: "), "{e}");
     assert_eq!(c.list().unwrap().len(), 1);
+    let _ = c.kill(&info.id, "kill");
+}
+
+#[test]
+fn orchestrator_create_accepts_only_a_private_orchestrator_folder() {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let mut c = h.client();
+    let good = orch_dir(&h);
+    let queue = good.parent().unwrap().to_path_buf();
+    let loose = queue.join("orchestrator-2");
+    fs::create_dir(&loose).unwrap();
+    fs::set_permissions(&loose, fs::Permissions::from_mode(0o755)).unwrap();
+    let misnamed = queue.join("other-3");
+    fs::create_dir(&misnamed).unwrap();
+    fs::set_permissions(&misnamed, fs::Permissions::from_mode(0o700)).unwrap();
+    let outside = h.tmp.path().join("plain-worktrees/orchestrator-4");
+    fs::create_dir_all(&outside).unwrap();
+    fs::set_permissions(&outside, fs::Permissions::from_mode(0o700)).unwrap();
+    for (i, cwd) in [h.work.clone(), loose, misnamed, outside]
+        .into_iter()
+        .enumerate()
+    {
+        let mut req = orch_req(&h, &format!("k{i}"));
+        req.cwd = cwd.display().to_string();
+        let e = err_text(c.create_orchestrator(req));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("orchestrator folder"),
+            "{cwd:?}: {e}"
+        );
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_checks_the_executable_pin() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let mut c = h.client();
+    let claude = fs::canonicalize(h.tmp.path().join("bin/claude")).unwrap();
+    let pin = |sha: String| ExePin {
+        path: claude.display().to_string(),
+        sha256: sha,
+    };
+    let mut wrong = orch_req(&h, "pin-1");
+    wrong.exe_pin = Some(pin("0".repeat(64)));
+    let e = err_text(c.create_orchestrator(wrong));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    let mut malformed = orch_req(&h, "pin-2");
+    malformed.exe_pin = Some(pin("XYZ".into()));
+    let e = err_text(c.create_orchestrator(malformed));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(c.list().unwrap().is_empty());
+    let mut right = orch_req(&h, "pin-3");
+    right.exe_pin = Some(pin(tmgr_ipc::api::sha256_hex(&fs::read(&claude).unwrap())));
+    let info = c.create_orchestrator(right).unwrap();
     let _ = c.kill(&info.id, "kill");
 }

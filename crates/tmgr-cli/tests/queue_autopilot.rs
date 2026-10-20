@@ -90,6 +90,17 @@ fn an_agent_session_cannot_start_or_resume() {
             vec!["queue", "autopilot"],
             vec!["--yes", "queue", "autopilot", "start"],
             vec!["queue", "autopilot", "resume"],
+            vec![
+                "--yes",
+                "queue",
+                "autopilot",
+                "start",
+                "--dry-run",
+                "--team-mode",
+                "orchestrator",
+                "--profile",
+                "claude-code",
+            ],
         ] {
             let out = fx.run(&args, &[(var, "x")]);
             assert_eq!(

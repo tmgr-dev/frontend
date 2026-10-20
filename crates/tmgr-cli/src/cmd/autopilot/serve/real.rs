@@ -295,7 +295,15 @@ impl Planner for RealPlanner<'_> {
         let dir = orchestrate::prepare_dir(&root, nonce)?;
         orchestrate::write_files(&dir, input)?;
         let key = format!("orch-{nonce}");
-        let run = self.via(|c| orchestrate::start(c, ORCHESTRATOR_PROFILE, &dir, &key))?;
+        let run = self.via(|c| {
+            orchestrate::start(
+                c,
+                ORCHESTRATOR_PROFILE,
+                &dir,
+                &key,
+                orchestrate::launch_pin(ORCHESTRATOR_PROFILE),
+            )
+        })?;
         Ok((run, dir))
     }
 
