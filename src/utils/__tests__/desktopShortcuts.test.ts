@@ -146,6 +146,30 @@ describe('off macOS', () => {
 	});
 });
 
+describe('parseDeepLink open', () => {
+	it.each([
+		['tmgr://open', null],
+		['tmgr://open/', null],
+		['tmgr://open?path=%2Fws%2Fboard', '/ws/board'],
+		['tmgr://open?path=/ws/board', '/ws/board'],
+		['tmgr://open?path=', ''],
+	])('parses %s', (url, path) => {
+		expect(parseDeepLink(url)).toEqual({ type: 'open', path });
+	});
+
+	it.each([
+		'tmgr://open?path=/a&path=/b',
+		'tmgr://open?path=/a&x=1',
+		'tmgr://open?x=1',
+		'tmgr://open?path=/a#frag',
+		'tmgr://open#frag',
+		'tmgr://open?path=%E0%A4%A',
+		'tmgr://openx',
+	])('rejects %s', (url) => {
+		expect(parseDeepLink(url)).toBeNull();
+	});
+});
+
 describe('parseDeepLink pages', () => {
 	it('parses workspace and slug', () => {
 		expect(parseDeepLink('tmgr://page/work/ivan-petrov-a1b2')).toEqual({

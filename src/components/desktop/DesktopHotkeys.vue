@@ -71,6 +71,7 @@
 	} from '@/utils/desktopShortcuts';
 	import { loadRecent } from '@/utils/desktopTray';
 	import { showSurface } from '@/utils/moduleSurfaces';
+	import { openAppPath } from '@/utils/openDesktopLink';
 	import { openPageLink } from '@/utils/openPageLink';
 	import { openTaskLink, taskLinkFailureMessage } from '@/utils/openTaskLink';
 	import { focusPageWindow } from '@/utils/pageWindow';
@@ -327,6 +328,22 @@
 							variant: 'destructive',
 						});
 					}
+					return;
+				}
+				if (link.type === 'open') {
+					await openAppPath(link, {
+						resolve: (p) => router.resolve(p),
+						loadWorkspaces: async () => {
+							if (!store.state.workspaces?.length) {
+								store.commit('setWorkspaces', await getWorkspaces());
+							}
+							return store.state.workspaces || [];
+						},
+						isLocalOnly: () => store.getters.isLocalOnly,
+						showMain: showMainWindow,
+						navigate: (path) => router.push(path),
+						notify: (title) => toast({ title, variant: 'destructive' }),
+					});
 					return;
 				}
 				if (link.type === 'page') {

@@ -209,7 +209,14 @@ const mutations = {
 		state.localProfile = profile ?? null;
 	},
 	setToken(state, token) {
-		if ((state.token == null) !== (token == null)) state.sessionGeneration++;
+		if ((state.token == null) !== (token == null)) {
+			state.sessionGeneration++;
+			try {
+				localStorage.removeItem('tmgr:desktop-bar-dismissed');
+			} catch {
+				/* storage unavailable */
+			}
+		}
 		if (token == null) {
 			disconnectRealtime();
 			state.pusher?.pusherBeamsClient?.stop?.();

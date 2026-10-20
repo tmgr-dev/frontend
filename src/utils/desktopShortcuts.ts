@@ -189,6 +189,7 @@ export type DeepLink =
 	| AuthCallback
 	| { type: 'task'; taskId: number; workspaceCode?: string }
 	| { type: 'page'; workspaceCode: string; slug: string }
+	| { type: 'open'; path: string | null }
 	| {
 			type: 'view';
 			pluginId: string;
@@ -244,6 +245,8 @@ const PLUGIN_LINK =
 export const PAGE_LINK =
 	/^tmgr:\/\/page\/([A-Za-z0-9_-]{1,64})\/([A-Za-z0-9_-]{1,120})\/?$/;
 
+const OPEN_LINK = /^tmgr:\/\/open\/?(?:\?path=([^&#]*))?$/;
+
 export const parseDeepLink = (url: string): DeepLink | null => {
 	const trimmed = url.trim();
 	const auth = parseAuthCallback(trimmed);
@@ -258,6 +261,16 @@ export const parseDeepLink = (url: string): DeepLink | null => {
 	const pageMatch = PAGE_LINK.exec(trimmed);
 	if (pageMatch) {
 		return { type: 'page', workspaceCode: pageMatch[1], slug: pageMatch[2] };
+	}
+
+	const openMatch = OPEN_LINK.exec(trimmed);
+	if (openMatch) {
+		if (openMatch[1] === undefined) return { type: 'open', path: null };
+		try {
+			return { type: 'open', path: decodeURIComponent(openMatch[1]) };
+		} catch {
+			return null;
+		}
 	}
 
 	const match = PLUGIN_LINK.exec(trimmed);

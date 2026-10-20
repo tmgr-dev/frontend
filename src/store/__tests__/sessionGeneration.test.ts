@@ -229,3 +229,35 @@ test.each(['refresh', 'session'])(
 		else expect(store.commit).not.toHaveBeenCalled();
 	},
 );
+
+test('login state flips clear the desktop bar dismissal, token rotation does not', () => {
+	const removeItem = jest.fn();
+	const { config } = fixture(
+		{},
+		{ getItem: () => null, setItem: jest.fn(), removeItem },
+	);
+	const { state, mutations } = config;
+	mutations.setToken(state, { token: 'first' });
+	expect(removeItem).toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
+	removeItem.mockClear();
+	mutations.setToken(state, { token: 'rotated' });
+	expect(removeItem).not.toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
+	mutations.setToken(state, null);
+	expect(removeItem).toHaveBeenCalledWith('tmgr:desktop-bar-dismissed');
+});
+
+test('setToken survives storage that throws on the dismissal reset', () => {
+	const { config } = fixture(
+		{},
+		{
+			getItem: () => null,
+			setItem: jest.fn(),
+			removeItem: () => {
+				throw new Error('blocked');
+			},
+		},
+	);
+	expect(() =>
+		config.mutations.setToken(config.state, { token: 'x' }),
+	).not.toThrow();
+});

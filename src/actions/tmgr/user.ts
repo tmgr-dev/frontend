@@ -2,6 +2,7 @@ import { FormSetting, Setting } from '@/actions/tmgr/settings';
 import $axios from '@/plugins/axios';
 import store from '@/store';
 import { pickThemeFromSettings } from '@/theme/reconcile';
+import { isDesktopApp } from '@/utils/desktop';
 import requestCache from '@/utils/requestCache';
 import { parseStoredToken, TOKEN_STORAGE_KEY } from '@/utils/tokenSync';
 import { withoutCurrentWorkspaceEntry } from '@/utils/workspaceContext';
@@ -16,6 +17,7 @@ export interface User {
 	name: string;
 	email_verified?: boolean;
 	email_verified_at?: string | null;
+	desktop_app_seen_at?: string | null;
 	settings: FormSetting[];
 }
 
@@ -27,7 +29,12 @@ export const getUser = async () => {
 		async () => {
 			const {
 				data: { data: user },
-			} = await $axios.get('user');
+			} = await $axios.get(
+				'user',
+				isDesktopApp()
+					? { headers: { 'X-TMGR-Client': 'desktop' } }
+					: undefined,
+			);
 
 			return user;
 		},
