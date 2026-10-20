@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.54 — 2026-10-20
+
+- After you install an update, TMGR reopens in front of other apps with its window focused, also when it was started at login. This takes effect from the next update after this one.
+- Category page: "Create task" moved into the header next to "+ Subcategory"; the empty row above the task list and the broken status filter and select-all button are gone.
+
 ## 0.9.53 — 2026-10-20
 
 - Categories: the categories tree now lives in the sidebar, with a filter and "+" to create one. Each category has one page with Tasks, Subcategories and Settings tabs; the separate categories page with the list and the settings pane is gone.
