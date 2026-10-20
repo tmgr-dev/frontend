@@ -4,7 +4,6 @@
 
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import UserAvatar from '@/components/general/UserAvatar.vue';
-	import { isRunnerSupported } from '@/runner/api';
 	import {
 		hasNativeTitleBar,
 		isDesktopApp,
@@ -12,6 +11,7 @@
 	} from '@/utils/desktop';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
+	import type { PageSummary } from '@/actions/tmgr/pages';
 	import {
 		getUser,
 		getUserSettings,
@@ -88,45 +88,37 @@
 	import HelpMenu from '@/tours/ui/HelpMenu.vue';
 	import { useTours } from '@/tours/useTours';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
-	import { pagesAvailable } from '@/utils/pagesTree';
+	import { pagesAvailable, pageUrl } from '@/utils/pagesTree';
 	import { requestCache } from '@/utils/requestCache';
+	import { useMediaQuery } from '@vueuse/core';
 	import {
 		ArchiveIcon,
 		ArrowLeft,
 		ArrowRight,
 		BadgeCheck,
 		BarChart3,
-		Bell,
-		Bot,
-		Cable,
 		ChevronsUpDown,
 		ClipboardListIcon,
 		CloudUpload,
 		FileDown,
-		FlaskConical,
+		FilePlus,
 		FolderOpen,
 		Gauge,
 		HardDrive,
 		Inbox,
-		Info,
-		Keyboard,
 		LayoutDashboard,
 		LifeBuoy,
 		LogOut,
 		Package,
 		PackageOpen,
-		Palette,
 		PaperclipIcon,
+		Pin,
 		Plug,
 		Plus,
 		Settings2,
-		ShieldCheck,
-		Sliders,
-		Smartphone,
 		Sparkles,
 		SquareKanban,
 		UserPlus,
-		VenetianMask,
 		Waypoints,
 	} from 'lucide-vue-next';
 	import {
@@ -160,11 +152,13 @@
 	const navHistory = useNavHistory();
 	const { canBack, canForward } = navHistory;
 	const isLocalOnly = computed(() => store.getters.isLocalOnly === true);
-	const hasLocalWorkspaces = computed(
-		() =>
-			isDesktop &&
-			(isLocalOnly.value || workspaces.value.some((w: any) => w.is_local)),
+	const isMobile = useMediaQuery('(max-width: 768px)');
+	const showAskAi = computed(
+		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
 	);
+	const pinnedPages = ref<PageSummary[]>([]);
+	const NAV_ACTIVE =
+		'[&.router-link-active]:bg-sidebar-primary/10 [&.router-link-active]:font-medium dark:[&.router-link-active]:bg-sidebar-primary/15 [&.router-link-active>svg]:text-sidebar-primary';
 	const showWindowControls = isDesktop && !hasNativeTitleBar();
 	const revealLabel = revealInFileManagerLabel();
 	const pagesEnabled = computed(() =>
@@ -752,16 +746,73 @@
 							</DropdownMenu>
 						</SidebarMenuItem>
 					</SidebarMenu>
+					<SidebarMenu v-if="!isMobile" data-testid="sidebar-quick-actions">
+						<SidebarMenuItem v-if="activeWorkspace?.code">
+							<GlobalSearch
+								variant="sidebar"
+								:workspace-code="activeWorkspace.code"
+								:pages-enabled="pagesEnabled"
+							/>
+						</SidebarMenuItem>
+						<SidebarMenuItem
+							class="grid gap-2 group-data-[collapsible=icon]:grid-cols-1 group-data-[collapsible=icon]:gap-1"
+							:class="showAskAi ? 'grid-cols-2' : 'grid-cols-1'"
+						>
+							<SidebarMenuButton
+								variant="outline"
+								tooltip="New task"
+								data-tour="nav.create-task"
+								class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
+								@click="store.commit('setShowCreatingTaskModal')"
+							>
+								<FilePlus />
+								<span>New task</span>
+							</SidebarMenuButton>
+							<SidebarMenuButton
+								v-if="showAskAi"
+								variant="outline"
+								tooltip="Ask AI"
+								data-tour="nav.ask-ai"
+								:is-active="!!store.state.aiPanelOpen"
+								class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
+								@click="store.commit('toggleAiPanel')"
+							>
+								<Sparkles />
+								<span>Ask AI</span>
+							</SidebarMenuButton>
+						</SidebarMenuItem>
+					</SidebarMenu>
 				</SidebarHeader>
 
 				<SidebarContent>
+					<SidebarGroup
+						v-if="pagesEnabled && pinnedPages.length && activeWorkspace?.code"
+						data-testid="sidebar-pinned"
+					>
+						<SidebarGroupLabel>Pinned</SidebarGroupLabel>
+						<SidebarMenu>
+							<SidebarMenuItem v-for="page in pinnedPages" :key="page.id">
+								<SidebarMenuButton as-child :tooltip="page.title">
+									<router-link
+										:to="pageUrl(activeWorkspace.code, page.slug)"
+										:class="NAV_ACTIVE"
+									>
+										<Pin />
+										<span>{{ page.title }}</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						</SidebarMenu>
+					</SidebarGroup>
+
 					<SidebarGroup>
-						<SidebarGroupLabel>TMGR.DEV</SidebarGroupLabel>
+						<SidebarGroupLabel>Main</SidebarGroupLabel>
 
 						<SidebarMenu>
 							<SidebarMenuItem v-if="isFeatureEnabled('dashboard')">
 								<SidebarMenuButton as-child>
 									<router-link
+										:class="NAV_ACTIVE"
 										:to="
 											activeWorkspace?.code
 												? `/${activeWorkspace.code}/dashboard`
@@ -777,6 +828,7 @@
 							<SidebarMenuItem>
 								<SidebarMenuButton as-child>
 									<router-link
+										:class="NAV_ACTIVE"
 										:to="
 											activeWorkspace?.code
 												? `/${activeWorkspace.code}/list`
@@ -792,6 +844,7 @@
 							<SidebarMenuItem v-if="showSurface('board.nav')">
 								<SidebarMenuButton as-child>
 									<router-link
+										:class="NAV_ACTIVE"
 										:to="
 											activeWorkspace?.code
 												? `/${activeWorkspace.code}/board`
@@ -815,6 +868,7 @@
 								>
 									<router-link
 										to="/routines"
+										:class="NAV_ACTIVE"
 										:title="
 											activeWorkspace?.is_local
 												? 'Stored only on this device — not synced'
@@ -838,59 +892,12 @@
 									</router-link>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
-						</SidebarMenu>
-					</SidebarGroup>
 
-					<SidebarCategoriesSection
-						v-if="isFeatureEnabled('categories') && activeWorkspace?.code"
-						:workspace-code="activeWorkspace.code"
-					/>
-
-					<SidebarPagesSection
-						v-if="pagesEnabled && activeWorkspace?.code"
-						:workspace-id="Number(activeWorkspace.id)"
-						:workspace-code="activeWorkspace.code"
-					/>
-
-					<SidebarGroup>
-						<SidebarGroupLabel>More</SidebarGroupLabel>
-
-						<SidebarMenu>
-							<SidebarMenuItem
-								v-if="activeWorkspace?.code && showSurface('files.nav')"
-							>
-								<SidebarMenuButton as-child>
-									<router-link :to="`/${activeWorkspace.code}/files`">
-										<PaperclipIcon />
-										<span>Files</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem
-								v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
-							>
-								<SidebarMenuButton as-child>
-									<router-link :to="`/${activeWorkspace.code}/map`">
-										<Waypoints />
-										<span>Map</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-							<SidebarMenuItem v-if="activeWorkspace?.code && !hubHidden">
-								<SidebarMenuButton as-child>
-									<router-link
-										data-tour="nav.getting-started"
-										:to="`/${activeWorkspace.code}/getting-started`"
-									>
-										<LifeBuoy />
-										<span>Getting started</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
 							<SidebarMenuItem>
 								<SidebarMenuButton as-child>
 									<router-link
 										data-tour="nav.archive"
+										:class="NAV_ACTIVE"
 										:to="
 											activeWorkspace?.code
 												? `/${activeWorkspace.code}/archive`
@@ -905,46 +912,116 @@
 						</SidebarMenu>
 					</SidebarGroup>
 
-					<SidebarGroup v-if="pluginPages.length && activeWorkspace?.code">
-						<SidebarGroupLabel>Plugins</SidebarGroupLabel>
+					<SidebarCategoriesSection
+						v-if="isFeatureEnabled('categories') && activeWorkspace?.code"
+						:workspace-code="activeWorkspace.code"
+					/>
+
+					<SidebarPagesSection
+						v-if="pagesEnabled && activeWorkspace?.code"
+						:workspace-id="Number(activeWorkspace.id)"
+						:workspace-code="activeWorkspace.code"
+						@pinned="pinnedPages = $event"
+					/>
+
+					<SidebarGroup>
+						<SidebarGroupLabel>Tools</SidebarGroupLabel>
+
 						<SidebarMenu>
-							<SidebarMenuItem v-for="page in pluginPages" :key="page.key">
-								<SidebarMenuButton
-									as-child
-									:class="
-										page.badge && 'pr-11 group-data-[collapsible=icon]:!pr-2'
-									"
-								>
-									<router-link
-										:to="`/${activeWorkspace.code}/plugins/${page.key}`"
-										:aria-label="viewBadgeAriaLabel(page.title, page.badge)"
-									>
-										<span class="relative flex shrink-0">
-											<Plug />
-											<span
-												v-if="page.badge"
-												aria-hidden="true"
-												data-testid="plugin-view-badge-dot"
-												:class="[
-													'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
-													BADGE_DOT_CLASS[page.badge.tone],
-												]"
-											/>
-										</span>
-										<span>{{ page.title }}</span>
+							<SidebarMenuItem>
+								<SidebarMenuButton as-child>
+									<router-link to="/stats" :class="NAV_ACTIVE">
+										<BarChart3 />
+										<span>Statistics</span>
 									</router-link>
 								</SidebarMenuButton>
-								<SidebarMenuBadge
-									v-if="page.badge"
-									aria-hidden="true"
-									data-testid="plugin-view-badge"
-									:class="[
-										'rounded-full px-1.5 text-2xs font-semibold',
-										BADGE_TONE_CLASS[page.badge.tone],
-									]"
-								>
-									{{ viewBadgeLabel(page.badge) }}
-								</SidebarMenuBadge>
+							</SidebarMenuItem>
+							<SidebarMenuItem v-if="isDesktop">
+								<SidebarMenuButton as-child>
+									<router-link to="/ai-usage" :class="NAV_ACTIVE">
+										<Gauge />
+										<span>AI usage</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && showSurface('files.nav')"
+							>
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/files`"
+										:class="NAV_ACTIVE"
+									>
+										<PaperclipIcon />
+										<span>Files</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<SidebarMenuItem
+								v-if="activeWorkspace?.code && isFeatureEnabled('graph')"
+							>
+								<SidebarMenuButton as-child>
+									<router-link
+										:to="`/${activeWorkspace.code}/map`"
+										:class="NAV_ACTIVE"
+									>
+										<Waypoints />
+										<span>Map</span>
+									</router-link>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+							<template v-if="activeWorkspace?.code">
+								<SidebarMenuItem v-for="page in pluginPages" :key="page.key">
+									<SidebarMenuButton
+										as-child
+										:class="
+											page.badge && 'pr-11 group-data-[collapsible=icon]:!pr-2'
+										"
+									>
+										<router-link
+											:to="`/${activeWorkspace.code}/plugins/${page.key}`"
+											:class="NAV_ACTIVE"
+											:aria-label="viewBadgeAriaLabel(page.title, page.badge)"
+										>
+											<span class="relative flex shrink-0">
+												<Plug />
+												<span
+													v-if="page.badge"
+													aria-hidden="true"
+													data-testid="plugin-view-badge-dot"
+													:class="[
+														'absolute -right-0.5 -top-0.5 hidden size-2 rounded-full ring-2 ring-sidebar group-data-[collapsible=icon]:block',
+														BADGE_DOT_CLASS[page.badge.tone],
+													]"
+												/>
+											</span>
+											<span>{{ page.title }}</span>
+										</router-link>
+									</SidebarMenuButton>
+									<SidebarMenuBadge
+										v-if="page.badge"
+										aria-hidden="true"
+										data-testid="plugin-view-badge"
+										:class="[
+											'rounded-full px-1.5 text-2xs font-semibold',
+											BADGE_TONE_CLASS[page.badge.tone],
+										]"
+									>
+										{{ viewBadgeLabel(page.badge) }}
+									</SidebarMenuBadge>
+								</SidebarMenuItem>
+							</template>
+							<SidebarMenuItem v-if="activeWorkspace?.code && !hubHidden">
+								<SidebarMenuButton as-child>
+									<router-link
+										data-tour="nav.getting-started"
+										:to="`/${activeWorkspace.code}/getting-started`"
+										:class="NAV_ACTIVE"
+									>
+										<LifeBuoy />
+										<span>Getting started</span>
+									</router-link>
+								</SidebarMenuButton>
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</SidebarGroup>
@@ -1038,88 +1115,11 @@
 											Profile
 										</DropdownMenuItem>
 										<DropdownMenuItem
-											v-if="!isLocalOnly"
-											@click="$router.push('/settings?tab=device')"
-											class="cursor-pointer"
-										>
-											<Cable />
-											Smart Devices
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="!isLocalOnly"
-											@click="$router.push('/settings?tab=notification')"
-											class="cursor-pointer"
-										>
-											<Bell />
-											Notifications
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/settings/workspaces')"
+											@click="$router.push('/settings/sections')"
 											class="cursor-pointer"
 										>
 											<Settings2 />
-											Workspace Settings
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/settings/modules')"
-											class="cursor-pointer"
-										>
-											<Sliders />
-											Modules
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="isFeatureEnabled('personas')"
-											@click="$router.push('/settings/personas')"
-											class="cursor-pointer"
-										>
-											<VenetianMask />
-											Personas
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="!isLocalOnly && isFeatureEnabled('alerts')"
-											@click="$router.push('/settings/agent-notifications')"
-											class="cursor-pointer"
-										>
-											<Smartphone />
-											Agent notifications
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="isDesktop"
-											@click="$router.push('/settings/plugins')"
-											class="cursor-pointer"
-										>
-											<Plug />
-											Plugins
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/stats')"
-											class="cursor-pointer"
-										>
-											<BarChart3 />
-											Statistics
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="isDesktop"
-											@click="$router.push('/ai-usage')"
-											class="cursor-pointer"
-										>
-											<Gauge />
-											AI usage
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/settings?tab=theme')"
-											class="cursor-pointer"
-										>
-											<Palette />
-											Theme
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="hasLocalWorkspaces"
-											@click="$router.push('/settings?tab=data')"
-											class="cursor-pointer"
-										>
-											<HardDrive />
-											Local data
+											Settings
 										</DropdownMenuItem>
 										<DropdownMenuItem
 											v-if="activeWorkspace?.code && hubHidden"
@@ -1131,44 +1131,6 @@
 										>
 											<LifeBuoy />
 											Getting started
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="!isLocalOnly"
-											@click="$router.push('/settings?tab=agent-work')"
-											class="cursor-pointer"
-										>
-											<Bot />
-											Agent work
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/settings?tab=privacy')"
-											class="cursor-pointer"
-										>
-											<ShieldCheck />
-											Privacy
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											@click="$router.push('/settings?tab=about')"
-											class="cursor-pointer"
-										>
-											<Info />
-											About
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="isDesktop"
-											@click="$router.push('/settings?tab=desktop')"
-											class="cursor-pointer"
-										>
-											<Keyboard />
-											Shortcuts
-										</DropdownMenuItem>
-										<DropdownMenuItem
-											v-if="isRunnerSupported()"
-											@click="$router.push('/settings?tab=experimental')"
-											class="cursor-pointer"
-										>
-											<FlaskConical />
-											Experimental
 										</DropdownMenuItem>
 										<DropdownMenuItem>
 											<DarkMode />
@@ -1241,9 +1203,13 @@
 								<ArrowRight class="h-4 w-4" />
 							</button>
 						</div>
-						<AddTaskModalTrigger class="-ml-1" data-tour="nav.create-task" />
+						<AddTaskModalTrigger
+							v-if="isMobile"
+							class="-ml-1"
+							data-tour="nav.create-task"
+						/>
 						<GlobalSearch
-							v-if="activeWorkspace?.code"
+							v-if="isMobile && activeWorkspace?.code"
 							:workspace-code="activeWorkspace.code"
 							:pages-enabled="pagesEnabled"
 						/>
@@ -1292,9 +1258,7 @@
 						></div>
 						<div data-tauri-drag-region class="flex items-center gap-2">
 							<button
-								v-if="
-									!isDesktop && !isLocalOnly && isFeatureEnabled('ai.assistant')
-								"
+								v-if="isMobile && showAskAi"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,

@@ -54,8 +54,9 @@ export const startTours: TourDef[] = [
 				anchor: 'nav.user-menu',
 				mobileAnchor: 'nav.menu-button',
 				title: 'Your menu',
-				body: 'Settings, Modules, Personas and theme are in your menu.',
-				mobileBody: 'Open the menu for Settings, Modules, Personas and theme.',
+				body: 'Your profile, Settings and light or dark mode are in your menu.',
+				mobileBody:
+					'Open the menu for your profile, Settings and light or dark mode.',
 			},
 			{
 				id: 's5',
