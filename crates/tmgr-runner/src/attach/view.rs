@@ -15,6 +15,53 @@ pub struct SessionRow {
     pub name: String,
     pub state: State,
     pub age: String,
+    pub esc: bool,
+}
+
+impl SessionRow {
+    pub fn can_interrupt(&self) -> bool {
+        self.state.kind == StateKind::Working
+    }
+
+    pub fn interrupt_bytes(&self) -> &'static [u8] {
+        if self.esc {
+            b"\x1b"
+        } else {
+            b"\x03"
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Control {
+    Interrupt,
+    Stop,
+    Close,
+}
+
+pub const HEADER_MIN_WIDTH: u16 = 40;
+
+pub fn header_button(outer: Rect, ctl: Control) -> Option<u16> {
+    if outer.width < HEADER_MIN_WIDTH {
+        return None;
+    }
+    let base = outer.right().checked_sub(8)?;
+    Some(match ctl {
+        Control::Interrupt => base + 1,
+        Control::Stop => base + 3,
+        Control::Close => base + 5,
+    })
+}
+
+pub fn sidebar_button(area: Rect, ctl: Control) -> Option<u16> {
+    if area.width < 12 {
+        return None;
+    }
+    match ctl {
+        Control::Interrupt => None,
+        Control::Stop => area.right().checked_sub(5),
+        Control::Close => area.right().checked_sub(3),
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -58,6 +105,7 @@ pub enum RenameEdit {
 pub struct Confirm {
     pub session: String,
     pub name: String,
+    pub remove: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -138,6 +186,7 @@ impl ViewState {
                     self.confirm = Some(Confirm {
                         session: r.id.clone(),
                         name: r.name.clone(),
+                        remove: false,
                     });
                 }
                 None => {}
@@ -241,6 +290,16 @@ impl ViewState {
         if let Some(sb) = lay.sidebar {
             if contains(sb, col, row) {
                 let idx = usize::from(row - sb.y);
+                if let Some(r) = idx
+                    .checked_sub(1)
+                    .and_then(|i| self.sidebar_rows().get(i).copied())
+                {
+                    for ctl in [Control::Stop, Control::Close] {
+                        if sidebar_button(sb, ctl) == Some(col) {
+                            return Hit::Button(r.id.clone(), ctl);
+                        }
+                    }
+                }
                 return match idx
                     .checked_sub(1)
                     .and_then(|i| self.sidebar_rows().get(i).copied())
@@ -252,6 +311,13 @@ impl ViewState {
         }
         for p in &lay.panes {
             if contains(p.outer, col, row) {
+                if row == p.outer.y {
+                    for ctl in [Control::Interrupt, Control::Stop, Control::Close] {
+                        if header_button(p.outer, ctl) == Some(col) {
+                            return Hit::Button(p.session.clone(), ctl);
+                        }
+                    }
+                }
                 let Some(idx) = self.panes.iter().position(|id| *id == p.session) else {
                     return Hit::None;
                 };
@@ -260,6 +326,14 @@ impl ViewState {
             }
         }
         Hit::None
+    }
+
+    fn hover_key(&self, area: Rect) -> Option<Hit> {
+        let (c, r) = self.pointer?;
+        match self.hit(area, c, r) {
+            h @ (Hit::Button(..) | Hit::Session(_)) => Some(h),
+            _ => None,
+        }
     }
 
     pub fn paste_target(&self, area: Rect) -> usize {
@@ -284,7 +358,14 @@ impl ViewState {
     ) -> MouseOut {
         let mut out = MouseOut::default();
         let kind = ev.kind();
+        let before = self.hover_key(area);
         self.pointer = Some((ev.col, ev.row));
+        if self.hover_key(area) != before {
+            out.redraw = true;
+        }
+        if ev.is_left_press() && !matches!(self.hit(area, ev.col, ev.row), Hit::Button(..)) {
+            self.confirm = None;
+        }
         if self.help {
             if ev.is_left_press() {
                 self.help = false;
@@ -314,6 +395,12 @@ impl ViewState {
             }
         }
         match self.hit(area, ev.col, ev.row) {
+            Hit::Button(id, ctl) => {
+                if ev.is_left_press() {
+                    self.grab = Some(String::new());
+                    out.control = Some((id, ctl));
+                }
+            }
             Hit::Session(id) => {
                 if ev.is_left_press() {
                     self.select(&id);
@@ -535,10 +622,12 @@ pub struct PaneInfo {
 pub struct MouseOut {
     pub redraw: bool,
     pub forward: Option<(String, Vec<u8>)>,
+    pub control: Option<(String, Control)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Hit {
+    Button(String, Control),
     Session(String),
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,

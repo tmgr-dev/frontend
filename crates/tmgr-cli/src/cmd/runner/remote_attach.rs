@@ -365,6 +365,7 @@ pub fn run(link: &str, mut client: Client, target: &RunView, input: bool) -> Res
         name: target.name.clone(),
         state: target.state.clone(),
         age: age(target.state.since_ms),
+        esc: false,
     };
     let mut view = ViewState::new(vec![row], &format!("link:{link}"));
     view.panes = vec![target.id.clone()];
@@ -549,6 +550,7 @@ mod tests {
                 exit_code: None,
             },
             age: "1s".into(),
+            esc: false,
         };
         let mut view = ViewState::new(vec![row], "link:x");
         view.panes = vec![SID.into()];

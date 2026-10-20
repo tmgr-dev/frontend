@@ -5,6 +5,7 @@
 - `tmgr attach` takes the mouse: click a session in the sidebar to switch to it, click a pane in split view to focus it, scroll the wheel to read the history (scroll back down to return to live). If the agent turned on mouse reporting itself, clicks and the wheel are passed to it with coordinates relative to its pane. Select text with Shift-drag (Option-drag in iTerm2) or start with `--no-mouse`.
 - Dropping a file into a session pastes its path into the pane under the mouse, exactly as without tmgr (paths with spaces and image files included). Pastes now always reach the agent in one piece, and a path that a terminal types instead of pasting (Warp) is delivered as a paste so Claude Code attaches the image.
 - `Ctrl-] x` stops the focused session after a y/n question, `Ctrl-] X` removes an exited one, `Ctrl-] r` renames the focused session.
+- Pane headers and hovered sidebar rows in `tmgr attach` show small buttons: ⏸ interrupts the agent's current turn (Esc for Claude Code and Codex, Ctrl-C otherwise; disabled unless it is working), ■ stops the session after a y/n question, ✕ closes it (an exited session is removed, a running one asks "stop and remove?"). Narrow panes hide the buttons; the keys stay.
 - New `tmgr rename <session> <new-name>` (same id, the name must be unique, `--json`). The runner gets `sessions.rename`; restart it after the update so attached clients and the desktop list show new names.
 
 ## 1.0.14

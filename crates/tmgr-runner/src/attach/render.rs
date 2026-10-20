@@ -1,4 +1,7 @@
-use super::view::{layout, Layout, PaneRect, SessionRow, ViewState, WIDE_COLS};
+use super::view::{
+    header_button, layout, sidebar_button, Control, Layout, PaneRect, SessionRow, ViewState,
+    WIDE_COLS,
+};
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -131,6 +134,28 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
         }
         let (glyph, style) = badge(row);
         put(buf, area.x + 1, y, glyph, style, 1);
+        let hovered = st
+            .pointer
+            .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
+        if hovered {
+            let stop_x = sidebar_button(area, Control::Stop).unwrap_or(area.right());
+            let name_end = stop_x.saturating_sub(1);
+            put(
+                buf,
+                area.x + 3,
+                y,
+                &row.name,
+                Style::new(),
+                name_end.saturating_sub(area.x + 3),
+            );
+            for (ctl, glyph) in [(Control::Stop, "■"), (Control::Close, "✕")] {
+                if let Some(x) = sidebar_button(area, ctl) {
+                    let on = st.pointer.is_some_and(|p| p.0 == x);
+                    put(buf, x, y, glyph, button_style(on, true), 1);
+                }
+            }
+            continue;
+        }
         let age_w = row.age.width() as u16;
         let age_x = area.right().saturating_sub(age_w + 1).max(area.x + 3);
         let name_w = age_x.saturating_sub(area.x + 3).saturating_sub(1);
@@ -148,6 +173,38 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             dim(),
             area.right().saturating_sub(age_x),
         );
+    }
+}
+
+fn button_style(hover: bool, enabled: bool) -> Style {
+    match (hover, enabled) {
+        (true, true) => Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+        (_, true) => dim(),
+        (_, false) => dim().add_modifier(Modifier::DIM),
+    }
+}
+
+fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
+    let Some(row) = st.sessions.iter().find(|s| s.id == p.session) else {
+        return;
+    };
+    if let Some(x0) = header_button(p.outer, Control::Interrupt) {
+        buf.set_string(x0 - 1, p.outer.y, "       ", Style::new());
+    }
+    for (ctl, glyph) in [
+        (Control::Interrupt, "⏸"),
+        (Control::Stop, "■"),
+        (Control::Close, "✕"),
+    ] {
+        let Some(x) = header_button(p.outer, ctl) else {
+            return;
+        };
+        let enabled = match ctl {
+            Control::Interrupt => row.can_interrupt(),
+            _ => true,
+        };
+        let on = st.pointer == Some((x, p.outer.y));
+        put(buf, x, p.outer.y, glyph, button_style(on, enabled), 1);
     }
 }
 
@@ -195,6 +252,7 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
         .border_style(border)
         .title(pane_title(p, st))
         .render(p.outer, buf);
+    draw_header_buttons(buf, p, st);
     let inner = p.content();
     if inner.is_empty() {
         return;
@@ -284,6 +342,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
     let note = match (&st.rename, &st.confirm) {
         (Some(r), _) => Some(format!("rename: {}▏  Enter saves, Esc cancels", r.text)),
+        (None, Some(c)) if c.remove => Some(format!("stop and remove {}? y/n", c.name)),
         (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
         _ => st.notice.clone(),
     };
@@ -334,6 +393,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
 const MOUSE: &[(&str, &str)] = &[
     ("click", "pick a session or a pane"),
     ("wheel", "scroll the history of the pane"),
+    ("buttons", "header: pause, stop, close (hover)"),
     ("drop", "a dropped file is pasted there"),
     ("drag", "Shift-drag selects (iTerm2: Option)"),
 ];
