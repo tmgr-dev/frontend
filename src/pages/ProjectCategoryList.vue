@@ -790,23 +790,6 @@
 			</AsyncContent>
 		</div>
 		<div v-else>
-			<div class="flex flex-wrap items-center justify-end gap-2">
-				<div class="ml-auto flex items-center gap-2">
-					<Button
-						title="Create a task in this category"
-						@click="
-							$store.commit('createTaskInProjectCategoryId', {
-								projectCategoryId: Number(route.params.id),
-								statusId: null,
-							})
-						"
-					>
-						<span class="material-icons mr-1 text-lg">add_circle_outline</span>
-						Create task
-					</Button>
-				</div>
-			</div>
-
 			<AsyncContent
 				:pending="tasksPending"
 				:loaded="!isTasksFirstLoading"

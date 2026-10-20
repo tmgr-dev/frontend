@@ -98,17 +98,37 @@
 										{{ heading }}
 									</h1>
 								</div>
-								<Button
+								<div
 									v-if="state === 'view'"
-									type="button"
-									variant="outline"
-									size="sm"
-									class="border-line-strong bg-surface text-[13px] text-ink"
-									@click="goCreate(node.category.id)"
+									data-testid="category-header-actions"
+									class="flex flex-wrap items-center gap-2"
 								>
-									<Plus />
-									Subcategory
-								</Button>
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										class="border-line-strong bg-surface text-[13px] text-ink"
+										@click="goCreate(node.category.id)"
+									>
+										<Plus />
+										Subcategory
+									</Button>
+									<Button
+										type="button"
+										size="sm"
+										class="text-[13px]"
+										title="Create a task in this category"
+										@click="
+											$store.commit('createTaskInProjectCategoryId', {
+												projectCategoryId: node.category.id,
+												statusId: null,
+											})
+										"
+									>
+										<Plus />
+										Create task
+									</Button>
+								</div>
 							</header>
 							<nav
 								v-if="state === 'view'"
