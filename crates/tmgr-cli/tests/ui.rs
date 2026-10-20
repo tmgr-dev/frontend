@@ -2,6 +2,8 @@
 
 use assert_cmd::Command;
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtySize};
+use rusqlite::Connection;
+use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -252,6 +254,177 @@ fn guarded_command_through_the_menu_keeps_its_typed_confirmation() {
     let done = pty.text();
     assert!(done.contains("queue enable"), "{done}");
     assert!(!done.contains("--yes") && !done.contains(" -y"), "{done}");
+    pty.send("q");
+    assert_eq!(pty.exit_code(), 0);
+}
+
+impl Fx {
+    fn local(&self, titles: &[&str]) {
+        let root = self.tmp.path().join("local");
+        let dir = root.join("personal");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            self.tmp.path().join("profile.json"),
+            r#"{"id":-1,"uuid":"u","name":"Owner","created_at":"2026-10-01T00:00:00Z"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("workspace.json"),
+            json!({ "id": 1, "name": "Personal", "code": "personal", "schema_version": 13, "created_at": "2026-10-01T00:00:00Z" })
+                .to_string(),
+        )
+        .unwrap();
+        let golden: Value = serde_json::from_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../tmgr-local/tests/parity/golden/schema.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
+        let conn = Connection::open(dir.join("workspace.db")).unwrap();
+        for object in golden["sqlite_master"].as_array().unwrap() {
+            if let Some(ddl) = object["sql"].as_str() {
+                conn.execute_batch(ddl).unwrap();
+            }
+        }
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('schema_version', '13')",
+            [],
+        )
+        .unwrap();
+        for s in golden["statuses"].as_array().unwrap() {
+            conn.execute(
+                "INSERT INTO statuses (id, name, type, color, sort_order, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'x', 'x')",
+                rusqlite::params![
+                    s["id"].as_i64(),
+                    s["name"].as_str(),
+                    s["type"].as_str(),
+                    s["color"].as_str(),
+                    s["sort_order"].as_i64()
+                ],
+            )
+            .unwrap();
+        }
+        conn.execute_batch(
+            "INSERT INTO categories (id, title, slug, code, settings, created_at, updated_at)
+             VALUES (1, 'Work', 'work', 'WK', '[]', '2026-10-01T00:00:00Z', '2026-10-01T00:00:00Z')",
+        )
+        .unwrap();
+        drop(conn);
+        for t in titles {
+            let out = self
+                .cmd(&["--ws", "local:personal", "add", t, "-p", "WK"])
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+
+    fn use_local(&self) {
+        let out = self.cmd(&["ws", "use", "local:personal"]).output().unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+}
+
+fn open_form(pty: &mut Pty, query: &str, title: &str) {
+    pty.wait_for("Commands");
+    pty.send("/");
+    pty.wait_for("Command palette");
+    pty.send(query);
+    pty.wait_for(query);
+    pty.send("\r");
+    pty.wait_for(title);
+}
+
+#[test]
+fn task_picker_filters_previews_and_fills_the_reference() {
+    let fx = Fx::new();
+    fx.local(&["Alpha parser fix", "Bravo release notes", "Charlie cleanup"]);
+    fx.use_local();
+    let mut pty = fx.pty(&[], &[]);
+    open_form(&mut pty, "start", "$ tmgr start");
+    pty.send("\x0f");
+    pty.wait_for("Pick a task");
+    pty.wait_for("Alpha parser fix");
+    pty.wait_for("Charlie cleanup");
+    pty.wait_for("Preview");
+    pty.send("bravo");
+    let end = Instant::now() + WAIT;
+    while pty.text().contains("Alpha parser fix") || pty.text().contains("Charlie cleanup") {
+        assert!(Instant::now() < end, "list did not narrow:\n{}", pty.text());
+        thread::sleep(Duration::from_millis(20));
+    }
+    pty.wait_for("Bravo release notes");
+    pty.wait_for("WK-2");
+    pty.wait_for("Status:");
+    pty.send("\r");
+    pty.wait_for("$ tmgr start WK-2");
+    assert!(!pty.text().contains("Pick a task"), "{}", pty.text());
+    pty.send("\x0f");
+    pty.wait_for("Pick a task");
+    pty.send("\x1b");
+    pty.wait_for("$ tmgr start WK-2");
+    assert!(!pty.text().contains("Pick a task"), "{}", pty.text());
+}
+
+#[test]
+fn escape_in_the_task_picker_leaves_the_field_empty() {
+    let fx = Fx::new();
+    fx.local(&["Alpha parser fix"]);
+    fx.use_local();
+    let mut pty = fx.pty(&[], &[]);
+    open_form(&mut pty, "start", "$ tmgr start");
+    pty.send("\x0f");
+    pty.wait_for("Alpha parser fix");
+    pty.send("\x1b");
+    let end = Instant::now() + WAIT;
+    while pty.text().contains("Pick a task") {
+        assert!(Instant::now() < end, "picker stayed open:\n{}", pty.text());
+        thread::sleep(Duration::from_millis(20));
+    }
+    pty.wait_for("$ tmgr start");
+    assert!(!pty.text().contains("WK-1"), "{}", pty.text());
+    pty.send("q");
+}
+
+#[test]
+fn workspace_picker_lists_the_local_workspace_and_fills_the_code() {
+    let fx = Fx::new();
+    fx.local(&[]);
+    let mut pty = fx.pty(&[], &[]);
+    open_form(&mut pty, "ws use", "$ tmgr ws use");
+    pty.send("\x0f");
+    pty.wait_for("Pick a workspace");
+    pty.wait_for("Personal");
+    pty.wait_for("Local workspace");
+    pty.send("\r");
+    pty.wait_for("$ tmgr ws use local:personal");
+    assert!(!pty.text().contains("Pick a workspace"), "{}", pty.text());
+}
+
+#[test]
+fn picker_shows_a_failing_child_inside_the_picker() {
+    let fx = Fx::new();
+    let mut pty = fx.pty(&[], &[]);
+    open_form(&mut pty, "start", "$ tmgr start");
+    pty.send("\x0f");
+    pty.wait_for("Pick a task");
+    pty.wait_for("not logged in");
+    assert!(!pty.text().contains("Loading..."), "{}", pty.text());
+    pty.send("\x1b");
+    pty.wait_for("$ tmgr start");
+    assert!(!pty.text().contains("Pick a task"), "{}", pty.text());
+    pty.send("\x1b");
+    pty.wait_for("Commands");
     pty.send("q");
     assert_eq!(pty.exit_code(), 0);
 }
