@@ -12,6 +12,6 @@ pub use modes::{enter_mouse, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
 pub use render::{cursor, render, ScreenSource};
 pub use view::{
-    layout, Confirm, Hit, Layout, LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit,
-    ScrollState, SessionRow, ViewState,
+    header_button, layout, sidebar_button, Confirm, Control, Hit, Layout, LayoutPrefs, MouseOut,
+    PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow, ViewState,
 };

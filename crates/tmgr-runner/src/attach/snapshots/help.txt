@@ -1,4 +1,4 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · workin╭ Keys ────────────────────────────────────────────╮r · waiting ───────────────────────────────╮
+ SESSIONS      Ctrl-] b ╭ 1  claude · workin╭ Keys ────────────────────────────────────────────╮r · waiting ──────────────────────── ⏸ ■ ✕ ╮
  ◆ codex             3m │● Reading src/check│ Press Ctrl-] first, then:                        │                                           │
  ● claude           18m │I will add an Apple│                                                  │in 412 ms                                  │
  ◌ dev-server       12m │✓ Tests 14 passed  │ d       detach, sessions keep running            │                                           │
@@ -17,10 +17,10 @@
                         │                   │                                                  │                                           │
                         │                   │ click   pick a session or a pane                 │                                           │
                         │                   │ wheel   scroll the history of the pane           │                                           │
+                        │                   │ buttons header: pause, stop, close (hover)       │                                           │
                         │                   │ drop    a dropped file is pasted there           │                                           │
                         │                   │ drag    Shift-drag selects (iTerm2: Option)      │                                           │
                         │                   │ ? again closes this box                          │                                           │
                         │                   │                                                  │                                           │
-                        │                   │                                                  │                                           │
-                        ╰───────────────────╰──────────────────────────────────────────────────╯───────────────────────────────────────────╯
- tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help
+                        ╰───────────────────│                                                  │───────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting ╰──────────────────────────────────────────────────╯                              Ctrl-] ? help

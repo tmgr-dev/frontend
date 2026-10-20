@@ -19,8 +19,8 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{Modes, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, InputSplitter,
-    LayoutPrefs, PaneInfo, RenameEdit, ScreenSource, SessionRow, ViewState,
+    cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, Confirm, Control,
+    InputSplitter, LayoutPrefs, PaneInfo, RenameEdit, ScreenSource, SessionRow, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -123,6 +123,10 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
             name: s.name.clone(),
             state: s.state.clone(),
             age: short_age(now, s.state.since_ms),
+            esc: s.argv.first().is_some_and(|a| {
+                let n = a.rsplit('/').next().unwrap_or(a);
+                n.contains("claude") || n.contains("codex")
+            }),
         })
         .collect()
 }
@@ -244,12 +248,47 @@ impl App {
         };
         self.dirty = true;
         if matches!(data.first(), Some(b'y' | b'Y')) {
-            self.stop_session(&c.session);
+            self.stop_session(&c.session, c.remove);
             self.notify(&format!("stopping {}", c.name));
         }
     }
 
-    fn stop_session(&self, id: &str) {
+    fn control(&mut self, id: &str, ctl: Control) -> io::Result<()> {
+        let Some(row) = self.view.sessions.iter().find(|r| r.id == id).cloned() else {
+            return Ok(());
+        };
+        let exited = row.state.kind == StateKind::Exited;
+        self.dirty = true;
+        match ctl {
+            Control::Interrupt => {
+                if row.can_interrupt() {
+                    self.send_to(id, row.interrupt_bytes())?;
+                }
+            }
+            Control::Stop if exited => self.notify("already exited"),
+            Control::Stop => {
+                self.view.confirm = Some(Confirm {
+                    session: id.to_string(),
+                    name: row.name,
+                    remove: false,
+                })
+            }
+            Control::Close if exited => {
+                self.view.remove_session(id);
+                self.remove_session(id);
+            }
+            Control::Close => {
+                self.view.confirm = Some(Confirm {
+                    session: id.to_string(),
+                    name: row.name,
+                    remove: true,
+                })
+            }
+        }
+        Ok(())
+    }
+
+    fn stop_session(&self, id: &str, remove: bool) {
         let cfg = self.cfg.clone();
         let id = id.to_string();
         thread::spawn(move || {
@@ -264,6 +303,9 @@ impl App {
                             .is_none_or(|s| s.state.kind == StateKind::Exited)
                     });
                     if gone {
+                        if remove {
+                            let _ = c.remove(&id);
+                        }
                         return;
                     }
                     thread::sleep(Duration::from_millis(200));
@@ -405,6 +447,9 @@ impl App {
                     }
                     if let Some((id, bytes)) = out.forward {
                         self.send_to(&id, &bytes)?;
+                    }
+                    if let Some((id, ctl)) = out.control {
+                        self.control(&id, ctl)?;
                     }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
