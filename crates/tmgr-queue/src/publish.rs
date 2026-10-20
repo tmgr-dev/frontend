@@ -86,6 +86,13 @@ pub struct PublishSteps {
     pub pr: Vec<String>,
 }
 
+impl PublishSteps {
+    pub fn draft(mut self) -> Self {
+        self.pr.push("--draft".into());
+        self
+    }
+}
+
 pub fn branch_slug(task_key: &str, title: &str) -> String {
     let key = slug(task_key);
     let key = if key.is_empty() {
@@ -343,6 +350,9 @@ pub struct RepoPublish {
     pub body: String,
     pub steps: PublishSteps,
     pub list: Vec<String>,
+    pub wip: Option<String>,
+    pub verify: Option<Vec<String>>,
+    pub ready: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -352,6 +362,40 @@ pub struct PublishAllPlan {
 }
 
 impl PublishAllPlan {
+    pub fn draft(mut self) -> Self {
+        for r in &mut self.repos {
+            r.steps = r.steps.clone().draft();
+            r.ready = false;
+        }
+        self
+    }
+
+    /// Continues a pull request opened as a draft by a paused run: `wip` lists `(repository, commit pushed
+    /// when the run paused)`. The existing pull request is accepted while it still shows that commit, and is
+    /// marked ready once the new commits are pushed.
+    pub fn resuming(mut self, wip: &[(String, String)]) -> Self {
+        for r in &mut self.repos {
+            if let Some((_, sha)) = wip.iter().find(|(f, _)| *f == r.full_name) {
+                r.wip = Some(sha.clone());
+                r.ready = true;
+                let lease = format!("--force-with-lease=refs/heads/{}:{sha}", r.steps.branch);
+                if let Some(at) = r.steps.push.iter().position(|a| a == "push") {
+                    r.steps.push.insert(at + 1, lease);
+                }
+                r.verify = Some(vec![
+                    "git".to_string(),
+                    "-C".into(),
+                    r.steps.repo.to_string_lossy().into_owned(),
+                    "merge-base".into(),
+                    "--is-ancestor".into(),
+                    sha.clone(),
+                    r.sha.clone(),
+                ]);
+            }
+        }
+        self
+    }
+
     pub fn links(&self) -> bool {
         self.repos.len() >= 2
     }
@@ -390,6 +434,9 @@ pub fn publish_all_plan(
                 "--json".into(),
                 "url,headRefOid,isCrossRepository,headRepositoryOwner".into(),
             ],
+            wip: None,
+            verify: None,
+            ready: false,
             steps,
         });
     }
@@ -416,6 +463,17 @@ pub fn reuse_pr(
     full_name: &str,
     sha: &str,
 ) -> std::result::Result<Option<String>, String> {
+    reuse_pr_continuing(list_json, full_name, sha, None)
+}
+
+/// Like `reuse_pr`, and a pull request still showing `wip` (the commit a paused run pushed before `sha`
+/// was pushed on top of it) counts as the one just pushed.
+pub fn reuse_pr_continuing(
+    list_json: &str,
+    full_name: &str,
+    sha: &str,
+    wip: Option<&str>,
+) -> std::result::Result<Option<String>, String> {
     let text = list_json.trim();
     if text.is_empty() {
         return Ok(None);
@@ -434,9 +492,9 @@ pub fn reuse_pr(
             .is_some_and(|l| l.eq_ignore_ascii_case(owner));
         let good = pr["isCrossRepository"] == serde_json::Value::Bool(false)
             && same_owner
-            && pr["headRefOid"]
-                .as_str()
-                .is_some_and(|o| o.eq_ignore_ascii_case(sha))
+            && pr["headRefOid"].as_str().is_some_and(|o| {
+                o.eq_ignore_ascii_case(sha) || wip.is_some_and(|w| o.eq_ignore_ascii_case(w))
+            })
             && pr_url_of(full_name, url);
         if !good {
             return Err(format!(
@@ -472,18 +530,38 @@ fn publish_all_after(
 ) -> Result<Vec<(String, String)>> {
     let mut urls: Vec<(String, String)> = Vec::new();
     for r in &plan.repos {
+        if let Some(verify) = &r.verify {
+            exec(verify, &r.steps.repo).map_err(|_| {
+                Error::new(
+                    tmgr_core::error::Kind::Forbidden,
+                    format!(
+                        "the new head of {} does not descend from the commit saved when the run paused; nothing was pushed",
+                        r.full_name
+                    ),
+                )
+            })?;
+        }
         exec(&r.steps.push, &r.steps.repo)?;
         let listed = exec(&r.list, &r.steps.repo)?;
-        let reuse = match reuse_pr(&listed, &r.full_name, &r.sha) {
+        let wip = r.wip.as_deref();
+        let reuse = match reuse_pr_continuing(&listed, &r.full_name, &r.sha, wip) {
             Ok(reuse) => Ok(reuse),
             Err(_) => {
                 std::thread::sleep(requery_after);
                 let listed = exec(&r.list, &r.steps.repo)?;
-                reuse_pr(&listed, &r.full_name, &r.sha)
+                reuse_pr_continuing(&listed, &r.full_name, &r.sha, wip)
             }
         };
         let url = match reuse.map_err(|m| Error::new(tmgr_core::error::Kind::Forbidden, m))? {
-            Some(url) => url,
+            Some(url) => {
+                if r.ready {
+                    exec(
+                        &["gh".to_string(), "pr".into(), "ready".into(), url.clone()],
+                        &r.steps.repo,
+                    )?;
+                }
+                url
+            }
             None => {
                 let out = exec(&r.steps.pr, &r.steps.repo)?;
                 let url = out.lines().last().unwrap_or("").trim().to_string();
@@ -594,6 +672,26 @@ mod tests {
         assert_eq!(s.branch, "tmgr/tm-410-fix-login");
         assert_eq!(s.repo, PathBuf::from("/work/repo"));
         assert_eq!(s.clone_dir, PathBuf::from("/work/repo-worktrees/queue/p1"));
+    }
+
+    #[test]
+    fn a_draft_plan_adds_the_flag_to_every_pr_create_and_nothing_else() {
+        let plain = publish_plan(&input()).unwrap();
+        let draft = publish_plan(&input()).unwrap().draft();
+        assert_eq!(draft.push, plain.push);
+        assert_eq!(draft.pr[..draft.pr.len() - 1], plain.pr[..]);
+        assert_eq!(draft.pr.last().map(String::as_str), Some("--draft"));
+        let all = publish_all_plan(&[repo_input("o/a", 1), repo_input("o/b", 2)])
+            .unwrap()
+            .draft();
+        assert!(all
+            .repos
+            .iter()
+            .all(|r| r.steps.pr.last().map(String::as_str) == Some("--draft")));
+        assert!(all
+            .repos
+            .iter()
+            .all(|r| !r.list.contains(&"--draft".to_string())));
     }
 
     #[test]
@@ -1109,6 +1207,147 @@ mod tests {
             .filter(|a| a.get(2).map(String::as_str) == Some("create"))
             .count();
         assert_eq!(creates, 1);
+    }
+
+    #[test]
+    fn a_draft_publish_opens_drafts_and_leaves_an_existing_pull_request_alone() {
+        let plan = publish_all_plan(&both()).unwrap().draft();
+        let be = open_pr(
+            "https://github.com/tmgr-dev/backend/pull/5",
+            false,
+            "TMGR-dev",
+            &"A".repeat(40),
+        );
+        let log = std::cell::RefCell::new(Vec::new());
+        let urls = publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+        assert_eq!(urls[0].1, "https://github.com/tmgr-dev/backend/pull/5");
+        let log = log.borrow();
+        let creates: Vec<&Vec<String>> = log
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some("create"))
+            .collect();
+        assert_eq!(creates.len(), 1);
+        assert_eq!(creates[0].last().map(String::as_str), Some("--draft"));
+        assert!(log
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some("edit"))
+            .all(|a| !a.contains(&"--draft".to_string())));
+    }
+
+    fn wip_pairs() -> Vec<(String, String)> {
+        vec![("tmgr-dev/backend".to_string(), "c".repeat(40))]
+    }
+
+    fn calls(log: &std::cell::RefCell<Vec<Vec<String>>>, what: &str) -> usize {
+        log.borrow()
+            .iter()
+            .filter(|a| a.get(2).map(String::as_str) == Some(what))
+            .count()
+    }
+
+    #[test]
+    fn a_resumed_run_reuses_the_pull_request_of_its_saved_commit_and_marks_it_ready() {
+        let url = "https://github.com/tmgr-dev/backend/pull/5";
+        for oid in ["c".repeat(40), "a".repeat(40)] {
+            let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+            let be = open_pr(url, false, "tmgr-dev", &oid);
+            let log = std::cell::RefCell::new(Vec::new());
+            let urls =
+                publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+            assert_eq!(urls[0].1, url);
+            assert_eq!(calls(&log, "ready"), 1, "{oid}");
+            assert!(log
+                .borrow()
+                .iter()
+                .any(|a| a[..3] == ["gh", "pr", "ready"] && a[3] == url));
+            assert_eq!(calls(&log, "create"), 1);
+        }
+    }
+
+    #[test]
+    fn a_resumed_push_leases_the_saved_commit_and_checks_descent_first() {
+        let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+        let log = std::cell::RefCell::new(Vec::new());
+        publish_all_with(&plan, &mut fake(&[], &log)).unwrap();
+        let log = log.borrow();
+        let wip = "c".repeat(40);
+        let verify = log
+            .iter()
+            .position(|a| a.contains(&"merge-base".to_string()))
+            .unwrap();
+        assert_eq!(log[verify][4], "--is-ancestor");
+        assert_eq!(log[verify][5], wip);
+        assert_eq!(log[verify][6], "a".repeat(40));
+        let lease = format!("--force-with-lease=refs/heads/tmgr/tm-410-fix-login:{wip}");
+        let pushes: Vec<&Vec<String>> = log
+            .iter()
+            .filter(|a| a.contains(&"push".to_string()))
+            .collect();
+        assert_eq!(pushes.len(), 2);
+        assert!(pushes[0].contains(&lease) && !pushes[1].iter().any(|a| a.contains("lease")));
+        assert!(verify < log.iter().position(|a| a.contains(&lease)).unwrap());
+    }
+
+    #[test]
+    fn a_resumed_head_that_does_not_descend_from_the_saved_commit_pushes_nothing() {
+        let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+        let log = std::cell::RefCell::new(Vec::new());
+        let mut exec = |argv: &[String], _: &Path| -> Result<String> {
+            log.borrow_mut().push(argv.to_vec());
+            if argv.contains(&"merge-base".to_string()) {
+                return Err(Error::internal("git: not an ancestor"));
+            }
+            Ok(String::new())
+        };
+        let e = publish_all_with(&plan, &mut exec).unwrap_err();
+        assert!(e.message.contains("does not descend"), "{}", e.message);
+        assert!(log
+            .borrow()
+            .iter()
+            .all(|a| !a.contains(&"push".to_string())));
+    }
+
+    #[test]
+    fn a_plain_publish_has_no_lease_and_no_descent_check() {
+        let plan = publish_all_plan(&both()).unwrap();
+        let log = std::cell::RefCell::new(Vec::new());
+        publish_all_with(&plan, &mut fake(&[], &log)).unwrap();
+        assert!(log
+            .borrow()
+            .iter()
+            .flatten()
+            .all(|a| !a.contains("lease") && a != "merge-base"));
+    }
+
+    #[test]
+    fn a_resumed_run_still_refuses_a_pull_request_of_any_other_commit() {
+        let plan = publish_all_plan(&both()).unwrap().resuming(&wip_pairs());
+        let be = open_pr(
+            "https://github.com/tmgr-dev/backend/pull/5",
+            false,
+            "tmgr-dev",
+            &"d".repeat(40),
+        );
+        let log = std::cell::RefCell::new(Vec::new());
+        assert!(publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).is_err());
+        assert_eq!(calls(&log, "ready"), 0);
+        assert_eq!(calls(&log, "create"), 0);
+    }
+
+    #[test]
+    fn a_plan_without_a_resume_or_a_paused_again_resume_marks_nothing_ready() {
+        let url = "https://github.com/tmgr-dev/backend/pull/5";
+        let be = open_pr(url, false, "tmgr-dev", &"a".repeat(40));
+        let plain = publish_all_plan(&both()).unwrap();
+        let again = publish_all_plan(&both())
+            .unwrap()
+            .resuming(&wip_pairs())
+            .draft();
+        for plan in [plain, again] {
+            let log = std::cell::RefCell::new(Vec::new());
+            publish_all_with(&plan, &mut fake(&[("tmgr-dev/backend", &be)], &log)).unwrap();
+            assert_eq!(calls(&log, "ready"), 0);
+        }
     }
 
     #[test]

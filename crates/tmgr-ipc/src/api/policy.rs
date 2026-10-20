@@ -32,6 +32,23 @@ pub const NET_NOT_ENFORCED: &str = "network restriction is not enforced on this 
 pub const NOT_SIGNED: &str = "bypass needs a task approved for agent runs";
 pub const NO_SANDBOX: &str = "bypass needs the OS sandbox";
 
+pub fn argv_is_bypass(argv: &[String]) -> bool {
+    let lower: Vec<String> = argv.iter().map(|a| a.to_ascii_lowercase()).collect();
+    lower.iter().enumerate().any(|(i, a)| {
+        a.contains("bypass")
+            || a.contains("dangerous")
+            || a.contains("yolo")
+            || a.contains("danger-full-access")
+            || a == "--auto"
+            || a.starts_with("--auto=")
+            || a == "--ask-for-approval=never"
+            || a == "-a=never"
+            || a == "-anever"
+            || ((a == "--ask-for-approval" || a == "-a")
+                && lower.get(i + 1).is_some_and(|n| n == "never"))
+    })
+}
+
 pub fn decide_mode(
     origin: Origin,
     requested: Mode,

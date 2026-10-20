@@ -13,16 +13,17 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tmgr_core::approval::{
-    canonical_repos, check_claim, content_sha256, repos_sha256, AllowFile, Entry, Refusal,
-    RepoBinding, Rollback,
+    canonical_repos, check_claim, content_sha256, context_sha256, page_sha256, persona_sha256,
+    repos_sha256, AllowFile, Entry, Refusal, RepoBinding, Rollback, MAX_CONTEXT_BYTES,
+    MAX_PERSONA_BYTES,
 };
 use tmgr_core::config;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::notify::build_push;
 use tmgr_core::text::{sanitize_line, truncate_chars};
 use tmgr_ipc::api::{
-    caps, AuthorKind, BundleAuthor, BundleLaunch, CloneSpec, CloudApproval, ExePin, RunBundle,
-    RunCreateReq, TaskRef,
+    caps, sha256_hex, AuthorKind, BundleAuthor, BundleLaunch, BundlePage, BundlePersona, CloneSpec,
+    CloudApproval, ExePin, RunBundle, RunCreateReq, TaskRef,
 };
 use tmgr_link::privileged;
 use tmgr_queue::clones::{plan_clones, ClaimRepo, ClonePlan};
@@ -64,6 +65,35 @@ pub struct Approval {
     pub revoked_reason: Option<String>,
     #[serde(default)]
     pub repos_sha256: Option<String>,
+    #[serde(default)]
+    pub persona_sha256: Option<String>,
+    #[serde(default)]
+    pub context_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServedPersona {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub instructions: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ServedPage {
+    pub id: i64,
+    #[serde(default)]
+    pub version: i64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub body: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ServedContext {
+    #[serde(default)]
+    pub pages: Vec<ServedPage>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,6 +114,10 @@ pub struct Eligibility {
     pub setting_enabled: bool,
     #[serde(default)]
     pub approval: Option<Approval>,
+    #[serde(default)]
+    pub persona: Option<ServedPersona>,
+    #[serde(default)]
+    pub context: Option<ServedContext>,
 }
 
 pub fn parse_eligibility(v: serde_json::Value) -> Result<Eligibility> {
@@ -99,6 +133,8 @@ pub struct GateOk {
     pub category: Option<Category>,
     pub task_key: String,
     pub repos: Option<Vec<String>>,
+    pub persona: Option<BundlePersona>,
+    pub context: Vec<BundlePage>,
 }
 
 const CONFIRM: &str = "open the task in the web app and click Confirm for agent runs";
@@ -197,12 +233,16 @@ pub fn cloud_gate(
             None
         }
     };
+    let persona = signed_persona(e, a.persona_sha256.as_deref())?;
+    let context = signed_context(e, a.context_sha256.as_deref())?;
     let (repo_list, repos_hash) = match repos {
         Some((list, hash)) => (Some(list), Some(hash)),
         None => (None, None),
     };
     let claim = CloudApproval {
         repos_sha256: repos_hash,
+        persona_sha256: a.persona_sha256.clone(),
+        context_sha256: a.context_sha256.clone(),
         host: entry.server.clone(),
         user_id: entry.user_id,
         workspace_id: entry.workspace_id,
@@ -234,7 +274,67 @@ pub fn cloud_gate(
             .clone()
             .unwrap_or_else(|| format!("task-{}", e.task_id)),
         repos: repo_list,
+        persona,
+        context,
     })
+}
+
+fn signed_persona(
+    e: &Eligibility,
+    covered: Option<&str>,
+) -> std::result::Result<Option<BundlePersona>, Refusal> {
+    let Some(want) = covered else {
+        return Ok(None);
+    };
+    let changed = || {
+        Refusal::new(
+            "the persona instructions changed since the approval",
+            CONFIRM,
+        )
+    };
+    let p = e.persona.as_ref().ok_or_else(changed)?;
+    if tmgr_core::approval::norm(&p.instructions).len() > MAX_PERSONA_BYTES
+        || persona_sha256(&p.id, &p.name, &p.instructions).as_deref() != Ok(want)
+    {
+        return Err(changed());
+    }
+    Ok(Some(BundlePersona {
+        name: p.name.clone(),
+        instructions_sha256: sha256_hex(p.instructions.as_bytes()),
+        id: Some(p.id.clone()),
+        instructions: Some(p.instructions.clone()),
+    }))
+}
+
+fn signed_context(
+    e: &Eligibility,
+    covered: Option<&str>,
+) -> std::result::Result<Vec<BundlePage>, Refusal> {
+    let Some(want) = covered else {
+        return Ok(Vec::new());
+    };
+    let changed = || Refusal::new("the workspace rules changed since the approval", CONFIRM);
+    let pages = e.context.as_ref().map_or(&[][..], |c| &c.pages[..]);
+    let hashes: Vec<String> = pages
+        .iter()
+        .map(|p| page_sha256(p.id, &p.title, &p.body))
+        .collect();
+    let bytes: usize = pages
+        .iter()
+        .map(|p| p.title.replace("\r\n", "\n").len() + p.body.replace("\r\n", "\n").len())
+        .sum();
+    if bytes > MAX_CONTEXT_BYTES || context_sha256(&hashes).as_deref() != Ok(want) {
+        return Err(changed());
+    }
+    Ok(pages
+        .iter()
+        .map(|p| BundlePage {
+            id: p.id,
+            revision: p.version,
+            title: p.title.clone(),
+            body: p.body.clone(),
+        })
+        .collect())
 }
 
 pub fn bypass_needs_consent(
@@ -1128,7 +1228,9 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         },
         comments: Vec::new(),
         pages: Vec::new(),
-        persona: None,
+        persona: ok.persona.clone(),
+        context: ok.context.clone(),
+        team: None,
         launch: BundleLaunch {
             profile: profile.clone(),
             model: a.model.clone(),
@@ -1143,6 +1245,15 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut rc = connect(&cfg)?;
     let have = &rc.welcome().caps;
+    if tmgr_runner::bundle::has_owner_text(&bundle)
+        && !have.iter().any(|h| h == caps::SIGNED_CONTEXT_V1)
+    {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the running runner is older than this tmgr and cannot deliver the persona instructions and workspace rules of this task",
+        )
+        .hint(format!("{0} runner stop && {0} runner start", super::bin())));
+    }
     if [caps::EXE_PIN_V1, caps::ARGV_PIN_V1]
         .iter()
         .any(|c| !have.iter().any(|h| h == c))
@@ -1406,6 +1517,53 @@ pub fn report_published_all(client: &tmgr_core::api::Client, p: &PublishedAll) -
     )
 }
 
+const RESUMED_COMMENT: &str =
+    "Resumed after the usage limit reset; the pull request is ready for review.";
+
+fn resumed_comment(urls: &[(String, String)]) -> String {
+    match urls {
+        [_] => RESUMED_COMMENT.to_string(),
+        _ => {
+            let list: Vec<String> = urls
+                .iter()
+                .map(|(repo, url)| format!("- {repo}: {url}"))
+                .collect();
+            format!(
+                "Resumed after the usage limit reset; the pull requests are ready for review:\n{}",
+                list.join("\n")
+            )
+        }
+    }
+}
+
+pub fn report_resumed(client: &tmgr_core::api::Client, p: &PublishedAll) -> Vec<String> {
+    let first = p.urls.first().map_or("", |(_, u)| u.as_str());
+    let joined: Vec<&str> = p.urls.iter().map(|(_, u)| u.as_str()).collect();
+    report_with(
+        client,
+        &Report {
+            task_id: p.task_id,
+            workspace_id: p.workspace_id,
+            pr_url: first,
+            agent: p.agent,
+            branch: p.branch,
+            summary: format!("Resumed and updated {}", joined.join(", ")),
+            comment: resumed_comment(p.urls),
+        },
+    )
+}
+
+fn wip_by_repo(resume: &BTreeMap<String, String>, plans: &[ClonePlan]) -> Vec<(String, String)> {
+    plans
+        .iter()
+        .filter_map(|p| {
+            resume
+                .get(&p.name)
+                .map(|sha| (p.full_name.clone(), sha.clone()))
+        })
+        .collect()
+}
+
 struct Report<'a> {
     task_id: u64,
     workspace_id: i64,
@@ -1536,6 +1694,7 @@ pub struct PublishTarget {
     pub agent: Option<String>,
     pub repo: Option<String>,
     pub clones: Vec<CloneRef>,
+    pub resume: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1546,6 +1705,7 @@ pub struct CloneRef {
 
 pub(crate) enum Mode {
     Publish,
+    Draft,
     Review,
     Push(BTreeMap<String, String>),
 }
@@ -1628,19 +1788,23 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
                 sanitize_line(&verified.title)
             );
             let staged = stage_multi(t, entry, category, list, &title, &body)?;
+            let resumed = !t.resume.is_empty() && matches!(mode, Mode::Publish);
             let outcome = finish_multi(t, staged, &title, &body, mode)?;
             match &outcome {
                 Outcome::Published(urls) => {
-                    for w in report_published_all(
-                        client,
-                        &PublishedAll {
-                            task_id: u64::try_from(task_id).unwrap_or_default(),
-                            workspace_id: ws.id,
-                            urls,
-                            agent: t.agent.as_deref(),
-                            branch: &t.branch,
-                        },
-                    ) {
+                    let published = PublishedAll {
+                        task_id: u64::try_from(task_id).unwrap_or_default(),
+                        workspace_id: ws.id,
+                        urls,
+                        agent: t.agent.as_deref(),
+                        branch: &t.branch,
+                    };
+                    let warnings = if resumed {
+                        report_resumed(client, &published)
+                    } else {
+                        report_published_all(client, &published)
+                    };
+                    for w in warnings {
                         eprintln!("warning: {w}");
                     }
                 }
@@ -1667,7 +1831,7 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         }
         (None, true) => {}
     }
-    if !matches!(mode, Mode::Publish) {
+    if !matches!(mode, Mode::Publish | Mode::Draft) {
         return Err(Error::usage(
             "only a run over several repositories has a leak gate",
         ));
@@ -1722,6 +1886,35 @@ pub(crate) fn publish_outcome(o: &Opts, t: &PublishTarget, mode: Mode) -> Result
         ),
     };
     let steps = publish_plan(&input).map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?;
+    if let Some(wip) = t.resume.get("") {
+        let draft = matches!(mode, Mode::Draft);
+        let plan = publish_all_plan(std::slice::from_ref(&input))
+            .map_err(|r| Error::new(Kind::Forbidden, r.to_string()))?
+            .resuming(&[(full_name.to_string(), wip.clone())]);
+        let plan = if draft { plan.draft() } else { plan };
+        let urls = publish_all(&plan)?;
+        let published = PublishedAll {
+            task_id: u64::try_from(task_id).unwrap_or_default(),
+            workspace_id: ws.id,
+            urls: &urls,
+            agent: t.agent.as_deref(),
+            branch: &t.branch,
+        };
+        let warnings = if draft {
+            report_published_all(client, &published)
+        } else {
+            report_resumed(client, &published)
+        };
+        for w in warnings {
+            eprintln!("warning: {w}");
+        }
+        return Ok(Outcome::Published(urls));
+    }
+    let steps = if matches!(mode, Mode::Draft) {
+        steps.draft()
+    } else {
+        steps
+    };
     let pr_url = publish(&steps)?;
     for w in report_published(
         client,
@@ -1778,7 +1971,7 @@ fn stage_multi(
     let mut touched: Vec<TouchedBranch> = Vec::new();
     let planned = import_and_plan(t, &plans, &mut touched, pr_title, pr_body);
     let plan = match planned {
-        Ok(plan) => plan,
+        Ok(plan) => plan.resuming(&wip_by_repo(&t.resume, &plans)),
         Err(e) => {
             restore_touched(&t.branch, &touched);
             return Err(e);
@@ -1806,6 +1999,7 @@ fn finish_multi(
     body: &str,
     mode: Mode,
 ) -> Result<Outcome> {
+    let draft = matches!(mode, Mode::Draft);
     let scanned = match gate::scan_set(&staged.touched, &t.branch, title, body, &lookup_info) {
         Ok(s) => s,
         Err(e) => {
@@ -1814,9 +2008,14 @@ fn finish_multi(
         }
     };
     match mode {
-        Mode::Publish => {
+        Mode::Publish | Mode::Draft => {
             if scanned.findings.is_empty() {
-                return publish_all(&staged.plan).map(Outcome::Published);
+                let plan = if draft {
+                    staged.plan.clone().draft()
+                } else {
+                    staged.plan.clone()
+                };
+                return publish_all(&plan).map(Outcome::Published);
             }
             let (held, text) = gate::held_outcome(&scanned, &staged.touched);
             restore_touched(&t.branch, &staged.touched);
@@ -1936,6 +2135,7 @@ fn target_of(ws_code: String, task_id: i64, rec: Record) -> PublishTarget {
                 identity: c.identity,
             })
             .collect(),
+        resume: BTreeMap::new(),
     }
 }
 
@@ -2107,6 +2307,7 @@ mod tests {
     use serde_json::{json, Value};
     use std::collections::BTreeMap;
     use tmgr_core::approval::PinnedKey;
+    use tmgr_ipc::api::sha256_hex;
 
     const FIXTURES: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -2391,6 +2592,8 @@ mod tests {
     fn plan_claim() -> CloudApproval {
         CloudApproval {
             repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -2623,6 +2826,296 @@ mod tests {
         );
     }
 
+    fn bundle_v3(i: usize) -> Value {
+        let c = &fx()["cases_v3"][i];
+        let mut approval = json!({"kind": "confirm", "key_id": key_id(),
+            "content_sha256": c["content_sha256"], "signed_at": c["signed_at"],
+            "signature": c["signature"], "revoked_at": null, "revoked_reason": null});
+        let mut b = json!({
+            "task_id": c["task_id"], "workspace_id": 56, "workspace_code": "tmgrdev",
+            "viewer_user_id": 1, "title": c["title"], "description": c["description"],
+            "task_key": "TM-412",
+            "category": {"id": 127, "code": "TM", "github_full_name": "tmgr-dev/backend", "default_branch": "master"},
+            "setting_enabled": true
+        });
+        if let Some(p) = c.get("persona") {
+            b["persona"] = json!({"id": p["id"], "name": p["name"], "instructions": p["instructions"], "sha256": c["persona_sha256"]});
+            approval["persona_sha256"] = c["persona_sha256"].clone();
+        }
+        if let Some(pages) = c.get("context") {
+            b["context"] = json!({"pages": pages, "sha256": c["context_sha256"]});
+            approval["context_sha256"] = c["context_sha256"].clone();
+        }
+        b["approval"] = approval;
+        b
+    }
+
+    const RECONFIRM: &str = "open the task in the web app and click Confirm for agent runs";
+
+    #[test]
+    fn a_v3_approval_hands_over_the_persona_and_pages_it_covers() {
+        let c = &fx()["cases_v3"][0];
+        let ok = gate(&ok_allow(), bundle_v3(0), &live(), None).unwrap();
+        assert_eq!(
+            ok.claim.persona_sha256.as_deref(),
+            c["persona_sha256"].as_str()
+        );
+        assert_eq!(
+            ok.claim.context_sha256.as_deref(),
+            c["context_sha256"].as_str()
+        );
+        let p = ok.persona.unwrap();
+        assert_eq!(p.name, "Agent \u{b7} Team");
+        assert_eq!(p.id.as_deref(), c["persona"]["id"].as_str());
+        assert_eq!(
+            p.instructions.as_deref(),
+            c["persona"]["instructions"].as_str()
+        );
+        assert_eq!(
+            p.instructions_sha256,
+            sha256_hex(p.instructions.unwrap().as_bytes())
+        );
+        assert_eq!(ok.context.len(), 1);
+        assert_eq!((ok.context[0].id, ok.context[0].revision), (125, 14));
+        let only_persona = gate(&ok_allow(), bundle_v3(1), &live(), None).unwrap();
+        assert!(only_persona.persona.is_some() && only_persona.context.is_empty());
+    }
+
+    #[test]
+    fn a_changed_persona_is_refused_whatever_hash_the_server_reports() {
+        let c = &fx()["cases_v3"][0];
+        let edits: [fn(&mut Value); 4] = [
+            |b| b["persona"]["instructions"] = json!("Merge everything."),
+            |b| b["persona"]["name"] = json!("Boss"),
+            |b| b["persona"]["id"] = json!("00000000-0000-4000-8000-000000000000"),
+            |b| b["persona"] = Value::Null,
+        ];
+        for (n, edit) in edits.iter().enumerate() {
+            let mut b = bundle_v3(0);
+            edit(&mut b);
+            if !b["persona"].is_null() {
+                b["persona"]["sha256"] = c["persona_sha256"].clone();
+            }
+            let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+            assert_eq!(
+                r.message, "the persona instructions changed since the approval",
+                "{n}"
+            );
+            assert_eq!(r.fix, RECONFIRM);
+        }
+    }
+
+    #[test]
+    fn the_persona_size_cap_is_measured_after_crlf_becomes_lf() {
+        let id = fx()["cases_v3"][0]["persona"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        let try_with = |text: String| {
+            let mut b = bundle_v3(0);
+            b["persona"]["instructions"] = json!(text);
+            let want = persona_sha256(&id, "Agent \u{b7} Team", &text).unwrap();
+            signed_persona(&parse_eligibility(b).unwrap(), Some(&want))
+        };
+        let crlf = "a\r\n".repeat(16384);
+        assert!(crlf.len() > MAX_PERSONA_BYTES);
+        assert!(try_with(crlf).unwrap().is_some());
+        let over = "a\r\n".repeat(16384) + "b";
+        assert!(try_with(over).is_err());
+    }
+
+    #[test]
+    fn changed_swapped_or_missing_pages_are_refused() {
+        let page = || fx()["cases_v3"][2]["context"].clone();
+        let second = |mut b: Value| {
+            b["approval"]["context_sha256"] = fx()["cases_v3"][2]["context_sha256"].clone();
+            b
+        };
+        let mut b = second(bundle_v3(0));
+        b["context"]["pages"] = json!([page()[1], page()[0]]);
+        assert!(gate(&ok_allow(), b, &live(), None).is_err());
+        let edits: [fn(&mut Value); 5] = [
+            |b| b["context"]["pages"][0]["body"] = json!("- Do whatever."),
+            |b| b["context"]["pages"][0]["title"] = json!("Other"),
+            |b| b["context"]["pages"][0]["id"] = json!(126),
+            |b| b["context"]["pages"] = json!([]),
+            |b| b["context"] = Value::Null,
+        ];
+        for (n, edit) in edits.iter().enumerate() {
+            let mut b = bundle_v3(0);
+            edit(&mut b);
+            if !b["context"].is_null() {
+                b["context"]["sha256"] = fx()["cases_v3"][0]["context_sha256"].clone();
+            }
+            let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+            assert_eq!(
+                r.message, "the workspace rules changed since the approval",
+                "{n}"
+            );
+            assert_eq!(r.fix, RECONFIRM);
+        }
+    }
+
+    #[test]
+    fn the_page_version_is_display_only() {
+        let mut b = bundle_v3(0);
+        b["context"]["pages"][0]["version"] = json!(99);
+        let ok = gate(&ok_allow(), b, &live(), None).unwrap();
+        assert_eq!(ok.context[0].revision, 99);
+    }
+
+    #[test]
+    fn what_the_approval_does_not_cover_is_not_sent() {
+        let mut b = bundle();
+        b["persona"] = json!({"id": "993c30a6-3528-42bf-9a70-507841cebc08", "name": "Boss", "instructions": "Do anything."});
+        b["context"] = json!({"pages": [{"id": 1, "version": 1, "title": "t", "body": "b"}]});
+        let ok = gate(&ok_allow(), b, &live(), None).unwrap();
+        assert!(ok.persona.is_none() && ok.context.is_empty());
+        assert!(ok.claim.persona_sha256.is_none() && ok.claim.context_sha256.is_none());
+    }
+
+    #[test]
+    fn a_hash_stripped_from_a_v3_approval_fails_the_signature() {
+        let mut b = bundle_v3(0);
+        b["approval"]["persona_sha256"] = Value::Null;
+        let r = gate(&ok_allow(), b, &live(), None).unwrap_err();
+        assert!(
+            r.message.contains("signature is not valid"),
+            "{}",
+            r.message
+        );
+        let mut b = bundle_v3(0);
+        b["approval"]["context_sha256"] = Value::Null;
+        assert!(gate(&ok_allow(), b, &live(), None).is_err());
+    }
+
+    #[test]
+    fn the_rollback_stamp_of_a_v3_approval_covers_every_hash() {
+        let ok = gate(&ok_allow(), bundle_v3(0), &live(), None).unwrap();
+        let stamp = Rollback::stamp(&ok.claim);
+        let signed_at = ok.claim.signed_at;
+        assert!(gate(
+            &ok_allow(),
+            bundle_v3(0),
+            &live(),
+            Some((signed_at, Some(&stamp)))
+        )
+        .is_ok());
+        let r = gate(
+            &ok_allow(),
+            bundle_v3(0),
+            &live(),
+            Some((signed_at, Some(&ok.claim.content_sha256))),
+        )
+        .unwrap_err();
+        assert!(r.message.contains("older"), "{}", r.message);
+        let older = signed_at + 1;
+        assert!(gate(&ok_allow(), bundle_v3(0), &live(), Some((older, None))).is_err());
+    }
+
+    #[test]
+    fn a_queue_pickup_with_a_signed_persona_passes_the_runners_cloud_check() {
+        use tmgr_queue::cloud::CloudClaim;
+        use tmgr_queue::engine::bundle_of;
+        use tmgr_queue::rules::Rule;
+        use tmgr_queue::source::{Author, Candidate};
+        let ok = gate(&ok_allow(), bundle_v3(0), &live(), None).unwrap();
+        let task = TaskRef {
+            workspace_id: 56,
+            task_id: ok.claim.task_id,
+        };
+        let candidate = Candidate {
+            task,
+            key: ok.task_key.clone(),
+            title: ok.title.clone(),
+            body: ok.body.clone(),
+            author: Author::Human,
+            comments: Vec::new(),
+            pages: Vec::new(),
+            context_tainted: false,
+            persona_text: String::new(),
+            cloud: Some(CloudClaim {
+                claim: ok.claim.clone(),
+                workspace_code: "tmgrdev".into(),
+                branch: "tmgr/tm-412".into(),
+                repos: Vec::new(),
+                persona: ok.persona.clone(),
+                context: ok.context.clone(),
+            }),
+        };
+        let rule = Rule {
+            name: "r".into(),
+            workspace: "tmgrdev".into(),
+            project: None,
+            status_type: "backlog".into(),
+            persona: "Agent".into(),
+            profile: "claude-code".into(),
+            model: None,
+            repos: vec!["/repo".into()],
+            max_concurrent: 1,
+            hours: None,
+            trusted_authors: vec!["human".into()],
+            auto: true,
+            mode: None,
+        };
+        let mut local_allow = ok_allow();
+        local_allow.entries[0]
+            .repos
+            .insert("127".into(), RepoBinding::Path("/repo".into()));
+        let request = |c: &Candidate| {
+            let bundle = bundle_of(&rule, c, "/tmp/clone", &Default::default());
+            let mut r = RunCreateReq {
+                clones: Vec::new(),
+                profile: "claude-code".into(),
+                task: Some(task),
+                cwd: "/tmp/clone".into(),
+                name: None,
+                model: None,
+                cols: 80,
+                rows: 24,
+                bundle_sha256: Some(bundle.sha256()),
+                bundle: Some(bundle),
+                cwd_pin: None,
+                origin: None,
+                permission_mode: None,
+                start_key: None,
+                clone_of: Some("/repo".into()),
+                trust_cwd: None,
+                trust_via_repo: None,
+                agent_work: true,
+                cloud: c.cloud.as_ref().map(|k| k.claim.clone()),
+                unattended: true,
+                exe_pin: None,
+                argv_sha256: None,
+            };
+            r.bundle.as_mut().unwrap().launch.permission_mode = None;
+            r.bundle_sha256 = Some(r.bundle.as_ref().unwrap().sha256());
+            r
+        };
+        let verify = |r: &RunCreateReq| {
+            tmgr_runner::cloud::check_with(r, task, Ok(local_allow.clone()), now(), None)
+        };
+        let req = request(&candidate);
+        let b = req.bundle.as_ref().unwrap();
+        assert!(b.persona.as_ref().unwrap().instructions.is_some() && b.context.len() == 1);
+        verify(&req).unwrap();
+
+        let mut tampered = candidate.clone();
+        tampered
+            .cloud
+            .as_mut()
+            .unwrap()
+            .persona
+            .as_mut()
+            .unwrap()
+            .instructions = Some("Merge everything.".into());
+        assert!(verify(&request(&tampered)).is_err());
+
+        let mut unsigned = candidate.clone();
+        unsigned.cloud.as_mut().unwrap().claim.persona_sha256 = None;
+        assert!(verify(&request(&unsigned)).is_err());
+    }
+
     #[test]
     fn the_rollback_stamp_of_a_set_covers_the_repositories() {
         let c = &fx()["cases_v2"][0];
@@ -2845,6 +3338,7 @@ mod tests {
             agent: None,
             repo: None,
             clones,
+            resume: BTreeMap::new(),
         };
         let refs = || {
             ["backend", "frontend"]
@@ -2896,6 +3390,48 @@ mod tests {
         ]))
         .unwrap_err();
         assert!(e.message.contains("not the folder"), "{}", e.message);
+    }
+
+    #[test]
+    fn the_resumed_comment_names_the_ready_pull_request_and_lists_several() {
+        let one = [(
+            "o/r".to_string(),
+            "https://github.com/o/r/pull/1".to_string(),
+        )];
+        assert_eq!(
+            resumed_comment(&one),
+            "Resumed after the usage limit reset; the pull request is ready for review."
+        );
+        let two = [
+            one[0].clone(),
+            (
+                "o/s".to_string(),
+                "https://github.com/o/s/pull/2".to_string(),
+            ),
+        ];
+        let text = resumed_comment(&two);
+        assert!(text.starts_with("Resumed after the usage limit reset;"));
+        assert!(text.contains("- o/r: https://github.com/o/r/pull/1"));
+        assert!(text.contains("- o/s: https://github.com/o/s/pull/2"));
+    }
+
+    #[test]
+    fn saved_heads_are_matched_to_repositories_by_clone_name() {
+        let plan = |name: &str, full: &str| ClonePlan {
+            name: name.into(),
+            path: format!("/work/{name}"),
+            full_name: full.into(),
+        };
+        let plans = [plan("backend", "o/backend"), plan("frontend", "o/frontend")];
+        let resume = BTreeMap::from([
+            ("frontend".to_string(), "b".repeat(40)),
+            ("gone".to_string(), "c".repeat(40)),
+        ]);
+        assert_eq!(
+            wip_by_repo(&resume, &plans),
+            [("o/frontend".to_string(), "b".repeat(40))]
+        );
+        assert!(wip_by_repo(&BTreeMap::new(), &plans).is_empty());
     }
 
     #[test]

@@ -307,6 +307,7 @@
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { usePagesMarkdownIo } from '@/composable/usePagesMarkdownIo';
+	import { openTaskLinkInModal } from '@/composable/useTaskKeyLinks';
 	import store from '@/store';
 	import type { RootState } from '@/types/store';
 	import { isDesktopApp } from '@/utils/desktop';
@@ -989,6 +990,7 @@
 
 			const onNavigate = async (parsed: ParsedTmgrUrl) => {
 				if (parsed.form === 'storage' && parsed.kind === 'file') return;
+				if (openTaskLinkInModal(parsed)) return;
 				let target = directory.pathFor(parsed);
 				if (!target && parsed.form === 'storage') {
 					await directory.ensure([{ kind: parsed.kind, id: parsed.id }]);

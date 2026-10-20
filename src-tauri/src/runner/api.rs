@@ -1,6 +1,6 @@
 use serde::Serialize;
 use serde_json::Value;
-use tmgr_ipc::api::{caps, method, limits, AuthorKind, ClientMsg, CwdPin, Request, RunCreateReq, SessionInfo, State};
+use tmgr_ipc::api::{caps, method, limits, AuthorKind, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotStatus, ClientMsg, CwdPin, Request, RunCreateReq, SessionInfo, State};
 
 pub use tmgr_ipc::api::StateKind;
 
@@ -258,6 +258,27 @@ pub(crate) fn test_start(workspace_id: i64, task_id: i64, profile: &str) -> Star
 
 pub fn kill_session(conn: &mut Conn, id: &str) -> Result<(), ConnError> {
   conn.call(method::SESSIONS_KILL, serde_json::json!({"id": id, "signal": "term"})).map(drop)
+}
+
+pub fn autopilot_status(conn: &mut Conn) -> Result<AutopilotStatus, ConnError> {
+  let value = conn.call(method::AUTOPILOT_STATUS, Value::Null).map_err(autopilot_error)?;
+  serde_json::from_value(value).map_err(|_| ConnError::Failed("Agent runner sent an unreadable autopilot status".to_owned()))
+}
+
+pub fn autopilot_control(conn: &mut Conn, command: AutopilotCommand) -> Result<u64, ConnError> {
+  let params = serde_json::to_value(AutopilotControlParams { command }).map_err(|e| ConnError::Failed(e.to_string()))?;
+  let value = conn.call(method::AUTOPILOT_CONTROL, params).map_err(autopilot_error)?;
+  serde_json::from_value::<AutopilotControlled>(value)
+    .map(|r| r.seq)
+    .map_err(|_| ConnError::Failed("Agent runner sent an unreadable autopilot reply".to_owned()))
+}
+
+fn autopilot_error(e: ConnError) -> ConnError {
+  match e {
+    ConnError::Failed(m) if m.starts_with("not_running") => ConnError::Failed("Autopilot is not running".to_owned()),
+    ConnError::Failed(m) if m.starts_with("unknown_method") => ConnError::Incompatible(UPDATE_RUNNER.to_owned()),
+    other => other,
+  }
 }
 
 pub fn check_session_id(id: &str) -> Result<(), String> {

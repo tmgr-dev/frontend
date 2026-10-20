@@ -43,15 +43,22 @@ prompts. Only the runner sandbox keeps an agent away from the rules in ~/.config
 #[derive(Subcommand)]
 pub enum QueueCommand {
     /// Show the queue: switch, rules, pickups, pending approvals and the audit chain
-    Status,
+    Status {
+        /// Print the summary, then new events of the background loop until Ctrl+C
+        #[arg(long, visible_aliases = ["watch", "follow"])]
+        tail: bool,
+    },
     /// Stop picking up work immediately
     Pause,
     /// Continue picking up work
     Resume,
-    /// Turn the queue on (needs a terminal and a typed confirmation)
+    /// Turn the queue on and let it run by itself in the background (needs a terminal and a typed confirmation)
     Enable,
     /// Turn the queue off
-    Disable,
+    Disable {
+        #[arg(long, hide = true)]
+        reason: Option<String>,
+    },
     /// List, add or remove rules
     Rules {
         #[command(subcommand)]
@@ -66,6 +73,8 @@ pub enum QueueCommand {
     Release { pickup: String },
     /// Run one pickup pass now
     RunOnce,
+    /// Work through the backlog in the background: interview, one agreement, then the runner hosts the loop
+    Autopilot(Box<super::autopilot::AutopilotArgs>),
 }
 
 #[derive(Subcommand)]
@@ -171,7 +180,7 @@ fn in_agent_session() -> bool {
         .any(|k| std::env::var_os(k).is_some())
 }
 
-fn not_in_agent_session() -> Result<()> {
+pub(crate) fn not_in_agent_session() -> Result<()> {
     if in_agent_session() {
         return Err(
             Error::new(Kind::Forbidden, "refused inside an agent session")
@@ -181,11 +190,13 @@ fn not_in_agent_session() -> Result<()> {
     Ok(())
 }
 
-fn agree(summary: &str) -> Result<()> {
+pub(crate) fn agree(summary: &str) -> Result<()> {
     privileged::guard()?;
     eprintln!("{WARNING}");
     if !summary.is_empty() {
-        eprintln!("\n{summary}");
+        eprintln!();
+        let lines: Vec<String> = summary.lines().map(str::to_string).collect();
+        page_through(&lines)?;
     }
     privileged::confirm_typed_stdio("I AGREE", "\nType I AGREE to continue:")
 }
@@ -215,7 +226,7 @@ fn describe(r: &Rule) -> String {
     )
 }
 
-fn rules_summary(f: &QueueFile) -> String {
+pub(crate) fn rules_summary(f: &QueueFile) -> String {
     if f.rules.is_empty() {
         return "No rules yet.".into();
     }
@@ -244,14 +255,21 @@ fn record(paths: &Paths, event: &str, sha: &str, fields: Value) -> Result<()> {
 pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
     let paths = Paths::from_env()?;
     match cmd {
-        QueueCommand::Status => status(&paths),
+        QueueCommand::Status { tail } => {
+            if *tail {
+                let line = queue_line(&paths)?;
+                super::autopilot::tail::run(&line, cli.json)
+            } else {
+                status(&paths)
+            }
+        }
         QueueCommand::Pause => set_paused(&paths, true),
         QueueCommand::Resume => {
             not_in_agent_session()?;
             set_paused(&paths, false)
         }
         QueueCommand::Enable => enable(ctx, &paths),
-        QueueCommand::Disable => disable(&paths),
+        QueueCommand::Disable { reason } => disable(&paths, reason.as_deref()),
         QueueCommand::Rules { command } => match command {
             RulesCmd::List => list(&paths),
             RulesCmd::Add(a) => add(ctx, &paths, a),
@@ -269,6 +287,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, cmd: &QueueCommand) -> Result<Output> {
             ))
         }
         QueueCommand::RunOnce => run_once(ctx, cli, &paths),
+        QueueCommand::Autopilot(a) => super::autopilot::run(ctx, cli, a),
     }
 }
 
@@ -278,6 +297,16 @@ fn shown_status(p: &state::Pickup) -> &'static str {
     } else {
         p.status.name()
     }
+}
+
+fn queue_line(paths: &Paths) -> Result<String> {
+    let loaded = rules::load(paths)?;
+    let st = state::load(paths)?;
+    Ok(format!(
+        "Queue is {}{}.",
+        if loaded.file.enabled { "on" } else { "off" },
+        if st.paused { " (paused)" } else { "" }
+    ))
 }
 
 fn status(paths: &Paths) -> Result<Output> {
@@ -312,6 +341,8 @@ fn status(paths: &Paths) -> Result<Output> {
             audit["reason"].as_str().unwrap_or("")
         ));
     }
+    let (background, background_line) = super::autopilot::queue_loop::view();
+    lines.push(background_line);
     lines.push(rules_summary(&loaded.file));
     let rows: Vec<Vec<String>> = st
         .pickups
@@ -334,7 +365,8 @@ fn status(paths: &Paths) -> Result<Output> {
     }
     Ok(Output::new(
         json!({"enabled": loaded.file.enabled, "paused": st.paused, "tampered": tampered,
-            "audit": audit, "rules": loaded.file.rules, "pickups": pickups}),
+            "audit": audit, "rules": loaded.file.rules, "pickups": pickups,
+            "background": background}),
         lines.join("\n"),
     ))
 }
@@ -357,6 +389,13 @@ fn set_paused(paths: &Paths, paused: bool) -> Result<Output> {
 
 fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     privileged::guard()?;
+    let shown = validated_rules(ctx, paths)?;
+    agree(&rules_summary(&shown.file))?;
+    let out = commit_enable(paths, shown.sha256.as_deref())?;
+    Ok(super::autopilot::queue_loop::after_enable(paths, out))
+}
+
+pub(crate) fn validated_rules(ctx: &Ctx, paths: &Paths) -> Result<rules::Loaded> {
     let shown = rules::load(paths)?;
     rules::validate_file_with(
         &shown.file,
@@ -364,10 +403,13 @@ fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
         Some(&CliCloud::new(ctx)),
         Utc::now(),
     )?;
-    agree(&rules_summary(&shown.file))?;
+    Ok(shown)
+}
+
+pub(crate) fn commit_enable(paths: &Paths, shown_sha: Option<&str>) -> Result<Output> {
     let _lock = paths.lock()?;
     let now = rules::load(paths)?;
-    if now.sha256 != shown.sha256 {
+    if now.sha256.as_deref() != shown_sha {
         return Err(Error::conflict(
             "queue.toml changed while you were reading it; nothing was enabled",
         )
@@ -386,12 +428,8 @@ fn enable(ctx: &Ctx, paths: &Paths) -> Result<Output> {
     Ok(Output::new(json!({"enabled": true}), "Queue is on."))
 }
 
-fn disable(paths: &Paths) -> Result<Output> {
-    let _lock = paths.lock()?;
-    let mut file = rules::load(paths)?.file;
-    file.enabled = false;
-    let sha = rules::save(paths, &file)?;
-    record(paths, "disable", &sha, json!({}))?;
+fn disable(paths: &Paths, reason: Option<&str>) -> Result<Output> {
+    tmgr_queue::switch::disable(paths, reason)?;
     Ok(Output::new(json!({"enabled": false}), "Queue is off."))
 }
 
@@ -652,20 +690,20 @@ fn approve(paths: &Paths, id: &str) -> Result<Output> {
 
 const REFRESH_PAGES: u64 = 50;
 
-struct CliCloud<'a> {
+pub(crate) struct CliCloud<'a> {
     ctx: &'a Ctx,
     live_keys: RefCell<Option<Vec<String>>>,
 }
 
 impl<'a> CliCloud<'a> {
-    fn new(ctx: &'a Ctx) -> Self {
+    pub(crate) fn new(ctx: &'a Ctx) -> Self {
         CliCloud {
             ctx,
             live_keys: RefCell::new(None),
         }
     }
 
-    fn identity(&self) -> Result<(String, i64)> {
+    pub(crate) fn identity(&self) -> Result<(String, i64)> {
         let host = host_of(&self.ctx.server()?)?;
         let user = self.ctx.cloud_client()?.current_user_id()?.ok_or_else(|| {
             Error::auth("cannot tell which account is logged in").hint("tmgr login")
@@ -673,7 +711,7 @@ impl<'a> CliCloud<'a> {
         Ok((host, user))
     }
 
-    fn keys(&self) -> Result<Vec<String>> {
+    pub(crate) fn keys(&self) -> Result<Vec<String>> {
         if let Some(k) = self.live_keys.borrow().clone() {
             return Ok(k);
         }
@@ -758,6 +796,27 @@ impl CloudApi for CliCloud<'_> {
     }
 
     fn gate(&self, rule: &Rule, ws: &CloudWorkspace, task_id: i64) -> Result<Gated> {
+        self.gate_with(rule, ws, task_id, true)
+    }
+}
+
+impl CliCloud<'_> {
+    pub(crate) fn gate_readonly(
+        &self,
+        rule: &Rule,
+        ws: &CloudWorkspace,
+        task_id: i64,
+    ) -> Result<Gated> {
+        self.gate_with(rule, ws, task_id, false)
+    }
+
+    fn gate_with(
+        &self,
+        rule: &Rule,
+        ws: &CloudWorkspace,
+        task_id: i64,
+        record: bool,
+    ) -> Result<Gated> {
         let client = self.ctx.cloud_client()?;
         let (host, user) = self.identity()?;
         let elig = parse_eligibility(client.agent_run_task(task_id)?)?;
@@ -804,23 +863,59 @@ impl CloudApi for CliCloud<'_> {
             Ok(repos) => repos,
             Err(reason) => return Ok(refused(reason)),
         };
-        rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
-        rollback
-            .save()
-            .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+        if record {
+            rollback.record(rkey, ok.claim.signed_at, &Rollback::stamp(&ok.claim));
+            rollback
+                .save()
+                .map_err(|e| Error::internal(format!("cloud approvals state: {e}")))?;
+        }
         Ok(Gated::Ready(Box::new(CloudTask {
             key: ok.task_key,
             title: ok.title,
             body: ok.body,
             claim: ok.claim,
             repos: claim_repos,
+            persona: ok.persona,
+            context: ok.context,
         })))
     }
 }
 
 /// The repositories a queue pickup works on, or why the category's binding does not match the rule.
 /// Explicit set: the rule lists exactly the bound folders. No list: exactly the one bound folder.
-fn rule_binding(
+pub(crate) fn count_unconfirmed(
+    ctx: &Ctx,
+    paths: &Paths,
+    rule_name: &str,
+    selected: &BTreeSet<i64>,
+) -> Result<u32> {
+    const LOOKUPS: usize = 50;
+    let loaded = rules::load(paths)?;
+    let rule = loaded
+        .file
+        .rules
+        .iter()
+        .find(|r| r.name == rule_name)
+        .ok_or_else(|| Error::not_found(format!("no rule {rule_name}")))?;
+    let cloud = CliCloud::new(ctx);
+    let ws = cloud
+        .allow(&rule.workspace, Utc::now())
+        .map_err(|m| Error::new(Kind::Forbidden, m))?;
+    let (ids, _) = cloud.list(rule, &ws)?;
+    let mut refused = 0;
+    for id in ids
+        .into_iter()
+        .filter(|i| !selected.contains(i))
+        .take(LOOKUPS)
+    {
+        if matches!(cloud.gate(rule, &ws, id)?, Gated::Refused { .. }) {
+            refused += 1;
+        }
+    }
+    Ok(refused)
+}
+
+pub(crate) fn rule_binding(
     rule: &Rule,
     ok: &crate::cmd::runner::cloud::GateOk,
     entry: &tmgr_core::approval::Entry,
@@ -876,6 +971,20 @@ fn rule_binding(
     Ok(bound)
 }
 
+pub(crate) fn fresh_look(ctx: &Ctx, rule: &Rule, workspace_id: i64, task_id: i64) -> Result<Fresh> {
+    CliFresh {
+        ctx,
+        local_user_id: ctx.cfg.local_user_id,
+    }
+    .look(
+        rule,
+        tmgr_ipc::api::TaskRef {
+            workspace_id,
+            task_id,
+        },
+    )
+}
+
 struct CliFresh<'a> {
     ctx: &'a Ctx,
     local_user_id: Option<i64>,
@@ -888,18 +997,17 @@ fn wanted_kind(rule: &Rule) -> &str {
     }
 }
 
-impl FreshTask for CliFresh<'_> {
-    fn look(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+impl CliFresh<'_> {
+    fn look_in(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef, kinds: &[&str]) -> Result<Fresh> {
         let id = task.task_id;
         if rules::is_cloud(rule) {
             let client = self.ctx.cloud_client()?;
             let t =
                 client.task_by_id(u64::try_from(id).map_err(|_| Error::usage("bad task id"))?)?;
-            let wanted = wanted_kind(rule);
             let status_ok = client
                 .statuses(task.workspace_id)?
                 .iter()
-                .any(|s| Some(s.id) == t.status_id && s.kind == wanted);
+                .any(|s| Some(s.id) == t.status_id && kinds.contains(&s.kind.as_str()));
             let runs = match client.agent_work(t.id) {
                 Ok(body) => running_agents_of(&body),
                 Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
@@ -925,7 +1033,6 @@ impl FreshTask for CliFresh<'_> {
         let code = rules::workspace_code(&rule.workspace)?;
         let local = LocalTasks::open(code, self.local_user_id)?;
         let t = local.fetch(&format!("/api/tasks/{id}"))?;
-        let wanted = wanted_kind(rule);
         let status_id = t.get("status_id").and_then(Value::as_i64);
         let status_ok = local
             .fetch("/api/workspaces/statuses")?
@@ -933,7 +1040,9 @@ impl FreshTask for CliFresh<'_> {
             .is_some_and(|a| {
                 a.iter().any(|s| {
                     s.get("id").and_then(Value::as_i64) == status_id
-                        && s.get("type").and_then(Value::as_str) == Some(wanted)
+                        && s.get("type")
+                            .and_then(Value::as_str)
+                            .is_some_and(|k| kinds.contains(&k))
                 })
             });
         let runs = match local.fetch(&format!("/api/tasks/{id}/agent-work")) {
@@ -952,6 +1061,18 @@ impl FreshTask for CliFresh<'_> {
             running_agents: runs,
             status_ok,
         }))
+    }
+}
+
+const RESUMABLE_KINDS: [&str; 1] = ["review"];
+
+impl FreshTask for CliFresh<'_> {
+    fn look(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+        self.look_in(rule, task, &[wanted_kind(rule)])
+    }
+
+    fn look_resumable(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef) -> Result<Fresh> {
+        self.look_in(rule, task, &RESUMABLE_KINDS)
     }
 
     fn comment(&self, rule: &Rule, task: tmgr_ipc::api::TaskRef, text: &str) -> Result<()> {
@@ -977,6 +1098,7 @@ impl FreshTask for CliFresh<'_> {
 struct CliPublisher<'a> {
     opts: &'a Opts<'a>,
     held: RefCell<Option<state::Held>>,
+    pushed: RefCell<Option<Vec<String>>>,
 }
 
 pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
@@ -1000,13 +1122,19 @@ pub(crate) fn publish_target(pickup: &state::Pickup) -> Result<PublishTarget> {
                 identity: Some((c.dev, c.ino)),
             })
             .collect(),
+        resume: if pickup.continues.is_some() {
+            pickup.wip_heads.clone()
+        } else {
+            Default::default()
+        },
     })
 }
 
-impl Publisher for CliPublisher<'_> {
-    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
-        match publish_outcome(self.opts, &publish_target(pickup)?, Mode::Publish)? {
+impl CliPublisher<'_> {
+    fn publish_as(&self, pickup: &state::Pickup, mode: Mode) -> Result<String> {
+        match publish_outcome(self.opts, &publish_target(pickup)?, mode)? {
             Outcome::Published(urls) => {
+                *self.pushed.borrow_mut() = Some(urls.iter().map(|(n, _)| n.clone()).collect());
                 Ok(urls.into_iter().next().map(|(_, u)| u).unwrap_or_default())
             }
             Outcome::Held { held, text } => {
@@ -1016,15 +1144,30 @@ impl Publisher for CliPublisher<'_> {
             Outcome::Reviewed => Err(Error::internal("unexpected outcome of a publish")),
         }
     }
+}
+
+impl Publisher for CliPublisher<'_> {
+    fn publish(&self, pickup: &state::Pickup) -> Result<String> {
+        self.publish_as(pickup, Mode::Publish)
+    }
+
+    fn publish_draft(&self, pickup: &state::Pickup) -> Result<String> {
+        self.publish_as(pickup, Mode::Draft)
+    }
 
     fn take_held(&self) -> Option<state::Held> {
         self.held.borrow_mut().take()
     }
+
+    fn take_pushed(&self) -> Option<Vec<String>> {
+        self.pushed.borrow_mut().take()
+    }
 }
 
-struct RunnerRuns {
+pub(crate) struct RunnerRuns {
     cfg: tmgr_runner::daemon::RunnerConfig,
     client: RefCell<Option<tmgr_runner::client::Client>>,
+    autostart: bool,
 }
 
 fn runner_refused(e: &std::io::Error) -> bool {
@@ -1052,18 +1195,28 @@ fn answered_not_found(e: &std::io::Error) -> bool {
 }
 
 impl RunnerRuns {
-    fn new() -> Result<RunnerRuns> {
+    pub(crate) fn new() -> Result<RunnerRuns> {
         Ok(RunnerRuns {
             cfg: super::runner::runner_config()?,
             client: RefCell::new(None),
+            autostart: true,
         })
     }
 
-    fn ready(&self) -> Result<()> {
+    pub(crate) fn attach_only() -> Result<RunnerRuns> {
+        Ok(RunnerRuns {
+            autostart: false,
+            ..RunnerRuns::new()?
+        })
+    }
+
+    pub(crate) fn ready(&self) -> Result<()> {
         if self.client.borrow().is_some() {
             return Ok(());
         }
-        tmgr_runner::daemon::start_background(&self.cfg).map_err(super::runner::rerr)?;
+        if self.autostart {
+            tmgr_runner::daemon::start_background(&self.cfg).map_err(super::runner::rerr)?;
+        }
         let client = super::runner::connect(&self.cfg)?;
         client
             .set_timeouts(Duration::from_secs(30))
@@ -1082,7 +1235,16 @@ impl RunnerRuns {
         Ok(())
     }
 
-    fn with<T>(
+    pub(crate) fn kill(
+        &self,
+        run_id: &str,
+        signal: &str,
+        reason: &str,
+    ) -> std::result::Result<(), std::io::Error> {
+        self.with(|c| c.kill_with_reason(run_id, signal, Some(reason)))
+    }
+
+    pub(crate) fn with<T>(
         &self,
         f: impl FnOnce(&mut tmgr_runner::client::Client) -> std::io::Result<T>,
     ) -> std::result::Result<T, std::io::Error> {
@@ -1128,9 +1290,47 @@ fn run_create_req(req: &StartRequest) -> RunCreateReq {
     }
 }
 
+fn team_supported(bundle: &tmgr_ipc::api::RunBundle, caps: &[String]) -> Result<()> {
+    if bundle.team.is_some() && !caps.iter().any(|c| c == tmgr_ipc::api::caps::TEAM_V1) {
+        return Err(Error::new(
+            Kind::Conflict,
+            "the runner is too old for team runs; restart it after the update",
+        )
+        .hint(format!(
+            "{0} runner stop && {0} runner start",
+            super::runner::bin()
+        )));
+    }
+    Ok(())
+}
+
 impl RunsClient for RunnerRuns {
     fn create(&self, req: &StartRequest) -> Result<String> {
         self.ready()?;
+        let caps = self
+            .client
+            .borrow()
+            .as_ref()
+            .map(|c| c.welcome().caps.clone())
+            .unwrap_or_default();
+        team_supported(&req.bundle, &caps)?;
+        if tmgr_runner::bundle::has_owner_text(&req.bundle) {
+            let supported = self.client.borrow().as_ref().is_some_and(|c| {
+                c.welcome()
+                    .caps
+                    .iter()
+                    .any(|have| have == tmgr_ipc::api::caps::SIGNED_CONTEXT_V1)
+            });
+            if !supported {
+                return Err(Error::new(
+                    Kind::Conflict,
+                    format!(
+                        "the running runner is older than this tmgr and cannot deliver persona instructions and workspace rules; run {0} runner stop && {0} runner start",
+                        super::runner::bin()
+                    ),
+                ));
+            }
+        }
         if !req.clones.is_empty() {
             let supported = self.client.borrow().as_ref().is_some_and(|c| {
                 c.welcome()
@@ -1186,12 +1386,16 @@ impl RunsClient for RunnerRuns {
     }
 }
 
-fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
-    not_in_agent_session()?;
+pub(crate) fn with_deps<T>(
+    ctx: &Ctx,
+    cli: &Cli,
+    runs: &RunnerRuns,
+    policy: tmgr_queue::StartPolicy,
+    f: impl FnOnce(&Deps) -> Result<T>,
+) -> Result<T> {
     let source = LocalSource {
         local_user_id: ctx.cfg.local_user_id,
     };
-    let client = RunnerRuns::new()?;
     let cloud = CliCloud::new(ctx);
     let fresh = CliFresh {
         ctx,
@@ -1207,24 +1411,35 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
     let publisher = CliPublisher {
         opts: &opts,
         held: RefCell::new(None),
+        pushed: RefCell::new(None),
     };
+    let now = Local::now();
+    f(&Deps {
+        source: &source,
+        cloud: &cloud,
+        publisher: &publisher,
+        runs,
+        profiles: &RunnerProfiles,
+        workdirs: &GitClone,
+        fresh: &fresh,
+        now: Utc::now(),
+        local_minutes: now.hour() * 60 + now.minute(),
+        policy,
+    })
+}
+
+fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
+    not_in_agent_session()?;
+    let client = RunnerRuns::new()?;
     if tmgr_queue::needs_runner(paths)? {
         client.ready()?;
     }
-    let now = Local::now();
-    let report = tmgr_queue::run_once(
-        paths,
-        &Deps {
-            source: &source,
-            cloud: &cloud,
-            publisher: &publisher,
-            runs: &client,
-            profiles: &RunnerProfiles,
-            workdirs: &GitClone,
-            fresh: &fresh,
-            now: Utc::now(),
-            local_minutes: now.hour() * 60 + now.minute(),
-        },
+    let report = with_deps(
+        ctx,
+        cli,
+        &client,
+        tmgr_queue::StartPolicy::default(),
+        |deps| tmgr_queue::run_once(paths, deps),
     )?;
     let mut lines = Vec::new();
     if !report.enabled {
@@ -1248,6 +1463,11 @@ fn run_once(ctx: &Ctx, cli: &Cli, paths: &Paths) -> Result<Output> {
 #[cfg(test)]
 mod publish_target_tests {
     use super::*;
+
+    #[test]
+    fn a_paused_task_may_only_be_resumed_from_review() {
+        assert_eq!(RESUMABLE_KINDS, ["review"]);
+    }
 
     fn pickup(cloud: bool) -> state::Pickup {
         let mut v = json!({
@@ -1421,6 +1641,8 @@ mod rule_binding_tests {
             category: None,
             task_key: "TM-1".into(),
             repos: repos.map(|r| r.iter().map(|s| s.to_string()).collect()),
+            persona: None,
+            context: Vec::new(),
         }
     }
 
@@ -1498,5 +1720,37 @@ mod rule_binding_tests {
         let s = entry(Some(set(&[("acme/x", &be)])));
         let m = check(&rule(&[&be]), &ok, &s, Some("acme/x")).unwrap_err();
         assert!(m.contains("set of repositories"), "{m}");
+    }
+}
+
+#[cfg(test)]
+mod team_cap_tests {
+    use super::*;
+    use tmgr_ipc::api::{caps, BundleTeam, RunBundle, TeamMode};
+
+    fn bundle(team: Option<BundleTeam>) -> RunBundle {
+        let mut b: RunBundle = serde_json::from_str(include_str!(
+            "../../../tmgr-ipc/tests/fixtures/run_bundle.json"
+        ))
+        .unwrap();
+        b.team = team;
+        b
+    }
+
+    fn team() -> Option<BundleTeam> {
+        Some(BundleTeam {
+            size: 2,
+            mode: TeamMode::Eco,
+        })
+    }
+
+    #[test]
+    fn a_team_needs_the_team_capability() {
+        let old = vec![caps::SIGNED_CONTEXT_V1.to_string()];
+        let new = vec![caps::TEAM_V1.to_string()];
+        let e = team_supported(&bundle(team()), &old).unwrap_err();
+        assert!(e.message.contains("too old for team runs"), "{}", e.message);
+        assert!(team_supported(&bundle(team()), &new).is_ok());
+        assert!(team_supported(&bundle(None), &old).is_ok());
     }
 }

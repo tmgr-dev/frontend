@@ -48,6 +48,10 @@ pub struct BundlePage {
 pub struct BundlePersona {
     pub name: String,
     pub instructions_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -59,6 +63,34 @@ pub struct BundleLaunch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TeamMode {
+    Eco,
+    Heavy,
+}
+
+impl TeamMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeamMode::Eco => "eco",
+            TeamMode::Heavy => "heavy",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BundleTeam {
+    pub size: u8,
+    pub mode: TeamMode,
+}
+
+pub const MAX_TEAM_SIZE: u8 = 5;
+pub const MAX_PERSONA_INSTRUCTIONS: usize = 32768;
+pub const MAX_CONTEXT_PAGES: usize = 5;
+pub const MAX_CONTEXT_BYTES: usize = 65536;
 
 /// The immutable input of one agent run (see `PROTOCOL.md`, "Run bundles").
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,6 +104,10 @@ pub struct RunBundle {
     pub pages: Vec<BundlePage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persona: Option<BundlePersona>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub context: Vec<BundlePage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub team: Option<BundleTeam>,
     pub launch: BundleLaunch,
 }
 
@@ -90,6 +126,11 @@ impl RunBundle {
                 return Err(
                     "launch.permission_mode must be ask, accept-edits, plan or bypass".into(),
                 );
+            }
+        }
+        if let Some(t) = &self.team {
+            if !(1..=MAX_TEAM_SIZE).contains(&t.size) {
+                return Err(format!("team.size must be 1 to {MAX_TEAM_SIZE}"));
             }
         }
         valid_author("author.id", &self.author)?;
@@ -112,6 +153,32 @@ impl RunBundle {
                     "persona.instructions_sha256 must be 64 lowercase hex characters".into(),
                 );
             }
+            if let Some(i) = &p.instructions {
+                if i.replace("\r\n", "\n").len() > MAX_PERSONA_INSTRUCTIONS {
+                    return Err(format!(
+                        "persona.instructions must be at most {MAX_PERSONA_INSTRUCTIONS} bytes"
+                    ));
+                }
+                if sha256_hex(i.as_bytes()) != p.instructions_sha256 {
+                    return Err(
+                        "persona.instructions_sha256 must be the SHA-256 of persona.instructions"
+                            .into(),
+                    );
+                }
+            }
+        }
+        if self.context.len() > MAX_CONTEXT_PAGES {
+            return Err(format!(
+                "context must have at most {MAX_CONTEXT_PAGES} pages"
+            ));
+        }
+        let context_bytes: usize = self
+            .context
+            .iter()
+            .map(|p| p.title.replace("\r\n", "\n").len() + p.body.replace("\r\n", "\n").len())
+            .sum();
+        if context_bytes > MAX_CONTEXT_BYTES {
+            return Err(format!("context must be at most {MAX_CONTEXT_BYTES} bytes"));
         }
         Ok(())
     }

@@ -15,7 +15,8 @@ const watchTelegram = async (page, response) => {
   return { authHeaders, bodies };
 };
 
-const storedToken = (page) => page.evaluate(() => localStorage.getItem('token'));
+const storedToken = (page) =>
+  page.evaluate(() => localStorage.getItem('token'));
 
 test('a token in the Telegram callback URL is ignored', async ({ page }) => {
   const { authHeaders, bodies } = await watchTelegram(page, {

@@ -3498,6 +3498,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.1",
+ "digest 0.11.3",
+]
+
+[[package]]
 name = "sha2"
 version = "0.10.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3969,7 +3980,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmgr-approval"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3984,15 +3995,17 @@ dependencies = [
 
 [[package]]
 name = "tmgr-cli"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "assert_cmd",
  "base64 0.22.1",
  "chrono",
  "clap",
  "ctrlc",
+ "getrandom 0.3.4",
  "iana-time-zone",
  "jsonschema",
+ "keyring",
  "libc",
  "p256",
  "portable-pty",
@@ -4020,7 +4033,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-core"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "chrono",
  "flate2",
@@ -4048,7 +4061,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -4063,7 +4076,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-link"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "chrono",
  "keyring",
@@ -4081,7 +4094,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-local"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4097,7 +4110,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-queue"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4106,6 +4119,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha1",
  "sha2 0.11.1",
  "tempfile",
  "tmgr-approval",
@@ -4118,7 +4132,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-runner"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -4144,9 +4158,10 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.10"
+version = "1.0.13"
 dependencies = [
  "chrono",
+ "libc",
  "memchr",
  "rusqlite",
  "serde",

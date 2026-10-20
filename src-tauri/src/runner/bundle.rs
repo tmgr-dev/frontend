@@ -37,6 +37,8 @@ pub fn prepare(task: &TaskInfo, workspace_id: i64, task_id: i64, profile: &str, 
     comments: task.comments.iter().map(comment).collect(),
     pages: Vec::new(),
     persona: None,
+    context: Vec::new(),
+    team: None,
     launch: BundleLaunch { profile: profile.to_owned(), model: None, cwd: cwd.to_owned(), permission_mode: None },
   };
   bundle.validate().map_err(|e| format!("The task cannot be sent to the agent: {e}"))?;

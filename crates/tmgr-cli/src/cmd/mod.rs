@@ -2,6 +2,8 @@ pub mod add;
 pub mod agent;
 pub mod agent_status;
 pub mod auth;
+#[cfg(feature = "runner")]
+pub mod autopilot;
 pub mod board;
 pub mod config;
 pub mod githook;
@@ -24,6 +26,8 @@ pub mod routine;
 pub mod runner;
 pub mod self_update;
 pub mod shared;
+#[cfg(feature = "runner")]
+pub mod signer;
 pub mod status;
 pub mod task;
 pub mod timer;

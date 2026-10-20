@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
-use tmgr_approval::{AllowFile, Entry, Rollback};
-use tmgr_ipc::api::{RunCreateReq, TaskRef};
+use tmgr_approval::{context_sha256, page_sha256, persona_sha256, AllowFile, Entry, Rollback};
+use tmgr_ipc::api::{CloudApproval, RunBundle, RunCreateReq, TaskRef};
 
 pub fn check(req: &RunCreateReq, task: TaskRef) -> Result<(), String> {
     check_primary(req, task).map(|_| ())
@@ -43,9 +43,57 @@ pub fn clone_names(full_names: &[String]) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+fn check_owner_text(cloud: &CloudApproval, bundle: &RunBundle) -> Result<(), String> {
+    let changed = |what: &str| {
+        Err(format!(
+            "agent_work: the {what} changed since the approval (open the task in the web app and click Confirm for agent runs)"
+        ))
+    };
+    match (&cloud.persona_sha256, &bundle.persona) {
+        (None, None) => {}
+        (None, Some(_)) => {
+            return Err("agent_work: the run carries a persona the approval does not cover".into())
+        }
+        (Some(want), persona) => {
+            let signed = persona
+                .as_ref()
+                .and_then(|p| {
+                    Some(persona_sha256(
+                        p.id.as_deref()?,
+                        &p.name,
+                        p.instructions.as_deref()?,
+                    ))
+                })
+                .and_then(Result::ok);
+            if signed.as_ref() != Some(want) {
+                return changed("persona instructions");
+            }
+        }
+    }
+    match &cloud.context_sha256 {
+        None if bundle.context.is_empty() => {}
+        None => {
+            return Err(
+                "agent_work: the run carries workspace rules the approval does not cover".into(),
+            )
+        }
+        Some(want) => {
+            let pages: Vec<String> = bundle
+                .context
+                .iter()
+                .map(|p| page_sha256(p.id, &p.title, &p.body))
+                .collect();
+            if context_sha256(&pages).as_ref() != Ok(want) {
+                return changed("workspace rules");
+            }
+        }
+    }
+    Ok(())
+}
+
 fn check_set(
     req: &RunCreateReq,
-    cloud: &tmgr_ipc::api::CloudApproval,
+    cloud: &CloudApproval,
     entry: &Entry,
 ) -> Result<Option<String>, String> {
     let refused = |m: &str| Err(format!("agent_work: {m} ({})", entry.allow_command()));
@@ -139,7 +187,7 @@ fn verify(
         .bundle
         .as_ref()
         .ok_or("agent_work: a cloud task run needs its bundle")?;
-    if !bundle.comments.is_empty() || !bundle.pages.is_empty() || bundle.persona.is_some() {
+    if !bundle.comments.is_empty() || !bundle.pages.is_empty() {
         return Err("agent_work: a cloud task run carries only the title and description".into());
     }
     let allow = allow?;
@@ -154,6 +202,7 @@ fn verify(
         .map_err(|r| r.to_string())?;
     tmgr_approval::check_claim(entry, cloud, &bundle.title, &bundle.body)
         .map_err(|r| r.to_string())?;
+    check_owner_text(cloud, bundle)?;
     if let Some(seen) = rollback.as_ref().and_then(|r| {
         r.seen(&Rollback::key(
             &cloud.host,

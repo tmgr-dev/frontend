@@ -113,6 +113,14 @@ pub struct Pickup {
     pub clones: Vec<PickupClone>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<Held>,
+    #[serde(default)]
+    pub paused_draft: bool,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wip_heads: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continues: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub continued_by: Option<String>,
 }
 
 fn one() -> u32 {
@@ -132,6 +140,16 @@ impl Pickup {
             && self.pr_url.is_none()
             && self.publish_attempts < MAX_PUBLISH_ATTEMPTS
             && self.held.is_none()
+            && !self.paused_draft
+    }
+
+    pub fn resumable(&self) -> bool {
+        self.paused_draft
+            && self.pr_url.is_some()
+            && self.held.is_none()
+            && self.continued_by.is_none()
+            && self.cloud.is_some()
+            && !self.wip_heads.is_empty()
     }
 
     pub fn occupies(&self) -> bool {
@@ -151,6 +169,15 @@ pub struct State {
     pub skips: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub taken_notes: BTreeMap<String, String>,
+}
+
+pub fn paused_resumable(state: &State) -> Vec<String> {
+    state
+        .pickups
+        .iter()
+        .filter(|p| p.resumable())
+        .map(|p| p.id.clone())
+        .collect()
 }
 
 pub fn load(paths: &Paths) -> Result<State> {

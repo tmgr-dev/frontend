@@ -7,6 +7,8 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use keyring::Error as KeyringError;
+
 pub const SERVICE: &str = "dev.tmgr.cli";
 pub const STORE_ENV: &str = "TMGR_CREDENTIAL_STORE";
 

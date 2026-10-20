@@ -780,6 +780,7 @@ pub fn prepare(
             deny: Vec::new(),
             trusted_env_pass: p.env_pass.clone(),
             env: p.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
+            run_id: false,
         },
         secret_files: r.secret_files,
         seeds: r.seeds,

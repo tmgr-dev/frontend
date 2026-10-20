@@ -135,4 +135,90 @@ describe('buildBulkItems', () => {
 			build([{ ...tasks[0], repositories: ['Acme/web'] }]),
 		).rejects.toThrow();
 	});
+
+	it('sends no persona or context hashes for a task with no shown coverage', async () => {
+		const items = await build([
+			{ ...tasks[0], coverage: { persona: null, context: null } },
+			tasks[1],
+		]);
+		for (const item of items) {
+			expect(item).not.toHaveProperty('persona_sha256');
+			expect(item).not.toHaveProperty('context_sha256');
+			expect(
+				await verifyMessage(
+					fixtures.key.public_key,
+					approvalMessage(
+						'api.tmgr.dev',
+						1,
+						56,
+						item.task_id,
+						item.category_id,
+						item.content_sha256,
+						fixtures.key.key_id,
+						1760000000,
+						item.repos_sha256,
+					),
+					item.signature,
+				),
+			).toBe(true);
+		}
+	});
+
+	it('signs v3 per task with its own persona and rules, v1/v2 for the rest', async () => {
+		const c = fixtures.cases_v3[0];
+		const items = await build([
+			{
+				id: c.task_id,
+				title: c.title,
+				description: c.description,
+				workspaceId: c.workspace_id,
+				categoryId: c.category_id,
+				coverage: {
+					persona: { ...c.persona, sha256: 'ignored' },
+					context: {
+						pages: c.context.map((p: any) => ({ ...p, slug: 's' })),
+						sha256: 'ignored',
+					},
+				},
+			},
+			{ ...tasks[0], coverage: { persona: null, context: null } },
+			tasks[1],
+		]);
+		expect(items[0].persona_sha256).toBe(c.persona_sha256);
+		expect(items[0].context_sha256).toBe(c.context_sha256);
+		expect(items[1].persona_sha256).toBeUndefined();
+		expect(items[2].context_sha256).toBeUndefined();
+		const message = approvalMessage(
+			'api.tmgr.dev',
+			1,
+			c.workspace_id,
+			c.task_id,
+			c.category_id,
+			items[0].content_sha256,
+			fixtures.key.key_id,
+			1760000000,
+			undefined,
+			c.persona_sha256,
+			c.context_sha256,
+		);
+		expect(message).toContain(':v3:');
+		expect(
+			await verifyMessage(fixtures.key.public_key, message, items[0].signature),
+		).toBe(true);
+		for (const item of items.slice(1)) {
+			const v1 = approvalMessage(
+				'api.tmgr.dev',
+				1,
+				56,
+				item.task_id,
+				item.category_id,
+				item.content_sha256,
+				fixtures.key.key_id,
+				1760000000,
+			);
+			expect(
+				await verifyMessage(fixtures.key.public_key, v1, item.signature),
+			).toBe(true);
+		}
+	});
 });

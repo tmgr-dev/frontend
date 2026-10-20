@@ -49,11 +49,17 @@ pub struct Exit {
     pub interrupted: bool,
 }
 
+#[cfg(debug_assertions)]
 pub fn retry_ms() -> u64 {
     std::env::var("TMGR_TEST_AGENT_WORK_RETRY_MS")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(RETRY_MS)
+}
+
+#[cfg(not(debug_assertions))]
+pub fn retry_ms() -> u64 {
+    RETRY_MS
 }
 
 pub fn wanted(dir: &Path) -> bool {
@@ -92,10 +98,21 @@ pub fn begin(
     )
 }
 
-pub fn mark_halted(dir: &Path) {
-    if wanted(dir) {
-        let _ = write_atomic(&dir.join(HALTED), b"1");
+pub fn mark_halted(dir: &Path, reason: Option<&str>) {
+    if !wanted(dir) {
+        return;
     }
+    let path = dir.join(HALTED);
+    if reason.is_none() && path.exists() {
+        return;
+    }
+    let _ = write_atomic(&path, reason.unwrap_or("1").as_bytes());
+}
+
+fn halt_reason(dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(dir.join(HALTED)).ok()?;
+    let text = text.trim();
+    (!text.is_empty() && text != "1").then(|| text.to_string())
 }
 
 pub fn status_of(exit: Exit, halted: bool) -> &'static str {
@@ -234,17 +251,20 @@ pub fn step(
             save(dir, &s)?;
             return Ok(Some("hold"));
         }
-        let text = format!(
-            "{} by the runner after {} ({} working), {} commit(s)",
-            match status {
-                "succeeded" => "Finished",
-                "cancelled" => "Stopped",
-                _ => "Failed",
-            },
-            minutes(summary.duration_s),
-            minutes(summary.working_s),
-            summary.commits.len()
-        );
+        let reason = (status == "cancelled").then(|| halt_reason(dir)).flatten();
+        let text = reason.unwrap_or_else(|| {
+            format!(
+                "{} by the runner after {} ({} working), {} commit(s)",
+                match status {
+                    "succeeded" => "Finished",
+                    "cancelled" => "Stopped",
+                    _ => "Failed",
+                },
+                minutes(summary.duration_s),
+                minutes(summary.working_s),
+                summary.commits.len()
+            )
+        });
         call(
             helper,
             &json!({

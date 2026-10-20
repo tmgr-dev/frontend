@@ -102,6 +102,48 @@ pub struct RunCreateReq {
     pub clones: Vec<CloneSpec>,
 }
 
+/// Params of `orchestrator.create` (`client: "cli"` only): the runner builds the command and the prompt itself.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrchestratorCreateReq {
+    pub profile: String,
+    pub cwd: String,
+    pub start_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exe_pin: Option<ExePin>,
+}
+
+impl OrchestratorCreateReq {
+    pub fn as_run(&self) -> RunCreateReq {
+        RunCreateReq {
+            profile: self.profile.clone(),
+            task: None,
+            cwd: self.cwd.clone(),
+            name: self.name.clone(),
+            model: None,
+            cols: default_cols(),
+            rows: default_rows(),
+            bundle: None,
+            bundle_sha256: None,
+            cwd_pin: None,
+            origin: None,
+            permission_mode: None,
+            start_key: Some(self.start_key.clone()),
+            clone_of: None,
+            trust_cwd: None,
+            trust_via_repo: None,
+            exe_pin: self.exe_pin.clone(),
+            argv_sha256: None,
+            agent_work: false,
+            cloud: None,
+            unattended: true,
+            clones: Vec::new(),
+        }
+    }
+}
+
 /// One clone of a multi-repository run: the folder `<cwd>/<name>` cloned from the repository `clone_of`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CloneSpec {
@@ -124,6 +166,10 @@ pub struct CloudApproval {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repos_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub persona_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_sha256: Option<String>,
 }
 
 /// The leader to follower link a run was started for, and the link's generation at that time.
@@ -286,6 +332,8 @@ pub struct IdParams {
 pub struct KillParams {
     pub id: String,
     pub signal: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

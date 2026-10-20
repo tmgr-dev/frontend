@@ -1,8 +1,11 @@
 import { getCategories } from '@/actions/tmgr/categories';
 import { getTasks } from '@/actions/tmgr/tasks';
 import store from '@/store';
+import { taskIdForModal } from '@/utils/pages/taskLinks';
+import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
 import { pickTaskByKey, taskKeyPrefixes } from '@/utils/taskKeys';
 import {
+	isInDetachedWindow,
 	isInTaskWindow,
 	openTaskWindow,
 	taskWindowTarget,
@@ -70,4 +73,11 @@ export const openTaskByKey = async (key: string): Promise<boolean> => {
 	} catch {
 		return false;
 	}
+};
+
+export const openTaskLinkInModal = (parsed: ParsedTmgrUrl): boolean => {
+	const taskId = taskIdForModal(parsed, isInDetachedWindow());
+	if (!taskId) return false;
+	store.commit('setCurrentTaskIdForModal', taskId);
+	return true;
 };

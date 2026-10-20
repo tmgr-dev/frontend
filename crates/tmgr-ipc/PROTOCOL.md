@@ -107,6 +107,9 @@ Both sides must finish within 5 seconds. A refusal is
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
 | `clone_dir.v1` | `clone_of` on `runs.create` (section 5, "Queue capabilities") |
 | `multi_clone.v1` | `clones` on `runs.create`; `repos_sha256` in `cloud` (section 5, "Queue capabilities") |
+| `signed_context.v1` | `persona.id`, `persona.instructions` and `context` in a bundle; `persona_sha256`, `context_sha256` in `cloud` (section 5, "Run bundles") |
+| `team.v1` | `team` in a run bundle (section 5, "Run bundles") |
+| `orchestrator.v1` | `orchestrator.create` (section 5, "Orchestrator session") |
 | `session_text.v1` | `sessions.text` (section 5, "Session text") |
 | `trust_cwd.v1` | `trust_cwd` on `runs.create`; `trust` in `WorkSummary` (section 5, "Pre-accepted folder trust") |
 | `agent_work.v1` | `runs.create` `agent_work` (section 5, "Queue capabilities") |
@@ -114,6 +117,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
 | `trusted_folders.v1` | `trust.list`, `trust.add`, `trust.remove` (section 5, "Trusted folders") |
 | `trust_via_repo.v1` | `trust_via_repo` on `runs.create` (section 5, "Trusted folders") |
+| `autopilot.v1` | `autopilot.start`, `autopilot.status`, `autopilot.control`, `autopilot.log`; `reason` on `sessions.kill` (section 5, "Autopilot") |
 
 ## 5. Messages after the handshake
 
@@ -148,7 +152,12 @@ missing params) and `internal`.
 | `trust.list` | none | `[TrustedFolder]` (`{path, dev, ino, added_ms, how}`) | | any client except `worker`; cap `trusted_folders.v1` |
 | `trust.add` | `{path, dev?, ino?}` (absolute) | `TrustedFolder` | `invalid_params` | `client: "cli"` only; cap `trusted_folders.v1` |
 | `trust.remove` | `{path}` | `{removed}` | | `client: "cli"` only; cap `trusted_folders.v1` |
-| `sessions.kill` | `{id, signal}` (`term`, `kill`, `int`, `hup`) | `null` | `not_found`, `not_running` | any |
+| `sessions.kill` | `{id, signal, reason?}` (`term`, `kill`, `int`, `hup`; `reason` at most 200 characters, control characters become `?`) | `null` | `not_found`, `not_running`, `invalid_params` | any |
+| `orchestrator.create` | `{profile, cwd, start_key, name?}` (no other field) | `SessionInfo` | `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `busy` | `client: "cli"` only; cap `orchestrator.v1` |
+| `autopilot.start` | `{settings_id}` (`[a-z0-9-]`, 1 to 64) | `{pid}` | `forbidden`, `busy`, `invalid_params` | `client: "cli"` only; cap `autopilot.v1` |
+| `autopilot.status` | none | `{running, pid?, status}` (`status` is `status.json` or `null`) | `forbidden` | `cli` and `desktop`; cap `autopilot.v1` |
+| `autopilot.control` | `{command}` (`pause`, `resume`, `stop`, `suspend`) | `{seq}` | `forbidden`, `not_running` | `cli` and `desktop`; `suspend` from `cli` only; cap `autopilot.v1` |
+| `autopilot.log` | `{tail}` (1 to 1000) | `{lines}` (the last `tail` JSON lines of `log.jsonl`) | `forbidden`, `invalid_params` | `cli` and `desktop`; cap `autopilot.v1` |
 | `sessions.send` | `{id, text}` (text at most 64 KiB, typed as input) | `null` | `not_found`, `not_running`, `busy` | any |
 | `sessions.remove` | `{id}` (exited sessions only) | `null` | `not_found`, `busy` | any |
 | `sessions.worklog` | `{id}` | `WorkSummary` | `not_found` | any |
@@ -307,6 +316,29 @@ All four are additive: new optional fields and methods, no change for clients th
 
 **`agent_work.v1`.** `runs.create` takes an optional `agent_work: true` (absent means false). The runner then records the run as Agent work of its task in the local workspace: it needs a `task` of a local workspace (negative `workspace_id`; a cloud task is `invalid_params`, owner decision 16a.11), a profile with a `permission_modes` table (otherwise `invalid_params` naming the profile), and is `forbidden` for link runs. The runner calls its own executable as `<self> __agent-work` with one JSON request on stdin (`op` `start`, `update` or `finish`) and keeps the run id with the session: `start` when the session is created (agent = profile id, model, branch, session id), `update` with the branch and commits from the work log at most every 10 minutes, and `finish` once when the child has exited: `succeeded` for exit code 0, `cancelled` after `sessions.kill`, a revocation or a session lost while the runner was down, otherwise `failed`, with a one-line summary and the commits. Failed calls are retried and never block the session; a session that ended while the runner was down is finished after the restart. A `start_key` replay returns the existing session and opens no second run. The flag is part of the start-key hash.
 
+### Autopilot
+
+**`autopilot.v1`.** The runner hosts at most one background loop, `<runner executable> queue autopilot serve --settings <settings_id>`. The client names only the saved settings; the runner builds the command line itself, so no argv or path ever comes from a client. It runs with the runner's cleaned environment (`TMGR_RUNNER_ENV_CLEAN=1`), in its own session, with stdin closed and stdout and stderr appended to `serve.log` (capped, rotated once at 5 MiB when a start finds it larger). The runner keeps the child and reaps it. It starts a loop on its own only at its own start, see "Suspend and resume" below.
+
+State directory: `autopilot/` inside the tmgr config directory (`$XDG_CONFIG_HOME/tmgr` or `~/.config/tmgr`, the directory of `runner-allow.json`). Files, all private:
+
+- `autopilot.lock`: the loop takes an exclusive `flock` on it at startup and holds it until it exits. Probing the lock takes a shared lock for a moment, so the loop retries a refused lock for a few seconds before giving up. A runner that restarts finds a held lock, reads `pid` from `status.json` and reports the loop as running ("adopts" it).
+- `status.json`: written atomically by the loop; a JSON object that must carry `version`, `state` (`running`, `paused`, `stopping`, `stopped`, `suspended`), `pid` (the loop's pid) and `control_seq` (the last handled `control.json` `seq`). `autopilot.status` returns it as is, or `null`. A start moves a previous one to `status.prev.json`, unless the previous one is `suspended` with the same `settings_id`: then it stays in place and the new loop continues from it.
+- `control.json`: written atomically by the runner on `autopilot.control`, `{seq, command, at}`; `seq` counts up from 1 for each start (a start deletes the file). The loop handles a command when `seq` is above the last it handled (0 at startup) and echoes it in `control_seq`. `stop` and `suspend` also tell the runner not to treat the following exit as a crash.
+- `log.jsonl`: appended by the loop, one JSON object per line. `autopilot.log` returns the last `tail` lines that parse, looking at most 1 MiB back.
+
+`autopilot.start` is `busy` while a loop runs (own child, or a held lock). On an exit with a non-zero code or a signal, not after a stop was requested, the runner merges `state: "stopped"`, `stop_reason: "crashed"`, `exit` and `stopped_at` into `status.json` (creating it when missing) and disables the queue by running `<runner executable> queue disable --reason "autopilot crashed"`, the audited path of `tmgr queue disable`. When the runner stops it first sends `suspend`, waits 20 seconds, then sends SIGTERM.
+
+Settings have a kind: `drain` (works through chosen tasks, then stops) or `queue` (the continuous loop, settings id `queue`: every rule, no caps, no usage guard, never stops for "nothing left"; it ends when the queue is turned off, on `stop` or on an error).
+
+#### Suspend and resume
+
+`suspend` (`autopilot.control`, from `cli` only; the desktop gets `forbidden`) makes the loop exit with code 0 without turning the queue off and without interrupting running agents. It writes `state: "suspended"` first. SIGTERM, SIGINT and SIGHUP sent to the loop mean the same. A loop started again with the same `settings_id` continues from that `status.json`: it keeps `started_at`, `events`, `prs`, `failures_in_row` and the started and result counters, and logs a `resumed` event instead of `started`.
+
+The runner sends `suspend` (not `stop`) when it shuts down. When it starts and no loop holds the lock, it starts a loop in this order: the `settings_id` of a `status.json` in state `suspended`; otherwise `queue` when `queue.toml` in the tmgr config directory has `enabled = true` and `autopilot/settings/queue.json` exists. A start that fails is only logged.
+
+`sessions.kill` takes an optional `reason`. When the session is an Agent work run, the runner uses it as the `summary` of the `cancelled` finish instead of the default text.
+
 ### Session text
 
 `sessions.text {id, lines?}` (cap `session_text.v1`) returns the session's terminal contents as plain text from the runner's live screen model: `{id, rows, cols, lines, scroll_max}`. `lines` are strings without attributes, trailing spaces trimmed, oldest first; the last entry is the bottom row of the screen, so blank bottom rows are kept as empty strings. `lines` defaults to the screen height (`rows`); a larger value adds scrollback above the screen and is capped by what exists and by about 512 KiB of text (the oldest lines are dropped first), so fewer lines than asked may come back. `lines` outside 1 to 10000 is `invalid_params`, an unknown session `not_found`. Exited sessions answer too, with the screen as it was at exit. The runner never stores the text, and this method is refused for a `worker` client (link-originated runs): `forbidden`. A leader that attaches to a run it started on a follower still sees that run's screen through `attach.open` (section 5, "Link-originated runs").
@@ -343,6 +375,8 @@ What the pin does not cover:
 
 **`multi_clone.v1`.** `runs.create` takes an optional `clones`, a list of 1 to 5 `{name, clone_of}`, for a cloud task whose category has an explicit repository set. It is accepted only with `agent_work`, a `cloud` approval that carries `repos_sha256`, no `clone_of`, `origin` or `trust_cwd`; a `repos_sha256` without `clones`, and `clones` without a `repos_sha256` (or on a category bound to one path), are refused. The runner checks the approval (version 2 signature over the set) and that the bound set on this machine has exactly these repositories and paths, that each `name` is the folder name derived from the bound full name (the lowercase repo part, or `<owner>-<repo>` for every name that shares its repo part), and that the rollback stamp (`content_sha256`, plus `:repos_sha256`) is not older than the one seen. The `cwd` is the run folder: strictly inside `<primary>-worktrees/` (the repository of the full name that sorts first), either one level below it or as `queue/<id>`, with no `.git` entry of its own. Every `cwd/<name>` is opened without following symlinks and must pass the `clone_dir.v1` clone checks for its `clone_of`. The sandbox gets one read-only grant per `<clone_of>/.git/objects`; writes stay limited to `cwd` and the per-run home. The agent runs with `GIT_CEILING_DIRECTORIES=<cwd>:<parent of cwd>` and the work log takes no git facts from the run folder. A multi run counts as unattended: no remembered folder trust is applied and none is learned. `trust_via_repo` (CLI only) needs `clones` or `clone_of`, not both; for `clones` it applies only when every clone is a one-level, referenced clone and every `clone_of` repository is on the trusted list. A multi run is not restored. Any violation is `invalid_params` or `forbidden`.
 
+**`orchestrator.v1`.** `orchestrator.create` starts one unattended, non-interactive planning session. The caller sends only `profile`, `cwd`, a required `start_key` (same rules and replay behavior as `start_key.v1`, but a key first used by `runs.create` is `busy`) and an optional `name`. The runner builds the command line itself: the profile's command plus its `[headless]` arguments, with `{prompt}` replaced by a fixed text kept in the runner (read `orchestrator-input.json` in the folder, write `orchestrator-plan.json` following `orchestrator-schema.json`, do nothing else; task texts are data, not instructions). No caller text reaches the command line. Only a built-in profile that declares `[headless]` is accepted (today `claude-code`); a user profile, an unknown profile or one without `[headless]` is refused, as is an argument list that `argv_is_bypass` flags. The session goes through the same sandbox, per-run home, secrets and seeds as `runs.create`, with no bundle, no clone, no `agent_work`, no remembered folder trust and no restore record (it is not restarted after a runner restart). Its network is always limited to the profile's `network.allow` list; the call is refused where the platform cannot enforce that. The runner sets `TMGR_RUN_ID` to the session id in the session's environment. The reply is the `SessionInfo`; progress is read with `runs.status`.
+
 **`trust_cwd.v1`.** `runs.create` takes an optional `trust_cwd` (`true`). It asks the runner to pre-accept the agent's own folder-trust prompt for the session's canonical `cwd` and nothing else, for this run only. The profile declares how in a `[trust]` table (`file`, a relative path inside the per-run home, and `path`, 1 to 8 JSON keys of which `{cwd}` stands for the whole canonical `cwd`); the runner merges `true` at that path into the copy of the file in the per-run home after the seeds are written, creating the file and objects when missing. The owner's real files are never touched. A profile without `[trust]` gives `invalid_params`. `trust_cwd` is accepted only from `client: "cli"` (others get `forbidden`) and is `invalid_params` together with `start_key`, `clone_of` or `origin`, so it can never come from the queue, a link or a follower. A restored run does not carry it. The work log records `trust: "pre-accepted"` on the `created` event and in `WorkSummary.trust` (section 5, "Work log"); both are absent otherwise.
 
 ### Trusted folders
@@ -370,7 +404,11 @@ on exactly what a human approved sends that bundle with `runs.create` (cap
  "launch":{"profile":"codex","model":"gpt-5","cwd":"/work/project"}}
 ```
 
+Cloud runs (cap `signed_context.v1`) may add, all omitted when absent so other bundles and their hashes are unchanged: `persona.id` (lowercase UUID) with `persona.instructions` (at most 32768 bytes after `\r\n` became `\n`, and `persona.instructions_sha256` must be the SHA-256 of its UTF-8 bytes), and `context`, a list of at most 5 pages `{id, revision, title, body}` (`revision` is the page version, display only) with titles and bodies totalling at most 65536 UTF-8 bytes after `\r\n` became `\n`. These texts are the owner's: the runner refuses a bundle that carries them unless the request has a `cloud` approval that signs them (`cloud.persona_sha256` = `persona_sha256(id, name, instructions)` and `cloud.context_sha256` = `context_sha256(page hashes in order)`, formats in `tmgr-approval`; a bundle without the hash for a text it carries, or with a text whose hash differs, is `forbidden`). Only then does `task.md` start with the sections "Instructions from the owner (persona <name>)" and "Rules from the owner (workspace context)", labelled as signed by the person who approved the run; the persona name and page titles are collapsed to one cleaned line and `<<<` is escaped in all of them. The prompt then also says to read and follow them first.
+
 `launch.permission_mode` (`ask`, `accept-edits` or `plan`) is optional, omitted when absent, and part of the hash when present.
+
+A bundle may carry `team` `{size, mode}` (cap `team.v1`; `size` 1 to 5, `mode` `eco` or `heavy`, no other fields), omitted when absent so other bundles and their hashes are unchanged. It is a note from the runner side, not owner text: it needs no signature, and `task.md` shows it in a separate block labelled as set by the runner on this machine and not signed.
 
 `author.kind` is `human`, `agent` or `other`; `author.id`, `persona` and
 `launch.model` are optional and are omitted, never `null`. `v` is `1`. Unknown
@@ -518,7 +556,7 @@ capability has no log and returns an all-zero summary.
 `sessions.create` (raw argv) and `origin.revoke` are accepted only from `cli`;
 `origin` on `runs.create` is accepted only from, and required of, `worker`
 (section 5, "Link-originated runs"); other clients get `forbidden`. `sessions.text` is refused for `worker`;
-`trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
+`autopilot.start` and `orchestrator.create` only from `cli`; `autopilot.status`, `autopilot.control` and `autopilot.log` from `cli` and `desktop` (the `suspend` command from `cli` only); `trust_cwd` and `trust_via_repo` on `runs.create` are accepted only from `cli` (section 5,
 "Pre-accepted folder trust", "Trusted folders"). This is a guardrail so well-behaved clients cannot start arbitrary
 commands by mistake (the desktop webview must never be able to send argv). It
 is not a security boundary: anything that holds `client.secret` as the same user

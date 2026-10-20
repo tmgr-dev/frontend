@@ -3,6 +3,23 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.52 — 2026-10-20
+
+- AI usage: an Autopilot panel (desktop only) shows the local runner's autopilot live: state, Pause / Resume / Stop, task counters, active runs with Open task / Open session / Open PR, usage limits with the stop marks, cost and an event feed. Open task and the needs feedback / blocked / queued lists light up with the next CLI release.
+- Includes the 0.9.51 changes below (0.9.51 was not published).
+
+## 0.9.51 — 2026-10-20
+
+- Confirm for agent runs (single and bulk) shows the persona instructions and the workspace rules your approval covers, in full, with hidden characters flagged. Cloud agent runs receive exactly that signed text.
+- Tasks show "Needs confirmation" when the persona instructions or the workspace rules changed after you confirmed.
+
+## 0.9.50 — 2026-10-19
+
+- Task form: the footer shows who created the task (hidden on phone widths).
+- Dashboard: clicking a day on the activity heatmap filters the activity feed to that day.
+- Pages: clicking a task mention opens the task in a modal over the page instead of the full task form; closing it keeps you on the same page.
+- Telegram sign-in no longer accepts a login token passed in the page link.
+
 ## 0.9.49 — 2026-10-19
 
 - Cloud runs in several repositories: Category settings has an "Agent run repositories" list (shown when "Let my agents run my tasks" is on). "Confirm for agent runs" shows the repositories the approval covers.

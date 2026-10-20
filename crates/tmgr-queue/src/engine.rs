@@ -1,6 +1,6 @@
 use crate::audit::{sha256_hex, Audit};
 use crate::clones::plan_clones;
-use crate::cloud::{CloudApi, CloudClaim, CloudSource};
+use crate::cloud::{CloudApi, CloudClaim, CloudSource, Gated};
 use crate::paths::Paths;
 use crate::rules::{self, hours_contains, ProfilePin, ProfileResolver, Rule, GLOBAL_MAX};
 use crate::runs::{mode_name, Lookup, RunState, RunsClient, StartRequest, PERMISSION_MODE};
@@ -11,17 +11,30 @@ use crate::workdir::{clone_dir, WorkDirs};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{BundleLaunch, BundlePersona, CloneSpec, RunBundle};
+use tmgr_ipc::api::{BundleLaunch, BundlePersona, BundleTeam, CloneSpec, RunBundle};
 
 const APPROVAL_TTL_HOURS: i64 = 24;
 pub const MAX_BUNDLE: usize = 64 * 1024;
+const MAX_CLOUD_BUNDLE: usize = 512 * 1024;
 
 pub trait Publisher {
     fn publish(&self, pickup: &Pickup) -> Result<String>;
 
+    fn publish_draft(&self, _pickup: &Pickup) -> Result<String> {
+        Err(Error::internal(
+            "this publisher cannot open draft pull requests",
+        ))
+    }
+
     fn take_held(&self) -> Option<state::Held> {
+        None
+    }
+
+    /// Full names of the repositories the last publish pushed; `None` when the publisher cannot tell.
+    fn take_pushed(&self) -> Option<Vec<String>> {
         None
     }
 }
@@ -36,6 +49,104 @@ pub struct Deps<'a> {
     pub fresh: &'a dyn FreshTask,
     pub now: DateTime<Utc>,
     pub local_minutes: u32,
+    pub policy: StartPolicy,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TaskPlan {
+    pub order: Vec<i64>,
+    pub groups: BTreeMap<i64, String>,
+    pub teams: BTreeMap<i64, BundleTeam>,
+    pub profile: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StartPolicy {
+    pub starts_allowed: bool,
+    pub max_live: Option<usize>,
+    pub max_new_starts: Option<usize>,
+    pub only: Option<BTreeSet<i64>>,
+    pub plan: Option<Arc<TaskPlan>>,
+}
+
+impl Default for StartPolicy {
+    fn default() -> Self {
+        StartPolicy {
+            starts_allowed: true,
+            max_live: None,
+            max_new_starts: None,
+            only: None,
+            plan: None,
+        }
+    }
+}
+
+fn plan_rule(rule: &Rule, policy: &StartPolicy) -> Rule {
+    let mut r = rule.clone();
+    if let Some(profile) = policy.plan.as_ref().and_then(|p| p.profile.as_ref()) {
+        r.profile = profile.clone();
+    }
+    r
+}
+
+pub fn effective_rule(rule: &Rule, policy: &StartPolicy, _task_id: i64) -> Rule {
+    plan_rule(rule, policy)
+}
+
+impl StartPolicy {
+    fn selects(&self, task_id: i64) -> bool {
+        self.only.as_ref().is_none_or(|o| o.contains(&task_id))
+    }
+
+    fn start_order(&self, state: &State) -> Vec<usize> {
+        let mut idx: Vec<usize> = (0..state.pickups.len()).collect();
+        if let Some(plan) = &self.plan {
+            let pos = |i: usize| {
+                let id = state.pickups[i].task.task_id;
+                (
+                    plan.order
+                        .iter()
+                        .position(|t| *t == id)
+                        .unwrap_or(usize::MAX),
+                    id,
+                )
+            };
+            idx.sort_by_key(|&i| pos(i));
+        }
+        idx
+    }
+
+    fn group_busy(&self, state: &State, task_id: i64) -> bool {
+        let Some(plan) = &self.plan else {
+            return false;
+        };
+        let Some(group) = plan.groups.get(&task_id) else {
+            return false;
+        };
+        state.pickups.iter().any(|q| {
+            q.task.task_id != task_id
+                && plan.groups.get(&q.task.task_id) == Some(group)
+                && (q.occupies() || q.awaits_publish())
+        })
+    }
+
+    fn blocks_start(&self, live: usize, begun: usize, task_id: i64) -> bool {
+        !self.starts_allowed
+            || !self.selects(task_id)
+            || live >= self.max_live.map_or(GLOBAL_MAX, |m| m.min(GLOBAL_MAX))
+            || self.max_new_starts.is_some_and(|m| begun >= m)
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct PickupOutcome {
+    pub pickup: String,
+    pub task_id: i64,
+    pub key: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pr_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -43,13 +154,36 @@ pub struct PassReport {
     pub enabled: bool,
     pub paused: bool,
     pub events: Vec<Value>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub started: Vec<PickupOutcome>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub failed: Vec<PickupOutcome>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub published: Vec<PickupOutcome>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub held: Vec<PickupOutcome>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub publish_failed: Vec<PickupOutcome>,
 }
 
 fn ts(now: DateTime<Utc>) -> String {
     now.to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
-pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
+pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str, policy: &StartPolicy) -> RunBundle {
+    let rule = &effective_rule(rule, policy, c.task.task_id);
+    let (persona, context) = match &c.cloud {
+        Some(cloud) => (cloud.persona.clone(), cloud.context.clone()),
+        None => (
+            Some(BundlePersona {
+                name: rule.persona.clone(),
+                instructions_sha256: sha256_hex(c.persona_text.as_bytes()),
+                id: None,
+                instructions: None,
+            }),
+            Vec::new(),
+        ),
+    };
     RunBundle {
         v: 1,
         task: c.task,
@@ -61,10 +195,12 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
         },
         comments: c.comments.clone(),
         pages: c.pages.clone(),
-        persona: c.cloud.is_none().then(|| BundlePersona {
-            name: rule.persona.clone(),
-            instructions_sha256: sha256_hex(c.persona_text.as_bytes()),
-        }),
+        persona,
+        context,
+        team: policy
+            .plan
+            .as_ref()
+            .and_then(|p| p.teams.get(&c.task.task_id).copied()),
         launch: BundleLaunch {
             profile: rule.profile.clone(),
             model: rule.model.clone(),
@@ -78,6 +214,7 @@ pub fn bundle_of(rule: &Rule, c: &Candidate, cwd: &str) -> RunBundle {
 }
 
 fn pin_of(rule: &Rule, cloud: bool, deps: &Deps) -> std::result::Result<ProfilePin, String> {
+    let rule = &plan_rule(rule, &deps.policy);
     if cloud {
         deps.profiles.pin_for(
             &rule.profile,
@@ -103,6 +240,7 @@ fn run_dir(rule: &Rule, cloud: Option<&CloudClaim>, pickup_id: &str) -> Option<s
 }
 
 fn check_rule(rule: &Rule, deps: &Deps) -> Result<()> {
+    let rule = &plan_rule(rule, &deps.policy);
     rules::validate_rule_with(rule, deps.profiles, Some(deps.cloud), deps.now)?;
     for repo in &rule.repos {
         match std::fs::canonicalize(repo) {
@@ -132,6 +270,27 @@ impl Pass<'_> {
         self.report
             .events
             .push(json!({"pickup": p.id, "rule": p.rule, "task": p.key, "outcome": outcome}));
+        let reason = match outcome {
+            "failed" => p.reason.clone(),
+            "publish_failed" => p.publish_error.clone(),
+            _ => None,
+        };
+        let row = PickupOutcome {
+            pickup: p.id.clone(),
+            task_id: p.task.task_id,
+            key: p.key.clone(),
+            pr_url: p.pr_url.clone(),
+            reason,
+        };
+        let list = match outcome {
+            "started" => &mut self.report.started,
+            "failed" => &mut self.report.failed,
+            "published" => &mut self.report.published,
+            "held" => &mut self.report.held,
+            "publish_failed" => &mut self.report.publish_failed,
+            _ => return,
+        };
+        list.push(row);
     }
 
     fn skip_once(
@@ -347,11 +506,7 @@ fn taken(
         fingerprint.clone(),
         &rule.name,
         key,
-        if f.holders.is_empty() {
-            "status_changed"
-        } else {
-            "taken"
-        },
+        f.reason(),
         json!({"holders": holders}),
     )?;
     let nkey = note_key(rule, task);
@@ -365,6 +520,33 @@ fn taken(
         }
     }
     Ok(())
+}
+
+fn continuation_refusal(
+    deps: &Deps,
+    rule: &Rule,
+    p: &Pickup,
+    now: DateTime<Utc>,
+) -> Result<Option<String>> {
+    let Some(stored) = p.cloud.as_ref() else {
+        return Ok(Some("only a cloud run can be continued".into()));
+    };
+    if stored.claim.signed_at < (now - Duration::hours(APPROVAL_TTL_HOURS)).timestamp() {
+        return Ok(Some(format!(
+            "the approval was signed more than {APPROVAL_TTL_HOURS} hours ago; confirm the task again"
+        )));
+    }
+    let ws = match deps.cloud.allow(&rule.workspace, now) {
+        Ok(ws) => ws,
+        Err(m) => return Ok(Some(m)),
+    };
+    match deps.cloud.gate(rule, &ws, p.task.task_id)? {
+        Gated::Ready(t) if t.claim == stored.claim => Ok(None),
+        Gated::Ready(_) => Ok(Some(
+            "the approval of the task changed since the run paused".into(),
+        )),
+        Gated::Refused { reason, .. } => Ok(Some(reason)),
+    }
 }
 
 fn look_failed(
@@ -410,6 +592,9 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
     };
     let candidates = scan.candidates;
     for r in scan.refusals {
+        if !deps.policy.selects(r.task_id) {
+            continue;
+        }
         pass.skip_once(
             format!("{}/{}", rule.name, r.task_id),
             format!("gate:{}", r.reason),
@@ -433,6 +618,8 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                 && !p.released
                 && !present.contains(&p.task.task_id)
                 && p.status != Status::Starting
+                && !(p.continues.is_some()
+                    && matches!(p.status, Status::PendingApproval | Status::Approved))
             {
                 let (id, status) = (p.id.clone(), p.status);
                 if matches!(status, Status::PendingApproval | Status::Approved) {
@@ -460,6 +647,9 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
         )?;
     }
     for c in &candidates {
+        if !deps.policy.selects(c.task.task_id) {
+            continue;
+        }
         let skey = format!("{}/{}", rule.name, c.task.task_id);
         let trusted = rule.trusted_authors.iter().any(|a| a == c.author.name());
         if !trusted {
@@ -481,7 +671,8 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                 && p.status == Status::Failed
                 && p.run_id.is_none()
                 && p.reason.as_deref().is_some_and(is_fixed_refusal)
-                && p.bundle_sha256 != bundle_of(rule, c, &p.bundle.launch.cwd).sha256()
+                && p.bundle_sha256
+                    != bundle_of(rule, c, &p.bundle.launch.cwd, &deps.policy).sha256()
         });
         if let Some(i) = stale {
             let (old, cwd) = (
@@ -499,6 +690,30 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
         let existing = pass.state.pickups.iter().position(|p| {
             p.rule == rule.name && p.task.task_id == c.task.task_id && (!p.released || p.occupies())
         });
+        if let Some(i) = existing.filter(|&i| {
+            !pass.state.pickups[i].released
+                && matches!(
+                    pass.state.pickups[i].status,
+                    Status::PendingApproval | Status::Approved
+                )
+        }) {
+            if deps.fresh.look(rule, c.task).is_ok_and(|f| !f.has_persona) {
+                let id = pass.state.pickups[i].id.clone();
+                pass.set(
+                    i,
+                    Status::Expired,
+                    Some("skipped_taken: persona_missing".into()),
+                );
+                pass.state.pickups[i].released = true;
+                pass.audit.append(
+                    "skipped_taken",
+                    json!({"pickup": id, "rule": rule.name, "task": c.key, "reason": "persona_missing"}),
+                )?;
+                let p = pass.state.pickups[i].clone();
+                pass.event(&p, "skipped_taken");
+                continue;
+            }
+        }
         if existing.is_none() {
             match deps.fresh.look(rule, c.task) {
                 Ok(f) if f.free() => {
@@ -527,7 +742,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                 (id, dir.to_string_lossy().into_owned())
             }
         };
-        let bundle = bundle_of(rule, c, &cwd);
+        let bundle = bundle_of(rule, c, &cwd, &deps.policy);
         if let Err(m) = bundle.validate() {
             pass.skip_once(
                 skey,
@@ -539,7 +754,12 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
             )?;
             continue;
         }
-        if bundle.canonical().len() > MAX_BUNDLE || c.persona_text.len() > MAX_BUNDLE {
+        let limit = if c.cloud.is_some() {
+            MAX_CLOUD_BUNDLE
+        } else {
+            MAX_BUNDLE
+        };
+        if bundle.canonical().len() > limit || c.persona_text.len() > MAX_BUNDLE {
             pass.skip_once(
                 skey,
                 "too_large".into(),
@@ -634,6 +854,10 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     publish_error: None,
                     clones: Vec::new(),
                     held: None,
+                    paused_draft: false,
+                    wip_heads: BTreeMap::new(),
+                    continues: None,
+                    continued_by: None,
                 });
                 pass.audit.append(
                     "candidate",
@@ -689,7 +913,8 @@ fn start_phase(
     fresh: &[(String, Vec<Candidate>)],
     deps: &Deps,
 ) -> Result<()> {
-    for i in 0..pass.state.pickups.len() {
+    let mut begun = 0usize;
+    for i in deps.policy.start_order(&pass.state) {
         let p = &pass.state.pickups[i];
         if p.status != Status::Approved || p.released {
             continue;
@@ -707,6 +932,8 @@ fn start_phase(
             )?;
             continue;
         };
+        let task_id = pass.state.pickups[i].task.task_id;
+        let rule = &effective_rule(rule, &deps.policy, task_id);
         if let Err(e) = check_rule(rule, deps) {
             pass.set(
                 i,
@@ -727,8 +954,15 @@ fn start_phase(
             continue;
         }
         if pass.state.live_count(Some(&rule_name)) >= rule.max_concurrent as usize
-            || pass.state.live_count(None) >= GLOBAL_MAX
+            || deps.policy.blocks_start(
+                pass.state.live_count(None),
+                begun,
+                pass.state.pickups[i].task.task_id,
+            )
         {
+            continue;
+        }
+        if deps.policy.group_busy(&pass.state, task_id) {
             continue;
         }
         let cwd = pass.state.pickups[i].bundle.launch.cwd.clone();
@@ -746,6 +980,7 @@ fn start_phase(
             )?;
             continue;
         }
+        let continuing = pass.state.pickups[i].continues.is_some();
         let current = fresh
             .iter()
             .find(|(n, _)| *n == rule_name)
@@ -753,8 +988,8 @@ fn start_phase(
                 cs.iter()
                     .find(|c| c.task.task_id == pass.state.pickups[i].task.task_id)
             })
-            .map(|c| bundle_of(rule, c, &cwd).sha256());
-        if current.as_deref() != Some(pass.state.pickups[i].bundle_sha256.as_str()) {
+            .map(|c| bundle_of(rule, c, &cwd, &deps.policy).sha256());
+        if !continuing && current.as_deref() != Some(pass.state.pickups[i].bundle_sha256.as_str()) {
             back_to_pending(
                 pass,
                 i,
@@ -778,7 +1013,12 @@ fn start_phase(
             }
         };
         let task = pass.state.pickups[i].task;
-        match deps.fresh.look(rule, task) {
+        let looked = if continuing {
+            deps.fresh.look_resumable(rule, task)
+        } else {
+            deps.fresh.look(rule, task)
+        };
+        match looked {
             Ok(f) if f.free() => {
                 pass.state.taken_notes.remove(&note_key(rule, task));
             }
@@ -788,7 +1028,7 @@ fn start_phase(
                     i,
                     Status::Expired,
                     Some(if f.holders.is_empty() {
-                        "skipped_taken: the status changed before the run started".to_string()
+                        format!("skipped_taken: {}", f.reason())
                     } else {
                         format!(
                             "skipped_taken: the task was taken before the run started ({})",
@@ -803,7 +1043,7 @@ fn start_phase(
                 pass.state.pickups[i].released = true;
                 pass.audit.append(
                     "skipped_taken",
-                    json!({"pickup": id, "rule": rule_name, "task": key}),
+                    json!({"pickup": id, "rule": rule_name, "task": key, "reason": f.reason()}),
                 )?;
                 let p = pass.state.pickups[i].clone();
                 pass.event(&p, "skipped_taken");
@@ -812,6 +1052,30 @@ fn start_phase(
             Err(e) => {
                 look_failed(pass, rule, task, &key, &e)?;
                 continue;
+            }
+        }
+        if continuing {
+            match continuation_refusal(deps, rule, &pass.state.pickups[i], pass.now) {
+                Ok(None) => {}
+                Ok(Some(reason)) => {
+                    pass.set(
+                        i,
+                        Status::Expired,
+                        Some(format!("continuation refused: {reason}")),
+                    );
+                    pass.state.pickups[i].released = true;
+                    pass.audit.append(
+                        "start_refused",
+                        json!({"pickup": id, "rule": rule_name, "reason": reason}),
+                    )?;
+                    let p = pass.state.pickups[i].clone();
+                    pass.event(&p, "expired");
+                    continue;
+                }
+                Err(e) => {
+                    look_failed(pass, rule, task, &key, &e)?;
+                    continue;
+                }
             }
         }
         let p = pass.state.pickups[i].clone();
@@ -828,6 +1092,26 @@ fn start_phase(
             .map(|c| plan_clones(&c.repos).map_err(|e| e.message));
         let prepared = match (&p.cloud, &plans) {
             (_, Some(Err(m))) => Err(Error::new(Kind::Forbidden, m.clone())),
+            (Some(c), Some(Ok(plans))) if continuing => deps.workdirs.prepare_continue(
+                &plans[0].path,
+                &id,
+                &cwd,
+                &plans
+                    .iter()
+                    .map(|c| (c.name.clone(), c.path.clone()))
+                    .collect::<Vec<_>>(),
+                &c.branch,
+                &p.wip_heads,
+            ),
+            (Some(c), None) if continuing => deps.workdirs.prepare_continue(
+                &rule.repos[0],
+                &id,
+                &cwd,
+                &[],
+                &c.branch,
+                &p.wip_heads,
+            ),
+            (None, _) if continuing => Err(Error::internal("only a cloud run can be continued")),
             (Some(c), Some(Ok(plans))) => deps.workdirs.prepare_multi(
                 &plans[0].path,
                 &id,
@@ -937,6 +1221,7 @@ fn start_phase(
         };
         match deps.runs.create(&req) {
             Ok(run_id) => {
+                begun += 1;
                 pass.state.pickups[i].run_id = Some(run_id.clone());
                 pass.set(i, Status::Started, None);
                 state::save(pass.paths, &mut pass.state)?;
@@ -948,6 +1233,7 @@ fn start_phase(
                 pass.event(&p, "started");
             }
             Err(e) if e.kind == Kind::Offline => {
+                begun += 1;
                 pass.set(
                     i,
                     Status::UnknownStart,
@@ -1055,6 +1341,308 @@ pub fn run_once(paths: &Paths, deps: &Deps) -> Result<PassReport> {
     start_phase(&mut pass, &valid, &fresh, deps)?;
     state::save(paths, &mut pass.state)?;
     Ok(pass.report)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PausedDraft {
+    pub pr_url: Option<String>,
+    pub held: bool,
+    pub commits: Vec<(String, String)>,
+}
+
+fn clone_dirs(p: &Pickup) -> Vec<(String, std::path::PathBuf)> {
+    let cwd = std::path::PathBuf::from(&p.bundle.launch.cwd);
+    if p.clones.is_empty() {
+        vec![(String::new(), cwd)]
+    } else {
+        p.clones
+            .iter()
+            .map(|c| (c.name.clone(), cwd.join(&c.name)))
+            .collect()
+    }
+}
+
+/// After the run has exited: saves the tracked changes of its clone(s) as a WIP commit on the task branch and
+/// publishes through the same publisher as a normal run, as a draft. The pickup is marked first, so the
+/// normal publish phase never retries it.
+pub fn pause_to_draft(
+    paths: &Paths,
+    deps: &Deps,
+    pickup_id: &str,
+    note: &str,
+) -> Result<PausedDraft> {
+    let _lock = paths.lock()?;
+    let audit = Audit::new(paths);
+    let loaded = rules::load(paths)?;
+    if !loaded.file.enabled {
+        return Err(Error::conflict("the queue is off"));
+    }
+    if rules::is_tampered(paths, &loaded)? {
+        let _ = audit.append("config_tampered", json!({"config_sha256": loaded.sha256}));
+        return Err(Error::new(
+            Kind::Forbidden,
+            "queue.toml or the audit log changed outside `tmgr queue`",
+        ));
+    }
+    let mut st = state::load(paths)?;
+    let i = st
+        .pickups
+        .iter()
+        .position(|p| p.id == pickup_id)
+        .ok_or_else(|| Error::not_found(format!("no pickup {pickup_id}")))?;
+    let p = st.pickups[i].clone();
+    let claim = p
+        .cloud
+        .as_ref()
+        .ok_or_else(|| Error::conflict("only cloud pickups are published"))?;
+    if p.status != Status::Started || !p.run_exited {
+        return Err(Error::conflict("the run has not exited"));
+    }
+    if p.pr_url.is_some() || p.held.is_some() || p.paused_draft {
+        return Err(Error::conflict(
+            "this pickup was already published, held or paused",
+        ));
+    }
+    if p.publish_attempts >= state::MAX_PUBLISH_ATTEMPTS {
+        return Err(Error::conflict("publish attempts are used up"));
+    }
+    let branch = claim.branch.clone();
+    st.pickups[i].paused_draft = true;
+    st.pickups[i].publish_attempts += 1;
+    state::save(paths, &mut st)?;
+    let source_repos: Vec<String> = loaded
+        .file
+        .rules
+        .iter()
+        .find(|r| r.name == p.rule)
+        .map(|r| r.repos.clone())
+        .unwrap_or_default();
+    let mut commits = Vec::new();
+    for (name, dir) in clone_dirs(&p) {
+        if !name.is_empty() {
+            let expected = p
+                .clones
+                .iter()
+                .find(|c| c.name == name)
+                .map(|c| (c.dev, c.ino));
+            if crate::workdir::clone_identity(&dir) != expected {
+                return fail_draft(
+                    &audit,
+                    paths,
+                    &mut st,
+                    i,
+                    "a clone is not the folder this run started with",
+                );
+            }
+        }
+        match crate::wip::wip_commit(&dir, &branch, note, &source_repos) {
+            Ok(Some(sha)) => commits.push((name, sha)),
+            Ok(None) => {}
+            Err(e) => return fail_draft(&audit, paths, &mut st, i, &e.message),
+        }
+    }
+    audit.append(
+        "wip_committed",
+        json!({"pickup": p.id, "rule": p.rule, "task": p.key, "commits": commits.len(), "note": note}),
+    )?;
+    let published = deps.publisher.publish_draft(&st.pickups[i].clone());
+    let out = match published {
+        Ok(url) => {
+            st.pickups[i].pr_url = Some(url.clone());
+            st.pickups[i].publish_error = None;
+            let pushed_names: Option<BTreeSet<String>> = deps.publisher.take_pushed().map(|full| {
+                plan_clones(&claim.repos)
+                    .map(|plans| {
+                        plans
+                            .into_iter()
+                            .filter(|c| full.contains(&c.full_name))
+                            .map(|c| c.name)
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            });
+            st.pickups[i].wip_heads = clone_dirs(&p)
+                .into_iter()
+                .filter(|(name, _)| {
+                    name.is_empty() || pushed_names.as_ref().is_none_or(|n| n.contains(name))
+                })
+                .filter_map(|(name, dir)| {
+                    crate::workdir::clone_tip(&dir, &branch).map(|sha| (name, sha))
+                })
+                .collect();
+            audit.append(
+                "published_draft",
+                json!({"pickup": p.id, "rule": p.rule, "task": p.key, "pr_url": url}),
+            )?;
+            Ok(PausedDraft {
+                pr_url: Some(url),
+                held: false,
+                commits,
+            })
+        }
+        Err(e) if state::is_held(&e) => {
+            let mut held = deps.publisher.take_held().unwrap_or_default();
+            held.at = ts(deps.now);
+            audit.append(
+                "publish_held",
+                json!({"pickup": p.id, "rule": p.rule, "task": p.key, "categories": held.categories, "findings": held.findings}),
+            )?;
+            st.pickups[i].held = Some(held);
+            Ok(PausedDraft {
+                pr_url: None,
+                held: true,
+                commits,
+            })
+        }
+        Err(e) => {
+            st.pickups[i].publish_error = Some(e.message.clone());
+            audit.append(
+                "publish_failed",
+                json!({"pickup": p.id, "rule": p.rule, "task": p.key, "error": e.message, "draft": true}),
+            )?;
+            Err(e)
+        }
+    };
+    state::save(paths, &mut st)?;
+    out
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Requeued {
+    pub pickup: String,
+    pub continues: String,
+    pub task_id: i64,
+    pub key: String,
+}
+
+/// Queues the continuation of a run that paused to a draft: a new approved pickup of the same rule, task, bundle
+/// and cloud approval whose clone starts at the commit the draft pushed. It does not depend on the scan, because
+/// the task sits in review. The paused pickup is released and cannot be requeued twice.
+pub fn requeue_paused(
+    paths: &Paths,
+    deps: &Deps,
+    pickup_id: &str,
+    now: DateTime<Utc>,
+) -> Result<Requeued> {
+    let _lock = paths.lock()?;
+    let audit = Audit::new(paths);
+    let loaded = rules::load(paths)?;
+    if !loaded.file.enabled {
+        return Err(Error::conflict("the queue is off"));
+    }
+    if rules::is_tampered(paths, &loaded)? {
+        let _ = audit.append("config_tampered", json!({"config_sha256": loaded.sha256}));
+        return Err(Error::new(
+            Kind::Forbidden,
+            "queue.toml or the audit log changed outside `tmgr queue`",
+        ));
+    }
+    let mut st = state::load(paths)?;
+    let i = st
+        .pickups
+        .iter()
+        .position(|p| p.id == pickup_id)
+        .ok_or_else(|| Error::not_found(format!("no pickup {pickup_id}")))?;
+    let p = st.pickups[i].clone();
+    if let Some(next) = &p.continued_by {
+        return Err(Error::conflict(format!("already continued as {next}")));
+    }
+    if !p.paused_draft || p.held.is_some() || p.pr_url.is_none() || p.wip_heads.is_empty() {
+        return Err(Error::conflict(
+            "only a run paused to a published draft with a saved commit can be continued",
+        ));
+    }
+    if !deps.policy.selects(p.task.task_id) {
+        return Err(Error::conflict(
+            "the task is not selected by this autopilot run",
+        ));
+    }
+    if st.pickups.iter().any(|q| {
+        q.id != p.id
+            && q.task.task_id == p.task.task_id
+            && (q.occupies()
+                || (!q.released && matches!(q.status, Status::PendingApproval | Status::Approved)))
+    }) {
+        return Err(Error::conflict("the task already has an open pickup"));
+    }
+    let rule = loaded
+        .file
+        .rules
+        .iter()
+        .find(|r| r.name == p.rule)
+        .ok_or_else(|| Error::conflict("the rule was removed"))?;
+    if !rule.auto {
+        return Err(Error::conflict("resume needs an auto rule"));
+    }
+    let id = new_id(&st, &p.rule, p.task.task_id, now);
+    let cwd = run_dir(rule, p.cloud.as_ref(), &id)
+        .ok_or_else(|| Error::internal("no run directory for the continuation"))?
+        .to_string_lossy()
+        .into_owned();
+    let mut bundle = p.bundle.clone();
+    bundle.launch.cwd = cwd;
+    let stamp = ts(now);
+    let sha = bundle.sha256();
+    st.pickups.push(Pickup {
+        id: id.clone(),
+        rule: p.rule.clone(),
+        task: p.task,
+        key: p.key.clone(),
+        status: Status::Approved,
+        bundle,
+        bundle_sha256: sha,
+        context_tainted: p.context_tainted,
+        created_at: stamp.clone(),
+        updated_at: stamp,
+        approved_by: Some("resume-after-reset".into()),
+        run_id: None,
+        reason: None,
+        released: false,
+        persona_text: p.persona_text.clone(),
+        profile_pin: p.profile_pin.clone(),
+        run_exited: false,
+        run_clean: false,
+        attempt: 1,
+        cloud: p.cloud.clone(),
+        pr_url: None,
+        publish_attempts: 0,
+        publish_error: None,
+        clones: Vec::new(),
+        held: None,
+        paused_draft: false,
+        wip_heads: p.wip_heads.clone(),
+        continues: Some(p.id.clone()),
+        continued_by: None,
+    });
+    st.pickups[i].continued_by = Some(id.clone());
+    st.pickups[i].released = true;
+    audit.append(
+        "requeued",
+        json!({"pickup": id, "continues": p.id, "rule": p.rule, "task": p.key}),
+    )?;
+    state::save(paths, &mut st)?;
+    Ok(Requeued {
+        pickup: id,
+        continues: p.id,
+        task_id: p.task.task_id,
+        key: p.key,
+    })
+}
+
+fn fail_draft(
+    audit: &Audit,
+    paths: &Paths,
+    st: &mut State,
+    i: usize,
+    message: &str,
+) -> Result<PausedDraft> {
+    st.pickups[i].publish_error = Some(message.to_string());
+    audit.append(
+        "publish_failed",
+        json!({"pickup": st.pickups[i].id, "error": message, "draft": true, "stage": "wip"}),
+    )?;
+    state::save(paths, st)?;
+    Err(Error::conflict(message))
 }
 
 pub fn approve(
@@ -1286,6 +1874,82 @@ mod tests {
             self.pass_at(12 * 60)
         }
 
+        fn pass_with(&self, policy: StartPolicy) -> Result<PassReport> {
+            run_once(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs: &GitClone,
+                    fresh: &self.fresh,
+                    now: Utc::now(),
+                    local_minutes: 12 * 60,
+                    policy,
+                },
+            )
+        }
+
+        fn pass_dirs(&self, workdirs: &dyn WorkDirs, policy: StartPolicy) -> Result<PassReport> {
+            run_once(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs,
+                    fresh: &self.fresh,
+                    now: Utc::now(),
+                    local_minutes: 12 * 60,
+                    policy,
+                },
+            )
+        }
+
+        fn requeue(&self, id: &str, policy: StartPolicy) -> Result<Requeued> {
+            requeue_paused(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs: &GitClone,
+                    fresh: &self.fresh,
+                    now: Utc::now(),
+                    local_minutes: 12 * 60,
+                    policy,
+                },
+                id,
+                Utc::now(),
+            )
+        }
+
+        fn draft(&self, id: &str) -> Result<PausedDraft> {
+            pause_to_draft(
+                &self.paths,
+                &Deps {
+                    source: &self.source,
+                    cloud: &self.cloud,
+                    publisher: &self.publisher,
+                    runs: &self.runs,
+                    profiles: &self.profiles,
+                    workdirs: &GitClone,
+                    fresh: &self.fresh,
+                    now: Utc::now(),
+                    local_minutes: 12 * 60,
+                    policy: StartPolicy::default(),
+                },
+                id,
+                "usage limit reached at 80%",
+            )
+        }
+
         fn pass_at(&self, minutes: u32) -> Result<PassReport> {
             run_once(
                 &self.paths,
@@ -1299,6 +1963,7 @@ mod tests {
                     fresh: &self.fresh,
                     now: Utc::now(),
                     local_minutes: minutes,
+                    policy: StartPolicy::default(),
                 },
             )
         }
@@ -1347,7 +2012,19 @@ mod tests {
         allow: Cell<u8>,
         repos: RefCell<Vec<String>>,
         claim_repos: RefCell<Vec<crate::clones::ClaimRepo>>,
+        signed: RefCell<(Option<BundlePersona>, Vec<tmgr_ipc::api::BundlePage>)>,
         tasks: RefCell<Vec<FakeTask>>,
+        hidden: RefCell<Vec<FakeTask>>,
+        gate_calls: Cell<u32>,
+        signed_at: Cell<i64>,
+        gate_error: Cell<bool>,
+    }
+
+    impl CloudFake {
+        fn hide_tasks(&self) {
+            let moved = self.tasks.replace(vec![]);
+            self.hidden.borrow_mut().extend(moved);
+        }
     }
 
     impl CloudApi for CloudFake {
@@ -1372,10 +2049,18 @@ mod tests {
         }
 
         fn gate(&self, _rule: &Rule, ws: &CloudWorkspace, id: i64) -> Result<Gated> {
+            self.gate_calls.set(self.gate_calls.get() + 1);
+            if self.signed_at.get() == 0 {
+                self.signed_at.set(Utc::now().timestamp());
+            }
+            if self.gate_error.get() {
+                return Err(Error::internal("the server is unreachable"));
+            }
             let t = self
                 .tasks
                 .borrow()
                 .iter()
+                .chain(self.hidden.borrow().iter())
                 .find(|t| t.id == id)
                 .cloned()
                 .expect("listed");
@@ -1390,6 +2075,8 @@ mod tests {
                 body: t.body,
                 claim: CloudApproval {
                     repos_sha256: None,
+                    persona_sha256: None,
+                    context_sha256: None,
                     host: "api.example.com".into(),
                     user_id: 1,
                     workspace_id: ws.id,
@@ -1397,11 +2084,13 @@ mod tests {
                     category_id: 127,
                     content_sha256: sha,
                     key_id: "k1".into(),
-                    signed_at: 10,
+                    signed_at: self.signed_at.get(),
                     signature: "sig".into(),
                     kind: "confirm".into(),
                 },
                 repos: self.claim_repos.borrow().clone(),
+                persona: self.signed.borrow().0.clone(),
+                context: self.signed.borrow().1.clone(),
             })))
         }
     }
@@ -1411,9 +2100,20 @@ mod tests {
         calls: RefCell<Vec<String>>,
         fail: Cell<bool>,
         hold: Cell<bool>,
+        drafts: RefCell<Vec<String>>,
+        pushed: RefCell<Option<Vec<String>>>,
     }
 
     impl Publisher for PublisherFake {
+        fn take_pushed(&self) -> Option<Vec<String>> {
+            self.pushed.borrow_mut().take()
+        }
+
+        fn publish_draft(&self, pickup: &Pickup) -> Result<String> {
+            self.drafts.borrow_mut().push(pickup.id.clone());
+            self.publish(pickup)
+        }
+
         fn publish(&self, pickup: &Pickup) -> Result<String> {
             self.calls.borrow_mut().push(pickup.id.clone());
             if self.fail.get() {
@@ -1600,13 +2300,23 @@ mod tests {
     struct FreshFake {
         looks: Cell<u32>,
         taken_from: Cell<u32>,
+        persona_missing_from: Cell<u32>,
         holders: RefCell<Vec<crate::taken::Holder>>,
         status_changed: Cell<bool>,
         comments: RefCell<Vec<String>>,
         fail: Cell<bool>,
+        resume_looks: Cell<u32>,
+        review_gone: Cell<bool>,
     }
 
     impl FreshTask for FreshFake {
+        fn look_resumable(&self, rule: &Rule, task: TaskRef) -> Result<crate::taken::Fresh> {
+            self.resume_looks.set(self.resume_looks.get() + 1);
+            let mut f = self.look(rule, task)?;
+            f.status_ok = !self.review_gone.get();
+            Ok(f)
+        }
+
         fn look(&self, _rule: &Rule, _task: TaskRef) -> Result<crate::taken::Fresh> {
             self.looks.set(self.looks.get() + 1);
             if self.fail.get() {
@@ -1620,6 +2330,8 @@ mod tests {
                     Vec::new()
                 },
                 status_ok: !(taken && self.status_changed.get()),
+                has_persona: !(self.persona_missing_from.get() > 0
+                    && self.looks.get() >= self.persona_missing_from.get()),
             })
         }
 
@@ -1661,6 +2373,62 @@ mod tests {
             );
             assert_eq!(fx.audit_events("skipped"), 1);
         }
+    }
+
+    #[test]
+    fn a_task_without_the_rule_persona_never_starts_and_is_not_commented() {
+        let fx = cloud_fx();
+        fx.fresh.persona_missing_from.set(1);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        assert!(fx.pickups().is_empty());
+        assert!(fx.fresh.comments.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 1);
+    }
+
+    #[test]
+    fn a_task_with_the_rule_persona_starts() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert_eq!(fx.runs.requests.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_persona_removed_between_listing_and_start_stops_the_start() {
+        let fx = cloud_fx();
+        fx.fresh.persona_missing_from.set(2);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        assert!(fx.fresh.comments.borrow().is_empty());
+        let p = fx.pickups();
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0].status, Status::Expired);
+        assert!(p[0].released);
+        assert_eq!(fx.audit_events("skipped_taken"), 1);
+        fx.pass().unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_approved_pickup_whose_task_lost_the_persona_expires_even_outside_the_hours() {
+        let fx = Fx::new(|r| {
+            r.auto = true;
+            r.hours = Some("22-06".into());
+        });
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Approved);
+        fx.fresh.persona_missing_from.set(fx.fresh.looks.get() + 1);
+        fx.pass().unwrap();
+        let p = fx.pickups();
+        assert_eq!(p[0].status, Status::Expired);
+        assert!(p[0].released);
+        assert!(fx.runs.created.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped_taken"), 1);
     }
 
     #[test]
@@ -1776,6 +2544,8 @@ mod tests {
         st.pickups[0].bundle.persona = Some(tmgr_ipc::api::BundlePersona {
             name: "Agent".into(),
             instructions_sha256: "0".repeat(64),
+            id: None,
+            instructions: None,
         });
         st.pickups[0].bundle_sha256 = st.pickups[0].bundle.sha256();
         state::save(&fx.paths, &mut st).unwrap();
@@ -1853,6 +2623,8 @@ mod tests {
             agent_work: true,
             cloud: Some(Claim {
                 repos_sha256: None,
+                persona_sha256: None,
+                context_sha256: None,
                 host: "api.tmgr.dev".into(),
                 user_id: 1,
                 workspace_id: 56,
@@ -1918,6 +2690,101 @@ mod tests {
             None,
         );
         assert_eq!(verdict, Ok(()));
+    }
+
+    fn owner_persona(text: &str) -> BundlePersona {
+        BundlePersona {
+            name: "Agent".into(),
+            instructions_sha256: sha256_hex(text.as_bytes()),
+            id: Some("993c30a6-3528-42bf-9a70-507841cebc08".into()),
+            instructions: Some(text.into()),
+        }
+    }
+
+    fn rules_page(body: &str) -> tmgr_ipc::api::BundlePage {
+        tmgr_ipc::api::BundlePage {
+            id: 125,
+            revision: 14,
+            title: "Rules".into(),
+            body: body.into(),
+        }
+    }
+
+    #[test]
+    fn a_cloud_bundle_has_no_persona_unless_the_approval_signed_one() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let reqs = fx.runs.requests.borrow();
+        assert!(reqs[0].bundle.persona.is_none() && reqs[0].bundle.context.is_empty());
+        assert!(reqs[0].bundle.validate().is_ok());
+    }
+
+    #[test]
+    fn a_signed_persona_and_rules_ride_in_the_cloud_bundle() {
+        let fx = cloud_fx();
+        fx.cloud.signed.replace((
+            Some(owner_persona("Open a PR.")),
+            vec![rules_page("# Rules")],
+        ));
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let reqs = fx.runs.requests.borrow();
+        let b = &reqs[0].bundle;
+        let p = b.persona.as_ref().expect("persona");
+        assert_eq!(p.instructions.as_deref(), Some("Open a PR."));
+        assert_eq!(
+            p.id.as_deref(),
+            Some("993c30a6-3528-42bf-9a70-507841cebc08")
+        );
+        assert_eq!(b.context, vec![rules_page("# Rules")]);
+        assert!(b.validate().is_ok());
+        assert_eq!(reqs[0].bundle_sha256, b.sha256());
+        let kept = fx.pickups();
+        assert_eq!(kept[0].bundle.context.len(), 1);
+        let again: State = serde_json::from_str(
+            &serde_json::to_string(&State {
+                pickups: kept.clone(),
+                ..State::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(again.pickups[0].cloud.as_ref().unwrap().context.len(), 1);
+    }
+
+    #[test]
+    fn a_changed_signed_text_voids_the_approval_and_changes_the_bundle() {
+        let fx = Fx::new(|r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.hours = Some("09-19".into());
+        });
+        fx.cloud
+            .signed
+            .replace((Some(owner_persona("Open a PR.")), Vec::new()));
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass_at(3 * 60).unwrap();
+        let first = fx.pickups()[0].bundle_sha256.clone();
+        fx.cloud
+            .signed
+            .replace((Some(owner_persona("Merge it.")), Vec::new()));
+        fx.pass_at(3 * 60).unwrap();
+        assert_eq!(fx.audit_events("approval_voided"), 1);
+        assert_ne!(fx.pickups()[0].bundle_sha256, first);
+    }
+
+    #[test]
+    fn a_local_candidate_keeps_the_rule_persona_hash_only() {
+        let fx = Fx::new(|r| r.persona = "reviewer".into());
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        let pickups = fx.pickups();
+        let p = pickups[0].bundle.persona.as_ref().expect("persona");
+        assert_eq!(p.name, "reviewer");
+        assert!(p.id.is_none() && p.instructions.is_none());
+        assert!(pickups[0].bundle.context.is_empty());
     }
 
     fn multi_fx() -> (Fx, String) {
@@ -2079,6 +2946,266 @@ mod tests {
         assert_eq!(fx.publisher.calls.borrow().len(), 1);
     }
 
+    fn busy_fx() -> Fx {
+        Fx::new(|r| {
+            r.workspace = "tmgrdev".into();
+            r.project = Some("TM".into());
+            r.auto = true;
+            r.mode = Some("bypass".into());
+            r.max_concurrent = 3;
+        })
+    }
+
+    #[test]
+    fn the_default_policy_changes_nothing_and_a_closed_gate_starts_nothing() {
+        let fx = busy_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "a"), signed(2, "b")]);
+        fx.pass_with(StartPolicy {
+            starts_allowed: false,
+            ..StartPolicy::default()
+        })
+        .unwrap();
+        assert!(fx.runs.created.borrow().is_empty());
+        assert!(fx.pickups().iter().all(|p| p.status == Status::Approved));
+        let report = fx.pass().unwrap();
+        assert_eq!(fx.runs.created.borrow().len(), 2);
+        assert_eq!(report.started.len(), 2);
+        assert!(report.failed.is_empty() && report.published.is_empty());
+    }
+
+    #[test]
+    fn new_starts_and_live_runs_are_capped_by_the_policy() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        let report = fx
+            .pass_with(StartPolicy {
+                max_new_starts: Some(1),
+                ..StartPolicy::default()
+            })
+            .unwrap();
+        assert_eq!(fx.runs.created.borrow().len(), 1);
+        assert_eq!(report.started.len(), 1);
+        fx.pass_with(StartPolicy {
+            max_live: Some(1),
+            ..StartPolicy::default()
+        })
+        .unwrap();
+        assert_eq!(fx.runs.created.borrow().len(), 1);
+        fx.pass_with(StartPolicy {
+            max_live: Some(2),
+            ..StartPolicy::default()
+        })
+        .unwrap();
+        assert_eq!(fx.runs.created.borrow().len(), 2);
+    }
+
+    fn plan(f: impl FnOnce(&mut TaskPlan)) -> StartPolicy {
+        let mut p = TaskPlan::default();
+        f(&mut p);
+        StartPolicy {
+            plan: Some(Arc::new(p)),
+            ..StartPolicy::default()
+        }
+    }
+
+    fn started_tasks(fx: &Fx) -> Vec<i64> {
+        fx.runs
+            .requests
+            .borrow()
+            .iter()
+            .map(|r| r.task.task_id)
+            .collect()
+    }
+
+    #[test]
+    fn the_plan_order_beats_the_id_order_and_state_order_is_untouched() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        fx.pass_with(StartPolicy {
+            starts_allowed: false,
+            ..StartPolicy::default()
+        })
+        .unwrap();
+        let before: Vec<i64> = fx.pickups().iter().map(|p| p.task.task_id).collect();
+        let policy = plan(|p| p.order = vec![3, 1]);
+        fx.pass_with(policy).unwrap();
+        assert_eq!(started_tasks(&fx), [3, 1, 2]);
+        let after: Vec<i64> = fx.pickups().iter().map(|p| p.task.task_id).collect();
+        assert_eq!(before, after);
+    }
+
+    #[test]
+    fn a_group_runs_one_task_at_a_time_and_released_members_free_it() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        let policy = plan(|p| {
+            p.groups = [(1, "g".into()), (2, "g".into())].into();
+        });
+        fx.pass_with(policy.clone()).unwrap();
+        assert_eq!(started_tasks(&fx), [1, 3]);
+        fx.pass_with(policy.clone()).unwrap();
+        assert_eq!(started_tasks(&fx), [1, 3]);
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.runs.failed.borrow_mut().push("mock-1".into());
+        fx.pass_with(policy.clone()).unwrap();
+        fx.pass_with(policy).unwrap();
+        assert_eq!(started_tasks(&fx), [1, 3, 2]);
+    }
+
+    #[test]
+    fn a_planned_pickup_never_exceeds_max_live() {
+        let fx = busy_fx();
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), signed(3, "c")]);
+        let mut policy = plan(|p| p.order = vec![3, 2, 1]);
+        policy.max_live = Some(2);
+        fx.pass_with(policy.clone()).unwrap();
+        fx.pass_with(policy).unwrap();
+        assert_eq!(started_tasks(&fx), [3, 2]);
+    }
+
+    #[test]
+    fn the_plan_profile_and_team_reach_the_start_and_both_passes_agree() {
+        let fx = busy_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "a")]);
+        let policy = plan(|p| {
+            p.profile = Some("other".into());
+            p.teams = [(
+                1,
+                BundleTeam {
+                    size: 3,
+                    mode: tmgr_ipc::api::TeamMode::Heavy,
+                },
+            )]
+            .into();
+        });
+        let mut closed = policy.clone();
+        closed.starts_allowed = false;
+        fx.pass_with(closed).unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        fx.pass_with(policy).unwrap();
+        assert_eq!(fx.audit_events("start_refused"), 0);
+        let reqs = fx.runs.requests.borrow();
+        assert_eq!(reqs.len(), 1);
+        assert_eq!(reqs[0].profile, "other");
+        assert_eq!(reqs[0].bundle.launch.profile, "other");
+        assert_eq!(reqs[0].bundle.team.map(|t| t.size), Some(3));
+        assert_eq!(reqs[0].bundle.sha256(), reqs[0].bundle_sha256);
+    }
+
+    #[test]
+    fn an_only_list_keeps_other_tasks_out_of_pickups_and_skips() {
+        let fx = busy_fx();
+        let mut refused = signed(3, "c");
+        refused.refused = Some("the task has no approval for agent runs".into());
+        fx.cloud
+            .tasks
+            .replace(vec![signed(1, "a"), signed(2, "b"), refused]);
+        let policy = StartPolicy {
+            only: Some([2].into()),
+            ..StartPolicy::default()
+        };
+        let report = fx.pass_with(policy.clone()).unwrap();
+        let ids: Vec<i64> = fx.pickups().iter().map(|p| p.task.task_id).collect();
+        assert_eq!(ids, [2]);
+        assert_eq!(report.started.len(), 1);
+        assert_eq!(fx.audit_events("skipped"), 0);
+        fx.pass_with(policy).unwrap();
+        assert_eq!(fx.pickups().len(), 1);
+        assert!(fx.pickups().iter().all(|p| !p.released));
+    }
+
+    fn started_and_exited(fx: &Fx) -> Pickup {
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.runs.failed.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
+        fx.pickups().remove(0)
+    }
+
+    #[test]
+    fn a_paused_draft_commits_the_clone_publishes_a_draft_and_is_never_retried() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        let live = fx.pickups().remove(0);
+        assert!(fx.draft(&live.id).is_err(), "the run is still going");
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.runs.failed.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
+        let p = fx.pickups().remove(0);
+        assert!(p.run_exited && !p.run_clean && p.pr_url.is_none());
+        std::fs::write(
+            std::path::Path::new(&p.bundle.launch.cwd).join("README.md"),
+            "edited\n",
+        )
+        .unwrap();
+        let out = fx.draft(&p.id).unwrap();
+        assert_eq!(out.pr_url.as_deref(), Some("https://github.com/o/r/pull/1"));
+        assert_eq!(out.commits.len(), 1);
+        assert_eq!(fx.publisher.drafts.borrow().len(), 1);
+        assert!(fx.publisher.calls.borrow().len() == 1);
+        let p = fx.pickups().remove(0);
+        assert!(p.paused_draft && !p.awaits_publish());
+        assert_eq!(fx.audit_events("wip_committed"), 1);
+        assert_eq!(fx.audit_events("published_draft"), 1);
+        for _ in 0..3 {
+            fx.pass().unwrap();
+        }
+        assert_eq!(fx.publisher.calls.borrow().len(), 1);
+        assert!(fx.draft(&p.id).is_err());
+    }
+
+    #[test]
+    fn a_paused_draft_with_a_failing_publisher_is_not_retried_by_the_publish_phase() {
+        let fx = cloud_fx();
+        let p = started_and_exited(&fx);
+        fx.publisher.fail.set(true);
+        assert!(fx.draft(&p.id).is_err());
+        let p = fx.pickups().remove(0);
+        assert!(p.paused_draft && p.pr_url.is_none() && p.publish_error.is_some());
+        fx.publisher.fail.set(false);
+        for _ in 0..3 {
+            fx.pass().unwrap();
+        }
+        assert!(fx.publisher.calls.borrow().len() == 1);
+        assert!(fx.pickups()[0].pr_url.is_none());
+    }
+
+    #[test]
+    fn a_held_draft_is_recorded_as_held() {
+        let fx = cloud_fx();
+        let p = started_and_exited(&fx);
+        fx.publisher.hold.set(true);
+        let out = fx.draft(&p.id).unwrap();
+        assert!(out.held && out.pr_url.is_none());
+        let p = fx.pickups().remove(0);
+        assert!(p.held.is_some() && p.paused_draft);
+        assert_eq!(fx.audit_events("publish_held"), 1);
+    }
+
+    #[test]
+    fn a_pickup_that_was_published_or_is_not_cloud_cannot_be_paused_again() {
+        let fx = cloud_fx();
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass().unwrap();
+        fx.runs.exited.borrow_mut().push("mock-1".into());
+        fx.pass().unwrap();
+        fx.pass().unwrap();
+        let p = fx.pickups().remove(0);
+        assert!(p.pr_url.is_some());
+        assert!(fx.draft(&p.id).is_err());
+        assert!(fx.publisher.drafts.borrow().is_empty());
+    }
+
     #[test]
     fn a_run_that_did_not_end_cleanly_is_never_published() {
         let fx = cloud_fx();
@@ -2227,6 +3354,7 @@ mod tests {
                 fresh: &fx.fresh,
                 now: Utc::now(),
                 local_minutes: 12 * 60,
+                policy: StartPolicy::default(),
             },
         )
         .unwrap();
@@ -2646,5 +3774,391 @@ mod tests {
         fx.approve_all();
         fx.pass().unwrap();
         assert!(Audit::new(&fx.paths).verify().unwrap().is_ok());
+    }
+
+    type ContinueCall = (String, String, String, usize, BTreeMap<String, String>);
+
+    #[derive(Default)]
+    struct Continuing {
+        calls: RefCell<Vec<ContinueCall>>,
+        refuse: Cell<bool>,
+    }
+
+    impl WorkDirs for Continuing {
+        fn prepare(&self, repo: &str, pickup_id: &str, cwd: &str) -> Result<()> {
+            GitClone.prepare(repo, pickup_id, cwd)
+        }
+
+        fn prepare_continue(
+            &self,
+            primary: &str,
+            pickup_id: &str,
+            cwd: &str,
+            clones: &[(String, String)],
+            branch: &str,
+            heads: &BTreeMap<String, String>,
+        ) -> Result<()> {
+            self.calls.borrow_mut().push((
+                pickup_id.to_string(),
+                cwd.to_string(),
+                branch.to_string(),
+                clones.len(),
+                heads.clone(),
+            ));
+            if self.refuse.get() {
+                return Err(Error::conflict(
+                    "the task branch on the remote is not at the commit saved when the run paused",
+                ));
+            }
+            if clones.is_empty() {
+                GitClone.prepare_branch(primary, pickup_id, cwd, branch)
+            } else {
+                GitClone.prepare_multi(primary, pickup_id, cwd, clones, branch)
+            }
+        }
+    }
+
+    fn paused_draft_of(fx: &Fx) -> Pickup {
+        let p = started_and_exited(fx);
+        fx.draft(&p.id).unwrap();
+        fx.pickups().remove(0)
+    }
+
+    #[test]
+    fn a_published_draft_records_the_pushed_head_of_every_clone() {
+        let fx = cloud_fx();
+        let p = paused_draft_of(&fx);
+        let tip = crate::workdir::clone_tip(
+            std::path::Path::new(&p.bundle.launch.cwd),
+            &p.cloud.as_ref().unwrap().branch,
+        )
+        .unwrap();
+        assert_eq!(p.wip_heads, BTreeMap::from([(String::new(), tip)]));
+        assert_eq!(
+            state::paused_resumable(&state::load(&fx.paths).unwrap()),
+            [p.id]
+        );
+    }
+
+    #[test]
+    fn a_failed_or_held_draft_records_no_head_and_is_not_resumable() {
+        let fx = cloud_fx();
+        let p = started_and_exited(&fx);
+        fx.publisher.hold.set(true);
+        fx.draft(&p.id).unwrap();
+        let p = fx.pickups().remove(0);
+        assert!(p.held.is_some() && p.wip_heads.is_empty());
+        assert!(state::paused_resumable(&state::load(&fx.paths).unwrap()).is_empty());
+        assert!(fx.requeue(&p.id, StartPolicy::default()).is_err());
+    }
+
+    #[test]
+    fn a_requeued_pause_becomes_an_approved_continuation_and_the_old_pickup_is_released() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        assert_eq!((out.continues.as_str(), out.task_id), (old.id.as_str(), 1));
+        let all = fx.pickups();
+        let (was, now) = (&all[0], &all[1]);
+        assert!(was.released && was.continued_by.as_deref() == Some(&out.pickup));
+        assert_eq!(now.id, out.pickup);
+        assert_eq!(now.continues.as_deref(), Some(old.id.as_str()));
+        assert_eq!(now.status, Status::Approved);
+        assert_eq!(now.rule, old.rule);
+        assert_eq!(now.task, old.task);
+        assert_eq!(now.cloud, old.cloud);
+        assert_eq!(now.profile_pin, old.profile_pin);
+        assert_eq!(now.wip_heads, old.wip_heads);
+        assert!(now.pr_url.is_none() && !now.paused_draft && now.held.is_none());
+        assert_ne!(now.bundle.launch.cwd, old.bundle.launch.cwd);
+        assert_eq!(now.bundle_sha256, now.bundle.sha256());
+        assert_eq!(fx.audit_events("requeued"), 1);
+        assert!(state::paused_resumable(&state::load(&fx.paths).unwrap()).is_empty());
+    }
+
+    #[test]
+    fn a_pause_is_requeued_once_and_only_when_it_has_a_published_draft_and_no_hold() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        let again = fx.requeue(&old.id, StartPolicy::default()).unwrap_err();
+        assert!(
+            again.message.contains("already continued"),
+            "{}",
+            again.message
+        );
+        assert_eq!(fx.pickups().len(), 2);
+
+        let no_pr = cloud_fx();
+        let p = paused_draft_of(&no_pr);
+        let mut st = state::load(&no_pr.paths).unwrap();
+        st.pickups[0].pr_url = None;
+        state::save(&no_pr.paths, &mut st).unwrap();
+        assert!(no_pr.requeue(&p.id, StartPolicy::default()).is_err());
+
+        let held = cloud_fx();
+        let p = paused_draft_of(&held);
+        let mut st = state::load(&held.paths).unwrap();
+        st.pickups[0].held = Some(state::Held::default());
+        state::save(&held.paths, &mut st).unwrap();
+        assert!(held.requeue(&p.id, StartPolicy::default()).is_err());
+
+        let plain = cloud_fx();
+        let p = started_and_exited(&plain);
+        assert!(plain.requeue(&p.id, StartPolicy::default()).is_err());
+        assert!(plain.requeue("q_nope", StartPolicy::default()).is_err());
+        for f in [&no_pr, &held, &plain] {
+            assert_eq!(f.pickups().len(), 1);
+        }
+    }
+
+    #[test]
+    fn a_continuation_must_be_selectable_by_the_start_policy() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let other = StartPolicy {
+            only: Some(BTreeSet::from([7])),
+            ..StartPolicy::default()
+        };
+        assert!(fx.requeue(&old.id, other).is_err());
+        let mine = StartPolicy {
+            only: Some(BTreeSet::from([1])),
+            ..StartPolicy::default()
+        };
+        fx.requeue(&old.id, mine.clone()).unwrap();
+        let dirs = Continuing::default();
+        fx.cloud.hide_tasks();
+        fx.pass_dirs(&dirs, mine).unwrap();
+        assert_eq!(fx.runs.requests.borrow().len(), 2);
+    }
+
+    #[test]
+    fn a_task_left_in_review_is_resumed_without_the_scan_and_from_the_saved_head() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let calls = dirs.calls.borrow();
+        assert_eq!(calls.len(), 1);
+        let (id, cwd, branch, clones, heads) = &calls[0];
+        assert_eq!(id, &out.pickup);
+        assert_eq!(cwd, &fx.pickups()[1].bundle.launch.cwd);
+        assert_eq!(branch, &old.cloud.as_ref().unwrap().branch);
+        assert_eq!((*clones, heads), (0, &old.wip_heads));
+        let reqs = fx.runs.requests.borrow();
+        assert_eq!(reqs.len(), 2);
+        assert_eq!(reqs[1].cwd, *cwd);
+        let p = &fx.pickups()[1];
+        assert_eq!(p.status, Status::Started);
+        assert_eq!(fx.fresh.resume_looks.get(), 1);
+        assert_eq!(fx.audit_events("expired"), 0);
+        let head = crate::workdir::clone_tip(std::path::Path::new(cwd), branch);
+        assert!(head.is_some());
+    }
+
+    #[test]
+    fn a_continuation_that_finishes_publishes_like_any_run_and_can_pause_again() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let out = fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        fx.pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        fx.runs.exited.borrow_mut().push("mock-2".into());
+        fx.pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        fx.pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        let now = fx.pickups().remove(1);
+        assert_eq!(now.id, out.pickup);
+        assert!(now.pr_url.is_some() && now.run_clean);
+        assert_eq!(
+            fx.publisher.calls.borrow().last().map(String::as_str),
+            Some(now.id.as_str())
+        );
+
+        let again = cloud_fx();
+        let old = paused_draft_of(&again);
+        let out = again.requeue(&old.id, StartPolicy::default()).unwrap();
+        again.cloud.hide_tasks();
+        again
+            .pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        again.runs.exited.borrow_mut().push("mock-2".into());
+        again.runs.failed.borrow_mut().push("mock-2".into());
+        again
+            .pass_dirs(&Continuing::default(), StartPolicy::default())
+            .unwrap();
+        again.draft(&out.pickup).unwrap();
+        let p = again.pickups().remove(1);
+        assert!(p.paused_draft && p.pr_url.is_some() && !p.wip_heads.is_empty());
+        assert_eq!(
+            state::paused_resumable(&state::load(&again.paths).unwrap()),
+            [p.id]
+        );
+    }
+
+    #[test]
+    fn a_branch_that_moved_fails_the_continuation_without_a_run_and_never_pushes() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        let dirs = Continuing::default();
+        dirs.refuse.set(true);
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Failed);
+        assert!(p.reason.as_deref().unwrap().contains("not at the commit"));
+        assert_eq!(fx.runs.requests.borrow().len(), 1);
+        assert_eq!(fx.publisher.calls.borrow().len(), 1);
+        assert!(!std::path::Path::new(&p.bundle.launch.cwd).exists());
+    }
+
+    #[test]
+    fn a_task_that_left_review_or_was_taken_is_not_resumed() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        fx.fresh.review_gone.set(true);
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(p.reason.as_deref().unwrap().starts_with("skipped_taken"));
+    }
+
+    #[test]
+    fn a_multi_repository_pause_records_a_head_per_clone_and_resumes_them_all() {
+        let (fx, _second) = multi_fx();
+        let old = {
+            let p = started_and_exited(&fx);
+            fx.draft(&p.id).unwrap();
+            fx.pickups().remove(0)
+        };
+        assert_eq!(
+            old.wip_heads.keys().cloned().collect::<Vec<_>>(),
+            ["backend", "frontend"]
+        );
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let calls = dirs.calls.borrow();
+        assert_eq!(calls.len(), 1);
+        assert_eq!((calls[0].3, &calls[0].4), (2, &old.wip_heads));
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Started);
+        assert_eq!(p.clones.len(), 2);
+    }
+
+    fn continuing_fx() -> (Fx, Pickup) {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        fx.requeue(&old.id, StartPolicy::default()).unwrap();
+        fx.cloud.hide_tasks();
+        (fx, old)
+    }
+
+    #[test]
+    fn a_continuation_asks_the_cloud_gate_and_starts_on_the_same_approval() {
+        let (fx, _) = continuing_fx();
+        let before = fx.cloud.gate_calls.get();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        assert_eq!(fx.cloud.gate_calls.get(), before + 1);
+        assert_eq!(fx.pickups()[1].status, Status::Started);
+    }
+
+    #[test]
+    fn a_continuation_whose_approval_changed_or_was_withdrawn_expires_without_a_clone() {
+        let (fx, _) = continuing_fx();
+        fx.cloud.hidden.borrow_mut()[0].body = "edited after the pause".into();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(
+            p.reason.as_deref().unwrap().contains("approval"),
+            "{:?}",
+            p.reason
+        );
+        assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
+
+        let (fx, _) = continuing_fx();
+        fx.cloud.hidden.borrow_mut()[0].refused = Some("the approval was withdrawn".into());
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(p.reason.as_deref().unwrap().contains("withdrawn"));
+        assert!(dirs.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_continuation_waits_when_the_gate_cannot_be_reached() {
+        let (fx, _) = continuing_fx();
+        fx.cloud.gate_error.set(true);
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        assert_eq!(fx.pickups()[1].status, Status::Approved);
+        assert!(dirs.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn an_approval_older_than_the_limit_is_not_reused_even_when_the_pickup_is_fresh() {
+        let (fx, _) = continuing_fx();
+        let old = Utc::now().timestamp() - 25 * 3600;
+        fx.cloud.signed_at.set(old);
+        let mut st = state::load(&fx.paths).unwrap();
+        st.pickups[1].cloud.as_mut().unwrap().claim.signed_at = old;
+        state::save(&fx.paths, &mut st).unwrap();
+        let dirs = Continuing::default();
+        fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        let p = fx.pickups().remove(1);
+        assert_eq!(p.status, Status::Expired);
+        assert!(p.reason.as_deref().unwrap().contains("24 hours"));
+        assert!(dirs.calls.borrow().is_empty());
+    }
+
+    #[test]
+    fn resuming_needs_an_auto_rule() {
+        let fx = cloud_fx();
+        let old = paused_draft_of(&fx);
+        let mut file = rules::load(&fx.paths).unwrap().file;
+        file.rules[0].auto = false;
+        fx.write(file);
+        let e = fx.requeue(&old.id, StartPolicy::default()).unwrap_err();
+        assert!(e.message.contains("auto rule"), "{}", e.message);
+        assert_eq!(fx.pickups().len(), 1);
+    }
+
+    #[test]
+    fn only_repositories_that_got_a_push_keep_a_saved_head() {
+        let (fx, _second) = multi_fx();
+        let p = started_and_exited(&fx);
+        fx.publisher
+            .pushed
+            .replace(Some(vec!["tmgr-dev/backend".to_string()]));
+        fx.draft(&p.id).unwrap();
+        let old = fx.pickups().remove(0);
+        assert_eq!(old.wip_heads.keys().collect::<Vec<_>>(), ["backend"]);
+    }
+
+    #[test]
+    fn without_a_requeue_nothing_continues_and_a_review_task_stays_untouched() {
+        let fx = cloud_fx();
+        paused_draft_of(&fx);
+        fx.cloud.hide_tasks();
+        let dirs = Continuing::default();
+        for _ in 0..3 {
+            fx.pass_dirs(&dirs, StartPolicy::default()).unwrap();
+        }
+        assert!(dirs.calls.borrow().is_empty() && fx.runs.requests.borrow().len() == 1);
+        assert_eq!(fx.pickups().len(), 1);
     }
 }

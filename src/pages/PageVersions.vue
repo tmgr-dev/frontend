@@ -164,6 +164,7 @@
 		AlertDialogTitle,
 	} from '@/components/ui/alert-dialog';
 	import { Button } from '@/components/ui/button';
+	import { openTaskLinkInModal } from '@/composable/useTaskKeyLinks';
 	import { toAuthorRef } from '@/utils/pages/author';
 	import { diffLines, diffStats } from '@/utils/pages/lineDiff';
 	import type { ParsedTmgrUrl } from '@/utils/pages/tmgrLinks';
@@ -294,6 +295,7 @@
 
 			const onNavigate = async (parsed: ParsedTmgrUrl) => {
 				if (parsed.form === 'storage' && parsed.kind === 'file') return;
+				if (openTaskLinkInModal(parsed)) return;
 				if (parsed.form === 'storage') {
 					await directory.ensure([{ kind: parsed.kind, id: parsed.id }]);
 				}

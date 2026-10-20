@@ -6,6 +6,7 @@
 //! string to `Welcome.caps`. Clients ignore unknown fields and unknown push
 //! `type`s; servers answer unknown methods with `unknown_method`.
 
+mod autopilot;
 mod bundle;
 mod error;
 pub mod policy;
@@ -13,6 +14,7 @@ mod screen;
 mod types;
 mod worklog;
 
+pub use autopilot::*;
 pub use bundle::*;
 pub use error::ErrorCode;
 pub use screen::*;
@@ -48,8 +50,12 @@ pub mod caps {
     pub const TRUSTED_FOLDERS_V1: &str = "trusted_folders.v1";
     pub const TRUST_VIA_REPO_V1: &str = "trust_via_repo.v1";
     pub const MULTI_CLONE_V1: &str = "multi_clone.v1";
+    pub const AUTOPILOT_V1: &str = "autopilot.v1";
+    pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
+    pub const TEAM_V1: &str = "team.v1";
+    pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
 
-    pub const ALL: [&str; 23] = [
+    pub const ALL: [&str; 27] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -73,6 +79,10 @@ pub mod caps {
         TRUSTED_FOLDERS_V1,
         TRUST_VIA_REPO_V1,
         MULTI_CLONE_V1,
+        AUTOPILOT_V1,
+        SIGNED_CONTEXT_V1,
+        TEAM_V1,
+        ORCHESTRATOR_V1,
     ];
 }
 
@@ -99,6 +109,11 @@ pub mod method {
     pub const TRUST_LIST: &str = "trust.list";
     pub const TRUST_ADD: &str = "trust.add";
     pub const TRUST_REMOVE: &str = "trust.remove";
+    pub const AUTOPILOT_START: &str = "autopilot.start";
+    pub const AUTOPILOT_STATUS: &str = "autopilot.status";
+    pub const AUTOPILOT_CONTROL: &str = "autopilot.control";
+    pub const AUTOPILOT_LOG: &str = "autopilot.log";
+    pub const ORCHESTRATOR_CREATE: &str = "orchestrator.create";
 }
 
 pub mod limits {
@@ -108,6 +123,8 @@ pub mod limits {
     pub const MAX_PUSH: usize = 256 << 10;
     pub const MAX_BUNDLE: usize = 1 << 20;
     pub const MAX_TEXT_LINES: u32 = 10_000;
+    pub const MAX_AUTOPILOT_LOG: u32 = 1_000;
+    pub const MAX_KILL_REASON: usize = 200;
 }
 
 /// The only `Hello.client` value allowed to call `sessions.create`.
@@ -115,3 +132,6 @@ pub const CLIENT_CLI: &str = "cli";
 
 /// The only `Hello.client` value allowed to call `runs.create` for a link (and it must).
 pub const CLIENT_WORKER: &str = "worker";
+
+/// The `Hello.client` value of the desktop app; with `cli` it may use the `autopilot.*` status, control and log methods.
+pub const CLIENT_DESKTOP: &str = "desktop";

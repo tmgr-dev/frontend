@@ -16,7 +16,7 @@
 			>
 			<span class="flex-1" />
 			<Button
-				v-if="approval && approval.state !== 'active'"
+				v-if="approval && needsConfirm"
 				variant="outline"
 				size="sm"
 				data-testid="cloud-confirm-open"
@@ -25,6 +25,20 @@
 				Confirm for agent runs
 			</Button>
 		</div>
+		<p
+			v-if="coverageHint"
+			class="text-xs text-ink-subtle"
+			data-testid="approval-coverage-hint"
+		>
+			{{ coverageHint }}
+		</p>
+		<p
+			v-if="tooLargeNote"
+			class="text-xs text-ink-subtle"
+			data-testid="approval-too-large"
+		>
+			{{ tooLargeNote }}
+		</p>
 		<Dialog :open="open" @update:open="(value) => (open = value)">
 			<DialogContent
 				class="max-h-[85vh] overflow-y-auto"
@@ -85,6 +99,7 @@
 							<li v-for="name in shownRepositories" :key="name">{{ name }}</li>
 						</ul>
 					</div>
+					<AgentOwnerTexts :persona="shownPersona" :context="shownContext" />
 					<div class="text-xs text-ink-subtle">Snapshot {{ shortHash }}</div>
 				</div>
 				<p
@@ -114,9 +129,12 @@
 		agentRunErrorCode,
 		getAgentRunsSetting,
 		getTaskApproval,
+		type ApprovalContext,
+		type ApprovalPersona,
 		type TaskApproval,
 	} from '@/actions/tmgr/agentRuns';
 	import { getTask, type Task } from '@/actions/tmgr/tasks';
+	import AgentOwnerTexts from '@/components/tasks/AgentOwnerTexts.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -132,6 +150,7 @@
 		rememberAgentRunsSetting,
 		signTaskApproval,
 	} from '@/utils/agentApprovalClient';
+	import { needsNewConfirmation } from '@/utils/agentApprovalCoverage';
 	import {
 		categoryLabel,
 		hasInvisible,
@@ -162,11 +181,15 @@
 		signature_invalid: 'The signature was rejected. Try again.',
 		key_unknown: 'The signing key was not accepted. Try again.',
 		category_mismatch: 'The task category changed. Reopen this dialog.',
+		persona_changed: 'The persona instructions changed. Reopen this dialog.',
+		context_changed: 'The workspace rules changed. Reopen this dialog.',
+		invalid_persona: 'The persona cannot be signed. Reopen this dialog.',
 	};
 
 	export default defineComponent({
 		name: 'CloudAgentApproval',
 		components: {
+			AgentOwnerTexts,
 			Button,
 			Dialog,
 			DialogContent,
@@ -188,6 +211,8 @@
 			const fresh = ref<Task | null>(null);
 			const shortHash = ref('');
 			const shownRepositories = ref<string[] | null>(null);
+			const shownPersona = ref<ApprovalPersona | null>(null);
+			const shownContext = ref<ApprovalContext | null>(null);
 			const reposChanged = ref(false);
 
 			const refresh = async () => {
@@ -225,6 +250,16 @@
 				if (a.state === 'active') return 'Approved for agent runs';
 				if (reposChanged.value && a.state === 'stale')
 					return 'Needs confirmation: the repositories of this category changed';
+				const reasons = a.stale_reasons ?? [];
+				if (a.state === 'stale' && !reasons.includes('content')) {
+					const persona = reasons.includes('persona');
+					const context = reasons.includes('context');
+					if (persona && context)
+						return 'Needs confirmation: the persona instructions and the workspace rules changed';
+					if (persona)
+						return 'Needs confirmation: the persona instructions changed';
+					if (context) return 'Needs confirmation: the workspace rules changed';
+				}
 				if (a.state === 'revoked') {
 					const who = a.revoked_by_name ? ` by ${a.revoked_by_name}` : '';
 					return `Approval cancelled: ${revokedReasonLabel(
@@ -245,6 +280,28 @@
 				}
 			});
 
+			const needsConfirm = computed(() =>
+				approval.value ? needsNewConfirmation(approval.value) : false,
+			);
+
+			const coverageHint = computed(() =>
+				approval.value?.state === 'active' && needsConfirm.value
+					? 'Confirm again to give agents the persona instructions and workspace rules.'
+					: '',
+			);
+
+			const tooLargeNote = computed(() => {
+				const a = approval.value;
+				if (!a) return '';
+				const parts = [
+					a.persona_too_large ? 'the persona instructions' : '',
+					a.context_too_large ? 'the workspace rules' : '',
+				].filter(Boolean);
+				return parts.length
+					? `Agents do not get ${parts.join(' or ')}: too large to send.`
+					: '';
+			});
+
 			const titlePieces = computed(() =>
 				splitInvisible(fresh.value?.title ?? ''),
 			);
@@ -257,17 +314,26 @@
 			const warn = computed(
 				() =>
 					hasInvisible(fresh.value?.title ?? '') ||
-					hasInvisible(fresh.value?.description ?? ''),
+					hasInvisible(fresh.value?.description ?? '') ||
+					hasInvisible(shownPersona.value?.name ?? '') ||
+					hasInvisible(shownPersona.value?.instructions ?? '') ||
+					(shownContext.value?.pages ?? []).some(
+						(page) => hasInvisible(page.title) || hasInvisible(page.body),
+					),
 			);
 
 			const openDialog = async () => {
 				error.value = null;
 				fresh.value = null;
 				shownRepositories.value = null;
+				shownPersona.value = null;
+				shownContext.value = null;
 				open.value = true;
 				try {
-					shownRepositories.value =
-						(await getTaskApproval(props.taskId)).repositories ?? null;
+					const current = await getTaskApproval(props.taskId);
+					shownRepositories.value = current.repositories ?? null;
+					shownPersona.value = current.persona ?? null;
+					shownContext.value = current.context ?? null;
 					const task = await getTask(props.taskId, false);
 					fresh.value = task;
 					shortHash.value = (
@@ -294,6 +360,7 @@
 						},
 						'confirm',
 						shownRepositories.value,
+						{ persona: shownPersona.value, context: shownContext.value },
 					);
 					open.value = false;
 					reposChanged.value = false;
@@ -303,7 +370,12 @@
 					error.value =
 						(code && MESSAGES[code]) ||
 						(e instanceof Error ? e.message : String(e));
-					if (code === 'hash_mismatch' || code === 'repositories_changed')
+					if (
+						code === 'hash_mismatch' ||
+						code === 'repositories_changed' ||
+						code === 'persona_changed' ||
+						code === 'context_changed'
+					)
 						fresh.value = null;
 				} finally {
 					busy.value = false;
@@ -321,6 +393,11 @@
 				fresh,
 				shortHash,
 				shownRepositories,
+				shownPersona,
+				shownContext,
+				needsConfirm,
+				coverageHint,
+				tooLargeNote,
 				titlePieces,
 				descriptionPieces,
 				warn,

@@ -340,3 +340,34 @@ async fn running_a_cloud_task_of_a_workspace_that_is_not_allowed_names_the_fix()
     assert!(err.contains("not allowed"), "{err}");
     assert!(err.contains("tmgr runner allow tmgrdev"), "{err}");
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_cli_key_of_another_machine_is_listed_but_not_pinned() {
+    let mut cli = key(OTHER_ID, OTHER, "CLI (macOS)");
+    cli["kind"] = json!("cli");
+    let mut browser = key(KEY_ID, KEY, "laptop");
+    browser["kind"] = json!("browser");
+    let env = setup(vec![browser, cli]).await;
+    let mut p = Pty::spawn(&env, &["runner", "allow", "tmgrdev"]);
+    p.wait_for("Type the workspace code");
+    assert!(
+        p.text().contains("CLI key of another machine"),
+        "{}",
+        p.text()
+    );
+    p.type_line("tmgrdev");
+    assert_eq!(p.exit_code(), 0, "{}", p.text());
+    let keys = read_allow(&env)["entries"][0]["keys"].clone();
+    assert_eq!(keys.as_array().unwrap().len(), 1);
+    assert_eq!(keys[0]["key_id"], KEY_ID);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn only_foreign_cli_keys_means_no_signing_key_for_this_machine() {
+    let mut cli = key(OTHER_ID, OTHER, "CLI (macOS)");
+    cli["kind"] = json!("cli");
+    let env = setup(vec![cli]).await;
+    let mut p = Pty::spawn(&env, &["runner", "allow", "tmgrdev"]);
+    assert_eq!(p.exit_code(), 6, "{}", p.text());
+    assert!(!allow_file(&env).exists());
+}

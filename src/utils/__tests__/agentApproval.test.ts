@@ -6,7 +6,10 @@ import {
 	approvalMessage,
 	canonicalRepos,
 	contentSha256,
+	contextSha256,
 	fromBase64,
+	pageSha256,
+	personaSha256,
 	reposSha256,
 	signMessage,
 	toBase64,
@@ -161,6 +164,102 @@ describe('repository sets (v2)', () => {
 			await expect(reposSha256([name])).rejects.toThrow();
 		},
 	);
+});
+
+describe('persona and workspace context (v3)', () => {
+	const v3 = (fixtures.cases_v3 as any[]).map(
+		(c, i) => [i, c] as [number, any],
+	);
+
+	it.each(v3)('case %i hashes, message and signature match', async (_i, c) => {
+		const sha = await contentSha256(c.title, c.description);
+		expect(sha).toBe(c.content_sha256);
+		const repos = c.repositories
+			? await reposSha256(c.repositories)
+			: undefined;
+		expect(repos ?? null).toBe(c.repos_sha256);
+		const persona = c.persona
+			? await personaSha256(
+					c.persona.id,
+					c.persona.name,
+					c.persona.instructions,
+			  )
+			: undefined;
+		expect(persona ?? null).toBe(c.persona_sha256);
+		for (const page of c.context ?? [])
+			expect(await pageSha256(page.id, page.title, page.body)).toBe(
+				page.sha256,
+			);
+		const context = c.context ? await contextSha256(c.context) : undefined;
+		expect(context ?? null).toBe(c.context_sha256);
+		const message = approvalMessage(
+			c.host,
+			c.user_id,
+			c.workspace_id,
+			c.task_id,
+			c.category_id,
+			sha,
+			fixtures.key.key_id,
+			c.signed_at,
+			repos,
+			persona,
+			context,
+		);
+		expect(message).toBe(c.message);
+		expect(message).toContain(':v3:');
+		expect(
+			await verifyMessage(fixtures.key.public_key, c.message, c.signature),
+		).toBe(true);
+		expect(
+			await verifyMessage(
+				fixtures.key.public_key,
+				c.message,
+				c.tampered_signature,
+			),
+		).toBe(false);
+	});
+
+	it('signing a v3 message with the fixture key round trips', async () => {
+		const key = await importPrivate();
+		const c = fixtures.cases_v3[0];
+		const signature = await signMessage(key, c.message);
+		expect(
+			await verifyMessage(fixtures.key.public_key, c.message, signature),
+		).toBe(true);
+	});
+
+	it.each(
+		(fixtures.invalid_persona_ids as string[]).map(
+			(id, i) => [i, id] as [number, string],
+		),
+	)('invalid persona id %i is refused', async (_i, id) => {
+		await expect(personaSha256(id, 'n', 'i')).rejects.toThrow();
+	});
+
+	it('refuses an empty or oversized page list', async () => {
+		const page = { id: 1, title: 't', body: 'b' };
+		await expect(contextSha256([])).rejects.toThrow();
+		await expect(contextSha256(Array(6).fill(page))).rejects.toThrow();
+		await expect(contextSha256(Array(5).fill(page))).resolves.toHaveLength(64);
+	});
+
+	it('page order is part of the context hash', async () => {
+		const a = { id: 1, title: 'a', body: 'x' };
+		const b = { id: 2, title: 'b', body: 'y' };
+		expect(await contextSha256([a, b])).not.toBe(await contextSha256([b, a]));
+	});
+
+	it('keeps v2 and v1 when no persona or context hash is given', () => {
+		expect(
+			approvalMessage('h', 1, 2, 3, 4, 'sha', 'k', 5, 'r', null, null),
+		).toBe('tmgr-agent-approval:v2:h:1:2:3:4:sha:r:k:5');
+		expect(approvalMessage('h', 1, 2, 3, 4, 'sha', 'k', 5, null, null)).toBe(
+			'tmgr-agent-approval:v1:h:1:2:3:4:sha:k:5',
+		);
+		expect(approvalMessage('h', 1, 2, 3, 4, 'sha', 'k', 5, null, 'p')).toBe(
+			'tmgr-agent-approval:v3:h:1:2:3:4:sha:-:p:-:k:5',
+		);
+	});
 });
 
 describe('apiHostOf', () => {

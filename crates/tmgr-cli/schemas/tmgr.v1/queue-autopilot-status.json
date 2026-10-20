@@ -1,0 +1,235 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/queue-autopilot-status.json",
+  "title": "tmgr.v1 queue autopilot status",
+  "type": "object",
+  "required": ["schema", "ok", "data", "warnings"],
+  "properties": {
+    "schema": { "const": "tmgr.v1" },
+    "ok": { "const": true },
+    "data": {
+      "type": "object",
+      "required": ["running"],
+      "properties": {
+        "running": { "type": "boolean" },
+        "version": { "type": "integer" },
+        "state": { "enum": ["running", "paused", "stopping", "stopped", "suspended"] },
+        "pid": { "type": "integer" },
+        "control_seq": { "type": "integer" },
+        "settings_id": { "type": "string" },
+        "started_at": { "type": "string" },
+        "updated_at": { "type": "string" },
+        "rule": { "type": "string" },
+        "mode": { "type": "string" },
+        "stop_reason": { "type": ["string", "null"] },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "max_teams": { "type": "integer" },
+            "team_size": { "type": "integer" },
+            "team_mode": { "enum": ["eco", "heavy", "orchestrator"] },
+            "profile": { "type": ["string", "null"] }
+          }
+        },
+        "tasks": {
+          "type": "object",
+          "required": [
+            "total",
+            "done_pr",
+            "in_work",
+            "needs_feedback",
+            "blocked",
+            "held",
+            "failed",
+            "skipped",
+            "queued"
+          ],
+          "properties": {
+            "total": { "type": "integer" },
+            "done_pr": { "type": "integer" },
+            "in_work": { "type": "integer" },
+            "needs_feedback": { "type": "integer" },
+            "blocked": { "type": "integer" },
+            "held": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "skipped": { "type": "integer" },
+            "queued": { "type": "integer" }
+          }
+        },
+        "teams": { "$ref": "#/$defs/slots" },
+        "agents": { "$ref": "#/$defs/slots" },
+        "agents_planned": { "$ref": "#/$defs/slots" },
+        "plan": {
+          "type": "object",
+          "properties": {
+            "state": { "enum": ["pending", "running", "done", "rejected", "skipped"] },
+            "dry_run": { "type": "boolean" },
+            "profile": { "type": "string" },
+            "made_at": { "type": ["string", "null"] },
+            "attempt": { "type": "integer" },
+            "error": { "type": ["string", "null"] },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "task": { "type": "string" },
+                  "task_id": { "type": "integer" },
+                  "position": { "type": "integer" },
+                  "group": { "type": ["string", "null"] },
+                  "mode": { "type": "string" },
+                  "reason": { "type": "string" },
+                  "state": { "enum": ["queued", "running", "pr", "failed", "held"] }
+                }
+              }
+            }
+          }
+        },
+        "triage": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": { "type": "string" },
+              "task_id": { "type": "integer" },
+              "verdict": { "enum": ["needs_feedback", "blocked"] },
+              "reason": { "type": "string" },
+              "question": { "type": "string" },
+              "applied": { "type": "boolean" },
+              "error": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "not_planned": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": { "type": "string" },
+              "task_id": { "type": "integer" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "needs_feedback_tasks": { "type": "array", "items": { "$ref": "#/$defs/task_brief" } },
+        "blocked_tasks": { "type": "array", "items": { "$ref": "#/$defs/task_brief" } },
+        "queued_tasks": { "type": "array", "items": { "$ref": "#/$defs/task_brief" } },
+        "runs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["task", "task_id", "mode", "step"],
+            "properties": {
+              "task": { "type": "string" },
+              "task_id": { "type": "integer" },
+              "title": { "type": "string" },
+              "mode": { "type": "string" },
+              "started_at": { "type": ["string", "null"] },
+              "repos": { "type": "array", "items": { "type": "string" } },
+              "step": { "type": "string" },
+              "team_size": { "type": "integer" },
+              "team_mode": { "enum": ["eco", "heavy"] },
+              "agents": { "type": "integer" },
+              "workspace_code": { "type": "string" },
+              "workspace_id": { "type": "integer" },
+              "session_id": { "type": "string" }
+            }
+          }
+        },
+        "limits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tool", "window", "used_pct", "source"],
+            "properties": {
+              "tool": { "type": "string" },
+              "window": { "type": "string" },
+              "used_pct": { "type": ["number", "null"] },
+              "resets_at": { "type": ["string", "null"] },
+              "source": { "enum": ["real", "estimate", "unknown"] },
+              "origin": { "type": ["string", "null"] },
+              "observed_at": { "type": ["string", "null"] },
+              "stop_new_at": { "type": ["integer", "null"] },
+              "pause_at": { "type": ["integer", "null"] }
+            }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "properties": {
+            "subscription_usd": { "type": "number" },
+            "subscription_tokens": { "type": "integer" },
+            "api_usd": { "type": ["number", "null"] },
+            "api_cap_usd": { "type": ["number", "null"] },
+            "basis": { "type": "string" }
+          }
+        },
+        "next_stop": {
+          "type": ["object", "null"],
+          "properties": {
+            "window": { "type": "string" },
+            "pct_left": { "type": "number" },
+            "kind": { "type": "string" }
+          }
+        },
+        "unconfirmed_new": { "type": "integer" },
+        "failures_in_row": { "type": "integer" },
+        "prs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": { "type": "string" },
+              "url": { "type": "string" },
+              "draft": { "type": "boolean" }
+            }
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "at": { "type": ["string", "null"] },
+              "kind": { "type": "string" },
+              "task": { "type": ["string", "null"] },
+              "text": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/warning" }
+    }
+  },
+  "$defs": {
+    "slots": {
+      "type": "object",
+      "required": ["running", "max"],
+      "properties": {
+        "running": { "type": "integer" },
+        "max": { "type": "integer" }
+      }
+    },
+    "task_brief": {
+      "type": "object",
+      "required": ["key", "id"],
+      "properties": {
+        "key": { "type": "string" },
+        "id": { "type": "integer" },
+        "title": { "type": "string" },
+        "workspace_code": { "type": "string" }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

@@ -10,8 +10,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     caps, method, AuthorKind, BundleAuthor, BundleComment, BundleLaunch, BundlePage, BundlePersona,
-    CreateReq, CwdPin, ExePin, Origin, OriginRevokeParams, OriginRevoked, RunBundle, RunCreateReq,
-    SessionInfo, State, StateKind, TaskRef,
+    CreateReq, CwdPin, ExePin, OrchestratorCreateReq, Origin, OriginRevokeParams, OriginRevoked,
+    RunBundle, RunCreateReq, SessionInfo, State, StateKind, TaskRef,
 };
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::client::{parse_event, AttachWriter, Client, ScreenCache};
@@ -84,6 +84,9 @@ impl Harness {
         fs::create_dir(&agents).unwrap();
         let cfg = tmp.path().join("c");
         fs::create_dir(&cfg).unwrap();
+        fs::set_permissions(&cfg, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::create_dir(cfg.join("tmgr")).unwrap();
+        fs::set_permissions(cfg.join("tmgr"), fs::Permissions::from_mode(0o700)).unwrap();
         let homes = tempfile::Builder::new()
             .prefix("th")
             .tempdir_in("/tmp")
@@ -1132,6 +1135,8 @@ impl Harness {
                 body: "cookies live 7 days".into(),
             }],
             persona: None,
+            context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: profile.into(),
                 model: None,
@@ -1454,6 +1459,44 @@ fn a_launch_that_fails_late_leaves_an_existing_context_untouched() {
 }
 
 #[test]
+fn a_local_run_with_owner_instructions_or_rules_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    h.bundle_runner();
+    let text = "Follow the rules.";
+    type Edit = Box<dyn Fn(&mut RunBundle)>;
+    let edits: Vec<Edit> = vec![
+        Box::new(move |b| {
+            b.persona = Some(BundlePersona {
+                name: "p".into(),
+                instructions_sha256: tmgr_ipc::api::sha256_hex(text.as_bytes()),
+                id: Some("993c30a6-3528-42bf-9a70-507841cebc08".into()),
+                instructions: Some(text.into()),
+            })
+        }),
+        Box::new(|b| {
+            b.context = vec![BundlePage {
+                id: 1,
+                revision: 1,
+                title: "Rules".into(),
+                body: "Do as told".into(),
+            }]
+        }),
+    ];
+    for edit in edits {
+        let mut r = h.bundled("fake");
+        edit(r.bundle.as_mut().unwrap());
+        rehash(&mut r);
+        let e = err_text(h.client().create_run(r));
+        assert!(e.contains("signed cloud approval"), "{e}");
+    }
+    assert!(h.client().list().unwrap().is_empty());
+    assert!(!h.work.join(".tmgr").exists());
+}
+
+#[test]
 fn runs_create_refuses_malformed_bundle_metadata_naming_the_field() {
     if !sessions_available() {
         return;
@@ -1467,6 +1510,8 @@ fn runs_create_refuses_malformed_bundle_metadata_naming_the_field() {
             b.persona = Some(BundlePersona {
                 name: name.clone(),
                 instructions_sha256: sha.clone(),
+                id: None,
+                instructions: None,
             })
         }
     };
@@ -4625,6 +4670,8 @@ impl CloudFx {
             comments: vec![],
             pages: vec![],
             persona: None,
+            context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: "cloudy".into(),
                 model: None,
@@ -4643,6 +4690,8 @@ impl CloudFx {
         r.unattended = unattended;
         r.cloud = Some(tmgr_ipc::api::CloudApproval {
             repos_sha256: None,
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -4704,6 +4753,7 @@ fn bypass_is_refused_without_a_verified_cloud_approval() {
         );
     }
     assert!(fx.h.client().list().unwrap().is_empty());
+    assert!(!fx.clone.join(".tmgr/task.md").exists());
 }
 
 #[test]
@@ -4877,6 +4927,8 @@ impl MultiFx {
             comments: vec![],
             pages: vec![],
             persona: None,
+            context: vec![],
+            team: None,
             launch: BundleLaunch {
                 profile: "multi".into(),
                 model: None,
@@ -4903,6 +4955,8 @@ impl MultiFx {
         ];
         r.cloud = Some(tmgr_ipc::api::CloudApproval {
             repos_sha256: Some(c["repos_sha256"].as_str().unwrap().into()),
+            persona_sha256: None,
+            context_sha256: None,
             host: "api.tmgr.dev".into(),
             user_id: 1,
             workspace_id: 56,
@@ -5315,4 +5369,742 @@ fn a_set_run_reads_both_object_stores_and_writes_only_in_its_folder() {
     }
     assert!(!fx.backend.join(".git/objects/zz").exists());
     let _ = fx.h.client().kill(&info.id, "kill");
+}
+
+use tmgr_ipc::api::AutopilotCommand;
+
+impl Harness {
+    fn autopilot_dir(&self) -> PathBuf {
+        self.cfg.join("tmgr/autopilot")
+    }
+
+    fn enable_queue(&self) {
+        fs::create_dir_all(self.cfg.join("tmgr")).unwrap();
+        fs::write(
+            self.cfg.join("tmgr/queue.toml"),
+            "version = 1\nenabled = true\n",
+        )
+        .unwrap();
+    }
+
+    fn queue_enabled(&self) -> bool {
+        fs::read_to_string(self.cfg.join("tmgr/queue.toml"))
+            .unwrap()
+            .contains("enabled = true")
+    }
+
+    fn autopilot_status_file(&self) -> Value {
+        let text = fs::read_to_string(self.autopilot_dir().join("status.json")).unwrap();
+        serde_json::from_str(&text).unwrap()
+    }
+
+    fn stop_autopilot(&self) {
+        let mut c = self.client();
+        if c.autopilot_status().unwrap().running {
+            c.autopilot_control(AutopilotCommand::Stop).unwrap();
+        }
+        wait_for("autopilot stopped", || {
+            !self.client().autopilot_status().unwrap().running
+        });
+    }
+}
+
+#[test]
+fn only_the_cli_starts_autopilot_and_only_one_runs() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut cli = h.client();
+    for client in ["desktop", "worker"] {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        let e = err_text(c.autopilot_start("default"));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    assert!(!cli.autopilot_status().unwrap().running);
+    let pid = cli.autopilot_start("default").unwrap().pid;
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    let st = cli.autopilot_status().unwrap();
+    assert!(st.running);
+    assert_eq!(st.pid, Some(pid));
+    assert_eq!(st.status["state"], "running");
+    assert_eq!(st.status["scenario"], "default");
+    let e = err_text(cli.autopilot_start("other"));
+    assert!(e.starts_with("busy: "), "{e}");
+    for bad in ["", "Upper", "a b", "../x", &"x".repeat(65)] {
+        let e = err_text(cli.autopilot_start(bad));
+        assert!(e.starts_with("invalid_params: "), "{bad}: {e}");
+    }
+    let log = fs::read_to_string(h.autopilot_dir().join("serve.log")).unwrap();
+    assert!(log.contains("fake autopilot started"));
+    h.stop_autopilot();
+}
+
+#[test]
+fn control_writes_an_increasing_seq_and_the_loop_echoes_it() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut cli = h.client();
+    let e = err_text(cli.autopilot_control(AutopilotCommand::Pause));
+    assert!(e.starts_with("not_running: "), "{e}");
+    cli.autopilot_start("default").unwrap();
+    wait_for("running", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    assert_eq!(cli.autopilot_control(AutopilotCommand::Pause).unwrap(), 1);
+    let control: Value =
+        serde_json::from_slice(&fs::read(h.autopilot_dir().join("control.json")).unwrap()).unwrap();
+    assert_eq!(control["seq"], 1);
+    assert_eq!(control["command"], "pause");
+    assert!(control["at"].as_str().is_some());
+    wait_for("paused echo", || {
+        let s = h.autopilot_status_file();
+        s["state"] == "paused" && s["control_seq"] == 1
+    });
+    let mut desktop = Client::connect_as(&h.run, "desktop").unwrap();
+    assert_eq!(
+        desktop.autopilot_control(AutopilotCommand::Resume).unwrap(),
+        2
+    );
+    wait_for("resumed echo", || {
+        let s = h.autopilot_status_file();
+        s["state"] == "running" && s["control_seq"] == 2
+    });
+    let mut worker = Client::connect_as(&h.run, "worker").unwrap();
+    let e = err_text(worker.autopilot_control(AutopilotCommand::Stop));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    h.enable_queue();
+    assert_eq!(cli.autopilot_control(AutopilotCommand::Stop).unwrap(), 3);
+    wait_for("stopped", || {
+        !h.client().autopilot_status().unwrap().running
+    });
+    assert_eq!(h.autopilot_status_file()["stop_reason"], "user");
+    assert!(h.queue_enabled(), "a requested stop is not a crash");
+}
+
+#[test]
+fn log_returns_the_last_json_lines() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let dir = h.autopilot_dir();
+    fs::create_dir_all(&dir).unwrap();
+    let mut body = String::new();
+    for i in 1..=5 {
+        body.push_str(&format!("{{\"n\":{i}}}\n"));
+    }
+    body.push_str("not json\n");
+    fs::write(dir.join("log.jsonl"), body).unwrap();
+    let mut desktop = Client::connect_as(&h.run, "desktop").unwrap();
+    assert_eq!(
+        desktop.autopilot_log(2).unwrap(),
+        [json!({"n": 4}), json!({"n": 5})]
+    );
+    assert_eq!(h.client().autopilot_log(100).unwrap().len(), 5);
+    for tail in [0, 1001] {
+        let e = err_text(h.client().autopilot_log(tail));
+        assert!(e.starts_with("invalid_params: "), "{tail}: {e}");
+    }
+    let mut worker = Client::connect_as(&h.run, "worker").unwrap();
+    assert!(err_text(worker.autopilot_log(1)).starts_with("forbidden: "));
+    fs::remove_file(dir.join("log.jsonl")).unwrap();
+    assert!(h.client().autopilot_log(10).unwrap().is_empty());
+}
+
+#[test]
+fn a_crash_marks_the_status_stopped_and_disables_the_queue() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    cli.autopilot_start("crash").unwrap();
+    wait_for("crash noticed", || {
+        let st = cli.autopilot_status().unwrap();
+        !st.running && st.status["stop_reason"] == "crashed"
+    });
+    let status = h.autopilot_status_file();
+    assert_eq!(status["state"], "stopped");
+    assert_eq!(status["exit"], "exit code 3");
+    assert_eq!(status["rule"], "tm");
+    wait_for("queue disabled", || !h.queue_enabled());
+    assert_eq!(
+        fs::read_to_string(h.cfg.join("tmgr/disabled.reason")).unwrap(),
+        "autopilot crashed"
+    );
+    cli.autopilot_start("default").unwrap();
+    h.stop_autopilot();
+}
+
+#[test]
+fn a_crash_after_a_stop_request_without_a_final_status_still_disables_the_queue() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    cli.autopilot_start("crash-after-stop").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("crash noticed", || {
+        let st = cli.autopilot_status().unwrap();
+        !st.running && st.status["stop_reason"] == "crashed"
+    });
+    wait_for("queue disabled", || !h.queue_enabled());
+}
+
+#[test]
+fn an_adopted_autopilot_is_never_signalled_through_a_pid_that_does_not_hold_its_lock() {
+    let mut h = Harness::new();
+    h.env
+        .push(("TMGR_TEST_AUTOPILOT_GRACE_MS".into(), "300".into()));
+    h.start(5000);
+    let fake = h.client().autopilot_start("wrong-pid").unwrap().pid;
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    let victim = h.autopilot_status_file()["pid"].as_u64().unwrap() as u32;
+    assert_ne!(victim, fake);
+    h.kill_runner();
+    h.start(5000);
+    let mut cli = h.client();
+    assert!(cli.autopilot_status().unwrap().running);
+    cli.stop().unwrap();
+    thread::sleep(Duration::from_millis(1500));
+    let spared = alive(victim);
+    unsafe {
+        libc::kill(victim as i32, libc::SIGKILL);
+        libc::kill(fake as i32, libc::SIGKILL);
+    }
+    h.kill_runner();
+    assert!(spared, "the process behind a wrong pid was signalled");
+}
+
+#[test]
+fn stopping_the_runner_suspends_autopilot_first() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    let pid = cli.autopilot_start("default").unwrap().pid;
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.stop().unwrap();
+    wait_for("autopilot gone", || !alive(pid));
+    assert_eq!(h.autopilot_status_file()["state"], "suspended");
+    assert!(h.queue_enabled(), "a suspend is not a crash");
+    h.kill_runner();
+}
+
+#[test]
+fn only_the_cli_may_suspend_autopilot() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    cli.autopilot_start("default").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    for client in ["desktop", "worker"] {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        let e = err_text(c.autopilot_control(AutopilotCommand::Suspend));
+        assert!(e.starts_with("forbidden: "), "{client}: {e}");
+    }
+    assert!(cli.autopilot_status().unwrap().running);
+    cli.autopilot_control(AutopilotCommand::Suspend).unwrap();
+    wait_for("suspended", || {
+        !h.client().autopilot_status().unwrap().running
+    });
+    assert_eq!(h.autopilot_status_file()["state"], "suspended");
+    assert!(h.queue_enabled());
+}
+
+#[test]
+fn a_suspended_autopilot_starts_again_with_the_same_settings_when_the_runner_starts() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    let mut cli = h.client();
+    h.settings_file("resume-me");
+    cli.autopilot_start("resume-me").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.stop().unwrap();
+    wait_for("suspended", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["state"] == "suspended"
+    });
+    h.kill_runner();
+    h.start(5000);
+    wait_for("running again", || {
+        let s = h.autopilot_status_file();
+        s["state"] == "running" && s["scenario"] == "resume-me"
+    });
+    assert!(h.client().autopilot_status().unwrap().running);
+    assert!(
+        !h.autopilot_dir().join("status.prev.json").exists(),
+        "a suspended status stays in place for the next loop"
+    );
+    h.stop_autopilot();
+}
+
+#[test]
+fn a_stopped_autopilot_is_not_started_again_with_the_runner() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let mut cli = h.client();
+    cli.autopilot_start("default").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    h.stop_autopilot();
+    assert_eq!(h.autopilot_status_file()["state"], "stopped");
+    h.kill_runner();
+    h.start(5000);
+    thread::sleep(Duration::from_millis(600));
+    assert!(!h.client().autopilot_status().unwrap().running);
+}
+
+impl Harness {
+    fn queue_loop_files(&self, enabled: bool, settings: bool) {
+        fs::write(
+            self.cfg.join("tmgr/queue.toml"),
+            format!("version = 1\nenabled = {enabled}\n"),
+        )
+        .unwrap();
+        if settings {
+            self.settings_file("queue");
+        }
+    }
+
+    fn settings_file(&self, id: &str) {
+        let dir = self.autopilot_dir().join("settings");
+        fs::create_dir_all(&dir).unwrap();
+        for d in [self.autopilot_dir(), dir.clone()] {
+            fs::set_permissions(d, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        fs::write(dir.join(format!("{id}.json")), "{}").unwrap();
+    }
+}
+
+#[test]
+fn the_queue_loop_starts_with_the_runner_when_the_queue_is_on_and_its_settings_exist() {
+    let mut h = Harness::new();
+    h.queue_loop_files(true, true);
+    h.start(5000);
+    wait_for("queue loop", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["scenario"] == "queue"
+    });
+    assert!(h.client().autopilot_status().unwrap().running);
+    h.stop_autopilot();
+}
+
+#[test]
+fn the_queue_loop_does_not_start_with_the_runner_when_the_queue_is_off_or_has_no_settings() {
+    for (enabled, settings) in [(false, true), (true, false)] {
+        let mut h = Harness::new();
+        h.queue_loop_files(enabled, settings);
+        h.start(5000);
+        thread::sleep(Duration::from_millis(600));
+        assert!(!h.client().autopilot_status().unwrap().running);
+        assert!(!h.autopilot_dir().join("status.json").exists());
+    }
+}
+
+#[test]
+fn an_autopilot_that_ignores_stop_gets_sigterm_when_the_runner_stops() {
+    let mut h = Harness::new();
+    h.env
+        .push(("TMGR_TEST_AUTOPILOT_GRACE_MS".into(), "300".into()));
+    h.start(5000);
+    let mut cli = h.client();
+    let pid = cli.autopilot_start("ignore-stop").unwrap().pid;
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.stop().unwrap();
+    wait_for("autopilot terminated", || !alive(pid));
+    h.kill_runner();
+}
+
+#[test]
+fn a_restarted_runner_adopts_a_live_autopilot() {
+    let mut h = Harness::new();
+    h.start(5000);
+    let pid = h.client().autopilot_start("default").unwrap().pid;
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    h.kill_runner();
+    h.start(5000);
+    let mut cli = h.client();
+    let st = cli.autopilot_status().unwrap();
+    assert!(st.running);
+    assert_eq!(st.pid, Some(pid));
+    let e = err_text(cli.autopilot_start("again"));
+    assert!(e.starts_with("busy: "), "{e}");
+    h.enable_queue();
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("stopped", || {
+        !h.client().autopilot_status().unwrap().running
+    });
+    assert!(
+        h.queue_enabled(),
+        "an adopted autopilot that was asked to stop did not crash"
+    );
+}
+
+#[test]
+fn a_kill_reason_becomes_the_cancelled_summary() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = Harness::new();
+    let log = h.agent_work_log();
+    h.worker("aw", "while true; do sleep 0.2; done\n");
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create_run(h.task_run("aw")).unwrap();
+    wait_for("start call", || ops(&log) == ["start"]);
+    let e = err_text(c.kill_with_reason(&info.id, "term", Some(&"x".repeat(201))));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    c.kill_with_reason(
+        &info.id,
+        "term",
+        Some("Paused: usage limit\u{7} reached at 81%"),
+    )
+    .unwrap();
+    wait_for("finish call", || ops(&log) == ["start", "finish"]);
+    let finish = &agent_work_calls(&log)[1];
+    assert_eq!(finish["status"], "cancelled");
+    assert_eq!(finish["summary"], "Paused: usage limit? reached at 81%");
+}
+
+#[test]
+fn a_drain_that_took_over_from_the_queue_loop_hands_back_to_it_when_it_stops() {
+    let mut h = Harness::new();
+    h.queue_loop_files(true, true);
+    h.start(5000);
+    h.stop_autopilot();
+    h.settings_file("handback");
+    let mut cli = h.client();
+    cli.autopilot_start("handback").unwrap();
+    wait_for("drain running", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["scenario"] == "handback"
+    });
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("queue loop again", || {
+        let s = h.autopilot_status_file();
+        s["scenario"] == "queue" && s["state"] == "running"
+    });
+    assert!(h.queue_enabled());
+    h.stop_autopilot();
+}
+
+#[test]
+fn a_stopped_drain_hands_back_to_nothing_when_the_queue_is_off() {
+    let mut h = Harness::new();
+    h.queue_loop_files(false, true);
+    h.start(5000);
+    h.settings_file("handback");
+    let mut cli = h.client();
+    cli.autopilot_start("handback").unwrap();
+    wait_for("drain running", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.autopilot_control(AutopilotCommand::Stop).unwrap();
+    wait_for("gone", || !h.client().autopilot_status().unwrap().running);
+    thread::sleep(Duration::from_millis(600));
+    assert!(!h.client().autopilot_status().unwrap().running);
+}
+
+#[test]
+fn a_suspended_loop_is_not_started_again_when_the_queue_is_off() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.enable_queue();
+    h.settings_file("resume-me");
+    let mut cli = h.client();
+    cli.autopilot_start("resume-me").unwrap();
+    wait_for("status file", || {
+        h.autopilot_dir().join("status.json").is_file()
+    });
+    cli.stop().unwrap();
+    wait_for("suspended", || {
+        h.autopilot_status_file()["state"] == "suspended"
+    });
+    h.kill_runner();
+    h.queue_loop_files(false, false);
+    h.start(5000);
+    thread::sleep(Duration::from_millis(600));
+    assert!(!h.client().autopilot_status().unwrap().running);
+}
+
+#[test]
+fn the_queue_loop_keeps_the_status_it_left_behind_when_it_starts_again() {
+    let mut h = Harness::new();
+    h.start(5000);
+    h.settings_file("queue");
+    h.settings_file("other");
+    fs::write(
+        h.autopilot_dir().join("status.json"),
+        r#"{"version":1,"state":"running","settings_id":"queue","scenario":"old"}"#,
+    )
+    .unwrap();
+    h.client().autopilot_start("queue").unwrap();
+    wait_for("new status", || {
+        h.autopilot_status_file()["scenario"] == "queue"
+    });
+    assert!(!h.autopilot_dir().join("status.prev.json").exists());
+    h.stop_autopilot();
+    h.client().autopilot_start("other").unwrap();
+    wait_for("other", || {
+        h.autopilot_dir().join("status.json").is_file()
+            && h.autopilot_status_file()["scenario"] == "other"
+    });
+    assert!(h.autopilot_dir().join("status.prev.json").exists());
+    h.stop_autopilot();
+}
+
+fn orch_fx() -> Harness {
+    let mut h = Harness::new();
+    let home = h.tmp.path().join("home");
+    fs::create_dir(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    h.real_home = Some(home);
+    let bin = h.tmp.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    let claude = bin.join("claude");
+    fs::write(
+        &claude,
+        "#!/bin/sh\nenv > env.tmp && mv env.tmp env.txt\nprintf '%s\\n' \"$@\" > args.tmp && mv args.tmp args.txt\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&claude, fs::Permissions::from_mode(0o755)).unwrap();
+    h.env
+        .push(("PATH".into(), format!("{}:/usr/bin:/bin", bin.display())));
+    h
+}
+
+fn orch_dir(h: &Harness) -> PathBuf {
+    let queue = h.tmp.path().join("app-worktrees/queue");
+    let dir = queue.join("orchestrator-1");
+    fs::create_dir_all(&dir).unwrap();
+    fs::set_permissions(&queue, fs::Permissions::from_mode(0o700)).unwrap();
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).unwrap();
+    dir
+}
+
+fn orch_req(h: &Harness, key: &str) -> OrchestratorCreateReq {
+    OrchestratorCreateReq {
+        profile: "claude-code".into(),
+        cwd: orch_dir(h).display().to_string(),
+        start_key: key.into(),
+        name: None,
+        exe_pin: None,
+    }
+}
+
+#[test]
+fn orchestrator_create_is_refused_for_clients_other_than_the_cli() {
+    let mut h = orch_fx();
+    h.start(5000);
+    for client in ["desktop", "worker"] {
+        let mut c = Client::connect_as(&h.run, client).unwrap();
+        let e = err_text(c.create_orchestrator(orch_req(&h, "orch-1")));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("tmgr CLI"),
+            "{e}"
+        );
+    }
+    assert!(h.client().list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_refuses_bad_requests_and_profiles() {
+    let mut h = orch_fx();
+    fs::write(
+        h.agents.join("claude-code.toml"),
+        "id = \"claude-code\"\nname = \"mine\"\ncommand = [\"claude\"]\n[headless]\nargs = [\"-p\", \"{prompt}\"]\n",
+    )
+    .unwrap();
+    h.profile("plain", &["claude"]);
+    h.start(5000);
+    let mut c = h.client();
+    let e = err_text(c.call(
+        method::ORCHESTRATOR_CREATE,
+        json!({"profile": "claude-code", "cwd": h.work}),
+    ));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    let e = err_text(c.call(
+        method::ORCHESTRATOR_CREATE,
+        json!({"profile": "claude-code", "cwd": h.work, "start_key": "k1", "argv": ["/bin/sh"]}),
+    ));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    let mut bad_key = orch_req(&h, "a b");
+    let e = err_text(c.create_orchestrator(bad_key.clone()));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    bad_key.start_key = "k".repeat(65);
+    assert!(err_text(c.create_orchestrator(bad_key)).starts_with("invalid_params: "));
+    for (profile, want) in [
+        ("nope", "unknown_profile: "),
+        ("claude-code", "forbidden: "),
+        ("plain", "forbidden: "),
+        ("codex", "invalid_params: "),
+    ] {
+        let mut req = orch_req(&h, "k2");
+        req.profile = profile.into();
+        let e = err_text(c.create_orchestrator(req));
+        assert!(e.starts_with(want), "{profile}: {e}");
+        if profile == "codex" {
+            assert!(e.contains("claude-code only"), "{e}");
+        }
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_without_an_enforced_network_restriction_runs_with_read_and_write_tools_only()
+{
+    if !sessions_available() || cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let info = h
+        .client()
+        .create_orchestrator(orch_req(&h, "orch-1"))
+        .unwrap();
+    let at = info.argv.iter().position(|a| a == "--tools").unwrap();
+    assert_eq!(info.argv[at + 1], "Read,Write");
+}
+
+#[test]
+fn orchestrator_create_runs_the_fixed_command_restricted_without_a_restore_record() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let mut c = h.client();
+    let info = c.create_orchestrator(orch_req(&h, "orch-1")).unwrap();
+    let args = {
+        let path = orch_dir(&h).join("args.txt");
+        wait_for("agent arguments", || path.exists());
+        fs::read_to_string(path).unwrap()
+    };
+    let want = [
+        "-p",
+        tmgr_runner::orchestrator::PROMPT,
+        "--permission-mode",
+        "acceptEdits",
+        "--tools",
+        "Read,Write",
+        "--strict-mcp-config",
+        "--max-turns",
+        "30",
+    ];
+    assert_eq!(args.lines().collect::<Vec<_>>(), want);
+    assert_eq!(info.profile.as_deref(), Some("claude-code"));
+    assert_eq!(info.permission_mode, None);
+    assert!(info.bundle_sha256.is_none() && info.task.is_none());
+    let path = orch_dir(&h).join("env.txt");
+    wait_for("agent env", || path.exists());
+    thread::sleep(Duration::from_millis(200));
+    let env = fs::read_to_string(path).unwrap();
+    let get = |k: &str| {
+        env.lines()
+            .find_map(|l| l.strip_prefix(&format!("{k}=")))
+            .map(String::from)
+    };
+    assert_eq!(get("TMGR_RUN_ID").as_deref(), Some(info.id.as_str()));
+    assert!(get("HTTPS_PROXY").is_some_and(|v| v.starts_with("http://127.0.0.1:")));
+    assert_eq!(get("NO_PROXY").as_deref(), Some(""));
+    let store = tmgr_runner::restore::store(h.homes.path());
+    assert!(!store.join(format!("{}.json", info.id)).exists());
+
+    assert_eq!(
+        c.create_orchestrator(orch_req(&h, "orch-1")).unwrap().id,
+        info.id
+    );
+    let mut other = orch_req(&h, "orch-1");
+    other.name = Some("other".into());
+    let e = err_text(c.create_orchestrator(other));
+    assert!(
+        e.starts_with("busy: ") && e.contains("different request"),
+        "{e}"
+    );
+    let mut same_key = h.run_req("claude-code");
+    same_key.start_key = Some("orch-1".into());
+    same_key.unattended = true;
+    let e = err_text(c.create_run(same_key));
+    assert!(e.starts_with("busy: "), "{e}");
+    assert_eq!(c.list().unwrap().len(), 1);
+    let _ = c.kill(&info.id, "kill");
+}
+
+#[test]
+fn orchestrator_create_accepts_only_a_private_orchestrator_folder() {
+    if !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let mut c = h.client();
+    let good = orch_dir(&h);
+    let queue = good.parent().unwrap().to_path_buf();
+    let loose = queue.join("orchestrator-2");
+    fs::create_dir(&loose).unwrap();
+    fs::set_permissions(&loose, fs::Permissions::from_mode(0o755)).unwrap();
+    let misnamed = queue.join("other-3");
+    fs::create_dir(&misnamed).unwrap();
+    fs::set_permissions(&misnamed, fs::Permissions::from_mode(0o700)).unwrap();
+    let outside = h.tmp.path().join("plain-worktrees/orchestrator-4");
+    fs::create_dir_all(&outside).unwrap();
+    fs::set_permissions(&outside, fs::Permissions::from_mode(0o700)).unwrap();
+    for (i, cwd) in [h.work.clone(), loose, misnamed, outside]
+        .into_iter()
+        .enumerate()
+    {
+        let mut req = orch_req(&h, &format!("k{i}"));
+        req.cwd = cwd.display().to_string();
+        let e = err_text(c.create_orchestrator(req));
+        assert!(
+            e.starts_with("forbidden: ") && e.contains("orchestrator folder"),
+            "{cwd:?}: {e}"
+        );
+    }
+    assert!(c.list().unwrap().is_empty());
+}
+
+#[test]
+fn orchestrator_create_checks_the_executable_pin() {
+    if !sessions_available() || !cfg!(target_os = "macos") {
+        return;
+    }
+    let mut h = orch_fx();
+    h.start(5000);
+    let mut c = h.client();
+    let claude = fs::canonicalize(h.tmp.path().join("bin/claude")).unwrap();
+    let pin = |sha: String| ExePin {
+        path: claude.display().to_string(),
+        sha256: sha,
+    };
+    let mut wrong = orch_req(&h, "pin-1");
+    wrong.exe_pin = Some(pin("0".repeat(64)));
+    let e = err_text(c.create_orchestrator(wrong));
+    assert!(e.starts_with("forbidden: "), "{e}");
+    let mut malformed = orch_req(&h, "pin-2");
+    malformed.exe_pin = Some(pin("XYZ".into()));
+    let e = err_text(c.create_orchestrator(malformed));
+    assert!(e.starts_with("invalid_params: "), "{e}");
+    assert!(c.list().unwrap().is_empty());
+    let mut right = orch_req(&h, "pin-3");
+    right.exe_pin = Some(pin(tmgr_ipc::api::sha256_hex(&fs::read(&claude).unwrap())));
+    let info = c.create_orchestrator(right).unwrap();
+    let _ = c.kill(&info.id, "kill");
 }

@@ -50,6 +50,9 @@ accept-edits = ["--permission-mode", "acceptEdits"]
 plan = ["--permission-mode", "plan"]
 bypass = ["--permission-mode", "bypassPermissions"]
 
+[headless]
+args = ["-p", "{prompt}", "--permission-mode", "acceptEdits", "--tools", "Read,Write", "--strict-mcp-config", "--max-turns", "30"]
+
 [network]
 allow = ["api.anthropic.com", "statsig.anthropic.com"]
 

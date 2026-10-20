@@ -110,7 +110,11 @@ fn bundle() -> RunBundle {
         persona: Some(BundlePersona {
             name: "reviewer".into(),
             instructions_sha256: "0".repeat(64),
+            id: None,
+            instructions: None,
         }),
+        context: vec![],
+        team: None,
         launch: BundleLaunch {
             profile: "codex".into(),
             model: Some("gpt-5".into()),
@@ -598,6 +602,15 @@ fn method_params_and_results() {
         &KillParams {
             id: SID.into(),
             signal: "term".into(),
+            reason: None,
+        },
+    );
+    golden(
+        "kill_params_reason",
+        &KillParams {
+            id: SID.into(),
+            signal: "int".into(),
+            reason: Some("Paused: usage limit reached at 81%".into()),
         },
     );
     golden(
@@ -804,7 +817,11 @@ fn constants_are_pinned() {
             "argv_pin.v1",
             "trusted_folders.v1",
             "trust_via_repo.v1",
-            "multi_clone.v1"
+            "multi_clone.v1",
+            "autopilot.v1",
+            "signed_context.v1",
+            "team.v1",
+            "orchestrator.v1"
         ]
     );
     let methods = [
@@ -830,6 +847,11 @@ fn constants_are_pinned() {
         method::TRUST_LIST,
         method::TRUST_ADD,
         method::TRUST_REMOVE,
+        method::AUTOPILOT_START,
+        method::AUTOPILOT_STATUS,
+        method::AUTOPILOT_CONTROL,
+        method::AUTOPILOT_LOG,
+        method::ORCHESTRATOR_CREATE,
     ];
     assert_eq!(
         methods,
@@ -856,6 +878,11 @@ fn constants_are_pinned() {
             "trust.list",
             "trust.add",
             "trust.remove",
+            "autopilot.start",
+            "autopilot.status",
+            "autopilot.control",
+            "autopilot.log",
+            "orchestrator.create",
         ]
     );
     assert_eq!(CLIENT_CLI, "cli");
@@ -878,7 +905,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 23);
+    assert_eq!(w.caps.len(), 27);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);
@@ -1099,4 +1126,232 @@ fn bundle_metadata_validation() {
     let mut b = bundle();
     b.author.id = Some("u_7.a:b@c-d".repeat(6)[..64].into());
     assert_eq!(b.validate(), Ok(()));
+}
+
+#[test]
+fn orchestrator_create_request() {
+    let req = OrchestratorCreateReq {
+        profile: "claude-code".into(),
+        cwd: "/work/project-worktrees/queue/orchestrator-1".into(),
+        start_key: "orch-1-1".into(),
+        name: None,
+        exe_pin: None,
+    };
+    golden("orchestrator_create_req", &req);
+    let pinned = OrchestratorCreateReq {
+        exe_pin: Some(ExePin {
+            path: "/usr/local/bin/claude".into(),
+            sha256: "e".repeat(64),
+        }),
+        ..req.clone()
+    };
+    golden("orchestrator_create_req_pin", &pinned);
+    assert_eq!(pinned.as_run().exe_pin, pinned.exe_pin);
+    let named = OrchestratorCreateReq {
+        name: Some("orchestrator".into()),
+        ..req
+    };
+    golden("orchestrator_create_req_name", &named);
+    let mut extra = fixture("orchestrator_create_req");
+    extra["argv"] = json!(["/bin/sh"]);
+    assert!(serde_json::from_value::<OrchestratorCreateReq>(extra).is_err());
+}
+
+#[test]
+fn autopilot_messages() {
+    golden(
+        "autopilot_start_params",
+        &AutopilotStartParams {
+            settings_id: "default-1".into(),
+        },
+    );
+    golden("autopilot_started", &AutopilotStarted { pid: 4242 });
+    golden(
+        "autopilot_status_running",
+        &AutopilotStatus {
+            running: true,
+            pid: Some(4242),
+            status: json!({"version": 1, "state": "running", "control_seq": 2}),
+        },
+    );
+    golden(
+        "autopilot_status_idle",
+        &AutopilotStatus {
+            running: false,
+            pid: None,
+            status: Value::Null,
+        },
+    );
+    golden(
+        "autopilot_control_params",
+        &AutopilotControlParams {
+            command: AutopilotCommand::Pause,
+        },
+    );
+    golden(
+        "autopilot_control_params_suspend",
+        &AutopilotControlParams {
+            command: AutopilotCommand::Suspend,
+        },
+    );
+    golden("autopilot_controlled", &AutopilotControlled { seq: 3 });
+    golden("autopilot_log_params", &AutopilotLogParams { tail: 50 });
+    golden(
+        "autopilot_log",
+        &AutopilotLog {
+            lines: vec![json!({"at": "2026-10-19T10:00:00Z", "kind": "picked", "task": "TM-1"})],
+        },
+    );
+    assert!(serde_json::from_value::<AutopilotControlParams>(json!({"command": "kill"})).is_err());
+    let old: KillParams = serde_json::from_value(json!({"id": SID, "signal": "term"})).unwrap();
+    assert_eq!(old.reason, None);
+}
+
+fn owner_bundle() -> RunBundle {
+    let mut b = bundle();
+    let text = "Follow the rules.\r\nOpen a PR.";
+    b.persona = Some(BundlePersona {
+        name: "reviewer".into(),
+        instructions_sha256: sha256_hex(text.as_bytes()),
+        id: Some("993c30a6-3528-42bf-9a70-507841cebc08".into()),
+        instructions: Some(text.into()),
+    });
+    b.context = vec![BundlePage {
+        id: 125,
+        revision: 14,
+        title: "Rules".into(),
+        body: "# Rules".into(),
+    }];
+    b
+}
+
+#[test]
+fn a_bundle_without_owner_text_serializes_without_the_new_fields() {
+    let v = serde_json::to_value(bundle()).unwrap();
+    assert!(v.get("context").is_none());
+    assert!(v["persona"].get("id").is_none());
+    assert!(v["persona"].get("instructions").is_none());
+    assert_eq!(bundle().sha256(), BUNDLE_SHA256);
+    let back: RunBundle = serde_json::from_value(v).unwrap();
+    assert_eq!(back, bundle());
+}
+
+#[test]
+fn owner_text_is_part_of_the_bundle_hash_and_round_trips() {
+    let b = owner_bundle();
+    assert_eq!(b.validate(), Ok(()));
+    assert_ne!(b.sha256(), BUNDLE_SHA256);
+    let canonical = b.canonical();
+    assert!(canonical
+        .contains(r##""context":[{"body":"# Rules","id":125,"revision":14,"title":"Rules"}]"##));
+    assert!(canonical.contains(r#""id":"993c30a6-3528-42bf-9a70-507841cebc08""#));
+    let back: RunBundle = serde_json::from_str(&canonical).unwrap();
+    assert_eq!(back, b);
+}
+
+#[test]
+fn owner_text_validation() {
+    let bad = |edit: &dyn Fn(&mut RunBundle), field: &str| {
+        let mut b = owner_bundle();
+        edit(&mut b);
+        let e = b.validate().unwrap_err();
+        assert!(e.contains(field), "{e}");
+    };
+    bad(
+        &|b| b.persona.as_mut().unwrap().instructions = Some("changed".into()),
+        "SHA-256 of persona.instructions",
+    );
+    let big = "x".repeat(32769);
+    bad(
+        &|b| {
+            let p = b.persona.as_mut().unwrap();
+            p.instructions_sha256 = sha256_hex(big.as_bytes());
+            p.instructions = Some(big.clone());
+        },
+        "persona.instructions must be at most 32768",
+    );
+    let max = "x".repeat(32768);
+    let mut b = owner_bundle();
+    let p = b.persona.as_mut().unwrap();
+    p.instructions_sha256 = sha256_hex(max.as_bytes());
+    p.instructions = Some(max);
+    assert_eq!(b.validate(), Ok(()));
+    let crlf = "a\r\n".repeat(16384);
+    let mut b = owner_bundle();
+    let p = b.persona.as_mut().unwrap();
+    p.instructions_sha256 = sha256_hex(crlf.as_bytes());
+    p.instructions = Some(crlf);
+    assert_eq!(b.validate(), Ok(()));
+    let over = "a\r\n".repeat(16384) + "b";
+    bad(
+        &|b| {
+            let p = b.persona.as_mut().unwrap();
+            p.instructions_sha256 = sha256_hex(over.as_bytes());
+            p.instructions = Some(over.clone());
+        },
+        "persona.instructions must be at most 32768",
+    );
+
+    let page = |n: i64, body: String| BundlePage {
+        id: n,
+        revision: 1,
+        title: String::new(),
+        body,
+    };
+    bad(
+        &|b| b.context = (0..6).map(|n| page(n, String::new())).collect(),
+        "at most 5 pages",
+    );
+    bad(
+        &|b| b.context = vec![page(1, "y".repeat(65537))],
+        "at most 65536 bytes",
+    );
+    let mut b = owner_bundle();
+    b.context = vec![page(1, "y".repeat(65536))];
+    assert_eq!(b.validate(), Ok(()));
+    b.context = vec![page(1, "\r\n".repeat(32768))];
+    assert_eq!(b.validate(), Ok(()));
+    b.context = (0..5).map(|n| page(n, String::new())).collect();
+    assert_eq!(b.validate(), Ok(()));
+}
+
+#[test]
+fn cloud_approval_hashes_are_skipped_when_absent() {
+    let v = serde_json::json!({"host":"h","user_id":1,"workspace_id":2,"task_id":3,"category_id":4,
+        "content_sha256":"c","key_id":"k","signed_at":5,"signature":"s","kind":"author"});
+    let c: CloudApproval = serde_json::from_value(v.clone()).unwrap();
+    assert_eq!(
+        (c.persona_sha256.clone(), c.context_sha256.clone()),
+        (None, None)
+    );
+    assert_eq!(serde_json::to_value(&c).unwrap(), v);
+}
+
+#[test]
+fn a_team_changes_the_hash_only_when_present_and_is_validated() {
+    let b = bundle();
+    assert!(serde_json::to_value(&b).unwrap().get("team").is_none());
+    assert_eq!(b.sha256(), BUNDLE_SHA256);
+    let mut t = bundle();
+    t.team = Some(BundleTeam {
+        size: 3,
+        mode: TeamMode::Heavy,
+    });
+    assert_eq!(t.validate(), Ok(()));
+    assert_ne!(t.sha256(), BUNDLE_SHA256);
+    assert!(t
+        .canonical()
+        .contains(r#""team":{"mode":"heavy","size":3}"#));
+    let back: RunBundle = serde_json::from_str(&t.canonical()).unwrap();
+    assert_eq!(back, t);
+    for size in [0u8, 6] {
+        t.team = Some(BundleTeam {
+            size,
+            mode: TeamMode::Eco,
+        });
+        assert!(t.validate().unwrap_err().contains("team.size"));
+    }
+    let mut v = serde_json::to_value(bundle()).unwrap();
+    v["team"] = json!({"size": 2, "mode": "eco", "extra": 1});
+    assert!(serde_json::from_value::<RunBundle>(v).is_err());
 }

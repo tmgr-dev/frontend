@@ -1,6 +1,8 @@
 use std::path::Path;
 
+use serde::Serialize;
 use serde_json::Value;
+use tmgr_ipc::api::AutopilotCommand;
 use tauri::ipc::Channel;
 use tauri::utils::config::BackgroundThrottlingPolicy;
 use tauri::{AppHandle, Manager, Runtime, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder, Window, WindowEvent};
@@ -186,6 +188,53 @@ pub async fn runner_halt<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner
   blocking(move || runner.kill(&session)).await
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AutopilotInfo {
+  pub running: bool,
+  pub pid: Option<u32>,
+  pub status: Value,
+}
+
+#[tauri::command]
+pub async fn runner_autopilot_status(runner: State<'_, Runner>) -> Result<AutopilotInfo, String> {
+  let runner = runner.inner().clone();
+  blocking(move || runner.autopilot_status().map(|s| AutopilotInfo { running: s.running, pid: s.pid, status: s.status })).await
+}
+
+pub fn parse_autopilot_command(raw: &str) -> Result<AutopilotCommand, String> {
+  match raw {
+    "pause" => Ok(AutopilotCommand::Pause),
+    "resume" => Ok(AutopilotCommand::Resume),
+    "stop" => Ok(AutopilotCommand::Stop),
+    _ => Err("unknown autopilot command".to_owned()),
+  }
+}
+
+pub fn autopilot_stop_message(status: &Value) -> String {
+  let text = |key: &str| status[key].as_str().map_or_else(|| "unknown".to_owned(), api::display_text);
+  let runs = status["runs"].as_array().map_or(0, Vec::len);
+  format!(
+    "Stop the autopilot?\nRule: {}\nMode: {}\nActive runs: {}\nIt will stop picking up new tasks.",
+    text("rule"),
+    text("mode"),
+    runs
+  )
+}
+
+#[tauri::command]
+pub async fn runner_autopilot_control<R: Runtime>(app: AppHandle<R>, runner: State<'_, Runner>, command: String) -> Result<u64, String> {
+  let runner = runner.inner().clone();
+  let command = parse_autopilot_command(&command)?;
+  if command == AutopilotCommand::Stop {
+    let r = runner.clone();
+    let current = blocking(move || r.autopilot_status()).await?;
+    if !confirm(&app, "Stop autopilot", autopilot_stop_message(&current.status), "Stop").await {
+      return Err("cancelled".to_owned());
+    }
+  }
+  blocking(move || runner.autopilot_control(command)).await
+}
+
 fn focus_existing<R: Runtime>(app: &AppHandle<R>, label: &str) -> Option<WebviewWindow<R>> {
   let window = app.get_webview_window(label)?;
   let _ = window.unminimize();
@@ -320,8 +369,9 @@ pub async fn runner_term_open_link<R: Runtime>(window: WebviewWindow<R>, app: Ap
 
 #[cfg(test)]
 mod tests {
-  use super::{is_terminal_url, validate_link};
-
+  use super::{autopilot_stop_message, is_terminal_url, parse_autopilot_command, validate_link};
+  use serde_json::json;
+  use tmgr_ipc::api::AutopilotCommand;
   #[test]
   fn terminal_window_stays_on_its_page() {
     for ok in ["tauri://localhost/runner-terminal.html", "http://tauri.localhost/runner-terminal.html", "https://tauri.localhost/runner-terminal.html"] {
@@ -369,5 +419,22 @@ mod tests {
       assert!(validate_link(bad).is_err(), "{bad}");
     }
     assert!(validate_link(&format!("https://example.com/{}", "a".repeat(3000))).is_err());
+  }
+
+  #[test]
+  fn only_known_autopilot_commands_parse() {
+    assert_eq!(parse_autopilot_command("pause"), Ok(AutopilotCommand::Pause));
+    assert_eq!(parse_autopilot_command("resume"), Ok(AutopilotCommand::Resume));
+    assert_eq!(parse_autopilot_command("stop"), Ok(AutopilotCommand::Stop));
+    for bad in ["suspend", "Stop", "", "start", "stop "] {
+      assert!(parse_autopilot_command(bad).is_err(), "{bad}");
+    }
+  }
+
+  #[test]
+  fn stop_confirmation_shows_rule_mode_and_runs() {
+    let m = autopilot_stop_message(&json!({"rule": "all", "mode": "pr", "runs": [{}, {}]}));
+    assert!(m.contains("Rule: all") && m.contains("Mode: pr") && m.contains("Active runs: 2"), "{m}");
+    assert!(autopilot_stop_message(&json!(null)).contains("Active runs: 0"));
   }
 }

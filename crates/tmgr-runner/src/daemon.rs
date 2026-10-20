@@ -1,10 +1,12 @@
 use crate::agentwork;
+use crate::autopilot;
 use crate::bundle;
 use crate::client::Client;
 use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
 use crate::folders;
 use crate::login;
+use crate::orchestrator;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
 use crate::sandbox::{self, SandboxSpec};
@@ -35,10 +37,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
-    limits, method, CreateReq, CwdPin, ErrorCode, EventMsg, ExePin, LookupParams, Origin,
-    OriginRevokeParams, OriginRevoked, PathParams, RestoredRun, RunCreateReq, RunStatus,
-    SessionInfo, SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams,
-    TrustRemoved, CLIENT_CLI, CLIENT_WORKER,
+    limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
+    AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
+    EventMsg, ExePin, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
+    OriginRevoked, PathParams, RestoredRun, RunCreateReq, RunStatus, SessionInfo, SessionText,
+    Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI,
+    CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -175,7 +179,7 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn log(msg: &str) {
+pub(crate) fn log(msg: &str) {
     eprintln!("{} {msg}", now_ms() / 1000);
 }
 
@@ -290,6 +294,7 @@ struct RunExtra {
     prompt_at: Option<usize>,
     egress: Option<Vec<crate::egress::HostPattern>>,
     mode_note: Option<String>,
+    run_id_env: bool,
 }
 
 fn shown_argv(argv: &[String], prompt_at: Option<usize>) -> Vec<String> {
@@ -811,9 +816,9 @@ impl Session {
         }
     }
 
-    fn halt(&self) {
+    fn halt(&self, reason: Option<&str>) {
         self.halted.store(true, Ordering::SeqCst);
-        agentwork::mark_halted(&self.dir);
+        agentwork::mark_halted(&self.dir, reason);
     }
 
     fn exit_for_agent_work(&self) -> Option<agentwork::Exit> {
@@ -840,7 +845,7 @@ impl Session {
             thread::sleep(Duration::from_millis(50));
         }
         if self.halted.load(Ordering::SeqCst) {
-            agentwork::mark_halted(&self.dir);
+            agentwork::mark_halted(&self.dir, None);
         }
         if let Err(e) = agentwork::step(
             &self.helper,
@@ -873,7 +878,7 @@ impl Session {
         self.aw_next
             .store(now + agentwork::retry_ms(), Ordering::SeqCst);
         if self.halted.load(Ordering::SeqCst) {
-            agentwork::mark_halted(&self.dir);
+            agentwork::mark_halted(&self.dir, None);
         }
         let exit = self.exit_for_agent_work();
         let s = self.clone();
@@ -1013,7 +1018,7 @@ impl Session {
 
     fn mark_revoking(&self) {
         self.revoking.store(true, Ordering::SeqCst);
-        self.halt();
+        self.halt(None);
         if let Err(e) = write_atomic(&self.dir.join(REVOKING_MARK), b"1") {
             log(&format!(
                 "session {} revocation not persisted: {e}",
@@ -1180,6 +1185,7 @@ struct Runner {
     pending: Arc<AtomicUsize>,
     rejects: Mutex<Rejects>,
     next_conn: AtomicU64,
+    autopilot: autopilot::Host,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -1225,6 +1231,17 @@ fn signal_number(name: &str) -> Option<i32> {
         "hup" => Some(libc::SIGHUP),
         _ => None,
     }
+}
+
+fn known_profile<'a>(set: &'a ProfileSet, id: &str) -> Result<&'a Profile, ApiErr> {
+    set.get(id).ok_or_else(|| {
+        let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
+        let what = profile::removed(id).unwrap_or_else(|| format!("unknown agent profile {id:?}"));
+        api(
+            ErrorCode::UnknownProfile,
+            format!("{what}; known profiles: {}", known.join(", ")),
+        )
+    })
 }
 
 fn valid_start_key(k: &str) -> bool {
@@ -1467,6 +1484,23 @@ fn check_agent_work(req: &RunCreateReq, mode: Option<&str>) -> Result<(), ApiErr
     Ok(())
 }
 
+fn kill_reason(p: &Value) -> Result<Option<String>, ApiErr> {
+    let Some(raw) = p.get("reason").filter(|v| !v.is_null()) else {
+        return Ok(None);
+    };
+    let raw = raw
+        .as_str()
+        .ok_or_else(|| api(ErrorCode::InvalidParams, "reason must be a string"))?;
+    if raw.chars().count() > limits::MAX_KILL_REASON {
+        return Err(api(
+            ErrorCode::InvalidParams,
+            format!("reason is at most {} characters", limits::MAX_KILL_REASON),
+        ));
+    }
+    let clean = crate::sanitize::sanitize_text(raw).trim().to_string();
+    Ok((!clean.is_empty()).then_some(clean))
+}
+
 fn session_id_param(v: &Value) -> Result<String, ApiErr> {
     let id = v
         .get("id")
@@ -1582,6 +1616,15 @@ impl Runner {
                 }
                 self.create_run(req).map(|i| to_json(&i))
             }
+            method::ORCHESTRATOR_CREATE => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "orchestrator.create is accepted only from the tmgr CLI",
+                    ));
+                }
+                self.create_orchestrator(params(p)?).map(|i| to_json(&i))
+            }
             method::TRUST_LIST => {
                 if conn.client == CLIENT_WORKER {
                     return Err(api(ErrorCode::Forbidden, "trusted folders are local only"));
@@ -1647,11 +1690,58 @@ impl Runner {
                         "signal must be term, kill, int or hup",
                     )
                 })?;
+                let reason = kill_reason(p)?;
                 let id = s.sig_seq.fetch_add(1, Ordering::SeqCst) + 1;
-                s.halt();
+                s.halt(reason.as_deref());
                 s.shim_msg(&ToShim::Signal { sig, id });
                 restore::forget(&self.intents(), &s.id);
                 Ok(Value::Null)
+            }
+            method::AUTOPILOT_START => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "autopilot.start is accepted only from the tmgr CLI",
+                    ));
+                }
+                let q: AutopilotStartParams = params(p)?;
+                self.autopilot
+                    .start(&self.cfg.self_exe, &q.settings_id)
+                    .map(|pid| to_json(&AutopilotStarted { pid }))
+                    .map_err(|(code, msg)| api(code, msg))
+            }
+            method::AUTOPILOT_STATUS | method::AUTOPILOT_CONTROL | method::AUTOPILOT_LOG => {
+                if conn.client != CLIENT_CLI && conn.client != CLIENT_DESKTOP {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "autopilot is available only to the tmgr CLI and the desktop app",
+                    ));
+                }
+                let out = match req.method.as_str() {
+                    method::AUTOPILOT_STATUS => self
+                        .autopilot
+                        .status(&self.cfg.self_exe)
+                        .map(|v| to_json(&v)),
+                    method::AUTOPILOT_CONTROL => {
+                        let q: AutopilotControlParams = params(p)?;
+                        if q.command == AutopilotCommand::Suspend && conn.client != CLIENT_CLI {
+                            return Err(api(
+                                ErrorCode::Forbidden,
+                                "autopilot suspend is accepted only from the tmgr CLI",
+                            ));
+                        }
+                        self.autopilot
+                            .control(&self.cfg.self_exe, q.command)
+                            .map(|seq| to_json(&AutopilotControlled { seq }))
+                    }
+                    _ => {
+                        let q: AutopilotLogParams = params(p)?;
+                        self.autopilot
+                            .log(q.tail)
+                            .map(|lines| to_json(&AutopilotLog { lines }))
+                    }
+                };
+                out.map_err(|(code, msg)| api(code, msg))
             }
             method::SESSIONS_SEND => {
                 let s = self.live(&session_id_param(p)?)?;
@@ -1995,6 +2085,85 @@ impl Runner {
         self.create_run_as(req, None, None).map(|(info, _, _)| info)
     }
 
+    fn create_orchestrator(
+        self: &Arc<Self>,
+        req: OrchestratorCreateReq,
+    ) -> Result<SessionInfo, ApiErr> {
+        if !valid_start_key(&req.start_key) {
+            return Err(api(
+                ErrorCode::InvalidParams,
+                "start_key must be 1 to 64 characters of A-Za-z0-9._:-",
+            ));
+        }
+        let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
+        let prof = known_profile(&set, &req.profile)?;
+        let mut argv = orchestrator::argv(prof).map_err(|(code, m)| api(code, m))?;
+        let enforced = sandbox::network_restriction_enforced();
+        if !enforced && !orchestrator::tools_pinned(&argv) {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "the orchestrator needs network restriction or an agent limited to reading and writing files",
+            ));
+        }
+        let run = req.as_run();
+        let hash =
+            tmgr_ipc::api::sha256_hex(format!("orchestrator.v1\0{}", params_hash(&run)).as_bytes());
+        let _keyed = lock(&self.key_lock);
+        if let Some(existing) = self.by_key(&req.start_key) {
+            return if existing.start_key().is_some_and(|(_, h)| h == hash) {
+                Ok(existing.info())
+            } else {
+                Err(api(
+                    ErrorCode::Busy,
+                    "start key already used for a different request",
+                ))
+            };
+        }
+        let dir = bundle::open_dir(&run).map_err(|(code, m)| api(code, m))?;
+        orchestrator::check_cwd(&dir.path, unsafe { libc::getuid() })
+            .map_err(|(code, m)| api(code, m))?;
+        let path = std::env::var_os("PATH").unwrap_or_default();
+        argv[0] = match &req.exe_pin {
+            None => {
+                resolve_exe(&argv[0], &path, None).map_err(|e| api(ErrorCode::InvalidParams, e))?
+            }
+            Some(pin) => {
+                check_pin_fields(pin)?;
+                check_pin(&argv[0], &path, pin)?
+            }
+        }
+        .display()
+        .to_string();
+        let extra = RunExtra {
+            start: Some((req.start_key.clone(), hash)),
+            egress: if enforced {
+                Some(
+                    prof.egress_allow()
+                        .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+                )
+            } else {
+                None
+            },
+            run_id_env: true,
+            ..RunExtra::default()
+        };
+        self.create_with(
+            CreateReq {
+                argv,
+                cwd: dir.path.display().to_string(),
+                name: req.name,
+                profile: Some(req.profile),
+                cols: run.cols,
+                rows: run.rows,
+                env_pass: Vec::new(),
+                task: None,
+            },
+            (None, Some(&dir), None),
+            (Some(prof), &extra),
+            None,
+        )
+    }
+
     fn precheck_pin(&self, req: &RunCreateReq) -> Result<Option<PinCheck>, ApiErr> {
         check_argv_sha256(req)?;
         let Some(pin) = &req.exe_pin else {
@@ -2056,15 +2225,7 @@ impl Runner {
         };
         let dir = checked.as_ref().map(|c| &c.dir).or(pinned.as_ref());
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
-        let prof = set.get(&req.profile).ok_or_else(|| {
-            let known: Vec<&str> = set.list().iter().map(|p| p.id.as_str()).collect();
-            let what = profile::removed(&req.profile)
-                .unwrap_or_else(|| format!("unknown agent profile {:?}", req.profile));
-            api(
-                ErrorCode::UnknownProfile,
-                format!("{what}; known profiles: {}", known.join(", ")),
-            )
-        })?;
+        let prof = known_profile(&set, &req.profile)?;
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
         if pinned_resume.is_some_and(|want| prof.resume.as_ref().map(resume_rec) != *want) {
             return Err(api(
@@ -2219,6 +2380,7 @@ impl Runner {
             prompt_at: None,
             egress: None,
             mode_note: plan.note.clone(),
+            run_id_env: false,
         };
         if plan.restricted {
             extra.egress = Some(
@@ -2571,6 +2733,7 @@ impl Runner {
             }
         }
         grants.deny = profile_protected;
+        grants.run_id = extra.run_id_env;
         for o in &extra.objects {
             o.reverify().map_err(|e| api(ErrorCode::Sandbox, e))?;
             grants.objects_ro.push((o.path.clone(), o.id));
@@ -3238,6 +3401,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         pending: Arc::new(AtomicUsize::new(0)),
         rejects: Mutex::new(Rejects::default()),
         next_conn: AtomicU64::new(1),
+        autopilot: autopilot::Host::default(),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -3256,6 +3420,8 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     let listener: UnixListener = endpoint::bind(&ep)?;
     listener.set_nonblocking(true)?;
 
+    rt.autopilot.resume(&cfg.self_exe);
+
     let ticker = rt.clone();
     thread::spawn(move || {
         while !ticker.stop.load(Ordering::SeqCst) {
@@ -3264,6 +3430,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             for s in ticker.all() {
                 s.tick();
             }
+            ticker.autopilot.tick(&ticker.cfg.self_exe);
         }
     });
 
@@ -3306,6 +3473,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             }
         }
     }
+    rt.autopilot.shutdown(&cfg.self_exe);
     thread::sleep(Duration::from_millis(100));
     match &ep {
         Endpoint::Path(p) => {
@@ -3322,6 +3490,16 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
 
 // Same-user processes can read each other's initial environment on macOS, so the runner and shims start from an allowlist.
 pub const ENV_CLEAN: &str = "TMGR_RUNNER_ENV_CLEAN";
+
+#[cfg(debug_assertions)]
+fn test_passthrough(key: &str) -> bool {
+    key.starts_with("TMGR_TEST_AUTOPILOT_")
+}
+
+#[cfg(not(debug_assertions))]
+fn test_passthrough(_: &str) -> bool {
+    false
+}
 
 pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     const KEEP: &[&str] = &[
@@ -3352,7 +3530,7 @@ pub fn daemon_env() -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
     std::env::vars_os()
         .filter(|(k, _)| {
             k.to_str()
-                .is_some_and(|k| KEEP.contains(&k) || k.starts_with("LC_"))
+                .is_some_and(|k| KEEP.contains(&k) || k.starts_with("LC_") || test_passthrough(k))
         })
         .collect()
 }

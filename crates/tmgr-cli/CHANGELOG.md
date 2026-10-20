@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.0.13
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Autopilot has an orchestrator: one planning agent per run reads only the signed task texts, inside the runner sandbox (claude-code, tools limited to reading and writing files, no tmgr token or signing key), and returns the start order, groups of tasks that touch the same code, eco or heavy per task and a triage. The CLI checks that output strictly before it uses it; a bad plan stops the run with nothing written.
+- Triage: a task an autonomous team cannot do gets a comment with the reason and a question for you, and moves to "Needs feedback" or "Blocked" (at most 3 per run, only after the task is checked unchanged and free).
+- Parallel teams: `--max-teams` (default 2) runs at once, `--team-size` (default 3) agents per team (lead and workers), `--team-mode eco|heavy|orchestrator`, `--profile claude-code|codex` (codex runs one agent per team). Every task still ends as a pull request and moves to Review; nothing is merged.
+- New per-run flags: `--only`, `--skip`, `--order` and `--dry-run` (plan and triage preview only: no comments, no status changes, no code, the queue stays off). Try `tmgr queue autopilot --dry-run` first.
+- `--resume-after-reset yes` now continues tasks paused by a usage limit once the window resets: the team picks up the pushed work in progress and the draft pull request becomes ready for review.
+- `tmgr queue autopilot status` and `tmgr queue status --tail` show the plan order, needs feedback, blocked, and per team its step and agents. The status JSON only gains fields.
+- Runner: new `orchestrator.create` and `team.v1` capabilities; restart the runner after the update.
+
+## 1.0.12
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- The queue runs by itself: `tmgr queue enable` (typed I AGREE as before) now hands a background loop to the runner, which ticks the queue every 30 seconds until `tmgr queue disable`. `tmgr queue run-once` stays for a manual pass. A runner restart or upgrade suspends the loop and resumes it with its counters. All gates stay: rule persona, taken re-check, approvals, leak gate, max concurrent, hours.
+- `tmgr queue status --tail` (also `--watch`, `--follow`) shows the summary and streams what happens: picked, starting, running, PR opened, held, skipped (taken), failed, done, stopped.
+- New `tmgr queue autopilot`: one interview (each question has a flag, Enter keeps the last answer, `--yes` reuses them all) and one typed `I AGREE`, then the runner drains the chosen tasks of a cloud rule in the background and the terminal is free. Finish is a PR, never a merge. `tmgr queue autopilot status [--watch] [--json]`, `pause`, `resume`, `stop`, `log`.
+- Confirm in the CLI: autopilot signs the agent-run approvals itself with this computer's own key (P-256, private key only in the OS keychain; never a file). The key is registered as a `cli` key and needs the opt-in login scope: `tmgr login --scopes <your scopes>,agent-approvals:write`. Signing is refused inside agent sessions and without a terminal. `tmgr runner allow` pins a CLI key only when it is this computer's key; CLI keys of other computers are listed and not pinned.
+- The CLI confirm signs v3 approvals like the web: it also signs the persona instructions and workspace rules the server offers, shows them before `I AGREE`, and refuses a task whose persona, rules or repositories changed since they were shown.
+- Usage guard with real numbers: Claude subscription windows are read with Claude Code's `get_usage` request (no model turn, no cost), Codex windows with `codex app-server`; statusline and rollout readings are used when fresher. A number older than 15 minutes counts as unknown and blocks new starts; nothing is guessed. Soft limit (default 50%): no new tasks. Hard limit (default 80%), `stop` and the time limit: running agents are stopped, their tracked changes are committed to the task branch without running the clone's git config, a draft PR is opened through the normal publish checks (leak gate included), the task gets "Paused: usage limit reached at N%" and its agent run is cancelled with that reason.
+- Autopilot also stops on: nothing left, cost cap (API-key runs, list-price estimate), max hours, max tasks, 3 failures in a row. It always turns the queue off and writes a summary (PRs, drafts, held, skipped, failed, what stopped it). Push notifications (when a push token is set): started, picked, PR opened, held, skipped, limit, new tasks that need confirm, stopped.
+- Tasks that match the rule later are never signed automatically; they are counted as "new tasks need confirm".
+
+## 1.0.11
+
+- This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.
+- Fix: a queue rule started tasks that had no persona at all (owner-action tasks included), because only a different persona counted as "taken". A task is now a candidate only while the rule's persona is among its persona assignees, for cloud and local workspaces alike. This is checked when the task is first seen and again on a fresh read right before the start.
+- A task without the rule's persona is skipped with the audit reason `persona_missing` and gets no comment. Pickups waiting for approval or already approved whose task has no such persona expire on the next pass (`tmgr queue run-once`), so nothing started by mistake is left in the list.
+
 ## 1.0.10
 
 - This release is still not signed (no minisign secrets), so its tarballs have SHA256SUMS only and it is published as a prerelease.

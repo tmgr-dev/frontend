@@ -154,6 +154,12 @@ pub struct NetworkDecl {
     pub allow: Vec<String>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct HeadlessDecl {
+    #[serde(default)]
+    pub args: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct Profile {
     pub id: String,
@@ -189,6 +195,8 @@ pub struct Profile {
     pub trust: Option<TrustDecl>,
     #[serde(default)]
     pub network: NetworkDecl,
+    #[serde(default)]
+    pub headless: Option<HeadlessDecl>,
     #[serde(skip)]
     pub source: Source,
 }
@@ -271,6 +279,25 @@ impl Profile {
             .as_ref()
             .and_then(|t| t.get("bypass"))
             .map(Vec::as_slice)
+    }
+
+    pub fn headless_argv(&self, prompt: &str) -> Result<Vec<String>, String> {
+        let h = self
+            .headless
+            .as_ref()
+            .ok_or_else(|| format!("profile {} has no headless entry", self.id))?;
+        Ok(self
+            .command
+            .iter()
+            .cloned()
+            .chain(h.args.iter().map(|a| {
+                if a == "{prompt}" {
+                    prompt.to_string()
+                } else {
+                    a.clone()
+                }
+            }))
+            .collect())
     }
 
     pub fn egress_allow(&self) -> Result<Vec<crate::egress::HostPattern>, String> {
@@ -370,6 +397,15 @@ fn check_launch(p: &Profile) -> Result<(), String> {
             return Err(format!(
                 "permission_modes.{mode} must be non-empty and take no placeholders"
             ));
+        }
+    }
+    if let Some(h) = &p.headless {
+        let holes = h.args.iter().filter(|a| *a == "{prompt}").count();
+        let stray = h.args.iter().any(|a| a != "{prompt}" && a.contains('{'));
+        if holes != 1 || stray {
+            return Err(
+                "headless.args must hold \"{prompt}\" exactly once as a whole argument".into(),
+            );
         }
     }
     if let Some(t) = &p.trust {
@@ -961,6 +997,35 @@ idle = ['^> $']
         }
         assert!(!hosts("codex", "api.anthropic.com"));
         assert!(!hosts("aider", "registry.npmjs.org"));
+    }
+
+    #[test]
+    fn headless_declarations_are_checked_and_build_the_argv() {
+        let dir = tempfile::tempdir().unwrap();
+        for (i, tail) in [
+            "[headless]\nargs = [\"-p\"]",
+            "[headless]\nargs = [\"{prompt}\", \"{prompt}\"]",
+            "[headless]\nargs = [\"x{prompt}\"]",
+            "[headless]\nargs = [\"-p\", \"{prompt}\", \"{model}\"]",
+            "[headless]\nargs = [\"-p\", \"{prompt}\", \"--fast\"]",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let text = format!("id = \"p{i}\"\nname = \"p\"\ncommand = [\"p\"]\n{tail}\n");
+            std::fs::write(dir.path().join(format!("p{i}.toml")), text).unwrap();
+        }
+        let (set, warnings) = ProfileSet::load(Some(dir.path()));
+        assert_eq!(warnings.len(), 4, "{warnings:?}");
+        let ok = set.get("p4").unwrap();
+        assert_eq!(ok.source, Source::User(dir.path().join("p4.toml")));
+        assert_eq!(
+            ok.headless_argv("hello").unwrap(),
+            ["p", "-p", "hello", "--fast"]
+        );
+        assert!(set.get("claude-code").unwrap().headless.is_some());
+        assert!(set.get("codex").unwrap().headless.is_none());
+        assert!(set.get("codex").unwrap().headless_argv("x").is_err());
     }
 
     #[test]
