@@ -473,6 +473,7 @@ impl Session {
             bundle_sha256: m.bundle_sha256.clone(),
             origin: m.origin.clone(),
             permission_mode: m.permission_mode.clone(),
+            resumed_from: None,
         }
     }
 
@@ -2081,7 +2082,11 @@ impl Runner {
                     let _ = self.remove(old);
                 }
                 log(&format!("session {old} restored as {}", session.id));
-                Ok(RestoredRun { session, resumed })
+                Ok(RestoredRun {
+                    session,
+                    resumed,
+                    via: None,
+                })
             }
             Err(e) => {
                 claim.release();

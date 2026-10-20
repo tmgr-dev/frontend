@@ -1136,6 +1136,7 @@ mod tests {
             bundle_sha256: None,
             origin: None,
             permission_mode: None,
+            resumed_from: None,
         }
     }
 

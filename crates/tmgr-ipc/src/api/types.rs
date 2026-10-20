@@ -208,6 +208,18 @@ pub struct CandidateInfo {
 pub struct RestoredRun {
     pub session: SessionInfo,
     pub resumed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+}
+
+/// Params of `sessions.resume`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeParams {
+    pub id: String,
+    #[serde(default = "default_cols")]
+    pub cols: u16,
+    #[serde(default = "default_rows")]
+    pub rows: u16,
 }
 
 /// The agent executable a human approved: canonical path and the SHA-256 of its contents.
@@ -245,6 +257,8 @@ pub struct SessionInfo {
     pub origin: Option<Origin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resumed_from: Option<String>,
 }
 
 /// Params of `runs.lookup`.

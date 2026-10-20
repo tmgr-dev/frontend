@@ -54,8 +54,9 @@ pub mod caps {
     pub const SIGNED_CONTEXT_V1: &str = "signed_context.v1";
     pub const TEAM_V1: &str = "team.v1";
     pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
+    pub const SESSIONS_RESUME_V1: &str = "sessions_resume.v1";
 
-    pub const ALL: [&str; 27] = [
+    pub const ALL: [&str; 28] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -83,6 +84,7 @@ pub mod caps {
         SIGNED_CONTEXT_V1,
         TEAM_V1,
         ORCHESTRATOR_V1,
+        SESSIONS_RESUME_V1,
     ];
 }
 
@@ -104,6 +106,7 @@ pub mod method {
     pub const ORIGIN_REVOKE: &str = "origin.revoke";
     pub const CANDIDATES_LIST: &str = "candidates.list";
     pub const RUNS_RESTORE: &str = "runs.restore";
+    pub const SESSIONS_RESUME: &str = "sessions.resume";
     pub const RUNS_LOOKUP: &str = "runs.lookup";
     pub const RUNS_STATUS: &str = "runs.status";
     pub const SESSIONS_TEXT: &str = "sessions.text";

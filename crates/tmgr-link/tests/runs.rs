@@ -93,6 +93,7 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
         bundle_sha256: None,
         origin: req.origin.clone(),
         permission_mode: None,
+        resumed_from: None,
     }
 }
 

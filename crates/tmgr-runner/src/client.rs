@@ -9,9 +9,9 @@ use tmgr_ipc::api::{
     method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
     CandidateInfo, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line, LookupParams,
-    OrchestratorCreateReq, RenameParams, RestoredRun, RunCreateReq, RunStatus, ScreenPush,
-    SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome, WorkSummary,
-    CLIENT_CLI,
+    OrchestratorCreateReq, RenameParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus,
+    ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome,
+    WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -150,6 +150,15 @@ impl Client {
     pub fn restore(&mut self, id: &str) -> io::Result<RestoredRun> {
         let params = IdParams { id: id.into() };
         from_value(self.call(method::RUNS_RESTORE, to_params(&params)?)?)
+    }
+
+    pub fn resume(&mut self, id: &str, cols: u16, rows: u16) -> io::Result<RestoredRun> {
+        let params = ResumeParams {
+            id: id.into(),
+            cols,
+            rows,
+        };
+        from_value(self.call(method::SESSIONS_RESUME, to_params(&params)?)?)
     }
 
     pub fn kill(&mut self, id: &str, signal: &str) -> io::Result<()> {

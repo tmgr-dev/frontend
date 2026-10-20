@@ -155,6 +155,7 @@ fn session_info() -> SessionInfo {
         bundle_sha256: None,
         origin: None,
         permission_mode: None,
+        resumed_from: None,
     }
 }
 
@@ -579,6 +580,7 @@ fn method_params_and_results() {
             bundle_sha256: None,
             origin: None,
             permission_mode: None,
+            resumed_from: None,
         },
     );
     golden(
@@ -822,7 +824,8 @@ fn constants_are_pinned() {
             "autopilot.v1",
             "signed_context.v1",
             "team.v1",
-            "orchestrator.v1"
+            "orchestrator.v1",
+            "sessions_resume.v1"
         ]
     );
     let methods = [
