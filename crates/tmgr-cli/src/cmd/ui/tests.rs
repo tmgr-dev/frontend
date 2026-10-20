@@ -1575,7 +1575,7 @@ fn esc_closes_the_picker_without_touching_the_field() {
     app.picker_loaded(picker::Source::Tasks, Ok(picker_items(&[("TM-1", "a")])));
     app.on_key(key(KeyCode::Esc));
     assert!(app.picker.is_none());
-    assert!(form(&app).values.get("reference").is_none());
+    assert!(!form(&app).values.contains_key("reference"));
 }
 
 #[test]
