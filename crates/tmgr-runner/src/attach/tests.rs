@@ -99,7 +99,6 @@ fn escape_sequences_pass_through_unchanged() {
         b"\x1b[97;5u",
         b"\x1b[?u",
         "héllo 世".as_bytes(),
-        b"\x1b",
     ];
     for seq in seqs {
         let mut s = InputSplitter::new();
@@ -141,9 +140,19 @@ fn scroll_mode_forwards_nothing() {
 
 #[test]
 fn escape_at_end_of_feed_is_a_lone_escape_and_exits_scroll() {
-    assert_eq!(scroll(b"\x1b"), vec![Action::Scroll(ScrollKey::Exit)]);
+    let later = || std::time::Instant::now() + std::time::Duration::from_millis(50);
+    let mut s = InputSplitter::new();
+    s.set_scroll_mode(true);
+    assert_eq!(s.feed(b"\x1b"), vec![]);
     assert_eq!(
-        scroll(b"\x1b[5~\x1b"),
+        s.flush_stale(later()),
+        vec![Action::Scroll(ScrollKey::Exit)]
+    );
+    s.set_scroll_mode(true);
+    let mut got = s.feed(b"\x1b[5~\x1b");
+    got.extend(s.flush_stale(later()));
+    assert_eq!(
+        got,
         vec![
             Action::Scroll(ScrollKey::PageUp),
             Action::Scroll(ScrollKey::Exit)
@@ -1149,4 +1158,57 @@ fn rename_done_updates_the_sidebar_name() {
     let mut v = ViewState::new(four(), "local");
     v.rename_done("b", "web");
     assert_eq!(v.sessions[1].name, "web");
+}
+
+#[test]
+fn lone_escape_is_forwarded_after_the_hold_time() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b"), vec![]);
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(50);
+    assert_eq!(s.flush_stale(later), vec![forward(b"\x1b")]);
+}
+
+#[test]
+fn mouse_split_after_the_escape_is_not_typed() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b"), vec![]);
+    assert_eq!(s.feed(b"[<0;1;1M"), vec![Action::Mouse(ev(0, 0, 0, false))]);
+    assert_eq!(s.feed(b"\x1b["), vec![]);
+    assert_eq!(s.feed(b"A"), vec![forward(b"\x1b[A")]);
+}
+
+#[test]
+fn mouse_movement_between_prefix_and_command_keeps_the_prefix() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d]), vec![]);
+    assert_eq!(
+        s.feed(b"\x1b[<35;10;5M"),
+        vec![Action::Mouse(ev(35, 9, 4, false))]
+    );
+    assert_eq!(s.feed(b"d"), vec![Action::Cmd(Cmd::Detach)]);
+}
+
+#[test]
+fn partial_paste_end_is_never_flushed_by_the_timer() {
+    let mut s = InputSplitter::new();
+    s.feed(b"\x1b[200~abc\x1b[20");
+    let later = std::time::Instant::now() + std::time::Duration::from_millis(50);
+    assert_eq!(s.flush_stale(later), vec![]);
+    assert_eq!(
+        s.feed(b"1~"),
+        vec![Action::Paste {
+            data: b"\x1b[201~".to_vec(),
+            start: false,
+            end: true
+        }]
+    );
+}
+
+#[test]
+fn paste_in_scroll_mode_is_a_paste() {
+    let mut s = InputSplitter::new();
+    s.set_scroll_mode(true);
+    let got = s.feed(b"\x1b[200~q\x1b[201~");
+    assert!(matches!(got.as_slice(), [Action::Paste { .. }]));
+    assert_eq!(s.feed(b"x"), vec![forward(b"x")]);
 }

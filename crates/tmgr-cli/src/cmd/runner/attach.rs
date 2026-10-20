@@ -273,6 +273,16 @@ impl App {
         });
     }
 
+    fn edit_rename_text(&mut self, data: &[u8]) {
+        let text: String = String::from_utf8_lossy(data)
+            .replace("\x1b[200~", "")
+            .replace("\x1b[201~", "")
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        self.view.edit_rename(text.as_bytes());
+    }
+
     fn rename_session(&mut self, id: &str, name: &str) {
         let result = connect(&self.cfg).and_then(|mut c| c.rename(id, name).map_err(rerr));
         match result {
@@ -304,6 +314,10 @@ impl App {
                     }
                 }
                 Action::Forward(data) => {
+                    self.view.pointer = None;
+                    if self.view.scroll.is_some() && !self.scroll_mode {
+                        self.view.scroll = None;
+                    }
                     if self.view.confirm.is_some() {
                         self.confirm_key(&data);
                         continue;
@@ -314,6 +328,16 @@ impl App {
                     if let Some(id) = self.view.focused_session().map(str::to_string) {
                         self.send_to(&id, &data)?;
                     }
+                }
+                Action::Drop(data) if self.view.rename.is_some() => {
+                    self.edit_rename_text(&data);
+                }
+                Action::Drop(data) if !dropped_path_exists(&data) => {
+                    self.handle(vec![Action::Forward(data)])?;
+                }
+                Action::Paste { data, start, end } if self.view.rename.is_some() => {
+                    let _ = (start, end);
+                    self.edit_rename_text(&data);
                 }
                 Action::Drop(data) => {
                     self.view.confirm = None;
@@ -388,6 +412,7 @@ impl App {
                     self.notify("switch sessions with Ctrl-] n and Ctrl-] p")
                 }
                 Action::Cmd(cmd) => {
+                    self.view.pointer = None;
                     self.view.confirm = None;
                     self.view.rename = None;
                     let removing = (cmd == Cmd::Remove)
@@ -719,4 +744,27 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         )
         .hint(format!("{} runner status", super::bin()))),
     }
+}
+
+fn dropped_path_exists(data: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(data);
+    let mut path = String::new();
+    let mut chars = text.trim_end().chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(n) = chars.next() {
+                path.push(n);
+            }
+        } else {
+            path.push(c);
+        }
+    }
+    let path = match path.strip_prefix("~/") {
+        Some(rest) => match std::env::var_os("HOME") {
+            Some(home) => std::path::Path::new(&home).join(rest),
+            None => return false,
+        },
+        None => std::path::PathBuf::from(path),
+    };
+    path.exists()
 }

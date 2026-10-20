@@ -1172,6 +1172,7 @@ struct Rejects {
 }
 
 struct Runner {
+    rename_lock: Mutex<()>,
     cfg: RunnerConfig,
     secret: String,
     started: Instant,
@@ -2969,6 +2970,7 @@ impl Runner {
         let s = self
             .session(id)
             .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+        let _guard = lock(&self.rename_lock);
         let taken = self
             .all()
             .iter()
@@ -3424,6 +3426,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
     )?;
     let secret = load_client_secret(&cfg.dir)?;
     let rt = Arc::new(Runner {
+        rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
         secret,
         started: Instant::now(),

@@ -1556,7 +1556,10 @@ fn path_typed_by_the_terminal_on_drop_reaches_the_agent_as_a_paste() {
     let mut pty = env.pty(&["attach", &id]);
     pty.wait_for("READY");
     thread::sleep(Duration::from_millis(500));
-    pty.type_bytes(b"/tmp/Screen\\ Shot\\ 1.png ");
-    wait_file(&out, b"\x1b[200~/tmp/Screen\\ Shot\\ 1.png \x1b[201~");
+    let file = env.proj.join("Screen Shot 1.png");
+    fs::write(&file, b"png").unwrap();
+    let typed = format!("{} ", file.display().to_string().replace(' ', "\\ "));
+    pty.type_bytes(typed.as_bytes());
+    wait_file(&out, format!("\x1b[200~{typed}\x1b[201~").as_bytes());
     pty.detach();
 }

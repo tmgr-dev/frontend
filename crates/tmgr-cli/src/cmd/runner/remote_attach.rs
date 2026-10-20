@@ -184,7 +184,12 @@ impl App {
     }
 
     fn on_stdin(&mut self, bytes: &[u8]) -> Option<Exit> {
-        for action in self.splitter.feed(bytes) {
+        let actions = self.splitter.feed(bytes);
+        self.act(actions)
+    }
+
+    fn act(&mut self, actions: Vec<Action>) -> Option<Exit> {
+        for action in actions {
             let action = match action {
                 Action::Mouse(_) => continue,
                 Action::Drop(data) | Action::Paste { data, .. } => Action::Forward(data),
@@ -246,6 +251,12 @@ impl App {
     ) -> io::Result<Option<Exit>> {
         if self.last_rx.elapsed() > SILENCE {
             return Ok(Some(Exit::Lost("the follower stopped answering".into())));
+        }
+        let stale = self.splitter.flush_stale(Instant::now());
+        if !stale.is_empty() {
+            if let Some(exit) = self.act(stale) {
+                return Ok(Some(exit));
+            }
         }
         if let Ok(size) = ratatui::crossterm::terminal::size() {
             if size != self.size {

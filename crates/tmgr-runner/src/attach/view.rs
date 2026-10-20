@@ -295,7 +295,11 @@ impl ViewState {
         if let Some(g) = self.grab.clone() {
             if matches!(kind, Kind::Drag | Kind::Release) {
                 let lay = layout(area, self);
-                if let Some(p) = lay.panes.iter().find(|p| p.session == g) {
+                if let Some(p) = lay
+                    .panes
+                    .iter()
+                    .find(|p| p.session == g && !p.inner.is_empty())
+                {
                     let pane = info(&g);
                     let c = ev.col.clamp(p.inner.x, p.inner.right() - 1) - p.inner.x;
                     let r = ev.row.clamp(p.inner.y, p.inner.bottom() - 1) - p.inner.y;

@@ -104,7 +104,7 @@ impl InputSplitter {
                 i = self.paste_chunk(bytes, i, first, &mut out);
                 continue;
             }
-            if bytes[i] == 0x1b && !self.prefix {
+            if bytes[i] == 0x1b {
                 match mouse_at(&bytes[i..]) {
                     Seq::Mouse(ev, used) => {
                         flush(&mut run, &mut out);
@@ -124,20 +124,20 @@ impl InputSplitter {
                     }
                     Seq::None => {}
                 }
-                if !self.scroll {
-                    let rest = &bytes[i..];
-                    if rest.starts_with(PASTE_BEGIN) {
-                        flush(&mut run, &mut out);
-                        self.paste = Some(true);
-                        continue;
-                    }
-                    if rest.len() >= 3
-                        && rest.len() < PASTE_BEGIN.len()
-                        && PASTE_BEGIN.starts_with(rest)
-                    {
-                        self.held = rest.to_vec();
-                        break;
-                    }
+                let rest = &bytes[i..];
+                if rest.starts_with(PASTE_BEGIN) {
+                    flush(&mut run, &mut out);
+                    self.paste = Some(true);
+                    self.scroll = false;
+                    continue;
+                }
+                if rest.len() >= 3
+                    && rest.len() < PASTE_BEGIN.len()
+                    && PASTE_BEGIN.starts_with(rest)
+                {
+                    flush(&mut run, &mut out);
+                    self.hold(rest);
+                    break;
                 }
             }
             if self.scroll {
@@ -186,26 +186,23 @@ impl InputSplitter {
     }
 
     pub fn flush_stale(&mut self, now: Instant) -> Vec<Action> {
-        let stale = self
-            .held_at
-            .is_some_and(|t| now.saturating_duration_since(t) >= HELD_FOR);
+        let stale = self.paste.is_none()
+            && self
+                .held_at
+                .is_some_and(|t| now.saturating_duration_since(t) >= HELD_FOR);
         if !stale {
             return Vec::new();
         }
         self.held_at = None;
         let data = std::mem::take(&mut self.held);
-        match self.paste {
-            Some(first) => {
-                self.paste = Some(false);
-                vec![Action::Paste {
-                    data,
-                    start: first,
-                    end: false,
-                }]
+        if self.scroll {
+            if data == b"\x1b" {
+                self.scroll = false;
+                return vec![Action::Scroll(ScrollKey::Exit)];
             }
-            None if self.scroll => Vec::new(),
-            None => vec![Action::Forward(data)],
+            return Vec::new();
         }
+        vec![Action::Forward(data)]
     }
 
     fn paste_chunk(
@@ -270,6 +267,9 @@ enum Seq {
 }
 
 fn mouse_at(b: &[u8]) -> Seq {
+    if b == [0x1b] || b == [0x1b, b'['] {
+        return Seq::Partial;
+    }
     if b.len() < 3 {
         return Seq::None;
     }
