@@ -27,7 +27,7 @@
 					class="flex flex-wrap items-center gap-x-2 text-2xs text-ink-faint"
 				>
 					<span>{{ row.source }}</span>
-					<span v-if="row.partial">partly covered by your timer</span>
+					<span v-if="row.partial">partly covered by other tracked time</span>
 				</div>
 			</li>
 		</ul>
