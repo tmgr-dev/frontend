@@ -9,6 +9,7 @@ import {
 	hasMessage,
 	hasPendingLast,
 	isBusy,
+	isPollResultCurrent,
 	lastChatKey,
 	nextChatAfterRemoval,
 	parseRememberedChatId,
@@ -307,6 +308,26 @@ describe('chat list helpers', () => {
 		expect(nextChatAfterRemoval(items, 2)).toBe(3);
 		expect(nextChatAfterRemoval(items, 3)).toBe(2);
 		expect(nextChatAfterRemoval([{ id: 1 }], 1)).toBeNull();
+	});
+
+	it('accepts a poll result only for the same pending message and conversation', () => {
+		const s = appendPending(
+			applyConversation(createAgentChatState(), CONV, []),
+			USER_MSG,
+			11,
+		);
+		expect(isPollResultCurrent(s, 5, 11)).toBe(true);
+		expect(isPollResultCurrent(s, 6, 11)).toBe(false);
+		expect(isPollResultCurrent(s, 5, 12)).toBe(false);
+		expect(isPollResultCurrent(s, 5, null)).toBe(false);
+		const answered = applyReply(s, {
+			conversation_id: 5,
+			message_id: 11,
+			content: 'ok',
+			status: 'done',
+			steps: [],
+		} as never);
+		expect(isPollResultCurrent(answered, 5, 11)).toBe(false);
 	});
 
 	it('falls back to New chat for empty titles', () => {

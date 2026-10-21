@@ -75,7 +75,8 @@
 				<template v-if="confirmingId === item.id">
 					<span class="shrink-0 text-xs text-ink-subtle">Delete?</span>
 					<button
-						class="shrink-0 rounded-pill px-2 py-0.5 text-xs text-red-500 hover:bg-surface-hover"
+						class="shrink-0 rounded-pill px-2 py-0.5 text-xs text-red-500 hover:bg-surface-hover disabled:opacity-40"
+						:disabled="acting"
 						@click="remove(item)"
 					>
 						Yes
@@ -101,6 +102,7 @@
 					<button
 						class="rounded-pill p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
 						:aria-label="item.archived ? 'Unarchive chat' : 'Archive chat'"
+						:disabled="acting"
 						@click="toggleArchive(item)"
 					>
 						<ArchiveRestore v-if="item.archived" class="h-3.5 w-3.5" />
@@ -166,6 +168,7 @@
 			const renamingId = ref<number | null>(null);
 			const renameDraft = ref('');
 			const confirmingId = ref<number | null>(null);
+			const acting = ref(false);
 			const requests = createRequestSequence();
 			let debounce: ReturnType<typeof setTimeout> | null = null;
 
@@ -215,6 +218,7 @@
 
 			const startRename = (item: AgentConversationItem): void => {
 				confirmingId.value = null;
+				error.value = null;
 				renameDraft.value = item.title ?? '';
 				renamingId.value = item.id;
 				nextTick(() => {
@@ -229,11 +233,12 @@
 			const saveRename = async (item: AgentConversationItem): Promise<void> => {
 				const title = renameDraft.value.trim();
 				renamingId.value = null;
-				if (!title || title === item.title) return;
+				if (title === (item.title ?? '')) return;
+				error.value = null;
 				try {
 					const updated = await renameConversation(item.id, title);
 					items.value = items.value.map((i) =>
-						i.id === item.id ? { ...i, title: updated.title } : i,
+						i.id === item.id ? { ...i, title: updated.title ?? null } : i,
 					);
 				} catch {
 					error.value = 'Could not rename the chat.';
@@ -244,7 +249,11 @@
 				id: number,
 				action: 'archive' | 'unarchive' | 'delete',
 			): void => {
-				const nextId = nextChatAfterRemoval(items.value, id);
+				const nextId = props.showArchived
+					? null
+					: nextChatAfterRemoval(items.value, id);
+				requests.begin();
+				loading.value = false;
 				items.value = items.value.filter((i) => i.id !== id);
 				emit('removed', { id, action, nextId });
 			};
@@ -252,22 +261,38 @@
 			const toggleArchive = async (
 				item: AgentConversationItem,
 			): Promise<void> => {
+				if (acting.value) return;
+				acting.value = true;
+				error.value = null;
 				try {
 					await archiveConversation(item.id, !item.archived);
 					dropItem(item.id, item.archived ? 'unarchive' : 'archive');
 				} catch {
 					error.value = 'Could not update the chat.';
+				} finally {
+					acting.value = false;
 				}
 			};
 
 			const remove = async (item: AgentConversationItem): Promise<void> => {
+				if (acting.value) return;
+				acting.value = true;
 				confirmingId.value = null;
+				error.value = null;
 				try {
 					await deleteConversation(item.id);
 					dropItem(item.id, 'delete');
 				} catch {
 					error.value = 'Could not delete the chat.';
+				} finally {
+					acting.value = false;
 				}
+			};
+
+			const cancelRename = (): boolean => {
+				if (renamingId.value === null) return false;
+				renamingId.value = null;
+				return true;
 			};
 
 			onUnmounted(() => {
@@ -284,6 +309,8 @@
 				renamingId,
 				renameDraft,
 				confirmingId,
+				acting,
+				cancelRename,
 				startRename,
 				saveRename,
 				toggleArchive,

@@ -34,6 +34,7 @@
 		newChat,
 		subscribe,
 		unsubscribe,
+		stopPolling,
 	} = useAgentChat();
 	const { currentWorkspaceId } = useCurrentWorkspace();
 	const { registerModal, unregisterModal } = useModalEscHandler();
@@ -50,7 +51,9 @@
 	const view = ref<'chat' | 'list'>('chat');
 	const listQuery = ref('');
 	const showArchived = ref(false);
-	const listRefreshKey = computed(() => replyTick.value);
+	const listBump = ref(0);
+	const listRefreshKey = computed(() => replyTick.value + listBump.value);
+	const chatList = ref<InstanceType<typeof ChatList> | null>(null);
 
 	function toggleHistory(): void {
 		view.value = view.value === 'list' ? 'chat' : 'list';
@@ -75,23 +78,34 @@
 		if (event.id !== state.value.conversationId) return;
 		if (event.nextId !== null) {
 			await openConversation(event.nextId);
-		} else if (event.action === 'delete') {
+			return;
+		}
+		if (event.action === 'delete') {
 			forgetRemembered();
 			if (currentWorkspaceId.value) await load(currentWorkspaceId.value);
 		} else {
 			await newChat();
 		}
+		listBump.value++;
 	}
 
 	function close(): void {
 		store.commit('setAiPanelOpen', false);
 	}
 
+	function onEsc(): void {
+		if (chatList.value?.cancelRename()) return;
+		if (view.value === 'list') {
+			view.value = 'chat';
+			return;
+		}
+		close();
+	}
+
 	async function submit(): Promise<void> {
 		const content = draft.value.trim();
-		if (!content || busy.value) return;
-		await send(content);
-		if (!error.value) draft.value = '';
+		if (!content || busy.value || loading.value) return;
+		if (await send(content)) draft.value = '';
 		focusInput();
 	}
 
@@ -105,8 +119,9 @@
 			if (isOpen) {
 				if (currentWorkspaceId.value) load(currentWorkspaceId.value);
 				store.commit('pushModalToStack', 'ai-panel');
-				registerModal('ai-panel', close);
+				registerModal('ai-panel', onEsc);
 			} else {
+				stopPolling();
 				view.value = 'chat';
 				listQuery.value = '';
 				showArchived.value = false;
@@ -191,6 +206,7 @@
 		</header>
 		<ChatList
 			v-if="view === 'list' && currentWorkspaceId"
+			ref="chatList"
 			v-model:query="listQuery"
 			v-model:show-archived="showArchived"
 			:workspace-id="currentWorkspaceId"
@@ -224,12 +240,12 @@
 					data-tour="ai.input"
 					class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 					placeholder="Ask about this workspace…"
-					:disabled="busy"
+					:disabled="busy || loading"
 					@keydown.enter.prevent="submit"
 				/>
 				<button
 					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white disabled:opacity-40"
-					:disabled="!draft.trim() || busy"
+					:disabled="!draft.trim() || busy || loading"
 					aria-label="Send"
 					title="Send (Enter)"
 					@click="submit"

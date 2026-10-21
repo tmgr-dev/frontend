@@ -173,6 +173,15 @@ export const parseRememberedChatId = (raw: string | null): number | null => {
 export const hasPendingLast = (messages: AgentMessage[]): boolean =>
 	messages.length > 0 && messages[messages.length - 1].status === 'pending';
 
+export const isPollResultCurrent = (
+	s: AgentChatState,
+	conversationId: number,
+	pendingId: number | null,
+): boolean =>
+	pendingId !== null &&
+	s.conversationId === conversationId &&
+	s.pendingId === pendingId;
+
 export const nextChatAfterRemoval = (
 	items: { id: number }[],
 	removedId: number,

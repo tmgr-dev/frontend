@@ -22,6 +22,7 @@ import {
 	hasMessage,
 	hasPendingLast,
 	isBusy,
+	isPollResultCurrent,
 	lastChatKey,
 	parseRememberedChatId,
 	resetForWorkspace,
@@ -42,13 +43,15 @@ export interface UseAgentChatReturn {
 	load: (workspaceId: number) => Promise<void>;
 	openConversation: (conversationId: number) => Promise<void>;
 	forgetRemembered: () => void;
-	send: (content: string) => Promise<void>;
+	send: (content: string) => Promise<boolean>;
 	newChat: () => Promise<void>;
 	subscribe: (userId: number) => void;
 	unsubscribe: () => void;
+	stopPolling: () => void;
 }
 
 const PENDING_POLL_MS = 4000;
+const PENDING_POLL_MAX_MS = 10 * 60 * 1000;
 
 const httpStatus = (e: unknown): number | undefined =>
 	(e as { response?: { status?: number } } | undefined)?.response?.status;
@@ -114,14 +117,18 @@ export function useAgentChat(): UseAgentChatReturn {
 	const startPolling = (conversationId: number): void => {
 		stopPolling();
 		let inFlight = false;
+		const startedAt = Date.now();
 		pollTimer = setInterval(async () => {
 			if (inFlight) return;
+			if (Date.now() - startedAt > PENDING_POLL_MAX_MS) return stopPolling();
 			if (state.value.conversationId !== conversationId) return stopPolling();
 			if (!isBusy(state.value)) return stopPolling();
+			const pendingId = state.value.pendingId;
 			inFlight = true;
 			try {
 				const messages = await getAgentMessages(conversationId);
-				if (state.value.conversationId !== conversationId) return;
+				if (!isPollResultCurrent(state.value, conversationId, pendingId))
+					return;
 				if (hasPendingLast(messages)) return;
 				state.value = applyConversation(
 					state.value,
@@ -280,14 +287,14 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 	};
 
-	const send = async (content: string): Promise<void> => {
-		if (sending.value || loading.value) return;
+	const send = async (content: string): Promise<boolean> => {
+		if (sending.value || loading.value) return false;
 		const token = sendRequests.begin();
 		const current = () => sendRequests.isCurrent(token);
 		const conversationId = state.value.conversationId;
 		if (!conversationId) {
 			error.value = 'No active conversation';
-			return;
+			return false;
 		}
 
 		sending.value = true;
@@ -300,7 +307,7 @@ export function useAgentChat(): UseAgentChatReturn {
 			);
 
 			if (!current() || state.value.conversationId !== conversationId) {
-				return;
+				return true;
 			}
 
 			state.value = appendPending(
@@ -323,12 +330,13 @@ export function useAgentChat(): UseAgentChatReturn {
 				replyTick.value++;
 				earlyReplies.delete(pending_message_id);
 			}
+			return true;
 		} catch (e) {
-			if (!current()) return;
+			if (!current()) return false;
 			error.value = sendErrorMessage(httpStatus(e));
+			return false;
 		} finally {
-			if (!current()) return;
-			sending.value = false;
+			if (current()) sending.value = false;
 		}
 	};
 
@@ -406,5 +414,6 @@ export function useAgentChat(): UseAgentChatReturn {
 		newChat,
 		subscribe,
 		unsubscribe,
+		stopPolling,
 	};
 }
