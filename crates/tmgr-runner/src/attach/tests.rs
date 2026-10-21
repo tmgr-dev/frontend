@@ -5005,3 +5005,29 @@ fn dragged_ratio_survives_prefs_round_trip() {
     other.apply_prefs(&back);
     assert_eq!(outer(&other, 1).x, edge + 12);
 }
+
+#[test]
+fn drag_state_is_dropped_when_the_tree_changes_and_not_saved_midway() {
+    let mut v = two_panes(SplitDir::Right);
+    let saved = v.prefs().tree;
+    let edge = outer(&v, 1).x;
+    at(&mut v, 0, edge, 5, false);
+    at(&mut v, 32, edge + 6, 5, false);
+    assert_eq!(v.prefs().tree, saved);
+    v.close_pane("b");
+    let out = at(&mut v, 32, edge + 9, 5, false);
+    assert!(out.redraw);
+    assert_eq!(layout(AREA, &v).panes.len(), 1);
+}
+
+#[test]
+fn sidebar_border_wins_over_a_pane_line_at_the_shared_column() {
+    let mut v = two_panes(SplitDir::Down);
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let header = outer(&v, 1).y;
+    let before = outer(&v, 1).y;
+    at(&mut v, 0, sb.right(), header, false);
+    at(&mut v, 32, sb.right() + 4, header + 5, false);
+    assert_eq!(outer(&v, 1).y, before);
+    assert!(v.sidebar_width() > sb.width);
+}

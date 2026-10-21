@@ -116,7 +116,7 @@ pub struct ViewState {
     pub sidebar_default: u16,
     pub theme: ThemeKind,
     border_drag: Option<Option<u16>>,
-    split_drag: Option<(Border, u16)>,
+    split_drag: Option<(Border, u16, Option<Node>)>,
     pub help: bool,
     pub scroll: Option<ScrollState>,
     pub notice: Option<String>,
@@ -1293,7 +1293,19 @@ impl ViewState {
         if ev.kind() == Kind::Press {
             self.split_drag = None;
         }
-        if let Some((border, delta)) = self.split_drag.clone() {
+        if let Some((border, delta, _)) = self.split_drag.clone() {
+            let body = body_rect(area, self);
+            let live = !self.zoom
+                && self.tree.as_ref().is_some_and(|t| {
+                    t.borders(body).iter().any(|b| {
+                        b.path == border.path && b.dir == border.dir && b.rect == border.rect
+                    })
+                });
+            if !live {
+                self.split_drag = None;
+                out.redraw = true;
+                return true;
+            }
             match ev.kind() {
                 Kind::Drag => {
                     let at = match border.dir {
@@ -1316,7 +1328,9 @@ impl ViewState {
         if !ev.is_left_press() || self.zoom {
             return false;
         }
-        if matches!(self.hit(area, ev.col, ev.row), Hit::Button(..)) {
+        if matches!(self.hit(area, ev.col, ev.row), Hit::Button(..))
+            || self.on_sidebar_border(area, ev.col, ev.row)
+        {
             return false;
         }
         let Some(tree) = self.tree.as_ref() else {
@@ -1328,7 +1342,7 @@ impl ViewState {
         if let Hit::Pane { idx, .. } = self.hit(area, ev.col, ev.row) {
             self.focus_pane(idx);
         }
-        self.split_drag = Some((border, u16::from(first)));
+        self.split_drag = Some((border, u16::from(first), self.tree.clone()));
         out.redraw = true;
         true
     }
@@ -1765,7 +1779,10 @@ impl ViewState {
             zoom: self.zoom,
             sidebar: self.sidebar,
             sidebar_width: self.border_drag.unwrap_or(self.sidebar_w),
-            tree: self.tree.clone(),
+            tree: match &self.split_drag {
+                Some((_, _, before)) => before.clone(),
+                None => self.tree.clone(),
+            },
             shells: self.shells.clone(),
             new_kind: self.new_kind.clone(),
             new_place: self.new_place.filter(|p| *p != Place::Tab),
