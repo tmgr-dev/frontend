@@ -370,6 +370,7 @@ pub fn run(link: &str, mut client: Client, target: &RunView, input: bool) -> Res
     };
     let mut view = ViewState::new(vec![row], &format!("link:{link}"));
     view.set_initial(&target.id);
+    view.allow_new = false;
     view.sidebar = Some(false);
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
