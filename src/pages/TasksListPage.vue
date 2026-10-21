@@ -44,6 +44,7 @@
 		type EstimatedTask,
 		type OvertimePagination,
 	} from '@/utils/overtime';
+	import { requestCache } from '@/utils/requestCache';
 	import { createRequestSequence } from '@/utils/requestSequence';
 	import { readTaskListQuery } from '@/utils/taskListQuery';
 	import { removeTaskFromList, upsertTaskInList } from '@/utils/taskPatch';
@@ -134,6 +135,65 @@
 		from: 0,
 		to: 0,
 	});
+
+	// Last shown page of the unfiltered query, so a return visit renders it while the refetch
+	// runs (TM-682). Filters reset on mount, so filtered pages are never saved. The
+	// tasks-status- prefix lets every task mutation drop it.
+	interface ListSnapshot {
+		tasks: Task[];
+		pagination: PaginationMeta;
+	}
+	const listSnapshotKey = () => {
+		const query = readTaskListQuery(route.query);
+		return requestCache.generateKey('tasks-status-list-snapshot', {
+			workspace: store.getters.currentWorkspaceId,
+			route: route.name,
+			search: searchText.value || null,
+			category: selectedCategory.value,
+			state: stateFilter.value,
+			statuses: selectedStatusIds.value,
+			page: query.page,
+			perPage: query.perPage,
+			sort: query.sort,
+			direction: query.direction,
+		});
+	};
+	const saveListSnapshot = (key: string) =>
+		requestCache.set<ListSnapshot>(key, {
+			tasks: [...tasks.value],
+			pagination: { ...pagination.value },
+		});
+	const filtersAtDefault = () =>
+		!searchText.value &&
+		selectedCategory.value === null &&
+		stateFilter.value === 'all' &&
+		!selectedStatusIds.value.length;
+	const shownSnapshot = ref<{ key: string; saveable: boolean } | null>(null);
+	const listSnapshot = requestCache.get<ListSnapshot>(listSnapshotKey());
+	if (listSnapshot) {
+		tasks.value = [...listSnapshot.tasks];
+		pagination.value = {
+			...listSnapshot.pagination,
+			current_page: initialQuery.page,
+			per_page: initialQuery.perPage,
+		};
+		hasLoadedTasks.value = true;
+		setLoadingActions(tasks.value);
+		shownSnapshot.value = { key: listSnapshotKey(), saveable: true };
+	}
+	const showsCurrentQuery = computed(
+		() => shownSnapshot.value?.key === listSnapshotKey(),
+	);
+	// Local edits (realtime, modal, assignee toggle) clear the snapshot through the action's
+	// invalidate; re-save the edited rows so the next visit still renders at once.
+	watch(
+		tasks,
+		() => {
+			if (shownSnapshot.value?.saveable)
+				saveListSnapshot(shownSnapshot.value.key);
+		},
+		{ deep: true },
+	);
 
 	const status = computed(() => route.meta.status as string | undefined);
 	const isActiveList = computed(() => !status.value);
@@ -369,6 +429,10 @@
 
 	onBeforeUnmount(() => {
 		disposed = true;
+		const shown = shownSnapshot.value;
+		// A missing entry was invalidated (e.g. a delete in another window): don't resurrect it.
+		if (shown?.saveable && !errorLoading.value && requestCache.has(shown.key))
+			saveListSnapshot(shown.key);
 		requests.dispose();
 		if (searchTimeout.value) clearTimeout(searchTimeout.value);
 		window.removeEventListener('keydown', handleKeyDown);
@@ -494,6 +558,8 @@
 	async function loadTasks() {
 		if (disposed || !initialized) return;
 		const request = requests.begin();
+		const snapshotKey = listSnapshotKey();
+		const saveable = filtersAtDefault();
 		try {
 			isLoading.value = true;
 			errorLoading.value = false;
@@ -556,6 +622,8 @@
 			pagination.value = response.meta;
 			hasLoadedTasks.value = true;
 			setLoadingActions(tasks.value);
+			shownSnapshot.value = { key: snapshotKey, saveable };
+			if (saveable) saveListSnapshot(snapshotKey);
 
 			const baseTitle = pageTitle.value;
 			store.commit('setMetaTitle', `${baseTitle} (${pagination.value.total})`);
@@ -988,7 +1056,10 @@
 					ref="tasksListComponent"
 				/>
 
-				<div v-else-if="!isLoading && !errorLoading" class="">
+				<div
+					v-else-if="(!isLoading || showsCurrentQuery) && !errorLoading"
+					class=""
+				>
 					<EmptyState
 						v-if="hasActiveSearch"
 						title="No tasks match your filters"

@@ -9,6 +9,7 @@ import type {
 	EventHandlers,
 	SortOption,
 } from '@/types/dashboard';
+import { requestCache } from '@/utils/requestCache';
 import { createRequestSequence } from '@/utils/requestSequence';
 import type { ComputedRef, Ref } from 'vue';
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
@@ -209,6 +210,30 @@ export function useActivityFeed(
 		sort: sortOption.value,
 	});
 
+	// First page as last shown, so a return visit renders it while the refetch runs (TM-682).
+	interface FeedSnapshot {
+		activities: Activity[];
+		totalPages: number;
+		totalItems: number;
+	}
+	const snapshotKey = (wsId: number, params: ActivityFeedParams) =>
+		requestCache.generateKey('dashboard-snapshot-activities', {
+			workspace: wsId,
+			params,
+		});
+	try {
+		const seed = requestCache.get<FeedSnapshot>(
+			snapshotKey(getCurrentWorkspaceId(), buildApiParams(1)),
+		);
+		if (seed) {
+			activities.value = [...seed.activities];
+			totalPages.value = seed.totalPages;
+			totalItems.value = seed.totalItems;
+		}
+	} catch {
+		// No workspace yet: nothing to seed.
+	}
+
 	/**
 	 * Load activities from API
 	 */
@@ -248,6 +273,12 @@ export function useActivityFeed(
 				currentPage.value = meta.current_page;
 				totalPages.value = meta.last_page;
 				totalItems.value = meta.total;
+				if (params.page === 1)
+					requestCache.set<FeedSnapshot>(snapshotKey(wsId, params), {
+						activities: [...activitiesData],
+						totalPages: meta.last_page,
+						totalItems: meta.total,
+					});
 			} else {
 				throw new Error(result.error?.message ?? 'Empty activity response');
 			}

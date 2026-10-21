@@ -19,6 +19,7 @@ import {
 	trackedSecondsForDays,
 	utcDayKeys,
 } from '@/utils/dashboard/periodStats';
+import { requestCache } from '@/utils/requestCache';
 import { createRequestSequence } from '@/utils/requestSequence';
 import type { Ref } from 'vue';
 import {
@@ -85,13 +86,21 @@ export function useDashboardTrends(sources: {
 			showTracked.value &&
 			isFeatureEnabled('exports'),
 	);
-	const loadedTime = shallowRef<{
+	interface LoadedTime {
 		range: string;
 		days: TimeDailyDay[] | null;
 		previous: TimeDailyDay[] | null;
-	} | null>(null);
+	}
 	const range = computed(
 		() => `${keys.value[0]}..${keys.value[keys.value.length - 1]}`,
+	);
+	const snapshotKey = (requested: string) =>
+		requestCache.generateKey('dashboard-snapshot-time', {
+			workspace: workspaceId.value,
+			range: requested,
+		});
+	const loadedTime = shallowRef<LoadedTime | null>(
+		requestCache.get<LoadedTime>(snapshotKey(range.value)),
 	);
 	const timeDays = computed(() =>
 		loadedTime.value?.range === range.value ? loadedTime.value.days : null,
@@ -99,7 +108,7 @@ export function useDashboardTrends(sources: {
 	const timePrevious = computed(() =>
 		loadedTime.value?.range === range.value ? loadedTime.value.previous : null,
 	);
-	const timeState = ref<TimeState>('off');
+	const timeState = ref<TimeState>(loadedTime.value ? 'ready' : 'off');
 	const timeRequests = createRequestSequence();
 
 	const loadTime = async (force = false): Promise<void> => {
@@ -113,7 +122,8 @@ export function useDashboardTrends(sources: {
 		const current = keys.value;
 		const previous = previousKeys.value;
 		const requested = range.value;
-		timeState.value = 'loading';
+		const shown = timeDays.value !== null;
+		if (!shown) timeState.value = 'loading';
 		const [now, before] = await Promise.allSettled([
 			getWorkspaceTimeDaily(
 				workspaceId.value,
@@ -129,12 +139,15 @@ export function useDashboardTrends(sources: {
 			),
 		]);
 		if (!timeRequests.isCurrent(request)) return;
+		if (shown && now.status === 'rejected') return;
 		loadedTime.value = {
 			range: requested,
 			days: now.status === 'fulfilled' ? now.value : null,
 			previous: before.status === 'fulfilled' ? before.value : null,
 		};
 		timeState.value = now.status === 'fulfilled' ? 'ready' : 'failed';
+		if (now.status === 'fulfilled')
+			requestCache.set(snapshotKey(requested), loadedTime.value);
 	};
 
 	watch([period, timeEnabled], () => loadTime());
