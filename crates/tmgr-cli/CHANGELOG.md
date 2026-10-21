@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.16
 
 - New interactive menu: `tmgr` with no arguments in a terminal (or `tmgr ui`) opens a full-screen menu built from the command tree, so new commands and flags show up without menu code. Pick a group and a command, fill a form made of its flags and arguments (toggles for flags, choices for enum values, `~` in paths), see the exact command line, copy it with `ctrl+y`, and run it. After a run the menu shows "Same command next time". `/` or `ctrl+p` opens a command palette over all commands and your recent commands (recent commands are stored locally in `ui-history.json`, never the values of token/password-like options, and never for `login`, `auth`, `config`, `link`, `mcp`, `notify`, `alarm`, `agents login|logout|sync`, `usage accounts|sync`).
 - The menu runs every command as a normal `tmgr` child process with the terminal handed over, so guarded commands (typed confirmations such as `queue enable`, `runner allow`, `run --mode bypass`) ask exactly as before and the menu never answers for you or adds `--yes`. Inside agent sessions and without a terminal `tmgr` still prints the status as before, and `tmgr ui` is refused there (exit 5 in an agent session, exit 10 without a terminal).
