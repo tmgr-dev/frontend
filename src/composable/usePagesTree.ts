@@ -1,7 +1,6 @@
 import { getPagesTree, movePage, type PageSummary } from '@/actions/tmgr/pages';
 import { usePagesRealtime } from '@/composable/usePagesRealtime';
 import {
-	ancestorIds,
 	applyMove,
 	buildPagesTree,
 	loadExpanded,
@@ -53,29 +52,22 @@ export function usePagesTree(
 
 	usePagesRealtime(workspaceId, enabled, refresh);
 
-	const persist = () => {
-		if (workspaceId.value !== null)
-			saveExpanded(workspaceId.value, expanded.value);
-	};
-
-	const expand = (id: number) => {
-		if (expanded.value.has(id)) return;
-		expanded.value = new Set(expanded.value).add(id);
-		persist();
-	};
-
-	const toggle = (id: number) => {
-		const next = new Set(expanded.value);
-		if (next.has(id)) next.delete(id);
-		else next.add(id);
+	// The sidebar and All pages each hold a tree: start from the stored set so one doesn't drop the other's toggles.
+	const update = (change: (next: Set<number>) => void) => {
+		const id = workspaceId.value;
+		const next = new Set(id === null ? expanded.value : loadExpanded(id));
+		change(next);
 		expanded.value = next;
-		persist();
+		if (id !== null) saveExpanded(id, next);
 	};
 
-	const revealPage = (slug: string | undefined) => {
-		const page = pages.value.find((p) => p.slug === slug);
-		if (page) ancestorIds(pages.value, page.id).forEach(expand);
-	};
+	const expand = (id: number) => update((next) => next.add(id));
+
+	const toggle = (id: number) =>
+		update((next) => {
+			if (expanded.value.has(id)) next.delete(id);
+			else next.add(id);
+		});
 
 	const move = async (
 		id: number,
@@ -104,7 +96,6 @@ export function usePagesTree(
 		refresh,
 		toggle,
 		expand,
-		revealPage,
 		move,
 	};
 }
