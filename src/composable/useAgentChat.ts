@@ -27,6 +27,7 @@ export interface UseAgentChatReturn {
 	loading: Ref<boolean>;
 	sending: Ref<boolean>;
 	error: Ref<string | null>;
+	replyTick: Ref<number>;
 	busy: ComputedRef<boolean>;
 	load: (workspaceId: number) => Promise<void>;
 	send: (content: string) => Promise<void>;
@@ -40,6 +41,7 @@ export function useAgentChat(): UseAgentChatReturn {
 	const loading = ref(false);
 	const sending = ref(false);
 	const error = ref<string | null>(null);
+	const replyTick = ref(0);
 	const busy = computed(() => isBusy(state.value));
 
 	const conversationRequests = createRequestSequence();
@@ -78,6 +80,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 
 		state.value = applyReply(state.value, e);
+		replyTick.value++;
 	};
 
 	const load = async (workspaceId: number): Promise<void> => {
@@ -149,6 +152,7 @@ export function useAgentChat(): UseAgentChatReturn {
 			const early = earlyReplies.get(pending_message_id);
 			if (early) {
 				state.value = applyReply(state.value, early);
+				replyTick.value++;
 				earlyReplies.delete(pending_message_id);
 			}
 		} catch (e) {
@@ -227,6 +231,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		loading,
 		sending,
 		error,
+		replyTick,
 		busy,
 		load,
 		send,

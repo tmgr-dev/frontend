@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import ContextMeter from '@/components/agent/ContextMeter.vue';
 	import { useAgentChat } from '@/composable/useAgentChat';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
@@ -23,6 +24,7 @@
 		state,
 		loading,
 		error,
+		replyTick,
 		busy,
 		load,
 		send,
@@ -171,6 +173,11 @@
 				</button>
 			</div>
 			<p v-if="error" class="mt-1 text-xs text-red-500">{{ error }}</p>
+			<ContextMeter
+				class="mt-1 text-right"
+				:conversation-id="state.conversationId"
+				:refresh-key="replyTick"
+			/>
 		</footer>
 	</aside>
 </template>

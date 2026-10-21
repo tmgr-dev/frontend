@@ -1,5 +1,9 @@
 import $axios from '@/plugins/axios';
-import type { AgentConversation, AgentMessage } from '@/types/agent';
+import type {
+	AgentContext,
+	AgentConversation,
+	AgentMessage,
+} from '@/types/agent';
 
 export const getOrCreateConversation = async (
 	workspaceId: number,
@@ -37,5 +41,14 @@ export const sendAgentMessage = async (
 	} = await $axios.post(`/agent/conversations/${conversationId}/messages`, {
 		content,
 	});
+	return data;
+};
+
+export const getAgentContext = async (
+	conversationId: number,
+): Promise<AgentContext> => {
+	const {
+		data: { data },
+	} = await $axios.get(`/agent/conversations/${conversationId}/context`);
 	return data;
 };

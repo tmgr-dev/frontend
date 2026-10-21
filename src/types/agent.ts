@@ -37,3 +37,20 @@ export interface AgentReplyEvent {
 	content: string;
 	steps: AgentStep[];
 }
+
+export interface AgentContextTotals {
+	input_tokens: number;
+	output_tokens: number;
+	cache_read_tokens: number;
+	cache_write_tokens: number;
+}
+
+export interface AgentContext {
+	conversation_id: number;
+	provider: string;
+	model: string;
+	context_tokens: number;
+	context_limit: number | null;
+	last_message_id: number | null;
+	totals: AgentContextTotals;
+}
