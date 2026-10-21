@@ -103,6 +103,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `worklog.v1` | `sessions.worklog` (section 5, "Work log") |
 | `runs.restore.v1` | `runs.restore` (section 5, "Restoring interrupted runs") |
 | `sessions_resume.v1` | `sessions.resume`; `resumed_from` on `SessionInfo`; `via` in the result (section 5, "Resuming an exited session") |
+| `sessions_fork.v1` | `sessions.fork` (section 5, "Forking a Claude Code session") |
 | `permission_mode.v1` | `permission_mode` on `runs.create`, `SessionInfo` and `launch` of a bundle (section 5, "Queue capabilities") |
 | `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
@@ -149,6 +150,7 @@ missing params) and `internal`.
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
 | `sessions.resume` | `{id, cols?, rows?}` (an exited session) | `{session: SessionInfo, resumed, via}` | `not_found`, `busy`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only; cap `sessions_resume.v1` |
+| `sessions.fork` | `{id, agent_id, name?, cols?, rows?}` (any state) | `{session: SessionInfo, resumed, via}` (`via` is `fork`) | `not_found`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `internal` |
 | `runs.lookup` | `{start_key}` | `SessionInfo` | `not_found` | any client; cap `start_key.v1` |
 | `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
 | `sessions.text` | `{id, lines?}` (`lines` 1 to 10000, default the screen height) | `{id, rows, cols, lines, scroll_max}` | `not_found`, `invalid_params`, `forbidden` | any client except `worker`; cap `session_text.v1` |
@@ -228,6 +230,18 @@ old run's home still exists it is moved to the new session and, if the profile h
 with the same bundle. On success the old record and the old exited session are removed;
 on failure the record is put back. The runner never restores on its own: each restore
 is one explicit local request (`tmgr agents restore`).
+
+### Forking a Claude Code session
+
+`sessions.fork {id, agent_id, name?, cols?, rows?}` (cap `sessions_fork.v1`, `cli` only) starts a new
+session from the conversation of a `claude-code` session in any state, with `claude --resume <agent_id>
+--fork-session`. The new session has its own run home, a new session id and the optional `name`; the old
+session is not touched. `agent_id` must be a lowercase UUID and the runner finds the conversation file
+itself, only in the old session's run home (`.claude/projects/*/<agent_id>.jsonl`, opened without following
+links, at most 512 MiB) and copies that one file into the new run home before the agent starts. The launch
+is rebuilt exactly like a resume of that session (launch record or `meta.json`, same folder identity check,
+same refusals for link, bypass, expired and unpinned queue runs); the profile must declare `[resume] by_id`.
+Any other profile is `forbidden`.
 
 ### Resuming an exited session
 

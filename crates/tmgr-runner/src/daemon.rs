@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
-    EventMsg, ExePin, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
+    EventMsg, ExePin, ForkParams, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
     OriginRevoked, PathParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus, SessionInfo,
     SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved,
     CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
@@ -306,6 +306,7 @@ struct RunExtra {
     mode_note: Option<String>,
     run_id_env: bool,
     resume_of: Option<ResumeSeed>,
+    fork: Option<ForkSeed>,
 }
 
 #[derive(Clone)]
@@ -317,6 +318,13 @@ struct ResumeSeed {
 struct ResumeCtx {
     id: Option<String>,
     text: String,
+    fork: Option<ForkSeed>,
+}
+
+#[derive(Clone)]
+struct ForkSeed {
+    from_home: PathBuf,
+    rel: PathBuf,
 }
 
 struct Resuming<'a>(&'a AtomicBool);
@@ -1875,6 +1883,16 @@ impl Runner {
                 self.resume_session(&q.id, q.cols, q.rows)
                     .map(|r| to_json(&r))
             }
+            method::SESSIONS_FORK => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "sessions.fork is accepted only from the tmgr CLI",
+                    ));
+                }
+                let q: ForkParams = params(p)?;
+                self.fork_session(q).map(|r| to_json(&r))
+            }
             method::ORIGIN_REVOKE => {
                 if conn.client != CLIENT_CLI {
                     return Err(api(
@@ -2381,6 +2399,99 @@ impl Runner {
         })
     }
 
+    fn load_launch(
+        &self,
+        meta: &Meta,
+        profile: &str,
+    ) -> Result<(restore::Intent, Option<tmgr_ipc::api::RunBundle>), ApiErr> {
+        let old = meta.id.as_str();
+        let store = self.intents();
+        match restore::load_relaunch(&self.sdir(old), old) {
+            Ok(found) => Ok(found),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => match restore::load(&store, old) {
+                Ok(intent) => {
+                    let bundle = restore::read_bundle(&store, &intent)
+                        .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
+                    Ok((intent, bundle))
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    Ok((intent_from_meta(meta, profile)?, None))
+                }
+                Err(e) => Err(api(ErrorCode::InvalidParams, e.to_string())),
+            },
+            Err(e) => Err(api(ErrorCode::InvalidParams, e.to_string())),
+        }
+    }
+
+    fn fork_session(self: &Arc<Self>, q: ForkParams) -> Result<RestoredRun, ApiErr> {
+        if !valid_session_id(&q.id) {
+            return Err(api(ErrorCode::InvalidParams, "invalid session id"));
+        }
+        if !resume::valid_resume_id(&q.agent_id) {
+            return Err(api(ErrorCode::InvalidParams, "invalid agent session id"));
+        }
+        let s = self
+            .session(&q.id)
+            .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+        let meta = lock(&s.inner).meta.clone();
+        let profile = match meta.profile.as_deref() {
+            Some(p @ "claude-code") => p.to_string(),
+            _ => {
+                return Err(api(
+                    ErrorCode::Forbidden,
+                    "only a Claude Code session can be forked",
+                ))
+            }
+        };
+        let from_home = self.cfg.homes.join(&q.id);
+        let found = crate::attach::locate(&crate::attach::Source {
+            home: &from_home,
+            format: crate::attach::Format::Claude,
+            cwd: &meta.cwd,
+            pid: 0,
+            log_id: Some(&q.agent_id),
+        });
+        let rel = found
+            .and_then(|(path, _)| path.strip_prefix(&from_home).ok().map(Path::to_path_buf))
+            .ok_or_else(|| api(ErrorCode::NotFound, "the conversation file was not found"))?;
+        let (mut intent, bundle) = self.load_launch(&meta, &profile)?;
+        let CwdPin { dev, ino } = intent.cwd_pin;
+        same_folder(&intent.cwd, Some((dev, ino)))?;
+        intent.pids.clear();
+        match restore::status(&intent, now_ms(), false) {
+            restore::Status::Restorable | restore::Status::Expired => {}
+            st => return Err(api(ErrorCode::Forbidden, st.reason())),
+        }
+        if intent.needs_queue_pin() {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "this queue run was recorded without an approved executable; queue the task again",
+            ));
+        }
+        let mut req = restore::request(&intent, bundle);
+        let (cols, rows) = clamp_size(q.cols, q.rows);
+        req.cols = cols;
+        req.rows = rows;
+        req.name = q.name.or(Some(meta.name.clone()));
+        let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
+        let (info, resumed, _, via) = self.create_run_as(
+            req,
+            None,
+            pinned_resume,
+            Some(ResumeCtx {
+                id: Some(q.agent_id),
+                text: String::new(),
+                fork: Some(ForkSeed { from_home, rel }),
+            }),
+        )?;
+        log(&format!("session {} forked from {} ({via})", info.id, q.id));
+        Ok(RestoredRun {
+            session: info,
+            resumed,
+            via: Some(via.into()),
+        })
+    }
+
     fn resume_agent(
         self: &Arc<Self>,
         (meta, profile): (&Meta, &str),
@@ -2390,22 +2501,7 @@ impl Runner {
         prior: String,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
         let (old, name) = (meta.id.as_str(), meta.name.clone());
-        let store = self.intents();
-        let (mut intent, bundle) = match restore::load_relaunch(&self.sdir(old), old) {
-            Ok(found) => found,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => match restore::load(&store, old) {
-                Ok(intent) => {
-                    let bundle = restore::read_bundle(&store, &intent)
-                        .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
-                    (intent, bundle)
-                }
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                    (intent_from_meta(meta, profile)?, None)
-                }
-                Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
-            },
-            Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
-        };
+        let (mut intent, bundle) = self.load_launch(meta, profile)?;
         let CwdPin { dev, ino } = intent.cwd_pin;
         same_folder(&intent.cwd, Some((dev, ino)))?;
         if !interrupted {
@@ -2431,7 +2527,11 @@ impl Runner {
             req,
             Some(old),
             pinned_resume,
-            Some(ResumeCtx { id, text: prior }),
+            Some(ResumeCtx {
+                id,
+                text: prior,
+                fork: None,
+            }),
         )?;
         Ok((info, resumed, via))
     }
@@ -2687,14 +2787,21 @@ impl Runner {
             }
             _ => Vec::new(),
         };
+        let fork = resume_ctx.as_ref().and_then(|c| c.fork.clone());
         let home_kept = restore_from.is_some_and(|old| self.cfg.homes.join(old).is_dir());
         let by_id = match resume_ctx.as_ref().and_then(|c| c.id.as_deref()) {
-            Some(id) if home_kept && id_approved => {
+            Some(id) if (home_kept || fork.is_some()) && id_approved => {
                 prof.resume_argv_by_id(req.model.as_deref(), &perm_args, id)
             }
             _ => Ok(None),
         }
         .map_err(|e| api(ErrorCode::InvalidParams, e))?;
+        if fork.is_some() && by_id.is_none() {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "this agent cannot be forked: its profile has no resume by id",
+            ));
+        }
         let (resume, via) = match by_id {
             Some(argv) => (Some(argv), "id"),
             None if home_kept => (
@@ -2705,9 +2812,18 @@ impl Runner {
             None => (None, "fresh"),
         };
         let resumed = resume.is_some();
-        let via = if resumed { via } else { "fresh" };
+        let via = match (resumed, fork.is_some()) {
+            (true, true) => "fork",
+            (true, false) => via,
+            _ => "fresh",
+        };
         let mut argv = match resume {
-            Some(argv) => argv,
+            Some(mut argv) => {
+                if fork.is_some() {
+                    argv.push("--fork-session".to_string());
+                }
+                argv
+            }
             None => prof
                 .argv_with(req.model.as_deref(), &perm_args)
                 .map_err(|e| api(ErrorCode::InvalidParams, e))?,
@@ -2784,6 +2900,7 @@ impl Runner {
                 }),
                 _ => None,
             },
+            fork,
         };
         if plan.restricted {
             extra.egress = Some(
@@ -3112,6 +3229,14 @@ impl Runner {
         let internal = |e: io::Error| api(ErrorCode::Internal, e.to_string());
         ensure_private_dir(sdir).map_err(internal)?;
         ensure_private_leaf(home).map_err(internal)?;
+        if let Some(f) = &extra.fork {
+            copy_transcript(&f.from_home, &f.rel, home).map_err(|e| {
+                api(
+                    ErrorCode::Internal,
+                    format!("cannot copy the conversation: {e}"),
+                )
+            })?;
+        }
         let real_home = std::env::var_os("HOME")
             .map(PathBuf::from)
             .unwrap_or_default();
@@ -4418,4 +4543,58 @@ mod tests {
         assert!(stalled.try_recv().is_err());
         assert_eq!(lock(&hub.subs).len(), 1);
     }
+}
+
+const FORK_COPY_CAP: u64 = 512 * 1024 * 1024;
+
+fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let plain = rel
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !plain || rel.as_os_str().is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad path"));
+    }
+    let mut src = from_home.to_path_buf();
+    let mut dst = to_home.to_path_buf();
+    let parts: Vec<_> = rel.components().collect();
+    for part in &parts[..parts.len() - 1] {
+        src.push(part);
+        dst.push(part);
+        if fs::symlink_metadata(&src)?.file_type().is_symlink() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "symlink"));
+        }
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dst)
+            .or_else(|e| {
+                if e.kind() == io::ErrorKind::AlreadyExists {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            })?;
+    }
+    let name = parts[parts.len() - 1];
+    src.push(name);
+    dst.push(name);
+    let mut input = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&src)?;
+    let meta = input.metadata()?;
+    if !meta.is_file() || meta.len() > FORK_COPY_CAP {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file or too large",
+        ));
+    }
+    let mut out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&dst)?;
+    io::copy(&mut io::Read::take(&mut input, FORK_COPY_CAP), &mut out)?;
+    Ok(())
 }

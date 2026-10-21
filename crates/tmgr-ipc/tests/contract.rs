@@ -843,7 +843,8 @@ fn constants_are_pinned() {
             "team.v1",
             "orchestrator.v1",
             "sessions_resume.v1",
-            "human_time.v1"
+            "human_time.v1",
+            "sessions_fork.v1"
         ]
     );
     let methods = [

@@ -222,6 +222,19 @@ pub struct ResumeParams {
     pub rows: u16,
 }
 
+/// Params of `sessions.fork`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForkParams {
+    pub id: String,
+    pub agent_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default = "default_cols")]
+    pub cols: u16,
+    #[serde(default = "default_rows")]
+    pub rows: u16,
+}
+
 /// The agent executable a human approved: canonical path and the SHA-256 of its contents.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExePin {
