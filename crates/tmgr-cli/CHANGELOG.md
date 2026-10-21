@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.29
 
 - In the `tmgr attach` question list, `Go to` (key `g`) jumps to the place in the pane where the agent asked: the pane scrolls back to the question and its lines are highlighted, and `Esc` returns to the live screen. When the question is no longer in the scrollback (the agent uses the alternate screen, the session was resumed, or the history scrolled away) it opens `Context` instead.
 - `Fork` (key `f`, Claude Code sessions only) starts a new session with the same conversation (`claude --resume <id> --fork-session`) in a split pane named `<name>-fork-N`, and pastes the question into its input once the agent is ready, like `Answer` does, without pressing Enter. The original session keeps running and its question stays open. The runner copies only the conversation file into the new session's home. Needs a restarted runner of this version (`sessions_fork.v1`). On a narrow terminal the two buttons give way to the keys.
