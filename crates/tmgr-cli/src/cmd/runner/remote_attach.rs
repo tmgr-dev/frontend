@@ -238,7 +238,11 @@ impl App {
                     let page = self.page();
                     self.view.scroll_key(key, page);
                 }
-                Action::Mouse(_) | Action::Drop(_) | Action::Paste { .. } => {}
+                Action::Mouse(_)
+                | Action::Drop(_)
+                | Action::Paste { .. }
+                | Action::FocusIn
+                | Action::FocusOut => {}
             }
         }
         None
@@ -365,6 +369,7 @@ pub fn run(link: &str, mut client: Client, target: &RunView, input: bool) -> Res
         name: target.name.clone(),
         state: target.state.clone(),
         age: age(target.state.since_ms),
+        you: None,
         esc: false,
         resumed_from: None,
     };
@@ -553,6 +558,7 @@ mod tests {
             },
             age: "1s".into(),
             resumed_from: None,
+            you: None,
             esc: false,
         };
         let mut view = ViewState::new(vec![row], "link:x");

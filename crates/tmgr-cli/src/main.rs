@@ -157,6 +157,8 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Alarm(args)) => cmd::notify::alarm(ctx, args),
         #[cfg(feature = "runner")]
         Some(Command::Runner(_)) => Err(Error::internal("handled before the session starts")),
+        #[cfg(feature = "runner")]
+        Some(Command::Time(args)) => cmd::time::run(ctx, args),
         Some(Command::Mcp) => Err(Error::internal("handled before the session starts")),
         Some(Command::Worker(_)) => Err(Error::internal("handled before the session starts")),
         Some(Command::Link { command }) => cmd::link::run(ctx, command),

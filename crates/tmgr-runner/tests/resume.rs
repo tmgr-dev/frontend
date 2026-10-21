@@ -464,18 +464,66 @@ fn link_bypass_expired_and_unpinned_queue_records_are_refused() {
 }
 
 #[test]
-fn a_session_without_a_launch_record_cannot_be_resumed() {
+fn a_session_without_a_launch_record_resumes_from_its_metadata() {
     if !sessions_available() {
         return;
     }
     let mut h = H::full();
     h.start();
+    h.announce(&claude_exit(U1));
     let s = h.started();
     h.stop(&s.id);
     fs::remove_file(h.sdir(&s.id).join("relaunch.json")).unwrap();
-    let err = h.client().resume(&s.id, 80, 24).unwrap_err().to_string();
-    assert!(err.starts_with("not_found"), "{err}");
-    assert!(h.state_of(&s.id).is_some());
+    restore::forget(&h.store(), &s.id);
+    let r = h.client().resume(&s.id, 80, 24).unwrap();
+    assert!(r.resumed);
+    assert_eq!(r.via.as_deref(), Some("id"));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    h.wait_log("home:kept", 1);
+    assert!(
+        h.log().contains(&format!("args:--resume-id {U1}\n")),
+        "{}",
+        h.log()
+    );
+    assert!(h.sdir(&r.session.id).join("relaunch.json").is_file());
+}
+
+#[test]
+fn a_session_that_cannot_be_rebuilt_from_its_metadata_says_what_to_do() {
+    if !sessions_available() {
+        return;
+    }
+    for (field, edit) in [
+        ("start_key", serde_json::json!("k")),
+        ("profile", serde_json::json!("gone-agent")),
+    ] {
+        let mut h = H::full();
+        h.start();
+        h.announce(&claude_exit(U1));
+        let s = h.started();
+        h.stop(&s.id);
+        h.stop_runner();
+        fs::remove_file(h.sdir(&s.id).join("relaunch.json")).unwrap();
+        restore::forget(&h.store(), &s.id);
+        let path = h.sdir(&s.id).join("meta.json");
+        let mut meta: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        meta[field] = edit;
+        fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
+        h.start();
+        let err = match h.client().resume(&s.id, 80, 24) {
+            Ok(r) => panic!("{field}: resumed via {:?}", r.via),
+            Err(e) => e.to_string(),
+        };
+        match field {
+            "profile" => assert!(err.starts_with("unknown_profile"), "{field}: {err}"),
+            _ => {
+                assert!(err.starts_with("not_found"), "{field}: {err}");
+                assert!(err.contains("tmgr run"), "{field}: {err}");
+            }
+        }
+        assert!(h.state_of(&s.id).is_some(), "{field}: session lost");
+    }
 }
 
 #[test]
@@ -553,11 +601,89 @@ fn a_replaced_folder_is_refused_and_nothing_is_lost() {
     h.stop(&s.id);
     fs::rename(&h.work, h.tmp.path().join("w-old")).unwrap();
     private_dir(&h.work);
-    let err = h.client().resume(&s.id, 80, 24).unwrap_err().to_string();
-    assert!(err.contains("approved folder changed"), "{err}");
-    assert!(h.state_of(&s.id).is_some());
-    assert!(h.homes.join(&s.id).is_dir());
+    assert_folder_changed(&h, &s.id);
+}
+
+fn assert_folder_changed(h: &H, id: &str) {
+    let err = h.client().resume(id, 80, 24).unwrap_err().to_string();
+    assert!(err.starts_with("forbidden"), "{err}");
+    assert!(
+        err.contains("the folder of this session changed since it started"),
+        "{err}"
+    );
+    assert!(h.state_of(id).is_some());
+    assert!(h.homes.join(id).is_dir());
     assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+fn drop_launch_record(h: &H, id: &str) {
+    fs::remove_file(h.sdir(id).join("relaunch.json")).unwrap();
+    restore::forget(&h.store(), id);
+}
+
+#[test]
+fn without_a_launch_record_a_replaced_folder_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let s = h.started();
+    h.stop(&s.id);
+    drop_launch_record(&h, &s.id);
+    fs::rename(&h.work, h.tmp.path().join("w-old")).unwrap();
+    private_dir(&h.work);
+    assert_folder_changed(&h, &s.id);
+}
+
+#[test]
+fn a_folder_swapped_for_a_symlink_is_refused_on_both_paths() {
+    if !sessions_available() {
+        return;
+    }
+    for record in [true, false] {
+        let mut h = H::full();
+        h.start();
+        let s = h.started();
+        h.stop(&s.id);
+        if !record {
+            drop_launch_record(&h, &s.id);
+        }
+        let other = h.tmp.path().join("other");
+        private_dir(&other);
+        fs::rename(&h.work, h.tmp.path().join("w-old")).unwrap();
+        std::os::unix::fs::symlink(&other, &h.work).unwrap();
+        assert_folder_changed(&h, &s.id);
+    }
+}
+
+#[test]
+fn a_recorded_folder_identity_that_does_not_match_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let s = h.started();
+    h.stop(&s.id);
+    h.stop_runner();
+    let shim = fs::read_to_string(h.sdir(&s.id).join("shim.pid")).unwrap();
+    let shim: i32 = shim.trim().parse().unwrap();
+    unsafe { libc::kill(shim, libc::SIGKILL) };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while unsafe { libc::kill(shim, 0) } == 0 {
+        assert!(Instant::now() < deadline, "shim {shim} still alive");
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop_launch_record(&h, &s.id);
+    let path = h.sdir(&s.id).join("meta.json");
+    let mut meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    meta["cwd_id"] = serde_json::json!([1, 2]);
+    fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
+    h.start();
+    assert_folder_changed(&h, &s.id);
+    let meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(meta["cwd_id"], serde_json::json!([1, 2]));
 }
 
 #[test]

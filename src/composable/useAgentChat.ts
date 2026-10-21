@@ -1,5 +1,6 @@
 import {
-	getAgentMessages,
+	compactConversation,
+	getAgentMessagesWithCompactions,
 	getConversation,
 	getOrCreateConversation,
 	sendAgentMessage,
@@ -7,6 +8,8 @@ import {
 } from '@/actions/tmgr/agent';
 import store from '@/store';
 import type {
+	AgentCompactedEvent,
+	AgentCompaction,
 	AgentConversation,
 	AgentMessage,
 	AgentReplyEvent,
@@ -28,6 +31,11 @@ import {
 	resetForWorkspace,
 	sendErrorMessage,
 } from '@/utils/agentChat';
+import {
+	canCompactConversation,
+	compactErrorMessage,
+	mergeCompaction,
+} from '@/utils/agentCompaction';
 import type { AttachedFile } from '@/utils/aiAttachments';
 import { attachmentErrorMessage } from '@/utils/aiAttachments';
 import { createRequestSequence } from '@/utils/requestSequence';
@@ -42,6 +50,10 @@ export interface UseAgentChatReturn {
 	error: Ref<string | null>;
 	replyTick: Ref<number>;
 	busy: ComputedRef<boolean>;
+	compactions: Ref<AgentCompaction[]>;
+	compacting: Ref<boolean>;
+	canCompact: ComputedRef<boolean>;
+	compact: () => Promise<void>;
 	load: (workspaceId: number) => Promise<void>;
 	openConversation: (conversationId: number) => Promise<void>;
 	forgetRemembered: () => void;
@@ -71,6 +83,14 @@ export function useAgentChat(): UseAgentChatReturn {
 	const error = ref<string | null>(null);
 	const replyTick = ref(0);
 	const busy = computed(() => isBusy(state.value));
+	const compactions = ref<AgentCompaction[]>([]);
+	const compacting = ref(false);
+	const canCompact = computed(() =>
+		canCompactConversation(
+			state.value.messages,
+			sending.value || loading.value || compacting.value,
+		),
+	);
 
 	const conversationRequests = createRequestSequence();
 	const sendRequests = createRequestSequence();
@@ -134,10 +154,10 @@ export function useAgentChat(): UseAgentChatReturn {
 			const pendingId = state.value.pendingId;
 			inFlight = true;
 			try {
-				const messages = await getAgentMessages(conversationId);
+				const history = await getAgentMessagesWithCompactions(conversationId);
 				if (!isPollResultCurrent(state.value, conversationId, pendingId))
 					return;
-				if (hasPendingLast(messages)) return;
+				if (hasPendingLast(history.messages)) return;
 				state.value = applyConversation(
 					state.value,
 					{
@@ -146,8 +166,9 @@ export function useAgentChat(): UseAgentChatReturn {
 						task_id: null,
 						created_at: '',
 					},
-					messages,
+					history.messages,
 				);
+				compactions.value = history.compactions;
 				replyTick.value++;
 				stopPolling();
 			} catch {
@@ -161,10 +182,12 @@ export function useAgentChat(): UseAgentChatReturn {
 	const showConversation = (
 		conversation: AgentConversation,
 		messages: AgentMessage[],
+		history: AgentCompaction[],
 	): void => {
 		earlySteps.clear();
 		earlyReplies.clear();
 		state.value = applyConversation(state.value, conversation, messages);
+		compactions.value = history;
 		remember(conversation.workspace_id, conversation.id);
 		if (hasPendingLast(messages)) startPolling(conversation.id);
 		else stopPolling();
@@ -202,6 +225,16 @@ export function useAgentChat(): UseAgentChatReturn {
 		replyTick.value++;
 	};
 
+	const onAgentCompacted = (e: AgentCompactedEvent): void => {
+		if (e.conversation_id !== state.value.conversationId) return;
+		compactions.value = mergeCompaction(compactions.value, {
+			id: e.compaction_id,
+			up_to_message_id: e.up_to_message_id,
+			trigger: e.trigger,
+			created_at: new Date().toISOString(),
+		});
+	};
+
 	const load = async (workspaceId: number): Promise<void> => {
 		const token = conversationRequests.begin();
 		const current = () => conversationRequests.isCurrent(token);
@@ -210,6 +243,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		sending.value = false;
 		earlyReplies.clear();
 		earlySteps.clear();
+		compactions.value = [];
 		state.value = resetForWorkspace(state.value, workspaceId);
 		loading.value = true;
 		error.value = null;
@@ -243,9 +277,9 @@ export function useAgentChat(): UseAgentChatReturn {
 				conversation = await getOrCreateConversation(workspaceId);
 				if (!current()) return;
 			}
-			const messages = await getAgentMessages(conversation.id);
+			const history = await getAgentMessagesWithCompactions(conversation.id);
 			if (!current()) return;
-			showConversation(conversation, messages);
+			showConversation(conversation, history.messages, history.compactions);
 		} catch (e) {
 			if (!current()) return;
 			error.value =
@@ -268,7 +302,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		error.value = null;
 
 		try {
-			const messages = await getAgentMessages(conversationId);
+			const history = await getAgentMessagesWithCompactions(conversationId);
 			if (!current()) return;
 			showConversation(
 				{
@@ -277,7 +311,8 @@ export function useAgentChat(): UseAgentChatReturn {
 					task_id: null,
 					created_at: '',
 				},
-				messages,
+				history.messages,
+				history.compactions,
 			);
 		} catch (e) {
 			if (!current()) return;
@@ -386,7 +421,7 @@ export function useAgentChat(): UseAgentChatReturn {
 				state.value.conversationId,
 			);
 			if (!current()) return;
-			showConversation(conversation, []);
+			showConversation(conversation, [], []);
 		} catch (e) {
 			if (!current()) return;
 			error.value =
@@ -394,6 +429,29 @@ export function useAgentChat(): UseAgentChatReturn {
 		} finally {
 			if (!current()) return;
 			loading.value = false;
+		}
+	};
+
+	const compact = async (): Promise<void> => {
+		const conversationId = state.value.conversationId;
+		if (!conversationId || compacting.value || !canCompact.value) return;
+
+		compacting.value = true;
+		error.value = null;
+
+		try {
+			const compaction = await compactConversation(conversationId);
+			if (state.value.conversationId !== conversationId) return;
+			compactions.value = mergeCompaction(compactions.value, compaction);
+		} catch (e) {
+			if (state.value.conversationId !== conversationId) return;
+			error.value = compactErrorMessage(
+				httpStatus(e),
+				(e as { response?: { data?: { message?: string } } })?.response?.data
+					?.message,
+			);
+		} finally {
+			compacting.value = false;
 		}
 	};
 
@@ -406,7 +464,11 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 		const { subscribeToUser } = usePusher();
 		subscribedUserId = userId;
-		subscriptionId = subscribeToUser(userId, { onAgentStep, onAgentReply });
+		subscriptionId = subscribeToUser(userId, {
+			onAgentStep,
+			onAgentReply,
+			onAgentCompacted,
+		});
 	};
 
 	const unsubscribe = (): void => {
@@ -435,6 +497,10 @@ export function useAgentChat(): UseAgentChatReturn {
 		error,
 		replyTick,
 		busy,
+		compactions,
+		compacting,
+		canCompact,
+		compact,
 		load,
 		openConversation,
 		forgetRemembered,

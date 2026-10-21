@@ -1,7 +1,7 @@
 use crate::cli::{Cli, VERSION};
 use crate::out::{stderr_style, stdout_style, Style};
 use std::cell::{Cell, OnceCell, RefCell};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tmgr_core::api::{Client, Warning};
 use tmgr_core::config::{self, Config, DEFAULT_PROFILE};
 use tmgr_core::creds::{Backend, CredentialStore};
@@ -9,6 +9,12 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::local;
 use tmgr_core::models::Workspace;
 use tmgr_core::refs::is_workspace_code;
+
+pub fn credential_store(dir: &Path, cfg: &Config, server: &str) -> CredentialStore {
+    let account = config::account_for(server, DEFAULT_PROFILE);
+    let preferred = cfg.credential_store.as_deref().and_then(Backend::parse);
+    CredentialStore::new(dir, &account, preferred)
+}
 
 pub struct Ctx {
     pub json: bool,
@@ -78,13 +84,7 @@ impl Ctx {
     }
 
     pub fn store(&self) -> Result<CredentialStore> {
-        let account = config::account_for(&self.server()?, DEFAULT_PROFILE);
-        let preferred = self
-            .cfg
-            .credential_store
-            .as_deref()
-            .and_then(Backend::parse);
-        Ok(CredentialStore::new(&self.dir, &account, preferred))
+        Ok(credential_store(&self.dir, &self.cfg, &self.server()?))
     }
 
     /// The client for the selected workspace: a local one for `local:<code>` (no login), else the cloud.

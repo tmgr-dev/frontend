@@ -5,6 +5,7 @@ use crate::client::Client;
 use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
 use crate::folders;
+use crate::humantime;
 use crate::login;
 use crate::orchestrator;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
@@ -504,6 +505,7 @@ impl Session {
             origin: m.origin.clone(),
             permission_mode: m.permission_mode.clone(),
             resumed_from: m.resumed_from.clone(),
+            human_s: None,
         }
     }
 
@@ -1251,6 +1253,7 @@ struct Runner {
     rejects: Mutex<Rejects>,
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
+    clock: Mutex<humantime::Clock>,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -1307,6 +1310,98 @@ fn known_profile<'a>(set: &'a ProfileSet, id: &str) -> Result<&'a Profile, ApiEr
             format!("{what}; known profiles: {}", known.join(", ")),
         )
     })
+}
+
+fn intent_from_meta(meta: &Meta, profile: &str) -> Result<restore::Intent, ApiErr> {
+    let again = |why: &str| {
+        api(
+            ErrorCode::NotFound,
+            format!("this session cannot be resumed: {why}; start it again with tmgr run"),
+        )
+    };
+    if meta.bundled || meta.multi || meta.start_key.is_some() {
+        return Err(again(
+            "it was started by an automated run and has no launch record",
+        ));
+    }
+    let (dev, ino) = meta
+        .cwd_id
+        .ok_or_else(|| again("it has no launch record and its folder was not recorded"))?;
+    Ok(restore::Intent {
+        v: 1,
+        session: meta.id.clone(),
+        profile: profile.to_string(),
+        model: None,
+        name: meta.name.clone(),
+        cwd: meta.cwd.clone(),
+        cwd_pin: CwdPin { dev, ino },
+        task: meta.task,
+        bundle_sha256: None,
+        origin: meta.origin.clone(),
+        permission_mode: meta.permission_mode.clone(),
+        clone_of: meta.clone_of.clone(),
+        agent_work: false,
+        keyed: None,
+        exe_pin: None,
+        argv_sha256: None,
+        resume_decl: None,
+        bypass: meta.permission_mode.as_deref() == Some("bypass"),
+        boot: None,
+        pids: Vec::new(),
+        created_ms: meta.created_ms,
+        cols: meta.cols,
+        rows: meta.rows,
+    })
+}
+
+fn same_folder(cwd: &str, recorded: Option<(u64, u64)>) -> Result<bundle::Dir, ApiErr> {
+    let cwd = fs::canonicalize(cwd).map_err(|_| {
+        api(
+            ErrorCode::InvalidParams,
+            "cwd must be an existing directory",
+        )
+    })?;
+    let dir = bundle::open_path(cwd).map_err(|(code, m)| api(code, m))?;
+    if recorded != Some(dir.id()) {
+        return Err(api(
+            ErrorCode::Forbidden,
+            "the folder of this session changed since it started",
+        ));
+    }
+    Ok(dir)
+}
+
+fn shim_log_tail(path: &Path) -> String {
+    let Ok(mut f) = File::open(path) else {
+        return String::new();
+    };
+    let len = f.metadata().map_or(0, |m| m.len());
+    let mut buf = Vec::new();
+    if f.seek(SeekFrom::Start(len.saturating_sub(4096))).is_err()
+        || f.take(4096).read_to_end(&mut buf).is_err()
+    {
+        return String::new();
+    }
+    let text: String = String::from_utf8_lossy(&buf)
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .collect();
+    let last: Vec<&str> = text
+        .lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(3)
+        .collect();
+    if last.is_empty() {
+        return String::new();
+    }
+    let joined = last.into_iter().rev().collect::<Vec<_>>().join(" | ");
+    let hint = if joined.contains("openpty") {
+        "; no free terminal (pty) available: too many open sessions, close idle ones and try again"
+    } else {
+        ""
+    };
+    format!(": {joined}{hint}")
 }
 
 fn valid_start_key(k: &str) -> bool {
@@ -1646,6 +1741,12 @@ impl Runner {
             method::CANDIDATES_LIST => Ok(to_json(&seedguard::pending(&self.cfg.dir))),
             method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
+                {
+                    let clock = lock(&self.clock);
+                    for i in &mut list {
+                        i.human_s = Some(clock.human_s(&i.id)).filter(|n| *n > 0);
+                    }
+                }
                 list.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
                 Ok(to_json(&list))
             }
@@ -2261,10 +2362,10 @@ impl Runner {
             Some(profile) => {
                 let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"), profile);
                 self.resume_agent(
-                    old,
+                    (&meta, profile.as_str()),
                     (cols, rows),
                     interrupted,
-                    (meta.name.clone(), resume_id),
+                    resume_id,
                     prior,
                 )?
             }
@@ -2282,28 +2383,31 @@ impl Runner {
 
     fn resume_agent(
         self: &Arc<Self>,
-        old: &str,
+        (meta, profile): (&Meta, &str),
         (cols, rows): (u16, u16),
         interrupted: bool,
-        (name, id): (String, Option<String>),
+        id: Option<String>,
         prior: String,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
+        let (old, name) = (meta.id.as_str(), meta.name.clone());
         let store = self.intents();
         let (mut intent, bundle) = match restore::load_relaunch(&self.sdir(old), old) {
             Ok(found) => found,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                let intent = restore::load(&store, old).map_err(|_| {
-                    api(
-                        ErrorCode::NotFound,
-                        "this session has no launch record; start it again with tmgr run",
-                    )
-                })?;
-                let bundle = restore::read_bundle(&store, &intent)
-                    .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
-                (intent, bundle)
-            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => match restore::load(&store, old) {
+                Ok(intent) => {
+                    let bundle = restore::read_bundle(&store, &intent)
+                        .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
+                    (intent, bundle)
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    (intent_from_meta(meta, profile)?, None)
+                }
+                Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
+            },
             Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
         };
+        let CwdPin { dev, ino } = intent.cwd_pin;
+        same_folder(&intent.cwd, Some((dev, ino)))?;
         if !interrupted {
             intent.pids.clear();
         }
@@ -2339,19 +2443,7 @@ impl Runner {
         (cols, rows): (u16, u16),
         prior: String,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
-        let cwd = fs::canonicalize(&meta.cwd).map_err(|_| {
-            api(
-                ErrorCode::InvalidParams,
-                "cwd must be an existing directory",
-            )
-        })?;
-        let dir = bundle::open_path(cwd).map_err(|(code, m)| api(code, m))?;
-        if meta.cwd_id != Some(dir.id()) {
-            return Err(api(
-                ErrorCode::Forbidden,
-                "the folder of this session changed since it started",
-            ));
-        }
+        let dir = same_folder(&meta.cwd, meta.cwd_id)?;
         let extra = RunExtra {
             resume_of: Some(ResumeSeed {
                 from: old.to_string(),
@@ -3169,9 +3261,10 @@ impl Runner {
                 Ok(r) => break Ok(r),
                 Err(e) => {
                     if let Ok(Some(st)) = child.try_wait() {
+                        let tail = shim_log_tail(&sdir.join("shim.log"));
                         break Err(api(
                             ErrorCode::Internal,
-                            format!("shim exited early ({st})"),
+                            format!("shim exited early ({st}){tail}"),
                         ));
                     }
                     if Instant::now() >= deadline {
@@ -3579,6 +3672,30 @@ impl Runner {
         }
     }
 
+    fn with_clock(&self, f: impl FnOnce(&mut humantime::Clock)) {
+        let mono = self.started.elapsed().as_millis() as u64;
+        let closed = {
+            let mut c = lock(&self.clock);
+            c.observe(now_ms(), mono);
+            f(&mut c);
+            c.drain_closed()
+        };
+        if let Err(e) = humantime::append_records(&self.cfg.dir, &closed) {
+            log(&format!("human time: write failed: {e}"));
+            lock(&self.clock).requeue(closed);
+        }
+    }
+
+    fn clock_meta(&self, id: &str) -> Option<humantime::Meta> {
+        let s = self.session(id)?;
+        let i = lock(&s.inner);
+        Some(humantime::Meta {
+            name: i.meta.name.clone(),
+            cwd: i.meta.cwd.clone(),
+            task: i.meta.task,
+        })
+    }
+
     fn client_input(&self, conn: &Conn, id: &str, data: &[u8]) {
         let Some(s) = self.session(id) else { return };
         let owner_matches = lock(&s.inner).size_owner == Some(conn.id);
@@ -3651,6 +3768,9 @@ impl Runner {
                         break;
                     }
                     self.client_input(&conn, &b.session, &b.data);
+                    if conn.client == CLIENT_CLI {
+                        self.with_clock(|c| c.input(conn.id, now_ms(), &b.session));
+                    }
                 }
                 Frame::Json(v) => match serde_json::from_value::<ClientMsg>(v) {
                     Ok(ClientMsg::Request(req)) => {
@@ -3676,10 +3796,28 @@ impl Runner {
                     }
                     Ok(ClientMsg::Scroll(s)) => {
                         if lock(&conn.watched).contains(&s.session) {
+                            if conn.client == CLIENT_CLI {
+                                self.with_clock(|c| c.scroll(conn.id, now_ms(), &s.session));
+                            }
                             lock(&conn.scroll).insert(s.session, s.offset as usize);
                         }
                     }
                     Ok(ClientMsg::Focus(_)) => {}
+                    Ok(ClientMsg::Attention(a)) => {
+                        if conn.client == CLIENT_CLI {
+                            let meta = a
+                                .session
+                                .as_deref()
+                                .and_then(|id| Some((id, self.clock_meta(id)?)));
+                            self.with_clock(|c| {
+                                let session = meta.as_ref().map(|(id, _)| *id);
+                                if let Some((id, m)) = &meta {
+                                    c.set_meta(id, m.clone());
+                                }
+                                c.attend(conn.id, now_ms(), session, a.window);
+                            });
+                        }
+                    }
                     Ok(ClientMsg::Detach) => break,
                     Err(_) => {
                         closed("bad message");
@@ -3693,6 +3831,7 @@ impl Runner {
             }
         }
         conn.closed.store(true, Ordering::SeqCst);
+        self.with_clock(|c| c.drop_conn(conn.id, now_ms()));
         let _ = stream.shutdown(std::net::Shutdown::Both);
     }
 }
@@ -3767,6 +3906,11 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         std::process::id().to_string().as_bytes(),
     )?;
     let secret = load_client_secret(&cfg.dir)?;
+    if let Err(e) = humantime::prune_records(&cfg.dir, now_ms() / 1000) {
+        log(&format!("human time: prune failed: {e}"));
+    }
+    let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
+    clock.load_totals(&humantime::read_records(&cfg.dir));
     let rt = Arc::new(Runner {
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
@@ -3783,6 +3927,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         rejects: Mutex::new(Rejects::default()),
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
+        clock: Mutex::new(clock),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -3805,8 +3950,22 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
 
     let ticker = rt.clone();
     thread::spawn(move || {
+        let mut settings_at: Option<Instant> = None;
         while !ticker.stop.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(250));
+            let idle = if settings_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(5)) {
+                settings_at = Some(Instant::now());
+                Some(humantime::Settings::load(&ticker.cfg.dir).idle_s)
+            } else {
+                None
+            };
+            let mono = ticker.started.elapsed().as_millis() as u64;
+            ticker.with_clock(|c| {
+                if let Some(idle) = idle {
+                    c.set_idle_s(now_ms(), idle);
+                }
+                c.tick(now_ms(), mono);
+            });
             let _ = rotate_log(&ticker.cfg.dir, &[1, 2], LOG_CAP);
             for s in ticker.all() {
                 s.tick();
@@ -3854,6 +4013,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             }
         }
     }
+    rt.with_clock(|c| c.shutdown(now_ms()));
     rt.autopilot.shutdown(&cfg.self_exe);
     thread::sleep(Duration::from_millis(100));
     match &ep {
@@ -4226,6 +4386,19 @@ mod tests {
         moved.write_all(b"after\n").unwrap();
         assert_eq!(fs::metadata(&log_path).unwrap().len(), 6);
         assert!(!rotate_log(t.path(), &[fd], 1000).unwrap());
+    }
+
+    #[test]
+    fn shim_log_tail_keeps_the_last_lines_and_explains_a_pty_shortage() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("shim.log");
+        assert_eq!(shim_log_tail(&p), "");
+        fs::write(&p, "a\nb\n\nshim: failed to openpty: Os { code: 6 }\n").unwrap();
+        let t = shim_log_tail(&p);
+        assert!(t.starts_with(": a | b | shim: failed to openpty"), "{t}");
+        assert!(t.contains("no free terminal (pty) available"), "{t}");
+        fs::write(&p, "boom\n").unwrap();
+        assert_eq!(shim_log_tail(&p), ": boom");
     }
 
     #[test]

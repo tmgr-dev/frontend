@@ -7,6 +7,7 @@ use super::attach_shell::{
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
     KILL_ONLY,
 };
+use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -29,10 +30,10 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, layout, mode_changes, probe, render, reset_modes, Action, Cmd, Confirm,
-    Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit,
-    PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir,
-    ViewState,
+    cursor, enter_mouse, focus_on, layout, mode_changes, probe, render, reset_modes, Action,
+    AgentTitle, AttentionTracker, Cmd, Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit,
+    NewRequest, NewSession, PaletteEdit, PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource,
+    SessionRow, SidebarEdit, SplitDir, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -44,6 +45,7 @@ const FRAME: Duration = Duration::from_millis(33);
 const LIST_EVERY: Duration = Duration::from_secs(1);
 const PROBE_EVERY: Duration = Duration::from_millis(2500);
 const PROBE_RETRY: Duration = Duration::from_millis(250);
+const TITLE_EVERY: Duration = Duration::from_secs(3);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
@@ -108,6 +110,7 @@ enum Msg {
     Down(String),
     Sessions(Vec<SessionInfo>),
     Locs(Vec<(String, Loc)>),
+    Titles(Vec<(String, Option<AgentTitle>)>),
     Created {
         result: std::result::Result<SessionInfo, String>,
         dir: SplitDir,
@@ -149,6 +152,29 @@ fn short_age(now: u64, since: u64) -> String {
     }
 }
 
+fn attention_target(view: &ViewState) -> Option<&str> {
+    if view.sidebar_focus.is_some()
+        || view.new_session.is_some()
+        || view.palette.is_some()
+        || view.confirm.is_some()
+        || view.rename.is_some()
+        || view.help
+    {
+        return None;
+    }
+    view.focused_session()
+}
+
+fn is_user_action(view: &ViewState, action: &Action) -> bool {
+    match action {
+        Action::FocusIn | Action::FocusOut => false,
+        Action::Forward(_) | Action::Drop(_) | Action::Paste { .. } => {
+            attention_target(view).is_none()
+        }
+        _ => true,
+    }
+}
+
 fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
     let now = now_ms();
     list.iter()
@@ -157,6 +183,7 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
             name: s.name.clone(),
             state: s.state.clone(),
             age: short_age(now, s.state.since_ms),
+            you: s.human_s,
             esc: s.argv.iter().any(|a| {
                 let n = a.rsplit('/').next().unwrap_or(a);
                 n.contains("claude") || n.contains("codex")
@@ -173,6 +200,9 @@ struct App {
     splitter: InputSplitter,
     scroll_mode: bool,
     writer: AttachWriter,
+    human_time: bool,
+    window_focused: bool,
+    attention: AttentionTracker,
     prefs_tx: Sender<Value>,
     cfg: RunnerConfig,
     tx: SyncSender<Msg>,
@@ -199,6 +229,12 @@ struct App {
     probe_pending: bool,
     tried: HashSet<String>,
     last_probe: Instant,
+    agents: HashMap<String, AgentSrc>,
+    title_tx: SyncSender<Vec<TitleJob>>,
+    title_pending: bool,
+    titles_tried: HashSet<String>,
+    exit_scanned: HashSet<String>,
+    last_title: Instant,
 }
 
 type ProbeJob = (String, u32, String);
@@ -213,6 +249,12 @@ impl App {
             Msg::Locs(found) => {
                 self.probe_pending = false;
                 if self.view.set_locs(self.area(), found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Titles(found) => {
+                self.title_pending = false;
+                if self.view.set_titles(found) {
                     self.dirty = true;
                 }
             }
@@ -258,11 +300,19 @@ impl App {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
         }
+        self.agents = list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
+            .collect();
         self.shell_ids = list
             .iter()
             .filter(|s| is_shell_session(&s.argv, &s.name))
             .map(|s| s.id.clone())
             .collect();
+        self.exit_scanned
+            .retain(|id| new.iter().any(|r| &r.id == id && r.exited()));
+        self.titles_tried
+            .retain(|id| new.iter().any(|r| &r.id == id));
         self.removing.retain(|id| new.iter().any(|r| &r.id == id));
         self.stopped.retain(|id| new.iter().any(|r| &r.id == id));
         if new == self.view.sessions {
@@ -319,6 +369,46 @@ impl App {
         self.last_probe = Instant::now();
         self.tried.extend(jobs.iter().map(|(id, ..)| id.clone()));
         self.probe_pending = self.probe_tx.try_send(jobs).is_ok();
+    }
+
+    fn probe_titles(&mut self) {
+        if self.title_pending || self.last_title.elapsed() < PROBE_RETRY {
+            return;
+        }
+        let mut wanted: Vec<String> = self.view.panes().to_vec();
+        if self.view.sidebar_shown() {
+            wanted.extend(self.view.visible_sessions(self.area()));
+        }
+        let mut seen = HashSet::new();
+        let jobs: Vec<TitleJob> = wanted
+            .into_iter()
+            .filter(|id| seen.insert(id.clone()))
+            .filter_map(|id| {
+                let row = self.view.sessions.iter().find(|r| r.id == id)?;
+                let src = self.agents.get(&id)?;
+                if row.name != src.default_name {
+                    return None;
+                }
+                if row.exited() && !self.exit_scanned.insert(id.clone()) {
+                    return None;
+                }
+                Some(TitleJob {
+                    pid: if row.exited() { 0 } else { src.pid },
+                    src: src.clone(),
+                    sandbox_home: self.cfg.homes.join(&id),
+                    log: self.cfg.dir.join("sessions").join(&id).join("output.log"),
+                    id,
+                })
+            })
+            .collect();
+        let fresh = jobs.iter().any(|j| !self.titles_tried.contains(&j.id));
+        let every = if fresh { PROBE_RETRY } else { TITLE_EVERY };
+        if jobs.is_empty() || self.last_title.elapsed() < every {
+            return;
+        }
+        self.last_title = Instant::now();
+        self.titles_tried.extend(jobs.iter().map(|j| j.id.clone()));
+        self.title_pending = self.title_tx.try_send(jobs).is_ok();
     }
 
     fn is_shell(&self, id: &str) -> bool {
@@ -421,6 +511,9 @@ impl App {
             Ok(info) => info,
             Err(e) => return self.notify(&lost(&typed, &e)),
         };
+        if !self.view.panes().iter().any(|p| p == target) && self.view.in_tab(target) {
+            self.view.open(target);
+        }
         if !self.view.panes().iter().any(|p| p == target) {
             self.discard_session(&info.id);
             return self.notify(&lost(&typed, "pane closed before the shell started"));
@@ -708,6 +801,7 @@ impl App {
         if data.is_empty() {
             return Ok(());
         }
+        self.report_attention(false);
         self.writer.input(session, data)
     }
 
@@ -829,13 +923,29 @@ impl App {
         match entry {
             PaletteEntry::Cmd(cmd) => self.handle(vec![Action::Cmd(cmd)]),
             PaletteEntry::Session(id) => {
-                self.view.select(&id);
+                self.view.open(&id);
                 Ok(None)
             }
         }
     }
 
+    fn report_attention(&mut self, user_action: bool) {
+        if !self.human_time {
+            return;
+        }
+        let target = attention_target(&self.view).map(str::to_string);
+        if let Some((session, window)) = self.attention.update(
+            Instant::now(),
+            target.as_deref(),
+            self.window_focused,
+            user_action,
+        ) {
+            let _ = self.writer.attention(session.as_deref(), window);
+        }
+    }
+
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
         for action in actions {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
@@ -846,6 +956,8 @@ impl App {
                 continue;
             }
             match action {
+                Action::FocusIn => self.window_focused = true,
+                Action::FocusOut => self.window_focused = false,
                 Action::Forward(data) if self.view.palette.is_some() => {
                     if let PaletteEdit::Run(entry) = self.view.edit_palette(&data) {
                         if let Some(exit) = self.run_palette_entry(entry)? {
@@ -862,7 +974,7 @@ impl App {
                 Action::Forward(data) if self.view.rename.is_some() => {
                     match self.view.edit_rename(&data) {
                         RenameEdit::Submit(id, name) => self.rename_session(&id, &name),
-                        RenameEdit::Editing | RenameEdit::Cancel => {}
+                        RenameEdit::Editing | RenameEdit::Done | RenameEdit::Cancel => {}
                     }
                 }
                 Action::Forward(data) => {
@@ -1043,6 +1155,7 @@ impl App {
                 }
             }
         }
+        self.report_attention(user_action);
         Ok(None)
     }
 
@@ -1057,6 +1170,7 @@ impl App {
                 self.dirty = true;
             }
         }
+        self.report_attention(false);
         self.view.width = self.size.0;
         if !self.view.sidebar_shown() {
             self.view.sidebar_focus = None;
@@ -1074,6 +1188,7 @@ impl App {
         }
         self.reap_shells();
         self.probe_places();
+        self.probe_titles();
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
@@ -1278,7 +1393,6 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         view.apply_prefs(&prefs);
     }
     view.set_initial(initial);
-    view.grouped = true;
     let seeded = list
         .iter()
         .filter(|s| !s.cwd.is_empty())
@@ -1286,13 +1400,24 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .collect();
     let first = ratatui::crossterm::terminal::size().unwrap_or((view.width, 24));
     view.set_locs(Rect::new(0, 0, first.0, first.1), seeded);
-    let (reader, writer) = connect(cfg)?.attach(view.panes()).map_err(rerr)?.split();
+    let attach_client = connect(cfg)?;
+    let human_time = attach_client
+        .welcome()
+        .caps
+        .iter()
+        .any(|c| c == caps::HUMAN_TIME_V1);
+    let (reader, writer) = attach_client.attach(view.panes()).map_err(rerr)?.split();
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     if mouse {
         let mut out = io::stdout();
         let _ = out.write_all(enter_mouse());
+        let _ = out.flush();
+    }
+    if human_time {
+        let mut out = io::stdout();
+        let _ = out.write_all(focus_on());
         let _ = out.flush();
     }
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
@@ -1337,6 +1462,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let (probe_tx, probe_rx) = mpsc::sync_channel(1);
     let probe_out = tx.clone();
     thread::spawn(move || prober(probe_rx, probe_out));
+    let (title_tx, title_rx) = mpsc::sync_channel(1);
+    let title_out = tx.clone();
+    thread::spawn(move || {
+        titler(title_rx, move |found| {
+            title_out.send(Msg::Titles(found)).is_ok()
+        })
+    });
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -1356,6 +1488,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         splitter: InputSplitter::new(),
         scroll_mode: false,
         writer,
+        human_time,
+        window_focused: true,
+        attention: AttentionTracker::new(),
         prefs_tx,
         cfg: cfg.clone(),
         tx: app_tx,
@@ -1379,7 +1514,17 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         probe_pending: false,
         tried: HashSet::new(),
         last_probe: Instant::now(),
+        agents: list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
+            .collect(),
+        title_tx,
+        title_pending: false,
+        titles_tried: HashSet::new(),
+        exit_scanned: HashSet::new(),
+        last_title: Instant::now(),
     };
+    let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
     let cfg_now = app.cfg.clone();
@@ -1402,6 +1547,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         let _ = done_tx.send(());
     });
     let _ = done_rx.recv_timeout(CLEANUP_WAIT);
+    flusher.finish();
 
     match exit {
         Exit::Detached => {
@@ -1596,7 +1742,7 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 mod tests {
     use super::*;
     use tmgr_ipc::api::State;
-    use tmgr_runner::attach::SpawnKind;
+    use tmgr_runner::attach::{ScrollKey, SidebarItem, SpawnKind};
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
@@ -1621,6 +1767,7 @@ mod tests {
             origin: None,
             permission_mode: None,
             resumed_from: None,
+            human_s: None,
         }
     }
 
@@ -1720,7 +1867,13 @@ mod tests {
         view.apply(cmd);
         assert!(view.confirm.is_some());
         view.confirm = None;
-        view.select("b");
+        view.apply(Cmd::Palette);
+        view.insert_palette_text(b"b");
+        let PaletteEdit::Run(entry @ PaletteEntry::Session(_)) = view.edit_palette(b"\r") else {
+            panic!("expected a session entry");
+        };
+        assert_eq!(entry, PaletteEntry::Session("b".into()));
+        view.open("b");
         assert_eq!(view.focused_session(), Some("b"));
     }
 
@@ -1872,5 +2025,58 @@ mod tests {
             );
         }
         assert_eq!(killed, vec!["shell"]);
+    }
+
+    fn one_session_view() -> ViewState {
+        let mut v = ViewState::new(rows(&[info("s1")]), "");
+        v.set_initial("s1");
+        v
+    }
+
+    fn typed() -> Action {
+        Action::Forward(b"a".to_vec())
+    }
+
+    #[test]
+    fn rows_carry_the_human_seconds() {
+        let mut i = info("s1");
+        i.human_s = Some(125);
+        assert_eq!(rows(&[i]).remove(0).you, Some(125));
+        assert_eq!(rows(&[info("s2")]).remove(0).you, None);
+    }
+
+    #[test]
+    fn attention_follows_the_focused_session_and_drops_to_none_in_overlays() {
+        let mut v = one_session_view();
+        assert_eq!(attention_target(&v), Some("s1"));
+        v.help = true;
+        assert_eq!(attention_target(&v), None);
+        v.help = false;
+        v.sidebar_focus = Some(SidebarItem::Session("s1".into()));
+        assert_eq!(attention_target(&v), None);
+    }
+
+    #[test]
+    fn attention_leaves_the_panes_of_a_hidden_tab() {
+        let mut v = ViewState::new(rows(&[info("a"), info("b"), info("c")]), "t");
+        v.width = 140;
+        v.apply(Cmd::Split);
+        assert_eq!(v.panes(), ["a", "b"]);
+        v.open("c");
+        assert_eq!(attention_target(&v), Some("c"));
+        v.apply(Cmd::NextTab);
+        assert!(matches!(attention_target(&v), Some("a" | "b")));
+    }
+
+    #[test]
+    fn input_forwarded_to_a_session_is_not_a_user_action() {
+        let mut v = one_session_view();
+        assert!(!is_user_action(&v, &typed()));
+        assert!(!is_user_action(&v, &Action::FocusIn));
+        assert!(!is_user_action(&v, &Action::FocusOut));
+        assert!(is_user_action(&v, &Action::Cmd(Cmd::Palette)));
+        assert!(is_user_action(&v, &Action::Scroll(ScrollKey::PageUp)));
+        v.help = true;
+        assert!(is_user_action(&v, &typed()));
     }
 }

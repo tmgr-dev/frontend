@@ -1,9 +1,9 @@
  SESSIONS      Ctr╭ Keys ────────────────────────────────────────────────────────╮iting ───────────╮
- ◆ codex          │ Press Ctrl-] first, then:                                    │                 │
- ● claude         │                                                              │ ms              │
- ◌ dev-server     │ :             command palette: actions and sessions          │                 │
- ✓ tests          │ d             detach, sessions keep running                  │                 │
-                  │ n / p         next / previous session                        │                 │
+ ◆ codex     block│ Press Ctrl-] first, then:                                    │                 │
+ ▾ claude         │                                                              │ ms              │
+   ● claude workin│ :             command palette: actions and sessions          │                 │
+   ◌ dev-server wa│ d             detach, sessions keep running                  │                 │
+ ✓ tests     exite│ n / p         next / previous session                        │                 │
                   │ w             session picker                                 │                 │
                   │ s             two panes, or collapse to one                  │                 │
                   │ | v / - h     split right / split down                       │                 │
@@ -12,13 +12,13 @@
                   │ arrows        move focus (Shift+arrows: resize)              │                 │
                   │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                 │
                   │ z / b         zoom the pane / show or hide the sidebar       │                 │
-                  │ g             group sessions by repo / flat list             │                 │
-                  │ r             rename the focused session                     │                 │
+                  │ N / P / , / & tab: next / previous / rename / close          │                 │
+                  │ g             group the sidebar by tab / by repo             │                 │
+                  │ r             rename (a tmgr name beats the agent title)     │                 │
                   │ Enter / R     resume an exited session                       │                 │
                   │ x / X         stop (asks first) / remove if exited           │                 │
                   │ [             scroll back through history                    │                 │
                   │ ?             this help                                      │                 │
                   │ Ctrl-]        send a literal Ctrl-] to the session           │                 │
-                  │                                                              │                 │
- + New session    │ ? again closes this box                                      │─────────────────╯
+ + New session    │                                                              │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

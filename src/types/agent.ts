@@ -57,6 +57,22 @@ export interface AgentContextTotals {
 	cache_write_tokens: number;
 }
 
+export type AgentCompactionTrigger = 'manual' | 'auto';
+
+export interface AgentCompaction {
+	id: number;
+	up_to_message_id: number;
+	trigger: AgentCompactionTrigger;
+	created_at: string;
+}
+
+export interface AgentCompactedEvent {
+	conversation_id: number;
+	compaction_id: number;
+	up_to_message_id: number;
+	trigger: AgentCompactionTrigger;
+}
+
 export interface AgentContext {
 	conversation_id: number;
 	provider: string;

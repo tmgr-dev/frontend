@@ -1,9 +1,9 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────────── ⏸ ■ ✕ ╮
- ◆ codex             3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
- ● claude           18m │I will add an│                                                              │ ms                                  │
- ◌ dev-server       12m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
- ✓ tests            52m │>            │ d             detach, sessions keep running                  │                                     │
-                        │             │ n / p         next / previous session                        │                                     │
+ ◆ codex     blocked 3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
+ ▾ claude           (2) │I will add an│                                                              │ ms                                  │
+   ● claude working 18m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
+   ◌ dev-server wa… 12m │>            │ d             detach, sessions keep running                  │                                     │
+ ✓ tests     exited 52m │             │ n / p         next / previous session                        │                                     │
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │
@@ -12,20 +12,20 @@
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
                         │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
-                        │             │ g             group sessions by repo / flat list             │                                     │
-                        │             │ r             rename the focused session                     │                                     │
+                        │             │ N / P / , / & tab: next / previous / rename / close          │                                     │
+                        │             │ g             group the sidebar by tab / by repo             │                                     │
+                        │             │ r             rename (a tmgr name beats the agent title)     │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
                         │             │ [             scroll back through history                    │                                     │
                         │             │ ?             this help                                      │                                     │
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
-                        │             │ click         pick a session or a pane                       │                                     │
-                        │             │ click +       new session (sidebar, last row)                │                                     │
-                        │             │ wheel         scroll the history of the pane                 │                                     │
-                        │             │ buttons       header: pause/resume, stop, close              │                                     │
-                        │             │ drop          a dropped file is pasted there                 │                                     │
-                        │             │ drag          Shift-drag selects (iTerm2: Option)            │                                     │
+                        │             │ ? again closes this box                                      │                                     │
                         │             │                                                              │                                     │
- + New session          ╰─────────────│ ? again closes this box                                      │─────────────────────────────────────╯
+                        │             │                                                              │                                     │
+                        │             │                                                              │                                     │
+                        │             │                                                              │                                     │
+                        │             │                                                              │                                     │
+ + New session          ╰─────────────│                                                              │─────────────────────────────────────╯
  tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯                        Ctrl-] ? help

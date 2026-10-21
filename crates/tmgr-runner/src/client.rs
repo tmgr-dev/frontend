@@ -15,7 +15,7 @@ use tmgr_ipc::api::{
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
-use tmgr_ipc::proto::{ClientMsg, Focus, Request, Resize, Scroll, ServerMsg};
+use tmgr_ipc::proto::{Attention, ClientMsg, Focus, Request, Resize, Scroll, ServerMsg};
 use tmgr_ipc::{secret, server};
 
 fn bad(msg: impl Into<String>) -> io::Error {
@@ -318,6 +318,13 @@ impl AttachWriter {
             }
             Ok(())
         })
+    }
+
+    pub fn attention(&self, session: Option<&str>, window: bool) -> io::Result<()> {
+        self.msg(ClientMsg::Attention(Attention {
+            session: session.map(str::to_string),
+            window,
+        }))
     }
 
     pub fn resize(&self, id: &str, cols: u16, rows: u16) -> io::Result<()> {

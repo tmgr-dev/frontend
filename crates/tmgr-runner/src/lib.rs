@@ -29,6 +29,8 @@ pub mod daemon;
 #[cfg(unix)]
 pub mod folders;
 #[cfg(unix)]
+pub mod humantime;
+#[cfg(unix)]
 pub mod restore;
 #[cfg(unix)]
 pub mod service;

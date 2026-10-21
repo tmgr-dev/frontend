@@ -17,6 +17,7 @@ pub enum Place {
     Right,
     Below,
     Replace,
+    Tab,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -57,13 +58,14 @@ const LABEL_W: u16 = 10;
 const START_LABEL: &str = "[ Start ]";
 
 impl Place {
-    const ALL: [Place; 3] = [Place::Right, Place::Below, Place::Replace];
+    const ALL: [Place; 4] = [Place::Tab, Place::Right, Place::Below, Place::Replace];
 
     fn label(self) -> &'static str {
         match self {
             Place::Right => "Right",
             Place::Below => "Below",
             Place::Replace => "Replace",
+            Place::Tab => "New tab",
         }
     }
 }
@@ -966,6 +968,7 @@ mod tests {
                     exit_code: None,
                 },
                 age: String::new(),
+                you: None,
                 esc: false,
                 resumed_from: None,
             }],
@@ -1003,6 +1006,8 @@ mod tests {
         v.edit_new_session(b"\x1b[C");
         assert_eq!(ns(&mut v).place, Place::Below);
         v.edit_new_session(b"\x1b[D\x1b[D");
+        assert_eq!(ns(&mut v).place, Place::Tab);
+        v.edit_new_session(b"\x1b[D");
         assert_eq!(ns(&mut v).place, Place::Replace);
         v.edit_new_session(b"\t");
         assert_eq!(ns(&mut v).focus, NewField::Start);
@@ -1230,7 +1235,9 @@ mod tests {
         click(&mut v, folder.x + 15, folder.y);
         assert_eq!(ns(&mut v).focus, NewField::Folder);
         let wh = row_of(&mut v, NewField::Where);
-        click(&mut v, value_x(wh) + 12, wh.y);
+        let (labels, sel) = option_labels(v.new_session.as_ref().unwrap(), NewField::Where);
+        let (_, off, _) = option_spans(&labels, sel, value_avail(wh))[2];
+        click(&mut v, value_x(wh) + off + 1, wh.y);
         assert_eq!(ns(&mut v).place, Place::Below);
         let start = row_of(&mut v, NewField::Start);
         let out = click(&mut v, value_x(start) + 2, start.y);

@@ -156,6 +156,7 @@ fn session_info() -> SessionInfo {
         origin: None,
         permission_mode: None,
         resumed_from: None,
+        human_s: None,
     }
 }
 
@@ -581,6 +582,7 @@ fn method_params_and_results() {
             origin: None,
             permission_mode: None,
             resumed_from: None,
+            human_s: None,
         },
     );
     golden(
@@ -751,6 +753,21 @@ fn pushes_and_stream_messages() {
         }),
     );
     golden("client_detach", &ClientMsg::Detach);
+    golden(
+        "client_attention",
+        &ClientMsg::Attention(Attention {
+            session: Some(SID.into()),
+            window: false,
+        }),
+    );
+    let bare: ClientMsg = serde_json::from_value(json!({"type": "attention"})).unwrap();
+    assert_eq!(
+        bare,
+        ClientMsg::Attention(Attention {
+            session: None,
+            window: true
+        })
+    );
 
     let screen: ServerMsg = serde_json::from_value(fixture("server_screen")).unwrap();
     let push = screen.screen().expect("typed screen push");
@@ -825,7 +842,8 @@ fn constants_are_pinned() {
             "signed_context.v1",
             "team.v1",
             "orchestrator.v1",
-            "sessions_resume.v1"
+            "sessions_resume.v1",
+            "human_time.v1"
         ]
     );
     let methods = [
@@ -911,7 +929,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 28);
+    assert_eq!(w.caps.len(), 29);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

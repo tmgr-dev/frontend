@@ -58,6 +58,7 @@
 	import store from '@/store';
 	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
 	import { errorMessageFrom, httpErrorInfo } from '@/utils/emailVerification';
+	import { serverMessageFrom } from '@/utils/serverError';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import {
 		CircleCheckBigIcon,
@@ -118,7 +119,10 @@
 			(workspace) => workspace.id == activeWorkspace.value?.value,
 		);
 
-		return foundWorkspace?.user_id === store.state.user.id;
+		return (
+			foundWorkspace?.user_id != null &&
+			Number(foundWorkspace.user_id) === Number(store.state.user?.id)
+		);
 	});
 	const defaultWorkspaceSelection = ref<number | null>(null);
 	const savingDefaultWorkspace = ref(false);
@@ -492,6 +496,14 @@
 			}
 		} catch (e) {
 			console.error(e);
+			toaster.toast({
+				title: 'Error',
+				description: serverMessageFrom(
+					e,
+					'Failed to leave the workspace. Please try again.',
+				),
+				variant: 'destructive',
+			});
 		}
 	}
 

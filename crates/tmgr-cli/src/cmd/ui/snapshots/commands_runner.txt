@@ -30,6 +30,9 @@ halt | Agents | session, kill
 rm | Agents | session
 resume | Other | session
 rename | Agents | session, name
+time | Time | today, since, by
+time sync | Time | state
+time idle | Time | seconds
 version | Other | -
 login | Account | scopes, with_token, label, no_browser
 logout | Account | -

@@ -27,9 +27,14 @@ pub fn mode_changes(prev: Option<Modes>, next: Modes) -> Vec<u8> {
     out
 }
 
+pub fn focus_on() -> &'static [u8] {
+    b"\x1b[?1004h"
+}
+
 pub fn reset_modes() -> Vec<u8> {
     let mut out = app_cursor(false).to_vec();
     out.extend_from_slice(bracketed_paste(false));
+    out.extend_from_slice(b"\x1b[?1004l");
     out.extend_from_slice(mouse_off());
     out
 }

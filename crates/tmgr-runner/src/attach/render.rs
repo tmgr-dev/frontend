@@ -5,10 +5,11 @@ use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
 use super::place::{fit, tail2};
+use super::title::{age_label, clip};
 use super::tree::Nav;
 use super::view::{
     header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
-    SidebarItem, SidebarLine, ViewState, WIDE_COLS,
+    SidebarItem, SidebarLine, ViewState, HEADER_MIN_WIDTH, WIDE_COLS,
 };
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
@@ -25,6 +26,7 @@ pub trait ScreenSource {
     fn snapshot(&self, session: &str) -> Option<&Snapshot>;
 }
 
+const MIN_NAME_W: usize = 10;
 const ACCENT: Color = Color::LightRed;
 const SIDEBAR_BG: Color = Color::Indexed(237);
 
@@ -133,6 +135,7 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
     let sl = st.sidebar_layout(area);
     let focused = st.focused_session();
+    let mut nested = false;
     for (line, y) in &sl.lines {
         let y = *y;
         match line {
@@ -141,8 +144,10 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
                 count,
                 collapsed,
             } => draw_group_header(buf, area, st, key, *count, *collapsed, y),
-            SidebarLine::Detail(id) => draw_detail(buf, area, st, id, y),
+            SidebarLine::Tab { id, count } => draw_tab_header(buf, area, st, *id, *count, y),
+            SidebarLine::Detail(id) => draw_detail(buf, area, st, id, nested, y),
             SidebarLine::Session { id, indent } => {
+                nested = *indent;
                 draw_session_row(buf, area, st, id, *indent, focused, y);
             }
         }
@@ -194,6 +199,18 @@ fn draw_session_row(
     }
     let (glyph, style) = badge(row);
     put(buf, area.x + 1 + off, y, glyph, style, 1);
+    let agent = st.agent_title(row);
+    let (label, auto) = match agent {
+        Some(t) => (t.text.as_str(), t.auto),
+        None => (row.name.as_str(), false),
+    };
+    let name_style = if row.state.kind == StateKind::Blocked {
+        style
+    } else if auto {
+        dim()
+    } else {
+        Style::new()
+    };
     let hovered = st
         .pointer
         .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
@@ -204,8 +221,8 @@ fn draw_session_row(
             buf,
             area.x + 3 + off,
             y,
-            &row.name,
-            Style::new(),
+            label,
+            name_style,
             name_end.saturating_sub(area.x + 3 + off),
         );
         for slot in [Control::Stop, Control::Close] {
@@ -216,20 +233,31 @@ fn draw_session_row(
             }
         }
     } else {
-        let age_w = row.age.width() as u16;
-        let age_x = area.right().saturating_sub(age_w + 1).max(area.x + 3 + off);
-        let name_w = age_x.saturating_sub(area.x + 3 + off).saturating_sub(1);
-        let name_style = if row.state.kind == StateKind::Blocked {
-            style
-        } else {
-            Style::new()
+        let name_x = area.x + 3 + off;
+        let avail = usize::from(area.right().saturating_sub(name_x + 1));
+        let keep = label.width().min(MIN_NAME_W) + 1;
+        let room = avail.saturating_sub(keep);
+        let age = match row.you.and_then(you_label) {
+            Some(you) if room >= you.width() + 1 + row.age.width() => {
+                let rest = room - you.width() - 1;
+                format!("{you} {}", age_label(state_label(row), &row.age, rest))
+            }
+            _ => age_label(state_label(row), &row.age, room),
         };
-        put(buf, area.x + 3 + off, y, &row.name, name_style, name_w);
+        let age_w = age.width() as u16;
+        let age_x = area.right().saturating_sub(age_w + 1).max(name_x);
+        let name_w = age_x.saturating_sub(name_x).saturating_sub(1);
+        let shown = if agent.is_some() {
+            clip(label, usize::from(name_w))
+        } else {
+            label.to_string()
+        };
+        put(buf, name_x, y, &shown, name_style, name_w);
         put(
             buf,
             age_x,
             y,
-            &row.age,
+            &age,
             dim(),
             area.right().saturating_sub(age_x),
         );
@@ -240,6 +268,16 @@ fn draw_session_row(
             Style::new().add_modifier(Modifier::REVERSED),
         );
     }
+}
+
+pub(crate) fn you_label(secs: u64) -> Option<String> {
+    let mins = secs / 60;
+    Some(match mins {
+        0 => return None,
+        1..=59 => format!("you {mins}m"),
+        _ if mins.is_multiple_of(60) => format!("you {}h", mins / 60),
+        _ => format!("you {}h {}m", mins / 60, mins % 60),
+    })
 }
 
 fn draw_group_header(
@@ -305,11 +343,47 @@ fn draw_group_header(
     }
 }
 
-fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, y: u16) {
+fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count: usize, y: u16) {
+    if st.active_tab() == Some(id) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().bg(SIDEBAR_BG),
+        );
+    }
+    put(buf, area.x + 1, y, "▾", dim(), 1);
+    let tail = format!("({count})");
+    let tail_w = tail.width() as u16;
+    let text_x = area.x + 3;
+    let tail_x = area.right().saturating_sub(tail_w + 1).max(text_x);
+    let room = tail_x.saturating_sub(text_x).saturating_sub(1);
+    let title = fit(&st.tab_title(id), None, usize::from(room));
+    put(
+        buf,
+        text_x,
+        y,
+        &title,
+        Style::new().add_modifier(Modifier::BOLD),
+        room,
+    );
+    let style = if st.tab_blocked(id) {
+        Style::new().fg(Color::Yellow)
+    } else {
+        dim()
+    };
+    put(buf, tail_x, y, &tail, style, tail_w);
+    if st.sidebar_focus == Some(SidebarItem::Tab(id)) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().add_modifier(Modifier::REVERSED),
+        );
+    }
+}
+
+fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested: bool, y: u16) {
     let Some(loc) = st.locs.get(id) else {
         return;
     };
-    let x = area.x + 3;
+    let x = area.x + if nested { 5 } else { 3 };
     let room = area.right().saturating_sub(x + 1);
     let text = fit(&tail2(&loc.dir), loc.branch.as_deref(), usize::from(room));
     put(buf, x, y, &text, dim(), room);
@@ -368,18 +442,45 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             Style::new().add_modifier(Modifier::REVERSED),
         ),
     ];
+    let scroll = match (st.scroll, st.focused_session() == Some(p.session.as_str())) {
+        (Some(sc), true) => Some(format!(" · scroll -{}/{}", sc.offset, sc.max)),
+        _ => None,
+    };
     match st.sessions.iter().find(|s| s.id == p.session) {
-        Some(row) => spans.push(text(
-            &format!("  {} · {}", row.name, state_label(row)),
-            Style::new(),
-        )),
+        Some(row) => {
+            let agent = st.agent_title(row);
+            let (label, auto) = match agent {
+                Some(t) => (t.text.as_str(), t.auto),
+                None => (row.name.as_str(), false),
+            };
+            let state = state_label(row);
+            let buttons = if p.outer.width >= HEADER_MIN_WIDTH {
+                8
+            } else {
+                0
+            };
+            let fixed = 1
+                + index.to_string().width()
+                + 2
+                + 3
+                + state.width()
+                + scroll.as_ref().map_or(0, |s| s.width())
+                + 1;
+            let room = usize::from(p.outer.width.saturating_sub(2 + buttons)).saturating_sub(fixed);
+            let label_style = if auto { dim() } else { Style::new() };
+            let shown = if agent.is_some() {
+                clip(label, room)
+            } else {
+                label.to_string()
+            };
+            spans.push(text("  ", Style::new()));
+            spans.push(text(&shown, label_style));
+            spans.push(text(&format!(" · {state}"), Style::new()));
+        }
         None => spans.push(text(&format!("  {}", p.session), Style::new())),
     }
-    if let (Some(sc), true) = (st.scroll, st.focused_session() == Some(p.session.as_str())) {
-        spans.push(text(
-            &format!(" · scroll -{}/{}", sc.offset, sc.max),
-            Style::new().fg(Color::Yellow),
-        ));
+    if let Some(scroll) = scroll {
+        spans.push(text(&scroll, Style::new().fg(Color::Yellow)));
     }
     spans.push(text(" ", Style::new()));
     Line::from(spans)
@@ -506,7 +607,11 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     let note = match (&st.rename, &st.confirm) {
-        (Some(r), _) => Some(format!("rename: {}▏  Enter saves, Esc cancels", r.text)),
+        (Some(r), _) => Some(format!(
+            "{}: {}▏  Enter saves, Esc cancels",
+            if r.tab { "rename tab" } else { "rename" },
+            r.text
+        )),
         (None, Some(c)) if c.remove => Some(format!("stop and remove {}? y/n", c.name)),
         (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
         _ if st.sidebar_focus.is_some() => {
@@ -559,7 +664,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
 }
 
 const MOUSE: &[(&str, &str)] = &[
-    ("click", "pick a session or a pane"),
+    ("click", "pick a tab, a session or a pane"),
     ("click +", "new session (sidebar, last row)"),
     ("wheel", "scroll the history of the pane"),
     ("buttons", "header: pause/resume, stop, close"),
@@ -612,10 +717,17 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "zoom the pane / show or hide the sidebar",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Group]),
-        "group sessions by repo / flat list",
+        HelpKey::Cmds(&[Cmd::NextTab, Cmd::PrevTab, Cmd::RenameTab, Cmd::CloseTab]),
+        "tab: next / previous / rename / close",
     ),
-    (HelpKey::Cmds(&[Cmd::Rename]), "rename the focused session"),
+    (
+        HelpKey::Cmds(&[Cmd::Group]),
+        "group the sidebar by tab / by repo",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Rename]),
+        "rename (a tmgr name beats the agent title)",
+    ),
     (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),
     (
         HelpKey::Cmds(&[Cmd::Stop, Cmd::Remove]),

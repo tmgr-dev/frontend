@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.25
+
+- `tmgr attach` has tabs, like Warp: a tab is a set of panes with its own split layout. Split right or below (`Ctrl-] |` / `Ctrl-] -`, `Ctrl-] s`) adds a pane to the current tab, and the New session dialog (`Ctrl-] c`) gets a "New tab" option next to Right, Below and Replace. The sidebar is grouped by tab: a tab with several panes shows a `▾ <name> (3)` header with its sessions under it (the folder · branch line stays under each session), a one-pane tab is a plain session row. Click a tab header or a one-pane row to switch every pane to that tab's layout; click a session inside a tab to switch to that tab and focus its pane. A session is in at most one tab. `Ctrl-] N` / `Ctrl-] P` go to the next / previous tab, `Ctrl-] ,` renames the tab (the name stays in tmgr attach, the sessions keep their names) and `Ctrl-] &` closes the tab while its sessions keep running; all of them are in `?` and the command palette. `Ctrl-] g` now switches the sidebar between grouping by tab and grouping by repo. Every tab's layout is saved and restored on the next attach; the layout saved by an older version opens as one tab. Not in a remote attach.
+
+## 1.0.24
+
+- `tmgr attach` counts your own time in each session and shows it in the sidebar as `you 12m`. Time counts only while the terminal window is focused, the session's pane is focused and you did something in the last 2 minutes (typing and reading are counted separately); it stops when the window loses focus, the Mac sleeps or you detach, and several attach windows on the same session never count twice. The runner stores only start and end times under its own folder, never what you type or see. Restart the runner after the update.
+- New `tmgr time` shows how long you spent in `tmgr attach`, per session, folder or task (`--by`), for today (`--today`) or since a date or age (`--since 2026-10-01`, `--since 7d`), with `--json`. It reads local files only, so it works with the runner stopped. Time of sessions bound to a cloud task is sent to that task by the attach client every few minutes and when you detach, only when the workspace has session time switched on, and never twice; it is sent again later if you were offline. `tmgr time sync off` keeps all time local, `tmgr time sync` shows the state, and `tmgr time idle <seconds>` (30 to 3600) sets how long without activity before time stops counting.
+
+## 1.0.23
+
+- Resume refuses an agent session whose folder was replaced by another directory or a symlink with `forbidden` "the folder of this session changed since it started", the same answer as for a shell session, both with and without a launch record. Before, the same case was refused later with `invalid_params` "approved folder changed".
+
+## 1.0.22
+
+- Resume (the play button in `tmgr attach`) works for agent sessions started before the launch record existed: the launch is rebuilt from the session's own record using your current profile, and when that is impossible the error says what to do. When the agent shim dies at start, the error now carries its last log lines, including a clear `no free terminal (pty) available` note when the machine has run out of terminals.
+
+## 1.0.21
+
+- `tmgr attach` shows the agent's own session title next to the sidebar entry and in the pane header, so names match what you see in Claude Code and Codex: the title you set with `/rename` in Claude Code (or the Codex thread name) wins; Claude's automatic title is shown dim to mark it as automatic. A name you set in tmgr (`Ctrl-] r`, `--name`, `tmgr rename`) always wins and is never overwritten, and renaming in tmgr does not rename the agent session. The label is display only: commands still take the tmgr name, and the status bar keeps showing it. Titles are read incrementally, only for the visible sessions and every few seconds, from the agent's own transcript in the session's sandbox home (Claude `.claude/projects/...`, Codex `.codex/session_index.jsonl`); only the session's own sandbox home is read, never your real `~/.claude` or `~/.codex`. Escape sequences and control characters are stripped and long titles are truncated. Not shown in a remote attach.
+- The sidebar age now carries the state word, for example `waiting 2s` or `working 15s`, instead of the bare `2s`. When the sidebar is narrow the state word is shortened first (`work… 15s`) and finally dropped; the age is never cut.
+
 ## 1.0.20
 
 - `tmgr attach` sidebar shows where each session works: the live folder of the agent process (it follows a `cd`) and the git branch, read from `.git/HEAD` without running git (worktrees and detached HEAD are handled; no branch outside a repo). Sessions in the same repo or worktree are grouped under a `▾ <path> · <branch>` header; a lone session gets a dim `path · branch` line under its name. Click the header, or focus it with the arrows and press Enter, to fold the group (a folded header shows the count, and turns yellow when a hidden session is blocked). Groups keep their order, so a session that changes folder never makes the list jump, and `Ctrl-] n` / `Ctrl-] p` follow the sidebar order and skip folded groups. `Ctrl-] g` switches grouping off and on (also in the command palette and `?`). The list refreshes every few seconds and only for the sessions that are visible. Not shown in a remote attach.
