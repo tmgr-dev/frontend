@@ -27,7 +27,7 @@ export const canCompactConversation = (
 ): boolean =>
 	!blocked &&
 	messages.filter((m) => m.status === 'done').length >= 2 &&
-	!messages.some((m) => m.status === 'pending');
+	!messages.some((m) => m.status !== 'done' && m.status !== 'failed');
 
 export const compactErrorMessage = (
 	status: number | undefined,
