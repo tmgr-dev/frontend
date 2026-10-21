@@ -11,6 +11,7 @@ pub const USER_CAP: usize = 1500;
 pub const REPLY_CAP: usize = 8000;
 const DIR_CAP: usize = 512;
 const ROLLOUT_CHECK: usize = 24;
+const WALK_BUDGET: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Turn {
@@ -24,7 +25,8 @@ pub struct Turn {
 struct Draft {
     start: u64,
     text: String,
-    asked: Vec<String>,
+    asked: Vec<(String, String)>,
+    pending: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -43,7 +45,12 @@ pub struct Tailer {
 
 enum Line {
     Human(String),
-    Agent { text: String, asked: Vec<String> },
+    Agent {
+        text: String,
+        asked: Vec<(String, String)>,
+        tools: Vec<String>,
+    },
+    Results(Vec<String>),
 }
 
 impl Tailer {
@@ -84,7 +91,7 @@ impl Tailer {
                 break;
             }
         }
-        if settled && self.at_end() {
+        if settled && self.at_end() && self.draft.as_ref().is_some_and(|d| d.pending.is_empty()) {
             return self.close();
         }
         None
@@ -139,6 +146,11 @@ impl Tailer {
             }
             if line.len() <= LINE_CAP {
                 self.line(line, offset);
+            } else if self.format == Format::Claude {
+                let head = &line[..4096];
+                if contains(head, b"\"type\":\"user\"") && !contains(head, b"tool_result") {
+                    self.human(String::new(), offset);
+                }
             }
         }
         self.consumed += at as u64;
@@ -147,27 +159,40 @@ impl Tailer {
 
     fn line(&mut self, line: &[u8], offset: u64) {
         match parse(self.format, line) {
-            Some(Line::Human(text)) => {
-                self.draft = None;
-                self.user = clip_head(&text, USER_CAP);
-                self.user_at = Some(offset);
-            }
-            Some(Line::Agent { text, asked }) => {
+            Some(Line::Human(text)) => self.human(text, offset),
+            Some(Line::Agent { text, asked, tools }) => {
                 let d = self.draft.get_or_insert_with(|| Draft {
                     start: self.user_at.unwrap_or(offset),
                     text: String::new(),
                     asked: Vec::new(),
+                    pending: Vec::new(),
                 });
                 if !text.is_empty() {
                     if !d.text.is_empty() {
                         d.text.push_str("\n\n");
                     }
                     d.text.push_str(&text);
+                    if d.text.len() > REPLY_CAP * 8 {
+                        d.text = clip_tail(&d.text, REPLY_CAP * 2);
+                    }
                 }
                 d.asked.extend(asked);
+                d.pending.extend(tools);
+            }
+            Some(Line::Results(ids)) => {
+                if let Some(d) = self.draft.as_mut() {
+                    d.pending.retain(|p| !ids.contains(p));
+                    d.asked.retain(|(id, _)| !ids.contains(id));
+                }
             }
             None => {}
         }
+    }
+
+    fn human(&mut self, text: String, offset: u64) {
+        self.draft = None;
+        self.user = clip_head(&text, USER_CAP);
+        self.user_at = Some(offset);
     }
 
     fn close(&mut self) -> Option<Turn> {
@@ -177,7 +202,7 @@ impl Tailer {
             start: d.start,
             user: self.user.clone(),
             text: clip_tail(&d.text, REPLY_CAP),
-            asked: d.asked,
+            asked: d.asked.into_iter().map(|(_, q)| q).collect(),
         })
     }
 }
@@ -212,11 +237,13 @@ fn claude_line(v: &Value) -> Option<Line> {
             match content {
                 Value::String(s) => Some(Line::Human(s.clone())),
                 Value::Array(blocks) => {
-                    if blocks
+                    let results: Vec<String> = blocks
                         .iter()
-                        .any(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
-                    {
-                        return None;
+                        .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+                        .filter_map(|b| b.get("tool_use_id")?.as_str().map(str::to_string))
+                        .collect();
+                    if !results.is_empty() {
+                        return Some(Line::Results(results));
                     }
                     let text = join_text(blocks, "text");
                     (!text.is_empty()).then_some(Line::Human(text))
@@ -226,22 +253,36 @@ fn claude_line(v: &Value) -> Option<Line> {
         }
         "assistant" => {
             let blocks = content.as_array()?;
-            let asked = blocks
+            let mut asked = Vec::new();
+            let mut tools = Vec::new();
+            for b in blocks
                 .iter()
-                .filter(|b| {
-                    b.get("type").and_then(Value::as_str) == Some("tool_use")
-                        && b.get("name").and_then(Value::as_str) == Some("AskUserQuestion")
-                })
-                .filter_map(|b| b.get("input")?.get("questions")?.as_array())
-                .flatten()
-                .filter_map(|q| q.get("question")?.as_str())
-                .map(super::rules::collapse)
-                .filter(|q| !q.is_empty())
-                .map(|q| clip_tail(&q, super::rules::MAX_LEN))
-                .collect();
+                .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use"))
+            {
+                let id = b.get("id").and_then(Value::as_str).unwrap_or_default();
+                if b.get("name").and_then(Value::as_str) != Some("AskUserQuestion") {
+                    tools.push(id.to_string());
+                    continue;
+                }
+                let questions = b
+                    .get("input")
+                    .and_then(|i| i.get("questions"))
+                    .and_then(Value::as_array);
+                for q in questions.into_iter().flatten() {
+                    let text = q
+                        .get("question")
+                        .and_then(Value::as_str)
+                        .map(super::rules::collapse)
+                        .filter(|q| !q.is_empty());
+                    if let Some(text) = text {
+                        asked.push((id.to_string(), clip_tail(&text, super::rules::MAX_LEN)));
+                    }
+                }
+            }
             Some(Line::Agent {
                 text: join_text(blocks, "text"),
                 asked,
+                tools,
             })
         }
         _ => None,
@@ -258,6 +299,7 @@ fn codex_line(v: &Value) -> Option<Line> {
             Some(Line::Agent {
                 text: join_text(payload.get("content")?.as_array()?, "output_text"),
                 asked: Vec::new(),
+                tools: Vec::new(),
             })
         }
         _ => None,
@@ -274,9 +316,16 @@ fn join_text(blocks: &[Value], kind: &str) -> String {
 }
 
 pub fn locate_codex_rollout(home: &Path, id: Option<&str>, cwd: &str) -> Option<PathBuf> {
-    let root = home.join(".codex").join("sessions");
+    let codex = home.join(".codex");
+    let root = codex.join("sessions");
+    for dir in [&codex, &root] {
+        if !std::fs::symlink_metadata(dir).is_ok_and(|m| m.is_dir()) {
+            return None;
+        }
+    }
     let mut files = Vec::new();
-    collect(&root, 0, &mut files);
+    let mut budget = WALK_BUDGET;
+    collect(&root, 0, &mut files, &mut budget);
     files.sort();
     files.reverse();
     match id {
@@ -295,17 +344,21 @@ pub fn locate_codex_rollout(home: &Path, id: Option<&str>, cwd: &str) -> Option<
     }
 }
 
-fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>) {
+fn collect(dir: &Path, depth: usize, out: &mut Vec<PathBuf>, budget: &mut usize) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in rd.take(DIR_CAP).flatten() {
+        if *budget == 0 {
+            return;
+        }
+        *budget -= 1;
         let path = entry.path();
         let Ok(ft) = entry.file_type() else {
             continue;
         };
         if ft.is_dir() && depth < 3 {
-            collect(&path, depth + 1, out);
+            collect(&path, depth + 1, out, budget);
         } else if ft.is_file()
             && path
                 .file_name()

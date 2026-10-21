@@ -2,7 +2,7 @@ use super::attach_title::AgentSrc;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use tmgr_runner::questions::haiku::find_claude;
-use tmgr_runner::questions::{transcript_path, Entry, Scanner, SessionSrc, Store};
+use tmgr_runner::questions::{transcript_path, Entry, Scanner, SessionSrc, Status, Store};
 use tmgr_runner::resume::id_from_log;
 use tmgr_runner::wire::now_ms;
 
@@ -51,7 +51,9 @@ pub(super) fn questioner(
     mut send: impl FnMut(Vec<Entry>) -> bool,
 ) {
     let store = Store::new(&runner_dir);
-    let mut scanner = Scanner::new(store.clone(), claude, std::env::temp_dir());
+    let workdir = store.dir().join("haiku-cwd");
+    let claude = claude.filter(|_| tmgr_ipc::dirs::ensure_private_dir(&workdir).is_ok());
+    let mut scanner = Scanner::new(store.clone(), claude, workdir);
     for batch in jobs {
         if !batch.is_empty() {
             if let Ok(Some(_lock)) = store.try_lock() {
@@ -60,6 +62,7 @@ pub(super) fn questioner(
             }
         }
         let mut entries = store.entries(None);
+        entries.sort_by_key(|e| e.status != Status::Open);
         entries.truncate(MAX_ENTRIES);
         if !send(entries) {
             return;

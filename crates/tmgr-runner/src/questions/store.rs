@@ -219,14 +219,14 @@ impl Store {
             Some(s) => self.path(s).into_iter().collect(),
             None => std::fs::read_dir(&self.dir)
                 .map(|rd| {
-                    rd.take(MAX_FILES)
-                        .flatten()
+                    rd.flatten()
                         .map(|e| e.path())
                         .filter(|p| {
                             p.file_name()
                                 .and_then(|n| n.to_str())
                                 .is_some_and(|n| n.starts_with("s_") && n.ends_with(".json"))
                         })
+                        .take(MAX_FILES)
                         .collect()
                 })
                 .unwrap_or_default(),

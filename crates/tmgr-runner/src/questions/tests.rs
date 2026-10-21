@@ -568,3 +568,72 @@ fn context_lines_pick_the_paragraphs_around_the_question() {
         vec!["before", "", "Should we go on?", "please say", "", "after"]
     );
 }
+
+fn ask(id: &str, q: &str) -> String {
+    serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":"AskUserQuestion","input":{"questions":[{"question":q}]}}]}}).to_string()
+}
+
+fn tool(id: &str) -> String {
+    serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","id":id,"name":"Bash","input":{}}]}}).to_string()
+}
+
+fn result(id: &str) -> String {
+    serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":id,"content":"ok"}]}}).to_string()
+}
+
+#[test]
+fn an_answered_ask_user_question_is_dropped() {
+    let d = tempfile::tempdir().unwrap();
+    let (mut t, p) = tailer(d.path(), "a.jsonl", None);
+    append(
+        &p,
+        &[
+            user("go"),
+            ask("t1", "Pick one?"),
+            result("t1"),
+            agent("Thanks, done."),
+        ],
+    );
+    let turn = t.poll(true).unwrap();
+    assert!(turn.asked.is_empty());
+}
+
+#[test]
+fn a_turn_with_a_running_tool_is_not_closed() {
+    let d = tempfile::tempdir().unwrap();
+    let (mut t, p) = tailer(d.path(), "a.jsonl", None);
+    append(
+        &p,
+        &[user("go"), agent("Should I run the tests?"), tool("t9")],
+    );
+    assert_eq!(t.poll(true), None);
+    append(&p, &[result("t9"), agent("They pass.")]);
+    let turn = t.poll(true).unwrap();
+    assert_eq!(turn.text, "Should I run the tests?\n\nThey pass.");
+}
+
+#[test]
+fn a_huge_human_line_still_ends_the_turn() {
+    let d = tempfile::tempdir().unwrap();
+    let (mut t, p) = tailer(d.path(), "a.jsonl", None);
+    let big =
+        serde_json::json!({"type":"user","message":{"content":"x".repeat(1_200_000)}}).to_string();
+    append(&p, &[user("go"), agent("Which one?"), big, agent("Fine.")]);
+    assert_eq!(t.poll(true).unwrap().text, "Fine.");
+}
+
+#[test]
+fn a_second_window_does_not_reclassify_a_closed_turn() {
+    let rig = Rig::new();
+    append(
+        &rig.transcript,
+        &[user("go"), agent("Should I also update the docs?")],
+    );
+    let mut a = rig.scanner(None);
+    let mut b = rig.scanner(None);
+    a.scan(&[rig.src(false)], 1000);
+    b.scan(&[rig.src(false)], 1000);
+    a.scan(&[rig.src(true)], 1001);
+    b.scan(&[rig.src(true)], 1002);
+    assert_eq!(rig.texts().len(), 1);
+}

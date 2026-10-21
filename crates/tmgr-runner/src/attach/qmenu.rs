@@ -5,6 +5,7 @@ use super::theme::colors;
 use super::title::clip;
 use super::view::{contains, header_button, Control, MouseOut, ViewState};
 use crate::questions::{context_lines, short_age, Entry, Status};
+use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Margin, Rect};
 use ratatui::style::{Modifier, Style};
@@ -200,7 +201,14 @@ impl ViewState {
         if entries == self.questions {
             return false;
         }
+        let keep = self.qmenu.as_ref().and_then(|_| self.qmenu_selected());
         self.questions = entries;
+        if let (Some(id), Some(menu)) = (keep, self.qmenu.clone()) {
+            let at = self.qmenu_rows(&menu).iter().position(|e| e.q.id == id);
+            if let (Some(at), Some(m)) = (at, self.qmenu.as_mut()) {
+                m.sel = at;
+            }
+        }
         true
     }
 
@@ -435,10 +443,13 @@ pub(crate) fn qgeom(area: Rect, st: &ViewState) -> Option<QGeom> {
         (true, Some(e)) => context_block(e, usize::from(inner_w.saturating_sub(2))),
         _ => Vec::new(),
     };
-    let visible = n.clamp(1, MAX_ROWS);
-    let max_h = area.height;
-    let want_h = 2 + 1 + visible + context.len() + 1 + 1;
-    let h = u16::try_from(want_h).unwrap_or(u16::MAX).min(max_h);
+    let wanted_rows = n.clamp(1, MAX_ROWS);
+    let want_h = 2 + 1 + wanted_rows + context.len() + 1 + 1;
+    let h = u16::try_from(want_h).unwrap_or(u16::MAX).min(area.height);
+    let fixed = 5;
+    let visible = wanted_rows.min(usize::from(h).saturating_sub(fixed).max(1));
+    let mut context = context;
+    context.truncate(usize::from(h).saturating_sub(fixed + visible));
     let rect = Rect::new(
         area.x + (area.width - w) / 2,
         area.y + (area.height - h) / 2,
@@ -533,7 +544,7 @@ pub(crate) fn draw_qmenu(buf: &mut Buffer, area: Rect, st: &ViewState) {
         .as_deref()
         .and_then(|s| st.sessions.iter().find(|r| r.id == s))
     {
-        Some(r) => format!(" Questions · {} ", r.name),
+        Some(r) => format!(" Questions · {} ", sanitize_text(&r.name)),
         None => " Questions ".to_string(),
     };
     Block::bordered()

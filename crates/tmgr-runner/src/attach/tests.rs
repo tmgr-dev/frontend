@@ -5356,4 +5356,43 @@ mod questions_ui {
             term.draw(|f| render(f, &v, &Screens::default())).unwrap();
         }
     }
+
+    #[test]
+    fn the_selection_follows_the_question_when_new_ones_arrive() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        v.edit_qmenu(b"j");
+        assert_eq!(v.edit_qmenu(b"\r"), QEdit::Answer("q2".into()));
+        v.open_questions(Some("a".into()));
+        v.edit_qmenu(b"j");
+        let mut next = v.questions.clone();
+        next.insert(0, entry("q0", "a", "Brand new?", Status::Open, 1));
+        v.set_questions(next);
+        assert_eq!(v.edit_qmenu(b"i"), QEdit::Ignore("q2".into()));
+    }
+
+    #[test]
+    fn the_selected_row_stays_visible_on_a_short_terminal() {
+        let mut v = with_questions(140);
+        let mut many = v.questions.clone();
+        for i in 0..10 {
+            many.push(entry(
+                &format!("n{i}"),
+                "a",
+                &format!("Extra question {i}?"),
+                Status::Open,
+                10 + i,
+            ));
+        }
+        v.set_questions(many);
+        v.open_questions(Some("a".into()));
+        for _ in 0..8 {
+            v.edit_qmenu(b"j");
+        }
+        let area = Rect::new(0, 0, 140, 10);
+        let g = qgeom(area, &v).unwrap();
+        let sel = v.qmenu.as_ref().unwrap().sel;
+        assert!(g.rows.iter().any(|r| r.idx == sel));
+        assert!(g.rows.iter().all(|r| r.y < g.hint_y));
+    }
 }

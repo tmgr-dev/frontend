@@ -59,6 +59,7 @@ pub fn classify(
             "--output-format",
             "text",
             "--no-session-persistence",
+            "--safe-mode",
             "--tools",
             "",
         ])
@@ -78,12 +79,13 @@ pub fn classify(
         }
     });
     let mut stdout = child.stdout.take();
-    let reader = std::thread::spawn(move || {
+    let (out_tx, out_rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let mut buf = Vec::new();
         if let Some(o) = stdout.as_mut() {
             let _ = o.take(OUT_CAP).read_to_end(&mut buf);
         }
-        buf
+        let _ = out_tx.send(buf);
     });
     let deadline = Instant::now() + timeout;
     let status = loop {
@@ -99,11 +101,13 @@ pub fn classify(
         let _ = child.kill();
         let _ = child.wait();
         let _ = writer.join();
-        let _ = reader.join();
         return Err(Failure::Timeout);
     };
+    unsafe { libc::killpg(pgid, libc::SIGKILL) };
     let _ = writer.join();
-    let out = reader.join().unwrap_or_default();
+    let out = out_rx
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap_or_default();
     if !status.success() {
         return Err(Failure::Exit(status.code()));
     }

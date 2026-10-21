@@ -78,7 +78,9 @@ impl Scanner {
         };
         let mut file = self.store.load(&src.id);
         let shown = path.to_string_lossy();
-        let fresh = self.tails.get(&src.id).is_none_or(|t| !t.is_for(&path));
+        let fresh = self.tails.get(&src.id).is_none_or(|t| {
+            !t.is_for(&path) || (file.transcript == shown && file.offset > t.resume_offset())
+        });
         if fresh {
             let resume = (file.transcript == shown).then_some(file.offset);
             self.tails.insert(
