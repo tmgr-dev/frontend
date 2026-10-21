@@ -36,23 +36,33 @@ pub struct KindOpt {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TaskOpt {
+    pub key: String,
+    pub title: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NewRequest {
     pub kind: SpawnKind,
     pub folder: String,
     pub name: Option<String>,
     pub place: Place,
+    pub task: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NewEdit {
     Editing,
     Submit(NewRequest),
+    Approve,
     Cancel,
 }
 
 const MAX_FOLDER: usize = 512;
 const MAX_COMMAND: usize = 512;
 const MAX_NAME: usize = 64;
+const MAX_TASK: usize = 128;
+const MAX_TASK_OPTS: usize = 200;
 const MAX_ENTRIES: usize = 500;
 const MAX_WIDTH: u16 = 72;
 const LABEL_W: u16 = 10;
@@ -74,6 +84,7 @@ impl Place {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NewField {
     Kind,
+    Task,
     Command,
     Folder,
     Name,
@@ -93,6 +104,11 @@ pub struct NewSession {
     pub error_hint: Option<String>,
     pub focus: NewField,
     pub taken_names: Vec<String>,
+    pub task: String,
+    pub tasks: Vec<TaskOpt>,
+    pub task_at: usize,
+    pub task_note: Option<String>,
+    pub review: Option<Vec<String>>,
     pub home: PathBuf,
     pub list_dir: fn(&Path) -> Vec<String>,
 }
@@ -110,6 +126,25 @@ fn list_dirs(path: &Path) -> Vec<String> {
         .filter(|e| e.path().is_dir())
         .map(|e| strip_control(&e.file_name().to_string_lossy()))
         .collect()
+}
+
+fn looks_like_ref(s: &str) -> bool {
+    let digits =
+        |t: &str, max: usize| (1..=max).contains(&t.len()) && t.bytes().all(|b| b.is_ascii_digit());
+    if let Some(rest) = s.strip_prefix('#') {
+        return digits(rest, 9);
+    }
+    match s.split_once('-') {
+        Some((code, seq)) => {
+            code.len() <= 10
+                && code.bytes().next().is_some_and(|b| b.is_ascii_uppercase())
+                && code
+                    .bytes()
+                    .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+                && digits(seq, 7)
+        }
+        None => digits(s, 9),
+    }
 }
 
 fn expand_home(s: &str, home: &Path) -> PathBuf {
@@ -156,27 +191,70 @@ impl NewSession {
             .is_some_and(|k| matches!(k.spawn, SpawnKind::Custom { .. }))
     }
 
+    fn is_agent(&self) -> bool {
+        self.kinds
+            .get(self.kind)
+            .is_some_and(|k| matches!(k.spawn, SpawnKind::Agent { .. }))
+    }
+
+    pub fn task_matches(&self) -> Vec<&TaskOpt> {
+        let query = self.task.trim();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let mut hits = tmgr_fuzzy::rank(query, self.tasks.iter().collect(), |t| {
+            format!("{} {}", t.key, t.title)
+        });
+        if let Some(at) = hits.iter().position(|t| t.key.eq_ignore_ascii_case(query)) {
+            let exact = hits.remove(at);
+            hits.insert(0, exact);
+        }
+        hits
+    }
+
+    fn chosen_task(&self) -> Result<Option<String>, String> {
+        let query = self.task.trim();
+        if query.is_empty() || !self.is_agent() {
+            return Ok(None);
+        }
+        let hits = self.task_matches();
+        let exact = hits
+            .first()
+            .is_some_and(|t| t.key.eq_ignore_ascii_case(query));
+        if looks_like_ref(query) && !exact {
+            return Ok(Some(query.to_string()));
+        }
+        if let Some(t) = hits.get(self.task_at.min(hits.len().saturating_sub(1))) {
+            return Ok(Some(t.key.clone()));
+        }
+        if looks_like_ref(query) {
+            return Ok(Some(query.to_string()));
+        }
+        Err("no such task, type a key like TM-12 or #12".into())
+    }
+
     fn fields(&self) -> Vec<NewField> {
         let mut f = vec![NewField::Kind];
         if self.is_custom() {
             f.push(NewField::Command);
         }
-        f.extend([
-            NewField::Folder,
-            NewField::Name,
-            NewField::Where,
-            NewField::Start,
-        ]);
+        f.push(NewField::Folder);
+        if self.is_agent() {
+            f.push(NewField::Task);
+        }
+        f.extend([NewField::Name, NewField::Where, NewField::Start]);
         f
     }
 
     fn clear_error(&mut self) {
+        self.task_at = 0;
         self.error = None;
         self.error_hint = None;
     }
 
     fn text_field(&mut self) -> Option<(&mut String, usize)> {
         match self.focus {
+            NewField::Task => Some((&mut self.task, MAX_TASK)),
             NewField::Command => Some((&mut self.command, MAX_COMMAND)),
             NewField::Folder => Some((&mut self.folder, MAX_FOLDER)),
             NewField::Name => Some((&mut self.name, MAX_NAME)),
@@ -212,6 +290,18 @@ impl NewSession {
                         (self.kind + n - 1) % n
                     };
                     self.clear_error();
+                }
+            }
+            NewField::Task => {
+                let n = self.task_matches().len();
+                if n > 0 {
+                    let at = self.task_at.min(n - 1);
+                    self.clear_error();
+                    self.task_at = if forward {
+                        (at + 1) % n
+                    } else {
+                        (at + n - 1) % n
+                    };
                 }
             }
             NewField::Where => {
@@ -321,6 +411,7 @@ impl NewSession {
                 return Err((NewField::Name, "sh-N names are reserved for shells".into()));
             }
         }
+        let task = self.chosen_task().map_err(|m| (NewField::Task, m))?;
         let spawn = match &kind.spawn {
             SpawnKind::Custom { .. } => {
                 let line = self.command.trim();
@@ -341,6 +432,7 @@ impl NewSession {
             folder,
             name: (!name.is_empty()).then(|| name.to_string()),
             place: self.place,
+            task,
         })
     }
 }
@@ -419,12 +511,22 @@ fn notes(ns: &NewSession, area_width: u16) -> Notes {
     }
 }
 
+fn review_wrapped(lines: &[String], width: u16) -> Vec<String> {
+    let width = usize::from(MAX_WIDTH.min(width)).saturating_sub(4).max(1);
+    lines
+        .iter()
+        .flat_map(|l| wrap(&strip_control(&sanitize_text(l)), width, 3))
+        .collect()
+}
+
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let w = MAX_WIDTH.min(area.width);
     let n = notes(ns, area.width);
-    let h = u16::try_from(ns.fields().len() + 6 + n.error_h() + n.hint_h())
-        .unwrap_or(u16::MAX)
-        .min(area.height);
+    let body = match &ns.review {
+        Some(lines) => review_wrapped(lines, area.width).len() + 4,
+        None => ns.fields().len() + n.error_h() + n.hint_h() + 6,
+    };
+    let h = u16::try_from(body).unwrap_or(u16::MAX).min(area.height);
     Rect::new(
         area.x + (area.width - w) / 2,
         area.y + (area.height - h) / 2,
@@ -438,6 +540,9 @@ fn inner(rect: Rect) -> Rect {
 }
 
 fn field_rows(ns: &NewSession, inner: Rect) -> Vec<(NewField, Rect)> {
+    if ns.review.is_some() {
+        return Vec::new();
+    }
     ns.fields()
         .into_iter()
         .zip(0u16..)
@@ -493,6 +598,7 @@ fn option_labels(ns: &NewSession, field: NewField) -> (Vec<String>, usize) {
 fn field_label(f: NewField) -> &'static str {
     match f {
         NewField::Kind => "Kind",
+        NewField::Task => "Task",
         NewField::Command => "Command",
         NewField::Folder => "Folder",
         NewField::Name => "Name",
@@ -503,10 +609,31 @@ fn field_label(f: NewField) -> &'static str {
 
 fn field_text(ns: &NewSession, f: NewField) -> Option<&str> {
     match f {
+        NewField::Task => Some(&ns.task),
         NewField::Command => Some(&ns.command),
         NewField::Folder => Some(&ns.folder),
         NewField::Name => Some(&ns.name),
         _ => None,
+    }
+}
+
+fn task_hint(ns: &NewSession) -> String {
+    let hits = ns.task_matches();
+    if ns.task.trim().is_empty() {
+        return match &ns.task_note {
+            Some(n) => strip_control(&sanitize_text(n)),
+            None => "optional, type a key or words".into(),
+        };
+    }
+    match hits.get(ns.task_at.min(hits.len().saturating_sub(1))) {
+        Some(t) => format!(
+            "  -> {} {} ({}/{})",
+            strip_control(&sanitize_text(&t.key)),
+            strip_control(&sanitize_text(&t.title)),
+            ns.task_at.min(hits.len() - 1) + 1,
+            hits.len()
+        ),
+        None => "  (no match)".into(),
     }
 }
 
@@ -521,10 +648,37 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
     Clear.render(rect, buf);
     Block::bordered()
         .border_type(BorderType::Rounded)
-        .title(" New session ")
+        .title(if ns.review.is_some() {
+            " Start this run? "
+        } else {
+            " New session "
+        })
         .render(rect, buf);
     let inner = inner(rect);
     if inner.is_empty() {
+        return;
+    }
+    if let Some(lines) = &ns.review {
+        let lines = review_wrapped(lines, area.width);
+        for (i, text) in lines.iter().enumerate() {
+            let y = inner.y.saturating_add(u16::try_from(i).unwrap_or(u16::MAX));
+            if y < inner.bottom() {
+                put(buf, inner.x, y, text, Style::new(), inner.width);
+            }
+        }
+        let y = inner
+            .y
+            .saturating_add(u16::try_from(lines.len() + 1).unwrap_or(u16::MAX));
+        if y < inner.bottom() {
+            put(
+                buf,
+                inner.x,
+                y,
+                "y starts the run, Esc goes back",
+                dim(),
+                inner.width,
+            );
+        }
         return;
     }
     let rows = field_rows(ns, inner);
@@ -585,6 +739,18 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
                     Style::new(),
                     row.right().saturating_sub(x),
                 );
+                if *f == NewField::Task {
+                    let used = tail.width() as u16;
+                    let hx = x.saturating_add(used);
+                    put(
+                        buf,
+                        hx,
+                        row.y,
+                        &task_hint(ns),
+                        dim(),
+                        row.right().saturating_sub(hx),
+                    );
+                }
             }
         }
     }
@@ -621,7 +787,11 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
             buf,
             inner.x,
             line(help_at),
-            "Enter starts, Esc cancels",
+            if ns.task.trim().is_empty() {
+                "Enter starts, Esc cancels"
+            } else {
+                "Enter shows the run to confirm, Esc cancels"
+            },
             dim(),
             inner.width,
         );
@@ -631,7 +801,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
 pub(crate) fn new_session_cursor(ns: &NewSession, area: Rect) -> Option<(u16, u16)> {
     let rect = new_session_rect(area, ns);
     let inner = inner(rect);
-    if rect.is_empty() || inner.is_empty() {
+    if rect.is_empty() || inner.is_empty() || ns.review.is_some() {
         return None;
     }
     let (_, row) = field_rows(ns, inner)
@@ -667,9 +837,38 @@ impl ViewState {
             error_hint: None,
             focus: NewField::Kind,
             taken_names: self.sessions.iter().map(|s| s.name.clone()).collect(),
+            task: String::new(),
+            tasks: self.new_tasks.clone(),
+            task_at: 0,
+            task_note: self.new_tasks_note.clone(),
+            review: None,
             home,
             list_dir: list_dirs,
         });
+    }
+
+    pub fn set_new_tasks(&mut self, mut tasks: Vec<TaskOpt>, note: Option<String>) {
+        tasks.truncate(MAX_TASK_OPTS);
+        self.new_tasks = tasks;
+        self.new_tasks_note = note;
+        if let Some(ns) = self.new_session.as_mut() {
+            ns.tasks = self.new_tasks.clone();
+            ns.task_note = self.new_tasks_note.clone();
+        }
+    }
+
+    pub fn review_fits(&self, area: Rect) -> bool {
+        self.new_session
+            .as_ref()
+            .and_then(|ns| ns.review.as_ref())
+            .is_some_and(|lines| {
+                review_wrapped(lines, area.width).len() + 4 <= usize::from(area.height)
+            })
+    }
+
+    pub fn review_new_session(&mut self, mut ns: NewSession, lines: Vec<String>) {
+        ns.review = Some(lines);
+        self.new_session = Some(ns);
     }
 
     pub fn reopen_new_session(&mut self, ns: NewSession) {
@@ -682,8 +881,16 @@ impl ViewState {
     }
 
     pub fn edit_new_session(&mut self, data: &[u8]) -> NewEdit {
-        if self.new_session.is_none() {
+        let Some(ns) = self.new_session.as_mut() else {
             return NewEdit::Cancel;
+        };
+        if ns.review.is_some() {
+            if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
+                ns.review = None;
+            } else if matches!(data, b"y" | b"Y") {
+                return NewEdit::Approve;
+            }
+            return NewEdit::Editing;
         }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
             self.new_session = None;
@@ -754,7 +961,7 @@ impl ViewState {
     }
 
     pub fn insert_new_session_text(&mut self, data: &[u8]) {
-        let Some(ns) = self.new_session.as_mut() else {
+        let Some(ns) = self.new_session.as_mut().filter(|n| n.review.is_none()) else {
             return;
         };
         let text = String::from_utf8_lossy(data)
@@ -782,6 +989,9 @@ impl ViewState {
         if !contains(rect, ev.col, ev.row) {
             self.new_session = None;
             out.new_edit = Some(NewEdit::Cancel);
+            return out;
+        }
+        if ns.review.is_some() {
             return out;
         }
         let Some((field, row)) = field_rows(ns, inner(rect))
@@ -942,6 +1152,7 @@ mod tests {
             folder: "/".into(),
             name: None,
             place: Place::Below,
+            task: None,
         };
         v.remember_new_session(&req, "shell");
         let p = v.prefs();
@@ -1002,7 +1213,7 @@ mod tests {
     fn where_cycles_and_tab_moves_between_fields() {
         let h = tmp();
         let mut v = open("/", h.path());
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B");
         assert_eq!(ns(&mut v).focus, NewField::Where);
         v.edit_new_session(b"\x1b[C");
         assert_eq!(ns(&mut v).place, Place::Below);
@@ -1041,7 +1252,7 @@ mod tests {
         std::fs::create_dir(h.path().join("proj")).unwrap();
         let mut v = open("~/proj/", h.path());
         ns(&mut v).name = "  work ".into();
-        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[C");
+        v.edit_new_session(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[C");
         let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
             panic!("expected submit");
         };
@@ -1200,13 +1411,13 @@ mod tests {
         ns(&mut v).list_dir = fake_dirs;
         tab_in_folder(&mut v, "/r/zz");
         assert_eq!(ns(&mut v).folder, "/r/zz");
-        assert_eq!(ns(&mut v).focus, NewField::Name);
+        assert_eq!(ns(&mut v).focus, NewField::Task);
         tab_in_folder(&mut v, "/r/alp");
-        assert_eq!(ns(&mut v).focus, NewField::Name);
+        assert_eq!(ns(&mut v).focus, NewField::Task);
         tab_in_folder(&mut v, "relative");
-        assert_eq!(ns(&mut v).focus, NewField::Name);
+        assert_eq!(ns(&mut v).focus, NewField::Task);
         tab_in_folder(&mut v, "");
-        assert_eq!(ns(&mut v).focus, NewField::Name);
+        assert_eq!(ns(&mut v).focus, NewField::Task);
     }
 
     #[test]
@@ -1413,5 +1624,268 @@ mod tests {
                 vv.on_mouse(area, press(c, r), &|_| Default::default());
             }
         }
+    }
+
+    fn task(key: &str, title: &str) -> TaskOpt {
+        TaskOpt {
+            key: key.into(),
+            title: title.into(),
+        }
+    }
+
+    fn with_tasks(v: &mut ViewState) {
+        v.set_new_tasks(
+            vec![
+                task("TM-12", "Fix the login redirect"),
+                task("TM-30", "Login page copy"),
+                task("TM-7", "Rename the exporter"),
+            ],
+            None,
+        );
+    }
+
+    fn snapshot(name: &str, actual: &str) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src/attach/snapshots")
+            .join(format!("{name}.txt"));
+        if std::env::var_os("TMGR_UPDATE_SNAPSHOTS").is_some() {
+            std::fs::write(&path, format!("{actual}\n")).unwrap();
+        }
+        let expected = std::fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(expected.trim_end_matches('\n'), actual, "snapshot {name}");
+    }
+
+    #[test]
+    fn the_task_row_exists_for_agents_only() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(ns(&mut v).fields().contains(&NewField::Task));
+        v.edit_new_session(b"\x1b[D");
+        assert_eq!(ns(&mut v).kind, 3);
+        assert!(!ns(&mut v).fields().contains(&NewField::Task));
+        v.edit_new_session(b"\x1b[D");
+        assert_eq!(ns(&mut v).kind, 2);
+        assert!(!ns(&mut v).fields().contains(&NewField::Task));
+    }
+
+    #[test]
+    fn typing_words_picks_a_task_and_arrows_cycle_the_matches() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        assert_eq!(ns(&mut v).focus, NewField::Task);
+        v.edit_new_session(b"login");
+        let hits: Vec<String> = ns(&mut v)
+            .task_matches()
+            .iter()
+            .map(|t| t.key.clone())
+            .collect();
+        assert_eq!(hits.len(), 2);
+        assert!(hits.contains(&"TM-12".to_string()) && hits.contains(&"TM-30".to_string()));
+        let first = hits[0].clone();
+        v.edit_new_session(b"\x1b[C");
+        assert_eq!(ns(&mut v).task_at, 1);
+        v.edit_new_session(b"\x1b[C");
+        assert_eq!(ns(&mut v).task_at, 0);
+        v.edit_new_session(b"\x1b[D");
+        let last = hits[1].clone();
+        assert_eq!(ns(&mut v).task_at, 1);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected a submit");
+        };
+        assert_eq!(req.task.as_deref(), Some(last.as_str()));
+        assert_ne!(last, first);
+    }
+
+    #[test]
+    fn an_exact_key_wins_over_fuzzy_neighbours() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"tm-7");
+        let hits = ns(&mut v).task_matches();
+        assert_eq!(hits[0].key, "TM-7");
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected a submit");
+        };
+        assert_eq!(req.task.as_deref(), Some("TM-7"));
+    }
+
+    #[test]
+    fn a_typed_reference_outside_the_list_is_kept_and_junk_is_refused() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"ZZ-99");
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected a submit");
+        };
+        assert_eq!(req.task.as_deref(), Some("ZZ-99"));
+
+        let mut v = open("/", h.path());
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"nothing like it");
+        assert!(submit_err(&mut v).contains("no such task"));
+        assert_eq!(ns(&mut v).focus, NewField::Task);
+        v.edit_new_session(b"\x15");
+        assert!(matches!(v.edit_new_session(b"\r"), NewEdit::Submit(r) if r.task.is_none()));
+    }
+
+    #[test]
+    fn a_task_is_dropped_when_the_kind_is_not_an_agent() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        with_tasks(&mut v);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"TM-7");
+        v.edit_new_session(b"\x1b[A\x1b[A\x1b[D\x1b[D");
+        assert_eq!(ns(&mut v).kind, 2);
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected a submit");
+        };
+        assert_eq!(req.task, None);
+    }
+
+    #[test]
+    fn late_tasks_reach_the_open_form_and_the_next_one() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        assert!(ns(&mut v).tasks.is_empty());
+        with_tasks(&mut v);
+        assert_eq!(ns(&mut v).tasks.len(), 3);
+        v.set_new_tasks(Vec::new(), Some("local workspaces only".into()));
+        assert_eq!(
+            ns(&mut v).task_note.as_deref(),
+            Some("local workspaces only")
+        );
+        v.open_new_session("/".into(), kinds(), h.path().to_path_buf());
+        assert_eq!(
+            ns(&mut v).task_note.as_deref(),
+            Some("local workspaces only")
+        );
+    }
+
+    #[test]
+    fn the_review_waits_for_y_and_esc_goes_back_to_the_form() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        let dialog = v.new_session.take().unwrap();
+        v.review_new_session(dialog, vec!["Task:    TM-7 x".into()]);
+        assert_eq!(v.edit_new_session(b"abc\x1b[B"), NewEdit::Editing);
+        assert!(ns(&mut v).review.is_some() && ns(&mut v).name.is_empty());
+        assert_eq!(v.edit_new_session(b"\r"), NewEdit::Editing);
+        assert_eq!(v.edit_new_session(b"y"), NewEdit::Approve);
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Editing);
+        assert!(ns(&mut v).review.is_none());
+        assert_eq!(v.edit_new_session(b"\x1b"), NewEdit::Cancel);
+    }
+
+    #[test]
+    fn a_click_inside_the_review_does_nothing_and_outside_cancels() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        let dialog = v.new_session.take().unwrap();
+        v.review_new_session(dialog, vec!["Task:    TM-7 x".into()]);
+        let rect = new_session_rect(AREA, ns_of(&v));
+        let out = click(&mut v, rect.x + 3, rect.y + 1);
+        assert!(out.new_edit.is_none() && ns_of(&v).review.is_some());
+        let out = click(&mut v, 0, 0);
+        assert_eq!(out.new_edit, Some(NewEdit::Cancel));
+    }
+
+    #[test]
+    fn hostile_task_text_cannot_reach_the_screen_as_control_bytes() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        v.set_new_tasks(vec![task("TM-1", "evil\x1b[2Jtitle\x07")], None);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"evil");
+        let shown = draw(&v, 100, 20);
+        assert!(!shown.contains('\x1b') && !shown.contains('\x07'));
+        let dialog = v.new_session.take().unwrap();
+        v.review_new_session(dialog, vec!["Task:    TM-1 evil\x1b[2J".into()]);
+        let shown = draw(&v, 100, 20);
+        assert!(!shown.contains('\x1b'));
+    }
+
+    #[test]
+    fn snapshot_task_row() {
+        let h = tmp();
+        let mut v = open("~/code", h.path());
+        with_tasks(&mut v);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"login");
+        snapshot("new_session_task", &draw(&v, 80, 14));
+    }
+
+    #[test]
+    fn snapshot_task_row_without_tasks() {
+        let h = tmp();
+        let mut v = open("~/code", h.path());
+        v.set_new_tasks(
+            Vec::new(),
+            Some("local workspaces only, see `tmgr run`".into()),
+        );
+        snapshot("new_session_task_note", &draw(&v, 80, 14));
+    }
+
+    #[test]
+    fn snapshot_review() {
+        let h = tmp();
+        let mut v = open("~/code", h.path());
+        let dialog = v.new_session.take().unwrap();
+        v.review_new_session(
+            dialog,
+            vec![
+                "Task:    TM-12 Fix the login redirect".into(),
+                "Author:  you".into(),
+                "Repo:    ~/code/app".into(),
+                "Clone:   ~/code/app-worktrees/run/tm-12".into(),
+                "Branch:  tm-12-fix-the-login-redirect".into(),
+                "Agent:   claude-code in ask mode".into(),
+            ],
+        );
+        snapshot("new_session_review", &draw(&v, 80, 16));
+    }
+
+    #[test]
+    fn a_literal_key_beats_a_fuzzy_neighbour() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        v.set_new_tasks(vec![task("TM-170", "other"), task("TM-7", "seven")], None);
+        v.edit_new_session(b"\x1b[B\x1b[B");
+        v.edit_new_session(b"TM-70");
+        let NewEdit::Submit(req) = v.edit_new_session(b"\r") else {
+            panic!("expected a submit");
+        };
+        assert_eq!(req.task.as_deref(), Some("TM-70"));
+    }
+
+    #[test]
+    fn paste_during_the_review_is_ignored_and_a_short_screen_cannot_approve() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        let dialog = v.new_session.take().unwrap();
+        v.review_new_session(dialog, vec!["Clone:   ".to_string() + &"x".repeat(150)]);
+        v.insert_new_session_text(b"junk");
+        assert!(ns(&mut v).task.is_empty() && ns(&mut v).folder == "/");
+        assert!(v.review_fits(Rect::new(0, 0, 80, 20)));
+        assert!(!v.review_fits(Rect::new(0, 0, 80, 5)));
+    }
+
+    #[test]
+    fn a_long_review_line_wraps_instead_of_being_cut() {
+        let h = tmp();
+        let mut v = open("/", h.path());
+        let dialog = v.new_session.take().unwrap();
+        v.review_new_session(
+            dialog,
+            vec!["Clone:   /a/b/c/".to_string() + &"z".repeat(120)],
+        );
+        let shown = draw(&v, 80, 20);
+        assert!(shown.matches('z').count() >= 120);
     }
 }

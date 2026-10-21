@@ -1,0 +1,16 @@
+                                                                                
+                                                                                
+                                                                                
+    ╭ Start this run? ─────────────────────────────────────────────────────╮    
+    │ Task:    TM-12 Fix the login redirect                                │    
+    │ Author:  you                                                         │    
+    │ Repo:    ~/code/app                                                  │    
+    │ Clone:   ~/code/app-worktrees/run/tm-12                              │    
+    │ Branch:  tm-12-fix-the-login-redirect                                │    
+    │ Agent:   claude-code in ask mode                                     │    
+    │                                                                      │    
+    │ y starts the run, Esc goes back                                      │    
+    ╰──────────────────────────────────────────────────────────────────────╯    
+                                                                                
+                                                                                
+                                                                                

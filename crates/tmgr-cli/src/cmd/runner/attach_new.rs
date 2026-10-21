@@ -1,11 +1,13 @@
 use super::attach_shell::{can_split, shell_argv, size_hint};
 use super::ops::{login_preflight, run_create_req, run_create_run};
-use super::{bin, connect, rerr};
+use super::run_task::{self, Launch, Prepared};
+use super::{bin, connect, rerr, PermissionMode};
 use ratatui::layout::Rect;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Result};
 use tmgr_core::redact::redact_secrets;
+use tmgr_core::refs::parse_task_ref;
 use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo};
 use tmgr_runner::attach::{
     Action, KindOpt, NewRequest, NewSession, Place, SpawnKind, SplitDir, ViewState,
@@ -280,6 +282,7 @@ pub(super) struct NewFlow {
     next: u64,
     spawning: Option<Spawn>,
     failed: Option<NewSession>,
+    review: Option<TaskReview>,
 }
 
 impl NewFlow {
@@ -322,6 +325,28 @@ impl NewFlow {
         self.failed = Some(dialog.with_error(e.message, e.hint));
     }
 
+    pub(super) fn hold_review(&mut self, review: TaskReview) {
+        self.review = Some(review);
+    }
+
+    pub(super) fn take_review(&mut self) -> Option<TaskReview> {
+        self.review.take()
+    }
+
+    pub(super) fn review_is_none(&self) -> bool {
+        self.review.is_none()
+    }
+
+    pub(super) fn drop_review(&mut self) {
+        self.review = None;
+    }
+
+    pub(super) fn keep_review_if(&mut self, shown: bool) {
+        if !shown {
+            self.review = None;
+        }
+    }
+
     pub(super) fn take_failed(&mut self) -> Option<NewSession> {
         self.failed.take()
     }
@@ -345,6 +370,69 @@ pub(super) fn resolve_in_folder(name: &str, folder: &str) -> Result<String> {
     exe::resolve_exe(&name.to_string_lossy(), &path, Some(&base))
         .map(|p| p.display().to_string())
         .map_err(Error::not_found)
+}
+
+pub(super) struct TaskReview {
+    pub prepared: Prepared,
+    pub req: NewRequest,
+    pub target: String,
+    pub size: (u16, u16),
+}
+
+pub(super) fn in_agent() -> bool {
+    tmgr_link::privileged::RUN_ENV
+        .iter()
+        .any(|k| std::env::var_os(k).is_some())
+        || tmgr_core::local::agent_session_detected()
+}
+
+fn task_err(e: Error) -> SpawnErr {
+    SpawnErr {
+        message: clean(&e.message),
+        hint: e.hint.as_deref().map(clean),
+    }
+}
+
+fn guard(in_agent: bool) -> std::result::Result<(), SpawnErr> {
+    tmgr_link::privileged::check(in_agent, true).map_err(task_err)
+}
+
+fn task_profile(req: &NewRequest) -> std::result::Result<(&str, &str), SpawnErr> {
+    let (SpawnKind::Agent { profile }, Some(task)) = (&req.kind, req.task.as_deref()) else {
+        return Err(SpawnErr {
+            message: "a task needs an agent profile".into(),
+            hint: None,
+        });
+    };
+    parse_task_ref(task).map_err(task_err)?;
+    Ok((profile, task))
+}
+
+pub(super) fn prepare_task(
+    req: &NewRequest,
+    in_agent: bool,
+) -> std::result::Result<Prepared, SpawnErr> {
+    guard(in_agent)?;
+    let (profile, task) = task_profile(req)?;
+    run_task::prepare(None, None, task, profile, PermissionMode::Ask).map_err(task_err)
+}
+
+pub(super) fn execute_task(
+    review: &TaskReview,
+    in_agent: bool,
+) -> std::result::Result<SessionInfo, SpawnErr> {
+    guard(in_agent)?;
+    run_task::execute(
+        &review.prepared,
+        &Launch {
+            model: None,
+            name: review.req.name.as_deref(),
+            base: None,
+            size: review.size,
+        },
+    )
+    .map(|started| started.info)
+    .map_err(task_err)
 }
 
 pub(super) fn start_session(
@@ -377,7 +465,7 @@ pub(super) fn start_session(
 mod tests {
     use super::*;
     use tmgr_ipc::api::{State, StateKind};
-    use tmgr_runner::attach::SessionRow;
+    use tmgr_runner::attach::{NewEdit, SessionRow};
 
     fn req(kind: SpawnKind) -> NewRequest {
         NewRequest {
@@ -385,6 +473,7 @@ mod tests {
             folder: "/work/my project".into(),
             name: None,
             place: Place::Right,
+            task: None,
         }
     }
 
@@ -774,5 +863,110 @@ mod tests {
         view.insert_new_session_text(b"\x1b[200~ab\rcd\x1b[201~");
         let ns = view.new_session.as_ref().unwrap();
         assert_eq!(ns.folder, "/abcd");
+    }
+
+    fn task_req(kind: SpawnKind, task: &str) -> NewRequest {
+        NewRequest {
+            task: Some(task.into()),
+            ..req(kind)
+        }
+    }
+
+    #[test]
+    fn a_task_start_is_refused_inside_an_agent_session() {
+        let e = prepare_task(&task_req(agent("claude-code"), "TM-7"), true)
+            .err()
+            .unwrap();
+        assert!(e.message.contains("agent session"), "{}", e.message);
+        assert!(guard(true).is_err());
+        assert!(guard(false).is_ok());
+    }
+
+    #[test]
+    fn a_task_needs_an_agent_profile() {
+        for kind in [SpawnKind::Shell, SpawnKind::Custom { line: "vim".into() }] {
+            let e = prepare_task(&task_req(kind, "TM-7"), false).err().unwrap();
+            assert_eq!(e.message, "a task needs an agent profile");
+        }
+        assert!(prepare_task(&req(agent("claude-code")), false).is_err());
+    }
+
+    #[test]
+    fn only_a_plain_task_reference_reaches_the_run() {
+        for bad in [
+            "TM-7 --cwd /etc",
+            "--yes",
+            "../x",
+            "tm-7",
+            "TM-",
+            "TM-7\n",
+            "$(id)",
+            "",
+        ] {
+            let e = task_profile(&task_req(agent("claude-code"), bad)).unwrap_err();
+            assert!(
+                e.message.contains("invalid task reference"),
+                "{bad}: {}",
+                e.message
+            );
+        }
+        for good in ["TM-7", "#42", "ABC123-9999999"] {
+            let r = task_req(agent("codex"), good);
+            assert_eq!(task_profile(&r).unwrap(), ("codex", good));
+        }
+    }
+
+    fn held() -> TaskReview {
+        TaskReview {
+            prepared: run_task::sample(),
+            req: task_req(agent("claude-code"), "TM-7"),
+            target: "a".into(),
+            size: (80, 24),
+        }
+    }
+
+    #[test]
+    fn the_review_is_held_until_enter_and_dropped_when_the_form_goes_back() {
+        let mut view = ViewState::new(vec![row("a")], "t");
+        open(&mut view);
+        let mut flow = NewFlow::default();
+        let dialog = view.new_session.take().unwrap();
+        view.review_new_session(dialog, vec!["Task:    TM-7 x".into()]);
+        flow.hold_review(held());
+        flow.keep_review_if(
+            view.new_session
+                .as_ref()
+                .is_some_and(|n| n.review.is_some()),
+        );
+        assert!(flow.review.is_some());
+        assert_eq!(view.edit_new_session(b"\r"), NewEdit::Editing);
+        assert_eq!(view.edit_new_session(b"y"), NewEdit::Approve);
+        let review = flow.take_review().unwrap();
+        assert_eq!(review.req.task.as_deref(), Some("TM-7"));
+        assert!(flow.take_review().is_none());
+
+        flow.hold_review(held());
+        view.edit_new_session(b"\x1b");
+        flow.keep_review_if(
+            view.new_session
+                .as_ref()
+                .is_some_and(|n| n.review.is_some()),
+        );
+        assert!(flow.take_review().is_none());
+        assert!(view.new_session.is_some());
+    }
+
+    #[test]
+    fn a_fresh_form_forgets_an_old_review() {
+        let mut flow = NewFlow::default();
+        flow.hold_review(held());
+        flow.drop_review();
+        assert!(flow.take_review().is_none());
+    }
+
+    #[test]
+    fn executing_a_held_task_is_refused_inside_an_agent_session() {
+        let e = execute_task(&held(), true).unwrap_err();
+        assert!(e.message.contains("agent session"), "{}", e.message);
     }
 }

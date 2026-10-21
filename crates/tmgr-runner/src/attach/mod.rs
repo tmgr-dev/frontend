@@ -26,7 +26,9 @@ pub use chip::{chip_text, open_urls, TaskChip};
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
-pub use newsession::{KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind};
+pub use newsession::{
+    KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind, TaskOpt,
+};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, RowView};
 pub use place::{fit, probe, tail2, Loc};
 pub use qmenu::{find_question, goto_target, GotoMark, QButton, QEdit, QMenu};

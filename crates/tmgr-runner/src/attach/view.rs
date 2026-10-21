@@ -1,7 +1,7 @@
 use super::chip::TaskChip;
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
-use super::newsession::{NewEdit, NewSession, Place};
+use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::qmenu::{GotoMark, QEdit, QMenu};
@@ -136,6 +136,8 @@ pub struct ViewState {
     pub new_session: Option<NewSession>,
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
+    pub new_tasks: Vec<TaskOpt>,
+    pub new_tasks_note: Option<String>,
     pub sidebar_focus: Option<SidebarItem>,
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
@@ -356,6 +358,8 @@ impl ViewState {
             new_session: None,
             new_kind: None,
             new_place: None,
+            new_tasks: Vec::new(),
+            new_tasks_note: None,
             sidebar_focus: None,
             allow_new: true,
             locs: HashMap::new(),

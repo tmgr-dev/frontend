@@ -1,0 +1,14 @@
+    ╭ New session ─────────────────────────────────────────────────────────╮    
+    │   Kind     claude   codex   shell   custom                           │    
+    │   Folder  ~/code                                                     │    
+    │ > Task    login  -> TM-30 Login page copy (1/2)                      │    
+    │   Name                                                               │    
+    │   Where    New tab   Right   Below   Replace                         │    
+    │           [ Start ]                                                  │    
+    │                                                                      │    
+    │                                                                      │    
+    │                                                                      │    
+    │ Enter shows the run to confirm, Esc cancels                          │    
+    │                                                                      │    
+    │                                                                      │    
+    ╰──────────────────────────────────────────────────────────────────────╯    

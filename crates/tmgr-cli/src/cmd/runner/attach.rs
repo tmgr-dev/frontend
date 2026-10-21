@@ -1,8 +1,9 @@
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_goto::{fork_call, fork_name, goto_call, Found, FORK_PASTE_WAIT};
 use super::attach_new::{
-    default_folder, dialog_for, installed_kinds, kind_label, place_session, registers_shell, route,
-    spawn_size, start_session, NewFlow, Route, SpawnErr,
+    default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
+    prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
+    TaskReview,
 };
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_shell::{
@@ -12,8 +13,10 @@ use super::attach_shell::{
 };
 use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
+use super::attach_tasks;
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
+use super::run_task::Prepared;
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -43,7 +46,7 @@ use tmgr_runner::attach::{
     Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier,
     PaletteEdit, PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState,
     SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
-    ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -159,6 +162,14 @@ enum Msg {
     Resumed {
         old: String,
         result: std::result::Result<RestoredRun, String>,
+    },
+    Tasks(std::result::Result<Vec<TaskOpt>, String>),
+    TaskPrepared {
+        id: u64,
+        result: std::result::Result<Prepared, SpawnErr>,
+        req: NewRequest,
+        target: String,
+        size: (u16, u16),
     },
 }
 
@@ -376,6 +387,20 @@ impl App {
                 target,
             } => self.on_spawned(id, result, &req, &target),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
+            Msg::Tasks(result) => {
+                match result {
+                    Ok(tasks) => self.view.set_new_tasks(tasks, None),
+                    Err(note) => self.view.set_new_tasks(Vec::new(), Some(note)),
+                }
+                self.dirty = true;
+            }
+            Msg::TaskPrepared {
+                id,
+                result,
+                req,
+                target,
+                size,
+            } => self.on_task_prepared(id, result, req, target, size),
             Msg::Server(ServerMsg::Closed { reason }) => return Ok(Some(Exit::Lost(reason))),
             Msg::Server(msg) => {
                 if self.cache.apply(&msg).is_some() {
@@ -1111,7 +1136,13 @@ impl App {
             None => (None, 0),
         };
         let folder = default_folder(process_cwd(pid), start, std::env::current_dir().ok(), &home);
+        self.new_flow.drop_review();
         self.view.open_new_session(folder, installed_kinds(), home);
+        let tx = self.tx.clone();
+        let agent = in_agent();
+        thread::spawn(move || {
+            let _ = tx.send(Msg::Tasks(attach_tasks::load(agent)));
+        });
     }
 
     fn begin_spawn(&mut self, before: Option<NewSession>, req: NewRequest) {
@@ -1128,6 +1159,9 @@ impl App {
             .map(|p| p.content())
             .unwrap_or_default();
         let (cols, rows) = spawn_size(content, req.place);
+        if req.task.is_some() {
+            return self.begin_prepare(base, req, target, (cols, rows));
+        }
         let mut run_req = req.clone();
         let planned = registers_shell(&req).then(|| {
             shell_name(
@@ -1156,13 +1190,109 @@ impl App {
         });
     }
 
+    fn begin_prepare(
+        &mut self,
+        base: NewSession,
+        req: NewRequest,
+        target: String,
+        size: (u16, u16),
+    ) {
+        self.notify("checking the task...");
+        let id = self
+            .new_flow
+            .begin(dialog_for(&base, &req), None, Instant::now());
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = prepare_task(&req, in_agent());
+            let _ = tx.send(Msg::TaskPrepared {
+                id,
+                result,
+                req,
+                target,
+                size,
+            });
+        });
+    }
+
+    fn on_task_prepared(
+        &mut self,
+        id: u64,
+        result: std::result::Result<Prepared, SpawnErr>,
+        req: NewRequest,
+        target: String,
+        size: (u16, u16),
+    ) {
+        self.dirty = true;
+        let Some(dialog) = self.new_flow.finish(id) else {
+            return;
+        };
+        match result {
+            Ok(prepared) => {
+                let lines = prepared.summary().lines().map(str::to_string).collect();
+                self.new_flow.hold_review(TaskReview {
+                    prepared,
+                    req,
+                    target,
+                    size,
+                });
+                self.view.review_new_session(dialog, lines);
+            }
+            Err(e) => self
+                .view
+                .reopen_new_session(dialog.with_error(e.message, e.hint)),
+        }
+    }
+
+    fn approve_task(&mut self) {
+        if !self.view.review_fits(self.area()) {
+            self.dirty = true;
+            return self.notify("enlarge the terminal to read the whole run summary");
+        }
+        if self.new_flow.review_is_none() || self.view.new_session.is_none() {
+            return;
+        }
+        let (Some(review), Some(mut dialog)) =
+            (self.new_flow.take_review(), self.view.new_session.take())
+        else {
+            return;
+        };
+        dialog.review = None;
+        self.dirty = true;
+        self.notify("starting the task run...");
+        let id = self
+            .new_flow
+            .begin(dialog_for(&dialog, &review.req), None, Instant::now());
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = execute_task(&review, in_agent());
+            let _ = tx.send(Msg::Spawned {
+                id,
+                result,
+                req: review.req,
+                target: review.target,
+            });
+        });
+    }
+
+    fn sync_review(&mut self) {
+        let shown = self
+            .view
+            .new_session
+            .as_ref()
+            .is_some_and(|n| n.review.is_some());
+        self.new_flow.keep_review_if(shown);
+    }
+
     fn modal_input(&mut self, route: Route, action: Action) {
         match (route, action) {
             (Route::Dialog, Action::Forward(data)) => {
                 let before = self.view.new_session.clone();
-                if let NewEdit::Submit(req) = self.view.edit_new_session(&data) {
-                    self.begin_spawn(before, req);
+                match self.view.edit_new_session(&data) {
+                    NewEdit::Submit(req) => self.begin_spawn(before, req),
+                    NewEdit::Approve => self.approve_task(),
+                    _ => {}
                 }
+                self.sync_review();
             }
             (Route::Dialog, Action::Drop(data) | Action::Paste { data, .. }) => {
                 self.view.insert_new_session_text(&data);
@@ -1648,6 +1778,7 @@ impl App {
                     if let Some(NewEdit::Submit(req)) = out.new_edit {
                         self.begin_spawn(before, req);
                     }
+                    self.sync_review();
                     if let Some(edit) = out.question {
                         self.question_edit(edit);
                     }
@@ -2373,6 +2504,7 @@ fn drain_creates(
                     discard(info);
                 }
             }
+            Ok(Msg::TaskPrepared { .. }) => *spawning = false,
             Ok(Msg::Spawned { result, req, .. }) => {
                 *spawning = false;
                 if let (Ok(info), true) = (result, registers_shell(&req)) {
@@ -2698,6 +2830,7 @@ mod tests {
                 folder: "/".into(),
                 name: None,
                 place: Place::Right,
+                task: None,
             },
             target: "a".into(),
         })
@@ -2772,6 +2905,7 @@ mod tests {
                 folder: "/".into(),
                 name: name.map(str::to_string),
                 place: Place::Right,
+                task: None,
             },
             target: "a".into(),
         };

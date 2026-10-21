@@ -1,7 +1,7 @@
 use super::{attach, connect, emit, rerr, runner_config, Opts, PermissionMode, RunArgs};
 use serde_json::{json, Value};
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tmgr_core::branch;
 use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
@@ -11,7 +11,7 @@ use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::limits::MAX_BUNDLE;
 use tmgr_ipc::api::{
     argv_sha256, caps, sha256_hex, BundleAuthor, BundleLaunch, BundlePersona, ExePin, RunBundle,
-    RunCreateReq,
+    RunCreateReq, SessionInfo,
 };
 use tmgr_queue::source::{Candidate, LocalTasks};
 use tmgr_queue::workdir;
@@ -96,8 +96,10 @@ fn import_line(code: &str, reference: &str) -> String {
     )
 }
 
-fn local_code(o: &Opts, cfg: &Config) -> Result<String> {
-    let reference = o.ws.clone().or_else(|| cfg.default_workspace.clone());
+pub(super) fn local_code(ws: Option<&str>, cfg: &Config) -> Result<String> {
+    let reference = ws
+        .map(str::to_string)
+        .or_else(|| cfg.default_workspace.clone());
     reference
         .as_deref()
         .and_then(local::local_code)
@@ -121,9 +123,9 @@ fn task_id(tasks: &LocalTasks, reference: &str) -> Result<i64> {
     }
 }
 
-fn repo_of(a: &RunArgs, cfg: &Config, key: &str) -> Result<String> {
-    let path = match (&a.cwd, key.split_once('-')) {
-        (Some(dir), _) => dir.clone(),
+fn repo_of(cwd: Option<&Path>, cfg: &Config, key: &str) -> Result<String> {
+    let path = match (cwd, key.split_once('-')) {
+        (Some(dir), _) => dir.to_path_buf(),
         (None, Some((code, _))) => cfg
             .projects
             .get(code)
@@ -159,9 +161,9 @@ fn repo_of(a: &RunArgs, cfg: &Config, key: &str) -> Result<String> {
         .ok_or_else(|| Error::usage("the repository path is not valid UTF-8"))
 }
 
-fn plan(o: &Opts, a: &RunArgs, reference: &str) -> Result<Plan> {
+fn plan(ws: Option<&str>, cwd: Option<&Path>, reference: &str) -> Result<Plan> {
     let cfg = Config::load(&config::config_dir()?)?;
-    let code = local_code(o, &cfg)?;
+    let code = local_code(ws, &cfg)?;
     let tasks = LocalTasks::open(&code, cfg.local_user_id)?;
     let id = task_id(&tasks, reference)?;
     let full = tasks.fetch(&format!("/api/tasks/{id}"))?;
@@ -178,7 +180,7 @@ fn plan(o: &Opts, a: &RunArgs, reference: &str) -> Result<Plan> {
                 .hint("give the task a project in the local workspace"),
         );
     }
-    let repo = repo_of(a, &cfg, &candidate.key)?;
+    let repo = repo_of(cwd, &cfg, &candidate.key)?;
     let branch = branch::render_template(
         cfg.branch_template(),
         &candidate.key,
@@ -265,51 +267,123 @@ fn summary(p: &Plan, profile: &str, mode: &str) -> String {
     .join("\n")
 }
 
-pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
-    let profile = a
-        .agent
-        .clone()
-        .ok_or_else(|| Error::usage("pass --agent <profile> to run a task"))?;
-    let local = local_code(o, &Config::load(&config::config_dir()?)?).is_ok();
-    if !local {
-        return super::cloud::run(o, a, reference);
-    }
-    let mode = a.mode.unwrap_or(PermissionMode::Ask);
+pub(super) struct Prepared {
+    plan: Plan,
+    reference: String,
+    profile: String,
+    mode: &'static str,
+}
+
+pub(super) struct Started {
+    pub info: SessionInfo,
+    pub cwd: String,
+    pub fetch: String,
+}
+
+pub(super) fn prepare(
+    ws: Option<&str>,
+    cwd: Option<&Path>,
+    reference: &str,
+    profile: &str,
+    mode: PermissionMode,
+) -> Result<Prepared> {
     if mode == PermissionMode::Bypass {
         return Err(Error::usage(
             "bypass mode is only for tasks of an allowed cloud workspace",
         ));
     }
-    let mode = mode.as_str();
-    let p = plan(o, a, reference)?;
-    if !o.json && !o.quiet {
-        eprintln!("{}", summary(&p, &profile, mode));
+    Ok(Prepared {
+        plan: plan(ws, cwd, reference)?,
+        reference: reference.to_string(),
+        profile: profile.to_string(),
+        mode: mode.as_str(),
+    })
+}
+
+impl Prepared {
+    pub(super) fn summary(&self) -> String {
+        summary(&self.plan, &self.profile, self.mode)
     }
-    crate::interact::confirm("Start this run?", true, a.yes)?;
-    super::ops::login_preflight(&profile)?;
-    let (exe_pin, argv_digest) = launch_pin(&profile, a.model.as_deref(), mode)?;
-    let earlier = record(&p)
+}
+
+pub(super) struct Launch<'a> {
+    pub model: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub base: Option<&'a str>,
+    pub size: (u16, u16),
+}
+
+fn create_request(
+    plan: &Plan,
+    l: &Launch,
+    cwd: String,
+    bundle: RunBundle,
+    via_repo: bool,
+    (exe_pin, argv_digest): (ExePin, String),
+    (profile, mode): (&str, &str),
+) -> RunCreateReq {
+    let (cols, rows) = l.size;
+    let sha = bundle.sha256();
+    RunCreateReq {
+        clones: Vec::new(),
+        profile: profile.to_string(),
+        task: Some(plan.candidate.task),
+        cwd,
+        name: Some(
+            l.name
+                .map(str::to_string)
+                .unwrap_or_else(|| plan.candidate.key.clone()),
+        ),
+        model: l.model.map(str::to_string),
+        cols,
+        rows,
+        bundle: Some(bundle),
+        bundle_sha256: Some(sha),
+        cwd_pin: None,
+        origin: None,
+        permission_mode: Some(mode.to_string()),
+        start_key: None,
+        clone_of: Some(plan.repo.clone()),
+        trust_cwd: None,
+        trust_via_repo: via_repo.then_some(true),
+        agent_work: true,
+        cloud: None,
+        unattended: false,
+        exe_pin: Some(exe_pin),
+        argv_sha256: Some(argv_digest),
+    }
+}
+
+pub(super) fn execute(p: &Prepared, l: &Launch) -> Result<Started> {
+    let profile = p.profile.as_str();
+    let mode = p.mode;
+    let reference = p.reference.as_str();
+    let plan = &p.plan;
+    super::ops::login_preflight(profile)?;
+    let (exe_pin, argv_digest) = launch_pin(profile, l.model, mode)?;
+    let earlier = record(plan)
         .map(|(_, clone, _)| clone)
         .filter(|clone| clone.exists());
-    if let Some(taken) = earlier.as_ref().or(Some(&p.clone).filter(|c| c.exists())) {
+    if let Some(taken) = earlier
+        .as_ref()
+        .or(Some(&plan.clone).filter(|c| c.exists()))
+    {
         return Err(Error::new(
             Kind::Conflict,
             format!("{} already exists", taken.display()),
         )
         .hint(format!(
             "bring its branch in with `{}`, then remove the folder and run again",
-            import_line(&p.code, reference)
+            import_line(&plan.code, reference)
         )));
     }
-    remember(&p)?;
-    workdir::prepare_clone(&p.repo, &p.clone, &p.branch, a.base.as_deref())?;
-    let cwd = std::fs::canonicalize(&p.clone)
-        .map_err(|e| Error::internal(format!("clone {}: {e}", p.clone.display())))?
+    remember(plan)?;
+    workdir::prepare_clone(&plan.repo, &plan.clone, &plan.branch, l.base)?;
+    let cwd = std::fs::canonicalize(&plan.clone)
+        .map_err(|e| Error::internal(format!("clone {}: {e}", plan.clone.display())))?
         .to_string_lossy()
         .into_owned();
-    let bundle = bundle(&p, &profile, a.model.as_deref(), mode, &cwd)?;
-    let sha = bundle.sha256();
-    let (cols, rows) = super::ops::terminal_size();
+    let bundle = bundle(plan, profile, l.model, mode, &cwd)?;
     let cfg = runner_config()?;
     daemon::start_background(&cfg).map_err(rerr)?;
     let mut client = connect(&cfg)?;
@@ -329,32 +403,53 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
             .iter()
             .any(|k| std::env::var_os(k).is_some());
     let info = client
-        .create_run(RunCreateReq {
-            clones: Vec::new(),
-            profile: profile.clone(),
-            task: Some(p.candidate.task),
-            cwd: cwd.clone(),
-            name: Some(a.name.clone().unwrap_or_else(|| p.candidate.key.clone())),
-            model: a.model.clone(),
-            cols,
-            rows,
-            bundle: Some(bundle),
-            bundle_sha256: Some(sha),
-            cwd_pin: None,
-            origin: None,
-            permission_mode: Some(mode.to_string()),
-            start_key: None,
-            clone_of: Some(p.repo.clone()),
-            trust_cwd: None,
-            trust_via_repo: via_repo.then_some(true),
-            agent_work: true,
-            cloud: None,
-            unattended: false,
-            exe_pin: Some(exe_pin),
-            argv_sha256: Some(argv_digest),
-        })
+        .create_run(create_request(
+            &p.plan,
+            l,
+            cwd.clone(),
+            bundle,
+            via_repo,
+            (exe_pin, argv_digest),
+            (profile, mode),
+        ))
         .map_err(rerr)?;
-    let fetch = import_line(&p.code, reference);
+    Ok(Started {
+        info,
+        cwd,
+        fetch: import_line(&plan.code, reference),
+    })
+}
+
+pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
+    let profile = a
+        .agent
+        .clone()
+        .ok_or_else(|| Error::usage("pass --agent <profile> to run a task"))?;
+    let local = local_code(o.ws.as_deref(), &Config::load(&config::config_dir()?)?).is_ok();
+    if !local {
+        return super::cloud::run(o, a, reference);
+    }
+    let p = prepare(
+        o.ws.as_deref(),
+        a.cwd.as_deref(),
+        reference,
+        &profile,
+        a.mode.unwrap_or(PermissionMode::Ask),
+    )?;
+    if !o.json && !o.quiet {
+        eprintln!("{}", p.summary());
+    }
+    crate::interact::confirm("Start this run?", true, a.yes)?;
+    let Started { info, cwd, fetch } = execute(
+        &p,
+        &Launch {
+            model: a.model.as_deref(),
+            name: a.name.as_deref(),
+            base: a.base.as_deref(),
+            size: super::ops::terminal_size(),
+        },
+    )?;
+    let cfg = runner_config()?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
         eprintln!(
             "The agent's commits stay in its clone; bring its branch into your repository with:\n  {fetch}"
@@ -375,10 +470,10 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         o,
         json!({
             "session": info,
-            "repo": p.repo,
+            "repo": p.plan.repo,
             "clone": cwd,
-            "branch": p.branch,
-            "author": p.candidate.author.name(),
+            "branch": p.plan.branch,
+            "author": p.plan.candidate.author.name(),
             "fetch": fetch,
         }),
         human,
@@ -386,7 +481,7 @@ pub fn run(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
 }
 
 pub fn fetch(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
-    let mut p = plan(o, a, reference)?;
+    let mut p = plan(o.ws.as_deref(), a.cwd.as_deref(), reference)?;
     recalled(&mut p);
     if !p.clone.is_dir() {
         return Err(Error::not_found(format!(
@@ -406,4 +501,118 @@ pub fn fetch(o: &Opts, a: &RunArgs, reference: &str) -> Result<i32> {
         json!({ "repo": p.repo, "clone": p.clone, "branch": p.branch, "commit": sha }),
         human,
     ))
+}
+
+#[cfg(test)]
+pub(super) fn sample() -> Prepared {
+    Prepared {
+        plan: tests::plan(),
+        reference: "TM-7".into(),
+        profile: "claude-code".into(),
+        mode: "ask",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tmgr_ipc::api::TaskRef;
+    use tmgr_queue::source::Author;
+
+    pub(super) fn plan() -> Plan {
+        Plan {
+            candidate: Candidate {
+                task: TaskRef {
+                    workspace_id: 1,
+                    task_id: 7,
+                },
+                key: "TM-7".into(),
+                title: "t".into(),
+                body: "b".into(),
+                author: Author::Human,
+                comments: Vec::new(),
+                pages: Vec::new(),
+                context_tainted: false,
+                persona_text: String::new(),
+                cloud: None,
+            },
+            persona: None,
+            repo: "/r".into(),
+            clone: PathBuf::from("/r-worktrees/x"),
+            code: "loc".into(),
+            branch: "tm-7".into(),
+            chain_ok: true,
+        }
+    }
+
+    fn pins() -> (ExePin, String) {
+        (
+            ExePin {
+                path: "/bin/agent".into(),
+                sha256: "ab".into(),
+            },
+            "cd".into(),
+        )
+    }
+
+    fn launch<'a>(name: Option<&'a str>) -> Launch<'a> {
+        Launch {
+            model: None,
+            name,
+            base: None,
+            size: (100, 30),
+        }
+    }
+
+    #[test]
+    fn a_task_run_is_recorded_as_agent_work_in_the_task_clone() {
+        let p = plan();
+        let b = bundle(&p, "claude-code", None, "ask", "/c").unwrap();
+        let sha = b.sha256();
+        let req = create_request(
+            &p,
+            &launch(None),
+            "/c".into(),
+            b,
+            false,
+            pins(),
+            ("claude-code", "ask"),
+        );
+        assert!(req.agent_work);
+        assert_eq!(req.task, Some(p.candidate.task));
+        assert_eq!(req.permission_mode.as_deref(), Some("ask"));
+        assert_eq!(req.clone_of.as_deref(), Some("/r"));
+        assert_eq!(req.cwd, "/c");
+        assert_eq!(req.name.as_deref(), Some("TM-7"));
+        assert_eq!(req.bundle_sha256.as_deref(), Some(sha.as_str()));
+        assert_eq!((req.cols, req.rows), (100, 30));
+        assert!(req.exe_pin.is_some() && req.argv_sha256.is_some());
+        assert_eq!(req.trust_via_repo, None);
+        assert!(!req.unattended && req.cloud.is_none() && req.cwd_pin.is_none());
+    }
+
+    #[test]
+    fn a_given_name_wins_and_trust_via_repo_follows_the_runner() {
+        let p = plan();
+        let b = bundle(&p, "claude-code", None, "ask", "/c").unwrap();
+        let req = create_request(
+            &p,
+            &launch(Some("mine")),
+            "/c".into(),
+            b,
+            true,
+            pins(),
+            ("claude-code", "ask"),
+        );
+        assert_eq!(req.name.as_deref(), Some("mine"));
+        assert_eq!(req.trust_via_repo, Some(true));
+    }
+
+    #[test]
+    fn bypass_is_refused_before_anything_is_read() {
+        let err = prepare(None, None, "TM-7", "claude-code", PermissionMode::Bypass)
+            .err()
+            .unwrap();
+        assert!(err.message.contains("bypass"));
+    }
 }
