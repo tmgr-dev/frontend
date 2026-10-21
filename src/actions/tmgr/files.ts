@@ -78,6 +78,37 @@ export const putToStorage = async (
 	}
 };
 
+export const putToStorageWithProgress = (
+	target: PresignedUpload,
+	file: File,
+	onProgress: (percent: number) => void,
+): Promise<void> => {
+	if (hasActiveLocalWorkspace()) {
+		return putToStorage(target, file).then(() => onProgress(100));
+	}
+	return new Promise((resolve, reject) => {
+		const xhr = new XMLHttpRequest();
+		xhr.open('PUT', target.upload_url);
+		xhr.setRequestHeader('Content-Type', target.content_type);
+		xhr.upload.onprogress = (event) => {
+			if (event.lengthComputable && event.total > 0) {
+				onProgress(Math.round((event.loaded / event.total) * 100));
+			}
+		};
+		xhr.onload = () => {
+			if (xhr.status >= 200 && xhr.status < 300) {
+				onProgress(100);
+				resolve();
+			} else {
+				reject(new Error(`storage responded ${xhr.status}`));
+			}
+		};
+		xhr.onerror = () => reject(new Error('storage upload failed'));
+		xhr.onabort = () => reject(new Error('storage upload aborted'));
+		xhr.send(file);
+	});
+};
+
 export const attachFile = async (
 	taskId: number,
 	file: File,
