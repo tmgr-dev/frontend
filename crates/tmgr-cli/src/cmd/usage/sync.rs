@@ -1,7 +1,7 @@
 use super::runs::WantedTask;
 use super::task::{Bucket, Corpus};
 use super::{fail, Usage};
-use crate::cli_usage::{SyncArgs, SyncCommand, SyncRunArgs};
+use crate::cli_usage::{AutoCommand, SyncArgs, SyncCommand, SyncRunArgs};
 use crate::cmd::shared::resolve_task;
 use crate::ctx::Ctx;
 use crate::interact;
@@ -10,6 +10,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, VecDeque};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tmgr_core::api::{scopes_hint, Client};
 use tmgr_core::error::{Error, Kind, Result};
@@ -25,9 +26,26 @@ const MAX_BODY: usize = 256 * 1024;
 const PUTS_PER_WINDOW: usize = 25;
 const WINDOW: Duration = Duration::from_secs(60);
 const MAX_RETRY_AFTER_S: u64 = 120;
+const LOCK_STALE: Duration = Duration::from_secs(600);
 const ID_MISMATCH: &str = "task id mismatch";
 const SETTINGS_HINT: &str =
     "Turn on Agent usage sync in TMGR Settings → Agent work (web or desktop)";
+const AUTO_QUESTION: &str = "Also upload automatically after each agent run?";
+const AUTO_DISCLAIMER: &str = "\
+Automatic upload: after each agent run on a task of a cloud workspace, tmgr uploads that task's summary without asking again.\n\
+\n\
+Sent (the `task_usage.v1` summary of the task):\n\
+  - the task's workspace code and task reference or id\n\
+  - the period covered and the totals: AI cost (API-equivalent USD), number of events, tokens by kind, active time, turns\n\
+  - for every agent in the tree: agent type, model, start and end times, cost, tokens, and the names and counts of the tools it used\n\
+  - context: names of tools, skills, plugins and slash commands, MCP server and tool names, hook names, permission modes, how many files were edited and with which extensions, agent versions and entrypoints\n\
+  - rate-limit percentages and the model prices used to compute the cost\n\
+Pull requests stay on your machine.\n\
+Never sent: prompts, replies, code, file contents, file paths or command lines.\n\
+\n\
+Where it goes: the TMGR server this CLI is logged in to. Every member of the task's workspace can see it.\n\
+\n\
+Turn it off: `tmgr usage sync auto off` (or `tmgr usage sync off`). Delete what was uploaded: `tmgr usage sync forget`.\n";
 
 fn wait_override() -> Option<Duration> {
     if !cfg!(debug_assertions) {
@@ -365,7 +383,12 @@ fn collect(
 pub fn run(ctx: &Ctx, args: &SyncArgs) -> Result<Output> {
     match &args.command {
         None => sync(ctx, &args.run),
-        Some(SyncCommand::On) => on(ctx),
+        Some(SyncCommand::On { yes_auto }) => on(ctx, *yes_auto),
+        Some(SyncCommand::Auto { command }) => match command {
+            AutoCommand::On { yes_auto } => auto_on(*yes_auto),
+            AutoCommand::Off => auto_off(),
+            AutoCommand::Status => auto_status(),
+        },
         Some(SyncCommand::Off) => off(),
         Some(SyncCommand::Status) => status(),
         Some(SyncCommand::Forget { task }) => forget(ctx, task.as_deref()),
@@ -462,12 +485,76 @@ fn error_code(body: &Value) -> &'static str {
         .unwrap_or("unknown")
 }
 
+struct AutoLock(PathBuf);
+
+impl AutoLock {
+    fn take(dir: &Path, task_id: u64) -> Option<AutoLock> {
+        let path = dir.join(format!("sync-auto-{task_id}.lock"));
+        for _ in 0..2 {
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(_) => return Some(AutoLock(path)),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let age = std::fs::metadata(&path)
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .and_then(|t| t.elapsed().ok());
+                    if age.is_some_and(|a| a < LOCK_STALE) {
+                        return None;
+                    }
+                    let _ = std::fs::remove_file(&path);
+                }
+                Err(_) => return None,
+            }
+        }
+        None
+    }
+}
+
+impl Drop for AutoLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+fn silent(days: i64) -> Output {
+    Output::new(
+        json!({
+            "action": "sync",
+            "dry_run": false,
+            "days": days,
+            "counts": counts_json(&[]),
+            "results": [],
+            "stopped": null,
+        }),
+        "",
+    )
+}
+
 fn sync(ctx: &Ctx, args: &SyncRunArgs) -> Result<Output> {
     let mut u = Usage::open()?;
+    let auto_task = args.task_id.filter(|_| args.auto);
+    let mut _lock = None;
+    let task = match auto_task {
+        Some(id) => {
+            if !u.store.sync_auto_active().map_err(fail)? {
+                return Ok(silent(args.days));
+            }
+            let Some(lock) = AutoLock::take(&u.dir, id) else {
+                return Ok(silent(args.days));
+            };
+            _lock = Some(lock);
+            Some(format!("#{id}"))
+        }
+        None => args.task.clone(),
+    };
     if !args.dry_run && u.store.sync_consent().map_err(fail)?.is_none() {
         return Err(consent_error());
     }
-    let (_, prepared) = collect(ctx, &mut u, args.days, args.no_scan, args.task.as_deref())?;
+    let (_, prepared) = collect(ctx, &mut u, args.days, args.no_scan, task.as_deref())?;
     let mut rows: Vec<Row> = Vec::new();
     let mut stopped: Option<Stop> = None;
     let mut off_workspaces: BTreeSet<String> = BTreeSet::new();
@@ -555,7 +642,10 @@ fn sync(ctx: &Ctx, args: &SyncRunArgs) -> Result<Output> {
             });
         }
         let sender = sender.as_mut().expect("sender is set above");
-        let has_consent = || u.store.sync_consent().ok().flatten().is_some();
+        let has_consent = || {
+            u.store.sync_consent().ok().flatten().is_some()
+                && (auto_task.is_none() || u.store.sync_auto().ok().flatten().is_some())
+        };
         let (status, body) = match sender.put(&ready.value, &has_consent) {
             Ok(Some(r)) => r,
             Ok(None) => {
@@ -740,7 +830,7 @@ fn render(rows: &[Row], stopped: Option<&Stop>, dry_run: bool) -> String {
     lines.join("\n")
 }
 
-fn on(ctx: &Ctx) -> Result<Output> {
+fn on(ctx: &Ctx, yes_auto: bool) -> Result<Output> {
     if !interact::is_interactive() {
         return Err(
             Error::needs_confirmation("turning on uploads needs a terminal")
@@ -777,7 +867,7 @@ fn on(ctx: &Ctx) -> Result<Output> {
          Sent: AI cost (API-equivalent USD), token counts, time, the tree of agents (agent type, model, tool names and counts) and the names of skills, plugins, MCP servers and hooks used.\n\
          Never sent: prompts, replies, file contents, paths, command lines, URLs, branch names or session ids.\n\n\
          Who can see it: every member of the task's workspace sees the AI cost, the tree and the tools. Workspaces with linked usage now: {}.\n\n\
-         Nothing is uploaded automatically: you run `tmgr usage sync` yourself. The server setting \"Agent usage sync\" (TMGR Settings → Agent work) must be on too, and local workspaces are never uploaded.\n\n\
+         Nothing is uploaded automatically unless you also confirm automatic uploads at the end (default no); otherwise you run `tmgr usage sync` yourself. The server setting \"Agent usage sync\" (TMGR Settings → Agent work) must be on too, and local workspaces are never uploaded.\n\n\
          This is exactly what would be sent for your most recent task ({}/{}):\n",
         workspaces.iter().copied().collect::<Vec<_>>().join(", "),
         sample_task.workspace,
@@ -789,19 +879,107 @@ fn on(ctx: &Ctx) -> Result<Output> {
     );
     interact::confirm_typed("Type yes to turn on uploading: ", "yes")?;
     let now: DateTime<Utc> = Utc::now();
+    u.store.clear_sync_auto().map_err(fail)?;
     u.store.set_sync_consent(now).map_err(fail)?;
     let _ = c;
+    let auto = if yes_auto {
+        eprintln!("{AUTO_DISCLAIMER}");
+        true
+    } else {
+        eprintln!("\n{AUTO_DISCLAIMER}");
+        interact::confirm(AUTO_QUESTION, false, false).is_ok()
+    };
+    if auto {
+        u.store.set_sync_auto(now).map_err(fail)?;
+    }
+    let human = if auto {
+        "Uploading is on, and so are automatic uploads after each agent run (`tmgr usage sync auto off` stops them)."
+    } else {
+        "Uploading is on. Run `tmgr usage sync --dry-run` to preview and `tmgr usage sync` to upload. Automatic uploads are off (`tmgr usage sync auto on` turns them on)."
+    };
     Ok(Output::new(
-        json!({"action": "on", "enabled": true, "consent_at": now.to_rfc3339_opts(SecondsFormat::Secs, true)}),
-        "Uploading is on. Run `tmgr usage sync --dry-run` to preview and `tmgr usage sync` to upload.",
+        json!({"action": "on", "enabled": true, "auto": auto, "consent_at": now.to_rfc3339_opts(SecondsFormat::Secs, true)}),
+        human,
     ))
+}
+
+fn confirm_auto(
+    interactive: bool,
+    yes_auto: bool,
+    ask: impl FnOnce() -> Result<()>,
+) -> Result<()> {
+    if yes_auto {
+        return Ok(());
+    }
+    if !interactive {
+        return Err(
+            Error::needs_confirmation("automatic uploads need a confirmation")
+                .hint("run `tmgr usage sync auto on` in a terminal, or pass --yes-auto"),
+        );
+    }
+    ask()
+}
+
+fn auto_json(on: bool, at: Option<DateTime<Utc>>) -> Value {
+    json!({
+        "action": "auto",
+        "auto": on,
+        "auto_at": at.map(|t| t.to_rfc3339_opts(SecondsFormat::Secs, true)),
+    })
+}
+
+fn auto_on(yes_auto: bool) -> Result<Output> {
+    let u = Usage::open()?;
+    if u.store.sync_consent().map_err(fail)?.is_none() {
+        return Err(Error::usage("uploading usage is not turned on")
+            .hint("run `tmgr usage sync on` in a terminal first"));
+    }
+    if let Some(at) = u.store.sync_auto().map_err(fail)? {
+        return Ok(Output::new(
+            auto_json(true, Some(at)),
+            "Automatic uploads are already on. `tmgr usage sync auto off` turns them off.",
+        ));
+    }
+    eprintln!("{AUTO_DISCLAIMER}");
+    confirm_auto(interact::is_interactive(), yes_auto, || {
+        interact::confirm(AUTO_QUESTION, false, false)
+    })?;
+    let now = Utc::now();
+    u.store.set_sync_auto(now).map_err(fail)?;
+    Ok(Output::new(
+        auto_json(true, Some(now)),
+        "Automatic uploads are on: after each agent run the task's summary is uploaded. `tmgr usage sync auto off` stops it.",
+    ))
+}
+
+fn auto_off() -> Result<Output> {
+    let u = Usage::open()?;
+    u.store.clear_sync_auto().map_err(fail)?;
+    Ok(Output::new(
+        auto_json(false, None),
+        "Automatic uploads are off. `tmgr usage sync` still uploads when you run it. What was uploaded stays until you run `tmgr usage sync forget`.",
+    ))
+}
+
+fn auto_status() -> Result<Output> {
+    let u = Usage::open()?;
+    let on = u.store.sync_auto_active().map_err(fail)?;
+    let at = u.store.sync_auto().map_err(fail)?.filter(|_| on);
+    let human = match at {
+        Some(at) => format!(
+            "Automatic uploads: on since {}",
+            at.format("%Y-%m-%d %H:%M UTC")
+        ),
+        None => "Automatic uploads: off (`tmgr usage sync auto on` turns them on)".into(),
+    };
+    Ok(Output::new(auto_json(on, at), human))
 }
 
 fn off() -> Result<Output> {
     let u = Usage::open()?;
     u.store.clear_sync_consent().map_err(fail)?;
     Ok(Output::new(
-        json!({"action": "off", "enabled": false}),
+        json!({"action": "off", "enabled": false, "auto": false}),
         "Uploading is off.\n\
          What you uploaded earlier stays on the server until the Agent usage sync setting is turned off (that deletes it) or you run `tmgr usage sync forget`.\n\
          Run `tmgr usage sync forget` before `tmgr usage reset`: reset clears the local upload history but keeps this install's source id, so afterwards a smaller upload could replace the fuller one on the server.",
@@ -817,6 +995,7 @@ fn status() -> Result<Output> {
         .map_err(fail)?
         .and_then(|s| serde_json::from_str(&s).ok());
     let tracked = u.store.ledger_count().map_err(fail)?;
+    let auto = u.store.sync_auto_active().map_err(fail)?;
     let mut lines = vec![match consent {
         Some(at) => format!("Uploading: on since {}", at.format("%Y-%m-%d %H:%M UTC")),
         None => "Uploading: off (`tmgr usage sync on` turns it on)".into(),
@@ -844,13 +1023,19 @@ fn status() -> Result<Output> {
     }
     lines.push(format!("Tasks uploaded: {tracked}"));
     lines.push(
-        "Nothing is uploaded automatically. The server setting \"Agent usage sync\" must be on too."
-            .into(),
+        if auto {
+            "Automatic uploads: on (after each agent run; `tmgr usage sync auto off` turns them off)"
+        } else {
+            "Automatic uploads: off (`tmgr usage sync auto on` turns them on)"
+        }
+        .into(),
     );
+    lines.push("The server setting \"Agent usage sync\" must be on too.".into());
     Ok(Output::new(
         json!({
             "action": "status",
             "enabled": consent.is_some(),
+            "auto": auto,
             "consent_at": consent.map(|t| t.to_rfc3339_opts(SecondsFormat::Secs, true)),
             "last_run": last,
             "tasks_uploaded": tracked,
@@ -954,6 +1139,47 @@ mod tests {
         let wait = p.delay(t0 + Duration::from_secs(10));
         assert_eq!(wait, Duration::from_secs(50));
         assert_eq!(p.delay(t0 + Duration::from_secs(61)), Duration::ZERO);
+    }
+
+    #[test]
+    fn auto_needs_a_terminal_or_the_flag() {
+        let asked = std::cell::Cell::new(false);
+        let ask = || {
+            asked.set(true);
+            Ok(())
+        };
+        let e = confirm_auto(false, false, ask).unwrap_err();
+        assert_eq!(e.kind, Kind::NeedsConfirmation);
+        assert!(!asked.get());
+        assert!(confirm_auto(false, true, || panic!("no prompt with the flag")).is_ok());
+        assert!(confirm_auto(true, true, || panic!("no prompt with the flag")).is_ok());
+        assert!(confirm_auto(true, false, ask).is_ok());
+        assert!(asked.get());
+        let no = || Err(Error::new(Kind::Interrupted, "cancelled"));
+        assert!(confirm_auto(true, false, no).is_err());
+    }
+
+    #[test]
+    fn auto_lock_is_exclusive_released_on_drop_and_expires() {
+        let dir = std::env::temp_dir().join(format!("tmgr-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let first = AutoLock::take(&dir, 7).unwrap();
+        assert!(AutoLock::take(&dir, 7).is_none());
+        assert!(AutoLock::take(&dir, 8).is_some());
+        drop(first);
+        let again = AutoLock::take(&dir, 7).unwrap();
+        let old = std::time::SystemTime::now() - Duration::from_secs(700);
+        std::fs::File::options()
+            .write(true)
+            .open(&again.0)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        let stolen = AutoLock::take(&dir, 7);
+        assert!(stolen.is_some());
+        std::mem::forget(again);
+        drop(stolen);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

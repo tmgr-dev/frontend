@@ -448,6 +448,7 @@ impl Store {
         for key in [
             ROLLUP_FLOOR_KEY,
             crate::sync::CONSENT_KEY,
+            crate::sync::AUTO_KEY,
             crate::sync::LAST_RUN_KEY,
         ] {
             tx.execute("DELETE FROM settings WHERE key = ?1", [key])?;

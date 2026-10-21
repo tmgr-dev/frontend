@@ -4,6 +4,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use rusqlite::{params, OptionalExtension};
 
 pub const CONSENT_KEY: &str = "sync_consent_at";
+pub const AUTO_KEY: &str = "sync_auto_at";
 pub const LAST_RUN_KEY: &str = "sync_last_run";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -42,9 +43,32 @@ impl Store {
     }
 
     pub fn clear_sync_consent(&self) -> Result<()> {
-        self.conn
-            .execute("DELETE FROM settings WHERE key = ?1", [CONSENT_KEY])?;
+        self.conn.execute(
+            "DELETE FROM settings WHERE key IN (?1, ?2)",
+            [CONSENT_KEY, AUTO_KEY],
+        )?;
         Ok(())
+    }
+
+    pub fn sync_auto(&self) -> Result<Option<DateTime<Utc>>> {
+        Ok(self
+            .setting(AUTO_KEY)?
+            .and_then(|v| DateTime::parse_from_rfc3339(&v).ok())
+            .map(|t| t.with_timezone(&Utc)))
+    }
+
+    pub fn set_sync_auto(&self, at: DateTime<Utc>) -> Result<()> {
+        self.set_setting(AUTO_KEY, &at.to_rfc3339_opts(SecondsFormat::Secs, true))
+    }
+
+    pub fn clear_sync_auto(&self) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM settings WHERE key = ?1", [AUTO_KEY])?;
+        Ok(())
+    }
+
+    pub fn sync_auto_active(&self) -> Result<bool> {
+        Ok(self.sync_consent()?.is_some() && self.sync_auto()?.is_some())
     }
 
     pub fn sync_last_run(&self) -> Result<Option<String>> {
@@ -159,6 +183,23 @@ mod tests {
     }
 
     #[test]
+    fn auto_needs_consent_and_goes_away_with_it() {
+        let s = Store::open_in_memory().unwrap();
+        let at: DateTime<Utc> = "2026-10-16T12:00:00Z".parse().unwrap();
+        s.set_sync_auto(at).unwrap();
+        assert_eq!(s.sync_auto().unwrap(), Some(at));
+        assert!(!s.sync_auto_active().unwrap());
+        s.set_sync_consent(at).unwrap();
+        assert!(s.sync_auto_active().unwrap());
+        s.clear_sync_auto().unwrap();
+        assert!(s.sync_consent().unwrap().is_some());
+        assert!(!s.sync_auto_active().unwrap());
+        s.set_sync_auto(at).unwrap();
+        s.clear_sync_consent().unwrap();
+        assert!(s.sync_auto().unwrap().is_none());
+    }
+
+    #[test]
     fn ledger_upserts_per_task_and_forgets() {
         let s = Store::open_in_memory().unwrap();
         s.ledger_put(&entry("ws", "TM-1", 3)).unwrap();
@@ -176,10 +217,12 @@ mod tests {
     fn delete_all_clears_consent_ledger_and_last_run() {
         let mut s = Store::open_in_memory().unwrap();
         s.set_sync_consent(Utc::now()).unwrap();
+        s.set_sync_auto(Utc::now()).unwrap();
         s.set_sync_last_run("{}").unwrap();
         s.ledger_put(&entry("ws", "TM-1", 3)).unwrap();
         s.delete_all().unwrap();
         assert!(s.sync_consent().unwrap().is_none());
+        assert!(s.sync_auto().unwrap().is_none());
         assert!(s.sync_last_run().unwrap().is_none());
         assert_eq!(s.ledger_count().unwrap(), 0);
     }

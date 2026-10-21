@@ -28,7 +28,8 @@
             "on",
             "off",
             "status",
-            "forget"
+            "forget",
+            "auto"
           ]
         },
         "dry_run": {
@@ -60,6 +61,15 @@
         },
         "enabled": {
           "type": "boolean"
+        },
+        "auto": {
+          "type": "boolean"
+        },
+        "auto_at": {
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "consent_at": {
           "type": [

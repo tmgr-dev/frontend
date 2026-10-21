@@ -91,7 +91,7 @@ pub enum UsageCommand {
         #[command(subcommand)]
         command: Option<PricingCommand>,
     },
-    /// Upload per-task usage to TMGR (opt-in, never automatic)
+    /// Upload per-task usage to TMGR (opt-in; automatic uploads only after a separate confirmation)
     Sync(SyncArgs),
     /// Delete all usage data (database and statusline snapshots)
     Reset,
@@ -124,7 +124,7 @@ pub struct TaskArgs {
 #[command(
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true,
-    long_about = "Upload one summary per task (cost, tokens, time, the agent tree, tool and skill names; never prompts, replies, paths or arguments) so the members of the task's workspace can see it.\n\nNothing is uploaded automatically and nothing until two locks are open: `tmgr usage sync on` (typed consent in a terminal) and the Agent usage sync setting in TMGR Settings -> Agent work. Use --dry-run to see exactly what would be sent. Local workspaces are never uploaded."
+    long_about = "Upload one summary per task (cost, tokens, time, the agent tree, tool and skill names; never prompts, replies, paths or arguments) so the members of the task's workspace can see it.\n\nNothing is uploaded until two locks are open: `tmgr usage sync on` (typed consent in a terminal) and the Agent usage sync setting in TMGR Settings -> Agent work. Uploads happen when you run `tmgr usage sync`, or after each agent run only if you also confirmed `tmgr usage sync auto on` (off by default; `tmgr usage sync auto off` or `tmgr usage sync off` stops it). Use --dry-run to see exactly what would be sent. Local workspaces are never uploaded."
 )]
 pub struct SyncArgs {
     #[command(subcommand)]
@@ -150,12 +150,25 @@ pub struct SyncRunArgs {
     /// Do not scan the logs first
     #[arg(long)]
     pub no_scan: bool,
+    #[arg(long, hide = true, requires = "task_id", conflicts_with_all = ["task", "dry_run", "force"])]
+    pub auto: bool,
+    #[arg(long, hide = true, value_name = "ID", requires = "auto")]
+    pub task_id: Option<u64>,
 }
 
 #[derive(Subcommand)]
 pub enum SyncCommand {
     /// Turn uploading on: shows who can see the data and a real sample, then asks you to type yes (terminal only)
-    On,
+    On {
+        /// Also turn on automatic uploads after each agent run, without asking
+        #[arg(long)]
+        yes_auto: bool,
+    },
+    /// Upload automatically after each agent run: on, off or status
+    Auto {
+        #[command(subcommand)]
+        command: AutoCommand,
+    },
     /// Turn uploading off; earlier uploads stay until the server setting is turned off or you run `forget`
     #[command(
         long_about = "Turn uploading off. Uploads made earlier stay on the server until the Agent usage sync setting is turned off (that deletes them) or you run `tmgr usage sync forget`.\n\nRun `tmgr usage sync forget` before `tmgr usage reset`: reset clears the local upload history but keeps this install's source id, so afterwards a smaller upload could replace the fuller one on the server."
@@ -172,6 +185,20 @@ pub enum SyncCommand {
         #[arg(long, value_name = "REF")]
         task: Option<String>,
     },
+}
+
+#[derive(Subcommand)]
+pub enum AutoCommand {
+    /// Turn automatic uploads on: shows exactly what is sent, then asks for a separate confirmation
+    On {
+        /// Confirm without a prompt (required when there is no terminal)
+        #[arg(long)]
+        yes_auto: bool,
+    },
+    /// Turn automatic uploads off (`tmgr usage sync` still works by hand)
+    Off,
+    /// Whether automatic uploads are on
+    Status,
 }
 
 #[derive(Subcommand)]
