@@ -4840,6 +4840,14 @@ fn osc11_replies_parse_in_every_width_and_terminator() {
     assert_eq!(parse_osc11(b"\x1b]11;rgb:gg/00/00\x07"), None);
     assert_eq!(parse_osc11(b"\x1b]11;rgb:00/00/00/00\x07"), None);
     assert_eq!(parse_osc11(b"\x1b]11;#ffffff\x07"), None);
+    assert_eq!(
+        parse_osc11(b"\x1b]11;rgba:ffff/0000/0000/ffff\x07"),
+        Some((255, 0, 0))
+    );
+    assert_eq!(
+        parse_osc11(b"junk\xff\x1b]11;rgb:00/00/00\x07x"),
+        Some((0, 0, 0))
+    );
     assert_eq!(parse_osc11(b""), None);
     assert_eq!(parse_osc11(&[0xff, 0xfe]), None);
 }

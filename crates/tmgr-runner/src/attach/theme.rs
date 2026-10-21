@@ -56,19 +56,19 @@ impl ThemeKind {
                 warn: Color::Yellow,
             },
             Self::Light => Colors {
-                accent: Color::Rgb(192, 40, 0),
-                sidebar_bg: Color::Rgb(226, 226, 226),
-                dim: Color::Rgb(110, 110, 110),
+                accent: Color::Indexed(160),
+                sidebar_bg: Color::Indexed(254),
+                dim: Color::Indexed(243),
                 strong: Color::Black,
-                working: Color::Rgb(156, 103, 0),
-                waiting: Color::Rgb(0, 110, 130),
-                ok: Color::Rgb(0, 120, 40),
-                bad: Color::Rgb(176, 0, 32),
-                warn: Color::Rgb(156, 103, 0),
+                working: Color::Indexed(130),
+                waiting: Color::Indexed(30),
+                ok: Color::Indexed(28),
+                bad: Color::Indexed(124),
+                warn: Color::Indexed(130),
             },
             Self::HighContrast => Colors {
                 accent: Color::LightMagenta,
-                sidebar_bg: Color::Indexed(240),
+                sidebar_bg: Color::Indexed(236),
                 dim: Color::Gray,
                 strong: Color::White,
                 working: Color::LightYellow,
@@ -97,12 +97,15 @@ pub(crate) fn with_theme<R>(kind: ThemeKind, f: impl FnOnce() -> R) -> R {
 }
 
 pub fn parse_osc11(reply: &[u8]) -> Option<(u8, u8, u8)> {
-    let text = std::str::from_utf8(reply).ok()?;
-    let start = text.find("rgb:")? + 4;
-    let body = text[start..]
-        .split(['\x07', '\x1b'])
-        .next()
-        .unwrap_or_default();
+    let at = reply
+        .windows(4)
+        .position(|w| w == b"rgb:" || w == b"gba:")?;
+    let rest = &reply[at + 4..];
+    let end = rest
+        .iter()
+        .position(|&b| b == 0x07 || b == 0x1b)
+        .unwrap_or(rest.len());
+    let body = std::str::from_utf8(&rest[..end]).ok()?;
     let mut parts = body.split('/');
     let mut channel = || -> Option<u8> {
         let p = parts.next()?;
@@ -114,7 +117,11 @@ pub fn parse_osc11(reply: &[u8]) -> Option<(u8, u8, u8)> {
         u8::try_from((v * 255 + max / 2) / max).ok()
     };
     let rgb = (channel()?, channel()?, channel()?);
-    parts.next().is_none().then_some(rgb)
+    let alpha_ok = match parts.next() {
+        None => true,
+        Some(a) => reply[at] == b'g' && parts.next().is_none() && !a.is_empty(),
+    };
+    alpha_ok.then_some(rgb)
 }
 
 pub fn kind_for_background((r, g, b): (u8, u8, u8)) -> ThemeKind {

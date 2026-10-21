@@ -1371,34 +1371,62 @@ fn poller(
     }
 }
 
-fn query_background() -> Option<(u8, u8, u8)> {
+const DA1_QUERY: &[u8] = b"\x1b[c";
+
+fn take_span(buf: &mut Vec<u8>, start: &[u8], ends: &[&[u8]]) -> Option<Vec<u8>> {
+    let from = buf.windows(start.len()).position(|w| w == start)?;
+    let tail = &buf[from..];
+    let len = ends
+        .iter()
+        .filter_map(|e| {
+            tail.windows(e.len())
+                .position(|w| w == *e)
+                .map(|p| p + e.len())
+        })
+        .min()?;
+    Some(buf.drain(from..from + len).collect())
+}
+
+fn query_background() -> (Option<(u8, u8, u8)>, Vec<u8>) {
     let mut out = io::stdout();
-    out.write_all(OSC11_QUERY).ok()?;
-    out.flush().ok()?;
-    let deadline = Instant::now() + Duration::from_millis(250);
-    let mut reply = Vec::new();
-    while Instant::now() < deadline && reply.len() < 128 {
+    if out.write_all(OSC11_QUERY).is_err()
+        || out.write_all(DA1_QUERY).is_err()
+        || out.flush().is_err()
+    {
+        return (None, Vec::new());
+    }
+    let deadline = Instant::now() + Duration::from_millis(500);
+    let mut buf: Vec<u8> = Vec::new();
+    while buf.len() < 512 {
         let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
         let mut fds = libc::pollfd {
             fd: libc::STDIN_FILENO,
             events: libc::POLLIN,
             revents: 0,
         };
         let ready = unsafe { libc::poll(&mut fds, 1, left.as_millis() as libc::c_int) };
+        if ready < 0 && io::Error::last_os_error().kind() == io::ErrorKind::Interrupted {
+            continue;
+        }
         if ready <= 0 {
             break;
         }
-        let mut buf = [0u8; 64];
-        let n = unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), buf.len()) };
+        let mut chunk = [0u8; 128];
+        let n = unsafe { libc::read(libc::STDIN_FILENO, chunk.as_mut_ptr().cast(), chunk.len()) };
         if n <= 0 {
             break;
         }
-        reply.extend_from_slice(&buf[..n as usize]);
-        if reply.contains(&0x07) || reply.windows(2).any(|w| w == b"\x1b\\") {
+        buf.extend_from_slice(&chunk[..n as usize]);
+        if take_span(&mut buf.clone(), b"\x1b[?", &[b"c"]).is_some() {
             break;
         }
     }
-    parse_osc11(&reply)
+    let _ = take_span(&mut buf, b"\x1b[?", &[b"c"]);
+    let osc = take_span(&mut buf, b"\x1b]11;", &[b"\x07", b"\x1b\\"]);
+    (osc.as_deref().and_then(parse_osc11), buf)
 }
 
 pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
@@ -1447,6 +1475,16 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
+    view.theme = match attach_cfg.theme.as_deref().and_then(ThemeKind::parse) {
+        Some(kind) => kind,
+        None => {
+            let (rgb, typed) = query_background();
+            if !typed.is_empty() {
+                let _ = tx.send(Msg::Stdin(typed));
+            }
+            rgb.map_or(ThemeKind::Dark, kind_for_background)
+        }
+    };
     if mouse {
         let mut out = io::stdout();
         let _ = out.write_all(enter_mouse());
@@ -1457,10 +1495,6 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         let _ = out.write_all(focus_on());
         let _ = out.flush();
     }
-    view.theme = match attach_cfg.theme.as_deref().and_then(ThemeKind::parse) {
-        Some(kind) => kind,
-        None => query_background().map_or(ThemeKind::Dark, kind_for_background),
-    };
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
         .map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     let _ = terminal.clear();
@@ -1781,6 +1815,18 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn background_reply_is_cut_out_and_typed_bytes_are_kept() {
+        let mut buf = b"ab\x1b]11;rgb:ff/ff/ff\x07cd\x1b[?62;4cef".to_vec();
+        assert!(super::take_span(&mut buf, b"\x1b[?", &[b"c"]).is_some());
+        let osc = super::take_span(&mut buf, b"\x1b]11;", &[b"\x07", b"\x1b\\"]);
+        assert_eq!(osc.unwrap(), b"\x1b]11;rgb:ff/ff/ff\x07");
+        assert_eq!(buf, b"abcdef");
+        let mut partial = b"\x1b]11;rgb:ff".to_vec();
+        assert!(super::take_span(&mut partial, b"\x1b]11;", &[b"\x07"]).is_none());
+        assert_eq!(partial, b"\x1b]11;rgb:ff");
+    }
+
     use super::*;
     use tmgr_ipc::api::State;
     use tmgr_runner::attach::{ScrollKey, SidebarItem, SpawnKind};

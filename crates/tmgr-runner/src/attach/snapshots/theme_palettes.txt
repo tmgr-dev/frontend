@@ -14,53 +14,37 @@ Colors {
 }
 light
 Colors {
-    accent: Rgb(
-        192,
-        40,
-        0,
+    accent: Indexed(
+        160,
     ),
-    sidebar_bg: Rgb(
-        226,
-        226,
-        226,
+    sidebar_bg: Indexed(
+        254,
     ),
-    dim: Rgb(
-        110,
-        110,
-        110,
+    dim: Indexed(
+        243,
     ),
     strong: Black,
-    working: Rgb(
-        156,
-        103,
-        0,
-    ),
-    waiting: Rgb(
-        0,
-        110,
+    working: Indexed(
         130,
     ),
-    ok: Rgb(
-        0,
-        120,
-        40,
+    waiting: Indexed(
+        30,
     ),
-    bad: Rgb(
-        176,
-        0,
-        32,
+    ok: Indexed(
+        28,
     ),
-    warn: Rgb(
-        156,
-        103,
-        0,
+    bad: Indexed(
+        124,
+    ),
+    warn: Indexed(
+        130,
     ),
 }
 high-contrast
 Colors {
     accent: LightMagenta,
     sidebar_bg: Indexed(
-        240,
+        236,
     ),
     dim: Gray,
     strong: White,
