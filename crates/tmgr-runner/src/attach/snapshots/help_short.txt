@@ -1,8 +1,9 @@
  SESSIONS      Ctr╭ Keys ────────────────────────────────────────────────────────╮iting ───────────╮
  ◆ codex          │ Press Ctrl-] first, then:                                    │                 │
  ● claude         │                                                              │ ms              │
- ◌ dev-server     │ d             detach, sessions keep running                  │                 │
- ✓ tests          │ n / p         next / previous session                        │                 │
+ ◌ dev-server     │ :             command palette: actions and sessions          │                 │
+ ✓ tests          │ d             detach, sessions keep running                  │                 │
+                  │ n / p         next / previous session                        │                 │
                   │ w             session picker                                 │                 │
                   │ s             two panes, or collapse to one                  │                 │
                   │ | v / - h     split right / split down                       │                 │
@@ -16,9 +17,8 @@
                   │ ?             this help                                      │                 │
                   │ Ctrl-]        send a literal Ctrl-] to the session           │                 │
                   │                                                              │                 │
-                  │ click         pick a session or a pane                       │                 │
-                  │ wheel         scroll the history of the pane                 │                 │
-                  │ buttons       header: pause/resume, stop, close              │                 │
-                  │ drop          a dropped file is pasted there                 │                 │
-                  │ drag          Shift-drag selects (iTerm2: Option)            │─────────────────╯
+                  │ ? again closes this box                                      │                 │
+                  │                                                              │                 │
+                  │                                                              │                 │
+                  │                                                              │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

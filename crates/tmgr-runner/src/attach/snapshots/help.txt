@@ -1,8 +1,9 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────────── ⏸ ■ ✕ ╮
  ◆ codex             3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
  ● claude           18m │I will add an│                                                              │ ms                                  │
- ◌ dev-server       12m │✓ Tests 14 pa│ d             detach, sessions keep running                  │                                     │
- ✓ tests            52m │>            │ n / p         next / previous session                        │                                     │
+ ◌ dev-server       12m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
+ ✓ tests            52m │>            │ d             detach, sessions keep running                  │                                     │
+                        │             │ n / p         next / previous session                        │                                     │
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │

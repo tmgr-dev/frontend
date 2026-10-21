@@ -1,5 +1,6 @@
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
+use super::palette::{Palette, PaletteEntry};
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
@@ -108,6 +109,7 @@ pub struct ViewState {
     pub grab: Option<String>,
     pub confirm: Option<Confirm>,
     pub rename: Option<Rename>,
+    pub palette: Option<Palette>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -162,6 +164,7 @@ impl ViewState {
             grab: None,
             confirm: None,
             rename: None,
+            palette: None,
         }
     }
 
@@ -377,6 +380,12 @@ impl ViewState {
                     });
                 }
             }
+            Cmd::Palette => {
+                if self.palette.take().is_none() {
+                    self.palette = Some(Palette::default());
+                    self.help = false;
+                }
+            }
             Cmd::Detach | Cmd::Picker | Cmd::Resume => {}
         }
     }
@@ -585,6 +594,9 @@ impl ViewState {
         self.pointer = Some((ev.col, ev.row));
         if self.hover_key(area) != before {
             out.redraw = true;
+        }
+        if self.palette.is_some() {
+            return self.palette_mouse(area, ev, out);
         }
         if ev.is_left_press() && !matches!(self.hit(area, ev.col, ev.row), Hit::Button(..)) {
             self.confirm = None;
@@ -908,6 +920,7 @@ pub struct MouseOut {
     pub redraw: bool,
     pub forward: Option<(String, Vec<u8>)>,
     pub control: Option<(String, Control)>,
+    pub palette: Option<PaletteEntry>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -918,7 +931,7 @@ pub enum Hit {
     None,
 }
 
-fn contains(r: Rect, col: u16, row: u16) -> bool {
+pub(crate) fn contains(r: Rect, col: u16, row: u16) -> bool {
     col >= r.x && col < r.right() && row >= r.y && row < r.bottom()
 }
 

@@ -1,3 +1,4 @@
+use super::actions::ACTIONS;
 use super::mouse::{parse_sgr, MouseEvent};
 use super::tree::Nav;
 use std::time::{Duration, Instant};
@@ -30,6 +31,7 @@ pub enum Cmd {
     Remove,
     Rename,
     Resume,
+    Palette,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -68,25 +70,7 @@ pub struct InputSplitter {
 }
 
 fn command(b: u8) -> Option<Cmd> {
-    Some(match b {
-        b'd' => Cmd::Detach,
-        b'n' => Cmd::NextSession,
-        b'p' => Cmd::PrevSession,
-        b's' => Cmd::Split,
-        b'|' | b'v' => Cmd::SplitRight,
-        b'-' | b'h' => Cmd::SplitDown,
-        b'\t' => Cmd::FocusOther,
-        b'z' => Cmd::Zoom,
-        b'b' => Cmd::Sidebar,
-        b'[' => Cmd::ScrollMode,
-        b'?' => Cmd::Help,
-        b'w' => Cmd::Picker,
-        b'x' => Cmd::Stop,
-        b'X' => Cmd::Remove,
-        b'r' => Cmd::Rename,
-        b'\r' | b'R' => Cmd::Resume,
-        _ => return None,
-    })
+    ACTIONS.iter().find(|a| a.keys.contains(&b)).map(|a| a.cmd)
 }
 
 impl InputSplitter {
