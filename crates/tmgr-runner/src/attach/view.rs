@@ -5,7 +5,7 @@ use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
-use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
+use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -116,6 +116,7 @@ pub struct ViewState {
     pub sidebar_default: u16,
     pub theme: ThemeKind,
     border_drag: Option<Option<u16>>,
+    split_drag: Option<(Border, u16)>,
     pub help: bool,
     pub scroll: Option<ScrollState>,
     pub notice: Option<String>,
@@ -319,6 +320,7 @@ impl ViewState {
             sidebar_default: SIDEBAR_WIDTH,
             theme: ThemeKind::default(),
             border_drag: None,
+            split_drag: None,
             help: false,
             scroll: None,
             notice: None,
@@ -1287,7 +1289,54 @@ impl ViewState {
         row >= sb.y && row < sb.bottom() && (col == sb.right() || col + 1 == sb.right())
     }
 
+    fn split_border_mouse(&mut self, area: Rect, ev: MouseEvent, out: &mut MouseOut) -> bool {
+        if ev.kind() == Kind::Press {
+            self.split_drag = None;
+        }
+        if let Some((border, delta)) = self.split_drag.clone() {
+            match ev.kind() {
+                Kind::Drag => {
+                    let at = match border.dir {
+                        SplitDir::Right => ev.col,
+                        SplitDir::Down => ev.row,
+                    };
+                    let first = (at + delta).saturating_sub(border.start());
+                    if let Some(tree) = self.tree.as_mut() {
+                        out.redraw |= tree.drag_border(&border, first);
+                    }
+                }
+                Kind::Release => {
+                    self.split_drag = None;
+                    out.redraw = true;
+                }
+                _ => {}
+            }
+            return true;
+        }
+        if !ev.is_left_press() || self.zoom {
+            return false;
+        }
+        if matches!(self.hit(area, ev.col, ev.row), Hit::Button(..)) {
+            return false;
+        }
+        let Some(tree) = self.tree.as_ref() else {
+            return false;
+        };
+        let Some((border, first)) = tree.border_at(body_rect(area, self), ev.col, ev.row) else {
+            return false;
+        };
+        if let Hit::Pane { idx, .. } = self.hit(area, ev.col, ev.row) {
+            self.focus_pane(idx);
+        }
+        self.split_drag = Some((border, u16::from(first)));
+        out.redraw = true;
+        true
+    }
+
     fn border_mouse(&mut self, area: Rect, ev: MouseEvent, out: &mut MouseOut) -> bool {
+        if self.split_border_mouse(area, ev, out) {
+            return true;
+        }
         if self.border_drag.is_some() {
             match ev.kind() {
                 Kind::Drag => {
@@ -1406,6 +1455,7 @@ impl ViewState {
         }
         if kind == Kind::Move || self.new_session.is_some() || self.palette.is_some() || self.help {
             self.border_drag = None;
+            self.split_drag = None;
         }
         if self.new_session.is_some() {
             return self.new_session_mouse(area, ev, out);

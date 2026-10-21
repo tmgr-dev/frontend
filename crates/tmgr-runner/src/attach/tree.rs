@@ -48,6 +48,51 @@ pub enum Node {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Border {
+    pub path: Vec<bool>,
+    pub rect: Rect,
+    pub dir: SplitDir,
+    pub edge: u16,
+}
+
+impl Border {
+    pub fn start(&self) -> u16 {
+        match self.dir {
+            SplitDir::Right => self.rect.x,
+            SplitDir::Down => self.rect.y,
+        }
+    }
+
+    fn total(&self) -> u16 {
+        match self.dir {
+            SplitDir::Right => self.rect.width,
+            SplitDir::Down => self.rect.height,
+        }
+    }
+
+    fn hit(&self, col: u16, row: u16) -> Option<bool> {
+        let (along, across) = match self.dir {
+            SplitDir::Right => (col, row),
+            SplitDir::Down => (row, col),
+        };
+        let (lo, hi) = match self.dir {
+            SplitDir::Right => (self.rect.y, self.rect.bottom()),
+            SplitDir::Down => (self.rect.x, self.rect.right()),
+        };
+        if across < lo || across >= hi {
+            return None;
+        }
+        if along == self.edge {
+            Some(false)
+        } else if along + 1 == self.edge {
+            Some(true)
+        } else {
+            None
+        }
+    }
+}
+
 enum Resized {
     Missing,
     NoAxis,
@@ -229,6 +274,66 @@ impl Node {
             }
             other => other,
         }
+    }
+
+    pub fn borders(&self, rect: Rect) -> Vec<Border> {
+        let mut out = Vec::new();
+        self.collect_borders(rect, &mut Vec::new(), &mut out);
+        out
+    }
+
+    fn collect_borders(&self, r: Rect, path: &mut Vec<bool>, out: &mut Vec<Border>) {
+        let Node::Split { dir, ratio, a, b } = self else {
+            return;
+        };
+        let dir = effective_dir(*dir, r);
+        let Some((ra, rb)) = split_rects(dir, *ratio, a, b, r) else {
+            return;
+        };
+        path.push(false);
+        a.collect_borders(ra, path, out);
+        path.pop();
+        path.push(true);
+        b.collect_borders(rb, path, out);
+        path.pop();
+        let edge = match dir {
+            SplitDir::Right => rb.x,
+            SplitDir::Down => rb.y,
+        };
+        out.push(Border {
+            path: path.clone(),
+            rect: r,
+            dir,
+            edge,
+        });
+    }
+
+    pub fn border_at(&self, rect: Rect, col: u16, row: u16) -> Option<(Border, bool)> {
+        self.borders(rect)
+            .into_iter()
+            .find_map(|b| b.hit(col, row).map(|first| (b, first)))
+    }
+
+    pub fn drag_border(&mut self, border: &Border, first_cells: u16) -> bool {
+        let total = border.total();
+        if total == 0 {
+            return false;
+        }
+        let mut node = self;
+        for &second in &border.path {
+            let Node::Split { a, b, .. } = node else {
+                return false;
+            };
+            node = if second { b } else { a };
+        }
+        let Node::Split { ratio, .. } = node else {
+            return false;
+        };
+        let want = (u32::from(first_cells.min(total)) * 1000).div_ceil(u32::from(total));
+        let next = (want as u16).clamp(RATIO_MIN, RATIO_MAX);
+        let changed = next != *ratio;
+        *ratio = next;
+        changed
     }
 
     fn min_size(&self) -> (u16, u16) {
