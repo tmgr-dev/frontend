@@ -8,7 +8,7 @@ mod palette;
 mod place;
 mod render;
 mod theme;
-mod title;
+pub(crate) mod title;
 mod tree;
 mod view;
 

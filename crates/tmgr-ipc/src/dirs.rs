@@ -50,15 +50,23 @@ pub fn homes_dir() -> io::Result<PathBuf> {
 }
 
 pub fn time_dir(runner_dir: &Path) -> PathBuf {
+    persistent_dir(runner_dir, "time")
+}
+
+pub fn questions_dir(runner_dir: &Path) -> PathBuf {
+    persistent_dir(runner_dir, "questions")
+}
+
+fn persistent_dir(runner_dir: &Path, name: &str) -> PathBuf {
     #[cfg(not(target_os = "macos"))]
     if let Some(rt) = env_path("XDG_RUNTIME_DIR") {
         if runner_dir == rt.join("tmgr") {
             if let Ok(state) = state_home() {
-                return state.join("tmgr/time");
+                return state.join("tmgr").join(name);
             }
         }
     }
-    runner_dir.join("time")
+    runner_dir.join(name)
 }
 
 #[cfg(not(target_os = "macos"))]

@@ -9,9 +9,9 @@ use std::path::{Component, Path, PathBuf};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub const TITLE_MAX: usize = 120;
-const PASS_CAP: u64 = 8 * 1024 * 1024;
+pub(crate) const PASS_CAP: u64 = 8 * 1024 * 1024;
 const MAX_PASSES: usize = 4;
-const LINE_CAP: usize = 1024 * 1024;
+pub(crate) const LINE_CAP: usize = 1024 * 1024;
 const PID_FILE_CAP: u64 = 16 * 1024;
 const DIR_CAP: usize = 512;
 const ELLIPSIS: char = '…';
@@ -111,7 +111,7 @@ pub fn encode_cwd(cwd: &str) -> String {
         .collect()
 }
 
-fn open_under(root: &Path, path: &Path) -> Option<(File, std::fs::Metadata)> {
+pub(crate) fn open_under(root: &Path, path: &Path) -> Option<(File, std::fs::Metadata)> {
     let names: Vec<&std::ffi::OsStr> = path
         .strip_prefix(root)
         .ok()?
@@ -428,7 +428,7 @@ impl TitleScan {
     }
 }
 
-fn contains(hay: &[u8], needle: &[u8]) -> bool {
+pub(crate) fn contains(hay: &[u8], needle: &[u8]) -> bool {
     hay.windows(needle.len()).any(|w| w == needle)
 }
 
