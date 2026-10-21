@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.27
 
 - In `tmgr attach` you can resize panes with the mouse: drag the line between two side-by-side panes, or the header row of the pane below a split (not its buttons). With nested splits the nearest split owning that line moves; both sides keep a minimum size, and the ratio is saved with the tab layout. `Ctrl-] ?` mentions it.
 
