@@ -4860,3 +4860,174 @@ fn background_brightness_picks_the_theme() {
     assert_eq!(kind_for_background((30, 30, 46)), ThemeKind::Dark);
     assert_eq!(kind_for_background((0, 0, 255)), ThemeKind::Dark);
 }
+
+fn at(v: &mut ViewState, cb: u16, col: u16, row: u16, release: bool) -> MouseOut {
+    v.on_mouse(
+        AREA,
+        ev(cb, col, row, release),
+        &mouse_info(MouseMode::default(), 0),
+    )
+}
+
+fn two_panes(dir: SplitDir) -> ViewState {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    assert!(v.split_focused(dir, "b"));
+    v
+}
+
+fn body_of(v: &ViewState) -> Rect {
+    let sb = layout(AREA, v).sidebar.map_or(0, |r| r.width);
+    Rect::new(sb, 0, AREA.width - sb, AREA.height - 1)
+}
+
+fn outer(v: &ViewState, i: usize) -> Rect {
+    layout(AREA, v).panes[i].outer
+}
+
+#[test]
+fn dragging_the_vertical_line_between_panes_moves_it() {
+    let mut v = two_panes(SplitDir::Right);
+    let edge = outer(&v, 1).x;
+    let row = outer(&v, 0).y + 5;
+    at(&mut v, 0, edge, row, false);
+    let out = at(&mut v, 32, edge + 10, row, false);
+    assert!(out.redraw);
+    assert_eq!(outer(&v, 1).x, edge + 10);
+    at(&mut v, 32, 0, row, false);
+    assert!(outer(&v, 0).width >= 3);
+    at(&mut v, 0, 60, row, true);
+    let x = outer(&v, 1).x;
+    at(&mut v, 32, x + 5, row, false);
+    assert_eq!(outer(&v, 1).x, x);
+}
+
+#[test]
+fn grabbing_the_left_panes_edge_column_keeps_the_line_under_the_pointer() {
+    let mut v = two_panes(SplitDir::Right);
+    let edge = outer(&v, 1).x;
+    let row = outer(&v, 0).y + 5;
+    at(&mut v, 0, edge - 1, row, false);
+    at(&mut v, 32, edge + 7, row, false);
+    assert_eq!(outer(&v, 1).x, edge + 8);
+}
+
+#[test]
+fn dragging_the_header_row_of_the_bottom_pane_moves_the_horizontal_line() {
+    let mut v = two_panes(SplitDir::Down);
+    let top = outer(&v, 0);
+    let header = outer(&v, 1).y;
+    let x = outer(&v, 1).x + 3;
+    assert_eq!(header, top.bottom());
+    at(&mut v, 0, x, header, false);
+    at(&mut v, 32, x, header + 6, false);
+    assert_eq!(outer(&v, 1).y, header + 6);
+    at(&mut v, 32, x, 0, false);
+    assert!(outer(&v, 0).height >= 3);
+    at(&mut v, 0, x, 10, true);
+}
+
+#[test]
+fn header_buttons_still_click_and_do_not_start_a_drag() {
+    let mut v = two_panes(SplitDir::Down);
+    let o = outer(&v, 1);
+    let col = header_button(o, Control::Stop).unwrap();
+    let out = at(&mut v, 0, col, o.y, false);
+    assert!(out.control.is_some());
+    at(&mut v, 0, col, o.y, true);
+    at(&mut v, 32, col, o.y + 5, false);
+    assert_eq!(outer(&v, 1).y, o.y);
+}
+
+#[test]
+fn nested_drag_moves_the_split_that_owns_the_border() {
+    let mut v = grid(140);
+    let before: Vec<Rect> = layout(AREA, &v).panes.iter().map(|p| p.outer).collect();
+    let tree = v.prefs().tree.unwrap();
+    let body = body_of(&v);
+    let borders = tree.borders(body);
+    assert_eq!(borders.len(), 3);
+    let inner = &borders[0];
+    assert!(inner.path.len() > borders[2].path.len());
+    let (col, row) = match inner.dir {
+        SplitDir::Right => (inner.edge, inner.rect.y + 2),
+        SplitDir::Down => (inner.rect.x + 2, inner.edge),
+    };
+    at(&mut v, 0, col, row, false);
+    match inner.dir {
+        SplitDir::Right => at(&mut v, 32, col + 4, row, false),
+        SplitDir::Down => at(&mut v, 32, col, row + 2, false),
+    };
+    at(&mut v, 0, col, row, true);
+    let after: Vec<Rect> = layout(AREA, &v).panes.iter().map(|p| p.outer).collect();
+    assert_ne!(before, after);
+    let root = tree.borders(body).pop().unwrap();
+    let now = v.prefs().tree.unwrap().borders(body).pop().unwrap();
+    assert_eq!(root.edge, now.edge);
+}
+
+#[test]
+fn border_hit_testing_ignores_cells_outside_the_split() {
+    let v = two_panes(SplitDir::Right);
+    let body = body_of(&v);
+    let tree = v.prefs().tree.unwrap();
+    let edge = outer(&v, 1).x;
+    assert!(tree.border_at(body, edge, body.y).is_some());
+    assert!(tree.border_at(body, edge - 1, body.y).is_some());
+    assert!(tree.border_at(body, edge + 1, body.y).is_none());
+    assert!(tree.border_at(body, edge, body.bottom()).is_none());
+    assert!(leaf("a").border_at(body, edge, 3).is_none());
+}
+
+#[test]
+fn drag_ratio_is_clamped_on_a_narrow_terminal() {
+    let mut t = node(SplitDir::Right, 500, leaf("a"), leaf("b"));
+    let rect = Rect::new(0, 0, 60, 20);
+    let b = t.borders(rect).pop().unwrap();
+    assert!(t.drag_border(&b, 1000));
+    let rects = t.layout(rect).unwrap();
+    assert!(rects[1].1.width >= 3);
+    assert!(t.drag_border(&b, 0));
+    let rects = t.layout(rect).unwrap();
+    assert!(rects[0].1.width >= 3);
+}
+
+#[test]
+fn dragged_ratio_survives_prefs_round_trip() {
+    let mut v = two_panes(SplitDir::Right);
+    let edge = outer(&v, 1).x;
+    at(&mut v, 0, edge, 5, false);
+    at(&mut v, 32, edge + 12, 5, false);
+    at(&mut v, 0, edge + 12, 5, true);
+    let json = serde_json::to_value(v.prefs()).unwrap();
+    let back: LayoutPrefs = serde_json::from_value(json).unwrap();
+    let mut other = two_panes(SplitDir::Right);
+    other.apply_prefs(&back);
+    assert_eq!(outer(&other, 1).x, edge + 12);
+}
+
+#[test]
+fn drag_state_is_dropped_when_the_tree_changes_and_not_saved_midway() {
+    let mut v = two_panes(SplitDir::Right);
+    let saved = v.prefs().tree;
+    let edge = outer(&v, 1).x;
+    at(&mut v, 0, edge, 5, false);
+    at(&mut v, 32, edge + 6, 5, false);
+    assert_eq!(v.prefs().tree, saved);
+    v.close_pane("b");
+    let out = at(&mut v, 32, edge + 9, 5, false);
+    assert!(out.redraw);
+    assert_eq!(layout(AREA, &v).panes.len(), 1);
+}
+
+#[test]
+fn sidebar_border_wins_over_a_pane_line_at_the_shared_column() {
+    let mut v = two_panes(SplitDir::Down);
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let header = outer(&v, 1).y;
+    let before = outer(&v, 1).y;
+    at(&mut v, 0, sb.right(), header, false);
+    at(&mut v, 32, sb.right() + 4, header + 5, false);
+    assert_eq!(outer(&v, 1).y, before);
+    assert!(v.sidebar_width() > sb.width);
+}

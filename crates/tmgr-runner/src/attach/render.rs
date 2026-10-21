@@ -691,7 +691,10 @@ const MOUSE: &[(&str, &str)] = &[
     ("wheel", "scroll the history of the pane"),
     ("buttons", "header: pause/resume, stop, close"),
     ("drop", "a dropped file is pasted there"),
-    ("drag", "Shift-drag selects (iTerm2: Option)"),
+    (
+        "drag",
+        "a line resizes; Shift-drag selects (iTerm2: Option)",
+    ),
 ];
 
 pub(crate) enum HelpKey {
