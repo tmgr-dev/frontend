@@ -203,7 +203,8 @@
 			workspaceId: { type: Number, required: true },
 			workspaceCode: { type: String, required: true },
 		},
-		setup(props) {
+		emits: ['pinned'],
+		setup(props, { emit }) {
 			const route = useRoute();
 			const router = useRouter();
 			const store = useStore();
@@ -219,6 +220,11 @@
 				computed(() => workspaceId.value),
 				computed(() => modulesKnown.value),
 				() => actions.fail('Failed to move page'),
+			);
+			watch(
+				() => tree.pages.value.filter((page) => page.pinned),
+				(pinned) => emit('pinned', pinned),
+				{ immediate: true },
 			);
 
 			const renaming = ref<PageSummary | null>(null);

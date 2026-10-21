@@ -23,7 +23,7 @@
 							to="/settings/agent-notifications"
 							class="text-primary hover:underline"
 						>
-							Settings → Agent notifications
+							Settings → Agent alerts
 						</router-link>
 						and press Create token. The token starts with
 						<code class="font-mono">tmgrn_</code> and is shown only once, so
@@ -72,9 +72,7 @@
 						acknowledge). To make it reliable:
 					</p>
 					<ul class="list-disc space-y-1 pl-5">
-						<li>
-							Set and verify an alarm phone in Settings → Agent notifications.
-						</li>
+						<li>Set and verify an alarm phone in Settings → Agent alerts.</li>
 						<li>Add the TMGR caller number to your contacts or Favorites.</li>
 						<li>Enable Repeated Calls in iOS settings.</li>
 						<li>Allow alarms for the TMGR app.</li>

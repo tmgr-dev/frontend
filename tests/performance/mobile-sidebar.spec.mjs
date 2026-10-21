@@ -1,10 +1,19 @@
 import { expect, test } from '@playwright/test';
 import { mockApp } from './mockApp.mjs';
 
+// First-visit tours (board) auto-offer ~600ms after landing and toggle the sheet.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
+});
+
 test('the sidebar slides in on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockApp(page);
   await page.goto('/demo/board');
+  // A sheet opened before boot settles can close again; let the app settle.
+  await page.waitForLoadState('networkidle');
   await page.locator('[data-sidebar="trigger"]').first().click();
   const sheet = page.locator('[data-mobile="true"][data-sidebar="sidebar"]');
   await expect(sheet).toBeVisible();

@@ -66,6 +66,17 @@ Individual team member item within the team activity widget.
 - Current task information with timer duration
 - Last activity timestamp
 - Clickable for member profile navigation
+- A table row on desktop (member, activity, done, tracked, active, last active), stacked on phones
+
+### KpiCard.vue / Sparkline.vue
+Period KPI card (icon tile, value, SVG gradient sparkline, delta vs the previous period).
+Values come from `useDashboardTrends` (src/composable/useDashboardTrends.ts).
+
+### ActivityChart.vue
+SVG multi-line chart, one line per series scaled to its own peak; `role="img"` summary plus a visually hidden data table.
+
+### TopCategoriesCard.vue
+Categories by tracked time in the period (from `GET /workspaces/{id}/time/daily`).
 
 ## Skeleton Components
 

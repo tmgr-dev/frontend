@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1');
+  });
+});
+
 test('a local workspace is created from the switcher and keeps its tasks off the server', async ({
   page,
 }) => {
@@ -34,7 +41,7 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await expect(page.getByTestId('local-workspace-badge').first()).toBeVisible();
 
   await page
-    .getByRole('button', { name: 'Open Add Task Modal' })
+    .getByRole('button', { name: 'New task', exact: true })
     .first()
     .click();
   await page.getByPlaceholder('Task name').fill('Written offline');
@@ -94,7 +101,9 @@ test('a local workspace is created from the switcher and keeps its tasks off the
       success: true,
     }),
   );
-  await expect(page.getByText('Downloaded notes.png')).toBeVisible();
+  await expect(
+    page.getByText('Downloaded notes.png', { exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Show in Finder' }).click();
   await expect
     .poll(() => shell.revealed)

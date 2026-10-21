@@ -46,7 +46,7 @@
 			purpose: 'Notifications and alarms on your phone',
 			token: 'notify token (tmgrn_…)',
 			to: '/settings/agent-notifications',
-			linkLabel: 'Set up in Agent notifications',
+			linkLabel: 'Set up in Agent alerts',
 		},
 	];
 </script>

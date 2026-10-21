@@ -33,7 +33,10 @@
 			<div class="flex min-h-screen">
 				<CustomSidebar>
 					<router-view v-slot="{ Component, route }">
-						<component :is="Component" :key="routeViewKey(route)" />
+						<SettingsLayout v-if="route.meta.settingsLayout">
+							<component :is="Component" :key="routeViewKey(route)" />
+						</SettingsLayout>
+						<component v-else :is="Component" :key="routeViewKey(route)" />
 					</router-view>
 				</CustomSidebar>
 			</div>
@@ -112,6 +115,7 @@
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import Modal from '@/components/Modal.vue';
 	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
+	import SettingsLayout from '@/components/settings/SettingsLayout.vue';
 	import TaskSidePanel from '@/components/tasks/TaskSidePanel.vue';
 	import { Toaster } from '@/components/ui/toast';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
@@ -182,6 +186,7 @@
 			Alert,
 			WindowControls,
 			StatusBar,
+			SettingsLayout,
 		},
 		setup() {
 			const isExpanded = ref(true);
