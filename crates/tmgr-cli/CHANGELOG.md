@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.30
 
 - `tmgr attach` shows what each Claude Code session is doing without opening it. While a session works, a line under its name in the sidebar (and after the state in the pane header when there is room) shows the tool it is running, such as `Bash: cargo test` or `Edit: api.rs`, with the turn time `0:42`; between tools it says `thinking`; when the agent keeps a todo list (`TodoWrite`, or the `TaskCreate`/`TaskUpdate` tools) the open progress `3/7` comes first. The runner client reads the agent's own transcript (never the screen), updates about once a second and only for sessions you can see. Secret-looking values in commands (`NAME=value`, `--password x`, bearer and `Authorization:` headers, URL credentials, well-known token prefixes) are hidden. Codex sessions show nothing. Not in a remote attach.
 
