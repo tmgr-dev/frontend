@@ -52,3 +52,29 @@ export const priorityOption = (value: unknown): PriorityOption =>
 
 export const showPriorityBadge = (value: unknown): boolean =>
 	normalizePriority(value) !== 'medium';
+
+export const priorityRank = (task: { priority?: unknown }): number =>
+	PRIORITIES.findIndex((p) => p.value === normalizePriority(task.priority));
+
+export const parsePriorityFilter = (value: unknown): TaskPriority[] => {
+	const parts = new Set(
+		(Array.isArray(value) ? value : [value])
+			.filter((part): part is string => typeof part === 'string')
+			.flatMap((part) => part.split(','))
+			.map((part) => part.trim().toLowerCase()),
+	);
+	return PRIORITIES.map((p) => p.value).filter((level) => parts.has(level));
+};
+
+export const serializePriorityFilter = (levels: readonly string[]): string =>
+	parsePriorityFilter(levels.join(',')).join(',');
+
+export const matchesPriorityFilter = (
+	task: { priority?: unknown },
+	levels: readonly string[],
+): boolean =>
+	!levels.length || levels.includes(normalizePriority(task.priority));
+
+export const sortByPriority = <T extends { priority?: unknown }>(
+	tasks: readonly T[],
+): T[] => [...tasks].sort((a, b) => priorityRank(a) - priorityRank(b));

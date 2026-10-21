@@ -35,6 +35,7 @@
 	import { usePusher } from '@/composable/usePusher';
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import store from '@/store';
+	import type { TaskPriority } from '@/types/dashboard';
 	import {
 		buildArchivedStatusSets,
 		isArchivedTask as isArchivedTaskBySets,
@@ -47,11 +48,10 @@
 	import {
 		matchesPriorityFilter,
 		parsePriorityFilter,
-		PRIORITY_FILTER_OPTIONS,
+		PRIORITIES,
 		serializePriorityFilter,
 		sortByPriority,
-		type PriorityLevel,
-	} from '@/utils/priorityFilter';
+	} from '@/utils/priority';
 	import { requestCache } from '@/utils/requestCache';
 	import { createRequestSequence } from '@/utils/requestSequence';
 	import { readTaskListQuery } from '@/utils/taskListQuery';
@@ -718,7 +718,7 @@
 		return router.push({ query });
 	}
 
-	function togglePriority(level: PriorityLevel) {
+	function togglePriority(level: TaskPriority) {
 		updatePriorityQuery(
 			activePriorities.value.includes(level)
 				? activePriorities.value.filter((value) => value !== level)
@@ -1066,7 +1066,7 @@
 										aria-label="Priority"
 									>
 										<button
-											v-for="option in PRIORITY_FILTER_OPTIONS"
+											v-for="option in PRIORITIES"
 											:key="option.value"
 											type="button"
 											class="h-8 rounded-pill border px-3 text-sm transition-colors"

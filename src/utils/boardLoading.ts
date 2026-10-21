@@ -3,7 +3,7 @@ import {
 	hasPersonaAssignee,
 	type PersonaAssignee,
 } from './personas';
-import { matchesPriorityFilter, sortByPriority } from './priorityFilter';
+import { matchesPriorityFilter, sortByPriority } from './priority';
 import { createRequestSequence } from './requestSequence';
 
 export const MY_PERSONAS_FILTER = 'mine';

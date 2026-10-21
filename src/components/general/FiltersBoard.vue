@@ -66,7 +66,7 @@
 				<span class="text-sm font-medium text-ink">Priority</span>
 				<div class="flex flex-wrap gap-2" role="group" aria-label="Priority">
 					<button
-						v-for="option in PRIORITY_FILTER_OPTIONS"
+						v-for="option in PRIORITIES"
 						:key="option.value"
 						type="button"
 						class="h-8 rounded-pill border px-3 text-sm transition-colors"
@@ -238,7 +238,7 @@
 					<span class="text-sm font-medium text-ink">Priority</span>
 					<div class="flex flex-wrap gap-2" role="group" aria-label="Priority">
 						<button
-							v-for="option in PRIORITY_FILTER_OPTIONS"
+							v-for="option in PRIORITIES"
 							:key="option.value"
 							type="button"
 							class="h-8 rounded-pill border px-3 text-sm transition-colors"
@@ -334,12 +334,9 @@
 		SelectTrigger as UiSelectTrigger,
 		SelectValue as UiSelectValue,
 	} from '@/components/ui/select';
+	import type { TaskPriority } from '@/types/dashboard';
 	import { MY_PERSONAS_FILTER } from '@/utils/boardLoading';
-	import {
-		parsePriorityFilter,
-		PRIORITY_FILTER_OPTIONS,
-		type PriorityLevel,
-	} from '@/utils/priorityFilter';
+	import { parsePriorityFilter, PRIORITIES } from '@/utils/priority';
 	import {
 		MenuItem,
 		Popover,
@@ -387,7 +384,7 @@
 		selectedPersona: string;
 	}
 	interface PriorityState {
-		selectedPriorities: PriorityLevel[];
+		selectedPriorities: TaskPriority[];
 		prioritySort: boolean;
 	}
 	const props = withDefaults(defineProps<Props>(), {
@@ -455,7 +452,7 @@
 			(store.state as unknown as { filter: PriorityState }).filter
 				.selectedPriorities,
 	);
-	const togglePriority = (level: PriorityLevel) => {
+	const togglePriority = (level: TaskPriority) => {
 		const next = selectedPriorities.value.includes(level)
 			? selectedPriorities.value.filter((value) => value !== level)
 			: [...selectedPriorities.value, level];

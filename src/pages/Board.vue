@@ -42,7 +42,12 @@
 										</button>
 										<button
 											type="button"
-											class="flex h-9 w-9 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+											class="flex h-9 w-9 items-center justify-center rounded-pill hover:bg-surface-hover"
+											:class="
+												priorityViewActive
+													? 'text-brand'
+													: 'text-ink-subtle hover:text-ink'
+											"
 											title="Filters"
 											@click="isFiltersModalShown = true"
 										>
@@ -847,7 +852,7 @@
 		parsePriorityFilter,
 		serializePriorityFilter,
 		sortByPriority,
-	} from '@/utils/priorityFilter';
+	} from '@/utils/priority';
 	import { createRequestSequence } from '@/utils/requestSequence';
 	import {
 		removeTaskFromColumns,
@@ -1055,6 +1060,10 @@
 		computed: {
 			prioritySortActive() {
 				return this.$store.state.filter.prioritySort;
+			},
+			priorityViewActive() {
+				const filter = this.$store.state.filter;
+				return filter.prioritySort || filter.selectedPriorities.length > 0;
 			},
 			pluginBadgeKey() {
 				return this.columns
@@ -1429,8 +1438,7 @@
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.unshift(task);
 
-				await this.$nextTick();
-				await this.saveOrders(column.status.id);
+				await this.queueOrderSave(column.status.id, column.tasks.slice());
 			},
 			async handleMoveToBottom(task, column) {
 				if (this.prioritySortActive) return;
@@ -1442,8 +1450,16 @@
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.push(task);
 
-				await this.$nextTick();
-				await this.saveOrders(column.status.id);
+				await this.queueOrderSave(column.status.id, column.tasks.slice());
+			},
+			queueOrderSave(status, tasks) {
+				this.dragSaveQueue = this.dragSaveQueue
+					.then(() => this.saveOrders(status, tasks))
+					.catch(() => {
+						this.boardError =
+							'Could not save task order. Refresh to restore the server order.';
+					});
+				return this.dragSaveQueue;
 			},
 			findTask(status, taskId) {
 				const column = this.findColumn(status);
