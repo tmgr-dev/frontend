@@ -8,7 +8,7 @@
 		isLongBody,
 		openActionIds,
 	} from '@/utils/agentConfirmation';
-	import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 	const props = defineProps<{
 		actions: PendingAction[];
@@ -19,13 +19,37 @@
 	const inFlight = ref(false);
 	const expanded = ref<Set<number>>(new Set());
 	let timer: ReturnType<typeof setInterval> | null = null;
+	let boundary: ReturnType<typeof setTimeout> | null = null;
+
+	function clearBoundary(): void {
+		if (boundary !== null) clearTimeout(boundary);
+		boundary = null;
+	}
+
+	function scheduleBoundary(): void {
+		clearBoundary();
+		const current = Date.now();
+		const next = props.actions
+			.filter((a) => a.status === 'pending')
+			.map((a) => new Date(a.expires_at).getTime())
+			.filter((t) => !Number.isNaN(t) && t > current)
+			.sort((a, b) => a - b)[0];
+		if (next === undefined) return;
+		boundary = setTimeout(() => {
+			now.value = Date.now();
+			scheduleBoundary();
+		}, Math.min(next - current + 50, 2147483647));
+	}
 
 	onMounted(() => {
 		timer = setInterval(() => (now.value = Date.now()), 15000);
+		scheduleBoundary();
 	});
 	onBeforeUnmount(() => {
 		if (timer !== null) clearInterval(timer);
+		clearBoundary();
 	});
+	watch(() => props.actions, scheduleBoundary);
 
 	const openIds = computed(() => openActionIds(props.actions, now.value));
 	const isOpen = computed(() => openIds.value.length > 0);
@@ -39,7 +63,9 @@
 	});
 
 	async function onDecide(decision: ActionDecision): Promise<void> {
-		if (inFlight.value || !isOpen.value) return;
+		if (inFlight.value) return;
+		now.value = Date.now();
+		if (!isOpen.value) return;
 		inFlight.value = true;
 		try {
 			await props.decide(decision);
@@ -103,7 +129,7 @@
 					:class="
 						isLongBody(action.preview.body) && !expanded.has(action.id)
 							? 'max-h-16 overflow-hidden'
-							: ''
+							: 'max-h-64 overflow-y-auto'
 					"
 				>
 					<MarkdownText :content="action.preview.body" untrusted />
