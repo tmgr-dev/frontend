@@ -1603,7 +1603,7 @@ fn clicking_a_sidebar_row_switches_the_session_and_forwards_agent_mouse() {
     pty.type_bytes(b"\x1b[<0;40;5M");
     pty.type_bytes(b"\x1b[<0;40;5m");
     wait_file(&out, b"\x1b[<0;15;4M\x1b[<0;15;4m");
-    pty.type_bytes(b"\x1b[<0;5;3M");
+    pty.type_bytes(b"\x1b[<0;5;4M");
     pty.wait_for("READY-B");
     pty.detach();
 }
