@@ -6,6 +6,7 @@ use crate::link::{attribute_full, Attribution, LinkEvent, LinkReport, OrchWindow
 use crate::model::{FactKind, Tool};
 
 pub const SLACK_MINUTES: i64 = 2;
+const WINDOW_GAP_MINUTES: i64 = 30;
 const MAX_CHAIN: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -242,7 +243,7 @@ fn task_key(run: &RunWindow) -> String {
     format!("{}\u{1}{}", run.workspace, run.task_ref)
 }
 
-/// Window of a task per ancestor of its bound nodes: first to last descendant activity or own call.
+/// Windows of a task per ancestor of its bound nodes: runs of descendant activity or own calls, split at gaps over 30 minutes.
 pub fn orchestrator_windows(
     events: &[LinkEvent],
     facts: &[StoredFact],
@@ -264,15 +265,7 @@ pub fn orchestrator_windows(
     for b in bindings.iter().filter(|b| b.run_index < runs.len()) {
         by_node.entry(b.node()).or_default().push(b);
     }
-    let widen = |map: &mut BTreeMap<Key, (DateTime<Utc>, DateTime<Utc>)>,
-                 key: Key,
-                 from: DateTime<Utc>,
-                 to: DateTime<Utc>| {
-        let e = map.entry(key).or_insert((from, to));
-        e.0 = e.0.min(from);
-        e.1 = e.1.max(to);
-    };
-    let mut spans: BTreeMap<Key, (DateTime<Utc>, DateTime<Utc>)> = BTreeMap::new();
+    let mut spans: BTreeMap<Key, Vec<DateTime<Utc>>> = BTreeMap::new();
     let mut ordered: Vec<(&NodeKey, &Vec<DateTime<Utc>>)> = stamps.iter().collect();
     ordered.sort_by(|a, b| a.0.cmp(b.0));
     for (x, list) in ordered {
@@ -280,20 +273,19 @@ pub fn orchestrator_windows(
         chain.extend(ancestors(x, parents));
         for (i, d) in chain.iter().enumerate().take(chain.len() - 1) {
             for b in by_node.get(d).into_iter().flatten() {
-                let inside = list
+                let inside: Vec<DateTime<Utc>> = list
                     .iter()
                     .copied()
-                    .filter(|t| *t >= b.from && b.to.map_or(*t <= now, |e| *t <= e));
-                let (Some(lo), Some(hi)) = (inside.clone().min(), inside.max()) else {
+                    .filter(|t| *t >= b.from && b.to.map_or(*t <= now, |e| *t <= e))
+                    .collect();
+                if inside.is_empty() {
                     continue;
-                };
+                }
                 for o in &chain[i + 1..] {
-                    widen(
-                        &mut spans,
-                        (o.clone(), task_key(&runs[b.run_index])),
-                        lo,
-                        hi,
-                    );
+                    spans
+                        .entry((o.clone(), task_key(&runs[b.run_index])))
+                        .or_default()
+                        .extend(&inside);
                 }
             }
         }
@@ -309,23 +301,43 @@ pub fn orchestrator_windows(
         };
         for r in matched_runs(marker, value, f.ts, runs, ids, all, now, slack) {
             let key = (NodeKey::of_fact(f), task_key(&runs[r]));
-            if spans.contains_key(&key) {
-                widen(&mut spans, key, f.ts, f.ts);
+            if let Some(list) = spans.get_mut(&key) {
+                list.push(f.ts);
             }
         }
     }
-    spans
-        .into_iter()
-        .map(|((node, task), (from, to))| OrchWindow {
+    let max_gap = Duration::minutes(WINDOW_GAP_MINUTES);
+    let mut out = Vec::new();
+    for ((node, task), mut anchors) in spans {
+        anchors.sort();
+        anchors.dedup();
+        let task_runs: Vec<usize> = (0..runs.len())
+            .filter(|&i| task_key(&runs[i]) == task)
+            .collect();
+        let mut start = anchors[0];
+        let mut last = start;
+        for &at in &anchors[1..] {
+            if at - last > max_gap {
+                out.push(OrchWindow {
+                    node: node.clone(),
+                    task: task.clone(),
+                    runs: task_runs.clone(),
+                    from: start,
+                    to: last,
+                });
+                start = at;
+            }
+            last = at;
+        }
+        out.push(OrchWindow {
             node,
-            runs: (0..runs.len())
-                .filter(|&i| task_key(&runs[i]) == task)
-                .collect(),
             task,
-            from,
-            to,
-        })
-        .collect()
+            runs: task_runs,
+            from: start,
+            to: last,
+        });
+    }
+    out
 }
 
 pub struct Linker<'a> {
@@ -763,12 +775,45 @@ mod tests {
         let runs = [run("a", 10, Some(100))];
         let facts = [
             call(Some("l"), "agent_work_start", 1, 10),
-            call(None, "agent_work_update", 7, 60),
+            call(None, "agent_work_update", 7, 40),
         ];
-        let events = [ev(Some("l"), 20), ev(None, 55)];
+        let events = [ev(Some("l"), 20), ev(None, 35)];
         let l = linker(&runs, &[ids(7, 1)], &events, &facts);
         let w = l.windows().iter().find(|w| w.node == node(None)).unwrap();
-        assert_eq!((w.from, w.to), (t(10), t(60)));
+        assert_eq!((w.from, w.to), (t(10), t(40)));
+    }
+
+    #[test]
+    fn a_lead_resumed_hours_later_does_not_pull_the_orchestrator_events_in_between() {
+        let runs = [run("a", 10, Some(600))];
+        let facts = [call(Some("l"), "agent_work_start", 1, 10)];
+        let events = [
+            ev(Some("l"), 20),
+            ev(None, 15),
+            ev(None, 100),
+            ev(Some("l"), 200),
+            ev(Some("l"), 210),
+            ev(None, 205),
+        ];
+        let l = linker(&runs, &[ids(7, 1)], &events, &facts);
+        let windows: Vec<_> = l
+            .windows()
+            .iter()
+            .filter(|w| w.node == node(None))
+            .map(|w| (w.from, w.to))
+            .collect();
+        assert_eq!(windows, vec![(t(10), t(20)), (t(200), t(210))]);
+        let r = l.attribute(&events);
+        let orchestrator: Vec<usize> = r
+            .links
+            .iter()
+            .filter(|k| k.method == LinkMethod::OrchestratorWindow)
+            .map(|k| k.event_index)
+            .collect();
+        assert_eq!(orchestrator, vec![1, 5]);
+        assert_eq!(r.unattributed, vec![2]);
+        let counted = r.links.len() + r.ambiguous.len() + r.unattributed.len() + r.shared.len();
+        assert_eq!(counted, events.len());
     }
 
     #[test]

@@ -37,11 +37,12 @@ Automatic upload: after each agent run on a task of a cloud workspace, tmgr uplo
 Sent (the `task_usage.v1` summary of the task):\n\
   - the task's workspace code and task reference or id\n\
   - the period covered and the totals: AI cost (API-equivalent USD), number of events, tokens by kind, active time, turns\n\
-  - for every agent in the tree: agent type, model, start and end times, cost, tokens, and the names and counts of the tools it used\n\
-  - context: names of tools, skills, plugins and slash commands, MCP server and tool names, hook names, permission modes, how many files were edited and with which extensions, agent versions and entrypoints\n\
+  - for every agent in the tree: agent type, model, role in the task (orchestrator, lead or worker), start and end times, active time, cost, tokens, and the names, counts and durations of the tools it used\n\
+  - context: names of tools, skills, plugins and slash commands, MCP server and tool names, hook names, permission modes, counts of compactions and away summaries, how many files were edited and with which extensions, agent versions and entrypoints\n\
   - rate-limit percentages and the model prices used to compute the cost\n\
 Pull requests stay on your machine.\n\
 Never sent: prompts, replies, code, file contents, file paths or command lines.\n\
+Separately, the Claude Code hook adds commits made during a run to the agent run; see `tmgr hook install`.\n\
 \n\
 Where it goes: the TMGR server this CLI is logged in to. Every member of the task's workspace can see it.\n\
 \n\

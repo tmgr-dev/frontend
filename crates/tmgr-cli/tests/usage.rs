@@ -3353,6 +3353,10 @@ mod usage_sync {
             "Never sent: prompts, replies, code, file contents, file paths or command lines",
             "tmgr usage sync auto off",
             "tmgr usage sync forget",
+            "role in the task (orchestrator, lead or worker)",
+            "active time",
+            "compactions and away",
+            "Separately, the Claude Code hook adds commits made during a run to the agent run; see `tmgr hook install`.",
             "Also upload automatically after each agent run? [y/N]",
         ] {
             assert!(shown.contains(part), "missing {part:?} in\n{shown}");
