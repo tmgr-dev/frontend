@@ -2,7 +2,10 @@
 	<div
 		class="notification-item group flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-hover"
 		:class="{ unread: !notification.read_at }"
+		tabindex="0"
 		@click="$emit('click')"
+		@keydown.enter.self="$emit('click')"
+		@keydown.space.self.prevent="$emit('click')"
 	>
 		<div
 			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-pill"
