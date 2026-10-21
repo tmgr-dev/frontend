@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- `tmgr attach` has colour themes: `dark`, `light` and `high-contrast`. By default it asks the terminal for its background colour (OSC 11) at start and picks `light` or `dark`; a terminal that does not answer within a quarter of a second gets `dark`. `tmgr config set attach.theme light` (or `dark`, `high-contrast`, `auto`) overrides the detection. All sidebar, border, status and dialog colours come from the theme; the colours inside the panes are the programs' own and are not changed.
 - The `tmgr attach` sidebar is resizable: drag its right edge with the mouse, or press `Ctrl-] <` and `Ctrl-] >` (also in the command palette and `Ctrl-] ?`). The width is 16 to 60 columns, never squeezes the panes below 10 columns, and is remembered with the layout. `tmgr config set attach.sidebar_width 32` sets the default until you resize it yourself.
 
 ## 1.0.25
