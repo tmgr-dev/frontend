@@ -9,6 +9,7 @@ const PASTE_END: &[u8] = b"\x1b[201~";
 const MAX_HELD: usize = 32;
 const MAX_PREFIX_ESC: usize = 8;
 const HELD_FOR: Duration = Duration::from_millis(20);
+const CSI_EXTRA: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cmd {
@@ -71,6 +72,7 @@ pub struct InputSplitter {
     paste: Option<bool>,
     held: Vec<u8>,
     held_at: Option<Instant>,
+    extended: bool,
 }
 
 fn command(b: u8) -> Option<Cmd> {
@@ -231,6 +233,7 @@ impl InputSplitter {
 
     fn hold(&mut self, rest: &[u8]) {
         self.held = rest.to_vec();
+        self.extended = false;
         self.held_at = (!rest.is_empty()).then(Instant::now);
     }
 
@@ -240,6 +243,11 @@ impl InputSplitter {
                 .held_at
                 .is_some_and(|t| now.saturating_duration_since(t) >= HELD_FOR);
         if !stale {
+            return Vec::new();
+        }
+        if !self.extended && self.held == b"\x1b[" && !self.prefix && !self.scroll {
+            self.extended = true;
+            self.held_at = Some(now + CSI_EXTRA);
             return Vec::new();
         }
         self.held_at = None;

@@ -8,10 +8,13 @@ use clap::{Args, Subcommand, ValueEnum};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
+use std::time::Duration;
 use tmgr_core::error::{Error, Result};
 use tmgr_core::runs::parse_since;
 use tmgr_core::text::sanitize_line;
 use tmgr_runner::humantime::{self, Record, SentRecord, Settings, IDLE_MAX_S, IDLE_MIN_S};
+
+const SYNC_LOCK_WAIT: Duration = Duration::from_secs(5);
 
 #[derive(Args)]
 #[command(args_conflicts_with_subcommands = true)]
@@ -60,23 +63,33 @@ pub fn run(ctx: &Ctx, args: &TimeArgs) -> Result<Output> {
     let dir = tmgr_ipc::dirs::runner_dir()
         .map_err(|e| Error::internal(format!("cannot locate the runner directory: {e}")))?;
     match &args.command {
-        Some(TimeCommand::Sync { state }) => sync(&dir, *state),
+        Some(TimeCommand::Sync { state }) => sync(&dir, *state, SYNC_LOCK_WAIT),
         Some(TimeCommand::Idle { seconds }) => idle(&dir, *seconds),
         None => list(ctx, &dir, args),
     }
 }
 
-fn sync(dir: &Path, state: Option<Switch>) -> Result<Output> {
+fn sync(dir: &Path, state: Option<Switch>, wait: Duration) -> Result<Output> {
     let mut settings = Settings::load(dir);
+    let mut still_sending = false;
     if let Some(s) = state {
+        let _lock = match send::Lock::acquire(dir, wait) {
+            Ok(lock) => {
+                still_sending = lock.is_none();
+                lock
+            }
+            Err(_) => None,
+        };
+        settings = Settings::load(dir);
         settings.sync = s == Switch::On;
         settings.save(dir)?;
     }
     let word = if settings.sync { "on" } else { "off" };
-    Ok(Output::new(
-        json!({"sync": settings.sync}),
-        format!("Sending time to tasks is {word}"),
-    ))
+    let mut text = format!("Sending time to tasks is {word}");
+    if still_sending && !settings.sync {
+        text.push_str("\nA send may still be finishing");
+    }
+    Ok(Output::new(json!({"sync": settings.sync}), text))
 }
 
 fn idle(dir: &Path, seconds: u64) -> Result<Output> {
@@ -331,4 +344,22 @@ fn list(ctx: &Ctx, dir: &Path, args: &TimeArgs) -> Result<Output> {
         }),
         lines.join("\n"),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sync_off_waits_for_a_running_send_and_still_writes() {
+        let d = tempfile::tempdir().unwrap();
+        let held = send::Lock::try_acquire(d.path()).unwrap().unwrap();
+        let out = sync(d.path(), Some(Switch::Off), Duration::from_millis(100)).unwrap();
+        assert!(!Settings::load(d.path()).sync);
+        assert!(out.human.contains("may still be finishing"));
+        drop(held);
+        let out = sync(d.path(), Some(Switch::On), Duration::from_millis(100)).unwrap();
+        assert!(Settings::load(d.path()).sync);
+        assert!(!out.human.contains("may still"));
+    }
 }

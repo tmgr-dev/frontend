@@ -1165,6 +1165,24 @@ fn rename_done_updates_the_sidebar_name() {
 }
 
 #[test]
+fn a_late_focus_report_final_byte_is_not_split_from_its_prefix() {
+    let ms = |n| std::time::Instant::now() + std::time::Duration::from_millis(n);
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b["), vec![]);
+    assert_eq!(s.flush_stale(ms(50)), vec![]);
+    assert_eq!(s.feed(b"I"), vec![Action::FocusIn]);
+}
+
+#[test]
+fn a_held_csi_prefix_is_forwarded_after_the_longer_wait() {
+    let ms = |n| std::time::Instant::now() + std::time::Duration::from_millis(n);
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b["), vec![]);
+    assert_eq!(s.flush_stale(ms(50)), vec![]);
+    assert_eq!(s.flush_stale(ms(2000)), vec![forward(b"\x1b[")]);
+}
+
+#[test]
 fn lone_escape_is_forwarded_after_the_hold_time() {
     let mut s = InputSplitter::new();
     assert_eq!(s.feed(b"\x1b"), vec![]);

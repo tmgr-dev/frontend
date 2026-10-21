@@ -798,6 +798,7 @@ impl App {
         if data.is_empty() {
             return Ok(());
         }
+        self.report_attention(false);
         self.writer.input(session, data)
     }
 
@@ -1397,8 +1398,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .collect();
     let first = ratatui::crossterm::terminal::size().unwrap_or((view.width, 24));
     view.set_locs(Rect::new(0, 0, first.0, first.1), seeded);
-    let human_time = ctl.welcome().caps.iter().any(|c| c == caps::HUMAN_TIME_V1);
-    let (reader, writer) = connect(cfg)?.attach(view.panes()).map_err(rerr)?.split();
+    let attach_client = connect(cfg)?;
+    let human_time = attach_client
+        .welcome()
+        .caps
+        .iter()
+        .any(|c| c == caps::HUMAN_TIME_V1);
+    let (reader, writer) = attach_client.attach(view.panes()).map_err(rerr)?.split();
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;

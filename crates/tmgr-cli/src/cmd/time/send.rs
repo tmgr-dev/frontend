@@ -8,7 +8,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tmgr_core::api::Client;
 use tmgr_core::config::{self, Config};
 use tmgr_core::error::{Error, Kind, Result};
@@ -20,6 +20,7 @@ use tmgr_runner::wire::write_atomic;
 const EXPIRE_S: u64 = 29 * 24 * 3600;
 const BACKOFF_FIRST_S: u64 = 60;
 const BACKOFF_MAX_S: u64 = 30 * 60;
+const LOCK_POLL: Duration = Duration::from_millis(25);
 pub const LOGIN_HINT: &str = "run tmgr login again (needs time:write)";
 
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,12 +78,12 @@ impl Server for Client {
     }
 }
 
-struct Lock {
+pub struct Lock {
     _file: File,
 }
 
 impl Lock {
-    fn try_acquire(runner_dir: &Path) -> std::io::Result<Option<Lock>> {
+    pub fn try_acquire(runner_dir: &Path) -> std::io::Result<Option<Lock>> {
         let dir = humantime::time_dir(runner_dir);
         ensure_private_dir(&dir)?;
         let f = OpenOptions::new()
@@ -95,21 +96,30 @@ impl Lock {
         let rc = unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
         Ok((rc == 0).then_some(Lock { _file: f }))
     }
-}
 
-pub fn flush(
-    runner_dir: &Path,
-    now_s: u64,
-    connect: &dyn Fn() -> Result<Client>,
-) -> Result<FlushReport> {
-    flush_with(runner_dir, now_s, &|| {
-        connect().map(|c| Box::new(c) as Box<dyn Server>)
-    })
+    pub fn acquire(runner_dir: &Path, wait: Duration) -> std::io::Result<Option<Lock>> {
+        let deadline = Instant::now() + wait;
+        loop {
+            if let Some(lock) = Lock::try_acquire(runner_dir)? {
+                return Ok(Some(lock));
+            }
+            if Instant::now() >= deadline {
+                return Ok(None);
+            }
+            thread::sleep(LOCK_POLL);
+        }
+    }
 }
 
 pub fn flush_default(runner_dir: &Path) -> Result<FlushReport> {
+    flush_default_waiting(runner_dir, Duration::ZERO)
+}
+
+fn flush_default_waiting(runner_dir: &Path, wait: Duration) -> Result<FlushReport> {
     let now_s = Utc::now().timestamp().max(0) as u64;
-    flush(runner_dir, now_s, &default_client)
+    flush_waiting(runner_dir, now_s, wait, &|| {
+        default_client().map(|c| Box::new(c) as Box<dyn Server>)
+    })
 }
 
 fn default_client() -> Result<Client> {
@@ -149,6 +159,7 @@ struct Run<'a> {
     report: FlushReport,
     state: SendState,
     recorded: HashSet<String>,
+    access_lost: bool,
 }
 
 impl Run<'_> {
@@ -214,12 +225,22 @@ fn interval_of(r: &Record) -> Option<Interval> {
     })
 }
 
-pub fn flush_with(
+#[cfg(test)]
+fn flush_with(
     runner_dir: &Path,
     now_s: u64,
     connect: &dyn Fn() -> Result<Box<dyn Server>>,
 ) -> Result<FlushReport> {
-    let Some(_lock) = Lock::try_acquire(runner_dir)? else {
+    flush_waiting(runner_dir, now_s, Duration::ZERO, connect)
+}
+
+fn flush_waiting(
+    runner_dir: &Path,
+    now_s: u64,
+    wait: Duration,
+    connect: &dyn Fn() -> Result<Box<dyn Server>>,
+) -> Result<FlushReport> {
+    let Some(_lock) = Lock::acquire(runner_dir, wait)? else {
         return Ok(FlushReport {
             busy: true,
             ..FlushReport::default()
@@ -237,6 +258,7 @@ pub fn flush_with(
         report: FlushReport::default(),
         state: SendState::load(runner_dir),
         recorded: HashSet::new(),
+        access_lost: false,
     };
     if pending.is_empty() {
         return Ok(run.report);
@@ -280,7 +302,9 @@ pub fn flush_with(
     } else {
         run.state.failures = 0;
         run.state.next_try_s = 0;
-        run.state.hint = None;
+        if !run.access_lost {
+            run.state.hint = None;
+        }
     }
     run.state.save(runner_dir)?;
     Ok(run.report)
@@ -299,7 +323,16 @@ fn send_all(run: &mut Run, server: &dyn Server, sendable: Vec<&Record>) -> Resul
     }
     for (ws, tasks) in by_ws {
         let all: Vec<&Record> = tasks.values().flatten().copied().collect();
-        let enabled = server.enabled(ws)?;
+        let enabled = match server.enabled(ws) {
+            Ok(v) => v,
+            Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => {
+                run.access_lost = true;
+                run.report.hint = Some(LOGIN_HINT.to_string());
+                run.state.hint = Some(LOGIN_HINT.to_string());
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
         run.state.last_enabled.insert(ws.to_string(), enabled);
         if !enabled {
             run.mark(&all, "skipped")?;
@@ -324,7 +357,20 @@ fn send_all(run: &mut Run, server: &dyn Server, sendable: Vec<&Record>) -> Resul
                 let batch: Vec<&Record> = queue[..take].to_vec();
                 let intervals: Vec<Interval> =
                     batch.iter().filter_map(|r| interval_of(r)).collect();
-                match server.post(task_id, &intervals)? {
+                let posted = match server.post(task_id, &intervals) {
+                    Ok(p) => p,
+                    Err(e) if e.kind == Kind::NotFound => {
+                        run.mark(&queue, "invalid")?;
+                        continue 'tasks;
+                    }
+                    Err(e) if e.kind == Kind::Usage => {
+                        run.mark(&batch, "invalid")?;
+                        queue.drain(..take);
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
+                match posted {
                     Posted::Done(result) => {
                         record_result(run, &batch, &result)?;
                         queue.drain(..take);
@@ -359,10 +405,11 @@ fn record_result(run: &mut Run, batch: &[&Record], result: &PostResult) -> Resul
     let at = run.now_s;
     let items = batch
         .iter()
-        .filter_map(|r| {
-            let e = by_id.get(r.id.as_str())?;
-            matches!(e.status.as_str(), "created" | "duplicate" | "conflict")
-                .then(|| sent(&r.id, &e.status, e.counted_seconds, at))
+        .map(|r| match by_id.get(r.id.as_str()) {
+            Some(e) if matches!(e.status.as_str(), "created" | "duplicate" | "conflict") => {
+                sent(&r.id, &e.status, e.counted_seconds, at)
+            }
+            _ => sent(&r.id, "invalid", None, at),
         })
         .collect();
     run.record(items)
@@ -395,7 +442,7 @@ impl Background {
         let _ = self.stop.send(());
         let (done, wait) = mpsc::channel();
         thread::spawn(move || {
-            let _ = flush_default(&self.dir);
+            let _ = flush_default_waiting(&self.dir, FINAL_WAIT);
             let _ = done.send(());
         });
         let _ = wait.recv_timeout(FINAL_WAIT);
@@ -673,6 +720,115 @@ mod tests {
         let state = SendState::load(d.path());
         assert_eq!(state.hint.as_deref(), Some(LOGIN_HINT));
         assert_eq!(state.next_try_s, NOW + 60);
+    }
+
+    #[test]
+    fn a_deleted_task_is_invalid_and_later_tasks_still_go() {
+        let recs = [
+            recent("a", 1, 5, 0),
+            recent("a", 1, 5, 1),
+            recent("b", 1, 6, 2),
+        ];
+        let d = dir_with(&recs);
+        let fake = Rc::new(Fake::default());
+        fake.script
+            .borrow_mut()
+            .push_back(Err(Error::not_found("gone")));
+        let report = go(d.path(), NOW, &fake);
+        assert_eq!((report.invalid, report.created), (2, 1));
+        assert_eq!(status_of(d.path(), &recs[0].id).as_deref(), Some("invalid"));
+        assert_eq!(status_of(d.path(), &recs[1].id).as_deref(), Some("invalid"));
+        assert_eq!(status_of(d.path(), &recs[2].id).as_deref(), Some("created"));
+        assert_eq!(SendState::load(d.path()).failures, 0);
+    }
+
+    #[test]
+    fn a_rejected_batch_without_an_index_is_invalid_and_the_flush_goes_on() {
+        let recs = [recent("a", 1, 5, 0), recent("b", 1, 6, 1)];
+        let d = dir_with(&recs);
+        let fake = Rc::new(Fake::default());
+        fake.script
+            .borrow_mut()
+            .push_back(Err(Error::usage("rejected")));
+        let report = go(d.path(), NOW, &fake);
+        assert_eq!((report.invalid, report.created), (1, 1));
+        assert_eq!(status_of(d.path(), &recs[0].id).as_deref(), Some("invalid"));
+        assert_eq!(status_of(d.path(), &recs[1].id).as_deref(), Some("created"));
+    }
+
+    struct Lossy(Rc<Fake>);
+
+    impl Server for Lossy {
+        fn enabled(&self, workspace_id: i64) -> Result<bool> {
+            if workspace_id == 7 {
+                return Err(Error::new(Kind::Forbidden, "no access"));
+            }
+            self.0.enabled(workspace_id)
+        }
+
+        fn post(&self, task_id: u64, intervals: &[Interval]) -> Result<Posted> {
+            self.0.post(task_id, intervals)
+        }
+    }
+
+    #[test]
+    fn a_workspace_without_access_stays_pending_and_others_are_sent() {
+        let recs = [recent("a", 7, 1, 0), recent("b", 8, 2, 1)];
+        let d = dir_with(&recs);
+        let fake = Rc::new(Fake::default());
+        let f = fake.clone();
+        let report = flush_with(d.path(), NOW, &|| {
+            Ok(Box::new(Lossy(f.clone())) as Box<dyn Server>)
+        })
+        .unwrap();
+        assert_eq!(report.created, 1);
+        assert_eq!(report.hint.as_deref(), Some(LOGIN_HINT));
+        assert!(status_of(d.path(), &recs[0].id).is_none());
+        assert_eq!(status_of(d.path(), &recs[1].id).as_deref(), Some("created"));
+        let state = SendState::load(d.path());
+        assert_eq!((state.failures, state.next_try_s), (0, 0));
+        assert_eq!(state.hint.as_deref(), Some(LOGIN_HINT));
+    }
+
+    #[test]
+    fn unknown_and_missing_entry_statuses_are_recorded_as_invalid() {
+        let recs = [
+            recent("a", 1, 5, 0),
+            recent("a", 1, 5, 1),
+            recent("a", 1, 5, 2),
+        ];
+        let d = dir_with(&recs);
+        let fake = Rc::new(Fake::default());
+        let mut result = done(&[recs[0].id.clone(), recs[1].id.clone()], "created");
+        if let Posted::Done(r) = &mut result {
+            r.entries[1].status = "weird".into();
+        }
+        fake.script.borrow_mut().push_back(Ok(result));
+        let report = go(d.path(), NOW, &fake);
+        assert_eq!((report.created, report.invalid), (1, 2));
+        assert_eq!(status_of(d.path(), &recs[1].id).as_deref(), Some("invalid"));
+        assert_eq!(status_of(d.path(), &recs[2].id).as_deref(), Some("invalid"));
+        go(d.path(), NOW + 1, &fake);
+        assert_eq!(fake.posts.borrow().len(), 1);
+    }
+
+    #[test]
+    fn a_waiting_flush_gets_the_lock_once_it_is_released() {
+        let d = dir_with(&[recent("a", 1, 5, 0)]);
+        let held = Lock::try_acquire(d.path()).unwrap().unwrap();
+        let releaser = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(150));
+            drop(held);
+        });
+        let fake = Rc::new(Fake::default());
+        let f = fake.clone();
+        let report = flush_waiting(d.path(), NOW, Duration::from_secs(3), &|| {
+            Ok(Box::new(f.clone()) as Box<dyn Server>)
+        })
+        .unwrap();
+        releaser.join().unwrap();
+        assert!(!report.busy);
+        assert_eq!(report.created, 1);
     }
 
     #[test]
