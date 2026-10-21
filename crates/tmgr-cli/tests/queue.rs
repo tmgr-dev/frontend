@@ -45,19 +45,53 @@ fn sandbox_usable() -> bool {
 
 impl Drop for Fx {
     fn drop(&mut self) {
-        let Ok(mut c) = tmgr_runner::client::Client::connect(&self.runner_dir()) else {
-            return;
-        };
-        let _ = c.set_timeouts(Duration::from_secs(5));
-        if let Ok(list) = c.list() {
-            for s in list
-                .iter()
-                .filter(|s| s.state.kind != tmgr_ipc::api::StateKind::Exited)
-            {
-                let _ = c.kill(&s.id, "kill");
+        let run = self.runner_dir();
+        if let Ok(mut c) = tmgr_runner::client::Client::connect(&run) {
+            let _ = c.set_timeouts(Duration::from_secs(5));
+            if let Ok(list) = c.list() {
+                for s in list
+                    .iter()
+                    .filter(|s| s.state.kind != tmgr_ipc::api::StateKind::Exited)
+                {
+                    let _ = c.kill(&s.id, "kill");
+                }
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while Instant::now() < deadline {
+                    match c.list() {
+                        Ok(l)
+                            if l.iter()
+                                .any(|s| s.state.kind != tmgr_ipc::api::StateKind::Exited) =>
+                        {
+                            thread::sleep(Duration::from_millis(50))
+                        }
+                        _ => break,
+                    }
+                }
+                for s in &list {
+                    let _ = c.remove(&s.id);
+                }
+            }
+            let _ = c.stop();
+        }
+        kill_leftover_shims(&run);
+    }
+}
+
+fn kill_leftover_shims(run: &std::path::Path) {
+    let Ok(rd) = std::fs::read_dir(run.join("sessions")) else {
+        return;
+    };
+    for e in rd.flatten() {
+        let meta = std::fs::read(e.path().join("meta.json")).unwrap_or_default();
+        let v: Value = serde_json::from_slice(&meta).unwrap_or_default();
+        for k in ["child_pid", "shim_pid"] {
+            if let Some(p) = v[k].as_i64().filter(|p| *p > 1) {
+                unsafe {
+                    libc::kill(-(p as i32), libc::SIGKILL);
+                    libc::kill(p as i32, libc::SIGKILL);
+                }
             }
         }
-        let _ = c.stop();
     }
 }
 

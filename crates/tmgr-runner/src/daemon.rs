@@ -1377,7 +1377,7 @@ fn shim_log_tail(path: &Path) -> String {
     }
     let joined = last.into_iter().rev().collect::<Vec<_>>().join(" | ");
     let hint = if joined.contains("openpty") {
-        "; the machine has run out of terminal devices, close idle sessions and try again"
+        "; no free terminal (pty) available: too many open sessions, close idle ones and try again"
     } else {
         ""
     };
@@ -4313,7 +4313,7 @@ mod tests {
         fs::write(&p, "a\nb\n\nshim: failed to openpty: Os { code: 6 }\n").unwrap();
         let t = shim_log_tail(&p);
         assert!(t.starts_with(": a | b | shim: failed to openpty"), "{t}");
-        assert!(t.contains("run out of terminal devices"), "{t}");
+        assert!(t.contains("no free terminal (pty) available"), "{t}");
         fs::write(&p, "boom\n").unwrap();
         assert_eq!(shim_log_tail(&p), ": boom");
     }
