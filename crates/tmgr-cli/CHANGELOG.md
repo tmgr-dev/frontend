@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.23
 
 - Resume refuses an agent session whose folder was replaced by another directory or a symlink with `forbidden` "the folder of this session changed since it started", the same answer as for a shell session, both with and without a launch record. Before, the same case was refused later with `invalid_params` "approved folder changed".
 
