@@ -25,8 +25,8 @@ use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, 
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, Confirm, Control,
-    InputSplitter, LayoutPrefs, PaneInfo, RenameEdit, ScreenSource, SessionRow, SplitDir,
-    ViewState,
+    InputSplitter, LayoutPrefs, PaletteEdit, PaletteEntry, PaneInfo, RenameEdit, ScreenSource,
+    SessionRow, SplitDir, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -476,6 +476,7 @@ impl App {
 
     fn leave_overlays(&mut self) {
         self.view.help = false;
+        self.view.palette = None;
         if self.view.scroll.take().is_some() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
@@ -602,12 +603,36 @@ impl App {
         });
     }
 
+    fn run_palette_entry(&mut self, entry: PaletteEntry) -> io::Result<Option<Exit>> {
+        self.dirty = true;
+        match entry {
+            PaletteEntry::Cmd(cmd) => self.handle(vec![Action::Cmd(cmd)]),
+            PaletteEntry::Session(id) => {
+                self.view.select(&id);
+                Ok(None)
+            }
+        }
+    }
+
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
         for action in actions {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
             }
             match action {
+                Action::Forward(data) if self.view.palette.is_some() => {
+                    if let PaletteEdit::Run(entry) = self.view.edit_palette(&data) {
+                        if let Some(exit) = self.run_palette_entry(entry)? {
+                            return Ok(Some(exit));
+                        }
+                    }
+                }
+                Action::Drop(data) if self.view.palette.is_some() => {
+                    self.view.insert_palette_text(&data);
+                }
+                Action::Paste { data, .. } if self.view.palette.is_some() => {
+                    self.view.insert_palette_text(&data);
+                }
                 Action::Forward(data) if self.view.rename.is_some() => {
                     match self.view.edit_rename(&data) {
                         RenameEdit::Submit(id, name) => self.rename_session(&id, &name),
@@ -714,6 +739,11 @@ impl App {
                     if let Some((id, ctl)) = out.control {
                         self.control(&id, ctl)?;
                     }
+                    if let Some(entry) = out.palette {
+                        if let Some(exit) = self.run_palette_entry(entry)? {
+                            return Ok(Some(exit));
+                        }
+                    }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
                 Action::Cmd(Cmd::Picker) => {
@@ -723,6 +753,9 @@ impl App {
                     self.view.pointer = None;
                     self.view.confirm = None;
                     self.view.rename = None;
+                    if self.view.palette.take().is_some() && cmd == Cmd::Palette {
+                        continue;
+                    }
                     let focused = self.view.focused_session().map(str::to_string);
                     if let (Some(ctl), Some(id)) = (control_of(cmd), focused) {
                         if blocked_by_resume(&self.resuming, &id, ctl) {
@@ -1380,6 +1413,24 @@ mod tests {
         assert_eq!(resumed_notice("a", Some("fresh")), "resumed a (fresh)");
         assert_eq!(resumed_notice("a", Some("rerun")), "resumed a (rerun)");
         assert_eq!(resumed_notice("a", None), "resumed a");
+    }
+
+    #[test]
+    fn a_palette_stop_asks_before_acting_and_a_session_entry_focuses() {
+        let mut view = ViewState::new(rows(&[info("a"), info("b")]), "t");
+        view.select("a");
+        view.apply(Cmd::Palette);
+        view.insert_palette_text(b"stop");
+        let PaletteEdit::Run(PaletteEntry::Cmd(cmd)) = view.edit_palette(b"\r") else {
+            panic!("expected a command entry");
+        };
+        assert_eq!(cmd, Cmd::Stop);
+        assert!(view.palette.is_none());
+        view.apply(cmd);
+        assert!(view.confirm.is_some());
+        view.confirm = None;
+        view.select("b");
+        assert_eq!(view.focused_session(), Some("b"));
     }
 
     #[test]
