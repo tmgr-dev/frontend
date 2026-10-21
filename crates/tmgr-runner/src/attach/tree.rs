@@ -278,7 +278,9 @@ impl Node {
 
     pub fn borders(&self, rect: Rect) -> Vec<Border> {
         let mut out = Vec::new();
-        self.collect_borders(rect, &mut Vec::new(), &mut out);
+        if self.layout(rect).is_some() {
+            self.collect_borders(rect, &mut Vec::new(), &mut out);
+        }
         out
     }
 
