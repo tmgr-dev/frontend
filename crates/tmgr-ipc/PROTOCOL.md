@@ -233,8 +233,11 @@ is one explicit local request (`tmgr agents restore`).
 `sessions.resume {id, cols?, rows?}` (cap `sessions_resume.v1`, `cli` only) starts an
 exited session again in place: same name, folder and profile, a new session id, and
 `SessionInfo.resumed_from` set to the old id. The old session must be `exited`
-(`busy` otherwise, also while another resume or a `runs.restore` of it is running); the old
-session is removed once the new one has started, and a failed resume leaves it as it was.
+(`busy` otherwise, also while another resume or a `runs.restore` of it is running, and
+`busy` when processes of the old session's process group are still alive); `sessions.remove`
+of it is `busy` while a resume is running. The old session is removed once the new one has
+started, and a failed resume leaves it as it was. The new session keeps the old session's
+current name (a rename before the resume is kept).
 `cols` and `rows` default to 80 and 24 and are clamped like create.
 
 An agent run (a profile) is relaunched from a copy of its launch record that the runner
@@ -255,11 +258,11 @@ was found and the run home exists), `rerun` (a session without a profile was run
 
 The id comes from the old session's own `output.log` only: the last 64 KiB, opened without
 following links, cut after the last `ESC [ ? 1049 l`, with escape sequences and control
-bytes removed. The last `claude --resume <id>` or `codex resume <id>` wins; `<id>` must be a
+bytes removed. Only the session's own agent counts (`claude-code`: `claude --resume <id>`, `codex`: `codex resume <id>`; any other profile gets no id). The last match wins; `<id>` must be a
 lowercase UUID (`8-4-4-4-12` hex digits) and is passed as its own argument, never through a shell.
 A profile opts in with `[resume] by_id = ["--resume", "{resume_id}"]`: exactly one whole
 argument `{resume_id}`, placed like `[resume] args` (`at`). A run that was approved with an argv
-digest also stores the declaration (including `by_id`); a record without `by_id` never gets one.
+digest also stores the declaration (including `by_id`); a record without `by_id` never gets one, and every later resume keeps the declaration that was approved.
 
 The new session starts with the old screen text in its scrollback, followed by a dim
 `-- resumed --` line. The text is written into the screen model directly (it does not

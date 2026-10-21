@@ -2218,12 +2218,6 @@ impl Runner {
         if !s.is_exited() {
             return Err(api(ErrorCode::Busy, "the session is still running"));
         }
-        if restore::is_claimed(&self.intents(), old) {
-            return Err(api(
-                ErrorCode::Busy,
-                "a restore of this session is in progress",
-            ));
-        }
         if s.resuming.swap(true, Ordering::SeqCst) {
             return Err(api(
                 ErrorCode::Busy,
@@ -2231,6 +2225,12 @@ impl Runner {
             ));
         }
         let _guard = Resuming(&s.resuming);
+        if restore::is_claimed(&self.intents(), old) {
+            return Err(api(
+                ErrorCode::Busy,
+                "a restore of this session is in progress",
+            ));
+        }
         if !self.session(old).is_some_and(|cur| Arc::ptr_eq(&cur, &s)) {
             return Err(api(ErrorCode::NotFound, "no such session"));
         }
@@ -2246,14 +2246,32 @@ impl Runner {
         {
             return Err(api(ErrorCode::Busy, "the session may still be running"));
         }
-        let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"));
+        if restore::group_may_run(
+            meta.child_pid,
+            meta.boot.as_deref(),
+            restore::boot_marker().as_deref(),
+        ) {
+            return Err(api(
+                ErrorCode::Busy,
+                "background processes of the old session are still running",
+            ));
+        }
         let prior = s.prior_text();
-        let (info, resumed, via) = match meta.profile {
-            Some(_) => self.resume_agent(old, (cols, rows), interrupted, resume_id, prior)?,
+        let (info, resumed, via) = match &meta.profile {
+            Some(profile) => {
+                let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"), profile);
+                self.resume_agent(
+                    old,
+                    (cols, rows),
+                    interrupted,
+                    (meta.name.clone(), resume_id),
+                    prior,
+                )?
+            }
             None => self.resume_raw(&meta, old, (cols, rows), prior)?,
         };
         restore::forget(&self.intents(), old);
-        let _ = self.remove(old);
+        let _ = self.remove_session(old);
         log(&format!("session {old} resumed as {} ({via})", info.id));
         Ok(RestoredRun {
             session: info,
@@ -2267,7 +2285,7 @@ impl Runner {
         old: &str,
         (cols, rows): (u16, u16),
         interrupted: bool,
-        id: Option<String>,
+        (name, id): (String, Option<String>),
         prior: String,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
         let store = self.intents();
@@ -2303,6 +2321,7 @@ impl Runner {
         let mut req = restore::request(&intent, bundle);
         req.cols = cols;
         req.rows = rows;
+        req.name = Some(name);
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
@@ -2765,10 +2784,13 @@ impl Runner {
                 clone_of: req.clone_of,
                 agent_work: req.agent_work,
                 keyed: Some(keyed),
-                resume_decl: req
-                    .argv_sha256
-                    .as_ref()
-                    .and_then(|_| prof.resume.as_ref().map(resume_rec)),
+                resume_decl: match pinned_resume {
+                    Some(pinned) => pinned.clone(),
+                    None => req
+                        .argv_sha256
+                        .as_ref()
+                        .and_then(|_| prof.resume.as_ref().map(resume_rec)),
+                },
                 exe_pin: req.exe_pin,
                 argv_sha256: req.argv_sha256,
                 bypass: plan.bypass,
@@ -3293,6 +3315,19 @@ impl Runner {
     }
 
     fn remove(&self, id: &str) -> Result<(), ApiErr> {
+        if self
+            .session(id)
+            .is_some_and(|s| s.resuming.load(Ordering::SeqCst))
+        {
+            return Err(api(
+                ErrorCode::Busy,
+                "a resume of this session is in progress",
+            ));
+        }
+        self.remove_session(id)
+    }
+
+    fn remove_session(&self, id: &str) -> Result<(), ApiErr> {
         let s = self
             .session(id)
             .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;

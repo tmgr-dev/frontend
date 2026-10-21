@@ -11,7 +11,7 @@ tmgr test
 │  Ti│                                                                                        │art │
 │  Us└────────────────────────────────────────────────────────────────────────────────────────┘, mo│
 │  Account   login, logout, whoami, aut││  board                  Full-screen kanban board of the w│
-│  Other     version, refs             ││                                                          │
+│  Other     resume, version, refs     ││                                                          │
 │                                      ││                                                          │
 │                                      ││                                                          │
 │                                      ││                                                          │

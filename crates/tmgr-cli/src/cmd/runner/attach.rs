@@ -511,8 +511,15 @@ impl App {
             return Ok(());
         };
         let exited = row.state.kind == StateKind::Exited;
+        if ctl == Control::Resume && just_exited(&row, now_ms()) {
+            return Ok(());
+        }
         self.dirty = true;
         self.view.confirm = None;
+        if blocked_by_resume(&self.resuming, id, ctl) {
+            self.notify("resuming…");
+            return Ok(());
+        }
         if ctl != Control::Interrupt {
             self.leave_overlays();
             self.view.rename = None;
@@ -716,6 +723,13 @@ impl App {
                     self.view.pointer = None;
                     self.view.confirm = None;
                     self.view.rename = None;
+                    let focused = self.view.focused_session().map(str::to_string);
+                    if let (Some(ctl), Some(id)) = (control_of(cmd), focused) {
+                        if blocked_by_resume(&self.resuming, &id, ctl) {
+                            self.notify("resuming…");
+                            continue;
+                        }
+                    }
                     let removing = (cmd == Cmd::Remove)
                         .then(|| self.view.focused_row())
                         .flatten()
@@ -1184,6 +1198,24 @@ fn resume_step(row: Option<&SessionRow>, resuming: &HashMap<String, Instant>) ->
     }
 }
 
+const CLICK_GRACE_MS: u64 = 500;
+
+fn just_exited(row: &SessionRow, now: u64) -> bool {
+    row.exited() && now.saturating_sub(row.state.since_ms) < CLICK_GRACE_MS
+}
+
+fn control_of(cmd: Cmd) -> Option<Control> {
+    match cmd {
+        Cmd::Stop => Some(Control::Stop),
+        Cmd::Remove => Some(Control::Close),
+        _ => None,
+    }
+}
+
+fn blocked_by_resume(resuming: &HashMap<String, Instant>, id: &str, ctl: Control) -> bool {
+    matches!(ctl, Control::Stop | Control::Close) && resuming.contains_key(id)
+}
+
 fn resumed_notice(name: &str, via: Option<&str>) -> String {
     match via {
         Some("fresh") => format!("resumed {name} (fresh)"),
@@ -1310,6 +1342,35 @@ mod tests {
             resume_step(Some(&session_row(StateKind::Exited)), &busy),
             ResumeStep::Ignore
         );
+    }
+
+    #[test]
+    fn stop_and_remove_are_ignored_while_a_resume_runs() {
+        let busy = HashMap::from([("s1".to_string(), Instant::now())]);
+        for ctl in [Control::Stop, Control::Close] {
+            assert!(blocked_by_resume(&busy, "s1", ctl));
+            assert!(!blocked_by_resume(&busy, "s2", ctl));
+            assert!(!blocked_by_resume(&HashMap::new(), "s1", ctl));
+        }
+        for ctl in [Control::Resume, Control::Interrupt] {
+            assert!(!blocked_by_resume(&busy, "s1", ctl));
+        }
+        assert_eq!(control_of(Cmd::Stop), Some(Control::Stop));
+        assert_eq!(control_of(Cmd::Remove), Some(Control::Close));
+        assert_eq!(control_of(Cmd::Resume), None);
+    }
+
+    #[test]
+    fn a_click_right_after_the_exit_is_not_a_resume() {
+        let mut exited = session_row(StateKind::Exited);
+        exited.state.since_ms = 10_000;
+        assert!(just_exited(&exited, 10_000));
+        assert!(just_exited(&exited, 10_499));
+        assert!(!just_exited(&exited, 10_500));
+        assert!(!just_exited(&exited, 60_000));
+        let mut running = session_row(StateKind::Working);
+        running.state.since_ms = 10_000;
+        assert!(!just_exited(&running, 10_100));
     }
 
     #[test]

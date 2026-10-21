@@ -28,6 +28,7 @@ send | Agents | session, text, no_enter, wait, timeout
 peek | Agents | session, lines
 halt | Agents | session, kill
 rm | Agents | session
+resume | Other | session
 rename | Agents | session, name
 version | Other | -
 login | Account | scopes, with_token, label, no_browser

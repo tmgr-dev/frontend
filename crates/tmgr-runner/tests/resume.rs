@@ -19,6 +19,7 @@ const U2: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 const AGENT: &str = r#"#!/bin/sh
 trap 'kill $! 2>/dev/null; exit 0' HUP TERM
 echo "args:$*" >> ./log
+if [ -f ./leak ]; then (trap '' TERM HUP; exec sleep 600) & echo $! > ./leakpid; fi
 if [ -f ./announce ]; then cat ./announce; rm -f ./announce; fi
 if [ -f "$HOME/marker" ]; then echo "home:kept" >> ./log; else echo x > "$HOME/marker"; echo "home:new" >> ./log; fi
 if [ -f ./exit-now ]; then exit 0; fi
@@ -55,10 +56,15 @@ struct H {
     work: PathBuf,
     env: Vec<(String, String)>,
     runner: Option<Child>,
+    agent_id: String,
 }
 
 impl H {
     fn new(resume: &str) -> H {
+        H::agent("claude-code", resume)
+    }
+
+    fn agent(id: &str, resume: &str) -> H {
         let tmp = tempfile::Builder::new()
             .prefix("rm")
             .tempdir_in("/tmp")
@@ -77,9 +83,9 @@ impl H {
         fs::write(&script, AGENT).unwrap();
         fs::write(work.join("raw.sh"), RAW).unwrap();
         fs::write(
-            agents.join("fake.toml"),
+            agents.join(format!("{id}.toml")),
             format!(
-                "id = \"fake\"\nname = \"Fake\"\ncommand = [\"/bin/sh\", {:?}]\n{resume}\n[status]\nblocked = ['(?i)do you want to proceed']\n",
+                "id = \"{id}\"\nname = \"Fake\"\ncommand = [\"/bin/sh\", {:?}]\n{resume}\n[status]\nblocked = ['(?i)do you want to proceed']\n",
                 script.display().to_string()
             ),
         )
@@ -91,6 +97,7 @@ impl H {
             work,
             env: Vec::new(),
             runner: None,
+            agent_id: id.to_string(),
         }
     }
 
@@ -148,7 +155,7 @@ impl H {
     fn req(&self) -> RunCreateReq {
         RunCreateReq {
             clones: Vec::new(),
-            profile: "fake".into(),
+            profile: self.agent_id.clone(),
             task: None,
             cwd: self.work.display().to_string(),
             name: Some("fake-run".into()),
@@ -693,4 +700,234 @@ fn a_resume_works_when_the_runner_is_full() {
     let r = h.client().resume(&first.id, 80, 24).unwrap();
     assert!(r.resumed);
     assert_eq!(h.client().list().unwrap().len(), 16);
+}
+
+fn hold_before_spawn(h: &mut H) -> PathBuf {
+    let go = h.tmp.path().join("go");
+    fs::write(&go, b"").unwrap();
+    h.env.push((
+        "TMGR_TEST_HOLD_BEFORE_SPAWN".into(),
+        go.display().to_string(),
+    ));
+    go
+}
+
+fn wait_reached(go: &Path) {
+    let reached = go.with_extension("reached");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while !reached.exists() {
+        assert!(Instant::now() < deadline, "the resume never started");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn resume_and_restore_of_one_session_exclude_each_other() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let go = hold_before_spawn(&mut h);
+    h.start();
+    let first = h.started();
+    h.stop(&first.id);
+    let (intent, _) = restore::load_relaunch(&h.sdir(&first.id), &first.id).unwrap();
+    restore::record(&h.store(), &intent, None).unwrap();
+
+    let claim = restore::claim(&h.store(), &first.id).unwrap();
+    let err = h
+        .client()
+        .resume(&first.id, 80, 24)
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("busy"), "{err}");
+    assert!(err.contains("restore of this session"), "{err}");
+    claim.release();
+
+    fs::remove_file(&go).unwrap();
+    let mut c = h.client();
+    let id = first.id.clone();
+    let worker = thread::spawn(move || c.resume(&id, 80, 24));
+    wait_reached(&go);
+    let err = h.client().restore(&first.id).unwrap_err().to_string();
+    assert!(err.starts_with("busy"), "{err}");
+    assert!(err.contains("resume of this session"), "{err}");
+    assert!(restore::load(&h.store(), &first.id).is_ok());
+    assert!(!restore::is_claimed(&h.store(), &first.id));
+    fs::write(&go, b"").unwrap();
+    let done = worker.join().unwrap().unwrap();
+    assert_ne!(done.session.id, first.id);
+}
+
+#[test]
+fn removing_a_session_that_is_being_resumed_is_busy() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    let go = hold_before_spawn(&mut h);
+    h.start();
+    let first = h.started();
+    h.stop(&first.id);
+    fs::remove_file(&go).unwrap();
+    let mut c = h.client();
+    let id = first.id.clone();
+    let worker = thread::spawn(move || c.resume(&id, 80, 24));
+    wait_reached(&go);
+    let err = h.client().remove(&first.id).unwrap_err().to_string();
+    assert!(err.starts_with("busy"), "{err}");
+    assert!(h.state_of(&first.id).is_some());
+    fs::write(&go, b"").unwrap();
+    worker.join().unwrap().unwrap();
+    assert!(h.state_of(&first.id).is_none());
+}
+
+#[test]
+fn background_processes_of_the_old_session_block_the_resume() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    fs::write(h.work.join("leak"), b"").unwrap();
+    let first = h.started();
+    let pid_file = h.work.join("leakpid");
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while fs::read_to_string(&pid_file).map_or(true, |t| t.trim().is_empty()) {
+        assert!(Instant::now() < deadline, "no leftover process started");
+        thread::sleep(Duration::from_millis(50));
+    }
+    let leaked = fs::read_to_string(&pid_file).unwrap().trim().to_string();
+    h.stop(&first.id);
+    let alive = |pid: &str| {
+        Command::new("kill")
+            .args(["-0", pid])
+            .stderr(Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    assert!(alive(&leaked), "the leftover process did not survive");
+    let err = h
+        .client()
+        .resume(&first.id, 80, 24)
+        .unwrap_err()
+        .to_string();
+    assert!(err.starts_with("busy"), "{err}");
+    assert!(err.contains("background processes"), "{err}");
+    assert!(h.state_of(&first.id).is_some());
+
+    let _ = Command::new("kill").args(["-9", &leaked]).status();
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while alive(&leaked) {
+        assert!(Instant::now() < deadline, "leftover process kept running");
+        thread::sleep(Duration::from_millis(50));
+    }
+    fs::remove_file(h.work.join("leak")).unwrap();
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert_ne!(r.session.id, first.id);
+}
+
+#[test]
+fn another_agents_resume_line_is_never_used() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    h.announce(&format!("codex resume {U1}\n"));
+    let first = h.started();
+    h.stop(&first.id);
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert_eq!(r.via.as_deref(), Some("continue"));
+    h.wait_log("home:kept", 1);
+    assert!(!h.log().contains("--resume-id"), "{}", h.log());
+
+    let mut h = H::agent(
+        "codex",
+        "[resume]\nargs = [\"--resumed\"]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n",
+    );
+    h.start();
+    h.announce(&format!("{}codex resume {U2}\n", claude_exit(U1)));
+    let first = h.started();
+    h.stop(&first.id);
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert_eq!(r.via.as_deref(), Some("id"));
+    h.wait_log("home:kept", 1);
+    assert!(
+        h.log().contains(&format!("args:--resume-id {U2}\n")),
+        "{}",
+        h.log()
+    );
+
+    let mut h = H::agent("unknown-agent", "[resume]\nargs = [\"--resumed\"]\n");
+    h.start();
+    h.announce(&claude_exit(U1));
+    let first = h.started();
+    h.stop(&first.id);
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert_eq!(r.via.as_deref(), Some("continue"));
+}
+
+#[test]
+fn a_rename_before_the_resume_is_kept_and_survives_a_second_resume() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let first = h.started();
+    h.stop(&first.id);
+    h.client().rename(&first.id, "renamed").unwrap();
+    let r = h.client().resume(&first.id, 80, 24).unwrap();
+    assert_eq!(r.session.name, "renamed");
+    h.stop(&r.session.id);
+    let again = h.client().resume(&r.session.id, 80, 24).unwrap();
+    assert_eq!(again.session.name, "renamed");
+}
+
+#[test]
+fn an_approval_without_by_id_never_gains_one_across_resumes() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::new("");
+    let script = h.work.join("agent.sh");
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    let exe = fs::canonicalize(&script).unwrap().display().to_string();
+    let agents = h.tmp.path().join("a");
+    let profile = |resume: &str| {
+        fs::write(
+            agents.join("claude-code.toml"),
+            format!(
+                "id = \"claude-code\"\nname = \"Fake\"\ncommand = [{exe:?}]\n{resume}\n[status]\nblocked = ['(?i)do you want to proceed']\n"
+            ),
+        )
+        .unwrap();
+    };
+    profile("[resume]\nargs = [\"--resumed\"]\n");
+    h.start();
+    let mut req = h.req();
+    req.exe_pin = Some(tmgr_ipc::api::ExePin {
+        path: exe.clone(),
+        sha256: tmgr_ipc::api::sha256_hex(AGENT.as_bytes()),
+    });
+    req.argv_sha256 = Some(tmgr_ipc::api::argv_sha256(std::slice::from_ref(&exe)));
+    let first = h.client().create_run(req).unwrap();
+    h.wait_log("home:", 1);
+    h.stop(&first.id);
+
+    profile("[resume]\nargs = [\"--resumed\"]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n");
+    h.announce(&claude_exit(U1));
+    let r1 = h.client().resume(&first.id, 80, 24).unwrap();
+    assert_eq!(r1.via.as_deref(), Some("continue"));
+    h.wait_log("home:kept", 1);
+    h.announce(&claude_exit(U1));
+    h.wait_line(&r1.session.id, "ready");
+    h.stop(&r1.session.id);
+
+    let r2 = h.client().resume(&r1.session.id, 80, 24).unwrap();
+    assert_eq!(r2.via.as_deref(), Some("continue"));
+    h.wait_log("home:kept", 2);
+    assert!(!h.log().contains("--resume-id"), "{}", h.log());
 }

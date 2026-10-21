@@ -272,12 +272,19 @@ fn group_alive(pid: u32) -> bool {
             || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
 }
 
-pub fn pids_may_run(pids: &[u32], recorded_boot: Option<&str>, boot: Option<&str>) -> bool {
-    let same_boot = match (recorded_boot, boot) {
+fn same_boot(recorded_boot: Option<&str>, boot: Option<&str>) -> bool {
+    match (recorded_boot, boot) {
         (Some(a), Some(b)) => a == b,
         _ => true,
-    };
-    same_boot && pids.iter().any(|p| pid_alive(*p) || group_alive(*p))
+    }
+}
+
+pub fn pids_may_run(pids: &[u32], recorded_boot: Option<&str>, boot: Option<&str>) -> bool {
+    same_boot(recorded_boot, boot) && pids.iter().any(|p| pid_alive(*p) || group_alive(*p))
+}
+
+pub fn group_may_run(pid: u32, recorded_boot: Option<&str>, boot: Option<&str>) -> bool {
+    same_boot(recorded_boot, boot) && group_alive(pid)
 }
 
 pub fn may_still_run(i: &Intent, boot: Option<&str>) -> bool {
