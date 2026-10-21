@@ -1,5 +1,6 @@
 import { gatedPage } from '@/router/moduleGate';
 import store from '@/store';
+import { SETTINGS_NAV_COLUMN_QUERY } from '@/utils/settingsNav';
 import { boardRedirect, isSimpleMode } from '@/utils/simpleStatus';
 //const TaskForm = () => import('@/pages/TaskForm.vue');
 const TaskForm = () => import('@/pages/TaskFormWrapper.vue');
@@ -528,8 +529,24 @@ const routes = [
 			title: 'Settings',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
+			settingsLayout: true,
 		},
 		name: 'Settings',
+	},
+	{
+		path: '/settings/sections',
+		component: () => import('@/components/settings/SettingsSections.vue'),
+		beforeEnter: () =>
+			!window.matchMedia?.(SETTINGS_NAV_COLUMN_QUERY)?.matches
+				? true
+				: '/settings/workspaces',
+		meta: {
+			title: 'Settings',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+			settingsLayout: true,
+		},
+		name: 'SettingsSections',
 	},
 	{
 		path: '/settings/workspaces',
@@ -538,6 +555,7 @@ const routes = [
 			title: 'Workspace settings',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
+			settingsLayout: true,
 		},
 		name: 'WorkspaceSettings',
 	},
@@ -548,6 +566,7 @@ const routes = [
 			title: 'Modules',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
+			settingsLayout: true,
 		},
 		name: 'ModuleSettings',
 	},
@@ -564,25 +583,32 @@ const routes = [
 			title: 'Personas',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
+			settingsLayout: true,
 		},
 		name: 'PersonaSettings',
 	},
 	{
 		path: '/settings/agent-notifications',
-		component: gatedPage('alerts', 'Agent notifications', () =>
+		component: gatedPage('alerts', 'Agent alerts', () =>
 			import('@/pages/Settings/AgentNotifications.vue'),
 		),
 		meta: {
-			title: 'Agent notifications',
+			title: 'Agent alerts',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
+			settingsLayout: true,
 		},
 		name: 'AgentNotificationSettings',
 	},
 	{
 		path: '/settings/plugins',
 		component: () => import('@/pages/Settings/Plugins.vue'),
-		meta: { title: 'Plugins', transitionName: 'fade-fast', navbarHidden: true },
+		meta: {
+			title: 'Plugins',
+			transitionName: 'fade-fast',
+			navbarHidden: true,
+			settingsLayout: true,
+		},
 		name: 'PluginSettings',
 	},
 	{
@@ -592,6 +618,7 @@ const routes = [
 			title: 'How plugins work',
 			transitionName: 'fade-fast',
 			navbarHidden: true,
+			settingsLayout: true,
 		},
 		name: 'PluginSettingsHelp',
 	},

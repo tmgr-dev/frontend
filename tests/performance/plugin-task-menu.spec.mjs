@@ -75,7 +75,8 @@ const setup = async (page, devPlugins, enable) => {
       params: [title, backlog.id],
     });
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
   for (const name of enable)
     await page
       .locator('article', { hasText: name })

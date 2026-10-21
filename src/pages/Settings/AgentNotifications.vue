@@ -1,6 +1,6 @@
 <template>
 	<PageContainer width="narrow">
-		<PageHeader title="Agent notifications">
+		<PageHeader title="Agent alerts">
 			<template #subtitle>
 				Get a push notification on your phone when Claude Code, Codex or another
 				AI agent needs you — the recipient is always you, the token owner, and a
@@ -253,7 +253,7 @@
 			Input,
 		},
 		setup() {
-			setDocumentTitle('Agent notifications');
+			setDocumentTitle('Agent alerts');
 
 			const tokens = ref<NotifyToken[]>([]);
 			const loading = ref(true);

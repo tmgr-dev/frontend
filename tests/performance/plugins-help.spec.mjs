@@ -1,10 +1,18 @@
 import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1');
+  });
+});
+
 const openPlugins = async (page) => {
   await page.goto('/demo/board');
   await page.locator('[data-sidebar="footer"] button').first().click();
-  await page.getByRole('menuitem', { name: 'Plugins' }).click();
+  await page.getByRole('menuitem', { name: 'Settings' }).click();
+  await page.getByTestId('settings-nav-plugins').click();
 };
 
 test('the plugins screen links to a page that explains how plugins work', async ({

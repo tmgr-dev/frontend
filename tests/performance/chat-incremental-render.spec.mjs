@@ -40,7 +40,7 @@ test('the workspace chat keeps existing messages mounted and untouched', async (
   });
 
   await page.goto('/demo/list');
-  await page.getByLabel('Ask AI').click();
+  await page.getByRole('button', { name: 'Ask AI', exact: true }).click();
   const rows = '[aria-label="AI assistant"] .space-y-3 > *';
   await expect(page.locator(rows)).toHaveCount(2);
   await trackNodes(page, rows);

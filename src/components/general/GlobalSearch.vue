@@ -1,6 +1,18 @@
 <template>
 	<div>
+		<SidebarMenuButton
+			v-if="variant === 'sidebar'"
+			variant="outline"
+			tooltip="Search"
+			aria-label="Search"
+			class="text-ink-subtle dark:text-ink-subtle"
+			@click="open = true"
+		>
+			<Search />
+			<span>Search…</span>
+		</SidebarMenuButton>
 		<button
+			v-else
 			type="button"
 			class="-ml-1 flex h-7 w-7 items-center justify-center rounded-md text-ink-subtle hover:bg-accent hover:text-accent-foreground"
 			aria-label="Search"
@@ -114,6 +126,7 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
+	import { SidebarMenuButton } from '@/components/ui/sidebar';
 	import {
 		availableSearchTabs,
 		canSearch,
@@ -128,14 +141,32 @@
 	} from '@/utils/pagesSearch';
 	import { generateTaskUrl } from '@/utils/url';
 	import { Search } from 'lucide-vue-next';
-	import { computed, defineComponent, onBeforeUnmount, ref, watch } from 'vue';
+	import {
+		computed,
+		defineComponent,
+		onBeforeUnmount,
+		ref,
+		watch,
+		type PropType,
+	} from 'vue';
 
 	export default defineComponent({
 		name: 'GlobalSearch',
-		components: { Dialog, DialogContent, DialogHeader, DialogTitle, Search },
+		components: {
+			Dialog,
+			DialogContent,
+			DialogHeader,
+			DialogTitle,
+			Search,
+			SidebarMenuButton,
+		},
 		props: {
 			workspaceCode: { type: String, required: true },
 			pagesEnabled: { type: Boolean, default: false },
+			variant: {
+				type: String as PropType<'icon' | 'sidebar'>,
+				default: 'icon',
+			},
 		},
 		setup(props) {
 			const open = ref(false);

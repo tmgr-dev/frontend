@@ -1,6 +1,7 @@
 <template>
 	<div
 		:class="itemClasses"
+		:title="rowTitle"
 		@click="handleClick"
 		@keydown.enter="handleClick"
 		@keydown.space.prevent="handleClick"
@@ -8,8 +9,7 @@
 		role="button"
 		:aria-label="accessibilityLabel"
 	>
-		<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
-			<!-- Avatar + presence dot -->
+		<div class="flex min-w-0 items-center gap-3">
 			<div class="relative shrink-0">
 				<MemberAvatarLink :user-id="member.id" :label="member.name">
 					<UserAvatar
@@ -27,14 +27,13 @@
 				></div>
 			</div>
 
-			<!-- Name / role / current or last task -->
-			<div class="min-w-0 flex-1 basis-40">
-				<div class="flex items-center gap-2">
-					<h4 class="truncate text-sm font-medium text-ink">
+			<div class="min-w-0 flex-1">
+				<div class="flex min-w-0 items-center gap-2">
+					<h4 class="min-w-0 truncate text-sm font-medium text-ink">
 						{{ member.name }}
 					</h4>
 					<span
-						class="rounded bg-surface-sunken px-1.5 py-0.5 text-2xs uppercase tracking-wide text-ink-subtle"
+						class="shrink-0 rounded bg-surface-sunken px-1.5 py-0.5 text-2xs uppercase tracking-wide text-ink-subtle"
 						>{{ member.role }}</span
 					>
 				</div>
@@ -45,7 +44,7 @@
 						<PlayIcon class="h-3 w-3 shrink-0 text-status-done" />
 						<button
 							@click.stop="handleTaskClick(member.current_task.id)"
-							class="truncate hover:text-brand-fg"
+							class="min-w-0 truncate hover:text-brand-fg"
 							:title="member.current_task.title"
 						>
 							{{ member.current_task.title }}
@@ -56,95 +55,77 @@
 							>· {{ timerDuration }}</span
 						>
 					</template>
-					<template v-else-if="member.last_activity_at">
+					<template v-else-if="member.last_task">
 						<ClockIcon class="h-3 w-3 shrink-0" />
-						<time
-							:datetime="member.last_activity_at"
-							:title="formattedLastActivity"
-							>Last active {{ lastActivityHuman }}</time
+						<span class="shrink-0">Last touched</span>
+						<button
+							@click.stop="handleTaskClick(member.last_task.id)"
+							class="min-w-0 truncate hover:text-brand-fg"
+							:title="member.last_task.title"
 						>
-						<template v-if="member.last_task">
-							<span class="shrink-0">· last touched</span>
-							<button
-								@click.stop="handleTaskClick(member.last_task.id)"
-								class="truncate hover:text-brand-fg"
-								:title="member.last_task.title"
-							>
-								{{ member.last_task.title }}
-							</button>
-						</template>
+							{{ member.last_task.title }}
+						</button>
 					</template>
-					<template v-else><span>No recent activity</span></template>
-				</div>
-			</div>
-
-			<!-- Sparkline -->
-			<div
-				class="hidden h-6 shrink-0 items-end gap-0.5 md:flex"
-				:title="`Activity, last ${dailyActivityPoints.length} day(s)`"
-				aria-hidden="true"
-			>
-				<span
-					v-for="(h, i) in bars"
-					:key="dailyActivityPoints[i]?.date ?? i"
-					class="w-1.5 rounded-sm"
-					:class="h > 0 ? 'bg-brand' : 'bg-surface-sunken'"
-					:style="{ height: `${Math.max(h, 2)}px` }"
-				></span>
-			</div>
-
-			<!-- Stats -->
-			<dl
-				class="grid w-full gap-x-4 text-right sm:w-auto sm:shrink-0"
-				:class="showSurface('comments.count') ? 'grid-cols-5' : 'grid-cols-4'"
-			>
-				<div>
-					<dt class="sr-only">Tracked</dt>
-					<dd class="text-sm font-semibold tabular-nums text-status-done-fg">
-						{{ tracked }}
-					</dd>
-					<dd class="text-2xs uppercase tracking-wide text-ink-faint">
-						tracked
-					</dd>
-				</div>
-				<div>
-					<dt class="sr-only">Done</dt>
-					<dd class="text-sm font-semibold tabular-nums text-brand-fg">
-						{{ member.done_count }}
-					</dd>
-					<dd class="text-2xs uppercase tracking-wide text-ink-faint">done</dd>
-				</div>
-				<div>
-					<dt class="sr-only">Active tasks</dt>
-					<dd
-						class="text-sm font-semibold tabular-nums text-status-progress-fg"
+					<template v-else-if="!member.last_activity_at"
+						><span>No recent activity</span></template
 					>
-						{{ member.active_tasks }}
-					</dd>
-					<dd class="text-2xs uppercase tracking-wide text-ink-faint">
-						active
-					</dd>
 				</div>
-				<div v-if="showSurface('comments.count')">
-					<dt class="sr-only">Comments</dt>
-					<dd class="text-sm font-semibold tabular-nums text-ink">
-						{{ member.comments_count }}
-					</dd>
-					<dd class="text-2xs uppercase tracking-wide text-ink-faint">
-						comments
-					</dd>
-				</div>
-				<div>
-					<dt class="sr-only">Streak</dt>
-					<dd class="text-sm font-semibold tabular-nums text-ink">
-						{{ member.streak }}
-					</dd>
-					<dd class="text-2xs uppercase tracking-wide text-ink-faint">
-						streak
-					</dd>
-				</div>
-			</dl>
+			</div>
 		</div>
+
+		<p
+			class="mt-2 truncate text-xs tabular-nums text-ink-subtle sm:hidden"
+			aria-hidden="true"
+		>
+			{{ member.done_count }} done · {{ tracked }} ·
+			{{ member.active_tasks }} active · {{ lastActivityHuman || '—' }}
+		</p>
+
+		<div
+			class="hidden h-6 w-16 items-end justify-end gap-px md:flex"
+			:title="`Activity, last ${dailyActivityPoints.length} day(s)`"
+			aria-hidden="true"
+		>
+			<span
+				v-for="(h, i) in bars"
+				:key="dailyActivityPoints[i]?.date ?? i"
+				class="min-w-px max-w-1.5 flex-1 rounded-sm"
+				:class="h > 0 ? 'bg-brand' : 'bg-surface-sunken'"
+				:style="{ height: `${Math.max(h, 2)}px` }"
+			></span>
+		</div>
+
+		<dl class="hidden text-sm sm:contents">
+			<div class="text-right tabular-nums text-ink">
+				<dt class="sr-only">Done</dt>
+				<dd>{{ member.done_count }}</dd>
+			</div>
+			<div class="text-right tabular-nums text-ink">
+				<dt class="sr-only">Tracked</dt>
+				<dd>{{ tracked }}</dd>
+			</div>
+			<div class="text-right tabular-nums text-ink">
+				<dt class="sr-only">Active tasks</dt>
+				<dd>{{ member.active_tasks }}</dd>
+			</div>
+			<div class="flex min-w-0 items-center justify-end gap-1.5 text-xs">
+				<dt class="sr-only">Last active</dt>
+				<dd class="flex min-w-0 items-center gap-1.5 text-ink-muted">
+					<time
+						v-if="member.last_activity_at"
+						class="truncate"
+						:datetime="member.last_activity_at"
+						:title="formattedLastActivity"
+						>{{ lastActivityHuman }}</time
+					>
+					<span v-else>—</span>
+					<span
+						class="h-1.5 w-1.5 shrink-0 rounded-full"
+						:class="member.is_online ? 'bg-status-done' : 'bg-ink-faint'"
+					></span>
+				</dd>
+			</div>
+		</dl>
 	</div>
 </template>
 
@@ -209,10 +190,11 @@
 
 	const itemClasses = computed(() => {
 		return cn(
-			'p-3 rounded-card border border-line bg-surface',
-			'hover:bg-surface-hover hover:border-line-strong transition-colors duration-150',
+			'min-w-0 rounded-card px-2 py-3',
+			'sm:grid sm:grid-cols-[minmax(0,1fr)_3rem_4.5rem_3rem_5.5rem] sm:items-center sm:gap-x-3',
+			'md:grid-cols-[minmax(0,1fr)_4rem_3rem_4.5rem_3rem_5.5rem]',
+			'hover:bg-surface-hover transition-colors duration-150',
 			'cursor-pointer',
-			props.member.is_online && 'border-status-done/40',
 		);
 	});
 
@@ -221,6 +203,15 @@
 	);
 	const dailyActivityPoints = computed(() => props.member.daily_activity ?? []);
 	const bars = computed(() => sparklineBars(dailyActivityPoints.value, 24, 2));
+
+	const rowTitle = computed(() => {
+		const parts: string[] = [];
+		if (showSurface('comments.count')) {
+			parts.push(`${props.member.comments_count} comments`);
+		}
+		parts.push(`streak ${props.member.streak}`);
+		return parts.join(' · ');
+	});
 
 	const accessibilityLabel = computed(() => {
 		const parts = [

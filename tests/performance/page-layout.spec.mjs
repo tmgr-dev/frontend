@@ -10,13 +10,13 @@ const PAGES = [
   ['files', '/demo/files', 'wide'],
   ['member', '/demo/team/1', 'wide'],
   ['routines', '/routines', 'wide'],
-  ['settings', '/settings', 'narrow'],
-  ['settings-profile', '/settings?tab=profile', 'narrow'],
-  ['settings-workspaces', '/settings/workspaces', 'narrow'],
-  ['settings-features', '/settings/features', 'narrow'],
-  ['settings-personas', '/settings/personas', 'narrow'],
-  ['settings-plugins', '/settings/plugins', 'narrow'],
-  ['plugins-help', '/settings/plugins/help', 'narrow'],
+  ['settings', '/settings', 'narrow', true],
+  ['settings-profile', '/settings?tab=profile', 'narrow', true],
+  ['settings-workspaces', '/settings/workspaces', 'narrow', true],
+  ['settings-features', '/settings/features', 'narrow', true],
+  ['settings-personas', '/settings/personas', 'narrow', true],
+  ['settings-plugins', '/settings/plugins', 'narrow', true],
+  ['plugins-help', '/settings/plugins/help', 'narrow', true],
   ['profile', '/profile', 'narrow'],
   ['stats', '/stats', 'wide'],
   ['pages', '/demo/pages', 'wide'],
@@ -90,6 +90,12 @@ async function mockExtras(page) {
   );
 }
 
+// Settings pages (D-011): a 208px settings nav column and the page sit side by
+// side as one centred max-w-7xl unit, so on desktop the heading starts 208px
+// further right than on a plain page.
+const SETTINGS_NAV = 208;
+const SETTINGS_UNIT = '[data-testid="settings-layout"]';
+
 async function expectNarrowColumn(page) {
   const columnWidth = await page
     .locator('[data-page-header]')
@@ -98,11 +104,22 @@ async function expectNarrowColumn(page) {
   expect(columnWidth).toBe(720);
 }
 
+async function expectSettingsNav(page) {
+  const navWidth = await page
+    .locator(`${SETTINGS_UNIT} > aside`)
+    .evaluate((a) => Math.round(a.getBoundingClientRect().width));
+  expect(navWidth).toBe(SETTINGS_NAV);
+  await expect(
+    page.getByRole('navigation', { name: 'Settings' }),
+  ).toBeVisible();
+}
+
 for (const vp of VIEWPORTS) {
-  for (const [name, path, width] of PAGES) {
-    test(`${name} @${vp.width}: ${width} column, heading on the left edge`, async ({
-      page,
-    }) => {
+  for (const [name, path, width, settings] of PAGES) {
+    const nav = settings && vp.width >= 1280 ? SETTINGS_NAV : 0;
+    test(`${name} @${vp.width}: ${width} column, heading ${
+      nav ? 'right of the settings nav' : 'on the left edge'
+    }`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await mockApp(page, { taskCount: 3, multiStatus: true });
       await mockExtras(page);
@@ -118,7 +135,10 @@ for (const vp of VIEWPORTS) {
           h.getBoundingClientRect().left - main.getBoundingClientRect().left
         );
       });
-      expect(Math.round(offset)).toBe(vp.edge);
+      expect(Math.round(offset)).toBe(vp.edge + nav);
+      if (nav) await expectSettingsNav(page);
+      if (settings && !nav)
+        await expect(page.locator(SETTINGS_UNIT)).toHaveCount(0);
       await expect(container).toBeVisible();
       if (width === 'narrow' && vp.width >= 768) await expectNarrowColumn(page);
 
@@ -138,10 +158,11 @@ const WIDE_VIEWPORTS = [
 ];
 
 for (const vp of WIDE_VIEWPORTS) {
-  for (const [name, path, width] of PAGES) {
-    test(`${name} @${vp.width}: ${width} page in the centered 1280 frame`, async ({
-      page,
-    }) => {
+  for (const [name, path, width, settings] of PAGES) {
+    const nav = settings ? SETTINGS_NAV : 0;
+    test(`${name} @${vp.width}: ${width} page in the centered 1280 ${
+      settings ? 'settings unit' : 'frame'
+    }`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await mockApp(page, { taskCount: 3, multiStatus: true });
       await mockExtras(page);
@@ -150,20 +171,27 @@ for (const vp of WIDE_VIEWPORTS) {
       const heading = page.locator('[data-page-header] h1').first();
       await expect(heading).toBeVisible();
 
-      const box = await heading.evaluate((h, sel) => {
-        const main = document.querySelector('main').getBoundingClientRect();
-        const frame = document.querySelector(sel).getBoundingClientRect();
-        return {
-          offset: h.getBoundingClientRect().left - main.left,
-          expected: (main.width - 1280) / 2 + 24,
-          frameWidth: frame.width,
-          leftGap: frame.left - main.left,
-          rightGap: main.right - frame.right,
-        };
-      }, `[data-page-width="${width}"]`);
+      const box = await heading.evaluate(
+        (h, { sel, nav }) => {
+          const main = document.querySelector('main').getBoundingClientRect();
+          const frame = document.querySelector(sel).getBoundingClientRect();
+          return {
+            offset: h.getBoundingClientRect().left - main.left,
+            expected: (main.width - 1280) / 2 + 24 + nav,
+            frameWidth: frame.width,
+            leftGap: frame.left - main.left,
+            rightGap: main.right - frame.right,
+          };
+        },
+        {
+          sel: settings ? SETTINGS_UNIT : `[data-page-width="${width}"]`,
+          nav,
+        },
+      );
       expect(Math.abs(box.offset - box.expected)).toBeLessThanOrEqual(1);
       expect(box.frameWidth).toBeLessThanOrEqual(1280);
       expect(Math.abs(box.leftGap - box.rightGap)).toBeLessThanOrEqual(1);
+      if (settings) await expectSettingsNav(page);
       if (width === 'narrow') await expectNarrowColumn(page);
 
       const overflow = await page.evaluate(

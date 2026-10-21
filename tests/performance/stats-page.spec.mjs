@@ -40,12 +40,14 @@ test('shows no NaN when the stats payload is empty', async ({ page }) => {
   await expect(page.getByText('NaN')).toHaveCount(0);
 });
 
-test('the account menu links to Statistics', async ({ page }) => {
+test('the sidebar Tools group links to Statistics', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await mockApp(page);
+  await mockApp(page, { onboarding: {} });
   await page.goto('/demo/board');
 
-  await page.getByRole('button', { name: /Test User/ }).click();
-  await page.getByRole('menuitem', { name: 'Statistics' }).click();
+  await page
+    .locator('[data-sidebar="content"]')
+    .getByRole('link', { name: 'Statistics' })
+    .click();
   await expect(page).toHaveURL(/\/stats$/);
 });

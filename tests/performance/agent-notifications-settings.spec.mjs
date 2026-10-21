@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { mockApp } from './mockApp.mjs';
 
-test('the Agent notifications settings page lists tokens', async ({ page }) => {
+test('the Agent alerts settings page lists tokens', async ({ page }) => {
   await mockApp(page);
   await page.route('**/api/notify-tokens*', (route) =>
     route.fulfill({
@@ -22,7 +22,7 @@ test('the Agent notifications settings page lists tokens', async ({ page }) => {
   await page.goto('/settings/agent-notifications');
 
   await expect(
-    page.getByRole('heading', { name: 'Agent notifications' }),
+    page.getByRole('heading', { name: 'Agent alerts' }),
   ).toBeVisible();
   await expect(page.getByText('Claude Code', { exact: true })).toBeVisible();
   await expect(page.getByText(/tmgrn_ab12/)).toBeVisible();
@@ -39,7 +39,7 @@ test('an empty token list shows the empty state instead of an error', async ({
   await page.goto('/settings/agent-notifications');
 
   await expect(
-    page.getByRole('heading', { name: 'Agent notifications' }),
+    page.getByRole('heading', { name: 'Agent alerts' }),
   ).toBeVisible();
   await expect(
     page.getByText('No agent notification tokens yet.'),
@@ -90,8 +90,12 @@ test('creating a token shows the secret once, then clears it on Done', async ({
   await page.getByPlaceholder('Claude Code on my laptop').fill('Claude Code');
   await page.getByRole('button', { name: 'Create token' }).click();
 
-  await expect(page.getByText(secret)).toBeVisible();
-  await expect(page.getByText(/won't see it again/i)).toBeVisible();
+  await expect(page.getByLabel('Notify token', { exact: true })).toHaveText(
+    secret,
+  );
+  await expect(
+    page.getByRole('dialog').getByText(/won't see it again/i),
+  ).toBeVisible();
 
   await page.getByRole('button', { name: 'Done' }).click();
 

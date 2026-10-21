@@ -176,6 +176,28 @@ export interface MemberStats extends TeamMemberStatus {
 	window: TeamActivityWindow;
 }
 
+export type DashboardPeriod = '7d' | '30d';
+
+export type DashboardTone = 'brand' | 'done' | 'testing' | 'progress';
+
+export interface TimeDailyItem {
+	task: { id: number; key?: string | null; title: string; url?: string | null };
+	category: { id: number; code: string | null; name: string | null } | null;
+	seconds: number;
+}
+
+export interface TimeDailyDay {
+	date: string;
+	total_s: number;
+	items: TimeDailyItem[];
+}
+
+export interface CategoryTotal {
+	key: string;
+	name: string;
+	seconds: number;
+}
+
 export interface MemberTaskRow {
 	id: number;
 	title: string;

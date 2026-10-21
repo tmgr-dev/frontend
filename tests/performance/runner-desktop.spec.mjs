@@ -3,6 +3,12 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { desktopPage } from './desktopShell.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
+});
+
 const screensDir = process.env.SCREENS_DIR;
 if (screensDir) mkdirSync(screensDir, { recursive: true });
 
@@ -145,7 +151,7 @@ const setup = async (page, { runner: runnerInit, dark = false } = {}) => {
 
 const addTask = async (page, title) => {
   await page
-    .getByRole('button', { name: 'Open Add Task Modal' })
+    .getByRole('button', { name: 'New task', exact: true })
     .first()
     .click();
   await page.getByPlaceholder('Task name').fill(title);
