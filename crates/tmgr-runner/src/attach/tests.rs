@@ -5030,6 +5030,7 @@ fn sidebar_border_wins_over_a_pane_line_at_the_shared_column() {
     at(&mut v, 32, sb.right() + 4, header + 5, false);
     assert_eq!(outer(&v, 1).y, before);
     assert!(v.sidebar_width() > sb.width);
+}
 
 mod questions_ui {
     use super::*;
