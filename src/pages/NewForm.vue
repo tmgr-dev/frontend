@@ -636,6 +636,10 @@
 	watch([newComment, commentTextarea, commentRailInput], resizeCommentInputs, {
 		flush: 'post',
 	});
+	onMounted(() => window.addEventListener('resize', resizeCommentInputs));
+	onBeforeUnmount(() =>
+		window.removeEventListener('resize', resizeCommentInputs),
+	);
 	const commentsCount = ref(0);
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
@@ -2114,7 +2118,12 @@
 	// TM-222: the composer keeps the cursor - on expand, and again after a message is sent, so a
 	// follow-up can be typed without clicking back into the field.
 	const focusCommentInput = () =>
-		nextTick(() => focusField(commentTextarea.value));
+		nextTick(() => focusField(commentTextarea.value ?? commentRailInput.value));
+	const blurCommentInput = (e: KeyboardEvent) => {
+		e.stopPropagation();
+		if (e.isComposing || e.keyCode === 229) return;
+		(e.target as HTMLElement).blur();
+	};
 
 	watch(isCommentInputExpanded, (expanded) => {
 		if (expanded) {
@@ -3059,13 +3068,14 @@
 							ref="commentTextarea"
 							v-model="newComment"
 							rows="1"
+							data-esc-blur
 							@paste="commentAttachments?.onPaste($event)"
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
 							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
-							@keydown.esc="newComment = ''"
+							@keydown.esc="blurCommentInput"
 						/>
 						<MicButton
 							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
@@ -3294,13 +3304,14 @@
 							ref="commentRailInput"
 							v-model="newComment"
 							rows="1"
+							data-esc-blur
 							@paste="commentAttachments?.onPaste($event)"
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
 							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter="onCommentEnter"
-							@keydown.esc="newComment = ''"
+							@keydown.esc="blurCommentInput"
 						/>
 						<MicButton
 							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
