@@ -749,6 +749,7 @@ fn resume_and_restore_of_one_session_exclude_each_other() {
     let id = first.id.clone();
     let worker = thread::spawn(move || c.resume(&id, 80, 24));
     wait_reached(&go);
+    restore::record(&h.store(), &intent, None).unwrap();
     let err = h.client().restore(&first.id).unwrap_err().to_string();
     assert!(err.starts_with("busy"), "{err}");
     assert!(err.contains("resume of this session"), "{err}");
