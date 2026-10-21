@@ -44,6 +44,7 @@ tmgr-runner = { path = "crates/tmgr-runner" }
 tmgr-usage = { path = "crates/tmgr-usage" }
 tmgr-queue = { path = "crates/tmgr-queue" }
 tmgr-approval = { path = "crates/tmgr-approval" }
+tmgr-fuzzy = { path = "crates/tmgr-fuzzy" }
 portable-pty = "0.9"
 vt100 = "0.16"
 vte = "0.15"

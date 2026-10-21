@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────╮╭ 2  dev-server · waiting ───────────╮
+ ◆ codex             3m │● Reading src/checkout/Form.vue     ││$ pnpm dev                          │
+ ● claude           18m │I will add an Apple Pay button next ││  VITE ready in 412 ms              │
+ ◌ dev-server       12m │✓ Tests 14 passed                   ││                                    │
+ ✓ tests            52m │>                                   ││                                    │
+                  ╭ Command palette ─────────────────────────────────────────────╮                 │
+                  │ > re                                                         │                 │
+                  │                                                              │                 │
+                  │ Rename the focused session                          Ctrl-] r │                 │
+                  │ Resume the focused session                  Ctrl-] Enter / R │                 │
+                  │ Previous session                                    Ctrl-] p │                 │
+                  │ Remove (close) the focused exited session           Ctrl-] X │                 │
+                  │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
+                  │ dev-server                                           waiting │                 │
+                  │ Show or hide the sidebar                            Ctrl-] b │                 │
+                  │ New shell to the right, same folder               Ctrl-] | v │                 │
+                  │ New shell below, same folder                      Ctrl-] - h │                 │
+                  │ Two panes, or collapse to one                       Ctrl-] s │                 │
+                  ╰──────────────────────────────────────────────────────────────╯                 │
+                        │                                    ││                                    │
+                        │                                    ││                                    │
+                        │                                    ││                                    │
+                        ╰────────────────────────────────────╯╰────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                         Ctrl-] ? help

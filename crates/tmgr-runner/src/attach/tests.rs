@@ -584,7 +584,7 @@ fn snapshot_zoom() {
 fn snapshot_help_overlay() {
     let mut v = two_pane(140);
     v.apply(Cmd::Help);
-    assert_snapshot("help", &draw(&v, &screens(), 140, 26));
+    assert_snapshot("help", &draw(&v, &screens(), 140, 27));
 }
 
 #[test]
@@ -2206,10 +2206,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_26_rows() {
+fn help_shows_the_mouse_section_at_27_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 26);
+    let text = draw(&v, &screens(), 140, 27);
     assert!(text.contains("pick a session or a pane"));
     assert!(text.contains("Shift-drag selects"));
     assert!(text.contains("? again closes this box"));
@@ -2438,4 +2438,459 @@ fn resumed_from_does_not_steal_a_pane_whose_original_still_exists() {
     rows.push(resumed("a2", "claude", "a"));
     v.sessions_changed(rows);
     assert_eq!(ids(&v), ["a"]);
+}
+
+fn open_palette(v: &mut ViewState) {
+    v.apply(Cmd::Palette);
+    assert!(v.palette.is_some());
+}
+
+fn query(v: &mut ViewState, q: &str) {
+    open_palette(v);
+    v.insert_palette_text(q.as_bytes());
+}
+
+fn first(v: &ViewState) -> PaletteEntry {
+    v.entries().remove(0).entry
+}
+
+#[test]
+fn every_action_key_reaches_its_cmd() {
+    let table: &[(u8, Cmd)] = &[
+        (b'd', Cmd::Detach),
+        (b'n', Cmd::NextSession),
+        (b'p', Cmd::PrevSession),
+        (b's', Cmd::Split),
+        (b'|', Cmd::SplitRight),
+        (b'v', Cmd::SplitRight),
+        (b'-', Cmd::SplitDown),
+        (b'h', Cmd::SplitDown),
+        (b'\t', Cmd::FocusOther),
+        (b'z', Cmd::Zoom),
+        (b'b', Cmd::Sidebar),
+        (b'[', Cmd::ScrollMode),
+        (b'?', Cmd::Help),
+        (b'w', Cmd::Picker),
+        (b'x', Cmd::Stop),
+        (b'X', Cmd::Remove),
+        (b'r', Cmd::Rename),
+        (b'\r', Cmd::Resume),
+        (b'R', Cmd::Resume),
+        (b':', Cmd::Palette),
+    ];
+    for (byte, cmd) in table {
+        let mut s = InputSplitter::new();
+        assert_eq!(
+            s.feed(&[0x1d, *byte]),
+            vec![Action::Cmd(*cmd)],
+            "{cmd:?} via {byte}"
+        );
+    }
+}
+
+#[test]
+fn escape_bindings_stay_outside_the_table() {
+    let table: &[(&[u8], Cmd)] = &[
+        (b"\x1b[Z", Cmd::FocusPrev),
+        (b"\x1b[A", Cmd::Focus(Nav::Up)),
+        (b"\x1bOD", Cmd::Focus(Nav::Left)),
+        (b"\x1b[1;2C", Cmd::Resize(Nav::Right)),
+    ];
+    for (seq, cmd) in table {
+        let mut s = InputSplitter::new();
+        assert_eq!(
+            s.feed(&[b"\x1d".as_slice(), seq].concat()),
+            vec![Action::Cmd(*cmd)]
+        );
+    }
+    for cmd in [Cmd::FocusPrev, Cmd::Focus(Nav::Left)] {
+        assert!(ACTIONS.iter().any(|d| d.cmd == cmd && d.keys.is_empty()));
+    }
+}
+
+#[test]
+fn help_rows_resolve_in_the_action_table() {
+    for (key, _) in render::HELP {
+        if let render::HelpKey::Cmds(cmds) = key {
+            for c in *cmds {
+                assert!(ACTIONS.iter().any(|d| d.cmd == *c), "{c:?}");
+            }
+        }
+    }
+}
+
+#[test]
+fn palette_entries_are_exactly_the_palette_actions() {
+    let mut v = ViewState::new(Vec::new(), "");
+    open_palette(&mut v);
+    let cmds: Vec<Cmd> = v
+        .entries()
+        .into_iter()
+        .map(|r| match r.entry {
+            PaletteEntry::Cmd(c) => c,
+            PaletteEntry::Session(_) => panic!("no sessions"),
+        })
+        .collect();
+    let table: Vec<Cmd> = ACTIONS
+        .iter()
+        .filter(|d| d.palette)
+        .map(|d| d.cmd)
+        .collect();
+    assert_eq!(cmds, table);
+    assert!(!table.contains(&Cmd::Palette) && !table.contains(&Cmd::Picker));
+}
+
+#[test]
+fn ctrl_bracket_colon_opens_the_palette_and_toggles() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1d:"), vec![Action::Cmd(Cmd::Palette)]);
+    let mut v = ViewState::new(four(), "");
+    v.help = true;
+    v.apply(Cmd::Palette);
+    assert!(v.palette.is_some());
+    assert!(!v.help);
+    v.apply(Cmd::Palette);
+    assert!(v.palette.is_none());
+}
+
+#[test]
+fn empty_query_lists_actions_in_table_order_then_sessions_in_sidebar_order() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let rows = v.entries();
+    let n = ACTIONS.iter().filter(|d| d.palette).count();
+    assert_eq!(rows.len(), n + 4);
+    assert_eq!(rows[0].entry, PaletteEntry::Cmd(Cmd::Detach));
+    assert_eq!(rows[0].right, "Ctrl-] d");
+    let tail: Vec<_> = rows[n..].iter().map(|r| r.entry.clone()).collect();
+    let want: Vec<_> = ["c", "a", "b", "d"]
+        .iter()
+        .map(|i| PaletteEntry::Session((*i).into()))
+        .collect();
+    assert_eq!(tail, want);
+    assert_eq!(rows[n].right, "blocked");
+}
+
+#[test]
+fn typing_spl_puts_the_split_entries_first() {
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "spl");
+    let top: Vec<_> = v.entries().into_iter().take(3).map(|r| r.entry).collect();
+    for want in [Cmd::Split, Cmd::SplitRight, Cmd::SplitDown] {
+        assert!(
+            top.contains(&PaletteEntry::Cmd(want)),
+            "{want:?} in {top:?}"
+        );
+    }
+}
+
+#[test]
+fn a_session_name_beats_an_action_when_it_matches_better() {
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "tests");
+    assert_eq!(first(&v), PaletteEntry::Session("d".into()));
+    let hits = &v.entries()[0].hits;
+    assert_eq!(hits, &vec![0, 1, 2, 3, 4]);
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "kill");
+    assert_eq!(first(&v), PaletteEntry::Cmd(Cmd::Stop));
+}
+
+#[test]
+fn query_with_no_match_is_empty_and_enter_does_nothing() {
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "zzzqq");
+    assert!(v.entries().is_empty());
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    assert!(v.palette.is_some());
+}
+
+#[test]
+fn palette_editing_keys() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    assert_eq!(v.edit_palette(b"ab\xc3\xa9"), PaletteEdit::Editing);
+    assert_eq!(v.palette.as_ref().unwrap().query, "abé");
+    v.edit_palette(b"\x7f");
+    v.edit_palette(b"\x08");
+    assert_eq!(v.palette.as_ref().unwrap().query, "a");
+    v.edit_palette(b"x\x00\x1d\x01y");
+    assert_eq!(v.palette.as_ref().unwrap().query, "axy");
+    v.edit_palette(b"\x15");
+    assert_eq!(v.palette.as_ref().unwrap().query, "");
+    v.edit_palette(&[b'q'; 100]);
+    assert_eq!(v.palette.as_ref().unwrap().query.len(), 64);
+}
+
+#[test]
+fn palette_arrows_move_the_selection_and_never_close() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    for (keys, sel) in [
+        (&b"\x1b[B"[..], 1),
+        (b"\x1bOB", 2),
+        (b"\x0e", 3),
+        (b"\x10", 2),
+        (b"\x1b[A", 1),
+        (b"\x1bOA", 0),
+        (b"\x1b[A", 0),
+    ] {
+        assert_eq!(v.edit_palette(keys), PaletteEdit::Editing);
+        assert_eq!(v.palette.as_ref().unwrap().sel, sel);
+    }
+    for other in [
+        &b"\x1b[200~"[..],
+        b"\x1b[1;5C",
+        b"\x1b[3~",
+        b"\x1bOP",
+        b"\x1bx",
+    ] {
+        assert_eq!(v.edit_palette(other), PaletteEdit::Editing);
+    }
+    assert_eq!(v.palette.as_ref().unwrap().query, "");
+}
+
+#[test]
+fn selection_clamps_to_the_last_row_and_resets_on_typing() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let last = v.entries().len() - 1;
+    for _ in 0..(last + 5) {
+        v.edit_palette(b"\x1b[B");
+    }
+    assert_eq!(v.palette.as_ref().unwrap().sel, last);
+    v.edit_palette(b"s");
+    assert_eq!(v.palette.as_ref().unwrap().sel, 0);
+}
+
+#[test]
+fn lone_escape_closes_the_palette() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    assert_eq!(v.edit_palette(b"\x1b"), PaletteEdit::Close);
+    assert!(v.palette.is_none());
+}
+
+#[test]
+fn mixed_chunk_types_then_moves() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    assert_eq!(v.edit_palette(b"c\x1b[B\x1b[B"), PaletteEdit::Editing);
+    let p = v.palette.as_ref().unwrap();
+    assert_eq!(p.query, "c");
+    assert_eq!(p.sel, 2);
+}
+
+#[test]
+fn enter_runs_the_selected_entry_and_ignores_the_rest_of_the_chunk() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    assert_eq!(
+        v.edit_palette(b"\x1b[B\rzz"),
+        PaletteEdit::Run(PaletteEntry::Cmd(Cmd::NextSession))
+    );
+    assert!(v.palette.is_none());
+    query(&mut v, "tests");
+    assert_eq!(
+        v.edit_palette(b"\n"),
+        PaletteEdit::Run(PaletteEntry::Session("d".into()))
+    );
+    assert!(v.palette.is_none());
+}
+
+#[test]
+fn pasted_text_lands_in_the_query_without_markers_or_controls() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    v.insert_palette_text(b"\x1b[200~sp\nl\x1b[201~");
+    assert_eq!(v.palette.as_ref().unwrap().query, "spl");
+    let mut closed = ViewState::new(four(), "");
+    closed.insert_palette_text(b"x");
+    assert!(closed.palette.is_none());
+}
+
+fn palette_geometry(v: &ViewState) -> (Rect, Rect) {
+    let rect = palette::palette_rect(AREA, v.entries().len().max(1));
+    (rect, palette::palette_list(rect))
+}
+
+#[test]
+fn clicking_a_palette_row_returns_the_entry_and_closes() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let (_, list) = palette_geometry(&v);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let out = v.on_mouse(AREA, ev(0, list.x + 3, list.y + 1, false), &info);
+    assert_eq!(out.palette, Some(PaletteEntry::Cmd(Cmd::NextSession)));
+    assert!(out.redraw);
+    assert!(v.palette.is_none());
+    let out = v.on_mouse(AREA, ev(0, list.x + 3, list.y + 1, true), &info);
+    assert_eq!(out.forward, None);
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn clicking_outside_the_palette_closes_it_and_swallows_the_release() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let out = v.on_mouse(AREA, ev(0, 60, 1, false), &info);
+    assert_eq!(out.palette, None);
+    assert!(v.palette.is_none());
+    let out = v.on_mouse(AREA, ev(0, 60, 1, true), &info);
+    assert_eq!(out.forward, None);
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn clicking_the_query_line_keeps_the_palette_and_wheel_moves_the_selection() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let (rect, _) = palette_geometry(&v);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let out = v.on_mouse(AREA, ev(0, rect.x + 5, rect.y + 1, false), &info);
+    assert_eq!(out, MouseOut::default());
+    assert!(v.palette.is_some());
+    v.on_mouse(AREA, ev(0, rect.x + 5, rect.y + 1, true), &info);
+    assert_eq!(v.grab, None);
+    let out = v.on_mouse(AREA, ev(65, 3, 3, false), &info);
+    assert!(out.redraw);
+    assert_eq!(v.palette.as_ref().unwrap().sel, 1);
+    assert_eq!(out.forward, None);
+    v.on_mouse(AREA, ev(64, 3, 3, false), &info);
+    assert_eq!(v.palette.as_ref().unwrap().sel, 0);
+}
+
+fn palette_view() -> ViewState {
+    let mut v = two_pane(140);
+    open_palette(&mut v);
+    v
+}
+
+#[test]
+fn snapshot_palette_empty_query() {
+    let v = palette_view();
+    assert_snapshot("palette", &draw(&v, &screens(), 100, 24));
+}
+
+#[test]
+fn snapshot_palette_filtered() {
+    let mut v = palette_view();
+    v.insert_palette_text(b"re");
+    v.edit_palette(b"\x1b[B");
+    assert_snapshot("palette_filtered", &draw(&v, &screens(), 100, 24));
+}
+
+#[test]
+fn palette_with_no_match_says_so() {
+    let mut v = palette_view();
+    v.insert_palette_text(b"zzzqq");
+    assert!(draw(&v, &screens(), 100, 24).contains("no match"));
+}
+
+#[test]
+fn palette_renders_without_panicking_at_tiny_sizes() {
+    for (w, h) in [(5, 3), (20, 6), (40, 10), (1, 1), (100, 24)] {
+        let mut v = grid(w);
+        open_palette(&mut v);
+        v.insert_palette_text("é字x".as_bytes());
+        let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+        term.draw(|f| render(f, &v, &Screens::default())).unwrap();
+        let lay = layout(Rect::new(0, 0, w, h), &v);
+        let _ = cursor(&v, &lay, &Screens::default());
+    }
+}
+
+#[test]
+fn palette_cursor_sits_at_the_end_of_the_query() {
+    let mut v = palette_view();
+    let area = Rect::new(0, 0, 100, 24);
+    let lay = layout(area, &v);
+    let rect = palette::palette_rect(area, v.entries().len().max(1));
+    let inner = palette::palette_inner(rect);
+    assert_eq!(cursor(&v, &lay, &screens()), Some((inner.x + 2, inner.y)));
+    v.insert_palette_text(b"ab");
+    let rect = palette::palette_rect(area, v.entries().len().max(1));
+    let inner = palette::palette_inner(rect);
+    assert_eq!(cursor(&v, &lay, &screens()), Some((inner.x + 4, inner.y)));
+    v.palette = None;
+    assert_ne!(cursor(&v, &lay, &screens()), Some((inner.x + 4, inner.y)));
+}
+
+#[test]
+fn session_list_change_resets_the_palette_selection() {
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "s");
+    v.edit_palette(b"\x1b[B");
+    assert_eq!(v.palette.as_ref().unwrap().sel, 1);
+    v.sessions_changed(four()[..2].to_vec());
+    assert_eq!(v.palette.as_ref().unwrap().sel, 0);
+}
+
+#[test]
+fn repeated_escape_closes_the_palette_but_sequences_do_not() {
+    for esc in [&b"\x1b\x1b"[..], b"\x1b\x1b\x1b"] {
+        let mut v = palette_view();
+        assert_eq!(v.edit_palette(esc), PaletteEdit::Close);
+        assert!(v.palette.is_none());
+    }
+    for seq in [&b"\x1b[A"[..], b"\x1bOA", b"\x1b[1;2C"] {
+        let mut v = palette_view();
+        assert_eq!(v.edit_palette(seq), PaletteEdit::Editing);
+        assert!(v.palette.is_some());
+    }
+}
+
+#[test]
+fn drag_and_release_around_the_palette_never_reach_a_pane() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let (rect, _) = palette_geometry(&v);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    v.on_mouse(AREA, ev(0, rect.x + 5, rect.y + 1, false), &info);
+    assert_eq!(v.grab.as_deref(), Some(""));
+    let out = v.on_mouse(AREA, ev(32, 60, 1, false), &info);
+    assert_eq!(out.forward, None);
+    let out = v.on_mouse(AREA, ev(0, 60, 1, true), &info);
+    assert_eq!(out.forward, None);
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn opening_the_palette_drops_a_pane_drag_grab() {
+    let mut v = ViewState::new(four(), "");
+    v.grab = Some("a".into());
+    open_palette(&mut v);
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn palette_with_a_very_long_query_keeps_the_caret_inside_the_box() {
+    for w in [8u16, 12, 20, 30] {
+        let mut v = grid(w);
+        open_palette(&mut v);
+        v.insert_palette_text("字x".repeat(40).as_bytes());
+        let area = Rect::new(0, 0, w, 10);
+        let mut term = Terminal::new(TestBackend::new(w, 10)).unwrap();
+        term.draw(|f| render(f, &v, &Screens::default())).unwrap();
+        let lay = layout(area, &v);
+        let rect = palette::palette_rect(
+            Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom()),
+            v.entries().len().max(1),
+        );
+        let inner = palette::palette_inner(rect);
+        if let Some((x, y)) = cursor(&v, &lay, &Screens::default()) {
+            assert!(
+                x >= inner.x && x < inner.right() && y == inner.y,
+                "w={w} x={x}"
+            );
+            let tail = palette::query_tail(
+                &v.palette.as_ref().unwrap().query,
+                palette::query_avail(inner),
+            );
+            assert!(
+                unicode_width::UnicodeWidthStr::width(tail) + 2 < usize::from(inner.width).max(3)
+            );
+        }
+    }
 }
