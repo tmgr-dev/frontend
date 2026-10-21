@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.32
 
 - The question list in `tmgr attach` keeps one question per list item or paragraph: an item with a bold title and several `?` sentences is one row, not one row per sentence (a reply with two numbered items now gives `?2`, not `?6`). The row shows the bold title (or the first question sentence), `Context` and the `Answer` quote carry the whole item, and `Go to` jumps to the start of the item. Haiku is asked for whole items; the rule fallback groups the same way. Rows follow the order of the message, newest message first. Questions already stored one sentence at a time keep working as they were.
 
