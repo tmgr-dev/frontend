@@ -470,6 +470,7 @@
 		startOfWeek,
 	} from '@/utils/dailyRoutines/dateHelpers';
 	import { sortUnscheduledNewestFirst } from '@/utils/dailyRoutines/sortRoutines';
+	import { requestCache } from '@/utils/requestCache';
 	import {
 		CalendarCheck,
 		Download,
@@ -641,6 +642,64 @@
 				(s: { key: string; value: unknown }) => s.key === 'current_workspace',
 			)?.value,
 	);
+	// Last shown routines, so a return visit renders them while reload() refreshes (TM-703).
+	interface RoutinesSnapshot {
+		entries: RoutineEntry[];
+		yearStats?: Record<string, unknown>;
+	}
+	function entriesRange(): { from: string; to: string } {
+		return view.value === 'year'
+			? { from: todayIso.value, to: todayIso.value }
+			: rangeForView();
+	}
+	function routinesSnapshotKey(): string | null {
+		if (workspaceIdentity.value == null) return null;
+		return requestCache.generateKey(
+			'routines-snapshot',
+			view.value === 'year'
+				? {
+						workspace: workspaceIdentity.value,
+						year: cursor.value.getFullYear(),
+						today: todayIso.value,
+				  }
+				: { workspace: workspaceIdentity.value, ...rangeForView() },
+		);
+	}
+	function saveRoutinesSnapshot(key = routinesSnapshotKey()) {
+		const { entries, yearStats, lastRange } = store.state.dailyRoutines;
+		const range = entriesRange();
+		if (
+			!key ||
+			key !== routinesSnapshotKey() ||
+			lastRange.from !== range.from ||
+			lastRange.to !== range.to
+		)
+			return;
+		requestCache.set<RoutinesSnapshot>(
+			key,
+			view.value === 'year'
+				? { entries: [...entries], yearStats: { ...yearStats } }
+				: { entries: [...entries] },
+		);
+	}
+	const seededKey = routinesSnapshotKey();
+	const routinesSnapshot =
+		seededKey && requestCache.get<RoutinesSnapshot>(seededKey);
+	if (routinesSnapshot) {
+		store.commit('dailyRoutines/setEntries', [...routinesSnapshot.entries]);
+		store.commit('dailyRoutines/setLastRange', entriesRange());
+		if (routinesSnapshot.yearStats)
+			store.commit('dailyRoutines/setYearStats', {
+				...routinesSnapshot.yearStats,
+			});
+		viewLoaded.value = true;
+	}
+	watch(
+		() => store.state.dailyRoutines.entries,
+		() => {
+			if (viewLoaded.value && !viewError.value) saveRoutinesSnapshot();
+		},
+	);
 	// /routines is workspace-independent, so store.state.workspaces may be empty here.
 	const isLocalWorkspace = ref(false);
 	const { isFeatureEnabled } = useFeatureToggles();
@@ -664,6 +723,7 @@
 	});
 	async function reload() {
 		const request = ++viewRequest;
+		const snapshotKey = routinesSnapshotKey();
 		viewPending.value = true;
 		viewError.value = null;
 		try {
@@ -682,7 +742,10 @@
 				await store.dispatch('dailyRoutines/loadRange', rangeForView());
 			}
 
-			if (request === viewRequest) viewLoaded.value = true;
+			if (request === viewRequest) {
+				viewLoaded.value = true;
+				saveRoutinesSnapshot(snapshotKey);
+			}
 		} catch (error) {
 			if (request === viewRequest)
 				viewError.value =
@@ -765,7 +828,10 @@
 	}
 
 	async function onToggle(entry: RoutineEntry) {
+		const refreshing = viewPending.value;
 		await store.dispatch('dailyRoutines/toggleComplete', entry);
+		// The in-flight refresh may predate this write and would revert the tick (TM-703).
+		if (refreshing || viewPending.value) await reload();
 	}
 
 	async function loadRoutineForEdit(entry: RoutineEntry) {

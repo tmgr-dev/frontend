@@ -5,6 +5,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 ## 0.9.59 — 2026-10-21
 
+- Agent chat: the assistant can now propose changes instead of only reading. With the workspace setting AI assistant > Write mode set to "Write with confirmation" (the default is "Read only"), it shows a "Confirm changes" card listing the planned changes (for example creating tasks or adding comments); nothing changes until you confirm.
 - Agent chat: pin facts (from a message or typed by hand) in the chat header. Pinned facts are sent to the assistant with every message and survive history compaction.
 - Board: a corner spinner replaces the refresh line that pushed columns down; Dashboard and List show their last data instantly on return visits.
 - Task form: auto-growing comment field, AI step chips on one row, no empty agent-status row above the title, Esc leaves a comment draft.

@@ -26,6 +26,7 @@ import { installFileDropGuard } from '@/utils/fileDrag';
 import { installFocusSource } from '@/utils/focusSource';
 import { findInjectedScripts } from '@/utils/injectedScripts';
 import { requestCache } from '@/utils/requestCache';
+import { installRoutineSnapshotInvalidation } from '@/utils/routineSnapshotInvalidation';
 import { isDetachedWindowLabel } from '@/utils/taskWindow';
 import { tokenFromStorageEvent } from '@/utils/tokenSync';
 import {
@@ -64,6 +65,7 @@ if (isDesktopApp()) {
 		const id = Number(store.getters.currentWorkspaceId);
 		return Number.isFinite(id) && id !== 0 ? id : null;
 	});
+	installRoutineSnapshotInvalidation(domainEvents, requestCache);
 	const isMainWindow = desktopWindowLabel() === 'main';
 	const isDetachedWindow = isDetachedWindowLabel(desktopWindowLabel());
 	if (isMainWindow) startUpdateChecks();

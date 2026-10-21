@@ -1,5 +1,7 @@
 import { invalidatePages } from '@/actions/tmgr/pages';
 import { tourBus } from '@/tours/events';
+import { requestCache } from '@/utils/requestCache';
+import { ROUTINE_SNAPSHOTS } from '@/utils/routineSnapshotInvalidation';
 
 export const QUICK_ADD_PAGE_APPENDED = 'quick-add://page-appended';
 export const QUICK_ADD_CREATED = 'quick-add://created';
@@ -31,6 +33,7 @@ export const handleQuickAddCreated = (
 ): void => {
 	const kind = payload?.kind;
 	if (kind !== 'task' && kind !== 'routine') return;
+	if (kind === 'routine') requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	tourBus.emit('task.created', { source: 'quick_add', kind });
 };
 

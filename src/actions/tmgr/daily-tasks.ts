@@ -6,6 +6,7 @@ import type {
 	YearStats,
 } from '@/types/dailyRoutine';
 import { requestCache } from '@/utils/requestCache';
+import { ROUTINE_SNAPSHOTS } from '@/utils/routineSnapshotInvalidation';
 
 export const getDailyTasks = async (): Promise<Task[]> => {
 	try {
@@ -64,6 +65,7 @@ export const createDailyTask = async (task: Task) => {
 			...task,
 			is_daily_routine: true,
 		});
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 
 		return data;
 	} catch (error) {
@@ -104,6 +106,7 @@ export const updateDailyTask = async (
 		const {
 			data: { data: result },
 		} = await $axios.put(`daily-routines/tasks/${taskId}`, payload);
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 
 		return result;
 	} catch (error) {
@@ -117,6 +120,7 @@ export const completeDailyTask = async (taskId: number) => {
 		const {
 			data: { data },
 		} = await $axios.post(`daily-routines/tasks/${taskId}/complete`);
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 
 		return data;
 	} catch (error) {
@@ -130,6 +134,7 @@ export const archiveDailyTask = async (taskId: number) => {
 		const {
 			data: { data },
 		} = await $axios.post(`daily-routines/tasks/${taskId}/archive`);
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 
 		return data;
 	} catch (error) {
@@ -149,6 +154,7 @@ export const getDailyTask = async (taskId: number) => {
 export const deleteDailyTask = async (taskId: number) => {
 	try {
 		const { data } = await $axios.delete(`daily-routines/tasks/${taskId}`);
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 		return data;
 	} catch (error) {
 		console.error('Failed to delete daily task:', error);
@@ -164,6 +170,7 @@ export const deleteDailyTaskInstance = async (
 		const { data } = await $axios.delete(
 			`daily-routines/tasks/${taskId}/instances/${taskInstanceId}`,
 		);
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 		return data;
 	} catch (error) {
 		console.error("Failed to delete daily task's instance:", error);
@@ -179,6 +186,7 @@ export const completeDailyTaskInstance = async (
 		await $axios.post(
 			`daily-routines/tasks/${taskId}/instances/${taskInstanceId}/complete`,
 		);
+		requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	} catch (error) {
 		console.error("Failed to complete daily task's instance:", error);
 		throw error;
@@ -210,6 +218,7 @@ export const completeRoutineOn = async (taskId: number, date: string) => {
 	const {
 		data: { data },
 	} = await $axios.post(`daily-routines/tasks/${taskId}/complete-on`, { date });
+	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	return data as {
 		instance_id: number;
 		task_id: number;
@@ -230,6 +239,7 @@ export const rescheduleRoutineInstance = async (
 		`daily-routines/tasks/${taskId}/instances/${instanceId}`,
 		{ scheduled_for: scheduledFor },
 	);
+	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	return data;
 };
 
@@ -242,6 +252,7 @@ export const quickCreateRoutine = async (payload: {
 	const {
 		data: { data },
 	} = await $axios.post('daily-routines/tasks/quick', payload);
+	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	return data;
 };
 
@@ -253,6 +264,7 @@ export const importRoutinesIcs = async (
 	fd.append('file', file);
 	fd.append('mode', mode);
 	const { data } = await $axios.post('daily-routines/ics/import', fd);
+	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	return data as IcsImportResult;
 };
 
@@ -280,6 +292,7 @@ export const convertRoutineToTask = async (
 
 	// The task now lives in a regular workspace list — drop stale caches.
 	requestCache.invalidate(/^task/);
+	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 
 	return data;
 };
