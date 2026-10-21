@@ -2,6 +2,12 @@ import { expect, test } from '@playwright/test';
 
 import { mockApp } from './mockApp.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() =>
+    sessionStorage.setItem('tmgr:tours:auto', 'true'),
+  );
+});
+
 test('list retains rows while refreshing and renders updated fields', async ({
   page,
 }) => {
@@ -30,11 +36,12 @@ for (const failCategories of [false, true]) {
     const api = await mockApp(page, { failCategories });
     await page.goto('/');
     if (failCategories) {
-      await expect(
-        page.getByRole('button', { name: 'Retry', exact: true }),
-      ).toBeVisible();
+      const retry = page
+        .getByRole('main')
+        .getByRole('button', { name: 'Retry', exact: true });
+      await expect(retry).toBeVisible();
       api.recover();
-      await page.getByRole('button', { name: 'Retry', exact: true }).click();
+      await retry.click();
     }
     const row = page.locator('[data-task-id="1"]');
     await expect(row).toContainText('Original task');
@@ -197,6 +204,7 @@ test('immediate editor close serializes input before EditorJS delayed change eve
       .querySelector('#app')
       .__vue_app__.config.globalProperties.$router.push('/demo/tasks/1'),
   );
+  await page.getByRole('button', { name: 'Edit description' }).click();
   const paragraph = page
     .locator('.ce-paragraph[contenteditable="true"]')
     .first();
@@ -246,6 +254,10 @@ test('restoring a block draft saves the restored document, not the previous edit
       .querySelector('#app')
       .__vue_app__.config.globalProperties.$router.push('/demo/tasks/1'),
   );
+  await expect(
+    page.getByRole('button', { name: 'Restore draft' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Edit description' }).click();
   await expect(page.locator('.ce-paragraph').first()).toHaveText(
     'Initial block',
   );
