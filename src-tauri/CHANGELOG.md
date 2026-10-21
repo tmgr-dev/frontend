@@ -7,6 +7,7 @@ workflow copies that section into the GitHub release and the in-app update notes
 
 - Voice input: a mic button in the Ask AI chat and in the task comment box. Press it to record, press stop to turn your speech into text at the cursor, then edit and send it yourself. Recording stops at 2 minutes. macOS asks for microphone access the first time.
 - Ask AI: a chat list, so you can switch between and open earlier chats, and a context meter that shows how full the chat's context window is.
+- Ask AI: quick scenario chips under the input start common questions in one click.
 - Tasks: terminal session time entries are listed on a task.
 
 ## 0.9.55 — 2026-10-21
