@@ -105,13 +105,13 @@ pub(crate) fn query_avail(inner: Rect) -> usize {
     usize::from(inner.width).saturating_sub(PROMPT_WIDTH + 1)
 }
 
-enum Key {
+pub(crate) enum Key {
     Up,
     Down,
     Other,
 }
 
-fn esc_key(b: &[u8]) -> (Key, usize) {
+pub(crate) fn esc_key(b: &[u8]) -> (Key, usize) {
     match b.get(1) {
         Some(b'[') => {
             let mut j = 2;
@@ -139,7 +139,7 @@ fn esc_key(b: &[u8]) -> (Key, usize) {
     }
 }
 
-fn next_char(b: &[u8]) -> (Option<char>, usize) {
+pub(crate) fn next_char(b: &[u8]) -> (Option<char>, usize) {
     let len = match b[0] {
         0..=0x7f => 1,
         0xc2..=0xdf => 2,

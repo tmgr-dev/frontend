@@ -1,8 +1,8 @@
 mod actions;
 mod keys;
 mod modes;
-mod newsession;
 mod mouse;
+mod newsession;
 mod palette;
 mod render;
 mod tree;
@@ -15,7 +15,7 @@ pub use actions::{ActionDef, ACTIONS};
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
 pub use modes::{enter_mouse, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
-pub use newsession::{KindOpt, NewEdit, NewRequest, NewSession, Place, SpawnKind};
+pub use newsession::{KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, RowView};
 pub use render::{cursor, render, ScreenSource};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};

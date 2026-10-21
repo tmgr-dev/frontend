@@ -1,5 +1,6 @@
 use super::actions::find;
 use super::keys::Cmd;
+use super::newsession::{draw_new_session, new_session_cursor};
 use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
@@ -26,7 +27,7 @@ pub trait ScreenSource {
 const ACCENT: Color = Color::LightRed;
 const SIDEBAR_BG: Color = Color::Indexed(237);
 
-fn dim() -> Style {
+pub(crate) fn dim() -> Style {
     Style::new().fg(Color::DarkGray)
 }
 
@@ -83,7 +84,7 @@ fn attr_style(a: &Attr) -> Style {
         .add_modifier(m)
 }
 
-fn put(buf: &mut Buffer, x: u16, y: u16, s: &str, style: Style, max: u16) -> u16 {
+pub(crate) fn put(buf: &mut Buffer, x: u16, y: u16, s: &str, style: Style, max: u16) -> u16 {
     if max == 0 {
         return x;
     }
@@ -108,6 +109,7 @@ pub fn render(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.palette.is_some() {
         draw_palette(buf, area, st);
     }
+    draw_new_session(buf, area, st);
 }
 
 fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
@@ -312,6 +314,10 @@ fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot) {
 }
 
 pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Option<(u16, u16)> {
+    if let Some(ns) = &st.new_session {
+        let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
+        return new_session_cursor(ns, area);
+    }
     if let Some(p) = &st.palette {
         let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
         let rect = palette_rect(area, st.entries().len().max(1));
