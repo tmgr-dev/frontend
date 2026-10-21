@@ -1309,6 +1309,81 @@ fn known_profile<'a>(set: &'a ProfileSet, id: &str) -> Result<&'a Profile, ApiEr
     })
 }
 
+fn intent_from_meta(meta: &Meta, profile: &str) -> Result<restore::Intent, ApiErr> {
+    let again = |why: &str| {
+        api(
+            ErrorCode::NotFound,
+            format!("this session cannot be resumed: {why}; start it again with tmgr run"),
+        )
+    };
+    if meta.bundled || meta.multi || meta.start_key.is_some() {
+        return Err(again(
+            "it was started by an automated run and has no launch record",
+        ));
+    }
+    let (dev, ino) = meta
+        .cwd_id
+        .ok_or_else(|| again("it has no launch record and its folder was not recorded"))?;
+    Ok(restore::Intent {
+        v: 1,
+        session: meta.id.clone(),
+        profile: profile.to_string(),
+        model: None,
+        name: meta.name.clone(),
+        cwd: meta.cwd.clone(),
+        cwd_pin: CwdPin { dev, ino },
+        task: meta.task,
+        bundle_sha256: None,
+        origin: meta.origin.clone(),
+        permission_mode: meta.permission_mode.clone(),
+        clone_of: meta.clone_of.clone(),
+        agent_work: false,
+        keyed: None,
+        exe_pin: None,
+        argv_sha256: None,
+        resume_decl: None,
+        bypass: meta.permission_mode.as_deref() == Some("bypass"),
+        boot: None,
+        pids: Vec::new(),
+        created_ms: meta.created_ms,
+        cols: meta.cols,
+        rows: meta.rows,
+    })
+}
+
+fn shim_log_tail(path: &Path) -> String {
+    let Ok(mut f) = File::open(path) else {
+        return String::new();
+    };
+    let len = f.metadata().map_or(0, |m| m.len());
+    let mut buf = Vec::new();
+    if f.seek(SeekFrom::Start(len.saturating_sub(4096))).is_err()
+        || f.take(4096).read_to_end(&mut buf).is_err()
+    {
+        return String::new();
+    }
+    let text: String = String::from_utf8_lossy(&buf)
+        .chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .collect();
+    let last: Vec<&str> = text
+        .lines()
+        .rev()
+        .filter(|l| !l.trim().is_empty())
+        .take(3)
+        .collect();
+    if last.is_empty() {
+        return String::new();
+    }
+    let joined = last.into_iter().rev().collect::<Vec<_>>().join(" | ");
+    let hint = if joined.contains("openpty") {
+        "; the machine has run out of terminal devices, close idle sessions and try again"
+    } else {
+        ""
+    };
+    format!(": {joined}{hint}")
+}
+
 fn valid_start_key(k: &str) -> bool {
     (1..=64).contains(&k.len())
         && k.bytes()
@@ -2261,10 +2336,10 @@ impl Runner {
             Some(profile) => {
                 let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"), profile);
                 self.resume_agent(
-                    old,
+                    (&meta, profile.as_str()),
                     (cols, rows),
                     interrupted,
-                    (meta.name.clone(), resume_id),
+                    resume_id,
                     prior,
                 )?
             }
@@ -2282,26 +2357,27 @@ impl Runner {
 
     fn resume_agent(
         self: &Arc<Self>,
-        old: &str,
+        (meta, profile): (&Meta, &str),
         (cols, rows): (u16, u16),
         interrupted: bool,
-        (name, id): (String, Option<String>),
+        id: Option<String>,
         prior: String,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
+        let (old, name) = (meta.id.as_str(), meta.name.clone());
         let store = self.intents();
         let (mut intent, bundle) = match restore::load_relaunch(&self.sdir(old), old) {
             Ok(found) => found,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {
-                let intent = restore::load(&store, old).map_err(|_| {
-                    api(
-                        ErrorCode::NotFound,
-                        "this session has no launch record; start it again with tmgr run",
-                    )
-                })?;
-                let bundle = restore::read_bundle(&store, &intent)
-                    .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
-                (intent, bundle)
-            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => match restore::load(&store, old) {
+                Ok(intent) => {
+                    let bundle = restore::read_bundle(&store, &intent)
+                        .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
+                    (intent, bundle)
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                    (intent_from_meta(meta, profile)?, None)
+                }
+                Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
+            },
             Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
         };
         if !interrupted {
@@ -3169,9 +3245,10 @@ impl Runner {
                 Ok(r) => break Ok(r),
                 Err(e) => {
                     if let Ok(Some(st)) = child.try_wait() {
+                        let tail = shim_log_tail(&sdir.join("shim.log"));
                         break Err(api(
                             ErrorCode::Internal,
-                            format!("shim exited early ({st})"),
+                            format!("shim exited early ({st}){tail}"),
                         ));
                     }
                     if Instant::now() >= deadline {
@@ -4226,6 +4303,19 @@ mod tests {
         moved.write_all(b"after\n").unwrap();
         assert_eq!(fs::metadata(&log_path).unwrap().len(), 6);
         assert!(!rotate_log(t.path(), &[fd], 1000).unwrap());
+    }
+
+    #[test]
+    fn shim_log_tail_keeps_the_last_lines_and_explains_a_pty_shortage() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("shim.log");
+        assert_eq!(shim_log_tail(&p), "");
+        fs::write(&p, "a\nb\n\nshim: failed to openpty: Os { code: 6 }\n").unwrap();
+        let t = shim_log_tail(&p);
+        assert!(t.starts_with(": a | b | shim: failed to openpty"), "{t}");
+        assert!(t.contains("run out of terminal devices"), "{t}");
+        fs::write(&p, "boom\n").unwrap();
+        assert_eq!(shim_log_tail(&p), ": boom");
     }
 
     #[test]

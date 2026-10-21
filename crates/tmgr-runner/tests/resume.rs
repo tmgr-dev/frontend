@@ -464,18 +464,68 @@ fn link_bypass_expired_and_unpinned_queue_records_are_refused() {
 }
 
 #[test]
-fn a_session_without_a_launch_record_cannot_be_resumed() {
+fn a_session_without_a_launch_record_resumes_from_its_metadata() {
     if !sessions_available() {
         return;
     }
     let mut h = H::full();
     h.start();
+    h.announce(&claude_exit(U1));
     let s = h.started();
     h.stop(&s.id);
     fs::remove_file(h.sdir(&s.id).join("relaunch.json")).unwrap();
-    let err = h.client().resume(&s.id, 80, 24).unwrap_err().to_string();
-    assert!(err.starts_with("not_found"), "{err}");
-    assert!(h.state_of(&s.id).is_some());
+    restore::forget(&h.store(), &s.id);
+    let r = h.client().resume(&s.id, 80, 24).unwrap();
+    assert!(r.resumed);
+    assert_eq!(r.via.as_deref(), Some("id"));
+    assert_eq!(r.session.resumed_from.as_deref(), Some(s.id.as_str()));
+    h.wait_log("home:kept", 1);
+    assert!(
+        h.log().contains(&format!("args:--resume-id {U1}\n")),
+        "{}",
+        h.log()
+    );
+    assert!(h.sdir(&r.session.id).join("relaunch.json").is_file());
+}
+
+#[test]
+fn a_session_that_cannot_be_rebuilt_from_its_metadata_says_what_to_do() {
+    if !sessions_available() {
+        return;
+    }
+    for (field, edit) in [
+        ("cwd_id", None),
+        ("start_key", Some(serde_json::json!("k"))),
+        ("profile", Some(serde_json::json!("gone-agent"))),
+    ] {
+        let mut h = H::full();
+        h.start();
+        h.announce(&claude_exit(U1));
+        let s = h.started();
+        h.stop(&s.id);
+        h.stop_runner();
+        fs::remove_file(h.sdir(&s.id).join("relaunch.json")).unwrap();
+        restore::forget(&h.store(), &s.id);
+        let path = h.sdir(&s.id).join("meta.json");
+        let mut meta: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        match edit {
+            Some(v) => meta[field] = v,
+            None => {
+                meta.as_object_mut().unwrap().remove(field);
+            }
+        }
+        fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
+        h.start();
+        let err = h.client().resume(&s.id, 80, 24).unwrap_err().to_string();
+        if field == "profile" {
+            assert!(err.starts_with("unknown_profile"), "{field}: {err}");
+        } else {
+            assert!(err.starts_with("not_found"), "{field}: {err}");
+            assert!(err.contains("tmgr run"), "{field}: {err}");
+        }
+        assert!(h.state_of(&s.id).is_some(), "{field}: session lost");
+    }
 }
 
 #[test]

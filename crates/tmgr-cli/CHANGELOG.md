@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Resume (the play button in `tmgr attach`) works for agent sessions started before the launch record existed: the launch is rebuilt from the session's own record using your current profile, and when that is impossible the error says what to do. When the agent shim dies at start, the error now carries its last log lines, including a clear note when the machine has run out of terminal devices.
+
 ## 1.0.21
 
 - `tmgr attach` shows the agent's own session title next to the sidebar entry and in the pane header, so names match what you see in Claude Code and Codex: the title you set with `/rename` in Claude Code (or the Codex thread name) wins; Claude's automatic title is shown dim to mark it as automatic. A name you set in tmgr (`Ctrl-] r`, `--name`, `tmgr rename`) always wins and is never overwritten, and renaming in tmgr does not rename the agent session. The label is display only: commands still take the tmgr name, and the status bar keeps showing it. Titles are read incrementally, only for the visible sessions and every few seconds, from the agent's own transcript in the session's sandbox home (Claude `.claude/projects/...`, Codex `.codex/session_index.jsonl`); only the session's own sandbox home is read, never your real `~/.claude` or `~/.codex`. Escape sequences and control characters are stripped and long titles are truncated. Not shown in a remote attach.

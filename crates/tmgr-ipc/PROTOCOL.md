@@ -246,7 +246,14 @@ so it survives the clean exit and the kill that drop the `runs.restore` record. 
 rules as `runs.restore` apply and nothing is weakened: records with an `origin` (link), bypass
 runs, records older than 7 days and queue runs without an `exe_pin` are `forbidden`; the
 executable pin, the argv digest, the folder identity (`cwd_pin`) and the stored bundle hash
-are checked again. A session without a launch record is `not_found`. Any other session
+are checked again. A session without a launch record (started before `relaunch.json` existed) is rebuilt
+from its own `meta.json`: the profile is looked up in the runner's current profile table (the stored
+`argv` is never run), and the recorded folder identity, permission mode, name and task binding are
+reused; nothing comes from the client. The 7-day limit counts from the original start. When that is impossible (no recorded folder, or a
+bundled, multi-repository or keyed run) the answer is `not_found` saying to start it again with
+`tmgr run`; a profile that is no longer configured is `unknown_profile` and a folder that is gone or
+replaced is `invalid_params` or `forbidden`, as for a normal run. A shim that dies at start returns `internal` with the last
+lines of its own log. Any other session
 (a shell or `--agent-cmd`) is rebuilt from its own metadata and run again; its folder must
 still be the same directory (identity compared), otherwise `forbidden`.
 
