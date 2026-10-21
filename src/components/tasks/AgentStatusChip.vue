@@ -1,6 +1,6 @@
 <template>
 	<span
-		v-if="enabled"
+		v-if="enabled && (status || !hideWhenEmpty)"
 		class="inline-flex h-[22px] min-w-[26px] shrink-0 items-center justify-center"
 		data-testid="agent-status-slot"
 	>
@@ -52,6 +52,7 @@
 		props: {
 			taskId: { type: Number, required: true },
 			workspaceId: { type: Number, default: undefined },
+			hideWhenEmpty: { type: Boolean, default: false },
 		},
 		setup(props) {
 			const { isFeatureEnabled } = useFeatureToggles();

@@ -720,7 +720,7 @@ async function expectInvalidFocus(page, ref, tag, field, clicked, errorBorder) {
 const textInput = (scope) =>
   scope
     .locator(
-      'input[type="text"]:visible, input[type="search"]:visible, input:not([type]):visible',
+      'input[type="text"]:visible, input[type="search"]:visible, input:not([type]):visible, footer textarea:visible',
     )
     .first();
 const escape = (p) => p.keyboard.press('Escape');
