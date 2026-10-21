@@ -4,10 +4,11 @@ use super::newsession::{draw_new_session, new_session_cursor};
 use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
+use super::place::{fit, tail2};
 use super::tree::Nav;
 use super::view::{
     header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
-    SidebarItem, ViewState, WIDE_COLS,
+    SidebarItem, SidebarLine, ViewState, WIDE_COLS,
 };
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
@@ -132,64 +133,18 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
     let sl = st.sidebar_layout(area);
     let focused = st.focused_session();
-    for (id, y) in &sl.rows {
-        let Some(row) = st.sessions.iter().find(|s| s.id == *id) else {
-            continue;
-        };
+    for (line, y) in &sl.lines {
         let y = *y;
-        if focused == Some(row.id.as_str()) {
-            buf.set_style(
-                Rect::new(area.x, y, area.width, 1),
-                Style::new().bg(SIDEBAR_BG),
-            );
-        }
-        let (glyph, style) = badge(row);
-        put(buf, area.x + 1, y, glyph, style, 1);
-        let hovered = st
-            .pointer
-            .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
-        if hovered {
-            let stop_x = sidebar_button(area, Control::Stop).unwrap_or(area.right());
-            let name_end = stop_x.saturating_sub(1);
-            put(
-                buf,
-                area.x + 3,
-                y,
-                &row.name,
-                Style::new(),
-                name_end.saturating_sub(area.x + 3),
-            );
-            for slot in [Control::Stop, Control::Close] {
-                let ctl = slot_control(row, slot, true);
-                if let Some(x) = sidebar_button(area, slot) {
-                    let on = st.pointer.is_some_and(|p| p.0 == x);
-                    put(buf, x, y, glyph_of(ctl), button_style(on, true), 1);
-                }
+        match line {
+            SidebarLine::Header {
+                key,
+                count,
+                collapsed,
+            } => draw_group_header(buf, area, st, key, *count, *collapsed, y),
+            SidebarLine::Detail(id) => draw_detail(buf, area, st, id, y),
+            SidebarLine::Session { id, indent } => {
+                draw_session_row(buf, area, st, id, *indent, focused, y);
             }
-        } else {
-            let age_w = row.age.width() as u16;
-            let age_x = area.right().saturating_sub(age_w + 1).max(area.x + 3);
-            let name_w = age_x.saturating_sub(area.x + 3).saturating_sub(1);
-            let name_style = if row.state.kind == StateKind::Blocked {
-                style
-            } else {
-                Style::new()
-            };
-            put(buf, area.x + 3, y, &row.name, name_style, name_w);
-            put(
-                buf,
-                age_x,
-                y,
-                &row.age,
-                dim(),
-                area.right().saturating_sub(age_x),
-            );
-        }
-        if st.sidebar_focus == Some(SidebarItem::Session(row.id.clone())) {
-            buf.set_style(
-                Rect::new(area.x, y, area.width, 1),
-                Style::new().add_modifier(Modifier::REVERSED),
-            );
         }
     }
     if let Some(y) = sl.new_row {
@@ -216,6 +171,148 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             );
         }
     }
+}
+
+fn draw_session_row(
+    buf: &mut Buffer,
+    area: Rect,
+    st: &ViewState,
+    id: &str,
+    indent: bool,
+    focused: Option<&str>,
+    y: u16,
+) {
+    let off = if indent { 2 } else { 0 };
+    let Some(row) = st.sessions.iter().find(|s| s.id == id) else {
+        return;
+    };
+    if focused == Some(row.id.as_str()) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().bg(SIDEBAR_BG),
+        );
+    }
+    let (glyph, style) = badge(row);
+    put(buf, area.x + 1 + off, y, glyph, style, 1);
+    let hovered = st
+        .pointer
+        .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
+    if hovered {
+        let stop_x = sidebar_button(area, Control::Stop).unwrap_or(area.right());
+        let name_end = stop_x.saturating_sub(1);
+        put(
+            buf,
+            area.x + 3 + off,
+            y,
+            &row.name,
+            Style::new(),
+            name_end.saturating_sub(area.x + 3 + off),
+        );
+        for slot in [Control::Stop, Control::Close] {
+            let ctl = slot_control(row, slot, true);
+            if let Some(x) = sidebar_button(area, slot) {
+                let on = st.pointer.is_some_and(|p| p.0 == x);
+                put(buf, x, y, glyph_of(ctl), button_style(on, true), 1);
+            }
+        }
+    } else {
+        let age_w = row.age.width() as u16;
+        let age_x = area.right().saturating_sub(age_w + 1).max(area.x + 3 + off);
+        let name_w = age_x.saturating_sub(area.x + 3 + off).saturating_sub(1);
+        let name_style = if row.state.kind == StateKind::Blocked {
+            style
+        } else {
+            Style::new()
+        };
+        put(buf, area.x + 3 + off, y, &row.name, name_style, name_w);
+        put(
+            buf,
+            age_x,
+            y,
+            &row.age,
+            dim(),
+            area.right().saturating_sub(age_x),
+        );
+    }
+    if st.sidebar_focus == Some(SidebarItem::Session(row.id.clone())) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().add_modifier(Modifier::REVERSED),
+        );
+    }
+}
+
+fn draw_group_header(
+    buf: &mut Buffer,
+    area: Rect,
+    st: &ViewState,
+    key: &str,
+    count: usize,
+    collapsed: bool,
+    y: u16,
+) {
+    let holds = collapsed
+        && st
+            .focused_session()
+            .is_some_and(|id| st.group_holds(key, id));
+    if holds {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().bg(SIDEBAR_BG),
+        );
+    }
+    put(
+        buf,
+        area.x + 1,
+        y,
+        if collapsed { "▸" } else { "▾" },
+        dim(),
+        1,
+    );
+    let tail = if collapsed {
+        format!("({count})")
+    } else {
+        String::new()
+    };
+    let tail_w = tail.width() as u16;
+    let text_x = area.x + 3;
+    let tail_x = area.right().saturating_sub(tail_w + 1).max(text_x);
+    if let Some((path, branch)) = st.group_title(key) {
+        let room = tail_x.saturating_sub(text_x).saturating_sub(1);
+        let text = fit(&path, branch.as_deref(), usize::from(room));
+        put(
+            buf,
+            text_x,
+            y,
+            &text,
+            Style::new().add_modifier(Modifier::BOLD),
+            room,
+        );
+    }
+    if collapsed {
+        let style = if st.group_blocked(key) {
+            Style::new().fg(Color::Yellow)
+        } else {
+            dim()
+        };
+        put(buf, tail_x, y, &tail, style, tail_w);
+    }
+    if st.sidebar_focus == Some(SidebarItem::Group(key.to_string())) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().add_modifier(Modifier::REVERSED),
+        );
+    }
+}
+
+fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, y: u16) {
+    let Some(loc) = st.locs.get(id) else {
+        return;
+    };
+    let x = area.x + 3;
+    let room = area.right().saturating_sub(x + 1);
+    let text = fit(&tail2(&loc.dir), loc.branch.as_deref(), usize::from(room));
+    put(buf, x, y, &text, dim(), room);
 }
 
 fn button_style(hover: bool, enabled: bool) -> Style {
@@ -513,6 +610,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
     (
         HelpKey::Cmds(&[Cmd::Zoom, Cmd::Sidebar]),
         "zoom the pane / show or hide the sidebar",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Group]),
+        "group sessions by repo / flat list",
     ),
     (HelpKey::Cmds(&[Cmd::Rename]), "rename the focused session"),
     (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),

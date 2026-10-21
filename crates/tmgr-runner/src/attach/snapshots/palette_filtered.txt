@@ -12,12 +12,12 @@
                   │ New session (claude, codex, shell, ...)             Ctrl-] c │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ dev-server                                           waiting │                 │
+                  │ Group sessions by repo, or list them flat           Ctrl-] g │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   ╰──────────────────────────────────────────────────────────────╯                 │
-                        │                                    ││                                    │
                         │                                    ││                                    │
                         │                                    ││                                    │
  + New session          ╰────────────────────────────────────╯╰────────────────────────────────────╯

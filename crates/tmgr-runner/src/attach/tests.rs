@@ -2930,15 +2930,15 @@ fn sidebar_layout_pins_the_new_row_to_the_last_line() {
     let v = wide_view();
     let sl = v.sidebar_layout(r(0, 0, 24, 20));
     assert_eq!(sl.new_row, Some(19));
-    let ys: Vec<u16> = sl.rows.iter().map(|(_, y)| *y).collect();
+    let ys: Vec<u16> = sl.rows().iter().map(|(_, y)| *y).collect();
     assert_eq!(ys, [1, 2, 3, 4]);
-    assert_eq!(sl.rows[0].0, "c");
+    assert_eq!(sl.rows()[0].0, "c");
     let small = v.sidebar_layout(r(0, 0, 24, 5));
     assert_eq!(small.new_row, Some(4));
-    assert_eq!(small.rows.len(), 3);
+    assert_eq!(small.rows().len(), 3);
     let tiny = v.sidebar_layout(r(0, 0, 24, 3));
     assert_eq!(tiny.new_row, None);
-    assert_eq!(tiny.rows.len(), 2);
+    assert_eq!(tiny.rows().len(), 2);
 }
 
 #[test]
@@ -3213,12 +3213,13 @@ fn keyboard_navigation_never_lands_on_an_undrawn_row() {
     v.width = 140;
     let area = r(0, 0, 140, 8);
     let drawn = v.sidebar_layout(layout(area, &v).sidebar.unwrap());
-    assert!(drawn.rows.len() < 30);
+    assert!(drawn.rows().len() < 30);
     assert!(v.enter_sidebar(area));
     for _ in 0..50 {
         v.edit_sidebar(area, b"\x1b[B");
         match v.sidebar_focus.clone().unwrap() {
-            SidebarItem::Session(id) => assert!(drawn.rows.iter().any(|(r, _)| *r == id)),
+            SidebarItem::Group(_) => unreachable!(),
+            SidebarItem::Session(id) => assert!(drawn.rows().iter().any(|(r, _)| *r == id)),
             SidebarItem::New => assert!(drawn.new_row.is_some()),
         }
     }
