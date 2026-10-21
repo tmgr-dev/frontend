@@ -43,6 +43,7 @@ pub enum Cmd {
     CloseTab,
     Questions,
     Subagents,
+    NeedsYou,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

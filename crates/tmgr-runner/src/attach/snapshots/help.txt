@@ -3,7 +3,7 @@
  ▾ claude           (2) │I will add an│                                                              │ ms                                  │
    ● claude working 18m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
    ◌ dev-server wa… 12m │>            │ d             detach, sessions keep running                  │                                     │
- ✓ tests     exited 52m │             │ n / p         next / previous session                        │                                     │
+ ✓ tests     exited 52m │             │ n / p / !     next / previous / needs-you session            │                                     │
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │

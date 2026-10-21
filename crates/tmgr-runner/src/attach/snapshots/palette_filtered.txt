@@ -1,10 +1,9 @@
- SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────╮╭ 2  dev-server · waiting ───────────╮
- ◆ codex     block╭ Command palette ─────────────────────────────────────────────╮                 │
- ▾ claude         │ > re                                                         │ ms              │
-   ● claude workin│                                                              │                 │
-   ◌ dev-server wa│ Rename the tab                                      Ctrl-] , │                 │
- ✓ tests     exite│ Rename the focused session                          Ctrl-] r │                 │
-                  │ Resume the focused session                  Ctrl-] Enter / R │                 │
+ SESSIONS      Ctr╭ Command palette ─────────────────────────────────────────────╮iting ───────────╮
+ ◆ codex     block│ > re                                                         │                 │
+ ▾ claude         │                                                              │ ms              │
+   ● claude workin│ Rename the tab                                      Ctrl-] , │                 │
+   ◌ dev-server wa│ Rename the focused session                          Ctrl-] r │                 │
+ ✓ tests     exite│ Resume the focused session                  Ctrl-] Enter / R │                 │
                   │ Previous tab                                        Ctrl-] P │                 │
                   │ Previous session                                    Ctrl-] p │                 │
                   │ Remove (close) the focused exited session           Ctrl-] X │                 │
@@ -20,5 +19,6 @@
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ Unanswered questions from the agents                Ctrl-] q │                 │
                   │ Show or hide the focused session's subagents        Ctrl-] u │                 │
+                  │ Jump to a session that needs you                    Ctrl-] ! │                 │
  + New session    ╰──────────────────────────────────────────────────────────────╯─────────────────╯
  tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                         Ctrl-] ? help

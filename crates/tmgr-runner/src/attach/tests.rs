@@ -5834,3 +5834,303 @@ fn any_command_closes_the_peek() {
     v.apply(Cmd::Help);
     assert!(v.peek.is_none());
 }
+
+struct FakeNotifier {
+    bells: usize,
+    texts: Vec<String>,
+}
+
+impl Notifier for FakeNotifier {
+    fn bell(&mut self) {
+        self.bells += 1;
+    }
+
+    fn notify(&mut self, text: &str) {
+        self.texts.push(text.to_string());
+    }
+}
+
+fn fake() -> FakeNotifier {
+    FakeNotifier {
+        bells: 0,
+        texts: Vec::new(),
+    }
+}
+
+fn blocked_view() -> ViewState {
+    let mut v = ViewState::new(four(), "spark");
+    v.sessions[2].state.detail = Some("blocked[0]: Do you want to proceed?".into());
+    v
+}
+
+fn all_kinds() -> SignalSettings {
+    SignalSettings {
+        input: true,
+        ..SignalSettings::default()
+    }
+}
+
+#[test]
+fn a_permission_prompt_is_a_need_with_the_prompt_line_as_reason() {
+    let v = blocked_view();
+    let need = detect(&v.sessions[2], None, 0, &SignalSettings::default()).unwrap();
+    assert_eq!(need.kind, NeedKind::Permission);
+    assert_eq!(need.reason, "Do you want to proceed?");
+}
+
+#[test]
+fn waiting_is_a_need_only_when_the_input_kind_is_on() {
+    let v = blocked_view();
+    assert_eq!(
+        detect(&v.sessions[1], None, 0, &SignalSettings::default()),
+        None
+    );
+    let need = detect(&v.sessions[1], None, 0, &all_kinds()).unwrap();
+    assert_eq!(
+        (need.kind, need.reason.as_str()),
+        (NeedKind::Input, "waiting for input")
+    );
+}
+
+#[test]
+fn a_pending_ask_user_question_or_an_open_question_is_a_question_need() {
+    let v = blocked_view();
+    let asked = detect(
+        &v.sessions[0],
+        Some("Which database?"),
+        0,
+        &SignalSettings::default(),
+    );
+    assert_eq!(asked.unwrap().kind, NeedKind::Question);
+    let open = detect(&v.sessions[1], None, 2, &SignalSettings::default()).unwrap();
+    assert_eq!(
+        (open.kind, open.reason.as_str()),
+        (NeedKind::Question, "asked 2 questions")
+    );
+}
+
+#[test]
+fn working_and_exited_sessions_never_need_you() {
+    let v = blocked_view();
+    assert_eq!(detect(&v.sessions[0], None, 0, &all_kinds()), None);
+    let done = row("z", "z", StateKind::Exited, "1m");
+    assert_eq!(detect(&done, None, 5, &all_kinds()), None);
+}
+
+#[test]
+fn one_signal_per_wait_and_a_new_wait_signals_again() {
+    let mut v = blocked_view();
+    let mut t = SignalTracker::new();
+    let s = SignalSettings::default();
+    v.sessions[2].state.kind = StateKind::Working;
+    t.update(&v, &s);
+    v.sessions[2].state.kind = StateKind::Blocked;
+    v.sessions[2].state.since_ms = 1;
+    assert_eq!(t.update(&v, &s).len(), 1);
+    assert_eq!(t.update(&v, &s).len(), 0);
+    assert_eq!(t.update(&v, &s).len(), 0);
+    assert!(t.current().contains_key("c"));
+    v.sessions[2].state.kind = StateKind::Working;
+    assert_eq!(t.update(&v, &s).len(), 0);
+    assert!(t.current().is_empty());
+    v.sessions[2].state.kind = StateKind::Blocked;
+    v.sessions[2].state.since_ms = 2;
+    assert_eq!(t.update(&v, &s).len(), 1);
+}
+
+#[test]
+fn a_wait_that_escalates_signals_again_once() {
+    let mut v = blocked_view();
+    let mut t = SignalTracker::new();
+    v.sessions[1].state.kind = StateKind::Working;
+    t.update(&v, &all_kinds());
+    v.sessions[1].state.kind = StateKind::Waiting;
+    v.sessions[1].state.since_ms = 3;
+    let first = t.update(&v, &all_kinds());
+    assert_eq!(first.len(), 1);
+    assert_eq!(first[0].1.kind, NeedKind::Input);
+    v.status.insert(
+        "b".into(),
+        SessionStatus {
+            ask: Some("Which?".into()),
+            ..Default::default()
+        },
+    );
+    let fresh = t.update(&v, &all_kinds());
+    assert_eq!(fresh.len(), 1);
+    assert_eq!(fresh[0].1.kind, NeedKind::Question);
+    assert!(t.update(&v, &all_kinds()).is_empty());
+}
+
+#[test]
+fn a_disabled_kind_neither_signals_nor_highlights() {
+    let v = blocked_view();
+    let mut t = SignalTracker::new();
+    let off = SignalSettings {
+        permission: false,
+        ..SignalSettings::default()
+    };
+    assert!(t.update(&v, &off).is_empty());
+    assert!(t.current().is_empty());
+}
+
+#[test]
+fn delivery_rings_one_bell_and_names_the_session() {
+    let v = blocked_view();
+    let mut t = SignalTracker::new();
+    let s = SignalSettings::default();
+    t.update(&ViewState::new(Vec::new(), ""), &s);
+    let mut v2 = v.clone();
+    v2.sessions[2].state.since_ms = 9;
+    t.update(&ViewState::new(four(), ""), &s);
+    let fresh = t.update(&v2, &s);
+    let mut n = fake();
+    let name = |id: &str| {
+        v2.sessions
+            .iter()
+            .find(|r| r.id == id)
+            .unwrap()
+            .name
+            .clone()
+    };
+    assert_eq!(deliver(&fresh, name, |_| false, &s, 12 * 60, &mut n), 1);
+    assert_eq!(n.bells, 1);
+    assert_eq!(
+        n.texts,
+        vec!["codex needs you: Do you want to proceed?".to_string()]
+    );
+}
+
+#[test]
+fn several_new_signals_make_one_notification_and_one_bell() {
+    let v = blocked_view();
+    let mut n = fake();
+    let need = |r: &str| Need {
+        kind: NeedKind::Input,
+        reason: r.into(),
+    };
+    let fresh = vec![("a".to_string(), need("x")), ("b".to_string(), need("y"))];
+    let name = |id: &str| v.sessions.iter().find(|r| r.id == id).unwrap().name.clone();
+    let s = SignalSettings::default();
+    assert_eq!(deliver(&fresh, name, |_| false, &s, 600, &mut n), 2);
+    assert_eq!((n.bells, n.texts.len()), (1, 1));
+    assert_eq!(n.texts[0], "2 sessions need you: claude, dev-server");
+}
+
+#[test]
+fn sessions_already_waiting_at_attach_do_not_signal() {
+    let v = blocked_view();
+    let mut t = SignalTracker::new();
+    assert!(t.update(&v, &SignalSettings::default()).is_empty());
+    assert!(t.current().contains_key("c"));
+}
+
+#[test]
+fn a_wait_is_identified_by_the_runner_state_not_by_what_was_visible() {
+    let mut v = blocked_view();
+    let mut t = SignalTracker::new();
+    let s = all_kinds();
+    t.update(&v, &s);
+    v.sessions[1].state.since_ms = 5;
+    assert_eq!(t.update(&v, &s).len(), 1);
+    let ask = SessionStatus {
+        ask: Some("Which?".into()),
+        ..Default::default()
+    };
+    v.status.insert("b".into(), ask);
+    assert!(t.update(&v, &s).len() <= 1);
+    v.status.clear();
+    assert!(t.update(&v, &s).is_empty());
+    v.sessions[1].state.since_ms = 6;
+    assert_eq!(t.update(&v, &s).len(), 1);
+}
+
+#[test]
+fn the_reason_hides_secret_looking_values() {
+    let mut v = blocked_view();
+    v.sessions[2].state.detail = Some("blocked[0]: Allow API_KEY=abc123 curl?".into());
+    let need = detect(&v.sessions[2], None, 0, &SignalSettings::default()).unwrap();
+    assert!(!need.reason.contains("abc123"), "{}", need.reason);
+}
+
+#[test]
+fn the_watched_session_and_quiet_hours_stay_silent() {
+    let mut s = SignalSettings::default();
+    let fresh = vec![(
+        "c".to_string(),
+        Need {
+            kind: NeedKind::Permission,
+            reason: "ok?".into(),
+        },
+    )];
+    let mut n = fake();
+    assert_eq!(
+        deliver(&fresh, |i| i.into(), |id| id == "c", &s, 600, &mut n),
+        0
+    );
+    assert_eq!((n.bells, n.texts.len()), (0, 0));
+    s.quiet = Some((22 * 60, 8 * 60));
+    assert_eq!(
+        deliver(&fresh, |i| i.into(), |_| false, &s, 23 * 60, &mut n),
+        0
+    );
+    assert_eq!(
+        deliver(&fresh, |i| i.into(), |_| false, &s, 7 * 60, &mut n),
+        0
+    );
+    assert_eq!(
+        deliver(&fresh, |i| i.into(), |_| false, &s, 9 * 60, &mut n),
+        1
+    );
+    s.quiet = Some((9 * 60, 17 * 60));
+    assert!(s.is_quiet(12 * 60) && !s.is_quiet(8 * 60));
+}
+
+#[test]
+fn notification_text_is_sanitised_and_clipped() {
+    let need = Need {
+        kind: NeedKind::Permission,
+        reason: "run \x1b[31mrm\x07 now".into(),
+    };
+    let mut n = fake();
+    deliver(
+        &[("x".into(), need)],
+        |_| format!("bad\x1b]0;t\x07{}", "n".repeat(100)),
+        |_| false,
+        &SignalSettings::default(),
+        0,
+        &mut n,
+    );
+    assert!(!n.texts[0].contains('\x1b') && !n.texts[0].contains('\x07'));
+    assert!(n.texts[0].chars().count() < 100);
+}
+
+#[test]
+fn the_jump_key_cycles_through_sessions_that_need_you() {
+    let mut v = blocked_view();
+    let mut t = SignalTracker::new();
+    t.update(&v, &all_kinds());
+    v.needs = t.current().clone();
+    v.apply(Cmd::NeedsYou);
+    let first = v.focused_session().unwrap().to_string();
+    assert!(v.needs.contains_key(&first));
+    v.apply(Cmd::NeedsYou);
+    let second = v.focused_session().unwrap().to_string();
+    assert_ne!(first, second);
+    v.needs.clear();
+    v.apply(Cmd::NeedsYou);
+    assert_eq!(v.notice.as_deref(), Some("nothing needs you"));
+}
+
+#[test]
+fn snapshot_sidebar_highlights_a_session_that_needs_you() {
+    let mut v = two_pane(140);
+    v.sessions[1].state.kind = StateKind::Waiting;
+    let mut t = SignalTracker::new();
+    t.update(&v, &all_kinds());
+    v.needs = t.current().clone();
+    assert!(!v.needs.is_empty());
+    assert_snapshot("needs_you", &draw(&v, &screens(), 140, 22));
+    let (buf, _) = (draw(&v, &screens(), 140, 22), 0);
+    assert!(buf.contains("dev-server"));
+}

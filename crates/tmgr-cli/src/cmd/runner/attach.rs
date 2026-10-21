@@ -9,6 +9,7 @@ use super::attach_shell::{
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
     KILL_ONLY,
 };
+use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::{connect, rerr};
@@ -33,11 +34,12 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11, probe,
-    render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
-    InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
-    PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState, SessionRow, SessionStatus,
-    SidebarEdit, SplitDir, ThemeKind, ViewState, OSC11_QUERY,
+    cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11,
+    probe, render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
+    InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit,
+    PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState, SessionRow,
+    SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, ThemeKind, ViewState,
+    OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -227,6 +229,8 @@ struct App {
     writer: AttachWriter,
     human_time: bool,
     window_focused: bool,
+    focus_seen: bool,
+    last_user: Instant,
     attention: AttentionTracker,
     prefs_tx: Sender<Value>,
     cfg: RunnerConfig,
@@ -260,6 +264,9 @@ struct App {
     titles_tried: HashSet<String>,
     exit_scanned: HashSet<String>,
     last_title: Instant,
+    signals: SignalTracker,
+    signal_cfg: SignalSettings,
+    notifier: Box<dyn Notifier>,
     peek_tx: SyncSender<PeekJob>,
     peek_pending: bool,
     last_peek: Instant,
@@ -496,6 +503,42 @@ impl App {
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
         }
+    }
+
+    fn check_signals(&mut self) {
+        let fresh = self.signals.update(&self.view, &self.signal_cfg);
+        if self.signals.current() != &self.view.needs {
+            self.view.needs = self.signals.current().clone();
+            self.dirty = true;
+        }
+        if fresh.is_empty() {
+            return;
+        }
+        let focused = self.view.focused_session().map(str::to_string);
+        let window = if self.focus_seen {
+            self.window_focused
+        } else {
+            self.last_user.elapsed() < Duration::from_secs(30)
+        };
+        let names: HashMap<&str, &str> = self
+            .view
+            .sessions
+            .iter()
+            .map(|r| (r.id.as_str(), r.name.as_str()))
+            .collect();
+        let name_of = |id: &str| {
+            names
+                .get(id)
+                .map_or_else(|| id.to_string(), |n| (*n).to_string())
+        };
+        deliver(
+            &fresh,
+            name_of,
+            |id| window && focused.as_deref() == Some(id),
+            &self.signal_cfg,
+            minute_of_day(),
+            self.notifier.as_mut(),
+        );
     }
 
     fn probe_peek(&mut self) {
@@ -1361,6 +1404,9 @@ impl App {
 
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
         let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
+        if user_action {
+            self.last_user = Instant::now();
+        }
         for action in actions {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
@@ -1371,8 +1417,14 @@ impl App {
                 continue;
             }
             match action {
-                Action::FocusIn => self.window_focused = true,
-                Action::FocusOut => self.window_focused = false,
+                Action::FocusIn => {
+                    self.focus_seen = true;
+                    self.window_focused = true;
+                }
+                Action::FocusOut => {
+                    self.focus_seen = true;
+                    self.window_focused = false;
+                }
                 Action::Forward(data) if self.view.palette.is_some() => {
                     if let PaletteEdit::Run(entry) = self.view.edit_palette(&data) {
                         if let Some(exit) = self.run_palette_entry(entry)? {
@@ -1610,6 +1662,7 @@ impl App {
         self.reap_shells();
         self.probe_places();
         self.probe_titles();
+        self.check_signals();
         self.probe_status();
         self.probe_peek();
         self.probe_questions();
@@ -2040,6 +2093,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         writer,
         human_time,
         window_focused: true,
+        focus_seen: false,
+        last_user: Instant::now(),
         attention: AttentionTracker::new(),
         prefs_tx,
         cfg: cfg.clone(),
@@ -2073,6 +2128,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         titles_tried: HashSet::new(),
         exit_scanned: HashSet::new(),
         last_title: Instant::now(),
+        signals: SignalTracker::new(),
+        signal_cfg: signal_settings(&attach_cfg),
+        notifier: Box::new(SystemNotifier),
         peek_tx,
         peek_pending: false,
         last_peek: Instant::now() - STATUS_EVERY,

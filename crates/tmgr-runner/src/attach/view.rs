@@ -4,6 +4,7 @@ use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::qmenu::{GotoMark, QEdit, QMenu};
+use super::signal::Need;
 use super::status::{Peek, SessionStatus};
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
@@ -139,6 +140,7 @@ pub struct ViewState {
     pub titles: HashMap<String, AgentTitle>,
     pub status: HashMap<String, SessionStatus>,
     pub subs_open: HashSet<String>,
+    pub needs: HashMap<String, Need>,
     pub peek: Option<Peek>,
     pub questions: Vec<Entry>,
     pub qmenu: Option<QMenu>,
@@ -356,6 +358,7 @@ impl ViewState {
             titles: HashMap::new(),
             status: HashMap::new(),
             subs_open: HashSet::new(),
+            needs: HashMap::new(),
             peek: None,
             questions: Vec::new(),
             qmenu: None,
@@ -1180,6 +1183,7 @@ impl ViewState {
                 }
             }
             Cmd::Questions => self.toggle_questions(),
+            Cmd::NeedsYou => self.jump_to_needing(),
             Cmd::Subagents => {
                 if let Some(id) = self.focused_session().map(str::to_string) {
                     self.toggle_subs(&id);

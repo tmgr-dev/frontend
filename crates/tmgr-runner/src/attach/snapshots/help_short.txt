@@ -3,7 +3,7 @@
  ▾ claude         │                                                              │ ms              │
    ● claude workin│ :             command palette: actions and sessions          │                 │
    ◌ dev-server wa│ d             detach, sessions keep running                  │                 │
- ✓ tests     exite│ n / p         next / previous session                        │                 │
+ ✓ tests     exite│ n / p / !     next / previous / needs-you session            │                 │
                   │ w             session picker                                 │                 │
                   │ s             two panes, or collapse to one                  │                 │
                   │ | v / - h     split right / split down                       │                 │

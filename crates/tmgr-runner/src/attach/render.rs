@@ -226,6 +226,8 @@ fn draw_session_row(
     };
     let name_style = if row.state.kind == StateKind::Blocked {
         style
+    } else if st.needs.contains_key(&row.id) {
+        Style::new().fg(colors().warn).add_modifier(Modifier::BOLD)
     } else if auto {
         dim()
     } else {
@@ -855,8 +857,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "detach, sessions keep running",
     ),
     (
-        HelpKey::Cmds(&[Cmd::NextSession, Cmd::PrevSession]),
-        "next / previous session",
+        HelpKey::Cmds(&[Cmd::NextSession, Cmd::PrevSession, Cmd::NeedsYou]),
+        "next / previous / needs-you session",
     ),
     (HelpKey::Cmds(&[Cmd::Picker]), "session picker"),
     (

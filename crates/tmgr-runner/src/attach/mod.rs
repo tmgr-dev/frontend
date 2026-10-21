@@ -8,6 +8,7 @@ mod palette;
 mod place;
 mod qmenu;
 mod render;
+mod signal;
 mod status;
 mod theme;
 pub(crate) mod title;
@@ -27,6 +28,7 @@ pub use palette::{Palette, PaletteEdit, PaletteEntry, RowView};
 pub use place::{fit, probe, tail2, Loc};
 pub use qmenu::{find_question, goto_target, GotoMark, QButton, QEdit, QMenu};
 pub use render::{cursor, render, ScreenSource};
+pub use signal::{deliver, detect, Need, NeedKind, Notifier, SignalSettings, SignalTracker};
 pub use status::{
     activity_label, peek_lines, Peek, PeekEdit, SessionStatus, StatusLine, StatusScan, SubAgent,
 };

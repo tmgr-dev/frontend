@@ -18,6 +18,7 @@ pub struct SessionStatus {
     pub activity: Option<String>,
     pub todo: Option<(u32, u32)>,
     pub subs: Vec<SubAgent>,
+    pub ask: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,7 +54,7 @@ const META_CAP: usize = 4096;
 
 impl SessionStatus {
     pub fn is_empty(&self) -> bool {
-        self.activity.is_none() && self.todo.is_none() && self.subs.is_empty()
+        self.activity.is_none() && self.todo.is_none() && self.subs.is_empty() && self.ask.is_none()
     }
 
     pub fn todo_label(&self) -> Option<String> {
@@ -235,6 +236,7 @@ pub struct StatusScan {
     pending: Vec<(String, String)>,
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
+    asking: Option<(String, String)>,
 }
 
 #[derive(Debug)]
@@ -261,6 +263,7 @@ impl StatusScan {
             pending: Vec::new(),
             todo: None,
             subs: Vec::new(),
+            asking: None,
         }
     }
 
@@ -272,6 +275,7 @@ impl StatusScan {
         SessionStatus {
             activity: self.pending.last().map(|(_, label)| label.clone()),
             todo: self.todo,
+            ask: self.asking.as_ref().map(|(_, q)| q.clone()),
             subs: self
                 .subs
                 .iter()
@@ -319,6 +323,7 @@ impl StatusScan {
         self.pending.clear();
         self.todo = None;
         self.windowed = false;
+        self.asking = None;
         self.subs.clear();
         self.last_message = None;
         self.created = 0;
@@ -448,6 +453,18 @@ impl StatusScan {
                 continue;
             };
             let input = b.get("input").unwrap_or(&Value::Null);
+            if name == "AskUserQuestion" {
+                let question = input
+                    .get("questions")
+                    .and_then(Value::as_array)
+                    .and_then(|q| q.first())
+                    .and_then(|q| q.get("question"))
+                    .and_then(Value::as_str)
+                    .map(clean_title)
+                    .filter(|q| !q.is_empty())
+                    .unwrap_or_else(|| "asked a question".to_string());
+                self.asking = Some((id.to_string(), question));
+            }
             if matches!(name, "Agent" | "Task") {
                 self.subs.push(Sub {
                     id: id.to_string(),
@@ -478,6 +495,7 @@ impl StatusScan {
 
     fn human(&mut self) {
         self.pending.clear();
+        self.asking = None;
         self.subs.retain(|s| s.agent.is_some());
     }
 
@@ -520,6 +538,13 @@ impl StatusScan {
         }
         self.pending
             .retain(|(id, _)| !results.contains(&id.as_str()));
+        if self
+            .asking
+            .as_ref()
+            .is_some_and(|(id, _)| results.contains(&id.as_str()))
+        {
+            self.asking = None;
+        }
         let launched = v
             .get("toolUseResult")
             .filter(|r| r.get("status").and_then(Value::as_str) == Some("async_launched"))
@@ -567,7 +592,7 @@ fn mask_userinfo(word: &str) -> Option<String> {
     (!userinfo.contains('/')).then(|| format!("{scheme}://…@{host}"))
 }
 
-fn mask_secrets(text: &str) -> String {
+pub(crate) fn mask_secrets(text: &str) -> String {
     let mut out = Vec::new();
     let mut mask_next = 0;
     for word in text.split(' ') {
@@ -1108,6 +1133,22 @@ mod tests {
         let old = agent_call("a", "Explore", "scan", "2020-01-01T00:00:00.000Z");
         let s = scan(dir.path(), &[HUMAN, &old, &launched("a", "ag9")]);
         assert!(s.status().subs.is_empty());
+    }
+
+    #[test]
+    fn a_pending_ask_user_question_is_reported_until_answered() {
+        let dir = tempfile::tempdir().unwrap();
+        let ask = tool(
+            "q",
+            "AskUserQuestion",
+            r#"{"questions":[{"question":"Which \u001b[31mdatabase?","header":"db"}]}"#,
+        );
+        let s = scan(dir.path(), &[HUMAN, &ask]);
+        assert_eq!(s.status().ask.as_deref(), Some("Which database?"));
+        let s = scan(dir.path(), &[HUMAN, &ask, &result("q")]);
+        assert_eq!(s.status().ask, None);
+        let s = scan(dir.path(), &[HUMAN, &ask, HUMAN]);
+        assert_eq!(s.status().ask, None);
     }
 
     #[test]

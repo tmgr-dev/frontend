@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 9] = [
+pub const KEYS: [&str; 13] = [
     "server",
     "default_workspace",
     "web_url",
@@ -17,6 +17,10 @@ pub const KEYS: [&str; 9] = [
     "local_user_id",
     "attach.sidebar_width",
     "attach.theme",
+    "attach.signal.permission",
+    "attach.signal.question",
+    "attach.signal.input",
+    "attach.signal.quiet",
 ];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
 pub const MAX_SIDEBAR_WIDTH: u16 = 60;
@@ -28,6 +32,29 @@ pub struct AttachConfig {
     pub sidebar_width: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub theme: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_permission: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_question: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_input: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signal_quiet: Option<String>,
+}
+
+pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
+    let (from, to) = value.trim().split_once('-')?;
+    let minutes = |t: &str| {
+        let (h, m) = t.trim().split_once(':')?;
+        let digits = |t: &str| !t.is_empty() && t.bytes().all(|b| b.is_ascii_digit());
+        if !digits(h) || !digits(m) {
+            return None;
+        }
+        let (h, m): (u16, u16) = (h.parse().ok()?, m.parse().ok()?);
+        (h < 24 && m < 60).then_some(h * 60 + m)
+    };
+    let (from, to) = (minutes(from)?, minutes(to)?);
+    (from != to).then_some((from, to))
 }
 
 pub const ATTACH_THEMES: [&str; 4] = ["auto", "dark", "light", "high-contrast"];
@@ -117,6 +144,10 @@ impl Config {
             "local_user_id" => self.local_user_id.map(|id| id.to_string()),
             "attach.sidebar_width" => self.attach.sidebar_width.map(|w| w.to_string()),
             "attach.theme" => self.attach.theme.clone(),
+            "attach.signal.permission" => self.attach.signal_permission.map(|b| b.to_string()),
+            "attach.signal.question" => self.attach.signal_question.map(|b| b.to_string()),
+            "attach.signal.input" => self.attach.signal_input.map(|b| b.to_string()),
+            "attach.signal.quiet" => self.attach.signal_quiet.clone(),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -193,6 +224,30 @@ impl Config {
                         .hint(format!("use one of: {}", ATTACH_THEMES.join(", "))));
                 }
                 self.attach.theme = Some(v.clone());
+                Ok(v)
+            }
+            "attach.signal.permission" | "attach.signal.question" | "attach.signal.input" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage(format!("invalid {key}")).hint("use true or false")
+                })?;
+                match key {
+                    "attach.signal.permission" => self.attach.signal_permission = Some(v),
+                    "attach.signal.question" => self.attach.signal_question = Some(v),
+                    _ => self.attach.signal_input = Some(v),
+                }
+                Ok(v.to_string())
+            }
+            "attach.signal.quiet" => {
+                let v = value.trim().to_ascii_lowercase();
+                if v == "off" {
+                    self.attach.signal_quiet = None;
+                    return Ok(v);
+                }
+                parse_quiet_hours(&v).ok_or_else(|| {
+                    Error::usage("invalid attach.signal.quiet")
+                        .hint("hours like 22:00-08:00, or off")
+                })?;
+                self.attach.signal_quiet = Some(v.clone());
                 Ok(v)
             }
             _ => Err(unknown_key(key)),
@@ -504,5 +559,31 @@ mod tests {
             web_base("https://api.tmgr.dev", Some("https://w.example/")),
             "https://w.example"
         );
+    }
+
+    #[test]
+    fn attach_signal_keys_are_validated_and_round_trip() {
+        let mut cfg = Config::default();
+        assert!(cfg.set("attach.signal.input", "maybe").is_err());
+        assert_eq!(cfg.set("attach.signal.input", "on").unwrap(), "true");
+        assert_eq!(
+            cfg.set("attach.signal.permission", "false").unwrap(),
+            "false"
+        );
+        assert_eq!(
+            cfg.get("attach.signal.input").unwrap().as_deref(),
+            Some("true")
+        );
+        assert!(cfg.set("attach.signal.quiet", "22-08").is_err());
+        assert!(cfg.set("attach.signal.quiet", "25:00-08:00").is_err());
+        assert!(cfg.set("attach.signal.quiet", "08:00-08:00").is_err());
+        assert!(cfg.set("attach.signal.quiet", "+1:00-08:00").is_err());
+        assert_eq!(
+            cfg.set("attach.signal.quiet", "22:00-08:00").unwrap(),
+            "22:00-08:00"
+        );
+        assert_eq!(parse_quiet_hours("22:00-08:30"), Some((1320, 510)));
+        cfg.set("attach.signal.quiet", "off").unwrap();
+        assert_eq!(cfg.get("attach.signal.quiet").unwrap(), None);
     }
 }

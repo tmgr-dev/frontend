@@ -4,6 +4,7 @@ mod attach_goto;
 mod attach_new;
 mod attach_questions;
 mod attach_shell;
+mod attach_signal;
 mod attach_status;
 mod attach_title;
 pub(crate) mod bind;

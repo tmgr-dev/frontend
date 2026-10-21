@@ -136,6 +136,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Show or hide the focused session's subagents",
         true,
     ),
+    def(
+        Cmd::NeedsYou,
+        b"!",
+        "!",
+        "Jump to a session that needs you",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),
