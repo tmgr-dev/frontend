@@ -2,6 +2,7 @@ import { FormSetting } from '@/actions/tmgr/settings';
 import { User } from '@/actions/tmgr/user';
 import $axios from '@/plugins/axios';
 import store from '@/store';
+import type { TaskPriority } from '@/types/dashboard';
 import objectToQueryString from '@/utils/objectToQueryString';
 import type { PersonaAssignee } from '@/utils/personas';
 import { requestCache } from '@/utils/requestCache';
@@ -28,6 +29,7 @@ export interface Task {
 	order: number;
 	project_category_id?: number | null;
 	category_tasks_sequence_id?: number | null;
+	priority?: TaskPriority | null;
 	settings?: FormSetting[];
 	start_time: number;
 	status_id: number;

@@ -236,6 +236,7 @@
 		</div>
 
 		<div class="flex flex-wrap items-center gap-1.5">
+			<TaskPriorityBadge :priority="task.priority" />
 			<CategoryBadge
 				v-if="task.category && showSurface('categories.badge')"
 				:category="task.category"
@@ -331,6 +332,7 @@
 	import TaskCardAgentChip from '@/components/runner/TaskCardAgentChip.vue';
 	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
+	import TaskPriorityBadge from '@/components/tasks/TaskPriorityBadge.vue';
 	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import {
@@ -395,6 +397,7 @@
 		},
 		components: {
 			TaskCardAgentChip,
+			TaskPriorityBadge,
 			TaskTimeInfo,
 			Confirm,
 			SettingsComponent,

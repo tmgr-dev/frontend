@@ -152,6 +152,7 @@
 		personaAssigneesOf,
 		type PersonaAssignee,
 	} from '@/utils/personas';
+	import { normalizePriority, PRIORITIES } from '@/utils/priority';
 	import { requestCache } from '@/utils/requestCache';
 	import { isSaveHotkey } from '@/utils/saveHotkey';
 	import {
@@ -183,6 +184,7 @@
 		ArrowDownTrayIcon,
 		ArrowTopRightOnSquareIcon,
 		CodeBracketIcon,
+		FlagIcon,
 		FolderIcon,
 		HashtagIcon,
 		LinkIcon,
@@ -380,6 +382,12 @@
 				return true;
 			}
 		}
+		if (
+			'priority' in incoming &&
+			normalizePriority(current.priority) !==
+				normalizePriority(incoming.priority)
+		)
+			return true;
 		console.log('[NewForm] No meaningful changes detected');
 		return false;
 	};
@@ -419,6 +427,7 @@
 		status: 'created',
 		status_id: props.statusId ?? 0,
 		project_category_id: modalProjectCategoryId.value ?? null,
+		priority: 'medium',
 		common_time: 0,
 		is_daily_routine: false,
 		order: 0,
@@ -812,6 +821,13 @@
 		get: () => form.value.status_id?.toString() || '',
 		set: (value: string) => {
 			form.value.status_id = parseInt(value, 10);
+		},
+	});
+
+	const priorityValue = computed({
+		get: () => normalizePriority(form.value.priority),
+		set: (value: string) => {
+			form.value.priority = normalizePriority(value);
 		},
 	});
 
@@ -1906,6 +1922,7 @@
 			'assignees',
 			'status',
 			'status_id',
+			'priority',
 		],
 		onSave: persistTaskSnapshot,
 		enabled: () => taskReady.value && !!form.value.id,
@@ -2679,6 +2696,41 @@
 								</button>
 							</div>
 						</template>
+
+						<div class="flex items-center gap-2 text-ink-subtle">
+							<FlagIcon class="h-3.5 w-3.5" />
+							<span id="task-form-priority-label">Priority</span>
+						</div>
+						<div class="flex min-w-0 items-center">
+							<Select v-model="priorityValue">
+								<SelectTrigger
+									data-testid="task-priority-picker"
+									aria-labelledby="task-form-priority-label"
+									class="h-7 w-auto gap-1.5 rounded-pill border-0 bg-surface-sunken px-2.5 text-xs text-ink hover:bg-surface-hover"
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent class="bg-popover text-popover-foreground">
+									<SelectItem
+										v-for="option in PRIORITIES"
+										:key="option.value"
+										:value="option.value"
+										:show-check-mark="false"
+										class="cursor-pointer text-ink hover:!bg-surface-hover hover:!text-ink focus:!bg-surface-hover focus:!text-ink"
+									>
+										<span class="flex items-center gap-1.5">
+											<component
+												:is="option.icon"
+												class="h-3.5 w-3.5"
+												:class="option.colorClass"
+												aria-hidden="true"
+											/>
+											{{ option.label }}
+										</span>
+									</SelectItem>
+								</SelectContent>
+							</Select>
+						</div>
 
 						<template v-if="showSurface('categories.task-picker')">
 							<div class="flex items-center gap-2 text-ink-subtle">

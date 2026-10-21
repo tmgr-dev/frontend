@@ -278,6 +278,7 @@
 									{{ taskTitles[String(task.id)] }}
 								</div>
 							</div>
+							<TaskPriorityBadge class="mt-1" :priority="task.priority" />
 							<AgentStatusChip
 								:task-id="Number(task.id)"
 								:workspace-id="Number(task.workspace_id) || undefined"
@@ -513,6 +514,7 @@
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import BulkAgentConfirmDialog from '@/components/tasks/BulkAgentConfirmDialog.vue';
 	import DoneCheckbox from '@/components/tasks/DoneCheckbox.vue';
+	import TaskPriorityBadge from '@/components/tasks/TaskPriorityBadge.vue';
 	import TaskShareItems from '@/components/tasks/TaskShareItems.vue';
 	import TasksMultipleActionsModal from '@/components/tasks/TasksMultipleActionsModal.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
@@ -611,6 +613,7 @@
 			AssigneePersonaGroup,
 			PersonaAssigneeChips,
 			AgentStatusChip,
+			TaskPriorityBadge,
 			UserAvatar,
 			AppTooltip,
 			Popover,
