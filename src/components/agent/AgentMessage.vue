@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import AttachedFileList from '@/components/attachments/AttachedFileList.vue';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import type { AgentMessage, AgentStep } from '@/types/agent';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
@@ -17,6 +18,11 @@
 	<div v-if="props.message.role === 'user'" class="flex justify-end">
 		<div class="bg-brand/10 max-w-[90%] rounded-lg px-3 py-2 text-sm text-ink">
 			<MarkdownText :content="props.message.content" />
+			<AttachedFileList
+				v-if="props.message.files?.length"
+				class="mt-1.5"
+				:files="props.message.files"
+			/>
 		</div>
 	</div>
 	<div v-else class="flex justify-start">

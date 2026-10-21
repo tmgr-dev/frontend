@@ -1,3 +1,5 @@
+import type { AttachedFile } from '@/utils/aiAttachments';
+
 export interface AgentStep {
 	seq: number;
 	tool: string;
@@ -11,6 +13,7 @@ export interface AgentMessage {
 	status: 'pending' | 'done' | 'failed';
 	steps: AgentStep[];
 	created_at: string;
+	files?: AttachedFile[];
 }
 
 export interface AgentConversation {

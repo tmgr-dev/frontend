@@ -4,6 +4,7 @@ import type {
 	AgentReplyEvent,
 	AgentStepEvent,
 } from '@/types/agent';
+import type { AttachedFile } from '@/utils/aiAttachments';
 
 export interface AgentChatState {
 	conversationId: number | null;
@@ -42,7 +43,12 @@ export const applyConversation = (
 
 export const appendPending = (
 	s: AgentChatState,
-	userMessage: { id: number; content: string; created_at: string },
+	userMessage: {
+		id: number;
+		content: string;
+		created_at: string;
+		files?: AttachedFile[];
+	},
 	pendingMessageId: number,
 ): AgentChatState => {
 	const userMsg: AgentMessage = {
@@ -52,6 +58,7 @@ export const appendPending = (
 		status: 'done',
 		steps: [],
 		created_at: userMessage.created_at,
+		...(userMessage.files?.length ? { files: userMessage.files } : {}),
 	};
 	const pendingMsg: AgentMessage = {
 		id: pendingMessageId,

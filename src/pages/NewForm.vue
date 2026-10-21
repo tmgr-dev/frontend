@@ -46,11 +46,10 @@
 		WorkspaceMember,
 	} from '@/actions/tmgr/workspaces';
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
+	import CommentAttachments from '@/components/attachments/CommentAttachments.vue';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
-	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
-	import SettingsComponent from '@/components/SettingsComponent.vue';
-	import TimeCounter from '@/components/TimeCounter.vue';
 	import DescriptionPreview from '@/components/description/DescriptionPreview.vue';
+	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
@@ -58,6 +57,7 @@
 	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import CloudAgentApproval from '@/components/tasks/CloudAgentApproval.vue';
@@ -77,6 +77,7 @@
 	import TaskShareMenu from '@/components/tasks/TaskShareMenu.vue';
 	import TaskTimeEntries from '@/components/tasks/TaskTimeEntries.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import TimeCounter from '@/components/TimeCounter.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -99,6 +100,7 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import { useToast } from '@/components/ui/toast/use-toast';
+	import MicButton from '@/components/voice/MicButton.vue';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
@@ -114,6 +116,7 @@
 	import type { CursorAgent } from '@/types/cursor';
 	import { autoSignQuietly } from '@/utils/agentApprovalClient';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
+	import { attachmentErrorMessage } from '@/utils/aiAttachments';
 	import {
 		backlogTimerPrompt,
 		type BacklogTimerPrompt,
@@ -544,6 +547,12 @@
 	const taskLoadError = ref(false);
 	const titleTextarea = ref<HTMLTextAreaElement | null>(null);
 	const taskCommentsRef = ref<InstanceType<typeof TaskComments> | null>(null);
+	const commentAttachments = ref<InstanceType<
+		typeof CommentAttachments
+	> | null>(null);
+	const attachmentsBlocking = computed(
+		() => commentAttachments.value?.canSend === false,
+	);
 	const taskRelationsRef = ref<InstanceType<typeof TaskRelations> | null>(null);
 	const lastTaskSettings = ref(
 		taskId.value
@@ -614,6 +623,7 @@
 	const footerHeight = ref(0);
 	let footerResizeObserver: ResizeObserver | null = null;
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
+	const commentRailInput = ref<HTMLInputElement | null>(null);
 	const commentsCount = ref(0);
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
@@ -2182,15 +2192,23 @@
 	};
 
 	const sendComment = async () => {
-		if (!newComment.value.trim() || isSendingComment.value || !form.value.id)
+		if (
+			!newComment.value.trim() ||
+			isSendingComment.value ||
+			attachmentsBlocking.value ||
+			!form.value.id
+		)
 			return;
 
 		isSendingComment.value = true;
 		try {
+			const fileIds = commentAttachments.value?.fileIds ?? [];
 			await createComment(form.value.id, {
 				message: newComment.value.trim(),
+				...(fileIds.length ? { file_ids: fileIds } : {}),
 			});
 			newComment.value = '';
+			commentAttachments.value?.clear();
 			isCommentInputExpanded.value = false;
 			focusCommentInput();
 			if (taskCommentsRef.value) {
@@ -2199,21 +2217,33 @@
 			scrollMainToBottom();
 		} catch (error) {
 			console.error('Failed to send comment:', error);
+			const message = attachmentErrorMessage(error);
+			if (message) commentAttachments.value?.setNotice(message);
 		} finally {
 			isSendingComment.value = false;
 		}
 	};
 
 	const askAIComment = async () => {
-		if (!newComment.value.trim() || isSendingComment.value || !form.value.id)
+		if (
+			!newComment.value.trim() ||
+			isSendingComment.value ||
+			attachmentsBlocking.value ||
+			!form.value.id
+		)
 			return;
 
 		isSendingComment.value = true;
 		try {
-			await createAskingHelpComment(form.value.id, newComment.value.trim());
+			await createAskingHelpComment(
+				form.value.id,
+				newComment.value.trim(),
+				commentAttachments.value?.fileIds ?? [],
+			);
 			aiPending.value = true;
 			aiPendingSteps.value = [];
 			newComment.value = '';
+			commentAttachments.value?.clear();
 			isCommentInputExpanded.value = false;
 			focusCommentInput();
 			if (taskCommentsRef.value) {
@@ -2221,6 +2251,8 @@
 			}
 		} catch (error) {
 			console.error('Failed to ask AI:', error);
+			const message = attachmentErrorMessage(error);
+			if (message) commentAttachments.value?.setNotice(message);
 			aiPending.value = false;
 		} finally {
 			isSendingComment.value = false;
@@ -3000,16 +3032,27 @@
 					</div>
 					<div
 						v-if="isModal && form.id && showSurface('comments.composer')"
-						class="mb-1.5 flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+						class="mb-1.5 flex flex-wrap items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 						@mousedown.stop
 					>
+						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
 						<input
 							ref="commentTextarea"
 							v-model="newComment"
+							@paste="commentAttachments?.onPaste($event)"
+							@dragover.prevent
+							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
 							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter.prevent="submitComment"
 							@keydown.esc="newComment = ''"
+						/>
+						<MicButton
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
+							:key="form.id"
+							v-model="newComment"
+							:target="commentTextarea"
+							:disabled="isSendingComment"
 						/>
 
 						<button
@@ -3038,7 +3081,9 @@
 							<Sparkles class="h-4 w-4" />
 						</button>
 						<button
-							:disabled="!newComment?.trim() || isSendingComment"
+							:disabled="
+								!newComment?.trim() || isSendingComment || attachmentsBlocking
+							"
 							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
 							:title="
@@ -3222,14 +3267,26 @@
 						>
 					</div>
 					<div
-						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+						class="flex flex-wrap items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 					>
+						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
 						<input
+							ref="commentRailInput"
 							v-model="newComment"
+							@paste="commentAttachments?.onPaste($event)"
+							@dragover.prevent
+							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
 							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter.prevent="submitComment"
 							@keydown.esc="newComment = ''"
+						/>
+						<MicButton
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
+							:key="form.id"
+							v-model="newComment"
+							:target="commentRailInput"
+							:disabled="isSendingComment"
 						/>
 						<button
 							v-if="hasActiveAgent"
@@ -3257,7 +3314,9 @@
 							<Sparkles class="h-4 w-4" />
 						</button>
 						<button
-							:disabled="!newComment?.trim() || isSendingComment"
+							:disabled="
+								!newComment?.trim() || isSendingComment || attachmentsBlocking
+							"
 							@click="submitComment"
 							class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-40"
 							:title="

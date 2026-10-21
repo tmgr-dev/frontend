@@ -1,3 +1,4 @@
+import type { PresignedUpload } from '@/actions/tmgr/files';
 import $axios from '@/plugins/axios';
 import type {
 	AgentContext,
@@ -5,6 +6,7 @@ import type {
 	AgentConversationItem,
 	AgentMessage,
 } from '@/types/agent';
+import type { AttachedFile } from '@/utils/aiAttachments';
 
 export const getOrCreateConversation = async (
 	workspaceId: number,
@@ -36,11 +38,36 @@ export const getAgentMessages = async (
 export const sendAgentMessage = async (
 	conversationId: number,
 	content: string,
+	scenario?: string,
+	fileIds: number[] = [],
 ): Promise<{ message_id: number; pending_message_id: number }> => {
 	const {
 		data: { data },
-	} = await $axios.post(`/agent/conversations/${conversationId}/messages`, {
-		content,
+	} = await $axios.post(
+		`/agent/conversations/${conversationId}/messages`,
+		scenario
+			? {
+					scenario,
+					content,
+					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+			  }
+			: { content, ...(fileIds.length ? { file_ids: fileIds } : {}) },
+	);
+	return data;
+};
+
+export const attachConversationFile = async (
+	conversationId: number,
+	file: File,
+	target: PresignedUpload,
+): Promise<AttachedFile> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/agent/conversations/${conversationId}/files`, {
+		file_name: file.name,
+		file_path: target.key,
+		mime_type: target.content_type,
+		size_bytes: file.size,
 	});
 	return data;
 };
