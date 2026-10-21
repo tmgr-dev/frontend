@@ -1,8 +1,9 @@
 import { useAgentChat } from '@/composable/useAgentChat';
+import type { AgentMessage } from '@/types/agent';
 
 const mockGet = jest.fn();
 const mockPost = jest.fn();
-const mockSubscribeToUser = jest.fn(() => 'sub-1');
+const mockSubscribeToUser = jest.fn((..._args: unknown[]) => 'sub-1');
 
 jest.mock('@/plugins/axios', () => ({
 	__esModule: true,
@@ -19,7 +20,7 @@ jest.mock('@/composable/usePusher', () => ({
 	}),
 }));
 
-const done = (id: number) => ({
+const done = (id: number): AgentMessage => ({
 	id,
 	role: id % 2 ? 'user' : 'assistant',
 	content: `message ${id}`,
