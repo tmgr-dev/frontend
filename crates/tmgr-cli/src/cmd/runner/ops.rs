@@ -187,7 +187,7 @@ fn status_report(
     Ok((data, human))
 }
 
-fn resolve_exe(name: &str) -> Result<String> {
+pub(super) fn resolve_exe(name: &str) -> Result<String> {
     let path = std::env::var_os("PATH").unwrap_or_default();
     let base = std::env::current_dir().ok();
     exe::resolve_exe(name, &path, base.as_deref())
@@ -202,6 +202,59 @@ pub(super) fn terminal_size() -> (u16, u16) {
         }
     }
     (120, 40)
+}
+
+pub(super) fn run_create_req(
+    argv: Vec<String>,
+    cwd: String,
+    name: Option<String>,
+    cols: u16,
+    rows: u16,
+) -> CreateReq {
+    CreateReq {
+        argv,
+        cwd,
+        name,
+        profile: None,
+        cols,
+        rows,
+        env_pass: Vec::new(),
+        task: None,
+    }
+}
+
+pub(super) fn run_create_run(
+    profile: String,
+    cwd: String,
+    name: Option<String>,
+    model: Option<String>,
+    (cols, rows): (u16, u16),
+    trust: bool,
+) -> RunCreateReq {
+    RunCreateReq {
+        clones: Vec::new(),
+        profile,
+        task: None,
+        cwd,
+        name,
+        model,
+        cols,
+        rows,
+        bundle: None,
+        bundle_sha256: None,
+        cwd_pin: None,
+        origin: None,
+        permission_mode: None,
+        start_key: None,
+        clone_of: None,
+        trust_cwd: trust.then_some(true),
+        trust_via_repo: None,
+        agent_work: false,
+        cloud: None,
+        unattended: false,
+        exe_pin: None,
+        argv_sha256: None,
+    }
 }
 
 fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
@@ -254,40 +307,15 @@ fn run(o: &Opts, a: &RunArgs) -> Result<i32> {
     }
     let mut client = connect(&cfg)?;
     let info = match raw {
-        Some(argv) => client.create(CreateReq {
-            argv,
-            cwd: cwd_str,
-            name: a.name.clone(),
-            profile: None,
-            cols,
-            rows,
-            env_pass: Vec::new(),
-            task: None,
-        }),
-        None => client.create_run(RunCreateReq {
-            clones: Vec::new(),
-            profile: a.agent.clone().unwrap_or_default(),
-            task: None,
-            cwd: cwd_str,
-            name: a.name.clone(),
-            model: a.model.clone(),
-            cols,
-            rows,
-            bundle: None,
-            bundle_sha256: None,
-            cwd_pin: None,
-            origin: None,
-            permission_mode: None,
-            start_key: None,
-            clone_of: None,
-            trust_cwd: a.trust.then_some(true),
-            trust_via_repo: None,
-            agent_work: false,
-            cloud: None,
-            unattended: false,
-            exe_pin: None,
-            argv_sha256: None,
-        }),
+        Some(argv) => client.create(run_create_req(argv, cwd_str, a.name.clone(), cols, rows)),
+        None => client.create_run(run_create_run(
+            a.agent.clone().unwrap_or_default(),
+            cwd_str,
+            a.name.clone(),
+            a.model.clone(),
+            (cols, rows),
+            a.trust,
+        )),
     }
     .map_err(rerr)?;
     if !a.no_attach && !o.json && std::io::stdout().is_terminal() {
