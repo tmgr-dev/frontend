@@ -220,9 +220,9 @@ impl App {
                 }
                 Action::Cmd(Cmd::Detach) => return Some(Exit::Detached),
                 Action::Cmd(Cmd::Picker) => self.notify("one run per remote attach"),
-                Action::Cmd(Cmd::Stop | Cmd::Remove | Cmd::Rename | Cmd::Resume | Cmd::NewSession) => {
-                    self.notify("not available over a remote attach")
-                }
+                Action::Cmd(
+                    Cmd::Stop | Cmd::Remove | Cmd::Rename | Cmd::Resume | Cmd::NewSession,
+                ) => self.notify("not available over a remote attach"),
                 Action::Cmd(cmd) => {
                     self.view.apply(cmd);
                     if cmd == Cmd::ScrollMode {

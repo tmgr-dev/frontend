@@ -139,7 +139,7 @@ pub(crate) fn esc_key(b: &[u8]) -> (Key, usize) {
     }
 }
 
-fn next_char(b: &[u8]) -> (Option<char>, usize) {
+pub(crate) fn next_char(b: &[u8]) -> (Option<char>, usize) {
     let len = match b[0] {
         0..=0x7f => 1,
         0xc2..=0xdf => 2,

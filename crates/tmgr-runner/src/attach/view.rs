@@ -1,6 +1,6 @@
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
-use super::newsession::NewSession;
+use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
@@ -112,6 +112,8 @@ pub struct ViewState {
     pub rename: Option<Rename>,
     pub palette: Option<Palette>,
     pub new_session: Option<NewSession>,
+    pub new_kind: Option<String>,
+    pub new_place: Option<Place>,
     pub sidebar_focus: Option<SidebarItem>,
     pub allow_new: bool,
 }
@@ -166,6 +168,10 @@ pub struct LayoutPrefs {
     pub tree: Option<Node>,
     #[serde(default)]
     pub shells: Vec<String>,
+    #[serde(default)]
+    pub new_kind: Option<String>,
+    #[serde(default)]
+    pub new_place: Option<Place>,
 }
 
 impl ViewState {
@@ -190,6 +196,8 @@ impl ViewState {
             rename: None,
             palette: None,
             new_session: None,
+            new_kind: None,
+            new_place: None,
             sidebar_focus: None,
             allow_new: true,
         }
@@ -761,6 +769,9 @@ impl ViewState {
         if self.hover_key(area) != before {
             out.redraw = true;
         }
+        if self.new_session.is_some() {
+            return self.new_session_mouse(area, ev, out);
+        }
         if self.palette.is_some() {
             return self.palette_mouse(area, ev, out);
         }
@@ -1027,6 +1038,8 @@ impl ViewState {
             sidebar: self.sidebar,
             tree: self.tree.clone(),
             shells: self.shells.clone(),
+            new_kind: self.new_kind.clone(),
+            new_place: self.new_place,
         }
     }
 
@@ -1086,6 +1099,8 @@ impl ViewState {
         self.shells = shells;
         self.zoom = prefs.zoom;
         self.sidebar = prefs.sidebar;
+        self.new_kind = prefs.new_kind.clone();
+        self.new_place = prefs.new_place;
         self.scroll = None;
     }
 }
@@ -1105,6 +1120,7 @@ pub struct MouseOut {
     pub control: Option<(String, Control)>,
     pub palette: Option<PaletteEntry>,
     pub new_session: bool,
+    pub new_edit: Option<NewEdit>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
