@@ -688,7 +688,10 @@ Rules:
   being active, at 60 s, and when the runner stops. A computer sleep is not
   counted. Chunks under one counted second are dropped.
 
-Files, under `<runner dir>/time/` (directory 0700, files 0600):
+Files, under `<runner dir>/time/` (directory 0700, files 0600). On Linux, when
+the runner dir is the default `$XDG_RUNTIME_DIR/tmgr` (no `TMGR_RUNNER_DIR`),
+that is a tmpfs wiped at logout, so the files live in
+`$XDG_STATE_HOME/tmgr/time` (default `~/.local/state/tmgr/time`) instead:
 
 | file | writer | content |
 |---|---|---|

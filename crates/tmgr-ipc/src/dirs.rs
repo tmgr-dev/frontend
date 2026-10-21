@@ -49,6 +49,20 @@ pub fn homes_dir() -> io::Result<PathBuf> {
     }
 }
 
+pub fn time_dir(runner_dir: &Path) -> PathBuf {
+    #[cfg(not(target_os = "macos"))]
+    if env_path("TMGR_RUNNER_DIR").is_none() {
+        if let Some(rt) = env_path("XDG_RUNTIME_DIR") {
+            if runner_dir == rt.join("tmgr") {
+                if let Ok(state) = state_home() {
+                    return state.join("tmgr/time");
+                }
+            }
+        }
+    }
+    runner_dir.join("time")
+}
+
 #[cfg(not(target_os = "macos"))]
 fn state_home() -> io::Result<PathBuf> {
     match env_path("XDG_STATE_HOME") {
@@ -348,5 +362,11 @@ mod tests {
         fs::write(&f, "x").unwrap();
         assert!(check_private_dir(&f).is_err());
         assert!(check_private_dir(&t.path().join("none")).is_err());
+    }
+
+    #[test]
+    fn time_dir_of_an_explicit_runner_dir_stays_inside_it() {
+        let t = private_tmp();
+        assert_eq!(time_dir(t.path()), t.path().join("time"));
     }
 }

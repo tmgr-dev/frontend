@@ -3673,13 +3673,16 @@ impl Runner {
     }
 
     fn with_clock(&self, f: impl FnOnce(&mut humantime::Clock)) {
+        let mono = self.started.elapsed().as_millis() as u64;
         let closed = {
             let mut c = lock(&self.clock);
+            c.observe(now_ms(), mono);
             f(&mut c);
             c.drain_closed()
         };
         if let Err(e) = humantime::append_records(&self.cfg.dir, &closed) {
             log(&format!("human time: write failed: {e}"));
+            lock(&self.clock).requeue(closed);
         }
     }
 

@@ -1,9 +1,9 @@
 use crate::wire::write_atomic;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{FileExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use tmgr_ipc::api::TaskRef;
 use tmgr_ipc::dirs::ensure_private_dir;
@@ -13,6 +13,7 @@ const TYPING_HOLD_MS: u64 = 10_000;
 const SLEEP_SLACK_MS: u64 = 5_000;
 const KEEP_S: u64 = 45 * 24 * 3600;
 const MAX_FILE: u64 = 64 << 20;
+const MAX_PENDING: usize = 10_000;
 pub const IDLE_MIN_S: u64 = 30;
 pub const IDLE_MAX_S: u64 = 3600;
 pub const IDLE_DEFAULT_S: u64 = 120;
@@ -80,7 +81,7 @@ impl Settings {
 }
 
 pub fn time_dir(runner_dir: &Path) -> PathBuf {
-    runner_dir.join("time")
+    tmgr_ipc::dirs::time_dir(runner_dir)
 }
 
 fn read_file(path: &Path) -> Option<Vec<u8>> {
@@ -116,11 +117,20 @@ fn append_lines<T: Serialize>(runner_dir: &Path, name: &str, items: &[T]) -> std
         out.push(b'\n');
     }
     let mut f = OpenOptions::new()
+        .read(true)
         .append(true)
         .create(true)
         .mode(0o600)
         .custom_flags(libc::O_NOFOLLOW)
         .open(dir.join(name))?;
+    let len = f.metadata()?.len();
+    if len > 0 {
+        let mut last = [0u8; 1];
+        f.read_exact_at(&mut last, len - 1)?;
+        if last[0] != b'\n' {
+            out.insert(0, b'\n');
+        }
+    }
     f.write_all(&out)
 }
 
@@ -189,6 +199,8 @@ pub struct Clock {
     metas: HashMap<String, Meta>,
     totals: HashMap<String, u64>,
     closed: Vec<Record>,
+    floors: HashMap<String, u64>,
+    ids: HashSet<String>,
     at: Option<u64>,
     prev_tick: Option<(u64, u64)>,
 }
@@ -206,6 +218,8 @@ impl Clock {
             metas: HashMap::new(),
             totals: HashMap::new(),
             closed: Vec::new(),
+            floors: HashMap::new(),
+            ids: HashSet::new(),
             at: None,
             prev_tick: None,
         }
@@ -214,13 +228,32 @@ impl Clock {
     pub fn load_totals(&mut self, records: &[Record]) {
         for r in records {
             *self.totals.entry(r.session.clone()).or_default() += r.typing_s + r.reading_s;
+            let floor = self.floors.entry(r.session.clone()).or_default();
+            *floor = (*floor).max(r.end_s.saturating_mul(1000));
+            self.ids.insert(r.id.clone());
         }
+    }
+
+    pub fn requeue(&mut self, mut records: Vec<Record>) {
+        records.append(&mut self.closed);
+        let excess = records.len().saturating_sub(MAX_PENDING);
+        records.drain(..excess);
+        self.closed = records;
     }
 
     pub fn set_idle_s(&mut self, now: u64, idle_s: u64) {
         let now = self.clamp(now);
         self.advance(now);
-        self.idle_ms = idle_s.clamp(IDLE_MIN_S, IDLE_MAX_S) * 1000;
+        let old = self.idle_ms;
+        let new = idle_s.clamp(IDLE_MIN_S, IDLE_MAX_S) * 1000;
+        if new > old {
+            for c in self.conns.values_mut() {
+                if c.last_ms + old <= now {
+                    c.last_ms = c.last_ms.saturating_sub(new - old);
+                }
+            }
+        }
+        self.idle_ms = new;
     }
 
     pub fn set_meta(&mut self, session: &str, meta: Meta) {
@@ -256,11 +289,13 @@ impl Clock {
         }
     }
 
-    pub fn scroll(&mut self, conn: u64, now: u64, _session: &str) {
+    pub fn scroll(&mut self, conn: u64, now: u64, session: &str) {
         let now = self.clamp(now);
         self.advance(now);
         if let Some(c) = self.conns.get_mut(&conn) {
-            c.last_ms = now;
+            if c.session.as_deref() == Some(session) {
+                c.last_ms = now;
+            }
         }
     }
 
@@ -272,7 +307,7 @@ impl Clock {
         self.forget_idle_metas();
     }
 
-    pub fn tick(&mut self, now_wall: u64, now_mono: u64) {
+    pub fn observe(&mut self, now_wall: u64, now_mono: u64) {
         if let Some((pw, pm)) = self.prev_tick {
             let wall = now_wall.saturating_sub(pw);
             let mono = now_mono.saturating_sub(pm);
@@ -285,6 +320,10 @@ impl Clock {
             }
         }
         self.prev_tick = Some((now_wall, now_mono));
+    }
+
+    pub fn tick(&mut self, now_wall: u64, now_mono: u64) {
+        self.observe(now_wall, now_mono);
         let now = self.clamp(now_wall);
         self.advance(now);
         self.close_inactive(now);
@@ -400,6 +439,11 @@ impl Clock {
     }
 
     fn add(&mut self, session: &str, mut a: u64, b: u64, typing: bool) {
+        if let Some(floor) = self.floors.get(session).copied() {
+            if a < floor && !self.open.contains_key(session) {
+                a = floor.min(b);
+            }
+        }
         while a < b {
             if self.open.get(session).is_some_and(|c| c.end_ms != a) {
                 self.close(session);
@@ -448,8 +492,15 @@ impl Clock {
         }
         let typing_s = round_s(c.typing_ms).min(seconds);
         *self.totals.entry(session.to_string()).or_default() += seconds;
+        let mut id = format!("{session}-{start_s}");
+        let mut n = 2;
+        while self.ids.contains(&id) {
+            id = format!("{session}-{start_s}-{n}");
+            n += 1;
+        }
+        self.ids.insert(id.clone());
         self.closed.push(Record {
-            id: format!("{session}-{start_s}"),
+            id,
             session: session.to_string(),
             name: c.meta.name,
             cwd: c.meta.cwd,
@@ -823,5 +874,133 @@ mod tests {
         std::os::unix::fs::symlink(&victim, time_dir(t.path()).join("intervals.jsonl")).unwrap();
         assert!(append_records(t.path(), &[rec("some-record", 50)]).is_err());
         assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+    }
+
+    #[test]
+    fn a_wall_jump_without_progress_is_not_counted_even_if_input_comes_first() {
+        let mut c = clock();
+        c.observe(T0, 0);
+        c.attend(1, T0, Some(S1), true);
+        c.tick(T0 + 5_000, 5_000);
+        let wake = T0 + 7_200_000;
+        c.observe(wake, 5_100);
+        c.input(1, wake, S1);
+        c.shutdown(wake);
+        assert_eq!(secs(&mut c, S1), 5);
+    }
+
+    #[test]
+    fn a_wall_jump_before_set_idle_is_not_counted() {
+        let mut c = clock();
+        c.observe(T0, 0);
+        c.attend(1, T0, Some(S1), true);
+        c.tick(T0 + 5_000, 5_000);
+        let wake = T0 + 60_000;
+        c.observe(wake, 5_100);
+        c.set_idle_s(wake, 3600);
+        c.shutdown(wake);
+        assert_eq!(secs(&mut c, S1), 5);
+    }
+
+    #[test]
+    fn requeued_records_come_back_first_and_are_bounded() {
+        let mut c = clock();
+        c.attend(1, T0, Some(S1), true);
+        c.shutdown(T0 + 5_000);
+        let first = c.drain_closed();
+        assert_eq!(first.len(), 1);
+        c.requeue(first.clone());
+        assert_eq!(c.drain_closed(), first);
+        let many: Vec<Record> = (0..MAX_PENDING + 5)
+            .map(|i| rec(&format!("rec-{i:08}"), 100))
+            .collect();
+        c.requeue(many);
+        let got = c.drain_closed();
+        assert_eq!(got.len(), MAX_PENDING);
+        assert_eq!(got[0].id, "rec-00000005");
+    }
+
+    #[test]
+    fn raising_the_idle_cap_does_not_revive_idle_connections() {
+        let t0 = 10 * T0;
+        let mut c = clock();
+        c.attend(1, t0, Some(S1), true);
+        c.tick(t0 + 200_000, 200_000);
+        c.set_idle_s(t0 + 200_000, 3600);
+        c.tick(t0 + 400_000, 400_000);
+        c.shutdown(t0 + 400_000);
+        assert_eq!(secs(&mut c, S1), 120);
+    }
+
+    #[test]
+    fn raising_the_idle_cap_keeps_active_connections_active() {
+        let mut c = clock();
+        c.attend(1, T0, Some(S1), true);
+        c.tick(T0 + 60_000, 60_000);
+        c.set_idle_s(T0 + 60_000, 600);
+        c.tick(T0 + 800_000, 800_000);
+        c.shutdown(T0 + 800_000);
+        assert_eq!(secs(&mut c, S1), 600);
+    }
+
+    #[test]
+    fn restart_never_starts_a_chunk_before_recorded_time() {
+        let mut c = clock();
+        let mut r = rec("old-record", 1000);
+        r.start_s = 995;
+        c.load_totals(&[r]);
+        c.attend(1, 990_000, Some(S1), true);
+        c.shutdown(1_004_000);
+        let got = c.drain_closed();
+        assert_eq!(got.len(), 1);
+        assert_eq!((got[0].start_s, got[0].end_s), (1000, 1004));
+        assert_eq!(got[0].reading_s, 4);
+    }
+
+    #[test]
+    fn colliding_ids_get_a_suffix() {
+        let mut c = clock();
+        let mut r = rec(&format!("{S1}-1000"), 1000);
+        r.start_s = 995;
+        c.load_totals(&[r]);
+        c.attend(1, 1_000_000, Some(S1), true);
+        c.shutdown(1_005_000);
+        let got = c.drain_closed();
+        assert_eq!(got[0].id, format!("{S1}-1000-2"));
+        assert!(got[0].id.len() <= 64);
+    }
+
+    #[test]
+    fn scrolling_another_session_is_not_activity() {
+        let mut c = clock();
+        c.attend(1, T0, Some(S1), true);
+        c.scroll(1, T0 + 100_000, S2);
+        c.shutdown(T0 + 300_000);
+        assert_eq!(secs(&mut c, S1), 120);
+    }
+
+    #[test]
+    fn scrolling_the_attended_session_is_activity() {
+        let mut c = clock();
+        c.attend(1, T0, Some(S1), true);
+        c.scroll(1, T0 + 100_000, S1);
+        c.shutdown(T0 + 300_000);
+        assert_eq!(secs(&mut c, S1), 220);
+    }
+
+    #[test]
+    fn appending_after_a_partial_line_starts_a_new_line() {
+        let t = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(t.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        append_records(t.path(), &[rec("first-record", 50)]).unwrap();
+        let path = time_dir(t.path()).join("intervals.jsonl");
+        let mut f = OpenOptions::new().append(true).open(&path).unwrap();
+        f.write_all(b"{\"id\":\"cut").unwrap();
+        append_records(t.path(), &[rec("second-record", 60)]).unwrap();
+        let got = read_records(t.path());
+        assert_eq!(
+            got.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
+            ["first-record", "second-record"]
+        );
     }
 }
