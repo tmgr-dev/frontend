@@ -12,6 +12,7 @@ export interface AgentWorkCommit {
 	message: string | null;
 	repo?: string | null;
 	branch?: string | null;
+	source?: 'agent' | 'git' | null;
 }
 
 export interface AgentWorkRelease {
