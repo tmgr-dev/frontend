@@ -1,3 +1,9 @@
+use super::actions::find;
+use super::keys::Cmd;
+use super::palette::{
+    palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
+};
+use super::tree::Nav;
 use super::view::{
     header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
     ViewState, WIDE_COLS,
@@ -11,7 +17,7 @@ use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use ratatui::Frame;
 use tmgr_ipc::api::StateKind;
 use tmgr_ipc::api::{Attr, Color as Col, Snapshot, BOLD, DIM, INVERSE, ITALIC, UNDERLINE};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub trait ScreenSource {
     fn snapshot(&self, session: &str) -> Option<&Snapshot>;
@@ -39,7 +45,7 @@ fn badge(row: &SessionRow) -> (&'static str, Style) {
     }
 }
 
-fn state_label(row: &SessionRow) -> &'static str {
+pub(crate) fn state_label(row: &SessionRow) -> &'static str {
     match row.state.kind {
         StateKind::Starting => "starting",
         StateKind::Working => "working",
@@ -98,6 +104,9 @@ pub fn render(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     draw_status(buf, lay.status, st);
     if st.help {
         draw_help(buf, area);
+    }
+    if st.palette.is_some() {
+        draw_palette(buf, area, st);
     }
 }
 
@@ -303,6 +312,16 @@ fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot) {
 }
 
 pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Option<(u16, u16)> {
+    if let Some(p) = &st.palette {
+        let area = Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom());
+        let rect = palette_rect(area, st.entries().len().max(1));
+        let inner = palette_inner(rect);
+        if rect.is_empty() || inner.is_empty() {
+            return None;
+        }
+        let w = query_tail(&p.query, query_avail(inner)).width() as u16;
+        return Some(((inner.x + 2 + w).min(inner.right() - 1), inner.y));
+    }
     if st.scroll.is_some() || st.help {
         return None;
     }
@@ -411,22 +430,72 @@ const MOUSE: &[(&str, &str)] = &[
     ("drag", "Shift-drag selects (iTerm2: Option)"),
 ];
 
-const HELP: &[(&str, &str)] = &[
-    ("d", "detach, sessions keep running"),
-    ("n / p", "next / previous session"),
-    ("w", "session picker"),
-    ("s", "two panes, or collapse to one"),
-    ("| v / - h", "split right / split down"),
-    ("Tab", "focus next pane (Shift-Tab previous)"),
-    ("arrows", "move focus (Shift+arrows: resize)"),
-    ("z / b", "zoom the pane / show or hide the sidebar"),
-    ("r", "rename the focused session"),
-    ("Enter / R", "resume an exited session"),
-    ("x / X", "stop (asks first) / remove if exited"),
-    ("[", "scroll back through history"),
-    ("?", "this help"),
-    ("Ctrl-]", "send a literal Ctrl-] to the session"),
+pub(crate) enum HelpKey {
+    Cmds(&'static [Cmd]),
+    Lit(&'static str),
+}
+
+pub(crate) const HELP: &[(HelpKey, &str)] = &[
+    (
+        HelpKey::Cmds(&[Cmd::Palette]),
+        "command palette: actions and sessions",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Detach]),
+        "detach, sessions keep running",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::NextSession, Cmd::PrevSession]),
+        "next / previous session",
+    ),
+    (HelpKey::Cmds(&[Cmd::Picker]), "session picker"),
+    (
+        HelpKey::Cmds(&[Cmd::Split]),
+        "two panes, or collapse to one",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::SplitRight, Cmd::SplitDown]),
+        "split right / split down",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::FocusOther]),
+        "focus next pane (Shift-Tab previous)",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Focus(Nav::Left)]),
+        "move focus (Shift+arrows: resize)",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Zoom, Cmd::Sidebar]),
+        "zoom the pane / show or hide the sidebar",
+    ),
+    (HelpKey::Cmds(&[Cmd::Rename]), "rename the focused session"),
+    (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),
+    (
+        HelpKey::Cmds(&[Cmd::Stop, Cmd::Remove]),
+        "stop (asks first) / remove if exited",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::ScrollMode]),
+        "scroll back through history",
+    ),
+    (HelpKey::Cmds(&[Cmd::Help]), "this help"),
+    (
+        HelpKey::Lit("Ctrl-]"),
+        "send a literal Ctrl-] to the session",
+    ),
 ];
+
+fn help_key(key: &HelpKey) -> String {
+    match key {
+        HelpKey::Lit(s) => (*s).to_string(),
+        HelpKey::Cmds(cmds) => cmds
+            .iter()
+            .filter_map(|c| find(*c).map(|a| a.hotkey))
+            .collect::<Vec<_>>()
+            .join(" / "),
+    }
+}
 
 fn draw_help(buf: &mut Buffer, area: Rect) {
     let w = 64.min(area.width);
@@ -457,11 +526,16 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
         dim(),
         inner.width,
     );
-    let mouse_fits = inner.y + 3 + (HELP.len() + MOUSE.len()) as u16 <= inner.bottom();
+    let mouse_fits = inner.y + 4 + ((HELP.len() + MOUSE.len()) as u16) < inner.bottom();
     let rows = HELP
         .iter()
-        .map(|r| (*r, false))
-        .chain(MOUSE.iter().filter(|_| mouse_fits).map(|r| (*r, true)));
+        .map(|(k, what)| ((help_key(k), *what), false))
+        .chain(
+            MOUSE
+                .iter()
+                .filter(|_| mouse_fits)
+                .map(|(k, what)| (((*k).to_string(), *what), true)),
+        );
     for (i, ((key, what), mouse)) in rows.enumerate() {
         let y = inner.y + 2 + i as u16 + u16::from(mouse);
         if y >= inner.bottom() {
@@ -471,7 +545,7 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
             buf,
             inner.x,
             y,
-            key,
+            &key,
             Style::new().add_modifier(Modifier::BOLD),
             inner.width,
         );
@@ -491,5 +565,82 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
             dim(),
             inner.width,
         );
+    }
+}
+
+fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
+    let Some(p) = &st.palette else {
+        return;
+    };
+    let rows = st.entries();
+    let rect = palette_rect(area, rows.len().max(1));
+    if rect.is_empty() {
+        return;
+    }
+    Clear.render(rect, buf);
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(" Command palette ")
+        .render(rect, buf);
+    let inner = palette_inner(rect);
+    if inner.is_empty() {
+        return;
+    }
+    let x = put(buf, inner.x, inner.y, "> ", dim(), inner.width);
+    let tail = query_tail(&p.query, query_avail(inner));
+    put(buf, x, inner.y, tail, Style::new(), inner.right() - x);
+    let list = palette_list(rect);
+    if list.is_empty() {
+        return;
+    }
+    if rows.is_empty() {
+        put(buf, list.x, list.y, "no match", dim(), list.width);
+        return;
+    }
+    let sel = p.sel.min(rows.len() - 1);
+    let top = palette_top(sel, usize::from(list.height));
+    for (i, row) in rows
+        .iter()
+        .skip(top)
+        .take(usize::from(list.height))
+        .enumerate()
+    {
+        let y = list.y + i as u16;
+        let selected = top + i == sel;
+        if selected {
+            buf.set_style(
+                Rect::new(list.x, y, list.width, 1),
+                Style::new().add_modifier(Modifier::REVERSED),
+            );
+        }
+        draw_palette_row(buf, list, y, row);
+    }
+}
+
+fn draw_palette_row(buf: &mut Buffer, list: Rect, y: u16, row: &RowView) {
+    let right_w = row.right.width() as u16;
+    let show_right = right_w + 2 < list.width;
+    let label_max = if show_right {
+        list.width - right_w - 1
+    } else {
+        list.width
+    };
+    let mut x = list.x;
+    let end = list.x + label_max;
+    for (idx, c) in row.label.chars().enumerate() {
+        let w = c.width().unwrap_or(0) as u16;
+        if x + w > end {
+            break;
+        }
+        let style = if row.hits.contains(&idx) {
+            Style::new().add_modifier(Modifier::BOLD)
+        } else {
+            Style::new()
+        };
+        put(buf, x, y, c.encode_utf8(&mut [0; 4]), style, end - x);
+        x += w;
+    }
+    if show_right {
+        put(buf, list.right() - right_w, y, &row.right, dim(), right_w);
     }
 }
