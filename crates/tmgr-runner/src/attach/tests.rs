@@ -3485,3 +3485,35 @@ fn snapshot_grouped_sidebar_folded() {
     v.collapsed.insert("/w/app".into());
     assert_snapshot("grouped_folded", &draw(&v, &screens(), 140, 22));
 }
+
+#[test]
+fn crlf_enter_on_a_header_folds_it_once() {
+    let mut v = grouped_view();
+    v.sidebar_focus = Some(SidebarItem::Group("/w/app".into()));
+    v.edit_sidebar(AREA, b"\r\n");
+    assert_eq!(shape(&v)[0], "H /w/app 2 true");
+}
+
+#[test]
+fn folding_a_header_with_the_click_moves_focus_off_its_hidden_rows() {
+    let mut v = grouped_view();
+    v.sidebar_focus = Some(SidebarItem::Session("a".into()));
+    let y = sidebar_y(
+        &v,
+        &SidebarLine::Header {
+            key: "/w/app".into(),
+            count: 2,
+            collapsed: false,
+        },
+    );
+    v.on_mouse(
+        AREA,
+        ev(0, 3, y, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert!(
+        v.sidebar_focus.is_none()
+            || v.sidebar_items(AREA)
+                .contains(v.sidebar_focus.as_ref().unwrap())
+    );
+}

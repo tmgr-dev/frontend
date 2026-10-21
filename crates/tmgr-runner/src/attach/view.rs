@@ -12,6 +12,7 @@ use tmgr_ipc::api::{MouseMode, State, StateKind};
 pub const SIDEBAR_WIDTH: u16 = 24;
 pub const WIDE_COLS: u16 = 100;
 const MIN_PANE_COLS: u16 = 10;
+const MAX_GROUP_KEYS: usize = 64;
 pub const WHEEL_LINES: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -531,6 +532,12 @@ impl ViewState {
             }
         }
         self.collapsed.retain(|k| keys.contains(k));
+        let mut extra = self.group_order.len().saturating_sub(MAX_GROUP_KEYS);
+        self.group_order.retain(|k| {
+            let drop = extra > 0 && !keys.contains(k);
+            extra -= usize::from(drop);
+            !drop
+        });
     }
 
     pub fn set_locs(&mut self, area: Rect, updates: Vec<(String, Loc)>) -> bool {
@@ -619,6 +626,7 @@ impl ViewState {
                     self.move_sidebar_focus(area, true);
                     1
                 }
+                b'\n' if i > 0 && data[i - 1] == b'\r' => 1,
                 b'\r' | b'\n' => {
                     let items = self.sidebar_items(area);
                     if let Some(SidebarItem::Group(key)) =
@@ -1077,7 +1085,9 @@ impl ViewState {
             }
             Hit::Group(key) => {
                 if ev.is_left_press() {
+                    let before = self.sidebar_items(area);
                     self.toggle_group(&key);
+                    self.keep_sidebar_focus(area, &before);
                     out.redraw = true;
                 }
             }
