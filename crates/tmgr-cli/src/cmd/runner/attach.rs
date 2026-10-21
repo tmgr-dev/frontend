@@ -470,7 +470,9 @@ impl App {
                 self.view.insert_new_session_text(&data);
             }
             (Route::Sidebar, Action::Forward(data)) => {
-                if self.view.edit_sidebar(self.area(), &data) == SidebarEdit::New {
+                let area = self.area();
+                let edit = self.view.edit_sidebar(area, &data);
+                if edit == SidebarEdit::New {
                     self.open_new_session();
                 }
             }
