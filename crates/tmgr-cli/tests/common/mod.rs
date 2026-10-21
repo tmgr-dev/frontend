@@ -330,3 +330,24 @@ pub fn now_s() -> i64 {
         .unwrap()
         .as_secs() as i64
 }
+
+pub fn commit_at(dir: &std::path::Path, name: &str, epoch: i64, email: &str) -> String {
+    std::fs::write(dir.join(format!("{name}.txt")), name).unwrap();
+    git(dir, &["add", "."]);
+    let date = format!("{epoch} +0000");
+    let out = std::process::Command::new("git")
+        .args(["commit", "-q", "-m", name])
+        .current_dir(dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", email)
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", email)
+        .env("GIT_AUTHOR_DATE", &date)
+        .env("GIT_COMMITTER_DATE", &date)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    git(dir, &["rev-parse", "HEAD"])
+}

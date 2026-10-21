@@ -301,3 +301,58 @@ async fn an_unknown_run_merges_with_the_commits_the_server_already_has() {
         json!([{"sha": "aaa1111", "message": "old one"}, {"sha": "bbb2222", "message": "new one"}])
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn finish_posts_my_git_commits_from_the_run_interval() {
+    let env = Env::new().await;
+    env.login_seed();
+    let t0 = 1_800_000_000;
+    let started = chrono::DateTime::from_timestamp(t0, 0)
+        .unwrap()
+        .to_rfc3339();
+    let ended = chrono::DateTime::from_timestamp(t0 + 600, 0)
+        .unwrap()
+        .to_rfc3339();
+    mock_run(
+        &env,
+        "POST",
+        "/api/agent-work/41/finish",
+        200,
+        run_view(json!({"status": "succeeded", "started_at": started, "ended_at": ended})),
+    )
+    .await;
+    mock_run(
+        &env,
+        "POST",
+        "/api/agent-work/41/commits",
+        200,
+        run_view(json!({})),
+    )
+    .await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    git(&repo, &["config", "user.email", "me@example.com"]);
+    commit_at(&repo, "early", t0 - 7200, "me@example.com");
+    let mine = commit_at(&repo, "mine", t0 + 60, "me@example.com");
+    commit_at(&repo, "theirs", t0 + 90, "you@example.com");
+    let out = env
+        .tmgr_in(&repo, None)
+        .args([
+            "agent",
+            "finish",
+            "--run",
+            "41",
+            "--status",
+            "succeeded",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let posts = env.requests_to("/api/agent-work/41/commits").await;
+    assert_eq!(posts.len(), 1);
+    let body: Value = serde_json::from_slice(&posts[0].body).unwrap();
+    assert_eq!(body["commits"].as_array().unwrap().len(), 1);
+    assert_eq!(body["commits"][0]["sha"], mine.as_str());
+    assert_eq!(body["commits"][0]["message"], "mine");
+    assert_valid("agent_run", &stdout_json(&out));
+}

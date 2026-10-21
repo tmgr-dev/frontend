@@ -11,10 +11,12 @@ use std::path::{Path, PathBuf};
 use tmgr_core::error::{Error, Result};
 
 const MAX_FILE: u64 = 1024 * 1024;
-const CLAUDE_EVENTS: [(&str, &str); 3] = [
-    ("Notification", "notification"),
-    ("UserPromptSubmit", "user-prompt-submit"),
-    ("Stop", "stop"),
+const RUN_TOOLS_MATCHER: &str = "mcp__.*__(start_agent_work|finish_agent_work)$";
+const CLAUDE_EVENTS: [(&str, &str, Option<&str>); 4] = [
+    ("Notification", "notification", None),
+    ("UserPromptSubmit", "user-prompt-submit", None),
+    ("Stop", "stop", None),
+    ("PostToolUse", "post-tool-use", Some(RUN_TOOLS_MATCHER)),
 ];
 
 pub fn shell_quote(s: &str) -> String {
@@ -101,7 +103,10 @@ pub fn classify_claude(cmd: &str) -> Option<&'static str> {
     let t = shell_split(cmd)?;
     let first = basename(t.first()?);
     if first == "tmgr" && t.len() == 4 && t[1] == "hook" && t[2] == "claude" {
-        return CLAUDE_EVENTS.iter().map(|(_, e)| *e).find(|e| *e == t[3]);
+        return CLAUDE_EVENTS
+            .iter()
+            .map(|(_, e, _)| *e)
+            .find(|e| *e == t[3]);
     }
     if first == "tmgr-notify" && t.len() == 3 && t[1] == "hook" {
         return legacy_event(&t[2]);
@@ -170,16 +175,23 @@ fn our_hook(cmd: &str) -> Value {
     json!({"type": "command", "command": cmd})
 }
 
+fn our_group(matcher: Option<&str>, cmd: &str) -> Value {
+    match matcher {
+        Some(m) => json!({"matcher": m, "hooks": [our_hook(cmd)]}),
+        None => json!({"hooks": [our_hook(cmd)]}),
+    }
+}
+
 fn desired_command(exe: &str, sub: &str) -> String {
     format!("{} hook claude {sub}", shell_quote(exe))
 }
 
 pub fn claude_snippet(exe: &str) -> String {
     let mut hooks = Map::new();
-    for (event, sub) in CLAUDE_EVENTS {
+    for (event, sub, matcher) in CLAUDE_EVENTS {
         hooks.insert(
             event.to_string(),
-            json!([{"hooks": [our_hook(&desired_command(exe, sub))]}]),
+            json!([our_group(matcher, &desired_command(exe, sub))]),
         );
     }
     let mut text = serde_json::to_string_pretty(&json!({ "hooks": hooks })).unwrap_or_default();
@@ -235,13 +247,13 @@ pub fn plan_claude(old: &str, exe: &str, remove: bool) -> Result<String> {
             obj.remove("hooks");
         }
     } else {
-        for (event, sub) in CLAUDE_EVENTS {
+        for (event, sub, matcher) in CLAUDE_EVENTS {
             let arr = hooks
                 .entry(event)
                 .or_insert_with(|| Value::Array(Vec::new()))
                 .as_array_mut()
                 .ok_or_else(|| invalid(&format!("\"{event}\" hooks")))?;
-            install_event(arr, sub, &desired_command(exe, sub));
+            install_event(arr, sub, matcher, &desired_command(exe, sub));
         }
     }
     Ok(if root == original && !old.trim().is_empty() {
@@ -278,7 +290,7 @@ fn is_empty_group(g: &Value) -> bool {
             .is_some_and(|o| o.keys().all(|k| k == "hooks" || k == "matcher"))
 }
 
-fn install_event(arr: &mut Vec<Value>, sub: &str, desired: &str) {
+fn install_event(arr: &mut Vec<Value>, sub: &str, matcher: Option<&str>, desired: &str) {
     let mut found = false;
     for group in arr.iter_mut() {
         let Some(inner) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
@@ -301,7 +313,7 @@ fn install_event(arr: &mut Vec<Value>, sub: &str, desired: &str) {
     if found {
         strip_duplicates(arr, sub, desired);
     } else {
-        arr.push(json!({"hooks": [our_hook(desired)]}));
+        arr.push(our_group(matcher, desired));
     }
 }
 
@@ -580,18 +592,23 @@ mod tests {
             classify_claude("tmgr-notify hook notification"),
             Some("notification")
         );
+        assert_eq!(
+            classify_claude("/opt/tmgr hook claude post-tool-use"),
+            Some("post-tool-use")
+        );
         assert_eq!(classify_claude("/opt/tmgr hook claude pre-tool-use"), None);
         assert_eq!(classify_claude("echo hook claude stop"), None);
         assert_eq!(classify_claude("my-linter && tmgr hook claude stop"), None);
     }
 
     #[test]
-    fn install_into_an_empty_file_adds_three_hooks() {
+    fn install_into_an_empty_file_adds_four_hooks() {
         let out = plan_claude("", EXE, false).unwrap();
         let v = parsed(&out);
         assert_eq!(cmds(&v, "Stop"), vec![format!("{EXE} hook claude stop")]);
         assert_eq!(cmds(&v, "Notification").len(), 1);
         assert_eq!(cmds(&v, "UserPromptSubmit").len(), 1);
+        assert_eq!(cmds(&v, "PostToolUse").len(), 1);
         assert!(out.ends_with('\n'));
     }
 
@@ -636,9 +653,41 @@ mod tests {
     #[test]
     fn a_hand_formatted_file_that_already_has_the_hooks_is_left_alone() {
         let old = format!(
-            "{{\"hooks\": {{\n  \"Notification\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude notification\"}}]}}],\n  \"UserPromptSubmit\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude user-prompt-submit\"}}]}}],\n  \"Stop\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude stop\"}}]}}]\n}}}}\n"
+            "{{\"hooks\": {{\n  \"Notification\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude notification\"}}]}}],\n  \"UserPromptSubmit\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude user-prompt-submit\"}}]}}],\n  \"Stop\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude stop\"}}]}}],\n  \"PostToolUse\": [{{\"matcher\": \"{RUN_TOOLS_MATCHER}\", \"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude post-tool-use\"}}]}}]\n}}}}\n"
         );
         assert_eq!(plan_claude(&old, EXE, false).unwrap(), old);
+    }
+
+    #[test]
+    fn an_older_three_hook_install_gains_only_the_run_tools_hook() {
+        let old = format!(
+            "{{\"hooks\": {{\"Stop\": [{{\"hooks\": [{{\"type\": \"command\", \"command\": \"{EXE} hook claude stop\"}}]}}]}}}}"
+        );
+        let v = parsed(&plan_claude(&old, EXE, false).unwrap());
+        assert_eq!(cmds(&v, "Stop").len(), 1);
+        assert_eq!(
+            cmds(&v, "PostToolUse"),
+            vec![format!("{EXE} hook claude post-tool-use")]
+        );
+        assert_eq!(v["hooks"]["PostToolUse"][0]["matcher"], RUN_TOOLS_MATCHER);
+    }
+
+    #[test]
+    fn the_post_tool_use_hook_is_not_duplicated_and_uninstalls_cleanly() {
+        let once = plan_claude("{}", EXE, false).unwrap();
+        let moved = plan_claude(&once, "/new/tmgr", false).unwrap();
+        let v = parsed(&moved);
+        assert_eq!(
+            cmds(&v, "PostToolUse"),
+            vec!["/new/tmgr hook claude post-tool-use".to_string()]
+        );
+        assert_eq!(plan_claude(&moved, "/new/tmgr", false).unwrap(), moved);
+        let other = r#"{"hooks":{"PostToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"mine"}]}]}}"#;
+        let both = plan_claude(other, EXE, false).unwrap();
+        assert_eq!(cmds(&parsed(&both), "PostToolUse").len(), 2);
+        let removed = plan_claude(&both, EXE, true).unwrap();
+        assert_eq!(parsed(&removed), parsed(other));
+        assert_eq!(parsed(&plan_claude(&once, EXE, true).unwrap()), json!({}));
     }
 
     #[test]
@@ -720,7 +769,10 @@ mod tests {
             "Notification",
             "UserPromptSubmit",
             "Stop",
+            "PostToolUse",
             "hook claude stop",
+            "hook claude post-tool-use",
+            RUN_TOOLS_MATCHER,
         ] {
             assert!(c.contains(needle), "{needle}");
         }

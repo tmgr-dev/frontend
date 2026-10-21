@@ -61,6 +61,7 @@ async fn print_shows_the_snippet_and_writes_nothing() {
     let v = stdout_json(&out);
     let snippet = v["data"]["snippet"].as_str().unwrap();
     assert!(snippet.contains("\"Stop\"") && snippet.contains("hook claude stop"));
+    assert!(snippet.contains("\"PostToolUse\"") && snippet.contains("hook claude post-tool-use"));
     assert!(!env.tmp.path().join(".claude").exists());
     let out = env
         .cmd()

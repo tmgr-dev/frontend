@@ -1,6 +1,7 @@
 use crate::cmd::notifyenv::NotifyEnv;
 use crate::ctx::Ctx;
 use crate::gitx::run_capture;
+use crate::runfinish;
 use serde_json::Value;
 use std::io::{IsTerminal, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -258,6 +259,10 @@ fn build_client(env: &NotifyEnv, run: &runstate::Run) -> Option<Client> {
         return tmgr_core::local::client(code, env.cfg.local_user_id, &Ctx::user_agent(), false)
             .ok();
     }
+    cloud_client(env)
+}
+
+fn cloud_client(env: &NotifyEnv) -> Option<Client> {
     let server = env.server().ok()?;
     let (tokens, _) = env.login_store(&server).load().ok().flatten()?;
     Client::new(&server, &Ctx::user_agent(), Some(tokens), None, false).ok()
@@ -353,6 +358,196 @@ fn push_and_touch(env: &NotifyEnv, payload: Option<PushPayload>, cwd: &Path, mod
     });
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum RunTool {
+    Start,
+    Finish,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct ToolRun {
+    id: u64,
+    task_id: Option<u64>,
+    started_at: Option<String>,
+    ended_at: Option<String>,
+    commits: Vec<String>,
+    session_id: Option<String>,
+}
+
+fn run_tool(tool_name: &str) -> Option<RunTool> {
+    if !tool_name.starts_with("mcp__") {
+        return None;
+    }
+    match tool_name.rsplit("__").next()? {
+        "start_agent_work" => Some(RunTool::Start),
+        "finish_agent_work" => Some(RunTool::Finish),
+        _ => None,
+    }
+}
+
+fn response_text(resp: &Value) -> Option<String> {
+    match resp {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(items) => content_text(items),
+        Value::Object(o) => {
+            if let Some(items) = o.get("content").and_then(Value::as_array) {
+                content_text(items)
+            } else {
+                Some(resp.to_string())
+            }
+        }
+        _ => None,
+    }
+}
+
+fn content_text(items: &[Value]) -> Option<String> {
+    let text: String = items
+        .iter()
+        .filter_map(|i| match i {
+            Value::String(s) => Some(s.as_str()),
+            _ => i.get("text").and_then(Value::as_str),
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.is_empty()).then_some(text)
+}
+
+fn json_in(text: &str) -> Option<Value> {
+    if let Ok(v) = serde_json::from_str::<Value>(text) {
+        return Some(v);
+    }
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    serde_json::from_str(text.get(start..=end)?).ok()
+}
+
+fn pick<'a>(v: &'a Value, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|k| v.get(*k)).filter(|x| !x.is_null())
+}
+
+fn parse_tool_run(resp: &Value) -> Option<ToolRun> {
+    if resp.get("isError").and_then(Value::as_bool) == Some(true)
+        || resp.get("is_error").and_then(Value::as_bool) == Some(true)
+    {
+        return None;
+    }
+    let mut v = json_in(&response_text(resp)?)?;
+    if let Some(inner) = v.get("data").filter(|d| d.is_object()) {
+        v = inner.clone();
+    }
+    let text = |keys: &[&str]| pick(&v, keys).and_then(Value::as_str).map(str::to_string);
+    let num = |keys: &[&str]| pick(&v, keys).and_then(Value::as_u64);
+    let commits = v
+        .get("commits")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|c| match c {
+                    Value::String(s) => Some(s.clone()),
+                    _ => c.get("sha").and_then(Value::as_str).map(str::to_string),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(ToolRun {
+        id: num(&["id", "run_id", "runId"])?,
+        task_id: num(&["task_id", "taskId"]),
+        started_at: text(&["started_at", "startedAt"]),
+        ended_at: text(&["ended_at", "endedAt"]),
+        commits,
+        session_id: text(&["session_id", "sessionId"]),
+    })
+}
+
+fn run_sessions(input: &Value) -> Option<(String, Option<String>)> {
+    let valid = |s: &str| !s.is_empty() && !s.chars().any(|c| c.is_whitespace() || c.is_control());
+    let session = str_of(input, "session_id").filter(|s| valid(s))?;
+    let (id, parent) = match str_of(input, "agent_id").filter(|s| !s.is_empty()) {
+        Some(agent) if valid(agent) => (format!("{session}/{agent}"), Some(session.to_string())),
+        Some(_) => return None,
+        None => (session.to_string(), None),
+    };
+    (id.chars().count() <= agentwork::SESSION_ID_MAX).then_some((id, parent))
+}
+
+fn tool_client(env: &NotifyEnv, run_id: u64) -> Option<Client> {
+    let state = runstate::load();
+    match state.runs.iter().find(|r| r.run_id == run_id) {
+        Some(run) => build_client(env, run),
+        None => cloud_client(env),
+    }
+}
+
+fn bind_session(client: &Client, run: &ToolRun, input: &Value) {
+    if run.session_id.is_some() {
+        return;
+    }
+    let Some((session_id, parent)) = run_sessions(input) else {
+        return;
+    };
+    let progress = Progress {
+        session_id: Some(session_id),
+        parent_session_id: parent,
+        ..Default::default()
+    };
+    if let Err(e) = agentwork::update(client, run.id, &progress, false) {
+        debug(&format!("session binding failed: {}", e.message));
+    }
+}
+
+fn upload_after_finish(task_id: Option<u64>, spawn: &dyn Fn(&[String])) {
+    if let Some(id) = task_id {
+        spawn(&runfinish::auto_upload_args(id));
+    }
+}
+
+fn post_git_commits(client: &Client, run: &ToolRun, cwd: &Path) {
+    let Some(started) = run.started_at.as_deref().and_then(runfinish::parse_ts) else {
+        return;
+    };
+    let ended = run
+        .ended_at
+        .as_deref()
+        .and_then(runfinish::parse_ts)
+        .unwrap_or_else(now_s);
+    let git = |args: &[&str]| git_out(cwd, args);
+    let commits = runfinish::collect(&git, started, ended, &run.commits);
+    if commits.is_empty() {
+        return;
+    }
+    if let Err(e) = agentwork::add_git_commits(client, run.id, &commits) {
+        debug(&format!("git commits not sent: {}", e.message));
+    }
+}
+
+fn post_tool_use(env: &NotifyEnv, cwd: &Path, input: &Value) {
+    let Some(kind) = str_of(input, "tool_name").and_then(run_tool) else {
+        return;
+    };
+    let Some(run) = input.get("tool_response").and_then(parse_tool_run) else {
+        debug("run response not understood");
+        return;
+    };
+    if kind == RunTool::Finish {
+        let task_id = run.task_id.or_else(|| {
+            runstate::load()
+                .runs
+                .iter()
+                .find(|r| r.run_id == run.id)
+                .map(|r| r.task_id)
+        });
+        upload_after_finish(task_id, &runfinish::spawn_detached);
+    }
+    let Some(client) = tool_client(env, run.id) else {
+        debug("no usable login");
+        return;
+    };
+    match kind {
+        RunTool::Start => bind_session(&client, &run, input),
+        RunTool::Finish => post_git_commits(&client, &run, cwd),
+    }
+}
+
 fn claude_work(event: &str, server_override: Option<String>) {
     let Some(input) = read_stdin() else { return };
     let Ok(env) = NotifyEnv::load(server_override, false) else {
@@ -393,6 +588,7 @@ fn claude_work(event: &str, server_override: Option<String>) {
             }
             touch_run(&env, &cwd, Touch::Heartbeat);
         }
+        "post-tool-use" => post_tool_use(&env, &cwd, &input),
         "session-start" | "subagent-stop" | "pre-tool-use" => {
             touch_run(&env, &cwd, Touch::Heartbeat);
         }
@@ -430,5 +626,114 @@ mod tests {
         assert_eq!(parse_budget(Some("1")), Duration::from_millis(500));
         assert_eq!(parse_budget(Some("5000")), Duration::from_millis(5000));
         assert_eq!(parse_budget(Some("999999")), Duration::from_millis(10_000));
+    }
+
+    use serde_json::json;
+
+    const RUN: &str = r#"{"id": 41, "task_id": 8974, "started_at": "2026-10-21T10:00:00Z", "ended_at": "2026-10-21T10:30:00Z", "commits": [{"sha": "abc1234", "message": "x"}]}"#;
+
+    fn expected() -> ToolRun {
+        ToolRun {
+            id: 41,
+            task_id: Some(8974),
+            started_at: Some("2026-10-21T10:00:00Z".into()),
+            ended_at: Some("2026-10-21T10:30:00Z".into()),
+            commits: vec!["abc1234".into()],
+            session_id: None,
+        }
+    }
+
+    #[test]
+    fn the_run_is_read_from_every_known_response_shape() {
+        let as_string = json!(RUN);
+        let content = json!({"content": [{"type": "text", "text": RUN}]});
+        let array = json!([{"type": "text", "text": RUN}]);
+        let bare = serde_json::from_str::<Value>(RUN).unwrap();
+        let wrapped = json!({"data": bare.clone()});
+        let prefixed = json!(format!("Run started:\n{RUN}"));
+        for (name, shape) in [
+            ("string", as_string),
+            ("content", content),
+            ("array", array),
+            ("object", bare),
+            ("data", wrapped),
+            ("prefixed", prefixed),
+        ] {
+            assert_eq!(parse_tool_run(&shape), Some(expected()), "{name}");
+        }
+    }
+
+    #[test]
+    fn camel_case_names_are_understood() {
+        let r = parse_tool_run(
+            &json!({"id": 3, "taskId": 7, "startedAt": "a", "endedAt": "b", "sessionId": "s"}),
+        )
+        .unwrap();
+        assert_eq!(r.task_id, Some(7));
+        assert_eq!(r.started_at.as_deref(), Some("a"));
+        assert_eq!(r.ended_at.as_deref(), Some("b"));
+        assert_eq!(r.session_id.as_deref(), Some("s"));
+    }
+
+    #[test]
+    fn garbage_and_errors_give_nothing() {
+        for bad in [
+            json!("not json"),
+            json!(42),
+            json!(null),
+            json!({"content": []}),
+            json!({"content": [{"type": "text", "text": "Agent work is disabled"}]}),
+            json!({"isError": true, "content": [{"type": "text", "text": RUN}]}),
+            json!({"status": "running"}),
+        ] {
+            assert_eq!(parse_tool_run(&bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn only_the_two_run_tools_of_mcp_servers_count() {
+        assert_eq!(
+            run_tool("mcp__tmgr__start_agent_work"),
+            Some(RunTool::Start)
+        );
+        assert_eq!(
+            run_tool("mcp__plugin_tmgr_tmgr__finish_agent_work"),
+            Some(RunTool::Finish)
+        );
+        assert_eq!(run_tool("mcp__tmgr__update_agent_work"), None);
+        assert_eq!(run_tool("start_agent_work"), None);
+        assert_eq!(run_tool("Bash"), None);
+    }
+
+    #[test]
+    fn main_and_subagent_session_ids_follow_the_contract() {
+        let main = json!({"session_id": "5f0c-uuid", "hook_event_name": "PostToolUse"});
+        assert_eq!(run_sessions(&main), Some(("5f0c-uuid".into(), None)));
+        let sub = json!({"session_id": "5f0c-uuid", "agent_id": "a1b2c3", "agent_type": "general"});
+        assert_eq!(
+            run_sessions(&sub),
+            Some(("5f0c-uuid/a1b2c3".into(), Some("5f0c-uuid".into())))
+        );
+        assert_eq!(run_sessions(&json!({"agent_id": "a"})), None);
+        assert_eq!(run_sessions(&json!({"session_id": ""})), None);
+        let long = json!({"session_id": "s".repeat(192)});
+        assert_eq!(run_sessions(&long), None);
+        let joined = json!({"session_id": "s".repeat(100), "agent_id": "a".repeat(100)});
+        assert_eq!(run_sessions(&joined), None);
+        let exact = json!({"session_id": "s".repeat(191)});
+        assert!(run_sessions(&exact).is_some());
+    }
+
+    #[test]
+    fn the_auto_upload_is_spawned_with_the_task_id_only_when_known() {
+        let calls = std::cell::RefCell::new(Vec::new());
+        let spawn = |a: &[String]| calls.borrow_mut().push(a.to_vec());
+        upload_after_finish(None, &spawn);
+        assert!(calls.borrow().is_empty());
+        upload_after_finish(Some(8974), &spawn);
+        assert_eq!(
+            calls.borrow().as_slice(),
+            [vec!["usage", "sync", "--auto", "--task-id", "8974", "-q"]]
+        );
     }
 }

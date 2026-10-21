@@ -18,8 +18,19 @@ pub struct RunView {
     pub pr_url: Option<String>,
     pub commits: Vec<String>,
     pub duration_s: Option<i64>,
+    pub started_at: Option<i64>,
+    pub ended_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct GitCommit {
+    pub sha: String,
+    pub message: String,
+    pub repo: Option<String>,
+    pub branch: Option<String>,
+}
+
+#[allow(clippy::large_enum_variant)]
 pub enum Outcome {
     Run(RunView),
     Disabled,
@@ -39,11 +50,21 @@ pub struct Progress {
     pub pr_url: Option<String>,
     pub commits: Option<Vec<String>>,
     pub tests: Option<Tests>,
+    pub session_id: Option<String>,
+    pub parent_session_id: Option<String>,
 }
+
+pub const SESSION_ID_MAX: usize = 191;
 
 impl Progress {
     pub fn body(&self) -> Value {
         let mut m = Map::new();
+        if let Some(s) = &self.session_id {
+            m.insert("session_id".into(), json!(clip(s, SESSION_ID_MAX)));
+        }
+        if let Some(s) = &self.parent_session_id {
+            m.insert("parent_session_id".into(), json!(clip(s, SESSION_ID_MAX)));
+        }
         if let Some(b) = &self.branch {
             m.insert("branch".into(), json!(clip(b, 255)));
         }
@@ -94,6 +115,16 @@ fn text(v: &Value, key: &str, max: usize) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+pub fn parse_ts(raw: &str) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(raw.trim())
+        .ok()
+        .map(|t| t.timestamp())
+}
+
+fn epoch(v: &Value, key: &str) -> Option<i64> {
+    v.get(key).and_then(Value::as_str).and_then(parse_ts)
+}
+
 pub fn parse_run(body: Value) -> Result<RunView> {
     let v = unwrap_data(body);
     let id = v
@@ -123,6 +154,8 @@ pub fn parse_run(body: Value) -> Result<RunView> {
         pr_url: text(&v, "pr_url", 512),
         commits,
         duration_s: v.get("duration_seconds").and_then(Value::as_i64),
+        started_at: epoch(&v, "started_at"),
+        ended_at: epoch(&v, "ended_at"),
     })
 }
 
@@ -206,6 +239,42 @@ pub fn update(client: &Client, run_id: u64, p: &Progress, refresh: bool) -> Resu
     finish_call(status, body)
 }
 
+pub fn git_commits_body(commits: &[GitCommit]) -> Value {
+    let list: Vec<Value> = commits
+        .iter()
+        .take(MAX_COMMITS)
+        .map(|c| {
+            let mut m = Map::new();
+            m.insert("sha".into(), json!(c.sha));
+            m.insert("message".into(), json!(clip(&c.message, 300)));
+            if let Some(r) = &c.repo {
+                m.insert("repo".into(), json!(clip(r, 255)));
+            }
+            if let Some(b) = &c.branch {
+                m.insert("branch".into(), json!(clip(b, 255)));
+            }
+            Value::Object(m)
+        })
+        .collect();
+    json!({ "commits": list })
+}
+
+pub fn add_git_commits(client: &Client, run_id: u64, commits: &[GitCommit]) -> Result<()> {
+    if commits.is_empty() {
+        return Ok(());
+    }
+    let (status, body) = client.call(
+        "POST",
+        &format!("/api/agent-work/{run_id}/commits"),
+        Some(&git_commits_body(commits)),
+        false,
+    )?;
+    if (200..300).contains(&status) || is_disabled(status, &body) {
+        return Ok(());
+    }
+    Err(map_error(status, &body, SCOPE))
+}
+
 pub fn finish(client: &Client, run_id: u64, run_status: &str, p: &Progress) -> Result<Outcome> {
     let mut body = p.body();
     if let Value::Object(m) = &mut body {
@@ -238,6 +307,7 @@ mod tests {
                 command: Some("cargo test".into()),
             }),
             summary: None,
+            ..Default::default()
         };
         assert_eq!(
             p.body(),
@@ -283,5 +353,59 @@ mod tests {
         assert!(matches!(finish_call(403, body).unwrap(), Outcome::Disabled));
         let scope = json!({"error": "insufficient_scope"});
         assert_eq!(finish_call(403, scope).err().unwrap().exit_code(), 5);
+    }
+
+    #[test]
+    fn session_ids_ride_on_the_update_body() {
+        let p = Progress {
+            session_id: Some("s1/a1".into()),
+            parent_session_id: Some("s1".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            p.body(),
+            json!({"session_id": "s1/a1", "parent_session_id": "s1"})
+        );
+    }
+
+    #[test]
+    fn run_views_carry_the_times_as_epoch_seconds() {
+        let v = parse_run(json!({
+            "id": 5, "started_at": "2026-10-21T10:00:00Z", "ended_at": "2026-10-21T12:05:00+02:00"
+        }))
+        .unwrap();
+        assert_eq!(v.started_at, Some(1_792_576_800));
+        assert_eq!(v.ended_at, Some(1_792_576_800 + 300));
+        assert_eq!(
+            parse_run(json!({"id": 5, "started_at": "soon"}))
+                .unwrap()
+                .started_at,
+            None
+        );
+    }
+
+    #[test]
+    fn git_commit_bodies_omit_unknown_repo_and_branch() {
+        let body = git_commits_body(&[
+            GitCommit {
+                sha: "a".repeat(40),
+                message: "feat: x".into(),
+                repo: Some("o/n".into()),
+                branch: None,
+            },
+            GitCommit {
+                sha: "b".repeat(40),
+                message: "fix".into(),
+                repo: None,
+                branch: Some("main".into()),
+            },
+        ]);
+        assert_eq!(
+            body,
+            json!({"commits": [
+                {"sha": "a".repeat(40), "message": "feat: x", "repo": "o/n"},
+                {"sha": "b".repeat(40), "message": "fix", "branch": "main"}
+            ]})
+        );
     }
 }

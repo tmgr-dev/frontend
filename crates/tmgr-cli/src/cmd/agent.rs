@@ -4,6 +4,7 @@ use crate::cli_agent::{
 use crate::ctx::{Ctx, RunClient};
 use crate::gitx::{self, Git};
 use crate::out::Output;
+use crate::runfinish;
 use serde_json::{json, Value};
 use std::time::Duration;
 use tmgr_core::agentwork::{self, Outcome, Progress, RunView, StartBody, Tests};
@@ -226,6 +227,7 @@ fn progress_of(
         pr_url: p.pr.clone(),
         commits: merged.clone(),
         tests: tests_of(p),
+        ..Default::default()
     };
     Ok((progress, merged))
 }
@@ -283,6 +285,25 @@ fn update(ctx: &Ctx, args: &AgentUpdateArgs) -> Result<Output> {
     }
 }
 
+fn after_finish(client: &tmgr_core::api::Client, view: &RunView, known: Option<&Run>) {
+    if let Some(task_id) = view.task_id.or(known.map(|r| r.task_id)) {
+        runfinish::spawn_detached(&runfinish::auto_upload_args(task_id));
+    }
+    let Some(git) = gitx::cwd_repo() else { return };
+    let Some(started) = view
+        .started_at
+        .or_else(|| known.and_then(|r| runfinish::parse_ts(&r.started_at)))
+    else {
+        return;
+    };
+    let ended = view.ended_at.unwrap_or_else(now_s);
+    let mut listed = view.commits.clone();
+    listed.extend(known.map(|r| r.commits.clone()).unwrap_or_default());
+    let query = |args: &[&str]| git.query(args);
+    let commits = runfinish::collect(&query, started, ended, &listed);
+    let _ = agentwork::add_git_commits(client, view.id, &commits);
+}
+
 fn finish(ctx: &Ctx, args: &AgentFinishArgs) -> Result<Output> {
     let (run_id, known) = find_run(ctx, args.run)?;
     let client = &*run_client(ctx, known.as_ref())?;
@@ -299,6 +320,7 @@ fn finish(ctx: &Ctx, args: &AgentFinishArgs) -> Result<Output> {
     match result? {
         Outcome::Disabled => Ok(disabled(ctx, task_id, key.as_deref())),
         Outcome::Run(view) => {
+            after_finish(client, &view, known.as_ref());
             let summary = truncate_chars(&sanitize_line(&view.status), 20).0;
             let human = format!("{} run {} {}", ctx.style.good("\u{2713}"), view.id, summary);
             Ok(Output::new(

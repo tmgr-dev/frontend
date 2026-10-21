@@ -8,6 +8,7 @@ mod gitx;
 mod interact;
 mod out;
 mod paths;
+mod runfinish;
 mod usage;
 
 use clap::error::ErrorKind;

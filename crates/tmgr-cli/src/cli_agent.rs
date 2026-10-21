@@ -134,7 +134,7 @@ pub struct AgentFinishArgs {
 pub enum HookCmd {
     /// Claude Code hook entry point (reads the hook JSON from stdin, always exits 0)
     Claude {
-        /// session-start, user-prompt-submit, notification, stop, subagent-stop, pre-tool-use or session-end
+        /// session-start, user-prompt-submit, notification, stop, subagent-stop, pre-tool-use, post-tool-use or session-end
         event: String,
         #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
         rest: Vec<String>,

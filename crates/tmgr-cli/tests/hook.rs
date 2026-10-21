@@ -427,3 +427,184 @@ async fn help_is_still_printed_for_the_hook_commands() {
     assert_eq!(out.status.code(), Some(0));
     assert!(text(&out.stdout).contains("Claude Code hook entry point"));
 }
+
+fn mcp_run_response(body: Value) -> Value {
+    json!({"content": [{"type": "text", "text": body.to_string()}]})
+}
+
+async fn mock_run_endpoints(env: &Env) {
+    for (verb, p) in [
+        ("PATCH", "/api/agent-work/77"),
+        ("POST", "/api/agent-work/77/commits"),
+    ] {
+        Mock::given(method(verb))
+            .and(path(p))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!({"id": 77, "status": "running"})),
+            )
+            .mount(&env.server)
+            .await;
+    }
+}
+
+fn post_tool_use(tool: &str, repo: &std::path::Path, response: Value, extra: Value) -> Vec<u8> {
+    let mut v = json!({
+        "session_id": "5f0c-sess", "cwd": repo.display().to_string(),
+        "hook_event_name": "PostToolUse", "tool_name": tool,
+        "tool_input": {}, "tool_response": response
+    });
+    for (k, val) in extra.as_object().cloned().unwrap_or_default() {
+        v[k] = val;
+    }
+    v.to_string().into_bytes()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn starting_a_run_in_the_main_session_binds_the_session_id() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_run_endpoints(&env).await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    let resp = mcp_run_response(json!({"id": 77, "task_id": 8974, "status": "running"}));
+    let input = post_tool_use("mcp__tmgr__start_agent_work", &repo, resp, json!({}));
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+    quiet(&out);
+    let patches = env.requests_to("/api/agent-work/77").await;
+    assert_eq!(patches.len(), 1, "stderr: {}", text(&out.stderr));
+    let body: Value = serde_json::from_slice(&patches[0].body).unwrap();
+    assert_eq!(body, json!({"session_id": "5f0c-sess"}));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn starting_a_run_in_a_subagent_binds_the_node_and_its_parent() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_run_endpoints(&env).await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    let resp = json!(json!({"id": 77, "task_id": 8974}).to_string());
+    let input = post_tool_use(
+        "mcp__plugin_tmgr_tmgr__start_agent_work",
+        &repo,
+        resp,
+        json!({"agent_id": "ag-12", "agent_type": "worker"}),
+    );
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+    quiet(&out);
+    let patches = env.requests_to("/api/agent-work/77").await;
+    let body: Value = serde_json::from_slice(&patches[0].body).unwrap();
+    assert_eq!(
+        body,
+        json!({"session_id": "5f0c-sess/ag-12", "parent_session_id": "5f0c-sess"})
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_conflict_unparseable_responses_and_other_tools_change_nothing() {
+    let env = Env::new().await;
+    env.login_seed();
+    Mock::given(method("PATCH"))
+        .and(path("/api/agent-work/77"))
+        .respond_with(ResponseTemplate::new(409).set_body_json(json!({"error": "conflict"})))
+        .mount(&env.server)
+        .await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    let ok = mcp_run_response(json!({"id": 77}));
+    let input = post_tool_use("mcp__tmgr__start_agent_work", &repo, ok, json!({}));
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+    quiet(&out);
+    let cases = [
+        (
+            "mcp__tmgr__start_agent_work",
+            json!("Agent work is disabled"),
+        ),
+        ("mcp__tmgr__start_agent_work", json!({"weird": [1, 2]})),
+        (
+            "mcp__tmgr__update_agent_work",
+            mcp_run_response(json!({"id": 77})),
+        ),
+        ("Bash", json!({"stdout": "{\"id\": 77}"})),
+    ];
+    for (tool, resp) in cases {
+        let input = post_tool_use(tool, &repo, resp, json!({}));
+        let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+        quiet(&out);
+    }
+    assert_eq!(env.requests_to("/api/agent-work/77").await.len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn finishing_a_run_posts_my_git_commits_from_the_run_interval() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_run_endpoints(&env).await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    git(&repo, &["config", "user.email", "me@example.com"]);
+    git(
+        &repo,
+        &["remote", "add", "origin", "git@github.com:acme/tool.git"],
+    );
+    let t0 = 1_800_000_000;
+    commit_at(&repo, "before", t0 - 3600, "me@example.com");
+    let reported = commit_at(&repo, "reported", t0 + 50, "me@example.com");
+    let main_one = commit_at(&repo, "mine-main", t0 + 100, "me@example.com");
+    commit_at(&repo, "someone-else", t0 + 120, "you@example.com");
+    git(&repo, &["checkout", "-q", "-b", "side"]);
+    let side_one = commit_at(&repo, "mine-side", t0 + 200, "me@example.com");
+    git(&repo, &["checkout", "-q", "main"]);
+    commit_at(&repo, "after", t0 + 5000, "me@example.com");
+    let started = chrono::DateTime::from_timestamp(t0, 0)
+        .unwrap()
+        .to_rfc3339();
+    let ended = chrono::DateTime::from_timestamp(t0 + 1000, 0)
+        .unwrap()
+        .to_rfc3339();
+    let resp = mcp_run_response(json!({
+        "id": 77, "task_id": 8974, "status": "succeeded", "started_at": started, "ended_at": ended,
+        "commits": [{"sha": &reported[..7], "message": "reported"}]
+    }));
+    let input = post_tool_use("mcp__tmgr__finish_agent_work", &repo, resp, json!({}));
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+    quiet(&out);
+    let posts = env.requests_to("/api/agent-work/77/commits").await;
+    assert_eq!(posts.len(), 1, "stderr: {}", text(&out.stderr));
+    let body: Value = serde_json::from_slice(&posts[0].body).unwrap();
+    let got: Vec<(&str, &str)> = body["commits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| (c["sha"].as_str().unwrap(), c["message"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            (main_one.as_str(), "mine-main"),
+            (side_one.as_str(), "mine-side")
+        ]
+    );
+    assert_eq!(body["commits"][0]["repo"], "acme/tool");
+    assert_eq!(body["commits"][0]["branch"], "main");
+    assert!(env.requests_to("/api/agent-work/77").await.is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn finishing_with_no_new_commits_or_no_times_posts_nothing() {
+    let env = Env::new().await;
+    env.login_seed();
+    mock_run_endpoints(&env).await;
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    git(&repo, &["config", "user.email", "me@example.com"]);
+    let no_times = mcp_run_response(json!({"id": 77, "task_id": 8974}));
+    let input = post_tool_use("mcp__tmgr__finish_agent_work", &repo, no_times, json!({}));
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+    quiet(&out);
+    let quiet_run = mcp_run_response(json!({
+        "id": 77, "started_at": "2026-10-21T10:00:00Z", "ended_at": "2026-10-21T10:30:00Z"
+    }));
+    let input = post_tool_use("mcp__tmgr__finish_agent_work", &repo, quiet_run, json!({}));
+    let (out, _) = hook_with_budget(&env, &["hook", "claude", "post-tool-use"], &input);
+    quiet(&out);
+    assert!(env
+        .requests_to("/api/agent-work/77/commits")
+        .await
+        .is_empty());
+}
