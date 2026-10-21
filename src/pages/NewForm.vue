@@ -2528,11 +2528,12 @@
 
 					<div
 						v-if="(taskId || form.id) && isFeatureEnabled('agent_work')"
-						class="mb-1 flex items-center"
+						class="mb-1 flex items-center empty:hidden"
 					>
 						<AgentStatusChip
 							:task-id="Number(taskId || form.id)"
 							:workspace-id="form.workspace_id"
+							hide-when-empty
 						/>
 					</div>
 
