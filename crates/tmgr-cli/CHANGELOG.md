@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.20
 
 - `tmgr attach` sidebar shows where each session works: the live folder of the agent process (it follows a `cd`) and the git branch, read from `.git/HEAD` without running git (worktrees and detached HEAD are handled; no branch outside a repo). Sessions in the same repo or worktree are grouped under a `▾ <path> · <branch>` header; a lone session gets a dim `path · branch` line under its name. Click the header, or focus it with the arrows and press Enter, to fold the group (a folded header shows the count, and turns yellow when a hidden session is blocked). Groups keep their order, so a session that changes folder never makes the list jump, and `Ctrl-] n` / `Ctrl-] p` follow the sidebar order and skip folded groups. `Ctrl-] g` switches grouping off and on (also in the command palette and `?`). The list refreshes every few seconds and only for the sessions that are visible. Not shown in a remote attach.
 
