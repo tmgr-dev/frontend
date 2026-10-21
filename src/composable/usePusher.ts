@@ -1,5 +1,6 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import type {
+	AgentCompactedEvent,
 	AgentConfirmationEvent,
 	AgentReplyEvent,
 	AgentStepEvent,
@@ -521,6 +522,13 @@ export function usePusher(): UsePusherReturn {
 				const sub = subscriptions.get(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentConfirmation?.(data));
+				}
+			});
+
+			channel.listen('.agent.compacted', (data: AgentCompactedEvent) => {
+				const sub = subscriptions.get(channelName);
+				if (sub) {
+					sub.handlers.forEach((h) => h.onAgentCompacted?.(data));
 				}
 			});
 

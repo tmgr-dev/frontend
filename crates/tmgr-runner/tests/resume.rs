@@ -601,11 +601,89 @@ fn a_replaced_folder_is_refused_and_nothing_is_lost() {
     h.stop(&s.id);
     fs::rename(&h.work, h.tmp.path().join("w-old")).unwrap();
     private_dir(&h.work);
-    let err = h.client().resume(&s.id, 80, 24).unwrap_err().to_string();
-    assert!(err.contains("approved folder changed"), "{err}");
-    assert!(h.state_of(&s.id).is_some());
-    assert!(h.homes.join(&s.id).is_dir());
+    assert_folder_changed(&h, &s.id);
+}
+
+fn assert_folder_changed(h: &H, id: &str) {
+    let err = h.client().resume(id, 80, 24).unwrap_err().to_string();
+    assert!(err.starts_with("forbidden"), "{err}");
+    assert!(
+        err.contains("the folder of this session changed since it started"),
+        "{err}"
+    );
+    assert!(h.state_of(id).is_some());
+    assert!(h.homes.join(id).is_dir());
     assert_eq!(h.client().list().unwrap().len(), 1);
+}
+
+fn drop_launch_record(h: &H, id: &str) {
+    fs::remove_file(h.sdir(id).join("relaunch.json")).unwrap();
+    restore::forget(&h.store(), id);
+}
+
+#[test]
+fn without_a_launch_record_a_replaced_folder_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let s = h.started();
+    h.stop(&s.id);
+    drop_launch_record(&h, &s.id);
+    fs::rename(&h.work, h.tmp.path().join("w-old")).unwrap();
+    private_dir(&h.work);
+    assert_folder_changed(&h, &s.id);
+}
+
+#[test]
+fn a_folder_swapped_for_a_symlink_is_refused_on_both_paths() {
+    if !sessions_available() {
+        return;
+    }
+    for record in [true, false] {
+        let mut h = H::full();
+        h.start();
+        let s = h.started();
+        h.stop(&s.id);
+        if !record {
+            drop_launch_record(&h, &s.id);
+        }
+        let other = h.tmp.path().join("other");
+        private_dir(&other);
+        fs::rename(&h.work, h.tmp.path().join("w-old")).unwrap();
+        std::os::unix::fs::symlink(&other, &h.work).unwrap();
+        assert_folder_changed(&h, &s.id);
+    }
+}
+
+#[test]
+fn a_recorded_folder_identity_that_does_not_match_is_refused() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let s = h.started();
+    h.stop(&s.id);
+    h.stop_runner();
+    let shim = fs::read_to_string(h.sdir(&s.id).join("shim.pid")).unwrap();
+    let shim: i32 = shim.trim().parse().unwrap();
+    unsafe { libc::kill(shim, libc::SIGKILL) };
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while unsafe { libc::kill(shim, 0) } == 0 {
+        assert!(Instant::now() < deadline, "shim {shim} still alive");
+        thread::sleep(Duration::from_millis(20));
+    }
+    drop_launch_record(&h, &s.id);
+    let path = h.sdir(&s.id).join("meta.json");
+    let mut meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    meta["cwd_id"] = serde_json::json!([1, 2]);
+    fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
+    h.start();
+    assert_folder_changed(&h, &s.id);
+    let meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(meta["cwd_id"], serde_json::json!([1, 2]));
 }
 
 #[test]

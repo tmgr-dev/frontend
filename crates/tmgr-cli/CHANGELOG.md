@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.24
+
+- `tmgr attach` counts your own time in each session and shows it in the sidebar as `you 12m`. Time counts only while the terminal window is focused, the session's pane is focused and you did something in the last 2 minutes (typing and reading are counted separately); it stops when the window loses focus, the Mac sleeps or you detach, and several attach windows on the same session never count twice. The runner stores only start and end times under its own folder, never what you type or see. Restart the runner after the update.
+- New `tmgr time` shows how long you spent in `tmgr attach`, per session, folder or task (`--by`), for today (`--today`) or since a date or age (`--since 2026-10-01`, `--since 7d`), with `--json`. It reads local files only, so it works with the runner stopped. Time of sessions bound to a cloud task is sent to that task by the attach client every few minutes and when you detach, only when the workspace has session time switched on, and never twice; it is sent again later if you were offline. `tmgr time sync off` keeps all time local, `tmgr time sync` shows the state, and `tmgr time idle <seconds>` (30 to 3600) sets how long without activity before time stops counting.
+
+## 1.0.23
+
+- Resume refuses an agent session whose folder was replaced by another directory or a symlink with `forbidden` "the folder of this session changed since it started", the same answer as for a shell session, both with and without a launch record. Before, the same case was refused later with `invalid_params` "approved folder changed".
+
 ## 1.0.22
 
 - Resume (the play button in `tmgr attach`) works for agent sessions started before the launch record existed: the launch is rebuilt from the session's own record using your current profile, and when that is impossible the error says what to do. When the agent shim dies at start, the error now carries its last log lines, including a clear `no free terminal (pty) available` note when the machine has run out of terminals.

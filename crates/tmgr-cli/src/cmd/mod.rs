@@ -30,6 +30,8 @@ pub mod shared;
 pub mod signer;
 pub mod status;
 pub mod task;
+#[cfg(feature = "runner")]
+pub mod time;
 pub mod timer;
 pub mod today;
 pub mod ui;

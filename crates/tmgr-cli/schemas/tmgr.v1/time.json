@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tmgr.dev/schemas/tmgr.v1/time.json",
+  "title": "tmgr.v1 attach time",
+  "type": "object",
+  "required": ["schema", "ok", "data", "warnings"],
+  "properties": {
+    "schema": { "const": "tmgr.v1" },
+    "ok": { "const": true },
+    "data": {
+      "type": "object",
+      "required": ["by", "since", "rows", "totals", "sync", "idle_s", "hint"],
+      "properties": {
+        "by": { "enum": ["session", "folder", "task"] },
+        "since": { "type": ["integer", "null"] },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "folder", "tasks", "sessions", "total_s", "typing_s", "reading_s", "state"],
+            "properties": {
+              "name": { "type": "string" },
+              "folder": { "type": "string" },
+              "tasks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["workspace_id", "task_id"],
+                  "properties": {
+                    "workspace_id": { "type": "integer" },
+                    "task_id": { "type": "integer" }
+                  }
+                }
+              },
+              "sessions": { "type": "integer" },
+              "total_s": { "type": "integer" },
+              "typing_s": { "type": "integer" },
+              "reading_s": { "type": "integer" },
+              "state": { "enum": ["pending", "skipped", "expired", "invalid", "local", "sent", "not bound"] }
+            }
+          }
+        },
+        "totals": {
+          "type": "object",
+          "required": ["total_s", "typing_s", "reading_s"],
+          "properties": {
+            "total_s": { "type": "integer" },
+            "typing_s": { "type": "integer" },
+            "reading_s": { "type": "integer" }
+          }
+        },
+        "sync": { "type": "boolean" },
+        "idle_s": { "type": "integer" },
+        "hint": { "type": ["string", "null"] }
+      }
+    },
+    "warnings": { "type": "array" }
+  }
+}

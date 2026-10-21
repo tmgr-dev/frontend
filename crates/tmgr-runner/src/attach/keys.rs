@@ -9,6 +9,7 @@ const PASTE_END: &[u8] = b"\x1b[201~";
 const MAX_HELD: usize = 32;
 const MAX_PREFIX_ESC: usize = 8;
 const HELD_FOR: Duration = Duration::from_millis(20);
+const CSI_EXTRA: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Cmd {
@@ -54,6 +55,8 @@ pub enum Action {
     Scroll(ScrollKey),
     Mouse(MouseEvent),
     Drop(Vec<u8>),
+    FocusIn,
+    FocusOut,
     Paste {
         data: Vec<u8>,
         start: bool,
@@ -69,6 +72,7 @@ pub struct InputSplitter {
     paste: Option<bool>,
     held: Vec<u8>,
     held_at: Option<Instant>,
+    extended: bool,
 }
 
 fn command(b: u8) -> Option<Cmd> {
@@ -119,6 +123,16 @@ impl InputSplitter {
                         flush(&mut run, &mut out);
                         out.push(Action::Mouse(ev));
                         i += used;
+                        continue;
+                    }
+                    Seq::Focus(on) => {
+                        flush(&mut run, &mut out);
+                        out.push(if on {
+                            Action::FocusIn
+                        } else {
+                            Action::FocusOut
+                        });
+                        i += 3;
                         continue;
                     }
                     Seq::Skip(used) => {
@@ -219,6 +233,7 @@ impl InputSplitter {
 
     fn hold(&mut self, rest: &[u8]) {
         self.held = rest.to_vec();
+        self.extended = false;
         self.held_at = (!rest.is_empty()).then(Instant::now);
     }
 
@@ -228,6 +243,11 @@ impl InputSplitter {
                 .held_at
                 .is_some_and(|t| now.saturating_duration_since(t) >= HELD_FOR);
         if !stale {
+            return Vec::new();
+        }
+        if !self.extended && self.held == b"\x1b[" && !self.prefix && !self.scroll {
+            self.extended = true;
+            self.held_at = Some(now + CSI_EXTRA);
             return Vec::new();
         }
         self.held_at = None;
@@ -367,6 +387,7 @@ fn prefix_esc(b: &[u8]) -> PrefixEsc {
 
 enum Seq {
     Mouse(MouseEvent, usize),
+    Focus(bool),
     Partial,
     Skip(usize),
     None,
@@ -378,6 +399,9 @@ fn mouse_at(b: &[u8]) -> Seq {
     }
     if b.len() < 3 {
         return Seq::None;
+    }
+    if b[1] == b'[' && (b[2] == b'I' || b[2] == b'O') {
+        return Seq::Focus(b[2] == b'I');
     }
     if b[1] == b'[' && b[2] == b'M' {
         return if b.len() >= 6 {

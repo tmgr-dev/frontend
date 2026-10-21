@@ -966,6 +966,7 @@ mod tests {
                     exit_code: None,
                 },
                 age: String::new(),
+                you: None,
                 esc: false,
                 resumed_from: None,
             }],

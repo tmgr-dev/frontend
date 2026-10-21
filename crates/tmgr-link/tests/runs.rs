@@ -94,6 +94,7 @@ fn info(id: &str, req: &RunCreateReq) -> SessionInfo {
         origin: req.origin.clone(),
         permission_mode: None,
         resumed_from: None,
+        human_s: None,
     }
 }
 

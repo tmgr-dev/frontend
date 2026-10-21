@@ -1,6 +1,7 @@
 import type { PresignedUpload } from '@/actions/tmgr/files';
 import $axios from '@/plugins/axios';
 import type {
+	AgentCompaction,
 	AgentContext,
 	AgentConversation,
 	AgentConversationItem,
@@ -31,13 +32,32 @@ export const startNewConversation = async (
 	return data;
 };
 
+export const getAgentMessagesWithCompactions = async (
+	conversationId: number,
+): Promise<{ messages: AgentMessage[]; compactions: AgentCompaction[] }> => {
+	const {
+		data: { data, compactions },
+	} = await $axios.get(`/agent/conversations/${conversationId}/messages`);
+	return {
+		messages: (data as AgentMessage[]).map(normalizeAgentMessage),
+		compactions: compactions ?? [],
+	};
+};
+
 export const getAgentMessages = async (
 	conversationId: number,
 ): Promise<AgentMessage[]> => {
+	const { messages } = await getAgentMessagesWithCompactions(conversationId);
+	return messages;
+};
+
+export const compactConversation = async (
+	conversationId: number,
+): Promise<AgentCompaction> => {
 	const {
 		data: { data },
-	} = await $axios.get(`/agent/conversations/${conversationId}/messages`);
-	return (data as AgentMessage[]).map(normalizeAgentMessage);
+	} = await $axios.post(`/agent/conversations/${conversationId}/compact`);
+	return data;
 };
 
 export type ActionDecision = 'confirm' | 'cancel';

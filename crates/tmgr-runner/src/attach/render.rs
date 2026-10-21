@@ -233,7 +233,14 @@ fn draw_session_row(
         let name_x = area.x + 3 + off;
         let avail = usize::from(area.right().saturating_sub(name_x + 1));
         let keep = label.width().min(MIN_NAME_W) + 1;
-        let age = age_label(state_label(row), &row.age, avail.saturating_sub(keep));
+        let room = avail.saturating_sub(keep);
+        let age = match row.you.and_then(you_label) {
+            Some(you) if room >= you.width() + 1 + row.age.width() => {
+                let rest = room - you.width() - 1;
+                format!("{you} {}", age_label(state_label(row), &row.age, rest))
+            }
+            _ => age_label(state_label(row), &row.age, room),
+        };
         let age_w = age.width() as u16;
         let age_x = area.right().saturating_sub(age_w + 1).max(name_x);
         let name_w = age_x.saturating_sub(name_x).saturating_sub(1);
@@ -258,6 +265,16 @@ fn draw_session_row(
             Style::new().add_modifier(Modifier::REVERSED),
         );
     }
+}
+
+pub(crate) fn you_label(secs: u64) -> Option<String> {
+    let mins = secs / 60;
+    Some(match mins {
+        0 => return None,
+        1..=59 => format!("you {mins}m"),
+        _ if mins.is_multiple_of(60) => format!("you {}h", mins / 60),
+        _ => format!("you {}h {}m", mins / 60, mins % 60),
+    })
 }
 
 fn draw_group_header(

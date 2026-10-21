@@ -4,6 +4,7 @@ import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 // Dashboard TypeScript interfaces and types
 
 import type {
+	AgentCompactedEvent,
 	AgentConfirmationEvent,
 	AgentReplyEvent,
 	AgentStepEvent,
@@ -815,6 +816,7 @@ export interface EventHandlers {
 	onAgentStep?: (e: AgentStepEvent) => void;
 	onAgentReply?: (e: AgentReplyEvent) => void;
 	onAgentConfirmation?: (e: AgentConfirmationEvent) => void;
+	onAgentCompacted?: (e: AgentCompactedEvent) => void;
 	onPageEvent?: (type: PageEventType, payload: PageEventPayload) => void;
 	onError?: (error: ActionError) => void;
 	onReconnect?: () => void;

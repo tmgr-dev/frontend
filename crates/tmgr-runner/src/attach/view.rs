@@ -22,6 +22,7 @@ pub struct SessionRow {
     pub name: String,
     pub state: State,
     pub age: String,
+    pub you: Option<u64>,
     pub esc: bool,
     pub resumed_from: Option<String>,
 }

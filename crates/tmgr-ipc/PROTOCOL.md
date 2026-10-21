@@ -118,12 +118,13 @@ Both sides must finish within 5 seconds. A refusal is
 | `argv_pin.v1` | `argv_sha256` on `runs.create` (section 5, "Pinned executable") |
 | `trusted_folders.v1` | `trust.list`, `trust.add`, `trust.remove` (section 5, "Trusted folders") |
 | `trust_via_repo.v1` | `trust_via_repo` on `runs.create` (section 5, "Trusted folders") |
+| `human_time.v1` | `attention` stream message; `human_s` on `SessionInfo` (section 7, "Human time") |
 | `autopilot.v1` | `autopilot.start`, `autopilot.status`, `autopilot.control`, `autopilot.log`; `reason` on `sessions.kill` (section 5, "Autopilot") |
 
 ## 5. Messages after the handshake
 
 Client to server (JSON, `type` tag): `request`, `resize`, `scroll`, `focus`,
-`detach`. Server to client: `response`, `screen`, `event`, `closed`.
+`attention`, `detach`. Server to client: `response`, `screen`, `event`, `closed`.
 
 Example: `{"type":"response","id":8,"err":{"code":"unknown_profile","message":"..."}}`.
 
@@ -184,7 +185,7 @@ protected path); `name` is 1 to 64 printable characters; `cols`/`rows` are
 clamped to 1..500 and 1..200.
 
 `SessionInfo`: `{id, name, argv, cwd, profile: str|null, state, created_ms,
-cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?}`. `task`, `bundle_sha256`, `origin` and `resumed_from` are absent when not set. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
+cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?, human_s?}`. `task`, `bundle_sha256`, `origin`, `resumed_from` and `human_s` are absent when not set. `human_s` (cap `human_time.v1`, `sessions.list` only) is the human seconds counted for the session, closed chunks plus the open one; absent when 0. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
 
 `TaskRef`: `{workspace_id: i64, task_id: i64}`. Local workspaces have negative
 ids. The runner treats it as opaque, stores it in the session's `meta.json` (it
@@ -251,8 +252,12 @@ from its own `meta.json`: the profile is looked up in the runner's current profi
 `argv` is never run), and the recorded folder identity, permission mode, name and task binding are
 reused; nothing comes from the client. The 7-day limit counts from the original start. When that is impossible (no recorded folder, or a
 bundled, multi-repository or keyed run) the answer is `not_found` saying to start it again with
-`tmgr run`; a profile that is no longer configured is `unknown_profile` and a folder that is gone or
-replaced is `invalid_params` or `forbidden`, as for a normal run. A shim that dies at start returns `internal` with the last
+`tmgr run`; a profile that is no longer configured is `unknown_profile`. On both paths (launch record
+or `meta.json`) the folder path is resolved and its identity (dev, inode) compared with the recorded one
+before anything starts: a folder that is gone is `invalid_params`, a folder replaced by another
+directory or a symlink to one is `forbidden` "the folder of this session changed since it started".
+While an exited session's shim is still alive, the runner takes the folder identity the shim reports on
+adoption, not the stored one. A shim that dies at start returns `internal` with the last
 lines of its own log. Any other session
 (a shell or `--agent-cmd`) is rebuilt from its own metadata and run again; its folder must
 still be the same directory (identity compared), otherwise `forbidden`.
@@ -649,6 +654,7 @@ otherwise they are ignored):
 | `{"type":"resize","session":id,"cols":n,"rows":n}` | resizes the PTY; the latest viewer to resize or type owns the size |
 | `{"type":"scroll","session":id,"offset":n}` | scrollback offset in lines from the bottom; the next pushes show that view |
 | `{"type":"focus","session":id}` | reserved, no effect yet |
+| `{"type":"attention","session":id\|null,"window":bool}` | cap `human_time.v1`; the viewer is present now, its focused pane is `session` (null: none) and its terminal window is focused when `window` (default true); `session` may be omitted; ignored unless `client` is `cli`; it is also an activity ping (see "Human time") |
 | `{"type":"detach"}` | the runner closes the connection |
 
 Input is the binary frame with tag 3 (section 2); it is accepted for any
@@ -658,6 +664,44 @@ The runner may send `{"type":"closed","reason":"..."}` and then close
 (`client too slow`, `bad message`, `input frame too large`,
 `unexpected binary frame`). A client that does not read for about 10 seconds or
 lets 256 messages pile up is dropped.
+
+### Human time
+
+Cap `human_time.v1`. The runner measures how long a person actually watches or
+types into each session. A client sends `attention` only when the welcome caps
+contain the cap (older runners close the connection on an unknown message). It
+sends one right after `attach.open`, on every pane focus change, on terminal
+window focus in or out, and as a heartbeat (at most once per 5 s) on any user
+action that is not input forwarded to a session. `attention` is the only
+message that is not tied to the watched list.
+
+Rules:
+
+- A connection counts only if `hello.client` is `cli` and it has sent at least
+  one `attention`. `sessions.send`, other clients and silent connections never count.
+- A session is active while some counting connection has it focused, its
+  window focused, and its last activity (an `attention`, an input frame to the
+  focused session, or a `scroll`) is less than the idle limit ago (default
+  120 s, 30 to 3600). Several connections on one session count once.
+- Active time is typing for 10 s after an input frame, otherwise reading.
+- Time is cut into chunks of at most 60 s. A chunk ends when the session stops
+  being active, at 60 s, and when the runner stops. A computer sleep is not
+  counted. Chunks under one counted second are dropped.
+
+Files, under `<runner dir>/time/` (directory 0700, files 0600). On Linux, when
+the runner dir is the default `$XDG_RUNTIME_DIR/tmgr` (no `TMGR_RUNNER_DIR`),
+that is a tmpfs wiped at logout, so the files live in
+`$XDG_STATE_HOME/tmgr/time` (default `~/.local/state/tmgr/time`) instead:
+
+| file | writer | content |
+|---|---|---|
+| `intervals.jsonl` | runner | one object per closed chunk: `id` (`<session>-<start_s>`), `session`, `name`, `cwd`, `task?`, `start_s`, `end_s`, `typing_s`, `reading_s`; records older than 45 days are removed at runner start |
+| `settings.json` | CLI | `{"sync":bool,"idle_s":n}`, read by the runner at most every 5 s |
+| `sent.jsonl`, `send.json`, `send.lock` | CLI | upload bookkeeping |
+
+`name`, `cwd` and `task` are copied when the chunk opens. Keystrokes, input
+bytes and screen content are never recorded. The runner never sends anything to
+a server; the CLI uploads the records.
 
 ### Snapshot JSON
 
