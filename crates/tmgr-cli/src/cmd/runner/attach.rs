@@ -197,6 +197,7 @@ struct App {
     notice_until: Option<Instant>,
     probe_tx: SyncSender<Vec<ProbeJob>>,
     probe_pending: bool,
+    tried: HashSet<String>,
     last_probe: Instant,
 }
 
@@ -287,7 +288,10 @@ impl App {
     }
 
     fn probe_places(&mut self) {
-        if self.probe_pending || !self.view.sidebar_shown() {
+        if self.probe_pending
+            || self.last_probe.elapsed() < PROBE_RETRY
+            || !self.view.sidebar_shown()
+        {
             return;
         }
         let jobs: Vec<ProbeJob> = self
@@ -305,12 +309,15 @@ impl App {
                 Some((id, pid, start))
             })
             .collect();
-        let missing = jobs.iter().any(|(id, ..)| !self.view.locs.contains_key(id));
+        let missing = jobs
+            .iter()
+            .any(|(id, ..)| !self.view.locs.contains_key(id) && !self.tried.contains(id));
         let every = if missing { PROBE_RETRY } else { PROBE_EVERY };
         if jobs.is_empty() || self.last_probe.elapsed() < every {
             return;
         }
         self.last_probe = Instant::now();
+        self.tried.extend(jobs.iter().map(|(id, ..)| id.clone()));
         self.probe_pending = self.probe_tx.try_send(jobs).is_ok();
     }
 
@@ -1370,6 +1377,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         notice_until: None,
         probe_tx,
         probe_pending: false,
+        tried: HashSet::new(),
         last_probe: Instant::now(),
     };
     let exit = event_loop(&mut app, &rx, &mut terminal);

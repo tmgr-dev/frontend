@@ -1,5 +1,5 @@
-use std::fs::File;
 use std::io::Read;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -54,8 +54,14 @@ fn head_path(dot_git: &Path) -> Option<PathBuf> {
 }
 
 fn read_capped(path: &Path) -> Option<String> {
+    if !std::fs::metadata(path).ok()?.is_file() {
+        return None;
+    }
     let mut buf = Vec::new();
-    File::open(path)
+    std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
         .ok()?
         .take(HEAD_CAP)
         .read_to_end(&mut buf)
