@@ -11,7 +11,6 @@
 	} from '@/utils/desktop';
 
 	import { logout as logoutAction } from '@/actions/tmgr/auth.ts';
-	import type { PageSummary } from '@/actions/tmgr/pages';
 	import {
 		getUser,
 		getUserSettings,
@@ -89,7 +88,7 @@
 	import HelpMenu from '@/tours/ui/HelpMenu.vue';
 	import { useTours } from '@/tours/useTours';
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
-	import { pagesAvailable, pageUrl } from '@/utils/pagesTree';
+	import { pagesAvailable } from '@/utils/pagesTree';
 	import { requestCache } from '@/utils/requestCache';
 	import { useMediaQuery } from '@vueuse/core';
 	import {
@@ -102,7 +101,6 @@
 		ClipboardListIcon,
 		CloudUpload,
 		FileDown,
-		FilePlus,
 		FolderOpen,
 		Gauge,
 		HardDrive,
@@ -113,7 +111,6 @@
 		Package,
 		PackageOpen,
 		PaperclipIcon,
-		Pin,
 		Plug,
 		Plus,
 		Settings2,
@@ -157,7 +154,6 @@
 	const showAskAi = computed(
 		() => !isDesktop && !isLocalOnly.value && isFeatureEnabled('ai.assistant'),
 	);
-	const pinnedPages = ref<PageSummary[]>([]);
 	const NAV_ACTIVE =
 		'[&.router-link-active]:bg-sidebar-primary/10 [&.router-link-active]:font-medium dark:[&.router-link-active]:bg-sidebar-primary/15 [&.router-link-active>svg]:text-sidebar-primary';
 	const showWindowControls = isDesktop && !hasNativeTitleBar();
@@ -755,57 +751,10 @@
 								:pages-enabled="pagesEnabled"
 							/>
 						</SidebarMenuItem>
-						<SidebarMenuItem
-							class="grid gap-2 group-data-[collapsible=icon]:grid-cols-1 group-data-[collapsible=icon]:gap-1"
-							:class="showAskAi ? 'grid-cols-2' : 'grid-cols-1'"
-						>
-							<SidebarMenuButton
-								variant="outline"
-								tooltip="New task"
-								data-tour="nav.create-task"
-								class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
-								@click="store.commit('setShowCreatingTaskModal')"
-							>
-								<FilePlus />
-								<span>New task</span>
-							</SidebarMenuButton>
-							<SidebarMenuButton
-								v-if="showAskAi"
-								variant="outline"
-								tooltip="Ask AI"
-								data-tour="nav.ask-ai"
-								:is-active="!!store.state.aiPanelOpen"
-								class="h-auto flex-col gap-1 py-2 text-xs group-data-[collapsible=icon]:flex-row"
-								@click="store.commit('toggleAiPanel')"
-							>
-								<Sparkles />
-								<span>Ask AI</span>
-							</SidebarMenuButton>
-						</SidebarMenuItem>
 					</SidebarMenu>
 				</SidebarHeader>
 
 				<SidebarContent>
-					<SidebarGroup
-						v-if="pagesEnabled && pinnedPages.length && activeWorkspace?.code"
-						data-testid="sidebar-pinned"
-					>
-						<SidebarGroupLabel>Pinned</SidebarGroupLabel>
-						<SidebarMenu>
-							<SidebarMenuItem v-for="page in pinnedPages" :key="page.id">
-								<SidebarMenuButton as-child :tooltip="page.title">
-									<router-link
-										:to="pageUrl(activeWorkspace.code, page.slug)"
-										:class="NAV_ACTIVE"
-									>
-										<Pin />
-										<span>{{ page.title }}</span>
-									</router-link>
-								</SidebarMenuButton>
-							</SidebarMenuItem>
-						</SidebarMenu>
-					</SidebarGroup>
-
 					<SidebarGroup>
 						<SidebarGroupLabel>Main</SidebarGroupLabel>
 
@@ -922,7 +871,6 @@
 						v-if="pagesEnabled && activeWorkspace?.code"
 						:workspace-id="Number(activeWorkspace.id)"
 						:workspace-code="activeWorkspace.code"
-						@pinned="pinnedPages = $event"
 					/>
 
 					<SidebarGroup>
@@ -1206,8 +1154,9 @@
 							</button>
 						</div>
 						<AddTaskModalTrigger
-							v-if="isMobile"
 							class="-ml-1"
+							aria-label="New task"
+							title="New task"
 							data-tour="nav.create-task"
 						/>
 						<GlobalSearch
@@ -1260,7 +1209,7 @@
 						></div>
 						<div data-tauri-drag-region class="flex items-center gap-2">
 							<button
-								v-if="isMobile && showAskAi"
+								v-if="showAskAi"
 								class="flex h-8 w-8 items-center justify-center rounded-pill text-ink-subtle transition hover:bg-surface-hover hover:text-ink"
 								:class="{
 									'bg-surface-hover text-ink': store.state.aiPanelOpen,

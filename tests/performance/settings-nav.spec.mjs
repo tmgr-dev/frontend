@@ -277,7 +277,7 @@ test.describe('desktop web', () => {
     await expectActive(page, 'device');
   });
 
-  test('the sidebar keeps every nav item, with search and quick actions on top', async ({
+  test('the sidebar keeps every nav item and search; New task and Ask AI sit in the header', async ({
     page,
   }) => {
     await webApp(page);
@@ -321,9 +321,14 @@ test.describe('desktop web', () => {
       await expect(page.locator(`[data-tour="${anchor}"]`), anchor).toHaveCount(
         1,
       );
-    await expect(
-      page.getByRole('button', { name: 'Open Add Task Modal' }),
-    ).toHaveCount(0);
+    const header = page.locator('header').first();
+    await expect(header.locator('[data-tour="nav.create-task"]')).toBeVisible();
+    await expect(header.locator('[data-tour="nav.ask-ai"]')).toBeVisible();
+    for (const name of ['New task', 'Ask AI'])
+      await expect(
+        bar.getByRole('button', { name, exact: true }),
+        name,
+      ).toHaveCount(0);
     await expect(
       page.locator('button[aria-label="Search"]'),
       'one search entry point (the sidebar field)',
@@ -335,7 +340,7 @@ test.describe('desktop web', () => {
       bar.getByRole('link', { name: 'Archive', exact: true }),
     ).toHaveClass(/router-link-active/);
 
-    await bar.getByRole('button', { name: 'New task', exact: true }).click();
+    await header.getByRole('button', { name: 'New task', exact: true }).click();
     await expect(page.getByPlaceholder('Task name')).toBeVisible();
     await page.keyboard.press('Escape');
 
@@ -343,11 +348,11 @@ test.describe('desktop web', () => {
     await expect(page.getByRole('dialog', { name: 'Search' })).toBeVisible();
     await page.keyboard.press('Escape');
 
-    await bar.getByRole('button', { name: 'Ask AI', exact: true }).click();
+    await header.getByRole('button', { name: 'Ask AI', exact: true }).click();
     await expect(page.locator('[aria-label="AI assistant"]')).toBeVisible();
   });
 
-  test('pinned pages get their own group at the top of the sidebar', async ({
+  test('pinned pages lead the Pages section instead of a group of their own', async ({
     page,
   }) => {
     await webApp(page, {
@@ -357,13 +362,17 @@ test.describe('desktop web', () => {
       ],
     });
     await page.goto('/demo/board');
-    const pinned = page.getByTestId('sidebar-pinned');
-    await expect(pinned).toBeVisible();
-    await expect(pinned.getByRole('link')).toHaveText(['Roadmap']);
+    const pages = page.getByTestId('pages-sidebar-section');
+    await expect(pages.locator('[data-page-id]')).toHaveCount(2);
+    await expect(pages.locator('[data-page-id] a')).toHaveText([
+      'Roadmap',
+      'Scratch',
+    ]);
+    await expect(page.getByTestId('sidebar-pinned')).toHaveCount(0);
     await expect(
       sidebar(page).locator('[data-sidebar="group-label"]').first(),
-    ).toHaveText('Pinned');
-    await pinned.getByRole('link', { name: 'Roadmap' }).click();
+    ).toHaveText('Main');
+    await pages.getByRole('link', { name: 'Roadmap' }).click();
     await expect(page).toHaveURL(/\/demo\/pages\/roadmap$/);
   });
 
@@ -379,9 +388,10 @@ test.describe('desktop web', () => {
       sidebar(page).getByRole('link', { name: 'Board', exact: true }),
     ).toBeVisible();
     await expect(page.getByTestId('sidebar-pinned')).toHaveCount(0);
+    await expect(page.getByTestId('pages-sidebar-section')).toHaveCount(0);
   });
 
-  test('the collapsed icon sidebar keeps labelled quick actions with tooltips', async ({
+  test('the collapsed icon sidebar keeps a labelled search with a tooltip', async ({
     page,
   }) => {
     await webApp(page);
@@ -393,18 +403,23 @@ test.describe('desktop web', () => {
     await expect(
       page.locator('[data-state="collapsed"][data-collapsible="icon"]'),
     ).toHaveCount(1);
-    for (const name of ['Search', 'New task', 'Ask AI'])
+    await expect(
+      sidebar(page).getByRole('button', { name: 'Search', exact: true }),
+    ).toBeVisible();
+    for (const name of ['New task', 'Ask AI'])
       await expect(
         sidebar(page).getByRole('button', { name, exact: true }),
         name,
-      ).toBeVisible();
-    await page.getByRole('button', { name: 'New task', exact: true }).hover();
-    await expect(page.getByRole('tooltip', { name: 'New task' })).toBeVisible();
+      ).toHaveCount(0);
+    await sidebar(page)
+      .getByRole('button', { name: 'Search', exact: true })
+      .hover();
+    await expect(page.getByRole('tooltip', { name: 'Search' })).toBeVisible();
   });
 
   // D-012: the settings nav column needs >= 1280px; narrower windows use the
   // list -> section -> back flow. The sidebar/header switch stays at 768px.
-  test('1280px gets the settings nav column, 1279px the back link; header buttons switch at 768px', async ({
+  test('1280px gets the settings nav column, 1279px the back link; search moves to the header at 768px', async ({
     page,
   }) => {
     await webApp(page);
@@ -421,15 +436,15 @@ test.describe('desktop web', () => {
       await expect(settingsNav(page)).toHaveCount(0);
       await expect(page.getByTestId('sidebar-quick-actions')).toBeVisible();
       await expect(
-        page.getByRole('button', { name: 'Open Add Task Modal' }),
-      ).toHaveCount(0);
+        page.getByRole('button', { name: 'New task', exact: true }),
+      ).toBeVisible();
     }
 
     await page.setViewportSize({ width: 768, height: 800 });
     await expect(page.getByTestId('settings-back')).toBeVisible();
     await expect(page.getByTestId('sidebar-quick-actions')).toHaveCount(0);
     await expect(
-      page.getByRole('button', { name: 'Open Add Task Modal' }),
+      page.getByRole('button', { name: 'New task', exact: true }),
     ).toBeVisible();
 
     await page.setViewportSize({ width: 1024, height: 800 });
@@ -545,7 +560,7 @@ test.describe('phone', () => {
       header.getByRole('button', { name: 'Search', exact: true }),
     ).toBeVisible();
     await expect(
-      header.getByRole('button', { name: 'Open Add Task Modal' }),
+      header.getByRole('button', { name: 'New task', exact: true }),
     ).toBeVisible();
     await expect(
       header.getByRole('button', { name: 'Ask AI', exact: true }),
