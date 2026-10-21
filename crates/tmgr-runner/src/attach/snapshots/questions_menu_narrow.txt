@@ -11,7 +11,7 @@
 │ ▸ Should I also gate it behind the feature flag?    12m  │
 │   Which currency should the button default to?       2h  │
 │                                                          │
-│ a answer · c context · i ignore · Tab list               │
+│ a answer · g go to · f fork · c context · i ignore       │
 ╰──────────────────────────────────────────────────────────╯
 │                                                          │
 │                                                          │

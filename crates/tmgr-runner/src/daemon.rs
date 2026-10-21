@@ -4268,6 +4268,60 @@ fn cap_text(lines: &mut Vec<String>, max: usize) {
     lines.drain(..drop);
 }
 
+const FORK_COPY_CAP: u64 = 512 * 1024 * 1024;
+
+fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    let plain = rel
+        .components()
+        .all(|c| matches!(c, std::path::Component::Normal(_)));
+    if !plain || rel.as_os_str().is_empty() {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad path"));
+    }
+    let mut src = from_home.to_path_buf();
+    let mut dst = to_home.to_path_buf();
+    let parts: Vec<_> = rel.components().collect();
+    for part in &parts[..parts.len() - 1] {
+        src.push(part);
+        dst.push(part);
+        if fs::symlink_metadata(&src)?.file_type().is_symlink() {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "symlink"));
+        }
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&dst)
+            .or_else(|e| {
+                if e.kind() == io::ErrorKind::AlreadyExists {
+                    Ok(())
+                } else {
+                    Err(e)
+                }
+            })?;
+    }
+    let name = parts[parts.len() - 1];
+    src.push(name);
+    dst.push(name);
+    let mut input = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&src)?;
+    let meta = input.metadata()?;
+    if !meta.is_file() || meta.len() > FORK_COPY_CAP {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "not a regular file or too large",
+        ));
+    }
+    let mut out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+        .open(&dst)?;
+    io::copy(&mut io::Read::take(&mut input, FORK_COPY_CAP), &mut out)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4543,58 +4597,4 @@ mod tests {
         assert!(stalled.try_recv().is_err());
         assert_eq!(lock(&hub.subs).len(), 1);
     }
-}
-
-const FORK_COPY_CAP: u64 = 512 * 1024 * 1024;
-
-fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-    let plain = rel
-        .components()
-        .all(|c| matches!(c, std::path::Component::Normal(_)));
-    if !plain || rel.as_os_str().is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad path"));
-    }
-    let mut src = from_home.to_path_buf();
-    let mut dst = to_home.to_path_buf();
-    let parts: Vec<_> = rel.components().collect();
-    for part in &parts[..parts.len() - 1] {
-        src.push(part);
-        dst.push(part);
-        if fs::symlink_metadata(&src)?.file_type().is_symlink() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "symlink"));
-        }
-        fs::DirBuilder::new()
-            .mode(0o700)
-            .create(&dst)
-            .or_else(|e| {
-                if e.kind() == io::ErrorKind::AlreadyExists {
-                    Ok(())
-                } else {
-                    Err(e)
-                }
-            })?;
-    }
-    let name = parts[parts.len() - 1];
-    src.push(name);
-    dst.push(name);
-    let mut input = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(&src)?;
-    let meta = input.metadata()?;
-    if !meta.is_file() || meta.len() > FORK_COPY_CAP {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "not a regular file or too large",
-        ));
-    }
-    let mut out = fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(&dst)?;
-    io::copy(&mut io::Read::take(&mut input, FORK_COPY_CAP), &mut out)?;
-    Ok(())
 }
