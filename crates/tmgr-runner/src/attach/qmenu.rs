@@ -12,10 +12,12 @@ use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-const MAX_WIDTH: u16 = 76;
+const MAX_WIDTH: u16 = 92;
 const MAX_ROWS: usize = 6;
 const MAX_CONTEXT: usize = 9;
 const BUTTONS_MIN: u16 = 58;
+const WIDE_BUTTONS_MIN: u16 = 80;
+const MARK_MAX_ROWS: usize = 8;
 const MAX_ENTRIES: usize = 400;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -28,6 +30,8 @@ pub struct QMenu {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QButton {
+    Goto,
+    Fork,
     Context,
     Answer,
     Ignore,
@@ -36,6 +40,8 @@ pub enum QButton {
 impl QButton {
     fn label(self, ignored: bool) -> &'static str {
         match (self, ignored) {
+            (QButton::Goto, _) => "Go to",
+            (QButton::Fork, _) => "Fork",
             (QButton::Context, _) => "Context",
             (QButton::Answer, _) => "Answer",
             (QButton::Ignore, false) => "Ignore",
@@ -45,9 +51,69 @@ impl QButton {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GotoMark {
+    pub session: String,
+    pub bottom: usize,
+    pub rows: usize,
+}
+
+pub fn find_question(lines: &[String], question: &str) -> Option<(usize, usize)> {
+    let norm = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase()
+    };
+    let mut hay = String::new();
+    let mut starts = Vec::with_capacity(lines.len());
+    for line in lines {
+        starts.push(hay.len());
+        hay.push_str(&norm(line));
+        hay.push(' ');
+    }
+    let needle = norm(question);
+    if needle.is_empty() {
+        return None;
+    }
+    let chars: Vec<char> = needle.chars().collect();
+    let head: String = chars.iter().take(40).collect();
+    let tail: String = chars[chars.len().saturating_sub(40)..].iter().collect();
+    let at = [needle.clone(), head, tail].into_iter().find_map(|n| {
+        let s = hay.rfind(&n)?;
+        Some((s, s + n.len()))
+    })?;
+    let line = |b: usize| starts.partition_point(|&s| s <= b).saturating_sub(1);
+    Some((line(at.0), line(at.1.saturating_sub(1))))
+}
+
+pub fn goto_target(
+    len: usize,
+    screen_rows: usize,
+    scroll_max: usize,
+    (first, last): (usize, usize),
+    session: &str,
+) -> (usize, GotoMark) {
+    let rows = (last + 1 - first).min(MARK_MAX_ROWS);
+    let first = last + 1 - rows;
+    let start = first.saturating_sub(1);
+    let offset = len
+        .saturating_sub(screen_rows)
+        .saturating_sub(start)
+        .min(scroll_max);
+    let mark = GotoMark {
+        session: session.to_string(),
+        bottom: len.saturating_sub(1).saturating_sub(last),
+        rows,
+    };
+    (offset, mark)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QEdit {
     Editing,
     Answer(String),
+    Goto(String),
+    Fork(String),
     Ignore(String),
     Restore(String),
     Close,
@@ -222,6 +288,20 @@ impl ViewState {
         self.questions.iter().find(|e| e.q.id == id)
     }
 
+    pub fn show_context(&mut self, session: &str, id: &str) {
+        if !self.open_questions(Some(session.to_string())) {
+            return;
+        }
+        let Some(menu) = self.qmenu.clone() else {
+            return;
+        };
+        let at = self.qmenu_rows(&menu).iter().position(|e| e.q.id == id);
+        if let (Some(at), Some(m)) = (at, self.qmenu.as_mut()) {
+            m.sel = at;
+            m.context = true;
+        }
+    }
+
     pub fn open_questions(&mut self, scope: Option<String>) -> bool {
         let known = |e: &&Entry| self.question_known(&e.q.session);
         let has = self
@@ -317,6 +397,14 @@ impl ViewState {
                 self.qmenu = None;
                 QEdit::Answer(id)
             }
+            QButton::Goto => {
+                self.qmenu = None;
+                QEdit::Goto(id)
+            }
+            QButton::Fork => {
+                self.qmenu = None;
+                QEdit::Fork(id)
+            }
             QButton::Ignore if ignored => QEdit::Restore(id),
             QButton::Ignore => QEdit::Ignore(id),
         }
@@ -359,6 +447,8 @@ impl ViewState {
                 }
                 b'c' | b' ' => self.qmenu_act(QButton::Context),
                 b'a' | b'\r' | b'\n' => self.qmenu_act(QButton::Answer),
+                b'g' => self.qmenu_act(QButton::Goto),
+                b'f' => self.qmenu_act(QButton::Fork),
                 b'i' => self.qmenu_act(QButton::Ignore),
                 b'\t' => {
                     let ignored = self.qmenu.as_ref().is_some_and(|m| m.ignored);
@@ -494,7 +584,14 @@ pub(crate) fn qgeom(area: Rect, st: &ViewState) -> Option<QGeom> {
         let mut buttons = Vec::new();
         let mut right = inner.right();
         if show_buttons {
-            for b in [QButton::Ignore, QButton::Answer, QButton::Context] {
+            let mut order = vec![QButton::Ignore, QButton::Answer, QButton::Context];
+            if inner.width >= WIDE_BUTTONS_MIN {
+                if st.forkable.contains(&e.q.session) {
+                    order.push(QButton::Fork);
+                }
+                order.push(QButton::Goto);
+            }
+            for b in order {
                 let bw = b.label(menu.ignored).width() as u16 + 2;
                 right = right.saturating_sub(bw);
                 buttons.push((b, right, bw));
@@ -653,11 +750,11 @@ pub(crate) fn draw_qmenu(buf: &mut Buffer, area: Rect, st: &ViewState) {
         );
     }
     let verb = if menu.ignored { "restore" } else { "ignore" };
-    let long = format!("Up/Down select · a answer · c context · i {verb} · Tab list · Esc close");
+    let long = format!("a answer · g go to · f fork · c context · i {verb} · Tab list · Esc close");
     let hint = if long.width() <= usize::from(g.inner.width) {
         long
     } else {
-        format!("a answer · c context · i {verb} · Tab list")
+        format!("a answer · g go to · f fork · c context · i {verb}")
     };
     put(buf, g.inner.x, g.hint_y, &hint, dim(), g.inner.width);
 }

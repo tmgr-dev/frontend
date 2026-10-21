@@ -29,6 +29,8 @@ export interface TaskNode {
 	started_at: string;
 	ended_at: string;
 	duration_ms: number;
+	active_ms?: number | null;
+	role?: string | null;
 	cost_usd: number;
 	events: number;
 	tokens: TaskTokens;

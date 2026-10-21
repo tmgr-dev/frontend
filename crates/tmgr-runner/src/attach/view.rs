@@ -3,7 +3,7 @@ use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
-use super::qmenu::{QEdit, QMenu};
+use super::qmenu::{GotoMark, QEdit, QMenu};
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
@@ -138,6 +138,8 @@ pub struct ViewState {
     pub titles: HashMap<String, AgentTitle>,
     pub questions: Vec<Entry>,
     pub qmenu: Option<QMenu>,
+    pub goto: Option<GotoMark>,
+    pub forkable: Vec<String>,
     pub now_s: u64,
     pub grouped: bool,
     pub(crate) collapsed: HashSet<String>,
@@ -345,6 +347,8 @@ impl ViewState {
             titles: HashMap::new(),
             questions: Vec::new(),
             qmenu: None,
+            goto: None,
+            forkable: Vec::new(),
             now_s: 0,
             grouped: false,
             collapsed: HashSet::new(),

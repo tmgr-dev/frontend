@@ -56,8 +56,9 @@ pub mod caps {
     pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
     pub const SESSIONS_RESUME_V1: &str = "sessions_resume.v1";
     pub const HUMAN_TIME_V1: &str = "human_time.v1";
+    pub const SESSIONS_FORK_V1: &str = "sessions_fork.v1";
 
-    pub const ALL: [&str; 29] = [
+    pub const ALL: [&str; 30] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -87,6 +88,7 @@ pub mod caps {
         ORCHESTRATOR_V1,
         SESSIONS_RESUME_V1,
         HUMAN_TIME_V1,
+        SESSIONS_FORK_V1,
     ];
 }
 
@@ -109,6 +111,7 @@ pub mod method {
     pub const CANDIDATES_LIST: &str = "candidates.list";
     pub const RUNS_RESTORE: &str = "runs.restore";
     pub const SESSIONS_RESUME: &str = "sessions.resume";
+    pub const SESSIONS_FORK: &str = "sessions.fork";
     pub const RUNS_LOOKUP: &str = "runs.lookup";
     pub const RUNS_STATUS: &str = "runs.status";
     pub const SESSIONS_TEXT: &str = "sessions.text";

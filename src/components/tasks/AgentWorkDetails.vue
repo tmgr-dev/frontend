@@ -19,15 +19,9 @@
 							{{ formatWorkDuration(totals.humanSeconds) }}
 						</dd>
 					</div>
-					<div>
-						<dt class="text-2xs text-ink-subtle">Agents</dt>
-						<dd class="font-mono">
-							{{ formatWorkDuration(totals.agentSeconds) }}
-						</dd>
-					</div>
-					<div v-if="waitingSeconds !== null">
-						<dt class="text-2xs text-ink-subtle">Agents waiting</dt>
-						<dd class="font-mono">{{ formatWorkDuration(waitingSeconds) }}</dd>
+					<div v-for="row in timeList" :key="row.key">
+						<dt class="text-2xs text-ink-subtle">{{ row.label }}</dt>
+						<dd class="font-mono">{{ formatWorkDuration(row.seconds) }}</dd>
 					</div>
 					<div v-if="aiCost">
 						<dt class="text-2xs text-ink-subtle">{{ aiCost.label }}</dt>
@@ -43,21 +37,35 @@
 			</section>
 
 			<p
-				v-if="state === 'loading'"
+				v-if="notice"
+				class="rounded-card border border-line px-3 py-2 text-xs text-ink-subtle"
+				data-state="notice"
+			>
+				{{ notice }}
+			</p>
+			<p
+				v-if="unpriced"
+				class="text-xs text-amber-700 dark:text-amber-300"
+				data-state="unpriced"
+			>
+				{{ unpriced }}
+			</p>
+			<p
+				v-if="!aggregate && state === 'loading'"
 				class="text-xs text-ink-subtle"
 				data-state="loading"
 			>
 				Reading local AI usage…
 			</p>
 			<p
-				v-else-if="unsupportedReason"
+				v-else-if="!aggregate && unsupportedReason"
 				class="text-xs text-ink-subtle"
 				data-state="unsupported"
 			>
 				{{ unsupportedReason }}
 			</p>
 			<p
-				v-else-if="state === 'error'"
+				v-else-if="!aggregate && state === 'error'"
 				class="text-xs text-ink-subtle"
 				data-state="error"
 			>
@@ -68,7 +76,7 @@
 				class="text-xs text-ink-subtle"
 				data-state="empty"
 			>
-				No local agent usage linked to this task yet.
+				No agent usage linked to this task yet.
 			</p>
 
 			<template v-if="aggregate">
@@ -77,6 +85,7 @@
 						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 					>
 						Tokens
+						<span class="font-normal normal-case">· {{ sourceLabel }}</span>
 					</h3>
 					<ul class="flex flex-wrap gap-x-4 gap-y-1 text-sm">
 						<li v-for="row in tokenList" :key="row.key">
@@ -87,9 +96,23 @@
 							>
 						</li>
 					</ul>
+					<ul
+						v-if="rates.length"
+						class="flex flex-col gap-0.5 text-xs text-ink-subtle"
+						data-section="rates"
+					>
+						<li v-for="row in rates" :key="row.model">
+							<span class="font-semibold text-ink">Rates {{ row.model }}</span>
+							{{ row.text }}
+						</li>
+					</ul>
 				</section>
 
-				<section class="flex flex-col gap-2" data-section="agents">
+				<section
+					v-if="flatTree.length"
+					class="flex flex-col gap-2"
+					data-section="agents"
+				>
 					<h3
 						class="text-2xs font-bold uppercase tracking-wide text-ink-subtle"
 					>
@@ -113,9 +136,11 @@
 									class="rounded-pill bg-amber-100 px-1.5 text-2xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
 									>likely</span
 								>
-								<span class="ml-auto font-mono text-ink-subtle">{{
-									formatMs(row.node.duration_ms)
-								}}</span>
+								<span
+									class="ml-auto font-mono text-ink-subtle"
+									:title="nodeTime(row.node).title"
+									>{{ nodeTime(row.node).text }}</span
+								>
 								<span
 									v-if="row.node.cost_usd > 0"
 									class="font-mono text-emerald-600 dark:text-emerald-400"
@@ -136,7 +161,10 @@
 							>
 						</div>
 						<div class="text-ink-subtle">
-							{{ formatMs(selected.duration_ms) }} ·
+							<span :title="nodeTime(selected).title">{{
+								nodeTime(selected).text
+							}}</span>
+							·
 							{{ selected.events }} events
 						</div>
 						<ul class="flex flex-wrap gap-x-3 gap-y-0.5">
@@ -240,7 +268,7 @@
 							v-if="isHttpUrl(run.pr_url)"
 							:href="run.pr_url"
 							target="_blank"
-							rel="noopener"
+							rel="noopener noreferrer"
 							class="text-brand hover:underline"
 							>Pull request</a
 						>
@@ -256,9 +284,77 @@
 							>
 						</span>
 					</div>
-					<ul v-if="run.commits.length" class="flex flex-col gap-0.5 font-mono">
-						<li v-for="commit in run.commits" :key="commit.sha">
-							<span class="text-ink">{{ (commit.sha || '').slice(0, 7) }}</span>
+					<ul
+						v-if="releaseRows(run).length"
+						class="flex flex-col gap-0.5"
+						data-section="releases"
+					>
+						<li v-for="(rel, i) in releaseRows(run)" :key="i">
+							<span class="text-ink-subtle">Release</span>
+							<span class="ml-1 font-mono">{{ rel.label }}</span>
+							<a
+								v-if="rel.ciUrl"
+								:href="rel.ciUrl"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="ml-2 text-brand hover:underline"
+								>CI</a
+							>
+							<span
+								v-if="rel.digest"
+								class="ml-2 font-mono text-ink-faint"
+								:title="rel.digestTitle"
+								>{{ rel.digest }}</span
+							>
+						</li>
+					</ul>
+					<p v-if="deployRow(run)" data-section="deploy">
+						<span class="text-ink-subtle">Deploy</span>
+						<span class="ml-1 font-mono">{{ deployRow(run).label }}</span>
+						<a
+							v-if="deployRow(run).url"
+							:href="deployRow(run).url"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="ml-2 text-brand hover:underline"
+							>Open</a
+						>
+					</p>
+					<ul
+						v-if="run.checks && run.checks.length"
+						class="flex flex-col gap-0.5"
+						data-section="checks"
+					>
+						<li
+							v-for="(check, i) in run.checks"
+							:key="i"
+							:title="check.command || undefined"
+						>
+							<span class="text-ink-subtle">Check</span>
+							<span class="ml-1">{{ check.name }} — {{ check.result }}</span>
+						</li>
+					</ul>
+				</div>
+				<div
+					v-for="group in commitGroupList"
+					:key="group.key"
+					class="flex flex-col gap-0.5 text-xs"
+					data-section="commits"
+				>
+					<div v-if="group.header" class="font-mono text-ink-subtle">
+						{{ group.header }}
+					</div>
+					<ul class="flex flex-col gap-0.5 font-mono">
+						<li v-for="commit in group.commits" :key="commit.sha">
+							<a
+								v-if="commit.url"
+								:href="commit.url"
+								target="_blank"
+								rel="noopener noreferrer"
+								class="text-brand hover:underline"
+								>{{ commit.short }}</a
+							>
+							<span v-else class="text-ink">{{ commit.short }}</span>
 							<span
 								class="ml-2 rounded-pill bg-zinc-100 px-1.5 text-2xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
 								>agent</span
@@ -281,6 +377,12 @@
 	} from '@/components/ui/dialog';
 	import { readTaskUsage, scanThenRead } from '@/usage/loadTaskUsage';
 	import {
+		pickUsage,
+		ratesRows,
+		serverAggregate,
+		unpricedWarning,
+	} from '@/usage/serverUsage';
+	import {
 		buildTree,
 		contextSummary,
 		formatMs,
@@ -292,11 +394,19 @@
 		groupMcp,
 		modelShort,
 		nodeLabel,
+		nodeTime,
 		pricedCost,
 		tokenRows,
 		toolTotals,
 	} from '@/usage/taskModel';
-	import { formatWorkDuration, isHttpUrl } from '@/utils/agentWork';
+	import {
+		commitGroups,
+		formatDeploy,
+		formatRelease,
+		formatWorkDuration,
+		isHttpUrl,
+		timeRows,
+	} from '@/utils/agentWork';
 	import { computed, defineComponent, ref, watch } from 'vue';
 
 	const list = (items) => items.map((i) => `${i.name} ×${i.count}`).join(' · ');
@@ -344,11 +454,12 @@
 			runs: { type: Array, default: () => [] },
 			totals: { type: Object, required: true },
 			cost: { type: Object, default: null },
+			costState: { type: String, default: 'ready' },
 		},
 		emits: ['update:open'],
 		setup(props) {
 			const state = ref('idle');
-			const aggregate = ref(null);
+			const localAggregate = ref(null);
 			const unsupportedReason = ref(null);
 			const selectedId = ref(null);
 			let session = 0;
@@ -364,13 +475,13 @@
 				unsupportedReason.value = usage.supported
 					? null
 					: usage.unsupported_reason;
-				aggregate.value = usage.aggregate;
+				localAggregate.value = usage.aggregate;
 			};
 
 			const load = async () => {
 				const current = ++session;
 				state.value = 'loading';
-				aggregate.value = null;
+				localAggregate.value = null;
 				selectedId.value = null;
 				unsupportedReason.value = null;
 				try {
@@ -395,6 +506,22 @@
 				{ immediate: true },
 			);
 
+			const picked = computed(() =>
+				pickUsage({
+					synced: serverAggregate(props.cost?.ai),
+					local: localAggregate.value,
+					serverState: props.costState,
+				}),
+			);
+			const aggregate = computed(() => picked.value.aggregate);
+			const notice = computed(() => picked.value.notice);
+			const sourceLabel = computed(() =>
+				picked.value.source === 'synced' ? 'Synced to TMGR' : 'Local only',
+			);
+			const unpriced = computed(() =>
+				unpricedWarning(aggregate.value?.totals.unpriced_events),
+			);
+
 			const tree = computed(() => buildTree(aggregate.value?.nodes ?? []));
 			const flatTree = computed(() => flatten(tree.value));
 			const selected = computed(
@@ -411,26 +538,23 @@
 			);
 
 			const aiCost = computed(() => {
-				if (aggregate.value && pricedCost(aggregate.value) !== null) {
-					return {
-						label: 'AI (API-equivalent)',
-						text: formatUsd(aggregate.value.totals.cost_usd),
-					};
-				}
-				const synced = props.cost?.ai?.synced
-					? formatUsdString(props.cost.ai.costUsd)
-					: null;
-				return synced
-					? { label: 'AI (synced, API-equivalent)', text: synced }
-					: null;
+				if (!aggregate.value || pricedCost(aggregate.value) === null)
+					return null;
+				return {
+					label:
+						picked.value.source === 'synced'
+							? 'AI, synced (API-equivalent)'
+							: 'AI, local only (API-equivalent)',
+					text: formatUsd(aggregate.value.totals.cost_usd),
+				};
 			});
 			const humanCost = computed(() => {
 				const text = formatUsdString(props.cost?.human?.cost);
 				const rate = formatUsdString(props.cost?.human?.rate?.value);
 				return text && rate ? { text, rate } : null;
 			});
-			const waitingSeconds = computed(
-				() => props.cost?.agents?.waitingSeconds ?? null,
+			const timeList = computed(() =>
+				timeRows(props.totals.agentSeconds, props.cost?.agents ?? null),
 			);
 
 			return {
@@ -446,7 +570,15 @@
 				context,
 				aiCost,
 				humanCost,
-				waitingSeconds,
+				timeList,
+				notice,
+				sourceLabel,
+				unpriced,
+				rates: computed(() => ratesRows(props.cost?.ai?.rates)),
+				commitGroupList: computed(() => commitGroups(props.runs)),
+				releaseRows: (run) => (run.releases ?? []).map(formatRelease),
+				deployRow: (run) => (run.deploy ? formatDeploy(run.deploy) : null),
+				nodeTime,
 				tokenList: computed(() =>
 					aggregate.value ? tokenRows(aggregate.value.totals.tokens) : [],
 				),
@@ -468,7 +600,13 @@
 				codeRuns: computed(() =>
 					props.runs.filter(
 						(run) =>
-							run.branch || run.pr_url || run.commits.length || run.tests,
+							run.branch ||
+							run.pr_url ||
+							run.commits.length ||
+							run.tests ||
+							run.releases?.length ||
+							run.deploy ||
+							run.checks?.length,
 					),
 				),
 				formatWorkDuration,

@@ -56,14 +56,19 @@ export const cacheReadPct = (tokens: TaskTokens): number | null => {
 };
 
 export interface TokenRow {
-	key: 'input' | 'cache_read' | 'cache_write' | 'output' | 'reasoning';
+	key:
+		| 'input'
+		| 'cache_read'
+		| 'cache_write_5m'
+		| 'cache_write_1h'
+		| 'output'
+		| 'reasoning';
 	label: string;
 	value: number;
 	pct?: number | null;
 }
 
 export const tokenRows = (tokens: TaskTokens): TokenRow[] => {
-	const cacheWrite = tokens.cache_write_5m + tokens.cache_write_1h;
 	const rows: TokenRow[] = [
 		{ key: 'input', label: 'Input', value: tokens.input },
 		{
@@ -72,7 +77,16 @@ export const tokenRows = (tokens: TaskTokens): TokenRow[] => {
 			value: tokens.cache_read,
 			pct: cacheReadPct(tokens),
 		},
-		{ key: 'cache_write', label: 'Cache write', value: cacheWrite },
+		{
+			key: 'cache_write_5m',
+			label: 'Cache write 5m',
+			value: tokens.cache_write_5m,
+		},
+		{
+			key: 'cache_write_1h',
+			label: 'Cache write 1h',
+			value: tokens.cache_write_1h,
+		},
 		{ key: 'output', label: 'Output', value: tokens.output },
 		{ key: 'reasoning', label: 'Reasoning', value: tokens.reasoning },
 	];
@@ -87,6 +101,11 @@ export const nodeLabel = (node: TaskNode): string => {
 		return 'Claude Code';
 	return node.agent_type;
 };
+
+export const nodeTime = (node: TaskNode): { text: string; title: string } =>
+	node.active_ms != null
+		? { text: formatMs(node.active_ms), title: 'active' }
+		: { text: formatMs(node.duration_ms), title: 'wall-clock' };
 
 export const modelShort = (model: string): string =>
 	model.replace(/^claude-/, '');

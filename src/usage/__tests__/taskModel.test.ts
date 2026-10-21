@@ -12,6 +12,7 @@ import {
 	groupMcp,
 	modelShort,
 	nodeLabel,
+	nodeTime,
 	prLabel,
 	tokenRows,
 	toolTotals,
@@ -139,7 +140,7 @@ describe('tokenRows', () => {
 		]);
 	});
 
-	it('orders rows and sums both cache write windows', () => {
+	it('orders rows and lists both cache write windows apart', () => {
 		const rows = tokenRows({
 			input: 10,
 			output: 20,
@@ -151,7 +152,8 @@ describe('tokenRows', () => {
 		expect(rows).toEqual([
 			{ key: 'input', label: 'Input', value: 10 },
 			{ key: 'cache_read', label: 'Cache read', value: 300, pct: 85 },
-			{ key: 'cache_write', label: 'Cache write', value: 42 },
+			{ key: 'cache_write_5m', label: 'Cache write 5m', value: 40 },
+			{ key: 'cache_write_1h', label: 'Cache write 1h', value: 2 },
 			{ key: 'output', label: 'Output', value: 20 },
 			{ key: 'reasoning', label: 'Reasoning', value: 5 },
 		]);
@@ -496,6 +498,24 @@ describe('contextSummary', () => {
 			plugins: [{ name: 'superpowers', count: 1 }],
 			slash_commands: [{ name: '/clear', count: 2 }],
 			away: 3,
+		});
+	});
+});
+
+describe('nodeTime', () => {
+	it('prefers active time', () => {
+		expect(
+			nodeTime(makeNode({ id: 'a', duration_ms: 90000, active_ms: 30000 })),
+		).toEqual({
+			text: '30s',
+			title: 'active',
+		});
+	});
+
+	it('falls back to wall-clock duration', () => {
+		expect(nodeTime(makeNode({ id: 'a', duration_ms: 90000 }))).toEqual({
+			text: '1m 30s',
+			title: 'wall-clock',
 		});
 	});
 });

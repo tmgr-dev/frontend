@@ -1059,3 +1059,75 @@ fn an_approval_without_by_id_never_gains_one_across_resumes() {
     h.wait_log("home:kept", 2);
     assert!(!h.log().contains("--resume-id"), "{}", h.log());
 }
+
+#[test]
+fn fork_copies_the_transcript_into_a_new_home_and_leaves_the_live_session_alone() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let first = h.started();
+    let proj = h.homes.join(&first.id).join(".claude/projects/-w");
+    fs::create_dir_all(&proj).unwrap();
+    fs::write(proj.join(format!("{U1}.jsonl")), b"{\"type\":\"user\"}\n").unwrap();
+
+    let r = h
+        .client()
+        .fork(&first.id, U1, Some("fake-run-fork-1"), (90, 20))
+        .unwrap();
+    assert_ne!(r.session.id, first.id);
+    assert_eq!(r.session.name, "fake-run-fork-1");
+    assert_eq!((r.session.cols, r.session.rows), (90, 20));
+    h.wait_log("home:new", 2);
+    assert!(
+        h.log()
+            .contains(&format!("args:--resume-id {U1} --fork-session\n")),
+        "{}",
+        h.log()
+    );
+    let copy = h
+        .homes
+        .join(&r.session.id)
+        .join(format!(".claude/projects/-w/{U1}.jsonl"));
+    assert_eq!(fs::read(copy).unwrap(), b"{\"type\":\"user\"}\n");
+    assert!(h.homes.join(&first.id).is_dir());
+    assert_ne!(h.state_of(&first.id).unwrap().kind, StateKind::Exited);
+    assert_eq!(h.client().list().unwrap().len(), 2);
+}
+
+#[test]
+fn fork_refuses_bad_ids_a_missing_transcript_and_other_agents() {
+    if !sessions_available() {
+        return;
+    }
+    let mut h = H::full();
+    h.start();
+    let first = h.started();
+    let bad = h
+        .client()
+        .fork(&first.id, "x; rm -rf", None, (80, 24))
+        .unwrap_err();
+    assert!(bad.to_string().starts_with("invalid_params"), "{bad}");
+    let none = h.client().fork(&first.id, U1, None, (80, 24)).unwrap_err();
+    assert!(none.to_string().starts_with("not_found"), "{none}");
+    let gone = h.client().fork("nope", U1, None, (80, 24)).unwrap_err();
+    assert!(gone.to_string().starts_with("invalid_params"), "{gone}");
+
+    assert_eq!(h.log().matches("fork-session").count(), 0);
+}
+
+#[test]
+fn fork_is_refused_for_agents_other_than_claude_code() {
+    if !sessions_available() {
+        return;
+    }
+    let mut o = H::agent(
+        "unknown-agent",
+        "[resume]\nargs = [\"--resumed\"]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n",
+    );
+    o.start();
+    let s = o.started();
+    let e = o.client().fork(&s.id, U1, None, (80, 24)).unwrap_err();
+    assert!(e.to_string().starts_with("forbidden"), "{e}");
+}
