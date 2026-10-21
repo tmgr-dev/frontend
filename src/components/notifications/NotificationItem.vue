@@ -1,23 +1,45 @@
 <template>
 	<div
-		class="notification-item"
+		class="notification-item group flex cursor-pointer items-start gap-3 border-b border-line px-4 py-3 transition-colors last:border-b-0 hover:bg-surface-hover"
 		:class="{ unread: !notification.read_at }"
 		@click="$emit('click')"
 	>
-		<div class="notification-icon">
+		<div
+			class="flex h-10 w-10 shrink-0 items-center justify-center rounded-pill"
+			:class="
+				notification.read_at
+					? 'bg-surface-sunken text-ink-subtle'
+					: 'bg-brand-bg text-brand-fg'
+			"
+		>
 			<component :is="icon" :size="20" />
 		</div>
 
-		<div class="notification-content">
-			<div class="notification-title">{{ title }}</div>
-			<div v-if="notification.message" class="notification-message">
+		<div class="min-w-0 flex-1">
+			<div class="mb-1 flex items-start gap-2">
+				<div
+					class="min-w-0 text-sm text-ink [overflow-wrap:anywhere]"
+					:class="notification.read_at ? 'font-medium' : 'font-semibold'"
+				>
+					{{ title }}
+				</div>
+				<span
+					v-if="!notification.read_at"
+					class="mt-1.5 h-2 w-2 shrink-0 rounded-pill bg-brand"
+					aria-hidden="true"
+				></span>
+			</div>
+			<div
+				v-if="notification.message"
+				class="mb-1 line-clamp-2 text-[0.8125rem] text-ink-muted [overflow-wrap:anywhere]"
+			>
 				{{ notification.message }}
 			</div>
-			<div class="notification-time">{{ formattedTime }}</div>
+			<div class="text-xs text-ink-subtle">{{ formattedTime }}</div>
 		</div>
 
 		<button
-			class="notification-delete"
+			class="shrink-0 rounded-md p-1 text-ink-subtle opacity-0 transition-colors hover:bg-surface-hover hover:text-red-500 focus-visible:opacity-100 group-hover:opacity-100"
 			@click.stop="$emit('delete')"
 			aria-label="Delete notification"
 		>
@@ -119,126 +141,3 @@
 		},
 	});
 </script>
-
-<style lang="scss" scoped>
-	.notification-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		cursor: pointer;
-		transition: background-color 0.2s;
-		border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-
-		&:last-child {
-			border-bottom: none;
-		}
-
-		&:hover {
-			background-color: rgba(0, 0, 0, 0.02);
-		}
-
-		&.unread {
-			background-color: rgba(59, 130, 246, 0.05);
-
-			&:hover {
-				background-color: rgba(59, 130, 246, 0.1);
-			}
-		}
-
-		.dark & {
-			border-bottom-color: rgba(255, 255, 255, 0.05);
-
-			&:hover {
-				background-color: rgba(255, 255, 255, 0.05);
-			}
-
-			&.unread {
-				background-color: rgba(59, 130, 246, 0.1);
-
-				&:hover {
-					background-color: rgba(59, 130, 246, 0.15);
-				}
-			}
-		}
-	}
-
-	.notification-icon {
-		flex-shrink: 0;
-		width: 40px;
-		height: 40px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background-color: rgba(59, 130, 246, 0.1);
-		color: var(--tmgr-blue);
-		border-radius: 50%;
-	}
-
-	.notification-content {
-		flex: 1;
-		min-width: 0;
-	}
-
-	.notification-title {
-		font-size: 0.875rem;
-		font-weight: 500;
-		margin-bottom: 0.25rem;
-		color: inherit;
-		overflow-wrap: anywhere;
-	}
-
-	.notification-message {
-		font-size: 0.8125rem;
-		color: rgba(0, 0, 0, 0.6);
-		margin-bottom: 0.25rem;
-		overflow: hidden;
-		overflow-wrap: anywhere;
-		text-overflow: ellipsis;
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-
-		.dark & {
-			color: rgba(255, 255, 255, 0.6);
-		}
-	}
-
-	.notification-time {
-		font-size: 0.75rem;
-		color: rgba(0, 0, 0, 0.5);
-
-		.dark & {
-			color: rgba(255, 255, 255, 0.5);
-		}
-	}
-
-	.notification-delete {
-		flex-shrink: 0;
-		padding: 0.25rem;
-		background: transparent;
-		border: none;
-		color: rgba(0, 0, 0, 0.4);
-		cursor: pointer;
-		border-radius: 0.25rem;
-		transition: all 0.2s;
-		opacity: 0;
-
-		.notification-item:hover & {
-			opacity: 1;
-		}
-
-		&:hover {
-			background-color: rgba(239, 68, 68, 0.1);
-			color: #ef4444;
-		}
-
-		.dark & {
-			color: rgba(255, 255, 255, 0.4);
-
-			&:hover {
-				background-color: rgba(239, 68, 68, 0.2);
-			}
-		}
-	}
-</style>

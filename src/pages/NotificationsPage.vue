@@ -2,22 +2,21 @@
 	<div>
 		<BaseLayout title="Notifications">
 			<template #header-actions>
-				<button
-					@click="handleGoToSettings"
-					class="settings-btn"
+				<Button
+					variant="outline"
 					title="Notification Settings"
+					@click="handleGoToSettings"
 				>
-					<Settings :size="20" />
+					<Settings />
 					<span>Settings</span>
-				</button>
-				<button
+				</Button>
+				<Button
 					v-if="unreadCount > 0"
-					@click="handleMarkAllAsRead"
-					class="mark-all-btn"
 					:disabled="loading"
+					@click="handleMarkAllAsRead"
 				>
 					Mark all as read
-				</button>
+				</Button>
 			</template>
 			<template #body>
 				<div class="min-h-96">
@@ -29,13 +28,21 @@
 						:retry="handleRetry"
 						label="Loading notifications"
 					>
-						<div v-if="notifications.length === 0" class="empty-state">
-							<Bell :size="64" class="empty-icon" />
-							<h2>No notifications</h2>
-							<p>You're all caught up!</p>
+						<div
+							v-if="notifications.length === 0"
+							class="flex flex-col items-center justify-center gap-4 px-8 py-16 text-center"
+						>
+							<Bell :size="64" class="mb-4 text-ink-subtle opacity-40" />
+							<h2 class="mb-2 text-2xl font-semibold text-ink">
+								No notifications
+							</h2>
+							<p class="text-ink-subtle">You're all caught up!</p>
 						</div>
 
-						<div v-else class="notifications-list">
+						<div
+							v-else
+							class="overflow-hidden rounded-lg border border-line bg-surface"
+						>
 							<NotificationItem
 								v-for="notification in notifications"
 								:key="notification.id"
@@ -44,14 +51,15 @@
 								@delete="handleDelete(notification.id)"
 							/>
 
-							<div v-if="hasMore" class="load-more-section">
-								<button
-									@click="handleLoadMore"
-									class="load-more-btn"
+							<div v-if="hasMore" class="flex justify-center p-6">
+								<Button
+									variant="outline"
+									class="px-8"
 									:disabled="loading"
+									@click="handleLoadMore"
 								>
 									{{ loading ? 'Loading...' : 'Load more' }}
-								</button>
+								</Button>
 							</div>
 						</div>
 					</AsyncContent>
@@ -65,6 +73,7 @@
 	import AsyncContent from '@/components/async/AsyncContent.vue';
 	import BaseLayout from '@/components/layouts/BaseLayout.vue';
 	import NotificationItem from '@/components/notifications/NotificationItem.vue';
+	import { Button } from '@/components/ui/button';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useNotifications } from '@/composable/useNotifications';
 	import store from '@/store';
@@ -79,6 +88,7 @@
 			AsyncContent,
 			BaseLayout,
 			Bell,
+			Button,
 			Settings,
 			NotificationItem,
 		},
@@ -176,160 +186,3 @@
 		},
 	});
 </script>
-
-<style lang="scss" scoped>
-	.settings-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		background-color: white;
-		color: var(--tmgr-blue);
-		border: 2px solid var(--tmgr-blue);
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: background-color 0.2s;
-
-		&:hover {
-			background-color: rgba(59, 130, 246, 0.1);
-		}
-
-		.dark & {
-			background-color: transparent;
-			border-color: var(--tmgr-light-blue);
-			color: var(--tmgr-light-blue);
-
-			&:hover {
-				background-color: rgba(96, 165, 250, 0.1);
-			}
-		}
-	}
-
-	.mark-all-btn {
-		padding: 0.5rem 1rem;
-		background-color: var(--tmgr-blue);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: opacity 0.2s;
-
-		&:hover:not(:disabled) {
-			opacity: 0.9;
-		}
-
-		&:disabled {
-			opacity: 0.6;
-			cursor: not-allowed;
-		}
-	}
-
-	.loading-state,
-	.error-state,
-	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 4rem 2rem;
-		gap: 1rem;
-		text-align: center;
-	}
-
-	.spinner {
-		width: 48px;
-		height: 48px;
-		border: 4px solid rgba(0, 0, 0, 0.1);
-		border-top-color: var(--tmgr-blue);
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.empty-icon {
-		opacity: 0.3;
-		margin-bottom: 1rem;
-	}
-
-	.empty-state {
-		h2 {
-			font-size: 1.5rem;
-			font-weight: 600;
-			margin: 0 0 0.5rem;
-		}
-
-		p {
-			color: rgba(0, 0, 0, 0.6);
-			margin: 0;
-		}
-
-		.dark & p {
-			color: rgba(255, 255, 255, 0.6);
-		}
-	}
-
-	.retry-btn {
-		padding: 0.5rem 1rem;
-		background-color: var(--tmgr-blue);
-		color: white;
-		border: none;
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: opacity 0.2s;
-
-		&:hover {
-			opacity: 0.9;
-		}
-	}
-
-	.notifications-list {
-		background: white;
-		border-radius: 0.5rem;
-		overflow: hidden;
-		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-
-		.dark & {
-			background: #1f2937;
-		}
-	}
-
-	.load-more-section {
-		display: flex;
-		justify-content: center;
-		padding: 1.5rem;
-		border-top: 1px solid rgba(0, 0, 0, 0.1);
-
-		.dark & {
-			border-top-color: rgba(255, 255, 255, 0.1);
-		}
-	}
-
-	.load-more-btn {
-		padding: 0.5rem 2rem;
-		background-color: transparent;
-		color: var(--tmgr-blue);
-		border: 2px solid var(--tmgr-blue);
-		border-radius: 0.375rem;
-		cursor: pointer;
-		font-weight: 500;
-		transition: all 0.2s;
-
-		&:hover:not(:disabled) {
-			background-color: var(--tmgr-blue);
-			color: white;
-		}
-
-		&:disabled {
-			opacity: 0.6;
-			cursor: not-allowed;
-		}
-	}
-</style>

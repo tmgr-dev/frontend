@@ -1,17 +1,21 @@
 <template>
-	<div class="notification-bell" data-tour="nav.notification-bell">
+	<div class="relative" data-tour="nav.notification-bell">
 		<DropdownMenu @update:open="handleDropdownOpen">
 			<DropdownMenuTrigger as-child>
 				<button
-					class="notification-bell-button relative"
+					class="relative rounded-md p-2 transition-colors hover:bg-surface-hover"
 					:class="{ 'has-new-notification': hasNewNotification }"
 					aria-label="Notifications"
 				>
 					<Bell :size="20" :class="{ 'animate-bell': hasNewNotification }" />
 					<span
 						v-if="unreadCount > 0"
-						class="notification-badge"
-						:class="{ 'animate-bounce-gentle': hasNewNotification }"
+						class="absolute right-0.5 top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-pill px-1 text-[10px] font-semibold leading-none text-white"
+						:class="
+							hasNewNotification
+								? 'animate-bounce-gentle bg-red-600 shadow-[0_0_8px] shadow-red-600/60'
+								: 'bg-red-500'
+						"
 					>
 						{{ unreadCount > 99 ? '99+' : unreadCount }}
 					</span>
@@ -23,34 +27,40 @@
 				align="end"
 				:side-offset="8"
 			>
-				<div class="notification-header">
-					<h3 class="notification-title">Notifications</h3>
-					<button
+				<div class="flex items-center justify-between gap-2 px-4 py-3">
+					<h3 class="m-0 text-base font-semibold text-ink">Notifications</h3>
+					<Button
 						v-if="unreadCount > 0"
-						@click="handleMarkAllAsRead"
-						class="mark-all-read-btn"
+						variant="ghost"
+						size="sm"
 						:disabled="loading"
+						@click="handleMarkAllAsRead"
 					>
 						Mark all as read
-					</button>
+					</Button>
 				</div>
 
-				<DropdownMenuSeparator />
+				<DropdownMenuSeparator class="bg-line" />
 
 				<div
 					v-if="loading && notifications.length === 0"
-					class="notification-loading"
+					class="flex flex-col items-center justify-center gap-4 p-8 text-ink-subtle"
 				>
-					<div class="spinner"></div>
-					<p>Loading...</p>
+					<div
+						class="h-8 w-8 animate-spin rounded-pill border-[3px] border-line border-t-ink-muted"
+					></div>
+					<p class="text-sm">Loading...</p>
 				</div>
 
-				<div v-else-if="notifications.length === 0" class="notification-empty">
-					<Bell :size="48" class="empty-icon" />
-					<p>No notifications</p>
+				<div
+					v-else-if="notifications.length === 0"
+					class="flex flex-col items-center justify-center gap-4 p-8 text-ink-subtle"
+				>
+					<Bell :size="48" class="opacity-40" />
+					<p class="text-sm">No notifications</p>
 				</div>
 
-				<div v-else class="notification-list">
+				<div v-else class="max-h-[480px] overflow-y-auto">
 					<NotificationItem
 						v-for="notification in displayedNotifications"
 						:key="notification.id"
@@ -60,10 +70,15 @@
 					/>
 				</div>
 
-				<DropdownMenuSeparator v-if="notifications.length > 0" />
+				<DropdownMenuSeparator
+					v-if="notifications.length > 0"
+					class="my-0 bg-line"
+				/>
 
-				<div v-if="notifications.length > 0" class="notification-footer">
-					<button @click="handleViewAll" class="view-all-btn">View all</button>
+				<div v-if="notifications.length > 0" class="p-1.5">
+					<Button variant="ghost" class="w-full" @click="handleViewAll">
+						View all
+					</Button>
 				</div>
 			</DropdownMenuContent>
 		</DropdownMenu>
@@ -71,6 +86,7 @@
 </template>
 
 <script>
+	import { Button } from '@/components/ui/button';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -89,6 +105,7 @@
 		name: 'NotificationBell',
 		components: {
 			Bell,
+			Button,
 			DropdownMenu,
 			DropdownMenuContent,
 			DropdownMenuTrigger,
@@ -209,63 +226,13 @@
 </script>
 
 <style lang="scss" scoped>
-	.notification-bell {
-		position: relative;
-	}
-
-	.notification-bell-button {
-		position: relative;
-		padding: 0.5rem;
-		border: none;
-		background: transparent;
-		color: currentColor;
-		cursor: pointer;
-		border-radius: 0.375rem;
-		transition: background-color 0.2s;
-
-		&:hover {
-			background-color: rgba(0, 0, 0, 0.05);
-		}
-
-		.dark & {
-			&:hover {
-				background-color: rgba(255, 255, 255, 0.1);
-			}
-		}
-	}
-
-	.notification-badge {
-		position: absolute;
-		top: 2px;
-		right: 2px;
-		min-width: 18px;
-		height: 18px;
-		padding: 0 4px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background-color: #ef4444;
-		color: white;
-		font-size: 10px;
-		font-weight: 600;
-		border-radius: 9px;
-		line-height: 1;
-
-		&.animate-bounce-gentle {
-			animation: bounce-gentle 0.5s ease-in-out infinite;
-		}
-	}
-
-	.has-new-notification {
-		.notification-badge {
-			background-color: #dc2626;
-			box-shadow: 0 0 8px rgba(220, 38, 38, 0.6);
-		}
-	}
-
 	.animate-bell {
 		animation: bell-ring 0.5s ease-in-out;
 		animation-iteration-count: 3;
+	}
+
+	.animate-bounce-gentle {
+		animation: bounce-gentle 0.5s ease-in-out infinite;
 	}
 
 	@keyframes bell-ring {
@@ -291,119 +258,6 @@
 		}
 		50% {
 			transform: translateY(-3px);
-		}
-	}
-
-	.notification-dropdown {
-		width: 380px;
-		max-height: 600px;
-		padding: 0;
-		overflow: hidden;
-		display: flex;
-		flex-direction: column;
-	}
-
-	.notification-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 1rem;
-	}
-
-	.notification-title {
-		font-size: 1rem;
-		font-weight: 600;
-		margin: 0;
-	}
-
-	.mark-all-read-btn {
-		padding: 0.25rem 0.5rem;
-		font-size: 0.75rem;
-		background: transparent;
-		border: 1px solid currentColor;
-		border-radius: 0.25rem;
-		cursor: pointer;
-		transition: all 0.2s;
-
-		&:hover:not(:disabled) {
-			background-color: rgba(0, 0, 0, 0.05);
-		}
-
-		&:disabled {
-			opacity: 0.5;
-			cursor: not-allowed;
-		}
-
-		.dark & {
-			&:hover:not(:disabled) {
-				background-color: rgba(255, 255, 255, 0.1);
-			}
-		}
-	}
-
-	.notification-loading,
-	.notification-empty {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		padding: 2rem;
-		gap: 1rem;
-	}
-
-	.spinner {
-		width: 32px;
-		height: 32px;
-		border: 3px solid rgba(0, 0, 0, 0.1);
-		border-top-color: currentColor;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.empty-icon {
-		opacity: 0.3;
-	}
-
-	.notification-list {
-		max-height: 480px;
-		overflow-y: auto;
-	}
-
-	.notification-footer {
-		padding: 0.75rem;
-		text-align: center;
-		border-top: 1px solid rgba(0, 0, 0, 0.1);
-
-		.dark & {
-			border-top-color: rgba(255, 255, 255, 0.1);
-		}
-	}
-
-	.view-all-btn {
-		width: 100%;
-		padding: 0.5rem;
-		background: transparent;
-		border: none;
-		color: var(--tmgr-blue);
-		font-weight: 500;
-		cursor: pointer;
-		border-radius: 0.25rem;
-		transition: background-color 0.2s;
-
-		&:hover {
-			background-color: rgba(0, 0, 0, 0.05);
-		}
-
-		.dark & {
-			&:hover {
-				background-color: rgba(255, 255, 255, 0.1);
-			}
 		}
 	}
 </style>
