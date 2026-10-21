@@ -1373,8 +1373,8 @@
 					.then(async () => {
 						if (sourceStatus !== status) await updateTaskStatus(id, status);
 						task.status_id = status;
-						if (targetTasks) await this.saveOrders(status, targetTasks);
-						if (sourceTasks) await this.saveOrders(sourceStatus, sourceTasks);
+						if (targetTasks) await this.saveOrders(targetTasks);
+						if (sourceTasks) await this.saveOrders(sourceTasks);
 					})
 					.catch(() => {
 						this.boardError =
@@ -1394,12 +1394,7 @@
 					statuses_with_order: sortedStats,
 				});
 			},
-			async saveOrders(status, tasks) {
-				if (!tasks) {
-					if (this.prioritySortActive) return;
-					tasks = this.findColumn(status)?.tasks;
-					if (!tasks) return;
-				}
+			async saveOrders(tasks) {
 				const orders = [];
 				tasks.forEach(({ id }, index) => {
 					orders.push({
@@ -1438,7 +1433,7 @@
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.unshift(task);
 
-				await this.queueOrderSave(column.status.id, column.tasks.slice());
+				await this.queueOrderSave(column.tasks.slice());
 			},
 			async handleMoveToBottom(task, column) {
 				if (this.prioritySortActive) return;
@@ -1450,11 +1445,11 @@
 				column.tasks.splice(taskIndex, 1);
 				column.tasks.push(task);
 
-				await this.queueOrderSave(column.status.id, column.tasks.slice());
+				await this.queueOrderSave(column.tasks.slice());
 			},
-			queueOrderSave(status, tasks) {
+			queueOrderSave(tasks) {
 				this.dragSaveQueue = this.dragSaveQueue
-					.then(() => this.saveOrders(status, tasks))
+					.then(() => this.saveOrders(tasks))
 					.catch(() => {
 						this.boardError =
 							'Could not save task order. Refresh to restore the server order.';
