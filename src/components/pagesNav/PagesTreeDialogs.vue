@@ -28,29 +28,44 @@
 		</DialogContent>
 	</Dialog>
 
-	<Confirm
-		v-if="ctx.deleting.value"
-		title="Delete page"
-		body=""
-		@on-ok="ctx.confirmDelete"
-		@on-cancel="ctx.deleting.value = null"
+	<AlertDialog
+		:open="!!ctx.deleting.value"
+		@update:open="(open) => !open && (ctx.deleting.value = null)"
 	>
-		<template #body>
-			<p class="mt-1 text-tmgr-blue dark:text-gray-300">
-				"{{ ctx.deleting.value.title }}" and all its subpages will be moved to
-				<router-link
-					:to="`/${ctx.workspaceCode.value}/pages/_/trash`"
-					class="underline"
-					@click="ctx.deleting.value = null"
-					>trash</router-link
-				>. You can restore them from there.
-			</p>
-		</template>
-	</Confirm>
+		<AlertDialogContent>
+			<AlertDialogHeader>
+				<AlertDialogTitle>Delete page?</AlertDialogTitle>
+				<AlertDialogDescription class="[overflow-wrap:anywhere]">
+					"{{ deletingTitle }}" and all its subpages will be moved to
+					<router-link
+						:to="`/${ctx.workspaceCode.value}/pages/_/trash`"
+						class="font-medium text-foreground underline underline-offset-4 hover:text-primary dark:text-foreground dark:hover:text-primary"
+						@click="ctx.deleting.value = null"
+						>trash</router-link
+					>. You can restore them from there.
+				</AlertDialogDescription>
+			</AlertDialogHeader>
+			<AlertDialogFooter>
+				<AlertDialogCancel>Cancel</AlertDialogCancel>
+				<Button variant="destructive" @click="ctx.confirmDelete">
+					Move to trash
+				</Button>
+			</AlertDialogFooter>
+		</AlertDialogContent>
+	</AlertDialog>
 </template>
 
 <script lang="ts">
-	import Confirm from '@/components/general/Confirm.vue';
+	import {
+		AlertDialog,
+		AlertDialogCancel,
+		AlertDialogContent,
+		AlertDialogDescription,
+		AlertDialogFooter,
+		AlertDialogHeader,
+		AlertDialogTitle,
+	} from '@/components/ui/alert-dialog';
+	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
 		DialogContent,
@@ -58,13 +73,20 @@
 		DialogHeader,
 		DialogTitle,
 	} from '@/components/ui/dialog';
-	import { defineComponent, inject } from 'vue';
+	import { defineComponent, inject, ref, watch } from 'vue';
 	import { PAGES_TREE_KEY, type PagesTreeContext } from './context';
 
 	export default defineComponent({
 		name: 'PagesTreeDialogs',
 		components: {
-			Confirm,
+			AlertDialog,
+			AlertDialogCancel,
+			AlertDialogContent,
+			AlertDialogDescription,
+			AlertDialogFooter,
+			AlertDialogHeader,
+			AlertDialogTitle,
+			Button,
 			Dialog,
 			DialogContent,
 			DialogFooter,
@@ -72,7 +94,14 @@
 			DialogTitle,
 		},
 		setup() {
-			return { ctx: inject(PAGES_TREE_KEY) as PagesTreeContext };
+			const ctx = inject(PAGES_TREE_KEY) as PagesTreeContext;
+			const deletingTitle = ref('');
+			watch(
+				() => ctx.deleting.value,
+				(page) => page && (deletingTitle.value = page.title),
+				{ immediate: true },
+			);
+			return { ctx, deletingTitle };
 		},
 	});
 </script>

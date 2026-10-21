@@ -9,6 +9,7 @@ use super::attach_shell::{
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
     KILL_ONLY,
 };
+use super::attach_status::status_worker;
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
@@ -35,8 +36,8 @@ use tmgr_runner::attach::{
     cursor, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11, probe,
     render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
     InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
-    PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState, SessionRow, SidebarEdit,
-    SplitDir, ThemeKind, ViewState, OSC11_QUERY,
+    PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState, SessionRow, SessionStatus,
+    SidebarEdit, SplitDir, ThemeKind, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -51,6 +52,7 @@ const PROBE_EVERY: Duration = Duration::from_millis(2500);
 const PROBE_RETRY: Duration = Duration::from_millis(250);
 const TITLE_EVERY: Duration = Duration::from_secs(3);
 const QUESTIONS_EVERY: Duration = Duration::from_secs(4);
+const STATUS_EVERY: Duration = Duration::from_secs(1);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
@@ -116,6 +118,7 @@ enum Msg {
     Sessions(Vec<SessionInfo>),
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
+    Status(HashMap<String, SessionStatus>),
     Questions(Vec<Entry>),
     Goto {
         session: String,
@@ -252,6 +255,9 @@ struct App {
     titles_tried: HashSet<String>,
     exit_scanned: HashSet<String>,
     last_title: Instant,
+    status_tx: SyncSender<Vec<QuestionJob>>,
+    status_pending: bool,
+    last_status: Instant,
     question_tx: SyncSender<Vec<QuestionJob>>,
     question_pending: bool,
     last_question: Instant,
@@ -279,6 +285,12 @@ impl App {
             Msg::Titles(found) => {
                 self.title_pending = false;
                 if self.view.set_titles(found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Status(found) => {
+                self.status_pending = false;
+                if self.view.set_status(found) {
                     self.dirty = true;
                 }
             }
@@ -466,6 +478,32 @@ impl App {
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
         }
+    }
+
+    fn probe_status(&mut self) {
+        if self.status_pending || self.last_status.elapsed() < STATUS_EVERY {
+            return;
+        }
+        let mut wanted: Vec<String> = self.view.panes().to_vec();
+        if self.view.sidebar_shown() {
+            wanted.extend(self.view.visible_sessions(self.area()));
+        }
+        let mut seen = HashSet::new();
+        let jobs: Vec<QuestionJob> = wanted
+            .into_iter()
+            .filter(|id| seen.insert(id.clone()))
+            .filter_map(|id| {
+                let row = self.view.sessions.iter().find(|r| r.id == id)?;
+                let src = self.agents.get(&id)?;
+                (!row.exited()).then(|| self.question_job(row, src))
+            })
+            .collect();
+        self.last_status = Instant::now();
+        let stale = !self.view.status.is_empty();
+        if jobs.is_empty() && !stale {
+            return;
+        }
+        self.status_pending = self.status_tx.try_send(jobs).is_ok();
     }
 
     fn probe_questions(&mut self) {
@@ -1519,6 +1557,7 @@ impl App {
         self.reap_shells();
         self.probe_places();
         self.probe_titles();
+        self.probe_status();
         self.probe_questions();
         self.paste_forks();
         self.view.forkable = self
@@ -1532,6 +1571,15 @@ impl App {
         }
         let now_s = now_ms() / 1000;
         if self.view.now_s / 60 != now_s / 60 && self.view.qmenu.is_some() {
+            self.dirty = true;
+        }
+        if self.view.now_s != now_s
+            && self
+                .view
+                .status
+                .keys()
+                .any(|id| self.view.status_line(id).is_some_and(|l| l.clock.is_some()))
+        {
             self.dirty = true;
         }
         self.view.now_s = now_s;
@@ -1889,6 +1937,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             title_out.send(Msg::Titles(found)).is_ok()
         })
     });
+    let (status_tx, status_rx) = mpsc::sync_channel(1);
+    let status_out = tx.clone();
+    thread::spawn(move || {
+        status_worker(status_rx, move |found| {
+            status_out.send(Msg::Status(found)).is_ok()
+        })
+    });
     let (question_tx, question_rx) = mpsc::sync_channel(1);
     let question_out = tx.clone();
     let question_dir = cfg.dir.clone();
@@ -1951,6 +2006,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         titles_tried: HashSet::new(),
         exit_scanned: HashSet::new(),
         last_title: Instant::now(),
+        status_tx,
+        status_pending: false,
+        last_status: Instant::now() - STATUS_EVERY,
         question_tx,
         question_pending: false,
         last_question: Instant::now() - QUESTIONS_EVERY,

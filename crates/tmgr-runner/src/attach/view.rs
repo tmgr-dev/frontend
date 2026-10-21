@@ -4,6 +4,7 @@ use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::qmenu::{GotoMark, QEdit, QMenu};
+use super::status::SessionStatus;
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
@@ -136,6 +137,7 @@ pub struct ViewState {
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
     pub titles: HashMap<String, AgentTitle>,
+    pub status: HashMap<String, SessionStatus>,
     pub questions: Vec<Entry>,
     pub qmenu: Option<QMenu>,
     pub goto: Option<GotoMark>,
@@ -212,6 +214,7 @@ pub enum SidebarLine {
         id: String,
         indent: bool,
     },
+    Activity(String),
     Detail(String),
 }
 
@@ -345,6 +348,7 @@ impl ViewState {
             allow_new: true,
             locs: HashMap::new(),
             titles: HashMap::new(),
+            status: HashMap::new(),
             questions: Vec::new(),
             qmenu: None,
             goto: None,
@@ -705,7 +709,7 @@ impl ViewState {
                 SidebarLine::Header { key, .. } => Some(SidebarItem::Group(key)),
                 SidebarLine::Tab { id, .. } => Some(SidebarItem::Tab(id)),
                 SidebarLine::Session { id, .. } => Some(SidebarItem::Session(id)),
-                SidebarLine::Detail(_) => None,
+                SidebarLine::Activity(_) | SidebarLine::Detail(_) => None,
             })
             .collect();
         if sl.new_row.is_some() {
@@ -723,7 +727,10 @@ impl ViewState {
         let room = usize::from(last.saturating_sub(rect.y + 1));
         let mut plan = self.sidebar_plan();
         if plan.len() > room {
-            plan.retain(|l| !matches!(l, SidebarLine::Detail(_)));
+            plan.retain(|l| !matches!(l, SidebarLine::Activity(_)));
+            if plan.len() > room {
+                plan.retain(|l| !matches!(l, SidebarLine::Detail(_)));
+            }
         }
         let lines = plan.into_iter().zip(rect.y + 1..last).collect();
         SidebarLayout { lines, new_row }
@@ -758,6 +765,9 @@ impl ViewState {
                 id: r.id.clone(),
                 indent,
             });
+            if self.status_line(&r.id).is_some() {
+                out.push(SidebarLine::Activity(r.id.clone()));
+            }
             if !indent && self.locs.contains_key(&r.id) {
                 out.push(SidebarLine::Detail(r.id.clone()));
             }
@@ -776,6 +786,9 @@ impl ViewState {
                                 id: m.clone(),
                                 indent: true,
                             });
+                            if self.status_line(&m).is_some() {
+                                out.push(SidebarLine::Activity(m.clone()));
+                            }
                             if self.locs.contains_key(&m) {
                                 out.push(SidebarLine::Detail(m));
                             }
@@ -1403,7 +1416,9 @@ impl ViewState {
                 let id = match line {
                     SidebarLine::Header { key, .. } => return Hit::Group(key.clone()),
                     SidebarLine::Tab { id, .. } => return Hit::Tab(*id),
-                    SidebarLine::Detail(id) => return Hit::Session(id.clone()),
+                    SidebarLine::Activity(id) | SidebarLine::Detail(id) => {
+                        return Hit::Session(id.clone())
+                    }
                     SidebarLine::Session { id, .. } => id,
                 };
                 let Some(r) = self.sessions.iter().find(|s| s.id == *id) else {
