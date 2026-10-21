@@ -58,6 +58,46 @@ impl Store {
         Self::from_connection(Connection::open(path)?)
     }
 
+    pub fn open_read_only(path: &Path) -> Result<Store> {
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        conn.busy_timeout(std::time::Duration::from_secs(1))?;
+        let found: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?
+            .unwrap_or(0);
+        let supported = MIGRATIONS.len() as i64;
+        if found > supported {
+            return Err(UsageError::SchemaTooNew { found, supported });
+        }
+        if found < supported {
+            return Err(UsageError::Invalid(
+                "the usage store is older than this tmgr; run `tmgr usage` once".into(),
+            ));
+        }
+        Ok(Store { conn })
+    }
+
+    pub fn scanned_bytes(&self, file_name: &str) -> Result<Option<u64>> {
+        let tail = format!("%/{}", file_name.replace(['%', '_'], ""));
+        let offset: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT MAX(byte_offset) FROM usage_file_state WHERE file_key = ?1 OR file_key LIKE ?2",
+                params![file_name, tail],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        Ok(offset.map(|o| o.max(0) as u64))
+    }
+
     pub fn open_in_memory() -> Result<Store> {
         Self::from_connection(Connection::open_in_memory()?)
     }

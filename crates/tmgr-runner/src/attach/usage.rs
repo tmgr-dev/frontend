@@ -85,6 +85,13 @@ fn dollars(c: Option<Cost>) -> Part {
 }
 
 impl UsageBar {
+    fn is_blank(&self) -> bool {
+        self.claude_5h.is_none()
+            && self.claude_week.is_none()
+            && self.codex_week.is_none()
+            && self.costs.is_empty()
+    }
+
     pub fn parts(&self, focused: Option<&str>, claude_focused: bool) -> Vec<Part> {
         let mut out = vec![
             percent("5h", self.claude_5h),
@@ -111,7 +118,7 @@ impl ViewState {
     }
 
     pub fn usage_parts(&self) -> Vec<Part> {
-        let Some(bar) = &self.usage else {
+        let Some(bar) = self.usage.as_ref().filter(|b| !b.is_blank()) else {
             return Vec::new();
         };
         let focused = self.focused_session();

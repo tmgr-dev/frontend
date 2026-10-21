@@ -5694,9 +5694,14 @@ fn usage_parts_format_limits_cost_and_unknowns() {
     assert_eq!(parts[2].tone, Tone::Stale);
     let mut v = v;
     v.usage = Some(UsageBar::default());
-    assert_eq!(texts(&v.usage_parts()), ["5h ?", "wk ?", "cx ?", "$?"]);
+    assert!(v.usage_parts().is_empty());
+    v.usage.as_mut().unwrap().codex_week = Some(Reading {
+        pct: 3.0,
+        stale: false,
+    });
+    assert_eq!(texts(&v.usage_parts()), ["5h ?", "wk ?", "cx 3%", "$?"]);
     v.status.clear();
-    assert_eq!(texts(&v.usage_parts()), ["5h ?", "wk ?", "cx ?"]);
+    assert_eq!(texts(&v.usage_parts()), ["5h ?", "wk ?", "cx 3%"]);
     v.usage = None;
     assert!(v.usage_parts().is_empty());
 }

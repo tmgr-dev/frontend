@@ -1,57 +1,76 @@
 use super::attach_questions::{session_src, QuestionJob};
 use chrono::{DateTime, Duration, FixedOffset, TimeZone, Utc};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
-use std::time::SystemTime;
 use tmgr_runner::attach::{Cost, Format, Reading, UsageBar};
 use tmgr_runner::questions::transcript_path;
 use tmgr_usage::aggregate::{Filters, Query};
 use tmgr_usage::limits::{LimitSnapshot, LimitWindow};
 use tmgr_usage::paths::{self, Env};
+use tmgr_usage::statusline::read_snapshots;
 use tmgr_usage::{Store, Tool, Tz};
 
 const LIMIT_STALE: Duration = Duration::minutes(30);
-const COST_LAG_S: u64 = 120;
+const COST_LAG_BYTES: u64 = 4096;
 
-pub(super) fn usage_db_path() -> Option<PathBuf> {
+pub(super) struct Source {
+    pub db: PathBuf,
+    pub snapshots: PathBuf,
+}
+
+pub(super) fn usage_source() -> Option<Source> {
     let dir = paths::data_dir(&Env::from_process()).ok()?;
-    Some(paths::db_path(&dir))
+    Some(Source {
+        db: paths::db_path(&dir),
+        snapshots: paths::snapshots_dir(&dir).join("claude"),
+    })
 }
 
 pub(super) fn usage_worker(
-    db: Option<PathBuf>,
+    source: Option<Source>,
     jobs: Receiver<Vec<QuestionJob>>,
     mut send: impl FnMut(UsageBar) -> bool,
 ) {
     let mut store: Option<Store> = None;
     for batch in jobs {
         if store.is_none() {
-            store = db
-                .as_deref()
-                .filter(|p| p.exists())
-                .and_then(|p| Store::open(p).ok());
+            store = source
+                .as_ref()
+                .filter(|s| s.db.exists())
+                .and_then(|s| Store::open_read_only(&s.db).ok());
         }
-        let bar = store
-            .as_ref()
-            .map(|s| build(s, db.as_deref(), &batch, Utc::now()))
-            .unwrap_or_default();
+        let bar = build(store.as_ref(), source.as_ref(), &batch, Utc::now());
         if !send(bar) {
             return;
         }
     }
 }
 
-fn build(store: &Store, db: Option<&Path>, batch: &[QuestionJob], now: DateTime<Utc>) -> UsageBar {
-    let mut bar = UsageBar::default();
-    if let Ok(limits) = store.current_limits(now) {
-        bar.claude_5h = reading(&limits, Tool::Claude, &LimitWindow::Session, now);
-        bar.claude_week = reading(&limits, Tool::Claude, &LimitWindow::Weekly, now);
-        bar.codex_week = reading(&limits, Tool::Codex, &LimitWindow::Weekly, now);
+fn build(
+    store: Option<&Store>,
+    source: Option<&Source>,
+    batch: &[QuestionJob],
+    now: DateTime<Utc>,
+) -> UsageBar {
+    let mut limits = store
+        .and_then(|s| s.current_limits(now).ok())
+        .unwrap_or_default();
+    if let Some(src) = source {
+        for snap in read_snapshots(&src.snapshots).unwrap_or_default() {
+            limits.extend(snap.to_limits_at("claude", now));
+        }
     }
-    let db_mtime = db.and_then(db_modified);
-    for job in batch.iter().filter(|j| j.src.format == Format::Claude) {
-        if let Some(cost) = session_cost(store, job, db_mtime, now) {
-            bar.costs.insert(job.id.clone(), cost);
+    let mut bar = UsageBar {
+        claude_5h: reading(&limits, Tool::Claude, &LimitWindow::Session, now),
+        claude_week: reading(&limits, Tool::Claude, &LimitWindow::Weekly, now),
+        codex_week: reading(&limits, Tool::Codex, &LimitWindow::Weekly, now),
+        ..UsageBar::default()
+    };
+    if let Some(store) = store {
+        for job in batch.iter().filter(|j| j.src.format == Format::Claude) {
+            if let Some(cost) = session_cost(store, job, now) {
+                bar.costs.insert(job.id.clone(), cost);
+            }
         }
     }
     bar
@@ -73,22 +92,10 @@ fn reading(
     })
 }
 
-fn db_modified(db: &Path) -> Option<SystemTime> {
-    let wal = PathBuf::from(format!("{}-wal", db.display()));
-    [db, wal.as_path()]
-        .iter()
-        .filter_map(|p| std::fs::metadata(p).ok()?.modified().ok())
-        .max()
-}
-
-fn session_cost(
-    store: &Store,
-    job: &QuestionJob,
-    db_mtime: Option<SystemTime>,
-    now: DateTime<Utc>,
-) -> Option<Cost> {
+fn session_cost(store: &Store, job: &QuestionJob, now: DateTime<Utc>) -> Option<Cost> {
     let src = session_src(job)?;
     let path = transcript_path(&src)?;
+    let name = path.file_name()?.to_str()?.to_string();
     let tool_id = path.file_stem()?.to_str()?.to_string();
     let query = Query {
         from: Utc.timestamp_opt(0, 0).single()?,
@@ -105,15 +112,12 @@ fn session_cost(
     if report.totals.events == 0 {
         return None;
     }
-    let behind = match (
-        db_mtime,
-        std::fs::metadata(&path).and_then(|m| m.modified()),
-    ) {
-        (Some(db), Ok(file)) => file
-            .duration_since(db)
-            .is_ok_and(|d| d.as_secs() > COST_LAG_S),
-        _ => true,
-    };
+    let size = std::fs::metadata(&path).ok()?.len();
+    let behind = store
+        .scanned_bytes(&name)
+        .ok()
+        .flatten()
+        .is_none_or(|read| size > read + COST_LAG_BYTES);
     Some(Cost {
         usd: report.totals.cost_usd,
         stale: behind || report.totals.unpriced_events > 0,
@@ -123,6 +127,7 @@ fn session_cost(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
     use std::sync::mpsc;
     use tmgr_runner::attach::Format;
     use tmgr_usage::limits::LimitSource;
@@ -228,11 +233,20 @@ mod tests {
         }
     }
 
-    fn run(db: Option<PathBuf>, jobs: Vec<QuestionJob>) -> UsageBar {
+    fn source(db: &Path) -> Source {
+        Source {
+            db: db.to_path_buf(),
+            snapshots: db.with_file_name("snapshots").join("claude"),
+        }
+    }
+
+    fn run(db: Option<&Path>, jobs: Vec<QuestionJob>) -> UsageBar {
+        let source = db.map(source);
         let (tx, rx) = mpsc::sync_channel(1);
         let (out_tx, out_rx) = mpsc::channel();
-        let handle =
-            std::thread::spawn(move || usage_worker(db, rx, move |bar| out_tx.send(bar).is_ok()));
+        let handle = std::thread::spawn(move || {
+            usage_worker(source, rx, move |bar| out_tx.send(bar).is_ok())
+        });
         tx.send(jobs).unwrap();
         let bar = out_rx.recv().unwrap();
         drop(tx);
@@ -243,7 +257,7 @@ mod tests {
     #[test]
     fn limits_and_session_cost_come_from_the_local_store() {
         let f = fixture();
-        let bar = run(Some(f.db.clone()), vec![job(&f.home, &f.runner)]);
+        let bar = run(Some(&f.db), vec![job(&f.home, &f.runner)]);
         assert_eq!(bar.claude_5h.map(|r| (r.pct, r.stale)), Some((34.0, false)));
         assert_eq!(
             bar.claude_week.map(|r| (r.pct, r.stale)),
@@ -258,14 +272,12 @@ mod tests {
     #[test]
     fn a_transcript_ahead_of_the_store_marks_the_cost_old() {
         let f = fixture();
-        let later = SystemTime::now() + std::time::Duration::from_secs(600);
-        std::fs::OpenOptions::new()
-            .write(true)
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
             .open(&f.transcript)
-            .unwrap()
-            .set_modified(later)
             .unwrap();
-        let bar = run(Some(f.db.clone()), vec![job(&f.home, &f.runner)]);
+        std::io::Write::write_all(&mut file, &vec![b' '; 8192]).unwrap();
+        let bar = run(Some(&f.db), vec![job(&f.home, &f.runner)]);
         assert!(bar.costs["s_abcdefghjk"].stale);
     }
 
@@ -273,10 +285,45 @@ mod tests {
     fn a_missing_store_gives_an_empty_bar_and_is_not_created() {
         let dir = tempfile::tempdir().unwrap();
         let db = dir.path().join("usage.db");
-        let bar = run(Some(db.clone()), Vec::new());
+        let bar = run(Some(&db), Vec::new());
         assert_eq!(bar, UsageBar::default());
         assert!(!db.exists());
         assert_eq!(run(None, Vec::new()), UsageBar::default());
+    }
+
+    #[test]
+    fn statusline_snapshots_feed_the_limits_without_a_scan() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("usage.db");
+        let reset = (Utc::now() + Duration::hours(2)).timestamp();
+        let body = format!(
+            r#"{{"session_id":"abc","rate_limits":{{"five_hour":{{"used_percentage":55,"resets_at":{reset}}},"seven_day":{{"used_percentage":12,"resets_at":{reset}}}}}}}"#
+        );
+        tmgr_usage::statusline::write_snapshot(
+            &source(&db).snapshots,
+            Some("default"),
+            body.as_bytes(),
+        )
+        .unwrap();
+        let bar = run(Some(&db), Vec::new());
+        assert_eq!(bar.claude_5h.map(|r| (r.pct, r.stale)), Some((55.0, false)));
+        assert_eq!(bar.claude_week.map(|r| r.pct), Some(12.0));
+        assert!(bar.codex_week.is_none());
+        assert!(!db.exists());
+    }
+
+    #[test]
+    fn the_store_is_opened_read_only() {
+        let f = fixture();
+        let store = Store::open_read_only(&f.db).unwrap();
+        assert!(store
+            .record_limit(&limit(
+                Tool::Codex,
+                LimitWindow::Weekly,
+                1.0,
+                Duration::zero()
+            ))
+            .is_err());
     }
 
     #[test]
@@ -284,6 +331,6 @@ mod tests {
         let f = fixture();
         let mut j = job(&f.home, &f.runner);
         j.src.format = Format::Codex;
-        assert!(run(Some(f.db.clone()), vec![j]).costs.is_empty());
+        assert!(run(Some(&f.db), vec![j]).costs.is_empty());
     }
 }

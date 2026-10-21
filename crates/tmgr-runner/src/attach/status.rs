@@ -257,14 +257,10 @@ pub(crate) fn mode_label(mode: &str) -> String {
     }
 }
 
-fn ctx_percent(tokens: u64, model: &str) -> u8 {
+fn ctx_percent(tokens: u64) -> u8 {
     const SMALL: u64 = 200_000;
     const LARGE: u64 = 1_000_000;
-    let window = if tokens > SMALL || model.contains("[1m]") {
-        LARGE
-    } else {
-        SMALL
-    };
+    let window = if tokens > SMALL { LARGE } else { SMALL };
     ((tokens * 100 + window / 2) / window).min(100) as u8
 }
 
@@ -471,8 +467,7 @@ impl StatusScan {
         if !self.subs.is_empty() && contains(line, b"<task-notification>") {
             self.notified(line);
         }
-        if contains(line, b"\"type\":\"permission-mode\"") {
-            self.permission(line);
+        if contains(line, b"\"type\":\"permission-mode\"") && self.permission(line) {
             return;
         }
         if !contains(line, b"\"type\":\"assistant\"") && !contains(line, b"\"type\":\"user\"") {
@@ -505,13 +500,17 @@ impl StatusScan {
         }
     }
 
-    fn permission(&mut self, line: &[u8]) {
+    fn permission(&mut self, line: &[u8]) -> bool {
         let Ok(v) = serde_json::from_slice::<Value>(line) else {
-            return;
+            return false;
         };
+        if v.get("type").and_then(Value::as_str) != Some("permission-mode") {
+            return false;
+        }
         if let Some(mode) = v.get("permissionMode").and_then(Value::as_str) {
             self.mode = Some(mode_label(mode));
         }
+        true
     }
 
     fn meter(&mut self, message: Option<&Value>) {
@@ -535,7 +534,7 @@ impl StatusScan {
         .filter_map(|k| usage.get(k).and_then(Value::as_u64))
         .sum();
         if tokens > 0 {
-            self.ctx = Some(ctx_percent(tokens, model));
+            self.ctx = Some(ctx_percent(tokens));
         }
     }
 

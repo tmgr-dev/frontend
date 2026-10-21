@@ -13,7 +13,7 @@ use super::attach_shell::{
 use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
-use super::attach_usage::{usage_db_path, usage_worker};
+use super::attach_usage::{usage_source, usage_worker};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -2192,7 +2192,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let (usage_tx, usage_rx) = mpsc::sync_channel(1);
     let usage_out = tx.clone();
     thread::spawn(move || {
-        usage_worker(usage_db_path(), usage_rx, move |bar| {
+        usage_worker(usage_source(), usage_rx, move |bar| {
             usage_out.send(Msg::Usage(bar)).is_ok()
         })
     });
