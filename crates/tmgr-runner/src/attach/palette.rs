@@ -334,11 +334,7 @@ impl ViewState {
                     out.redraw = true;
                 }
             }
-            Kind::Release => {
-                if self.grab.as_deref() == Some("") {
-                    self.grab = None;
-                }
-            }
+            Kind::Release if self.grab.as_deref() == Some("") => self.grab = None,
             _ => {}
         }
         out
