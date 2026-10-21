@@ -1,5 +1,9 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
-import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
+import type {
+	AgentCompactedEvent,
+	AgentReplyEvent,
+	AgentStepEvent,
+} from '@/types/agent';
 import type {
 	ActionError,
 	Activity,
@@ -510,6 +514,13 @@ export function usePusher(): UsePusherReturn {
 				const sub = subscriptions.get(channelName);
 				if (sub) {
 					sub.handlers.forEach((h) => h.onAgentReply?.(data));
+				}
+			});
+
+			channel.listen('.agent.compacted', (data: AgentCompactedEvent) => {
+				const sub = subscriptions.get(channelName);
+				if (sub) {
+					sub.handlers.forEach((h) => h.onAgentCompacted?.(data));
 				}
 			});
 

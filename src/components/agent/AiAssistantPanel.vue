@@ -7,6 +7,7 @@
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import store from '@/store';
+	import { compactionsByAnchor } from '@/utils/agentCompaction';
 	import {
 		fillScenarios,
 		runScenarios,
@@ -35,6 +36,10 @@
 		error,
 		replyTick,
 		busy,
+		compactions,
+		compacting,
+		canCompact,
+		compact,
 		load,
 		openConversation,
 		forgetRemembered,
@@ -83,6 +88,10 @@
 	// TM-222: the field is disabled while a run is in flight, which makes the browser blur it.
 	// Take the cursor back as soon as it is usable again so a follow-up can just be typed.
 	const focusInput = () => nextTick(() => focusField(input.value));
+
+	const anchors = computed(() => compactionsByAnchor(compactions.value));
+	const compactionsAfter = (messageId: number) =>
+		anchors.value.get(messageId) ?? [];
 
 	const open = computed(() => store.state.aiPanelOpen);
 	const view = ref<'chat' | 'list'>('chat');
@@ -258,6 +267,16 @@
 					New chat
 				</button>
 				<button
+					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40"
+					:disabled="!canCompact"
+					:title="
+						canCompact || compacting ? undefined : 'Available between answers'
+					"
+					@click="compact"
+				>
+					{{ compacting ? 'Compacting…' : 'Compact history' }}
+				</button>
+				<button
 					class="rounded-pill p-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					aria-label="Close"
 					@click="close"
@@ -290,7 +309,22 @@
 				Ask about this workspace: what is overdue, how much time went into a
 				category this week, what a task is about.
 			</p>
-			<AgentMessage v-for="m in state.messages" :key="m.id" :message="m" />
+			<template v-for="m in state.messages" :key="m.id">
+				<AgentMessage :message="m" />
+				<div
+					v-for="c in compactionsAfter(m.id)"
+					:key="`compaction-${c.id}`"
+					class="flex items-center gap-2 text-xs text-ink-subtle"
+				>
+					<span class="h-px flex-1 bg-line"></span>
+					<span
+						>History compacted{{
+							c.trigger === 'auto' ? ' (automatic)' : ''
+						}}</span
+					>
+					<span class="h-px flex-1 bg-line"></span>
+				</div>
+			</template>
 		</div>
 		<footer
 			v-show="view === 'chat'"

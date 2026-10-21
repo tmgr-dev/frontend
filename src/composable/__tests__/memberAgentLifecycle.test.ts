@@ -14,7 +14,7 @@ jest.mock('@/actions/tmgr/dashboard', () => ({
 }));
 jest.mock('@/actions/tmgr/agent', () => ({
 	getOrCreateConversation: jest.fn(),
-	getAgentMessages: jest.fn(),
+	getAgentMessagesWithCompactions: jest.fn(),
 	sendAgentMessage: jest.fn(),
 	startNewConversation: jest.fn(),
 }));
@@ -75,21 +75,27 @@ test('chat ignores a late conversation before fetching its messages', async () =
 	(agentApi.getOrCreateConversation as jest.Mock)
 		.mockReturnValueOnce(old.promise)
 		.mockResolvedValue({ id: 2, workspace_id: 2 });
-	(agentApi.getAgentMessages as jest.Mock).mockResolvedValue([]);
+	(agentApi.getAgentMessagesWithCompactions as jest.Mock).mockResolvedValue({
+		messages: [],
+		compactions: [],
+	});
 	const chat = useAgentChat();
 	const first = chat.load(1);
 	await chat.load(2);
 	old.resolve({ id: 1, workspace_id: 1 });
 	await first;
 	expect(chat.state.value.conversationId).toBe(2);
-	expect(agentApi.getAgentMessages).toHaveBeenCalledTimes(1);
+	expect(agentApi.getAgentMessagesWithCompactions).toHaveBeenCalledTimes(1);
 	expect(chat.loading.value).toBe(false);
 });
 test('late send rejection cannot replace new workspace error or loading', async () => {
 	(agentApi.getOrCreateConversation as jest.Mock)
 		.mockResolvedValueOnce({ id: 1, workspace_id: 1 })
 		.mockResolvedValueOnce({ id: 2, workspace_id: 2 });
-	(agentApi.getAgentMessages as jest.Mock).mockResolvedValue([]);
+	(agentApi.getAgentMessagesWithCompactions as jest.Mock).mockResolvedValue({
+		messages: [],
+		compactions: [],
+	});
 	const sent = deferred();
 	(agentApi.sendAgentMessage as jest.Mock).mockReturnValue(sent.promise);
 	const chat = useAgentChat();
