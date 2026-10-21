@@ -5,7 +5,7 @@ use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
 use super::place::{fit, tail2};
-use super::qmenu::{badge_text, draw_qmenu};
+use super::qmenu::{badge_text, draw_qmenu, GotoMark};
 use super::theme::{colors, with_theme};
 use super::title::{age_label, clip};
 use super::tree::Nav;
@@ -557,7 +557,13 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
     }
     Clear.render(inner, buf);
     match screens.snapshot(&p.session) {
-        Some(snap) => draw_snapshot(buf, inner, snap),
+        Some(snap) => {
+            let mark = st
+                .goto
+                .as_ref()
+                .filter(|g| st.scroll.is_some() && g.session == p.session);
+            draw_snapshot(buf, inner, snap, mark);
+        }
         None => {
             let label = "connecting…";
             let w = label.width() as u16;
@@ -574,7 +580,7 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
     }
 }
 
-fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot) {
+fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot, mark: Option<&GotoMark>) {
     for (r, line) in snap.lines.iter().take(inner.height as usize).enumerate() {
         let y = inner.y + r as u16;
         let mut x = inner.x;
@@ -583,6 +589,15 @@ fn draw_snapshot(buf: &mut Buffer, inner: Rect, snap: &Snapshot) {
                 break;
             }
             x = put(buf, x, y, &span.t, attr_style(&span.a), inner.right() - x);
+        }
+        if let Some(m) = mark {
+            let from_bottom = snap.lines.len().saturating_sub(1 + r) + snap.scroll_offset;
+            if from_bottom <= m.bottom && from_bottom + m.rows > m.bottom {
+                buf.set_style(
+                    Rect::new(inner.x, y, inner.width, 1),
+                    Style::new().add_modifier(Modifier::REVERSED),
+                );
+            }
         }
     }
 }

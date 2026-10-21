@@ -5153,6 +5153,133 @@ mod questions_ui {
         assert!(!text.contains("Orphan"));
     }
 
+    fn lines(text: &[&str]) -> Vec<String> {
+        text.iter().map(|l| l.to_string()).collect()
+    }
+
+    #[test]
+    fn find_question_matches_across_wrapped_lines_and_takes_the_latest() {
+        use crate::attach::find_question;
+        let l = lines(&[
+            "Should I gate it?",
+            "ok",
+            "I added the button. Should I also gate",
+            "  it behind the feature flag?",
+            "> ",
+        ]);
+        assert_eq!(
+            find_question(&l, "Should I also gate it behind the feature flag?"),
+            Some((2, 3))
+        );
+        assert_eq!(find_question(&l, "should i gate it?"), Some((0, 0)));
+        assert_eq!(find_question(&l, "Something else entirely?"), None);
+        assert_eq!(find_question(&l, "   "), None);
+        let twice = lines(&["Keep it?", "x", "Keep it?"]);
+        assert_eq!(find_question(&twice, "Keep it?"), Some((2, 2)));
+    }
+
+    #[test]
+    fn find_question_uses_the_head_or_tail_when_the_middle_is_mangled() {
+        use crate::attach::find_question;
+        let q = "Should I also gate the Apple Pay button behind the feature flag or leave it on for everyone?";
+        let l = lines(&[
+            "Should I also gate the Apple Pay button behind",
+            "| the feature flag or leave",
+            "it on for everyone?",
+        ]);
+        assert_eq!(find_question(&l, q), Some((0, 0)));
+    }
+
+    #[test]
+    fn goto_target_puts_the_match_near_the_top_and_clamps() {
+        use crate::attach::goto_target;
+        let (off, mark) = goto_target(100, 20, 80, (30, 31), "a");
+        assert_eq!(off, 100 - 20 - 29);
+        assert_eq!((mark.bottom, mark.rows), (100 - 1 - 31, 2));
+        let (off, _) = goto_target(100, 20, 80, (0, 0), "a");
+        assert_eq!(off, 80);
+        let (off, _) = goto_target(100, 20, 80, (95, 95), "a");
+        assert_eq!(off, 0);
+        let (_, mark) = goto_target(100, 20, 80, (10, 40), "a");
+        assert_eq!((mark.rows, mark.bottom), (8, 59));
+    }
+
+    #[test]
+    fn the_goto_highlight_marks_only_the_matched_rows_while_scrolled() {
+        use crate::attach::{GotoMark, ScrollState};
+        let mut v = with_questions(140);
+        let n = screens().0["a"].lines.len();
+        v.goto = Some(GotoMark {
+            session: "a".into(),
+            bottom: n - 2,
+            rows: 1,
+        });
+        let marked = |v: &ViewState| {
+            let mut term = Terminal::new(TestBackend::new(140, 30)).unwrap();
+            term.draw(|f| render(f, v, &screens())).unwrap();
+            let buf = term.backend().buffer();
+            let w = buf.area.width as usize;
+            buf.content()
+                .chunks(w)
+                .filter(|row| {
+                    row.iter()
+                        .any(|c| c.modifier.contains(ratatui::style::Modifier::REVERSED))
+                })
+                .map(|row| row.iter().map(|c| c.symbol()).collect::<String>())
+                .filter(|t| t.contains("I will add an Apple Pay"))
+                .count()
+        };
+        assert_eq!(marked(&v), 0);
+        v.scroll = Some(ScrollState::default());
+        assert_eq!(marked(&v), 1);
+        v.goto.as_mut().unwrap().session = "b".into();
+        assert_eq!(marked(&v), 0);
+    }
+
+    #[test]
+    fn go_to_and_fork_keys_and_buttons() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        assert_eq!(v.edit_qmenu(b"g"), QEdit::Goto("q1".into()));
+        assert!(v.qmenu.is_none());
+        v.open_questions(Some("a".into()));
+        assert_eq!(v.edit_qmenu(b"f"), QEdit::Fork("q1".into()));
+        assert!(v.qmenu.is_none());
+
+        v.open_questions(Some("a".into()));
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains("[Go to]"), "{text}");
+        assert!(!text.contains("[Fork]"), "{text}");
+        v.forkable = vec!["a".into()];
+        assert!(draw(&v, &screens(), 140, 30).contains("[Fork]"));
+        v.forkable.clear();
+
+        v.forkable = vec!["a".into()];
+        let g = qgeom(AREA, &v).unwrap();
+        let (_, x, _) = g.rows[0]
+            .buttons
+            .iter()
+            .copied()
+            .find(|(b, ..)| *b == crate::attach::QButton::Fork)
+            .unwrap();
+        let y = g.rows[0].y;
+        let out = v.on_mouse(
+            AREA,
+            ev(0, x + 1, y, false),
+            &mouse_info(MouseMode::default(), 0),
+        );
+        assert_eq!(out.question, Some(QEdit::Fork("q1".into())));
+    }
+
+    #[test]
+    fn show_context_selects_the_question_and_opens_its_context() {
+        let mut v = with_questions(140);
+        v.show_context("a", "q2");
+        let m = v.qmenu.as_ref().unwrap();
+        assert!(m.context);
+        assert_eq!(m.sel, 1);
+    }
+
     #[test]
     fn toggle_and_empty_notice() {
         let mut v = with_questions(140);

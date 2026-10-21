@@ -843,7 +843,8 @@ fn constants_are_pinned() {
             "team.v1",
             "orchestrator.v1",
             "sessions_resume.v1",
-            "human_time.v1"
+            "human_time.v1",
+            "sessions_fork.v1"
         ]
     );
     let methods = [
@@ -929,7 +930,7 @@ fn unknown_fields_are_ignored_everywhere() {
     let Handshake::Welcome(w) = serde_json::from_value(welcome).unwrap() else {
         panic!("welcome expected");
     };
-    assert_eq!(w.caps.len(), 29);
+    assert_eq!(w.caps.len(), 30);
 
     let mut push = fixture("screen_push_diff");
     push["future"] = json!(1);

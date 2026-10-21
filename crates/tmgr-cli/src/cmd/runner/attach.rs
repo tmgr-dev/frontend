@@ -1,3 +1,4 @@
+use super::attach_goto::{fork_call, fork_name, goto_call, Found, FORK_PASTE_WAIT};
 use super::attach_new::{
     default_folder, dialog_for, installed_kinds, kind_label, place_session, registers_shell, route,
     spawn_size, start_session, NewFlow, Route, SpawnErr,
@@ -34,8 +35,8 @@ use tmgr_runner::attach::{
     cursor, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11, probe,
     render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
     InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
-    PaneInfo, Place, QEdit, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir, ThemeKind,
-    ViewState, OSC11_QUERY,
+    PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState, SessionRow, SidebarEdit,
+    SplitDir, ThemeKind, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -116,6 +117,16 @@ enum Msg {
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
     Questions(Vec<Entry>),
+    Goto {
+        session: String,
+        question: String,
+        result: std::result::Result<Option<Found>, String>,
+    },
+    Forked {
+        source: String,
+        prefill: String,
+        result: std::result::Result<RestoredRun, String>,
+    },
     Created {
         result: std::result::Result<SessionInfo, String>,
         dir: SplitDir,
@@ -246,6 +257,8 @@ struct App {
     last_question: Instant,
     question_exited: HashSet<String>,
     qstore: Store,
+    forking: HashSet<String>,
+    fork_paste: HashMap<String, (String, Instant)>,
 }
 
 type ProbeJob = (String, u32, String);
@@ -275,6 +288,16 @@ impl App {
                     self.dirty = true;
                 }
             }
+            Msg::Goto {
+                session,
+                question,
+                result,
+            } => self.on_goto(&session, &question, result),
+            Msg::Forked {
+                source,
+                prefill,
+                result,
+            } => self.on_forked(&source, prefill, result),
             Msg::Created {
                 result,
                 dir,
@@ -428,6 +451,23 @@ impl App {
         self.title_pending = self.title_tx.try_send(jobs).is_ok();
     }
 
+    fn question_job(&self, row: &SessionRow, src: &AgentSrc) -> QuestionJob {
+        QuestionJob {
+            id: row.id.clone(),
+            src: src.clone(),
+            pid: src.pid,
+            sandbox_home: self.cfg.homes.join(&row.id),
+            log: self
+                .cfg
+                .dir
+                .join("sessions")
+                .join(&row.id)
+                .join("output.log"),
+            exited: row.exited(),
+            settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
+        }
+    }
+
     fn probe_questions(&mut self) {
         if self.question_pending || self.last_question.elapsed() < QUESTIONS_EVERY {
             return;
@@ -443,20 +483,7 @@ impl App {
             if row.exited() && !self.question_exited.insert(row.id.clone()) {
                 continue;
             }
-            jobs.push(QuestionJob {
-                id: row.id.clone(),
-                src: src.clone(),
-                pid: src.pid,
-                sandbox_home: self.cfg.homes.join(&row.id),
-                log: self
-                    .cfg
-                    .dir
-                    .join("sessions")
-                    .join(&row.id)
-                    .join("output.log"),
-                exited: row.exited(),
-                settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
-            });
+            jobs.push(self.question_job(row, src));
         }
         self.question_pending = self.question_tx.try_send(jobs).is_ok();
     }
@@ -477,6 +504,8 @@ impl App {
                     self.notify(&e.to_string());
                 }
             }
+            QEdit::Goto(id) => self.request_goto(&id),
+            QEdit::Fork(id) => self.request_fork(&id, now_s),
             QEdit::Ignore(id) => self.mark_question(&id, Status::Ignored, now_s),
             QEdit::Restore(id) => self.mark_question(&id, Status::Open, now_s),
         }
@@ -504,16 +533,205 @@ impl App {
             return Ok(());
         }
         self.view.open(&session);
-        let text = questions::paste_text(&entry.q, now_s);
-        let body = if self.bracketed(&session) {
+        self.paste_into(&session, &questions::paste_text(&entry.q, now_s))?;
+        self.mark_question(id, Status::Answered, now_s);
+        self.notify("pasted, type your answer and press Enter");
+        Ok(())
+    }
+
+    fn paste_into(&mut self, session: &str, text: &str) -> io::Result<()> {
+        let body = if self.bracketed(session) {
             format!("\x1b[200~{text}\x1b[201~")
         } else {
             text.replace('\n', " ")
         };
-        self.send_to(&session, body.as_bytes())?;
-        self.mark_question(id, Status::Answered, now_s);
-        self.notify("pasted, type your answer and press Enter");
-        Ok(())
+        self.send_to(session, body.as_bytes())
+    }
+
+    fn request_goto(&mut self, id: &str) {
+        let Some(entry) = self.view.question(id).cloned() else {
+            return;
+        };
+        let session = entry.q.session.clone();
+        let alt = self
+            .cache
+            .snapshot(&session)
+            .is_some_and(|s| s.modes.alt_screen);
+        if alt {
+            self.notify("this agent uses the full screen, showing the context");
+            return self.view.show_context(&session, id);
+        }
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        let question = entry.q.text.clone();
+        let key = id.to_string();
+        thread::spawn(move || {
+            let result = goto_call(&cfg, &session, &question);
+            let _ = tx.send(Msg::Goto {
+                session,
+                question: key,
+                result,
+            });
+        });
+    }
+
+    fn on_goto(
+        &mut self,
+        session: &str,
+        question: &str,
+        result: std::result::Result<Option<Found>, String>,
+    ) {
+        self.dirty = true;
+        match result {
+            Ok(Some((offset, max, mark))) if self.view.sessions.iter().any(|r| r.id == session) => {
+                self.view.open(session);
+                self.view.scroll = Some(ScrollState { offset, max });
+                self.view.goto = Some(mark);
+                self.scroll_mode = true;
+                self.splitter.set_scroll_mode(true);
+                self.notify("Esc returns to the live screen");
+            }
+            other => {
+                if let Err(e) = other {
+                    self.notify(&e);
+                } else {
+                    self.notify("not in the scrollback any more, showing the context");
+                }
+                self.view.show_context(session, question);
+            }
+        }
+    }
+
+    fn request_fork(&mut self, id: &str, now_s: u64) {
+        let Some(entry) = self.view.question(id).cloned() else {
+            return;
+        };
+        let session = entry.q.session.clone();
+        let Some((row, src)) = self
+            .view
+            .sessions
+            .iter()
+            .find(|r| r.id == session)
+            .zip(self.agents.get(&session))
+        else {
+            return self.notify("this session is not ready to fork yet");
+        };
+        if src.profile != "claude-code" {
+            return self.notify("fork works for Claude Code sessions only");
+        }
+        if !self.forking.insert(session.clone()) {
+            return;
+        }
+        let job = self.question_job(row, src);
+        let names: Vec<&str> = self.view.sessions.iter().map(|r| r.name.as_str()).collect();
+        let name = fork_name(&names, &row.name);
+        let content = layout(self.area(), &self.view)
+            .panes
+            .iter()
+            .find(|p| p.session == session)
+            .map(|p| p.content())
+            .unwrap_or_default();
+        let size = spawn_size(content, Place::Right);
+        let prefill = questions::paste_text(&entry.q, now_s);
+        self.notify("forking…");
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = fork_call(&cfg, &job, &name, size);
+            let sent = tx.send(Msg::Forked {
+                source: job.id,
+                prefill,
+                result,
+            });
+            if let Err(mpsc::SendError(Msg::Forked {
+                result: Ok(run), ..
+            })) = sent
+            {
+                run_ladder(&cfg, &run.session.id, true, KILL_ONLY);
+            }
+        });
+    }
+
+    fn on_forked(
+        &mut self,
+        source: &str,
+        prefill: String,
+        result: std::result::Result<RestoredRun, String>,
+    ) {
+        self.forking.remove(source);
+        self.dirty = true;
+        let info = match result {
+            Ok(run) => run.session,
+            Err(e) => return self.notify(&e),
+        };
+        if !self.view.sessions.iter().any(|r| r.id == info.id) {
+            self.view.sessions.extend(rows(std::slice::from_ref(&info)));
+        }
+        self.pending.insert(info.id.clone(), Instant::now());
+        self.starts
+            .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
+        let split = place_session(&mut self.view, source, Place::Right, &info.id);
+        self.fork_paste
+            .insert(info.id.clone(), (prefill, Instant::now()));
+        let name = sanitize_text(&info.name).into_owned();
+        if split {
+            self.notify(&format!("forked into {name}"));
+        } else {
+            self.notify(&format!("forked into {name}, no room for another pane"));
+        }
+    }
+
+    fn trust_prompt(&self, session: &str) -> bool {
+        self.cache.snapshot(session).is_some_and(|s| {
+            s.lines.iter().any(|l| {
+                let text: String = l.spans.iter().map(|sp| sp.t.as_str()).collect();
+                let text = text.to_lowercase();
+                text.contains("do you trust") || text.contains("trust this folder")
+            })
+        })
+    }
+
+    fn paste_forks(&mut self) {
+        let gone: Vec<String> = self
+            .fork_paste
+            .keys()
+            .filter(|id| !self.view.sessions.iter().any(|r| &r.id == *id))
+            .cloned()
+            .collect();
+        for id in gone {
+            self.fork_paste.remove(&id);
+        }
+        let ready: Vec<String> = self
+            .fork_paste
+            .iter()
+            .filter(|(id, (_, at))| {
+                at.elapsed() > FORK_PASTE_WAIT
+                    || self.view.sessions.iter().any(|r| {
+                        &r.id == *id
+                            && (r.state.kind == StateKind::Exited
+                                || r.state.kind == StateKind::Waiting && !self.trust_prompt(id))
+                    })
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in ready {
+            let Some((text, at)) = self.fork_paste.remove(&id) else {
+                continue;
+            };
+            let waiting = self
+                .view
+                .sessions
+                .iter()
+                .any(|r| r.id == id && r.state.kind == StateKind::Waiting);
+            self.dirty = true;
+            if !waiting || at.elapsed() > FORK_PASTE_WAIT {
+                self.notify("forked, the question was not pasted");
+            } else if self.paste_into(&id, &text).is_ok() {
+                self.notify("forked, type your answer and press Enter");
+            } else {
+                self.notify("forked, the question was not pasted");
+            }
+        }
     }
 
     fn is_shell(&self, id: &str) -> bool {
@@ -1302,6 +1520,16 @@ impl App {
         self.probe_places();
         self.probe_titles();
         self.probe_questions();
+        self.paste_forks();
+        self.view.forkable = self
+            .agents
+            .iter()
+            .filter(|(_, s)| s.profile == "claude-code")
+            .map(|(id, _)| id.clone())
+            .collect();
+        if self.view.scroll.is_none() {
+            self.view.goto = None;
+        }
         let now_s = now_ms() / 1000;
         if self.view.now_s / 60 != now_s / 60 && self.view.qmenu.is_some() {
             self.dirty = true;
@@ -1728,6 +1956,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         last_question: Instant::now() - QUESTIONS_EVERY,
         question_exited: HashSet::new(),
         qstore: Store::new(&cfg.dir),
+        forking: HashSet::new(),
+        fork_paste: HashMap::new(),
     };
     let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);

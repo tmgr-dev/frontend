@@ -8,10 +8,10 @@ use tmgr_ipc::api::limits::MAX_INPUT;
 use tmgr_ipc::api::{
     method, AttachParams, AutopilotCommand, AutopilotControlParams, AutopilotControlled,
     AutopilotLog, AutopilotLogParams, AutopilotStartParams, AutopilotStarted, AutopilotStatus,
-    CandidateInfo, CreateReq, EventMsg, IdParams, KillParams, LayoutSetParams, Line, LookupParams,
-    OrchestratorCreateReq, RenameParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus,
-    ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams, Welcome,
-    WorkSummary, CLIENT_CLI,
+    CandidateInfo, CreateReq, EventMsg, ForkParams, IdParams, KillParams, LayoutSetParams, Line,
+    LookupParams, OrchestratorCreateReq, RenameParams, RestoredRun, ResumeParams, RunCreateReq,
+    RunStatus, ScreenPush, SendParams, SessionInfo, SessionText, Snapshot, StatusInfo, TextParams,
+    Welcome, WorkSummary, CLIENT_CLI,
 };
 use tmgr_ipc::endpoint::{self, Endpoint};
 use tmgr_ipc::frame::{read_frame, write_frame, write_json, BinFrame, Frame, TAG_INPUT};
@@ -159,6 +159,23 @@ impl Client {
             rows,
         };
         from_value(self.call(method::SESSIONS_RESUME, to_params(&params)?)?)
+    }
+
+    pub fn fork(
+        &mut self,
+        id: &str,
+        agent_id: &str,
+        name: Option<&str>,
+        (cols, rows): (u16, u16),
+    ) -> io::Result<RestoredRun> {
+        let params = ForkParams {
+            id: id.into(),
+            agent_id: agent_id.into(),
+            name: name.map(str::to_string),
+            cols,
+            rows,
+        };
+        from_value(self.call(method::SESSIONS_FORK, to_params(&params)?)?)
     }
 
     pub fn kill(&mut self, id: &str, signal: &str) -> io::Result<()> {

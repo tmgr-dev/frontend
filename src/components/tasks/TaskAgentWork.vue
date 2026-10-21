@@ -25,6 +25,7 @@
 			:runs="runs"
 			:totals="totals"
 			:cost="cost"
+			:cost-state="costState"
 		/>
 	</section>
 	<section
@@ -90,7 +91,7 @@
 						v-if="isHttpUrl(run.pr_url)"
 						:href="run.pr_url"
 						target="_blank"
-						rel="noopener"
+						rel="noopener noreferrer"
 						class="text-brand hover:underline"
 						>Pull request</a
 					>
@@ -216,6 +217,7 @@
 			const desktop = isDesktopApp();
 			const detailsOpen = ref(false);
 			const cost = ref(null);
+			const costState = ref('loading');
 			const localCost = ref(null);
 			const workspaceCode = computed(
 				() => store.getters.workspaceById?.(props.workspaceId)?.code ?? '',
@@ -253,6 +255,7 @@
 				]);
 				if (current !== request) return;
 				cost.value = fetchedCost;
+				costState.value = fetchedCost ? 'ready' : 'failed';
 				if (local !== undefined) {
 					localCost.value = pricedCost(local?.aggregate);
 					if (local) usageReadFor = props.taskId;
@@ -342,6 +345,7 @@
 				() => props.taskId,
 				() => {
 					cost.value = null;
+					costState.value = 'loading';
 					localCost.value = null;
 					usageReadFor = null;
 					runs.value = [];
@@ -385,6 +389,7 @@
 				desktop,
 				detailsOpen,
 				cost,
+				costState,
 				workspaceCode,
 				blockLine: computed(() => {
 					const t = liveTotals(

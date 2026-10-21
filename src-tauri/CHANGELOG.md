@@ -3,6 +3,14 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.60 — 2026-10-21
+
+- Agent chat: with Write mode on, the assistant can also update a task (status, assignees, estimate, deadline), add a checkpoint, start or stop your own timer and link tasks. Every change waits on the "Confirm changes" card.
+- Agent chat: a personal routine planner. Ask about your routines or agenda, or say "plan my day"; new or changed routines, moved occurrences and pause/resume all go through the card and apply together or not at all.
+- Attach: a questions pocket collects questions your agents ask in their sessions, with ?N badges and a menu.
+- Notifications: the dropdown and the page use the shared buttons and theme colors.
+- Daily Routines: the last routines show instantly on return visits and refresh in the background.
+
 ## 0.9.59 — 2026-10-21
 
 - Agent chat: the assistant can now propose changes instead of only reading. With the workspace setting AI assistant > Write mode set to "Write with confirmation" (the default is "Read only"), it shows a "Confirm changes" card listing the planned changes (for example creating tasks or adding comments); nothing changes until you confirm.
