@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.57 — 2026-10-21
+
+- Settings: their own grouped navigation, so every settings section is one click away instead of living in the user menu.
+- Sidebar: a shorter user menu, plus search, quick actions and Pinned and Tools sections.
+- Dashboard: a 7 / 30-day period switch, KPI cards with trends, an activity chart, top categories by tracked time and an active members table.
+- Ask AI and task comments: attach files to a message or comment.
+- Pages no longer shift sideways when the scrollbar appears or disappears.
+- Product tours no longer cover open dialogs.
+
 ## 0.9.56 — 2026-10-21
 
 - Voice input: a mic button in the Ask AI chat and in the task comment box. Press it to record, press stop to turn your speech into text at the cursor, then edit and send it yourself. Recording stops at 2 minutes. macOS asks for microphone access the first time.
