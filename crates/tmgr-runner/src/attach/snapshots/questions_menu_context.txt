@@ -19,7 +19,7 @@
                         │     Done otherwise.                                                                      │                       │
                         │   Which currency should the button default to?   2h  [Go to] [Context] [Answer] [Ignore] │                       │
                         │                                                                                          │                       │
-                        │ a answer · g go to · f fork · c context · i ignore                                       │                       │
+                        │ a answer · g go to · f fork · c context · i ignore · Tab list · Esc close                │                       │
                         ╰──────────────────────────────────────────────────────────────────────────────────────────╯                       │
                         │                                                        ││                                                        │
                         │                                                        ││                                                        │

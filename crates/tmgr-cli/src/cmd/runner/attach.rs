@@ -558,7 +558,8 @@ impl App {
             .snapshot(&session)
             .is_some_and(|s| s.modes.alt_screen);
         if alt {
-            return self.on_goto(&session, id, Ok(None));
+            self.notify("this agent uses the full screen, showing the context");
+            return self.view.show_context(&session, id);
         }
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
@@ -613,7 +614,7 @@ impl App {
             .find(|r| r.id == session)
             .zip(self.agents.get(&session))
         else {
-            return;
+            return self.notify("this session is not ready to fork yet");
         };
         if src.profile != "claude-code" {
             return self.notify("fork works for Claude Code sessions only");
@@ -637,11 +638,17 @@ impl App {
         let tx = self.tx.clone();
         thread::spawn(move || {
             let result = fork_call(&cfg, &job, &name, size);
-            let _ = tx.send(Msg::Forked {
+            let sent = tx.send(Msg::Forked {
                 source: job.id,
                 prefill,
                 result,
             });
+            if let Err(mpsc::SendError(Msg::Forked {
+                result: Ok(run), ..
+            })) = sent
+            {
+                run_ladder(&cfg, &run.session.id, true, KILL_ONLY);
+            }
         });
     }
 
@@ -674,7 +681,26 @@ impl App {
         }
     }
 
+    fn trust_prompt(&self, session: &str) -> bool {
+        self.cache.snapshot(session).is_some_and(|s| {
+            s.lines.iter().any(|l| {
+                let text: String = l.spans.iter().map(|sp| sp.t.as_str()).collect();
+                let text = text.to_lowercase();
+                text.contains("do you trust") || text.contains("trust this folder")
+            })
+        })
+    }
+
     fn paste_forks(&mut self) {
+        let gone: Vec<String> = self
+            .fork_paste
+            .keys()
+            .filter(|id| !self.view.sessions.iter().any(|r| &r.id == *id))
+            .cloned()
+            .collect();
+        for id in gone {
+            self.fork_paste.remove(&id);
+        }
         let ready: Vec<String> = self
             .fork_paste
             .iter()
@@ -682,7 +708,8 @@ impl App {
                 at.elapsed() > FORK_PASTE_WAIT
                     || self.view.sessions.iter().any(|r| {
                         &r.id == *id
-                            && matches!(r.state.kind, StateKind::Waiting | StateKind::Exited)
+                            && (r.state.kind == StateKind::Exited
+                                || r.state.kind == StateKind::Waiting && !self.trust_prompt(id))
                     })
             })
             .map(|(id, _)| id.clone())
@@ -701,6 +728,8 @@ impl App {
                 self.notify("forked, the question was not pasted");
             } else if self.paste_into(&id, &text).is_ok() {
                 self.notify("forked, type your answer and press Enter");
+            } else {
+                self.notify("forked, the question was not pasted");
             }
         }
     }

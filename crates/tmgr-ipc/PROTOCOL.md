@@ -150,7 +150,7 @@ missing params) and `internal`.
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
 | `sessions.resume` | `{id, cols?, rows?}` (an exited session) | `{session: SessionInfo, resumed, via}` | `not_found`, `busy`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only; cap `sessions_resume.v1` |
-| `sessions.fork` | `{id, agent_id, name?, cols?, rows?}` (any state) | `{session: SessionInfo, resumed, via}` (`via` is `fork`) | `not_found`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `internal` |
+| `sessions.fork` | `{id, agent_id, name?, cols?, rows?}` (any state) | `{session: SessionInfo, resumed, via}` (`via` is `fork`) | `not_found`, `busy`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit`, `internal` | `client: "cli"` only; cap `sessions_fork.v1` |
 | `runs.lookup` | `{start_key}` | `SessionInfo` | `not_found` | any client; cap `start_key.v1` |
 | `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
 | `sessions.text` | `{id, lines?}` (`lines` 1 to 10000, default the screen height) | `{id, rows, cols, lines, scroll_max}` | `not_found`, `invalid_params`, `forbidden` | any client except `worker`; cap `session_text.v1` |

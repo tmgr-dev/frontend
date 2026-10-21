@@ -2433,6 +2433,19 @@ impl Runner {
         let s = self
             .session(&q.id)
             .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+        if s.resuming.swap(true, Ordering::SeqCst) {
+            return Err(api(
+                ErrorCode::Busy,
+                "a resume of this session is in progress",
+            ));
+        }
+        let _guard = Resuming(&s.resuming);
+        if restore::is_claimed(&self.intents(), &q.id) {
+            return Err(api(
+                ErrorCode::Busy,
+                "a restore of this session is in progress",
+            ));
+        }
         let meta = lock(&s.inner).meta.clone();
         let profile = match meta.profile.as_deref() {
             Some(p @ "claude-code") => p.to_string(),
@@ -2458,8 +2471,14 @@ impl Runner {
         let CwdPin { dev, ino } = intent.cwd_pin;
         same_folder(&intent.cwd, Some((dev, ino)))?;
         intent.pids.clear();
+        if intent.profile != profile {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "the launch record is for another agent",
+            ));
+        }
         match restore::status(&intent, now_ms(), false) {
-            restore::Status::Restorable | restore::Status::Expired => {}
+            restore::Status::Restorable => {}
             st => return Err(api(ErrorCode::Forbidden, st.reason())),
         }
         if intent.needs_queue_pin() {
@@ -2472,7 +2491,14 @@ impl Runner {
         let (cols, rows) = clamp_size(q.cols, q.rows);
         req.cols = cols;
         req.rows = rows;
-        req.name = q.name.or(Some(meta.name.clone()));
+        if req.cloud.is_some() {
+            return Err(api(ErrorCode::Forbidden, "cloud runs cannot be forked"));
+        }
+        req.agent_work = false;
+        req.name = q
+            .name
+            .map(|n| n.chars().take(64).collect())
+            .or(Some(meta.name.clone()));
         let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
         let (info, resumed, _, via) = self.create_run_as(
             req,
@@ -4271,22 +4297,46 @@ fn cap_text(lines: &mut Vec<String>, max: usize) {
 const FORK_COPY_CAP: u64 = 512 * 1024 * 1024;
 
 fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<()> {
-    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-    let plain = rel
+    use std::ffi::CString;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+    let bad = |m: &'static str| io::Error::new(io::ErrorKind::InvalidInput, m);
+    let parts: Vec<_> = rel
         .components()
-        .all(|c| matches!(c, std::path::Component::Normal(_)));
-    if !plain || rel.as_os_str().is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad path"));
-    }
-    let mut src = from_home.to_path_buf();
-    let mut dst = to_home.to_path_buf();
-    let parts: Vec<_> = rel.components().collect();
-    for part in &parts[..parts.len() - 1] {
-        src.push(part);
-        dst.push(part);
-        if fs::symlink_metadata(&src)?.file_type().is_symlink() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "symlink"));
+        .map(|c| match c {
+            std::path::Component::Normal(n) => Ok(n),
+            _ => Err(bad("bad path")),
+        })
+        .collect::<io::Result<_>>()?;
+    let Some((name, dirs)) = parts.split_last() else {
+        return Err(bad("bad path"));
+    };
+    let openat = |dir: Option<&OwnedFd>, part: &std::ffi::OsStr, flags: libc::c_int| {
+        let c = CString::new(part.as_bytes()).map_err(|_| bad("bad path"))?;
+        let base = dir.map_or(libc::AT_FDCWD, |d| d.as_raw_fd());
+        let fd =
+            unsafe { libc::openat(base, c.as_ptr(), flags | libc::O_CLOEXEC | libc::O_NOFOLLOW) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
         }
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    };
+    let root = CString::new(from_home.as_os_str().as_bytes()).map_err(|_| bad("bad path"))?;
+    let root_fd = unsafe {
+        libc::open(
+            root.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_CLOEXEC,
+        )
+    };
+    if root_fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let mut dir = unsafe { OwnedFd::from_raw_fd(root_fd) };
+    let mut dst = to_home.to_path_buf();
+    for part in dirs {
+        dir = openat(Some(&dir), part, libc::O_RDONLY | libc::O_DIRECTORY)?;
+        dst.push(part);
         fs::DirBuilder::new()
             .mode(0o700)
             .create(&dst)
@@ -4298,19 +4348,12 @@ fn copy_transcript(from_home: &Path, rel: &Path, to_home: &Path) -> io::Result<(
                 }
             })?;
     }
-    let name = parts[parts.len() - 1];
-    src.push(name);
     dst.push(name);
-    let mut input = fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(&src)?;
+    let input = openat(Some(&dir), name, libc::O_RDONLY | libc::O_NONBLOCK)?;
+    let mut input = fs::File::from(input);
     let meta = input.metadata()?;
-    if !meta.is_file() || meta.len() > FORK_COPY_CAP {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "not a regular file or too large",
-        ));
+    if !meta.is_file() || meta.nlink() > 1 || meta.len() > FORK_COPY_CAP {
+        return Err(bad("not a plain file or too large"));
     }
     let mut out = fs::OpenOptions::new()
         .write(true)
@@ -4327,6 +4370,59 @@ mod tests {
     use super::*;
     use std::io::Read;
     use std::thread::JoinHandle;
+
+    fn fork_dirs() -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let t = tempfile::tempdir().unwrap();
+        let (from, to) = (t.path().join("from"), t.path().join("to"));
+        fs::create_dir_all(from.join(".claude/projects/p")).unwrap();
+        fs::create_dir_all(&to).unwrap();
+        (t, from, to)
+    }
+
+    #[test]
+    fn copy_transcript_copies_one_plain_file_and_nothing_else() {
+        let (_t, from, to) = fork_dirs();
+        let rel = Path::new(".claude/projects/p/a.jsonl");
+        fs::write(from.join(rel), b"line\n").unwrap();
+        fs::write(from.join(".claude/projects/p/other.jsonl"), b"x").unwrap();
+        copy_transcript(&from, rel, &to).unwrap();
+        assert_eq!(fs::read(to.join(rel)).unwrap(), b"line\n");
+        assert!(!to.join(".claude/projects/p/other.jsonl").exists());
+        assert!(copy_transcript(&from, rel, &to).is_err());
+    }
+
+    #[test]
+    fn copy_transcript_refuses_symlinks_links_pipes_and_odd_paths() {
+        use std::os::unix::fs::symlink;
+        let (_t, from, to) = fork_dirs();
+        let proj = from.join(".claude/projects/p");
+        fs::write(from.join("secret"), b"s").unwrap();
+        symlink(from.join("secret"), proj.join("l.jsonl")).unwrap();
+        let rel = Path::new(".claude/projects/p/l.jsonl");
+        assert!(copy_transcript(&from, rel, &to).is_err());
+
+        fs::hard_link(from.join("secret"), proj.join("h.jsonl")).unwrap();
+        let rel = Path::new(".claude/projects/p/h.jsonl");
+        assert!(copy_transcript(&from, rel, &to).is_err());
+
+        let fifo = std::ffi::CString::new(proj.join("f.jsonl").to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+        let rel = Path::new(".claude/projects/p/f.jsonl");
+        assert!(copy_transcript(&from, rel, &to).is_err());
+
+        let real = from.join("real");
+        fs::create_dir_all(&real).unwrap();
+        fs::write(real.join("a.jsonl"), b"x").unwrap();
+        symlink(&real, from.join("linked")).unwrap();
+        assert!(copy_transcript(&from, Path::new("linked/a.jsonl"), &to).is_err());
+
+        for bad in ["../x", "/etc/passwd", "", "a/../b"] {
+            assert!(
+                copy_transcript(&from, Path::new(bad), &to).is_err(),
+                "{bad}"
+            );
+        }
+    }
 
     #[test]
     fn session_text_drops_the_oldest_lines_to_fit_one_frame() {

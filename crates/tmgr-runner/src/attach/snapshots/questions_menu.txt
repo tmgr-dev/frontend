@@ -14,7 +14,7 @@
                         │ ▸ Should I also gate it behind the feature fla… 12m  [Go to] [Context] [Answer] [Ignore] │                       │
                         │   Which currency should the button default to?   2h  [Go to] [Context] [Answer] [Ignore] │                       │
                         │                                                                                          │                       │
-                        │ a answer · g go to · f fork · c context · i ignore                                       │                       │
+                        │ a answer · g go to · f fork · c context · i ignore · Tab list · Esc close                │                       │
                         ╰──────────────────────────────────────────────────────────────────────────────────────────╯                       │
                         │                                                        ││                                                        │
                         │                                                        ││                                                        │

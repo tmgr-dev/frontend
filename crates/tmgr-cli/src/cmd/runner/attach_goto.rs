@@ -1,13 +1,12 @@
 use super::attach_questions::QuestionJob;
 use super::{connect, rerr};
 use std::time::Duration;
-use tmgr_ipc::api::{caps, RestoredRun};
+use tmgr_ipc::api::{caps, limits, RestoredRun};
 use tmgr_runner::attach::{find_question, goto_target, locate, Format, GotoMark, Source};
 use tmgr_runner::daemon::RunnerConfig;
 use tmgr_runner::resume::{id_from_log, valid_resume_id};
 use tmgr_runner::sanitize::sanitize_text;
 
-const GOTO_LINES: u32 = 20_000;
 const FORK_WAIT: Duration = Duration::from_secs(30);
 pub(super) const FORK_PASTE_WAIT: Duration = Duration::from_secs(90);
 
@@ -21,7 +20,7 @@ pub(super) fn goto_call(
     let mut client = connect(cfg).map_err(|e| e.to_string())?;
     let _ = client.set_timeouts(Duration::from_secs(10));
     let text = client
-        .text(session, Some(GOTO_LINES))
+        .text(session, Some(limits::MAX_TEXT_LINES))
         .map_err(|e| sanitize_text(&e.to_string()).into_owned())?;
     let Some(span) = find_question(&text.lines, question) else {
         return Ok(None);

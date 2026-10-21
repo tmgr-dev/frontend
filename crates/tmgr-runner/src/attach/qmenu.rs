@@ -750,9 +750,7 @@ pub(crate) fn draw_qmenu(buf: &mut Buffer, area: Rect, st: &ViewState) {
         );
     }
     let verb = if menu.ignored { "restore" } else { "ignore" };
-    let long = format!(
-        "Up/Down select · a answer · g go to · f fork · c context · i {verb} · Tab list · Esc close"
-    );
+    let long = format!("a answer · g go to · f fork · c context · i {verb} · Tab list · Esc close");
     let hint = if long.width() <= usize::from(g.inner.width) {
         long
     } else {

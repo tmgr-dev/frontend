@@ -222,7 +222,6 @@ pub struct ResumeParams {
     pub rows: u16,
 }
 
-/// Params of `sessions.fork`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ForkParams {
     pub id: String,
