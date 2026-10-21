@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn local_sync_off_skips_without_connecting() {
         let r = recent("a", 1, 1, 0);
-        let d = dir_with(&[r.clone()]);
+        let d = dir_with(std::slice::from_ref(&r));
         Settings {
             sync: false,
             ..Settings::default()
@@ -526,14 +526,14 @@ mod tests {
     #[test]
     fn a_server_toggle_that_is_off_posts_nothing_and_skips() {
         let r = recent("a", 7, 1, 0);
-        let d = dir_with(&[r.clone()]);
+        let d = dir_with(std::slice::from_ref(&r));
         let fake = Rc::new(Fake::default());
         fake.enabled.borrow_mut().insert(7, false);
         let report = go(d.path(), NOW, &fake);
         assert_eq!(report.skipped, 1);
         assert!(fake.posts.borrow().is_empty());
         assert_eq!(status_of(d.path(), &r.id).as_deref(), Some("skipped"));
-        assert_eq!(SendState::load(d.path()).last_enabled["7"], false);
+        assert!(!SendState::load(d.path()).last_enabled["7"]);
     }
 
     #[test]
@@ -557,7 +557,7 @@ mod tests {
     #[test]
     fn offline_keeps_the_queue_backs_off_and_retries_the_same_ids() {
         let r = recent("a", 1, 5, 0);
-        let d = dir_with(&[r.clone()]);
+        let d = dir_with(std::slice::from_ref(&r));
         let fake = Rc::new(Fake::default());
         fake.script
             .borrow_mut()
@@ -574,7 +574,7 @@ mod tests {
 
         fake.script
             .borrow_mut()
-            .push_back(Ok(done(&[r.id.clone()], "duplicate")));
+            .push_back(Ok(done(std::slice::from_ref(&r.id), "duplicate")));
         let retry = go(d.path(), NOW + 61, &fake);
         assert_eq!(retry.duplicate, 1);
         let posts = fake.posts.borrow();
@@ -594,11 +594,11 @@ mod tests {
     #[test]
     fn a_conflict_is_recorded_and_never_resent() {
         let r = recent("a", 1, 5, 0);
-        let d = dir_with(&[r.clone()]);
+        let d = dir_with(std::slice::from_ref(&r));
         let fake = Rc::new(Fake::default());
         fake.script
             .borrow_mut()
-            .push_back(Ok(done(&[r.id.clone()], "conflict")));
+            .push_back(Ok(done(std::slice::from_ref(&r.id), "conflict")));
         assert_eq!(go(d.path(), NOW, &fake).conflict, 1);
         go(d.path(), NOW + 1, &fake);
         assert_eq!(fake.posts.borrow().len(), 1);
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn a_forbidden_answer_keeps_the_queue_and_asks_for_a_new_login() {
         let r = recent("a", 1, 5, 0);
-        let d = dir_with(&[r.clone()]);
+        let d = dir_with(std::slice::from_ref(&r));
         let fake = Rc::new(Fake::default());
         fake.script
             .borrow_mut()
@@ -678,7 +678,7 @@ mod tests {
     #[test]
     fn not_logged_in_keeps_the_queue_without_backoff() {
         let r = recent("a", 1, 5, 0);
-        let d = dir_with(&[r.clone()]);
+        let d = dir_with(std::slice::from_ref(&r));
         let report = flush_with(d.path(), NOW, &|| Err(Error::not_logged_in())).unwrap();
         assert!(report.not_logged_in);
         assert!(status_of(d.path(), &r.id).is_none());

@@ -68,8 +68,7 @@ fn chunk(
     cwd: &str,
     task: Option<(i64, i64)>,
     end: u64,
-    typing: u64,
-    reading: u64,
+    (typing, reading): (u64, u64),
 ) -> serde_json::Value {
     let mut v = json!({
         "id": id, "session": session, "name": name, "cwd": cwd,
@@ -93,8 +92,7 @@ fn seed(h: &Home) {
                 "/work/api",
                 Some((56, 10175)),
                 n - 100,
-                20,
-                40,
+                (20, 40),
             ),
             chunk(
                 "s_a-0000002",
@@ -103,8 +101,7 @@ fn seed(h: &Home) {
                 "/work/api",
                 Some((56, 10175)),
                 n - 50,
-                10,
-                20,
+                (10, 20),
             ),
             chunk(
                 "s_b-0000001",
@@ -113,8 +110,7 @@ fn seed(h: &Home) {
                 "/work/web",
                 Some((56, 10175)),
                 n - 80,
-                5,
-                15,
+                (5, 15),
             ),
             chunk(
                 "s_c-0000001",
@@ -123,8 +119,7 @@ fn seed(h: &Home) {
                 "/work/api",
                 None,
                 n - 60,
-                0,
-                90,
+                (0, 90),
             ),
             chunk(
                 "s_d-0000001",
@@ -133,8 +128,7 @@ fn seed(h: &Home) {
                 "/work/old",
                 Some((-2, 7)),
                 n - 3 * 86_400,
-                30,
-                30,
+                (30, 30),
             ),
         ],
     );
