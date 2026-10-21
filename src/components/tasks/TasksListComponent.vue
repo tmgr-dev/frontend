@@ -410,7 +410,7 @@
 			<!-- Add pagination controls -->
 			<div
 				v-if="pagination.total > pagination.per_page"
-				class="mt-6 hidden flex-wrap items-center justify-between gap-3 px-2 sm:flex"
+				class="mt-6 hidden items-center justify-between px-2 sm:flex"
 			>
 				<div class="flex items-center gap-3">
 					<span class="text-sm text-ink-subtle">

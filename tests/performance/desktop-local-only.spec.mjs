@@ -227,19 +227,19 @@ test('sign in from local-only mode keeps local workspaces next to the cloud one'
   await expect(page.getByText('Local only task').first()).toBeVisible();
   await expect.poll(() => authHeaders.length).toBeGreaterThan(0);
   expect(authHeaders.every((h) => h === 'Bearer cloud-token')).toBe(true);
-  await page.getByTestId('workspace-rail-user').click();
-  await expect(page.getByRole('menu').getByText('Test User')).toBeVisible();
-  await page.keyboard.press('Escape');
+  await expect(page.getByText('Test User').first()).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Create account' }),
   ).toHaveCount(0);
 
-  const chip = (name) =>
-    page.locator(`[data-testid="workspace-rail-chip"][aria-label="${name}"]`);
-  await expect(chip('My workspace (Local)')).toBeVisible();
-  await chip('Demo').click();
+  await page.getByTitle('Switch workspace').first().click();
+  await expect(
+    page.getByRole('menuitem', { name: /My workspace/ }),
+  ).toBeVisible();
+  await page.getByRole('menuitem', { name: /Demo/ }).click();
   await expect(page).toHaveURL(/\/demo\//);
-  await chip('My workspace (Local)').click();
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /My workspace/ }).click();
   await expect(page).toHaveURL(/\/local-my-workspace\//);
   await expect(page.getByText('Local only task').first()).toBeVisible();
 });

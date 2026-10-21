@@ -58,7 +58,7 @@ const setup = async (page, devPlugins, enable) => {
   const shell = await desktopPage(page, {}, { devPlugins });
   await page.setViewportSize({ width: 1100, height: 760 });
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-add').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -74,7 +74,7 @@ const setup = async (page, devPlugins, enable) => {
       sql: `INSERT INTO tasks (title, status_id, created_at, updated_at) VALUES (?, ?, '', '')`,
       params: [title, backlog.id],
     });
-  await page.getByTestId('workspace-rail-user').click();
+  await page.locator('[data-sidebar="footer"] button').first().click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
   for (const name of enable)

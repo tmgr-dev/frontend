@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 
 const openPlugins = async (page) => {
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-user').click();
+  await page.locator('[data-sidebar="footer"] button').first().click();
   await page.getByRole('menuitem', { name: 'Settings' }).click();
   await page.getByTestId('settings-nav-plugins').click();
 };

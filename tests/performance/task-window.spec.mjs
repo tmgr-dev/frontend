@@ -51,8 +51,6 @@ test('a task window shows only the task form and names itself after the task', a
   await expect(page.getByTestId('whats-new-modal')).toHaveCount(0);
   await expect(page.locator('[data-name="task-side-panel"]')).toHaveCount(0);
   await expect(page.getByTitle('Switch workspace')).toHaveCount(0);
-  await expect(page.getByTitle('Workspace actions')).toHaveCount(0);
-  await expect(page.getByTestId('workspace-rail')).toHaveCount(0);
   await expect.poll(() => shell.titles).toContain('Original task');
   expect(new URL(page.url()).pathname).toBe('/demo/task-window/1');
 });

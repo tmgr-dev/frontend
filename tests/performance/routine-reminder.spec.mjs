@@ -13,7 +13,7 @@ const openLocalRoutines = async (page) => {
     sessionStorage.setItem('tmgr:tours:auto', 'true'),
   );
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-add').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();

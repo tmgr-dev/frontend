@@ -50,7 +50,7 @@ test('persona writes over the local socket update the open board and task panel 
     });
 
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-add').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -202,7 +202,7 @@ test('a persona deleting a comment removes it live from the open task panel, and
   };
 
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-add').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -299,7 +299,7 @@ test('persona writes over the local socket update the task list page live', asyn
   };
 
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-add').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();

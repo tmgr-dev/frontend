@@ -58,12 +58,8 @@ const settingsNav = (page) =>
 const heading = (page) => page.locator('[data-page-header] h1').first();
 const sidebar = (page) => page.locator('[data-sidebar="sidebar"]').first();
 
-// Desktop width: the avatar sits on the workspace rail; the phone sheet keeps it in the footer.
 const openUserMenu = (page, scope = page) =>
-  (scope === page
-    ? page.getByTestId('workspace-rail-user')
-    : scope.locator('[data-sidebar="footer"] [aria-haspopup="menu"]')
-  ).click();
+  scope.locator('[data-sidebar="footer"] [aria-haspopup="menu"]').click();
 
 const groupItems = (page, group) =>
   settingsNav(page).locator(`ul[aria-labelledby="settings-nav-${group}"] a`);

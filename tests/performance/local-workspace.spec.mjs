@@ -25,7 +25,7 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   });
 
   await page.goto('/demo/board');
-  await page.getByTestId('workspace-rail-add').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /New local workspace/ }).click();
   await page.getByPlaceholder(/Personal, Client/).fill('Personal');
   await page.getByRole('button', { name: 'Create' }).click();
@@ -173,7 +173,7 @@ test('a local workspace is created from the switcher and keeps its tasks off the
     0,
   );
 
-  await page.getByTitle('Workspace actions').click();
+  await page.getByTitle('Switch workspace').first().click();
   await page.getByRole('menuitem', { name: /Export to Markdown/ }).click();
   await expect.poll(() => shell.exports.length).toBe(1);
   const exported = shell.exports[0].files.map((file) => file.path);
