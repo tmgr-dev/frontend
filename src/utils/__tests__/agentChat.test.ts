@@ -1,3 +1,4 @@
+import type { PendingAction } from '@/types/agent';
 import {
 	appendPending,
 	applyConfirmation,
@@ -361,7 +362,7 @@ describe('confirmation flow', () => {
 			preview: { title: 'x', fields: [], body: null },
 			result: null,
 			expires_at: '2026-10-21T10:15:00Z',
-		} as never);
+		} as unknown as PendingAction);
 
 	const withPending = () =>
 		appendPending(
@@ -462,7 +463,12 @@ describe('confirmation flow', () => {
 	});
 
 	it('treats running as busy and awaiting as idle when loading history', () => {
-		const base = { role: 'assistant', content: '', steps: [], created_at: '' };
+		const base = {
+			role: 'assistant' as const,
+			content: '',
+			steps: [],
+			created_at: '',
+		};
 		const running = applyConversation(createAgentChatState(), CONV, [
 			{ ...base, id: 1, status: 'running' },
 		]);

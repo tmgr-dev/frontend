@@ -15,6 +15,9 @@
 	const isThinking = () =>
 		props.message.status === 'pending' || props.message.status === 'running';
 
+	const onDecide = (d: ActionDecision) =>
+		props.decide?.(props.message.id, d) ?? Promise.resolve();
+
 	const hasCard = () => !!props.message.pending_actions?.length;
 
 	function stepLabel(step: AgentStep): string {
@@ -56,9 +59,7 @@
 			<AgentConfirmationCard
 				v-if="hasCard()"
 				:actions="props.message.pending_actions ?? []"
-				:decide="
-					(d) => props.decide?.(props.message.id, d) ?? Promise.resolve()
-				"
+				:decide="onDecide"
 			/>
 		</div>
 		<div
@@ -79,9 +80,7 @@
 			<AgentConfirmationCard
 				v-if="hasCard()"
 				:actions="props.message.pending_actions ?? []"
-				:decide="
-					(d) => props.decide?.(props.message.id, d) ?? Promise.resolve()
-				"
+				:decide="onDecide"
 			/>
 			<details
 				v-if="props.message.steps.length"
