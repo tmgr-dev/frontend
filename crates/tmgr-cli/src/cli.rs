@@ -43,6 +43,9 @@ pub enum Command {
     #[cfg(feature = "runner")]
     #[command(flatten)]
     Runner(crate::cmd::runner::RunnerCommands),
+    /// Time you spent in `tmgr attach`: totals, idle cap and sending to tasks
+    #[cfg(feature = "runner")]
+    Time(crate::cmd::time::TimeArgs),
     /// Print version, commit and build target
     Version,
     /// Sign in with a device code

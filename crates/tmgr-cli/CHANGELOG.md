@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- New `tmgr time` shows how long you spent in `tmgr attach`, per session, folder or task (`--by`), for today (`--today`) or since a date or age (`--since 2026-10-01`, `--since 7d`), with `--json`. It reads local files only, so it works with the runner stopped. Time of sessions bound to a cloud task is sent to that task by the attach client every few minutes and when you detach, only when the workspace has session time switched on, and never twice; it is sent again later if you were offline. `tmgr time sync off` keeps all time local, `tmgr time sync` shows the state, and `tmgr time idle <seconds>` (30 to 3600) sets how long without activity before time stops counting.
+
 ## 1.0.23
 
 - Resume refuses an agent session whose folder was replaced by another directory or a symlink with `forbidden` "the folder of this session changed since it started", the same answer as for a shell session, both with and without a launch record. Before, the same case was refused later with `invalid_params` "approved folder changed".

@@ -1516,6 +1516,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         exit_scanned: HashSet::new(),
         last_title: Instant::now(),
     };
+    let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
     let cfg_now = app.cfg.clone();
@@ -1530,6 +1531,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     drop(terminal);
     drop(guard);
     drop(rx);
+    flusher.finish();
     let (done_tx, done_rx) = mpsc::channel();
     thread::spawn(move || {
         let _ = app.writer.detach();
