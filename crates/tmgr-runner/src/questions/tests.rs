@@ -354,16 +354,12 @@ fn only_one_scanner_holds_the_lock() {
 }
 
 fn fake(dir: &Path, body: &str) -> std::path::PathBuf {
-    let tmp = dir.join(".claude.tmp");
-    {
-        let mut f = std::fs::File::create(&tmp).unwrap();
-        f.write_all(format!("#!/bin/sh\n{body}\n").as_bytes())
-            .unwrap();
-        f.sync_all().unwrap();
-    }
-    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let src = dir.join("claude.src");
+    std::fs::write(&src, format!("#!/bin/sh\n{body}\n")).unwrap();
     let bin = dir.join("claude");
-    std::fs::rename(&tmp, &bin).unwrap();
+    let copied = Command::new("cp").arg(&src).arg(&bin).status().unwrap();
+    assert!(copied.success());
+    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
     bin
 }
 

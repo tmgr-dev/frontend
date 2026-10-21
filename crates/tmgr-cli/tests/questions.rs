@@ -43,6 +43,9 @@ impl Home {
             origin: Origin::Haiku,
             user: String::new(),
             reply: String::new(),
+            item: String::new(),
+            pos: 0,
+            turn: 0,
         };
         let file = SessionFile {
             questions: vec![

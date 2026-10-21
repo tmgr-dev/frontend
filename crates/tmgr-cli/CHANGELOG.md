@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The question list in `tmgr attach` keeps one question per list item or paragraph: an item with a bold title and several `?` sentences is one row, not one row per sentence (a reply with two numbered items now gives `?2`, not `?6`). The row shows the bold title (or the first question sentence), `Context` and the `Answer` quote carry the whole item, and `Go to` jumps to the start of the item. Haiku is asked for whole items; the rule fallback groups the same way. Rows follow the order of the message, newest message first. Questions already stored one sentence at a time keep working as they were.
+
 ## 1.0.31
 
 - `tmgr attach` shows the subagents a Claude Code session has running. The session row gets `(+3)` after its name, and its activity line can be clicked (or `Ctrl-] u` on the focused session) to expand one row per subagent, such as `Explore: find auth routes  0:12`. Click a subagent row to open a read-only peek of its own transcript: its prompt, what it says and the tools it calls (never their output). The peek refreshes about once a second, scrolls with Up/Down, PageUp/PageDown, `g` and `G`, and closes with `Esc`, `q` or a click; nothing you type there reaches the subagent. A subagent counts as running until its result or completion notice appears in the session transcript, and a background one that has written nothing for ten minutes is dropped. Only the last megabyte of the session transcript is read, so a subagent started before that is not shown. Codex sessions show nothing. Not in a remote attach.
