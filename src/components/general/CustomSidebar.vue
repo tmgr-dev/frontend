@@ -91,6 +91,7 @@
 	import { syncActiveLocalWorkspace } from '@/utils/localWorkspaceSync';
 	import { pagesAvailable, pageUrl } from '@/utils/pagesTree';
 	import { requestCache } from '@/utils/requestCache';
+	import { serverMessageFrom } from '@/utils/serverError';
 	import { useMediaQuery } from '@vueuse/core';
 	import {
 		ArchiveIcon,
@@ -137,6 +138,7 @@
 		viewBadgeAriaLabel,
 		viewBadgeLabel,
 	} from './sidebarViewBadge';
+	import { canLeaveWorkspace as canLeaveWorkspaceFor } from './workspaceLeave';
 
 	const AiAssistantPanel = defineAsyncComponent(
 		() => import('@/components/agent/AiAssistantPanel.vue'),
@@ -468,7 +470,9 @@
 			window.location.reload();
 		} catch (error) {
 			console.error('Failed to exit workspace:', error);
-			alert('Failed to exit workspace. Please try again.');
+			alert(
+				serverMessageFrom(error, 'Failed to exit workspace. Please try again.'),
+			);
 		} finally {
 			showExitConfirm.value = false;
 			workspaceToExit.value = null;
@@ -528,21 +532,8 @@
 		if (workspace) openMoveDialog(workspace.code);
 	};
 
-	const canLeaveWorkspace = (workspace: Workspace) => {
-		if (workspace.is_local) {
-			return false;
-		}
-		// Can't leave default workspace
-		if (workspace.type === 'default' || workspace.is_default) {
-			return false;
-		}
-		// Can leave if not the owner
-		if (workspace.user_id && workspace.user_id !== store.state.user?.id) {
-			return true;
-		}
-		// Show for all non-default workspaces
-		return true;
-	};
+	const canLeaveWorkspace = (workspace: Workspace) =>
+		canLeaveWorkspaceFor(workspace, store.state.user?.id);
 </script>
 
 <template>

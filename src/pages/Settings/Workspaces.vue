@@ -58,6 +58,7 @@
 	import store from '@/store';
 	import { validateEmailString, ValidationResult } from '@/utils/emails.ts';
 	import { errorMessageFrom, httpErrorInfo } from '@/utils/emailVerification';
+	import { serverMessageFrom } from '@/utils/serverError';
 	import { convertToHHMM, timeToSeconds } from '@/utils/timeUtils';
 	import {
 		CircleCheckBigIcon,
@@ -492,6 +493,14 @@
 			}
 		} catch (e) {
 			console.error(e);
+			toaster.toast({
+				title: 'Error',
+				description: serverMessageFrom(
+					e,
+					'Failed to leave the workspace. Please try again.',
+				),
+				variant: 'destructive',
+			});
 		}
 	}
 
