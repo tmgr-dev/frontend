@@ -245,10 +245,14 @@ test.describe('board', () => {
     await expect(page).not.toHaveURL(/priority=/);
     await expect(page).toHaveURL(/priority_sort=1/);
     await expect.poll(() => columnIds(page, 1)).toEqual(SORTED_1);
+    const filtersButton = page.getByRole('button', { name: /^Filters/ });
+    await expect(filtersButton).toHaveClass(/border-brand/);
+    await shot(page, 'board-sort-only-indicator.png');
 
     await openFilters(page);
     await page.getByLabel('Sort by priority').uncheck();
     await expect(page).not.toHaveURL(/priority_sort/);
+    await expect(filtersButton).not.toHaveClass(/border-brand/);
     await expect.poll(() => columnIds(page, 1)).toEqual(MANUAL_1);
     await expect.poll(() => columnIds(page, 2)).toEqual([21, 22]);
     expect(requests.filter(isOrders)).toEqual([]);
@@ -514,6 +518,47 @@ test.describe('active list', () => {
     await commit('updateSingleTask', { ...LIST[2], priority: 'low' });
     await expect.poll(() => listIds(page)).not.toContain(103);
     await expect(page.getByText(/of 11 tasks/)).toBeVisible();
+  });
+
+  test('reset from page 2 drops priority and page (Filters dialog)', async ({
+    page,
+  }) => {
+    const { errors } = await prepare(page, { list: LIST });
+    await openList(page, '?priority=urgent,high&page=2');
+    await expect(page.getByText('Showing 11 to 11 of 11 tasks')).toBeVisible();
+    await page.getByTitle('filters').click();
+    await page.getByRole('button', { name: 'reset' }).click();
+    await page.keyboard.press('Escape');
+    await expect(page).not.toHaveURL(/priority=/);
+    await expect(page).not.toHaveURL(/page=2/);
+    await expect(page.getByText('Showing 1 to 10 of 30 tasks')).toBeVisible();
+    await expect
+      .poll(() => listIds(page))
+      .toEqual(LIST.slice(0, 10).map((t) => t.id));
+    await page.waitForTimeout(500);
+    await expect(page).not.toHaveURL(/priority=/);
+    expect(errors).toEqual([]);
+  });
+
+  test('reset from page 2 drops priority and page (empty state)', async ({
+    page,
+  }) => {
+    const noUrgent = LIST.map((t) =>
+      t.priority === 'urgent' ? { ...t, priority: 'high' } : t,
+    );
+    const { errors } = await prepare(page, { list: noUrgent });
+    await page.goto('/demo/list?priority=urgent&page=2');
+    await expect(page.getByText('No tasks match your filters')).toBeVisible();
+    await page.getByRole('button', { name: 'Clear filters' }).click();
+    await expect(page).not.toHaveURL(/priority=/);
+    await expect(page).not.toHaveURL(/page=2/);
+    await expect(page.getByText('Showing 1 to 10 of 30 tasks')).toBeVisible();
+    await expect
+      .poll(() => listIds(page))
+      .toEqual(LIST.slice(0, 10).map((t) => t.id));
+    await page.waitForTimeout(500);
+    await expect(page).not.toHaveURL(/priority=/);
+    expect(errors).toEqual([]);
   });
 
   test('no match shows the empty state, Clear filters drops priority and keeps the sort', async ({
