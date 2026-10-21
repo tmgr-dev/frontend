@@ -903,11 +903,7 @@ fn on(ctx: &Ctx, yes_auto: bool) -> Result<Output> {
     ))
 }
 
-fn confirm_auto(
-    interactive: bool,
-    yes_auto: bool,
-    ask: impl FnOnce() -> Result<()>,
-) -> Result<()> {
+fn confirm_auto(interactive: bool, yes_auto: bool, ask: impl FnOnce() -> Result<()>) -> Result<()> {
     if yes_auto {
         return Ok(());
     }

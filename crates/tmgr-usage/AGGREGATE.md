@@ -1,7 +1,7 @@
 # TaskUsageAggregate (`task_usage.v1`)
 
 The per-task summary that `tmgr usage task <REF> --json` prints under `aggregate`, and that the
-opt-in upload sends to the server (`POST /api/tasks/{id}/agent-usage`). Built from local AI tool
+opt-in upload (`tmgr usage sync`, or after each agent run once `tmgr usage sync auto on` is confirmed) sends to the server (`POST /api/tasks/{id}/agent-usage`). Built from local AI tool
 logs by `tmgr_usage::task::TaskUsageAggregate`.
 
 It carries only numbers, enums, timestamps and names. No prompts, replies, file contents, tool

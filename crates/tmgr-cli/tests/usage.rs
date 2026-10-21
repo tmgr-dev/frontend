@@ -3217,7 +3217,7 @@ mod usage_sync {
         let (code, shown) = terminal(&c, &["usage", "sync", "on"], "no\n");
         assert_ne!(code, 0, "{shown}");
         assert!(c.store().sync_consent().unwrap().is_none());
-        let (code, shown) = terminal(&c, &["usage", "sync", "on"], "yes\n");
+        let (code, shown) = terminal(&c, &["usage", "sync", "on"], "yes\nn\n");
         assert_eq!(code, 0, "{shown}");
         assert!(c.store().sync_consent().unwrap().is_some());
         for part in [
@@ -3229,6 +3229,151 @@ mod usage_sync {
             assert!(shown.contains(part), "missing {part:?} in\n{shown}");
         }
         assert!(c.puts().await.is_empty());
+    }
+
+    fn auto_set(c: &Cloud) -> bool {
+        c.store().sync_auto().unwrap().is_some()
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn auto_on_needs_consent_then_a_terminal_or_the_flag() {
+        let c = Cloud::new(vec![]).await;
+        let no_consent = c.u.run(&["usage", "sync", "auto", "on", "--yes-auto"]);
+        assert!(!no_consent.status.success());
+        assert!(text(&no_consent.stderr).contains("usage sync on"));
+        assert!(!auto_set(&c));
+
+        c.consent();
+        let refused = c.u.run(&["usage", "sync", "auto", "on"]);
+        assert_eq!(refused.status.code(), Some(10));
+        let yes = c.u.run(&["--yes", "usage", "sync", "auto", "on"]);
+        assert_eq!(yes.status.code(), Some(10));
+        assert!(!auto_set(&c));
+
+        let shown = text(&c.u.run(&["usage", "sync", "auto", "on"]).stderr);
+        assert!(shown.contains("--yes-auto"), "{shown}");
+
+        let v = c.u.json(&["usage", "sync", "auto", "on", "--yes-auto"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["auto"], true);
+        assert!(auto_set(&c));
+
+        let v = c.u.json(&["usage", "sync", "status"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["auto"], true);
+        let v = c.u.json(&["usage", "sync", "auto", "status"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["auto"], true);
+
+        let v = c.u.json(&["usage", "sync", "auto", "off"]);
+        assert_valid("usage_sync", &v);
+        assert_eq!(v["data"]["auto"], false);
+        assert!(!auto_set(&c));
+        assert!(c.store().sync_consent().unwrap().is_some());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sync_off_clears_auto_and_a_later_consent_does_not_bring_it_back() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        c.store().set_sync_auto(Utc::now()).unwrap();
+        c.u.ok(&["usage", "sync", "off"]);
+        assert!(!auto_set(&c));
+        c.consent();
+        let v = c.u.json(&["usage", "sync", "auto", "status"]);
+        assert_eq!(v["data"]["auto"], false);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn auto_trigger_is_a_silent_no_op_unless_consent_and_auto_are_on() {
+        let c = Cloud::new(vec![]).await;
+        let trigger = ["usage", "sync", "--auto", "--task-id", "5", "-q"];
+        let out = c.u.run(&trigger);
+        assert_eq!(out.status.code(), Some(0));
+        assert!(out.stdout.is_empty() && out.stderr.is_empty());
+        c.consent();
+        let out = c.u.run(&trigger);
+        assert_eq!(out.status.code(), Some(0));
+        assert!(out.stdout.is_empty() && out.stderr.is_empty());
+        c.store().clear_sync_consent().unwrap();
+        c.store().set_sync_auto(Utc::now()).unwrap();
+        let out = c.u.run(&trigger);
+        assert_eq!(out.status.code(), Some(0));
+        assert!(out.stdout.is_empty() && out.stderr.is_empty());
+        assert_eq!(c.all_requests().await, 0);
+        assert!(c.puts().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn auto_trigger_uploads_only_the_buckets_of_that_task_id() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        c.store().set_sync_auto(Utc::now()).unwrap();
+        let out =
+            c.u.run(&["usage", "sync", "--auto", "--task-id", "9", "-q"]);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+        let puts = c.puts().await;
+        assert_eq!(puts.len(), 1);
+        assert_eq!(body(&puts[0])["task"]["ref"], "WK-1");
+        assert_eq!(body(&puts[0])["task"]["workspace"], "work");
+        assert_eq!(c.store().ledger_count().unwrap(), 1);
+        let lock = std::fs::read_dir(c.u.p("data"))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.file_name().to_string_lossy().ends_with(".lock"));
+        assert!(!lock);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn auto_flags_belong_together() {
+        let c = Cloud::new(vec![]).await;
+        assert!(!c.u.run(&["usage", "sync", "--auto"]).status.success());
+        assert!(!c
+            .u
+            .run(&["usage", "sync", "--task-id", "5"])
+            .status
+            .success());
+        assert!(!c
+            .u
+            .run(&["usage", "sync", "--auto", "--task-id", "5", "--dry-run"])
+            .status
+            .success());
+        assert_eq!(c.all_requests().await, 0);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn auto_on_in_a_terminal_asks_and_defaults_to_no() {
+        let c = Cloud::new(vec![]).await;
+        c.consent();
+        let (code, shown) = terminal(&c, &["usage", "sync", "auto", "on"], "\n");
+        assert_ne!(code, 0, "{shown}");
+        assert!(!auto_set(&c));
+        for part in [
+            "task_usage.v1",
+            "Never sent: prompts, replies, code, file contents, file paths or command lines",
+            "tmgr usage sync auto off",
+            "tmgr usage sync forget",
+            "Also upload automatically after each agent run? [y/N]",
+        ] {
+            assert!(shown.contains(part), "missing {part:?} in\n{shown}");
+        }
+        let (code, shown) = terminal(&c, &["usage", "sync", "auto", "on"], "y\n");
+        assert_eq!(code, 0, "{shown}");
+        assert!(auto_set(&c));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sync_on_ends_with_the_auto_question_and_declining_keeps_it_off() {
+        let c = Cloud::new(vec![]).await;
+        let (code, shown) = terminal(&c, &["usage", "sync", "on"], "yes\nn\n");
+        assert_eq!(code, 0, "{shown}");
+        assert!(c.store().sync_consent().unwrap().is_some());
+        assert!(!auto_set(&c));
+        assert!(shown.contains("Also upload automatically after each agent run?"));
+        c.u.ok(&["usage", "sync", "off"]);
+        let (code, shown) = terminal(&c, &["usage", "sync", "on"], "yes\ny\n");
+        assert_eq!(code, 0, "{shown}");
+        assert!(auto_set(&c));
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -3555,7 +3700,7 @@ mod usage_sync {
             "{local}"
         );
 
-        let (code, sample) = terminal(&c, &["usage", "sync", "on"], "yes\n");
+        let (code, sample) = terminal(&c, &["usage", "sync", "on"], "yes\nn\n");
         assert_eq!(code, 0, "{sample}");
         let dry_json =
             c.u.ok(&["--json", "usage", "sync", "--dry-run", "--no-scan"]);

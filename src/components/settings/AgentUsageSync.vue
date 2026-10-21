@@ -7,7 +7,7 @@
 			<SettingsRow
 				v-slot="{ labelId, descriptionId }"
 				label="Agent usage sync"
-				description="Uploads per-task totals so web and mobile can show them: tokens, AI cost (API-equivalent), agent, model and tool names, and counts. Never prompts, replies, file paths or command arguments. Turning it off deletes everything already uploaded."
+				description="Uploads per-task totals so web and mobile can show them: tokens, AI cost (API-equivalent), agent, model and tool names, and counts. Never prompts, replies, file paths or command arguments. Uploads start only from the tmgr CLI, after you turn them on there: by hand with `tmgr usage sync`, or after each agent run if you also confirm `tmgr usage sync auto on`. Turning it off deletes everything already uploaded."
 			>
 				<Switch
 					data-testid="agent-usage-sync-switch"
