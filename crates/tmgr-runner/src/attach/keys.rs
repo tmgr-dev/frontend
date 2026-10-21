@@ -32,6 +32,7 @@ pub enum Cmd {
     Rename,
     Resume,
     Palette,
+    NewSession,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -51,6 +51,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "New shell below, same folder",
         true,
     ),
+    def(
+        Cmd::NewSession,
+        b"c",
+        "c",
+        "New session (claude, codex, shell, ...)",
+        true,
+    ),
     def(Cmd::FocusOther, b"\t", "Tab", "Focus next pane", true),
     def(
         Cmd::FocusPrev,

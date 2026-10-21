@@ -54,6 +54,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::Split => "split pane",
         Cmd::SplitRight => "split vertical",
         Cmd::SplitDown => "split horizontal",
+        Cmd::NewSession => "create start chat agent",
         _ => "",
     }
 }

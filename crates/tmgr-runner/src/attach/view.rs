@@ -1,5 +1,6 @@
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
+use super::newsession::NewSession;
 use super::palette::{Palette, PaletteEntry};
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
@@ -110,6 +111,23 @@ pub struct ViewState {
     pub confirm: Option<Confirm>,
     pub rename: Option<Rename>,
     pub palette: Option<Palette>,
+    pub new_session: Option<NewSession>,
+    pub sidebar_focus: Option<SidebarItem>,
+    pub allow_new: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SidebarItem {
+    Session(String),
+    New,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SidebarEdit {
+    Editing,
+    Select(String),
+    New,
+    Leave,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -165,6 +183,9 @@ impl ViewState {
             confirm: None,
             rename: None,
             palette: None,
+            new_session: None,
+            sidebar_focus: None,
+            allow_new: true,
         }
     }
 
@@ -387,7 +408,7 @@ impl ViewState {
                     self.grab = None;
                 }
             }
-            Cmd::Detach | Cmd::Picker | Cmd::Resume => {}
+            Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession => {}
         }
     }
 
@@ -678,6 +699,11 @@ impl ViewState {
                     }
                 }
             }
+            Hit::NewSession => {
+                if ev.is_left_press() {
+                    out.new_session = true;
+                }
+            }
             Hit::None => {}
         }
         out
@@ -925,12 +951,14 @@ pub struct MouseOut {
     pub forward: Option<(String, Vec<u8>)>,
     pub control: Option<(String, Control)>,
     pub palette: Option<PaletteEntry>,
+    pub new_session: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Hit {
     Button(String, Control),
     Session(String),
+    NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,
 }

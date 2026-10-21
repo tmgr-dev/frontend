@@ -457,6 +457,7 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         HelpKey::Cmds(&[Cmd::SplitRight, Cmd::SplitDown]),
         "split right / split down",
     ),
+    (HelpKey::Cmds(&[Cmd::NewSession]), "new session (dialog)"),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),
         "focus next pane (Shift-Tab previous)",
