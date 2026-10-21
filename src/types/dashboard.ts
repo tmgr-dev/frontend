@@ -114,6 +114,9 @@ export interface HeatmapData {
 	streak: StreakInfo;
 	year: number;
 	weeks: number;
+	from?: string;
+	to?: string;
+	years?: number[];
 }
 
 export type TeamActivityWindow = 'today' | '7d' | '30d';
@@ -447,6 +450,7 @@ export interface RecentTasksParams {
 }
 
 export interface HeatmapParams {
+	range?: 'last_12_months' | 'year';
 	year?: number;
 	user_id?: number;
 	timezone?: string;

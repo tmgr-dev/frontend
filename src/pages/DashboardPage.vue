@@ -20,6 +20,13 @@
 	// UI components
 	import ErrorBoundary from '@/components/ErrorBoundary.vue';
 	import Button from '@/components/ui/button/Button.vue';
+	import {
+		Select,
+		SelectContent,
+		SelectItem,
+		SelectTrigger,
+		SelectValue,
+	} from '@/components/ui/select';
 
 	// Composables
 	import { useActivityFeed } from '@/composable/useActivityFeed';
@@ -28,6 +35,10 @@
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useErrorHandler } from '@/composable/useErrorHandler';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
+	import {
+		LAST_12_MONTHS,
+		useHeatmapRange,
+	} from '@/composable/useHeatmapRange';
 	import { useNetworkStatus } from '@/composable/useNetworkStatus';
 	import { usePusher } from '@/composable/usePusher';
 
@@ -40,6 +51,11 @@
 		DashboardTone,
 		TeamMemberStatus,
 	} from '@/types/dashboard';
+	import {
+		heatmapHeadline,
+		heatmapStreakText,
+		utcToday,
+	} from '@/utils/dashboard/heatmapRange';
 	import { secondsToHours } from '@/utils/dashboard/periodStats';
 	import { formatTrackedSeconds } from '@/utils/dashboard/teamActivityFormat';
 
@@ -178,6 +194,36 @@
 		});
 	const clearSelectedDate = () =>
 		handleActivityFiltersChange({ date: undefined });
+
+	const heatmapRange = useHeatmapRange({
+		heatmapData,
+		workspaceId: () => workspaceId.value,
+		userId: () => store.state.user?.id,
+	});
+	const heatmapCard = computed(() => {
+		const data = heatmapRange.data.value;
+		const isYear = heatmapRange.year.value !== null;
+		const state = loadingStates.value.heatmap;
+		return {
+			data,
+			loading: isYear ? heatmapRange.loading.value : state.isLoading,
+			error: isYear ? heatmapRange.error.value : !!state.error,
+			summary: data
+				? `${heatmapHeadline(
+						data.total_contributions,
+						heatmapRange.year.value,
+				  )}. ${heatmapStreakText(
+						data.streak,
+						heatmapRange.year.value,
+						utcToday(),
+				  )}.`
+				: '',
+		};
+	});
+	const retryHeatmap = () =>
+		heatmapRange.year.value !== null
+			? heatmapRange.reload()
+			: refreshSection('heatmap');
 
 	// Pusher composable for real-time updates
 	const {
@@ -545,7 +591,7 @@
 
 	const handleRefresh = async () => {
 		try {
-			await refreshDashboard();
+			await Promise.all([refreshDashboard(), heatmapRange.reload()]);
 		} catch (error) {
 			handleError(error, 'refresh');
 		}
@@ -1164,41 +1210,69 @@
 								tabindex="-1"
 								role="region"
 							>
-								<div class="mb-4">
-									<h2
-										id="heatmap-heading"
-										class="text-lg font-semibold text-ink"
+								<div
+									class="mb-4 flex flex-wrap items-start justify-between gap-3"
+								>
+									<div class="min-w-0">
+										<h2
+											id="heatmap-heading"
+											class="text-lg font-semibold text-ink"
+										>
+											Activity Heatmap
+										</h2>
+										<p
+											class="mt-1 text-sm text-ink-muted"
+											id="heatmap-description"
+										>
+											Activity of everyone in this workspace. Each square is one
+											day (UTC); darker squares mean more activity.
+										</p>
+									</div>
+									<Select
+										v-if="heatmapRange.years.value"
+										:model-value="heatmapRange.selectValue.value"
+										@update:model-value="heatmapRange.select"
 									>
-										Activity Heatmap
-									</h2>
-									<p
-										class="mt-1 text-sm text-ink-muted"
-										id="heatmap-description"
-									>
-										Your contribution activity over the past year. Each square
-										represents a day, with darker colors indicating more
-										activity.
-									</p>
+										<SelectTrigger
+											class="w-40"
+											data-testid="heatmap-range-select"
+											aria-label="Heatmap range"
+										>
+											<SelectValue />
+										</SelectTrigger>
+										<SelectContent>
+											<SelectItem :value="LAST_12_MONTHS">
+												Last 12 months
+											</SelectItem>
+											<SelectItem
+												v-for="year in heatmapRange.years.value"
+												:key="year"
+												:value="String(year)"
+											>
+												{{ year }}
+											</SelectItem>
+										</SelectContent>
+									</Select>
 								</div>
 
 								<div
 									class="heatmap-container"
 									role="group"
 									:aria-label="
-										heatmapData
-											? `Activity heatmap showing ${heatmapData.total_contributions} total contributions`
+										heatmapCard.data
+											? `Activity heatmap showing ${heatmapCard.data.total_contributions} total contributions`
 											: 'Activity heatmap loading'
 									"
 									:aria-describedby="
-										heatmapData ? 'heatmap-summary' : 'heatmap-loading'
+										heatmapCard.data ? 'heatmap-summary' : 'heatmap-loading'
 									"
 								>
 									<HeatmapSkeleton
-										v-if="loadingStates.heatmap.isLoading && !heatmapData"
+										v-if="heatmapCard.loading && !heatmapCard.data"
 									/>
 
 									<div
-										v-else-if="loadingStates.heatmap.error && !heatmapData"
+										v-else-if="heatmapCard.error && !heatmapCard.data"
 										class="flex flex-col items-center justify-center py-20"
 									>
 										<ExclamationTriangleIcon
@@ -1207,19 +1281,16 @@
 										<p class="mb-4 text-sm text-red-600 dark:text-red-400">
 											Failed to load heatmap data
 										</p>
-										<Button
-											@click="refreshSection('heatmap')"
-											variant="outline"
-											size="sm"
-										>
+										<Button @click="retryHeatmap" variant="outline" size="sm">
 											<ArrowPathIcon class="mr-2 h-4 w-4" />
 											Retry
 										</Button>
 									</div>
 
 									<HeatmapCalendar
-										v-else-if="heatmapData"
-										:data="heatmapData"
+										v-else-if="heatmapCard.data"
+										:data="heatmapCard.data"
+										:year="heatmapRange.year.value ?? undefined"
 										:theme="store.getters.isDarkTheme ? 'dark' : 'default'"
 										:selected-date="selectedDate"
 										@select="handleHeatmapSelect"
@@ -1235,15 +1306,17 @@
 									</div>
 
 									<!-- Heatmap summary for screen readers -->
-									<div v-if="heatmapData" id="heatmap-summary" class="sr-only">
-										Total contributions: {{ heatmapData.total_contributions }}.
-										Current streak: {{ heatmapData.streak?.current || 0 }} days.
-										Longest streak: {{ heatmapData.streak?.longest || 0 }} days.
+									<div
+										v-if="heatmapCard.data"
+										id="heatmap-summary"
+										class="sr-only"
+									>
+										{{ heatmapCard.summary }}
 									</div>
 
 									<!-- Loading announcement -->
 									<div
-										v-if="loadingStates.heatmap.isLoading"
+										v-if="heatmapCard.loading"
 										id="heatmap-loading"
 										class="sr-only"
 										aria-live="polite"

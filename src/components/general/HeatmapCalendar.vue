@@ -1,14 +1,14 @@
 <template>
 	<div class="heatmap-calendar relative w-full">
 		<div class="mb-6">
-			<div :class="['mb-1 text-sm font-medium', textColorClass]">
-				{{ data.total_contributions }} contributions in {{ currentYear }}
+			<div
+				data-testid="heatmap-total"
+				:class="['mb-1 text-sm font-medium', textColorClass]"
+			>
+				{{ headline }}
 			</div>
-			<div :class="['text-xs', textColorClass]">
-				Current streak: {{ data.streak.current }}
-				{{ data.streak.current === 1 ? 'day' : 'days' }} • Longest:
-				{{ data.streak.longest }}
-				{{ data.streak.longest === 1 ? 'day' : 'days' }}
+			<div data-testid="heatmap-streak" :class="['text-xs', textColorClass]">
+				{{ streakText }}
 			</div>
 		</div>
 
@@ -29,11 +29,12 @@
 						</div>
 
 						<div class="min-w-0 flex-1">
-							<div class="mb-2 flex justify-between px-[1px]">
+							<div class="mb-2 grid gap-[2px] px-[2px]" :style="weekGridStyle">
 								<div
 									v-for="month in monthLabels"
-									:key="month.label"
-									:class="['text-[9px]', textColorClass]"
+									:key="month.key"
+									:class="['whitespace-nowrap text-[9px]', textColorClass]"
+									:style="{ gridColumnStart: month.column + 1 }"
 								>
 									{{ month.label }}
 								</div>
@@ -48,25 +49,24 @@
 								>
 									<div
 										v-for="day in week"
-										:key="day.date"
+										:key="day.key"
+										:data-date="day.date || undefined"
 										:class="[
 											getSquareClass(day),
-											day.isInRange &&
+											day.date &&
 												'cursor-pointer transition-transform duration-200 hover:scale-110',
-											day.isInRange &&
+											day.date &&
 												day.date === selectedDate &&
 												'relative z-10 ring-2 ring-ink ring-offset-1 ring-offset-surface',
 										]"
 										class="rounded-[2px]"
 										:style="squareStyle"
-										:role="day.isInRange ? 'button' : undefined"
-										:tabindex="day.isInRange ? 0 : undefined"
+										:role="day.date ? 'button' : undefined"
+										:tabindex="day.date ? 0 : undefined"
 										:aria-pressed="
-											day.isInRange
-												? String(day.date === selectedDate)
-												: undefined
+											day.date ? String(day.date === selectedDate) : undefined
 										"
-										:aria-label="day.isInRange ? getDayLabel(day) : undefined"
+										:aria-label="day.date ? getDayLabel(day) : undefined"
 										@click="selectDay(day)"
 										@keydown.enter="selectDay(day)"
 										@keydown.space.prevent="selectDay(day)"
@@ -127,6 +127,14 @@
 		activityCountLabel,
 		formatDayLabel,
 	} from '@/utils/dashboard/activityDayFilter';
+	import {
+		buildHeatmapWeeks,
+		heatmapHeadline,
+		heatmapMonthLabels,
+		heatmapStreakText,
+		resolveHeatmapRange,
+		utcToday,
+	} from '@/utils/dashboard/heatmapRange';
 	import { defineComponent } from 'vue';
 
 	export default defineComponent({
@@ -155,6 +163,10 @@
 				type: String,
 				default: null,
 			},
+			year: {
+				type: Number,
+				default: null,
+			},
 		},
 		emits: ['select'],
 		data() {
@@ -164,106 +176,33 @@
 			};
 		},
 		computed: {
-			currentYear() {
-				return new Date().getFullYear();
-			},
-
-			contributionMap() {
-				const map = {};
-				this.data.contributions.forEach((item) => {
-					map[item.date] = item.count;
-				});
-				return map;
+			today() {
+				return utcToday();
 			},
 
 			calendarGrid() {
-				const grid = [];
-				const year = this.currentYear;
-				const startDate = new Date(year, 0, 1);
-				const endDate = new Date(year, 11, 31);
-
-				let currentDate = new Date(startDate);
-				const dayOfWeek = currentDate.getDay();
-				const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-				currentDate.setDate(currentDate.getDate() - daysToMonday);
-
-				let week = [];
-
-				while (currentDate <= endDate || week.length > 0) {
-					const dateStr = this.formatDateYMD(currentDate);
-					const count = this.contributionMap[dateStr] || 0;
-					const isInRange = currentDate >= startDate && currentDate <= endDate;
-
-					week.push({
-						date: dateStr,
-						count: isInRange ? count : 0,
-						isInRange: isInRange,
-						dayOfWeek: currentDate.getDay(),
-					});
-
-					if (week.length === 7) {
-						grid.push(week);
-						week = [];
-					}
-
-					currentDate.setDate(currentDate.getDate() + 1);
-
-					if (currentDate > endDate && week.length === 0) break;
-				}
-
-				return grid;
+				return buildHeatmapWeeks(
+					resolveHeatmapRange(this.data, this.today),
+					this.data.contributions,
+				);
 			},
 
 			monthLabels() {
-				const labels = [];
-				const year = this.currentYear;
-				const months = [
-					'Jan',
-					'Feb',
-					'Mar',
-					'Apr',
-					'May',
-					'Jun',
-					'Jul',
-					'Aug',
-					'Sep',
-					'Oct',
-					'Nov',
-					'Dec',
-				];
+				return heatmapMonthLabels(this.calendarGrid);
+			},
 
-				let lastMonth = -1;
-				const monthFirstWeek = new Array(12).fill(-1);
+			headline() {
+				return heatmapHeadline(this.data.total_contributions, this.year);
+			},
 
-				this.calendarGrid.forEach((week, weekIndex) => {
-					const firstValidDay = week.find((day) => day.isInRange);
-					if (firstValidDay) {
-						const date = new Date(firstValidDay.date);
-						const month = date.getMonth();
-
-						if (month !== lastMonth && monthFirstWeek[month] === -1) {
-							monthFirstWeek[month] = weekIndex;
-							lastMonth = month;
-						}
-					}
-				});
-
-				months.forEach((monthName, index) => {
-					if (monthFirstWeek[index] !== -1) {
-						labels.push({
-							label: monthName,
-							weekIndex: monthFirstWeek[index],
-						});
-					}
-				});
-
-				return labels;
+			streakText() {
+				return heatmapStreakText(this.data.streak, this.year, this.today);
 			},
 
 			weekGridStyle() {
-				const weeks = this.calendarGrid.length;
+				const weeks = Math.max(this.calendarGrid.length, 53);
 				return {
-					gridTemplateColumns: `repeat(${weeks}, 1fr)`,
+					gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))`,
 					gridAutoFlow: 'column',
 				};
 			},
@@ -323,8 +262,8 @@
 			},
 
 			getSquareClass(day) {
-				if (!day.isInRange) {
-					return this.emptySquareClass;
+				if (!day.date) {
+					return 'bg-transparent';
 				}
 
 				const level = this.getIntensityLevel(day.count);
@@ -346,7 +285,7 @@
 			},
 
 			async handleSquareHover(day, event) {
-				if (!day.isInRange) return;
+				if (!day.date) return;
 
 				const rect = event.target.getBoundingClientRect();
 				const parentRect = event.target
@@ -374,7 +313,7 @@
 			},
 
 			selectDay(day) {
-				if (day.isInRange) this.$emit('select', day.date);
+				if (day.date) this.$emit('select', day.date);
 			},
 
 			getDayLabel(day) {
@@ -384,7 +323,7 @@
 			},
 
 			getTooltipText(day) {
-				if (!day.isInRange) return '';
+				if (!day.date) return '';
 				return `${day.count} ${
 					day.count === 1 ? 'contribution' : 'contributions'
 				} on ${this.formatDate(day.date)}`;
@@ -392,13 +331,6 @@
 
 			formatDate(dateStr) {
 				return formatDayLabel(dateStr);
-			},
-
-			formatDateYMD(date) {
-				const year = date.getFullYear();
-				const month = String(date.getMonth() + 1).padStart(2, '0');
-				const day = String(date.getDate()).padStart(2, '0');
-				return `${year}-${month}-${day}`;
 			},
 		},
 	});

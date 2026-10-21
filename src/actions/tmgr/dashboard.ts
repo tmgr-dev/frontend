@@ -319,6 +319,7 @@ export const getUserHeatmap = async (
 		const config = createRequestConfig(options);
 
 		const queryParams = {
+			...(params?.range === 'year' && { range: 'year' }),
 			year: params?.year || new Date().getFullYear(),
 			user_id: params?.user_id,
 			timezone:
