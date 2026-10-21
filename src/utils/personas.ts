@@ -271,7 +271,11 @@ export const resolveAuthor = (
 		kind: author.kind,
 		id: author.id,
 		name: author.name,
-		subtitle: author.owner ? `persona of ${author.owner.name}` : null,
+		subtitle: author.owner
+			? `${author.kind === 'ai' ? 'requested by' : 'persona of'} ${
+					author.owner.name
+			  }`
+			: null,
 		avatar: author.avatar ?? null,
 	};
 };

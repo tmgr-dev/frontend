@@ -225,6 +225,22 @@ const USER_AUTHOR: AuthorRef = { kind: 'user', id: '7', name: 'Alex' };
 const WEIRD_AUTHOR: AuthorRef = { kind: 'companion', id: 'c1', name: 'Watch' };
 
 describe('resolveAuthor', () => {
+	it('shows an AI author as requested by its owner', () => {
+		const ai: AuthorRef = {
+			kind: 'ai',
+			id: 'assistant',
+			name: 'TMGR AI',
+			owner: { id: '7', name: 'Alex' },
+		};
+		expect(resolveAuthor(ai)).toEqual({
+			kind: 'ai',
+			id: 'assistant',
+			name: 'TMGR AI',
+			subtitle: 'requested by Alex',
+			avatar: null,
+		});
+	});
+
 	it('resolves a persona with an owner subtitle and its own avatar', () => {
 		expect(resolveAuthor(PERSONA_AUTHOR)).toEqual({
 			kind: 'persona',

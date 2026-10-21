@@ -22,6 +22,7 @@
 			>
 				<Plug v-if="resolved.kind === 'plugin'" :style="iconStyle" />
 				<Cog v-else-if="resolved.kind === 'system'" :style="iconStyle" />
+				<Sparkles v-else-if="resolved.kind === 'ai'" :style="iconStyle" />
 				<template v-else>{{ initials }}</template>
 			</span>
 			<span
@@ -46,7 +47,7 @@
 	import type { AuthorRef } from '@/types/author';
 	import { avatarInitials } from '@/utils/avatarInitials';
 	import { resolveAuthor } from '@/utils/personas';
-	import { Cog, Plug, VenetianMask } from 'lucide-vue-next';
+	import { Cog, Plug, Sparkles, VenetianMask } from 'lucide-vue-next';
 	import { computed, defineComponent, type PropType } from 'vue';
 	import PersonaAvatar from './PersonaAvatar.vue';
 	import UserAvatar from './UserAvatar.vue';
@@ -59,7 +60,14 @@
 
 	export default defineComponent({
 		name: 'AuthorBadge',
-		components: { PersonaAvatar, UserAvatar, Cog, Plug, VenetianMask },
+		components: {
+			PersonaAvatar,
+			UserAvatar,
+			Cog,
+			Plug,
+			Sparkles,
+			VenetianMask,
+		},
 		props: {
 			author: {
 				type: Object as PropType<AuthorRef | null | undefined>,
@@ -79,7 +87,7 @@
 				height: `${Math.round(props.size / 1.8)}px`,
 			}));
 			const label = computed(() => {
-				const known = ['user', 'persona', 'plugin', 'system'].includes(
+				const known = ['user', 'persona', 'plugin', 'system', 'ai'].includes(
 					resolved.value.kind,
 				);
 				return known
