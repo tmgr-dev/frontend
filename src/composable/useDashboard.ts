@@ -22,6 +22,7 @@ import type {
 	TeamMemberActivity,
 	UseDashboardReturn,
 } from '@/types/dashboard';
+import { requestCache } from '@/utils/requestCache';
 import { createRequestSequence } from '@/utils/requestSequence';
 import type { ComputedRef, Ref } from 'vue';
 import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue';
@@ -141,21 +142,42 @@ export function useDashboard(
 			sequence.isCurrent(token) && workspace === getCurrentWorkspaceId();
 	};
 
+	// Last shown data per section, so a return visit renders it while the refetch runs (TM-682).
+	const snapshotKey = (section: string, params?: unknown) =>
+		requestCache.generateKey(`dashboard-snapshot-${section}`, {
+			workspace: getCurrentWorkspaceId(),
+			params,
+		});
+	const heatmapRequest = (params?: HeatmapParams): HeatmapParams => ({
+		year: new Date().getFullYear(),
+		timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+		include_weekends: true,
+		...params,
+	});
+
 	// Reactive state for dashboard data
-	const statistics = ref<DashboardStatistics | null>(null);
-	const activities = ref<Activity[]>([]);
-	const heatmapData = ref<HeatmapData | null>(null);
-	const recentTasks = ref<RecentTask[]>([]);
-	const teamActivity = ref<TeamMemberActivity | null>(null);
 	const teamActivityWindow = ref<TeamActivityWindow>('7d');
+	const statistics = ref<DashboardStatistics | null>(
+		requestCache.get(snapshotKey('statistics')),
+	);
+	const activities = ref<Activity[]>([]);
+	const heatmapData = ref<HeatmapData | null>(
+		requestCache.get(snapshotKey('heatmap', heatmapRequest())),
+	);
+	const recentTasks = ref<RecentTask[]>([]);
+	const teamActivity = ref<TeamMemberActivity | null>(
+		requestCache.get(snapshotKey('team', teamActivityWindow.value)),
+	);
+	const seededState = (data: unknown) =>
+		data ? createSuccessState() : createInitialState();
 
 	// Loading states for each section
 	const loadingStates = ref<DashboardLoadingStates>({
-		statistics: createInitialState(),
+		statistics: seededState(statistics.value),
 		activities: createInitialState(),
-		heatmap: createInitialState(),
+		heatmap: seededState(heatmapData.value),
 		recentTasks: createInitialState(),
-		teamActivity: createInitialState(),
+		teamActivity: seededState(teamActivity.value),
 		loadingMore: false,
 		initialLoad: true,
 		refreshing: false,
@@ -255,6 +277,7 @@ export function useDashboard(
 
 			if (result.success && result.data) {
 				statistics.value = result.data;
+				requestCache.set(snapshotKey('statistics'), result.data);
 				const duration = Date.now() - startTime;
 				updateLoadingState('statistics', createSuccessState(duration));
 			} else if (result.error) {
@@ -391,12 +414,7 @@ export function useDashboard(
 			}
 			console.log('Loading heatmap for workspace ID:', wsId);
 
-			const heatmapParams: HeatmapParams = {
-				year: new Date().getFullYear(),
-				timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-				include_weekends: true,
-				...params,
-			};
+			const heatmapParams = heatmapRequest(params);
 
 			const result = await withRetry(
 				() => getUserHeatmap(wsId, heatmapParams, { cache: true }),
@@ -412,6 +430,7 @@ export function useDashboard(
 
 			if (result.success && result.data) {
 				heatmapData.value = result.data;
+				requestCache.set(snapshotKey('heatmap', heatmapParams), result.data);
 				const duration = Date.now() - startTime;
 				updateLoadingState('heatmap', createSuccessState(duration));
 			} else if (result.error) {
@@ -528,6 +547,7 @@ export function useDashboard(
 
 			if (result.success && result.data) {
 				teamActivity.value = result.data;
+				requestCache.set(snapshotKey('team', activityWindow), result.data);
 				const duration = Date.now() - startTime;
 				updateLoadingState('teamActivity', createSuccessState(duration));
 			} else if (result.error) {

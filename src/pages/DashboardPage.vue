@@ -952,7 +952,7 @@
 									:class="['mr-2 h-4 w-4', isAnyLoading && 'animate-spin']"
 									aria-hidden="true"
 								/>
-								{{ isAnyLoading ? 'Refreshing...' : 'Refresh' }}
+								Refresh
 							</Button>
 
 							<!-- Hidden status for screen readers -->
@@ -1193,10 +1193,12 @@
 										heatmapData ? 'heatmap-summary' : 'heatmap-loading'
 									"
 								>
-									<HeatmapSkeleton v-if="loadingStates.heatmap.isLoading" />
+									<HeatmapSkeleton
+										v-if="loadingStates.heatmap.isLoading && !heatmapData"
+									/>
 
 									<div
-										v-else-if="loadingStates.heatmap.error"
+										v-else-if="loadingStates.heatmap.error && !heatmapData"
 										class="flex flex-col items-center justify-center py-20"
 									>
 										<ExclamationTriangleIcon
@@ -1266,7 +1268,7 @@
 								</h2>
 								<StatisticsGrid
 									:statistics="statistics || {}"
-									:loading="loadingStates.statistics.isLoading"
+									:loading="loadingStates.statistics.isLoading && !statistics"
 									@navigate-to-filtered="handleStatisticCardClick"
 									:aria-describedby="
 										loadingStates.statistics.isLoading
@@ -1355,7 +1357,7 @@
 
 							<!-- Empty State for Initial Load -->
 							<div
-								v-if="isInitialLoad"
+								v-if="isInitialLoad && !statistics"
 								class="flex items-center justify-center py-12"
 								aria-live="polite"
 								aria-label="Loading dashboard"
