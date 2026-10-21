@@ -3,6 +3,16 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.59 — 2026-10-21
+
+- Agent chat: the assistant can now propose changes instead of only reading. With the workspace setting AI assistant > Write mode set to "Write with confirmation" (the default is "Read only"), it shows a "Confirm changes" card listing the planned changes (for example creating tasks or adding comments); nothing changes until you confirm.
+- Agent chat: pin facts (from a message or typed by hand) in the chat header. Pinned facts are sent to the assistant with every message and survive history compaction.
+- Board: a corner spinner replaces the refresh line that pushed columns down; Dashboard and List show their last data instantly on return visits.
+- Task form: auto-growing comment field, AI step chips on one row, no empty agent-status row above the title, Esc leaves a comment draft.
+- Agent status chip: an idle agent that still ticks the CPU reads Waiting, not Working.
+- Attach: resize split panes by dragging the split lines.
+- Updates: one Check for Updates click emits one event and joins a check that is already running.
+
 ## 0.9.58 — 2026-10-21
 
 - Sidebar: the Pages section shows your pinned pages first, then the ten most recently edited ones as a flat list. The full page tree with drag and drop is on the All pages page.

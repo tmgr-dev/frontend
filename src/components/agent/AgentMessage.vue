@@ -5,12 +5,17 @@
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import type { AgentMessage, AgentStep } from '@/types/agent';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
-	import { Loader2 } from 'lucide-vue-next';
+	import { Loader2, Pin } from 'lucide-vue-next';
 
 	const props = defineProps<{
 		message: AgentMessage;
 		decide?: (messageId: number, decision: ActionDecision) => Promise<void>;
 	}>();
+
+	const emit = defineEmits<{ pin: [message: AgentMessage] }>();
+
+	const canPin = () =>
+		props.message.status === 'done' && !!props.message.content.trim();
 
 	const isThinking = () =>
 		props.message.status === 'pending' || props.message.status === 'running';
@@ -36,6 +41,13 @@
 				class="mt-1.5"
 				:files="props.message.files"
 			/>
+			<button
+				v-if="canPin()"
+				class="mt-1 flex items-center gap-1 text-xs text-ink-subtle hover:text-ink"
+				@click="emit('pin', props.message)"
+			>
+				<Pin class="h-3 w-3" /> Pin
+			</button>
 		</div>
 	</div>
 	<div v-else class="flex justify-start">
@@ -95,6 +107,13 @@
 					</li>
 				</ul>
 			</details>
+			<button
+				v-if="canPin()"
+				class="mt-1 flex items-center gap-1 text-xs text-ink-subtle hover:text-ink"
+				@click="emit('pin', props.message)"
+			>
+				<Pin class="h-3 w-3" /> Pin
+			</button>
 		</div>
 	</div>
 </template>
