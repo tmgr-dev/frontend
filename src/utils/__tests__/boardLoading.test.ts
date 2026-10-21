@@ -101,4 +101,35 @@ describe('board loading', () => {
 		).toEqual([tasks[0]]);
 		expect(filterBoardTasks(tasks, { selectedPersona: '' })).toEqual(tasks);
 	});
+	it('filters by priority levels and sorts by priority after filtering', () => {
+		const tasks = [
+			{ id: 1, priority: 'low', project_category_id: 2 },
+			{ id: 2, project_category_id: 2 },
+			{ id: 3, priority: 'urgent', project_category_id: 2 },
+			{ id: 4, priority: 'high', project_category_id: 5 },
+			{ id: 5, priority: 'urgent', project_category_id: 2 },
+		];
+		const ids = (list: Array<{ id: number }>) => list.map((task) => task.id);
+		expect(
+			ids(filterBoardTasks(tasks, { selectedPriorities: ['urgent', 'high'] })),
+		).toEqual([3, 4, 5]);
+		expect(
+			ids(filterBoardTasks(tasks, { selectedPriorities: ['medium'] })),
+		).toEqual([2]);
+		expect(ids(filterBoardTasks(tasks, { prioritySort: true }))).toEqual([
+			3, 5, 4, 2, 1,
+		]);
+		expect(
+			ids(
+				filterBoardTasks(tasks, {
+					selectedCategory: 2,
+					selectedPriorities: ['urgent', 'low'],
+					prioritySort: true,
+				}),
+			),
+		).toEqual([3, 5, 1]);
+		expect(ids(filterBoardTasks(tasks, { selectedPriorities: [] }))).toEqual([
+			1, 2, 3, 4, 5,
+		]);
+	});
 });

@@ -4,6 +4,8 @@ const filterModule = {
 		searchText: null,
 		selectedUser: 0,
 		selectedPersona: '',
+		selectedPriorities: [],
+		prioritySort: false,
 	}),
 	mutations: {
 		updateSelectedCategory(state, data) {
@@ -17,6 +19,12 @@ const filterModule = {
 		},
 		updateSelectedPersona(state, data) {
 			state.selectedPersona = data;
+		},
+		updateSelectedPriorities(state, data) {
+			state.selectedPriorities = data;
+		},
+		updatePrioritySort(state, data) {
+			state.prioritySort = data;
 		},
 	},
 };

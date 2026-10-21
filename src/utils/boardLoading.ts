@@ -3,6 +3,7 @@ import {
 	hasPersonaAssignee,
 	type PersonaAssignee,
 } from './personas';
+import { matchesPriorityFilter, sortByPriority } from './priorityFilter';
 import { createRequestSequence } from './requestSequence';
 
 export const MY_PERSONAS_FILTER = 'mine';
@@ -53,6 +54,7 @@ export function filterBoardTasks<
 		project_category_id?: number | string;
 		assignees?: Array<{ id: number }>;
 		persona_assignees?: PersonaAssignee[];
+		priority?: string | null;
 	},
 >(
 	tasks: T[],
@@ -61,9 +63,11 @@ export function filterBoardTasks<
 		selectedCategory?: number;
 		selectedPersona?: string;
 		myUserId?: number | null;
+		selectedPriorities?: string[];
+		prioritySort?: boolean;
 	},
 ) {
-	return tasks.filter(
+	const matching = tasks.filter(
 		(task) =>
 			(!filter.selectedUser ||
 				task.assignees?.some(
@@ -74,6 +78,8 @@ export function filterBoardTasks<
 					? hasMyPersonaAssignee(task, filter.myUserId)
 					: hasPersonaAssignee(task, filter.selectedPersona))) &&
 			(!filter.selectedCategory ||
-				Number(task.project_category_id) === Number(filter.selectedCategory)),
+				Number(task.project_category_id) === Number(filter.selectedCategory)) &&
+			matchesPriorityFilter(task, filter.selectedPriorities ?? []),
 	);
+	return filter.prioritySort ? sortByPriority(matching) : matching;
 }

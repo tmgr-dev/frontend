@@ -420,6 +420,7 @@
 																item-key="id"
 																@end="onEnd"
 																:disabled="false"
+																:sort="!prioritySortActive"
 																:data-status="column.status.id"
 																data-tour="board.column"
 																:data-column-id="column.status.id"
@@ -842,6 +843,11 @@
 	} from '@/utils/boardLoading';
 	import { boardTaskCounts } from '@/utils/boardSummary';
 	import { hexToHsl, hslToHex } from '@/utils/colors';
+	import {
+		parsePriorityFilter,
+		serializePriorityFilter,
+		sortByPriority,
+	} from '@/utils/priorityFilter';
 	import { createRequestSequence } from '@/utils/requestSequence';
 	import {
 		removeTaskFromColumns,
@@ -1047,6 +1053,9 @@
 			},
 		},
 		computed: {
+			prioritySortActive() {
+				return this.$store.state.filter.prioritySort;
+			},
 			pluginBadgeKey() {
 				return this.columns
 					.flatMap((column) => column.tasks)
@@ -1122,8 +1131,16 @@
 						)
 						.map((column) => column.status.id),
 				);
-				if (upsertTaskInColumns(this.columns, updatedTask) !== 'ignored')
-					this.refreshColumnSummaries(affected);
+				if (upsertTaskInColumns(this.columns, updatedTask) === 'ignored')
+					return;
+				if (this.prioritySortActive) this.sortColumnsByPriority(affected);
+				this.refreshColumnSummaries(affected);
+			},
+			sortColumnsByPriority(statusIds) {
+				for (const column of this.columns) {
+					if (statusIds.has(column.status.id))
+						column.tasks = sortByPriority(column.tasks);
+				}
 			},
 			removeTaskFromBoard(taskId) {
 				if (removeTaskFromColumns(this.columns, taskId)) {
@@ -1335,6 +1352,9 @@
 					.flatMap((column) => column.tasks)
 					.find((task) => task.id === id);
 				if (!task) return;
+				const target = this.findColumn(status);
+				if (this.prioritySortActive && target)
+					this.sortColumnsByPriority(new Set([target.status.id]));
 				this.dragSaveQueue = this.dragSaveQueue
 					.then(async () => {
 						if (sourceStatus !== status) await updateTaskStatus(id, status);
@@ -1361,6 +1381,7 @@
 				});
 			},
 			async saveOrders(status) {
+				if (this.prioritySortActive) return;
 				const column = this.findColumn(status);
 				if (!column) {
 					return;
@@ -1395,6 +1416,7 @@
 				return handlers;
 			},
 			async handleMoveToTop(task, column) {
+				if (this.prioritySortActive) return;
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === 0) {
 					return;
@@ -1407,6 +1429,7 @@
 				await this.saveOrders(column.status.id);
 			},
 			async handleMoveToBottom(task, column) {
+				if (this.prioritySortActive) return;
 				const taskIndex = column.tasks.findIndex((t) => t.id === task.id);
 				if (taskIndex === -1 || taskIndex === column.tasks.length - 1) {
 					return;
@@ -1649,6 +1672,13 @@
 					'updateSelectedCategory',
 					Number(query.category) || 0,
 				);
+				const priorities = parsePriorityFilter(query.priority);
+				if (
+					priorities.join(',') !==
+					serializePriorityFilter(this.$store.state.filter.selectedPriorities)
+				)
+					this.$store.commit('updateSelectedPriorities', priorities);
+				this.$store.commit('updatePrioritySort', query.priority_sort === '1');
 			},
 			syncBoardQuery() {
 				const filter = this.$store.state.filter;
@@ -1658,6 +1688,8 @@
 				delete query.persona;
 				delete query.my_personas;
 				delete query.category;
+				delete query.priority;
+				delete query.priority_sort;
 				if (filter.searchText) query.search = filter.searchText;
 				if (filter.selectedUser) query.user = String(filter.selectedUser);
 				if (filter.selectedPersona === MY_PERSONAS_FILTER)
@@ -1665,6 +1697,9 @@
 				else if (filter.selectedPersona) query.persona = filter.selectedPersona;
 				if (filter.selectedCategory)
 					query.category = String(filter.selectedCategory);
+				const priority = serializePriorityFilter(filter.selectedPriorities);
+				if (priority) query.priority = priority;
+				if (filter.prioritySort) query.priority_sort = '1';
 				if (JSON.stringify(query) !== JSON.stringify(this.$route.query)) {
 					void this.$router.push({ path: this.$route.path, query });
 				}

@@ -50,6 +50,7 @@ export interface Task {
 	created_at?: string;
 	updated_at?: string;
 	deleted_at?: string | null;
+	priority?: string;
 }
 
 interface LinkResponse {

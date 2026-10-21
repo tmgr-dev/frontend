@@ -44,6 +44,14 @@
 		type EstimatedTask,
 		type OvertimePagination,
 	} from '@/utils/overtime';
+	import {
+		matchesPriorityFilter,
+		parsePriorityFilter,
+		PRIORITY_FILTER_OPTIONS,
+		serializePriorityFilter,
+		sortByPriority,
+		type PriorityLevel,
+	} from '@/utils/priorityFilter';
 	import { requestCache } from '@/utils/requestCache';
 	import { createRequestSequence } from '@/utils/requestSequence';
 	import { readTaskListQuery } from '@/utils/taskListQuery';
@@ -66,7 +74,7 @@
 		SquareDashedMousePointerIcon,
 	} from 'lucide-vue-next';
 	import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-	import { useRoute, useRouter } from 'vue-router';
+	import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router';
 
 	const route = useRoute();
 	const router = useRouter();
@@ -136,6 +144,13 @@
 		to: 0,
 	});
 
+	const activePriorities = computed(() =>
+		route.meta.status ? [] : parsePriorityFilter(route.query.priority),
+	);
+	const prioritySort = computed(
+		() => !route.meta.status && route.query.priority_sort === '1',
+	);
+
 	// Last shown page of the unfiltered query, so a return visit renders it while the refetch
 	// runs (TM-682). Filters reset on mount, so filtered pages are never saved. The
 	// tasks-status- prefix lets every task mutation drop it.
@@ -156,6 +171,8 @@
 			perPage: query.perPage,
 			sort: query.sort,
 			direction: query.direction,
+			priority: serializePriorityFilter(activePriorities.value) || null,
+			prioritySort: prioritySort.value,
 		});
 	};
 	const saveListSnapshot = (key: string) =>
@@ -167,7 +184,9 @@
 		!searchText.value &&
 		selectedCategory.value === null &&
 		stateFilter.value === 'all' &&
-		!selectedStatusIds.value.length;
+		!selectedStatusIds.value.length &&
+		!activePriorities.value.length &&
+		!prioritySort.value;
 	const shownSnapshot = ref<{ key: string; saveable: boolean } | null>(null);
 	const listSnapshot = requestCache.get<ListSnapshot>(listSnapshotKey());
 	if (listSnapshot) {
@@ -243,6 +262,7 @@
 			return false;
 		}
 		if (!matchesStatusIds(task, activeStatusIds.value)) return false;
+		if (!matchesPriorityFilter(task, activePriorities.value)) return false;
 		return true;
 	}
 
@@ -455,6 +475,8 @@
 			route.query.per_page,
 			route.query.sort,
 			route.query.direction,
+			route.query.priority,
+			route.query.priority_sort,
 		],
 		() => {
 			const query = readTaskListQuery(route.query);
@@ -586,20 +608,28 @@
 				response = await getTasksByStatus(status.value, params);
 			} else if (
 				(simpleMode.value && stateFilter.value !== 'all') ||
-				activeStatusIds.value.length
+				activeStatusIds.value.length ||
+				activePriorities.value.length ||
+				prioritySort.value
 			) {
 				const everything = await getTasks({
 					params: params.params,
 					page: 1,
 					per_page: ALL_TASKS_PER_PAGE,
 				});
-				const matching = simpleMode.value
+				const byStatus = simpleMode.value
 					? filterTasksByState(
 							everything.data,
 							stateFilter.value,
 							workspaceStatuses.value,
 					  )
 					: filterTasksByStatusIds(everything.data, activeStatusIds.value);
+				const byPriority = byStatus.filter((task) =>
+					matchesPriorityFilter(task, activePriorities.value),
+				);
+				const matching = prioritySort.value
+					? sortByPriority(byPriority)
+					: byPriority;
 				const paged = paginateLocally(
 					matching,
 					pagination.value.current_page,
@@ -673,6 +703,28 @@
 	function resetFilters() {
 		selectedCategory.value = null;
 		selectedStatusIds.value = [];
+		if (activePriorities.value.length)
+			updatePriorityQuery([], prioritySort.value);
+	}
+
+	function updatePriorityQuery(levels: readonly string[], sort: boolean) {
+		const query: LocationQueryRaw = { ...route.query };
+		delete query.page;
+		delete query.priority;
+		delete query.priority_sort;
+		const priority = serializePriorityFilter(levels);
+		if (priority) query.priority = priority;
+		if (sort) query.priority_sort = '1';
+		router.push({ query });
+	}
+
+	function togglePriority(level: PriorityLevel) {
+		updatePriorityQuery(
+			activePriorities.value.includes(level)
+				? activePriorities.value.filter((value) => value !== level)
+				: [...activePriorities.value, level],
+			prioritySort.value,
+		);
 	}
 
 	function toggleStatus(id: number) {
@@ -685,13 +737,15 @@
 	const showFiltersDialog = computed(
 		() =>
 			showSurface('categories.list-filter') ||
-			statusFilterOptions.value.length > 0,
+			statusFilterOptions.value.length > 0 ||
+			isActiveList.value,
 	);
 
 	const hasActiveSearch = computed(
 		() =>
 			!!searchText.value ||
 			hasStatusFilter.value ||
+			activePriorities.value.length > 0 ||
 			(selectedCategory.value !== null && selectedCategory.value !== -1),
 	);
 
@@ -752,6 +806,8 @@
 				known ? matchesKnownFilters(updatedTask) : canInsertTask(updatedTask),
 			firstPage: pagination.value.current_page === 1,
 		});
+		if (prioritySort.value && (result === 'updated' || result === 'inserted'))
+			tasks.value = sortByPriority(tasks.value);
 		if (result === 'inserted') pagination.value.total++;
 		if (result === 'removed')
 			pagination.value.total = Math.max(0, pagination.value.total - 1);
@@ -949,7 +1005,9 @@
 									class="flex h-9 w-9 shrink-0 items-center justify-center rounded-pill border bg-surface text-ink-subtle transition-colors hover:text-ink"
 									:class="[
 										(selectedCategory && selectedCategory !== -1) ||
-										hasStatusFilter
+										hasStatusFilter ||
+										activePriorities.length ||
+										prioritySort
 											? 'border-brand text-brand'
 											: 'border-line',
 									]"
@@ -999,6 +1057,43 @@
 											{{ option.name }}
 										</button>
 									</div>
+								</div>
+								<div v-if="isActiveList" class="flex flex-col gap-2">
+									<span class="text-sm font-medium text-ink">Priority</span>
+									<div
+										class="flex flex-wrap gap-2"
+										role="group"
+										aria-label="Priority"
+									>
+										<button
+											v-for="option in PRIORITY_FILTER_OPTIONS"
+											:key="option.value"
+											type="button"
+											class="h-8 rounded-pill border px-3 text-sm transition-colors"
+											:class="
+												activePriorities.includes(option.value)
+													? 'border-brand bg-surface-sunken font-medium text-brand'
+													: 'border-line text-ink-subtle hover:text-ink'
+											"
+											:aria-pressed="activePriorities.includes(option.value)"
+											@click="togglePriority(option.value)"
+										>
+											{{ option.label }}
+										</button>
+									</div>
+									<label
+										class="flex cursor-pointer items-center gap-2 text-sm text-ink"
+									>
+										<input
+											type="checkbox"
+											class="h-4 w-4 cursor-pointer rounded"
+											:checked="prioritySort"
+											@change="
+												updatePriorityQuery(activePriorities, !prioritySort)
+											"
+										/>
+										Sort by priority
+									</label>
 								</div>
 								<DialogFooter>
 									<Button variant="outline" @click="resetFilters">

@@ -62,6 +62,35 @@
 				/>
 			</div>
 
+			<div class="flex flex-col gap-2">
+				<span class="text-sm font-medium text-ink">Priority</span>
+				<div class="flex flex-wrap gap-2" role="group" aria-label="Priority">
+					<button
+						v-for="option in PRIORITY_FILTER_OPTIONS"
+						:key="option.value"
+						type="button"
+						class="h-8 rounded-pill border px-3 text-sm transition-colors"
+						:class="
+							selectedPriorities.includes(option.value)
+								? 'border-brand bg-surface-sunken font-medium text-brand'
+								: 'border-line text-ink-subtle hover:text-ink'
+						"
+						:aria-pressed="selectedPriorities.includes(option.value)"
+						@click="togglePriority(option.value)"
+					>
+						{{ option.label }}
+					</button>
+				</div>
+				<label class="flex cursor-pointer items-center gap-2 text-sm text-ink">
+					<input
+						v-model="prioritySort"
+						type="checkbox"
+						class="h-4 w-4 cursor-pointer rounded"
+					/>
+					Sort by priority
+				</label>
+			</div>
+
 			<button
 				v-if="hasActiveFilters"
 				type="button"
@@ -117,7 +146,7 @@
 		</div>
 
 		<!-- Category / user filters -->
-		<Popover v-if="hasSelectFilters" class="relative shrink-0">
+		<Popover class="relative shrink-0">
 			<PopoverButton
 				class="flex h-9 items-center gap-2 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none hover:bg-surface-hover"
 			>
@@ -202,6 +231,36 @@
 						class="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle"
 					/>
 				</div>
+				<div class="flex flex-col gap-2">
+					<span class="text-sm font-medium text-ink">Priority</span>
+					<div class="flex flex-wrap gap-2" role="group" aria-label="Priority">
+						<button
+							v-for="option in PRIORITY_FILTER_OPTIONS"
+							:key="option.value"
+							type="button"
+							class="h-8 rounded-pill border px-3 text-sm transition-colors"
+							:class="
+								selectedPriorities.includes(option.value)
+									? 'border-brand bg-surface-sunken font-medium text-brand'
+									: 'border-line text-ink-subtle hover:text-ink'
+							"
+							:aria-pressed="selectedPriorities.includes(option.value)"
+							@click="togglePriority(option.value)"
+						>
+							{{ option.label }}
+						</button>
+					</div>
+					<label
+						class="flex cursor-pointer items-center gap-2 text-sm text-ink"
+					>
+						<input
+							v-model="prioritySort"
+							type="checkbox"
+							class="h-4 w-4 cursor-pointer rounded"
+						/>
+						Sort by priority
+					</label>
+				</div>
 			</PopoverPanel>
 		</Popover>
 
@@ -274,6 +333,11 @@
 	} from '@/components/ui/select';
 	import { MY_PERSONAS_FILTER } from '@/utils/boardLoading';
 	import {
+		parsePriorityFilter,
+		PRIORITY_FILTER_OPTIONS,
+		type PriorityLevel,
+	} from '@/utils/priorityFilter';
+	import {
 		MenuItem,
 		Popover,
 		PopoverButton,
@@ -318,6 +382,10 @@
 		searchText: string | null;
 		selectedUser: number;
 		selectedPersona: string;
+	}
+	interface PriorityState {
+		selectedPriorities: PriorityLevel[];
+		prioritySort: boolean;
 	}
 	const props = withDefaults(defineProps<Props>(), {
 		personaOptions: () => [],
@@ -379,12 +447,33 @@
 		},
 	});
 
+	const selectedPriorities = computed(
+		() =>
+			(store.state as unknown as { filter: PriorityState }).filter
+				.selectedPriorities,
+	);
+	const togglePriority = (level: PriorityLevel) => {
+		const next = selectedPriorities.value.includes(level)
+			? selectedPriorities.value.filter((value) => value !== level)
+			: [...selectedPriorities.value, level];
+		store.commit('updateSelectedPriorities', parsePriorityFilter(next));
+	};
+
+	const prioritySort = computed({
+		get: () =>
+			(store.state as unknown as { filter: PriorityState }).filter.prioritySort,
+		set: (value) => {
+			store.commit('updatePrioritySort', value);
+		},
+	});
+
 	const hasActiveFilters = computed(() => {
 		return !!(
 			searchText.value ||
 			selectedCategory.value ||
 			selectedUser.value ||
-			selectedPersona.value
+			selectedPersona.value ||
+			selectedPriorities.value.length
 		);
 	});
 
@@ -400,6 +489,7 @@
 		selectedCategory.value = 0;
 		selectedUser.value = 0;
 		selectedPersona.value = '';
+		store.commit('updateSelectedPriorities', []);
 	};
 	const loadTasks = () => emit('loadTasks');
 
@@ -441,16 +531,11 @@
 		{ id: '', name: 'All personas' },
 		...personaFilterOptions.value,
 	]);
-	const hasSelectFilters = computed(
-		() =>
-			showCategoryFilter.value ||
-			showUserFilter.value ||
-			showPersonaFilter.value,
-	);
 	const activeSelectCount = computed(
 		() =>
 			(selectedCategory.value ? 1 : 0) +
 			(selectedUser.value ? 1 : 0) +
-			(selectedPersona.value ? 1 : 0),
+			(selectedPersona.value ? 1 : 0) +
+			(selectedPriorities.value.length ? 1 : 0),
 	);
 </script>
