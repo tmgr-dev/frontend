@@ -7,6 +7,7 @@
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import store from '@/store';
+	import { hasOpenConfirmation } from '@/utils/agentConfirmation';
 	import {
 		fillScenarios,
 		runScenarios,
@@ -39,12 +40,14 @@
 		openConversation,
 		forgetRemembered,
 		send,
+		decide,
 		newChat,
 		ensureConversation,
 		subscribe,
 		unsubscribe,
 		stopPolling,
 	} = useAgentChat();
+	const hasOpenCard = computed(() => hasOpenConfirmation(state.value.messages));
 	const { currentWorkspaceId } = useCurrentWorkspace();
 	const { registerModal, unregisterModal } = useModalEscHandler();
 
@@ -290,7 +293,12 @@
 				Ask about this workspace: what is overdue, how much time went into a
 				category this week, what a task is about.
 			</p>
-			<AgentMessage v-for="m in state.messages" :key="m.id" :message="m" />
+			<AgentMessage
+				v-for="m in state.messages"
+				:key="m.id"
+				:message="m"
+				:decide="decide"
+			/>
 		</div>
 		<footer
 			v-show="view === 'chat'"
@@ -362,6 +370,9 @@
 					<Send class="h-3.5 w-3.5" />
 				</button>
 			</div>
+			<p v-if="hasOpenCard" class="mt-1 text-xs text-ink-subtle">
+				Sending a new message will cancel the pending changes.
+			</p>
 			<p v-if="error" class="mt-1 text-xs text-red-500">{{ error }}</p>
 			<ContextMeter
 				class="mt-1 text-right"

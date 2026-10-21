@@ -266,6 +266,12 @@
 					:workspace-id="Number(currentWorkspaceId)"
 				/>
 
+				<AiWriteModeSetting
+					v-if="currentWorkspaceId && Number(currentWorkspaceId) > 0"
+					:workspace-id="Number(currentWorkspaceId)"
+					:is-owner="isOwner"
+				/>
+
 				<PagesAnalystSetting
 					v-if="
 						currentWorkspaceId &&
@@ -317,6 +323,7 @@
 	import { Switch } from '@/components/ui/switch';
 	import { useToast } from '@/components/ui/toast';
 	import AgentRunsSetting from '@/components/workspace/AgentRunsSetting.vue';
+	import AiWriteModeSetting from '@/components/workspace/AiWriteModeSetting.vue';
 	import PagesAnalystSetting from '@/components/workspace/PagesAnalystSetting.vue';
 	import WorkspacePersonasSection from '@/components/workspace/WorkspacePersonasSection.vue';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';

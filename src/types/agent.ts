@@ -6,14 +6,40 @@ export interface AgentStep {
 	summary: string;
 }
 
+export type PendingActionStatus =
+	| 'pending'
+	| 'executing'
+	| 'executed'
+	| 'failed'
+	| 'cancelled'
+	| 'expired'
+	| 'superseded';
+
+export interface PendingActionPreview {
+	title: string;
+	fields: { label: string; value: string }[];
+	body: string | null;
+}
+
+export interface PendingAction {
+	id: number;
+	tool: string;
+	risk: 'low' | 'high';
+	status: PendingActionStatus;
+	preview: PendingActionPreview;
+	result: Record<string, unknown> | null;
+	expires_at: string;
+}
+
 export interface AgentMessage {
 	id: number;
 	role: 'user' | 'assistant';
 	content: string;
-	status: 'pending' | 'done' | 'failed';
+	status: 'pending' | 'awaiting' | 'running' | 'done' | 'failed';
 	steps: AgentStep[];
 	created_at: string;
 	files?: AttachedFile[];
+	pending_actions?: PendingAction[];
 }
 
 export interface AgentConversation {
@@ -48,6 +74,13 @@ export interface AgentReplyEvent {
 	status: 'done' | 'failed';
 	content: string;
 	steps: AgentStep[];
+}
+
+export interface AgentConfirmationEvent {
+	conversation_id: number;
+	message_id: number;
+	task_id?: number | null;
+	actions: PendingAction[];
 }
 
 export interface AgentContextTotals {

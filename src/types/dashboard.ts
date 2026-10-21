@@ -3,7 +3,11 @@ import type { AgentSession } from '@/utils/agentStatus';
 import type { CommentReactionsUpdatedEvent } from '@/utils/commentReactions';
 // Dashboard TypeScript interfaces and types
 
-import type { AgentReplyEvent, AgentStepEvent } from '@/types/agent';
+import type {
+	AgentConfirmationEvent,
+	AgentReplyEvent,
+	AgentStepEvent,
+} from '@/types/agent';
 import type { AuthorRef } from '@/types/author';
 
 // Activity Types Enum
@@ -810,6 +814,7 @@ export interface EventHandlers {
 	onAgentStatusChanged?: (session: AgentSession) => void;
 	onAgentStep?: (e: AgentStepEvent) => void;
 	onAgentReply?: (e: AgentReplyEvent) => void;
+	onAgentConfirmation?: (e: AgentConfirmationEvent) => void;
 	onPageEvent?: (type: PageEventType, payload: PageEventPayload) => void;
 	onError?: (error: ActionError) => void;
 	onReconnect?: () => void;

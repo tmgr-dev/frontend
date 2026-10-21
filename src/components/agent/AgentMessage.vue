@@ -1,11 +1,21 @@
 <script setup lang="ts">
+	import type { ActionDecision } from '@/actions/tmgr/agent';
+	import AgentConfirmationCard from '@/components/agent/AgentConfirmationCard.vue';
 	import AttachedFileList from '@/components/attachments/AttachedFileList.vue';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import type { AgentMessage, AgentStep } from '@/types/agent';
 	import { agentToolLabel } from '@/utils/agentToolLabels';
 	import { Loader2 } from 'lucide-vue-next';
 
-	const props = defineProps<{ message: AgentMessage }>();
+	const props = defineProps<{
+		message: AgentMessage;
+		decide?: (messageId: number, decision: ActionDecision) => Promise<void>;
+	}>();
+
+	const isThinking = () =>
+		props.message.status === 'pending' || props.message.status === 'running';
+
+	const hasCard = () => !!props.message.pending_actions?.length;
 
 	function stepLabel(step: AgentStep): string {
 		return (
@@ -27,7 +37,7 @@
 	</div>
 	<div v-else class="flex justify-start">
 		<div
-			v-if="props.message.status === 'pending'"
+			v-if="isThinking()"
 			class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink"
 		>
 			<div class="flex items-center gap-2">
@@ -43,6 +53,13 @@
 					{{ stepLabel(step) }}
 				</li>
 			</ul>
+			<AgentConfirmationCard
+				v-if="hasCard()"
+				:actions="props.message.pending_actions ?? []"
+				:decide="
+					(d) => props.decide?.(props.message.id, d) ?? Promise.resolve()
+				"
+			/>
 		</div>
 		<div
 			v-else-if="props.message.status === 'failed'"
@@ -54,7 +71,18 @@
 			v-else
 			class="max-w-[90%] rounded-lg bg-surface-sunken px-3 py-2 text-sm text-ink"
 		>
-			<MarkdownText :content="props.message.content" untrusted />
+			<MarkdownText
+				v-if="props.message.content"
+				:content="props.message.content"
+				untrusted
+			/>
+			<AgentConfirmationCard
+				v-if="hasCard()"
+				:actions="props.message.pending_actions ?? []"
+				:decide="
+					(d) => props.decide?.(props.message.id, d) ?? Promise.resolve()
+				"
+			/>
 			<details
 				v-if="props.message.steps.length"
 				class="mt-1 text-xs text-ink-subtle"

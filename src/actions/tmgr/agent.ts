@@ -5,7 +5,12 @@ import type {
 	AgentConversation,
 	AgentConversationItem,
 	AgentMessage,
+	PendingAction,
 } from '@/types/agent';
+import {
+	normalizeAgentMessage,
+	normalizePendingActions,
+} from '@/utils/agentConfirmation';
 import type { AttachedFile } from '@/utils/aiAttachments';
 
 export const getOrCreateConversation = async (
@@ -32,7 +37,22 @@ export const getAgentMessages = async (
 	const {
 		data: { data },
 	} = await $axios.get(`/agent/conversations/${conversationId}/messages`);
-	return data;
+	return (data as AgentMessage[]).map(normalizeAgentMessage);
+};
+
+export type ActionDecision = 'confirm' | 'cancel';
+
+export const decideAgentActions = async (
+	messageId: number,
+	decision: ActionDecision,
+	actionIds: number[],
+): Promise<PendingAction[]> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/agent/messages/${messageId}/actions/${decision}`, {
+		action_ids: actionIds,
+	});
+	return normalizePendingActions(data?.actions);
 };
 
 export const sendAgentMessage = async (

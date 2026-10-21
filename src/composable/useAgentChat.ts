@@ -1,4 +1,6 @@
+import type { ActionDecision } from '@/actions/tmgr/agent';
 import {
+	decideAgentActions,
 	getAgentMessages,
 	getConversation,
 	getOrCreateConversation,
@@ -7,6 +9,7 @@ import {
 } from '@/actions/tmgr/agent';
 import store from '@/store';
 import type {
+	AgentConfirmationEvent,
 	AgentConversation,
 	AgentMessage,
 	AgentReplyEvent,
@@ -15,7 +18,9 @@ import type {
 import type { AgentChatState } from '@/utils/agentChat';
 import {
 	appendPending,
+	applyConfirmation,
 	applyConversation,
+	applyDecision,
 	applyReply,
 	applyStep,
 	createAgentChatState,
@@ -28,6 +33,10 @@ import {
 	resetForWorkspace,
 	sendErrorMessage,
 } from '@/utils/agentChat';
+import {
+	DECISION_CONFLICT_MESSAGE,
+	openActionIds,
+} from '@/utils/agentConfirmation';
 import type { AttachedFile } from '@/utils/aiAttachments';
 import { attachmentErrorMessage } from '@/utils/aiAttachments';
 import { createRequestSequence } from '@/utils/requestSequence';
@@ -51,6 +60,7 @@ export interface UseAgentChatReturn {
 		fileIds?: number[],
 		files?: AttachedFile[],
 	) => Promise<boolean>;
+	decide: (messageId: number, decision: ActionDecision) => Promise<void>;
 	ensureConversation: () => Promise<number | null>;
 	newChat: () => Promise<void>;
 	subscribe: (userId: number) => void;
@@ -76,6 +86,7 @@ export function useAgentChat(): UseAgentChatReturn {
 	const sendRequests = createRequestSequence();
 	const earlyReplies = new Map<number, AgentReplyEvent>();
 	const earlySteps = new Map<number, AgentStepEvent[]>();
+	const earlyConfirmations = new Map<number, AgentConfirmationEvent>();
 	let subscriptionId: string | null = null;
 	let subscribedUserId: number | null = null;
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -164,6 +175,7 @@ export function useAgentChat(): UseAgentChatReturn {
 	): void => {
 		earlySteps.clear();
 		earlyReplies.clear();
+		earlyConfirmations.clear();
 		state.value = applyConversation(state.value, conversation, messages);
 		remember(conversation.workspace_id, conversation.id);
 		if (hasPendingLast(messages)) startPolling(conversation.id);
@@ -188,6 +200,20 @@ export function useAgentChat(): UseAgentChatReturn {
 		state.value = applyStep(state.value, e);
 	};
 
+	const onAgentConfirmation = (e: AgentConfirmationEvent): void => {
+		if (e.conversation_id !== state.value.conversationId) {
+			return;
+		}
+
+		if (!isMessageKnown(e.message_id)) {
+			earlyConfirmations.set(e.message_id, e);
+			return;
+		}
+
+		state.value = applyConfirmation(state.value, e);
+		replyTick.value++;
+	};
+
 	const onAgentReply = (e: AgentReplyEvent): void => {
 		if (e.conversation_id !== state.value.conversationId) {
 			return;
@@ -210,6 +236,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		sending.value = false;
 		earlyReplies.clear();
 		earlySteps.clear();
+		earlyConfirmations.clear();
 		state.value = resetForWorkspace(state.value, workspaceId);
 		loading.value = true;
 		error.value = null;
@@ -351,6 +378,12 @@ export function useAgentChat(): UseAgentChatReturn {
 				earlySteps.delete(pending_message_id);
 			}
 
+			const bufferedConfirmation = earlyConfirmations.get(pending_message_id);
+			if (bufferedConfirmation) {
+				state.value = applyConfirmation(state.value, bufferedConfirmation);
+				earlyConfirmations.delete(pending_message_id);
+			}
+
 			const early = earlyReplies.get(pending_message_id);
 			if (early) {
 				state.value = applyReply(state.value, early);
@@ -365,6 +398,52 @@ export function useAgentChat(): UseAgentChatReturn {
 			return false;
 		} finally {
 			if (current()) sending.value = false;
+		}
+	};
+
+	const refreshMessages = async (conversationId: number): Promise<void> => {
+		try {
+			const messages = await getAgentMessages(conversationId);
+			if (state.value.conversationId !== conversationId) return;
+			state.value = applyConversation(
+				state.value,
+				{
+					id: conversationId,
+					workspace_id: state.value.workspaceId as number,
+					task_id: null,
+					created_at: '',
+				},
+				messages,
+			);
+			if (hasPendingLast(messages)) startPolling(conversationId);
+		} catch {
+			return;
+		}
+	};
+
+	const decide = async (
+		messageId: number,
+		decision: ActionDecision,
+	): Promise<void> => {
+		const conversationId = state.value.conversationId;
+		const message = state.value.messages.find((m) => m.id === messageId);
+		if (!conversationId || !message) return;
+		const ids = openActionIds(message.pending_actions ?? []);
+		if (!ids.length) return;
+
+		error.value = null;
+		try {
+			const actions = await decideAgentActions(messageId, decision, ids);
+			if (state.value.conversationId !== conversationId) return;
+			state.value = applyDecision(state.value, messageId, actions);
+			if (isBusy(state.value)) startPolling(conversationId);
+		} catch (e) {
+			if (httpStatus(e) === 409) {
+				error.value = DECISION_CONFLICT_MESSAGE;
+				await refreshMessages(conversationId);
+				return;
+			}
+			error.value = 'Could not send your decision. Please try again.';
 		}
 	};
 
@@ -406,7 +485,11 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 		const { subscribeToUser } = usePusher();
 		subscribedUserId = userId;
-		subscriptionId = subscribeToUser(userId, { onAgentStep, onAgentReply });
+		subscriptionId = subscribeToUser(userId, {
+			onAgentStep,
+			onAgentReply,
+			onAgentConfirmation,
+		});
 	};
 
 	const unsubscribe = (): void => {
@@ -418,6 +501,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		subscribedUserId = null;
 		earlySteps.clear();
 		earlyReplies.clear();
+		earlyConfirmations.clear();
 	};
 
 	if (getCurrentInstance())
@@ -439,6 +523,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		openConversation,
 		forgetRemembered,
 		send,
+		decide,
 		ensureConversation,
 		newChat,
 		subscribe,

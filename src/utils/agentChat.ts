@@ -1,9 +1,12 @@
 import type {
+	AgentConfirmationEvent,
 	AgentConversation,
 	AgentMessage,
 	AgentReplyEvent,
 	AgentStepEvent,
+	PendingAction,
 } from '@/types/agent';
+import { normalizePendingActions } from '@/utils/agentConfirmation';
 import type { AttachedFile } from '@/utils/aiAttachments';
 
 export interface AgentChatState {
@@ -20,12 +23,15 @@ export const createAgentChatState = (): AgentChatState => ({
 	pendingId: null,
 });
 
+const isInFlight = (m: AgentMessage): boolean =>
+	m.status === 'pending' || m.status === 'running';
+
 export const applyConversation = (
 	s: AgentChatState,
 	conversation: AgentConversation,
 	messages: AgentMessage[],
 ): AgentChatState => {
-	const pending = messages.find((m) => m.status === 'pending');
+	const pending = messages.find(isInFlight);
 	const known = new Map(s.messages.map((m) => [m.id, m]));
 
 	return {
@@ -139,6 +145,59 @@ export const applyReply = (
 	return { ...s, messages, pendingId };
 };
 
+export const applyConfirmation = (
+	s: AgentChatState,
+	e: AgentConfirmationEvent,
+): AgentChatState => {
+	if (e.conversation_id !== s.conversationId) {
+		return s;
+	}
+
+	const index = s.messages.findIndex((m) => m.id === e.message_id);
+	if (index === -1) {
+		return s;
+	}
+
+	const message = s.messages[index];
+	const actions = normalizePendingActions(e.actions);
+	const opensCard =
+		isInFlight(message) && actions.some((a) => a.status === 'pending');
+	const messages = [...s.messages];
+	messages[index] = {
+		...message,
+		pending_actions: actions,
+		status: opensCard ? 'awaiting' : message.status,
+	};
+
+	return {
+		...s,
+		messages,
+		pendingId: opensCard && s.pendingId === message.id ? null : s.pendingId,
+	};
+};
+
+export const applyDecision = (
+	s: AgentChatState,
+	messageId: number,
+	actions: PendingAction[],
+): AgentChatState => {
+	const index = s.messages.findIndex((m) => m.id === messageId);
+	if (index === -1) {
+		return s;
+	}
+
+	const message = s.messages[index];
+	const resumes = message.status === 'awaiting';
+	const messages = [...s.messages];
+	messages[index] = {
+		...message,
+		pending_actions: normalizePendingActions(actions),
+		status: resumes ? 'running' : message.status,
+	};
+
+	return { ...s, messages, pendingId: resumes ? messageId : s.pendingId };
+};
+
 export const hasMessage = (s: AgentChatState, messageId: number): boolean =>
 	s.messages.some((m) => m.id === messageId);
 
@@ -178,7 +237,7 @@ export const parseRememberedChatId = (raw: string | null): number | null => {
 };
 
 export const hasPendingLast = (messages: AgentMessage[]): boolean =>
-	messages.length > 0 && messages[messages.length - 1].status === 'pending';
+	messages.length > 0 && isInFlight(messages[messages.length - 1]);
 
 export const isPollResultCurrent = (
 	s: AgentChatState,

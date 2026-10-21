@@ -1,6 +1,8 @@
 import {
 	appendPending,
+	applyConfirmation,
 	applyConversation,
+	applyDecision,
 	applyReply,
 	applyStep,
 	chatTitle,
@@ -344,5 +346,130 @@ describe('chat list helpers', () => {
 		expect(formatChatTime('2026-10-14T10:00:00Z', now)).toBe('2 h ago');
 		expect(formatChatTime('2026-10-01T12:00:00Z', now)).toBe('Oct 1');
 		expect(formatChatTime('2025-10-01T12:00:00Z', now)).toBe('Oct 1, 2025');
+	});
+});
+
+describe('confirmation flow', () => {
+	const action = (id: number, status = 'pending') =>
+		({
+			id,
+			tool: 't',
+			risk: 'low',
+			status,
+			preview: { title: 'x', fields: [], body: null },
+			result: null,
+			expires_at: '2026-10-21T10:15:00Z',
+		} as never);
+
+	const withPending = () =>
+		appendPending(
+			applyConversation(createAgentChatState(), CONV, []),
+			USER_MSG,
+			11,
+		);
+
+	it('moves a pending message to awaiting and frees the input', () => {
+		const s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [{ ...action(1), risk: 'HIGH' } as never],
+		});
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.status).toBe('awaiting');
+		expect(m?.pending_actions?.[0].risk).toBe('high');
+		expect(s.pendingId).toBeNull();
+		expect(isBusy(s)).toBe(false);
+	});
+
+	it('ignores other conversations and unknown messages', () => {
+		const base = withPending();
+		expect(
+			applyConfirmation(base, {
+				conversation_id: 99,
+				message_id: 11,
+				actions: [action(1)],
+			}),
+		).toBe(base);
+		expect(
+			applyConfirmation(base, {
+				conversation_id: 5,
+				message_id: 77,
+				actions: [action(1)],
+			}),
+		).toBe(base);
+	});
+
+	it('updates statuses without leaving awaiting while nothing is decided', () => {
+		let s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		s = applyConfirmation(s, {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1, 'superseded')],
+		});
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.pending_actions?.[0].status).toBe('superseded');
+		expect(m?.status).toBe('awaiting');
+	});
+
+	it('re-pauses a running message on a new card', () => {
+		let s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		s = applyDecision(s, 11, [action(1, 'executing')]);
+		s = applyConfirmation(s, {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(2)],
+		});
+		expect(s.messages.find((x) => x.id === 11)?.status).toBe('awaiting');
+		expect(s.pendingId).toBeNull();
+	});
+
+	it('marks awaiting as running after a decision and makes the chat busy', () => {
+		let s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		s = applyDecision(s, 11, [action(1, 'executed')]);
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.status).toBe('running');
+		expect(m?.pending_actions?.[0].status).toBe('executed');
+		expect(s.pendingId).toBe(11);
+		expect(isBusy(s)).toBe(true);
+	});
+
+	it('leaves a message that already finished alone on a late decision', () => {
+		let s = applyReply(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			status: 'done',
+			content: 'ok',
+			steps: [],
+		});
+		s = applyDecision(s, 11, [action(1, 'executed')]);
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.status).toBe('done');
+		expect(s.pendingId).toBeNull();
+	});
+
+	it('treats running as busy and awaiting as idle when loading history', () => {
+		const base = { role: 'assistant', content: '', steps: [], created_at: '' };
+		const running = applyConversation(createAgentChatState(), CONV, [
+			{ ...base, id: 1, status: 'running' },
+		]);
+		const awaiting = applyConversation(createAgentChatState(), CONV, [
+			{ ...base, id: 1, status: 'awaiting' },
+		]);
+		expect(isBusy(running)).toBe(true);
+		expect(isBusy(awaiting)).toBe(false);
+		expect(hasPendingLast(running.messages)).toBe(true);
+		expect(hasPendingLast(awaiting.messages)).toBe(false);
 	});
 });
