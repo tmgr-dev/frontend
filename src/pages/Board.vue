@@ -1352,15 +1352,20 @@
 					.flatMap((column) => column.tasks)
 					.find((task) => task.id === id);
 				if (!task) return;
+				const sorted = this.prioritySortActive;
 				const target = this.findColumn(status);
-				if (this.prioritySortActive && target)
+				if (sorted && target)
 					this.sortColumnsByPriority(new Set([target.status.id]));
+				const dropOrder = (statusId) =>
+					sorted ? null : this.findColumn(statusId)?.tasks.slice();
+				const targetTasks = dropOrder(status);
+				const sourceTasks = sourceStatus !== status && dropOrder(sourceStatus);
 				this.dragSaveQueue = this.dragSaveQueue
 					.then(async () => {
 						if (sourceStatus !== status) await updateTaskStatus(id, status);
 						task.status_id = status;
-						await this.saveOrders(status);
-						if (sourceStatus !== status) await this.saveOrders(sourceStatus);
+						if (targetTasks) await this.saveOrders(status, targetTasks);
+						if (sourceTasks) await this.saveOrders(sourceStatus, sourceTasks);
 					})
 					.catch(() => {
 						this.boardError =
@@ -1380,14 +1385,13 @@
 					statuses_with_order: sortedStats,
 				});
 			},
-			async saveOrders(status) {
-				if (this.prioritySortActive) return;
-				const column = this.findColumn(status);
-				if (!column) {
-					return;
+			async saveOrders(status, tasks) {
+				if (!tasks) {
+					if (this.prioritySortActive) return;
+					tasks = this.findColumn(status)?.tasks;
+					if (!tasks) return;
 				}
 				const orders = [];
-				const { tasks } = column;
 				tasks.forEach(({ id }, index) => {
 					orders.push({
 						id: id,

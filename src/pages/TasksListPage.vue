@@ -700,11 +700,11 @@
 		changeSort();
 	}
 
-	function resetFilters() {
-		selectedCategory.value = null;
-		selectedStatusIds.value = [];
+	async function resetFilters() {
 		if (activePriorities.value.length)
-			updatePriorityQuery([], prioritySort.value);
+			await updatePriorityQuery([], prioritySort.value);
+		selectedCategory.value = null;
+		if (selectedStatusIds.value.length) selectedStatusIds.value = [];
 	}
 
 	function updatePriorityQuery(levels: readonly string[], sort: boolean) {
@@ -715,7 +715,7 @@
 		const priority = serializePriorityFilter(levels);
 		if (priority) query.priority = priority;
 		if (sort) query.priority_sort = '1';
-		router.push({ query });
+		return router.push({ query });
 	}
 
 	function togglePriority(level: PriorityLevel) {
