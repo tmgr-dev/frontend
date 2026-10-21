@@ -2057,6 +2057,18 @@ mod tests {
     }
 
     #[test]
+    fn attention_leaves_the_panes_of_a_hidden_tab() {
+        let mut v = ViewState::new(rows(&[info("a"), info("b"), info("c")]), "t");
+        v.width = 140;
+        v.apply(Cmd::Split);
+        assert_eq!(v.panes(), ["a", "b"]);
+        v.open("c");
+        assert_eq!(attention_target(&v), Some("c"));
+        v.apply(Cmd::NextTab);
+        assert!(matches!(attention_target(&v), Some("a" | "b")));
+    }
+
+    #[test]
     fn input_forwarded_to_a_session_is_not_a_user_action() {
         let mut v = one_session_view();
         assert!(!is_user_action(&v, &typed()));
