@@ -525,6 +525,7 @@ mod tests {
             size_hint(content, SplitDir::Down)
         );
         assert_eq!(spawn_size(content, Place::Replace), (100, 40));
+        assert_eq!(spawn_size(content, Place::Tab), (100, 40));
         assert_eq!(spawn_size(Rect::default(), Place::Replace), (80, 24));
     }
 
@@ -614,6 +615,19 @@ mod tests {
         assert!(place_session(&mut view, "a", Place::Below, "n"));
         assert_eq!(view.panes(), ["a", "n"]);
         assert_eq!(view.focused_session(), Some("n"));
+    }
+
+    #[test]
+    fn a_new_tab_shows_the_session_alone_and_keeps_the_split_as_a_tab() {
+        let mut view = ViewState::new(vec![row("a"), row("b"), row("n")], "t");
+        view.select("a");
+        assert!(place_session(&mut view, "a", Place::Right, "b"));
+        assert!(place_session(&mut view, "b", Place::Tab, "n"));
+        assert_eq!(view.panes(), ["n"]);
+        assert_eq!(view.focused_session(), Some("n"));
+        view.open("a");
+        assert_eq!(view.panes(), ["a", "b"]);
+        assert_eq!(view.focused_session(), Some("a"));
     }
 
     #[test]

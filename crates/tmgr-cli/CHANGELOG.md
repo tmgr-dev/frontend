@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr attach` has tabs, like Warp: a tab is a set of panes with its own split layout. Split right or below (`Ctrl-] |` / `Ctrl-] -`, `Ctrl-] s`) adds a pane to the current tab, and the New session dialog (`Ctrl-] c`) gets a "New tab" option next to Right, Below and Replace. The sidebar is grouped by tab: a tab with several panes shows a `▾ <name> (3)` header with its sessions under it (the folder · branch line stays under each session), a one-pane tab is a plain session row. Click a tab header or a one-pane row to switch every pane to that tab's layout; click a session inside a tab to switch to that tab and focus its pane. A session is in at most one tab. `Ctrl-] N` / `Ctrl-] P` go to the next / previous tab, `Ctrl-] ,` renames the tab (the name stays in tmgr attach, the sessions keep their names) and `Ctrl-] &` closes the tab while its sessions keep running; all of them are in `?` and the command palette. `Ctrl-] g` now switches the sidebar between grouping by tab and grouping by repo. Every tab's layout is saved and restored on the next attach; the layout saved by an older version opens as one tab. Not in a remote attach.
+
 ## 1.0.24
 
 - `tmgr attach` counts your own time in each session and shows it in the sidebar as `you 12m`. Time counts only while the terminal window is focused, the session's pane is focused and you did something in the last 2 minutes (typing and reading are counted separately); it stops when the window loses focus, the Mac sleeps or you detach, and several attach windows on the same session never count twice. The runner stores only start and end times under its own folder, never what you type or see. Restart the runner after the update.

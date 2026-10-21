@@ -1864,7 +1864,13 @@ mod tests {
         view.apply(cmd);
         assert!(view.confirm.is_some());
         view.confirm = None;
-        view.select("b");
+        view.apply(Cmd::Palette);
+        view.insert_palette_text(b"b");
+        let PaletteEdit::Run(entry @ PaletteEntry::Session(_)) = view.edit_palette(b"\r") else {
+            panic!("expected a session entry");
+        };
+        assert_eq!(entry, PaletteEntry::Session("b".into()));
+        view.open("b");
         assert_eq!(view.focused_session(), Some("b"));
     }
 
