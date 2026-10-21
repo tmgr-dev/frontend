@@ -64,6 +64,8 @@
 
 			const load = async (conversationId: number | null): Promise<void> => {
 				const token = requests.begin();
+				if (context.value?.conversation_id !== conversationId)
+					context.value = null;
 				if (conversationId === null) {
 					context.value = null;
 					return;
