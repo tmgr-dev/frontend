@@ -14,6 +14,7 @@ mod status;
 mod theme;
 pub(crate) mod title;
 mod tree;
+mod usage;
 mod view;
 
 #[cfg(test)]
@@ -37,6 +38,7 @@ pub use status::{
 pub use theme::{kind_for_background, parse_osc11, ThemeKind, OSC11_QUERY};
 pub use title::{age_label, clip, locate, AgentTitle, Format, Source, TitleScan};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
+pub use usage::{Cost, Part, Reading, SessionMeta, Tone, UsageBar};
 pub use view::{
     header_button, layout, sidebar_button, slot_control, Confirm, Control, Hit, Layout,
     LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,

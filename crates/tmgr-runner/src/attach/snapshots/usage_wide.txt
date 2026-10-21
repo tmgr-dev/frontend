@@ -1,0 +1,22 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working · opus · ctx 68% · bypass ── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting · ctx 12% · plan ─────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● claude working 18m │✓ Tests 14 passed                                       ││                                                        │
+     3/7 · Bash: … 0:42 │>                                                       ││                                                        │
+   ◌ dev-server wa… 12m │                                                        ││                                                        │
+ ✓ tests     exited 52m │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                               5h 34% · wk 82% · cx ~8% · $1.23  Ctrl-] ? help

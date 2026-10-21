@@ -13,6 +13,7 @@ use super::attach_shell::{
 use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
+use super::attach_usage::{usage_db_path, usage_worker};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -42,7 +43,7 @@ use tmgr_runner::attach::{
     Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier,
     PaletteEdit, PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState,
     SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
-    ThemeKind, ViewState, OSC11_QUERY,
+    ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -58,6 +59,7 @@ const PROBE_RETRY: Duration = Duration::from_millis(250);
 const TITLE_EVERY: Duration = Duration::from_secs(3);
 const QUESTIONS_EVERY: Duration = Duration::from_secs(4);
 const STATUS_EVERY: Duration = Duration::from_secs(1);
+const USAGE_EVERY: Duration = Duration::from_secs(10);
 const CHIP_EVERY: Duration = Duration::from_secs(5);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
@@ -125,6 +127,7 @@ enum Msg {
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
     Status(HashMap<String, SessionStatus>),
+    Usage(UsageBar),
     Chips(HashMap<String, TaskChip>),
     Peek {
         session: String,
@@ -284,6 +287,9 @@ struct App {
     status_tx: SyncSender<Vec<QuestionJob>>,
     status_pending: bool,
     last_status: Instant,
+    usage_tx: SyncSender<Vec<QuestionJob>>,
+    usage_pending: bool,
+    last_usage: Instant,
     question_tx: SyncSender<Vec<QuestionJob>>,
     question_pending: bool,
     last_question: Instant,
@@ -333,6 +339,12 @@ impl App {
             Msg::Status(found) => {
                 self.status_pending = false;
                 if self.view.set_status(found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Usage(bar) => {
+                self.usage_pending = false;
+                if self.view.set_usage(bar) {
                     self.dirty = true;
                 }
             }
@@ -657,6 +669,24 @@ impl App {
             return;
         }
         self.status_pending = self.status_tx.try_send(jobs).is_ok();
+    }
+
+    fn probe_usage(&mut self) {
+        if self.usage_pending || self.last_usage.elapsed() < USAGE_EVERY {
+            return;
+        }
+        self.last_usage = Instant::now();
+        let jobs: Vec<QuestionJob> = self
+            .view
+            .panes()
+            .iter()
+            .filter_map(|id| {
+                let row = self.view.sessions.iter().find(|r| &r.id == id)?;
+                let src = self.agents.get(id)?;
+                Some(self.question_job(row, src))
+            })
+            .collect();
+        self.usage_pending = self.usage_tx.try_send(jobs).is_ok();
     }
 
     fn probe_questions(&mut self) {
@@ -1738,6 +1768,7 @@ impl App {
         self.probe_chips();
         self.check_signals();
         self.probe_status();
+        self.probe_usage();
         self.probe_peek();
         self.probe_questions();
         self.paste_forks();
@@ -2158,6 +2189,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             status_out.send(Msg::Status(found)).is_ok()
         })
     });
+    let (usage_tx, usage_rx) = mpsc::sync_channel(1);
+    let usage_out = tx.clone();
+    thread::spawn(move || {
+        usage_worker(usage_db_path(), usage_rx, move |bar| {
+            usage_out.send(Msg::Usage(bar)).is_ok()
+        })
+    });
     let (question_tx, question_rx) = mpsc::sync_channel(1);
     let question_out = tx.clone();
     let question_dir = cfg.dir.clone();
@@ -2235,6 +2273,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         peek_pending: false,
         last_peek: Instant::now() - STATUS_EVERY,
         status_tx,
+        usage_tx,
+        usage_pending: false,
+        last_usage: Instant::now() - USAGE_EVERY,
         status_pending: false,
         last_status: Instant::now() - STATUS_EVERY,
         question_tx,

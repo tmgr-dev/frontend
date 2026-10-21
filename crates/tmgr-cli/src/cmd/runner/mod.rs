@@ -8,6 +8,7 @@ mod attach_shell;
 mod attach_signal;
 mod attach_status;
 mod attach_title;
+mod attach_usage;
 pub(crate) mod bind;
 pub(crate) mod cloud;
 mod gate;

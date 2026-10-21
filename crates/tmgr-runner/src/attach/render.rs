@@ -10,6 +10,7 @@ use super::status::Peek;
 use super::theme::{colors, with_theme};
 use super::title::{age_label, clip};
 use super::tree::Nav;
+use super::usage::{Part, Tone};
 use super::view::{
     header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
     SidebarItem, SidebarLine, ViewState, HEADER_MIN_WIDTH, WIDE_COLS,
@@ -33,6 +34,46 @@ const MIN_NAME_W: usize = 10;
 
 pub(crate) fn dim() -> Style {
     Style::new().fg(colors().dim)
+}
+
+fn tone_style(tone: Tone, plain: Style) -> Style {
+    match tone {
+        Tone::Plain => plain,
+        Tone::Stale => dim().add_modifier(Modifier::ITALIC),
+        Tone::Warn => Style::new().fg(colors().warn),
+        Tone::Hot => Style::new().fg(colors().bad).add_modifier(Modifier::BOLD),
+    }
+}
+
+fn part_spans(parts: &[Part], plain: Style) -> Vec<Span<'static>> {
+    let mut out = Vec::new();
+    for (i, p) in parts.iter().enumerate() {
+        if i > 0 {
+            out.push(text(" · ", dim()));
+        }
+        out.push(text(&p.text, tone_style(p.tone, plain)));
+    }
+    out
+}
+
+fn parts_width(parts: &[Part]) -> usize {
+    let sep = parts.len().saturating_sub(1) * 3;
+    sep + parts.iter().map(|p| p.text.width()).sum::<usize>()
+}
+
+pub(crate) fn header_meta(st: &ViewState, session: &str, spare: usize) -> Option<Vec<Part>> {
+    let meta = st.session_meta(session)?;
+    let all = meta.parts;
+    let tail: Vec<Part> = all[1..].to_vec();
+    let last: Vec<Part> = all[2..].to_vec();
+    let bypass = all[2].tone == Tone::Hot;
+    let mut options = vec![all, tail];
+    options.push(if bypass {
+        last
+    } else {
+        vec![options[1][0].clone()]
+    });
+    options.into_iter().find(|o| 3 + parts_width(o) <= spare)
 }
 
 fn text(s: &str, style: Style) -> Span<'static> {
@@ -652,6 +693,11 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
                 spare = spare.saturating_sub(chip.width());
                 spans.push(text(&chip, dim()));
             }
+            if let Some(parts) = header_meta(st, &p.session, spare) {
+                spare = spare.saturating_sub(3 + parts_width(&parts));
+                spans.push(text(" · ", dim()));
+                spans.extend(part_spans(&parts, dim()));
+            }
             if let Some(line) = st.status_line(&p.session) {
                 let clock = line.clock.map(|c| format!(" · {c}")).unwrap_or_default();
                 let head = spare.saturating_sub(clock.width());
@@ -877,6 +923,18 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
     let hint = "Ctrl-] ? help";
     let hint_w = hint.width() as u16 + 1;
+    let used: usize = spans.iter().map(|s| s.content.width()).sum();
+    let usage = st.usage_parts();
+    let usage_w = if usage.is_empty() {
+        0
+    } else {
+        parts_width(&usage) + 2
+    };
+    let usage_x = usize::from(area.width.saturating_sub(hint_w)).checked_sub(usage_w);
+    if let Some(ux) = usage_x.filter(|ux| !usage.is_empty() && *ux > used + 2) {
+        let line = Line::from(part_spans(&usage, Style::new()));
+        buf.set_line(area.x + ux as u16, area.y, &line, usage_w as u16);
+    }
     buf.set_line(
         area.x,
         area.y,
@@ -973,6 +1031,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
     ),
 ];
 
+const USAGE_LEGEND: (&str, &str) = ("Status bar", "5h/wk Claude, cx Codex, $ cost; ~ old, ? n/a");
+
 fn help_key(key: &HelpKey) -> String {
     match key {
         HelpKey::Lit(s) => (*s).to_string(),
@@ -1048,7 +1108,7 @@ fn draw_peek(buf: &mut Buffer, area: Rect, peek: &Peek) {
 
 fn draw_help(buf: &mut Buffer, area: Rect) {
     let w = 64.min(area.width);
-    let h = ((HELP.len() + MOUSE.len()) as u16 + 8).min(area.height);
+    let h = ((HELP.len() + MOUSE.len()) as u16 + 9).min(area.height);
     let r = Rect::new(
         area.x + (area.width - w) / 2,
         area.y + (area.height - h) / 2,
@@ -1103,7 +1163,28 @@ fn draw_help(buf: &mut Buffer, area: Rect) {
             put(buf, x, y, what, Style::new(), inner.right() - x);
         }
     }
-    let shown = HELP.len() + if mouse_fits { MOUSE.len() + 1 } else { 0 };
+    let mut shown = HELP.len() + if mouse_fits { MOUSE.len() + 1 } else { 0 };
+    let legend_y = inner.y + 3 + shown as u16;
+    if mouse_fits && legend_y + 2 <= inner.bottom() {
+        let (key, what) = USAGE_LEGEND;
+        put(
+            buf,
+            inner.x,
+            legend_y,
+            key,
+            Style::new().add_modifier(Modifier::BOLD),
+            inner.width,
+        );
+        put(
+            buf,
+            inner.x + 14,
+            legend_y,
+            what,
+            Style::new(),
+            inner.width - 14,
+        );
+        shown += 1;
+    }
     let y = inner.y + 3 + shown as u16;
     if y < inner.bottom() {
         put(

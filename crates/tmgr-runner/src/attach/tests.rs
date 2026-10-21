@@ -2242,6 +2242,20 @@ fn help_shows_the_mouse_section_at_32_rows() {
 }
 
 #[test]
+fn help_explains_the_status_bar_when_there_is_room() {
+    let mut v = two_pane(140);
+    v.help = true;
+    let tall = draw(&v, &screens(), 140, 40);
+    assert!(
+        tall.contains("5h/wk Claude, cx Codex, $ cost; ~ old, ? n/a"),
+        "{tall}"
+    );
+    assert!(tall.contains("? again closes this box"));
+    let short = draw(&v, &screens(), 140, 32);
+    assert!(!short.contains("Status bar"));
+}
+
+#[test]
 fn v1_prefs_convert_with_the_real_terminal_width() {
     let prefs = LayoutPrefs {
         panes: vec!["a".into(), "b".into()],
@@ -5629,6 +5643,134 @@ fn snapshot_wide_with_status() {
 fn snapshot_narrow_with_status() {
     let v = with_status(90);
     assert_snapshot("status_narrow", &draw(&v, &screens(), 90, 16));
+}
+
+fn with_meter(width: u16) -> ViewState {
+    let mut v = with_status(width);
+    let mut found = v.status.clone();
+    for (id, model, ctx, mode) in [("a", "opus", 68, "bypass"), ("b", "sonnet", 12, "plan")] {
+        let st = found.get_mut(id).unwrap();
+        st.model = Some(model.into());
+        st.ctx = Some(ctx);
+        st.mode = Some(mode.into());
+    }
+    assert!(v.set_status(found));
+    let mut bar = UsageBar {
+        claude_5h: Some(Reading {
+            pct: 34.4,
+            stale: false,
+        }),
+        claude_week: Some(Reading {
+            pct: 82.0,
+            stale: false,
+        }),
+        codex_week: Some(Reading {
+            pct: 8.0,
+            stale: true,
+        }),
+        ..UsageBar::default()
+    };
+    bar.costs.insert(
+        "b".into(),
+        Cost {
+            usd: 1.234,
+            stale: false,
+        },
+    );
+    assert!(v.set_usage(bar));
+    v
+}
+
+fn texts(parts: &[Part]) -> Vec<String> {
+    parts.iter().map(|p| p.text.clone()).collect()
+}
+
+#[test]
+fn usage_parts_format_limits_cost_and_unknowns() {
+    let v = with_meter(140);
+    let parts = v.usage_parts();
+    assert_eq!(texts(&parts), ["5h 34%", "wk 82%", "cx ~8%", "$1.23"]);
+    assert_eq!(parts[1].tone, Tone::Warn);
+    assert_eq!(parts[2].tone, Tone::Stale);
+    let mut v = v;
+    v.usage = Some(UsageBar::default());
+    assert_eq!(texts(&v.usage_parts()), ["5h ?", "wk ?", "cx ?", "$?"]);
+    v.status.clear();
+    assert_eq!(texts(&v.usage_parts()), ["5h ?", "wk ?", "cx ?"]);
+    v.usage = None;
+    assert!(v.usage_parts().is_empty());
+}
+
+#[test]
+fn usage_cost_is_marked_when_data_lags() {
+    let mut v = with_meter(140);
+    v.usage.as_mut().unwrap().costs.insert(
+        "b".into(),
+        Cost {
+            usd: 0.5,
+            stale: true,
+        },
+    );
+    let parts = v.usage_parts();
+    assert_eq!(parts[3].text, "$~0.50");
+    assert_eq!(parts[3].tone, Tone::Stale);
+}
+
+#[test]
+fn session_meta_highlights_bypass_and_flags_unknowns() {
+    let v = with_meter(140);
+    let a = v.session_meta("a").unwrap();
+    assert_eq!(a.text(), "opus · ctx 68% · bypass");
+    assert_eq!(a.parts[2].tone, Tone::Hot);
+    let b = v.session_meta("b").unwrap();
+    assert_eq!(b.text(), "sonnet · ctx 12% · plan");
+    assert_eq!(b.parts[2].tone, Tone::Plain);
+    let mut v = v;
+    v.status.get_mut("b").unwrap().ctx = Some(96);
+    v.status.get_mut("b").unwrap().mode = None;
+    let b = v.session_meta("b").unwrap();
+    assert_eq!(b.text(), "sonnet · ctx 96% · ?");
+    assert_eq!(b.parts[1].tone, Tone::Hot);
+    assert!(v.session_meta("c").is_none());
+}
+
+#[test]
+fn bypass_is_drawn_in_the_alert_colour() {
+    let v = with_meter(140);
+    let term = term_for(&v, &screens(), 140, 22);
+    let buf = term.backend().buffer();
+    let found = (0..22u16)
+        .flat_map(|y| (0..134u16).map(move |x| (x, y)))
+        .find(|(x, y)| {
+            (0..6u16)
+                .map(|i| buf[(x + i, *y)].symbol())
+                .collect::<String>()
+                == "bypass"
+        })
+        .expect("bypass is drawn");
+    let cell = &buf[found];
+    assert_eq!(cell.fg, super::theme::colors().bad);
+    assert!(cell.modifier.contains(ratatui::style::Modifier::BOLD));
+}
+
+#[test]
+fn snapshot_wide_with_usage_and_meta() {
+    let v = with_meter(140);
+    assert_snapshot("usage_wide", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_narrow_with_usage_and_meta() {
+    let v = with_meter(90);
+    assert_snapshot("usage_narrow", &draw(&v, &screens(), 90, 16));
+}
+
+#[test]
+fn a_tight_header_keeps_bypass_and_drops_the_rest() {
+    let v = with_meter(140);
+    let parts = super::render::header_meta(&v, "a", 12).unwrap();
+    assert_eq!(texts(&parts), ["bypass"]);
+    assert!(super::render::header_meta(&v, "a", 5).is_none());
 }
 
 #[test]

@@ -10,6 +10,7 @@ use super::status::{Peek, SessionStatus};
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
+use super::usage::UsageBar;
 use crate::questions::Entry;
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
@@ -140,6 +141,7 @@ pub struct ViewState {
     pub locs: HashMap<String, Loc>,
     pub titles: HashMap<String, AgentTitle>,
     pub status: HashMap<String, SessionStatus>,
+    pub usage: Option<UsageBar>,
     pub subs_open: HashSet<String>,
     pub needs: HashMap<String, Need>,
     pub chips: HashMap<String, TaskChip>,
@@ -359,6 +361,7 @@ impl ViewState {
             locs: HashMap::new(),
             titles: HashMap::new(),
             status: HashMap::new(),
+            usage: None,
             subs_open: HashSet::new(),
             needs: HashMap::new(),
             chips: HashMap::new(),

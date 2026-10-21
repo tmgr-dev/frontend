@@ -19,6 +19,9 @@ pub struct SessionStatus {
     pub todo: Option<(u32, u32)>,
     pub subs: Vec<SubAgent>,
     pub ask: Option<String>,
+    pub model: Option<String>,
+    pub ctx: Option<u8>,
+    pub mode: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,7 +57,13 @@ const META_CAP: usize = 4096;
 
 impl SessionStatus {
     pub fn is_empty(&self) -> bool {
-        self.activity.is_none() && self.todo.is_none() && self.subs.is_empty() && self.ask.is_none()
+        self.activity.is_none()
+            && self.todo.is_none()
+            && self.subs.is_empty()
+            && self.ask.is_none()
+            && self.model.is_none()
+            && self.ctx.is_none()
+            && self.mode.is_none()
     }
 
     pub fn todo_label(&self) -> Option<String> {
@@ -214,6 +223,51 @@ impl ViewState {
     }
 }
 
+pub(crate) fn model_label(id: &str) -> String {
+    let lower = id.to_ascii_lowercase();
+    for family in ["opus", "sonnet", "haiku"] {
+        if lower.contains(family) {
+            return family.to_string();
+        }
+    }
+    let short: String = lower
+        .trim_start_matches("claude-")
+        .chars()
+        .take_while(|c| c.is_ascii_alphabetic() || *c == '-')
+        .collect();
+    let short = short.trim_end_matches('-');
+    if short.is_empty() {
+        "?".into()
+    } else {
+        short.chars().take(10).collect()
+    }
+}
+
+pub(crate) fn mode_label(mode: &str) -> String {
+    match mode {
+        "bypassPermissions" => "bypass".into(),
+        "acceptEdits" => "edits".into(),
+        "default" => "ask".into(),
+        other => other
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .take(10)
+            .collect::<String>()
+            .to_ascii_lowercase(),
+    }
+}
+
+fn ctx_percent(tokens: u64, model: &str) -> u8 {
+    const SMALL: u64 = 200_000;
+    const LARGE: u64 = 1_000_000;
+    let window = if tokens > SMALL || model.contains("[1m]") {
+        LARGE
+    } else {
+        SMALL
+    };
+    ((tokens * 100 + window / 2) / window).min(100) as u8
+}
+
 fn clock_label(secs: u64) -> String {
     match secs {
         0..=3599 => format!("{}:{:02}", secs / 60, secs % 60),
@@ -237,6 +291,9 @@ pub struct StatusScan {
     todo: Option<(u32, u32)>,
     subs: Vec<Sub>,
     asking: Option<(String, String)>,
+    model: Option<String>,
+    ctx: Option<u8>,
+    mode: Option<String>,
 }
 
 #[derive(Debug)]
@@ -264,6 +321,9 @@ impl StatusScan {
             todo: None,
             subs: Vec::new(),
             asking: None,
+            model: None,
+            ctx: None,
+            mode: None,
         }
     }
 
@@ -276,6 +336,9 @@ impl StatusScan {
             activity: self.pending.last().map(|(_, label)| label.clone()),
             todo: self.todo,
             ask: self.asking.as_ref().map(|(_, q)| q.clone()),
+            model: self.model.clone(),
+            ctx: self.ctx,
+            mode: self.mode.clone(),
             subs: self
                 .subs
                 .iter()
@@ -325,6 +388,9 @@ impl StatusScan {
         self.windowed = false;
         self.asking = None;
         self.subs.clear();
+        self.model = None;
+        self.ctx = None;
+        self.mode = None;
         self.last_message = None;
         self.created = 0;
         self.completed.clear();
@@ -405,6 +471,10 @@ impl StatusScan {
         if !self.subs.is_empty() && contains(line, b"<task-notification>") {
             self.notified(line);
         }
+        if contains(line, b"\"type\":\"permission-mode\"") {
+            self.permission(line);
+            return;
+        }
         if !contains(line, b"\"type\":\"assistant\"") && !contains(line, b"\"type\":\"user\"") {
             return;
         }
@@ -427,10 +497,45 @@ impl StatusScan {
                     .get("timestamp")
                     .and_then(Value::as_str)
                     .and_then(iso_secs);
+                self.meter(v.get("message"));
                 self.assistant(message, at.unwrap_or(0), content);
             }
             Some("user") => self.user(&v, content),
             _ => {}
+        }
+    }
+
+    fn permission(&mut self, line: &[u8]) {
+        let Ok(v) = serde_json::from_slice::<Value>(line) else {
+            return;
+        };
+        if let Some(mode) = v.get("permissionMode").and_then(Value::as_str) {
+            self.mode = Some(mode_label(mode));
+        }
+    }
+
+    fn meter(&mut self, message: Option<&Value>) {
+        let Some(message) = message else {
+            return;
+        };
+        let model = message.get("model").and_then(Value::as_str).unwrap_or("");
+        if model.is_empty() || model.starts_with('<') {
+            return;
+        }
+        self.model = Some(model_label(model));
+        let Some(usage) = message.get("usage") else {
+            return;
+        };
+        let tokens: u64 = [
+            "input_tokens",
+            "cache_read_input_tokens",
+            "cache_creation_input_tokens",
+        ]
+        .iter()
+        .filter_map(|k| usage.get(k).and_then(Value::as_u64))
+        .sum();
+        if tokens > 0 {
+            self.ctx = Some(ctx_percent(tokens, model));
         }
     }
 
@@ -888,6 +993,72 @@ mod tests {
         let st = s.status();
         assert_eq!(st.todo, Some((1, 3)));
         assert_eq!(st.todo_label().as_deref(), Some("1/3"));
+    }
+
+    fn turn(model: &str, input: u64, read: u64, create: u64) -> String {
+        format!(
+            r#"{{"type":"assistant","message":{{"id":"m","role":"assistant","model":"{model}","content":[{{"type":"text","text":"ok"}}],"usage":{{"input_tokens":{input},"cache_read_input_tokens":{read},"cache_creation_input_tokens":{create}}}}}}}"#
+        )
+    }
+
+    const BYPASS: &str =
+        r#"{"type":"permission-mode","permissionMode":"bypassPermissions","sessionId":"x"}"#;
+
+    #[test]
+    fn model_context_and_mode_come_from_the_latest_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = scan(
+            dir.path(),
+            &[
+                BYPASS,
+                HUMAN,
+                &turn("claude-opus-5-5", 2, 100_000, 34_000),
+                r#"{"type":"permission-mode","permissionMode":"plan"}"#,
+            ],
+        );
+        let st = s.status();
+        assert_eq!(st.model.as_deref(), Some("opus"));
+        assert_eq!(st.ctx, Some(67));
+        assert_eq!(st.mode.as_deref(), Some("plan"));
+        assert!(!st.is_empty());
+    }
+
+    #[test]
+    fn a_context_over_200k_is_measured_against_a_million() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = scan(dir.path(), &[&turn("claude-opus-5-5", 2, 295_000, 1_000)]);
+        assert_eq!(s.status().ctx, Some(30));
+    }
+
+    #[test]
+    fn synthetic_turns_and_sidechains_do_not_set_the_meter() {
+        let dir = tempfile::tempdir().unwrap();
+        let side = turn("claude-haiku-4-5", 1, 1, 1).replace(
+            r#"{"type":"assistant""#,
+            r#"{"isSidechain":true,"type":"assistant""#,
+        );
+        let s = scan(
+            dir.path(),
+            &[
+                &turn("claude-sonnet-5", 1, 20_000, 0),
+                &turn("<synthetic>", 0, 0, 0),
+                &side,
+            ],
+        );
+        let st = s.status();
+        assert_eq!(st.model.as_deref(), Some("sonnet"));
+        assert_eq!(st.ctx, Some(10));
+    }
+
+    #[test]
+    fn labels_for_models_and_modes() {
+        assert_eq!(model_label("claude-3-5-haiku-20241022"), "haiku");
+        assert_eq!(model_label("claude-foo-9"), "foo");
+        assert_eq!(model_label("???"), "?");
+        assert_eq!(mode_label("bypassPermissions"), "bypass");
+        assert_eq!(mode_label("acceptEdits"), "edits");
+        assert_eq!(mode_label("default"), "ask");
+        assert_eq!(mode_label("auto"), "auto");
     }
 
     #[test]
