@@ -14,6 +14,20 @@ const LABELS: Record<string, string> = {
 	list_routines: 'Reading the routines',
 	time_summary: 'Summing tracked time',
 	deadline_report: 'Checking deadlines',
+	routine_agenda: 'Reading your routines',
+	get_routine: 'Reading the routine',
+	create_task: 'Preparing a task',
+	add_comment: 'Preparing a comment',
+	update_task: 'Preparing a task update',
+	add_checkpoint: 'Preparing a checkpoint',
+	start_timer: 'Preparing to start the timer',
+	stop_timer: 'Preparing to stop the timer',
+	link_tasks: 'Preparing a task link',
+	create_routine: 'Preparing a routine',
+	update_routine: 'Preparing a routine change',
+	set_routine_state: 'Preparing a routine check-off',
+	move_routine_instance: 'Preparing to move a routine',
+	convert_routine: 'Preparing to turn a routine into a task',
 };
 
 export function agentToolLabel(tool: string | undefined | null): string {

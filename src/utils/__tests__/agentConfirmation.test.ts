@@ -41,6 +41,41 @@ describe('normalizePendingAction', () => {
 		expect(a.result).toBeNull();
 	});
 
+	it('keeps several fields with arrows and unicode verbatim', () => {
+		const fields = [
+			{ label: 'Status', value: 'Backlog → In progress' },
+			{ label: 'Assignees', value: '+Ann, −Bob' },
+			{ label: 'Due', value: '2026-10-21 → 2026-10-28' },
+		];
+		const a = normalizePendingAction({
+			id: 6,
+			preview: { title: 'T', fields },
+		});
+		expect(a.preview.fields).toEqual(fields);
+	});
+
+	it('normalizes a batch of seven actions in order', () => {
+		const raw = Array.from({ length: 7 }, (_, i) => ({
+			id: i + 1,
+			tool: 'update_task',
+			status: 'pending',
+			preview: {
+				title: `Move task ${i + 1}`,
+				fields: [{ label: 'Status', value: 'Backlog → In progress' }],
+			},
+			expires_at: iso(60000),
+		}));
+		const out = normalizeAgentMessage({
+			status: 'awaiting',
+			pending_actions: raw,
+		} as never).pending_actions!;
+		expect(out.map((a) => a.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+		expect(
+			out.every((a) => a.preview.fields[0].value === 'Backlog → In progress'),
+		).toBe(true);
+		expect(openActionIds(out, NOW)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+	});
+
 	it('falls back safely on missing parts', () => {
 		const a = normalizePendingAction({ id: 4 });
 		expect(a.risk).toBe('low');
