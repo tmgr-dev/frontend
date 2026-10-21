@@ -3,6 +3,10 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.61 — 2026-10-21
+
+- Daily Routines: dragging one occurrence of a recurring routine to another day now moves only that occurrence; it shows on the new day and disappears from the original one.
+
 ## 0.9.60 — 2026-10-21
 
 - Agent chat: with Write mode on, the assistant can also update a task (status, assignees, estimate, deadline), add a checkpoint, start or stop your own timer and link tasks. Every change waits on the "Confirm changes" card.
