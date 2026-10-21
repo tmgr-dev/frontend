@@ -357,7 +357,12 @@
 							<span v-else class="text-ink">{{ commit.short }}</span>
 							<span
 								class="ml-2 rounded-pill bg-zinc-100 px-1.5 text-2xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
-								>agent</span
+								:title="
+									commit.source === 'git'
+										? 'Found in git, not reported by the agent'
+										: undefined
+								"
+								>{{ commit.source }}</span
 							>
 							<span class="ml-2 text-ink-subtle">{{ commit.message }}</span>
 						</li>
