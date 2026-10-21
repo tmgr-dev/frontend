@@ -12,6 +12,7 @@
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Zoom the pane                                       Ctrl-] z │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
+                  │ Group sessions by repo, or list them flat           Ctrl-] g │                 │
                   │ Rename the focused session                          Ctrl-] r │                 │
                   │ Resume the focused session                  Ctrl-] Enter / R │                 │
                   │ Stop (close) the focused session                    Ctrl-] x │                 │
@@ -19,6 +20,5 @@
                   │ Scroll back through history                         Ctrl-] [ │                 │
                   │ Show the key help                                   Ctrl-] ? │                 │
                   │ codex                                                blocked │                 │
-                  │ claude                                               working │                 │
- + New session    │ dev-server                                           waiting │─────────────────╯
+ + New session    │ claude                                               working │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
