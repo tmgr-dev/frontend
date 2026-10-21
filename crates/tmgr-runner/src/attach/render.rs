@@ -5,6 +5,7 @@ use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
 use super::place::{fit, tail2};
+use super::theme::{colors, with_theme};
 use super::title::{age_label, clip};
 use super::tree::Nav;
 use super::view::{
@@ -27,11 +28,9 @@ pub trait ScreenSource {
 }
 
 const MIN_NAME_W: usize = 10;
-const ACCENT: Color = Color::LightRed;
-const SIDEBAR_BG: Color = Color::Indexed(237);
 
 pub(crate) fn dim() -> Style {
-    Style::new().fg(Color::DarkGray)
+    Style::new().fg(colors().dim)
 }
 
 fn text(s: &str, style: Style) -> Span<'static> {
@@ -40,11 +39,16 @@ fn text(s: &str, style: Style) -> Span<'static> {
 
 fn badge(row: &SessionRow) -> (&'static str, Style) {
     match row.state.kind {
-        StateKind::Working => ("●", Style::new().fg(Color::Yellow)),
-        StateKind::Waiting => ("◌", Style::new().fg(Color::Cyan)),
-        StateKind::Blocked => ("◆", Style::new().fg(ACCENT).add_modifier(Modifier::BOLD)),
-        StateKind::Exited if row.state.exit_code == Some(0) => ("✓", Style::new().fg(Color::Green)),
-        StateKind::Exited => ("✗", Style::new().fg(Color::Red)),
+        StateKind::Working => ("●", Style::new().fg(colors().working)),
+        StateKind::Waiting => ("◌", Style::new().fg(colors().waiting)),
+        StateKind::Blocked => (
+            "◆",
+            Style::new()
+                .fg(colors().accent)
+                .add_modifier(Modifier::BOLD),
+        ),
+        StateKind::Exited if row.state.exit_code == Some(0) => ("✓", Style::new().fg(colors().ok)),
+        StateKind::Exited => ("✗", Style::new().fg(colors().bad)),
         StateKind::Starting => ("○", dim()),
     }
 }
@@ -96,6 +100,10 @@ pub(crate) fn put(buf: &mut Buffer, x: u16, y: u16, s: &str, style: Style, max: 
 }
 
 pub fn render(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
+    with_theme(st.theme, || render_all(frame, st, screens));
+}
+
+fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     let area = frame.area();
     let lay = layout(area, st);
     let buf = frame.buffer_mut();
@@ -157,7 +165,9 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             .pointer
             .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
         let style = if hovered {
-            Style::new().fg(Color::White).add_modifier(Modifier::BOLD)
+            Style::new()
+                .fg(colors().strong)
+                .add_modifier(Modifier::BOLD)
         } else {
             dim()
         };
@@ -194,7 +204,7 @@ fn draw_session_row(
     if focused == Some(row.id.as_str()) {
         buf.set_style(
             Rect::new(area.x, y, area.width, 1),
-            Style::new().bg(SIDEBAR_BG),
+            Style::new().bg(colors().sidebar_bg),
         );
     }
     let (glyph, style) = badge(row);
@@ -296,7 +306,7 @@ fn draw_group_header(
     if holds {
         buf.set_style(
             Rect::new(area.x, y, area.width, 1),
-            Style::new().bg(SIDEBAR_BG),
+            Style::new().bg(colors().sidebar_bg),
         );
     }
     put(
@@ -329,7 +339,7 @@ fn draw_group_header(
     }
     if collapsed {
         let style = if st.group_blocked(key) {
-            Style::new().fg(Color::Yellow)
+            Style::new().fg(colors().warn)
         } else {
             dim()
         };
@@ -347,7 +357,7 @@ fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count:
     if st.active_tab() == Some(id) {
         buf.set_style(
             Rect::new(area.x, y, area.width, 1),
-            Style::new().bg(SIDEBAR_BG),
+            Style::new().bg(colors().sidebar_bg),
         );
     }
     put(buf, area.x + 1, y, "▾", dim(), 1);
@@ -366,7 +376,7 @@ fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count:
         room,
     );
     let style = if st.tab_blocked(id) {
-        Style::new().fg(Color::Yellow)
+        Style::new().fg(colors().warn)
     } else {
         dim()
     };
@@ -391,7 +401,9 @@ fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested: b
 
 fn button_style(hover: bool, enabled: bool) -> Style {
     match (hover, enabled) {
-        (true, true) => Style::new().fg(Color::White).add_modifier(Modifier::BOLD),
+        (true, true) => Style::new()
+            .fg(colors().strong)
+            .add_modifier(Modifier::BOLD),
         (_, true) => dim(),
         (_, false) => dim().add_modifier(Modifier::DIM),
     }
@@ -480,7 +492,7 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
         None => spans.push(text(&format!("  {}", p.session), Style::new())),
     }
     if let Some(scroll) = scroll {
-        spans.push(text(&scroll, Style::new().fg(Color::Yellow)));
+        spans.push(text(&scroll, Style::new().fg(colors().warn)));
     }
     spans.push(text(" ", Style::new()));
     Line::from(spans)
@@ -494,9 +506,11 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
     let focused = st.focused_session() == Some(p.session.as_str());
     let blocked = row.is_some_and(|r| r.state.kind == StateKind::Blocked);
     let border = match (blocked, focused) {
-        (true, true) => Style::new().fg(ACCENT).add_modifier(Modifier::BOLD),
-        (true, false) => Style::new().fg(ACCENT),
-        (false, true) => Style::new().fg(Color::White),
+        (true, true) => Style::new()
+            .fg(colors().accent)
+            .add_modifier(Modifier::BOLD),
+        (true, false) => Style::new().fg(colors().accent),
+        (false, true) => Style::new().fg(colors().strong),
         (false, false) => dim(),
     };
     Block::bordered()
@@ -577,20 +591,28 @@ fn counts(st: &ViewState) -> Vec<Span<'static>> {
     let mut items = vec![
         (
             "●",
-            Color::Yellow,
+            colors().working,
             n(&|r| r.state.kind == StateKind::Working),
         ),
-        ("◌", Color::Cyan, n(&|r| r.state.kind == StateKind::Waiting)),
-        ("◆", ACCENT, n(&|r| r.state.kind == StateKind::Blocked)),
+        (
+            "◌",
+            colors().waiting,
+            n(&|r| r.state.kind == StateKind::Waiting),
+        ),
+        (
+            "◆",
+            colors().accent,
+            n(&|r| r.state.kind == StateKind::Blocked),
+        ),
         (
             "✓",
-            Color::Green,
+            colors().ok,
             n(&|r| r.state.kind == StateKind::Exited && r.state.exit_code == Some(0)),
         ),
     ];
     let failed = n(&|r| r.state.kind == StateKind::Exited && r.state.exit_code != Some(0));
     if failed > 0 {
-        items.push(("✗", Color::Red, failed));
+        items.push(("✗", colors().bad, failed));
     }
     let mut spans = Vec::new();
     for (i, (glyph, color, count)) in items.into_iter().enumerate() {
@@ -627,7 +649,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     let mut spans = vec![text(" ", Style::new())];
     if area.width < WIDE_COLS {
         match &note {
-            Some(n) => spans.push(text(n, Style::new().fg(Color::Yellow))),
+            Some(n) => spans.push(text(n, Style::new().fg(colors().warn))),
             None => spans.push(text(&focused, Style::new())),
         }
         spans.push(sep());
@@ -645,7 +667,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
     spans.push(sep());
     match &note {
-        Some(n) => spans.push(text(n, Style::new().fg(Color::Yellow))),
+        Some(n) => spans.push(text(n, Style::new().fg(colors().warn))),
         None => {
             spans.push(text(&focused, Style::new()));
             spans.push(sep());
@@ -721,8 +743,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "tab: next / previous / rename / close",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Group]),
-        "group the sidebar by tab / by repo",
+        HelpKey::Cmds(&[Cmd::Group, Cmd::SidebarNarrower, Cmd::SidebarWider]),
+        "group by tab / repo, sidebar width",
     ),
     (
         HelpKey::Cmds(&[Cmd::Rename]),

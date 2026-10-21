@@ -3,6 +3,7 @@ use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
+use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
@@ -11,6 +12,9 @@ use std::collections::{HashMap, HashSet};
 use tmgr_ipc::api::{MouseMode, State, StateKind};
 
 pub const SIDEBAR_WIDTH: u16 = 24;
+pub const MIN_SIDEBAR_WIDTH: u16 = 16;
+pub const MAX_SIDEBAR_WIDTH: u16 = 60;
+const SIDEBAR_STEP: u16 = 2;
 pub const WIDE_COLS: u16 = 100;
 const MIN_PANE_COLS: u16 = 10;
 const MAX_GROUP_KEYS: usize = 64;
@@ -108,6 +112,10 @@ pub struct ViewState {
     pub shells: Vec<String>,
     pub zoom: bool,
     pub sidebar: Option<bool>,
+    pub sidebar_w: Option<u16>,
+    pub sidebar_default: u16,
+    pub theme: ThemeKind,
+    border_drag: Option<Option<u16>>,
     pub help: bool,
     pub scroll: Option<ScrollState>,
     pub notice: Option<String>,
@@ -254,6 +262,8 @@ pub struct LayoutPrefs {
     pub zoom: bool,
     pub sidebar: Option<bool>,
     #[serde(default)]
+    pub sidebar_width: Option<u16>,
+    #[serde(default)]
     pub tree: Option<Node>,
     #[serde(default)]
     pub shells: Vec<String>,
@@ -305,6 +315,10 @@ impl ViewState {
             shells: Vec::new(),
             zoom: false,
             sidebar: None,
+            sidebar_w: None,
+            sidebar_default: SIDEBAR_WIDTH,
+            theme: ThemeKind::default(),
+            border_drag: None,
             help: false,
             scroll: None,
             notice: None,
@@ -1068,6 +1082,8 @@ impl ViewState {
                 let shown = self.sidebar.unwrap_or(self.width >= WIDE_COLS);
                 self.sidebar = Some(!shown);
             }
+            Cmd::SidebarNarrower => self.resize_sidebar(false),
+            Cmd::SidebarWider => self.resize_sidebar(true),
             Cmd::Help => self.help = !self.help,
             Cmd::ScrollMode => {
                 if self.focused_session().is_some() {
@@ -1251,6 +1267,52 @@ impl ViewState {
         self.scroll = None;
     }
 
+    pub fn sidebar_width(&self) -> u16 {
+        clamp_sidebar(self.sidebar_w.unwrap_or(self.sidebar_default))
+    }
+
+    fn resize_sidebar(&mut self, wider: bool) {
+        let w = self.sidebar_width().min(sidebar_cap(self.width));
+        self.sidebar_w = Some(clamp_sidebar(if wider {
+            w.saturating_add(SIDEBAR_STEP)
+        } else {
+            w.saturating_sub(SIDEBAR_STEP)
+        }));
+    }
+
+    fn on_sidebar_border(&self, area: Rect, col: u16, row: u16) -> bool {
+        let Some(sb) = layout(area, self).sidebar else {
+            return false;
+        };
+        row >= sb.y && row < sb.bottom() && (col == sb.right() || col + 1 == sb.right())
+    }
+
+    fn border_mouse(&mut self, area: Rect, ev: MouseEvent, out: &mut MouseOut) -> bool {
+        if self.border_drag.is_some() {
+            match ev.kind() {
+                Kind::Drag => {
+                    let w = (ev.col.saturating_sub(area.x) + 1).min(sidebar_cap(area.width));
+                    self.sidebar_w = Some(clamp_sidebar(w));
+                    out.redraw = true;
+                }
+                Kind::Release => {
+                    self.border_drag = None;
+                    out.redraw = true;
+                }
+                _ => {}
+            }
+            return true;
+        }
+        if ev.kind() == Kind::Press {
+            self.border_drag = None;
+        }
+        if ev.is_left_press() && self.on_sidebar_border(area, ev.col, ev.row) {
+            self.border_drag = Some(self.sidebar_w);
+            return true;
+        }
+        false
+    }
+
     pub fn hit(&self, area: Rect, col: u16, row: u16) -> Hit {
         let lay = layout(area, self);
         if let Some(sb) = lay.sidebar {
@@ -1342,6 +1404,9 @@ impl ViewState {
         if self.hover_key(area) != before {
             out.redraw = true;
         }
+        if kind == Kind::Move || self.new_session.is_some() || self.palette.is_some() || self.help {
+            self.border_drag = None;
+        }
         if self.new_session.is_some() {
             return self.new_session_mouse(area, ev, out);
         }
@@ -1359,6 +1424,9 @@ impl ViewState {
                 self.help = false;
                 out.redraw = true;
             }
+            return out;
+        }
+        if self.border_mouse(area, ev, &mut out) {
             return out;
         }
         if let Some(g) = self.grab.clone() {
@@ -1646,6 +1714,7 @@ impl ViewState {
             focus: self.focus(),
             zoom: self.zoom,
             sidebar: self.sidebar,
+            sidebar_width: self.border_drag.unwrap_or(self.sidebar_w),
             tree: self.tree.clone(),
             shells: self.shells.clone(),
             new_kind: self.new_kind.clone(),
@@ -1724,6 +1793,9 @@ impl ViewState {
         self.shells = shells;
         self.zoom = prefs.zoom;
         self.sidebar = prefs.sidebar;
+        if prefs.sidebar_width.is_some() {
+            self.sidebar_w = prefs.sidebar_width;
+        }
         self.new_kind = prefs.new_kind.clone();
         self.new_place = prefs.new_place;
         self.scroll = None;
@@ -1802,6 +1874,14 @@ pub enum Hit {
     None,
 }
 
+fn sidebar_cap(cols: u16) -> u16 {
+    cols.saturating_sub(MIN_PANE_COLS)
+}
+
+fn clamp_sidebar(w: u16) -> u16 {
+    w.clamp(MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+}
+
 pub(crate) fn contains(r: Rect, col: u16, row: u16) -> bool {
     col >= r.x && col < r.right() && row >= r.y && row < r.bottom()
 }
@@ -1843,7 +1923,9 @@ fn pane(session: &str, outer: Rect) -> PaneRect {
 fn body_rect(area: Rect, st: &ViewState) -> Rect {
     let mut body = Rect::new(area.x, area.y, area.width, area.height.saturating_sub(1));
     if st.sidebar_shown() {
-        let w = SIDEBAR_WIDTH.min(body.width.saturating_sub(MIN_PANE_COLS));
+        let w = st
+            .sidebar_width()
+            .min(body.width.saturating_sub(MIN_PANE_COLS));
         if w > 0 {
             body = Rect::new(body.x + w, body.y, body.width - w, body.height);
         }

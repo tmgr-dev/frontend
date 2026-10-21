@@ -1,18 +1,24 @@
 <template>
 	<div>
 		<div
-			class="group/page flex items-center gap-0.5 rounded-md pr-1 text-sm text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+			class="group/page flex items-center gap-0.5 rounded-md pr-1 text-sm"
 			:class="[
+				onPage
+					? 'text-ink hover:bg-surface-hover'
+					: 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
 				isActive
-					? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+					? onPage
+						? 'bg-surface-hover font-medium'
+						: 'bg-sidebar-accent font-medium text-sidebar-accent-foreground'
 					: '',
+				flat ? 'pl-2' : '',
 				zone.dragging.value ? 'ring-2 ring-blue-500' : '',
 			]"
 			:data-page-id="node.id"
 			v-on="zone.handlers"
 		>
 			<button
-				v-if="node.children.length"
+				v-if="!flat && node.children.length"
 				type="button"
 				class="flex h-7 w-6 shrink-0 items-center justify-center rounded text-ink-subtle hover:text-ink dark:text-gray-400 dark:hover:text-gray-200"
 				:aria-label="isExpanded ? 'Collapse' : 'Expand'"
@@ -23,7 +29,11 @@
 					:class="isExpanded ? 'rotate-90' : ''"
 				/>
 			</button>
-			<span v-else class="h-7 w-6 shrink-0" aria-hidden="true"></span>
+			<span
+				v-else-if="!flat"
+				class="h-7 w-6 shrink-0"
+				aria-hidden="true"
+			></span>
 			<router-link
 				:to="url"
 				draggable="false"
@@ -37,11 +47,7 @@
 			</router-link>
 			<DropdownMenu>
 				<DropdownMenuTrigger as-child>
-					<button
-						type="button"
-						class="flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-subtle opacity-0 hover:bg-black/5 hover:text-ink focus-visible:opacity-100 group-hover/page:opacity-100 data-[state=open]:opacity-100 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200"
-						aria-label="Page actions"
-					>
+					<button type="button" :class="actionsClass" aria-label="Page actions">
 						<MoreHorizontal class="h-4 w-4" />
 					</button>
 				</DropdownMenuTrigger>
@@ -105,11 +111,14 @@
 			</DropdownMenu>
 		</div>
 		<Draggable
-			v-if="(isExpanded && node.children.length) || showDropZone"
+			v-if="!flat && ((isExpanded && node.children.length) || showDropZone)"
 			:model-value="node.children"
 			group="pages"
 			item-key="id"
-			class="ml-3 min-h-[8px] border-l border-sidebar-border pl-1 dark:border-gray-700"
+			class="ml-3 min-h-[8px] border-l pl-1"
+			:class="
+				onPage ? 'border-line' : 'border-sidebar-border dark:border-gray-700'
+			"
 			:data-parent-id="node.id"
 			:force-fallback="true"
 			:fallback-on-body="true"
@@ -190,9 +199,13 @@
 		},
 		props: {
 			node: { type: Object as PropType<PageNode>, required: true },
+			flat: { type: Boolean, default: false },
 		},
 		setup(props) {
 			const ctx = inject(PAGES_TREE_KEY) as PagesTreeContext;
+			// Not a static class: radix-vue's as-child Slot deletes `class` from the child's props, and static props are shared by every row.
+			const actionsClass =
+				'flex h-6 w-6 shrink-0 items-center justify-center rounded text-ink-subtle opacity-0 hover:bg-black/5 hover:text-ink focus-visible:opacity-100 group-focus-within/page:opacity-100 group-hover/page:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-200';
 			const route = useRoute();
 			const isExpanded = computed(() => ctx.expanded.value.has(props.node.id));
 			const showDropZone = computed(
@@ -214,6 +227,8 @@
 
 			return {
 				ctx,
+				actionsClass,
+				onPage: ctx.surface === 'page',
 				zone,
 				isDesktop: isDesktopApp(),
 				openInWindow,
