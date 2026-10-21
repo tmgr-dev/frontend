@@ -357,7 +357,7 @@ fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count:
     if st.active_tab() == Some(id) {
         buf.set_style(
             Rect::new(area.x, y, area.width, 1),
-            Style::new().bg(SIDEBAR_BG),
+            Style::new().bg(colors().sidebar_bg),
         );
     }
     put(buf, area.x + 1, y, "▾", dim(), 1);
@@ -376,7 +376,7 @@ fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count:
         room,
     );
     let style = if st.tab_blocked(id) {
-        Style::new().fg(Color::Yellow)
+        Style::new().fg(colors().warn)
     } else {
         dim()
     };
