@@ -224,6 +224,22 @@ impl PriceBook {
         Some(base * fast)
     }
 
+    /// `[input, output, cache_read, cache_write_5m, cache_write_1h]` USD per 1M tokens, or None without a full base price.
+    pub fn rates_per_million(&self, model: &str) -> Option<[f64; 5]> {
+        let e = self.lookup(model)?;
+        let get = |k: &str| e.costs.get(k).copied();
+        let input = get("input_cost_per_token")?;
+        let output = get("output_cost_per_token")?;
+        let cache_read = get("cache_read_input_token_cost")?;
+        let cw5 = get("cache_creation_input_token_cost")?;
+        let cw1 = get(CACHE_1H).unwrap_or(cw5);
+        let scaled = [input, output, cache_read, cw5, cw1].map(|x| (x * 1e12).round() / 1e6);
+        scaled
+            .iter()
+            .all(|x| x.is_finite() && (0.0..=100_000.0).contains(x))
+            .then_some(scaled)
+    }
+
     pub fn price(&self, ev: &UsageEvent) -> (Option<f64>, CostBasis) {
         match self.cost_at(
             &ev.model,

@@ -434,6 +434,7 @@ pub(super) fn linking_json(set: &RunSet, report: &LinkReport) -> Value {
         "linked_events": report.links.len(),
         "ambiguous_events": report.ambiguous.len(),
         "unattributed_events": report.unattributed.len(),
+        "shared_events": report.shared.len(),
     })
 }
 
@@ -523,6 +524,14 @@ fn all_tasks(
             "(unattributed)".into(),
             "unattributed".into(),
             acc(&report.unattributed_totals),
+            json!({"task": Value::Null}),
+        ));
+    }
+    if report.shared_totals.events > 0 {
+        rows.push((
+            "(shared)".into(),
+            "shared".into(),
+            acc(&report.shared_totals),
             json!({"task": Value::Null}),
         ));
     }

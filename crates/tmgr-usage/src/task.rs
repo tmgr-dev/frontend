@@ -1,11 +1,12 @@
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use crate::facts::{clean_repo, StoredAgent, StoredFact, MAX_NAME};
 use crate::limits::{LimitSnapshot, LimitWindow};
-use crate::link::LinkEvent;
+use crate::link::{LinkEvent, NodeMark};
 use crate::model::{clean_name, FactKind, Tokens, Tool};
+use crate::pricing::PriceBook;
 
 pub const SCHEMA: &str = "task_usage.v1";
 pub const MAX_NODES: usize = 200;
@@ -16,6 +17,9 @@ pub const MAX_DEPTH: usize = 32;
 const CODEX_WINDOW_SLACK_SECS: i64 = 5;
 const CODEX_BACKGROUND_MINUTES: i64 = 10;
 const MAX_CHAIN: usize = 64;
+const IDLE_GAP_SECS: i64 = 300;
+const MAX_RATES: usize = 100;
+const MAX_RATE: f64 = 100_000.0;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TaskIdent {
@@ -87,10 +91,23 @@ pub struct Node {
     pub started_at: String,
     pub ended_at: String,
     pub duration_ms: u64,
+    pub active_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
     pub cost_usd: f64,
     pub events: u64,
     pub tokens: Tokens,
     pub tools: Vec<ToolStat>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Rate {
+    pub model: String,
+    pub input: f64,
+    pub output: f64,
+    pub cache_read: f64,
+    pub cache_write_5m: f64,
+    pub cache_write_1h: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -174,10 +191,18 @@ pub struct TaskUsageAggregate {
     pub task: TaskIdent,
     pub period: Period,
     pub totals: Totals,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub rates: Vec<Rate>,
     pub limits: Vec<LimitShare>,
     pub nodes: Vec<Node>,
     pub context: Context,
     pub truncated: Truncated,
+}
+
+#[derive(Default)]
+pub struct BuildExtras<'a> {
+    pub marks: &'a [NodeMark],
+    pub book: Option<&'a PriceBook>,
 }
 
 pub struct TaskInput<'a> {
@@ -705,6 +730,7 @@ fn pick(g: &Graph<'_>, inp: &TaskInput<'_>) -> Picked {
 
 type Span = (DateTime<Utc>, DateTime<Utc>);
 type Gate = Option<Vec<(DateTime<Utc>, bool)>>;
+type MarkKey<'a> = (Tool, &'a str, &'a str, Option<&'a str>);
 type HookKey = (String, String, Option<String>);
 
 fn own_span(inp: &TaskInput<'_>, events: &[usize], facts: &[usize]) -> Option<Span> {
@@ -767,6 +793,26 @@ fn union_ms(mut spans: Vec<Span>) -> u64 {
         total += ms_between(a, b);
     }
     total
+}
+
+fn busy_spans(inp: &TaskInput<'_>, events: &[usize], facts: &[usize]) -> Vec<Span> {
+    let mut raw: Vec<Span> = events
+        .iter()
+        .map(|&i| (inp.events[i].ts, inp.events[i].ts))
+        .collect();
+    raw.extend(facts.iter().map(|&i| {
+        let f = &inp.facts[i];
+        (f.ts, f.ended_at.map_or(f.ts, |e| e.max(f.ts)))
+    }));
+    raw.sort();
+    let mut out: Vec<Span> = Vec::new();
+    for (a, b) in raw {
+        match out.last_mut() {
+            Some(last) if (a - last.1).num_seconds() < IDLE_GAP_SECS => last.1 = last.1.max(b),
+            _ => out.push((a, b)),
+        }
+    }
+    out
 }
 
 fn round6(v: f64) -> f64 {
@@ -1039,6 +1085,7 @@ fn dominant_model(models: &BTreeMap<String, u64>) -> String {
 
 struct Built {
     span: Span,
+    busy: Vec<Span>,
     tokens: Tokens,
     cost: f64,
     events: u64,
@@ -1066,6 +1113,8 @@ enum Rule {
     Version,
     Workspace,
     TaskRef,
+    Role,
+    Rate,
     Ext,
     Repo,
     SourceId,
@@ -1100,6 +1149,7 @@ const TOP_SPEC: Spec = &[
     ("task", REQ, Rule::Nested),
     ("period", REQ, Rule::Nested),
     ("totals", REQ, Rule::Nested),
+    ("rates", OPT, Rule::Nested),
     ("limits", REQ, Rule::Nested),
     ("nodes", REQ, Rule::Nested),
     ("context", REQ, Rule::Nested),
@@ -1147,10 +1197,20 @@ const NODE_SPEC: Spec = &[
     ("started_at", REQ, Rule::Time),
     ("ended_at", REQ, Rule::Time),
     ("duration_ms", REQ, Rule::Uint),
+    ("active_ms", OPT, Rule::Uint),
+    ("role", OPT, Rule::Role),
     ("cost_usd", REQ, Rule::Cost),
     ("events", REQ, Rule::Uint),
     ("tokens", REQ, Rule::Nested),
     ("tools", REQ, Rule::Nested),
+];
+const RATE_SPEC: Spec = &[
+    ("model", REQ, Rule::Model),
+    ("input", REQ, Rule::Rate),
+    ("output", REQ, Rule::Rate),
+    ("cache_read", REQ, Rule::Rate),
+    ("cache_write_5m", REQ, Rule::Rate),
+    ("cache_write_1h", REQ, Rule::Rate),
 ];
 const TOOL_STAT_SPEC: Spec = &[
     ("name", REQ, Rule::Name),
@@ -1271,6 +1331,27 @@ fn workspace_ok(s: &str) -> bool {
     id_ok(s, 64)
 }
 
+fn role_ok(s: &str) -> bool {
+    let mut chars = s.chars();
+    s.len() <= 128
+        && chars
+            .next()
+            .is_some_and(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':' | '+' | '-'))
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | ':' | '+' | '-'))
+}
+
+fn numbered_ref(s: &str) -> Option<u64> {
+    let digits = s.strip_prefix('#')?;
+    ((1..=18).contains(&digits.len()) && digits.chars().all(|c| c.is_ascii_digit()))
+        .then(|| digits.parse().ok())
+        .flatten()
+        .filter(|n| *n >= 1)
+}
+
+fn rate_ok(x: f64) -> bool {
+    (0.0..=MAX_RATE).contains(&x) && six_decimals(x)
+}
+
 fn task_ref_ok(s: &str) -> bool {
     s.split_once('-').is_some_and(|(prefix, number)| {
         (1..=31).contains(&prefix.len())
@@ -1307,7 +1388,9 @@ fn rule_ok(rule: Rule, v: &serde_json::Value) -> bool {
         Rule::Ext => s.is_some_and(|x| id_ok(x, 16) && !x.contains(['_', '-'])),
         Rule::Repo => s.is_some_and(repo_ok),
         Rule::Workspace => s.is_some_and(workspace_ok),
-        Rule::TaskRef => s.is_some_and(task_ref_ok),
+        Rule::TaskRef => s.is_some_and(|x| task_ref_ok(x) || numbered_ref(x).is_some()),
+        Rule::Role => s.is_some_and(role_ok),
+        Rule::Rate => v.is_number() && v.as_f64().is_some_and(rate_ok),
         Rule::SourceId => s.is_some_and(|x| id_ok(x, 64)),
         Rule::NodeId => s.is_some_and(|x| id_ok(x, 32)),
         Rule::Time => s.is_some_and(|x| DateTime::parse_from_rfc3339(x).is_ok()),
@@ -1320,7 +1403,7 @@ fn rule_ok(rule: Rule, v: &serde_json::Value) -> bool {
 fn rule_message(rule: Rule) -> &'static str {
     match rule {
         Rule::Uint | Rule::TaskId | Rule::PrNumber | Rule::Depth => "invalid integer",
-        Rule::Cost | Rule::Pct => "invalid number",
+        Rule::Cost | Rule::Pct | Rule::Rate => "invalid number",
         Rule::Bool => "expected boolean",
         Rule::Time => "invalid timestamp",
         Rule::Schema => "unsupported schema",
@@ -1447,6 +1530,26 @@ pub fn validate_json(
             c.fields(v, key, spec);
         }
     }
+    if let Some(task) = top.get("task") {
+        let numbered = task
+            .get("ref")
+            .and_then(|r| r.as_str())
+            .and_then(numbered_ref);
+        if numbered.is_some() && numbered != task.get("id").and_then(|i| i.as_u64()) {
+            c.fail("task.id", "must match the #N ref");
+        }
+    }
+    if let Some(rates) = top.get("rates") {
+        let items = c.list(Some(rates), "rates", RATE_SPEC, MAX_RATES);
+        let mut seen: HashSet<&str> = HashSet::new();
+        for (i, item) in items.iter().enumerate() {
+            if let Some(m) = item.get("model").and_then(|m| m.as_str()) {
+                if !seen.insert(m) {
+                    c.fail(&format!("rates[{i}].model"), "duplicate");
+                }
+            }
+        }
+    }
     if let Some(totals) = top.get("totals") {
         if let Some(t) = c.fields(totals, "totals", TOTALS_SPEC) {
             if let Some(tokens) = t.get("tokens") {
@@ -1544,6 +1647,51 @@ pub fn validate_json(
 }
 
 pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
+    build_with(inp, &BuildExtras::default())
+}
+
+fn task_ident(raw: &TaskIdent) -> (String, Option<u64>) {
+    let numbered = raw
+        .task_ref
+        .strip_prefix('#')
+        .and_then(|n| n.parse::<u64>().ok())
+        .filter(|n| *n >= 1);
+    if task_ref_ok(&raw.task_ref) {
+        return (clean_generic(&raw.task_ref), raw.id);
+    }
+    match raw.id.or(numbered) {
+        Some(id) => (format!("#{id}"), Some(id)),
+        None => (clean_generic(&raw.task_ref), raw.id),
+    }
+}
+
+fn rates_of(book: &PriceBook, models: &BTreeSet<&str>) -> Vec<Rate> {
+    let mut out: BTreeMap<String, Rate> = BTreeMap::new();
+    for raw in models {
+        let model = clean_model(raw);
+        if matches!(model.as_str(), "unknown" | "other") || out.contains_key(&model) {
+            continue;
+        }
+        if let Some([input, output, cache_read, cache_write_5m, cache_write_1h]) =
+            book.rates_per_million(raw)
+        {
+            out.insert(
+                model.clone(),
+                Rate {
+                    model,
+                    input,
+                    output,
+                    cache_read,
+                    cache_write_5m,
+                    cache_write_1h,
+                },
+            );
+        }
+    }
+    out.into_values().take(MAX_RATES).collect()
+}
+
+pub fn build_with(inp: &TaskInput<'_>, extras: &BuildExtras<'_>) -> Option<TaskUsageAggregate> {
     if inp.linked_events.is_empty() && inp.linked_facts.is_empty() {
         return None;
     }
@@ -1593,6 +1741,7 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
             i,
             Built {
                 span: spans[i].unwrap_or((inp.from, inp.from)),
+                busy: busy_spans(inp, &picked.events[i], &picked.facts[i]),
                 tokens,
                 cost,
                 events: picked.events[i].len() as u64,
@@ -1645,6 +1794,25 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
         .enumerate()
         .map(|(n, &i)| (i, format!("n{n}")))
         .collect();
+    let all_busy: Vec<Span> = order
+        .iter()
+        .flat_map(|i| built[i].busy.iter().copied())
+        .collect();
+    let mut marked: HashMap<MarkKey<'_>, (Option<String>, bool)> = HashMap::new();
+    for m in extras.marks {
+        let e = marked
+            .entry((
+                m.node.tool,
+                m.node.account.as_str(),
+                m.node.session.as_str(),
+                m.node.agent.as_deref(),
+            ))
+            .or_default();
+        if e.0.is_none() {
+            e.0 = m.role.clone().filter(|r| role_ok(r));
+        }
+        e.1 |= m.likely;
+    }
     let mut nodes: Vec<Node> = dfs
         .iter()
         .map(|&i| {
@@ -1664,6 +1832,12 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
                 ),
                 Tool::Codex => ("codex".to_string(), raw.meta.and_then(|m| m.source.clone())),
             };
+            let mark = marked.get(&(
+                raw.key.tool,
+                raw.key.account.as_str(),
+                raw.key.session.as_str(),
+                raw.key.agent.as_deref(),
+            ));
             Node {
                 id: ids[&i].clone(),
                 parent_id: raw.parent.and_then(|p| ids.get(&p)).cloned(),
@@ -1672,10 +1846,14 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
                 agent_type,
                 model: b.model,
                 origin: origin.map(|o| clean_generic(&o)),
-                link: raw.link,
+                link: raw
+                    .link
+                    .or_else(|| mark.filter(|m| m.1).map(|_| LinkKind::Likely)),
                 started_at: secs(b.span.0),
                 ended_at: secs(b.span.1),
                 duration_ms: ms_between(b.span.0, b.span.1),
+                active_ms: b.busy.iter().map(|s| ms_between(s.0, s.1)).sum(),
+                role: mark.and_then(|m| m.0.clone()),
                 cost_usd: round6(b.cost),
                 events: b.events,
                 tokens: b.tokens,
@@ -1719,6 +1897,15 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
         })
         .unwrap_or((inp.from, inp.to));
     let mut limits = limit_shares(inp, &all_events);
+    let (task_ref, task_id) = task_ident(&inp.task);
+    let models: BTreeSet<&str> = all_events
+        .iter()
+        .map(|&e| inp.events[e].model.as_str())
+        .collect();
+    let rates = match extras.book {
+        Some(book) => rates_of(book, &models),
+        None => rates_of(&PriceBook::bundled(), &models),
+    };
 
     let mut lists: Vec<&mut dyn Capped> = vec![
         &mut context.tools,
@@ -1744,8 +1931,8 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
         generated_at: secs(inp.generated_at),
         task: TaskIdent {
             workspace: clean_generic(&inp.task.workspace),
-            task_ref: clean_generic(&inp.task.task_ref),
-            id: inp.task.id,
+            task_ref,
+            id: task_id,
         },
         period: Period {
             from: secs(period_from),
@@ -1756,11 +1943,12 @@ pub fn build(inp: &TaskInput<'_>) -> Option<TaskUsageAggregate> {
             events: total_events,
             unpriced_events: unpriced,
             tokens: totals_tokens,
-            active_ms: union_ms(all_spans),
+            active_ms: union_ms(all_busy),
             waiting_ms: None,
             turns,
             turn_ms,
         },
+        rates,
         limits,
         nodes,
         context,
@@ -1793,6 +1981,8 @@ mod tests {
         limits: Vec<LimitSnapshot>,
         linked_events: Vec<usize>,
         linked_facts: Vec<usize>,
+        task_ref: String,
+        task_id: Option<u64>,
     }
 
     impl Fx {
@@ -1908,8 +2098,16 @@ mod tests {
                 generated_at: t(100_000),
                 task: TaskIdent {
                     workspace: "tmgrdev".into(),
-                    task_ref: "TM-1".into(),
-                    id: Some(7),
+                    task_ref: if self.task_ref.is_empty() {
+                        "TM-1".into()
+                    } else {
+                        self.task_ref.clone()
+                    },
+                    id: if self.task_ref.is_empty() {
+                        Some(7)
+                    } else {
+                        self.task_id
+                    },
                 },
                 from: t(-1000),
                 to: t(100_000),
@@ -2351,7 +2549,9 @@ mod tests {
         assert_eq!(a.totals.tokens.cache_read, 200);
         assert_eq!(a.totals.turns, 1);
         assert_eq!(a.totals.turn_ms, 5000);
-        assert_eq!(a.totals.active_ms, 3_600_000);
+        assert_eq!(a.totals.active_ms, 9_000);
+        assert_eq!(a.nodes[0].active_ms, 9_000);
+        assert_eq!(a.nodes[0].duration_ms, 3_600_000);
         assert_eq!(a.totals.waiting_ms, None);
         assert_eq!(a.period.from, "2026-10-16T08:00:00Z");
         assert_eq!(a.period.to, "2026-10-16T09:00:00Z");
@@ -2772,6 +2972,124 @@ mod tests {
         set(&mut v, "/totals/cost_usd", serde_json::json!(123.456789));
         set(&mut v, "/nodes/0/cost_usd", serde_json::json!(0));
         assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+    }
+
+    fn rate(model: &str) -> serde_json::Value {
+        serde_json::json!({
+            "model": model, "input": 5.0, "output": 25.0, "cache_read": 0.5,
+            "cache_write_5m": 6.25, "cache_write_1h": 10.0
+        })
+    }
+
+    fn with_rates(rates: Vec<serde_json::Value>) -> serde_json::Value {
+        let mut v = sample();
+        v["rates"] = serde_json::Value::Array(rates);
+        v
+    }
+
+    #[test]
+    fn rates_follow_the_server_limits() {
+        let ok = with_rates(vec![rate("claude-opus-5-5"), rate("gpt-6-astra")]);
+        assert_eq!(validate_json(&ok, t(100_000)), Ok(()));
+        let bad = |edit: &dyn Fn(&mut serde_json::Value), expect: &str| {
+            let mut v = with_rates(vec![rate("a"), rate("b")]);
+            edit(&mut v);
+            let errs = validate_json(&v, t(100_000)).unwrap_err();
+            assert!(errs.iter().any(|e| e.starts_with(expect)), "{errs:?}");
+        };
+        bad(&|v| v["rates"][1]["model"] = "a".into(), "rates[1].model");
+        bad(
+            &|v| v["rates"][0]["input"] = (-1.0).into(),
+            "rates[0].input",
+        );
+        bad(
+            &|v| v["rates"][0]["output"] = 100_000.5.into(),
+            "rates[0].output",
+        );
+        bad(
+            &|v| v["rates"][0]["cache_read"] = 0.1234567.into(),
+            "rates[0].cache_read",
+        );
+        bad(
+            &|v| v["rates"][0]["cache_write_5m"] = "6".into(),
+            "rates[0].cache_write_5m",
+        );
+        bad(
+            &|v| {
+                v["rates"][0]
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("cache_write_1h");
+            },
+            "rates[0].cache_write_1h",
+        );
+        bad(&|v| v["rates"][0]["extra"] = 1.into(), "rates[0]");
+        bad(&|v| v["rates"][0]["model"] = "a/b".into(), "rates[0].model");
+        let many: Vec<_> = (0..101).map(|i| rate(&format!("m{i}"))).collect();
+        let errs = validate_json(&with_rates(many), t(100_000)).unwrap_err();
+        assert!(errs.iter().any(|e| e.starts_with("rates")), "{errs:?}");
+        let edge = with_rates(vec![serde_json::json!({
+            "model": "m", "input": 100000, "output": 0, "cache_read": 0.000001,
+            "cache_write_5m": 1, "cache_write_1h": 2
+        })]);
+        assert_eq!(validate_json(&edge, t(100_000)), Ok(()));
+    }
+
+    #[test]
+    fn node_active_time_and_role_follow_the_server_rules() {
+        rejects(
+            "/nodes/0/active_ms",
+            serde_json::json!(-1),
+            "nodes[0].active_ms",
+        );
+        rejects(
+            "/nodes/0/active_ms",
+            serde_json::json!(1.5),
+            "nodes[0].active_ms",
+        );
+        for role in ["", ".x", "a b", "a/b"] {
+            let errs = violations(|v| v["nodes"][0]["role"] = role.into());
+            assert!(
+                errs.iter().any(|e| e.starts_with("nodes[0].role")),
+                "{role}: {errs:?}"
+            );
+        }
+        let long = "a".repeat(129);
+        let errs = violations(|v| v["nodes"][0]["role"] = long.into());
+        assert!(errs.iter().any(|e| e.starts_with("nodes[0].role")));
+        for role in ["orchestrator", "lead", "worker", "_x", "a.b:c+d-e"] {
+            let mut v = sample();
+            v["nodes"][0]["role"] = role.into();
+            assert_eq!(validate_json(&v, t(100_000)), Ok(()), "{role}");
+        }
+    }
+
+    #[test]
+    fn a_numbered_ref_needs_the_matching_id() {
+        let mut v = sample();
+        v["task"]["ref"] = "#7".into();
+        v["task"]["id"] = 7.into();
+        assert_eq!(validate_json(&v, t(100_000)), Ok(()));
+        v["task"]["id"] = serde_json::Value::Null;
+        assert!(validate_json(&v, t(100_000)).is_err());
+        for bad in ["#", "#0", "#abc", "#1234567890123456789", "# 7"] {
+            v["task"]["ref"] = bad.into();
+            v["task"]["id"] = 7.into();
+            assert!(validate_json(&v, t(100_000)).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_keyless_task_is_sent_as_its_numbered_ref() {
+        let mut fx = rich_fixture();
+        fx.task_ref = "other".into();
+        fx.task_id = Some(7);
+        let a = fx.build().unwrap();
+        assert_eq!((a.task.task_ref.as_str(), a.task.id), ("#7", Some(7)));
+        fx.task_ref = "#42".into();
+        fx.task_id = None;
+        let a = fx.build().unwrap();
+        assert_eq!((a.task.task_ref.as_str(), a.task.id), ("#42", Some(42)));
     }
 
     #[test]

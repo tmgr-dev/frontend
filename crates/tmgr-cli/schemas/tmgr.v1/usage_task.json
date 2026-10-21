@@ -102,7 +102,7 @@
             },
             "ref": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9._:+-]{1,128}$"
+              "pattern": "^(#[0-9]{1,18}|[A-Za-z0-9._:+-]{1,128})$"
             },
             "id": {
               "oneOf": [
@@ -418,6 +418,14 @@
                   }
                 },
                 "maxItems": 100
+              },
+              "active_ms": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "role": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_:+-][A-Za-z0-9._:+-]{0,127}$"
               }
             }
           }
@@ -761,6 +769,53 @@
             },
             "lists": {
               "type": "boolean"
+            }
+          }
+        },
+        "rates": {
+          "type": "array",
+          "maxItems": 100,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "model",
+              "input",
+              "output",
+              "cache_read",
+              "cache_write_5m",
+              "cache_write_1h"
+            ],
+            "properties": {
+              "model": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_:+-][A-Za-z0-9._:+@-]{0,127}$"
+              },
+              "input": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "cache_read": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "cache_write_5m": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              },
+              "cache_write_1h": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100000
+              }
             }
           }
         }

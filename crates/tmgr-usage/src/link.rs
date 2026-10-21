@@ -38,6 +38,7 @@ pub enum LinkMethod {
     AgentWorkRun,
     AgentWorkTask,
     SessionId,
+    OrchestratorWindow,
     BranchWindow,
     ProjectWindow,
 }
@@ -48,6 +49,7 @@ impl LinkMethod {
             LinkMethod::AgentWorkRun => "agent_work_run",
             LinkMethod::AgentWorkTask => "agent_work_task",
             LinkMethod::SessionId => "session_id",
+            LinkMethod::OrchestratorWindow => "orchestrator_window",
             LinkMethod::BranchWindow => "branch_window",
             LinkMethod::ProjectWindow => "project_window",
         }
@@ -89,11 +91,37 @@ impl Totals {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct NodeMark {
+    pub node: NodeKey,
+    pub run_ref: String,
+    pub role: Option<String>,
+    pub likely: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrchWindow {
+    pub node: NodeKey,
+    pub task: String,
+    pub runs: Vec<usize>,
+    pub from: DateTime<Utc>,
+    pub to: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Attribution<'a> {
+    pub windows: &'a [OrchWindow],
+    pub roles: &'a [Option<String>],
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkReport {
     pub links: Vec<Link>,
     pub ambiguous: Vec<Ambiguous>,
     pub unattributed: Vec<usize>,
+    pub shared: Vec<usize>,
+    pub marks: Vec<NodeMark>,
+    pub shared_totals: Totals,
     pub per_run: Vec<Totals>,
     pub per_task: Vec<Totals>,
     pub ambiguous_totals: Totals,
@@ -104,6 +132,7 @@ const CONFIDENCE_SESSION: f64 = 1.0;
 const CONFIDENCE_AGENT_RUN: f64 = 0.95;
 const CONFIDENCE_AGENT_TASK: f64 = 0.75;
 const CONFIDENCE_PARENT: f64 = 0.9;
+const CONFIDENCE_WINDOW: f64 = 0.85;
 const CONFIDENCE_BRANCH: f64 = 0.8;
 const CONFIDENCE_BRANCH_UNVERIFIED: f64 = 0.7;
 const CONFIDENCE_PROJECT: f64 = 0.5;
@@ -160,7 +189,7 @@ pub fn attribute_at(events: &[LinkEvent], runs: &[RunWindow], now: DateTime<Utc>
 
 const MAX_CHAIN: usize = 64;
 
-type Levels = Vec<(bool, Vec<usize>)>;
+type Levels = Vec<(NodeKey, Vec<usize>)>;
 
 fn levels_of(
     key: &NodeKey,
@@ -176,7 +205,7 @@ fn levels_of(
             break;
         }
         if let Some(found) = by_node.get(&k) {
-            out.push((k.agent.is_some(), found.clone()));
+            out.push((k.clone(), found.clone()));
         }
         cur = parents
             .get(&k)
@@ -187,7 +216,7 @@ fn levels_of(
 }
 
 struct Bound {
-    subagent: bool,
+    node: NodeKey,
     runs: Vec<usize>,
     exact: bool,
 }
@@ -199,7 +228,7 @@ fn bound_of(
     ts: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> Option<Bound> {
-    levels.iter().find_map(|(subagent, found)| {
+    levels.iter().find_map(|(node, found)| {
         let active: Vec<&AgentBinding> = found
             .iter()
             .map(|&i| &bindings[i])
@@ -213,7 +242,7 @@ fn bound_of(
             .map(|b| (runs[b.run_index].run_ref.as_str(), b.run_index))
             .collect();
         Some(Bound {
-            subagent: *subagent,
+            node: node.clone(),
             runs: by_ref.into_values().collect(),
             exact: active.iter().all(|b| b.exact),
         })
@@ -227,14 +256,55 @@ pub fn attribute_with_bindings(
     parents: &HashMap<NodeKey, NodeKey>,
     now: DateTime<Utc>,
 ) -> LinkReport {
+    attribute_full(events, runs, bindings, parents, Attribution::default(), now)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Rung {
+    BoundOwn,
+    AgentSession,
+    Session,
+    BoundMain,
+    ParentSession,
+    Window,
+    Branch,
+    Other,
+}
+
+fn window_run(w: &OrchWindow, runs: &[RunWindow], ts: DateTime<Utc>) -> usize {
+    w.runs
+        .iter()
+        .copied()
+        .filter(|&i| runs[i].started_at <= ts)
+        .max_by_key(|&i| runs[i].started_at)
+        .unwrap_or(w.runs[0])
+}
+
+pub fn attribute_full(
+    events: &[LinkEvent],
+    runs: &[RunWindow],
+    bindings: &[AgentBinding],
+    parents: &HashMap<NodeKey, NodeKey>,
+    extra: Attribution<'_>,
+    now: DateTime<Utc>,
+) -> LinkReport {
     let mut by_node: HashMap<NodeKey, Vec<usize>> = HashMap::new();
     for (i, b) in bindings.iter().enumerate() {
         if b.run_index < runs.len() {
             by_node.entry(b.node()).or_default().push(i);
         }
     }
+    let mut windows_by_node: HashMap<&NodeKey, Vec<&OrchWindow>> = HashMap::new();
+    for w in extra.windows.iter().filter(|w| !w.runs.is_empty()) {
+        windows_by_node.entry(&w.node).or_default().push(w);
+    }
     let mut chains: HashMap<NodeKey, Levels> = HashMap::new();
-    let by_session = index_by(runs, |r| r.session_id.as_deref());
+    let by_session = index_by(runs, |r| {
+        r.session_id.as_deref().filter(|s| !s.contains('/'))
+    });
+    let by_agent_session = index_by(runs, |r| {
+        r.session_id.as_deref().filter(|s| s.contains('/'))
+    });
     let by_branch = index_by(runs, |r| r.branch.as_deref());
     let by_project = index_by(runs, |r| r.project_hash.as_deref());
     let mut events_by_branch: HashMap<&str, Vec<usize>> = HashMap::new();
@@ -247,7 +317,9 @@ pub fn attribute_with_bindings(
     let mut report = LinkReport::default();
     let mut per_run: BTreeMap<&str, Totals> = BTreeMap::new();
     let mut per_task: BTreeMap<&str, Totals> = BTreeMap::new();
+    let mut marks: BTreeMap<(NodeKey, String), (Option<String>, bool)> = BTreeMap::new();
     for (idx, ev) in events.iter().enumerate() {
+        let ev_node = NodeKey::of_event(ev);
         let on_branch = candidates(&by_branch, ev.git_branch.as_deref(), runs, ev.ts, now);
         let same_project = |i: &usize| match (&ev.project_hash, &runs[*i].project_hash) {
             (Some(a), Some(b)) => Some(a == b),
@@ -267,7 +339,7 @@ pub fn attribute_with_bindings(
             None
         } else {
             let levels = chains
-                .entry(NodeKey::of_event(ev))
+                .entry(ev_node.clone())
                 .or_insert_with_key(|k| levels_of(k, parents, &by_node));
             bound_of(levels, bindings, runs, ev.ts, now)
         };
@@ -275,19 +347,48 @@ pub fn attribute_with_bindings(
             Some(b) if b.exact => (LinkMethod::AgentWorkRun, CONFIDENCE_AGENT_RUN),
             _ => (LinkMethod::AgentWorkTask, CONFIDENCE_AGENT_TASK),
         };
+        let bound_node = bound.as_ref().map(|b| b.node.clone());
         let (own_runs, main_runs) = match bound {
-            Some(b) if b.subagent => (b.runs, Vec::new()),
+            Some(b) if b.node.agent.is_some() => (b.runs, Vec::new()),
             Some(b) => (Vec::new(), b.runs),
             None => (Vec::new(), Vec::new()),
         };
+        let agent_session = ev
+            .agent_id
+            .as_deref()
+            .map(|a| format!("{}/{a}", ev.tool_session_id));
+        let mut window_tasks: BTreeMap<&str, &OrchWindow> = BTreeMap::new();
+        for w in windows_by_node.get(&ev_node).into_iter().flatten() {
+            if w.from <= ev.ts && ev.ts <= w.to {
+                window_tasks.insert(w.task.as_str(), w);
+            }
+        }
+        let window_shared = window_tasks.len() > 1;
+        let window_found: Vec<usize> = match (window_shared, window_tasks.values().next()) {
+            (false, Some(w)) => vec![window_run(w, runs, ev.ts)],
+            _ => Vec::new(),
+        };
         let rungs = [
-            (bound_method, bound_confidence, own_runs),
+            (bound_method, bound_confidence, own_runs, Rung::BoundOwn),
+            (
+                LinkMethod::SessionId,
+                CONFIDENCE_SESSION,
+                candidates(
+                    &by_agent_session,
+                    agent_session.as_deref(),
+                    runs,
+                    ev.ts,
+                    now,
+                ),
+                Rung::AgentSession,
+            ),
             (
                 LinkMethod::SessionId,
                 CONFIDENCE_SESSION,
                 candidates(&by_session, Some(&ev.tool_session_id), runs, ev.ts, now),
+                Rung::Session,
             ),
-            (bound_method, bound_confidence, main_runs),
+            (bound_method, bound_confidence, main_runs, Rung::BoundMain),
             (
                 LinkMethod::SessionId,
                 CONFIDENCE_PARENT,
@@ -298,23 +399,50 @@ pub fn attribute_with_bindings(
                     ev.ts,
                     now,
                 ),
+                Rung::ParentSession,
             ),
-            (LinkMethod::BranchWindow, CONFIDENCE_BRANCH, verified),
+            (
+                LinkMethod::OrchestratorWindow,
+                CONFIDENCE_WINDOW,
+                window_found,
+                Rung::Window,
+            ),
+            (
+                LinkMethod::BranchWindow,
+                CONFIDENCE_BRANCH,
+                verified,
+                Rung::Branch,
+            ),
             (
                 LinkMethod::BranchWindow,
                 CONFIDENCE_BRANCH_UNVERIFIED,
                 unverified,
+                Rung::Branch,
             ),
             (
                 LinkMethod::ProjectWindow,
                 CONFIDENCE_PROJECT,
                 candidates(&by_project, ev.project_hash.as_deref(), runs, ev.ts, now),
+                Rung::Other,
             ),
         ];
-        let Some((method, confidence, found)) = rungs.into_iter().find(|(_, _, c)| !c.is_empty())
-        else {
-            report.unattributed_totals.add(ev);
-            report.unattributed.push(idx);
+        let mut chosen = None;
+        for (method, confidence, found, rung) in rungs {
+            if rung == Rung::Window && window_shared {
+                report.shared_totals.add(ev);
+                report.shared.push(idx);
+                break;
+            }
+            if !found.is_empty() {
+                chosen = Some((method, confidence, found, rung));
+                break;
+            }
+        }
+        let Some((method, confidence, found, rung)) = chosen else {
+            if report.shared.last() != Some(&idx) {
+                report.unattributed_totals.add(ev);
+                report.unattributed.push(idx);
+            }
             continue;
         };
         let shared_branch = |run_idx: usize, cache: &mut HashMap<usize, bool>| {
@@ -365,6 +493,19 @@ pub fn attribute_with_bindings(
                 method,
                 confidence,
             });
+            let run_role = extra.roles.get(one).cloned().flatten();
+            let marked = match rung {
+                Rung::Window => Some((ev_node.clone(), Some("orchestrator".to_string()), true)),
+                Rung::BoundOwn | Rung::BoundMain => bound_node.map(|n| (n, run_role, false)),
+                Rung::AgentSession => Some((ev_node.clone(), run_role, false)),
+                Rung::Session if ev.agent_id.is_none() => Some((ev_node.clone(), run_role, false)),
+                _ => None,
+            };
+            if let Some((node, role, likely)) = marked.filter(|(_, r, l)| r.is_some() || *l) {
+                let entry = marks.entry((node, run.run_ref.clone())).or_default();
+                entry.0 = entry.0.take().or(role);
+                entry.1 |= likely;
+            }
         } else {
             let mut refs: Vec<String> = found.iter().map(|&i| runs[i].run_ref.clone()).collect();
             refs.sort();
@@ -377,6 +518,15 @@ pub fn attribute_with_bindings(
     }
     report.per_run = per_run.into_values().collect();
     report.per_task = per_task.into_values().collect();
+    report.marks = marks
+        .into_iter()
+        .map(|((node, run_ref), (role, likely))| NodeMark {
+            node,
+            run_ref,
+            role,
+            likely,
+        })
+        .collect();
     report
 }
 

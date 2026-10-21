@@ -14,9 +14,11 @@ use tmgr_core::text::sanitize_line;
 use tmgr_usage::bind::Linker;
 use tmgr_usage::facts::{StoredAgent, StoredFact};
 use tmgr_usage::limits::LimitSnapshot;
-use tmgr_usage::link::{Link, LinkEvent, LinkMethod, LinkReport};
+use tmgr_usage::link::{Link, LinkEvent, LinkMethod, LinkReport, NodeMark};
+use tmgr_usage::pricing::PriceBook;
 use tmgr_usage::task::{
-    build, facts_as_events, LimitKind, LinkKind, Node, TaskIdent, TaskInput, TaskUsageAggregate,
+    build_with, facts_as_events, BuildExtras, LimitKind, LinkKind, Node, TaskIdent, TaskInput,
+    TaskUsageAggregate,
 };
 use tmgr_usage::{Tokens, Tool};
 
@@ -33,6 +35,7 @@ pub struct Corpus {
     pub facts: Vec<StoredFact>,
     pub agents: Vec<StoredAgent>,
     pub limits: Vec<LimitSnapshot>,
+    pub book: PriceBook,
     pub set: runs::RunSet,
     pub report: LinkReport,
     pub fact_report: LinkReport,
@@ -72,7 +75,8 @@ impl Corpus {
             earlier.as_deref().unwrap_or(&facts),
             &agents,
             now,
-        );
+        )
+        .with_roles(set.roles.clone());
         let report = linker.attribute(&events);
         let fact_report = linker.attribute(&fact_events);
         Ok(Corpus {
@@ -81,6 +85,7 @@ impl Corpus {
             to,
             source_id: u.store.install_id().map_err(fail)?,
             limits: u.store.current_limits(now).map_err(fail)?,
+            book: u.book.clone(),
             events,
             tokens,
             facts,
@@ -97,20 +102,49 @@ impl Corpus {
         linked_events: &[usize],
         linked_facts: &[usize],
     ) -> Option<TaskUsageAggregate> {
-        build(&TaskInput {
-            source_id: self.source_id.clone(),
-            generated_at: self.now,
-            task,
-            from: self.from,
-            to: self.to,
-            events: &self.events,
-            tokens: &self.tokens,
-            linked_events,
-            facts: &self.facts,
-            linked_facts,
-            agents: &self.agents,
-            limits: &self.limits,
+        let runs: BTreeSet<&str> = [
+            (&self.report, linked_events),
+            (&self.fact_report, linked_facts),
+        ]
+        .into_iter()
+        .flat_map(|(report, linked)| {
+            let linked: BTreeSet<usize> = linked.iter().copied().collect();
+            report
+                .links
+                .iter()
+                .filter(move |l| linked.contains(&l.event_index))
+                .map(|l| l.run_ref.as_str())
+                .collect::<Vec<_>>()
         })
+        .collect();
+        let marks: Vec<NodeMark> = self
+            .report
+            .marks
+            .iter()
+            .chain(&self.fact_report.marks)
+            .filter(|m| runs.contains(m.run_ref.as_str()))
+            .cloned()
+            .collect();
+        build_with(
+            &TaskInput {
+                source_id: self.source_id.clone(),
+                generated_at: self.now,
+                task,
+                from: self.from,
+                to: self.to,
+                events: &self.events,
+                tokens: &self.tokens,
+                linked_events,
+                facts: &self.facts,
+                linked_facts,
+                agents: &self.agents,
+                limits: &self.limits,
+            },
+            &BuildExtras {
+                marks: &marks,
+                book: Some(&self.book),
+            },
+        )
     }
 
     pub fn buckets(&self) -> Vec<Bucket> {
@@ -287,6 +321,9 @@ fn node_line(n: &Node, style: &Style) -> String {
         (_, other) => sanitize_line(other),
     };
     let mut parts = vec![style.bold(&label)];
+    if let Some(role) = &n.role {
+        parts.push(style.muted(&sanitize_line(role)));
+    }
     if n.model != "unknown" {
         let model = n.model.strip_prefix("claude-").unwrap_or(&n.model);
         parts.push(style.muted(&sanitize_line(model)));
@@ -297,7 +334,12 @@ fn node_line(n: &Node, style: &Style) -> String {
         }
     }
     if n.events > 0 || n.duration_ms > 0 {
-        parts.push(span((n.duration_ms / 1000) as i64));
+        let (active, wall) = ((n.active_ms / 1000) as i64, (n.duration_ms / 1000) as i64);
+        parts.push(if active < wall {
+            format!("active {} · wall {}", span(active), span(wall))
+        } else {
+            span(wall)
+        });
     }
     if n.cost_usd > 0.0 {
         parts.push(style.good(&money(n.cost_usd)));
@@ -542,4 +584,42 @@ fn render(
         blocks.push(context.join("\n"));
     }
     blocks.join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(duration_ms: u64, active_ms: u64, role: Option<&str>) -> Node {
+        Node {
+            id: "n0".into(),
+            parent_id: None,
+            depth: 0,
+            tool: Tool::Claude,
+            agent_type: "general-purpose".into(),
+            model: "claude-sonnet-5-5".into(),
+            origin: None,
+            link: None,
+            started_at: "2026-10-19T16:01:00Z".into(),
+            ended_at: "2026-10-19T17:12:00Z".into(),
+            duration_ms,
+            active_ms,
+            role: role.map(String::from),
+            cost_usd: 2.11,
+            events: 3,
+            tokens: Tokens::default(),
+            tools: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_node_with_idle_time_shows_active_and_wall_and_its_role() {
+        let style = Style::detect(true, false);
+        let line = node_line(&node(4_260_000, 2_760_000, Some("lead")), &style);
+        assert!(line.contains("lead"), "{line}");
+        assert!(line.contains("active 46m · wall 1h 11m"), "{line}");
+        let busy = node_line(&node(4_260_000, 4_260_000, None), &style);
+        assert!(!busy.contains("active"), "{busy}");
+        assert!(busy.contains("1h 11m"), "{busy}");
+    }
 }

@@ -235,3 +235,21 @@ fn reprice_applies_the_fast_multiplier_to_stored_fast_events() {
     assert_eq!(store.reprice(&after).unwrap(), 1);
     assert!((cost(&store) - base * 2.0).abs() < 1e-9);
 }
+
+#[test]
+fn per_million_rates_need_a_full_base_price_set() {
+    let b = book();
+    let [input, output, cache_read, cw5, cw1] = b.rates_per_million("claude-test-opus-1").unwrap();
+    assert_eq!(
+        (input, output, cache_read, cw5, cw1),
+        (10.0, 50.0, 1.0, 12.5, 20.0)
+    );
+    let partial = r#"{"gpt-test": {"mode":"responses","input_cost_per_token":1e-6,"output_cost_per_token":8e-6}}"#;
+    let b = PriceBook::from_litellm_json(partial.as_bytes()).unwrap();
+    assert_eq!(b.rates_per_million("gpt-test"), None);
+    assert_eq!(b.rates_per_million("unknown-model"), None);
+    let huge = r#"{"gpt-huge": {"mode":"responses","input_cost_per_token":1.0,"output_cost_per_token":1.0,
+        "cache_read_input_token_cost":1.0,"cache_creation_input_token_cost":1.0}}"#;
+    let b = PriceBook::from_litellm_json(huge.as_bytes()).unwrap();
+    assert_eq!(b.rates_per_million("gpt-huge"), None);
+}

@@ -49,6 +49,8 @@ pub struct ApiRun {
     #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
     pub status: Option<String>,
     #[serde(default)]
     pub started_at: Option<String>,

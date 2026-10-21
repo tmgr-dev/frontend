@@ -2,10 +2,11 @@ use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use crate::facts::{StoredAgent, StoredFact};
-use crate::link::{attribute_with_bindings, LinkEvent, LinkReport, RunWindow};
+use crate::link::{attribute_full, Attribution, LinkEvent, LinkReport, OrchWindow, RunWindow};
 use crate::model::{FactKind, Tool};
 
 pub const SLACK_MINUTES: i64 = 2;
+const MAX_CHAIN: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RunIds {
@@ -77,6 +78,32 @@ struct Span {
     exact: bool,
 }
 
+#[allow(clippy::too_many_arguments)]
+fn matched_runs(
+    marker: &str,
+    value: u64,
+    ts: DateTime<Utc>,
+    runs: &[RunWindow],
+    ids: &[RunIds],
+    all: usize,
+    now: DateTime<Utc>,
+    slack: Duration,
+) -> Vec<usize> {
+    match marker {
+        "agent_work_start" => (0..all)
+            .filter(|&i| ids[i].task_id == Some(value) && (runs[i].started_at - ts).abs() <= slack)
+            .collect(),
+        "agent_work_update" | "agent_work_finish" => (0..all)
+            .filter(|&i| {
+                ids[i].run_id == value
+                    && ts >= runs[i].started_at - slack
+                    && ts <= runs[i].ended_at.unwrap_or(now) + slack
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 /// `ids` runs parallel to `runs`.
 pub fn agent_bindings(
     facts: &[StoredFact],
@@ -94,21 +121,7 @@ pub fn agent_bindings(
         let (Some(marker), Some(value)) = (f.target.as_deref(), f.value) else {
             continue;
         };
-        let matched: Vec<usize> = match marker {
-            "agent_work_start" => (0..all)
-                .filter(|&i| {
-                    ids[i].task_id == Some(value) && (runs[i].started_at - f.ts).abs() <= slack
-                })
-                .collect(),
-            "agent_work_update" | "agent_work_finish" => (0..all)
-                .filter(|&i| {
-                    ids[i].run_id == value
-                        && f.ts >= runs[i].started_at - slack
-                        && f.ts <= runs[i].ended_at.unwrap_or(now) + slack
-                })
-                .collect(),
-            _ => continue,
-        };
+        let matched = matched_runs(marker, value, f.ts, runs, ids, all, now, slack);
         let exact = marker != "agent_work_start";
         for run in matched {
             let span = spans.entry((NodeKey::of_fact(f), run)).or_insert(Span {
@@ -205,10 +218,122 @@ pub fn facts_from(runs: &[RunWindow], from: DateTime<Utc>) -> Option<DateTime<Ut
         .filter(|e| *e < from)
 }
 
+fn ancestors(key: &NodeKey, parents: &HashMap<NodeKey, NodeKey>) -> Vec<NodeKey> {
+    let mut out = Vec::new();
+    let mut cur = key.clone();
+    for _ in 0..MAX_CHAIN {
+        let Some(next) = parents
+            .get(&cur)
+            .cloned()
+            .or_else(|| cur.agent.is_some().then(|| cur.main()))
+        else {
+            break;
+        };
+        if next == *key || out.contains(&next) {
+            break;
+        }
+        out.push(next.clone());
+        cur = next;
+    }
+    out
+}
+
+fn task_key(run: &RunWindow) -> String {
+    format!("{}\u{1}{}", run.workspace, run.task_ref)
+}
+
+/// Window of a task per ancestor of its bound nodes: first to last descendant activity or own call.
+pub fn orchestrator_windows(
+    events: &[LinkEvent],
+    facts: &[StoredFact],
+    runs: &[RunWindow],
+    ids: &[RunIds],
+    bindings: &[AgentBinding],
+    parents: &HashMap<NodeKey, NodeKey>,
+    now: DateTime<Utc>,
+) -> Vec<OrchWindow> {
+    type Key = (NodeKey, String);
+    let mut stamps: HashMap<NodeKey, Vec<DateTime<Utc>>> = HashMap::new();
+    for e in events {
+        stamps.entry(NodeKey::of_event(e)).or_default().push(e.ts);
+    }
+    for f in facts {
+        stamps.entry(NodeKey::of_fact(f)).or_default().push(f.ts);
+    }
+    let mut by_node: HashMap<NodeKey, Vec<&AgentBinding>> = HashMap::new();
+    for b in bindings.iter().filter(|b| b.run_index < runs.len()) {
+        by_node.entry(b.node()).or_default().push(b);
+    }
+    let widen = |map: &mut BTreeMap<Key, (DateTime<Utc>, DateTime<Utc>)>,
+                 key: Key,
+                 from: DateTime<Utc>,
+                 to: DateTime<Utc>| {
+        let e = map.entry(key).or_insert((from, to));
+        e.0 = e.0.min(from);
+        e.1 = e.1.max(to);
+    };
+    let mut spans: BTreeMap<Key, (DateTime<Utc>, DateTime<Utc>)> = BTreeMap::new();
+    let mut ordered: Vec<(&NodeKey, &Vec<DateTime<Utc>>)> = stamps.iter().collect();
+    ordered.sort_by(|a, b| a.0.cmp(b.0));
+    for (x, list) in ordered {
+        let mut chain = vec![x.clone()];
+        chain.extend(ancestors(x, parents));
+        for (i, d) in chain.iter().enumerate().take(chain.len() - 1) {
+            for b in by_node.get(d).into_iter().flatten() {
+                let inside = list
+                    .iter()
+                    .copied()
+                    .filter(|t| *t >= b.from && b.to.map_or(*t <= now, |e| *t <= e));
+                let (Some(lo), Some(hi)) = (inside.clone().min(), inside.max()) else {
+                    continue;
+                };
+                for o in &chain[i + 1..] {
+                    widen(
+                        &mut spans,
+                        (o.clone(), task_key(&runs[b.run_index])),
+                        lo,
+                        hi,
+                    );
+                }
+            }
+        }
+    }
+    let slack = Duration::minutes(SLACK_MINUTES);
+    let all = runs.len().min(ids.len());
+    for f in facts {
+        if f.tool != Tool::Claude || f.kind != FactKind::ToolCall {
+            continue;
+        }
+        let (Some(marker), Some(value)) = (f.target.as_deref(), f.value) else {
+            continue;
+        };
+        for r in matched_runs(marker, value, f.ts, runs, ids, all, now, slack) {
+            let key = (NodeKey::of_fact(f), task_key(&runs[r]));
+            if spans.contains_key(&key) {
+                widen(&mut spans, key, f.ts, f.ts);
+            }
+        }
+    }
+    spans
+        .into_iter()
+        .map(|((node, task), (from, to))| OrchWindow {
+            node,
+            runs: (0..runs.len())
+                .filter(|&i| task_key(&runs[i]) == task)
+                .collect(),
+            task,
+            from,
+            to,
+        })
+        .collect()
+}
+
 pub struct Linker<'a> {
     runs: &'a [RunWindow],
     bindings: Vec<AgentBinding>,
     parents: HashMap<NodeKey, NodeKey>,
+    windows: Vec<OrchWindow>,
+    roles: Vec<Option<String>>,
     now: DateTime<Utc>,
 }
 
@@ -221,16 +346,41 @@ impl<'a> Linker<'a> {
         agents: &[StoredAgent],
         now: DateTime<Utc>,
     ) -> Self {
+        let bindings = agent_bindings(facts, runs, ids, now);
+        let parents = node_parents(events, facts, agents);
+        let windows = orchestrator_windows(events, facts, runs, ids, &bindings, &parents, now);
         Linker {
             runs,
-            bindings: agent_bindings(facts, runs, ids, now),
-            parents: node_parents(events, facts, agents),
+            bindings,
+            parents,
+            windows,
+            roles: Vec::new(),
             now,
         }
     }
 
+    /// `roles` runs parallel to the runs; a role is only used for runs where it is known.
+    pub fn with_roles(mut self, roles: Vec<Option<String>>) -> Self {
+        self.roles = roles;
+        self
+    }
+
+    pub fn windows(&self) -> &[OrchWindow] {
+        &self.windows
+    }
+
     pub fn attribute(&self, events: &[LinkEvent]) -> LinkReport {
-        attribute_with_bindings(events, self.runs, &self.bindings, &self.parents, self.now)
+        attribute_full(
+            events,
+            self.runs,
+            &self.bindings,
+            &self.parents,
+            Attribution {
+                windows: &self.windows,
+                roles: &self.roles,
+            },
+            self.now,
+        )
     }
 }
 
@@ -447,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn workers_inherit_the_lead_binding_and_the_orchestrator_stays_out() {
+    fn without_windows_workers_inherit_the_lead_binding_and_the_orchestrator_stays_out() {
         let runs = [run("a", 0, Some(100))];
         let b = [bind(Some("l"), 0, 10, Some(50))];
         let parents = tree(&[("w", Some("l")), ("l", None)]);
@@ -565,5 +715,137 @@ mod tests {
         let r = attribute_with_bindings(&[ev(Some("l"), 20)], &runs, &b, &parents, now());
         assert!(r.links.is_empty());
         assert_eq!(r.unattributed, vec![0]);
+    }
+
+    fn linker<'a>(
+        runs: &'a [RunWindow],
+        run_ids: &[RunIds],
+        events: &[LinkEvent],
+        facts: &[StoredFact],
+    ) -> Linker<'a> {
+        Linker::new(runs, run_ids, events, facts, &[], now())
+    }
+
+    #[test]
+    fn the_orchestrator_is_attributed_inside_the_window_of_its_bound_descendants() {
+        let runs = [run("a", 10, Some(100))];
+        let facts = [call(Some("l"), "agent_work_start", 1, 10)];
+        let events = [
+            ev(None, 5),
+            ev(Some("l"), 20),
+            ev(None, 15),
+            ev(None, 30),
+            ev(Some("l"), 40),
+            ev(None, 50),
+        ];
+        let l = linker(&runs, &[ids(7, 1)], &events, &facts);
+        let r = l.attribute(&events);
+        let linked: Vec<(usize, LinkMethod)> =
+            r.links.iter().map(|k| (k.event_index, k.method)).collect();
+        assert_eq!(
+            linked,
+            vec![
+                (1, LinkMethod::AgentWorkTask),
+                (2, LinkMethod::OrchestratorWindow),
+                (3, LinkMethod::OrchestratorWindow),
+                (4, LinkMethod::AgentWorkTask),
+            ]
+        );
+        assert_eq!(r.unattributed, vec![0, 5]);
+        let mark = r.marks.iter().find(|m| m.node == node(None)).unwrap();
+        assert_eq!(mark.role.as_deref(), Some("orchestrator"));
+        assert!(mark.likely);
+        assert!(r.marks.iter().all(|m| m.node != node(Some("l"))));
+    }
+
+    #[test]
+    fn the_window_stretches_to_the_orchestrators_own_calls_naming_the_task() {
+        let runs = [run("a", 10, Some(100))];
+        let facts = [
+            call(Some("l"), "agent_work_start", 1, 10),
+            call(None, "agent_work_update", 7, 60),
+        ];
+        let events = [ev(Some("l"), 20), ev(None, 55)];
+        let l = linker(&runs, &[ids(7, 1)], &events, &facts);
+        let w = l.windows().iter().find(|w| w.node == node(None)).unwrap();
+        assert_eq!((w.from, w.to), (t(10), t(60)));
+    }
+
+    #[test]
+    fn overlapping_windows_of_two_tasks_share_the_events_and_nothing_is_double_counted() {
+        let runs = [run("a", 10, Some(100)), run("b", 20, Some(100))];
+        let facts = [
+            call(Some("l1"), "agent_work_start", 1, 10),
+            call(Some("l2"), "agent_work_start", 2, 20),
+        ];
+        let events = [
+            ev(Some("l1"), 12),
+            ev(Some("l1"), 30),
+            ev(Some("l2"), 22),
+            ev(Some("l2"), 40),
+            ev(None, 15),
+            ev(None, 25),
+            ev(None, 35),
+            ev(None, 45),
+        ];
+        let l = linker(&runs, &[ids(7, 1), ids(8, 2)], &events, &facts);
+        let r = l.attribute(&events);
+        let by_event = |i: usize| r.links.iter().find(|k| k.event_index == i);
+        assert_eq!(by_event(4).unwrap().run_ref, "a");
+        assert!(by_event(5).is_none() && r.shared.contains(&5));
+        assert_eq!(by_event(6).unwrap().run_ref, "b");
+        assert_eq!(r.unattributed.last(), Some(&7));
+        assert_eq!(r.shared, vec![5]);
+        let counted = r.links.len() + r.ambiguous.len() + r.unattributed.len() + r.shared.len();
+        assert_eq!(counted, events.len());
+        let cost: f64 = r.per_task.iter().map(|t| t.cost_usd).sum::<f64>()
+            + r.ambiguous_totals.cost_usd
+            + r.unattributed_totals.cost_usd
+            + r.shared_totals.cost_usd;
+        assert_eq!(cost, events.len() as f64);
+    }
+
+    #[test]
+    fn an_agent_session_id_matches_only_that_node_and_a_bare_one_keeps_its_children() {
+        let mut exact = run("x", 0, Some(100));
+        exact.session_id = Some("s/l".into());
+        let mut bare = run("y", 0, Some(100));
+        bare.session_id = Some("s".into());
+        let events = [ev(Some("l"), 10), ev(Some("m"), 10), ev(None, 10)];
+        let only_exact =
+            attribute_with_bindings(&events, &[exact.clone()], &[], &HashMap::new(), now());
+        let linked: Vec<usize> = only_exact.links.iter().map(|k| k.event_index).collect();
+        assert_eq!(linked, vec![0]);
+        let both = attribute_with_bindings(&events, &[exact, bare], &[], &HashMap::new(), now());
+        let by_event: Vec<(usize, &str)> = both
+            .links
+            .iter()
+            .map(|k| (k.event_index, k.run_ref.as_str()))
+            .collect();
+        assert_eq!(by_event, vec![(0, "x"), (1, "y"), (2, "y")]);
+    }
+
+    #[test]
+    fn a_run_with_a_role_marks_the_node_it_is_linked_to() {
+        let mut orchestrator = run("o", 0, Some(100));
+        orchestrator.session_id = Some("s".into());
+        let events = [ev(None, 10), ev(Some("w"), 10)];
+        let runs = [orchestrator];
+        let roles = vec![Some("orchestrator".to_string())];
+        let r = crate::link::attribute_full(
+            &events,
+            &runs,
+            &[],
+            &HashMap::new(),
+            crate::link::Attribution {
+                windows: &[],
+                roles: &roles,
+            },
+            now(),
+        );
+        assert_eq!(r.marks.len(), 1);
+        assert_eq!(r.marks[0].node, node(None));
+        assert_eq!(r.marks[0].role.as_deref(), Some("orchestrator"));
+        assert!(!r.marks[0].likely);
     }
 }

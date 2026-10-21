@@ -27,6 +27,7 @@ pub struct RunMeta {
 pub struct RunSet {
     pub windows: Vec<RunWindow>,
     pub ids: Vec<RunIds>,
+    pub roles: Vec<Option<String>>,
     pub meta: HashMap<String, RunMeta>,
     pub workspaces_ok: Vec<String>,
     pub workspaces_failed: Vec<String>,
@@ -166,7 +167,7 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
         .map(|p| runstate::load_from(&p))
         .unwrap_or_default();
     let mut ref_workspaces: HashMap<String, HashSet<String>> = HashMap::new();
-    let mut staged: Vec<(RunWindow, RunMeta, RunIds)> = Vec::new();
+    let mut staged: Vec<(RunWindow, RunMeta, RunIds, Option<String>)> = Vec::new();
     for ws in &workspaces {
         let runs = match fetch(ctx, ws, from, to) {
             Ok(Some((runs, truncated))) => {
@@ -230,10 +231,11 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
                     run_id: run.id,
                     task_id: task.id.or(run.task_id),
                 },
+                run.role.clone().filter(|r| !r.is_empty()),
             ));
         }
     }
-    for (mut window, mut meta, ids) in staged {
+    for (mut window, mut meta, ids, role) in staged {
         let shared = ref_workspaces
             .get(&window.task_ref)
             .is_some_and(|w| w.len() > 1);
@@ -244,6 +246,7 @@ pub fn collect(ctx: &Ctx, from: DateTime<Utc>, to: DateTime<Utc>, now: DateTime<
         set.meta.insert(window.run_ref.clone(), meta);
         set.windows.push(window);
         set.ids.push(ids);
+        set.roles.push(role);
     }
     set
 }

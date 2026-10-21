@@ -106,11 +106,14 @@ Integers are JSON integers (0..2^53). `cost_usd` is a number ≥ 0 with at most 
 | Field | Type | Notes |
 |---|---|---|
 | `task.workspace` | string | workspace code |
-| `task.ref` | string | `TM-571` style key |
+| `task.ref` | string | `TM-571` style key, or `#<id>` for a task without a category key (then `task.id` is that id) |
 | `task.id` | integer or null | server task id when known |
 | `totals.cost_usd`, `nodes[].cost_usd` | number | API-equivalent USD, 6 decimals max |
 | `tokens.*` | integer ≥ 0 | |
-| `active_ms` | integer | sum of node durations, nested nodes not double counted |
+| `totals.active_ms` | integer | union of every node's activity intervals, so no node exceeds it |
+| `nodes[].active_ms` | integer, optional | the node's activity: timestamps closer than 5 minutes join one interval (tool calls count from start to end), longer gaps are idle; `duration_ms` stays first-to-last wall clock |
+| `nodes[].role` | name, optional | `orchestrator`, `lead` or `worker`: set when the node got events as an orchestrator or is bound to a run with a known role |
+| `rates[]` | list, optional | USD per 1M tokens (`model`, `input`, `output`, `cache_read`, `cache_write_5m`, `cache_write_1h`, all numbers 0..100000, 6 decimals max) for each model in the task's events that has a full price; max 100, a model without one is left out |
 | `waiting_ms` | integer, optional | time agents waited for a person; left out until stage 2 fills it |
 | `limits[].tool` | enum | `claude`, `codex` |
 | `limits[].window` | enum | `five_hour`, `week`, `week_opus`, `week_sonnet`, `other` |
@@ -118,7 +121,7 @@ Integers are JSON integers (0..2^53). `cost_usd` is a number ≥ 0 with at most 
 | `nodes[].tool` | enum | `claude`, `codex` |
 | `nodes[].agent_type` | name | `main` for the top session, else the subagent type (`Explore`, `codex:codex-rescue`), `codex` for Codex |
 | `nodes[].origin` | name or null | Claude entrypoint (`cli`, `sdk-cli`, …) or Codex `source` (`exec`, `cli`, `vscode`, `subagent`) |
-| `nodes[].link` | enum or null | how the node was tied to its parent: `null` (logged by the tool), `exact`, `likely` |
+| `nodes[].link` | enum or null | how the node was tied to its parent or task: `null` (logged by the tool), `exact`, `likely` (also an orchestrator whose own events were attributed by the window of its descendants) |
 | `nodes[].depth` | integer | 0 for roots |
 | `context.hooks[].event` | name | `PreToolUse`, `PostToolUse`, `Stop`, `UserPromptSubmit`, `SessionStart`, … |
 | `context.hooks[].name` | name | basename of the hook script, or `inline` |
