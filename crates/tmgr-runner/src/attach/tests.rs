@@ -584,7 +584,7 @@ fn snapshot_zoom() {
 fn snapshot_help_overlay() {
     let mut v = two_pane(140);
     v.apply(Cmd::Help);
-    assert_snapshot("help", &draw(&v, &screens(), 140, 27));
+    assert_snapshot("help", &draw(&v, &screens(), 140, 31));
 }
 
 #[test]
@@ -2206,10 +2206,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_27_rows() {
+fn help_shows_the_mouse_section_at_31_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 27);
+    let text = draw(&v, &screens(), 140, 31);
     assert!(text.contains("pick a session or a pane"));
     assert!(text.contains("Shift-drag selects"));
     assert!(text.contains("? again closes this box"));
@@ -2893,4 +2893,305 @@ fn palette_with_a_very_long_query_keeps_the_caret_inside_the_box() {
             );
         }
     }
+}
+
+fn wide_view() -> ViewState {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v
+}
+
+fn press(v: &mut ViewState, col: u16, row: u16) -> MouseOut {
+    v.on_mouse(
+        AREA,
+        ev(0, col, row, false),
+        &mouse_info(MouseMode::default(), 0),
+    )
+}
+
+#[test]
+fn ctrl_bracket_c_is_new_session_and_action_keys_are_unique() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'c']), vec![Action::Cmd(Cmd::NewSession)]);
+    for (i, a) in ACTIONS.iter().enumerate() {
+        for b in &ACTIONS[i + 1..] {
+            let clash = !a.keys.is_empty()
+                && a.keys.iter().any(|k| b.keys.contains(k))
+                && !(a.cmd == b.cmd);
+            assert!(!clash, "{:?} vs {:?}", a.cmd, b.cmd);
+        }
+    }
+}
+
+#[test]
+fn sidebar_layout_pins_the_new_row_to_the_last_line() {
+    let v = wide_view();
+    let sl = v.sidebar_layout(r(0, 0, 24, 20));
+    assert_eq!(sl.new_row, Some(19));
+    let ys: Vec<u16> = sl.rows.iter().map(|(_, y)| *y).collect();
+    assert_eq!(ys, [1, 2, 3, 4]);
+    assert_eq!(sl.rows[0].0, "c");
+    let small = v.sidebar_layout(r(0, 0, 24, 5));
+    assert_eq!(small.new_row, Some(4));
+    assert_eq!(small.rows.len(), 3);
+    let tiny = v.sidebar_layout(r(0, 0, 24, 3));
+    assert_eq!(tiny.new_row, None);
+    assert_eq!(tiny.rows.len(), 2);
+}
+
+#[test]
+fn click_on_the_new_row_asks_for_a_new_session() {
+    let mut v = wide_view();
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let y = sb.bottom() - 1;
+    assert_eq!(v.hit(AREA, 3, y), Hit::NewSession);
+    let out = press(&mut v, 3, y);
+    assert!(out.new_session);
+    assert!(!press(&mut v, 3, 1).new_session);
+    assert_eq!(ids(&v), ["c"]);
+}
+
+#[test]
+fn hovering_the_new_row_redraws() {
+    let mut v = wide_view();
+    let y = layout(AREA, &v).sidebar.unwrap().bottom() - 1;
+    let out = v.on_mouse(
+        AREA,
+        ev(35, 3, y, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert!(out.redraw);
+}
+
+#[test]
+fn session_hits_are_limited_to_the_visible_rows() {
+    let mut v = wide_view();
+    let area = Rect::new(0, 0, 140, 5);
+    assert_eq!(v.hit(area, 3, 1), Hit::Session("c".into()));
+    assert_eq!(v.hit(area, 3, 2), Hit::Session("a".into()));
+    assert_eq!(v.hit(area, 3, 3), Hit::NewSession);
+    v.allow_new = false;
+    assert_eq!(v.hit(area, 3, 3), Hit::Session("b".into()));
+    assert_eq!(v.hit(area, 3, 4), Hit::None);
+}
+
+#[test]
+fn remote_attach_has_no_new_row() {
+    let mut v = wide_view();
+    v.allow_new = false;
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    assert_eq!(v.sidebar_layout(sb).new_row, None);
+    assert_eq!(v.hit(AREA, 3, sb.bottom() - 1), Hit::None);
+    assert!(!draw(&v, &screens(), 140, 22).contains("+ New session"));
+    assert!(!press(&mut v, 3, sb.bottom() - 1).new_session);
+}
+
+#[test]
+fn sidebar_focus_starts_on_the_focused_session_from_the_leftmost_pane() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    assert_eq!(v.focused_session(), Some("a"));
+    assert!(!v.focus_nav(AREA, Nav::Left));
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
+}
+
+#[test]
+fn focus_moves_report_true_and_do_not_enter_the_sidebar() {
+    let mut w = two_pane(140);
+    assert_eq!(w.focused_session(), Some("b"));
+    assert!(w.focus_nav(AREA, Nav::Left));
+    assert_eq!(w.focused_session(), Some("a"));
+    assert_eq!(w.sidebar_focus, None);
+}
+
+#[test]
+fn sidebar_focus_is_not_entered_when_hidden_or_zoomed() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    v.apply(Cmd::Zoom);
+    v.focus_nav(AREA, Nav::Left);
+    assert_eq!(v.sidebar_focus, None);
+    v.apply(Cmd::Zoom);
+    v.apply(Cmd::Sidebar);
+    v.focus_nav(AREA, Nav::Left);
+    assert_eq!(v.sidebar_focus, None);
+}
+
+#[test]
+fn sidebar_focus_starts_on_new_without_sessions() {
+    let mut v = ViewState::new(Vec::new(), "local");
+    v.width = 140;
+    assert!(v.enter_sidebar());
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
+    v.allow_new = false;
+    assert!(!v.enter_sidebar());
+    assert_eq!(v.sidebar_focus, None);
+}
+
+fn focused_sidebar() -> ViewState {
+    let mut v = wide_view();
+    v.set_initial("a");
+    v.focus_nav(AREA, Nav::Left);
+    v
+}
+
+#[test]
+fn sidebar_arrows_move_in_display_order_and_clamp() {
+    let mut v = focused_sidebar();
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
+    assert_eq!(v.edit_sidebar(b"\x1b[A"), SidebarEdit::Editing);
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("c".into())));
+    v.edit_sidebar(b"\x1b[A");
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("c".into())));
+    for keys in [&b"\x1b[B"[..], b"\x1bOB", b"\x0e"] {
+        v.edit_sidebar(keys);
+    }
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("d".into())));
+    v.edit_sidebar(b"j");
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
+    v.edit_sidebar(b"\x1b[B");
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
+    for keys in [&b"\x1b[A"[..], b"\x1bOA", b"\x10", b"k"] {
+        v.edit_sidebar(keys);
+    }
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("c".into())));
+}
+
+#[test]
+fn enter_on_a_session_selects_it_and_clears_the_focus() {
+    let mut v = focused_sidebar();
+    v.edit_sidebar(b"\x1b[B");
+    assert_eq!(v.edit_sidebar(b"\r"), SidebarEdit::Select("b".into()));
+    assert_eq!(v.sidebar_focus, None);
+    assert_eq!(ids(&v), ["b"]);
+}
+
+#[test]
+fn enter_on_new_asks_for_a_new_session() {
+    let mut v = focused_sidebar();
+    assert_eq!(
+        v.edit_sidebar(b"\x1b[B\x1b[B\x1b[B\x1b[B\n"),
+        SidebarEdit::New
+    );
+    assert_eq!(v.sidebar_focus, None);
+}
+
+#[test]
+fn several_keys_in_one_chunk_are_all_handled() {
+    let mut v = focused_sidebar();
+    assert_eq!(
+        v.edit_sidebar(b"\x1b[B\x1b[B\r"),
+        SidebarEdit::Select("d".into())
+    );
+}
+
+#[test]
+fn escape_and_right_leave_the_sidebar() {
+    for keys in [&b"\x1b"[..], b"\x1b\x1b", b"\x1b[C", b"\x1bOC"] {
+        let mut v = focused_sidebar();
+        assert_eq!(v.edit_sidebar(keys), SidebarEdit::Leave);
+        assert_eq!(v.sidebar_focus, None);
+    }
+}
+
+#[test]
+fn other_bytes_are_swallowed() {
+    let mut v = focused_sidebar();
+    assert_eq!(
+        v.edit_sidebar(b"hello\x03\x7f\x1b[1;2D\x1b[5~"),
+        SidebarEdit::Editing
+    );
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
+    assert_eq!(v.edit_sidebar(b"\x1bO"), SidebarEdit::Editing);
+    assert_eq!(v.edit_sidebar(b"A"), SidebarEdit::Editing);
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
+}
+
+#[test]
+fn sidebar_focus_follows_the_item_not_the_index() {
+    let mut v = focused_sidebar();
+    v.edit_sidebar(b"\x1b[B");
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("b".into())));
+    let mut rows = four();
+    rows[1].state = st(StateKind::Blocked, None);
+    v.sessions_changed(rows);
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("b".into())));
+}
+
+#[test]
+fn sidebar_focus_falls_to_a_neighbour_when_its_session_vanishes() {
+    let mut v = focused_sidebar();
+    v.edit_sidebar(b"\x1b[B");
+    let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id != "a").collect();
+    v.sessions_changed(rows);
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("b".into())));
+    v.sessions_changed(Vec::new());
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
+    v.allow_new = false;
+    v.sessions_changed(Vec::new());
+    assert_eq!(v.sidebar_focus, None);
+}
+
+#[test]
+fn sidebar_focus_clears_when_the_sidebar_goes_away() {
+    let mut v = focused_sidebar();
+    v.apply(Cmd::Zoom);
+    assert_eq!(v.sidebar_focus, None);
+    let mut w = focused_sidebar();
+    w.sidebar = Some(false);
+    w.sessions_changed(four());
+    assert_eq!(w.sidebar_focus, None);
+}
+
+#[test]
+fn a_left_press_clears_the_sidebar_focus_but_the_wheel_does_not() {
+    let mut v = focused_sidebar();
+    v.on_mouse(
+        AREA,
+        ev(64, 3, 2, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert!(v.sidebar_focus.is_some());
+    let out = press(&mut v, 60, 5);
+    assert_eq!(v.sidebar_focus, None);
+    assert!(out.redraw);
+}
+
+#[test]
+fn focused_sidebar_hides_the_cursor_and_shows_a_hint() {
+    let mut v = focused_sidebar();
+    let s = screens();
+    let lay = layout(AREA, &v);
+    v.sidebar_focus = None;
+    assert!(cursor(&v, &lay, &s).is_some());
+    v.focus_nav(AREA, Nav::Left);
+    assert_eq!(cursor(&v, &lay, &s), None);
+    assert!(draw(&v, &s, 140, 22).contains("sidebar: Up/Down move, Enter opens, Esc/Right back"));
+}
+
+#[test]
+fn snapshot_sidebar_new_row() {
+    let v = two_pane(140);
+    assert_snapshot("sidebar_new_row", &draw(&v, &screens(), 140, 12));
+}
+
+#[test]
+fn snapshot_sidebar_focus_new() {
+    let mut v = focused_sidebar();
+    v.edit_sidebar(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
+    assert_snapshot("sidebar_focus_new", &draw(&v, &screens(), 140, 12));
+}
+
+#[test]
+fn palette_lists_and_ranks_new_session() {
+    let mut v = ViewState::new(Vec::new(), "");
+    open_palette(&mut v);
+    assert!(v
+        .entries()
+        .iter()
+        .any(|r| r.entry == PaletteEntry::Cmd(Cmd::NewSession)));
+    let mut w = ViewState::new(Vec::new(), "");
+    query(&mut w, "new session");
+    assert_eq!(first(&w), PaletteEntry::Cmd(Cmd::NewSession));
 }

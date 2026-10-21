@@ -6,7 +6,7 @@ use super::palette::{
 use super::tree::Nav;
 use super::view::{
     header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
-    ViewState, WIDE_COLS,
+    SidebarItem, ViewState, WIDE_COLS,
 };
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
@@ -128,13 +128,13 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     if hx > end {
         put(buf, hx, area.y, hint, dim(), hint_w);
     }
-    let rows = st.sidebar_rows();
+    let sl = st.sidebar_layout(area);
     let focused = st.focused_session();
-    for (i, row) in rows.iter().enumerate() {
-        let y = area.y + 1 + i as u16;
-        if y >= area.bottom() {
-            break;
-        }
+    for (id, y) in &sl.rows {
+        let Some(row) = st.sessions.iter().find(|s| s.id == *id) else {
+            continue;
+        };
+        let y = *y;
         if focused == Some(row.id.as_str()) {
             buf.set_style(
                 Rect::new(area.x, y, area.width, 1),
@@ -164,25 +164,55 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
                     put(buf, x, y, glyph_of(ctl), button_style(on, true), 1);
                 }
             }
-            continue;
-        }
-        let age_w = row.age.width() as u16;
-        let age_x = area.right().saturating_sub(age_w + 1).max(area.x + 3);
-        let name_w = age_x.saturating_sub(area.x + 3).saturating_sub(1);
-        let name_style = if row.state.kind == StateKind::Blocked {
-            style
         } else {
-            Style::new()
+            let age_w = row.age.width() as u16;
+            let age_x = area.right().saturating_sub(age_w + 1).max(area.x + 3);
+            let name_w = age_x.saturating_sub(area.x + 3).saturating_sub(1);
+            let name_style = if row.state.kind == StateKind::Blocked {
+                style
+            } else {
+                Style::new()
+            };
+            put(buf, area.x + 3, y, &row.name, name_style, name_w);
+            put(
+                buf,
+                age_x,
+                y,
+                &row.age,
+                dim(),
+                area.right().saturating_sub(age_x),
+            );
+        }
+        if st.sidebar_focus == Some(SidebarItem::Session(row.id.clone())) {
+            buf.set_style(
+                Rect::new(area.x, y, area.width, 1),
+                Style::new().add_modifier(Modifier::REVERSED),
+            );
+        }
+    }
+    if let Some(y) = sl.new_row {
+        let hovered = st
+            .pointer
+            .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
+        let style = if hovered {
+            Style::new().fg(Color::White).add_modifier(Modifier::BOLD)
+        } else {
+            dim()
         };
-        put(buf, area.x + 3, y, &row.name, name_style, name_w);
         put(
             buf,
-            age_x,
+            area.x + 1,
             y,
-            &row.age,
-            dim(),
-            area.right().saturating_sub(age_x),
+            "+ New session",
+            style,
+            area.width.saturating_sub(1),
         );
+        if st.sidebar_focus == Some(SidebarItem::New) {
+            buf.set_style(
+                Rect::new(area.x, y, area.width, 1),
+                Style::new().add_modifier(Modifier::REVERSED),
+            );
+        }
     }
 }
 
@@ -322,7 +352,7 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         let w = query_tail(&p.query, query_avail(inner)).width() as u16;
         return Some(((inner.x + 2 + w).min(inner.right() - 1), inner.y));
     }
-    if st.scroll.is_some() || st.help {
+    if st.scroll.is_some() || st.help || st.sidebar_focus.is_some() {
         return None;
     }
     let id = st.focused_session()?;
@@ -376,6 +406,9 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         (Some(r), _) => Some(format!("rename: {}▏  Enter saves, Esc cancels", r.text)),
         (None, Some(c)) if c.remove => Some(format!("stop and remove {}? y/n", c.name)),
         (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
+        _ if st.sidebar_focus.is_some() => {
+            Some("sidebar: Up/Down move, Enter opens, Esc/Right back".into())
+        }
         _ => st.notice.clone(),
     };
     let focused = match st.focused_row() {
@@ -424,6 +457,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
 
 const MOUSE: &[(&str, &str)] = &[
     ("click", "pick a session or a pane"),
+    ("click +", "new session (sidebar, last row)"),
     ("wheel", "scroll the history of the pane"),
     ("buttons", "header: pause/resume, stop, close"),
     ("drop", "a dropped file is pasted there"),
@@ -465,6 +499,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
     (
         HelpKey::Cmds(&[Cmd::Focus(Nav::Left)]),
         "move focus (Shift+arrows: resize)",
+    ),
+    (
+        HelpKey::Lit("Left at edge"),
+        "focus the sidebar (Up/Down, Enter, Esc)",
     ),
     (
         HelpKey::Cmds(&[Cmd::Zoom, Cmd::Sidebar]),

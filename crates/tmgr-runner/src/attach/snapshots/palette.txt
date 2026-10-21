@@ -7,6 +7,7 @@
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
+                  │ New session (claude, codex, shell, ...)             Ctrl-] c │                 │
                   │ Focus next pane                                   Ctrl-] Tab │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Zoom the pane                                       Ctrl-] z │                 │
@@ -19,6 +20,5 @@
                   │ Show the key help                                   Ctrl-] ? │                 │
                   │ codex                                                blocked │                 │
                   │ claude                                               working │                 │
-                  │ dev-server                                           waiting │                 │
-                  │ tests                                                 exited │─────────────────╯
+ + New session    │ dev-server                                           waiting │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

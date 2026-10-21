@@ -772,7 +772,9 @@ impl App {
                     match cmd {
                         Cmd::SplitRight => self.request_split(SplitDir::Right),
                         Cmd::SplitDown => self.request_split(SplitDir::Down),
-                        Cmd::Focus(nav) => self.view.focus_nav(self.area(), nav),
+                        Cmd::Focus(nav) => {
+                            self.view.focus_nav(self.area(), nav);
+                        }
                         Cmd::Resize(nav) => self.view.resize_focused(self.area(), nav),
                         Cmd::Resume => {
                             if let Some(id) = self.view.focused_session().map(str::to_string) {
