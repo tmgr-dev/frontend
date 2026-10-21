@@ -362,6 +362,9 @@ impl ViewState {
                 self.grab = None;
             }
         }
+        if self.panes.len() < 2 {
+            self.tab_name = None;
+        }
         let claimed = self.panes.clone();
         self.tabs.retain_mut(|t| t.strip(&claimed));
     }
@@ -1189,7 +1192,7 @@ impl ViewState {
         let neighbour = self.sessions[pos..]
             .iter()
             .chain(self.sessions[..pos].iter().rev())
-            .find(|s| !self.panes.contains(&s.id))
+            .find(|s| !self.in_tab(&s.id))
             .map(|s| s.id.clone());
         match neighbour {
             Some(n) => {
@@ -1635,11 +1638,12 @@ impl ViewState {
             tree: self.tree.clone(),
             shells: self.shells.clone(),
             new_kind: self.new_kind.clone(),
-            new_place: self.new_place,
+            new_place: self.new_place.filter(|p| *p != Place::Tab),
             tab_name: self.active_tab().and(self.tab_name.clone()),
             tabs: self
                 .tabs
                 .iter()
+                .take(MAX_TABS)
                 .map(|t| TabPrefs {
                     tree: t.tree.clone(),
                     focus: t.focus.clone(),

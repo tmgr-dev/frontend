@@ -4510,3 +4510,35 @@ fn snapshot_tabs_sidebar() {
     let v = tabbed();
     assert_snapshot("tabs", &draw(&v, &screens(), 140, 22));
 }
+
+#[test]
+fn removing_a_pane_never_takes_a_session_from_a_stashed_tab() {
+    let mut v = tabbed();
+    v.remove_session("e");
+    v.remove_session("f");
+    v.remove_session("d");
+    assert_eq!(ids(&v), ["c"]);
+    let t = tab_id(&v, "a");
+    assert_eq!(v.tab_members(t), ["a", "b"]);
+}
+
+#[test]
+fn a_tab_name_does_not_come_back_after_the_tab_shrinks_to_one_pane() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::RenameTab);
+    v.rename.as_mut().unwrap().text = "work".into();
+    assert_eq!(v.edit_rename(b"\r"), RenameEdit::Done);
+    assert_eq!(v.tab_title(tab_id(&v, "a")), "work");
+    v.close_pane("b");
+    v.apply(Cmd::Split);
+    assert_eq!(v.tab_title(tab_id(&v, "a")), "claude");
+}
+
+#[test]
+fn a_new_tab_choice_is_not_written_to_the_saved_layout() {
+    let mut v = two_pane(140);
+    v.new_place = Some(Place::Tab);
+    assert_eq!(v.prefs().new_place, None);
+    v.new_place = Some(Place::Below);
+    assert_eq!(v.prefs().new_place, Some(Place::Below));
+}
