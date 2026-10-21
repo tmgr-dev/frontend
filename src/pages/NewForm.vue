@@ -48,10 +48,8 @@
 	import AssigneesCombobox from '@/components/AssigneesCombobox.vue';
 	import CommentAttachments from '@/components/attachments/CommentAttachments.vue';
 	import CategoriesCombobox from '@/components/CategoriesCombobox.vue';
-	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
-	import SettingsComponent from '@/components/SettingsComponent.vue';
-	import TimeCounter from '@/components/TimeCounter.vue';
 	import DescriptionPreview from '@/components/description/DescriptionPreview.vue';
+	import ForbiddenAccess from '@/components/ForbiddenAccess.vue';
 	import Checkpoints from '@/components/general/Checkpoints.vue';
 	import Confirm from '@/components/general/Confirm.vue';
 	import PersonaAssigneeChips from '@/components/general/PersonaAssigneeChips.vue';
@@ -59,6 +57,7 @@
 	import PluginTaskMenuItems from '@/components/plugins/PluginTaskMenuItems.vue';
 	import PluginTaskSections from '@/components/plugins/PluginTaskSections.vue';
 	import TaskAgentRunner from '@/components/runner/TaskAgentRunner.vue';
+	import SettingsComponent from '@/components/SettingsComponent.vue';
 	import AgentStatusChip from '@/components/tasks/AgentStatusChip.vue';
 	import AskPersonaButton from '@/components/tasks/AskPersonaButton.vue';
 	import CloudAgentApproval from '@/components/tasks/CloudAgentApproval.vue';
@@ -78,6 +77,7 @@
 	import TaskShareMenu from '@/components/tasks/TaskShareMenu.vue';
 	import TaskTimeEntries from '@/components/tasks/TaskTimeEntries.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
+	import TimeCounter from '@/components/TimeCounter.vue';
 	import { Button } from '@/components/ui/button';
 	import {
 		Dialog,
@@ -3035,10 +3035,7 @@
 						class="mb-1.5 flex flex-wrap items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 						@mousedown.stop
 					>
-						<CommentAttachments
-							ref="commentAttachments"
-							:task-id="form.id"
-						/>
+						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
 						<input
 							ref="commentTextarea"
 							v-model="newComment"
@@ -3272,10 +3269,7 @@
 					<div
 						class="flex flex-wrap items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 					>
-						<CommentAttachments
-							ref="commentAttachments"
-							:task-id="form.id"
-						/>
+						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
 						<input
 							ref="commentRailInput"
 							v-model="newComment"
