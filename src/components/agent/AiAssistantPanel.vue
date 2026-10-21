@@ -10,13 +10,19 @@
 	import { compactionsByAnchor } from '@/utils/agentCompaction';
 	import { hasOpenConfirmation } from '@/utils/agentConfirmation';
 	import {
+		canAddPin,
+		canEditPin,
+		pinLimitHint,
+		pinTextFromMessage,
+	} from '@/utils/agentPins';
+	import {
 		fillScenarios,
 		runScenarios,
 		type FillScenario,
 		type RunScenario,
 	} from '@/utils/agentScenarios';
 	import { focusField } from '@/utils/focusTarget';
-	import { History, Send, Sparkles, X } from 'lucide-vue-next';
+	import { History, Pin, Send, Sparkles, X } from 'lucide-vue-next';
 	import {
 		computed,
 		defineAsyncComponent,
@@ -26,6 +32,8 @@
 		ref,
 		watch,
 	} from 'vue';
+
+	import type { AgentPin, AgentMessage as ChatMessage } from '@/types/agent';
 
 	const AgentMessage = defineAsyncComponent(
 		() => import('@/components/agent/AgentMessage.vue'),
@@ -41,6 +49,14 @@
 		compacting,
 		canCompact,
 		compact,
+		pins,
+		pinLimits,
+		pinsLoading,
+		pinSaving,
+		pinError,
+		addPin,
+		editPin,
+		removePin,
 		load,
 		openConversation,
 		forgetRemembered,
@@ -92,6 +108,29 @@
 	// Take the cursor back as soon as it is usable again so a follow-up can just be typed.
 	const focusInput = () => nextTick(() => focusField(input.value));
 
+	const pinsOpen = ref(false);
+	const pinDraft = ref('');
+	const pinSourceId = ref<number | null>(null);
+	const pinInput = ref<HTMLTextAreaElement | null>(null);
+	const editingPinId = ref<number | null>(null);
+	const editDraft = ref('');
+	const canSubmitPin = computed(() =>
+		canAddPin(pins.value, pinLimits.value, pinDraft.value),
+	);
+	const pinHint = computed(() =>
+		pinLimitHint(pins.value, pinLimits.value, pinDraft.value, null),
+	);
+	const editHint = computed(() =>
+		editingPinId.value === null
+			? ''
+			: pinLimitHint(
+					pins.value,
+					pinLimits.value,
+					editDraft.value,
+					editingPinId.value,
+			  ),
+	);
+
 	const anchors = computed(() => compactionsByAnchor(compactions.value));
 	const compactionsAfter = (messageId: number) =>
 		anchors.value.get(messageId) ?? [];
@@ -107,6 +146,48 @@
 	function toggleHistory(): void {
 		mic.value?.cancel();
 		view.value = view.value === 'list' ? 'chat' : 'list';
+	}
+
+	function togglePins(): void {
+		view.value = 'chat';
+		pinsOpen.value = !pinsOpen.value;
+		pinSourceId.value = null;
+		editingPinId.value = null;
+	}
+
+	function pinMessage(message: ChatMessage): void {
+		view.value = 'chat';
+		pinsOpen.value = true;
+		editingPinId.value = null;
+		pinSourceId.value = message.id;
+		pinDraft.value = pinTextFromMessage(
+			message.content,
+			pinLimits.value.max_chars,
+		);
+		nextTick(() => focusField(pinInput.value));
+	}
+
+	async function submitPin(): Promise<void> {
+		const saved = await addPin(pinDraft.value, pinSourceId.value ?? undefined);
+		if (!saved) return;
+		pinDraft.value = '';
+		pinSourceId.value = null;
+	}
+
+	function beginEditPin(pin: AgentPin): void {
+		editingPinId.value = pin.id;
+		editDraft.value = pin.content;
+	}
+
+	async function saveEditedPin(): Promise<void> {
+		if (editingPinId.value === null) return;
+		const saved = await editPin(editingPinId.value, editDraft.value);
+		if (saved) editingPinId.value = null;
+	}
+
+	async function deletePin(pin: AgentPin): Promise<void> {
+		if (editingPinId.value === pin.id) editingPinId.value = null;
+		await removePin(pin.id);
 	}
 
 	async function openFromList(id: number): Promise<void> {
@@ -147,6 +228,10 @@
 		if (chatList.value?.cancelRename()) return;
 		if (view.value === 'list') {
 			view.value = 'chat';
+			return;
+		}
+		if (pinsOpen.value) {
+			pinsOpen.value = false;
 			return;
 		}
 		close();
@@ -196,6 +281,8 @@
 				mic.value?.cancel();
 				stopPolling();
 				view.value = 'chat';
+				pinsOpen.value = false;
+				editingPinId.value = null;
 				listQuery.value = '';
 				showArchived.value = false;
 				unregisterModal('ai-panel');
@@ -203,6 +290,14 @@
 			}
 		},
 		{ immediate: true },
+	);
+
+	watch(
+		() => state.value.conversationId,
+		() => {
+			pinSourceId.value = null;
+			editingPinId.value = null;
+		},
 	);
 
 	watch(currentWorkspaceId, (id) => {
@@ -264,6 +359,21 @@
 					<History class="h-4 w-4" />
 				</button>
 				<button
+					class="relative rounded-pill p-1 hover:bg-surface-hover hover:text-ink"
+					:class="pinsOpen ? 'text-ink' : 'text-ink-subtle'"
+					:aria-label="`Pinned facts (${pins.length})`"
+					:aria-pressed="pinsOpen"
+					:title="`Pinned facts (${pins.length})`"
+					@click="togglePins"
+				>
+					<Pin class="h-4 w-4" />
+					<span
+						v-if="pins.length"
+						class="absolute -right-1 -top-1 rounded-pill bg-brand px-1 text-[10px] leading-4 text-white"
+						>{{ pins.length }}</span
+					>
+				</button>
+				<button
 					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
 					@click="newFromList"
 				>
@@ -288,6 +398,110 @@
 				</button>
 			</div>
 		</header>
+		<section
+			v-if="pinsOpen && view === 'chat'"
+			class="max-h-80 shrink-0 space-y-3 overflow-y-auto border-b border-line bg-surface px-4 py-3"
+			aria-label="Pinned facts"
+		>
+			<p class="text-xs text-ink-subtle">
+				Pinned facts are sent to the assistant with every message and are kept
+				when the history is compacted.
+			</p>
+			<p v-if="pinsLoading && !pins.length" class="text-sm text-ink-subtle">
+				Loading…
+			</p>
+			<p v-else-if="!pins.length" class="text-sm text-ink-subtle">
+				No pinned facts yet.
+			</p>
+			<ul v-else class="space-y-2">
+				<li
+					v-for="pin in pins"
+					:key="pin.id"
+					class="rounded-lg border border-line bg-surface-sunken p-2 text-sm text-ink"
+				>
+					<template v-if="editingPinId === pin.id">
+						<textarea
+							v-model="editDraft"
+							rows="3"
+							:maxlength="pinLimits.max_chars"
+							aria-label="Edit pinned fact"
+							class="w-full resize-none rounded-lg border border-line bg-surface px-2 py-1.5 text-sm text-ink outline-none focus:border-line-focus"
+						></textarea>
+						<div class="mt-1 flex items-center justify-between gap-2 text-xs">
+							<span class="text-ink-subtle"
+								>{{ editDraft.length }}/{{ pinLimits.max_chars }}</span
+							>
+							<div class="flex items-center gap-1">
+								<button
+									class="rounded-pill px-2 py-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
+									:disabled="pinSaving"
+									@click="editingPinId = null"
+								>
+									Cancel
+								</button>
+								<button
+									class="rounded-pill bg-brand px-3 py-1 text-white disabled:opacity-40"
+									:disabled="
+										pinSaving || !canEditPin(pins, pinLimits, pin.id, editDraft)
+									"
+									@click="saveEditedPin"
+								>
+									Save
+								</button>
+							</div>
+						</div>
+						<p v-if="editHint" class="mt-1 text-xs text-ink-subtle">
+							{{ editHint }}
+						</p>
+					</template>
+					<template v-else>
+						<p class="whitespace-pre-wrap break-words">{{ pin.content }}</p>
+						<div class="mt-1 flex items-center justify-end gap-1 text-xs">
+							<button
+								class="rounded-pill px-2 py-1 text-ink-subtle hover:bg-surface-hover hover:text-ink"
+								:disabled="pinSaving"
+								@click="beginEditPin(pin)"
+							>
+								Edit
+							</button>
+							<button
+								class="rounded-pill px-2 py-1 text-ink-subtle hover:bg-surface-hover hover:text-red-500"
+								:disabled="pinSaving"
+								@click="deletePin(pin)"
+							>
+								Remove
+							</button>
+						</div>
+					</template>
+				</li>
+			</ul>
+			<div>
+				<textarea
+					ref="pinInput"
+					v-model="pinDraft"
+					rows="2"
+					:maxlength="pinLimits.max_chars"
+					:disabled="pinSaving"
+					placeholder="Add a fact…"
+					aria-label="New pinned fact"
+					class="w-full resize-none rounded-lg border border-line bg-surface-sunken px-2 py-1.5 text-sm text-ink outline-none placeholder:text-ink-subtle focus:border-line-focus disabled:opacity-60"
+				></textarea>
+				<div class="mt-1 flex items-center justify-between gap-2 text-xs">
+					<span class="text-ink-subtle"
+						>{{ pinDraft.length }}/{{ pinLimits.max_chars }}</span
+					>
+					<button
+						class="rounded-pill bg-brand px-3 py-1 text-white disabled:opacity-40"
+						:disabled="pinSaving || !canSubmitPin"
+						@click="submitPin"
+					>
+						Add
+					</button>
+				</div>
+				<p v-if="pinHint" class="mt-1 text-xs text-ink-subtle">{{ pinHint }}</p>
+			</div>
+			<p v-if="pinError" class="text-xs text-red-500">{{ pinError }}</p>
+		</section>
 		<ChatList
 			v-if="view === 'list' && currentWorkspaceId"
 			ref="chatList"
@@ -313,7 +527,7 @@
 				category this week, what a task is about.
 			</p>
 			<template v-for="m in state.messages" :key="m.id">
-				<AgentMessage :message="m" :decide="decide" />
+				<AgentMessage :message="m" :decide="decide" @pin="pinMessage" />
 				<div
 					v-for="c in compactionsAfter(m.id)"
 					:key="`compaction-${c.id}`"

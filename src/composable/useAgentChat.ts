@@ -1,13 +1,17 @@
 import type { ActionDecision } from '@/actions/tmgr/agent';
 import {
+	addAgentPin,
 	compactConversation,
 	decideAgentActions,
+	deleteAgentPin,
 	getAgentMessages,
 	getAgentMessagesWithCompactions,
+	getAgentPins,
 	getConversation,
 	getOrCreateConversation,
 	sendAgentMessage,
 	startNewConversation,
+	updateAgentPin,
 } from '@/actions/tmgr/agent';
 import store from '@/store';
 import type {
@@ -16,6 +20,8 @@ import type {
 	AgentConfirmationEvent,
 	AgentConversation,
 	AgentMessage,
+	AgentPin,
+	AgentPinLimits,
 	AgentReplyEvent,
 	AgentStepEvent,
 } from '@/types/agent';
@@ -46,6 +52,12 @@ import {
 	DECISION_CONFLICT_MESSAGE,
 	openActionIds,
 } from '@/utils/agentConfirmation';
+import {
+	canAddPin,
+	canEditPin,
+	DEFAULT_PIN_LIMITS,
+	pinErrorMessage,
+} from '@/utils/agentPins';
 import type { AttachedFile } from '@/utils/aiAttachments';
 import { attachmentErrorMessage } from '@/utils/aiAttachments';
 import { createRequestSequence } from '@/utils/requestSequence';
@@ -64,6 +76,14 @@ export interface UseAgentChatReturn {
 	compacting: Ref<boolean>;
 	canCompact: ComputedRef<boolean>;
 	compact: () => Promise<void>;
+	pins: Ref<AgentPin[]>;
+	pinLimits: Ref<AgentPinLimits>;
+	pinsLoading: Ref<boolean>;
+	pinSaving: Ref<boolean>;
+	pinError: Ref<string | null>;
+	addPin: (content: string, sourceMessageId?: number) => Promise<boolean>;
+	editPin: (pinId: number, content: string) => Promise<boolean>;
+	removePin: (pinId: number) => Promise<boolean>;
 	load: (workspaceId: number) => Promise<void>;
 	openConversation: (conversationId: number) => Promise<void>;
 	forgetRemembered: () => void;
@@ -96,6 +116,11 @@ export function useAgentChat(): UseAgentChatReturn {
 	const busy = computed(() => isBusy(state.value));
 	const compactions = ref<AgentCompaction[]>([]);
 	const compacting = ref(false);
+	const pins = ref<AgentPin[]>([]);
+	const pinLimits = ref<AgentPinLimits>(DEFAULT_PIN_LIMITS);
+	const pinsLoading = ref(false);
+	const pinSaving = ref(false);
+	const pinError = ref<string | null>(null);
 	const canCompact = computed(() =>
 		canCompactConversation(
 			state.value.messages,
@@ -105,6 +130,7 @@ export function useAgentChat(): UseAgentChatReturn {
 
 	const conversationRequests = createRequestSequence();
 	const sendRequests = createRequestSequence();
+	const pinRequests = createRequestSequence();
 	const earlyReplies = new Map<number, AgentReplyEvent>();
 	const earlySteps = new Map<number, AgentStepEvent[]>();
 	const earlyConfirmations = new Map<number, AgentConfirmationEvent>();
@@ -191,6 +217,33 @@ export function useAgentChat(): UseAgentChatReturn {
 		}, PENDING_POLL_MS);
 	};
 
+	const resetPins = (): void => {
+		pinRequests.begin();
+		pins.value = [];
+		pinError.value = null;
+		pinsLoading.value = false;
+	};
+
+	const loadPins = async (conversationId: number): Promise<void> => {
+		const token = pinRequests.begin();
+		pinsLoading.value = true;
+		try {
+			const result = await getAgentPins(conversationId);
+			if (
+				!pinRequests.isCurrent(token) ||
+				state.value.conversationId !== conversationId
+			)
+				return;
+			pins.value = result.pins;
+			pinLimits.value = result.limits;
+		} catch {
+			if (!pinRequests.isCurrent(token)) return;
+			pinError.value = 'Could not load pinned facts.';
+		} finally {
+			if (pinRequests.isCurrent(token)) pinsLoading.value = false;
+		}
+	};
+
 	const showConversation = (
 		conversation: AgentConversation,
 		messages: AgentMessage[],
@@ -201,6 +254,8 @@ export function useAgentChat(): UseAgentChatReturn {
 		earlyConfirmations.clear();
 		state.value = applyConversation(state.value, conversation, messages);
 		compactions.value = history;
+		resetPins();
+		void loadPins(conversation.id);
 		remember(conversation.workspace_id, conversation.id);
 		if (hasPendingLast(messages)) startPolling(conversation.id);
 		else stopPolling();
@@ -272,6 +327,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		earlySteps.clear();
 		earlyConfirmations.clear();
 		compactions.value = [];
+		resetPins();
 		state.value = resetForWorkspace(state.value, workspaceId);
 		loading.value = true;
 		error.value = null;
@@ -326,6 +382,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		sendRequests.begin();
 		stopPolling();
 		sending.value = false;
+		resetPins();
 		loading.value = true;
 		error.value = null;
 
@@ -493,6 +550,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		sendRequests.begin();
 		stopPolling();
 		sending.value = false;
+		resetPins();
 		loading.value = true;
 		error.value = null;
 
@@ -535,6 +593,71 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 	};
 
+	const runPinSave = async (
+		conversationId: number,
+		save: () => Promise<void>,
+	): Promise<boolean> => {
+		pinSaving.value = true;
+		pinError.value = null;
+		try {
+			await save();
+			return true;
+		} catch (e) {
+			if (state.value.conversationId === conversationId) {
+				pinError.value = pinErrorMessage(
+					httpStatus(e),
+					(e as { response?: { data?: { message?: string } } })?.response?.data
+						?.message,
+				);
+			}
+			return false;
+		} finally {
+			pinSaving.value = false;
+		}
+	};
+
+	const addPin = async (
+		content: string,
+		sourceMessageId?: number,
+	): Promise<boolean> => {
+		const text = content.trim();
+		if (!text || pinSaving.value) return false;
+		const conversationId =
+			state.value.conversationId ?? (await ensureConversation());
+		if (!conversationId || pinSaving.value) return false;
+		if (!canAddPin(pins.value, pinLimits.value, text)) return false;
+		return runPinSave(conversationId, async () => {
+			const pin = await addAgentPin(conversationId, text, sourceMessageId);
+			if (state.value.conversationId === conversationId) {
+				pins.value = [...pins.value, pin];
+			}
+		});
+	};
+
+	const editPin = async (pinId: number, content: string): Promise<boolean> => {
+		const conversationId = state.value.conversationId;
+		const text = content.trim();
+		if (!conversationId || pinSaving.value) return false;
+		if (!canEditPin(pins.value, pinLimits.value, pinId, text)) return false;
+		return runPinSave(conversationId, async () => {
+			const pin = await updateAgentPin(conversationId, pinId, text);
+			if (state.value.conversationId === conversationId) {
+				pins.value = pins.value.map((p) => (p.id === pin.id ? pin : p));
+			}
+		});
+	};
+
+	const removePin = async (pinId: number): Promise<boolean> => {
+		const conversationId = state.value.conversationId;
+		if (!conversationId || pinSaving.value) return false;
+		return runPinSave(conversationId, async () => {
+			await deleteAgentPin(conversationId, pinId);
+			if (state.value.conversationId === conversationId) {
+				pins.value = pins.value.filter((p) => p.id !== pinId);
+			}
+		});
+	};
+
 	const subscribe = (userId: number): void => {
 		if (subscribedUserId === userId && subscriptionId !== null) {
 			return;
@@ -568,6 +691,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		onUnmounted(() => {
 			conversationRequests.dispose();
 			sendRequests.dispose();
+			pinRequests.dispose();
 			stopPolling();
 			unsubscribe();
 		});
@@ -583,6 +707,14 @@ export function useAgentChat(): UseAgentChatReturn {
 		compacting,
 		canCompact,
 		compact,
+		pins,
+		pinLimits,
+		pinsLoading,
+		pinSaving,
+		pinError,
+		addPin,
+		editPin,
+		removePin,
 		load,
 		openConversation,
 		forgetRemembered,
