@@ -268,7 +268,7 @@
 							v-if="isHttpUrl(run.pr_url)"
 							:href="run.pr_url"
 							target="_blank"
-							rel="noopener"
+							rel="noopener noreferrer"
 							class="text-brand hover:underline"
 							>Pull request</a
 						>
@@ -296,7 +296,7 @@
 								v-if="rel.ciUrl"
 								:href="rel.ciUrl"
 								target="_blank"
-								rel="noopener"
+								rel="noopener noreferrer"
 								class="ml-2 text-brand hover:underline"
 								>CI</a
 							>
@@ -315,7 +315,7 @@
 							v-if="deployRow(run).url"
 							:href="deployRow(run).url"
 							target="_blank"
-							rel="noopener"
+							rel="noopener noreferrer"
 							class="ml-2 text-brand hover:underline"
 							>Open</a
 						>
@@ -350,7 +350,7 @@
 								v-if="commit.url"
 								:href="commit.url"
 								target="_blank"
-								rel="noopener"
+								rel="noopener noreferrer"
 								class="text-brand hover:underline"
 								>{{ commit.short }}</a
 							>
@@ -454,6 +454,7 @@
 			runs: { type: Array, default: () => [] },
 			totals: { type: Object, required: true },
 			cost: { type: Object, default: null },
+			costState: { type: String, default: 'ready' },
 		},
 		emits: ['update:open'],
 		setup(props) {
@@ -509,6 +510,7 @@
 				pickUsage({
 					synced: serverAggregate(props.cost?.ai),
 					local: localAggregate.value,
+					serverState: props.costState,
 				}),
 			);
 			const aggregate = computed(() => picked.value.aggregate);

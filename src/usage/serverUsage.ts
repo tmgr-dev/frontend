@@ -14,6 +14,16 @@ import type {
 
 type ServerAi = TaskCost['ai'];
 
+const hasTokens = (t: TaskCostTokens | null | undefined): boolean =>
+	!!t &&
+	t.input +
+		t.output +
+		t.cacheRead +
+		t.cacheWrite5m +
+		t.cacheWrite1h +
+		t.reasoning >
+		0;
+
 const num = (value: unknown): number =>
 	typeof value === 'number' && Number.isFinite(value) ? value : 0;
 
@@ -25,9 +35,9 @@ const decimal = (value: unknown): number => {
 const mapTokens = (t: TaskCostTokens | null | undefined): TaskTokens => ({
 	input: num(t?.input),
 	output: num(t?.output),
-	cache_read: num(t?.cacheRead ?? t?.cache_read),
-	cache_write_5m: num(t?.cache_write_5m),
-	cache_write_1h: num(t?.cache_write_1h),
+	cache_read: num(t?.cacheRead),
+	cache_write_5m: num(t?.cacheWrite5m),
+	cache_write_1h: num(t?.cacheWrite1h),
 	reasoning: num(t?.reasoning),
 });
 
@@ -43,19 +53,19 @@ const mapTools = (
 
 const mapNode = (n: TaskCostNode): TaskNode => ({
 	id: n.id,
-	parent_id: n.parentId ?? n.parent_id ?? null,
+	parent_id: n.parentId ?? null,
 	depth: n.depth ?? 0,
 	tool: n.tool === 'codex' ? 'codex' : 'claude',
-	agent_type: n.agentType ?? n.agent_type ?? 'main',
+	agent_type: n.agentType ?? 'main',
 	model: n.model ?? '',
 	origin: n.origin ?? null,
 	link: n.link === 'exact' || n.link === 'likely' ? n.link : null,
-	started_at: n.startedAt ?? n.started_at ?? '',
-	ended_at: n.endedAt ?? n.ended_at ?? '',
-	duration_ms: num(n.durationMs ?? n.duration_ms),
-	active_ms: n.activeMs ?? n.active_ms ?? null,
+	started_at: n.startedAt ?? '',
+	ended_at: n.endedAt ?? '',
+	duration_ms: num(n.durationMs),
+	active_ms: n.activeMs ?? null,
 	role: n.role ?? null,
-	cost_usd: decimal(n.costUsd ?? n.cost_usd),
+	cost_usd: decimal(n.costUsd),
 	events: num(n.events),
 	tokens: mapTokens(n.tokens),
 	tools: mapTools(n.tools),
@@ -64,7 +74,7 @@ const mapNode = (n: TaskCostNode): TaskNode => ({
 export const serverAggregate = (
 	ai: ServerAi | null | undefined,
 ): TaskUsageAggregate | null => {
-	if (!ai?.synced) return null;
+	if (!ai?.synced || !(ai.tree?.length || hasTokens(ai.tokens))) return null;
 	return {
 		totals: {
 			cost_usd: decimal(ai.costUsd),
@@ -100,12 +110,16 @@ export interface UsagePick {
 
 const UNSYNCED_DELTA_CENTS = 1;
 
+export type ServerState = 'loading' | 'ready' | 'failed';
+
 export const pickUsage = ({
 	synced,
 	local,
+	serverState = 'ready',
 }: {
 	synced: TaskUsageAggregate | null;
 	local: TaskUsageAggregate | null;
+	serverState?: ServerState;
 }): UsagePick => {
 	const hasLocal = !!local && local.totals.events > 0;
 	if (synced) {
@@ -123,15 +137,19 @@ export const pickUsage = ({
 					: null,
 		};
 	}
+	const unknownNotice =
+		serverState === 'failed' ? 'Could not read the synced usage.' : null;
 	if (hasLocal) {
 		return {
 			source: 'local',
 			aggregate: local,
 			notice:
-				'Local only — not synced. The task cost API and other members see no AI usage for this task. Run `tmgr usage sync` to upload it.',
+				serverState !== 'ready'
+					? unknownNotice
+					: 'Local only — not synced. The task cost API and other members see no AI usage for this task. Run `tmgr usage sync` to upload it.',
 		};
 	}
-	return { source: 'none', aggregate: null, notice: null };
+	return { source: 'none', aggregate: null, notice: unknownNotice };
 };
 
 const rate = (value: string | undefined): string | null => {
@@ -151,9 +169,9 @@ export const ratesRows = (
 		const parts = [
 			['input', rate(r.input)],
 			['output', rate(r.output)],
-			['cache read', rate(r.cache_read ?? r.cacheRead)],
-			['cache write 5m', rate(r.cache_write_5m)],
-			['cache write 1h', rate(r.cache_write_1h)],
+			['cache read', rate(r.cacheRead)],
+			['cache write 5m', rate(r.cacheWrite5m)],
+			['cache write 1h', rate(r.cacheWrite1h)],
 		]
 			.filter(([, value]) => value !== null)
 			.map(([label, value]) => `${label} ${value}`);

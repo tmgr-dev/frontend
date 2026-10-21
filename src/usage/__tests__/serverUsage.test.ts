@@ -14,13 +14,17 @@ const tokens = {
 	input: 10,
 	output: 20,
 	cacheRead: 300,
-	cache_write_5m: 4,
-	cache_write_1h: 2,
+	cacheWrite5m: 4,
+	cacheWrite1h: 2,
 	reasoning: 1,
 };
 
 const ai = (overrides: Partial<Ai> = {}): Ai => ({
 	synced: true,
+	sources: 1,
+	activeMs: 0,
+	lastGeneratedAt: null,
+	treeTruncated: false,
 	costUsd: '1.500000',
 	tokens,
 	events: 5,
@@ -143,31 +147,21 @@ describe('serverAggregate', () => {
 		expect(tree[0].children[0].node.id).toBe('b');
 	});
 
-	it('also reads snake_case node keys', () => {
-		const aggregate = serverAggregate(
-			ai({
-				tree: [
-					{
-						id: 'a',
-						parent_id: null,
-						tool: 'codex',
-						agent_type: 'main',
-						model: 'gpt',
-						duration_ms: 10,
-						cost_usd: '2',
-						active_ms: 7,
-						started_at: 's',
-					},
-				],
-			}),
-		);
-		expect(aggregate?.nodes[0]).toMatchObject({
-			tool: 'codex',
-			duration_ms: 10,
-			cost_usd: 2,
-			active_ms: 7,
-			started_at: 's',
-		});
+	it('is not synced when the aggregate has no tree and no tokens', () => {
+		const empty = {
+			...tokens,
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite5m: 0,
+			cacheWrite1h: 0,
+			reasoning: 0,
+		};
+		expect(serverAggregate(ai({ tokens: empty, tree: [] }))).toBeNull();
+		expect(serverAggregate(ai({ tokens: null, tree: null }))).toBeNull();
+		expect(
+			serverAggregate(ai({ tokens: empty, tree: [{ id: 'a' } as any] })),
+		).not.toBeNull();
 	});
 
 	it('flags a capped tree', () => {
@@ -177,7 +171,9 @@ describe('serverAggregate', () => {
 	});
 
 	it('treats an unparsable cost as zero and tolerates missing tokens', () => {
-		const aggregate = serverAggregate(ai({ costUsd: null, tokens: null }));
+		const aggregate = serverAggregate(
+			ai({ costUsd: null, tokens: null, tree: [{ id: 'a' } as any] }),
+		);
 		expect(aggregate?.totals.cost_usd).toBe(0);
 		expect(aggregate?.totals.tokens.input).toBe(0);
 	});
@@ -235,6 +231,29 @@ describe('pickUsage', () => {
 		expect(picked.notice).toBeNull();
 	});
 
+	it('shows no not-synced notice while the server answer is unknown', () => {
+		const local = localAggregate(2);
+		expect(pickUsage({ synced: null, local, serverState: 'loading' })).toEqual({
+			source: 'local',
+			aggregate: local,
+			notice: null,
+		});
+	});
+
+	it('shows a neutral notice when the server request failed', () => {
+		const local = localAggregate(2);
+		expect(
+			pickUsage({ synced: null, local, serverState: 'failed' }).notice,
+		).toBe('Could not read the synced usage.');
+		expect(
+			pickUsage({ synced: null, local: null, serverState: 'failed' }),
+		).toEqual({
+			source: 'none',
+			aggregate: null,
+			notice: 'Could not read the synced usage.',
+		});
+	});
+
 	it('treats a local aggregate with no events as absent', () => {
 		expect(
 			pickUsage({ synced: null, local: localAggregate(0, 0, 0) }).source,
@@ -254,9 +273,9 @@ describe('ratesRows', () => {
 				model: 'claude-opus-4-7',
 				input: '15.000000',
 				output: '75',
-				cache_read: '1.5',
-				cache_write_5m: '18.75',
-				cache_write_1h: '30',
+				cacheRead: '1.5',
+				cacheWrite5m: '18.75',
+				cacheWrite1h: '30',
 			},
 		]);
 		expect(rows).toEqual([
@@ -269,7 +288,14 @@ describe('ratesRows', () => {
 
 	it('keeps sub-cent precision and skips unparsable fields', () => {
 		const rows = ratesRows([
-			{ model: 'm', input: '0.0625', output: 'x', cacheRead: '0.3' },
+			{
+				model: 'm',
+				input: '0.0625',
+				output: 'x',
+				cacheRead: '0.3',
+				cacheWrite5m: '',
+				cacheWrite1h: '',
+			},
 		]);
 		expect(rows[0].text).toBe('input $0.0625 · cache read $0.30 per 1M tokens');
 	});
