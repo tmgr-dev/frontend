@@ -1,7 +1,7 @@
 <template>
 	<div class="relative" data-tour="nav.notification-bell">
-		<DropdownMenu @update:open="handleDropdownOpen">
-			<DropdownMenuTrigger as-child>
+		<Popover @update:open="handleDropdownOpen">
+			<PopoverTrigger as-child>
 				<button
 					class="relative rounded-md p-2 transition-colors hover:bg-surface-hover"
 					:class="{ 'has-new-notification': hasNewNotification }"
@@ -20,12 +20,14 @@
 						{{ unreadCount > 99 ? '99+' : unreadCount }}
 					</span>
 				</button>
-			</DropdownMenuTrigger>
+			</PopoverTrigger>
 
-			<DropdownMenuContent
-				class="notification-dropdown flex max-h-[600px] w-[380px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0 [&>[role=separator]]:mx-0"
+			<PopoverContent
+				class="notification-dropdown flex max-h-[600px] w-[380px] max-w-[calc(100vw-1rem)] flex-col overflow-hidden p-0"
 				align="end"
 				:side-offset="8"
+				aria-label="Notifications"
+				@open-auto-focus="handleOpenAutoFocus"
 			>
 				<div class="flex items-center justify-between gap-2 px-4 py-3">
 					<h3 class="m-0 text-base font-semibold text-ink">Notifications</h3>
@@ -40,7 +42,7 @@
 					</Button>
 				</div>
 
-				<DropdownMenuSeparator class="bg-line" />
+				<div class="my-1 h-px bg-line" role="separator"></div>
 
 				<div
 					v-if="loading && notifications.length === 0"
@@ -70,29 +72,29 @@
 					/>
 				</div>
 
-				<DropdownMenuSeparator
+				<div
 					v-if="notifications.length > 0"
-					class="my-0 bg-line"
-				/>
+					class="h-px bg-line"
+					role="separator"
+				></div>
 
 				<div v-if="notifications.length > 0" class="p-1.5">
 					<Button variant="ghost" class="w-full" @click="handleViewAll">
 						View all
 					</Button>
 				</div>
-			</DropdownMenuContent>
-		</DropdownMenu>
+			</PopoverContent>
+		</Popover>
 	</div>
 </template>
 
 <script>
 	import { Button } from '@/components/ui/button';
 	import {
-		DropdownMenu,
-		DropdownMenuContent,
-		DropdownMenuSeparator,
-		DropdownMenuTrigger,
-	} from '@/components/ui/dropdown-menu';
+		Popover,
+		PopoverContent,
+		PopoverTrigger,
+	} from '@/components/ui/popover';
 	import { useNotifications } from '@/composable/useNotifications';
 	import { notificationTarget } from '@/utils/notificationTypes';
 	import { Bell } from 'lucide-vue-next';
@@ -106,10 +108,9 @@
 		components: {
 			Bell,
 			Button,
-			DropdownMenu,
-			DropdownMenuContent,
-			DropdownMenuTrigger,
-			DropdownMenuSeparator,
+			Popover,
+			PopoverContent,
+			PopoverTrigger,
 			NotificationItem,
 		},
 		setup() {
@@ -186,6 +187,17 @@
 				router.push(`/${workspaceCode}/notifications`);
 			};
 
+			const handleOpenAutoFocus = (event) => {
+				// Focus the panel, not "Mark all as read": Enter there is irreversible.
+				// radix fires it on its popper wrapper, not on the panel.
+				event.preventDefault();
+				const el = event.target;
+				(el.matches('.notification-dropdown')
+					? el
+					: el.querySelector('.notification-dropdown')
+				)?.focus();
+			};
+
 			const handleDropdownOpen = (isOpen) => {
 				if (isOpen) {
 					clearNewNotificationIndicator();
@@ -220,6 +232,7 @@
 				handleDelete,
 				handleViewAll,
 				handleDropdownOpen,
+				handleOpenAutoFocus,
 			};
 		},
 	});

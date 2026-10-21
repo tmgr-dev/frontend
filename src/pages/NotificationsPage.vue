@@ -103,6 +103,7 @@
 				currentPage,
 				loadNotifications,
 				loadMore,
+				refreshUnreadCount,
 				markNotificationAsRead,
 				markAllNotificationsAsRead,
 				removeNotification,
@@ -167,6 +168,7 @@
 			onMounted(() => {
 				setDocumentTitle('Notifications');
 				void readPage(1);
+				void refreshUnreadCount();
 			});
 
 			return {

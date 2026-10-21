@@ -9,6 +9,10 @@ jest.mock('../usePusher', () => ({
 	}),
 }));
 jest.mock('@/actions/tmgr/notifications', () => ({}));
+const invalidate = jest.fn();
+jest.mock('@/utils/requestCache', () => ({
+	requestCache: { invalidate: (key: string) => invalidate(key) },
+}));
 beforeEach(() => {
 	jest.clearAllMocks();
 	jest.useFakeTimers();
@@ -35,6 +39,7 @@ test('user switch replaces subscription, and scope disposal releases handler and
 	expect(subscribe).toHaveBeenCalledTimes(2);
 	const handlers = (subscribe.mock.calls[1] as unknown as [number, any])[1];
 	handlers.onNotificationCreated({ notification: { id: 1, read_at: null } });
+	expect(invalidate).toHaveBeenCalledWith('notifications-unread-count');
 	expect(jest.getTimerCount()).toBe(1);
 	scope.stop();
 	expect(unsubscribe).toHaveBeenLastCalledWith(
