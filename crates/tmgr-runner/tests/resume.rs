@@ -494,9 +494,9 @@ fn a_session_that_cannot_be_rebuilt_from_its_metadata_says_what_to_do() {
         return;
     }
     for (field, edit) in [
-        ("cwd_id", None),
-        ("start_key", Some(serde_json::json!("k"))),
-        ("profile", Some(serde_json::json!("gone-agent"))),
+        ("cwd_id", serde_json::json!([1, 2])),
+        ("start_key", serde_json::json!("k")),
+        ("profile", serde_json::json!("gone-agent")),
     ] {
         let mut h = H::full();
         h.start();
@@ -509,20 +509,20 @@ fn a_session_that_cannot_be_rebuilt_from_its_metadata_says_what_to_do() {
         let path = h.sdir(&s.id).join("meta.json");
         let mut meta: serde_json::Value =
             serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        match edit {
-            Some(v) => meta[field] = v,
-            None => {
-                meta.as_object_mut().unwrap().remove(field);
-            }
-        }
+        meta[field] = edit;
         fs::write(&path, serde_json::to_vec(&meta).unwrap()).unwrap();
         h.start();
-        let err = h.client().resume(&s.id, 80, 24).unwrap_err().to_string();
-        if field == "profile" {
-            assert!(err.starts_with("unknown_profile"), "{field}: {err}");
-        } else {
-            assert!(err.starts_with("not_found"), "{field}: {err}");
-            assert!(err.contains("tmgr run"), "{field}: {err}");
+        let err = match h.client().resume(&s.id, 80, 24) {
+            Ok(r) => panic!("{field}: resumed as {}", r.session.id),
+            Err(e) => e.to_string(),
+        };
+        match field {
+            "profile" => assert!(err.starts_with("unknown_profile"), "{field}: {err}"),
+            "cwd_id" => assert!(err.starts_with("forbidden"), "{field}: {err}"),
+            _ => {
+                assert!(err.starts_with("not_found"), "{field}: {err}");
+                assert!(err.contains("tmgr run"), "{field}: {err}");
+            }
         }
         assert!(h.state_of(&s.id).is_some(), "{field}: session lost");
     }
