@@ -156,6 +156,11 @@ mod tests {
 
     fn seeded() -> (tempfile::TempDir, Store) {
         let d = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            d.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
         let store = Store::new(d.path());
         let q = |id: &str, text: &str, t: u64| Question {
             id: id.into(),

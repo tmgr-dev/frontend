@@ -13,6 +13,7 @@ impl Home {
         let h = Home {
             tmp: tempfile::tempdir().unwrap(),
         };
+        std::fs::set_permissions(h.tmp.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         std::fs::create_dir_all(h.run_dir()).unwrap();
         std::fs::set_permissions(h.run_dir(), std::fs::Permissions::from_mode(0o700)).unwrap();
         h

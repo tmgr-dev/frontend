@@ -100,6 +100,11 @@ mod tests {
     #[test]
     fn the_worker_finds_questions_in_the_session_home_and_reports_the_store() {
         let runner = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(
+            runner.path(),
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        )
+        .unwrap();
         let home = tempfile::tempdir().unwrap();
         let proj = home.path().join(".claude/projects/-work-x");
         std::fs::create_dir_all(&proj).unwrap();

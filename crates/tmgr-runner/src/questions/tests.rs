@@ -4,6 +4,12 @@ use crate::attach::Format;
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 
+fn private_tmp() -> tempfile::TempDir {
+    let t = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(t.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    t
+}
+
 const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 const SID: &str = "s_abcdefghjk";
 
@@ -38,7 +44,7 @@ fn tailer(dir: &Path, name: &str, resume: Option<u64>) -> (Tailer, std::path::Pa
 
 #[test]
 fn a_turn_is_emitted_once_when_settled() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(
         &p,
@@ -59,7 +65,7 @@ fn a_turn_is_emitted_once_when_settled() {
 
 #[test]
 fn a_human_reply_drops_the_open_turn() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(
         &p,
@@ -77,7 +83,7 @@ fn a_human_reply_drops_the_open_turn() {
 
 #[test]
 fn sidechains_tool_results_meta_and_blobs_are_ignored() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     let side = serde_json::json!({"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"sub?"}]}}).to_string();
     let result = serde_json::json!({"type":"user","message":{"content":[{"type":"tool_result","content":"x"}]}}).to_string();
@@ -91,7 +97,7 @@ fn sidechains_tool_results_meta_and_blobs_are_ignored() {
 
 #[test]
 fn ask_user_question_tool_calls_are_collected() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     let ask = serde_json::json!({"type":"assistant","message":{"content":[{"type":"tool_use","name":"AskUserQuestion","input":{"questions":[{"question":"Pick a\nstorage engine?"}]}}]}}).to_string();
     append(&p, &[user("go"), ask]);
@@ -100,7 +106,7 @@ fn ask_user_question_tool_calls_are_collected() {
 
 #[test]
 fn partial_lines_wait_for_their_newline() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(&p, &[user("go")]);
     let line = agent("Is it ok?");
@@ -123,7 +129,7 @@ fn partial_lines_wait_for_their_newline() {
 
 #[test]
 fn resuming_from_an_offset_rebuilds_the_open_turn() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(
         &p,
@@ -139,7 +145,7 @@ fn resuming_from_an_offset_rebuilds_the_open_turn() {
 
 #[test]
 fn a_big_file_starts_from_the_tail_and_emits_only_the_last_turn() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     let filler = "x".repeat(8000);
     let mut lines = Vec::new();
@@ -159,7 +165,7 @@ fn a_big_file_starts_from_the_tail_and_emits_only_the_last_turn() {
 
 #[test]
 fn a_rewritten_file_starts_over() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(
         &p,
@@ -176,7 +182,7 @@ fn a_rewritten_file_starts_over() {
 
 #[test]
 fn reply_text_is_capped() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(&p, &[user("go"), agent(&"word ".repeat(5000))]);
     assert!(t.poll(true).unwrap().text.chars().count() <= REPLY_CAP);
@@ -184,7 +190,7 @@ fn reply_text_is_capped() {
 
 #[test]
 fn codex_rollouts_are_read() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let p = d.path().join("rollout.jsonl");
     let human =
         serde_json::json!({"type":"event_msg","payload":{"type":"user_message","message":"hi"}})
@@ -202,7 +208,7 @@ fn codex_rollouts_are_read() {
 
 #[test]
 fn codex_rollouts_are_found_by_id_or_folder() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let day = d.path().join(".codex/sessions/2026/10/20");
     std::fs::create_dir_all(&day).unwrap();
     let a = day.join(format!("rollout-2026-10-20T10-00-00-{U}.jsonl"));
@@ -231,7 +237,7 @@ fn codex_rollouts_are_found_by_id_or_folder() {
 
 #[test]
 fn store_round_trip_marks_and_prefixes() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let store = Store::new(d.path());
     let q = |id: &str, t: u64| Question {
         id: id.into(),
@@ -274,7 +280,7 @@ fn store_round_trip_marks_and_prefixes() {
 
 #[test]
 fn store_rejects_bad_session_ids_and_symlinks_and_caps_size() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let store = Store::new(d.path());
     assert!(store.save("../evil", &SessionFile::default(), 1).is_err());
     assert_eq!(store.load("../evil"), SessionFile::default());
@@ -303,7 +309,7 @@ fn store_rejects_bad_session_ids_and_symlinks_and_caps_size() {
 
 #[test]
 fn old_questions_expire() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let store = Store::new(d.path());
     let mut file = SessionFile::default();
     file.questions.push(Question {
@@ -321,7 +327,7 @@ fn old_questions_expire() {
 
 #[test]
 fn settings_default_to_haiku_on() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let store = Store::new(d.path());
     assert!(store.settings().haiku);
     store.save_settings(Settings { haiku: false }).unwrap();
@@ -330,7 +336,7 @@ fn settings_default_to_haiku_on() {
 
 #[test]
 fn only_one_scanner_holds_the_lock() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let store = Store::new(d.path());
     let held = store.try_lock().unwrap().unwrap();
     assert!(store.try_lock().unwrap().is_none());
@@ -362,15 +368,15 @@ struct Rig {
 
 impl Rig {
     fn new() -> Rig {
-        let home = tempfile::tempdir().unwrap();
+        let home = private_tmp();
         let proj = home.path().join(".claude/projects/-work-x");
         std::fs::create_dir_all(&proj).unwrap();
         Rig {
-            runner: tempfile::tempdir().unwrap(),
+            runner: private_tmp(),
             transcript: proj.join(format!("{U}.jsonl")),
             home,
-            bin: tempfile::tempdir().unwrap(),
-            work: tempfile::tempdir().unwrap(),
+            bin: private_tmp(),
+            work: private_tmp(),
         }
     }
 
@@ -583,7 +589,7 @@ fn result(id: &str) -> String {
 
 #[test]
 fn an_answered_ask_user_question_is_dropped() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(
         &p,
@@ -600,7 +606,7 @@ fn an_answered_ask_user_question_is_dropped() {
 
 #[test]
 fn a_turn_with_a_running_tool_is_not_closed() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     append(
         &p,
@@ -614,7 +620,7 @@ fn a_turn_with_a_running_tool_is_not_closed() {
 
 #[test]
 fn a_huge_human_line_still_ends_the_turn() {
-    let d = tempfile::tempdir().unwrap();
+    let d = private_tmp();
     let (mut t, p) = tailer(d.path(), "a.jsonl", None);
     let big =
         serde_json::json!({"type":"user","message":{"content":"x".repeat(1_200_000)}}).to_string();
