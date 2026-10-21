@@ -175,12 +175,12 @@ fn finish_call(status: u16, body: Value) -> Result<Outcome> {
     Err(map_error(status, &body, SCOPE))
 }
 
-pub fn run_commits(client: &Client, task_id: u64, run_id: u64) -> Result<Vec<String>> {
+pub fn get_run(client: &Client, task_id: u64, run_id: u64, refresh: bool) -> Result<RunView> {
     let (status, body) = client.call(
         "GET",
         &format!("/api/tasks/{task_id}/agent-work"),
         None,
-        true,
+        refresh,
     )?;
     if !(200..300).contains(&status) {
         return Err(map_error(status, &body, "tasks:read"));
@@ -198,7 +198,13 @@ pub fn run_commits(client: &Client, task_id: u64, run_id: u64) -> Result<Vec<Str
             Error::not_found(format!("run {run_id} not found on that task"))
                 .hint("check --task and --run")
         })?;
-    Ok(parse_run(run)?.commits)
+    let mut view = parse_run(run)?;
+    view.task_id.get_or_insert(task_id);
+    Ok(view)
+}
+
+pub fn run_commits(client: &Client, task_id: u64, run_id: u64) -> Result<Vec<String>> {
+    Ok(get_run(client, task_id, run_id, true)?.commits)
 }
 
 pub struct StartBody<'a> {

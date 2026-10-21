@@ -370,7 +370,6 @@ struct ToolRun {
     task_id: Option<u64>,
     started_at: Option<String>,
     ended_at: Option<String>,
-    commits: Vec<String>,
     session_id: Option<String>,
 }
 
@@ -437,24 +436,11 @@ fn parse_tool_run(resp: &Value) -> Option<ToolRun> {
     }
     let text = |keys: &[&str]| pick(&v, keys).and_then(Value::as_str).map(str::to_string);
     let num = |keys: &[&str]| pick(&v, keys).and_then(Value::as_u64);
-    let commits = v
-        .get("commits")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|c| match c {
-                    Value::String(s) => Some(s.clone()),
-                    _ => c.get("sha").and_then(Value::as_str).map(str::to_string),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
     Some(ToolRun {
         id: num(&["id", "run_id", "runId"])?,
         task_id: num(&["task_id", "taskId"]),
         started_at: text(&["started_at", "startedAt"]),
         ended_at: text(&["ended_at", "endedAt"]),
-        commits,
         session_id: text(&["session_id", "sessionId"]),
     })
 }
@@ -501,21 +487,57 @@ fn upload_after_finish(task_id: Option<u64>, spawn: &dyn Fn(&[String])) {
     }
 }
 
-fn post_git_commits(client: &Client, run: &ToolRun, cwd: &Path) {
-    let Some(started) = run.started_at.as_deref().and_then(runfinish::parse_ts) else {
+const START_TOLERANCE_S: i64 = 2;
+
+fn same_start(tool: Option<&str>, server: Option<i64>) -> bool {
+    match (tool.and_then(runfinish::parse_ts), server) {
+        (Some(a), Some(b)) => (a - b).abs() <= START_TOLERANCE_S,
+        _ => false,
+    }
+}
+
+fn status_fits(kind: RunTool, status: &str) -> bool {
+    match kind {
+        RunTool::Start => status == "running",
+        RunTool::Finish => status != "running" && status != "unknown",
+    }
+}
+
+fn verified_run(
+    client: &Client,
+    run: &ToolRun,
+    task_id: Option<u64>,
+    kind: RunTool,
+) -> Option<agentwork::RunView> {
+    let task_id = task_id?;
+    let view = match agentwork::get_run(client, task_id, run.id, false) {
+        Ok(v) => v,
+        Err(e) => {
+            debug(&format!("run not verified: {}", e.message));
+            return None;
+        }
+    };
+    let fits = view.id == run.id
+        && view.task_id == Some(task_id)
+        && same_start(run.started_at.as_deref(), view.started_at)
+        && status_fits(kind, &view.status);
+    if !fits {
+        debug("run on the server does not match the tool response");
+    }
+    fits.then_some(view)
+}
+
+fn post_git_commits(client: &Client, view: &agentwork::RunView, cwd: &Path) {
+    let Some(started) = view.started_at else {
         return;
     };
-    let ended = run
-        .ended_at
-        .as_deref()
-        .and_then(runfinish::parse_ts)
-        .unwrap_or_else(now_s);
+    let ended = view.ended_at.unwrap_or_else(now_s);
     let git = |args: &[&str]| git_out(cwd, args);
-    let commits = runfinish::collect(&git, started, ended, &run.commits);
+    let commits = runfinish::collect(&git, view.branch.as_deref(), started, ended, &view.commits);
     if commits.is_empty() {
         return;
     }
-    if let Err(e) = agentwork::add_git_commits(client, run.id, &commits) {
+    if let Err(e) = agentwork::add_git_commits(client, view.id, &commits) {
         debug(&format!("git commits not sent: {}", e.message));
     }
 }
@@ -528,23 +550,29 @@ fn post_tool_use(env: &NotifyEnv, cwd: &Path, input: &Value) {
         debug("run response not understood");
         return;
     };
+    let task_id = run.task_id.or_else(|| {
+        runstate::load()
+            .runs
+            .iter()
+            .find(|r| r.run_id == run.id)
+            .map(|r| r.task_id)
+    });
     if kind == RunTool::Finish {
-        let task_id = run.task_id.or_else(|| {
-            runstate::load()
-                .runs
-                .iter()
-                .find(|r| r.run_id == run.id)
-                .map(|r| r.task_id)
-        });
         upload_after_finish(task_id, &runfinish::spawn_detached);
+        if !env.cfg.hook_git_commits() {
+            return;
+        }
     }
     let Some(client) = tool_client(env, run.id) else {
         debug("no usable login");
         return;
     };
+    let Some(view) = verified_run(&client, &run, task_id, kind) else {
+        return;
+    };
     match kind {
         RunTool::Start => bind_session(&client, &run, input),
-        RunTool::Finish => post_git_commits(&client, &run, cwd),
+        RunTool::Finish => post_git_commits(&client, &view, cwd),
     }
 }
 
@@ -638,7 +666,6 @@ mod tests {
             task_id: Some(8974),
             started_at: Some("2026-10-21T10:00:00Z".into()),
             ended_at: Some("2026-10-21T10:30:00Z".into()),
-            commits: vec!["abc1234".into()],
             session_id: None,
         }
     }

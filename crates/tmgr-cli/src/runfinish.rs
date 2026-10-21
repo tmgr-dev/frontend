@@ -28,24 +28,43 @@ fn known_sha(known: &[String], sha: &str) -> bool {
     })
 }
 
-pub fn collect(git: Git, started: i64, ended: i64, known: &[String]) -> Vec<GitCommit> {
+fn local_branch(git: Git, name: &str) -> bool {
+    git(&["check-ref-format", "--branch", name]).as_deref() == Some(name)
+        && git(&["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")]).is_some()
+}
+
+pub fn collect(
+    git: Git,
+    run_branch: Option<&str>,
+    started: i64,
+    ended: i64,
+    known: &[String],
+) -> Vec<GitCommit> {
     let Some(email) = git(&["config", "user.email"]) else {
         return Vec::new();
     };
     let since = format!("--since={}", started - WINDOW_GRACE_S);
+    let on_run_branch = run_branch.filter(|b| local_branch(git, b));
+    let (tip, branch) = match on_run_branch {
+        Some(b) => (format!("refs/heads/{b}"), Some(b.to_string())),
+        None => (
+            "HEAD".to_string(),
+            git(&["rev-parse", "--abbrev-ref", "HEAD"]).filter(|b| b != "HEAD"),
+        ),
+    };
     let args = [
         "log",
-        "--all",
         "-n",
         LOG_LIMIT,
         since.as_str(),
         "--format=%H%x1f%ae%x1f%ct%x1f%s",
+        tip.as_str(),
+        "--",
     ];
     let Some(out) = git(&args) else {
         return Vec::new();
     };
     let repo = git(&["remote", "get-url", "origin"]).and_then(|u| parse_origin(&u));
-    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"]).filter(|b| b != "HEAD");
     let until = ended + WINDOW_GRACE_S;
     let mut found: Vec<GitCommit> = out
         .lines()
@@ -162,22 +181,69 @@ mod tests {
     }
 
     #[test]
-    fn only_my_commits_inside_the_interval_on_any_branch_are_collected() {
+    fn only_my_commits_inside_the_interval_of_head_are_collected() {
         let t = repo();
         let d = t.path();
         let a = commit(d, "inside-a", T0 + 100, ME);
         commit(d, "other-author", T0 + 150, "you@example.com");
         sh(d, &["checkout", "-q", "-b", "side"], None, ME);
-        let b = commit(d, "inside-b", T0 + 200, ME);
+        commit(d, "inside-b", T0 + 200, ME);
         sh(d, &["checkout", "-q", "main"], None, ME);
         let edge = commit(d, "grace", T0 + 1000 + 30, ME);
         commit(d, "after", T0 + 1000 + 600, ME);
-        let got = collect(&runner(d), T0, T0 + 1000, &[]);
+        let got = collect(&runner(d), None, T0, T0 + 1000, &[]);
         let shas: Vec<&str> = got.iter().map(|c| c.sha.as_str()).collect();
-        assert_eq!(shas, [a.as_str(), b.as_str(), edge.as_str()]);
+        assert_eq!(shas, [a.as_str(), edge.as_str()]);
         assert_eq!(got[0].message, "inside-a");
         assert_eq!(got[0].repo.as_deref(), Some("acme/tool"));
         assert_eq!(got[0].branch.as_deref(), Some("main"));
+    }
+
+    #[test]
+    fn stashes_and_other_branches_are_not_collected() {
+        let t = repo();
+        let d = t.path();
+        let mine = commit(d, "mine", T0 + 100, ME);
+        std::fs::write(d.join("mine.txt"), "changed").unwrap();
+        sh(
+            d,
+            &["stash", "push", "-q"],
+            Some(&format!("{} +0000", T0 + 150)),
+            ME,
+        );
+        sh(d, &["checkout", "-q", "-b", "other-task"], None, ME);
+        commit(d, "other-task-work", T0 + 200, ME);
+        sh(d, &["checkout", "-q", "main"], None, ME);
+        let got = collect(&runner(d), None, T0, T0 + 1000, &[]);
+        let shas: Vec<&str> = got.iter().map(|c| c.sha.as_str()).collect();
+        assert_eq!(shas, [mine.as_str()]);
+    }
+
+    #[test]
+    fn the_run_branch_is_used_when_it_differs_from_head() {
+        let t = repo();
+        let d = t.path();
+        sh(d, &["checkout", "-q", "-b", "task-1"], None, ME);
+        let on_run = commit(d, "on-run", T0 + 100, ME);
+        sh(d, &["checkout", "-q", "main"], None, ME);
+        commit(d, "on-head", T0 + 200, ME);
+        let got = collect(&runner(d), Some("task-1"), T0, T0 + 1000, &[]);
+        let shas: Vec<&str> = got.iter().map(|c| c.sha.as_str()).collect();
+        assert_eq!(shas, [on_run.as_str()]);
+        assert_eq!(got[0].branch.as_deref(), Some("task-1"));
+    }
+
+    #[test]
+    fn an_unknown_or_malformed_run_branch_falls_back_to_head() {
+        let t = repo();
+        let d = t.path();
+        let on_head = commit(d, "on-head", T0 + 100, ME);
+        for bad in ["gone", "-p", "a..b", "@{-1}", "origin/main"] {
+            let got = collect(&runner(d), Some(bad), T0, T0 + 1000, &[]);
+            let shas: Vec<&str> = got.iter().map(|c| c.sha.as_str()).collect();
+            assert_eq!(shas, [on_head.as_str()], "{bad}");
+            assert_eq!(got[0].branch.as_deref(), Some("main"), "{bad}");
+        }
     }
 
     #[test]
@@ -187,7 +253,7 @@ mod tests {
         let a = commit(d, "inside-a", T0 + 100, ME);
         let b = commit(d, "inside-b", T0 + 200, ME);
         let known = vec![format!("{} reported", &a[..7])];
-        let got = collect(&runner(d), T0, T0 + 1000, &known);
+        let got = collect(&runner(d), None, T0, T0 + 1000, &known);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].sha, b);
     }
@@ -195,7 +261,7 @@ mod tests {
     #[test]
     fn no_configured_email_or_no_git_means_nothing() {
         let none = |_: &[&str]| None;
-        assert!(collect(&none, T0, T0 + 10, &[]).is_empty());
+        assert!(collect(&none, None, T0, T0 + 10, &[]).is_empty());
         let t = repo();
         let no_email = |args: &[&str]| {
             if args.first() == Some(&"config") {
@@ -204,7 +270,7 @@ mod tests {
                 runner(t.path())(args)
             }
         };
-        assert!(collect(&no_email, T0 - 7200, T0 + 10, &[]).is_empty());
+        assert!(collect(&no_email, None, T0 - 7200, T0 + 10, &[]).is_empty());
     }
 
     #[test]

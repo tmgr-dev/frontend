@@ -63,6 +63,14 @@ async fn print_shows_the_snippet_and_writes_nothing() {
     assert!(snippet.contains("\"Stop\"") && snippet.contains("hook claude stop"));
     assert!(snippet.contains("\"PostToolUse\"") && snippet.contains("hook claude post-tool-use"));
     assert!(!env.tmp.path().join(".claude").exists());
+    let human = env
+        .cmd()
+        .args(["hook", "install", "claude", "--print"])
+        .output()
+        .unwrap();
+    let note = text(&human.stderr);
+    assert!(note.contains("hook_git_commits false") && note.contains("sha, subject"));
+    assert!(!text(&human.stdout).contains("hook_git_commits"));
     let out = env
         .cmd()
         .args(["hook", "install", "codex", "--print"])
@@ -103,6 +111,7 @@ async fn user_level_install_needs_a_terminal_and_ignores_yes() {
         diff.contains("- ") || diff.contains("+ "),
         "the diff is shown before asking: {diff}"
     );
+    assert!(diff.contains("hook_git_commits false"));
 }
 
 #[tokio::test(flavor = "multi_thread")]

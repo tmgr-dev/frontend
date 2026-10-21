@@ -356,3 +356,51 @@ async fn finish_posts_my_git_commits_from_the_run_interval() {
     assert_eq!(body["commits"][0]["message"], "mine");
     assert_valid("agent_run", &stdout_json(&out));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn finish_posts_no_git_commits_when_the_opt_out_is_set() {
+    let env = Env::new().await;
+    env.login_seed();
+    let t0 = 1_800_000_000;
+    let started = chrono::DateTime::from_timestamp(t0, 0)
+        .unwrap()
+        .to_rfc3339();
+    let ended = chrono::DateTime::from_timestamp(t0 + 600, 0)
+        .unwrap()
+        .to_rfc3339();
+    mock_run(
+        &env,
+        "POST",
+        "/api/agent-work/41/finish",
+        200,
+        run_view(json!({"status": "succeeded", "started_at": started, "ended_at": ended})),
+    )
+    .await;
+    mock_run(
+        &env,
+        "POST",
+        "/api/agent-work/41/commits",
+        200,
+        run_view(json!({})),
+    )
+    .await;
+    let set = env
+        .cmd()
+        .args(["config", "set", "hook_git_commits", "false"])
+        .output()
+        .unwrap();
+    assert!(set.status.success(), "{}", text(&set.stderr));
+    let repo = init_repo(&env.tmp.path().join("repo"));
+    git(&repo, &["config", "user.email", "me@example.com"]);
+    commit_at(&repo, "mine", t0 + 60, "me@example.com");
+    let out = env
+        .tmgr_in(&repo, None)
+        .args(["agent", "finish", "--run", "41", "--status", "succeeded"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    assert!(env
+        .requests_to("/api/agent-work/41/commits")
+        .await
+        .is_empty());
+}

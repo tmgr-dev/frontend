@@ -7,13 +7,14 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 13] = [
+pub const KEYS: [&str; 14] = [
     "server",
     "default_workspace",
     "web_url",
     "branch_template",
     "review_status",
     "upload_status",
+    "hook_git_commits",
     "local_user_id",
     "attach.sidebar_width",
     "attach.theme",
@@ -73,6 +74,8 @@ pub struct Config {
     pub review_status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upload_status: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hook_git_commits: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credential_store: Option<String>,
     /// The user id the CLI acts as in local workspaces, when the desktop is signed in to an account.
@@ -141,6 +144,7 @@ impl Config {
             "branch_template" => self.branch_template.clone(),
             "review_status" => self.review_status.clone(),
             "upload_status" => Some(self.upload_status().to_string()),
+            "hook_git_commits" => Some(self.hook_git_commits().to_string()),
             "local_user_id" => self.local_user_id.map(|id| id.to_string()),
             "attach.sidebar_width" => self.attach.sidebar_width.map(|w| w.to_string()),
             "attach.theme" => self.attach.theme.clone(),
@@ -193,6 +197,13 @@ impl Config {
                     Error::usage("invalid upload_status").hint("use true or false")
                 })?;
                 self.upload_status = Some(v);
+                Ok(v.to_string())
+            }
+            "hook_git_commits" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage("invalid hook_git_commits").hint("use true or false")
+                })?;
+                self.hook_git_commits = Some(v);
                 Ok(v.to_string())
             }
             "local_user_id" => {
@@ -256,6 +267,10 @@ impl Config {
 
     pub fn upload_status(&self) -> bool {
         self.upload_status.unwrap_or(false)
+    }
+
+    pub fn hook_git_commits(&self) -> bool {
+        self.hook_git_commits.unwrap_or(true)
     }
 
     pub fn branch_template(&self) -> &str {
@@ -514,6 +529,18 @@ mod tests {
         assert!(Config::load(tmp.path()).unwrap().upload_status());
         assert_eq!(c.set("upload_status", "0").unwrap(), "false");
         assert!(!c.upload_status());
+    }
+
+    #[test]
+    fn hook_git_commits_is_on_by_default_and_parses_booleans() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut c = Config::default();
+        assert!(c.hook_git_commits());
+        assert_eq!(c.get("hook_git_commits").unwrap().as_deref(), Some("true"));
+        assert_eq!(c.set("hook_git_commits", "off").unwrap(), "false");
+        assert!(c.set("hook_git_commits", "maybe").is_err());
+        c.save(tmp.path()).unwrap();
+        assert!(!Config::load(tmp.path()).unwrap().hook_git_commits());
     }
 
     #[cfg(unix)]

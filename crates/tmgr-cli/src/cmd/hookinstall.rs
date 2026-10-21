@@ -454,6 +454,14 @@ fn exe_path() -> Result<String> {
         .ok_or_else(|| Error::internal("the path of this binary is not valid UTF-8"))
 }
 
+const CLAUDE_NOTE: &str = "The PostToolUse hook sets the session id on agent runs and adds your commits made during a run (sha, subject, repository, branch) from the run's branch; turn off with `tmgr config set hook_git_commits false`.";
+
+fn note(ctx: &Ctx, args: &HookInstallArgs, remove: bool) {
+    if args.target == HookTarget::Claude && !remove && !ctx.json {
+        eprintln!("{CLAUDE_NOTE}");
+    }
+}
+
 pub fn run(ctx: &Ctx, args: &HookInstallArgs, remove: bool) -> Result<Output> {
     let exe = exe_path()?;
     let path = target_path(args.target, args.project)?;
@@ -467,6 +475,7 @@ pub fn run(ctx: &Ctx, args: &HookInstallArgs, remove: bool) -> Result<Output> {
             HookTarget::Claude => claude_snippet(&exe),
             HookTarget::Codex => codex_snippet(&exe),
         };
+        note(ctx, args, remove);
         return Ok(Output::new(
             json!({"target": name, "scope": scope, "file": path.display().to_string(), "snippet": snippet, "changed": false, "backup": null}),
             snippet.trim_end().to_string(),
@@ -487,6 +496,7 @@ pub fn run(ctx: &Ctx, args: &HookInstallArgs, remove: bool) -> Result<Output> {
     }
     let diff = init::diff(&change.old, &change.new);
     if args.print {
+        note(ctx, args, remove);
         return Ok(Output::new(
             json!({"target": name, "scope": scope, "file": file, "diff": diff, "changed": false, "backup": null}),
             format!("{file}\n{}", diff.trim_end()),
@@ -495,6 +505,7 @@ pub fn run(ctx: &Ctx, args: &HookInstallArgs, remove: bool) -> Result<Output> {
     if !ctx.json {
         eprintln!("{file}");
         eprint!("{diff}");
+        note(ctx, args, remove);
     }
     interact::confirm(
         &format!("Write these changes to {file}?"),
