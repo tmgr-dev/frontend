@@ -30,10 +30,11 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, focus_on, layout, mode_changes, probe, render, reset_modes, Action,
-    AgentTitle, AttentionTracker, Cmd, Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit,
-    NewRequest, NewSession, PaletteEdit, PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource,
-    SessionRow, SidebarEdit, SplitDir, ViewState,
+    cursor, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11, probe,
+    render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
+    InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
+    PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir, ThemeKind,
+    ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -1370,6 +1371,36 @@ fn poller(
     }
 }
 
+fn query_background() -> Option<(u8, u8, u8)> {
+    let mut out = io::stdout();
+    out.write_all(OSC11_QUERY).ok()?;
+    out.flush().ok()?;
+    let deadline = Instant::now() + Duration::from_millis(250);
+    let mut reply = Vec::new();
+    while Instant::now() < deadline && reply.len() < 128 {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let mut fds = libc::pollfd {
+            fd: libc::STDIN_FILENO,
+            events: libc::POLLIN,
+            revents: 0,
+        };
+        let ready = unsafe { libc::poll(&mut fds, 1, left.as_millis() as libc::c_int) };
+        if ready <= 0 {
+            break;
+        }
+        let mut buf = [0u8; 64];
+        let n = unsafe { libc::read(libc::STDIN_FILENO, buf.as_mut_ptr().cast(), buf.len()) };
+        if n <= 0 {
+            break;
+        }
+        reply.extend_from_slice(&buf[..n as usize]);
+        if reply.contains(&0x07) || reply.windows(2).any(|w| w == b"\x1b\\") {
+            break;
+        }
+    }
+    parse_osc11(&reply)
+}
+
 pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
     run_with(cfg, initial, true)
 }
@@ -1385,11 +1416,12 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     if let Ok((cols, _)) = ratatui::crossterm::terminal::size() {
         view.width = cols;
     }
-    view.sidebar_default = tmgr_core::config::config_dir()
+    let attach_cfg = tmgr_core::config::config_dir()
         .ok()
         .and_then(|d| tmgr_core::config::Config::load(&d).ok())
-        .and_then(|c| c.attach.sidebar_width)
-        .unwrap_or(view.sidebar_default);
+        .map(|c| c.attach)
+        .unwrap_or_default();
+    view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
     if let Some(prefs) = ctl
         .layout_get()
         .ok()
@@ -1425,6 +1457,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         let _ = out.write_all(focus_on());
         let _ = out.flush();
     }
+    view.theme = match attach_cfg.theme.as_deref().and_then(ThemeKind::parse) {
+        Some(kind) => kind,
+        None => query_background().map_or(ThemeKind::Dark, kind_for_background),
+    };
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
         .map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     let _ = terminal.clear();

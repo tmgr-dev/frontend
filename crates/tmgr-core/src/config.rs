@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 8] = [
+pub const KEYS: [&str; 9] = [
     "server",
     "default_workspace",
     "web_url",
@@ -16,6 +16,7 @@ pub const KEYS: [&str; 8] = [
     "upload_status",
     "local_user_id",
     "attach.sidebar_width",
+    "attach.theme",
 ];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
 pub const MAX_SIDEBAR_WIDTH: u16 = 60;
@@ -25,7 +26,11 @@ pub const DEFAULT_REVIEW_STATUS: &str = "Review";
 pub struct AttachConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sidebar_width: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<String>,
 }
+
+pub const ATTACH_THEMES: [&str; 4] = ["auto", "dark", "light", "high-contrast"];
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
@@ -111,6 +116,7 @@ impl Config {
             "upload_status" => Some(self.upload_status().to_string()),
             "local_user_id" => self.local_user_id.map(|id| id.to_string()),
             "attach.sidebar_width" => self.attach.sidebar_width.map(|w| w.to_string()),
+            "attach.theme" => self.attach.theme.clone(),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -179,6 +185,15 @@ impl Config {
                     })?;
                 self.attach.sidebar_width = Some(w);
                 Ok(w.to_string())
+            }
+            "attach.theme" => {
+                let v = value.trim().to_ascii_lowercase();
+                if !ATTACH_THEMES.contains(&v.as_str()) {
+                    return Err(Error::usage("invalid attach.theme")
+                        .hint(format!("use one of: {}", ATTACH_THEMES.join(", "))));
+                }
+                self.attach.theme = Some(v.clone());
+                Ok(v)
             }
             _ => Err(unknown_key(key)),
         }
@@ -364,6 +379,17 @@ mod tests {
         assert!(!toml::to_string_pretty(&Config::default())
             .unwrap()
             .contains("attach"));
+    }
+
+    #[test]
+    fn attach_theme_accepts_only_known_names() {
+        let mut cfg = Config::default();
+        assert!(cfg.set("attach.theme", "solarized").is_err());
+        assert_eq!(cfg.set("attach.theme", " Light ").unwrap(), "light");
+        assert_eq!(cfg.set("attach.theme", "auto").unwrap(), "auto");
+        assert_eq!(cfg.get("attach.theme").unwrap().as_deref(), Some("auto"));
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.attach.theme.as_deref(), Some("auto"));
     }
 
     #[test]

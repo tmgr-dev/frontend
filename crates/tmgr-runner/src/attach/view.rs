@@ -3,6 +3,7 @@ use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
+use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
@@ -113,6 +114,7 @@ pub struct ViewState {
     pub sidebar: Option<bool>,
     pub sidebar_w: Option<u16>,
     pub sidebar_default: u16,
+    pub theme: ThemeKind,
     border_drag: Option<Option<u16>>,
     pub help: bool,
     pub scroll: Option<ScrollState>,
@@ -315,6 +317,7 @@ impl ViewState {
             sidebar: None,
             sidebar_w: None,
             sidebar_default: SIDEBAR_WIDTH,
+            theme: ThemeKind::default(),
             border_drag: None,
             help: false,
             scroll: None,

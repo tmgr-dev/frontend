@@ -4737,3 +4737,118 @@ fn dragged_width_is_capped_to_what_the_terminal_can_show() {
     v.apply(Cmd::SidebarNarrower);
     assert_eq!(v.sidebar_width(), 38);
 }
+
+fn fg_of(term: &Terminal<TestBackend>, glyph: &str) -> Option<ratatui::style::Color> {
+    term.backend()
+        .buffer()
+        .content()
+        .iter()
+        .enumerate()
+        .find(|(i, c)| i % 140 < 24 && c.symbol() == glyph)
+        .map(|(_, c)| c.fg)
+}
+
+fn themed(kind: ThemeKind) -> Terminal<TestBackend> {
+    let mut v = two_pane(140);
+    v.theme = kind;
+    let mut term = Terminal::new(TestBackend::new(140, 22)).unwrap();
+    let s = screens();
+    term.draw(|f| render(f, &v, &s)).unwrap();
+    term
+}
+
+#[test]
+fn theme_palettes_snapshot() {
+    let mut out = String::new();
+    for kind in [ThemeKind::Dark, ThemeKind::Light, ThemeKind::HighContrast] {
+        out.push_str(&format!("{}\n{:#?}\n", kind.name(), kind.colors()));
+    }
+    assert_snapshot("theme_palettes", out.trim_end());
+}
+
+#[test]
+fn state_badges_take_their_colours_from_the_theme() {
+    for kind in [ThemeKind::Dark, ThemeKind::Light, ThemeKind::HighContrast] {
+        let term = themed(kind);
+        let c = kind.colors();
+        assert_eq!(fg_of(&term, "◆"), Some(c.accent), "{kind:?} blocked");
+        assert_eq!(fg_of(&term, "●"), Some(c.working), "{kind:?} working");
+        assert_eq!(fg_of(&term, "◌"), Some(c.waiting), "{kind:?} waiting");
+        assert_eq!(fg_of(&term, "✓"), Some(c.ok), "{kind:?} ok");
+    }
+}
+
+#[test]
+fn light_theme_never_paints_white_text_and_dark_never_black() {
+    use ratatui::style::Color as C;
+    let light = themed(ThemeKind::Light);
+    assert!(light
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .all(|c| c.fg != C::White && c.bg != C::Indexed(237)));
+    let dark = themed(ThemeKind::Dark);
+    assert!(dark
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .all(|c| c.fg != C::Black));
+}
+
+#[test]
+fn theme_does_not_change_the_text_layout() {
+    let dark = text(&themed(ThemeKind::Dark));
+    assert_eq!(dark, text(&themed(ThemeKind::Light)));
+    assert_eq!(dark, text(&themed(ThemeKind::HighContrast)));
+    assert_snapshot("wide", &dark);
+}
+
+#[test]
+fn theme_names_parse() {
+    assert_eq!(ThemeKind::parse("Light"), Some(ThemeKind::Light));
+    assert_eq!(
+        ThemeKind::parse(" high-contrast "),
+        Some(ThemeKind::HighContrast)
+    );
+    assert_eq!(ThemeKind::parse("dark"), Some(ThemeKind::Dark));
+    assert_eq!(ThemeKind::parse("auto"), None);
+    assert_eq!(ThemeKind::parse("neon"), None);
+}
+
+#[test]
+fn osc11_replies_parse_in_every_width_and_terminator() {
+    assert_eq!(
+        parse_osc11(b"\x1b]11;rgb:ffff/ffff/ffff\x07"),
+        Some((255, 255, 255))
+    );
+    assert_eq!(
+        parse_osc11(b"\x1b]11;rgb:0000/0000/0000\x1b\\"),
+        Some((0, 0, 0))
+    );
+    assert_eq!(
+        parse_osc11(b"\x1b]11;rgb:1e1e/1e1e/2e2e\x07"),
+        Some((30, 30, 46))
+    );
+    assert_eq!(
+        parse_osc11(b"\x1b]11;rgb:ff/80/00\x07"),
+        Some((255, 128, 0))
+    );
+    assert_eq!(parse_osc11(b"\x1b]11;rgb:f/0/8\x07"), Some((255, 0, 136)));
+    assert_eq!(parse_osc11(b"\x1b]11;rgb:ffff/ffff\x07"), None);
+    assert_eq!(parse_osc11(b"\x1b]11;rgb:gg/00/00\x07"), None);
+    assert_eq!(parse_osc11(b"\x1b]11;rgb:00/00/00/00\x07"), None);
+    assert_eq!(parse_osc11(b"\x1b]11;#ffffff\x07"), None);
+    assert_eq!(parse_osc11(b""), None);
+    assert_eq!(parse_osc11(&[0xff, 0xfe]), None);
+}
+
+#[test]
+fn background_brightness_picks_the_theme() {
+    assert_eq!(kind_for_background((255, 255, 255)), ThemeKind::Light);
+    assert_eq!(kind_for_background((253, 246, 227)), ThemeKind::Light);
+    assert_eq!(kind_for_background((0, 0, 0)), ThemeKind::Dark);
+    assert_eq!(kind_for_background((30, 30, 46)), ThemeKind::Dark);
+    assert_eq!(kind_for_background((0, 0, 255)), ThemeKind::Dark);
+}

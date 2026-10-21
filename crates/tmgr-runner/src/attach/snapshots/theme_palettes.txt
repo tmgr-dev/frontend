@@ -1,0 +1,72 @@
+dark
+Colors {
+    accent: LightRed,
+    sidebar_bg: Indexed(
+        237,
+    ),
+    dim: DarkGray,
+    strong: White,
+    working: Yellow,
+    waiting: Cyan,
+    ok: Green,
+    bad: Red,
+    warn: Yellow,
+}
+light
+Colors {
+    accent: Rgb(
+        192,
+        40,
+        0,
+    ),
+    sidebar_bg: Rgb(
+        226,
+        226,
+        226,
+    ),
+    dim: Rgb(
+        110,
+        110,
+        110,
+    ),
+    strong: Black,
+    working: Rgb(
+        156,
+        103,
+        0,
+    ),
+    waiting: Rgb(
+        0,
+        110,
+        130,
+    ),
+    ok: Rgb(
+        0,
+        120,
+        40,
+    ),
+    bad: Rgb(
+        176,
+        0,
+        32,
+    ),
+    warn: Rgb(
+        156,
+        103,
+        0,
+    ),
+}
+high-contrast
+Colors {
+    accent: LightMagenta,
+    sidebar_bg: Indexed(
+        240,
+    ),
+    dim: Gray,
+    strong: White,
+    working: LightYellow,
+    waiting: LightCyan,
+    ok: LightGreen,
+    bad: LightRed,
+    warn: LightYellow,
+}
