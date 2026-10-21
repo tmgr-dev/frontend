@@ -24,6 +24,7 @@ pub enum Cmd {
     Resize(Nav),
     Zoom,
     Sidebar,
+    Group,
     ScrollMode,
     Help,
     Picker,

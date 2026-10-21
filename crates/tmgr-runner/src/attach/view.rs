@@ -2,14 +2,17 @@ use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
+use super::place::Loc;
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
 use tmgr_ipc::api::{MouseMode, State, StateKind};
 
 pub const SIDEBAR_WIDTH: u16 = 24;
 pub const WIDE_COLS: u16 = 100;
 const MIN_PANE_COLS: u16 = 10;
+const MAX_GROUP_KEYS: usize = 64;
 pub const WHEEL_LINES: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,18 +119,49 @@ pub struct ViewState {
     pub new_place: Option<Place>,
     pub sidebar_focus: Option<SidebarItem>,
     pub allow_new: bool,
+    pub locs: HashMap<String, Loc>,
+    pub grouped: bool,
+    pub(crate) collapsed: HashSet<String>,
+    group_order: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SidebarItem {
+    Group(String),
     Session(String),
     New,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SidebarLine {
+    Header {
+        key: String,
+        count: usize,
+        collapsed: bool,
+    },
+    Session {
+        id: String,
+        indent: bool,
+    },
+    Detail(String),
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SidebarLayout {
-    pub rows: Vec<(String, u16)>,
+    pub lines: Vec<(SidebarLine, u16)>,
     pub new_row: Option<u16>,
+}
+
+impl SidebarLayout {
+    pub fn rows(&self) -> Vec<(String, u16)> {
+        self.lines
+            .iter()
+            .filter_map(|(l, y)| match l {
+                SidebarLine::Session { id, .. } => Some((id.clone(), *y)),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -200,6 +234,10 @@ impl ViewState {
             new_place: None,
             sidebar_focus: None,
             allow_new: true,
+            locs: HashMap::new(),
+            grouped: false,
+            collapsed: HashSet::new(),
+            group_order: Vec::new(),
         }
     }
 
@@ -360,9 +398,13 @@ impl ViewState {
         };
         let sl = self.sidebar_layout(rect);
         let mut items: Vec<SidebarItem> = sl
-            .rows
+            .lines
             .into_iter()
-            .map(|(id, _)| SidebarItem::Session(id))
+            .filter_map(|(line, _)| match line {
+                SidebarLine::Header { key, .. } => Some(SidebarItem::Group(key)),
+                SidebarLine::Session { id, .. } => Some(SidebarItem::Session(id)),
+                SidebarLine::Detail(_) => None,
+            })
             .collect();
         if sl.new_row.is_some() {
             items.push(SidebarItem::New);
@@ -376,13 +418,179 @@ impl ViewState {
         }
         let new_row = (self.allow_new && rect.height >= 4).then(|| rect.bottom() - 1);
         let last = new_row.unwrap_or(rect.bottom());
-        let rows = self
-            .sidebar_rows()
-            .into_iter()
-            .zip(rect.y + 1..last)
-            .map(|(r, y)| (r.id.clone(), y))
+        let room = usize::from(last.saturating_sub(rect.y + 1));
+        let mut plan = self.sidebar_plan();
+        if plan.len() > room {
+            plan.retain(|l| !matches!(l, SidebarLine::Detail(_)));
+        }
+        let lines = plan.into_iter().zip(rect.y + 1..last).collect();
+        SidebarLayout { lines, new_row }
+    }
+
+    fn group_key(&self, id: &str) -> String {
+        self.locs
+            .get(id)
+            .map_or_else(|| format!("\0{id}"), |l| l.root.clone())
+    }
+
+    fn groups(&self) -> Vec<(String, Vec<&SessionRow>)> {
+        let mut out: Vec<(String, Vec<&SessionRow>)> = self
+            .group_order
+            .iter()
+            .map(|k| (k.clone(), Vec::new()))
             .collect();
-        SidebarLayout { rows, new_row }
+        for r in &self.sessions {
+            let key = self.group_key(&r.id);
+            match out.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, m)) => m.push(r),
+                None => out.push((key, vec![r])),
+            }
+        }
+        out.retain(|(_, m)| !m.is_empty());
+        out
+    }
+
+    fn sidebar_plan(&self) -> Vec<SidebarLine> {
+        let push = |r: &SessionRow, out: &mut Vec<SidebarLine>, indent: bool| {
+            out.push(SidebarLine::Session {
+                id: r.id.clone(),
+                indent,
+            });
+            if !indent && self.locs.contains_key(&r.id) {
+                out.push(SidebarLine::Detail(r.id.clone()));
+            }
+        };
+        let mut out = Vec::new();
+        if !self.grouped {
+            for r in self.sidebar_rows() {
+                push(r, &mut out, false);
+            }
+            return out;
+        }
+        for (key, members) in self.groups() {
+            if let [only] = members.as_slice() {
+                push(only, &mut out, false);
+                continue;
+            }
+            let collapsed = self.collapsed.contains(&key);
+            out.push(SidebarLine::Header {
+                key,
+                count: members.len(),
+                collapsed,
+            });
+            if !collapsed {
+                for r in members {
+                    push(r, &mut out, true);
+                }
+            }
+        }
+        out
+    }
+
+    pub fn group_title(&self, key: &str) -> Option<(String, Option<String>)> {
+        let first = self
+            .sessions
+            .iter()
+            .find(|r| self.group_key(&r.id) == key)?;
+        let loc = self.locs.get(&first.id)?;
+        Some((super::place::tail2(&loc.root), loc.branch.clone()))
+    }
+
+    pub fn group_blocked(&self, key: &str) -> bool {
+        self.sessions
+            .iter()
+            .any(|r| r.state.kind == StateKind::Blocked && self.group_key(&r.id) == key)
+    }
+
+    pub fn group_holds(&self, key: &str, session: &str) -> bool {
+        self.group_key(session) == key
+    }
+
+    pub fn is_collapsed(&self, key: &str) -> bool {
+        self.collapsed.contains(key)
+    }
+
+    fn toggle_group(&mut self, key: &str) {
+        if !self.collapsed.remove(key) {
+            self.collapsed.insert(key.to_string());
+        }
+    }
+
+    fn refresh_groups(&mut self) {
+        let ids: HashSet<&str> = self.sessions.iter().map(|r| r.id.as_str()).collect();
+        self.locs.retain(|id, _| ids.contains(id.as_str()));
+        let keys: Vec<String> = self
+            .sessions
+            .iter()
+            .map(|r| self.group_key(&r.id))
+            .collect();
+        self.group_order
+            .retain(|k| !k.starts_with('\0') || keys.contains(k));
+        for k in &keys {
+            if !self.group_order.contains(k) {
+                self.group_order.push(k.clone());
+            }
+        }
+        self.collapsed.retain(|k| keys.contains(k));
+        let mut extra = self.group_order.len().saturating_sub(MAX_GROUP_KEYS);
+        self.group_order.retain(|k| {
+            let drop = extra > 0 && !keys.contains(k);
+            extra -= usize::from(drop);
+            !drop
+        });
+    }
+
+    pub fn set_locs(&mut self, area: Rect, updates: Vec<(String, Loc)>) -> bool {
+        let before = self.sidebar_items(area);
+        let mut changed = false;
+        for (id, loc) in updates {
+            if !self.sessions.iter().any(|r| r.id == id) {
+                continue;
+            }
+            if self.locs.get(&id) != Some(&loc) {
+                self.locs.insert(id, loc);
+                changed = true;
+            }
+        }
+        if changed {
+            self.refresh_groups();
+            self.keep_sidebar_focus(area, &before);
+        }
+        changed
+    }
+
+    pub fn visible_sessions(&self, area: Rect) -> Vec<String> {
+        let Some(rect) = layout(area, self).sidebar else {
+            return Vec::new();
+        };
+        self.sidebar_layout(rect)
+            .rows()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    fn nav_order(&self) -> Vec<&str> {
+        if !self.grouped {
+            return self.sessions.iter().map(|r| r.id.as_str()).collect();
+        }
+        self.groups()
+            .into_iter()
+            .flat_map(|(_, m)| m)
+            .map(|r| r.id.as_str())
+            .collect()
+    }
+
+    fn folded(&self) -> HashSet<&str> {
+        if !self.grouped {
+            return HashSet::new();
+        }
+        self.groups()
+            .into_iter()
+            .filter(|(k, m)| m.len() > 1 && self.collapsed.contains(k))
+            .flat_map(|(_, m)| m)
+            .map(|r| r.id.as_str())
+            .collect()
     }
 
     pub fn edit_sidebar(&mut self, area: Rect, data: &[u8]) -> SidebarEdit {
@@ -418,8 +626,16 @@ impl ViewState {
                     self.move_sidebar_focus(area, true);
                     1
                 }
+                b'\n' if i > 0 && data[i - 1] == b'\r' => 1,
                 b'\r' | b'\n' => {
                     let items = self.sidebar_items(area);
+                    if let Some(SidebarItem::Group(key)) =
+                        self.sidebar_focus.clone().filter(|f| items.contains(f))
+                    {
+                        self.toggle_group(&key);
+                        i += 1;
+                        continue;
+                    }
                     return match self.sidebar_focus.take().filter(|f| items.contains(f)) {
                         Some(SidebarItem::Session(id))
                             if self.sessions.iter().any(|s| s.id == id) =>
@@ -518,6 +734,7 @@ impl ViewState {
             Cmd::FocusPrev => self.cycle_focus(false),
             Cmd::SplitRight | Cmd::SplitDown | Cmd::Focus(_) | Cmd::Resize(_) => {}
             Cmd::Zoom => self.zoom = !self.zoom,
+            Cmd::Group => self.grouped = !self.grouped,
             Cmd::Sidebar => {
                 let shown = self.sidebar.unwrap_or(self.width >= WIDE_COLS);
                 self.sidebar = Some(!shown);
@@ -700,12 +917,15 @@ impl ViewState {
                 if sl.new_row == Some(row) {
                     return Hit::NewSession;
                 }
-                let found = sl
-                    .rows
-                    .iter()
-                    .find(|(_, y)| *y == row)
-                    .and_then(|(id, _)| self.sessions.iter().find(|s| s.id == *id));
-                let Some(r) = found else {
+                let Some((line, _)) = sl.lines.iter().find(|(_, y)| *y == row) else {
+                    return Hit::None;
+                };
+                let id = match line {
+                    SidebarLine::Header { key, .. } => return Hit::Group(key.clone()),
+                    SidebarLine::Detail(id) => return Hit::Session(id.clone()),
+                    SidebarLine::Session { id, .. } => id,
+                };
+                let Some(r) = self.sessions.iter().find(|s| s.id == *id) else {
                     return Hit::None;
                 };
                 for slot in [Control::Stop, Control::Close] {
@@ -743,7 +963,7 @@ impl ViewState {
     fn hover_key(&self, area: Rect) -> Option<Hit> {
         let (c, r) = self.pointer?;
         match self.hit(area, c, r) {
-            h @ (Hit::Button(..) | Hit::Session(_) | Hit::NewSession) => Some(h),
+            h @ (Hit::Button(..) | Hit::Session(_) | Hit::Group(_) | Hit::NewSession) => Some(h),
             _ => None,
         }
     }
@@ -863,6 +1083,14 @@ impl ViewState {
                     }
                 }
             }
+            Hit::Group(key) => {
+                if ev.is_left_press() {
+                    let before = self.sidebar_items(area);
+                    self.toggle_group(&key);
+                    self.keep_sidebar_focus(area, &before);
+                    out.redraw = true;
+                }
+            }
             Hit::NewSession => {
                 if ev.is_left_press() {
                     out.new_session = true;
@@ -918,30 +1146,36 @@ impl ViewState {
         s.offset = s.offset.min(s.max);
     }
 
-    fn next_free(&self, from: Option<usize>, forward: bool) -> Option<String> {
-        let n = self.sessions.len();
+    fn next_free(&self, from: Option<&str>, forward: bool) -> Option<String> {
+        let order = self.nav_order();
+        let n = order.len();
         if n == 0 {
             return None;
         }
-        let start = from.unwrap_or(if forward { n - 1 } else { 0 });
-        (1..=n)
-            .map(|k| {
-                if forward {
-                    (start + k) % n
-                } else {
-                    (start + n - k % n) % n
-                }
-            })
-            .map(|i| &self.sessions[i])
-            .find(|s| !self.panes.contains(&s.id))
-            .map(|s| s.id.clone())
+        let folded = self.folded();
+        let start = from
+            .and_then(|f| order.iter().position(|id| *id == f))
+            .unwrap_or(if forward { n - 1 } else { 0 });
+        let pick = |skip_folded: bool| {
+            (1..=n)
+                .map(|k| {
+                    if forward {
+                        (start + k) % n
+                    } else {
+                        (start + n - k % n) % n
+                    }
+                })
+                .map(|i| order[i])
+                .find(|id| {
+                    !(self.panes.iter().any(|p| p == id) || skip_folded && folded.contains(id))
+                })
+        };
+        pick(true).or_else(|| pick(false)).map(str::to_string)
     }
 
     fn step(&mut self, forward: bool) {
-        let from = self
-            .focused_session()
-            .and_then(|id| self.sessions.iter().position(|s| s.id == id));
-        let Some(next) = self.next_free(from, forward) else {
+        let from = self.focused_session().map(str::to_string);
+        let Some(next) = self.next_free(from.as_deref(), forward) else {
             return;
         };
         self.replace_focused(next);
@@ -956,10 +1190,8 @@ impl ViewState {
                 }
             }
             1 => {
-                let from = self
-                    .focused_session()
-                    .and_then(|id| self.sessions.iter().position(|s| s.id == id));
-                match self.next_free(from, true) {
+                let from = self.focused_session().map(str::to_string);
+                match self.next_free(from.as_deref(), true) {
                     Some(id) => {
                         let dir = self.auto_dir();
                         self.split_focused(dir, &id);
@@ -1004,8 +1236,12 @@ impl ViewState {
             })
             .collect();
         for (old, new) in renames {
+            if let Some(loc) = self.locs.get(&old).cloned() {
+                self.locs.entry(new.clone()).or_insert(loc);
+            }
             self.replace_session(&old, &new);
         }
+        self.refresh_groups();
         let gone: Vec<String> = self
             .panes
             .iter()
@@ -1133,6 +1369,7 @@ pub struct MouseOut {
 pub enum Hit {
     Button(String, Control),
     Session(String),
+    Group(String),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,

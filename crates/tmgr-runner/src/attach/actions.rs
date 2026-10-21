@@ -68,6 +68,13 @@ pub const ACTIONS: &[ActionDef] = &[
     ),
     def(Cmd::Zoom, b"z", "z", "Zoom the pane", true),
     def(Cmd::Sidebar, b"b", "b", "Show or hide the sidebar", true),
+    def(
+        Cmd::Group,
+        b"g",
+        "g",
+        "Group sessions by repo, or list them flat",
+        true,
+    ),
     def(Cmd::Rename, b"r", "r", "Rename the focused session", true),
     def(
         Cmd::Resume,

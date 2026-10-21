@@ -12,6 +12,7 @@
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
                         │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
+                        │             │ g             group sessions by repo / flat list             │                                     │
                         │             │ r             rename the focused session                     │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
@@ -26,6 +27,5 @@
                         │             │ drop          a dropped file is pasted there                 │                                     │
                         │             │ drag          Shift-drag selects (iTerm2: Option)            │                                     │
                         │             │                                                              │                                     │
-                        │             │ ? again closes this box                                      │                                     │
- + New session          ╰─────────────│                                                              │─────────────────────────────────────╯
+ + New session          ╰─────────────│ ? again closes this box                                      │─────────────────────────────────────╯
  tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯                        Ctrl-] ? help
