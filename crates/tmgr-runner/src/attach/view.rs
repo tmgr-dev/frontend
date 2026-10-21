@@ -1529,6 +1529,10 @@ impl ViewState {
                         let dir = self.auto_dir();
                         self.split_focused(dir, &id);
                     }
+                    None if self.sessions.len() > 1 => {
+                        self.notice =
+                            Some("the other sessions are in tabs, Ctrl-] c starts one".into())
+                    }
                     None => self.notice = Some("only one session, nothing to split".into()),
                 }
             }
