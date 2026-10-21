@@ -19,6 +19,7 @@ pub mod routines;
 pub mod runs;
 pub mod runstate;
 pub mod text;
+pub mod time_entries;
 pub mod trailer;
 pub mod update;
 pub mod view;
