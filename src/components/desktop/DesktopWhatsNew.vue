@@ -1,31 +1,20 @@
 <template>
-	<Modal
-		v-if="state.open"
-		modal-class="w-full max-w-lg"
-		@close="close"
-		@closing-modal="close"
-	>
-		<template #modal-body>
-			<div
-				class="flex max-h-[85vh] flex-col text-foreground"
-				data-testid="whats-new-modal"
-			>
-				<div
-					class="flex items-center justify-between gap-3 border-b border-border px-5 py-4"
-				>
-					<h2 class="text-base font-semibold">{{ title }}</h2>
-					<button
-						type="button"
-						title="Close"
-						class="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-						@click="close"
-					>
-						<X class="h-4 w-4" />
-					</button>
-				</div>
+	<Dialog :open="state.open" @update:open="onOpenChange">
+		<DialogContent
+			class="max-w-lg gap-0 p-0"
+			@close-auto-focus="onCloseAutoFocus"
+			@escape-key-down="onEscapeKeyDown"
+		>
+			<div class="flex max-h-[85vh] flex-col" data-testid="whats-new-modal">
+				<DialogHeader class="border-b border-border px-6 py-4 pr-12">
+					<DialogTitle class="text-base">{{ title }}</DialogTitle>
+					<DialogDescription class="sr-only">
+						Release notes for this version.
+					</DialogDescription>
+				</DialogHeader>
 
-				<div class="max-h-[70vh] space-y-6 overflow-y-auto px-5 py-4">
-					<section v-for="section in state.sections" :key="section.version">
+				<div class="max-h-[70vh] space-y-6 overflow-y-auto px-6 py-4">
+					<section v-for="section in view.sections" :key="section.version">
 						<div class="mb-2 flex items-baseline gap-2">
 							<h3 class="text-sm font-semibold">v{{ section.version }}</h3>
 							<span v-if="section.date" class="text-xs text-muted-foreground">
@@ -35,22 +24,23 @@
 						<MarkdownText :content="section.body" :link-task-keys="false" />
 						<div
 							v-if="toursFor(section.version).length"
-							class="mt-2 flex flex-wrap gap-2"
+							class="mt-3 flex flex-wrap gap-2"
 						>
-							<button
+							<Button
 								v-for="item in toursFor(section.version)"
 								:key="item.id"
 								type="button"
+								variant="outline"
+								size="sm"
 								data-tour="whats-new.item-tour"
-								class="rounded-md border border-border px-3 py-1 text-xs font-medium hover:bg-muted"
 								@click="takeTour(item.id)"
 							>
 								Take the tour: {{ item.title }}
-							</button>
+							</Button>
 						</div>
 					</section>
 					<p
-						v-if="state.sections.length === 0"
+						v-if="view.sections.length === 0"
 						class="text-sm text-muted-foreground"
 					>
 						No release notes for this version.
@@ -64,24 +54,26 @@
 					/>
 				</div>
 
-				<div class="flex justify-end border-t border-border px-5 py-3">
-					<button
-						type="button"
-						class="rounded-md bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-						@click="close"
-					>
-						Got it
-					</button>
-				</div>
+				<DialogFooter class="border-t border-border px-6 py-3">
+					<Button type="button" @click="close">Got it</Button>
+				</DialogFooter>
 			</div>
-		</template>
-	</Modal>
+		</DialogContent>
+	</Dialog>
 </template>
 
 <script>
 	import MarkdownText from '@/components/general/MarkdownText.vue';
-	import Modal from '@/components/Modal.vue';
 	import PromotionsList from '@/components/promotions/PromotionsList.vue';
+	import { Button } from '@/components/ui/button';
+	import {
+		Dialog,
+		DialogContent,
+		DialogDescription,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
 	import router from '@/router';
 	import store from '@/store';
@@ -93,12 +85,21 @@
 		hadSessionAtLaunch,
 		whatsNewState,
 	} from '@/utils/whatsNewState';
-	import { X } from 'lucide-vue-next';
-	import { computed, defineComponent, onMounted, watch } from 'vue';
+	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
 
 	export default defineComponent({
 		name: 'DesktopWhatsNew',
-		components: { MarkdownText, Modal, PromotionsList, X },
+		components: {
+			Button,
+			Dialog,
+			DialogContent,
+			DialogDescription,
+			DialogFooter,
+			DialogHeader,
+			DialogTitle,
+			MarkdownText,
+			PromotionsList,
+		},
 		setup() {
 			const { isFeatureEnabled } = useFeatureToggles();
 			let checked = false;
@@ -122,6 +123,13 @@
 				);
 			});
 
+			// closeWhatsNew empties sections at once; keep the last open state so the
+			// exit animation doesn't flash the empty-state text.
+			const view = ref(whatsNewState.value);
+			watch(whatsNewState, (next) => {
+				if (next.open) view.value = next;
+			});
+
 			const tours = useTours();
 			const hubItem = (id) =>
 				tours.hubItems.value.find((item) => item.tour.id === id);
@@ -135,9 +143,27 @@
 					id,
 					title: hubItem(id).tour.title,
 				}));
+			let touring = false;
 			const takeTour = (id) => {
+				if (!whatsNewState.value.open) return;
+				touring = true;
 				closeWhatsNew();
 				void tours.start(id, 'whats_new');
+			};
+			const onCloseAutoFocus = (event) => {
+				if (!touring) return;
+				touring = false;
+				event.preventDefault();
+			};
+			// The dialog keeps focus inside itself, so the tour's own Esc handler
+			// skips the key while its popover sits over the dialog.
+			const onEscapeKeyDown = (event) => {
+				if (tours.active.value?.tour.id !== WHATS_NEW_TOUR_ID) return;
+				event.preventDefault();
+				tours.pause();
+			};
+			const onOpenChange = (open) => {
+				if (!open && whatsNewState.value.open) closeWhatsNew();
 			};
 			watch(
 				() =>
@@ -157,12 +183,16 @@
 			return {
 				toursFor,
 				takeTour,
+				onCloseAutoFocus,
+				onEscapeKeyDown,
+				onOpenChange,
 				state: whatsNewState,
+				view,
 				promotionsEnabled: computed(() => isFeatureEnabled('promotions')),
 				close: closeWhatsNew,
 				title: computed(() =>
-					whatsNewState.value.version
-						? `What's new in ${whatsNewState.value.version}`
+					view.value.version
+						? `What's new in ${view.value.version}`
 						: `What's new`,
 				),
 			};
