@@ -290,6 +290,27 @@ mod tests {
     }
 
     #[test]
+    fn cpu_share_counts_as_work_from_the_busy_threshold() {
+        let busy = |used_ns: u64| {
+            let mut d = Detector::new(1000, 0);
+            d.on_output(0);
+            d.on_stat(1100, Some(0), None);
+            d.on_stat(1500, Some(used_ns), None);
+            kinds(&d)
+        };
+        assert_eq!(busy(20_000_000), StateKind::Working);
+        assert_eq!(busy(19_999_999), StateKind::Waiting);
+    }
+
+    #[test]
+    fn a_single_cpu_sample_is_not_growth() {
+        let mut d = Detector::new(1000, 0);
+        d.on_output(0);
+        d.on_stat(1500, Some(400_000_000), None);
+        assert_eq!(kinds(&d), StateKind::Waiting);
+    }
+
+    #[test]
     fn input_resets_quiet_window() {
         let mut d = Detector::new(1000, 0);
         d.on_output(0);
@@ -305,8 +326,8 @@ mod tests {
         d.on_output(0);
         assert_eq!(d.on_idle(10, true), None);
         assert_eq!(kinds(&d), StateKind::Working);
-        d.on_stat(1100, Some(100), None);
-        d.on_stat(1500, Some(900), None);
+        d.on_stat(1100, Some(0), None);
+        d.on_stat(1500, Some(400_000_000), None);
         assert_eq!(kinds(&d), StateKind::Waiting);
         let s = d.on_output(1600).unwrap();
         assert_eq!(s.kind, StateKind::Working);
