@@ -119,7 +119,10 @@
 			(workspace) => workspace.id == activeWorkspace.value?.value,
 		);
 
-		return foundWorkspace?.user_id === store.state.user.id;
+		return (
+			foundWorkspace?.user_id != null &&
+			Number(foundWorkspace.user_id) === Number(store.state.user?.id)
+		);
 	});
 	const defaultWorkspaceSelection = ref<number | null>(null);
 	const savingDefaultWorkspace = ref(false);
