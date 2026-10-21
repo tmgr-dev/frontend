@@ -263,13 +263,22 @@ pub struct LayoutPrefs {
     pub new_place: Option<Place>,
     #[serde(default)]
     pub tab_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_tabs")]
     pub tabs: Vec<TabPrefs>,
+}
+
+fn lenient_tabs<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<TabPrefs>, D::Error> {
+    let raw = Vec::<serde_json::Value>::deserialize(d).unwrap_or_default();
+    Ok(raw
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect())
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TabPrefs {
     pub tree: Node,
+    #[serde(default)]
     pub focus: String,
     #[serde(default)]
     pub name: Option<String>,
@@ -389,7 +398,7 @@ impl ViewState {
         self.tabs.len() + usize::from(self.active_tab().is_some())
     }
 
-    fn in_tab(&self, id: &str) -> bool {
+    pub fn in_tab(&self, id: &str) -> bool {
         self.panes.iter().any(|p| p == id) || self.tabs.iter().any(|t| t.tree.contains(id))
     }
 
@@ -513,6 +522,9 @@ impl ViewState {
                 (Node::leaf(s), s.clone())
             }
         };
+        if self.rename.as_ref().is_some_and(|r| r.tab) {
+            self.rename = None;
+        }
         self.zoom = false;
         self.commit(Some(tree), Some(f));
         self.scroll = None;
@@ -1211,6 +1223,9 @@ impl ViewState {
             None => {
                 self.drop_leaf(id);
                 self.scroll = None;
+                if self.tree.is_none() {
+                    self.show_first_tab();
+                }
             }
         }
     }
@@ -1520,11 +1535,7 @@ impl ViewState {
     fn split(&mut self) {
         self.scroll = None;
         match self.panes.len() {
-            0 => {
-                if let Some(id) = self.sessions.first().map(|s| s.id.clone()) {
-                    self.replace_focused(id);
-                }
-            }
+            0 => self.show_first_tab(),
             1 => {
                 let from = self.focused_session().map(str::to_string);
                 match self.next_free(from.as_deref(), true) {

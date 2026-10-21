@@ -191,6 +191,9 @@ pub(super) fn place_session(view: &mut ViewState, target: &str, place: Place, id
             return true;
         }
     };
+    if !view.panes().iter().any(|p| p == target) && view.in_tab(target) {
+        view.open(target);
+    }
     let room = view.panes().iter().any(|p| p == target) && can_split(view.panes().len());
     if room && view.split_at(target, dir, id, true) {
         return true;
@@ -628,6 +631,17 @@ mod tests {
         view.open("a");
         assert_eq!(view.panes(), ["a", "b"]);
         assert_eq!(view.focused_session(), Some("a"));
+    }
+
+    #[test]
+    fn a_split_into_a_stashed_tab_switches_to_that_tab() {
+        let mut view = ViewState::new(vec![row("a"), row("b"), row("c"), row("n")], "t");
+        view.select("a");
+        assert!(place_session(&mut view, "a", Place::Right, "b"));
+        view.open("c");
+        assert!(place_session(&mut view, "a", Place::Below, "n"));
+        assert_eq!(view.panes(), ["a", "n", "b"]);
+        assert_eq!(view.focused_session(), Some("n"));
     }
 
     #[test]

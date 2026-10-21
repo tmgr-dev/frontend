@@ -511,6 +511,9 @@ impl App {
             Ok(info) => info,
             Err(e) => return self.notify(&lost(&typed, &e)),
         };
+        if !self.view.panes().iter().any(|p| p == target) && self.view.in_tab(target) {
+            self.view.open(target);
+        }
         if !self.view.panes().iter().any(|p| p == target) {
             self.discard_session(&info.id);
             return self.notify(&lost(&typed, "pane closed before the shell started"));

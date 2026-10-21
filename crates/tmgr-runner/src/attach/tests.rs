@@ -4542,3 +4542,36 @@ fn a_new_tab_choice_is_not_written_to_the_saved_layout() {
     v.new_place = Some(Place::Below);
     assert_eq!(v.prefs().new_place, Some(Place::Below));
 }
+
+#[test]
+fn removing_the_only_shown_session_falls_back_to_a_tab_not_a_blank_view() {
+    let mut v = tabbed();
+    v.open("e");
+    v.remove_session("f");
+    v.remove_session("e");
+    assert_eq!(ids(&v).len(), 2);
+    let t = tab_id(&v, "a");
+    assert_eq!(v.tab_members(t), ["a", "b"]);
+}
+
+#[test]
+fn switching_tabs_cancels_a_pending_tab_rename() {
+    let mut v = tabbed();
+    v.apply(Cmd::RenameTab);
+    assert!(v.rename.as_ref().is_some_and(|r| r.tab));
+    v.open("a");
+    assert!(v.rename.is_none());
+}
+
+#[test]
+fn a_broken_saved_tab_is_skipped_and_the_rest_of_the_layout_loads() {
+    let json = r#"{"panes":["a"],"focus":0,"zoom":false,"sidebar":null,
+        "tabs":[{"tree":"nope"},{"tree":{"Split":{"dir":"Right","ratio":500,
+        "a":{"Leaf":"b"},"b":{"Leaf":"c"}}},"focus":"c"}]}"#;
+    let prefs: LayoutPrefs = serde_json::from_str(json).unwrap();
+    assert_eq!(prefs.tabs.len(), 1);
+    let mut v = ViewState::new(four(), "local");
+    v.apply_prefs(&prefs);
+    assert_eq!(ids(&v), ["a"]);
+    assert_eq!(v.tab_members(tab_id(&v, "b")), ["b", "c"]);
+}
