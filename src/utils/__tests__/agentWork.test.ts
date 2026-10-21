@@ -223,6 +223,21 @@ describe('commitGroups', () => {
 		);
 	});
 
+	it('marks commits found in git and defaults the rest to agent', () => {
+		const rows = commitGroups([
+			run({
+				id: 1,
+				branch: 'feat/z',
+				commits: [
+					{ sha: 'aaaaaaa1', message: 'one' },
+					{ sha: 'bbbbbbb2', message: 'two', source: 'git' },
+					{ sha: 'ccccccc3', message: 'three', source: 'agent' },
+				],
+			}),
+		])[0].commits;
+		expect(rows.map((row) => row.source)).toEqual(['agent', 'git', 'agent']);
+	});
+
 	it('files commits with an unknown repo under the run branch without links', () => {
 		const groups = commitGroups([
 			run({

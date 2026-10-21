@@ -179,15 +179,13 @@
 	import { useWorkflowMode } from '@/composable/useWorkflowMode';
 	import type { RecentTask } from '@/types/dashboard';
 	import { cn } from '@/utils';
+	import { priorityOption } from '@/utils/priority';
 	import {
 		DONE_DISABLED_TOOLTIP,
 		isDone,
 		stateLabel,
 	} from '@/utils/simpleStatus';
 	import {
-		ArrowDownIcon,
-		ArrowRightIcon,
-		ArrowUpIcon,
 		ClockIcon,
 		ExclamationTriangleIcon,
 		PlayIcon,
@@ -239,25 +237,11 @@
 		return new Date(props.task.updated_at).toLocaleString();
 	});
 
-	const priorityIcon = computed(() => {
-		const iconMap = {
-			urgent: ExclamationTriangleIcon,
-			high: ArrowUpIcon,
-			medium: ArrowRightIcon,
-			low: ArrowDownIcon,
-		};
-		return iconMap[props.task.priority || 'medium'];
-	});
+	const priorityIcon = computed(() => priorityOption(props.task.priority).icon);
 
-	const priorityIconClasses = computed(() => {
-		const colorMap = {
-			urgent: 'text-red-500',
-			high: 'text-orange-500',
-			medium: 'text-yellow-500',
-			low: 'text-green-500',
-		};
-		return cn('h-3 w-3', colorMap[props.task.priority || 'medium']);
-	});
+	const priorityIconClasses = computed(() =>
+		cn('h-3 w-3', priorityOption(props.task.priority).colorClass),
+	);
 
 	const timerIcon = computed(() => {
 		return props.task.timer_running ? StopIcon : PlayIcon;

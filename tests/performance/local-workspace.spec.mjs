@@ -191,3 +191,53 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   expect(workspaceCalls).toEqual([]);
   expect(settingsPayloads.join(' ')).not.toMatch(/"value":-\d/);
 });
+
+test('a priority picked in a local workspace is stored and shows on the board after reload', async ({
+  page,
+}) => {
+  test.setTimeout(120000);
+  const shell = await desktopPage(page);
+  await page.goto('/demo/board');
+  await page.getByTitle('Switch workspace').first().click();
+  await page.getByRole('menuitem', { name: /New local workspace/ }).click();
+  await page.getByPlaceholder(/Personal, Client/).fill('Personal');
+  await page.getByRole('button', { name: 'Create' }).click();
+  await expect(page).toHaveURL(/\/local-personal\//);
+  await page.goto('/local-personal/board');
+
+  await page
+    .getByRole('button', { name: 'New task', exact: true })
+    .first()
+    .click();
+  await page.getByPlaceholder('Task name').fill('Urgent offline');
+  const picker = page.getByRole('combobox', { name: 'Priority' });
+  await expect(picker).toHaveText('Medium');
+  await picker.click();
+  await page.getByRole('option', { name: 'Urgent' }).click();
+  await expect(picker).toHaveText('Urgent');
+  await page.keyboard.press('ControlOrMeta+KeyS');
+  await expect
+    .poll(async () =>
+      (
+        await shell('local_db_select', {
+          code: 'personal',
+          sql: 'SELECT title, priority FROM tasks',
+          params: [],
+        })
+      ).map((row) => `${row.title}:${row.priority}`),
+    )
+    .toContain('Urgent offline:urgent');
+
+  await page.goto('/local-personal/board');
+  const card = page
+    .locator('[data-task-id]', { hasText: 'Urgent offline' })
+    .first();
+  await expect(card.locator('[data-priority="urgent"]')).toHaveAttribute(
+    'title',
+    'Urgent priority',
+  );
+  await card.click();
+  await expect(page.getByRole('combobox', { name: 'Priority' })).toHaveText(
+    'Urgent',
+  );
+});

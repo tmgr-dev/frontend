@@ -1074,6 +1074,20 @@ describeSqlite('local workspace API on SQLite', () => {
 		expect(updated.priority).toBe('low');
 	});
 
+	it('defaults priority to medium and saves it from a whole-task PUT', async () => {
+		const task = await data('POST', 'tasks', { title: 'Form task' });
+		expect(task.priority).toBe('medium');
+
+		const high = await data('POST', 'tasks', {
+			title: 'Picked high',
+			priority: 'high',
+		});
+		expect((await data('GET', `tasks/${high.id}`)).priority).toBe('high');
+
+		await data('PUT', `tasks/${task.id}`, { ...task, priority: 'urgent' });
+		expect((await data('GET', `tasks/${task.id}`)).priority).toBe('urgent');
+	});
+
 	it('stores and clears expired_at', async () => {
 		const task = await data('POST', 'tasks', {
 			title: 'Deadline',

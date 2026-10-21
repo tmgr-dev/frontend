@@ -89,6 +89,7 @@ export interface CommitRow {
 	short: string;
 	message: string | null;
 	url: string | null;
+	source: 'agent' | 'git';
 }
 
 export interface CommitGroup {
@@ -116,6 +117,7 @@ export const commitGroups = (runs: AgentWorkRun[]): CommitGroup[] => {
 				short: (commit.sha || '').slice(0, 7),
 				message: commit.message,
 				url: commitUrl(repo, commit.sha),
+				source: commit.source === 'git' ? 'git' : 'agent',
 			});
 		}
 	}

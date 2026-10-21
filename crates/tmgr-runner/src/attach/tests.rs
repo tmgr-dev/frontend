@@ -3316,6 +3316,7 @@ fn shape(v: &ViewState) -> Vec<String> {
                 format!("{}{id}", if indent { "  " } else { "" })
             }
             SidebarLine::Detail(id) => format!("~{id}"),
+            SidebarLine::Activity(id) => format!("^{id}"),
         })
         .collect()
 }
@@ -5523,4 +5524,134 @@ mod questions_ui {
         assert!(g.rows.iter().any(|r| r.idx == sel));
         assert!(g.rows.iter().all(|r| r.y < g.hint_y));
     }
+}
+
+fn with_status(width: u16) -> ViewState {
+    let mut v = two_pane(width);
+    v.sessions[0].state.since_ms = 58_000;
+    v.now_s = 100;
+    let mut found = std::collections::HashMap::new();
+    found.insert(
+        "a".to_string(),
+        SessionStatus {
+            activity: Some("Bash: cargo test".into()),
+            todo: Some((3, 7)),
+        },
+    );
+    found.insert(
+        "b".to_string(),
+        SessionStatus {
+            activity: Some("Edit: api.rs".into()),
+            todo: None,
+        },
+    );
+    assert!(v.set_status(found));
+    v
+}
+
+#[test]
+fn status_line_shows_todo_activity_and_turn_clock_while_working() {
+    let v = with_status(140);
+    let line = v.status_line("a").unwrap();
+    assert_eq!(line.text, "3/7 · Bash: cargo test");
+    assert_eq!(line.clock.as_deref(), Some("0:42"));
+}
+
+#[test]
+fn status_line_hides_activity_when_not_working() {
+    let v = with_status(140);
+    assert_eq!(v.status_line("b"), None);
+}
+
+#[test]
+fn status_line_keeps_open_todos_when_waiting() {
+    let mut v = with_status(140);
+    v.sessions[0].state.kind = StateKind::Waiting;
+    let line = v.status_line("a").unwrap();
+    assert_eq!(line.text, "3/7");
+    assert_eq!(line.clock, None);
+}
+
+#[test]
+fn set_status_reports_changes_and_drops_unknown_sessions() {
+    let mut v = with_status(140);
+    let same = v.status.clone();
+    assert!(!v.set_status(same));
+    let mut ghost = std::collections::HashMap::new();
+    ghost.insert(
+        "zzz".to_string(),
+        SessionStatus {
+            activity: Some("Bash: ls".into()),
+            todo: None,
+        },
+    );
+    assert!(v.set_status(ghost));
+    assert!(v.status.is_empty());
+}
+
+#[test]
+fn without_status_the_sidebar_has_no_activity_lines() {
+    let v = two_pane(140);
+    let sl = v.sidebar_layout(AREA);
+    assert!(!sl
+        .lines
+        .iter()
+        .any(|(l, _)| matches!(l, SidebarLine::Activity(_))));
+}
+
+#[test]
+fn clicking_an_activity_line_selects_its_session() {
+    let v = with_status(140);
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let sl = v.sidebar_layout(sb);
+    let (_, y) = sl
+        .lines
+        .iter()
+        .find(|(l, _)| matches!(l, SidebarLine::Activity(id) if id == "a"))
+        .unwrap();
+    assert_eq!(v.hit(AREA, sb.x + 4, *y), Hit::Session("a".into()));
+}
+
+#[test]
+fn snapshot_wide_with_status() {
+    let v = with_status(140);
+    assert_snapshot("status_wide", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_narrow_with_status() {
+    let v = with_status(90);
+    assert_snapshot("status_narrow", &draw(&v, &screens(), 90, 16));
+}
+
+#[test]
+fn a_working_session_between_tools_shows_thinking_and_the_clock() {
+    let mut v = with_status(140);
+    v.status.insert("a".into(), SessionStatus::default());
+    let line = v.status_line("a").unwrap();
+    assert_eq!(line.text, "thinking");
+    assert_eq!(line.clock.as_deref(), Some("0:42"));
+}
+
+#[test]
+fn a_short_sidebar_drops_activity_lines_before_detail_lines() {
+    let mut v = with_status(140);
+    v.locs.insert(
+        "a".into(),
+        Loc {
+            dir: "/w/app".into(),
+            root: "/w/app".into(),
+            branch: Some("main".into()),
+        },
+    );
+    let tall = v.sidebar_layout(Rect::new(0, 0, 30, 20));
+    assert!(tall
+        .lines
+        .iter()
+        .any(|(l, _)| matches!(l, SidebarLine::Activity(_))));
+    let short = v.sidebar_layout(Rect::new(0, 0, 30, 7));
+    assert!(!short
+        .lines
+        .iter()
+        .any(|(l, _)| matches!(l, SidebarLine::Activity(_))));
 }

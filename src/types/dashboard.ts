@@ -248,7 +248,7 @@ export interface RecentTask {
 	updated_at_human: string;
 	timer_running: boolean;
 	timer_started_at?: string;
-	priority?: 'low' | 'medium' | 'high' | 'urgent';
+	priority?: TaskPriority;
 	expired_at?: string;
 	is_overdue: boolean;
 }
@@ -397,6 +397,8 @@ export interface SortOption {
 export interface MultiSortOption {
 	sorts: SortOption[];
 }
+
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 
 // Predefined Sort Options
 export type ActivitySortField = 'created_at' | 'type' | 'user_name';
