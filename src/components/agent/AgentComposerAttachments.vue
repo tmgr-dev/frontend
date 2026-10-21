@@ -75,7 +75,9 @@
 
 			watch(
 				() => props.conversationId,
-				() => queue.clear(),
+				(_, previous) => {
+					if (previous !== null) queue.clear();
+				},
 			);
 
 			const pick = () => fileInput.value?.click();
