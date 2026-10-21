@@ -51,12 +51,10 @@ pub fn homes_dir() -> io::Result<PathBuf> {
 
 pub fn time_dir(runner_dir: &Path) -> PathBuf {
     #[cfg(not(target_os = "macos"))]
-    if env_path("TMGR_RUNNER_DIR").is_none() {
-        if let Some(rt) = env_path("XDG_RUNTIME_DIR") {
-            if runner_dir == rt.join("tmgr") {
-                if let Ok(state) = state_home() {
-                    return state.join("tmgr/time");
-                }
+    if let Some(rt) = env_path("XDG_RUNTIME_DIR") {
+        if runner_dir == rt.join("tmgr") {
+            if let Ok(state) = state_home() {
+                return state.join("tmgr/time");
             }
         }
     }

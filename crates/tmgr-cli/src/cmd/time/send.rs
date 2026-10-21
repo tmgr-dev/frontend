@@ -363,6 +363,12 @@ fn send_all(run: &mut Run, server: &dyn Server, sendable: Vec<&Record>) -> Resul
                         run.mark(&queue, "invalid")?;
                         continue 'tasks;
                     }
+                    Err(e) if e.kind == Kind::Forbidden => {
+                        run.access_lost = true;
+                        run.report.hint = Some(LOGIN_HINT.to_string());
+                        run.state.hint = Some(LOGIN_HINT.to_string());
+                        continue 'tasks;
+                    }
                     Err(e) if e.kind == Kind::Usage => {
                         run.mark(&batch, "invalid")?;
                         queue.drain(..take);
@@ -707,19 +713,22 @@ mod tests {
     }
 
     #[test]
-    fn a_forbidden_answer_keeps_the_queue_and_asks_for_a_new_login() {
+    fn a_forbidden_task_keeps_its_queue_asks_for_a_new_login_and_later_tasks_still_go() {
         let r = recent("a", 1, 5, 0);
-        let d = dir_with(std::slice::from_ref(&r));
+        let other = recent("b", 1, 6, 1);
+        let d = dir_with(&[r.clone(), other.clone()]);
         let fake = Rc::new(Fake::default());
         fake.script
             .borrow_mut()
             .push_back(Err(Error::new(Kind::Forbidden, "no")));
         let report = go(d.path(), NOW, &fake);
         assert_eq!(report.hint.as_deref(), Some(LOGIN_HINT));
+        assert_eq!(report.created, 1);
         assert!(status_of(d.path(), &r.id).is_none());
+        assert_eq!(status_of(d.path(), &other.id).as_deref(), Some("created"));
         let state = SendState::load(d.path());
         assert_eq!(state.hint.as_deref(), Some(LOGIN_HINT));
-        assert_eq!(state.next_try_s, NOW + 60);
+        assert_eq!(state.next_try_s, 0);
     }
 
     #[test]
