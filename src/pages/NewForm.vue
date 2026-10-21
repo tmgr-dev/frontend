@@ -126,6 +126,7 @@
 		getCategoryIntegrationHint,
 		type CategoryIntegrationHint,
 	} from '@/utils/categoryIntegrationHint';
+	import { isSendEnter } from '@/utils/commentComposer';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import { isDesktopApp } from '@/utils/desktop';
 	import { getBlockEditorDescription, sameBlocks } from '@/utils/editor';
@@ -623,7 +624,18 @@
 	const footerHeight = ref(0);
 	let footerResizeObserver: ResizeObserver | null = null;
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
-	const commentRailInput = ref<HTMLInputElement | null>(null);
+	const commentRailInput = ref<HTMLTextAreaElement | null>(null);
+
+	const resizeCommentInputs = () => {
+		for (const el of [commentTextarea.value, commentRailInput.value]) {
+			if (!el || !el.scrollHeight) continue;
+			el.style.height = 'auto';
+			el.style.height = `${el.scrollHeight}px`;
+		}
+	};
+	watch([newComment, commentTextarea, commentRailInput], resizeCommentInputs, {
+		flush: 'post',
+	});
 	const commentsCount = ref(0);
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
@@ -2274,6 +2286,12 @@
 
 	const submitComment = () =>
 		commentAiReply.value ? askAIComment() : sendComment();
+
+	const onCommentEnter = (e: KeyboardEvent) => {
+		if (!isSendEnter(e)) return;
+		e.preventDefault();
+		submitComment();
+	};
 </script>
 
 <template>
@@ -3017,34 +3035,35 @@
 					/>
 					<div
 						v-if="isModal && aiPending && showSurface('comments.composer')"
-						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
+						class="mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-ink-subtle [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 					>
-						<Loader2 class="h-3.5 w-3.5 animate-spin" />
-						<span
+						<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
+						<span class="shrink-0"
 							>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span
 						>
 						<span
 							v-for="s in aiPendingSteps"
 							:key="s.seq"
-							class="rounded-pill bg-surface-sunken px-2 py-0.5"
+							class="shrink-0 rounded-pill bg-surface-sunken px-2 py-0.5"
 							>{{ agentToolLabel(s.tool) }}</span
 						>
 					</div>
 					<div
 						v-if="isModal && form.id && showSurface('comments.composer')"
-						class="mb-1.5 flex flex-wrap items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+						class="mb-1.5 flex flex-wrap items-end gap-2 rounded-[18px] border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 						@mousedown.stop
 					>
 						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
-						<input
+						<textarea
 							ref="commentTextarea"
 							v-model="newComment"
+							rows="1"
 							@paste="commentAttachments?.onPaste($event)"
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
-							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
-							@keydown.enter.prevent="submitComment"
+							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
+							@keydown.enter="onCommentEnter"
 							@keydown.esc="newComment = ''"
 						/>
 						<MicButton
@@ -3253,32 +3272,33 @@
 					/>
 					<div
 						v-if="aiPending"
-						class="mb-3 flex items-center gap-2 text-xs text-ink-subtle"
+						class="mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto whitespace-nowrap text-xs text-ink-subtle [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
 					>
-						<Loader2 class="h-3.5 w-3.5 animate-spin" />
-						<span
+						<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
+						<span class="shrink-0"
 							>AI is looking around{{ aiPendingSteps.length ? ':' : '…' }}</span
 						>
 						<span
 							v-for="s in aiPendingSteps"
 							:key="s.seq"
-							class="rounded-pill bg-surface-sunken px-2 py-0.5"
+							class="shrink-0 rounded-pill bg-surface-sunken px-2 py-0.5"
 							>{{ agentToolLabel(s.tool) }}</span
 						>
 					</div>
 					<div
-						class="flex flex-wrap items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+						class="flex flex-wrap items-end gap-2 rounded-[18px] border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 					>
 						<CommentAttachments ref="commentAttachments" :task-id="form.id" />
-						<input
+						<textarea
 							ref="commentRailInput"
 							v-model="newComment"
+							rows="1"
 							@paste="commentAttachments?.onPaste($event)"
 							@dragover.prevent
 							@drop="commentAttachments?.onDrop($event)"
 							placeholder="Write a comment…"
-							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
-							@keydown.enter.prevent="submitComment"
+							class="max-h-32 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-1 text-sm leading-5 text-ink outline-none placeholder:text-ink-subtle"
+							@keydown.enter="onCommentEnter"
 							@keydown.esc="newComment = ''"
 						/>
 						<MicButton
