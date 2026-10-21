@@ -1,3 +1,4 @@
+use super::view::{MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH};
 use super::*;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
@@ -4574,4 +4575,165 @@ fn a_broken_saved_tab_is_skipped_and_the_rest_of_the_layout_loads() {
     v.apply_prefs(&prefs);
     assert_eq!(ids(&v), ["a"]);
     assert_eq!(v.tab_members(tab_id(&v, "b")), ["b", "c"]);
+}
+
+fn border_col(v: &ViewState) -> u16 {
+    layout(AREA, v).sidebar.unwrap().right()
+}
+
+fn drag(v: &mut ViewState, cb: u16, col: u16, release: bool) -> MouseOut {
+    v.on_mouse(
+        AREA,
+        ev(cb, col, 5, release),
+        &mouse_info(MouseMode::default(), 0),
+    )
+}
+
+#[test]
+fn sidebar_keys_resize_within_bounds() {
+    let mut s = InputSplitter::new();
+    assert_eq!(
+        s.feed(&[0x1d, b'<']),
+        vec![Action::Cmd(Cmd::SidebarNarrower)]
+    );
+    assert_eq!(s.feed(&[0x1d, b'>']), vec![Action::Cmd(Cmd::SidebarWider)]);
+    let mut v = wide_view();
+    assert_eq!(v.sidebar_width(), SIDEBAR_WIDTH);
+    v.apply(Cmd::SidebarWider);
+    assert_eq!(v.sidebar_width(), SIDEBAR_WIDTH + 2);
+    for _ in 0..40 {
+        v.apply(Cmd::SidebarWider);
+    }
+    assert_eq!(v.sidebar_width(), MAX_SIDEBAR_WIDTH);
+    for _ in 0..40 {
+        v.apply(Cmd::SidebarNarrower);
+    }
+    assert_eq!(v.sidebar_width(), MIN_SIDEBAR_WIDTH);
+    assert_eq!(layout(AREA, &v).sidebar.unwrap().width, MIN_SIDEBAR_WIDTH);
+}
+
+#[test]
+fn sidebar_never_squeezes_panes_below_the_minimum_on_a_narrow_terminal() {
+    let mut v = wide_view();
+    v.sidebar_w = Some(MAX_SIDEBAR_WIDTH);
+    let area = Rect::new(0, 0, 70, 20);
+    let lay = layout(area, &v);
+    assert_eq!(lay.sidebar.unwrap().width, 60);
+    assert!(lay.panes[0].outer.width >= 10);
+    let area = Rect::new(0, 0, 40, 20);
+    let lay = layout(area, &v);
+    assert!(lay.panes[0].outer.width >= 10);
+}
+
+#[test]
+fn dragging_the_border_resizes_and_release_stops() {
+    let mut v = wide_view();
+    let edge = border_col(&v);
+    assert!(!drag(&mut v, 0, edge, false).redraw);
+    let out = drag(&mut v, 32, 33, false);
+    assert!(out.redraw);
+    assert_eq!(v.sidebar_width(), 34);
+    drag(&mut v, 32, 200, false);
+    assert_eq!(v.sidebar_width(), MAX_SIDEBAR_WIDTH);
+    drag(&mut v, 32, 2, false);
+    assert_eq!(v.sidebar_width(), MIN_SIDEBAR_WIDTH);
+    drag(&mut v, 0, 30, true);
+    let w = v.sidebar_width();
+    drag(&mut v, 32, 50, false);
+    assert_eq!(v.sidebar_width(), w);
+}
+
+#[test]
+fn only_the_border_starts_a_drag() {
+    let mut v = wide_view();
+    press(&mut v, 10, 5);
+    drag(&mut v, 32, 40, false);
+    assert_eq!(v.sidebar_width(), SIDEBAR_WIDTH);
+}
+
+#[test]
+fn dragged_width_is_saved_only_after_release_and_round_trips() {
+    let mut v = wide_view();
+    let edge = border_col(&v);
+    drag(&mut v, 0, edge, false);
+    drag(&mut v, 32, 40, false);
+    assert_eq!(v.prefs().sidebar_width, None);
+    drag(&mut v, 0, 40, true);
+    let prefs = v.prefs();
+    assert_eq!(prefs.sidebar_width, Some(41));
+    let json = serde_json::to_value(&prefs).unwrap();
+    let back: LayoutPrefs = serde_json::from_value(json).unwrap();
+    let mut other = wide_view();
+    other.sidebar_w = Some(30);
+    other.apply_prefs(&back);
+    assert_eq!(other.sidebar_width(), 41);
+    let mut old = wide_view();
+    old.sidebar_w = Some(30);
+    let legacy: LayoutPrefs =
+        serde_json::from_str(r#"{"panes":["a"],"focus":0,"zoom":false,"sidebar":null}"#).unwrap();
+    old.apply_prefs(&legacy);
+    assert_eq!(old.sidebar_width(), 30);
+}
+
+#[test]
+fn wider_sidebar_snapshot_and_help_lists_the_keys() {
+    let mut v = two_pane(140);
+    v.sidebar_w = Some(40);
+    assert_snapshot("sidebar_wide_40", &draw(&v, &screens(), 140, 22));
+    v.help = true;
+    let help = draw(&v, &screens(), 140, 40);
+    assert!(help.contains("sidebar width"));
+    assert!(ACTIONS
+        .iter()
+        .any(|a| a.cmd == Cmd::SidebarWider && a.palette));
+}
+
+#[test]
+fn config_default_is_not_saved_into_the_layout() {
+    let mut v = wide_view();
+    v.sidebar_default = 30;
+    assert_eq!(v.sidebar_width(), 30);
+    assert_eq!(v.prefs().sidebar_width, None);
+    v.apply(Cmd::SidebarWider);
+    assert_eq!(v.prefs().sidebar_width, Some(32));
+}
+
+#[test]
+fn a_lost_release_does_not_leave_the_drag_stuck() {
+    let mut v = wide_view();
+    let edge = border_col(&v);
+    drag(&mut v, 0, edge, false);
+    drag(&mut v, 35, 50, false);
+    let w = v.sidebar_width();
+    drag(&mut v, 32, 20, false);
+    assert_eq!(v.sidebar_width(), w);
+    let mut v = wide_view();
+    drag(&mut v, 0, edge, false);
+    v.help = true;
+    drag(&mut v, 0, 10, true);
+    v.help = false;
+    drag(&mut v, 32, 50, false);
+    assert_eq!(v.sidebar_width(), SIDEBAR_WIDTH);
+}
+
+#[test]
+fn dragged_width_is_capped_to_what_the_terminal_can_show() {
+    let mut v = wide_view();
+    v.width = 50;
+    v.sidebar = Some(true);
+    let area = Rect::new(0, 0, 50, 20);
+    let edge = layout(area, &v).sidebar.unwrap().right();
+    v.on_mouse(
+        area,
+        ev(0, edge, 5, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    v.on_mouse(
+        area,
+        ev(32, 49, 5, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(v.sidebar_width(), 40);
+    v.apply(Cmd::SidebarNarrower);
+    assert_eq!(v.sidebar_width(), 38);
 }

@@ -721,8 +721,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "tab: next / previous / rename / close",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Group]),
-        "group the sidebar by tab / by repo",
+        HelpKey::Cmds(&[Cmd::Group, Cmd::SidebarNarrower, Cmd::SidebarWider]),
+        "group by tab / repo, sidebar width",
     ),
     (
         HelpKey::Cmds(&[Cmd::Rename]),

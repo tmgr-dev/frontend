@@ -13,7 +13,7 @@
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
                         │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
                         │             │ N / P / , / & tab: next / previous / rename / close          │                                     │
-                        │             │ g             group the sidebar by tab / by repo             │                                     │
+                        │             │ g / < / >     group by tab / repo, sidebar width             │                                     │
                         │             │ r             rename (a tmgr name beats the agent title)     │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │

@@ -1,10 +1,9 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────╮╭ 2  dev-server · waiting ───────────╮
  ◆ codex     blocked 3m │● Reading src/checkout/Form.vue     ││$ pnpm dev                          │
- ▾ claude           (2) │I will add an Apple Pay button next ││  VITE ready in 412 ms              │
-   ● claude workin╭ Command palette ─────────────────────────────────────────────╮                 │
-   ◌ dev-server wa│ > re                                                         │                 │
- ✓ tests     exite│                                                              │                 │
-                  │ Rename the tab                                      Ctrl-] , │                 │
+ ▾ claude         ╭ Command palette ─────────────────────────────────────────────╮ ms              │
+   ● claude workin│ > re                                                         │                 │
+   ◌ dev-server wa│                                                              │                 │
+ ✓ tests     exite│ Rename the tab                                      Ctrl-] , │                 │
                   │ Rename the focused session                          Ctrl-] r │                 │
                   │ Resume the focused session                  Ctrl-] Enter / R │                 │
                   │ Previous tab                                        Ctrl-] P │                 │
@@ -15,10 +14,11 @@
                   │ dev-server                                           waiting │                 │
                   │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
+                  │ Make the sidebar wider                              Ctrl-] > │                 │
+                  │ Make the sidebar narrower                           Ctrl-] < │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   ╰──────────────────────────────────────────────────────────────╯                 │
-                        │                                    ││                                    │
  + New session          ╰────────────────────────────────────╯╰────────────────────────────────────╯
  tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                         Ctrl-] ? help

@@ -1385,6 +1385,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     if let Ok((cols, _)) = ratatui::crossterm::terminal::size() {
         view.width = cols;
     }
+    view.sidebar_default = tmgr_core::config::config_dir()
+        .ok()
+        .and_then(|d| tmgr_core::config::Config::load(&d).ok())
+        .and_then(|c| c.attach.sidebar_width)
+        .unwrap_or(view.sidebar_default);
     if let Some(prefs) = ctl
         .layout_get()
         .ok()

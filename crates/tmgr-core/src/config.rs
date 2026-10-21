@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 7] = [
+pub const KEYS: [&str; 8] = [
     "server",
     "default_workspace",
     "web_url",
@@ -15,8 +15,17 @@ pub const KEYS: [&str; 7] = [
     "review_status",
     "upload_status",
     "local_user_id",
+    "attach.sidebar_width",
 ];
+pub const MIN_SIDEBAR_WIDTH: u16 = 16;
+pub const MAX_SIDEBAR_WIDTH: u16 = 60;
 pub const DEFAULT_REVIEW_STATUS: &str = "Review";
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AttachConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_width: Option<u16>,
+}
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
@@ -37,8 +46,14 @@ pub struct Config {
     /// The user id the CLI acts as in local workspaces, when the desktop is signed in to an account.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub local_user_id: Option<i64>,
+    #[serde(default, skip_serializing_if = "is_default_attach")]
+    pub attach: AttachConfig,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub projects: BTreeMap<String, String>,
+}
+
+fn is_default_attach(a: &AttachConfig) -> bool {
+    *a == AttachConfig::default()
 }
 
 pub fn config_dir() -> Result<PathBuf> {
@@ -95,6 +110,7 @@ impl Config {
             "review_status" => self.review_status.clone(),
             "upload_status" => Some(self.upload_status().to_string()),
             "local_user_id" => self.local_user_id.map(|id| id.to_string()),
+            "attach.sidebar_width" => self.attach.sidebar_width.map(|w| w.to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -149,6 +165,20 @@ impl Config {
                 })?;
                 self.local_user_id = Some(id);
                 Ok(id.to_string())
+            }
+            "attach.sidebar_width" => {
+                let w: u16 = value
+                    .trim()
+                    .parse()
+                    .ok()
+                    .filter(|w| (MIN_SIDEBAR_WIDTH..=MAX_SIDEBAR_WIDTH).contains(w))
+                    .ok_or_else(|| {
+                        Error::usage("invalid attach.sidebar_width").hint(format!(
+                            "a number of columns from {MIN_SIDEBAR_WIDTH} to {MAX_SIDEBAR_WIDTH}"
+                        ))
+                    })?;
+                self.attach.sidebar_width = Some(w);
+                Ok(w.to_string())
             }
             _ => Err(unknown_key(key)),
         }
@@ -315,6 +345,25 @@ mod tests {
             Config::default().effective_server(None).unwrap(),
             "https://api.tmgr.dev"
         );
+    }
+
+    #[test]
+    fn attach_sidebar_width_is_range_checked_and_round_trips() {
+        let mut cfg = Config::default();
+        assert!(cfg.set("attach.sidebar_width", "15").is_err());
+        assert!(cfg.set("attach.sidebar_width", "61").is_err());
+        assert!(cfg.set("attach.sidebar_width", "wide").is_err());
+        assert_eq!(cfg.set("attach.sidebar_width", "32").unwrap(), "32");
+        assert_eq!(
+            cfg.get("attach.sidebar_width").unwrap().as_deref(),
+            Some("32")
+        );
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.attach.sidebar_width, Some(32));
+        assert!(!toml::to_string_pretty(&Config::default())
+            .unwrap()
+            .contains("attach"));
     }
 
     #[test]
