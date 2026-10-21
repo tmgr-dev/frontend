@@ -18,7 +18,7 @@
                   │ Enter / R     resume an exited session                       │                 │
                   │ x / X         stop (asks first) / remove if exited           │                 │
                   │ [             scroll back through history                    │                 │
-                  │ q / ?         agent questions (or click ?N) / this help      │                 │
+                  │ q / u / ?     agent questions / subagents / this help        │                 │
                   │ Ctrl-]        send a literal Ctrl-] to the session           │                 │
  + New session    │                                                              │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

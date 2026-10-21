@@ -2,7 +2,7 @@ use super::attach_questions::{session_src, QuestionJob};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Receiver;
 use tmgr_core::redact::redact_secrets;
-use tmgr_runner::attach::{Format, SessionStatus, StatusScan};
+use tmgr_runner::attach::{peek_lines, Format, SessionStatus, StatusScan};
 use tmgr_runner::questions::transcript_path;
 
 const MAX_SCANS: usize = 64;
@@ -24,6 +24,32 @@ pub(super) fn status_worker(
             }
         }
         if !send(found) {
+            return;
+        }
+    }
+}
+
+pub(super) struct PeekJob {
+    pub job: QuestionJob,
+    pub sub: String,
+    pub agent: Option<String>,
+}
+
+pub(super) fn peek_worker(
+    jobs: Receiver<PeekJob>,
+    mut send: impl FnMut(String, String, Vec<String>) -> bool,
+) {
+    for PeekJob { job, sub, agent } in jobs {
+        let lines = session_src(&job)
+            .and_then(|src| {
+                let path = transcript_path(&src)?;
+                Some(peek_lines(&src.home, &path, &sub, agent.as_deref()))
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|l| redact_secrets(&l))
+            .collect();
+        if !send(job.id.clone(), sub, lines) {
             return;
         }
     }
@@ -117,6 +143,47 @@ mod tests {
             std::thread::spawn(move || status_worker(rx, move |found| out_tx.send(found).is_ok()));
         tx.send(vec![j]).unwrap();
         assert!(out_rx.recv().unwrap().is_empty());
+        drop(tx);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn the_peek_worker_returns_the_subagent_lines() {
+        let runner = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        let proj = home.path().join(".claude/projects/-work-x");
+        let subs = proj.join(U).join("subagents");
+        std::fs::create_dir_all(&subs).unwrap();
+        std::fs::write(proj.join(format!("{U}.jsonl")), "").unwrap();
+        std::fs::write(subs.join("agent-z.meta.json"), r#"{"toolUseId":"tu1"}"#).unwrap();
+        std::fs::write(
+            subs.join("agent-z.jsonl"),
+            r#"{"type":"user","message":{"role":"user","content":"look at Bearer abc123 now"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            runner.path().join("output.log"),
+            format!("claude --resume {U}\n"),
+        )
+        .unwrap();
+        let (tx, rx) = mpsc::sync_channel(1);
+        let (out_tx, out_rx) = mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            peek_worker(rx, move |s, sub, lines| {
+                out_tx.send((s, sub, lines)).is_ok()
+            })
+        });
+        tx.send(PeekJob {
+            job: job(home.path(), runner.path()),
+            sub: "tu1".into(),
+            agent: None,
+        })
+        .unwrap();
+        let (session, sub, lines) = out_rx.recv().unwrap();
+        assert_eq!((session.as_str(), sub.as_str()), ("s_abcdefghjk", "tu1"));
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].starts_with("prompt: look at Bearer "), "{lines:?}");
+        assert!(!lines[0].contains("abc123"), "{lines:?}");
         drop(tx);
         handle.join().unwrap();
     }

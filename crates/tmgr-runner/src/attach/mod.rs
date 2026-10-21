@@ -27,7 +27,9 @@ pub use palette::{Palette, PaletteEdit, PaletteEntry, RowView};
 pub use place::{fit, probe, tail2, Loc};
 pub use qmenu::{find_question, goto_target, GotoMark, QButton, QEdit, QMenu};
 pub use render::{cursor, render, ScreenSource};
-pub use status::{activity_label, SessionStatus, StatusLine, StatusScan};
+pub use status::{
+    activity_label, peek_lines, Peek, PeekEdit, SessionStatus, StatusLine, StatusScan, SubAgent,
+};
 pub use theme::{kind_for_background, parse_osc11, ThemeKind, OSC11_QUERY};
 pub use title::{age_label, clip, locate, AgentTitle, Format, Source, TitleScan};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
