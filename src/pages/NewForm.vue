@@ -75,6 +75,7 @@
 	import TaskPersonChips from '@/components/tasks/TaskPersonChips.vue';
 	import TaskRelations from '@/components/tasks/TaskRelations.vue';
 	import TaskShareMenu from '@/components/tasks/TaskShareMenu.vue';
+	import TaskTimeEntries from '@/components/tasks/TaskTimeEntries.vue';
 	import TaskTimeInfo from '@/components/tasks/TaskTimeInfo.vue';
 	import { Button } from '@/components/ui/button';
 	import {
@@ -2909,6 +2910,14 @@
 						v-if="(taskId || form.id) && isFeatureEnabled('agent_work')"
 						:task-id="Number(taskId || form.id)"
 						:workspace-id="form.workspace_id"
+					/>
+
+					<TaskTimeEntries
+						v-if="!isLocalWorkspaceTask && (taskId || form.id)"
+						:task-id="Number(taskId || form.id)"
+						:workspace-id="
+							Number(form.workspace_id || store.getters.currentWorkspaceId)
+						"
 					/>
 
 					<PluginTaskSections v-if="form.id" :task="form" />
