@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.21
 
 - `tmgr attach` shows the agent's own session title next to the sidebar entry and in the pane header, so names match what you see in Claude Code and Codex: the title you set with `/rename` in Claude Code (or the Codex thread name) wins; Claude's automatic title is shown dim to mark it as automatic. A name you set in tmgr (`Ctrl-] r`, `--name`, `tmgr rename`) always wins and is never overwritten, and renaming in tmgr does not rename the agent session. The label is display only: commands still take the tmgr name, and the status bar keeps showing it. Titles are read incrementally, only for the visible sessions and every few seconds, from the agent's own transcript in the session's sandbox home (Claude `.claude/projects/...`, Codex `.codex/session_index.jsonl`); only the session's own sandbox home is read, never your real `~/.claude` or `~/.codex`. Escape sequences and control characters are stripped and long titles are truncated. Not shown in a remote attach.
 - The sidebar age now carries the state word, for example `waiting 2s` or `working 15s`, instead of the bare `2s`. When the sidebar is narrow the state word is shortened first (`work… 15s`) and finally dropped; the age is never cut.
