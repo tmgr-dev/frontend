@@ -1,7 +1,7 @@
 mod app;
 mod capture;
 mod cmdline;
-mod fuzzy;
+use tmgr_fuzzy as fuzzy;
 mod groups;
 mod guard;
 mod history;

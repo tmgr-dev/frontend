@@ -4018,6 +4018,7 @@ dependencies = [
  "shell-words",
  "tempfile",
  "tmgr-core",
+ "tmgr-fuzzy",
  "tmgr-ipc",
  "tmgr-link",
  "tmgr-local",
@@ -4058,6 +4059,10 @@ dependencies = [
  "wiremock",
  "zeroize",
 ]
+
+[[package]]
+name = "tmgr-fuzzy"
+version = "1.0.17"
 
 [[package]]
 name = "tmgr-ipc"
@@ -4149,6 +4154,7 @@ dependencies = [
  "shell-words",
  "tempfile",
  "tmgr-approval",
+ "tmgr-fuzzy",
  "tmgr-ipc",
  "toml",
  "unicode-width",

@@ -10,6 +10,7 @@ publish = false
 
 [dependencies]
 tmgr-ipc.workspace = true
+tmgr-fuzzy.workspace = true
 tmgr-approval.workspace = true
 serde.workspace = true
 serde_json.workspace = true

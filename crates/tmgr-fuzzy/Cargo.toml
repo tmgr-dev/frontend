@@ -1,0 +1,11 @@
+[package]
+name = "tmgr-fuzzy"
+description = "Subsequence fuzzy matcher shared by the tmgr menu and the attach palette"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
