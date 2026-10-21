@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr attach` shows the subagents a Claude Code session has running. The session row gets `(+3)` after its name, and its activity line can be clicked (or `Ctrl-] u` on the focused session) to expand one row per subagent, such as `Explore: find auth routes  0:12`. Click a subagent row to open a read-only peek of its own transcript: its prompt, what it says and the tools it calls (never their output). The peek refreshes about once a second, scrolls with Up/Down, PageUp/PageDown, `g` and `G`, and closes with `Esc`, `q` or a click; nothing you type there reaches the subagent. A subagent counts as running until its result or completion notice appears in the session transcript, and a background one that has written nothing for ten minutes is dropped. Only the last megabyte of the session transcript is read, so a subagent started before that is not shown. Codex sessions show nothing. Not in a remote attach.
+
 ## 1.0.30
 
 - `tmgr attach` shows what each Claude Code session is doing without opening it. While a session works, a line under its name in the sidebar (and after the state in the pane header when there is room) shows the tool it is running, such as `Bash: cargo test` or `Edit: api.rs`, with the turn time `0:42`; between tools it says `thinking`; when the agent keeps a todo list (`TodoWrite`, or the `TaskCreate`/`TaskUpdate` tools) the open progress `3/7` comes first. The runner client reads the agent's own transcript (never the screen), updates about once a second and only for sessions you can see. Secret-looking values in commands (`NAME=value`, `--password x`, bearer and `Authorization:` headers, URL credentials, well-known token prefixes) are hidden. Codex sessions show nothing. Not in a remote attach.

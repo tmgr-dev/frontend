@@ -9,7 +9,7 @@ use super::attach_shell::{
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
     KILL_ONLY,
 };
-use super::attach_status::status_worker;
+use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
@@ -119,6 +119,11 @@ enum Msg {
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
     Status(HashMap<String, SessionStatus>),
+    Peek {
+        session: String,
+        sub: String,
+        lines: Vec<String>,
+    },
     Questions(Vec<Entry>),
     Goto {
         session: String,
@@ -255,6 +260,9 @@ struct App {
     titles_tried: HashSet<String>,
     exit_scanned: HashSet<String>,
     last_title: Instant,
+    peek_tx: SyncSender<PeekJob>,
+    peek_pending: bool,
+    last_peek: Instant,
     status_tx: SyncSender<Vec<QuestionJob>>,
     status_pending: bool,
     last_status: Instant,
@@ -285,6 +293,16 @@ impl App {
             Msg::Titles(found) => {
                 self.title_pending = false;
                 if self.view.set_titles(found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Peek {
+                session,
+                sub,
+                lines,
+            } => {
+                self.peek_pending = false;
+                if self.view.set_peek(&session, &sub, lines) {
                     self.dirty = true;
                 }
             }
@@ -478,6 +496,33 @@ impl App {
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
         }
+    }
+
+    fn probe_peek(&mut self) {
+        let Some(peek) = self.view.peek.as_ref() else {
+            return;
+        };
+        let every = if peek.lines.is_empty() {
+            Duration::from_millis(500)
+        } else {
+            STATUS_EVERY
+        };
+        if self.peek_pending || self.last_peek.elapsed() < every {
+            return;
+        }
+        let (Some(row), Some(src)) = (
+            self.view.sessions.iter().find(|r| r.id == peek.session),
+            self.agents.get(&peek.session),
+        ) else {
+            return;
+        };
+        let job = PeekJob {
+            job: self.question_job(row, src),
+            sub: peek.sub.clone(),
+            agent: peek.agent.clone(),
+        };
+        self.last_peek = Instant::now();
+        self.peek_pending = self.peek_tx.try_send(job).is_ok();
     }
 
     fn probe_status(&mut self) {
@@ -981,6 +1026,10 @@ impl App {
                 self.view.insert_new_session_text(&data);
             }
             (Route::Questions, Action::Forward(data)) => self.questions_input(&data),
+            (Route::Peek, Action::Forward(data)) => {
+                self.view.edit_peek(&data);
+                self.dirty = true;
+            }
             (Route::Sidebar, Action::Forward(data)) => {
                 let area = self.area();
                 let edit = self.view.edit_sidebar(area, &data);
@@ -1558,6 +1607,7 @@ impl App {
         self.probe_places();
         self.probe_titles();
         self.probe_status();
+        self.probe_peek();
         self.probe_questions();
         self.paste_forks();
         self.view.forkable = self
@@ -1937,6 +1987,19 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             title_out.send(Msg::Titles(found)).is_ok()
         })
     });
+    let (peek_tx, peek_rx) = mpsc::sync_channel(1);
+    let peek_out = tx.clone();
+    thread::spawn(move || {
+        peek_worker(peek_rx, move |session, sub, lines| {
+            peek_out
+                .send(Msg::Peek {
+                    session,
+                    sub,
+                    lines,
+                })
+                .is_ok()
+        })
+    });
     let (status_tx, status_rx) = mpsc::sync_channel(1);
     let status_out = tx.clone();
     thread::spawn(move || {
@@ -2006,6 +2069,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         titles_tried: HashSet::new(),
         exit_scanned: HashSet::new(),
         last_title: Instant::now(),
+        peek_tx,
+        peek_pending: false,
+        last_peek: Instant::now() - STATUS_EVERY,
         status_tx,
         status_pending: false,
         last_status: Instant::now() - STATUS_EVERY,

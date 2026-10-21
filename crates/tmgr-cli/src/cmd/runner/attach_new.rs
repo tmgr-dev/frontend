@@ -31,6 +31,7 @@ pub(super) enum Plan {
 pub(super) enum Route {
     Dialog,
     Questions,
+    Peek,
     Sidebar,
     Other,
 }
@@ -52,6 +53,8 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
         Route::Dialog
     } else if view.qmenu.is_some() {
         Route::Questions
+    } else if view.peek.is_some() {
+        Route::Peek
     } else if view.sidebar_focus.is_some() {
         Route::Sidebar
     } else {

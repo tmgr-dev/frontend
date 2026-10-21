@@ -3317,6 +3317,7 @@ fn shape(v: &ViewState) -> Vec<String> {
             }
             SidebarLine::Detail(id) => format!("~{id}"),
             SidebarLine::Activity(id) => format!("^{id}"),
+            SidebarLine::Sub { id, .. } => format!("*{id}"),
         })
         .collect()
 }
@@ -5536,6 +5537,7 @@ fn with_status(width: u16) -> ViewState {
         SessionStatus {
             activity: Some("Bash: cargo test".into()),
             todo: Some((3, 7)),
+            ..Default::default()
         },
     );
     found.insert(
@@ -5543,6 +5545,7 @@ fn with_status(width: u16) -> ViewState {
         SessionStatus {
             activity: Some("Edit: api.rs".into()),
             todo: None,
+            ..Default::default()
         },
     );
     assert!(v.set_status(found));
@@ -5583,6 +5586,7 @@ fn set_status_reports_changes_and_drops_unknown_sessions() {
         SessionStatus {
             activity: Some("Bash: ls".into()),
             todo: None,
+            ..Default::default()
         },
     );
     assert!(v.set_status(ghost));
@@ -5654,4 +5658,176 @@ fn a_short_sidebar_drops_activity_lines_before_detail_lines() {
         .lines
         .iter()
         .any(|(l, _)| matches!(l, SidebarLine::Activity(_))));
+}
+
+fn with_subs(width: u16) -> ViewState {
+    let mut v = with_status(width);
+    let mut found = v.status.clone();
+    found.get_mut("a").unwrap().subs = vec![
+        SubAgent {
+            id: "t1".into(),
+            label: "Explore: find auth routes".into(),
+            started_s: 88,
+            agent: None,
+        },
+        SubAgent {
+            id: "t2".into(),
+            label: "Plan: review the diff".into(),
+            started_s: 95,
+            agent: None,
+        },
+    ];
+    assert!(v.set_status(found));
+    v
+}
+
+fn find_hit(v: &ViewState, pick: impl Fn(&SidebarLine) -> bool) -> (u16, u16) {
+    let sb = layout(AREA, v).sidebar.unwrap();
+    let sl = v.sidebar_layout(sb);
+    let (_, y) = sl.lines.iter().find(|(l, _)| pick(l)).unwrap();
+    (sb.x + 6, *y)
+}
+
+#[test]
+fn the_sidebar_row_counts_running_subagents() {
+    let v = with_subs(140);
+    assert!(draw(&v, &screens(), 140, 22).contains("claude (+2)"));
+}
+
+#[test]
+fn clicking_the_activity_line_expands_and_collapses_the_subagent_rows() {
+    let mut v = with_subs(140);
+    let (x, y) = find_hit(&v, |l| matches!(l, SidebarLine::Activity(id) if id == "a"));
+    assert_eq!(v.hit(AREA, x, y), Hit::Subs("a".into()));
+    v.apply(Cmd::Subagents);
+    assert!(!v.subs_open.contains("a"));
+    v.subs_open.insert("a".into());
+    let rows = v
+        .sidebar_layout(layout(AREA, &v).sidebar.unwrap())
+        .lines
+        .iter()
+        .filter(|(l, _)| matches!(l, SidebarLine::Sub { .. }))
+        .count();
+    assert_eq!(rows, 2);
+    v.toggle_subs("a");
+    assert!(v.subs_open.is_empty());
+}
+
+#[test]
+fn clicking_a_subagent_row_opens_the_read_only_peek() {
+    let mut v = with_subs(140);
+    v.subs_open.insert("a".into());
+    let (x, y) = find_hit(
+        &v,
+        |l| matches!(l, SidebarLine::Sub { id, .. } if id == "t2"),
+    );
+    assert_eq!(v.hit(AREA, x, y), Hit::Sub("a".into(), "t2".into()));
+    v.open_peek("a", "t2");
+    let peek = v.peek.clone().unwrap();
+    assert_eq!(peek.title, "Plan: review the diff");
+    assert!(v.set_peek("a", "t2", vec!["prompt: x".into()]));
+    assert!(!v.set_peek("a", "t2", vec!["prompt: x".into()]));
+    assert!(!v.set_peek("a", "other", vec!["y".into()]));
+}
+
+#[test]
+fn peek_keys_scroll_and_close() {
+    let mut v = with_subs(140);
+    v.open_peek("a", "t1");
+    v.set_peek("a", "t1", (0..30).map(|i| format!("l{i}")).collect());
+    assert_eq!(v.edit_peek(b"\x1b[A"), PeekEdit::Keep);
+    assert_eq!(v.peek.as_ref().unwrap().back, 1);
+    v.edit_peek(b"\x1b[5~");
+    assert_eq!(v.peek.as_ref().unwrap().back, 11);
+    v.edit_peek(b"G");
+    assert_eq!(v.peek.as_ref().unwrap().back, 0);
+    assert_eq!(v.edit_peek(b"\x1b"), PeekEdit::Close);
+    assert!(v.peek.is_none());
+}
+
+#[test]
+fn a_session_with_only_background_agents_keeps_an_activity_line() {
+    let mut v = with_subs(140);
+    v.sessions[0].state.kind = StateKind::Waiting;
+    let mut found = v.status.clone();
+    found.get_mut("a").unwrap().todo = None;
+    found.get_mut("a").unwrap().subs[0].agent = Some("ag".into());
+    v.set_status(found);
+    assert_eq!(v.status_line("a").unwrap().text, "subagents running");
+}
+
+#[test]
+fn snapshot_wide_with_expanded_subagents() {
+    let mut v = with_subs(140);
+    v.subs_open.insert("a".into());
+    assert_snapshot("subagents_wide", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_peek_overlay() {
+    let mut v = with_subs(140);
+    v.open_peek("a", "t1");
+    v.set_peek(
+        "a",
+        "t1",
+        vec![
+            "prompt: find the auth routes".into(),
+            "Looking at the router.".into(),
+            "> Grep: route".into(),
+            "Found 3 handlers.".into(),
+        ],
+    );
+    assert_snapshot("subagents_peek", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn peek_keys_cap_at_the_top_and_handle_batched_input() {
+    let mut v = with_subs(140);
+    v.open_peek("a", "t1");
+    v.set_peek("a", "t1", (0..30).map(|i| format!("l{i}")).collect());
+    v.edit_peek(b"g");
+    assert_eq!(v.peek.as_ref().unwrap().back, 29);
+    v.edit_peek(b"\x1b[B\x1b[B\x1b[B");
+    assert_eq!(v.peek.as_ref().unwrap().back, 26);
+    v.edit_peek(b"kkk");
+    assert_eq!(v.peek.as_ref().unwrap().back, 29);
+    assert_eq!(v.edit_peek(b"\x1b\x1b"), PeekEdit::Close);
+}
+
+#[test]
+fn scrolled_to_the_top_the_peek_still_shows_a_full_page() {
+    let mut v = with_subs(140);
+    v.open_peek("a", "t1");
+    v.set_peek("a", "t1", (0..30).map(|i| format!("line {i}")).collect());
+    v.edit_peek(b"g");
+    assert!(draw(&v, &screens(), 140, 22).contains("line 0"));
+}
+
+#[test]
+fn foreground_subagents_are_hidden_once_the_session_stops_working() {
+    let mut v = with_subs(140);
+    let mut found = v.status.clone();
+    found.get_mut("a").unwrap().subs[1].agent = Some("ag".into());
+    v.set_status(found);
+    assert_eq!(v.subs_of("a").len(), 2);
+    v.sessions[0].state.kind = StateKind::Waiting;
+    let left: Vec<_> = v.subs_of("a").iter().map(|s| s.id.clone()).collect();
+    assert_eq!(left, vec!["t2".to_string()]);
+}
+
+#[test]
+fn the_peek_closes_when_its_session_disappears() {
+    let mut v = with_subs(140);
+    v.open_peek("a", "t1");
+    v.sessions.retain(|r| r.id != "a");
+    v.set_status(HashMap::new());
+    assert!(v.peek.is_none());
+}
+
+#[test]
+fn any_command_closes_the_peek() {
+    let mut v = with_subs(140);
+    v.open_peek("a", "t1");
+    v.apply(Cmd::Help);
+    assert!(v.peek.is_none());
 }

@@ -1,0 +1,22 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working · 3/7 · Bash: carg… · 0:42 ─ ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked╭ Subagent · Explore: find auth routes · read-only ────────────────────────────────────────────────╮                   │
+ ▾ claude           │prompt: find the auth routes                                                                      │                   │
+   ● claude (+2) w… │Looking at the router.                                                                            │                   │
+     3/7 · Bash: … 0│> Grep: route                                                                                     │                   │
+   ◌ dev-server wa… │Found 3 handlers.                                                                                 │                   │
+ ✓ tests     exited │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │                                                                                                  │                   │
+                    │Esc closes · Up/Down scroll · g top                                                               │                   │
+ + New session      ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯───────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

@@ -4,7 +4,7 @@ use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
 use super::qmenu::{GotoMark, QEdit, QMenu};
-use super::status::SessionStatus;
+use super::status::{Peek, SessionStatus};
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
@@ -138,6 +138,8 @@ pub struct ViewState {
     pub locs: HashMap<String, Loc>,
     pub titles: HashMap<String, AgentTitle>,
     pub status: HashMap<String, SessionStatus>,
+    pub subs_open: HashSet<String>,
+    pub peek: Option<Peek>,
     pub questions: Vec<Entry>,
     pub qmenu: Option<QMenu>,
     pub goto: Option<GotoMark>,
@@ -215,6 +217,10 @@ pub enum SidebarLine {
         indent: bool,
     },
     Activity(String),
+    Sub {
+        session: String,
+        id: String,
+    },
     Detail(String),
 }
 
@@ -349,6 +355,8 @@ impl ViewState {
             locs: HashMap::new(),
             titles: HashMap::new(),
             status: HashMap::new(),
+            subs_open: HashSet::new(),
+            peek: None,
             questions: Vec::new(),
             qmenu: None,
             goto: None,
@@ -709,7 +717,7 @@ impl ViewState {
                 SidebarLine::Header { key, .. } => Some(SidebarItem::Group(key)),
                 SidebarLine::Tab { id, .. } => Some(SidebarItem::Tab(id)),
                 SidebarLine::Session { id, .. } => Some(SidebarItem::Session(id)),
-                SidebarLine::Activity(_) | SidebarLine::Detail(_) => None,
+                SidebarLine::Activity(_) | SidebarLine::Sub { .. } | SidebarLine::Detail(_) => None,
             })
             .collect();
         if sl.new_row.is_some() {
@@ -727,7 +735,10 @@ impl ViewState {
         let room = usize::from(last.saturating_sub(rect.y + 1));
         let mut plan = self.sidebar_plan();
         if plan.len() > room {
-            plan.retain(|l| !matches!(l, SidebarLine::Activity(_)));
+            plan.retain(|l| !matches!(l, SidebarLine::Sub { .. }));
+            if plan.len() > room {
+                plan.retain(|l| !matches!(l, SidebarLine::Activity(_)));
+            }
             if plan.len() > room {
                 plan.retain(|l| !matches!(l, SidebarLine::Detail(_)));
             }
@@ -759,15 +770,28 @@ impl ViewState {
         out
     }
 
+    fn status_lines(&self, id: &str, out: &mut Vec<SidebarLine>) {
+        if self.status_line(id).is_none() {
+            return;
+        }
+        out.push(SidebarLine::Activity(id.to_string()));
+        if self.subs_open.contains(id) {
+            for sub in self.subs_of(id) {
+                out.push(SidebarLine::Sub {
+                    session: id.to_string(),
+                    id: sub.id.clone(),
+                });
+            }
+        }
+    }
+
     fn sidebar_plan(&self) -> Vec<SidebarLine> {
         let push = |r: &SessionRow, out: &mut Vec<SidebarLine>, indent: bool| {
             out.push(SidebarLine::Session {
                 id: r.id.clone(),
                 indent,
             });
-            if self.status_line(&r.id).is_some() {
-                out.push(SidebarLine::Activity(r.id.clone()));
-            }
+            self.status_lines(&r.id, out);
             if !indent && self.locs.contains_key(&r.id) {
                 out.push(SidebarLine::Detail(r.id.clone()));
             }
@@ -786,9 +810,7 @@ impl ViewState {
                                 id: m.clone(),
                                 indent: true,
                             });
-                            if self.status_line(&m).is_some() {
-                                out.push(SidebarLine::Activity(m.clone()));
-                            }
+                            self.status_lines(&m, &mut out);
                             if self.locs.contains_key(&m) {
                                 out.push(SidebarLine::Detail(m));
                             }
@@ -1092,6 +1114,7 @@ impl ViewState {
 
     pub fn apply(&mut self, cmd: Cmd) {
         self.sidebar_focus = None;
+        self.peek = None;
         match cmd {
             Cmd::NextSession => self.step(true),
             Cmd::PrevSession => self.step(false),
@@ -1157,6 +1180,11 @@ impl ViewState {
                 }
             }
             Cmd::Questions => self.toggle_questions(),
+            Cmd::Subagents => {
+                if let Some(id) = self.focused_session().map(str::to_string) {
+                    self.toggle_subs(&id);
+                }
+            }
             Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession => {}
         }
     }
@@ -1416,9 +1444,17 @@ impl ViewState {
                 let id = match line {
                     SidebarLine::Header { key, .. } => return Hit::Group(key.clone()),
                     SidebarLine::Tab { id, .. } => return Hit::Tab(*id),
-                    SidebarLine::Activity(id) | SidebarLine::Detail(id) => {
-                        return Hit::Session(id.clone())
+                    SidebarLine::Activity(id) => {
+                        return if self.subs_of(id).is_empty() {
+                            Hit::Session(id.clone())
+                        } else {
+                            Hit::Subs(id.clone())
+                        }
                     }
+                    SidebarLine::Sub { session, id } => {
+                        return Hit::Sub(session.clone(), id.clone())
+                    }
+                    SidebarLine::Detail(id) => return Hit::Session(id.clone()),
                     SidebarLine::Session { id, .. } => id,
                 };
                 let Some(r) = self.sessions.iter().find(|s| s.id == *id) else {
@@ -1477,6 +1513,8 @@ impl ViewState {
             | Hit::Group(_)
             | Hit::Tab(_)
             | Hit::Questions(_)
+            | Hit::Subs(_)
+            | Hit::Sub(..)
             | Hit::NewSession) => Some(h),
             _ => None,
         }
@@ -1513,6 +1551,7 @@ impl ViewState {
             || self.new_session.is_some()
             || self.palette.is_some()
             || self.qmenu.is_some()
+            || self.peek.is_some()
             || self.help
         {
             self.border_drag = None;
@@ -1536,6 +1575,13 @@ impl ViewState {
         if self.help {
             if ev.is_left_press() {
                 self.help = false;
+                out.redraw = true;
+            }
+            return out;
+        }
+        if self.peek.is_some() {
+            if ev.is_left_press() {
+                self.peek = None;
                 out.redraw = true;
             }
             return out;
@@ -1574,6 +1620,18 @@ impl ViewState {
             Hit::Session(id) => {
                 if ev.is_left_press() {
                     self.open(&id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Subs(id) => {
+                if ev.is_left_press() {
+                    self.toggle_subs(&id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Sub(session, id) => {
+                if ev.is_left_press() {
+                    self.open_peek(&session, &id);
                     out.redraw = true;
                 }
             }
@@ -1995,6 +2053,8 @@ pub enum Hit {
     Group(String),
     Tab(u64),
     Questions(String),
+    Subs(String),
+    Sub(String, String),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,

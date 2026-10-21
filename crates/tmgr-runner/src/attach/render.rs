@@ -6,6 +6,7 @@ use super::palette::{
 };
 use super::place::{fit, tail2};
 use super::qmenu::{badge_text, draw_qmenu, GotoMark};
+use super::status::Peek;
 use super::theme::{colors, with_theme};
 use super::title::{age_label, clip};
 use super::tree::Nav;
@@ -124,6 +125,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.qmenu.is_some() {
         draw_qmenu(buf, area, st);
     }
+    if let Some(peek) = &st.peek {
+        draw_peek(buf, area, peek);
+    }
     draw_new_session(buf, area, st);
 }
 
@@ -158,6 +162,7 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             } => draw_group_header(buf, area, st, key, *count, *collapsed, y),
             SidebarLine::Tab { id, count } => draw_tab_header(buf, area, st, *id, *count, y),
             SidebarLine::Activity(id) => draw_activity(buf, area, st, id, nested, y),
+            SidebarLine::Sub { session, id } => draw_sub(buf, area, st, session, id, nested, y),
             SidebarLine::Detail(id) => draw_detail(buf, area, st, id, nested, y),
             SidebarLine::Session { id, indent } => {
                 nested = *indent;
@@ -262,7 +267,13 @@ fn draw_session_row(
     } else {
         let name_x = area.x + 3 + off + shift;
         let avail = usize::from(area.right().saturating_sub(name_x + 1));
-        let keep = label.width().min(MIN_NAME_W) + 1;
+        let subs = st.subs_of(&row.id).len();
+        let suffix_w = if subs > 0 {
+            format!(" (+{subs})").width() as u16
+        } else {
+            0
+        };
+        let keep = label.width().min(MIN_NAME_W) + 1 + usize::from(suffix_w);
         let room = avail.saturating_sub(keep);
         let age = match row.you.and_then(you_label) {
             Some(you) if room >= you.width() + 1 + row.age.width() => {
@@ -274,12 +285,17 @@ fn draw_session_row(
         let age_w = age.width() as u16;
         let age_x = area.right().saturating_sub(age_w + 1).max(name_x);
         let name_w = age_x.saturating_sub(name_x).saturating_sub(1);
+        let fits = suffix_w > 0 && name_w > suffix_w;
+        let name_room = if fits { name_w - suffix_w } else { name_w };
         let shown = if agent.is_some() {
-            clip(label, usize::from(name_w))
+            clip(label, usize::from(name_room))
         } else {
             label.to_string()
         };
-        put(buf, name_x, y, &shown, name_style, name_w);
+        let drawn = put(buf, name_x, y, &shown, name_style, name_room);
+        if fits {
+            put(buf, drawn, y, &format!(" (+{subs})"), dim(), suffix_w);
+        }
         put(
             buf,
             age_x,
@@ -420,6 +436,46 @@ fn draw_activity(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested:
         if cx > x {
             put(buf, cx, y, &clock, dim(), clock.width() as u16);
         }
+    }
+}
+
+fn draw_sub(
+    buf: &mut Buffer,
+    area: Rect,
+    st: &ViewState,
+    session: &str,
+    id: &str,
+    nested: bool,
+    y: u16,
+) {
+    let subs = st.subs_of(session);
+    let Some(sub) = subs.iter().find(|s| s.id == id) else {
+        return;
+    };
+    let x = area.x + if nested { 7 } else { 5 };
+    let right = area.right().saturating_sub(1);
+    let clock = st.sub_elapsed(sub);
+    let clock_w = if clock.is_empty() {
+        0
+    } else {
+        clock.width() as u16 + 1
+    };
+    let room = usize::from(right.saturating_sub(x + clock_w));
+    put(buf, x, y, &clip(&sub.label, room), dim(), room as u16);
+    if clock_w > 0 {
+        let cx = right.saturating_sub(clock.width() as u16);
+        if cx > x {
+            put(buf, cx, y, &clock, dim(), clock.width() as u16);
+        }
+    }
+    let hovered = st
+        .pointer
+        .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
+    if hovered {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().add_modifier(Modifier::UNDERLINED),
+        );
     }
 }
 
@@ -850,8 +906,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "scroll back through history",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Questions, Cmd::Help]),
-        "agent questions (or click ?N) / this help",
+        HelpKey::Cmds(&[Cmd::Questions, Cmd::Subagents, Cmd::Help]),
+        "agent questions / subagents / this help",
     ),
     (
         HelpKey::Lit("Ctrl-]"),
@@ -868,6 +924,68 @@ fn help_key(key: &HelpKey) -> String {
             .collect::<Vec<_>>()
             .join(" / "),
     }
+}
+
+fn draw_peek(buf: &mut Buffer, area: Rect, peek: &Peek) {
+    let w = area.width.min(100);
+    let h = area.height.saturating_sub(2).min(30);
+    let r = Rect::new(
+        area.x + (area.width - w) / 2,
+        area.y + (area.height - h) / 2,
+        w,
+        h,
+    );
+    if r.is_empty() {
+        return;
+    }
+    Clear.render(r, buf);
+    let title = format!(
+        " Subagent · {} · read-only ",
+        clip(&peek.title, usize::from(w).saturating_sub(24))
+    );
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .title(title)
+        .render(r, buf);
+    let inner = r.inner(ratatui::layout::Margin::new(1, 1));
+    if inner.height < 2 {
+        return;
+    }
+    let body = usize::from(inner.height - 1);
+    if peek.lines.is_empty() {
+        put(
+            buf,
+            inner.x,
+            inner.y,
+            "no transcript yet",
+            dim(),
+            inner.width,
+        );
+    } else {
+        let end = peek
+            .lines
+            .len()
+            .saturating_sub(peek.back)
+            .max(body.min(peek.lines.len()));
+        let start = end.saturating_sub(body);
+        for (i, line) in peek.lines[start..end].iter().enumerate() {
+            let text = clip(line, usize::from(inner.width));
+            put(
+                buf,
+                inner.x,
+                inner.y + i as u16,
+                &text,
+                Style::new(),
+                inner.width,
+            );
+        }
+    }
+    let hint = if peek.back > 0 {
+        format!("Esc closes · Up/Down scroll · G follows · -{}", peek.back)
+    } else {
+        "Esc closes · Up/Down scroll · g top".to_string()
+    };
+    put(buf, inner.x, inner.bottom() - 1, &hint, dim(), inner.width);
 }
 
 fn draw_help(buf: &mut Buffer, area: Rect) {

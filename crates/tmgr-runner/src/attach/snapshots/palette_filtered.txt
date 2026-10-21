@@ -19,6 +19,6 @@
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ Unanswered questions from the agents                Ctrl-] q │                 │
-                  ╰──────────────────────────────────────────────────────────────╯                 │
- + New session          ╰────────────────────────────────────╯╰────────────────────────────────────╯
+                  │ Show or hide the focused session's subagents        Ctrl-] u │                 │
+ + New session    ╰──────────────────────────────────────────────────────────────╯─────────────────╯
  tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                         Ctrl-] ? help
