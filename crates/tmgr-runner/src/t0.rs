@@ -3,6 +3,9 @@ use tmgr_ipc::api::{State, StateKind};
 pub const DEFAULT_QUIET_MS: u64 = 5000;
 const QUIET_MIN: u64 = 100;
 const QUIET_MAX: u64 = 600_000;
+// An agent idling at its prompt still ticks CPU (claude: ~0.5% of a core), and macOS gives no
+// tty-wait hint, so only a real share of a core counts as silent work.
+const BUSY_CPU_PERCENT: u64 = 5;
 
 fn parse_quiet(raw: Option<&str>) -> u64 {
     raw.and_then(|v| v.trim().parse::<u64>().ok())
@@ -164,7 +167,11 @@ impl Detector {
         let floor = now.saturating_sub(self.quiet_ms);
         let mut window = self.cpu_samples.iter().filter(|(t, _)| *t >= floor);
         match (window.next(), window.next_back()) {
-            (Some((_, first)), Some((_, last))) => last > first,
+            (Some((t_first, first)), Some((t_last, last))) => {
+                let span_ms = t_last.saturating_sub(*t_first);
+                let used_ns = last.saturating_sub(*first);
+                span_ms > 0 && used_ns.saturating_mul(100) >= span_ms * 1_000_000 * BUSY_CPU_PERCENT
+            }
             _ => false,
         }
     }
@@ -264,11 +271,42 @@ mod tests {
     fn cpu_growth_keeps_working() {
         let mut d = Detector::new(1000, 0);
         d.on_output(0);
-        d.on_stat(1100, Some(100), None);
-        d.on_stat(1500, Some(900), None);
+        d.on_stat(1100, Some(0), None);
+        d.on_stat(1500, Some(400_000_000), None);
         assert_eq!(kinds(&d), StateKind::Working);
-        d.on_stat(2000, Some(900), None);
-        d.on_stat(2600, Some(900), None);
+        d.on_stat(2000, Some(400_000_000), None);
+        d.on_stat(2600, Some(400_000_000), None);
+        assert_eq!(kinds(&d), StateKind::Waiting);
+    }
+
+    #[test]
+    fn an_idle_agent_trickling_cpu_waits_after_the_quiet_window() {
+        let mut d = Detector::new(5000, 0);
+        d.on_output(0);
+        for i in 1..=12 {
+            d.on_stat(i * 500, Some(i * 500 * 6_000), None);
+        }
+        assert_eq!(kinds(&d), StateKind::Waiting);
+    }
+
+    #[test]
+    fn cpu_share_counts_as_work_from_the_busy_threshold() {
+        let busy = |used_ns: u64| {
+            let mut d = Detector::new(1000, 0);
+            d.on_output(0);
+            d.on_stat(1100, Some(0), None);
+            d.on_stat(1500, Some(used_ns), None);
+            kinds(&d)
+        };
+        assert_eq!(busy(20_000_000), StateKind::Working);
+        assert_eq!(busy(19_999_999), StateKind::Waiting);
+    }
+
+    #[test]
+    fn a_single_cpu_sample_is_not_growth() {
+        let mut d = Detector::new(1000, 0);
+        d.on_output(0);
+        d.on_stat(1500, Some(400_000_000), None);
         assert_eq!(kinds(&d), StateKind::Waiting);
     }
 
@@ -288,14 +326,14 @@ mod tests {
         d.on_output(0);
         assert_eq!(d.on_idle(10, true), None);
         assert_eq!(kinds(&d), StateKind::Working);
-        d.on_stat(1100, Some(100), None);
-        d.on_stat(1500, Some(900), None);
+        d.on_stat(1100, Some(0), None);
+        d.on_stat(1500, Some(400_000_000), None);
         assert_eq!(kinds(&d), StateKind::Waiting);
         let s = d.on_output(1600).unwrap();
         assert_eq!(s.kind, StateKind::Working);
         d.on_idle(1600, false);
-        d.on_stat(2700, Some(2000), None);
-        d.on_stat(2800, Some(3000), None);
+        d.on_stat(2700, Some(2_000_000_000), None);
+        d.on_stat(2800, Some(2_100_000_000), None);
         assert_eq!(kinds(&d), StateKind::Working);
     }
 

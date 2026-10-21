@@ -7,6 +7,7 @@ mod newsession;
 mod palette;
 mod place;
 mod render;
+mod theme;
 mod title;
 mod tree;
 mod view;
@@ -23,6 +24,7 @@ pub use newsession::{KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, 
 pub use palette::{Palette, PaletteEdit, PaletteEntry, RowView};
 pub use place::{fit, probe, tail2, Loc};
 pub use render::{cursor, render, ScreenSource};
+pub use theme::{kind_for_background, parse_osc11, ThemeKind, OSC11_QUERY};
 pub use title::{age_label, clip, locate, AgentTitle, Format, Source, TitleScan};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use view::{

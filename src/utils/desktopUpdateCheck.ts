@@ -7,6 +7,18 @@ export interface UpdateCheckToast {
 	installable: boolean;
 }
 
+const NETWORK_ERROR =
+	/error sending request|timed out|timeout|connect|dns|network|offline/i;
+const MAX_REASON_LENGTH = 120;
+
+const failureReason = (message: string): string => {
+	const line = message.split('\n')[0].trim();
+	if (!line) return 'Try again later.';
+	return line.length > MAX_REASON_LENGTH
+		? `${line.slice(0, MAX_REASON_LENGTH - 1)}…`
+		: line;
+};
+
 export const updateCheckToast = (
 	outcome: ManualCheckOutcome,
 	currentVersion: string,
@@ -28,6 +40,13 @@ export const updateCheckToast = (
 				installable: true,
 			};
 		case 'error':
+			if (!NETWORK_ERROR.test(outcome.message))
+				return {
+					title: 'Update check failed',
+					description: failureReason(outcome.message),
+					variant: 'destructive',
+					installable: false,
+				};
 			return {
 				title: 'Could not check for updates',
 				description: 'Check your connection and try again.',

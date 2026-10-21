@@ -112,3 +112,81 @@ test('list rows and the task panel show the chip', async ({ page }) => {
   await page.waitForTimeout(800);
   await shot(page, 'panel');
 });
+
+const titleGap = async (page) => {
+  const header = await page.locator('.new-form-container header').boundingBox();
+  const title = await page
+    .locator('[data-tour="task-form.title"]')
+    .boundingBox();
+  return title.y - (header.y + header.height);
+};
+
+const openPanel = async (page, agentStatus) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApp(page, { taskCount: 3 });
+  await page.route('**/api/workspaces/*/agent-status', agentStatus);
+  const statusLoaded = page.waitForResponse('**/api/workspaces/*/agent-status');
+  await page.goto('/demo/list');
+  await statusLoaded;
+  await page.locator('[data-task-id="1"]').first().click();
+  await page.locator('[data-tour="task-form.title"]').waitFor();
+};
+
+test('task panel keeps no empty row above the title without a session', async ({
+  page,
+}) => {
+  await openPanel(page, (route) => route.fulfill({ json: { data: [] } }));
+  expect(await titleGap(page)).toBeLessThanOrEqual(24);
+  await expect(
+    page.locator('.new-form-container [data-testid="agent-status-slot"]'),
+  ).toHaveCount(0);
+});
+
+test('task panel shows the chip above the title when a session exists', async ({
+  page,
+}) => {
+  await openPanel(page, (route) => route.fulfill({ json: { data: sessions } }));
+  const chip = page.locator(
+    '.new-form-container [data-testid="agent-status-chip"]',
+  );
+  await expect(chip).toHaveAttribute('data-state', 'working');
+  const chipBox = await chip.boundingBox();
+  const title = await page
+    .locator('[data-tour="task-form.title"]')
+    .boundingBox();
+  expect(chipBox.y + chipBox.height).toBeLessThanOrEqual(title.y);
+});
+
+test('task panel has no chip row when agent status is refused', async ({
+  page,
+}) => {
+  await openPanel(page, (route) =>
+    route.fulfill({ status: 403, json: { error: 'feature_disabled' } }),
+  );
+  expect(await titleGap(page)).toBeLessThanOrEqual(24);
+  await expect(
+    page.locator('.new-form-container [data-testid="agent-status-slot"]'),
+  ).toHaveCount(0);
+});
+
+test('task page shows the chip when a session arrives after it opened', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await mockApp(page, { taskCount: 3 });
+  let release;
+  const sessionReady = new Promise((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/workspaces/*/agent-status', async (route) => {
+    await sessionReady;
+    await route.fulfill({ json: { data: sessions } });
+  });
+  await page.goto('/demo/tasks/1');
+  await page.locator('[data-tour="task-form.title"]').waitFor();
+  expect(await titleGap(page)).toBeLessThanOrEqual(24);
+  release();
+  await expect(
+    page.locator('.new-form-container [data-testid="agent-status-chip"]'),
+  ).toHaveAttribute('data-state', 'working');
+});

@@ -14,11 +14,11 @@
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Zoom the pane                                       Ctrl-] z │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
+                  │ Make the sidebar narrower                           Ctrl-] < │                 │
+                  │ Make the sidebar wider                              Ctrl-] > │                 │
                   │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Rename the focused session                          Ctrl-] r │                 │
                   │ Rename the tab                                      Ctrl-] , │                 │
                   │ Close the tab (sessions keep running)               Ctrl-] & │                 │
-                  │ Resume the focused session                  Ctrl-] Enter / R │                 │
-                  │ Stop (close) the focused session                    Ctrl-] x │                 │
- + New session    │ Remove (close) the focused exited session           Ctrl-] X │─────────────────╯
+ + New session    │ Resume the focused session                  Ctrl-] Enter / R │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

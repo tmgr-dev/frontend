@@ -11,49 +11,68 @@ export const updateState = ref<{ status: UpdateStatus; version: string }>({
 export type ManualCheckOutcome =
 	| { kind: 'up-to-date' }
 	| { kind: 'available'; version: string }
-	| { kind: 'error' };
+	| { kind: 'error'; message: string };
 
 let pending: Update | null = null;
-let checking = false;
+let inFlight: Promise<Update | null> | null = null;
+
+const runCheck = async (): Promise<Update | null> => {
+	const { check } = await import('@tauri-apps/plugin-updater');
+	const update = await check();
+	if (!update) return null;
+	await update.download();
+	pending = update;
+	updateState.value = { status: 'ready', version: update.version };
+	return update;
+};
+
+// Single-flight: the auto check and every manual click (macOS emits the menu event twice) share one run.
+const sharedCheck = (): Promise<Update | null> => {
+	if (!inFlight) {
+		inFlight = runCheck().finally(() => {
+			inFlight = null;
+		});
+	}
+	return inFlight;
+};
+
+const failureMessage = (err: unknown): string =>
+	err instanceof Error ? err.message : String(err);
+
+const log = async (level: 'error' | 'warn', message: string) => {
+	try {
+		const plugin = await import('@tauri-apps/plugin-log');
+		await plugin[level](message);
+	} catch {
+		/* logging must never break the update check */
+	}
+};
 
 export async function checkForUpdate(): Promise<void> {
-	if (pending || checking) return;
-	checking = true;
+	if (pending) return;
 	try {
-		const { check } = await import('@tauri-apps/plugin-updater');
-		const update = await check();
-		if (!update) return;
-		await update.download();
-		pending = update;
-		updateState.value = { status: 'ready', version: update.version };
-	} catch {
-		/* offline or no release yet: try again on the next tick */
-	} finally {
-		checking = false;
+		await sharedCheck();
+	} catch (err) {
+		await log(
+			'warn',
+			`[updater] background check failed: ${failureMessage(err)}`,
+		);
 	}
 }
 
 export async function checkForUpdateManually(): Promise<ManualCheckOutcome> {
 	if (pending) return { kind: 'available', version: pending.version };
-	if (checking) return { kind: 'error' };
-	checking = true;
 	updateState.value = { status: 'checking', version: '' };
 	try {
-		const { check } = await import('@tauri-apps/plugin-updater');
-		const update = await check();
-		if (!update) {
-			updateState.value = { status: 'idle', version: '' };
-			return { kind: 'up-to-date' };
-		}
-		await update.download();
-		pending = update;
-		updateState.value = { status: 'ready', version: update.version };
-		return { kind: 'available', version: update.version };
-	} catch {
+		const update = await sharedCheck();
+		if (update) return { kind: 'available', version: update.version };
 		updateState.value = { status: 'idle', version: '' };
-		return { kind: 'error' };
-	} finally {
-		checking = false;
+		return { kind: 'up-to-date' };
+	} catch (err) {
+		updateState.value = { status: 'idle', version: '' };
+		const message = failureMessage(err);
+		await log('error', `[updater] manual check failed: ${message}`);
+		return { kind: 'error', message };
 	}
 }
 

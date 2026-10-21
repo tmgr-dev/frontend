@@ -1,12 +1,12 @@
 import type { PageSummary } from '@/actions/tmgr/pages';
 import {
-	ancestorIds,
 	applyMove,
 	buildPagesTree,
 	descendantIds,
 	loadExpanded,
 	pagesAvailable,
 	saveExpanded,
+	sidebarPages,
 } from '../pagesTree';
 
 const page = (id: number, extra: Partial<PageSummary> = {}): PageSummary => ({
@@ -89,7 +89,7 @@ describe('applyMove', () => {
 	});
 });
 
-describe('descendantIds / ancestorIds', () => {
+describe('descendantIds', () => {
 	const pages = [
 		page(1),
 		page(2, { parent_id: 1 }),
@@ -99,9 +99,38 @@ describe('descendantIds / ancestorIds', () => {
 	it('collects the whole subtree', () => {
 		expect(Array.from(descendantIds(pages, 1)).sort()).toEqual([1, 2, 3]);
 	});
-	it('lists ancestors nearest first', () => {
-		expect(ancestorIds(pages, 3)).toEqual([2, 1]);
-		expect(ancestorIds(pages, 4)).toEqual([]);
+});
+
+describe('sidebarPages', () => {
+	const at = (minute: number) =>
+		`2026-10-01T10:${String(minute).padStart(2, '0')}:00Z`;
+
+	it('lists pinned pages in tree order, then the newest edits flat', () => {
+		const pages = [
+			page(1, { updated_at: at(1), position: 1 }),
+			page(2, { parent_id: 1, pinned: true, updated_at: at(9) }),
+			page(3, { pinned: true, position: 2, updated_at: at(2) }),
+			page(4, { parent_id: 1, updated_at: at(8) }),
+			page(5, { updated_at: at(5) }),
+			page(6, { updated_at: at(5) }),
+		];
+		const { pinned, recent } = sidebarPages(pages);
+		expect(pinned.map((p) => p.id)).toEqual([3, 2]);
+		expect(recent.map((p) => p.id)).toEqual([4, 6, 5, 1]);
+		expect([...pinned, ...recent].every((p) => !p.children.length)).toBe(true);
+	});
+
+	it('caps the recent list and never repeats pinned pages', () => {
+		const pages = Array.from({ length: 15 }, (_, i) =>
+			page(i + 1, { updated_at: at(i + 1), pinned: i + 1 === 15 }),
+		);
+		const { pinned, recent } = sidebarPages(pages);
+		expect(pinned.map((p) => p.id)).toEqual([15]);
+		expect(recent.map((p) => p.id)).toEqual([
+			14, 13, 12, 11, 10, 9, 8, 7, 6, 5,
+		]);
+		expect(sidebarPages(pages, 3).recent).toHaveLength(3);
+		expect(sidebarPages([])).toEqual({ pinned: [], recent: [] });
 	});
 });
 

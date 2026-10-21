@@ -180,11 +180,21 @@
 							</div>
 
 							<div
-								v-if="boardLoading && tasksLoaded"
 								role="status"
-								class="px-4 py-2 text-sm text-ink-subtle"
+								aria-live="polite"
+								class="pointer-events-none fixed bottom-[calc(var(--statusbar-h,0px)+1rem)] right-4 z-20 [body:has([data-tour='nav.active-timers'])_&]:right-16"
 							>
-								Refreshing tasks…
+								<template v-if="boardLoading && tasksLoaded">
+									<span
+										class="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface shadow-md"
+									>
+										<Loader2
+											class="h-4 w-4 animate-spin text-ink-subtle"
+											aria-hidden="true"
+										/>
+									</span>
+									<span class="sr-only">Refreshing tasks…</span>
+								</template>
 							</div>
 							<div
 								v-if="boardError"
@@ -840,7 +850,7 @@
 	import { MenuItem } from '@headlessui/vue';
 	import { EllipsisVerticalIcon } from '@heroicons/vue/20/solid';
 	import ColorPicker from '@radial-color-picker/vue-color-picker';
-	import { SquareKanban } from 'lucide-vue-next';
+	import { Loader2, SquareKanban } from 'lucide-vue-next';
 	import { markRaw } from 'vue';
 
 	export default {
@@ -870,6 +880,7 @@
 			RemoveSampleTasksButton,
 			FeatureGate,
 			BoardPreview,
+			Loader2,
 		},
 
 		setup() {
