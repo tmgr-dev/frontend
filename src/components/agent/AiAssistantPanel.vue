@@ -1,4 +1,5 @@
 <script setup lang="ts">
+	import AgentComposerAttachments from '@/components/agent/AgentComposerAttachments.vue';
 	import ChatList from '@/components/agent/ChatList.vue';
 	import ContextMeter from '@/components/agent/ContextMeter.vue';
 	import MicButton from '@/components/voice/MicButton.vue';
@@ -39,6 +40,7 @@
 		forgetRemembered,
 		send,
 		newChat,
+		ensureConversation,
 		subscribe,
 		unsubscribe,
 		stopPolling,
@@ -50,6 +52,33 @@
 	const scroller = ref<HTMLDivElement | null>(null);
 	const input = ref<HTMLInputElement | null>(null);
 	const mic = ref<InstanceType<typeof MicButton> | null>(null);
+	const attachments = ref<InstanceType<typeof AgentComposerAttachments> | null>(
+		null,
+	);
+	const dragging = ref(false);
+
+	const hasFiles = (event: DragEvent): boolean =>
+		Array.from(event.dataTransfer?.types ?? []).includes('Files');
+
+	function onDragOver(event: DragEvent): void {
+		if (!hasFiles(event)) return;
+		event.preventDefault();
+		dragging.value = true;
+	}
+
+	function onDrop(event: DragEvent): void {
+		dragging.value = false;
+		if (!hasFiles(event)) return;
+		event.preventDefault();
+		attachments.value?.add(Array.from(event.dataTransfer?.files ?? []));
+	}
+
+	function onPaste(event: ClipboardEvent): void {
+		const files = Array.from(event.clipboardData?.files ?? []);
+		if (!files.length) return;
+		event.preventDefault();
+		attachments.value?.add(files);
+	}
 
 	// TM-222: the field is disabled while a run is in flight, which makes the browser blur it.
 	// Take the cursor back as soon as it is usable again so a follow-up can just be typed.
@@ -114,7 +143,17 @@
 	async function submit(): Promise<void> {
 		const content = draft.value.trim();
 		if (!content || busy.value || loading.value) return;
-		if (await send(content)) draft.value = '';
+		if (!attachments.value?.canSend) return;
+		const sent = await send(
+			content,
+			undefined,
+			attachments.value.fileIds,
+			attachments.value.readyFiles,
+		);
+		if (sent) {
+			draft.value = '';
+			attachments.value.clear();
+		}
 		focusInput();
 	}
 
@@ -253,7 +292,20 @@
 			</p>
 			<AgentMessage v-for="m in state.messages" :key="m.id" :message="m" />
 		</div>
-		<footer v-show="view === 'chat'" class="shrink-0 border-t border-line p-3">
+		<footer
+			v-show="view === 'chat'"
+			class="shrink-0 border-t border-line p-3"
+			@dragover="onDragOver"
+			@dragleave="dragging = false"
+			@drop="onDrop"
+		>
+			<AgentComposerAttachments
+				ref="attachments"
+				:conversation-id="state.conversationId"
+				:workspace-id="state.workspaceId"
+				:ensure-conversation="ensureConversation"
+				:disabled="busy || loading"
+			/>
 			<div
 				v-if="!busy && !loading"
 				class="mb-2 flex flex-wrap gap-1.5"
@@ -278,6 +330,11 @@
 			</div>
 			<div
 				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
+				:class="
+					dragging
+						? 'ring-2 ring-brand ring-offset-1 ring-offset-surface dark:ring-offset-gray-900'
+						: ''
+				"
 			>
 				<input
 					ref="input"
@@ -287,6 +344,7 @@
 					placeholder="Ask about this workspace…"
 					:disabled="busy || loading"
 					@keydown.enter.prevent="submit"
+					@paste="onPaste"
 				/>
 				<MicButton
 					ref="mic"
@@ -296,7 +354,7 @@
 				/>
 				<button
 					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white disabled:opacity-40"
-					:disabled="!draft.trim() || busy || loading"
+					:disabled="!draft.trim() || busy || loading || !attachments?.canSend"
 					aria-label="Send"
 					title="Send (Enter)"
 					@click="submit"

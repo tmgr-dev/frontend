@@ -28,6 +28,8 @@ import {
 	resetForWorkspace,
 	sendErrorMessage,
 } from '@/utils/agentChat';
+import type { AttachedFile } from '@/utils/aiAttachments';
+import { attachmentErrorMessage } from '@/utils/aiAttachments';
 import { createRequestSequence } from '@/utils/requestSequence';
 import type { ComputedRef, Ref } from 'vue';
 import { computed, getCurrentInstance, onUnmounted, ref } from 'vue';
@@ -43,7 +45,13 @@ export interface UseAgentChatReturn {
 	load: (workspaceId: number) => Promise<void>;
 	openConversation: (conversationId: number) => Promise<void>;
 	forgetRemembered: () => void;
-	send: (content: string, scenario?: string) => Promise<boolean>;
+	send: (
+		content: string,
+		scenario?: string,
+		fileIds?: number[],
+		files?: AttachedFile[],
+	) => Promise<boolean>;
+	ensureConversation: () => Promise<number | null>;
 	newChat: () => Promise<void>;
 	subscribe: (userId: number) => void;
 	unsubscribe: () => void;
@@ -287,7 +295,19 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 	};
 
-	const send = async (content: string, scenario?: string): Promise<boolean> => {
+	const ensureConversation = async (): Promise<number | null> => {
+		if (state.value.conversationId) return state.value.conversationId;
+		const workspaceId = state.value.workspaceId;
+		if (workspaceId !== null) await load(workspaceId);
+		return state.value.conversationId;
+	};
+
+	const send = async (
+		content: string,
+		scenario?: string,
+		fileIds: number[] = [],
+		files: AttachedFile[] = [],
+	): Promise<boolean> => {
 		if (sending.value || loading.value) return false;
 		const token = sendRequests.begin();
 		const current = () => sendRequests.isCurrent(token);
@@ -305,6 +325,7 @@ export function useAgentChat(): UseAgentChatReturn {
 				conversationId,
 				content,
 				scenario,
+				fileIds,
 			);
 
 			if (!current() || state.value.conversationId !== conversationId) {
@@ -313,7 +334,12 @@ export function useAgentChat(): UseAgentChatReturn {
 
 			state.value = appendPending(
 				state.value,
-				{ id: message_id, content, created_at: new Date().toISOString() },
+				{
+					id: message_id,
+					content,
+					created_at: new Date().toISOString(),
+					files,
+				},
 				pending_message_id,
 			);
 
@@ -334,7 +360,8 @@ export function useAgentChat(): UseAgentChatReturn {
 			return true;
 		} catch (e) {
 			if (!current()) return false;
-			error.value = sendErrorMessage(httpStatus(e));
+			error.value =
+				attachmentErrorMessage(e) ?? sendErrorMessage(httpStatus(e));
 			return false;
 		} finally {
 			if (current()) sending.value = false;
@@ -412,6 +439,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		openConversation,
 		forgetRemembered,
 		send,
+		ensureConversation,
 		newChat,
 		subscribe,
 		unsubscribe,
