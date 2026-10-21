@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr attach` can start a new session from inside: `Ctrl-] c`, the `+ New session` row at the bottom of the sidebar (click it, or press `Ctrl-] Left` from the leftmost pane to focus the sidebar, move with the up and down arrows, Enter on a row opens it, Esc or Right goes back to the panes) and the "New session" action of the command palette open a small dialog: kind (claude, codex, shell, your other agent profiles, or a custom command), folder (defaults to the focused session's folder, `~` expands, Tab completes), an optional unique name and where to open it (new pane to the right, below, or replace the current pane). Kind and placement are remembered. Agents start exactly as `tmgr run --agent <profile>` does (your real login, the runner's trust rules, the agent's own folder-trust prompt stays yours to answer) and a custom command as `tmgr run --agent-cmd`; nothing is confirmed for you, and when a start is refused the dialog stays open with the reason and the exact `tmgr run ...` command to try yourself. Not available in a remote attach.
+
 ## 1.0.18
 
 - `Ctrl-] :` in `tmgr attach` opens a command palette: fuzzy search over the attach actions (each row shows its hotkey; the palette runs exactly what the hotkey does, so stop and close still ask first) and over the sessions by name (Enter focuses it), Esc closes, a click on a row works in mouse mode, `?` lists it.
