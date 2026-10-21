@@ -288,6 +288,7 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 			};
 			rec.onstop = () => void handleStop(gen, rec);
 			rec.onerror = () => {
+				rec.onstop = null;
 				generation++;
 				stopTimer();
 				releaseStream();
