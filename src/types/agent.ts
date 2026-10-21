@@ -18,6 +18,15 @@ export interface AgentConversation {
 	workspace_id: number;
 	task_id: number | null;
 	created_at: string;
+	title?: string | null;
+}
+
+export interface AgentConversationItem {
+	id: number;
+	title: string | null;
+	last_message_at: string | null;
+	created_at: string;
+	archived: boolean;
 }
 
 export interface AgentStepEvent {

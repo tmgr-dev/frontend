@@ -3,9 +3,15 @@ import {
 	applyConversation,
 	applyReply,
 	applyStep,
+	chatTitle,
 	createAgentChatState,
+	formatChatTime,
 	hasMessage,
+	hasPendingLast,
 	isBusy,
+	lastChatKey,
+	nextChatAfterRemoval,
+	parseRememberedChatId,
 	resetForWorkspace,
 	sendErrorMessage,
 } from '../agentChat';
@@ -265,5 +271,57 @@ describe('sendErrorMessage', () => {
 		expect(sendErrorMessage(undefined)).toBe(
 			'Could not send your question. Please try again.',
 		);
+	});
+});
+
+describe('chat list helpers', () => {
+	const msg = (status: 'pending' | 'done' | 'failed') => ({
+		id: 1,
+		role: 'assistant' as const,
+		content: '',
+		status,
+		steps: [],
+		created_at: '2026-09-09T10:00:00Z',
+	});
+
+	it('builds the remembered-chat key per user and workspace', () => {
+		expect(lastChatKey(3, 114)).toBe('tmgr.agentChat.last.3.114');
+	});
+
+	it('parses a remembered chat id and rejects junk', () => {
+		expect(parseRememberedChatId('42')).toBe(42);
+		expect(parseRememberedChatId(null)).toBeNull();
+		expect(parseRememberedChatId('abc')).toBeNull();
+		expect(parseRememberedChatId('0')).toBeNull();
+		expect(parseRememberedChatId('-5')).toBeNull();
+	});
+
+	it('detects a pending last message', () => {
+		expect(hasPendingLast([])).toBe(false);
+		expect(hasPendingLast([msg('done')])).toBe(false);
+		expect(hasPendingLast([msg('done'), msg('pending')])).toBe(true);
+	});
+
+	it('picks the neighbour after removal, or null when nothing is left', () => {
+		const items = [{ id: 1 }, { id: 2 }, { id: 3 }];
+		expect(nextChatAfterRemoval(items, 2)).toBe(3);
+		expect(nextChatAfterRemoval(items, 3)).toBe(2);
+		expect(nextChatAfterRemoval([{ id: 1 }], 1)).toBeNull();
+	});
+
+	it('falls back to New chat for empty titles', () => {
+		expect(chatTitle(null)).toBe('New chat');
+		expect(chatTitle('  ')).toBe('New chat');
+		expect(chatTitle('Overdue')).toBe('Overdue');
+	});
+
+	it('formats relative and absolute chat times', () => {
+		const now = Date.parse('2026-10-14T12:00:00Z');
+		expect(formatChatTime(null, now)).toBe('');
+		expect(formatChatTime('2026-10-14T11:59:30Z', now)).toBe('just now');
+		expect(formatChatTime('2026-10-14T11:30:00Z', now)).toBe('30 min ago');
+		expect(formatChatTime('2026-10-14T10:00:00Z', now)).toBe('2 h ago');
+		expect(formatChatTime('2026-10-01T12:00:00Z', now)).toBe('Oct 1');
+		expect(formatChatTime('2025-10-01T12:00:00Z', now)).toBe('Oct 1, 2025');
 	});
 });

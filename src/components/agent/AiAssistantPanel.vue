@@ -1,11 +1,12 @@
 <script setup lang="ts">
+	import ChatList from '@/components/agent/ChatList.vue';
 	import ContextMeter from '@/components/agent/ContextMeter.vue';
 	import { useAgentChat } from '@/composable/useAgentChat';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import store from '@/store';
 	import { focusField } from '@/utils/focusTarget';
-	import { Send, Sparkles, X } from 'lucide-vue-next';
+	import { History, Send, Sparkles, X } from 'lucide-vue-next';
 	import {
 		computed,
 		defineAsyncComponent,
@@ -27,6 +28,8 @@
 		replyTick,
 		busy,
 		load,
+		openConversation,
+		forgetRemembered,
 		send,
 		newChat,
 		subscribe,
@@ -44,6 +47,41 @@
 	const focusInput = () => nextTick(() => focusField(input.value));
 
 	const open = computed(() => store.state.aiPanelOpen);
+	const view = ref<'chat' | 'list'>('chat');
+	const listQuery = ref('');
+	const showArchived = ref(false);
+	const listRefreshKey = computed(() => replyTick.value);
+
+	function toggleHistory(): void {
+		view.value = view.value === 'list' ? 'chat' : 'list';
+	}
+
+	async function openFromList(id: number): Promise<void> {
+		view.value = 'chat';
+		if (id !== state.value.conversationId) await openConversation(id);
+	}
+
+	async function newFromList(): Promise<void> {
+		view.value = 'chat';
+		await newChat();
+	}
+
+	async function onChatRemoved(event: {
+		id: number;
+		action: 'archive' | 'unarchive' | 'delete';
+		nextId: number | null;
+	}): Promise<void> {
+		if (event.action === 'unarchive') return;
+		if (event.id !== state.value.conversationId) return;
+		if (event.nextId !== null) {
+			await openConversation(event.nextId);
+		} else if (event.action === 'delete') {
+			forgetRemembered();
+			if (currentWorkspaceId.value) await load(currentWorkspaceId.value);
+		} else {
+			await newChat();
+		}
+	}
 
 	function close(): void {
 		store.commit('setAiPanelOpen', false);
@@ -69,6 +107,9 @@
 				store.commit('pushModalToStack', 'ai-panel');
 				registerModal('ai-panel', close);
 			} else {
+				view.value = 'chat';
+				listQuery.value = '';
+				showArchived.value = false;
 				unregisterModal('ai-panel');
 				store.commit('removeModalFromStack', 'ai-panel');
 			}
@@ -125,8 +166,17 @@
 			</div>
 			<div class="flex items-center gap-1">
 				<button
+					class="rounded-pill p-1 hover:bg-surface-hover hover:text-ink"
+					:class="view === 'list' ? 'text-ink' : 'text-ink-subtle'"
+					aria-label="Chat history"
+					:aria-pressed="view === 'list'"
+					@click="toggleHistory"
+				>
+					<History class="h-4 w-4" />
+				</button>
+				<button
 					class="rounded-pill px-2 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
-					@click="newChat"
+					@click="newFromList"
 				>
 					New chat
 				</button>
@@ -139,7 +189,22 @@
 				</button>
 			</div>
 		</header>
-		<div ref="scroller" class="flex-1 space-y-3 overflow-y-auto px-4 py-3">
+		<ChatList
+			v-if="view === 'list' && currentWorkspaceId"
+			v-model:query="listQuery"
+			v-model:show-archived="showArchived"
+			:workspace-id="currentWorkspaceId"
+			:current-id="state.conversationId"
+			:refresh-key="listRefreshKey"
+			@open="openFromList"
+			@new-chat="newFromList"
+			@removed="onChatRemoved"
+		/>
+		<div
+			v-show="view === 'chat'"
+			ref="scroller"
+			class="flex-1 space-y-3 overflow-y-auto px-4 py-3"
+		>
 			<p
 				v-if="!state.messages.length && !loading"
 				class="text-sm text-ink-subtle"
@@ -149,7 +214,7 @@
 			</p>
 			<AgentMessage v-for="m in state.messages" :key="m.id" :message="m" />
 		</div>
-		<footer class="shrink-0 border-t border-line p-3">
+		<footer v-show="view === 'chat'" class="shrink-0 border-t border-line p-3">
 			<div
 				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 			>

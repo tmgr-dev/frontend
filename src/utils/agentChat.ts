@@ -160,3 +160,49 @@ export const sendErrorMessage = (status: number | undefined): string => {
 			return 'Could not send your question. Please try again.';
 	}
 };
+
+export const lastChatKey = (userId: number, workspaceId: number): string =>
+	`tmgr.agentChat.last.${userId}.${workspaceId}`;
+
+export const parseRememberedChatId = (raw: string | null): number | null => {
+	if (raw === null || !/^\d+$/.test(raw)) return null;
+	const id = Number(raw);
+	return id > 0 ? id : null;
+};
+
+export const hasPendingLast = (messages: AgentMessage[]): boolean =>
+	messages.length > 0 && messages[messages.length - 1].status === 'pending';
+
+export const nextChatAfterRemoval = (
+	items: { id: number }[],
+	removedId: number,
+): number | null => {
+	const index = items.findIndex((i) => i.id === removedId);
+	const rest = items.filter((i) => i.id !== removedId);
+	if (!rest.length) return null;
+	return rest[Math.min(Math.max(index, 0), rest.length - 1)].id;
+};
+
+export const chatTitle = (title: string | null | undefined): string =>
+	title && title.trim() ? title : 'New chat';
+
+export const formatChatTime = (
+	iso: string | null,
+	nowMs: number = Date.now(),
+): string => {
+	if (!iso) return '';
+	const at = new Date(iso).getTime();
+	if (Number.isNaN(at)) return '';
+	const minutes = Math.max(0, Math.floor((nowMs - at) / 60000));
+	if (minutes < 1) return 'just now';
+	if (minutes < 60) return `${minutes} min ago`;
+	const hours = Math.floor(minutes / 60);
+	if (hours < 24) return `${hours} h ago`;
+	return new Date(at).toLocaleDateString('en-US', {
+		month: 'short',
+		day: 'numeric',
+		...(new Date(at).getFullYear() === new Date(nowMs).getFullYear()
+			? {}
+			: { year: 'numeric' }),
+	});
+};
