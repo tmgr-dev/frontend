@@ -1351,6 +1351,23 @@ fn intent_from_meta(meta: &Meta, profile: &str) -> Result<restore::Intent, ApiEr
     })
 }
 
+fn same_folder(cwd: &str, recorded: Option<(u64, u64)>) -> Result<bundle::Dir, ApiErr> {
+    let cwd = fs::canonicalize(cwd).map_err(|_| {
+        api(
+            ErrorCode::InvalidParams,
+            "cwd must be an existing directory",
+        )
+    })?;
+    let dir = bundle::open_path(cwd).map_err(|(code, m)| api(code, m))?;
+    if recorded != Some(dir.id()) {
+        return Err(api(
+            ErrorCode::Forbidden,
+            "the folder of this session changed since it started",
+        ));
+    }
+    Ok(dir)
+}
+
 fn shim_log_tail(path: &Path) -> String {
     let Ok(mut f) = File::open(path) else {
         return String::new();
@@ -2380,6 +2397,8 @@ impl Runner {
             },
             Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
         };
+        let CwdPin { dev, ino } = intent.cwd_pin;
+        same_folder(&intent.cwd, Some((dev, ino)))?;
         if !interrupted {
             intent.pids.clear();
         }
@@ -2415,19 +2434,7 @@ impl Runner {
         (cols, rows): (u16, u16),
         prior: String,
     ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
-        let cwd = fs::canonicalize(&meta.cwd).map_err(|_| {
-            api(
-                ErrorCode::InvalidParams,
-                "cwd must be an existing directory",
-            )
-        })?;
-        let dir = bundle::open_path(cwd).map_err(|(code, m)| api(code, m))?;
-        if meta.cwd_id != Some(dir.id()) {
-            return Err(api(
-                ErrorCode::Forbidden,
-                "the folder of this session changed since it started",
-            ));
-        }
+        let dir = same_folder(&meta.cwd, meta.cwd_id)?;
         let extra = RunExtra {
             resume_of: Some(ResumeSeed {
                 from: old.to_string(),

@@ -251,8 +251,12 @@ from its own `meta.json`: the profile is looked up in the runner's current profi
 `argv` is never run), and the recorded folder identity, permission mode, name and task binding are
 reused; nothing comes from the client. The 7-day limit counts from the original start. When that is impossible (no recorded folder, or a
 bundled, multi-repository or keyed run) the answer is `not_found` saying to start it again with
-`tmgr run`; a profile that is no longer configured is `unknown_profile` and a folder that is gone or
-replaced is `invalid_params` or `forbidden`, as for a normal run. A shim that dies at start returns `internal` with the last
+`tmgr run`; a profile that is no longer configured is `unknown_profile`. On both paths (launch record
+or `meta.json`) the folder path is resolved and its identity (dev, inode) compared with the recorded one
+before anything starts: a folder that is gone is `invalid_params`, a folder replaced by another
+directory or a symlink to one is `forbidden` "the folder of this session changed since it started".
+While an exited session's shim is still alive, the runner takes the folder identity the shim reports on
+adoption, not the stored one. A shim that dies at start returns `internal` with the last
 lines of its own log. Any other session
 (a shell or `--agent-cmd`) is rebuilt from its own metadata and run again; its folder must
 still be the same directory (identity compared), otherwise `forbidden`.
