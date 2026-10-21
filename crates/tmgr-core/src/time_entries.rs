@@ -36,6 +36,7 @@ pub struct PostResult {
 pub enum Posted {
     Done(PostResult),
     Disabled,
+    Invalid(usize),
 }
 
 pub fn validate_interval_id(raw: &str) -> Result<&str> {
@@ -131,6 +132,14 @@ fn is_disabled(status: u16, body: &Value) -> bool {
     status == 403 && body.get("error").and_then(Value::as_str) == Some("feature_disabled")
 }
 
+fn invalid_index(status: u16, body: &Value, len: usize) -> Option<usize> {
+    if status != 422 || body.get("error").and_then(Value::as_str) != Some("invalid_entry") {
+        return None;
+    }
+    let index = usize::try_from(body.get("index").and_then(Value::as_u64)?).ok()?;
+    (index < len).then_some(index)
+}
+
 pub fn session_time_enabled(client: &Client, workspace_id: i64) -> Result<bool> {
     let (status, body) = client.call(
         "GET",
@@ -157,6 +166,9 @@ pub fn post(client: &Client, task_id: u64, intervals: &[Interval]) -> Result<Pos
     }
     if (200..300).contains(&status) {
         return parse_post(resp).map(Posted::Done);
+    }
+    if let Some(index) = invalid_index(status, &resp, intervals.len()) {
+        return Ok(Posted::Invalid(index));
     }
     Err(map_error(status, &resp, "time:write"))
 }
@@ -221,6 +233,22 @@ mod tests {
         assert_eq!(r.entries[2].status, "conflict");
         assert_eq!(r.entries[2].id, None);
         assert!(parse_post(json!({"data": {}})).is_err());
+    }
+
+    #[test]
+    fn a_rejected_entry_is_reported_by_index() {
+        let bad = json!({"error": "invalid_entry", "index": 1, "message": "x"});
+        assert_eq!(invalid_index(422, &bad, 3), Some(1));
+        assert_eq!(invalid_index(422, &bad, 1), None);
+        assert_eq!(invalid_index(400, &bad, 3), None);
+        assert_eq!(
+            invalid_index(422, &json!({"error": "invalid_entry"}), 3),
+            None
+        );
+        assert_eq!(
+            invalid_index(422, &json!({"error": "other", "index": 0}), 3),
+            None
+        );
     }
 
     #[test]
