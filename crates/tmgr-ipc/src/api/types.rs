@@ -259,6 +259,8 @@ pub struct SessionInfo {
     pub permission_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resumed_from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_s: Option<u64>,
 }
 
 /// Params of `runs.lookup`.

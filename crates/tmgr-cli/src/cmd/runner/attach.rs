@@ -1701,6 +1701,7 @@ mod tests {
             origin: None,
             permission_mode: None,
             resumed_from: None,
+            human_s: None,
         }
     }
 

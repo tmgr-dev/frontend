@@ -105,6 +105,18 @@ pub struct Focus {
     pub session: String,
 }
 
+fn yes() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Attention {
+    #[serde(default)]
+    pub session: Option<String>,
+    #[serde(default = "yes")]
+    pub window: bool,
+}
+
 /// Client to server JSON messages after the handshake. Input travels as a binary
 /// frame with `TAG_INPUT`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -114,6 +126,7 @@ pub enum ClientMsg {
     Resize(Resize),
     Scroll(Scroll),
     Focus(Focus),
+    Attention(Attention),
     Detach,
 }
 

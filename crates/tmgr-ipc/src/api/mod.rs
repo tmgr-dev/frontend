@@ -22,8 +22,8 @@ pub use types::*;
 pub use worklog::*;
 
 pub use crate::proto::{
-    Auth, Challenge, ClientMsg, ErrorBody, Focus, Handshake, Hello, Request, Resize, Response,
-    Scroll, ServerMsg, Welcome, PROTO_VERSION,
+    Attention, Auth, Challenge, ClientMsg, ErrorBody, Focus, Handshake, Hello, Request, Resize,
+    Response, Scroll, ServerMsg, Welcome, PROTO_VERSION,
 };
 
 pub mod caps {
@@ -55,8 +55,9 @@ pub mod caps {
     pub const TEAM_V1: &str = "team.v1";
     pub const ORCHESTRATOR_V1: &str = "orchestrator.v1";
     pub const SESSIONS_RESUME_V1: &str = "sessions_resume.v1";
+    pub const HUMAN_TIME_V1: &str = "human_time.v1";
 
-    pub const ALL: [&str; 28] = [
+    pub const ALL: [&str; 29] = [
         SESSIONS_V1,
         ATTACH_V1,
         RUNS_CREATE_V1,
@@ -85,6 +86,7 @@ pub mod caps {
         TEAM_V1,
         ORCHESTRATOR_V1,
         SESSIONS_RESUME_V1,
+        HUMAN_TIME_V1,
     ];
 }
 
