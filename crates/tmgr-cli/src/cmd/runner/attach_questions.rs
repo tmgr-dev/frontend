@@ -18,7 +18,7 @@ pub(super) struct QuestionJob {
     pub settled: bool,
 }
 
-fn session_src(job: &QuestionJob) -> Option<SessionSrc> {
+pub(super) fn session_src(job: &QuestionJob) -> Option<SessionSrc> {
     if !std::fs::symlink_metadata(&job.sandbox_home).is_ok_and(|m| m.is_dir()) {
         return None;
     }

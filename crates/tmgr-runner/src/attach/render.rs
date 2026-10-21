@@ -157,6 +157,7 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
                 collapsed,
             } => draw_group_header(buf, area, st, key, *count, *collapsed, y),
             SidebarLine::Tab { id, count } => draw_tab_header(buf, area, st, *id, *count, y),
+            SidebarLine::Activity(id) => draw_activity(buf, area, st, id, nested, y),
             SidebarLine::Detail(id) => draw_detail(buf, area, st, id, nested, y),
             SidebarLine::Session { id, indent } => {
                 nested = *indent;
@@ -405,6 +406,23 @@ fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count:
     }
 }
 
+fn draw_activity(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested: bool, y: u16) {
+    let Some(line) = st.status_line(id) else {
+        return;
+    };
+    let x = area.x + if nested { 5 } else { 3 };
+    let right = area.right().saturating_sub(1);
+    let clock_w = line.clock.as_ref().map_or(0, |c| c.width() as u16 + 1);
+    let room = usize::from(right.saturating_sub(x + clock_w));
+    put(buf, x, y, &clip(&line.text, room), dim(), room as u16);
+    if let Some(clock) = line.clock {
+        let cx = right.saturating_sub(clock.width() as u16);
+        if cx > x {
+            put(buf, cx, y, &clock, dim(), clock.width() as u16);
+        }
+    }
+}
+
 fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested: bool, y: u16) {
     let Some(loc) = st.locs.get(id) else {
         return;
@@ -520,6 +538,16 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             spans.push(text("  ", Style::new()));
             spans.push(text(&shown, label_style));
             spans.push(text(&format!(" · {state}"), Style::new()));
+            let spare = room.saturating_sub(shown.width());
+            if let Some(line) = st.status_line(&row.id) {
+                let clock = line.clock.map(|c| format!(" · {c}")).unwrap_or_default();
+                let head = spare.saturating_sub(clock.width());
+                if head >= 12 {
+                    let tail = format!(" · {}", line.text);
+                    spans.push(text(&clip(&tail, head), dim()));
+                    spans.push(text(&clock, dim()));
+                }
+            }
         }
         None => spans.push(text(&format!("  {}", p.session), Style::new())),
     }

@@ -1,0 +1,16 @@
+╭ 1  claude · working · 3/7 · Bash: cargo test · 0:42 ──────────────────────────── ⏸ ■ ✕ ╮
+│● Reading src/checkout/Form.vue                                                         │
+│I will add an Apple Pay button next to the card form, shown only when the session exists│
+│✓ Tests 14 passed                                                                       │
+│>                                                                                       │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+╭ 2  dev-server · waiting ──────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
+│$ pnpm dev                                                                              │
+│  VITE ready in 412 ms                                                                  │
+│                                                                                        │
+│                                                                                        │
+│                                                                                        │
+│                                                                                        │
+╰────────────────────────────────────────────────────────────────────────────────────────╯
+ dev-server · waiting · Ctrl-] ?
