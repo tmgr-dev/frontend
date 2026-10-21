@@ -30,7 +30,7 @@ const GROUPS: &[(&str, &[&str])] = &[
     ("Queue", &["queue"]),
     ("Runner", &["runner"]),
     ("Pages", &["page", "note"]),
-    ("Time", &["today", "routine"]),
+    ("Time", &["today", "routine", "time"]),
     ("Usage", &["usage"]),
     (
         "Account",

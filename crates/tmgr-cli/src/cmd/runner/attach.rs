@@ -1531,7 +1531,6 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     drop(terminal);
     drop(guard);
     drop(rx);
-    flusher.finish();
     let (done_tx, done_rx) = mpsc::channel();
     thread::spawn(move || {
         let _ = app.writer.detach();
@@ -1540,6 +1539,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         let _ = done_tx.send(());
     });
     let _ = done_rx.recv_timeout(CLEANUP_WAIT);
+    flusher.finish();
 
     match exit {
         Exit::Detached => {
