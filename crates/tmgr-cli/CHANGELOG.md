@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.22
 
 - Resume (the play button in `tmgr attach`) works for agent sessions started before the launch record existed: the launch is rebuilt from the session's own record using your current profile, and when that is impossible the error says what to do. When the agent shim dies at start, the error now carries its last log lines, including a clear `no free terminal (pty) available` note when the machine has run out of terminals.
 
