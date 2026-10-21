@@ -1123,12 +1123,11 @@ fn fork_is_refused_for_agents_other_than_claude_code() {
         return;
     }
     let mut o = H::agent(
-        "codex",
-        "[resume]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n",
+        "unknown-agent",
+        "[resume]\nargs = [\"--resumed\"]\nby_id = [\"--resume-id\", \"{resume_id}\"]\n",
     );
     o.start();
-    let s = o.client().create_run(o.req()).unwrap();
-    thread::sleep(Duration::from_millis(500));
+    let s = o.started();
     let e = o.client().fork(&s.id, U1, None, (80, 24)).unwrap_err();
     assert!(e.to_string().starts_with("forbidden"), "{e}");
 }
