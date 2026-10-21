@@ -1,11 +1,16 @@
 import type { AgentWorkRun } from '@/actions/tmgr/agentWork';
 import {
 	agentLabel,
+	commitGroups,
+	commitUrl,
+	formatDeploy,
+	formatRelease,
 	formatWorkDuration,
 	isHttpUrl,
 	liveSeconds,
 	liveTotals,
 	mergeSnapshot,
+	timeRows,
 	upsertRun,
 } from '../agentWork';
 
@@ -145,4 +150,207 @@ it('keeps newer realtime state when an older snapshot arrives', () => {
 			[1, 'succeeded'],
 		],
 	);
+});
+
+describe('commitUrl', () => {
+	it('links a known repo and hex sha', () => {
+		expect(commitUrl('acme/app', 'abc1234def')).toBe(
+			'https://github.com/acme/app/commit/abc1234def',
+		);
+	});
+
+	it('has no link without a repo', () => {
+		expect(commitUrl(null, 'abc1234')).toBeNull();
+		expect(commitUrl(undefined, 'abc1234')).toBeNull();
+		expect(commitUrl('', 'abc1234')).toBeNull();
+	});
+
+	it('has no link for a non-hex sha', () => {
+		expect(commitUrl('acme/app', 'main')).toBeNull();
+		expect(commitUrl('acme/app', 'abc/../x')).toBeNull();
+		expect(commitUrl('acme/app', '')).toBeNull();
+	});
+
+	it('rejects malformed or traversing repos', () => {
+		expect(commitUrl('acme/../app', 'abc1234')).toBeNull();
+		expect(commitUrl('../app', 'abc1234')).toBeNull();
+		expect(commitUrl('acme', 'abc1234')).toBeNull();
+		expect(commitUrl('acme/app/extra', 'abc1234')).toBeNull();
+		expect(commitUrl('acme/app?x=1', 'abc1234')).toBeNull();
+		expect(commitUrl('acme/app#frag', 'abc1234')).toBeNull();
+		expect(commitUrl('https://evil.test/a', 'abc1234')).toBeNull();
+	});
+});
+
+describe('commitGroups', () => {
+	it('groups commits per repo and branch', () => {
+		const groups = commitGroups([
+			run({
+				id: 1,
+				branch: 'feat/x',
+				commits: [
+					{
+						sha: 'aaaaaaa1',
+						message: 'one',
+						repo: 'acme/app',
+						branch: 'feat/x',
+					},
+					{
+						sha: 'bbbbbbb2',
+						message: 'two',
+						repo: 'acme/ui',
+						branch: 'feat/x',
+					},
+					{
+						sha: 'ccccccc3',
+						message: 'three',
+						repo: 'acme/app',
+						branch: 'feat/x',
+					},
+				],
+			}),
+		]);
+		expect(groups.map((g) => g.header)).toEqual([
+			'acme/app · feat/x',
+			'acme/ui · feat/x',
+		]);
+		expect(groups[0].commits.map((c) => c.short)).toEqual([
+			'aaaaaaa',
+			'ccccccc',
+		]);
+		expect(groups[0].commits[0].url).toBe(
+			'https://github.com/acme/app/commit/aaaaaaa1',
+		);
+	});
+
+	it('files commits with an unknown repo under the run branch without links', () => {
+		const groups = commitGroups([
+			run({
+				id: 1,
+				branch: 'feat/y',
+				commits: [{ sha: 'aaaaaaa1', message: 'one' }],
+			}),
+		]);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].header).toBe('feat/y');
+		expect(groups[0].commits[0].url).toBeNull();
+	});
+
+	it('uses the commit branch over the run branch and merges runs', () => {
+		const groups = commitGroups([
+			run({
+				id: 1,
+				branch: 'run-a',
+				commits: [
+					{ sha: 'aaaaaaa1', message: 'one', repo: 'acme/app', branch: 'b' },
+				],
+			}),
+			run({
+				id: 2,
+				branch: 'run-b',
+				commits: [
+					{ sha: 'aaaaaaa1', message: 'one', repo: 'acme/app', branch: 'b' },
+					{ sha: 'ddddddd4', message: 'four', repo: 'acme/app', branch: 'b' },
+				],
+			}),
+		]);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].commits).toHaveLength(2);
+	});
+
+	it('has an empty header when neither repo nor branch is known', () => {
+		const groups = commitGroups([
+			run({ id: 1, commits: [{ sha: 'aaaaaaa1', message: null }] }),
+		]);
+		expect(groups[0].header).toBe('');
+	});
+
+	it('skips runs without commits', () => {
+		expect(commitGroups([run({ id: 1 })])).toEqual([]);
+	});
+});
+
+describe('formatRelease', () => {
+	it('shows repo, tag, ci link and a shortened digest', () => {
+		const digest = 'sha256:' + 'a'.repeat(64);
+		expect(
+			formatRelease({
+				repo: 'acme/app',
+				tag: 'v1.2.3',
+				ci_url: 'https://ci.test/run/1',
+				artifact: 'img',
+				digest,
+			}),
+		).toEqual({
+			label: 'acme/app v1.2.3',
+			ciUrl: 'https://ci.test/run/1',
+			digest: 'sha256:aaaaa',
+			digestTitle: digest,
+		});
+	});
+
+	it('drops a non-http ci url and missing repo', () => {
+		expect(
+			formatRelease({
+				repo: null,
+				tag: 'v1',
+				ci_url: 'javascript:alert(1)',
+				artifact: null,
+				digest: null,
+			}),
+		).toEqual({ label: 'v1', ciUrl: null, digest: null, digestTitle: null });
+	});
+});
+
+describe('formatDeploy', () => {
+	it('joins env and status and keeps only http links', () => {
+		expect(
+			formatDeploy({ env: 'prod', status: 'success', url: 'https://tmgr.dev' }),
+		).toEqual({ label: 'prod · success', url: 'https://tmgr.dev' });
+		expect(
+			formatDeploy({ env: 'prod', status: 'failed', url: 'ftp://x' }),
+		).toEqual({ label: 'prod · failed', url: null });
+	});
+});
+
+describe('timeRows', () => {
+	it('keeps the old Agents row against an old server', () => {
+		expect(timeRows(600, {})).toEqual([
+			{ key: 'agents', label: 'Agents', seconds: 600 },
+		]);
+	});
+
+	it('shows active, wall-clock and waiting, hiding the sum when equal to active', () => {
+		expect(
+			timeRows(600, {
+				activeSeconds: 600,
+				wallClockSeconds: 900,
+				waitingSeconds: 300,
+			}),
+		).toEqual([
+			{ key: 'active', label: 'Agents active', seconds: 600 },
+			{ key: 'wall', label: 'Wall-clock', seconds: 900 },
+			{ key: 'waiting', label: 'Waiting between runs', seconds: 300 },
+		]);
+	});
+
+	it('shows the sum of runs when parallel runs make it differ from active', () => {
+		const rows = timeRows(1200, { activeSeconds: 700, wallClockSeconds: 700 });
+		expect(rows.map((r) => r.key)).toEqual(['active', 'wall', 'agents']);
+		expect(rows[2]).toEqual({
+			key: 'agents',
+			label: 'Agent time (sum of runs)',
+			seconds: 1200,
+		});
+	});
+
+	it('omits absent fields', () => {
+		expect(
+			timeRows(0, {
+				activeSeconds: 0,
+				wallClockSeconds: null,
+				waitingSeconds: null,
+			}),
+		).toEqual([{ key: 'active', label: 'Agents active', seconds: 0 }]);
+	});
 });
