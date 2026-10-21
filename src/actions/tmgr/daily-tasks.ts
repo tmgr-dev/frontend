@@ -232,12 +232,15 @@ export const rescheduleRoutineInstance = async (
 	taskId: number,
 	instanceId: number | 'virtual',
 	scheduledFor: string,
+	fromDate?: string,
 ) => {
 	const {
 		data: { data },
 	} = await $axios.patch(
 		`daily-routines/tasks/${taskId}/instances/${instanceId}`,
-		{ scheduled_for: scheduledFor },
+		fromDate
+			? { scheduled_for: scheduledFor, from_date: fromDate }
+			: { scheduled_for: scheduledFor },
 	);
 	requestCache.invalidate(ROUTINE_SNAPSHOTS);
 	return data;

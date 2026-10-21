@@ -3,7 +3,11 @@ jest.mock('@/actions/tmgr/daily-tasks', () => ({
 	updateDailyTask: jest.fn(),
 	rescheduleRoutineInstance: jest.fn(),
 }));
-import { completeRoutineOn, updateDailyTask } from '@/actions/tmgr/daily-tasks';
+import {
+	completeRoutineOn,
+	rescheduleRoutineInstance,
+	updateDailyTask,
+} from '@/actions/tmgr/daily-tasks';
 import { readFileSync } from 'fs';
 import { ModuleKind, transpileModule } from 'typescript';
 const source = transpileModule(
@@ -86,4 +90,50 @@ test('toggleComplete keeps virtual false when an instance exists', async () => {
 	const c = ctx();
 	await routines.actions.toggleComplete(c, entry);
 	expect(c.commit.mock.calls[0][1].patch.virtual).toBe(false);
+});
+
+const recurring = {
+	...entry,
+	date: '2026-10-12',
+	time: '09:00',
+	frequency: 'WEEKLY',
+	instance_id: null,
+};
+
+test('dragging a recurring occurrence sends its current date as the origin', async () => {
+	await routines.actions.moveRoutine(ctx(), {
+		entry: recurring,
+		date: '2026-10-13',
+		timeH: 14,
+		timeM: 30,
+	});
+	expect(rescheduleRoutineInstance).toHaveBeenCalledWith(
+		5,
+		'virtual',
+		'2026-10-13 14:30:00',
+		'2026-10-12',
+	);
+});
+
+test('dragging a moved occurrence addresses its row and its current date', async () => {
+	await routines.actions.moveRoutine(ctx(), {
+		entry: { ...recurring, date: '2026-10-13', instance_id: 77 },
+		date: '2026-10-14',
+	});
+	expect(rescheduleRoutineInstance).toHaveBeenCalledWith(
+		5,
+		77,
+		'2026-10-14 09:00:00',
+		'2026-10-13',
+	);
+});
+
+test('dropping a recurring occurrence on the all-day row does nothing', async () => {
+	await routines.actions.moveRoutine(ctx(), {
+		entry: recurring,
+		date: '2026-10-13',
+		allDay: true,
+	});
+	expect(rescheduleRoutineInstance).not.toHaveBeenCalled();
+	expect(updateDailyTask).not.toHaveBeenCalled();
 });

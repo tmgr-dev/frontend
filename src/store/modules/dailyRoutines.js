@@ -195,6 +195,7 @@ const dailyRoutinesModule = {
 					entry.task_id,
 					instanceId,
 					scheduledFor,
+					entry.date,
 				);
 			} else {
 				const payload = {
