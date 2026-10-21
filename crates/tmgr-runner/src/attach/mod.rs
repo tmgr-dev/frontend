@@ -28,5 +28,5 @@ pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use view::{
     header_button, layout, sidebar_button, slot_control, Confirm, Control, Hit, Layout,
     LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,
-    SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, ViewState,
+    SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, TabItem, TabPrefs, ViewState,
 };

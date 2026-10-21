@@ -170,7 +170,7 @@ pub(super) fn spawn_size(content: Rect, place: Place) -> (u16, u16) {
     match place {
         Place::Right => size_hint(content, SplitDir::Right),
         Place::Below => size_hint(content, SplitDir::Down),
-        Place::Replace => (content.width, content.height),
+        Place::Replace | Place::Tab => (content.width, content.height),
     }
 }
 
@@ -185,6 +185,10 @@ pub(super) fn place_session(view: &mut ViewState, target: &str, place: Place, id
         Place::Replace => {
             view.select(id);
             return false;
+        }
+        Place::Tab => {
+            view.open(id);
+            return true;
         }
     };
     let room = view.panes().iter().any(|p| p == target) && can_split(view.panes().len());

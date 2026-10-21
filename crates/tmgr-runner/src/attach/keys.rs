@@ -35,6 +35,10 @@ pub enum Cmd {
     Resume,
     Palette,
     NewSession,
+    NextTab,
+    PrevTab,
+    RenameTab,
+    CloseTab,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

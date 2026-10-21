@@ -645,8 +645,9 @@ fn blocked_pane_gets_accent_border_and_sidebar_lists_it_first() {
     let calm = l.panes[0].outer;
     assert_eq!(buf[(calm.x, calm.y + 3)].fg, C::DarkGray);
     let rows = text(&term);
-    let side: Vec<&str> = rows.lines().take(3).collect();
-    assert!(side[1].contains("◆ codex"), "{side:?}");
+    let side: Vec<&str> = rows.lines().take(4).collect();
+    assert!(side[1].contains("▾ claude"), "{side:?}");
+    assert!(side[3].contains("◆ codex"), "{side:?}");
 }
 
 #[test]
@@ -1318,9 +1319,9 @@ fn buttons_are_drawn_in_the_border_and_hovered_sidebar_row_shows_icons() {
     let mut v = two_pane(140);
     let plain = draw(&v, &screens(), 140, 22);
     assert!(plain.lines().next().unwrap().contains("⏸ ■ ✕"));
-    v.pointer = Some((3, 2));
+    v.pointer = Some((3, 3));
     let hovered = draw(&v, &screens(), 140, 22);
-    let line = hovered.lines().nth(2).unwrap();
+    let line = hovered.lines().nth(3).unwrap();
     assert!(line.contains("■ ✕"), "{line}");
     assert!(!line.contains("18m"), "{line}");
 }
@@ -1728,8 +1729,11 @@ fn set_initial_focuses_or_replaces_without_duplicating() {
     assert_eq!(ids(&v), ["a", "b"]);
     assert_eq!(v.focused_session(), Some("a"));
     v.set_initial("c");
-    assert_eq!(ids(&v), ["c", "b"]);
+    assert_eq!(ids(&v), ["c"]);
     assert_eq!(v.focused_session(), Some("c"));
+    v.set_initial("b");
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
     let mut empty = ViewState::new(vec![], "");
     empty.set_initial("x");
     assert_eq!(ids(&empty), ["x"]);
@@ -2227,11 +2231,11 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_31_rows() {
+fn help_shows_the_mouse_section_at_32_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 31);
-    assert!(text.contains("pick a session or a pane"));
+    let text = draw(&v, &screens(), 140, 32);
+    assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("Shift-drag selects"));
     assert!(text.contains("? again closes this box"));
 }
@@ -3237,7 +3241,7 @@ fn keyboard_navigation_never_lands_on_an_undrawn_row() {
     for _ in 0..50 {
         v.edit_sidebar(area, b"\x1b[B");
         match v.sidebar_focus.clone().unwrap() {
-            SidebarItem::Group(_) => unreachable!(),
+            SidebarItem::Group(_) | SidebarItem::Tab(_) => unreachable!(),
             SidebarItem::Session(id) => assert!(drawn.rows().iter().any(|(r, _)| *r == id)),
             SidebarItem::New => assert!(drawn.new_row.is_some()),
         }
@@ -3306,6 +3310,7 @@ fn shape(v: &ViewState) -> Vec<String> {
                 count,
                 collapsed,
             } => format!("H {key} {count} {collapsed}"),
+            SidebarLine::Tab { id, count } => format!("T {id} {count}"),
             SidebarLine::Session { id, indent } => {
                 format!("{}{id}", if indent { "  " } else { "" })
             }
@@ -3566,9 +3571,9 @@ fn agent_title_replaces_the_name_in_sidebar_and_pane_header() {
         "{}",
         lines[0]
     );
-    assert!(lines[2].contains("Fix check…"), "{}", lines[2]);
-    assert!(!lines[2].contains("claude"), "{}", lines[2]);
-    assert!(lines[2].contains("work… 18m"), "{}", lines[2]);
+    assert!(lines[3].contains("Fix check…"), "{}", lines[3]);
+    assert!(!lines[3].contains("claude"), "{}", lines[3]);
+    assert!(lines[3].contains("wo… 18m"), "{}", lines[3]);
     assert!(out.contains("tmgr runner · local · dev-server · waiting"));
 }
 

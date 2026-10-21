@@ -920,7 +920,7 @@ impl App {
         match entry {
             PaletteEntry::Cmd(cmd) => self.handle(vec![Action::Cmd(cmd)]),
             PaletteEntry::Session(id) => {
-                self.view.select(&id);
+                self.view.open(&id);
                 Ok(None)
             }
         }
@@ -971,7 +971,7 @@ impl App {
                 Action::Forward(data) if self.view.rename.is_some() => {
                     match self.view.edit_rename(&data) {
                         RenameEdit::Submit(id, name) => self.rename_session(&id, &name),
-                        RenameEdit::Editing | RenameEdit::Cancel => {}
+                        RenameEdit::Editing | RenameEdit::Done | RenameEdit::Cancel => {}
                     }
                 }
                 Action::Forward(data) => {
@@ -1390,7 +1390,6 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         view.apply_prefs(&prefs);
     }
     view.set_initial(initial);
-    view.grouped = true;
     let seeded = list
         .iter()
         .filter(|s| !s.cwd.is_empty())

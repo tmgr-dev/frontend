@@ -36,6 +36,8 @@ pub const ACTIONS: &[ActionDef] = &[
     ),
     def(Cmd::NextSession, b"n", "n", "Next session", true),
     def(Cmd::PrevSession, b"p", "p", "Previous session", true),
+    def(Cmd::NextTab, b"N", "N", "Next tab", true),
+    def(Cmd::PrevTab, b"P", "P", "Previous tab", true),
     def(Cmd::Split, b"s", "s", "Two panes, or collapse to one", true),
     def(
         Cmd::SplitRight,
@@ -72,10 +74,18 @@ pub const ACTIONS: &[ActionDef] = &[
         Cmd::Group,
         b"g",
         "g",
-        "Group sessions by repo, or list them flat",
+        "Group the sidebar by tab or by repo",
         true,
     ),
     def(Cmd::Rename, b"r", "r", "Rename the focused session", true),
+    def(Cmd::RenameTab, b",", ",", "Rename the tab", true),
+    def(
+        Cmd::CloseTab,
+        b"&",
+        "&",
+        "Close the tab (sessions keep running)",
+        true,
+    ),
     def(
         Cmd::Resume,
         b"\rR",
