@@ -4,6 +4,7 @@
 		getComments,
 		toggleCommentReaction,
 	} from '@/actions/tmgr/comments';
+	import AttachedFileList from '@/components/attachments/AttachedFileList.vue';
 	import AuthorBadge from '@/components/general/AuthorBadge.vue';
 	import MarkdownText from '@/components/general/MarkdownText.vue';
 	import MemberAvatarLink from '@/components/general/MemberAvatarLink.vue';
@@ -11,6 +12,7 @@
 	import { Avatar } from '@/components/ui/avatar';
 	import { Button } from '@/components/ui/button';
 	import store from '@/store';
+	import type { AttachedFile } from '@/utils/aiAttachments';
 	import { sortCommentsOldestFirst } from '@/utils/commentOrder';
 	import {
 		applyReactionsUpdate,
@@ -53,6 +55,7 @@
 		cursor_message_id?: string | null;
 		cursor_message_type?: 'user_message' | 'assistant_message' | null;
 		reactions?: ReactionSummary[];
+		files?: AttachedFile[];
 		author?: {
 			kind: string;
 			id: string;
@@ -393,6 +396,12 @@
 					<MarkdownText
 						:content="comment.message"
 						:untrusted="isMachineAuthored(comment)"
+					/>
+
+					<AttachedFileList
+						v-if="comment.files?.length"
+						:files="comment.files"
+						class="mt-1.5"
 					/>
 
 					<div class="mt-1.5 flex flex-wrap items-center gap-1">

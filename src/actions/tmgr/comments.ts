@@ -8,6 +8,7 @@ import { requestCache } from '@/utils/requestCache';
 
 export interface Comment {
 	message: string;
+	file_ids?: number[];
 }
 
 export const getComments = async (
@@ -38,10 +39,14 @@ export const createComment = async (taskId: number, payload: Comment) => {
 export const createAskingHelpComment = async (
 	taskId: number,
 	question: string,
+	fileIds: number[] = [],
 ) => {
 	const {
 		data: { data },
-	} = await $axios.post(`/tasks/${taskId}/comments/help`, { question });
+	} = await $axios.post(`/tasks/${taskId}/comments/help`, {
+		question,
+		...(fileIds.length ? { file_ids: fileIds } : {}),
+	});
 
 	return data;
 };
