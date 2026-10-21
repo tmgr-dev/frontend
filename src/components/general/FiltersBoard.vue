@@ -148,7 +148,10 @@
 		<!-- Category / user filters -->
 		<Popover class="relative shrink-0">
 			<PopoverButton
-				class="flex h-9 items-center gap-2 rounded-pill border border-line bg-surface px-3 text-sm text-ink outline-none hover:bg-surface-hover"
+				class="flex h-9 items-center gap-2 rounded-pill border bg-surface px-3 text-sm outline-none hover:bg-surface-hover"
+				:class="
+					prioritySort ? 'border-brand text-brand' : 'border-line text-ink'
+				"
 			>
 				<FunnelIcon class="h-4 w-4 text-ink-subtle" />
 				Filters
@@ -160,7 +163,7 @@
 				</span>
 			</PopoverButton>
 			<PopoverPanel
-				class="absolute right-0 z-50 mt-2 flex w-64 flex-col gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg"
+				class="absolute right-0 z-50 mt-2 flex w-80 flex-col gap-2 rounded-xl border border-line bg-surface p-3 shadow-lg"
 			>
 				<!-- Category select -->
 				<div v-if="showCategoryFilter" class="relative">
