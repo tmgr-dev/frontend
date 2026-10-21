@@ -33,6 +33,7 @@ args = ["{prompt}"]
 [resume]
 args = ["resume", "--last"]
 at = "after_command"
+by_id = ["resume", "{resume_id}"]
 
 [hooks]
 kind = "config-override"

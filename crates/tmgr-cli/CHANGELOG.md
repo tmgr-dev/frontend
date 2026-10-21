@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- New `tmgr resume <session>` and a play button in `tmgr attach`: an exited session shows ▶ instead of ⏸ in its pane header and on its hovered sidebar row (also `Ctrl-] Enter` and `Ctrl-] R`). It starts the session again in place (same name, folder and agent profile, a new session id) and continues the agent's conversation: Claude Code with `claude --resume <id>` and Codex with `codex resume <id>`, the id read from the session's own last output, else `--continue` / `resume --last`; shells and `--agent-cmd` sessions run their command again. The old screen stays above a `-- resumed --` line. Terminal only with a confirmation, refused inside agent sessions (anything with `TMGR_SESSION_ID` now counts as one for terminal-only commands), `--json` supported. Link runs, bypass runs, records older than 7 days and queue runs without a pinned executable are refused. Restart the runner after the update.
 - `tmgr attach` has real split panes: new shell panes open to the right or below the focused one, with the keys to move focus and resize them, and the layout is restored on the next attach. A shell is a sandboxed runner session started in the working directory of the focused pane, and the sandbox gives it its own home, so your shell rc files are not loaded. A shell that exits closes its pane and the neighbour takes the space. `Ctrl-] s` behaves as before (toggles two panes, or collapses back to one).
 
 ## 1.0.16

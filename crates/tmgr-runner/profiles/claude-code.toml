@@ -40,6 +40,7 @@ args = ["{prompt}"]
 
 [resume]
 args = ["--continue"]
+by_id = ["--resume", "{resume_id}"]
 
 [hooks]
 kind = "settings-file"

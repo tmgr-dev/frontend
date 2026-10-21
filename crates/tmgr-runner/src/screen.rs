@@ -221,6 +221,18 @@ impl ScreenModel {
         result
     }
 
+    pub fn seed_scrollback(&mut self, text: &str) {
+        let (rows, _) = self.parser.screen().size();
+        let mut bytes = Vec::with_capacity(text.len() + 64);
+        for line in text.lines() {
+            bytes.extend_from_slice(sanitize_text(line).as_bytes());
+            bytes.extend_from_slice(b"\r\n");
+        }
+        bytes.resize(bytes.len() + usize::from(rows), b'\n');
+        bytes.extend_from_slice(b"\x1b[H\x1b[2m-- resumed --\x1b[0m\r\n");
+        self.parser.process(&bytes);
+    }
+
     pub fn dropped_string_bytes(&self) -> u64 {
         self.scanner.dropped
     }
@@ -390,6 +402,21 @@ mod tests {
 
     fn model() -> ScreenModel {
         ScreenModel::new(10, 40, 5000)
+    }
+
+    #[test]
+    fn seeded_text_goes_to_scrollback_and_leaves_a_dim_marker() {
+        let mut m = model();
+        m.seed_scrollback("one\ntwo\x1b[31m\nthree");
+        let (_, _, scroll_max, lines) = m.text_lines(Some(500));
+        assert!(scroll_max >= 3);
+        let text = lines.join("\n");
+        assert!(text.contains("one\ntwo?[31m\nthree"), "{text}");
+        assert_eq!(m.bottom_text(10), vec!["-- resumed --"]);
+        let snap = m.snapshot(0);
+        let marker = &snap.lines[0].spans[0];
+        assert!(marker.a.flags & DIM != 0);
+        assert_clean(&snap);
     }
 
     fn row_text(snap: &Snapshot, r: usize) -> String {

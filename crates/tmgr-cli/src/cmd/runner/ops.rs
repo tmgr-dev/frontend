@@ -1,7 +1,7 @@
 use super::{attach, connect, emit, is_down, rerr, runner_config, Opts, RunArgs, RunnerCmd};
 use super::{
-    observe, remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RenameArgs, RmArgs,
-    RunnerCommands, SendArgs,
+    observe, remote, AgentsArgs, AgentsCmd, AttachArgs, AutoMode, HaltArgs, RenameArgs, ResumeArgs,
+    RmArgs, RunnerCommands, SendArgs,
 };
 use crate::out::table;
 use serde_json::json;
@@ -10,7 +10,7 @@ use std::path::Path;
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{CandidateInfo, CreateReq, RunCreateReq, SessionInfo, StateKind};
+use tmgr_ipc::api::{CandidateInfo, CreateReq, RestoredRun, RunCreateReq, SessionInfo, StateKind};
 use tmgr_runner::client::Client;
 use tmgr_runner::daemon::{self, RunnerConfig};
 use tmgr_runner::exe;
@@ -108,6 +108,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             None => halt(o, a),
         },
         RunnerCommands::Rm(a) => rm(o, a),
+        RunnerCommands::Resume(a) => resume(o, a),
         RunnerCommands::Rename(a) => rename(o, a),
     }
 }
@@ -875,9 +876,77 @@ fn rm(o: &Opts, a: &RmArgs) -> Result<i32> {
     ))
 }
 
+fn resume_report(r: &RestoredRun, bin: &str) -> String {
+    let line = |s: &str| tmgr_core::text::sanitize_line(&clean(s));
+    let (name, id) = (line(&r.session.name), line(&r.session.id));
+    let how = match r.via.as_deref() {
+        Some("id" | "continue") => "resumed",
+        Some("rerun") => "rerun",
+        Some(_) => "started fresh",
+        None if r.resumed => "resumed",
+        None => "started fresh",
+    };
+    format!("{how} {name} ({id}); attach with: {bin} attach {id}")
+}
+
+fn resume(o: &Opts, a: &ResumeArgs) -> Result<i32> {
+    tmgr_link::privileged::guard()?;
+    let (mut c, s) = with_session(&a.session)?;
+    if s.state.kind != StateKind::Exited {
+        return Err(Error::new(
+            Kind::Conflict,
+            format!("{} is still running", clean(&s.name)),
+        ));
+    }
+    eprintln!(
+        "Resume this session?\n  session  {}\n  name     {}\n  folder   {}",
+        clean(&s.id),
+        clean(&s.name),
+        clean(&s.cwd)
+    );
+    crate::interact::confirm("Start it again?", false, false)?;
+    let r = c.resume(&s.id, s.cols, s.rows).map_err(rerr)?;
+    Ok(emit(o, &r, resume_report(&r, &super::bin())))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn restored(via: Option<&str>, resumed: bool) -> RestoredRun {
+        serde_json::from_value(json!({
+            "session": {
+                "id": "s_bbbbbbbbbb", "name": "work\u{1b}[2J", "argv": ["/bin/sh"], "cwd": "/w",
+                "profile": null, "state": {"kind": "working", "since_ms": 1},
+                "created_ms": 1, "cols": 80, "rows": 24, "shim_pid": 1, "child_pid": 2,
+                "resumed_from": "s_aaaaaaaaaa"
+            },
+            "resumed": resumed,
+            "via": via,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn resume_report_names_what_happened_and_how_to_attach() {
+        let say = |via, resumed| resume_report(&restored(via, resumed), "tmgr");
+        let tail = "work?[2J (s_bbbbbbbbbb); attach with: tmgr attach s_bbbbbbbbbb";
+        assert_eq!(say(Some("id"), true), format!("resumed {tail}"));
+        assert_eq!(say(Some("continue"), true), format!("resumed {tail}"));
+        assert_eq!(say(Some("rerun"), false), format!("rerun {tail}"));
+        assert_eq!(say(Some("fresh"), false), format!("started fresh {tail}"));
+        assert_eq!(say(None, true), format!("resumed {tail}"));
+        assert_eq!(say(None, false), format!("started fresh {tail}"));
+    }
+
+    #[test]
+    fn resume_json_keeps_the_runner_fields() {
+        let v = serde_json::to_value(restored(Some("id"), true)).unwrap();
+        assert_eq!(v["via"], "id");
+        assert_eq!(v["resumed"], true);
+        assert_eq!(v["session"]["id"], "s_bbbbbbbbbb");
+        assert_eq!(v["session"]["resumed_from"], "s_aaaaaaaaaa");
+    }
 
     fn st(version: &str) -> tmgr_ipc::api::StatusInfo {
         tmgr_ipc::api::StatusInfo {

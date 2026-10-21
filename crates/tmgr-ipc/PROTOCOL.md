@@ -102,6 +102,7 @@ Both sides must finish within 5 seconds. A refusal is
 | `candidates.v1` | `candidates.list` (section 5, "Refreshed logins") |
 | `worklog.v1` | `sessions.worklog` (section 5, "Work log") |
 | `runs.restore.v1` | `runs.restore` (section 5, "Restoring interrupted runs") |
+| `sessions_resume.v1` | `sessions.resume`; `resumed_from` on `SessionInfo`; `via` in the result (section 5, "Resuming an exited session") |
 | `permission_mode.v1` | `permission_mode` on `runs.create`, `SessionInfo` and `launch` of a bundle (section 5, "Queue capabilities") |
 | `start_key.v1` | `start_key` on `runs.create`; `runs.lookup` (section 5, "Queue capabilities") |
 | `run_status.v1` | `runs.status` (section 5, "Queue capabilities") |
@@ -146,6 +147,7 @@ missing params) and `internal`.
 | `origin.revoke` | `{link, generation}` | `{killed, unconfirmed}` | `forbidden` | `client: "cli"` only |
 | `candidates.list` | `{}` | `[{profile, source, created_ms, session}]` | | any client; cap `candidates.v1` |
 | `runs.restore` | `{id}` (the interrupted session) | `{session: SessionInfo, resumed}` | `not_found`, `busy`, `forbidden`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only |
+| `sessions.resume` | `{id, cols?, rows?}` (an exited session) | `{session: SessionInfo, resumed, via}` | `not_found`, `busy`, `forbidden`, `invalid_params`, `unknown_profile`, `sandbox`, `limit` | `client: "cli"` only; cap `sessions_resume.v1` |
 | `runs.lookup` | `{start_key}` | `SessionInfo` | `not_found` | any client; cap `start_key.v1` |
 | `runs.status` | `{id}` | `{id, alive, state, exit_code, signal, started_ms, ended_ms}` | `not_found` | any client; cap `run_status.v1` |
 | `sessions.text` | `{id, lines?}` (`lines` 1 to 10000, default the screen height) | `{id, rows, cols, lines, scroll_max}` | `not_found`, `invalid_params`, `forbidden` | any client except `worker`; cap `session_text.v1` |
@@ -182,7 +184,7 @@ protected path); `name` is 1 to 64 printable characters; `cols`/`rows` are
 clamped to 1..500 and 1..200.
 
 `SessionInfo`: `{id, name, argv, cwd, profile: str|null, state, created_ms,
-cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?}`. `task`, `bundle_sha256` and `origin` are absent when not set.
+cols, rows, shim_pid, child_pid, task?, bundle_sha256?, origin?, resumed_from?}`. `task`, `bundle_sha256`, `origin` and `resumed_from` are absent when not set. `resumed_from` is the id of the exited session this one replaced through `sessions.resume`; a client that tracks sessions by id maps the old id to this one.
 
 `TaskRef`: `{workspace_id: i64, task_id: i64}`. Local workspaces have negative
 ids. The runner treats it as opaque, stores it in the session's `meta.json` (it
@@ -225,6 +227,45 @@ old run's home still exists it is moved to the new session and, if the profile h
 with the same bundle. On success the old record and the old exited session are removed;
 on failure the record is put back. The runner never restores on its own: each restore
 is one explicit local request (`tmgr agents restore`).
+
+### Resuming an exited session
+
+`sessions.resume {id, cols?, rows?}` (cap `sessions_resume.v1`, `cli` only) starts an
+exited session again in place: same name, folder and profile, a new session id, and
+`SessionInfo.resumed_from` set to the old id. The old session must be `exited`
+(`busy` otherwise, also while another resume or a `runs.restore` of it is running); the old
+session is removed once the new one has started, and a failed resume leaves it as it was.
+`cols` and `rows` default to 80 and 24 and are clamped like create.
+
+An agent run (a profile) is relaunched from a copy of its launch record that the runner
+keeps in the session directory (`relaunch.json`, plus the canonical bundle when there is one),
+so it survives the clean exit and the kill that drop the `runs.restore` record. The same
+rules as `runs.restore` apply and nothing is weakened: records with an `origin` (link), bypass
+runs, records older than 7 days and queue runs without an `exe_pin` are `forbidden`; the
+executable pin, the argv digest, the folder identity (`cwd_pin`) and the stored bundle hash
+are checked again. A session without a launch record is `not_found`. Any other session
+(a shell or `--agent-cmd`) is rebuilt from its own metadata and run again; its folder must
+still be the same directory (identity compared), otherwise `forbidden`.
+
+The result is `{session, resumed, via}`. `via` says how the command line was built:
+`id` (the agent resumes the conversation named in its own last output), `continue` (the
+profile's `[resume] args`, for example `--continue` or `resume --last`, used when no id
+was found and the run home exists), `rerun` (a session without a profile was run again),
+`fresh` (no conversation to continue; the agent starts new). `resumed` is true for `id` and `continue`.
+
+The id comes from the old session's own `output.log` only: the last 64 KiB, opened without
+following links, cut after the last `ESC [ ? 1049 l`, with escape sequences and control
+bytes removed. The last `claude --resume <id>` or `codex resume <id>` wins; `<id>` must be a
+lowercase UUID (`8-4-4-4-12` hex digits) and is passed as its own argument, never through a shell.
+A profile opts in with `[resume] by_id = ["--resume", "{resume_id}"]`: exactly one whole
+argument `{resume_id}`, placed like `[resume] args` (`at`). A run that was approved with an argv
+digest also stores the declaration (including `by_id`); a record without `by_id` never gets one.
+
+The new session starts with the old screen text in its scrollback, followed by a dim
+`-- resumed --` line. The text is written into the screen model directly (it does not
+pass the status matcher, so an old prompt cannot mark the new session `blocked`), stored as
+`prior.txt` (at most 1 MiB, mode 0600) in the session directory and loaded first after a
+runner restart. `max_sessions` does not count the exited session being replaced.
 
 ### Pinning the folder
 

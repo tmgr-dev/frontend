@@ -1,7 +1,7 @@
 use std::io::{BufRead, IsTerminal, Write};
 use tmgr_core::error::{Error, Kind, Result};
 
-pub const RUN_ENV: [&str; 2] = ["TMGR_RUN_TOKEN", "TMGR_RUN_ID"];
+pub const RUN_ENV: [&str; 3] = ["TMGR_RUN_TOKEN", "TMGR_RUN_ID", "TMGR_SESSION_ID"];
 
 pub fn check(in_agent_session: bool, interactive: bool) -> Result<()> {
     if in_agent_session {
@@ -67,6 +67,13 @@ mod tests {
         let e = check(true, true).unwrap_err();
         assert_eq!(e.exit_code(), 5);
         assert!(e.message.contains("refused inside an agent session"));
+    }
+
+    #[test]
+    fn session_ids_count_as_agent_sessions() {
+        assert!(RUN_ENV.contains(&"TMGR_SESSION_ID"));
+        assert!(RUN_ENV.contains(&"TMGR_RUN_TOKEN"));
+        assert!(RUN_ENV.contains(&"TMGR_RUN_ID"));
     }
 
     #[test]

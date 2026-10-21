@@ -97,6 +97,8 @@ pub struct ResumeDecl {
     pub args: Vec<String>,
     #[serde(default)]
     pub at: ResumeAt,
+    #[serde(default)]
+    pub by_id: Option<Vec<String>>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -316,17 +318,59 @@ impl Profile {
         let Some(r) = &self.resume else {
             return Ok(None);
         };
+        self.place_resume(model, extra, r.args.clone(), r.at)
+            .map(Some)
+    }
+
+    pub fn resume_argv_by_id(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+        id: &str,
+    ) -> Result<Option<Vec<String>>, String> {
+        let Some((r, by_id)) = self
+            .resume
+            .as_ref()
+            .and_then(|r| r.by_id.as_ref().map(|b| (r, b)))
+        else {
+            return Ok(None);
+        };
+        if !crate::resume::valid_resume_id(id) {
+            return Err("invalid resume id".into());
+        }
+        let args = by_id
+            .iter()
+            .map(|a| {
+                if a == RESUME_ID {
+                    id.to_string()
+                } else {
+                    a.clone()
+                }
+            })
+            .collect();
+        self.place_resume(model, extra, args, r.at).map(Some)
+    }
+
+    fn place_resume(
+        &self,
+        model: Option<&str>,
+        extra: &[String],
+        args: Vec<String>,
+        at: ResumeAt,
+    ) -> Result<Vec<String>, String> {
         let mut argv = self.argv_with(model, extra)?;
-        match r.at {
-            ResumeAt::End => argv.extend(r.args.iter().cloned()),
+        match at {
+            ResumeAt::End => argv.extend(args),
             ResumeAt::AfterCommand => {
                 let at = self.command.len().min(argv.len());
-                argv.splice(at..at, r.args.iter().cloned());
+                argv.splice(at..at, args);
             }
         }
-        Ok(Some(argv))
+        Ok(argv)
     }
 }
+
+const RESUME_ID: &str = "{resume_id}";
 
 const MAX_INSTRUCTION_FILES: usize = 8;
 
@@ -367,6 +411,16 @@ fn check_launch(p: &Profile) -> Result<(), String> {
         }
         if r.args.iter().any(|a| a.contains('{')) {
             return Err("resume.args take no placeholders".into());
+        }
+        if let Some(b) = &r.by_id {
+            let holes = b.iter().filter(|a| *a == RESUME_ID).count();
+            let stray = b.iter().any(|a| a != RESUME_ID && a.contains('{'));
+            if holes != 1 || stray {
+                return Err(
+                    "resume.by_id must hold \"{resume_id}\" exactly once as a whole argument"
+                        .into(),
+                );
+            }
         }
     }
     let holes = p.prompt.args.iter().filter(|a| *a == "{prompt}").count();
@@ -851,6 +905,73 @@ idle = ['^> $']
             vec!["x", "sub", "resume", "--last", "--a"]
         );
         assert!(p.resume_argv(Some("a b")).is_err());
+    }
+
+    const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
+
+    #[test]
+    fn resume_by_id_is_its_own_argv_element_and_keeps_the_position() {
+        let p =
+            parse("[resume]\nargs = [\"--continue\"]\nby_id = [\"--resume\", \"{resume_id}\"]\n")
+                .unwrap();
+        assert_eq!(
+            p.resume_argv_by_id(Some("m1"), &[], U).unwrap().unwrap(),
+            vec!["x", "sub", "--a", "-m", "m1", "--resume", U]
+        );
+        let p = parse(
+            "[resume]\nargs = [\"resume\", \"--last\"]\nat = \"after_command\"\nby_id = [\"resume\", \"{resume_id}\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            p.resume_argv_by_id(None, &[], U).unwrap().unwrap(),
+            vec!["x", "sub", "resume", U, "--a"]
+        );
+        for bad in [
+            "",
+            "abc",
+            "$(id)",
+            "--resume",
+            &U.to_uppercase(),
+            &format!("{U} x"),
+        ] {
+            assert!(p.resume_argv_by_id(None, &[], bad).is_err(), "{bad:?}");
+        }
+        let plain = parse("[resume]\nargs = [\"--continue\"]\n").unwrap();
+        assert_eq!(plain.resume_argv_by_id(None, &[], U).unwrap(), None);
+        assert_eq!(
+            parse("").unwrap().resume_argv_by_id(None, &[], U).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn resume_by_id_needs_exactly_one_whole_placeholder() {
+        for bad in [
+            "[resume]\nargs = [\"-c\"]\nby_id = []\n",
+            "[resume]\nargs = [\"-c\"]\nby_id = [\"--resume\"]\n",
+            "[resume]\nargs = [\"-c\"]\nby_id = [\"{resume_id}\", \"{resume_id}\"]\n",
+            "[resume]\nargs = [\"-c\"]\nby_id = [\"--resume={resume_id}\"]\n",
+            "[resume]\nargs = [\"-c\"]\nby_id = [\"{resume_id}\", \"{session}\"]\n",
+        ] {
+            assert!(parse(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn builtin_agents_resume_by_id() {
+        let (set, _) = ProfileSet::load(None);
+        let claude = set.get("claude-code").unwrap();
+        let argv = claude.resume_argv_by_id(None, &[], U).unwrap().unwrap();
+        assert_eq!(
+            argv[argv.len() - 2..],
+            ["--resume".to_string(), U.to_string()]
+        );
+        let codex = set.get("codex").unwrap();
+        let argv = codex.resume_argv_by_id(None, &[], U).unwrap().unwrap();
+        assert_eq!(
+            argv[..3],
+            ["codex".to_string(), "resume".to_string(), U.to_string()]
+        );
     }
 
     #[test]

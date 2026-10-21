@@ -9,6 +9,7 @@ use crate::login;
 use crate::orchestrator;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
 use crate::restore;
+use crate::resume;
 use crate::sandbox::{self, SandboxSpec};
 use crate::screen::ScreenModel;
 use crate::seedguard;
@@ -40,9 +41,9 @@ use tmgr_ipc::api::{
     limits, method, AutopilotCommand, AutopilotControlParams, AutopilotControlled, AutopilotLog,
     AutopilotLogParams, AutopilotStartParams, AutopilotStarted, CreateReq, CwdPin, ErrorCode,
     EventMsg, ExePin, LookupParams, OrchestratorCreateReq, Origin, OriginRevokeParams,
-    OriginRevoked, PathParams, RestoredRun, RunCreateReq, RunStatus, SessionInfo, SessionText,
-    Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved, CLIENT_CLI,
-    CLIENT_DESKTOP, CLIENT_WORKER,
+    OriginRevoked, PathParams, RestoredRun, ResumeParams, RunCreateReq, RunStatus, SessionInfo,
+    SessionText, Snapshot, State, StateKind, StatusInfo, TaskRef, TextParams, TrustRemoved,
+    CLIENT_CLI, CLIENT_DESKTOP, CLIENT_WORKER,
 };
 use tmgr_ipc::dirs::{self, ensure_private_dir, ensure_private_leaf};
 use tmgr_ipc::endpoint::{self, Endpoint};
@@ -67,6 +68,8 @@ const PUSH_INTERVAL: Duration = Duration::from_millis(33);
 const MAX_LAYOUT: usize = 64 << 10;
 const MAX_WATCHED: usize = 64;
 const LOG_TAIL: u64 = 2 << 20;
+const PRIOR_CAP: usize = 1 << 20;
+const PRIOR_FILE: &str = "prior.txt";
 const PROTECTED_IN_HOME: [&str; 10] = [
     ".ssh",
     ".gnupg",
@@ -272,6 +275,12 @@ struct Meta {
     learn_trust: Option<LearnTrust>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     multi: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    resumed_from: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    env_pass: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    boot: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -295,6 +304,26 @@ struct RunExtra {
     egress: Option<Vec<crate::egress::HostPattern>>,
     mode_note: Option<String>,
     run_id_env: bool,
+    resume_of: Option<ResumeSeed>,
+}
+
+#[derive(Clone)]
+struct ResumeSeed {
+    from: String,
+    text: String,
+}
+
+struct ResumeCtx {
+    id: Option<String>,
+    text: String,
+}
+
+struct Resuming<'a>(&'a AtomicBool);
+
+impl Drop for Resuming<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 fn shown_argv(argv: &[String], prompt_at: Option<usize>) -> Vec<String> {
@@ -381,6 +410,7 @@ struct Session {
     proxy: Mutex<Option<crate::egress::Proxy>>,
     halted: AtomicBool,
     foreign_input: AtomicBool,
+    resuming: AtomicBool,
 }
 
 fn write_meta(dir: &Path, meta: &Meta) {
@@ -473,7 +503,7 @@ impl Session {
             bundle_sha256: m.bundle_sha256.clone(),
             origin: m.origin.clone(),
             permission_mode: m.permission_mode.clone(),
-            resumed_from: None,
+            resumed_from: m.resumed_from.clone(),
         }
     }
 
@@ -1049,7 +1079,40 @@ impl Session {
         self.shim_msg(&ToShim::Resize { cols, rows });
     }
 
+    fn prior_text(&self) -> String {
+        let mut i = lock(&self.inner);
+        let (_, _, _, lines) = i.screen.text_lines(Some(SCROLLBACK + 1000));
+        let end = lines
+            .iter()
+            .rposition(|l| !l.is_empty())
+            .map_or(0, |n| n + 1);
+        let mut text = lines[..end].join("\n");
+        if text.len() > PRIOR_CAP {
+            let mut cut = text.len() - PRIOR_CAP;
+            while !text.is_char_boundary(cut) {
+                cut += 1;
+            }
+            text = text[cut..]
+                .trim_start_matches(|c| c != '\n')
+                .trim_start_matches('\n')
+                .to_string();
+        }
+        text
+    }
+
+    fn seed_prior(&self, text: &str) {
+        lock(&self.inner).screen.seed_scrollback(text);
+    }
+
+    fn load_prior(&self) {
+        let path = self.dir.join(PRIOR_FILE);
+        if let Ok(buf) = resume::read_capped(&path, PRIOR_CAP as u64) {
+            self.seed_prior(&String::from_utf8_lossy(&buf));
+        }
+    }
+
     fn load_dead(&self) {
+        self.load_prior();
         let mut i = lock(&self.inner);
         if let Ok(mut f) = File::open(self.dir.join("output.log")) {
             let len = f.metadata().map_or(0, |m| m.len());
@@ -1283,6 +1346,29 @@ fn resume_rec(r: &crate::profile::ResumeDecl) -> restore::ResumeRec {
             crate::profile::ResumeAt::AfterCommand => "after_command",
         }
         .into(),
+        by_id: r.by_id.clone(),
+    }
+}
+
+fn check_resume_pin(
+    declared: Option<restore::ResumeRec>,
+    pinned: Option<&Option<restore::ResumeRec>>,
+) -> Result<bool, ApiErr> {
+    let Some(want) = pinned else {
+        return Ok(true);
+    };
+    let approved = want.as_ref().is_some_and(|w| w.by_id.is_some());
+    let comparable = match declared {
+        Some(d) if !approved => Some(restore::ResumeRec { by_id: None, ..d }),
+        d => d,
+    };
+    if comparable == *want {
+        Ok(approved)
+    } else {
+        Err(api(
+            ErrorCode::Forbidden,
+            "the agent's resume arguments changed since the run was approved",
+        ))
     }
 }
 
@@ -1674,6 +1760,20 @@ impl Runner {
                 }
                 self.restore_run(&session_id_param(p)?).map(|r| to_json(&r))
             }
+            method::SESSIONS_RESUME => {
+                if conn.client != CLIENT_CLI {
+                    return Err(api(
+                        ErrorCode::Forbidden,
+                        "sessions.resume is accepted only from the tmgr CLI",
+                    ));
+                }
+                let q: ResumeParams = params(p)?;
+                if !valid_session_id(&q.id) {
+                    return Err(api(ErrorCode::InvalidParams, "invalid session id"));
+                }
+                self.resume_session(&q.id, q.cols, q.rows)
+                    .map(|r| to_json(&r))
+            }
             method::ORIGIN_REVOKE => {
                 if conn.client != CLIENT_CLI {
                     return Err(api(
@@ -2046,6 +2146,16 @@ impl Runner {
             _ => api(ErrorCode::InvalidParams, e.to_string()),
         })?;
         let running = self.session(old).is_some_and(|s| !s.is_exited());
+        if self
+            .session(old)
+            .is_some_and(|s| s.resuming.load(Ordering::SeqCst))
+        {
+            claim.release();
+            return Err(api(
+                ErrorCode::Busy,
+                "a resume of this session is in progress",
+            ));
+        }
         let result = match restore::status(&claim.intent, now_ms(), running) {
             restore::Status::Restorable if claim.intent.needs_queue_pin() => Err(api(
                 ErrorCode::Forbidden,
@@ -2063,13 +2173,14 @@ impl Runner {
                         restore::request(&claim.intent, bundle),
                         Some(old),
                         pinned_resume,
+                        None,
                     )
                 }),
             restore::Status::Running => Err(api(ErrorCode::Busy, "the session is still running")),
             st => Err(api(ErrorCode::Forbidden, st.reason())),
         };
         match result {
-            Ok((session, resumed, recorded)) => {
+            Ok((session, resumed, recorded, _)) => {
                 if recorded {
                     claim.finish();
                 } else {
@@ -2095,8 +2206,161 @@ impl Runner {
         }
     }
 
+    fn resume_session(
+        self: &Arc<Self>,
+        old: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<RestoredRun, ApiErr> {
+        let s = self
+            .session(old)
+            .ok_or_else(|| api(ErrorCode::NotFound, "no such session"))?;
+        if !s.is_exited() {
+            return Err(api(ErrorCode::Busy, "the session is still running"));
+        }
+        if restore::is_claimed(&self.intents(), old) {
+            return Err(api(
+                ErrorCode::Busy,
+                "a restore of this session is in progress",
+            ));
+        }
+        if s.resuming.swap(true, Ordering::SeqCst) {
+            return Err(api(
+                ErrorCode::Busy,
+                "a resume of this session is already in progress",
+            ));
+        }
+        let _guard = Resuming(&s.resuming);
+        if !self.session(old).is_some_and(|cur| Arc::ptr_eq(&cur, &s)) {
+            return Err(api(ErrorCode::NotFound, "no such session"));
+        }
+        let (cols, rows) = clamp_size(cols, rows);
+        let meta = lock(&s.inner).meta.clone();
+        let interrupted = is_interrupted(&s.state());
+        if interrupted
+            && restore::pids_may_run(
+                &[meta.shim_pid, meta.child_pid],
+                meta.boot.as_deref(),
+                restore::boot_marker().as_deref(),
+            )
+        {
+            return Err(api(ErrorCode::Busy, "the session may still be running"));
+        }
+        let resume_id = resume::id_from_log(&self.sdir(old).join("output.log"));
+        let prior = s.prior_text();
+        let (info, resumed, via) = match meta.profile {
+            Some(_) => self.resume_agent(old, (cols, rows), interrupted, resume_id, prior)?,
+            None => self.resume_raw(&meta, old, (cols, rows), prior)?,
+        };
+        restore::forget(&self.intents(), old);
+        let _ = self.remove(old);
+        log(&format!("session {old} resumed as {} ({via})", info.id));
+        Ok(RestoredRun {
+            session: info,
+            resumed,
+            via: Some(via.into()),
+        })
+    }
+
+    fn resume_agent(
+        self: &Arc<Self>,
+        old: &str,
+        (cols, rows): (u16, u16),
+        interrupted: bool,
+        id: Option<String>,
+        prior: String,
+    ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
+        let store = self.intents();
+        let (mut intent, bundle) = match restore::load_relaunch(&self.sdir(old), old) {
+            Ok(found) => found,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                let intent = restore::load(&store, old).map_err(|_| {
+                    api(
+                        ErrorCode::NotFound,
+                        "this session has no launch record; start it again with tmgr run",
+                    )
+                })?;
+                let bundle = restore::read_bundle(&store, &intent)
+                    .map_err(|e| api(ErrorCode::InvalidParams, e.to_string()))?;
+                (intent, bundle)
+            }
+            Err(e) => return Err(api(ErrorCode::InvalidParams, e.to_string())),
+        };
+        if !interrupted {
+            intent.pids.clear();
+        }
+        match restore::status(&intent, now_ms(), false) {
+            restore::Status::Restorable if intent.needs_queue_pin() => return Err(api(
+                ErrorCode::Forbidden,
+                "this queue run was recorded without an approved executable; queue the task again",
+            )),
+            restore::Status::Restorable => {}
+            restore::Status::Running | restore::Status::Restoring => {
+                return Err(api(ErrorCode::Busy, "the session may still be running"))
+            }
+            st => return Err(api(ErrorCode::Forbidden, st.reason())),
+        }
+        let mut req = restore::request(&intent, bundle);
+        req.cols = cols;
+        req.rows = rows;
+        let pinned_resume = intent.argv_sha256.is_some().then_some(&intent.resume_decl);
+        let (info, resumed, _, via) = self.create_run_as(
+            req,
+            Some(old),
+            pinned_resume,
+            Some(ResumeCtx { id, text: prior }),
+        )?;
+        Ok((info, resumed, via))
+    }
+
+    fn resume_raw(
+        self: &Arc<Self>,
+        meta: &Meta,
+        old: &str,
+        (cols, rows): (u16, u16),
+        prior: String,
+    ) -> Result<(SessionInfo, bool, &'static str), ApiErr> {
+        let cwd = fs::canonicalize(&meta.cwd).map_err(|_| {
+            api(
+                ErrorCode::InvalidParams,
+                "cwd must be an existing directory",
+            )
+        })?;
+        let dir = bundle::open_path(cwd).map_err(|(code, m)| api(code, m))?;
+        if meta.cwd_id != Some(dir.id()) {
+            return Err(api(
+                ErrorCode::Forbidden,
+                "the folder of this session changed since it started",
+            ));
+        }
+        let extra = RunExtra {
+            resume_of: Some(ResumeSeed {
+                from: old.to_string(),
+                text: prior,
+            }),
+            ..RunExtra::default()
+        };
+        let info = self.create_with(
+            CreateReq {
+                argv: meta.argv.clone(),
+                cwd: dir.path.display().to_string(),
+                name: Some(meta.name.clone()),
+                profile: None,
+                cols,
+                rows,
+                env_pass: meta.env_pass.clone(),
+                task: meta.task,
+            },
+            (None, Some(&dir), None),
+            (None, &extra),
+            Some(old),
+        )?;
+        Ok((info, false, "rerun"))
+    }
+
     fn create_run(self: &Arc<Self>, req: RunCreateReq) -> Result<SessionInfo, ApiErr> {
-        self.create_run_as(req, None, None).map(|(info, _, _)| info)
+        self.create_run_as(req, None, None, None)
+            .map(|(info, _, _, _)| info)
     }
 
     fn create_orchestrator(
@@ -2201,7 +2465,8 @@ impl Runner {
         req: RunCreateReq,
         restore_from: Option<&str>,
         pinned_resume: Option<&Option<restore::ResumeRec>>,
-    ) -> Result<(SessionInfo, bool, bool), ApiErr> {
+        resume_ctx: Option<ResumeCtx>,
+    ) -> Result<(SessionInfo, bool, bool, &'static str), ApiErr> {
         let start = match &req.start_key {
             Some(k) if !valid_start_key(k) => {
                 return Err(api(
@@ -2222,7 +2487,7 @@ impl Runner {
         if let Some((key, hash)) = &start {
             if let Some(existing) = self.by_key(key) {
                 return if existing.start_key().is_some_and(|(_, h)| h == *hash) {
-                    Ok((existing.info(), false, true))
+                    Ok((existing.info(), false, true, "fresh"))
                 } else {
                     Err(api(
                         ErrorCode::Busy,
@@ -2241,12 +2506,7 @@ impl Runner {
         let (set, _) = ProfileSet::load(profile::user_dir().as_deref());
         let prof = known_profile(&set, &req.profile)?;
         hold_at("TMGR_TEST_HOLD_AFTER_PROFILE");
-        if pinned_resume.is_some_and(|want| prof.resume.as_ref().map(resume_rec) != *want) {
-            return Err(api(
-                ErrorCode::Forbidden,
-                "the agent's resume arguments changed since the run was approved",
-            ));
-        }
+        let id_approved = check_resume_pin(prof.resume.as_ref().map(resume_rec), pinned_resume)?;
         let cloud = cloud_verdict(&req);
         let plan = plan_mode(
             prof,
@@ -2316,14 +2576,25 @@ impl Runner {
             }
             _ => Vec::new(),
         };
-        let resume = match restore_from {
-            Some(old) if self.cfg.homes.join(old).is_dir() => {
-                prof.resume_argv_with(req.model.as_deref(), &perm_args)
+        let home_kept = restore_from.is_some_and(|old| self.cfg.homes.join(old).is_dir());
+        let by_id = match resume_ctx.as_ref().and_then(|c| c.id.as_deref()) {
+            Some(id) if home_kept && id_approved => {
+                prof.resume_argv_by_id(req.model.as_deref(), &perm_args, id)
             }
             _ => Ok(None),
         }
         .map_err(|e| api(ErrorCode::InvalidParams, e))?;
+        let (resume, via) = match by_id {
+            Some(argv) => (Some(argv), "id"),
+            None if home_kept => (
+                prof.resume_argv_with(req.model.as_deref(), &perm_args)
+                    .map_err(|e| api(ErrorCode::InvalidParams, e))?,
+                "continue",
+            ),
+            None => (None, "fresh"),
+        };
         let resumed = resume.is_some();
+        let via = if resumed { via } else { "fresh" };
         let mut argv = match resume {
             Some(argv) => argv,
             None => prof
@@ -2395,6 +2666,13 @@ impl Runner {
             egress: None,
             mode_note: plan.note.clone(),
             run_id_env: false,
+            resume_of: match (restore_from, resume_ctx) {
+                (Some(old), Some(c)) => Some(ResumeSeed {
+                    from: old.to_string(),
+                    text: c.text,
+                }),
+                _ => None,
+            },
         };
         if plan.restricted {
             extra.egress = Some(
@@ -2501,6 +2779,12 @@ impl Runner {
                 rows: info.rows,
             };
             let canonical = checked.as_ref().map(|c| c.canonical.as_str());
+            if let Err(e) = restore::save_relaunch(&self.sdir(&info.id), &intent, canonical) {
+                log(&format!(
+                    "session {}: relaunch record not written: {e}",
+                    info.id
+                ));
+            }
             recorded = restore::record(&self.intents(), &intent, canonical)
                 .map_err(|e| {
                     log(&format!(
@@ -2522,7 +2806,7 @@ impl Runner {
             });
             s.prepare_agent_work();
         }
-        Ok((info, resumed, recorded))
+        Ok((info, resumed, recorded, via))
     }
 
     fn create(self: &Arc<Self>, req: CreateReq) -> Result<SessionInfo, ApiErr> {
@@ -2580,7 +2864,10 @@ impl Runner {
         }
         {
             let sessions = lock(&self.sessions);
-            if sessions.len() >= self.cfg.max_sessions {
+            let replaced = restore_from
+                .and_then(|old| sessions.get(old))
+                .is_some_and(|s| s.is_exited());
+            if sessions.len() - usize::from(replaced) >= self.cfg.max_sessions {
                 return Err(api(ErrorCode::Limit, "too many sessions"));
             }
             if bundle.is_some() && sessions.values().any(|s| s.identity_unknown()) {
@@ -2913,9 +3200,22 @@ impl Runner {
                 _ => None,
             },
             multi: extra.multi,
+            resumed_from: extra.resume_of.as_ref().map(|r| r.from.clone()),
+            env_pass: req.env_pass.clone(),
+            boot: restore::boot_marker(),
         };
         write_meta(sdir, &meta);
         let session = self.new_session(meta, matcher, sdir);
+        if let Some(r) = &extra.resume_of {
+            let text = r.text.as_bytes();
+            if let Err(e) = write_atomic(&sdir.join(PRIOR_FILE), &text[..text.len().min(PRIOR_CAP)])
+            {
+                log(&format!(
+                    "session {id}: scrollback of the old session not saved: {e}"
+                ));
+            }
+            session.seed_prior(&r.text);
+        }
         *lock(&session.proxy) = proxy;
         session.worklog.created(&session.info(), extra.trust_note);
         session.attach_shim(stream, hello, true);
@@ -2959,6 +3259,7 @@ impl Runner {
             proxy: Mutex::new(None),
             halted: AtomicBool::new(false),
             foreign_input: AtomicBool::new(false),
+            resuming: AtomicBool::new(false),
         })
     }
 
@@ -3067,6 +3368,7 @@ impl Runner {
         match adopted {
             Ok((stream, hello)) => {
                 session.adopt_cwd_id(&hello);
+                session.load_prior();
                 session.attach_shim(stream, hello, false);
                 if session.revoking.load(Ordering::SeqCst) {
                     let done = terminate(&session);
@@ -3748,6 +4050,46 @@ mod tests {
         assert_eq!(default_name(&format!("/tmp/{}", "n".repeat(200))).len(), 64);
         assert_eq!(default_name("/"), "/");
         assert_eq!(default_name(""), "session");
+    }
+
+    fn rec(by_id: Option<&[&str]>) -> restore::ResumeRec {
+        restore::ResumeRec {
+            args: vec!["--continue".into()],
+            at: "end".into(),
+            by_id: by_id.map(|b| b.iter().map(|s| s.to_string()).collect()),
+        }
+    }
+
+    #[test]
+    fn pinned_resume_records_without_by_id_stay_valid_and_never_gain_an_id() {
+        let now = rec(Some(&["--resume", "{resume_id}"]));
+        assert!(check_resume_pin(Some(now.clone()), None).unwrap());
+        assert!(!check_resume_pin(Some(now.clone()), Some(&Some(rec(None)))).unwrap());
+        assert!(check_resume_pin(Some(now.clone()), Some(&Some(now.clone()))).unwrap());
+        assert!(check_resume_pin(None, Some(&None)).is_ok());
+    }
+
+    #[test]
+    fn pinned_resume_records_catch_changes() {
+        let now = rec(Some(&["--resume", "{resume_id}"]));
+        let other = rec(Some(&["--other", "{resume_id}"]));
+        assert!(check_resume_pin(Some(other), Some(&Some(now.clone()))).is_err());
+        assert!(check_resume_pin(None, Some(&Some(now.clone()))).is_err());
+        assert!(check_resume_pin(Some(now.clone()), Some(&None)).is_err());
+        let mut changed = rec(None);
+        changed.args = vec!["--elsewhere".into()];
+        assert!(check_resume_pin(Some(changed), Some(&Some(rec(None)))).is_err());
+        let mut at = now.clone();
+        at.at = "after_command".into();
+        assert!(check_resume_pin(Some(at), Some(&Some(now))).is_err());
+    }
+
+    #[test]
+    fn old_resume_records_load_without_by_id() {
+        let old: restore::ResumeRec =
+            serde_json::from_str(r#"{"args":["--continue"],"at":"end"}"#).unwrap();
+        assert_eq!(old, rec(None));
+        assert!(!serde_json::to_string(&old).unwrap().contains("by_id"));
     }
 
     const ID: &str = "s_abcdefghij";

@@ -5,6 +5,7 @@ pub mod exe;
 pub mod login;
 pub mod orchestrator;
 pub mod profile;
+pub mod resume;
 pub mod sandbox;
 pub mod sanitize;
 pub mod screen;

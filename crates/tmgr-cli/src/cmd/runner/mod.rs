@@ -50,6 +50,8 @@ pub enum RunnerCommands {
     Halt(HaltArgs),
     /// [experimental] Delete a session that has already exited
     Rm(RmArgs),
+    /// [experimental] Start an exited session again in place and continue the agent's conversation (asks to confirm)
+    Resume(ResumeArgs),
     /// [experimental] Give a session a new name (the id stays the same)
     Rename(RenameArgs),
 }
@@ -370,6 +372,12 @@ pub struct RenameArgs {
 #[derive(Args)]
 pub struct RmArgs {
     /// Session id or name
+    pub session: String,
+}
+
+#[derive(Args)]
+pub struct ResumeArgs {
+    /// Session id or name of an exited session
     pub session: String,
 }
 

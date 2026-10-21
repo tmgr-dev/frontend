@@ -14,11 +14,15 @@ pub const TTL_MS: u64 = 7 * 24 * 3600 * 1000;
 const MAX_INTENT: u64 = 64 * 1024;
 const MAX_LISTED: usize = 256;
 const STORE: &str = ".intents";
+const RELAUNCH: &str = "relaunch.json";
+const RELAUNCH_BUNDLE: &str = "relaunch.bundle.json";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeRec {
     pub args: Vec<String>,
     pub at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub by_id: Option<Vec<String>>,
 }
 
 impl Intent {
@@ -268,12 +272,16 @@ fn group_alive(pid: u32) -> bool {
             || io::Error::last_os_error().raw_os_error() == Some(libc::EPERM))
 }
 
-pub fn may_still_run(i: &Intent, boot: Option<&str>) -> bool {
-    let same_boot = match (i.boot.as_deref(), boot) {
+pub fn pids_may_run(pids: &[u32], recorded_boot: Option<&str>, boot: Option<&str>) -> bool {
+    let same_boot = match (recorded_boot, boot) {
         (Some(a), Some(b)) => a == b,
         _ => true,
     };
-    same_boot && i.pids.iter().any(|p| pid_alive(*p) || group_alive(*p))
+    same_boot && pids.iter().any(|p| pid_alive(*p) || group_alive(*p))
+}
+
+pub fn may_still_run(i: &Intent, boot: Option<&str>) -> bool {
+    pids_may_run(&i.pids, i.boot.as_deref(), boot)
 }
 
 pub fn status(i: &Intent, now_ms: u64, running: bool) -> Status {
@@ -346,15 +354,39 @@ pub fn recover_claims(store: &Path) {
 }
 
 pub fn read_bundle(store: &Path, i: &Intent) -> io::Result<Option<RunBundle>> {
+    read_bundle_at(&bundle_path(store, &i.session), i)
+}
+
+fn read_bundle_at(path: &Path, i: &Intent) -> io::Result<Option<RunBundle>> {
     let Some(hash) = &i.bundle_sha256 else {
         return Ok(None);
     };
-    let bytes = read_capped(&bundle_path(store, &i.session), MAX_BUNDLE as u64)?;
+    let bytes = read_capped(path, MAX_BUNDLE as u64)?;
     let bundle: RunBundle = serde_json::from_slice(&bytes).map_err(|e| bad(e.to_string()))?;
     if !sha256_hex(bundle.canonical().as_bytes()).eq_ignore_ascii_case(hash) {
         return Err(bad("the stored task bundle does not match its hash"));
     }
     Ok(Some(bundle))
+}
+
+pub fn save_relaunch(sdir: &Path, i: &Intent, bundle: Option<&str>) -> io::Result<()> {
+    check_id(&i.session)?;
+    if let Some(b) = bundle {
+        write_atomic(&sdir.join(RELAUNCH_BUNDLE), b.as_bytes())?;
+    }
+    let bytes = serde_json::to_vec(i).map_err(io::Error::other)?;
+    write_atomic(&sdir.join(RELAUNCH), &bytes)
+}
+
+pub fn load_relaunch(sdir: &Path, id: &str) -> io::Result<(Intent, Option<RunBundle>)> {
+    check_id(id)?;
+    let intent = parse_intent(&read_capped(&sdir.join(RELAUNCH), MAX_INTENT)?, id)?;
+    let bundle = read_bundle_at(&sdir.join(RELAUNCH_BUNDLE), &intent)?;
+    Ok((intent, bundle))
+}
+
+pub fn is_claimed(store: &Path, id: &str) -> bool {
+    fs::symlink_metadata(claimed_path(store, id)).is_ok()
 }
 
 pub fn request(i: &Intent, bundle: Option<RunBundle>) -> RunCreateReq {
@@ -774,6 +806,59 @@ mod tests {
         fs::write(st.join(format!("{A}.bundle.json")), changed.canonical()).unwrap();
         assert!(read_bundle(&st, &i).is_err());
         assert_eq!(read_bundle(&st, &intent(B)).unwrap(), None);
+    }
+
+    #[test]
+    fn relaunch_record_lives_in_the_session_dir_and_checks_its_bundle() {
+        let (t, _homes, st) = dirs();
+        let sdir = t.path().join("sdir");
+        fs::create_dir(&sdir).unwrap();
+        let b = bundle();
+        let canonical = b.canonical();
+        let mut i = intent(A);
+        i.bundle_sha256 = Some(sha256_hex(canonical.as_bytes()));
+        save_relaunch(&sdir, &i, Some(&canonical)).unwrap();
+        for f in [RELAUNCH, RELAUNCH_BUNDLE] {
+            let mode = fs::metadata(sdir.join(f)).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "{f}");
+        }
+        assert_eq!(
+            load_relaunch(&sdir, A).unwrap(),
+            (i.clone(), Some(b.clone()))
+        );
+        assert!(load_relaunch(&sdir, B).is_err());
+        assert!(load_relaunch(&sdir, "../x").is_err());
+        assert!(!st.exists());
+        let mut changed = b;
+        changed.body.push('!');
+        fs::write(sdir.join(RELAUNCH_BUNDLE), changed.canonical()).unwrap();
+        assert!(load_relaunch(&sdir, A).is_err());
+        fs::remove_file(sdir.join(RELAUNCH_BUNDLE)).unwrap();
+        assert!(load_relaunch(&sdir, A).is_err());
+        save_relaunch(&sdir, &intent(A), None).unwrap();
+        assert_eq!(load_relaunch(&sdir, A).unwrap().1, None);
+    }
+
+    #[test]
+    fn a_symlinked_relaunch_record_is_not_read() {
+        let (t, _homes, _st) = dirs();
+        let sdir = t.path().join("sdir");
+        fs::create_dir(&sdir).unwrap();
+        save_relaunch(&sdir, &intent(A), None).unwrap();
+        fs::rename(sdir.join(RELAUNCH), t.path().join("elsewhere")).unwrap();
+        std::os::unix::fs::symlink(t.path().join("elsewhere"), sdir.join(RELAUNCH)).unwrap();
+        assert!(load_relaunch(&sdir, A).is_err());
+    }
+
+    #[test]
+    fn claimed_records_are_detected() {
+        let (_t, _homes, st) = dirs();
+        record(&st, &intent(A), None).unwrap();
+        assert!(!is_claimed(&st, A));
+        let c = claim(&st, A).unwrap();
+        assert!(is_claimed(&st, A));
+        c.release();
+        assert!(!is_claimed(&st, A));
     }
 
     #[test]
