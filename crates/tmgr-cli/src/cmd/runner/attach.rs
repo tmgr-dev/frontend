@@ -92,6 +92,7 @@ impl Drop for Guard {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum Msg {
     Stdin(Vec<u8>),
     StdinClosed,
