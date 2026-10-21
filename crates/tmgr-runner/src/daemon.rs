@@ -5,6 +5,7 @@ use crate::client::Client;
 use crate::clone;
 use crate::exe::{resolve_exe, verify_pin};
 use crate::folders;
+use crate::humantime;
 use crate::login;
 use crate::orchestrator;
 use crate::profile::{self, Matcher, Profile, ProfileSet};
@@ -504,6 +505,7 @@ impl Session {
             origin: m.origin.clone(),
             permission_mode: m.permission_mode.clone(),
             resumed_from: m.resumed_from.clone(),
+            human_s: None,
         }
     }
 
@@ -1251,6 +1253,7 @@ struct Runner {
     rejects: Mutex<Rejects>,
     next_conn: AtomicU64,
     autopilot: autopilot::Host,
+    clock: Mutex<humantime::Clock>,
 }
 
 fn default_name(argv0: &str) -> String {
@@ -1738,6 +1741,12 @@ impl Runner {
             method::CANDIDATES_LIST => Ok(to_json(&seedguard::pending(&self.cfg.dir))),
             method::SESSIONS_LIST => {
                 let mut list: Vec<SessionInfo> = self.all().iter().map(|s| s.info()).collect();
+                {
+                    let clock = lock(&self.clock);
+                    for i in &mut list {
+                        i.human_s = Some(clock.human_s(&i.id)).filter(|n| *n > 0);
+                    }
+                }
                 list.sort_by(|a, b| (a.created_ms, &a.id).cmp(&(b.created_ms, &b.id)));
                 Ok(to_json(&list))
             }
@@ -3663,6 +3672,27 @@ impl Runner {
         }
     }
 
+    fn with_clock(&self, f: impl FnOnce(&mut humantime::Clock)) {
+        let closed = {
+            let mut c = lock(&self.clock);
+            f(&mut c);
+            c.drain_closed()
+        };
+        if let Err(e) = humantime::append_records(&self.cfg.dir, &closed) {
+            log(&format!("human time: write failed: {e}"));
+        }
+    }
+
+    fn clock_meta(&self, id: &str) -> Option<humantime::Meta> {
+        let s = self.session(id)?;
+        let i = lock(&s.inner);
+        Some(humantime::Meta {
+            name: i.meta.name.clone(),
+            cwd: i.meta.cwd.clone(),
+            task: i.meta.task,
+        })
+    }
+
     fn client_input(&self, conn: &Conn, id: &str, data: &[u8]) {
         let Some(s) = self.session(id) else { return };
         let owner_matches = lock(&s.inner).size_owner == Some(conn.id);
@@ -3735,6 +3765,9 @@ impl Runner {
                         break;
                     }
                     self.client_input(&conn, &b.session, &b.data);
+                    if conn.client == CLIENT_CLI {
+                        self.with_clock(|c| c.input(conn.id, now_ms(), &b.session));
+                    }
                 }
                 Frame::Json(v) => match serde_json::from_value::<ClientMsg>(v) {
                     Ok(ClientMsg::Request(req)) => {
@@ -3760,10 +3793,28 @@ impl Runner {
                     }
                     Ok(ClientMsg::Scroll(s)) => {
                         if lock(&conn.watched).contains(&s.session) {
+                            if conn.client == CLIENT_CLI {
+                                self.with_clock(|c| c.scroll(conn.id, now_ms(), &s.session));
+                            }
                             lock(&conn.scroll).insert(s.session, s.offset as usize);
                         }
                     }
                     Ok(ClientMsg::Focus(_)) => {}
+                    Ok(ClientMsg::Attention(a)) => {
+                        if conn.client == CLIENT_CLI {
+                            let meta = a
+                                .session
+                                .as_deref()
+                                .and_then(|id| Some((id, self.clock_meta(id)?)));
+                            self.with_clock(|c| {
+                                let session = meta.as_ref().map(|(id, _)| *id);
+                                if let Some((id, m)) = &meta {
+                                    c.set_meta(id, m.clone());
+                                }
+                                c.attend(conn.id, now_ms(), session, a.window);
+                            });
+                        }
+                    }
                     Ok(ClientMsg::Detach) => break,
                     Err(_) => {
                         closed("bad message");
@@ -3777,6 +3828,7 @@ impl Runner {
             }
         }
         conn.closed.store(true, Ordering::SeqCst);
+        self.with_clock(|c| c.drop_conn(conn.id, now_ms()));
         let _ = stream.shutdown(std::net::Shutdown::Both);
     }
 }
@@ -3851,6 +3903,11 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         std::process::id().to_string().as_bytes(),
     )?;
     let secret = load_client_secret(&cfg.dir)?;
+    if let Err(e) = humantime::prune_records(&cfg.dir, now_ms() / 1000) {
+        log(&format!("human time: prune failed: {e}"));
+    }
+    let mut clock = humantime::Clock::new(humantime::Settings::load(&cfg.dir).idle_s);
+    clock.load_totals(&humantime::read_records(&cfg.dir));
     let rt = Arc::new(Runner {
         rename_lock: Mutex::new(()),
         cfg: cfg.clone(),
@@ -3867,6 +3924,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
         rejects: Mutex::new(Rejects::default()),
         next_conn: AtomicU64::new(1),
         autopilot: autopilot::Host::default(),
+        clock: Mutex::new(clock),
     });
     log(&format!("runner {} starting", cfg.version));
     let intents = rt.intents();
@@ -3889,8 +3947,22 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
 
     let ticker = rt.clone();
     thread::spawn(move || {
+        let mut settings_at: Option<Instant> = None;
         while !ticker.stop.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(250));
+            let idle = if settings_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(5)) {
+                settings_at = Some(Instant::now());
+                Some(humantime::Settings::load(&ticker.cfg.dir).idle_s)
+            } else {
+                None
+            };
+            let mono = ticker.started.elapsed().as_millis() as u64;
+            ticker.with_clock(|c| {
+                if let Some(idle) = idle {
+                    c.set_idle_s(now_ms(), idle);
+                }
+                c.tick(now_ms(), mono);
+            });
             let _ = rotate_log(&ticker.cfg.dir, &[1, 2], LOG_CAP);
             for s in ticker.all() {
                 s.tick();
@@ -3938,6 +4010,7 @@ pub fn serve(cfg: RunnerConfig) -> io::Result<()> {
             }
         }
     }
+    rt.with_clock(|c| c.shutdown(now_ms()));
     rt.autopilot.shutdown(&cfg.self_exe);
     thread::sleep(Duration::from_millis(100));
     match &ep {
