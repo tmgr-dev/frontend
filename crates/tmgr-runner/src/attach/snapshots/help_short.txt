@@ -7,8 +7,10 @@
                   │ w             session picker                                 │                 │
                   │ s             two panes, or collapse to one                  │                 │
                   │ | v / - h     split right / split down                       │                 │
+                  │ c             new session (dialog)                           │                 │
                   │ Tab           focus next pane (Shift-Tab previous)           │                 │
                   │ arrows        move focus (Shift+arrows: resize)              │                 │
+                  │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                 │
                   │ z / b         zoom the pane / show or hide the sidebar       │                 │
                   │ r             rename the focused session                     │                 │
                   │ Enter / R     resume an exited session                       │                 │
@@ -18,7 +20,5 @@
                   │ Ctrl-]        send a literal Ctrl-] to the session           │                 │
                   │                                                              │                 │
                   │ ? again closes this box                                      │                 │
-                  │                                                              │                 │
-                  │                                                              │                 │
-                  │                                                              │─────────────────╯
+ + New session    │                                                              │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

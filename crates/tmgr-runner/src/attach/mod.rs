@@ -1,8 +1,8 @@
 mod actions;
 mod keys;
 mod modes;
-mod newsession;
 mod mouse;
+mod newsession;
 mod palette;
 mod render;
 mod tree;
@@ -22,5 +22,5 @@ pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use view::{
     header_button, layout, sidebar_button, slot_control, Confirm, Control, Hit, Layout,
     LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,
-    SidebarEdit, SidebarItem, ViewState,
+    SidebarEdit, SidebarItem, SidebarLayout, ViewState,
 };

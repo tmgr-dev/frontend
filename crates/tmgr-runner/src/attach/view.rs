@@ -1,7 +1,7 @@
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::NewSession;
-use super::palette::{Palette, PaletteEntry};
+use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
@@ -120,6 +120,12 @@ pub struct ViewState {
 pub enum SidebarItem {
     Session(String),
     New,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SidebarLayout {
+    pub rows: Vec<(String, u16)>,
+    pub new_row: Option<u16>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -304,9 +310,9 @@ impl ViewState {
         self.commit(tree, focus);
     }
 
-    pub fn focus_nav(&mut self, area: Rect, nav: Nav) {
+    pub fn focus_nav(&mut self, area: Rect, nav: Nav) -> bool {
         let Some(f) = self.focus_id.clone() else {
-            return;
+            return false;
         };
         let rects: Vec<(String, Rect)> = layout(area, self)
             .panes
@@ -315,9 +321,146 @@ impl ViewState {
             .collect();
         if let Some(next) = neighbour(&rects, &f, nav) {
             if let Some(idx) = self.panes.iter().position(|p| *p == next) {
+                let moved = idx != self.focus();
                 self.focus_pane(idx);
+                return moved;
             }
         }
+        if nav == Nav::Left {
+            self.enter_sidebar();
+        }
+        false
+    }
+
+    pub fn enter_sidebar(&mut self) -> bool {
+        if !self.sidebar_shown() {
+            return false;
+        }
+        let items = self.sidebar_items();
+        let start = self
+            .focused_session()
+            .map(|id| SidebarItem::Session(id.to_string()))
+            .filter(|i| items.contains(i))
+            .or_else(|| items.first().cloned());
+        self.sidebar_focus = start;
+        self.sidebar_focus.is_some()
+    }
+
+    pub fn sidebar_items(&self) -> Vec<SidebarItem> {
+        let mut items: Vec<SidebarItem> = self
+            .sidebar_rows()
+            .into_iter()
+            .map(|r| SidebarItem::Session(r.id.clone()))
+            .collect();
+        if self.allow_new {
+            items.push(SidebarItem::New);
+        }
+        items
+    }
+
+    pub fn sidebar_layout(&self, rect: Rect) -> SidebarLayout {
+        if rect.is_empty() {
+            return SidebarLayout::default();
+        }
+        let new_row = (self.allow_new && rect.height >= 4).then(|| rect.bottom() - 1);
+        let last = new_row.unwrap_or(rect.bottom());
+        let rows = self
+            .sidebar_rows()
+            .into_iter()
+            .zip(rect.y + 1..last)
+            .map(|(r, y)| (r.id.clone(), y))
+            .collect();
+        SidebarLayout { rows, new_row }
+    }
+
+    pub fn edit_sidebar(&mut self, data: &[u8]) -> SidebarEdit {
+        if self.sidebar_focus.is_none() {
+            return SidebarEdit::Leave;
+        }
+        if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
+            self.sidebar_focus = None;
+            return SidebarEdit::Leave;
+        }
+        let mut i = 0;
+        while i < data.len() {
+            let step = match data[i] {
+                0x1b => {
+                    let rest = &data[i..];
+                    if rest.starts_with(b"\x1b[C") || rest.starts_with(b"\x1bOC") {
+                        self.sidebar_focus = None;
+                        return SidebarEdit::Leave;
+                    }
+                    let (key, used) = esc_key(rest);
+                    match key {
+                        Key::Up => self.move_sidebar_focus(false),
+                        Key::Down => self.move_sidebar_focus(true),
+                        Key::Other => {}
+                    }
+                    used
+                }
+                0x10 | b'k' => {
+                    self.move_sidebar_focus(false);
+                    1
+                }
+                0x0e | b'j' => {
+                    self.move_sidebar_focus(true);
+                    1
+                }
+                b'\r' | b'\n' => {
+                    return match self.sidebar_focus.take() {
+                        Some(SidebarItem::Session(id))
+                            if self.sessions.iter().any(|s| s.id == id) =>
+                        {
+                            self.select(&id);
+                            SidebarEdit::Select(id)
+                        }
+                        Some(SidebarItem::New) if self.allow_new => SidebarEdit::New,
+                        _ => SidebarEdit::Leave,
+                    };
+                }
+                _ => 1,
+            };
+            i += step;
+        }
+        SidebarEdit::Editing
+    }
+
+    fn move_sidebar_focus(&mut self, down: bool) {
+        let items = self.sidebar_items();
+        let Some(cur) = self
+            .sidebar_focus
+            .as_ref()
+            .and_then(|f| items.iter().position(|i| i == f))
+        else {
+            return;
+        };
+        let next = if down {
+            (cur + 1).min(items.len() - 1)
+        } else {
+            cur.saturating_sub(1)
+        };
+        self.sidebar_focus = Some(items[next].clone());
+    }
+
+    fn keep_sidebar_focus(&mut self, before: &[SidebarItem]) {
+        if !self.sidebar_shown() {
+            self.sidebar_focus = None;
+            return;
+        }
+        let Some(cur) = self.sidebar_focus.clone() else {
+            return;
+        };
+        let items = self.sidebar_items();
+        if items.contains(&cur) {
+            return;
+        }
+        let at = before.iter().position(|i| *i == cur).unwrap_or(0);
+        self.sidebar_focus = before[at..]
+            .iter()
+            .chain(before[..at].iter().rev())
+            .find(|i| items.contains(i))
+            .cloned()
+            .or_else(|| items.first().cloned());
     }
 
     pub fn resize_focused(&mut self, area: Rect, nav: Nav) {
@@ -352,6 +495,7 @@ impl ViewState {
     }
 
     pub fn apply(&mut self, cmd: Cmd) {
+        self.sidebar_focus = None;
         match cmd {
             Cmd::NextSession => self.step(true),
             Cmd::PrevSession => self.step(false),
@@ -538,24 +682,24 @@ impl ViewState {
         let lay = layout(area, self);
         if let Some(sb) = lay.sidebar {
             if contains(sb, col, row) {
-                let idx = usize::from(row - sb.y);
-                if let Some(r) = idx
-                    .checked_sub(1)
-                    .and_then(|i| self.sidebar_rows().get(i).copied())
-                {
-                    for slot in [Control::Stop, Control::Close] {
-                        if sidebar_button(sb, slot) == Some(col) {
-                            return Hit::Button(r.id.clone(), slot_control(r, slot, true));
-                        }
+                let sl = self.sidebar_layout(sb);
+                if sl.new_row == Some(row) {
+                    return Hit::NewSession;
+                }
+                let found = sl
+                    .rows
+                    .iter()
+                    .find(|(_, y)| *y == row)
+                    .and_then(|(id, _)| self.sessions.iter().find(|s| s.id == *id));
+                let Some(r) = found else {
+                    return Hit::None;
+                };
+                for slot in [Control::Stop, Control::Close] {
+                    if sidebar_button(sb, slot) == Some(col) {
+                        return Hit::Button(r.id.clone(), slot_control(r, slot, true));
                     }
                 }
-                return match idx
-                    .checked_sub(1)
-                    .and_then(|i| self.sidebar_rows().get(i).copied())
-                {
-                    Some(r) => Hit::Session(r.id.clone()),
-                    None => Hit::None,
-                };
+                return Hit::Session(r.id.clone());
             }
         }
         for p in &lay.panes {
@@ -585,7 +729,7 @@ impl ViewState {
     fn hover_key(&self, area: Rect) -> Option<Hit> {
         let (c, r) = self.pointer?;
         match self.hit(area, c, r) {
-            h @ (Hit::Button(..) | Hit::Session(_)) => Some(h),
+            h @ (Hit::Button(..) | Hit::Session(_) | Hit::NewSession) => Some(h),
             _ => None,
         }
     }
@@ -619,6 +763,9 @@ impl ViewState {
         }
         if self.palette.is_some() {
             return self.palette_mouse(area, ev, out);
+        }
+        if ev.is_left_press() && self.sidebar_focus.take().is_some() {
+            out.redraw = true;
         }
         if ev.is_left_press() && !matches!(self.hit(area, ev.col, ev.row), Hit::Button(..)) {
             self.confirm = None;
@@ -819,6 +966,12 @@ impl ViewState {
     }
 
     pub fn sessions_changed(&mut self, rows: Vec<SessionRow>) {
+        let before = self.sidebar_items();
+        self.apply_sessions(rows);
+        self.keep_sidebar_focus(&before);
+    }
+
+    fn apply_sessions(&mut self, rows: Vec<SessionRow>) {
         self.sessions = rows;
         if let Some(p) = self.palette.as_mut() {
             p.sel = 0;

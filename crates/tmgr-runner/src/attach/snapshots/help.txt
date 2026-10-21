@@ -7,8 +7,10 @@
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │
+                        │             │ c             new session (dialog)                           │                                     │
                         │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
+                        │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
                         │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
                         │             │ r             rename the focused session                     │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
@@ -18,10 +20,12 @@
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
                         │             │ click         pick a session or a pane                       │                                     │
+                        │             │ click +       new session (sidebar, last row)                │                                     │
                         │             │ wheel         scroll the history of the pane                 │                                     │
                         │             │ buttons       header: pause/resume, stop, close              │                                     │
                         │             │ drop          a dropped file is pasted there                 │                                     │
                         │             │ drag          Shift-drag selects (iTerm2: Option)            │                                     │
                         │             │                                                              │                                     │
-                        ╰─────────────│ ? again closes this box                                      │─────────────────────────────────────╯
+                        │             │ ? again closes this box                                      │                                     │
+ + New session          ╰─────────────│                                                              │─────────────────────────────────────╯
  tmgr runner · local · dev-server · wa╰──────────────────────────────────────────────────────────────╯                        Ctrl-] ? help
