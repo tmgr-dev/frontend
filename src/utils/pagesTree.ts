@@ -88,19 +88,28 @@ export const descendantIds = (
 	return result;
 };
 
-export const ancestorIds = (pages: PageSummary[], id: number): number[] => {
-	const byId = new Map(pages.map((page) => [page.id, page]));
-	const result: number[] = [];
-	let current = byId.get(id);
-	while (
-		current &&
-		current.parent_id !== null &&
-		!result.includes(current.parent_id)
-	) {
-		result.push(current.parent_id);
-		current = byId.get(current.parent_id);
-	}
-	return result;
+export const RECENT_PAGES_LIMIT = 10;
+
+const flattenTree = (nodes: PageNode[]): PageNode[] =>
+	nodes.flatMap((node) => [node, ...flattenTree(node.children)]);
+
+const editedAt = (page: PageSummary): number =>
+	Date.parse(page.updated_at) || 0;
+
+export const sidebarPages = (
+	pages: PageSummary[],
+	limit = RECENT_PAGES_LIMIT,
+): { pinned: PageNode[]; recent: PageNode[] } => {
+	const leaf = (page: PageSummary): PageNode => ({ ...page, children: [] });
+	const pinned = flattenTree(buildPagesTree(pages))
+		.filter((page) => page.pinned)
+		.map(leaf);
+	const recent = pages
+		.filter((page) => !page.pinned)
+		.sort((a, b) => editedAt(b) - editedAt(a) || b.id - a.id)
+		.slice(0, limit)
+		.map(leaf);
+	return { pinned, recent };
 };
 
 const expandedKey = (workspaceId: number | string) =>

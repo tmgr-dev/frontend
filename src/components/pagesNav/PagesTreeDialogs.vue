@@ -1,0 +1,78 @@
+<template>
+	<Dialog
+		:open="!!ctx.renaming.value"
+		@update:open="(open) => !open && (ctx.renaming.value = null)"
+	>
+		<DialogContent class="max-w-sm">
+			<DialogHeader>
+				<DialogTitle>Rename page</DialogTitle>
+			</DialogHeader>
+			<form class="flex flex-col gap-3" @submit.prevent="ctx.confirmRename">
+				<input
+					v-model="ctx.renameTitle.value"
+					data-selectable
+					maxlength="255"
+					class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
+					placeholder="Title"
+				/>
+				<DialogFooter>
+					<button
+						type="submit"
+						class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+						:disabled="!ctx.renameTitle.value.trim()"
+					>
+						Save
+					</button>
+				</DialogFooter>
+			</form>
+		</DialogContent>
+	</Dialog>
+
+	<Confirm
+		v-if="ctx.deleting.value"
+		title="Delete page"
+		body=""
+		@on-ok="ctx.confirmDelete"
+		@on-cancel="ctx.deleting.value = null"
+	>
+		<template #body>
+			<p class="mt-1 text-tmgr-blue dark:text-gray-300">
+				"{{ ctx.deleting.value.title }}" and all its subpages will be moved to
+				<router-link
+					:to="`/${ctx.workspaceCode.value}/pages/_/trash`"
+					class="underline"
+					@click="ctx.deleting.value = null"
+					>trash</router-link
+				>. You can restore them from there.
+			</p>
+		</template>
+	</Confirm>
+</template>
+
+<script lang="ts">
+	import Confirm from '@/components/general/Confirm.vue';
+	import {
+		Dialog,
+		DialogContent,
+		DialogFooter,
+		DialogHeader,
+		DialogTitle,
+	} from '@/components/ui/dialog';
+	import { defineComponent, inject } from 'vue';
+	import { PAGES_TREE_KEY, type PagesTreeContext } from './context';
+
+	export default defineComponent({
+		name: 'PagesTreeDialogs',
+		components: {
+			Confirm,
+			Dialog,
+			DialogContent,
+			DialogFooter,
+			DialogHeader,
+			DialogTitle,
+		},
+		setup() {
+			return { ctx: inject(PAGES_TREE_KEY) as PagesTreeContext };
+		},
+	});
+</script>

@@ -34,7 +34,7 @@ export const pagesTours: TourDef[] = [
 				anchor: 'pages.tree',
 				mobileAnchor: 'nav.menu-button',
 				title: 'Page tree',
-				body: 'Drag pages to nest them. The tree is also in your sidebar.',
+				body: 'Pinned and recent pages are in your sidebar. All pages shows the whole tree: drag pages to nest them.',
 			},
 		],
 	},

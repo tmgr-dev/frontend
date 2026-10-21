@@ -3,6 +3,7 @@
 		class="group-data-[collapsible=icon]:hidden"
 		:class="zone.dragging.value ? 'rounded-md ring-2 ring-blue-500' : ''"
 		data-testid="pages-sidebar-section"
+		data-pages-tree="sidebar"
 		data-tour="pages.tree"
 		v-on="zone.handlers"
 	>
@@ -21,7 +22,7 @@
 				<DropdownMenuTrigger as-child>
 					<button
 						type="button"
-						class="flex h-5 w-4 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+						:class="typePickerClass"
 						title="Page type"
 						aria-label="Choose page type"
 						data-tour="pages.type-picker"
@@ -58,25 +59,20 @@
 		>
 			Failed to load pages
 		</div>
-		<Draggable
-			v-else
-			:model-value="tree"
-			group="pages"
-			item-key="id"
-			class="min-h-[8px]"
-			:force-fallback="true"
-			:fallback-on-body="true"
-			:fallback-tolerance="3"
-			:delay="150"
-			:delay-on-touch-only="true"
-			@start="onDragStart"
-			@end="dragging = null"
-			@change="(event) => onChange(null, event)"
-		>
-			<template #item="{ element }">
-				<PagesTreeNode :node="element" />
-			</template>
-		</Draggable>
+		<template v-else>
+			<PagesTreeNode
+				v-for="node in lists.pinned"
+				:key="node.id"
+				:node="node"
+				flat
+			/>
+			<PagesTreeNode
+				v-for="node in lists.recent"
+				:key="node.id"
+				:node="node"
+				flat
+			/>
+		</template>
 
 		<router-link
 			:to="`/${workspaceCode}/pages`"
@@ -92,67 +88,12 @@
 			Trash
 		</router-link>
 
-		<Dialog
-			:open="!!renaming"
-			@update:open="(open) => !open && (renaming = null)"
-		>
-			<DialogContent class="max-w-sm">
-				<DialogHeader>
-					<DialogTitle>Rename page</DialogTitle>
-				</DialogHeader>
-				<form class="flex flex-col gap-3" @submit.prevent="confirmRename">
-					<input
-						v-model="renameTitle"
-						data-selectable
-						maxlength="255"
-						class="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none dark:border-input dark:bg-background"
-						placeholder="Title"
-					/>
-					<DialogFooter>
-						<button
-							type="submit"
-							class="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-							:disabled="!renameTitle.trim()"
-						>
-							Save
-						</button>
-					</DialogFooter>
-				</form>
-			</DialogContent>
-		</Dialog>
-
-		<Confirm
-			v-if="deleting"
-			title="Delete page"
-			body=""
-			@on-ok="confirmDelete"
-			@on-cancel="deleting = null"
-		>
-			<template #body>
-				<p class="mt-1 text-tmgr-blue dark:text-gray-300">
-					"{{ deleting.title }}" and all its subpages will be moved to
-					<router-link
-						:to="`/${workspaceCode}/pages/_/trash`"
-						class="underline"
-						@click="deleting = null"
-						>trash</router-link
-					>. You can restore them from there.
-				</p>
-			</template>
-		</Confirm>
+		<PagesTreeDialogs />
 	</SidebarGroup>
 </template>
 
 <script lang="ts">
-	import type { PageSummary, PageType } from '@/actions/tmgr/pages';
-	import Confirm from '@/components/general/Confirm.vue';
-	import {
-		Dialog,
-		DialogContent,
-		DialogFooter,
-		DialogHeader,
-		DialogTitle,
-	} from '@/components/ui/dialog';
+	import type { PageType } from '@/actions/tmgr/pages';
 	import {
 		DropdownMenu,
 		DropdownMenuContent,
@@ -161,37 +102,24 @@
 		DropdownMenuTrigger,
 	} from '@/components/ui/dropdown-menu';
 	import { SidebarGroup, SidebarGroupLabel } from '@/components/ui/sidebar';
-	import { usePagesActions } from '@/composable/usePagesActions';
-	import {
-		useFileDrop,
-		usePagesMarkdownIo,
-	} from '@/composable/usePagesMarkdownIo';
-	import { usePagesTree } from '@/composable/usePagesTree';
-	import { descendantIds, PAGE_CREATE_OPTIONS } from '@/utils/pagesTree';
+	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
+	import { usePagesTreeHost } from '@/composable/usePagesTreeHost';
+	import { PAGE_CREATE_OPTIONS, sidebarPages } from '@/utils/pagesTree';
 	import { ChevronDown, Plus, Trash2, Upload } from 'lucide-vue-next';
-	import { computed, defineComponent, provide, ref, toRef, watch } from 'vue';
-	import { useRoute, useRouter } from 'vue-router';
-	import Draggable from 'vuedraggable';
-	import { useStore } from 'vuex';
+	import { computed, defineComponent, toRef } from 'vue';
+	import PagesTreeDialogs from './PagesTreeDialogs.vue';
 	import PagesTreeNode from './PagesTreeNode.vue';
-	import { PAGES_TREE_KEY, type PagesTreeContext } from './context';
 
 	export default defineComponent({
 		name: 'SidebarPagesSection',
 		components: {
 			ChevronDown,
-			Confirm,
-			Dialog,
-			DialogContent,
-			DialogFooter,
-			DialogHeader,
-			DialogTitle,
-			Draggable,
 			DropdownMenu,
 			DropdownMenuContent,
 			DropdownMenuItem,
 			DropdownMenuSeparator,
 			DropdownMenuTrigger,
+			PagesTreeDialogs,
 			PagesTreeNode,
 			Plus,
 			SidebarGroup,
@@ -203,125 +131,30 @@
 			workspaceId: { type: Number, required: true },
 			workspaceCode: { type: String, required: true },
 		},
-		emits: ['pinned'],
-		setup(props, { emit }) {
-			const route = useRoute();
-			const router = useRouter();
-			const store = useStore();
-			const modulesKnown = computed(
-				() => store.getters['featureToggles/modulesKnown'] === true,
+		setup(props) {
+			const { tree, actions, io } = usePagesTreeHost(
+				toRef(props, 'workspaceId'),
+				toRef(props, 'workspaceCode'),
+				'sidebar',
 			);
-			const workspaceId = toRef(props, 'workspaceId');
-			const workspaceCode = toRef(props, 'workspaceCode');
-			const actions = usePagesActions(() => props.workspaceCode);
-			const io = usePagesMarkdownIo(() => props.workspaceCode);
 			const zone = useFileDrop((files) => io.openImport(null, files));
-			const tree = usePagesTree(
-				computed(() => workspaceId.value),
-				computed(() => modulesKnown.value),
-				() => actions.fail('Failed to move page'),
-			);
-			watch(
-				() => tree.pages.value.filter((page) => page.pinned),
-				(pinned) => emit('pinned', pinned),
-				{ immediate: true },
-			);
-
-			const renaming = ref<PageSummary | null>(null);
-			const renameTitle = ref('');
-			const deleting = ref<PageSummary | null>(null);
-
-			watch(
-				() => [route.params.slug, tree.loaded.value],
-				() => tree.revealPage(route.params.slug as string | undefined),
-				{ immediate: true },
-			);
+			// Not a static class: see PagesTreeNode actionsClass.
+			const typePickerClass =
+				'flex h-5 w-4 items-center justify-center rounded text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground';
 
 			const createRoot = async (type: PageType) => {
 				await actions.create(type, null);
 			};
 
-			const createChild = async (parent: PageSummary, type: PageType) => {
-				tree.expand(parent.id);
-				await actions.create(type, parent.id);
-			};
-
-			const requestRename = (page: PageSummary) => {
-				renaming.value = page;
-				renameTitle.value = page.title;
-			};
-
-			const confirmRename = async () => {
-				const page = renaming.value;
-				if (!page) return;
-				renaming.value = null;
-				if (await actions.rename(page, renameTitle.value)) await tree.refresh();
-			};
-
-			const confirmDelete = async () => {
-				const page = deleting.value;
-				deleting.value = null;
-				if (!page) return;
-				const affected = descendantIds(tree.pages.value, page.id);
-				const viewing = tree.pages.value.find(
-					(p) => p.slug === route.params.slug,
-				);
-				if (await actions.remove(page)) {
-					if (viewing && affected.has(viewing.id)) {
-						router.push(`/${props.workspaceCode}/pages`);
-					}
-					await tree.refresh();
-				}
-			};
-
-			const togglePin = async (page: PageSummary) => {
-				if (await actions.togglePin(page)) await tree.refresh();
-			};
-
-			const onChange: PagesTreeContext['onChange'] = (parentId, event) => {
-				const change = event.added ?? event.moved;
-				if (change) tree.move(change.element.id, parentId, change.newIndex);
-			};
-
-			const dragging = ref<number | null>(null);
-			const onDragStart = (event: { item: HTMLElement }) => {
-				const id = event.item
-					.querySelector('[data-page-id]')
-					?.getAttribute('data-page-id');
-				dragging.value = id ? Number(id) : null;
-			};
-
-			provide(PAGES_TREE_KEY, {
-				workspaceCode,
-				dragging,
-				onDragStart,
-				expanded: tree.expanded,
-				toggle: tree.toggle,
-				createChild,
-				requestRename,
-				requestDelete: (page) => (deleting.value = page),
-				togglePin,
-				onChange,
-				exportSubtree: (page) => void io.exportSubtree(page.id),
-				importInto: (page, files) => io.openImport(page, files),
-			});
-
 			return {
-				tree: tree.tree,
+				lists: computed(() => sidebarPages(tree.pages.value)),
 				pages: tree.pages,
 				loaded: tree.loaded,
 				failed: tree.failed,
-				renaming,
-				renameTitle,
-				deleting,
 				io,
 				zone,
 				createRoot,
-				confirmRename,
-				confirmDelete,
-				onChange,
-				dragging,
-				onDragStart,
+				typePickerClass,
 				createOptions: PAGE_CREATE_OPTIONS,
 			};
 		},

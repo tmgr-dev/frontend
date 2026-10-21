@@ -80,44 +80,59 @@
 					</li>
 				</ul>
 			</section>
-			<section v-if="roots.length">
-				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">Root pages</h2>
-				<ul
-					class="divide-y divide-line overflow-hidden rounded-card border border-line bg-surface"
-				>
-					<li v-for="page in roots" :key="page.id">
-						<PageRow :page="page" :workspace-code="workspaceCode" />
-					</li>
-				</ul>
+			<section data-testid="pages-index-tree" data-pages-tree="page">
+				<h2 class="mb-2 text-sm font-semibold text-ink-subtle">All pages</h2>
+				<div class="rounded-card border border-line bg-surface p-2">
+					<Draggable
+						:model-value="tree"
+						group="pages"
+						item-key="id"
+						class="min-h-[8px]"
+						:force-fallback="true"
+						:fallback-on-body="true"
+						:fallback-tolerance="3"
+						:delay="150"
+						:delay-on-touch-only="true"
+						@start="onDragStart"
+						@end="dragging = null"
+						@change="(event) => onChange(null, event)"
+					>
+						<template #item="{ element }">
+							<PagesTreeNode :node="element" />
+						</template>
+					</Draggable>
+				</div>
 			</section>
 		</div>
+		<PagesTreeDialogs />
 	</PageContainer>
 </template>
 
 <script lang="ts">
-	import { getPagesTree, type PageSummary } from '@/actions/tmgr/pages';
 	import PageContainer from '@/components/layouts/PageContainer.vue';
 	import PageHeader from '@/components/layouts/PageHeader.vue';
 	import PageRow from '@/components/pagesNav/PageRow.vue';
-	import { usePagesActions } from '@/composable/usePagesActions';
-	import {
-		useFileDrop,
-		usePagesMarkdownIo,
-	} from '@/composable/usePagesMarkdownIo';
-	import { childrenOf } from '@/utils/pagesTree';
+	import PagesTreeDialogs from '@/components/pagesNav/PagesTreeDialogs.vue';
+	import PagesTreeNode from '@/components/pagesNav/PagesTreeNode.vue';
+	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
+	import { usePagesTreeHost } from '@/composable/usePagesTreeHost';
 	import { Download, FileText, Plus, Trash2, Upload } from 'lucide-vue-next';
-	import { computed, defineComponent, onMounted, ref, watch } from 'vue';
+	import { computed, defineComponent } from 'vue';
 	import { useRoute } from 'vue-router';
+	import Draggable from 'vuedraggable';
 	import { useStore } from 'vuex';
 
 	export default defineComponent({
 		name: 'PagesIndex',
 		components: {
 			Download,
+			Draggable,
 			FileText,
 			PageContainer,
 			PageHeader,
 			PageRow,
+			PagesTreeDialogs,
+			PagesTreeNode,
 			Plus,
 			Trash2,
 			Upload,
@@ -126,44 +141,30 @@
 			const route = useRoute();
 			const store = useStore();
 			const workspaceCode = computed(() => String(route.params.workspace_code));
-			const actions = usePagesActions(() => workspaceCode.value);
-			const io = usePagesMarkdownIo(() => workspaceCode.value);
+			const workspaceId = computed(() => {
+				const id = Number(store.getters.currentWorkspaceId);
+				return Number.isFinite(id) && id > 0 ? id : null;
+			});
+			const { tree, actions, io, dragging, onDragStart, onChange } =
+				usePagesTreeHost(workspaceId, workspaceCode, 'page');
 			const zone = useFileDrop((files) => io.openImport(null, files));
-			const pages = ref<PageSummary[]>([]);
-			const loaded = ref(false);
-			const failed = ref(false);
 
-			const load = async (useCache = true) => {
-				try {
-					pages.value = await getPagesTree(useCache);
-					failed.value = false;
-				} catch {
-					failed.value = true;
-				} finally {
-					loaded.value = true;
-				}
-			};
-
-			onMounted(() => load());
-			watch(
-				() => store.state.pagesEvent?.seq,
-				() => load(false),
-			);
-
-			const pinned = computed(() => pages.value.filter((page) => page.pinned));
-			const roots = computed(() =>
-				childrenOf(pages.value, null).filter((page) => !page.pinned),
+			const pinned = computed(() =>
+				tree.pages.value.filter((page) => page.pinned),
 			);
 
 			return {
 				workspaceCode,
 				io,
 				zone,
-				pages,
-				loaded,
-				failed,
+				pages: tree.pages,
+				tree: tree.tree,
+				loaded: tree.loaded,
+				failed: tree.failed,
 				pinned,
-				roots,
+				dragging,
+				onDragStart,
+				onChange,
 				create: () => actions.create('plain', null),
 			};
 		},
