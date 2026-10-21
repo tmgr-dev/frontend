@@ -1,6 +1,6 @@
 use super::view::{
-    header_button, layout, sidebar_button, Control, Layout, PaneRect, SessionRow, ViewState,
-    WIDE_COLS,
+    header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
+    ViewState, WIDE_COLS,
 };
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
@@ -148,10 +148,11 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
                 Style::new(),
                 name_end.saturating_sub(area.x + 3),
             );
-            for (ctl, glyph) in [(Control::Stop, "■"), (Control::Close, "✕")] {
-                if let Some(x) = sidebar_button(area, ctl) {
+            for slot in [Control::Stop, Control::Close] {
+                let ctl = slot_control(row, slot, true);
+                if let Some(x) = sidebar_button(area, slot) {
                     let on = st.pointer.is_some_and(|p| p.0 == x);
-                    put(buf, x, y, glyph, button_style(on, true), 1);
+                    put(buf, x, y, glyph_of(ctl), button_style(on, true), 1);
                 }
             }
             continue;
@@ -184,6 +185,15 @@ fn button_style(hover: bool, enabled: bool) -> Style {
     }
 }
 
+fn glyph_of(ctl: Control) -> &'static str {
+    match ctl {
+        Control::Resume => "▶",
+        Control::Interrupt => "⏸",
+        Control::Stop => "■",
+        Control::Close => "✕",
+    }
+}
+
 fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
     let Some(row) = st.sessions.iter().find(|s| s.id == p.session) else {
         return;
@@ -191,14 +201,12 @@ fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
     if let Some(x0) = header_button(p.outer, Control::Interrupt) {
         buf.set_string(x0 - 1, p.outer.y, "       ", Style::new());
     }
-    for (ctl, glyph) in [
-        (Control::Interrupt, "⏸"),
-        (Control::Stop, "■"),
-        (Control::Close, "✕"),
-    ] {
-        let Some(x) = header_button(p.outer, ctl) else {
+    for slot in [Control::Interrupt, Control::Stop, Control::Close] {
+        let Some(x) = header_button(p.outer, slot) else {
             return;
         };
+        let ctl = slot_control(row, slot, false);
+        let glyph = glyph_of(ctl);
         let enabled = match ctl {
             Control::Interrupt => row.can_interrupt(),
             _ => true,
@@ -398,7 +406,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
 const MOUSE: &[(&str, &str)] = &[
     ("click", "pick a session or a pane"),
     ("wheel", "scroll the history of the pane"),
-    ("buttons", "header: pause, stop, close (hover)"),
+    ("buttons", "header: pause/resume, stop, close"),
     ("drop", "a dropped file is pasted there"),
     ("drag", "Shift-drag selects (iTerm2: Option)"),
 ];
@@ -411,9 +419,9 @@ const HELP: &[(&str, &str)] = &[
     ("| v / - h", "split right / split down"),
     ("Tab", "focus next pane (Shift-Tab previous)"),
     ("arrows", "move focus (Shift+arrows: resize)"),
-    ("z", "zoom the focused pane"),
-    ("b", "show or hide the sidebar"),
+    ("z / b", "zoom the pane / show or hide the sidebar"),
     ("r", "rename the focused session"),
+    ("Enter / R", "resume an exited session"),
     ("x / X", "stop (asks first) / remove if exited"),
     ("[", "scroll back through history"),
     ("?", "this help"),

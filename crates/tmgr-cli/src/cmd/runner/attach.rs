@@ -21,7 +21,7 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{CreateReq, Modes, SessionInfo, Snapshot, StateKind};
+use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, Confirm, Control,
@@ -42,6 +42,7 @@ const QUEUE: usize = 256;
 const RPC_TIMEOUT: Duration = Duration::from_secs(5);
 const CLEANUP_WAIT: Duration = Duration::from_secs(1);
 const CREATE_WAIT: Duration = Duration::from_secs(2);
+const RESUME_WAIT: Duration = Duration::from_secs(30);
 const SHELL_CLOSED: &str = "shell closed before it started";
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -102,6 +103,10 @@ enum Msg {
         dir: SplitDir,
         target: String,
     },
+    Resumed {
+        old: String,
+        result: std::result::Result<RestoredRun, String>,
+    },
 }
 
 enum Exit {
@@ -140,6 +145,7 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
                 let n = a.rsplit('/').next().unwrap_or(a);
                 n.contains("claude") || n.contains("codex")
             }),
+            resumed_from: s.resumed_from.clone(),
         })
         .collect()
 }
@@ -159,6 +165,8 @@ struct App {
     creating: HashMap<String, String>,
     typed: Option<(String, Vec<u8>)>,
     removing: HashSet<String>,
+    stopped: HashSet<String>,
+    resuming: HashMap<String, Instant>,
     shell_ids: HashSet<String>,
     paste_to: Option<String>,
     last_interrupt: Option<(String, Instant)>,
@@ -184,6 +192,7 @@ impl App {
                 dir,
                 target,
             } => self.on_created(result, dir, &target),
+            Msg::Resumed { old, result } => self.on_resumed(&old, result),
             Msg::Server(ServerMsg::Closed { reason }) => return Ok(Some(Exit::Lost(reason))),
             Msg::Server(msg) => {
                 if self.cache.apply(&msg).is_some() {
@@ -220,6 +229,7 @@ impl App {
             .map(|s| s.id.clone())
             .collect();
         self.removing.retain(|id| new.iter().any(|r| &r.id == id));
+        self.stopped.retain(|id| new.iter().any(|r| &r.id == id));
         if new == self.view.sessions {
             return;
         }
@@ -228,9 +238,9 @@ impl App {
                 self.cache.remove(&old.id);
             }
         }
-        let before = self.view.panes().len();
+        let before = self.view.panes().to_vec();
         self.view.sessions_changed(new);
-        if self.view.panes().len() != before {
+        if self.view.panes() != before {
             self.watched = None;
         }
         self.dirty = true;
@@ -357,13 +367,75 @@ impl App {
     }
 
     fn reap_shells(&mut self) {
-        let ids = reap_ids(&self.view.sessions, |id| self.is_shell(id), &self.removing);
+        let ids = reap_ids(
+            &self.view.sessions,
+            |id| self.is_shell(id),
+            &self.removing,
+            &self.stopped,
+        );
         for id in ids {
             self.view.close_pane(&id);
             self.removing.insert(id.clone());
             self.remove_session(&id);
             self.dirty = true;
         }
+    }
+
+    fn request_resume(&mut self, id: &str) {
+        let row = self.view.sessions.iter().find(|r| r.id == id);
+        match resume_step(row, &self.resuming) {
+            ResumeStep::Ignore => {}
+            ResumeStep::Notice(text) => self.notify(text),
+            ResumeStep::Start => {
+                let (cols, rows) = layout(self.area(), &self.view)
+                    .panes
+                    .iter()
+                    .find(|p| p.session == id)
+                    .map(|p| (p.inner.width, p.inner.height))
+                    .or_else(|| self.sent_sizes.get(id).copied())
+                    .unwrap_or((80, 24));
+                let old = id.to_string();
+                self.resuming.insert(old.clone(), Instant::now());
+                self.notify("resuming…");
+                let cfg = self.cfg.clone();
+                let tx = self.tx.clone();
+                thread::spawn(move || {
+                    let result = resume_call(&cfg, &old, cols, rows);
+                    let _ = tx.send(Msg::Resumed { old, result });
+                });
+            }
+        }
+    }
+
+    fn on_resumed(&mut self, old: &str, result: std::result::Result<RestoredRun, String>) {
+        self.resuming.remove(old);
+        self.dirty = true;
+        let run = match result {
+            Ok(run) => run,
+            Err(e) => return self.notify(&e),
+        };
+        let info = run.session;
+        let new = info.id.clone();
+        if !self.view.sessions.iter().any(|r| r.id == new) {
+            let at = self.view.sessions.iter().position(|r| r.id == old);
+            let row = rows(std::slice::from_ref(&info)).remove(0);
+            match at {
+                Some(i) => self.view.sessions.insert(i, row),
+                None => self.view.sessions.push(row),
+            }
+        }
+        self.pending.insert(new.clone(), Instant::now());
+        self.starts.remove(old);
+        self.starts
+            .insert(new.clone(), (info.cwd.clone(), info.child_pid));
+        self.view.replace_session(old, &new);
+        self.cache.remove(old);
+        if let Some(size) = self.sent_sizes.remove(old) {
+            self.sent_sizes.insert(new.clone(), size);
+        }
+        self.stopped.remove(old);
+        self.watched = None;
+        self.notify(&resumed_notice(&info.name, run.via.as_deref()));
     }
 
     fn page(&self) -> usize {
@@ -445,6 +517,7 @@ impl App {
             self.view.rename = None;
         }
         match ctl {
+            Control::Resume => self.request_resume(id),
             Control::Interrupt => {
                 let recent = self
                     .last_interrupt
@@ -478,7 +551,8 @@ impl App {
         Ok(())
     }
 
-    fn stop_session(&self, id: &str, remove: bool) {
+    fn stop_session(&mut self, id: &str, remove: bool) {
+        self.stopped.insert(id.to_string());
         self.spawn_ladder(id, remove, ladder_for(true));
     }
 
@@ -651,6 +725,11 @@ impl App {
                         Cmd::SplitDown => self.request_split(SplitDir::Down),
                         Cmd::Focus(nav) => self.view.focus_nav(self.area(), nav),
                         Cmd::Resize(nav) => self.view.resize_focused(self.area(), nav),
+                        Cmd::Resume => {
+                            if let Some(id) = self.view.focused_session().map(str::to_string) {
+                                self.request_resume(&id);
+                            }
+                        }
                         _ => self.view.apply(cmd),
                     }
                     if let Some(id) = removing {
@@ -959,6 +1038,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         creating: HashMap::new(),
         typed: None,
         removing: HashSet::new(),
+        stopped: HashSet::new(),
+        resuming: HashMap::new(),
         paste_to: None,
         last_interrupt: None,
         dirty: true,
@@ -1086,6 +1167,52 @@ fn create_shell(
     Err(last)
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ResumeStep {
+    Start,
+    Ignore,
+    Notice(&'static str),
+}
+
+fn resume_step(row: Option<&SessionRow>, resuming: &HashMap<String, Instant>) -> ResumeStep {
+    match row {
+        None => ResumeStep::Ignore,
+        Some(r) if resuming.contains_key(&r.id) => ResumeStep::Ignore,
+        Some(r) if !r.exited() => ResumeStep::Notice("only an exited session can be resumed"),
+        Some(_) => ResumeStep::Start,
+    }
+}
+
+fn resumed_notice(name: &str, via: Option<&str>) -> String {
+    match via {
+        Some("fresh") => format!("resumed {name} (fresh)"),
+        Some("rerun") => format!("resumed {name} (rerun)"),
+        _ => format!("resumed {name}"),
+    }
+}
+
+fn resume_call(
+    cfg: &RunnerConfig,
+    id: &str,
+    cols: u16,
+    rows: u16,
+) -> std::result::Result<RestoredRun, String> {
+    let clean = |s: String| sanitize_text(&s).into_owned();
+    let mut client = connect(cfg).map_err(|e| clean(e.to_string()))?;
+    if !client
+        .welcome()
+        .caps
+        .iter()
+        .any(|c| c == caps::SESSIONS_RESUME_V1)
+    {
+        return Err("this runner cannot resume sessions yet, restart it".into());
+    }
+    let _ = client.set_timeouts(RESUME_WAIT);
+    client
+        .resume(id, cols, rows)
+        .map_err(|e| clean(rerr(e).to_string()))
+}
+
 fn dropped_path_exists(data: &[u8]) -> bool {
     let text = String::from_utf8_lossy(data);
     let mut path = String::new();
@@ -1146,6 +1273,58 @@ mod tests {
             dir: SplitDir::Right,
             target: target.into(),
         }
+    }
+
+    fn session_row(kind: StateKind) -> SessionRow {
+        rows(&[SessionInfo {
+            state: State {
+                kind,
+                since_ms: 0,
+                detail: None,
+                exit_code: None,
+            },
+            ..info("s1")
+        }])
+        .remove(0)
+    }
+
+    #[test]
+    fn only_an_exited_session_starts_a_resume() {
+        let none = HashMap::new();
+        assert_eq!(
+            resume_step(Some(&session_row(StateKind::Exited)), &none),
+            ResumeStep::Start
+        );
+        assert_eq!(
+            resume_step(Some(&session_row(StateKind::Working)), &none),
+            ResumeStep::Notice("only an exited session can be resumed")
+        );
+        assert_eq!(resume_step(None, &none), ResumeStep::Ignore);
+    }
+
+    #[test]
+    fn a_second_resume_of_the_same_session_is_ignored() {
+        let busy = HashMap::from([("s1".to_string(), Instant::now())]);
+        assert_eq!(
+            resume_step(Some(&session_row(StateKind::Exited)), &busy),
+            ResumeStep::Ignore
+        );
+    }
+
+    #[test]
+    fn resumed_notice_names_the_fallback_used() {
+        assert_eq!(resumed_notice("a", Some("id")), "resumed a");
+        assert_eq!(resumed_notice("a", Some("continue")), "resumed a");
+        assert_eq!(resumed_notice("a", Some("fresh")), "resumed a (fresh)");
+        assert_eq!(resumed_notice("a", Some("rerun")), "resumed a (rerun)");
+        assert_eq!(resumed_notice("a", None), "resumed a");
+    }
+
+    #[test]
+    fn rows_carry_the_resumed_from_link() {
+        let mut i = info("n");
+        i.resumed_from = Some("o".into());
+        assert_eq!(rows(&[i])[0].resumed_from.as_deref(), Some("o"));
     }
 
     #[test]

@@ -128,11 +128,12 @@ pub(super) fn reap_ids(
     sessions: &[SessionRow],
     is_shell: impl Fn(&str) -> bool,
     removing: &HashSet<String>,
+    stopped: &HashSet<String>,
 ) -> Vec<String> {
     sessions
         .iter()
         .filter(|r| r.state.kind == StateKind::Exited)
-        .filter(|r| is_shell(&r.id) && !removing.contains(&r.id))
+        .filter(|r| is_shell(&r.id) && !removing.contains(&r.id) && !stopped.contains(&r.id))
         .map(|r| r.id.clone())
         .collect()
 }
@@ -201,6 +202,7 @@ mod tests {
             },
             age: String::new(),
             esc: false,
+            resumed_from: None,
         }
     }
 
@@ -383,8 +385,14 @@ mod tests {
         ];
         let is_shell = |id: &str| matches!(id, "s1" | "s2" | "s3");
         let mut removing = HashSet::new();
-        assert_eq!(reap_ids(&sessions, is_shell, &removing), vec!["s1", "s3"]);
+        let mut stopped = HashSet::new();
+        let reaped = |removing: &HashSet<String>, stopped: &HashSet<String>| {
+            reap_ids(&sessions, is_shell, removing, stopped)
+        };
+        assert_eq!(reaped(&removing, &stopped), vec!["s1", "s3"]);
         removing.insert("s1".to_string());
-        assert_eq!(reap_ids(&sessions, is_shell, &removing), vec!["s3"]);
+        assert_eq!(reaped(&removing, &stopped), vec!["s3"]);
+        stopped.insert("s3".to_string());
+        assert!(reaped(&removing, &stopped).is_empty());
     }
 }

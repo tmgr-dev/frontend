@@ -29,6 +29,7 @@ pub enum Cmd {
     Stop,
     Remove,
     Rename,
+    Resume,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -83,6 +84,7 @@ fn command(b: u8) -> Option<Cmd> {
         b'x' => Cmd::Stop,
         b'X' => Cmd::Remove,
         b'r' => Cmd::Rename,
+        b'\r' | b'R' => Cmd::Resume,
         _ => return None,
     })
 }

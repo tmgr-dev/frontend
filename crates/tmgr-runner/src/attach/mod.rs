@@ -14,6 +14,7 @@ pub use mouse::{encode, wants, Kind, MouseEvent};
 pub use render::{cursor, render, ScreenSource};
 pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use view::{
-    header_button, layout, sidebar_button, Confirm, Control, Hit, Layout, LayoutPrefs, MouseOut,
-    PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow, ViewState,
+    header_button, layout, sidebar_button, slot_control, Confirm, Control, Hit, Layout,
+    LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,
+    ViewState,
 };

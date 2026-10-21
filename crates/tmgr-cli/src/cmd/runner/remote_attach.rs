@@ -220,7 +220,7 @@ impl App {
                 }
                 Action::Cmd(Cmd::Detach) => return Some(Exit::Detached),
                 Action::Cmd(Cmd::Picker) => self.notify("one run per remote attach"),
-                Action::Cmd(Cmd::Stop | Cmd::Remove | Cmd::Rename) => {
+                Action::Cmd(Cmd::Stop | Cmd::Remove | Cmd::Rename | Cmd::Resume) => {
                     self.notify("not available over a remote attach")
                 }
                 Action::Cmd(cmd) => {
@@ -366,6 +366,7 @@ pub fn run(link: &str, mut client: Client, target: &RunView, input: bool) -> Res
         state: target.state.clone(),
         age: age(target.state.since_ms),
         esc: false,
+        resumed_from: None,
     };
     let mut view = ViewState::new(vec![row], &format!("link:{link}"));
     view.set_initial(&target.id);
@@ -550,6 +551,7 @@ mod tests {
                 exit_code: None,
             },
             age: "1s".into(),
+            resumed_from: None,
             esc: false,
         };
         let mut view = ViewState::new(vec![row], "link:x");

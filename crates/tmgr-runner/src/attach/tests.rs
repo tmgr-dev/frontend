@@ -29,6 +29,8 @@ fn prefix_commands_map_to_cmds() {
         (b'b', Cmd::Sidebar),
         (b'?', Cmd::Help),
         (b'w', Cmd::Picker),
+        (b'\r', Cmd::Resume),
+        (b'R', Cmd::Resume),
     ];
     for (byte, cmd) in table {
         let mut s = InputSplitter::new();
@@ -200,6 +202,7 @@ fn row(id: &str, name: &str, kind: StateKind, age: &str) -> SessionRow {
         state: st(kind, code),
         age: age.into(),
         esc: false,
+        resumed_from: None,
     }
 }
 
@@ -2241,4 +2244,198 @@ fn closing_the_focused_pane_leaves_scroll_mode() {
     let id = v.focused_session().unwrap().to_string();
     v.close_pane(&id);
     assert!(v.scroll.is_none());
+}
+
+fn focus_exited() -> ViewState {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.select("d");
+    v
+}
+
+#[test]
+fn plain_enter_and_r_stay_plain_input_without_the_prefix() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"R\r"), vec![forward(b"R\r")]);
+    assert_eq!(s.feed(&[0x1d, b'r']), vec![Action::Cmd(Cmd::Rename)]);
+}
+
+#[test]
+fn resume_replaces_pause_in_the_header_of_an_exited_pane_only() {
+    let v = focus_exited();
+    let outer = layout(AREA, &v).panes[0].outer;
+    let slot = header_button(outer, Control::Resume).unwrap();
+    assert_eq!(Some(slot), header_button(outer, Control::Interrupt));
+    assert_eq!(
+        v.hit(AREA, slot, 0),
+        Hit::Button("d".into(), Control::Resume)
+    );
+    assert_eq!(
+        v.hit(AREA, header_button(outer, Control::Stop).unwrap(), 0),
+        Hit::Button("d".into(), Control::Stop)
+    );
+    let running = ViewState::new(four(), "local");
+    let outer = layout(AREA, &running).panes[0].outer;
+    assert_eq!(
+        running.hit(AREA, slot_of(outer), 0),
+        Hit::Button("a".into(), Control::Interrupt)
+    );
+}
+
+fn slot_of(outer: Rect) -> u16 {
+    header_button(outer, Control::Interrupt).unwrap()
+}
+
+#[test]
+fn resume_replaces_stop_in_the_sidebar_row_of_an_exited_session_only() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let slot = sidebar_button(sb, Control::Resume).unwrap();
+    assert_eq!(Some(slot), sidebar_button(sb, Control::Stop));
+    assert_eq!(
+        v.hit(AREA, slot, 4),
+        Hit::Button("d".into(), Control::Resume)
+    );
+    assert_eq!(
+        v.hit(AREA, sidebar_button(sb, Control::Close).unwrap(), 4),
+        Hit::Button("d".into(), Control::Close)
+    );
+    assert_eq!(v.hit(AREA, slot, 2), Hit::Button("a".into(), Control::Stop));
+    assert_eq!(v.hit(AREA, slot, 3), Hit::Button("b".into(), Control::Stop));
+}
+
+#[test]
+fn clicking_the_play_glyph_reports_a_resume_control() {
+    let mut v = focus_exited();
+    let outer = layout(AREA, &v).panes[0].outer;
+    let out = v.on_mouse(
+        AREA,
+        ev(0, slot_of(outer), 0, false),
+        &mouse_info(sgr_mode(MouseLevel::Any), 0),
+    );
+    assert_eq!(out.control, Some(("d".into(), Control::Resume)));
+}
+
+#[test]
+fn exited_pane_header_draws_play_and_running_draws_pause() {
+    let v = focus_exited();
+    let text = draw(&v, &screens(), 140, 10);
+    let first = text.lines().next().unwrap();
+    assert!(first.contains('▶') && !first.contains('⏸'), "{first}");
+    let running = ViewState::new(four(), "local");
+    let first = draw(&running, &screens(), 140, 10);
+    let first = first.lines().next().unwrap();
+    assert!(first.contains('⏸') && !first.contains('▶'), "{first}");
+}
+
+#[test]
+fn hovered_sidebar_row_of_an_exited_session_shows_play() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.pointer = Some((3, 4));
+    let text = draw(&v, &screens(), 140, 10);
+    let line = text.lines().nth(4).unwrap();
+    assert!(line.contains('▶') && !line.contains('■'), "{line}");
+    v.pointer = Some((3, 2));
+    let text = draw(&v, &screens(), 140, 10);
+    let line = text.lines().nth(2).unwrap();
+    assert!(line.contains('■') && !line.contains('▶'), "{line}");
+}
+
+#[test]
+fn snapshot_exited_header_with_play_glyph() {
+    let v = focus_exited();
+    assert_snapshot("exited_play", &draw(&v, &screens(), 140, 8));
+}
+
+fn resumed(id: &str, name: &str, from: &str) -> SessionRow {
+    SessionRow {
+        resumed_from: Some(from.into()),
+        ..row(id, name, StateKind::Working, "1s")
+    }
+}
+
+#[test]
+fn replace_session_keeps_focus_tree_shape_and_shells() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply(Cmd::Split);
+    v.shells.push("b".into());
+    let tree_before = v.prefs().tree.clone();
+    v.zoom = true;
+    v.scroll = Some(ScrollState::default());
+    v.sessions
+        .push(row("b2", "dev-server", StateKind::Working, "1s"));
+    v.replace_session("b", "b2");
+    assert_eq!(ids(&v), ["a", "b2"]);
+    assert_eq!(v.focused_session(), Some("b2"));
+    assert_eq!(v.shells, vec!["b2".to_string()]);
+    assert!(v.sessions.iter().all(|s| s.id != "b"));
+    assert!(v.zoom);
+    assert!(v.scroll.is_none());
+    let renamed = v.prefs().tree.unwrap().leaves().join(",");
+    assert_eq!(
+        renamed,
+        tree_before.unwrap().leaves().join(",").replace('b', "b2")
+    );
+}
+
+#[test]
+fn replace_session_of_a_background_pane_keeps_focus_and_scroll() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    v.scroll = Some(ScrollState::default());
+    v.sessions
+        .push(row("b2", "dev-server", StateKind::Working, "1s"));
+    v.replace_session("b", "b2");
+    assert_eq!(ids(&v), ["a", "b2"]);
+    assert_eq!(v.focused_session(), Some("a"));
+    assert!(v.scroll.is_some());
+}
+
+#[test]
+fn sessions_changed_renames_a_vanished_pane_to_its_resumed_copy() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.select("d");
+    v.apply(Cmd::Split);
+    v.shells.push("d".into());
+    let mut rows = four();
+    rows.retain(|r| r.id != "d");
+    rows.push(resumed("d2", "tests", "d"));
+    v.sessions_changed(rows);
+    assert_eq!(ids(&v), ["d2", "a"]);
+    assert!(v.panes().iter().all(|p| p != "d"));
+    assert_eq!(v.shells, vec!["d2".to_string()]);
+}
+
+#[test]
+fn list_before_reply_and_reply_before_list_end_up_the_same() {
+    let mut list_first = ViewState::new(four(), "local");
+    list_first.select("d");
+    let mut rows = four();
+    rows.retain(|r| r.id != "d");
+    rows.push(resumed("d2", "tests", "d"));
+    list_first.sessions_changed(rows.clone());
+    list_first.replace_session("d", "d2");
+
+    let mut reply_first = ViewState::new(four(), "local");
+    reply_first.select("d");
+    reply_first.sessions.push(resumed("d2", "tests", "d"));
+    reply_first.replace_session("d", "d2");
+    reply_first.sessions_changed(rows);
+
+    assert_eq!(ids(&list_first), ["d2"]);
+    assert_eq!(ids(&reply_first), ["d2"]);
+    assert_eq!(list_first.focused_session(), reply_first.focused_session());
+}
+
+#[test]
+fn resumed_from_does_not_steal_a_pane_whose_original_still_exists() {
+    let mut v = ViewState::new(four(), "local");
+    let mut rows = four();
+    rows.push(resumed("a2", "claude", "a"));
+    v.sessions_changed(rows);
+    assert_eq!(ids(&v), ["a"]);
 }

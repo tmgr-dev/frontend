@@ -8,9 +8,9 @@
                   │ | v / - h     split right / split down                       │                 │
                   │ Tab           focus next pane (Shift-Tab previous)           │                 │
                   │ arrows        move focus (Shift+arrows: resize)              │                 │
-                  │ z             zoom the focused pane                          │                 │
-                  │ b             show or hide the sidebar                       │                 │
+                  │ z / b         zoom the pane / show or hide the sidebar       │                 │
                   │ r             rename the focused session                     │                 │
+                  │ Enter / R     resume an exited session                       │                 │
                   │ x / X         stop (asks first) / remove if exited           │                 │
                   │ [             scroll back through history                    │                 │
                   │ ?             this help                                      │                 │
@@ -18,7 +18,7 @@
                   │                                                              │                 │
                   │ click         pick a session or a pane                       │                 │
                   │ wheel         scroll the history of the pane                 │                 │
-                  │ buttons       header: pause, stop, close (hover)             │                 │
+                  │ buttons       header: pause/resume, stop, close              │                 │
                   │ drop          a dropped file is pasted there                 │                 │
                   │ drag          Shift-drag selects (iTerm2: Option)            │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

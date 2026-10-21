@@ -17,11 +17,16 @@ pub struct SessionRow {
     pub state: State,
     pub age: String,
     pub esc: bool,
+    pub resumed_from: Option<String>,
 }
 
 impl SessionRow {
     pub fn can_interrupt(&self) -> bool {
         self.state.kind == StateKind::Working
+    }
+
+    pub fn exited(&self) -> bool {
+        self.state.kind == StateKind::Exited
     }
 
     pub fn interrupt_bytes(&self) -> &'static [u8] {
@@ -35,6 +40,7 @@ impl SessionRow {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Control {
+    Resume,
     Interrupt,
     Stop,
     Close,
@@ -48,7 +54,7 @@ pub fn header_button(outer: Rect, ctl: Control) -> Option<u16> {
     }
     let base = outer.right().checked_sub(8)?;
     Some(match ctl {
-        Control::Interrupt => base + 1,
+        Control::Interrupt | Control::Resume => base + 1,
         Control::Stop => base + 3,
         Control::Close => base + 5,
     })
@@ -60,8 +66,21 @@ pub fn sidebar_button(area: Rect, ctl: Control) -> Option<u16> {
     }
     match ctl {
         Control::Interrupt => None,
-        Control::Stop => area.right().checked_sub(5),
+        Control::Stop | Control::Resume => area.right().checked_sub(5),
         Control::Close => area.right().checked_sub(3),
+    }
+}
+
+pub fn slot_control(row: &SessionRow, slot: Control, sidebar: bool) -> Control {
+    let play_slot = if sidebar {
+        Control::Stop
+    } else {
+        Control::Interrupt
+    };
+    if row.exited() && slot == play_slot {
+        Control::Resume
+    } else {
+        slot
     }
 }
 
@@ -358,8 +377,34 @@ impl ViewState {
                     });
                 }
             }
-            Cmd::Detach | Cmd::Picker => {}
+            Cmd::Detach | Cmd::Picker | Cmd::Resume => {}
         }
+    }
+
+    pub fn replace_session(&mut self, old: &str, new: &str) {
+        if old == new {
+            return;
+        }
+        self.sessions.retain(|s| s.id != old);
+        if self.shells.iter().any(|s| s == old) {
+            self.shells.retain(|s| s != old);
+            if !self.shells.iter().any(|s| s == new) {
+                self.shells.push(new.to_string());
+            }
+        }
+        if !self.panes.iter().any(|p| p == old) {
+            return;
+        }
+        let mut tree = self.tree.take();
+        if let Some(t) = tree.as_mut() {
+            t.rename_leaf(old, new);
+        }
+        let focus = if self.focus_id.as_deref() == Some(old) {
+            Some(new.to_string())
+        } else {
+            self.focus_id.clone()
+        };
+        self.commit(tree, focus);
     }
 
     pub fn edit_rename(&mut self, data: &[u8]) -> RenameEdit {
@@ -467,9 +512,9 @@ impl ViewState {
                     .checked_sub(1)
                     .and_then(|i| self.sidebar_rows().get(i).copied())
                 {
-                    for ctl in [Control::Stop, Control::Close] {
-                        if sidebar_button(sb, ctl) == Some(col) {
-                            return Hit::Button(r.id.clone(), ctl);
+                    for slot in [Control::Stop, Control::Close] {
+                        if sidebar_button(sb, slot) == Some(col) {
+                            return Hit::Button(r.id.clone(), slot_control(r, slot, true));
                         }
                     }
                 }
@@ -485,8 +530,13 @@ impl ViewState {
         for p in &lay.panes {
             if contains(p.outer, col, row) {
                 if row == p.outer.y {
-                    for ctl in [Control::Interrupt, Control::Stop, Control::Close] {
-                        if header_button(p.outer, ctl) == Some(col) {
+                    for slot in [Control::Interrupt, Control::Stop, Control::Close] {
+                        if header_button(p.outer, slot) == Some(col) {
+                            let ctl = self
+                                .sessions
+                                .iter()
+                                .find(|s| s.id == p.session)
+                                .map_or(slot, |r| slot_control(r, slot, false));
                             return Hit::Button(p.session.clone(), ctl);
                         }
                     }
@@ -731,6 +781,19 @@ impl ViewState {
 
     pub fn sessions_changed(&mut self, rows: Vec<SessionRow>) {
         self.sessions = rows;
+        let renames: Vec<(String, String)> = self
+            .sessions
+            .iter()
+            .filter_map(|r| {
+                let old = r.resumed_from.as_ref()?;
+                let vanished = !self.sessions.iter().any(|s| &s.id == old);
+                (vanished && self.panes.contains(old) && !self.panes.contains(&r.id))
+                    .then(|| (old.clone(), r.id.clone()))
+            })
+            .collect();
+        for (old, new) in renames {
+            self.replace_session(&old, &new);
+        }
         let gone: Vec<String> = self
             .panes
             .iter()
