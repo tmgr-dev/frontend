@@ -16,7 +16,22 @@ const surfaces = {
   },
 };
 
-const setup = async (page, { aiReply = '0' } = {}) => {
+const comment = (id, message) => ({
+  id,
+  message,
+  user: { id: 1, name: 'Test User' },
+  created_at: new Date(Date.UTC(2026, 8, 13, 10, 0, id)).toISOString(),
+  updated_at: '2026-09-13T10:00:00Z',
+  reactions: [],
+});
+
+// TM-707: a thread long enough to overflow both scrollers at 1440x900.
+const longThread = () =>
+  Array.from({ length: 30 }, (_, i) =>
+    comment(i + 1, `Comment ${i + 1}\nsecond line of comment ${i + 1}`),
+  );
+
+const setup = async (page, { aiReply = '0', thread } = {}) => {
   await page.addInitScript(() =>
     sessionStorage.setItem('tmgr:tours:auto', 'true'),
   );
@@ -40,13 +55,47 @@ const setup = async (page, { aiReply = '0' } = {}) => {
     if (req.method() === 'POST') {
       const body = req.postDataJSON();
       (req.url().includes('/help') ? asked : posted).push(body);
+      if (thread && !req.url().includes('/help')) {
+        const added = comment(thread.length + 1, body.message);
+        thread.push(added);
+        return route.fulfill({ json: { data: added } });
+      }
     }
-    await route.fulfill({ json: { data: [] } });
+    await route.fulfill({ json: { data: thread ?? [] } });
   });
   return { posted, asked };
 };
 
 const box = (loc) => loc.evaluate((el) => el.getBoundingClientRect().toJSON());
+
+const scrollers = {
+  modal: (page) => page.locator('.new-form-container main'),
+  page: (page) =>
+    page.locator('aside div.lg\\:overflow-y-auto:has([data-comment-id])'),
+};
+
+const scrollState = (scroller) =>
+  scroller.evaluate((el) => {
+    const rows = el.querySelectorAll('[data-comment-id]');
+    const last = rows[rows.length - 1];
+    return {
+      top: el.scrollTop,
+      client: el.clientHeight,
+      gap: el.scrollHeight - el.scrollTop - el.clientHeight,
+      lastId: last?.dataset.commentId,
+      lastOverflow:
+        last.getBoundingClientRect().bottom - el.getBoundingClientRect().bottom,
+    };
+  });
+
+const typeFiveLines = async (input) => {
+  await input.fill('line 1');
+  for (let i = 2; i <= 5; i++) {
+    await input.press('Shift+Enter');
+    await input.pressSequentially(`line ${i}`);
+  }
+  await expect(input).toHaveValue('line 1\nline 2\nline 3\nline 4\nline 5');
+};
 
 for (const [name, open] of Object.entries(surfaces)) {
   test.describe(`${name} composer`, () => {
@@ -158,6 +207,85 @@ for (const [name, open] of Object.entries(surfaces)) {
       expect(
         await input.evaluate((el) => el.scrollHeight - el.clientHeight),
       ).toBeLessThanOrEqual(0);
+    });
+
+    test('the list stays pinned to the bottom while the field grows (TM-707)', async ({
+      page,
+    }) => {
+      await setup(page, { thread: longThread() });
+      const input = await open(page);
+      const scroller = scrollers[name](page);
+      await expect(scroller.locator('[data-comment-id]')).toHaveCount(30);
+      await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+      const before = await scrollState(scroller);
+      expect(before.gap).toBeLessThanOrEqual(4);
+      expect(before.lastOverflow).toBeLessThanOrEqual(1);
+      const field = (await box(input)).height;
+
+      await typeFiveLines(input);
+      expect((await box(input)).height).toBeGreaterThanOrEqual(field + 60);
+      const after = await scrollState(scroller);
+      // The scroller really lost height, so without the re-pin the gap would be >= 60px.
+      expect(before.client - after.client).toBeGreaterThanOrEqual(60);
+      expect(after.gap).toBeLessThanOrEqual(4);
+      expect(after.lastId).toBe('30');
+      expect(after.lastOverflow).toBeLessThanOrEqual(1);
+    });
+
+    test('a list scrolled up keeps its scroll position while the field grows (TM-707)', async ({
+      page,
+    }) => {
+      await setup(page, { thread: longThread() });
+      const input = await open(page);
+      const scroller = scrollers[name](page);
+      await expect(scroller.locator('[data-comment-id]')).toHaveCount(30);
+      await scroller.evaluate(
+        (el) =>
+          (el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) / 2)),
+      );
+      const before = await scrollState(scroller);
+      expect(before.gap).toBeGreaterThan(200);
+
+      await typeFiveLines(input);
+      const after = await scrollState(scroller);
+      expect(before.client - after.client).toBeGreaterThanOrEqual(60);
+      expect(Math.abs(after.top - before.top)).toBeLessThanOrEqual(1);
+    });
+
+    test('after sending from the bottom the new comment is visible (TM-707)', async ({
+      page,
+    }) => {
+      const thread = longThread();
+      const { posted } = await setup(page, { thread });
+      const input = await open(page);
+      const scroller = scrollers[name](page);
+      await expect(scroller.locator('[data-comment-id]')).toHaveCount(30);
+      await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+      await typeFiveLines(input);
+      await input.press('Enter');
+      await expect.poll(() => posted.length).toBe(1);
+      await expect(input).toHaveValue('');
+      await expect(scroller.locator('[data-comment-id]')).toHaveCount(31);
+      await expect
+        .poll(async () => {
+          const s = await scrollState(scroller);
+          return s.lastId === '31' && s.gap <= 4 && s.lastOverflow <= 1;
+        })
+        .toBe(true);
+    });
+
+    test('an empty thread: the field grows without errors (TM-707)', async ({
+      page,
+    }) => {
+      const errors = [];
+      page.on('pageerror', (e) => errors.push(e.message));
+      await setup(page);
+      const input = await open(page);
+      await expect(input).toBeVisible();
+      const field = (await box(input)).height;
+      await typeFiveLines(input);
+      expect((await box(input)).height).toBeGreaterThanOrEqual(field + 60);
+      expect(errors).toEqual([]);
     });
 
     test('a blank field does not send', async ({ page }) => {

@@ -625,13 +625,23 @@
 	let footerResizeObserver: ResizeObserver | null = null;
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
 	const commentRailInput = ref<HTMLTextAreaElement | null>(null);
+	const formMain = ref<HTMLElement | null>(null);
+	const commentsRailScroller = ref<HTMLElement | null>(null);
 
 	const resizeCommentInputs = () => {
+		const pinned = [
+			props.isModal ? formMain.value : null,
+			commentsRailScroller.value,
+		].filter(
+			(el): el is HTMLElement =>
+				!!el && el.scrollHeight - el.scrollTop - el.clientHeight <= 4,
+		);
 		for (const el of [commentTextarea.value, commentRailInput.value]) {
 			if (!el || !el.scrollHeight) continue;
 			el.style.height = 'auto';
 			el.style.height = `${el.scrollHeight}px`;
 		}
+		for (const el of pinned) el.scrollTop = el.scrollHeight;
 	};
 	watch([newComment, commentTextarea, commentRailInput], resizeCommentInputs, {
 		flush: 'post',
@@ -2209,6 +2219,8 @@
 			if (mainEl) {
 				mainEl.scrollTo({ top: mainEl.scrollHeight, behavior: 'smooth' });
 			}
+			const rail = commentsRailScroller.value;
+			rail?.scrollTo({ top: rail.scrollHeight, behavior: 'smooth' });
 		});
 	};
 
@@ -2499,6 +2511,7 @@
 
 				<!-- MAIN - Scrollable content area -->
 				<main
+					ref="formMain"
 					class="flex flex-col gap-5 px-6 pb-4 pt-5"
 					:class="
 						isModal
@@ -3261,7 +3274,10 @@
 						commentsCount
 					}}</span>
 				</div>
-				<div class="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+				<div
+					ref="commentsRailScroller"
+					class="px-4 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+				>
 					<TaskComments
 						data-tour="task-form.comments"
 						ref="taskCommentsRef"
