@@ -384,6 +384,7 @@ impl ViewState {
                 if self.palette.take().is_none() {
                     self.palette = Some(Palette::default());
                     self.help = false;
+                    self.grab = None;
                 }
             }
             Cmd::Detach | Cmd::Picker | Cmd::Resume => {}
@@ -793,6 +794,9 @@ impl ViewState {
 
     pub fn sessions_changed(&mut self, rows: Vec<SessionRow>) {
         self.sessions = rows;
+        if let Some(p) = self.palette.as_mut() {
+            p.sel = 0;
+        }
         let renames: Vec<(String, String)> = self
             .sessions
             .iter()

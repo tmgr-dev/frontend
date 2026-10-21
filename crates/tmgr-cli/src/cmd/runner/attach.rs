@@ -747,6 +747,7 @@ impl App {
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
                 Action::Cmd(Cmd::Picker) => {
+                    self.view.palette = None;
                     self.notify("switch sessions with Ctrl-] n and Ctrl-] p")
                 }
                 Action::Cmd(cmd) => {

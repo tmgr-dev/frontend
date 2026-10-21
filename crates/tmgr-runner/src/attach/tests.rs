@@ -2456,16 +2456,35 @@ fn first(v: &ViewState) -> PaletteEntry {
 
 #[test]
 fn every_action_key_reaches_its_cmd() {
-    for def in ACTIONS.iter().filter(|d| !d.keys.is_empty()) {
-        for byte in def.keys {
-            let mut s = InputSplitter::new();
-            assert_eq!(
-                s.feed(&[0x1d, *byte]),
-                vec![Action::Cmd(def.cmd)],
-                "{:?} via {byte}",
-                def.cmd
-            );
-        }
+    let table: &[(u8, Cmd)] = &[
+        (b'd', Cmd::Detach),
+        (b'n', Cmd::NextSession),
+        (b'p', Cmd::PrevSession),
+        (b's', Cmd::Split),
+        (b'|', Cmd::SplitRight),
+        (b'v', Cmd::SplitRight),
+        (b'-', Cmd::SplitDown),
+        (b'h', Cmd::SplitDown),
+        (b'\t', Cmd::FocusOther),
+        (b'z', Cmd::Zoom),
+        (b'b', Cmd::Sidebar),
+        (b'[', Cmd::ScrollMode),
+        (b'?', Cmd::Help),
+        (b'w', Cmd::Picker),
+        (b'x', Cmd::Stop),
+        (b'X', Cmd::Remove),
+        (b'r', Cmd::Rename),
+        (b'\r', Cmd::Resume),
+        (b'R', Cmd::Resume),
+        (b':', Cmd::Palette),
+    ];
+    for (byte, cmd) in table {
+        let mut s = InputSplitter::new();
+        assert_eq!(
+            s.feed(&[0x1d, *byte]),
+            vec![Action::Cmd(*cmd)],
+            "{cmd:?} via {byte}"
+        );
     }
 }
 
@@ -2796,4 +2815,82 @@ fn palette_cursor_sits_at_the_end_of_the_query() {
     assert_eq!(cursor(&v, &lay, &screens()), Some((inner.x + 4, inner.y)));
     v.palette = None;
     assert_ne!(cursor(&v, &lay, &screens()), Some((inner.x + 4, inner.y)));
+}
+
+#[test]
+fn session_list_change_resets_the_palette_selection() {
+    let mut v = ViewState::new(four(), "");
+    query(&mut v, "s");
+    v.edit_palette(b"\x1b[B");
+    assert_eq!(v.palette.as_ref().unwrap().sel, 1);
+    v.sessions_changed(four()[..2].to_vec());
+    assert_eq!(v.palette.as_ref().unwrap().sel, 0);
+}
+
+#[test]
+fn repeated_escape_closes_the_palette_but_sequences_do_not() {
+    for esc in [&b"\x1b\x1b"[..], b"\x1b\x1b\x1b"] {
+        let mut v = palette_view();
+        assert_eq!(v.edit_palette(esc), PaletteEdit::Close);
+        assert!(v.palette.is_none());
+    }
+    for seq in [&b"\x1b[A"[..], b"\x1bOA", b"\x1b[1;2C"] {
+        let mut v = palette_view();
+        assert_eq!(v.edit_palette(seq), PaletteEdit::Editing);
+        assert!(v.palette.is_some());
+    }
+}
+
+#[test]
+fn drag_and_release_around_the_palette_never_reach_a_pane() {
+    let mut v = ViewState::new(four(), "");
+    open_palette(&mut v);
+    let (rect, _) = palette_geometry(&v);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    v.on_mouse(AREA, ev(0, rect.x + 5, rect.y + 1, false), &info);
+    assert_eq!(v.grab.as_deref(), Some(""));
+    let out = v.on_mouse(AREA, ev(32, 60, 1, false), &info);
+    assert_eq!(out.forward, None);
+    let out = v.on_mouse(AREA, ev(0, 60, 1, true), &info);
+    assert_eq!(out.forward, None);
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn opening_the_palette_drops_a_pane_drag_grab() {
+    let mut v = ViewState::new(four(), "");
+    v.grab = Some("a".into());
+    open_palette(&mut v);
+    assert_eq!(v.grab, None);
+}
+
+#[test]
+fn palette_with_a_very_long_query_keeps_the_caret_inside_the_box() {
+    for w in [8u16, 12, 20, 30] {
+        let mut v = grid(w);
+        open_palette(&mut v);
+        v.insert_palette_text("字x".repeat(40).as_bytes());
+        let area = Rect::new(0, 0, w, 10);
+        let mut term = Terminal::new(TestBackend::new(w, 10)).unwrap();
+        term.draw(|f| render(f, &v, &Screens::default())).unwrap();
+        let lay = layout(area, &v);
+        let rect = palette::palette_rect(
+            Rect::new(lay.status.x, 0, lay.status.width, lay.status.bottom()),
+            v.entries().len().max(1),
+        );
+        let inner = palette::palette_inner(rect);
+        if let Some((x, y)) = cursor(&v, &lay, &Screens::default()) {
+            assert!(
+                x >= inner.x && x < inner.right() && y == inner.y,
+                "w={w} x={x}"
+            );
+            let tail = palette::query_tail(
+                &v.palette.as_ref().unwrap().query,
+                palette::query_avail(inner),
+            );
+            assert!(
+                unicode_width::UnicodeWidthStr::width(tail) + 2 < usize::from(inner.width).max(3)
+            );
+        }
+    }
 }

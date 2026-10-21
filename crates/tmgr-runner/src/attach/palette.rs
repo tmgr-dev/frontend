@@ -101,7 +101,7 @@ pub(crate) fn query_tail(query: &str, avail: usize) -> &str {
 }
 
 pub(crate) fn query_avail(inner: Rect) -> usize {
-    usize::from(inner.width).saturating_sub(PROMPT_WIDTH)
+    usize::from(inner.width).saturating_sub(PROMPT_WIDTH + 1)
 }
 
 enum Key {
@@ -218,7 +218,7 @@ impl ViewState {
         if self.palette.is_none() {
             return PaletteEdit::Close;
         }
-        if data == b"\x1b" {
+        if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
             self.palette = None;
             return PaletteEdit::Close;
         }
