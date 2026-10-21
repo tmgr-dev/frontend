@@ -13,11 +13,13 @@ import {
 	isBusy,
 	isPollResultCurrent,
 	lastChatKey,
+	mergePendingActions,
 	nextChatAfterRemoval,
 	parseRememberedChatId,
 	resetForWorkspace,
 	sendErrorMessage,
 } from '../agentChat';
+import { openActionIds } from '../agentConfirmation';
 
 const CONV = {
 	id: 5,
@@ -471,5 +473,106 @@ describe('confirmation flow', () => {
 		expect(isBusy(awaiting)).toBe(false);
 		expect(hasPendingLast(running.messages)).toBe(true);
 		expect(hasPendingLast(awaiting.messages)).toBe(false);
+	});
+
+	it('keeps a newer card when a late decision response arrives', () => {
+		let s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		s = applyDecision(s, 11, [action(1, 'executed')]);
+		s = applyConfirmation(s, {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1, 'executed'), action(2)],
+		});
+		s = applyDecision(s, 11, [action(1, 'executed')]);
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.pending_actions?.map((a) => [a.id, a.status])).toEqual([
+			[1, 'executed'],
+			[2, 'pending'],
+		]);
+		expect(m?.status).toBe('awaiting');
+		expect(s.pendingId).toBeNull();
+	});
+
+	it('keeps a decided card decided on a stale pending event', () => {
+		let s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		s = applyDecision(s, 11, [action(1, 'executed')]);
+		s = applyConfirmation(s, {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.pending_actions?.[0].status).toBe('executed');
+		expect(openActionIds(m?.pending_actions ?? [])).toEqual([]);
+		expect(m?.status).toBe('running');
+	});
+
+	it('appends new action ids', () => {
+		let s = applyConfirmation(withPending(), {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1)],
+		});
+		s = applyConfirmation(s, {
+			conversation_id: 5,
+			message_id: 11,
+			actions: [action(1), action(2)],
+		});
+		const m = s.messages.find((x) => x.id === 11);
+		expect(m?.pending_actions?.map((a) => a.id)).toEqual([1, 2]);
+	});
+});
+
+describe('mergePendingActions', () => {
+	const a = (id: number, status: string, title = 'x') =>
+		({
+			id,
+			tool: 't',
+			risk: 'low',
+			status,
+			preview: { title, fields: [], body: null },
+			result: null,
+			expires_at: '',
+		} as never);
+
+	it('never moves a status backwards', () => {
+		const merged = mergePendingActions(
+			[a(1, 'executing'), a(2, 'executed'), a(3, 'pending')],
+			[a(1, 'pending'), a(2, 'executing'), a(3, 'executing')],
+		);
+		expect(merged.map((x) => x.status)).toEqual([
+			'executing',
+			'executed',
+			'executing',
+		]);
+	});
+
+	it('takes the other fields from the winning side', () => {
+		const merged = mergePendingActions(
+			[a(1, 'pending', 'old')],
+			[a(1, 'executed', 'new')],
+		);
+		expect(merged[0].preview.title).toBe('new');
+	});
+
+	it('keeps the current terminal status over a different terminal one', () => {
+		const merged = mergePendingActions([a(1, 'cancelled')], [a(1, 'executed')]);
+		expect(merged[0].status).toBe('cancelled');
+	});
+
+	it('keeps ids present only in the current state', () => {
+		const merged = mergePendingActions(
+			[a(1, 'pending'), a(2, 'pending')],
+			[a(1, 'pending')],
+		);
+		expect(merged.map((x) => x.id)).toEqual([1, 2]);
 	});
 });

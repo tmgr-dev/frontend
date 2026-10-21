@@ -5,6 +5,7 @@ import type {
 	AgentReplyEvent,
 	AgentStepEvent,
 	PendingAction,
+	PendingActionStatus,
 } from '@/types/agent';
 import { normalizePendingActions } from '@/utils/agentConfirmation';
 import type { AttachedFile } from '@/utils/aiAttachments';
@@ -22,6 +23,29 @@ export const createAgentChatState = (): AgentChatState => ({
 	messages: [],
 	pendingId: null,
 });
+
+const RANK: Record<PendingActionStatus, number> = {
+	pending: 0,
+	executing: 1,
+	executed: 2,
+	failed: 2,
+	cancelled: 2,
+	expired: 2,
+	superseded: 2,
+};
+
+export const mergePendingActions = (
+	current: PendingAction[],
+	incoming: PendingAction[],
+): PendingAction[] => {
+	const incomingById = new Map(incoming.map((a) => [a.id, a]));
+	const merged = current.map((cur) => {
+		const next = incomingById.get(cur.id);
+		return next && RANK[next.status] > RANK[cur.status] ? next : cur;
+	});
+	const known = new Set(current.map((a) => a.id));
+	return [...merged, ...incoming.filter((a) => !known.has(a.id))];
+};
 
 const isInFlight = (m: AgentMessage): boolean =>
 	m.status === 'pending' || m.status === 'running';
@@ -159,7 +183,10 @@ export const applyConfirmation = (
 	}
 
 	const message = s.messages[index];
-	const actions = normalizePendingActions(e.actions);
+	const actions = mergePendingActions(
+		message.pending_actions ?? [],
+		normalizePendingActions(e.actions),
+	);
 	const opensCard =
 		isInFlight(message) && actions.some((a) => a.status === 'pending');
 	const messages = [...s.messages];
@@ -187,11 +214,17 @@ export const applyDecision = (
 	}
 
 	const message = s.messages[index];
-	const resumes = message.status === 'awaiting';
+	const merged = mergePendingActions(
+		message.pending_actions ?? [],
+		normalizePendingActions(actions),
+	);
+	const resumes =
+		message.status === 'awaiting' &&
+		!merged.some((a) => a.status === 'pending');
 	const messages = [...s.messages];
 	messages[index] = {
 		...message,
-		pending_actions: normalizePendingActions(actions),
+		pending_actions: merged,
 		status: resumes ? 'running' : message.status,
 	};
 
