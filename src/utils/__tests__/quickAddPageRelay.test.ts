@@ -62,6 +62,15 @@ describe('handleQuickAddCreated', () => {
 		},
 	);
 
+	it('drops routine snapshots only for a routine', () => {
+		const { requestCache } = jest.requireActual('@/utils/requestCache');
+		requestCache.set('routines-snapshot{}', { entries: [] });
+		handleQuickAddCreated({ kind: 'task' });
+		expect(requestCache.get('routines-snapshot{}')).toEqual({ entries: [] });
+		handleQuickAddCreated({ kind: 'routine' });
+		expect(requestCache.get('routines-snapshot{}')).toBeNull();
+	});
+
 	it('ignores an unknown or missing kind', () => {
 		const seen: unknown[] = [];
 		const off = tourBus.on('task.created', (p: unknown) => seen.push(p));
