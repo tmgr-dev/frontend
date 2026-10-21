@@ -36,12 +36,20 @@ export const getAgentMessages = async (
 export const sendAgentMessage = async (
 	conversationId: number,
 	content: string,
+	scenario?: string,
 ): Promise<{ message_id: number; pending_message_id: number }> => {
 	const {
 		data: { data },
-	} = await $axios.post(`/agent/conversations/${conversationId}/messages`, {
-		content,
-	});
+	} = await $axios.post(
+		`/agent/conversations/${conversationId}/messages`,
+		scenario
+			? {
+					scenario,
+					content,
+					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+			  }
+			: { content },
+	);
 	return data;
 };
 

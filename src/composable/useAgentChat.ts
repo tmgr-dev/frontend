@@ -43,7 +43,7 @@ export interface UseAgentChatReturn {
 	load: (workspaceId: number) => Promise<void>;
 	openConversation: (conversationId: number) => Promise<void>;
 	forgetRemembered: () => void;
-	send: (content: string) => Promise<boolean>;
+	send: (content: string, scenario?: string) => Promise<boolean>;
 	newChat: () => Promise<void>;
 	subscribe: (userId: number) => void;
 	unsubscribe: () => void;
@@ -287,7 +287,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		}
 	};
 
-	const send = async (content: string): Promise<boolean> => {
+	const send = async (content: string, scenario?: string): Promise<boolean> => {
 		if (sending.value || loading.value) return false;
 		const token = sendRequests.begin();
 		const current = () => sendRequests.isCurrent(token);
@@ -304,6 +304,7 @@ export function useAgentChat(): UseAgentChatReturn {
 			const { message_id, pending_message_id } = await sendAgentMessage(
 				conversationId,
 				content,
+				scenario,
 			);
 
 			if (!current() || state.value.conversationId !== conversationId) {

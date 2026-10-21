@@ -6,6 +6,12 @@
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
 	import store from '@/store';
+	import {
+		fillScenarios,
+		runScenarios,
+		type FillScenario,
+		type RunScenario,
+	} from '@/utils/agentScenarios';
 	import { focusField } from '@/utils/focusTarget';
 	import { History, Send, Sparkles, X } from 'lucide-vue-next';
 	import {
@@ -109,6 +115,18 @@
 		const content = draft.value.trim();
 		if (!content || busy.value || loading.value) return;
 		if (await send(content)) draft.value = '';
+		focusInput();
+	}
+
+	async function runScenario(scenario: RunScenario): Promise<void> {
+		if (busy.value || loading.value) return;
+		await send(scenario.label, scenario.id);
+		focusInput();
+	}
+
+	function fillScenario(scenario: FillScenario): void {
+		if (busy.value || loading.value) return;
+		draft.value = scenario.template;
 		focusInput();
 	}
 
@@ -236,6 +254,28 @@
 			<AgentMessage v-for="m in state.messages" :key="m.id" :message="m" />
 		</div>
 		<footer v-show="view === 'chat'" class="shrink-0 border-t border-line p-3">
+			<div
+				v-if="!busy && !loading"
+				class="mb-2 flex flex-wrap gap-1.5"
+				data-tour="ai.scenarios"
+			>
+				<button
+					v-for="scenario in runScenarios"
+					:key="scenario.id"
+					class="rounded-pill border border-line px-2.5 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
+					@click="runScenario(scenario)"
+				>
+					{{ scenario.label }}
+				</button>
+				<button
+					v-for="scenario in fillScenarios"
+					:key="scenario.label"
+					class="rounded-pill border border-dashed border-line px-2.5 py-1 text-xs text-ink-subtle hover:bg-surface-hover hover:text-ink"
+					@click="fillScenario(scenario)"
+				>
+					{{ scenario.label }}
+				</button>
+			</div>
 			<div
 				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 			>
