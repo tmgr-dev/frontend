@@ -116,7 +116,10 @@ usage pricing | Usage | -
 usage pricing show | Usage | model
 usage pricing update | Usage | offline
 usage sync | Usage | task, days, dry_run, force, no_scan
-usage sync on | Usage | -
+usage sync on | Usage | yes_auto
+usage sync auto on | Usage | yes_auto
+usage sync auto off | Usage | -
+usage sync auto status | Usage | -
 usage sync off | Usage | -
 usage sync status | Usage | -
 usage sync forget | Usage | task
