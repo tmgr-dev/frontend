@@ -18,6 +18,10 @@ jest.mock('@/actions/tmgr/agent', () => ({
 	sendAgentMessage: jest.fn(),
 	startNewConversation: jest.fn(),
 }));
+jest.mock('@/store', () => ({
+	__esModule: true,
+	default: { state: { user: { id: 1 } } },
+}));
 jest.mock('../usePusher', () => ({ usePusher: () => ({}) }));
 const deferred = () => {
 	let resolve!: (v: any) => void;
