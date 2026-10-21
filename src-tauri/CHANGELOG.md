@@ -3,6 +3,12 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.56 — 2026-10-21
+
+- Voice input: a mic button in the Ask AI chat and in the task comment box. Press it to record, press stop to turn your speech into text at the cursor, then edit and send it yourself. Recording stops at 2 minutes. macOS asks for microphone access the first time.
+- Ask AI: a chat list, so you can switch between and open earlier chats, and a context meter that shows how full the chat's context window is.
+- Tasks: terminal session time entries are listed on a task.
+
 ## 0.9.55 — 2026-10-21
 
 - "Open in TMGR Desktop": when you use the desktop app, tmgr.dev in a Mac browser shows a thin bar that opens the same page here. Links from the browser only navigate to regular pages (tasks, board, list, pages); they never open settings or forms and never run an action. The bar hides until your next sign-in.
