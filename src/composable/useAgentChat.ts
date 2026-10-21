@@ -601,6 +601,9 @@ export function useAgentChat(): UseAgentChatReturn {
 		pinError.value = null;
 		try {
 			await save();
+			if (pinsLoading.value && state.value.conversationId === conversationId) {
+				void loadPins(conversationId);
+			}
 			return true;
 		} catch (e) {
 			if (state.value.conversationId === conversationId) {
