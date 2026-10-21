@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.27
+
+- In `tmgr attach` you can resize panes with the mouse: drag the line between two side-by-side panes, or the header row of the pane below a split (not its buttons). With nested splits the nearest split owning that line moves; both sides keep a minimum size, and the ratio is saved with the tab layout. `Ctrl-] ?` mentions it.
+
 ## 1.0.26
 
 - `tmgr attach` has colour themes: `dark`, `light` and `high-contrast`. By default it asks the terminal for its background colour (OSC 11) at start and picks `light` or `dark`; a terminal that does not answer within a quarter of a second gets `dark`. `tmgr config set attach.theme light` (or `dark`, `high-contrast`, `auto`) overrides the detection. All sidebar, border, status and dialog colours come from the theme; the colours inside the panes are the programs' own and are not changed. Not in a remote attach.
