@@ -3243,3 +3243,245 @@ fn a_tiny_sidebar_cannot_focus_new() {
         SidebarEdit::Select("s1".into())
     );
 }
+
+fn loc(root: &str, dir: &str, branch: Option<&str>) -> Loc {
+    Loc {
+        root: root.into(),
+        dir: dir.into(),
+        branch: branch.map(Into::into),
+    }
+}
+
+fn six() -> Vec<SessionRow> {
+    ["a", "b", "c", "d", "e", "f"]
+        .iter()
+        .map(|id| row(id, id, StateKind::Working, "1m"))
+        .collect()
+}
+
+fn grouped_view() -> ViewState {
+    let mut v = ViewState::new(six(), "local");
+    v.width = 140;
+    v.grouped = true;
+    v.set_locs(
+        AREA,
+        vec![
+            ("a".into(), loc("/w/app", "/w/app", Some("main"))),
+            ("b".into(), loc("/w/app", "/w/app/src", Some("main"))),
+            ("c".into(), loc("/w/app-wt", "/w/app-wt", Some("feat/x"))),
+            ("d".into(), loc("/w/lib", "/w/lib", None)),
+            ("e".into(), loc("/w/lib", "/w/lib", None)),
+        ],
+    );
+    v
+}
+
+fn shape(v: &ViewState) -> Vec<String> {
+    let sb = layout(AREA, v).sidebar.unwrap();
+    v.sidebar_layout(sb)
+        .lines
+        .into_iter()
+        .map(|(l, _)| match l {
+            SidebarLine::Header {
+                key,
+                count,
+                collapsed,
+            } => format!("H {key} {count} {collapsed}"),
+            SidebarLine::Session { id, indent } => {
+                format!("{}{id}", if indent { "  " } else { "" })
+            }
+            SidebarLine::Detail(id) => format!("~{id}"),
+        })
+        .collect()
+}
+
+fn sidebar_y(v: &ViewState, want: &SidebarLine) -> u16 {
+    let sb = layout(AREA, v).sidebar.unwrap();
+    v.sidebar_layout(sb)
+        .lines
+        .into_iter()
+        .find(|(l, _)| l == want)
+        .unwrap()
+        .1
+}
+
+#[test]
+fn sessions_in_one_repo_share_a_header_and_singles_get_a_detail_line() {
+    let v = grouped_view();
+    assert_eq!(
+        shape(&v),
+        vec![
+            "H /w/app 2 false",
+            "  a",
+            "  b",
+            "c",
+            "~c",
+            "H /w/lib 2 false",
+            "  d",
+            "  e",
+            "f",
+        ]
+    );
+}
+
+#[test]
+fn a_session_changing_folder_moves_groups_without_reordering_them() {
+    let mut v = grouped_view();
+    v.set_locs(AREA, vec![("a".into(), loc("/w/lib", "/w/lib", None))]);
+    assert_eq!(
+        shape(&v),
+        vec![
+            "b",
+            "~b",
+            "c",
+            "~c",
+            "H /w/lib 3 false",
+            "  a",
+            "  d",
+            "  e",
+            "f",
+        ],
+    );
+}
+
+#[test]
+fn an_emptied_group_keeps_its_place_when_it_fills_again() {
+    let mut v = grouped_view();
+    v.set_locs(
+        AREA,
+        vec![
+            ("a".into(), loc("/w/lib", "/w/lib", None)),
+            ("b".into(), loc("/w/lib", "/w/lib", None)),
+        ],
+    );
+    v.set_locs(
+        AREA,
+        vec![("a".into(), loc("/w/app", "/w/app", Some("main")))],
+    );
+    v.set_locs(
+        AREA,
+        vec![("b".into(), loc("/w/app", "/w/app", Some("main")))],
+    );
+    assert_eq!(shape(&v)[0], "H /w/app 2 false");
+}
+
+#[test]
+fn enter_on_a_header_folds_it_and_keeps_the_focus_there() {
+    let mut v = grouped_view();
+    assert!(v.enter_sidebar(AREA));
+    v.sidebar_focus = Some(SidebarItem::Group("/w/app".into()));
+    assert_eq!(v.edit_sidebar(AREA, b"\r"), SidebarEdit::Editing);
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Group("/w/app".into())));
+    assert_eq!(shape(&v)[0], "H /w/app 2 true");
+    assert_eq!(shape(&v)[1], "c");
+    v.edit_sidebar(AREA, b"\r");
+    assert_eq!(shape(&v)[0], "H /w/app 2 false");
+}
+
+#[test]
+fn clicking_a_header_folds_and_unfolds_it() {
+    let mut v = grouped_view();
+    let y = sidebar_y(
+        &v,
+        &SidebarLine::Header {
+            key: "/w/app".into(),
+            count: 2,
+            collapsed: false,
+        },
+    );
+    let out = v.on_mouse(
+        AREA,
+        ev(0, 3, y, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert!(out.redraw);
+    assert_eq!(shape(&v)[0], "H /w/app 2 true");
+    v.on_mouse(
+        AREA,
+        ev(0, 3, y, false),
+        &mouse_info(MouseMode::default(), 0),
+    );
+    assert_eq!(shape(&v)[0], "H /w/app 2 false");
+}
+
+#[test]
+fn the_group_toggle_flattens_and_restores_the_list() {
+    let mut v = grouped_view();
+    v.apply(Cmd::Group);
+    assert!(shape(&v).iter().all(|l| !l.starts_with('H')));
+    v.apply(Cmd::Group);
+    assert!(shape(&v)[0].starts_with('H'));
+}
+
+#[test]
+fn next_and_previous_follow_the_grouped_order_and_skip_folded_groups() {
+    let mut v = grouped_view();
+    v.set_locs(AREA, vec![("a".into(), loc("/w/lib", "/w/lib", None))]);
+    v.collapsed.insert("/w/lib".into());
+    v.set_initial("b");
+    v.apply(Cmd::NextSession);
+    assert_eq!(ids(&v), vec!["c"]);
+    v.apply(Cmd::NextSession);
+    assert_eq!(ids(&v), vec!["f"]);
+    v.apply(Cmd::PrevSession);
+    assert_eq!(ids(&v), vec!["c"]);
+}
+
+#[test]
+fn next_session_reaches_folded_sessions_when_nothing_else_is_free() {
+    let mut v = ViewState::new(six()[..2].to_vec(), "local");
+    v.grouped = true;
+    v.width = 140;
+    let same = loc("/w/app", "/w/app", None);
+    v.set_locs(AREA, vec![("a".into(), same.clone()), ("b".into(), same)]);
+    v.collapsed.insert("/w/app".into());
+    v.set_initial("a");
+    v.apply(Cmd::NextSession);
+    assert_eq!(ids(&v), vec!["b"]);
+}
+
+#[test]
+fn focus_moves_on_when_its_header_disappears() {
+    let mut v = grouped_view();
+    v.sidebar_focus = Some(SidebarItem::Group("/w/lib".into()));
+    v.set_locs(AREA, vec![("e".into(), loc("/w/other", "/w/other", None))]);
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("d".into())));
+}
+
+#[test]
+fn a_resumed_session_inherits_the_folder_of_the_one_it_replaces() {
+    let mut v = grouped_view();
+    let mut rows = six();
+    rows.retain(|r| r.id != "a");
+    let mut resumed = row("a2", "a", StateKind::Working, "1s");
+    resumed.resumed_from = Some("a".into());
+    rows.insert(0, resumed);
+    v.sessions_changed(AREA, rows);
+    assert_eq!(v.locs.get("a2").map(|l| l.root.as_str()), Some("/w/app"));
+    assert_eq!(shape(&v)[0], "H /w/app 2 false");
+}
+
+#[test]
+fn details_are_dropped_before_rows_when_the_sidebar_is_short() {
+    let mut v = grouped_view();
+    v.allow_new = false;
+    let area = r(0, 0, 140, 8);
+    let sb = layout(area, &v).sidebar.unwrap();
+    let lines = v.sidebar_layout(sb).lines;
+    assert!(lines
+        .iter()
+        .all(|(l, _)| !matches!(l, SidebarLine::Detail(_))));
+}
+
+#[test]
+fn snapshot_grouped_sidebar() {
+    let v = grouped_view();
+    assert_snapshot("grouped", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_grouped_sidebar_folded() {
+    let mut v = grouped_view();
+    v.collapsed.insert("/w/app".into());
+    assert_snapshot("grouped_folded", &draw(&v, &screens(), 140, 22));
+}

@@ -20,6 +20,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, IsTerminal, Read, Write};
 use std::panic;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
@@ -28,9 +29,10 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, Confirm, Control,
-    InputSplitter, LayoutPrefs, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
-    PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir, ViewState,
+    cursor, enter_mouse, layout, mode_changes, probe, render, reset_modes, Action, Cmd, Confirm,
+    Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit,
+    PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir,
+    ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -40,6 +42,8 @@ use tmgr_runner::wire::now_ms;
 const TICK: Duration = Duration::from_millis(16);
 const FRAME: Duration = Duration::from_millis(33);
 const LIST_EVERY: Duration = Duration::from_secs(1);
+const PROBE_EVERY: Duration = Duration::from_millis(2500);
+const PROBE_RETRY: Duration = Duration::from_millis(250);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
@@ -103,6 +107,7 @@ enum Msg {
     Server(ServerMsg),
     Down(String),
     Sessions(Vec<SessionInfo>),
+    Locs(Vec<(String, Loc)>),
     Created {
         result: std::result::Result<SessionInfo, String>,
         dir: SplitDir,
@@ -190,7 +195,12 @@ struct App {
     last_prefs: Option<LayoutPrefs>,
     scrolled: Option<(String, u32)>,
     notice_until: Option<Instant>,
+    probe_tx: SyncSender<Vec<ProbeJob>>,
+    probe_pending: bool,
+    last_probe: Instant,
 }
+
+type ProbeJob = (String, u32, String);
 
 impl App {
     fn on_msg(&mut self, msg: Msg) -> io::Result<Option<Exit>> {
@@ -199,6 +209,12 @@ impl App {
             Msg::StdinClosed => return Ok(Some(Exit::Detached)),
             Msg::Down(why) => return Ok(Some(Exit::Lost(why))),
             Msg::Sessions(list) => self.on_sessions(&list),
+            Msg::Locs(found) => {
+                self.probe_pending = false;
+                if self.view.set_locs(self.area(), found) {
+                    self.dirty = true;
+                }
+            }
             Msg::Created {
                 result,
                 dir,
@@ -258,10 +274,44 @@ impl App {
         }
         let before = self.view.panes().to_vec();
         self.view.sessions_changed(self.area(), new);
+        let fresh: Vec<(String, Loc)> = list
+            .iter()
+            .filter(|s| !s.cwd.is_empty() && !self.view.locs.contains_key(&s.id))
+            .map(|s| (s.id.clone(), probe(Path::new(&s.cwd))))
+            .collect();
+        self.view.set_locs(self.area(), fresh);
         if self.view.panes() != before {
             self.watched = None;
         }
         self.dirty = true;
+    }
+
+    fn probe_places(&mut self) {
+        if self.probe_pending || !self.view.sidebar_shown() {
+            return;
+        }
+        let jobs: Vec<ProbeJob> = self
+            .view
+            .visible_sessions(self.area())
+            .into_iter()
+            .filter_map(|id| {
+                let row = self.view.sessions.iter().find(|r| r.id == id)?;
+                let known = self.view.locs.contains_key(&id);
+                if row.exited() && known {
+                    return None;
+                }
+                let (start, pid) = self.starts.get(&id).cloned().unwrap_or_default();
+                let pid = if row.exited() { 0 } else { pid };
+                Some((id, pid, start))
+            })
+            .collect();
+        let missing = jobs.iter().any(|(id, ..)| !self.view.locs.contains_key(id));
+        let every = if missing { PROBE_RETRY } else { PROBE_EVERY };
+        if jobs.is_empty() || self.last_probe.elapsed() < every {
+            return;
+        }
+        self.last_probe = Instant::now();
+        self.probe_pending = self.probe_tx.try_send(jobs).is_ok();
     }
 
     fn is_shell(&self, id: &str) -> bool {
@@ -1016,6 +1066,7 @@ impl App {
             self.dirty = true;
         }
         self.reap_shells();
+        self.probe_places();
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
@@ -1151,6 +1202,24 @@ fn event_loop(
     }
 }
 
+fn prober(jobs: mpsc::Receiver<Vec<ProbeJob>>, tx: SyncSender<Msg>) {
+    for batch in jobs {
+        let found = batch
+            .into_iter()
+            .filter_map(|(id, pid, start)| {
+                let live = process_cwd(pid)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .filter(|p| !p.is_empty());
+                let cwd = live.or(Some(start).filter(|s| !s.is_empty()))?;
+                Some((id, probe(Path::new(&cwd))))
+            })
+            .collect();
+        if tx.send(Msg::Locs(found)).is_err() {
+            return;
+        }
+    }
+}
+
 fn poller(
     mut ctl: tmgr_runner::client::Client,
     tx: SyncSender<Msg>,
@@ -1202,6 +1271,14 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         view.apply_prefs(&prefs);
     }
     view.set_initial(initial);
+    view.grouped = true;
+    let seeded = list
+        .iter()
+        .filter(|s| !s.cwd.is_empty())
+        .map(|s| (s.id.clone(), probe(Path::new(&s.cwd))))
+        .collect();
+    let first = ratatui::crossterm::terminal::size().unwrap_or((view.width, 24));
+    view.set_locs(Rect::new(0, 0, first.0, first.1), seeded);
     let (reader, writer) = connect(cfg)?.attach(view.panes()).map_err(rerr)?.split();
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
@@ -1250,6 +1327,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     });
     let _ = ctl.set_timeouts(RPC_TIMEOUT);
     let app_tx = tx.clone();
+    let (probe_tx, probe_rx) = mpsc::sync_channel(1);
+    let probe_out = tx.clone();
+    thread::spawn(move || prober(probe_rx, probe_out));
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -1288,6 +1368,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         last_prefs: None,
         scrolled: None,
         notice_until: None,
+        probe_tx,
+        probe_pending: false,
+        last_probe: Instant::now(),
     };
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
