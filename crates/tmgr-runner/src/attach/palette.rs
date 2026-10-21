@@ -56,6 +56,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::SplitDown => "split horizontal",
         Cmd::NewSession => "create start chat agent",
         Cmd::Questions => "asked pocket answer ignore reply",
+        Cmd::OpenTask => "ticket issue browser desktop chip",
         Cmd::NeedsYou => "attention waiting permission question alert",
         Cmd::Subagents => "agents tasks background peek",
         _ => "",

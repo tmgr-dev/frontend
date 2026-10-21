@@ -143,6 +143,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Jump to a session that needs you",
         true,
     ),
+    def(
+        Cmd::OpenTask,
+        b"t",
+        "t",
+        "Open the focused session's task",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

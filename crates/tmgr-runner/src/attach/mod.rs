@@ -1,5 +1,6 @@
 mod actions;
 mod attention;
+mod chip;
 mod keys;
 mod modes;
 mod mouse;
@@ -20,6 +21,7 @@ mod tests;
 
 pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
+pub use chip::{chip_text, open_urls, TaskChip};
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};

@@ -6134,3 +6134,138 @@ fn snapshot_sidebar_highlights_a_session_that_needs_you() {
     let (buf, _) = (draw(&v, &screens(), 140, 22), 0);
     assert!(buf.contains("dev-server"));
 }
+
+fn chip() -> TaskChip {
+    TaskChip {
+        key: "TM-644".into(),
+        branch: Some("tm-644-open-desktop".into()),
+        started_s: Some(58),
+        workspace: Some("tmgrdev".into()),
+        task_id: Some(644),
+    }
+}
+
+fn with_chip(width: u16) -> ViewState {
+    let mut v = two_pane(width);
+    v.now_s = 100;
+    let mut found = HashMap::new();
+    found.insert("a".to_string(), chip());
+    assert!(v.set_chips(found));
+    v
+}
+
+#[test]
+fn chip_text_shrinks_branch_first_then_the_clock_then_vanishes() {
+    let c = chip();
+    assert_eq!(
+        chip_text(&c, 100, 60).unwrap(),
+        " · TM-644 · tm-644-open-desktop · 0:42"
+    );
+    let mid = chip_text(&c, 100, 30).unwrap();
+    assert!(
+        mid.starts_with(" · TM-644 · tm-6") && mid.ends_with("· 0:42"),
+        "{mid}"
+    );
+    assert_eq!(chip_text(&c, 100, 16).unwrap(), " · TM-644 · 0:42");
+    assert_eq!(chip_text(&c, 100, 9).unwrap(), " · TM-644");
+    assert_eq!(chip_text(&c, 100, 8), None);
+}
+
+#[test]
+fn chip_text_omits_missing_parts() {
+    let mut c = chip();
+    c.branch = None;
+    c.started_s = None;
+    assert_eq!(chip_text(&c, 100, 40).unwrap(), " · TM-644");
+}
+
+#[test]
+fn open_urls_use_the_validated_workspace_and_id_only() {
+    let c = chip();
+    let (desktop, web) = open_urls("https://tmgr.dev/", &c).unwrap();
+    assert_eq!(desktop, "tmgr://open?path=%2Ftmgrdev%2Ftasks%2F644");
+    assert_eq!(web, "https://tmgr.dev/tmgrdev/tasks/644");
+    for bad in ["a b", "x/../y", "", "ws?x=1", "w\\u{1b}"] {
+        let mut c = chip();
+        c.workspace = Some(bad.into());
+        assert_eq!(open_urls("https://tmgr.dev", &c), None, "{bad}");
+    }
+    let mut c = chip();
+    c.task_id = None;
+    assert_eq!(open_urls("https://tmgr.dev", &c), None);
+    c = chip();
+    c.workspace = None;
+    assert_eq!(open_urls("https://tmgr.dev", &c), None);
+}
+
+#[test]
+fn the_wide_header_shows_the_chip_and_a_click_on_it_opens_the_task() {
+    let v = with_chip(140);
+    let text = draw(&v, &screens(), 140, 22);
+    let first = text.lines().next().unwrap();
+    assert!(
+        first.contains("claude · working · TM-644 · tm-644-") && first.contains("· 0:42"),
+        "{first}"
+    );
+    let lay = layout(AREA, &v);
+    let pane = lay.panes.iter().find(|p| p.session == "a").unwrap();
+    let (x, w) = render::header_chip(&v, pane).unwrap();
+    let col = first.chars().take_while(|_| true).collect::<Vec<_>>();
+    let drawn = col
+        .windows(6)
+        .position(|win| win.iter().collect::<String>() == "TM-644")
+        .unwrap();
+    assert_eq!(usize::from(x), drawn);
+    assert_eq!(v.hit(AREA, x, pane.outer.y), Hit::Chip("a".into()));
+    assert_eq!(v.hit(AREA, x + w - 1, pane.outer.y), Hit::Chip("a".into()));
+    assert_ne!(v.hit(AREA, x + w, pane.outer.y), Hit::Chip("a".into()));
+    assert_ne!(v.hit(AREA, x - 1, pane.outer.y), Hit::Chip("a".into()));
+}
+
+#[test]
+fn a_pane_without_a_task_has_no_chip() {
+    let v = with_chip(140);
+    let lay = layout(AREA, &v);
+    let other = lay.panes.iter().find(|p| p.session == "b").unwrap();
+    assert_eq!(render::header_chip(&v, other), None);
+}
+
+#[test]
+fn a_narrow_header_drops_the_chip_before_the_title_and_the_state() {
+    let v = with_chip(90);
+    let text = draw(&v, &screens(), 90, 16);
+    let first = text.lines().next().unwrap();
+    assert!(first.contains("claude · working"), "{first}");
+    let tiny = draw(&v, &screens(), 40, 16);
+    assert!(tiny.lines().next().unwrap().contains("claude"));
+    assert!(!tiny.lines().next().unwrap().contains("tm-644"));
+}
+
+#[test]
+fn the_open_task_key_is_free_and_listed() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1dt"), vec![Action::Cmd(Cmd::OpenTask)]);
+    assert!(ACTIONS.iter().any(|d| d.cmd == Cmd::OpenTask && d.palette));
+}
+
+#[test]
+fn chips_of_vanished_sessions_are_dropped() {
+    let mut v = with_chip(140);
+    let mut found = v.chips.clone();
+    found.insert("ghost".into(), chip());
+    assert!(!v.set_chips(found));
+}
+
+#[test]
+fn snapshot_wide_with_a_task_chip() {
+    let v = with_chip(140);
+    assert_snapshot("task_chip_wide", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn the_chip_coexists_with_the_question_badge_and_activity() {
+    let mut v = with_status(140);
+    v.chips.insert("a".into(), chip());
+    let text = draw(&v, &screens(), 140, 22);
+    assert!(text.lines().next().unwrap().contains("TM-644"), "{text}");
+}

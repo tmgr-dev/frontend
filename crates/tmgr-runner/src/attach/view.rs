@@ -1,3 +1,4 @@
+use super::chip::TaskChip;
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
@@ -141,6 +142,7 @@ pub struct ViewState {
     pub status: HashMap<String, SessionStatus>,
     pub subs_open: HashSet<String>,
     pub needs: HashMap<String, Need>,
+    pub chips: HashMap<String, TaskChip>,
     pub peek: Option<Peek>,
     pub questions: Vec<Entry>,
     pub qmenu: Option<QMenu>,
@@ -359,6 +361,7 @@ impl ViewState {
             status: HashMap::new(),
             subs_open: HashSet::new(),
             needs: HashMap::new(),
+            chips: HashMap::new(),
             peek: None,
             questions: Vec::new(),
             qmenu: None,
@@ -1189,7 +1192,7 @@ impl ViewState {
                     self.toggle_subs(&id);
                 }
             }
-            Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession => {}
+            Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession | Cmd::OpenTask => {}
         }
     }
 
@@ -1498,6 +1501,11 @@ impl ViewState {
                             return Hit::Questions(p.session.clone());
                         }
                     }
+                    if let Some((x, w)) = super::render::header_chip(self, p) {
+                        if col >= x && col < x + w {
+                            return Hit::Chip(p.session.clone());
+                        }
+                    }
                 }
                 let Some(idx) = self.panes.iter().position(|id| *id == p.session) else {
                     return Hit::None;
@@ -1518,6 +1526,7 @@ impl ViewState {
             | Hit::Tab(_)
             | Hit::Questions(_)
             | Hit::Subs(_)
+            | Hit::Chip(_)
             | Hit::Sub(..)
             | Hit::NewSession) => Some(h),
             _ => None,
@@ -1624,6 +1633,12 @@ impl ViewState {
             Hit::Session(id) => {
                 if ev.is_left_press() {
                     self.open(&id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Chip(id) => {
+                if ev.is_left_press() {
+                    out.open_task = Some(id);
                     out.redraw = true;
                 }
             }
@@ -2046,6 +2061,7 @@ pub struct MouseOut {
     pub control: Option<(String, Control)>,
     pub palette: Option<PaletteEntry>,
     pub new_session: bool,
+    pub open_task: Option<String>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
 }
@@ -2058,6 +2074,7 @@ pub enum Hit {
     Tab(u64),
     Questions(String),
     Subs(String),
+    Chip(String),
     Sub(String, String),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },

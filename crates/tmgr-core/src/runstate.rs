@@ -108,7 +108,14 @@ pub fn load_from(path: &Path) -> Runs {
     if file.take(MAX_FILE + 1).read_to_end(&mut buf).is_err() || buf.len() as u64 > MAX_FILE {
         return Runs::default();
     }
-    let Ok(mut runs) = serde_json::from_slice::<Runs>(&buf) else {
+    parse(&buf)
+}
+
+pub fn parse(buf: &[u8]) -> Runs {
+    if buf.len() as u64 > MAX_FILE {
+        return Runs::default();
+    }
+    let Ok(mut runs) = serde_json::from_slice::<Runs>(buf) else {
         return Runs::default();
     };
     if runs.schema != RUNS_SCHEMA {

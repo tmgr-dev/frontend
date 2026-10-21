@@ -1,3 +1,4 @@
+use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_goto::{fork_call, fork_name, goto_call, Found, FORK_PASTE_WAIT};
 use super::attach_new::{
     default_folder, dialog_for, installed_kinds, kind_label, place_session, registers_shell, route,
@@ -31,15 +32,17 @@ use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
+use tmgr_ipc::api::{
+    caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind, TaskRef,
+};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11,
-    probe, render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
-    InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit,
-    PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState, SessionRow,
-    SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, ThemeKind, ViewState,
-    OSC11_QUERY,
+    cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
+    parse_osc11, probe, render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm,
+    Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier,
+    PaletteEdit, PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState,
+    SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
+    ThemeKind, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -55,6 +58,7 @@ const PROBE_RETRY: Duration = Duration::from_millis(250);
 const TITLE_EVERY: Duration = Duration::from_secs(3);
 const QUESTIONS_EVERY: Duration = Duration::from_secs(4);
 const STATUS_EVERY: Duration = Duration::from_secs(1);
+const CHIP_EVERY: Duration = Duration::from_secs(5);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
@@ -121,6 +125,7 @@ enum Msg {
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
     Status(HashMap<String, SessionStatus>),
+    Chips(HashMap<String, TaskChip>),
     Peek {
         session: String,
         sub: String,
@@ -264,6 +269,12 @@ struct App {
     titles_tried: HashSet<String>,
     exit_scanned: HashSet<String>,
     last_title: Instant,
+    chip_tx: SyncSender<Vec<ChipJob>>,
+    chip_pending: bool,
+    last_chip: Instant,
+    session_tasks: HashMap<String, (Option<TaskRef>, u64)>,
+    web_base: String,
+    opener: Box<dyn Opener>,
     signals: SignalTracker,
     signal_cfg: SignalSettings,
     notifier: Box<dyn Notifier>,
@@ -310,6 +321,12 @@ impl App {
             } => {
                 self.peek_pending = false;
                 if self.view.set_peek(&session, &sub, lines) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Chips(found) => {
+                self.chip_pending = false;
+                if self.view.set_chips(found) {
                     self.dirty = true;
                 }
             }
@@ -377,6 +394,10 @@ impl App {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
         }
+        self.session_tasks = list
+            .iter()
+            .map(|s| (s.id.clone(), (s.task, s.created_ms / 1000)))
+            .collect();
         self.agents = list
             .iter()
             .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
@@ -502,6 +523,50 @@ impl App {
                 .join("output.log"),
             exited: row.exited(),
             settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
+        }
+    }
+
+    fn probe_chips(&mut self) {
+        if self.chip_pending || self.last_chip.elapsed() < CHIP_EVERY {
+            return;
+        }
+        self.last_chip = Instant::now();
+        let jobs: Vec<ChipJob> = self
+            .view
+            .sessions
+            .iter()
+            .filter(|r| self.agents.contains_key(&r.id))
+            .map(|r| {
+                let (task, created_s) = self.session_tasks.get(&r.id).copied().unwrap_or((None, 0));
+                ChipJob {
+                    id: r.id.clone(),
+                    task,
+                    branch: self.view.locs.get(&r.id).and_then(|l| l.branch.clone()),
+                    created_s,
+                    sandbox_home: self.cfg.homes.join(&r.id),
+                }
+            })
+            .collect();
+        if jobs.is_empty() && self.view.chips.is_empty() {
+            return;
+        }
+        self.chip_pending = self.chip_tx.try_send(jobs).is_ok();
+    }
+
+    fn open_task(&mut self, id: &str) {
+        let urls = self
+            .view
+            .chip_of(id)
+            .and_then(|chip| open_urls(&self.web_base, chip));
+        match urls {
+            Some((desktop, web)) => {
+                if self.opener.open(&desktop, &web) {
+                    self.notify("opening the task…");
+                } else {
+                    self.notify(&format!("no browser here, open {web}"));
+                }
+            }
+            None => self.notify("no task link for this session"),
         }
     }
 
@@ -1559,6 +1624,9 @@ impl App {
                     if out.new_session {
                         self.open_new_session();
                     }
+                    if let Some(id) = out.open_task {
+                        self.open_task(&id);
+                    }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
                 Action::Cmd(Cmd::Picker) => {
@@ -1602,6 +1670,11 @@ impl App {
                             self.view.focus_nav(self.area(), nav);
                         }
                         Cmd::Resize(nav) => self.view.resize_focused(self.area(), nav),
+                        Cmd::OpenTask => {
+                            if let Some(id) = self.view.focused_session().map(str::to_string) {
+                                self.open_task(&id);
+                            }
+                        }
                         Cmd::Resume => {
                             if let Some(id) = self.view.focused_session().map(str::to_string) {
                                 self.request_resume(&id);
@@ -1662,6 +1735,7 @@ impl App {
         self.reap_shells();
         self.probe_places();
         self.probe_titles();
+        self.probe_chips();
         self.check_signals();
         self.probe_status();
         self.probe_peek();
@@ -1681,11 +1755,12 @@ impl App {
             self.dirty = true;
         }
         if self.view.now_s != now_s
-            && self
+            && (self
                 .view
                 .status
                 .keys()
                 .any(|id| self.view.status_line(id).is_some_and(|l| l.clock.is_some()))
+                || self.view.chips.values().any(|c| c.started_s.is_some()))
         {
             self.dirty = true;
         }
@@ -1950,6 +2025,18 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .map(|c| c.attach)
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
+    let web_base = {
+        let cfg = tmgr_core::config::config_dir()
+            .ok()
+            .and_then(|d| tmgr_core::config::Config::load(&d).ok())
+            .unwrap_or_default();
+        tmgr_core::config::web_base(
+            cfg.server
+                .as_deref()
+                .unwrap_or(tmgr_core::config::DEFAULT_SERVER),
+            cfg.web_url.as_deref(),
+        )
+    };
     if let Some(prefs) = ctl
         .layout_get()
         .ok()
@@ -2044,6 +2131,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             title_out.send(Msg::Titles(found)).is_ok()
         })
     });
+    let (chip_tx, chip_rx) = mpsc::sync_channel(1);
+    let chip_out = tx.clone();
+    thread::spawn(move || {
+        chipper(chip_rx, move |found| {
+            chip_out.send(Msg::Chips(found)).is_ok()
+        })
+    });
     let (peek_tx, peek_rx) = mpsc::sync_channel(1);
     let peek_out = tx.clone();
     thread::spawn(move || {
@@ -2128,6 +2222,12 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         titles_tried: HashSet::new(),
         exit_scanned: HashSet::new(),
         last_title: Instant::now(),
+        chip_tx,
+        chip_pending: false,
+        last_chip: Instant::now() - CHIP_EVERY,
+        session_tasks: HashMap::new(),
+        web_base,
+        opener: Box::new(SystemOpener),
         signals: SignalTracker::new(),
         signal_cfg: signal_settings(&attach_cfg),
         notifier: Box::new(SystemNotifier),

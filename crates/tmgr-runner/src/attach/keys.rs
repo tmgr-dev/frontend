@@ -44,6 +44,7 @@ pub enum Cmd {
     Questions,
     Subagents,
     NeedsYou,
+    OpenTask,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

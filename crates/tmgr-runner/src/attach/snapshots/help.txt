@@ -14,7 +14,7 @@
                         │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
                         │             │ N / P / , / & tab: next / previous / rename / close          │                                     │
                         │             │ g / < / >     group by tab / repo, sidebar width             │                                     │
-                        │             │ r             rename (a tmgr name beats the agent title)     │                                     │
+                        │             │ r / t         rename (tmgr name wins) / open its task        │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
                         │             │ [             scroll back through history                    │                                     │

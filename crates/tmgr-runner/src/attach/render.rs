@@ -544,13 +544,95 @@ fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
     }
 }
 
-fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
+struct HeaderGeo {
+    index: usize,
+    shown: String,
+    state: &'static str,
+    dim_label: bool,
+    spare: usize,
+    scroll: Option<String>,
+}
+
+fn scroll_label(p: &PaneRect, st: &ViewState) -> Option<String> {
+    match (st.scroll, st.focused_session() == Some(p.session.as_str())) {
+        (Some(sc), true) => Some(format!(" · scroll -{}/{}", sc.offset, sc.max)),
+        _ => None,
+    }
+}
+
+fn header_geo(p: &PaneRect, st: &ViewState) -> Option<HeaderGeo> {
     let index = st
         .panes()
         .iter()
         .position(|id| *id == p.session)
         .unwrap_or(0)
         + 1;
+    let scroll = scroll_label(p, st);
+    let row = st.sessions.iter().find(|s| s.id == p.session)?;
+    let agent = st.agent_title(row);
+    let (label, auto) = match agent {
+        Some(t) => (t.text.as_str(), t.auto),
+        None => (row.name.as_str(), false),
+    };
+    let state = state_label(row);
+    let buttons = if p.outer.width >= HEADER_MIN_WIDTH {
+        8
+    } else {
+        0
+    };
+    let fixed = 1
+        + index.to_string().width()
+        + 2
+        + 3
+        + state.width()
+        + scroll.as_ref().map_or(0, |s| s.width())
+        + 1;
+    let badge = st
+        .header_badge(p.outer, &p.session)
+        .map_or(0, |(_, w)| usize::from(w) + 2);
+    let room = usize::from(p.outer.width.saturating_sub(2 + buttons)).saturating_sub(fixed + badge);
+    let shown = if agent.is_some() {
+        clip(label, room)
+    } else {
+        label.to_string()
+    };
+    let spare = room.saturating_sub(shown.width());
+    Some(HeaderGeo {
+        index,
+        shown,
+        state,
+        dim_label: auto,
+        spare,
+        scroll,
+    })
+}
+
+fn header_chip_text(st: &ViewState, p: &PaneRect, geo: &HeaderGeo) -> Option<String> {
+    let chip = st.chip_of(&p.session)?;
+    super::chip::chip_text(chip, st.now_s, geo.spare)
+}
+
+pub(crate) fn header_chip(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
+    let geo = header_geo(p, st)?;
+    let chip = header_chip_text(st, p, &geo)?;
+    let before = 1 + geo.index.to_string().width() + 2 + geo.shown.width() + 3 + geo.state.width();
+    let x = p.outer.x + 1 + u16::try_from(before).ok()? + 3;
+    let w = u16::try_from(chip.width()).ok()?.checked_sub(3)?;
+    Some((x, w))
+}
+
+fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
+    let geo = header_geo(p, st);
+    let index = geo.as_ref().map_or_else(
+        || {
+            st.panes()
+                .iter()
+                .position(|id| *id == p.session)
+                .unwrap_or(0)
+                + 1
+        },
+        |g| g.index,
+    );
     let mut spans = vec![
         text(" ", Style::new()),
         text(
@@ -558,46 +640,19 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             Style::new().add_modifier(Modifier::REVERSED),
         ),
     ];
-    let scroll = match (st.scroll, st.focused_session() == Some(p.session.as_str())) {
-        (Some(sc), true) => Some(format!(" · scroll -{}/{}", sc.offset, sc.max)),
-        _ => None,
-    };
-    match st.sessions.iter().find(|s| s.id == p.session) {
-        Some(row) => {
-            let agent = st.agent_title(row);
-            let (label, auto) = match agent {
-                Some(t) => (t.text.as_str(), t.auto),
-                None => (row.name.as_str(), false),
-            };
-            let state = state_label(row);
-            let buttons = if p.outer.width >= HEADER_MIN_WIDTH {
-                8
-            } else {
-                0
-            };
-            let fixed = 1
-                + index.to_string().width()
-                + 2
-                + 3
-                + state.width()
-                + scroll.as_ref().map_or(0, |s| s.width())
-                + 1;
-            let badge = st
-                .header_badge(p.outer, &p.session)
-                .map_or(0, |(_, w)| usize::from(w) + 2);
-            let room = usize::from(p.outer.width.saturating_sub(2 + buttons))
-                .saturating_sub(fixed + badge);
-            let label_style = if auto { dim() } else { Style::new() };
-            let shown = if agent.is_some() {
-                clip(label, room)
-            } else {
-                label.to_string()
-            };
+    let mut scroll = scroll_label(p, st);
+    match geo {
+        Some(geo) => {
+            let label_style = if geo.dim_label { dim() } else { Style::new() };
             spans.push(text("  ", Style::new()));
-            spans.push(text(&shown, label_style));
-            spans.push(text(&format!(" · {state}"), Style::new()));
-            let spare = room.saturating_sub(shown.width());
-            if let Some(line) = st.status_line(&row.id) {
+            spans.push(text(&geo.shown, label_style));
+            spans.push(text(&format!(" · {}", geo.state), Style::new()));
+            let mut spare = geo.spare;
+            if let Some(chip) = header_chip_text(st, p, &geo) {
+                spare = spare.saturating_sub(chip.width());
+                spans.push(text(&chip, dim()));
+            }
+            if let Some(line) = st.status_line(&p.session) {
                 let clock = line.clock.map(|c| format!(" · {c}")).unwrap_or_default();
                 let head = spare.saturating_sub(clock.width());
                 if head >= 12 {
@@ -606,6 +661,7 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
                     spans.push(text(&clock, dim()));
                 }
             }
+            scroll = geo.scroll;
         }
         None => spans.push(text(&format!("  {}", p.session), Style::new())),
     }
@@ -895,8 +951,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "group by tab / repo, sidebar width",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Rename]),
-        "rename (a tmgr name beats the agent title)",
+        HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask]),
+        "rename (tmgr name wins) / open its task",
     ),
     (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),
     (

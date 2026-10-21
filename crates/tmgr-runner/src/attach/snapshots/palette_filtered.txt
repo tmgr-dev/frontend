@@ -15,10 +15,10 @@
                   │ Make the sidebar wider                              Ctrl-] > │                 │
                   │ Make the sidebar narrower                           Ctrl-] < │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
+                  │ Open the focused session's task                     Ctrl-] t │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ Unanswered questions from the agents                Ctrl-] q │                 │
                   │ Show or hide the focused session's subagents        Ctrl-] u │                 │
-                  │ Jump to a session that needs you                    Ctrl-] ! │                 │
- + New session    ╰──────────────────────────────────────────────────────────────╯─────────────────╯
- tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                         Ctrl-] ? help
+ + New session    │ Jump to a session that needs you                    Ctrl-] ! │─────────────────╯
+ tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
