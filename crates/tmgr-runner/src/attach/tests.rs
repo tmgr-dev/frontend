@@ -5030,4 +5030,330 @@ fn sidebar_border_wins_over_a_pane_line_at_the_shared_column() {
     at(&mut v, 32, sb.right() + 4, header + 5, false);
     assert_eq!(outer(&v, 1).y, before);
     assert!(v.sidebar_width() > sb.width);
+
+mod questions_ui {
+    use super::*;
+    use crate::attach::qmenu::qgeom;
+    use crate::questions::{Entry, Origin, Question, Status};
+
+    const NOW: u64 = 1_000_000;
+
+    fn entry(id: &str, session: &str, text: &str, status: Status, ago_s: u64) -> Entry {
+        Entry {
+            q: Question {
+                id: id.into(),
+                session: session.into(),
+                text: text.into(),
+                asked_s: NOW - ago_s,
+                origin: Origin::Rule,
+                user: "Add Apple Pay to the checkout form".into(),
+                reply: "I added the button.\n\nThe session check is still missing. Should I also gate it behind the feature flag?\nOtherwise it shows for everyone.\n\nDone otherwise.".into(),
+            },
+            status,
+        }
+    }
+
+    fn with_questions(width: u16) -> ViewState {
+        let mut v = two_pane(width);
+        v.now_s = NOW;
+        v.set_questions(vec![
+            entry(
+                "q1",
+                "a",
+                "Should I also gate it behind the feature flag?",
+                Status::Open,
+                720,
+            ),
+            entry(
+                "q2",
+                "a",
+                "Which currency should the button default to?",
+                Status::Open,
+                7200,
+            ),
+            entry("q3", "a", "Keep the old API?", Status::Ignored, 90_000),
+            entry("q4", "b", "Restart the dev server now?", Status::Open, 30),
+            entry("q5", "b", "Already handled?", Status::Answered, 30),
+            entry("q6", "gone", "Orphan?", Status::Open, 30),
+        ]);
+        v
+    }
+
+    #[test]
+    fn counts_only_open_questions_of_known_sessions() {
+        let v = with_questions(140);
+        assert_eq!(v.open_in("a"), 2);
+        assert_eq!(v.open_in("b"), 1);
+        assert_eq!(v.open_total(), 3);
+    }
+
+    #[test]
+    fn snapshot_badges_in_header_sidebar_and_status() {
+        let v = with_questions(140);
+        let text = draw(&v, &screens(), 140, 22);
+        assert!(text.contains("?2"));
+        assert_snapshot("questions_badges", &text);
+    }
+
+    #[test]
+    fn narrow_status_line_carries_the_total() {
+        let v = with_questions(90);
+        let text = draw(&v, &screens(), 90, 22);
+        assert!(text.lines().last().unwrap().contains("?3"), "{text}");
+    }
+
+    #[test]
+    fn no_badge_without_open_questions() {
+        let mut v = with_questions(140);
+        v.set_questions(Vec::new());
+        let text = draw(&v, &screens(), 140, 22);
+        let chars: Vec<char> = text.chars().collect();
+        assert!(
+            !chars
+                .windows(2)
+                .any(|w| w[0] == '?' && w[1].is_ascii_digit()),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn snapshot_menu_for_the_focused_session() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        assert!(v.qmenu.is_some());
+        assert_snapshot("questions_menu", &draw(&v, &screens(), 140, 30));
+    }
+
+    #[test]
+    fn snapshot_menu_with_context() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        v.edit_qmenu(b"c");
+        assert_snapshot("questions_menu_context", &draw(&v, &screens(), 140, 30));
+    }
+
+    #[test]
+    fn snapshot_menu_on_a_narrow_terminal_falls_back_to_keys() {
+        let mut v = with_questions(60);
+        v.open_questions(Some("a".into()));
+        let text = draw(&v, &screens(), 60, 24);
+        assert!(!text.contains("[Answer]"));
+        assert!(text.contains("a answer"));
+        assert_snapshot("questions_menu_narrow", &text);
+    }
+
+    #[test]
+    fn menu_without_a_session_scope_lists_all_with_names() {
+        let mut v = with_questions(140);
+        v.open_questions(None);
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains("claude: Should I also gate"));
+        assert!(text.contains("dev-server: Restart"));
+        assert!(!text.contains("Orphan"));
+    }
+
+    #[test]
+    fn toggle_and_empty_notice() {
+        let mut v = with_questions(140);
+        v.apply(Cmd::Questions);
+        assert!(v.qmenu.is_some());
+        v.apply(Cmd::Questions);
+        assert!(v.qmenu.is_none());
+        v.set_questions(Vec::new());
+        v.apply(Cmd::Questions);
+        assert!(v.qmenu.is_none());
+        assert_eq!(v.notice.as_deref(), Some("no unanswered questions"));
+    }
+
+    #[test]
+    fn keys_move_toggle_context_answer_and_ignore() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        assert_eq!(v.edit_qmenu(b"j"), QEdit::Editing);
+        assert_eq!(v.qmenu.as_ref().unwrap().sel, 1);
+        assert_eq!(v.edit_qmenu(b"\x1b[A"), QEdit::Editing);
+        assert_eq!(v.qmenu.as_ref().unwrap().sel, 0);
+        v.edit_qmenu(b"c");
+        assert!(v.qmenu.as_ref().unwrap().context);
+        v.edit_qmenu(b"\x1b[B");
+        assert!(!v.qmenu.as_ref().unwrap().context);
+        assert_eq!(v.edit_qmenu(b"i"), QEdit::Ignore("q2".into()));
+        assert!(v.qmenu.is_some());
+        assert_eq!(v.edit_qmenu(b"\r"), QEdit::Answer("q2".into()));
+        assert!(v.qmenu.is_none());
+    }
+
+    #[test]
+    fn ignored_tab_restores() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        v.edit_qmenu(b"\t");
+        assert!(v.qmenu.as_ref().unwrap().ignored);
+        assert_eq!(v.edit_qmenu(b"i"), QEdit::Restore("q3".into()));
+        v.set_question_status("q3", Status::Open);
+        assert_eq!(v.open_in("a"), 3);
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(text.contains("Nothing ignored"));
+    }
+
+    #[test]
+    fn escape_and_q_close_the_menu() {
+        for key in [&b"\x1b"[..], b"q"] {
+            let mut v = with_questions(140);
+            v.open_questions(Some("a".into()));
+            assert_eq!(v.edit_qmenu(key), QEdit::Close);
+            assert!(v.qmenu.is_none());
+        }
+    }
+
+    #[test]
+    fn click_on_the_header_badge_opens_the_menu_for_that_session() {
+        let mut v = with_questions(140);
+        let lay = layout(AREA, &v);
+        let pane = lay.panes.iter().find(|p| p.session == "a").unwrap().clone();
+        let (x, _) = v.header_badge(pane.outer, "a").unwrap();
+        v.on_mouse(
+            AREA,
+            ev(0, x, pane.outer.y, false),
+            &mouse_info(MouseMode::default(), 0),
+        );
+        assert_eq!(v.qmenu.as_ref().unwrap().scope.as_deref(), Some("a"));
+    }
+
+    #[test]
+    fn click_on_the_sidebar_badge_opens_the_menu_and_focuses_the_session() {
+        let mut v = with_questions(140);
+        let sb = layout(AREA, &v).sidebar.unwrap();
+        let row = v
+            .sidebar_layout(sb)
+            .rows()
+            .into_iter()
+            .find(|(id, _)| id == "b")
+            .unwrap()
+            .1;
+        let (x, _) = v.sidebar_badge(sb, "b", 2).unwrap();
+        v.on_mouse(
+            AREA,
+            ev(0, x, row, false),
+            &mouse_info(MouseMode::default(), 0),
+        );
+        assert_eq!(v.qmenu.as_ref().unwrap().scope.as_deref(), Some("b"));
+    }
+
+    #[test]
+    fn menu_buttons_answer_ignore_context_and_outside_click() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        let info = mouse_info(MouseMode::default(), 0);
+        let click = |v: &mut ViewState, x: u16, y: u16| {
+            let out = v.on_mouse(AREA, ev(0, x, y, false), &info);
+            v.on_mouse(AREA, ev(0, x, y, true), &info);
+            out
+        };
+        let g = qgeom(AREA, &v).unwrap();
+        let second = &g.rows[1];
+        let find = |b: crate::attach::QButton| {
+            second
+                .buttons
+                .iter()
+                .find(|(k, ..)| *k == b)
+                .map(|(_, x, _)| *x)
+                .unwrap()
+        };
+        let out = click(&mut v, find(crate::attach::QButton::Context), second.y);
+        assert_eq!(out.question, Some(QEdit::Editing));
+        assert!(v.qmenu.as_ref().unwrap().context);
+        let g = qgeom(AREA, &v).unwrap();
+        let second = &g.rows[1];
+        let ignore = second
+            .buttons
+            .iter()
+            .find(|(k, ..)| *k == crate::attach::QButton::Ignore)
+            .unwrap()
+            .1;
+        let out = click(&mut v, ignore, second.y);
+        assert_eq!(out.question, Some(QEdit::Ignore("q2".into())));
+        let answer = second
+            .buttons
+            .iter()
+            .find(|(k, ..)| *k == crate::attach::QButton::Answer)
+            .unwrap()
+            .1;
+        let out = click(&mut v, answer, second.y);
+        assert_eq!(out.question, Some(QEdit::Answer("q2".into())));
+        assert!(v.qmenu.is_none());
+        v.open_questions(Some("a".into()));
+        let out = click(&mut v, 0, 39);
+        assert_eq!(out.question, Some(QEdit::Close));
+        assert!(v.qmenu.is_none());
+    }
+
+    #[test]
+    fn menu_tabs_are_clickable() {
+        let mut v = with_questions(140);
+        v.open_questions(Some("a".into()));
+        let g = qgeom(AREA, &v).unwrap();
+        let (_, x, _) = g.tabs[1];
+        v.on_mouse(
+            AREA,
+            ev(0, x, g.inner.y, false),
+            &mouse_info(MouseMode::default(), 0),
+        );
+        assert!(v.qmenu.as_ref().unwrap().ignored);
+    }
+
+    #[test]
+    fn ctrl_bracket_q_is_the_questions_command_and_is_listed_everywhere() {
+        let mut s = InputSplitter::new();
+        assert_eq!(s.feed(&[0x1d, b'q']), vec![Action::Cmd(Cmd::Questions)]);
+        let mut v = with_questions(140);
+        v.help = true;
+        assert!(draw(&v, &screens(), 140, 40).contains("agent questions"));
+        v.help = false;
+        v.apply(Cmd::Palette);
+        v.palette.as_mut().unwrap().query = "unanswered".into();
+        assert!(v
+            .entries()
+            .iter()
+            .any(|e| e.entry == PaletteEntry::Cmd(Cmd::Questions)));
+    }
+
+    #[test]
+    fn the_cursor_is_hidden_while_the_menu_is_open() {
+        let mut v = with_questions(140);
+        v.focus_pane(0);
+        let lay = layout(AREA, &v);
+        assert!(cursor(&v, &lay, &screens()).is_some());
+        v.open_questions(Some("a".into()));
+        assert!(cursor(&v, &lay, &screens()).is_none());
+    }
+
+    #[test]
+    fn long_questions_and_terminal_controls_stay_inside_the_box() {
+        let mut v = with_questions(140);
+        v.set_questions(vec![entry(
+            "q9",
+            "a",
+            &format!("{}\u{1b}[2J?", "very long ".repeat(40)),
+            Status::Open,
+            5,
+        )]);
+        v.open_questions(Some("a".into()));
+        let text = draw(&v, &screens(), 140, 30);
+        assert!(!text.contains('\u{1b}'));
+        for line in text.lines() {
+            assert!(line.chars().count() <= 140);
+        }
+    }
+
+    #[test]
+    fn tiny_terminals_do_not_panic() {
+        for (w, h) in [(160, 45), (80, 24), (40, 10), (20, 6), (5, 3)] {
+            let mut v = with_questions(w);
+            v.open_questions(Some("a".into()));
+            v.edit_qmenu(b"c");
+            let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+            term.draw(|f| render(f, &v, &Screens::default())).unwrap();
+        }
+    }
 }

@@ -3,9 +3,11 @@ use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
+use super::qmenu::{QEdit, QMenu};
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
+use crate::questions::Entry;
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -134,6 +136,9 @@ pub struct ViewState {
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
     pub titles: HashMap<String, AgentTitle>,
+    pub questions: Vec<Entry>,
+    pub qmenu: Option<QMenu>,
+    pub now_s: u64,
     pub grouped: bool,
     pub(crate) collapsed: HashSet<String>,
     group_order: Vec<String>,
@@ -338,6 +343,9 @@ impl ViewState {
             allow_new: true,
             locs: HashMap::new(),
             titles: HashMap::new(),
+            questions: Vec::new(),
+            qmenu: None,
+            now_s: 0,
             grouped: false,
             collapsed: HashSet::new(),
             group_order: Vec::new(),
@@ -1131,6 +1139,7 @@ impl ViewState {
                     self.grab = None;
                 }
             }
+            Cmd::Questions => self.toggle_questions(),
             Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession => {}
         }
     }
@@ -1401,6 +1410,12 @@ impl ViewState {
                         return Hit::Button(r.id.clone(), slot_control(r, slot, true));
                     }
                 }
+                let off = u16::from(matches!(line, SidebarLine::Session { indent: true, .. })) * 2;
+                if let Some((x, w)) = self.sidebar_badge(sb, &r.id, off) {
+                    if col >= x && col < x + w {
+                        return Hit::Questions(r.id.clone());
+                    }
+                }
                 return Hit::Session(r.id.clone());
             }
         }
@@ -1415,6 +1430,13 @@ impl ViewState {
                                 .find(|s| s.id == p.session)
                                 .map_or(slot, |r| slot_control(r, slot, false));
                             return Hit::Button(p.session.clone(), ctl);
+                        }
+                    }
+                }
+                if row == p.outer.y {
+                    if let Some((x, w)) = self.header_badge(p.outer, &p.session) {
+                        if col >= x && col < x + w {
+                            return Hit::Questions(p.session.clone());
                         }
                     }
                 }
@@ -1435,6 +1457,7 @@ impl ViewState {
             | Hit::Session(_)
             | Hit::Group(_)
             | Hit::Tab(_)
+            | Hit::Questions(_)
             | Hit::NewSession) => Some(h),
             _ => None,
         }
@@ -1467,7 +1490,12 @@ impl ViewState {
         if self.hover_key(area) != before {
             out.redraw = true;
         }
-        if kind == Kind::Move || self.new_session.is_some() || self.palette.is_some() || self.help {
+        if kind == Kind::Move
+            || self.new_session.is_some()
+            || self.palette.is_some()
+            || self.qmenu.is_some()
+            || self.help
+        {
             self.border_drag = None;
             self.split_drag = None;
         }
@@ -1476,6 +1504,9 @@ impl ViewState {
         }
         if self.palette.is_some() {
             return self.palette_mouse(area, ev, out);
+        }
+        if self.qmenu.is_some() {
+            return self.qmenu_mouse(area, ev, out);
         }
         if ev.is_left_press() && self.sidebar_focus.take().is_some() {
             out.redraw = true;
@@ -1573,6 +1604,13 @@ impl ViewState {
                     let before = self.sidebar_items(area);
                     self.toggle_group(&key);
                     self.keep_sidebar_focus(area, &before);
+                    out.redraw = true;
+                }
+            }
+            Hit::Questions(id) => {
+                if ev.is_left_press() {
+                    self.open(&id);
+                    self.open_questions(Some(id));
                     out.redraw = true;
                 }
             }
@@ -1928,6 +1966,7 @@ pub struct MouseOut {
     pub palette: Option<PaletteEntry>,
     pub new_session: bool,
     pub new_edit: Option<NewEdit>,
+    pub question: Option<QEdit>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1936,6 +1975,7 @@ pub enum Hit {
     Session(String),
     Group(String),
     Tab(u64),
+    Questions(String),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,

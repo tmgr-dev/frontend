@@ -1,0 +1,24 @@
+╭ 1  claude · working ─────────────────────────── ?2 ⏸ ■ ✕ ╮
+│● Reading src/checkout/Form.vue                           │
+│I will add an Apple Pay button next to the card form, show│
+│✓ Tests 14 passed                                         │
+│>                                                         │
+│                                                          │
+│                                                          │
+│                                                          │
+╭ Questions · claude ──────────────────────────────────────╮
+│ Open (2)  Ignored (1)                                    │
+│ ▸ Should I also gate it behind the feature flag?    12m  │
+│   Which currency should the button default to?       2h  │
+│                                                          │
+│ a answer · c context · i ignore · Tab list               │
+╰──────────────────────────────────────────────────────────╯
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+ dev-server · waiting · ?3 · Ctrl-] ?

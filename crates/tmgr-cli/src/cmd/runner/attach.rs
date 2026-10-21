@@ -2,6 +2,7 @@ use super::attach_new::{
     default_folder, dialog_for, installed_kinds, kind_label, place_session, registers_shell, route,
     spawn_size, start_session, NewFlow, Route, SpawnErr,
 };
+use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
@@ -33,11 +34,12 @@ use tmgr_runner::attach::{
     cursor, enter_mouse, focus_on, kind_for_background, layout, mode_changes, parse_osc11, probe,
     render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm, Control,
     InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
-    PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir, ThemeKind,
+    PaneInfo, Place, QEdit, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir, ThemeKind,
     ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
+use tmgr_runner::questions::{self, Entry, Status, Store};
 use tmgr_runner::sanitize::sanitize_text;
 use tmgr_runner::wire::now_ms;
 
@@ -47,6 +49,7 @@ const LIST_EVERY: Duration = Duration::from_secs(1);
 const PROBE_EVERY: Duration = Duration::from_millis(2500);
 const PROBE_RETRY: Duration = Duration::from_millis(250);
 const TITLE_EVERY: Duration = Duration::from_secs(3);
+const QUESTIONS_EVERY: Duration = Duration::from_secs(4);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
@@ -112,6 +115,7 @@ enum Msg {
     Sessions(Vec<SessionInfo>),
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
+    Questions(Vec<Entry>),
     Created {
         result: std::result::Result<SessionInfo, String>,
         dir: SplitDir,
@@ -157,6 +161,7 @@ fn attention_target(view: &ViewState) -> Option<&str> {
     if view.sidebar_focus.is_some()
         || view.new_session.is_some()
         || view.palette.is_some()
+        || view.qmenu.is_some()
         || view.confirm.is_some()
         || view.rename.is_some()
         || view.help
@@ -236,6 +241,11 @@ struct App {
     titles_tried: HashSet<String>,
     exit_scanned: HashSet<String>,
     last_title: Instant,
+    question_tx: SyncSender<Vec<QuestionJob>>,
+    question_pending: bool,
+    last_question: Instant,
+    question_exited: HashSet<String>,
+    qstore: Store,
 }
 
 type ProbeJob = (String, u32, String);
@@ -256,6 +266,12 @@ impl App {
             Msg::Titles(found) => {
                 self.title_pending = false;
                 if self.view.set_titles(found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Questions(entries) => {
+                self.question_pending = false;
+                if self.view.set_questions(entries) {
                     self.dirty = true;
                 }
             }
@@ -410,6 +426,94 @@ impl App {
         self.last_title = Instant::now();
         self.titles_tried.extend(jobs.iter().map(|j| j.id.clone()));
         self.title_pending = self.title_tx.try_send(jobs).is_ok();
+    }
+
+    fn probe_questions(&mut self) {
+        if self.question_pending || self.last_question.elapsed() < QUESTIONS_EVERY {
+            return;
+        }
+        self.last_question = Instant::now();
+        self.question_exited
+            .retain(|id| self.view.sessions.iter().any(|r| &r.id == id && r.exited()));
+        let mut jobs = Vec::new();
+        for row in &self.view.sessions {
+            let Some(src) = self.agents.get(&row.id) else {
+                continue;
+            };
+            if row.exited() && !self.question_exited.insert(row.id.clone()) {
+                continue;
+            }
+            jobs.push(QuestionJob {
+                id: row.id.clone(),
+                src: src.clone(),
+                pid: src.pid,
+                sandbox_home: self.cfg.homes.join(&row.id),
+                log: self
+                    .cfg
+                    .dir
+                    .join("sessions")
+                    .join(&row.id)
+                    .join("output.log"),
+                exited: row.exited(),
+                settled: !matches!(row.state.kind, StateKind::Working | StateKind::Starting),
+            });
+        }
+        self.question_pending = self.question_tx.try_send(jobs).is_ok();
+    }
+
+    fn questions_input(&mut self, data: &[u8]) {
+        self.dirty = true;
+        let edit = self.view.edit_qmenu(data);
+        self.question_edit(edit);
+    }
+
+    fn question_edit(&mut self, edit: QEdit) {
+        self.dirty = true;
+        let now_s = now_ms() / 1000;
+        match edit {
+            QEdit::Editing | QEdit::Close => {}
+            QEdit::Answer(id) => {
+                if let Err(e) = self.answer_question(&id, now_s) {
+                    self.notify(&e.to_string());
+                }
+            }
+            QEdit::Ignore(id) => self.mark_question(&id, Status::Ignored, now_s),
+            QEdit::Restore(id) => self.mark_question(&id, Status::Open, now_s),
+        }
+    }
+
+    fn mark_question(&mut self, id: &str, status: Status, now_s: u64) {
+        match self.qstore.mark(id, status, now_s) {
+            Ok(()) => self.view.set_question_status(id, status),
+            Err(e) => self.notify(&format!("cannot save: {e}")),
+        }
+    }
+
+    fn answer_question(&mut self, id: &str, now_s: u64) -> io::Result<()> {
+        let Some(entry) = self.view.question(id).cloned() else {
+            return Ok(());
+        };
+        let session = entry.q.session.clone();
+        if !self
+            .view
+            .sessions
+            .iter()
+            .any(|r| r.id == session && !r.exited())
+        {
+            self.notify("the session is not running, resume it first");
+            return Ok(());
+        }
+        self.view.open(&session);
+        let text = questions::paste_text(&entry.q, now_s);
+        let body = if self.bracketed(&session) {
+            format!("\x1b[200~{text}\x1b[201~")
+        } else {
+            text.replace('\n', " ")
+        };
+        self.send_to(&session, body.as_bytes())?;
+        self.mark_question(id, Status::Answered, now_s);
+        self.notify("pasted, type your answer and press Enter");
+        Ok(())
     }
 
     fn is_shell(&self, id: &str) -> bool {
@@ -620,6 +724,7 @@ impl App {
             (Route::Dialog, Action::Drop(data) | Action::Paste { data, .. }) => {
                 self.view.insert_new_session_text(&data);
             }
+            (Route::Questions, Action::Forward(data)) => self.questions_input(&data),
             (Route::Sidebar, Action::Forward(data)) => {
                 let area = self.area();
                 let edit = self.view.edit_sidebar(area, &data);
@@ -1087,6 +1192,9 @@ impl App {
                     if let Some(NewEdit::Submit(req)) = out.new_edit {
                         self.begin_spawn(before, req);
                     }
+                    if let Some(edit) = out.question {
+                        self.question_edit(edit);
+                    }
                     if out.new_session {
                         self.open_new_session();
                     }
@@ -1109,6 +1217,9 @@ impl App {
                     self.view.new_session = None;
                     self.view.sidebar_focus = None;
                     if self.view.palette.take().is_some() && cmd == Cmd::Palette {
+                        continue;
+                    }
+                    if self.view.qmenu.take().is_some() && cmd == Cmd::Questions {
                         continue;
                     }
                     let focused = self.view.focused_session().map(str::to_string);
@@ -1190,6 +1301,12 @@ impl App {
         self.reap_shells();
         self.probe_places();
         self.probe_titles();
+        self.probe_questions();
+        let now_s = now_ms() / 1000;
+        if self.view.now_s / 60 != now_s / 60 && self.view.qmenu.is_some() {
+            self.dirty = true;
+        }
+        self.view.now_s = now_s;
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
@@ -1544,6 +1661,14 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             title_out.send(Msg::Titles(found)).is_ok()
         })
     });
+    let (question_tx, question_rx) = mpsc::sync_channel(1);
+    let question_out = tx.clone();
+    let question_dir = cfg.dir.clone();
+    thread::spawn(move || {
+        questioner(question_rx, question_dir, claude_binary(), move |found| {
+            question_out.send(Msg::Questions(found)).is_ok()
+        })
+    });
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -1598,6 +1723,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         titles_tried: HashSet::new(),
         exit_scanned: HashSet::new(),
         last_title: Instant::now(),
+        question_tx,
+        question_pending: false,
+        last_question: Instant::now() - QUESTIONS_EVERY,
+        question_exited: HashSet::new(),
+        qstore: Store::new(&cfg.dir),
     };
     let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);

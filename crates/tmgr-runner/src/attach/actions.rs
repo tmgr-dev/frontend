@@ -122,6 +122,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Scroll back through history",
         true,
     ),
+    def(
+        Cmd::Questions,
+        b"q",
+        "q",
+        "Unanswered questions from the agents",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

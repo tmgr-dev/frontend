@@ -73,7 +73,7 @@ impl Scanner {
     }
 
     fn scan_one(&mut self, src: &SessionSrc, now_s: u64, budget: &mut usize) -> bool {
-        let Some(path) = transcript(src) else {
+        let Some(path) = transcript_path(src) else {
             return false;
         };
         let mut file = self.store.load(&src.id);
@@ -169,7 +169,7 @@ impl Scanner {
     }
 }
 
-fn transcript(src: &SessionSrc) -> Option<PathBuf> {
+pub fn transcript_path(src: &SessionSrc) -> Option<PathBuf> {
     match src.format {
         Format::Claude => {
             let source = Source {

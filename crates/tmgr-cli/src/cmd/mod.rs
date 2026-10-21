@@ -20,6 +20,8 @@ pub mod page;
 pub mod project;
 pub mod prompt;
 #[cfg(feature = "runner")]
+pub mod questions;
+#[cfg(feature = "runner")]
 pub mod queue;
 pub mod routine;
 #[cfg(feature = "runner")]

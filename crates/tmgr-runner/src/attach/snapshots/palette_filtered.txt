@@ -1,10 +1,9 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────╮╭ 2  dev-server · waiting ───────────╮
- ◆ codex     blocked 3m │● Reading src/checkout/Form.vue     ││$ pnpm dev                          │
- ▾ claude         ╭ Command palette ─────────────────────────────────────────────╮ ms              │
-   ● claude workin│ > re                                                         │                 │
-   ◌ dev-server wa│                                                              │                 │
- ✓ tests     exite│ Rename the tab                                      Ctrl-] , │                 │
-                  │ Rename the focused session                          Ctrl-] r │                 │
+ ◆ codex     block╭ Command palette ─────────────────────────────────────────────╮                 │
+ ▾ claude         │ > re                                                         │ ms              │
+   ● claude workin│                                                              │                 │
+   ◌ dev-server wa│ Rename the tab                                      Ctrl-] , │                 │
+ ✓ tests     exite│ Rename the focused session                          Ctrl-] r │                 │
                   │ Resume the focused session                  Ctrl-] Enter / R │                 │
                   │ Previous tab                                        Ctrl-] P │                 │
                   │ Previous session                                    Ctrl-] p │                 │
@@ -19,6 +18,7 @@
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
+                  │ Unanswered questions from the agents                Ctrl-] q │                 │
                   ╰──────────────────────────────────────────────────────────────╯                 │
  + New session          ╰────────────────────────────────────╯╰────────────────────────────────────╯
  tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                         Ctrl-] ? help

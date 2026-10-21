@@ -1,6 +1,7 @@
 pub(crate) mod allow;
 mod attach;
 mod attach_new;
+mod attach_questions;
 mod attach_shell;
 mod attach_title;
 pub(crate) mod bind;

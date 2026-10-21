@@ -46,6 +46,9 @@ pub enum Command {
     /// Time you spent in `tmgr attach`: totals, idle cap and sending to tasks
     #[cfg(feature = "runner")]
     Time(crate::cmd::time::TimeArgs),
+    /// Unanswered questions the agents asked in `tmgr attach` sessions
+    #[cfg(feature = "runner")]
+    Questions(crate::cmd::questions::QuestionsArgs),
     /// Print version, commit and build target
     Version,
     /// Sign in with a device code

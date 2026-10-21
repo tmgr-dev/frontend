@@ -41,6 +41,7 @@ pub enum Cmd {
     PrevTab,
     RenameTab,
     CloseTab,
+    Questions,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

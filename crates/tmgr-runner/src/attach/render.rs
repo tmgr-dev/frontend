@@ -5,6 +5,7 @@ use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
 use super::place::{fit, tail2};
+use super::qmenu::{badge_text, draw_qmenu};
 use super::theme::{colors, with_theme};
 use super::title::{age_label, clip};
 use super::tree::Nav;
@@ -120,6 +121,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.palette.is_some() {
         draw_palette(buf, area, st);
     }
+    if st.qmenu.is_some() {
+        draw_qmenu(buf, area, st);
+    }
     draw_new_session(buf, area, st);
 }
 
@@ -221,6 +225,18 @@ fn draw_session_row(
     } else {
         Style::new()
     };
+    let badge = st.sidebar_badge(area, &row.id, off);
+    let shift = badge.map_or(0, |(_, w)| w + 1);
+    if let Some((bx, bw)) = badge {
+        put(
+            buf,
+            bx,
+            y,
+            &badge_text(st.open_in(&row.id)),
+            Style::new().fg(colors().warn).add_modifier(Modifier::BOLD),
+            bw,
+        );
+    }
     let hovered = st
         .pointer
         .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
@@ -229,11 +245,11 @@ fn draw_session_row(
         let name_end = stop_x.saturating_sub(1);
         put(
             buf,
-            area.x + 3 + off,
+            area.x + 3 + off + shift,
             y,
             label,
             name_style,
-            name_end.saturating_sub(area.x + 3 + off),
+            name_end.saturating_sub(area.x + 3 + off + shift),
         );
         for slot in [Control::Stop, Control::Close] {
             let ctl = slot_control(row, slot, true);
@@ -243,7 +259,7 @@ fn draw_session_row(
             }
         }
     } else {
-        let name_x = area.x + 3 + off;
+        let name_x = area.x + 3 + off + shift;
         let avail = usize::from(area.right().saturating_sub(name_x + 1));
         let keep = label.width().min(MIN_NAME_W) + 1;
         let room = avail.saturating_sub(keep);
@@ -399,7 +415,7 @@ fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested: b
     put(buf, x, y, &text, dim(), room);
 }
 
-fn button_style(hover: bool, enabled: bool) -> Style {
+pub(crate) fn button_style(hover: bool, enabled: bool) -> Style {
     match (hover, enabled) {
         (true, true) => Style::new()
             .fg(colors().strong)
@@ -424,6 +440,18 @@ fn draw_header_buttons(buf: &mut Buffer, p: &PaneRect, st: &ViewState) {
     };
     if let Some(x0) = header_button(p.outer, Control::Interrupt) {
         buf.set_string(x0 - 1, p.outer.y, "       ", Style::new());
+    }
+    if let Some((x, w)) = st.header_badge(p.outer, &p.session) {
+        let style = Style::new().fg(colors().warn).add_modifier(Modifier::BOLD);
+        put(buf, x - 1, p.outer.y, " ", Style::new(), 1);
+        put(
+            buf,
+            x,
+            p.outer.y,
+            &badge_text(st.open_in(&p.session)),
+            style,
+            w,
+        );
     }
     for slot in [Control::Interrupt, Control::Stop, Control::Close] {
         let Some(x) = header_button(p.outer, slot) else {
@@ -478,7 +506,11 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
                 + state.width()
                 + scroll.as_ref().map_or(0, |s| s.width())
                 + 1;
-            let room = usize::from(p.outer.width.saturating_sub(2 + buttons)).saturating_sub(fixed);
+            let badge = st
+                .header_badge(p.outer, &p.session)
+                .map_or(0, |(_, w)| usize::from(w) + 2);
+            let room = usize::from(p.outer.width.saturating_sub(2 + buttons))
+                .saturating_sub(fixed + badge);
             let label_style = if auto { dim() } else { Style::new() };
             let shown = if agent.is_some() {
                 clip(label, room)
@@ -570,7 +602,7 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         let w = query_tail(&p.query, query_avail(inner)).width() as u16;
         return Some(((inner.x + 2 + w).min(inner.right() - 1), inner.y));
     }
-    if st.scroll.is_some() || st.help || st.sidebar_focus.is_some() {
+    if st.scroll.is_some() || st.help || st.sidebar_focus.is_some() || st.qmenu.is_some() {
         return None;
     }
     let id = st.focused_session()?;
@@ -621,6 +653,11 @@ fn counts(st: &ViewState) -> Vec<Span<'static>> {
         }
         spans.push(text(&format!("{glyph} {count}"), Style::new().fg(color)));
     }
+    let asked = st.open_total();
+    if asked > 0 {
+        spans.push(text(" ", Style::new()));
+        spans.push(text(&badge_text(asked), Style::new().fg(colors().warn)));
+    }
     spans
 }
 
@@ -651,6 +688,13 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         match &note {
             Some(n) => spans.push(text(n, Style::new().fg(colors().warn))),
             None => spans.push(text(&focused, Style::new())),
+        }
+        if st.open_total() > 0 {
+            spans.push(sep());
+            spans.push(text(
+                &badge_text(st.open_total()),
+                Style::new().fg(colors().warn),
+            ));
         }
         spans.push(sep());
         spans.push(text("Ctrl-] ?", dim()));
@@ -762,7 +806,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         HelpKey::Cmds(&[Cmd::ScrollMode]),
         "scroll back through history",
     ),
-    (HelpKey::Cmds(&[Cmd::Help]), "this help"),
+    (
+        HelpKey::Cmds(&[Cmd::Questions, Cmd::Help]),
+        "agent questions (or click ?N) / this help",
+    ),
     (
         HelpKey::Lit("Ctrl-]"),
         "send a literal Ctrl-] to the session",

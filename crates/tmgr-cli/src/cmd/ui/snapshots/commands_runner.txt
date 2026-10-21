@@ -33,6 +33,10 @@ rename | Agents | session, name
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds
+questions | Agents | session, status
+questions answer | Agents | id
+questions ignore | Agents | id
+questions haiku | Agents | state
 version | Other | -
 login | Account | scopes, with_token, label, no_browser
 logout | Account | -

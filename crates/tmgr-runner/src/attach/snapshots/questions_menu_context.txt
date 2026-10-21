@@ -1,0 +1,30 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ───────────────────────── ?2 ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ───────────────────── ?1 ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● ?2 claude wor… 18m │✓ Tests 14 passed                                       ││                                                        │
+   ◌ ?1 dev-server  12m │>                                                       ││                                                        │
+ ✓ tests     exited 52m │                                                        ││                                                        │
+                        │       ╭ Questions · claude ──────────────────────────────────────────────────────╮                               │
+                        │       │ Open (2)  Ignored (1)                                                    │                               │
+                        │       │ ▸ Should I also gate it behind the fea… 12m  [Context] [Answer] [Ignore] │                               │
+                        │       │     You: Add Apple Pay to the checkout form                              │                               │
+                        │       │                                                                          │                               │
+                        │       │     Agent:                                                               │                               │
+                        │       │     I added the button.                                                  │                               │
+                        │       │                                                                          │                               │
+                        │       │     The session check is still missing. Should I also gate it behind the │                               │
+                        │       │     feature flag?                                                        │                               │
+                        │       │     Otherwise it shows for everyone.                                     │                               │
+                        │       │                                                                          │                               │
+                        │       │     …                                                                    │                               │
+                        │       │   Which currency should the button defa… 2h  [Context] [Answer] [Ignore] │                               │
+                        │       │                                                                          │                               │
+                        │       │ Up/Down select · a answer · c context · i ignore · Tab list · Esc close  │                               │
+                        │       ╰──────────────────────────────────────────────────────────────────────────╯                               │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1 ?3                                                              Ctrl-] ? help
