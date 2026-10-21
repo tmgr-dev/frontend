@@ -1,4 +1,5 @@
 import store from '@/store';
+import { isTransientLayerOpen } from '@/tours/a11y';
 
 type ModalCloseCallback = (options: { hasUnderlying: boolean }) => void;
 
@@ -19,6 +20,10 @@ function handleGlobalEscape(e: KeyboardEvent) {
 	// text); the next Esc, with focus elsewhere, closes the modal.
 	const target = e.target as HTMLTextAreaElement | null;
 	if (target?.dataset?.escBlur !== undefined && target.value) return;
+
+	// An open menu or listbox closes on this Esc itself; returning before the debounce lets the
+	// next Esc close the modal right away.
+	if (isTransientLayerOpen()) return;
 
 	const now = Date.now();
 	if (now - lastCloseTimestamp < DEBOUNCE_MS) return;
