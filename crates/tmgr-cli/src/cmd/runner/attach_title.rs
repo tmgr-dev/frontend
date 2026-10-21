@@ -6,6 +6,8 @@ use tmgr_runner::attach::{locate, AgentTitle, Format, Source, TitleScan};
 use tmgr_runner::resume::id_from_log;
 use tmgr_runner::sanitize::sanitize_text;
 
+const MAX_SCANS: usize = 64;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct AgentSrc {
     pub profile: String,
@@ -50,17 +52,15 @@ pub(super) fn titler(
     jobs: Receiver<Vec<TitleJob>>,
     mut send: impl FnMut(Vec<(String, Option<AgentTitle>)>) -> bool,
 ) {
-    let real_home = std::env::var_os("HOME").map(PathBuf::from);
     let mut scans: HashMap<String, TitleScan> = HashMap::new();
     for batch in jobs {
-        let keep: HashSet<&str> = batch.iter().map(|j| j.id.as_str()).collect();
-        scans.retain(|id, _| keep.contains(id.as_str()));
+        if scans.len() > MAX_SCANS {
+            let keep: HashSet<&str> = batch.iter().map(|j| j.id.as_str()).collect();
+            scans.retain(|id, _| keep.contains(id.as_str()));
+        }
         let found = batch
             .iter()
-            .map(|job| {
-                let title = title_for(job, real_home.as_deref(), &mut scans);
-                (job.id.clone(), title)
-            })
+            .map(|job| (job.id.clone(), title_for(job, &mut scans)))
             .collect();
         if !send(found) {
             return;
@@ -68,41 +68,40 @@ pub(super) fn titler(
     }
 }
 
-fn title_for(
-    job: &TitleJob,
-    real_home: Option<&Path>,
-    scans: &mut HashMap<String, TitleScan>,
-) -> Option<AgentTitle> {
-    let sandboxed = job.sandbox_home.is_dir();
-    let home = if sandboxed {
-        job.sandbox_home.as_path()
-    } else {
-        real_home?
-    };
+fn title_for(job: &TitleJob, scans: &mut HashMap<String, TitleScan>) -> Option<AgentTitle> {
+    let home = job.sandbox_home.as_path();
+    if !std::fs::symlink_metadata(home).is_ok_and(|m| m.is_dir()) {
+        scans.remove(&job.id);
+        return None;
+    }
+    let exit_id = (job.pid == 0)
+        .then(|| id_from_log(&job.log, &job.src.profile))
+        .flatten();
     let mut source = Source {
         home,
-        sandboxed,
         format: job.src.format,
         cwd: &job.src.cwd,
         pid: job.pid,
-        log_id: None,
+        log_id: exit_id.as_deref(),
     };
     let mut found = locate(&source);
     let log_id;
-    if found.is_none() {
+    if found.is_none() && exit_id.is_none() {
         log_id = id_from_log(&job.log, &job.src.profile);
         source.log_id = log_id.as_deref();
         found = locate(&source);
     }
     let Some((path, id)) = found else {
-        scans.remove(&job.id);
-        return None;
+        return scans.get_mut(&job.id).and_then(|scan| {
+            scan.poll();
+            scan.title(&job.src.default_name)
+        });
     };
-    let scan = scans
-        .entry(job.id.clone())
-        .or_insert_with(|| TitleScan::new(job.src.format, path.clone(), id.clone()));
+    let scan = scans.entry(job.id.clone()).or_insert_with(|| {
+        TitleScan::new(job.src.format, home.to_path_buf(), path.clone(), id.clone())
+    });
     if !scan.is_for(&path, id.as_deref()) {
-        *scan = TitleScan::new(job.src.format, path, id);
+        *scan = TitleScan::new(job.src.format, home.to_path_buf(), path, id);
     }
     scan.poll();
     scan.title(&job.src.default_name)
@@ -154,7 +153,7 @@ mod tests {
         std::fs::write(&file, "{\"type\":\"ai-title\",\"aiTitle\":\"Auto\"}\n").unwrap();
         let j = job(dir.path(), Format::Claude, "claude-code", "/work/app");
         let mut scans = HashMap::new();
-        let t = title_for(&j, None, &mut scans).unwrap();
+        let t = title_for(&j, &mut scans).unwrap();
         assert_eq!(
             (t.text.as_str(), t.auto, t.base.as_str()),
             ("Auto", true, "claude")
@@ -164,7 +163,7 @@ mod tests {
             "{\"type\":\"ai-title\",\"aiTitle\":\"Auto\"}\n{\"type\":\"custom-title\",\"customTitle\":\"Mine\"}\n",
         )
         .unwrap();
-        let t = title_for(&j, None, &mut scans).unwrap();
+        let t = title_for(&j, &mut scans).unwrap();
         assert_eq!((t.text.as_str(), t.auto), ("Mine", false));
         std::fs::remove_file(home.join(".claude/sessions/4242.json")).unwrap();
         std::fs::write(
@@ -172,7 +171,14 @@ mod tests {
             format!("bye\r\nclaude --resume {U}\r\n"),
         )
         .unwrap();
-        let t = title_for(&j, None, &mut scans).unwrap();
+        std::fs::write(
+            proj.join("zzzzzzzz-5b7d-4e8f-9a1b-3c4d5e6f7a8b.jsonl"),
+            "{\"type\":\"custom-title\",\"customTitle\":\"Newer decoy\"}\n",
+        )
+        .unwrap();
+        let mut gone = job(dir.path(), Format::Claude, "claude-code", "/work/app");
+        gone.pid = 0;
+        let t = title_for(&gone, &mut scans).unwrap();
         assert_eq!(t.text, "Mine");
     }
 
@@ -188,11 +194,15 @@ mod tests {
         .unwrap();
         let j = job(dir.path(), Format::Codex, "codex", "/w");
         let mut scans = HashMap::new();
-        assert_eq!(
-            title_for(&j, None, &mut scans).unwrap().text,
-            "Review the PR"
-        );
+        assert_eq!(title_for(&j, &mut scans).unwrap().text, "Review the PR");
+    }
 
+    #[test]
+    fn a_missing_or_symlinked_sandbox_home_gives_no_title() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut scans = HashMap::new();
+        let j = job(dir.path(), Format::Codex, "codex", "/w");
+        assert!(title_for(&j, &mut scans).is_none());
         let real = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(real.path().join(".codex")).unwrap();
         std::fs::write(
@@ -200,9 +210,9 @@ mod tests {
             "{\"id\":\"a\",\"thread_name\":\"someone else\"}\n",
         )
         .unwrap();
-        let other = tempfile::tempdir().unwrap();
-        let j = job(other.path(), Format::Codex, "codex", "/w");
-        assert!(title_for(&j, Some(real.path()), &mut scans).is_none());
+        std::fs::create_dir_all(dir.path().join("homes")).unwrap();
+        std::os::unix::fs::symlink(real.path(), &j.sandbox_home).unwrap();
+        assert!(title_for(&j, &mut scans).is_none());
     }
 
     #[test]

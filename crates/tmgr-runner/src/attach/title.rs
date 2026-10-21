@@ -2,12 +2,15 @@ use crate::resume::valid_resume_id;
 use serde_json::Value;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::os::fd::{AsRawFd, FromRawFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub const TITLE_MAX: usize = 120;
 const PASS_CAP: u64 = 8 * 1024 * 1024;
+const MAX_PASSES: usize = 4;
 const LINE_CAP: usize = 1024 * 1024;
 const PID_FILE_CAP: u64 = 16 * 1024;
 const DIR_CAP: usize = 512;
@@ -65,11 +68,12 @@ pub fn clean_title(raw: &str) -> String {
             '\n' | '\r' | '\t' => out.push(' '),
             '\u{0}'..='\u{1f}'
             | '\u{7f}'..='\u{9f}'
-            | '\u{200e}'
-            | '\u{200f}'
-            | '\u{202a}'..='\u{202e}'
-            | '\u{2066}'..='\u{2069}'
-            | '\u{feff}' => {}
+            | '\u{61c}'
+            | '\u{200b}'..='\u{200f}'
+            | '\u{2028}'..='\u{202e}'
+            | '\u{2060}'..='\u{2069}'
+            | '\u{feff}'
+            | '\u{e0000}'..='\u{e007f}' => {}
             c => out.push(c),
         }
         if out.len() > TITLE_MAX * 8 {
@@ -107,18 +111,44 @@ pub fn encode_cwd(cwd: &str) -> String {
         .collect()
 }
 
-fn open_regular(path: &Path) -> Option<(File, std::fs::Metadata)> {
-    let file = std::fs::OpenOptions::new()
+fn open_under(root: &Path, path: &Path) -> Option<(File, std::fs::Metadata)> {
+    let names: Vec<&std::ffi::OsStr> = path
+        .strip_prefix(root)
+        .ok()?
+        .components()
+        .map(|c| match c {
+            Component::Normal(n) => Some(n),
+            _ => None,
+        })
+        .collect::<Option<_>>()?;
+    let (last, dirs) = names.split_last()?;
+    let mut dir = std::fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW)
-        .open(path)
+        .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
+        .open(root)
         .ok()?;
+    for name in dirs {
+        dir = openat(&dir, name, libc::O_DIRECTORY)?;
+    }
+    let file = openat(&dir, last, libc::O_NONBLOCK)?;
     let meta = file.metadata().ok()?;
     meta.is_file().then_some((file, meta))
 }
 
-fn read_small(path: &Path, cap: u64) -> Option<Vec<u8>> {
-    let (file, _) = open_regular(path)?;
+fn openat(dir: &File, name: &std::ffi::OsStr, flags: libc::c_int) -> Option<File> {
+    let name = std::ffi::CString::new(name.as_bytes()).ok()?;
+    let fd = unsafe {
+        libc::openat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | flags,
+        )
+    };
+    (fd >= 0).then(|| unsafe { File::from_raw_fd(fd) })
+}
+
+fn read_small(root: &Path, path: &Path, cap: u64) -> Option<Vec<u8>> {
+    let (file, _) = open_under(root, path)?;
     let mut buf = Vec::new();
     file.take(cap).read_to_end(&mut buf).ok()?;
     Some(buf)
@@ -129,6 +159,7 @@ fn pid_file_id(home: &Path, pid: u32) -> Option<String> {
         return None;
     }
     let raw = read_small(
+        home,
         &home
             .join(".claude")
             .join("sessions")
@@ -187,7 +218,6 @@ fn project_dirs(home: &Path, cwd: &str) -> Vec<PathBuf> {
 
 pub struct Source<'a> {
     pub home: &'a Path,
-    pub sandboxed: bool,
     pub format: Format,
     pub cwd: &'a str,
     pub pid: u32,
@@ -202,9 +232,6 @@ pub fn locate(src: &Source<'_>) -> Option<(PathBuf, Option<String>)> {
                 .log_id
                 .filter(|i| valid_resume_id(i))
                 .map(str::to_string);
-            if id.is_none() && !src.sandboxed {
-                return None;
-            }
             Some((src.home.join(".codex").join("session_index.jsonl"), id))
         }
     }
@@ -234,18 +261,16 @@ fn locate_claude(src: &Source<'_>) -> Option<(PathBuf, Option<String>)> {
         }
         return None;
     }
-    if !src.sandboxed {
-        return None;
-    }
     dirs.iter().find_map(|d| newest_jsonl(d)).map(|p| (p, None))
 }
 
 #[derive(Debug)]
 pub struct TitleScan {
     format: Format,
+    root: PathBuf,
     path: PathBuf,
     id: Option<String>,
-    ident: Option<(u64, u64)>,
+    ident: Option<(u64, u64, i64, i64)>,
     offset: u64,
     carry: Vec<u8>,
     skipping: bool,
@@ -254,9 +279,10 @@ pub struct TitleScan {
 }
 
 impl TitleScan {
-    pub fn new(format: Format, path: PathBuf, id: Option<String>) -> TitleScan {
+    pub fn new(format: Format, root: PathBuf, path: PathBuf, id: Option<String>) -> TitleScan {
         TitleScan {
             format,
+            root,
             path,
             id,
             ident: None,
@@ -281,23 +307,35 @@ impl TitleScan {
     }
 
     pub fn poll(&mut self) {
-        let Some((mut file, meta)) = open_regular(&self.path) else {
-            return;
-        };
-        let ident = (meta.dev(), meta.ino());
-        if self.ident != Some(ident) || meta.len() < self.offset {
-            self.reset();
-            self.ident = Some(ident);
+        for _ in 0..MAX_PASSES {
+            if !self.pass() {
+                return;
+            }
         }
+    }
+
+    fn pass(&mut self) -> bool {
+        let Some((mut file, meta)) = open_under(&self.root, &self.path) else {
+            return false;
+        };
+        let ident = (meta.dev(), meta.ino(), meta.mtime(), meta.mtime_nsec());
+        let rewritten = self.ident.is_some_and(|i| (i.0, i.1) != (ident.0, ident.1))
+            || meta.len() < self.offset
+            || (meta.len() == self.offset && self.ident != Some(ident));
+        if rewritten {
+            self.reset();
+        }
+        self.ident = Some(ident);
         if meta.len() == self.offset || file.seek(SeekFrom::Start(self.offset)).is_err() {
-            return;
+            return false;
         }
         let mut buf = Vec::new();
         if file.take(PASS_CAP).read_to_end(&mut buf).is_err() {
-            return;
+            return false;
         }
         self.offset += buf.len() as u64;
         self.feed(&buf);
+        buf.len() as u64 == PASS_CAP
     }
 
     fn feed(&mut self, bytes: &[u8]) {
@@ -417,7 +455,12 @@ mod tests {
     const U: &str = "2f0e1c3a-5b7d-4e8f-9a1b-3c4d5e6f7a8b";
 
     fn scan(format: Format, id: Option<&str>) -> TitleScan {
-        TitleScan::new(format, PathBuf::new(), id.map(str::to_string))
+        TitleScan::new(
+            format,
+            PathBuf::new(),
+            PathBuf::new(),
+            id.map(str::to_string),
+        )
     }
 
     #[test]
@@ -565,10 +608,9 @@ mod tests {
         std::fs::write(path, body).unwrap();
     }
 
-    fn src<'a>(home: &'a Path, cwd: &'a str, pid: u32, sandboxed: bool) -> Source<'a> {
+    fn src<'a>(home: &'a Path, cwd: &'a str, pid: u32) -> Source<'a> {
         Source {
             home,
-            sandboxed,
             format: Format::Claude,
             cwd,
             pid,
@@ -593,7 +635,7 @@ mod tests {
             &h.path().join(".claude/sessions/77.json"),
             &format!("{{\"pid\":77,\"sessionId\":\"{U}\"}}"),
         );
-        let (path, id) = locate(&src(h.path(), cwd, 77, false)).unwrap();
+        let (path, id) = locate(&src(h.path(), cwd, 77)).unwrap();
         assert_eq!(path, want);
         assert_eq!(id.as_deref(), Some(U));
     }
@@ -605,23 +647,22 @@ mod tests {
             &h.path().join(".claude/sessions/77.json"),
             &format!("{{\"pid\":78,\"sessionId\":\"{U}\"}}"),
         );
-        assert!(locate(&src(h.path(), "/w", 77, false)).is_none());
+        assert!(locate(&src(h.path(), "/w", 77)).is_none());
         write(
             &h.path().join(".claude/sessions/77.json"),
             "{\"pid\":77,\"sessionId\":\"../../etc/passwd\"}",
         );
-        assert!(locate(&src(h.path(), "/w", 77, false)).is_none());
+        assert!(locate(&src(h.path(), "/w", 77)).is_none());
     }
 
     #[test]
-    fn locate_guesses_the_newest_transcript_only_in_a_sandbox_home() {
+    fn locate_guesses_the_newest_transcript_without_an_id() {
         let h = home();
         let dir = h.path().join(".claude/projects/-w");
         write(&dir.join("old.jsonl"), "");
         std::thread::sleep(std::time::Duration::from_millis(20));
         write(&dir.join("new.jsonl"), "");
-        assert!(locate(&src(h.path(), "/w", 0, false)).is_none());
-        let (path, id) = locate(&src(h.path(), "/w", 0, true)).unwrap();
+        let (path, id) = locate(&src(h.path(), "/w", 0)).unwrap();
         assert_eq!(path, dir.join("new.jsonl"));
         assert_eq!(id, None);
     }
@@ -633,7 +674,7 @@ mod tests {
             .path()
             .join(format!(".claude/projects/-elsewhere/{U}.jsonl"));
         write(&p, "");
-        let mut s = src(h.path(), "/w", 0, false);
+        let mut s = src(h.path(), "/w", 0);
         s.log_id = Some(U);
         assert_eq!(locate(&s).unwrap().0, p);
         s.log_id = Some("nope");
@@ -641,18 +682,17 @@ mod tests {
     }
 
     #[test]
-    fn locate_codex_needs_an_id_outside_a_sandbox() {
+    fn locate_codex_uses_the_index_and_a_valid_log_id() {
         let h = home();
-        let mut s = src(h.path(), "/w", 0, false);
+        let mut s = src(h.path(), "/w", 0);
         s.format = Format::Codex;
-        assert!(locate(&s).is_none());
-        s.sandboxed = true;
         let (p, id) = locate(&s).unwrap();
         assert_eq!(p, h.path().join(".codex/session_index.jsonl"));
         assert_eq!(id, None);
-        s.sandboxed = false;
         s.log_id = Some(U);
         assert_eq!(locate(&s).unwrap().1.as_deref(), Some(U));
+        s.log_id = Some("../x");
+        assert_eq!(locate(&s).unwrap().1, None);
     }
 
     #[test]
@@ -660,7 +700,7 @@ mod tests {
         let h = home();
         let p = h.path().join("t.jsonl");
         write(&p, "{\"type\":\"ai-title\",\"aiTitle\":\"one\"}\n{\"type\":\"custom-title\",\"customTitle\":\"par");
-        let mut s = TitleScan::new(Format::Claude, p.clone(), None);
+        let mut s = TitleScan::new(Format::Claude, h.path().to_path_buf(), p.clone(), None);
         s.poll();
         assert_eq!(s.title("c").unwrap().text, "one");
         let mut f = std::fs::OpenOptions::new().append(true).open(&p).unwrap();
@@ -690,7 +730,7 @@ mod tests {
         );
         let link = h.path().join("link.jsonl");
         std::os::unix::fs::symlink(&real, &link).unwrap();
-        let mut s = TitleScan::new(Format::Claude, link, None);
+        let mut s = TitleScan::new(Format::Claude, h.path().to_path_buf(), link, None);
         s.poll();
         assert!(s.title("c").is_none());
     }
@@ -701,8 +741,71 @@ mod tests {
         let fifo = h.path().join("f.jsonl");
         let c = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
         assert_eq!(unsafe { libc::mkfifo(c.as_ptr(), 0o600) }, 0);
-        let mut s = TitleScan::new(Format::Claude, fifo, None);
+        let mut s = TitleScan::new(Format::Claude, h.path().to_path_buf(), fifo, None);
         s.poll();
         assert!(s.title("c").is_none());
+    }
+
+    #[test]
+    fn poll_never_follows_a_symlinked_directory_out_of_the_root() {
+        let h = home();
+        let outside = home();
+        write(
+            &outside.path().join("session_index.jsonl"),
+            "{\"id\":\"a\",\"thread_name\":\"host secret\"}\n",
+        );
+        std::os::unix::fs::symlink(outside.path(), h.path().join(".codex")).unwrap();
+        let (path, _) = locate(&Source {
+            home: h.path(),
+            format: Format::Codex,
+            cwd: "/w",
+            pid: 0,
+            log_id: None,
+        })
+        .unwrap();
+        let mut s = TitleScan::new(Format::Codex, h.path().to_path_buf(), path, None);
+        s.poll();
+        assert!(s.title("codex").is_none());
+    }
+
+    #[test]
+    fn poll_rereads_a_same_inode_rewrite_of_equal_length() {
+        let h = home();
+        let p = h.path().join("t.jsonl");
+        write(&p, "{\"type\":\"custom-title\",\"customTitle\":\"aaaa\"}\n");
+        let mut s = TitleScan::new(Format::Claude, h.path().to_path_buf(), p.clone(), None);
+        s.poll();
+        assert_eq!(s.title("c").unwrap().text, "aaaa");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let mut f = std::fs::OpenOptions::new().write(true).open(&p).unwrap();
+        f.write_all(b"{\"type\":\"custom-title\",\"customTitle\":\"bbbb\"}\n")
+            .unwrap();
+        drop(f);
+        s.poll();
+        assert_eq!(s.title("c").unwrap().text, "bbbb");
+    }
+
+    #[test]
+    fn poll_catches_up_over_several_passes() {
+        let h = home();
+        let p = h.path().join("t.jsonl");
+        let filler = format!("{{\"type\":\"user\",\"m\":\"{}\"}}\n", "x".repeat(1000));
+        let mut body = String::from("{\"type\":\"custom-title\",\"customTitle\":\"early\"}\n");
+        while (body.len() as u64) < PASS_CAP * 2 + 100 {
+            body.push_str(&filler);
+        }
+        write(&p, &body);
+        let mut s = TitleScan::new(Format::Claude, h.path().to_path_buf(), p, None);
+        s.poll();
+        assert_eq!(s.offset, body.len() as u64);
+        assert_eq!(s.title("c").unwrap().text, "early");
+    }
+
+    #[test]
+    fn invisible_and_tag_characters_are_stripped() {
+        assert_eq!(
+            clean_title("a\u{200b}b\u{2028}c\u{61c}d\u{2060}e\u{e0041}f"),
+            "abcdef"
+        );
     }
 }

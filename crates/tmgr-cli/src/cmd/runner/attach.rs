@@ -206,6 +206,7 @@ struct App {
     title_tx: SyncSender<Vec<TitleJob>>,
     title_pending: bool,
     titles_tried: HashSet<String>,
+    exit_scanned: HashSet<String>,
     last_title: Instant,
 }
 
@@ -281,6 +282,10 @@ impl App {
             .filter(|s| is_shell_session(&s.argv, &s.name))
             .map(|s| s.id.clone())
             .collect();
+        self.exit_scanned
+            .retain(|id| new.iter().any(|r| &r.id == id && r.exited()));
+        self.titles_tried
+            .retain(|id| new.iter().any(|r| &r.id == id));
         self.removing.retain(|id| new.iter().any(|r| &r.id == id));
         self.stopped.retain(|id| new.iter().any(|r| &r.id == id));
         if new == self.view.sessions {
@@ -357,7 +362,7 @@ impl App {
                 if row.name != src.default_name {
                     return None;
                 }
-                if row.exited() && self.view.titles.contains_key(&id) {
+                if row.exited() && !self.exit_scanned.insert(id.clone()) {
                     return None;
                 }
                 Some(TitleJob {
@@ -1452,6 +1457,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         title_tx,
         title_pending: false,
         titles_tried: HashSet::new(),
+        exit_scanned: HashSet::new(),
         last_title: Instant::now(),
     };
     let exit = event_loop(&mut app, &rx, &mut terminal);

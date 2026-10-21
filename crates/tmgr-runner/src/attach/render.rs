@@ -26,7 +26,7 @@ pub trait ScreenSource {
     fn snapshot(&self, session: &str) -> Option<&Snapshot>;
 }
 
-const MIN_NAME_W: usize = 8;
+const MIN_NAME_W: usize = 10;
 const ACCENT: Color = Color::LightRed;
 const SIDEBAR_BG: Color = Color::Indexed(237);
 
@@ -386,9 +386,14 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             Style::new().add_modifier(Modifier::REVERSED),
         ),
     ];
+    let scroll = match (st.scroll, st.focused_session() == Some(p.session.as_str())) {
+        (Some(sc), true) => Some(format!(" · scroll -{}/{}", sc.offset, sc.max)),
+        _ => None,
+    };
     match st.sessions.iter().find(|s| s.id == p.session) {
         Some(row) => {
-            let (label, auto) = match st.agent_title(row) {
+            let agent = st.agent_title(row);
+            let (label, auto) = match agent {
                 Some(t) => (t.text.as_str(), t.auto),
                 None => (row.name.as_str(), false),
             };
@@ -398,20 +403,28 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             } else {
                 0
             };
-            let fixed = 1 + index.to_string().width() + 2 + 3 + state.width() + 1;
+            let fixed = 1
+                + index.to_string().width()
+                + 2
+                + 3
+                + state.width()
+                + scroll.as_ref().map_or(0, |s| s.width())
+                + 1;
             let room = usize::from(p.outer.width.saturating_sub(2 + buttons)).saturating_sub(fixed);
             let label_style = if auto { dim() } else { Style::new() };
+            let shown = if agent.is_some() {
+                clip(label, room)
+            } else {
+                label.to_string()
+            };
             spans.push(text("  ", Style::new()));
-            spans.push(text(&clip(label, room), label_style));
+            spans.push(text(&shown, label_style));
             spans.push(text(&format!(" · {state}"), Style::new()));
         }
         None => spans.push(text(&format!("  {}", p.session), Style::new())),
     }
-    if let (Some(sc), true) = (st.scroll, st.focused_session() == Some(p.session.as_str())) {
-        spans.push(text(
-            &format!(" · scroll -{}/{}", sc.offset, sc.max),
-            Style::new().fg(Color::Yellow),
-        ));
+    if let Some(scroll) = scroll {
+        spans.push(text(&scroll, Style::new().fg(Color::Yellow)));
     }
     spans.push(text(" ", Style::new()));
     Line::from(spans)

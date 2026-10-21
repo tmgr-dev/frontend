@@ -1,7 +1,7 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────────── ⏸ ■ ✕ ╮
  ◆ codex     blocked 3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
  ● claude   working 18m │I will add an│                                                              │ ms                                  │
- ◌ dev-serv waiting 12m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
+ ◌ dev-server wait… 12m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
  ✓ tests     exited 52m │>            │ d             detach, sessions keep running                  │                                     │
                         │             │ n / p         next / previous session                        │                                     │
                         │             │ w             session picker                                 │                                     │

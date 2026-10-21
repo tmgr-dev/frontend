@@ -1,7 +1,7 @@
  SESSIONS      Ctrl-] b ╭ 1  tests · exited ──────────────────────────────────────────────────────────────────────────────────────── ▶ ■ ✕ ╮
  ◆ codex     blocked 3m │                                                                                                                  │
  ● claude   working 18m │                                                                                                                  │
- ◌ dev-serv waiting 12m │                                                   connecting…                                                    │
+ ◌ dev-server wait… 12m │                                                   connecting…                                                    │
  ✓ tests     exited 52m │                                                                                                                  │
                         │                                                                                                                  │
  + New session          ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

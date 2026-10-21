@@ -1,7 +1,7 @@
  SESSIONS      Ctrl-] b ╭ 1  codex · blocked ─────────────────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
  ◆ codex     blocked 3m │                                                                                              │
  ● claude   working 18m │                                                                                              │
- ◌ dev-serv waiting 12m │                                                                                              │
+ ◌ dev-server wait… 12m │                                                                                              │
  ✓ tests     exited 52m │                                                                                              │
                         │                                         connecting…                                          │
                         │                                                                                              │

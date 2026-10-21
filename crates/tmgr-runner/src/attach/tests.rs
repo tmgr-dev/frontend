@@ -3547,9 +3547,9 @@ fn agent_title_replaces_the_name_in_sidebar_and_pane_header() {
         "{}",
         lines[0]
     );
-    assert!(lines[2].contains("Fix che"), "{}", lines[2]);
+    assert!(lines[2].contains("Fix check…"), "{}", lines[2]);
     assert!(!lines[2].contains("claude"), "{}", lines[2]);
-    assert!(lines[2].contains("working 18m"), "{}", lines[2]);
+    assert!(lines[2].contains("work… 18m"), "{}", lines[2]);
     assert!(out.contains("tmgr runner · local · dev-server · waiting"));
 }
 
@@ -3625,9 +3625,24 @@ fn sidebar_keeps_the_age_and_a_readable_name_at_24_columns() {
         .extend([titled("a", "Refactor the billing module", false, "claude")]);
     let (out, _) = grab(&v, 100, 6);
     let line = out.lines().nth(1).unwrap();
-    assert!(line.starts_with(" ● Refacto… working 15s"), "{line}");
+    assert!(line.starts_with(" ● Refactor … work… 15s"), "{line}");
     v.sessions[0].age = "15s".into();
     v.sessions[0].state.kind = StateKind::Blocked;
     let (out, _) = grab(&v, 100, 6);
-    assert!(out.lines().nth(1).unwrap().contains("blocked 15s"));
+    assert!(out.lines().nth(1).unwrap().contains("bloc… 15s"));
+}
+
+#[test]
+fn scroll_indicator_keeps_the_header_buttons_clear_of_a_long_title() {
+    let mut v = two_pane(140);
+    let long = "Codex Companion Task: Adversarial security review read-only do NOT modify files";
+    v.titles.extend([titled("b", long, false, "dev-server")]);
+    v.scroll = Some(ScrollState {
+        offset: 120,
+        max: 9000,
+    });
+    let (out, _) = grab(&v, 140, 12);
+    let head = out.lines().next().unwrap();
+    assert!(head.contains("… · waiting · scroll -120/9000 ─"), "{head}");
+    assert!(head.contains("⏸ ■ ✕ ╮"), "{head}");
 }

@@ -1,7 +1,7 @@
  SESSIONS      Ctr╭ Keys ────────────────────────────────────────────────────────╮iting ───────────╮
  ◆ codex     block│ Press Ctrl-] first, then:                                    │                 │
  ● claude   workin│                                                              │ ms              │
- ◌ dev-serv waitin│ :             command palette: actions and sessions          │                 │
+ ◌ dev-server wait│ :             command palette: actions and sessions          │                 │
  ✓ tests     exite│ d             detach, sessions keep running                  │                 │
                   │ n / p         next / previous session                        │                 │
                   │ w             session picker                                 │                 │
