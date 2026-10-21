@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.35
 
 - `tmgr attach` shows the task a session works on as a chip in the pane header: `TM-644 · tm-644-open-desktop · 0:42` (task key, branch, time since the run started). The task comes from the session's run (`tmgr run <REF>`) and the run records of `tmgr`, else from the branch name when it starts with a task key of a category you have already worked in; no task, no chip. On a narrow pane the chip shrinks first: the branch, then the time, then it disappears, before the session name and state. Click the chip or press `Ctrl-] t` (also in `?` and the command palette) to open the task: in the desktop app through `tmgr://open?path=...` when it is installed, else in the browser. The link is built only from the validated workspace code and task id found in the run records and your configured server, never from agent output. The workspace code is known after `tmgr timer start` or `tmgr run` stored the task link; without it the chip is shown but `t` says there is no link. Not in a remote attach.
 
