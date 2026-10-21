@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- `tmgr attach` shows the agent's own session title next to the sidebar entry and in the pane header, so names match what you see in Claude Code and Codex: the title you set with `/rename` in Claude Code (or the Codex thread name) wins; Claude's automatic title is shown dim to mark it as automatic. A name you set in tmgr (`Ctrl-] r`, `--name`, `tmgr rename`) always wins and is never overwritten, and renaming in tmgr does not rename the agent session. The label is display only: commands still take the tmgr name, and the status bar keeps showing it. Titles are read incrementally, only for the visible sessions and every few seconds, from the agent's own transcript in the session's sandbox home (Claude `.claude/projects/...`, Codex `.codex/session_index.jsonl`); outside a sandbox home a session is only matched by its known agent session id, never guessed. Escape sequences and control characters are stripped and long titles are truncated. Not shown in a remote attach.
+- The sidebar age now carries the state word, for example `waiting 2s` or `working 15s`, instead of the bare `2s`. When the sidebar is narrow the state word is shortened first (`wai… 15s`) and finally dropped; the age is never cut.
+
 ## 1.0.20
 
 - `tmgr attach` sidebar shows where each session works: the live folder of the agent process (it follows a `cd`) and the git branch, read from `.git/HEAD` without running git (worktrees and detached HEAD are handled; no branch outside a repo). Sessions in the same repo or worktree are grouped under a `▾ <path> · <branch>` header; a lone session gets a dim `path · branch` line under its name. Click the header, or focus it with the arrows and press Enter, to fold the group (a folded header shows the count, and turns yellow when a hidden session is blocked). Groups keep their order, so a session that changes folder never makes the list jump, and `Ctrl-] n` / `Ctrl-] p` follow the sidebar order and skip folded groups. `Ctrl-] g` switches grouping off and on (also in the command palette and `?`). The list refreshes every few seconds and only for the sessions that are visible. Not shown in a remote attach.

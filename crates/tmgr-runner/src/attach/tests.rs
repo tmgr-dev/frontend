@@ -3517,3 +3517,117 @@ fn folding_a_header_with_the_click_moves_focus_off_its_hidden_rows() {
                 .contains(v.sidebar_focus.as_ref().unwrap())
     );
 }
+
+fn titled(id: &str, text: &str, auto: bool, base: &str) -> (String, AgentTitle) {
+    (
+        id.into(),
+        AgentTitle {
+            text: text.into(),
+            auto,
+            base: base.into(),
+        },
+    )
+}
+
+fn grab(v: &ViewState, w: u16, h: u16) -> (String, ratatui::buffer::Buffer) {
+    let mut term = Terminal::new(TestBackend::new(w, h)).unwrap();
+    term.draw(|f| render(f, v, &Screens::default())).unwrap();
+    (text(&term), term.backend().buffer().clone())
+}
+
+#[test]
+fn agent_title_replaces_the_name_in_sidebar_and_pane_header() {
+    let mut v = two_pane(140);
+    v.titles
+        .extend([titled("a", "Fix checkout", false, "claude")]);
+    let (out, _) = grab(&v, 140, 12);
+    let lines: Vec<&str> = out.lines().collect();
+    assert!(
+        lines[0].contains("1  Fix checkout · working"),
+        "{}",
+        lines[0]
+    );
+    assert!(lines[2].contains("Fix che"), "{}", lines[2]);
+    assert!(!lines[2].contains("claude"), "{}", lines[2]);
+    assert!(lines[2].contains("working 18m"), "{}", lines[2]);
+    assert!(out.contains("tmgr runner · local · dev-server · waiting"));
+}
+
+#[test]
+fn auto_titles_are_dim_and_user_titles_are_not() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 100;
+    v.titles.extend([titled("a", "Auto title", true, "claude")]);
+    let (_, buf) = grab(&v, 100, 12);
+    let sidebar_row = (0..12u16)
+        .find(|y| {
+            (0..24u16)
+                .map(|x| buf[(x, *y)].symbol())
+                .collect::<String>()
+                .contains("Auto")
+        })
+        .unwrap();
+    let x = (0..24u16)
+        .find(|x| buf[(*x, sidebar_row)].symbol() == "A")
+        .unwrap();
+    assert_eq!(buf[(x, sidebar_row)].fg, ratatui::style::Color::DarkGray);
+    v.titles.extend([titled("a", "Mine", false, "claude")]);
+    let (_, buf) = grab(&v, 100, 12);
+    let x = (0..24u16)
+        .find(|x| buf[(*x, sidebar_row)].symbol() == "M")
+        .unwrap();
+    assert_ne!(buf[(x, sidebar_row)].fg, ratatui::style::Color::DarkGray);
+}
+
+#[test]
+fn a_renamed_session_ignores_the_agent_title() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.titles
+        .extend([titled("a", "Agent says", false, "claude")]);
+    v.sessions[0].name = "pinned".into();
+    let (out, _) = grab(&v, 140, 12);
+    assert!(out.contains("pinned"));
+    assert!(!out.contains("Agent says"));
+}
+
+#[test]
+fn set_titles_reports_changes_and_prunes_vanished_sessions() {
+    let mut v = ViewState::new(four(), "local");
+    let t = titled("a", "x", false, "claude").1;
+    assert!(v.set_titles(vec![("a".into(), Some(t.clone()))]));
+    assert!(!v.set_titles(vec![("a".into(), Some(t))]));
+    assert!(!v.set_titles(vec![("zz".into(), None)]));
+    assert!(v.set_titles(vec![("a".into(), None)]));
+    assert!(v.titles.is_empty());
+    v.titles.extend([titled("a", "x", false, "claude")]);
+    v.sessions_changed(AREA, vec![row("b", "dev-server", StateKind::Waiting, "1m")]);
+    assert!(v.titles.is_empty());
+}
+
+#[test]
+fn long_agent_title_stays_clear_of_the_header_buttons() {
+    let mut v = two_pane(140);
+    let long =
+        "Codex Companion Task: <task> Adversarial security review read-only do NOT modify files";
+    v.titles.extend([titled("a", long, false, "claude")]);
+    let (out, _) = grab(&v, 140, 12);
+    let head = out.lines().next().unwrap();
+    assert!(head.contains("… · working ─"), "{head}");
+    assert!(head.contains("⏸ ■ ✕ ╮"), "{head}");
+}
+
+#[test]
+fn sidebar_keeps_the_age_and_a_readable_name_at_24_columns() {
+    let mut v = ViewState::new(vec![row("a", "claude", StateKind::Working, "15s")], "local");
+    v.width = 100;
+    v.titles
+        .extend([titled("a", "Refactor the billing module", false, "claude")]);
+    let (out, _) = grab(&v, 100, 6);
+    let line = out.lines().nth(1).unwrap();
+    assert!(line.starts_with(" ● Refacto… working 15s"), "{line}");
+    v.sessions[0].age = "15s".into();
+    v.sessions[0].state.kind = StateKind::Blocked;
+    let (out, _) = grab(&v, 100, 6);
+    assert!(out.lines().nth(1).unwrap().contains("blocked 15s"));
+}

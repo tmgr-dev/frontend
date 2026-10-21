@@ -1,8 +1,8 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · ╭ Keys ────────────────────────────────────────────────────────╮iting ──────────────────────── ⏸ ■ ✕ ╮
- ◆ codex             3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
- ● claude           18m │I will add an│                                                              │ ms                                  │
- ◌ dev-server       12m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
- ✓ tests            52m │>            │ d             detach, sessions keep running                  │                                     │
+ ◆ codex     blocked 3m │● Reading src│ Press Ctrl-] first, then:                                    │                                     │
+ ● claude   working 18m │I will add an│                                                              │ ms                                  │
+ ◌ dev-serv waiting 12m │✓ Tests 14 pa│ :             command palette: actions and sessions          │                                     │
+ ✓ tests     exited 52m │>            │ d             detach, sessions keep running                  │                                     │
                         │             │ n / p         next / previous session                        │                                     │
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
@@ -13,7 +13,7 @@
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
                         │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
                         │             │ g             group sessions by repo / flat list             │                                     │
-                        │             │ r             rename the focused session                     │                                     │
+                        │             │ r             rename (a tmgr name beats the agent title)     │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
                         │             │ [             scroll back through history                    │                                     │

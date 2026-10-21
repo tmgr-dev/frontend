@@ -1,8 +1,8 @@
  SESSIONS      Ctr╭ Command palette ─────────────────────────────────────────────╮iting ───────────╮
- ◆ codex          │ >                                                            │                 │
- ● claude         │                                                              │ ms              │
- ◌ dev-server     │ Detach (sessions keep running)                      Ctrl-] d │                 │
- ✓ tests          │ Next session                                        Ctrl-] n │                 │
+ ◆ codex     block│ >                                                            │                 │
+ ● claude   workin│                                                              │ ms              │
+ ◌ dev-serv waitin│ Detach (sessions keep running)                      Ctrl-] d │                 │
+ ✓ tests     exite│ Next session                                        Ctrl-] n │                 │
                   │ Previous session                                    Ctrl-] p │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │

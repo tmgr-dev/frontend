@@ -1,8 +1,8 @@
  SESSIONS      Ctrl-] b ╭ 1  claude · working ────────────────────────────────────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
- ◆ codex             3m │● Reading src/checkout/Form.vue                                                                                   │
- ● claude           18m │I will add an Apple Pay button next to the card form, shown only when the session exists.                         │
- ◌ dev-server       12m │✓ Tests 14 passed                                                                                                 │
- ✓ tests            52m │>                                                                                                                 │
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                                                                                   │
+ ● claude   working 18m │I will add an Apple Pay button next to the card form, shown only when the session exists.                         │
+ ◌ dev-serv waiting 12m │✓ Tests 14 passed                                                                                                 │
+ ✓ tests     exited 52m │>                                                                                                                 │
                         │                                                                                                                  │
                         │                                                                                                                  │
                         │                                                                                                                  │

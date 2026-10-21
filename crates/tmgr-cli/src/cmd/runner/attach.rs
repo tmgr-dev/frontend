@@ -7,6 +7,7 @@ use super::attach_shell::{
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
     KILL_ONLY,
 };
+use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -29,10 +30,10 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, layout, mode_changes, probe, render, reset_modes, Action, Cmd, Confirm,
-    Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, PaletteEdit,
-    PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir,
-    ViewState,
+    cursor, enter_mouse, layout, mode_changes, probe, render, reset_modes, Action, AgentTitle, Cmd,
+    Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession,
+    PaletteEdit, PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit,
+    SplitDir, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -44,6 +45,7 @@ const FRAME: Duration = Duration::from_millis(33);
 const LIST_EVERY: Duration = Duration::from_secs(1);
 const PROBE_EVERY: Duration = Duration::from_millis(2500);
 const PROBE_RETRY: Duration = Duration::from_millis(250);
+const TITLE_EVERY: Duration = Duration::from_secs(3);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
 const NOTICE_FOR: Duration = Duration::from_secs(3);
 const QUEUE: usize = 256;
@@ -108,6 +110,7 @@ enum Msg {
     Down(String),
     Sessions(Vec<SessionInfo>),
     Locs(Vec<(String, Loc)>),
+    Titles(Vec<(String, Option<AgentTitle>)>),
     Created {
         result: std::result::Result<SessionInfo, String>,
         dir: SplitDir,
@@ -199,6 +202,11 @@ struct App {
     probe_pending: bool,
     tried: HashSet<String>,
     last_probe: Instant,
+    agents: HashMap<String, AgentSrc>,
+    title_tx: SyncSender<Vec<TitleJob>>,
+    title_pending: bool,
+    titles_tried: HashSet<String>,
+    last_title: Instant,
 }
 
 type ProbeJob = (String, u32, String);
@@ -213,6 +221,12 @@ impl App {
             Msg::Locs(found) => {
                 self.probe_pending = false;
                 if self.view.set_locs(self.area(), found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Titles(found) => {
+                self.title_pending = false;
+                if self.view.set_titles(found) {
                     self.dirty = true;
                 }
             }
@@ -258,6 +272,10 @@ impl App {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
         }
+        self.agents = list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
+            .collect();
         self.shell_ids = list
             .iter()
             .filter(|s| is_shell_session(&s.argv, &s.name))
@@ -319,6 +337,46 @@ impl App {
         self.last_probe = Instant::now();
         self.tried.extend(jobs.iter().map(|(id, ..)| id.clone()));
         self.probe_pending = self.probe_tx.try_send(jobs).is_ok();
+    }
+
+    fn probe_titles(&mut self) {
+        if self.title_pending || self.last_title.elapsed() < PROBE_RETRY {
+            return;
+        }
+        let mut wanted: Vec<String> = self.view.panes().to_vec();
+        if self.view.sidebar_shown() {
+            wanted.extend(self.view.visible_sessions(self.area()));
+        }
+        let mut seen = HashSet::new();
+        let jobs: Vec<TitleJob> = wanted
+            .into_iter()
+            .filter(|id| seen.insert(id.clone()))
+            .filter_map(|id| {
+                let row = self.view.sessions.iter().find(|r| r.id == id)?;
+                let src = self.agents.get(&id)?;
+                if row.name != src.default_name {
+                    return None;
+                }
+                if row.exited() && self.view.titles.contains_key(&id) {
+                    return None;
+                }
+                Some(TitleJob {
+                    pid: if row.exited() { 0 } else { src.pid },
+                    src: src.clone(),
+                    sandbox_home: self.cfg.homes.join(&id),
+                    log: self.cfg.dir.join("sessions").join(&id).join("output.log"),
+                    id,
+                })
+            })
+            .collect();
+        let fresh = jobs.iter().any(|j| !self.titles_tried.contains(&j.id));
+        let every = if fresh { PROBE_RETRY } else { TITLE_EVERY };
+        if jobs.is_empty() || self.last_title.elapsed() < every {
+            return;
+        }
+        self.last_title = Instant::now();
+        self.titles_tried.extend(jobs.iter().map(|j| j.id.clone()));
+        self.title_pending = self.title_tx.try_send(jobs).is_ok();
     }
 
     fn is_shell(&self, id: &str) -> bool {
@@ -1074,6 +1132,7 @@ impl App {
         }
         self.reap_shells();
         self.probe_places();
+        self.probe_titles();
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
@@ -1337,6 +1396,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let (probe_tx, probe_rx) = mpsc::sync_channel(1);
     let probe_out = tx.clone();
     thread::spawn(move || prober(probe_rx, probe_out));
+    let (title_tx, title_rx) = mpsc::sync_channel(1);
+    let title_out = tx.clone();
+    thread::spawn(move || {
+        titler(title_rx, move |found| {
+            title_out.send(Msg::Titles(found)).is_ok()
+        })
+    });
     let poll = thread::spawn(move || poller(ctl, tx, prefs_rx));
 
     let mut app = App {
@@ -1379,6 +1445,14 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         probe_pending: false,
         tried: HashSet::new(),
         last_probe: Instant::now(),
+        agents: list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), agent_src(s)?)))
+            .collect(),
+        title_tx,
+        title_pending: false,
+        titles_tried: HashSet::new(),
+        last_title: Instant::now(),
     };
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();

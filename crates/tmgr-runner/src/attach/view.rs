@@ -3,6 +3,7 @@ use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
+use super::title::AgentTitle;
 use super::tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
 use ratatui::layout::{Margin, Rect};
 use serde::{Deserialize, Serialize};
@@ -120,6 +121,7 @@ pub struct ViewState {
     pub sidebar_focus: Option<SidebarItem>,
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
+    pub titles: HashMap<String, AgentTitle>,
     pub grouped: bool,
     pub(crate) collapsed: HashSet<String>,
     group_order: Vec<String>,
@@ -235,6 +237,7 @@ impl ViewState {
             sidebar_focus: None,
             allow_new: true,
             locs: HashMap::new(),
+            titles: HashMap::new(),
             grouped: false,
             collapsed: HashSet::new(),
             group_order: Vec::new(),
@@ -519,6 +522,7 @@ impl ViewState {
     fn refresh_groups(&mut self) {
         let ids: HashSet<&str> = self.sessions.iter().map(|r| r.id.as_str()).collect();
         self.locs.retain(|id, _| ids.contains(id.as_str()));
+        self.titles.retain(|id, _| ids.contains(id.as_str()));
         let keys: Vec<String> = self
             .sessions
             .iter()
@@ -557,6 +561,28 @@ impl ViewState {
             self.keep_sidebar_focus(area, &before);
         }
         changed
+    }
+
+    pub fn set_titles(&mut self, updates: Vec<(String, Option<AgentTitle>)>) -> bool {
+        let mut changed = false;
+        for (id, title) in updates {
+            if !self.sessions.iter().any(|r| r.id == id) {
+                continue;
+            }
+            match title {
+                Some(t) if self.titles.get(&id) != Some(&t) => {
+                    self.titles.insert(id, t);
+                    changed = true;
+                }
+                None => changed |= self.titles.remove(&id).is_some(),
+                _ => {}
+            }
+        }
+        changed
+    }
+
+    pub fn agent_title(&self, row: &SessionRow) -> Option<&AgentTitle> {
+        self.titles.get(&row.id).filter(|t| t.base == row.name)
     }
 
     pub fn visible_sessions(&self, area: Rect) -> Vec<String> {
@@ -1238,6 +1264,9 @@ impl ViewState {
         for (old, new) in renames {
             if let Some(loc) = self.locs.get(&old).cloned() {
                 self.locs.entry(new.clone()).or_insert(loc);
+            }
+            if let Some(title) = self.titles.get(&old).cloned() {
+                self.titles.entry(new.clone()).or_insert(title);
             }
             self.replace_session(&old, &new);
         }
