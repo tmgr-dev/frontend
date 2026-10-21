@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.18
 
 - `Ctrl-] :` in `tmgr attach` opens a command palette: fuzzy search over the attach actions (each row shows its hotkey; the palette runs exactly what the hotkey does, so stop and close still ask first) and over the sessions by name (Enter focuses it), Esc closes, a click on a row works in mouse mode, `?` lists it.
 
