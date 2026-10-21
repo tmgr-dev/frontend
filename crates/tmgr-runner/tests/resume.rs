@@ -731,6 +731,7 @@ fn resume_and_restore_of_one_session_exclude_each_other() {
     h.start();
     let first = h.started();
     h.stop(&first.id);
+    thread::sleep(Duration::from_secs(2));
     let (intent, _) = restore::load_relaunch(&h.sdir(&first.id), &first.id).unwrap();
     restore::record(&h.store(), &intent, None).unwrap();
 
