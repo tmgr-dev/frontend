@@ -511,6 +511,9 @@ impl App {
             Ok(info) => info,
             Err(e) => return self.notify(&lost(&typed, &e)),
         };
+        if !self.view.panes().iter().any(|p| p == target) && self.view.in_tab(target) {
+            self.view.open(target);
+        }
         if !self.view.panes().iter().any(|p| p == target) {
             self.discard_session(&info.id);
             return self.notify(&lost(&typed, "pane closed before the shell started"));
@@ -920,7 +923,7 @@ impl App {
         match entry {
             PaletteEntry::Cmd(cmd) => self.handle(vec![Action::Cmd(cmd)]),
             PaletteEntry::Session(id) => {
-                self.view.select(&id);
+                self.view.open(&id);
                 Ok(None)
             }
         }
@@ -971,7 +974,7 @@ impl App {
                 Action::Forward(data) if self.view.rename.is_some() => {
                     match self.view.edit_rename(&data) {
                         RenameEdit::Submit(id, name) => self.rename_session(&id, &name),
-                        RenameEdit::Editing | RenameEdit::Cancel => {}
+                        RenameEdit::Editing | RenameEdit::Done | RenameEdit::Cancel => {}
                     }
                 }
                 Action::Forward(data) => {
@@ -1390,7 +1393,6 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         view.apply_prefs(&prefs);
     }
     view.set_initial(initial);
-    view.grouped = true;
     let seeded = list
         .iter()
         .filter(|s| !s.cwd.is_empty())
@@ -1865,7 +1867,13 @@ mod tests {
         view.apply(cmd);
         assert!(view.confirm.is_some());
         view.confirm = None;
-        view.select("b");
+        view.apply(Cmd::Palette);
+        view.insert_palette_text(b"b");
+        let PaletteEdit::Run(entry @ PaletteEntry::Session(_)) = view.edit_palette(b"\r") else {
+            panic!("expected a session entry");
+        };
+        assert_eq!(entry, PaletteEntry::Session("b".into()));
+        view.open("b");
         assert_eq!(view.focused_session(), Some("b"));
     }
 
@@ -2046,6 +2054,18 @@ mod tests {
         v.help = false;
         v.sidebar_focus = Some(SidebarItem::Session("s1".into()));
         assert_eq!(attention_target(&v), None);
+    }
+
+    #[test]
+    fn attention_leaves_the_panes_of_a_hidden_tab() {
+        let mut v = ViewState::new(rows(&[info("a"), info("b"), info("c")]), "t");
+        v.width = 140;
+        v.apply(Cmd::Split);
+        assert_eq!(v.panes(), ["a", "b"]);
+        v.open("c");
+        assert_eq!(attention_target(&v), Some("c"));
+        v.apply(Cmd::NextTab);
+        assert!(matches!(attention_target(&v), Some("a" | "b")));
     }
 
     #[test]

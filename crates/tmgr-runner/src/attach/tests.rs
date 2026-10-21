@@ -645,8 +645,9 @@ fn blocked_pane_gets_accent_border_and_sidebar_lists_it_first() {
     let calm = l.panes[0].outer;
     assert_eq!(buf[(calm.x, calm.y + 3)].fg, C::DarkGray);
     let rows = text(&term);
-    let side: Vec<&str> = rows.lines().take(3).collect();
-    assert!(side[1].contains("◆ codex"), "{side:?}");
+    let side: Vec<&str> = rows.lines().take(4).collect();
+    assert!(side[1].contains("▾ claude"), "{side:?}");
+    assert!(side[3].contains("◆ codex"), "{side:?}");
 }
 
 #[test]
@@ -1318,9 +1319,9 @@ fn buttons_are_drawn_in_the_border_and_hovered_sidebar_row_shows_icons() {
     let mut v = two_pane(140);
     let plain = draw(&v, &screens(), 140, 22);
     assert!(plain.lines().next().unwrap().contains("⏸ ■ ✕"));
-    v.pointer = Some((3, 2));
+    v.pointer = Some((3, 3));
     let hovered = draw(&v, &screens(), 140, 22);
-    let line = hovered.lines().nth(2).unwrap();
+    let line = hovered.lines().nth(3).unwrap();
     assert!(line.contains("■ ✕"), "{line}");
     assert!(!line.contains("18m"), "{line}");
 }
@@ -1728,8 +1729,11 @@ fn set_initial_focuses_or_replaces_without_duplicating() {
     assert_eq!(ids(&v), ["a", "b"]);
     assert_eq!(v.focused_session(), Some("a"));
     v.set_initial("c");
-    assert_eq!(ids(&v), ["c", "b"]);
+    assert_eq!(ids(&v), ["c"]);
     assert_eq!(v.focused_session(), Some("c"));
+    v.set_initial("b");
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
     let mut empty = ViewState::new(vec![], "");
     empty.set_initial("x");
     assert_eq!(ids(&empty), ["x"]);
@@ -2227,11 +2231,11 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_31_rows() {
+fn help_shows_the_mouse_section_at_32_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 31);
-    assert!(text.contains("pick a session or a pane"));
+    let text = draw(&v, &screens(), 140, 32);
+    assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("Shift-drag selects"));
     assert!(text.contains("? again closes this box"));
 }
@@ -3237,7 +3241,7 @@ fn keyboard_navigation_never_lands_on_an_undrawn_row() {
     for _ in 0..50 {
         v.edit_sidebar(area, b"\x1b[B");
         match v.sidebar_focus.clone().unwrap() {
-            SidebarItem::Group(_) => unreachable!(),
+            SidebarItem::Group(_) | SidebarItem::Tab(_) => unreachable!(),
             SidebarItem::Session(id) => assert!(drawn.rows().iter().any(|(r, _)| *r == id)),
             SidebarItem::New => assert!(drawn.new_row.is_some()),
         }
@@ -3306,6 +3310,7 @@ fn shape(v: &ViewState) -> Vec<String> {
                 count,
                 collapsed,
             } => format!("H {key} {count} {collapsed}"),
+            SidebarLine::Tab { id, count } => format!("T {id} {count}"),
             SidebarLine::Session { id, indent } => {
                 format!("{}{id}", if indent { "  " } else { "" })
             }
@@ -3566,9 +3571,9 @@ fn agent_title_replaces_the_name_in_sidebar_and_pane_header() {
         "{}",
         lines[0]
     );
-    assert!(lines[2].contains("Fix check…"), "{}", lines[2]);
-    assert!(!lines[2].contains("claude"), "{}", lines[2]);
-    assert!(lines[2].contains("work… 18m"), "{}", lines[2]);
+    assert!(lines[3].contains("Fix check…"), "{}", lines[3]);
+    assert!(!lines[3].contains("claude"), "{}", lines[3]);
+    assert!(lines[3].contains("wo… 18m"), "{}", lines[3]);
     assert!(out.contains("tmgr runner · local · dev-server · waiting"));
 }
 
@@ -3801,4 +3806,772 @@ fn sidebar_row_never_cuts_the_age() {
             assert!(line.trim_end().ends_with(age), "{name} {age}: {line}");
         }
     }
+}
+
+fn tab_id(v: &ViewState, session: &str) -> u64 {
+    match v.item_of(session) {
+        TabItem::Tab(t) => t,
+        TabItem::Session(s) => panic!("{s} is not in a tab"),
+    }
+}
+
+fn tab_line(v: &ViewState, session: &str) -> SidebarLine {
+    SidebarLine::Tab {
+        id: tab_id(v, session),
+        count: v.tab_members(tab_id(v, session)).len(),
+    }
+}
+
+fn session_line(id: &str) -> SidebarLine {
+    SidebarLine::Session {
+        id: id.into(),
+        indent: true,
+    }
+}
+
+fn click_line(v: &mut ViewState, line: &SidebarLine) {
+    let y = sidebar_y(v, line);
+    press(v, 3, y);
+}
+
+fn tabbed() -> ViewState {
+    let mut v = ViewState::new(six(), "local");
+    v.width = 140;
+    v.apply(Cmd::Split);
+    v.open("c");
+    v.apply(Cmd::Split);
+    v
+}
+
+fn flat(n: usize) -> ViewState {
+    let mut v = ViewState::new(six()[..n].to_vec(), "local");
+    v.width = 140;
+    v
+}
+
+#[test]
+fn a_split_makes_a_tab_header_with_indented_members() {
+    let v = two_pane(140);
+    let t = tab_id(&v, "a");
+    assert_eq!(v.item_of("b"), TabItem::Tab(t));
+    assert_eq!(v.item_of("d"), TabItem::Session("d".into()));
+    assert_eq!(v.tab_count(), 1);
+    assert_eq!(
+        shape(&v),
+        vec![
+            "c".to_string(),
+            format!("T {t} 2"),
+            "  a".into(),
+            "  b".into(),
+            "d".into()
+        ]
+    );
+}
+
+#[test]
+fn one_pane_sessions_are_plain_rows() {
+    let v = flat(3);
+    assert_eq!(shape(&v), vec!["a", "b", "c"]);
+    assert_eq!(v.tab_count(), 0);
+    assert_eq!(v.active_tab(), None);
+}
+
+#[test]
+fn tabs_view_lists_the_stashed_tab_the_active_tab_and_free_sessions() {
+    let v = tabbed();
+    let (t0, t1) = (tab_id(&v, "a"), tab_id(&v, "c"));
+    assert_ne!(t0, t1);
+    assert_eq!(v.tab_count(), 2);
+    assert_eq!(
+        shape(&v),
+        vec![
+            format!("T {t0} 2"),
+            "  a".into(),
+            "  b".into(),
+            format!("T {t1} 2"),
+            "  c".into(),
+            "  d".into(),
+            "e".into(),
+            "f".into(),
+        ]
+    );
+}
+
+#[test]
+fn clicking_a_free_session_shows_it_alone_and_stashes_the_split_tab() {
+    let mut v = tabbed();
+    click_line(
+        &mut v,
+        &SidebarLine::Session {
+            id: "e".into(),
+            indent: false,
+        },
+    );
+    assert_eq!(ids(&v), ["e"]);
+    assert_eq!(v.active_tab(), None);
+    assert_eq!(v.tab_count(), 2);
+    assert_eq!(v.tab_members(tab_id(&v, "c")), ["c", "d"]);
+    assert_eq!(v.tab_members(tab_id(&v, "a")), ["a", "b"]);
+}
+
+#[test]
+fn clicking_a_tab_header_restores_its_layout_and_focus() {
+    let mut v = tabbed();
+    v.focus_pane(0);
+    assert_eq!(v.focused_session(), Some("c"));
+    click_line(
+        &mut v,
+        &SidebarLine::Session {
+            id: "e".into(),
+            indent: false,
+        },
+    );
+    let header = tab_line(&v, "c");
+    click_line(&mut v, &header);
+    assert_eq!(ids(&v), ["c", "d"]);
+    assert_eq!(v.focused_session(), Some("c"));
+    assert_eq!(v.active_tab(), Some(tab_id(&v, "c")));
+}
+
+#[test]
+fn clicking_a_session_inside_a_stashed_tab_switches_and_focuses_that_pane() {
+    let mut v = tabbed();
+    click_line(&mut v, &session_line("b"));
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
+    assert_eq!(v.tab_members(tab_id(&v, "c")), ["c", "d"]);
+    click_line(&mut v, &session_line("c"));
+    assert_eq!(ids(&v), ["c", "d"]);
+    assert_eq!(v.focused_session(), Some("c"));
+}
+
+#[test]
+fn clicking_a_session_of_the_active_tab_only_moves_focus() {
+    let mut v = tabbed();
+    click_line(&mut v, &session_line("c"));
+    assert_eq!(ids(&v), ["c", "d"]);
+    assert_eq!(v.focused_session(), Some("c"));
+    assert_eq!(v.tab_count(), 2);
+}
+
+#[test]
+fn next_and_previous_session_never_pull_a_session_out_of_a_stashed_tab() {
+    let mut v = tabbed();
+    for _ in 0..4 {
+        v.apply(Cmd::NextSession);
+        assert!(
+            v.panes().iter().all(|p| p != "a" && p != "b"),
+            "{:?}",
+            ids(&v)
+        );
+    }
+    assert_eq!(v.tab_members(tab_id(&v, "a")), ["a", "b"]);
+    let mut one = tabbed();
+    one.apply(Cmd::Split);
+    one.apply(Cmd::Split);
+    assert!(one.panes().iter().all(|p| p != "a" && p != "b"));
+    assert_eq!(one.tab_members(tab_id(&one, "a")), ["a", "b"]);
+}
+
+#[test]
+fn split_command_skips_sessions_of_a_stashed_tab() {
+    let mut v = tabbed();
+    click_line(
+        &mut v,
+        &SidebarLine::Session {
+            id: "e".into(),
+            indent: false,
+        },
+    );
+    v.apply(Cmd::Split);
+    assert_eq!(ids(&v), ["e", "f"]);
+    assert_eq!(v.tab_count(), 3);
+}
+
+#[test]
+fn split_at_a_stashed_session_removes_it_from_the_stash_and_dissolves_the_rest() {
+    let mut v = tabbed();
+    let stashed = tab_id(&v, "a");
+    assert!(v.split_at("c", SplitDir::Right, "a", true));
+    assert_eq!(ids(&v), ["c", "a", "d"]);
+    assert_eq!(v.item_of("b"), TabItem::Session("b".into()));
+    assert_eq!(v.tab_count(), 1);
+    assert!(v.tab_members(stashed).is_empty());
+    assert_eq!(shape(&v)[0].split(' ').next(), Some("T"));
+}
+
+#[test]
+fn select_of_a_stashed_session_takes_it_out_of_the_stash_and_dissolves_the_leftover() {
+    let mut v = tabbed();
+    v.select("a");
+    assert_eq!(v.focused_session(), Some("a"));
+    assert!(v.panes().contains(&"a".to_string()));
+    assert_eq!(v.item_of("b"), TabItem::Session("b".into()));
+    assert_eq!(v.tab_count(), 1);
+}
+
+#[test]
+fn next_tab_and_previous_tab_cycle_in_sidebar_order_and_wrap() {
+    let mut v = tabbed();
+    assert_eq!(v.focused_session(), Some("d"));
+    v.apply(Cmd::NextTab);
+    assert_eq!(ids(&v), ["e"]);
+    v.apply(Cmd::NextTab);
+    assert_eq!(ids(&v), ["f"]);
+    v.apply(Cmd::NextTab);
+    assert_eq!(ids(&v), ["a", "b"]);
+    v.apply(Cmd::NextTab);
+    assert_eq!(ids(&v), ["c", "d"]);
+    v.apply(Cmd::PrevTab);
+    assert_eq!(ids(&v), ["a", "b"]);
+    v.apply(Cmd::PrevTab);
+    assert_eq!(ids(&v), ["f"]);
+    v.apply(Cmd::PrevTab);
+    assert_eq!(ids(&v), ["e"]);
+}
+
+#[test]
+fn tab_stepping_with_one_item_does_nothing() {
+    let mut v = flat(1);
+    v.apply(Cmd::NextTab);
+    v.apply(Cmd::PrevTab);
+    assert_eq!(ids(&v), ["a"]);
+    let mut empty = ViewState::new(Vec::new(), "");
+    empty.apply(Cmd::NextTab);
+    empty.apply(Cmd::PrevTab);
+    assert!(empty.panes().is_empty());
+}
+
+#[test]
+fn close_tab_keeps_the_sessions_and_leaves_the_focused_one_alone() {
+    let mut v = tabbed();
+    v.focus_pane(0);
+    v.apply(Cmd::CloseTab);
+    assert_eq!(ids(&v), ["c"]);
+    assert_eq!(v.focused_session(), Some("c"));
+    assert!(v.notice.is_some());
+    assert_eq!(v.sessions.len(), 6);
+    assert_eq!(v.item_of("d"), TabItem::Session("d".into()));
+    assert_eq!(v.tab_count(), 1);
+    assert_eq!(v.item_of("a"), TabItem::Tab(tab_id(&v, "a")));
+}
+
+#[test]
+fn closing_a_tab_drops_its_custom_name() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::RenameTab);
+    v.edit_rename(b"work\r");
+    v.apply(Cmd::CloseTab);
+    v.apply(Cmd::Split);
+    assert_ne!(v.tab_title(v.active_tab().unwrap()), "work");
+}
+
+#[test]
+fn close_tab_on_a_one_pane_tab_only_sets_a_notice() {
+    let mut v = flat(3);
+    v.apply(Cmd::CloseTab);
+    assert_eq!(ids(&v), ["a"]);
+    assert!(v.notice.is_some());
+    assert_eq!(v.sessions.len(), 3);
+}
+
+#[test]
+fn rename_tab_on_a_one_pane_tab_sets_a_notice_and_no_prompt() {
+    let mut v = flat(3);
+    v.apply(Cmd::RenameTab);
+    assert!(v.rename.is_none());
+    assert!(v.notice.is_some());
+}
+
+#[test]
+fn rename_tab_prompts_and_enter_names_the_tab() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::RenameTab);
+    assert!(v.rename.as_ref().unwrap().tab);
+    assert_eq!(v.edit_rename(b"x"), RenameEdit::Editing);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    assert_eq!(v.edit_rename(b"deploy\r"), RenameEdit::Done);
+    assert!(v.rename.is_none());
+    let t = tab_id(&v, "a");
+    assert_eq!(v.tab_title(t), "deploy");
+    assert!(draw(&v, &screens(), 140, 22).contains("deploy"));
+}
+
+#[test]
+fn renaming_a_tab_does_not_rename_the_session() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::RenameTab);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    v.edit_rename(b"deploy\r");
+    assert!(v
+        .sessions
+        .iter()
+        .any(|s| s.id == "b" && s.name == "dev-server"));
+    assert!(v.sessions.iter().any(|s| s.id == "a" && s.name == "claude"));
+}
+
+#[test]
+fn an_empty_tab_name_falls_back_to_the_default_title() {
+    let mut v = two_pane(140);
+    let t = tab_id(&v, "a");
+    let default = v.tab_title(t);
+    v.apply(Cmd::RenameTab);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    assert_eq!(v.edit_rename(b"\r"), RenameEdit::Done);
+    assert_eq!(v.tab_title(t), default);
+    v.apply(Cmd::RenameTab);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    v.edit_rename(b"   \r");
+    assert_eq!(v.tab_title(t), default);
+}
+
+#[test]
+fn tab_names_strip_control_characters_and_cap_the_length() {
+    let mut v = two_pane(140);
+    let t = tab_id(&v, "a");
+    v.apply(Cmd::RenameTab);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    let long = "x".repeat(200);
+    v.edit_rename(long.as_bytes());
+    v.edit_rename(b"\r");
+    assert_eq!(v.tab_title(t).chars().count(), 64);
+
+    let prefs = LayoutPrefs {
+        tab_name: Some("a\u{1b}[31mb\u{7}c".into()),
+        ..v.prefs()
+    };
+    let mut fresh = ViewState::new(four(), "local");
+    fresh.apply_prefs(&prefs);
+    assert_eq!(fresh.tab_title(tab_id(&fresh, "a")), "a[31mbc");
+}
+
+#[test]
+fn keyboard_sidebar_enter_on_a_tab_header_switches_to_that_tab() {
+    let mut v = tabbed();
+    v.set_initial("c");
+    v.focus_nav(AREA, Nav::Left);
+    assert!(v.sidebar_focus.is_some());
+    let target = SidebarItem::Tab(tab_id(&v, "a"));
+    let mut guard = 0;
+    while v.sidebar_focus != Some(target.clone()) && guard < 20 {
+        v.edit_sidebar(AREA, b"\x1b[A");
+        guard += 1;
+    }
+    assert_eq!(v.sidebar_focus, Some(target));
+    assert_eq!(v.edit_sidebar(AREA, b"\r"), SidebarEdit::Select("b".into()));
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focused_session(), Some("b"));
+    assert_eq!(v.sidebar_focus, None);
+}
+
+#[test]
+fn keyboard_sidebar_visits_tab_headers_between_sessions() {
+    let mut v = tabbed();
+    v.set_initial("e");
+    v.focus_nav(AREA, Nav::Left);
+    let mut seen = Vec::new();
+    for _ in 0..8 {
+        v.edit_sidebar(AREA, b"\x1b[A");
+        seen.push(v.sidebar_focus.clone());
+    }
+    assert!(seen.contains(&Some(SidebarItem::Tab(tab_id(&v, "c")))));
+    assert!(seen.contains(&Some(SidebarItem::Tab(tab_id(&v, "a")))));
+}
+
+#[test]
+fn the_group_command_switches_between_tab_and_repo_grouping() {
+    let mut v = ViewState::new(six(), "local");
+    v.width = 140;
+    v.set_locs(
+        AREA,
+        vec![
+            ("a".into(), loc("/w/app", "/w/app", Some("main"))),
+            ("b".into(), loc("/w/app", "/w/app/src", Some("main"))),
+            ("c".into(), loc("/w/lib", "/w/lib", None)),
+            ("d".into(), loc("/w/lib", "/w/lib", None)),
+        ],
+    );
+    v.apply(Cmd::Split);
+    assert!(!v.grouped);
+    let by_tab = shape(&v);
+    assert!(by_tab[0].starts_with("T "), "{by_tab:?}");
+    assert!(by_tab.iter().all(|l| !l.starts_with("H ")));
+    v.apply(Cmd::Group);
+    assert!(v.grouped);
+    let by_repo = shape(&v);
+    assert!(by_repo[0].starts_with("H /w/app 2"), "{by_repo:?}");
+    assert!(by_repo.iter().all(|l| !l.starts_with("T ")));
+    v.apply(Cmd::Group);
+    assert_eq!(shape(&v), by_tab);
+}
+
+fn tab_prefs(tree: Node, focus: &str, name: Option<&str>) -> TabPrefs {
+    TabPrefs {
+        tree,
+        focus: focus.into(),
+        name: name.map(Into::into),
+    }
+}
+
+fn pair(a: &str, b: &str) -> Node {
+    node(SplitDir::Right, 500, leaf(a), leaf(b))
+}
+
+#[test]
+fn a_legacy_layout_without_tabs_loads_as_one_active_tab() {
+    let tree = serde_json::to_string(&pair("a", "b")).unwrap();
+    let old = format!(
+        r#"{{"panes":["a","b"],"focus":0,"zoom":false,"sidebar":true,"tree":{tree},"shells":["b"]}}"#
+    );
+    let prefs: LayoutPrefs = serde_json::from_str(&old).unwrap();
+    assert!(prefs.tabs.is_empty());
+    assert_eq!(prefs.tab_name, None);
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.apply_prefs(&prefs);
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.focused_session(), Some("a"));
+    assert_eq!(v.tab_count(), 1);
+    assert_eq!(v.active_tab(), Some(tab_id(&v, "a")));
+    assert_eq!(v.shells, ["b"]);
+}
+
+#[test]
+fn prefs_round_trip_restores_the_active_tab_stashed_tabs_names_and_focus() {
+    let mut v = tabbed();
+    v.apply(Cmd::RenameTab);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    v.edit_rename(b"live\r");
+    v.focus_pane(0);
+    click_line(&mut v, &session_line("b"));
+    v.apply(Cmd::RenameTab);
+    for _ in 0..30 {
+        v.edit_rename(b"\x7f");
+    }
+    v.edit_rename(b"first\r");
+    click_line(&mut v, &session_line("d"));
+    assert_eq!(v.focused_session(), Some("d"));
+
+    let json = serde_json::to_string(&v.prefs()).unwrap();
+    let prefs: LayoutPrefs = serde_json::from_str(&json).unwrap();
+    let mut fresh = ViewState::new(six(), "local");
+    fresh.width = 140;
+    fresh.apply_prefs(&prefs);
+
+    assert_eq!(ids(&fresh), ["c", "d"]);
+    assert_eq!(fresh.focused_session(), Some("d"));
+    assert_eq!(fresh.tab_title(tab_id(&fresh, "c")), "live");
+    assert_eq!(fresh.tab_count(), 2);
+    assert_eq!(fresh.tab_members(tab_id(&fresh, "a")), ["a", "b"]);
+    assert_eq!(fresh.tab_title(tab_id(&fresh, "a")), "first");
+    fresh.open("a");
+    assert_eq!(fresh.focused_session(), Some("a"));
+    fresh.apply(Cmd::NextTab);
+    assert_eq!(ids(&fresh), ["c", "d"]);
+    assert_eq!(fresh.focused_session(), Some("d"));
+}
+
+fn loaded(prefs: LayoutPrefs) -> ViewState {
+    let mut v = ViewState::new(six(), "local");
+    v.width = 140;
+    v.apply_prefs(&prefs);
+    v
+}
+
+fn active_ab() -> LayoutPrefs {
+    LayoutPrefs {
+        panes: vec!["a".into(), "b".into()],
+        tree: Some(pair("a", "b")),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn saved_tabs_drop_unknown_sessions_and_keep_the_rest() {
+    let v = loaded(LayoutPrefs {
+        tabs: vec![tab_prefs(
+            node(SplitDir::Right, 500, pair("c", "zzz"), leaf("d")),
+            "d",
+            None,
+        )],
+        ..active_ab()
+    });
+    assert_eq!(v.tab_members(tab_id(&v, "c")), ["c", "d"]);
+    assert_eq!(v.item_of("zzz"), TabItem::Session("zzz".into()));
+}
+
+#[test]
+fn saved_tabs_never_claim_a_session_twice() {
+    let v = loaded(LayoutPrefs {
+        tabs: vec![
+            tab_prefs(pair("a", "c"), "c", None),
+            tab_prefs(pair("c", "d"), "d", None),
+            tab_prefs(pair("c", "e"), "e", None),
+            tab_prefs(
+                node(SplitDir::Right, 500, pair("d", "e"), leaf("f")),
+                "f",
+                None,
+            ),
+        ],
+        ..active_ab()
+    });
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.tab_members(tab_id(&v, "c")), ["c", "d"]);
+    assert_eq!(v.tab_members(tab_id(&v, "e")), ["e", "f"]);
+    assert_eq!(v.tab_count(), 3);
+}
+
+#[test]
+fn saved_tabs_left_with_fewer_than_two_known_panes_are_dropped() {
+    let v = loaded(LayoutPrefs {
+        tabs: vec![
+            tab_prefs(pair("c", "zzz"), "c", None),
+            tab_prefs(pair("a", "b"), "a", None),
+            tab_prefs(pair("d", "e"), "d", None),
+        ],
+        ..active_ab()
+    });
+    assert_eq!(v.tab_count(), 2);
+    assert_eq!(v.item_of("c"), TabItem::Session("c".into()));
+    assert_eq!(v.tab_members(tab_id(&v, "d")), ["d", "e"]);
+}
+
+#[test]
+fn a_saved_tab_with_an_unknown_focus_falls_back_to_its_first_pane() {
+    let mut v = loaded(LayoutPrefs {
+        tabs: vec![tab_prefs(pair("c", "d"), "nope", None)],
+        ..active_ab()
+    });
+    v.open("c");
+    assert_eq!(v.focused_session(), Some("c"));
+}
+
+#[test]
+fn more_than_thirty_two_saved_tabs_are_capped() {
+    let rows: Vec<SessionRow> = (0..80)
+        .map(|i| row(&format!("s{i}"), "x", StateKind::Working, "1m"))
+        .collect();
+    let tabs = (1..40)
+        .map(|i| {
+            tab_prefs(
+                pair(&format!("s{}", 2 * i), &format!("s{}", 2 * i + 1)),
+                "",
+                None,
+            )
+        })
+        .collect();
+    let mut v = ViewState::new(rows, "local");
+    v.apply_prefs(&LayoutPrefs {
+        panes: vec!["s0".into(), "s1".into()],
+        tree: Some(pair("s0", "s1")),
+        tabs,
+        ..Default::default()
+    });
+    assert_eq!(v.tab_count(), 33);
+}
+
+#[test]
+fn set_initial_after_prefs_switches_to_the_tab_holding_the_session() {
+    let mut v = loaded(LayoutPrefs {
+        tabs: vec![tab_prefs(pair("c", "d"), "c", None)],
+        ..active_ab()
+    });
+    v.set_initial("d");
+    assert_eq!(ids(&v), ["c", "d"]);
+    assert_eq!(v.focused_session(), Some("d"));
+    assert_eq!(v.tab_members(tab_id(&v, "a")), ["a", "b"]);
+}
+
+#[test]
+fn set_initial_after_prefs_with_a_free_session_keeps_the_restored_tabs_stashed() {
+    let mut v = loaded(LayoutPrefs {
+        tabs: vec![tab_prefs(pair("c", "d"), "c", None)],
+        ..active_ab()
+    });
+    v.set_initial("f");
+    assert_eq!(ids(&v), ["f"]);
+    assert_eq!(v.tab_count(), 2);
+    assert_eq!(v.tab_members(tab_id(&v, "a")), ["a", "b"]);
+    assert_eq!(v.tab_members(tab_id(&v, "c")), ["c", "d"]);
+}
+
+#[test]
+fn a_vanished_session_of_a_stashed_tab_is_renamed_to_its_resumed_copy() {
+    let mut v = tabbed();
+    let mut rows = six();
+    rows.retain(|r| r.id != "a");
+    rows.push(resumed("a2", "claude", "a"));
+    v.sessions_changed(AREA, rows);
+    assert_eq!(v.tab_members(tab_id(&v, "b")), ["a2", "b"]);
+    assert_eq!(v.item_of("a"), TabItem::Session("a".into()));
+    v.open("a2");
+    assert_eq!(ids(&v), ["a2", "b"]);
+}
+
+#[test]
+fn the_focus_of_a_stashed_tab_follows_a_resumed_copy() {
+    let mut v = tabbed();
+    click_line(&mut v, &session_line("a"));
+    click_line(&mut v, &session_line("c"));
+    let mut rows = six();
+    rows.retain(|r| r.id != "a");
+    rows.push(resumed("a2", "claude", "a"));
+    v.sessions_changed(AREA, rows);
+    let header = tab_line(&v, "b");
+    click_line(&mut v, &header);
+    assert_eq!(v.focused_session(), Some("a2"));
+}
+
+#[test]
+fn a_vanished_session_dissolves_a_stashed_tab_left_with_one_pane() {
+    let mut v = tabbed();
+    let mut rows = six();
+    rows.retain(|r| r.id != "a");
+    v.sessions_changed(AREA, rows);
+    assert_eq!(v.item_of("b"), TabItem::Session("b".into()));
+    assert_eq!(v.tab_count(), 1);
+    assert_eq!(ids(&v), ["c", "d"]);
+}
+
+#[test]
+fn when_every_pane_of_the_active_tab_vanishes_the_view_falls_back_to_the_first_session_tab() {
+    let mut v = tabbed();
+    let rows: Vec<SessionRow> = six()
+        .into_iter()
+        .filter(|r| r.id != "c" && r.id != "d")
+        .collect();
+    v.sessions_changed(AREA, rows);
+    assert_eq!(ids(&v), ["a", "b"]);
+    assert_eq!(v.tab_count(), 1);
+}
+
+#[test]
+fn when_the_active_tab_vanishes_and_the_first_session_is_free_it_is_shown_alone() {
+    let mut v = tabbed();
+    let rows: Vec<SessionRow> = six()
+        .into_iter()
+        .filter(|r| !matches!(r.id.as_str(), "a" | "b" | "c" | "d"))
+        .collect();
+    v.sessions_changed(AREA, rows);
+    assert_eq!(ids(&v), ["e"]);
+    assert_eq!(v.tab_count(), 0);
+}
+
+#[test]
+fn prefix_tab_keys_map_to_cmds() {
+    let table: &[(u8, Cmd)] = &[
+        (b'N', Cmd::NextTab),
+        (b'P', Cmd::PrevTab),
+        (b',', Cmd::RenameTab),
+        (b'&', Cmd::CloseTab),
+    ];
+    for (byte, cmd) in table {
+        let mut s = InputSplitter::new();
+        assert_eq!(s.feed(&[0x1d, *byte]), vec![Action::Cmd(*cmd)]);
+    }
+}
+
+#[test]
+fn tab_and_group_actions_appear_in_the_help() {
+    let listed: Vec<Cmd> = render::HELP
+        .iter()
+        .filter_map(|(k, _)| match k {
+            render::HelpKey::Cmds(c) => Some(c.iter().copied()),
+            render::HelpKey::Lit(_) => None,
+        })
+        .flatten()
+        .collect();
+    for cmd in [
+        Cmd::NextTab,
+        Cmd::PrevTab,
+        Cmd::RenameTab,
+        Cmd::CloseTab,
+        Cmd::Group,
+    ] {
+        assert!(listed.contains(&cmd), "{cmd:?} missing from the help");
+        assert!(ACTIONS.iter().any(|d| d.cmd == cmd && d.palette));
+    }
+}
+
+#[test]
+fn snapshot_tabs_sidebar() {
+    let v = tabbed();
+    assert_snapshot("tabs", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn removing_a_pane_never_takes_a_session_from_a_stashed_tab() {
+    let mut v = tabbed();
+    v.remove_session("e");
+    v.remove_session("f");
+    v.remove_session("d");
+    assert_eq!(ids(&v), ["c"]);
+    let t = tab_id(&v, "a");
+    assert_eq!(v.tab_members(t), ["a", "b"]);
+}
+
+#[test]
+fn a_tab_name_does_not_come_back_after_the_tab_shrinks_to_one_pane() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::RenameTab);
+    v.rename.as_mut().unwrap().text = "work".into();
+    assert_eq!(v.edit_rename(b"\r"), RenameEdit::Done);
+    assert_eq!(v.tab_title(tab_id(&v, "a")), "work");
+    v.close_pane("b");
+    v.apply(Cmd::Split);
+    assert_eq!(v.tab_title(tab_id(&v, "a")), "claude");
+}
+
+#[test]
+fn a_new_tab_choice_is_not_written_to_the_saved_layout() {
+    let mut v = two_pane(140);
+    v.new_place = Some(Place::Tab);
+    assert_eq!(v.prefs().new_place, None);
+    v.new_place = Some(Place::Below);
+    assert_eq!(v.prefs().new_place, Some(Place::Below));
+}
+
+#[test]
+fn removing_the_only_shown_session_falls_back_to_a_tab_not_a_blank_view() {
+    let mut v = tabbed();
+    v.open("e");
+    v.remove_session("f");
+    v.remove_session("e");
+    assert_eq!(ids(&v).len(), 2);
+    let t = tab_id(&v, "a");
+    assert_eq!(v.tab_members(t), ["a", "b"]);
+}
+
+#[test]
+fn switching_tabs_cancels_a_pending_tab_rename() {
+    let mut v = tabbed();
+    v.apply(Cmd::RenameTab);
+    assert!(v.rename.as_ref().is_some_and(|r| r.tab));
+    v.open("a");
+    assert!(v.rename.is_none());
+}
+
+#[test]
+fn a_broken_saved_tab_is_skipped_and_the_rest_of_the_layout_loads() {
+    let json = r#"{"panes":["a"],"focus":0,"zoom":false,"sidebar":null,
+        "tabs":[{"tree":"nope"},{"tree":{"Split":{"dir":"Right","ratio":500,
+        "a":{"Leaf":"b"},"b":{"Leaf":"c"}}},"focus":"c"}]}"#;
+    let prefs: LayoutPrefs = serde_json::from_str(json).unwrap();
+    assert_eq!(prefs.tabs.len(), 1);
+    let mut v = ViewState::new(four(), "local");
+    v.apply_prefs(&prefs);
+    assert_eq!(ids(&v), ["a"]);
+    assert_eq!(v.tab_members(tab_id(&v, "b")), ["b", "c"]);
 }

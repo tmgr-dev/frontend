@@ -135,6 +135,7 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     }
     let sl = st.sidebar_layout(area);
     let focused = st.focused_session();
+    let mut nested = false;
     for (line, y) in &sl.lines {
         let y = *y;
         match line {
@@ -143,8 +144,10 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
                 count,
                 collapsed,
             } => draw_group_header(buf, area, st, key, *count, *collapsed, y),
-            SidebarLine::Detail(id) => draw_detail(buf, area, st, id, y),
+            SidebarLine::Tab { id, count } => draw_tab_header(buf, area, st, *id, *count, y),
+            SidebarLine::Detail(id) => draw_detail(buf, area, st, id, nested, y),
             SidebarLine::Session { id, indent } => {
+                nested = *indent;
                 draw_session_row(buf, area, st, id, *indent, focused, y);
             }
         }
@@ -340,11 +343,47 @@ fn draw_group_header(
     }
 }
 
-fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, y: u16) {
+fn draw_tab_header(buf: &mut Buffer, area: Rect, st: &ViewState, id: u64, count: usize, y: u16) {
+    if st.active_tab() == Some(id) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().bg(SIDEBAR_BG),
+        );
+    }
+    put(buf, area.x + 1, y, "▾", dim(), 1);
+    let tail = format!("({count})");
+    let tail_w = tail.width() as u16;
+    let text_x = area.x + 3;
+    let tail_x = area.right().saturating_sub(tail_w + 1).max(text_x);
+    let room = tail_x.saturating_sub(text_x).saturating_sub(1);
+    let title = fit(&st.tab_title(id), None, usize::from(room));
+    put(
+        buf,
+        text_x,
+        y,
+        &title,
+        Style::new().add_modifier(Modifier::BOLD),
+        room,
+    );
+    let style = if st.tab_blocked(id) {
+        Style::new().fg(Color::Yellow)
+    } else {
+        dim()
+    };
+    put(buf, tail_x, y, &tail, style, tail_w);
+    if st.sidebar_focus == Some(SidebarItem::Tab(id)) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().add_modifier(Modifier::REVERSED),
+        );
+    }
+}
+
+fn draw_detail(buf: &mut Buffer, area: Rect, st: &ViewState, id: &str, nested: bool, y: u16) {
     let Some(loc) = st.locs.get(id) else {
         return;
     };
-    let x = area.x + 3;
+    let x = area.x + if nested { 5 } else { 3 };
     let room = area.right().saturating_sub(x + 1);
     let text = fit(&tail2(&loc.dir), loc.branch.as_deref(), usize::from(room));
     put(buf, x, y, &text, dim(), room);
@@ -568,7 +607,11 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     let note = match (&st.rename, &st.confirm) {
-        (Some(r), _) => Some(format!("rename: {}▏  Enter saves, Esc cancels", r.text)),
+        (Some(r), _) => Some(format!(
+            "{}: {}▏  Enter saves, Esc cancels",
+            if r.tab { "rename tab" } else { "rename" },
+            r.text
+        )),
         (None, Some(c)) if c.remove => Some(format!("stop and remove {}? y/n", c.name)),
         (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
         _ if st.sidebar_focus.is_some() => {
@@ -621,7 +664,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
 }
 
 const MOUSE: &[(&str, &str)] = &[
-    ("click", "pick a session or a pane"),
+    ("click", "pick a tab, a session or a pane"),
     ("click +", "new session (sidebar, last row)"),
     ("wheel", "scroll the history of the pane"),
     ("buttons", "header: pause/resume, stop, close"),
@@ -674,8 +717,12 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "zoom the pane / show or hide the sidebar",
     ),
     (
+        HelpKey::Cmds(&[Cmd::NextTab, Cmd::PrevTab, Cmd::RenameTab, Cmd::CloseTab]),
+        "tab: next / previous / rename / close",
+    ),
+    (
         HelpKey::Cmds(&[Cmd::Group]),
-        "group sessions by repo / flat list",
+        "group the sidebar by tab / by repo",
     ),
     (
         HelpKey::Cmds(&[Cmd::Rename]),

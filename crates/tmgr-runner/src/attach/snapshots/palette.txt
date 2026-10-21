@@ -1,9 +1,11 @@
  SESSIONS      Ctr╭ Command palette ─────────────────────────────────────────────╮iting ───────────╮
  ◆ codex     block│ >                                                            │                 │
- ● claude   workin│                                                              │ ms              │
- ◌ dev-server wait│ Detach (sessions keep running)                      Ctrl-] d │                 │
- ✓ tests     exite│ Next session                                        Ctrl-] n │                 │
-                  │ Previous session                                    Ctrl-] p │                 │
+ ▾ claude         │                                                              │ ms              │
+   ● claude workin│ Detach (sessions keep running)                      Ctrl-] d │                 │
+   ◌ dev-server wa│ Next session                                        Ctrl-] n │                 │
+ ✓ tests     exite│ Previous session                                    Ctrl-] p │                 │
+                  │ Next tab                                            Ctrl-] N │                 │
+                  │ Previous tab                                        Ctrl-] P │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
@@ -12,13 +14,11 @@
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Zoom the pane                                       Ctrl-] z │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
-                  │ Group sessions by repo, or list them flat           Ctrl-] g │                 │
+                  │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Rename the focused session                          Ctrl-] r │                 │
+                  │ Rename the tab                                      Ctrl-] , │                 │
+                  │ Close the tab (sessions keep running)               Ctrl-] & │                 │
                   │ Resume the focused session                  Ctrl-] Enter / R │                 │
                   │ Stop (close) the focused session                    Ctrl-] x │                 │
-                  │ Remove (close) the focused exited session           Ctrl-] X │                 │
-                  │ Scroll back through history                         Ctrl-] [ │                 │
-                  │ Show the key help                                   Ctrl-] ? │                 │
-                  │ codex                                                blocked │                 │
- + New session    │ claude                                               working │─────────────────╯
+ + New session    │ Remove (close) the focused exited session           Ctrl-] X │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

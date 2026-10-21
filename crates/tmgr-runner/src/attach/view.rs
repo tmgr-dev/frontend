@@ -14,6 +14,8 @@ pub const SIDEBAR_WIDTH: u16 = 24;
 pub const WIDE_COLS: u16 = 100;
 const MIN_PANE_COLS: u16 = 10;
 const MAX_GROUP_KEYS: usize = 64;
+const MAX_TABS: usize = 32;
+const MAX_TAB_NAME: usize = 64;
 pub const WHEEL_LINES: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,11 +128,55 @@ pub struct ViewState {
     pub grouped: bool,
     pub(crate) collapsed: HashSet<String>,
     group_order: Vec<String>,
+    tabs: Vec<Tab>,
+    tab_id: u64,
+    tab_name: Option<String>,
+    next_tab: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Tab {
+    id: u64,
+    name: Option<String>,
+    tree: Node,
+    focus: String,
+}
+
+impl Tab {
+    fn strip(&mut self, ids: &[String]) -> bool {
+        let mut tree = Some(self.tree.clone());
+        for id in ids {
+            Node::remove(&mut tree, id);
+        }
+        match tree {
+            Some(t) if t.leaves().len() >= 2 => {
+                if !t.contains(&self.focus) {
+                    self.focus = t.leaves()[0].to_string();
+                }
+                self.tree = t;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    fn rename(&mut self, old: &str, new: &str) {
+        if self.tree.rename_leaf(old, new) && self.focus == old {
+            self.focus = new.to_string();
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum TabItem {
+    Tab(u64),
+    Session(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SidebarItem {
     Group(String),
+    Tab(u64),
     Session(String),
     New,
 }
@@ -141,6 +187,10 @@ pub enum SidebarLine {
         key: String,
         count: usize,
         collapsed: bool,
+    },
+    Tab {
+        id: u64,
+        count: usize,
     },
     Session {
         id: String,
@@ -179,12 +229,14 @@ pub enum SidebarEdit {
 pub struct Rename {
     pub session: String,
     pub text: String,
+    pub tab: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RenameEdit {
     Editing,
     Submit(String, String),
+    Done,
     Cancel,
 }
 
@@ -209,6 +261,37 @@ pub struct LayoutPrefs {
     pub new_kind: Option<String>,
     #[serde(default)]
     pub new_place: Option<Place>,
+    #[serde(default)]
+    pub tab_name: Option<String>,
+    #[serde(default, deserialize_with = "lenient_tabs")]
+    pub tabs: Vec<TabPrefs>,
+}
+
+fn lenient_tabs<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<TabPrefs>, D::Error> {
+    let raw = Vec::<serde_json::Value>::deserialize(d).unwrap_or_default();
+    Ok(raw
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect())
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TabPrefs {
+    pub tree: Node,
+    #[serde(default)]
+    pub focus: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+fn clean_tab_name(name: Option<&str>) -> Option<String> {
+    let name: String = name?
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(MAX_TAB_NAME)
+        .collect();
+    (!name.is_empty()).then_some(name)
 }
 
 impl ViewState {
@@ -242,6 +325,10 @@ impl ViewState {
             grouped: false,
             collapsed: HashSet::new(),
             group_order: Vec::new(),
+            tabs: Vec::new(),
+            tab_id: 0,
+            tab_name: None,
+            next_tab: 1,
         }
     }
 
@@ -284,6 +371,11 @@ impl ViewState {
                 self.grab = None;
             }
         }
+        if self.panes.len() < 2 {
+            self.tab_name = None;
+        }
+        let claimed = self.panes.clone();
+        self.tabs.retain_mut(|t| t.strip(&claimed));
     }
 
     fn auto_dir(&self) -> SplitDir {
@@ -295,19 +387,196 @@ impl ViewState {
     }
 
     pub fn set_initial(&mut self, id: &str) {
-        if self.panes.iter().any(|p| p == id) {
-            self.commit(self.tree.clone(), Some(id.to_string()));
+        self.open(id);
+    }
+
+    pub fn active_tab(&self) -> Option<u64> {
+        (self.panes.len() >= 2).then_some(self.tab_id)
+    }
+
+    pub fn tab_count(&self) -> usize {
+        self.tabs.len() + usize::from(self.active_tab().is_some())
+    }
+
+    pub fn in_tab(&self, id: &str) -> bool {
+        self.panes.iter().any(|p| p == id) || self.tabs.iter().any(|t| t.tree.contains(id))
+    }
+
+    pub fn item_of(&self, id: &str) -> TabItem {
+        if self.panes.len() >= 2 && self.panes.iter().any(|p| p == id) {
+            return TabItem::Tab(self.tab_id);
+        }
+        match self.tabs.iter().find(|t| t.tree.contains(id)) {
+            Some(t) => TabItem::Tab(t.id),
+            None => TabItem::Session(id.to_string()),
+        }
+    }
+
+    pub fn tab_members(&self, tab: u64) -> Vec<String> {
+        if self.active_tab() == Some(tab) {
+            return self.panes.clone();
+        }
+        self.tabs
+            .iter()
+            .find(|t| t.id == tab)
+            .map(|t| t.tree.leaves().into_iter().map(str::to_string).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn tab_title(&self, tab: u64) -> String {
+        let name = if self.active_tab() == Some(tab) {
+            self.tab_name.clone()
+        } else {
+            self.tabs
+                .iter()
+                .find(|t| t.id == tab)
+                .and_then(|t| t.name.clone())
+        };
+        if let Some(n) = name {
+            return n;
+        }
+        let Some(first) = self.tab_members(tab).into_iter().next() else {
+            return "tab".into();
+        };
+        if let Some(loc) = self.locs.get(&first) {
+            let root = loc.root.trim_end_matches('/');
+            if let Some(last) = root.rsplit('/').next().filter(|s| !s.is_empty()) {
+                return last.to_string();
+            }
+        }
+        self.sessions
+            .iter()
+            .find(|r| r.id == first)
+            .map_or(first, |r| r.name.clone())
+    }
+
+    pub fn tab_blocked(&self, tab: u64) -> bool {
+        let members = self.tab_members(tab);
+        self.sessions
+            .iter()
+            .any(|r| r.state.kind == StateKind::Blocked && members.contains(&r.id))
+    }
+
+    pub fn tab_order(&self) -> Vec<(TabItem, Vec<String>)> {
+        let mut out: Vec<(TabItem, Vec<String>)> = Vec::new();
+        for r in self.sidebar_rows() {
+            let item = self.item_of(&r.id);
+            if out.iter().any(|(i, _)| *i == item) {
+                continue;
+            }
+            let members = match &item {
+                TabItem::Tab(t) => self.tab_members(*t),
+                TabItem::Session(s) => vec![s.clone()],
+            };
+            out.push((item, members));
+        }
+        out
+    }
+
+    fn fresh_tab(&mut self) -> u64 {
+        let id = self.next_tab;
+        self.next_tab += 1;
+        id
+    }
+
+    fn stash_active(&mut self) {
+        let name = self.tab_name.take();
+        if let Some(tree) = self.tree.clone().filter(|t| t.leaves().len() >= 2) {
+            self.tabs.push(Tab {
+                id: self.tab_id,
+                name,
+                tree,
+                focus: self.focus_id.clone().unwrap_or_default(),
+            });
+        }
+    }
+
+    pub fn switch_tab(&mut self, item: &TabItem, focus: Option<&str>) {
+        let current = match item {
+            TabItem::Tab(t) => self.active_tab() == Some(*t),
+            TabItem::Session(s) => self.panes == [s.clone()],
+        };
+        if current {
+            if let Some(i) = focus.and_then(|f| self.panes.iter().position(|p| p == f)) {
+                self.focus_pane(i);
+            }
             return;
         }
-        let mut tree = self.tree.take();
-        let swapped = match (&mut tree, self.focus_id.clone()) {
-            (Some(t), Some(f)) => t.rename_leaf(&f, id),
-            _ => false,
+        let (tree, f) = match item {
+            TabItem::Tab(t) => {
+                let Some(at) = self.tabs.iter().position(|x| x.id == *t) else {
+                    return;
+                };
+                let tab = self.tabs.remove(at);
+                self.stash_active();
+                self.tab_id = tab.id;
+                self.tab_name = tab.name;
+                let f = focus
+                    .filter(|f| tab.tree.contains(f))
+                    .map_or(tab.focus, str::to_string);
+                (tab.tree, f)
+            }
+            TabItem::Session(s) => {
+                self.stash_active();
+                self.tab_id = self.fresh_tab();
+                (Node::leaf(s), s.clone())
+            }
         };
-        if !swapped {
-            tree = Some(Node::leaf(id));
+        if self.rename.as_ref().is_some_and(|r| r.tab) {
+            self.rename = None;
         }
-        self.commit(tree, Some(id.to_string()));
+        self.zoom = false;
+        self.commit(Some(tree), Some(f));
+        self.scroll = None;
+    }
+
+    pub fn open(&mut self, id: &str) {
+        let item = self.item_of(id);
+        self.switch_tab(&item, Some(id));
+    }
+
+    fn step_tab(&mut self, forward: bool) {
+        let order: Vec<TabItem> = self.tab_order().into_iter().map(|(i, _)| i).collect();
+        let n = order.len();
+        if n < 2 {
+            return;
+        }
+        let cur = self.focused_session().map(|f| self.item_of(f));
+        let at = cur
+            .and_then(|c| order.iter().position(|i| *i == c))
+            .unwrap_or(0);
+        let next = if forward {
+            (at + 1) % n
+        } else {
+            (at + n - 1) % n
+        };
+        self.switch_tab(&order[next], None);
+    }
+
+    fn close_tab(&mut self) {
+        if self.panes.len() < 2 {
+            self.notice = Some("a one-pane tab is just its session".into());
+            return;
+        }
+        let keep = self.focus_id.clone();
+        self.tab_name = None;
+        self.tab_id = self.fresh_tab();
+        self.zoom = false;
+        self.commit(keep.as_deref().map(Node::leaf), keep);
+        self.notice = Some("tab closed, its sessions keep running".into());
+    }
+
+    fn rename_tab(&mut self) {
+        if self.panes.len() < 2 {
+            self.notice = Some("split the pane first, a one-pane tab is just its session".into());
+            return;
+        }
+        let text = self.tab_title(self.tab_id);
+        self.rename = Some(Rename {
+            session: self.focus_id.clone().unwrap_or_default(),
+            text,
+            tab: true,
+        });
     }
 
     pub fn split_focused(&mut self, dir: SplitDir, new_id: &str) -> bool {
@@ -406,6 +675,7 @@ impl ViewState {
             .into_iter()
             .filter_map(|(line, _)| match line {
                 SidebarLine::Header { key, .. } => Some(SidebarItem::Group(key)),
+                SidebarLine::Tab { id, .. } => Some(SidebarItem::Tab(id)),
                 SidebarLine::Session { id, .. } => Some(SidebarItem::Session(id)),
                 SidebarLine::Detail(_) => None,
             })
@@ -466,8 +736,29 @@ impl ViewState {
         };
         let mut out = Vec::new();
         if !self.grouped {
-            for r in self.sidebar_rows() {
-                push(r, &mut out, false);
+            for (item, members) in self.tab_order() {
+                match item {
+                    TabItem::Tab(id) => {
+                        out.push(SidebarLine::Tab {
+                            id,
+                            count: members.len(),
+                        });
+                        for m in members {
+                            out.push(SidebarLine::Session {
+                                id: m.clone(),
+                                indent: true,
+                            });
+                            if self.locs.contains_key(&m) {
+                                out.push(SidebarLine::Detail(m));
+                            }
+                        }
+                    }
+                    TabItem::Session(id) => {
+                        if let Some(r) = self.sessions.iter().find(|r| r.id == id) {
+                            push(r, &mut out, false);
+                        }
+                    }
+                }
             }
             return out;
         }
@@ -667,8 +958,15 @@ impl ViewState {
                         Some(SidebarItem::Session(id))
                             if self.sessions.iter().any(|s| s.id == id) =>
                         {
-                            self.select(&id);
+                            self.open(&id);
                             SidebarEdit::Select(id)
+                        }
+                        Some(SidebarItem::Tab(t)) => {
+                            self.switch_tab(&TabItem::Tab(t), None);
+                            match self.focused_session() {
+                                Some(f) => SidebarEdit::Select(f.to_string()),
+                                None => SidebarEdit::Leave,
+                            }
                         }
                         Some(SidebarItem::New) if self.allow_new => SidebarEdit::New,
                         _ => SidebarEdit::Leave,
@@ -760,6 +1058,10 @@ impl ViewState {
             Cmd::FocusOther => self.cycle_focus(true),
             Cmd::FocusPrev => self.cycle_focus(false),
             Cmd::SplitRight | Cmd::SplitDown | Cmd::Focus(_) | Cmd::Resize(_) => {}
+            Cmd::NextTab => self.step_tab(true),
+            Cmd::PrevTab => self.step_tab(false),
+            Cmd::RenameTab => self.rename_tab(),
+            Cmd::CloseTab => self.close_tab(),
             Cmd::Zoom => self.zoom = !self.zoom,
             Cmd::Group => self.grouped = !self.grouped,
             Cmd::Sidebar => {
@@ -800,6 +1102,7 @@ impl ViewState {
                     self.rename = Some(Rename {
                         session: r.id.clone(),
                         text: r.name.clone(),
+                        tab: false,
                     });
                 }
             }
@@ -826,6 +1129,9 @@ impl ViewState {
             }
         }
         if !self.panes.iter().any(|p| p == old) {
+            for t in &mut self.tabs {
+                t.rename(old, new);
+            }
             return;
         }
         let mut tree = self.tree.take();
@@ -850,6 +1156,10 @@ impl ViewState {
                 '\r' | '\n' => {
                     let done = self.rename.take();
                     return match done {
+                        Some(r) if r.tab => {
+                            self.tab_name = clean_tab_name(Some(&r.text));
+                            RenameEdit::Done
+                        }
                         Some(r) => RenameEdit::Submit(r.session, r.text.trim().to_string()),
                         None => RenameEdit::Cancel,
                     };
@@ -882,6 +1192,8 @@ impl ViewState {
         let was_shell = self.shells.iter().any(|s| s == id);
         if !self.panes.iter().any(|p| p == id) {
             self.shells.retain(|s| s != id);
+            let gone = [id.to_string()];
+            self.tabs.retain_mut(|t| t.strip(&gone));
             return;
         }
         if was_shell && self.panes.len() > 1 {
@@ -892,7 +1204,7 @@ impl ViewState {
         let neighbour = self.sessions[pos..]
             .iter()
             .chain(self.sessions[..pos].iter().rev())
-            .find(|s| !self.panes.contains(&s.id))
+            .find(|s| !self.in_tab(&s.id))
             .map(|s| s.id.clone());
         match neighbour {
             Some(n) => {
@@ -911,6 +1223,9 @@ impl ViewState {
             None => {
                 self.drop_leaf(id);
                 self.scroll = None;
+                if self.tree.is_none() {
+                    self.show_first_tab();
+                }
             }
         }
     }
@@ -949,6 +1264,7 @@ impl ViewState {
                 };
                 let id = match line {
                     SidebarLine::Header { key, .. } => return Hit::Group(key.clone()),
+                    SidebarLine::Tab { id, .. } => return Hit::Tab(*id),
                     SidebarLine::Detail(id) => return Hit::Session(id.clone()),
                     SidebarLine::Session { id, .. } => id,
                 };
@@ -990,7 +1306,11 @@ impl ViewState {
     fn hover_key(&self, area: Rect) -> Option<Hit> {
         let (c, r) = self.pointer?;
         match self.hit(area, c, r) {
-            h @ (Hit::Button(..) | Hit::Session(_) | Hit::Group(_) | Hit::NewSession) => Some(h),
+            h @ (Hit::Button(..)
+            | Hit::Session(_)
+            | Hit::Group(_)
+            | Hit::Tab(_)
+            | Hit::NewSession) => Some(h),
             _ => None,
         }
     }
@@ -1071,7 +1391,13 @@ impl ViewState {
             }
             Hit::Session(id) => {
                 if ev.is_left_press() {
-                    self.select(&id);
+                    self.open(&id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Tab(t) => {
+                if ev.is_left_press() {
+                    self.switch_tab(&TabItem::Tab(t), None);
                     out.redraw = true;
                 }
             }
@@ -1193,9 +1519,7 @@ impl ViewState {
                     }
                 })
                 .map(|i| order[i])
-                .find(|id| {
-                    !(self.panes.iter().any(|p| p == id) || skip_folded && folded.contains(id))
-                })
+                .find(|id| !(self.in_tab(id) || skip_folded && folded.contains(id)))
         };
         pick(true).or_else(|| pick(false)).map(str::to_string)
     }
@@ -1211,17 +1535,17 @@ impl ViewState {
     fn split(&mut self) {
         self.scroll = None;
         match self.panes.len() {
-            0 => {
-                if let Some(id) = self.sessions.first().map(|s| s.id.clone()) {
-                    self.replace_focused(id);
-                }
-            }
+            0 => self.show_first_tab(),
             1 => {
                 let from = self.focused_session().map(str::to_string);
                 match self.next_free(from.as_deref(), true) {
                     Some(id) => {
                         let dir = self.auto_dir();
                         self.split_focused(dir, &id);
+                    }
+                    None if self.sessions.len() > 1 => {
+                        self.notice =
+                            Some("the other sessions are in tabs, Ctrl-] c starts one".into())
                     }
                     None => self.notice = Some("only one session, nothing to split".into()),
                 }
@@ -1258,7 +1582,7 @@ impl ViewState {
             .filter_map(|r| {
                 let old = r.resumed_from.as_ref()?;
                 let vanished = !self.sessions.iter().any(|s| &s.id == old);
-                (vanished && self.panes.contains(old) && !self.panes.contains(&r.id))
+                (vanished && self.in_tab(old) && !self.in_tab(&r.id))
                     .then(|| (old.clone(), r.id.clone()))
             })
             .collect();
@@ -1272,6 +1596,15 @@ impl ViewState {
             self.replace_session(&old, &new);
         }
         self.refresh_groups();
+        let ids: HashSet<&str> = self.sessions.iter().map(|r| r.id.as_str()).collect();
+        let stale: Vec<String> = self
+            .tabs
+            .iter()
+            .flat_map(|t| t.tree.leaves())
+            .filter(|id| !ids.contains(id))
+            .map(str::to_string)
+            .collect();
+        self.tabs.retain_mut(|t| t.strip(&stale));
         let gone: Vec<String> = self
             .panes
             .iter()
@@ -1282,8 +1615,7 @@ impl ViewState {
             .retain(|id| self.sessions.iter().any(|s| &s.id == id));
         if gone.is_empty() {
             if self.tree.is_none() {
-                let tree = self.sessions.first().map(|s| Node::leaf(&s.id));
-                self.commit(tree, None);
+                self.show_first_tab();
             }
             return;
         }
@@ -1295,11 +1627,17 @@ impl ViewState {
             }
             Node::remove(&mut tree, id);
         }
-        if tree.is_none() {
-            tree = self.sessions.first().map(|s| Node::leaf(&s.id));
-            focus = None;
-        }
         self.commit(tree, focus);
+        if self.tree.is_none() {
+            self.show_first_tab();
+        }
+    }
+
+    fn show_first_tab(&mut self) {
+        self.tab_name = None;
+        if let Some(item) = self.sessions.first().map(|r| self.item_of(&r.id)) {
+            self.switch_tab(&item, None);
+        }
     }
 
     pub fn prefs(&self) -> LayoutPrefs {
@@ -1311,7 +1649,18 @@ impl ViewState {
             tree: self.tree.clone(),
             shells: self.shells.clone(),
             new_kind: self.new_kind.clone(),
-            new_place: self.new_place,
+            new_place: self.new_place.filter(|p| *p != Place::Tab),
+            tab_name: self.active_tab().and(self.tab_name.clone()),
+            tabs: self
+                .tabs
+                .iter()
+                .take(MAX_TABS)
+                .map(|t| TabPrefs {
+                    tree: t.tree.clone(),
+                    focus: t.focus.clone(),
+                    name: t.name.clone(),
+                })
+                .collect(),
         }
     }
 
@@ -1367,13 +1716,60 @@ impl ViewState {
             .map(str::to_string)
             .collect();
         let focus = leaves.get(prefs.focus).or_else(|| leaves.last()).cloned();
+        self.tabs.clear();
+        self.tab_id = self.fresh_tab();
         self.commit(tree, focus);
+        self.tab_name = clean_tab_name(prefs.tab_name.as_deref());
+        self.load_tabs(&prefs.tabs);
         self.shells = shells;
         self.zoom = prefs.zoom;
         self.sidebar = prefs.sidebar;
         self.new_kind = prefs.new_kind.clone();
         self.new_place = prefs.new_place;
         self.scroll = None;
+    }
+}
+
+impl ViewState {
+    fn load_tabs(&mut self, saved: &[TabPrefs]) {
+        let mut claimed: Vec<String> = self.panes.clone();
+        for tp in saved {
+            if self.tabs.len() >= MAX_TABS {
+                break;
+            }
+            let mut tree = Some(tp.tree.clone()).filter(Node::is_valid);
+            if let Some(t) = tree.as_mut() {
+                t.clamp_ratios();
+            }
+            let drop: Vec<String> = tree
+                .iter()
+                .flat_map(Node::leaves)
+                .filter(|id| {
+                    claimed.iter().any(|c| c == id) || !self.sessions.iter().any(|s| s.id == *id)
+                })
+                .map(str::to_string)
+                .collect();
+            for id in &drop {
+                Node::remove(&mut tree, id);
+            }
+            let Some(tree) = tree.filter(|t| t.leaves().len() >= 2) else {
+                continue;
+            };
+            let leaves: Vec<String> = tree.leaves().into_iter().map(str::to_string).collect();
+            let focus = if tree.contains(&tp.focus) {
+                tp.focus.clone()
+            } else {
+                leaves[0].clone()
+            };
+            claimed.extend(leaves);
+            let id = self.fresh_tab();
+            self.tabs.push(Tab {
+                id,
+                name: clean_tab_name(tp.name.as_deref()),
+                tree,
+                focus,
+            });
+        }
     }
 }
 
@@ -1400,6 +1796,7 @@ pub enum Hit {
     Button(String, Control),
     Session(String),
     Group(String),
+    Tab(u64),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,
