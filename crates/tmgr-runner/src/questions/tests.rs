@@ -357,7 +357,11 @@ fn fake(dir: &Path, body: &str) -> std::path::PathBuf {
     let src = dir.join("claude.src");
     std::fs::write(&src, format!("#!/bin/sh\n{body}\n")).unwrap();
     let bin = dir.join("claude");
-    let copied = Command::new("cp").arg(&src).arg(&bin).status().unwrap();
+    let copied = std::process::Command::new("cp")
+        .arg(&src)
+        .arg(&bin)
+        .status()
+        .unwrap();
     assert!(copied.success());
     std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
     bin
