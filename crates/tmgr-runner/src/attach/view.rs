@@ -120,7 +120,7 @@ pub struct ViewState {
     pub allow_new: bool,
     pub locs: HashMap<String, Loc>,
     pub grouped: bool,
-    collapsed: HashSet<String>,
+    pub(crate) collapsed: HashSet<String>,
     group_order: Vec<String>,
 }
 
@@ -1157,7 +1157,7 @@ impl ViewState {
                 })
                 .map(|i| order[i])
                 .find(|id| {
-                    !self.panes.iter().any(|p| p == id) && !(skip_folded && folded.contains(id))
+                    !(self.panes.iter().any(|p| p == id) || skip_folded && folded.contains(id))
                 })
         };
         pick(true).or_else(|| pick(false)).map(str::to_string)
