@@ -98,6 +98,7 @@ export const markAllAsRead = async (): Promise<number> => {
 
 export const deleteNotification = async (id: number): Promise<void> => {
 	await $axios.delete(`/notifications/${id}`);
+	requestCache.invalidate('notifications-unread-count');
 };
 
 export const getNotificationSettings =

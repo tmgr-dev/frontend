@@ -9,6 +9,7 @@ import {
 } from '@/actions/tmgr/notifications';
 import { usePusher } from '@/composable/usePusher';
 import type { ActionError } from '@/types/dashboard';
+import { requestCache } from '@/utils/requestCache';
 import { computed, getCurrentScope, onScopeDispose, ref } from 'vue';
 
 interface UseNotificationsReturn {
@@ -144,6 +145,7 @@ export function useNotifications(): UseNotificationsReturn {
 	};
 
 	const handleNewNotification = (notification: Notification) => {
+		requestCache.invalidate('notifications-unread-count');
 		notifications.value.unshift(notification);
 
 		if (!notification.read_at) {
