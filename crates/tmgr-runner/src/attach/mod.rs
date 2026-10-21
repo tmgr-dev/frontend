@@ -1,4 +1,5 @@
 mod actions;
+mod attention;
 mod keys;
 mod modes;
 mod mouse;
@@ -14,8 +15,9 @@ mod view;
 mod tests;
 
 pub use actions::{ActionDef, ACTIONS};
+pub use attention::AttentionTracker;
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
-pub use modes::{enter_mouse, mode_changes, reset_modes};
+pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
 pub use newsession::{KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, RowView};

@@ -54,6 +54,8 @@ pub enum Action {
     Scroll(ScrollKey),
     Mouse(MouseEvent),
     Drop(Vec<u8>),
+    FocusIn,
+    FocusOut,
     Paste {
         data: Vec<u8>,
         start: bool,
@@ -119,6 +121,16 @@ impl InputSplitter {
                         flush(&mut run, &mut out);
                         out.push(Action::Mouse(ev));
                         i += used;
+                        continue;
+                    }
+                    Seq::Focus(on) => {
+                        flush(&mut run, &mut out);
+                        out.push(if on {
+                            Action::FocusIn
+                        } else {
+                            Action::FocusOut
+                        });
+                        i += 3;
                         continue;
                     }
                     Seq::Skip(used) => {
@@ -367,6 +379,7 @@ fn prefix_esc(b: &[u8]) -> PrefixEsc {
 
 enum Seq {
     Mouse(MouseEvent, usize),
+    Focus(bool),
     Partial,
     Skip(usize),
     None,
@@ -378,6 +391,9 @@ fn mouse_at(b: &[u8]) -> Seq {
     }
     if b.len() < 3 {
         return Seq::None;
+    }
+    if b[1] == b'[' && (b[2] == b'I' || b[2] == b'O') {
+        return Seq::Focus(b[2] == b'I');
     }
     if b[1] == b'[' && b[2] == b'M' {
         return if b.len() >= 6 {

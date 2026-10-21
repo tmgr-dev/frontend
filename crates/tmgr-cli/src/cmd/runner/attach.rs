@@ -160,6 +160,7 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
             name: s.name.clone(),
             state: s.state.clone(),
             age: short_age(now, s.state.since_ms),
+            you: None,
             esc: s.argv.iter().any(|a| {
                 let n = a.rsplit('/').next().unwrap_or(a);
                 n.contains("claude") || n.contains("codex")

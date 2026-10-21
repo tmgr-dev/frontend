@@ -201,6 +201,7 @@ fn row(id: &str, name: &str, kind: StateKind, age: &str) -> SessionRow {
         name: name.into(),
         state: st(kind, code),
         age: age.into(),
+        you: None,
         esc: false,
         resumed_from: None,
     }
@@ -758,7 +759,7 @@ fn mode_transitions_emit_only_the_four_sequences() {
     assert_eq!(mode_changes(None, on), b"\x1b[?1h\x1b[?2004h");
     assert_eq!(
         reset_modes(),
-        b"\x1b[?1l\x1b[?2004l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l".as_slice()
+        b"\x1b[?1l\x1b[?2004l\x1b[?1004l\x1b[?1006l\x1b[?1003l\x1b[?1002l\x1b[?1000l".as_slice()
     );
 }
 
@@ -3645,4 +3646,114 @@ fn scroll_indicator_keeps_the_header_buttons_clear_of_a_long_title() {
     let head = out.lines().next().unwrap();
     assert!(head.contains("… · waiting · scroll -120/9000 ─"), "{head}");
     assert!(head.contains("⏸ ■ ✕ ╮"), "{head}");
+}
+
+#[test]
+fn focus_reports_are_actions_and_never_forwarded() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b[I"), vec![Action::FocusIn]);
+    assert_eq!(s.feed(b"\x1b[O"), vec![Action::FocusOut]);
+    assert_eq!(
+        s.feed(b"ab\x1b[Icd\x1b[O"),
+        vec![
+            Action::Forward(b"ab".to_vec()),
+            Action::FocusIn,
+            Action::Forward(b"cd".to_vec()),
+            Action::FocusOut
+        ]
+    );
+}
+
+#[test]
+fn focus_reports_split_across_reads_are_held() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1b"), vec![]);
+    assert_eq!(s.feed(b"["), vec![]);
+    assert_eq!(s.feed(b"O"), vec![Action::FocusOut]);
+    assert_eq!(s.feed(b"x\x1b["), vec![Action::Forward(b"x".to_vec())]);
+    assert_eq!(s.feed(b"I"), vec![Action::FocusIn]);
+}
+
+#[test]
+fn focus_reports_do_not_disturb_the_prefix_or_mouse() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1d\x1b[I"), vec![Action::FocusIn]);
+    assert_eq!(s.feed(b"d"), vec![Action::Cmd(Cmd::Detach)]);
+    assert_eq!(s.feed(b"\x1b[<64;3;4M\x1b[I").len(), 2);
+}
+
+#[test]
+fn focus_bytes_inside_a_paste_stay_paste() {
+    let mut s = InputSplitter::new();
+    let got = s.feed(b"\x1b[200~a\x1b[Ib\x1b[201~");
+    assert_eq!(
+        got,
+        vec![Action::Paste {
+            data: b"\x1b[200~a\x1b[Ib\x1b[201~".to_vec(),
+            start: true,
+            end: true
+        }]
+    );
+}
+
+#[test]
+fn focus_reporting_is_enabled_and_always_reset() {
+    assert_eq!(focus_on(), b"\x1b[?1004h");
+    let reset = reset_modes();
+    assert!(reset.windows(8).any(|w| w == b"\x1b[?1004l"));
+}
+
+fn you_rows(you: Option<u64>) -> ViewState {
+    let mut r = row("a", "a", StateKind::Waiting, "2s");
+    r.you = you;
+    let mut v = ViewState::new(vec![r], "");
+    v.width = 140;
+    v
+}
+
+fn sidebar_row(v: &ViewState) -> String {
+    draw(v, &Screens::default(), 140, 6)
+        .lines()
+        .nth(1)
+        .unwrap()
+        .chars()
+        .take(24)
+        .collect()
+}
+
+#[test]
+fn sidebar_row_shows_human_time_before_the_state() {
+    let line = sidebar_row(&you_rows(Some(12 * 60 + 5)));
+    assert!(line.contains("you 12m waiting 2s"), "{line}");
+}
+
+#[test]
+fn sidebar_row_formats_hours() {
+    assert_eq!(render::you_label(3900).as_deref(), Some("you 1h 5m"));
+    assert_eq!(render::you_label(60).as_deref(), Some("you 1m"));
+    assert_eq!(render::you_label(59), None);
+    assert!(sidebar_row(&you_rows(Some(7200))).contains("you 2h waiting 2s"));
+}
+
+#[test]
+fn sidebar_row_hides_human_time_under_a_minute_or_when_absent() {
+    let plain = sidebar_row(&you_rows(None));
+    assert!(!plain.contains("you"));
+    assert_eq!(sidebar_row(&you_rows(Some(59))), plain);
+}
+
+#[test]
+fn sidebar_row_drops_human_time_before_shortening_the_state() {
+    let mut r = row("a", "dev-server", StateKind::Waiting, "12m");
+    let plain = {
+        let v = ViewState::new(vec![r.clone()], "");
+        draw(&v, &Screens::default(), 140, 6)
+    };
+    r.you = Some(720);
+    let mut v = ViewState::new(vec![r], "");
+    v.width = 140;
+    let with = draw(&v, &Screens::default(), 140, 6);
+    assert!(!with.contains("you"));
+    assert_eq!(with.lines().nth(1), plain.lines().nth(1));
+    assert!(with.contains("12m"));
 }
