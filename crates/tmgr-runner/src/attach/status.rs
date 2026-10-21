@@ -17,11 +17,43 @@ const SECRET_WORDS: [&str; 5] = ["KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD"]
 pub struct SessionStatus {
     pub activity: Option<String>,
     pub todo: Option<(u32, u32)>,
+    pub subs: Vec<SubAgent>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SubAgent {
+    pub id: String,
+    pub label: String,
+    pub started_s: u64,
+    pub agent: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Peek {
+    pub session: String,
+    pub sub: String,
+    pub agent: Option<String>,
+    pub title: String,
+    pub lines: Vec<String>,
+    pub back: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum PeekEdit {
+    Keep,
+    Close,
+}
+
+const PEEK_TAIL: u64 = 256 * 1024;
+const PEEK_LINES: usize = 400;
+const PEEK_WIDTH: usize = 240;
+const MAX_SUBS: usize = 16;
+const STALE_S: u64 = 600;
+const META_CAP: usize = 4096;
 
 impl SessionStatus {
     pub fn is_empty(&self) -> bool {
-        self.activity.is_none() && self.todo.is_none()
+        self.activity.is_none() && self.todo.is_none() && self.subs.is_empty()
     }
 
     pub fn todo_label(&self) -> Option<String> {
@@ -40,11 +72,123 @@ pub struct StatusLine {
 impl ViewState {
     pub fn set_status(&mut self, mut found: HashMap<String, SessionStatus>) -> bool {
         found.retain(|id, _| self.sessions.iter().any(|r| &r.id == id));
+        if self
+            .peek
+            .as_ref()
+            .is_some_and(|p| !self.sessions.iter().any(|r| r.id == p.session))
+        {
+            self.peek = None;
+        }
         if found == self.status {
             return false;
         }
+        self.subs_open
+            .retain(|id| found.get(id).is_some_and(|s| !s.subs.is_empty()));
         self.status = found;
         true
+    }
+
+    pub fn subs_of(&self, id: &str) -> Vec<&SubAgent> {
+        let working = self
+            .sessions
+            .iter()
+            .any(|r| r.id == id && r.state.kind == StateKind::Working);
+        self.status.get(id).map_or_else(Vec::new, |s| {
+            s.subs
+                .iter()
+                .filter(|sub| sub.agent.is_some() || working)
+                .collect()
+        })
+    }
+
+    pub fn toggle_subs(&mut self, id: &str) {
+        if self.subs_of(id).is_empty() {
+            self.notice = Some("no subagents running".into());
+            return;
+        }
+        if !self.subs_open.remove(id) {
+            self.subs_open.insert(id.to_string());
+        }
+    }
+
+    pub fn sub_elapsed(&self, sub: &SubAgent) -> String {
+        if self.now_s == 0 || sub.started_s == 0 {
+            return String::new();
+        }
+        let secs = self.now_s.saturating_sub(sub.started_s);
+        if secs < 3600 {
+            format!("{}:{:02}", secs / 60, secs % 60)
+        } else {
+            format!("{}h", secs / 3600)
+        }
+    }
+
+    pub fn open_peek(&mut self, session: &str, sub: &str) {
+        let subs = self.subs_of(session);
+        let Some(found) = subs.iter().find(|s| s.id == sub) else {
+            return;
+        };
+        let (agent, title) = (found.agent.clone(), found.label.clone());
+        self.peek = Some(Peek {
+            session: session.to_string(),
+            sub: sub.to_string(),
+            agent,
+            title,
+            lines: Vec::new(),
+            back: 0,
+        });
+    }
+
+    pub fn set_peek(&mut self, session: &str, sub: &str, lines: Vec<String>) -> bool {
+        match self.peek.as_mut() {
+            Some(p) if p.session == session && p.sub == sub && p.lines != lines => {
+                p.lines = lines;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    pub fn edit_peek(&mut self, data: &[u8]) -> PeekEdit {
+        let Some(p) = self.peek.as_mut() else {
+            return PeekEdit::Close;
+        };
+        let top = p.lines.len().saturating_sub(1);
+        let mut i = 0;
+        while i < data.len() {
+            let rest = &data[i..];
+            let (used, delta): (usize, i64) =
+                if rest.starts_with(b"\x1b[A") || rest.starts_with(b"\x1bOA") {
+                    (3, 1)
+                } else if rest.starts_with(b"\x1b[B") || rest.starts_with(b"\x1bOB") {
+                    (3, -1)
+                } else if rest.starts_with(b"\x1b[5~") {
+                    (4, 10)
+                } else if rest.starts_with(b"\x1b[6~") {
+                    (4, -10)
+                } else if data.iter().all(|b| *b == 0x1b) {
+                    self.peek = None;
+                    return PeekEdit::Close;
+                } else {
+                    let b = rest[0];
+                    match b {
+                        b'q' => {
+                            self.peek = None;
+                            return PeekEdit::Close;
+                        }
+                        b'k' | 0x10 => (1, 1),
+                        b'j' | 0x0e | b'\r' => (1, -1),
+                        b' ' => (1, -10),
+                        b'g' => (1, i64::MAX / 2),
+                        b'G' => (1, i64::MIN / 2),
+                        _ => (1, 0),
+                    }
+                };
+            let next = (p.back as i64).saturating_add(delta).clamp(0, top as i64);
+            p.back = next as usize;
+            i += used;
+        }
+        PeekEdit::Keep
     }
 
     pub fn status_line(&self, id: &str) -> Option<StatusLine> {
@@ -60,6 +204,7 @@ impl ViewState {
             (Some(todo), Some(a)) => format!("{todo} · {a}"),
             (Some(todo), None) => todo,
             (None, Some(a)) => a,
+            (None, None) if !self.subs_of(id).is_empty() => "subagents running".to_string(),
             (None, None) => return None,
         };
         let clock = (working && row.state.since_ms > 0 && self.now_s > 0)
@@ -89,6 +234,15 @@ pub struct StatusScan {
     skipping: bool,
     pending: Vec<(String, String)>,
     todo: Option<(u32, u32)>,
+    subs: Vec<Sub>,
+}
+
+#[derive(Debug)]
+struct Sub {
+    id: String,
+    label: String,
+    started_s: u64,
+    agent: Option<String>,
 }
 
 impl StatusScan {
@@ -106,6 +260,7 @@ impl StatusScan {
             skipping: false,
             pending: Vec::new(),
             todo: None,
+            subs: Vec::new(),
         }
     }
 
@@ -117,7 +272,36 @@ impl StatusScan {
         SessionStatus {
             activity: self.pending.last().map(|(_, label)| label.clone()),
             todo: self.todo,
+            subs: self
+                .subs
+                .iter()
+                .filter(|s| !self.stale(s))
+                .map(|s| SubAgent {
+                    id: s.id.clone(),
+                    label: s.label.clone(),
+                    started_s: s.started_s,
+                    agent: s.agent.clone(),
+                })
+                .collect(),
         }
+    }
+
+    fn stale(&self, sub: &Sub) -> bool {
+        let Some(agent) = sub.agent.as_deref() else {
+            return false;
+        };
+        let file = self
+            .path
+            .with_extension("")
+            .join("subagents")
+            .join(format!("agent-{agent}.jsonl"));
+        let Ok(meta) = std::fs::symlink_metadata(&file) else {
+            return sub.started_s > 0 && now_secs().saturating_sub(sub.started_s) > STALE_S;
+        };
+        meta.modified()
+            .ok()
+            .and_then(|m| m.elapsed().ok())
+            .is_some_and(|age| age.as_secs() > STALE_S)
     }
 
     pub fn poll(&mut self) {
@@ -135,6 +319,7 @@ impl StatusScan {
         self.pending.clear();
         self.todo = None;
         self.windowed = false;
+        self.subs.clear();
         self.last_message = None;
         self.created = 0;
         self.completed.clear();
@@ -197,7 +382,24 @@ impl StatusScan {
         }
     }
 
+    fn notified(&mut self, line: &[u8]) {
+        let text = String::from_utf8_lossy(line);
+        for tag in ["tool-use-id", "task-id"] {
+            let open = format!("<{tag}>");
+            let close = format!("</{tag}>");
+            for part in text.split(&open).skip(1) {
+                if let Some(id) = part.split(&close).next() {
+                    self.subs
+                        .retain(|s| s.id != id && s.agent.as_deref() != Some(id));
+                }
+            }
+        }
+    }
+
     fn line(&mut self, line: &[u8]) {
+        if !self.subs.is_empty() && contains(line, b"<task-notification>") {
+            self.notified(line);
+        }
         if !contains(line, b"\"type\":\"assistant\"") && !contains(line, b"\"type\":\"user\"") {
             return;
         }
@@ -216,14 +418,18 @@ impl StatusScan {
                     .get("message")
                     .and_then(|m| m.get("id"))
                     .and_then(Value::as_str);
-                self.assistant(message, content);
+                let at = v
+                    .get("timestamp")
+                    .and_then(Value::as_str)
+                    .and_then(iso_secs);
+                self.assistant(message, at.unwrap_or(0), content);
             }
             Some("user") => self.user(&v, content),
             _ => {}
         }
     }
 
-    fn assistant(&mut self, message: Option<&str>, content: &Value) {
+    fn assistant(&mut self, message: Option<&str>, at: u64, content: &Value) {
         let Some(blocks) = content.as_array() else {
             return;
         };
@@ -242,6 +448,17 @@ impl StatusScan {
                 continue;
             };
             let input = b.get("input").unwrap_or(&Value::Null);
+            if matches!(name, "Agent" | "Task") {
+                self.subs.push(Sub {
+                    id: id.to_string(),
+                    label: sub_label(input),
+                    started_s: at,
+                    agent: None,
+                });
+                if self.subs.len() > MAX_SUBS {
+                    self.subs.remove(0);
+                }
+            }
             match name {
                 "TodoWrite" => self.todo = todo_counts(input),
                 "TaskCreate" if !self.windowed => {
@@ -257,6 +474,11 @@ impl StatusScan {
                 self.pending.remove(0);
             }
         }
+    }
+
+    fn human(&mut self) {
+        self.pending.clear();
+        self.subs.retain(|s| s.agent.is_some());
     }
 
     fn task_update(&mut self, input: &Value) {
@@ -284,7 +506,7 @@ impl StatusScan {
             return;
         }
         let Some(blocks) = content.as_array() else {
-            self.pending.clear();
+            self.human();
             return;
         };
         let results: Vec<&str> = blocks
@@ -293,11 +515,22 @@ impl StatusScan {
             .filter_map(|b| b.get("tool_use_id").and_then(Value::as_str))
             .collect();
         if results.is_empty() {
-            self.pending.clear();
-        } else {
-            self.pending
-                .retain(|(id, _)| !results.contains(&id.as_str()));
+            self.human();
+            return;
         }
+        self.pending
+            .retain(|(id, _)| !results.contains(&id.as_str()));
+        let launched = v
+            .get("toolUseResult")
+            .filter(|r| r.get("status").and_then(Value::as_str) == Some("async_launched"))
+            .and_then(|r| r.get("agentId").and_then(Value::as_str));
+        self.subs.retain_mut(|s| {
+            if !results.contains(&s.id.as_str()) {
+                return true;
+            }
+            s.agent = launched.map(str::to_string);
+            launched.is_some()
+        });
     }
 }
 
@@ -360,6 +593,142 @@ fn mask_secrets(text: &str) -> String {
         });
     }
     out.join(" ")
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+fn sub_label(input: &Value) -> String {
+    let kind = str_of(input, &["subagent_type"]).unwrap_or("agent");
+    let what = str_of(input, &["description"]).unwrap_or("");
+    let line = format!(
+        "{}: {}",
+        clean_title(kind),
+        mask_secrets(&clean_title(what))
+    );
+    clip(line.trim_end_matches([':', ' ']), ACTIVITY_MAX)
+}
+
+fn iso_secs(ts: &str) -> Option<u64> {
+    let b = ts.as_bytes();
+    if b.len() < 19 || b[4] != b'-' || b[10] != b'T' {
+        return None;
+    }
+    let n = |r: std::ops::Range<usize>| ts.get(r)?.parse::<i64>().ok();
+    let (y, m, d) = (n(0..4)?, n(5..7)?, n(8..10)?);
+    let (hh, mm, ss) = (n(11..13)?, n(14..16)?, n(17..19)?);
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hh * 3600 + mm * 60 + ss).ok()
+}
+
+fn meta_agent(root: &Path, dir: &Path, tool_use_id: &str, agent: Option<&str>) -> Option<PathBuf> {
+    let matches = |meta: &Path| -> bool {
+        let Some((file, _)) = open_under(root, meta) else {
+            return false;
+        };
+        let mut buf = Vec::new();
+        if file.take(8192).read_to_end(&mut buf).is_err() {
+            return false;
+        }
+        serde_json::from_slice::<Value>(&buf)
+            .ok()
+            .is_some_and(|v| v.get("toolUseId").and_then(Value::as_str) == Some(tool_use_id))
+    };
+    if let Some(agent) = agent {
+        let known = dir.join(format!("agent-{agent}.jsonl"));
+        return Some(known);
+    }
+    let rd = std::fs::read_dir(dir).ok()?;
+    let names = rd
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".meta.json"))
+        .take(META_CAP);
+    for name in names {
+        if matches(&dir.join(&name)) {
+            let stem = name.trim_end_matches(".meta.json");
+            return Some(dir.join(format!("{stem}.jsonl")));
+        }
+    }
+    None
+}
+
+pub fn peek_lines(
+    root: &Path,
+    transcript: &Path,
+    tool_use_id: &str,
+    agent: Option<&str>,
+) -> Vec<String> {
+    let dir = transcript.with_extension("").join("subagents");
+    let Some(path) = meta_agent(root, &dir, tool_use_id, agent) else {
+        return Vec::new();
+    };
+    let Some((mut file, meta)) = open_under(root, &path) else {
+        return Vec::new();
+    };
+    let start = meta.len().saturating_sub(PEEK_TAIL);
+    if file.seek(SeekFrom::Start(start)).is_err() {
+        return Vec::new();
+    }
+    let mut buf = Vec::new();
+    if file.take(PEEK_TAIL).read_to_end(&mut buf).is_err() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut rows = buf.split(|b| *b == b'\n');
+    if start > 0 {
+        rows.next();
+    }
+    for row in rows.filter(|r| r.len() <= LINE_CAP) {
+        let Ok(v) = serde_json::from_slice::<Value>(row) else {
+            continue;
+        };
+        peek_entry(&v, &mut out);
+    }
+    let from = out.len().saturating_sub(PEEK_LINES);
+    out.split_off(from)
+}
+
+fn peek_entry(v: &Value, out: &mut Vec<String>) {
+    let Some(content) = v.get("message").and_then(|m| m.get("content")) else {
+        return;
+    };
+    let mut push = |prefix: &str, text: &str| {
+        let line = mask_secrets(&clean_title(text));
+        if !line.is_empty() {
+            out.push(clip(&format!("{prefix}{line}"), PEEK_WIDTH));
+        }
+    };
+    match (v.get("type").and_then(Value::as_str), content) {
+        (Some("user"), Value::String(s)) => push("prompt: ", s),
+        (Some("assistant"), Value::Array(blocks)) => {
+            for b in blocks {
+                match b.get("type").and_then(Value::as_str) {
+                    Some("text") => {
+                        let text = b.get("text").and_then(Value::as_str).unwrap_or("");
+                        for l in text.lines().take(12) {
+                            push("", l);
+                        }
+                    }
+                    Some("tool_use") => {
+                        let name = b.get("name").and_then(Value::as_str).unwrap_or("tool");
+                        let input = b.get("input").unwrap_or(&Value::Null);
+                        push("> ", &activity_label(name, input));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
 }
 
 pub fn activity_label(name: &str, input: &Value) -> String {
@@ -501,6 +870,7 @@ mod tests {
         let st = SessionStatus {
             activity: None,
             todo: Some((3, 3)),
+            ..Default::default()
         };
         assert_eq!(st.todo_label(), None);
     }
@@ -582,6 +952,162 @@ mod tests {
             ],
         );
         assert_eq!(s.status().todo, Some((1, 3)));
+    }
+
+    fn agent_call(id: &str, kind: &str, what: &str, ts: &str) -> String {
+        format!(
+            r#"{{"type":"assistant","timestamp":"{ts}","message":{{"role":"assistant","content":[{{"type":"tool_use","id":"{id}","name":"Agent","input":{{"subagent_type":"{kind}","description":"{what}"}}}}]}}}}"#
+        )
+    }
+
+    fn launched(id: &str, agent: &str) -> String {
+        format!(
+            r#"{{"type":"user","toolUseResult":{{"status":"async_launched","agentId":"{agent}"}},"message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"{id}","content":"started"}}]}}}}"#
+        )
+    }
+
+    fn live_agent(dir: &Path, agent: &str) {
+        let sub_dir = dir.join("t").join("subagents");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        std::fs::write(sub_dir.join(format!("agent-{agent}.jsonl")), "{}\n").unwrap();
+    }
+
+    #[test]
+    fn a_foreground_agent_runs_until_its_result() {
+        let dir = tempfile::tempdir().unwrap();
+        let call = agent_call(
+            "a",
+            "Explore",
+            "find auth routes",
+            "2026-10-21T20:00:00.000Z",
+        );
+        let s = scan(dir.path(), &[HUMAN, &call]);
+        let subs = s.status().subs;
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].label, "Explore: find auth routes");
+        assert_eq!(subs[0].started_s, 1_792_612_800);
+        let s = scan(dir.path(), &[HUMAN, &call, &result("a")]);
+        assert!(s.status().subs.is_empty());
+    }
+
+    #[test]
+    fn a_background_agent_runs_until_its_notification() {
+        let dir = tempfile::tempdir().unwrap();
+        let call = agent_call(
+            "a",
+            "general-purpose",
+            "big job",
+            "2026-10-21T20:00:00.000Z",
+        );
+        let note = r#"{"type":"attachment","attachment":{"prompt":"<task-notification>\n<task-id>ag1</task-id>\n<tool-use-id>a</tool-use-id>\n<status>completed</status>\n</task-notification>"}}"#;
+        live_agent(dir.path(), "ag1");
+        let s = scan(dir.path(), &[HUMAN, &call, &launched("a", "ag1"), HUMAN]);
+        assert_eq!(s.status().subs.len(), 1);
+        let s = scan(dir.path(), &[HUMAN, &call, &launched("a", "ag1"), note]);
+        assert!(s.status().subs.is_empty());
+    }
+
+    #[test]
+    fn a_new_human_message_drops_foreground_agents_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let fg = agent_call("f", "Plan", "plan it", "2026-10-21T20:00:00.000Z");
+        let bg = agent_call("b", "Explore", "scan", "2026-10-21T20:00:01.000Z");
+        live_agent(dir.path(), "ag2");
+        let s = scan(dir.path(), &[HUMAN, &fg, &bg, &launched("b", "ag2"), HUMAN]);
+        let subs = s.status().subs;
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].id, "b");
+    }
+
+    #[test]
+    fn a_silent_background_agent_expires() {
+        let dir = tempfile::tempdir().unwrap();
+        let call = agent_call("a", "Explore", "scan", "2026-10-21T20:00:00.000Z");
+        let s = scan(dir.path(), &[HUMAN, &call, &launched("a", "ag3")]);
+        let sub_dir = dir.path().join("t").join("subagents");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        let file = sub_dir.join("agent-ag3.jsonl");
+        std::fs::write(&file, "{}\n").unwrap();
+        assert_eq!(s.status().subs.len(), 1);
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(STALE_S + 60);
+        std::fs::File::options()
+            .write(true)
+            .open(&file)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        assert!(s.status().subs.is_empty());
+    }
+
+    #[test]
+    fn iso_timestamps_parse_to_epoch_seconds() {
+        assert_eq!(iso_secs("1970-01-01T00:00:00.000Z"), Some(0));
+        assert_eq!(iso_secs("2024-02-29T12:00:01Z"), Some(1_709_208_001));
+        assert_eq!(iso_secs("garbage"), None);
+    }
+
+    #[test]
+    fn peek_reads_the_subagent_transcript_found_by_its_meta_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript = dir.path().join("t.jsonl");
+        std::fs::write(&transcript, "").unwrap();
+        let sub_dir = dir.path().join("t").join("subagents");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        std::fs::write(sub_dir.join("agent-x1.meta.json"), r#"{"toolUseId":"a"}"#).unwrap();
+        std::fs::write(
+            sub_dir.join("agent-x2.meta.json"),
+            r#"{"toolUseId":"other"}"#,
+        )
+        .unwrap();
+        let body = [
+            r#"{"type":"user","message":{"role":"user","content":"find the \u001b[31mauth routes"}}"#,
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Looking.\nSecond line"},{"type":"tool_use","id":"t1","name":"Grep","input":{"pattern":"route"}}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"secret result"}]}}"#,
+        ]
+        .join("\n");
+        std::fs::write(sub_dir.join("agent-x1.jsonl"), body).unwrap();
+        let lines = peek_lines(dir.path(), &transcript, "a", None);
+        assert_eq!(
+            lines,
+            vec![
+                "prompt: find the auth routes".to_string(),
+                "Looking.".into(),
+                "Second line".into(),
+                "> Grep: route".into(),
+            ]
+        );
+        assert!(peek_lines(dir.path(), &transcript, "missing", None).is_empty());
+    }
+
+    #[test]
+    fn peek_finds_the_file_by_agent_id_and_in_a_crowded_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript = dir.path().join("t.jsonl");
+        std::fs::write(&transcript, "").unwrap();
+        let sub_dir = dir.path().join("t").join("subagents");
+        std::fs::create_dir_all(&sub_dir).unwrap();
+        for i in 0..600 {
+            std::fs::write(
+                sub_dir.join(format!("agent-n{i}.meta.json")),
+                format!(r#"{{"toolUseId":"n{i}"}}"#),
+            )
+            .unwrap();
+            std::fs::write(sub_dir.join(format!("agent-n{i}.jsonl")), "").unwrap();
+        }
+        let line = r#"{"type":"user","message":{"role":"user","content":"hello"}}"#;
+        std::fs::write(sub_dir.join("agent-n599.jsonl"), line).unwrap();
+        let by_scan = peek_lines(dir.path(), &transcript, "n599", None);
+        let by_id = peek_lines(dir.path(), &transcript, "unused", Some("n599"));
+        assert_eq!(by_scan, vec!["prompt: hello".to_string()]);
+        assert_eq!(by_id, by_scan);
+    }
+
+    #[test]
+    fn a_background_agent_without_a_file_expires_after_its_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = agent_call("a", "Explore", "scan", "2020-01-01T00:00:00.000Z");
+        let s = scan(dir.path(), &[HUMAN, &old, &launched("a", "ag9")]);
+        assert!(s.status().subs.is_empty());
     }
 
     #[test]

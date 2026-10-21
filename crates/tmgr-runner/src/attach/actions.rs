@@ -129,6 +129,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Unanswered questions from the agents",
         true,
     ),
+    def(
+        Cmd::Subagents,
+        b"u",
+        "u",
+        "Show or hide the focused session's subagents",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

@@ -42,6 +42,7 @@ pub enum Cmd {
     RenameTab,
     CloseTab,
     Questions,
+    Subagents,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
