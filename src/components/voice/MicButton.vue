@@ -80,23 +80,22 @@
 
 <template>
 	<span class="relative inline-flex items-center gap-1" @mousedown.prevent>
-		<template v-if="recording">
-			<span
-				class="text-xs tabular-nums text-ink-subtle"
-				:class="{ 'text-red-500': state.seconds >= MAX_SECONDS - 10 }"
-				aria-live="off"
-				>{{ formatClock(state.seconds) }}</span
-			>
-			<button
-				type="button"
-				class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
-				aria-label="Cancel recording"
-				title="Cancel recording"
-				@click="cancel"
-			>
-				<X class="h-4 w-4" />
-			</button>
-		</template>
+		<span
+			v-if="recording"
+			class="text-xs tabular-nums text-ink-subtle"
+			:class="{ 'text-red-500': state.seconds >= MAX_SECONDS - 10 }"
+			>{{ formatClock(state.seconds) }}</span
+		>
+		<button
+			v-if="state.status !== 'idle'"
+			type="button"
+			class="flex h-7 w-7 items-center justify-center rounded-pill text-ink-subtle hover:bg-surface-hover hover:text-ink"
+			aria-label="Cancel voice input"
+			title="Cancel"
+			@click="cancel"
+		>
+			<X class="h-4 w-4" />
+		</button>
 		<button
 			type="button"
 			class="flex h-7 w-7 items-center justify-center rounded-pill transition disabled:cursor-not-allowed disabled:opacity-40"

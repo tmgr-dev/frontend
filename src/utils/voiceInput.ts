@@ -1,5 +1,6 @@
 export const MAX_SECONDS = 120;
 export const MAX_BYTES = 1_500_000;
+export const MAX_UPLOAD_BYTES = 1_900_000;
 export const MIN_RECORDING_MS = 400;
 export const AUDIO_BITS_PER_SECOND = 32_000;
 export const TIMESLICE_MS = 1000;
@@ -218,6 +219,14 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 		const mime = baseMime(rec.mimeType);
 		const blob = deps.makeBlob(chunks, mime);
 		chunks = [];
+		if (blob.size > MAX_UPLOAD_BYTES) {
+			set({
+				status: 'idle',
+				seconds: 0,
+				error: 'The recording is too long. Try a shorter one.',
+			});
+			return;
+		}
 		if (elapsed < MIN_RECORDING_MS || blob.size === 0) {
 			set({
 				status: 'idle',
@@ -283,6 +292,7 @@ export const createVoiceRecorder = (deps: VoiceRecorderDeps): VoiceRecorder => {
 				stopTimer();
 				releaseStream();
 				recorder = null;
+				chunks = [];
 				fail({ message: 'Recording failed.', blocked: false });
 			};
 			startedAt = deps.now();

@@ -137,6 +137,7 @@
 	);
 
 	watch(currentWorkspaceId, (id) => {
+		mic.value?.cancel();
 		if (open.value && id) load(id);
 	});
 

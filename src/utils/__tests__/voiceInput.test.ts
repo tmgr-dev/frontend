@@ -5,6 +5,7 @@ import {
 	insertAtCursor,
 	MAX_BYTES,
 	MAX_SECONDS,
+	MAX_UPLOAD_BYTES,
 	microphoneFailure,
 	pickMimeType,
 	type RecorderLike,
@@ -320,5 +321,18 @@ describe('createVoiceRecorder', () => {
 		t.rec.onerror?.();
 		expect(t.recorder.snapshot().error).toBe('Recording failed.');
 		expect(t.trackStop).toHaveBeenCalled();
+	});
+});
+
+describe('upload size guard', () => {
+	it('refuses an oversized recording without uploading', async () => {
+		const t = setup();
+		await t.recorder.start();
+		t.advance(2000);
+		t.rec.pendingChunk = MAX_UPLOAD_BYTES + 1;
+		t.recorder.stop();
+		await flush();
+		expect(t.recorder.snapshot().error).toMatch(/too long/);
+		expect(t.deps.transcribe).not.toHaveBeenCalled();
 	});
 });
