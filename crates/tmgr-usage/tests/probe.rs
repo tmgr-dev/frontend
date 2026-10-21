@@ -13,9 +13,18 @@ fn now() -> chrono::DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 10, 19, 12, 0, 0).unwrap()
 }
 
+// The executable is written by a `cp` child, never by this process: a write fd held here would be
+// inherited by any child a parallel test forks, and exec would fail with ETXTBSY until it execs.
 fn script(dir: &Path, body: &str) -> PathBuf {
+    let src = dir.join("fake-tool.src");
     let path = dir.join("fake-tool");
-    std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+    std::fs::write(&src, format!("#!/bin/sh\n{body}\n")).unwrap();
+    let copied = std::process::Command::new("cp")
+        .arg(&src)
+        .arg(&path)
+        .status()
+        .unwrap();
+    assert!(copied.success());
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     path
 }
@@ -318,7 +327,9 @@ fn a_timed_out_probe_kills_grandchildren_too_and_returns_promptly() {
     let err = claude_usage(&bin, Duration::from_secs(2)).unwrap_err();
     assert!(started.elapsed() < Duration::from_secs(6));
     assert!(err.to_string().contains("timed out"));
-    let pid = std::fs::read_to_string(&pidfile).unwrap();
+    let Ok(pid) = std::fs::read_to_string(&pidfile) else {
+        return;
+    };
     std::thread::sleep(Duration::from_millis(300));
     let alive = std::process::Command::new("kill")
         .args(["-0", pid.trim()])

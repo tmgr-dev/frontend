@@ -1,11 +1,12 @@
 use super::mouse::MouseEvent;
 use super::palette::{esc_key, next_char, query_tail, Key};
 use super::render::{dim, put};
+use super::theme::colors;
 use super::view::{contains, MouseOut, ViewState};
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Margin, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -603,7 +604,7 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
                 inner.x,
                 line(1 + i),
                 text,
-                Style::new().fg(Color::Red),
+                Style::new().fg(colors().bad),
                 inner.width,
             );
         }

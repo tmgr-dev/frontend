@@ -71,6 +71,14 @@ pub const ACTIONS: &[ActionDef] = &[
     def(Cmd::Zoom, b"z", "z", "Zoom the pane", true),
     def(Cmd::Sidebar, b"b", "b", "Show or hide the sidebar", true),
     def(
+        Cmd::SidebarNarrower,
+        b"<",
+        "<",
+        "Make the sidebar narrower",
+        true,
+    ),
+    def(Cmd::SidebarWider, b">", ">", "Make the sidebar wider", true),
+    def(
         Cmd::Group,
         b"g",
         "g",

@@ -3,6 +3,15 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.58 — 2026-10-21
+
+- Sidebar: the Pages section shows your pinned pages first, then the ten most recently edited ones as a flat list. The full page tree with drag and drop is on the All pages page.
+- Pages: Unpin works for every pinned page, including pinned subpages under a collapsed parent.
+- New task is back in the top bar; the separate Pinned group at the top of the sidebar is gone.
+- The "…" menu on page rows shows on hover instead of on every row.
+- Agent chat: compact a long chat's history with one button.
+- Workspaces: owners no longer see Leave, and a failed Leave shows the server's reason.
+
 ## 0.9.57 — 2026-10-21
 
 - Settings: their own grouped navigation, so every settings section is one click away instead of living in the user menu.
