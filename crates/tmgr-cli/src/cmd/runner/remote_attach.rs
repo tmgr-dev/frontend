@@ -238,7 +238,11 @@ impl App {
                     let page = self.page();
                     self.view.scroll_key(key, page);
                 }
-                Action::Mouse(_) | Action::Drop(_) | Action::Paste { .. } => {}
+                Action::Mouse(_)
+                | Action::Drop(_)
+                | Action::Paste { .. }
+                | Action::FocusIn
+                | Action::FocusOut => {}
             }
         }
         None

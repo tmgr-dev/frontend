@@ -3742,18 +3742,45 @@ fn sidebar_row_hides_human_time_under_a_minute_or_when_absent() {
     assert_eq!(sidebar_row(&you_rows(Some(59))), plain);
 }
 
-#[test]
-fn sidebar_row_drops_human_time_before_shortening_the_state() {
-    let mut r = row("a", "dev-server", StateKind::Waiting, "12m");
-    let plain = {
-        let v = ViewState::new(vec![r.clone()], "");
-        draw(&v, &Screens::default(), 140, 6)
-    };
-    r.you = Some(720);
+fn named_row(name: &str, age: &str, you: Option<u64>) -> String {
+    let mut r = row("a", name, StateKind::Waiting, age);
+    r.you = you;
     let mut v = ViewState::new(vec![r], "");
     v.width = 140;
-    let with = draw(&v, &Screens::default(), 140, 6);
-    assert!(!with.contains("you"));
-    assert_eq!(with.lines().nth(1), plain.lines().nth(1));
-    assert!(with.contains("12m"));
+    sidebar_row(&v)
+}
+
+#[test]
+fn sidebar_row_keeps_human_time_and_shortens_the_state_to_fit() {
+    let line = named_row("api", "2s", Some(720));
+    assert!(line.contains("you 12m wait… 2s"), "{line}");
+    let line = named_row("dev", "12m", Some(720));
+    assert!(line.contains("you 12m wai… 12m"), "{line}");
+    let line = named_row("my-agent", "2s", Some(720));
+    assert!(line.contains("you 12m 2s"), "{line}");
+}
+
+#[test]
+fn sidebar_row_shows_everything_when_it_all_fits() {
+    let line = named_row("a", "2s", Some(720));
+    assert!(line.contains("you 12m waiting 2s"), "{line}");
+}
+
+#[test]
+fn sidebar_row_drops_human_time_when_the_age_would_not_fit() {
+    let plain = named_row("dev-server", "12m", None);
+    assert_eq!(named_row("dev-server", "12m", Some(720)), plain);
+    assert!(plain.contains("waiting 12m") || plain.contains("12m"));
+    let line = named_row("dev-server", "2s", Some(720));
+    assert!(line.contains("2s"), "{line}");
+}
+
+#[test]
+fn sidebar_row_never_cuts_the_age() {
+    for name in ["a", "api", "dev", "dev-server", "a-very-long-session-name"] {
+        for age in ["2s", "12m", "3h"] {
+            let line = named_row(name, age, Some(720));
+            assert!(line.trim_end().ends_with(age), "{name} {age}: {line}");
+        }
+    }
 }

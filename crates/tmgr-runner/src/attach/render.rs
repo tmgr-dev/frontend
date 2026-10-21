@@ -234,9 +234,11 @@ fn draw_session_row(
         let avail = usize::from(area.right().saturating_sub(name_x + 1));
         let keep = label.width().min(MIN_NAME_W) + 1;
         let room = avail.saturating_sub(keep);
-        let full = format!("{} {}", state_label(row), row.age);
         let age = match row.you.and_then(you_label) {
-            Some(you) if you.width() + 1 + full.width() <= room => format!("{you} {full}"),
+            Some(you) if room >= you.width() + 1 + row.age.width() => {
+                let rest = room - you.width() - 1;
+                format!("{you} {}", age_label(state_label(row), &row.age, rest))
+            }
             _ => age_label(state_label(row), &row.age, room),
         };
         let age_w = age.width() as u16;

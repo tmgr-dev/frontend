@@ -30,10 +30,10 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind};
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
-    cursor, enter_mouse, layout, mode_changes, probe, render, reset_modes, Action, AgentTitle, Cmd,
-    Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession,
-    PaletteEdit, PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit,
-    SplitDir, ViewState,
+    cursor, enter_mouse, focus_on, layout, mode_changes, probe, render, reset_modes, Action,
+    AgentTitle, AttentionTracker, Cmd, Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit,
+    NewRequest, NewSession, PaletteEdit, PaletteEntry, PaneInfo, Place, RenameEdit, ScreenSource,
+    SessionRow, SidebarEdit, SplitDir, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -152,6 +152,29 @@ fn short_age(now: u64, since: u64) -> String {
     }
 }
 
+fn attention_target(view: &ViewState) -> Option<&str> {
+    if view.sidebar_focus.is_some()
+        || view.new_session.is_some()
+        || view.palette.is_some()
+        || view.confirm.is_some()
+        || view.rename.is_some()
+        || view.help
+    {
+        return None;
+    }
+    view.focused_session()
+}
+
+fn is_user_action(view: &ViewState, action: &Action) -> bool {
+    match action {
+        Action::FocusIn | Action::FocusOut => false,
+        Action::Forward(_) | Action::Drop(_) | Action::Paste { .. } => {
+            attention_target(view).is_none()
+        }
+        _ => true,
+    }
+}
+
 fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
     let now = now_ms();
     list.iter()
@@ -160,7 +183,7 @@ fn rows(list: &[SessionInfo]) -> Vec<SessionRow> {
             name: s.name.clone(),
             state: s.state.clone(),
             age: short_age(now, s.state.since_ms),
-            you: None,
+            you: s.human_s,
             esc: s.argv.iter().any(|a| {
                 let n = a.rsplit('/').next().unwrap_or(a);
                 n.contains("claude") || n.contains("codex")
@@ -177,6 +200,9 @@ struct App {
     splitter: InputSplitter,
     scroll_mode: bool,
     writer: AttachWriter,
+    human_time: bool,
+    window_focused: bool,
+    attention: AttentionTracker,
     prefs_tx: Sender<Value>,
     cfg: RunnerConfig,
     tx: SyncSender<Msg>,
@@ -899,7 +925,23 @@ impl App {
         }
     }
 
+    fn report_attention(&mut self, user_action: bool) {
+        if !self.human_time {
+            return;
+        }
+        let target = attention_target(&self.view).map(str::to_string);
+        if let Some((session, window)) = self.attention.update(
+            Instant::now(),
+            target.as_deref(),
+            self.window_focused,
+            user_action,
+        ) {
+            let _ = self.writer.attention(session.as_deref(), window);
+        }
+    }
+
     fn handle(&mut self, actions: Vec<Action>) -> io::Result<Option<Exit>> {
+        let user_action = actions.iter().any(|a| is_user_action(&self.view, a));
         for action in actions {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
@@ -910,6 +952,8 @@ impl App {
                 continue;
             }
             match action {
+                Action::FocusIn => self.window_focused = true,
+                Action::FocusOut => self.window_focused = false,
                 Action::Forward(data) if self.view.palette.is_some() => {
                     if let PaletteEdit::Run(entry) = self.view.edit_palette(&data) {
                         if let Some(exit) = self.run_palette_entry(entry)? {
@@ -1107,6 +1151,7 @@ impl App {
                 }
             }
         }
+        self.report_attention(user_action);
         Ok(None)
     }
 
@@ -1121,6 +1166,7 @@ impl App {
                 self.dirty = true;
             }
         }
+        self.report_attention(false);
         self.view.width = self.size.0;
         if !self.view.sidebar_shown() {
             self.view.sidebar_focus = None;
@@ -1351,6 +1397,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .collect();
     let first = ratatui::crossterm::terminal::size().unwrap_or((view.width, 24));
     view.set_locs(Rect::new(0, 0, first.0, first.1), seeded);
+    let human_time = ctl.welcome().caps.iter().any(|c| c == caps::HUMAN_TIME_V1);
     let (reader, writer) = connect(cfg)?.attach(view.panes()).map_err(rerr)?.split();
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
@@ -1358,6 +1405,11 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     if mouse {
         let mut out = io::stdout();
         let _ = out.write_all(enter_mouse());
+        let _ = out.flush();
+    }
+    if human_time {
+        let mut out = io::stdout();
+        let _ = out.write_all(focus_on());
         let _ = out.flush();
     }
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))
@@ -1428,6 +1480,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         splitter: InputSplitter::new(),
         scroll_mode: false,
         writer,
+        human_time,
+        window_focused: true,
+        attention: AttentionTracker::new(),
         prefs_tx,
         cfg: cfg.clone(),
         tx: app_tx,
@@ -1677,7 +1732,7 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 mod tests {
     use super::*;
     use tmgr_ipc::api::State;
-    use tmgr_runner::attach::SpawnKind;
+    use tmgr_runner::attach::{ScrollKey, SidebarItem, SpawnKind};
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
@@ -1954,5 +2009,46 @@ mod tests {
             );
         }
         assert_eq!(killed, vec!["shell"]);
+    }
+
+    fn one_session_view() -> ViewState {
+        let mut v = ViewState::new(rows(&[info("s1")]), "");
+        v.set_initial("s1");
+        v
+    }
+
+    fn typed() -> Action {
+        Action::Forward(b"a".to_vec())
+    }
+
+    #[test]
+    fn rows_carry_the_human_seconds() {
+        let mut i = info("s1");
+        i.human_s = Some(125);
+        assert_eq!(rows(&[i]).remove(0).you, Some(125));
+        assert_eq!(rows(&[info("s2")]).remove(0).you, None);
+    }
+
+    #[test]
+    fn attention_follows_the_focused_session_and_drops_to_none_in_overlays() {
+        let mut v = one_session_view();
+        assert_eq!(attention_target(&v), Some("s1"));
+        v.help = true;
+        assert_eq!(attention_target(&v), None);
+        v.help = false;
+        v.sidebar_focus = Some(SidebarItem::Session("s1".into()));
+        assert_eq!(attention_target(&v), None);
+    }
+
+    #[test]
+    fn input_forwarded_to_a_session_is_not_a_user_action() {
+        let mut v = one_session_view();
+        assert!(!is_user_action(&v, &typed()));
+        assert!(!is_user_action(&v, &Action::FocusIn));
+        assert!(!is_user_action(&v, &Action::FocusOut));
+        assert!(is_user_action(&v, &Action::Cmd(Cmd::Palette)));
+        assert!(is_user_action(&v, &Action::Scroll(ScrollKey::PageUp)));
+        v.help = true;
+        assert!(is_user_action(&v, &typed()));
     }
 }
