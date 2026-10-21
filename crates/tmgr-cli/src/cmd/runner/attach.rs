@@ -1,6 +1,6 @@
 use super::attach_new::{
     default_folder, dialog_for, installed_kinds, kind_label, place_session, registers_shell, route,
-    spawn_size, start_session, Route, SpawnErr,
+    spawn_size, start_session, NewFlow, Route, SpawnErr,
 };
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
@@ -30,8 +30,7 @@ use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, enter_mouse, layout, mode_changes, render, reset_modes, Action, Cmd, Confirm, Control,
     InputSplitter, LayoutPrefs, NewEdit, NewRequest, NewSession, PaletteEdit, PaletteEntry,
-    PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SpawnKind, SplitDir,
-    ViewState,
+    PaneInfo, Place, RenameEdit, ScreenSource, SessionRow, SidebarEdit, SplitDir, ViewState,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -110,6 +109,7 @@ enum Msg {
         target: String,
     },
     Spawned {
+        id: u64,
         result: std::result::Result<SessionInfo, SpawnErr>,
         req: NewRequest,
         target: String,
@@ -174,7 +174,7 @@ struct App {
     starts: HashMap<String, (String, u32)>,
     pending: HashMap<String, Instant>,
     creating: HashMap<String, String>,
-    spawning: Option<(NewSession, NewRequest)>,
+    new_flow: NewFlow,
     typed: Option<(String, Vec<u8>)>,
     removing: HashSet<String>,
     stopped: HashSet<String>,
@@ -205,10 +205,11 @@ impl App {
                 target,
             } => self.on_created(result, dir, &target),
             Msg::Spawned {
+                id,
                 result,
                 req,
                 target,
-            } => self.on_spawned(result, &req, &target),
+            } => self.on_spawned(id, result, &req, &target),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
             Msg::Server(ServerMsg::Closed { reason }) => return Ok(Some(Exit::Lost(reason))),
             Msg::Server(msg) => {
@@ -256,7 +257,7 @@ impl App {
             }
         }
         let before = self.view.panes().to_vec();
-        self.view.sessions_changed(new);
+        self.view.sessions_changed(self.area(), new);
         if self.view.panes() != before {
             self.watched = None;
         }
@@ -290,7 +291,11 @@ impl App {
                     .map(|p| p.to_string_lossy().into_owned()),
             );
         }
-        let name = shell_name(&self.view.sessions, &self.creating);
+        let name = shell_name(
+            &self.view.sessions,
+            &self.creating,
+            self.new_flow.planned_name(),
+        );
         let content = layout(self.area(), &self.view)
             .panes
             .iter()
@@ -385,12 +390,17 @@ impl App {
 
     fn open_new_session(&mut self) {
         self.dirty = true;
-        if self.spawning.is_some() {
+        if self.new_flow.busy(Instant::now()) {
             return self.notify("a session is still starting");
         }
         self.leave_overlays();
         self.view.confirm = None;
         self.view.rename = None;
+        if let Some(mut saved) = self.new_flow.take_failed() {
+            saved.taken_names = self.view.sessions.iter().map(|s| s.name.clone()).collect();
+            self.view.reopen_new_session(saved);
+            return;
+        }
         let home = std::env::var_os("HOME")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| "/".into());
@@ -421,16 +431,26 @@ impl App {
             .unwrap_or_default();
         let (cols, rows) = spawn_size(content, req.place);
         let mut run_req = req.clone();
-        if run_req.kind == SpawnKind::Shell && run_req.name.is_none() {
-            run_req.name = Some(shell_name(&self.view.sessions, &self.creating));
+        let planned = registers_shell(&req).then(|| {
+            shell_name(
+                &self.view.sessions,
+                &self.creating,
+                self.new_flow.planned_name(),
+            )
+        });
+        if planned.is_some() {
+            run_req.name = planned.clone();
         }
         self.notify(&format!("starting {}...", kind_label(&req.kind)));
-        self.spawning = Some((dialog_for(&base, &req), req.clone()));
+        let id = self
+            .new_flow
+            .begin(dialog_for(&base, &req), planned, Instant::now());
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         thread::spawn(move || {
             let result = start_session(&cfg, &run_req, cols, rows);
             let _ = tx.send(Msg::Spawned {
+                id,
                 result,
                 req,
                 target,
@@ -450,7 +470,7 @@ impl App {
                 self.view.insert_new_session_text(&data);
             }
             (Route::Sidebar, Action::Forward(data)) => {
-                if self.view.edit_sidebar(&data) == SidebarEdit::New {
+                if self.view.edit_sidebar(self.area(), &data) == SidebarEdit::New {
                     self.open_new_session();
                 }
             }
@@ -460,21 +480,26 @@ impl App {
 
     fn on_spawned(
         &mut self,
+        id: u64,
         result: std::result::Result<SessionInfo, SpawnErr>,
         req: &NewRequest,
         target: &str,
     ) {
         self.dirty = true;
-        let dialog = self.spawning.take().map(|(d, _)| d);
+        let dialog = self.new_flow.finish(id);
         let info = match result {
             Ok(info) => info,
             Err(e) => {
-                if let Some(d) = dialog {
-                    self.leave_overlays();
-                    self.view.confirm = None;
-                    self.view.rename = None;
-                    self.view
-                        .reopen_new_session(d.with_error(e.message, e.hint));
+                let label = kind_label(&req.kind);
+                match dialog {
+                    Some(d) => {
+                        self.new_flow.fail(d, e);
+                        self.notify(&format!("could not start {label}: Ctrl-] c shows why"));
+                    }
+                    None => {
+                        let why = sanitize_text(&e.message).into_owned();
+                        self.notify(&format!("could not start {label}: {why}"));
+                    }
                 }
                 return;
             }
@@ -1247,7 +1272,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         tx: app_tx,
         pending: HashMap::new(),
         creating: HashMap::new(),
-        spawning: None,
+        new_flow: NewFlow::default(),
         typed: None,
         removing: HashSet::new(),
         stopped: HashSet::new(),
@@ -1265,7 +1290,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
     let cfg_now = app.cfg.clone();
-    let mut spawning = app.spawning.is_some();
+    let mut spawning = app.new_flow.is_spawning();
     drain_creates(&mut app.creating, &mut spawning, &rx, CREATE_WAIT, |info| {
         run_ladder(&cfg_now, &info.id, true, KILL_ONLY)
     });
@@ -1347,7 +1372,12 @@ fn drain_creates(
                     discard(info);
                 }
             }
-            Ok(Msg::Spawned { .. }) => *spawning = false,
+            Ok(Msg::Spawned { result, req, .. }) => {
+                *spawning = false;
+                if let (Ok(info), true) = (result, registers_shell(&req)) {
+                    discard(info);
+                }
+            }
             Ok(_) => {}
             Err(_) => return,
         }
@@ -1473,6 +1503,7 @@ fn dropped_path_exists(data: &[u8]) -> bool {
 mod tests {
     use super::*;
     use tmgr_ipc::api::State;
+    use tmgr_runner::attach::SpawnKind;
 
     fn info(id: &str) -> SessionInfo {
         SessionInfo {
@@ -1640,6 +1671,7 @@ mod tests {
         let mut creating = HashMap::new();
         let mut spawning = true;
         tx.send(Msg::Spawned {
+            id: 1,
             result: Ok(info("s1")),
             req: NewRequest {
                 kind: SpawnKind::Custom { line: "x".into() },
@@ -1707,5 +1739,45 @@ mod tests {
         );
         assert!(start.elapsed() < Duration::from_secs(1));
         assert_eq!(creating.len(), 1);
+    }
+
+    #[test]
+    fn drain_discards_an_unnamed_dialog_shell_but_keeps_other_kinds() {
+        let (tx, rx) = mpsc::sync_channel(8);
+        let spawned = |id: &str, kind: SpawnKind, name: Option<&str>| Msg::Spawned {
+            id: 1,
+            result: Ok(info(id)),
+            req: NewRequest {
+                kind,
+                folder: "/".into(),
+                name: name.map(str::to_string),
+                place: Place::Right,
+            },
+            target: "a".into(),
+        };
+        let mut killed = Vec::new();
+        for (id, kind, name) in [
+            ("shell", SpawnKind::Shell, None),
+            ("named", SpawnKind::Shell, Some("mine")),
+            ("custom", SpawnKind::Custom { line: "x".into() }, None),
+            (
+                "agent",
+                SpawnKind::Agent {
+                    profile: "codex".into(),
+                },
+                None,
+            ),
+        ] {
+            tx.send(spawned(id, kind, name)).unwrap();
+            let mut spawning = true;
+            drain_creates(
+                &mut HashMap::new(),
+                &mut spawning,
+                &rx,
+                Duration::from_secs(1),
+                |i| killed.push(i.id),
+            );
+        }
+        assert_eq!(killed, vec!["shell"]);
     }
 }

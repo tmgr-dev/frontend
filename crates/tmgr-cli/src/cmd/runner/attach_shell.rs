@@ -37,12 +37,17 @@ pub(super) fn next_shell_name<'a>(names: impl Iterator<Item = &'a str>) -> Strin
         .unwrap_or_else(|| "sh-0".to_string())
 }
 
-pub(super) fn shell_name(sessions: &[SessionRow], creating: &HashMap<String, String>) -> String {
+pub(super) fn shell_name(
+    sessions: &[SessionRow],
+    creating: &HashMap<String, String>,
+    planned: Option<&str>,
+) -> String {
     next_shell_name(
         sessions
             .iter()
             .map(|r| r.name.as_str())
-            .chain(creating.values().map(String::as_str)),
+            .chain(creating.values().map(String::as_str))
+            .chain(planned),
     )
 }
 
@@ -251,11 +256,12 @@ mod tests {
     fn concurrent_splits_reserve_distinct_names() {
         let sessions = vec![row("a", "alpha", StateKind::Working)];
         let mut creating = HashMap::new();
-        let first = shell_name(&sessions, &creating);
+        let first = shell_name(&sessions, &creating, None);
         creating.insert("a".to_string(), first.clone());
-        let second = shell_name(&sessions, &creating);
+        let second = shell_name(&sessions, &creating, None);
         assert_eq!(first, "sh-1");
         assert_eq!(second, "sh-2");
+        assert_eq!(shell_name(&sessions, &creating, Some("sh-2")), "sh-3");
     }
 
     #[test]

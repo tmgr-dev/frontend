@@ -2,13 +2,14 @@ use super::mouse::MouseEvent;
 use super::palette::{esc_key, next_char, query_tail, Key};
 use super::render::{dim, put};
 use super::view::{contains, MouseOut, ViewState};
+use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Margin, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::widgets::{Block, BorderType, Clear, Widget};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Place {
@@ -228,17 +229,18 @@ impl NewSession {
         }
     }
 
-    fn complete_folder(&mut self) {
+    fn complete_folder(&mut self) -> bool {
         let Some(slash) = self.folder.rfind('/') else {
             if self.folder == "~" {
                 self.folder.push('/');
+                return true;
             }
-            return;
+            return false;
         };
         let (dir_part, prefix) = self.folder.split_at(slash + 1);
         let dir = expand_home(dir_part, &self.home);
         if !dir.is_absolute() {
-            return;
+            return false;
         }
         let names: Vec<String> = (self.list_dir)(&dir)
             .iter()
@@ -248,14 +250,16 @@ impl NewSession {
             .collect();
         let refs: Vec<&String> = names.iter().collect();
         let done = match names.len() {
-            0 => return,
+            0 => return false,
             1 => format!("{dir_part}{}/", names[0]),
             _ => format!("{dir_part}{}", common_prefix(&refs)),
         };
         if done.chars().count() <= MAX_FOLDER && done.len() > self.folder.len() {
             self.folder = done;
             self.clear_error();
+            return true;
         }
+        false
     }
 
     fn submit(&mut self) -> Result<NewRequest, ()> {
@@ -338,9 +342,84 @@ impl NewSession {
     }
 }
 
+struct Notes {
+    error: Vec<String>,
+    hint: Vec<String>,
+}
+
+impl Notes {
+    fn error_h(&self) -> usize {
+        self.error.len().max(1)
+    }
+
+    fn hint_h(&self) -> usize {
+        self.hint.len().max(1)
+    }
+}
+
+fn wrap(text: &str, width: usize, max_lines: usize) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut cw = 0usize;
+    for word in text.split(' ') {
+        let ww = word.width();
+        if cw + usize::from(!cur.is_empty()) + ww <= width {
+            if !cur.is_empty() {
+                cur.push(' ');
+                cw += 1;
+            }
+            cur.push_str(word);
+            cw += ww;
+            continue;
+        }
+        if !cur.is_empty() {
+            lines.push(std::mem::take(&mut cur));
+        }
+        cw = 0;
+        for c in word.chars() {
+            let w = c.width().unwrap_or(0);
+            if cw + w > width {
+                lines.push(std::mem::take(&mut cur));
+                cw = 0;
+            }
+            cur.push(c);
+            cw += w;
+        }
+    }
+    if !cur.is_empty() {
+        lines.push(cur);
+    }
+    if lines.len() > max_lines {
+        lines.truncate(max_lines);
+        if let Some(last) = lines.last_mut() {
+            while last.width() + 1 > width {
+                last.pop();
+            }
+            last.push('\u{2026}');
+        }
+    }
+    lines
+}
+
+fn notes(ns: &NewSession, area_width: u16) -> Notes {
+    let width = usize::from(MAX_WIDTH.min(area_width))
+        .saturating_sub(4)
+        .max(1);
+    let clean = |s: &Option<String>, max| {
+        s.as_deref()
+            .map(|t| wrap(&strip_control(&sanitize_text(t)), width, max))
+            .unwrap_or_default()
+    };
+    Notes {
+        error: clean(&ns.error, 2),
+        hint: clean(&ns.error_hint, 3),
+    }
+}
+
 pub(crate) fn new_session_rect(area: Rect, ns: &NewSession) -> Rect {
     let w = MAX_WIDTH.min(area.width);
-    let h = u16::try_from(ns.fields().len() + 8)
+    let n = notes(ns, area.width);
+    let h = u16::try_from(ns.fields().len() + 6 + n.error_h() + n.hint_h())
         .unwrap_or(u16::MAX)
         .min(area.height);
     Rect::new(
@@ -507,30 +586,38 @@ pub(crate) fn draw_new_session(buf: &mut Buffer, area: Rect, st: &ViewState) {
         }
     }
     let base = u16::try_from(ns.fields().len()).unwrap_or(u16::MAX);
-    let line = |k: u16| inner.y.saturating_add(base).saturating_add(k);
+    let line = |k: usize| {
+        inner
+            .y
+            .saturating_add(base)
+            .saturating_add(u16::try_from(k).unwrap_or(u16::MAX))
+    };
     let bottom = inner.bottom();
-    if let Some(e) = &ns.error {
-        if line(1) < bottom {
+    let n = notes(ns, area.width);
+    for (i, text) in n.error.iter().enumerate() {
+        if line(1 + i) < bottom {
             put(
                 buf,
                 inner.x,
-                line(1),
-                e,
+                line(1 + i),
+                text,
                 Style::new().fg(Color::Red),
                 inner.width,
             );
         }
     }
-    if let Some(h) = &ns.error_hint {
-        if line(2) < bottom {
-            put(buf, inner.x, line(2), h, dim(), inner.width);
+    let hint_at = 1 + n.error_h();
+    for (i, text) in n.hint.iter().enumerate() {
+        if line(hint_at + i) < bottom {
+            put(buf, inner.x, line(hint_at + i), text, dim(), inner.width);
         }
     }
-    if line(3) < bottom {
+    let help_at = hint_at + n.hint_h();
+    if line(help_at) < bottom {
         put(
             buf,
             inner.x,
-            line(3),
+            line(help_at),
             "Enter starts, Esc cancels",
             dim(),
             inner.width,
@@ -622,9 +709,7 @@ impl ViewState {
                 }
                 b'\t' => {
                     i += 1;
-                    if ns.focus == NewField::Folder {
-                        ns.complete_folder();
-                    } else {
+                    if ns.focus != NewField::Folder || !ns.complete_folder() {
                         ns.step(true);
                     }
                 }
@@ -1076,30 +1161,46 @@ mod tests {
         ]
     }
 
+    fn tab_in_folder(v: &mut ViewState, folder: &str) {
+        ns(v).folder = folder.into();
+        ns(v).focus = NewField::Folder;
+        v.edit_new_session(b"\t");
+    }
+
     #[test]
     fn tab_completion_single_multiple_none() {
         let h = tmp();
         let mut v = open("/r/b", h.path());
         ns(&mut v).list_dir = fake_dirs;
-        ns(&mut v).focus = NewField::Folder;
-        v.edit_new_session(b"\t");
+        tab_in_folder(&mut v, "/r/b");
         assert_eq!(ns(&mut v).folder, "/r/beta/");
-        ns(&mut v).folder = "/r/a".into();
-        v.edit_new_session(b"\t");
+        assert_eq!(ns(&mut v).focus, NewField::Folder);
+        tab_in_folder(&mut v, "/r/a");
         assert_eq!(ns(&mut v).folder, "/r/alp");
-        ns(&mut v).folder = "/r/zz".into();
-        v.edit_new_session(b"\t");
-        assert_eq!(ns(&mut v).folder, "/r/zz");
-        ns(&mut v).folder = "/r/.h".into();
-        v.edit_new_session(b"\t");
+        assert_eq!(ns(&mut v).focus, NewField::Folder);
+        tab_in_folder(&mut v, "/r/.h");
         assert_eq!(ns(&mut v).folder, "/r/.hidden/");
-        ns(&mut v).folder = "/r/x".into();
-        v.edit_new_session(b"\t");
+        tab_in_folder(&mut v, "/r/x");
         assert_eq!(ns(&mut v).folder, "/r/xy/");
-        ns(&mut v).folder = "~".into();
-        v.edit_new_session(b"\t");
+        tab_in_folder(&mut v, "~");
         assert_eq!(ns(&mut v).folder, "~/");
         assert_eq!(ns(&mut v).focus, NewField::Folder);
+    }
+
+    #[test]
+    fn tab_moves_on_when_completion_changes_nothing() {
+        let h = tmp();
+        let mut v = open("/r", h.path());
+        ns(&mut v).list_dir = fake_dirs;
+        tab_in_folder(&mut v, "/r/zz");
+        assert_eq!(ns(&mut v).folder, "/r/zz");
+        assert_eq!(ns(&mut v).focus, NewField::Name);
+        tab_in_folder(&mut v, "/r/alp");
+        assert_eq!(ns(&mut v).focus, NewField::Name);
+        tab_in_folder(&mut v, "relative");
+        assert_eq!(ns(&mut v).focus, NewField::Name);
+        tab_in_folder(&mut v, "");
+        assert_eq!(ns(&mut v).focus, NewField::Name);
     }
 
     #[test]
@@ -1214,5 +1315,95 @@ mod tests {
         ns(&mut v).folder = "x".repeat(300);
         let (x, _) = new_session_cursor(v.new_session.as_ref().unwrap(), AREA).unwrap();
         assert!(x < row.right());
+    }
+
+    fn long_hint() -> String {
+        "tmgr run --agent-cmd 'some-tool --flag value' --cwd '/very/long/path/to/some/project/folder' --name 'my agent'".into()
+    }
+
+    #[test]
+    fn wrap_breaks_at_spaces_hard_splits_and_truncates() {
+        assert_eq!(wrap("aa bb cc", 5, 3), ["aa bb", "cc"]);
+        assert_eq!(wrap("abcdefgh", 3, 5), ["abc", "def", "gh"]);
+        let cut = wrap("aaaa bbbb cccc dddd", 4, 2);
+        assert_eq!(cut.len(), 2);
+        assert!(cut[1].ends_with('\u{2026}') && cut[1].width() <= 4);
+        assert!(wrap("", 4, 2).is_empty());
+        for l in wrap(&long_hint(), 68, 3) {
+            assert!(l.width() <= 68);
+        }
+    }
+
+    #[test]
+    fn a_long_hint_wraps_over_lines_and_stays_exact() {
+        let h = tmp();
+        let mut v = open("~/code", h.path());
+        let ns0 = v.new_session.take().unwrap();
+        v.reopen_new_session(ns0.with_error("boom", Some(long_hint())));
+        let n = notes(v.new_session.as_ref().unwrap(), 100);
+        assert!(n.hint.len() >= 2 && n.hint.len() <= 3);
+        assert_eq!(n.hint.join(" "), long_hint());
+        let s = draw(&v, 100, 30);
+        assert!(s.contains("Enter starts, Esc cancels"));
+        for l in &n.hint {
+            assert!(s.contains(l.as_str()), "missing {l}\n{s}");
+        }
+    }
+
+    #[test]
+    fn field_rows_and_mouse_hits_stay_put_with_a_long_hint() {
+        let h = tmp();
+        let mut v = open("~/code", h.path());
+        let (before_rect, before) = {
+            let ns = v.new_session.as_ref().unwrap();
+            let rect = new_session_rect(AREA, ns);
+            (rect, field_rows(ns, inner(rect)))
+        };
+        let ns0 = v.new_session.take().unwrap();
+        v.reopen_new_session(ns0.with_error("e ".repeat(80), Some(long_hint())));
+        let ns = v.new_session.as_ref().unwrap();
+        let rect = new_session_rect(AREA, ns);
+        let after = field_rows(ns, inner(rect));
+        assert_eq!(after.len(), before.len());
+        assert!(rect.height > 12);
+        for ((f, a), (g, b)) in after.iter().zip(&before) {
+            assert_eq!(f, g);
+            assert_eq!(a.width, b.width);
+            assert_eq!(a.y - rect.y, b.y - before_rect.y);
+        }
+        let folder = row_of(&mut v, NewField::Folder);
+        click(&mut v, folder.x + 15, folder.y);
+        assert_eq!(ns_of(&v).focus, NewField::Folder);
+        let start = row_of(&mut v, NewField::Start);
+        let out = click(&mut v, value_x(start) + 2, start.y);
+        assert!(matches!(out.new_edit, Some(NewEdit::Submit(_))) || v.new_session.is_some());
+        let below = rect.bottom() - 2;
+        let out = click(&mut v, rect.x + 5, below);
+        assert!(out.new_edit.is_none() && v.new_session.is_some());
+    }
+
+    fn ns_of(v: &ViewState) -> &NewSession {
+        v.new_session.as_ref().unwrap()
+    }
+
+    #[test]
+    fn tiny_sizes_never_panic() {
+        let h = tmp();
+        let mut v = open("~/code", h.path());
+        let ns0 = v.new_session.take().unwrap();
+        v.reopen_new_session(ns0.with_error("boom\x1b[31m", Some(long_hint())));
+        for (w, hh) in [(1u16, 1u16), (10, 3), (12, 4), (30, 5)] {
+            let area = Rect::new(0, 0, w, hh);
+            draw(&v, w, hh);
+            let _ = new_session_cursor(ns_of(&v), area);
+            for (c, r) in [
+                (0, 0),
+                (w / 2, hh / 2),
+                (w.saturating_sub(1), hh.saturating_sub(1)),
+            ] {
+                let mut vv = v.clone();
+                vv.on_mouse(area, press(c, r), &|_| Default::default());
+            }
+        }
     }
 }

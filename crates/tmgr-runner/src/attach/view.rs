@@ -335,16 +335,16 @@ impl ViewState {
             }
         }
         if nav == Nav::Left {
-            self.enter_sidebar();
+            self.enter_sidebar(area);
         }
         false
     }
 
-    pub fn enter_sidebar(&mut self) -> bool {
+    pub fn enter_sidebar(&mut self, area: Rect) -> bool {
         if !self.sidebar_shown() {
             return false;
         }
-        let items = self.sidebar_items();
+        let items = self.sidebar_items(area);
         let start = self
             .focused_session()
             .map(|id| SidebarItem::Session(id.to_string()))
@@ -354,13 +354,17 @@ impl ViewState {
         self.sidebar_focus.is_some()
     }
 
-    pub fn sidebar_items(&self) -> Vec<SidebarItem> {
-        let mut items: Vec<SidebarItem> = self
-            .sidebar_rows()
+    pub fn sidebar_items(&self, area: Rect) -> Vec<SidebarItem> {
+        let Some(rect) = layout(area, self).sidebar else {
+            return Vec::new();
+        };
+        let sl = self.sidebar_layout(rect);
+        let mut items: Vec<SidebarItem> = sl
+            .rows
             .into_iter()
-            .map(|r| SidebarItem::Session(r.id.clone()))
+            .map(|(id, _)| SidebarItem::Session(id))
             .collect();
-        if self.allow_new {
+        if sl.new_row.is_some() {
             items.push(SidebarItem::New);
         }
         items
@@ -381,7 +385,7 @@ impl ViewState {
         SidebarLayout { rows, new_row }
     }
 
-    pub fn edit_sidebar(&mut self, data: &[u8]) -> SidebarEdit {
+    pub fn edit_sidebar(&mut self, area: Rect, data: &[u8]) -> SidebarEdit {
         if self.sidebar_focus.is_none() {
             return SidebarEdit::Leave;
         }
@@ -400,22 +404,23 @@ impl ViewState {
                     }
                     let (key, used) = esc_key(rest);
                     match key {
-                        Key::Up => self.move_sidebar_focus(false),
-                        Key::Down => self.move_sidebar_focus(true),
+                        Key::Up => self.move_sidebar_focus(area, false),
+                        Key::Down => self.move_sidebar_focus(area, true),
                         Key::Other => {}
                     }
                     used
                 }
                 0x10 | b'k' => {
-                    self.move_sidebar_focus(false);
+                    self.move_sidebar_focus(area, false);
                     1
                 }
                 0x0e | b'j' => {
-                    self.move_sidebar_focus(true);
+                    self.move_sidebar_focus(area, true);
                     1
                 }
                 b'\r' | b'\n' => {
-                    return match self.sidebar_focus.take() {
+                    let items = self.sidebar_items(area);
+                    return match self.sidebar_focus.take().filter(|f| items.contains(f)) {
                         Some(SidebarItem::Session(id))
                             if self.sessions.iter().any(|s| s.id == id) =>
                         {
@@ -433,13 +438,14 @@ impl ViewState {
         SidebarEdit::Editing
     }
 
-    fn move_sidebar_focus(&mut self, down: bool) {
-        let items = self.sidebar_items();
+    fn move_sidebar_focus(&mut self, area: Rect, down: bool) {
+        let items = self.sidebar_items(area);
         let Some(cur) = self
             .sidebar_focus
             .as_ref()
             .and_then(|f| items.iter().position(|i| i == f))
         else {
+            self.sidebar_focus = items.first().cloned();
             return;
         };
         let next = if down {
@@ -450,7 +456,7 @@ impl ViewState {
         self.sidebar_focus = Some(items[next].clone());
     }
 
-    fn keep_sidebar_focus(&mut self, before: &[SidebarItem]) {
+    fn keep_sidebar_focus(&mut self, area: Rect, before: &[SidebarItem]) {
         if !self.sidebar_shown() {
             self.sidebar_focus = None;
             return;
@@ -458,7 +464,7 @@ impl ViewState {
         let Some(cur) = self.sidebar_focus.clone() else {
             return;
         };
-        let items = self.sidebar_items();
+        let items = self.sidebar_items(area);
         if items.contains(&cur) {
             return;
         }
@@ -976,10 +982,10 @@ impl ViewState {
         }
     }
 
-    pub fn sessions_changed(&mut self, rows: Vec<SessionRow>) {
-        let before = self.sidebar_items();
+    pub fn sessions_changed(&mut self, area: Rect, rows: Vec<SessionRow>) {
+        let before = self.sidebar_items(area);
         self.apply_sessions(rows);
-        self.keep_sidebar_focus(&before);
+        self.keep_sidebar_focus(area, &before);
     }
 
     fn apply_sessions(&mut self, rows: Vec<SessionRow>) {

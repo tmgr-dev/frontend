@@ -1,15 +1,17 @@
 use super::attach_shell::{can_split, shell_argv, size_hint};
-use super::ops::{login_preflight, resolve_exe, run_create_req, run_create_run};
+use super::ops::{login_preflight, run_create_req, run_create_run};
 use super::{bin, connect, rerr};
 use ratatui::layout::Rect;
 use std::path::{Path, PathBuf};
-use tmgr_core::error::Result;
+use std::time::{Duration, Instant};
+use tmgr_core::error::{Error, Result};
 use tmgr_core::redact::redact_secrets;
 use tmgr_ipc::api::{CreateReq, RunCreateReq, SessionInfo};
 use tmgr_runner::attach::{
     Action, KindOpt, NewRequest, NewSession, Place, SpawnKind, SplitDir, ViewState,
 };
 use tmgr_runner::daemon::RunnerConfig;
+use tmgr_runner::exe;
 use tmgr_runner::profile::{self, ProfileSet};
 use tmgr_runner::sanitize::sanitize_text;
 
@@ -247,6 +249,91 @@ pub(super) fn plan(
     }
 }
 
+pub(super) const SPAWN_TIMEOUT: Duration = Duration::from_secs(30);
+
+pub(super) fn spawn_expired(age: Duration) -> bool {
+    age >= SPAWN_TIMEOUT
+}
+
+pub(super) struct Spawn {
+    id: u64,
+    dialog: NewSession,
+    name: Option<String>,
+    since: Instant,
+}
+
+#[derive(Default)]
+pub(super) struct NewFlow {
+    next: u64,
+    spawning: Option<Spawn>,
+    failed: Option<NewSession>,
+}
+
+impl NewFlow {
+    pub(super) fn busy(&mut self, now: Instant) -> bool {
+        match &self.spawning {
+            Some(s) if spawn_expired(now.saturating_duration_since(s.since)) => {
+                self.spawning = None;
+                false
+            }
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    pub(super) fn is_spawning(&self) -> bool {
+        self.spawning.is_some()
+    }
+
+    pub(super) fn begin(&mut self, dialog: NewSession, name: Option<String>, now: Instant) -> u64 {
+        self.failed = None;
+        self.next += 1;
+        self.spawning = Some(Spawn {
+            id: self.next,
+            dialog,
+            name,
+            since: now,
+        });
+        self.next
+    }
+
+    pub(super) fn finish(&mut self, id: u64) -> Option<NewSession> {
+        if self.spawning.as_ref().is_some_and(|s| s.id == id) {
+            self.spawning.take().map(|s| s.dialog)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn fail(&mut self, dialog: NewSession, e: SpawnErr) {
+        self.failed = Some(dialog.with_error(e.message, e.hint));
+    }
+
+    pub(super) fn take_failed(&mut self) -> Option<NewSession> {
+        self.failed.take()
+    }
+
+    pub(super) fn planned_name(&self) -> Option<&str> {
+        self.spawning.as_ref().and_then(|s| s.name.as_deref())
+    }
+}
+
+fn expand_tilde(s: &str) -> PathBuf {
+    match (s.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+        _ => PathBuf::from(s),
+    }
+}
+
+pub(super) fn resolve_in_folder(name: &str, folder: &str) -> Result<String> {
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let base = expand_tilde(folder);
+    let name = expand_tilde(name);
+    exe::resolve_exe(&name.to_string_lossy(), &path, Some(&base))
+        .map(|p| p.display().to_string())
+        .map_err(Error::not_found)
+}
+
 pub(super) fn start_session(
     cfg: &RunnerConfig,
     req: &NewRequest,
@@ -261,7 +348,10 @@ pub(super) fn start_session(
     if let SpawnKind::Agent { profile } = &req.kind {
         login_preflight(profile).map_err(|e| fail(&e.message))?;
     }
-    let plan = plan(req, cols, rows, &resolve_exe).map_err(|e| fail(&e))?;
+    let plan = plan(req, cols, rows, &|name| {
+        resolve_in_folder(name, &req.folder)
+    })
+    .map_err(|e| fail(&e))?;
     let mut client = connect(cfg).map_err(|e| fail(&e.message))?;
     match plan {
         Plan::Create(r) => client.create(r),
@@ -274,7 +364,7 @@ pub(super) fn start_session(
 mod tests {
     use super::*;
     use tmgr_ipc::api::{State, StateKind};
-    use tmgr_runner::attach::{PaletteEntry, SessionRow};
+    use tmgr_runner::attach::SessionRow;
 
     fn req(kind: SpawnKind) -> NewRequest {
         NewRequest {
@@ -472,9 +562,10 @@ mod tests {
         assert_eq!(route(&view, &paste), Route::Dialog);
         assert_eq!(route(&view, &Action::Drop(b"/tmp".to_vec())), Route::Dialog);
         assert_eq!(route(&view, &Action::Forward(b"a".to_vec())), Route::Dialog);
+        view.new_session.as_mut().unwrap().focus = tmgr_runner::attach::NewField::Folder;
         view.insert_new_session_text(b"\x1b[200~ab\rcd\x1b[201~");
         assert!(view.new_session.is_some());
-        assert_eq!(view.new_session.as_ref().unwrap().folder, "/");
+        assert_eq!(view.new_session.as_ref().unwrap().folder, "/abcd");
     }
 
     #[test]
@@ -491,7 +582,7 @@ mod tests {
     fn sidebar_focus_swallows_bytes_and_a_pending_confirm_wins() {
         let mut view = ViewState::new(vec![row("a")], "t");
         view.width = 200;
-        assert!(view.enter_sidebar());
+        assert!(view.enter_sidebar(Rect::new(0, 0, 200, 30)));
         let fwd = Action::Forward(b"x".to_vec());
         assert_eq!(route(&view, &fwd), Route::Sidebar);
         assert_eq!(route(&view, &Action::Drop(b"x".to_vec())), Route::Sidebar);
@@ -548,6 +639,101 @@ mod tests {
     fn plain_input_routes_to_the_session() {
         let view = ViewState::new(vec![row("a")], "t");
         assert_eq!(route(&view, &Action::Forward(b"x".to_vec())), Route::Other);
-        let _ = PaletteEntry::Session("a".into());
+    }
+
+    fn base_dialog() -> NewSession {
+        let mut view = ViewState::new(vec![row("a")], "t");
+        open(&mut view);
+        view.new_session.take().unwrap()
+    }
+
+    fn err(msg: &str) -> SpawnErr {
+        SpawnErr {
+            message: msg.into(),
+            hint: Some("tmgr run x".into()),
+        }
+    }
+
+    #[test]
+    fn a_failed_dialog_is_kept_until_reopened_with_its_values() {
+        let mut flow = NewFlow::default();
+        let mut dialog = base_dialog();
+        dialog.folder = "/typed".into();
+        let id = flow.begin(dialog.clone(), None, Instant::now());
+        let d = flow.finish(id).unwrap();
+        flow.fail(d, err("boom"));
+        assert!(!flow.is_spawning());
+        let saved = flow.take_failed().unwrap();
+        assert_eq!(saved.folder, "/typed");
+        assert_eq!(saved.error.as_deref(), Some("boom"));
+        assert_eq!(saved.error_hint.as_deref(), Some("tmgr run x"));
+        assert!(flow.take_failed().is_none());
+    }
+
+    #[test]
+    fn a_fresh_submit_clears_the_failed_slot() {
+        let mut flow = NewFlow::default();
+        flow.fail(base_dialog(), err("boom"));
+        flow.begin(base_dialog(), None, Instant::now());
+        assert!(flow.take_failed().is_none());
+    }
+
+    #[test]
+    fn a_stale_spawn_stops_blocking_and_its_late_result_is_foreign() {
+        assert!(!spawn_expired(SPAWN_TIMEOUT - Duration::from_millis(1)));
+        assert!(spawn_expired(SPAWN_TIMEOUT));
+        let mut flow = NewFlow::default();
+        let t0 = Instant::now();
+        let old = flow.begin(base_dialog(), None, t0);
+        assert!(flow.busy(t0 + Duration::from_secs(29)));
+        assert!(!flow.busy(t0 + SPAWN_TIMEOUT));
+        assert!(!flow.is_spawning());
+        let new = flow.begin(base_dialog(), None, t0 + SPAWN_TIMEOUT);
+        assert!(flow.finish(old).is_none());
+        assert!(flow.is_spawning());
+        assert!(flow.finish(new).is_some());
+    }
+
+    #[test]
+    fn a_dialog_shell_in_flight_reserves_its_name_for_splits() {
+        use super::super::attach_shell::shell_name;
+        let mut flow = NewFlow::default();
+        let planned = shell_name(&[], &Default::default(), None);
+        flow.begin(base_dialog(), Some(planned.clone()), Instant::now());
+        let split = shell_name(&[], &Default::default(), flow.planned_name());
+        assert_ne!(split, planned);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn custom_commands_resolve_against_the_chosen_folder() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("tmgr-resolve-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tool = dir.join("tool");
+        std::fs::write(&tool, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let folder = dir.to_string_lossy().into_owned();
+        let got = resolve_in_folder("./tool", &folder).unwrap();
+        assert!(got.ends_with("/tool"));
+        assert!(Path::new(&got).is_absolute());
+        assert!(resolve_in_folder("./missing-tool", &folder).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dialog_paste_lands_in_the_focused_field_without_submitting() {
+        let mut view = ViewState::new(vec![row("a")], "t");
+        open(&mut view);
+        view.new_session.as_mut().unwrap().focus = tmgr_runner::attach::NewField::Folder;
+        let paste = Action::Paste {
+            data: b"\x1b[200~x\r\x1b[201~".to_vec(),
+            start: true,
+            end: true,
+        };
+        assert_eq!(route(&view, &paste), Route::Dialog);
+        view.insert_new_session_text(b"\x1b[200~ab\rcd\x1b[201~");
+        let ns = view.new_session.as_ref().unwrap();
+        assert_eq!(ns.folder, "/abcd");
     }
 }

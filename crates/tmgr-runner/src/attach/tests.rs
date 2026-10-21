@@ -312,11 +312,12 @@ fn scroll_keys_clamp() {
 fn vanished_sessions_repair_panes() {
     let mut v = ViewState::new(four(), "");
     v.apply(Cmd::Split);
-    v.sessions_changed(four().into_iter().filter(|r| r.id != "b").collect());
+    v.sessions_changed(AREA, four().into_iter().filter(|r| r.id != "b").collect());
     assert_eq!(ids(&v), ["a"]);
     assert_eq!(v.focus(), 0);
 
     v.sessions_changed(
+        AREA,
         four()
             .into_iter()
             .filter(|r| r.id == "c" || r.id == "d")
@@ -324,7 +325,7 @@ fn vanished_sessions_repair_panes() {
     );
     assert_eq!(ids(&v), ["c"]);
 
-    v.sessions_changed(vec![]);
+    v.sessions_changed(AREA, vec![]);
     assert!(v.panes().is_empty());
     assert_eq!(v.focused_session(), None);
     v.apply(Cmd::NextSession);
@@ -1719,6 +1720,7 @@ fn set_initial_focuses_or_replaces_without_duplicating() {
 fn vanished_sessions_collapse_the_tree_and_move_focus() {
     let mut v = grid(140);
     v.sessions_changed(
+        AREA,
         grid(140)
             .sessions
             .into_iter()
@@ -1728,7 +1730,7 @@ fn vanished_sessions_collapse_the_tree_and_move_focus() {
     assert_eq!(v.panes(), ["c", "b"]);
     assert_eq!(v.focused_session(), Some("b"));
     v.shells.push("c".into());
-    v.sessions_changed(vec![row("b", "b", StateKind::Working, "1m")]);
+    v.sessions_changed(AREA, vec![row("b", "b", StateKind::Working, "1m")]);
     assert_eq!(v.panes(), ["b"]);
     assert!(v.shells.is_empty());
 }
@@ -2151,7 +2153,7 @@ fn swallow_stops_at_a_control_byte() {
 fn sessions_appearing_later_refill_an_empty_view() {
     let mut v = ViewState::new(vec![], "local");
     assert!(v.panes().is_empty());
-    v.sessions_changed(four());
+    v.sessions_changed(AREA, four());
     assert_eq!(ids(&v), ["a"]);
     assert_eq!(v.focused_session(), Some("a"));
 }
@@ -2404,7 +2406,7 @@ fn sessions_changed_renames_a_vanished_pane_to_its_resumed_copy() {
     let mut rows = four();
     rows.retain(|r| r.id != "d");
     rows.push(resumed("d2", "tests", "d"));
-    v.sessions_changed(rows);
+    v.sessions_changed(AREA, rows);
     assert_eq!(ids(&v), ["d2", "a"]);
     assert!(v.panes().iter().all(|p| p != "d"));
     assert_eq!(v.shells, vec!["d2".to_string()]);
@@ -2417,14 +2419,14 @@ fn list_before_reply_and_reply_before_list_end_up_the_same() {
     let mut rows = four();
     rows.retain(|r| r.id != "d");
     rows.push(resumed("d2", "tests", "d"));
-    list_first.sessions_changed(rows.clone());
+    list_first.sessions_changed(AREA, rows.clone());
     list_first.replace_session("d", "d2");
 
     let mut reply_first = ViewState::new(four(), "local");
     reply_first.select("d");
     reply_first.sessions.push(resumed("d2", "tests", "d"));
     reply_first.replace_session("d", "d2");
-    reply_first.sessions_changed(rows);
+    reply_first.sessions_changed(AREA, rows);
 
     assert_eq!(ids(&list_first), ["d2"]);
     assert_eq!(ids(&reply_first), ["d2"]);
@@ -2436,7 +2438,7 @@ fn resumed_from_does_not_steal_a_pane_whose_original_still_exists() {
     let mut v = ViewState::new(four(), "local");
     let mut rows = four();
     rows.push(resumed("a2", "claude", "a"));
-    v.sessions_changed(rows);
+    v.sessions_changed(AREA, rows);
     assert_eq!(ids(&v), ["a"]);
 }
 
@@ -2823,7 +2825,7 @@ fn session_list_change_resets_the_palette_selection() {
     query(&mut v, "s");
     v.edit_palette(b"\x1b[B");
     assert_eq!(v.palette.as_ref().unwrap().sel, 1);
-    v.sessions_changed(four()[..2].to_vec());
+    v.sessions_changed(AREA, four()[..2].to_vec());
     assert_eq!(v.palette.as_ref().unwrap().sel, 0);
 }
 
@@ -3021,10 +3023,10 @@ fn sidebar_focus_is_not_entered_when_hidden_or_zoomed() {
 fn sidebar_focus_starts_on_new_without_sessions() {
     let mut v = ViewState::new(Vec::new(), "local");
     v.width = 140;
-    assert!(v.enter_sidebar());
+    assert!(v.enter_sidebar(AREA));
     assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
     v.allow_new = false;
-    assert!(!v.enter_sidebar());
+    assert!(!v.enter_sidebar(AREA));
     assert_eq!(v.sidebar_focus, None);
 }
 
@@ -3039,20 +3041,20 @@ fn focused_sidebar() -> ViewState {
 fn sidebar_arrows_move_in_display_order_and_clamp() {
     let mut v = focused_sidebar();
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
-    assert_eq!(v.edit_sidebar(b"\x1b[A"), SidebarEdit::Editing);
+    assert_eq!(v.edit_sidebar(AREA, b"\x1b[A"), SidebarEdit::Editing);
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("c".into())));
-    v.edit_sidebar(b"\x1b[A");
+    v.edit_sidebar(AREA, b"\x1b[A");
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("c".into())));
     for keys in [&b"\x1b[B"[..], b"\x1bOB", b"\x0e"] {
-        v.edit_sidebar(keys);
+        v.edit_sidebar(AREA, keys);
     }
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("d".into())));
-    v.edit_sidebar(b"j");
+    v.edit_sidebar(AREA, b"j");
     assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
-    v.edit_sidebar(b"\x1b[B");
+    v.edit_sidebar(AREA, b"\x1b[B");
     assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
     for keys in [&b"\x1b[A"[..], b"\x1bOA", b"\x10", b"k"] {
-        v.edit_sidebar(keys);
+        v.edit_sidebar(AREA, keys);
     }
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("c".into())));
 }
@@ -3060,8 +3062,8 @@ fn sidebar_arrows_move_in_display_order_and_clamp() {
 #[test]
 fn enter_on_a_session_selects_it_and_clears_the_focus() {
     let mut v = focused_sidebar();
-    v.edit_sidebar(b"\x1b[B");
-    assert_eq!(v.edit_sidebar(b"\r"), SidebarEdit::Select("b".into()));
+    v.edit_sidebar(AREA, b"\x1b[B");
+    assert_eq!(v.edit_sidebar(AREA, b"\r"), SidebarEdit::Select("b".into()));
     assert_eq!(v.sidebar_focus, None);
     assert_eq!(ids(&v), ["b"]);
 }
@@ -3070,7 +3072,7 @@ fn enter_on_a_session_selects_it_and_clears_the_focus() {
 fn enter_on_new_asks_for_a_new_session() {
     let mut v = focused_sidebar();
     assert_eq!(
-        v.edit_sidebar(b"\x1b[B\x1b[B\x1b[B\x1b[B\n"),
+        v.edit_sidebar(AREA, b"\x1b[B\x1b[B\x1b[B\x1b[B\n"),
         SidebarEdit::New
     );
     assert_eq!(v.sidebar_focus, None);
@@ -3080,7 +3082,7 @@ fn enter_on_new_asks_for_a_new_session() {
 fn several_keys_in_one_chunk_are_all_handled() {
     let mut v = focused_sidebar();
     assert_eq!(
-        v.edit_sidebar(b"\x1b[B\x1b[B\r"),
+        v.edit_sidebar(AREA, b"\x1b[B\x1b[B\r"),
         SidebarEdit::Select("d".into())
     );
 }
@@ -3089,7 +3091,7 @@ fn several_keys_in_one_chunk_are_all_handled() {
 fn escape_and_right_leave_the_sidebar() {
     for keys in [&b"\x1b"[..], b"\x1b\x1b", b"\x1b[C", b"\x1bOC"] {
         let mut v = focused_sidebar();
-        assert_eq!(v.edit_sidebar(keys), SidebarEdit::Leave);
+        assert_eq!(v.edit_sidebar(AREA, keys), SidebarEdit::Leave);
         assert_eq!(v.sidebar_focus, None);
     }
 }
@@ -3098,37 +3100,37 @@ fn escape_and_right_leave_the_sidebar() {
 fn other_bytes_are_swallowed() {
     let mut v = focused_sidebar();
     assert_eq!(
-        v.edit_sidebar(b"hello\x03\x7f\x1b[1;2D\x1b[5~"),
+        v.edit_sidebar(AREA, b"hello\x03\x7f\x1b[1;2D\x1b[5~"),
         SidebarEdit::Editing
     );
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
-    assert_eq!(v.edit_sidebar(b"\x1bO"), SidebarEdit::Editing);
-    assert_eq!(v.edit_sidebar(b"A"), SidebarEdit::Editing);
+    assert_eq!(v.edit_sidebar(AREA, b"\x1bO"), SidebarEdit::Editing);
+    assert_eq!(v.edit_sidebar(AREA, b"A"), SidebarEdit::Editing);
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("a".into())));
 }
 
 #[test]
 fn sidebar_focus_follows_the_item_not_the_index() {
     let mut v = focused_sidebar();
-    v.edit_sidebar(b"\x1b[B");
+    v.edit_sidebar(AREA, b"\x1b[B");
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("b".into())));
     let mut rows = four();
     rows[1].state = st(StateKind::Blocked, None);
-    v.sessions_changed(rows);
+    v.sessions_changed(AREA, rows);
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("b".into())));
 }
 
 #[test]
 fn sidebar_focus_falls_to_a_neighbour_when_its_session_vanishes() {
     let mut v = focused_sidebar();
-    v.edit_sidebar(b"\x1b[B");
+    v.edit_sidebar(AREA, b"\x1b[B");
     let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id != "a").collect();
-    v.sessions_changed(rows);
+    v.sessions_changed(AREA, rows);
     assert_eq!(v.sidebar_focus, Some(SidebarItem::Session("b".into())));
-    v.sessions_changed(Vec::new());
+    v.sessions_changed(AREA, Vec::new());
     assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
     v.allow_new = false;
-    v.sessions_changed(Vec::new());
+    v.sessions_changed(AREA, Vec::new());
     assert_eq!(v.sidebar_focus, None);
 }
 
@@ -3139,7 +3141,7 @@ fn sidebar_focus_clears_when_the_sidebar_goes_away() {
     assert_eq!(v.sidebar_focus, None);
     let mut w = focused_sidebar();
     w.sidebar = Some(false);
-    w.sessions_changed(four());
+    w.sessions_changed(AREA, four());
     assert_eq!(w.sidebar_focus, None);
 }
 
@@ -3178,7 +3180,7 @@ fn snapshot_sidebar_new_row() {
 #[test]
 fn snapshot_sidebar_focus_new() {
     let mut v = focused_sidebar();
-    v.edit_sidebar(b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
+    v.edit_sidebar(AREA, b"\x1b[B\x1b[B\x1b[B\x1b[B\x1b[B");
     assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
     assert_snapshot("sidebar_focus_new", &draw(&v, &screens(), 140, 12));
 }
@@ -3194,4 +3196,49 @@ fn palette_lists_and_ranks_new_session() {
     let mut w = ViewState::new(Vec::new(), "");
     query(&mut w, "new session");
     assert_eq!(first(&w), PaletteEntry::Cmd(Cmd::NewSession));
+}
+
+fn many_sessions(n: usize) -> Vec<SessionRow> {
+    (0..n)
+        .map(|i| {
+            let id = format!("s{i}");
+            row(&id, &id, StateKind::Working, "1m")
+        })
+        .collect()
+}
+
+#[test]
+fn keyboard_navigation_never_lands_on_an_undrawn_row() {
+    let mut v = ViewState::new(many_sessions(30), "local");
+    v.width = 140;
+    let area = r(0, 0, 140, 8);
+    let drawn = v.sidebar_layout(layout(area, &v).sidebar.unwrap());
+    assert!(drawn.rows.len() < 30);
+    assert!(v.enter_sidebar(area));
+    for _ in 0..50 {
+        v.edit_sidebar(area, b"\x1b[B");
+        match v.sidebar_focus.clone().unwrap() {
+            SidebarItem::Session(id) => assert!(drawn.rows.iter().any(|(r, _)| *r == id)),
+            SidebarItem::New => assert!(drawn.new_row.is_some()),
+        }
+    }
+    assert_eq!(v.sidebar_focus, Some(SidebarItem::New));
+}
+
+#[test]
+fn a_tiny_sidebar_cannot_focus_new() {
+    let mut v = ViewState::new(many_sessions(2), "local");
+    v.width = 140;
+    let area = r(0, 0, 140, 4);
+    assert!(layout(area, &v).sidebar.unwrap().height < 4);
+    assert!(v.enter_sidebar(area));
+    for _ in 0..5 {
+        v.edit_sidebar(area, b"j");
+        assert_ne!(v.sidebar_focus, Some(SidebarItem::New));
+    }
+    assert!(!v.sidebar_items(area).contains(&SidebarItem::New));
+    assert_eq!(
+        v.edit_sidebar(area, b"\r"),
+        SidebarEdit::Select("s1".into())
+    );
 }
