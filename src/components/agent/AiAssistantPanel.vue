@@ -1,6 +1,7 @@
 <script setup lang="ts">
 	import ChatList from '@/components/agent/ChatList.vue';
 	import ContextMeter from '@/components/agent/ContextMeter.vue';
+	import MicButton from '@/components/voice/MicButton.vue';
 	import { useAgentChat } from '@/composable/useAgentChat';
 	import { useCurrentWorkspace } from '@/composable/useCurrentWorkspace';
 	import { useModalEscHandler } from '@/composable/useModalEscHandler';
@@ -42,6 +43,7 @@
 	const draft = ref('');
 	const scroller = ref<HTMLDivElement | null>(null);
 	const input = ref<HTMLInputElement | null>(null);
+	const mic = ref<InstanceType<typeof MicButton> | null>(null);
 
 	// TM-222: the field is disabled while a run is in flight, which makes the browser blur it.
 	// Take the cursor back as soon as it is usable again so a follow-up can just be typed.
@@ -56,6 +58,7 @@
 	const chatList = ref<InstanceType<typeof ChatList> | null>(null);
 
 	function toggleHistory(): void {
+		mic.value?.cancel();
 		view.value = view.value === 'list' ? 'chat' : 'list';
 	}
 
@@ -121,6 +124,7 @@
 				store.commit('pushModalToStack', 'ai-panel');
 				registerModal('ai-panel', onEsc);
 			} else {
+				mic.value?.cancel();
 				stopPolling();
 				view.value = 'chat';
 				listQuery.value = '';
@@ -242,6 +246,12 @@
 					placeholder="Ask about this workspace…"
 					:disabled="busy || loading"
 					@keydown.enter.prevent="submit"
+				/>
+				<MicButton
+					ref="mic"
+					v-model="draft"
+					:target="input"
+					:disabled="busy || loading"
 				/>
 				<button
 					class="flex h-7 w-7 items-center justify-center rounded-pill bg-brand text-white disabled:opacity-40"

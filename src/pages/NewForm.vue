@@ -99,6 +99,7 @@
 		SelectValue,
 	} from '@/components/ui/select';
 	import { useToast } from '@/components/ui/toast/use-toast';
+	import MicButton from '@/components/voice/MicButton.vue';
 	import { useDebouncedAutoSave } from '@/composable/useDebouncedAutoSave.ts';
 	import { setDocumentTitle } from '@/composable/useDocumentTitle';
 	import { useFeatureToggles } from '@/composable/useFeatureToggles';
@@ -614,6 +615,7 @@
 	const footerHeight = ref(0);
 	let footerResizeObserver: ResizeObserver | null = null;
 	const commentTextarea = ref<HTMLTextAreaElement | null>(null);
+	const commentRailInput = ref<HTMLInputElement | null>(null);
 	const commentsCount = ref(0);
 	const showGitActivityModal = ref(false);
 	const gitActivityCount = ref(0);
@@ -3011,6 +3013,13 @@
 							@keydown.enter.prevent="submitComment"
 							@keydown.esc="newComment = ''"
 						/>
+						<MicButton
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
+							:key="form.id"
+							v-model="newComment"
+							:target="commentTextarea"
+							:disabled="isSendingComment"
+						/>
 
 						<button
 							v-if="hasActiveAgent"
@@ -3225,11 +3234,19 @@
 						class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 					>
 						<input
+							ref="commentRailInput"
 							v-model="newComment"
 							placeholder="Write a comment…"
 							class="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-subtle"
 							@keydown.enter.prevent="submitComment"
 							@keydown.esc="newComment = ''"
+						/>
+						<MicButton
+							v-if="!isLocalWorkspaceTask && isFeatureEnabled('ai.assistant')"
+							:key="form.id"
+							v-model="newComment"
+							:target="commentRailInput"
+							:disabled="isSendingComment"
 						/>
 						<button
 							v-if="hasActiveAgent"
