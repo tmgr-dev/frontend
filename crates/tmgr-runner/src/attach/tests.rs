@@ -5051,6 +5051,9 @@ mod questions_ui {
                 origin: Origin::Rule,
                 user: "Add Apple Pay to the checkout form".into(),
                 reply: "I added the button.\n\nThe session check is still missing. Should I also gate it behind the feature flag?\nOtherwise it shows for everyone.\n\nDone otherwise.".into(),
+                item: String::new(),
+                pos: 0,
+                turn: 0,
             },
             status,
         }

@@ -54,6 +54,12 @@ pub struct Question {
     pub user: String,
     #[serde(default)]
     pub reply: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub item: String,
+    #[serde(default)]
+    pub pos: u64,
+    #[serde(default)]
+    pub turn: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -241,7 +247,13 @@ impl Store {
                 q,
             })
             .collect();
-        out.sort_by(|a, b| b.q.asked_s.cmp(&a.q.asked_s).then(a.q.id.cmp(&b.q.id)));
+        out.sort_by(|a, b| {
+            b.q.asked_s
+                .cmp(&a.q.asked_s)
+                .then(b.q.turn.cmp(&a.q.turn))
+                .then(a.q.pos.cmp(&b.q.pos))
+                .then(a.q.id.cmp(&b.q.id))
+        });
         out
     }
 

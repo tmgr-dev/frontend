@@ -183,7 +183,12 @@ fn context_block(e: &Entry, width: usize) -> Vec<String> {
         out.push(String::new());
     }
     out.push("Agent:".to_string());
-    for line in context_lines(&e.q.reply, &e.q.text) {
+    let lines = if e.q.item.is_empty() {
+        context_lines(&e.q.reply, &e.q.text)
+    } else {
+        vec![e.q.item.clone()]
+    };
+    for line in lines {
         if line.is_empty() {
             out.push(String::new());
         } else {

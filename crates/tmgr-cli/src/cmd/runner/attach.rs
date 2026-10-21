@@ -646,7 +646,11 @@ impl App {
         }
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
-        let question = entry.q.text.clone();
+        let question = if entry.q.item.is_empty() {
+            entry.q.text.clone()
+        } else {
+            entry.q.item.clone()
+        };
         let key = id.to_string();
         thread::spawn(move || {
             let result = goto_call(&cfg, &session, &question);

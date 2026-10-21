@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 pub const MAX_LEN: usize = 300;
 const MIN_LEN: usize = 8;
 const MAX_CANDIDATES: usize = 8;
+pub const MAX_ITEM: usize = 600;
 
 pub fn collapse(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
@@ -111,26 +112,121 @@ fn strip_marks(s: &str) -> &str {
     }
 }
 
-fn push(out: &mut Vec<String>, raw: &str) {
+fn label_of(raw: &str) -> Option<String> {
     let text = collapse(strip_marks(raw).trim_end_matches(['*', '_']));
     let text = text.trim_matches(['*', '_', ' ']).to_string();
     if text.chars().count() < MIN_LEN || !text.contains(' ') {
-        return;
+        return None;
     }
-    let text = clip_tail(&text, MAX_LEN);
-    if out.iter().any(|t| t.eq_ignore_ascii_case(&text)) || out.len() >= MAX_CANDIDATES {
-        return;
-    }
-    out.push(text);
+    Some(clip_tail(&text, MAX_LEN))
 }
 
-pub fn candidates(text: &str) -> Vec<String> {
-    let chars: Vec<char> = text.chars().collect();
-    let mask = noise_mask(&chars);
+fn marker_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"^(\s*)(?:[-*•]|\d{1,3}[.)])\s+\S").expect("marker compiles"))
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Group {
+    pub pos: usize,
+    pub label: String,
+    pub item: String,
+}
+
+struct Block {
+    pos: usize,
+    text: String,
+    mask: Vec<bool>,
+}
+
+fn blocks(chars: &[char], mask: &[bool]) -> Vec<Block> {
+    struct Line {
+        start: usize,
+        end: usize,
+        indent: usize,
+        blank: bool,
+        marker: bool,
+    }
+    let mut lines = Vec::new();
+    let mut pos = 0;
+    for line in chars.split(|c| *c == '\n') {
+        let end = pos + line.len();
+        let text: String = line.iter().collect();
+        let blank = text.trim().is_empty();
+        let masked = mask[pos..end].iter().all(|m| *m) && !blank;
+        let marker = !blank && !masked && marker_re().is_match(&text);
+        lines.push(Line {
+            start: pos,
+            end,
+            indent: text.chars().take_while(|c| c.is_whitespace()).count(),
+            blank,
+            marker,
+        });
+        pos = end + 1;
+    }
+    let mut spans: Vec<(usize, usize, bool, usize)> = Vec::new();
+    let mut open: Option<usize> = None;
+    let mut after_blank = false;
+    for line in &lines {
+        if line.blank {
+            open = None;
+            after_blank = true;
+            continue;
+        }
+        let list_indent = |k: usize| spans[k].3;
+        match open {
+            Some(k) if line.marker && line.indent > list_indent(k) && spans[k].2 => {
+                spans[k].1 = line.end;
+            }
+            Some(k) if !line.marker => spans[k].1 = line.end,
+            _ => {
+                let prev = spans.len().checked_sub(1);
+                match prev {
+                    Some(k)
+                        if after_blank
+                            && !line.marker
+                            && spans[k].2
+                            && line.indent > spans[k].3 =>
+                    {
+                        spans[k].1 = line.end;
+                        open = Some(k);
+                    }
+                    _ => {
+                        spans.push((line.start, line.end, line.marker, line.indent));
+                        open = Some(spans.len() - 1);
+                    }
+                }
+            }
+        }
+        after_blank = false;
+    }
+    spans
+        .into_iter()
+        .map(|(a, b, ..)| Block {
+            pos: a,
+            text: chars[a..b].iter().collect(),
+            mask: mask[a..b].to_vec(),
+        })
+        .collect()
+}
+
+fn bold_lead(block: &str) -> Option<String> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r"^\s*(?:(?:[-*•]|\d{1,3}[.)])\s+)?").expect("lead pattern compiles")
+    });
+    let rest = &block[re.find(block).map_or(0, |m| m.end())..];
+    let rest = rest.strip_prefix("**")?;
+    let end = rest.find("**")?;
+    label_of(rest[..end].trim_end_matches(':'))
+}
+
+fn question_sentences(b: &Block) -> Vec<String> {
+    let chars: Vec<char> = b.text.chars().collect();
     let mut out = Vec::new();
     let mut start = 0;
     for i in 0..chars.len() {
-        if mask[i] {
+        if b.mask[i] {
             continue;
         }
         let c = chars[i];
@@ -140,30 +236,121 @@ pub fn candidates(text: &str) -> Vec<String> {
         if boundary {
             start = i + 1;
         } else if is_end(&chars, i) {
-            let sentence: String = chars[start..=i].iter().collect();
-            push(&mut out, &sentence);
+            out.push(chars[start..=i].iter().collect());
             start = i + 1;
         }
     }
-    let lines: Vec<&str> = text.lines().collect();
-    let mut offset = 0;
-    for (n, line) in lines.iter().enumerate() {
-        let masked = mask[offset..offset + line.chars().count()]
-            .iter()
-            .all(|m| *m);
-        offset += line.chars().count() + 1;
-        if masked || !slot_re().is_match(line) {
-            continue;
+    out
+}
+
+fn has_slot(b: &Block) -> bool {
+    let mut at = 0;
+    for line in b.text.split('\n') {
+        let n = line.chars().count();
+        let masked = n > 0 && b.mask[at..at + n].iter().all(|m| *m);
+        at += n + 1;
+        if !masked && slot_re().is_match(line) {
+            return true;
         }
-        if let Some(prev) = lines[..n]
-            .iter()
-            .rev()
-            .find(|l| !l.trim().is_empty() && !slot_re().is_match(l))
+    }
+    false
+}
+
+fn group_of(b: &Block, need_question: bool) -> Option<Group> {
+    let sentences = question_sentences(b);
+    let slot = has_slot(b);
+    if need_question && sentences.is_empty() && !slot {
+        return None;
+    }
+    let label = bold_lead(&b.text)
+        .or_else(|| sentences.iter().find_map(|s| label_of(s)))
+        .or_else(|| {
+            b.text
+                .lines()
+                .find(|l| !l.trim().is_empty() && !slot_re().is_match(l))
+                .and_then(label_of)
+        })?;
+    let body: Vec<&str> = b.text.lines().filter(|l| !slot_re().is_match(l)).collect();
+    let item = collapse(strip_marks(&body.join("\n")))
+        .replace("**", "")
+        .replace('`', "");
+    let item = clip_head(&item, MAX_ITEM);
+    let item = if item == label { String::new() } else { item };
+    Some(Group {
+        pos: b.pos,
+        label,
+        item,
+    })
+}
+
+fn dedupe(groups: Vec<Group>) -> Vec<Group> {
+    let mut out: Vec<Group> = Vec::new();
+    for g in groups {
+        if out.len() < MAX_CANDIDATES && !out.iter().any(|o| o.label.eq_ignore_ascii_case(&g.label))
         {
-            push(&mut out, prev);
+            out.push(g);
         }
     }
     out
+}
+
+pub fn groups(text: &str) -> Vec<Group> {
+    let chars: Vec<char> = text.chars().collect();
+    let mask = noise_mask(&chars);
+    dedupe(
+        blocks(&chars, &mask)
+            .iter()
+            .filter_map(|b| group_of(b, true))
+            .collect(),
+    )
+}
+
+pub fn groups_for_spans(text: &str, spans: &[String]) -> Vec<Group> {
+    let chars: Vec<char> = text.chars().collect();
+    let mask = noise_mask(&chars);
+    let all = blocks(&chars, &mask);
+    let norm: Vec<String> = all
+        .iter()
+        .map(|b| collapse(&b.text).to_lowercase())
+        .collect();
+    let mut out = Vec::new();
+    for span in spans {
+        let probe = collapse(strip_marks(span)).to_lowercase();
+        let head: String = probe.chars().take(30).collect();
+        let hit = norm
+            .iter()
+            .position(|n| n.contains(&probe))
+            .or_else(|| norm.iter().position(|n| n.contains(&head)));
+        match hit.and_then(|k| group_of(&all[k], false).map(|g| (k, g))) {
+            Some((k, mut g)) => {
+                if bold_lead(&all[k].text).is_none() {
+                    let picked = label_of(span).filter(|l| {
+                        question_sentences(&all[k])
+                            .iter()
+                            .any(|s| label_of(s).is_some_and(|x| x.eq_ignore_ascii_case(l)))
+                    });
+                    if let Some(l) = picked {
+                        g.label = l;
+                    }
+                }
+                out.push(g);
+            }
+            None => {
+                if let Some(label) = label_of(span) {
+                    out.push(Group {
+                        pos: usize::MAX,
+                        label,
+                        item: String::new(),
+                    });
+                }
+            }
+        }
+    }
+    dedupe(out)
+}
+
+pub fn candidates(text: &str) -> Vec<String> {
+    groups(text).into_iter().map(|g| g.label).collect()
 }
 
 #[cfg(test)]

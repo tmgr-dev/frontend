@@ -1,4 +1,4 @@
-use super::rules::{collapse, MAX_LEN};
+use super::rules::{collapse, MAX_ITEM as MAX_SPAN};
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
@@ -11,7 +11,7 @@ const OUT_CAP: u64 = 64 * 1024;
 const MAX_QUESTIONS: usize = 8;
 pub const INPUT_CAP: usize = 12_000;
 
-pub const PROMPT: &str = "You are given one message that a coding agent wrote to its user. List the questions in it that the agent still needs the user to answer or decide. Skip rhetorical questions, questions the message itself answers, and questions that only appear inside code or quotations. Copy each question word for word from the message. Reply with JSON only, in this shape: {\"questions\":[\"...\"]}. If there are none, reply {\"questions\":[]}.";
+pub const PROMPT: &str = "You are given one message that a coding agent wrote to its user. List the questions in it that the agent still needs the user to answer or decide. Skip rhetorical questions, questions the message itself answers, and questions that only appear inside code or quotations. Treat a numbered or bulleted list item, or a paragraph, as ONE question even when it holds several question sentences (a title with sub-questions, for example): never split it. Copy each question word for word from the message as the whole item or paragraph, without its list number. Reply with JSON only, in this shape: {\"questions\":[\"...\"]}. If there are none, reply {\"questions\":[]}.";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Failure {
@@ -123,7 +123,7 @@ pub fn parse(reply: &str, source: &str) -> Option<Vec<String>> {
     let mut out: Vec<String> = Vec::new();
     for q in list.iter().filter_map(Value::as_str) {
         let q = collapse(q);
-        let q = q.chars().take(MAX_LEN).collect::<String>();
+        let q = q.chars().take(MAX_SPAN).collect::<String>();
         if q.chars().count() < 4 || !hay.contains(&q.to_lowercase()) {
             continue;
         }

@@ -9,7 +9,7 @@ pub use store::{
 };
 
 use crate::attach::{locate, Format, Source};
-use rules::{candidates, clip_head, clip_tail, collapse};
+use rules::{clip_head, clip_tail, collapse, groups, groups_for_spans, Group};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -98,7 +98,8 @@ impl Scanner {
         if let Some(turn) = turn {
             let found = self.classify(&turn, budget);
             let marks = self.store.entries(Some(&src.id));
-            for (text, origin) in found {
+            for (group, origin) in found {
+                let text = group.label;
                 let id = question_id(&src.id, turn.start, &text);
                 let known = file.questions.iter().any(|q| q.id == id)
                     || marks
@@ -115,6 +116,9 @@ impl Scanner {
                     origin,
                     user: turn.user.clone(),
                     reply: turn.text.clone(),
+                    item: group.item,
+                    pos: u64::try_from(group.pos).unwrap_or(u64::MAX),
+                    turn: turn.start,
                 });
                 dirty = true;
                 added = true;
@@ -128,20 +132,27 @@ impl Scanner {
         added
     }
 
-    fn classify(&mut self, turn: &Turn, budget: &mut usize) -> Vec<(String, Origin)> {
-        let mut out: Vec<(String, Origin)> = turn
+    fn classify(&mut self, turn: &Turn, budget: &mut usize) -> Vec<(Group, Origin)> {
+        let mut out: Vec<(Group, Origin)> = turn
             .asked
             .iter()
-            .map(|q| (q.clone(), Origin::Rule))
+            .map(|q| {
+                let group = Group {
+                    pos: 0,
+                    label: q.clone(),
+                    item: String::new(),
+                };
+                (group, Origin::Rule)
+            })
             .collect();
-        let rule = candidates(&turn.text);
+        let rule = groups(&turn.text);
         if rule.is_empty() {
             return out;
         }
-        let from_rule = |out: &mut Vec<(String, Origin)>| {
-            for q in &rule {
-                if !out.iter().any(|(t, _)| t == q) {
-                    out.push((q.clone(), Origin::Rule));
+        let from_rule = |out: &mut Vec<(Group, Origin)>| {
+            for g in &rule {
+                if !out.iter().any(|(o, _)| o.label == g.label) {
+                    out.push((g.clone(), Origin::Rule));
                 }
             }
         };
@@ -155,10 +166,10 @@ impl Scanner {
         *budget -= 1;
         let input = clip_tail(&turn.text, haiku::INPUT_CAP);
         match haiku::classify(&bin, &self.workdir, &input, self.timeout) {
-            Ok(list) => {
-                for q in list {
-                    if !out.iter().any(|(t, _)| *t == q) {
-                        out.push((q, Origin::Haiku));
+            Ok(spans) => {
+                for g in groups_for_spans(&turn.text, &spans) {
+                    if !out.iter().any(|(o, _)| o.label == g.label) {
+                        out.push((g, Origin::Haiku));
                     }
                 }
             }
@@ -237,6 +248,13 @@ pub fn context_lines(reply: &str, question: &str) -> Vec<String> {
 }
 
 pub fn paste_text(q: &Question, now_s: u64) -> String {
+    if !q.item.is_empty() {
+        return format!(
+            "> Earlier you asked ({}): \"{}\"\nAnswer: ",
+            ago(now_s, q.asked_s),
+            clip_head(&collapse(&q.item), 400)
+        );
+    }
     let question = collapse(&q.text);
     let context = context_lines(&q.reply, &q.text)
         .into_iter()

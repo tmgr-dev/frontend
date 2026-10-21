@@ -247,6 +247,9 @@ fn store_round_trip_marks_and_prefixes() {
         origin: Origin::Haiku,
         user: "u".into(),
         reply: "r".into(),
+        item: String::new(),
+        pos: 0,
+        turn: 0,
     };
     let file = SessionFile {
         transcript: "/t".into(),
@@ -294,6 +297,9 @@ fn store_rejects_bad_session_ids_and_symlinks_and_caps_size() {
             origin: Origin::Rule,
             user: String::new(),
             reply: String::new(),
+            item: String::new(),
+            pos: 0,
+            turn: 0,
         });
     }
     store.save(SID, &file, 2000).unwrap();
@@ -320,6 +326,9 @@ fn old_questions_expire() {
         origin: Origin::Rule,
         user: String::new(),
         reply: String::new(),
+        item: String::new(),
+        pos: 0,
+        turn: 0,
     });
     store.save(SID, &file, 10 + 31 * 24 * 3600).unwrap();
     assert!(store.load(SID).questions.is_empty());
@@ -547,6 +556,9 @@ fn paste_text_is_one_safe_block_without_enter() {
         origin: Origin::Rule,
         user: String::new(),
         reply: "First paragraph.\n\nWe changed the parser. Should I[201~ update the docs? It is cheap.\n\nLast.".into(),
+        item: String::new(),
+        pos: 0,
+        turn: 0,
     };
     let text = paste_text(&q, 1000 + 12 * 60);
     assert!(!text.contains('\u{1b}'));
@@ -642,4 +654,160 @@ fn a_second_window_does_not_reclassify_a_closed_turn() {
     a.scan(&[rig.src(true)], 1001);
     b.scan(&[rig.src(true)], 1002);
     assert_eq!(rig.texts().len(), 1);
+}
+
+const TWO_ITEMS: &str = "1. **Что именно экспортируем?** Задачи (из списка/воркспейса), комментарии, страницы или что-то ещё? И по какому срезу: весь воркспейс, текущий фильтр/список или выбранные задачи?\n\n2. **Где живёт экспорт и как его получает пользователь?** Это кнопка в веб-UI (`task-manager-ui`) с эндпоинтом в Java-бэкенде, команда в CLI (`tmgr`), или оба варианта? Нужна ли выгрузка через скачивание файла сразу, или фоновая генерация с уведомлением (если данных много)?";
+
+const SIX_SENTENCES: &str = "{\"questions\":[\"Что именно экспортируем?\",\"Задачи (из списка/воркспейса), комментарии, страницы или что-то ещё?\",\"И по какому срезу: весь воркспейс, текущий фильтр/список или выбранные задачи?\",\"Где живёт экспорт и как его получает пользователь?\",\"Это кнопка в веб-UI (`task-manager-ui`) с эндпоинтом в Java-бэкенде, команда в CLI (`tmgr`), или оба варианта?\",\"Нужна ли выгрузка через скачивание файла сразу, или фоновая генерация с уведомлением (если данных много)?\"]}";
+
+fn labels(text: &str) -> Vec<String> {
+    rules::groups(text).into_iter().map(|g| g.label).collect()
+}
+
+#[test]
+fn a_numbered_list_item_is_one_question_with_its_bold_lead_as_the_row_text() {
+    let got = rules::groups(TWO_ITEMS);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!(got[0].label, "Что именно экспортируем?");
+    assert_eq!(
+        got[1].label,
+        "Где живёт экспорт и как его получает пользователь?"
+    );
+    assert!(got[0].pos < got[1].pos);
+    assert!(got[0].item.contains("И по какому срезу"));
+    assert!(got[1].item.contains("Нужна ли выгрузка"));
+    assert!(!got[1].item.contains("**") && !got[1].item.contains('`'));
+}
+
+#[test]
+fn a_paragraph_with_several_question_sentences_is_one_question() {
+    let got = rules::groups(
+        "We changed the parser. Should the docs change too? Or only the README? Your call.",
+    );
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].label, "Should the docs change too?");
+    assert!(got[0].item.contains("Or only the README?"));
+}
+
+#[test]
+fn separate_paragraphs_and_tight_list_items_are_separate_questions() {
+    assert_eq!(
+        labels("Which port should the server use?\n\nShould we keep the old flag?"),
+        vec![
+            "Which port should the server use?",
+            "Should we keep the old flag?"
+        ]
+    );
+    assert_eq!(
+        labels("Two things:\n- Which port should it use?\n- Keep the old flag or drop it?\n  Either is fine for me, honestly?"),
+        vec!["Which port should it use?", "Keep the old flag or drop it?"]
+    );
+}
+
+#[test]
+fn nested_bullets_stay_with_their_item() {
+    let t = "1. Which formats do you need?\n   - CSV with headers?\n   - JSON lines?\n2. Where should the file go?";
+    let got = rules::groups(t);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert!(got[0].item.contains("JSON lines"));
+}
+
+#[test]
+fn haiku_sentence_answers_collapse_into_their_items() {
+    let spans = haiku::parse(SIX_SENTENCES, TWO_ITEMS).unwrap();
+    assert_eq!(spans.len(), 6);
+    let got = rules::groups_for_spans(TWO_ITEMS, &spans);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!(got[0].label, "Что именно экспортируем?");
+    assert!(got[0].pos < got[1].pos);
+}
+
+#[test]
+fn haiku_spans_for_whole_items_parse_and_map_to_the_same_groups() {
+    let reply = serde_json::json!({"questions": [
+        TWO_ITEMS.split("\n\n").nth(1).unwrap().trim_start_matches("2. "),
+        TWO_ITEMS.split("\n\n").next().unwrap().trim_start_matches("1. "),
+    ]})
+    .to_string();
+    let spans = haiku::parse(&reply, TWO_ITEMS).unwrap();
+    assert_eq!(spans.len(), 2);
+    let got = rules::groups_for_spans(TWO_ITEMS, &spans);
+    assert_eq!(got.len(), 2);
+    assert_eq!(
+        got[0].label,
+        "Где живёт экспорт и как его получает пользователь?"
+    );
+}
+
+fn rig_with_two_items() -> Rig {
+    let rig = Rig::new();
+    append(&rig.transcript, &[user("go"), agent(TWO_ITEMS)]);
+    rig
+}
+
+#[test]
+fn rule_fallback_stores_two_questions_in_message_order() {
+    let rig = rig_with_two_items();
+    rig.scanner(None).scan(&[rig.src(true)], 1000);
+    assert_eq!(
+        rig.texts(),
+        vec![
+            "Что именно экспортируем?",
+            "Где живёт экспорт и как его получает пользователь?"
+        ]
+    );
+}
+
+#[test]
+fn six_haiku_sentences_still_store_two_questions_in_message_order() {
+    let rig = rig_with_two_items();
+    let bin = fake(
+        rig.bin.path(),
+        &format!("cat >/dev/null\ncat <<'EOF'\n{SIX_SENTENCES}\nEOF"),
+    );
+    rig.scanner(Some(bin)).scan(&[rig.src(true)], 1000);
+    let entries = Store::new(rig.runner.path()).entries(None);
+    assert_eq!(entries.len(), 2);
+    assert!(entries.iter().all(|e| e.q.origin == Origin::Haiku));
+    assert_eq!(entries[0].q.text, "Что именно экспортируем?");
+    assert!(!entries[0].q.item.is_empty());
+}
+
+#[test]
+fn the_answer_quote_carries_the_whole_item() {
+    let rig = rig_with_two_items();
+    rig.scanner(None).scan(&[rig.src(true)], 1000);
+    let e = &Store::new(rig.runner.path()).entries(None)[0];
+    let text = paste_text(&e.q, 1000);
+    assert!(
+        text.starts_with("> Earlier you asked (just now): \""),
+        "{text}"
+    );
+    assert!(text.contains("И по какому срезу"));
+    assert!(text.ends_with("Answer: "));
+}
+
+#[test]
+fn old_per_sentence_entries_load_sort_and_keep_their_marks() {
+    let rig = Rig::new();
+    let store = Store::new(rig.runner.path());
+    let old = serde_json::json!({
+        "transcript": "", "offset": 0,
+        "questions": [
+            {"id":"aaaaaaaaaaaa","session":SID,"text":"Old sentence one here?","asked_s":10,"origin":"haiku"},
+            {"id":"bbbbbbbbbbbb","session":SID,"text":"Old sentence two here?","asked_s":10,"origin":"haiku","user":"u","reply":"r"}
+        ]
+    });
+    tmgr_ipc::dirs::ensure_private_dir(store.dir()).unwrap();
+    std::fs::write(store.dir().join(format!("{SID}.json")), old.to_string()).unwrap();
+    store.mark("aaaaaaaaaaaa", Status::Ignored, 11).unwrap();
+    let got = store.entries(None);
+    assert_eq!(got.len(), 2);
+    let a = got.iter().find(|e| e.q.id == "aaaaaaaaaaaa").unwrap();
+    assert_eq!(a.status, Status::Ignored);
+    assert!(a.q.item.is_empty());
+    assert_eq!(
+        paste_text(&a.q, 20),
+        "> Earlier you asked (just now): \"Old sentence one here?\"\nAnswer: "
+    );
 }
