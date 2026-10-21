@@ -106,6 +106,20 @@ export interface AgentCompactedEvent {
 	trigger: AgentCompactionTrigger;
 }
 
+export interface AgentPin {
+	id: number;
+	content: string;
+	source_message_id: number | null;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface AgentPinLimits {
+	max_pins: number;
+	max_chars: number;
+	max_total_chars: number;
+}
+
 export interface AgentContext {
 	conversation_id: number;
 	provider: string;

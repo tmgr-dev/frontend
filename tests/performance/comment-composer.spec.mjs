@@ -95,24 +95,69 @@ for (const [name, open] of Object.entries(surfaces)) {
         ),
       ).toBeLessThanOrEqual(1);
 
-      // Modal: Esc is caught first by the capture listener in useModalEscHandler.ts and closes the
-      // task, so the field never sees it (TM-686 QA, reported separately).
-      if (name === 'page') {
-        await input.press('Escape');
-        await expect(input).toHaveValue('');
-        await expect
-          .poll(async () => (await box(container)).height)
-          .toBeCloseTo(oneLine.height, 0);
-      }
-
       await input.fill('a long comment '.repeat(40));
       await input.press('Enter');
       await expect.poll(() => posted.length).toBe(1);
       expect(posted[0].message).toBe('a long comment '.repeat(40).trim());
       await expect(input).toHaveValue('');
+      await expect(input).toBeFocused();
       await expect
         .poll(async () => (await box(container)).height)
         .toBeCloseTo(oneLine.height, 0);
+
+      await input.fill('sent with the button');
+      await send.click();
+      await expect.poll(() => posted.length).toBe(2);
+      await expect(input).toBeFocused();
+    });
+
+    test('Esc blurs a field with a draft and keeps it', async ({ page }) => {
+      await setup(page);
+      const input = await open(page);
+      const form = page.locator('.new-form-container');
+      await input.fill('draft\nsecond line');
+      const grown = (await box(input)).height;
+      await input.press('Escape');
+      await expect(input).not.toBeFocused();
+      await expect(input).toHaveValue('draft\nsecond line');
+      await expect(form).toBeVisible();
+      expect((await box(input)).height).toBeCloseTo(grown, 0);
+
+      if (name === 'modal') {
+        await page.keyboard.press('Escape');
+        await expect(form).toHaveCount(0);
+      }
+    });
+
+    if (name === 'modal') {
+      test('Esc in an empty focused field closes the modal', async ({
+        page,
+      }) => {
+        await setup(page);
+        const input = await open(page);
+        await input.focus();
+        await input.press('Escape');
+        await expect(page.locator('.new-form-container')).toHaveCount(0);
+      });
+    }
+
+    test('field height follows a window resize', async ({ page }) => {
+      await setup(page);
+      const input = await open(page);
+      await input.fill('a long comment that wraps '.repeat(3));
+      const before = (await box(input)).height;
+      // The modal field gets narrower at 1100px (one more line); the page rail goes full width
+      // below lg (one line less).
+      await page.setViewportSize({
+        width: name === 'modal' ? 1100 : 800,
+        height: 900,
+      });
+      await expect
+        .poll(async () => Math.round((await box(input)).height))
+        .not.toBe(Math.round(before));
+      expect(
+        await input.evaluate((el) => el.scrollHeight - el.clientHeight),
+      ).toBeLessThanOrEqual(0);
     });
 
     test('a blank field does not send', async ({ page }) => {

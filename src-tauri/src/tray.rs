@@ -20,7 +20,9 @@ impl Default for DndStore {
 }
 
 const TRAY_ID: &str = "timer";
-const CHECK_FOR_UPDATES_ID: &str = "check_for_updates";
+/// Not `app_menu::CHECK_FOR_UPDATES_ID`: Tauri calls every menu listener for every menu event, so a shared id
+/// would make one click emit `menu://check-for-updates` twice (TM-702).
+const CHECK_FOR_UPDATES_ID: &str = "tray_check_for_updates";
 const LABEL_MAX: usize = 42;
 const TITLE_MAX: usize = 18;
 /// Caps how large the plugin part of the tray menu can grow, regardless of how many plugins run.
@@ -425,6 +427,18 @@ mod tests {
 
   fn task(id: i64, title: &str, common_time: i64, start_time: i64) -> TrayTask {
     TrayTask { id, title: title.into(), common_time, start_time, workspace_id: 0 }
+  }
+
+  #[cfg(target_os = "macos")]
+  #[test]
+  fn app_menu_ids_are_not_handled_by_the_tray() {
+    use crate::app_menu::{CHECK_FOR_UPDATES_ID as APP_UPDATES, NAV_BACK_ID, NAV_FORWARD_ID};
+    let tray_ids = ["open", "shortcuts", "autostart", CHECK_FOR_UPDATES_ID, "quit"];
+    let tray_prefixes = ["open:", "stop:", "switch:", "plugin-item:", "dnd:"];
+    for id in [APP_UPDATES, NAV_BACK_ID, NAV_FORWARD_ID] {
+      assert!(!tray_ids.contains(&id), "{id} is handled by both menus");
+      assert!(!tray_prefixes.iter().any(|p| id.starts_with(p)), "{id} matches a tray prefix");
+    }
   }
 
   #[test]

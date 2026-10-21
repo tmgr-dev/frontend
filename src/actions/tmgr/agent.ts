@@ -6,12 +6,15 @@ import type {
 	AgentConversation,
 	AgentConversationItem,
 	AgentMessage,
+	AgentPin,
+	AgentPinLimits,
 	PendingAction,
 } from '@/types/agent';
 import {
 	normalizeAgentMessage,
 	normalizePendingActions,
 } from '@/utils/agentConfirmation';
+import { DEFAULT_PIN_LIMITS } from '@/utils/agentPins';
 import type { AttachedFile } from '@/utils/aiAttachments';
 
 export const getOrCreateConversation = async (
@@ -58,6 +61,49 @@ export const compactConversation = async (
 		data: { data },
 	} = await $axios.post(`/agent/conversations/${conversationId}/compact`);
 	return data;
+};
+
+export const getAgentPins = async (
+	conversationId: number,
+): Promise<{ pins: AgentPin[]; limits: AgentPinLimits }> => {
+	const {
+		data: { data, limits },
+	} = await $axios.get(`/agent/conversations/${conversationId}/pins`);
+	return { pins: data ?? [], limits: limits ?? DEFAULT_PIN_LIMITS };
+};
+
+export const addAgentPin = async (
+	conversationId: number,
+	content: string,
+	sourceMessageId?: number,
+): Promise<AgentPin> => {
+	const {
+		data: { data },
+	} = await $axios.post(`/agent/conversations/${conversationId}/pins`, {
+		content,
+		...(sourceMessageId ? { source_message_id: sourceMessageId } : {}),
+	});
+	return data;
+};
+
+export const updateAgentPin = async (
+	conversationId: number,
+	pinId: number,
+	content: string,
+): Promise<AgentPin> => {
+	const {
+		data: { data },
+	} = await $axios.put(`/agent/conversations/${conversationId}/pins/${pinId}`, {
+		content,
+	});
+	return data;
+};
+
+export const deleteAgentPin = async (
+	conversationId: number,
+	pinId: number,
+): Promise<void> => {
+	await $axios.delete(`/agent/conversations/${conversationId}/pins/${pinId}`);
 };
 
 export type ActionDecision = 'confirm' | 'cancel';

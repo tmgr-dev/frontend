@@ -15,6 +15,11 @@ const DEBOUNCE_MS = 1000;
 function handleGlobalEscape(e: KeyboardEvent) {
 	if (e.key !== 'Escape') return;
 
+	// A field marked data-esc-blur that holds a draft takes the first Esc itself (blurs, keeps the
+	// text); the next Esc, with focus elsewhere, closes the modal.
+	const target = e.target as HTMLTextAreaElement | null;
+	if (target?.dataset?.escBlur !== undefined && target.value) return;
+
 	const now = Date.now();
 	if (now - lastCloseTimestamp < DEBOUNCE_MS) return;
 
