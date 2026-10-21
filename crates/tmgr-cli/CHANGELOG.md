@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.34
 
 - Agent work accounting. The Claude Code hook now attaches the session id to runs started or finished through the tmgr MCP (`<session>/<agent>` plus the parent session for a subagent), and after a run finishes it adds the commits you made during the run (your author email, inside the run's time, from the run's branch or `HEAD`; sha, subject, repository and branch) to the run. Before writing, the hook checks the run on the server (same run, task and start time). `tmgr agent finish` adds the commits the same way. `tmgr config set hook_git_commits false` turns the commit collection off. Existing installs get this only after `tmgr hook install claude` is run again (it adds a `PostToolUse` hook for the agent-work tools only and says what it does).
 - `tmgr usage task` and the upload attribute an orchestrator's own usage to the task it drives (role `orchestrator`, marked likely, only within its bursts of activity for that task: a gap of more than 30 minutes ends a window); usage that falls into the windows of several tasks at once is shown as shared and counted for none. Each agent shows active time (idle gaps of 5 minutes or more left out) next to wall time; the task's active time is the union over agents. The upload carries the price per model when it is fully known. Tasks without a category key now upload as `#<id>` (before, they were refused as invalid). A run session id of the form `session/agent` links only that agent's usage.
