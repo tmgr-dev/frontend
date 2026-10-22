@@ -1,0 +1,14 @@
+╭ 1  claude · working ────────────────────────────── ⏸ ■ ✕ ╮
+│● Reading src/checkout/Form.vue                           │
+│I will add an Apple Pay button next to the card form, show│
+╭ Saved prompts ───────────────────────────────────────────╮
+│ >                            Ctrl-E edit · Ctrl-D delete │
+│                                                          │
+│ run tests                   Run the tests and fix any fa │
+│ commit and open PR          Commit the changes with a cl │
+│ summarize what you did      Summarize what you did so fa │
+│ + Add prompt                                      Ctrl-A │
+╰──────────────────────────────────────────────────────────╯
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+ dev-server · waiting · Ctrl-] ?

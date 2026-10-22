@@ -1,6 +1,7 @@
 use super::actions::find;
 use super::keys::Cmd;
 use super::newsession::{draw_new_session, new_session_cursor};
+use super::palette::PaletteMode;
 use super::palette::{
     palette_inner, palette_list, palette_rect, palette_top, query_avail, query_tail, RowView,
 };
@@ -815,6 +816,17 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         if rect.is_empty() || inner.is_empty() {
             return None;
         }
+        if let PaletteMode::Form(f) = &p.mode {
+            let value = if f.field == 0 { &f.name } else { &f.text };
+            let w = query_tail(value, usize::from(inner.width).saturating_sub(7)).width() as u16;
+            return Some((
+                (inner.x + 6 + w).min(inner.right() - 1),
+                inner.y + f.field as u16,
+            ));
+        }
+        if matches!(p.mode, PaletteMode::Delete(_)) {
+            return None;
+        }
         let w = query_tail(&p.query, query_avail(inner)).width() as u16;
         return Some(((inner.x + 2 + w).min(inner.right() - 1), inner.y));
     }
@@ -996,7 +1008,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         HelpKey::Cmds(&[Cmd::SplitRight, Cmd::SplitDown]),
         "split right / split down",
     ),
-    (HelpKey::Cmds(&[Cmd::NewSession]), "new session (dialog)"),
+    (
+        HelpKey::Cmds(&[Cmd::NewSession, Cmd::Prompts]),
+        "new session (dialog) / saved prompts",
+    ),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),
         "focus next pane (Shift-Tab previous)",
@@ -1225,17 +1240,80 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     Clear.render(rect, buf);
+    let title = match &p.mode {
+        PaletteMode::Commands => " Command palette ",
+        PaletteMode::Prompts => " Saved prompts ",
+        PaletteMode::Form(f) if f.index.is_some() => " Edit prompt ",
+        PaletteMode::Form(_) => " Add prompt ",
+        PaletteMode::Delete(_) => " Delete prompt ",
+    };
     Block::bordered()
         .border_type(BorderType::Rounded)
-        .title(" Command palette ")
+        .title(title)
         .render(rect, buf);
     let inner = palette_inner(rect);
     if inner.is_empty() {
         return;
     }
+    match &p.mode {
+        PaletteMode::Form(f) => {
+            let w = usize::from(inner.width).saturating_sub(7);
+            for (i, (label, value)) in [("Name", &f.name), ("Text", &f.text)]
+                .into_iter()
+                .enumerate()
+            {
+                let y = inner.y + i as u16;
+                let x = put(buf, inner.x, y, &format!("{label}  "), dim(), inner.width);
+                let style = if f.field == i { Style::new() } else { dim() };
+                put(buf, x, y, query_tail(value, w), style, inner.right() - x);
+            }
+            let list = palette_list(rect);
+            put(
+                buf,
+                list.x,
+                list.y,
+                "Tab switches field, Enter saves, Esc cancels",
+                dim(),
+                list.width,
+            );
+            return;
+        }
+        PaletteMode::Delete(idx) => {
+            let name = st.prompts.get(*idx).map_or("", |p| p.name.as_str());
+            put(
+                buf,
+                inner.x,
+                inner.y,
+                &format!(
+                    "Delete \"{}\"?",
+                    fit(name, None, usize::from(inner.width).saturating_sub(10))
+                ),
+                Style::new().fg(colors().warn),
+                inner.width,
+            );
+            let list = palette_list(rect);
+            put(
+                buf,
+                list.x,
+                list.y,
+                "y deletes, any other key cancels",
+                dim(),
+                list.width,
+            );
+            return;
+        }
+        _ => {}
+    }
     let x = put(buf, inner.x, inner.y, "> ", dim(), inner.width);
     let tail = query_tail(&p.query, query_avail(inner));
     put(buf, x, inner.y, tail, Style::new(), inner.right() - x);
+    if p.mode == PaletteMode::Prompts && p.query.is_empty() {
+        let hint = "Ctrl-E edit · Ctrl-D delete";
+        let hw = hint.width() as u16;
+        if x + hw + 1 < inner.right() {
+            put(buf, inner.right() - hw, inner.y, hint, dim(), hw);
+        }
+    }
     let list = palette_list(rect);
     if list.is_empty() {
         return;

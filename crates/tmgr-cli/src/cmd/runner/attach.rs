@@ -5,6 +5,7 @@ use super::attach_new::{
     prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
     TaskReview,
 };
+use super::attach_prompts;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
@@ -30,7 +31,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, IsTerminal, Read, Write};
 use std::panic;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender, SyncSender};
 use std::thread;
@@ -42,11 +43,11 @@ use tmgr_ipc::api::{
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
-    parse_osc11, peer_bytes, probe, render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd,
-    Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier,
-    PaletteEdit, PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState,
-    SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
-    TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, Action, AgentTitle,
+    AttentionTracker, Cmd, Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest,
+    NewSession, Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, Place, QEdit,
+    RenameEdit, ScreenSource, ScrollState, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
+    SignalTracker, SplitDir, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -62,6 +63,7 @@ const PROBE_RETRY: Duration = Duration::from_millis(250);
 const TITLE_EVERY: Duration = Duration::from_secs(3);
 const QUESTIONS_EVERY: Duration = Duration::from_secs(4);
 const STATUS_EVERY: Duration = Duration::from_secs(1);
+const SEND_DELAY: Duration = Duration::from_millis(80);
 const USAGE_EVERY: Duration = Duration::from_secs(10);
 const CHIP_EVERY: Duration = Duration::from_secs(5);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -292,6 +294,9 @@ struct App {
     opener: Box<dyn Opener>,
     signals: SignalTracker,
     signal_cfg: SignalSettings,
+    prompt_send: bool,
+    send_enter: Option<(String, Instant)>,
+    prompts_dir: Option<PathBuf>,
     notifier: Box<dyn Notifier>,
     peek_tx: SyncSender<PeekJob>,
     peek_pending: bool,
@@ -1618,6 +1623,45 @@ impl App {
                 self.view.open(&id);
                 Ok(None)
             }
+            PaletteEntry::Prompt(idx) => {
+                self.paste_prompt(idx)?;
+                Ok(None)
+            }
+            PaletteEntry::NewPrompt => Ok(None),
+        }
+    }
+
+    fn paste_prompt(&mut self, idx: usize) -> io::Result<()> {
+        let Some(text) = self.view.prompts.get(idx).map(|p| p.text.clone()) else {
+            return Ok(());
+        };
+        let Some(row) = self.view.focused_row().filter(|r| !r.exited()) else {
+            self.notify("no running session to paste into");
+            return Ok(());
+        };
+        let id = row.id.clone();
+        if self.creating.contains_key(&id) {
+            self.notify("the session is starting, try again in a moment");
+            return Ok(());
+        }
+        let bytes = paste_bytes(&text, self.bracketed(&id));
+        self.send_to(&id, &bytes)?;
+        if self.prompt_send {
+            self.send_enter = Some((id, Instant::now() + SEND_DELAY));
+            self.notify("prompt sent");
+        } else {
+            self.notify("prompt pasted, press Enter to send");
+        }
+        Ok(())
+    }
+
+    fn save_prompts(&mut self) {
+        let Some(dir) = self.prompts_dir.clone() else {
+            self.notify("cannot locate the config directory");
+            return;
+        };
+        if attach_prompts::save(&dir, &self.view.prompts).is_err() {
+            self.notify("cannot save prompts.toml");
         }
     }
 
@@ -1660,10 +1704,14 @@ impl App {
                     self.window_focused = false;
                 }
                 Action::Forward(data) if self.view.palette.is_some() => {
-                    if let PaletteEdit::Run(entry) = self.view.edit_palette(&data) {
-                        if let Some(exit) = self.run_palette_entry(entry)? {
-                            return Ok(Some(exit));
+                    match self.view.edit_palette(&data) {
+                        PaletteEdit::Run(entry) => {
+                            if let Some(exit) = self.run_palette_entry(entry)? {
+                                return Ok(Some(exit));
+                            }
                         }
+                        PaletteEdit::PromptsChanged => self.save_prompts(),
+                        PaletteEdit::Editing | PaletteEdit::Close => {}
                     }
                 }
                 Action::Drop(data) if self.view.palette.is_some() => {
@@ -1845,8 +1893,14 @@ impl App {
                     self.view.rename = None;
                     self.view.new_session = None;
                     self.view.sidebar_focus = None;
-                    if self.view.palette.take().is_some() && cmd == Cmd::Palette {
-                        continue;
+                    if let Some(old) = self.view.palette.take() {
+                        if matches!(
+                            (cmd, &old.mode),
+                            (Cmd::Palette, PaletteMode::Commands)
+                                | (Cmd::Prompts, PaletteMode::Prompts)
+                        ) {
+                            continue;
+                        }
                     }
                     if self.view.qmenu.take().is_some() && cmd == Cmd::Questions {
                         continue;
@@ -1917,6 +1971,15 @@ impl App {
             }
         }
         self.report_attention(false);
+        if self
+            .send_enter
+            .as_ref()
+            .is_some_and(|(_, at)| Instant::now() >= *at)
+        {
+            if let Some((id, _)) = self.send_enter.take() {
+                self.send_to(&id, b"\r")?;
+            }
+        }
         self.view.width = self.size.0;
         if !self.view.sidebar_shown() {
             self.view.sidebar_focus = None;
@@ -2231,6 +2294,14 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .map(|c| c.attach)
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
+    let prompts_dir = attach_prompts::dir();
+    let mut notice_set = false;
+    if let Some(dir) = &prompts_dir {
+        let (list, warn) = attach_prompts::load(dir);
+        view.prompts = list;
+        view.notice = warn;
+        notice_set = view.notice.is_some();
+    }
     let web_base = {
         let cfg = tmgr_core::config::config_dir()
             .ok()
@@ -2422,7 +2493,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         prev_modes: None,
         last_prefs: None,
         scrolled: None,
-        notice_until: None,
+        notice_until: notice_set.then(|| Instant::now() + NOTICE_FOR),
         probe_tx,
         probe_pending: false,
         tried: HashSet::new(),
@@ -2444,6 +2515,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         opener: Box::new(SystemOpener),
         signals: SignalTracker::new(),
         signal_cfg: signal_settings(&attach_cfg),
+        prompt_send: attach_cfg.prompt_send.unwrap_or(false),
+        send_enter: None,
+        prompts_dir,
         notifier: Box::new(SystemNotifier),
         peek_tx,
         peek_pending: false,

@@ -1,0 +1,22 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● claude working 18m │✓ Tests 14 passed                                       ││                                                        │
+   ◌ dev-server wa… 12m │>                                                       ││                                                        │
+ ✓ tests     exited 52m │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │             ╭ Edit prompt ─────────────────────────────────────────────────╮                                     │
+                        │             │ Name  run tests                                              │                                     │
+                        │             │ Text  Run the tests and fix any failures.                    │                                     │
+                        │             │ Tab switches field, Enter saves, Esc cancels                 │                                     │
+                        │             ╰──────────────────────────────────────────────────────────────╯                                     │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

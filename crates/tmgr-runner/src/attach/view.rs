@@ -5,6 +5,7 @@ use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
 use super::place::Loc;
+use super::prompts::Prompt;
 use super::qmenu::{GotoMark, QEdit, QMenu};
 use super::signal::Need;
 use super::status::{Peek, SessionStatus};
@@ -134,6 +135,7 @@ pub struct ViewState {
     pub confirm: Option<Confirm>,
     pub rename: Option<Rename>,
     pub palette: Option<Palette>,
+    pub prompts: Vec<Prompt>,
     pub new_session: Option<NewSession>,
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
@@ -357,6 +359,7 @@ impl ViewState {
             confirm: None,
             rename: None,
             palette: None,
+            prompts: Vec::new(),
             new_session: None,
             new_kind: None,
             new_place: None,
@@ -1193,6 +1196,11 @@ impl ViewState {
                     self.palette = Some(Palette::default());
                     self.help = false;
                     self.grab = None;
+                }
+            }
+            Cmd::Prompts => {
+                if self.palette.take().is_none() {
+                    self.open_prompts();
                 }
             }
             Cmd::Questions => self.toggle_questions(),

@@ -19,6 +19,6 @@
                   │ Open the focused session's task                     Ctrl-] t │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
-                  │ Unanswered questions from the agents                Ctrl-] q │                 │
- + New session    │ Show or hide the focused session's subagents        Ctrl-] u │─────────────────╯
+                  │ Saved prompts: paste into the focused agent         Ctrl-] i │                 │
+ + New session    │ Unanswered questions from the agents                Ctrl-] q │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

@@ -164,6 +164,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Pick or drop the focused pane as a broadcast target",
         true,
     ),
+    def(
+        Cmd::Prompts,
+        b"i",
+        "i",
+        "Saved prompts: paste into the focused agent",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

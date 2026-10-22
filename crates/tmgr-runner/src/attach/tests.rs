@@ -2568,7 +2568,7 @@ fn palette_entries_are_exactly_the_palette_actions() {
         .into_iter()
         .map(|r| match r.entry {
             PaletteEntry::Cmd(c) => c,
-            PaletteEntry::Session(_) => panic!("no sessions"),
+            _ => panic!("no sessions"),
         })
         .collect();
     let table: Vec<Cmd> = ACTIONS
@@ -6620,4 +6620,170 @@ fn snapshot_broadcast_narrow_panes_use_short_markers() {
     v.apply(Cmd::Broadcast);
     v.apply(Cmd::BroadcastMark);
     assert_snapshot("broadcast_narrow", &draw(&v, &screens(), 60, 14));
+}
+
+fn prompt_view() -> ViewState {
+    let mut v = two_pane(140);
+    v.prompts = default_prompts();
+    v.apply(Cmd::Prompts);
+    v
+}
+
+fn prompt_names(v: &ViewState) -> Vec<String> {
+    v.entries().into_iter().map(|r| r.label).collect()
+}
+
+#[test]
+fn the_prompt_key_is_free_and_opens_the_prompt_list() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'i')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Prompts);
+    let v = prompt_view();
+    assert_eq!(
+        prompt_names(&v),
+        [
+            "run tests",
+            "commit and open PR",
+            "summarize what you did",
+            "+ Add prompt"
+        ]
+    );
+}
+
+#[test]
+fn prompts_are_filtered_by_fuzzy_query_and_keep_the_add_row() {
+    let mut v = prompt_view();
+    v.insert_palette_text(b"summ");
+    assert_eq!(prompt_names(&v), ["summarize what you did", "+ Add prompt"]);
+}
+
+#[test]
+fn enter_on_a_prompt_returns_it_and_closes() {
+    let mut v = prompt_view();
+    v.insert_palette_text(b"commit");
+    assert_eq!(
+        v.edit_palette(b"\r"),
+        PaletteEdit::Run(PaletteEntry::Prompt(1))
+    );
+    assert!(v.palette.is_none());
+}
+
+#[test]
+fn adding_a_prompt_through_the_form_saves_it() {
+    let mut v = prompt_view();
+    v.insert_palette_text(b"zzzz");
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    assert!(matches!(
+        v.palette.as_ref().unwrap().mode,
+        PaletteMode::Form(_)
+    ));
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    v.edit_palette(b"lint");
+    v.edit_palette(b"\t");
+    v.edit_palette(b"Run the linter");
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::PromptsChanged);
+    assert_eq!(
+        v.prompts.last().unwrap(),
+        &Prompt {
+            name: "lint".into(),
+            text: "Run the linter".into()
+        }
+    );
+    assert_eq!(v.palette.as_ref().unwrap().mode, PaletteMode::Prompts);
+}
+
+#[test]
+fn editing_replaces_in_place_and_escape_cancels_the_form() {
+    let mut v = prompt_view();
+    assert_eq!(v.edit_palette(b"\x05"), PaletteEdit::Editing);
+    v.edit_palette(b"\x15new name");
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::PromptsChanged);
+    assert_eq!(v.prompts[0].name, "new name");
+    assert_eq!(v.prompts.len(), 3);
+    v.edit_palette(b"\x05");
+    v.edit_palette(b"zz");
+    assert_eq!(v.edit_palette(b"\x1b"), PaletteEdit::Editing);
+    assert_eq!(v.prompts[0].name, "new name");
+    assert_eq!(v.palette.as_ref().unwrap().mode, PaletteMode::Prompts);
+}
+
+#[test]
+fn an_empty_name_or_text_is_not_saved() {
+    let mut v = prompt_view();
+    v.edit_palette(b"\x01");
+    v.edit_palette(b"only a name");
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    assert_eq!(v.prompts.len(), 3);
+}
+
+#[test]
+fn delete_needs_a_confirmation() {
+    let mut v = prompt_view();
+    v.edit_palette(b"\x04");
+    assert_eq!(v.edit_palette(b"n"), PaletteEdit::Editing);
+    assert_eq!(v.prompts.len(), 3);
+    v.edit_palette(b"\x04");
+    assert_eq!(v.edit_palette(b"\x04"), PaletteEdit::Editing);
+    assert_eq!(v.prompts.len(), 3);
+    v.edit_palette(b"\x04");
+    assert_eq!(v.edit_palette(b"y"), PaletteEdit::PromptsChanged);
+    assert_eq!(v.prompts.len(), 2);
+    assert_eq!(v.prompts[0].name, "commit and open PR");
+}
+
+#[test]
+fn pasted_text_in_the_form_loses_control_characters() {
+    let mut v = prompt_view();
+    v.edit_palette(b"\x01");
+    v.edit_palette(b"\t");
+    v.insert_palette_text(b"\x1b[200~a\nb\x1b[201~");
+    let PaletteMode::Form(f) = &v.palette.as_ref().unwrap().mode else {
+        panic!()
+    };
+    assert_eq!(f.text, "a b");
+}
+
+#[test]
+fn prompt_paste_bytes_are_bracketed_and_clean() {
+    assert_eq!(
+        paste_bytes("run\x1b[201~ it\n\x03\u{202e}x", true),
+        b"\x1b[200~run[201~ it x\x1b[201~".to_vec()
+    );
+    assert_eq!(paste_bytes("hi", false), b"hi".to_vec());
+}
+
+#[test]
+fn prompts_file_round_trips_and_drops_empty_entries() {
+    let list = vec![Prompt {
+        name: "a".into(),
+        text: "say \"hi\"".into(),
+    }];
+    assert_eq!(parse_prompts(&render_prompts(&list)).unwrap(), list);
+    let text = "[[prompt]]\nname=\"x\"\ntext=\"\"\n[[prompt]]\nname=\"y\"\ntext=\"t\"\n";
+    assert_eq!(parse_prompts(text).unwrap().len(), 1);
+    assert!(parse_prompts("prompt = [[[").is_err());
+}
+
+#[test]
+fn snapshot_prompt_list() {
+    let v = prompt_view();
+    assert_snapshot("prompts_list", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_prompt_form() {
+    let mut v = prompt_view();
+    v.edit_palette(b"\x05");
+    assert_snapshot("prompts_form", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_prompt_list_narrow() {
+    let v = {
+        let mut v = two_pane(60);
+        v.prompts = default_prompts();
+        v.apply(Cmd::Prompts);
+        v
+    };
+    assert_snapshot("prompts_narrow", &draw(&v, &screens(), 60, 14));
 }

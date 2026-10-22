@@ -3,6 +3,7 @@ mod attach;
 mod attach_chip;
 mod attach_goto;
 mod attach_new;
+mod attach_prompts;
 mod attach_questions;
 mod attach_shell;
 mod attach_signal;

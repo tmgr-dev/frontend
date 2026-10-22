@@ -47,6 +47,7 @@ pub enum Cmd {
     OpenTask,
     Broadcast,
     BroadcastMark,
+    Prompts,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1,31 +1,46 @@
 use super::actions::ACTIONS;
 use super::keys::Cmd;
 use super::mouse::{Kind, MouseEvent};
+use super::prompts::{clean, Prompt, PromptForm, MAX_NAME, MAX_TEXT};
 use super::render::state_label;
 use super::view::{contains, MouseOut, ViewState};
 use ratatui::layout::{Margin, Rect};
+use std::ops::Not;
 use unicode_width::UnicodeWidthStr;
 
 const MAX_QUERY: usize = 64;
 const MAX_WIDTH: u16 = 64;
 const PROMPT_WIDTH: usize = 2;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum PaletteMode {
+    #[default]
+    Commands,
+    Prompts,
+    Form(PromptForm),
+    Delete(usize),
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Palette {
     pub query: String,
     pub sel: usize,
+    pub mode: PaletteMode,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteEntry {
     Cmd(Cmd),
     Session(String),
+    Prompt(usize),
+    NewPrompt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PaletteEdit {
     Editing,
     Run(PaletteEntry),
+    PromptsChanged,
     Close,
 }
 
@@ -168,6 +183,11 @@ impl ViewState {
         let Some(p) = &self.palette else {
             return Vec::new();
         };
+        match p.mode {
+            PaletteMode::Commands => {}
+            PaletteMode::Prompts => return self.prompt_entries(&p.query),
+            PaletteMode::Form(_) | PaletteMode::Delete(_) => return Vec::new(),
+        }
         let items: Vec<Item> = ACTIONS
             .iter()
             .filter(|a| a.palette)
@@ -199,6 +219,149 @@ impl ViewState {
             .collect()
     }
 
+    fn prompt_entries(&self, query: &str) -> Vec<RowView> {
+        let items: Vec<(usize, &Prompt)> = self.prompts.iter().enumerate().collect();
+        let mut rows: Vec<RowView> =
+            tmgr_fuzzy::rank(query, items, |(_, p)| format!("{} {}", p.name, p.text))
+                .into_iter()
+                .map(|(i, p)| RowView {
+                    hits: if query.is_empty() {
+                        Vec::new()
+                    } else {
+                        tmgr_fuzzy::matched(query, &p.name)
+                    },
+                    label: p.name.clone(),
+                    right: p.text.chars().take(28).collect(),
+                    entry: PaletteEntry::Prompt(i),
+                })
+                .collect();
+        rows.push(RowView {
+            label: "+ Add prompt".into(),
+            right: "Ctrl-A".into(),
+            hits: Vec::new(),
+            entry: PaletteEntry::NewPrompt,
+        });
+        rows
+    }
+
+    pub fn open_prompts(&mut self) {
+        self.palette = Some(Palette {
+            mode: PaletteMode::Prompts,
+            ..Palette::default()
+        });
+        self.help = false;
+        self.grab = None;
+    }
+
+    fn open_form(&mut self, index: Option<usize>) {
+        let (name, text) = index
+            .and_then(|i| self.prompts.get(i))
+            .map(|p| (p.name.clone(), p.text.clone()))
+            .unwrap_or_default();
+        if let Some(p) = self.palette.as_mut() {
+            p.mode = PaletteMode::Form(PromptForm {
+                index,
+                name,
+                text,
+                field: 0,
+            });
+        }
+    }
+
+    fn activate(&mut self, entry: PaletteEntry) -> Option<PaletteEntry> {
+        if entry == PaletteEntry::NewPrompt {
+            self.open_form(None);
+            return None;
+        }
+        self.palette = None;
+        Some(entry)
+    }
+
+    fn selected_prompt(&self) -> Option<usize> {
+        match self.selected_entry()? {
+            PaletteEntry::Prompt(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    fn edit_prompt_form(&mut self, data: &[u8]) -> PaletteEdit {
+        let mut i = 0;
+        while i < data.len() {
+            let Some(PaletteMode::Form(form)) = self.palette.as_mut().map(|p| &mut p.mode) else {
+                break;
+            };
+            match data[i] {
+                0x1b => {
+                    let (_, used) = esc_key(&data[i..]);
+                    if used == 1 && data.len() == i + 1 {
+                        if let Some(p) = self.palette.as_mut() {
+                            p.mode = PaletteMode::Prompts;
+                        }
+                        return PaletteEdit::Editing;
+                    }
+                    i += used;
+                }
+                b'\t' => {
+                    i += 1;
+                    form.field = 1 - form.field;
+                }
+                b'\r' | b'\n' => {
+                    i += 1;
+                    let name = clean(&form.name, MAX_NAME);
+                    let text = clean(&form.text, MAX_TEXT);
+                    if name.is_empty() || text.is_empty() {
+                        form.field = usize::from(name.is_empty().not());
+                        continue;
+                    }
+                    let index = form.index;
+                    let prompt = Prompt { name, text };
+                    match index.filter(|i| *i < self.prompts.len()) {
+                        Some(i) => self.prompts[i] = prompt,
+                        None => self.prompts.push(prompt),
+                    }
+                    if let Some(p) = self.palette.as_mut() {
+                        p.mode = PaletteMode::Prompts;
+                        p.query.clear();
+                        p.sel = 0;
+                    }
+                    return PaletteEdit::PromptsChanged;
+                }
+                0x7f | 0x08 => {
+                    i += 1;
+                    form.active().0.pop();
+                }
+                0x15 => {
+                    i += 1;
+                    form.active().0.clear();
+                }
+                _ => {
+                    let (c, used) = next_char(&data[i..]);
+                    i += used;
+                    if let Some(c) = c.filter(|c| !c.is_control()) {
+                        let (field, max) = form.active();
+                        if field.chars().count() < max {
+                            field.push(c);
+                        }
+                    }
+                }
+            }
+        }
+        PaletteEdit::Editing
+    }
+
+    fn edit_prompt_delete(&mut self, data: &[u8], idx: usize) -> PaletteEdit {
+        let confirm = matches!(data, [b'y'] | [b'Y']);
+        if let Some(p) = self.palette.as_mut() {
+            p.mode = PaletteMode::Prompts;
+            p.sel = 0;
+        }
+        if confirm && idx < self.prompts.len() {
+            self.prompts.remove(idx);
+            return PaletteEdit::PromptsChanged;
+        }
+        PaletteEdit::Editing
+    }
+
     fn move_palette_sel(&mut self, down: bool) -> bool {
         let last = self.entries().len().saturating_sub(1);
         let Some(p) = self.palette.as_mut() else {
@@ -224,6 +387,11 @@ impl ViewState {
     pub fn edit_palette(&mut self, data: &[u8]) -> PaletteEdit {
         if self.palette.is_none() {
             return PaletteEdit::Close;
+        }
+        match self.palette.as_ref().map(|p| p.mode.clone()) {
+            Some(PaletteMode::Form(_)) => return self.edit_prompt_form(data),
+            Some(PaletteMode::Delete(idx)) => return self.edit_prompt_delete(data, idx),
+            _ => {}
         }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
             self.palette = None;
@@ -251,9 +419,29 @@ impl ViewState {
                 b'\r' | b'\n' => {
                     i += 1;
                     if let Some(entry) = self.selected_entry() {
-                        self.palette = None;
-                        return PaletteEdit::Run(entry);
+                        if let Some(entry) = self.activate(entry) {
+                            return PaletteEdit::Run(entry);
+                        }
+                        return PaletteEdit::Editing;
                     }
+                }
+                0x01 if p.mode == PaletteMode::Prompts => {
+                    self.open_form(None);
+                    return PaletteEdit::Editing;
+                }
+                0x05 if p.mode == PaletteMode::Prompts => {
+                    if let Some(idx) = self.selected_prompt() {
+                        self.open_form(Some(idx));
+                    }
+                    return PaletteEdit::Editing;
+                }
+                0x04 if p.mode == PaletteMode::Prompts => {
+                    if let Some(idx) = self.selected_prompt() {
+                        if let Some(p) = self.palette.as_mut() {
+                            p.mode = PaletteMode::Delete(idx);
+                        }
+                    }
+                    return PaletteEdit::Editing;
                 }
                 0x7f | 0x08 => {
                     i += 1;
@@ -292,6 +480,21 @@ impl ViewState {
         let Some(p) = self.palette.as_mut() else {
             return;
         };
+        if let PaletteMode::Form(form) = &mut p.mode {
+            let text = String::from_utf8_lossy(data)
+                .replace("\x1b[200~", "")
+                .replace("\x1b[201~", "");
+            let (field, max) = form.active();
+            for c in text.chars().map(|c| if c.is_control() { ' ' } else { c }) {
+                if field.chars().count() < max {
+                    field.push(c);
+                }
+            }
+            return;
+        }
+        if matches!(p.mode, PaletteMode::Delete(_)) {
+            return;
+        }
         let text = String::from_utf8_lossy(data)
             .replace("\x1b[200~", "")
             .replace("\x1b[201~", "");
@@ -332,8 +535,7 @@ impl ViewState {
                     );
                     let idx = top + usize::from(ev.row - list.y);
                     if let Some(r) = rows.get(idx) {
-                        out.palette = Some(r.entry.clone());
-                        self.palette = None;
+                        out.palette = self.activate(r.entry.clone());
                         out.redraw = true;
                     }
                 } else if !contains(rect, ev.col, ev.row) {

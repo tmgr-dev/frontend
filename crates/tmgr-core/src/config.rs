@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 14] = [
+pub const KEYS: [&str; 15] = [
     "server",
     "default_workspace",
     "web_url",
@@ -22,6 +22,7 @@ pub const KEYS: [&str; 14] = [
     "attach.signal.question",
     "attach.signal.input",
     "attach.signal.quiet",
+    "attach.prompt.send",
 ];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
 pub const MAX_SIDEBAR_WIDTH: u16 = 60;
@@ -41,6 +42,8 @@ pub struct AttachConfig {
     pub signal_input: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signal_quiet: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_send: Option<bool>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -152,6 +155,7 @@ impl Config {
             "attach.signal.question" => self.attach.signal_question.map(|b| b.to_string()),
             "attach.signal.input" => self.attach.signal_input.map(|b| b.to_string()),
             "attach.signal.quiet" => self.attach.signal_quiet.clone(),
+            "attach.prompt.send" => self.attach.prompt_send.map(|b| b.to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -246,6 +250,13 @@ impl Config {
                     "attach.signal.question" => self.attach.signal_question = Some(v),
                     _ => self.attach.signal_input = Some(v),
                 }
+                Ok(v.to_string())
+            }
+            "attach.prompt.send" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage(format!("invalid {key}")).hint("use true or false")
+                })?;
+                self.attach.prompt_send = Some(v);
                 Ok(v.to_string())
             }
             "attach.signal.quiet" => {

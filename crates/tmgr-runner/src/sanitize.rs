@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-fn is_unsafe(c: char) -> bool {
+pub(crate) fn is_unsafe(c: char) -> bool {
     matches!(c,
         '\u{0}'..='\u{1f}'
         | '\u{7f}'
