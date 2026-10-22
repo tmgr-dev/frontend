@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.37
 
 - The new-session form in `tmgr attach` (`Ctrl-] c`, or the `+ New session` row) gets an optional Task row for agent kinds. Type a key or a few words to pick from your open tasks (`Left` / `Right` cycle the matches), or type a reference like `TM-12` or `#12`. Starting with a task runs the same code as `tmgr run <REF> --agent <profile>`: the task's own clone and branch, the run recorded as Agent work, and the same run summary, which the form shows for you to confirm with `y` (`Esc` goes back; a stray Enter does nothing) before anything starts. The folder field does not apply to a task run. Tasks of local workspaces only (a cloud task still needs `tmgr run` in a terminal), and the row is refused inside an agent session.
 ## 1.0.36
