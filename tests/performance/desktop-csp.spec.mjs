@@ -98,3 +98,65 @@ test('the desktop CSP lets the main screens run and blocks foreign hosts', async
     .poll(violations)
     .toEqual([expect.stringMatching(/^connect-src https:\/\/evil\.example/)]);
 });
+
+// TM-10243: the attachment viewer frames a blob: PDF, which needs frame-src blob:.
+test('the desktop CSP allows a blob: iframe and still blocks a foreign one', async ({
+  page,
+  baseURL,
+}) => {
+  await page.addInitScript(() => {
+    window.__cspViolations = [];
+    document.addEventListener('securitypolicyviolation', (event) =>
+      window.__cspViolations.push(
+        `${event.violatedDirective} ${event.blockedURI}`,
+      ),
+    );
+  });
+  await page.route(
+    (url) =>
+      url.origin === baseURL &&
+      !url.pathname.includes('.') &&
+      !url.pathname.startsWith('/api/') &&
+      !url.pathname.startsWith('/@'),
+    async (route) => {
+      if (route.request().resourceType() !== 'document')
+        return route.fallback();
+      const response = await route.fetch();
+      const html = stripAnalytics(await response.text());
+      await route.fulfill({
+        response,
+        body: html,
+        headers: {
+          ...response.headers(),
+          'content-security-policy': policyFor(html, baseURL),
+        },
+      });
+    },
+  );
+  await mockApp(page, { blockTask: true });
+  await page.goto('/demo/list');
+  await page.waitForLoadState('networkidle');
+  const violations = () =>
+    page
+      .evaluate(() => window.__cspViolations)
+      .then((all) => all.filter((entry) => entry.startsWith('frame-src')));
+
+  await page.evaluate(() => {
+    const frame = document.createElement('iframe');
+    frame.src = URL.createObjectURL(
+      new Blob(['<p>blob</p>'], { type: 'text/html' }),
+    );
+    document.body.append(frame);
+  });
+  await page.waitForTimeout(500);
+  expect(await violations()).toEqual([]);
+
+  await page.evaluate(() => {
+    const frame = document.createElement('iframe');
+    frame.src = 'https://evil.example/frame';
+    document.body.append(frame);
+  });
+  await expect
+    .poll(violations)
+    .toEqual([expect.stringMatching(/^frame-src https:\/\/evil\.example/)]);
+});

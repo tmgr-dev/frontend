@@ -73,6 +73,7 @@
 					"https://s3.danubedata.ro"
 				],
 				"frame-src": [
+					"blob:",
 					"https://oauth.telegram.org",
 					"https://www.youtube.com",
 					"https://codesandbox.io",
