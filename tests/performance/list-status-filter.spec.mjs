@@ -33,7 +33,19 @@ const meta = (total) => ({
   to: total,
 });
 
-const openList = async (page, { workflow = true } = {}) => {
+const currentTasks = {
+  data: [
+    { ...task(1, 1), common_time: 3600 },
+    task(2, 2),
+    { ...task(3, 1), common_time: 1800 },
+  ],
+  meta: meta(3),
+};
+
+const openList = async (
+  page,
+  { workflow = true, countdown = false, current = currentTasks } = {},
+) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.addInitScript(() =>
     sessionStorage.setItem('tmgr:tours:auto', 'true'),
@@ -47,15 +59,14 @@ const openList = async (page, { workflow = true } = {}) => {
             { key: 'board', enabled: true },
             { key: 'workflow', enabled: workflow },
             { key: 'categories', enabled: true },
+            ...(countdown ? [{ key: 'task.countdown', enabled: true }] : []),
           ],
         },
       },
     }),
   );
   await page.route('**/api/tasks/current*', (route) =>
-    route.fulfill({
-      json: { data: [task(1, 1), task(2, 2), task(3, 1)], meta: meta(3) },
-    }),
+    route.fulfill({ json: current }),
   );
   await page.goto('/demo/list');
   await expect(page.locator('[data-task-id="1"]')).toBeVisible();
@@ -65,6 +76,9 @@ test('filters the list by one or more statuses and clears', async ({
   page,
 }, testInfo) => {
   await openList(page);
+  await expect(page.locator('body')).toContainText(
+    '3 tasks · 1 hour 30 minutes',
+  );
   const filters = page.getByTitle('filters');
   await filters.click();
   await expect(page.getByRole('group', { name: 'Status' })).toBeVisible();
@@ -73,6 +87,7 @@ test('filters the list by one or more statuses and clears', async ({
   await expect(page.locator('[data-task-id="2"]')).toBeVisible();
   await expect(page.locator('[data-task-id="1"]')).toHaveCount(0);
   await expect(page.locator('[data-task-id="3"]')).toHaveCount(0);
+  await expect(page.locator('body')).toContainText('1 task · 0 minutes');
   await page.waitForTimeout(500);
   await page.screenshot({
     path: testInfo.outputPath('status-filter-light.png'),
@@ -106,6 +121,7 @@ test('shows a readable empty state and clears the status filter', async ({
   });
   await page.keyboard.press('Escape');
   await expect(page.getByText('No tasks match your filters')).toBeVisible();
+  await expect(page.locator('body')).toContainText('0 tasks · 0 minutes');
   await page.getByRole('button', { name: 'Clear filters' }).click();
   await expect(page.locator('[data-task-id="1"]')).toBeVisible();
 });
@@ -116,4 +132,52 @@ test('hides the status filter in simple mode', async ({ page }) => {
   await page.getByTitle('filters').click();
   await expect(page.getByRole('heading', { name: 'Filters' })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Status' })).toHaveCount(0);
+});
+
+test('the header total follows a timer stopped on a row', async ({ page }) => {
+  await openList(page, {
+    countdown: true,
+    current: {
+      data: [
+        { ...task(1, 1), common_time: 3600 },
+        { ...task(2, 2), start_time: 1 },
+      ],
+      meta: { ...meta(2), total: 12, total_seconds: '36000' },
+    },
+  });
+  await page.route('**/api/tasks/2/countdown', (route) =>
+    route.fulfill({
+      json: { data: { ...task(2, 2), common_time: 600, start_time: 0 } },
+    }),
+  );
+  await expect(page.locator('body')).toContainText(
+    '12 tasks · 10 hours 0 minutes',
+  );
+  await page.locator('[data-task-id="2"] button.bg-status-fix').click();
+  await expect(page.locator('body')).toContainText(
+    '12 tasks · 10 hours 10 minutes',
+  );
+});
+
+test('a return visit shows the cached total, not total plus page', async ({
+  page,
+}) => {
+  await openList(page, {
+    current: {
+      data: [{ ...task(1, 1), common_time: 3600 }],
+      meta: { ...meta(1), total: 12, total_seconds: '36000' },
+    },
+  });
+  await expect(page.locator('body')).toContainText(
+    '12 tasks · 10 hours 0 minutes',
+  );
+  await page.getByRole('link', { name: 'Board' }).first().click();
+  await expect(page).not.toHaveURL(/\/demo\/list/);
+  await page.route('**/api/tasks/current*', () => {});
+  await page.goBack();
+  await expect(page).toHaveURL(/\/demo\/list/);
+  await expect(page.locator('[data-task-id="1"]')).toBeVisible();
+  await expect(page.locator('body')).toContainText(
+    '12 tasks · 10 hours 0 minutes',
+  );
 });
