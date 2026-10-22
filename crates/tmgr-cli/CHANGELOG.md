@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.39
 
 - `tmgr attach` keeps saved prompts. `Ctrl-] i` (also in `?` and the command palette; `p` and `m` are already taken) opens a fuzzy list; Enter pastes the prompt into the focused agent's input without sending it (bracketed paste, control characters removed), so you can edit it and press Enter yourself. `tmgr config set attach.prompt.send true` also sends it. In the list `Ctrl-A` (or the `+ Add prompt` row) adds a prompt, `Ctrl-E` edits the selected one, `Ctrl-D` deletes it after a `y` confirmation. Prompts are plain one-line text, stored in `prompts.toml` in the tmgr config directory (written atomically, mode 0600); three defaults (run tests, commit and open PR, summarize what you did) show until you change the list. Do not put secrets in prompts. An invalid `prompts.toml` is left untouched and the defaults are shown until you change the list; the first save then keeps the old file as `prompts.toml.bak`.
 
