@@ -14,7 +14,7 @@ use super::tree::Nav;
 use super::usage::{Part, Tone};
 use super::view::{
     header_button, layout, sidebar_button, slot_control, Control, Layout, MachineState, PaneRect,
-    SessionRow, SidebarItem, SidebarLine, ViewState, HEADER_MIN_WIDTH, WIDE_COLS,
+    SessionRow, SidebarItem, SidebarLine, ViewState, HEADER_MIN_WIDTH, LOCAL_SECTION, WIDE_COLS,
 };
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
@@ -534,8 +534,8 @@ fn draw_machine_header(
     let text_x = area.x + 3;
     let tail_x = area.right().saturating_sub(tail_w + 1).max(text_x);
     let room = tail_x.saturating_sub(text_x).saturating_sub(1);
-    let label = if name == "local" {
-        name.to_string()
+    let label = if name == LOCAL_SECTION {
+        "local".to_string()
     } else {
         st.machine_label(name)
     };

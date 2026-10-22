@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use super::remote::{self, RunView};
 use super::remote_attach::{age, text_chunks};
 use serde_json::{json, Value};
@@ -1156,19 +1154,19 @@ fn writer_main(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::collections::VecDeque;
     use tmgr_ipc::api::{Attr, Color, Line, Span, State, StateKind};
     use tmgr_link::attach::{encode_closed, encode_event, encode_notice, encode_screen};
     use tmgr_link::proto::{read_frame, write_frame, MAX_FRAME};
 
-    const A: &str = "s_aaaaaaaaaa";
-    const B: &str = "s_bbbbbbbbbb";
-    const C: &str = "s_cccccccccc";
-    const LOCAL: &str = "s_localsess2";
+    pub(crate) const A: &str = "s_aaaaaaaaaa";
+    pub(crate) const B: &str = "s_bbbbbbbbbb";
+    pub(crate) const C: &str = "s_cccccccccc";
+    pub(crate) const LOCAL: &str = "s_localsess2";
 
-    fn state(kind: StateKind) -> State {
+    pub(crate) fn state(kind: StateKind) -> State {
         State {
             kind,
             since_ms: 0,
@@ -1177,15 +1175,15 @@ mod tests {
         }
     }
 
-    fn run_json(id: &str) -> Value {
+    pub(crate) fn run_json(id: &str) -> Value {
         json!({"id": id, "name": format!("run {id}"), "agent": "codex", "state": state(StateKind::Working)})
     }
 
-    fn run_view(id: &str) -> RunView {
+    pub(crate) fn run_view(id: &str) -> RunView {
         serde_json::from_value(run_json(id)).unwrap()
     }
 
-    fn push(session: &str) -> ScreenPush {
+    pub(crate) fn push(session: &str) -> ScreenPush {
         ScreenPush {
             session: session.into(),
             full: false,
@@ -1210,39 +1208,42 @@ mod tests {
         }
     }
 
-    fn framed(bytes: &[u8]) -> Vec<u8> {
+    pub(crate) fn framed(bytes: &[u8]) -> Vec<u8> {
         let mut v = Vec::new();
         write_frame(&mut v, bytes, MAX_FRAME).unwrap();
         v
     }
 
     #[derive(Default)]
-    struct FakeLink {
-        dial: VecDeque<std::result::Result<(), DialErr>>,
-        dials: Vec<Instant>,
-        runs: Vec<Value>,
-        list_err: Option<Kind>,
-        hang: bool,
-        halt_err: Option<Kind>,
-        input: bool,
-        calls: Vec<(String, Value)>,
-        feeds: HashMap<String, Sender<Vec<u8>>>,
-        written: HashMap<String, Arc<Mutex<Vec<u8>>>>,
+    pub(crate) struct FakeLink {
+        pub(crate) dial: VecDeque<std::result::Result<(), DialErr>>,
+        pub(crate) dials: Vec<Instant>,
+        pub(crate) runs: Vec<Value>,
+        pub(crate) list_err: Option<Kind>,
+        pub(crate) hang: bool,
+        pub(crate) halt_err: Option<Kind>,
+        pub(crate) input: bool,
+        pub(crate) calls: Vec<(String, Value)>,
+        pub(crate) feeds: HashMap<String, Sender<Vec<u8>>>,
+        pub(crate) written: HashMap<String, Arc<Mutex<Vec<u8>>>>,
     }
 
     #[derive(Default)]
-    struct Fake(Mutex<HashMap<String, FakeLink>>, AtomicBool);
+    pub(crate) struct Fake(
+        pub(crate) Mutex<HashMap<String, FakeLink>>,
+        pub(crate) AtomicBool,
+    );
 
     impl Fake {
-        fn with<R>(&self, link: &str, f: impl FnOnce(&mut FakeLink) -> R) -> R {
+        pub(crate) fn with<R>(&self, link: &str, f: impl FnOnce(&mut FakeLink) -> R) -> R {
             f(lock(&self.0).entry(link.to_string()).or_default())
         }
 
-        fn set_runs(&self, link: &str, ids: &[&str]) {
+        pub(crate) fn set_runs(&self, link: &str, ids: &[&str]) {
             self.with(link, |l| l.runs = ids.iter().map(|i| run_json(i)).collect());
         }
 
-        fn calls(&self, link: &str, method: &str) -> Vec<Value> {
+        pub(crate) fn calls(&self, link: &str, method: &str) -> Vec<Value> {
             self.with(link, |l| {
                 l.calls
                     .iter()
@@ -1252,16 +1253,16 @@ mod tests {
             })
         }
 
-        fn feed(&self, link: &str, run: &str, frame: &[u8]) {
+        pub(crate) fn feed(&self, link: &str, run: &str, frame: &[u8]) {
             let tx = self.with(link, |l| l.feeds.get(run).cloned()).unwrap();
             tx.send(framed(frame)).unwrap();
         }
 
-        fn hang_up(&self, link: &str, run: &str) {
+        pub(crate) fn hang_up(&self, link: &str, run: &str) {
             self.with(link, |l| l.feeds.remove(run));
         }
 
-        fn written(&self, link: &str, run: &str) -> Vec<Outgoing> {
+        pub(crate) fn written(&self, link: &str, run: &str) -> Vec<Outgoing> {
             let buf = self
                 .with(link, |l| l.written.get(run).cloned())
                 .unwrap()
@@ -1277,7 +1278,7 @@ mod tests {
         }
     }
 
-    struct FakeDialer(Arc<Fake>);
+    pub(crate) struct FakeDialer(pub(crate) Arc<Fake>);
 
     impl Dialer for FakeDialer {
         fn shutdown(&self) {
@@ -1396,7 +1397,7 @@ mod tests {
         }
     }
 
-    fn fast() -> Timing {
+    pub(crate) fn fast() -> Timing {
         Timing {
             poll: Duration::from_millis(20),
             call: Duration::from_millis(100),

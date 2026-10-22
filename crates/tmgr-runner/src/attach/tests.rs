@@ -9176,7 +9176,7 @@ fn remote_rows_only_appear_under_their_machine() {
             .collect::<Vec<_>>()
     };
     let tab_mode = shape(&linked_default());
-    assert_eq!(tab_mode[0], "M local 3 false");
+    assert_eq!(tab_mode[0], format!("M {LOCAL_SECTION} 3 false"));
     let spark = tab_mode
         .iter()
         .position(|l| l == "M spark 2 false")
@@ -9244,10 +9244,27 @@ fn clicking_or_entering_a_machine_header_toggles_it() {
     v.sidebar_focus = Some(SidebarItem::Machine("lab".into()));
     assert_eq!(v.edit_sidebar(AREA, b"\r"), SidebarEdit::Editing);
     assert!(v.is_machine_collapsed("lab"));
+    v.sidebar_focus = Some(SidebarItem::Machine(LOCAL_SECTION.into()));
+    v.edit_sidebar(AREA, b"\r");
+    assert_eq!(shape(&v)[0], format!("M {LOCAL_SECTION} 3 true"));
+    assert!(!shape(&v).contains(&"a".to_string()));
+}
+
+#[test]
+fn a_link_named_local_does_not_share_the_local_collapse_state() {
+    let mut v = linked(vec![("local", MachineState::Online { latency_ms: 3 })]);
+    v.remote.insert("local/s_dddddddddd".into(), "local".into());
+    v.sessions
+        .push(row("local/s_dddddddddd", "far", StateKind::Working, "1m"));
+    v.sidebar_focus = Some(SidebarItem::Machine(LOCAL_SECTION.into()));
+    v.edit_sidebar(AREA, b"\r");
+    assert!(!v.is_machine_collapsed("local"));
+    assert!(v.is_machine_collapsed(LOCAL_SECTION));
+    assert!(shape(&v).contains(&"  local/s_dddddddddd".to_string()));
     v.sidebar_focus = Some(SidebarItem::Machine("local".into()));
     v.edit_sidebar(AREA, b"\r");
-    assert_eq!(shape(&v)[0], "M local 3 true");
-    assert!(!shape(&v).contains(&"a".to_string()));
+    assert!(v.is_machine_collapsed("local"));
+    assert!(v.is_machine_collapsed(LOCAL_SECTION));
 }
 
 #[test]
@@ -9278,4 +9295,80 @@ fn ctrl_bracket_m_reconnects_and_help_lists_it() {
         .any(|(k, _)| matches!(k, super::render::HelpKey::Cmds(c) if c.contains(&Cmd::Reconnect))));
     let mut v = ViewState::new(Vec::new(), "local");
     v.apply(Cmd::Reconnect);
+}
+
+#[test]
+fn prefs_without_ids_drop_them_from_panes_tree_tabs_focus_and_shells() {
+    let remote = |id: &str| id.contains('/');
+    let node = |a: &str, b: &str| Node::Split {
+        dir: SplitDir::Right,
+        ratio: 500,
+        a: Box::new(Node::leaf(a)),
+        b: Box::new(Node::leaf(b)),
+    };
+    let prefs = LayoutPrefs {
+        panes: vec!["s_aaaaaaaaaa".into(), "spark/s_bbbbbbbbbb".into()],
+        focus: 1,
+        tree: Some(node("s_aaaaaaaaaa", "spark/s_bbbbbbbbbb")),
+        shells: vec!["spark/s_cccccccccc".into(), "s_dddddddddd".into()],
+        tabs: vec![
+            TabPrefs {
+                tree: Node::leaf("spark/s_bbbbbbbbbb"),
+                focus: "spark/s_bbbbbbbbbb".into(),
+                name: None,
+            },
+            TabPrefs {
+                tree: node("spark/s_bbbbbbbbbb", "s_eeeeeeeeee"),
+                focus: "spark/s_bbbbbbbbbb".into(),
+                name: None,
+            },
+        ],
+        ..LayoutPrefs::default()
+    };
+    let out = prefs_without_ids(prefs, remote);
+    assert_eq!(out.panes, vec!["s_aaaaaaaaaa".to_string()]);
+    assert_eq!(out.tree, Some(Node::leaf("s_aaaaaaaaaa")));
+    assert_eq!(out.focus, 0);
+    assert_eq!(out.shells, vec!["s_dddddddddd".to_string()]);
+    assert_eq!(out.tabs.len(), 1);
+    assert_eq!(out.tabs[0].tree, Node::leaf("s_eeeeeeeeee"));
+    assert_eq!(out.tabs[0].focus, "s_eeeeeeeeee");
+}
+
+#[test]
+fn prefs_without_ids_keep_the_focus_on_the_same_local_pane() {
+    let prefs = LayoutPrefs {
+        panes: vec![
+            "x/s_aaaaaaaaaa".into(),
+            "s_bbbbbbbbbb".into(),
+            "s_cccccccccc".into(),
+        ],
+        focus: 2,
+        ..LayoutPrefs::default()
+    };
+    let out = prefs_without_ids(prefs, |id| id.contains('/'));
+    assert_eq!(out.panes.len(), 2);
+    assert_eq!(out.focus, 1);
+}
+
+#[test]
+fn a_saved_layout_never_keeps_remote_panes() {
+    let mut v = linked_default();
+    v.open("spark/s_aaaaaaaaaa");
+    v.open("a");
+    let name = v.save_layout("mix").unwrap();
+    let saved = v.layouts.iter().find(|l| l.name == name).unwrap();
+    assert!(!saved.prefs.panes.iter().any(|p| p.contains('/')));
+    assert!(saved
+        .prefs
+        .tree
+        .iter()
+        .flat_map(Node::leaves)
+        .all(|l| !l.contains('/')));
+    assert!(saved.members.iter().all(|m| !m.id.contains('/')));
+    assert!(saved
+        .prefs
+        .tabs
+        .iter()
+        .all(|t| t.tree.leaves().iter().all(|l| !l.contains('/'))));
 }

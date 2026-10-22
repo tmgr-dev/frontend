@@ -4,6 +4,7 @@ use super::attach_export;
 use super::attach_git::{diff_argv, git_worker, GitJob};
 use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
 use super::attach_layouts;
+use super::attach_links::{split_local, LinkMsg};
 use super::attach_new::{
     default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
     prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
@@ -13,6 +14,9 @@ use super::attach_notes;
 use super::attach_prompts;
 use super::attach_push;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
+use super::attach_remote::{
+    attention_session, local_rows, prefs_for_runner, split_sizes, Remote, Sent,
+};
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
     process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, unique_name, watch_ids,
@@ -49,7 +53,7 @@ use tmgr_core::error::{Error, Kind, Result};
 use tmgr_ipc::api::{
     caps, CreateReq, Modes, RestoredRun, SessionInfo, Snapshot, StateKind, TaskRef,
 };
-use tmgr_ipc::proto::ServerMsg;
+use tmgr_ipc::proto::{valid_session_id, ServerMsg};
 use tmgr_runner::attach::{
     cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
     parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
@@ -140,6 +144,7 @@ enum Msg {
     StdinClosed,
     Server(ServerMsg),
     Down(String),
+    Link(LinkMsg),
     Sessions(Vec<SessionInfo>),
     Locs(Vec<(String, Loc)>),
     Titles(Vec<(String, Option<AgentTitle>)>),
@@ -388,6 +393,7 @@ struct App {
     forking: HashSet<String>,
     fork_paste: HashMap<String, (String, Instant)>,
     template_ids: HashMap<String, bool>,
+    remote: Remote,
 }
 
 type ProbeJob = (String, u32, String);
@@ -398,6 +404,7 @@ impl App {
             Msg::Stdin(bytes) => return self.on_stdin(&bytes),
             Msg::StdinClosed => return Ok(Some(Exit::Detached)),
             Msg::Down(why) => return Ok(Some(Exit::Lost(why))),
+            Msg::Link(msg) => self.on_link(msg),
             Msg::Sessions(list) => self.on_sessions(&list),
             Msg::Locs(found) => {
                 self.probe_pending = false;
@@ -574,10 +581,12 @@ impl App {
     fn on_sessions(&mut self, list: &[SessionInfo]) {
         let new = merge_pending(
             rows(list),
-            &self.view.sessions,
+            &local_rows(&self.view.sessions),
             &mut self.pending,
             Instant::now(),
         );
+        let (new, meta) = self.remote.merge(&mut self.view, new);
+        self.dirty |= meta;
         self.starts
             .retain(|id, _| list.iter().any(|s| &s.id == id) || self.pending.contains_key(id));
         for s in list {
@@ -634,6 +643,20 @@ impl App {
         self.dirty = true;
     }
 
+    fn on_link(&mut self, msg: LinkMsg) {
+        let area = self.area();
+        let fx = self
+            .remote
+            .on_link(msg, &mut self.view, &mut self.cache, area);
+        self.dirty |= fx.dirty;
+        if fx.changed.is_some() && fx.changed.as_deref() == self.view.focused_session() {
+            self.text_dirty = true;
+        }
+        if let Some(note) = fx.notice {
+            self.notify(&note);
+        }
+    }
+
     fn probe_places(&mut self) {
         if self.probe_pending
             || self.last_probe.elapsed() < PROBE_RETRY
@@ -645,6 +668,7 @@ impl App {
             .view
             .visible_sessions(self.area())
             .into_iter()
+            .filter(|id| valid_session_id(id))
             .filter_map(|id| {
                 let row = self.view.sessions.iter().find(|r| r.id == id)?;
                 let known = self.view.locs.contains_key(&id);
@@ -753,6 +777,9 @@ impl App {
     }
 
     fn open_task(&mut self, id: &str) {
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
         let urls = self
             .view
             .chip_of(id)
@@ -1194,6 +1221,7 @@ impl App {
             .view
             .panes()
             .iter()
+            .filter(|id| valid_session_id(id))
             .filter_map(|id| {
                 let row = self.view.sessions.iter().find(|r| &r.id == id)?;
                 let (start, pid) = self.starts.get(id).cloned().unwrap_or_default();
@@ -1994,6 +2022,9 @@ impl App {
     }
 
     fn request_resume(&mut self, id: &str) {
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
         let row = self.view.sessions.iter().find(|r| r.id == id);
         match resume_step(row, &self.resuming) {
             ResumeStep::Ignore => {}
@@ -2111,7 +2142,12 @@ impl App {
     }
 
     fn request_text(&mut self) {
-        let Some(session) = self.view.focused_session().map(str::to_string) else {
+        let Some(session) = self
+            .view
+            .focused_session()
+            .filter(|id| valid_session_id(id))
+            .map(str::to_string)
+        else {
             return;
         };
         if self.text_pending.as_deref() == Some(session.as_str()) {
@@ -2178,7 +2214,15 @@ impl App {
             return Ok(());
         }
         self.report_attention(false);
-        self.writer.input(session, data)
+        match self.remote.send(session, data) {
+            Sent::Local => self.writer.input(session, data),
+            Sent::Handled(note) => {
+                if let Some(note) = note {
+                    self.notify(&note);
+                }
+                Ok(())
+            }
+        }
     }
 
     fn broadcast_peers(&self, primary: &str) -> Vec<String> {
@@ -2201,7 +2245,11 @@ impl App {
         };
         self.dirty = true;
         if matches!(data.first(), Some(b'y' | b'Y')) {
-            self.stop_session(&c.session, c.remove);
+            match self.remote.stop(&c.session) {
+                None => self.stop_session(&c.session, c.remove),
+                Some(Some(note)) => return self.notify(&note),
+                Some(None) => {}
+            }
             self.notify(&format!("stopping {}", c.name));
         }
     }
@@ -2210,6 +2258,11 @@ impl App {
         let Some(row) = self.view.sessions.iter().find(|r| r.id == id).cloned() else {
             return Ok(());
         };
+        if let Some(note) = self.remote.control_gate(id, ctl) {
+            self.dirty = true;
+            self.notify(&note);
+            return Ok(());
+        }
         let exited = row.state.kind == StateKind::Exited;
         if ctl == Control::Resume && just_exited(&row, now_ms()) {
             return Ok(());
@@ -2264,6 +2317,9 @@ impl App {
     }
 
     fn stop_session(&mut self, id: &str, remove: bool) {
+        if !valid_session_id(id) {
+            return;
+        }
         self.stopped.insert(id.to_string());
         self.spawn_ladder(id, remove, ladder_for(true));
     }
@@ -2273,6 +2329,9 @@ impl App {
     }
 
     fn spawn_ladder(&self, id: &str, remove: bool, ladder: Ladder) {
+        if !valid_session_id(id) {
+            return;
+        }
         let cfg = self.cfg.clone();
         let id = id.to_string();
         thread::spawn(move || run_ladder(&cfg, &id, remove, ladder));
@@ -2289,6 +2348,9 @@ impl App {
     }
 
     fn rename_session(&mut self, id: &str, name: &str) {
+        if !valid_session_id(id) {
+            return self.notify("not available for linked sessions");
+        }
         let result = connect(&self.cfg).and_then(|mut c| c.rename(id, name).map_err(rerr));
         match result {
             Ok(()) => self.view.rename_done(id, name),
@@ -2297,6 +2359,9 @@ impl App {
     }
 
     fn remove_session(&self, id: &str) {
+        if !valid_session_id(id) {
+            return;
+        }
         let cfg = self.cfg.clone();
         let id = id.to_string();
         thread::spawn(move || {
@@ -2460,6 +2525,9 @@ impl App {
     }
 
     fn rerun_watch(&mut self, id: &str) {
+        if !valid_session_id(id) {
+            return;
+        }
         let alive = self.view.sessions.iter().any(|r| r.id == id && !r.exited());
         let pid = self.starts.get(id).map_or(0, |s| s.1);
         let sent = alive
@@ -2716,7 +2784,7 @@ impl App {
         if !self.human_time {
             return;
         }
-        let target = attention_target(&self.view).map(str::to_string);
+        let target = attention_session(attention_target(&self.view)).map(str::to_string);
         if let Some((session, window)) = self.attention.update(
             Instant::now(),
             target.as_deref(),
@@ -2999,6 +3067,10 @@ impl App {
                     }
                 }
                 Action::Cmd(cmd) => {
+                    if let Some(note) = self.remote.cmd_gate(cmd, self.view.focused_session()) {
+                        self.notify(&note);
+                        continue;
+                    }
                     self.view.pointer = None;
                     self.view.confirm = None;
                     self.view.rename = None;
@@ -3071,6 +3143,10 @@ impl App {
                                 self.request_resume(&id);
                             }
                         }
+                        Cmd::Reconnect => {
+                            let note = self.remote.reconnect();
+                            self.notify(&note);
+                        }
                         Cmd::Watch => self.begin_watch(),
                         Cmd::Search => self.begin_search(),
                         Cmd::CopyMode => self.begin_copy(),
@@ -3092,6 +3168,13 @@ impl App {
                     }
                 }
                 Action::Scroll(key) => {
+                    if let Some(note) = self
+                        .remote
+                        .scroll_key_gate(key, self.view.focused_session())
+                    {
+                        self.notify(&note);
+                        continue;
+                    }
                     self.sync_scroll_max();
                     let page = self.page();
                     if key == ScrollKey::Search {
@@ -3198,7 +3281,7 @@ impl App {
             self.request_text();
         }
         self.sync_scroll_max();
-        let want = watch_ids(self.view.panes(), &self.view.sessions);
+        let want = split_local(&watch_ids(self.view.panes(), &self.view.sessions));
         if self.watched.as_ref() != Some(&want) {
             self.writer.set_sessions(&want)?;
             self.watched = Some(want);
@@ -3221,15 +3304,22 @@ impl App {
             self.last_interrupt = None;
         }
         let lay = layout(Rect::new(0, 0, self.size.0, self.size.1), &self.view);
-        for p in &lay.panes {
-            if p.content().is_empty() {
-                continue;
+        let (local, linked) = split_sizes(
+            lay.panes
+                .iter()
+                .filter(|p| !p.content().is_empty())
+                .map(|p| (p.session.clone(), p.inner.width, p.inner.height))
+                .collect(),
+        );
+        for (session, cols, rows) in local {
+            let want = (cols, rows);
+            if self.sent_sizes.get(&session) != Some(&want) {
+                self.writer.resize(&session, cols, rows)?;
+                self.sent_sizes.insert(session, want);
             }
-            let want = (p.inner.width, p.inner.height);
-            if self.sent_sizes.get(&p.session) != Some(&want) {
-                self.writer.resize(&p.session, want.0, want.1)?;
-                self.sent_sizes.insert(p.session.clone(), want);
-            }
+        }
+        for note in self.remote.tick(&linked) {
+            self.notify(&note);
         }
         self.sync_server_scroll()?;
         let modes = self
@@ -3275,19 +3365,21 @@ impl App {
             return Ok(());
         }
         if let Some((old, _)) = &self.scrolled {
-            if desired.as_ref().map(|d| &d.0) != Some(old) {
+            if desired.as_ref().map(|d| &d.0) != Some(old) && !self.remote.scroll(old, 0) {
                 self.writer.scroll(old, 0)?;
             }
         }
         if let Some((id, offset)) = &desired {
-            self.writer.scroll(id, *offset)?;
+            if !self.remote.scroll(id, *offset) {
+                self.writer.scroll(id, *offset)?;
+            }
         }
         self.scrolled = desired;
         Ok(())
     }
 
     fn save_prefs(&mut self) {
-        let prefs = self.view.prefs();
+        let prefs = prefs_for_runner(self.view.prefs());
         if self.last_prefs.as_ref() != Some(&prefs) {
             if let Ok(v) = serde_json::to_value(&prefs) {
                 let _ = self.prefs_tx.send(v);
@@ -3438,10 +3530,10 @@ fn query_background() -> (Option<(u8, u8, u8)>, Vec<u8>) {
 }
 
 pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
-    run_with(cfg, initial, true)
+    run_with(cfg, initial, true, true)
 }
 
-pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
+pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> Result<i32> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(Error::usage("attach needs an interactive terminal"));
     }
@@ -3517,9 +3609,22 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .caps
         .iter()
         .any(|c| c == caps::HUMAN_TIME_V1);
-    let (reader, writer) = attach_client.attach(view.panes()).map_err(rerr)?.split();
+    let (reader, writer) = attach_client
+        .attach(&split_local(view.panes()))
+        .map_err(rerr)?
+        .split();
     let (tx, rx) = mpsc::sync_channel(QUEUE);
     let (prefs_tx, prefs_rx) = mpsc::channel();
+    let (remote, links_note) = if links {
+        let link_tx = tx.clone();
+        Remote::start(move |m| link_tx.send(Msg::Link(m)).is_ok())
+    } else {
+        (Remote::off(), None)
+    };
+    if let Some(note) = links_note {
+        view.notice = Some(note);
+        notice_set = true;
+    }
     let guard = Guard::enter().map_err(|e| Error::internal(format!("terminal setup: {e}")))?;
     view.theme = match attach_cfg.theme.as_deref().and_then(ThemeKind::parse) {
         Some(kind) => kind,
@@ -3758,10 +3863,12 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         forking: HashSet::new(),
         fork_paste: HashMap::new(),
         template_ids: HashMap::new(),
+        remote,
     };
     let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);
     app.save_prefs();
+    app.remote.shutdown();
     let cfg_now = app.cfg.clone();
     let mut spawning = app.new_flow.is_spawning();
     drain_creates(&mut app.creating, &mut spawning, &rx, CREATE_WAIT, |info| {

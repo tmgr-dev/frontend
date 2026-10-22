@@ -192,6 +192,8 @@ pub struct ViewState {
     next_tab: u64,
 }
 
+pub const LOCAL_SECTION: &str = "·local";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MachineState {
     Connecting,
@@ -948,9 +950,9 @@ impl ViewState {
             .filter(|r| self.is_local(&r.id) && self.passes_filter(&r.id))
             .count();
         if !filtering || local > 0 {
-            let collapsed = !filtering && self.collapsed_machines.contains("local");
+            let collapsed = !filtering && self.collapsed_machines.contains(LOCAL_SECTION);
             out.push(SidebarLine::Machine {
-                name: "local".into(),
+                name: LOCAL_SECTION.into(),
                 count: local,
                 collapsed,
             });
@@ -1221,7 +1223,7 @@ impl ViewState {
             self.sessions
                 .iter()
                 .filter(|r| {
-                    let owner = self.machine_of(&r.id).unwrap_or("local");
+                    let owner = self.machine_of(&r.id).unwrap_or(LOCAL_SECTION);
                     self.collapsed_machines.contains(owner)
                 })
                 .map(|r| r.id.as_str()),

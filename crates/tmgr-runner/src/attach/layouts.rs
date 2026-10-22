@@ -83,6 +83,53 @@ pub fn render(layouts: &[SavedLayout]) -> String {
     serde_json::to_string_pretty(&file).unwrap_or_default()
 }
 
+pub fn without_ids(mut prefs: LayoutPrefs, drop: impl Fn(&str) -> bool) -> LayoutPrefs {
+    let leaves: Vec<String> = match &prefs.tree {
+        Some(t) => t.leaves().into_iter().map(str::to_string).collect(),
+        None => prefs.panes.clone(),
+    };
+    let focused = leaves.get(prefs.focus).cloned();
+    prefs.panes.retain(|p| !drop(p));
+    prefs.shells.retain(|s| !drop(s));
+    if let Some(t) = prefs.tree.take() {
+        let mut tree = Some(t);
+        for id in leaves.iter().filter(|l| drop(l)) {
+            Node::remove(&mut tree, id);
+        }
+        prefs.tree = tree;
+    }
+    prefs.focus = focused
+        .and_then(|f| leaves.iter().filter(|l| !drop(l)).position(|l| *l == f))
+        .unwrap_or(0);
+    prefs.tabs = prefs
+        .tabs
+        .into_iter()
+        .filter_map(|mut tab| {
+            let mut tree = Some(tab.tree);
+            for id in tree
+                .iter()
+                .flat_map(Node::leaves)
+                .filter(|l| drop(l))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+            {
+                Node::remove(&mut tree, &id);
+            }
+            tab.tree = tree?;
+            if drop(&tab.focus) {
+                tab.focus = tab
+                    .tree
+                    .leaves()
+                    .first()
+                    .map(|l| l.to_string())
+                    .unwrap_or_default();
+            }
+            Some(tab)
+        })
+        .collect();
+    prefs
+}
+
 fn ids_of(prefs: &LayoutPrefs) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut add = |id: &str| {
@@ -136,7 +183,7 @@ impl ViewState {
 
     pub fn save_layout(&mut self, name: &str) -> Result<String, String> {
         let name = clean_name(name).ok_or("type a name for the layout")?;
-        let mut prefs = self.prefs();
+        let mut prefs = without_ids(self.prefs(), |id| self.remote.contains_key(id));
         prefs.sidebar = None;
         prefs.sidebar_width = None;
         prefs.shells = Vec::new();
@@ -181,7 +228,7 @@ impl ViewState {
         let Some(saved) = self.layouts.get(idx).cloned() else {
             return false;
         };
-        let mut prefs = saved.prefs.clone();
+        let mut prefs = without_ids(saved.prefs.clone(), |id| id.contains('/'));
         let ids = ids_of(&prefs);
         let map: Vec<(String, String)> = ids
             .iter()
