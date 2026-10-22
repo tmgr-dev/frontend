@@ -53,6 +53,12 @@ export function useMemberPage(
 
 	const setWindow = (next: TeamActivityWindow) => setQuery({ window: next });
 	const setTab = (next: MemberTasksTab) => setQuery({ tab: next });
+	// A backend without window=all answers 400; fall back to 30d instead of an error.
+	const fellBackFromAll = (error?: { type?: string }) => {
+		if (window.value !== 'all' || error?.type !== 'validation') return false;
+		void setWindow('30d');
+		return true;
+	};
 
 	const statsRequests = createRequestSequence();
 	const taskRequests = createRequestSequence();
@@ -70,6 +76,7 @@ export function useMemberPage(
 		try {
 			const result = await getMemberStats(wid, userId(), window.value);
 			if (!current()) return;
+			if (fellBackFromAll(result.error)) return;
 			if (result.success && result.data) stats.value = result.data;
 			else if (
 				(result.error?.details as { status?: number } | undefined)?.status ===
@@ -106,6 +113,7 @@ export function useMemberPage(
 				perPage: PER_PAGE,
 			});
 			if (!current()) return;
+			if (fellBackFromAll(result.error)) return;
 			if (result.success && result.data) {
 				tasksLoaded.value = true;
 				const rows = result.data.data ?? [];

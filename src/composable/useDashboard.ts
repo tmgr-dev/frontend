@@ -541,6 +541,11 @@ export function useDashboard(
 			);
 
 			if (!isCurrent()) return;
+			// A backend without window=all answers 400; fall back to 30d instead of an error.
+			if (activityWindow === 'all' && result.error?.type === 'validation') {
+				teamActivityWindow.value = '30d';
+				return loadTeamActivity();
+			}
 			if (!result.success || !result.data) {
 				if (!result.error) throw new Error('Empty dashboard response');
 			}

@@ -119,7 +119,7 @@ export interface HeatmapData {
 	years?: number[];
 }
 
-export type TeamActivityWindow = 'today' | '7d' | '30d';
+export type TeamActivityWindow = 'today' | '7d' | '30d' | 'all';
 
 export interface DailyActivityPoint {
 	date: string;
