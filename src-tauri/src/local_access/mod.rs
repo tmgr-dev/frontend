@@ -395,6 +395,7 @@ fn stop(state: &LocalAccessState) -> Result<(), String> {
 
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn local_token_issue<R: Runtime>(
   app: AppHandle<R>,
   state: tauri::State<'_, LocalAccessState>,

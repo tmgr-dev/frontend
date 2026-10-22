@@ -97,7 +97,7 @@ pub fn list_in(root: &Path) -> Vec<LocalWorkspace> {
     .filter(|e| e.path().is_dir())
     .filter_map(|e| read_workspace(&e.path()))
     .collect();
-  workspaces.sort_by(|a, b| a.manifest.name.to_lowercase().cmp(&b.manifest.name.to_lowercase()));
+  workspaces.sort_by_key(|w| w.manifest.name.to_lowercase());
   workspaces
 }
 

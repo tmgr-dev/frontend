@@ -27,6 +27,8 @@ mod mac {
   pub fn notify<R: Runtime>(app: AppHandle<R>, title: String, body: String, token: Option<String>) {
     let title: String = title.chars().take(TITLE_MAX).collect();
     let body: String = body.chars().take(BODY_MAX).collect();
+    // `try_update` replaces it, but isn't stable at our MSRV (1.89).
+    #[allow(deprecated)]
     let wait_for_click = token.is_some()
       && WAITING
         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| (n < MAX_WAITING_CLICKS).then_some(n + 1))

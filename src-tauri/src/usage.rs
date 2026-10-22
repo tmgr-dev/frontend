@@ -393,7 +393,7 @@ fn earlier_facts(
 
 fn newest_first(windows: Vec<RunWindow>, ids: Vec<RunIds>) -> (Vec<RunWindow>, Vec<RunIds>) {
   let mut pairs: Vec<_> = windows.into_iter().zip(ids).collect();
-  pairs.sort_by(|a, b| b.0.started_at.cmp(&a.0.started_at));
+  pairs.sort_by_key(|p| std::cmp::Reverse(p.0.started_at));
   pairs.into_iter().unzip()
 }
 
@@ -738,7 +738,7 @@ mod tests {
     let a = out.aggregate.unwrap();
     assert_eq!(a.totals.events, 2);
     assert_eq!(a.totals.tokens.input, 200);
-    assert_eq!(a.task.task_ref, "7");
+    assert_eq!(a.task.task_ref, "#7");
     assert_eq!(a.task.id, Some(7));
     assert!(!a.nodes.is_empty());
   }

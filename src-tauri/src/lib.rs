@@ -36,7 +36,9 @@ mod update_relaunch;
 use std::path::{Path, PathBuf};
 
 use tauri::webview::{DownloadEvent, NewWindowResponse, PageLoadEvent};
-use tauri::{AppHandle, Manager, RunEvent, Runtime, Url, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, Runtime, Url, WebviewWindowBuilder, WindowEvent};
+#[cfg(target_os = "macos")]
+use tauri::{RunEvent, WebviewWindow};
 use tauri_plugin_window_state::StateFlags;
 use tauri_plugin_opener::OpenerExt;
 
@@ -166,7 +168,7 @@ pub fn maybe_run_mcp_bridge() {
 }
 
 pub(crate) fn updater_enabled() -> bool {
-  std::env::var_os("TMGR_DISABLE_UPDATER").map_or(true, |v| v.is_empty())
+  std::env::var_os("TMGR_DISABLE_UPDATER").is_none_or(|v| v.is_empty())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -337,7 +339,7 @@ pub fn run() {
   };
   #[cfg(target_os = "macos")]
   let builder = builder
-    .menu(|handle| app_menu::build(handle))
+    .menu(app_menu::build)
     .on_menu_event(|app, event| app_menu::on_menu_event(app, event.id().as_ref()));
   builder
     .setup(|app| {

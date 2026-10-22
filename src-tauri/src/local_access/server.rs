@@ -45,10 +45,11 @@ fn boxed(body: Full<Bytes>) -> ResponseBody {
 /// Emits `local-access://request` to the main window and resolves once `local_access_reply` answers
 /// it (or the caller times out). Injectable so tests can stand in a fake window.
 pub type BridgeFn = Arc<dyn Fn(BridgeRequest) -> BoxFuture<BridgeReply> + Send + Sync>;
+type WorkspaceExistsFn = Arc<dyn Fn(&str) -> Option<i64> + Send + Sync>;
 
 pub struct ServerDeps {
   pub tokens: Arc<TokenStore>,
-  pub workspace_exists: Arc<dyn Fn(&str) -> Option<i64> + Send + Sync>,
+  pub workspace_exists: WorkspaceExistsFn,
   pub ready: Arc<dyn Fn() -> bool + Send + Sync>,
   pub is_moving: Arc<dyn Fn(&str) -> bool + Send + Sync>,
   pub bridge: BridgeFn,

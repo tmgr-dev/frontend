@@ -22,7 +22,7 @@ fn window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<tauri::WebviewWindow<
     .visible(false)
     .center()
     // The quick-add window holds the app's permissions, so it must never show anything but the app.
-    .on_navigation(|url| crate::is_app_url(url))
+    .on_navigation(crate::is_app_url)
     .build()
 }
 

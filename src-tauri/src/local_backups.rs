@@ -302,7 +302,7 @@ fn newest_auto_secs(dir: &Path, now: i64) -> Option<i64> {
 }
 
 pub fn is_due(dir: &Path, now: i64) -> bool {
-  newest_auto_secs(dir, now).map_or(true, |newest| now - newest >= AUTO_EVERY)
+  newest_auto_secs(dir, now).is_none_or(|newest| now - newest >= AUTO_EVERY)
 }
 
 fn rotate(dir: &Path, now: i64) {

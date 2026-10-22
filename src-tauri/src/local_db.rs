@@ -10,10 +10,12 @@ use tauri::{AppHandle, Runtime, State};
 use crate::local_move::{Moving, Permit};
 use crate::local_workspaces;
 
+type Connections = HashMap<String, (String, Arc<Mutex<Connection>>)>;
+
 /// One connection per local workspace, opened lazily. SQLite serialises writers anyway; a single
 /// connection also keeps per-connection pragmas (foreign_keys) reliable.
 #[derive(Default)]
-pub struct LocalDbs(Mutex<HashMap<String, (String, Arc<Mutex<Connection>>)>>);
+pub struct LocalDbs(Mutex<Connections>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +38,7 @@ pub fn check_statement(sql: &str) -> Result<(), String> {
     .filter(|w| !w.is_empty())
     .collect();
   for forbidden in ["ATTACH", "DETACH", "PRAGMA", "VACUUM", "LOAD_EXTENSION"] {
-    if words.iter().any(|w| *w == forbidden) {
+    if words.contains(&forbidden) {
       return Err(format!("{forbidden} is not allowed in local workspace queries"));
     }
   }

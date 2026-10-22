@@ -779,7 +779,7 @@ pub fn build_bundle(dir: &Path, input: &BundleInput<'_>) -> Result<BundleResult,
     json_text(&input.profile_uuid),
     json_text(&snapshot_at),
     pairs(counts.iter().map(|c| c.to_string()).collect()),
-    pairs(hashes.iter().map(|h| json_text(h)).collect()),
+    pairs(hashes.iter().map(json_text).collect()),
   );
 
   let mut excluded: Vec<ExcludedRecord> = file_rows(&conn)?
@@ -1517,7 +1517,7 @@ pub async fn local_source_revision<R: Runtime>(
   dbs: State<'_, LocalDbs>,
   code: String,
 ) -> Result<String, String> {
-  with_connection(app, &dbs, code, |conn| revision_of(conn)).await
+  with_connection(app, &dbs, code, revision_of).await
 }
 
 #[tauri::command]
@@ -2394,6 +2394,7 @@ mod tests {
   fn archive_verification_reconciles_entries_against_the_recorded_file_list() {
     let (_, _, result, _) = archived("reconcile");
     let path = |suffix: &str| PathBuf::from(result.path.replace(".zip", &format!("-{suffix}.zip")));
+    #[allow(clippy::type_complexity)]
     let check = |suffix: &str, edit: &dyn Fn(&str, Vec<u8>) -> Option<Vec<u8>>, extra: &[(&str, &[u8])]| {
       let target = path(suffix);
       rewrite_zip(&result.path, &target, edit, extra);

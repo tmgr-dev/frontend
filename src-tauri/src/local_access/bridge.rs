@@ -55,7 +55,7 @@ fn app_data_dir() -> Result<PathBuf, String> {
 pub fn build_http_request(token: &str, body: &str) -> Vec<u8> {
   let mut request = format!(
     "POST /mcp HTTP/1.1\r\nHost: localhost\r\nX-Persona-Token: {token}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-    body.as_bytes().len()
+    body.len()
   )
   .into_bytes();
   request.extend_from_slice(body.as_bytes());
@@ -321,7 +321,7 @@ mod tests {
     let server = std::thread::spawn(move || {
       let (mut stream, _) = listener.accept().unwrap();
       let mut buf = [0u8; 4096];
-      stream.read(&mut buf).unwrap();
+      assert_ne!(stream.read(&mut buf).unwrap(), 0);
       stream.set_read_timeout(Some(std::time::Duration::from_millis(300))).unwrap();
       if let Ok(0) = stream.read(&mut buf) {
         return;
@@ -342,9 +342,7 @@ mod tests {
   #[test]
   fn run_writes_a_json_rpc_transport_error_for_a_request_but_nothing_for_a_notification() {
     let missing_socket = std::env::temp_dir().join(format!("tmgr-bridge-missing-{}.sock", std::process::id()));
-    let input = format!(
-      "{{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"ping\"}}\n{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}}\n"
-    );
+    let input = "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"ping\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n".to_string();
     let mut stdout = Vec::new();
     let mut stderr = Vec::new();
     run(&missing_socket, "tmgrl_test", input.as_bytes(), &mut stdout, &mut stderr);

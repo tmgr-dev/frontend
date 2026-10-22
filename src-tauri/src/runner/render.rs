@@ -104,7 +104,7 @@ fn tail(out: &mut String, cursor: Option<(u16, u16)>, modes: Option<Modes>, rows
       out.push_str(&format!("\x1b[?{code}{}", if on { 'h' } else { 'l' }));
     }
   }
-  let visible = cursor.is_some() && modes.map_or(true, |m| !m.hide_cursor);
+  let visible = cursor.is_some() && modes.is_none_or(|m| !m.hide_cursor);
   if let Some((r, c)) = cursor {
     let r = (r as usize).min(rows.saturating_sub(1)) + 1;
     let c = (c as usize).min(cols.saturating_sub(1)) + 1;

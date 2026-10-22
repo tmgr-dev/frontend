@@ -56,7 +56,7 @@ pub fn verify_signature(data: &str, signature: &str, public_key: &str) -> Result
 
 /// The key line of a minisign public key file (or a bare key line).
 fn key_line(file: &str) -> String {
-  file.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with("untrusted comment:")).last()
+  file.lines().map(str::trim).rfind(|line| !line.is_empty() && !line.starts_with("untrusted comment:"))
     .unwrap_or_default().chars().take(100).collect()
 }
 

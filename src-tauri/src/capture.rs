@@ -1,9 +1,7 @@
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use tauri::ipc::Response;
 use tauri::{AppHandle, Manager, Runtime};
-use tauri_plugin_clipboard_manager::ClipboardExt;
 
 use crate::tray::now_secs;
 
@@ -81,6 +79,9 @@ fn press_copy() -> Result<(), String> {
 #[cfg(target_os = "macos")]
 #[tauri::command]
 pub async fn capture_selection<R: Runtime>(app: AppHandle<R>) -> Result<Option<String>, String> {
+  use std::time::Duration;
+  use tauri_plugin_clipboard_manager::ClipboardExt;
+
   if !accessibility_trusted(true) {
     return Err("accessibility".into());
   }
