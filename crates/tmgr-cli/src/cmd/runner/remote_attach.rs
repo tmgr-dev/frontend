@@ -50,7 +50,7 @@ impl ScreenSource for Screens<'_> {
     }
 }
 
-fn age(since: u64) -> String {
+pub(super) fn age(since: u64) -> String {
     let s = now_ms().saturating_sub(since) / 1000;
     match s {
         0..=59 => format!("{s}s"),

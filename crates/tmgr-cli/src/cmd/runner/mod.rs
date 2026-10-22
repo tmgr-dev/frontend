@@ -7,6 +7,7 @@ mod attach_export_cmd;
 mod attach_git;
 mod attach_goto;
 mod attach_layouts;
+mod attach_links;
 mod attach_new;
 mod attach_notes;
 mod attach_prompts;

@@ -325,7 +325,62 @@ pub fn classify_stderr(text: &str, timed_out: bool) -> String {
     }
 }
 
+fn follower_target(paths: &Paths, name: &str) -> Result<(SshTarget, Option<crate::jump::Hop>)> {
+    grammar::link_name(name)?;
+    let store = Store::load(paths)?;
+    let f = store.followers.get(name).ok_or_else(|| {
+        Error::not_found(format!("no follower named {name}")).hint("tmgr link list")
+    })?;
+    grammar::parse_target(&format!("{}@{}", f.user, f.host))?;
+    let target = SshTarget {
+        user: f.user.clone(),
+        host: f.host.clone(),
+        port: grammar::parse_port(u32::from(f.port))?,
+    };
+    let hop = crate::jump::resolve(&store, name)?;
+    Ok((target, hop))
+}
+
+fn ssh_command(
+    paths: &Paths,
+    key: &KeyFile,
+    name: &str,
+    target: &SshTarget,
+    hop: Option<&crate::jump::Hop>,
+) -> Result<Command> {
+    let args = match hop {
+        None => ssh_args(target, &key.path, &paths.known_hosts(), name)?,
+        Some(h) => {
+            let proxy = crate::jump::proxy_command(h, &key.path, &paths.known_hosts(), target)?;
+            build_args(target, &key.path, &paths.known_hosts(), name, &proxy, None)?
+        }
+    };
+    let mut cmd = Command::new(tool("ssh", "/usr/bin/ssh"));
+    cmd.args(args);
+    Ok(cmd)
+}
+
 type Pipe = Framed<ChildStdout, ChildStdin>;
+
+fn watch(
+    child: &Arc<Mutex<Child>>,
+    timed_out: &Arc<Mutex<bool>>,
+    timeout: Duration,
+) -> mpsc::Sender<()> {
+    let (cancel, rx) = mpsc::channel::<()>();
+    let (c, t) = (Arc::clone(child), Arc::clone(timed_out));
+    std::thread::spawn(move || {
+        if let Err(RecvTimeoutError::Timeout) = rx.recv_timeout(timeout) {
+            if let Ok(mut flag) = t.lock() {
+                *flag = true;
+            }
+            if let Ok(mut ch) = c.lock() {
+                let _ = ch.kill();
+            }
+        }
+    });
+    cancel
+}
 
 pub struct Client {
     child: Arc<Mutex<Child>>,
@@ -364,18 +419,7 @@ impl Client {
         });
         let child = Arc::new(Mutex::new(child));
         let timed_out = Arc::new(Mutex::new(false));
-        let (cancel, rx) = mpsc::channel::<()>();
-        let (c, t) = (Arc::clone(&child), Arc::clone(&timed_out));
-        std::thread::spawn(move || {
-            if let Err(RecvTimeoutError::Timeout) = rx.recv_timeout(timeout) {
-                if let Ok(mut flag) = t.lock() {
-                    *flag = true;
-                }
-                if let Ok(mut ch) = c.lock() {
-                    let _ = ch.kill();
-                }
-            }
-        });
+        let cancel = watch(&child, &timed_out, timeout);
         Ok(Client {
             child,
             chan: Some(Framed::new(stdout, stdin)),
@@ -408,19 +452,16 @@ impl Client {
     }
 
     pub fn dial(paths: &Paths, cred: &CredentialStore, name: &str) -> Result<(Client, KeyFile)> {
-        grammar::link_name(name)?;
-        let store = Store::load(paths)?;
-        let f = store.followers.get(name).ok_or_else(|| {
-            Error::not_found(format!("no follower named {name}")).hint("tmgr link list")
-        })?;
-        grammar::parse_target(&format!("{}@{}", f.user, f.host))?;
-        let target = SshTarget {
-            user: f.user.clone(),
-            host: f.host.clone(),
-            port: grammar::parse_port(u32::from(f.port))?,
-        };
-        let hop = crate::jump::resolve(&store, name)?;
+        let (target, hop) = follower_target(paths, name)?;
         Client::connect_via(paths, cred, name, &target, hop.as_ref())
+    }
+
+    pub fn dial_with_key(paths: &Paths, name: &str, key: &KeyFile) -> Result<Client> {
+        let (target, hop) = follower_target(paths, name)?;
+        Client::spawn(
+            ssh_command(paths, key, name, &target, hop.as_ref())?,
+            SSH_TIMEOUT,
+        )
     }
 
     pub fn connect_via(
@@ -431,15 +472,7 @@ impl Client {
         hop: Option<&crate::jump::Hop>,
     ) -> Result<(Client, KeyFile)> {
         let key = materialise(cred)?;
-        let args = match hop {
-            None => ssh_args(target, &key.path, &paths.known_hosts(), name)?,
-            Some(h) => {
-                let proxy = crate::jump::proxy_command(h, &key.path, &paths.known_hosts(), target)?;
-                build_args(target, &key.path, &paths.known_hosts(), name, &proxy, None)?
-            }
-        };
-        let mut cmd = Command::new(tool("ssh", "/usr/bin/ssh"));
-        cmd.args(args);
+        let cmd = ssh_command(paths, &key, name, target, hop)?;
         Ok((Client::spawn(cmd, SSH_TIMEOUT)?, key))
     }
 
@@ -468,6 +501,11 @@ impl Client {
                 .map_err(|why| crate::link_err(format!("bad reply from the follower: {why}"))),
             Ok(None) | Err(_) => Err(self.failure()),
         }
+    }
+
+    pub fn call_within(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Reply> {
+        let _cancel = watch(&self.child, &self.timed_out, timeout);
+        self.call(method, params)
     }
 
     pub fn hello(&mut self) -> Result<Value> {
@@ -747,6 +785,116 @@ mod tests {
         assert!(login.load().unwrap().is_none());
         link.delete().unwrap();
         assert!(link.load().unwrap().is_none());
+    }
+
+    fn fake_client(script: &str, timeout: Duration) -> Client {
+        let mut cmd = Command::new("sh");
+        cmd.args(["-c", script]);
+        Client::spawn(cmd, timeout).unwrap()
+    }
+
+    fn reply_file(dir: &Path, ids: std::ops::RangeInclusive<u64>) -> PathBuf {
+        let path = dir.join("replies");
+        let mut f = std::fs::File::create(&path).unwrap();
+        for id in ids {
+            proto::write_frame(
+                &mut f,
+                &proto::ok(Some(id), json!({"n": id})),
+                proto::MAX_FRAME,
+            )
+            .unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn a_call_deadline_works_after_disarm_and_kills_a_silent_child() {
+        let d = crate::testutil::private_tempdir();
+        let replies = reply_file(d.path(), 1..=1);
+        let mut c = fake_client(
+            &format!("cat {}; exec sleep 30", replies.display()),
+            Duration::from_secs(60),
+        );
+        c.disarm();
+        let first = c
+            .call_within("runs.list", Value::Null, Duration::from_secs(5))
+            .unwrap();
+        assert!(matches!(first, Reply::Ok(v) if v["n"] == 1));
+        let started = std::time::Instant::now();
+        let err = c
+            .call_within("runs.list", Value::Null, Duration::from_millis(300))
+            .unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(5));
+        assert!(err.message.contains("in time"), "{}", err.message);
+    }
+
+    #[test]
+    fn a_reply_in_time_does_not_kill_the_connection() {
+        let d = crate::testutil::private_tempdir();
+        let replies = reply_file(d.path(), 1..=2);
+        let mut c = fake_client(
+            &format!("cat {}; exec sleep 30", replies.display()),
+            Duration::from_secs(60),
+        );
+        c.disarm();
+        for _ in 0..2 {
+            c.call_within("runs.list", Value::Null, Duration::from_millis(400))
+                .unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(600));
+        assert!(c.child.lock().unwrap().try_wait().unwrap().is_none());
+    }
+
+    fn store_with_follower(paths: &Paths, name: &str) {
+        Store::update(paths, |s| {
+            s.followers.insert(
+                name.to_string(),
+                crate::store::Follower {
+                    user: "deploy".into(),
+                    host: "example.com".into(),
+                    port: 22,
+                    host_key_fingerprint: "SHA256:x".into(),
+                    added: "2026-01-01".into(),
+                },
+            );
+            Ok(())
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn dialling_with_a_key_re_reads_the_store_and_uses_that_key_file() {
+        let d = crate::testutil::private_tempdir();
+        let paths = Paths::under(d.path());
+        let key_dir = tempfile::tempdir().unwrap();
+        let key = KeyFile {
+            path: key_dir.path().join("key"),
+            _dir: key_dir,
+        };
+        let err = follower_target(&paths, "spark").unwrap_err();
+        assert_eq!(err.exit_code(), 3);
+        store_with_follower(&paths, "spark");
+        let (target, hop) = follower_target(&paths, "spark").unwrap();
+        assert!(hop.is_none());
+        let cmd = ssh_command(&paths, &key, "spark", &target, None).unwrap();
+        let args: Vec<String> = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().to_string())
+            .collect();
+        assert!(args.contains(&format!("IdentityFile={}", key.path.display())));
+        assert!(args.contains(&"deploy@example.com".to_string()));
+        Store::update(&paths, |s| {
+            s.followers.remove("spark");
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            Client::dial_with_key(&paths, "spark", &key)
+                .err()
+                .unwrap()
+                .exit_code(),
+            3
+        );
     }
 
     struct NoKeychain;
