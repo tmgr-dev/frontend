@@ -1,0 +1,16 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────╮╭ 2  dev-server · waiting ──────╮
+ ◆ codex     blocked 3m │● Reading src/c╭ Notes · claude · no task ──────────────────────╮
+ ▾ claude           (2) │I will add an A│a scratch line                                  │
+   ● claude working 18m │✓ Tests 14 pass│                                                │
+   ◌ dev-server wa… 12m │>              │                                                │
+ ✓ tests     exited 52m │               │                                                │
+                        │               │                                                │
+                        │               │                                                │
+                        │               │                                                │
+                        │               │                                                │
+                        │               │                                                │
+                        │               │                                                │
+                        │               │ [ ^T To task ] [ Esc Close ]                   │
+                        │               │ autosaved here; never sent to the agent        │
+ + New session     tmpl ╰───────────────╰────────────────────────────────────────────────╯
+ dev-server · waiting · Ctrl-] ?

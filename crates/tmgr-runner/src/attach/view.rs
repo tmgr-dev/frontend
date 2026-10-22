@@ -142,6 +142,7 @@ pub struct ViewState {
     pub git: HashMap<String, super::git::GitInfo>,
     pub git_open: bool,
     pub export: Option<super::export::ExportState>,
+    pub notes: Option<super::notes::NotesState>,
     pub summary: Option<super::summary::SummaryDraft>,
     pub summary_queue: std::collections::VecDeque<super::summary::SummaryDraft>,
     pub prompts: Vec<Prompt>,
@@ -384,6 +385,7 @@ impl ViewState {
             git: HashMap::new(),
             git_open: false,
             export: None,
+            notes: None,
             summary: None,
             summary_queue: std::collections::VecDeque::new(),
             prompts: Vec::new(),
@@ -1268,7 +1270,7 @@ impl ViewState {
                     self.open_templates();
                 }
             }
-            Cmd::Watch => {}
+            Cmd::Watch | Cmd::Notes => {}
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
@@ -1694,6 +1696,7 @@ impl ViewState {
             || self.git_open
             || self.summary.is_some()
             || self.export.is_some()
+            || self.notes.is_some()
             || self.qmenu.is_some()
             || self.peek.is_some()
             || self.help
@@ -1712,6 +1715,9 @@ impl ViewState {
         }
         if self.summary.is_some() {
             return self.summary_mouse(area, ev, out);
+        }
+        if self.notes.is_some() {
+            return self.notes_mouse(area, ev, out);
         }
         if self.git_open {
             return self.git_mouse(area, ev, out);
@@ -2275,6 +2281,7 @@ pub struct MouseOut {
     pub git: Option<super::git::GitAction>,
     pub summary: Option<super::summary::SummaryAction>,
     pub export: Option<super::export::ExportAction>,
+    pub notes: Option<super::notes::NotesAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
 }

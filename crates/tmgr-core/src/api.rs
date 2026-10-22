@@ -691,6 +691,17 @@ impl Client {
         )?))
     }
 
+    pub fn set_task_description(&self, task_id: u64, description: &str) -> Result<()> {
+        self.request(
+            Method::PATCH,
+            &format!("/api/tasks/{task_id}"),
+            &[],
+            Some(&json!({ "description": description })),
+            "tasks:write",
+        )
+        .map(|_| ())
+    }
+
     pub fn add_comment(&self, task_id: u64, message: &str) -> Result<()> {
         self.request(
             Method::POST,

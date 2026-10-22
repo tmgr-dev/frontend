@@ -88,6 +88,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::BroadcastMark => "select target pane broadcast",
         Cmd::NeedsYou => "attention waiting permission question alert",
         Cmd::Subagents => "agents tasks background peek",
+        Cmd::Notes => "note write memo scratch todo markdown task",
         Cmd::Watch => "tests rerun build watch cargo npm monitor",
         Cmd::Templates => "recipe preset review pr ci tests explain start agent prompt",
         Cmd::Layouts => "workspace arrangement tabs save restore switch",

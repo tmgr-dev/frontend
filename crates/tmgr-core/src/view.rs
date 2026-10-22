@@ -111,6 +111,7 @@ mod tests {
             id: 77,
             title: title.into(),
             description: None,
+            description_json: None,
             status: None,
             status_id: None,
             project_category_id: None,

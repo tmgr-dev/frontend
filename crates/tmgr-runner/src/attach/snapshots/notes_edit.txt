@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm ╭ Notes · claude · TM-672 ───────────────────────╮
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE │# Plan                                          │
+   ● claude working 18m │✓ Tests 14 passed                                       ││       │- check the retry path                          │
+   ◌ dev-server wa… 12m │>                                                       ││       │- ask about the rate limit                      │
+ ✓ tests     exited 52m │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │ [ ^T To task ] [ Esc Close ]                   │
+                        │                                                        ││       │ autosaved here; never sent to the agent        │
+ + New session     tmpl ╰────────────────────────────────────────────────────────╯╰───────╰────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

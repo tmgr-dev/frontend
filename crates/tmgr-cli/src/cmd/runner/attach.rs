@@ -9,6 +9,7 @@ use super::attach_new::{
     prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
     TaskReview,
 };
+use super::attach_notes;
 use super::attach_prompts;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_shell::{
@@ -146,6 +147,7 @@ enum Msg {
     Git(HashMap<String, GitInfo>),
     Summary(Generated),
     Exported(std::result::Result<String, String>),
+    NotesSent(std::result::Result<String, String>),
     Posted(std::result::Result<String, String>, Box<SummaryDraft>),
     Chips(HashMap<String, TaskChip>),
     Peek {
@@ -426,6 +428,15 @@ impl App {
                 }
             }
             Msg::Summary(done) => self.on_summary(done),
+            Msg::NotesSent(result) => {
+                self.dirty = true;
+                let (ok, text) = match result {
+                    Ok(text) => (true, text),
+                    Err(e) => (false, e),
+                };
+                self.view.notes_sent(ok, &text);
+                self.notify(&text);
+            }
             Msg::Exported(result) => {
                 self.dirty = true;
                 match result {
@@ -960,6 +971,76 @@ impl App {
         let state =
             attach_export::state_for(loaded, &name, ws, refusal, &path, &home.to_string_lossy());
         self.view.open_export(state);
+    }
+
+    fn notes_command(&mut self) {
+        self.dirty = true;
+        if let Some(n) = self.view.notes.take() {
+            if n.unsaved {
+                self.save_notes(&n.session, &n.text());
+            }
+            return;
+        }
+        let Some(id) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        let Some(dir) = attach_notes::dir() else {
+            return self.notify("cannot find the tmgr config folder");
+        };
+        match attach_notes::load(&dir, &id) {
+            Ok(text) => self.open_notes_for(&id, &text, false),
+            Err(e) => self.notify(&e),
+        }
+    }
+
+    fn open_notes_for(&mut self, id: &str, text: &str, unsaved: bool) {
+        let Some(row) = self.view.sessions.iter().find(|r| r.id == id) else {
+            return;
+        };
+        let name = row.name.clone();
+        let task = self.view.chip_of(id).and_then(|chip| {
+            let task_id = chip.task_id?;
+            (chip.run_ws.is_some() || chip.workspace.is_some()).then(|| {
+                tmgr_runner::attach::NotesTask {
+                    task_id,
+                    workspace: chip.run_ws.clone(),
+                    key: chip.key.clone(),
+                }
+            })
+        });
+        let mut state = tmgr_runner::attach::NotesState::new(id, &name, text, task);
+        if unsaved {
+            state.unsaved = true;
+            state.note = "cannot save the notes file".into();
+        }
+        self.view.open_notes(state);
+    }
+
+    fn save_notes(&mut self, session: &str, text: &str) {
+        let saved = attach_notes::dir()
+            .map(|d| attach_notes::save(&d, session, text))
+            .is_some_and(|r| r.is_ok());
+        if saved {
+            self.view.notes_saved(true);
+        } else if self.view.notes.is_some() {
+            self.view.notes_saved(false);
+        } else {
+            self.open_notes_for(session, text, true);
+        }
+    }
+
+    fn notes_action(&mut self, action: tmgr_runner::attach::NotesAction) {
+        use tmgr_runner::attach::NotesAction;
+        self.dirty = true;
+        match action {
+            NotesAction::Save { session, text } => self.save_notes(&session, &text),
+            NotesAction::Append { task, text } => {
+                let tx = self.tx.clone();
+                thread::spawn(move || {
+                    let _ = tx.send(Msg::NotesSent(attach_notes::post_real(&task, &text)));
+                });
+            }
+        }
     }
 
     fn export_action(&mut self, action: tmgr_runner::attach::ExportAction) {
@@ -1762,6 +1843,18 @@ impl App {
             (Route::Export, Action::Forward(data)) => {
                 if let Some(action) = self.view.edit_export(&data) {
                     self.export_action(action);
+                }
+                self.dirty = true;
+            }
+            (Route::Notes, Action::Forward(data)) => {
+                if let Some(action) = self.view.edit_notes(&data) {
+                    self.notes_action(action);
+                }
+                self.dirty = true;
+            }
+            (Route::Notes, Action::Paste { data, .. } | Action::Drop(data)) => {
+                if let Some(action) = self.view.insert_notes_text(&data) {
+                    self.notes_action(action);
                 }
                 self.dirty = true;
             }
@@ -2838,6 +2931,9 @@ impl App {
                     if let Some(action) = out.summary {
                         self.summary_action(action);
                     }
+                    if let Some(action) = out.notes {
+                        self.notes_action(action);
+                    }
                     if let Some(action) = out.export {
                         self.export_action(action);
                     }
@@ -2858,6 +2954,13 @@ impl App {
                     self.view.confirm = None;
                     self.view.rename = None;
                     self.view.new_session = None;
+                    if cmd != Cmd::Notes {
+                        if let Some(n) = self.view.notes.take() {
+                            if n.unsaved {
+                                self.save_notes(&n.session, &n.text());
+                            }
+                        }
+                    }
                     if cmd != Cmd::Git {
                         self.view.git_open = false;
                     }
@@ -2913,6 +3016,7 @@ impl App {
                         }
                         Cmd::Summary => self.summary_command(),
                         Cmd::Export => self.export_command(),
+                        Cmd::Notes => self.notes_command(),
                         Cmd::Resume => {
                             if let Some(id) = self.view.focused_session().map(str::to_string) {
                                 self.request_resume(&id);

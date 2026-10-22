@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm ╭ Notes · claude · TM-672 ───────────────────────╮
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE │Appended to the description of TM-672:          │
+   ● claude working 18m │✓ Tests 14 passed                                       ││       │### Session notes: claude                       │
+   ◌ dev-server wa… 12m │>                                                       ││       │                                                │
+ ✓ tests     exited 52m │                                                        ││       │# Plan                                          │
+                        │                                                        ││       │- check the retry path                          │
+                        │                                                        ││       │- ask about the rate limit                      │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │                                                │
+                        │                                                        ││       │ [ Enter Send ] [ Esc Back ]                    │
+                        │                                                        ││       │ nothing was sent yet                           │
+ + New session     tmpl ╰────────────────────────────────────────────────────────╯╰───────╰────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

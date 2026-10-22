@@ -11,6 +11,7 @@ mod layouts;
 mod modes;
 mod mouse;
 mod newsession;
+mod notes;
 mod palette;
 mod place;
 mod prompts;
@@ -54,6 +55,7 @@ pub use mouse::{encode, wants, Kind, MouseEvent};
 pub use newsession::{
     KindOpt, NewEdit, NewField, NewRequest, NewSession, Place, SpawnKind, TaskOpt,
 };
+pub use notes::{NotesAction, NotesState, NotesTask};
 pub use palette::{Palette, PaletteEdit, PaletteEntry, PaletteMode, RowView};
 pub use place::{fit, probe, tail2, Loc};
 pub use prompts::{defaults as default_prompts, paste_bytes, Prompt, PromptForm};

@@ -46,6 +46,8 @@ pub struct ApiTask {
     pub title: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default, alias = "descriptionJson")]
+    pub description_json: Option<serde_json::Value>,
     #[serde(default)]
     pub status: Option<String>,
     #[serde(default)]

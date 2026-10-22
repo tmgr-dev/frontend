@@ -8,6 +8,7 @@ mod attach_git;
 mod attach_goto;
 mod attach_layouts;
 mod attach_new;
+mod attach_notes;
 mod attach_prompts;
 mod attach_questions;
 mod attach_shell;

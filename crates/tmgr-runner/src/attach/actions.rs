@@ -221,6 +221,13 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Notes,
+        b"o",
+        "o",
+        "Session notes, saved locally, can go to the task",
+        true,
+    ),
+    def(
         Cmd::Watch,
         b"W",
         "W",

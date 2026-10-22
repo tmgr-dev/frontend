@@ -18,7 +18,7 @@
                   │ Make the sidebar wider                              Ctrl-] > │                 │
                   │ Named layouts: save or switch panes and tabs        Ctrl-] L │                 │
                   │ Export this session to Markdown or a page           Ctrl-] e │                 │
+                  │ Session notes, saved locally, can go to the task    Ctrl-] o │                 │
                   │ Make the sidebar narrower                           Ctrl-] < │                 │
-                  │ Pick or drop the focused pane as a broadcast target Ctrl-] m │                 │
- + New session    │ New shell to the right, same folder               Ctrl-] | v │─────────────────╯
+ + New session    │ Pick or drop the focused pane as a broadcast target Ctrl-] m │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

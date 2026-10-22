@@ -8570,3 +8570,233 @@ fn snapshot_watch_header_badges() {
     let v = watch_view(140, watch_status(WatchState::Fail, Some(101), 65_000));
     assert_snapshot("watch_fail", &draw(&v, &screens(), 140, 12));
 }
+
+fn notes_task() -> NotesTask {
+    NotesTask {
+        task_id: 672,
+        workspace: None,
+        key: "TM-672".into(),
+    }
+}
+
+fn notes_view(text: &str, task: Option<NotesTask>) -> ViewState {
+    let mut v = two_pane(140);
+    let id = v.focused_session().unwrap().to_string();
+    v.open_notes(NotesState::new(&id, "claude", text, task));
+    v
+}
+
+fn notes_text(v: &ViewState) -> String {
+    v.notes.as_ref().unwrap().text()
+}
+
+#[test]
+fn the_notes_key_is_free_and_help_lists_it() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'o')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Notes);
+    assert!(super::render::HELP
+        .iter()
+        .any(|(k, _)| matches!(k, super::render::HelpKey::Cmds(c) if c.contains(&Cmd::Notes))));
+}
+
+#[test]
+fn typing_and_editing_keys_change_the_text_and_report_a_save() {
+    let mut v = notes_view("", None);
+    let saved = v.edit_notes(b"hello").unwrap();
+    assert_eq!(
+        saved,
+        NotesAction::Save {
+            session: v.notes.as_ref().unwrap().session.clone(),
+            text: "hello".into()
+        }
+    );
+    v.edit_notes(b"\r");
+    v.edit_notes("héllo".as_bytes());
+    assert_eq!(notes_text(&v), "hello\nhéllo");
+    v.edit_notes(b"\x7f");
+    assert_eq!(notes_text(&v), "hello\nhéll");
+    v.edit_notes(b"\x1b[A");
+    v.edit_notes(b"\x1b[F");
+    v.edit_notes(b"!");
+    assert_eq!(notes_text(&v), "hello!\nhéll");
+    v.edit_notes(b"\x1b[H");
+    v.edit_notes(b"\x1b[3~");
+    assert_eq!(notes_text(&v), "ello!\nhéll");
+    v.edit_notes(b"\x1b[B");
+    v.edit_notes(b"\x1b[H");
+    v.edit_notes(b"\x7f");
+    assert_eq!(notes_text(&v), "ello!héll");
+    assert_eq!(v.edit_notes(b"\x1b[C"), None);
+}
+
+#[test]
+fn escape_saves_and_closes_and_a_reopen_shows_the_saved_text() {
+    let mut v = notes_view("one\ntwo", None);
+    v.edit_notes(b" 2");
+    assert_eq!(v.edit_notes(b"\x1b"), None);
+    assert!(v.notes.is_none());
+    let mut v = notes_view("one", None);
+    let Some(NotesAction::Save { session, text }) = v.edit_notes(b" 2") else {
+        panic!("no save");
+    };
+    v.notes_saved(false);
+    assert!(v.notes.as_ref().unwrap().unsaved);
+    let Some(NotesAction::Save { .. }) = v.edit_notes(b"\x1b") else {
+        panic!("an unsaved note must be retried on close");
+    };
+    assert!(v.notes.is_none());
+    v.open_notes(NotesState::new(&session, "claude", &text, None));
+    assert_eq!(notes_text(&v), "one 2");
+}
+
+#[test]
+fn pasted_text_keeps_lines_and_drops_control_characters() {
+    let mut v = notes_view("", None);
+    v.insert_notes_text(b"a\r\nb\x1b[31m\tc");
+    assert_eq!(notes_text(&v), "a\nb[31m c");
+}
+
+#[test]
+fn the_notes_have_size_limits() {
+    let mut v = notes_view("", None);
+    let long = "x".repeat(1500);
+    v.insert_notes_text(long.as_bytes());
+    assert_eq!(notes_text(&v).len(), 1000);
+}
+
+#[test]
+fn to_task_without_a_task_or_text_only_explains() {
+    let mut v = notes_view("hi", None);
+    assert_eq!(v.edit_notes(b"\x14"), None);
+    assert!(v.notes.as_ref().unwrap().note.contains("no task"));
+    let mut v = notes_view("", Some(notes_task()));
+    assert_eq!(v.edit_notes(b"\x14"), None);
+    assert!(v.notes.as_ref().unwrap().preview.is_none());
+}
+
+#[test]
+fn sending_to_the_task_previews_first_and_only_enter_sends() {
+    let mut v = notes_view("remember the retry", Some(notes_task()));
+    assert_eq!(v.edit_notes(b"\x14"), None);
+    let preview = v.notes.as_ref().unwrap().preview.clone().unwrap();
+    assert_eq!(preview, "### Session notes: claude\n\nremember the retry");
+    assert_eq!(v.edit_notes(b"x"), None);
+    assert_eq!(notes_text(&v), "remember the retry");
+    assert_eq!(v.edit_notes(b"\x1b"), None);
+    assert!(v.notes.as_ref().unwrap().preview.is_none());
+    v.edit_notes(b"\x14");
+    assert_eq!(
+        v.edit_notes(b"\r"),
+        Some(NotesAction::Append {
+            task: notes_task(),
+            text: preview
+        })
+    );
+}
+
+#[test]
+fn clicking_the_buttons_and_the_text_works() {
+    let mut v = notes_view("first\nsecond", Some(notes_task()));
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let screen = draw(&v, &screens(), AREA.width, AREA.height);
+    let find = |needle: &str| {
+        screen
+            .lines()
+            .enumerate()
+            .find_map(|(y, l)| {
+                l.find(needle)
+                    .map(|x| (y as u16, l[..x].chars().count() as u16))
+            })
+            .unwrap()
+    };
+    let (row, col) = find("first");
+    v.on_mouse(AREA, ev(0, col + 2, row, false), &info);
+    v.on_mouse(AREA, ev(0, col + 2, row, true), &info);
+    let n = v.notes.as_ref().unwrap();
+    assert_eq!((n.row, n.col), (0, 2));
+    let (row, col) = find("To task");
+    let out = v.on_mouse(AREA, ev(0, col + 1, row, false), &info);
+    assert_eq!(out.notes, None);
+    assert!(v.notes.as_ref().unwrap().preview.is_some());
+    v.on_mouse(AREA, ev(0, col + 1, row, true), &info);
+    let screen = draw(&v, &screens(), AREA.width, AREA.height);
+    let (row, col) = screen
+        .lines()
+        .enumerate()
+        .find_map(|(y, l)| {
+            l.find("Enter Send")
+                .map(|x| (y as u16, l[..x].chars().count() as u16))
+        })
+        .unwrap();
+    let out = v.on_mouse(AREA, ev(0, col + 1, row, false), &info);
+    assert!(matches!(out.notes, Some(NotesAction::Append { .. })));
+}
+
+#[test]
+fn a_disabled_to_task_button_does_nothing_without_a_task() {
+    let mut v = notes_view("first", None);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let screen = draw(&v, &screens(), AREA.width, AREA.height);
+    let (row, col) = screen
+        .lines()
+        .enumerate()
+        .find_map(|(y, l)| {
+            l.find("To task")
+                .map(|x| (y as u16, l[..x].chars().count() as u16))
+        })
+        .unwrap();
+    let out = v.on_mouse(AREA, ev(0, col + 1, row, false), &info);
+    assert_eq!(out.notes, None);
+    assert!(v.notes.as_ref().unwrap().preview.is_none());
+}
+
+#[test]
+fn snapshot_notes_panel_edit_and_preview() {
+    let mut v = notes_view(
+        "# Plan\n- check the retry path\n- ask about the rate limit",
+        Some(notes_task()),
+    );
+    assert_snapshot("notes_edit", &draw(&v, &screens(), 140, 24));
+    v.edit_notes(b"\x14");
+    assert_snapshot("notes_preview", &draw(&v, &screens(), 140, 24));
+    let v = notes_view("a scratch line", None);
+    assert_snapshot("notes_no_task", &draw(&v, &screens(), 90, 16));
+}
+
+#[test]
+fn several_keys_in_one_read_are_handled_one_by_one() {
+    let mut v = notes_view("abcd", None);
+    v.edit_notes(b"\x7f\x7f");
+    assert_eq!(notes_text(&v), "ab");
+    v.edit_notes(b"x\x1b[D\x1b[Dy");
+    assert_eq!(notes_text(&v), "aybx");
+    v.edit_notes(b"\rz\x1b[A\x1b[A!");
+    assert_eq!(notes_text(&v), "a!y\nzbx");
+}
+
+#[test]
+fn only_enter_sends_the_preview_and_a_second_send_waits() {
+    let mut v = notes_view("note", Some(notes_task()));
+    v.edit_notes(b"\x14");
+    assert_eq!(v.edit_notes(b"y"), None);
+    assert!(v.notes.as_ref().unwrap().preview.is_some());
+    assert!(matches!(
+        v.edit_notes(b"\r"),
+        Some(NotesAction::Append { .. })
+    ));
+    assert_eq!(v.edit_notes(b"\x14"), None);
+    assert!(v.notes.as_ref().unwrap().preview.is_none());
+    assert!(v.notes.as_ref().unwrap().note.contains("still sending"));
+    v.notes_sent(true, "done");
+    v.edit_notes(b"\x14");
+    assert!(v.notes.as_ref().unwrap().preview.is_some());
+}
+
+#[test]
+fn loaded_text_is_cleaned_and_capped() {
+    let long = "y".repeat(70_000);
+    let s = NotesState::new("s_1", "n", &format!("a\x1b[0mb\n{long}"), None);
+    assert_eq!(s.lines[0], "a[0mb");
+    assert!(s.text().len() <= 64 * 1024);
+}

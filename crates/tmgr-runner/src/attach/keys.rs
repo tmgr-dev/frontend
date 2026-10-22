@@ -50,6 +50,7 @@ pub enum Cmd {
     Git,
     Summary,
     Export,
+    Notes,
     Prompts,
     Search,
     CopyMode,

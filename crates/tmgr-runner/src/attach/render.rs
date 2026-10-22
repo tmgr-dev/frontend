@@ -167,6 +167,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.git_open {
         super::git::draw_git(buf, area, st);
     }
+    if st.notes.is_some() {
+        super::notes::draw_notes(buf, area, st);
+    }
     if st.summary.is_some() {
         super::summary::draw_summary(buf, area, st);
     }
@@ -1157,8 +1160,14 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "split right / split down",
     ),
     (
-        HelpKey::Cmds(&[Cmd::NewSession, Cmd::Prompts, Cmd::Layouts, Cmd::Templates]),
-        "new / prompts / layouts / templates",
+        HelpKey::Cmds(&[
+            Cmd::NewSession,
+            Cmd::Prompts,
+            Cmd::Layouts,
+            Cmd::Templates,
+            Cmd::Notes,
+        ]),
+        "new / prompts / layouts / templates / notes",
     ),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),
