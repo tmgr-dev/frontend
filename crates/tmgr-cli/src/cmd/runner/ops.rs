@@ -761,7 +761,7 @@ fn attach_cmd(a: &AttachArgs) -> Result<i32> {
                 Error::not_found("no sessions to attach to").hint(format!("{} run", super::bin()))
             })?,
     };
-    attach::run_with(&cfg, &target.id, !a.no_mouse)
+    attach::run_with(&cfg, &target.id, !a.no_mouse, !a.no_links)
 }
 
 pub(super) fn with_session(key: &str) -> Result<(Client, SessionInfo)> {

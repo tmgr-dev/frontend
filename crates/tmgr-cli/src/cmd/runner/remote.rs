@@ -90,7 +90,7 @@ pub(super) fn check(reply: Reply) -> Result<Value> {
     }
 }
 
-fn runs_of(v: &Value) -> Vec<RunView> {
+pub(super) fn runs_of(v: &Value) -> Vec<RunView> {
     v.get("runs")
         .and_then(Value::as_array)
         .map(|a| {

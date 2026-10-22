@@ -7,11 +7,13 @@ mod attach_export_cmd;
 mod attach_git;
 mod attach_goto;
 mod attach_layouts;
+mod attach_links;
 mod attach_new;
 mod attach_notes;
 mod attach_prompts;
 mod attach_push;
 mod attach_questions;
+mod attach_remote;
 mod attach_shell;
 mod attach_signal;
 mod attach_status;
@@ -374,6 +376,9 @@ pub struct AttachArgs {
     /// Do not capture the mouse (keeps plain terminal text selection)
     #[arg(long)]
     pub no_mouse: bool,
+    /// Do not show sessions of linked machines
+    #[arg(long)]
+    pub no_links: bool,
 }
 
 #[derive(Args)]

@@ -24,7 +24,7 @@ agents watch | Agents | -
 agents log | Agents | session
 agents restore | Agents | session, discard
 agents bundle | Agents | task, agent, model, cwd, mode
-attach | Agents | session, no_mouse
+attach | Agents | session, no_mouse, no_links
 send | Agents | session, text, no_enter, wait, timeout
 peek | Agents | session, lines
 halt | Agents | session, kill

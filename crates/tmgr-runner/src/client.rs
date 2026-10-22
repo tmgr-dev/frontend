@@ -439,6 +439,10 @@ impl ScreenCache {
             return None;
         };
         let push: ScreenPush = serde_json::from_value(v.clone()).ok()?;
+        self.apply_push(push)
+    }
+
+    pub fn apply_push(&mut self, push: ScreenPush) -> Option<String> {
         if push.full {
             let mut snap = push.snapshot?;
             let rows = snap.rows as usize;

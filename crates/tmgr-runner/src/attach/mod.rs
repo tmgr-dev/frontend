@@ -48,8 +48,9 @@ pub use git::{
 };
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
 pub use layouts::{
-    clean_name as clean_layout_name, parse as parse_layouts, render as render_layouts, LayoutOffer,
-    LayoutRestore, Member, SavedLayout, Shape, MAX_LAYOUTS,
+    clean_name as clean_layout_name, parse as parse_layouts, render as render_layouts,
+    without_ids as prefs_without_ids, LayoutOffer, LayoutRestore, Member, SavedLayout, Shape,
+    MAX_LAYOUTS,
 };
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
@@ -83,7 +84,8 @@ pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use usage::{Cost, Part, Reading, SessionMeta, Tone, UsageBar};
 pub use view::{
     header_button, layout, sidebar_button, slot_control, template_slot, Confirm, Control, Hit,
-    Layout, LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,
-    SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, TabItem, TabPrefs, ViewState,
+    Layout, LayoutPrefs, Machine, MachineState, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit,
+    ScrollState, SessionRow, SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, TabItem,
+    TabPrefs, ViewState, LOCAL_SECTION,
 };
 pub use watch::{duration_label, WatchState, WatchStatus};

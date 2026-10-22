@@ -1,0 +1,22 @@
+ SESSIONS      Ctrl-] b ╭ 1  build @spark · working ──────────────────────────────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
+ ▾ local                │                                                                                                                  │
+ ● a         working 1m │                                                                                                                  │
+ ● b         working 1m │                                                                                                                  │
+ ● c         working 1m │                                                                                                                  │
+ ▾ spark · 42ms         │                                                                                                                  │
+   ● build   working 5m │                                                                                                                  │
+   ◌ tests   waiting 2m │                                                                                                                  │
+ ▾ lab · offline        │                                                                                                                  │
+   ✓ old-run  exited 9m │                                                                                                                  │
+                        │                                               connecting to spark…                                               │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+ + New session     tmpl ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ tmgr runner · local · build · working · ● 4 ◌ 1 ◆ 0 ✓ 1                                                                      Ctrl-] ? help

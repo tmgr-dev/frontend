@@ -58,6 +58,7 @@ pub enum Cmd {
     Templates,
     Watch,
     Filter,
+    Reconnect,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

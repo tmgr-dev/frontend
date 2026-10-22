@@ -241,6 +241,7 @@ pub const ACTIONS: &[ActionDef] = &[
         "Session templates: start an agent with a prepared prompt",
         true,
     ),
+    def(Cmd::Reconnect, b"M", "M", "Reconnect linked machines", true),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),
