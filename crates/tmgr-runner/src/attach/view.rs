@@ -1404,6 +1404,9 @@ impl ViewState {
                 }
             }
             Cmd::Stop => match self.focused_row() {
+                Some(r) if r.state.kind == StateKind::Exited && self.remote.contains_key(&r.id) => {
+                    self.notice = Some("already exited".into());
+                }
                 Some(r) if r.state.kind == StateKind::Exited => {
                     self.notice = Some("already exited, Ctrl-] X removes it".into());
                 }

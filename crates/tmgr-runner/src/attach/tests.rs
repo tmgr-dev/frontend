@@ -9372,3 +9372,12 @@ fn a_saved_layout_never_keeps_remote_panes() {
         .iter()
         .all(|t| t.tree.leaves().iter().all(|l| !l.contains('/'))));
 }
+
+#[test]
+fn stop_on_an_exited_linked_run_does_not_offer_the_local_remove_key() {
+    let mut v = linked_default();
+    v.set_initial("lab/s_cccccccccc");
+    v.apply(Cmd::Stop);
+    assert_eq!(v.notice.as_deref(), Some("already exited"));
+    assert!(v.confirm.is_none());
+}
