@@ -3,6 +3,11 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.62 — 2026-10-22
+
+- Agent chat: every message shows the time it was sent, with day separators; each assistant reply shows how long it took and how many tokens it used.
+- Agent chat: Copy a message as Markdown, Reply to any message, or select a fragment and Quote it; quotes and replies attach to your next message, and clicking one in a sent message jumps to and highlights the original.
+
 ## 0.9.61 — 2026-10-21
 
 - Daily Routines: dragging one occurrence of a recurring routine to another day now moves only that occurrence; it shows on the new day and disappears from the original one.
