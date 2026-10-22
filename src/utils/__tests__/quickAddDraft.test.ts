@@ -1,4 +1,16 @@
-import { appendText, hasDraft, planOpen } from '../quickAddDraft';
+import {
+	appendText,
+	canSubmitDraft,
+	hasDraft,
+	isScreenshotUnsent,
+	isTaskType,
+	pickRememberedCategory,
+	planOpen,
+	readLastCategory,
+	submitKind,
+	typeAfterScreenshot,
+	writeLastCategory,
+} from '../quickAddDraft';
 
 const empty = { mode: 'task' as const, title: '', note: '', pageText: '' };
 const page = { ...empty, mode: 'page' as const };
@@ -88,5 +100,121 @@ describe('appendText', () => {
 		expect(appendText('first', 'second')).toBe('first\n\nsecond');
 		expect(appendText('', ' second ')).toBe('second');
 		expect(appendText('first\n', '')).toBe('first');
+	});
+});
+
+describe('type rules', () => {
+	it('a screenshot moves routine and task drafts to task + screenshot, pages stay', () => {
+		expect(typeAfterScreenshot('routine')).toBe('screenshot');
+		expect(typeAfterScreenshot('task')).toBe('screenshot');
+		expect(typeAfterScreenshot('screenshot')).toBe('screenshot');
+		expect(typeAfterScreenshot('page')).toBe('page');
+	});
+
+	it('the chosen type alone decides what is created', () => {
+		expect(submitKind('routine')).toBe('routine');
+		expect(submitKind('task')).toBe('task');
+		expect(submitKind('screenshot')).toBe('task-screenshot');
+		expect(submitKind('page')).toBe('page');
+	});
+
+	it('only task types show the category picker', () => {
+		expect(isTaskType('task')).toBe(true);
+		expect(isTaskType('screenshot')).toBe(true);
+		expect(isTaskType('routine')).toBe(false);
+		expect(isTaskType('page')).toBe(false);
+	});
+
+	it('task + screenshot needs a screenshot to submit', () => {
+		const fields = { title: 'Fix', pageText: '', pageId: null };
+		expect(canSubmitDraft('screenshot', fields, false)).toBe(false);
+		expect(canSubmitDraft('screenshot', fields, true)).toBe(true);
+		expect(canSubmitDraft('task', fields, false)).toBe(true);
+		expect(canSubmitDraft('routine', fields, true)).toBe(true);
+		expect(canSubmitDraft('routine', { ...fields, title: ' ' }, true)).toBe(
+			false,
+		);
+	});
+
+	it('a page needs a target and text or a screenshot', () => {
+		const fields = { title: '', pageText: 'line', pageId: 4 };
+		expect(canSubmitDraft('page', fields, false)).toBe(true);
+		expect(canSubmitDraft('page', { ...fields, pageText: ' ' }, false)).toBe(
+			false,
+		);
+		expect(canSubmitDraft('page', { ...fields, pageText: ' ' }, true)).toBe(
+			true,
+		);
+		expect(canSubmitDraft('page', { ...fields, pageId: null }, false)).toBe(
+			false,
+		);
+	});
+
+	it('flags a screenshot that the current type would not send', () => {
+		expect(isScreenshotUnsent('routine', true)).toBe(true);
+		expect(isScreenshotUnsent('task', true)).toBe(true);
+		expect(isScreenshotUnsent('screenshot', true)).toBe(false);
+		expect(isScreenshotUnsent('page', true)).toBe(false);
+		expect(isScreenshotUnsent('task', false)).toBe(false);
+	});
+
+	it('a kept screenshot still counts as a draft in any type', () => {
+		expect(hasDraft({ ...empty, mode: 'routine' }, true)).toBe(true);
+		expect(hasDraft({ ...empty, mode: 'screenshot' }, true)).toBe(true);
+		expect(hasDraft({ ...empty, mode: 'screenshot', title: 'x' }, false)).toBe(
+			true,
+		);
+	});
+});
+
+describe('remembered category', () => {
+	const store = new Map<string, string>();
+
+	beforeEach(() => {
+		store.clear();
+		(globalThis as any).localStorage = {
+			getItem: (k: string) => store.get(k) ?? null,
+			setItem: (k: string, v: string) => void store.set(k, v),
+		};
+	});
+
+	afterEach(() => {
+		delete (globalThis as any).localStorage;
+	});
+
+	it('is undefined until something is written', () => {
+		expect(readLastCategory(1)).toBeUndefined();
+	});
+
+	it('remembers an id and No category per workspace', () => {
+		writeLastCategory(1, 7);
+		writeLastCategory(2, null);
+		expect(store.get('desktop.quickAdd.category.1')).toBe('7');
+		expect(store.get('desktop.quickAdd.category.2')).toBe('none');
+		expect(readLastCategory(1)).toBe(7);
+		expect(readLastCategory(2)).toBeNull();
+		expect(readLastCategory(3)).toBeUndefined();
+	});
+
+	it('falls back to No category for a stale or missing id', () => {
+		const categories = [{ id: 7 }, { id: 8 }];
+		expect(pickRememberedCategory(categories, 8)).toBe(8);
+		expect(pickRememberedCategory(categories, 99)).toBeNull();
+		expect(pickRememberedCategory(categories, null)).toBeNull();
+		expect(pickRememberedCategory(categories, undefined)).toBeNull();
+		expect(pickRememberedCategory([], 7)).toBeNull();
+	});
+
+	it('tolerates unavailable storage', () => {
+		(globalThis as any).localStorage = {
+			getItem: () => {
+				throw new Error('blocked');
+			},
+			setItem: () => {
+				throw new Error('blocked');
+			},
+		};
+		expect(readLastCategory(1)).toBeUndefined();
+		expect(() => writeLastCategory(1, 2)).not.toThrow();
 	});
 });

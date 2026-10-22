@@ -106,13 +106,20 @@ export const getTasks = async (
 	return data;
 };
 
-export const getTasksIndexes = async (categoryId: null | number = null) => {
+export const getTasksIndexes = async (
+	categoryId: null | number = null,
+	workspaceId?: number,
+) => {
+	const query = [
+		categoryId ? `category=${categoryId}` : '',
+		workspaceId ? `workspace_id=${workspaceId}` : '',
+	].filter(Boolean);
 	const {
 		data: {
 			data: { index },
 		},
 	} = await $axios.get(
-		`tasks/indexes${categoryId ? `?category=${categoryId}` : ''}`,
+		`tasks/indexes${query.length ? `?${query.join('&')}` : ''}`,
 	);
 
 	return index;
