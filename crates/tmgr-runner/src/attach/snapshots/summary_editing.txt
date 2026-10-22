@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● claude working 18m │✓ Tests 14 passed                                       ││                                                        │
+   ◌ dev-server wa… 12m │>        ╭ Session summary · TM-644 ────────────────────────────────────────────╮                                 │
+ ✓ tests     exited 52m │         │ claude                                                               │                                 │
+                        │         │                                                                      │                                 │
+                        │         │ - fixed the login redirect                                           │                                 │
+                        │         │ - tests still to run                                                 │                                 │
+                        │         │ Files changed (2): src/login.rs, src/auth.rs                         │                                 │
+                        │         │ Commit: fix login redirect▏                                          │                                 │
+                        │         │                                                                      │                                 │
+                        │         │                                                                      │                                 │
+                        │         │                                                                      │                                 │
+                        │         │                                                                      │                                 │
+                        │         │                                                                      │                                 │
+                        │         │ [ Tab  Done ]  [ Esc  Cancel ]                                       │                                 │
+                        │         │ Enter: new line · Tab: done · Esc: discard edits                     │                                 │
+                        │         ╰──────────────────────────────────────────────────────────────────────╯                                 │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

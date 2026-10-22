@@ -192,6 +192,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Git panel: branch, changes, commits ahead, PR",
         true,
     ),
+    def(
+        Cmd::Summary,
+        b"S",
+        "S",
+        "Session summary: preview, then post to the task",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

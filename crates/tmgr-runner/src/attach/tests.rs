@@ -6290,6 +6290,8 @@ fn chip() -> TaskChip {
         started_s: Some(58),
         workspace: Some("tmgrdev".into()),
         task_id: Some(644),
+        run_id: None,
+        run_ws: None,
     }
 }
 
@@ -7385,4 +7387,306 @@ fn the_bar_sits_on_the_border_row_and_the_caret_stays_off_it() {
         })
         .collect();
     assert!(!last.contains("COPY"), "{last}");
+}
+
+fn draft(text: Option<&str>, target: bool) -> SummaryDraft {
+    SummaryDraft {
+        key: "9-a-1".into(),
+        session: "a".into(),
+        name: "claude".into(),
+        target: target.then(|| PostTarget {
+            task_id: 644,
+            run_id: 9,
+            workspace: None,
+            task_key: "TM-644".into(),
+        }),
+        text: text.map(str::to_string),
+        editing: None,
+        plain: false,
+    }
+}
+
+fn jsonl(lines: &[&str]) -> Vec<String> {
+    lines.iter().map(|l| l.to_string()).collect()
+}
+
+#[test]
+fn the_digest_keeps_prompts_edits_commits_and_prs_but_not_tool_output() {
+    let lines = jsonl(&[
+        r#"{"type":"user","message":{"role":"user","content":"fix the login bug"}}"#,
+        r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"meta noise"}}"#,
+        r#"{"type":"user","message":{"role":"user","content":"<system-reminder>x</system-reminder>"}}"#,
+        r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"output of the tool"}]}}"#,
+        r#"{"type":"assistant","isSidechain":true,"message":{"content":[{"type":"text","text":"side"}]}}"#,
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Opened (https://github.com/o/r/pull/3)."},{"type":"tool_use","name":"Edit","input":{"file_path":"/work/repo/src/login.rs"}},{"type":"tool_use","name":"Write","input":{"file_path":"/home/me/notes/a.md"}},{"type":"tool_use","name":"Bash","input":{"command":"git commit -m \"fix login redirect\""}}]}}"#,
+        "not json",
+    ]);
+    let d =
+        super::summary::digest_lines(lines.iter().map(String::as_str), "/work/repo", "/home/me");
+    assert_eq!(d.prompts, vec!["fix the login bug"]);
+    assert_eq!(d.files, vec!["src/login.rs", "~/notes/a.md"]);
+    assert_eq!(d.commits, vec!["fix login redirect"]);
+    assert_eq!(d.prs, vec!["https://github.com/o/r/pull/3"]);
+    let input = prompt_input(&d);
+    assert!(input.starts_with("BEGIN SESSION") && input.trim_end().ends_with("END SESSION"));
+    assert!(!input.contains("output of the tool") && !input.contains("side"));
+}
+
+#[test]
+fn heredoc_commit_messages_give_their_first_line() {
+    let cmd = "git commit -m \"$(cat <<'EOF'\nfeat: add x\n\nbody\nEOF\n)\"";
+    let line = serde_json::json!({"type":"assistant","message":{"content":[
+        {"type":"tool_use","name":"Bash","input":{"command":cmd}}]}})
+    .to_string();
+    let d = super::summary::digest_lines(std::iter::once(line.as_str()), "", "");
+    assert_eq!(d.commits, vec!["feat: add x"]);
+}
+
+#[test]
+fn absolute_paths_outside_cwd_and_home_do_not_leak_the_user_name() {
+    let line = r#"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/srv/other/projects/x/a.rs"}}]}}"#;
+    let d = super::summary::digest_lines(std::iter::once(line), "/work", "/home/me");
+    assert_eq!(d.files, vec!["…/x/a.rs"]);
+}
+
+#[test]
+fn the_digest_reads_only_the_tail_of_a_big_transcript() {
+    let dir = std::env::temp_dir().join(format!("tmgr-sum-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("t.jsonl");
+    let old = r#"{"type":"user","message":{"role":"user","content":"ancient request"}}"#;
+    let new = r#"{"type":"user","message":{"role":"user","content":"recent request"}}"#;
+    let mut body = String::new();
+    while body.len() < 2 * 1024 * 1024 + 4096 {
+        body.push_str(old);
+        body.push('\n');
+    }
+    body.push_str(new);
+    body.push('\n');
+    std::fs::write(&path, body).unwrap();
+    let d = digest(&dir, &path, "", "").unwrap();
+    assert!(d.prompts.iter().any(|p| p == "recent request"));
+    assert!(d.prompts.len() < 40_000);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+fn fake_value() -> String {
+    ["abcdefgh", "12345678"].concat()
+}
+
+#[test]
+fn secrets_are_scrubbed_from_every_shape() {
+    let pem = format!("-----{} PRIVATE KEY-----", "BEGIN");
+    let pem_end = format!("-----{} PRIVATE KEY-----", "END");
+    let cases = [
+        format!("export {}={} now", "TOKEN", fake_value()),
+        format!(
+            "{{\"{}\": \"{}{}\"}}",
+            "api_key", "sk-", "abcdefghijklmnop12345"
+        ),
+        format!("{}: Bearer abc.def.ghi", "Authorization"),
+        format!("pasted {}{} here", "ghp_", "abcdefghijklmnopqrstuv"),
+        format!("{}: {}", "password", "hunter2hunter2"),
+        format!("{pem}\nMIIEvQIBADANBg\n{pem_end}"),
+    ];
+    for c in cases {
+        let out = scrub(&c);
+        let c = c.as_str();
+        for leaked in [
+            "abcdefgh12345678",
+            "sk-abcdefghijklmnop12345",
+            "abc.def.ghi",
+            "ghp_abcdefghijklmnopqrstuv",
+            "hunter2hunter2",
+            "MIIEvQIBADANBg",
+        ] {
+            assert!(!out.contains(leaked), "{c:?} -> {out:?}");
+        }
+    }
+    assert_eq!(scrub("plain words stay"), "plain words stay");
+}
+
+#[test]
+fn a_haiku_reply_is_stripped_of_links_images_mentions_and_fences() {
+    let (text, tainted) = clean_reply("```\n- fixed [login](https://evil.example/x) @bob <b>hi</b>\n![i](https://evil.example/y.png)\n```");
+    assert!(tainted);
+    for bad in ["evil.example", "@", "<", "```", "https"] {
+        assert!(!text.contains(bad), "{text:?}");
+    }
+    assert!(text.contains("fixed login"));
+    let (clean, tainted) = clean_reply("- did the thing\n- one more");
+    assert!(!tainted);
+    assert_eq!(clean, "- did the thing\n- one more");
+}
+
+#[test]
+fn reference_links_and_bare_hosts_are_flagged_and_dropped() {
+    for bad in [
+        "[1]: //evil.example/p.png",
+        "see www.evil.example now",
+        "![a][1]",
+    ] {
+        let (text, tainted) = clean_reply(bad);
+        assert!(tainted, "{bad}");
+        assert!(!text.contains("evil.example"), "{text}");
+    }
+}
+
+#[test]
+fn editing_ignores_escape_sequences_and_caps_lines() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(Some("x"), true));
+    v.edit_summary(b"e");
+    v.edit_summary(b"\x1b[D");
+    for _ in 0..30 {
+        v.edit_summary(b"\r");
+    }
+    let buf = v.summary.as_ref().unwrap().editing.clone().unwrap();
+    assert_eq!(buf, format!("x{}", "\n".repeat(11)));
+}
+
+#[test]
+fn the_composed_summary_is_prose_then_facts_within_ten_or_so_lines() {
+    let d = Digest {
+        files: (0..20).map(|i| format!("f{i}.rs")).collect(),
+        commits: vec!["a".into(), "b".into(), "c".into(), "d".into(), "e".into()],
+        prs: vec!["https://github.com/o/r/pull/3".into()],
+        ..Digest::default()
+    };
+    let text = compose(Some("- one\n- two\n- three"), &d);
+    let lines: Vec<&str> = text.lines().collect();
+    assert!(lines.len() <= 12, "{text}");
+    assert!(lines[3].starts_with("Files changed (20): f0.rs"));
+    assert!(lines[3].contains("(+12 more)"));
+    assert_eq!(lines[4], "Commit: c");
+    assert!(text.ends_with("PR: https://github.com/o/r/pull/3"));
+    assert_eq!(
+        plain_summary(&Digest::default()),
+        "No file changes, commits or pull requests were found in the session."
+    );
+}
+
+#[test]
+fn the_summary_key_is_free_and_s_opens_a_queued_draft_only_when_asked() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'S')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Summary);
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(b"\x1dS"), vec![Action::Cmd(Cmd::Summary)]);
+    let mut v = two_pane(140);
+    assert!(v.queue_summary(draft(None, true)));
+    assert!(!v.queue_summary(draft(None, true)));
+    assert!(v.summary.is_none());
+    assert!(v.set_summary_text("9-a-1", "- done".into(), false));
+    assert!(v.open_summary());
+    assert_eq!(v.summary.as_ref().unwrap().text.as_deref(), Some("- done"));
+}
+
+#[test]
+fn preview_keys_post_edit_and_skip_and_nothing_posts_without_text_or_target() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(None, true));
+    assert_eq!(v.edit_summary(b"p"), None);
+    assert_eq!(v.edit_summary(b"e"), None);
+    assert!(v.set_summary_text("9-a-1", "- done".into(), false));
+    assert_eq!(v.edit_summary(b"x"), None);
+    assert!(
+        matches!(v.edit_summary(b"p"), Some(SummaryAction::Post(d)) if d.text.as_deref() == Some("- done"))
+    );
+    assert!(v.summary.is_none());
+
+    let mut v = two_pane(140);
+    v.show_summary(draft(Some("- done"), false));
+    assert_eq!(v.edit_summary(b"p"), None);
+    assert_eq!(v.edit_summary(b"\r"), None);
+    assert!(v.summary.is_some());
+    assert_eq!(
+        v.edit_summary(b"\x1b"),
+        Some(SummaryAction::Skip("9-a-1".into()))
+    );
+    assert!(v.summary.is_none());
+}
+
+#[test]
+fn editing_changes_the_text_tab_saves_and_escape_discards() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(Some("- done"), true));
+    v.edit_summary(b"e");
+    v.edit_summary(b"\r");
+    v.edit_summary("- more é".as_bytes());
+    v.edit_summary(b"\x7f");
+    v.edit_summary(b"\t");
+    assert_eq!(
+        v.summary.as_ref().unwrap().text.as_deref(),
+        Some("- done\n- more")
+    );
+    v.edit_summary(b"e");
+    v.edit_summary(b"zzz");
+    v.edit_summary(b"\x1b");
+    assert_eq!(
+        v.summary.as_ref().unwrap().text.as_deref(),
+        Some("- done\n- more")
+    );
+    v.edit_summary(b"e");
+    v.edit_summary(format!("{}={}", "api_key", fake_value()).as_bytes());
+    v.edit_summary(b"\x13");
+    assert!(!v
+        .summary
+        .as_ref()
+        .unwrap()
+        .text
+        .as_deref()
+        .unwrap()
+        .contains("abcdefgh12345678"));
+}
+
+#[test]
+fn clicking_post_returns_the_action_and_outside_clicks_do_nothing() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(Some("- done"), true));
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let screen = draw(&v, &screens(), AREA.width, AREA.height);
+    let (row, col) = screen
+        .lines()
+        .enumerate()
+        .find_map(|(y, l)| {
+            l.find("Post ]")
+                .map(|x| (y as u16, l[..x].chars().count() as u16))
+        })
+        .unwrap();
+    let out = v.on_mouse(AREA, ev(0, 1, 1, false), &info);
+    assert_eq!(out.summary, None);
+    assert!(v.summary.is_some());
+    v.on_mouse(AREA, ev(0, 1, 1, true), &info);
+    let out = v.on_mouse(AREA, ev(0, col, row, false), &info);
+    assert!(matches!(out.summary, Some(SummaryAction::Post(_))));
+    assert!(v.summary.is_none());
+}
+
+#[test]
+fn the_next_queued_summary_waits_for_an_explicit_open() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(Some("- one"), true));
+    let mut second = draft(Some("- two"), true);
+    second.key = "9-a-2".into();
+    v.queue_summary(second);
+    v.edit_summary(b"s");
+    assert!(v.summary.is_none());
+    assert_eq!(v.edit_summary(b"p"), None);
+    assert!(v.open_summary());
+    assert_eq!(v.summary.as_ref().unwrap().key, "9-a-2");
+}
+
+#[test]
+fn snapshot_summary_preview_states() {
+    let mut v = two_pane(140);
+    v.show_summary(draft(None, true));
+    assert_snapshot("summary_generating", &draw(&v, &screens(), 140, 24));
+    v.set_summary_text("9-a-1", "- fixed the login redirect\n- tests still to run\nFiles changed (2): src/login.rs, src/auth.rs\nCommit: fix login redirect".into(), false);
+    assert_snapshot("summary_ready", &draw(&v, &screens(), 140, 24));
+    v.edit_summary(b"e");
+    assert_snapshot("summary_editing", &draw(&v, &screens(), 140, 24));
+    let mut v = two_pane(140);
+    v.show_summary(draft(Some("Files changed (1): a.rs"), false));
+    assert_snapshot("summary_no_task", &draw(&v, &screens(), 140, 24));
 }

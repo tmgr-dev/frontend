@@ -15,6 +15,7 @@ mod qmenu;
 mod render;
 mod signal;
 mod status;
+mod summary;
 mod theme;
 pub(crate) mod title;
 mod tree;
@@ -48,6 +49,10 @@ pub use render::{cursor, render, ScreenSource};
 pub use signal::{deliver, detect, Need, NeedKind, Notifier, SignalSettings, SignalTracker};
 pub use status::{
     activity_label, peek_lines, Peek, PeekEdit, SessionStatus, StatusLine, StatusScan, SubAgent,
+};
+pub use summary::{
+    clamp as clamp_summary, clean_reply, compose, digest, plain_summary, prompt_input, scrub,
+    Digest, PostTarget, SummaryAction, SummaryDraft, PROMPT as SUMMARY_PROMPT,
 };
 pub use theme::{kind_for_background, parse_osc11, ThemeKind, OSC11_QUERY};
 pub use title::{age_label, clip, locate, AgentTitle, Format, Source, TitleScan};
