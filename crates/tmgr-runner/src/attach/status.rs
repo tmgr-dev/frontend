@@ -696,7 +696,7 @@ fn mask_userinfo(word: &str) -> Option<String> {
     (!userinfo.contains('/')).then(|| format!("{scheme}://…@{host}"))
 }
 
-pub(crate) fn mask_secrets(text: &str) -> String {
+pub fn mask_secrets(text: &str) -> String {
     let mut out = Vec::new();
     let mut mask_next = 0;
     for word in text.split(' ') {

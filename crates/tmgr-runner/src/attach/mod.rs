@@ -15,6 +15,7 @@ mod notes;
 mod palette;
 mod place;
 mod prompts;
+mod push;
 mod qmenu;
 mod render;
 mod signal;
@@ -60,11 +61,13 @@ pub use palette::{Palette, PaletteEdit, PaletteEntry, PaletteMode, RowView};
 pub use place::{fit, probe, tail2, Loc};
 pub use prompts::{defaults as default_prompts, paste_bytes, Prompt, PromptForm};
 pub use prompts::{parse as parse_prompts, render as render_prompts};
+pub use push::{PushEvent, PushKind, PushSettings, PushTracker};
 pub use qmenu::{find_question, goto_target, GotoMark, QButton, QEdit, QMenu};
 pub use render::{cursor, render, ScreenSource};
 pub use signal::{deliver, detect, Need, NeedKind, Notifier, SignalSettings, SignalTracker};
 pub use status::{
-    activity_label, peek_lines, Peek, PeekEdit, SessionStatus, StatusLine, StatusScan, SubAgent,
+    activity_label, mask_secrets, peek_lines, Peek, PeekEdit, SessionStatus, StatusLine,
+    StatusScan, SubAgent,
 };
 pub use summary::{
     clamp as clamp_summary, clean_reply, compose, digest, plain_summary, prompt_input, scrub,

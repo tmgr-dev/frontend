@@ -8800,3 +8800,253 @@ fn loaded_text_is_cleaned_and_capped() {
     assert_eq!(s.lines[0], "a[0mb");
     assert!(s.text().len() <= 64 * 1024);
 }
+
+const MIN: u64 = 60_000;
+
+fn push_on() -> PushSettings {
+    PushSettings {
+        long_min: Some(10),
+        error: true,
+        blocked_min: Some(5),
+        quiet: None,
+        debounce_min: 10,
+    }
+}
+
+fn nobody(_: &str) -> bool {
+    false
+}
+
+fn push_view() -> ViewState {
+    let mut v = ViewState::new(four(), "spark");
+    v.sessions[0].state.since_ms = 100 * MIN;
+    v.sessions[1].state.since_ms = 100 * MIN;
+    v.sessions[2].state.since_ms = 100 * MIN;
+    v.sessions[3].state.since_ms = 100 * MIN;
+    v.sessions[3].state.kind = StateKind::Working;
+    v
+}
+
+#[test]
+fn everything_is_off_by_default() {
+    assert!(!PushSettings::default().enabled());
+    let mut v = push_view();
+    let mut t = PushTracker::new();
+    let off = PushSettings::default();
+    assert!(t.update(&v, &off, 100 * MIN, 600, &nobody).is_empty());
+    v.sessions[0].state.kind = StateKind::Waiting;
+    v.sessions[0].state.since_ms = 130 * MIN;
+    assert!(t.update(&v, &off, 130 * MIN, 600, &nobody).is_empty());
+}
+
+#[test]
+fn a_long_turn_that_ends_pushes_once_and_a_short_one_does_not() {
+    let mut v = push_view();
+    v.sessions[1].state.kind = StateKind::Working;
+    let mut t = PushTracker::new();
+    assert!(t.update(&v, &push_on(), 100 * MIN, 600, &nobody).is_empty());
+    v.sessions[0].state.kind = StateKind::Waiting;
+    v.sessions[0].state.since_ms = 125 * MIN;
+    v.sessions[1].state.kind = StateKind::Waiting;
+    v.sessions[1].state.since_ms = 103 * MIN;
+    let ev: Vec<_> = t
+        .update(&v, &push_on(), 125 * MIN, 600, &nobody)
+        .into_iter()
+        .filter(|e| e.kind == PushKind::LongTurn)
+        .collect();
+    assert_eq!(ev.len(), 1);
+    assert_eq!(ev[0].session, "a");
+    assert_eq!(ev[0].kind, PushKind::LongTurn);
+    assert_eq!(ev[0].reason, "finished a turn after 25 min");
+    assert!(t
+        .update(&v, &push_on(), 126 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.kind != PushKind::LongTurn));
+}
+
+#[test]
+fn a_session_first_seen_already_waiting_never_pushes_a_finished_turn() {
+    let mut v = push_view();
+    v.sessions[0].state.kind = StateKind::Waiting;
+    let mut t = PushTracker::new();
+    assert!(t
+        .update(&v, &push_on(), 300 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.session != "a"));
+}
+
+#[test]
+fn an_error_exit_pushes_but_a_clean_or_user_stopped_exit_does_not() {
+    let mut v = push_view();
+    let mut t = PushTracker::new();
+    t.update(&v, &push_on(), 100 * MIN, 600, &nobody);
+    v.sessions[3].state.kind = StateKind::Exited;
+    v.sessions[3].state.exit_code = Some(2);
+    let ev = t.update(&v, &push_on(), 101 * MIN, 600, &nobody);
+    assert_eq!(ev.len(), 1);
+    assert_eq!(
+        (ev[0].kind, ev[0].reason.as_str()),
+        (PushKind::Error, "exited with code 2")
+    );
+
+    let mut v = push_view();
+    let mut t = PushTracker::new();
+    t.update(&v, &push_on(), 100 * MIN, 600, &nobody);
+    v.sessions[3].state.kind = StateKind::Exited;
+    v.sessions[3].state.exit_code = Some(0);
+    assert!(t.update(&v, &push_on(), 101 * MIN, 600, &nobody).is_empty());
+    v.sessions[3].state.exit_code = Some(143);
+    assert!(t
+        .update(&v, &push_on(), 101 * MIN, 600, &|id| id == "d")
+        .is_empty());
+}
+
+#[test]
+fn a_block_pushes_only_after_the_wait_and_only_once_per_stretch() {
+    let v = push_view();
+    let mut t = PushTracker::new();
+    assert!(t.update(&v, &push_on(), 102 * MIN, 600, &nobody).is_empty());
+    let ev = t.update(&v, &push_on(), 106 * MIN, 600, &nobody);
+    let blocked: Vec<_> = ev.iter().filter(|e| e.session == "c").collect();
+    assert_eq!(blocked.len(), 1);
+    assert_eq!(blocked[0].kind, PushKind::Blocked);
+    assert_eq!(blocked[0].reason, "is waiting for permission, 6 min ago");
+    assert!(t
+        .update(&v, &push_on(), 120 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.session != "c"));
+}
+
+#[test]
+fn quiet_hours_and_the_debounce_hold_pushes_back() {
+    let mut s = push_on();
+    s.quiet = Some((22 * 60, 8 * 60));
+    let v = push_view();
+    let mut t = PushTracker::new();
+    assert!(t.update(&v, &s, 120 * MIN, 23 * 60, &nobody).is_empty());
+    let ev = t.update(&v, &s, 121 * MIN, 9 * 60, &nobody);
+    assert!(ev.iter().any(|e| e.kind == PushKind::Blocked));
+
+    let mut v = push_view();
+    v.sessions[1].state.kind = StateKind::Working;
+    let mut t = PushTracker::new();
+    t.update(&v, &push_on(), 100 * MIN, 600, &nobody);
+    v.sessions[1].state.kind = StateKind::Waiting;
+    v.sessions[1].state.since_ms = 120 * MIN;
+    assert_eq!(
+        t.update(&v, &push_on(), 120 * MIN, 600, &nobody)
+            .iter()
+            .filter(|e| e.kind == PushKind::LongTurn)
+            .count(),
+        1
+    );
+    v.sessions[1].state.kind = StateKind::Working;
+    v.sessions[1].state.since_ms = 121 * MIN;
+    t.update(&v, &push_on(), 121 * MIN, 600, &nobody);
+    v.sessions[1].state.kind = StateKind::Waiting;
+    v.sessions[1].state.since_ms = 131 * MIN;
+    let wide = PushSettings {
+        debounce_min: 30,
+        ..push_on()
+    };
+    let again = t.update(&v, &wide, 131 * MIN, 600, &nobody);
+    assert!(again.iter().all(|e| e.kind != PushKind::LongTurn));
+}
+
+#[test]
+fn a_question_counts_as_blocked_but_plain_waiting_does_not() {
+    let mut v = push_view();
+    v.sessions[2].state.kind = StateKind::Waiting;
+    v.status.insert(
+        "b".into(),
+        SessionStatus {
+            ask: Some("Which database should I use? password: hunter2hunter2".into()),
+            ..Default::default()
+        },
+    );
+    let mut t = PushTracker::new();
+    t.update(&v, &push_on(), 110 * MIN, 600, &nobody);
+    let ev = t.update(&v, &push_on(), 116 * MIN, 600, &nobody);
+    let mine: Vec<_> = ev.iter().filter(|e| e.session == "b").collect();
+    assert_eq!(mine.len(), 1);
+    assert_eq!(mine[0].reason, "asked a question, 6 min ago");
+    assert!(ev
+        .iter()
+        .all(|e| !e.reason.contains("database") && !e.reason.contains("hunter")));
+    let mut quiet = push_view();
+    quiet.sessions[2].state.kind = StateKind::Working;
+    assert!(PushTracker::new()
+        .update(&quiet, &push_on(), 300 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.session != "b"));
+}
+
+#[test]
+fn a_debounced_block_still_pushes_once_the_debounce_ends() {
+    let mut s = push_on();
+    s.blocked_min = Some(5);
+    s.debounce_min = 30;
+    let v = push_view();
+    let mut t = PushTracker::new();
+    assert!(t
+        .update(&v, &s, 106 * MIN, 600, &nobody)
+        .iter()
+        .any(|e| e.session == "c"));
+    assert!(t.update(&v, &s, 110 * MIN, 600, &nobody).is_empty());
+    let mut v2 = push_view();
+    v2.sessions[2].state.since_ms = 108 * MIN;
+    assert!(t
+        .update(&v2, &s, 114 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.session != "c"));
+    assert!(t
+        .update(&v2, &s, 137 * MIN, 600, &nobody)
+        .iter()
+        .any(|e| e.session == "c"));
+}
+
+#[test]
+fn a_question_is_timed_from_when_it_appeared_not_from_the_turn_start() {
+    let mut v = push_view();
+    v.sessions[2].state.kind = StateKind::Working;
+    v.sessions[0].state.since_ms = 0;
+    let mut t = PushTracker::new();
+    t.update(&v, &push_on(), 200 * MIN, 600, &nobody);
+    v.status.insert(
+        "a".into(),
+        SessionStatus {
+            ask: Some("Which one?".into()),
+            ..Default::default()
+        },
+    );
+    assert!(t
+        .update(&v, &push_on(), 201 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.session != "a"));
+    let ev = t.update(&v, &push_on(), 207 * MIN, 600, &nobody);
+    let a: Vec<_> = ev.iter().filter(|e| e.session == "a").collect();
+    assert_eq!(a.len(), 1);
+    assert_eq!(a[0].reason, "asked a question, 6 min ago");
+}
+
+#[test]
+fn a_block_inside_a_turn_counts_and_signal_deaths_do_not_push() {
+    let mut v = push_view();
+    let mut t = PushTracker::new();
+    t.update(&v, &push_on(), 100 * MIN, 600, &nobody);
+    v.sessions[0].state.kind = StateKind::Blocked;
+    v.sessions[0].state.since_ms = 105 * MIN;
+    t.update(&v, &push_on(), 105 * MIN, 600, &nobody);
+    v.sessions[0].state.kind = StateKind::Waiting;
+    v.sessions[0].state.since_ms = 130 * MIN;
+    let ev = t.update(&v, &push_on(), 130 * MIN, 600, &nobody);
+    assert!(ev
+        .iter()
+        .any(|e| e.session == "a" && e.kind == PushKind::LongTurn));
+    v.sessions[3].state.kind = StateKind::Exited;
+    v.sessions[3].state.exit_code = Some(143);
+    assert!(t
+        .update(&v, &push_on(), 131 * MIN, 600, &nobody)
+        .iter()
+        .all(|e| e.kind != PushKind::Error));
+}
