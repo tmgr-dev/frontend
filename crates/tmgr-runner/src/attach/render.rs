@@ -739,6 +739,19 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
         .title(pane_title(p, st))
         .render(p.outer, buf);
     draw_header_buttons(buf, p, st);
+    if let (Some((text, on)), Some(r)) = (
+        super::broadcast::marker(p, st),
+        super::broadcast::marker_rect(p, st),
+    ) {
+        let style = if on {
+            Style::new()
+                .fg(colors().warn)
+                .add_modifier(Modifier::BOLD | Modifier::REVERSED)
+        } else {
+            dim()
+        };
+        put(buf, r.x, r.y, &text, style, r.width);
+    }
     let inner = p.content();
     if inner.is_empty() {
         return;
@@ -1011,6 +1024,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
     (
         HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask]),
         "rename (tmgr name wins) / open its task",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Broadcast, Cmd::BroadcastMark]),
+        "broadcast typing to several panes / pick panes",
     ),
     (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),
     (

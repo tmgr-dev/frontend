@@ -1,0 +1,14 @@
+╭ 1  claude · working ────────────────────────────── ⏸ ■ ✕ ╮
+│● Reading src/checkout/Form.vue                           │
+│I will add an Apple Pay button next to the card form, show│
+│✓ Tests 14 passed                                         │
+│>                                                         │
+╰ BROADCAST ───────────────────────────────────────────────╯
+╭ 2  dev-server · waiting ────────────────────────── ⏸ ■ ✕ ╮
+│$ pnpm dev                                                │
+│  VITE ready in 412 ms                                    │
+│                                                          │
+│                                                          │
+│                                                          │
+╰ only here ───────────────────────────────────────────────╯
+ broadcast on for 2 panes, Ctrl-] m picks panes, Ctrl-] B st

@@ -57,6 +57,8 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::NewSession => "create start chat agent",
         Cmd::Questions => "asked pocket answer ignore reply",
         Cmd::OpenTask => "ticket issue browser desktop chip",
+        Cmd::Broadcast => "all panes same prompt send many fan out",
+        Cmd::BroadcastMark => "select target pane broadcast",
         Cmd::NeedsYou => "attention waiting permission question alert",
         Cmd::Subagents => "agents tasks background peek",
         _ => "",

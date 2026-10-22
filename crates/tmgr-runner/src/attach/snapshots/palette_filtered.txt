@@ -14,11 +14,11 @@
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
                   │ Make the sidebar wider                              Ctrl-] > │                 │
                   │ Make the sidebar narrower                           Ctrl-] < │                 │
+                  │ Pick or drop the focused pane as a broadcast target Ctrl-] m │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ Open the focused session's task                     Ctrl-] t │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
                   │ Unanswered questions from the agents                Ctrl-] q │                 │
-                  │ Show or hide the focused session's subagents        Ctrl-] u │                 │
- + New session    │ Jump to a session that needs you                    Ctrl-] ! │─────────────────╯
+ + New session    │ Show or hide the focused session's subagents        Ctrl-] u │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

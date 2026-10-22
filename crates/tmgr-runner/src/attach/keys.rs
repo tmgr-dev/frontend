@@ -45,6 +45,8 @@ pub enum Cmd {
     Subagents,
     NeedsYou,
     OpenTask,
+    Broadcast,
+    BroadcastMark,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

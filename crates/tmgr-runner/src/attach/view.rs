@@ -1,3 +1,4 @@
+use super::broadcast::Broadcast;
 use super::chip::TaskChip;
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
@@ -136,6 +137,7 @@ pub struct ViewState {
     pub new_session: Option<NewSession>,
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
+    pub broadcast: Option<Broadcast>,
     pub new_tasks: Vec<TaskOpt>,
     pub new_tasks_note: Option<String>,
     pub sidebar_focus: Option<SidebarItem>,
@@ -358,6 +360,7 @@ impl ViewState {
             new_session: None,
             new_kind: None,
             new_place: None,
+            broadcast: None,
             new_tasks: Vec::new(),
             new_tasks_note: None,
             sidebar_focus: None,
@@ -1199,6 +1202,8 @@ impl ViewState {
                     self.toggle_subs(&id);
                 }
             }
+            Cmd::Broadcast => self.toggle_broadcast(),
+            Cmd::BroadcastMark => self.mark_broadcast(),
             Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession | Cmd::OpenTask => {}
         }
     }
@@ -1208,6 +1213,7 @@ impl ViewState {
             return;
         }
         self.sessions.retain(|s| s.id != old);
+        self.broadcast_rename(old, new);
         if self.shells.iter().any(|s| s == old) {
             self.shells.retain(|s| s != old);
             if !self.shells.iter().any(|s| s == new) {
@@ -1396,8 +1402,10 @@ impl ViewState {
         if !ev.is_left_press() || self.zoom {
             return false;
         }
-        if matches!(self.hit(area, ev.col, ev.row), Hit::Button(..))
-            || self.on_sidebar_border(area, ev.col, ev.row)
+        if matches!(
+            self.hit(area, ev.col, ev.row),
+            Hit::Button(..) | Hit::Broadcast(_)
+        ) || self.on_sidebar_border(area, ev.col, ev.row)
         {
             return false;
         }
@@ -1514,6 +1522,13 @@ impl ViewState {
                         }
                     }
                 }
+                if row + 1 == p.outer.bottom() {
+                    if let Some(r) = super::broadcast::marker_rect(p, self) {
+                        if contains(r, col, row) {
+                            return Hit::Broadcast(p.session.clone());
+                        }
+                    }
+                }
                 let Some(idx) = self.panes.iter().position(|id| *id == p.session) else {
                     return Hit::None;
                 };
@@ -1534,6 +1549,7 @@ impl ViewState {
             | Hit::Questions(_)
             | Hit::Subs(_)
             | Hit::Chip(_)
+            | Hit::Broadcast(_)
             | Hit::Sub(..)
             | Hit::NewSession) => Some(h),
             _ => None,
@@ -1646,6 +1662,12 @@ impl ViewState {
             Hit::Chip(id) => {
                 if ev.is_left_press() {
                     out.open_task = Some(id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Broadcast(id) => {
+                if ev.is_left_press() {
+                    self.toggle_broadcast_pick(&id);
                     out.redraw = true;
                 }
             }
@@ -2082,6 +2104,7 @@ pub enum Hit {
     Questions(String),
     Subs(String),
     Chip(String),
+    Broadcast(String),
     Sub(String, String),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },

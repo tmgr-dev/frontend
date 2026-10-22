@@ -2232,10 +2232,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_32_rows() {
+fn help_shows_the_mouse_section_at_33_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 32);
+    let text = draw(&v, &screens(), 140, 33);
     assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("Shift-drag selects"));
     assert!(text.contains("? again closes this box"));
@@ -2774,10 +2774,10 @@ fn clicking_outside_the_palette_closes_it_and_swallows_the_release() {
     let mut v = ViewState::new(four(), "");
     open_palette(&mut v);
     let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
-    let out = v.on_mouse(AREA, ev(0, 60, 1, false), &info);
+    let out = v.on_mouse(AREA, ev(0, 1, 1, false), &info);
     assert_eq!(out.palette, None);
     assert!(v.palette.is_none());
-    let out = v.on_mouse(AREA, ev(0, 60, 1, true), &info);
+    let out = v.on_mouse(AREA, ev(0, 1, 1, true), &info);
     assert_eq!(out.forward, None);
     assert_eq!(v.grab, None);
 }
@@ -6415,4 +6415,209 @@ fn the_chip_coexists_with_the_question_badge_and_activity() {
     v.chips.insert("a".into(), chip());
     let text = draw(&v, &screens(), 140, 22);
     assert!(text.lines().next().unwrap().contains("TM-644"), "{text}");
+}
+
+fn three_panes() -> ViewState {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 160;
+    assert!(v.split_focused(SplitDir::Right, "b"));
+    assert!(v.split_focused(SplitDir::Right, "c"));
+    v.focus_pane(0);
+    v
+}
+
+fn need(v: &mut ViewState, id: &str) {
+    v.needs.insert(
+        id.into(),
+        Need {
+            kind: NeedKind::Permission,
+            reason: "Run rm".into(),
+        },
+    );
+}
+
+#[test]
+fn broadcast_is_off_by_default_and_never_saved() {
+    let mut v = three_panes();
+    assert!(v.broadcast.is_none());
+    assert!(v.broadcast_receivers().is_empty());
+    let before = serde_json::to_string(&v.prefs()).unwrap();
+    v.apply(Cmd::Broadcast);
+    assert!(v.broadcast.is_some());
+    assert_eq!(serde_json::to_string(&v.prefs()).unwrap(), before);
+    let mut fresh = ViewState::new(four(), "local");
+    fresh.apply_prefs(&v.prefs());
+    assert!(fresh.broadcast.is_none());
+    v.apply(Cmd::Broadcast);
+    assert!(v.broadcast.is_none());
+    assert_eq!(v.notice.as_deref(), Some("broadcast off"));
+}
+
+#[test]
+fn broadcast_key_is_shift_b_and_mark_is_m() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'B']), vec![Action::Cmd(Cmd::Broadcast)]);
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'm']), vec![Action::Cmd(Cmd::BroadcastMark)]);
+}
+
+#[test]
+fn all_visible_skips_blocked_exited_and_needs_you_panes() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    assert_eq!(v.broadcast_receivers(), ["a", "b"]);
+    assert_eq!(v.broadcast_peers("a"), ["b"]);
+    need(&mut v, "b");
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+    assert!(v.broadcast_peers("a").is_empty());
+}
+
+#[test]
+fn a_hidden_pane_never_receives() {
+    let mut v = ViewState::new(four(), "local");
+    v.apply(Cmd::Broadcast);
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+}
+
+#[test]
+fn picking_panes_starts_from_the_current_targets_and_can_include_a_needs_you_pane() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    need(&mut v, "b");
+    v.apply(Cmd::BroadcastMark);
+    assert!(v.broadcast_receivers().is_empty());
+    v.focus_pane(1);
+    v.apply(Cmd::BroadcastMark);
+    assert_eq!(v.broadcast_receivers(), ["b"]);
+    v.focus_pane(2);
+    v.apply(Cmd::BroadcastMark);
+    assert_eq!(v.broadcast_receivers(), ["b", "c"]);
+    assert_eq!(v.broadcast_peers("b"), ["c"]);
+    assert!(v.broadcast_peers("a").is_empty());
+}
+
+#[test]
+fn a_carried_pane_that_starts_asking_stops_receiving_after_a_pick() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    v.apply(Cmd::BroadcastMark);
+    v.apply(Cmd::BroadcastMark);
+    assert_eq!(v.broadcast_receivers(), ["a", "b"]);
+    need(&mut v, "b");
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+}
+
+#[test]
+fn an_open_question_or_ask_blocks_even_when_signals_are_filtered_out() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    v.status.insert(
+        "b".into(),
+        SessionStatus {
+            ask: Some("Which one?".into()),
+            ..Default::default()
+        },
+    );
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+}
+
+#[test]
+fn plain_shells_are_left_out_unless_picked() {
+    let mut v = three_panes();
+    v.shells.push("b".into());
+    v.apply(Cmd::Broadcast);
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+    v.focus_pane(1);
+    v.apply(Cmd::BroadcastMark);
+    assert_eq!(v.broadcast_receivers(), ["a", "b"]);
+}
+
+#[test]
+fn zoom_leaves_only_the_visible_pane() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    v.apply(Cmd::Zoom);
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+    assert!(v.broadcast_peers("a").is_empty());
+}
+
+#[test]
+fn typing_in_an_unmarked_pane_goes_nowhere_else() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    v.apply(Cmd::BroadcastMark);
+    assert!(!v.broadcast_marked("a"));
+    assert!(v.broadcast_peers("a").is_empty());
+}
+
+#[test]
+fn a_resumed_session_keeps_its_pick() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    v.apply(Cmd::BroadcastMark);
+    v.replace_session("a", "z");
+    assert!(v.broadcast.as_ref().unwrap().off.contains(&"z".to_string()));
+}
+
+#[test]
+fn peers_only_get_text_enter_tab_and_backspace() {
+    assert_eq!(peer_bytes(b"fix it\r"), b"fix it\r");
+    assert_eq!(peer_bytes("héllo ✓".as_bytes()), "héllo ✓".as_bytes());
+    assert_eq!(
+        peer_bytes(b"\x03\x04\x1b\x1b[Zx\x1b[A\x1bOP\t\x7f"),
+        b"x\t\x7f"
+    );
+    assert!(peer_bytes(b"\xff\xfe").is_empty());
+}
+
+#[test]
+fn an_exited_pane_is_never_a_target_even_when_picked() {
+    let mut v = three_panes();
+    assert!(v.split_focused(SplitDir::Right, "d"));
+    v.apply(Cmd::Broadcast);
+    v.toggle_broadcast_pick("d");
+    assert!(!v.broadcast_marked("d"));
+}
+
+#[test]
+fn marking_while_off_does_nothing() {
+    let mut v = three_panes();
+    v.apply(Cmd::BroadcastMark);
+    assert!(v.broadcast.is_none());
+    assert_eq!(
+        v.notice.as_deref(),
+        Some("broadcast is off, Ctrl-] B turns it on")
+    );
+}
+
+#[test]
+fn clicking_the_marker_toggles_that_pane() {
+    let mut v = three_panes();
+    v.apply(Cmd::Broadcast);
+    let lay = layout(AREA, &v);
+    let p = &lay.panes[1];
+    let r = super::broadcast::marker_rect(p, &v).unwrap();
+    let out = at(&mut v, 0, r.x + 1, r.y, false);
+    assert!(out.redraw);
+    assert_eq!(v.broadcast_receivers(), ["a"]);
+    at(&mut v, 0, r.x + 1, r.y, true);
+    let out = at(&mut v, 0, r.x + 1, r.y, false);
+    assert!(out.redraw);
+    assert_eq!(v.broadcast_receivers(), ["a", "b"]);
+}
+
+#[test]
+fn snapshot_broadcast_markers() {
+    let mut v = two_pane(140);
+    v.apply(Cmd::Broadcast);
+    v.apply(Cmd::BroadcastMark);
+    assert_snapshot("broadcast_wide", &draw(&v, &screens(), 140, 16));
+}
+
+#[test]
+fn snapshot_broadcast_narrow_panes_use_short_markers() {
+    let mut v = two_pane(60);
+    v.apply(Cmd::Broadcast);
+    v.apply(Cmd::BroadcastMark);
+    assert_snapshot("broadcast_narrow", &draw(&v, &screens(), 60, 14));
 }

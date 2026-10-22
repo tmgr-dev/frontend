@@ -42,8 +42,8 @@ use tmgr_ipc::api::{
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
-    parse_osc11, probe, render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd, Confirm,
-    Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier,
+    parse_osc11, peer_bytes, probe, render, reset_modes, Action, AgentTitle, AttentionTracker, Cmd,
+    Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier,
     PaletteEdit, PaletteEntry, PaneInfo, Place, QEdit, RenameEdit, ScreenSource, ScrollState,
     SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
     TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
@@ -264,6 +264,7 @@ struct App {
     resuming: HashMap<String, Instant>,
     shell_ids: HashSet<String>,
     paste_to: Option<String>,
+    paste_peers: Vec<String>,
     last_interrupt: Option<(String, Instant)>,
     dirty: bool,
     size: (u16, u16),
@@ -1488,6 +1489,14 @@ impl App {
         self.writer.input(session, data)
     }
 
+    fn broadcast_peers(&self, primary: &str) -> Vec<String> {
+        self.view
+            .broadcast_peers(primary)
+            .into_iter()
+            .filter(|id| !self.creating.contains_key(id))
+            .collect()
+    }
+
     fn bracketed(&self, session: &str) -> bool {
         self.cache
             .snapshot(session)
@@ -1686,6 +1695,10 @@ impl App {
                             self.hold_typed(&id, &data);
                         } else {
                             self.send_to(&id, &data)?;
+                            let typed = peer_bytes(&data);
+                            for peer in self.broadcast_peers(&id) {
+                                self.send_to(&peer, &typed)?;
+                            }
                         }
                     }
                 }
@@ -1705,16 +1718,20 @@ impl App {
                     let idx = self.view.paste_target(self.area());
                     self.view.focus_pane(idx);
                     if let Some(id) = self.view.focused_session().map(str::to_string) {
-                        let mut out = Vec::new();
-                        let wrap = self.bracketed(&id);
-                        if wrap {
-                            out.extend_from_slice(b"\x1b[200~");
+                        let mut ids = vec![id.clone()];
+                        ids.extend(self.broadcast_peers(&id));
+                        for id in ids {
+                            let mut out = Vec::new();
+                            let wrap = self.bracketed(&id);
+                            if wrap {
+                                out.extend_from_slice(b"\x1b[200~");
+                            }
+                            out.extend_from_slice(&data);
+                            if wrap {
+                                out.extend_from_slice(b"\x1b[201~");
+                            }
+                            self.send_to(&id, &out)?;
                         }
-                        out.extend_from_slice(&data);
-                        if wrap {
-                            out.extend_from_slice(b"\x1b[201~");
-                        }
-                        self.send_to(&id, &out)?;
                     }
                 }
                 Action::Paste { data, start, end } => {
@@ -1724,22 +1741,44 @@ impl App {
                         let idx = self.view.paste_target(self.area());
                         self.view.focus_pane(idx);
                         self.paste_to = self.view.focused_session().map(str::to_string);
+                        self.paste_peers = match &self.paste_to {
+                            Some(id) => self.broadcast_peers(id),
+                            None => Vec::new(),
+                        };
                     }
                     let Some(id) = self.paste_to.clone() else {
                         continue;
                     };
-                    let mut body: &[u8] = &data;
-                    if !self.bracketed(&id) {
-                        if start {
-                            body = &body[body.len().min(6)..];
-                        }
-                        if end {
-                            body = &body[..body.len().saturating_sub(6)];
+                    let live = self.broadcast_peers(&id);
+                    let dropped: Vec<String> = self
+                        .paste_peers
+                        .iter()
+                        .filter(|p| !live.contains(p))
+                        .cloned()
+                        .collect();
+                    for peer in dropped {
+                        self.paste_peers.retain(|p| *p != peer);
+                        if self.bracketed(&peer) {
+                            self.send_to(&peer, b"\x1b[201~")?;
                         }
                     }
-                    self.send_to(&id, body)?;
+                    let mut ids = vec![id];
+                    ids.extend(self.paste_peers.clone());
+                    for id in ids {
+                        let mut body: &[u8] = &data;
+                        if !self.bracketed(&id) {
+                            if start {
+                                body = &body[body.len().min(6)..];
+                            }
+                            if end {
+                                body = &body[..body.len().saturating_sub(6)];
+                            }
+                        }
+                        self.send_to(&id, body)?;
+                    }
                     if end {
                         self.paste_to = None;
+                        self.paste_peers.clear();
                     }
                 }
                 Action::Mouse(ev) => {
@@ -1937,10 +1976,15 @@ impl App {
             self.writer.set_sessions(&want)?;
             self.watched = Some(want);
         }
-        let panes = self.view.panes();
+        let panes = self.view.panes().to_vec();
         self.sent_sizes.retain(|id, _| panes.contains(id));
         if self.paste_to.as_ref().is_some_and(|id| !panes.contains(id)) {
             self.paste_to = None;
+            for peer in std::mem::take(&mut self.paste_peers) {
+                if self.bracketed(&peer) {
+                    self.send_to(&peer, b"\x1b[201~")?;
+                }
+            }
         }
         if self
             .last_interrupt
@@ -2370,6 +2414,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         stopped: HashSet::new(),
         resuming: HashMap::new(),
         paste_to: None,
+        paste_peers: Vec::new(),
         last_interrupt: None,
         dirty: true,
         size: (0, 0),
