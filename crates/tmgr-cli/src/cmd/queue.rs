@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::time::Duration;
+use tmgr_core::api::Client;
 use tmgr_core::approval::{AllowFile, Rollback};
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize;
@@ -1038,6 +1039,62 @@ pub(crate) fn fresh_look(ctx: &Ctx, rule: &Rule, workspace_id: i64, task_id: i64
     )
 }
 
+pub(crate) struct FreshShared {
+    statuses: Vec<tmgr_core::models::Status>,
+    me: i64,
+}
+
+pub(crate) fn fresh_shared(client: &Client, workspace_id: i64) -> Result<FreshShared> {
+    Ok(FreshShared {
+        statuses: client.statuses(workspace_id)?,
+        me: client
+            .current_user_id()?
+            .ok_or_else(|| Error::auth("cannot tell which account is logged in"))?,
+    })
+}
+
+pub(crate) fn fresh_look_shared(
+    client: &Client,
+    rule: &Rule,
+    task_id: i64,
+    shared: &FreshShared,
+) -> Result<Fresh> {
+    cloud_fresh(client, rule, task_id, shared, &[wanted_kind(rule)])
+}
+
+fn cloud_fresh(
+    client: &Client,
+    rule: &Rule,
+    id: i64,
+    shared: &FreshShared,
+    kinds: &[&str],
+) -> Result<Fresh> {
+    let t = client.task_by_id(u64::try_from(id).map_err(|_| Error::usage("bad task id"))?)?;
+    let status_ok = shared
+        .statuses
+        .iter()
+        .any(|s| Some(s.id) == t.status_id && kinds.contains(&s.kind.as_str()));
+    let runs = match client.agent_work(t.id) {
+        Ok(body) => running_agents_of(&body),
+        Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
+        Err(e) => return Err(e),
+    };
+    let persona_json = json!({"persona_assignees": t.persona_assignees});
+    Ok(assess(Facts {
+        rule_persona: &rule.persona,
+        me: shared.me,
+        owners: owners_of(&persona_json, &rule.persona),
+        assignees: t
+            .assignees
+            .iter()
+            .map(|p| (p.id, p.name.clone().unwrap_or_else(|| "unknown".into())))
+            .collect(),
+        personas: personas_of(&persona_json),
+        running_agents: runs,
+        status_ok,
+    }))
+}
+
 struct CliFresh<'a> {
     ctx: &'a Ctx,
     local_user_id: Option<i64>,
@@ -1055,33 +1112,8 @@ impl CliFresh<'_> {
         let id = task.task_id;
         if rules::is_cloud(rule) {
             let client = self.ctx.cloud_client()?;
-            let t =
-                client.task_by_id(u64::try_from(id).map_err(|_| Error::usage("bad task id"))?)?;
-            let status_ok = client
-                .statuses(task.workspace_id)?
-                .iter()
-                .any(|s| Some(s.id) == t.status_id && kinds.contains(&s.kind.as_str()));
-            let runs = match client.agent_work(t.id) {
-                Ok(body) => running_agents_of(&body),
-                Err(e) if matches!(e.kind, Kind::Forbidden | Kind::NotFound) => Vec::new(),
-                Err(e) => return Err(e),
-            };
-            let persona_json = json!({"persona_assignees": t.persona_assignees});
-            return Ok(assess(Facts {
-                rule_persona: &rule.persona,
-                me: client
-                    .current_user_id()?
-                    .ok_or_else(|| Error::auth("cannot tell which account is logged in"))?,
-                owners: owners_of(&persona_json, &rule.persona),
-                assignees: t
-                    .assignees
-                    .iter()
-                    .map(|p| (p.id, p.name.clone().unwrap_or_else(|| "unknown".into())))
-                    .collect(),
-                personas: personas_of(&persona_json),
-                running_agents: runs,
-                status_ok,
-            }));
+            let shared = fresh_shared(client, task.workspace_id)?;
+            return cloud_fresh(client, rule, id, &shared, kinds);
         }
         let code = rules::workspace_code(&rule.workspace)?;
         let local = LocalTasks::open(code, self.local_user_id)?;

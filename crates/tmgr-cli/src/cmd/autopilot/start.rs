@@ -1,10 +1,13 @@
 use std::collections::BTreeSet;
 use std::io::Write;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use tmgr_core::api::Client;
 use tmgr_core::approval::{canonical_repos, AllowFile, CloudApproval};
+use tmgr_core::creds::Tokens;
 use tmgr_core::error::{Error, Kind, Result};
 use tmgr_core::text::sanitize_line;
 use tmgr_ipc::api::caps::AUTOPILOT_V1;
@@ -76,6 +79,7 @@ pub struct Facts<'a> {
     pub host: &'a str,
     pub user: i64,
     pub now: DateTime<Utc>,
+    pub persona_optional: bool,
 }
 
 fn placeholder_claim(task_id: i64, f: &Facts) -> CloudApproval {
@@ -235,6 +239,7 @@ fn with_offer(client: &Client, mut found: Found) -> Found {
 const RETRIES: u32 = 3;
 const RETRY_PAUSE: std::time::Duration = std::time::Duration::from_millis(250);
 const OFFLINE_STREAK: usize = 3;
+const WORKERS: usize = 4;
 
 pub fn unique_keys(found: &mut [Found]) {
     let mut seen = std::collections::HashMap::<String, usize>::new();
@@ -257,6 +262,126 @@ fn unreachable_error(e: &Error) -> Error {
         ),
     )
     .hint("check your connection and retry")
+}
+
+struct Checked {
+    found: Found,
+    offline: bool,
+}
+
+fn check_card(
+    client: &Client,
+    facts: &Facts,
+    card: &queue::Card,
+    look: impl FnOnce(&Found) -> Result<Fresh>,
+) -> Checked {
+    let id = card.id;
+    match client.agent_run_task(id).and_then(parse_eligibility) {
+        Ok(elig) => Checked {
+            found: with_offer(
+                client,
+                not_free(classify(id, &elig, facts), facts.persona_optional, look),
+            ),
+            offline: false,
+        },
+        Err(e) if e.kind == Kind::Offline => Checked {
+            found: Found {
+                id,
+                key: card.key.clone(),
+                title: String::new(),
+                repos: Vec::new(),
+                approval: Approval::Unchecked(sanitize_line(&e.message)),
+                sign: None,
+            },
+            offline: true,
+        },
+        Err(e) => Checked {
+            found: Found {
+                id,
+                key: card.key.clone(),
+                title: String::new(),
+                repos: Vec::new(),
+                approval: Approval::Refused(format!(
+                    "could not read the task ({})",
+                    sanitize_line(&e.message)
+                )),
+                sign: None,
+            },
+            offline: false,
+        },
+    }
+}
+
+fn failed_to_check(found: &Found) -> bool {
+    matches!(&found.approval, Approval::Refused(why) if why.starts_with("could not"))
+}
+
+struct Pool<'a> {
+    server: &'a str,
+    agent: &'a str,
+    verbose: bool,
+    tokens: Tokens,
+}
+
+fn check_in_parallel(
+    pool: &Pool,
+    rule: &Rule,
+    facts: &Facts,
+    cards: &[queue::Card],
+    shared: &queue::FreshShared,
+) -> (Vec<Option<Checked>>, Option<Error>) {
+    let total = cards.len();
+    let slots: Vec<Mutex<Option<Checked>>> = (0..total).map(|_| Mutex::new(None)).collect();
+    let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+    let stop = AtomicBool::new(false);
+    let last_offline = Mutex::new(None::<Error>);
+    std::thread::scope(|scope| {
+        for _ in 0..WORKERS.min(total) {
+            scope.spawn(|| {
+                let Ok(client) = Client::new(
+                    pool.server,
+                    pool.agent,
+                    Some(pool.tokens.clone()),
+                    None,
+                    pool.verbose,
+                ) else {
+                    return;
+                };
+                client.set_get_retries(RETRIES, RETRY_PAUSE);
+                let mut streak = 0;
+                while !stop.load(Ordering::Relaxed) {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(card) = cards.get(i) else { break };
+                    let checked = check_card(&client, facts, card, |f| {
+                        queue::fresh_look_shared(&client, rule, f.id, shared)
+                    });
+                    if checked.offline {
+                        streak += 1;
+                        if streak >= OFFLINE_STREAK {
+                            stop.store(true, Ordering::Relaxed);
+                        }
+                        if let Approval::Unchecked(why) = &checked.found.approval {
+                            *last_offline.lock().unwrap() = Some(Error::new(Kind::Offline, why));
+                        }
+                    } else if !matches!(checked.found.approval, Approval::Unchecked(_)) {
+                        streak = 0;
+                    }
+                    *slots[i].lock().unwrap() = Some(checked);
+                    let n = done.fetch_add(1, Ordering::Relaxed) + 1;
+                    if n.is_multiple_of(10) {
+                        let _ = writeln!(std::io::stderr(), "Checked {n} of {total} tasks...");
+                    }
+                }
+            });
+        }
+    });
+    let stopped = stop
+        .load(Ordering::Relaxed)
+        .then(|| last_offline.into_inner().unwrap())
+        .flatten();
+    let slots = slots.into_iter().map(|m| m.into_inner().unwrap()).collect();
+    (slots, stopped)
 }
 
 fn discover(
@@ -282,56 +407,84 @@ fn discover(
         host: &host,
         user,
         now: Utc::now(),
+        persona_optional,
     };
     let total = cards.len();
+    let shared = if total > 0 && rules::is_cloud(rule) {
+        Some(queue::fresh_shared(client, ws.id)?)
+    } else {
+        None
+    };
+    let server = ctx.server()?;
+    let agent = Ctx::user_agent();
+    let pool = client.access_only_tokens().map(|tokens| Pool {
+        server: &server,
+        agent: &agent,
+        verbose: ctx.verbose,
+        tokens,
+    });
+    let mut found = check_all(
+        client,
+        pool.as_ref(),
+        rule,
+        &facts,
+        cards,
+        shared.as_ref(),
+        &|f| queue::fresh_look(ctx, rule, ws.id, f.id),
+    )?;
+    unique_keys(&mut found);
+    Ok((found, complete))
+}
+
+fn check_all(
+    client: &Client,
+    pool: Option<&Pool>,
+    rule: &Rule,
+    facts: &Facts,
+    cards: &[queue::Card],
+    shared: Option<&queue::FreshShared>,
+    fallback: &dyn Fn(&Found) -> Result<Fresh>,
+) -> Result<Vec<Found>> {
+    let total = cards.len();
+    let mut prechecked: Vec<Option<Checked>> = (0..total).map(|_| None).collect();
+    let mut parallel = false;
+    if let (Some(shared), Some(pool)) = (shared, pool) {
+        if total > 1 {
+            let (slots, stopped) = check_in_parallel(pool, rule, facts, cards, shared);
+            if let Some(e) = stopped {
+                return Err(unreachable_error(&e));
+            }
+            prechecked = slots;
+            parallel = true;
+        }
+    }
     let mut err = std::io::stderr();
     let mut found = Vec::with_capacity(total);
     let mut streak = 0;
-    for (n, card) in cards.iter().enumerate() {
-        if n > 0 && n % 10 == 0 {
+    for (n, (card, ready)) in cards.iter().zip(prechecked).enumerate() {
+        if !parallel && n > 0 && n % 10 == 0 {
             let _ = writeln!(err, "Checked {n} of {total} tasks...");
         }
-        let id = card.id;
-        let one = match client.agent_run_task(id).and_then(parse_eligibility) {
-            Ok(elig) => with_offer(
-                client,
-                not_free(classify(id, &elig, &facts), persona_optional, |f| {
-                    queue::fresh_look(ctx, rule, ws.id, f.id)
-                }),
-            ),
-            Err(e) if e.kind == Kind::Offline => {
-                streak += 1;
-                if streak >= OFFLINE_STREAK {
-                    return Err(unreachable_error(&e));
-                }
-                Found {
-                    id,
-                    key: card.key.clone(),
-                    title: String::new(),
-                    repos: Vec::new(),
-                    approval: Approval::Unchecked(sanitize_line(&e.message)),
-                    sign: None,
+        let checked = match ready {
+            Some(c) if !failed_to_check(&c.found) => c,
+            _ => check_card(client, facts, card, |f| match shared {
+                Some(s) => queue::fresh_look_shared(client, rule, f.id, s),
+                None => fallback(f),
+            }),
+        };
+        if checked.offline {
+            streak += 1;
+            if streak >= OFFLINE_STREAK {
+                if let Approval::Unchecked(why) = &checked.found.approval {
+                    return Err(unreachable_error(&Error::new(Kind::Offline, why)));
                 }
             }
-            Err(e) => Found {
-                id,
-                key: card.key.clone(),
-                title: String::new(),
-                repos: Vec::new(),
-                approval: Approval::Refused(format!(
-                    "could not read the task ({})",
-                    sanitize_line(&e.message)
-                )),
-                sign: None,
-            },
-        };
-        if !matches!(one.approval, Approval::Unchecked(_)) {
+        } else if !matches!(checked.found.approval, Approval::Unchecked(_)) {
             streak = 0;
         }
-        found.push(one);
+        found.push(checked.found);
     }
-    unique_keys(&mut found);
-    Ok((found, complete))
+    Ok(found)
 }
 
 fn clip(s: &str, width: usize) -> String {
@@ -1349,6 +1502,7 @@ mod tests {
                 host: "tmgr.dev",
                 user: 1,
                 now: now(),
+                persona_optional: false,
             },
         )
     }
@@ -1914,5 +2068,252 @@ mod tests {
         assert_eq!(report.signed, vec![1]);
         assert_eq!(report.failed, vec![(2, "content_changed".to_string())]);
         assert_eq!(failure_text(&report, &[]), "task-2: content_changed");
+    }
+
+    fn bound_allow() -> AllowFile {
+        let mut allow = allow_with_binding();
+        allow.entries[0].repos.insert(
+            "5".into(),
+            tmgr_core::approval::RepoBinding::Path("/tmp/repo".into()),
+        );
+        allow
+    }
+
+    fn cards(n: i64) -> Vec<queue::Card> {
+        (1..=n)
+            .map(|id| queue::Card {
+                id,
+                key: format!("TM-{id}"),
+            })
+            .collect()
+    }
+
+    fn answer(req: &wiremock::Request) -> ResponseTemplate {
+        let auth = req
+            .headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        if auth != "Bearer acc" {
+            return ResponseTemplate::new(401).set_body_json(json!({"error": "unauthenticated"}));
+        }
+        let path = req.url.path().to_string();
+        let id: i64 = path
+            .split("tasks/")
+            .nth(1)
+            .and_then(|rest| rest.split('/').next())
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
+        let data = if path.starts_with("/api/agent-runs/tasks/") {
+            let mut e = json!({
+                "task_id": id, "workspace_id": 7, "workspace_code": "TM", "viewer_user_id": 1,
+                "title": format!("Task {id}"), "description": "body", "task_key": format!("TM-{id}"),
+                "setting_enabled": true,
+                "category": {"id": 5, "code": "tm", "github_full_name": "o/api", "repositories": null},
+            });
+            e["task_id"] = json!(id);
+            e
+        } else if path.ends_with("/statuses") {
+            json!([{"id": 1, "name": "Backlog", "type": "default"}])
+        } else if path.ends_with("/agent-work") {
+            json!([])
+        } else if path.ends_with("/agent-approval") {
+            json!({"repositories": null})
+        } else if path == "/api/auth/devices/current" {
+            json!({"user": {"id": 1}})
+        } else {
+            json!({"id": id, "title": format!("Task {id}"), "status_id": 1,
+                   "persona_assignees": [{"name": "dev"}], "assignees": []})
+        };
+        ResponseTemplate::new(200)
+            .set_body_json(json!({"data": data}))
+            .set_delay(std::time::Duration::from_millis(
+                (9 - id.min(9) as u64) * 15,
+            ))
+    }
+
+    async fn api() -> MockServer {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(answer)
+            .mount(&server)
+            .await;
+        server
+    }
+
+    async fn counts(server: &MockServer) -> HashMap<&'static str, usize> {
+        let mut by = HashMap::new();
+        for r in server.received_requests().await.unwrap() {
+            let p = r.url.path();
+            let name = if p.starts_with("/api/agent-runs/tasks/") {
+                "eligibility"
+            } else if p.ends_with("/statuses") {
+                "statuses"
+            } else if p.ends_with("/agent-work") {
+                "agent-work"
+            } else if p.ends_with("/agent-approval") {
+                "offer"
+            } else if p == "/api/auth/devices/current" {
+                "device"
+            } else {
+                "task"
+            };
+            *by.entry(name).or_default() += 1;
+        }
+        by
+    }
+
+    #[tokio::test]
+    async fn the_shared_lookups_are_fetched_once_per_check_not_once_per_task() {
+        let before_server = api().await;
+        let after_server = api().await;
+        let (b, a) = (before_server.uri(), after_server.uri());
+        let n = 8;
+        let (before, after) = on_thread(move || {
+            let (r, w, allow) = (rule(), ws(), bound_allow());
+            let facts = Facts {
+                rule: &r,
+                ws: &w,
+                allow: &allow,
+                keys: &[],
+                host: "tmgr.dev",
+                user: 1,
+                now: now(),
+                persona_optional: false,
+            };
+            let old = client(&b);
+            let before: Vec<Found> = cards(n)
+                .iter()
+                .map(|c| {
+                    check_card(&old, &facts, c, |f| {
+                        let shared = queue::fresh_shared(&old, w.id)?;
+                        queue::fresh_look_shared(&old, &r, f.id, &shared)
+                    })
+                    .found
+                })
+                .collect();
+            let new = client(&a);
+            let shared = queue::fresh_shared(&new, w.id).unwrap();
+            let after: Vec<Found> = cards(n)
+                .iter()
+                .map(|c| {
+                    check_card(&new, &facts, c, |f| {
+                        queue::fresh_look_shared(&new, &r, f.id, &shared)
+                    })
+                    .found
+                })
+                .collect();
+            (before, after)
+        })
+        .await;
+        let ids = |v: &[Found]| {
+            v.iter()
+                .map(|f| (f.id, f.approval.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&before), ids(&after));
+        assert!(after.iter().all(|f| f.sign.is_some()), "{after:?}");
+        let (b, a) = (counts(&before_server).await, counts(&after_server).await);
+        eprintln!("requests for {n} tasks, before: {b:?}, after: {a:?}");
+        let n = n as usize;
+        for key in ["eligibility", "task", "agent-work", "offer"] {
+            assert_eq!((b[key], a[key]), (n, n), "{key}");
+        }
+        assert_eq!((b["statuses"], b["device"]), (n, n));
+        assert_eq!((a["statuses"], a["device"]), (1, 1));
+    }
+
+    #[tokio::test]
+    async fn parallel_checks_keep_the_card_order_and_match_the_sequential_result() {
+        let server = api().await;
+        let uri = server.uri();
+        let (sequential, parallel) = on_thread(move || {
+            let (r, w, allow) = (rule(), ws(), bound_allow());
+            let facts = Facts {
+                rule: &r,
+                ws: &w,
+                allow: &allow,
+                keys: &[],
+                host: "tmgr.dev",
+                user: 1,
+                now: now(),
+                persona_optional: false,
+            };
+            let main = client(&uri);
+            let shared = queue::fresh_shared(&main, w.id).unwrap();
+            let list = cards(12);
+            let none = |_: &Found| -> Result<Fresh> { unreachable!() };
+            let sequential =
+                check_all(&main, None, &r, &facts, &list, Some(&shared), &none).unwrap();
+            let pool = Pool {
+                server: &uri,
+                agent: "test",
+                verbose: false,
+                tokens: main.access_only_tokens().unwrap(),
+            };
+            let parallel =
+                check_all(&main, Some(&pool), &r, &facts, &list, Some(&shared), &none).unwrap();
+            (sequential, parallel)
+        })
+        .await;
+        let ids = |v: &[Found]| {
+            v.iter()
+                .map(|f| (f.id, f.approval.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(&sequential), ids(&parallel));
+        assert_eq!(
+            parallel.iter().map(|f| f.id).collect::<Vec<_>>(),
+            (1..=12).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_worker_that_is_refused_is_retried_on_the_main_client() {
+        let server = api().await;
+        let uri = server.uri();
+        let found = on_thread(move || {
+            let (r, w, allow) = (rule(), ws(), bound_allow());
+            let facts = Facts {
+                rule: &r,
+                ws: &w,
+                allow: &allow,
+                keys: &[],
+                host: "tmgr.dev",
+                user: 1,
+                now: now(),
+                persona_optional: false,
+            };
+            let main = client(&uri);
+            let shared = queue::fresh_shared(&main, w.id).unwrap();
+            let pool = Pool {
+                server: &uri,
+                agent: "test",
+                verbose: false,
+                tokens: tmgr_core::creds::Tokens {
+                    access: Secret::new("stale"),
+                    refresh: None,
+                    expires_at: None,
+                },
+            };
+            let none = |_: &Found| -> Result<Fresh> { unreachable!() };
+            check_all(
+                &main,
+                Some(&pool),
+                &r,
+                &facts,
+                &cards(6),
+                Some(&shared),
+                &none,
+            )
+            .unwrap()
+        })
+        .await;
+        assert_eq!(
+            found.iter().map(|f| f.id).collect::<Vec<_>>(),
+            (1..=6).collect::<Vec<_>>()
+        );
+        assert!(found.iter().all(|f| f.sign.is_some()), "{found:?}");
     }
 }

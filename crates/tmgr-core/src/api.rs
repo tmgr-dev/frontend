@@ -148,6 +148,14 @@ impl Client {
             .and_then(|t| t.expires_at.clone())
     }
 
+    pub fn access_only_tokens(&self) -> Option<Tokens> {
+        self.tokens.borrow().as_ref().map(|t| Tokens {
+            access: t.access.clone(),
+            refresh: None,
+            expires_at: t.expires_at.clone(),
+        })
+    }
+
     pub fn set_workspace_header(&self, workspace_id: Option<i64>) {
         self.workspace_header.set(workspace_id);
     }
