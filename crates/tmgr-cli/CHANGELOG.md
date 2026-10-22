@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.44
 
 - Export a Claude session only when you ask: `Ctrl-] e` in `tmgr attach` (also in `?` and the command palette) or `tmgr session export <session> [--md <file> | --page] [--remove-findings]`. The transcript becomes Markdown: your messages and the agent's replies, each tool call as one line (the command's first line or the file path; file contents, edits and tool output are never included). Before anything is written you see the size and a secret scan (tokens and keys, `NAME=value` lines, private-key blocks, home paths such as `/Users/<name>`); every finding is removed or kept one by one, and what cannot be kept (keys, tokens) is always removed. The result is scanned again right before it is written or sent. A file goes to your home folder from the overlay (`tmgr-session-<name>-<time>.md`) or to the `--md` path, mode 0600, written atomically, never over an existing file without typing `overwrite`, never into the session's own folder or a folder others can write to. A page export (`--page`, or `g` in the overlay) creates a new page in the current workspace, leaves this machine, needs you to type the workspace code and is refused inside agent sessions and without a terminal; its title is fixed (`Session <name> <date>`). Without `--md` or `--page` the command only prints the size and the number of findings.
 
