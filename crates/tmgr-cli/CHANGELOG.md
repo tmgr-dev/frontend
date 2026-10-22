@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.48
 
 - `tmgr attach` can push to your phone (the `tmgr notify` path) when a session needs you while you are away. Off by default; each kind has its own setting: `tmgr config set attach.push.long <minutes|off>` (a turn that ended after running that long), `attach.push.error true|false` (the session exited with a non-zero code below 128; shells, sessions you stopped and signal deaths do not count), `attach.push.blocked <minutes|off>` (a permission prompt or a question waiting that long, using the same "needs you" detection as `Ctrl-] !`), `attach.push.quiet 22:00-08:00|off` (no pushes in quiet hours) and `attach.push.debounce <minutes>` (default 10: at most one push per session and kind in that time). The push carries only the session name, the task key, one short fixed reason line (for example `TM-12 · is waiting for permission, 6 min ago`) and the task link as the Open action; never the prompt text, transcript, code or secrets. A marker file per event keeps two attach windows from pushing twice. A turn or error that ends in quiet hours is not pushed later, and a push that fails to send is not retried. It needs a running `tmgr attach` and the notify channel set up (`tmgr notify "test"`).
 
