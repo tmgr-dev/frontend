@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 16] = [
+pub const KEYS: [&str; 21] = [
     "server",
     "default_workspace",
     "web_url",
@@ -24,6 +24,11 @@ pub const KEYS: [&str; 16] = [
     "attach.signal.quiet",
     "attach.prompt.send",
     "attach.summary",
+    "attach.push.long",
+    "attach.push.error",
+    "attach.push.blocked",
+    "attach.push.quiet",
+    "attach.push.debounce",
 ];
 pub const SUMMARY_MODES: [&str; 3] = ["ask", "always", "never"];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
@@ -48,6 +53,16 @@ pub struct AttachConfig {
     pub prompt_send: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_long: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_error: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_blocked: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_quiet: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_debounce: Option<u32>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -161,6 +176,11 @@ impl Config {
             "attach.signal.quiet" => self.attach.signal_quiet.clone(),
             "attach.prompt.send" => self.attach.prompt_send.map(|b| b.to_string()),
             "attach.summary" => self.attach.summary.clone(),
+            "attach.push.long" => self.attach.push_long.map(|m| m.to_string()),
+            "attach.push.error" => self.attach.push_error.map(|b| b.to_string()),
+            "attach.push.blocked" => self.attach.push_blocked.map(|m| m.to_string()),
+            "attach.push.quiet" => self.attach.push_quiet.clone(),
+            "attach.push.debounce" => self.attach.push_debounce.map(|m| m.to_string()),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -263,6 +283,47 @@ impl Config {
                 })?;
                 self.attach.prompt_send = Some(v);
                 Ok(v.to_string())
+            }
+            "attach.push.long" | "attach.push.blocked" | "attach.push.debounce" => {
+                let v = value.trim().to_ascii_lowercase();
+                let minutes = if v == "off" && key != "attach.push.debounce" {
+                    None
+                } else {
+                    let n: u32 = v
+                        .parse()
+                        .ok()
+                        .filter(|n| (1..=1440).contains(n))
+                        .ok_or_else(|| {
+                            Error::usage(format!("invalid {key}"))
+                                .hint("minutes from 1 to 1440, or off")
+                        })?;
+                    Some(n)
+                };
+                match key {
+                    "attach.push.long" => self.attach.push_long = minutes,
+                    "attach.push.blocked" => self.attach.push_blocked = minutes,
+                    _ => self.attach.push_debounce = minutes,
+                }
+                Ok(v)
+            }
+            "attach.push.error" => {
+                let v = parse_bool(value).ok_or_else(|| {
+                    Error::usage(format!("invalid {key}")).hint("use true or false")
+                })?;
+                self.attach.push_error = Some(v);
+                Ok(v.to_string())
+            }
+            "attach.push.quiet" => {
+                let v = value.trim().to_ascii_lowercase();
+                if v == "off" {
+                    self.attach.push_quiet = None;
+                    return Ok(v);
+                }
+                parse_quiet_hours(&v).ok_or_else(|| {
+                    Error::usage("invalid attach.push.quiet").hint("hours like 22:00-08:00, or off")
+                })?;
+                self.attach.push_quiet = Some(v.clone());
+                Ok(v)
             }
             "attach.summary" => {
                 let v = value.trim().to_ascii_lowercase();
@@ -460,6 +521,18 @@ mod tests {
     #[test]
     fn attach_sidebar_width_is_range_checked_and_round_trips() {
         let mut cfg = Config::default();
+        assert_eq!(cfg.set("attach.push.long", "15").unwrap(), "15");
+        assert_eq!(cfg.get("attach.push.long").unwrap().as_deref(), Some("15"));
+        cfg.set("attach.push.long", "off").unwrap();
+        assert_eq!(cfg.get("attach.push.long").unwrap(), None);
+        assert!(cfg.set("attach.push.blocked", "0").is_err());
+        assert!(cfg.set("attach.push.debounce", "off").is_err());
+        assert_eq!(cfg.set("attach.push.error", "true").unwrap(), "true");
+        assert!(cfg.set("attach.push.quiet", "late").is_err());
+        assert_eq!(
+            cfg.set("attach.push.quiet", "22:00-08:00").unwrap(),
+            "22:00-08:00"
+        );
         assert_eq!(cfg.set("attach.summary", " Always ").unwrap(), "always");
         assert_eq!(
             cfg.get("attach.summary").unwrap().as_deref(),
