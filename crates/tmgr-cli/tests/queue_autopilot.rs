@@ -325,6 +325,20 @@ impl Pty {
         }
     }
 
+    fn batch_token(&self) -> String {
+        let end = Instant::now() + Duration::from_secs(30);
+        loop {
+            let text = self.text();
+            if let Some(rest) = text.rsplit_once("Type \"").map(|(_, r)| r) {
+                if let Some((token, _)) = rest.split_once('"') {
+                    return token.to_string();
+                }
+            }
+            assert!(Instant::now() < end, "no typed token on screen:\n{text}");
+            thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     fn wait_for_paged(&mut self, needle: &str) {
         let end = Instant::now() + Duration::from_secs(30);
         let mut answered = 0;
@@ -737,6 +751,7 @@ exec sleep 600"#,
             "50",
             "--usage-hard",
             "80",
+            "--review",
         ];
         args.extend_from_slice(extra);
         let mut p = self.pty(&args);
@@ -749,8 +764,9 @@ exec sleep 600"#,
             p.wait_for(label);
             p.line("");
         }
-        p.wait_for_paged("Type I AGREE");
-        p.line("I AGREE");
+        p.wait_for_paged("Type \"tmgrdev ");
+        let token = p.batch_token();
+        p.line(&token);
         p
     }
 
@@ -880,7 +896,7 @@ async fn starting_signs_pins_enables_and_hosts_the_loop_until_stop() {
     let code = p.exit();
     assert_eq!(code, 0, "{}", p.text());
     let screen = p.text();
-    assert!(screen.contains("to be signed now"), "{screen}");
+    assert!(screen.contains("[sign now]"), "{screen}");
 
     let calls = cloud.calls().await;
     let uploaded = calls
@@ -967,6 +983,52 @@ async fn starting_signs_pins_enables_and_hosts_the_loop_until_stop() {
     assert_eq!(done["stop_reason"], "stopped by you");
     assert!(done["summary"].is_object(), "{done}");
     assert!(!cloud.queue_enabled());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_workspace_entry_leaves_out_hidden_text_unless_reviewed_and_signs_nothing() {
+    if !sandbox_usable() {
+        return;
+    }
+    let cloud = Cloud::new().await;
+    cloud.add_rule();
+    let mut p = cloud.pty(&[
+        "autopilot",
+        "TMGRDEV",
+        "--tasks",
+        "all",
+        "--max-teams",
+        "1",
+        "--profile",
+        "claude-code",
+        "--team-size",
+        "1",
+        "--team-mode",
+        "eco",
+        "--usage-soft",
+        "50",
+        "--usage-hard",
+        "80",
+        "--dry-run",
+    ]);
+    for label in [
+        "Continue after the usage window resets",
+        "Most to spend in USD",
+        "Most hours to run",
+        "Most tasks to start",
+    ] {
+        p.wait_for(label);
+        p.line("");
+    }
+    p.wait_for("none of the chosen tasks can be run");
+    assert_ne!(p.exit(), 0, "{}", p.text());
+    let uploaded = cloud
+        .calls()
+        .await
+        .iter()
+        .filter(|c| c.1 == "/api/agent-runs/approvals/bulk")
+        .count();
+    assert_eq!(uploaded, 0);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

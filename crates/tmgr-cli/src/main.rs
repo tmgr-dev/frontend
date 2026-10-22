@@ -167,6 +167,8 @@ fn dispatch(ctx: &Ctx, cli: &Cli) -> Result<Output> {
         Some(Command::Link { command }) => cmd::link::run(ctx, command),
         #[cfg(feature = "runner")]
         Some(Command::Queue { command }) => cmd::queue::run(ctx, cli, command),
+        #[cfg(feature = "runner")]
+        Some(Command::Autopilot(args)) => cmd::autopilot::run(ctx, cli, args),
         Some(Command::Prompt(_)) | Some(Command::Statusline { .. }) => {
             Err(Error::internal("handled before the session starts"))
         }

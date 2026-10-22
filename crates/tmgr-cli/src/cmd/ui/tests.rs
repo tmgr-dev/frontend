@@ -522,6 +522,7 @@ fn internal_paths_never_reach_groups() {
     if cfg!(feature = "runner") {
         internal.push(&["runner", "serve"]);
         internal.push(&["queue", "autopilot", "serve"]);
+        internal.push(&["autopilot", "serve"]);
     }
     internal.push(&["usage", "statusline-hook"]);
     for path in internal {

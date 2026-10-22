@@ -98,13 +98,20 @@ queue rules rm | Queue | name
 queue approve | Queue | pickup
 queue release | Queue | pickup
 queue run-once | Queue | -
-queue autopilot | Queue | rule, tasks, max_teams, team_size, team_mode, profile, only, skip, order, dry_run, usage_soft, usage_hard, no_usage_limit, resume_after_reset, max_cost, max_hours, max_tasks
-queue autopilot start | Queue | rule, tasks, max_teams, team_size, team_mode, profile, only, skip, order, dry_run, usage_soft, usage_hard, no_usage_limit, resume_after_reset, max_cost, max_hours, max_tasks
+queue autopilot | Queue | workspace, rule, tasks, max_teams, team_size, team_mode, profile, only, skip, order, dry_run, usage_soft, usage_hard, no_usage_limit, resume_after_reset, max_cost, max_hours, max_tasks, fallback_hours, with_persona, setup, review
+queue autopilot start | Queue | rule, tasks, max_teams, team_size, team_mode, profile, only, skip, order, dry_run, usage_soft, usage_hard, no_usage_limit, resume_after_reset, max_cost, max_hours, max_tasks, fallback_hours, with_persona, setup, review
 queue autopilot status | Queue | watch
 queue autopilot pause | Queue | -
 queue autopilot resume | Queue | -
 queue autopilot stop | Queue | -
 queue autopilot log | Queue | tail
+autopilot | Queue | workspace, rule, tasks, max_teams, team_size, team_mode, profile, only, skip, order, dry_run, usage_soft, usage_hard, no_usage_limit, resume_after_reset, max_cost, max_hours, max_tasks, fallback_hours, with_persona, setup, review
+autopilot start | Queue | rule, tasks, max_teams, team_size, team_mode, profile, only, skip, order, dry_run, usage_soft, usage_hard, no_usage_limit, resume_after_reset, max_cost, max_hours, max_tasks, fallback_hours, with_persona, setup, review
+autopilot status | Queue | watch
+autopilot pause | Queue | -
+autopilot resume | Queue | -
+autopilot stop | Queue | -
+autopilot log | Queue | tail
 refs | Other | -
 board | Tasks | project, mine, ascii
 usage | Usage | today, yesterday, week, month, since, until, by, task, tool, account, no_scan

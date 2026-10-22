@@ -22,6 +22,9 @@ use crate::out::Output;
 #[derive(Args)]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct AutopilotArgs {
+    /// Workspace whose backlog to work through (its cloud queue rule is used)
+    #[arg(value_name = "WORKSPACE")]
+    pub workspace: Option<String>,
     #[command(subcommand)]
     pub command: Option<AutopilotCmd>,
     #[command(flatten)]
@@ -117,6 +120,12 @@ pub struct StartArgs {
     /// Only tasks that carry the rule's persona
     #[arg(long)]
     pub with_persona: bool,
+    /// Ask the setup questions again
+    #[arg(long)]
+    pub setup: bool,
+    /// Show the full text of every task before signing
+    #[arg(long)]
+    pub review: bool,
 }
 
 impl StartArgs {
@@ -151,8 +160,8 @@ impl StartArgs {
 
 pub fn run(ctx: &Ctx, cli: &Cli, args: &AutopilotArgs) -> Result<Output> {
     match &args.command {
-        None => start::run(ctx, cli, &args.start),
-        Some(AutopilotCmd::Start(a)) => start::run(ctx, cli, a),
+        None => start::run(ctx, cli, &args.start, args.workspace.as_deref()),
+        Some(AutopilotCmd::Start(a)) => start::run(ctx, cli, a, None),
         Some(AutopilotCmd::Status { watch }) => control::status(*watch, cli.json),
         Some(AutopilotCmd::Pause) => control::control(AutopilotCommand::Pause),
         Some(AutopilotCmd::Resume) => {
@@ -162,5 +171,78 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &AutopilotArgs) -> Result<Output> {
         Some(AutopilotCmd::Stop) => control::control(AutopilotCommand::Stop),
         Some(AutopilotCmd::Log { tail }) => control::log(*tail),
         Some(AutopilotCmd::Serve { settings }) => serve::real::run(ctx, cli, settings),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cli::{Cli, Command};
+    use clap::{CommandFactory, Parser};
+
+    #[test]
+    fn the_command_tree_is_valid() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn top_level_help_lists_autopilot() {
+        let mut cmd = Cli::command();
+        let help = cmd.render_help().to_string();
+        assert!(
+            help.contains("autopilot")
+                && help.contains(
+                    "Work through a workspace's backlog with agent teams: one list, one typed confirmation"
+                ),
+            "{help}"
+        );
+        let sub = cmd.find_subcommand_mut("autopilot").unwrap();
+        let help = sub.render_help().to_string();
+        for needle in [
+            "[WORKSPACE]",
+            "--setup",
+            "Ask the setup questions again",
+            "--review",
+            "Show the full text of every task before signing",
+        ] {
+            assert!(help.contains(needle), "missing {needle:?} in\n{help}");
+        }
+    }
+
+    fn parse(args: &[&str]) -> Box<AutopilotArgs> {
+        let cli = Cli::try_parse_from(args).unwrap();
+        match cli.command {
+            Some(Command::Autopilot(a)) => a,
+            Some(Command::Queue {
+                command: crate::cmd::queue::QueueCommand::Autopilot(a),
+            }) => a,
+            _ => panic!("not autopilot"),
+        }
+    }
+
+    #[test]
+    fn a_workspace_flags_and_subcommands_parse_on_both_entry_points() {
+        let a = parse(&[
+            "tmgr",
+            "autopilot",
+            "tmgrdev",
+            "--setup",
+            "--review",
+            "--dry-run",
+        ]);
+        assert_eq!(a.workspace.as_deref(), Some("tmgrdev"));
+        assert!(a.command.is_none() && a.start.setup && a.start.review && a.start.dry_run);
+        let a = parse(&["tmgr", "autopilot", "status", "--watch"]);
+        assert!(a.workspace.is_none());
+        assert!(matches!(
+            a.command,
+            Some(AutopilotCmd::Status { watch: true })
+        ));
+        let a = parse(&["tmgr", "autopilot", "stop"]);
+        assert!(matches!(a.command, Some(AutopilotCmd::Stop)));
+        let a = parse(&["tmgr", "queue", "autopilot", "--setup"]);
+        assert!(a.workspace.is_none() && a.start.setup);
+        let a = parse(&["tmgr", "queue", "autopilot", "start", "--rule", "x"]);
+        assert!(matches!(a.command, Some(AutopilotCmd::Start(_))));
     }
 }

@@ -5,7 +5,7 @@ tmgr test
 │                                      ││  task show              Show one task                    │
 │> Tasks     status, task, add, start, ││  task confirm           Let agents run on a local task: s│
 │  Agents    run, agents, attach, send,││  task list              List tasks                       │
-│  Queue     queue                     ││  add                    Create a task (`-` reads title an│
+│  Queue     queue, autopilot          ││  add                    Create a task (`-` reads title an│
 │  Runner    runner                    ││  start                  Start a task: branch, status and │
 │  Pages     note, page                ││  stop                   Stop the running timer           │
 │  Time      time, today, routine      ││  switch                 Stop the running timer and start │

@@ -37,7 +37,7 @@ const GROUPS: &[(&str, &[&str])] = &[
             "questions",
         ],
     ),
-    ("Queue", &["queue"]),
+    ("Queue", &["queue", "autopilot"]),
     ("Runner", &["runner"]),
     ("Pages", &["page", "note"]),
     ("Time", &["today", "routine", "time"]),
@@ -76,6 +76,7 @@ const INTERNAL: &[&[&str]] = &[
     &["git", "hook"],
     &["runner", "serve"],
     &["queue", "autopilot", "serve"],
+    &["autopilot", "serve"],
     &["usage", "statusline-hook"],
 ];
 

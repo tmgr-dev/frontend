@@ -153,6 +153,9 @@ pub enum Command {
         #[command(subcommand)]
         command: crate::cmd::queue::QueueCommand,
     },
+    /// Work through a workspace's backlog with agent teams: one list, one typed confirmation
+    #[cfg(feature = "runner")]
+    Autopilot(Box<crate::cmd::autopilot::AutopilotArgs>),
     /// Forced command for a follower, started by sshd only (experimental)
     #[command(hide = true)]
     Worker(WorkerArgs),

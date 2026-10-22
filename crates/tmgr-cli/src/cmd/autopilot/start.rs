@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::io::Write;
+use std::io::{BufRead, Write};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -859,7 +859,104 @@ fn team_text(plan: &Plan) -> Vec<String> {
     lines
 }
 
-pub fn summary_text(plan: &Plan) -> String {
+const HIDDEN_REASON: &str =
+    "hidden characters in its text; run with --review to see it and sign it";
+const FIRST_LINE_WIDTH: usize = 60;
+
+fn any_hidden<'a>(texts: impl IntoIterator<Item = &'a str>) -> bool {
+    texts.into_iter().any(|t| tmgr_core::text::flag_hidden(t).1)
+}
+
+pub fn hidden_in(sign: &SignTask) -> bool {
+    let offer = &sign.offer;
+    let repos = offer.repositories.iter().flatten().map(String::as_str);
+    let persona = offer
+        .persona
+        .iter()
+        .flat_map(|p| [p.name.as_str(), p.instructions.as_str()]);
+    let pages = offer
+        .context
+        .iter()
+        .flatten()
+        .flat_map(|p| [p.title.as_str(), p.body.as_str()]);
+    any_hidden(
+        [sign.title.as_str(), sign.description.as_str()]
+            .into_iter()
+            .chain(repos)
+            .chain(persona)
+            .chain(pages),
+    )
+}
+
+fn leave_out_hidden(found: Found, review: bool) -> Found {
+    match &found.sign {
+        Some(sign) if !review && hidden_in(sign) => Found {
+            approval: Approval::Refused(HIDDEN_REASON.into()),
+            sign: None,
+            ..found
+        },
+        _ => found,
+    }
+}
+
+pub fn batch_token(plan: &Plan) -> String {
+    format!("{} {}", plan.ws.code, plan.chosen.len())
+}
+
+fn tasks(n: usize) -> String {
+    format!("{n} task{}", if n == 1 { "" } else { "s" })
+}
+
+pub fn batch_prompt(plan: &Plan) -> String {
+    let token = batch_token(plan);
+    let signing = plan.to_sign().len();
+    let run = if plan.dry_run {
+        format!("the dry run of {}", tasks(plan.chosen.len()))
+    } else {
+        format!("{}", plan.chosen.len())
+    };
+    if signing == 0 {
+        format!("Type \"{token}\" to start {run}:")
+    } else {
+        format!(
+            "Type \"{token}\" to sign {} and start {run}:",
+            tasks(signing)
+        )
+    }
+}
+
+fn chars_text(n: usize) -> String {
+    if n < 1000 {
+        format!("{n} chars")
+    } else {
+        format!("{:.1}k chars", n as f64 / 1000.0)
+    }
+}
+
+fn preview(sign: &SignTask, hidden: &mut bool) -> String {
+    let first = sign
+        .description
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty());
+    match first {
+        Some(line) => format!(
+            "\"{}\" ({})",
+            clip(&shown_line(line, hidden), FIRST_LINE_WIDTH),
+            chars_text(sign.description.chars().count())
+        ),
+        None => "(no description)".to_string(),
+    }
+}
+
+pub fn tasks_to_sign(plan: &Plan) -> Vec<SignTask> {
+    plan.to_sign()
+        .into_iter()
+        .filter_map(|f| f.sign.clone())
+        .collect()
+}
+
+pub fn compact_summary(plan: &Plan, review: bool) -> String {
     let a = &plan.answers;
     let sign = plan.to_sign();
     let mut lines = vec![
@@ -868,19 +965,22 @@ pub fn summary_text(plan: &Plan) -> String {
             "Rule       {} (workspace {}, agent profile {})",
             plan.rule.name, plan.ws.code, plan.rule.profile
         ),
-        format!("Tasks      {} to work on", plan.chosen.len()),
+        format!(
+            "Tasks      {} to work on, {} to sign now",
+            plan.chosen.len(),
+            sign.len()
+        ),
     ];
     for f in &plan.chosen {
-        lines.push(format!(
-            "           {}  {}  [{}]",
-            f.key,
-            clip(&f.title, TITLE_WIDTH),
-            if f.sign.is_some() {
-                "to be signed now"
-            } else {
-                "already signed"
+        let mut line = format!("           {}  {}  ", f.key, clip(&f.title, TITLE_WIDTH));
+        match &f.sign {
+            Some(s) => {
+                let mut hidden = false;
+                line.push_str(&format!("[sign now]  {}", preview(s, &mut hidden)));
             }
-        ));
+            None => line.push_str("[signed]"),
+        }
+        lines.push(line);
     }
     for f in &plan.dropped {
         lines.push(format!(
@@ -893,13 +993,29 @@ pub fn summary_text(plan: &Plan) -> String {
         lines.push("Signing    nothing to sign".into());
     } else {
         lines.push(format!(
-            "Signing    this computer signs the approvals of the {} tasks marked \"to be signed\" with its own key (kept in the OS keychain, registered as \"{}\") and trusts that key for workspace {}",
+            "Signing    this computer signs the approvals of the {} tasks marked [sign now] with its own key (kept in the OS keychain, registered as \"{}\") and trusts that key for workspace {}",
             sign.len(),
             plan.device,
             plan.ws.code
         ));
+        lines.push(if review {
+            "Review     the full text of each of them was shown above".to_string()
+        } else {
+            "Review     only the first line of each description is shown here; run with --review to read the full texts".to_string()
+        });
     }
-    lines.extend(signed_texts(plan));
+    if plan.dry_run {
+        lines.push(
+            "Finish     nothing is started; the plan and the triage are shown in the status".into(),
+        );
+        lines.push(
+            "Stop       `tmgr autopilot stop`; `tmgr autopilot status --watch` shows the plan"
+                .into(),
+        );
+    } else {
+        lines.push("Finish     each task ends as a pull request; nothing is merged".into());
+        lines.push("Stop       `tmgr autopilot stop` (or `pause`); `tmgr autopilot status --watch` shows progress; stopping turns the queue off".into());
+    }
     lines.extend(team_text(plan));
     if plan.dry_run {
         lines.push(DRY_RUN_TEXT.into());
@@ -916,16 +1032,51 @@ pub fn summary_text(plan: &Plan) -> String {
         Some(note) => format!("Push       {note}"),
         None => "Push       notifications are on".into(),
     });
-    if plan.dry_run {
-        lines.push(
-            "Finish     nothing is started; the plan and the triage are shown in the status".into(),
-        );
-        lines.push("Stop       `tmgr queue autopilot stop`; `tmgr queue autopilot status --watch` shows the plan".into());
-    } else {
-        lines.push("Finish     each task ends as a pull request; nothing is merged".into());
-        lines.push("Stop       `tmgr queue autopilot stop` (or `pause`); `tmgr queue autopilot status --watch` shows progress; stopping turns the queue off".into());
-    }
     lines.join("\n")
+}
+
+pub fn confirm_batch(
+    summary: &str,
+    token: &str,
+    prompt: &str,
+    input: &mut impl BufRead,
+    out: &mut impl Write,
+) -> Result<()> {
+    let _ = writeln!(out, "{}\n\n{summary}\n", queue::WARNING);
+    privileged::confirm_typed(token, prompt, input, out)
+}
+
+fn confirm_batch_guarded(
+    guard: impl FnOnce() -> Result<()>,
+    plan: &Plan,
+    review: bool,
+    input: &mut impl BufRead,
+    out: &mut impl Write,
+) -> Result<()> {
+    guard()?;
+    if review {
+        let texts = signed_texts(plan);
+        if !texts.is_empty() {
+            queue::page_through_from(&texts, input)?;
+        }
+    }
+    confirm_batch(
+        &compact_summary(plan, review),
+        &batch_token(plan),
+        &batch_prompt(plan),
+        input,
+        out,
+    )
+}
+
+fn confirm_batch_stdio(plan: &Plan, review: bool) -> Result<()> {
+    confirm_batch_guarded(
+        privileged::guard,
+        plan,
+        review,
+        &mut std::io::stdin().lock(),
+        &mut std::io::stderr(),
+    )
 }
 
 fn scope_hint(client: &Client, e: Error) -> Error {
@@ -1046,7 +1197,46 @@ fn push_note(ctx: &Ctx) -> Option<String> {
     }
 }
 
-pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
+pub fn rule_for_workspace(rules: &[Rule], workspace: &str, flag: Option<&str>) -> Result<String> {
+    let mine: Vec<&Rule> = rules
+        .iter()
+        .filter(|r| r.workspace.eq_ignore_ascii_case(workspace))
+        .collect();
+    let names = mine
+        .iter()
+        .map(|r| r.name.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if let Some(f) = flag {
+        return mine
+            .iter()
+            .find(|r| r.name.eq_ignore_ascii_case(f))
+            .map(|r| r.name.clone())
+            .ok_or_else(|| {
+                Error::usage(format!(
+                    "--rule: {f} is not a cloud rule of workspace {workspace}"
+                ))
+                .hint(format!("rules of {workspace}: {names}"))
+            });
+    }
+    match mine.as_slice() {
+        [] => Err(
+            Error::usage(format!("no queue rule for workspace {workspace}"))
+                .hint("tmgr queue rules add --help"),
+        ),
+        [only] => Ok(only.name.clone()),
+        _ => Err(
+            Error::usage(format!("several rules for workspace {workspace}: {names}"))
+                .hint("--rule NAME"),
+        ),
+    }
+}
+
+pub fn assume_answers(by_workspace: bool, remembered: bool, setup: bool, yes: bool) -> bool {
+    !setup && (yes || (by_workspace && remembered))
+}
+
+pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs, workspace: Option<&str>) -> Result<Output> {
     privileged::guard()?;
     let paths = Paths::from_env()?;
     let store = Store::from_env()?;
@@ -1058,7 +1248,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         .filter(|r| rules::is_cloud(r))
         .cloned()
         .collect();
-    if cloud_rules.is_empty() {
+    if cloud_rules.is_empty() && workspace.is_none() {
         return Err(Error::usage("autopilot needs a rule for a cloud workspace")
             .hint("tmgr queue rules add --help"));
     }
@@ -1075,14 +1265,23 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
     let stdin = std::io::stdin();
     let mut err = std::io::stderr();
     let names: Vec<String> = cloud_rules.iter().map(|r| r.name.clone()).collect();
-    let rule_name = interview::choose_rule(
-        &names,
-        args.rule.as_deref(),
-        remembered.as_ref().and_then(|a| a.rule.as_deref()),
+    let rule_name = match workspace {
+        Some(ws) => rule_for_workspace(&cloud_rules, ws, args.rule.as_deref())?,
+        None => interview::choose_rule(
+            &names,
+            args.rule.as_deref(),
+            remembered.as_ref().and_then(|a| a.rule.as_deref()),
+            cli.yes,
+            &mut stdin.lock(),
+            &mut err,
+        )?,
+    };
+    let assume = assume_answers(
+        workspace.is_some(),
+        remembered.is_some(),
+        args.setup,
         cli.yes,
-        &mut stdin.lock(),
-        &mut err,
-    )?;
+    );
     let rule = cloud_rules
         .into_iter()
         .find(|r| r.name == rule_name)
@@ -1133,7 +1332,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         &interview::questions(),
         &mut draft,
         &args.flags(),
-        cli.yes,
+        assume,
         &mut stdin.lock(),
         &mut err,
     )?;
@@ -1156,6 +1355,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
     let (chosen, dropped): (Vec<Found>, Vec<Found>) = found
         .into_iter()
         .filter(|f| draft.is_chosen(&f.key))
+        .map(|f| leave_out_hidden(f, args.review))
         .partition(|f| f.approval.runnable());
     if let Some(k) = draft
         .order
@@ -1193,7 +1393,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         now,
         tz: super::control::local_offset(),
     };
-    queue::agree(&summary_text(&plan))?;
+    confirm_batch_stdio(&plan, args.review)?;
     begin(
         ctx,
         &paths,
@@ -1233,7 +1433,7 @@ fn begin_after_handover(
     let client = ctx.cloud_client()?;
     let cloud = CliCloud::new(ctx);
     let (host, user) = cloud.identity()?;
-    let to_sign: Vec<SignTask> = plan.chosen.iter().filter_map(|f| f.sign.clone()).collect();
+    let to_sign = tasks_to_sign(plan);
     let mut report = SignReport {
         signed: Vec::new(),
         failed: Vec::new(),
@@ -1632,10 +1832,10 @@ mod tests {
 
     #[test]
     fn the_summary_names_what_the_agreement_covers() {
-        let s = summary_text(&plan(true, true));
+        let s = compact_summary(&plan(true, true), false);
         for needle in [
-            "TM-1  Task 1  [already signed]",
-            "TM-2  Task 2  [to be signed now]",
+            "TM-1  Task 1  [signed]",
+            "TM-2  Task 2  [sign now]",
             "TM-3  left out: refused: agent runs are off",
             "signs the approvals of the 1 tasks",
             "turns the queue ON",
@@ -1648,11 +1848,11 @@ mod tests {
             "cost of API-key runs: $20, hours: none, tasks started: none",
             "push notifications are off",
             "pull request; nothing is merged",
-            "tmgr queue autopilot stop",
+            "tmgr autopilot stop",
         ] {
             assert!(s.contains(needle), "missing {needle:?} in\n{s}");
         }
-        let s = summary_text(&plan(false, false));
+        let s = compact_summary(&plan(false, false), false);
         assert!(s.contains("nothing to sign"));
         assert!(s.contains("NO usage limit"));
     }
@@ -1737,7 +1937,7 @@ mod tests {
     fn the_summary_shows_the_fallback_and_the_effective_hours() {
         let mut p = plan(false, false);
         p.fallback_hours = Some(8.0);
-        let s = summary_text(&p);
+        let s = compact_summary(&p, false);
         assert!(s.contains("no real usage number: guard OFF, new tasks stop after 8 h"));
         assert!(s.contains("hours: 8,"));
         assert!(!s.contains("NO usage limit"));
@@ -1829,7 +2029,7 @@ mod tests {
     fn a_dry_run_summary_does_not_claim_the_guard_is_off_by_choice() {
         let mut p = plan(false, false);
         p.dry_run = true;
-        let s = summary_text(&p);
+        let s = compact_summary(&p, false);
         assert!(s.contains("not checked (dry run)"), "{s}");
         assert!(!s.contains("NO usage limit"));
     }
@@ -1843,7 +2043,7 @@ mod tests {
         p.profile = "codex".into();
         p.tool = Some(Tool::Codex);
         p.order = vec!["TM-2".into(), "TM-1".into()];
-        let s = summary_text(&p);
+        let s = compact_summary(&p, false);
         for needle in [
             "Teams      up to 1 at the same time, 1 agent per team (codex runs one agent per team), team mode heavy",
             "Profile    the teams run on codex",
@@ -1852,18 +2052,18 @@ mod tests {
         ] {
             assert!(s.contains(needle), "missing {needle:?} in\n{s}");
         }
-        assert!(!summary_text(&plan(false, true)).contains("Order "));
+        assert!(!compact_summary(&plan(false, true), false).contains("Order "));
     }
 
     #[test]
     fn the_dry_run_summary_says_nothing_but_planning_happens() {
         let mut p = plan(true, true);
         p.dry_run = true;
-        let s = summary_text(&p);
+        let s = compact_summary(&p, false);
         for needle in [
             "Dry run: the orchestrator plans and triages only. Approvals are signed as usual so it can read the signed texts; nothing else changes: no status changes, no comments, no code, the queue stays off.",
             "signs the approvals of the 1 tasks",
-            "tmgr queue autopilot status --watch",
+            "tmgr autopilot status --watch",
         ] {
             assert!(s.contains(needle), "missing {needle:?} in\n{s}");
         }
@@ -1891,7 +2091,7 @@ mod tests {
                 body: "Open a PR.".into(),
             }]),
         };
-        let s = summary_text(&p);
+        let s = signed_texts(&p).join("\n");
         for needle in [
             "TM-2 (task 2) signs exactly this",
             "Title: Fix login",
@@ -1908,7 +2108,7 @@ mod tests {
         }
         assert!(!s.contains("WARNING"));
         assert!(!s.contains('\r'));
-        let plain = summary_text(&plan(true, true));
+        let plain = signed_texts(&plan(true, true)).join("\n");
         assert!(plain.contains("Repositories: no repository list signed"));
         assert!(plain.contains("Persona instructions: none signed"));
     }
@@ -1923,7 +2123,7 @@ mod tests {
             name: "A\u{202e}B".into(),
             instructions: "fine".into(),
         });
-        let s = summary_text(&p);
+        let s = signed_texts(&p).join("\n");
         for needle in [
             "WARNING    TM-2 has hidden or control characters",
             "[hidden U+2028]",
@@ -2315,5 +2515,381 @@ mod tests {
             (1..=6).collect::<Vec<_>>()
         );
         assert!(found.iter().all(|f| f.sign.is_some()), "{found:?}");
+    }
+
+    fn rules_of(list: &[(&str, &str)]) -> Vec<Rule> {
+        list.iter()
+            .map(|(name, workspace)| Rule {
+                name: (*name).into(),
+                workspace: (*workspace).into(),
+                ..rule()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_workspace_picks_its_only_rule_ignoring_case() {
+        let rules = rules_of(&[("a", "TM"), ("b", "OTHER")]);
+        assert_eq!(rule_for_workspace(&rules, "tm", None).unwrap(), "a");
+        assert_eq!(rule_for_workspace(&rules, "TM", Some("A")).unwrap(), "a");
+    }
+
+    #[test]
+    fn a_workspace_without_a_rule_is_a_usage_error_with_a_hint() {
+        let e = rule_for_workspace(&rules_of(&[("a", "TM")]), "nope", None).unwrap_err();
+        assert_eq!(e.kind, Kind::Usage);
+        assert_eq!(e.message, "no queue rule for workspace nope");
+        assert_eq!(e.hint.as_deref(), Some("tmgr queue rules add --help"));
+        assert!(rule_for_workspace(&[], "TM", None).is_err());
+    }
+
+    #[test]
+    fn several_rules_of_one_workspace_ask_for_a_rule_name() {
+        let rules = rules_of(&[("a", "TM"), ("b", "tm")]);
+        let e = rule_for_workspace(&rules, "TM", None).unwrap_err();
+        assert!(e.message.contains("a, b"), "{}", e.message);
+        assert_eq!(e.hint.as_deref(), Some("--rule NAME"));
+        assert_eq!(rule_for_workspace(&rules, "TM", Some("b")).unwrap(), "b");
+    }
+
+    #[test]
+    fn a_rule_of_another_workspace_is_refused() {
+        let rules = rules_of(&[("a", "TM"), ("b", "OTHER")]);
+        let e = rule_for_workspace(&rules, "TM", Some("b")).unwrap_err();
+        assert_eq!(e.kind, Kind::Usage);
+        assert!(e.message.contains("not a cloud rule of workspace TM"));
+    }
+
+    #[test]
+    fn remembered_answers_skip_the_interview_unless_setup_is_asked() {
+        assert!(assume_answers(true, true, false, false));
+        assert!(!assume_answers(true, false, false, false));
+        assert!(!assume_answers(true, true, true, false));
+        assert!(!assume_answers(true, true, true, true));
+        assert!(assume_answers(false, false, false, true));
+        assert!(!assume_answers(false, true, false, false));
+        assert!(!assume_answers(false, false, true, true));
+    }
+
+    fn interview_run(assume: bool, input: &str) -> (Result<()>, String) {
+        let remembered = Answers {
+            max_teams: 1,
+            max_concurrent: 1,
+            ..Answers::default()
+        };
+        let mut d = Draft::new(Some(remembered), vec!["TM-1".into()], 3);
+        let mut out = Vec::new();
+        let r = interview::ask_all(
+            &interview::questions(),
+            &mut d,
+            &interview::Flags::new(),
+            assume,
+            &mut input.as_bytes(),
+            &mut out,
+        );
+        (r, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn remembered_answers_ask_nothing_and_setup_asks_again() {
+        let (r, shown) = interview_run(assume_answers(true, true, false, false), "");
+        r.unwrap();
+        assert_eq!(shown, "");
+        let (r, shown) = interview_run(assume_answers(true, true, true, false), &"\n".repeat(20));
+        r.unwrap();
+        assert!(shown.contains("Teams at the same time"), "{shown}");
+        let (r, shown) = interview_run(assume_answers(true, false, false, false), &"\n".repeat(20));
+        r.unwrap();
+        assert!(shown.contains("Teams at the same time"), "{shown}");
+    }
+
+    fn batch_plan(code: &str, signing: usize, signed: usize) -> Plan {
+        let mut p = plan(false, true);
+        p.ws.code = code.into();
+        let sign_task = |n: i64| SignTask {
+            id: n,
+            workspace_id: 7,
+            category_id: 5,
+            title: format!("Task {n}"),
+            description: "Fix the login form\nand more".into(),
+            repos_sha256: None,
+            offer: Offer::default(),
+        };
+        let mk = |n: i64, sign: bool| Found {
+            id: n,
+            key: format!("TM-{n}"),
+            title: format!("Task {n}"),
+            repos: vec![],
+            approval: if sign {
+                Approval::NeedsSigning("no approval".into())
+            } else {
+                Approval::Valid
+            },
+            sign: sign.then(|| sign_task(n)),
+        };
+        p.chosen = (1..=signing as i64)
+            .map(|n| mk(n, true))
+            .chain((0..signed as i64).map(|n| mk(1000 + n, false)))
+            .collect();
+        p
+    }
+
+    #[test]
+    fn the_token_is_the_server_workspace_code_in_its_case_and_the_task_count() {
+        let p = batch_plan("TmGrDev", 2, 1);
+        assert_eq!(batch_token(&p), "TmGrDev 3");
+        assert_eq!(
+            batch_prompt(&p),
+            "Type \"TmGrDev 3\" to sign 2 tasks and start 3:"
+        );
+        assert_eq!(
+            batch_prompt(&batch_plan("TM", 0, 4)),
+            "Type \"TM 4\" to start 4:"
+        );
+        assert_eq!(
+            batch_prompt(&batch_plan("TM", 1, 0)),
+            "Type \"TM 1\" to sign 1 task and start 1:"
+        );
+        let mut dry = batch_plan("TM", 2, 0);
+        dry.dry_run = true;
+        assert_eq!(
+            batch_prompt(&dry),
+            "Type \"TM 2\" to sign 2 tasks and start the dry run of 2 tasks:"
+        );
+    }
+
+    fn confirm(p: &Plan, typed: &str) -> (Result<()>, String) {
+        let mut out = Vec::new();
+        let r = confirm_batch(
+            &compact_summary(p, false),
+            &batch_token(p),
+            &batch_prompt(p),
+            &mut typed.as_bytes(),
+            &mut out,
+        );
+        (r, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn only_the_exact_token_confirms_the_batch() {
+        let p = batch_plan("TmGrDev", 2, 1);
+        assert!(confirm(&p, "TmGrDev 3\n").0.is_ok());
+        for wrong in [
+            "tmgrdev 3\n",
+            "TmGrDev 2\n",
+            "TmGrDev 4\n",
+            "TmGrDev\n",
+            "y\n",
+            "yes\n",
+            "-y\n",
+            "I AGREE\n",
+            "\n",
+            "",
+        ] {
+            let e = confirm(&p, wrong).0.unwrap_err();
+            assert_eq!(e.kind, Kind::Interrupted, "{wrong:?}");
+        }
+    }
+
+    #[test]
+    fn the_token_is_asked_even_when_nothing_needs_signing() {
+        let p = batch_plan("TM", 0, 2);
+        assert!(confirm(&p, "y\n").0.is_err());
+        let (r, shown) = confirm(&p, "TM 2\n");
+        r.unwrap();
+        assert!(shown.contains("Type \"TM 2\" to start 2:"));
+    }
+
+    #[test]
+    fn the_confirmation_refuses_agent_sessions_and_missing_terminals_before_reading() {
+        let p = batch_plan("TM", 1, 0);
+        let mut out = Vec::new();
+        let mut input = "TM 1\n".as_bytes();
+        let e = confirm_batch_guarded(
+            || privileged::check(true, true),
+            &p,
+            false,
+            &mut input,
+            &mut out,
+        )
+        .unwrap_err();
+        assert_eq!(e.exit_code(), 5);
+        let e = confirm_batch_guarded(
+            || privileged::check(false, false),
+            &p,
+            false,
+            &mut input,
+            &mut out,
+        )
+        .unwrap_err();
+        assert_eq!(e.exit_code(), 10);
+        assert!(out.is_empty());
+        assert_eq!(input, "TM 1\n".as_bytes());
+        confirm_batch_guarded(
+            || privileged::check(false, true),
+            &p,
+            false,
+            &mut input,
+            &mut out,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn the_compact_summary_lists_every_task_with_a_preview_and_the_limits_last() {
+        let p = batch_plan("TM", 60, 5);
+        let s = compact_summary(&p, false);
+        for n in 1..=60 {
+            assert!(s.contains(&format!(
+                "TM-{n}  Task {n}  [sign now]  \"Fix the login form\" ("
+            )));
+        }
+        assert!(s.contains("(27 chars)"));
+        assert!(s.contains("TM-1000  Task 1000  [signed]"));
+        assert!(!s.contains("and more"));
+        assert!(!s.contains("more..."));
+        let caps = s.find("Caps       ").unwrap();
+        let push = s.find("Push       ").unwrap();
+        let last_task = s.rfind("[signed]").unwrap();
+        let usage = s.find("Usage      ").unwrap();
+        assert!(last_task < usage && usage < caps && caps < push);
+        assert!(s.trim_end().lines().last().unwrap().starts_with("Push"));
+        let (_, shown) = confirm(&p, "");
+        assert!(shown.starts_with("RISK:"));
+        assert!(shown.trim_end().ends_with(&batch_prompt(&p)));
+        assert!(shown.rfind("Push       ").unwrap() > shown.rfind("[sign now]").unwrap());
+    }
+
+    #[test]
+    fn long_descriptions_show_only_the_first_line_and_a_size() {
+        let mut p = batch_plan("TM", 1, 0);
+        let sign = p.chosen[0].sign.as_mut().unwrap();
+        sign.description = format!("\n  {}\nsecond line", "w".repeat(1200));
+        let s = compact_summary(&p, false);
+        assert!(s.contains("(1.2k chars)"), "{s}");
+        assert!(s.contains('…'));
+        assert!(!s.contains("second line"));
+        p.chosen[0].sign.as_mut().unwrap().description = String::new();
+        assert!(compact_summary(&p, false).contains("(no description)"));
+    }
+
+    #[test]
+    fn the_signed_set_is_exactly_the_sign_now_list() {
+        let p = batch_plan("TM", 3, 2);
+        let s = compact_summary(&p, false);
+        let listed: Vec<i64> = s
+            .lines()
+            .filter(|l| l.trim().starts_with("TM-") && l.contains("[sign now]"))
+            .map(|l| {
+                l.trim()
+                    .strip_prefix("TM-")
+                    .unwrap()
+                    .split(' ')
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap()
+            })
+            .collect();
+        let signed: Vec<i64> = tasks_to_sign(&p).iter().map(|t| t.id).collect();
+        assert_eq!(listed, signed);
+        assert_eq!(signed, [1, 2, 3]);
+    }
+
+    fn hidden_variants() -> Vec<(&'static str, SignTask)> {
+        use crate::cmd::signer::{OfferPage, OfferPersona};
+        let base = || batch_plan("TM", 1, 0).chosen[0].sign.clone().unwrap();
+        let persona = |name: &str, instructions: &str| OfferPersona {
+            id: "993c30a6-3528-42bf-9a70-507841cebc08".into(),
+            name: name.into(),
+            instructions: instructions.into(),
+        };
+        let mut v = Vec::new();
+        let mut t = base();
+        t.title = "a\u{202e}b".into();
+        v.push(("title", t));
+        let mut t = base();
+        t.description = "ok\u{2028}bad".into();
+        v.push(("description", t));
+        let mut t = base();
+        t.offer.repositories = Some(vec!["o/a\u{200b}pi".into()]);
+        v.push(("repository", t));
+        let mut t = base();
+        t.offer.persona = Some(persona("Agent", "do\u{1b}[31m this"));
+        v.push(("persona instructions", t));
+        let mut t = base();
+        t.offer.persona = Some(persona("A\u{202e}B", "fine"));
+        v.push(("persona name", t));
+        let mut t = base();
+        t.offer.context = Some(vec![OfferPage {
+            id: 1,
+            title: "Rules".into(),
+            body: "x\u{e0041}y".into(),
+        }]);
+        v.push(("page body", t));
+        let mut t = base();
+        t.offer.context = Some(vec![OfferPage {
+            id: 1,
+            title: "Ru\u{2060}les".into(),
+            body: "ok".into(),
+        }]);
+        v.push(("page title", t));
+        v
+    }
+
+    #[test]
+    fn hidden_characters_in_any_signed_field_leave_the_task_out_of_the_batch() {
+        for (what, sign) in hidden_variants() {
+            assert!(hidden_in(&sign), "{what}");
+            let found = Found {
+                sign: Some(sign),
+                title: "clean title".into(),
+                ..signable()
+            };
+            let left = leave_out_hidden(found.clone(), false);
+            assert!(!left.approval.runnable(), "{what}");
+            assert!(left.sign.is_none());
+            assert!(
+                matches!(&left.approval, Approval::Refused(w) if w == "hidden characters in its text; run with --review to see it and sign it"),
+                "{what}"
+            );
+            let kept = leave_out_hidden(found, true);
+            assert!(kept.approval.runnable(), "{what}");
+            assert!(kept.sign.is_some());
+        }
+        let clean = batch_plan("TM", 1, 0).chosen[0].sign.clone().unwrap();
+        assert!(!hidden_in(&clean));
+        let mut multi = clean;
+        multi.description = "line one\r\n\tline two\n".into();
+        assert!(!hidden_in(&multi));
+    }
+
+    #[test]
+    fn a_left_out_hidden_task_is_not_signed_and_is_named_in_the_summary() {
+        let mut p = batch_plan("TM", 2, 0);
+        let (chosen, dropped): (Vec<Found>, Vec<Found>) = {
+            let mut bad = p.chosen[1].clone();
+            bad.sign.as_mut().unwrap().description = "x\u{202e}y".into();
+            vec![p.chosen[0].clone(), bad]
+                .into_iter()
+                .map(|f| leave_out_hidden(f, false))
+                .partition(|f| f.approval.runnable())
+        };
+        p.chosen = chosen;
+        p.dropped = dropped;
+        assert_eq!(
+            tasks_to_sign(&p).iter().map(|t| t.id).collect::<Vec<_>>(),
+            [1]
+        );
+        assert_eq!(batch_token(&p), "TM 1");
+        assert!(compact_summary(&p, false)
+            .contains("TM-2  left out: refused: hidden characters in its text; run with --review"));
+    }
+
+    #[test]
+    fn review_mode_says_the_full_texts_were_shown() {
+        let p = batch_plan("TM", 1, 0);
+        assert!(compact_summary(&p, true).contains("shown above"));
+        assert!(compact_summary(&p, false).contains("--review"));
     }
 }

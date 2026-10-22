@@ -33,7 +33,7 @@ use tmgr_queue::taken::{
 use tmgr_queue::workdir::GitClone;
 use tmgr_queue::{Deps, Paths, Publisher};
 
-const WARNING: &str = "\
+pub(crate) const WARNING: &str = "\
 RISK: with the queue on, tasks in your local workspaces start AI agents on this machine
 without you looking at them first. A task, a comment or a page that someone or something
 else wrote can steer an agent that can read and change your files and run commands.
@@ -609,7 +609,10 @@ fn review(p: &state::Pickup, pin: &ProfilePin) -> Vec<String> {
 }
 
 fn page_through(lines: &[String]) -> Result<()> {
-    let mut input = std::io::stdin().lock();
+    page_through_from(lines, &mut std::io::stdin().lock())
+}
+
+pub(crate) fn page_through_from(lines: &[String], input: &mut impl std::io::BufRead) -> Result<()> {
     for (n, chunk) in lines.chunks(PAGE).enumerate() {
         for l in chunk {
             eprintln!("{l}");
@@ -618,7 +621,8 @@ fn page_through(lines: &[String]) -> Result<()> {
             eprint!("-- more, press Enter -- ");
             let _ = std::io::Write::flush(&mut std::io::stderr());
             let mut sink = String::new();
-            std::io::BufRead::read_line(&mut input, &mut sink)
+            input
+                .read_line(&mut sink)
                 .map_err(|_| Error::new(Kind::Interrupted, "could not read the answer"))?;
         }
     }

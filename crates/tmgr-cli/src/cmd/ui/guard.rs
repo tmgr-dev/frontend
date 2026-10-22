@@ -34,6 +34,8 @@ pub const GUARDED: &[Rule] = &[
     rule(&["queue", "rules", "add"], None, None),
     rule(&["queue", "autopilot"], None, None),
     rule(&["queue", "autopilot", "start"], None, None),
+    rule(&["autopilot"], None, None),
+    rule(&["autopilot", "start"], None, None),
     rule(&["usage", "sync", "on"], None, None),
     rule(&["self-update"], Some("allow_downgrade"), None),
     rule(&["git", "install-hooks"], Some("global"), None),
