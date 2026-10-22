@@ -10,6 +10,7 @@
 		createEditorOperationQueue,
 		createSerialEditor,
 	} from '@/utils/serialEditor';
+	import { escapeCarriedHtml } from '@/utils/titleOverflow';
 	import CodeTool from '@bomdi/codebox';
 	import Delimiter from '@editorjs/delimiter';
 	import EditorJS from '@editorjs/editorjs';
@@ -57,6 +58,41 @@
 		flush: () => serial.changed(),
 		replace: (value) => renderModel(value),
 		hasPending: serial.hasPending,
+		// Awaiting readiness first queues the initial render (onReady) ahead of this
+		// insert; render() would otherwise erase the new block.
+		prependParagraph: async (text) => {
+			await editor.isReady;
+			return runOperation(async () => {
+				if (disposed) return false;
+				// renderFromHTML resolves before Editor.js has pasted the legacy HTML
+				// into the editor (async pattern processing); inserting now would be
+				// replacing the still-empty block and the HTML would be lost.
+				if (typeof lastRequested === 'string' && lastRequested.trim())
+					for (
+						let i = 0;
+						i < 50 &&
+						!editor.blocks.getBlockByIndex(0)?.holder.textContent.trim();
+						i++
+					)
+						await new Promise((resolve) => setTimeout(resolve, 20));
+				const carried = typeof text === 'function' ? text() : text;
+				const first = editor.blocks.getBlockByIndex(0);
+				const replaceEmpty =
+					editor.blocks.getBlocksCount() === 1 &&
+					first?.name === 'paragraph' &&
+					!first.holder.textContent.trim();
+				editor.blocks.insert(
+					'paragraph',
+					{ text: escapeCarriedHtml(carried) },
+					undefined,
+					0,
+					false,
+					replaceEmpty,
+				);
+				editor.caret.setToBlock(0, 'end');
+				return true;
+			});
+		},
 	});
 	function renderModel(value) {
 		lastRequested = value;

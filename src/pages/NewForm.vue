@@ -173,6 +173,11 @@
 		taskWindowTarget,
 	} from '@/utils/taskWindow';
 	import { applyTimerState } from '@/utils/timerSync';
+	import {
+		joinCarriedMarkdown,
+		prependCarriedBlock,
+		splitTitleInsert,
+	} from '@/utils/titleOverflow';
 	import { titlePatternHandler } from '@/utils/titlePatternHandler.ts';
 	import { generateTaskUrl } from '@/utils/url';
 	import {
@@ -510,6 +515,7 @@
 		descriptionEditFor.value = form.value.id ?? null;
 	};
 	const blockMdEditorRef = ref<any>(null);
+	const markdownEditorRef = ref<any>(null);
 	const finishDescriptionEdit = async () => {
 		blockMdEditorRef.value?.flush?.();
 		await blockEditorRef.value?.flush?.();
@@ -773,6 +779,141 @@
 		() => (form.value.title?.length || 0) >= 230,
 	);
 	const isTitleAtLimit = computed(() => (form.value.title?.length || 0) >= 255);
+
+	// Keydown is the typing hook because WebKit hands beforeinput an empty `data`
+	// once maxlength is reached; beforeinput still covers virtual keyboards.
+	let overflowPending = '';
+	let overflowFlushing = false;
+	const carryToDescription = async (text: string) => {
+		// While the editor mounts, focus stays in the title: later characters queue up.
+		if (overflowFlushing) {
+			overflowPending += text;
+			return;
+		}
+		const carried = text.trimStart();
+		if (!carried) return;
+		overflowFlushing = true;
+		const formId = form.value.id;
+		overflowPending = carried;
+		let taken = '';
+		let inserted = false;
+		try {
+			if (!showDescriptionEditor.value) startDescriptionEdit();
+			const current = () =>
+				editorType.value === 'markdown'
+					? markdownEditorRef.value
+					: editorType.value === 'block'
+					? blockEditorRef.value
+					: blockMdEditorRef.value;
+			for (let i = 0; !current()?.prependParagraph && i < 300; i++)
+				await new Promise((resolve) => setTimeout(resolve, 16));
+			inserted =
+				(await current()?.prependParagraph?.(() => {
+					taken = overflowPending;
+					overflowPending = '';
+					return taken;
+				})) === true;
+		} catch (error) {
+			console.error(
+				'Carrying the title overflow into the description failed',
+				error,
+			);
+		} finally {
+			let lost = inserted ? '' : taken;
+			if (inserted && overflowPending) {
+				// Typed while focus was moving: the editor has it now, continue there.
+				if (
+					!descriptionWrapperRef.value?.contains(document.activeElement) ||
+					!document.execCommand('insertText', false, overflowPending)
+				)
+					lost = overflowPending;
+			} else lost += overflowPending;
+			overflowFlushing = false;
+			overflowPending = '';
+			if (
+				lost &&
+				form.value.id === formId &&
+				(!formId || descriptionEditFor.value === formId)
+			)
+				writeCarriedToModel(lost);
+		}
+	};
+	const writeCarriedToModel = (text: string) => {
+		if (editorType.value === 'block')
+			onDescriptionInput(
+				'description_json',
+				prependCarriedBlock(form.value.description_json, text),
+			);
+		else
+			onDescriptionInput(
+				'description',
+				joinCarriedMarkdown(text, form.value.description ?? ''),
+			);
+	};
+	let titleInsertBusy = false;
+	const overflowTitleInsert = (
+		event: Event,
+		el: HTMLTextAreaElement,
+		text: string,
+		pasted: boolean,
+	) => {
+		const { selectionStart: start, selectionEnd: end, value } = el;
+		const { insert, overflow } = splitTitleInsert(
+			value.slice(0, start),
+			value.slice(end),
+			text,
+		);
+		if (!overflow || (!pasted && !(start === end && end === value.length)))
+			return;
+		event.preventDefault();
+		if (insert) {
+			titleInsertBusy = true;
+			try {
+				if (!document.execCommand('insertText', false, insert)) {
+					el.setRangeText(insert, start, end, 'end');
+					el.dispatchEvent(new Event('input', { bubbles: true }));
+				}
+			} finally {
+				titleInsertBusy = false;
+			}
+		}
+		void carryToDescription(overflow);
+	};
+	// Option types real characters on macOS; Alt is an accelerator elsewhere.
+	const isMacPlatform = /mac|iphone|ipad/i.test(navigator.platform);
+	const onTitleKeydown = (e: KeyboardEvent) => {
+		if (
+			e.key.length !== 1 ||
+			e.ctrlKey ||
+			e.metaKey ||
+			(e.altKey && !isMacPlatform) ||
+			e.isComposing ||
+			e.keyCode === 229
+		)
+			return;
+		overflowTitleInsert(
+			e,
+			e.currentTarget as HTMLTextAreaElement,
+			e.key,
+			false,
+		);
+	};
+	const onTitleBeforeInput = (e: Event) => {
+		const { inputType, data, isComposing } = e as InputEvent;
+		if (titleInsertBusy || inputType !== 'insertText' || isComposing || !data)
+			return;
+		overflowTitleInsert(e, e.currentTarget as HTMLTextAreaElement, data, false);
+	};
+	const onTitlePaste = (e: ClipboardEvent) => {
+		const text = e.clipboardData?.getData('text/plain');
+		if (text)
+			overflowTitleInsert(
+				e,
+				e.currentTarget as HTMLTextAreaElement,
+				text,
+				true,
+			);
+	};
 
 	const checkpointsTotalLabel = computed(() => {
 		const items = form.value.checkpoints || [];
@@ -2591,6 +2732,9 @@
 							rows="1"
 							maxlength="255"
 							@input="autoResizeTitle"
+							@keydown="onTitleKeydown"
+							@beforeinput="onTitleBeforeInput"
+							@paste="onTitlePaste"
 						/>
 						<div
 							v-if="isTitleNearLimit"
@@ -2895,6 +3039,7 @@
 
 						<!-- Editor components - no loading state needed since we use localStorage -->
 						<Editor
+							ref="markdownEditorRef"
 							:key="form.id"
 							v-else-if="editorType === 'markdown'"
 							:model-value="form.description ?? undefined"

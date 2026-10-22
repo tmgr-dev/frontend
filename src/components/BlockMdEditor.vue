@@ -7,6 +7,8 @@
 	import '@milkdown/crepe/theme/common/style.css';
 	import darkTheme from '@milkdown/crepe/theme/frame-dark.css?inline';
 	import lightTheme from '@milkdown/crepe/theme/frame.css?inline';
+	import { editorViewCtx } from '@milkdown/kit/core';
+	import { TextSelection } from '@milkdown/kit/prose/state';
 	import { replaceAll } from '@milkdown/kit/utils';
 	import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 	import store from '../store';
@@ -24,6 +26,8 @@
 	let lastMarkdown = '';
 	let hasUserEdits = false;
 	let ready = false;
+	let markReady: () => void = () => {};
+	const whenReady = new Promise<void>((resolve) => (markReady = resolve));
 
 	// markdownUpdated is debounced (200ms) and cancelled on destroy.
 	defineExpose({
@@ -34,6 +38,35 @@
 			lastMarkdown = markdown;
 			hasUserEdits = true;
 			emit('update:modelValue', markdown);
+		},
+		prependParagraph: async (text: string | (() => string)) => {
+			await whenReady;
+			if (!crepe || !ready) return false;
+			const carried = typeof text === 'function' ? text() : text;
+			crepe.editor.action((ctx) => {
+				const view = ctx.get(editorViewCtx);
+				const { doc, schema } = view.state;
+				const content = carried
+					.split('\n')
+					.flatMap((line, i) => [
+						...(i && schema.nodes.hardbreak
+							? [schema.nodes.hardbreak.create()]
+							: []),
+						...(line ? [schema.text(line)] : []),
+					]);
+				const paragraph = schema.nodes.paragraph.create(null, content);
+				const empty =
+					doc.childCount === 1 &&
+					doc.firstChild!.isTextblock &&
+					doc.firstChild!.content.size === 0;
+				const tr = empty
+					? view.state.tr.replaceWith(0, doc.content.size, paragraph)
+					: view.state.tr.insert(0, paragraph);
+				tr.setSelection(TextSelection.create(tr.doc, paragraph.nodeSize - 1));
+				view.dispatch(tr.scrollIntoView());
+				view.focus();
+			});
+			return true;
 		},
 	});
 
@@ -82,8 +115,12 @@
 				emit('update:modelValue', markdown);
 			});
 		});
-		await crepe.create();
-		ready = true;
+		try {
+			await crepe.create();
+			ready = true;
+		} finally {
+			markReady();
+		}
 	});
 
 	// model -> view (external change, e.g. task reload)
@@ -107,6 +144,7 @@
 	watch(() => store.getters.isDarkTheme, applyTheme);
 
 	onBeforeUnmount(() => {
+		markReady();
 		crepe?.destroy();
 		crepe = null;
 		themeStyle.remove();
