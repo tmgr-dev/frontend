@@ -2,6 +2,7 @@ use super::view::{MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH};
 use super::*;
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;
+use ratatui::style::Modifier;
 use ratatui::Terminal;
 use std::collections::HashMap;
 use tmgr_ipc::api::{Attr, Color, Line, Modes, Snapshot, Span, BOLD};
@@ -131,7 +132,7 @@ fn scroll_mode_keys() {
 
 #[test]
 fn scroll_mode_forwards_nothing() {
-    assert_eq!(scroll(b"hello\x1b[1;5Czz"), vec![]);
+    assert_eq!(scroll(b"fopRx\x1b[1;5Czz"), vec![]);
     assert_eq!(
         scroll(b"a\x1b[5~b\x1b[6~"),
         vec![
@@ -2232,10 +2233,10 @@ fn wide_right_split_still_resizes_on_the_horizontal_axis() {
 }
 
 #[test]
-fn help_shows_the_mouse_section_at_33_rows() {
+fn help_shows_the_mouse_section_at_34_rows() {
     let mut v = two_pane(140);
     v.help = true;
-    let text = draw(&v, &screens(), 140, 33);
+    let text = draw(&v, &screens(), 140, 34);
     assert!(text.contains("pick a tab, a session or a pane"));
     assert!(text.contains("Shift-drag selects"));
     assert!(text.contains("? again closes this box"));
@@ -6992,4 +6993,396 @@ fn snapshot_prompt_list_narrow() {
         v
     };
     assert_snapshot("prompts_narrow", &draw(&v, &screens(), 60, 14));
+}
+
+fn lines_of(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+fn find_view(lines: &[&str], cols: usize) -> ViewState {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 100;
+    v.scroll = Some(ScrollState {
+        offset: 0,
+        max: 100,
+    });
+    v.set_scroll_text(
+        ScrollText {
+            session: "a".into(),
+            lines: lines_of(lines),
+            cols,
+        },
+        10,
+    );
+    v
+}
+
+fn type_search(v: &mut ViewState, text: &str) -> SearchEdit {
+    v.open_search();
+    v.edit_search(text.as_bytes(), 10)
+}
+
+#[test]
+fn search_finds_every_hit_and_smart_case_decides_sensitivity() {
+    let lines = lines_of(&["Error: build failed", "error again", "no match"]);
+    let hits = super::find::find_hits(&lines, 40, "error");
+    assert_eq!(hits.len(), 2);
+    assert_eq!(super::find::find_hits(&lines, 40, "Error").len(), 1);
+    assert!(super::find::find_hits(&lines, 40, "").is_empty());
+}
+
+#[test]
+fn search_joins_wrapped_rows_but_not_separate_lines() {
+    let lines = lines_of(&["0123456789", "abc def", "tail"]);
+    let hits = super::find::find_hits(&lines, 10, "89ab");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        (hits[0].l0, hits[0].c0, hits[0].l1, hits[0].c1),
+        (0, 8, 1, 2)
+    );
+    assert!(super::find::find_hits(&lines, 10, "deftail").is_empty());
+}
+
+#[test]
+fn typing_a_query_marks_hits_starts_at_the_newest_and_scrolls_to_it() {
+    let mut lines: Vec<String> = (0..60).map(|i| format!("line {i}")).collect();
+    lines[5] = "needle old".into();
+    lines[40] = "needle new".into();
+    let mut v = ViewState::new(four(), "local");
+    v.scroll = Some(ScrollState {
+        offset: 0,
+        max: 100,
+    });
+    v.set_scroll_text(
+        ScrollText {
+            session: "a".into(),
+            lines,
+            cols: 40,
+        },
+        10,
+    );
+    assert_eq!(type_search(&mut v, "needle"), SearchEdit::Editing);
+    let s = v.search.as_ref().unwrap();
+    assert_eq!(s.hits.len(), 2);
+    assert_eq!(s.current, Some(1));
+    let off = v.scroll.unwrap().offset;
+    assert!(off >= 14, "{off}");
+    v.search_step(true, 10);
+    assert_eq!(v.search.as_ref().unwrap().current, Some(0));
+    assert!(v.scroll.unwrap().offset >= 45);
+    v.search_step(true, 10);
+    assert_eq!(v.search.as_ref().unwrap().current, Some(1));
+    v.search_step(false, 10);
+    assert_eq!(v.search.as_ref().unwrap().current, Some(0));
+}
+
+#[test]
+fn enter_keeps_the_search_and_an_empty_result_or_esc_cancels() {
+    let mut v = find_view(&["alpha", "beta"], 40);
+    v.open_search();
+    v.edit_search(b"alp", 10);
+    assert_eq!(v.edit_search(b"\r", 10), SearchEdit::Keep);
+    assert!(!v.search.as_ref().unwrap().input);
+    let mut v = find_view(&["alpha"], 40);
+    v.open_search();
+    v.edit_search(b"zzz", 10);
+    assert_eq!(v.edit_search(b"\r", 10), SearchEdit::Cancel);
+    let mut v = find_view(&["alpha"], 40);
+    v.open_search();
+    assert_eq!(v.edit_search(b"\x1b", 10), SearchEdit::Cancel);
+}
+
+#[test]
+fn backspace_and_ctrl_u_edit_the_query_and_hits_follow() {
+    let mut v = find_view(&["alpha", "alpine"], 40);
+    v.open_search();
+    v.edit_search(b"alpi", 10);
+    assert_eq!(v.search.as_ref().unwrap().hits.len(), 1);
+    v.edit_search(b"\x7f", 10);
+    assert_eq!(v.search.as_ref().unwrap().hits.len(), 2);
+    v.edit_search(b"\x15", 10);
+    assert!(v.search.as_ref().unwrap().hits.is_empty());
+}
+
+#[test]
+fn n_without_a_search_says_so() {
+    let mut v = find_view(&["alpha"], 40);
+    v.scroll_key(ScrollKey::Next, 9);
+    assert_eq!(v.notice.as_deref(), Some("no search yet, / starts one"));
+}
+
+#[test]
+fn selection_text_joins_wrapped_rows_and_strips_controls() {
+    let lines = lines_of(&["0123456789", "abc", "x\u{1b}[31my"]);
+    assert_eq!(
+        super::find::selection_text(&lines, 10, (0, 8), (1, 1)),
+        "89ab"
+    );
+    assert_eq!(
+        super::find::selection_text(&lines, 10, (1, 0), (2, 5)),
+        "abc
+x[31my"
+    );
+    assert_eq!(
+        super::find::selection_text(&lines, 10, (1, 2), (1, 0)),
+        "abc"
+    );
+}
+
+#[test]
+fn copy_mode_moves_selects_and_yields_the_text_without_pasting_anywhere() {
+    let mut v = find_view(&["first line", "second line", "third"], 40);
+    v.scroll_key(ScrollKey::CopyMode, 9);
+    let c = v.copy.clone().unwrap();
+    assert_eq!((c.line, c.col), (2, 0));
+    v.scroll_key(ScrollKey::Up, 9);
+    v.scroll_key(ScrollKey::Select, 9);
+    v.scroll_key(ScrollKey::Right, 9);
+    v.scroll_key(ScrollKey::Right, 9);
+    v.scroll_key(ScrollKey::Down, 9);
+    v.scroll_key(ScrollKey::Yank, 9);
+    assert_eq!(v.take_copied().as_deref(), Some("second line\nthi"));
+    assert!(v.copy.is_none() && v.scroll.is_none());
+    assert!(v.take_copied().is_none());
+}
+
+#[test]
+fn y_without_a_selection_copies_the_cursor_line_and_esc_leaves_in_steps() {
+    let mut v = find_view(&["first", "second"], 40);
+    v.scroll_key(ScrollKey::CopyMode, 9);
+    v.scroll_key(ScrollKey::Yank, 9);
+    assert_eq!(v.take_copied().as_deref(), Some("second"));
+
+    let mut v = find_view(&["first", "second"], 40);
+    v.scroll_key(ScrollKey::Select, 9);
+    assert!(v.copy.as_ref().unwrap().anchor.is_some());
+    v.scroll_key(ScrollKey::Exit, 9);
+    assert!(v.copy.as_ref().unwrap().anchor.is_none() && v.scroll.is_some());
+    v.scroll_key(ScrollKey::Exit, 9);
+    assert!(v.copy.is_none() && v.scroll.is_none() && v.stext.is_none());
+}
+
+#[test]
+fn copy_cursor_stays_inside_the_text_and_the_viewport_follows_it() {
+    let lines: Vec<String> = (0..40).map(|i| format!("row {i}")).collect();
+    let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+    let mut v = find_view(&refs, 40);
+    v.scroll_key(ScrollKey::CopyMode, 9);
+    for _ in 0..200 {
+        v.scroll_key(ScrollKey::Up, 9);
+    }
+    assert_eq!(v.copy.as_ref().unwrap().line, 0);
+    assert!(v.scroll.unwrap().offset >= 30);
+    v.scroll_key(ScrollKey::LineEnd, 9);
+    assert_eq!(v.copy.as_ref().unwrap().col, 4);
+    v.scroll_key(ScrollKey::Bottom, 9);
+    assert_eq!(v.copy.as_ref().unwrap().line, 39);
+    assert_eq!(v.scroll.unwrap().offset, 0);
+}
+
+#[test]
+fn copy_mode_keys_map_from_the_scroll_mode_splitter() {
+    let mut s = InputSplitter::new();
+    s.set_scroll_mode(true);
+    let keys = s.feed(b"/nNcvyhjkl0$");
+    let want = [
+        ScrollKey::Search,
+        ScrollKey::Next,
+        ScrollKey::Prev,
+        ScrollKey::CopyMode,
+        ScrollKey::Select,
+        ScrollKey::Yank,
+        ScrollKey::Left,
+        ScrollKey::Down,
+        ScrollKey::Up,
+        ScrollKey::Right,
+        ScrollKey::LineStart,
+        ScrollKey::LineEnd,
+    ];
+    assert_eq!(
+        keys,
+        want.iter().map(|k| Action::Scroll(*k)).collect::<Vec<_>>()
+    );
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'/']), vec![Action::Cmd(Cmd::Search)]);
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'y']), vec![Action::Cmd(Cmd::CopyMode)]);
+}
+
+fn find_screens() -> Screens {
+    let mut s = Screens::default();
+    s.0.insert(
+        "a".into(),
+        snap(
+            4,
+            40,
+            &[
+                vec![("alpha beta", plain())],
+                vec![("gamma", plain())],
+                vec![("beta again beta", plain())],
+                vec![("> ", plain())],
+            ],
+            None,
+        ),
+    );
+    s
+}
+
+fn mods(term: &Terminal<TestBackend>, x: u16, y: u16) -> Modifier {
+    term.backend().buffer()[(x, y)].modifier
+}
+
+#[test]
+fn hits_are_highlighted_in_the_visible_rows_and_the_bar_shows_the_count() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    v.scroll = Some(ScrollState { offset: 0, max: 0 });
+    v.set_scroll_text(
+        ScrollText {
+            session: "a".into(),
+            lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
+            cols: 40,
+        },
+        4,
+    );
+    v.open_search();
+    v.edit_search(b"beta", 4);
+    v.edit_search(b"\r", 4);
+    let mut term = Terminal::new(TestBackend::new(140, 16)).unwrap();
+    term.draw(|f| render(f, &v, &find_screens())).unwrap();
+    let lay = layout(Rect::new(0, 0, 140, 16), &v);
+    let inner = lay.panes[0].inner;
+    assert!(mods(&term, inner.x + 6, inner.y).contains(Modifier::UNDERLINED));
+    assert!(!mods(&term, inner.x, inner.y).contains(Modifier::UNDERLINED));
+    assert!(mods(&term, inner.x + 11, inner.y + 2).contains(Modifier::REVERSED));
+    let screen = text(&term);
+    assert!(screen.contains("/beta  3/3"), "{screen}");
+}
+
+#[test]
+fn copy_selection_is_reversed_and_the_bar_names_the_mode() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    v.scroll = Some(ScrollState { offset: 0, max: 0 });
+    v.set_scroll_text(
+        ScrollText {
+            session: "a".into(),
+            lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
+            cols: 40,
+        },
+        4,
+    );
+    v.scroll_key(ScrollKey::CopyMode, 3);
+    v.scroll_key(ScrollKey::Up, 3);
+    v.scroll_key(ScrollKey::Select, 3);
+    v.scroll_key(ScrollKey::Right, 3);
+    v.scroll_key(ScrollKey::Right, 3);
+    let mut term = Terminal::new(TestBackend::new(140, 16)).unwrap();
+    term.draw(|f| render(f, &v, &find_screens())).unwrap();
+    let lay = layout(Rect::new(0, 0, 140, 16), &v);
+    let inner = lay.panes[0].inner;
+    assert!(mods(&term, inner.x + 1, inner.y + 2).contains(Modifier::REVERSED));
+    assert!(text(&term).contains("COPY"));
+}
+
+#[test]
+fn clicking_in_copy_mode_places_the_cursor_without_forwarding() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    v.scroll = Some(ScrollState { offset: 0, max: 0 });
+    v.set_scroll_text(
+        ScrollText {
+            session: "a".into(),
+            lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
+            cols: 40,
+        },
+        4,
+    );
+    v.scroll_key(ScrollKey::CopyMode, 3);
+    let inner = layout(AREA, &v).panes[0].inner;
+    let row = inner.y + inner.height - 1 - 3;
+    let out = at(&mut v, 0, inner.x + 6, row, false);
+    assert!(out.redraw && out.forward.is_none());
+    let c = v.copy.as_ref().unwrap();
+    assert_eq!((c.line, c.col), (0, 6));
+}
+
+#[test]
+fn enter_before_the_text_has_loaded_keeps_editing() {
+    let mut v = ViewState::new(four(), "local");
+    v.scroll = Some(ScrollState { offset: 0, max: 5 });
+    v.open_search();
+    v.edit_search(b"abc", 10);
+    assert_eq!(v.edit_search(b"\r", 10), SearchEdit::Editing);
+}
+
+#[test]
+fn n_in_copy_mode_moves_the_cursor_to_the_hit() {
+    let mut v = find_view(&["beta one", "gamma", "beta two", "> "], 40);
+    v.open_search();
+    v.edit_search(b"beta", 10);
+    v.edit_search(b"\r", 10);
+    v.scroll_key(ScrollKey::CopyMode, 4);
+    assert_eq!(v.copy.as_ref().map(|c| (c.line, c.col)), Some((2, 0)));
+    v.scroll_key(ScrollKey::Next, 4);
+    assert_eq!(v.copy.as_ref().map(|c| (c.line, c.col)), Some((0, 0)));
+    v.scroll_key(ScrollKey::Prev, 4);
+    assert_eq!(v.copy.as_ref().map(|c| (c.line, c.col)), Some((2, 0)));
+}
+
+#[test]
+fn escape_with_a_selection_then_y_still_yanks_and_never_forwards() {
+    let mut v = find_view(&["alpha", "beta"], 40);
+    v.scroll_key(ScrollKey::CopyMode, 4);
+    v.scroll_key(ScrollKey::Select, 4);
+    v.scroll_key(ScrollKey::Exit, 4);
+    assert!(v.copy.as_ref().is_some_and(|c| c.anchor.is_none()));
+    let mut s = InputSplitter::new();
+    s.set_scroll_mode(true);
+    assert_eq!(s.feed(b"y"), vec![Action::Scroll(ScrollKey::Yank)]);
+}
+
+#[test]
+fn yanking_nothing_says_so() {
+    let mut v = find_view(&[], 40);
+    v.scroll_key(ScrollKey::CopyMode, 4);
+    v.scroll_key(ScrollKey::Yank, 4);
+    assert!(v.take_copied().is_none());
+    assert_eq!(v.notice.as_deref(), Some("nothing to copy"));
+}
+
+#[test]
+fn the_bar_sits_on_the_border_row_and_the_caret_stays_off_it() {
+    let mut v = two_pane(140);
+    v.focus_pane(0);
+    v.scroll = Some(ScrollState { offset: 0, max: 0 });
+    v.set_scroll_text(
+        ScrollText {
+            session: "a".into(),
+            lines: lines_of(&["alpha beta", "gamma", "beta again beta", "> "]),
+            cols: 40,
+        },
+        4,
+    );
+    v.scroll_key(ScrollKey::CopyMode, 3);
+    let mut term = Terminal::new(TestBackend::new(140, 16)).unwrap();
+    term.draw(|f| render(f, &v, &find_screens())).unwrap();
+    let lay = layout(Rect::new(0, 0, 140, 16), &v);
+    let p = &lay.panes[0];
+    let border: String = (p.outer.x..p.outer.right())
+        .map(|x| {
+            term.backend().buffer()[(x, p.outer.bottom() - 1)]
+                .symbol()
+                .to_string()
+        })
+        .collect();
+    assert!(border.contains("COPY"), "{border}");
+    let last: String = (p.inner.x..p.inner.right())
+        .map(|x| {
+            term.backend().buffer()[(x, p.inner.bottom() - 1)]
+                .symbol()
+                .to_string()
+        })
+        .collect();
+    assert!(!last.contains("COPY"), "{last}");
 }

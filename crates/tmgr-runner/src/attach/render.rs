@@ -790,6 +790,9 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
                 .as_ref()
                 .filter(|g| st.scroll.is_some() && g.session == p.session);
             draw_snapshot(buf, inner, snap, mark);
+            if st.scroll.is_some() && st.focused_session() == Some(p.session.as_str()) {
+                super::find::draw_overlay(buf, p.outer, inner, snap, st, &p.session);
+            }
         }
         None => {
             let label = "connecting…";
@@ -1068,6 +1071,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
     (
         HelpKey::Cmds(&[Cmd::Broadcast, Cmd::BroadcastMark]),
         "broadcast typing to several panes / pick panes",
+    ),
+    (
+        HelpKey::Cmds(&[Cmd::Search, Cmd::CopyMode]),
+        "search scrollback (n older / N newer) / copy mode (v select, y copy)",
     ),
     (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),
     (

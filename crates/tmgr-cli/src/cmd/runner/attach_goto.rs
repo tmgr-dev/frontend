@@ -2,7 +2,9 @@ use super::attach_questions::QuestionJob;
 use super::{connect, rerr};
 use std::time::Duration;
 use tmgr_ipc::api::{caps, limits, RestoredRun};
-use tmgr_runner::attach::{find_question, goto_target, locate, Format, GotoMark, Source};
+use tmgr_runner::attach::{
+    find_question, goto_target, locate, Format, GotoMark, ScrollText, Source,
+};
 use tmgr_runner::daemon::RunnerConfig;
 use tmgr_runner::resume::{id_from_log, valid_resume_id};
 use tmgr_runner::sanitize::sanitize_text;
@@ -33,6 +35,19 @@ pub(super) fn goto_call(
         session,
     );
     Ok(Some((offset, text.scroll_max as usize, mark)))
+}
+
+pub(super) fn text_call(cfg: &RunnerConfig, session: &str) -> Result<ScrollText, String> {
+    let mut client = connect(cfg).map_err(|e| e.to_string())?;
+    let _ = client.set_timeouts(Duration::from_secs(10));
+    let text = client
+        .text(session, Some(limits::MAX_TEXT_LINES))
+        .map_err(|e| sanitize_text(&e.to_string()).into_owned())?;
+    Ok(ScrollText {
+        session: session.to_string(),
+        lines: text.lines,
+        cols: usize::from(text.cols),
+    })
 }
 
 pub(super) fn fork_name(names: &[&str], base: &str) -> String {
