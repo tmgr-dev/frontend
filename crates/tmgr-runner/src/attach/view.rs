@@ -135,6 +135,8 @@ pub struct ViewState {
     pub confirm: Option<Confirm>,
     pub rename: Option<Rename>,
     pub palette: Option<Palette>,
+    pub git: HashMap<String, super::git::GitInfo>,
+    pub git_open: bool,
     pub prompts: Vec<Prompt>,
     pub new_session: Option<NewSession>,
     pub new_kind: Option<String>,
@@ -359,6 +361,8 @@ impl ViewState {
             confirm: None,
             rename: None,
             palette: None,
+            git: HashMap::new(),
+            git_open: false,
             prompts: Vec::new(),
             new_session: None,
             new_kind: None,
@@ -1210,6 +1214,7 @@ impl ViewState {
                     self.toggle_subs(&id);
                 }
             }
+            Cmd::Git => self.toggle_git(),
             Cmd::Broadcast => self.toggle_broadcast(),
             Cmd::BroadcastMark => self.mark_broadcast(),
             Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession | Cmd::OpenTask => {}
@@ -1529,6 +1534,11 @@ impl ViewState {
                             return Hit::Chip(p.session.clone());
                         }
                     }
+                    if let Some((x, w)) = super::render::header_git(self, p) {
+                        if col >= x && col < x + w {
+                            return Hit::Git(p.session.clone());
+                        }
+                    }
                 }
                 if row + 1 == p.outer.bottom() {
                     if let Some(r) = super::broadcast::marker_rect(p, self) {
@@ -1557,6 +1567,7 @@ impl ViewState {
             | Hit::Questions(_)
             | Hit::Subs(_)
             | Hit::Chip(_)
+            | Hit::Git(_)
             | Hit::Broadcast(_)
             | Hit::Sub(..)
             | Hit::NewSession) => Some(h),
@@ -1594,6 +1605,7 @@ impl ViewState {
         if kind == Kind::Move
             || self.new_session.is_some()
             || self.palette.is_some()
+            || self.git_open
             || self.qmenu.is_some()
             || self.peek.is_some()
             || self.help
@@ -1606,6 +1618,9 @@ impl ViewState {
         }
         if self.palette.is_some() {
             return self.palette_mouse(area, ev, out);
+        }
+        if self.git_open {
+            return self.git_mouse(area, ev, out);
         }
         if self.qmenu.is_some() {
             return self.qmenu_mouse(area, ev, out);
@@ -1670,6 +1685,13 @@ impl ViewState {
             Hit::Chip(id) => {
                 if ev.is_left_press() {
                     out.open_task = Some(id);
+                    out.redraw = true;
+                }
+            }
+            Hit::Git(id) => {
+                if ev.is_left_press() {
+                    self.open(&id);
+                    self.toggle_git();
                     out.redraw = true;
                 }
             }
@@ -2099,6 +2121,7 @@ pub struct MouseOut {
     pub palette: Option<PaletteEntry>,
     pub new_session: bool,
     pub open_task: Option<String>,
+    pub git: Option<super::git::GitAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
 }
@@ -2112,6 +2135,7 @@ pub enum Hit {
     Questions(String),
     Subs(String),
     Chip(String),
+    Git(String),
     Broadcast(String),
     Sub(String, String),
     NewSession,
