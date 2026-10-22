@@ -2659,18 +2659,20 @@ pub(super) mod tests {
         let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
         r.runs("spark", 1);
         r.fake
-            .with("spark", |l| l.dial_delay = Duration::from_millis(250));
+            .with("spark", |l| l.dial_delay = Duration::from_millis(1500));
         r.hub
             .open(&view_id("spark", A), "spark", A, 80, 24)
             .unwrap();
-        thread::sleep(Duration::from_millis(60));
+        let opened = Instant::now();
         r.fake.set_runs("spark", &[B]);
-        let deadline = Instant::now() + Duration::from_secs(2);
         while r.hub.target_of(&view_id("spark", A)) != Target::Unknown {
-            assert!(Instant::now() < deadline);
+            assert!(
+                opened.elapsed() < Duration::from_millis(1400),
+                "the list did not change in time"
+            );
             thread::sleep(Duration::from_millis(10));
         }
-        thread::sleep(Duration::from_millis(500));
+        thread::sleep(Duration::from_millis(2000));
         assert!(r.fake.calls("spark", "attach.open").is_empty());
     }
 
@@ -3190,7 +3192,7 @@ pub(super) mod tests {
         let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
         r.runs("spark", 1);
         r.fake.with("spark", |l| {
-            l.dial_delay = Duration::from_millis(400);
+            l.dial_delay = Duration::from_millis(1500);
             l.bind = 7;
         });
         r.runs("spark", 0);
