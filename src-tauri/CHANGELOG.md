@@ -3,6 +3,17 @@
 Each release needs a `## X.Y.Z — YYYY-MM-DD` section here before its `desktop-vX.Y.Z` tag is pushed. The release
 workflow copies that section into the GitHub release and the in-app update notes, and fails without it.
 
+## 0.9.63 — 2026-10-22
+
+- Search: press Cmd+K (Ctrl+K on Windows and Linux) anywhere to find tasks, pages, screens and workspaces; the sidebar Search opens the same palette.
+- Pages: Trash is now Archive. Restore a page, delete it permanently, or empty the whole archive; this works in local workspaces too.
+- Tasks: set a priority (Urgent, High, Medium or Low) in the task form; board cards and list rows show a badge for Urgent, High and Low.
+- Board and list: filter tasks by priority and sort them Urgent → High → Medium → Low; the choice survives a reload.
+- Board: the first-visit tour no longer interrupts a card you are dragging; it shows after the drop.
+- Notifications: the bell badge follows what you read or delete on the Notifications page, and the panel closes when you open a notification or View all.
+- Selects show which option is highlighted and which one is selected; the dashboard heatmap shows empty days in dark mode and opens on the latest weeks on narrow screens.
+- Comments: the list scrolls to the bottom after you ask AI.
+
 ## 0.9.62 — 2026-10-22
 
 - Agent chat: every message shows the time it was sent, with day separators; each assistant reply shows how long it took and how many tokens it used.
