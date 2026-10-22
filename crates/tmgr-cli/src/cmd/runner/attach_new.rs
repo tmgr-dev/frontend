@@ -33,6 +33,7 @@ pub(super) enum Plan {
 pub(super) enum Route {
     Dialog,
     Git,
+    Summary,
     Questions,
     Peek,
     Sidebar,
@@ -52,7 +53,9 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
     {
         return Route::Other;
     }
-    if view.new_session.is_some() {
+    if view.summary.is_some() {
+        Route::Summary
+    } else if view.new_session.is_some() {
         Route::Dialog
     } else if view.git_open {
         Route::Git

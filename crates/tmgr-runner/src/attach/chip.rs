@@ -12,6 +12,8 @@ pub struct TaskChip {
     pub started_s: Option<u64>,
     pub workspace: Option<String>,
     pub task_id: Option<u64>,
+    pub run_id: Option<u64>,
+    pub run_ws: Option<String>,
 }
 
 fn clock(secs: u64) -> String {

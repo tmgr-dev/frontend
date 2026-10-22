@@ -167,6 +167,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.git_open {
         super::git::draw_git(buf, area, st);
     }
+    if st.summary.is_some() {
+        super::summary::draw_summary(buf, area, st);
+    }
     if st.qmenu.is_some() {
         draw_qmenu(buf, area, st);
     }
@@ -1065,8 +1068,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "group by tab / repo, sidebar width",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask, Cmd::Git]),
-        "rename (tmgr wins) / its task / git panel",
+        HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask, Cmd::Git, Cmd::Summary]),
+        "rename / its task / git panel / summary",
     ),
     (
         HelpKey::Cmds(&[Cmd::Broadcast, Cmd::BroadcastMark]),

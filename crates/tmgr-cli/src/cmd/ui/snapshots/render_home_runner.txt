@@ -11,7 +11,7 @@ tmgr test
 │  Time      time, today, routine      ││  switch                 Stop the running timer and start │
 │  Usage     usage                     ││  done                   Finish a task: stop the timer, mo│
 │  Account   login, logout, whoami, aut││  board                  Full-screen kanban board of the w│
-│  Other     resume, version, refs     ││                                                          │
+│  Other     resume, session, version, ││                                                          │
 │                                      ││                                                          │
 │                                      ││                                                          │
 │                                      ││                                                          │

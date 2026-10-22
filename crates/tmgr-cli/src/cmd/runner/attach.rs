@@ -16,6 +16,7 @@ use super::attach_shell::{
 };
 use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
+use super::attach_summary::{claim, post_real, summarizer, unclaim, Generated, SummaryJob};
 use super::attach_tasks;
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
@@ -48,9 +49,10 @@ use tmgr_runner::attach::{
     parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
     AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, InputSplitter,
     LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit, PaletteEntry,
-    PaletteMode, PaneInfo, Place, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollKey,
+    PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollKey,
     ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
-    SignalTracker, SplitDir, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    SignalTracker, SplitDir, SummaryAction, SummaryDraft, TaskChip, TaskOpt, ThemeKind, UsageBar,
+    ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -138,6 +140,8 @@ enum Msg {
     Status(HashMap<String, SessionStatus>),
     Usage(UsageBar),
     Git(HashMap<String, GitInfo>),
+    Summary(Generated),
+    Posted(std::result::Result<String, String>, Box<SummaryDraft>),
     Chips(HashMap<String, TaskChip>),
     Peek {
         session: String,
@@ -308,6 +312,12 @@ struct App {
     signals: SignalTracker,
     signal_cfg: SignalSettings,
     prompt_send: bool,
+    summary_mode: SummaryMode,
+    summary_tx: SyncSender<SummaryJob>,
+    summary_auto: HashMap<String, SummaryDraft>,
+    summary_dir: PathBuf,
+    running_seen: HashSet<String>,
+    claude: Option<PathBuf>,
     send_enter: Option<(String, Instant)>,
     prompts_dir: Option<PathBuf>,
     notifier: Box<dyn Notifier>,
@@ -373,6 +383,17 @@ impl App {
                 self.status_pending = false;
                 if self.view.set_status(found) {
                     self.dirty = true;
+                }
+            }
+            Msg::Summary(done) => self.on_summary(done),
+            Msg::Posted(result, draft) => {
+                self.dirty = true;
+                match result {
+                    Ok(text) => self.notify(&text),
+                    Err(e) => {
+                        self.view.queue_summary(*draft);
+                        self.notify(&format!("summary not posted: {e} (Ctrl-] S to retry)"));
+                    }
                 }
             }
             Msg::Git(found) => {
@@ -745,6 +766,157 @@ impl App {
             return;
         }
         self.status_pending = self.status_tx.try_send(jobs).is_ok();
+    }
+
+    fn summary_job(&self, id: &str, suffix: u64) -> Option<(SummaryDraft, SummaryJob)> {
+        let row = self.view.sessions.iter().find(|r| r.id == id)?;
+        let src = self.agents.get(id)?;
+        if src.format != tmgr_runner::attach::Format::Claude {
+            return None;
+        }
+        let chip = self.view.chip_of(id);
+        let target = chip.and_then(|c| {
+            Some(PostTarget {
+                task_id: c.task_id?,
+                run_id: c.run_id?,
+                workspace: c.run_ws.clone(),
+                task_key: c.key.clone(),
+            })
+        });
+        let key = format!(
+            "{}-{}-{}",
+            target.as_ref().map_or(0, |t| t.run_id),
+            id,
+            suffix
+        );
+        let mut job = self.question_job(row, src);
+        job.settled = true;
+        let draft = SummaryDraft {
+            key: key.clone(),
+            session: id.to_string(),
+            name: row.name.clone(),
+            target,
+            text: None,
+            editing: None,
+            plain: false,
+        };
+        let workdir = self.cfg.dir.join("summary-cwd");
+        let job = SummaryJob {
+            key,
+            job,
+            claude: self
+                .claude
+                .clone()
+                .filter(|_| tmgr_ipc::dirs::ensure_private_dir(&workdir).is_ok()),
+            workdir,
+        };
+        Some((draft, job))
+    }
+
+    fn check_exits(&mut self) {
+        let mut ended = Vec::new();
+        for row in &self.view.sessions {
+            if !row.exited() {
+                self.running_seen.insert(row.id.clone());
+            } else if self.running_seen.remove(&row.id) && !self.resuming.contains_key(&row.id) {
+                ended.push((row.id.clone(), row.state.since_ms));
+            }
+        }
+        self.running_seen
+            .retain(|id| self.view.sessions.iter().any(|r| &r.id == id));
+        if self.summary_mode == SummaryMode::Never {
+            return;
+        }
+        for (id, since) in ended {
+            let Some((draft, job)) = self.summary_job(&id, since) else {
+                continue;
+            };
+            if draft.target.is_none() {
+                continue;
+            }
+            let always = self.summary_mode == SummaryMode::Always;
+            if self.summary_tx.try_send(job).is_err() {
+                self.notify("too many summaries in flight: one was skipped, use Ctrl-] S on it");
+                continue;
+            }
+            if always {
+                self.summary_auto.insert(draft.key.clone(), draft);
+            } else {
+                self.view.queue_summary(draft);
+            }
+            self.dirty = true;
+        }
+    }
+
+    fn summary_command(&mut self) {
+        self.dirty = true;
+        if self.view.open_summary() {
+            return;
+        }
+        let Some(id) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        let Some((draft, job)) = self.summary_job(&id, now_ms()) else {
+            return self.notify("summaries are available for Claude sessions");
+        };
+        if self.summary_tx.try_send(job).is_err() {
+            return self.notify("a summary is already being prepared, try again in a moment");
+        }
+        self.view.show_summary(draft);
+    }
+
+    fn on_summary(&mut self, done: Generated) {
+        self.dirty = true;
+        if let Some(mut draft) = self.summary_auto.remove(&done.key) {
+            draft.text = Some(done.text);
+            draft.plain = done.plain;
+            if done.tainted || done.plain {
+                self.view.queue_summary(draft);
+                self.notify("a summary needs your review: Ctrl-] S");
+            } else {
+                self.post_now(draft);
+            }
+            return;
+        }
+        let shown = self
+            .view
+            .summary
+            .as_ref()
+            .is_some_and(|d| d.key == done.key);
+        if self.view.set_summary_text(&done.key, done.text, done.plain) && !shown {
+            self.notify("a session summary is ready: Ctrl-] S to review");
+        }
+    }
+
+    fn summary_action(&mut self, action: SummaryAction) {
+        self.dirty = true;
+        match action {
+            SummaryAction::Post(draft) => self.post_now(*draft),
+            SummaryAction::Skip(key) => {
+                self.summary_auto.remove(&key);
+            }
+        }
+    }
+
+    fn post_now(&mut self, draft: SummaryDraft) {
+        let kept = Box::new(draft.clone());
+        let (Some(target), Some(text)) = (draft.target, draft.text) else {
+            return;
+        };
+        if !claim(&self.summary_dir, &draft.key) {
+            return self.notify("this summary was already posted");
+        }
+        self.notify("posting the summary…");
+        let tx = self.tx.clone();
+        let dir = self.summary_dir.clone();
+        let key = draft.key;
+        thread::spawn(move || {
+            let result = post_real(&target, &text);
+            if result.is_err() {
+                unclaim(&dir, &key);
+            }
+            let _ = tx.send(Msg::Posted(result, kept));
+        });
     }
 
     fn probe_git(&mut self) {
@@ -1432,6 +1604,12 @@ impl App {
                 }
                 self.dirty = true;
             }
+            (Route::Summary, Action::Forward(data) | Action::Paste { data, .. }) => {
+                if let Some(action) = self.view.edit_summary(&data) {
+                    self.summary_action(action);
+                }
+                self.dirty = true;
+            }
             (Route::Questions, Action::Forward(data)) => self.questions_input(&data),
             (Route::Peek, Action::Forward(data)) => {
                 self.view.edit_peek(&data);
@@ -2099,6 +2277,9 @@ impl App {
                     if let Some(action) = out.git {
                         self.git_action(action);
                     }
+                    if let Some(action) = out.summary {
+                        self.summary_action(action);
+                    }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
                 Action::Cmd(Cmd::Picker) => {
@@ -2163,6 +2344,7 @@ impl App {
                                 self.open_task(&id);
                             }
                         }
+                        Cmd::Summary => self.summary_command(),
                         Cmd::Resume => {
                             if let Some(id) = self.view.focused_session().map(str::to_string) {
                                 self.request_resume(&id);
@@ -2244,6 +2426,7 @@ impl App {
         self.probe_status();
         self.probe_usage();
         self.probe_git();
+        self.check_exits();
         self.probe_peek();
         self.probe_questions();
         self.paste_forks();
@@ -2689,6 +2872,13 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             status_out.send(Msg::Status(found)).is_ok()
         })
     });
+    let (summary_tx, summary_rx) = mpsc::sync_channel(4);
+    let summary_out = tx.clone();
+    thread::spawn(move || {
+        summarizer(summary_rx, move |done| {
+            summary_out.send(Msg::Summary(done)).is_ok()
+        })
+    });
     let (git_tx, git_rx) = mpsc::sync_channel(1);
     let git_out = tx.clone();
     thread::spawn(move || git_worker(git_rx, move |found| git_out.send(Msg::Git(found)).is_ok()));
@@ -2777,6 +2967,12 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         signals: SignalTracker::new(),
         signal_cfg: signal_settings(&attach_cfg),
         prompt_send: attach_cfg.prompt_send.unwrap_or(false),
+        summary_mode: SummaryMode::parse(attach_cfg.summary.as_deref()),
+        summary_tx,
+        summary_auto: HashMap::new(),
+        summary_dir: cfg.dir.join("summaries"),
+        running_seen: HashSet::new(),
+        claude: claude_binary(),
         send_enter: None,
         prompts_dir,
         notifier: Box::new(SystemNotifier),
@@ -2896,6 +3092,23 @@ fn drain_creates(
             }
             Ok(_) => {}
             Err(_) => return,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SummaryMode {
+    Ask,
+    Always,
+    Never,
+}
+
+impl SummaryMode {
+    fn parse(value: Option<&str>) -> SummaryMode {
+        match value {
+            Some("always") => SummaryMode::Always,
+            Some("never") => SummaryMode::Never,
+            _ => SummaryMode::Ask,
         }
     }
 }
