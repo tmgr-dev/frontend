@@ -2,6 +2,7 @@ import type {
 	AgentConfirmationEvent,
 	AgentConversation,
 	AgentMessage,
+	AgentQuote,
 	AgentReplyEvent,
 	AgentStepEvent,
 	PendingAction,
@@ -78,6 +79,7 @@ export const appendPending = (
 		content: string;
 		created_at: string;
 		files?: AttachedFile[];
+		quotes?: AgentQuote[];
 	},
 	pendingMessageId: number,
 ): AgentChatState => {
@@ -89,6 +91,7 @@ export const appendPending = (
 		steps: [],
 		created_at: userMessage.created_at,
 		...(userMessage.files?.length ? { files: userMessage.files } : {}),
+		...(userMessage.quotes?.length ? { quotes: userMessage.quotes } : {}),
 	};
 	const pendingMsg: AgentMessage = {
 		id: pendingMessageId,
@@ -132,6 +135,12 @@ export const applyStep = (
 	return { ...s, messages };
 };
 
+const replyStats = (e: AgentReplyEvent) => ({
+	...(e.duration_ms !== undefined ? { duration_ms: e.duration_ms } : {}),
+	...(e.input_tokens !== undefined ? { input_tokens: e.input_tokens } : {}),
+	...(e.output_tokens !== undefined ? { output_tokens: e.output_tokens } : {}),
+});
+
 export const applyReply = (
 	s: AgentChatState,
 	e: AgentReplyEvent,
@@ -151,6 +160,7 @@ export const applyReply = (
 			status: e.status,
 			steps: e.steps,
 			created_at: new Date().toISOString(),
+			...replyStats(e),
 		};
 
 		return { ...s, messages: [...s.messages, message], pendingId };
@@ -164,6 +174,7 @@ export const applyReply = (
 		status: e.status,
 		content: e.content,
 		steps,
+		...replyStats(e),
 	};
 
 	return { ...s, messages, pendingId };

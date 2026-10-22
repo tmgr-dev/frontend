@@ -582,3 +582,79 @@ describe('mergePendingActions', () => {
 		expect(merged.map((x) => x.id)).toEqual([1, 2]);
 	});
 });
+
+describe('applyReply stats', () => {
+	const base = () =>
+		applyConversation(createAgentChatState(), CONV, [
+			{
+				id: 11,
+				role: 'assistant',
+				content: '',
+				status: 'running',
+				steps: [],
+				created_at: '2026-09-09T10:00:02Z',
+			},
+		]);
+	const event = {
+		conversation_id: 5,
+		message_id: 11,
+		status: 'done' as const,
+		content: 'ok',
+		steps: [],
+	};
+
+	it('merges duration and tokens into an existing message', () => {
+		const s = applyReply(base(), {
+			...event,
+			duration_ms: 1200,
+			input_tokens: 30,
+			output_tokens: 4,
+		});
+		expect(s.messages[0]).toMatchObject({
+			duration_ms: 1200,
+			input_tokens: 30,
+			output_tokens: 4,
+		});
+	});
+	it('keeps earlier stats when the event carries none', () => {
+		const s0 = applyReply(base(), { ...event, duration_ms: 500 });
+		const s1 = applyReply(s0, event);
+		expect(s1.messages[0].duration_ms).toBe(500);
+	});
+	it('stores nulls from the event', () => {
+		const s = applyReply(base(), { ...event, input_tokens: null });
+		expect(s.messages[0].input_tokens).toBeNull();
+	});
+	it('adds stats to a reply for an unknown message', () => {
+		const s = applyReply(createAgentChatState(), { ...event, duration_ms: 9 });
+		expect(s.messages).toHaveLength(0);
+		const withConv = applyConversation(createAgentChatState(), CONV, []);
+		expect(
+			applyReply(withConv, { ...event, duration_ms: 9 }).messages[0],
+		).toMatchObject({
+			duration_ms: 9,
+		});
+	});
+});
+
+describe('appendPending quotes', () => {
+	const quote = {
+		message_id: 3,
+		role: 'assistant' as const,
+		created_at: '2026-09-09T10:00:00Z',
+		text: 'bit',
+		whole: false,
+	};
+	it('puts the saved quotes on the optimistic user message', () => {
+		const s = appendPending(
+			applyConversation(createAgentChatState(), CONV, []),
+			{ ...USER_MSG, quotes: [quote] },
+			11,
+		);
+		expect(s.messages[0].quotes).toEqual([quote]);
+	});
+	it('omits the field when there are none', () => {
+		const s = appendPending(createAgentChatState(), USER_MSG, 11);
+		expect(s.messages[0]).not.toHaveProperty('quotes');
+	});
+});
