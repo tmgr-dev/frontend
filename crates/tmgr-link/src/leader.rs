@@ -110,18 +110,23 @@ pub fn materialise(cred: &CredentialStore) -> Result<KeyFile> {
     materialise_secret(&load_secret(cred)?)
 }
 
+pub fn key_root() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute() && p.is_dir())
+        .unwrap_or_else(std::env::temp_dir)
+}
+
 pub fn materialise_secret(secret: &Secret) -> Result<KeyFile> {
+    materialise_secret_in(secret, &key_root())
+}
+
+pub fn materialise_secret_in(secret: &Secret, root: &Path) -> Result<KeyFile> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute() && p.is_dir());
-    let mut builder = tempfile::Builder::new();
-    builder.prefix("tmgr-link-");
-    let dir = match &runtime {
-        Some(r) => builder.tempdir_in(r)?,
-        None => builder.tempdir()?,
-    };
+    let dir = tempfile::Builder::new()
+        .prefix(&format!("tmgr-link-{}-", std::process::id()))
+        .tempdir_in(root)?;
     std::fs::set_permissions(
         dir.path(),
         std::os::unix::fs::PermissionsExt::from_mode(0o700),
@@ -135,6 +140,49 @@ pub fn materialise_secret(secret: &Secret) -> Result<KeyFile> {
     f.write_all(secret.expose().as_bytes())?;
     f.sync_all()?;
     Ok(KeyFile { _dir: dir, path })
+}
+
+impl KeyFile {
+    pub fn dir(&self) -> &Path {
+        self._dir.path()
+    }
+}
+
+fn dead_owner(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("tmgr-link-") else {
+        return false;
+    };
+    let Some((pid, _)) = rest.split_once('-') else {
+        return false;
+    };
+    let Ok(pid) = pid.parse::<i32>() else {
+        return false;
+    };
+    if pid <= 0 || pid as u32 == std::process::id() {
+        return false;
+    }
+    let rc = unsafe { libc::kill(pid, 0) };
+    rc == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+}
+
+pub fn sweep_stale_keys(root: &Path) {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    let me = unsafe { libc::geteuid() };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !dead_owner(&name) {
+            continue;
+        }
+        let Ok(meta) = std::fs::symlink_metadata(entry.path()) else {
+            continue;
+        };
+        if meta.is_dir() && meta.uid() == me && meta.permissions().mode() & 0o777 == 0o700 {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -574,6 +622,57 @@ mod tests {
         drop(a);
         assert!(!dir.exists());
         assert!(b.path.exists());
+    }
+
+    #[test]
+    fn a_key_dir_carries_the_process_id() {
+        let root = crate::testutil::private_tempdir();
+        let key = materialise_secret_in(&Secret::new("k"), root.path()).unwrap();
+        let name = key.dir().file_name().unwrap().to_string_lossy().to_string();
+        assert!(
+            name.starts_with(&format!("tmgr-link-{}-", std::process::id())),
+            "{name}"
+        );
+    }
+
+    fn stale_dir(root: &Path, name: &str, mode: u32) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = root.join(name);
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::write(dir.join("key"), "k").unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(mode)).unwrap();
+        dir
+    }
+
+    #[test]
+    fn the_sweep_removes_only_private_key_dirs_of_dead_processes() {
+        let root = crate::testutil::private_tempdir();
+        let dead = stale_dir(root.path(), "tmgr-link-2000000000-abcdef", 0o700);
+        let alive = stale_dir(
+            root.path(),
+            &format!("tmgr-link-{}-abcdef", unsafe { libc::getppid() }),
+            0o700,
+        );
+        let own = stale_dir(
+            root.path(),
+            &format!("tmgr-link-{}-abcdef", std::process::id()),
+            0o700,
+        );
+        let foreign = stale_dir(root.path(), "other-2000000000-abcdef", 0o700);
+        let old_format = stale_dir(root.path(), "tmgr-link-abcdef", 0o700);
+        let loose = stale_dir(root.path(), "tmgr-link-2000000001-abcdef", 0o755);
+        let target = stale_dir(root.path(), "target", 0o700);
+        let link = root.path().join("tmgr-link-2000000002-abcdef");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let file = root.path().join("tmgr-link-2000000003-abcdef");
+        std::fs::write(&file, "x").unwrap();
+        sweep_stale_keys(root.path());
+        assert!(!dead.exists());
+        for kept in [&alive, &own, &foreign, &old_format, &loose, &target, &file] {
+            assert!(kept.exists(), "{kept:?}");
+        }
+        assert!(link.symlink_metadata().is_ok());
+        assert!(target.join("key").exists());
     }
 
     #[test]

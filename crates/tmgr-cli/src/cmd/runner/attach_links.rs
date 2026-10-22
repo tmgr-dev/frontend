@@ -129,6 +129,8 @@ pub(super) trait Dialer: Send + Sync + 'static {
     }
 
     fn shutdown(&self) {}
+
+    fn forget(&self) {}
 }
 
 pub(super) trait LinkConn: Send {
@@ -155,9 +157,39 @@ impl KeySource for StoreKey {
     }
 }
 
+#[derive(Default)]
+struct Live {
+    closed: bool,
+    next: u64,
+    dirs: HashMap<u64, std::path::PathBuf>,
+}
+
+struct HeldKey {
+    key: Option<KeyFile>,
+    id: u64,
+    live: Arc<Mutex<Live>>,
+}
+
+impl std::ops::Deref for HeldKey {
+    type Target = KeyFile;
+
+    fn deref(&self) -> &KeyFile {
+        self.key.as_ref().expect("the key lives until drop")
+    }
+}
+
+impl Drop for HeldKey {
+    fn drop(&mut self) {
+        self.key.take();
+        lock(&self.live).dirs.remove(&self.id);
+    }
+}
+
 pub(super) struct SshDialer {
     paths: Paths,
     source: Box<dyn KeySource>,
+    root: std::path::PathBuf,
+    live: Arc<Mutex<Live>>,
     closed: AtomicBool,
     loading: Mutex<()>,
     held: Mutex<Option<Secret>>,
@@ -172,20 +204,28 @@ impl SshDialer {
             dir: paths.config.clone(),
             preferred,
         };
-        Ok(SshDialer::with_source(paths, Box::new(source)))
+        let root = leader::key_root();
+        leader::sweep_stale_keys(&root);
+        Ok(SshDialer::with_source(paths, Box::new(source), root))
     }
 
-    fn with_source(paths: Paths, source: Box<dyn KeySource>) -> SshDialer {
+    fn with_source(
+        paths: Paths,
+        source: Box<dyn KeySource>,
+        root: std::path::PathBuf,
+    ) -> SshDialer {
         SshDialer {
             paths,
             source,
+            root,
+            live: Arc::new(Mutex::new(Live::default())),
             closed: AtomicBool::new(false),
             loading: Mutex::new(()),
             held: Mutex::new(None),
         }
     }
 
-    fn fresh_key(&self) -> std::result::Result<KeyFile, DialErr> {
+    fn fresh_key(&self) -> std::result::Result<HeldKey, DialErr> {
         let closing = || DialErr::Offline("the hub is shutting down".into());
         let known = lock(&self.held).clone();
         let secret = match known {
@@ -213,11 +253,20 @@ impl SshDialer {
                 }
             }
         };
-        if self.closed.load(Ordering::SeqCst) {
+        let mut live = lock(&self.live);
+        if live.closed {
             return Err(closing());
         }
-        leader::materialise_secret(&secret)
-            .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))
+        let key = leader::materialise_secret_in(&secret, &self.root)
+            .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))?;
+        let id = live.next;
+        live.next += 1;
+        live.dirs.insert(id, key.dir().to_path_buf());
+        Ok(HeldKey {
+            key: Some(key),
+            id,
+            live: Arc::clone(&self.live),
+        })
     }
 }
 
@@ -241,6 +290,9 @@ fn describe(store: &tmgr_link::store::Store, link: &str) -> Option<String> {
 
 impl Dialer for SshDialer {
     fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr> {
+        if self.binding(link) == Binding::Gone {
+            return Err(DialErr::Removed);
+        }
         let key = self.fresh_key()?;
         let mut client =
             Client::dial_with_key(&self.paths, link, &key).map_err(|e| classify(&e))?;
@@ -258,6 +310,15 @@ impl Dialer for SshDialer {
 
     fn shutdown(&self) {
         self.closed.store(true, Ordering::SeqCst);
+        lock(&self.held).take();
+        let mut live = lock(&self.live);
+        live.closed = true;
+        for (_, dir) in live.dirs.drain() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
+
+    fn forget(&self) {
         lock(&self.held).take();
     }
 }
@@ -638,7 +699,14 @@ struct Slot {
     event: Option<EventMsg>,
 }
 
+#[derive(Default)]
+struct NoticeGate {
+    last: Option<Instant>,
+    held: Option<String>,
+}
+
 struct Flow {
+    notices: Mutex<NoticeGate>,
     slot: Mutex<Slot>,
     wake: Condvar,
     busy: Arc<AtomicBool>,
@@ -647,10 +715,37 @@ struct Flow {
 impl Flow {
     fn new() -> Flow {
         Flow {
+            notices: Mutex::new(NoticeGate::default()),
             slot: Mutex::new(Slot::default()),
             wake: Condvar::new(),
             busy: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    fn notice(&self, text: String) -> Option<String> {
+        let mut gate = lock(&self.notices);
+        if gate.last.is_some_and(|at| at.elapsed() < NOTICE_GAP) {
+            gate.held = Some(text);
+            return None;
+        }
+        gate.last = Some(Instant::now());
+        gate.held = None;
+        Some(text)
+    }
+
+    fn notice_due(&self) -> bool {
+        let gate = lock(&self.notices);
+        gate.held.is_some() && gate.last.is_none_or(|at| at.elapsed() >= NOTICE_GAP)
+    }
+
+    fn take_due_notice(&self) -> Option<String> {
+        let mut gate = lock(&self.notices);
+        if gate.last.is_some_and(|at| at.elapsed() < NOTICE_GAP) {
+            return None;
+        }
+        let text = gate.held.take()?;
+        gate.last = Some(Instant::now());
+        Some(text)
     }
 
     fn put_screen(&self, push: ScreenPush) {
@@ -686,7 +781,7 @@ impl Flow {
 }
 
 enum Cmd {
-    Halt(String),
+    Halt(String, Option<Binding>),
     Retry,
     Shutdown,
 }
@@ -710,6 +805,7 @@ struct Inner {
     shown: Mutex<HashMap<String, LinkState>>,
     streams: Mutex<HashMap<String, Stream>>,
     cooldown: Mutex<HashMap<String, Instant>>,
+    bound: Mutex<HashMap<String, Binding>>,
     key_notice: AtomicBool,
 }
 
@@ -856,6 +952,7 @@ impl Hub {
             shown: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()),
             cooldown: Mutex::new(HashMap::new()),
+            bound: Mutex::new(HashMap::new()),
             key_notice: AtomicBool::new(false),
         });
         let mut ctl = HashMap::new();
@@ -901,13 +998,17 @@ impl Hub {
         self.ctl
             .get(link)
             .ok_or("unknown machine")?
-            .send(Cmd::Halt(run.to_string()))
+            .send(Cmd::Halt(
+                run.to_string(),
+                lock(&self.inner.bound).get(link).cloned(),
+            ))
             .map_err(|_| "the link is shutting down")
     }
 
     pub(super) fn retry_all(&self) {
         lock(&self.inner.cooldown).clear();
         self.inner.key_notice.store(false, Ordering::SeqCst);
+        self.inner.dialer.forget();
         for tx in self.ctl.values() {
             let _ = tx.send(Cmd::Retry);
         }
@@ -1073,20 +1174,30 @@ fn pause(inner: &Inner, link: &str, cmds: &Receiver<Cmd>, wait: Option<Duration>
         };
         match got {
             Err(RecvTimeoutError::Timeout) | Ok(Cmd::Retry) => return true,
-            Ok(Cmd::Halt(run)) => halt_refused(inner, link, &run, "the machine is not reachable"),
+            Ok(Cmd::Halt(run, _)) => {
+                halt_refused(inner, link, &run, "the machine is not reachable")
+            }
             Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => return false,
         }
     }
 }
 
-fn unlink(inner: &Inner, link: &str) {
+fn clear_rows(inner: &Inner, link: &str) {
     inner.lose_link(link);
     lock(&inner.state).remove_link(link);
-    inner.set_state(link, LinkState::Removed);
+}
+
+fn emit_no_runs(inner: &Inner, link: &str) {
     inner.emit(LinkMsg::Runs {
         link: link.to_string(),
         runs: Vec::new(),
     });
+}
+
+fn unlink(inner: &Inner, link: &str) {
+    clear_rows(inner, link);
+    inner.set_state(link, LinkState::Removed);
+    emit_no_runs(inner, link);
 }
 
 fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
@@ -1122,6 +1233,9 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
                     }
                     DialErr::HostKeyChanged | DialErr::NoAccess(_) | DialErr::Unavailable(_) => {
                         inner.lose_link(link);
+                        if matches!(e, DialErr::NoAccess(_)) {
+                            inner.dialer.forget();
+                        }
                         let state = match &e {
                             DialErr::HostKeyChanged => LinkState::HostKeyChanged,
                             _ => LinkState::NoAccess,
@@ -1155,11 +1269,17 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
                 continue;
             }
         };
+        lock(&inner.bound).insert(link.to_string(), bound.clone());
         lock(&inner.state).restore_link(link);
         backoff = t.backoff_min;
         match session(inner, link, conn, cmds, &bound) {
             Exit::Shutdown => return,
-            Exit::Planned | Exit::Rebind => quiet = true,
+            Exit::Planned => quiet = true,
+            Exit::Rebind => {
+                clear_rows(inner, link);
+                emit_no_runs(inner, link);
+                quiet = true;
+            }
             Exit::Retry => quiet = false,
             Exit::Lost => {
                 inner.set_state(link, LinkState::Offline);
@@ -1250,6 +1370,7 @@ fn session(
             }
             Err(e) if e.kind == Kind::Forbidden => {
                 inner.lose_link(link);
+                inner.dialer.forget();
                 inner.set_state(link, LinkState::NoAccess);
                 return Exit::Denied;
             }
@@ -1257,7 +1378,10 @@ fn session(
         }
         match cmds.recv_timeout(t.poll) {
             Err(RecvTimeoutError::Timeout) => {}
-            Ok(Cmd::Halt(run)) => match rebound(inner, link, bound) {
+            Ok(Cmd::Halt(run, stamp)) if stamp.as_ref() != Some(bound) => {
+                halt_refused(inner, link, &run, "the link changed, try again");
+            }
+            Ok(Cmd::Halt(run, _)) => match rebound(inner, link, bound) {
                 Rebound::Same => {
                     requests += 1;
                     halt(inner, link, &run, conn.as_mut());
@@ -1311,10 +1435,21 @@ fn open_stream(
     inner: &Inner,
     spec: &StreamSpec,
 ) -> std::result::Result<(bool, Pair, Kill), String> {
+    let held = lock(&inner.bound).get(&spec.link).cloned();
+    let unchanged = || {
+        held.as_ref()
+            .is_some_and(|h| inner.dialer.binding(&spec.link) == *h)
+    };
+    if !unchanged() {
+        return Err("the link changed, try again".to_string());
+    }
     let mut conn = inner
         .dialer
         .dial(&spec.link)
         .map_err(|e| e.why(&spec.link))?;
+    if !unchanged() {
+        return Err("the link changed, try again".to_string());
+    }
     let listed = matches!(
         lock(&inner.state).target_of(&spec.id),
         Target::Remote { .. }
@@ -1406,7 +1541,6 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
         let (inner, spec, flow) = (Arc::clone(inner), spec.clone(), Arc::clone(&flow));
         thread::spawn(move || emitter_main(&inner, &spec, &flow));
     }
-    let mut last_notice: Option<Instant> = None;
     loop {
         let got = read_incoming(&mut reader, &spec.run);
         if !inner.alive(&spec.id, spec.gen) {
@@ -1417,15 +1551,13 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
         match got {
             Ok(Some(Incoming::Pong)) => {}
             Ok(Some(Incoming::Notice(text))) => {
-                if last_notice.is_some_and(|at| at.elapsed() < NOTICE_GAP) {
-                    continue;
+                if let Some(text) = flow.notice(text) {
+                    inner.emit(LinkMsg::Notice {
+                        link: spec.link.clone(),
+                        id: Some(spec.id.clone()),
+                        text,
+                    });
                 }
-                last_notice = Some(Instant::now());
-                inner.emit(LinkMsg::Notice {
-                    link: spec.link.clone(),
-                    id: Some(spec.id.clone()),
-                    text,
-                });
             }
             Ok(Some(Incoming::Closed(why))) => {
                 let reopen = reopens(&why) && (near_hour || renewed.load(Ordering::SeqCst));
@@ -1455,6 +1587,13 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
 fn emitter_main(inner: &Inner, spec: &StreamSpec, flow: &Flow) {
     let mut last: Option<Instant> = None;
     loop {
+        if let Some(text) = flow.take_due_notice() {
+            inner.emit(LinkMsg::Notice {
+                link: spec.link.clone(),
+                id: Some(spec.id.clone()),
+                text,
+            });
+        }
         {
             let mut slot = lock(&flow.slot);
             loop {
@@ -1462,7 +1601,7 @@ fn emitter_main(inner: &Inner, spec: &StreamSpec, flow: &Flow) {
                     return;
                 }
                 let pending = slot.screen.is_some() || slot.event.is_some();
-                if pending && !flow.busy.load(Ordering::SeqCst) {
+                if (pending && !flow.busy.load(Ordering::SeqCst)) || flow.notice_due() {
                     break;
                 }
                 slot = flow
@@ -1623,6 +1762,7 @@ pub(super) mod tests {
     pub(crate) struct Fake(
         pub(crate) Mutex<HashMap<String, FakeLink>>,
         pub(crate) AtomicBool,
+        pub(crate) std::sync::atomic::AtomicUsize,
     );
 
     impl Fake {
@@ -1674,6 +1814,10 @@ pub(super) mod tests {
     impl Dialer for FakeDialer {
         fn shutdown(&self) {
             self.0 .1.store(true, Ordering::SeqCst);
+        }
+
+        fn forget(&self) {
+            self.0 .2.fetch_add(1, Ordering::SeqCst);
         }
 
         fn binding(&self, link: &str) -> Binding {
@@ -2648,12 +2792,15 @@ pub(super) mod tests {
         std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
         let loads = Loads::default();
         let fail = Arc::new(AtomicBool::new(false));
+        let root = d.path().join("keys");
+        std::fs::create_dir(&root).unwrap();
         let dialer = SshDialer::with_source(
             Paths::under(d.path()),
             Box::new(CountingKey {
                 loads: Arc::clone(&loads),
                 fail: Arc::clone(&fail),
             }),
+            root,
         );
         (dialer, d, loads, fail)
     }
@@ -2694,6 +2841,7 @@ pub(super) mod tests {
         let dialer = Arc::new(SshDialer::with_source(
             Paths::under(d.path()),
             Box::new(SlowKey(Mutex::new(Some(gate)))),
+            d.path().to_path_buf(),
         ));
         let dialling = {
             let dialer = Arc::clone(&dialer);
@@ -2712,15 +2860,34 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn a_dial_with_no_follower_reports_removed_and_leaves_no_key_behind() {
+    fn a_dial_with_no_follower_reports_removed_without_reading_the_key() {
         let (dialer, _d, loads, _) = ssh_dialer();
         assert_eq!(dialer.dial("spark").err(), Some(DialErr::Removed));
-        assert_eq!(loads.load(Ordering::SeqCst), 1);
+        assert_eq!(loads.load(Ordering::SeqCst), 0);
+    }
+
+    fn add_follower(dialer: &SshDialer, name: &str, host: &str) {
+        let (name, host) = (name.to_string(), host.to_string());
+        Store::update(&dialer.paths, |s| {
+            s.followers.insert(
+                name,
+                tmgr_link::store::Follower {
+                    user: "u".into(),
+                    host,
+                    port: 22,
+                    host_key_fingerprint: "SHA256:x".into(),
+                    added: "2026-01-01".into(),
+                },
+            );
+            Ok(())
+        })
+        .unwrap();
     }
 
     #[test]
     fn an_unreadable_key_is_unavailable_and_read_again_on_the_next_dial() {
         let (dialer, _d, loads, fail) = ssh_dialer();
+        add_follower(&dialer, "spark", "one.example.com");
         fail.store(true, Ordering::SeqCst);
         assert!(matches!(
             dialer.dial("spark"),
@@ -2734,6 +2901,7 @@ pub(super) mod tests {
     #[test]
     fn the_ssh_dialer_forgets_the_key_on_shutdown_and_refuses_later_dials() {
         let (dialer, _d, loads, _) = ssh_dialer();
+        add_follower(&dialer, "spark", "one.example.com");
         drop(dialer.fresh_key().unwrap());
         dialer.shutdown();
         assert!(matches!(dialer.dial("spark"), Err(DialErr::Offline(_))));
@@ -2741,27 +2909,82 @@ pub(super) mod tests {
         assert_eq!(loads.load(Ordering::SeqCst), 1);
     }
 
+    fn key_dirs(root: &std::path::Path) -> usize {
+        std::fs::read_dir(root)
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("tmgr-link-")
+            })
+            .count()
+    }
+
+    #[test]
+    fn shutdown_deletes_the_key_file_of_a_dial_still_in_flight() {
+        let (dialer, _d, _, _) = ssh_dialer();
+        let key = dialer.fresh_key().unwrap();
+        let path = key.path.clone();
+        assert!(path.exists());
+        dialer.shutdown();
+        assert!(!path.exists());
+        assert_eq!(key_dirs(&dialer.root), 0);
+        drop(key);
+    }
+
+    #[test]
+    fn no_key_file_is_written_after_shutdown() {
+        let (dialer, _d, _, _) = ssh_dialer();
+        dialer.shutdown();
+        assert!(dialer.fresh_key().is_err());
+        assert_eq!(key_dirs(&dialer.root), 0);
+    }
+
+    #[test]
+    fn keys_written_while_shutdown_races_never_survive_it() {
+        let (dialer, _d, _, _) = ssh_dialer();
+        let dialer = Arc::new(dialer);
+        drop(dialer.fresh_key().unwrap());
+        let workers: Vec<_> = (0..8)
+            .map(|_| {
+                let dialer = Arc::clone(&dialer);
+                thread::spawn(move || {
+                    let mut held = Vec::new();
+                    for _ in 0..50 {
+                        if let Ok(k) = dialer.fresh_key() {
+                            held.push(k);
+                        }
+                    }
+                    held
+                })
+            })
+            .collect();
+        thread::sleep(Duration::from_millis(2));
+        dialer.shutdown();
+        let held: Vec<_> = workers
+            .into_iter()
+            .flat_map(|w| w.join().unwrap())
+            .collect();
+        assert!(held.iter().all(|k| !k.path.exists()));
+        assert_eq!(key_dirs(&dialer.root), 0);
+    }
+
+    #[test]
+    fn forgetting_makes_the_ssh_dialer_read_the_key_again() {
+        let (dialer, _d, loads, _) = ssh_dialer();
+        drop(dialer.fresh_key().unwrap());
+        dialer.forget();
+        drop(dialer.fresh_key().unwrap());
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+    }
+
     #[test]
     fn the_ssh_dialer_binding_follows_the_follower_entry_and_its_jump() {
         let (dialer, _d, _, _) = ssh_dialer();
         assert_eq!(dialer.binding("spark"), Binding::Gone);
-        let add = |name: &str, host: &str| {
-            let (name, host) = (name.to_string(), host.to_string());
-            Store::update(&dialer.paths, |s| {
-                s.followers.insert(
-                    name,
-                    tmgr_link::store::Follower {
-                        user: "u".into(),
-                        host,
-                        port: 22,
-                        host_key_fingerprint: "SHA256:x".into(),
-                        added: "2026-01-01".into(),
-                    },
-                );
-                Ok(())
-            })
-            .unwrap();
-        };
+        let add = |name: &str, host: &str| add_follower(&dialer, name, host);
         add("spark", "one.example.com");
         let first = dialer.binding("spark");
         assert!(matches!(first, Binding::Is(_)));
@@ -2930,6 +3153,124 @@ pub(super) mod tests {
         r.fake.with("spark", |l| l.unbound = false);
         r.hub.retry_all();
         r.runs("spark", 1);
+    }
+
+    #[test]
+    fn retry_makes_the_dialer_forget_the_key() {
+        let r = rig(&["spark"], fast(), |_| {});
+        r.hub.retry_all();
+        assert_eq!(r.fake.2.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_dial_that_ends_in_no_access_makes_the_dialer_forget_the_key() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| {
+                l.dial = VecDeque::from([Err(DialErr::NoAccess("revoked".into()))])
+            })
+        });
+        r.state_is("spark", LinkState::NoAccess);
+        assert_eq!(r.fake.2.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_forbidden_list_makes_the_dialer_forget_the_key() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.with("spark", |l| l.list_err = Some(Kind::Forbidden))
+        });
+        r.state_is("spark", LinkState::NoAccess);
+        assert_eq!(r.fake.2.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn a_relinked_machine_loses_its_rows_until_the_new_session_lists() {
+        let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.fake.with("spark", |l| {
+            l.dial_delay = Duration::from_millis(400);
+            l.bind = 7;
+        });
+        r.runs("spark", 0);
+        assert!(r.hub.rows("spark").is_empty());
+        assert_eq!(r.hub.target_of(&view_id("spark", A)), Target::Unknown);
+        assert!(r
+            .hub
+            .open(&view_id("spark", A), "spark", A, 80, 24)
+            .is_err());
+        r.runs("spark", 1);
+        assert_eq!(r.hub.rows("spark").len(), 1);
+    }
+
+    #[test]
+    fn a_stream_opened_after_a_silent_relink_is_refused_before_it_dials() {
+        let t = Timing {
+            poll: Duration::from_millis(500),
+            ..fast()
+        };
+        let mut r = rig(&["spark"], t, |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        let dials = r.fake.with("spark", |l| l.dials.len());
+        r.fake.with("spark", |l| l.bind = 7);
+        let id = view_id("spark", A);
+        r.hub.open(&id, "spark", A, 80, 24).unwrap();
+        let why = r.until(|m| match m {
+            LinkMsg::StreamClosed { id: i, why, .. } if *i == id => Some(why.clone()),
+            _ => None,
+        });
+        assert!(why.contains("changed"), "{why}");
+        assert!(r.fake.calls("spark", "attach.open").is_empty());
+        assert_eq!(r.fake.with("spark", |l| l.dials.len()), dials);
+    }
+
+    #[test]
+    fn a_halt_stamped_for_another_binding_never_reaches_the_machine() {
+        let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.hub.ctl["spark"]
+            .send(Cmd::Halt(A.into(), Some(Binding::Is("stale".into()))))
+            .unwrap();
+        let result = r.until(|m| match m {
+            LinkMsg::Halted { result, .. } => Some(result.clone()),
+            _ => None,
+        });
+        assert!(result.is_err());
+        assert!(r.fake.calls("spark", "runs.halt").is_empty());
+    }
+
+    #[test]
+    fn a_halt_for_a_run_that_is_no_longer_listed_never_reaches_the_machine() {
+        let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.hub.ctl["spark"]
+            .send(Cmd::Halt(B.into(), Some(Binding::Is("0".into()))))
+            .unwrap();
+        let result = r.until(|m| match m {
+            LinkMsg::Halted { result, .. } => Some(result.clone()),
+            _ => None,
+        });
+        assert!(result.is_err());
+        assert!(r.fake.calls("spark", "runs.halt").is_empty());
+    }
+
+    #[test]
+    fn the_latest_notice_of_a_burst_is_delivered_when_the_window_opens() {
+        let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.open("spark", A);
+        for i in 0..4 {
+            r.fake.feed("spark", A, &encode_notice(&format!("n{i}")));
+        }
+        thread::sleep(Duration::from_millis(400));
+        let texts: Vec<String> = r
+            .drain(Duration::ZERO)
+            .into_iter()
+            .filter_map(|m| match m {
+                LinkMsg::Notice { text, .. } => Some(text),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts.last().map(String::as_str), Some("n3"), "{texts:?}");
+        assert_eq!(texts.len(), 2, "{texts:?}");
     }
 
     #[test]
