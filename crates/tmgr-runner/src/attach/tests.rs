@@ -8311,3 +8311,176 @@ fn a_stray_begin_marker_does_not_blank_the_rest_of_the_export() {
     let found = scan_export(&block, "/home/me");
     assert!(found.len() <= 201);
 }
+
+fn template_view() -> ViewState {
+    let mut v = two_pane(140);
+    v.templates = default_templates();
+    v
+}
+
+#[test]
+fn the_default_templates_cover_the_four_recipes() {
+    let names: Vec<String> = default_templates().into_iter().map(|t| t.name).collect();
+    assert_eq!(
+        names,
+        [
+            "Review PR #N",
+            "Fix failing CI",
+            "Write tests for <file>",
+            "Explain this repo"
+        ]
+    );
+}
+
+#[test]
+fn templates_round_trip_and_bad_entries_are_dropped() {
+    let defaults = default_templates();
+    assert_eq!(
+        parse_templates(&render_templates(&defaults)).unwrap(),
+        defaults
+    );
+    let text = "[[template]]\nname = \"\"\nprompt = \"x\"\n\n[[template]]\nname = \"empty\"\n\n[[template]]\nname = \"ok\"\nprompt = \"a\\u001b[2Jb\"\nfields = [{ name = \"bad name!\" }, { name = \"x\" }, { name = \"x\" }]\n";
+    let got = parse_templates(text).unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].prompt, "a[2Jb");
+    assert_eq!(
+        got[0]
+            .fields
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect::<Vec<_>>(),
+        ["x"]
+    );
+    assert!(parse_templates("template = [[[").is_err());
+}
+
+#[test]
+fn substitution_fills_known_fields_and_keeps_unknown_braces() {
+    let fields = vec![
+        Field {
+            name: "a".into(),
+            label: String::new(),
+            default: String::new(),
+        },
+        Field {
+            name: "b".into(),
+            label: String::new(),
+            default: String::new(),
+        },
+    ];
+    let vals = vec!["x y".to_string(), "it's".to_string()];
+    assert_eq!(
+        substitute_template("{a}-{b}-{c}-{{a}}", &fields, &vals, false),
+        "x y-it's-{c}-{a}"
+    );
+    assert_eq!(
+        substitute_template("run {a} {b}", &fields, &vals, true),
+        "run 'x y' 'it'\\''s'"
+    );
+    assert_eq!(shell_quote("plain-1.rs"), "plain-1.rs");
+    assert_eq!(shell_quote(""), "''");
+    assert_eq!(
+        substitute_template("{a}", &fields, &["l1\nl2\x1b".to_string()], false),
+        "l1 l2"
+    );
+}
+
+#[test]
+fn the_template_key_is_free_and_opens_the_list() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'T')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Templates);
+    let mut v = template_view();
+    v.apply(Cmd::Templates);
+    assert_eq!(v.entries().len(), 4);
+    v.edit_palette(b"fix");
+    assert_eq!(v.entries()[0].label, "Fix failing CI");
+}
+
+#[test]
+fn a_template_without_fields_runs_at_once() {
+    let mut v = template_view();
+    v.apply(Cmd::Templates);
+    v.edit_palette(b"explain");
+    assert_eq!(
+        v.edit_palette(b"\r"),
+        PaletteEdit::Run(PaletteEntry::RunTemplate(3, Vec::new()))
+    );
+    assert!(v.palette.is_none());
+}
+
+#[test]
+fn a_template_with_fields_asks_for_them_and_refuses_empty_values() {
+    let mut v = template_view();
+    v.apply(Cmd::Templates);
+    v.edit_palette(b"review");
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    assert!(matches!(
+        v.palette.as_ref().unwrap().mode,
+        PaletteMode::TemplateFields(_)
+    ));
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    assert!(v.palette.is_some());
+    v.edit_palette(b"42");
+    assert_eq!(
+        v.edit_palette(b"\r"),
+        PaletteEdit::Run(PaletteEntry::RunTemplate(0, vec!["42".into()]))
+    );
+}
+
+#[test]
+fn escape_in_the_field_form_goes_back_to_the_list() {
+    let mut v = template_view();
+    v.apply(Cmd::Templates);
+    v.edit_palette(b"review");
+    v.edit_palette(b"\r");
+    v.edit_palette(b"\x1b");
+    assert_eq!(v.palette.as_ref().unwrap().mode, PaletteMode::Templates);
+}
+
+#[test]
+fn clicking_the_templates_slot_opens_the_list_and_the_rest_of_the_row_starts_a_session() {
+    let v = template_view();
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let row = v.sidebar_layout(sb).new_row.unwrap();
+    let (x, _) = template_slot(sb).unwrap();
+    assert_eq!(v.hit(AREA, x, row), Hit::Templates);
+    assert_eq!(v.hit(AREA, 2, row), Hit::NewSession);
+}
+
+#[test]
+fn snapshot_templates_list_and_form() {
+    let mut v = template_view();
+    v.apply(Cmd::Templates);
+    assert_snapshot("templates_list", &draw(&v, &screens(), 100, 24));
+    v.edit_palette(b"write");
+    v.edit_palette(b"\r");
+    v.edit_palette(b"src/lib.rs");
+    assert_snapshot("templates_form", &draw(&v, &screens(), 100, 24));
+}
+
+#[test]
+fn the_field_form_clips_on_a_short_terminal() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 100;
+    v.templates = vec![Template {
+        name: "many".into(),
+        prompt: "x".into(),
+        fields: (0..6)
+            .map(|i| Field {
+                name: format!("f{i}"),
+                label: format!("Field {i}"),
+                default: "v".into(),
+            })
+            .collect(),
+        ..Template::default()
+    }];
+    v.apply(Cmd::Templates);
+    v.edit_palette(b"\r");
+    v.edit_palette(b"\t\t\t\t");
+    for h in [6u16, 8, 10, 24] {
+        let mut term = Terminal::new(TestBackend::new(100, h)).unwrap();
+        term.draw(|f| render(f, &v, &Screens::default())).unwrap();
+    }
+    assert!(draw(&v, &Screens::default(), 100, 8).contains("Field 4"));
+}

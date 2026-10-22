@@ -220,6 +220,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Export this session to Markdown or a page",
         true,
     ),
+    def(
+        Cmd::Templates,
+        b"T",
+        "T",
+        "Session templates: start an agent with a prepared prompt",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),
