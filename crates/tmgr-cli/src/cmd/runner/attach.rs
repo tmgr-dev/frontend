@@ -1,4 +1,5 @@
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
+use super::attach_git::{diff_argv, git_worker, GitJob};
 use super::attach_goto::{fork_call, fork_name, goto_call, Found, FORK_PASTE_WAIT};
 use super::attach_new::{
     default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
@@ -9,8 +10,8 @@ use super::attach_prompts;
 use super::attach_questions::{claude_binary, questioner, QuestionJob};
 use super::attach_shell::{
     can_split, cwd_candidates, focus_new_pane, is_shell_session, ladder_for, merge_pending,
-    process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, watch_ids, Ladder,
-    KILL_ONLY,
+    process_cwd, push_typed, reap_ids, shell_argv, shell_name, size_hint, unique_name, watch_ids,
+    Ladder, KILL_ONLY,
 };
 use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNotifier};
 use super::attach_status::{peek_worker, status_worker, PeekJob};
@@ -43,11 +44,12 @@ use tmgr_ipc::api::{
 use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
-    parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, Action, AgentTitle,
-    AttentionTracker, Cmd, Confirm, Control, InputSplitter, LayoutPrefs, Loc, NewEdit, NewRequest,
-    NewSession, Notifier, PaletteEdit, PaletteEntry, PaletteMode, PaneInfo, Place, QEdit,
-    RenameEdit, ScreenSource, ScrollState, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
-    SignalTracker, SplitDir, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
+    AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, InputSplitter,
+    LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit, PaletteEntry,
+    PaletteMode, PaneInfo, Place, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollState,
+    SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
+    TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -64,6 +66,7 @@ const TITLE_EVERY: Duration = Duration::from_secs(3);
 const QUESTIONS_EVERY: Duration = Duration::from_secs(4);
 const STATUS_EVERY: Duration = Duration::from_secs(1);
 const SEND_DELAY: Duration = Duration::from_millis(80);
+const GIT_EVERY: Duration = Duration::from_secs(5);
 const USAGE_EVERY: Duration = Duration::from_secs(10);
 const CHIP_EVERY: Duration = Duration::from_secs(5);
 const LAYOUT_DEBOUNCE: Duration = Duration::from_millis(300);
@@ -133,6 +136,7 @@ enum Msg {
     Titles(Vec<(String, Option<AgentTitle>)>),
     Status(HashMap<String, SessionStatus>),
     Usage(UsageBar),
+    Git(HashMap<String, GitInfo>),
     Chips(HashMap<String, TaskChip>),
     Peek {
         session: String,
@@ -305,6 +309,9 @@ struct App {
     status_pending: bool,
     last_status: Instant,
     usage_tx: SyncSender<Vec<QuestionJob>>,
+    git_tx: SyncSender<Vec<GitJob>>,
+    git_pending: bool,
+    last_git: Instant,
     usage_pending: bool,
     last_usage: Instant,
     question_tx: SyncSender<Vec<QuestionJob>>,
@@ -356,6 +363,12 @@ impl App {
             Msg::Status(found) => {
                 self.status_pending = false;
                 if self.view.set_status(found) {
+                    self.dirty = true;
+                }
+            }
+            Msg::Git(found) => {
+                self.git_pending = false;
+                if self.view.set_git(found) {
                     self.dirty = true;
                 }
             }
@@ -702,6 +715,61 @@ impl App {
         self.status_pending = self.status_tx.try_send(jobs).is_ok();
     }
 
+    fn probe_git(&mut self) {
+        if self.git_pending || self.last_git.elapsed() < GIT_EVERY {
+            return;
+        }
+        self.last_git = Instant::now();
+        let jobs: Vec<GitJob> = self
+            .view
+            .panes()
+            .iter()
+            .filter_map(|id| {
+                let row = self.view.sessions.iter().find(|r| &r.id == id)?;
+                let (start, pid) = self.starts.get(id).cloned().unwrap_or_default();
+                let start = (!start.is_empty()).then_some(start);
+                let cwds: Vec<PathBuf> = cwd_candidates(process_cwd(pid), start.as_deref())
+                    .into_iter()
+                    .map(PathBuf::from)
+                    .collect();
+                (!row.exited() || !cwds.is_empty()).then(|| GitJob {
+                    id: id.clone(),
+                    cwds,
+                })
+            })
+            .collect();
+        self.git_pending = self.git_tx.try_send(jobs).is_ok();
+    }
+
+    fn git_action(&mut self, action: GitAction) {
+        self.dirty = true;
+        match action {
+            GitAction::Close => {}
+            GitAction::OpenPr => {
+                let url = match self.view.focused_git().map(|g| &g.pr) {
+                    Some(PrLookup::Found(pr)) if valid_pr_url(&pr.url) => pr.url.clone(),
+                    _ => return self.notify("no pull request to open"),
+                };
+                if self.opener.open(&url, &url) {
+                    self.notify("opening the pull request");
+                } else {
+                    self.notify("cannot open a browser here");
+                }
+            }
+            GitAction::Diff => {
+                let Some(root) = self.view.focused_git().map(|g| g.root.clone()) else {
+                    return;
+                };
+                let pager = std::env::var("PAGER").ok();
+                self.view.git_open = false;
+                self.request_split_cmd(
+                    SplitDir::Down,
+                    Some((diff_argv(pager.as_deref()), root, "diff")),
+                );
+            }
+        }
+    }
+
     fn probe_usage(&mut self) {
         if self.usage_pending || self.last_usage.elapsed() < USAGE_EVERY {
             return;
@@ -995,6 +1063,14 @@ impl App {
     }
 
     fn request_split(&mut self, dir: SplitDir) {
+        self.request_split_cmd(dir, None);
+    }
+
+    fn request_split_cmd(
+        &mut self,
+        dir: SplitDir,
+        cmd: Option<(Vec<String>, String, &'static str)>,
+    ) {
         let Some(target) = self.view.focused_session().map(str::to_string) else {
             return;
         };
@@ -1009,7 +1085,14 @@ impl App {
             Some((cwd, pid)) => (Some(cwd.clone()), *pid),
             None => (None, 0),
         };
-        let mut cwds = cwd_candidates(process_cwd(pid), start.as_deref());
+        let (argv, mut cwds, label) = match cmd {
+            Some((argv, root, label)) => (Some(argv), vec![root], label),
+            None => (
+                None,
+                cwd_candidates(process_cwd(pid), start.as_deref()),
+                "shell",
+            ),
+        };
         if cwds.is_empty() {
             cwds.extend(
                 std::env::current_dir()
@@ -1017,11 +1100,15 @@ impl App {
                     .map(|p| p.to_string_lossy().into_owned()),
             );
         }
-        let name = shell_name(
-            &self.view.sessions,
-            &self.creating,
-            self.new_flow.planned_name(),
-        );
+        let name = if argv.is_some() {
+            unique_name(&self.view.sessions, label)
+        } else {
+            shell_name(
+                &self.view.sessions,
+                &self.creating,
+                self.new_flow.planned_name(),
+            )
+        };
         let content = layout(self.area(), &self.view)
             .panes
             .iter()
@@ -1032,9 +1119,13 @@ impl App {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         self.creating.insert(target.clone(), name.clone());
-        self.notify("starting shell…");
+        self.notify(if argv.is_some() {
+            "opening the diff…"
+        } else {
+            "starting shell…"
+        });
         thread::spawn(move || {
-            let result = create_shell(&cfg, &cwds, &name, cols, rows);
+            let result = create_shell(&cfg, &cwds, &name, argv, cols, rows);
             let sent = tx.send(Msg::Created {
                 result,
                 dir,
@@ -1302,6 +1393,12 @@ impl App {
             }
             (Route::Dialog, Action::Drop(data) | Action::Paste { data, .. }) => {
                 self.view.insert_new_session_text(&data);
+            }
+            (Route::Git, Action::Forward(data)) => {
+                if let Some(action) = self.view.edit_git(&data) {
+                    self.git_action(action);
+                }
+                self.dirty = true;
             }
             (Route::Questions, Action::Forward(data)) => self.questions_input(&data),
             (Route::Peek, Action::Forward(data)) => {
@@ -1875,6 +1972,9 @@ impl App {
                     if let Some(id) = out.open_task {
                         self.open_task(&id);
                     }
+                    if let Some(action) = out.git {
+                        self.git_action(action);
+                    }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
                 Action::Cmd(Cmd::Picker) => {
@@ -1892,6 +1992,9 @@ impl App {
                     self.view.confirm = None;
                     self.view.rename = None;
                     self.view.new_session = None;
+                    if cmd != Cmd::Git {
+                        self.view.git_open = false;
+                    }
                     self.view.sidebar_focus = None;
                     if let Some(old) = self.view.palette.take() {
                         if matches!(
@@ -2002,6 +2105,7 @@ impl App {
         self.check_signals();
         self.probe_status();
         self.probe_usage();
+        self.probe_git();
         self.probe_peek();
         self.probe_questions();
         self.paste_forks();
@@ -2435,6 +2539,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
             status_out.send(Msg::Status(found)).is_ok()
         })
     });
+    let (git_tx, git_rx) = mpsc::sync_channel(1);
+    let git_out = tx.clone();
+    thread::spawn(move || git_worker(git_rx, move |found| git_out.send(Msg::Git(found)).is_ok()));
     let (usage_tx, usage_rx) = mpsc::sync_channel(1);
     let usage_out = tx.clone();
     thread::spawn(move || {
@@ -2524,6 +2631,9 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         last_peek: Instant::now() - STATUS_EVERY,
         status_tx,
         usage_tx,
+        git_tx,
+        git_pending: false,
+        last_git: Instant::now() - GIT_EVERY,
         usage_pending: false,
         last_usage: Instant::now() - USAGE_EVERY,
         status_pending: false,
@@ -2640,6 +2750,7 @@ fn create_shell(
     cfg: &RunnerConfig,
     cwds: &[String],
     name: &str,
+    argv: Option<Vec<String>>,
     cols: u16,
     rows: u16,
 ) -> std::result::Result<SessionInfo, String> {
@@ -2647,7 +2758,7 @@ fn create_shell(
     let mut last = "no working directory for the new shell".to_string();
     for cwd in cwds {
         let req = CreateReq {
-            argv: shell_argv(),
+            argv: argv.clone().unwrap_or_else(shell_argv),
             cwd: cwd.clone(),
             name: Some(name.to_string()),
             profile: None,

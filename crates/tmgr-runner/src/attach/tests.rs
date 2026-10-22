@@ -6622,6 +6622,212 @@ fn snapshot_broadcast_narrow_panes_use_short_markers() {
     assert_snapshot("broadcast_narrow", &draw(&v, &screens(), 60, 14));
 }
 
+fn git_info() -> GitInfo {
+    GitInfo {
+        root: "/work/shop".into(),
+        branch: "feature/apple-pay".into(),
+        upstream: Some("origin/feature/apple-pay".into()),
+        ahead: 1,
+        behind: 0,
+        changed: 3,
+        untracked: 1,
+        added: 120,
+        deleted: 34,
+        base: Some("origin/main".into()),
+        ahead_base: Some(2),
+        pr: PrLookup::Found(Pr {
+            number: 615,
+            title: "Apple Pay button".into(),
+            url: "https://github.com/acme/shop/pull/615".into(),
+            state: "open".into(),
+        }),
+    }
+}
+
+fn git_view(width: u16) -> ViewState {
+    let mut v = two_pane(width);
+    let focused = v.focused_session().unwrap().to_string();
+    let mut found = HashMap::new();
+    found.insert(focused, git_info());
+    v.set_git(found);
+    v
+}
+
+#[test]
+fn status_v2_is_parsed_into_branch_tracking_and_counts() {
+    let text = "# branch.oid abc\n# branch.head main\n# branch.upstream origin/main\n# branch.ab +2 -1\n1 .M N... 100644 100644 100644 a b src/a.rs\n2 R. N... 100644 100644 100644 a b R100 new.rs\told.rs\nu UU N... 1 1 1 1 a b c conflict.rs\n? scratch.txt\n? other.txt\n";
+    assert_eq!(
+        parse_status(text),
+        StatusInfo {
+            branch: "main".into(),
+            upstream: Some("origin/main".into()),
+            ahead: 2,
+            behind: 1,
+            changed: 3,
+            untracked: 2,
+        }
+    );
+    let detached = parse_status("# branch.head (detached)\n");
+    assert_eq!(detached.branch, "(detached)");
+    assert_eq!(detached.upstream, None);
+    assert_eq!(parse_status(""), StatusInfo::default());
+}
+
+#[test]
+fn numstat_sums_text_files_and_skips_binaries() {
+    assert_eq!(
+        parse_numstat("3\t1\ta.rs\n-\t-\timg.png\n10\t0\tb.rs\n"),
+        (13, 1)
+    );
+    assert_eq!(parse_numstat(""), (0, 0));
+}
+
+#[test]
+fn only_github_pull_urls_are_accepted() {
+    assert!(valid_pr_url("https://github.com/acme/shop/pull/615"));
+    for bad in [
+        "http://github.com/acme/shop/pull/615",
+        "https://github.com.evil.io/acme/shop/pull/1",
+        "https://github.com/acme/shop/pull/1/files",
+        "https://github.com/acme/shop/issues/1",
+        "https://github.com/acme/shop/pull/x",
+        "https://github.com/../shop/pull/1",
+        "https://github.com/acme/sh op/pull/1",
+        "file:///etc/passwd",
+        "-a",
+        "",
+    ] {
+        assert!(!valid_pr_url(bad), "{bad}");
+    }
+}
+
+#[test]
+fn a_gh_answer_is_parsed_and_a_bad_one_is_dropped() {
+    let ok = r#"{"number":7,"title":"Fix \u001b[2J it","url":"https://github.com/a/b/pull/7","state":"OPEN"}"#;
+    let pr = parse_pr(ok).unwrap();
+    assert_eq!((pr.number, pr.state.as_str()), (7, "open"));
+    assert!(!pr.title.contains('\u{1b}'));
+    assert!(parse_pr(
+        r#"{"number":7,"title":"x","url":"https://evil.example/a/b/pull/7","state":"OPEN"}"#
+    )
+    .is_none());
+    assert!(parse_pr("not json").is_none());
+}
+
+#[test]
+fn the_git_key_is_free_and_the_panel_is_hidden_without_a_repo() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'G')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Git);
+    let mut v = two_pane(140);
+    v.apply(Cmd::Git);
+    assert!(!v.git_open);
+    assert!(v.notice.as_deref().unwrap().contains("no git repository"));
+    let mut v = git_view(140);
+    v.apply(Cmd::Git);
+    assert!(v.git_open);
+    v.apply(Cmd::Git);
+    assert!(!v.git_open);
+}
+
+#[test]
+fn the_panel_closes_when_the_repo_disappears() {
+    let mut v = git_view(140);
+    v.apply(Cmd::Git);
+    assert!(v.set_git(HashMap::new()));
+    assert!(!v.git_open);
+}
+
+#[test]
+fn panel_keys_pick_actions_and_open_pr_needs_a_pr() {
+    let mut v = git_view(140);
+    v.apply(Cmd::Git);
+    assert_eq!(v.edit_git(b"d"), Some(GitAction::Diff));
+    assert_eq!(v.edit_git(b"p"), Some(GitAction::OpenPr));
+    assert_eq!(v.edit_git(b"x"), None);
+    assert!(v.git_open);
+    assert_eq!(v.edit_git(b"\x1b"), Some(GitAction::Close));
+    assert!(!v.git_open);
+    let mut v = git_view(140);
+    let id = v.focused_session().unwrap().to_string();
+    v.git.get_mut(&id).unwrap().pr = PrLookup::NoPr;
+    v.apply(Cmd::Git);
+    assert_eq!(v.edit_git(b"p"), None);
+}
+
+#[test]
+fn clicking_panel_buttons_returns_actions_and_outside_closes() {
+    let mut v = git_view(140);
+    v.apply(Cmd::Git);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let screen = draw(&v, &screens(), AREA.width, AREA.height);
+    let (row, col) = screen
+        .lines()
+        .enumerate()
+        .find_map(|(y, l)| {
+            l.find("Open PR")
+                .map(|x| (y as u16, l[..x].chars().count() as u16))
+        })
+        .unwrap();
+    let out = v.on_mouse(AREA, ev(0, col, row, false), &info);
+    assert_eq!(out.git, Some(GitAction::OpenPr));
+    v.on_mouse(AREA, ev(0, col, row, true), &info);
+    let out = v.on_mouse(AREA, ev(0, 1, 1, false), &info);
+    assert_eq!(out.git, None);
+    assert!(!v.git_open);
+}
+
+#[test]
+fn badge_shows_branch_dirty_count_and_commits_ahead_and_shrinks() {
+    let g = git_info();
+    assert_eq!(g.badge(60).as_deref(), Some(" · ⎇ feature/apple-pay ±4 ↑2"));
+    let short = g.badge(22).unwrap();
+    assert!(short.contains('…') && short.contains("±4"), "{short}");
+    assert_eq!(g.badge(8), None);
+    let clean = GitInfo {
+        changed: 0,
+        untracked: 0,
+        ahead_base: Some(0),
+        ..git_info()
+    };
+    assert_eq!(clean.badge(60).as_deref(), Some(" · ⎇ feature/apple-pay"));
+}
+
+#[test]
+fn clicking_the_header_badge_opens_the_panel() {
+    let mut v = git_view(140);
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let lay = layout(AREA, &v);
+    let p = lay
+        .panes
+        .iter()
+        .find(|p| Some(p.session.as_str()) == v.focused_session())
+        .unwrap();
+    let (x, w) = super::render::header_git(&v, p).unwrap();
+    assert!(w > 4);
+    v.on_mouse(AREA, ev(0, x + 1, p.outer.y, false), &info);
+    assert!(v.git_open);
+}
+
+#[test]
+fn snapshot_git_panel_and_header_badge() {
+    let mut v = git_view(140);
+    assert_snapshot("git_badge", &draw(&v, &screens(), 140, 16));
+    v.apply(Cmd::Git);
+    assert_snapshot("git_panel", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_git_panel_narrow_without_pr() {
+    let mut v = git_view(60);
+    let id = v.focused_session().unwrap().to_string();
+    let g = v.git.get_mut(&id).unwrap();
+    g.pr = PrLookup::Unavailable;
+    g.upstream = None;
+    v.apply(Cmd::Git);
+    assert_snapshot("git_panel_narrow", &draw(&v, &screens(), 60, 14));
+}
+
 fn prompt_view() -> ViewState {
     let mut v = two_pane(140);
     v.prompts = default_prompts();

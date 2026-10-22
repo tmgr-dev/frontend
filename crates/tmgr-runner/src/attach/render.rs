@@ -164,6 +164,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.palette.is_some() {
         draw_palette(buf, area, st);
     }
+    if st.git_open {
+        super::git::draw_git(buf, area, st);
+    }
     if st.qmenu.is_some() {
         draw_qmenu(buf, area, st);
     }
@@ -663,6 +666,23 @@ pub(crate) fn header_chip(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
     Some((x, w))
 }
 
+fn header_git_text(st: &ViewState, p: &PaneRect, geo: &HeaderGeo, chip_w: usize) -> Option<String> {
+    st.git
+        .get(&p.session)?
+        .badge(geo.spare.saturating_sub(chip_w))
+}
+
+pub(crate) fn header_git(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
+    let geo = header_geo(p, st)?;
+    let chip_w = header_chip_text(st, p, &geo).map_or(0, |c| c.width());
+    let badge = header_git_text(st, p, &geo, chip_w)?;
+    let before =
+        1 + geo.index.to_string().width() + 2 + geo.shown.width() + 3 + geo.state.width() + chip_w;
+    let x = p.outer.x + 1 + u16::try_from(before).ok()? + 3;
+    let w = u16::try_from(badge.width()).ok()?.checked_sub(3)?;
+    Some((x, w))
+}
+
 fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
     let geo = header_geo(p, st);
     let index = geo.as_ref().map_or_else(
@@ -693,6 +713,11 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             if let Some(chip) = header_chip_text(st, p, &geo) {
                 spare = spare.saturating_sub(chip.width());
                 spans.push(text(&chip, dim()));
+            }
+            let chip_w = header_chip_text(st, p, &geo).map_or(0, |c| c.width());
+            if let Some(badge) = header_git_text(st, p, &geo, chip_w) {
+                spare = spare.saturating_sub(badge.width());
+                spans.push(text(&badge, dim()));
             }
             if let Some(parts) = header_meta(st, &p.session, spare) {
                 spare = spare.saturating_sub(3 + parts_width(&parts));
@@ -1037,8 +1062,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "group by tab / repo, sidebar width",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask]),
-        "rename (tmgr name wins) / open its task",
+        HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask, Cmd::Git]),
+        "rename (tmgr wins) / its task / git panel",
     ),
     (
         HelpKey::Cmds(&[Cmd::Broadcast, Cmd::BroadcastMark]),

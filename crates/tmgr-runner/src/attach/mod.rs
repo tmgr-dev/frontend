@@ -2,6 +2,7 @@ mod actions;
 mod attention;
 mod broadcast;
 mod chip;
+mod git;
 mod keys;
 mod modes;
 mod mouse;
@@ -26,6 +27,10 @@ pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
 pub use chip::{chip_text, open_urls, TaskChip};
+pub use git::{
+    parse_numstat, parse_pr, parse_status, valid_pr_url, GitAction, GitInfo, Pr, PrLookup,
+    StatusInfo,
+};
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};

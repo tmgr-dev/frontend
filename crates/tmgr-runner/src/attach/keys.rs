@@ -47,6 +47,7 @@ pub enum Cmd {
     OpenTask,
     Broadcast,
     BroadcastMark,
+    Git,
     Prompts,
 }
 
