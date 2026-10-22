@@ -101,6 +101,7 @@
 	import {
 		percentOfTeam,
 		relativeAge,
+		thirtyDayHint,
 	} from '@/utils/dashboard/memberPageFormat';
 	import {
 		formatTrackedSeconds,
@@ -124,6 +125,7 @@
 		{ key: 'today', label: 'Today' },
 		{ key: '7d', label: '7 days' },
 		{ key: '30d', label: '30 days' },
+		{ key: 'all', label: 'All time' },
 	];
 
 	const presence = computed(() => {
@@ -187,12 +189,12 @@
 			{
 				label: 'Streak',
 				value: `${m.streak}d`,
-				hint: `longest ${m.longest_streak}d`,
+				hint: thirtyDayHint(props.window, `longest ${m.longest_streak}d`),
 			},
 			{
 				label: 'Activity',
 				value: m.activity_count,
-				hint: `${m.active_days} active days`,
+				hint: thirtyDayHint(props.window, `${m.active_days} active days`),
 			},
 		];
 	});

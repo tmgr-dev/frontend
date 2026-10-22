@@ -4,6 +4,7 @@ import {
 	percentOfTeam,
 	relativeAge,
 	tasksTabFromQuery,
+	thirtyDayHint,
 } from '@/utils/dashboard/memberPageFormat';
 
 describe('memberWindowFromQuery', () => {
@@ -12,6 +13,8 @@ describe('memberWindowFromQuery', () => {
 		expect(memberWindowFromQuery('')).toBe('7d');
 		expect(memberWindowFromQuery('today')).toBe('today');
 		expect(memberWindowFromQuery('30d')).toBe('30d');
+		expect(memberWindowFromQuery('all')).toBe('all');
+		expect(memberWindowFromQuery('ALL')).toBe('all');
 	});
 
 	it('falls back to a week rather than sending garbage to the API', () => {
@@ -91,5 +94,15 @@ describe('memberTasksPage', () => {
 		expect(memberTasksPage(undefined).data).toEqual([]);
 		expect(memberTasksPage({}).data).toEqual([]);
 		expect(memberTasksPage({ data: null }).total).toBe(0);
+	});
+});
+
+describe('thirtyDayHint', () => {
+	it('qualifies the hint only under the all window', () => {
+		expect(thirtyDayHint('all', 'longest 5d')).toBe(
+			'longest 5d · last 30 days',
+		);
+		expect(thirtyDayHint('30d', 'longest 5d')).toBe('longest 5d');
+		expect(thirtyDayHint('today', '3 active days')).toBe('3 active days');
 	});
 });

@@ -46,7 +46,8 @@ const member = (id, name, activeDays, days) => ({
 });
 
 const teamActivity = (window) => {
-  const days = window === '30d' ? 30 : window === '7d' ? 7 : 1;
+  const days =
+    window === '30d' || window === 'all' ? 30 : window === '7d' ? 7 : 1;
   const members = [
     member(1, 'Ann Lee', 3, days),
     member(2, 'Bob Ray', 0, days),
@@ -58,7 +59,7 @@ const teamActivity = (window) => {
     active_today: 1,
     active_timers: 0,
     tracked_seconds: 3600,
-    done_count: window === '30d' ? 12 : 5,
+    done_count: window === 'all' ? 40 : window === '30d' ? 12 : 5,
     window,
   };
 };
@@ -87,7 +88,10 @@ const timeDaily = (from, to) => {
   return { from, to, tz: 'UTC', days };
 };
 
-const setup = async (page, { timeStatus = 200, quiet = false } = {}) => {
+const setup = async (
+  page,
+  { timeStatus = 200, quiet = false, rejectAll = false } = {},
+) => {
   const requests = { team: [], time: [] };
   const errors = [];
   page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -125,6 +129,13 @@ const setup = async (page, { timeStatus = 200, quiet = false } = {}) => {
       if (p.endsWith('team-activity')) {
         const window = url.searchParams.get('window');
         requests.team.push(window);
+        if (rejectAll && window === 'all')
+          return r.fulfill({
+            status: 400,
+            json: {
+              message: "Invalid window 'all', expected one of: today, 7d, 30d",
+            },
+          });
         const data = teamActivity(window);
         if (quiet)
           data.members = data.members.map((m) => ({
@@ -270,7 +281,12 @@ test('an empty workspace shows empty states, not broken charts', async ({
 });
 
 // D-009: the widget's own window (Today / 30d) must not blank the page-period KPIs and chart.
-for (const tab of ['Today', '30d'])
+const widgetSubtitles = {
+  Today: 'activity today',
+  '30d': 'last 30 days',
+  'All time': 'activity, all time',
+};
+for (const tab of Object.keys(widgetSubtitles))
   test(`widget window ${tab} keeps the 7-day KPIs and chart`, async ({
     page,
   }) => {
@@ -283,7 +299,7 @@ for (const tab of ['Today', '30d'])
     await page.getByRole('tab', { name: tab }).click();
     await expect.poll(() => requests.team.length).toBe(2);
     await expect(page.locator('.team-activity-widget')).toContainText(
-      tab === 'Today' ? 'activity today' : 'last 30 days',
+      widgetSubtitles[tab],
     );
 
     await expect(kpi(page, 'members')).toContainText('of 2 members', {
@@ -298,6 +314,27 @@ for (const tab of ['Today', '30d'])
     ).toHaveAttribute('aria-pressed', 'true');
     expect(errors).toEqual([]);
   });
+
+test('widget falls back to 30d when the backend rejects window=all', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const { requests, errors } = await setup(page, { rejectAll: true });
+  await page.goto('/demo/dashboard');
+  await expect(kpi(page, 'members')).toContainText('of 2 members');
+
+  await page.getByRole('tab', { name: 'All time' }).click();
+  await expect.poll(() => requests.team).toEqual(['7d', 'all', '30d']);
+  await expect(page.getByRole('tab', { name: '30d' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page.locator('.team-activity-widget')).toContainText(
+    'last 30 days',
+  );
+  await expect(page.locator('.team-activity-widget')).toContainText('Ann Lee');
+  expect(errors).toEqual([]);
+});
 
 test('member names stay readable in the members table at 1280', async ({
   page,

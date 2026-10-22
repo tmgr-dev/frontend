@@ -6,10 +6,11 @@ jest.mock('@/actions/tmgr/dashboard', () => ({
 	getMemberStats: jest.fn(),
 	getMemberTasks: jest.fn(),
 }));
+const mockReplace = jest.fn();
 const mockRoute = reactive({ query: {} as Record<string, string> });
 jest.mock('vue-router', () => ({
 	useRoute: () => mockRoute,
-	useRouter: () => ({ replace: jest.fn() }),
+	useRouter: () => ({ replace: mockReplace }),
 }));
 
 describe('member page reused across query changes (TM-543)', () => {
@@ -24,6 +25,27 @@ describe('member page reused across query changes (TM-543)', () => {
 			success: true,
 			data: { data: [], total: 0 },
 		});
+	});
+
+	it('falls back to 30d without an error when the backend rejects window=all', async () => {
+		mockRoute.query = { window: 'all', tab: 'touched' };
+		const validation = { success: false, error: { type: 'validation' } };
+		(getMemberStats as jest.Mock).mockResolvedValue(validation);
+		(getMemberTasks as jest.Mock).mockResolvedValue(validation);
+		const scope = effectScope();
+		const page = scope.run(() =>
+			useMemberPage(
+				() => 1,
+				() => 2,
+			),
+		)!;
+		await page.refresh();
+
+		expect(mockReplace).toHaveBeenCalledWith({
+			query: { window: '30d', tab: 'touched' },
+		});
+		expect(page.error.value).toBeNull();
+		scope.stop();
 	});
 
 	it('reloads only tasks on tab change and stats + tasks on window change', async () => {

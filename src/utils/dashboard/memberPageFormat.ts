@@ -5,7 +5,7 @@ import type {
 	TeamActivityWindow,
 } from '@/types/dashboard';
 
-const WINDOWS: TeamActivityWindow[] = ['today', '7d', '30d'];
+const WINDOWS: TeamActivityWindow[] = ['today', '7d', '30d', 'all'];
 const TABS: MemberTasksTab[] = ['touched', 'assigned', 'created', 'done'];
 
 type QueryValue = string | string[] | null | undefined;
@@ -24,6 +24,14 @@ export function tasksTabFromQuery(value: QueryValue): MemberTasksTab {
 	const raw = single(value).trim().toLowerCase() as MemberTasksTab;
 
 	return TABS.includes(raw) ? raw : 'touched';
+}
+
+/** Streak and active days stay on the last 30 days even when the window is "all". */
+export function thirtyDayHint(
+	window: TeamActivityWindow,
+	hint: string,
+): string {
+	return window === 'all' ? `${hint} · last 30 days` : hint;
 }
 
 /** "25%" — or "<1%" for a share that is real but rounds to zero, null when there is no team total. */

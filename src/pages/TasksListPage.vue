@@ -41,6 +41,11 @@
 		isArchivedTask as isArchivedTaskBySets,
 	} from '@/utils/archivedTasks';
 	import {
+		formatTaskCount,
+		listTotalSeconds,
+		sumTaskSeconds,
+	} from '@/utils/listTotals';
+	import {
 		totalOvertimeSeconds,
 		type EstimatedTask,
 		type OvertimePagination,
@@ -280,18 +285,29 @@
 		return !searchText.value && matchesKnownFilters(task);
 	}
 
+	const loadedPageSeconds = ref(0);
+	watch(
+		() => pagination.value,
+		() => {
+			loadedPageSeconds.value = sumTaskSeconds(tasks.value);
+		},
+		{ flush: 'sync', immediate: true },
+	);
+
 	const totalSeconds = computed(() =>
-		Number(
-			pagination.value?.total_seconds ||
-				tasks.value.reduce(
-					(summary, task) => (task.common_time || 0) + summary,
-					0,
-				),
+		listTotalSeconds(
+			pagination.value?.total_seconds,
+			sumTaskSeconds(tasks.value),
+			loadedPageSeconds.value,
 		),
 	);
 
 	const summaryTime = computed(() =>
 		showSurface('timer.totals') ? formatTime(totalSeconds.value) : '',
+	);
+
+	const taskCountLabel = computed(() =>
+		formatTaskCount(pagination.value?.total ?? tasks.value.length),
 	);
 
 	const timeStats = computed(() => {
@@ -802,6 +818,10 @@
 		store.commit('setShowCreatingTaskModal');
 	}
 
+	// Ids this page already counted as deleted: an own delete arrives twice (the local
+	// store event, then the realtime echo) and the echo must not lower the total again.
+	const deletedHereIds = new Set<number>();
+
 	function updateSingleTaskInList(updatedTask: Task) {
 		const known = tasks.value.some((x) => x.id === updatedTask.id);
 		const result = upsertTaskInList(tasks.value as any[], updatedTask as any, {
@@ -811,7 +831,10 @@
 		});
 		if (prioritySort.value && (result === 'updated' || result === 'inserted'))
 			tasks.value = sortByPriority(tasks.value);
-		if (result === 'inserted') pagination.value.total++;
+		if (result === 'inserted') {
+			pagination.value.total++;
+			deletedHereIds.delete(updatedTask.id as number);
+		}
 		if (result === 'removed')
 			pagination.value.total = Math.max(0, pagination.value.total - 1);
 	}
@@ -823,10 +846,16 @@
 		const taskId = typeof deleted === 'number' ? deleted : deleted.id;
 		const removed = removeTaskFromList(tasks.value as any[], taskId as number);
 		const offPageMatch =
-			typeof deleted !== 'number' && !removed && canInsertTask(deleted);
+			typeof deleted !== 'number' &&
+			!removed &&
+			!deletedHereIds.has(taskId as number) &&
+			canInsertTask(deleted);
 		if (removed || offPageMatch) {
+			deletedHereIds.add(taskId as number);
 			pagination.value.total = Math.max(0, pagination.value.total - 1);
 		}
+		if (offPageMatch)
+			loadedPageSeconds.value += Number((deleted as Task).common_time) || 0;
 	}
 </script>
 
@@ -912,6 +941,11 @@
 							v-else-if="summaryTime"
 							class="w-full shrink-0 text-center text-2xl font-semibold tabular-nums text-ink sm:text-3xl"
 						>
+							<span
+								v-if="hasLoadedTasks"
+								class="whitespace-nowrap text-ink-subtle"
+								>{{ taskCountLabel }} ·</span
+							>
 							{{ summaryTime }}
 							<span
 								v-if="formattedTotalOvertime"

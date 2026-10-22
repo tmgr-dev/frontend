@@ -1,4 +1,35 @@
-import { formatTrackedSeconds, sparklineBars } from '../teamActivityFormat';
+import {
+	TEAM_ACTIVITY_WINDOWS,
+	formatTrackedSeconds,
+	sparklineBars,
+	teamActivitySubtitle,
+	teamActivityWindowLabel,
+} from '../teamActivityFormat';
+
+describe('team activity window labels', () => {
+	it('lists the four windows in order', () => {
+		expect(TEAM_ACTIVITY_WINDOWS.map((w) => w.label)).toEqual([
+			'Today',
+			'7d',
+			'30d',
+			'All time',
+		]);
+	});
+	it('labels each window for the summary', () => {
+		expect(teamActivityWindowLabel('all')).toBe('All time');
+		expect(teamActivityWindowLabel('7d')).toBe('7d');
+	});
+	it('words the subtitle per window', () => {
+		expect(teamActivitySubtitle('today')).toBe('Members’ activity today');
+		expect(teamActivitySubtitle('7d')).toBe(
+			'Members’ activity in the last 7 days',
+		);
+		expect(teamActivitySubtitle('30d')).toBe(
+			'Members’ activity in the last 30 days',
+		);
+		expect(teamActivitySubtitle('all')).toBe('Members’ activity, all time');
+	});
+});
 
 describe('formatTrackedSeconds', () => {
 	it('formats zero and minutes', () => {

@@ -173,7 +173,12 @@
 		TeamMemberActivity,
 		TeamMemberStatus,
 	} from '@/types/dashboard';
-	import { formatTrackedSeconds } from '@/utils/dashboard/teamActivityFormat';
+	import {
+		TEAM_ACTIVITY_WINDOWS,
+		formatTrackedSeconds,
+		teamActivitySubtitle,
+		teamActivityWindowLabel,
+	} from '@/utils/dashboard/teamActivityFormat';
 	import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 	import { computed } from 'vue';
 	import TeamMemberItem from './TeamMemberItem.vue';
@@ -195,21 +200,14 @@
 		'window-change': [w: TeamActivityWindow];
 	}>();
 
-	const windows: { key: TeamActivityWindow; label: string }[] = [
-		{ key: 'today', label: 'Today' },
-		{ key: '7d', label: '7d' },
-		{ key: '30d', label: '30d' },
-	];
-	const windowLabel = computed(() => {
-		const key = props.teamActivity?.window ?? props.window;
-		return windows.find((w) => w.key === key)?.label ?? key;
-	});
+	const windows = TEAM_ACTIVITY_WINDOWS;
+	const windowLabel = computed(() =>
+		teamActivityWindowLabel(props.teamActivity?.window ?? props.window),
+	);
 
-	const subtitle = computed(() => {
-		const key = props.teamActivity?.window ?? props.window;
-		if (key === 'today') return 'Members’ activity today';
-		return `Members’ activity in the last ${key === '30d' ? 30 : 7} days`;
-	});
+	const subtitle = computed(() =>
+		teamActivitySubtitle(props.teamActivity?.window ?? props.window),
+	);
 
 	const onlineCount = computed(() => {
 		return props.teamActivity?.online_members || 0;
