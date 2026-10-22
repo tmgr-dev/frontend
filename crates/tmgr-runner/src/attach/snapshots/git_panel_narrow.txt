@@ -1,0 +1,14 @@
+╭ 1  claude · working ────────────────────────────── ⏸ ■ ✕ ╮
+╭ Git ─────────────────────────────────────────────────────╮
+│ Repo     shop                                            │
+│ Branch   feature/apple-pay (no upstream)                 │
+│ Base     2 commits ahead of origin/main                  │
+│ Changes  3 changed, 1 untracked  +120 -34                │
+│ PR       unknown (gh is not available)                   │
+│                                                          │
+│                                                          │
+│ [ d  Diff ]  [ p  Open PR ]  [ Esc  Close ]              │
+│ read-only: nothing is committed, pushed or checked out   │
+╰──────────────────────────────────────────────────────────╯
+╰──────────────────────────────────────────────────────────╯
+ dev-server · waiting · Ctrl-] ?

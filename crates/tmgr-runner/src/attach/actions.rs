@@ -171,6 +171,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Saved prompts: paste into the focused agent",
         true,
     ),
+    def(
+        Cmd::Git,
+        b"G",
+        "G",
+        "Git panel: branch, changes, commits ahead, PR",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

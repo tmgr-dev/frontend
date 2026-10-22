@@ -51,6 +51,14 @@ pub(super) fn shell_name(
     )
 }
 
+pub(super) fn unique_name(sessions: &[SessionRow], label: &str) -> String {
+    let used: HashSet<&str> = sessions.iter().map(|r| r.name.as_str()).collect();
+    std::iter::once(label.to_string())
+        .chain((2u32..).map(|n| format!("{label}-{n}")))
+        .find(|n| !used.contains(n.as_str()))
+        .unwrap_or_else(|| label.to_string())
+}
+
 pub(super) const TYPED_CAP: usize = 4096;
 pub(super) type Ladder = &'static [(&'static str, u64)];
 pub(super) const STOP_LADDER: Ladder = &[("int", 10), ("term", 5), ("kill", 3)];
