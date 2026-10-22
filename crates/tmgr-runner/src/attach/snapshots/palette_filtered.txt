@@ -9,6 +9,7 @@
                   │ Remove (close) the focused exited session           Ctrl-] X │                 │
                   │ New session (claude, codex, shell, ...)             Ctrl-] c │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
+                  │ Search the focused pane's scrollback                Ctrl-] / │                 │
                   │ dev-server                                           waiting │                 │
                   │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
@@ -19,6 +20,5 @@
                   │ Open the focused session's task                     Ctrl-] t │                 │
                   │ New shell below, same folder                      Ctrl-] - h │                 │
                   │ Two panes, or collapse to one                       Ctrl-] s │                 │
-                  │ Saved prompts: paste into the focused agent         Ctrl-] i │                 │
- + New session    │ Unanswered questions from the agents                Ctrl-] q │─────────────────╯
+ + New session    │ Copy mode: pick text from the scrollback            Ctrl-] y │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

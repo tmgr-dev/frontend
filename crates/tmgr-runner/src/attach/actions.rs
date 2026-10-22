@@ -151,6 +151,20 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Search,
+        b"/",
+        "/",
+        "Search the focused pane's scrollback",
+        true,
+    ),
+    def(
+        Cmd::CopyMode,
+        b"y",
+        "y",
+        "Copy mode: pick text from the scrollback",
+        true,
+    ),
+    def(
         Cmd::Broadcast,
         b"B",
         "B",

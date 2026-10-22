@@ -49,6 +49,8 @@ pub enum Cmd {
     BroadcastMark,
     Git,
     Prompts,
+    Search,
+    CopyMode,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -60,6 +62,16 @@ pub enum ScrollKey {
     Top,
     Bottom,
     Exit,
+    Search,
+    Next,
+    Prev,
+    CopyMode,
+    Select,
+    Yank,
+    Left,
+    Right,
+    LineStart,
+    LineEnd,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -464,11 +476,25 @@ fn scroll_key(b: &[u8]) -> (Option<ScrollKey>, usize) {
         b'g' => (Some(ScrollKey::Top), 1),
         b'G' => (Some(ScrollKey::Bottom), 1),
         b'q' => (Some(ScrollKey::Exit), 1),
+        b'/' => (Some(ScrollKey::Search), 1),
+        b'n' => (Some(ScrollKey::Next), 1),
+        b'N' => (Some(ScrollKey::Prev), 1),
+        b'c' => (Some(ScrollKey::CopyMode), 1),
+        b'v' => (Some(ScrollKey::Select), 1),
+        b'y' | b'\r' => (Some(ScrollKey::Yank), 1),
+        b'k' => (Some(ScrollKey::Up), 1),
+        b'j' => (Some(ScrollKey::Down), 1),
+        b'h' => (Some(ScrollKey::Left), 1),
+        b'l' => (Some(ScrollKey::Right), 1),
+        b'0' => (Some(ScrollKey::LineStart), 1),
+        b'$' => (Some(ScrollKey::LineEnd), 1),
         0x1b if b.len() == 1 => (Some(ScrollKey::Exit), 1),
         0x1b => match b[1] {
             b'O' => match b.get(2) {
                 Some(b'A') => (Some(ScrollKey::Up), 3),
                 Some(b'B') => (Some(ScrollKey::Down), 3),
+                Some(b'C') => (Some(ScrollKey::Right), 3),
+                Some(b'D') => (Some(ScrollKey::Left), 3),
                 Some(_) => (None, 3),
                 None => (None, 2),
             },
@@ -485,6 +511,8 @@ fn scroll_key(b: &[u8]) -> (Option<ScrollKey>, usize) {
                     b"6~" => Some(ScrollKey::PageDown),
                     b"A" => Some(ScrollKey::Up),
                     b"B" => Some(ScrollKey::Down),
+                    b"C" => Some(ScrollKey::Right),
+                    b"D" => Some(ScrollKey::Left),
                     _ => None,
                 };
                 (key, end)

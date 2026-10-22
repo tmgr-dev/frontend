@@ -1,5 +1,6 @@
 use super::broadcast::Broadcast;
 use super::chip::TaskChip;
+use super::find::{CopyState, ScrollText, SearchState};
 use super::keys::{Cmd, ScrollKey};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
@@ -142,6 +143,10 @@ pub struct ViewState {
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
     pub broadcast: Option<Broadcast>,
+    pub stext: Option<ScrollText>,
+    pub search: Option<SearchState>,
+    pub copy: Option<CopyState>,
+    pub copied: Option<String>,
     pub new_tasks: Vec<TaskOpt>,
     pub new_tasks_note: Option<String>,
     pub sidebar_focus: Option<SidebarItem>,
@@ -368,6 +373,10 @@ impl ViewState {
             new_kind: None,
             new_place: None,
             broadcast: None,
+            stext: None,
+            search: None,
+            copy: None,
+            copied: None,
             new_tasks: Vec::new(),
             new_tasks_note: None,
             sidebar_focus: None,
@@ -1217,7 +1226,13 @@ impl ViewState {
             Cmd::Git => self.toggle_git(),
             Cmd::Broadcast => self.toggle_broadcast(),
             Cmd::BroadcastMark => self.mark_broadcast(),
-            Cmd::Detach | Cmd::Picker | Cmd::Resume | Cmd::NewSession | Cmd::OpenTask => {}
+            Cmd::Detach
+            | Cmd::Picker
+            | Cmd::Resume
+            | Cmd::NewSession
+            | Cmd::OpenTask
+            | Cmd::Search
+            | Cmd::CopyMode => {}
         }
     }
 
@@ -1741,6 +1756,18 @@ impl ViewState {
                     }
                     return out;
                 }
+                if local && self.copy.is_some() && ev.is_left_press() {
+                    if let Some((c, r)) = at {
+                        let h = layout(area, self)
+                            .panes
+                            .iter()
+                            .find(|p| p.session == session)
+                            .map_or(0, |p| p.inner.height);
+                        self.click_copy(r, c, h);
+                        out.redraw = true;
+                    }
+                    return out;
+                }
                 if ev.is_left_press() && idx != self.focus() {
                     self.focus_pane(idx);
                     out.redraw = true;
@@ -1806,6 +1833,25 @@ impl ViewState {
     }
 
     pub fn scroll_key(&mut self, key: ScrollKey, page: usize) {
+        if self.scroll.is_none() {
+            return;
+        }
+        if self.copy.is_some() && self.copy_key(key, page + 1) {
+            return;
+        }
+        match key {
+            ScrollKey::Next => return self.search_step(true, page + 1),
+            ScrollKey::Prev => return self.search_step(false, page + 1),
+            ScrollKey::CopyMode => return self.enter_copy(false, page + 1),
+            ScrollKey::Select => return self.enter_copy(true, page + 1),
+            ScrollKey::Search
+            | ScrollKey::Yank
+            | ScrollKey::Left
+            | ScrollKey::Right
+            | ScrollKey::LineStart
+            | ScrollKey::LineEnd => return,
+            _ => {}
+        }
         let Some(s) = self.scroll.as_mut() else {
             return;
         };
@@ -1818,8 +1864,10 @@ impl ViewState {
             ScrollKey::Bottom => s.offset = 0,
             ScrollKey::Exit => {
                 self.scroll = None;
+                self.clear_find();
                 return;
             }
+            _ => {}
         }
         s.offset = s.offset.min(s.max);
     }
