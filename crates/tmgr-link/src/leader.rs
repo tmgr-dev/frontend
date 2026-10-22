@@ -99,12 +99,20 @@ pub struct KeyFile {
     pub path: PathBuf,
 }
 
-pub fn materialise(cred: &CredentialStore) -> Result<KeyFile> {
-    use std::io::Write;
-    use std::os::unix::fs::OpenOptionsExt;
+pub fn load_secret(cred: &CredentialStore) -> Result<Secret> {
     let (tokens, _) = cred.load()?.ok_or_else(|| {
         Error::not_found("this machine has no link identity").hint("tmgr link init")
     })?;
+    Ok(tokens.access)
+}
+
+pub fn materialise(cred: &CredentialStore) -> Result<KeyFile> {
+    materialise_secret(&load_secret(cred)?)
+}
+
+pub fn materialise_secret(secret: &Secret) -> Result<KeyFile> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|p| p.is_absolute() && p.is_dir());
@@ -124,7 +132,7 @@ pub fn materialise(cred: &CredentialStore) -> Result<KeyFile> {
         .create_new(true)
         .mode(0o600)
         .open(&path)?;
-    f.write_all(tokens.access.expose().as_bytes())?;
+    f.write_all(secret.expose().as_bytes())?;
     f.sync_all()?;
     Ok(KeyFile { _dir: dir, path })
 }
@@ -546,6 +554,26 @@ mod tests {
             host: "example.com".into(),
             port: 22,
         }
+    }
+
+    #[test]
+    fn a_secret_is_written_to_a_private_file_that_goes_away_with_the_handle() {
+        use std::os::unix::fs::PermissionsExt;
+        let secret = Secret::new("key-material");
+        let a = materialise_secret(&secret).unwrap();
+        let b = materialise_secret(&secret).unwrap();
+        assert_ne!(a.path, b.path);
+        assert_eq!(std::fs::read_to_string(&a.path).unwrap(), "key-material");
+        let mode = std::fs::metadata(&a.path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        let dir = a.path.parent().unwrap().to_path_buf();
+        assert_eq!(
+            std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        drop(a);
+        assert!(!dir.exists());
+        assert!(b.path.exists());
     }
 
     #[test]

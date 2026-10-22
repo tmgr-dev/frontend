@@ -3530,7 +3530,7 @@ fn query_background() -> (Option<(u8, u8, u8)>, Vec<u8>) {
 }
 
 pub fn run(cfg: &RunnerConfig, initial: &str) -> Result<i32> {
-    run_with(cfg, initial, true, true)
+    run_with(cfg, initial, true, false)
 }
 
 pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool, links: bool) -> Result<i32> {

@@ -9374,6 +9374,30 @@ fn a_saved_layout_never_keeps_remote_panes() {
 }
 
 #[test]
+fn a_saved_layout_drops_a_linked_pane_the_remote_map_no_longer_knows() {
+    let mut v = linked_default();
+    v.open("a");
+    assert!(v.split_focused(SplitDir::Right, "spark/s_aaaaaaaaaa"));
+    assert!(v.panes().iter().any(|p| p.contains('/')));
+    v.remote.remove("spark/s_aaaaaaaaaa");
+    let name = v.save_layout("stale").unwrap();
+    let saved = v.layouts.iter().find(|l| l.name == name).unwrap();
+    assert!(!saved.prefs.panes.iter().any(|p| p.contains('/')));
+    assert!(saved
+        .prefs
+        .tree
+        .iter()
+        .flat_map(Node::leaves)
+        .all(|l| !l.contains('/')));
+    assert!(saved.members.iter().all(|m| !m.id.contains('/')));
+    assert!(saved
+        .prefs
+        .tabs
+        .iter()
+        .all(|t| t.tree.leaves().iter().all(|l| !l.contains('/'))));
+}
+
+#[test]
 fn stop_on_an_exited_linked_run_does_not_offer_the_local_remove_key() {
     let mut v = linked_default();
     v.set_initial("lab/s_cccccccccc");

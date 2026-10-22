@@ -183,7 +183,7 @@ impl ViewState {
 
     pub fn save_layout(&mut self, name: &str) -> Result<String, String> {
         let name = clean_name(name).ok_or("type a name for the layout")?;
-        let mut prefs = without_ids(self.prefs(), |id| self.remote.contains_key(id));
+        let mut prefs = without_ids(self.prefs(), |id| id.contains('/'));
         prefs.sidebar = None;
         prefs.sidebar_width = None;
         prefs.shells = Vec::new();

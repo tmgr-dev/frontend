@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tmgr_ipc::proto::{valid_session_id, ServerMsg};
+use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::store::Paths;
 use tmgr_runner::attach::{
     prefs_without_ids, Cmd, Control, LayoutPrefs, Machine, MachineState, ScrollKey, SessionRow,
@@ -265,11 +265,9 @@ impl Remote {
                 let Some((_, slot)) = self.states.iter_mut().find(|(l, _)| *l == link) else {
                     return fx;
                 };
-                *slot = state.clone();
-                if state == LinkState::Removed {
-                    self.states.retain(|(l, _)| *l != link);
-                }
+                *slot = state;
                 fx.dirty = self.sync(view, cache, area);
+                self.drop_stale_confirm(view, &mut fx);
             }
             LinkMsg::Runs { link, runs } => {
                 if self.states.iter().any(|(l, _)| *l == link) {
@@ -281,6 +279,7 @@ impl Remote {
                     self.inputs.retain(|id, _| listed(id));
                     self.sizes.retain(|id, _| listed(id));
                     fx.dirty = self.sync(view, cache, area);
+                    self.drop_stale_confirm(view, &mut fx);
                 }
             }
             LinkMsg::Opened { id, input } => {
@@ -289,16 +288,14 @@ impl Remote {
                     fx.dirty = true;
                 }
             }
-            LinkMsg::Screen(push) => {
+            LinkMsg::Screen(push, _permit) => {
                 if !matches!(self.route(&push.session), Target::Remote { .. }) {
                     return fx;
                 }
-                if let Ok(value) = serde_json::to_value(&*push) {
-                    fx.changed = cache.apply(&ServerMsg::Screen(value));
-                    fx.dirty = fx.changed.is_some();
-                }
+                fx.changed = cache.apply_push(*push);
+                fx.dirty = fx.changed.is_some();
             }
-            LinkMsg::Event(ev) => {
+            LinkMsg::Event(ev, _permit) => {
                 if !matches!(self.route(&ev.session), Target::Remote { .. }) {
                     return fx;
                 }
@@ -309,16 +306,25 @@ impl Remote {
                 }
             }
             LinkMsg::Notice { link, id, text } => {
-                let name = id
+                let source = id
                     .and_then(|id| view.sessions.iter().find(|r| r.id == id))
-                    .map_or_else(|| link.clone(), |r| sanitize_text(&r.name).into_owned());
-                fx.notice = Some(format!("{name}: {}", sanitize_text(&text)));
+                    .map_or_else(
+                        || link.clone(),
+                        |r| format!("{link}/{}", sanitize_text(&r.name)),
+                    );
+                fx.notice = Some(format!("{source}: {}", sanitize_text(&text)));
             }
             LinkMsg::StreamClosed { id, why, reopen } => {
                 self.inputs.remove(&id);
                 self.sizes.remove(&id);
                 if !reopen {
-                    fx.notice = Some(sanitize_text(&why).into_owned());
+                    let why = sanitize_text(&why);
+                    let link = link_of(&id);
+                    fx.notice = Some(if why.starts_with(link) {
+                        why.into_owned()
+                    } else {
+                        format!("{link}: {why}")
+                    });
                 }
             }
             LinkMsg::Halted { id, result } => {
@@ -335,6 +341,25 @@ impl Remote {
             }
         }
         fx
+    }
+
+    fn drop_stale_confirm(&self, view: &mut ViewState, fx: &mut Applied) {
+        let Some(c) = view.confirm.as_ref() else {
+            return;
+        };
+        let Some((link, _)) = c.session.split_once('/') else {
+            return;
+        };
+        let up = self
+            .states
+            .iter()
+            .any(|(l, s)| l == link && !matches!(s, LinkState::Removed | LinkState::NoAccess));
+        if up && view.sessions.iter().any(|r| r.id == c.session) {
+            return;
+        }
+        fx.notice = Some(format!("{} is gone", sanitize_text(&c.name)));
+        fx.dirty = true;
+        view.confirm = None;
     }
 
     pub(super) fn send(&mut self, id: &str, data: &[u8]) -> Sent {
@@ -489,13 +514,14 @@ impl Remote {
 #[cfg(test)]
 mod tests {
     use super::super::attach_links::tests::{fast, push, state, Fake, FakeDialer, A, B, C, LOCAL};
-    use super::super::attach_links::DialErr;
+    use super::super::attach_links::{DialErr, Permit};
     use super::*;
     use std::sync::mpsc::Receiver;
     use tmgr_core::error::Kind;
     use tmgr_ipc::api::{EventMsg, StateKind};
+    use tmgr_ipc::proto::ServerMsg;
     use tmgr_link::attach::{encode_event, encode_screen, Outgoing};
-    use tmgr_runner::attach::{LayoutPrefs, Node, TabPrefs};
+    use tmgr_runner::attach::{Confirm, LayoutPrefs, Node, TabPrefs};
 
     const AREA: Rect = Rect {
         x: 0,
@@ -884,14 +910,17 @@ mod tests {
         let seeded = format!("{:?}", r.cache.snapshot(LOCAL));
         let mut owned = push(LOCAL);
         owned.lines[0].1.spans[0].t = "owned".into();
-        r.apply(LinkMsg::Screen(Box::new(owned)));
+        r.apply(LinkMsg::Screen(Box::new(owned), Permit::none()));
         assert_eq!(format!("{:?}", r.cache.snapshot(LOCAL)), seeded);
-        r.apply(LinkMsg::Event(EventMsg {
-            session: LOCAL.into(),
-            state: state(StateKind::Exited),
-            task: None,
-            origin: None,
-        }));
+        r.apply(LinkMsg::Event(
+            EventMsg {
+                session: LOCAL.into(),
+                state: state(StateKind::Exited),
+                task: None,
+                origin: None,
+            },
+            Permit::none(),
+        ));
         assert_eq!(
             r.view.sessions.iter().find(|s| s.id == LOCAL).cloned(),
             before
@@ -1064,5 +1093,108 @@ mod tests {
         });
         assert!(r.view.machines.is_empty());
         assert!(r.view.remote.is_empty());
+    }
+
+    #[test]
+    fn a_relinked_machine_comes_back_after_it_was_removed() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        r.apply(LinkMsg::State {
+            link: "spark".into(),
+            state: LinkState::Removed,
+        });
+        assert!(r.view.machines.is_empty());
+        assert_eq!(r.view.sessions.len(), 1);
+        r.apply(LinkMsg::State {
+            link: "spark".into(),
+            state: LinkState::Online { latency_ms: 5 },
+        });
+        assert_eq!(r.view.machines.len(), 1);
+        assert_eq!(r.view.sessions.len(), 2);
+    }
+
+    #[test]
+    fn follower_text_names_its_source() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A]));
+        r.rows(2);
+        let id = format!("spark/{A}");
+        r.apply(LinkMsg::StreamClosed {
+            id: id.clone(),
+            why: "boom".into(),
+            reopen: false,
+        });
+        r.apply(LinkMsg::StreamClosed {
+            id: id.clone(),
+            why: "spark closed the connection".into(),
+            reopen: false,
+        });
+        r.apply(LinkMsg::Notice {
+            link: "spark".into(),
+            id: Some(id),
+            text: "hi".into(),
+        });
+        r.apply(LinkMsg::Notice {
+            link: "spark".into(),
+            id: None,
+            text: "yo".into(),
+        });
+        assert_eq!(
+            r.notes,
+            vec![
+                "spark: boom".to_string(),
+                "spark closed the connection".to_string(),
+                format!("spark/run {A}: hi"),
+                "spark: yo".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_stop_confirmation_is_cancelled_when_its_run_or_machine_goes_away() {
+        let mut r = rig(&["spark"], |f| f.set_runs("spark", &[A, B]));
+        r.rows(3);
+        let ask = |r: &mut Rig, run: &str| {
+            r.view.confirm = Some(Confirm {
+                session: format!("spark/{run}"),
+                name: format!("name {run}"),
+                remove: false,
+            });
+        };
+        ask(&mut r, A);
+        r.fake.set_runs("spark", &[B]);
+        r.until("row gone", |r| r.view.sessions.len() == 2);
+        assert!(r.view.confirm.is_none());
+        assert!(
+            r.notes.contains(&format!("name {A} is gone")),
+            "{:?}",
+            r.notes
+        );
+        ask(&mut r, B);
+        r.apply(LinkMsg::State {
+            link: "spark".into(),
+            state: LinkState::NoAccess,
+        });
+        assert!(r.view.confirm.is_none());
+        assert!(
+            r.notes.contains(&format!("name {B} is gone")),
+            "{:?}",
+            r.notes
+        );
+        ask(&mut r, B);
+        r.apply(LinkMsg::State {
+            link: "spark".into(),
+            state: LinkState::Removed,
+        });
+        assert!(r.view.confirm.is_none());
+        r.view.confirm = Some(Confirm {
+            session: LOCAL.into(),
+            name: "mine".into(),
+            remove: false,
+        });
+        r.apply(LinkMsg::State {
+            link: "spark".into(),
+            state: LinkState::Offline,
+        });
+        assert!(r.view.confirm.is_some());
     }
 }

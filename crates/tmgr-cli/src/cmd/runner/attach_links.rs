@@ -6,13 +6,14 @@ use std::io::{Read, Write};
 use std::process::{ChildStdin, ChildStdout};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use tmgr_core::config::{self, Config};
-use tmgr_core::creds::Backend;
+use tmgr_core::creds::{Backend, CredentialStore};
 use tmgr_core::error::{Error, Kind, Result};
-use tmgr_ipc::api::{EventMsg, ScreenPush};
+use tmgr_core::redact::Secret;
+use tmgr_ipc::api::{EventMsg, Line, ScreenPush};
 use tmgr_ipc::proto::valid_session_id;
 use tmgr_link::attach::{read_incoming, write_outgoing, Incoming, Outgoing};
 use tmgr_link::leader::{self, Client, KeyFile};
@@ -41,6 +42,8 @@ pub(super) struct Timing {
     pub stream_renew: Duration,
     pub cooldown: Duration,
     pub shutdown_wait: Duration,
+    pub kill_grace: Duration,
+    pub screen_gap: Duration,
 }
 
 impl Default for Timing {
@@ -59,6 +62,8 @@ impl Default for Timing {
             stream_renew: Duration::from_secs(55 * 60),
             cooldown: Duration::from_secs(30),
             shutdown_wait: Duration::from_secs(1),
+            kill_grace: Duration::from_secs(1),
+            screen_gap: Duration::from_millis(33),
         }
     }
 }
@@ -70,6 +75,7 @@ pub(super) enum DialErr {
     NoAccess(String),
     Refused(String),
     Removed,
+    Unavailable(String),
 }
 
 impl DialErr {
@@ -80,6 +86,7 @@ impl DialErr {
             DialErr::NoAccess(_) => format!("{link}: no access"),
             DialErr::Refused(_) => format!("{link} is busy: no free connection slot"),
             DialErr::Removed => format!("{link} is no longer linked"),
+            DialErr::Unavailable(m) => format!("{link}: {m}"),
         }
     }
 }
@@ -104,20 +111,60 @@ pub(super) fn classify(e: &Error) -> DialErr {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Binding {
+    Is(String),
+    Gone,
+    Unreadable,
+}
+
+pub(super) type Kill = Box<dyn FnOnce() + Send>;
+pub(super) type Pair = (Box<dyn Read + Send>, Box<dyn Write + Send>);
+
 pub(super) trait Dialer: Send + Sync + 'static {
     fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr>;
+
+    fn binding(&self, _link: &str) -> Binding {
+        Binding::Is(String::new())
+    }
 
     fn shutdown(&self) {}
 }
 
 pub(super) trait LinkConn: Send {
     fn call(&mut self, method: &str, params: Value, timeout: Duration) -> Result<Value>;
-    fn into_stream(self: Box<Self>) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>)>;
+    fn into_stream(self: Box<Self>) -> Result<(Pair, Kill)>;
+}
+
+pub(super) trait KeySource: Send + Sync + 'static {
+    fn load(&self) -> Result<Secret>;
+}
+
+struct StoreKey {
+    dir: std::path::PathBuf,
+    preferred: Option<Backend>,
+}
+
+impl KeySource for StoreKey {
+    fn load(&self) -> Result<Secret> {
+        leader::load_secret(&CredentialStore::new(
+            &self.dir,
+            leader::KEY_ACCOUNT,
+            self.preferred,
+        ))
+    }
+}
+
+enum Held {
+    Unread,
+    Loaded(Secret),
+    Closed,
 }
 
 pub(super) struct SshDialer {
     paths: Paths,
-    key: Mutex<Option<KeyFile>>,
+    source: Box<dyn KeySource>,
+    held: Mutex<Held>,
 }
 
 impl SshDialer {
@@ -125,30 +172,81 @@ impl SshDialer {
         let paths = Paths::from_env()?;
         let cfg = Config::load(&config::config_dir()?)?;
         let preferred = cfg.credential_store.as_deref().and_then(Backend::parse);
-        let key = leader::materialise(&leader::credential_store(&paths, preferred))?;
-        Ok(SshDialer {
-            paths,
-            key: Mutex::new(Some(key)),
-        })
+        let source = StoreKey {
+            dir: paths.config.clone(),
+            preferred,
+        };
+        Ok(SshDialer::with_source(paths, Box::new(source)))
     }
+
+    fn with_source(paths: Paths, source: Box<dyn KeySource>) -> SshDialer {
+        SshDialer {
+            paths,
+            source,
+            held: Mutex::new(Held::Unread),
+        }
+    }
+
+    fn fresh_key(&self) -> std::result::Result<KeyFile, DialErr> {
+        let secret = {
+            let mut held = lock(&self.held);
+            if matches!(*held, Held::Closed) {
+                return Err(DialErr::Offline("the hub is shutting down".into()));
+            }
+            if matches!(*held, Held::Unread) {
+                let secret = self
+                    .source
+                    .load()
+                    .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))?;
+                *held = Held::Loaded(secret);
+            }
+            match &*held {
+                Held::Loaded(s) => s.clone(),
+                _ => return Err(DialErr::Offline("the hub is shutting down".into())),
+            }
+        };
+        leader::materialise_secret(&secret)
+            .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))
+    }
+}
+
+fn describe(store: &tmgr_link::store::Store, link: &str) -> Option<String> {
+    let f = store.followers.get(link)?;
+    let mut text = format!(
+        "{}@{}:{}#{}",
+        f.user, f.host, f.port, f.host_key_fingerprint
+    );
+    if let Some(hop) = store.jumps.get(link) {
+        match store.followers.get(hop) {
+            Some(h) => text.push_str(&format!(
+                "|{hop}={}@{}:{}#{}",
+                h.user, h.host, h.port, h.host_key_fingerprint
+            )),
+            None => text.push_str(&format!("|{hop}=?")),
+        }
+    }
+    Some(text)
 }
 
 impl Dialer for SshDialer {
     fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr> {
-        let mut client = {
-            let key = lock(&self.key);
-            let key = key
-                .as_ref()
-                .ok_or_else(|| DialErr::Offline("the hub is shutting down".into()))?;
-            Client::dial_with_key(&self.paths, link, key).map_err(|e| classify(&e))?
-        };
+        let key = self.fresh_key()?;
+        let mut client =
+            Client::dial_with_key(&self.paths, link, &key).map_err(|e| classify(&e))?;
         client.hello().map_err(|e| classify(&e))?;
         client.disarm();
         Ok(Box::new(SshConn(client)))
     }
 
+    fn binding(&self, link: &str) -> Binding {
+        match Store::load(&self.paths) {
+            Ok(store) => describe(&store, link).map_or(Binding::Gone, Binding::Is),
+            Err(_) => Binding::Unreadable,
+        }
+    }
+
     fn shutdown(&self) {
-        lock(&self.key).take();
+        *lock(&self.held) = Held::Closed;
     }
 }
 
@@ -159,12 +257,18 @@ impl LinkConn for SshConn {
         remote::check(self.0.call_within(method, params, timeout)?)
     }
 
-    fn into_stream(mut self: Box<Self>) -> Result<(Box<dyn Read + Send>, Box<dyn Write + Send>)> {
+    fn into_stream(mut self: Box<Self>) -> Result<(Pair, Kill)> {
         let (out, input) = self.0.take_stream()?;
         let owner = Arc::new(Mutex::new(Some(self.0)));
+        let killer = Arc::clone(&owner);
         Ok((
-            Box::new(HeldRead(out, Arc::clone(&owner))),
-            Box::new(HeldWrite(input, owner)),
+            (
+                Box::new(HeldRead(out, Arc::clone(&owner))),
+                Box::new(HeldWrite(input, owner)),
+            ),
+            Box::new(move || {
+                lock(&killer).take();
+            }),
         ))
     }
 }
@@ -224,6 +328,29 @@ pub(super) enum LinkState {
 }
 
 #[derive(Debug)]
+pub(super) struct Permit(Option<Arc<AtomicBool>>);
+
+impl Permit {
+    #[cfg(test)]
+    pub(super) fn none() -> Permit {
+        Permit(None)
+    }
+
+    fn held(flag: &Arc<AtomicBool>) -> Permit {
+        flag.store(true, Ordering::SeqCst);
+        Permit(Some(Arc::clone(flag)))
+    }
+}
+
+impl Drop for Permit {
+    fn drop(&mut self) {
+        if let Some(flag) = &self.0 {
+            flag.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
+#[derive(Debug)]
 pub(super) enum LinkMsg {
     State {
         link: String,
@@ -237,8 +364,8 @@ pub(super) enum LinkMsg {
         id: String,
         input: bool,
     },
-    Screen(Box<ScreenPush>),
-    Event(EventMsg),
+    Screen(Box<ScreenPush>, Permit),
+    Event(EventMsg, Permit),
     Notice {
         link: String,
         id: Option<String>,
@@ -462,6 +589,90 @@ impl RemoteState {
     }
 }
 
+fn merge_screens(old: ScreenPush, new: ScreenPush) -> ScreenPush {
+    if new.full {
+        return new;
+    }
+    if old.full {
+        let mut old = old;
+        if let Some(snap) = old.snapshot.as_mut() {
+            for (i, line) in new.lines {
+                if i >= snap.lines.len() {
+                    snap.lines.resize(i + 1, Line { spans: Vec::new() });
+                }
+                snap.lines[i] = line;
+            }
+            snap.cursor = new.cursor;
+            if let Some(m) = new.modes {
+                snap.modes = m;
+            }
+            snap.scroll_offset = new.scroll_offset;
+            snap.scroll_max = new.scroll_max;
+        }
+        return old;
+    }
+    let mut lines: BTreeMap<usize, Line> = old.lines.into_iter().collect();
+    lines.extend(new.lines);
+    ScreenPush {
+        lines: lines.into_iter().collect(),
+        modes: new.modes.or(old.modes),
+        ..new
+    }
+}
+
+#[derive(Default)]
+struct Slot {
+    screen: Option<ScreenPush>,
+    event: Option<EventMsg>,
+}
+
+struct Flow {
+    slot: Mutex<Slot>,
+    wake: Condvar,
+    busy: Arc<AtomicBool>,
+}
+
+impl Flow {
+    fn new() -> Flow {
+        Flow {
+            slot: Mutex::new(Slot::default()),
+            wake: Condvar::new(),
+            busy: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    fn put_screen(&self, push: ScreenPush) {
+        let mut slot = lock(&self.slot);
+        slot.screen = Some(match slot.screen.take() {
+            Some(old) => merge_screens(old, push),
+            None => push,
+        });
+        drop(slot);
+        self.wake.notify_one();
+    }
+
+    fn put_event(&self, ev: EventMsg) {
+        lock(&self.slot).event = Some(ev);
+        self.wake.notify_one();
+    }
+
+    fn put_back(&self, msg: LinkMsg) {
+        let mut slot = lock(&self.slot);
+        match msg {
+            LinkMsg::Screen(push, _) => {
+                slot.screen = Some(match slot.screen.take() {
+                    Some(newer) => merge_screens(*push, newer),
+                    None => *push,
+                });
+            }
+            LinkMsg::Event(ev, _) => {
+                slot.event.get_or_insert(ev);
+            }
+            _ => {}
+        }
+    }
+}
+
 enum Cmd {
     Halt(String),
     Retry,
@@ -474,6 +685,7 @@ struct Stream {
     out: Option<SyncSender<Outgoing>>,
     input: Option<bool>,
     utf8: Vec<u8>,
+    kill: Option<Kill>,
 }
 
 struct Inner {
@@ -486,6 +698,7 @@ struct Inner {
     shown: Mutex<HashMap<String, LinkState>>,
     streams: Mutex<HashMap<String, Stream>>,
     cooldown: Mutex<HashMap<String, Instant>>,
+    key_notice: AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -544,11 +757,24 @@ impl Inner {
         let mut state = lock(&self.state);
         let mut streams = lock(&self.streams);
         if streams.get(id).is_some_and(|s| s.gen == gen) {
-            streams.remove(id);
+            let gone = streams.remove(id);
             state.mark_closed(id);
+            drop(streams);
+            drop(state);
+            self.retire(gone.and_then(|s| s.kill));
             true
         } else {
             false
+        }
+    }
+
+    fn retire(&self, kill: Option<Kill>) {
+        if let Some(kill) = kill {
+            let grace = self.timing.kill_grace;
+            thread::spawn(move || {
+                thread::sleep(grace);
+                kill();
+            });
         }
     }
 
@@ -561,8 +787,11 @@ impl Inner {
         let removed = lock(&self.streams).remove(id);
         state.mark_closed(id);
         drop(state);
-        if let Some(out) = removed.and_then(|s| s.out) {
-            let _ = out.try_send(Outgoing::Detach);
+        if let Some(s) = removed {
+            if let Some(out) = &s.out {
+                let _ = out.try_send(Outgoing::Detach);
+            }
+            self.retire(s.kill);
         }
     }
 
@@ -615,6 +844,7 @@ impl Hub {
             shown: Mutex::new(HashMap::new()),
             streams: Mutex::new(HashMap::new()),
             cooldown: Mutex::new(HashMap::new()),
+            key_notice: AtomicBool::new(false),
         });
         let mut ctl = HashMap::new();
         let mut threads = Vec::new();
@@ -665,6 +895,7 @@ impl Hub {
 
     pub(super) fn retry_all(&self) {
         lock(&self.inner.cooldown).clear();
+        self.inner.key_notice.store(false, Ordering::SeqCst);
         for tx in self.ctl.values() {
             let _ = tx.send(Cmd::Retry);
         }
@@ -712,6 +943,7 @@ impl Hub {
                     out: None,
                     input: None,
                     utf8: Vec::new(),
+                    kill: None,
                 },
             );
             state.mark_open(id);
@@ -809,6 +1041,8 @@ enum Exit {
     Lost,
     Denied,
     Retry,
+    Removed,
+    Rebind,
 }
 
 fn halt_refused(inner: &Inner, link: &str, run: &str, why: &str) {
@@ -833,6 +1067,16 @@ fn pause(inner: &Inner, link: &str, cmds: &Receiver<Cmd>, wait: Option<Duration>
     }
 }
 
+fn unlink(inner: &Inner, link: &str) {
+    inner.lose_link(link);
+    lock(&inner.state).remove_link(link);
+    inner.set_state(link, LinkState::Removed);
+    inner.emit(LinkMsg::Runs {
+        link: link.to_string(),
+        runs: Vec::new(),
+    });
+}
+
 fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
     let t = inner.timing;
     let mut backoff = t.backoff_min;
@@ -844,6 +1088,7 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
         if !quiet {
             inner.set_state(link, LinkState::Connecting);
         }
+        let bound = inner.dialer.binding(link);
         let conn = match inner.dialer.dial(link) {
             Ok(c) => c,
             Err(e) => {
@@ -863,24 +1108,29 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
                         backoff = (backoff * 2).min(t.backoff_max);
                         go
                     }
-                    DialErr::HostKeyChanged | DialErr::NoAccess(_) | DialErr::Removed => {
+                    DialErr::HostKeyChanged | DialErr::NoAccess(_) | DialErr::Unavailable(_) => {
                         inner.lose_link(link);
-                        let state = match e {
+                        let state = match &e {
                             DialErr::HostKeyChanged => LinkState::HostKeyChanged,
-                            DialErr::NoAccess(_) => LinkState::NoAccess,
-                            _ => {
-                                lock(&inner.state).remove_link(link);
-                                LinkState::Removed
-                            }
+                            _ => LinkState::NoAccess,
                         };
-                        let removed = state == LinkState::Removed;
                         inner.set_state(link, state);
-                        if removed {
-                            inner.emit(LinkMsg::Runs {
-                                link: link.to_string(),
-                                runs: Vec::new(),
-                            });
+                        if let DialErr::Unavailable(why) = e {
+                            if !inner.key_notice.swap(true, Ordering::SeqCst) {
+                                inner.emit(LinkMsg::Notice {
+                                    link: link.to_string(),
+                                    id: None,
+                                    text: why,
+                                });
+                            }
                         }
+                        let go = pause(inner, link, cmds, None);
+                        quiet = false;
+                        backoff = t.backoff_min;
+                        go
+                    }
+                    DialErr::Removed => {
+                        unlink(inner, link);
                         let go = pause(inner, link, cmds, None);
                         quiet = false;
                         backoff = t.backoff_min;
@@ -895,9 +1145,9 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
         };
         lock(&inner.state).restore_link(link);
         backoff = t.backoff_min;
-        match session(inner, link, conn, cmds) {
+        match session(inner, link, conn, cmds, &bound) {
             Exit::Shutdown => return,
-            Exit::Planned => quiet = true,
+            Exit::Planned | Exit::Rebind => quiet = true,
             Exit::Retry => quiet = false,
             Exit::Lost => {
                 inner.set_state(link, LinkState::Offline);
@@ -913,11 +1163,39 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
                 }
                 quiet = false;
             }
+            Exit::Removed => {
+                unlink(inner, link);
+                if !pause(inner, link, cmds, None) {
+                    return;
+                }
+                quiet = false;
+            }
         }
     }
 }
 
-fn session(inner: &Inner, link: &str, mut conn: Box<dyn LinkConn>, cmds: &Receiver<Cmd>) -> Exit {
+enum Rebound {
+    Same,
+    Gone,
+    Changed,
+}
+
+fn rebound(inner: &Inner, link: &str, bound: &Binding) -> Rebound {
+    match inner.dialer.binding(link) {
+        Binding::Unreadable => Rebound::Same,
+        Binding::Gone => Rebound::Gone,
+        now if now == *bound => Rebound::Same,
+        _ => Rebound::Changed,
+    }
+}
+
+fn session(
+    inner: &Inner,
+    link: &str,
+    mut conn: Box<dyn LinkConn>,
+    cmds: &Receiver<Cmd>,
+    bound: &Binding,
+) -> Exit {
     let t = inner.timing;
     let started = Instant::now();
     let mut requests = 1u32;
@@ -927,6 +1205,14 @@ fn session(inner: &Inner, link: &str, mut conn: Box<dyn LinkConn>, cmds: &Receiv
         }
         if started.elapsed() >= t.reconnect_after || requests >= t.reconnect_requests {
             return Exit::Planned;
+        }
+        match rebound(inner, link, bound) {
+            Rebound::Same => {}
+            Rebound::Gone => return Exit::Removed,
+            Rebound::Changed => {
+                inner.lose_link(link);
+                return Exit::Rebind;
+            }
         }
         let began = Instant::now();
         requests += 1;
@@ -958,10 +1244,21 @@ fn session(inner: &Inner, link: &str, mut conn: Box<dyn LinkConn>, cmds: &Receiv
         }
         match cmds.recv_timeout(t.poll) {
             Err(RecvTimeoutError::Timeout) => {}
-            Ok(Cmd::Halt(run)) => {
-                requests += 1;
-                halt(inner, link, &run, conn.as_mut());
-            }
+            Ok(Cmd::Halt(run)) => match rebound(inner, link, bound) {
+                Rebound::Same => {
+                    requests += 1;
+                    halt(inner, link, &run, conn.as_mut());
+                }
+                Rebound::Gone => {
+                    halt_refused(inner, link, &run, "the machine is no longer linked");
+                    return Exit::Removed;
+                }
+                Rebound::Changed => {
+                    halt_refused(inner, link, &run, "the link changed, try again");
+                    inner.lose_link(link);
+                    return Exit::Rebind;
+                }
+            },
             Ok(Cmd::Retry) => return Exit::Retry,
             Ok(Cmd::Shutdown) | Err(RecvTimeoutError::Disconnected) => return Exit::Shutdown,
         }
@@ -994,13 +1291,21 @@ struct StreamSpec {
     gen: u64,
 }
 
-type Pair = (Box<dyn Read + Send>, Box<dyn Write + Send>);
-
-fn open_stream(inner: &Inner, spec: &StreamSpec) -> std::result::Result<(bool, Pair), String> {
+fn open_stream(
+    inner: &Inner,
+    spec: &StreamSpec,
+) -> std::result::Result<(bool, Pair, Kill), String> {
     let mut conn = inner
         .dialer
         .dial(&spec.link)
         .map_err(|e| e.why(&spec.link))?;
+    let listed = matches!(
+        lock(&inner.state).target_of(&spec.id),
+        Target::Remote { .. }
+    );
+    if !listed || !inner.alive(&spec.id, spec.gen) {
+        return Err("the run is gone".to_string());
+    }
     let v = conn
         .call(
             "attach.open",
@@ -1009,10 +1314,10 @@ fn open_stream(inner: &Inner, spec: &StreamSpec) -> std::result::Result<(bool, P
         )
         .map_err(|e| cap(&format!("{}: {}", spec.link, e.message), MAX_WHY))?;
     let input = v.get("input").and_then(Value::as_bool).unwrap_or(false);
-    let pair = conn
+    let (pair, kill) = conn
         .into_stream()
         .map_err(|e| cap(&format!("{}: {}", spec.link, e.message), MAX_WHY))?;
-    Ok((input, pair))
+    Ok((input, pair, kill))
 }
 
 fn close_stream(inner: &Inner, spec: &StreamSpec, why: String, reopen: bool) {
@@ -1032,8 +1337,10 @@ fn reopens(why: &str) -> bool {
     why == "idle" || why.starts_with("detached")
 }
 
+const NOTICE_GAP: Duration = Duration::from_millis(100);
+
 fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
-    let (input, (mut reader, writer)) = match open_stream(inner, spec) {
+    let (input, (mut reader, writer), kill) = match open_stream(inner, spec) {
         Ok(v) => v,
         Err(why) => return close_stream(inner, spec, why, false),
     };
@@ -1044,9 +1351,11 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
             Some(s) if s.gen == spec.gen && !inner.stopped() => {
                 s.out = Some(out_tx.clone());
                 s.input = Some(input);
+                s.kill = Some(kill);
             }
             _ => {
                 drop(streams);
+                inner.retire(Some(kill));
                 let mut writer = writer;
                 let _ = write_outgoing(&mut writer, &Outgoing::Detach);
                 return;
@@ -1066,10 +1375,22 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
     });
     let born = Instant::now();
     let heard = Arc::new(Mutex::new(Instant::now()));
+    let renewed = Arc::new(AtomicBool::new(false));
+    let flow = Arc::new(Flow::new());
     {
-        let (inner, spec, heard) = (Arc::clone(inner), spec.clone(), Arc::clone(&heard));
-        thread::spawn(move || writer_main(&inner, &spec, writer, &out_rx, &heard));
+        let (inner, spec, heard, renewed) = (
+            Arc::clone(inner),
+            spec.clone(),
+            Arc::clone(&heard),
+            Arc::clone(&renewed),
+        );
+        thread::spawn(move || writer_main(&inner, &spec, writer, &out_rx, &heard, &renewed));
     }
+    {
+        let (inner, spec, flow) = (Arc::clone(inner), spec.clone(), Arc::clone(&flow));
+        thread::spawn(move || emitter_main(&inner, &spec, &flow));
+    }
+    let mut last_notice: Option<Instant> = None;
     loop {
         let got = read_incoming(&mut reader, &spec.run);
         if !inner.alive(&spec.id, spec.gen) {
@@ -1080,6 +1401,10 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
         match got {
             Ok(Some(Incoming::Pong)) => {}
             Ok(Some(Incoming::Notice(text))) => {
+                if last_notice.is_some_and(|at| at.elapsed() < NOTICE_GAP) {
+                    continue;
+                }
+                last_notice = Some(Instant::now());
                 inner.emit(LinkMsg::Notice {
                     link: spec.link.clone(),
                     id: Some(spec.id.clone()),
@@ -1087,18 +1412,14 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
                 });
             }
             Ok(Some(Incoming::Closed(why))) => {
-                let reopen = reopens(&why);
+                let reopen = reopens(&why) && (near_hour || renewed.load(Ordering::SeqCst));
                 return close_stream(inner, spec, why, reopen);
             }
             Ok(Some(msg)) => {
                 let rekeyed = lock(&inner.state).ingest(&spec.link, msg);
                 match rekeyed {
-                    Some(Incoming::Screen(push)) => {
-                        inner.emit(LinkMsg::Screen(push));
-                    }
-                    Some(Incoming::Event(ev)) => {
-                        inner.emit(LinkMsg::Event(ev));
-                    }
+                    Some(Incoming::Screen(push)) => flow.put_screen(*push),
+                    Some(Incoming::Event(ev)) => flow.put_event(ev),
                     _ => {}
                 }
             }
@@ -1115,22 +1436,71 @@ fn stream_main(inner: &Arc<Inner>, spec: &StreamSpec) {
     }
 }
 
+fn emitter_main(inner: &Inner, spec: &StreamSpec, flow: &Flow) {
+    let mut last: Option<Instant> = None;
+    loop {
+        {
+            let mut slot = lock(&flow.slot);
+            loop {
+                if !inner.alive(&spec.id, spec.gen) {
+                    return;
+                }
+                let pending = slot.screen.is_some() || slot.event.is_some();
+                if pending && !flow.busy.load(Ordering::SeqCst) {
+                    break;
+                }
+                slot = flow
+                    .wake
+                    .wait_timeout(slot, Duration::from_millis(10))
+                    .unwrap_or_else(|p| p.into_inner())
+                    .0;
+            }
+        }
+        if let Some(at) = last {
+            let left = inner.timing.screen_gap.saturating_sub(at.elapsed());
+            if !left.is_zero() {
+                thread::sleep(left);
+            }
+        }
+        let msg = {
+            let mut slot = lock(&flow.slot);
+            if let Some(ev) = slot.event.take() {
+                LinkMsg::Event(ev, Permit::held(&flow.busy))
+            } else if let Some(push) = slot.screen.take() {
+                LinkMsg::Screen(Box::new(push), Permit::held(&flow.busy))
+            } else {
+                continue;
+            }
+        };
+        match inner.tx.try_send(msg) {
+            Ok(()) => last = Some(Instant::now()),
+            Err(TrySendError::Full(back)) => {
+                flow.put_back(back);
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(TrySendError::Disconnected(_)) => return,
+        }
+    }
+}
+
 fn writer_main(
     inner: &Inner,
     spec: &StreamSpec,
     mut w: Box<dyn Write + Send>,
     rx: &Receiver<Outgoing>,
     heard: &Mutex<Instant>,
+    renewed: &AtomicBool,
 ) {
     let t = inner.timing;
     let born = Instant::now();
     loop {
         if born.elapsed() >= t.stream_renew {
+            renewed.store(true, Ordering::SeqCst);
             let _ = write_outgoing(&mut w, &Outgoing::Detach);
             return;
         }
         if lock(heard).elapsed() > t.silence {
-            let why = format!("no answer from {}", spec.link);
+            let why = format!("{}: no answer", spec.link);
             return close_stream(inner, spec, why, false);
         }
         match rx.recv_timeout(t.heartbeat) {
@@ -1221,6 +1591,11 @@ pub(super) mod tests {
         pub(crate) runs: Vec<Value>,
         pub(crate) list_err: Option<Kind>,
         pub(crate) hang: bool,
+        pub(crate) dial_delay: Duration,
+        pub(crate) bind: u32,
+        pub(crate) unbound: bool,
+        pub(crate) block_writes: bool,
+        pub(crate) killed: Arc<AtomicBool>,
         pub(crate) halt_err: Option<Kind>,
         pub(crate) input: bool,
         pub(crate) calls: Vec<(String, Value)>,
@@ -1285,7 +1660,19 @@ pub(super) mod tests {
             self.0 .1.store(true, Ordering::SeqCst);
         }
 
+        fn binding(&self, link: &str) -> Binding {
+            self.0.with(link, |l| {
+                if l.unbound {
+                    Binding::Gone
+                } else {
+                    Binding::Is(l.bind.to_string())
+                }
+            })
+        }
+
         fn dial(&self, link: &str) -> std::result::Result<Box<dyn LinkConn>, DialErr> {
+            let delay = self.0.with(link, |l| l.dial_delay);
+            thread::sleep(delay);
             self.0.with(link, |l| {
                 l.dials.push(Instant::now());
                 l.dial.pop_front().unwrap_or(Ok(()))
@@ -1327,6 +1714,21 @@ pub(super) mod tests {
     }
 
     struct Sink(Arc<Mutex<Vec<u8>>>);
+
+    struct Stuck(Arc<AtomicBool>);
+
+    impl Write for Stuck {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            while !self.0.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(std::io::ErrorKind::BrokenPipe.into())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
 
     impl Write for Sink {
         fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
@@ -1385,14 +1787,25 @@ pub(super) mod tests {
             }
         }
 
-        fn into_stream(self: Box<Self>) -> Result<Pair> {
+        fn into_stream(self: Box<Self>) -> Result<(Pair, Kill)> {
             let (rx, sink) = self.pending.ok_or_else(|| Error::internal("no stream"))?;
+            let (stuck, killed) = self
+                .fake
+                .with(&self.link, |l| (l.block_writes, Arc::clone(&l.killed)));
+            let writer: Box<dyn Write + Send> = if stuck {
+                Box::new(Stuck(Arc::clone(&killed)))
+            } else {
+                Box::new(Sink(sink))
+            };
             Ok((
-                Box::new(ChanRead {
-                    rx,
-                    buf: Vec::new(),
-                }),
-                Box::new(Sink(sink)),
+                (
+                    Box::new(ChanRead {
+                        rx,
+                        buf: Vec::new(),
+                    }),
+                    writer,
+                ),
+                Box::new(move || killed.store(true, Ordering::SeqCst)),
             ))
         }
     }
@@ -1412,6 +1825,8 @@ pub(super) mod tests {
             stream_renew: Duration::from_secs(3600),
             cooldown: Duration::from_millis(200),
             shutdown_wait: Duration::from_millis(500),
+            kill_grace: Duration::from_millis(50),
+            screen_gap: Duration::from_millis(33),
         }
     }
 
@@ -1777,7 +2192,7 @@ pub(super) mod tests {
         assert!(r.open("spark", LOCAL));
         r.fake.feed("spark", LOCAL, &encode_screen(&push(LOCAL)));
         let session = r.until(|m| match m {
-            LinkMsg::Screen(p) => Some(p.session.clone()),
+            LinkMsg::Screen(p, _) => Some(p.session.clone()),
             _ => None,
         });
         assert_eq!(session, format!("spark/{LOCAL}"));
@@ -1804,7 +2219,7 @@ pub(super) mod tests {
                 assert!(!text.contains('\u{1b}'));
                 Some(())
             }
-            LinkMsg::Screen(_) | LinkMsg::Event(_) => panic!("forged data got through: {m:?}"),
+            LinkMsg::Screen(..) | LinkMsg::Event(..) => panic!("forged data got through: {m:?}"),
             _ => None,
         });
     }
@@ -1828,7 +2243,7 @@ pub(super) mod tests {
             let _ = tx.send(framed(&encode_screen(&push(A))));
         }
         let after = r.drain(Duration::from_millis(100));
-        assert!(!after.iter().any(|m| matches!(m, LinkMsg::Screen(_))));
+        assert!(!after.iter().any(|m| matches!(m, LinkMsg::Screen(..))));
     }
 
     #[test]
@@ -2031,8 +2446,8 @@ pub(super) mod tests {
     #[test]
     fn stream_close_reasons_decide_whether_the_pane_reopens() {
         for (reason, reopen) in [
-            ("idle", true),
-            ("detached", true),
+            ("idle", false),
+            ("detached", false),
             ("this link is no longer trusted", false),
             ("the run is no longer yours", false),
             ("bad screen: more lines than rows", false),
@@ -2057,6 +2472,46 @@ pub(super) mod tests {
                 "{reason}"
             );
         }
+    }
+
+    #[test]
+    fn idle_and_detached_reopen_only_near_the_renewal_time() {
+        let t = Timing {
+            stream_renew: Duration::from_millis(50),
+            ..fast()
+        };
+        for reason in ["idle", "detached"] {
+            let mut r = rig(&["spark"], t, |f| f.set_runs("spark", &[A]));
+            r.runs("spark", 1);
+            r.open("spark", A);
+            thread::sleep(Duration::from_millis(80));
+            r.fake.feed("spark", A, &encode_closed(reason));
+            let reopen = r.until(|m| match m {
+                LinkMsg::StreamClosed { reopen, .. } => Some(*reopen),
+                _ => None,
+            });
+            assert!(reopen, "{reason}");
+        }
+    }
+
+    #[test]
+    fn an_open_is_not_sent_for_a_run_that_left_the_list_during_the_dial() {
+        let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.fake
+            .with("spark", |l| l.dial_delay = Duration::from_millis(250));
+        r.hub
+            .open(&view_id("spark", A), "spark", A, 80, 24)
+            .unwrap();
+        thread::sleep(Duration::from_millis(60));
+        r.fake.set_runs("spark", &[B]);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while r.hub.target_of(&view_id("spark", A)) != Target::Unknown {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(10));
+        }
+        thread::sleep(Duration::from_millis(500));
+        assert!(r.fake.calls("spark", "attach.open").is_empty());
     }
 
     #[test]
@@ -2154,45 +2609,355 @@ pub(super) mod tests {
         assert!(fake.1.load(Ordering::SeqCst));
     }
 
-    struct NoKeychain;
+    struct CountingKey {
+        loads: Arc<std::sync::atomic::AtomicUsize>,
+        fail: Arc<AtomicBool>,
+    }
 
-    impl tmgr_core::creds::Keychain for NoKeychain {
-        fn get(&self, _: &str) -> keyring::Result<String> {
-            Err(keyring::Error::NoEntry)
+    impl KeySource for CountingKey {
+        fn load(&self) -> Result<Secret> {
+            self.loads.fetch_add(1, Ordering::SeqCst);
+            if self.fail.load(Ordering::SeqCst) {
+                return Err(Error::not_found("this machine has no link identity"));
+            }
+            Ok(Secret::new("pem"))
         }
+    }
 
-        fn set(&self, _: &str, _: &str) -> keyring::Result<()> {
-            Err(keyring::Error::NoEntry)
-        }
+    type Loads = Arc<std::sync::atomic::AtomicUsize>;
 
-        fn delete(&self, _: &str) -> keyring::Result<()> {
+    fn ssh_dialer() -> (SshDialer, tempfile::TempDir, Loads, Arc<AtomicBool>) {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let loads = Loads::default();
+        let fail = Arc::new(AtomicBool::new(false));
+        let dialer = SshDialer::with_source(
+            Paths::under(d.path()),
+            Box::new(CountingKey {
+                loads: Arc::clone(&loads),
+                fail: Arc::clone(&fail),
+            }),
+        );
+        (dialer, d, loads, fail)
+    }
+
+    #[test]
+    fn the_ssh_dialer_reads_the_key_on_the_first_dial_and_writes_a_fresh_file_each_time() {
+        let (dialer, _d, loads, _) = ssh_dialer();
+        assert_eq!(loads.load(Ordering::SeqCst), 0);
+        let first = dialer.fresh_key().unwrap();
+        let second = dialer.fresh_key().unwrap();
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
+        assert_ne!(first.path, second.path);
+        assert_eq!(std::fs::read_to_string(&first.path).unwrap(), "pem");
+        let (p1, p2) = (first.path.clone(), second.path.clone());
+        drop(first);
+        assert!(!p1.exists());
+        assert!(p2.exists());
+        drop(second);
+        assert!(!p2.exists());
+    }
+
+    #[test]
+    fn a_dial_with_no_follower_reports_removed_and_leaves_no_key_behind() {
+        let (dialer, _d, loads, _) = ssh_dialer();
+        assert_eq!(dialer.dial("spark").err(), Some(DialErr::Removed));
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn an_unreadable_key_is_unavailable_and_read_again_on_the_next_dial() {
+        let (dialer, _d, loads, fail) = ssh_dialer();
+        fail.store(true, Ordering::SeqCst);
+        assert!(matches!(
+            dialer.dial("spark"),
+            Err(DialErr::Unavailable(m)) if m.contains("no link identity")
+        ));
+        fail.store(false, Ordering::SeqCst);
+        assert!(dialer.fresh_key().is_ok());
+        assert_eq!(loads.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn the_ssh_dialer_forgets_the_key_on_shutdown_and_refuses_later_dials() {
+        let (dialer, _d, loads, _) = ssh_dialer();
+        drop(dialer.fresh_key().unwrap());
+        dialer.shutdown();
+        assert!(matches!(dialer.dial("spark"), Err(DialErr::Offline(_))));
+        assert!(dialer.fresh_key().is_err());
+        assert_eq!(loads.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn the_ssh_dialer_binding_follows_the_follower_entry_and_its_jump() {
+        let (dialer, _d, _, _) = ssh_dialer();
+        assert_eq!(dialer.binding("spark"), Binding::Gone);
+        let add = |name: &str, host: &str| {
+            let (name, host) = (name.to_string(), host.to_string());
+            Store::update(&dialer.paths, |s| {
+                s.followers.insert(
+                    name,
+                    tmgr_link::store::Follower {
+                        user: "u".into(),
+                        host,
+                        port: 22,
+                        host_key_fingerprint: "SHA256:x".into(),
+                        added: "2026-01-01".into(),
+                    },
+                );
+                Ok(())
+            })
+            .unwrap();
+        };
+        add("spark", "one.example.com");
+        let first = dialer.binding("spark");
+        assert!(matches!(first, Binding::Is(_)));
+        assert_eq!(dialer.binding("spark"), first);
+        add("spark", "two.example.com");
+        let second = dialer.binding("spark");
+        assert_ne!(second, first);
+        add("hop", "hop.example.com");
+        Store::update(&dialer.paths, |s| {
+            s.jumps.insert("spark".into(), "hop".into());
             Ok(())
+        })
+        .unwrap();
+        let third = dialer.binding("spark");
+        assert_ne!(third, second);
+        add("hop", "other.example.com");
+        assert_ne!(dialer.binding("spark"), third);
+        Store::update(&dialer.paths, |s| {
+            s.followers.remove("spark");
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(dialer.binding("spark"), Binding::Gone);
+    }
+
+    #[test]
+    fn an_unreadable_key_stops_the_machine_with_one_notice_until_retry() {
+        let mut r = rig(&["spark", "lab"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.set_runs("lab", &[A]);
+            for l in ["spark", "lab"] {
+                f.with(l, |l| {
+                    l.dial = VecDeque::from([Err(DialErr::Unavailable("keychain locked".into()))])
+                });
+            }
+        });
+        let mut denied = 0;
+        r.until(|m| {
+            if matches!(
+                m,
+                LinkMsg::State {
+                    state: LinkState::NoAccess,
+                    ..
+                }
+            ) {
+                denied += 1;
+            }
+            (denied == 2).then_some(())
+        });
+        let after = r.drain(Duration::from_millis(200));
+        let notices = r
+            .seen
+            .iter()
+            .cloned()
+            .chain(after.iter().map(|m| format!("{m:?}")))
+            .filter(|m| m.contains("keychain locked"))
+            .count();
+        assert_eq!(notices, 1, "{:#?}", r.seen);
+        assert_eq!(r.fake.with("spark", |l| l.dials.len()), 1);
+        r.hub.retry_all();
+        let mut online = BTreeSet::new();
+        r.until(|m| {
+            if let LinkMsg::State {
+                link,
+                state: LinkState::Online { .. },
+            } = m
+            {
+                online.insert(link.clone());
+            }
+            (online.len() == 2).then_some(())
+        });
+    }
+
+    #[test]
+    fn a_follower_that_stops_reading_cannot_pin_the_stream_threads_or_ssh() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| {
+                l.input = true;
+                l.block_writes = true;
+            });
+        });
+        r.runs("spark", 1);
+        r.open("spark", A);
+        let id = view_id("spark", A);
+        r.hub.input(&id, b"x").unwrap();
+        thread::sleep(Duration::from_millis(60));
+        let killed = |r: &Rig| r.fake.with("spark", |l| l.killed.load(Ordering::SeqCst));
+        assert!(!killed(&r));
+        r.hub.close(&id);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !killed(&r) {
+            assert!(Instant::now() < deadline, "the connection was never killed");
+            thread::sleep(Duration::from_millis(10));
         }
     }
 
     #[test]
-    fn the_ssh_dialer_removes_the_link_key_on_shutdown_and_refuses_later_dials() {
-        use std::os::unix::fs::PermissionsExt;
-        let d = tempfile::tempdir().unwrap();
-        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
-        let paths = Paths::under(d.path());
-        let cred = tmgr_core::creds::CredentialStore::with_keychain(
-            &paths.config,
-            leader::KEY_ACCOUNT,
-            Some(Backend::File),
-            Box::new(NoKeychain),
-        );
-        leader::init(&paths, &cred, false).unwrap();
-        let key = leader::materialise(&cred).unwrap();
-        let key_path = key.path.clone();
-        let dialer = SshDialer {
-            paths,
-            key: Mutex::new(Some(key)),
+    fn a_stream_that_the_follower_ends_is_killed_too() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| {
+                l.input = true;
+                l.block_writes = true;
+            });
+        });
+        r.runs("spark", 1);
+        r.open("spark", A);
+        r.fake.feed("spark", A, &encode_closed("runner: gone"));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !r.fake.with("spark", |l| l.killed.load(Ordering::SeqCst)) {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[test]
+    fn a_relinked_machine_mid_session_ends_the_old_connection_and_its_streams() {
+        let t = Timing {
+            poll: Duration::from_millis(300),
+            ..fast()
         };
-        assert!(key_path.exists());
-        dialer.shutdown();
-        assert!(!key_path.exists());
-        assert!(matches!(dialer.dial("spark"), Err(DialErr::Offline(_))));
+        let mut r = rig(&["spark"], t, |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.input = true);
+        });
+        r.runs("spark", 1);
+        r.open("spark", A);
+        let id = view_id("spark", A);
+        let dials = r.fake.with("spark", |l| l.dials.len());
+        r.fake.with("spark", |l| l.bind = 7);
+        r.hub.halt("spark", A).unwrap();
+        let result = r.until(|m| match m {
+            LinkMsg::Halted { result, .. } => Some(result.clone()),
+            _ => None,
+        });
+        assert!(result.is_err());
+        assert!(r.fake.calls("spark", "runs.halt").is_empty());
+        assert_eq!(r.hub.input(&id, b"x"), Err("not attached"));
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while r.fake.with("spark", |l| l.dials.len()) <= dials {
+            assert!(Instant::now() < deadline, "no fresh connection");
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(r.fake.calls("spark", "runs.halt").is_empty());
+        r.runs("spark", 1);
+    }
+
+    #[test]
+    fn a_machine_unlinked_mid_session_stops_polling_and_loses_its_rows_and_streams() {
+        let mut r = rig(&["spark"], fast(), |f| {
+            f.set_runs("spark", &[A]);
+            f.with("spark", |l| l.input = true);
+        });
+        r.runs("spark", 1);
+        r.open("spark", A);
+        r.fake.with("spark", |l| l.unbound = true);
+        r.state_is("spark", LinkState::Removed);
+        r.runs("spark", 0);
+        assert!(r.hub.rows("spark").is_empty());
+        assert_eq!(r.hub.input(&view_id("spark", A), b"x"), Err("not attached"));
+        thread::sleep(Duration::from_millis(60));
+        let polls = r.fake.calls("spark", "runs.list").len();
+        thread::sleep(Duration::from_millis(150));
+        assert_eq!(r.fake.calls("spark", "runs.list").len(), polls);
+        r.fake.with("spark", |l| l.unbound = false);
+        r.hub.retry_all();
+        r.runs("spark", 1);
+    }
+
+    #[test]
+    fn a_noisy_stream_gets_at_most_a_notice_every_so_often() {
+        let mut r = rig(&["spark"], fast(), |f| f.set_runs("spark", &[A]));
+        r.runs("spark", 1);
+        r.open("spark", A);
+        for i in 0..300 {
+            r.fake.feed("spark", A, &encode_notice(&format!("n{i}")));
+        }
+        thread::sleep(Duration::from_millis(200));
+        let notices = r
+            .drain(Duration::ZERO)
+            .iter()
+            .filter(|m| matches!(m, LinkMsg::Notice { .. }))
+            .count();
+        assert!((1..=3).contains(&notices), "{notices}");
+    }
+
+    fn pushes_agree(base: &ScreenPush, seq: &[ScreenPush]) {
+        use tmgr_runner::client::ScreenCache;
+        let mut one = ScreenCache::new();
+        one.apply_push(base.clone());
+        let mut merged = seq[0].clone();
+        for p in &seq[1..] {
+            one.apply_push(p.clone());
+            merged = merge_screens(merged, p.clone());
+        }
+        one.apply_push(seq[0].clone());
+        let mut seqcache = ScreenCache::new();
+        seqcache.apply_push(base.clone());
+        for p in seq {
+            seqcache.apply_push(p.clone());
+        }
+        let mut mergedcache = ScreenCache::new();
+        mergedcache.apply_push(base.clone());
+        mergedcache.apply_push(merged);
+        assert_eq!(
+            format!("{:?}", mergedcache.snapshot(&base.session)),
+            format!("{:?}", seqcache.snapshot(&base.session))
+        );
+    }
+
+    #[test]
+    fn merging_pending_screens_never_loses_a_line() {
+        let base = full_push("x", 0);
+        let mut n = 1;
+        let mut next = |full: bool| {
+            n += 1;
+            if full {
+                full_push("x", n)
+            } else {
+                diff_push("x", n)
+            }
+        };
+        let diffs: Vec<ScreenPush> = (0..5).map(|_| next(false)).collect();
+        pushes_agree(&base, &diffs);
+        let mixed = vec![
+            next(false),
+            next(false),
+            next(true),
+            next(false),
+            next(false),
+        ];
+        pushes_agree(&base, &mixed);
+        let full_first = vec![next(true), next(false), next(false), next(false)];
+        pushes_agree(&base, &full_first);
+        let mut lcg = 12345u64;
+        for _ in 0..200 {
+            let len = 2 + (lcg % 6) as usize;
+            let seq: Vec<ScreenPush> = (0..len)
+                .map(|_| {
+                    lcg = lcg
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    next((lcg >> 33).is_multiple_of(5))
+                })
+                .collect();
+            pushes_agree(&base, &seq);
+        }
     }
 
     #[test]
@@ -2255,5 +3020,142 @@ pub(super) mod tests {
                 run: A.into()
             }
         );
+    }
+
+    fn text_line(t: &str) -> Line {
+        Line {
+            spans: vec![Span {
+                a: Attr {
+                    fg: Color::Default,
+                    bg: Color::Default,
+                    flags: 0,
+                },
+                t: t.into(),
+            }],
+        }
+    }
+
+    fn full_push(session: &str, n: usize) -> ScreenPush {
+        ScreenPush {
+            session: session.into(),
+            full: true,
+            snapshot: Some(tmgr_ipc::api::Snapshot {
+                rows: 4,
+                cols: 20,
+                lines: (0..4).map(|i| text_line(&format!("full{n}-{i}"))).collect(),
+                cursor: None,
+                modes: tmgr_ipc::api::Modes {
+                    app_cursor: false,
+                    bracketed_paste: false,
+                    alt_screen: false,
+                    hide_cursor: false,
+                    mouse: Default::default(),
+                },
+                scroll_offset: 0,
+                scroll_max: 0,
+            }),
+            lines: Vec::new(),
+            cursor: None,
+            modes: None,
+            scroll_offset: 0,
+            scroll_max: 0,
+        }
+    }
+
+    fn diff_push(session: &str, n: usize) -> ScreenPush {
+        ScreenPush {
+            session: session.into(),
+            full: false,
+            snapshot: None,
+            lines: vec![
+                (n % 4, text_line(&format!("d{n}"))),
+                ((n + 1) % 4, text_line(&format!("e{n}"))),
+            ],
+            cursor: Some(((n % 20) as u16, (n % 4) as u16)),
+            modes: n.is_multiple_of(3).then(|| tmgr_ipc::api::Modes {
+                app_cursor: n.is_multiple_of(2),
+                bracketed_paste: false,
+                alt_screen: false,
+                hide_cursor: false,
+                mouse: Default::default(),
+            }),
+            scroll_offset: n % 7,
+            scroll_max: 10,
+        }
+    }
+
+    #[test]
+    fn a_flooding_follower_cannot_fill_the_app_queue_and_the_last_screen_wins() {
+        use tmgr_runner::client::ScreenCache;
+        let fake = Arc::new(Fake::default());
+        fake.set_runs("spark", &[A]);
+        let (tx, rx) = mpsc::sync_channel(8);
+        let local = tx.clone();
+        let hub = Hub::start_with(
+            Arc::new(FakeDialer(Arc::clone(&fake))),
+            vec!["spark".into()],
+            tx,
+            Timing {
+                poll: Duration::from_secs(30),
+                ..fast()
+            },
+        );
+        let id = view_id("spark", A);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !matches!(hub.target_of(&id), Target::Remote { .. }) {
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+        while rx.try_recv().is_ok() {}
+        hub.open(&id, "spark", A, 80, 24).unwrap();
+        loop {
+            match rx.recv_timeout(Duration::from_secs(5)).unwrap() {
+                LinkMsg::Opened { .. } => break,
+                _ => continue,
+            }
+        }
+        let mut reference = ScreenCache::new();
+        for n in 0..10_000 {
+            let p = if n % 1000 == 0 {
+                full_push(A, n)
+            } else {
+                diff_push(A, n)
+            };
+            fake.feed("spark", A, &encode_screen(&p));
+            let mut r = p;
+            r.session = id.clone();
+            reference.apply_push(r);
+        }
+        thread::sleep(Duration::from_millis(400));
+        local
+            .try_send(LinkMsg::Notice {
+                link: "local".into(),
+                id: None,
+                text: "still room".into(),
+            })
+            .expect("local messages must find room");
+        let mut cache = ScreenCache::new();
+        let mut screens = 0;
+        let mut queued = 0;
+        while let Ok(m) = rx.try_recv() {
+            if let LinkMsg::Screen(p, ..) = m {
+                queued += 1;
+                screens += 1;
+                cache.apply_push(*p);
+            }
+        }
+        assert!(queued <= 2, "{queued} screens were queued");
+        while let Ok(m) = rx.recv_timeout(Duration::from_millis(400)) {
+            if let LinkMsg::Screen(p, ..) = m {
+                screens += 1;
+                cache.apply_push(*p);
+            }
+        }
+        assert!(screens < 100, "{screens} screens were delivered");
+        assert_eq!(
+            format!("{:?}", cache.snapshot(&id)),
+            format!("{:?}", reference.snapshot(&id))
+        );
+        assert!(cache.snapshot(&id).is_some());
     }
 }
