@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.45
 
 - `tmgr attach` has session templates. `Ctrl-] T` (also in `?`, the command palette and the `templates` button on the `+ New session` row of the sidebar) lists templates; picking one asks for its fields in a small form (Tab moves, Enter starts, Esc goes back), starts an agent session in the focused session's folder and pastes the prepared prompt into it without sending it, so you can edit it and press Enter yourself (`tmgr config set attach.prompt.send true` sends it too, the same setting as saved prompts). Templates live in `templates.toml` in the tmgr config directory, which is written with four defaults (review a PR, fix failing CI, write tests for a file, explain the repo) the first time and is yours to edit: each `[[template]]` has a `name`, an optional `agent` (a profile such as `codex`; the first installed agent otherwise), `folder`, `command` (a command line to run instead of an agent; field values are shell-quoted into it), a `prompt` and `fields = [{ name = "pr", label = "PR number", default = "" }]`, and `{name}` in the prompt, folder or command is replaced by the value (`{{` and `}}` give literal braces). Values and prompts are plain text with control characters removed. An invalid `templates.toml` is left alone and the defaults are shown.
 
