@@ -44,6 +44,11 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
 
 const stateKey = (taskId: number) => `task-pomodoro-${taskId}`;
 
+const asState = (data: unknown): PomodoroState | null =>
+	data && typeof data === 'object' && !Array.isArray(data)
+		? (data as PomodoroState)
+		: null;
+
 export const getPomodoroState = async (
 	taskId: number,
 ): Promise<PomodoroState | null> => {
@@ -55,7 +60,7 @@ export const getPomodoroState = async (
 			const {
 				data: { data },
 			} = await $axios.get(`tasks/${taskId}/pomodoro`);
-			return (data ?? null) as PomodoroState | null;
+			return asState(data);
 		},
 		{ ttl: 30_000 },
 	);
@@ -63,12 +68,12 @@ export const getPomodoroState = async (
 
 export const enablePomodoro = async (
 	taskId: number,
-): Promise<PomodoroState> => {
+): Promise<PomodoroState | null> => {
 	const {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/pomodoro`);
 	requestCache.invalidate(stateKey(taskId));
-	return data;
+	return asState(data);
 };
 
 export const disablePomodoro = async (taskId: number): Promise<void> => {
@@ -89,22 +94,22 @@ export const updatePomodoroState = async (
 			| 'distractions_count'
 		>
 	>,
-): Promise<PomodoroState> => {
+): Promise<PomodoroState | null> => {
 	const {
 		data: { data },
 	} = await $axios.put(`tasks/${taskId}/pomodoro`, patch);
 	requestCache.invalidate(stateKey(taskId));
-	return data;
+	return asState(data);
 };
 
 export const distractPomodoro = async (
 	taskId: number,
-): Promise<PomodoroState> => {
+): Promise<PomodoroState | null> => {
 	const {
 		data: { data },
 	} = await $axios.post(`tasks/${taskId}/pomodoro/distract`);
 	requestCache.invalidate(stateKey(taskId));
-	return data;
+	return asState(data);
 };
 
 export const getPomodoroSettings = (): PomodoroSettings => {
