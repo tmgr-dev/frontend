@@ -14,7 +14,7 @@ use tmgr_ipc::api::caps::AUTOPILOT_V1;
 use tmgr_ipc::api::AutopilotCommand;
 use tmgr_link::privileged;
 use tmgr_queue::cloud::{CloudApi, CloudWorkspace};
-use tmgr_queue::rules::{self, Rule};
+use tmgr_queue::rules::{self, Rule, GLOBAL_MAX};
 use tmgr_queue::taken::Fresh;
 use tmgr_queue::Paths;
 use tmgr_usage::Tool;
@@ -211,28 +211,34 @@ fn not_free(
     }
 }
 
-fn with_offer(client: &Client, mut found: Found) -> Found {
+fn with_offer(client: &Client, mut found: Found) -> (Found, bool) {
     let Some(sign) = found.sign.as_mut() else {
-        return found;
+        return (found, false);
     };
     match read_offer(client, found.id) {
         Ok(offered) => {
             sign.offer = offered;
-            found
+            (found, false)
         }
-        Err(code) if code == OFFER_OFFLINE => Found {
-            approval: Approval::Unchecked("the approval offer could not be read".into()),
-            sign: None,
-            ..found
-        },
-        Err(code) => Found {
-            approval: Approval::Refused(format!(
-                "could not read the approval offer ({})",
-                sanitize_line(&code)
-            )),
-            sign: None,
-            ..found
-        },
+        Err(code) if code == OFFER_OFFLINE => (
+            Found {
+                approval: Approval::Unchecked("the approval offer could not be read".into()),
+                sign: None,
+                ..found
+            },
+            false,
+        ),
+        Err(code) => (
+            Found {
+                approval: Approval::Refused(format!(
+                    "could not read the approval offer ({})",
+                    sanitize_line(&code)
+                )),
+                sign: None,
+                ..found
+            },
+            true,
+        ),
     }
 }
 
@@ -267,6 +273,7 @@ fn unreachable_error(e: &Error) -> Error {
 struct Checked {
     found: Found,
     offline: bool,
+    retry: bool,
 }
 
 fn check_card(
@@ -277,13 +284,22 @@ fn check_card(
 ) -> Checked {
     let id = card.id;
     match client.agent_run_task(id).and_then(parse_eligibility) {
-        Ok(elig) => Checked {
-            found: with_offer(
-                client,
-                not_free(classify(id, &elig, facts), facts.persona_optional, look),
-            ),
-            offline: false,
-        },
+        Ok(elig) => {
+            let look_failed = std::cell::Cell::new(false);
+            let looked = not_free(classify(id, &elig, facts), facts.persona_optional, |f| {
+                let fresh = look(f);
+                if fresh.as_ref().is_err_and(|e| e.kind != Kind::Offline) {
+                    look_failed.set(true);
+                }
+                fresh
+            });
+            let (found, offer_failed) = with_offer(client, looked);
+            Checked {
+                found,
+                offline: false,
+                retry: look_failed.get() || offer_failed,
+            }
+        }
         Err(e) if e.kind == Kind::Offline => Checked {
             found: Found {
                 id,
@@ -294,6 +310,7 @@ fn check_card(
                 sign: None,
             },
             offline: true,
+            retry: false,
         },
         Err(e) => Checked {
             found: Found {
@@ -308,12 +325,9 @@ fn check_card(
                 sign: None,
             },
             offline: false,
+            retry: true,
         },
     }
-}
-
-fn failed_to_check(found: &Found) -> bool {
-    matches!(&found.approval, Approval::Refused(why) if why.starts_with("could not"))
 }
 
 struct Pool<'a> {
@@ -466,7 +480,7 @@ fn check_all(
             let _ = writeln!(err, "Checked {n} of {total} tasks...");
         }
         let checked = match ready {
-            Some(c) if !failed_to_check(&c.found) => c,
+            Some(c) if !c.retry => c,
             _ => check_card(client, facts, card, |f| match shared {
                 Some(s) => queue::fresh_look_shared(client, rule, f.id, s),
                 None => fallback(f),
@@ -576,16 +590,47 @@ fn fallback_warning(tool: Option<Tool>, hours: f64) -> String {
     )
 }
 
+fn valid_fallback_hours(h: f64) -> bool {
+    h.is_finite() && h > 0.0 && h <= 168.0
+}
+
 fn parse_fallback_hours(raw: Option<&str>) -> Result<Option<f64>> {
     let Some(raw) = raw else {
         return Ok(None);
     };
     match raw.trim().parse::<f64>() {
-        Ok(h) if h.is_finite() && h > 0.0 && h <= 168.0 => Ok(Some(h)),
+        Ok(h) if valid_fallback_hours(h) => Ok(Some(h)),
         _ => Err(Error::usage(
             "--fallback-hours: enter a number of hours above 0 and at most 168",
         )),
     }
+}
+
+fn effective_fallback_hours(
+    flag: Option<f64>,
+    remembered: f64,
+    answers_file: &std::path::Path,
+) -> Result<f64> {
+    let hours = flag.unwrap_or(remembered);
+    if valid_fallback_hours(hours) {
+        return Ok(hours);
+    }
+    Err(Error::usage(format!(
+        "the remembered fallback of {hours} hours in {} is not a number of hours above 0 and at most 168",
+        answers_file.display()
+    ))
+    .hint("tmgr autopilot --setup, or pass --fallback-hours"))
+}
+
+fn remembered_for(remembered: Option<Answers>, rule: &str) -> Option<Answers> {
+    remembered.filter(|a| a.rule.as_deref() == Some(rule))
+}
+
+fn live_teams(plan: &Plan) -> u32 {
+    plan.answers
+        .max_teams
+        .min(plan.rule.max_concurrent.max(1))
+        .min(GLOBAL_MAX as u32)
 }
 
 fn capped(max_hours: Option<f64>, fallback: Option<f64>) -> Option<f64> {
@@ -845,7 +890,7 @@ fn team_text(plan: &Plan) -> Vec<String> {
     let mut lines = vec![
         format!(
             "Teams      up to {} at the same time, {size}, team mode {mode}",
-            a.max_teams.min(plan.rule.max_concurrent)
+            live_teams(plan)
         ),
         format!("Profile    the teams run on {}", plan.profile),
         "Orchestrator  runs on claude-code inside the runner sandbox and sees only the signed task texts (no comments, pages or other context); it plans the order and can name tasks that need feedback or are blocked".to_string(),
@@ -1017,12 +1062,17 @@ pub fn compact_summary(plan: &Plan, review: bool) -> String {
         lines.push("Stop       `tmgr autopilot stop` (or `pause`); `tmgr autopilot status --watch` shows progress; stopping turns the queue off".into());
     }
     lines.extend(team_text(plan));
+    lines.push(format!(
+        "Statuses   feedback \"{}\", blocked \"{}\"",
+        sanitize_line(&a.feedback_status),
+        sanitize_line(&a.blocked_status)
+    ));
     if plan.dry_run {
         lines.push(DRY_RUN_TEXT.into());
     } else {
         lines.push(format!(
             "Agents     turns the queue ON for every rule below and runs agents in the background on this machine, up to {} teams at the same time ({} is the rule's own limit)",
-            a.max_teams.min(plan.rule.max_concurrent),
+            live_teams(plan),
             plan.rule.max_concurrent
         ));
     }
@@ -1276,6 +1326,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs, workspace: Option<&str>) -> R
             &mut err,
         )?,
     };
+    let remembered = remembered_for(remembered, &rule_name);
     let assume = assume_answers(
         workspace.is_some(),
         remembered.is_some(),
@@ -1336,9 +1387,11 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs, workspace: Option<&str>) -> R
         &mut stdin.lock(),
         &mut err,
     )?;
-    if let Some(h) = fallback_flag {
-        draft.answers.fallback_hours = h;
-    }
+    draft.answers.fallback_hours = effective_fallback_hours(
+        fallback_flag,
+        draft.answers.fallback_hours,
+        &store.answers_path(),
+    )?;
     draft.restrict(None, args.skip.as_deref(), args.order.as_deref())?;
     let profile = draft.profile().to_string();
     let tool = agent_tool(&profile);
@@ -1367,6 +1420,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs, workspace: Option<&str>) -> R
         )));
     }
     if chosen.is_empty() {
+        let _ = writeln!(err, "{}", task_table(&dropped));
         return Err(Error::usage("none of the chosen tasks can be run")
             .hint("see the reasons in the list above"));
     }
@@ -1954,6 +2008,48 @@ mod tests {
     }
 
     #[test]
+    fn a_remembered_fallback_is_validated_like_the_flag() {
+        let path = std::path::Path::new("answers.json");
+        assert_eq!(effective_fallback_hours(None, 8.0, path).unwrap(), 8.0);
+        assert_eq!(effective_fallback_hours(Some(3.0), 0.0, path).unwrap(), 3.0);
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, 169.0, 1e9] {
+            let e = effective_fallback_hours(None, bad, path).unwrap_err();
+            assert_eq!(e.kind, Kind::Usage, "{bad}");
+            assert!(e.message.contains("answers.json"), "{}", e.message);
+            let hint = e.hint.unwrap();
+            assert!(hint.contains("--setup") && hint.contains("--fallback-hours"));
+        }
+    }
+
+    #[test]
+    fn remembered_answers_of_another_rule_are_not_reused() {
+        let mine = Answers {
+            rule: Some("a".into()),
+            ..Answers::default()
+        };
+        assert_eq!(remembered_for(Some(mine.clone()), "a"), Some(mine.clone()));
+        assert_eq!(remembered_for(Some(mine.clone()), "b"), None);
+        assert_eq!(remembered_for(Some(Answers::default()), "a"), None);
+        assert_eq!(remembered_for(None, "a"), None);
+    }
+
+    #[test]
+    fn the_summary_shows_the_status_names_and_the_effective_team_limit() {
+        let mut p = plan(false, false);
+        p.answers.feedback_status = "Waiting".into();
+        p.answers.blocked_status = "Stuck".into();
+        p.answers.max_teams = 9;
+        p.rule.max_concurrent = 9;
+        let s = compact_summary(&p, false);
+        assert!(s.contains("feedback \"Waiting\", blocked \"Stuck\""), "{s}");
+        assert!(s.contains("Teams      up to 3 at the same time"), "{s}");
+        assert!(
+            s.contains("up to 3 teams at the same time (9 is the rule's own limit)"),
+            "{s}"
+        );
+    }
+
+    #[test]
     fn the_persona_is_optional_only_when_the_flag_allows_it() {
         let optional = not_free(signable(), true, |_| Ok(fresh(false, false)));
         assert!(optional.approval.runnable());
@@ -2472,6 +2568,12 @@ mod tests {
     #[tokio::test]
     async fn a_worker_that_is_refused_is_retried_on_the_main_client() {
         let server = api().await;
+        Mock::given(method("POST"))
+            .and(path("/api/auth/refresh"))
+            .respond_with(ResponseTemplate::new(500))
+            .expect(0)
+            .mount(&server)
+            .await;
         let uri = server.uri();
         let found = on_thread(move || {
             let (r, w, allow) = (rule(), ws(), bound_allow());
@@ -2515,6 +2617,45 @@ mod tests {
             (1..=6).collect::<Vec<_>>()
         );
         assert!(found.iter().all(|f| f.sign.is_some()), "{found:?}");
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn only_a_failed_read_is_marked_for_retry() {
+        let server = api().await;
+        let uri = server.uri();
+        let (good, stale) = on_thread(move || {
+            let (r, w, allow) = (rule(), ws(), bound_allow());
+            let facts = Facts {
+                rule: &r,
+                ws: &w,
+                allow: &allow,
+                keys: &[],
+                host: "tmgr.dev",
+                user: 1,
+                now: now(),
+                persona_optional: false,
+            };
+            let main = client(&uri);
+            let shared = queue::fresh_shared(&main, w.id).unwrap();
+            let card = &cards(1)[0];
+            let good = check_card(&main, &facts, card, |f| {
+                queue::fresh_look_shared(&main, &r, f.id, &shared)
+            });
+            let tokens = tmgr_core::creds::Tokens {
+                access: Secret::new("stale"),
+                refresh: None,
+                expires_at: None,
+            };
+            let worker = Client::new(&uri, "test", Some(tokens), None, false).unwrap();
+            let stale = check_card(&worker, &facts, card, |f| {
+                queue::fresh_look_shared(&worker, &r, f.id, &shared)
+            });
+            (good.retry, stale.retry)
+        })
+        .await;
+        assert!(!good);
+        assert!(stale);
     }
 
     fn rules_of(list: &[(&str, &str)]) -> Vec<Rule> {

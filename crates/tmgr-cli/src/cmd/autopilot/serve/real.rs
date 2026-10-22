@@ -216,6 +216,16 @@ struct RealPlanner<'a> {
     paths: &'a Paths,
     runs: &'a RunnerRuns,
     persona_optional_rule: Option<&'a str>,
+    tasks: &'a BTreeSet<i64>,
+}
+
+fn persona_optional_for(
+    optional_rule: Option<&str>,
+    rule: &str,
+    tasks: &BTreeSet<i64>,
+    id: i64,
+) -> bool {
+    optional_rule == Some(rule) && tasks.contains(&id)
 }
 
 const ORCHESTRATOR_PROFILE: &str = "claude-code";
@@ -340,8 +350,12 @@ impl Planner for RealPlanner<'_> {
             Gated::Ready(t) => t.claim.content_sha256.clone(),
             Gated::Refused { .. } => String::new(),
         };
-        let free = fresh_look(self.ctx, &rule, ws.id, task_id)?
-            .free_with(self.persona_optional_rule == Some(rule.name.as_str()));
+        let free = fresh_look(self.ctx, &rule, ws.id, task_id)?.free_with(persona_optional_for(
+            self.persona_optional_rule,
+            &rule.name,
+            self.tasks,
+            task_id,
+        ));
         Ok(PlanFresh {
             content_sha256,
             free,
@@ -508,6 +522,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, settings_id: &str) -> Result<Output> {
         paths: &paths,
         runs: &runs,
         persona_optional_rule: settings.persona_optional.then_some(settings.rule.as_str()),
+        tasks: &settings.tasks,
     };
     let usage = RealUsage {
         ctx,
@@ -536,5 +551,19 @@ pub fn run(ctx: &Ctx, cli: &Cli, settings_id: &str) -> Result<Output> {
             let _ = queue.disable(&format!("autopilot failed: {}", e.message));
             Err(e)
         }
+    }
+}
+
+#[cfg(test)]
+mod persona_tests {
+    use super::*;
+
+    #[test]
+    fn the_persona_is_optional_only_for_the_runs_own_tasks() {
+        let tasks = BTreeSet::from([1, 2]);
+        assert!(persona_optional_for(Some("r"), "r", &tasks, 1));
+        assert!(!persona_optional_for(Some("r"), "r", &tasks, 3));
+        assert!(!persona_optional_for(Some("r"), "other", &tasks, 1));
+        assert!(!persona_optional_for(None, "r", &tasks, 1));
     }
 }

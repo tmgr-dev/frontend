@@ -74,9 +74,13 @@ fn is_model_window(w: &str) -> bool {
 }
 
 pub fn deadline(started_at: DateTime<Utc>, max_hours: Option<f64>) -> Option<DateTime<Utc>> {
-    max_hours
-        .filter(|h| h.is_finite() && *h > 0.0)
-        .map(|h| started_at + Duration::milliseconds((h * 3_600_000.0) as i64))
+    max_hours.map(|h| {
+        if h.is_finite() && h > 0.0 {
+            started_at + Duration::milliseconds((h * 3_600_000.0) as i64)
+        } else {
+            started_at
+        }
+    })
 }
 
 fn worst(hits: impl Iterator<Item = Hit>) -> Option<Hit> {
@@ -461,6 +465,16 @@ mod tests {
         assert!(c.decide().starts_allowed());
         c.failures = 3;
         assert_eq!(kinds(&c.decide()), ["failures"]);
+    }
+
+    #[test]
+    fn a_broken_hours_cap_is_an_immediate_deadline_not_no_cap() {
+        let t = now();
+        assert_eq!(deadline(t, None), None);
+        for bad in [0.0, -2.0, f64::NAN, f64::INFINITY] {
+            assert_eq!(deadline(t, Some(bad)), Some(t), "{bad}");
+        }
+        assert_eq!(deadline(t, Some(1.0)), Some(t + Duration::hours(1)));
     }
 
     #[test]

@@ -199,6 +199,7 @@ struct Remote {
     public_key: Option<String>,
     bulk: Vec<Value>,
     approvals: std::collections::BTreeMap<i64, Value>,
+    description: Option<String>,
 }
 
 type Shared = Arc<Mutex<Remote>>;
@@ -255,6 +256,14 @@ impl Respond for Eligibility {
         } else {
             ("Update docs", "The install guide is outdated", "TM-411")
         };
+        let description = self
+            .0
+            .lock()
+            .unwrap()
+            .description
+            .clone()
+            .filter(|_| self.1 == TASK)
+            .unwrap_or_else(|| description.to_string());
         ResponseTemplate::new(200).set_body_json(json!({"data": {
             "task_id": self.1, "workspace_id": WS, "workspace_code": "tmgrdev", "viewer_user_id": 1,
             "title": title, "description": description, "task_key": key,
@@ -992,7 +1001,9 @@ async fn the_workspace_entry_leaves_out_hidden_text_unless_reviewed_and_signs_no
     }
     let cloud = Cloud::new().await;
     cloud.add_rule();
-    let mut p = cloud.pty(&[
+    cloud.remote.lock().unwrap().description =
+        Some("The login form drops\u{202e} the session".into());
+    let entry = [
         "autopilot",
         "TMGRDEV",
         "--tasks",
@@ -1010,18 +1021,36 @@ async fn the_workspace_entry_leaves_out_hidden_text_unless_reviewed_and_signs_no
         "--usage-hard",
         "80",
         "--dry-run",
-    ]);
-    for label in [
-        "Continue after the usage window resets",
-        "Most to spend in USD",
-        "Most hours to run",
-        "Most tasks to start",
-    ] {
-        p.wait_for(label);
-        p.line("");
-    }
+    ];
+    let answer_questions = |p: &mut Pty| {
+        for label in [
+            "Continue after the usage window resets",
+            "Most to spend in USD",
+            "Most hours to run",
+            "Most tasks to start",
+        ] {
+            p.wait_for(label);
+            p.line("");
+        }
+    };
+    let mut p = cloud.pty(&entry);
+    answer_questions(&mut p);
     p.wait_for("none of the chosen tasks can be run");
     assert_ne!(p.exit(), 0, "{}", p.text());
+    let screen = p.text();
+    assert!(
+        screen.contains("hidden characters in its text; run with --review"),
+        "{screen}"
+    );
+
+    let mut reviewed_args = entry.to_vec();
+    reviewed_args.push("--review");
+    let mut p = cloud.pty(&reviewed_args);
+    answer_questions(&mut p);
+    p.wait_for_paged("Type \"tmgrdev ");
+    p.line("no");
+    assert_ne!(p.exit(), 0, "{}", p.text());
+
     let uploaded = cloud
         .calls()
         .await
