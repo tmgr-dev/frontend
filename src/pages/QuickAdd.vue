@@ -3,18 +3,20 @@
 		class="flex h-screen flex-col overflow-hidden border border-border bg-background text-foreground dark:border-border dark:bg-background"
 		@keydown.esc.prevent="hide"
 	>
+		<input
+			ref="fileInput"
+			type="file"
+			accept="image/*"
+			class="hidden"
+			data-testid="quick-add-file"
+			@change="chooseImage"
+		/>
 		<div
 			data-tauri-drag-region
 			class="flex items-center justify-between px-4 pb-1 pt-3 text-xs text-muted-foreground"
 		>
 			<span data-tauri-drag-region class="flex items-center gap-1.5">
-				{{
-					mode === 'page'
-						? 'Add to a page in'
-						: screenshotUrl
-						? 'Add task with screenshot to backlog in'
-						: 'Add to Daily Routines in'
-				}}
+				{{ headingText }}
 				<select
 					v-model="workspaceId"
 					class="rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-none dark:border-border dark:bg-background"
@@ -28,30 +30,11 @@
 			</span>
 			<div class="flex items-center gap-2">
 				<span data-tauri-drag-region>esc to close</span>
-				<span
-					class="flex overflow-hidden rounded-md border border-border dark:border-border"
-				>
-					<button
-						v-for="option in MODES"
-						:key="option.value"
-						type="button"
-						class="px-2 py-0.5 text-xs"
-						:class="
-							mode === option.value
-								? 'bg-muted text-foreground'
-								: 'text-muted-foreground hover:text-foreground'
-						"
-						:disabled="saving"
-						:data-testid="`quick-add-mode-${option.value}`"
-						@click="mode = option.value"
-					>
-						{{ option.label }}
-					</button>
-				</span>
 				<button
 					type="button"
 					class="rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-					:disabled="saving || !canSubmit"
+					:disabled="saving || !canAdd"
+					data-testid="quick-add-submit"
 					@click="submit"
 				>
 					Add ↵
@@ -63,6 +46,55 @@
 			class="flex min-h-0 flex-1 flex-col gap-2 px-4 pb-3"
 			@submit.prevent="submit"
 		>
+			<div class="flex items-center gap-2 text-xs">
+				<span
+					class="flex overflow-hidden rounded-md border border-border dark:border-border"
+				>
+					<button
+						v-for="option in MODES"
+						:key="option.value"
+						type="button"
+						class="px-2 py-0.5 text-xs"
+						:class="
+							mode === option.value
+								? 'bg-muted text-foreground dark:bg-muted dark:text-foreground'
+								: 'text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground'
+						"
+						:disabled="saving"
+						:aria-pressed="mode === option.value"
+						:data-testid="`quick-add-mode-${option.value}`"
+						@click="mode = option.value"
+					>
+						{{ option.label }}
+					</button>
+				</span>
+				<template v-if="isTask">
+					<select
+						v-model="categoryId"
+						class="min-w-0 max-w-[16rem] rounded-md border border-border bg-transparent px-1.5 py-0.5 text-xs text-foreground outline-none dark:border-border dark:bg-background"
+						:disabled="saving || categoriesLoading"
+						aria-label="Category"
+						data-testid="quick-add-category"
+					>
+						<option :value="null">No category</option>
+						<option
+							v-for="option in categoryOptions"
+							:key="option.id"
+							:value="option.id"
+						>
+							{{ option.label }}
+						</option>
+					</select>
+					<span
+						v-if="categoriesError"
+						class="text-destructive dark:text-destructive"
+						data-testid="quick-add-categories-error"
+					>
+						Could not load categories
+					</span>
+				</template>
+			</div>
+
 			<div v-if="mode === 'page'" class="flex min-h-0 flex-1 flex-col gap-2">
 				<div class="flex items-center gap-2 text-xs">
 					<input
@@ -110,24 +142,35 @@
 					:disabled="saving"
 				/>
 			</div>
-			<input
-				v-else
-				ref="titleInput"
-				v-model="title"
-				data-selectable
-				class="w-full bg-transparent text-xl font-medium outline-none placeholder:text-muted-foreground"
-				placeholder="What needs to be done?"
-				:disabled="saving"
-			/>
+			<div v-else class="flex items-baseline gap-2">
+				<span
+					v-if="prefixText"
+					class="max-w-[40%] shrink-0 truncate text-xl font-medium text-muted-foreground dark:text-muted-foreground"
+					data-testid="quick-add-prefix"
+				>
+					{{ prefixText }}
+				</span>
+				<input
+					ref="titleInput"
+					v-model="title"
+					data-selectable
+					class="w-full min-w-0 bg-transparent text-xl font-medium outline-none placeholder:text-muted-foreground"
+					placeholder="What needs to be done?"
+					:disabled="saving"
+				/>
+			</div>
 			<textarea
-				v-if="mode === 'task' && (note || showNote)"
+				v-if="mode !== 'page' && (note || showNote)"
 				v-model="note"
 				data-selectable
 				class="min-h-0 flex-1 resize-none rounded-md bg-muted/50 p-2 text-sm outline-none dark:bg-muted/30"
 				placeholder="Description"
 				:disabled="saving"
 			/>
-			<div v-if="screenshotUrl" class="flex min-h-0 flex-1 items-start gap-2">
+			<div
+				v-if="screenshotUrl && showsScreenshot"
+				class="flex min-h-0 flex-1 items-start gap-2"
+			>
 				<img
 					:src="screenshotUrl"
 					alt="Screenshot"
@@ -141,10 +184,36 @@
 					Remove
 				</button>
 			</div>
+			<div
+				v-else-if="mode === 'screenshot'"
+				class="flex items-center gap-3 text-xs"
+			>
+				<button
+					type="button"
+					class="rounded-md border border-border px-2 py-1 text-foreground hover:bg-muted dark:border-border dark:hover:bg-muted"
+					:disabled="saving"
+					data-testid="quick-add-capture"
+					@click="captureHere"
+				>
+					Capture screenshot
+				</button>
+				<button
+					type="button"
+					class="rounded-md border border-border px-2 py-1 text-foreground hover:bg-muted dark:border-border dark:hover:bg-muted"
+					:disabled="saving"
+					data-testid="quick-add-choose-image"
+					@click="fileInput.click()"
+				>
+					Choose image
+				</button>
+				<span class="text-muted-foreground dark:text-muted-foreground">
+					Capture or choose a screenshot
+				</span>
+			</div>
 
 			<div class="mt-auto flex items-center gap-3 text-xs">
 				<button
-					v-if="mode === 'task' && !note && !showNote"
+					v-if="mode !== 'page' && !note && !showNote"
 					type="button"
 					class="text-muted-foreground hover:text-foreground"
 					@click="showNote = true"
@@ -172,6 +241,14 @@
 					Discard
 				</button>
 				<span
+					v-if="screenshotUnsent"
+					class="text-muted-foreground dark:text-muted-foreground"
+					data-testid="quick-add-unsent-hint"
+				>
+					Screenshot kept, but not sent with a routine or task. Adding discards
+					it.
+				</span>
+				<span
 					v-if="message"
 					:class="error ? 'text-destructive' : 'text-emerald-500'"
 				>
@@ -183,23 +260,44 @@
 </template>
 
 <script>
+	import { getCategoriesOfWorkspace } from '@/actions/tmgr/categories';
 	import { createDailyTask } from '@/actions/tmgr/daily-tasks';
 	import { uploadPageFile, uploadTaskFile } from '@/actions/tmgr/files';
 	import { appendToPage, getPage, getPagesTree } from '@/actions/tmgr/pages';
 	import { getStatusesOfWorkspace } from '@/actions/tmgr/statuses';
-	import { createTask } from '@/actions/tmgr/tasks';
+	import { createTask, getTasksIndexes } from '@/actions/tmgr/tasks';
 	import { getWorkspaces } from '@/actions/tmgr/workspaces';
 	import {
 		activeLocalWorkspace,
 		followActiveLocalWorkspace,
 	} from '@/local/runtime';
 	import store from '@/store';
+	import {
+		activeCategories,
+		buildCategoryGroups,
+		flattenGroups,
+		settingValue,
+		TITLE_PATTERN_KEY,
+	} from '@/utils/categorySettingsPage';
 	import { pickDefaultStatusId } from '@/utils/defaultStatus';
 	import {
 		pickQuickAddWorkspace,
 		splitQuickText,
 	} from '@/utils/desktopShortcuts';
-	import { appendText, hasDraft, planOpen } from '@/utils/quickAddDraft';
+	import {
+		appendText,
+		canSubmitDraft,
+		DEFAULT_TYPE,
+		hasDraft,
+		isScreenshotUnsent,
+		isTaskType,
+		pickRememberedCategory,
+		planOpen,
+		readLastCategory,
+		submitKind,
+		typeAfterScreenshot,
+		writeLastCategory,
+	} from '@/utils/quickAddDraft';
 	import {
 		appendToLoadedPage,
 		filterPageOptions,
@@ -210,6 +308,14 @@
 		writeLastPage,
 	} from '@/utils/quickAddPage';
 	import { relayCreated, relayPageAppended } from '@/utils/quickAddPageRelay';
+	import {
+		alreadyPrefixed,
+		composePatternTitle,
+		hasIndexToken,
+		prefixPreview,
+		renderPrefix,
+	} from '@/utils/quickAddTitle';
+	import { requestCache } from '@/utils/requestCache';
 	import { format } from 'date-fns';
 	import {
 		computed,
@@ -221,9 +327,18 @@
 	} from 'vue';
 
 	const MODES = [
+		{ value: 'routine', label: 'Routine' },
 		{ value: 'task', label: 'Task' },
+		{ value: 'screenshot', label: 'Task + screenshot' },
 		{ value: 'page', label: 'Page' },
 	];
+
+	const HEADINGS = {
+		routine: 'Add to Daily Routines in',
+		task: 'Add task to backlog in',
+		screenshot: 'Add task with screenshot to backlog in',
+		page: 'Add to a page in',
+	};
 
 	const invoke = async (command, args) => {
 		const core = await import('@tauri-apps/api/core');
@@ -269,7 +384,7 @@
 			const screenshotUrl = ref('');
 			const workspaceId = ref(null);
 			const workspaces = ref([]);
-			const mode = ref('task');
+			const mode = ref(DEFAULT_TYPE);
 			const pageText = ref('');
 			const pageQuery = ref('');
 			const pageId = ref(null);
@@ -278,17 +393,65 @@
 			const section = ref('');
 			const sections = ref([]);
 			const pageTextInput = ref(null);
+			const fileInput = ref(null);
+			const categories = ref([]);
+			const categoryId = ref(null);
+			const categoriesLoading = ref(false);
+			const categoriesError = ref(false);
+			const prefix = ref('');
 			let pagesRequest = 0;
 			let pagesWorkspace = null;
 			let sectionsRequest = 0;
+			let categoriesRequest = 0;
+			let categoriesWorkspace = null;
+			let categoriesPending = null;
+			let categoriesStale = false;
+			let prefixRequest = 0;
+			let resumeDraft = false;
 
+			const isTask = computed(() => isTaskType(mode.value));
+			const headingText = computed(() => HEADINGS[mode.value]);
 			const visiblePageOptions = computed(() =>
 				filterPageOptions(pageOptions.value, pageQuery.value, pageId.value),
 			);
 			const canSubmit = computed(() =>
-				mode.value === 'page'
-					? Boolean(pageId.value && (pageText.value.trim() || screenshot.value))
-					: Boolean(title.value.trim()),
+				canSubmitDraft(
+					mode.value,
+					{
+						title: title.value,
+						pageText: pageText.value,
+						pageId: pageId.value,
+					},
+					Boolean(screenshot.value),
+				),
+			);
+			const canAdd = computed(
+				() => canSubmit.value && !(isTask.value && categoriesLoading.value),
+			);
+			const showsScreenshot = computed(
+				() => mode.value === 'screenshot' || mode.value === 'page',
+			);
+			const screenshotUnsent = computed(() =>
+				isScreenshotUnsent(mode.value, Boolean(screenshot.value)),
+			);
+			const categoryOptions = computed(() =>
+				flattenGroups(buildCategoryGroups(categories.value)).map((node) => ({
+					id: node.category.id,
+					label: `${'\u00a0\u00a0'.repeat(node.depth)}${node.category.title}`,
+				})),
+			);
+			const pattern = computed(() =>
+				isTask.value
+					? settingValue(
+							categories.value.find((c) => c.id === categoryId.value),
+							TITLE_PATTERN_KEY,
+					  ).trim()
+					: '',
+			);
+			const prefixText = computed(() =>
+				prefix.value && !alreadyPrefixed(pattern.value, title.value)
+					? prefixPreview(prefix.value)
+					: '',
 			);
 			const selectedWorkspace = () =>
 				workspaces.value.find((ws) => ws.id === workspaceId.value);
@@ -339,6 +502,98 @@
 				}
 			};
 
+			const rememberedCategory = () =>
+				categoriesWorkspace === workspaceId.value
+					? pickRememberedCategory(
+							categories.value,
+							readLastCategory(workspaceId.value),
+					  )
+					: null;
+
+			const forgetCategories = () => {
+				categoriesRequest++;
+				categoriesStale = false;
+				categories.value = [];
+				categoriesWorkspace = null;
+				categoriesPending = null;
+				categoriesLoading.value = false;
+				categoryId.value = null;
+			};
+
+			/** The window is only hidden between opens, so a fresh open refetches: another window may have changed the categories. */
+			const loadCategories = async (keepSelection = false) => {
+				const ws = selectedWorkspace();
+				const request = ++categoriesRequest;
+				const previous = categoryId.value;
+				categoriesStale = false;
+				if (!keepSelection) {
+					categories.value = [];
+					categoriesWorkspace = null;
+					categoryId.value = null;
+				}
+				categoriesPending = ws?.id ?? null;
+				categoriesError.value = false;
+				if (!ws) return;
+				categoriesLoading.value = true;
+				try {
+					followActiveLocalWorkspace(Boolean(ws.is_local));
+					requestCache.invalidate(`categories-workspace-${ws.id}`);
+					const list = activeCategories(await getCategoriesOfWorkspace(ws.id));
+					if (request !== categoriesRequest) return;
+					categories.value = list;
+					categoriesWorkspace = ws.id;
+					categoryId.value =
+						keepSelection && list.some((c) => c.id === previous)
+							? previous
+							: keepSelection
+							? null
+							: rememberedCategory();
+				} catch (e) {
+					if (request !== categoriesRequest) return;
+					console.error('quick add: categories not loaded', e);
+					categoriesError.value = true;
+				} finally {
+					if (request === categoriesRequest) {
+						categoriesLoading.value = false;
+						categoriesPending = null;
+					}
+				}
+			};
+
+			const ensureCategories = () => {
+				const id = workspaceId.value;
+				if (!isTask.value || id == null || categoriesPending === id) return;
+				if (categoriesWorkspace === id) {
+					if (categoriesStale) void loadCategories(true);
+					return;
+				}
+				void loadCategories();
+			};
+
+			const fetchIndexes = () => {
+				followActiveLocalWorkspace(Boolean(selectedWorkspace()?.is_local));
+				return getTasksIndexes(categoryId.value, workspaceId.value);
+			};
+
+			const refreshPrefix = async (keepShown = false) => {
+				const request = ++prefixRequest;
+				const current = pattern.value;
+				if (!keepShown || !current) prefix.value = '';
+				if (!current || workspaceId.value == null) return;
+				if (!hasIndexToken(current)) {
+					prefix.value = renderPrefix(current);
+					return;
+				}
+				try {
+					const indexes = await fetchIndexes();
+					if (request === prefixRequest) {
+						prefix.value = renderPrefix(current, indexes);
+					}
+				} catch {
+					/* the preview stays hidden; submit asks for the number again */
+				}
+			};
+
 			watch(pageId, loadSections);
 			watch(mode, async (next) => {
 				if (next !== 'page') return;
@@ -352,7 +607,11 @@
 				pageOptions.value = [];
 				pageId.value = null;
 				if (mode.value === 'page') void loadPages();
+				forgetCategories();
+				ensureCategories();
 			});
+			watch(isTask, ensureCategories);
+			watch([pattern, categoryId, workspaceId], () => refreshPrefix());
 
 			const rememberWorkspace = () => {
 				try {
@@ -383,14 +642,28 @@
 				pendingScreenshotUrl.value = '';
 			};
 
+			const attachScreenshot = (file, url) => {
+				dropScreenshot();
+				screenshot.value = file;
+				screenshotUrl.value = url;
+				mode.value = typeAfterScreenshot(mode.value);
+			};
+
 			const usePendingScreenshot = () => {
 				if (!pendingScreenshot) return;
-				dropScreenshot();
-				screenshot.value = pendingScreenshot;
-				screenshotUrl.value = pendingScreenshotUrl.value;
+				attachScreenshot(pendingScreenshot, pendingScreenshotUrl.value);
 				pendingScreenshot = null;
 				pendingScreenshotUrl.value = '';
 				message.value = '';
+			};
+
+			const chooseImage = (event) => {
+				const file = event.target.files?.[0];
+				event.target.value = '';
+				if (!file) return;
+				attachScreenshot(file, URL.createObjectURL(file));
+				message.value = '';
+				error.value = false;
 			};
 
 			const readCapture = async (path) => {
@@ -422,7 +695,7 @@
 				(mode.value === 'page' ? pageTextInput : titleInput).value?.focus();
 
 			const reset = () => {
-				mode.value = 'task';
+				mode.value = DEFAULT_TYPE;
 				pageText.value = '';
 				pageQuery.value = '';
 				pageOptions.value = [];
@@ -432,6 +705,7 @@
 				showNote.value = false;
 				message.value = '';
 				error.value = false;
+				forgetCategories();
 				dropScreenshot();
 				dropPendingScreenshot();
 			};
@@ -444,16 +718,42 @@
 
 			const hide = () => invoke('hide_quick_add');
 
+			const captureHere = async () => {
+				if (saving.value) return;
+				resumeDraft = true;
+				let path = null;
+				try {
+					await hide();
+					path = await invoke('capture_screenshot');
+				} catch (e) {
+					console.error('quick add: capture failed', e);
+					void reportFailure(e);
+				}
+				try {
+					await invoke('open_quick_add', {
+						payload: {
+							workspaceId: workspaceId.value,
+							...(path ? { screenshot: path } : {}),
+						},
+					});
+				} catch (e) {
+					resumeDraft = false;
+					console.error('quick add: reopen failed', e);
+				}
+			};
+
 			const load = async () => {
 				const payload = await invoke('take_quick_add');
 				if (payload === null || payload === undefined) return;
-				const plan = planOpen(
+				const planned = planOpen(
 					{
 						hasDraft: draftStarted.value,
 						hasScreenshot: Boolean(screenshot.value),
 					},
 					payload,
 				);
+				const plan = resumeDraft ? { ...planned, keep: true } : planned;
+				resumeDraft = false;
 				if (plan.keep) {
 					message.value = '';
 					error.value = false;
@@ -498,8 +798,7 @@
 					const capture = await readCapture(payload.screenshot);
 					if (plan.screenshot === 'attach') {
 						dropPendingScreenshot();
-						screenshot.value = capture.file;
-						screenshotUrl.value = capture.url;
+						attachScreenshot(capture.file, capture.url);
 					} else {
 						dropPendingScreenshot();
 						pendingScreenshot = capture.file;
@@ -511,6 +810,13 @@
 					error.value = true;
 					message.value = ACCESSIBILITY_HINT;
 				}
+				if (plan.keep && categoriesWorkspace === workspaceId.value) {
+					if (isTask.value) void loadCategories(true);
+					else categoriesStale = true;
+				} else {
+					ensureCategories();
+				}
+				void refreshPrefix(true);
 				await nextTick();
 				focusField();
 			};
@@ -554,9 +860,28 @@
 				}
 			};
 
+			const composeTaskTitle = async () => {
+				const current = pattern.value;
+				if (!current) return title.value.trim();
+				let indexes = {};
+				if (hasIndexToken(current)) {
+					try {
+						indexes = await fetchIndexes();
+					} catch (e) {
+						e.userMessage = 'Could not get the next task number. Try again.';
+						throw e;
+					}
+				}
+				return composePatternTitle(
+					current,
+					renderPrefix(current, indexes),
+					title.value,
+				);
+			};
+
 			const submit = async () => {
 				if (mode.value === 'page') return submitPage();
-				if (!title.value.trim() || saving.value) return;
+				if (!canAdd.value || saving.value) return;
 				saving.value = true;
 				error.value = false;
 				message.value = 'Adding…';
@@ -565,26 +890,13 @@
 				);
 				followActiveLocalWorkspace(Boolean(targetWorkspace?.is_local));
 				try {
+					const kind = submitKind(mode.value);
 					const fields = {
 						title: title.value.trim(),
 						description: note.value.trim() || undefined,
 						workspace_id: workspaceId.value || undefined,
 					};
-					if (screenshot.value) {
-						const task = await createTask({
-							...fields,
-							status: 'created',
-							status_id: pickDefaultStatusId(
-								await getStatusesOfWorkspace(workspaceId.value),
-							),
-							is_daily_routine: false,
-						});
-						try {
-							await uploadTaskFile(task.id, screenshot.value);
-						} finally {
-							void relayCreated('task');
-						}
-					} else {
+					if (kind === 'routine') {
 						const routine = await createDailyTask(fields);
 						if (targetWorkspace?.is_local) {
 							try {
@@ -598,6 +910,27 @@
 							}
 						}
 						void relayCreated('routine');
+					} else {
+						const task = await createTask({
+							...fields,
+							title: await composeTaskTitle(),
+							project_category_id: categoryId.value ?? undefined,
+							status: 'created',
+							status_id: pickDefaultStatusId(
+								await getStatusesOfWorkspace(workspaceId.value),
+							),
+							is_daily_routine: false,
+						});
+						if (categoriesWorkspace === workspaceId.value) {
+							writeLastCategory(workspaceId.value, categoryId.value);
+						}
+						try {
+							if (kind === 'task-screenshot') {
+								await uploadTaskFile(task.id, screenshot.value);
+							}
+						} finally {
+							void relayCreated('task');
+						}
 					}
 					message.value = 'Added';
 					setTimeout(async () => {
@@ -609,21 +942,23 @@
 					void reportFailure(e);
 					error.value = true;
 					message.value =
-						e?.response?.data?.message || 'Could not add the task. Try again.';
+						e?.userMessage ||
+						e?.response?.data?.message ||
+						'Could not add the task. Try again.';
 				} finally {
 					saving.value = false;
 				}
 			};
 
-			const COMPACT = 132;
-			const EXPANDED = 320;
+			const COMPACT = 160;
+			const EXPANDED = 340;
 			watch(
 				() =>
 					Boolean(
 						mode.value === 'page' ||
+							mode.value === 'screenshot' ||
 							note.value ||
-							showNote.value ||
-							screenshotUrl.value,
+							showNote.value,
 					),
 				async (expanded) => {
 					const { getCurrentWindow, LogicalSize } = await import(
@@ -633,6 +968,7 @@
 						new LogicalSize(620, expanded ? EXPANDED : COMPACT),
 					);
 				},
+				{ immediate: true },
 			);
 
 			onMounted(async () => {
@@ -652,8 +988,11 @@
 				error,
 				titleInput,
 				pageTextInput,
+				fileInput,
 				MODES,
 				mode,
+				headingText,
+				isTask,
 				pageText,
 				pageQuery,
 				pageId,
@@ -663,14 +1002,24 @@
 				section,
 				sections,
 				canSubmit,
+				canAdd,
 				workspaceId,
 				workspaces,
+				categoryId,
+				categoryOptions,
+				categoriesLoading,
+				categoriesError,
+				prefixText,
+				showsScreenshot,
+				screenshotUnsent,
 				rememberWorkspace,
 				hide,
 				submit,
 				dropScreenshot,
 				pendingScreenshotUrl,
 				usePendingScreenshot,
+				chooseImage,
+				captureHere,
 				draftStarted,
 				discard,
 			};
