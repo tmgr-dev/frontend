@@ -320,7 +320,10 @@ impl Remote {
                 if !reopen {
                     let why = sanitize_text(&why);
                     let link = link_of(&id);
-                    fx.notice = Some(if why.starts_with(link) {
+                    let own = why
+                        .strip_prefix(link)
+                        .is_some_and(|rest| rest.starts_with(": ") || rest.starts_with(' '));
+                    fx.notice = Some(if own {
                         why.into_owned()
                     } else {
                         format!("{link}: {why}")
@@ -1128,6 +1131,11 @@ mod tests {
             why: "spark closed the connection".into(),
             reopen: false,
         });
+        r.apply(LinkMsg::StreamClosed {
+            id: id.clone(),
+            why: "sparkle: revoked".into(),
+            reopen: false,
+        });
         r.apply(LinkMsg::Notice {
             link: "spark".into(),
             id: Some(id),
@@ -1143,6 +1151,7 @@ mod tests {
             vec![
                 "spark: boom".to_string(),
                 "spark closed the connection".to_string(),
+                "spark: sparkle: revoked".to_string(),
                 format!("spark/run {A}: hi"),
                 "spark: yo".to_string(),
             ]

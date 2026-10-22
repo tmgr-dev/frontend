@@ -155,16 +155,12 @@ impl KeySource for StoreKey {
     }
 }
 
-enum Held {
-    Unread,
-    Loaded(Secret),
-    Closed,
-}
-
 pub(super) struct SshDialer {
     paths: Paths,
     source: Box<dyn KeySource>,
-    held: Mutex<Held>,
+    closed: AtomicBool,
+    loading: Mutex<()>,
+    held: Mutex<Option<Secret>>,
 }
 
 impl SshDialer {
@@ -183,28 +179,43 @@ impl SshDialer {
         SshDialer {
             paths,
             source,
-            held: Mutex::new(Held::Unread),
+            closed: AtomicBool::new(false),
+            loading: Mutex::new(()),
+            held: Mutex::new(None),
         }
     }
 
     fn fresh_key(&self) -> std::result::Result<KeyFile, DialErr> {
-        let secret = {
-            let mut held = lock(&self.held);
-            if matches!(*held, Held::Closed) {
-                return Err(DialErr::Offline("the hub is shutting down".into()));
-            }
-            if matches!(*held, Held::Unread) {
-                let secret = self
-                    .source
-                    .load()
-                    .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))?;
-                *held = Held::Loaded(secret);
-            }
-            match &*held {
-                Held::Loaded(s) => s.clone(),
-                _ => return Err(DialErr::Offline("the hub is shutting down".into())),
+        let closing = || DialErr::Offline("the hub is shutting down".into());
+        let known = lock(&self.held).clone();
+        let secret = match known {
+            Some(s) => s,
+            None => {
+                let _one_at_a_time = lock(&self.loading);
+                let known = lock(&self.held).clone();
+                match known {
+                    Some(s) => s,
+                    None => {
+                        if self.closed.load(Ordering::SeqCst) {
+                            return Err(closing());
+                        }
+                        let secret = self
+                            .source
+                            .load()
+                            .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))?;
+                        let mut held = lock(&self.held);
+                        if self.closed.load(Ordering::SeqCst) {
+                            return Err(closing());
+                        }
+                        *held = Some(secret.clone());
+                        secret
+                    }
+                }
             }
         };
+        if self.closed.load(Ordering::SeqCst) {
+            return Err(closing());
+        }
         leader::materialise_secret(&secret)
             .map_err(|e| DialErr::Unavailable(cap(&e.message, MAX_WHY)))
     }
@@ -246,7 +257,8 @@ impl Dialer for SshDialer {
     }
 
     fn shutdown(&self) {
-        *lock(&self.held) = Held::Closed;
+        self.closed.store(true, Ordering::SeqCst);
+        lock(&self.held).take();
     }
 }
 
@@ -1176,13 +1188,14 @@ fn control(inner: &Inner, link: &str, cmds: &Receiver<Cmd>) {
 
 enum Rebound {
     Same,
+    Unknown,
     Gone,
     Changed,
 }
 
 fn rebound(inner: &Inner, link: &str, bound: &Binding) -> Rebound {
     match inner.dialer.binding(link) {
-        Binding::Unreadable => Rebound::Same,
+        Binding::Unreadable => Rebound::Unknown,
         Binding::Gone => Rebound::Gone,
         now if now == *bound => Rebound::Same,
         _ => Rebound::Changed,
@@ -1207,7 +1220,7 @@ fn session(
             return Exit::Planned;
         }
         match rebound(inner, link, bound) {
-            Rebound::Same => {}
+            Rebound::Same | Rebound::Unknown => {}
             Rebound::Gone => return Exit::Removed,
             Rebound::Changed => {
                 inner.lose_link(link);
@@ -1248,6 +1261,9 @@ fn session(
                 Rebound::Same => {
                     requests += 1;
                     halt(inner, link, &run, conn.as_mut());
+                }
+                Rebound::Unknown => {
+                    halt_refused(inner, link, &run, "cannot verify the link, try again");
                 }
                 Rebound::Gone => {
                     halt_refused(inner, link, &run, "the machine is no longer linked");
@@ -2657,6 +2673,42 @@ pub(super) mod tests {
         assert!(p2.exists());
         drop(second);
         assert!(!p2.exists());
+    }
+
+    struct SlowKey(Mutex<Option<std::sync::mpsc::Receiver<()>>>);
+
+    impl KeySource for SlowKey {
+        fn load(&self) -> Result<Secret> {
+            let rx = lock(&self.0).take().unwrap();
+            let _ = rx.recv();
+            Ok(Secret::new("pem"))
+        }
+    }
+
+    #[test]
+    fn shutdown_does_not_wait_for_a_key_prompt_and_nothing_is_kept_afterwards() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(d.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let (release, gate) = mpsc::channel();
+        let dialer = Arc::new(SshDialer::with_source(
+            Paths::under(d.path()),
+            Box::new(SlowKey(Mutex::new(Some(gate)))),
+        ));
+        let dialling = {
+            let dialer = Arc::clone(&dialer);
+            thread::spawn(move || dialer.fresh_key().err())
+        };
+        thread::sleep(Duration::from_millis(100));
+        let began = Instant::now();
+        dialer.shutdown();
+        assert!(began.elapsed() < Duration::from_millis(100));
+        release.send(()).unwrap();
+        assert!(matches!(
+            dialling.join().unwrap(),
+            Some(DialErr::Offline(_))
+        ));
+        assert!(lock(&dialer.held).is_none());
     }
 
     #[test]
