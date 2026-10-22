@@ -213,6 +213,13 @@ pub const ACTIONS: &[ActionDef] = &[
         "Filter the sidebar by name, folder or branch",
         true,
     ),
+    def(
+        Cmd::Export,
+        b"e",
+        "e",
+        "Export this session to Markdown or a page",
+        true,
+    ),
     def(Cmd::Help, b"?", "?", "Show the key help", true),
     def(Cmd::Picker, b"w", "w", "Session picker", false),
     def(Cmd::Palette, b":", ":", "Command palette", false),

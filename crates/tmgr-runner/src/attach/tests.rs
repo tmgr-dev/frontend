@@ -1,3 +1,4 @@
+use super::export::Stage;
 use super::view::{MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH};
 use super::*;
 use ratatui::backend::TestBackend;
@@ -8058,4 +8059,255 @@ fn opening_the_filter_ends_rename_confirm_and_scroll() {
     });
     v.open_filter();
     assert!(v.confirm.is_none() && v.scroll.is_none());
+}
+
+fn fake_secret() -> String {
+    ["abcdefgh", "12345678"].concat()
+}
+
+fn export_state(findings_lines: &[&str], ws: Option<&str>, refusal: Option<&str>) -> ExportState {
+    let lines: Vec<String> = findings_lines.iter().map(|s| s.to_string()).collect();
+    let found = scan_export(&lines, "/home/me");
+    ExportState::new(
+        "Session demo 2026-10-22 10:00".into(),
+        lines,
+        found,
+        ws.map(str::to_string),
+        refusal.map(str::to_string),
+        "/home/me/tmgr-session-demo.md".into(),
+        "/home/me".into(),
+    )
+}
+
+#[test]
+fn a_transcript_becomes_markdown_with_one_line_tool_calls_and_no_tool_output() {
+    let lines = jsonl(&[
+        r#"{"type":"user","message":{"role":"user","content":"fix <b>the</b> login\n# not a heading"}}"#,
+        r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"cat .env output"}]}}"#,
+        r#"{"type":"user","isMeta":true,"message":{"role":"user","content":"meta"}}"#,
+        r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Done, see [x](javascript:alert(1)) @bob"},{"type":"tool_use","name":"Edit","input":{"file_path":"/work/repo/src/a.rs","old_string":"SECRET OLD","new_string":"SECRET NEW"}},{"type":"tool_use","name":"Bash","input":{"command":"cargo test\nsecond line"}},{"type":"tool_use","name":"WebFetch","input":{"url":"https://example.com/p?token=zzz"}}]}}"#,
+    ]);
+    let md = markdown_lines(
+        lines.iter().map(String::as_str),
+        "demo",
+        "/work/repo",
+        "/home/me",
+    )
+    .join("\n");
+    assert!(md.starts_with("# Session: demo\n\n## User\nfix <b>the</b> login\n\\# not a heading"));
+    let esc = escape_markdown(&md);
+    assert!(esc.contains("fix &lt;b>the&lt;/b> login"));
+    assert!(esc.contains("## Assistant\nDone, see [x] (javascript&#58;alert(1)) &#64;bob"));
+    assert!(escape_markdown("[a]: JavaScript:x").contains("&#58;"));
+    assert!(md.contains("- tool: Edit `src/a.rs`"));
+    assert!(md.contains("- tool: Bash `cargo test`"));
+    assert!(md.contains("- tool: WebFetch `https://example.com/p`"));
+    for gone in [
+        "cat .env output",
+        "SECRET OLD",
+        "SECRET NEW",
+        "second line",
+        "meta",
+        "token=zzz",
+    ] {
+        assert!(!md.contains(gone), "{gone}");
+    }
+}
+
+#[test]
+fn the_scan_flags_secrets_paths_env_lines_and_key_blocks_but_not_plain_text() {
+    let secret_line = format!("export {}={}", "API_TOKEN", fake_secret());
+    let json_line = format!("{{\"{}\": \"{}\"}}", "password", fake_secret());
+    let pem = format!("-----{} PRIVATE KEY-----", "BEGIN");
+    let pem_end = format!("-----{} PRIVATE KEY-----", "END");
+    let lines: Vec<String> = vec![
+        "plain sentence about tokens and keys".into(),
+        secret_line,
+        json_line,
+        "see /home/me/work/a.rs and /Users/alice/x".into(),
+        "DB_URL=postgres-host-name".into(),
+        pem,
+        "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7".into(),
+        pem_end,
+        "x".repeat(70),
+        "done".into(),
+    ];
+    let f = scan_export(&lines, "/home/me");
+    let at: Vec<(usize, &str)> = f.iter().map(|x| (x.line, x.kind)).collect();
+    assert_eq!(
+        at,
+        vec![
+            (1, "secret"),
+            (2, "secret"),
+            (3, "home path"),
+            (4, ".env value"),
+            (5, "private key"),
+            (6, "private key"),
+            (7, "private key"),
+            (8, "key material"),
+        ]
+    );
+    assert_eq!(f[2].cleaned, "see ~/work/a.rs and /Users/<user>/x");
+    assert!(f
+        .iter()
+        .filter(|x| x.kind.contains("key"))
+        .all(|x| !x.keepable));
+    assert!(f.iter().all(|x| !x.cleaned.contains(&fake_secret())));
+}
+
+#[test]
+fn every_finding_needs_a_decision_and_unkeepable_ones_cannot_be_kept() {
+    let key = format!("-----{} PRIVATE KEY-----", "BEGIN");
+    let mut s = export_state(
+        &["ok", "see /home/me/a", &key, "-----END PRIVATE KEY-----"],
+        Some("acme"),
+        None,
+    );
+    let mut v = two_pane(140);
+    assert_eq!(s.findings.len(), 3);
+    assert_eq!(s.stage, Stage::Review);
+    v.open_export(s.clone());
+    v.edit_export(b"\r");
+    assert_eq!(v.export.as_ref().unwrap().stage, Stage::Review);
+    v.edit_export(b"k");
+    v.edit_export(b"k");
+    assert_eq!(v.export.as_ref().unwrap().decisions[1], Decision::Pending);
+    assert_eq!(v.export.as_ref().unwrap().pending(), 2);
+    v.edit_export(b"A");
+    assert_eq!(v.export.as_ref().unwrap().pending(), 0);
+    v.edit_export(b"\r");
+    assert_eq!(v.export.as_ref().unwrap().stage, Stage::Choose);
+    s = v.export.clone().unwrap();
+    let text = s.ready_text().unwrap();
+    assert!(text.contains("see /home/me/a") && !text.contains("PRIVATE KEY"));
+}
+
+#[test]
+fn a_kept_line_is_written_as_is_and_a_pending_one_blocks_the_export() {
+    let mut s = export_state(&["a /home/me/x", "b /home/me/y"], None, None);
+    assert!(s.ready_text().is_none());
+    s.decisions = vec![Decision::Keep, Decision::Remove];
+    assert_eq!(s.ready_text().unwrap(), "a /home/me/x\nb ~/y\n");
+    s.decisions = vec![Decision::Keep, Decision::Keep];
+    s.lines[1] = "b /home/me/changed".into();
+    s.findings[1].original = "b /home/me/y".into();
+    assert!(s.ready_text().is_none());
+}
+
+#[test]
+fn choosing_a_file_returns_the_cleaned_text_and_closes() {
+    let mut v = two_pane(140);
+    v.open_export(export_state(&["hello"], Some("acme"), None));
+    assert_eq!(v.export.as_ref().unwrap().stage, Stage::Choose);
+    match v.edit_export(b"f") {
+        Some(ExportAction::File { text, path }) => {
+            assert_eq!(text, "hello\n");
+            assert!(path.ends_with(".md"));
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(v.export.is_none());
+}
+
+#[test]
+fn a_page_needs_the_typed_workspace_code_and_is_refused_in_agent_sessions() {
+    let mut v = two_pane(140);
+    v.open_export(export_state(&["hello"], Some("acme"), None));
+    assert_eq!(v.edit_export(b"g"), None);
+    assert_eq!(v.export.as_ref().unwrap().stage, Stage::Confirm);
+    assert_eq!(v.edit_export(b"\r"), None);
+    v.edit_export(b"nope");
+    assert_eq!(v.edit_export(b"\r"), None);
+    assert!(v.export.is_some());
+    for _ in 0..4 {
+        v.edit_export(b"\x7f");
+    }
+    v.edit_export(b"ACME");
+    match v.edit_export(b"\r") {
+        Some(ExportAction::Page { text, title, code }) => {
+            assert_eq!(code, "acme");
+            assert_eq!(text, "hello\n");
+            assert!(title.starts_with("Session demo"));
+        }
+        other => panic!("{other:?}"),
+    }
+    let mut v = two_pane(140);
+    v.open_export(export_state(
+        &["hello"],
+        Some("acme"),
+        Some("refused inside agent sessions"),
+    ));
+    assert_eq!(v.edit_export(b"g"), None);
+    assert_eq!(v.export.as_ref().unwrap().stage, Stage::Choose);
+    let mut v = two_pane(140);
+    v.open_export(export_state(&["hello"], None, None));
+    assert_eq!(v.edit_export(b"g"), None);
+    assert_eq!(v.export.as_ref().unwrap().stage, Stage::Choose);
+}
+
+#[test]
+fn the_export_key_is_free_and_clicking_a_button_acts() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'e')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Export);
+    let mut v = two_pane(140);
+    v.open_export(export_state(&["hello"], Some("acme"), None));
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let screen = draw(&v, &screens(), AREA.width, AREA.height);
+    let (row, col) = screen
+        .lines()
+        .enumerate()
+        .find_map(|(y, l)| {
+            l.find("f File")
+                .map(|x| (y as u16, l[..x].chars().count() as u16))
+        })
+        .unwrap();
+    let out = v.on_mouse(AREA, ev(0, 1, 1, false), &info);
+    assert_eq!(out.export, None);
+    v.on_mouse(AREA, ev(0, 1, 1, true), &info);
+    let out = v.on_mouse(AREA, ev(0, col, row, false), &info);
+    assert!(matches!(out.export, Some(ExportAction::File { .. })));
+}
+
+#[test]
+fn snapshot_export_stages() {
+    let mut v = two_pane(140);
+    let f = format!("export {}={}", "API_TOKEN", "notarealvalue");
+    v.open_export(export_state(
+        &["intro", &f, "see /home/me/a.rs"],
+        Some("acme"),
+        None,
+    ));
+    assert_snapshot("export_review", &draw(&v, &screens(), 140, 24));
+    v.edit_export(b"r");
+    v.edit_export(b"k");
+    v.edit_export(b"\r");
+    assert_snapshot("export_choose", &draw(&v, &screens(), 140, 24));
+    v.edit_export(b"g");
+    v.edit_export(b"ac");
+    assert_snapshot("export_confirm", &draw(&v, &screens(), 140, 24));
+}
+
+#[test]
+fn passwords_with_special_characters_and_url_credentials_are_found_before_escaping() {
+    let pw = format!("{}: P@ssw0rd12345", "password");
+    let url = format!("postgres://app:{}@db.example/x", "S3cretValue");
+    let lines = vec![pw, url, "mail me @team about <b>x</b>".to_string()];
+    let found = scan_export(&lines, "/home/me");
+    assert_eq!(found.iter().map(|f| f.line).collect::<Vec<_>>(), vec![0, 1]);
+    assert!(found
+        .iter()
+        .all(|f| !f.cleaned.contains("P@ssw0rd") && !f.cleaned.contains("S3cret")));
+}
+
+#[test]
+fn a_stray_begin_marker_does_not_blank_the_rest_of_the_export() {
+    let mut lines: Vec<String> = vec!["- tool: Bash `grep -- '-----BEGIN' f`".into()];
+    lines.extend((0..300).map(|i| format!("line {i}")));
+    let f = scan_export(&lines, "/home/me");
+    assert!(f.iter().all(|x| x.line == 0 && x.kind != "private key"));
+    let mut block = vec![format!("-----{} PRIVATE KEY-----", "BEGIN")];
+    block.extend((0..300).map(|i| format!("line {i}")));
+    let found = scan_export(&block, "/home/me");
+    assert!(found.len() <= 201);
 }

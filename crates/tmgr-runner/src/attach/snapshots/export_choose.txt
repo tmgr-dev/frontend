@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● claude working 18m │✓ Test╭ Export session · 45 B · 2 findings ────────────────────────────────────────╮                              │
+   ◌ dev-server wa… 12m │>     │ 3 lines, 45 B; 1 findings removed, 1 kept                                  │                              │
+ ✓ tests     exited 52m │      │                                                                            │                              │
+                        │      │ File: /home/me/tmgr-session-demo.md                                        │                              │
+                        │      │ Page: new page in workspace acme (this sends the text to the TMGR server)  │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │ [ f File ] [ g Page ] [ Esc Back ]                                         │                              │
+                        │      │ nothing is written until you choose                                        │                              │
+                        │      ╰────────────────────────────────────────────────────────────────────────────╯                              │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

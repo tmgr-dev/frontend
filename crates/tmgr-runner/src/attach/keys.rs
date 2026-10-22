@@ -49,6 +49,7 @@ pub enum Cmd {
     BroadcastMark,
     Git,
     Summary,
+    Export,
     Prompts,
     Search,
     CopyMode,

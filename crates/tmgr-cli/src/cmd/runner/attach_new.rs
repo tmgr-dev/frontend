@@ -34,6 +34,7 @@ pub(super) enum Route {
     Dialog,
     Git,
     Summary,
+    Export,
     Questions,
     Peek,
     Sidebar,
@@ -53,7 +54,9 @@ pub(super) fn route(view: &ViewState, action: &Action) -> Route {
     {
         return Route::Other;
     }
-    if view.summary.is_some() {
+    if view.export.is_some() {
+        Route::Export
+    } else if view.summary.is_some() {
         Route::Summary
     } else if view.new_session.is_some() {
         Route::Dialog

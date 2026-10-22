@@ -2,6 +2,7 @@ mod actions;
 mod attention;
 mod broadcast;
 mod chip;
+mod export;
 mod filter;
 mod find;
 mod git;
@@ -31,6 +32,10 @@ pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
 pub use chip::{chip_text, open_urls, TaskChip};
+pub use export::{
+    escape_markdown, fmt_size, markdown_lines, scan as scan_export,
+    transcript as export_transcript, Decision, ExportAction, ExportState, Finding,
+};
 pub use filter::{Filter, FilterEdit};
 pub use find::{CopyState, ScrollText, SearchEdit, SearchState};
 pub use git::{

@@ -140,6 +140,7 @@ pub struct ViewState {
     pub palette: Option<Palette>,
     pub git: HashMap<String, super::git::GitInfo>,
     pub git_open: bool,
+    pub export: Option<super::export::ExportState>,
     pub summary: Option<super::summary::SummaryDraft>,
     pub summary_queue: std::collections::VecDeque<super::summary::SummaryDraft>,
     pub prompts: Vec<Prompt>,
@@ -378,6 +379,7 @@ impl ViewState {
             palette: None,
             git: HashMap::new(),
             git_open: false,
+            export: None,
             summary: None,
             summary_queue: std::collections::VecDeque::new(),
             prompts: Vec::new(),
@@ -1272,7 +1274,8 @@ impl ViewState {
             | Cmd::OpenTask
             | Cmd::Search
             | Cmd::CopyMode
-            | Cmd::Summary => {}
+            | Cmd::Summary
+            | Cmd::Export => {}
         }
     }
 
@@ -1667,6 +1670,7 @@ impl ViewState {
             || self.palette.is_some()
             || self.git_open
             || self.summary.is_some()
+            || self.export.is_some()
             || self.qmenu.is_some()
             || self.peek.is_some()
             || self.help
@@ -1679,6 +1683,9 @@ impl ViewState {
         }
         if self.palette.is_some() {
             return self.palette_mouse(area, ev, out);
+        }
+        if self.export.is_some() {
+            return self.export_mouse(area, ev, out);
         }
         if self.summary.is_some() {
             return self.summary_mouse(area, ev, out);
@@ -2230,6 +2237,7 @@ pub struct MouseOut {
     pub open_task: Option<String>,
     pub git: Option<super::git::GitAction>,
     pub summary: Option<super::summary::SummaryAction>,
+    pub export: Option<super::export::ExportAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
 }

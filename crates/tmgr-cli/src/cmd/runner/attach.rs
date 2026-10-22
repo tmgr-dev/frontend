@@ -1,5 +1,6 @@
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{Clipboard, SystemClipboard};
+use super::attach_export;
 use super::attach_git::{diff_argv, git_worker, GitJob};
 use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
 use super::attach_layouts;
@@ -142,6 +143,7 @@ enum Msg {
     Usage(UsageBar),
     Git(HashMap<String, GitInfo>),
     Summary(Generated),
+    Exported(std::result::Result<String, String>),
     Posted(std::result::Result<String, String>, Box<SummaryDraft>),
     Chips(HashMap<String, TaskChip>),
     Peek {
@@ -409,6 +411,13 @@ impl App {
                 }
             }
             Msg::Summary(done) => self.on_summary(done),
+            Msg::Exported(result) => {
+                self.dirty = true;
+                match result {
+                    Ok(text) => self.notify(&text),
+                    Err(e) => self.notify(&format!("export failed: {e}")),
+                }
+            }
             Msg::Posted(result, draft) => {
                 self.dirty = true;
                 match result {
@@ -878,6 +887,74 @@ impl App {
                 self.view.queue_summary(draft);
             }
             self.dirty = true;
+        }
+    }
+
+    fn export_command(&mut self) {
+        self.dirty = true;
+        if self.view.export.is_some() {
+            return;
+        }
+        let Some(id) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        let (Some(row), Some(src)) = (
+            self.view.sessions.iter().find(|r| r.id == id),
+            self.agents.get(&id),
+        ) else {
+            return self.notify("export is available for Claude sessions");
+        };
+        if src.format != tmgr_runner::attach::Format::Claude {
+            return self.notify("export is available for Claude sessions");
+        }
+        let Some(home) = attach_export::home_dir() else {
+            return self.notify("cannot find your home folder");
+        };
+        let job = self.question_job(row, src);
+        let name = row.name.clone();
+        let Some(loaded) = attach_export::load(&job, &name, &home.to_string_lossy()) else {
+            return self.notify("the session transcript is not available");
+        };
+        let refusal =
+            super::attach_new::in_agent().then(|| "refused inside agent sessions".to_string());
+        let ws = tmgr_core::config::config_dir()
+            .ok()
+            .and_then(|d| tmgr_core::config::Config::load(&d).ok())
+            .and_then(|c| c.default_workspace)
+            .filter(|w| !w.starts_with("local:"));
+        let in_cwd = std::fs::canonicalize(&src.cwd)
+            .ok()
+            .zip(std::fs::canonicalize(&home).ok())
+            .is_some_and(|(cwd, h)| h.starts_with(cwd));
+        let path = if in_cwd {
+            PathBuf::new()
+        } else {
+            attach_export::default_path(&name, &home)
+        };
+        let state =
+            attach_export::state_for(loaded, &name, ws, refusal, &path, &home.to_string_lossy());
+        self.view.open_export(state);
+    }
+
+    fn export_action(&mut self, action: tmgr_runner::attach::ExportAction) {
+        use tmgr_runner::attach::ExportAction;
+        self.dirty = true;
+        self.notify("exporting…");
+        let tx = self.tx.clone();
+        match action {
+            ExportAction::File { text, path } => {
+                let path = PathBuf::from(path);
+                thread::spawn(move || {
+                    let _ = tx.send(Msg::Exported(attach_export::write_export(&text, &path)));
+                });
+            }
+            ExportAction::Page { text, title, code } => {
+                thread::spawn(move || {
+                    let _ = tx.send(Msg::Exported(attach_export::post_page(
+                        &code, &title, &text,
+                    )));
+                });
+            }
         }
     }
 
@@ -1634,6 +1711,12 @@ impl App {
             (Route::Git, Action::Forward(data)) => {
                 if let Some(action) = self.view.edit_git(&data) {
                     self.git_action(action);
+                }
+                self.dirty = true;
+            }
+            (Route::Export, Action::Forward(data)) => {
+                if let Some(action) = self.view.edit_export(&data) {
+                    self.export_action(action);
                 }
                 self.dirty = true;
             }
@@ -2505,6 +2588,9 @@ impl App {
                     if let Some(action) = out.summary {
                         self.summary_action(action);
                     }
+                    if let Some(action) = out.export {
+                        self.export_action(action);
+                    }
                 }
                 Action::Cmd(Cmd::Detach) => return Ok(Some(Exit::Detached)),
                 Action::Cmd(Cmd::Picker) => {
@@ -2575,6 +2661,7 @@ impl App {
                             }
                         }
                         Cmd::Summary => self.summary_command(),
+                        Cmd::Export => self.export_command(),
                         Cmd::Resume => {
                             if let Some(id) = self.view.focused_session().map(str::to_string) {
                                 self.request_resume(&id);

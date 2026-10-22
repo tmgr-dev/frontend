@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● claude working 18m │✓ Test╭ Export session · 38 B · 2 findings ────────────────────────────────────────╮                              │
+   ◌ dev-server wa… 12m │>     │ Finding 1/2 · line 2 · secret · undecided                                  │                              │
+ ✓ tests     exited 52m │      │                                                                            │                              │
+                        │      │ In the text:                                                               │                              │
+                        │      │ export API_TOKEN=notarealvalue                                             │                              │
+                        │      │ Exported as:                                                               │                              │
+                        │      │ export API_TOKEN=…                                                         │                              │
+                        │      │                                                                            │                              │
+                        │      │ 2 still undecided                                                          │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │ [ r Remove ] [ k Keep ] [ A Remove all ] [ Enter Continue ] [ Esc Cancel ] │                              │
+                        │      │ n next, p previous: every finding needs a decision                         │                              │
+                        │      ╰────────────────────────────────────────────────────────────────────────────╯                              │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

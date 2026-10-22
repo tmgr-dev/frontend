@@ -2,6 +2,8 @@ pub(crate) mod allow;
 mod attach;
 mod attach_chip;
 mod attach_clip;
+mod attach_export;
+mod attach_export_cmd;
 mod attach_git;
 mod attach_goto;
 mod attach_layouts;
@@ -79,6 +81,23 @@ pub enum RunnerCommands {
 pub enum SessionCmd {
     /// [experimental] Print a short summary of what a Claude session did (nothing is sent anywhere)
     Summary(SummaryArgs),
+    /// [experimental] Export a Claude session as Markdown (to a file or a TMGR page); only when you ask, after a secret scan
+    Export(ExportArgs),
+}
+
+#[derive(Args)]
+pub struct ExportArgs {
+    /// Session id or name
+    pub session: String,
+    /// Write the Markdown to this file (mode 0600, never overwritten without confirming)
+    #[arg(long, value_name = "FILE", conflicts_with = "page")]
+    pub md: Option<std::path::PathBuf>,
+    /// Create a new TMGR page in the current workspace (leaves this machine; terminal only, asks you to type the workspace code)
+    #[arg(long)]
+    pub page: bool,
+    /// Remove every finding of the secret scan without asking
+    #[arg(long)]
+    pub remove_findings: bool,
 }
 
 #[derive(Args)]

@@ -1,0 +1,24 @@
+ SESSIONS      Ctrl-] b ╭ 1  claude · working ──────────────────────────── ⏸ ■ ✕ ╮╭ 2  dev-server · waiting ──────────────────────── ⏸ ■ ✕ ╮
+ ◆ codex     blocked 3m │● Reading src/checkout/Form.vue                         ││$ pnpm dev                                              │
+ ▾ claude           (2) │I will add an Apple Pay button next to the card form, sh││  VITE ready in 412 ms                                  │
+   ● claude working 18m │✓ Test╭ Export session · 45 B · 2 findings ────────────────────────────────────────╮                              │
+   ◌ dev-server wa… 12m │>     │ This sends 45 B to the TMGR server, workspace acme.                        │                              │
+ ✓ tests     exited 52m │      │                                                                            │                              │
+                        │      │ Type the workspace code (acme) to confirm:                                 │                              │
+                        │      │ > ac▏                                                                      │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │                                                                            │                              │
+                        │      │ [ Enter Send ] [ Esc Back ]                                                │                              │
+                        │      │ Esc goes back; nothing was sent yet                                        │                              │
+                        │      ╰────────────────────────────────────────────────────────────────────────────╯                              │
+                        │                                                        ││                                                        │
+                        │                                                        ││                                                        │
+ + New session          ╰────────────────────────────────────────────────────────╯╰────────────────────────────────────────────────────────╯
+ tmgr runner · local · dev-server · waiting · ● 1 ◌ 1 ◆ 1 ✓ 1                                                                 Ctrl-] ? help

@@ -170,6 +170,9 @@ fn render_all(frame: &mut Frame, st: &ViewState, screens: &dyn ScreenSource) {
     if st.summary.is_some() {
         super::summary::draw_summary(buf, area, st);
     }
+    if st.export.is_some() {
+        super::export::draw_export(buf, area, st);
+    }
     if st.qmenu.is_some() {
         draw_qmenu(buf, area, st);
     }
@@ -1121,8 +1124,14 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "group by tab / repo, filter, sidebar width",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask, Cmd::Git, Cmd::Summary]),
-        "rename / its task / git panel / summary",
+        HelpKey::Cmds(&[
+            Cmd::Rename,
+            Cmd::OpenTask,
+            Cmd::Git,
+            Cmd::Summary,
+            Cmd::Export,
+        ]),
+        "rename / task / git / summary / export",
     ),
     (
         HelpKey::Cmds(&[Cmd::Broadcast, Cmd::BroadcastMark]),

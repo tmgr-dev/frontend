@@ -44,7 +44,7 @@ impl Digest {
     }
 }
 
-fn cut(s: &str, max: usize) -> String {
+pub(crate) fn cut(s: &str, max: usize) -> String {
     let flat: String = s
         .chars()
         .map(|c| if c.is_whitespace() { ' ' } else { c })
@@ -59,7 +59,7 @@ fn cut(s: &str, max: usize) -> String {
     out
 }
 
-fn short_path(path: &str, cwd: &str, home: &str) -> String {
+pub(crate) fn short_path(path: &str, cwd: &str, home: &str) -> String {
     let under = |base: &str| {
         let base = base.trim_end_matches('/');
         (!base.is_empty())
@@ -80,7 +80,7 @@ fn short_path(path: &str, cwd: &str, home: &str) -> String {
     path.to_string()
 }
 
-fn texts(content: &Value) -> Vec<String> {
+pub(crate) fn texts(content: &Value) -> Vec<String> {
     match content {
         Value::String(s) => vec![s.clone()],
         Value::Array(items) => items
@@ -237,7 +237,7 @@ const SECRET_WORDS: &[&str] = &[
     "credential",
 ];
 
-fn token_literal(word: &str) -> bool {
+pub(crate) fn token_literal(word: &str) -> bool {
     let w = word.trim_matches(|c: char| !c.is_ascii_alphanumeric() && c != '_' && c != '-');
     let long = w.len() >= 16;
     long && ([
@@ -260,7 +260,7 @@ fn token_literal(word: &str) -> bool {
         || (w.starts_with("eyJ") && w.matches('.').count() >= 2))
 }
 
-fn mask_pairs(line: &str) -> String {
+pub(crate) fn mask_pairs(line: &str) -> String {
     let chars: Vec<char> = line.chars().collect();
     let lower: Vec<char> = line.to_ascii_lowercase().chars().collect();
     let mut out = String::new();

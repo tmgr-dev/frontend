@@ -113,6 +113,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Session {
             command: super::SessionCmd::Summary(a),
         } => super::attach_summary::print_summary(o, &a.session, a.plain),
+        RunnerCommands::Session {
+            command: super::SessionCmd::Export(a),
+        } => super::attach_export_cmd::run(o, a),
     }
 }
 
