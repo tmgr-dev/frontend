@@ -10,4 +10,8 @@ describe('formatTime', () => {
 	])('%s seconds -> %s', (seconds, expected) => {
 		expect(formatTime(seconds).replace(/\s+/g, ' ').trim()).toBe(expected);
 	});
+
+	it.each([[undefined], [null], [NaN]])('%s -> 0 minutes', (value) => {
+		expect(formatTime(value).replace(/\s+/g, ' ').trim()).toBe('0 minutes');
+	});
 });

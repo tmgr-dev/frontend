@@ -283,7 +283,10 @@
 	const totalSeconds = computed(() =>
 		Number(
 			pagination.value?.total_seconds ||
-				tasks.value.reduce((summary, task) => task.common_time + summary, 0),
+				tasks.value.reduce(
+					(summary, task) => (task.common_time || 0) + summary,
+					0,
+				),
 		),
 	);
 

@@ -1292,7 +1292,7 @@
 			},
 			countTimeForModal() {
 				const time = this.getSelectedTasks().reduce(
-					(p, c) => p + c.common_time,
+					(p, c) => p + (c.common_time || 0),
 					0,
 				);
 				this.timeForModal = this.formatTime(time);

@@ -1162,7 +1162,7 @@
 					const tasksInColumn = column.tasks;
 					const taskCount = tasksInColumn.length;
 					const summary = tasksInColumn.reduce(
-						(acc, task) => task.common_time + acc,
+						(acc, task) => (task.common_time || 0) + acc,
 						0,
 					);
 					const summaryInHours = this.formatTime(summary);
