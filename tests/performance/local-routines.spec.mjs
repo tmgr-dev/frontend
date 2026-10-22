@@ -1,6 +1,13 @@
 import { expect, test } from '@playwright/test';
 import { desktopPage } from './desktopShell.mjs';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    sessionStorage.setItem('tmgr:tours:auto', 'true');
+    localStorage.setItem('tmgr:tours:offered:desktop.move-to-cloud', '1');
+  });
+});
+
 const shotsDir = process.env.SHOTS_DIR;
 
 const screenshot = async (page, name) => {

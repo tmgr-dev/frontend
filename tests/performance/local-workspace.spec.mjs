@@ -15,11 +15,13 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   const stored = shell.files;
   const sent = [];
   const settingsPayloads = [];
+  const scoped = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (!url.pathname.startsWith('/api/')) return;
     const path = url.pathname.replace('/api/', '');
     sent.push(path);
+    if (request.headers()['x-workspace-id']) scoped.push(path);
     if (path === 'v2/user/settings')
       settingsPayloads.push(request.postData() ?? '');
   });
@@ -31,7 +33,9 @@ test('a local workspace is created from the switcher and keeps its tasks off the
   await page.getByRole('button', { name: 'Create' }).click();
 
   await expect(page).toHaveURL(/\/local-personal\//);
+  expect(scoped.length).toBeGreaterThan(0);
   sent.length = 0;
+  scoped.length = 0;
   await page.goto('/local-personal/board');
   await expect(page.getByText('Backlog').first()).toBeVisible();
   await expect(page.getByText('In progress').first()).toBeVisible();
@@ -184,11 +188,12 @@ test('a local workspace is created from the switcher and keeps its tasks off the
 
   const workspaceCalls = sent.filter(
     (path) =>
-      !/^(user|user\/settings|v2\/user\/settings|user\/feature-toggles|workspaces|tasks\/runned|notifications(\/.*)?|broadcasting\/auth)$/.test(
+      !/^(user|user\/settings|v2\/user\/settings|user\/feature-toggles|workspaces|tasks\/runned|notifications(\/.*)?|broadcasting\/auth|onboarding|personas)$/.test(
         path,
       ),
   );
   expect(workspaceCalls).toEqual([]);
+  expect(scoped).toEqual([]);
   expect(settingsPayloads.join(' ')).not.toMatch(/"value":-\d/);
 });
 
