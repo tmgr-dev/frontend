@@ -464,6 +464,7 @@ export function useAgentChat(): UseAgentChatReturn {
 			return false;
 		}
 
+		const sentQuotes = scenario ? [] : quotes.value;
 		sending.value = true;
 		error.value = null;
 
@@ -477,14 +478,15 @@ export function useAgentChat(): UseAgentChatReturn {
 				content,
 				scenario,
 				fileIds,
-				scenario ? [] : quotes.value,
+				sentQuotes,
 			);
 
 			if (!current() || state.value.conversationId !== conversationId) {
 				return true;
 			}
 
-			if (!scenario) quotes.value = [];
+			if (!scenario)
+				quotes.value = quotes.value.filter((q) => !sentQuotes.includes(q));
 			state.value = appendPending(
 				state.value,
 				{

@@ -57,6 +57,21 @@ describe('composer quotes', () => {
 		expect(chat.quotes.value).toEqual([]);
 	});
 
+	it('keeps quotes added while the request is in flight', async () => {
+		let release: (v: unknown) => void = () => undefined;
+		mockPost.mockReturnValue(new Promise((r) => (release = r)));
+		const chat = ready();
+		chat.addQuoteDraft({ message_id: 4, text: null });
+		const pending = chat.send('hi');
+		chat.addQuoteDraft({ message_id: 8, text: 'later' });
+		release({ data: { data: { message_id: 10, pending_message_id: 11 } } });
+		await pending;
+		expect(mockPost.mock.calls[0][1].quotes).toEqual([
+			{ message_id: 4, text: null },
+		]);
+		expect(chat.quotes.value).toEqual([{ message_id: 8, text: 'later' }]);
+	});
+
 	it('omits quotes when there are none', async () => {
 		mockPost.mockResolvedValue({
 			data: { data: { message_id: 10, pending_message_id: 11 } },
