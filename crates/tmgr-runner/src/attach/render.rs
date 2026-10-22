@@ -255,9 +255,11 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
         }
     }
     if let Some(y) = sl.new_row {
+        let slot = super::view::template_slot(area);
+        let slot_x = slot.map_or(area.right(), |(x, _)| x);
         let hovered = st
             .pointer
-            .is_some_and(|(px, py)| py == y && px >= area.x && px < area.right());
+            .is_some_and(|(px, py)| py == y && px >= area.x && px < slot_x);
         let style = if hovered {
             Style::new()
                 .fg(colors().strong)
@@ -273,6 +275,19 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             style,
             area.width.saturating_sub(1),
         );
+        if let Some((x, label)) = super::view::template_slot(area) {
+            let on = st
+                .pointer
+                .is_some_and(|(px, py)| py == y && px >= x && px < area.right());
+            let s = if on {
+                Style::new()
+                    .fg(colors().strong)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                dim()
+            };
+            put(buf, x, y, label, s, area.right() - x);
+        }
         if st.sidebar_focus == Some(SidebarItem::New) {
             buf.set_style(
                 Rect::new(area.x, y, area.width, 1),
@@ -883,6 +898,18 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         if rect.is_empty() || inner.is_empty() {
             return None;
         }
+        if let PaletteMode::TemplateFields(f) = &p.mode {
+            let lw = f.labels.iter().map(|l| l.width()).max().unwrap_or(0) + 2;
+            let value = f.values.get(f.field).map_or("", String::as_str);
+            let w = query_tail(value, usize::from(inner.width).saturating_sub(lw)).width() as u16;
+            let label_w = f.labels.get(f.field).map_or(0, |l| l.width() as u16 + 2);
+            let visible = usize::from(inner.height.saturating_sub(2)).max(1);
+            let start = (f.field + 1).saturating_sub(visible);
+            return Some((
+                (inner.x + label_w + w).min(inner.right() - 1),
+                (inner.y + (f.field - start) as u16).min(inner.bottom() - 1),
+            ));
+        }
         if let PaletteMode::Form(f) = &p.mode {
             let value = if f.field == 0 { &f.name } else { &f.text };
             let w = query_tail(value, usize::from(inner.width).saturating_sub(7)).width() as u16;
@@ -1091,8 +1118,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "split right / split down",
     ),
     (
-        HelpKey::Cmds(&[Cmd::NewSession, Cmd::Prompts, Cmd::Layouts]),
-        "new session / saved prompts / named layouts",
+        HelpKey::Cmds(&[Cmd::NewSession, Cmd::Prompts, Cmd::Layouts, Cmd::Templates]),
+        "new / prompts / layouts / templates",
     ),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),
@@ -1344,6 +1371,8 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
         PaletteMode::Form(_) => " Add prompt ",
         PaletteMode::Delete(_) => " Delete prompt ",
         PaletteMode::Layouts => " Layouts ",
+        PaletteMode::Templates => " Session templates ",
+        PaletteMode::TemplateFields(_) => " Template ",
         PaletteMode::DeleteLayout(_) => " Delete layout ",
     };
     Block::bordered()
@@ -1355,6 +1384,37 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
         return;
     }
     match &p.mode {
+        PaletteMode::TemplateFields(f) => {
+            let lw = f.labels.iter().map(|l| l.width()).max().unwrap_or(0) + 2;
+            let w = usize::from(inner.width).saturating_sub(lw);
+            let visible = usize::from(inner.height.saturating_sub(2)).max(1);
+            let start = (f.field + 1).saturating_sub(visible);
+            for (i, (label, value)) in f
+                .labels
+                .iter()
+                .zip(&f.values)
+                .enumerate()
+                .skip(start)
+                .take(visible)
+            {
+                let y = inner.y + (i - start) as u16;
+                let x = put(buf, inner.x, y, &format!("{label}  "), dim(), inner.width);
+                let style = if f.field == i { Style::new() } else { dim() };
+                put(buf, x, y, query_tail(value, w), style, inner.right() - x);
+            }
+            let hint_y = inner.y + (f.labels.len().min(visible) as u16) + 1;
+            if hint_y < inner.bottom() {
+                put(
+                    buf,
+                    inner.x,
+                    hint_y,
+                    "Tab next field, Enter starts, Esc back",
+                    dim(),
+                    inner.width,
+                );
+            }
+            return;
+        }
         PaletteMode::Form(f) => {
             let w = usize::from(inner.width).saturating_sub(7);
             for (i, (label, value)) in [("Name", &f.name), ("Text", &f.text)]
@@ -1412,8 +1472,14 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
     let x = put(buf, inner.x, inner.y, "> ", dim(), inner.width);
     let tail = query_tail(&p.query, query_avail(inner));
     put(buf, x, inner.y, tail, Style::new(), inner.right() - x);
-    if matches!(p.mode, PaletteMode::Prompts | PaletteMode::Layouts) && p.query.is_empty() {
-        let hint = if p.mode == PaletteMode::Layouts {
+    if matches!(
+        p.mode,
+        PaletteMode::Prompts | PaletteMode::Layouts | PaletteMode::Templates
+    ) && p.query.is_empty()
+    {
+        let hint = if p.mode == PaletteMode::Templates {
+            "templates.toml in the config dir"
+        } else if p.mode == PaletteMode::Layouts {
             "type a name to save · Ctrl-D delete"
         } else {
             "Ctrl-E edit · Ctrl-D delete"

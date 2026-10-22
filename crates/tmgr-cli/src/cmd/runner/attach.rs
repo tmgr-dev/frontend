@@ -20,6 +20,7 @@ use super::attach_signal::{minute_of_day, settings as signal_settings, SystemNot
 use super::attach_status::{peek_worker, status_worker, PeekJob};
 use super::attach_summary::{claim, post_real, summarizer, unclaim, Generated, SummaryJob};
 use super::attach_tasks;
+use super::attach_templates;
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
 use super::run_task::Prepared;
@@ -176,6 +177,12 @@ enum Msg {
     Resumed {
         old: String,
         result: std::result::Result<RestoredRun, String>,
+    },
+    TemplateStarted {
+        result: std::result::Result<SessionInfo, SpawnErr>,
+        req: NewRequest,
+        target: String,
+        prompt: String,
     },
     LayoutStarted {
         saved: String,
@@ -365,6 +372,7 @@ struct App {
     qstore: Store,
     forking: HashSet<String>,
     fork_paste: HashMap<String, (String, Instant)>,
+    template_ids: HashMap<String, bool>,
 }
 
 type ProbeJob = (String, u32, String);
@@ -468,6 +476,12 @@ impl App {
                 target,
             } => self.on_spawned(id, result, &req, &target),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
+            Msg::TemplateStarted {
+                result,
+                req,
+                target,
+                prompt,
+            } => self.on_template_started(result, &req, &target, prompt),
             Msg::LayoutStarted {
                 saved,
                 req,
@@ -1338,6 +1352,9 @@ impl App {
             .collect();
         for id in gone {
             self.fork_paste.remove(&id);
+            if self.template_ids.remove(&id).is_some() {
+                self.notify("the session closed before the template prompt was pasted");
+            }
         }
         let ready: Vec<String> = self
             .fork_paste
@@ -1362,6 +1379,22 @@ impl App {
                 .iter()
                 .any(|r| r.id == id && r.state.kind == StateKind::Waiting);
             self.dirty = true;
+            if let Some(agent) = self.template_ids.remove(&id) {
+                if !waiting || at.elapsed() > FORK_PASTE_WAIT {
+                    self.notify("started, the template prompt was not pasted");
+                    continue;
+                }
+                let bytes = paste_bytes(&text, self.bracketed(&id));
+                if self.send_to(&id, &bytes).is_err() {
+                    self.notify("started, the template prompt was not pasted");
+                } else if self.prompt_send && agent {
+                    self.send_enter = Some((id, Instant::now() + SEND_DELAY));
+                    self.notify("template prompt sent");
+                } else {
+                    self.notify("template prompt pasted, press Enter to send");
+                }
+                continue;
+            }
             if !waiting || at.elapsed() > FORK_PASTE_WAIT {
                 self.notify("forked, the question was not pasted");
             } else if self.paste_into(&id, &text).is_ok() {
@@ -2136,6 +2169,11 @@ impl App {
                 self.switch_layout(idx);
                 Ok(None)
             }
+            PaletteEntry::Template(_) => Ok(None),
+            PaletteEntry::RunTemplate(idx, values) => {
+                self.start_template(idx, &values);
+                Ok(None)
+            }
             PaletteEntry::SaveLayout(name) => {
                 match self.view.save_layout(&name) {
                     Ok(saved) => {
@@ -2174,6 +2212,106 @@ impl App {
             if let Some(n) = self.view.notice.clone() {
                 self.notify(&n);
             }
+        }
+    }
+
+    fn start_template(&mut self, idx: usize, values: &[String]) {
+        let Some(t) = self.view.templates.get(idx).cloned() else {
+            return;
+        };
+        let launch = match attach_templates::launch(&t, values, &installed_kinds()) {
+            Ok(l) => l,
+            Err(e) => return self.notify(&e),
+        };
+        let base = self.template_folder();
+        let folder = match attach_templates::resolve_folder(launch.folder.as_deref(), &base) {
+            Ok(f) => f,
+            Err(e) => return self.notify(&e),
+        };
+        let target = self
+            .view
+            .focused_session()
+            .map(str::to_string)
+            .unwrap_or_default();
+        let content = layout(self.area(), &self.view)
+            .panes
+            .iter()
+            .find(|p| p.session == target)
+            .map(|p| p.content())
+            .unwrap_or_default();
+        let req = NewRequest {
+            kind: launch.kind,
+            folder,
+            name: None,
+            place: Place::Right,
+            task: None,
+        };
+        let (cols, rows) = spawn_size(content, req.place);
+        self.notify(&format!("starting {}...", sanitize_text(&t.name)));
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        let prompt = launch.prompt;
+        thread::spawn(move || {
+            let result = start_session(&cfg, &req, cols, rows);
+            let _ = tx.send(Msg::TemplateStarted {
+                result,
+                req,
+                target,
+                prompt,
+            });
+        });
+    }
+
+    fn template_folder(&self) -> String {
+        let home = std::env::var_os("HOME")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| "/".into());
+        let (start, pid) = match self
+            .view
+            .focused_session()
+            .and_then(|id| self.starts.get(id))
+        {
+            Some((cwd, pid)) => (Some(cwd.as_str()), *pid),
+            None => (None, 0),
+        };
+        default_folder(process_cwd(pid), start, std::env::current_dir().ok(), &home)
+    }
+
+    fn on_template_started(
+        &mut self,
+        result: std::result::Result<SessionInfo, SpawnErr>,
+        req: &NewRequest,
+        target: &str,
+        prompt: String,
+    ) {
+        self.dirty = true;
+        let info = match result {
+            Ok(info) => info,
+            Err(e) => {
+                let why = sanitize_text(&e.message).into_owned();
+                return self.notify(&format!("could not start {}: {why}", kind_label(&req.kind)));
+            }
+        };
+        if !self.view.sessions.iter().any(|r| r.id == info.id) {
+            self.view.sessions.extend(rows(std::slice::from_ref(&info)));
+        }
+        self.pending.insert(info.id.clone(), Instant::now());
+        self.starts
+            .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
+        let split = place_session(&mut self.view, target, req.place, &info.id);
+        if !prompt.trim().is_empty() {
+            self.template_ids.insert(
+                info.id.clone(),
+                matches!(req.kind, tmgr_runner::attach::SpawnKind::Agent { .. }),
+            );
+            self.fork_paste
+                .insert(info.id.clone(), (prompt, Instant::now()));
+        }
+        let name = sanitize_text(&info.name).into_owned();
+        if split {
+            self.notify(&format!("started {name}"));
+        } else {
+            self.notify(&format!("started {name}, no room for another pane"));
         }
     }
 
@@ -2579,6 +2717,11 @@ impl App {
                     if out.new_session {
                         self.open_new_session();
                     }
+                    if out.templates {
+                        if let Some(exit) = self.handle(vec![Action::Cmd(Cmd::Templates)])? {
+                            return Ok(Some(exit));
+                        }
+                    }
                     if let Some(id) = out.open_task {
                         self.open_task(&id);
                     }
@@ -2622,6 +2765,7 @@ impl App {
                             (Cmd::Palette, PaletteMode::Commands)
                                 | (Cmd::Prompts, PaletteMode::Prompts)
                                 | (Cmd::Layouts, PaletteMode::Layouts)
+                                | (Cmd::Templates, PaletteMode::Templates)
                         ) {
                             continue;
                         }
@@ -3069,6 +3213,14 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         }
     }
     let layouts_seen = attach_layouts::names(&view.layouts);
+    if let Some(dir) = attach_templates::dir() {
+        let (list, warn) = attach_templates::load(&dir);
+        view.templates = list;
+        if view.notice.is_none() {
+            view.notice = warn;
+            notice_set = view.notice.is_some();
+        }
+    }
     let web_base = {
         let cfg = tmgr_core::config::config_dir()
             .ok()
@@ -3327,6 +3479,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         qstore: Store::new(&cfg.dir),
         forking: HashSet::new(),
         fork_paste: HashMap::new(),
+        template_ids: HashMap::new(),
     };
     let flusher = crate::cmd::time::send::Background::start(cfg.dir.clone());
     let exit = event_loop(&mut app, &rx, &mut terminal);

@@ -12,5 +12,5 @@
                         │                                                        ││                                                        │
                         │                                                        ││                                                        │
                         │                                                        ││                                                        │
- + New session          ╰ BROADCAST ─────────────────────────────────────────────╯╰ only here ─────────────────────────────────────────────╯
+ + New session     tmpl ╰ BROADCAST ─────────────────────────────────────────────╯╰ only here ─────────────────────────────────────────────╯
  tmgr runner · local · broadcast on for 2 panes, Ctrl-] m picks panes, Ctrl-] B stops                                         Ctrl-] ? help
