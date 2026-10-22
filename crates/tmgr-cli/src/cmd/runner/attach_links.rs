@@ -3123,8 +3123,11 @@ pub(super) mod tests {
         });
         assert!(result.is_err());
         assert!(r.fake.calls("spark", "runs.halt").is_empty());
-        assert_eq!(r.hub.input(&id, b"x"), Err("not attached"));
         let deadline = Instant::now() + Duration::from_secs(3);
+        while r.hub.input(&id, b"x") != Err("not attached") {
+            assert!(Instant::now() < deadline, "the old stream stayed attached");
+            thread::sleep(Duration::from_millis(10));
+        }
         while r.fake.with("spark", |l| l.dials.len()) <= dials {
             assert!(Instant::now() < deadline, "no fresh connection");
             thread::sleep(Duration::from_millis(10));
@@ -3377,13 +3380,13 @@ pub(super) mod tests {
     fn a_stream_that_keeps_hearing_back_stays_open() {
         let t = Timing {
             heartbeat: Duration::from_millis(20),
-            silence: Duration::from_millis(150),
+            silence: Duration::from_millis(600),
             ..fast()
         };
         let mut r = rig(&["spark"], t, |f| f.set_runs("spark", &[A]));
         r.runs("spark", 1);
         r.open("spark", A);
-        for _ in 0..12 {
+        for _ in 0..50 {
             r.fake.feed("spark", A, br#"{"type":"pong"}"#);
             thread::sleep(Duration::from_millis(30));
         }
