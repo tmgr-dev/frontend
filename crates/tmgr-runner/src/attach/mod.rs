@@ -2,6 +2,7 @@ mod actions;
 mod attention;
 mod broadcast;
 mod chip;
+mod find;
 mod git;
 mod keys;
 mod modes;
@@ -27,6 +28,7 @@ pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
 pub use chip::{chip_text, open_urls, TaskChip};
+pub use find::{CopyState, ScrollText, SearchEdit, SearchState};
 pub use git::{
     parse_numstat, parse_pr, parse_status, valid_pr_url, GitAction, GitInfo, Pr, PrLookup,
     StatusInfo,

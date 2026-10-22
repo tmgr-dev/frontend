@@ -1,6 +1,7 @@
 use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
+use super::attach_clip::{Clipboard, SystemClipboard};
 use super::attach_git::{diff_argv, git_worker, GitJob};
-use super::attach_goto::{fork_call, fork_name, goto_call, Found, FORK_PASTE_WAIT};
+use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
 use super::attach_new::{
     default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
     prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
@@ -47,9 +48,9 @@ use tmgr_runner::attach::{
     parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
     AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, InputSplitter,
     LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit, PaletteEntry,
-    PaletteMode, PaneInfo, Place, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollState,
-    SessionRow, SessionStatus, SidebarEdit, SignalSettings, SignalTracker, SplitDir, TaskChip,
-    TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
+    PaletteMode, PaneInfo, Place, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollKey,
+    ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
+    SignalTracker, SplitDir, TaskChip, TaskOpt, ThemeKind, UsageBar, ViewState, OSC11_QUERY,
 };
 use tmgr_runner::client::{parse_event, AttachWriter, ScreenCache};
 use tmgr_runner::daemon::RunnerConfig;
@@ -170,6 +171,10 @@ enum Msg {
         result: std::result::Result<RestoredRun, String>,
     },
     Tasks(std::result::Result<Vec<TaskOpt>, String>),
+    ScrollText {
+        session: String,
+        result: std::result::Result<ScrollText, String>,
+    },
     TaskPrepared {
         id: u64,
         result: std::result::Result<Prepared, SpawnErr>,
@@ -296,6 +301,10 @@ struct App {
     session_tasks: HashMap<String, (Option<TaskRef>, u64)>,
     web_base: String,
     opener: Box<dyn Opener>,
+    clipboard: Box<dyn Clipboard>,
+    text_pending: Option<String>,
+    text_dirty: bool,
+    text_at: Instant,
     signals: SignalTracker,
     signal_cfg: SignalSettings,
     prompt_send: bool,
@@ -406,6 +415,26 @@ impl App {
                 target,
             } => self.on_spawned(id, result, &req, &target),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
+            Msg::ScrollText { session, result } => {
+                self.text_pending = None;
+                self.text_at = Instant::now();
+                self.dirty = true;
+                let active = (self.view.search.is_some() || self.view.copy.is_some())
+                    && self.view.scroll.is_some();
+                match result {
+                    Ok(text) if active && self.view.focused_session() == Some(session.as_str()) => {
+                        let rows = self.page() + 1;
+                        self.view.set_scroll_text(text, rows);
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.view.clear_find();
+                        self.view.scroll = None;
+                        self.sync_scroll_mode();
+                        self.notify(&e);
+                    }
+                }
+            }
             Msg::Tasks(result) => {
                 match result {
                     Ok(tasks) => self.view.set_new_tasks(tasks, None),
@@ -422,8 +451,11 @@ impl App {
             } => self.on_task_prepared(id, result, req, target, size),
             Msg::Server(ServerMsg::Closed { reason }) => return Ok(Some(Exit::Lost(reason))),
             Msg::Server(msg) => {
-                if self.cache.apply(&msg).is_some() {
+                if let Some(changed) = self.cache.apply(&msg) {
                     self.dirty = true;
+                    if self.view.focused_session() == Some(changed.as_str()) {
+                        self.text_dirty = true;
+                    }
                 }
                 if let Some(ev) = parse_event(&msg) {
                     if let Some(row) = self.view.sessions.iter_mut().find(|r| r.id == ev.session) {
@@ -1537,6 +1569,83 @@ impl App {
         self.notify(&resumed_notice(&info.name, run.via.as_deref()));
     }
 
+    fn begin_find(&mut self) -> Option<String> {
+        let id = self.view.focused_session().map(str::to_string)?;
+        self.view.confirm = None;
+        self.view.rename = None;
+        let saved = self.view.scroll;
+        self.leave_overlays();
+        match saved {
+            Some(s) => self.view.scroll = Some(s),
+            None => self.view.apply(Cmd::ScrollMode),
+        }
+        self.sync_scroll_max();
+        self.view.scroll.is_some().then_some(id)
+    }
+
+    fn begin_search(&mut self) {
+        self.dirty = true;
+        if self.begin_find().is_none() {
+            return;
+        }
+        self.view.copy = None;
+        self.view.open_search();
+        self.sync_scroll_mode();
+        self.request_text();
+    }
+
+    fn sync_scroll_mode(&mut self) {
+        let typing = self.view.search.as_ref().is_some_and(|s| s.input);
+        self.scroll_mode = self.view.scroll.is_some() && !typing;
+        self.splitter.set_scroll_mode(self.scroll_mode);
+    }
+
+    fn begin_copy(&mut self) {
+        self.dirty = true;
+        if self.begin_find().is_none() {
+            return;
+        }
+        if let Some(s) = self.view.search.as_mut() {
+            s.input = false;
+        }
+        let rows = self.page() + 1;
+        self.view.enter_copy(false, rows);
+        self.sync_scroll_mode();
+        self.request_text();
+    }
+
+    fn after_find(&mut self) {
+        self.dirty = true;
+        self.sync_scroll_mode();
+        if let Some(text) = self.view.take_copied() {
+            let msg = self.clipboard.copy(&text);
+            self.notify(&msg);
+        }
+        if (self.view.search.is_some() || self.view.copy.is_some()) && self.view.stext.is_none() {
+            self.request_text();
+        }
+        if let Some(n) = self.view.notice.take() {
+            self.notify(&n);
+        }
+    }
+
+    fn request_text(&mut self) {
+        let Some(session) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        if self.text_pending.as_deref() == Some(session.as_str()) {
+            return;
+        }
+        self.text_pending = Some(session.clone());
+        self.text_dirty = false;
+        let cfg = self.cfg.clone();
+        let tx = self.tx.clone();
+        thread::spawn(move || {
+            let result = text_call(&cfg, &session);
+            let _ = tx.send(Msg::ScrollText { session, result });
+        });
+    }
+
     fn page(&self) -> usize {
         let area = Rect::new(0, 0, self.size.0, self.size.1);
         let lay = layout(area, &self.view);
@@ -1817,12 +1926,27 @@ impl App {
                 Action::Paste { data, .. } if self.view.palette.is_some() => {
                     self.view.insert_palette_text(&data);
                 }
+                Action::Forward(data) if self.view.search.as_ref().is_some_and(|s| s.input) => {
+                    let rows = self.page() + 1;
+                    match self.view.edit_search(&data, rows) {
+                        SearchEdit::Editing => {}
+                        SearchEdit::Keep => self.sync_scroll_mode(),
+                        SearchEdit::Cancel => {
+                            self.view.clear_find();
+                            self.view.scroll = None;
+                        }
+                    }
+                    self.dirty = true;
+                }
+                Action::Drop(_) | Action::Paste { .. }
+                    if self.view.search.as_ref().is_some_and(|s| s.input) => {}
                 Action::Forward(data) if self.view.rename.is_some() => {
                     match self.view.edit_rename(&data) {
                         RenameEdit::Submit(id, name) => self.rename_session(&id, &name),
                         RenameEdit::Editing | RenameEdit::Done | RenameEdit::Cancel => {}
                     }
                 }
+                Action::Forward(_) if self.view.copy.is_some() => {}
                 Action::Forward(data) => {
                     self.view.pointer = None;
                     if self.view.scroll.is_some() && !self.scroll_mode {
@@ -2008,6 +2132,13 @@ impl App {
                     if self.view.qmenu.take().is_some() && cmd == Cmd::Questions {
                         continue;
                     }
+                    if self.view.search.as_ref().is_some_and(|s| s.input)
+                        && !matches!(cmd, Cmd::Search | Cmd::CopyMode)
+                    {
+                        self.view.clear_find();
+                        self.view.scroll = None;
+                        self.sync_scroll_mode();
+                    }
                     let focused = self.view.focused_session().map(str::to_string);
                     if let (Some(ctl), Some(id)) = (control_of(cmd), focused) {
                         if blocked_by_resume(&self.resuming, &id, ctl) {
@@ -2037,6 +2168,8 @@ impl App {
                                 self.request_resume(&id);
                             }
                         }
+                        Cmd::Search => self.begin_search(),
+                        Cmd::CopyMode => self.begin_copy(),
                         _ => self.view.apply(cmd),
                     }
                     if let Some(id) = removing {
@@ -2054,7 +2187,12 @@ impl App {
                 Action::Scroll(key) => {
                     self.sync_scroll_max();
                     let page = self.page();
-                    self.view.scroll_key(key, page);
+                    if key == ScrollKey::Search {
+                        self.begin_search();
+                    } else {
+                        self.view.scroll_key(key, page);
+                    }
+                    self.after_find();
                 }
             }
         }
@@ -2136,6 +2274,18 @@ impl App {
         if self.scroll_mode && self.view.scroll.is_none() {
             self.scroll_mode = false;
             self.splitter.set_scroll_mode(false);
+        }
+        if self.view.scroll.is_none() {
+            if self.view.search.is_some() || self.view.copy.is_some() || self.view.stext.is_some() {
+                self.view.clear_find();
+                self.dirty = true;
+            }
+        } else if (self.view.search.is_some() || self.view.copy.is_some())
+            && self.text_pending.is_none()
+            && self.text_dirty
+            && self.text_at.elapsed() >= Duration::from_millis(500)
+        {
+            self.request_text();
         }
         self.sync_scroll_max();
         let want = watch_ids(self.view.panes(), &self.view.sessions);
@@ -2620,6 +2770,10 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         session_tasks: HashMap::new(),
         web_base,
         opener: Box::new(SystemOpener),
+        clipboard: Box::new(SystemClipboard),
+        text_pending: None,
+        text_dirty: false,
+        text_at: Instant::now(),
         signals: SignalTracker::new(),
         signal_cfg: signal_settings(&attach_cfg),
         prompt_send: attach_cfg.prompt_send.unwrap_or(false),

@@ -1,6 +1,7 @@
 pub(crate) mod allow;
 mod attach;
 mod attach_chip;
+mod attach_clip;
 mod attach_git;
 mod attach_goto;
 mod attach_new;

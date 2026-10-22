@@ -16,6 +16,7 @@
                         │             │ g / < / >     group by tab / repo, sidebar width             │                                     │
                         │             │ r / t / G     rename (tmgr wins) / its task / git panel      │                                     │
                         │             │ B / m         broadcast typing to several panes / pick panes │                                     │
+                        │             │ / / y         search scrollback (n older / N newer) / copy m │                                     │
                         │             │ Enter / R     resume an exited session                       │                                     │
                         │             │ x / X         stop (asks first) / remove if exited           │                                     │
                         │             │ [             scroll back through history                    │                                     │
@@ -23,7 +24,6 @@
                         │             │ Ctrl-]        send a literal Ctrl-] to the session           │                                     │
                         │             │                                                              │                                     │
                         │             │ ? again closes this box                                      │                                     │
-                        │             │                                                              │                                     │
                         │             │                                                              │                                     │
                         │             │                                                              │                                     │
                         │             │                                                              │                                     │
