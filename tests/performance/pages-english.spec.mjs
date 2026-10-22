@@ -173,7 +173,11 @@ test.describe('Pages UI is English', () => {
     await page.goto('/demo/pages');
     await expect(page.getByText('Pages').first()).toBeVisible();
     await expect(page.getByText('Create page').first()).toBeVisible();
-    await expect(page.getByText('Trash').first()).toBeVisible();
+    await expect(
+      page
+        .getByTestId('pages-sidebar-section')
+        .getByRole('link', { name: 'Archive' }),
+    ).toHaveAttribute('href', '/demo/pages/_/archive');
     await expect(page.getByText('All pages').first()).toBeVisible();
     await shot(page, 'index');
     expect(await visibleText(page)).not.toMatch(CYRILLIC);
@@ -213,13 +217,13 @@ test.describe('Pages UI is English', () => {
     expect(await visibleText(page)).not.toMatch(CYRILLIC);
   });
 
-  test('trash', async ({ page }) => {
-    await page.goto('/demo/pages/_/trash');
+  test('archive', async ({ page }) => {
+    await page.goto('/demo/pages/_/archive');
     await expect(
-      page.getByRole('heading', { name: 'Pages trash' }),
+      page.getByRole('heading', { name: 'Archive', exact: true }),
     ).toBeVisible();
     await expect(page.getByText('Restore').first()).toBeVisible();
-    await shot(page, 'trash');
+    await shot(page, 'archive');
     expect(await visibleText(page)).not.toMatch(CYRILLIC);
   });
 

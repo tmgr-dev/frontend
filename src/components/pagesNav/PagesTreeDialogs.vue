@@ -34,21 +34,21 @@
 	>
 		<AlertDialogContent>
 			<AlertDialogHeader>
-				<AlertDialogTitle>Delete page?</AlertDialogTitle>
+				<AlertDialogTitle>Archive page</AlertDialogTitle>
 				<AlertDialogDescription class="[overflow-wrap:anywhere]">
-					"{{ deletingTitle }}" and all its subpages will be moved to
+					"{{ deletingTitle }}" and all its subpages will be moved to the
 					<router-link
-						:to="`/${ctx.workspaceCode.value}/pages/_/trash`"
+						:to="`/${ctx.workspaceCode.value}/pages/_/archive`"
 						class="font-medium text-foreground underline underline-offset-4 hover:text-primary dark:text-foreground dark:hover:text-primary"
 						@click="ctx.deleting.value = null"
-						>trash</router-link
+						>archive</router-link
 					>. You can restore them from there.
 				</AlertDialogDescription>
 			</AlertDialogHeader>
 			<AlertDialogFooter>
 				<AlertDialogCancel>Cancel</AlertDialogCancel>
 				<Button variant="destructive" @click="ctx.confirmDelete">
-					Move to trash
+					Archive
 				</Button>
 			</AlertDialogFooter>
 		</AlertDialogContent>

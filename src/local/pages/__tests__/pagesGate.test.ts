@@ -49,11 +49,13 @@ describe('pages entries of the persona whitelist', () => {
 		const open = new Set(entries.map((e) => `${e.method} ${e.pattern}`));
 		for (const route of [
 			'GET pages/trash',
+			'POST pages/trash/empty',
 			'POST pages/:id/move',
 			'POST pages/:id/pin',
 			'POST pages/:id/unpin',
 			'DELETE pages/:id',
 			'POST pages/:id/restore',
+			'DELETE pages/:id/permanent',
 			'POST pages/:id/versions/:version(\\d+)/restore',
 			'POST pages/:id/task-from-selection',
 			'POST pages/:id/follow',
@@ -147,10 +149,12 @@ describeSqlite('persona gate on pages routes', () => {
 		]);
 		for (const [method, url] of [
 			['GET', 'pages/trash'],
+			['POST', 'pages/trash/empty'],
 			['POST', `pages/${pageId}/move`],
 			['POST', `pages/${pageId}/pin`],
 			['DELETE', `pages/${pageId}`],
 			['POST', `pages/${pageId}/restore`],
+			['DELETE', `pages/${pageId}/permanent`],
 			['POST', `pages/${pageId}/task-from-selection`],
 			['POST', `pages/${pageId}/follow`],
 			['POST', `pages/${pageId}/versions/1/restore`],

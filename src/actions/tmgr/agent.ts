@@ -8,7 +8,9 @@ import type {
 	AgentMessage,
 	AgentPin,
 	AgentPinLimits,
+	AgentQuote,
 	PendingAction,
+	QuoteDraft,
 } from '@/types/agent';
 import {
 	normalizeAgentMessage,
@@ -126,7 +128,12 @@ export const sendAgentMessage = async (
 	content: string,
 	scenario?: string,
 	fileIds: number[] = [],
-): Promise<{ message_id: number; pending_message_id: number }> => {
+	quotes: QuoteDraft[] = [],
+): Promise<{
+	message_id: number;
+	pending_message_id: number;
+	quotes?: AgentQuote[];
+}> => {
 	const {
 		data: { data },
 	} = await $axios.post(
@@ -137,7 +144,11 @@ export const sendAgentMessage = async (
 					content,
 					timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 			  }
-			: { content, ...(fileIds.length ? { file_ids: fileIds } : {}) },
+			: {
+					content,
+					...(fileIds.length ? { file_ids: fileIds } : {}),
+					...(quotes.length ? { quotes } : {}),
+			  },
 	);
 	return data;
 };

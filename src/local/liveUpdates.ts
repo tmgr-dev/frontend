@@ -166,6 +166,7 @@ export const installLocalLiveUpdates = (
 			case 'page.created':
 			case 'page.updated':
 			case 'page.deleted':
+			case 'page.purged':
 			case 'page.restored':
 			case 'page.moved':
 				deps.invalidate(/^pages-/);

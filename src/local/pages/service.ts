@@ -1455,6 +1455,92 @@ export const restorePage = async (ctx: LocalContext, ref: string) => {
 	return assemble(ctx, restored);
 };
 
+/** Deletes an archived page with everything archived together with it; runs inside `exclusive`. */
+const purgeArchived = async (ctx: LocalContext, id: number) => {
+	const [row] = await ctx.db.select<PageRow>(
+		`SELECT * FROM pages WHERE id = ?`,
+		[id],
+	);
+	if (!row) throw pageNotFound();
+	if (row.deleted_at === null)
+		throw unprocessable('page_not_deleted', 'Page is not deleted');
+	const subtree = await ctx.db.select<{ id: number }>(
+		`WITH RECURSIVE sub (id) AS (
+			SELECT id FROM pages WHERE id = ?
+			UNION ALL SELECT p.id FROM pages p JOIN sub s ON p.parent_id = s.id WHERE p.deleted_at = ?)
+		 SELECT id FROM sub`,
+		[row.id, row.deleted_at],
+	);
+	const ids = subtree.map((r) => r.id);
+	const marks = ids.map(() => '?').join(',');
+	const files = await ctx.db.select<{ file_path: string }>(
+		`SELECT file_path FROM files WHERE page_id IN (${marks})`,
+		ids,
+	);
+	const result = await ctx.db.batch([
+		{
+			sql: `DELETE FROM plugin_page_data WHERE page_id IN (${marks})`,
+			params: ids,
+		},
+		{
+			sql: `DELETE FROM page_links WHERE target_kind = 'page' AND target_id IN (${marks})`,
+			params: ids,
+		},
+		{
+			sql: `DELETE FROM pages WHERE deleted_at = ? AND id IN (${marks})`,
+			params: [row.deleted_at, ...ids],
+			expectChanges: true,
+		},
+	]);
+	if (result.failedAt !== null) throw pageNotFound();
+	return {
+		row,
+		deleted: result.results[2].rowsAffected,
+		paths: files.map((f) => f.file_path),
+	};
+};
+
+const removeFiles = async (ctx: LocalContext, paths: string[]) => {
+	for (const path of paths) {
+		try {
+			await ctx.files.remove(path);
+		} catch (error) {
+			console.error('[pages] failed to remove a purged file', path, error);
+		}
+	}
+};
+
+export const purgePage = async (ctx: LocalContext, ref: string) => {
+	humanOnly(ctx);
+	const page = await lookup(ctx, ref, true);
+	if (!page) throw pageNotFound();
+	const { row, deleted, paths } = await exclusive(ctx.db, () =>
+		purgeArchived(ctx, page.id),
+	);
+	await removeFiles(ctx, paths);
+	emitPageEvent(ctx, 'page.purged', row, null, []);
+	return { deleted, files: paths.length };
+};
+
+export const emptyPagesTrash = async (ctx: LocalContext) => {
+	humanOnly(ctx);
+	const roots = await ctx.db.select<{ id: number }>(
+		`SELECT p.id FROM pages p WHERE p.deleted_at IS NOT NULL
+		 AND NOT EXISTS (SELECT 1 FROM pages q WHERE q.id = p.parent_id AND q.deleted_at = p.deleted_at)
+		 ORDER BY p.deleted_at DESC, p.id DESC`,
+	);
+	let purged = 0;
+	let deleted = 0;
+	for (const root of roots) {
+		const done = await exclusive(ctx.db, () => purgeArchived(ctx, root.id));
+		await removeFiles(ctx, done.paths);
+		emitPageEvent(ctx, 'page.purged', done.row, null, []);
+		purged += 1;
+		deleted += done.deleted;
+	}
+	return { purged, deleted, skipped: 0 };
+};
+
 // ───────────────────────────────────────────────────────────── files
 
 const MAX_FILE_NAME = 255;

@@ -792,9 +792,17 @@ const routes = [
 				name: 'WorkspacePages',
 			},
 			{
-				path: '_/trash',
+				path: '_/archive',
 				component: () => import('@/pages/PagesTrash.vue'),
 				name: 'WorkspacePagesTrash',
+			},
+			{
+				path: '_/trash',
+				redirect: (to) => ({
+					name: 'WorkspacePagesTrash',
+					params: to.params,
+					query: to.query,
+				}),
 			},
 			{
 				path: ':slug',

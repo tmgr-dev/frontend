@@ -6,6 +6,7 @@ import {
 	attachPageFile,
 	createPage,
 	deletePage,
+	emptyPagesTrash,
 	getPage,
 	listPages,
 	movePage,
@@ -15,6 +16,7 @@ import {
 	pageVersions,
 	pagesForTask,
 	pinPage,
+	purgePage,
 	restorePage,
 	restorePageVersion,
 	searchPages,
@@ -48,6 +50,7 @@ export const addPageRoutes = (router: LocalRouter): LocalRouter =>
 		)
 		.add('GET', 'pages/tree', ({ ctx }) => treePages(ctx))
 		.add('GET', 'pages/trash', ({ ctx }) => trashPages(ctx))
+		.add('POST', 'pages/trash/empty', ({ ctx }) => emptyPagesTrash(ctx))
 		.add('GET', 'pages/search', ({ ctx, query }) =>
 			searchPages(ctx, query.get('q'), query.get('type'), query.get('limit')),
 		)
@@ -74,6 +77,9 @@ export const addPageRoutes = (router: LocalRouter): LocalRouter =>
 		.add('DELETE', 'pages/:id', ({ ctx, params }) => deletePage(ctx, params.id))
 		.add('POST', 'pages/:id/restore', ({ ctx, params }) =>
 			restorePage(ctx, params.id),
+		)
+		.add('DELETE', 'pages/:id/permanent', ({ ctx, params }) =>
+			purgePage(ctx, params.id),
 		)
 		.add('GET', 'pages/:id/versions', ({ ctx, params }) =>
 			pageVersions(ctx, params.id),

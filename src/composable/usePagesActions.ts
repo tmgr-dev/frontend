@@ -70,7 +70,7 @@ export function usePagesActions(getWorkspaceCode: () => string | undefined) {
 			await deletePage(page.id);
 			return true;
 		} catch {
-			fail('Failed to delete page');
+			fail('Failed to archive page');
 			return false;
 		}
 	};

@@ -31,6 +31,19 @@ export interface PendingAction {
 	expires_at: string;
 }
 
+export interface AgentQuote {
+	message_id: number;
+	role: 'user' | 'assistant';
+	created_at: string;
+	text: string;
+	whole: boolean;
+}
+
+export interface QuoteDraft {
+	message_id: number;
+	text: string | null;
+}
+
 export interface AgentMessage {
 	id: number;
 	role: 'user' | 'assistant';
@@ -40,6 +53,10 @@ export interface AgentMessage {
 	created_at: string;
 	files?: AttachedFile[];
 	pending_actions?: PendingAction[];
+	duration_ms?: number | null;
+	input_tokens?: number | null;
+	output_tokens?: number | null;
+	quotes?: AgentQuote[];
 }
 
 export interface AgentConversation {
@@ -74,6 +91,9 @@ export interface AgentReplyEvent {
 	status: 'done' | 'failed';
 	content: string;
 	steps: AgentStep[];
+	duration_ms?: number | null;
+	input_tokens?: number | null;
+	output_tokens?: number | null;
 }
 
 export interface AgentConfirmationEvent {

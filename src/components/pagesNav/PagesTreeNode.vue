@@ -104,8 +104,8 @@
 						class="text-destructive focus:text-destructive"
 						@select="ctx.requestDelete(node)"
 					>
-						<Trash2 class="mr-2 h-4 w-4" />
-						<span>Delete</span>
+						<Archive class="mr-2 h-4 w-4" />
+						<span>Archive</span>
 					</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
@@ -157,6 +157,7 @@
 		type PageNode,
 	} from '@/utils/pagesTree';
 	import {
+		Archive,
 		ChevronRight,
 		Download,
 		ExternalLink,
@@ -165,7 +166,6 @@
 		Pencil,
 		Pin,
 		PinOff,
-		Trash2,
 		Upload,
 	} from 'lucide-vue-next';
 	import { computed, defineComponent, inject, type PropType } from 'vue';
@@ -176,6 +176,7 @@
 	export default defineComponent({
 		name: 'PagesTreeNode',
 		components: {
+			Archive,
 			ChevronRight,
 			DropdownMenu,
 			DropdownMenuContent,
@@ -194,7 +195,6 @@
 			Pencil,
 			Pin,
 			PinOff,
-			Trash2,
 			Upload,
 		},
 		props: {

@@ -782,6 +782,7 @@ export type PageEventType =
 	| 'page.created'
 	| 'page.updated'
 	| 'page.deleted'
+	| 'page.purged'
 	| 'page.restored'
 	| 'page.moved';
 

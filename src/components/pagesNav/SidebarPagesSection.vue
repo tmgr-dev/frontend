@@ -81,11 +81,11 @@
 			All pages
 		</router-link>
 		<router-link
-			:to="`/${workspaceCode}/pages/_/trash`"
+			:to="`/${workspaceCode}/pages/_/archive`"
 			class="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
 		>
-			<Trash2 class="h-3 w-3" />
-			Trash
+			<Archive class="h-3 w-3" />
+			Archive
 		</router-link>
 
 		<PagesTreeDialogs />
@@ -105,7 +105,7 @@
 	import { useFileDrop } from '@/composable/usePagesMarkdownIo';
 	import { usePagesTreeHost } from '@/composable/usePagesTreeHost';
 	import { PAGE_CREATE_OPTIONS, sidebarPages } from '@/utils/pagesTree';
-	import { ChevronDown, Plus, Trash2, Upload } from 'lucide-vue-next';
+	import { Archive, ChevronDown, Plus, Upload } from 'lucide-vue-next';
 	import { computed, defineComponent, toRef } from 'vue';
 	import PagesTreeDialogs from './PagesTreeDialogs.vue';
 	import PagesTreeNode from './PagesTreeNode.vue';
@@ -124,7 +124,7 @@
 			Plus,
 			SidebarGroup,
 			SidebarGroupLabel,
-			Trash2,
+			Archive,
 			Upload,
 		},
 		props: {
