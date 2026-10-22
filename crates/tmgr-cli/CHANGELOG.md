@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.36
 
 - `tmgr attach` shows usage and context. The status bar (wide terminals) ends with `5h 34% · wk 82% · cx ~8% · $1.23`: the Claude 5-hour and weekly limits, the Codex weekly limit and the cost of the focused Claude session, read from the local `tmgr usage` data only (no network, no scan, the store is opened read-only: Claude limits stay current with the `tmgr usage statusline install` hook, the cost and Codex limits with a run of `tmgr usage`). `?` means unknown, `~` means old data (a limit not updated for 30 minutes, or a cost the store has not caught up with yet); 80% and more is yellow, 95% and more is red. The bar is hidden until some usage data exists. Each Claude pane header gets `opus · ctx 68% · bypass`: the model, how full the context is (read from the transcript; the window is a guess: 200k tokens, or 1M once the context is above 200k) and the permission mode, with `bypass` in bold red. Narrow panes drop the model first, then the context. `Ctrl-] ?` explains the status bar when the terminal is tall enough.
 
