@@ -215,6 +215,7 @@ struct RealPlanner<'a> {
     ctx: &'a Ctx,
     paths: &'a Paths,
     runs: &'a RunnerRuns,
+    persona_optional_rule: Option<&'a str>,
 }
 
 const ORCHESTRATOR_PROFILE: &str = "claude-code";
@@ -339,7 +340,8 @@ impl Planner for RealPlanner<'_> {
             Gated::Ready(t) => t.claim.content_sha256.clone(),
             Gated::Refused { .. } => String::new(),
         };
-        let free = fresh_look(self.ctx, &rule, ws.id, task_id)?.free();
+        let free = fresh_look(self.ctx, &rule, ws.id, task_id)?
+            .free_with(self.persona_optional_rule == Some(rule.name.as_str()));
         Ok(PlanFresh {
             content_sha256,
             free,
@@ -505,6 +507,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, settings_id: &str) -> Result<Output> {
         ctx,
         paths: &paths,
         runs: &runs,
+        persona_optional_rule: settings.persona_optional.then_some(settings.rule.as_str()),
     };
     let usage = RealUsage {
         ctx,

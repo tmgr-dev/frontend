@@ -557,6 +557,7 @@ fn settings(tasks: &[i64], tweak: impl Fn(&mut Answers)) -> Settings {
         resume_queue: false,
         order: vec![],
         dry_run: false,
+        persona_optional: false,
     }
 }
 
@@ -2193,6 +2194,52 @@ fn the_start_policy_carries_order_limits_groups_and_team_sizes() {
         rig.fake.0.borrow().orch_starts[0].1.settings.forced_order,
         vec![3]
     );
+}
+
+#[test]
+fn the_start_policy_names_the_rule_only_when_the_persona_is_optional() {
+    for optional in [false, true] {
+        let rig = orch_rig(&[(1, "", "eco")], &[]);
+        let mut s = orch_settings(&[1]);
+        s.persona_optional = optional;
+        with_ap(&rig, &s, |ap| {
+            tick_on(ap);
+            tick_any(ap);
+        });
+        let policy = last_policy(&rig);
+        assert_eq!(policy.persona_optional_rule.is_some(), optional);
+        assert_eq!(policy.persona_optional("r", 1), optional);
+        assert!(!policy.persona_optional("r", 2));
+    }
+}
+
+#[test]
+fn the_drain_policy_names_the_rule_only_when_the_persona_is_optional() {
+    for optional in [false, true] {
+        let rig = Rig::new();
+        rig.fake.add(pickup("q1", 1, "approved", None));
+        let mut s = settings(&[1], |_| {});
+        s.persona_optional = optional;
+        with_ap(&rig, &s, tick_on);
+        let passes = rig.fake.0.borrow();
+        let policy = passes.passes.last().unwrap();
+        assert_eq!(policy.persona_optional("r", 1), optional);
+    }
+}
+
+#[test]
+fn the_queue_loop_policy_never_makes_the_persona_optional() {
+    let rig = Rig::new();
+    let mut s = queue_settings();
+    s.persona_optional = true;
+    with_ap(&rig, &s, tick_on);
+    let passes = rig.fake.0.borrow();
+    assert!(passes
+        .passes
+        .last()
+        .unwrap()
+        .persona_optional_rule
+        .is_none());
 }
 
 #[test]

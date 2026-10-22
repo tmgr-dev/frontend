@@ -28,6 +28,7 @@ pub struct Answers {
     pub team_size: u32,
     pub team_mode: ModeSetting,
     pub profile: Option<String>,
+    pub fallback_hours: f64,
 }
 
 impl Default for Answers {
@@ -49,6 +50,7 @@ impl Default for Answers {
             team_size: 3,
             team_mode: ModeSetting::Orchestrator,
             profile: None,
+            fallback_hours: 8.0,
         }
     }
 }
@@ -88,6 +90,8 @@ pub struct Settings {
     pub order: Vec<i64>,
     #[serde(default)]
     pub dry_run: bool,
+    #[serde(default)]
+    pub persona_optional: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

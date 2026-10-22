@@ -176,12 +176,16 @@ pub fn classify(task_id: i64, elig: &Eligibility, f: &Facts) -> Found {
     }
 }
 
-fn not_free(found: Found, look: impl FnOnce(&Found) -> Result<Fresh>) -> Found {
+fn not_free(
+    found: Found,
+    persona_optional: bool,
+    look: impl FnOnce(&Found) -> Result<Fresh>,
+) -> Found {
     if !found.approval.runnable() {
         return found;
     }
     let why = match look(&found) {
-        Ok(fresh) if fresh.free() => return found,
+        Ok(fresh) if fresh.free_with(persona_optional) => return found,
         Ok(fresh) => match fresh.reason() {
             "taken" => "taken by someone else".to_string(),
             "persona_missing" => "the rule's persona is not assigned to the task".to_string(),
@@ -262,6 +266,7 @@ fn discover(
     ws: &CloudWorkspace,
     cards: &[queue::Card],
     complete: bool,
+    persona_optional: bool,
 ) -> Result<(Vec<Found>, bool)> {
     let client = ctx.cloud_client()?;
     client.set_get_retries(RETRIES, RETRY_PAUSE);
@@ -290,7 +295,7 @@ fn discover(
         let one = match client.agent_run_task(id).and_then(parse_eligibility) {
             Ok(elig) => with_offer(
                 client,
-                not_free(classify(id, &elig, &facts), |f| {
+                not_free(classify(id, &elig, &facts), persona_optional, |f| {
                     queue::fresh_look(ctx, rule, ws.id, f.id)
                 }),
             ),
@@ -360,25 +365,80 @@ pub fn task_table(found: &[Found]) -> String {
 const DRY_RUN_NO_USAGE: &str =
     "No real usage number was found, so the usage limits are not applied. A dry run starts nothing.";
 
+enum UsageGate {
+    Limits(Vec<tmgr_usage::guard::GuardLimit>),
+    Fallback,
+    Unchecked,
+}
+
 fn usage_gate(
     dry_run: bool,
     tool: Option<Tool>,
     read: impl FnOnce(Tool) -> Vec<tmgr_usage::guard::GuardLimit>,
-) -> Result<(Vec<tmgr_usage::guard::GuardLimit>, bool)> {
-    let Some(tool) = tool else {
-        return if dry_run {
-            Ok((Vec::new(), false))
-        } else {
-            Err(usage::unknown_tool())
-        };
-    };
-    let found = read(tool);
+) -> UsageGate {
+    let found = tool.map(read).unwrap_or_default();
     if usage::has_real_number(&found) {
-        Ok((found, true))
+        UsageGate::Limits(found)
     } else if dry_run {
-        Ok((Vec::new(), false))
+        UsageGate::Unchecked
     } else {
-        Err(usage::refuse_without_numbers(tool))
+        UsageGate::Fallback
+    }
+}
+
+fn apply_gate(
+    gate: UsageGate,
+    handover: bool,
+    answers: &mut Answers,
+    tool: Option<Tool>,
+    err: &mut dyn Write,
+) -> Result<(Vec<tmgr_usage::guard::GuardLimit>, Option<f64>)> {
+    match gate {
+        UsageGate::Limits(limits) => Ok((limits, None)),
+        UsageGate::Unchecked => {
+            let _ = writeln!(err, "{DRY_RUN_NO_USAGE}");
+            answers.usage_guard = false;
+            Ok((Vec::new(), None))
+        }
+        UsageGate::Fallback => {
+            if handover {
+                return Err(Error::new(
+                    Kind::Conflict,
+                    "no real usage number was found and the queue loop is running, so autopilot cannot cap it",
+                )
+                .hint("turn the queue off first (tmgr queue disable), or pass --no-usage-limit"));
+            }
+            let hours = answers.fallback_hours;
+            let _ = writeln!(err, "{}", fallback_warning(tool, hours));
+            answers.usage_guard = false;
+            Ok((Vec::new(), Some(hours)))
+        }
+    }
+}
+
+fn fallback_warning(tool: Option<Tool>, hours: f64) -> String {
+    format!(
+        "No real usage number for {} was found, so the usage guard is off; autopilot stops starting new tasks after {hours} h.",
+        tool.map_or("this agent", |t| t.as_str())
+    )
+}
+
+fn parse_fallback_hours(raw: Option<&str>) -> Result<Option<f64>> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    match raw.trim().parse::<f64>() {
+        Ok(h) if h.is_finite() && h > 0.0 && h <= 168.0 => Ok(Some(h)),
+        _ => Err(Error::usage(
+            "--fallback-hours: enter a number of hours above 0 and at most 168",
+        )),
+    }
+}
+
+fn capped(max_hours: Option<f64>, fallback: Option<f64>) -> Option<f64> {
+    match (max_hours, fallback) {
+        (Some(m), Some(f)) => Some(m.min(f)),
+        (m, f) => m.or(f),
     }
 }
 
@@ -476,6 +536,8 @@ pub struct Plan {
     pub profile: String,
     pub order: Vec<String>,
     pub dry_run: bool,
+    pub fallback_hours: Option<f64>,
+    pub persona_optional: bool,
     pub limits: Vec<super::model::LimitRow>,
     pub push: Option<String>,
     pub rules_text: String,
@@ -488,10 +550,16 @@ impl Plan {
     fn to_sign(&self) -> Vec<&Found> {
         self.chosen.iter().filter(|f| f.sign.is_some()).collect()
     }
+
+    fn run_answers(&self) -> Answers {
+        let mut a = self.answers.clone();
+        a.max_hours = capped(a.max_hours, self.fallback_hours);
+        a
+    }
 }
 
 fn limit_text(plan: &Plan) -> Vec<String> {
-    let a = &plan.answers;
+    let a = &plan.run_answers();
     let mut lines = Vec::new();
     if a.usage_guard {
         lines.push(format!(
@@ -514,6 +582,10 @@ fn limit_text(plan: &Plan) -> Vec<String> {
         ));
     } else if plan.dry_run {
         lines.push("Usage      not checked (dry run)".into());
+    } else if let Some(h) = plan.fallback_hours {
+        lines.push(format!(
+            "Usage      no real usage number: guard OFF, new tasks stop after {h} h"
+        ));
     } else {
         lines.push("Usage      NO usage limit: the guard is off".into());
     }
@@ -837,6 +909,7 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         return Err(Error::usage("autopilot needs a rule for a cloud workspace")
             .hint("tmgr queue rules add --help"));
     }
+    let fallback_flag = parse_fallback_hours(args.fallback_hours.as_deref())?;
     let handover = running_loop()?;
     if args.dry_run && handover {
         return Err(Error::new(
@@ -874,7 +947,15 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
     let (cards, complete) = cloud.list_cards(&rule, &ws)?;
     let cards = narrow_cards(cards, args.only.as_deref())?;
     let _ = writeln!(err, "Checking {} tasks...", cards.len());
-    let (found, complete) = discover(ctx, &cloud, &rule, &ws, &cards, complete)?;
+    let (found, complete) = discover(
+        ctx,
+        &cloud,
+        &rule,
+        &ws,
+        &cards,
+        complete,
+        !args.with_persona,
+    )?;
     let _ = writeln!(err, "Tasks found for rule {}:", rule.name);
     if found.is_empty() {
         return Err(Error::usage(format!(
@@ -903,16 +984,17 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         &mut stdin.lock(),
         &mut err,
     )?;
+    if let Some(h) = fallback_flag {
+        draft.answers.fallback_hours = h;
+    }
     draft.restrict(None, args.skip.as_deref(), args.order.as_deref())?;
     let profile = draft.profile().to_string();
     let tool = agent_tool(&profile);
+    let mut fallback_hours = None;
     let limits = if guard {
-        let (limits, checked) =
-            usage_gate(args.dry_run, tool, |t| usage::read(&usage::Real, t, now))?;
-        if !checked {
-            let _ = writeln!(err, "{DRY_RUN_NO_USAGE}");
-            draft.answers.usage_guard = false;
-        }
+        let gate = usage_gate(args.dry_run, tool, |t| usage::read(&usage::Real, t, now));
+        let (limits, hours) = apply_gate(gate, handover, &mut draft.answers, tool, &mut err)?;
+        fallback_hours = hours;
         limits
     } else {
         Vec::new()
@@ -949,6 +1031,8 @@ pub fn run(ctx: &Ctx, cli: &Cli, args: &StartArgs) -> Result<Output> {
         profile,
         order: draft.order.clone(),
         dry_run: args.dry_run,
+        fallback_hours,
+        persona_optional: !args.with_persona,
         limits: usage::rows(&limits, soft, hard),
         push: push_note(ctx),
         rules_text: queue::rules_summary(&shown.file),
@@ -1053,7 +1137,7 @@ fn launch(
     let settings = Settings {
         id: id.clone(),
         created_at: Utc::now(),
-        answers: plan.answers.clone(),
+        answers: plan.run_answers(),
         rule: plan.rule.name.clone(),
         agent: plan
             .tool
@@ -1071,6 +1155,7 @@ fn launch(
         resume_queue: handover,
         order,
         dry_run: plan.dry_run,
+        persona_optional: plan.persona_optional,
     };
     store.save_settings(&settings)?;
     if !plan.dry_run {
@@ -1236,16 +1321,16 @@ mod tests {
 
     #[test]
     fn a_task_without_the_rule_persona_is_refused_and_never_signed() {
-        let f = not_free(signable(), |_| Ok(fresh(false, false)));
+        let f = not_free(signable(), false, |_| Ok(fresh(false, false)));
         assert!(f.sign.is_none());
         assert!(matches!(&f.approval, Approval::Refused(w) if w.contains("persona")));
     }
 
     #[test]
     fn a_taken_task_is_refused_and_a_free_one_stays_signable() {
-        let f = not_free(signable(), |_| Ok(fresh(true, true)));
+        let f = not_free(signable(), false, |_| Ok(fresh(true, true)));
         assert!(matches!(&f.approval, Approval::Refused(w) if w.contains("taken")));
-        assert!(not_free(signable(), |_| Ok(fresh(true, false)))
+        assert!(not_free(signable(), false, |_| Ok(fresh(true, false)))
             .sign
             .is_some());
     }
@@ -1380,6 +1465,8 @@ mod tests {
             profile: "claude-code".into(),
             order: vec![],
             dry_run: false,
+            fallback_hours: None,
+            persona_optional: true,
             limits: vec![],
             push: Some("push notifications are off".into()),
             rules_text: "Rules:\n  tm: TM project tm".into(),
@@ -1416,15 +1503,110 @@ mod tests {
         assert!(s.contains("NO usage limit"));
     }
 
+    fn gate_run(
+        dry_run: bool,
+        tool: Option<Tool>,
+        handover: bool,
+        answers: &mut Answers,
+    ) -> (Result<Option<f64>>, String) {
+        let gate = usage_gate(dry_run, tool, |_| Vec::new());
+        let mut out = Vec::new();
+        let r = apply_gate(gate, handover, answers, tool, &mut out).map(|(_, h)| h);
+        (r, String::from_utf8(out).unwrap())
+    }
+
     #[test]
-    fn a_dry_run_needs_no_usage_number_but_a_real_run_does() {
-        let none = |_: Tool| Vec::new();
-        let (limits, checked) = usage_gate(true, Some(Tool::Claude), none).unwrap();
-        assert!(limits.is_empty() && !checked);
-        assert!(usage_gate(true, None, none).is_ok());
-        let e = usage_gate(false, Some(Tool::Claude), none).unwrap_err();
-        assert!(e.message.contains("no real usage number"), "{}", e.message);
-        assert!(usage_gate(false, None, none).is_err());
+    fn a_dry_run_needs_no_usage_number_and_stays_unchecked() {
+        for tool in [Some(Tool::Claude), None] {
+            let mut a = Answers::default();
+            let (r, said) = gate_run(true, tool, false, &mut a);
+            assert_eq!(r.unwrap(), None);
+            assert!(!a.usage_guard);
+            assert!(said.contains("A dry run starts nothing"));
+        }
+    }
+
+    #[test]
+    fn no_number_falls_back_to_a_time_limit_instead_of_an_error() {
+        let mut a = Answers::default();
+        let (r, said) = gate_run(false, Some(Tool::Claude), false, &mut a);
+        assert_eq!(r.unwrap(), Some(8.0));
+        assert!(!a.usage_guard);
+        assert_eq!(
+            said.trim(),
+            "No real usage number for claude was found, so the usage guard is off; autopilot stops starting new tasks after 8 h."
+        );
+        let mut a = Answers {
+            fallback_hours: 3.0,
+            ..Answers::default()
+        };
+        assert_eq!(
+            gate_run(false, Some(Tool::Codex), false, &mut a).0.unwrap(),
+            Some(3.0)
+        );
+        let mut a = Answers::default();
+        let (r, said) = gate_run(false, None, false, &mut a);
+        assert_eq!(r.unwrap(), Some(8.0));
+        assert!(said.contains("for this agent"));
+    }
+
+    #[test]
+    fn the_fallback_is_refused_when_a_running_queue_loop_would_resume_uncapped() {
+        let mut a = Answers::default();
+        let (r, _) = gate_run(false, Some(Tool::Claude), true, &mut a);
+        let e = r.unwrap_err();
+        assert!(e.message.contains("cannot cap it"), "{}", e.message);
+        let hint = e.hint.unwrap();
+        assert!(hint.contains("tmgr queue disable") && hint.contains("--no-usage-limit"));
+        let mut a = Answers::default();
+        assert_eq!(gate_run(true, None, true, &mut a).0.unwrap(), None);
+    }
+
+    #[test]
+    fn the_cap_applies_to_the_run_and_never_to_the_remembered_answers() {
+        for (own, fallback, want) in [
+            (None, Some(8.0), Some(8.0)),
+            (Some(2.0), Some(8.0), Some(2.0)),
+            (Some(20.0), Some(8.0), Some(8.0)),
+            (Some(20.0), None, Some(20.0)),
+            (None, None, None),
+        ] {
+            let mut p = plan(false, false);
+            p.answers.max_hours = own;
+            p.fallback_hours = fallback;
+            assert_eq!(p.run_answers().max_hours, want);
+            assert_eq!(p.answers.max_hours, own);
+        }
+    }
+
+    #[test]
+    fn the_summary_shows_the_fallback_and_the_effective_hours() {
+        let mut p = plan(false, false);
+        p.fallback_hours = Some(8.0);
+        let s = summary_text(&p);
+        assert!(s.contains("no real usage number: guard OFF, new tasks stop after 8 h"));
+        assert!(s.contains("hours: 8,"));
+        assert!(!s.contains("NO usage limit"));
+    }
+
+    #[test]
+    fn fallback_hours_are_validated() {
+        assert_eq!(parse_fallback_hours(None).unwrap(), None);
+        assert_eq!(parse_fallback_hours(Some("3")).unwrap(), Some(3.0));
+        assert_eq!(parse_fallback_hours(Some("168")).unwrap(), Some(168.0));
+        for bad in ["0", "-1", "169", "abc", "NaN", "inf", ""] {
+            assert!(parse_fallback_hours(Some(bad)).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_persona_is_optional_only_when_the_flag_allows_it() {
+        let optional = not_free(signable(), true, |_| Ok(fresh(false, false)));
+        assert!(optional.approval.runnable());
+        let required = not_free(signable(), false, |_| Ok(fresh(false, false)));
+        assert!(matches!(&required.approval, Approval::Refused(w) if w.contains("persona")));
+        let taken = not_free(signable(), true, |_| Ok(fresh(false, true)));
+        assert!(matches!(&taken.approval, Approval::Refused(w) if w.contains("taken")));
     }
 
     fn found_with(id: i64, key: &str) -> Found {

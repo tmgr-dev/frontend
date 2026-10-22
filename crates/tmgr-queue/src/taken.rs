@@ -19,7 +19,11 @@ pub struct Fresh {
 
 impl Fresh {
     pub fn free(&self) -> bool {
-        self.holders.is_empty() && self.status_ok && self.has_persona
+        self.free_with(false)
+    }
+
+    pub fn free_with(&self, persona_optional: bool) -> bool {
+        self.holders.is_empty() && self.status_ok && (self.has_persona || persona_optional)
     }
 
     pub fn reason(&self) -> &'static str {
@@ -184,6 +188,32 @@ pub trait FreshTask {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn free_with_truth_table() {
+        let h = vec![Holder {
+            name: "x".into(),
+            kind: "persona",
+        }];
+        for (holders, status_ok, has_persona, optional, want) in [
+            (vec![], true, true, false, true),
+            (vec![], true, false, false, false),
+            (vec![], true, false, true, true),
+            (vec![], false, false, true, false),
+            (h.clone(), true, true, true, false),
+            (h, true, false, true, false),
+        ] {
+            let f = Fresh {
+                holders,
+                status_ok,
+                has_persona,
+            };
+            assert_eq!(f.free_with(optional), want);
+            if !optional {
+                assert_eq!(f.free(), want);
+            }
+        }
+    }
 
     fn facts<'a>() -> Facts<'a> {
         Facts {

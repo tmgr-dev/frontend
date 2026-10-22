@@ -744,6 +744,7 @@ impl Autopilot<'_> {
                 .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
             only: Some(only),
             plan: Some(plan),
+            persona_optional_rule: self.s.persona_optional.then(|| self.s.rule.clone()),
         }
     }
 

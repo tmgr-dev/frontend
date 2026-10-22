@@ -740,6 +740,7 @@ impl<'a> Autopilot<'a> {
                 .map(|m| (m as usize).saturating_sub(self.started_ids.len())),
             only: Some(self.s.tasks.clone()),
             plan,
+            persona_optional_rule: self.s.persona_optional.then(|| self.s.rule.clone()),
         }
     }
 
@@ -1681,7 +1682,13 @@ impl<'a> Autopilot<'a> {
         let written = if self.queue_mode {
             let mut v = serde_json::to_value(&doc).unwrap_or(Value::Null);
             if let Some(settings) = v.get_mut("settings").and_then(Value::as_object_mut) {
-                for key in ["max_teams", "team_size", "team_mode", "profile"] {
+                for key in [
+                    "max_teams",
+                    "team_size",
+                    "team_mode",
+                    "profile",
+                    "fallback_hours",
+                ] {
                     settings.remove(key);
                 }
             }

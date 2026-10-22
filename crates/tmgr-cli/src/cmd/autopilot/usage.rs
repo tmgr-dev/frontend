@@ -1,5 +1,4 @@
 use chrono::{DateTime, Duration, Utc};
-use tmgr_core::error::{Error, Kind};
 use tmgr_usage::cost::Billing;
 use tmgr_usage::guard::{guard_limits, GuardLimit};
 use tmgr_usage::limits::LimitSnapshot;
@@ -89,25 +88,6 @@ pub fn read(source: &dyn Source, tool: Tool, now: DateTime<Utc>) -> Vec<GuardLim
 
 pub fn has_real_number(rows: &[GuardLimit]) -> bool {
     rows.iter().any(|l| l.used_pct.is_some())
-}
-
-pub fn refuse_without_numbers(tool: Tool) -> Error {
-    Error::new(
-        Kind::Conflict,
-        format!(
-            "no real usage number for {} was found, so the usage limits cannot be applied",
-            tool.as_str()
-        ),
-    )
-    .hint("start an interactive session of that tool and retry, or pass --no-usage-limit to run without the guard")
-}
-
-pub fn unknown_tool() -> Error {
-    Error::new(
-        Kind::Conflict,
-        "the agent of this rule is neither claude nor codex, so its usage cannot be read",
-    )
-    .hint("pass --no-usage-limit to run without the guard")
 }
 
 pub fn rows(limits: &[GuardLimit], soft: Option<u32>, hard: Option<u32>) -> Vec<LimitRow> {
@@ -225,12 +205,5 @@ mod tests {
         };
         assert!(read(&f, Tool::Claude, now()).is_empty());
         assert!(has_real_number(&read(&f, Tool::Codex, now())));
-    }
-
-    #[test]
-    fn nothing_known_is_refused_with_the_way_out() {
-        let e = refuse_without_numbers(Tool::Codex);
-        assert!(e.message.contains("no real usage number for codex"));
-        assert!(e.hint.unwrap().contains("--no-usage-limit"));
     }
 }

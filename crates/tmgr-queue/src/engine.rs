@@ -67,6 +67,7 @@ pub struct StartPolicy {
     pub max_new_starts: Option<usize>,
     pub only: Option<BTreeSet<i64>>,
     pub plan: Option<Arc<TaskPlan>>,
+    pub persona_optional_rule: Option<String>,
 }
 
 impl Default for StartPolicy {
@@ -77,6 +78,7 @@ impl Default for StartPolicy {
             max_new_starts: None,
             only: None,
             plan: None,
+            persona_optional_rule: None,
         }
     }
 }
@@ -94,6 +96,11 @@ pub fn effective_rule(rule: &Rule, policy: &StartPolicy, _task_id: i64) -> Rule 
 }
 
 impl StartPolicy {
+    pub fn persona_optional(&self, rule: &str, task_id: i64) -> bool {
+        self.persona_optional_rule.as_deref() == Some(rule)
+            && self.only.as_ref().is_some_and(|o| o.contains(&task_id))
+    }
+
     fn selects(&self, task_id: i64) -> bool {
         self.only.as_ref().is_none_or(|o| o.contains(&task_id))
     }
@@ -697,7 +704,9 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
                     Status::PendingApproval | Status::Approved
                 )
         }) {
-            if deps.fresh.look(rule, c.task).is_ok_and(|f| !f.has_persona) {
+            if deps.fresh.look(rule, c.task).is_ok_and(|f| {
+                !f.has_persona && !deps.policy.persona_optional(&rule.name, c.task.task_id)
+            }) {
                 let id = pass.state.pickups[i].id.clone();
                 pass.set(
                     i,
@@ -716,7 +725,7 @@ fn scan_rule(pass: &mut Pass, rule: &Rule, deps: &Deps) -> Result<Vec<Candidate>
         }
         if existing.is_none() {
             match deps.fresh.look(rule, c.task) {
-                Ok(f) if f.free() => {
+                Ok(f) if f.free_with(deps.policy.persona_optional(&rule.name, c.task.task_id)) => {
                     pass.state.taken_notes.remove(&note_key(rule, c.task));
                 }
                 Ok(f) => {
@@ -1019,7 +1028,7 @@ fn start_phase(
             deps.fresh.look(rule, task)
         };
         match looked {
-            Ok(f) if f.free() => {
+            Ok(f) if f.free_with(deps.policy.persona_optional(&rule.name, task.task_id)) => {
                 pass.state.taken_notes.remove(&note_key(rule, task));
             }
             Ok(f) => {
@@ -2386,6 +2395,73 @@ mod tests {
         assert!(fx.pickups().is_empty());
         assert!(fx.fresh.comments.borrow().is_empty());
         assert_eq!(fx.audit_events("skipped"), 1);
+    }
+
+    fn optional(rule: &str, only: &[i64]) -> StartPolicy {
+        StartPolicy {
+            persona_optional_rule: Some(rule.into()),
+            only: Some(only.iter().copied().collect()),
+            ..StartPolicy::default()
+        }
+    }
+
+    #[test]
+    fn a_selected_task_without_the_persona_starts_for_the_optional_rule() {
+        let fx = cloud_fx();
+        fx.fresh.persona_missing_from.set(1);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass_with(optional("r1", &[1])).unwrap();
+        assert_eq!(fx.runs.requests.borrow().len(), 1);
+    }
+
+    #[test]
+    fn another_rule_or_an_unselected_task_still_needs_the_persona() {
+        for policy in [optional("other", &[1]), optional("r1", &[2])] {
+            let fx = cloud_fx();
+            fx.fresh.persona_missing_from.set(1);
+            fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+            fx.pass_with(policy).unwrap();
+            assert!(fx.runs.requests.borrow().is_empty());
+            assert!(fx.pickups().is_empty());
+        }
+    }
+
+    #[test]
+    fn the_default_policy_still_skips_a_task_without_the_persona() {
+        let fx = cloud_fx();
+        fx.fresh.persona_missing_from.set(1);
+        fx.cloud.tasks.replace(vec![signed(1, "do it")]);
+        fx.pass_with(StartPolicy::default()).unwrap();
+        assert!(fx.runs.requests.borrow().is_empty());
+        assert_eq!(fx.audit_events("skipped"), 1);
+    }
+
+    #[test]
+    fn a_persona_removed_after_approval_does_not_expire_a_selected_task() {
+        let fx = Fx::new(|r| {
+            r.auto = true;
+            r.hours = Some("22-06".into());
+        });
+        fx.source.0.replace(vec![cand(1, "do it")]);
+        fx.pass().unwrap();
+        fx.fresh.persona_missing_from.set(fx.fresh.looks.get() + 1);
+        fx.pass_with(optional("r1", &[1])).unwrap();
+        assert_eq!(fx.pickups()[0].status, Status::Approved);
+        assert_eq!(fx.audit_events("skipped_taken"), 0);
+    }
+
+    #[test]
+    fn persona_optional_only_matches_the_named_rule_and_selected_ids() {
+        let p = optional("r1", &[1, 2]);
+        assert!(p.persona_optional("r1", 1));
+        assert!(!p.persona_optional("r1", 3));
+        assert!(!p.persona_optional("r2", 1));
+        let open = StartPolicy {
+            persona_optional_rule: Some("r1".into()),
+            ..StartPolicy::default()
+        };
+        assert!(!open.persona_optional("r1", 1));
+        assert!(!StartPolicy::default().persona_optional("r1", 1));
     }
 
     #[test]
