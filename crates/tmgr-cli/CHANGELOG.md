@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.38
 
 - `Ctrl-] B` in `tmgr attach` turns broadcast on and off. While it is on and the focused pane is marked, what you type (text, Enter, Tab, Backspace), paste or drop into it also goes to the other marked panes; keys such as Ctrl-C, Esc and the arrows stay in the focused pane. A marked pane shows a reverse `BROADCAST` label on its bottom border, the others `not sent` (`only here` for the focused one; `BC`, `--` and `1` in narrow panes). Broadcast starts with every visible agent pane that is working or waiting, and leaves out panes that are starting, blocked, exited, asking a question or needing you (a permission prompt) and plain shells started from the form, so a prompt is never answered by accident. `Ctrl-] m`, or a click on a pane's label, adds or drops a pane; one you add by hand receives even if it asks or is a shell, an exited one never does. With the pane zoomed only it receives. Commands, the stop and interrupt buttons and their confirmations never fan out. Broadcast is never saved and is off in every new attach.
 
