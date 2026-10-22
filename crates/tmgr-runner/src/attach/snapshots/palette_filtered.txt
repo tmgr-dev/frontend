@@ -7,6 +7,7 @@
                   │ Previous tab                                        Ctrl-] P │                 │
                   │ Previous session                                    Ctrl-] p │                 │
                   │ Remove (close) the focused exited session           Ctrl-] X │                 │
+                  │ Session templates: start an agent with a prepared p Ctrl-] T │                 │
                   │ New session (claude, codex, shell, ...)             Ctrl-] c │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Search the focused pane's scrollback                Ctrl-] / │                 │
@@ -19,6 +20,5 @@
                   │ Make the sidebar narrower                           Ctrl-] < │                 │
                   │ Pick or drop the focused pane as a broadcast target Ctrl-] m │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
-                  │ Open the focused session's task                     Ctrl-] t │                 │
- + New session    │ Session summary: preview, then post to the task     Ctrl-] S │─────────────────╯
+ + New session    │ Open the focused session's task                     Ctrl-] t │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

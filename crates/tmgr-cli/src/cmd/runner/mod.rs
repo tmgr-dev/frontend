@@ -15,6 +15,7 @@ mod attach_signal;
 mod attach_status;
 mod attach_summary;
 mod attach_tasks;
+mod attach_templates;
 mod attach_title;
 mod attach_usage;
 pub(crate) mod bind;

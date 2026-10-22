@@ -12,6 +12,7 @@ use super::prompts::Prompt;
 use super::qmenu::{GotoMark, QEdit, QMenu};
 use super::signal::Need;
 use super::status::{Peek, SessionStatus};
+use super::templates::Template;
 use super::theme::ThemeKind;
 use super::title::AgentTitle;
 use super::tree::{neighbour, Border, Nav, Node, SplitDir, MAX_LEAVES, RESIZE_STEP};
@@ -145,6 +146,7 @@ pub struct ViewState {
     pub summary_queue: std::collections::VecDeque<super::summary::SummaryDraft>,
     pub prompts: Vec<Prompt>,
     pub layouts: Vec<SavedLayout>,
+    pub templates: Vec<Template>,
     pub kinds: HashMap<String, String>,
     pub layout_offer: Option<LayoutOffer>,
     pub layout_restore: Option<LayoutRestore>,
@@ -384,6 +386,7 @@ impl ViewState {
             summary_queue: std::collections::VecDeque::new(),
             prompts: Vec::new(),
             layouts: Vec::new(),
+            templates: Vec::new(),
             kinds: HashMap::new(),
             layout_offer: None,
             layout_restore: None,
@@ -1256,6 +1259,11 @@ impl ViewState {
                     self.open_layouts();
                 }
             }
+            Cmd::Templates => {
+                if self.palette.take().is_none() {
+                    self.open_templates();
+                }
+            }
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
@@ -1530,7 +1538,10 @@ impl ViewState {
             if contains(sb, col, row) {
                 let sl = self.sidebar_layout(sb);
                 if sl.new_row == Some(row) {
-                    return Hit::NewSession;
+                    return match template_slot(sb) {
+                        Some((x, _)) if col >= x => Hit::Templates,
+                        _ => Hit::NewSession,
+                    };
                 }
                 if row == sb.y {
                     return Hit::Filter;
@@ -1633,6 +1644,7 @@ impl ViewState {
             | Hit::Broadcast(_)
             | Hit::Sub(..)
             | Hit::Filter
+            | Hit::Templates
             | Hit::NewSession) => Some(h),
             _ => None,
         }
@@ -1861,6 +1873,11 @@ impl ViewState {
                 if ev.is_left_press() {
                     self.open_filter();
                     out.redraw = true;
+                }
+            }
+            Hit::Templates => {
+                if ev.is_left_press() {
+                    out.templates = true;
                 }
             }
             Hit::None => {}
@@ -2234,6 +2251,7 @@ pub struct MouseOut {
     pub control: Option<(String, Control)>,
     pub palette: Option<PaletteEntry>,
     pub new_session: bool,
+    pub templates: bool,
     pub open_task: Option<String>,
     pub git: Option<super::git::GitAction>,
     pub summary: Option<super::summary::SummaryAction>,
@@ -2255,9 +2273,23 @@ pub enum Hit {
     Broadcast(String),
     Sub(String, String),
     Filter,
+    Templates,
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,
+}
+
+pub fn template_slot(sidebar: Rect) -> Option<(u16, &'static str)> {
+    if sidebar.width < 20 {
+        return None;
+    }
+    let label = if sidebar.width >= 27 {
+        "templates"
+    } else {
+        "tmpl"
+    };
+    let x = sidebar.right().checked_sub(label.len() as u16 + 1)?;
+    Some((x, label))
 }
 
 fn sidebar_cap(cols: u16) -> u16 {

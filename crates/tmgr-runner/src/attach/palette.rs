@@ -21,6 +21,8 @@ pub enum PaletteMode {
     Delete(usize),
     Layouts,
     DeleteLayout(usize),
+    Templates,
+    TemplateFields(super::templates::TemplateForm),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -38,6 +40,8 @@ pub enum PaletteEntry {
     NewPrompt,
     Layout(usize),
     SaveLayout(String),
+    Template(usize),
+    RunTemplate(usize, Vec<String>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,6 +87,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::BroadcastMark => "select target pane broadcast",
         Cmd::NeedsYou => "attention waiting permission question alert",
         Cmd::Subagents => "agents tasks background peek",
+        Cmd::Templates => "recipe preset review pr ci tests explain start agent prompt",
         Cmd::Layouts => "workspace arrangement tabs save restore switch",
         Cmd::Filter => "search find sidebar project folder branch",
         _ => "",
@@ -192,10 +197,21 @@ impl ViewState {
         let Some(p) = &self.palette else {
             return Vec::new();
         };
-        match p.mode {
+        match &p.mode {
             PaletteMode::Commands => {}
             PaletteMode::Prompts => return self.prompt_entries(&p.query),
             PaletteMode::Layouts => return self.layout_entries(&p.query),
+            PaletteMode::Templates => return self.template_entries(&p.query),
+            PaletteMode::TemplateFields(f) => {
+                return (0..=f.labels.len())
+                    .map(|_| RowView {
+                        label: String::new(),
+                        right: String::new(),
+                        hits: Vec::new(),
+                        entry: PaletteEntry::Template(f.index),
+                    })
+                    .collect()
+            }
             PaletteMode::Form(_) | PaletteMode::Delete(_) | PaletteMode::DeleteLayout(_) => {
                 return Vec::new()
             }
@@ -313,6 +329,95 @@ impl ViewState {
         rows
     }
 
+    fn template_entries(&self, query: &str) -> Vec<RowView> {
+        let items: Vec<(usize, &super::templates::Template)> =
+            self.templates.iter().enumerate().collect();
+        tmgr_fuzzy::rank(query, items, |(_, t)| format!("{} {}", t.name, t.prompt))
+            .into_iter()
+            .map(|(i, t)| RowView {
+                hits: if query.is_empty() {
+                    Vec::new()
+                } else {
+                    tmgr_fuzzy::matched(query, &t.name)
+                },
+                label: t.name.clone(),
+                right: t.prompt.chars().take(28).collect(),
+                entry: PaletteEntry::Template(i),
+            })
+            .collect()
+    }
+
+    pub fn open_templates(&mut self) {
+        self.palette = Some(Palette {
+            mode: PaletteMode::Templates,
+            ..Palette::default()
+        });
+        self.help = false;
+        self.grab = None;
+    }
+
+    fn edit_template_form(&mut self, data: &[u8]) -> PaletteEdit {
+        let mut i = 0;
+        while i < data.len() {
+            let Some(PaletteMode::TemplateFields(form)) =
+                self.palette.as_mut().map(|p| &mut p.mode)
+            else {
+                break;
+            };
+            match data[i] {
+                0x1b => {
+                    let (key, used) = esc_key(&data[i..]);
+                    if used == 1 && data.len() == i + 1 {
+                        if let Some(p) = self.palette.as_mut() {
+                            p.mode = PaletteMode::Templates;
+                        }
+                        return PaletteEdit::Editing;
+                    }
+                    i += used;
+                    let n = form.values.len();
+                    match key {
+                        Key::Up => form.field = (form.field + n - 1) % n,
+                        Key::Down => form.field = (form.field + 1) % n,
+                        Key::Other => {}
+                    }
+                }
+                b'\t' => {
+                    i += 1;
+                    form.field = (form.field + 1) % form.values.len();
+                }
+                b'\r' | b'\n' => {
+                    i += 1;
+                    if let Some(empty) = form.first_empty() {
+                        form.field = empty;
+                        continue;
+                    }
+                    let (index, values) = (form.index, form.values.clone());
+                    self.palette = None;
+                    return PaletteEdit::Run(PaletteEntry::RunTemplate(index, values));
+                }
+                0x7f | 0x08 => {
+                    i += 1;
+                    form.active().pop();
+                }
+                0x15 => {
+                    i += 1;
+                    form.active().clear();
+                }
+                _ => {
+                    let (c, used) = next_char(&data[i..]);
+                    i += used;
+                    if let Some(c) = c.filter(|c| !c.is_control()) {
+                        let field = form.active();
+                        if field.chars().count() < super::templates::MAX_VALUE {
+                            field.push(c);
+                        }
+                    }
+                }
+            }
+        }
+        PaletteEdit::Editing
+    }
+
     pub fn open_layouts(&mut self) {
         self.palette = Some(Palette {
             mode: PaletteMode::Layouts,
@@ -345,6 +450,17 @@ impl ViewState {
     fn activate(&mut self, entry: PaletteEntry) -> Option<PaletteEntry> {
         if entry == PaletteEntry::NewPrompt {
             self.open_form(None);
+            return None;
+        }
+        if let PaletteEntry::Template(i) = entry {
+            let t = self.templates.get(i).cloned()?;
+            if t.fields.is_empty() {
+                self.palette = None;
+                return Some(PaletteEntry::RunTemplate(i, Vec::new()));
+            }
+            if let Some(p) = self.palette.as_mut() {
+                p.mode = PaletteMode::TemplateFields(super::templates::TemplateForm::new(i, &t));
+            }
             return None;
         }
         if entry == PaletteEntry::SaveLayout(String::new()) {
@@ -470,6 +586,7 @@ impl ViewState {
             Some(PaletteMode::Form(_)) => return self.edit_prompt_form(data),
             Some(PaletteMode::Delete(idx)) => return self.edit_prompt_delete(data, idx),
             Some(PaletteMode::DeleteLayout(idx)) => return self.edit_layout_delete(data, idx),
+            Some(PaletteMode::TemplateFields(_)) => return self.edit_template_form(data),
             _ => {}
         }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
@@ -579,6 +696,18 @@ impl ViewState {
             }
             return;
         }
+        if let PaletteMode::TemplateFields(form) = &mut p.mode {
+            let text = String::from_utf8_lossy(data)
+                .replace("\x1b[200~", "")
+                .replace("\x1b[201~", "");
+            let field = form.active();
+            for c in text.chars().map(|c| if c.is_control() { ' ' } else { c }) {
+                if field.chars().count() < super::templates::MAX_VALUE {
+                    field.push(c);
+                }
+            }
+            return;
+        }
         if matches!(
             p.mode,
             PaletteMode::Delete(_) | PaletteMode::DeleteLayout(_)
@@ -603,8 +732,14 @@ impl ViewState {
         ev: MouseEvent,
         mut out: MouseOut,
     ) -> MouseOut {
-        let rows = self.entries();
+        let mut rows = self.entries();
         let rect = palette_rect(area, rows.len().max(1));
+        if matches!(
+            self.palette.as_ref().map(|p| &p.mode),
+            Some(PaletteMode::TemplateFields(_))
+        ) {
+            rows.clear();
+        }
         let list = palette_list(rect);
         match ev.kind() {
             kind @ (Kind::WheelUp | Kind::WheelDown) => {

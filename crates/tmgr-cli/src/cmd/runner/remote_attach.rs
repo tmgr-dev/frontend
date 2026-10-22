@@ -227,6 +227,7 @@ impl App {
                     | Cmd::Resume
                     | Cmd::NewSession
                     | Cmd::Layouts
+                    | Cmd::Templates
                     | Cmd::Filter,
                 ) => self.notify("not available over a remote attach"),
                 Action::Cmd(cmd) => {
