@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.50
 
 - `tmgr autopilot <workspace>` works through the backlog of one workspace in one command (also listed in `tmgr --help`; `tmgr queue autopilot` is the same command). It picks the queue rule of that workspace itself (`--rule NAME` when there are several), takes all tasks of the rule's list and asks the setup questions only on the first run; the answers are remembered and `--setup` asks again.
 - One typed confirmation for the whole batch: autopilot lists every task once (key, title, the first line and length of the description, "sign now" or "signed", and why a task is left out), shows teams, profile, limits and caps right above the prompt, and you type the workspace code and the number of tasks, for example `tmgrdev 89`. This machine then signs all listed tasks with its own key, as before. The confirmation is always asked, `-y` never skips it, and it is refused inside agent sessions and without a terminal. A task edited on the server after signing is still refused at start until it is signed again. A task whose text has hidden or control characters is left out of the batch; `--review` pages through the full text of every task (as before) and lets you sign it.
