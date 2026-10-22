@@ -63,7 +63,13 @@ const FILES = [
   { id: 22, name: 'page.html', mime_type: 'text/html', size: 90 },
   { id: 23, name: 'fake.pdf', mime_type: 'application/pdf', size: 90 },
   { id: 24, name: 'big.txt', mime_type: 'text/plain', size: 2 * 1024 * 1024 },
-  { id: 25, name: 'report.docx', mime_type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 5000 },
+  {
+    id: 25,
+    name: 'report.docx',
+    mime_type:
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    size: 5000,
+  },
   { id: 26, name: 'nosize.txt', mime_type: 'text/plain', size: null },
   { id: 27, name: 'real.pdf', mime_type: 'application/pdf', size: 4096 },
 ];
@@ -120,20 +126,38 @@ const setup = async (page, { scheme, files = FILES, ai = false } = {}) => {
         contentType: 'text/plain',
         body: 'y'.repeat(1024 * 1024 + 10),
       });
-    if (id === 27) return route.fulfill({ contentType: 'application/pdf', body: PDF });
+    if (id === 27)
+      return route.fulfill({ contentType: 'application/pdf', body: PDF });
     return route.fulfill({ status: 404, json: {} });
   });
   if (ai) {
     const history = [
-      { id: 1, role: 'user', content: 'look at these', status: 'done', steps: [], created_at: '2026-09-13T10:00:00Z', files },
-      { id: 2, role: 'assistant', content: 'ok', status: 'done', steps: [], created_at: '2026-09-13T10:00:01Z' },
+      {
+        id: 1,
+        role: 'user',
+        content: 'look at these',
+        status: 'done',
+        steps: [],
+        created_at: '2026-09-13T10:00:00Z',
+        files,
+      },
+      {
+        id: 2,
+        role: 'assistant',
+        content: 'ok',
+        status: 'done',
+        steps: [],
+        created_at: '2026-09-13T10:00:01Z',
+      },
     ];
     await page.route('**/api/agent/conversations**', async (route) => {
       const url = route.request().url();
       if (url.endsWith('/messages') && route.request().method() === 'GET')
         return route.fulfill({ json: { data: history } });
       return route.fulfill({
-        json: { data: { id: 7, workspace_id: 1, task_id: null, created_at: 'x' } },
+        json: {
+          data: { id: 7, workspace_id: 1, task_id: null, created_at: 'x' },
+        },
       });
     });
   }
@@ -151,18 +175,23 @@ const openModal = async (page) => {
 
 const openFile = async (page, name) => {
   const root = page.locator('[data-comment-id="1"]');
-  await root.getByRole('button', { name: new RegExp(name.replace('.', '\\.')) }).click();
+  await root
+    .getByRole('button', { name: new RegExp(name.replace('.', '\\.')) })
+    .click();
   return viewerOf(page);
 };
 
 test.describe('hostile content stays inert', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('markdown with script, onerror, remote img, js link, iframe, data link', async ({ page }) => {
+  test('markdown with script, onerror, remote img, js link, iframe, data link', async ({
+    page,
+  }) => {
     const requests = await setup(page);
     const remote = [];
     page.on('request', (r) => {
-      if (r.url().includes('example.test') || r.url().includes('example.com')) remote.push(r.url());
+      if (r.url().includes('example.test') || r.url().includes('example.com'))
+        remote.push(r.url());
     });
     await openModal(page);
     const viewer = await openFile(page, 'evil.md');
@@ -171,30 +200,49 @@ test.describe('hostile content stays inert', () => {
     await page.waitForTimeout(500);
     await expect(md.locator('script')).toHaveCount(0);
     await expect(md.locator('iframe')).toHaveCount(0);
-    const imgSrcs = await md.locator('img').evaluateAll((is) => is.map((i) => i.getAttribute('src')));
+    const imgSrcs = await md
+      .locator('img')
+      .evaluateAll((is) => is.map((i) => i.getAttribute('src')));
     for (const src of imgSrcs) expect(src).not.toMatch(/^(https?:)?\/\//);
     expect(await md.locator('[onerror]').count()).toBe(0);
-    const hrefs = await md.locator('a').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+    const hrefs = await md
+      .locator('a')
+      .evaluateAll((as) => as.map((a) => a.getAttribute('href')));
     for (const h of hrefs) expect(h || '').not.toMatch(/^(javascript|data):/i);
     expect(
-      await page.evaluate(() => [window.__mdScript, window.__mdOnerror, window.__mdJs]),
+      await page.evaluate(() => [
+        window.__mdScript,
+        window.__mdOnerror,
+        window.__mdJs,
+      ]),
     ).toEqual([undefined, undefined, undefined]);
-    expect(remote.filter((u) => u.includes('tracker.example.test'))).toEqual([]);
+    expect(remote.filter((u) => u.includes('tracker.example.test'))).toEqual(
+      [],
+    );
     expect(requests.every((r) => r.id !== 21 || !!r.auth)).toBe(true);
   });
 
-  test('clicking a markdown link does not navigate the app or run js', async ({ page, context }) => {
+  test('clicking a markdown link does not navigate the app or run js', async ({
+    page,
+    context,
+  }) => {
     await setup(page);
     await openModal(page);
     const viewer = await openFile(page, 'evil.md');
     const md = viewer.getByTestId('viewer-markdown');
     await expect(md.getByRole('heading', { name: 'Heading ok' })).toBeVisible();
     const link = md.getByRole('link', { name: 'good link' });
-    const attrs = await link.evaluate((a) => ({ target: a.target, rel: a.rel, href: a.href }));
+    const attrs = await link.evaluate((a) => ({
+      target: a.target,
+      rel: a.rel,
+      href: a.href,
+    }));
     expect(attrs.rel).toContain('noopener');
   });
 
-  test('raw html media in markdown makes no outbound request', async ({ page }) => {
+  test('raw html media in markdown makes no outbound request', async ({
+    page,
+  }) => {
     const raw = [
       '<img src="https://tracker.example.test/a.png">',
       '<img src="//tracker.example.test/b.png">',
@@ -225,21 +273,29 @@ test.describe('hostile content stays inert', () => {
     await page.waitForTimeout(800);
     expect(remote).toEqual([]);
     expect(await page.evaluate(() => window.__svg)).toBeUndefined();
-    expect(await page.evaluate(() => document.querySelector('base')?.href)).toBeUndefined();
+    expect(
+      await page.evaluate(() => document.querySelector('base')?.href),
+    ).toBeUndefined();
   });
 
-  test('html file is shown as escaped text and never executes', async ({ page }) => {
+  test('html file is shown as escaped text and never executes', async ({
+    page,
+  }) => {
     await setup(page);
     await openModal(page);
     const viewer = await openFile(page, 'page.html');
     const pre = viewer.getByTestId('viewer-text');
-    await expect(pre).toContainText('<script>window.__htmlScript = true</script>');
+    await expect(pre).toContainText(
+      '<script>window.__htmlScript = true</script>',
+    );
     await expect(pre.locator('script, b')).toHaveCount(0);
     expect(await page.evaluate(() => window.__htmlScript)).toBeUndefined();
     await expect(viewer.locator('iframe')).toHaveCount(0);
   });
 
-  test('pdf-mime file with html bytes: iframe is blob pdf, no script in app', async ({ page }) => {
+  test('pdf-mime file with html bytes: iframe is blob pdf, no script in app', async ({
+    page,
+  }) => {
     await setup(page);
     await openModal(page);
     const viewer = await openFile(page, 'fake.pdf');
@@ -247,19 +303,29 @@ test.describe('hostile content stays inert', () => {
     await expect(frame).toBeVisible();
     const src = await frame.getAttribute('src');
     expect(src).toMatch(/^blob:/);
-    const blobType = await page.evaluate(async (s) => (await fetch(s)).blob().then((b) => b.type), src);
+    const blobType = await page.evaluate(
+      async (s) => (await fetch(s)).blob().then((b) => b.type),
+      src,
+    );
     expect(blobType).toBe('application/pdf');
     await page.waitForTimeout(800);
-    expect(await page.evaluate(() => [window.__pdfScript])).toEqual([undefined]);
+    expect(await page.evaluate(() => [window.__pdfScript])).toEqual([
+      undefined,
+    ]);
     const allSrc = await page.evaluate(() =>
-      [...document.querySelectorAll('iframe,img,embed,object')].map((e) => e.src || e.data),
+      [...document.querySelectorAll('iframe,img,embed,object')].map(
+        (e) => e.src || e.data,
+      ),
     );
-    for (const s of allSrc.filter(Boolean)) expect(s).not.toMatch(/token|signed|api\/files/i);
+    for (const s of allSrc.filter(Boolean))
+      expect(s).not.toMatch(/token|signed|api\/files/i);
   });
 
   // Known limit (D-009/D-005): key events inside the PDF iframe never reach the app, so Esc
   // does not close the viewer while the iframe has focus. Remove test.fail when that is fixed.
-  test('pdf iframe: Esc with focus inside closes the viewer', async ({ page }) => {
+  test('pdf iframe: Esc with focus inside closes the viewer', async ({
+    page,
+  }) => {
     test.fail(true, 'Esc is consumed by the PDF iframe');
     await setup(page);
     await openModal(page);
@@ -272,7 +338,9 @@ test.describe('hostile content stays inert', () => {
     await expect(viewer).toBeHidden({ timeout: 2000 });
   });
 
-  test('size caps and unsupported types go to a download panel', async ({ page }) => {
+  test('size caps and unsupported types go to a download panel', async ({
+    page,
+  }) => {
     const requests = await setup(page);
     await openModal(page);
     let viewer = await openFile(page, 'big.txt');
@@ -288,14 +356,19 @@ test.describe('hostile content stays inert', () => {
     expect(requests.filter((r) => r.id === 26)).toHaveLength(0);
   });
 
-  test('docx -> download panel; download works with bearer content', async ({ page }) => {
+  test('docx -> download panel; download works with bearer content', async ({
+    page,
+  }) => {
     const requests = await setup(page);
     await openModal(page);
     const viewer = await openFile(page, 'report.docx');
     await expect(viewer.getByTestId('viewer-unsupported')).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent('download'),
-      viewer.getByTestId('viewer-unsupported').getByRole('button', { name: 'Download' }).click(),
+      viewer
+        .getByTestId('viewer-unsupported')
+        .getByRole('button', { name: 'Download' })
+        .click(),
     ]);
     expect(download.suggestedFilename()).toBe('report.docx');
     expect(requests.some((r) => r.id === 25 && r.auth)).toBe(true);
@@ -305,7 +378,9 @@ test.describe('hostile content stays inert', () => {
 test.describe('AI assistant surface', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('viewer opens from an AI message; Esc closes only the viewer; focus returns', async ({ page }) => {
+  test('viewer opens from an AI message; Esc closes only the viewer; focus returns', async ({
+    page,
+  }) => {
     await setup(page, { ai: true });
     await page.goto('/demo/list');
     await page.getByRole('button', { name: 'Ask AI', exact: true }).click();
@@ -321,7 +396,9 @@ test.describe('AI assistant surface', () => {
     await opener.click();
     const viewer = viewerOf(page);
     await expect(viewer).toBeVisible();
-    await expect.poll(async () => (await viewer.boundingBox()).width).toBe(1440);
+    await expect
+      .poll(async () => (await viewer.boundingBox()).width)
+      .toBe(1440);
     await expect(viewer.getByText('1 / 8')).toBeVisible();
     await page.keyboard.press('ArrowRight');
     await expect(viewer.getByTestId('viewer-markdown')).toBeVisible();
@@ -351,20 +428,32 @@ for (const scheme of ['light', 'dark']) {
       await openModal(page);
       const comment = page.locator('[data-comment-id="1"]');
       await expect(comment.locator('img[alt="diagram.png"]')).toBeVisible();
-      await comment.screenshot({ path: testInfo.outputPath(`comment-${scheme}-${vp.width}.png`) });
+      await comment.screenshot({
+        path: testInfo.outputPath(`comment-${scheme}-${vp.width}.png`),
+      });
       const before = await comment.boundingBox();
       let viewer = await openFile(page, 'diagram.png');
-      await expect(viewer.locator('img[alt="diagram.png"]').last()).toBeVisible();
+      await expect(
+        viewer.locator('img[alt="diagram.png"]').last(),
+      ).toBeVisible();
       await page.waitForTimeout(700);
-      await page.screenshot({ path: testInfo.outputPath(`viewer-img-${scheme}-${vp.width}.png`) });
+      await page.screenshot({
+        path: testInfo.outputPath(`viewer-img-${scheme}-${vp.width}.png`),
+      });
       await page.keyboard.press('ArrowRight');
       await expect(viewer.getByTestId('viewer-markdown')).toBeVisible();
       await page.waitForTimeout(700);
-      await page.screenshot({ path: testInfo.outputPath(`viewer-md-${scheme}-${vp.width}.png`) });
+      await page.screenshot({
+        path: testInfo.outputPath(`viewer-md-${scheme}-${vp.width}.png`),
+      });
       for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
       await expect(viewer.getByTestId('viewer-unsupported')).toBeVisible();
       await page.waitForTimeout(700);
-      await page.screenshot({ path: testInfo.outputPath(`viewer-unsupported-${scheme}-${vp.width}.png`) });
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `viewer-unsupported-${scheme}-${vp.width}.png`,
+        ),
+      });
       await page.keyboard.press('Escape');
       await expect(viewer).toBeHidden();
       const after = await comment.boundingBox();
@@ -397,7 +486,10 @@ test.describe('regression: existing galleries', () => {
     await page.route('**/api/workspaces/1/files*', (route) =>
       route.fulfill({
         json: {
-          data: list.map((f) => ({ ...f, task: { id: 1, title: 'T', key: 'T1' } })),
+          data: list.map((f) => ({
+            ...f,
+            task: { id: 1, title: 'T', key: 'T1' },
+          })),
           meta: { total: list.length, last_page: 1, current_page: 1 },
         },
       }),
@@ -409,8 +501,12 @@ test.describe('regression: existing galleries', () => {
     { id: 33, name: 'two.png', mime_type: 'image/png', size: 100 },
   ];
 
-  test('workspace files page opens and navigates images, only images in the gallery', async ({ page }) => {
-    await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
+  test('workspace files page opens and navigates images, only images in the gallery', async ({
+    page,
+  }) => {
+    await page.addInitScript(() =>
+      sessionStorage.setItem('tmgr:tours:auto', 'true'),
+    );
     await mockApp(page);
     await mockFiles(page, list);
     await page.goto('/demo/files');
@@ -431,8 +527,12 @@ test.describe('regression: existing galleries', () => {
     await expect(open).toBeFocused();
   });
 
-  test('task attachments gallery opens inside the task modal; Esc keeps the modal', async ({ page }) => {
-    await page.addInitScript(() => sessionStorage.setItem('tmgr:tours:auto', 'true'));
+  test('task attachments gallery opens inside the task modal; Esc keeps the modal', async ({
+    page,
+  }) => {
+    await page.addInitScript(() =>
+      sessionStorage.setItem('tmgr:tours:auto', 'true'),
+    );
     await mockApp(page);
     await mockFiles(page, list);
     await page.goto('/demo/list');
