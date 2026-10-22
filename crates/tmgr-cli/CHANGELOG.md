@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.41
 
 - `tmgr attach` can search the focused pane's scrollback and copy from it. `Ctrl-] /` (or `/` in scroll mode) opens an incremental search over up to 10000 lines of history: hits are underlined, the current one is reversed, the pane scrolls to it, and a bar shows `k/n`. It starts at the newest match; `Enter` keeps the search, then `n` goes to the next older match and `N` to the next newer one, `Esc` closes. Smart case: an all-lowercase query ignores case. Text wrapped over several rows is searched as one line. Copy mode is `Ctrl-] y` (or `c` in scroll mode): move the cursor with the arrows or `h` `j` `k` `l`, `0` and `$` for the line ends, `g` and `G` for the ends of the history, or a click; `v` starts and drops a selection, `y` (or `Enter`) copies, `Esc` clears the selection and then leaves. The copy is plain text (control characters stripped, wrapped rows joined) sent to the terminal clipboard with OSC 52 and, where `pbcopy` exists, to the system clipboard; it is never pasted anywhere.
 
