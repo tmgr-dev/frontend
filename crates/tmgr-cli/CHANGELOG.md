@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.49
 
 - `tmgr attach` shows the runs this machine started on linked followers (`tmgr link`) in its sidebar, under a header per machine with its latency or `offline`, `connecting` and `busy` state. Attaching to such a run, typing into it, interrupting it (the pause button in its header) and stopping it all go to that follower over the link, and the follower's own rules still apply unchanged: its scope, the ownership of the run and whether it lets you type. Resume, rename and close stay local-only: for a linked run they show a notice (resume points to `tmgr run --on <link>`). `Ctrl-] M` (also in `?` and the command palette) reconnects every linked machine at once. Only the `tmgr attach` command shows them, not the attach screen that `tmgr run` opens; `tmgr attach --no-links` turns the linked machines off.
 
