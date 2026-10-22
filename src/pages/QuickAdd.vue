@@ -151,6 +151,26 @@
 				>
 					+ Description
 				</button>
+				<button
+					v-if="pendingScreenshotUrl"
+					type="button"
+					class="text-muted-foreground hover:text-foreground dark:text-muted-foreground dark:hover:text-foreground"
+					:disabled="saving"
+					data-testid="quick-add-use-new-screenshot"
+					@click="usePendingScreenshot"
+				>
+					Use new screenshot
+				</button>
+				<button
+					v-if="draftStarted"
+					type="button"
+					class="text-muted-foreground hover:text-destructive dark:text-muted-foreground dark:hover:text-destructive"
+					:disabled="saving"
+					data-testid="quick-add-discard"
+					@click="discard"
+				>
+					Discard
+				</button>
 				<span
 					v-if="message"
 					:class="error ? 'text-destructive' : 'text-emerald-500'"
@@ -179,6 +199,7 @@
 		pickQuickAddWorkspace,
 		splitQuickText,
 	} from '@/utils/desktopShortcuts';
+	import { appendText, hasDraft, planOpen } from '@/utils/quickAddDraft';
 	import {
 		appendToLoadedPage,
 		filterPageOptions,
@@ -345,11 +366,60 @@
 			const error = ref(false);
 			const titleInput = ref(null);
 
+			const pendingScreenshotUrl = ref('');
+			let pendingScreenshot = null;
+
 			const dropScreenshot = () => {
 				if (screenshotUrl.value) URL.revokeObjectURL(screenshotUrl.value);
 				screenshot.value = null;
 				screenshotUrl.value = '';
 			};
+
+			const dropPendingScreenshot = () => {
+				if (pendingScreenshotUrl.value) {
+					URL.revokeObjectURL(pendingScreenshotUrl.value);
+				}
+				pendingScreenshot = null;
+				pendingScreenshotUrl.value = '';
+			};
+
+			const usePendingScreenshot = () => {
+				if (!pendingScreenshot) return;
+				dropScreenshot();
+				screenshot.value = pendingScreenshot;
+				screenshotUrl.value = pendingScreenshotUrl.value;
+				pendingScreenshot = null;
+				pendingScreenshotUrl.value = '';
+				message.value = '';
+			};
+
+			const readCapture = async (path) => {
+				const bytes = await invoke('take_capture', { path });
+				const blob = new Blob([bytes], { type: 'image/png' });
+				return {
+					file: new File(
+						[blob],
+						`screenshot-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.png`,
+						{ type: 'image/png' },
+					),
+					url: URL.createObjectURL(blob),
+				};
+			};
+
+			const draftStarted = computed(() =>
+				hasDraft(
+					{
+						mode: mode.value,
+						title: title.value,
+						note: note.value,
+						pageText: pageText.value,
+					},
+					Boolean(screenshot.value),
+				),
+			);
+
+			const focusField = () =>
+				(mode.value === 'page' ? pageTextInput : titleInput).value?.focus();
 
 			const reset = () => {
 				mode.value = 'task';
@@ -363,6 +433,13 @@
 				message.value = '';
 				error.value = false;
 				dropScreenshot();
+				dropPendingScreenshot();
+			};
+
+			const discard = async () => {
+				reset();
+				await nextTick();
+				focusField();
 			};
 
 			const hide = () => invoke('hide_quick_add');
@@ -370,7 +447,19 @@
 			const load = async () => {
 				const payload = await invoke('take_quick_add');
 				if (payload === null || payload === undefined) return;
-				reset();
+				const plan = planOpen(
+					{
+						hasDraft: draftStarted.value,
+						hasScreenshot: Boolean(screenshot.value),
+					},
+					payload,
+				);
+				if (plan.keep) {
+					message.value = '';
+					error.value = false;
+				} else {
+					reset();
+				}
 				followActiveLocalWorkspace();
 				try {
 					const loaded = await getWorkspaces();
@@ -385,33 +474,45 @@
 				}
 				workspaceId.value = pickQuickAddWorkspace(
 					workspaces.value,
-					rememberedWorkspace(),
+					plan.keep ? workspaceId.value : rememberedWorkspace(),
 					payload?.workspaceId ?? null,
 				);
-				if (payload?.text) {
+				if (plan.text === 'set') {
 					const split = splitQuickText(payload.text);
 					title.value = split.title;
 					note.value = split.note;
 					pageText.value = payload.text;
+				} else if (plan.text === 'append') {
+					if (mode.value === 'page') {
+						pageText.value = appendText(pageText.value, payload.text);
+					} else if (!title.value.trim()) {
+						const split = splitQuickText(payload.text);
+						title.value = split.title;
+						note.value = appendText(note.value, split.note);
+					} else {
+						note.value = appendText(note.value, payload.text);
+					}
+					message.value = 'Selected text added to your draft';
 				}
-				if (payload?.screenshot) {
-					const bytes = await invoke('take_capture', {
-						path: payload.screenshot,
-					});
-					const blob = new Blob([bytes], { type: 'image/png' });
-					screenshot.value = new File(
-						[blob],
-						`screenshot-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.png`,
-						{ type: 'image/png' },
-					);
-					screenshotUrl.value = URL.createObjectURL(blob);
+				if (plan.screenshot) {
+					const capture = await readCapture(payload.screenshot);
+					if (plan.screenshot === 'attach') {
+						dropPendingScreenshot();
+						screenshot.value = capture.file;
+						screenshotUrl.value = capture.url;
+					} else {
+						dropPendingScreenshot();
+						pendingScreenshot = capture.file;
+						pendingScreenshotUrl.value = capture.url;
+						message.value = 'Draft kept. New screenshot captured';
+					}
 				}
 				if (payload?.error === 'accessibility') {
 					error.value = true;
 					message.value = ACCESSIBILITY_HINT;
 				}
 				await nextTick();
-				titleInput.value?.focus();
+				focusField();
 			};
 
 			const submitPage = async () => {
@@ -568,6 +669,10 @@
 				hide,
 				submit,
 				dropScreenshot,
+				pendingScreenshotUrl,
+				usePendingScreenshot,
+				draftStarted,
+				discard,
 			};
 		},
 	});
