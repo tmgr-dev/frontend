@@ -8,7 +8,7 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { browserName: 'webkit' },
-      testMatch: /desktop-csp|comment-composer/,
+      testMatch: /desktop-csp|comment-composer|title-overflow/,
     },
   ],
   use: {
