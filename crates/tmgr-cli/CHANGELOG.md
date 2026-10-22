@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.46
 
 - `tmgr attach` has a watcher pane. `Ctrl-] W` (also in `?`, the command palette and the click on the header badge) asks for a command, with a default picked from the session's folder (`cargo test`, `npm`/`pnpm`/`yarn`/`bun test`, `go test ./...`, `pytest`, `mvn`/`./mvnw test`, `./gradlew test`, `composer test`, `bundle exec rake test`, or `make test` when a Makefile has a `test` target), and opens a split pane that runs it, then runs it again whenever files in that folder change. It waits for a quiet moment (0.6 s, at most 3 s under constant writes) and ignores `target`, `node_modules`, `.git` and other build or dependency folders. The pane header shows the last result: `✓ 3.2s`, `✗ 1.1s exit 101` or `… running`. A click on that badge, or `Ctrl-] W` while the watcher pane is focused, runs the command again at once. The watcher is a normal runner session: it shows in the sidebar and keeps running after you detach. Edits made while the command is running are not noticed until the next change. A rerun and stopping the watcher end the whole command, including what it started. Folders such as `dist`, `coverage` and `.cache` are ignored too, and your home folder or `/` cannot be watched.
 
