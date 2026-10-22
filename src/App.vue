@@ -87,6 +87,10 @@
 			@update:open="closePagesImport"
 		/>
 		<Toaster />
+		<CommandPalette
+			v-if="$store.getters.canUseApp"
+			@switch-workspace="changeWorkspace"
+		/>
 		<ConsentPanel v-if="!isDesktop || isMainWindow" />
 		<TourHost v-if="!isDesktop || isMainWindow" />
 		<AhaWatcher
@@ -112,6 +116,7 @@
 	import StatusBar from '@/components/desktop/StatusBar.vue';
 	import WindowControls from '@/components/desktop/WindowControls.vue';
 	import Alert from '@/components/general/Alert.vue';
+	import CommandPalette from '@/components/general/CommandPalette.vue';
 	import CustomSidebar from '@/components/general/CustomSidebar.vue';
 	import Modal from '@/components/Modal.vue';
 	import ConsentPanel from '@/components/privacy/ConsentPanel.vue';
@@ -184,6 +189,7 @@
 			Modal,
 			TaskSidePanel,
 			Alert,
+			CommandPalette,
 			WindowControls,
 			StatusBar,
 			SettingsLayout,

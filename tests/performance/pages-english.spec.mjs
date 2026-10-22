@@ -223,15 +223,18 @@ test.describe('Pages UI is English', () => {
     expect(await visibleText(page)).not.toMatch(CYRILLIC);
   });
 
-  test('global search Pages tab', async ({ page }) => {
+  test('global search finds pages', async ({ page }) => {
+    await page.route('**/api/tasks/current?*search=*', (route) =>
+      route.fulfill({ json: { data: [] } }),
+    );
     await page.goto('/demo/pages');
-    await page
-      .getByRole('button', { name: 'Search', exact: true })
-      .first()
-      .click();
-    await page.getByRole('tab', { name: 'Pages', exact: true }).click();
-    await page.getByPlaceholder('Page title or text').fill('ann');
-    await expect(page.getByText('Ann Lee').first()).toBeVisible();
+    await page.getByTestId('command-palette-trigger').first().click();
+    await page.getByTestId('command-palette-input').fill('ann');
+    await expect(
+      page.locator('[data-testid="command-palette-item"][data-group="pages"]', {
+        hasText: 'Ann Lee',
+      }),
+    ).toBeVisible();
     await shot(page, 'search');
     expect(await visibleText(page)).not.toMatch(CYRILLIC);
   });
