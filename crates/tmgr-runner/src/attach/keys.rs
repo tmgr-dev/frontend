@@ -55,6 +55,7 @@ pub enum Cmd {
     CopyMode,
     Layouts,
     Templates,
+    Watch,
     Filter,
 }
 

@@ -42,6 +42,7 @@ pub enum PaletteEntry {
     SaveLayout(String),
     Template(usize),
     RunTemplate(usize, Vec<String>),
+    RunWatch(String, String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +88,7 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::BroadcastMark => "select target pane broadcast",
         Cmd::NeedsYou => "attention waiting permission question alert",
         Cmd::Subagents => "agents tasks background peek",
+        Cmd::Watch => "tests rerun build watch cargo npm monitor",
         Cmd::Templates => "recipe preset review pr ci tests explain start agent prompt",
         Cmd::Layouts => "workspace arrangement tabs save restore switch",
         Cmd::Filter => "search find sidebar project folder branch",
@@ -347,6 +349,17 @@ impl ViewState {
             .collect()
     }
 
+    pub fn open_watch_form(&mut self, folder: &str, command: &str) {
+        self.palette = Some(Palette {
+            mode: PaletteMode::TemplateFields(super::templates::TemplateForm::for_watch(
+                folder, command,
+            )),
+            ..Palette::default()
+        });
+        self.help = false;
+        self.grab = None;
+    }
+
     pub fn open_templates(&mut self) {
         self.palette = Some(Palette {
             mode: PaletteMode::Templates,
@@ -392,8 +405,12 @@ impl ViewState {
                         continue;
                     }
                     let (index, values) = (form.index, form.values.clone());
+                    let watch = form.watch.clone();
                     self.palette = None;
-                    return PaletteEdit::Run(PaletteEntry::RunTemplate(index, values));
+                    return PaletteEdit::Run(match watch {
+                        Some(folder) => PaletteEntry::RunWatch(folder, values.join(" ")),
+                        None => PaletteEntry::RunTemplate(index, values),
+                    });
                 }
                 0x7f | 0x08 => {
                     i += 1;

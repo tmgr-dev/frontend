@@ -147,6 +147,8 @@ pub struct ViewState {
     pub prompts: Vec<Prompt>,
     pub layouts: Vec<SavedLayout>,
     pub templates: Vec<Template>,
+    pub watchers: HashSet<String>,
+    pub watch: HashMap<String, super::watch::WatchStatus>,
     pub kinds: HashMap<String, String>,
     pub layout_offer: Option<LayoutOffer>,
     pub layout_restore: Option<LayoutRestore>,
@@ -387,6 +389,8 @@ impl ViewState {
             prompts: Vec::new(),
             layouts: Vec::new(),
             templates: Vec::new(),
+            watchers: HashSet::new(),
+            watch: HashMap::new(),
             kinds: HashMap::new(),
             layout_offer: None,
             layout_restore: None,
@@ -1264,6 +1268,7 @@ impl ViewState {
                     self.open_templates();
                 }
             }
+            Cmd::Watch => {}
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
@@ -1612,6 +1617,11 @@ impl ViewState {
                             return Hit::Git(p.session.clone());
                         }
                     }
+                    if let Some((x, w)) = super::render::header_watch(self, p) {
+                        if col >= x && col < x + w {
+                            return Hit::Watch(p.session.clone());
+                        }
+                    }
                 }
                 if row + 1 == p.outer.bottom() {
                     if let Some(r) = super::broadcast::marker_rect(p, self) {
@@ -1645,6 +1655,7 @@ impl ViewState {
             | Hit::Sub(..)
             | Hit::Filter
             | Hit::Templates
+            | Hit::Watch(_)
             | Hit::NewSession) => Some(h),
             _ => None,
         }
@@ -1878,6 +1889,13 @@ impl ViewState {
             Hit::Templates => {
                 if ev.is_left_press() {
                     out.templates = true;
+                }
+            }
+            Hit::Watch(id) => {
+                if ev.is_left_press() {
+                    self.open(&id);
+                    out.watch = Some(id);
+                    out.redraw = true;
                 }
             }
             Hit::None => {}
@@ -2252,6 +2270,7 @@ pub struct MouseOut {
     pub palette: Option<PaletteEntry>,
     pub new_session: bool,
     pub templates: bool,
+    pub watch: Option<String>,
     pub open_task: Option<String>,
     pub git: Option<super::git::GitAction>,
     pub summary: Option<super::summary::SummaryAction>,
@@ -2274,6 +2293,7 @@ pub enum Hit {
     Sub(String, String),
     Filter,
     Templates,
+    Watch(String),
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,

@@ -228,6 +228,7 @@ impl App {
                     | Cmd::NewSession
                     | Cmd::Layouts
                     | Cmd::Templates
+                    | Cmd::Watch
                     | Cmd::Filter,
                 ) => self.notify("not available over a remote attach"),
                 Action::Cmd(cmd) => {

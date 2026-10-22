@@ -39,6 +39,7 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
             RunnerCmd::Unbind(a) => super::bind::unbind(o, &a.target),
             RunnerCmd::List => super::bind::list(o),
             RunnerCmd::Serve => serve(),
+            RunnerCmd::Watch(a) => super::watch::run(&a.dir, &a.cmd),
         },
         RunnerCommands::Run(a) => match (&a.on, &a.task) {
             (Some(link), _) => remote::run(o, link, a),

@@ -737,6 +737,35 @@ pub(crate) fn header_git(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
     Some((x, w))
 }
 
+fn header_watch_text(
+    st: &ViewState,
+    p: &PaneRect,
+    geo: &HeaderGeo,
+    taken: usize,
+) -> Option<String> {
+    st.watch
+        .get(&p.session)?
+        .badge(geo.spare.saturating_sub(taken))
+}
+
+pub(crate) fn header_watch(st: &ViewState, p: &PaneRect) -> Option<(u16, u16)> {
+    let geo = header_geo(p, st)?;
+    let chip_w = header_chip_text(st, p, &geo).map_or(0, |c| c.width());
+    let git_w = header_git_text(st, p, &geo, chip_w).map_or(0, |c| c.width());
+    let badge = header_watch_text(st, p, &geo, chip_w + git_w)?;
+    let before = 1
+        + geo.index.to_string().width()
+        + 2
+        + geo.shown.width()
+        + 3
+        + geo.state.width()
+        + chip_w
+        + git_w;
+    let x = p.outer.x + 1 + u16::try_from(before).ok()? + 3;
+    let w = u16::try_from(badge.width()).ok()?.checked_sub(3)?;
+    Some((x, w))
+}
+
 fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
     let geo = header_geo(p, st);
     let index = geo.as_ref().map_or_else(
@@ -772,6 +801,16 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             if let Some(badge) = header_git_text(st, p, &geo, chip_w) {
                 spare = spare.saturating_sub(badge.width());
                 spans.push(text(&badge, dim()));
+            }
+            let git_w = header_git_text(st, p, &geo, chip_w).map_or(0, |c| c.width());
+            if let Some(badge) = header_watch_text(st, p, &geo, chip_w + git_w) {
+                spare = spare.saturating_sub(badge.width());
+                let style = match st.watch.get(&p.session).map(|w| w.state) {
+                    Some(super::watch::WatchState::Ok) => Style::new().fg(colors().ok),
+                    Some(super::watch::WatchState::Fail) => Style::new().fg(colors().bad),
+                    _ => dim(),
+                };
+                spans.push(text(&badge, style));
             }
             if let Some(parts) = header_meta(st, &p.session, spare) {
                 spare = spare.saturating_sub(3 + parts_width(&parts));
@@ -1157,8 +1196,9 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
             Cmd::Git,
             Cmd::Summary,
             Cmd::Export,
+            Cmd::Watch,
         ]),
-        "rename / task / git / summary / export",
+        "rename / task / git / summary / export / watch",
     ),
     (
         HelpKey::Cmds(&[Cmd::Broadcast, Cmd::BroadcastMark]),
@@ -1372,6 +1412,7 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
         PaletteMode::Delete(_) => " Delete prompt ",
         PaletteMode::Layouts => " Layouts ",
         PaletteMode::Templates => " Session templates ",
+        PaletteMode::TemplateFields(f) if f.watch.is_some() => " Watch ",
         PaletteMode::TemplateFields(_) => " Template ",
         PaletteMode::DeleteLayout(_) => " Delete layout ",
     };
@@ -1408,7 +1449,11 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
                     buf,
                     inner.x,
                     hint_y,
-                    "Tab next field, Enter starts, Esc back",
+                    if f.watch.is_some() {
+                        "Enter starts the watcher, Esc cancels"
+                    } else {
+                        "Tab next field, Enter starts, Esc back"
+                    },
                     dim(),
                     inner.width,
                 );

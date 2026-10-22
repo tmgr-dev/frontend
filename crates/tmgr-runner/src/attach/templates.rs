@@ -185,6 +185,7 @@ pub struct TemplateForm {
     pub labels: Vec<String>,
     pub values: Vec<String>,
     pub field: usize,
+    pub watch: Option<String>,
 }
 
 impl TemplateForm {
@@ -195,6 +196,18 @@ impl TemplateForm {
             labels: t.fields.iter().map(|f| f.title().to_string()).collect(),
             values: t.fields.iter().map(|f| f.default.clone()).collect(),
             field: 0,
+            watch: None,
+        }
+    }
+
+    pub fn for_watch(folder: &str, command: &str) -> Self {
+        Self {
+            index: 0,
+            title: "Watch".into(),
+            labels: vec!["Command".into()],
+            values: vec![command.to_string()],
+            field: 0,
+            watch: Some(folder.to_string()),
         }
     }
 

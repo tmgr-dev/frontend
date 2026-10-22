@@ -25,6 +25,7 @@ pub(crate) mod title;
 mod tree;
 mod usage;
 mod view;
+mod watch;
 
 #[cfg(test)]
 mod tests;
@@ -80,3 +81,4 @@ pub use view::{
     Layout, LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,
     SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, TabItem, TabPrefs, ViewState,
 };
+pub use watch::{duration_label, WatchState, WatchStatus};

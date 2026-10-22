@@ -31,6 +31,7 @@ mod restore;
 mod run_task;
 mod service;
 mod trusted;
+mod watch;
 
 use crate::cli::Cli;
 use crate::out::{self, Style};
@@ -144,6 +145,16 @@ pub enum RunnerCmd {
     List,
     #[command(hide = true)]
     Serve,
+    #[command(hide = true)]
+    Watch(WatchArgs),
+}
+
+#[derive(Args)]
+pub struct WatchArgs {
+    #[arg(long)]
+    pub dir: String,
+    #[arg(long)]
+    pub cmd: String,
 }
 
 #[derive(Args)]

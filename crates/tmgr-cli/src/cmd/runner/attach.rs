@@ -24,6 +24,7 @@ use super::attach_templates;
 use super::attach_title::{agent_src, titler, AgentSrc, TitleJob};
 use super::attach_usage::{usage_source, usage_worker};
 use super::run_task::Prepared;
+use super::watch as watcher;
 use super::{connect, rerr};
 use ratatui::backend::CrosstermBackend;
 use ratatui::crossterm::cursor::{Hide, Show};
@@ -254,6 +255,11 @@ fn is_user_action(view: &ViewState, action: &Action) -> bool {
     }
 }
 
+fn is_watcher_argv(argv: &[String]) -> bool {
+    argv.windows(2).any(|w| w[0] == "runner" && w[1] == "watch")
+        && argv.iter().any(|a| a == "--cmd")
+}
+
 fn offer_answer(data: &[u8]) -> bool {
     matches!(data, [b'y' | b'Y' | b'n' | b'N'] | [0x1b])
 }
@@ -365,6 +371,7 @@ struct App {
     last_git: Instant,
     usage_pending: bool,
     last_usage: Instant,
+    last_watch: Instant,
     question_tx: SyncSender<Vec<QuestionJob>>,
     question_pending: bool,
     last_question: Instant,
@@ -555,6 +562,11 @@ impl App {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
         }
+        self.view.watchers = list
+            .iter()
+            .filter(|s| is_watcher_argv(&s.argv))
+            .map(|s| s.id.clone())
+            .collect();
         self.view.kinds = list
             .iter()
             .filter_map(|s| Some((s.id.clone(), session_kind(s)?)))
@@ -1466,10 +1478,10 @@ impl App {
         let cfg = self.cfg.clone();
         let tx = self.tx.clone();
         self.creating.insert(target.clone(), name.clone());
-        self.notify(if argv.is_some() {
-            "opening the diff…"
+        self.notify(&if argv.is_some() {
+            format!("opening the {label}…")
         } else {
-            "starting shell…"
+            "starting shell…".to_string()
         });
         thread::spawn(move || {
             let result = create_shell(&cfg, &cwds, &name, argv, cols, rows);
@@ -2170,6 +2182,10 @@ impl App {
                 Ok(None)
             }
             PaletteEntry::Template(_) => Ok(None),
+            PaletteEntry::RunWatch(folder, command) => {
+                self.start_watch(&folder, &command);
+                Ok(None)
+            }
             PaletteEntry::RunTemplate(idx, values) => {
                 self.start_template(idx, &values);
                 Ok(None)
@@ -2260,6 +2276,94 @@ impl App {
                 prompt,
             });
         });
+    }
+
+    fn begin_watch(&mut self) {
+        let Some(id) = self.view.focused_session().map(str::to_string) else {
+            return;
+        };
+        if self.view.watchers.contains(&id) {
+            return self.rerun_watch(&id);
+        }
+        let folder = self
+            .view
+            .locs
+            .get(&id)
+            .map(|l| l.root.clone())
+            .unwrap_or_else(|| self.template_folder());
+        let command = watcher::detect(Path::new(&folder)).unwrap_or_default();
+        self.view.open_watch_form(&folder, &command);
+    }
+
+    fn start_watch(&mut self, folder: &str, command: &str) {
+        if !Path::new(folder).is_dir() {
+            return self.notify("the folder to watch does not exist");
+        }
+        if command.trim().is_empty() {
+            return self.notify("no command to run");
+        }
+        if watcher::too_broad(Path::new(folder)) {
+            return self.notify("that folder is too big to watch, open the session in a project");
+        }
+        let argv = vec![
+            self.cfg.self_exe.display().to_string(),
+            "runner".into(),
+            "watch".into(),
+            "--dir".into(),
+            folder.to_string(),
+            "--cmd".into(),
+            command.to_string(),
+        ];
+        self.request_split_cmd(SplitDir::Down, Some((argv, folder.to_string(), "watch")));
+    }
+
+    fn rerun_watch(&mut self, id: &str) {
+        let alive = self.view.sessions.iter().any(|r| r.id == id && !r.exited());
+        let pid = self.starts.get(id).map_or(0, |s| s.1);
+        let sent = alive
+            && pid != 0
+            && watcher::status_dir().is_some_and(|d| watcher::request_rerun(&d, pid).is_ok());
+        self.notify(if sent {
+            "rerunning"
+        } else {
+            "cannot reach the watcher"
+        });
+    }
+
+    fn poll_watchers(&mut self) {
+        if self.last_watch.elapsed() < Duration::from_secs(1) {
+            return;
+        }
+        self.last_watch = Instant::now();
+        let Some(dir) = watcher::status_dir() else {
+            return;
+        };
+        let mut changed = false;
+        let ids: Vec<String> = self.view.watchers.iter().cloned().collect();
+        for id in ids {
+            let alive = self.view.sessions.iter().any(|r| r.id == id && !r.exited());
+            let pid = self.starts.get(&id).map_or(0, |s| s.1);
+            let status = if alive {
+                watcher::read_status(&dir, pid)
+            } else {
+                None
+            };
+            match status {
+                Some(s) if self.view.watch.get(&id) != Some(&s) => {
+                    self.view.watch.insert(id, s);
+                    changed = true;
+                }
+                Some(_) => {}
+                None => changed |= self.view.watch.remove(&id).is_some(),
+            }
+        }
+        let before = self.view.watch.len();
+        self.view
+            .watch
+            .retain(|id, _| self.view.watchers.contains(id));
+        if changed || before != self.view.watch.len() {
+            self.dirty = true;
+        }
     }
 
     fn template_folder(&self) -> String {
@@ -2717,6 +2821,9 @@ impl App {
                     if out.new_session {
                         self.open_new_session();
                     }
+                    if let Some(id) = out.watch {
+                        self.rerun_watch(&id);
+                    }
                     if out.templates {
                         if let Some(exit) = self.handle(vec![Action::Cmd(Cmd::Templates)])? {
                             return Ok(Some(exit));
@@ -2811,6 +2918,7 @@ impl App {
                                 self.request_resume(&id);
                             }
                         }
+                        Cmd::Watch => self.begin_watch(),
                         Cmd::Search => self.begin_search(),
                         Cmd::CopyMode => self.begin_copy(),
                         _ => self.view.apply(cmd),
@@ -2889,6 +2997,7 @@ impl App {
         self.check_signals();
         self.probe_status();
         self.probe_usage();
+        self.poll_watchers();
         self.probe_git();
         self.check_exits();
         self.probe_peek();
@@ -3470,6 +3579,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         last_git: Instant::now() - GIT_EVERY,
         usage_pending: false,
         last_usage: Instant::now() - USAGE_EVERY,
+        last_watch: Instant::now(),
         status_pending: false,
         last_status: Instant::now() - STATUS_EVERY,
         question_tx,

@@ -221,6 +221,13 @@ pub const ACTIONS: &[ActionDef] = &[
         true,
     ),
     def(
+        Cmd::Watch,
+        b"W",
+        "W",
+        "Watcher pane: rerun a command when files change",
+        true,
+    ),
+    def(
         Cmd::Templates,
         b"T",
         "T",

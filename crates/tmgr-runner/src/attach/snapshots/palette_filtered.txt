@@ -9,6 +9,7 @@
                   │ Remove (close) the focused exited session           Ctrl-] X │                 │
                   │ Session templates: start an agent with a prepared p Ctrl-] T │                 │
                   │ New session (claude, codex, shell, ...)             Ctrl-] c │                 │
+                  │ Watcher pane: rerun a command when files change     Ctrl-] W │                 │
                   │ Focus previous pane                         Ctrl-] Shift-Tab │                 │
                   │ Search the focused pane's scrollback                Ctrl-] / │                 │
                   │ dev-server                                           waiting │                 │
@@ -19,6 +20,5 @@
                   │ Export this session to Markdown or a page           Ctrl-] e │                 │
                   │ Make the sidebar narrower                           Ctrl-] < │                 │
                   │ Pick or drop the focused pane as a broadcast target Ctrl-] m │                 │
-                  │ New shell to the right, same folder               Ctrl-] | v │                 │
- + New session    │ Open the focused session's task                     Ctrl-] t │─────────────────╯
+ + New session    │ New shell to the right, same folder               Ctrl-] | v │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help

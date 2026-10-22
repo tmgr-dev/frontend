@@ -8484,3 +8484,89 @@ fn the_field_form_clips_on_a_short_terminal() {
     }
     assert!(draw(&v, &Screens::default(), 100, 8).contains("Field 4"));
 }
+
+fn watch_view(width: u16, status: WatchStatus) -> ViewState {
+    let mut v = two_pane(width);
+    let focused = v.focused_session().unwrap().to_string();
+    v.watch.insert(focused, status);
+    v
+}
+
+fn watch_status(state: WatchState, code: Option<i32>, ms: u64) -> WatchStatus {
+    WatchStatus {
+        state,
+        code,
+        ms,
+        runs: 1,
+    }
+}
+
+#[test]
+fn durations_read_as_seconds_then_minutes() {
+    assert_eq!(duration_label(0), "0.0s");
+    assert_eq!(duration_label(3250), "3.2s");
+    assert_eq!(duration_label(59_999), "59.9s");
+    assert_eq!(duration_label(65_000), "1m05s");
+}
+
+#[test]
+fn the_watch_badge_shows_result_duration_and_exit_code_and_shrinks() {
+    let ok = watch_status(WatchState::Ok, Some(0), 3200);
+    assert_eq!(ok.badge(40).as_deref(), Some(" · ✓ 3.2s"));
+    let bad = watch_status(WatchState::Fail, Some(101), 1100);
+    assert_eq!(bad.badge(40).as_deref(), Some(" · ✗ 1.1s exit 101"));
+    assert_eq!(bad.badge(10).as_deref(), Some(" · ✗ 1.1s"));
+    assert_eq!(bad.badge(4), None);
+    let run = watch_status(WatchState::Running, None, 0);
+    assert_eq!(run.badge(40).as_deref(), Some(" · … running"));
+}
+
+#[test]
+fn the_watch_key_is_free_and_help_lists_it() {
+    let keys: Vec<_> = ACTIONS.iter().filter(|a| a.keys.contains(&b'W')).collect();
+    assert_eq!(keys.len(), 1);
+    assert_eq!(keys[0].cmd, Cmd::Watch);
+    assert!(super::render::HELP
+        .iter()
+        .any(|(k, _)| matches!(k, super::render::HelpKey::Cmds(c) if c.contains(&Cmd::Watch))));
+}
+
+#[test]
+fn the_watch_form_returns_the_edited_command() {
+    let mut v = two_pane(140);
+    v.open_watch_form("/work/shop", "cargo test");
+    assert!(matches!(
+        v.palette.as_ref().unwrap().mode,
+        PaletteMode::TemplateFields(_)
+    ));
+    v.edit_palette(b" -q");
+    assert_eq!(
+        v.edit_palette(b"\r"),
+        PaletteEdit::Run(PaletteEntry::RunWatch(
+            "/work/shop".into(),
+            "cargo test -q".into()
+        ))
+    );
+    assert!(v.palette.is_none());
+}
+
+#[test]
+fn clicking_the_watch_badge_reports_the_session() {
+    let mut v = watch_view(140, watch_status(WatchState::Fail, Some(1), 900));
+    let id = v.focused_session().unwrap().to_string();
+    let info = mouse_info(sgr_mode(MouseLevel::Any), 0);
+    let lay = layout(AREA, &v);
+    let p = lay.panes.iter().find(|p| p.session == id).unwrap();
+    let (x, w) = super::render::header_watch(&v, p).unwrap();
+    assert!(w > 4);
+    let out = v.on_mouse(AREA, ev(0, x + 1, p.outer.y, false), &info);
+    assert_eq!(out.watch.as_deref(), Some(id.as_str()));
+}
+
+#[test]
+fn snapshot_watch_header_badges() {
+    let v = watch_view(140, watch_status(WatchState::Ok, Some(0), 3200));
+    assert_snapshot("watch_ok", &draw(&v, &screens(), 140, 12));
+    let v = watch_view(140, watch_status(WatchState::Fail, Some(101), 65_000));
+    assert_snapshot("watch_fail", &draw(&v, &screens(), 140, 12));
+}
