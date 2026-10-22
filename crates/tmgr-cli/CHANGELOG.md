@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.47
 
 - `tmgr attach` has session notes. `Ctrl-] o` (also in `?` and the command palette; `Esc` closes it) opens a notes panel on the right side of the screen with a plain-text line editor for the focused session: type, Enter for a new line, arrows, Home/End, Backspace/Delete, paste, or click to place the cursor. Notes are saved on this machine as you type, one file per session in the `notes` folder of the tmgr config directory (written atomically, mode 0600), and are never sent to the agent unless you paste them yourself. When the session is linked to a task, `Ctrl-T` (or the `To task` button) shows exactly what would be added, `### Session notes: <name>` followed by your text, and `Enter` appends it to the end of the task's Markdown description; `Esc` goes back without sending anything. Nothing is added when the task description uses the block editor, when the task found is not the one the session works on, or inside agent sessions; sending needs a known workspace for the task, and one send at a time. (`N` was already taken by next tab, so the key is `o`.)
 
