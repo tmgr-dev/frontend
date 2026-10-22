@@ -2297,8 +2297,9 @@
 			isCommentInputExpanded.value = false;
 			focusCommentInput();
 			if (taskCommentsRef.value) {
-				taskCommentsRef.value.loadComments();
+				await taskCommentsRef.value.loadComments();
 			}
+			scrollMainToBottom();
 		} catch (error) {
 			console.error('Failed to ask AI:', error);
 			const message = attachmentErrorMessage(error);

@@ -95,6 +95,42 @@ test('bell and page share one unread-count request', async ({ page }) => {
   expect(hits.count).toBe(1);
 });
 
+test('bell badge follows delete, read and Mark all on the page (TM-712)', async ({
+  page,
+}) => {
+  await mockNotifications(page, {
+    items: [notification(1), notification(2), notification(3)],
+    count: 3,
+  });
+  await page.goto('/demo/notifications');
+  const bell = page.getByRole('button', { name: 'Notifications' }).first();
+  const main = page.getByRole('main');
+  await expect(bell).toContainText('3');
+  await main
+    .locator('.notification-item')
+    .nth(0)
+    .getByRole('button', { name: 'Delete notification' })
+    .click();
+  await expect(bell).toContainText('2');
+  await main.locator('.notification-item').nth(0).click();
+  await expect(bell).toContainText('1');
+  await main.getByRole('button', { name: 'Mark all as read' }).click();
+  await expect(bell.locator('span')).toHaveCount(0);
+});
+
+test('bell panel closes after View all navigates (TM-712)', async ({
+  page,
+}) => {
+  await mockNotifications(page, { items: [notification(1)], count: 1 });
+  await page.goto('/demo/board');
+  await page.getByRole('button', { name: 'Notifications' }).first().click();
+  const dropdown = page.locator('.notification-dropdown');
+  await expect(dropdown).toBeVisible();
+  await dropdown.getByRole('button', { name: 'View all' }).click();
+  await expect(page).toHaveURL(/\/demo\/notifications$/);
+  await expect(dropdown).toHaveCount(0);
+});
+
 test('all read: no Mark all as read button', async ({ page }) => {
   await mockNotifications(page, {
     items: [notification(1, true)],

@@ -32,9 +32,10 @@ interface UseNotificationsReturn {
 	clearNewNotificationIndicator: () => void;
 }
 
+const unreadCount = ref<number>(0);
+
 export function useNotifications(): UseNotificationsReturn {
 	const notifications = ref<Notification[]>([]);
-	const unreadCount = ref<number>(0);
 	const loading = ref<boolean>(false);
 	const error = ref<ActionError | null>(null);
 	const currentPage = ref<number>(1);

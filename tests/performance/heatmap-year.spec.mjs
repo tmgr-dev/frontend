@@ -462,6 +462,10 @@ test('narrow 390px: card header keeps the select inside the card', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
+  const warnings = [];
+  page.on('console', (m) => {
+    if (m.text().includes('Invalid prop')) warnings.push(m.text());
+  });
   const { errors } = await open(page);
   await trigger(page).scrollIntoViewIfNeeded();
   const box = async (l) => l.boundingBox();
@@ -482,9 +486,19 @@ test('narrow 390px: card header keeps the select inside the card', async ({
       document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+  // TM-712: the grid opens scrolled to the most recent days.
+  const scroller = card(page).locator('.heatmap-calendar .overflow-x-auto');
+  const gapToEnd = () =>
+    scroller.evaluate((el) => el.scrollWidth - el.clientWidth - el.scrollLeft);
+  expect(await scroller.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+    true,
+  );
+  await expect.poll(gapToEnd).toBeLessThanOrEqual(1);
   await shot(card(page), 'light-390');
   await choose(page, String(CUR - 1));
   await expect(total(page)).toContainText(`in ${CUR - 1}`);
+  await expect.poll(gapToEnd).toBeLessThanOrEqual(1);
   await shot(card(page), 'light-390-past-year');
   expect(errors).toEqual([]);
+  expect(warnings).toEqual([]);
 });

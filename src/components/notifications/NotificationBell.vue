@@ -1,6 +1,6 @@
 <template>
 	<div class="relative" data-tour="nav.notification-bell">
-		<Popover @update:open="handleDropdownOpen">
+		<Popover v-model:open="open" @update:open="handleDropdownOpen">
 			<PopoverTrigger as-child>
 				<button
 					class="relative rounded-md p-2 transition-colors hover:bg-surface-hover"
@@ -98,7 +98,7 @@
 	import { useNotifications } from '@/composable/useNotifications';
 	import { notificationTarget } from '@/utils/notificationTypes';
 	import { Bell } from 'lucide-vue-next';
-	import { computed, defineComponent, onMounted, onUnmounted } from 'vue';
+	import { computed, defineComponent, onMounted, onUnmounted, ref } from 'vue';
 	import { useRoute, useRouter } from 'vue-router';
 	import { useStore } from 'vuex';
 	import NotificationItem from './NotificationItem.vue';
@@ -132,6 +132,8 @@
 				clearNewNotificationIndicator,
 			} = useNotifications();
 
+			const open = ref(false);
+
 			const displayedNotifications = computed(() => {
 				return notifications.value.slice(0, 10);
 			});
@@ -160,7 +162,10 @@
 						notification,
 						String(getCurrentWorkspaceCode()),
 					);
-					if (target) router.push(target);
+					if (target) {
+						open.value = false;
+						router.push(target);
+					}
 				} catch (error) {
 					console.error('Error handling notification click:', error);
 				}
@@ -184,6 +189,7 @@
 
 			const handleViewAll = () => {
 				const workspaceCode = getCurrentWorkspaceCode();
+				open.value = false;
 				router.push(`/${workspaceCode}/notifications`);
 			};
 
@@ -222,6 +228,7 @@
 			});
 
 			return {
+				open,
 				notifications,
 				displayedNotifications,
 				unreadCount,

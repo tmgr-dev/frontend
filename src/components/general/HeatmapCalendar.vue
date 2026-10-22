@@ -12,7 +12,7 @@
 			</div>
 		</div>
 
-		<div class="w-full overflow-x-auto scroll-smooth">
+		<div ref="scroller" class="w-full overflow-x-auto scroll-smooth">
 			<div class="min-w-[600px]">
 				<div>
 					<div class="grid grid-cols-[auto_1fr] gap-4">
@@ -169,6 +169,14 @@
 			},
 		},
 		emits: ['select'],
+		watch: {
+			year() {
+				this.$nextTick(this.scrollToLatest);
+			},
+		},
+		mounted() {
+			this.scrollToLatest();
+		},
 		data() {
 			return {
 				hoveredDate: null,
@@ -226,7 +234,7 @@
 			},
 
 			emptySquareClass() {
-				return this.theme === 'dark' ? 'bg-[#161b22]' : 'bg-[#ebedf0]';
+				return this.theme === 'dark' ? 'bg-line-strong' : 'bg-[#ebedf0]';
 			},
 
 			level1Class() {
@@ -253,6 +261,11 @@
 			},
 		},
 		methods: {
+			scrollToLatest() {
+				const el = this.$refs.scroller;
+				el?.scrollTo({ left: el.scrollWidth, behavior: 'instant' });
+			},
+
 			getIntensityLevel(count) {
 				if (count === 0) return 0;
 				if (count >= 1 && count <= 5) return 1;

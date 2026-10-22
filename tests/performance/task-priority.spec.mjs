@@ -287,6 +287,17 @@ test('edit: keyboard picks a priority, PUT carries it, reload shows it; Esc clos
   await expect(page.getByRole('option', { name: 'High' })).toBeFocused();
   await page.keyboard.press('ArrowUp');
   await expect(page.getByRole('option', { name: 'Urgent' })).toBeFocused();
+  // TM-712: the highlighted option has a background, the selected one is bold.
+  const style = (name, prop) =>
+    page
+      .getByRole('option', { name })
+      .evaluate((el, p) => getComputedStyle(el)[p], prop);
+  const clear = 'rgba(0, 0, 0, 0)';
+  expect(await style('Urgent', 'backgroundColor')).not.toBe(clear);
+  expect(await style('High', 'backgroundColor')).toBe(clear);
+  expect(await style('Low', 'fontWeight')).toBe('600');
+  expect(await style('High', 'fontWeight')).toBe('400');
+  await screenshot(page, 'select-highlight-light');
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('option', { name: 'High' })).toBeFocused();
   await page.keyboard.press('Enter');

@@ -1291,7 +1291,7 @@
 										v-else-if="heatmapCard.data"
 										:data="heatmapCard.data"
 										:year="heatmapRange.year.value ?? undefined"
-										:theme="store.getters.isDarkTheme ? 'dark' : 'default'"
+										:theme="store.getters.isDarkTheme ? 'dark' : 'light'"
 										:selected-date="selectedDate"
 										@select="handleHeatmapSelect"
 									/>

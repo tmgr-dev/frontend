@@ -55,7 +55,7 @@ const setup = async (page, { aiReply = '0', thread } = {}) => {
     if (req.method() === 'POST') {
       const body = req.postDataJSON();
       (req.url().includes('/help') ? asked : posted).push(body);
-      if (thread && !req.url().includes('/help')) {
+      if (thread) {
         const added = comment(thread.length + 1, body.message);
         thread.push(added);
         return route.fulfill({ json: { data: added } });
@@ -265,6 +265,27 @@ for (const [name, open] of Object.entries(surfaces)) {
       await input.press('Enter');
       await expect.poll(() => posted.length).toBe(1);
       await expect(input).toHaveValue('');
+      await expect(scroller.locator('[data-comment-id]')).toHaveCount(31);
+      await expect
+        .poll(async () => {
+          const s = await scrollState(scroller);
+          return s.lastId === '31' && s.gap <= 4 && s.lastOverflow <= 1;
+        })
+        .toBe(true);
+    });
+
+    test('after an AI ask from the bottom the new comment is visible (TM-712)', async ({
+      page,
+    }) => {
+      const thread = longThread();
+      const { asked } = await setup(page, { aiReply: '1', thread });
+      const input = await open(page);
+      const scroller = scrollers[name](page);
+      await expect(scroller.locator('[data-comment-id]')).toHaveCount(30);
+      await scroller.evaluate((el) => (el.scrollTop = el.scrollHeight));
+      await typeFiveLines(input);
+      await input.press('Enter');
+      await expect.poll(() => asked.length).toBe(1);
       await expect(scroller.locator('[data-comment-id]')).toHaveCount(31);
       await expect
         .poll(async () => {
