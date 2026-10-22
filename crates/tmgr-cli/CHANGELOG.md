@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.40
 
 - `tmgr attach` has a read-only git panel for the focused session. `Ctrl-] G` (also in `?` and the command palette; `g` is taken by grouping) or a click on the `⎇ branch ±N ↑N` badge in the pane header opens it: repo, branch and upstream, files changed or untracked with `+`/`-` line counts, commits ahead of the base branch (`origin/HEAD`, else `origin/main`, `origin/master`, `main`, `master`) and the pull request of the branch when `gh` is installed and logged in. `d` opens the diff against `HEAD` in a new pane below, through `$PAGER` (else `delta`, else `less -R`); `p` or Enter opens the pull request in the browser, only for an `https://github.com/<owner>/<repo>/pull/<n>` link. Nothing is ever committed, pushed or checked out: git runs with an argv (no shell), `--no-optional-locks`, `core.fsmonitor=false`, `core.hooksPath=/dev/null` and a timeout, in the session folder only, and a folder that is not in a git repository shows no badge and no panel. A failed or missing `gh` shows the pull request as unknown. The diff pane stays as an exited pane when you quit the pager: remove it with `Ctrl-] X`. Not in a remote attach.
 

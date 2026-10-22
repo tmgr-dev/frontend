@@ -5206,7 +5206,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-ipc"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -5220,7 +5220,7 @@ dependencies = [
 
 [[package]]
 name = "tmgr-usage"
-version = "1.0.39"
+version = "1.0.40"
 dependencies = [
  "chrono",
  "libc",
