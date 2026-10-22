@@ -9,12 +9,15 @@
 	import store from '@/store';
 	import { compactionsByAnchor } from '@/utils/agentCompaction';
 	import { hasOpenConfirmation } from '@/utils/agentConfirmation';
+	import { daySeparators } from '@/utils/agentMessageMeta';
 	import {
 		canAddPin,
 		canEditPin,
 		pinLimitHint,
 		pinTextFromMessage,
 	} from '@/utils/agentPins';
+	import { flashQuote, selectedQuote } from '@/utils/agentQuoteDom';
+	import { draftChip } from '@/utils/agentQuotes';
 	import {
 		fillScenarios,
 		runScenarios,
@@ -22,7 +25,7 @@
 		type RunScenario,
 	} from '@/utils/agentScenarios';
 	import { focusField } from '@/utils/focusTarget';
-	import { History, Pin, Send, Sparkles, X } from 'lucide-vue-next';
+	import { History, Pin, Quote, Send, Sparkles, X } from 'lucide-vue-next';
 	import {
 		computed,
 		defineAsyncComponent,
@@ -33,7 +36,11 @@
 		watch,
 	} from 'vue';
 
-	import type { AgentPin, AgentMessage as ChatMessage } from '@/types/agent';
+	import type {
+		AgentPin,
+		AgentQuote,
+		AgentMessage as ChatMessage,
+	} from '@/types/agent';
 
 	const AgentMessage = defineAsyncComponent(
 		() => import('@/components/agent/AgentMessage.vue'),
@@ -54,6 +61,9 @@
 		pinsLoading,
 		pinSaving,
 		pinError,
+		quotes,
+		addQuoteDraft,
+		removeQuoteDraft,
 		addPin,
 		editPin,
 		removePin,
@@ -130,6 +140,89 @@
 					editingPinId.value,
 			  ),
 	);
+
+	const quoteChips = computed(() =>
+		quotes.value.map((draft) => draftChip(draft, state.value.messages)),
+	);
+	const separators = computed(() => daySeparators(state.value.messages));
+
+	const isQuoteAvailable = (messageId: number) =>
+		state.value.messages.some((m) => m.id === messageId);
+
+	function replyTo(message: ChatMessage): void {
+		addQuoteDraft({ message_id: message.id, text: null });
+		focusInput();
+	}
+
+	async function jumpToQuote(quote: AgentQuote): Promise<void> {
+		if (!isQuoteAvailable(quote.message_id)) return;
+		for (let attempt = 0; attempt < 10; attempt++) {
+			await nextTick();
+			const el = scroller.value?.querySelector<HTMLElement>(
+				`[data-message-id="${quote.message_id}"]`,
+			);
+			if (el) {
+				el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+				flashQuote(el, quote.whole ? null : quote.text);
+				return;
+			}
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+	}
+
+	const quoteButton = ref<{
+		messageId: number;
+		text: string;
+		top: number;
+		left: number;
+	} | null>(null);
+	let pointerDown = false;
+
+	function refreshQuoteButton(): void {
+		const picked =
+			open.value && view.value === 'chat'
+				? selectedQuote(scroller.value)
+				: null;
+		if (!picked) {
+			quoteButton.value = null;
+			return;
+		}
+		const { rect } = picked;
+		quoteButton.value = {
+			messageId: picked.messageId,
+			text: picked.text,
+			top: rect.top > 44 ? rect.top - 36 : rect.bottom + 6,
+			left: Math.min(
+				Math.max(rect.left + rect.width / 2, 48),
+				window.innerWidth - 48,
+			),
+		};
+	}
+
+	function onSelectionChange(): void {
+		if (!pointerDown) refreshQuoteButton();
+		else if (!selectedQuote(scroller.value)) quoteButton.value = null;
+	}
+
+	function onPointerDown(event: MouseEvent): void {
+		if ((event.target as Element).closest('[data-quote-button]')) return;
+		pointerDown = true;
+	}
+
+	function onPointerUp(): void {
+		if (!pointerDown) return;
+		pointerDown = false;
+		setTimeout(refreshQuoteButton, 0);
+	}
+
+	function quoteSelection(): void {
+		const picked = quoteButton.value;
+		if (!picked) return;
+		addQuoteDraft({ message_id: picked.messageId, text: picked.text });
+		window.getSelection()?.removeAllRanges();
+		quoteButton.value = null;
+		focusInput();
+	}
 
 	const anchors = computed(() => compactionsByAnchor(compactions.value));
 	const compactionsAfter = (messageId: number) =>
@@ -317,6 +410,9 @@
 
 	onMounted(() => {
 		if (store.state.user?.id) subscribe(store.state.user.id);
+		document.addEventListener('selectionchange', onSelectionChange);
+		document.addEventListener('mousedown', onPointerDown);
+		document.addEventListener('mouseup', onPointerUp);
 	});
 
 	watch(
@@ -327,6 +423,9 @@
 	);
 
 	onUnmounted(() => {
+		document.removeEventListener('selectionchange', onSelectionChange);
+		document.removeEventListener('mousedown', onPointerDown);
+		document.removeEventListener('mouseup', onPointerUp);
 		if (open.value) {
 			unregisterModal('ai-panel');
 			store.commit('removeModalFromStack', 'ai-panel');
@@ -518,6 +617,7 @@
 			v-show="view === 'chat'"
 			ref="scroller"
 			class="flex-1 space-y-3 overflow-y-auto px-4 py-3"
+			@scroll.passive="quoteButton = null"
 		>
 			<p
 				v-if="!state.messages.length && !loading"
@@ -527,7 +627,22 @@
 				category this week, what a task is about.
 			</p>
 			<template v-for="m in state.messages" :key="m.id">
-				<AgentMessage :message="m" :decide="decide" @pin="pinMessage" />
+				<div
+					v-if="separators.get(m.id)"
+					class="flex items-center gap-2 text-xs text-ink-subtle"
+				>
+					<span class="h-px flex-1 bg-line"></span>
+					<span>{{ separators.get(m.id) }}</span>
+					<span class="h-px flex-1 bg-line"></span>
+				</div>
+				<AgentMessage
+					:message="m"
+					:decide="decide"
+					:is-quote-available="isQuoteAvailable"
+					@pin="pinMessage"
+					@reply="replyTo"
+					@jump="jumpToQuote"
+				/>
 				<div
 					v-for="c in compactionsAfter(m.id)"
 					:key="`compaction-${c.id}`"
@@ -579,6 +694,31 @@
 					{{ scenario.label }}
 				</button>
 			</div>
+			<ul
+				v-if="quoteChips.length"
+				class="mb-2 flex flex-wrap gap-1.5"
+				aria-label="Quoted messages"
+			>
+				<li
+					v-for="(chip, i) in quoteChips"
+					:key="`${quotes[i].message_id}-${i}`"
+					class="flex max-w-full items-center gap-1 rounded-pill border border-line bg-surface-sunken py-0.5 pl-2.5 pr-1 text-xs text-ink-subtle"
+				>
+					<Quote class="h-3 w-3 shrink-0" />
+					<span class="truncate">
+						<span class="font-medium text-ink">{{ chip.author }}</span>
+						<span v-if="chip.time"> · {{ chip.time }}</span>
+						: {{ chip.text }}
+					</span>
+					<button
+						class="shrink-0 rounded-pill p-0.5 hover:bg-surface-hover hover:text-ink"
+						aria-label="Remove quote"
+						@click="removeQuoteDraft(i)"
+					>
+						<X class="h-3 w-3" />
+					</button>
+				</li>
+			</ul>
 			<div
 				class="flex items-center gap-2 rounded-pill border border-line bg-surface-sunken py-1 pl-4 pr-1.5 focus-within:border-line-focus"
 				:class="
@@ -623,5 +763,37 @@
 				:refresh-key="replyTick"
 			/>
 		</footer>
+		<button
+			v-if="quoteButton && view === 'chat'"
+			data-quote-button
+			class="fixed z-50 flex -translate-x-1/2 items-center gap-1 rounded-pill border border-line bg-surface px-2.5 py-1 text-xs text-ink shadow-lg hover:bg-surface-hover"
+			:style="{ top: `${quoteButton.top}px`, left: `${quoteButton.left}px` }"
+			@mousedown.prevent
+			@click="quoteSelection"
+		>
+			<Quote class="h-3 w-3" /> Quote
+		</button>
 	</aside>
 </template>
+
+<style>
+	::highlight(agent-quote) {
+		background-color: rgba(250, 204, 21, 0.45);
+		color: inherit;
+	}
+	.dark ::highlight(agent-quote) {
+		background-color: rgba(250, 204, 21, 0.3);
+	}
+	.agent-msg-flash {
+		animation: agent-msg-flash 2s ease-out;
+	}
+	@keyframes agent-msg-flash {
+		0%,
+		60% {
+			background-color: rgba(250, 204, 21, 0.3);
+		}
+		100% {
+			background-color: transparent;
+		}
+	}
+</style>
