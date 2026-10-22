@@ -98,7 +98,7 @@ test.describe('Workspace map', () => {
   }) => {
     await setupMap(page, map, {}, { graph: false });
     await page.goto('/demo/list');
-    await expect(page.getByRole('link', { name: 'Archive' })).toBeVisible();
+    await expect(page.locator('a[data-tour="nav.archive"]')).toBeVisible();
     await expect(page.getByRole('link', { name: 'Map' })).toHaveCount(0);
     await page.goto('/demo/map');
     await expect(page).not.toHaveURL(/\/map$/);

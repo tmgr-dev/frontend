@@ -300,7 +300,6 @@ test.describe('desktop web', () => {
       'List',
       'Board',
       'Daily Routines',
-      'Archive',
       'Statistics',
       'Files',
       'Map',
@@ -310,6 +309,9 @@ test.describe('desktop web', () => {
         bar.getByRole('link', { name, exact: true }),
         name,
       ).toBeVisible();
+    await expect(bar.locator('a[data-tour="nav.archive"]')).toHaveText(
+      'Archive',
+    );
     await expect(bar.getByRole('link', { name: 'AI usage' })).toHaveCount(0);
 
     for (const anchor of [
@@ -334,11 +336,11 @@ test.describe('desktop web', () => {
       'one search entry point (the sidebar field)',
     ).toHaveCount(1);
 
-    await bar.getByRole('link', { name: 'Archive', exact: true }).click();
+    await bar.locator('a[data-tour="nav.archive"]').click();
     await expect(page).toHaveURL(/\/demo\/archive$/);
-    await expect(
-      bar.getByRole('link', { name: 'Archive', exact: true }),
-    ).toHaveClass(/router-link-active/);
+    await expect(bar.locator('a[data-tour="nav.archive"]')).toHaveClass(
+      /router-link-active/,
+    );
 
     await header.getByRole('button', { name: 'New task', exact: true }).click();
     await expect(page.getByPlaceholder('Task name')).toBeVisible();
@@ -577,11 +579,12 @@ test.describe('phone', () => {
     await expect(
       sheet.getByRole('button', { name: 'Search', exact: true }),
     ).toHaveCount(0);
-    for (const name of ['List', 'Board', 'Archive', 'Statistics', 'Files'])
+    for (const name of ['List', 'Board', 'Statistics', 'Files'])
       await expect(
         sheet.getByRole('link', { name, exact: true }),
         name,
       ).toBeVisible();
+    await expect(sheet.locator('a[data-tour="nav.archive"]')).toBeVisible();
     for (const anchor of ['nav.create-task', 'nav.ask-ai', 'nav.archive'])
       await expect(page.locator(`[data-tour="${anchor}"]`), anchor).toHaveCount(
         1,
