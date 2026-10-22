@@ -735,12 +735,8 @@
 						</SidebarMenuItem>
 					</SidebarMenu>
 					<SidebarMenu v-if="!isMobile" data-testid="sidebar-quick-actions">
-						<SidebarMenuItem v-if="activeWorkspace?.code">
-							<GlobalSearch
-								variant="sidebar"
-								:workspace-code="activeWorkspace.code"
-								:pages-enabled="pagesEnabled"
-							/>
+						<SidebarMenuItem>
+							<GlobalSearch variant="sidebar" />
 						</SidebarMenuItem>
 					</SidebarMenu>
 				</SidebarHeader>
@@ -1150,11 +1146,7 @@
 							title="New task"
 							data-tour="nav.create-task"
 						/>
-						<GlobalSearch
-							v-if="isMobile && activeWorkspace?.code"
-							:workspace-code="activeWorkspace.code"
-							:pages-enabled="pagesEnabled"
-						/>
+						<GlobalSearch v-if="isMobile" />
 
 						<Separator
 							data-tauri-drag-region

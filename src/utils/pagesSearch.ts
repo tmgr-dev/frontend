@@ -1,23 +1,8 @@
 import type { PageSearchHit } from '@/actions/tmgr/pages';
 import { pageUrl } from '@/utils/pagesTree';
 
-export type SearchTab = 'tasks' | 'pages';
-
-export const SEARCH_TABS: { key: SearchTab; label: string }[] = [
-	{ key: 'tasks', label: 'Tasks' },
-	{ key: 'pages', label: 'Pages' },
-];
-
 export const MIN_SEARCH_LENGTH = 2;
 export const SEARCH_DEBOUNCE_MS = 300;
-
-export const availableSearchTabs = (pagesEnabled: boolean) =>
-	SEARCH_TABS.filter((tab) => tab.key !== 'pages' || pagesEnabled);
-
-export const resolveSearchTab = (
-	tab: SearchTab,
-	pagesEnabled: boolean,
-): SearchTab => (tab === 'pages' && !pagesEnabled ? 'tasks' : tab);
 
 export const normalizeQuery = (query: string): string => query.trim();
 

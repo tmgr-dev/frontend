@@ -1,25 +1,9 @@
 import {
-	availableSearchTabs,
 	canSearch,
 	cleanSnippet,
 	pageHitUrl,
 	pageTypeLabel,
-	resolveSearchTab,
 } from '../pagesSearch';
-
-describe('search tabs', () => {
-	it('offers Tasks and Pages when pages are available', () => {
-		expect(availableSearchTabs(true).map((t) => t.key)).toEqual([
-			'tasks',
-			'pages',
-		]);
-	});
-	it('hides Pages when unavailable and falls back to tasks', () => {
-		expect(availableSearchTabs(false).map((t) => t.key)).toEqual(['tasks']);
-		expect(resolveSearchTab('pages', false)).toBe('tasks');
-		expect(resolveSearchTab('pages', true)).toBe('pages');
-	});
-});
 
 describe('canSearch', () => {
 	it('needs at least two non-blank characters', () => {
