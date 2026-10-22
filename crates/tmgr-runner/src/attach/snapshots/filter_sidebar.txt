@@ -1,0 +1,22 @@
+ /app█         Ctrl-] f ╭ 1  a · working ─────────────────────────────────────────────────────────────────────────────────────────── ⏸ ■ ✕ ╮
+ ▾ w/app · main         │● Reading src/checkout/Form.vue                                                                                   │
+   ● a       working 1m │I will add an Apple Pay button next to the card form, shown only when the session exists.                         │
+   ● b       working 1m │✓ Tests 14 passed                                                                                                 │
+ ● c         working 1m │>                                                                                                                 │
+   w/app-wt · feat/x    │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+                        │                                                                                                                  │
+ + New session          ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+ tmgr runner · local · a · working · ● 6 ◌ 0 ◆ 0 ✓ 0                                                                          Ctrl-] ? help

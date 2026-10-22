@@ -2,6 +2,7 @@ use super::attach_chip::{chipper, ChipJob, Opener, SystemOpener};
 use super::attach_clip::{Clipboard, SystemClipboard};
 use super::attach_git::{diff_argv, git_worker, GitJob};
 use super::attach_goto::{fork_call, fork_name, goto_call, text_call, Found, FORK_PASTE_WAIT};
+use super::attach_layouts;
 use super::attach_new::{
     default_folder, dialog_for, execute_task, in_agent, installed_kinds, kind_label, place_session,
     prepare_task, registers_shell, route, spawn_size, start_session, NewFlow, Route, SpawnErr,
@@ -47,7 +48,7 @@ use tmgr_ipc::proto::ServerMsg;
 use tmgr_runner::attach::{
     cursor, deliver, enter_mouse, focus_on, kind_for_background, layout, mode_changes, open_urls,
     parse_osc11, paste_bytes, peer_bytes, probe, render, reset_modes, valid_pr_url, Action,
-    AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, InputSplitter,
+    AgentTitle, AttentionTracker, Cmd, Confirm, Control, GitAction, GitInfo, Hit, InputSplitter,
     LayoutPrefs, Loc, NewEdit, NewRequest, NewSession, Notifier, PaletteEdit, PaletteEntry,
     PaletteMode, PaneInfo, Place, PostTarget, PrLookup, QEdit, RenameEdit, ScreenSource, ScrollKey,
     ScrollState, ScrollText, SearchEdit, SessionRow, SessionStatus, SidebarEdit, SignalSettings,
@@ -174,6 +175,12 @@ enum Msg {
         old: String,
         result: std::result::Result<RestoredRun, String>,
     },
+    LayoutStarted {
+        saved: String,
+        req: NewRequest,
+        result: std::result::Result<SessionInfo, SpawnErr>,
+        generation: u64,
+    },
     Tasks(std::result::Result<Vec<TaskOpt>, String>),
     ScrollText {
         session: String,
@@ -219,6 +226,8 @@ fn attention_target(view: &ViewState) -> Option<&str> {
         || view.qmenu.is_some()
         || view.confirm.is_some()
         || view.rename.is_some()
+        || view.filter_input()
+        || view.layout_offer.is_some()
         || view.help
     {
         return None;
@@ -233,6 +242,18 @@ fn is_user_action(view: &ViewState, action: &Action) -> bool {
             attention_target(view).is_none()
         }
         _ => true,
+    }
+}
+
+fn offer_answer(data: &[u8]) -> bool {
+    matches!(data, [b'y' | b'Y' | b'n' | b'N'] | [0x1b])
+}
+
+fn session_kind(s: &SessionInfo) -> Option<String> {
+    if is_shell_session(&s.argv, &s.name) {
+        Some("shell".to_string())
+    } else {
+        Some(format!("agent:{}", s.profile.as_ref()?))
     }
 }
 
@@ -320,6 +341,8 @@ struct App {
     claude: Option<PathBuf>,
     send_enter: Option<(String, Instant)>,
     prompts_dir: Option<PathBuf>,
+    layouts_dir: Option<PathBuf>,
+    layouts_seen: Vec<String>,
     notifier: Box<dyn Notifier>,
     peek_tx: SyncSender<PeekJob>,
     peek_pending: bool,
@@ -436,6 +459,12 @@ impl App {
                 target,
             } => self.on_spawned(id, result, &req, &target),
             Msg::Resumed { old, result } => self.on_resumed(&old, result),
+            Msg::LayoutStarted {
+                saved,
+                req,
+                result,
+                generation,
+            } => self.on_layout_started(&saved, &req, result, generation),
             Msg::ScrollText { session, result } => {
                 self.text_pending = None;
                 self.text_at = Instant::now();
@@ -503,6 +532,10 @@ impl App {
             self.starts
                 .insert(s.id.clone(), (s.cwd.clone(), s.child_pid));
         }
+        self.view.kinds = list
+            .iter()
+            .filter_map(|s| Some((s.id.clone(), session_kind(s)?)))
+            .collect();
         self.session_tasks = list
             .iter()
             .map(|s| (s.id.clone(), (s.task, s.created_ms / 1000)))
@@ -1913,6 +1946,10 @@ impl App {
         }
         self.dirty = true;
         self.view.confirm = None;
+        if ctl != Control::Interrupt {
+            self.view.layout_offer = None;
+            self.view.end_filter_input();
+        }
         if blocked_by_resume(&self.resuming, id, ctl) {
             self.notify("resuming…");
             return Ok(());
@@ -2012,7 +2049,166 @@ impl App {
                 Ok(None)
             }
             PaletteEntry::NewPrompt => Ok(None),
+            PaletteEntry::Layout(idx) => {
+                self.switch_layout(idx);
+                Ok(None)
+            }
+            PaletteEntry::SaveLayout(name) => {
+                match self.view.save_layout(&name) {
+                    Ok(saved) => {
+                        self.save_layouts();
+                        self.notify(&format!("layout {saved} saved"));
+                    }
+                    Err(e) => self.notify(&e),
+                }
+                Ok(None)
+            }
         }
+    }
+
+    fn save_layouts(&mut self) {
+        let Some(dir) = self.layouts_dir.clone() else {
+            self.notify("cannot locate the config directory");
+            return;
+        };
+        match attach_layouts::save(&dir, &self.view.layouts, &self.layouts_seen) {
+            Ok(merged) => {
+                self.layouts_seen = attach_layouts::names(&merged);
+                self.view.layouts = merged;
+            }
+            Err(_) => self.notify("cannot save layouts.json"),
+        }
+    }
+
+    fn switch_layout(&mut self, idx: usize) {
+        if self.view.switch_layout(idx) {
+            self.watched = None;
+            self.scroll_mode = false;
+            self.splitter.set_scroll_mode(false);
+        }
+        self.dirty = true;
+        if self.view.layout_offer.is_none() {
+            if let Some(n) = self.view.notice.clone() {
+                self.notify(&n);
+            }
+        }
+    }
+
+    fn offer_key(&mut self, data: &[u8]) {
+        self.dirty = true;
+        let Some(offer) = self.view.take_layout_offer() else {
+            return;
+        };
+        if !matches!(data, [b'y' | b'Y']) {
+            self.view.layout_restore = None;
+            self.notify("left the missing sessions as they are");
+            return;
+        }
+        for id in &offer.resume {
+            self.request_resume(id);
+        }
+        if offer.start.is_empty() {
+            self.view.layout_restore = None;
+            return;
+        }
+        let generation = self
+            .view
+            .layout_restore
+            .as_ref()
+            .map_or(0, |r| r.generation);
+        let mut taken: Vec<String> = Vec::new();
+        for m in offer.start {
+            let kind = match m.kind.as_deref() {
+                Some("shell") => Some(tmgr_runner::attach::SpawnKind::Shell),
+                Some(k) => {
+                    k.strip_prefix("agent:")
+                        .map(|profile| tmgr_runner::attach::SpawnKind::Agent {
+                            profile: profile.to_string(),
+                        })
+                }
+                None => None,
+            };
+            let Some(kind) = kind else {
+                self.view.layout_started(&m.id, None, generation);
+                continue;
+            };
+            if !Path::new(&m.dir).is_absolute() || !Path::new(&m.dir).is_dir() {
+                self.notify(&format!("folder of {} is gone", sanitize_text(&m.name)));
+                self.view.layout_started(&m.id, None, generation);
+                continue;
+            }
+            let req = NewRequest {
+                kind,
+                folder: m.dir.clone(),
+                name: None,
+                place: Place::Right,
+                task: None,
+            };
+            let mut run_req = req.clone();
+            if registers_shell(&req) {
+                let mut creating = self.creating.clone();
+                for (i, t) in taken.iter().enumerate() {
+                    creating.insert(format!("\0layout{i}"), t.clone());
+                }
+                let reusable = m
+                    .name
+                    .strip_prefix("sh-")
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+                    && !taken.contains(&m.name)
+                    && !self.view.sessions.iter().any(|r| r.name == m.name);
+                let name = if reusable {
+                    m.name.clone()
+                } else {
+                    shell_name(&self.view.sessions, &creating, None)
+                };
+                taken.push(name.clone());
+                run_req.name = Some(name);
+            }
+            let cfg = self.cfg.clone();
+            let tx = self.tx.clone();
+            let saved = m.id.clone();
+            thread::spawn(move || {
+                let result = start_session(&cfg, &run_req, 80, 24);
+                let _ = tx.send(Msg::LayoutStarted {
+                    saved,
+                    req,
+                    result,
+                    generation,
+                });
+            });
+        }
+        self.notify("restoring the layout...");
+    }
+
+    fn on_layout_started(
+        &mut self,
+        saved: &str,
+        req: &NewRequest,
+        result: std::result::Result<SessionInfo, SpawnErr>,
+        generation: u64,
+    ) {
+        self.dirty = true;
+        let info = match result {
+            Ok(info) => info,
+            Err(e) => {
+                self.view.layout_started(saved, None, generation);
+                let why = sanitize_text(&e.message).into_owned();
+                return self.notify(&format!("could not start {}: {why}", kind_label(&req.kind)));
+            }
+        };
+        if !self.view.sessions.iter().any(|r| r.id == info.id) {
+            self.view.sessions.extend(rows(std::slice::from_ref(&info)));
+        }
+        self.pending.insert(info.id.clone(), Instant::now());
+        self.starts
+            .insert(info.id.clone(), (info.cwd.clone(), info.child_pid));
+        if registers_shell(req) {
+            self.view.shells.push(info.id.clone());
+            self.shell_ids.insert(info.id.clone());
+        }
+        self.view.layout_started(saved, Some(&info.id), generation);
+        self.watched = None;
+        self.notify(&format!("started {}", sanitize_text(&info.name)));
     }
 
     fn paste_prompt(&mut self, idx: usize) -> io::Result<()> {
@@ -2073,6 +2269,18 @@ impl App {
             if !matches!(action, Action::Mouse(_)) {
                 self.dirty = true;
             }
+            if self.view.layout_offer.is_some() && self.view.confirm.is_none() {
+                let answer = matches!(&action, Action::Forward(d) if offer_answer(d));
+                let dismiss = match &action {
+                    Action::Forward(_) | Action::Drop(_) | Action::Paste { .. } => !answer,
+                    Action::Mouse(ev) => ev.is_left_press(),
+                    _ => false,
+                };
+                if dismiss {
+                    self.view.layout_offer = None;
+                    self.view.layout_restore = None;
+                }
+            }
             let routed = route(&self.view, &action);
             if routed != Route::Other {
                 self.modal_input(routed, action);
@@ -2095,6 +2303,7 @@ impl App {
                             }
                         }
                         PaletteEdit::PromptsChanged => self.save_prompts(),
+                        PaletteEdit::LayoutsChanged => self.save_layouts(),
                         PaletteEdit::Editing | PaletteEdit::Close => {}
                     }
                 }
@@ -2125,6 +2334,16 @@ impl App {
                     }
                 }
                 Action::Forward(_) if self.view.copy.is_some() => {}
+                Action::Forward(data) if self.view.layout_offer.is_some() => {
+                    self.offer_key(&data);
+                }
+                Action::Forward(data) if self.view.filter_input() => {
+                    self.view.edit_filter(&data);
+                    self.dirty = true;
+                }
+                Action::Drop(data) | Action::Paste { data, .. } if self.view.filter_input() => {
+                    self.view.insert_filter_text(&data);
+                }
                 Action::Forward(data) => {
                     self.view.pointer = None;
                     if self.view.scroll.is_some() && !self.scroll_mode {
@@ -2246,7 +2465,13 @@ impl App {
                             .unwrap_or_default()
                     };
                     let before = self.view.new_session.clone();
+                    if ev.is_left_press() && self.view.hit(area, ev.col, ev.row) != Hit::Filter {
+                        self.view.end_filter_input();
+                    }
                     let out = self.view.on_mouse(area, ev, &info);
+                    if self.view.filter_input() {
+                        self.sync_scroll_mode();
+                    }
                     if out.redraw {
                         self.dirty = true;
                     }
@@ -2301,11 +2526,16 @@ impl App {
                         self.view.git_open = false;
                     }
                     self.view.sidebar_focus = None;
+                    self.view.layout_offer = None;
+                    if cmd != Cmd::Filter {
+                        self.view.end_filter_input();
+                    }
                     if let Some(old) = self.view.palette.take() {
                         if matches!(
                             (cmd, &old.mode),
                             (Cmd::Palette, PaletteMode::Commands)
                                 | (Cmd::Prompts, PaletteMode::Prompts)
+                                | (Cmd::Layouts, PaletteMode::Layouts)
                         ) {
                             continue;
                         }
@@ -2356,6 +2586,9 @@ impl App {
                     }
                     if let Some(id) = removing {
                         self.remove_session(&id);
+                    }
+                    if cmd == Cmd::Filter {
+                        self.sync_scroll_mode();
                     }
                     if cmd == Cmd::ScrollMode {
                         self.scroll_mode = self.view.scroll.is_some();
@@ -2731,6 +2964,7 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         .map(|c| c.attach)
         .unwrap_or_default();
     view.sidebar_default = attach_cfg.sidebar_width.unwrap_or(view.sidebar_default);
+    let layouts_dir = attach_layouts::dir();
     let prompts_dir = attach_prompts::dir();
     let mut notice_set = false;
     if let Some(dir) = &prompts_dir {
@@ -2739,6 +2973,15 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         view.notice = warn;
         notice_set = view.notice.is_some();
     }
+    if let Some(dir) = &layouts_dir {
+        let (list, warn) = attach_layouts::load(dir);
+        view.layouts = list;
+        if view.notice.is_none() {
+            view.notice = warn;
+            notice_set = view.notice.is_some();
+        }
+    }
+    let layouts_seen = attach_layouts::names(&view.layouts);
     let web_base = {
         let cfg = tmgr_core::config::config_dir()
             .ok()
@@ -2975,6 +3218,8 @@ pub fn run_with(cfg: &RunnerConfig, initial: &str, mouse: bool) -> Result<i32> {
         claude: claude_binary(),
         send_enter: None,
         prompts_dir,
+        layouts_seen,
+        layouts_dir,
         notifier: Box::new(SystemNotifier),
         peek_tx,
         peek_pending: false,
@@ -3378,6 +3623,19 @@ mod tests {
         assert_eq!(entry, PaletteEntry::Session("b".into()));
         view.open("b");
         assert_eq!(view.focused_session(), Some("b"));
+    }
+
+    #[test]
+    fn a_session_kind_is_a_shell_an_agent_profile_or_unknown() {
+        let mut i = info("n");
+        i.argv = vec!["/bin/zsh".into(), "-l".into()];
+        i.name = "sh-3".into();
+        assert_eq!(session_kind(&i).as_deref(), Some("shell"));
+        let mut i = info("n");
+        i.profile = Some("claude".into());
+        assert_eq!(session_kind(&i).as_deref(), Some("agent:claude"));
+        i.profile = None;
+        assert_eq!(session_kind(&i), None);
     }
 
     #[test]

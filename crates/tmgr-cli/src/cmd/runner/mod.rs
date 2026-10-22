@@ -4,6 +4,7 @@ mod attach_chip;
 mod attach_clip;
 mod attach_git;
 mod attach_goto;
+mod attach_layouts;
 mod attach_new;
 mod attach_prompts;
 mod attach_questions;

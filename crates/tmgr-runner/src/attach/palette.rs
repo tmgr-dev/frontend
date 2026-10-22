@@ -19,6 +19,8 @@ pub enum PaletteMode {
     Prompts,
     Form(PromptForm),
     Delete(usize),
+    Layouts,
+    DeleteLayout(usize),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -34,6 +36,8 @@ pub enum PaletteEntry {
     Session(String),
     Prompt(usize),
     NewPrompt,
+    Layout(usize),
+    SaveLayout(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,6 +45,7 @@ pub enum PaletteEdit {
     Editing,
     Run(PaletteEntry),
     PromptsChanged,
+    LayoutsChanged,
     Close,
 }
 
@@ -78,6 +83,8 @@ fn aliases(cmd: Cmd) -> &'static str {
         Cmd::BroadcastMark => "select target pane broadcast",
         Cmd::NeedsYou => "attention waiting permission question alert",
         Cmd::Subagents => "agents tasks background peek",
+        Cmd::Layouts => "workspace arrangement tabs save restore switch",
+        Cmd::Filter => "search find sidebar project folder branch",
         _ => "",
     }
 }
@@ -188,7 +195,10 @@ impl ViewState {
         match p.mode {
             PaletteMode::Commands => {}
             PaletteMode::Prompts => return self.prompt_entries(&p.query),
-            PaletteMode::Form(_) | PaletteMode::Delete(_) => return Vec::new(),
+            PaletteMode::Layouts => return self.layout_entries(&p.query),
+            PaletteMode::Form(_) | PaletteMode::Delete(_) | PaletteMode::DeleteLayout(_) => {
+                return Vec::new()
+            }
         }
         let items: Vec<Item> = ACTIONS
             .iter()
@@ -270,9 +280,75 @@ impl ViewState {
         }
     }
 
+    fn layout_entries(&self, query: &str) -> Vec<RowView> {
+        let items: Vec<(usize, &super::layouts::SavedLayout)> =
+            self.layouts.iter().enumerate().collect();
+        let mut rows: Vec<RowView> = tmgr_fuzzy::rank(query, items, |(_, l)| l.name.clone())
+            .into_iter()
+            .map(|(i, l)| RowView {
+                hits: if query.is_empty() {
+                    Vec::new()
+                } else {
+                    tmgr_fuzzy::matched(query, &l.name)
+                },
+                label: l.name.clone(),
+                right: format!("{} sessions", l.members.len()),
+                entry: PaletteEntry::Layout(i),
+            })
+            .collect();
+        let name = super::layouts::clean_name(query);
+        let label = match &name {
+            None => "+ Save current layout (type a name)".to_string(),
+            Some(n) if self.layouts.iter().any(|l| l.name.eq_ignore_ascii_case(n)) => {
+                format!("+ Replace \"{n}\" with the current layout")
+            }
+            Some(n) => format!("+ Save current layout as \"{n}\""),
+        };
+        rows.push(RowView {
+            label,
+            right: String::new(),
+            hits: Vec::new(),
+            entry: PaletteEntry::SaveLayout(name.unwrap_or_default()),
+        });
+        rows
+    }
+
+    pub fn open_layouts(&mut self) {
+        self.palette = Some(Palette {
+            mode: PaletteMode::Layouts,
+            ..Palette::default()
+        });
+        self.help = false;
+        self.grab = None;
+    }
+
+    fn selected_layout(&self) -> Option<usize> {
+        match self.selected_entry()? {
+            PaletteEntry::Layout(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    fn edit_layout_delete(&mut self, data: &[u8], idx: usize) -> PaletteEdit {
+        let confirm = matches!(data, [b'y'] | [b'Y']);
+        if let Some(p) = self.palette.as_mut() {
+            p.mode = PaletteMode::Layouts;
+            p.sel = 0;
+        }
+        if confirm && idx < self.layouts.len() {
+            self.layouts.remove(idx);
+            return PaletteEdit::LayoutsChanged;
+        }
+        PaletteEdit::Editing
+    }
+
     fn activate(&mut self, entry: PaletteEntry) -> Option<PaletteEntry> {
         if entry == PaletteEntry::NewPrompt {
             self.open_form(None);
+            return None;
+        }
+        if entry == PaletteEntry::SaveLayout(String::new()) {
+            self.notice = Some("type a name for the layout, then Enter".into());
             return None;
         }
         self.palette = None;
@@ -393,6 +469,7 @@ impl ViewState {
         match self.palette.as_ref().map(|p| p.mode.clone()) {
             Some(PaletteMode::Form(_)) => return self.edit_prompt_form(data),
             Some(PaletteMode::Delete(idx)) => return self.edit_prompt_delete(data, idx),
+            Some(PaletteMode::DeleteLayout(idx)) => return self.edit_layout_delete(data, idx),
             _ => {}
         }
         if !data.is_empty() && data.iter().all(|&b| b == 0x1b) {
@@ -441,6 +518,14 @@ impl ViewState {
                     if let Some(idx) = self.selected_prompt() {
                         if let Some(p) = self.palette.as_mut() {
                             p.mode = PaletteMode::Delete(idx);
+                        }
+                    }
+                    return PaletteEdit::Editing;
+                }
+                0x04 if p.mode == PaletteMode::Layouts => {
+                    if let Some(idx) = self.selected_layout() {
+                        if let Some(p) = self.palette.as_mut() {
+                            p.mode = PaletteMode::DeleteLayout(idx);
                         }
                     }
                     return PaletteEdit::Editing;
@@ -494,7 +579,10 @@ impl ViewState {
             }
             return;
         }
-        if matches!(p.mode, PaletteMode::Delete(_)) {
+        if matches!(
+            p.mode,
+            PaletteMode::Delete(_) | PaletteMode::DeleteLayout(_)
+        ) {
             return;
         }
         let text = String::from_utf8_lossy(data)

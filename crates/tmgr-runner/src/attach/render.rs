@@ -183,21 +183,54 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     if area.is_empty() {
         return;
     }
-    let hint = "Ctrl-] b";
+    let hint = if st.filter.is_some() {
+        "Ctrl-] f"
+    } else {
+        "Ctrl-] b"
+    };
     let hint_w = hint.width() as u16;
     let hx = area.right().saturating_sub(hint_w + 1);
-    let end = put(
-        buf,
-        area.x + 1,
-        area.y,
-        "SESSIONS",
-        dim().add_modifier(Modifier::BOLD),
-        area.width.saturating_sub(1),
-    );
+    let end = match &st.filter {
+        Some(f) => {
+            let avail = usize::from(hx.saturating_sub(area.x + 2)).max(4);
+            let tail = query_tail(&f.query, avail);
+            let text = if f.input {
+                format!("/{tail}\u{2588}")
+            } else {
+                format!("/{tail}")
+            };
+            put(
+                buf,
+                area.x + 1,
+                area.y,
+                &text,
+                Style::new().fg(colors().warn).add_modifier(Modifier::BOLD),
+                area.width.saturating_sub(1),
+            )
+        }
+        None => put(
+            buf,
+            area.x + 1,
+            area.y,
+            "SESSIONS",
+            dim().add_modifier(Modifier::BOLD),
+            area.width.saturating_sub(1),
+        ),
+    };
     if hx > end {
         put(buf, hx, area.y, hint, dim(), hint_w);
     }
     let sl = st.sidebar_layout(area);
+    if sl.lines.is_empty() && st.filter.is_some() && area.height > 1 {
+        put(
+            buf,
+            area.x + 1,
+            area.y + 1,
+            "no matching session",
+            dim(),
+            area.width.saturating_sub(1),
+        );
+    }
     let focused = st.focused_session();
     let mut nested = false;
     for (line, y) in &sl.lines {
@@ -861,7 +894,12 @@ pub fn cursor(st: &ViewState, lay: &Layout, screens: &dyn ScreenSource) -> Optio
         let w = query_tail(&p.query, query_avail(inner)).width() as u16;
         return Some(((inner.x + 2 + w).min(inner.right() - 1), inner.y));
     }
-    if st.scroll.is_some() || st.help || st.sidebar_focus.is_some() || st.qmenu.is_some() {
+    if st.scroll.is_some()
+        || st.help
+        || st.sidebar_focus.is_some()
+        || st.qmenu.is_some()
+        || st.filter_input()
+    {
         return None;
     }
     let id = st.focused_session()?;
@@ -932,6 +970,16 @@ fn draw_status(buf: &mut Buffer, area: Rect, st: &ViewState) {
         )),
         (None, Some(c)) if c.remove => Some(format!("stop and remove {}? y/n", c.name)),
         (None, Some(c)) => Some(format!("stop {}? y/n", c.name)),
+        _ if st.layout_offer.is_some() => st.layout_offer.as_ref().map(|o| {
+            let mut parts = Vec::new();
+            if !o.resume.is_empty() {
+                parts.push(format!("resume {} exited", o.resume.len()));
+            }
+            if !o.start.is_empty() {
+                parts.push(format!("start {} missing", o.start.len()));
+            }
+            format!("layout {}: {}? y/n", o.name, parts.join(", "))
+        }),
         _ if st.sidebar_focus.is_some() => {
             Some("sidebar: Up/Down move, Enter opens, Esc/Right back".into())
         }
@@ -1040,8 +1088,8 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "split right / split down",
     ),
     (
-        HelpKey::Cmds(&[Cmd::NewSession, Cmd::Prompts]),
-        "new session (dialog) / saved prompts",
+        HelpKey::Cmds(&[Cmd::NewSession, Cmd::Prompts, Cmd::Layouts]),
+        "new session / saved prompts / named layouts",
     ),
     (
         HelpKey::Cmds(&[Cmd::FocusOther]),
@@ -1056,16 +1104,21 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         "focus the sidebar (Up/Down, Enter, Esc)",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Zoom, Cmd::Sidebar]),
-        "zoom the pane / show or hide the sidebar",
+        HelpKey::Cmds(&[Cmd::Zoom, Cmd::Sidebar, Cmd::Filter]),
+        "zoom / show or hide the sidebar / filter",
     ),
     (
         HelpKey::Cmds(&[Cmd::NextTab, Cmd::PrevTab, Cmd::RenameTab, Cmd::CloseTab]),
         "tab: next / previous / rename / close",
     ),
     (
-        HelpKey::Cmds(&[Cmd::Group, Cmd::SidebarNarrower, Cmd::SidebarWider]),
-        "group by tab / repo, sidebar width",
+        HelpKey::Cmds(&[
+            Cmd::Group,
+            Cmd::Filter,
+            Cmd::SidebarNarrower,
+            Cmd::SidebarWider,
+        ]),
+        "group by tab / repo, filter, sidebar width",
     ),
     (
         HelpKey::Cmds(&[Cmd::Rename, Cmd::OpenTask, Cmd::Git, Cmd::Summary]),
@@ -1281,6 +1334,8 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
         PaletteMode::Form(f) if f.index.is_some() => " Edit prompt ",
         PaletteMode::Form(_) => " Add prompt ",
         PaletteMode::Delete(_) => " Delete prompt ",
+        PaletteMode::Layouts => " Layouts ",
+        PaletteMode::DeleteLayout(_) => " Delete layout ",
     };
     Block::bordered()
         .border_type(BorderType::Rounded)
@@ -1313,8 +1368,14 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
             );
             return;
         }
-        PaletteMode::Delete(idx) => {
-            let name = st.prompts.get(*idx).map_or("", |p| p.name.as_str());
+        PaletteMode::Delete(_) | PaletteMode::DeleteLayout(_) => {
+            let name = match &p.mode {
+                PaletteMode::DeleteLayout(idx) => {
+                    st.layouts.get(*idx).map_or("", |l| l.name.as_str())
+                }
+                PaletteMode::Delete(idx) => st.prompts.get(*idx).map_or("", |p| p.name.as_str()),
+                _ => "",
+            };
             put(
                 buf,
                 inner.x,
@@ -1342,8 +1403,12 @@ fn draw_palette(buf: &mut Buffer, area: Rect, st: &ViewState) {
     let x = put(buf, inner.x, inner.y, "> ", dim(), inner.width);
     let tail = query_tail(&p.query, query_avail(inner));
     put(buf, x, inner.y, tail, Style::new(), inner.right() - x);
-    if p.mode == PaletteMode::Prompts && p.query.is_empty() {
-        let hint = "Ctrl-E edit · Ctrl-D delete";
+    if matches!(p.mode, PaletteMode::Prompts | PaletteMode::Layouts) && p.query.is_empty() {
+        let hint = if p.mode == PaletteMode::Layouts {
+            "type a name to save · Ctrl-D delete"
+        } else {
+            "Ctrl-E edit · Ctrl-D delete"
+        };
         let hw = hint.width() as u16;
         if x + hw + 1 < inner.right() {
             put(buf, inner.right() - hw, inner.y, hint, dim(), hw);
