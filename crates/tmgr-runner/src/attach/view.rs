@@ -1,7 +1,9 @@
 use super::broadcast::Broadcast;
 use super::chip::TaskChip;
+use super::filter::Filter;
 use super::find::{CopyState, ScrollText, SearchState};
 use super::keys::{Cmd, ScrollKey};
+use super::layouts::{LayoutOffer, LayoutRestore, SavedLayout};
 use super::mouse::{encode, wants, Kind, MouseEvent};
 use super::newsession::{NewEdit, NewSession, Place, TaskOpt};
 use super::palette::{esc_key, Key, Palette, PaletteEntry};
@@ -141,6 +143,12 @@ pub struct ViewState {
     pub summary: Option<super::summary::SummaryDraft>,
     pub summary_queue: std::collections::VecDeque<super::summary::SummaryDraft>,
     pub prompts: Vec<Prompt>,
+    pub layouts: Vec<SavedLayout>,
+    pub kinds: HashMap<String, String>,
+    pub layout_offer: Option<LayoutOffer>,
+    pub layout_restore: Option<LayoutRestore>,
+    pub(crate) layout_gen: u64,
+    pub filter: Option<Filter>,
     pub new_session: Option<NewSession>,
     pub new_kind: Option<String>,
     pub new_place: Option<Place>,
@@ -373,6 +381,12 @@ impl ViewState {
             summary: None,
             summary_queue: std::collections::VecDeque::new(),
             prompts: Vec::new(),
+            layouts: Vec::new(),
+            kinds: HashMap::new(),
+            layout_offer: None,
+            layout_restore: None,
+            layout_gen: 0,
+            filter: None,
             new_session: None,
             new_kind: None,
             new_place: None,
@@ -833,8 +847,16 @@ impl ViewState {
             }
         };
         let mut out = Vec::new();
+        let filtering = self.filter_active();
         if !self.grouped {
             for (item, members) in self.tab_order() {
+                let members: Vec<String> = members
+                    .into_iter()
+                    .filter(|m| self.passes_filter(m))
+                    .collect();
+                if members.is_empty() {
+                    continue;
+                }
                 match item {
                     TabItem::Tab(id) => {
                         out.push(SidebarLine::Tab {
@@ -862,11 +884,18 @@ impl ViewState {
             return out;
         }
         for (key, members) in self.groups() {
+            let members: Vec<&SessionRow> = members
+                .into_iter()
+                .filter(|r| self.passes_filter(&r.id))
+                .collect();
             if let [only] = members.as_slice() {
                 push(only, &mut out, false);
                 continue;
             }
-            let collapsed = self.collapsed.contains(&key);
+            if members.is_empty() {
+                continue;
+            }
+            let collapsed = !filtering && self.collapsed.contains(&key);
             out.push(SidebarLine::Header {
                 key,
                 count: members.len(),
@@ -1220,6 +1249,12 @@ impl ViewState {
                     self.open_prompts();
                 }
             }
+            Cmd::Layouts => {
+                if self.palette.take().is_none() {
+                    self.open_layouts();
+                }
+            }
+            Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
             Cmd::Subagents => {
@@ -1246,6 +1281,7 @@ impl ViewState {
             return;
         }
         self.sessions.retain(|s| s.id != old);
+        self.restore_renamed(old, new);
         self.broadcast_rename(old, new);
         if self.shells.iter().any(|s| s == old) {
             self.shells.retain(|s| s != old);
@@ -1493,6 +1529,9 @@ impl ViewState {
                 if sl.new_row == Some(row) {
                     return Hit::NewSession;
                 }
+                if row == sb.y {
+                    return Hit::Filter;
+                }
                 let Some((line, _)) = sl.lines.iter().find(|(_, y)| *y == row) else {
                     return Hit::None;
                 };
@@ -1590,6 +1629,7 @@ impl ViewState {
             | Hit::Git(_)
             | Hit::Broadcast(_)
             | Hit::Sub(..)
+            | Hit::Filter
             | Hit::NewSession) => Some(h),
             _ => None,
         }
@@ -1810,6 +1850,12 @@ impl ViewState {
                     out.new_session = true;
                 }
             }
+            Hit::Filter => {
+                if ev.is_left_press() {
+                    self.open_filter();
+                    out.redraw = true;
+                }
+            }
             Hit::None => {}
         }
         out
@@ -1955,7 +2001,11 @@ impl ViewState {
 
     fn apply_sessions(&mut self, rows: Vec<SessionRow>) {
         self.sessions = rows;
-        if let Some(p) = self.palette.as_mut() {
+        if let Some(p) = self
+            .palette
+            .as_mut()
+            .filter(|p| p.mode != super::palette::PaletteMode::Layouts)
+        {
             p.sel = 0;
         }
         let renames: Vec<(String, String)> = self
@@ -2196,6 +2246,7 @@ pub enum Hit {
     Git(String),
     Broadcast(String),
     Sub(String, String),
+    Filter,
     NewSession,
     Pane { idx: usize, at: Option<(u16, u16)> },
     None,

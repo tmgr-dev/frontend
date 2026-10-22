@@ -52,6 +52,8 @@ pub enum Cmd {
     Prompts,
     Search,
     CopyMode,
+    Layouts,
+    Filter,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

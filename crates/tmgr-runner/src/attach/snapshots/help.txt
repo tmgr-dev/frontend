@@ -7,13 +7,13 @@
                         │             │ w             session picker                                 │                                     │
                         │             │ s             two panes, or collapse to one                  │                                     │
                         │             │ | v / - h     split right / split down                       │                                     │
-                        │             │ c / i         new session (dialog) / saved prompts           │                                     │
+                        │             │ c / i / L     new session / saved prompts / named layouts    │                                     │
                         │             │ Tab           focus next pane (Shift-Tab previous)           │                                     │
                         │             │ arrows        move focus (Shift+arrows: resize)              │                                     │
                         │             │ Left at edge  focus the sidebar (Up/Down, Enter, Esc)        │                                     │
-                        │             │ z / b         zoom the pane / show or hide the sidebar       │                                     │
+                        │             │ z / b / f     zoom / show or hide the sidebar / filter       │                                     │
                         │             │ N / P / , / & tab: next / previous / rename / close          │                                     │
-                        │             │ g / < / >     group by tab / repo, sidebar width             │                                     │
+                        │             │ g / f / < / > group by tab / repo, filter, sidebar width     │                                     │
                         │             │ r / t / G / S rename / its task / git panel / summary        │                                     │
                         │             │ B / m         broadcast typing to several panes / pick panes │                                     │
                         │             │ / / y         search scrollback (n older / N newer) / copy m │                                     │
