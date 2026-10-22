@@ -24,6 +24,7 @@ import type {
 	AgentPinLimits,
 	AgentReplyEvent,
 	AgentStepEvent,
+	QuoteDraft,
 } from '@/types/agent';
 import type { AgentChatState } from '@/utils/agentChat';
 import {
@@ -58,6 +59,12 @@ import {
 	DEFAULT_PIN_LIMITS,
 	pinErrorMessage,
 } from '@/utils/agentPins';
+import {
+	addQuote,
+	isQuoteListFull,
+	QUOTE_LIMIT_MESSAGE,
+	removeQuote,
+} from '@/utils/agentQuotes';
 import type { AttachedFile } from '@/utils/aiAttachments';
 import { attachmentErrorMessage } from '@/utils/aiAttachments';
 import { createRequestSequence } from '@/utils/requestSequence';
@@ -81,6 +88,9 @@ export interface UseAgentChatReturn {
 	pinsLoading: Ref<boolean>;
 	pinSaving: Ref<boolean>;
 	pinError: Ref<string | null>;
+	quotes: Ref<QuoteDraft[]>;
+	addQuoteDraft: (draft: QuoteDraft) => boolean;
+	removeQuoteDraft: (index: number) => void;
 	addPin: (content: string, sourceMessageId?: number) => Promise<boolean>;
 	editPin: (pinId: number, content: string) => Promise<boolean>;
 	removePin: (pinId: number) => Promise<boolean>;
@@ -121,6 +131,7 @@ export function useAgentChat(): UseAgentChatReturn {
 	const pinsLoading = ref(false);
 	const pinSaving = ref(false);
 	const pinError = ref<string | null>(null);
+	const quotes = ref<QuoteDraft[]>([]);
 	const canCompact = computed(() =>
 		canCompactConversation(
 			state.value.messages,
@@ -317,7 +328,22 @@ export function useAgentChat(): UseAgentChatReturn {
 		});
 	};
 
+	const addQuoteDraft = (draft: QuoteDraft): boolean => {
+		const next = addQuote(quotes.value, draft);
+		if (next === quotes.value) {
+			if (isQuoteListFull(quotes.value)) error.value = QUOTE_LIMIT_MESSAGE;
+			return false;
+		}
+		quotes.value = next;
+		return true;
+	};
+
+	const removeQuoteDraft = (index: number): void => {
+		quotes.value = removeQuote(quotes.value, index);
+	};
+
 	const load = async (workspaceId: number): Promise<void> => {
+		if (state.value.workspaceId !== workspaceId) quotes.value = [];
 		const token = conversationRequests.begin();
 		const current = () => conversationRequests.isCurrent(token);
 		sendRequests.begin();
@@ -383,6 +409,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		stopPolling();
 		sending.value = false;
 		resetPins();
+		quotes.value = [];
 		loading.value = true;
 		error.value = null;
 
@@ -441,17 +468,23 @@ export function useAgentChat(): UseAgentChatReturn {
 		error.value = null;
 
 		try {
-			const { message_id, pending_message_id } = await sendAgentMessage(
+			const {
+				message_id,
+				pending_message_id,
+				quotes: savedQuotes,
+			} = await sendAgentMessage(
 				conversationId,
 				content,
 				scenario,
 				fileIds,
+				scenario ? [] : quotes.value,
 			);
 
 			if (!current() || state.value.conversationId !== conversationId) {
 				return true;
 			}
 
+			if (!scenario) quotes.value = [];
 			state.value = appendPending(
 				state.value,
 				{
@@ -459,6 +492,7 @@ export function useAgentChat(): UseAgentChatReturn {
 					content,
 					created_at: new Date().toISOString(),
 					files,
+					quotes: savedQuotes,
 				},
 				pending_message_id,
 			);
@@ -551,6 +585,7 @@ export function useAgentChat(): UseAgentChatReturn {
 		stopPolling();
 		sending.value = false;
 		resetPins();
+		quotes.value = [];
 		loading.value = true;
 		error.value = null;
 
@@ -715,6 +750,9 @@ export function useAgentChat(): UseAgentChatReturn {
 		pinsLoading,
 		pinSaving,
 		pinError,
+		quotes,
+		addQuoteDraft,
+		removeQuoteDraft,
 		addPin,
 		editPin,
 		removePin,
