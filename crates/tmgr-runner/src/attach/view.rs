@@ -182,11 +182,30 @@ pub struct ViewState {
     pub now_s: u64,
     pub grouped: bool,
     pub(crate) collapsed: HashSet<String>,
+    pub machines: Vec<Machine>,
+    pub remote: HashMap<String, String>,
+    collapsed_machines: HashSet<String>,
     group_order: Vec<String>,
     tabs: Vec<Tab>,
     tab_id: u64,
     tab_name: Option<String>,
     next_tab: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MachineState {
+    Connecting,
+    Online { latency_ms: u64 },
+    Busy,
+    Offline,
+    NoAccess,
+    HostKeyChanged,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Machine {
+    pub name: String,
+    pub state: MachineState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -230,6 +249,7 @@ pub enum TabItem {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SidebarItem {
+    Machine(String),
     Group(String),
     Tab(u64),
     Session(String),
@@ -238,6 +258,12 @@ pub enum SidebarItem {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SidebarLine {
+    Machine {
+        name: String,
+        count: usize,
+        collapsed: bool,
+    },
+    Empty(String),
     Header {
         key: String,
         count: usize,
@@ -425,6 +451,9 @@ impl ViewState {
             now_s: 0,
             grouped: false,
             collapsed: HashSet::new(),
+            machines: Vec::new(),
+            remote: HashMap::new(),
+            collapsed_machines: HashSet::new(),
             group_order: Vec::new(),
             tabs: Vec::new(),
             tab_id: 0,
@@ -435,8 +464,65 @@ impl ViewState {
 
     pub fn sidebar_rows(&self) -> Vec<&SessionRow> {
         let mut rows: Vec<&SessionRow> = self.sessions.iter().collect();
-        rows.sort_by_key(|r| r.state.kind != StateKind::Blocked);
+        rows.sort_by_key(|r| (self.machine_rank(&r.id), r.state.kind != StateKind::Blocked));
         rows
+    }
+
+    pub fn machine_of(&self, id: &str) -> Option<&str> {
+        self.remote.get(id).map(String::as_str)
+    }
+
+    fn is_local(&self, id: &str) -> bool {
+        self.machines.is_empty() || !self.remote.contains_key(id)
+    }
+
+    fn machine_rank(&self, id: &str) -> usize {
+        if self.machines.is_empty() {
+            return 0;
+        }
+        self.machine_of(id)
+            .and_then(|m| self.machines.iter().position(|x| x.name == m))
+            .map_or(0, |i| i + 1)
+    }
+
+    pub(crate) fn machine_state(&self, name: &str) -> Option<&MachineState> {
+        self.machines
+            .iter()
+            .find(|m| m.name == name)
+            .map(|m| &m.state)
+    }
+
+    pub(crate) fn session_dimmed(&self, id: &str) -> bool {
+        self.machine_of(id)
+            .and_then(|m| self.machine_state(m))
+            .is_some_and(|s| !matches!(s, MachineState::Online { .. }))
+    }
+
+    pub fn machine_label(&self, name: &str) -> String {
+        match self.machine_state(name) {
+            None => name.to_string(),
+            Some(MachineState::Connecting) => format!("{name} · connecting"),
+            Some(MachineState::Online { latency_ms }) => format!("{name} · {latency_ms}ms"),
+            Some(MachineState::Busy) => format!("{name} · busy"),
+            Some(MachineState::Offline) => format!("{name} · offline"),
+            Some(MachineState::NoAccess) => format!("{name} · no access"),
+            Some(MachineState::HostKeyChanged) => format!("{name} · host key changed"),
+        }
+    }
+
+    pub fn machine_dimmed(&self, name: &str) -> bool {
+        self.machine_state(name)
+            .is_some_and(|s| !matches!(s, MachineState::Online { .. }))
+    }
+
+    pub fn is_machine_collapsed(&self, name: &str) -> bool {
+        self.collapsed_machines.contains(name)
+    }
+
+    fn toggle_machine(&mut self, name: &str) {
+        if !self.collapsed_machines.remove(name) {
+            self.collapsed_machines.insert(name.to_string());
+        }
     }
 
     pub fn panes(&self) -> &[String] {
@@ -775,10 +861,14 @@ impl ViewState {
             .lines
             .into_iter()
             .filter_map(|(line, _)| match line {
+                SidebarLine::Machine { name, .. } => Some(SidebarItem::Machine(name)),
                 SidebarLine::Header { key, .. } => Some(SidebarItem::Group(key)),
                 SidebarLine::Tab { id, .. } => Some(SidebarItem::Tab(id)),
                 SidebarLine::Session { id, .. } => Some(SidebarItem::Session(id)),
-                SidebarLine::Activity(_) | SidebarLine::Sub { .. } | SidebarLine::Detail(_) => None,
+                SidebarLine::Activity(_)
+                | SidebarLine::Sub { .. }
+                | SidebarLine::Detail(_)
+                | SidebarLine::Empty(_) => None,
             })
             .collect();
         if sl.new_row.is_some() {
@@ -820,7 +910,7 @@ impl ViewState {
             .iter()
             .map(|k| (k.clone(), Vec::new()))
             .collect();
-        for r in &self.sessions {
+        for r in self.sessions.iter().filter(|r| self.is_local(&r.id)) {
             let key = self.group_key(&r.id);
             match out.iter_mut().find(|(k, _)| *k == key) {
                 Some((_, m)) => m.push(r),
@@ -847,6 +937,67 @@ impl ViewState {
     }
 
     fn sidebar_plan(&self) -> Vec<SidebarLine> {
+        if self.machines.is_empty() {
+            return self.local_plan();
+        }
+        let filtering = self.filter_active();
+        let mut out = Vec::new();
+        let local = self
+            .sessions
+            .iter()
+            .filter(|r| self.is_local(&r.id) && self.passes_filter(&r.id))
+            .count();
+        if !filtering || local > 0 {
+            let collapsed = !filtering && self.collapsed_machines.contains("local");
+            out.push(SidebarLine::Machine {
+                name: "local".into(),
+                count: local,
+                collapsed,
+            });
+            if !collapsed {
+                out.extend(self.local_plan());
+            }
+        }
+        for m in &self.machines {
+            let rows: Vec<&SessionRow> = self
+                .sidebar_rows()
+                .into_iter()
+                .filter(|r| self.machine_of(&r.id) == Some(m.name.as_str()))
+                .filter(|r| self.passes_filter(&r.id))
+                .collect();
+            if filtering && rows.is_empty() {
+                continue;
+            }
+            let collapsed = !filtering && self.collapsed_machines.contains(&m.name);
+            out.push(SidebarLine::Machine {
+                name: m.name.clone(),
+                count: rows.len(),
+                collapsed,
+            });
+            if collapsed {
+                continue;
+            }
+            if rows.is_empty() {
+                if matches!(m.state, MachineState::Online { .. }) {
+                    out.push(SidebarLine::Empty(format!(
+                        "no runs · tmgr run --on {}",
+                        m.name
+                    )));
+                }
+                continue;
+            }
+            for r in rows {
+                out.push(SidebarLine::Session {
+                    id: r.id.clone(),
+                    indent: true,
+                });
+                self.status_lines(&r.id, &mut out);
+            }
+        }
+        out
+    }
+
+    fn local_plan(&self) -> Vec<SidebarLine> {
         let push = |r: &SessionRow, out: &mut Vec<SidebarLine>, indent: bool| {
             out.push(SidebarLine::Session {
                 id: r.id.clone(),
@@ -863,7 +1014,7 @@ impl ViewState {
             for (item, members) in self.tab_order() {
                 let members: Vec<String> = members
                     .into_iter()
-                    .filter(|m| self.passes_filter(m))
+                    .filter(|m| self.is_local(m) && self.passes_filter(m))
                     .collect();
                 if members.is_empty() {
                     continue;
@@ -1028,26 +1179,54 @@ impl ViewState {
     }
 
     fn nav_order(&self) -> Vec<&str> {
-        if !self.grouped {
-            return self.sessions.iter().map(|r| r.id.as_str()).collect();
+        let mut order: Vec<&str> = if !self.grouped {
+            self.sessions
+                .iter()
+                .filter(|r| self.is_local(&r.id))
+                .map(|r| r.id.as_str())
+                .collect()
+        } else {
+            self.groups()
+                .into_iter()
+                .flat_map(|(_, m)| m)
+                .map(|r| r.id.as_str())
+                .collect()
+        };
+        for m in &self.machines {
+            order.extend(
+                self.sessions
+                    .iter()
+                    .filter(|r| self.machine_of(&r.id) == Some(m.name.as_str()))
+                    .map(|r| r.id.as_str()),
+            );
         }
-        self.groups()
-            .into_iter()
-            .flat_map(|(_, m)| m)
-            .map(|r| r.id.as_str())
-            .collect()
+        order
     }
 
     fn folded(&self) -> HashSet<&str> {
-        if !self.grouped {
-            return HashSet::new();
+        let mut out: HashSet<&str> = HashSet::new();
+        if self.grouped {
+            out.extend(
+                self.groups()
+                    .into_iter()
+                    .filter(|(k, m)| m.len() > 1 && self.collapsed.contains(k))
+                    .flat_map(|(_, m)| m)
+                    .map(|r| r.id.as_str()),
+            );
         }
-        self.groups()
-            .into_iter()
-            .filter(|(k, m)| m.len() > 1 && self.collapsed.contains(k))
-            .flat_map(|(_, m)| m)
-            .map(|r| r.id.as_str())
-            .collect()
+        if self.machines.is_empty() {
+            return out;
+        }
+        out.extend(
+            self.sessions
+                .iter()
+                .filter(|r| {
+                    let owner = self.machine_of(&r.id).unwrap_or("local");
+                    self.collapsed_machines.contains(owner)
+                })
+                .map(|r| r.id.as_str()),
+        );
+        out
     }
 
     pub fn edit_sidebar(&mut self, area: Rect, data: &[u8]) -> SidebarEdit {
@@ -1086,12 +1265,18 @@ impl ViewState {
                 b'\n' if i > 0 && data[i - 1] == b'\r' => 1,
                 b'\r' | b'\n' => {
                     let items = self.sidebar_items(area);
-                    if let Some(SidebarItem::Group(key)) =
-                        self.sidebar_focus.clone().filter(|f| items.contains(f))
-                    {
-                        self.toggle_group(&key);
-                        i += 1;
-                        continue;
+                    match self.sidebar_focus.clone().filter(|f| items.contains(f)) {
+                        Some(SidebarItem::Group(key)) => {
+                            self.toggle_group(&key);
+                            i += 1;
+                            continue;
+                        }
+                        Some(SidebarItem::Machine(name)) => {
+                            self.toggle_machine(&name);
+                            i += 1;
+                            continue;
+                        }
+                        _ => {}
                     }
                     return match self.sidebar_focus.take().filter(|f| items.contains(f)) {
                         Some(SidebarItem::Session(id))
@@ -1270,7 +1455,7 @@ impl ViewState {
                     self.open_templates();
                 }
             }
-            Cmd::Watch | Cmd::Notes => {}
+            Cmd::Watch | Cmd::Notes | Cmd::Reconnect => {}
             Cmd::Filter => self.open_filter(),
             Cmd::Questions => self.toggle_questions(),
             Cmd::NeedsYou => self.jump_to_needing(),
@@ -1557,6 +1742,8 @@ impl ViewState {
                     return Hit::None;
                 };
                 let id = match line {
+                    SidebarLine::Machine { name, .. } => return Hit::Machine(name.clone()),
+                    SidebarLine::Empty(_) => return Hit::None,
                     SidebarLine::Header { key, .. } => return Hit::Group(key.clone()),
                     SidebarLine::Tab { id, .. } => return Hit::Tab(*id),
                     SidebarLine::Activity(id) => {
@@ -1648,6 +1835,7 @@ impl ViewState {
             h @ (Hit::Button(..)
             | Hit::Session(_)
             | Hit::Group(_)
+            | Hit::Machine(_)
             | Hit::Tab(_)
             | Hit::Questions(_)
             | Hit::Subs(_)
@@ -1864,6 +2052,14 @@ impl ViewState {
                         }
                         out.forward = Some((session, encode(&ev, c, r, pane.mouse.encoding)));
                     }
+                }
+            }
+            Hit::Machine(name) => {
+                if ev.is_left_press() {
+                    let before = self.sidebar_items(area);
+                    self.toggle_machine(&name);
+                    self.keep_sidebar_focus(area, &before);
+                    out.redraw = true;
                 }
             }
             Hit::Group(key) => {
@@ -2115,7 +2311,12 @@ impl ViewState {
 
     fn show_first_tab(&mut self) {
         self.tab_name = None;
-        if let Some(item) = self.sessions.first().map(|r| self.item_of(&r.id)) {
+        let first = self
+            .sessions
+            .iter()
+            .find(|r| self.is_local(&r.id))
+            .or(self.sessions.first());
+        if let Some(item) = first.map(|r| self.item_of(&r.id)) {
             self.switch_tab(&item, None);
         }
     }
@@ -2290,6 +2491,7 @@ pub struct MouseOut {
 pub enum Hit {
     Button(String, Control),
     Session(String),
+    Machine(String),
     Group(String),
     Tab(u64),
     Questions(String),

@@ -83,7 +83,8 @@ pub use tree::{neighbour, Nav, Node, SplitDir, MAX_LEAVES};
 pub use usage::{Cost, Part, Reading, SessionMeta, Tone, UsageBar};
 pub use view::{
     header_button, layout, sidebar_button, slot_control, template_slot, Confirm, Control, Hit,
-    Layout, LayoutPrefs, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit, ScrollState, SessionRow,
-    SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, TabItem, TabPrefs, ViewState,
+    Layout, LayoutPrefs, Machine, MachineState, MouseOut, PaneInfo, PaneRect, Rename, RenameEdit,
+    ScrollState, SessionRow, SidebarEdit, SidebarItem, SidebarLayout, SidebarLine, TabItem,
+    TabPrefs, ViewState,
 };
 pub use watch::{duration_label, WatchState, WatchStatus};

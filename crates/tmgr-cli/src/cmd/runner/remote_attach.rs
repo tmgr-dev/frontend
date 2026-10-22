@@ -229,6 +229,7 @@ impl App {
                     | Cmd::Layouts
                     | Cmd::Templates
                     | Cmd::Watch
+                    | Cmd::Reconnect
                     | Cmd::Notes
                     | Cmd::Filter,
                 ) => self.notify("not available over a remote attach"),

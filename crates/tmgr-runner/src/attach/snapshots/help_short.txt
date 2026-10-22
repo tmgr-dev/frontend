@@ -17,7 +17,7 @@
                   │ r / t / G / S rename / task / git / summary / export / watch │                 │
                   │ B / m         broadcast typing to several panes / pick panes │                 │
                   │ / / y         search scrollback (n older / N newer) / copy m │                 │
-                  │ Enter / R     resume an exited session                       │                 │
+                  │ Enter / R / M resume exited / reconnect linked machines      │                 │
                   │ x / X         stop (asks first) / remove if exited           │                 │
                   │ [             scroll back through history                    │                 │
  + New session    │ q / u / ?     agent questions / subagents / this help        │─────────────────╯

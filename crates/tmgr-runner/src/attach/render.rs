@@ -13,8 +13,8 @@ use super::title::{age_label, clip};
 use super::tree::Nav;
 use super::usage::{Part, Tone};
 use super::view::{
-    header_button, layout, sidebar_button, slot_control, Control, Layout, PaneRect, SessionRow,
-    SidebarItem, SidebarLine, ViewState, HEADER_MIN_WIDTH, WIDE_COLS,
+    header_button, layout, sidebar_button, slot_control, Control, Layout, MachineState, PaneRect,
+    SessionRow, SidebarItem, SidebarLine, ViewState, HEADER_MIN_WIDTH, WIDE_COLS,
 };
 use crate::sanitize::sanitize_text;
 use ratatui::buffer::Buffer;
@@ -242,6 +242,21 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
     for (line, y) in &sl.lines {
         let y = *y;
         match line {
+            SidebarLine::Machine {
+                name,
+                count,
+                collapsed,
+            } => draw_machine_header(buf, area, st, name, *count, *collapsed, y),
+            SidebarLine::Empty(text) => {
+                put(
+                    buf,
+                    area.x + 3,
+                    y,
+                    text,
+                    dim(),
+                    area.width.saturating_sub(4),
+                );
+            }
             SidebarLine::Header {
                 key,
                 count,
@@ -254,6 +269,9 @@ fn draw_sidebar(buf: &mut Buffer, area: Rect, st: &ViewState) {
             SidebarLine::Session { id, indent } => {
                 nested = *indent;
                 draw_session_row(buf, area, st, id, *indent, focused, y);
+                if st.session_dimmed(id) {
+                    buf.set_style(Rect::new(area.x, y, area.width, 1), dim());
+                }
             }
         }
     }
@@ -483,6 +501,59 @@ fn draw_group_header(
         put(buf, tail_x, y, &tail, style, tail_w);
     }
     if st.sidebar_focus == Some(SidebarItem::Group(key.to_string())) {
+        buf.set_style(
+            Rect::new(area.x, y, area.width, 1),
+            Style::new().add_modifier(Modifier::REVERSED),
+        );
+    }
+}
+
+fn draw_machine_header(
+    buf: &mut Buffer,
+    area: Rect,
+    st: &ViewState,
+    name: &str,
+    count: usize,
+    collapsed: bool,
+    y: u16,
+) {
+    put(
+        buf,
+        area.x + 1,
+        y,
+        if collapsed { "▸" } else { "▾" },
+        dim(),
+        1,
+    );
+    let tail = if collapsed {
+        format!("({count})")
+    } else {
+        String::new()
+    };
+    let tail_w = tail.width() as u16;
+    let text_x = area.x + 3;
+    let tail_x = area.right().saturating_sub(tail_w + 1).max(text_x);
+    let room = tail_x.saturating_sub(text_x).saturating_sub(1);
+    let label = if name == "local" {
+        name.to_string()
+    } else {
+        st.machine_label(name)
+    };
+    let style = if st.machine_dimmed(name) {
+        dim().add_modifier(Modifier::BOLD)
+    } else {
+        Style::new().add_modifier(Modifier::BOLD)
+    };
+    put(
+        buf,
+        text_x,
+        y,
+        &clip(&label, usize::from(room)),
+        style,
+        room,
+    );
+    put(buf, tail_x, y, &tail, dim(), tail_w);
+    if st.sidebar_focus == Some(SidebarItem::Machine(name.to_string())) {
         buf.set_style(
             Rect::new(area.x, y, area.width, 1),
             Style::new().add_modifier(Modifier::REVERSED),
@@ -794,6 +865,9 @@ fn pane_title(p: &PaneRect, st: &ViewState) -> Line<'static> {
             let label_style = if geo.dim_label { dim() } else { Style::new() };
             spans.push(text("  ", Style::new()));
             spans.push(text(&geo.shown, label_style));
+            if let Some(machine) = st.machine_of(&p.session) {
+                spans.push(text(&format!(" @{machine}"), dim()));
+            }
             spans.push(text(&format!(" · {}", geo.state), Style::new()));
             let mut spare = geo.spare;
             if let Some(chip) = header_chip_text(st, p, &geo) {
@@ -891,7 +965,19 @@ fn draw_pane(buf: &mut Buffer, p: &PaneRect, st: &ViewState, screens: &dyn Scree
             }
         }
         None => {
-            let label = "connecting…";
+            let label = match st.machine_of(&p.session) {
+                Some(m) => match st.machine_state(m) {
+                    Some(MachineState::Busy) => format!("{m} is busy"),
+                    Some(MachineState::Offline) => format!("{m} is offline"),
+                    Some(MachineState::NoAccess) => format!("no access to {m}"),
+                    Some(MachineState::HostKeyChanged) => {
+                        format!("{m}'s host key changed - check tmgr link")
+                    }
+                    _ => format!("connecting to {m}…"),
+                },
+                None => "connecting…".to_string(),
+            };
+            let label = label.as_str();
             let w = label.width() as u16;
             let x = inner.x + inner.width.saturating_sub(w) / 2;
             put(
@@ -1217,7 +1303,10 @@ pub(crate) const HELP: &[(HelpKey, &str)] = &[
         HelpKey::Cmds(&[Cmd::Search, Cmd::CopyMode]),
         "search scrollback (n older / N newer) / copy mode (v select, y copy)",
     ),
-    (HelpKey::Cmds(&[Cmd::Resume]), "resume an exited session"),
+    (
+        HelpKey::Cmds(&[Cmd::Resume, Cmd::Reconnect]),
+        "resume exited / reconnect linked machines",
+    ),
     (
         HelpKey::Cmds(&[Cmd::Stop, Cmd::Remove]),
         "stop (asks first) / remove if exited",

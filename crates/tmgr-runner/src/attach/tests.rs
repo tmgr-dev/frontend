@@ -3258,7 +3258,7 @@ fn keyboard_navigation_never_lands_on_an_undrawn_row() {
     for _ in 0..50 {
         v.edit_sidebar(area, b"\x1b[B");
         match v.sidebar_focus.clone().unwrap() {
-            SidebarItem::Group(_) | SidebarItem::Tab(_) => unreachable!(),
+            SidebarItem::Group(_) | SidebarItem::Tab(_) | SidebarItem::Machine(_) => unreachable!(),
             SidebarItem::Session(id) => assert!(drawn.rows().iter().any(|(r, _)| *r == id)),
             SidebarItem::New => assert!(drawn.new_row.is_some()),
         }
@@ -3334,6 +3334,12 @@ fn shape(v: &ViewState) -> Vec<String> {
             SidebarLine::Detail(id) => format!("~{id}"),
             SidebarLine::Activity(id) => format!("^{id}"),
             SidebarLine::Sub { id, .. } => format!("*{id}"),
+            SidebarLine::Machine {
+                name,
+                count,
+                collapsed,
+            } => format!("M {name} {count} {collapsed}"),
+            SidebarLine::Empty(text) => format!("E {text}"),
         })
         .collect()
 }
@@ -9049,4 +9055,227 @@ fn a_block_inside_a_turn_counts_and_signal_deaths_do_not_push() {
         .update(&v, &push_on(), 131 * MIN, 600, &nobody)
         .iter()
         .all(|e| e.kind != PushKind::Error));
+}
+
+fn linked(machines: Vec<(&str, MachineState)>) -> ViewState {
+    let mut rows = six()[..3].to_vec();
+    rows.push(row("spark/s_aaaaaaaaaa", "build", StateKind::Working, "5m"));
+    rows.push(row("spark/s_bbbbbbbbbb", "tests", StateKind::Waiting, "2m"));
+    rows.push(row("lab/s_cccccccccc", "old-run", StateKind::Exited, "9m"));
+    let mut v = ViewState::new(rows, "local");
+    v.width = 140;
+    v.machines = machines
+        .into_iter()
+        .map(|(n, state)| Machine {
+            name: n.into(),
+            state,
+        })
+        .collect();
+    for (id, m) in [
+        ("spark/s_aaaaaaaaaa", "spark"),
+        ("spark/s_bbbbbbbbbb", "spark"),
+        ("lab/s_cccccccccc", "lab"),
+    ] {
+        v.remote.insert(id.into(), m.into());
+    }
+    v
+}
+
+fn linked_default() -> ViewState {
+    linked(vec![
+        ("spark", MachineState::Online { latency_ms: 42 }),
+        ("lab", MachineState::Offline),
+    ])
+}
+
+#[test]
+fn snapshot_machine_groups() {
+    let v = linked_default();
+    assert_snapshot("machines", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn offline_machine_rows_are_greyed() {
+    let v = linked_default();
+    let mut term = Terminal::new(TestBackend::new(140, 22)).unwrap();
+    term.draw(|f| render(f, &v, &screens())).unwrap();
+    let buf = term.backend().buffer();
+    let sb = layout(AREA, &v).sidebar.unwrap();
+    let lay = v.sidebar_layout(sb);
+    let fg_of = |id: &str| {
+        let y = lay.rows().into_iter().find(|(r, _)| r == id).unwrap().1;
+        buf[(sb.x + 6, y)].fg
+    };
+    assert_eq!(fg_of("lab/s_cccccccccc"), super::render::dim().fg.unwrap());
+    assert_ne!(
+        fg_of("spark/s_aaaaaaaaaa"),
+        super::render::dim().fg.unwrap()
+    );
+}
+
+#[test]
+fn snapshot_collapsed_and_empty_machines() {
+    let mut v = linked(vec![
+        ("spark", MachineState::Online { latency_ms: 42 }),
+        ("lab", MachineState::Online { latency_ms: 7 }),
+        ("idle", MachineState::Online { latency_ms: 9 }),
+    ]);
+    let y = sidebar_y(
+        &v,
+        &SidebarLine::Machine {
+            name: "spark".into(),
+            count: 2,
+            collapsed: false,
+        },
+    );
+    press(&mut v, 3, y);
+    assert!(v.is_machine_collapsed("spark"));
+    assert_snapshot("machines_collapsed", &draw(&v, &screens(), 140, 22));
+}
+
+#[test]
+fn snapshot_remote_pane_title_and_placeholder() {
+    let mut v = linked_default();
+    v.open("spark/s_aaaaaaaaaa");
+    let out = draw(&v, &screens(), 140, 22);
+    assert!(out.contains("@spark"));
+    assert!(out.contains("connecting to spark…"));
+    assert_snapshot("machines_remote_pane", &out);
+    v.open("lab/s_cccccccccc");
+    let out = draw(&v, &screens(), 140, 22);
+    assert!(out.contains("@lab"));
+    assert!(out.contains("lab is offline"));
+    v.machines[1].state = MachineState::Busy;
+    assert!(draw(&v, &screens(), 140, 22).contains("lab is busy"));
+    v.machines[1].state = MachineState::NoAccess;
+    assert!(draw(&v, &screens(), 140, 22).contains("no access to lab"));
+    v.machines[1].state = MachineState::HostKeyChanged;
+    let out = draw(&v, &screens(), 140, 22);
+    assert!(out.contains("lab's host key changed - check tmgr link"));
+    assert_eq!(v.machine_label("lab"), "lab · host key changed");
+    assert!(v.machine_dimmed("lab"));
+}
+
+#[test]
+fn no_machines_keeps_the_old_plan() {
+    let tabbed_plan = shape(&tabbed());
+    let mut t = tabbed();
+    t.machines.clear();
+    assert_eq!(shape(&t), tabbed_plan);
+    assert!(!tabbed_plan.iter().any(|l| l.starts_with("M ")));
+    let g = grouped_view();
+    assert!(!shape(&g).iter().any(|l| l.starts_with("M ")));
+}
+
+#[test]
+fn remote_rows_only_appear_under_their_machine() {
+    let remote = |p: &Vec<String>| {
+        p.iter()
+            .filter(|l| l.contains('/'))
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+    let tab_mode = shape(&linked_default());
+    assert_eq!(tab_mode[0], "M local 3 false");
+    let spark = tab_mode
+        .iter()
+        .position(|l| l == "M spark 2 false")
+        .unwrap();
+    assert!(tab_mode[..spark].iter().all(|l| !l.contains('/')));
+    assert_eq!(remote(&tab_mode).len(), 3);
+
+    let mut g = linked_default();
+    g.grouped = true;
+    let plan = shape(&g);
+    let spark = plan.iter().position(|l| l == "M spark 2 false").unwrap();
+    assert!(plan[..spark].iter().all(|l| !l.contains('/')));
+    assert_eq!(plan[spark + 1], "  spark/s_aaaaaaaaaa");
+    assert!(plan.contains(&"M lab 1 false".to_string()));
+}
+
+#[test]
+fn online_machine_without_runs_shows_an_empty_line() {
+    let v = linked(vec![
+        ("spark", MachineState::Online { latency_ms: 42 }),
+        ("idle", MachineState::Online { latency_ms: 9 }),
+        ("down", MachineState::Offline),
+    ]);
+    let plan = shape(&v);
+    assert!(plan.contains(&"E no runs · tmgr run --on idle".to_string()));
+    assert!(!plan
+        .iter()
+        .any(|l| l.starts_with("E ") && l.contains("down")));
+    assert!(plan.contains(&"M down 0 false".to_string()));
+    let items = v.sidebar_items(AREA);
+    assert!(items.contains(&SidebarItem::Machine("idle".into())));
+}
+
+#[test]
+fn the_filter_applies_to_remote_rows() {
+    let mut v = linked_default();
+    v.open_filter();
+    v.edit_filter(b"tests");
+    let plan = shape(&v);
+    assert_eq!(
+        plan,
+        vec![
+            "M spark 1 false".to_string(),
+            "  spark/s_bbbbbbbbbb".to_string()
+        ]
+    );
+}
+
+#[test]
+fn clicking_or_entering_a_machine_header_toggles_it() {
+    let mut v = linked_default();
+    let head = SidebarLine::Machine {
+        name: "spark".into(),
+        count: 2,
+        collapsed: false,
+    };
+    let y = sidebar_y(&v, &head);
+    assert_eq!(v.hit(AREA, 3, y), Hit::Machine("spark".into()));
+    press(&mut v, 3, y);
+    assert!(shape(&v).contains(&"M spark 2 true".to_string()));
+    assert!(!shape(&v).contains(&"  spark/s_aaaaaaaaaa".to_string()));
+    press(&mut v, 3, y);
+    assert!(!v.is_machine_collapsed("spark"));
+
+    v.sidebar_focus = Some(SidebarItem::Machine("lab".into()));
+    assert_eq!(v.edit_sidebar(AREA, b"\r"), SidebarEdit::Editing);
+    assert!(v.is_machine_collapsed("lab"));
+    v.sidebar_focus = Some(SidebarItem::Machine("local".into()));
+    v.edit_sidebar(AREA, b"\r");
+    assert_eq!(shape(&v)[0], "M local 3 true");
+    assert!(!shape(&v).contains(&"a".to_string()));
+}
+
+#[test]
+fn next_session_skips_nothing_and_survives_remote_rows() {
+    let mut v = linked_default();
+    for _ in 0..8 {
+        v.apply(Cmd::NextSession);
+        assert!(v.focused_session().is_some());
+    }
+    for _ in 0..8 {
+        v.apply(Cmd::NextTab);
+        v.apply(Cmd::PrevSession);
+    }
+    assert_eq!(v.machine_of("lab/s_cccccccccc"), Some("lab"));
+    assert_eq!(v.machine_of("a"), None);
+}
+
+#[test]
+fn ctrl_bracket_m_reconnects_and_help_lists_it() {
+    let mut s = InputSplitter::new();
+    assert_eq!(s.feed(&[0x1d, b'M']), vec![Action::Cmd(Cmd::Reconnect)]);
+    let def = ACTIONS.iter().find(|a| a.cmd == Cmd::Reconnect).unwrap();
+    assert_eq!(def.keys, b"M");
+    assert_eq!(def.label, "Reconnect linked machines");
+    assert!(def.palette);
+    assert!(super::render::HELP
+        .iter()
+        .any(|(k, _)| matches!(k, super::render::HelpKey::Cmds(c) if c.contains(&Cmd::Reconnect))));
+    let mut v = ViewState::new(Vec::new(), "local");
+    v.apply(Cmd::Reconnect);
 }
