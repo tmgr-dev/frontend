@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.43
 
 - `tmgr attach` has named layouts and a sidebar filter. `Ctrl-] L` (also in `?` and the command palette) opens the layouts list: type a name and press Enter on the last row to save the current panes and tabs under it (the same name replaces the old one), pick a saved layout and press Enter to switch to it, `Ctrl-D` deletes the selected one after a `y` confirmation. Switching keeps your sidebar settings and follows sessions you resumed since saving. Sessions that have exited are offered for resume through the normal resume path, and sessions that no longer exist are offered a fresh start of the same kind in the same folder (`y` does it, anything else leaves them); the started ones take their old place in the layout. Layouts live in `layouts.json` in the tmgr config directory (written atomically, mode 0600), names are trimmed, stripped of control characters and limited to 40 characters, at most 50 layouts. `Ctrl-] f` (or a click on the sidebar title) filters the sidebar: type words and only sessions whose name, title, folder or branch contain all of them stay, folded groups open while it is on; `Enter` keeps the filter, `Esc` inside the filter box clears it, and `Ctrl-] f` edits it again.
 
