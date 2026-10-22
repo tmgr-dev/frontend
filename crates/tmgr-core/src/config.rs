@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_SERVER: &str = "https://api.tmgr.dev";
 pub const DEFAULT_PROFILE: &str = "default";
-pub const KEYS: [&str; 15] = [
+pub const KEYS: [&str; 16] = [
     "server",
     "default_workspace",
     "web_url",
@@ -23,7 +23,9 @@ pub const KEYS: [&str; 15] = [
     "attach.signal.input",
     "attach.signal.quiet",
     "attach.prompt.send",
+    "attach.summary",
 ];
+pub const SUMMARY_MODES: [&str; 3] = ["ask", "always", "never"];
 pub const MIN_SIDEBAR_WIDTH: u16 = 16;
 pub const MAX_SIDEBAR_WIDTH: u16 = 60;
 pub const DEFAULT_REVIEW_STATUS: &str = "Review";
@@ -44,6 +46,8 @@ pub struct AttachConfig {
     pub signal_quiet: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_send: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
 }
 
 pub fn parse_quiet_hours(value: &str) -> Option<(u16, u16)> {
@@ -156,6 +160,7 @@ impl Config {
             "attach.signal.input" => self.attach.signal_input.map(|b| b.to_string()),
             "attach.signal.quiet" => self.attach.signal_quiet.clone(),
             "attach.prompt.send" => self.attach.prompt_send.map(|b| b.to_string()),
+            "attach.summary" => self.attach.summary.clone(),
             _ => return Err(unknown_key(key)),
         })
     }
@@ -258,6 +263,15 @@ impl Config {
                 })?;
                 self.attach.prompt_send = Some(v);
                 Ok(v.to_string())
+            }
+            "attach.summary" => {
+                let v = value.trim().to_ascii_lowercase();
+                if !SUMMARY_MODES.contains(&v.as_str()) {
+                    return Err(Error::usage("invalid attach.summary")
+                        .hint(format!("use one of: {}", SUMMARY_MODES.join(", "))));
+                }
+                self.attach.summary = Some(v.clone());
+                Ok(v)
             }
             "attach.signal.quiet" => {
                 let v = value.trim().to_ascii_lowercase();
@@ -446,6 +460,12 @@ mod tests {
     #[test]
     fn attach_sidebar_width_is_range_checked_and_round_trips() {
         let mut cfg = Config::default();
+        assert_eq!(cfg.set("attach.summary", " Always ").unwrap(), "always");
+        assert_eq!(
+            cfg.get("attach.summary").unwrap().as_deref(),
+            Some("always")
+        );
+        assert!(cfg.set("attach.summary", "sometimes").is_err());
         assert!(cfg.set("attach.sidebar_width", "15").is_err());
         assert!(cfg.set("attach.sidebar_width", "61").is_err());
         assert!(cfg.set("attach.sidebar_width", "wide").is_err());

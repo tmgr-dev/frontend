@@ -30,6 +30,7 @@ halt | Agents | session, kill
 rm | Agents | session
 resume | Other | session
 rename | Agents | session, name
+session summary | Other | session, plain
 time | Time | today, since, by
 time sync | Time | state
 time idle | Time | seconds

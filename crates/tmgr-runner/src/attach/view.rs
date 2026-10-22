@@ -138,6 +138,8 @@ pub struct ViewState {
     pub palette: Option<Palette>,
     pub git: HashMap<String, super::git::GitInfo>,
     pub git_open: bool,
+    pub summary: Option<super::summary::SummaryDraft>,
+    pub summary_queue: std::collections::VecDeque<super::summary::SummaryDraft>,
     pub prompts: Vec<Prompt>,
     pub new_session: Option<NewSession>,
     pub new_kind: Option<String>,
@@ -368,6 +370,8 @@ impl ViewState {
             palette: None,
             git: HashMap::new(),
             git_open: false,
+            summary: None,
+            summary_queue: std::collections::VecDeque::new(),
             prompts: Vec::new(),
             new_session: None,
             new_kind: None,
@@ -1232,7 +1236,8 @@ impl ViewState {
             | Cmd::NewSession
             | Cmd::OpenTask
             | Cmd::Search
-            | Cmd::CopyMode => {}
+            | Cmd::CopyMode
+            | Cmd::Summary => {}
         }
     }
 
@@ -1621,6 +1626,7 @@ impl ViewState {
             || self.new_session.is_some()
             || self.palette.is_some()
             || self.git_open
+            || self.summary.is_some()
             || self.qmenu.is_some()
             || self.peek.is_some()
             || self.help
@@ -1633,6 +1639,9 @@ impl ViewState {
         }
         if self.palette.is_some() {
             return self.palette_mouse(area, ev, out);
+        }
+        if self.summary.is_some() {
+            return self.summary_mouse(area, ev, out);
         }
         if self.git_open {
             return self.git_mouse(area, ev, out);
@@ -2170,6 +2179,7 @@ pub struct MouseOut {
     pub new_session: bool,
     pub open_task: Option<String>,
     pub git: Option<super::git::GitAction>,
+    pub summary: Option<super::summary::SummaryAction>,
     pub new_edit: Option<NewEdit>,
     pub question: Option<QEdit>,
 }

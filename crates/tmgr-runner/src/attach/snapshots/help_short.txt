@@ -14,7 +14,7 @@
                   │ z / b         zoom the pane / show or hide the sidebar       │                 │
                   │ N / P / , / & tab: next / previous / rename / close          │                 │
                   │ g / < / >     group by tab / repo, sidebar width             │                 │
-                  │ r / t / G     rename (tmgr wins) / its task / git panel      │                 │
+                  │ r / t / G / S rename / its task / git panel / summary        │                 │
                   │ B / m         broadcast typing to several panes / pick panes │                 │
                   │ / / y         search scrollback (n older / N newer) / copy m │                 │
                   │ Enter / R     resume an exited session                       │                 │

@@ -246,12 +246,24 @@ pub(super) fn resolve(job: &ChipJob, user: &Records, sandbox: Records) -> Option
         .or_else(|| run.and_then(|r| r.branch.clone()))
         .map(|b| tmgr_core::text::truncate_chars(&tmgr_core::text::sanitize_line(&b), 80).0)
         .filter(|b| !b.is_empty());
+    let linked = run.filter(|r| {
+        job.task.is_some()
+            && user
+                .runs
+                .runs
+                .iter()
+                .any(|u| u.run_id == r.run_id && u.task_id == r.task_id)
+            && self::started_s(r)
+                .is_some_and(|s| s + 120 >= job.created_s && s <= job.created_s + 600)
+    });
     Some(TaskChip {
         key,
         branch,
         started_s,
         workspace,
         task_id,
+        run_id: linked.map(|r| r.run_id),
+        run_ws: linked.and_then(|r| r.workspace.clone()),
     })
 }
 
@@ -338,6 +350,25 @@ mod tests {
         assert_eq!(chip.branch.as_deref(), Some("tm-644-open-desktop"));
         assert_eq!(chip.task_id, Some(640));
         assert_eq!(chip.started_s, Some(1_791_799_200));
+    }
+
+    #[test]
+    fn only_a_user_level_run_of_a_task_session_is_linked_for_posting() {
+        let r = rec(vec![run(64, "TM-644", "b")], Vec::new());
+        let mut live = job(Some((1, 640)), None);
+        live.created_s = 1_791_799_200 + 5;
+        let chip = resolve_user(&live, &r).unwrap();
+        assert_eq!((chip.run_id, chip.run_ws), (Some(64), None));
+        let by_branch = resolve_user(&job(None, Some("tm-644-x")), &r).unwrap();
+        assert_eq!(by_branch.run_id, None);
+        let sandbox = rec(vec![run(65, "TM-644", "b")], Vec::new());
+        let mut other = job(Some((1, 650)), None);
+        other.created_s = 1_791_799_205;
+        let chip = resolve(&other, &r, sandbox).unwrap();
+        assert_eq!(chip.run_id, None);
+        let mut late = job(Some((1, 640)), None);
+        late.created_s = 1_791_799_200 + 500;
+        assert_eq!(resolve_user(&late, &r).unwrap().run_id, None);
     }
 
     #[test]

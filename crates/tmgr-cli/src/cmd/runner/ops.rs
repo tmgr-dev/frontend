@@ -110,6 +110,9 @@ pub fn dispatch(o: &Opts, cmd: &RunnerCommands) -> Result<i32> {
         RunnerCommands::Rm(a) => rm(o, a),
         RunnerCommands::Resume(a) => resume(o, a),
         RunnerCommands::Rename(a) => rename(o, a),
+        RunnerCommands::Session {
+            command: super::SessionCmd::Summary(a),
+        } => super::attach_summary::print_summary(o, &a.session, a.plain),
     }
 }
 
@@ -725,7 +728,7 @@ fn newest(sessions: &[SessionInfo], f: impl Fn(&SessionInfo) -> bool) -> Option<
         .max_by_key(|s| (s.created_ms, &s.id))
 }
 
-fn resolve<'a>(sessions: &'a [SessionInfo], key: &str) -> Result<&'a SessionInfo> {
+pub(super) fn resolve<'a>(sessions: &'a [SessionInfo], key: &str) -> Result<&'a SessionInfo> {
     newest(sessions, |s| s.id == key)
         .or_else(|| {
             newest(sessions, |s| {

@@ -10,6 +10,7 @@ mod attach_questions;
 mod attach_shell;
 mod attach_signal;
 mod attach_status;
+mod attach_summary;
 mod attach_tasks;
 mod attach_title;
 mod attach_usage;
@@ -66,6 +67,26 @@ pub enum RunnerCommands {
     Resume(ResumeArgs),
     /// [experimental] Give a session a new name (the id stays the same)
     Rename(RenameArgs),
+    /// [experimental] Work with a session's transcript
+    Session {
+        #[command(subcommand)]
+        command: SessionCmd,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SessionCmd {
+    /// [experimental] Print a short summary of what a Claude session did (nothing is sent anywhere)
+    Summary(SummaryArgs),
+}
+
+#[derive(Args)]
+pub struct SummaryArgs {
+    /// Session id or name
+    pub session: String,
+    /// Only list files, commits and pull requests, without asking a model for prose
+    #[arg(long)]
+    pub plain: bool,
 }
 
 #[derive(Subcommand)]

@@ -47,13 +47,24 @@ pub fn classify(
     text: &str,
     timeout: Duration,
 ) -> Result<Vec<String>, Failure> {
+    let reply = complete(bin, workdir, PROMPT, text, timeout)?;
+    parse(&reply, text).ok_or(Failure::Unreadable)
+}
+
+pub fn complete(
+    bin: &Path,
+    workdir: &Path,
+    prompt: &str,
+    text: &str,
+    timeout: Duration,
+) -> Result<String, Failure> {
     if !is_exe(bin) {
         return Err(Failure::Missing);
     }
     let mut child = Command::new(bin)
         .args([
             "-p",
-            PROMPT,
+            prompt,
             "--model",
             "haiku",
             "--output-format",
@@ -111,7 +122,7 @@ pub fn classify(
     if !status.success() {
         return Err(Failure::Exit(status.code()));
     }
-    parse(&String::from_utf8_lossy(&out), text).ok_or(Failure::Unreadable)
+    Ok(String::from_utf8_lossy(&out).into_owned())
 }
 
 pub fn parse(reply: &str, source: &str) -> Option<Vec<String>> {
