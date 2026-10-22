@@ -2,9 +2,11 @@ mod actions;
 mod attention;
 mod broadcast;
 mod chip;
+mod filter;
 mod find;
 mod git;
 mod keys;
+mod layouts;
 mod modes;
 mod mouse;
 mod newsession;
@@ -29,12 +31,17 @@ pub use actions::{ActionDef, ACTIONS};
 pub use attention::AttentionTracker;
 pub use broadcast::{peer_bytes, Broadcast};
 pub use chip::{chip_text, open_urls, TaskChip};
+pub use filter::{Filter, FilterEdit};
 pub use find::{CopyState, ScrollText, SearchEdit, SearchState};
 pub use git::{
     parse_numstat, parse_pr, parse_status, valid_pr_url, GitAction, GitInfo, Pr, PrLookup,
     StatusInfo,
 };
 pub use keys::{Action, Cmd, InputSplitter, ScrollKey};
+pub use layouts::{
+    clean_name as clean_layout_name, parse as parse_layouts, render as render_layouts, LayoutOffer,
+    LayoutRestore, Member, SavedLayout, Shape, MAX_LAYOUTS,
+};
 pub use modes::{enter_mouse, focus_on, mode_changes, reset_modes};
 pub use mouse::{encode, wants, Kind, MouseEvent};
 pub use newsession::{

@@ -221,7 +221,13 @@ impl App {
                 Action::Cmd(Cmd::Detach) => return Some(Exit::Detached),
                 Action::Cmd(Cmd::Picker) => self.notify("one run per remote attach"),
                 Action::Cmd(
-                    Cmd::Stop | Cmd::Remove | Cmd::Rename | Cmd::Resume | Cmd::NewSession,
+                    Cmd::Stop
+                    | Cmd::Remove
+                    | Cmd::Rename
+                    | Cmd::Resume
+                    | Cmd::NewSession
+                    | Cmd::Layouts
+                    | Cmd::Filter,
                 ) => self.notify("not available over a remote attach"),
                 Action::Cmd(cmd) => {
                     self.view.apply(cmd);

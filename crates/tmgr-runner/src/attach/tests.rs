@@ -1300,7 +1300,7 @@ fn sidebar_icons_are_hit_tested_and_the_row_still_switches() {
         Hit::Button("a".into(), Control::Close)
     );
     assert_eq!(v.hit(AREA, 3, 2), Hit::Session("a".into()));
-    assert_eq!(v.hit(AREA, stop, 0), Hit::None);
+    assert_eq!(v.hit(AREA, stop, 0), Hit::Filter);
 }
 
 #[test]
@@ -7689,4 +7689,373 @@ fn snapshot_summary_preview_states() {
     let mut v = two_pane(140);
     v.show_summary(draft(Some("Files changed (1): a.rs"), false));
     assert_snapshot("summary_no_task", &draw(&v, &screens(), 140, 24));
+}
+
+fn layout_view() -> ViewState {
+    let mut v = two_panes(SplitDir::Right);
+    v.kinds.insert("a".into(), "agent:claude".into());
+    v.kinds.insert("b".into(), "shell".into());
+    v.locs
+        .insert("a".into(), loc("/w/app", "/w/app", Some("main")));
+    v.locs
+        .insert("b".into(), loc("/w/app", "/w/app/src", Some("main")));
+    v
+}
+
+#[test]
+fn layout_names_are_trimmed_cleaned_and_bounded() {
+    assert_eq!(clean_layout_name("  tmgr  ").as_deref(), Some("tmgr"));
+    assert_eq!(clean_layout_name("a\x1b[31mb\n").as_deref(), Some("a[31mb"));
+    assert_eq!(clean_layout_name(" \t "), None);
+    assert_eq!(
+        clean_layout_name(&"x".repeat(200)).unwrap().chars().count(),
+        40
+    );
+}
+
+#[test]
+fn saved_layouts_round_trip_and_bad_entries_are_skipped() {
+    let mut v = layout_view();
+    v.save_layout("Work").unwrap();
+    let text = render_layouts(&v.layouts);
+    assert_eq!(parse_layouts(&text).unwrap(), v.layouts);
+    let broken = text.replace("\"layout\": [", "\"layout\": [{\"name\": 5}, ");
+    assert_eq!(parse_layouts(&broken).unwrap().len(), 1);
+    let dup = format!(
+        "{{\"layout\":[{},{}]}}",
+        serde_json::to_string(&v.layouts[0]).unwrap(),
+        serde_json::to_string(&v.layouts[0])
+            .unwrap()
+            .replace("Work", "work")
+    );
+    assert_eq!(parse_layouts(&dup).unwrap().len(), 1);
+    assert!(parse_layouts("not json").is_err());
+}
+
+#[test]
+fn saving_needs_panes_and_replaces_a_layout_of_the_same_name() {
+    let mut empty = ViewState::new(Vec::new(), "local");
+    assert!(empty.save_layout("x").is_err());
+    let mut v = layout_view();
+    assert!(v.save_layout("  ").is_err());
+    v.save_layout("Work").unwrap();
+    v.open("c");
+    v.save_layout("work").unwrap();
+    assert_eq!(v.layouts.len(), 1);
+    assert_eq!(v.layouts[0].prefs.panes, vec!["c".to_string()]);
+}
+
+#[test]
+fn switching_restores_panes_and_keeps_the_sidebar_choice() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    v.sidebar = Some(false);
+    v.open("c");
+    assert!(v.switch_layout(0));
+    assert_eq!(ids(&v), vec!["a", "b"]);
+    assert_eq!(v.sidebar, Some(false));
+    assert!(v.layout_offer.is_none());
+    assert_eq!(v.notice.as_deref(), Some("layout work"));
+}
+
+#[test]
+fn exited_members_are_offered_a_resume() {
+    let mut v = two_panes(SplitDir::Right);
+    assert!(v.split_focused(SplitDir::Down, "d"));
+    v.save_layout("work").unwrap();
+    v.open("c");
+    v.switch_layout(0);
+    assert_eq!(ids(&v), vec!["a", "b", "d"]);
+    let offer = v.layout_offer.clone().unwrap();
+    assert_eq!(offer.resume, vec!["d".to_string()]);
+    assert!(offer.start.is_empty());
+}
+
+#[test]
+fn gone_members_are_offered_a_start_only_with_a_kind_and_folder() {
+    let mut v = layout_view();
+    assert!(v.split_focused(SplitDir::Down, "c"));
+    v.save_layout("work").unwrap();
+    let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id == "a").collect();
+    v.sessions_changed(AREA, rows);
+    v.switch_layout(0);
+    let offer = v.layout_offer.clone().unwrap();
+    assert_eq!(offer.start.len(), 1);
+    assert_eq!(offer.start[0].id, "b");
+    assert_eq!(offer.start[0].kind.as_deref(), Some("shell"));
+    assert_eq!(offer.gone, 1);
+    assert_eq!(ids(&v), vec!["a"]);
+}
+
+#[test]
+fn a_started_member_takes_its_place_in_the_layout() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id == "a").collect();
+    v.sessions_changed(AREA, rows.clone());
+    v.switch_layout(0);
+    let mut with_new = rows;
+    with_new.push(row("b2", "sh-9", StateKind::Working, "1s"));
+    v.sessions_changed(AREA, with_new);
+    let g = v.layout_gen;
+    v.layout_started("b", Some("b2"), g);
+    assert_eq!(ids(&v), vec!["a", "b2"]);
+    assert!(v.layout_restore.is_none());
+}
+
+#[test]
+fn a_failed_start_ends_the_restore_without_changing_the_panes() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id == "a").collect();
+    v.sessions_changed(AREA, rows);
+    v.switch_layout(0);
+    let g = v.layout_gen;
+    v.layout_started("b", None, g);
+    assert_eq!(ids(&v), vec!["a"]);
+    assert!(v.layout_restore.is_none());
+}
+
+#[test]
+fn a_resumed_session_stands_in_for_the_one_it_replaced() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    let mut rows = four();
+    rows.retain(|r| r.id != "a");
+    let mut resumed = row("a2", "claude", StateKind::Working, "1s");
+    resumed.resumed_from = Some("a".into());
+    rows.insert(0, resumed);
+    v.sessions_changed(AREA, rows);
+    v.open("c");
+    v.switch_layout(0);
+    assert_eq!(ids(&v), vec!["a2", "b"]);
+    assert!(v.layout_offer.is_none());
+}
+
+#[test]
+fn the_layouts_palette_saves_under_a_typed_name_and_deletes_after_a_confirmation() {
+    let mut v = layout_view();
+    v.apply(Cmd::Layouts);
+    assert_eq!(
+        v.entries().last().map(|r| r.entry.clone()),
+        Some(PaletteEntry::SaveLayout(String::new()))
+    );
+    assert_eq!(v.edit_palette(b"\r"), PaletteEdit::Editing);
+    assert!(v.notice.is_some());
+    v.edit_palette(b"work");
+    assert_eq!(
+        v.edit_palette(b"\r"),
+        PaletteEdit::Run(PaletteEntry::SaveLayout("work".into()))
+    );
+    v.save_layout("work").unwrap();
+    v.apply(Cmd::Layouts);
+    assert_eq!(v.entries()[0].entry, PaletteEntry::Layout(0));
+    assert_eq!(v.entries()[0].label, "work");
+    v.edit_palette(b"\x04");
+    assert_eq!(v.edit_palette(b"n"), PaletteEdit::Editing);
+    assert_eq!(v.layouts.len(), 1);
+    v.edit_palette(b"\x04");
+    assert_eq!(v.edit_palette(b"y"), PaletteEdit::LayoutsChanged);
+    assert!(v.layouts.is_empty());
+}
+
+#[test]
+fn enter_on_a_saved_layout_runs_it() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    v.apply(Cmd::Layouts);
+    assert_eq!(
+        v.edit_palette(b"\r"),
+        PaletteEdit::Run(PaletteEntry::Layout(0))
+    );
+}
+
+fn visible(v: &ViewState) -> Vec<String> {
+    let sb = layout(AREA, v).sidebar.unwrap();
+    v.sidebar_layout(sb)
+        .rows()
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+#[test]
+fn the_filter_matches_names_folders_and_branches() {
+    let mut v = grouped_view();
+    v.open_filter();
+    v.edit_filter(b"feat");
+    assert_eq!(visible(&v), vec!["c"]);
+    v.edit_filter(b"\x15lib");
+    assert_eq!(visible(&v), vec!["d", "e"]);
+    v.edit_filter(b"\x15app main");
+    assert_eq!(visible(&v), vec!["a", "b"]);
+    v.edit_filter(b"\x15wt");
+    assert_eq!(visible(&v), vec!["c"]);
+    v.edit_filter(b"\x15zzz");
+    assert!(visible(&v).is_empty());
+}
+
+#[test]
+fn the_filter_works_in_the_tab_list_too_and_ignores_folded_groups() {
+    let mut v = grouped_view();
+    v.collapsed.insert("/w/lib".into());
+    v.open_filter();
+    v.edit_filter(b"lib");
+    assert_eq!(visible(&v), vec!["d", "e"]);
+    v.grouped = false;
+    assert_eq!(visible(&v), vec!["d", "e"]);
+}
+
+#[test]
+fn the_filter_keeps_on_enter_and_clears_on_escape() {
+    let mut v = grouped_view();
+    v.open_filter();
+    assert!(v.filter_input());
+    v.edit_filter(b"lib");
+    assert_eq!(v.edit_filter(b"\r"), FilterEdit::Keep);
+    assert!(!v.filter_input());
+    assert_eq!(visible(&v), vec!["d", "e"]);
+    v.open_filter();
+    assert_eq!(v.filter.as_ref().unwrap().query, "lib");
+    assert_eq!(v.edit_filter(b"\x1b"), FilterEdit::Clear);
+    assert!(v.filter.is_none());
+    assert_eq!(visible(&v).len(), 6);
+    v.open_filter();
+    assert_eq!(v.edit_filter(b"\r"), FilterEdit::Clear);
+}
+
+#[test]
+fn the_filter_shows_a_hidden_or_zoomed_sidebar() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    v.sidebar = Some(false);
+    v.zoom = true;
+    v.open_filter();
+    assert!(v.sidebar_shown());
+    assert!(v.filter_input());
+}
+
+#[test]
+fn clicking_the_sidebar_title_opens_the_filter() {
+    let mut v = ViewState::new(four(), "local");
+    v.width = 140;
+    assert_eq!(v.hit(AREA, 3, 0), Hit::Filter);
+}
+
+#[test]
+fn snapshot_filtered_sidebar() {
+    let mut v = grouped_view();
+    v.open_filter();
+    v.edit_filter(b"app");
+    assert_snapshot("filter_sidebar", &draw(&v, &screens(), 140, 22));
+    v.edit_filter(b"zzz");
+    assert!(draw(&v, &screens(), 140, 22).contains("no matching session"));
+}
+
+#[test]
+fn snapshot_layouts_palette() {
+    let mut v = layout_view();
+    v.save_layout("tmgr").unwrap();
+    v.save_layout("backend").unwrap();
+    v.apply(Cmd::Layouts);
+    assert_snapshot("layouts_palette", &draw(&v, &screens(), 100, 24));
+    v.edit_palette(b"back");
+    assert_snapshot("layouts_palette_query", &draw(&v, &screens(), 100, 24));
+}
+
+#[test]
+fn the_offer_names_what_it_will_do_in_the_status_line() {
+    let mut v = two_panes(SplitDir::Right);
+    assert!(v.split_focused(SplitDir::Down, "d"));
+    v.save_layout("work").unwrap();
+    v.open("c");
+    v.switch_layout(0);
+    let screen = draw(&v, &screens(), 140, 24);
+    assert!(
+        screen.contains("layout work: resume 1 exited? y/n"),
+        "{screen}"
+    );
+}
+
+#[test]
+fn a_late_start_does_not_override_what_the_user_changed_meanwhile() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id == "a").collect();
+    v.sessions_changed(AREA, rows.clone());
+    v.switch_layout(0);
+    let g = v.layout_gen;
+    v.open("c");
+    let mut with_new = rows;
+    with_new.push(row("b2", "sh-9", StateKind::Working, "1s"));
+    with_new.push(row("c", "codex", StateKind::Blocked, "3m"));
+    v.sessions_changed(AREA, with_new);
+    v.layout_started("b", Some("b2"), g);
+    assert_eq!(ids(&v), vec!["c"]);
+}
+
+#[test]
+fn a_start_from_an_older_switch_is_ignored() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    let rows: Vec<SessionRow> = four().into_iter().filter(|r| r.id == "a").collect();
+    v.sessions_changed(AREA, rows.clone());
+    v.switch_layout(0);
+    let old = v.layout_gen;
+    v.switch_layout(0);
+    let mut with_new = rows;
+    with_new.push(row("b2", "sh-9", StateKind::Working, "1s"));
+    v.sessions_changed(AREA, with_new);
+    v.layout_started("b", Some("b2"), old);
+    assert_eq!(ids(&v), vec!["a"]);
+}
+
+#[test]
+fn a_resume_during_a_restore_keeps_its_slot_for_the_later_start() {
+    let mut v = two_panes(SplitDir::Right);
+    assert!(v.split_focused(SplitDir::Down, "d"));
+    v.kinds.insert("b".into(), "shell".into());
+    v.locs.insert("b".into(), loc("/w", "/w", None));
+    v.save_layout("work").unwrap();
+    let mut rows = four();
+    rows.retain(|r| r.id != "b");
+    v.sessions_changed(AREA, rows);
+    v.switch_layout(0);
+    let g = v.layout_gen;
+    let mut resumed = row("d2", "tests", StateKind::Working, "1s");
+    resumed.resumed_from = Some("d".into());
+    v.replace_session("d", "d2");
+    let mut rows = four();
+    rows.retain(|r| r.id != "b" && r.id != "d");
+    rows.push(resumed);
+    rows.push(row("b2", "sh-9", StateKind::Working, "1s"));
+    v.sessions_changed(AREA, rows);
+    v.layout_started("b", Some("b2"), g);
+    let mut got = ids(&v);
+    got.sort_unstable();
+    assert_eq!(got, vec!["a", "b2", "d2"]);
+}
+
+#[test]
+fn switching_to_a_layout_of_only_gone_sessions_keeps_the_current_panes() {
+    let mut v = layout_view();
+    v.save_layout("work").unwrap();
+    v.sessions_changed(AREA, four().into_iter().filter(|r| r.id == "c").collect());
+    v.open("c");
+    v.switch_layout(0);
+    assert_eq!(ids(&v), vec!["c"]);
+    assert!(v.layout_offer.is_some());
+}
+
+#[test]
+fn opening_the_filter_ends_rename_confirm_and_scroll() {
+    let mut v = layout_view();
+    v.scroll = Some(ScrollState { offset: 0, max: 5 });
+    v.confirm = Some(Confirm {
+        session: "a".into(),
+        name: "claude".into(),
+        remove: false,
+    });
+    v.open_filter();
+    assert!(v.confirm.is_none() && v.scroll.is_none());
 }

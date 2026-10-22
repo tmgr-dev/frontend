@@ -14,11 +14,11 @@
                   │ Group the sidebar by tab or by repo                 Ctrl-] g │                 │
                   │ Show or hide the sidebar                            Ctrl-] b │                 │
                   │ Make the sidebar wider                              Ctrl-] > │                 │
+                  │ Named layouts: save or switch panes and tabs        Ctrl-] L │                 │
                   │ Make the sidebar narrower                           Ctrl-] < │                 │
                   │ Pick or drop the focused pane as a broadcast target Ctrl-] m │                 │
                   │ New shell to the right, same folder               Ctrl-] | v │                 │
                   │ Open the focused session's task                     Ctrl-] t │                 │
                   │ Session summary: preview, then post to the task     Ctrl-] S │                 │
-                  │ New shell below, same folder                      Ctrl-] - h │                 │
- + New session    │ Two panes, or collapse to one                       Ctrl-] s │─────────────────╯
+ + New session    │ New shell below, same folder                      Ctrl-] - h │─────────────────╯
  tmgr runner · loc╰──────────────────────────────────────────────────────────────╯    Ctrl-] ? help
