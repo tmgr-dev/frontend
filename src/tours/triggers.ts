@@ -70,16 +70,25 @@ export function createTriggers(deps: TriggerDeps): Triggers {
 	const autoUsed = () =>
 		readJson<boolean>(deps.session, SESSION_KEY, false) === true;
 
-	const canAutoOffer = (tour: TourDef) => {
+	const offerableWhenIdle = (tour: TourDef) => {
 		const onboarding = deps.onboarding();
 		if (!onboarding || onboarding.tips_mode !== 'auto') return false;
-		if (autoUsed() || coolingDown() || deps.hasActive() || deps.isBusy())
-			return false;
+		if (autoUsed() || coolingDown() || deps.hasActive()) return false;
 		const state = deps.tourState(tour.id);
 		if (state && !(state.status === 'skipped' && skipCount(tour.id) < 2))
 			return false;
 		if (skipCount(tour.id) >= 2) return false;
 		return deps.eligible(tour);
+	};
+
+	const canAutoOffer = (tour: TourDef) =>
+		!deps.isBusy() && offerableWhenIdle(tour);
+
+	const arm = (routeName: string) => {
+		pending = deps.setTimer(() => {
+			pending = null;
+			attempt(routeName);
+		}, ROUTE_SETTLE_MS);
 	};
 
 	const attempt = (routeName: string) => {
@@ -90,7 +99,8 @@ export function createTriggers(deps: TriggerDeps): Triggers {
 			);
 			if (!trigger || trigger.kind !== 'first_visit') continue;
 			if (trigger.unlessFact && onboarding?.facts[trigger.unlessFact]) continue;
-			if (!canAutoOffer(tour)) continue;
+			if (!offerableWhenIdle(tour)) continue;
+			if (deps.isBusy()) return arm(routeName);
 			write(deps.session, SESSION_KEY, true);
 			tourTelemetry().track('tour_offered', {
 				tour: tour.id,
@@ -110,11 +120,7 @@ export function createTriggers(deps: TriggerDeps): Triggers {
 		onRouteEntered(routeName) {
 			pending?.();
 			pending = null;
-			if (!routeName) return;
-			pending = deps.setTimer(() => {
-				pending = null;
-				attempt(routeName);
-			}, ROUTE_SETTLE_MS);
+			if (routeName) arm(routeName);
 		},
 
 		noteSkip(id) {

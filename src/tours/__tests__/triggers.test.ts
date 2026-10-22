@@ -131,16 +131,49 @@ describe('triggers', () => {
 		expect(h.start).not.toHaveBeenCalled();
 	});
 
-	it('not while an input or modal is focused, or another tour is active', () => {
+	it('waits while the UI is busy and offers once it is idle on the same route', () => {
 		let busy = true;
 		const h = setup({ isBusy: () => busy });
 		h.visit('List');
+		h.fire();
 		expect(h.start).not.toHaveBeenCalled();
 		busy = false;
-		h.visit('List');
+		h.fire();
 		expect(h.start).toHaveBeenCalledTimes(1);
+		h.fire();
+		expect(h.start).toHaveBeenCalledTimes(1);
+	});
+
+	it('a route change while busy cancels the waiting offer', () => {
+		let busy = true;
+		const h = setup({ isBusy: () => busy });
+		h.visit('List');
+		h.triggers.onRouteEntered('Other');
+		busy = false;
+		h.fire();
+		h.fire();
+		expect(h.start).not.toHaveBeenCalled();
+	});
+
+	it('dispose while busy cancels the waiting offer', () => {
+		let busy = true;
+		const h = setup({ isBusy: () => busy });
+		h.visit('List');
+		h.triggers.dispose();
+		busy = false;
+		h.fire();
+		expect(h.start).not.toHaveBeenCalled();
+	});
+
+	it('canAutoOffer stays false while busy', () => {
+		const h = setup({ isBusy: () => true });
+		expect(h.triggers.canAutoOffer(tour('a.tour', 'List'))).toBe(false);
+	});
+
+	it('not while another tour is active, and does not wait for it', () => {
 		const g = setup({ hasActive: () => true });
 		g.visit('List');
+		g.fire();
 		expect(g.start).not.toHaveBeenCalled();
 	});
 

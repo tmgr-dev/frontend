@@ -166,7 +166,7 @@ describe('offer', () => {
 	});
 
 	it('retries while busy and starts once the dialog closes', async () => {
-		const h = make();
+		const h = make({ currentRouteName: () => null });
 		await h.engine.init();
 		h.clock.busy = true;
 		const result = h.engine.api.offer('desktop.menu-bar-timer', 'event', {

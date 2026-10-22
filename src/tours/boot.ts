@@ -60,7 +60,9 @@ export function isInputBusy(doc: Document = document): boolean {
 		)
 			return true;
 	}
-	return !!doc.querySelector('[role="dialog"][data-state="open"]');
+	return !!doc.querySelector(
+		'[role="dialog"][data-state="open"], .sortable-chosen',
+	);
 }
 
 export function installTours(
